@@ -25,15 +25,17 @@ import (
 // A hop that needs another method and no body, or no credentials, goes out as a private
 // copy: req keeps its method, body and credentials for the rest of the handler chain.
 //
-// A redirect that keeps the body of a streamed request fails with fasthttp.ErrRedirectBodyStream,
-// as fasthttp's own loop does: the first hop consumed the stream, so it cannot be sent again.
+// A redirect that keeps the body of a streamed request (StreamRequestBody) is followed only if the
+// first hop left the whole body in memory: one of known length that fits what the server reads
+// ahead of the handler, 8 KiB. Any other fails with fasthttp.ErrRedirectBodyStream, as fasthttp's
+// own loop does: the first hop consumed the stream, and what it left cannot be sent again.
 func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy) error {
 	if maxRedirects < 0 {
 		maxRedirects = 0
 	}
 	hop := req
 	// Asked before the first hop: sending the request consumes the stream.
-	streamed := req.IsBodyStream()
+	streamed, declared := req.IsBodyStream(), req.Header.ContentLength()
 	lookups := lookupsFor(cli)
 	currentURL := initialURL
 	currentURLStr := "" // rendered when a redirect needs it as the base of Location
@@ -65,11 +67,12 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		crossOrigin := !schemehost.Match(currentURL.Scheme, currentURL.Host, nextURL.Scheme, nextURL.Host)
 		changesMethod := redirectChangesMethod(hop, status)
 		if streamed {
-			if !changesMethod {
+			if changesMethod {
+				// The body is gone for the rest of the chain.
+				streamed = false
+			} else if !holdsBody(hop, declared) {
 				return fasthttp.ErrRedirectBodyStream
 			}
-			// The body is gone for the rest of the chain.
-			streamed = false
 		}
 		if crossOrigin || changesMethod {
 			if hop == req {
@@ -120,6 +123,14 @@ func copyRequest(req *fasthttp.Request) *fasthttp.Request {
 	hop.SetTimeout(req.GetTimeOut())
 	req.VisitUserValuesAll(hop.SetUserValue)
 	return hop
+}
+
+// holdsBody reports whether req still has all declared bytes of the body it was sent as a stream.
+// Sending reads a stream to its end and leaves in the request only what the server had read ahead
+// of the handler: all of a body of known length that fits, none of a chunked one, declared as -1.
+// A stream no transport read is not held either: Body would read it into memory.
+func holdsBody(req *fasthttp.Request, declared int) bool {
+	return !req.IsBodyStream() && len(req.Body()) == declared
 }
 
 // carryFormBody gives hop the body CopyTo left out of it: a multipart form the server parsed ahead

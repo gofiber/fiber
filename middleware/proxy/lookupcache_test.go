@@ -173,3 +173,32 @@ func Test_Security_Do_UnguardedClientIsJudgedByAFreshLookup(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, int32(1), served.Load(), "and the second request never reaches the transport")
 }
+
+// Test_Security_FollowRedirects_UnguardedClientHopsAreJudgedByFreshLookups pins that the hops of a
+// redirect a client the dial guard cannot cover follows never see the cache either: a name rebound
+// between two hops is judged by its new answer.
+func Test_Security_FollowRedirects_UnguardedClientHopsAreJudgedByFreshLookups(t *testing.T) {
+	// Intentionally not parallel: it swaps the process-wide DNS resolver.
+	// The first A answer for a name is public; every one after is internal.
+	dnsAddr, _ := startRebindingDNS(t, net.IPv4(198, 51, 100, 1), net.IPv4(10, 0, 0, 1))
+	withRebindingResolver(t, dnsAddr)
+
+	var hops []string
+	client, _ := newCountingRedirectClient(map[string]redirectStep{
+		"http://start.example/": {status: fasthttp.StatusFound, location: "http://rebind.test/a"},
+		"http://rebind.test/a":  {status: fasthttp.StatusFound, location: "http://rebind.test/b"},
+	})
+	client.onRequest = func(req *fasthttp.Request) { hops = append(hops, req.URI().String()) }
+
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
+	})
+	req.SetRequestURI("http://start.example/")
+
+	err := followRedirects(client.client, req, resp, 5, mustParseTestURL(t, "http://start.example/"), DefaultSecurityPolicy())
+	require.ErrorIs(t, err, ErrUpstreamHostBlocked, "the second hop to the rebound name is judged by its new answer")
+	require.Equal(t, []string{"http://start.example/", "http://rebind.test/a"}, hops, "and never sent")
+}

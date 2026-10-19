@@ -29,8 +29,27 @@ const dnsLookupTimeout = 5 * time.Second
 // direct swap a data race under -race.
 var dnsResolver atomic.Pointer[net.Resolver]
 
+// dialFuncs are fasthttp's own dialers, which a guard connects to an address it checked with when
+// its client has none of its own.
+type dialFuncs struct {
+	dial                 fasthttp.DialFunc
+	dialDualStack        fasthttp.DialFunc
+	dialTimeout          fasthttp.DialFuncWithTimeout
+	dialDualStackTimeout fasthttp.DialFuncWithTimeout
+}
+
+// fasthttpDialers is what defaultDialTimeout chooses from. Like dnsResolver it is only ever swapped
+// by tests, atomically.
+var fasthttpDialers atomic.Pointer[dialFuncs]
+
 func init() {
 	dnsResolver.Store(net.DefaultResolver)
+	fasthttpDialers.Store(&dialFuncs{
+		dial:                 fasthttp.Dial,
+		dialDualStack:        fasthttp.DialDualStack,
+		dialTimeout:          fasthttp.DialTimeout,
+		dialDualStackTimeout: fasthttp.DialDualStackTimeout,
+	})
 }
 
 // validateHostForSSRF rejects hostnames that resolve to addresses inside
@@ -219,15 +238,16 @@ func (g dialGuard) clientDialerWithTimeout(orig fasthttp.DialFuncWithTimeout) fa
 // DialTimeout would fail a zero timeout at once.
 func defaultDialTimeout(dualStack bool) fasthttp.DialFuncWithTimeout {
 	return func(addr string, timeout time.Duration) (net.Conn, error) {
+		d := fasthttpDialers.Load()
 		switch {
 		case timeout > 0 && dualStack:
-			return fasthttp.DialDualStackTimeout(addr, timeout)
+			return d.dialDualStackTimeout(addr, timeout)
 		case timeout > 0:
-			return fasthttp.DialTimeout(addr, timeout)
+			return d.dialTimeout(addr, timeout)
 		case dualStack:
-			return fasthttp.DialDualStack(addr)
+			return d.dialDualStack(addr)
 		default:
-			return fasthttp.Dial(addr)
+			return d.dial(addr)
 		}
 	}
 }

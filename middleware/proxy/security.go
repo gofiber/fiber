@@ -86,7 +86,7 @@ type SecurityPolicy struct {
 	// DNS-rebinding scope: when false, the resolved IP is re-validated at
 	// dial time, not only up front, so a malicious resolver cannot swap a
 	// public answer (seen during validation) for a private one at connect
-	// time. Balancer installs a guarded Dial on each HostClient it builds;
+	// time. Balancer installs a guarded Dial and DialTimeout on each HostClient it builds;
 	// the runtime helpers — Do, DoRedirects, DoTimeout, DoDeadline,
 	// Forward, DomainForward, BalancerForward — install the same guard on
 	// the shared/user-supplied *fasthttp.Client they dispatch through.
@@ -96,10 +96,10 @@ type SecurityPolicy struct {
 	// per-call variadic argument is guarded on first use, so any host it had
 	// already dialed keeps a cached, pre-guard HostClient; register such a
 	// client via WithClient (or hand the proxy a dedicated, unused client)
-	// for the full guarantee. The only path with no guard at all is a custom
-	// Balancer Config.Client (*fasthttp.LBClient): its underlying dialers
-	// are the caller's responsibility, as are those of a *fasthttp.Client
-	// with a Transport, which dials by itself.
+	// for the full guarantee. Two paths have no guard at all, and their
+	// dialers are the caller's responsibility: a custom Balancer
+	// Config.Client (*fasthttp.LBClient), and a *fasthttp.Client with a
+	// Transport, which dials by itself.
 	//
 	// The up-front lookup of a hostname is remembered for a second, which
 	// the dial-time check makes safe, so it is remembered for the shared

@@ -196,6 +196,49 @@ func withRebindingResolver(t *testing.T, dnsAddr string) {
 	t.Cleanup(func() { dnsResolver.Store(prev) })
 }
 
+// startSilentDNS starts a loopback UDP socket that takes queries and never answers. It returns its
+// "host:port".
+func startSilentDNS(t *testing.T) string {
+	t.Helper()
+
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { pc.Close() }) //nolint:errcheck // best-effort close in cleanup
+	return pc.LocalAddr().String()
+}
+
+// recordedDial is a connect asked of one of fasthttp's dialers.
+type recordedDial struct {
+	via     string
+	addr    string
+	timeout time.Duration
+}
+
+// withRecordedDialers puts stand-ins for fasthttp's four dialers where a guard finds them, for the
+// duration of t, and returns the connects they are asked for, in order. The stand-ins connect to
+// nothing. The seam is process-wide: tests using it must not call t.Parallel.
+func withRecordedDialers(t *testing.T) *[]recordedDial {
+	t.Helper()
+
+	var dials []recordedDial
+	record := func(via, addr string, timeout time.Duration) net.Conn {
+		dials = append(dials, recordedDial{via: via, addr: addr, timeout: timeout})
+		return stubConn{addr: addr}
+	}
+	prev := fasthttpDialers.Swap(&dialFuncs{
+		dial:          func(addr string) (net.Conn, error) { return record("Dial", addr, 0), nil },
+		dialDualStack: func(addr string) (net.Conn, error) { return record("DialDualStack", addr, 0), nil },
+		dialTimeout: func(addr string, timeout time.Duration) (net.Conn, error) {
+			return record("DialTimeout", addr, timeout), nil
+		},
+		dialDualStackTimeout: func(addr string, timeout time.Duration) (net.Conn, error) {
+			return record("DialDualStackTimeout", addr, timeout), nil
+		},
+	})
+	t.Cleanup(func() { fasthttpDialers.Store(prev) })
+	return &dials
+}
+
 // Test_Security_Do_BlocksDNSRebinding is the regression test for the
 // DNS-rebinding SSRF: the up-front validation lookup sees a public IP and
 // passes, but the dial-time guard re-resolves the name, sees the rebound
@@ -513,10 +556,10 @@ func Test_Security_InstallHostClientGuard_DialTimeout(t *testing.T) {
 	})
 }
 
-// Test_Security_DefaultDialTimeout pins the dialer a HostClient with none is given: it connects with
-// the timeout the request leaves, and with fasthttp's default when it leaves none, where DialTimeout
-// would fail a zero timeout at once.
-func Test_Security_DefaultDialTimeout(t *testing.T) {
+// Test_Security_DefaultDialTimeout_ConnectsThroughFasthttp pins that the dialer a HostClient with
+// none is given connects with the timeout the request leaves, and with fasthttp's default when it
+// leaves none, where DialTimeout would fail a zero timeout at once.
+func Test_Security_DefaultDialTimeout_ConnectsThroughFasthttp(t *testing.T) {
 	t.Parallel()
 
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
@@ -532,34 +575,185 @@ func Test_Security_DefaultDialTimeout(t *testing.T) {
 	}
 }
 
-// Test_Security_DialWithin_SharesTheTimeout pins that a dial gives its lookup and its connects the time
-// the request leaves between them, not a fresh allowance each.
+// Test_Security_DefaultDialTimeout_ChoosesTheDialer pins which of fasthttp's four dialers connects: the
+// one for the stack, and the one that takes the timeout only when the request left one.
+func Test_Security_DefaultDialTimeout_ChoosesTheDialer(t *testing.T) {
+	// Intentionally not parallel: it swaps the process-wide fasthttp dialers.
+	dials := withRecordedDialers(t)
+
+	for _, tc := range []struct {
+		want      recordedDial
+		timeout   time.Duration
+		dualStack bool
+	}{
+		{want: recordedDial{via: "Dial", addr: "198.51.100.7:80"}},
+		{want: recordedDial{via: "DialDualStack", addr: "198.51.100.7:80"}, dualStack: true},
+		{want: recordedDial{via: "DialTimeout", addr: "198.51.100.7:80", timeout: time.Second}, timeout: time.Second},
+		{want: recordedDial{via: "DialDualStackTimeout", addr: "198.51.100.7:80", timeout: time.Second}, timeout: time.Second, dualStack: true},
+	} {
+		*dials = nil
+		_, err := defaultDialTimeout(tc.dualStack)("198.51.100.7:80", tc.timeout)
+		require.NoError(t, err)
+		require.Equal(t, []recordedDial{tc.want}, *dials, "dual stack %v, timeout %v", tc.dualStack, tc.timeout)
+	}
+}
+
+// Test_Security_GuardedDialTimeouts_HandTheTimeoutOn pins that every guarded DialTimeout, the one a
+// client with no dialer of its own is given, the one of a Balancer's host client and the guard's own,
+// checks the address and then connects through fasthttp's dialer for its stack with the time the
+// request left for the connect, or with none when it left none.
+func Test_Security_GuardedDialTimeouts_HandTheTimeoutOn(t *testing.T) {
+	// Intentionally not parallel: it swaps the process-wide security policy and fasthttp dialers.
+	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
+	dials := withRecordedDialers(t)
+
+	upstream := mustParseTestURL(t, "http://upstream.example")
+	for _, dualStack := range []bool{false, true} {
+		guarded := map[string]func() fasthttp.DialFuncWithTimeout{
+			"a client with no dialer of its own": func() fasthttp.DialFuncWithTimeout {
+				hc := &fasthttp.HostClient{DialDualStack: dualStack}
+				installHostClientGuard(hc)
+				return hc.DialTimeout
+			},
+			"a Balancer host client": func() fasthttp.DialFuncWithTimeout {
+				return newHostClient(upstream, &Config{DialDualStack: dualStack}, DefaultSecurityPolicy()).DialTimeout
+			},
+			"the guard": func() fasthttp.DialFuncWithTimeout {
+				return newDialGuard(dualStack).dialCheckedTimeout
+			},
+		}
+		viaTimeout, via := "DialTimeout", "Dial"
+		if dualStack {
+			viaTimeout, via = "DialDualStackTimeout", "DialDualStack"
+		}
+		for name, build := range guarded {
+			dial := build()
+			require.NotNil(t, dial, "%s, dual stack %v", name, dualStack)
+
+			*dials = nil
+			_, err := dial("198.51.100.7:80", 2*time.Second)
+			require.NoError(t, err, "%s, dual stack %v", name, dualStack)
+			require.Len(t, *dials, 1, "%s, dual stack %v", name, dualStack)
+			got := (*dials)[0]
+			require.Equal(t, viaTimeout, got.via, "%s, dual stack %v", name, dualStack)
+			require.Equal(t, "198.51.100.7:80", got.addr, "%s, dual stack %v", name, dualStack)
+			require.Positive(t, got.timeout, "%s, dual stack %v: the connect gets a timeout", name, dualStack)
+			require.LessOrEqual(t, got.timeout, 2*time.Second, "%s, dual stack %v: and not fasthttp's default of %v", name, dualStack, fasthttp.DefaultDialTimeout)
+
+			*dials = nil
+			_, err = dial("198.51.100.7:80", 0)
+			require.NoError(t, err, "%s, dual stack %v", name, dualStack)
+			require.Equal(t, []recordedDial{{via: via, addr: "198.51.100.7:80"}}, *dials, "%s, dual stack %v", name, dualStack)
+		}
+	}
+}
+
+// Test_Security_DialWithin_SharesTheTimeout pins that a dial gives its lookup and all its connects the
+// time the request leaves between them, not a fresh allowance each: a connect gets what the earlier
+// ones left, and none is made once nothing is left.
 func Test_Security_DialWithin_SharesTheTimeout(t *testing.T) {
-	t.Parallel()
+	// Intentionally not parallel: it swaps the process-wide DNS resolver.
+	withRebindingResolver(t, startManyAnswersDNS(t, 2)) // 198.51.100.1 and 198.51.100.2
 
 	guard := newDialGuard(false)
-	var got time.Duration
-	var dialed int
-	dial := func(addr string, timeout time.Duration) (net.Conn, error) {
+
+	t.Run("a connect gets what is left", func(t *testing.T) {
+		var timeouts []time.Duration
+		dial := func(_ string, timeout time.Duration) (net.Conn, error) {
+			timeouts = append(timeouts, timeout)
+			if len(timeouts) == 1 {
+				time.Sleep(300 * time.Millisecond)
+				return nil, errors.New("connection refused")
+			}
+			return stubConn{}, nil
+		}
+
+		_, err := guard.dialWithin("many.test:80", 3*time.Second, dial)
+		require.NoError(t, err)
+		require.Len(t, timeouts, 2)
+		require.Greater(t, timeouts[0], 2*time.Second, "the lookup left most of it")
+		require.LessOrEqual(t, timeouts[0], 3*time.Second)
+		require.Positive(t, timeouts[1])
+		require.LessOrEqual(t, timeouts[1], 3*time.Second-250*time.Millisecond, "the first connect took 300 ms of it")
+	})
+
+	t.Run("none is made once nothing is left", func(t *testing.T) {
+		var dialed int
+		dial := func(_ string, timeout time.Duration) (net.Conn, error) {
+			dialed++
+			time.Sleep(timeout) // an address nobody answers at, which uses all it is given
+			return nil, fasthttp.ErrDialTimeout
+		}
+
+		_, err := guard.dialWithin("many.test:80", 500*time.Millisecond, dial)
+		require.ErrorIs(t, err, fasthttp.ErrDialTimeout)
+		require.Equal(t, 1, dialed, "the second address is not tried")
+	})
+}
+
+// Test_Security_DialWithin_NoTimeout pins that a dial the request gave no time hands none on.
+func Test_Security_DialWithin_NoTimeout(t *testing.T) {
+	t.Parallel()
+
+	got := time.Hour
+	_, err := newDialGuard(false).dialWithin("198.51.100.7:80", 0, func(_ string, timeout time.Duration) (net.Conn, error) {
 		got = timeout
+		return stubConn{}, nil
+	})
+	require.NoError(t, err)
+	require.Zero(t, got)
+}
+
+// Test_Security_DialWithin_BoundsTheLookup pins that the time a request leaves ends the lookup of the
+// dial too, not only its connects: a resolver that never answers costs the request what it allowed, not
+// the five seconds the lookup is otherwise given.
+func Test_Security_DialWithin_BoundsTheLookup(t *testing.T) {
+	// Intentionally not parallel: it swaps the process-wide DNS resolver.
+	withRebindingResolver(t, startSilentDNS(t))
+
+	var dialed int
+	start := time.Now()
+	_, err := newDialGuard(false).dialWithin("silent.test:80", 200*time.Millisecond, func(string, time.Duration) (net.Conn, error) {
 		dialed++
-		return stubConn{addr: addr}, nil
-	}
+		return stubConn{}, nil
+	})
 
-	_, err := guard.dialWithin("198.51.100.7:80", time.Second, dial)
-	require.NoError(t, err)
-	require.Greater(t, got, 500*time.Millisecond, "a connect gets what is left")
-	require.Less(t, got, time.Second)
-
-	got = time.Hour
-	_, err = guard.dialWithin("198.51.100.7:80", 0, dial)
-	require.NoError(t, err)
-	require.Zero(t, got, "no timeout, none handed on")
-
-	dialed = 0
-	_, err = guard.dialWithin("198.51.100.7:80", time.Nanosecond, dial)
-	require.ErrorIs(t, err, fasthttp.ErrDialTimeout, "a spent budget ends the connect")
+	require.ErrorIs(t, err, ErrUpstreamHostUnresolvable)
 	require.Zero(t, dialed)
+	require.Less(t, time.Since(start), dnsLookupTimeout/2)
+}
+
+// Test_Security_RequestTimeout_ReachesTheConnect pins the whole path of the time a request leaves for
+// the connect, from the helper a handler calls to the dialer that connects: DoTimeout through the
+// shared client, and a Balancer with a Timeout through its host clients.
+func Test_Security_RequestTimeout_ReachesTheConnect(t *testing.T) {
+	// Intentionally not parallel: it swaps the process-wide security policy, client and fasthttp dialers.
+	restoreGlobalProxyClient(t)
+	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
+	WithClient(&fasthttp.Client{})
+	dials := withRecordedDialers(t)
+
+	// TEST-NET-2 is documentation space, outside the blocked ranges.
+	const upstream = "http://198.51.100.9"
+	timeout := 2 * time.Second // below fasthttp's default of 3 s
+	for name, handler := range map[string]fiber.Handler{
+		"DoTimeout": func(c fiber.Ctx) error { return DoTimeout(c, upstream+"/", timeout) },
+		"Balancer":  Balancer(Config{Servers: []string{upstream}, Timeout: timeout}),
+	} {
+		*dials = nil
+		app := fiber.New()
+		app.Get("/", handler)
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
+		require.NoError(t, err, name)
+		require.NoError(t, resp.Body.Close(), name) // the stand-in connection answers nothing, so the request fails
+
+		require.NotEmpty(t, *dials, name)
+		first := (*dials)[0]
+		require.Equal(t, "DialTimeout", first.via, name)
+		require.Equal(t, "198.51.100.9:80", first.addr, name)
+		require.Positive(t, first.timeout, name)
+		require.LessOrEqual(t, first.timeout, timeout, name)
+	}
 }
 
 // Test_Security_ClientDialerWithTimeout_Delegates covers the
@@ -607,7 +801,7 @@ func Test_Security_ClientDialerWithTimeout_ValidatedDialsThrough(t *testing.T) {
 	require.Equal(t, "198.51.100.7:80", got, "must dial the validated resolved IP")
 	// What the lookup left of the second, not the second again.
 	require.Greater(t, gotTimeout, 500*time.Millisecond)
-	require.Less(t, gotTimeout, time.Second)
+	require.LessOrEqual(t, gotTimeout, time.Second)
 }
 
 // Test_Security_EnsureClientGuarded_ComposePropagatesError verifies the

@@ -516,6 +516,61 @@ func Test_Proxy_DoRedirects_AppliesSchemePerHopBehindTLS(t *testing.T) {
 	resp.Close()
 }
 
+// Test_Proxy_DoRedirects_StreamedRequestBody pins that a redirect keeping the method of a request
+// the server streams to the handler (StreamRequestBody) is followed when the first hop left the
+// whole body in memory, as it does for a body of known length up to 8 KiB, an empty one included,
+// and fails when it did not.
+func Test_Proxy_DoRedirects_StreamedRequestBody(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		body       string
+		wantBody   string
+		wantStatus int
+		wantFinals int32
+	}{
+		{name: "empty", wantStatus: fiber.StatusOK, wantBody: "POST:0", wantFinals: 1},
+		{name: "small", body: "payload", wantStatus: fiber.StatusOK, wantBody: "POST:7", wantFinals: 1},
+		{name: "more than is read ahead", body: strings.Repeat("a", 8*1024+1), wantStatus: fiber.StatusInternalServerError, wantBody: fasthttp.ErrRedirectBodyStream.Error()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var finals atomic.Int32 // requests that reached the target of the redirect
+			upstream := fiber.New()
+			ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+			require.NoError(t, err)
+			addr := ln.Addr().String()
+			upstream.Post("/start", func(c fiber.Ctx) error {
+				return c.Redirect().Status(fiber.StatusTemporaryRedirect).To("http://" + addr + "/final")
+			})
+			upstream.Post("/final", func(c fiber.Ctx) error {
+				finals.Add(1)
+				return c.SendString(c.Method() + ":" + strconv.Itoa(len(c.Body())))
+			})
+			startServer(upstream, ln)
+
+			app := fiber.New(fiber.Config{StreamRequestBody: true})
+			app.Post("/", func(c fiber.Ctx) error {
+				return DoRedirects(c, "http://"+addr+"/start", 3)
+			})
+
+			req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader(tc.body))
+			req.Header.Set(fiber.HeaderContentLength, strconv.Itoa(len(tc.body)))
+			resp, err := app.Test(req, fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
+			require.NoError(t, err)
+			defer func() { require.NoError(t, resp.Body.Close()) }()
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantStatus, resp.StatusCode)
+			require.Equal(t, tc.wantBody, string(body))
+			require.Equal(t, tc.wantFinals, finals.Load(), "requests that reached the target of the redirect")
+		})
+	}
+}
+
 // go test -run Test_Proxy_Forward
 func Test_Proxy_Forward(t *testing.T) {
 	t.Parallel()

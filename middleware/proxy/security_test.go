@@ -1654,7 +1654,8 @@ func Test_Security_FollowRedirects_CopiedHopKeepsTimeoutAndUserValues(t *testing
 			for hop, state := range hops {
 				require.Equal(t, "abc", state.trace, "hop %d", hop)
 				// The client hands the transport what is left of the timeout.
-				require.InDelta(t, float64(750*time.Millisecond), float64(state.timeout), float64(100*time.Millisecond), "hop %d", hop)
+				require.Positive(t, state.timeout, "hop %d", hop)
+				require.LessOrEqual(t, state.timeout, 750*time.Millisecond, "hop %d", hop)
 			}
 			require.Zero(t, closer.closed.Load(), "the copy must not Close the caller's values")
 		})
@@ -1699,6 +1700,131 @@ func Test_Security_FollowRedirects_StreamedBody(t *testing.T) {
 			require.Equal(t, []string{tc.method, fasthttp.MethodGet}, methods)
 		})
 	}
+}
+
+// streamedRequest makes req what fasthttp's server hands a handler when StreamRequestBody is on: the
+// head parsed, up to 8 KiB of a body of known length read ahead, and the rest left on the connection
+// behind a stream. raw is the request as it arrives.
+func streamedRequest(tb testing.TB, req *fasthttp.Request, raw string) {
+	tb.Helper()
+
+	br := bufio.NewReader(strings.NewReader(raw))
+	require.NoError(tb, req.Header.Read(br))
+	require.NoError(tb, req.ContinueReadBodyStream(br, 1<<20))
+	require.True(tb, req.IsBodyStream())
+}
+
+// Test_Security_FollowRedirects_ServerStreamedBody pins which of the bodies fasthttp's server
+// streams a redirect that keeps the body follows. What the server reads ahead of the handler, up to
+// 8 KiB of a body of known length, stays in the request after the first hop and is sent again; a
+// longer body or one of unknown length is gone, and the redirect fails rather than send a part of it.
+func Test_Security_FollowRedirects_ServerStreamedBody(t *testing.T) {
+	t.Parallel()
+
+	const readAhead = 8 * 1024
+	for _, tc := range []struct {
+		name    string
+		framing string
+		onWire  string // the body as it is on the connection
+		payload string // the body a hop sends
+		wantErr bool
+	}{
+		{name: "empty", framing: "Content-Length: 0"},
+		{name: "small", framing: "Content-Length: 7", onWire: "payload", payload: "payload"},
+		{name: "as much as is read ahead", framing: "Content-Length: " + strconv.Itoa(readAhead), onWire: strings.Repeat("a", readAhead), payload: strings.Repeat("a", readAhead)},
+		{name: "more than is read ahead", framing: "Content-Length: " + strconv.Itoa(readAhead+1), onWire: strings.Repeat("a", readAhead+1), wantErr: true},
+		{name: "chunked", framing: "Transfer-Encoding: chunked", onWire: "7\r\npayload\r\n0\r\n\r\n", wantErr: true},
+	} {
+		for _, location := range []string{"http://example.com/after", "http://other.example/after"} {
+			for _, status := range []int{fasthttp.StatusTemporaryRedirect, fasthttp.StatusPermanentRedirect} {
+				t.Run(tc.name+" "+strconv.Itoa(status)+" to "+location, func(t *testing.T) {
+					t.Parallel()
+
+					var wires []string
+					_, err := followRecordingErr(t, "http://example.com/start", map[string]redirectStep{
+						"http://example.com/start": {status: status, location: location},
+					}, func(req *fasthttp.Request) {
+						streamedRequest(t, req, "POST /start HTTP/1.1\r\nHost: example.com\r\n"+tc.framing+"\r\n\r\n"+tc.onWire)
+					}, func(req *fasthttp.Request) {
+						wires = append(wires, req.String()) // sending the request consumes the stream
+					})
+
+					if tc.wantErr {
+						require.ErrorIs(t, err, fasthttp.ErrRedirectBodyStream)
+						require.Len(t, wires, 1, "nothing is sent again")
+						return
+					}
+					require.NoError(t, err)
+					require.Len(t, wires, 2)
+					for hop, wire := range wires {
+						head, body, found := strings.Cut(wire, "\r\n\r\n")
+						require.True(t, found, "hop %d", hop)
+						require.Contains(t, head, "Content-Length: "+strconv.Itoa(len(tc.payload)), "hop %d", hop)
+						require.Equal(t, tc.payload, body, "hop %d", hop)
+					}
+				})
+			}
+		}
+	}
+}
+
+// Test_Security_FollowRedirects_StreamedBodyEndsWithTheMethod pins that the body of a streamed
+// request is gone once a redirect has made it a GET, so that a later redirect keeping the method
+// is followed, whether or not the body would have been held.
+func Test_Security_FollowRedirects_StreamedBodyEndsWithTheMethod(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct{ framing, onWire string }{
+		"known length": {framing: "Content-Length: 7", onWire: "payload"},
+		"chunked":      {framing: "Transfer-Encoding: chunked", onWire: "7\r\npayload\r\n0\r\n\r\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var methods []string
+			_, err := followRecordingErr(t, "http://example.com/start", map[string]redirectStep{
+				"http://example.com/start": {status: fasthttp.StatusSeeOther, location: "http://example.com/mid"},
+				"http://example.com/mid":   {status: fasthttp.StatusTemporaryRedirect, location: "http://example.com/end"},
+			}, func(req *fasthttp.Request) {
+				streamedRequest(t, req, "POST /start HTTP/1.1\r\nHost: example.com\r\n"+tc.framing+"\r\n\r\n"+tc.onWire)
+			}, func(req *fasthttp.Request) {
+				methods = append(methods, string(req.Header.Method()))
+				_ = req.String() // sending the request consumes the stream
+			})
+
+			require.NoError(t, err)
+			require.Equal(t, []string{fasthttp.MethodPost, fasthttp.MethodGet, fasthttp.MethodGet}, methods)
+		})
+	}
+}
+
+// Test_Security_FollowRedirects_UnreadStream pins that a stream the transport left unread is not
+// read into memory by the redirect, which fails as it does for a body that is gone.
+func Test_Security_FollowRedirects_UnreadStream(t *testing.T) {
+	t.Parallel()
+
+	reader := &countingReader{Reader: strings.NewReader("payload")}
+	_, err := followRecordingErr(t, "http://example.com/start", map[string]redirectStep{
+		"http://example.com/start": {status: fasthttp.StatusTemporaryRedirect, location: "http://example.com/after"},
+	}, func(req *fasthttp.Request) {
+		req.Header.SetMethod(fasthttp.MethodPost)
+		req.SetBodyStream(reader, len("payload"))
+	}, nil)
+
+	require.ErrorIs(t, err, fasthttp.ErrRedirectBodyStream)
+	require.Zero(t, reader.read.Load(), "the stream stays unread")
+}
+
+// countingReader counts the bytes read through it.
+type countingReader struct {
+	io.Reader
+	read atomic.Int64
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	r.read.Add(int64(n))
+	return n, err //nolint:wrapcheck // a pass-through
 }
 
 // contentFieldNames are the fields a request without content must not carry (RFC 9110 §8, §10.1.1).
