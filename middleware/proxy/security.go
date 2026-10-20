@@ -86,8 +86,8 @@ type SecurityPolicy struct {
 	// *fasthttp.Client they dispatch through. The default client and clients registered with
 	// WithClient are guarded before first use. A client passed per call is guarded on first use, so a
 	// host it had already dialed keeps its pre-guard HostClient: register it with WithClient instead.
-	// Two paths have no guard, and their dialers are the caller's responsibility: a custom Balancer
-	// Config.Client (*fasthttp.LBClient) and a *fasthttp.Client with a Transport.
+	// A custom Balancer Config.Client (*fasthttp.LBClient) and a *fasthttp.Client with a Transport dial
+	// through the caller's own dialers, which the caller guards.
 	//
 	// The up-front lookup of a hostname is remembered for a second, for the shared client only: a
 	// request through a per-call client or one with a Transport is judged by a lookup of its own.

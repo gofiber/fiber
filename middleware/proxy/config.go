@@ -33,7 +33,7 @@ type Config struct {
 	// first on a client already in use, which is then left alone.
 	// Note that Servers, Timeout, MaxConnsPerHost, ReadBufferSize, WriteBufferSize,
 	// MaxResponseBodySize, TLSConfig and DialDualStack will not be used if the client is
-	// set, and its dialers get no SSRF guard.
+	// set, and its dialers are yours to guard.
 	Client *fasthttp.LBClient
 
 	// SecurityPolicy overrides the default SSRF, redirect, and

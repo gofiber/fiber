@@ -1871,7 +1871,7 @@ Custom limiter algorithms should now implement the updated `limiter.Handler` int
 
 `limiter.FixedWindow` and `limiter.SlidingWindow` give a field their config leaves unset the default `limiter.New` would, when you call their `New` method yourself: `MaxFunc` and `ExpirationFunc` return `Max` and `Expiration`, and a `nil` config selects the default config.
 
-`SkipFailedRequests` and `SkipSuccessfulRequests` judge the status a request ends with, errors included: a handler that returns a `*fiber.Error` counts with that error's status code, and one that returns any other error counts as a `500` unless it already set an error status. In v2 both options read only the response status, which is still `200` when a handler returns an error, so a failed request counted as a successful one.
+`SkipFailedRequests` and `SkipSuccessfulRequests` judge the status a request ends with, errors included: a handler that returns a `*fiber.Error` counts with that error's status code, and one that returns any other error counts as a `500` unless it already set an error status. In v2 both options read the response status alone, which is still `200` when a handler returns an error; such a request now counts as failed.
 
 Limiter now redacts request keys in error paths by default. A new `DisableValueRedaction` boolean (default `false`) lets you reveal the limiter key, as the storage sees it, if diagnostics require it.
 
@@ -1889,7 +1889,7 @@ The proxy middleware has been updated to improve consistency with Go naming conv
 
 The new `KeepConnectionHeader` option (default `false`) drops the `Connection` header unless explicitly enabled to retain it.
 
-`proxy.Balancer` takes its `proxy.Config` as an optional variadic argument, like the other middleware constructors, but `Servers` (or a custom `Client` with `Clients`) is still required: `proxy.Balancer()` with no argument panics at startup, as `proxy.Balancer(proxy.Config{})` does, and so does a `Client` without `Clients`. It used to return a handler that panicked on the first request it received. A server without a port is dialed on the port of its scheme, and each server is reached with its own scheme, so an `https` upstream works behind a plain-HTTP listener.
+`proxy.Balancer` takes its `proxy.Config` as an optional variadic argument, like the other middleware constructors. `Servers` (or a custom `Client` with `Clients`) is required, so `proxy.Balancer()` without a config panics at startup, as `proxy.Balancer(proxy.Config{})` does, and so does a `Client` without `Clients`. A server without a port is dialed on the port of its scheme, and each server is reached with its own scheme, so an `https` upstream works behind a plain-HTTP listener.
 
 The proxy is secure by default. Upstreams that resolve to loopback, private, link-local, multicast, unspecified, CGNAT or other special-use addresses (IPv6 transition forms included) are refused, and so are schemes other than `http` and `https` and HTTPS-to-HTTP redirects. Hop-by-hop headers are stripped, and `Balancer`, `Forward`, `DomainForward` and `BalancerForward` overwrite `X-Real-IP` with `c.IP()`; with `Do`, `DoTimeout`, `DoDeadline` and `DoRedirects` you set it yourself. To proxy to an internal host, relax the policy with `proxy.WithSecurityPolicy` (or `Config.SecurityPolicy` for `Balancer`), for example `proxy.SecurityPolicy{AllowPrivateIPs: true}`, before you build `DomainForward` or `BalancerForward`: they check their upstreams when the handler is built and panic on a rejected one. Keep the policy installed while they serve: `Forward`, `DomainForward` and `BalancerForward` read it on every request, whereas `Balancer` reads it once, when it is built. See [Security](./middleware/proxy.md#security).
 
@@ -3439,7 +3439,7 @@ proxy.WithClient(&fasthttp.Client{
 app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 ```
 
-`proxy.Balancer` also adopts the common middleware signature pattern and now accepts its config as an optional variadic argument, so you can keep passing a single `proxy.Config` value as in v2. `Servers` (or a custom `Client`) is still required: `proxy.Balancer()` with no argument panics at startup, as `proxy.Balancer(proxy.Config{})` does. It used to return a handler that panicked on the first request it received.
+`proxy.Balancer` also adopts the common middleware signature pattern and now accepts its config as an optional variadic argument, so you can keep passing a single `proxy.Config` value as in v2. `Servers` (or a custom `Client`) is required, so `proxy.Balancer()` without a config panics at startup, as `proxy.Balancer(proxy.Config{})` does.
 
 #### Rewrite
 
