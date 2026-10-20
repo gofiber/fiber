@@ -73,11 +73,9 @@ func Test_Coverage_DialValidatedIPs_SuccessOnIPv4(t *testing.T) {
 	require.True(t, called.Load())
 }
 
-// Test_Coverage_DialValidatedIPs_SkipsV6_WhenNoDualStack covers the
-// IPv4-only branch: an IPv6 candidate is skipped before any dial is
-// attempted, leaving the loop with no candidates. Nothing was blocked, so
-// the error says the address was not dialed and does not match
-// ErrUpstreamHostBlocked, which a caller reads as a policy decision.
+// Test_Coverage_DialValidatedIPs_SkipsV6_WhenNoDualStack covers the IPv4-only branch: an IPv6
+// candidate is skipped before any dial, and the error does not match ErrUpstreamHostBlocked, since
+// nothing was blocked.
 func Test_Coverage_DialValidatedIPs_SkipsV6_WhenNoDualStack(t *testing.T) {
 	t.Parallel()
 	called := atomic.Bool{}

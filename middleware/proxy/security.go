@@ -46,9 +46,8 @@ var (
 	// (the check fails closed); ErrUpstreamHostUnresolvable tells the two apart.
 	ErrUpstreamHostBlocked = errors.New("proxy: upstream host resolves to a blocked address")
 
-	// ErrUpstreamHostUnresolvable is returned, together with ErrUpstreamHostBlocked, when a
-	// lookup fails or answers with no address, so a caller can answer 502 or retry rather than
-	// report a policy block. errors.As finds the *net.DNSError of a failed lookup.
+	// ErrUpstreamHostUnresolvable is returned with ErrUpstreamHostBlocked when a lookup fails or
+	// answers with no address; errors.As finds the *net.DNSError of a failed lookup.
 	ErrUpstreamHostUnresolvable = errors.New("proxy: upstream host could not be resolved")
 
 	// ErrUpstreamNotOrigin is returned when a Balancer server carries more
@@ -74,37 +73,24 @@ type SecurityPolicy struct {
 	// targets. Empty defaults to []string{schemeHTTP, schemeHTTPS}.
 	AllowedSchemes []string
 
-	// AllowPrivateIPs allows upstream hosts to resolve to loopback,
-	// private (RFC 1918), link-local, multicast, unspecified, CGNAT
-	// (RFC 6598) or other special-use addresses: 0.0.0.0/8, 192.0.0.0/24
-	// (which holds Oracle Cloud's metadata address 192.0.0.192),
-	// 198.18.0.0/15, 240.0.0.0/4 (the limited broadcast address included)
-	// and the deprecated IPv6 site-local range fec0::/10. SECURITY:
-	// enabling this exposes the proxy to SSRF attacks against internal
-	// services such as cloud metadata endpoints. Default: false.
+	// AllowPrivateIPs allows upstream hosts to resolve to loopback, private (RFC 1918), link-local,
+	// multicast, unspecified, CGNAT (RFC 6598) or other special-use addresses: 0.0.0.0/8, 192.0.0.0/24
+	// (which holds Oracle Cloud's metadata address 192.0.0.192), 198.18.0.0/15, 240.0.0.0/4 (the
+	// limited broadcast address included) and the deprecated IPv6 site-local range fec0::/10.
+	// SECURITY: enabling this exposes the proxy to SSRF attacks against internal services such as
+	// cloud metadata endpoints. Default: false.
 	//
-	// DNS-rebinding scope: when false, the resolved IP is re-validated at
-	// dial time, not only up front, so a malicious resolver cannot swap a
-	// public answer (seen during validation) for a private one at connect
-	// time. Balancer installs a guarded Dial and DialTimeout on each HostClient it builds;
-	// the runtime helpers — Do, DoRedirects, DoTimeout, DoDeadline,
-	// Forward, DomainForward, BalancerForward — install the same guard on
-	// the shared/user-supplied *fasthttp.Client they dispatch through.
+	// DNS-rebinding scope: when false, the resolved IP is re-validated at dial time, so a resolver
+	// cannot answer public during validation and private at connect. Balancer installs a guarded Dial
+	// and DialTimeout on each HostClient it builds; the runtime helpers install the same guard on the
+	// *fasthttp.Client they dispatch through. The default client and clients registered with
+	// WithClient are guarded before first use. A client passed per call is guarded on first use, so a
+	// host it had already dialed keeps its pre-guard HostClient: register it with WithClient instead.
+	// Two paths have no guard, and their dialers are the caller's responsibility: a custom Balancer
+	// Config.Client (*fasthttp.LBClient) and a *fasthttp.Client with a Transport.
 	//
-	// The default client and clients registered via WithClient are guarded
-	// before first use and are fully protected. A client passed as a
-	// per-call variadic argument is guarded on first use, so any host it had
-	// already dialed keeps a cached, pre-guard HostClient; register such a
-	// client via WithClient (or hand the proxy a dedicated, unused client)
-	// for the full guarantee. Two paths have no guard at all, and their
-	// dialers are the caller's responsibility: a custom Balancer
-	// Config.Client (*fasthttp.LBClient), and a *fasthttp.Client with a
-	// Transport, which dials by itself.
-	//
-	// The up-front lookup of a hostname is remembered for a second, which
-	// the dial-time check makes safe, so it is remembered for the shared
-	// client only: a request through a client passed per call, or one with a
-	// Transport, is judged by a lookup of its own.
+	// The up-front lookup of a hostname is remembered for a second, for the shared client only: a
+	// request through a per-call client or one with a Transport is judged by a lookup of its own.
 	AllowPrivateIPs bool
 
 	// AllowHTTPSDowngrade permits proxy.DoRedirects to follow redirects

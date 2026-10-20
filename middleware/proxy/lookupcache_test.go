@@ -78,9 +78,8 @@ func Test_Security_ValidateHostForSSRF_RemembersTheLookup(t *testing.T) {
 	require.Equal(t, int64(1), aQueries.Load(), "a refused answer is held, and refused, each time")
 }
 
-// Test_Security_LookupHost_RemembersASmallAnswerOnly pins the size of what the cache holds: an answer
-// with more addresses than lookupCacheMaxAddrs is judged and forgotten, so a name whose owner picks
-// the answer cannot make every slot as large as it likes.
+// Test_Security_LookupHost_RemembersASmallAnswerOnly pins that an answer with more addresses than
+// lookupCacheMaxAddrs is judged and forgotten, so a name's owner cannot make every slot large.
 func Test_Security_LookupHost_RemembersASmallAnswerOnly(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver.
 	for name, tc := range map[string]struct {
@@ -132,9 +131,8 @@ func Test_Security_LookupsFor(t *testing.T) {
 	require.Nil(t, lookupsFor(dialsByItself), "a client with a Transport is not covered by the dial guard")
 }
 
-// Test_Security_Do_UnguardedClientIsJudgedByAFreshLookup pins what the cache costs a client the dial
-// guard cannot cover: nothing, because it never sees the cache. A name rebound within the cache's
-// lifetime is judged by its new answer.
+// Test_Security_Do_UnguardedClientIsJudgedByAFreshLookup pins that a client the dial guard cannot
+// cover never sees the cache: a name rebound within the cache's lifetime is judged by its new answer.
 func Test_Security_Do_UnguardedClientIsJudgedByAFreshLookup(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver and security policy.
 	policy := DefaultSecurityPolicy() // AllowPrivateIPs == false
@@ -175,8 +173,7 @@ func Test_Security_Do_UnguardedClientIsJudgedByAFreshLookup(t *testing.T) {
 }
 
 // Test_Security_FollowRedirects_UnguardedClientHopsAreJudgedByFreshLookups pins that the hops of a
-// redirect a client the dial guard cannot cover follows never see the cache either: a name rebound
-// between two hops is judged by its new answer.
+// redirect an unguarded client follows never see the cache: a name rebound between hops is caught.
 func Test_Security_FollowRedirects_UnguardedClientHopsAreJudgedByFreshLookups(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver.
 	// The first A answer for a name is public; every one after is internal.

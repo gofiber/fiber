@@ -37,10 +37,9 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		// Get key from request
 		key := cfg.KeyGenerator(c)
 
-		// The key may be memory the request reuses, which the handler can rewrite, and it is copied
-		// before a Storage that may keep it sees it. The built-in store copies the keys it keeps, so
-		// there the copy waits until the request is known to reach c.Next, and is taken only for the
-		// read after it.
+		// The key may point into request memory the handler can rewrite: copy it before a Storage that
+		// may keep it sees it. The built-in store copies the keys it keeps, so there the copy is made
+		// only for the read after c.Next.
 		rereads := cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests
 		if !manager.copiesKeys() {
 			key = utils.CopyString(key)

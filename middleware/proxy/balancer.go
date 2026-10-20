@@ -154,9 +154,8 @@ func Balancer(config ...Config) fiber.Handler {
 	}
 }
 
-// schemeClient sends every request with the scheme its HostClient speaks. A HostClient refuses a
-// request whose URI scheme is not its own, and the scheme of the request Balancer forwards is
-// that of the connection it arrived on.
+// schemeClient sends every request with the scheme its HostClient speaks: a HostClient refuses a
+// request of another scheme, and Balancer forwards the scheme of the connection it arrived on.
 type schemeClient struct {
 	*fasthttp.HostClient
 }
@@ -173,8 +172,7 @@ func (c schemeClient) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response,
 // newHostClient builds the client Balancer dials one validated upstream with.
 func newHostClient(u *url.URL, cfg *Config, policy SecurityPolicy) *fasthttp.HostClient {
 	isTLS := u.Scheme == schemeHTTPS
-	// With the port the scheme defaults to when the URL has none: only fasthttp's own dialer adds
-	// it, and the guard's does not.
+	// Add the scheme's default port: only fasthttp's own dialer does, not the guard's.
 	addr := fasthttp.AddMissingPort(u.Host, isTLS)
 	hc := &fasthttp.HostClient{
 		NoDefaultUserAgentHeader: true,

@@ -1832,9 +1832,8 @@ func Test_Limiter_KeyOverwrittenByHandler(t *testing.T) {
 	}
 }
 
-// A Storage that keeps the key it is given must not be handed memory the request owns, whether or
-// not anything reads the entry again after the handler: the next request on the connection rewrites
-// that memory, and the same client arriving on another connection then finds nothing.
+// A Storage that keeps the key it is given must not be handed memory the request owns, even when
+// nothing reads the entry again: the next request rewrites that memory and the client finds nothing.
 func Test_Limiter_KeyOverwrittenByHandler_NothingRereads(t *testing.T) {
 	t.Parallel()
 
@@ -1843,8 +1842,7 @@ func Test_Limiter_KeyOverwrittenByHandler_NothingRereads(t *testing.T) {
 			t.Run(strategy.name+"/"+store.name, func(t *testing.T) {
 				t.Parallel()
 
-				// The key aliases memory of the request, as c.Get does. The handler rewrites it, as the next
-				// request would, and the client comes back in memory of its own.
+				// The key aliases request memory, as c.Get does; the handler rewrites it, as the next request would.
 				first, second := []byte("AAAA"), []byte("AAAA")
 				current := first
 				app := fiber.New()
@@ -1893,8 +1891,7 @@ func Test_Limiter_KeyOverwrittenByHandler_Headers(t *testing.T) {
 	}
 }
 
-// rejectingHandler returns a handler and request context for a limiter with the one request
-// Max allows already sent, so every further request is rejected.
+// rejectingHandler returns a handler and context for a limiter whose Max requests are used up.
 func rejectingHandler(tb testing.TB, cfg *Config, expiration time.Duration) (fasthttp.RequestHandler, *fasthttp.RequestCtx) {
 	tb.Helper()
 
@@ -1930,8 +1927,7 @@ func Test_Limiter_RejectDoesNotCopyKey(t *testing.T) {
 		require.Equal(t, fiber.StatusTooManyRequests, fctx.Response.StatusCode())
 
 		// The fewest of many single runs, not an average: under -race sync.Pool drops a quarter of
-		// what it is handed at random, so an average lands on either of two counts from one test run
-		// to the next, while some single run always allocates only what the handler itself does.
+		// what it is handed at random, so an average varies from one run to the next.
 		fewest := math.MaxFloat64
 		for range 200 {
 			fewest = min(fewest, testing.AllocsPerRun(1, func() { h(fctx) }))

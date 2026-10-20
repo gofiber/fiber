@@ -14,23 +14,20 @@ const (
 	// guard never reads the cache, so a rebound answer is still caught at dial time.
 	lookupCacheTTL = time.Second
 
-	// lookupCacheSlots fixes the memory the cache can take. Two hostnames sharing a slot evict each
-	// other and pay a real lookup per request, so it is sized for the hostnames a proxy serves at once.
+	// lookupCacheSlots fixes the cache's memory. Hostnames sharing a slot evict each other and pay a
+	// real lookup per request.
 	lookupCacheSlots = 1024
 
-	// lookupCacheMaxAddrs is the most addresses an answer may hold to be remembered. A name whose
-	// owner chooses the answer can make it large, and every slot holds one: the cap keeps the
-	// memory the cache can take to its slots times this, and a name with more addresses pays a
-	// lookup per request, as it would without a cache.
+	// lookupCacheMaxAddrs is the most addresses an answer may hold to be remembered: a name's owner
+	// chooses the answer, and the cap bounds the memory the slots can take. Larger answers pay a lookup.
 	lookupCacheMaxAddrs = 32
 )
 
 // upfrontLookups serves validateHostForSSRF, which runs on every request.
 var upfrontLookups = newLookupCache(lookupCacheSlots, lookupCacheTTL, time.Now)
 
-// lookupCache remembers successful lookups briefly, so the up-front check does not repeat
-// one. It is direct-mapped under a seeded hash: its size is fixed, a flood of hostnames can
-// only evict entries, and an entry belongs to the resolver that produced it.
+// lookupCache remembers successful lookups briefly. It is direct-mapped under a seeded hash, so a
+// flood of hostnames can only evict entries, and an entry belongs to the resolver that produced it.
 type lookupCache struct {
 	now   func() time.Time
 	slots []atomic.Pointer[lookupEntry]

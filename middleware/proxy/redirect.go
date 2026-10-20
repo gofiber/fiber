@@ -22,13 +22,12 @@ import (
 // from a validateUpstream output — the property CodeQL's go/request-forgery
 // query needs to see.
 //
-// A hop that needs another method and no body, or no credentials, goes out as a private
-// copy: req keeps its method, body and credentials for the rest of the handler chain.
+// A hop that needs another method or no credentials goes out as a copy: req keeps its method,
+// body and credentials for the rest of the handler chain.
 //
-// A redirect that keeps the body of a streamed request (StreamRequestBody) is followed only if the
-// first hop left the whole body in memory: one of known length that fits what the server reads
-// ahead of the handler, 8 KiB. Any other fails with fasthttp.ErrRedirectBodyStream, as fasthttp's
-// own loop does: the first hop consumed the stream, and what it left cannot be sent again.
+// A redirect that keeps a streamed body (StreamRequestBody) is followed only if the first hop left
+// all of it in memory (a known length up to the 8 KiB the server reads ahead); otherwise it fails
+// with fasthttp.ErrRedirectBodyStream, as fasthttp's own loop does.
 func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy) error {
 	if maxRedirects < 0 {
 		maxRedirects = 0
@@ -114,9 +113,9 @@ func redirectChangesMethod(req *fasthttp.Request, status int) bool {
 	}
 }
 
-// copyRequest returns a request of its own that holds what req holds, for a hop that is to differ
-// from it. CopyTo leaves out the request timeout and the user values, and the copy takes them
-// along. It is not taken from the pool: releasing it would Close the user values it shares with req.
+// copyRequest returns a copy of req for a hop that is to differ from it. CopyTo leaves out the
+// timeout and the user values, so the copy takes them along. It is not pooled: releasing it would
+// Close the user values it shares with req.
 func copyRequest(req *fasthttp.Request) *fasthttp.Request {
 	hop := new(fasthttp.Request)
 	req.CopyTo(hop)
@@ -125,17 +124,15 @@ func copyRequest(req *fasthttp.Request) *fasthttp.Request {
 	return hop
 }
 
-// holdsBody reports whether req still has all declared bytes of the body it was sent as a stream.
-// Sending reads a stream to its end and leaves in the request only what the server had read ahead
-// of the handler: all of a body of known length that fits, none of a chunked one, declared as -1.
-// A stream no transport read is not held either: Body would read it into memory.
+// holdsBody reports whether req still has all declared bytes of a body it was sent as a stream.
+// Sending leaves only what the server read ahead: all of a body of known length that fits, none of a
+// chunked one (declared as -1). A stream no transport read is not held: Body would buffer it.
 func holdsBody(req *fasthttp.Request, declared int) bool {
 	return !req.IsBodyStream() && len(req.Body()) == declared
 }
 
-// carryFormBody gives hop the body CopyTo left out of it: a multipart form the server parsed ahead
-// of the handler is held as a form rather than as a body, and Body marshals it again. Only a hop
-// that keeps the body of req needs it, and it can be as large as an upload.
+// carryFormBody gives hop the body CopyTo leaves out: a multipart form the server parsed ahead of
+// the handler is held as a form, and Body marshals it again. Only a hop that keeps the body needs it.
 func carryFormBody(hop, req *fasthttp.Request) {
 	if len(hop.Body()) > 0 {
 		return
@@ -145,11 +142,9 @@ func carryFormBody(hop, req *fasthttp.Request) {
 	}
 }
 
-// contentFields describe the content a request carried, or expect it. A request without content
-// has none of them: a 100-continue expectation may not be generated without content (RFC 9110
-// §10.1.1), and a target that decodes by Content-Encoding chokes on the empty body it is left.
-// The fields that frame a body are dropped one by one in redirectRequest, as fasthttp keeps them
-// in slots of their own.
+// contentFields describe or expect content, which a request without any must not carry (RFC 9110
+// §10.1.1). The fields that frame a body are dropped one by one in redirectRequest, as fasthttp
+// keeps them in slots of their own.
 var contentFields = []string{
 	fasthttp.HeaderContentEncoding,
 	fasthttp.HeaderContentLanguage,
@@ -183,8 +178,7 @@ func redirectRequest(req *fasthttp.Request) {
 // pass it straight into network sinks without re-parsing user-controlled
 // strings.
 func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy, lookups *lookupCache) (*url.URL, error) {
-	// Control bytes (< 0x20, DEL) are rejected; bytes >= 0x80 are left to URI
-	// parsing.
+	// Control bytes (< 0x20, DEL) are rejected; bytes >= 0x80 are left to URI parsing.
 	if utils.IndexControl(location) != -1 {
 		return nil, fasthttp.ErrorInvalidURI
 	}

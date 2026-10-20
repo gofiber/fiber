@@ -600,8 +600,7 @@ func Test_Security_IsBlockedIP_NilReturnsTrue(t *testing.T) {
 	require.True(t, isBlockedIP(nil))
 }
 
-// Test_Security_IPv6Helpers_DeclineMalformedAddress pins that the IPv6 transition helpers decline a
-// slice that is neither 4 nor 16 bytes long.
+// Test_Security_IPv6Helpers_DeclineMalformedAddress pins that the IPv6 helpers decline odd-length slices.
 func Test_Security_IPv6Helpers_DeclineMalformedAddress(t *testing.T) {
 	t.Parallel()
 
@@ -639,8 +638,7 @@ func Test_Security_ValidateHostForSSRF_LookupFailure(t *testing.T) {
 	require.NotContains(t, err.Error(), "blocked address")
 }
 
-// Test_Security_ValidateHostForSSRF_IPLiteralAllocs pins that an IP literal costs no allocation and
-// is never looked up: a lookup would be served from the cache and show no allocations either.
+// Test_Security_ValidateHostForSSRF_IPLiteralAllocs pins that an IP literal costs no allocation and no lookup.
 func Test_Security_ValidateHostForSSRF_IPLiteralAllocs(t *testing.T) {
 	// Intentionally not parallel: AllocsPerRun counts allocations process-wide and panics in a parallel test.
 	for _, host := range []string{"203.0.113.5", "2606:4700:4700::1111", "::ffff:203.0.113.5"} {
@@ -653,8 +651,7 @@ func Test_Security_ValidateHostForSSRF_IPLiteralAllocs(t *testing.T) {
 	}
 }
 
-// Test_Security_ValidateHostForSSRF_ZonedLiteral pins that a zoned literal, which net.ParseIP does
-// not take, is judged through the lookup and by its address alone.
+// Test_Security_ValidateHostForSSRF_ZonedLiteral pins that a zoned literal is judged through the lookup.
 func Test_Security_ValidateHostForSSRF_ZonedLiteral(t *testing.T) {
 	t.Parallel()
 
@@ -1029,7 +1026,7 @@ func Test_Security_RoundRobin_WrapsAround(t *testing.T) {
 	})
 }
 
-// Test_Security_RoundRobin_StrictAcrossTheFold pins that folding moves no ticket to another place in the pool.
+// Test_Security_RoundRobin_StrictAcrossTheFold pins that folding moves no ticket within the pool.
 func Test_Security_RoundRobin_StrictAcrossTheFold(t *testing.T) {
 	t.Parallel()
 
@@ -1182,8 +1179,7 @@ func Test_Security_DialChecked_BlocksLoopback(t *testing.T) {
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
-// Test_Security_DialChecked_RejectsMalformedAddr covers the
-// SplitHostPort error branch, which keeps the reason the address was refused.
+// Test_Security_DialChecked_RejectsMalformedAddr covers the SplitHostPort error, which keeps the reason.
 func Test_Security_DialChecked_RejectsMalformedAddr(t *testing.T) {
 	t.Parallel()
 	dial := newDialGuard(false).dialChecked
@@ -1302,7 +1298,6 @@ func followRecording(t *testing.T, start string, steps map[string]redirectStep, 
 	return req
 }
 
-// followRecordingErr is followRecording that returns the error followRedirects ends with.
 func followRecordingErr(t *testing.T, start string, steps map[string]redirectStep, setup, record func(req *fasthttp.Request)) (*fasthttp.Request, error) {
 	t.Helper()
 
@@ -1439,8 +1434,7 @@ func Test_Security_RedirectRequest_DropsParsedForm(t *testing.T) {
 	}
 }
 
-// Test_Security_RedirectRequest_DropsFraming pins that the framing of a dropped
-// chunked body goes with it: the next hop gets no Transfer-Encoding or Trailer.
+// Test_Security_RedirectRequest_DropsFraming pins that a dropped chunked body takes its framing with it.
 func Test_Security_RedirectRequest_DropsFraming(t *testing.T) {
 	t.Parallel()
 
@@ -1491,8 +1485,8 @@ func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {
 	}
 }
 
-// Test_Security_FollowRedirects_StripsCredentialsOnOriginChange pins that an origin is scheme, host
-// and port (RFC 6454): another host, scheme or port loses the credentials, a spelled-out default port does not.
+// Test_Security_FollowRedirects_StripsCredentialsOnOriginChange pins that an origin is scheme, host and
+// port (RFC 6454): a change of any loses the credentials, a spelled-out default port does not.
 func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T) {
 	t.Parallel()
 
@@ -1533,9 +1527,8 @@ func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T)
 	}
 }
 
-// Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart pins that a hop sent as a copy keeps
-// the body of a multipart form the server parsed ahead of the handler: CopyTo leaves such a form out,
-// and the hop would go out with no content.
+// Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart pins that a copied hop keeps the body
+// of a multipart form the server parsed ahead of the handler: CopyTo leaves such a form out.
 func Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart(t *testing.T) {
 	t.Parallel()
 
@@ -1616,9 +1609,8 @@ func (c *closeCounter) Close() error {
 	return nil
 }
 
-// Test_Security_FollowRedirects_CopiedHopKeepsTimeoutAndUserValues pins that a hop sent as a copy
-// carries what CopyTo leaves out, the request timeout and the user values, and that the copy does not
-// Close the values it shares with the caller's request.
+// Test_Security_FollowRedirects_CopiedHopKeepsTimeoutAndUserValues pins that a copied hop carries the
+// request timeout and the user values CopyTo leaves out, and does not Close the values it shares.
 func Test_Security_FollowRedirects_CopiedHopKeepsTimeoutAndUserValues(t *testing.T) {
 	t.Parallel()
 
@@ -1663,8 +1655,7 @@ func Test_Security_FollowRedirects_CopiedHopKeepsTimeoutAndUserValues(t *testing
 }
 
 // Test_Security_FollowRedirects_StreamedBody pins that a redirect keeping the body of a streamed
-// request fails, as fasthttp's own loop does, rather than replay what the first hop left of the
-// stream, and that a redirect dropping the body goes on.
+// request fails, as fasthttp's own loop does, and that one dropping the body goes on.
 func Test_Security_FollowRedirects_StreamedBody(t *testing.T) {
 	t.Parallel()
 
@@ -1703,8 +1694,7 @@ func Test_Security_FollowRedirects_StreamedBody(t *testing.T) {
 }
 
 // streamedRequest makes req what fasthttp's server hands a handler when StreamRequestBody is on: the
-// head parsed, up to 8 KiB of a body of known length read ahead, and the rest left on the connection
-// behind a stream. raw is the request as it arrives.
+// head parsed, up to 8 KiB of a known-length body read ahead, the rest behind a stream. raw is the request.
 func streamedRequest(tb testing.TB, req *fasthttp.Request, raw string) {
 	tb.Helper()
 
@@ -1714,10 +1704,8 @@ func streamedRequest(tb testing.TB, req *fasthttp.Request, raw string) {
 	require.True(tb, req.IsBodyStream())
 }
 
-// Test_Security_FollowRedirects_ServerStreamedBody pins which of the bodies fasthttp's server
-// streams a redirect that keeps the body follows. What the server reads ahead of the handler, up to
-// 8 KiB of a body of known length, stays in the request after the first hop and is sent again; a
-// longer body or one of unknown length is gone, and the redirect fails rather than send a part of it.
+// Test_Security_FollowRedirects_ServerStreamedBody pins that a body-keeping redirect of a server-streamed
+// request is followed when the server read the whole body ahead (up to 8 KiB), and fails otherwise.
 func Test_Security_FollowRedirects_ServerStreamedBody(t *testing.T) {
 	t.Parallel()
 
@@ -1768,9 +1756,8 @@ func Test_Security_FollowRedirects_ServerStreamedBody(t *testing.T) {
 	}
 }
 
-// Test_Security_FollowRedirects_StreamedBodyEndsWithTheMethod pins that the body of a streamed
-// request is gone once a redirect has made it a GET, so that a later redirect keeping the method
-// is followed, whether or not the body would have been held.
+// Test_Security_FollowRedirects_StreamedBodyEndsWithTheMethod pins that a redirect making a streamed
+// request a GET ends the stream rule, so a later method-keeping redirect is followed.
 func Test_Security_FollowRedirects_StreamedBodyEndsWithTheMethod(t *testing.T) {
 	t.Parallel()
 
@@ -1799,7 +1786,7 @@ func Test_Security_FollowRedirects_StreamedBodyEndsWithTheMethod(t *testing.T) {
 }
 
 // Test_Security_FollowRedirects_UnreadStream pins that a stream the transport left unread is not
-// read into memory by the redirect, which fails as it does for a body that is gone.
+// buffered by the redirect, which fails.
 func Test_Security_FollowRedirects_UnreadStream(t *testing.T) {
 	t.Parallel()
 
@@ -1815,7 +1802,6 @@ func Test_Security_FollowRedirects_UnreadStream(t *testing.T) {
 	require.Zero(t, reader.read.Load(), "the stream stays unread")
 }
 
-// countingReader counts the bytes read through it.
 type countingReader struct {
 	io.Reader
 	read atomic.Int64
@@ -1914,8 +1900,7 @@ func Test_Security_FollowRedirects_ContentFieldsFollowTheBody(t *testing.T) {
 	}
 }
 
-// Test_Security_KeepHopByHopHeaders_Balancer pins the opt-out for a Balancer
-// with its own policy: hop-by-hop fields cross in both directions when set.
+// Test_Security_KeepHopByHopHeaders_Balancer pins the opt-out for a Balancer with its own policy.
 func Test_Security_KeepHopByHopHeaders_Balancer(t *testing.T) {
 	t.Parallel()
 
@@ -1960,8 +1945,7 @@ func Test_Security_KeepHopByHopHeaders_Balancer(t *testing.T) {
 	}
 }
 
-// Test_Security_KeepHopByHopHeaders_Do is the same opt-out for the runtime
-// helpers, which use the process-wide policy.
+// Test_Security_KeepHopByHopHeaders_Do is the same opt-out for the helpers, via the process-wide policy.
 func Test_Security_KeepHopByHopHeaders_Do(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
 	policy := DefaultSecurityPolicy()

@@ -196,8 +196,7 @@ func withRebindingResolver(t *testing.T, dnsAddr string) {
 	t.Cleanup(func() { dnsResolver.Store(prev) })
 }
 
-// startSilentDNS starts a loopback UDP socket that takes queries and never answers. It returns its
-// "host:port".
+// startSilentDNS starts a loopback UDP socket that never answers, and returns its "host:port".
 func startSilentDNS(t *testing.T) string {
 	t.Helper()
 
@@ -215,8 +214,7 @@ type recordedDial struct {
 }
 
 // withRecordedDialers puts stand-ins for fasthttp's four dialers where a guard finds them, for the
-// duration of t, and returns the connects they are asked for, in order. The stand-ins connect to
-// nothing. The seam is process-wide: tests using it must not call t.Parallel.
+// duration of t, and returns the connects they are asked for. The seam is process-wide: not parallel.
 func withRecordedDialers(t *testing.T) *[]recordedDial {
 	t.Helper()
 
@@ -434,8 +432,7 @@ func Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent(t *testing.T) {
 }
 
 // Test_Security_EnsureClientGuarded_ConcurrentIsSafe pins that guarding the same client from many
-// goroutines is race-free (run under -race) and leaves one working hook. What the guard blocks is
-// pinned by Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent.
+// goroutines is race-free (run under -race) and leaves one working hook.
 func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
 	t.Parallel()
 
@@ -531,8 +528,7 @@ func Test_Security_ClientDialer_DelegatesDualStack(t *testing.T) {
 	require.NoError(t, conn.Close())
 }
 
-// Test_Security_InstallHostClientGuard_DialTimeout pins which HostClients get a guarded DialTimeout:
-// fasthttp hands the timeout a request leaves for the connect only to one.
+// Test_Security_InstallHostClientGuard_DialTimeout pins which HostClients get a guarded DialTimeout.
 func Test_Security_InstallHostClientGuard_DialTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -556,9 +552,8 @@ func Test_Security_InstallHostClientGuard_DialTimeout(t *testing.T) {
 	})
 }
 
-// Test_Security_DefaultDialTimeout_ConnectsThroughFasthttp pins that the dialer a HostClient with
-// none is given connects with the timeout the request leaves, and with fasthttp's default when it
-// leaves none, where DialTimeout would fail a zero timeout at once.
+// Test_Security_DefaultDialTimeout_ConnectsThroughFasthttp pins that the default dialer connects with
+// the request's timeout, or fasthttp's default when it left none, where DialTimeout would fail at once.
 func Test_Security_DefaultDialTimeout_ConnectsThroughFasthttp(t *testing.T) {
 	t.Parallel()
 
@@ -575,8 +570,7 @@ func Test_Security_DefaultDialTimeout_ConnectsThroughFasthttp(t *testing.T) {
 	}
 }
 
-// Test_Security_DefaultDialTimeout_ChoosesTheDialer pins which of fasthttp's four dialers connects: the
-// one for the stack, and the one that takes the timeout only when the request left one.
+// Test_Security_DefaultDialTimeout_ChoosesTheDialer pins which of fasthttp's four dialers connects.
 func Test_Security_DefaultDialTimeout_ChoosesTheDialer(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide fasthttp dialers.
 	dials := withRecordedDialers(t)
@@ -598,10 +592,8 @@ func Test_Security_DefaultDialTimeout_ChoosesTheDialer(t *testing.T) {
 	}
 }
 
-// Test_Security_GuardedDialTimeouts_HandTheTimeoutOn pins that every guarded DialTimeout, the one a
-// client with no dialer of its own is given, the one of a Balancer's host client and the guard's own,
-// checks the address and then connects through fasthttp's dialer for its stack with the time the
-// request left for the connect, or with none when it left none.
+// Test_Security_GuardedDialTimeouts_HandTheTimeoutOn pins that every guarded DialTimeout checks the
+// address, then connects through fasthttp's dialer for its stack with the time the request left, if any.
 func Test_Security_GuardedDialTimeouts_HandTheTimeoutOn(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide security policy and fasthttp dialers.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
@@ -648,9 +640,8 @@ func Test_Security_GuardedDialTimeouts_HandTheTimeoutOn(t *testing.T) {
 	}
 }
 
-// Test_Security_DialWithin_SharesTheTimeout pins that a dial gives its lookup and all its connects the
-// time the request leaves between them, not a fresh allowance each: a connect gets what the earlier
-// ones left, and none is made once nothing is left.
+// Test_Security_DialWithin_SharesTheTimeout pins that the lookup and all the connects share the time
+// the request leaves: a connect gets what the earlier ones left, and none is made once it is spent.
 func Test_Security_DialWithin_SharesTheTimeout(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver.
 	withRebindingResolver(t, startManyAnswersDNS(t, 2)) // 198.51.100.1 and 198.51.100.2
@@ -704,9 +695,8 @@ func Test_Security_DialWithin_NoTimeout(t *testing.T) {
 	require.Zero(t, got)
 }
 
-// Test_Security_DialWithin_BoundsTheLookup pins that the time a request leaves ends the lookup of the
-// dial too, not only its connects: a resolver that never answers costs the request what it allowed, not
-// the five seconds the lookup is otherwise given.
+// Test_Security_DialWithin_BoundsTheLookup pins that the request's time ends the lookup too: a resolver
+// that never answers costs the request what it allowed, not the five seconds of the lookup limit.
 func Test_Security_DialWithin_BoundsTheLookup(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver.
 	withRebindingResolver(t, startSilentDNS(t))
@@ -723,9 +713,8 @@ func Test_Security_DialWithin_BoundsTheLookup(t *testing.T) {
 	require.Less(t, time.Since(start), dnsLookupTimeout/2)
 }
 
-// Test_Security_RequestTimeout_ReachesTheConnect pins the whole path of the time a request leaves for
-// the connect, from the helper a handler calls to the dialer that connects: DoTimeout through the
-// shared client, and a Balancer with a Timeout through its host clients.
+// Test_Security_RequestTimeout_ReachesTheConnect pins that the time a request leaves reaches the
+// dialer that connects, through DoTimeout on the shared client and through a Balancer with a Timeout.
 func Test_Security_RequestTimeout_ReachesTheConnect(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide security policy, client and fasthttp dialers.
 	restoreGlobalProxyClient(t)

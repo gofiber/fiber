@@ -44,20 +44,19 @@ func isBlockedIP(ip net.IP) bool {
 	return embedded != nil && isBlockedIPv4(embedded)
 }
 
-// isBlockedIPv4 reports whether the four bytes of v4 are an address proxy upstreams must not
-// reach by default:
+// isBlockedIPv4 reports whether v4 is an address proxy upstreams must not reach by default:
 //
 //   - 0.0.0.0/8                                   "this network" (RFC 1122)
 //   - 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16   private (RFC 1918)
-//   - 100.64.0.0/10                               shared address space, CGNAT (RFC 6598)
+//   - 100.64.0.0/10                               CGNAT (RFC 6598)
 //   - 127.0.0.0/8                                 loopback
-//   - 169.254.0.0/16                              link-local, incl. the cloud-metadata 169.254.169.254
-//   - 192.0.0.0/24                                IETF protocol assignments (RFC 6890), incl. Oracle Cloud's 192.0.0.192
+//   - 169.254.0.0/16                              link-local, incl. cloud metadata 169.254.169.254
+//   - 192.0.0.0/24                                IETF protocol assignments, incl. Oracle Cloud's 192.0.0.192
 //   - 198.18.0.0/15                               benchmarking (RFC 2544)
-//   - 224.0.0.0/3                                 multicast and reserved (RFC 1112), incl. 255.255.255.255
+//   - 224.0.0.0/3                                 multicast and reserved, incl. 255.255.255.255
 //
-// The documentation ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)
-// are left alone: they route nowhere, and tests use them as public addresses.
+// The documentation ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24) are left alone: they
+// route nowhere, and tests use them as public addresses.
 func isBlockedIPv4(v4 net.IP) bool {
 	switch v4[0] {
 	case 0, 10, 127:

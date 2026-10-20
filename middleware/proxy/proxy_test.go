@@ -242,8 +242,7 @@ func Test_Proxy(t *testing.T) {
 
 // go test -run Test_Proxy_Balancer_WithTlsConfig
 //
-// The balancer in front of the TLS upstream does not speak TLS itself: the request it forwards
-// arrives on a plain connection and must still reach the upstream as https.
+// The balancer does not speak TLS itself, but the request must still reach the upstream as https.
 func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	t.Parallel()
 
@@ -478,9 +477,8 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 	resp.Close()
 }
 
-// Test_Proxy_DoRedirects_AppliesSchemePerHopBehindTLS pins that every hop of DoRedirects is sent with
-// the scheme of its own URL. The request a TLS gateway hands the handler is marked TLS, and a copied hop
-// would keep that mark and speak TLS to the plain-HTTP server a redirect points it at.
+// Test_Proxy_DoRedirects_AppliesSchemePerHopBehindTLS pins that every hop is sent with the scheme of
+// its own URL: a copied hop would keep the TLS mark of the gateway's request and speak TLS to plain HTTP.
 func Test_Proxy_DoRedirects_AppliesSchemePerHopBehindTLS(t *testing.T) {
 	t.Parallel()
 
@@ -516,10 +514,8 @@ func Test_Proxy_DoRedirects_AppliesSchemePerHopBehindTLS(t *testing.T) {
 	resp.Close()
 }
 
-// Test_Proxy_DoRedirects_StreamedRequestBody pins that a redirect keeping the method of a request
-// the server streams to the handler (StreamRequestBody) is followed when the first hop left the
-// whole body in memory, as it does for a body of known length up to 8 KiB, an empty one included,
-// and fails when it did not.
+// Test_Proxy_DoRedirects_StreamedRequestBody pins that a method-keeping redirect of a streamed
+// request (StreamRequestBody) is followed when the first hop left the whole body in memory.
 func Test_Proxy_DoRedirects_StreamedRequestBody(t *testing.T) {
 	t.Parallel()
 
@@ -1145,9 +1141,8 @@ func Test_Proxy_Do_WithRedirect(t *testing.T) {
 }
 
 // go test -race -run Test_Proxy_DoRedirects_RestoreOriginalURL
-// Test_Proxy_DoRedirects_AliasedAddr is a regression test for an addr that aliases the request
-// buffer (it comes from c.OriginalURL()): SetRequestURI's overwrite would corrupt a *url.URL still
-// pointing into it mid-redirect, which doActionWithPolicy prevents by cloning addr once.
+// Test_Proxy_DoRedirects_AliasedAddr covers an addr that aliases the request buffer (c.OriginalURL()):
+// doActionWithPolicy clones it once, or SetRequestURI would corrupt a *url.URL still pointing into it.
 func Test_Proxy_DoRedirects_AliasedAddr(t *testing.T) {
 	t.Parallel()
 
