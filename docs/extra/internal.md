@@ -470,3 +470,34 @@ flowchart LR
 
 - This lifecycle ensures that Fiber minimizes allocations by reusing Context objects.
 - Errors are propagated and handled consistently, and the context is properly reset after every request.
+
+## Control characters
+
+Control-character handling depends on the value being processed. These policies
+are intentionally different; a byte accepted in one context can be rejected or
+encoded in another. C0 means U+0000 through U+001F, DEL is U+007F, and C1 means
+U+0080 through U+009F.
+
+| Value | Control-character policy | Tabs and non-ASCII text |
+| --- | --- | --- |
+| BasicAuth Authorization header | Reject bytes outside visible ASCII and HTAB before parsing credentials. | HTAB is allowed by this scan; the credential parser still enforces its whitespace rules. Non-ASCII header bytes are rejected. |
+| BasicAuth decoded username and password | Reject Unicode C0, DEL and C1 controls before calling the authorizer. | HTAB is rejected. Valid non-control Unicode is preserved after UTF-8 validation and NFC normalization. |
+| Request ID | Accept only a non-empty string of visible ASCII bytes; invalid IDs use the configured generator or the secure fallback. | HTAB and non-ASCII bytes are rejected. Spaces are allowed. |
+| Proxy redirect Location | Reject ASCII C0 and DEL before resolving the URL. | HTAB is rejected. Non-ASCII bytes are left to URL parsing and validation. |
+| User-controlled log fields | Replace ASCII C0 except HTAB, and DEL, with spaces through `internal/logtemplate`. | HTAB and non-ASCII bytes are preserved. |
+| Content-Disposition filename | Delete Unicode C0, DEL and C1 controls, then trim surrounding whitespace. | HTAB is deleted. Non-control Unicode is preserved. |
+| HTTP quoted-string contents | Escape quotes and backslashes with a backslash; encode CR and LF as `\r` and `\n`, and other C0 bytes and DEL as uppercase percent escapes. | HTAB is encoded as `%09` even though HTTP permits it. Non-ASCII bytes are preserved. This serializer does not validate its input. |
+| SSE event ID and event name | Reject CR and LF, then trim surrounding ASCII spaces. | HTAB and other bytes are preserved by the field sanitizer. SSE data and comments have separate newline handling. |
+
+`internal/bytepolicy` shares the parameterized word mask and byte scanner used by
+BasicAuth, request IDs and quoted strings. The scanner applies the header's tab
+exception and the serializer's quote, backslash and non-ASCII rules explicitly.
+BasicAuth switches to Unicode control checking at the first non-ASCII byte.
+Proxy redirect checks and log scanning already use `utils.IndexControl` and `utils.IndexControlExceptTab`, respectively.
+Log replacement remains in `internal/logtemplate`; quoted-string encoding stays
+in `internal/quotedstring`.
+
+These checks also apply to values supplied by application code. In particular,
+fasthttp filters CR and LF on exported header writes, but does not reject every
+other control byte. Fiber's validation, log scrubbing and serialization policies
+are therefore still needed.
