@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	"github.com/valyala/fasthttp"
+	"golang.org/x/net/http/httpguts"
 )
 
 // NormalizeRequestContentType lowercases the case-insensitive parts of a
@@ -119,24 +120,12 @@ func IsToken(b []byte) bool {
 		return false
 	}
 	for _, c := range b {
-		if !tokenTable[c] {
+		if !httpguts.IsTokenRune(rune(c)) {
 			return false
 		}
 	}
 	return true
 }
-
-var tokenTable = func() [256]bool {
-	var t [256]bool
-	for _, c := range []byte("!#$%&'*+-.^_`|~0123456789") {
-		t[c] = true
-	}
-	for c := byte('a'); c <= 'z'; c++ {
-		t[c] = true
-		t[c-'a'+'A'] = true
-	}
-	return t
-}()
 
 // Params yields the trimmed name and value of each parameter in ct that has an "=".
 func Params(ct []byte) iter.Seq2[[]byte, []byte] {
