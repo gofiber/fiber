@@ -1398,8 +1398,10 @@ func Test_Limiter_RawConfigUsesDefaults(t *testing.T) {
 }
 
 // A strategy given no Config uses the exported ConfigDefault as the application left it.
+//
+// Intentionally not parallel: it replaces ConfigDefault, and Go pauses parallel
+// tests while a sequential one runs.
 func Test_Limiter_NilConfigKeepsCustomizedDefault(t *testing.T) {
-	// Intentionally not parallel: it replaces the exported ConfigDefault.
 	prev := ConfigDefault
 	t.Cleanup(func() { ConfigDefault = prev })
 	ConfigDefault.DisableHeaders = true
