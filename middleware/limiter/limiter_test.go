@@ -1397,6 +1397,27 @@ func Test_Limiter_RawConfigUsesDefaults(t *testing.T) {
 	}
 }
 
+// A strategy given no Config uses the exported ConfigDefault as the application left it.
+func Test_Limiter_NilConfigKeepsCustomizedDefault(t *testing.T) {
+	// Intentionally not parallel: it replaces the exported ConfigDefault.
+	prev := ConfigDefault
+	t.Cleanup(func() { ConfigDefault = prev })
+	ConfigDefault.DisableHeaders = true
+
+	for _, strategy := range windowStrategies {
+		app := fiber.New()
+		app.Use(strategy.handler.New(nil))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err, strategy.name)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, strategy.name)
+		require.Empty(t, resp.Header.Get(xRateLimitLimit), strategy.name)
+	}
+}
+
 // A strategy leaves the Config it is given alone: ConfigDefault is shared.
 func Test_Limiter_RawConfigIsNotModified(t *testing.T) {
 	t.Parallel()

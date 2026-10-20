@@ -57,13 +57,14 @@ func New(config ...Config) fiber.Handler {
 	return cfg.LimiterMiddleware.New(&cfg)
 }
 
-// withDefaults returns a copy of cfg with the defaults New applies; nil gives the default config.
+// withDefaults returns a copy of cfg with the defaults New applies; nil gives ConfigDefault as it is.
 func withDefaults(cfg *Config) *Config {
-	var given Config
-	if cfg != nil {
-		given = *cfg
+	var filled Config
+	if cfg == nil {
+		filled = configDefault()
+	} else {
+		filled = configDefault(*cfg)
 	}
-	filled := configDefault(given)
 	return &filled
 }
 
