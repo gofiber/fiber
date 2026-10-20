@@ -186,14 +186,19 @@ func startManyAnswersDNS(t *testing.T, n int) string {
 // must not call t.Parallel: the seam is process-global.
 func withRebindingResolver(t *testing.T, dnsAddr string) {
 	t.Helper()
-	prev := dnsResolver.Load()
-	dnsResolver.Store(&net.Resolver{
+	prev := dnsResolver.Swap(resolverFor(dnsAddr))
+	t.Cleanup(func() { dnsResolver.Store(prev) })
+}
+
+// resolverFor returns a resolver that sends every query to the fake DNS server at dnsAddr. Handed to
+// a function that takes its resolver, it leaves the process-wide seam alone.
+func resolverFor(dnsAddr string) *net.Resolver {
+	return &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "udp", dnsAddr)
 		},
-	})
-	t.Cleanup(func() { dnsResolver.Store(prev) })
+	}
 }
 
 // startSilentDNS starts a loopback UDP socket that never answers, and returns its "host:port".

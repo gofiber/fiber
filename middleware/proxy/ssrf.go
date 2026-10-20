@@ -70,7 +70,7 @@ func validateHostForSSRF(host string, cache *lookupCache) error {
 		}
 		return nil
 	}
-	addrs, err := lookupHost(host, cache, time.Time{})
+	addrs, err := lookupHost(dnsResolver.Load(), host, cache, time.Time{})
 	if err != nil {
 		return err
 	}
@@ -96,17 +96,16 @@ func resolveAndValidateHost(host string, deadline time.Time) ([]net.IP, error) {
 	if ip := net.ParseIP(host); ip != nil {
 		return validateResolved(host, []net.IPAddr{{IP: ip}})
 	}
-	addrs, err := lookupHost(host, nil, deadline)
+	addrs, err := lookupHost(dnsResolver.Load(), host, nil, deadline)
 	if err != nil {
 		return nil, err
 	}
 	return validateResolved(host, addrs)
 }
 
-// lookupHost resolves host through cache, if given, bounded by dnsLookupTimeout or an earlier
-// deadline (zero for none).
-func lookupHost(host string, cache *lookupCache, deadline time.Time) ([]net.IPAddr, error) {
-	resolver := dnsResolver.Load()
+// lookupHost resolves host with resolver through cache, if given, bounded by dnsLookupTimeout or an
+// earlier deadline (zero for none).
+func lookupHost(resolver *net.Resolver, host string, cache *lookupCache, deadline time.Time) ([]net.IPAddr, error) {
 	if cache != nil {
 		if addrs, ok := cache.get(host, resolver); ok {
 			return addrs, nil

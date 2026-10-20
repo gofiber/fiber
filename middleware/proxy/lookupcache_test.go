@@ -81,7 +81,8 @@ func Test_Security_ValidateHostForSSRF_RemembersTheLookup(t *testing.T) {
 // Test_Security_LookupHost_RemembersASmallAnswerOnly pins that an answer with more addresses than
 // lookupCacheMaxAddrs is judged and forgotten, so a name's owner cannot make every slot large.
 func Test_Security_LookupHost_RemembersASmallAnswerOnly(t *testing.T) {
-	// Intentionally not parallel: it swaps the process-wide DNS resolver.
+	t.Parallel()
+
 	for name, tc := range map[string]struct {
 		addrs      int
 		remembered bool
@@ -90,14 +91,16 @@ func Test_Security_LookupHost_RemembersASmallAnswerOnly(t *testing.T) {
 		"over the cap": {addrs: lookupCacheMaxAddrs + 1},
 	} {
 		t.Run(name, func(t *testing.T) {
-			withRebindingResolver(t, startManyAnswersDNS(t, tc.addrs))
+			t.Parallel()
+
+			resolver := resolverFor(startManyAnswersDNS(t, tc.addrs))
 			cache := newLookupCache(16, time.Minute, time.Now)
 
-			addrs, err := lookupHost("big.test", cache, time.Time{})
+			addrs, err := lookupHost(resolver, "big.test", cache, time.Time{})
 			require.NoError(t, err)
 			require.Len(t, addrs, tc.addrs, "the caller gets the whole answer either way")
 
-			_, remembered := cache.get("big.test", dnsResolver.Load())
+			_, remembered := cache.get("big.test", resolver)
 			require.Equal(t, tc.remembered, remembered)
 		})
 	}
@@ -108,7 +111,7 @@ func Test_Security_LookupHost_RemembersASmallAnswerOnly(t *testing.T) {
 func Test_Security_LookupHost_EndsAtTheDeadline(t *testing.T) {
 	t.Parallel()
 
-	_, err := lookupHost("deadline.test", nil, time.Now().Add(-time.Second))
+	_, err := lookupHost(net.DefaultResolver, "deadline.test", nil, time.Now().Add(-time.Second))
 	require.ErrorIs(t, err, ErrUpstreamHostUnresolvable)
 	var dnsErr *net.DNSError
 	require.ErrorAs(t, err, &dnsErr)
