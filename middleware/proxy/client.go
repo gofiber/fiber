@@ -43,9 +43,8 @@ func WithClient(cli *fasthttp.Client) {
 }
 
 // lookupsFor returns the cache the up-front check may use for requests through cli. Only the shared
-// client may: its dials are checked again where they connect. A client with a Transport dials by
-// itself, and a per-call client may have dialed before the guard reached it, so each request through
-// one is judged by a lookup of its own.
+// client may: its dials are checked again where they connect. A per-call client may have dialed
+// before the guard reached it, and one with a Transport dials by itself, so those get a fresh lookup.
 func lookupsFor(cli *fasthttp.Client) *lookupCache {
 	if cli.Transport == nil && cli == sharedClient.Load() {
 		return upfrontLookups

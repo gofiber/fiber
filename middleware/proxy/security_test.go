@@ -1354,8 +1354,8 @@ func Test_Security_RedirectRequest(t *testing.T) {
 	}
 }
 
-// Test_Security_RedirectRequest_LeavesTheHandlerBody pins that rewriting the hop copy leaves the
-// handler's body where it is: the copy's buffer goes back to the pool, the handler's does not.
+// Test_Security_RedirectRequest_LeavesTheHandlerBody pins that rewriting a hop copy leaves the
+// handler's body alone.
 func Test_Security_RedirectRequest_LeavesTheHandlerBody(t *testing.T) {
 	t.Parallel()
 
@@ -1536,8 +1536,8 @@ func Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart(t *testing.T
 	require.Len(t, parsed.File["file"], 1)
 }
 
-// Test_Security_FollowRedirects_CopiedHopKeepsBody pins that a hop sent as a copy because it leaves the
-// origin, and keeps its method, sends the body of the request again.
+// Test_Security_FollowRedirects_CopiedHopKeepsBody pins that a copied hop that keeps its method sends
+// the request's body again.
 func Test_Security_FollowRedirects_CopiedHopKeepsBody(t *testing.T) {
 	t.Parallel()
 

@@ -22,12 +22,9 @@ import (
 // from a validateUpstream output — the property CodeQL's go/request-forgery
 // query needs to see.
 //
-// A hop that needs another method or no credentials goes out as a copy: req keeps its method,
-// body and credentials for the rest of the handler chain.
-//
-// A redirect that keeps a streamed body (StreamRequestBody) is followed only if the first hop left
-// all of it in memory (a known length up to the 8 KiB the server reads ahead); otherwise it fails
-// with fasthttp.ErrRedirectBodyStream, as fasthttp's own loop does.
+// A hop that needs another method or no credentials goes out as a copy, so req keeps its method,
+// body and credentials. A redirect that keeps a streamed body (StreamRequestBody) is followed only
+// if the first hop left all of it in memory; otherwise it fails with fasthttp.ErrRedirectBodyStream.
 func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy) error {
 	if maxRedirects < 0 {
 		maxRedirects = 0
@@ -113,9 +110,8 @@ func redirectChangesMethod(req *fasthttp.Request, status int) bool {
 	}
 }
 
-// copyRequest returns a copy of req for a hop that is to differ from it. CopyTo leaves out the
-// timeout and the user values, so the copy takes them along. It is not pooled: releasing it would
-// Close the user values it shares with req.
+// copyRequest returns a copy of req for a hop that is to differ from it, with the timeout and user
+// values CopyTo leaves out. It is not pooled: releasing it would Close the values it shares with req.
 func copyRequest(req *fasthttp.Request) *fasthttp.Request {
 	hop := new(fasthttp.Request)
 	req.CopyTo(hop)
@@ -143,8 +139,7 @@ func carryFormBody(hop, req *fasthttp.Request) {
 }
 
 // contentFields describe or expect content, which a request without any must not carry (RFC 9110
-// §10.1.1). The fields that frame a body are dropped one by one in redirectRequest, as fasthttp
-// keeps them in slots of their own.
+// §10.1.1); redirectRequest drops the fields that frame a body one by one.
 var contentFields = []string{
 	fasthttp.HeaderContentEncoding,
 	fasthttp.HeaderContentLanguage,

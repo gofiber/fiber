@@ -39,11 +39,10 @@ var (
 	// missing a host or cannot be parsed (the *url.Error is wrapped too).
 	ErrUpstreamHostInvalid = errors.New("proxy: upstream host is empty or invalid")
 
-	// ErrUpstreamHostBlocked is returned when the proxied URL resolves to
-	// an address inside a blocked range (loopback, RFC 1918 private,
-	// link-local, multicast, unspecified, CGNAT or another special-use range)
-	// and AllowPrivateIPs is false. An unresolvable host is refused with it too
-	// (the check fails closed); ErrUpstreamHostUnresolvable tells the two apart.
+	// ErrUpstreamHostBlocked is returned when the proxied URL resolves to an address inside a
+	// blocked range (loopback, RFC 1918 private, link-local, multicast, unspecified, CGNAT or
+	// another special-use range) and AllowPrivateIPs is false. So is an unresolvable host, as the
+	// check fails closed; ErrUpstreamHostUnresolvable tells the two apart.
 	ErrUpstreamHostBlocked = errors.New("proxy: upstream host resolves to a blocked address")
 
 	// ErrUpstreamHostUnresolvable is returned with ErrUpstreamHostBlocked when a lookup fails or
@@ -81,16 +80,13 @@ type SecurityPolicy struct {
 	// cloud metadata endpoints. Default: false.
 	//
 	// DNS-rebinding scope: when false, the resolved IP is re-validated at dial time, so a resolver
-	// cannot answer public during validation and private at connect. Balancer installs a guarded Dial
-	// and DialTimeout on each HostClient it builds; the runtime helpers install the same guard on the
-	// *fasthttp.Client they dispatch through. The default client and clients registered with
-	// WithClient are guarded before first use. A client passed per call is guarded on first use, so a
-	// host it had already dialed keeps its pre-guard HostClient: register it with WithClient instead.
-	// A custom Balancer Config.Client (*fasthttp.LBClient) and a *fasthttp.Client with a Transport dial
-	// through the caller's own dialers, which the caller guards.
-	//
-	// The up-front lookup of a hostname is remembered for a second, for the shared client only: a
-	// request through a per-call client or one with a Transport is judged by a lookup of its own.
+	// cannot answer public during validation and private at connect. Balancer guards the
+	// HostClients it builds and the runtime helpers the *fasthttp.Client they dispatch through; the
+	// default client and one registered with WithClient are guarded before first use. A client
+	// passed per call is guarded on first use, so a host it had already dialed keeps its pre-guard
+	// HostClient: register it with WithClient instead. A custom Balancer Config.Client
+	// (*fasthttp.LBClient) and a *fasthttp.Client with a Transport dial through the caller's own
+	// dialers, which the caller guards.
 	AllowPrivateIPs bool
 
 	// AllowHTTPSDowngrade permits proxy.DoRedirects to follow redirects

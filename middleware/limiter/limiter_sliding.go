@@ -38,8 +38,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		key := cfg.KeyGenerator(c)
 
 		// The key may point into request memory the handler can rewrite: copy it before a Storage that
-		// may keep it sees it. The built-in store copies the keys it keeps, so there the copy is made
-		// only for the read after c.Next.
+		// may keep it sees it. The built-in store copies the keys it keeps, so only the re-read needs one.
 		rereads := cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests || !cfg.DisableHeaders
 		if !manager.copiesKeys() {
 			key = utils.CopyString(key)

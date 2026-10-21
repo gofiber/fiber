@@ -29,8 +29,7 @@ const dnsLookupTimeout = 5 * time.Second
 // direct swap a data race under -race.
 var dnsResolver atomic.Pointer[net.Resolver]
 
-// dialFuncs holds the dialers a guard connects through when its client has none: fasthttp's four,
-// and a net.Dialer bounded by dnsLookupTimeout for a validated address the request gives no time.
+// dialFuncs holds the dialers a guard connects through: fasthttp's four, and the bounded net.Dialer.
 type dialFuncs struct {
 	dial                 fasthttp.DialFunc
 	dialDualStack        fasthttp.DialFunc
@@ -55,8 +54,7 @@ func init() {
 
 // validateHostForSSRF rejects hostnames that resolve to addresses inside
 // the blocked ranges. The IP literal shortcut avoids DNS lookups when
-// the host is already a numeric address. A non-nil cache may answer from a recent lookup, which
-// only a caller whose dials are checked again at connect time may pass.
+// the host is already a numeric address. A non-nil cache may answer from a recent lookup.
 func validateHostForSSRF(host string, cache *lookupCache) error {
 	if host == "" {
 		return ErrUpstreamHostInvalid
@@ -80,8 +78,8 @@ func validateHostForSSRF(host string, cache *lookupCache) error {
 	return checkResolved(host, addrs)
 }
 
-// ipLiteral returns the address host spells out, or false for a name or a zoned literal, which the
-// lookup judges. It allocates nothing: a colon tells the families apart.
+// ipLiteral returns the address host spells out, or false for a name or a zoned literal. It
+// allocates nothing.
 func ipLiteral(host string) (netip.Addr, bool) {
 	if strings.IndexByte(host, ':') < 0 {
 		return utils.ParseIPv4(host)
@@ -106,8 +104,7 @@ func resolveAndValidateHost(host string, deadline time.Time) ([]net.IP, error) {
 	return validateResolved(host, addrs)
 }
 
-// lookupHost resolves host with resolver through cache, if given, bounded by dnsLookupTimeout or an
-// earlier deadline (zero for none).
+// lookupHost resolves host, through cache if given, within dnsLookupTimeout or an earlier deadline.
 func lookupHost(resolver *net.Resolver, host string, cache *lookupCache, deadline time.Time) ([]net.IPAddr, error) {
 	if cache != nil {
 		if addrs, ok := cache.get(host, resolver); ok {
@@ -190,8 +187,7 @@ type dialGuard struct {
 }
 
 // newDialGuard returns a guard that connects through the dialers fasthttpDialers holds: the
-// net.Dialer bounded by dnsLookupTimeout for a validated address the request gives no time, and
-// fasthttp's dialer for its stack, with the time the request leaves, for one it times.
+// bounded net.Dialer for an address the request gives no time, fasthttp's timed dialer otherwise.
 func newDialGuard(dualStack bool) dialGuard {
 	return dialGuard{dial: netDial, dialTimeout: defaultDialTimeout(dualStack), dualStack: dualStack}
 }
@@ -201,9 +197,8 @@ func netDial(network, address string) (net.Conn, error) {
 	return fasthttpDialers.Load().netDialer(network, address)
 }
 
-// clientDialer wraps orig with the guard. Unlike dialChecked it re-reads the policy on every dial,
-// for clients that outlive any one policy snapshot: with private IPs allowed it delegates to orig
-// (fasthttp's plain dialer when nil), otherwise it dials the checked IP, through orig if given.
+// clientDialer wraps orig with the guard and re-reads the policy on every dial, for clients that
+// outlive a policy snapshot. Private IPs allowed delegates to orig (fasthttp's when nil).
 func (g dialGuard) clientDialer(orig fasthttp.DialFunc) fasthttp.DialFunc {
 	checked := g
 	delegate := func(addr string) (net.Conn, error) { return g.dialTimeout(addr, 0) }
@@ -220,8 +215,7 @@ func (g dialGuard) clientDialer(orig fasthttp.DialFunc) fasthttp.DialFunc {
 }
 
 // clientDialerWithTimeout is clientDialer for a DialFuncWithTimeout, which gets the time the request
-// leaves for the connect. A nil orig stands for a client with no dialer of its own: fasthttp's
-// dialer delegates, and a checked connect is dialCheckedTimeout's.
+// leaves for the connect. A nil orig stands for a client with no dialer of its own.
 func (g dialGuard) clientDialerWithTimeout(orig fasthttp.DialFuncWithTimeout) fasthttp.DialFuncWithTimeout {
 	delegate, checked := orig, func(addr string, timeout time.Duration) (net.Conn, error) {
 		return g.dialWithin(addr, timeout, orig)
@@ -261,8 +255,7 @@ func (g dialGuard) dialChecked(addr string) (net.Conn, error) {
 }
 
 // dialCheckedTimeout is dialChecked with timeout bounding the lookup and the connects together.
-// fasthttp hands a DialTimeout the time the request leaves, and zero when it leaves none: that
-// connect is dialChecked's, bounded by dnsLookupTimeout like one made through Dial.
+// Zero, which fasthttp hands over when the request leaves no time, is dialChecked itself.
 func (g dialGuard) dialCheckedTimeout(addr string, timeout time.Duration) (net.Conn, error) {
 	if timeout <= 0 {
 		return g.dialChecked(addr)
@@ -307,11 +300,9 @@ func (g dialGuard) dialBy(addr string, deadline time.Time) (net.Conn, error) {
 // errIPv6Only is why a host that passed the blocklist still has nothing to dial.
 var errIPv6Only = errors.New("only IPv6 addresses, and DialDualStack is off")
 
-// dialValidatedIPs walks ips and tries to dial the first non-skipped
-// address. Unless the guard is dual-stack, IPv6 addresses are skipped to
-// match fasthttp's IPv4-only default. If every candidate is skipped, an
-// error says so (nothing was blocked); otherwise the last dial error
-// is propagated so the caller can see why each attempt failed.
+// dialValidatedIPs dials the first non-skipped address, skipping IPv6 unless the guard is
+// dual-stack, as fasthttp does. If every candidate is skipped the error says so (nothing was
+// blocked); otherwise it is the last dial error.
 func (g dialGuard) dialValidatedIPs(ips []net.IP, host, port string) (net.Conn, error) {
 	var lastErr error
 	for _, ip := range ips {
@@ -331,12 +322,10 @@ func (g dialGuard) dialValidatedIPs(ips []net.IP, host, port string) (net.Conn, 
 	return nil, lastErr
 }
 
-// installHostClientGuard fits hc with the policy-aware, dial-time SSRF guard. fasthttp.Client calls
-// it through ConfigureClient once per HostClient, before the first dial to that host. fasthttp dials
-// through DialTimeout when it is set and through Dial otherwise, so both are guarded: the check does
-// not depend on which one it calls. A client with no dialer of its own gets the default one as a
-// DialTimeout, the only one fasthttp hands the time a request leaves for the connect; a Dial of its
-// own is kept alone, as a DialTimeout would take precedence over it.
+// installHostClientGuard fits hc with the policy-aware dial-time guard, once per HostClient through
+// ConfigureClient. fasthttp dials through DialTimeout when set and Dial otherwise, so both are
+// guarded. A client with no dialer of its own gets the default as a DialTimeout, the only one handed
+// the time a request leaves for the connect; a Dial of its own is kept, or a DialTimeout would win.
 func installHostClientGuard(hc *fasthttp.HostClient) {
 	g := newDialGuard(hc.DialDualStack)
 	switch {

@@ -190,8 +190,8 @@ func withRebindingResolver(t *testing.T, dnsAddr string) {
 	t.Cleanup(func() { dnsResolver.Store(prev) })
 }
 
-// resolverFor returns a resolver that sends every query to the fake DNS server at dnsAddr. Handed to
-// a function that takes its resolver, it leaves the process-wide seam alone.
+// resolverFor returns a resolver that sends every query to the fake DNS server at dnsAddr, leaving
+// the process-wide seam alone.
 func resolverFor(dnsAddr string) *net.Resolver {
 	return &net.Resolver{
 		PreferGo: true,
@@ -219,8 +219,7 @@ type recordedDial struct {
 }
 
 // withRecordedDialers puts stand-ins for the five dialers a guard connects through where it finds
-// them, for the duration of t, and returns the connects they are asked for. The seam is
-// process-wide: not parallel.
+// them, for the duration of t, and returns the connects they are asked for. Process-wide: not parallel.
 func withRecordedDialers(t *testing.T) *[]recordedDial {
 	t.Helper()
 
@@ -600,8 +599,7 @@ func Test_Security_DefaultDialTimeout_ChoosesTheDialer(t *testing.T) {
 }
 
 // Test_Security_GuardedDialTimeouts_HandTheTimeoutOn pins that every guarded DialTimeout checks the
-// address, then connects through fasthttp's dialer for its stack with the time the request left, or
-// through the net.Dialer bounded by dnsLookupTimeout when it left none, as a Dial connects.
+// address, then connects with the time the request left, or through the bounded net.Dialer when it left none.
 func Test_Security_GuardedDialTimeouts_HandTheTimeoutOn(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide security policy and fasthttp dialers.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
@@ -776,8 +774,7 @@ func Test_Security_ClientDialerWithTimeout_Delegates(t *testing.T) {
 }
 
 // Test_Security_ClientDialerWithTimeout_DefaultDelegatesThroughFasthttp pins that a client with no
-// dialer of its own delegates to fasthttp's dialer when private IPs are allowed: the timed one with
-// the time the request left, the plain one with none.
+// dialer of its own delegates to fasthttp's timed or plain dialer when private IPs are allowed.
 func Test_Security_ClientDialerWithTimeout_DefaultDelegatesThroughFasthttp(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide security policy and fasthttp dialers.
 	policy := DefaultSecurityPolicy()

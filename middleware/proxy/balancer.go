@@ -192,8 +192,7 @@ func newHostClient(u *url.URL, cfg *Config, policy SecurityPolicy) *fasthttp.Hos
 		MaxResponseBodySize: cfg.MaxResponseBodySize,
 	}
 	// Validate the resolved IP at dial time so DNS rebinding cannot swap in a private address.
-	// fasthttp dials through DialTimeout when it is set, with the time the request leaves for the
-	// connect; Dial is guarded too, so the check does not depend on which one it calls.
+	// fasthttp dials through DialTimeout when it is set and Dial otherwise, so both are guarded.
 	if !policy.AllowPrivateIPs {
 		g := newDialGuard(cfg.DialDualStack)
 		hc.Dial = g.dialChecked
