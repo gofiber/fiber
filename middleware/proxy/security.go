@@ -84,9 +84,9 @@ type SecurityPolicy struct {
 	// HostClients it builds and the runtime helpers the *fasthttp.Client they dispatch through; the
 	// default client and one registered with WithClient are guarded before first use. A client
 	// passed per call is guarded on first use, so a host it had already dialed keeps its pre-guard
-	// HostClient: register it with WithClient instead. A custom Balancer Config.Client
-	// (*fasthttp.LBClient) and a *fasthttp.Client with a Transport dial through the caller's own
-	// dialers, which the caller guards.
+	// HostClient: register it with WithClient before its first request instead. A custom Balancer
+	// Config.Client (*fasthttp.LBClient) and a *fasthttp.Client with a Transport dial through the
+	// caller's own dialers, which the caller guards.
 	AllowPrivateIPs bool
 
 	// AllowHTTPSDowngrade permits proxy.DoRedirects to follow redirects

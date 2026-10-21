@@ -1974,6 +1974,48 @@ func Test_Limiter_RejectDoesNotCopyKey(t *testing.T) {
 	}
 }
 
+// The built-in store copies the keys it keeps, so an admitted request copies the key only for the re-read.
+//
+// Intentionally not parallel: testing.AllocsPerRun panics when called from a parallel test.
+func Test_Limiter_AdmitCopiesKeyOnlyForReread(t *testing.T) {
+	admitAllocs := func(t *testing.T, cfg Config) float64 {
+		t.Helper()
+
+		cfg.Max = math.MaxInt32
+		cfg.Expiration = time.Minute
+		cfg.DisableHeaders = true
+		cfg.KeyGenerator = func(fiber.Ctx) string { return testLimiterClientKey }
+
+		app := fiber.New()
+		app.Use(New(cfg))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		h := app.Handler()
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI("/")
+		h(fctx)
+		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+
+		fewest := math.MaxFloat64
+		for range 200 {
+			fewest = min(fewest, testing.AllocsPerRun(1, func() { h(fctx) }))
+		}
+		return fewest
+	}
+
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			bare := admitAllocs(t, Config{LimiterMiddleware: strategy.handler})
+			// A 200 is not a failed request, so SkipFailedRequests adds the copy and no second read.
+			rereading := admitAllocs(t, Config{LimiterMiddleware: strategy.handler, SkipFailedRequests: true})
+			require.InDelta(t, bare+1, rereading, 0, "only the re-read may copy the key")
+		})
+	}
+}
+
 func Test_Limiter_DisableValueRedaction_ShowsBoundedKey(t *testing.T) {
 	t.Parallel()
 
