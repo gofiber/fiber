@@ -194,13 +194,12 @@ func newDialGuard(dualStack bool) dialGuard {
 // for clients that outlive any one policy snapshot: with private IPs allowed it delegates to orig
 // (fasthttp's default dialer when nil), otherwise it dials the checked IP, through orig if given.
 func (g dialGuard) clientDialer(orig fasthttp.DialFunc) fasthttp.DialFunc {
-	delegate, checked := fasthttp.Dial, g
-	switch {
-	case orig != nil:
+	checked := g
+	// Through the same seam as every other default dial, so one place names fasthttp's dialers.
+	delegate := func(addr string) (net.Conn, error) { return defaultDialTimeout(g.dualStack)(addr, 0) }
+	if orig != nil {
 		delegate = orig
 		checked.dial = func(_, address string) (net.Conn, error) { return orig(address) }
-	case g.dualStack:
-		delegate = fasthttp.DialDualStack
 	}
 	return func(addr string) (net.Conn, error) {
 		if currentSecurityPolicy().AllowPrivateIPs {

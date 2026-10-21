@@ -50,7 +50,8 @@ func Balancer(config ...Config) fiber.Handler {
 		// normalization could change is refused per request.
 		for _, bc := range lbc.Clients {
 			if hc, ok := bc.(*fasthttp.HostClient); ok {
-				// Only written when unset, so a client already in use is not touched.
+				// Written only when unset: a client that already has it, as one in use must (see
+				// Config.Client), is not written to while another goroutine may be reading it.
 				if !hc.DisablePathNormalizing {
 					hc.DisablePathNormalizing = true
 				}
