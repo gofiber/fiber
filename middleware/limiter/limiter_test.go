@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -1974,6 +1975,34 @@ func Test_Limiter_RejectDoesNotCopyKey(t *testing.T) {
 	}
 }
 
+// admittedHandler returns a handler and context for a limiter that admits every request, with the
+// headers off and, unless cfg has its own, the key testLimiterClientKey.
+func admittedHandler(tb testing.TB, cfg *Config) (fasthttp.RequestHandler, *fasthttp.RequestCtx) {
+	tb.Helper()
+
+	cfg.Max = math.MaxInt32
+	cfg.Expiration = time.Minute
+	cfg.DisableHeaders = true
+	if cfg.KeyGenerator == nil {
+		cfg.KeyGenerator = func(fiber.Ctx) string { return testLimiterClientKey }
+	}
+
+	app := fiber.New()
+	app.Use(New(*cfg))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI("/")
+
+	h(fctx)
+	require.Equal(tb, fiber.StatusOK, fctx.Response.StatusCode())
+	return h, fctx
+}
+
 // The built-in store copies the keys it keeps, so an admitted request copies the key only for the re-read.
 //
 // Intentionally not parallel: testing.AllocsPerRun panics when called from a parallel test.
@@ -1981,23 +2010,7 @@ func Test_Limiter_AdmitCopiesKeyOnlyForReread(t *testing.T) {
 	admitAllocs := func(t *testing.T, cfg Config) float64 {
 		t.Helper()
 
-		cfg.Max = math.MaxInt32
-		cfg.Expiration = time.Minute
-		cfg.DisableHeaders = true
-		cfg.KeyGenerator = func(fiber.Ctx) string { return testLimiterClientKey }
-
-		app := fiber.New()
-		app.Use(New(cfg))
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusOK)
-		})
-
-		h := app.Handler()
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.Header.SetMethod(fiber.MethodGet)
-		fctx.Request.SetRequestURI("/")
-		h(fctx)
-		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+		h, fctx := admittedHandler(t, &cfg)
 
 		fewest := math.MaxFloat64
 		for range 200 {
@@ -2013,6 +2026,55 @@ func Test_Limiter_AdmitCopiesKeyOnlyForReread(t *testing.T) {
 			rereading := admitAllocs(t, Config{LimiterMiddleware: strategy.handler, SkipFailedRequests: true})
 			require.InDelta(t, bare+1, rereading, 0, "only the re-read may copy the key")
 		})
+	}
+}
+
+// With the built-in store an admitted request allocates the key once, in the store, and once more when
+// the limiter reads the entry again after the handler. A copy made before that, as a Storage that may
+// keep the key needs, would be one more on every request.
+//
+// Intentionally not parallel: it counts the allocations of the whole process.
+func Test_Limiter_AdmitKeyCopiesWithBuiltInStore(t *testing.T) {
+	const shortLen, longLen = 8, 160 // a longer key than 192 bytes is hashed before it reaches the store
+
+	// The bytes an admitted request allocates: the fewest of many single runs, as in the tests above.
+	admitBytes := func(t *testing.T, cfg Config, keyLen int) float64 {
+		t.Helper()
+
+		key := strings.Repeat("k", keyLen)
+		cfg.KeyGenerator = func(fiber.Ctx) string { return key }
+		h, fctx := admittedHandler(t, &cfg)
+
+		fewest := math.MaxFloat64
+		var before, after runtime.MemStats
+		for range 400 {
+			runtime.ReadMemStats(&before)
+			h(fctx)
+			runtime.ReadMemStats(&after)
+			fewest = min(fewest, float64(after.TotalAlloc-before.TotalAlloc))
+		}
+		return fewest
+	}
+
+	for _, strategy := range windowStrategies {
+		for _, tc := range []struct {
+			name   string
+			cfg    Config
+			copies float64
+		}{
+			{name: "admit", cfg: Config{}, copies: 1},
+			// A 200 is not a failed request, so SkipFailedRequests adds the re-read.
+			{name: "re-read", cfg: Config{SkipFailedRequests: true}, copies: 2},
+		} {
+			t.Run(strategy.name+"/"+tc.name, func(t *testing.T) {
+				cfg := tc.cfg
+				cfg.LimiterMiddleware = strategy.handler
+
+				// What a request allocates grows with the key by one key length per copy of it.
+				copies := (admitBytes(t, cfg, longLen) - admitBytes(t, cfg, shortLen)) / (longLen - shortLen)
+				require.Less(t, copies, tc.copies+0.5, "%.2f copies of the key per request", copies)
+			})
+		}
 	}
 }
 
