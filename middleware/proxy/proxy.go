@@ -230,26 +230,10 @@ type urlRoundrobin struct {
 	next atomic.Uint64
 }
 
-// roundRobinFold is the counter value from which get folds the counter back.
-const roundRobinFold = 1 << 62
-
-// get picks the next upstream with one Add. The counter is folded back by a multiple of the
-// pool size long before the uint64 wraps, so every ticket keeps its place in the pool.
+// get picks the next upstream with one Add. The counter wraps after 2^64 picks, where the cycle
+// takes one uneven step.
 func (r *urlRoundrobin) get() *url.URL {
-	size := uint64(len(r.pool))
-	ticket := r.next.Add(1) - 1
-	if ticket >= roundRobinFold {
-		r.fold(size)
-	}
-	return r.pool[ticket%size]
-}
-
-// fold takes the largest multiple of size that fits in roundRobinFold off the counter until it is below it.
-func (r *urlRoundrobin) fold(size uint64) {
-	step := roundRobinFold / size * size
-	for cur := r.next.Load(); cur >= roundRobinFold; cur = r.next.Load() {
-		r.next.CompareAndSwap(cur, cur-step)
-	}
+	return r.pool[(r.next.Add(1)-1)%uint64(len(r.pool))]
 }
 
 // BalancerForward Forward performs the given http request with round robin algorithm to server and fills the given http response.

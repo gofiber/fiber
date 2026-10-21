@@ -155,12 +155,11 @@ var contentFields = []string{
 	"Content-MD5",
 }
 
-// redirectRequest rewrites req as a GET without the body and the fields that framed or described it.
+// redirectRequest rewrites req, a hop's private copy, as a GET without the body and the fields that
+// framed or described it.
 func redirectRequest(req *fasthttp.Request) {
 	req.Header.SetMethod(fasthttp.MethodGet)
-	// Not ResetBody: with ReduceMemoryUsage it hands the body buffer back to
-	// fasthttp's pool while the handler may still hold c.Body().
-	req.SetBody(nil)
+	req.ResetBody()
 	// A form the handler already read lives on in the post args, which fasthttp
 	// writes as the body when the body is empty.
 	req.PostArgs().Reset()

@@ -1018,33 +1018,14 @@ func Test_Security_RoundRobin_WrapsAround(t *testing.T) {
 	t.Run("counter limit", func(t *testing.T) {
 		t.Parallel()
 
+		// The wrap repeats one upstream, then the cycle resumes.
 		r := &urlRoundrobin{pool: []*url.URL{a, b, c}}
 		r.next.Store(^uint64(0) - 1)
 		require.Same(t, c, r.get())
 		require.Same(t, a, r.get())
+		require.Same(t, a, r.get())
 		require.Same(t, b, r.get())
 	})
-}
-
-// Test_Security_RoundRobin_StrictAcrossTheFold pins that folding moves no ticket within the pool.
-func Test_Security_RoundRobin_StrictAcrossTheFold(t *testing.T) {
-	t.Parallel()
-
-	pool := []*url.URL{{Host: "a"}, {Host: "b"}, {Host: "c"}, {Host: "d"}, {Host: "e"}}
-
-	for _, start := range []uint64{0, roundRobinFold - 7, roundRobinFold - 1, roundRobinFold, roundRobinFold + 3, 3 * roundRobinFold, ^uint64(0) - 20} {
-		r := &urlRoundrobin{pool: pool}
-		r.next.Store(start)
-
-		previous := slices.Index(pool, r.get())
-		require.Equal(t, int(start%uint64(len(pool))), previous, "start %d", start)
-		for range 40 {
-			current := slices.Index(pool, r.get())
-			require.Equal(t, (previous+1)%len(pool), current, "start %d", start)
-			previous = current
-		}
-		require.Less(t, r.next.Load(), uint64(roundRobinFold), "start %d: the counter was folded back", start)
-	}
 }
 
 func Test_Security_RoundRobin_ConcurrentSelection(t *testing.T) {
@@ -1056,33 +1037,19 @@ func Test_Security_RoundRobin_ConcurrentSelection(t *testing.T) {
 		{Scheme: schemeHTTP, Host: "c"},
 	}
 
-	// The second start puts the fold in the middle of the 300 picks.
-	for _, tc := range []struct {
-		name  string
-		start uint64
-	}{
-		{name: "from zero", start: 0},
-		{name: "across the fold", start: roundRobinFold - 150},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	r := &urlRoundrobin{pool: pool}
 
-			r := &urlRoundrobin{pool: pool}
-			r.next.Store(tc.start)
-
-			var counts [3]atomic.Int32
-			var wg sync.WaitGroup
-			for range 300 {
-				wg.Go(func() {
-					counts[slices.Index(pool, r.get())].Add(1)
-				})
-			}
-			wg.Wait()
-
-			for i := range counts {
-				require.Equal(t, int32(100), counts[i].Load())
-			}
+	var counts [3]atomic.Int32
+	var wg sync.WaitGroup
+	for range 300 {
+		wg.Go(func() {
+			counts[slices.Index(pool, r.get())].Add(1)
 		})
+	}
+	wg.Wait()
+
+	for i := range counts {
+		require.Equal(t, int32(100), counts[i].Load())
 	}
 }
 
@@ -1387,8 +1354,9 @@ func Test_Security_RedirectRequest(t *testing.T) {
 	}
 }
 
-// Test_Security_RedirectRequest_KeepsBodyBuffer pins that the body buffer stays with the request.
-func Test_Security_RedirectRequest_KeepsBodyBuffer(t *testing.T) {
+// Test_Security_RedirectRequest_LeavesTheHandlerBody pins that rewriting the hop copy leaves the
+// handler's body where it is: the copy's buffer goes back to the pool, the handler's does not.
+func Test_Security_RedirectRequest_LeavesTheHandlerBody(t *testing.T) {
 	t.Parallel()
 
 	req := fasthttp.AcquireRequest()
@@ -1397,7 +1365,8 @@ func Test_Security_RedirectRequest_KeepsBodyBuffer(t *testing.T) {
 	req.SetBodyString("payload-of-request-A")
 	held := req.Body()
 
-	redirectRequest(req)
+	hop := copyRequest(req)
+	redirectRequest(hop)
 
 	// Another request takes a pooled body buffer, as another connection would.
 	other := fasthttp.AcquireRequest()
@@ -1405,6 +1374,7 @@ func Test_Security_RedirectRequest_KeepsBodyBuffer(t *testing.T) {
 	other.SetBodyString("payload-of-request-B")
 
 	require.Equal(t, "payload-of-request-A", string(held))
+	require.Empty(t, hop.Body())
 }
 
 // Test_Security_RedirectRequest_DropsParsedForm pins that a parsed form goes with the body.
