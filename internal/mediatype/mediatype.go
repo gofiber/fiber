@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	"github.com/valyala/fasthttp"
+	"golang.org/x/net/http/httpguts"
 )
 
 // NormalizeRequestContentType lowercases the case-insensitive parts of a
@@ -111,6 +112,19 @@ func StripParams(ct []byte) []byte {
 		ct = ct[:i]
 	}
 	return utils.TrimSpace(ct)
+}
+
+// IsToken reports whether b is a token (RFC 9110 Section 5.6.2): one or more tchar.
+func IsToken(b []byte) bool {
+	if len(b) == 0 {
+		return false
+	}
+	for _, c := range b {
+		if !httpguts.IsTokenRune(rune(c)) {
+			return false
+		}
+	}
+	return true
 }
 
 // Params yields the trimmed name and value of each parameter in ct that has an "=".

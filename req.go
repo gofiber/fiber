@@ -360,11 +360,11 @@ func (r *DefaultReq) Charset() string {
 				return ""
 			}
 			v = unescaped
-		} else if bytes.IndexByte(v, '"') >= 0 {
-			// A bare token must not contain DQUOTE; skip the invalid
-			// parameter instead of surfacing garbage, so a well-formed
-			// charset parameter later in the header can still be found.
-			continue
+		}
+		// A charset is a token, quoted or not (RFC 9110 Section 8.3.2). The first
+		// charset parameter decides, so a malformed one is not skipped.
+		if !mediatype.IsToken(v) {
+			return ""
 		}
 		return r.c.app.toString(v)
 	}

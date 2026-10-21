@@ -1,6 +1,7 @@
 package mediatype
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -304,5 +305,30 @@ func Benchmark_Unescape(b *testing.B) {
 			}
 			require.NotEmpty(b, got)
 		})
+	}
+}
+
+func Test_IsToken(t *testing.T) {
+	t.Parallel()
+
+	const tchar = "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	for c := range 256 {
+		require.Equal(t, strings.IndexByte(tchar, byte(c)) >= 0, IsToken([]byte{byte(c)}), "%q", byte(c))
+	}
+
+	for _, tc := range []struct {
+		in   string
+		want bool
+	}{
+		{"utf-8", true},
+		{"Shift_JIS", true},
+		{"", false},
+		{"utf-8,latin1", false},
+		{`utf\-8`, false},
+		{"utf 8", false},
+		{"utf-8;", false},
+		{"\xc3\xbc", false},
+	} {
+		require.Equal(t, tc.want, IsToken([]byte(tc.in)), "%q", tc.in)
 	}
 }

@@ -263,10 +263,70 @@ func Test_Ctx_Charset(t *testing.T) {
 			expected:    "",
 		},
 		{
-			// A bare-token value containing a DQUOTE is invalid; the
-			// parameter is skipped so the later well-formed charset wins.
+			// The first charset parameter decides; a malformed one is not skipped.
 			name:        "bare_value_with_quote_then_valid_charset",
 			contentType: `text/plain; a=b"; charset=bad"; charset=utf-8`,
+			expected:    "",
+		},
+		{
+			name:        "bare_value_with_trailing_quote",
+			contentType: `text/plain; charset=utf-8"`,
+			expected:    "",
+		},
+		{
+			name:        "bare_value_with_comma",
+			contentType: "text/plain; charset=utf-8,latin1",
+			expected:    "",
+		},
+		{
+			name:        "bare_value_with_backslash",
+			contentType: `text/plain; charset=utf\-8`,
+			expected:    "",
+		},
+		{
+			name:        "invalid_bare_value_then_valid_charset",
+			contentType: "text/plain; charset=utf-8,latin1; charset=iso-8859-1",
+			expected:    "",
+		},
+		{
+			name:        "empty_charset_value_then_valid_charset",
+			contentType: "text/plain; charset=; charset=utf-8",
+			expected:    "",
+		},
+		{
+			name:        "bare_value_with_non_ascii",
+			contentType: "text/plain; charset=utf-8\xfc",
+			expected:    "",
+		},
+		{
+			name:        "padded_charset_value",
+			contentType: "text/plain; charset= utf-8 ",
+			expected:    "utf-8",
+		},
+		{
+			name:        "quoted_value_with_comma",
+			contentType: `text/plain; charset="utf-8,latin1"`,
+			expected:    "",
+		},
+		{
+			name:        "quoted_value_with_space",
+			contentType: `text/plain; charset="utf 8"`,
+			expected:    "",
+		},
+		{
+			name:        "quoted_empty_value_then_valid_charset",
+			contentType: `text/plain; charset=""; charset=utf-8`,
+			expected:    "",
+		},
+		{
+			// A malformed parameter before charset does not hide it.
+			name:        "parameter_without_value_before_charset",
+			contentType: "text/plain; foo; charset=utf-8",
+			expected:    "utf-8",
+		},
+		{
+			name:        "invalid_parameter_value_before_charset",
+			contentType: "text/plain; foo=[x]; charset=utf-8",
 			expected:    "utf-8",
 		},
 	}

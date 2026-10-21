@@ -1381,7 +1381,7 @@ app.Post("/upload", func(c fiber.Ctx) error {
 
 ### Charset
 
-Returns the `charset` parameter from the `Content-Type` header.
+Returns the `charset` parameter from the `Content-Type` header. Only the first `charset` parameter counts, and the result is empty when its value, once unquoted, is not a [token](https://www.rfc-editor.org/rfc/rfc9110#section-5.6.2): one or more letters, digits or ``!#$%&'*+-.^_`|~``. A broken quoted string also gives an empty result.
 
 ```go title="Signature"
 func (c fiber.Ctx) Charset() string
