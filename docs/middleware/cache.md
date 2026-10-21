@@ -13,7 +13,7 @@ By default, cached responses expire after five minutes and the middleware stores
 - `Cache-Control: no-cache` (or `Pragma: no-cache`) returns the latest response while still caching it, so the status is `miss` unless the new response cannot be stored.
 - `Cache-Control: no-store` skips caching and always forwards a fresh response.
 - `Cache-Control: max-age=<seconds>` serves the cached response only if it is no older than that, and `min-fresh=<seconds>` only if it stays fresh for at least that much longer. Otherwise the middleware revalidates: the handler runs and its response replaces the entry. `max-age=0` always revalidates.
-- `Cache-Control: max-stale` accepts an expired entry, and `max-stale=<seconds>` one that expired no more than that long ago. The hit carries `Warning: 110 - "Response is stale"`. An entry stored from a response with `must-revalidate` or `proxy-revalidate` is never served stale. The storage keeps an entry for the longer of its own lifetime and `Expiration`, counted from when it is stored, and `max-stale` can only reach an entry while the storage still holds it after it has stopped being fresh. That leaves a window when the lifetime is shorter than `Expiration`, and also when an upstream `Age` or an earlier `Date` has used up part of a lifetime that is `Expiration` or longer, because the entry stops being fresh that much before the storage drops it. A lifetime taken from `Expires` is not shortened by `Age` or `Date`, so it leaves a window only when it is shorter than `Expiration`.
+- `Cache-Control: max-stale` accepts an expired entry, and `max-stale=<seconds>` one that expired no more than that long ago. The hit carries `Warning: 110 - "Response is stale"`. An entry stored from a response with `must-revalidate` or `proxy-revalidate` is never served stale. Nor is an entry that holds one client's response, as described under [Per-user entries](#per-user-entries-and-a-cache-in-front-of-the-app), or any entry looked up with an `Authorization` header: how long such a response may be served is for the app to say, not for the client asking. Set `AllowStaleCredentialResponses` to let `max-stale` reach those too; an invalidated entry is never served stale. The storage keeps an entry for the longer of its own lifetime and `Expiration`, counted from when it is stored, and `max-stale` can only reach an entry while the storage still holds it after it has stopped being fresh. That leaves a window when the lifetime is shorter than `Expiration`, and also when an upstream `Age` or an earlier `Date` has used up part of a lifetime that is `Expiration` or longer, because the entry stops being fresh that much before the storage drops it. A lifetime taken from `Expires` is not shortened by `Age` or `Date`, so it leaves a window only when it is shorter than `Expiration`.
 - `Cache-Control: only-if-cached` answers `504 Gateway Timeout`, with the `unreachable` status, instead of calling the handler when there is no entry to serve. That includes a request that also sends `no-cache` (or `Pragma: no-cache`) or `max-age=0`: a stored response cannot be served to it without validating it, which means calling the handler. The stored entry is kept for the requests that can use it.
 
 ## Entry lifetime
@@ -113,7 +113,7 @@ app.Use(cache.New(cache.Config{
 }))
 ```
 
-`CacheInvalidator` defines custom invalidation rules. Return `true` to bypass the cache. In the example above, setting the `invalidateCache` query parameter to `true` invalidates the entry.
+`CacheInvalidator` defines custom invalidation rules. Return `true` to bypass the cache. In the example above, setting the `invalidateCache` query parameter to `true` invalidates the entry. It is called for a request that finds an entry and has not already asked for a fresh response (`max-age=0`, an unmet `min-fresh`), without any lock of the middleware held, so requests call it concurrently and it must be safe for that; a slow call delays only its own request.
 
 Cache keys are masked in logs and error messages by default. Set `DisableValueRedaction` to `true` if you explicitly need the raw key for debugging.
 
@@ -178,7 +178,23 @@ that identifies a single client is not stored at all:
 
 When revalidation returns `private`, `no-cache`, `no-store`, or `Vary: *`, the middleware removes the previous cached entry and its Vary manifest. A concurrently replaced entry keeps its manifest. Cleanup errors are logged and the origin response is still returned; if storage fails during cleanup, the old entry can still be served until it expires, and it keeps counting toward `MaxBytes` until a later eviction retries the delete. A plain miss answered with `no-store` preserves the shared Vary manifest, so existing sibling variants remain reachable.
 
-This cleanup applies to those four directives on a response with a [cacheable status code](#cacheable-status-codes). Any other status, such as `503`, `429`, `401`, or `403`, leaves the stored entry and its Vary manifest in place whether or not it carries one of them, so an error page does not evict a healthy entry. The separate storage rules for `Set-Cookie` and requests carrying `Authorization` still apply.
+This cleanup applies to those four directives on a response with a [cacheable status code](#cacheable-status-codes). Any other status, such as `503` or `429`, leaves the stored entry and its Vary manifest in place whether or not it carries one of them, so an error page does not evict a healthy entry.
+
+`401`, `403` and `407` are the exception. They are the origin refusing the request rather than failing, so a revalidation they answer ends the entry it found, when the refusal is a verdict on a credential the entry belongs to; otherwise the next request with the same key would be served the stored response without the origin being asked again. Ending it is this middleware's choice: [RFC 9111 §4.3.3](https://www.rfc-editor.org/rfc/rfc9111.html#section-4.3.3) only has the refusal, like any full response, answer the request that revalidated in place of the stored response, and [§4.4](https://www.rfc-editor.org/rfc/rfc9111.html#section-4.4) requires an invalidation only after an unsafe method such as `POST`. A handler that refuses by returning `fiber.ErrUnauthorized`, another `*fiber.Error` with one of these codes, or an error wrapping one counts the same as a handler that writes the status. An error that only your `ErrorHandler` maps to a status is not recognized, and neither is any other way of ending a session, such as a redirect to a login page. A request that finds an entry expired, or one `CacheInvalidator` invalidated, deletes it and goes to the origin, and counts the same. A refusal that found no entry changes nothing.
+
+An entry belongs to a credential when the key holds it, that is an `Authorization` header, a cookie named by `KeyCookies`, a header named by `KeyCredentialHeaders`, or one of `Cookie`, `Proxy-Authorization`, `X-API-Key`, `X-Auth-Token` and `X-Access-Token` when `KeyHeaders` names it, or when the response's `Vary` names a header that carries it and the request sends that header. Any other refusal leaves the entry, whatever directives it carries, since they are about the refusal: a client that the origin turns away behind the cache for reasons of its own, such as an IP or geo rule, or one that sends a credential the key does not hold, is no verdict on the entry the others share, and a reload cannot end it. If a middleware does the turning away, register it before this one, and its refusal never reaches the cache. A custom `KeyGenerator`'s key is opaque to the middleware, so there the refusal has to come from a request that sends `Authorization`, which is in every key, or a header named in `KeyCredentialHeaders`, which is taken to be in the key: name every credential header your key holds, `Cookie` included when it holds a cookie. When the key holds the credential, its Vary manifest goes with the entry, so its other variants become unreachable too, and so does what a concurrent request stored under the key meanwhile, which may predate the refusal. A manifest the sessions share, as with `Vary: Cookie`, stays whatever directives the refusal carries: it is the other sessions' as well, and the record described next keeps the refused credential's variants out.
+
+The credential's other entries of the URL, the ones the key tells apart by a header such as `Accept` (the default `KeyHeaders`) or that hang on a manifest the sessions share, as with `Vary: Cookie`, are reached through a record of the refusal: they are revalidated rather than served, for at least `Expiration`, as long as the refused entry had left, and until the longest-lived credential entry this instance has stored in the URL's group stops being kept, so none of them outlives the record. Whatever other sessions do to the URL meanwhile does not bring them back. `GET` and `HEAD` answer for the same resource and credential, so they share the record: a refusal answering one revalidates the other's entries too. The record goes as soon as the origin answers that credential again with a `2xx` or a `304`, stored or not, so a refusal that no longer stands costs one more trip to the origin and no more. A redirect does not end it: an app sends an ended session to its login page that way, and no other `3xx` can be told from one. It is written only for a credential that has an entry, and it is bookkeeping like the Vary manifest, which `MaxBytes` does not count. The in-memory store keeps no more records than one per 256 bytes of `MaxBytes` (never fewer than 1024, and 16384 when `MaxBytes` is `0`) and drops the oldest first; an external `Storage` expires them on its own. A record dropped while it is still live is remembered by a hash of its key, at a fraction of the room, and that credential's hits are still revalidated until it would have lapsed; four times as many are remembered that way as the store keeps records, the oldest making room for the next. Refusing more credentials than fit therefore costs no other session a hit, and serves a refused credential's variants again only once that many more have been refused since, until they expire. A hit looks for a record only when its key or the entry's `Vary` can hold a credential, and only while one may exist for its URL: the in-memory store, which only this middleware writes to, is not read before the first record of the URL's group (one of 64, by path) and after the last has expired, and the instances sharing an external `Storage` announce a record with a marker for all URLs and one for its group, each read at most four times a second, so a refusal reaches the others within a quarter of a second and only the hits of its group look for it. A storage that fails a read counts as a refusal, and the entry is revalidated; one that cannot take the write leaves the record with this instance, which remembers it as it does a dropped one, while the others, which learn of a record from the `Storage`, do not hear of it. With a custom `KeyGenerator`, `Authorization` and the headers named in `KeyCredentialHeaders` are taken to be in its key, so the record follows them whatever the variants vary on; a credential that only your key holds is reached by the entry it revalidated alone, and `CacheInvalidator` ends the rest.
+
+Nothing else in `KeyHeaders` is taken for a credential, since nothing in a header's name tells a credential from a tenant or a language. An entry keyed on such a header is shared by every client that sends the same value, so a refusal leaves it, and its Vary manifest. If such a header does carry a credential, name it in `KeyCredentialHeaders` and a refusal ends its entries, its hits are sent as `private`, it is not served stale, and its value is hashed in the key. With a custom `KeyGenerator` the header takes no part in the key, which is yours, but the middleware cannot tell which entries hold the credential, so a hit for a request that sends the header is sent as `private` and is not served stale, while one for a request that does not is treated as any other:
+
+```go
+app.Use(cache.New(cache.Config{
+    KeyCredentialHeaders: []string{"X-Session"},
+}))
+```
+
+The separate storage rules for `Set-Cookie` and requests carrying `Authorization` still apply.
 
 A route that genuinely wants both a cookie and a shared entry can say so with
 `Cache-Control: public` or an `s-maxage` — directives only a shared cache acts
@@ -233,16 +249,49 @@ entry keyed by a cookie or credential holds one user's response, so such a hit
 is sent with `Cache-Control: private, max-age=<remaining>` instead: a shared
 cache in front of the app does not store it, while the user's own browser still
 may. The entry counts as keyed by a credential when the response's `Vary` lists
-`Cookie` or `Authorization`, when `KeyCookies` is set, or when `KeyHeaders`
-names `Cookie` or `Authorization`. `DisableVaryHeaders` does not change this: a
-response whose `Vary` lists `Cookie` is one user's whether or not this
-middleware partitions on it.
+`Authorization`, `Cookie`, `Proxy-Authorization`, `X-API-Key`, `X-Auth-Token`,
+`X-Access-Token` or a header named in `KeyCredentialHeaders`, when `KeyCookies` or
+`KeyCredentialHeaders` is set, or when `KeyHeaders` names one of those headers.
+`DisableVaryHeaders` does not change this: a response whose `Vary` lists `Cookie`
+is one user's whether or not this middleware partitions on it.
 
 A handler that sends its own `Cache-Control` keeps it on hits. On a per-user
 route that says `max-age` without `private`, add `private` yourself if a cache
 in front of the app ignores `Vary`. A custom `KeyGenerator` that keys on a
 cookie or credential is not visible to this middleware either: send
-`Cache-Control: private` from those handlers, or set `DisableCacheControl`.
+`Cache-Control: private` from those handlers, set `DisableCacheControl`, or
+name the header in `KeyCredentialHeaders`, which marks the hits of the requests
+that send it.
+
+:::caution A cached entry outlives the session that produced it
+
+A hit is answered without asking the app, so a session the app has ended keeps
+reading what was stored under it until the entry expires or a request for it
+reaches the app and is refused. A client can force that with
+`Cache-Control: no-cache` or `max-age=0`; when the app answers `401`, `403` or
+`407`, the entry is removed, as described above. Once its lifetime ends, an entry
+keyed by a credential is not served at all, not even to a request that sends
+`Cache-Control: max-stale`, unless you set `AllowStaleCredentialResponses`.
+
+To stop serving a session the moment the app ends it, authenticate in a
+middleware registered ahead of the cache, or let `CacheInvalidator` say when a
+session has ended. An invalidated entry is not served, whatever
+`Cache-Control: max-stale` the client sends:
+
+```go
+app.Use(cache.New(cache.Config{
+    KeyCookies: []string{"session"},
+    CacheInvalidator: func(c fiber.Ctx) bool {
+        // Runs for requests that find an entry, so keep the lookup cheap.
+        // Requests call it concurrently, so the set it reads must allow that.
+        return sessionEnded(c.Cookies("session")) // your own lookup of ended sessions
+    },
+}))
+```
+
+Keep `Expiration` short on per-user routes.
+
+:::
 
 ### Vary and `Content-Type`
 
@@ -264,12 +313,14 @@ and a non-form `Content-Type` is left alone.
 | Expiration           | `time.Duration`                                | Expiration is the time that a cached response will live when neither the response nor `ExpirationGenerator` sets a lifetime. A value shorter than one second in magnitude, zero included, selects the default, and `-1 * time.Second` or lower turns the middleware into a pass-through. | `5 * time.Minute`                                                |
 | CacheHeader          | `string`                                       | CacheHeader is the header on the response header that indicates the cache status, with the possible return values "hit," "miss," or "unreachable."                                                                                                                                                             | `X-Cache`                                                        |
 | DisableCacheControl  | `bool`                                          | DisableCacheControl omits the `Cache-Control` header when set to `true`. When `false`, a hit whose entry has no `Cache-Control` of its own is sent with `public, max-age=<remaining>`, or `private, max-age=<remaining>` when the entry is keyed by a cookie or credential. | `false`                                                         |
+| AllowStaleCredentialResponses | `bool` | Lets `Cache-Control: max-stale` reach an expired entry that holds one client's response: one keyed or varied by a cookie or credential header, or looked up with `Authorization`. By default such an entry is never served stale, since the storage keeps it past its lifetime and the client could read what a credential the app has since ended once got. An invalidated entry is never served stale, whatever this says. | `false` |
 | CacheInvalidator     | `func(fiber.Ctx) bool`                         | CacheInvalidator defines a function that is executed before checking the cache entry. It can be used to invalidate the existing cache manually by returning true. | `nil`                                                            |
 | DisableValueRedaction | `bool`                                        | Turns off cache key redaction in logs and error messages when set to `true`. | `false`                                             |
 | KeyGenerator         | `func(fiber.Ctx) string`                       | KeyGenerator allows you to generate custom keys. The HTTP method, a key-format version and, when the request carries `Authorization`, a digest of that header are partitioned internally by the middleware. | structured key from scheme + host + path + canonical query + selected headers/cookies |
 | DisableQueryKeys     | `bool`                                         | Disables canonicalized query params in keys. | `false` |
 | KeyHeaders           | `[]string`                                     | Header allow-list used for key partitioning. Names are normalized case-insensitively and sorted. Use `[]string{}` to disable header-based partitioning. | `[]string{"accept","accept-encoding","accept-language"}` |
-| KeyCookies           | `[]string`                                     | Optional cookie allow-list for key partitioning. Explicit opt-in only; names remain case-sensitive. Hits on entries keyed this way are sent with `Cache-Control: private`. | `nil` |
+| KeyCookies           | `[]string`                                     | Optional cookie allow-list for key partitioning. Explicit opt-in only; names remain case-sensitive. Hits on entries keyed this way are sent with `Cache-Control: private`. The values in the key are hashed, so an external `Storage` does not show them; a cookie that is missing and one that is empty share a key. | `nil` |
+| KeyCredentialHeaders | `[]string`                                     | Request headers that carry a client's credential, such as a token in a header of your own. They partition entries like `KeyHeaders`; hits on entries keyed this way are sent with `Cache-Control: private` and are not served stale unless `AllowStaleCredentialResponses` is set, and a revalidation the origin refuses with `401`, `403` or `407` ends the entry and the credential's other variants of the URL. The values of the credential headers in the key are hashed, so an external `Storage` does not show them. Names are normalized case-insensitively and sorted. With a custom `KeyGenerator` they take no part in the key, but a hit for a request that sends one is still sent as `private` and not served stale, since the middleware cannot tell which entries hold it; name every credential header its key holds, as a refusal ends its entries only for a request that sends `Authorization` or one of them. | `nil` |
 | Methods              | `[]string`                                     | HTTP methods eligible for caching. Requests whose method is not in this list bypass the cache and are answered with `unreachable` in the cache header. Names are normalized to uppercase. `nil` selects the default, and an empty slice disables caching for every method. | `[]string{fiber.MethodGet, fiber.MethodHead}` |
 | DisableVaryHeaders   | `bool`                                         | Disables response `Vary` dimensions in cache lookup/storage partitioning. | `false` |
 | ExpirationGenerator  | `func(fiber.Ctx, *cache.Config) time.Duration` | ExpirationGenerator allows you to generate a custom expiration per request. It overrides `Expiration` and any lifetime the response sets with `Cache-Control` or `Expires`, Lifetimes are counted in whole seconds: a duration of zero or less leaves the response uncached, and one under a second never produces a hit.                                                                                                                                                                                                                        | `nil`                                                            |
@@ -285,6 +336,7 @@ var ConfigDefault = Config{
     Expiration:   5 * time.Minute,
     CacheHeader:  "X-Cache",
     DisableCacheControl: false,
+    AllowStaleCredentialResponses: false,
     CacheInvalidator: nil,
     DisableValueRedaction: false,
     KeyGenerator: nil, // uses structured default key generator
@@ -295,6 +347,7 @@ var ConfigDefault = Config{
         fiber.HeaderAcceptLanguage,
     },
     KeyCookies: nil,
+    KeyCredentialHeaders: nil,
     Methods: []string{fiber.MethodGet, fiber.MethodHead},
     DisableVaryHeaders: false,
     ExpirationGenerator:  nil,

@@ -1558,11 +1558,15 @@ The `Authorizer` function now receives the current `fiber.Ctx` as a third argume
 
 We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define custom conditions for invalidating cache entries.
 
+`CacheInvalidator` is called before the cache takes its lock, so a slow one stalls no other request; it can therefore be running for several requests at once, and one that keeps state of its own has to guard it. It is not asked about an entry the request or the entry's own lifetime has already ruled out.
+
 The middleware now emits `Cache-Control` headers by default via the new `DisableCacheControl` flag, increases the default `Expiration` from `1 minute` to `5 minutes`, and applies a new `MaxBytes` limit of `1 MB` (previously unlimited). That limit is the default of `cache.New()` called without a `Config`: a `Config` that leaves `MaxBytes` unset still stores bodies without a limit.
 
-The middleware also caches `308 Permanent Redirect` responses and honors the request directives `max-age`, `min-fresh`, `max-stale` and `only-if-cached`, as well as `Pragma: no-cache`. A hit served stale carries a `Warning` header. See [Request directives](./middleware/cache.md#request-directives).
+The middleware also caches `308 Permanent Redirect` responses and honors the request directives `max-age`, `min-fresh`, `max-stale` and `only-if-cached`, as well as `Pragma: no-cache`. A hit served stale carries a `Warning` header; an entry that holds one client's response (keyed or varied by a cookie or credential) is not served stale unless `AllowStaleCredentialResponses` is set, and one that `CacheInvalidator` has invalidated never is. See [Request directives](./middleware/cache.md#request-directives).
 
-Cache hits replay the stored `Vary` header even when `StoreResponseHeaders` is off, and a hit on an entry keyed by a cookie or credential (`Vary: Cookie`, `KeyCookies`, or `KeyHeaders` naming `Cookie` or `Authorization`) is sent with `Cache-Control: private` rather than `public`, so a shared cache in front of the app does not store one user's response for the next.
+Cache hits replay the stored `Vary` header even when `StoreResponseHeaders` is off, and a hit on an entry keyed by a cookie or credential (`Vary: Cookie`, `KeyCookies`, `KeyCredentialHeaders`, or `KeyHeaders` naming `Cookie`, `Authorization` or another header that carries a credential) is sent with `Cache-Control: private` rather than `public`, so a shared cache in front of the app does not store one user's response for the next.
+
+Credential headers named in `KeyHeaders` (`Cookie`, `Authorization`, `Proxy-Authorization`, `X-API-Key`, `X-Auth-Token`, `X-Access-Token` or a header named in `KeyCredentialHeaders`) and the values of the cookies named in `KeyCookies` are hashed in the cache key, so a key listing of an external `Storage` no longer shows them, and the key version moves with that change: every cache starts cold after the upgrade, whatever its config, since the entries of the earlier version are not read. With an external `Storage` they expire on their own, or a shared store can drop them by the earlier version's key prefix (`v4|`).
 
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
 Cached responses now include an RFC-compliant Age header, providing a standardized indication of how long a response has been stored in cache since it was originally generated. This enhancement improves HTTP compliance and facilitates better client-side caching strategies.
@@ -3181,7 +3185,8 @@ Additional v3 cache key options:
 - `Methods`: HTTP methods eligible for caching (default `GET`, `HEAD`)
 - `DisableQueryKeys`: disable canonicalized query args in keys (default `false`)
 - `KeyHeaders`: request header allow-list for key partitioning
-- `KeyCookies`: explicit cookie allow-list for key partitioning
+- `KeyCookies`: explicit cookie allow-list for key partitioning; the values are hashed in the key
+- `KeyCredentialHeaders`: request headers that carry a client's credential; they partition entries like `KeyHeaders`, and hits on them are sent with `Cache-Control: private`
 - `DisableVaryHeaders`: disable response `Vary` dimensions in lookup/storage partitioning (default `false`)
 
 #### CORS
