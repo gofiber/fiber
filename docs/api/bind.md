@@ -300,6 +300,8 @@ A form body is a flat list of key/value pairs, so structure lives in the field n
 | Indexed brackets   | `items[0][sku]=A1`           | field of a struct slice element      |
 | Dot index          | `items.0.sku=A1`             | field of a struct slice element      |
 | Mixed index/field  | `items[0].sku=A1`            | field of a struct slice element      |
+| Map key            | `attributes[color]=red`     | entry of a [map field](#map-fields)  |
+| Dot map key        | `attributes.color=red`      | entry of a [map field](#map-fields)  |
 
 Bracket and dot notation are interchangeable and can be nested to any depth:
 
@@ -345,6 +347,34 @@ Indexes above 1000 are rejected: `items.1001.sku=A1` fails with `schema: index e
 :::note
 The struct field tag never contains the brackets or the index. `colors[]`, `colors[0]` and `colors.0` all resolve against `form:"colors"`.
 :::
+
+#### Map Fields
+
+A `map[string]T` field collects every key under its name. Everything after the field name becomes the map key, as sent: `attributes[color]` and `attributes.color` both give `color`, and `attributes[a][b]` gives `a.b`. Values are converted like any other field, so `T` can be any scalar a struct field could hold, or a slice of one.
+
+```go title="Struct"
+type Filter struct {
+    Attributes map[string]string   `form:"attributes"`
+    Tags       map[string][]string `form:"tags"`
+    Limits     map[string]int      `form:"limits"`
+}
+```
+
+```bash title="curl"
+curl -X POST http://localhost:3000/products \
+  --data "attributes[color]=red&attributes.size=m" \
+  --data "tags[sale]=yes&tags[sale]=new&limits[max]=5"
+```
+
+```go title="Result"
+Filter{
+    Attributes: map[string]string{"color": "red", "size": "m"},
+    Tags:       map[string][]string{"sale": {"yes", "new"}},
+    Limits:     map[string]int{"max": 5},
+}
+```
+
+A map of slices keeps repeated values, and splits comma-separated ones when `EnableSplittingOnParsers` is on. A map of single values keeps the last value. A value that can't be converted fails the bind with the full key in the error, such as `"limits.max"`, and a map with no matching keys is left `nil`.
 
 ### JSON
 
@@ -592,6 +622,7 @@ Fiber supports several formats for passing array values via query parameters. Th
 | Indexed bracket notation | `?posts[0][title]=Hello&posts[1][title]=World` | No                                  |
 | Nested bracket notation  | `?preferences[tags]=golang,api`                | No (comma splitting: **Yes**)       |
 | Dot notation             | `?user.name=Alice&posts.0.title=Hello`         | No                                  |
+| Map key                  | `?attributes[color]=red&attributes.size=m`    | No (comma splitting: **Yes**)       |
 
 ##### Repeated Key
 
