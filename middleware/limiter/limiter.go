@@ -57,6 +57,17 @@ func New(config ...Config) fiber.Handler {
 	return cfg.LimiterMiddleware.New(&cfg)
 }
 
+// withDefaults returns a copy of cfg with the defaults New applies; nil gives ConfigDefault as it is.
+func withDefaults(cfg *Config) *Config {
+	var filled Config
+	if cfg == nil {
+		filled = configDefault()
+	} else {
+		filled = configDefault(*cfg)
+	}
+	return &filled
+}
+
 // limit returns the limit for c, or false when Next or a zero MaxFunc skips it.
 // Negative limits become -1 so subtracting hits cannot wrap.
 func (cfg *Config) limit(c fiber.Ctx) (int, bool) {

@@ -144,6 +144,8 @@ app.Use(limiter.New(limiter.Config{
 
 The limiter reads an entry, updates it and writes it back while holding a lock, so concurrent requests for one key through the same limiter never read the same count. Keys are spread over 64 locks, which lets requests for different keys run in parallel. A lock is held for the storage round trips of its request: with a slow external storage, keys that share a lock wait for each other, and requests for one key are handled one at a time. That is the price of exact counts within one limiter, because `fiber.Storage` offers no atomic increment to rely on. The locks are not shared between limiters, so two limiters, in one process or several, that use the same storage and key can still admit a few extra requests when they handle that key at the same moment.
 
+The key a `KeyGenerator` returns can point into the memory of the request, as the result of `c.Get` does, which fasthttp reuses for the next request on the connection. The built-in store copies the keys it keeps. A custom `Storage` may keep the key it is given, so the limiter hands it a copy: one allocation per request, taken before the storage is read.
+
 A request that passes costs one storage read and one write. A second read and write follows the handler when:
 
 - `SkipSuccessfulRequests` applies to the response (status below 400) or `SkipFailedRequests` does (status 400 or above), to give the hit back.
@@ -165,7 +167,7 @@ A request that passes costs one storage read and one write. A second read and wr
 | DisableHeaders         | `bool`                    | When set to `true`, the middleware omits rate limit headers (`X-RateLimit-*` and `Retry-After`). Otherwise a request that passes carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (seconds until the window ends), and a rejected one carries `Retry-After` (seconds). | false                                    |
 | DisableValueRedaction  | `bool`                    | Disables redaction of limiter keys in error messages and logs. A key longer than 192 bytes is shown as its SHA-256 digest. | false                                    |
 | Storage                | `fiber.Storage`           | Persists middleware state.                                         | An in-memory store for this process only |
-| LimiterMiddleware      | `limiter.Handler`         | Selects the algorithm implementation. Implementations now receive a pointer to the active config when their `New` method is invoked. | A new Fixed Window Rate Limiter          |
+| LimiterMiddleware      | `limiter.Handler`         | Selects the algorithm implementation. Implementations now receive a pointer to the active config when their `New` method is invoked. `FixedWindow` and `SlidingWindow` give a field that config leaves unset its default, so calling their `New` directly with a partial config works. `New` works on a copy, which leaves the config you pass as it is. | A new Fixed Window Rate Limiter          |
 
 :::note
 A custom store can be used if it implements the `fiber.Storage` interface, which is declared in [`storage_interface.go`](https://github.com/gofiber/fiber/blob/main/storage_interface.go).

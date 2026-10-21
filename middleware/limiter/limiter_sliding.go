@@ -10,12 +10,9 @@ import (
 // SlidingWindow implements the sliding-window rate limiting strategy.
 type SlidingWindow struct{}
 
-// New creates a new sliding window middleware handler
+// New creates a new sliding window middleware handler. Unset fields of cfg take their defaults.
 func (SlidingWindow) New(cfg *Config) fiber.Handler {
-	if cfg == nil {
-		defaultCfg := configDefault()
-		cfg = &defaultCfg
-	}
+	cfg = withDefaults(cfg)
 
 	// Limiter variables
 	locks := new(keyedMutex)
@@ -37,9 +34,13 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		// Generate expiration from generator
 		windowSec := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
 
-		// Get key from request, copied since c.Next may rewrite the memory it points to
+		// Get key from request
 		key := cfg.KeyGenerator(c)
-		if cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests || !cfg.DisableHeaders {
+
+		// The key may point into request memory the handler can rewrite: copy it before a Storage that
+		// may keep it sees it. The built-in store copies the keys it keeps, so only the re-read needs one.
+		rereads := cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests || !cfg.DisableHeaders
+		if !manager.copiesKeys() {
 			key = utils.CopyString(key)
 		}
 
@@ -91,6 +92,10 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		// Check if hits exceed the allowed maximum for this request
 		if remaining < 0 {
 			return cfg.reject(c, resetInSec)
+		}
+
+		if rereads && manager.copiesKeys() {
+			key = utils.CopyString(key)
 		}
 
 		// Continue stack for reaching c.Res().StatusCode()

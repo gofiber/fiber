@@ -44,7 +44,7 @@ func FuzzValidateUpstream(f *testing.F) {
 	policy.AllowPrivateIPs = true // focus on scheme/host parsing, not SSRF here
 
 	f.Fuzz(func(t *testing.T, raw string) {
-		u, err := validateUpstream(raw, policy)
+		u, err := validateUpstream(raw, policy, nil)
 		if err != nil {
 			return
 		}
@@ -118,7 +118,7 @@ func FuzzJoinUpstreamPath(f *testing.F) {
 	})
 }
 
-// FuzzConnectionListedHeaders ensures the RFC 7230 Connection-header
+// FuzzConnectionListedHeaders ensures the RFC 9110 §7.6.1 Connection-header
 // parser tolerates pathological inputs (excess whitespace, embedded
 // commas, control bytes) without panicking, on the request's walk and the
 // response's alike, and that no listing takes X-Real-IP with it.
@@ -155,6 +155,6 @@ func FuzzConnectionListedHeaders(f *testing.F) {
 		res.Header.Set(fiber.HeaderConnection, v)
 		res.Header.Set("X-Foo", "1")
 		res.Header.Set("X-Bar", "2")
-		delConnectionListedHeaders(&res.Header, res.Header.PeekAll(fiber.HeaderConnection), true)
+		delConnectionListedHeaders(&res.Header, res.Header.PeekAll(fiber.HeaderConnection))
 	})
 }

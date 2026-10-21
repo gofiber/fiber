@@ -8,7 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -101,18 +104,48 @@ func createRedirectServer(t *testing.T) string {
 	return addr
 }
 
-func restoreGlobalProxyClient(t *testing.T) {
-	t.Helper()
+func restoreGlobalProxyClient(tb testing.TB) {
+	tb.Helper()
 
-	prev := client.Load()
-	t.Cleanup(func() {
+	prev := sharedClient.Load()
+	tb.Cleanup(func() {
 		WithClient(prev)
 	})
 }
 
 // go test -run Test_Proxy_DefaultClient_MaxConnsPerHost
 func Test_Proxy_DefaultClient_MaxConnsPerHost(t *testing.T) {
-	require.Equal(t, defaultMaxConnsPerHost, client.Load().MaxConnsPerHost)
+	t.Parallel()
+	require.Equal(t, defaultMaxConnsPerHost, sharedClient.Load().MaxConnsPerHost)
+}
+
+// Test_Proxy_Balancer_LeavesConfiguredClientAlone pins that Balancer does not write to a host client
+// that already has DisablePathNormalizing: another goroutine may be reading it (run under -race).
+func Test_Proxy_Balancer_LeavesConfiguredClientAlone(t *testing.T) {
+	t.Parallel()
+
+	hc := &fasthttp.HostClient{Addr: "127.0.0.1:1", DisablePathNormalizing: true}
+	var reads atomic.Int64
+	var stop atomic.Bool
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for !stop.Load() {
+			if hc.DisablePathNormalizing {
+				reads.Add(1)
+			}
+		}
+	})
+	t.Cleanup(func() {
+		stop.Store(true)
+		wg.Wait()
+	})
+	readsMoreThan := func(n int64) func() bool { return func() bool { return reads.Load() > n } }
+
+	require.Eventually(t, readsMoreThan(0), 5*time.Second, time.Millisecond, "the reader is running before the build")
+
+	Balancer(Config{Client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hc}}})
+
+	require.Eventually(t, readsMoreThan(reads.Load()+1000), 5*time.Second, time.Millisecond, "and is still reading after it")
 }
 
 // go test -run Test_Proxy_ConfigDefault_MaxConnsPerHost
@@ -208,6 +241,8 @@ func Test_Proxy(t *testing.T) {
 }
 
 // go test -run Test_Proxy_Balancer_WithTlsConfig
+//
+// The balancer does not speak TLS itself, but the request must still reach the upstream as https.
 func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	t.Parallel()
 
@@ -219,31 +254,111 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 
 	ln = tls.NewListener(ln, serverTLSConf)
 
-	app := fiber.New()
-
-	app.Get("/tlsbalancer", func(c fiber.Ctx) error {
+	upstream := fiber.New()
+	upstream.Get("/tlsbalancer", func(c fiber.Ctx) error {
 		return c.SendString("tls balancer")
 	})
+	startServer(upstream, ln)
 
-	addr := ln.Addr().String()
-	clientTLSConf := &tls.Config{InsecureSkipVerify: true}
-
+	app := fiber.New()
 	// disable certificate verification in Balancer
 	app.Use(Balancer(Config{
-		Servers:   []string{addr},
-		TLSConfig: clientTLSConf,
+		Servers:   []string{"https://" + ln.Addr().String()},
+		TLSConfig: &tls.Config{InsecureSkipVerify: true},
 	}))
 
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/tlsbalancer", http.NoBody), fiber.TestConfig{
+		Timeout:       5 * time.Second,
+		FailOnTimeout: true,
+	})
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, string(body))
+	require.Equal(t, "tls balancer", string(body))
+}
+
+// go test -run Test_Proxy_Balancer_PlainUpstreamBehindTLS
+//
+// The other way round: the balancer sits behind a TLS listener and its upstream is plain HTTP.
+func Test_Proxy_Balancer_PlainUpstreamBehindTLS(t *testing.T) {
+	t.Parallel()
+
+	_, upstreamAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("plain upstream")
+	})
+
+	gatewayTLSConf, _, err := tlstest.GetTLSConfigs()
+	require.NoError(t, err)
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	ln = tls.NewListener(ln, gatewayTLSConf)
+	gatewayAddr := ln.Addr().String()
+
+	app := fiber.New()
+	app.Use(Balancer(Config{Servers: []string{"http://" + upstreamAddr}}))
 	startServer(app, ln)
 
 	client := clientpkg.New()
-	client.SetTLSConfig(clientTLSConf)
+	client.SetTimeout(5 * time.Second)
+	client.TLSConfig().InsecureSkipVerify = true
 
-	resp, err := client.Get("https://" + addr + "/tlsbalancer")
+	resp, err := client.Get("https://" + gatewayAddr)
 	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Equal(t, "tls balancer", string(resp.Body()))
+	require.Equal(t, fiber.StatusOK, resp.StatusCode(), string(resp.Body()))
+	require.Equal(t, "plain upstream", string(resp.Body()))
 	resp.Close()
+}
+
+// go test -run Test_Proxy_Balancer_MixedSchemes
+//
+// Each upstream of a mixed list is reached with its own scheme, whichever one the request arrived on.
+func Test_Proxy_Balancer_MixedSchemes(t *testing.T) {
+	t.Parallel()
+
+	_, plainAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("plain")
+	})
+	serverTLSConf, _, err := tlstest.GetTLSConfigs()
+	require.NoError(t, err)
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	ln = tls.NewListener(ln, serverTLSConf)
+	secure := fiber.New()
+	secure.Get("/", func(c fiber.Ctx) error { return c.SendString("secure") })
+	startServer(secure, ln)
+
+	app := fiber.New()
+	app.Use(Balancer(Config{
+		Servers:   []string{"http://" + plainAddr, "https://" + ln.Addr().String()},
+		TLSConfig: &tls.Config{InsecureSkipVerify: true},
+	}))
+
+	seen := map[string]int{}
+	for range 6 {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+			Timeout:       5 * time.Second,
+			FailOnTimeout: true,
+		})
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, string(body))
+		seen[string(body)]++
+	}
+	require.Equal(t, map[string]int{"plain": 3, "secure": 3}, seen)
+}
+
+// go test -run Test_Proxy_Balancer_EmptyClientPanicsAtStartup
+func Test_Proxy_Balancer_EmptyClientPanicsAtStartup(t *testing.T) {
+	t.Parallel()
+
+	// fasthttp would panic on the first request, and nothing above the handler recovers it.
+	require.PanicsWithValue(t, "Client.Clients cannot be empty", func() {
+		Balancer(Config{Client: &fasthttp.LBClient{}})
+	})
 }
 
 // go test -run Test_Proxy_Balancer_IPv6_Upstream
@@ -360,6 +475,96 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	require.Equal(t, "hello from target", string(resp.Body()))
 	resp.Close()
+}
+
+// Test_Proxy_DoRedirects_AppliesSchemePerHopBehindTLS pins that every hop is sent with the scheme of
+// its own URL: a copied hop would keep the TLS mark of the gateway's request and speak TLS to plain HTTP.
+func Test_Proxy_DoRedirects_AppliesSchemePerHopBehindTLS(t *testing.T) {
+	t.Parallel()
+
+	_, finalAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("final")
+	})
+	_, redirectAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		c.Location("http://" + finalAddr + "/")
+		return c.Status(fiber.StatusFound).SendString("redirect")
+	})
+
+	gatewayTLSConf, _, err := tlstest.GetTLSConfigs()
+	require.NoError(t, err)
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	ln = tls.NewListener(ln, gatewayTLSConf)
+	gatewayAddr := ln.Addr().String()
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		return DoRedirects(c, "http://"+redirectAddr+"/", 3)
+	})
+	startServer(app, ln)
+
+	client := clientpkg.New()
+	client.SetTimeout(5 * time.Second)
+	client.TLSConfig().InsecureSkipVerify = true
+
+	resp, err := client.Get("https://" + gatewayAddr)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "final", string(resp.Body()))
+	resp.Close()
+}
+
+// Test_Proxy_DoRedirects_StreamedRequestBody pins that a method-keeping redirect of a streamed
+// request (StreamRequestBody) is followed when the first hop left the whole body in memory.
+func Test_Proxy_DoRedirects_StreamedRequestBody(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		body       string
+		wantBody   string
+		wantStatus int
+		wantFinals int32
+	}{
+		{name: "empty", wantStatus: fiber.StatusOK, wantBody: "POST:0", wantFinals: 1},
+		{name: "small", body: "payload", wantStatus: fiber.StatusOK, wantBody: "POST:7", wantFinals: 1},
+		{name: "more than is read ahead", body: strings.Repeat("a", 8*1024+1), wantStatus: fiber.StatusInternalServerError, wantBody: fasthttp.ErrRedirectBodyStream.Error()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var finals atomic.Int32 // requests that reached the target of the redirect
+			upstream := fiber.New()
+			ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+			require.NoError(t, err)
+			addr := ln.Addr().String()
+			upstream.Post("/start", func(c fiber.Ctx) error {
+				return c.Redirect().Status(fiber.StatusTemporaryRedirect).To("http://" + addr + "/final")
+			})
+			upstream.Post("/final", func(c fiber.Ctx) error {
+				finals.Add(1)
+				return c.SendString(c.Method() + ":" + strconv.Itoa(len(c.Body())))
+			})
+			startServer(upstream, ln)
+
+			app := fiber.New(fiber.Config{StreamRequestBody: true})
+			app.Post("/", func(c fiber.Ctx) error {
+				return DoRedirects(c, "http://"+addr+"/start", 3)
+			})
+
+			req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader(tc.body))
+			req.Header.Set(fiber.HeaderContentLength, strconv.Itoa(len(tc.body)))
+			resp, err := app.Test(req, fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
+			require.NoError(t, err)
+			defer func() { require.NoError(t, resp.Body.Close()) }()
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantStatus, resp.StatusCode)
+			require.Equal(t, tc.wantBody, string(body))
+			require.Equal(t, tc.wantFinals, finals.Load(), "requests that reached the target of the redirect")
+		})
+	}
 }
 
 // go test -run Test_Proxy_Forward
@@ -696,6 +901,7 @@ func Test_Proxy_Do_ConnectionCannotRemoveRealIP(t *testing.T) {
 
 // go test -run Test_Proxy_Forward_WithClient_TLSConfig
 func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
+	// Intentionally not parallel: WithClient replaces the process-wide shared client.
 	restoreGlobalProxyClient(t)
 
 	serverTLSConf, _, err := tlstest.GetTLSConfigs()
@@ -935,15 +1141,8 @@ func Test_Proxy_Do_WithRedirect(t *testing.T) {
 }
 
 // go test -race -run Test_Proxy_DoRedirects_RestoreOriginalURL
-// Test_Proxy_DoRedirects_AliasedAddr regression-tests P3+P6: the addr
-// string is derived from c.OriginalURL() and therefore aliases the
-// fasthttp request's internal requestURI buffer. After P6, the *url.URL
-// returned by validateUpstream is passed into followRedirects, which
-// reads u.Host on the cross-host strip check and u.String() to feed
-// SetRequestURI. If u's field slices were ever aliased back to the
-// request buffer, SetRequestURI's overwrite would corrupt them mid-loop
-// and the redirect target would be garbled. P3 fixes this by cloning
-// addr once at the parse boundary inside doActionWithPolicy.
+// Test_Proxy_DoRedirects_AliasedAddr covers an addr that aliases the request buffer (c.OriginalURL()):
+// doActionWithPolicy clones it once, or SetRequestURI would corrupt a *url.URL still pointing into it.
 func Test_Proxy_DoRedirects_AliasedAddr(t *testing.T) {
 	t.Parallel()
 
@@ -1037,6 +1236,7 @@ func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 
 // go test -race -run Test_Proxy_DoTimeout_Timeout
 func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
+	// Intentionally not parallel: it measures a timeout, so it must not compete for CPU.
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		time.Sleep(time.Second * 5)
 		return c.SendString("proxied")
@@ -1084,6 +1284,7 @@ func Test_Proxy_DoDeadline_RestoreOriginalURL(t *testing.T) {
 
 // go test -race -run Test_Proxy_DoDeadline_PastDeadline
 func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
+	// Intentionally not parallel: it measures a deadline, so it must not compete for CPU.
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		time.Sleep(time.Second * 5)
 		return c.SendString("proxied")
@@ -1131,6 +1332,7 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 
 // go test -race -run Test_Proxy_Forward_Global_Client
 func Test_Proxy_Forward_Global_Client(t *testing.T) {
+	// Intentionally not parallel: WithClient replaces the process-wide shared client.
 	restoreGlobalProxyClient(t)
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
@@ -1139,7 +1341,7 @@ func Test_Proxy_Forward_Global_Client(t *testing.T) {
 		DisablePathNormalizing:   true,
 		MaxConnsPerHost:          123,
 	})
-	loadedClient := client.Load()
+	loadedClient := sharedClient.Load()
 	require.NotNil(t, loadedClient)
 	require.Equal(t, 123, loadedClient.MaxConnsPerHost)
 
@@ -1764,9 +1966,8 @@ func matchingFieldLines(c fiber.Ctx, names ...string) []string {
 	return found
 }
 
-// Test_Proxy_HopByHopHeadersStrippedWhateverTheirCase checks that the RFC 7230
-// Section 6.1 strip holds for a peer that spells the names in lower case, which
-// is what HTTP/2 and HTTP/3 require on the wire.
+// Test_Proxy_HopByHopHeadersStrippedWhateverTheirCase checks that the RFC 9110 §7.6.1 strip holds
+// for names in lower case, as HTTP/2 and HTTP/3 require on the wire.
 //
 // Del matches the stored key byte for byte, so under DisableHeaderNormalizing
 // it removed nothing: the hop-by-hop headers reached the upstream, and so did a
@@ -2015,4 +2216,165 @@ func Test_Proxy_HostWithoutPort(t *testing.T) {
 	for _, tc := range tests {
 		require.Equal(t, tc.out, hostWithoutPort(tc.in), "in=%q", tc.in)
 	}
+}
+
+// go test -run Test_Proxy_Balancer_NoArgsPanicsAtStartup
+func Test_Proxy_Balancer_NoArgsPanicsAtStartup(t *testing.T) {
+	t.Parallel()
+
+	// No default upstream exists, so Balancer() stops at startup, as Balancer(Config{}) does.
+	require.PanicsWithValue(t, "Servers cannot be empty", func() { Balancer() })
+}
+
+// go test -run Test_Proxy_NewHostClient
+func Test_Proxy_NewHostClient(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		MaxConnsPerHost:     7,
+		ReadBufferSize:      2048,
+		WriteBufferSize:     3072,
+		MaxResponseBodySize: 4096,
+		DialDualStack:       true,
+	}
+	strict := DefaultSecurityPolicy()
+	relaxed := DefaultSecurityPolicy()
+	relaxed.AllowPrivateIPs = true
+
+	t.Run("carries the config", func(t *testing.T) {
+		t.Parallel()
+
+		hc := newHostClient(mustParseTestURL(t, "http://upstream.example:8080"), &cfg, strict)
+		require.Equal(t, "upstream.example:8080", hc.Addr)
+		require.False(t, hc.IsTLS)
+		require.Equal(t, 7, hc.MaxConns)
+		require.Equal(t, 2048, hc.ReadBufferSize)
+		require.Equal(t, 3072, hc.WriteBufferSize)
+		require.Equal(t, 4096, hc.MaxResponseBodySize)
+		require.True(t, hc.DialDualStack)
+		require.True(t, hc.DisablePathNormalizing)
+		require.True(t, hc.NoDefaultUserAgentHeader)
+	})
+
+	t.Run("https gets TLS with a floor", func(t *testing.T) {
+		t.Parallel()
+
+		hc := newHostClient(mustParseTestURL(t, "https://upstream.example"), &cfg, strict)
+		require.True(t, hc.IsTLS)
+		require.NotNil(t, hc.TLSConfig)
+		require.Equal(t, uint16(tls.VersionTLS12), hc.TLSConfig.MinVersion)
+	})
+
+	t.Run("guards the dial unless private IPs are allowed", func(t *testing.T) {
+		t.Parallel()
+
+		guarded := newHostClient(mustParseTestURL(t, "http://upstream.example"), &cfg, strict)
+		require.NotNil(t, guarded.Dial)
+		_, err := guarded.Dial("127.0.0.1:80")
+		require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+
+		open := newHostClient(mustParseTestURL(t, "http://upstream.example"), &cfg, relaxed)
+		require.Nil(t, open.Dial)
+		require.Nil(t, open.DialTimeout)
+	})
+
+	// fasthttp hands the timeout a request leaves for the connect only to a DialTimeout.
+	t.Run("guards the dial timeout too", func(t *testing.T) {
+		t.Parallel()
+
+		guarded := newHostClient(mustParseTestURL(t, "http://upstream.example"), &cfg, strict)
+		require.NotNil(t, guarded.DialTimeout)
+		for _, timeout := range []time.Duration{0, time.Second} {
+			_, err := guarded.DialTimeout("127.0.0.1:80", timeout)
+			require.ErrorIs(t, err, ErrUpstreamHostBlocked, "timeout %v", timeout)
+		}
+	})
+
+	// Only fasthttp's own dialer adds the port, and the guard's does not.
+	t.Run("adds the port its scheme defaults to", func(t *testing.T) {
+		t.Parallel()
+
+		for raw, want := range map[string]string{
+			"http://upstream.example":           "upstream.example:80",
+			"https://upstream.example":          "upstream.example:443",
+			"http://upstream.example:8080":      "upstream.example:8080",
+			"https://upstream.example:8443":     "upstream.example:8443",
+			"http://[2001:db8::1]":              "[2001:db8::1]:80",
+			"https://[2001:db8::1]":             "[2001:db8::1]:443",
+			"http://[2001:db8::1]:8080":         "[2001:db8::1]:8080",
+			"http://203.0.113.5":                "203.0.113.5:80",
+			"https://upstream.example:443":      "upstream.example:443",
+			"http://upstream.example:80":        "upstream.example:80",
+			"https://[2001:db8::1]:8443":        "[2001:db8::1]:8443",
+			"http://upstream.example.:8080":     "upstream.example.:8080",
+			"http://xn--bcher-kva.example/":     "xn--bcher-kva.example:80",
+			"https://xn--bcher-kva.example:444": "xn--bcher-kva.example:444",
+		} {
+			hc := newHostClient(mustParseTestURL(t, raw), &cfg, strict)
+			require.Equal(t, want, hc.Addr, raw)
+		}
+	})
+}
+
+// go test -run Test_Proxy_Balancer_MaxResponseBodySize
+func Test_Proxy_Balancer_MaxResponseBodySize(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString(strings.Repeat("x", 64))
+	})
+
+	for name, tc := range map[string]struct {
+		limit   int
+		wantErr bool
+	}{
+		"over the limit":   {limit: 16, wantErr: true},
+		"within the limit": {limit: 128},
+		"unbounded":        {limit: 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var handled error
+			app := fiber.New(fiber.Config{ErrorHandler: func(c fiber.Ctx, err error) error {
+				handled = err
+				return c.SendStatus(fiber.StatusBadGateway)
+			}})
+			app.Use(Balancer(Config{Servers: []string{addr}, MaxResponseBodySize: tc.limit}))
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			if tc.wantErr {
+				require.ErrorIs(t, handled, fasthttp.ErrBodyTooLarge)
+				require.Equal(t, fiber.StatusBadGateway, resp.StatusCode)
+				return
+			}
+			require.NoError(t, handled)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		})
+	}
+}
+
+// go test -run Test_Proxy_Balancer_WriteBufferSize
+//
+// Headers larger than WriteBufferSize must still arrive whole.
+func Test_Proxy_Balancer_WriteBufferSize(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString(strconv.Itoa(len(c.Get(fiber.HeaderCookie))))
+	})
+
+	app := fiber.New()
+	app.Use(Balancer(Config{Servers: []string{addr}, WriteBufferSize: 256}))
+
+	cookie := "session=" + strings.Repeat("a", 2000)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderCookie, cookie)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, strconv.Itoa(len(cookie)), string(body))
 }
