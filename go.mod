@@ -1,3 +1,4 @@
+// Deprecated: Fiber v2 has been superseded by Fiber v3; use github.com/gofiber/fiber/v3 instead.
 module github.com/gofiber/fiber/v2
 
 go 1.20
