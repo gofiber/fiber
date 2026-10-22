@@ -6,7 +6,7 @@ id: etag
 
 ETag middleware for [Fiber](https://github.com/gofiber/fiber) that helps caches validate responses and saves bandwidth by avoiding full retransmits when content is unchanged.
 
-A tag is the body length and its CRC-32C checksum in decimal, such as `"13-1297420392"`. Treat tags as opaque: the checksum can change between releases, and clients then revalidate once after the upgrade.
+A tag is the body length and its CRC-32C checksum in decimal, such as `"13-1297420392"`; the compress middleware tags the bodies it compresses the same way. Treat tags as opaque: the checksum can change between releases, and clients then revalidate once after the upgrade.
 
 ## Signatures
 
