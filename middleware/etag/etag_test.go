@@ -338,8 +338,6 @@ func Benchmark_Etag(b *testing.B) {
 }
 
 // go test -v -run=^$ -bench=Benchmark_Generate -benchmem -count=4
-//
-// Generate hashes the whole body, so its cost grows with the body size.
 func Benchmark_Generate(b *testing.B) {
 	for _, size := range []int{13, 100, 1 << 10, 10 << 10, 100 << 10} {
 		body := bytes.Repeat([]byte("0123456789abcdef"), size/16+1)[:size]

@@ -17,15 +17,13 @@ import (
 
 var (
 	weakPrefix = []byte("W/")
-	// hash/crc32 computes CRC-32C in hardware: SSE4.2 on amd64, the CRC32 extension on
-	// arm64 and loong64, vector instructions on s390x and ppc64le. Elsewhere it uses
-	// slicing-by-8, and any other polynomial is checksummed a byte at a time.
+	// hash/crc32 computes CRC-32C in hardware on amd64, arm64, loong64, s390x and
+	// ppc64le and with slicing-by-8 elsewhere; any other polynomial goes a byte at a time.
 	crc32c = crc32.MakeTable(crc32.Castagnoli)
 )
 
-// Generate returns a strong ETag for body: its length and CRC-32C checksum in
-// decimal. The format can change between releases, so do not store tags or
-// compare tags from different versions.
+// Generate returns a strong ETag for body, its length and CRC-32C in decimal.
+// The format can change between releases: do not store tags or compare them across versions.
 func Generate(body []byte) []byte {
 	if uint64(len(body)) > uint64(math.MaxUint32) {
 		return nil
