@@ -3,6 +3,7 @@ package wiretarget
 import (
 	"bufio"
 	"encoding/hex"
+	"slices"
 	"strings"
 	"testing"
 
@@ -78,6 +79,8 @@ func Test_Routed(t *testing.T) {
 			"/%zz":                 "/%25zz",
 			"/%252e%252e/a":        "/%252e%252e/a",
 			"/a%3Fb%23c%25d":       "/a%3Fb%23c%25d",
+			"/admin;x/secret":      "/admin%3Bx/secret",
+			"/admin%3Bx/b;c=d":     "/admin%3Bx/b%3Bc=d",
 		} {
 			require.Equal(t, want, answerFor(t, app, target), target)
 		}
@@ -128,22 +131,78 @@ func Test_Routed(t *testing.T) {
 func Test_SegmentsAsRouted(t *testing.T) {
 	t.Parallel()
 
-	for _, target := range []string{
-		"/", "/a/b", "/a/b?x=%2F&y=//", "/a%252Fb", "/%252E%252E/a", "/a/b/",
-		"/a;b/c", "/m;x=1;y=2", "/..x;y/a", "/a/.b;c", "/a%255C", "/a?q=\\&r=%5C",
+	const both = AllowSlashes | AllowParameters
+	all := []Allowance{0, AllowSlashes, AllowParameters, both}
+
+	for _, tc := range []struct {
+		name    string
+		targets []string
+		passes  []Allowance // the allowances under which every target is let through
+	}{
+		{
+			name: "plain",
+			targets: []string{
+				"/", "/a/b", "/a/b?x=%2F&y=//", "/a%252Fb", "/%252E%252E/a", "/a/b/", "/a%255C", "/a?q=\\&r=%5C",
+				// a ";" in the query is no path parameter, and an escape of a
+				// reserved character, "%" included, is no forged escape
+				"/a/b?x=1;y=2", "/a?;", "/public/%2541/a%20b?x=%2e",
+			},
+			passes: all,
+		},
+		{
+			// A servlet container strips the parameters from every segment, so
+			// "/admin;x/secret" is "/admin/secret" there.
+			name: "path parameter",
+			targets: []string{
+				"/a;b/c", "/m;x=1;y=2", "/..x;y/a", "/a/.b;c", "/admin;x/secret", "/admin;/secret",
+				"/a/b;jsessionid=1", "/a;x/b;y?q=1", "/a;", "/;jsessionid=1", "/a/;x", "/;x;y",
+			},
+			passes: []Allowance{AllowParameters, both},
+		},
+		{
+			// Stripped, a segment of parameters alone is an empty segment:
+			// "/;/admin/secret" is "//admin/secret", merged into "/admin/secret".
+			name:    "parameters alone before another segment",
+			targets: []string{"/;/admin/secret", "/;x/admin", "/a/;x/b", "/a/;/", "/;x;y/b", "/a/;jsessionid=1/b"},
+			passes:  []Allowance{both},
+		},
+		{
+			name:    "escaped slash and a parameter",
+			targets: []string{"/a%2Fb;c", "/group%2Fname;x", "/a%2F;x/b", "/a%2fb;c"},
+			passes:  []Allowance{both},
+		},
+		{
+			name:    "escaped slash or empty segment",
+			targets: []string{"//", "//admin", "/a//b", "/a/b//", "/public/..%2Fadmin", "/a%2fb", "/a%2Fb?x=1"},
+			passes:  []Allowance{AllowSlashes, both},
+		},
+		{
+			// "%2E" is an escape the router decodes, so one still in the routed
+			// path was forged and URL.Path would read "%2E%2E" as "..". A
+			// backslash is a separator to WHATWG URL parsers and IIS, and
+			// servlet containers resolve a dot segment once they strip its
+			// path parameters.
+			name: "never",
+			targets: []string{
+				"/%2E%2E/a", "/public/%2e%2e/admin", "/public/%70rivate",
+				"/admin\\secret", "/public/..\\admin", "/a%5Cb", "/public/..%5cadmin",
+				"/public/..;/admin", "/public/.;/admin", "/public/..;jsessionid=x/admin", "/a/..;", "/a/.;x",
+				"/..;/a", "/.;x/a", "/a;x/..;/b",
+				// behind an escaped slash, the dot segment is one to a reader
+				// that decodes it; the escaped slash alone is let through
+				"/a%2F..;/b", "/%2F..;/b", "/a%2F.;x/b", "/a%2f..;/b", "/a%2F..;",
+			},
+		},
 	} {
-		require.True(t, SegmentsAsRouted(target), target)
-	}
-	// "%2E" is an escape the router decodes, so one still in the routed path
-	// was forged and URL.Path would read "%2E%2E" as "..". A backslash is a
-	// separator to WHATWG URL parsers and IIS, and servlet containers resolve
-	// a dot segment once they strip its path parameters.
-	for _, target := range []string{
-		"//", "//admin", "/a//b", "/a/b//", "/public/..%2Fadmin", "/a%2fb", "/a%2Fb?x=1", "/%2E%2E/a",
-		"/admin\\secret", "/public/..\\admin", "/a%5Cb", "/public/..%5cadmin",
-		"/public/..;/admin", "/public/.;/admin", "/public/..;jsessionid=x/admin", "/a/..;", "/a/.;x",
-	} {
-		require.False(t, SegmentsAsRouted(target), target)
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			for _, allow := range all {
+				want := slices.Contains(tc.passes, allow)
+				for _, target := range tc.targets {
+					require.Equal(t, want, SegmentsAsRouted(target, allow), "%s allowing %d", target, allow)
+				}
+			}
+		})
 	}
 }
 
@@ -194,14 +253,6 @@ func Test_HasForgedEscape(t *testing.T) {
 	for _, target := range []string{"/", "/a/b", "/a%20b", "/a%2Fb", "/a%25b", "/%2541", "/a%3Fb", "/%", "/%2", "/%zz", "/a?q=%41", "/a%25/%2"} {
 		require.False(t, HasForgedEscape(target), target)
 	}
-}
-
-func Test_SegmentsAsRouted_ForgedEscape(t *testing.T) {
-	t.Parallel()
-
-	require.False(t, SegmentsAsRouted("/public/%2e%2e/admin/secret"))
-	require.False(t, SegmentsAsRouted("/public/%70rivate"))
-	require.True(t, SegmentsAsRouted("/public/%2541/a%20b?x=%2e"))
 }
 
 func Test_SurvivesNormalization(t *testing.T) {

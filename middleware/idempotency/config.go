@@ -31,7 +31,17 @@ type Config struct {
 	// KeyHeaderValidate defines a function to validate the syntax of the idempotency header.
 	//
 	// Optional. Default: a function which ensures the header is 36 characters long (the size of an UUID).
+	// It checks the length only, so it accepts a key that is easy to guess; see KeyScope.
 	KeyHeaderValidate func(string) error
+
+	// KeyScope returns the scope an idempotency key belongs to, such as the ID of the
+	// authenticated user. A response is stored under the scope and the key together, and
+	// replayed only to a request that carries the same key in the same scope, so a key that
+	// another user sent or guessed returns nothing stored for you. Requests for which it
+	// returns the same string share a scope, the empty string included.
+	//
+	// Optional. Default: nil (the key alone identifies a request)
+	KeyScope func(c fiber.Ctx) string
 
 	// KeyHeader is the name of the header that contains the idempotency key.
 	//
@@ -39,8 +49,13 @@ type Config struct {
 	KeyHeader string
 
 	// KeepResponseHeaders is a list of headers that should be kept from the original response.
+	// A response is replayed to every request that carries its key, so Set-Cookie and the
+	// obsolete Set-Cookie2 are kept only when named here: a stored cookie would hand the
+	// session of the first client to the others. Every other header is kept by default, so
+	// a session or token carried in one, such as the session ID the session middleware
+	// writes to the header it reads it from, needs a list that leaves it out, or KeyScope.
 	//
-	// Optional. Default: nil (to keep all headers)
+	// Optional. Default: nil (to keep all headers but the cookies)
 	KeepResponseHeaders []string
 
 	// Lifetime is the maximum lifetime of an idempotency key.
@@ -71,6 +86,8 @@ var ConfigDefault = Config{
 
 		return nil
 	},
+
+	KeyScope: nil,
 
 	KeepResponseHeaders: nil,
 

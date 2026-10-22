@@ -184,6 +184,37 @@ func Benchmark_Idempotency(b *testing.B) {
 			h(c)
 		}
 	})
+
+	scoped := fiber.New()
+	scoped.Use(New(Config{
+		Lifetime: lifetime,
+		KeyScope: func(c fiber.Ctx) string { return c.Get("X-User") },
+	}))
+	scoped.Post("/", func(_ fiber.Ctx) error {
+		return nil
+	})
+	hs := scoped.Handler()
+
+	b.Run("scoped hit", func(b *testing.B) {
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod(fiber.MethodPost)
+		c.Request.SetRequestURI("/")
+		c.Request.Header.Set("X-Idempotency-Key", "00000000-0000-0000-0000-000000000000")
+		c.Request.Header.Set("X-User", "alice")
+
+		b.ReportAllocs()
+		for b.Loop() {
+			hs(c)
+		}
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_scopedKey -benchmem -count=4
+func Benchmark_scopedKey(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		scopedKey("alice", validKey)
+	}
 }
 
 func Test_configDefault_defaults(t *testing.T) {
@@ -195,6 +226,7 @@ func Test_configDefault_defaults(t *testing.T) {
 	require.Equal(t, ConfigDefault.Lifetime, cfg.Lifetime)
 	require.Equal(t, ConfigDefault.KeyHeader, cfg.KeyHeader)
 	require.Nil(t, cfg.KeepResponseHeaders)
+	require.Nil(t, cfg.KeyScope)
 
 	app := fiber.New()
 
@@ -226,10 +258,12 @@ func Test_configDefault_override(t *testing.T) {
 		KeepResponseHeaders: []string{},
 		Lock:                l,
 		Storage:             s,
+		KeyScope:            func(fiber.Ctx) string { return "scope" },
 	})
 
 	require.Equal(t, 42*time.Second, cfg.Lifetime)
 	require.Equal(t, "Foo", cfg.KeyHeader)
+	require.NotNil(t, cfg.KeyScope)
 	require.Nil(t, cfg.KeepResponseHeaders)
 	require.Equal(t, l, cfg.Lock)
 	require.Equal(t, s, cfg.Storage)
@@ -395,13 +429,15 @@ func Test_New_StoreRetrieve_FilterHeadersCaseInsensitiveSnapshot(t *testing.T) {
 
 // Test_New_StoreRetrieve_HeadersWithCommas pins that a replayed response
 // carries each header value exactly as the handler set it, even when the app
-// enables EnableSplittingOnParsers, which only concerns request parsing.
+// enables EnableSplittingOnParsers, which only concerns request parsing. The
+// cookie is kept because the config names it.
 func Test_New_StoreRetrieve_HeadersWithCommas(t *testing.T) {
 	t.Parallel()
 	app := fiber.New(fiber.Config{EnableSplittingOnParsers: true})
 	app.Use(New(Config{
-		Storage: &stubStorage{},
-		Lock:    &stubLock{},
+		Storage:             &stubStorage{},
+		Lock:                &stubLock{},
+		KeepResponseHeaders: []string{fiber.HeaderContentDisposition, fiber.HeaderSetCookie},
 	}))
 
 	var count int
@@ -426,8 +462,274 @@ func Test_New_StoreRetrieve_HeadersWithCommas(t *testing.T) {
 	resp2, body2 := do(app, req2)
 	require.Equal(t, "resp1", body2)
 	require.Equal(t, 1, count)
+	require.NotEmpty(t, resp2.Header.Values(fiber.HeaderSetCookie))
 	require.Equal(t, resp.Header.Values(fiber.HeaderContentDisposition), resp2.Header.Values(fiber.HeaderContentDisposition))
 	require.Equal(t, resp.Header.Values(fiber.HeaderSetCookie), resp2.Header.Values(fiber.HeaderSetCookie))
+}
+
+// Test_New_DoesNotReplayCookies pins that a cookie is neither stored nor
+// replayed by default: the key alone identifies a request, so a replayed
+// Set-Cookie hands the session of whoever sent the key first to whoever sends
+// it next, on any route.
+func Test_New_DoesNotReplayCookies(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	s := &stubStorage{}
+	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
+
+	var count int
+	app.Post("/login", func(c fiber.Ctx) error {
+		count++
+		c.Cookie(&fiber.Cookie{Name: "sid", Value: "ALICE-SESSION"})
+		c.Set(fiber.HeaderSetCookie2, "sid=ALICE-SESSION; Version=1")
+		c.Set("X-Request", "alice")
+		return c.SendString("welcome alice")
+	})
+	app.Post("/other", func(c fiber.Ctx) error {
+		count++
+		return c.SendString("other")
+	})
+
+	post := func(route string) (*http.Response, string) {
+		req := httptest.NewRequest(http.MethodPost, route, http.NoBody)
+		req.Header.Set(ConfigDefault.KeyHeader, validKey)
+		return do(app, req)
+	}
+
+	// the client that caused the miss gets its cookies
+	resp, body := post("/login")
+	require.Equal(t, "welcome alice", body)
+	require.Equal(t, []string{"sid=ALICE-SESSION; path=/; SameSite=Lax"}, resp.Header.Values(fiber.HeaderSetCookie))
+	require.Equal(t, []string{"sid=ALICE-SESSION; Version=1"}, resp.Header.Values(fiber.HeaderSetCookie2))
+
+	// whoever sends the key next gets the rest of the response, and the
+	// handler is not run for them, on the route that stored it or another
+	for _, route := range []string{"/login", "/other"} {
+		resp, body = post(route)
+		require.Equal(t, "welcome alice", body, route)
+		require.Equal(t, "alice", resp.Header.Get("X-Request"), route)
+		require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie), route)
+		require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie2), route)
+	}
+	require.Equal(t, 1, count)
+
+	// and nothing in the storage holds them
+	for _, val := range s.data {
+		require.NotContains(t, string(val), "ALICE-SESSION")
+	}
+}
+
+// Test_New_KeepResponseHeaders_NamedCookies pins that naming a cookie header in
+// KeepResponseHeaders stores and replays it, matched case-insensitively, and
+// that naming one of the two leaves the other out.
+func Test_New_KeepResponseHeaders_NamedCookies(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{
+		Storage:             &stubStorage{},
+		Lock:                &stubLock{},
+		KeepResponseHeaders: []string{"set-cookie", "X-Request"},
+	}))
+
+	app.Post("/", func(c fiber.Ctx) error {
+		c.Cookie(&fiber.Cookie{Name: "sid", Value: "abc"})
+		c.Set(fiber.HeaderSetCookie2, "sid=abc; Version=1")
+		c.Set("X-Request", "first")
+		c.Set("X-Other", "dropped")
+		return c.SendString("ok")
+	})
+
+	post := func() *http.Response {
+		req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+		req.Header.Set(ConfigDefault.KeyHeader, validKey)
+		resp, _ := do(app, req)
+		return resp
+	}
+	first, replayed := post(), post()
+	require.Equal(t, []string{"sid=abc; path=/; SameSite=Lax"}, first.Header.Values(fiber.HeaderSetCookie))
+	require.Equal(t, first.Header.Values(fiber.HeaderSetCookie), replayed.Header.Values(fiber.HeaderSetCookie))
+	require.Equal(t, "first", replayed.Header.Get("X-Request"))
+	require.Empty(t, replayed.Header.Values(fiber.HeaderSetCookie2))
+	require.Empty(t, replayed.Header.Values("X-Other"))
+}
+
+// Test_New_ReplayDropsStoredCookies pins that a cookie in an entry the storage
+// already holds, written by a version that kept every header or under a
+// configuration that named the cookie, is not replayed unless the
+// configuration names it now.
+func Test_New_ReplayDropsStoredCookies(t *testing.T) {
+	t.Parallel()
+
+	stored := func() *stubStorage {
+		res := response{
+			Headers: map[string][]string{
+				fiber.HeaderSetCookie:  {"sid=ALICE-SESSION; path=/"},
+				fiber.HeaderSetCookie2: {"sid=ALICE-SESSION; Version=1"},
+				"X-Request":            {"alice"},
+			},
+			Body:       []byte("welcome alice"),
+			StatusCode: fiber.StatusOK,
+		}
+		bs, err := res.MarshalMsg(nil)
+		require.NoError(t, err)
+		return &stubStorage{data: map[string][]byte{validKey: bs}}
+	}
+	replay := func(keep []string) *http.Response {
+		app := fiber.New()
+		app.Use(New(Config{Storage: stored(), Lock: &stubLock{}, KeepResponseHeaders: keep}))
+		app.Post("/", func(_ fiber.Ctx) error { return errors.New("the handler must not run") })
+
+		req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+		req.Header.Set(ConfigDefault.KeyHeader, validKey)
+		resp, body := do(app, req)
+		require.Equal(t, "welcome alice", body)
+		require.Equal(t, "alice", resp.Header.Get("X-Request"))
+		return resp
+	}
+
+	resp := replay(nil)
+	require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie))
+	require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie2))
+
+	resp = replay([]string{"X-Request"})
+	require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie))
+	require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie2))
+
+	resp = replay([]string{"X-Request", fiber.HeaderSetCookie})
+	require.Equal(t, []string{"sid=ALICE-SESSION; path=/"}, resp.Header.Values(fiber.HeaderSetCookie))
+	require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie2))
+}
+
+// Test_New_KeyScope pins that a key is stored, replayed and locked per scope: a
+// user who sends the key another user sent runs the handler for their own
+// request and gets their own response, cookie included, and the storage holds
+// neither the key nor the scope.
+func Test_New_KeyScope(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	s := &stubStorage{}
+	l := &stubLock{}
+	app.Use(New(Config{
+		Storage:             s,
+		Lock:                l,
+		KeepResponseHeaders: []string{fiber.HeaderSetCookie},
+		KeyScope:            func(c fiber.Ctx) string { return c.Get("X-User") },
+	}))
+
+	var count int
+	app.Post("/", func(c fiber.Ctx) error {
+		count++
+		c.Cookie(&fiber.Cookie{Name: "sid", Value: c.Get("X-User") + "-session"})
+		return c.SendString(fmt.Sprintf("%s:%d", c.Get("X-User"), count))
+	})
+
+	post := func(user string) (*http.Response, string) {
+		req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+		req.Header.Set(ConfigDefault.KeyHeader, validKey)
+		if user != "" {
+			req.Header.Set("X-User", user)
+		}
+		return do(app, req)
+	}
+	requireReply := func(user, wantBody string, wantCalls int) {
+		t.Helper()
+		resp, body := post(user)
+		require.Equal(t, wantBody, body)
+		require.Equal(t, "sid="+user+"-session; path=/; SameSite=Lax", resp.Header.Get(fiber.HeaderSetCookie))
+		require.Equal(t, wantCalls, count)
+	}
+
+	requireReply("alice", "alice:1", 1)
+	requireReply("bob", "bob:2", 2) // the key is Alice's too, the response is not
+	requireReply("alice", "alice:1", 2)
+	requireReply("bob", "bob:2", 2)
+	requireReply("", ":3", 3) // a request without a user is a scope of its own
+	requireReply("", ":3", 3)
+
+	require.Equal(t, 3, s.setCount)
+	require.Len(t, s.data, 3)
+	// Each entry holds its own user's cookie and nobody else's, under the key
+	// the scope and the idempotency key digest to.
+	for _, user := range []string{"alice", "bob", ""} {
+		val := string(s.data[scopedKey(user, validKey)])
+		require.Contains(t, val, "sid="+user+"-session")
+		for _, other := range []string{"alice", "bob"} {
+			if other != user {
+				require.NotContains(t, val, other+"-session")
+			}
+		}
+	}
+	// A replay is answered before the lock, so only the three misses took it,
+	// under the same keys, and a key two users share makes neither wait for
+	// the other.
+	require.Len(t, l.locked, 3)
+	for _, key := range l.locked {
+		require.Contains(t, s.data, key)
+	}
+}
+
+// Test_New_KeyScope_NotConsulted pins that the scope is asked for only when a
+// request carries a valid key.
+func Test_New_KeyScope_NotConsulted(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	var asked int
+	app.Use(New(Config{
+		Storage:  &stubStorage{},
+		Lock:     &stubLock{},
+		KeyScope: func(fiber.Ctx) string { asked++; return "user" },
+	}))
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	do(app, httptest.NewRequest(http.MethodPost, "/", http.NoBody))
+	require.Zero(t, asked, "no key")
+
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req.Header.Set(ConfigDefault.KeyHeader, "bad")
+	resp, _ := do(app, req)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Zero(t, asked, "invalid key")
+
+	req = httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req.Header.Set(ConfigDefault.KeyHeader, validKey)
+	do(app, req)
+	require.Equal(t, 1, asked)
+}
+
+// Test_scopedKey pins that a scope and a key give one storage key, of one
+// length, that no other pair gives, however their bytes run together.
+func Test_scopedKey(t *testing.T) {
+	t.Parallel()
+
+	first := scopedKey("alice", validKey)
+	require.Equal(t, first, scopedKey("alice", validKey))
+	require.Len(t, scopedKey("", ""), 64)
+	require.Len(t, scopedKey(strings.Repeat("s", 1000), strings.Repeat("k", 1000)), 64)
+	require.NotEqual(t, validKey, scopedKey("", validKey))
+
+	seen := make(map[string][2]string)
+	for _, pair := range [][2]string{
+		{"", ""},
+		{"", "abc"},
+		{"a", "bc"},
+		{"ab", "c"},
+		{"abc", ""},
+		{"1", ":ab"},
+		{"1:a", "b"},
+		{"3", ":abc"},
+		{"3:abc", ""},
+		{"0", ":abc"},
+		{"10", ":"},
+		{"1", "0:"},
+		{"alice", validKey},
+		{"bob", validKey},
+		{"alice" + validKey[:1], validKey[1:]},
+	} {
+		key := scopedKey(pair[0], pair[1])
+		prev, dup := seen[key]
+		require.False(t, dup, "%q and %q share a key", pair, prev)
+		seen[key] = pair
+	}
 }
 
 func Test_New_Cache_WhenBodyTooLarge(t *testing.T) {

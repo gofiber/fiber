@@ -208,6 +208,7 @@ const (
     HeaderExpect                             = "Expect"
     HeaderMaxForwards                        = "Max-Forwards"
     HeaderSetCookie                          = "Set-Cookie"
+    HeaderSetCookie2                         = "Set-Cookie2"
     HeaderAccessControlAllowCredentials      = "Access-Control-Allow-Credentials"
     HeaderAccessControlAllowHeaders          = "Access-Control-Allow-Headers"
     HeaderAccessControlAllowMethods          = "Access-Control-Allow-Methods"

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -39,6 +40,21 @@ func rawRequest(t *testing.T, app *fiber.App, target, host string) *fasthttp.Res
 	return resp
 }
 
+// listenUpstream serves upstream on a loopback port until the test ends and
+// returns its address.
+func listenUpstream(t *testing.T, upstream *fiber.App) string {
+	t.Helper()
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		ln.Close() //nolint:errcheck // It is fine to ignore the error here
+	})
+	startServer(upstream, ln)
+
+	return ln.Addr().String()
+}
+
 // echoTarget serves an upstream that answers every request with the target
 // it was handed, exactly as it arrived on the wire.
 func echoTarget(t *testing.T) string {
@@ -48,15 +64,13 @@ func echoTarget(t *testing.T) string {
 	target.Use(func(c fiber.Ctx) error {
 		return c.SendString(c.OriginalURL())
 	})
+	return listenUpstream(t, target)
+}
 
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		ln.Close() //nolint:errcheck // It is fine to ignore the error here
-	})
-	startServer(target, ln)
-
-	return ln.Addr().String()
+// forwardingHandlers returns the helpers that forward the routed path: those
+// of realIPHandlers but Forward, which sends to the address it was given.
+func forwardingHandlers() []realIPHandler {
+	return slices.DeleteFunc(realIPHandlers(), func(h realIPHandler) bool { return h.name == "Forward" })
 }
 
 func readBody(t *testing.T, resp *http.Response) string {
@@ -307,17 +321,12 @@ func Test_Proxy_RejectsEncodedSeparator(t *testing.T) {
 	t.Parallel()
 	addr := echoTarget(t)
 
-	handlers := map[string]func() fiber.Handler{
-		"Balancer":        func() fiber.Handler { return Balancer(Config{Servers: []string{addr}}) },
-		"DomainForward":   func() fiber.Handler { return DomainForward("example.com", "http://"+addr) },
-		"BalancerForward": func() fiber.Handler { return BalancerForward([]string{"http://" + addr}) },
-	}
-	for name, handler := range handlers {
-		t.Run(name, func(t *testing.T) {
+	for _, h := range forwardingHandlers() {
+		t.Run(h.name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
 			app.Use("/admin", forbid)
-			app.Use(handler())
+			app.Use(h.build(addr))
 
 			for _, target := range []string{
 				"/public/..%2Fadmin/secret.txt",
@@ -356,30 +365,99 @@ func Test_Proxy_RejectsEncodedSeparator(t *testing.T) {
 	}
 }
 
+// Test_Proxy_RejectsPathParameters pins that a path parameter, a ";" in any
+// segment, is refused by every forwarding handler by default. A servlet
+// container strips the parameters from every segment before it matches routes,
+// so "/admin;x/secret", "/admin;/secret" and "/;/admin/secret" are
+// "/admin/secret" there, although no middleware on "/admin" ran for them.
+func Test_Proxy_RejectsPathParameters(t *testing.T) {
+	t.Parallel()
+
+	for _, h := range forwardingHandlers() {
+		t.Run(h.name, func(t *testing.T) {
+			t.Parallel()
+			// an upstream that counts what it is handed and echoes it
+			var hits atomic.Int32
+			upstream := fiber.New()
+			upstream.Use(func(c fiber.Ctx) error {
+				hits.Add(1)
+				return c.SendString(c.OriginalURL())
+			})
+			addr := listenUpstream(t, upstream)
+			app := fiber.New()
+			app.Use("/admin", forbid)
+			app.Use(h.build(addr))
+
+			// the guard still answers for the path it is mounted on
+			require.Equal(t, fiber.StatusForbidden, rawRequest(t, app, "/admin/secret", "example.com").StatusCode())
+			resp := rawRequest(t, app, "/public/page?x=1", "example.com")
+			require.Equal(t, fiber.StatusOK, resp.StatusCode())
+			require.Equal(t, "/public/page?x=1", string(resp.Body()))
+			require.Equal(t, int32(1), hits.Load())
+
+			for _, target := range []string{
+				"/admin;x/secret",
+				"/admin;/secret",
+				"/;/admin/secret",
+				"/;x/admin/secret",
+				"/public/;/admin/secret",
+				"/public/..;/admin/secret",
+				"/public/.;x/../..;jsessionid=1/admin/secret",
+				// a parameter on an ordinary segment, whether or not it is the last
+				"/public;x/page",
+				"/public/page;jsessionid=1",
+				"/public/page;jsessionid=1?x=1",
+			} {
+				refused := rawRequest(t, app, target, "example.com")
+				require.Equal(t, fiber.StatusBadRequest, refused.StatusCode(), "%s: %s", target, refused.Body())
+			}
+			require.Equal(t, int32(1), hits.Load(), "the upstream must not see a path parameter")
+
+			// A ";" in the query is no path parameter.
+			resp = rawRequest(t, app, "/public/page?a=1;b=2", "example.com")
+			require.Equal(t, fiber.StatusOK, resp.StatusCode())
+			require.Equal(t, "/public/page?a=1;b=2", string(resp.Body()))
+
+			// With UnescapePath the router takes a ";" for part of the name
+			// it matches, "admin;x", which is no path under "/admin". It is
+			// forwarded as an escape, so the upstream reads that name too.
+			unescaping := fiber.New(fiber.Config{UnescapePath: true})
+			unescaping.Use("/admin", forbid)
+			unescaping.Use(h.build(addr))
+			for target, want := range map[string]string{
+				"/admin;x/secret":   "/admin%3Bx/secret",
+				"/admin%3Bx/secret": "/admin%3Bx/secret",
+				"/admin;/secret":    "/admin%3B/secret",
+				"/;/admin/secret":   "/%3B/admin/secret",
+			} {
+				resp := rawRequest(t, unescaping, target, "example.com")
+				require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
+				require.Equal(t, want, string(resp.Body()), "path read by the upstream for %q", target)
+			}
+		})
+	}
+}
+
 // Test_Proxy_EscapesRawBytes pins that a byte a path may not carry raw (RFC
 // 3986 Section 3.3) reaches the upstream as its escape, as fasthttp's
 // normalizing writer sent it before the proxy forwarded the routed path: an
 // upstream such as Tomcat answers 400 to a raw "|" or "{", and a raw byte of
-// UTF-8 is not a valid request line. The sub-delims, ":" and "@" stay raw.
+// UTF-8 is not a valid request line. The sub-delims, ":" and "@" stay raw, but
+// for the ";" that begins a path parameter (see Test_Proxy_RejectsPathParameters).
 func Test_Proxy_EscapesRawBytes(t *testing.T) {
 	t.Parallel()
 	addr := echoTarget(t)
 
-	handlers := map[string]func() fiber.Handler{
-		"Balancer":        func() fiber.Handler { return Balancer(Config{Servers: []string{addr}}) },
-		"DomainForward":   func() fiber.Handler { return DomainForward("example.com", "http://"+addr) },
-		"BalancerForward": func() fiber.Handler { return BalancerForward([]string{"http://" + addr}) },
-	}
-	for name, handler := range handlers {
-		t.Run(name, func(t *testing.T) {
+	for _, h := range forwardingHandlers() {
+		t.Run(h.name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
-			app.Use(handler())
+			app.Use(h.build(addr))
 			for target, want := range map[string]string{
-				"/a|b{c}d":               "/a%7Cb%7Bc%7Dd",
-				"/q\"^<>`":               "/q%22%5E%3C%3E%60",
-				"/\xc3\xbcber?x=1":       "/%C3%BCber?x=1",
-				"/keep!$&'()*+,;=:@/end": "/keep!$&'()*+,;=:@/end",
+				"/a|b{c}d":              "/a%7Cb%7Bc%7Dd",
+				"/q\"^<>`":              "/q%22%5E%3C%3E%60",
+				"/\xc3\xbcber?x=1":      "/%C3%BCber?x=1",
+				"/keep!$&'()*+,=:@/end": "/keep!$&'()*+,=:@/end",
 			} {
 				resp := rawRequest(t, app, target, "example.com")
 				require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
@@ -425,13 +503,7 @@ func Test_Proxy_Balancer_RejectsAuthorityTarget(t *testing.T) {
 		hits.Add(1)
 		return c.SendString(c.OriginalURL() + "|" + string(c.Request().Header.Host()) + "|" + c.Get(fiber.HeaderAuthorization))
 	})
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		ln.Close() //nolint:errcheck // It is fine to ignore the error here
-	})
-	startServer(target, ln)
-	addr := ln.Addr().String()
+	addr := listenUpstream(t, target)
 
 	for _, unescape := range []bool{false, true} {
 		app := fiber.New(fiber.Config{UnescapePath: unescape})
@@ -484,15 +556,7 @@ func echoIdentity(t *testing.T) string {
 	target.Use(func(c fiber.Ctx) error {
 		return c.SendString(c.OriginalURL() + "|" + string(c.Request().Header.Host()) + "|" + c.Get(fiber.HeaderAuthorization))
 	})
-
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		ln.Close() //nolint:errcheck // It is fine to ignore the error here
-	})
-	startServer(target, ln)
-
-	return ln.Addr().String()
+	return listenUpstream(t, target)
 }
 
 // pinIdentity is a ModifyRequest that sets the Host and Authorization the
@@ -651,60 +715,130 @@ func Test_Proxy_BalancerForward_RejectsForgedEscape(t *testing.T) {
 	requireForgedEscapeRefused(t, rawRequest(t, app, "/static/%%370rivate/secret.txt", "example.com"), "")
 }
 
-// Test_Proxy_Balancer_AllowAmbiguousSlashes pins the opt-out: with
-// SecurityPolicy.AllowAmbiguousSlashes, Balancer forwards an escaped slash and
-// an empty segment as routed, for an upstream that keeps them, and still
-// refuses a forged escape, a backslash and a dot segment carrying parameters.
-func Test_Proxy_Balancer_AllowAmbiguousSlashes(t *testing.T) {
-	t.Parallel()
-	addr := echoTarget(t)
+// allowanceCase is one opt-in of SecurityPolicy and what the forwarding
+// handlers do under it: forwarded maps a target to what the upstream reads,
+// refused lists the targets answered 400 Bad Request. A forged escape is
+// refused, or forwarded as a literal name, under every allowance (see
+// requireForgedEscapeRefused).
+type allowanceCase struct {
+	allow     func(*SecurityPolicy)
+	forwarded map[string]string
+	name      string
+	refused   []string
+}
 
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	policy.AllowAmbiguousSlashes = true
-	app := fiber.New()
-	app.Use(Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy}))
-
-	for _, target := range []string{"/api/projects/group%2Fname", "/bucket/key//with/empty", "/a%2fb"} {
-		resp := rawRequest(t, app, target, "example.com")
-		require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
-		require.Equal(t, strings.ReplaceAll(target, "%2f", "%2F"), string(resp.Body()), target)
-	}
-	for _, target := range []string{"/x/%%370rivate", "/admin\\secret", "/a/..%5Cb", "/a/..;/b"} {
-		resp := rawRequest(t, app, target, "example.com")
-		if target == "/x/%%370rivate" && resp.StatusCode() == fiber.StatusOK {
-			// a router that writes the stray "%" as "%25" forwards the literal name
-			require.Equal(t, "/x/%2570rivate", string(resp.Body()))
-			continue
-		}
-		require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), target)
+// allowanceCases lists the opt-ins and their combination.
+func allowanceCases() []allowanceCase {
+	return []allowanceCase{
+		{
+			// an upstream that keeps "%2F" and "//" as sent, such as one
+			// addressing GitLab-style ids or object keys
+			name:  "AllowAmbiguousSlashes",
+			allow: func(p *SecurityPolicy) { p.AllowAmbiguousSlashes = true },
+			forwarded: map[string]string{
+				"/api/projects/group%2Fname": "/api/projects/group%2Fname",
+				"/bucket/key//with/empty":    "/bucket/key//with/empty",
+				"/a%2fb":                     "/a%2Fb",
+			},
+			// a path parameter still needs AllowPathParameters
+			refused: []string{"/admin\\secret", "/a/..%5Cb", "/a/..;/b", "/cart;jsessionid=abc", "/admin;x/secret"},
+		},
+		{
+			// an upstream that relies on ";jsessionid"
+			name:  "AllowPathParameters",
+			allow: func(p *SecurityPolicy) { p.AllowPathParameters = true },
+			forwarded: map[string]string{
+				"/cart;jsessionid=abc":   "/cart;jsessionid=abc",
+				"/shop;x/cart;y=1?q=1":   "/shop;x/cart;y=1?q=1",
+				"/admin;x/secret":        "/admin;x/secret",
+				"/;jsessionid=abc":       "/;jsessionid=abc",
+				"/app/;jsessionid=abc":   "/app/;jsessionid=abc",
+				"/keep!$&'()*+,;=:@/end": "/keep!$&'()*+,;=:@/end",
+			},
+			// a dot segment with parameters, a backslash and an escaped slash
+			// stay refused, and a segment of parameters alone before another
+			// segment is an empty one
+			refused: []string{
+				"/public/..;/admin", "/public/.;x/admin", "/..;jsessionid=1/a", "/a;x/..;/b",
+				"/admin\\secret", "/a/..%5Cb", "/a/..%2Fb", "/a%2Fb;c",
+				"/;/admin/secret", "/;x/admin", "/public/;/admin", "/a/;x/b",
+			},
+		},
+		{
+			name: "both",
+			allow: func(p *SecurityPolicy) {
+				p.AllowAmbiguousSlashes = true
+				p.AllowPathParameters = true
+			},
+			forwarded: map[string]string{
+				"/;/admin/secret":  "/;/admin/secret",
+				"/public/;x/admin": "/public/;x/admin",
+				"/a%2Fb;c":         "/a%2Fb;c",
+				"/group%2Fname;x":  "/group%2Fname;x",
+			},
+			// a dot segment carrying parameters is refused behind an escaped
+			// slash as behind a raw one
+			refused: []string{"/public/..;/admin", "/;/..;/admin", "/a%2F..;/b", "/%2F..;/b", "/a%2F.;x/b", "/admin\\secret"},
+		},
 	}
 }
 
-// Test_Proxy_Forward_AllowAmbiguousSlashes pins the same opt-out for
-// DomainForward and BalancerForward, which follow the global policy.
-func Test_Proxy_Forward_AllowAmbiguousSlashes(t *testing.T) {
-	// Not parallel: installs a global security policy.
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	policy.AllowAmbiguousSlashes = true
-	withSecurityPolicyForTest(t, policy)
+// check sends every target of the case to app, a Fiber app with a forwarding
+// handler built under the case's policy, and asserts the answers.
+func (tc allowanceCase) check(t *testing.T, app *fiber.App, label string) {
+	t.Helper()
+
+	for target, want := range tc.forwarded {
+		resp := rawRequest(t, app, target, "example.com")
+		require.Equal(t, fiber.StatusOK, resp.StatusCode(), "%s %s", label, target)
+		require.Equal(t, want, string(resp.Body()), "%s %s", label, target)
+	}
+	for _, target := range tc.refused {
+		require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), "%s %s", label, target)
+	}
+	requireForgedEscapeRefused(t, rawRequest(t, app, "/static/%%370rivate/secret.txt", "example.com"), "")
+}
+
+// Test_Proxy_Balancer_Allowances pins each opt-in of SecurityPolicy on
+// Balancer, which reads it from Config.SecurityPolicy.
+func Test_Proxy_Balancer_Allowances(t *testing.T) {
+	t.Parallel()
 	addr := echoTarget(t)
 
-	handlers := map[string]fiber.Handler{
-		"DomainForward":   DomainForward("example.com", "http://"+addr),
-		"BalancerForward": BalancerForward([]string{"http://" + addr}),
+	for _, tc := range allowanceCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			policy := DefaultSecurityPolicy()
+			policy.AllowPrivateIPs = true
+			tc.allow(&policy)
+			app := fiber.New()
+			app.Use(Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy}))
+			tc.check(t, app, "Balancer")
+		})
 	}
-	for name, handler := range handlers {
-		app := fiber.New()
-		app.Use(handler)
-		for _, target := range []string{"/api/projects/group%2Fname", "/bucket/key//with/empty"} {
-			resp := rawRequest(t, app, target, "example.com")
-			require.Equal(t, fiber.StatusOK, resp.StatusCode(), "%s %s", name, target)
-			require.Equal(t, target, string(resp.Body()), "%s %s", name, target)
-		}
-		for _, target := range []string{"/admin\\secret", "/a/..;/b"} {
-			require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), "%s %s", name, target)
-		}
+}
+
+// Test_Proxy_Forward_Allowances pins the same opt-ins on DomainForward and
+// BalancerForward, which read the policy installed with WithSecurityPolicy.
+func Test_Proxy_Forward_Allowances(t *testing.T) {
+	// Not parallel: installs the global policy, which every other test in
+	// the package reads.
+	addr := echoTarget(t)
+
+	for _, tc := range allowanceCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := DefaultSecurityPolicy()
+			policy.AllowPrivateIPs = true
+			tc.allow(&policy)
+			withSecurityPolicyForTest(t, policy)
+			for _, h := range forwardingHandlers() {
+				if h.name == "Balancer" {
+					continue // reads Config.SecurityPolicy, not the installed policy
+				}
+				app := fiber.New()
+				app.Use(h.build(addr))
+				tc.check(t, app, h.name)
+			}
+		})
 	}
 }
