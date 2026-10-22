@@ -1615,10 +1615,6 @@ The favicon middleware now caps cached favicon assets with a configurable `MaxBy
 
 The `ExcludeVars` field has been removed from the EnvVar middleware configuration. When upgrading, remove any references to this field and explicitly list the variables you wish to expose using `ExportVars`.
 
-### ETag
-
-A tag is now the body length and the CRC-32C checksum of the body, such as `"13-1297420392"`. Go computes CRC-32C with a CPU instruction on amd64, arm64, loong64, s390x and ppc64le; on amd64 with SSE4.2, tagging a 10 KiB body takes 0.6 µs instead of 30 µs. Tags differ from those of every earlier release, Fiber v2 and earlier v3 releases alike, and the compress middleware tags compressed bodies the same way. Clients revalidate once after an upgrade, and instances running different versions disagree on tags while a deployment rolls out.
-
 ### Filesystem
 
 The filesystem middleware was removed to reduce confusion with the static middleware.
@@ -3302,10 +3298,6 @@ app.Use(static.New("", static.Config{
 
 The `ExcludeVars` option has been removed. Remove any references to it and use
 `ExportVars` to explicitly list environment variables that should be exposed.
-
-#### ETag
-
-The checksum behind a tag changed, so a tag differs from the one an earlier release produced for the same body, Fiber v2 and earlier v3 releases alike. This includes the tags the compress middleware sets on compressed bodies. A client holding an earlier tag gets one full `200` response and revalidates normally after that. Treat tags as opaque: if anything outside the app stores or compares them (a cache key, a test pinned to a tag), regenerate those values.
 
 #### Healthcheck
 

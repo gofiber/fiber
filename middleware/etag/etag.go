@@ -1,7 +1,6 @@
 package etag
 
 import (
-	"hash/crc32"
 	"math"
 	"slices"
 	"strings"
@@ -17,13 +16,10 @@ import (
 
 var (
 	weakPrefix = []byte("W/")
-	// hash/crc32 computes CRC-32C in hardware on amd64, arm64, loong64, s390x and
-	// ppc64le and with slicing-by-8 elsewhere; any other polynomial goes a byte at a time.
-	crc32c = crc32.MakeTable(crc32.Castagnoli)
+	crc32q     = newCRCTable(0xD5828281)
 )
 
-// Generate returns a strong ETag for body, its length and CRC-32C in decimal.
-// The format can change between releases: do not store tags or compare them across versions.
+// Generate returns a strong ETag for body.
 func Generate(body []byte) []byte {
 	if uint64(len(body)) > uint64(math.MaxUint32) {
 		return nil
@@ -34,12 +30,12 @@ func Generate(body []byte) []byte {
 	b = append(b, '"')
 	b = appendUint(b, uint32(len(body))) // #nosec G115 -- length checked above
 	b = append(b, '-')
-	b = appendUint(b, crc32.Checksum(body, crc32c))
+	b = appendUint(b, crc32q.checksum(body))
 	b = append(b, '"')
 	return slices.Clone(b)
 }
 
-// GenerateWeak returns the weak form of Generate's tag for body.
+// GenerateWeak returns a weak ETag for body.
 func GenerateWeak(body []byte) []byte {
 	tag := Generate(body)
 	if tag == nil {
