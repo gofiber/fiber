@@ -90,6 +90,17 @@ go get -u github.com/gofiber/fiber/v3
 
 This command fetches the Fiber package and adds it to your project's dependencies, allowing you to start building your web applications with Fiber.
 
+## 🚚 Migrate
+
+Coming from Fiber `v2`? The [Fiber CLI](https://github.com/gofiber/cli) can migrate your project to `v3` for you. Install it, then run the `migrate` command in your project's directory:
+
+```bash
+go install github.com/gofiber/cli/fiber@latest
+fiber migrate --to v3
+```
+
+Review the changes and run your tests afterwards. Run `fiber migrate --help` to see all options, and see the [migration guide](https://docs.gofiber.io/whats_new#-migration-guide) for what changed in `v3`.
+
 ## ⚡️ Quickstart
 
 Getting started with Fiber is easy. Here's a basic example to create a simple web server that responds with "Hello, World 👋!" on the root path. This example demonstrates initializing a new Fiber app, setting up a route, and starting the server.
