@@ -564,7 +564,7 @@ Run tests with the following `curl` command:
 curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,hat"
 ```
 
-Header names are matched case-insensitively. A header sent on several lines, such as `-H "products: shoe" -H "products: hat"`, fills a slice with one element per line, with or without `EnableSplittingOnParsers`. With `EnableSplittingOnParsers`, a header value is also split at its commas, and the spaces and tabs around each element are removed, so `products: shoe, hat` gives `["shoe", "hat"]`.
+Header names are matched case-insensitively. A header sent on several lines, such as `-H "products: shoe" -H "products: hat"`, fills a slice with one element per line, with or without `EnableSplittingOnParsers`. With `EnableSplittingOnParsers`, each line's value is also split at its commas, and the spaces and tabs around each element are removed, so `products: shoe, hat` followed by `products: glove` gives `["shoe", "hat", "glove"]`.
 
 ### Query
 
