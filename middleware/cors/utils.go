@@ -44,9 +44,9 @@ func normalizeOrigin(origin string) (bool, string) {
 		return false, ""
 	}
 
-	// Validate there is a host present. The presence of a path, query, or fragment components
+	// Validate there is a host present. The presence of userinfo, a path, query, or fragment components
 	// is checked, but a trailing "/" (indicative of the root) is allowed for the path and will be normalized
-	if parsedOrigin.Host == "" || (parsedOrigin.Path != "" && parsedOrigin.Path != "/") || parsedOrigin.RawQuery != "" || parsedOrigin.Fragment != "" {
+	if parsedOrigin.User != nil || parsedOrigin.Host == "" || (parsedOrigin.Path != "" && parsedOrigin.Path != "/") || parsedOrigin.RawQuery != "" || parsedOrigin.Fragment != "" {
 		return false, ""
 	}
 

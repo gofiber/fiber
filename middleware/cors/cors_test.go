@@ -233,6 +233,7 @@ func Test_CORS_Invalid_Origins_Panic(t *testing.T) {
 		"http://*.com*",
 		"invalid url",
 		"http://origin.com,invalid url",
+		"https://*.example.com@evil.com",
 		// add more invalid origins as needed
 	}
 
