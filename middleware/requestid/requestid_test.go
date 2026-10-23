@@ -140,6 +140,7 @@ func Test_isValidRequestID_Boundaries(t *testing.T) {
 
 		require.False(t, isValidRequestID(string([]byte{0x1f})))
 		require.False(t, isValidRequestID(string([]byte{0x7f})))
+		require.False(t, isValidRequestID("a\tb"))
 	})
 
 	t.Run("rejects empty", func(t *testing.T) {

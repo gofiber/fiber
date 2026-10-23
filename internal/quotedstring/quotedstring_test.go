@@ -49,3 +49,14 @@ func Test_Escape_DetachesFromPooledBuffer(t *testing.T) {
 	require.Equal(t, `C\"D`, second)
 	require.Equal(t, `A\\B`, first)
 }
+
+func Benchmark_Escape(b *testing.B) {
+	for _, input := range []string{"simple", "a-long-clean-header-value", "café", `a-long-value-with-a-quote"`, "value\x00"} {
+		b.Run(input, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				Escape(input)
+			}
+		})
+	}
+}

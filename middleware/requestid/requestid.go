@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/bytepolicy"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
 	"github.com/gofiber/utils/v2/swar"
@@ -69,13 +70,6 @@ func sanitizeRequestID(rid string, generator func() string) string {
 	return utils.SecureToken()
 }
 
-// visibleASCIIMask marks the lanes of w inside [0x20, 0x7E]; bytes >= 0x80
-// are never marked. A word is all visible ASCII iff the mask equals
-// swar.HighBits.
-func visibleASCIIMask(w uint64) uint64 {
-	return swar.MatchRangeMask(w, 0x20, 0x7e)
-}
-
 // isValidRequestID reports whether the request ID contains only visible ASCII
 // characters (0x20–0x7E) and is non-empty.
 func isValidRequestID(rid string) bool {
@@ -88,7 +82,7 @@ func isValidRequestID(rid string) bool {
 	n := len(rid)
 	i := 0
 	for ; i+swar.WordLen <= n; i += swar.WordLen {
-		if visibleASCIIMask(swar.Load8(rid, i)) != swar.HighBits {
+		if bytepolicy.NonVisibleASCIIMask(swar.Load8(rid, i)) != 0 {
 			return false
 		}
 	}
@@ -96,10 +90,10 @@ func isValidRequestID(rid string) bool {
 		return true
 	}
 	if n >= swar.WordLen {
-		return visibleASCIIMask(swar.Load8(rid, n-swar.WordLen)) == swar.HighBits
+		return bytepolicy.NonVisibleASCIIMask(swar.Load8(rid, n-swar.WordLen)) == 0
 	}
 	for ; i < n; i++ {
-		if c := rid[i]; c < 0x20 || c > 0x7e {
+		if bytepolicy.IsNonVisibleASCII(rid[i]) {
 			return false
 		}
 	}

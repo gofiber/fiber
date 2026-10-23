@@ -597,6 +597,40 @@ func Test_BasicAuth_ControlChars(t *testing.T) {
 	}
 }
 
+func Test_BasicAuth_UnicodeControlPolicies(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name        string
+		credentials string
+		status      int
+		authorized  bool
+	}{
+		{"Unicode password", "john:pässwörd", fiber.StatusTeapot, true},
+		{"tab in username", "jo\thn:doe", fiber.StatusBadRequest, false},
+		{"C1 after Unicode", "john:päss\u0085tail", fiber.StatusBadRequest, false},
+		{"DEL after Unicode", "john:päss\x7f", fiber.StatusBadRequest, false},
+		{"C0 after word boundary", "abcdefghé\x00tail:doe", fiber.StatusBadRequest, false},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			called := false
+			app := fiber.New()
+			app.Use(New(Config{
+				Charset:    "UTF-8",
+				Authorizer: func(_, _ string, _ fiber.Ctx) bool { called = true; return true },
+			}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Header.Set(fiber.HeaderAuthorization, "Basic "+base64.StdEncoding.EncodeToString([]byte(test.credentials)))
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, test.status, resp.StatusCode)
+			require.Equal(t, test.authorized, called)
+		})
+	}
+}
+
 func Test_BasicAuth_UnpaddedBase64(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
