@@ -123,5 +123,33 @@ func Test_HeaderBinder_Bind_Splitting_StringMapNotSplit(t *testing.T) {
 	// A map[string][]string holds every piece.
 	sliceMap := make(map[string][]string)
 	require.NoError(t, b.Bind(req, &sliceMap))
-	require.Equal(t, []string{"Mozilla/5.0 (X11; Linux) AppleWebKit/537.36 (KHTML", " like Gecko)"}, sliceMap["User-Agent"])
+	require.Equal(t, []string{"Mozilla/5.0 (X11; Linux) AppleWebKit/537.36 (KHTML", "like Gecko)"}, sliceMap["User-Agent"])
+}
+
+func Test_HeaderBinder_Bind_Splitting_TrimsListWhitespace(t *testing.T) {
+	t.Parallel()
+
+	b := &HeaderBinding{
+		EnableSplitting: true,
+	}
+
+	type User struct {
+		Roles []string `header:"X-Roles"`
+		IDs   []int    `header:"X-Ids"`
+	}
+
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
+	// Clients and proxies join repeated lines with ", " (RFC 9110 Section 5.3),
+	// and the space around a list element is not part of it.
+	req.Header.Set("X-Roles", "admin, editor")
+	req.Header.Set("X-Ids", "1, 2,\t3")
+
+	var user User
+	require.NoError(t, b.Bind(req, &user))
+	require.Equal(t, []string{"admin", "editor"}, user.Roles)
+	require.Equal(t, []int{1, 2, 3}, user.IDs)
 }
