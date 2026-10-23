@@ -25,6 +25,8 @@ func Test_normalizeOrigin(t *testing.T) {
 		{origin: "http://example.com/path", expectedValid: false, expectedOrigin: ""},                                   // Path should not be accepted.
 		{origin: "http://example.com?query=123", expectedValid: false, expectedOrigin: ""},                              // Query should not be accepted.
 		{origin: "http://example.com#fragment", expectedValid: false, expectedOrigin: ""},                               // Fragment should not be accepted.
+		{origin: "http://user@example.com", expectedValid: false, expectedOrigin: ""},                                   // Userinfo should not be accepted.
+		{origin: "http://.example.com@evil.com", expectedValid: false, expectedOrigin: ""},                              // Userinfo must not move the host of a wildcard pattern.
 		{origin: "http://localhost", expectedValid: true, expectedOrigin: "http://localhost"},                           // Localhost should be accepted.
 		{origin: "http://127.0.0.1", expectedValid: true, expectedOrigin: "http://127.0.0.1"},                           // IPv4 address should be accepted.
 		{origin: "http://[::1]", expectedValid: true, expectedOrigin: "http://[::1]"},                                   // IPv6 address should be accepted.
@@ -115,11 +117,11 @@ func Test_normalizeDomain(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_CORS_SubdomainMatch -benchmem -count=4
 func Benchmark_CORS_SubdomainMatch(b *testing.B) {
 	s := subdomain{
-		prefix: "www",
+		prefix: "https://",
 		suffix: ".example.com",
 	}
 
-	o := "www.example.com"
+	o := "https://www.example.com"
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -130,6 +132,7 @@ func Benchmark_CORS_SubdomainMatch(b *testing.B) {
 }
 
 func Test_CORS_SubdomainMatch(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		sub      subdomain
@@ -185,10 +188,42 @@ func Test_CORS_SubdomainMatch(t *testing.T) {
 			origin:   "https://api.example.com",
 			expected: false,
 		},
+		{
+			name:     "no match without dot boundary",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://evil-example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with empty subdomain label",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with empty label before suffix",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://a..example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with empty inner label",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://a..b.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with leading empty label",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://.a.example.com",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := tt.sub.match(tt.origin)
 			utils.AssertEqual(t, tt.expected, got, "subdomain.match()")
 		})

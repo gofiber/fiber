@@ -233,6 +233,7 @@ func Test_CORS_Invalid_Origins_Panic(t *testing.T) {
 		"http://*.com*",
 		"invalid url",
 		"http://origin.com,invalid url",
+		"https://*.example.com@evil.com",
 		// add more invalid origins as needed
 	}
 
@@ -416,6 +417,26 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 			pattern:           "http://domain-1.com,http://example.com",
 			reqOrigin:         "http://domain-1.com",
 			shouldAllowOrigin: true,
+		},
+		{
+			pattern:           "http://domain-1.com, http://*.example.com",
+			reqOrigin:         "http://aaa.example.com",
+			shouldAllowOrigin: true,
+		},
+		{
+			pattern:           "http://domain-1.com,  http://*.example.com",
+			reqOrigin:         "http://aaa.example.com",
+			shouldAllowOrigin: true,
+		},
+		{
+			pattern:           "http://domain-1.com, http://*.example.com",
+			reqOrigin:         "http://.evil-example.com",
+			shouldAllowOrigin: false,
+		},
+		{
+			pattern:           "http://*.example.com",
+			reqOrigin:         "http://.example.com",
+			shouldAllowOrigin: false,
 		},
 	}
 

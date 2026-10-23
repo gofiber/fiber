@@ -44,9 +44,9 @@ func normalizeOrigin(origin string) (bool, string) {
 		return false, ""
 	}
 
-	// Validate there is a host present. The presence of a path, query, or fragment components
+	// Validate there is a host present. The presence of userinfo, a path, query, or fragment components
 	// is checked, but a trailing "/" (indicative of the root) is allowed for the path and will be normalized
-	if parsedOrigin.Host == "" || (parsedOrigin.Path != "" && parsedOrigin.Path != "/") || parsedOrigin.RawQuery != "" || parsedOrigin.Fragment != "" {
+	if parsedOrigin.User != nil || parsedOrigin.Host == "" || (parsedOrigin.Path != "" && parsedOrigin.Path != "/") || parsedOrigin.RawQuery != "" || parsedOrigin.Fragment != "" {
 		return false, ""
 	}
 
@@ -62,5 +62,10 @@ type subdomain struct {
 }
 
 func (s subdomain) match(o string) bool {
-	return len(o) >= len(s.prefix)+len(s.suffix) && strings.HasPrefix(o, s.prefix) && strings.HasSuffix(o, s.suffix)
+	if len(o) <= len(s.prefix)+len(s.suffix) || !strings.HasPrefix(o, s.prefix) || !strings.HasSuffix(o, s.suffix) {
+		return false
+	}
+	// suffix starts with the dot, so reject empty labels like "https://.example.com" or "https://a..example.com".
+	sub := o[len(s.prefix) : len(o)-len(s.suffix)]
+	return sub[0] != '.' && sub[len(sub)-1] != '.' && !strings.Contains(sub, "..")
 }
