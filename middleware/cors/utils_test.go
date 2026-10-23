@@ -115,11 +115,11 @@ func Test_normalizeDomain(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_CORS_SubdomainMatch -benchmem -count=4
 func Benchmark_CORS_SubdomainMatch(b *testing.B) {
 	s := subdomain{
-		prefix: "www",
+		prefix: "https://",
 		suffix: ".example.com",
 	}
 
-	o := "www.example.com"
+	o := "https://www.example.com"
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -130,6 +130,7 @@ func Benchmark_CORS_SubdomainMatch(b *testing.B) {
 }
 
 func Test_CORS_SubdomainMatch(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		sub      subdomain
@@ -218,7 +219,9 @@ func Test_CORS_SubdomainMatch(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := tt.sub.match(tt.origin)
 			utils.AssertEqual(t, tt.expected, got, "subdomain.match()")
 		})
