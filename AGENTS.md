@@ -6,7 +6,7 @@
 
 ### General coding practices
 
-- When adding Go tests, always invoke `t.Parallel()` at the start of each test and subtest to maximize concurrency. The one exception is a test that calls `testing.AllocsPerRun`, which panics with `AllocsPerRun called during parallel test`: leave those sequential and say why in a comment, as `Test_Chain_NoAllocations` and `Test_Combined_DoesNotAllocate` do.
+- When adding Go tests, always invoke `t.Parallel()` at the start of each test and subtest to maximize concurrency. The exceptions are a test that calls `testing.AllocsPerRun`, which panics with `AllocsPerRun called during parallel test`, and one that installs package-level state every other test reads, such as the proxy policy `withSecurityPolicyForTest` installs: leave those sequential and say why in a comment, as `Test_Chain_NoAllocations`, `Test_Combined_DoesNotAllocate` and `Test_Security_Do_BlocksDNSRebinding` do.
 - Prefer `github.com/gofiber/utils/v2` helpers (for example, `utils.Trim`) when performing common operations such as string manipulation, whenever it is practical and appropriate for the surrounding code.
 - Keep all protocol behavior RFC-compliant (e.g., HTTP/1.1 requirements) and document any intentional deviations.
 - Protect hot paths from regressions: profile changes.

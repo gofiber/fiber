@@ -14,12 +14,17 @@ import (
 
 // segmentsAsRouted reports whether a forwarding handler may hand target on
 // under policy: wiretarget.SegmentsAsRouted, with escaped slashes and empty
-// segments let through when policy.AllowAmbiguousSlashes is set.
+// segments let through when policy.AllowAmbiguousSlashes is set and path
+// parameters when policy.AllowPathParameters is.
 func segmentsAsRouted(target string, policy SecurityPolicy) bool {
+	var allow wiretarget.Allowance
 	if policy.AllowAmbiguousSlashes {
-		return wiretarget.SegmentsAsRoutedSlashesAside(target)
+		allow |= wiretarget.AllowSlashes
 	}
-	return wiretarget.SegmentsAsRouted(target)
+	if policy.AllowPathParameters {
+		allow |= wiretarget.AllowParameters
+	}
+	return wiretarget.SegmentsAsRouted(target, allow)
 }
 
 // forwardWithRealIP is what Forward, DomainForward and BalancerForward share:
@@ -211,7 +216,8 @@ func doActionWithPolicy(
 }
 
 // forwardRouted forwards the routed path to base for DomainForward and BalancerForward. A path
-// an upstream could read as another (wiretarget.SegmentsAsRouted) is a 400 unless AllowAmbiguousSlashes.
+// an upstream could read as another (wiretarget.SegmentsAsRouted) is a 400 unless the policy
+// allows that spelling (AllowAmbiguousSlashes, AllowPathParameters).
 func forwardRouted(c fiber.Ctx, base *url.URL, clients ...*fasthttp.Client) error {
 	target := wiretarget.Routed(c)
 	active := currentSecurityPolicy()

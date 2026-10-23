@@ -96,11 +96,6 @@ func lookupCachedHeader(headers []cachedHeader, name string) ([]byte, bool) {
 	return nil, false
 }
 
-// setCookie2 is the obsolete RFC 2965 spelling of Set-Cookie. fasthttp keeps it
-// as an ordinary field rather than in its cookie store, so it has to be looked
-// up separately.
-const setCookie2 = "Set-Cookie2"
-
 // cachedHeadersSetCookie reports whether a stored entry carries a cookie. Only
 // an entry written before Set-Cookie joined ignoreHeaders can, so this asks
 // about a persisted store an older version filled, not about anything this one
@@ -109,7 +104,7 @@ func cachedHeadersSetCookie(headers []cachedHeader) bool {
 	if _, ok := lookupCachedHeader(headers, fiber.HeaderSetCookie); ok {
 		return true
 	}
-	_, ok := lookupCachedHeader(headers, setCookie2)
+	_, ok := lookupCachedHeader(headers, fiber.HeaderSetCookie2)
 	return ok
 }
 
@@ -120,9 +115,10 @@ func responseSetsCookie(h *fasthttp.ResponseHeader, normalized bool) bool { //no
 		return true
 	}
 	// Not PeekAll(Set-Cookie): fasthttp answers that from its cookie store and
-	// returns one empty entry when there is none. Set-Cookie2 has no store, so it
-	// is found only under the spelling the handler wrote.
-	for _, v := range fieldname.Lines(h, setCookie2, normalized) {
+	// returns one empty entry when there is none. The obsolete RFC 2965
+	// Set-Cookie2 is an ordinary field to fasthttp, with no store, so it is
+	// found only under the spelling the handler wrote.
+	for _, v := range fieldname.Lines(h, fiber.HeaderSetCookie2, normalized) {
 		if len(v) > 0 {
 			return true
 		}

@@ -110,10 +110,27 @@ type SecurityPolicy struct {
 	// merges "//" before it matches routes reads such a path as another
 	// one, under a prefix whose middleware the router never ran for it;
 	// enable this only when every upstream keeps them, through a client
-	// that does not normalize paths. A forged escape, a backslash and a
+	// that does not normalize paths. A path parameter needs
+	// AllowPathParameters as well, and a forged escape, a backslash and a
 	// dot segment carrying parameters are refused regardless.
 	// Default: false.
 	AllowAmbiguousSlashes bool
+
+	// AllowPathParameters lets Balancer, DomainForward and BalancerForward
+	// forward a routed path with a path parameter, a ";" and what follows it
+	// as in "/cart;jsessionid=x", which they otherwise answer with 400 Bad
+	// Request. An upstream that relies on ";jsessionid" needs it. Servlet
+	// containers such as Tomcat and Jetty strip the parameters from every
+	// segment before they match routes, so they read "/admin;x/secret" as
+	// "/admin/secret", under a prefix whose middleware the router never ran
+	// for it; enable this only when every upstream behind the handler keeps
+	// the ";" as part of the name or checks access itself. A dot segment
+	// carrying parameters, behind a raw slash or an escaped one, a backslash
+	// and a forged escape are refused regardless, and so is a segment made of
+	// parameters alone, such as "/;x/admin", unless AllowAmbiguousSlashes is
+	// set as well. No effect under UnescapePath, which forwards a ";" as "%3B".
+	// Default: false.
+	AllowPathParameters bool
 }
 
 // DefaultSecurityPolicy returns the secure-by-default proxy security
@@ -132,6 +149,7 @@ func DefaultSecurityPolicy() SecurityPolicy {
 		AllowHTTPSDowngrade:   false,
 		KeepHopByHopHeaders:   false,
 		AllowAmbiguousSlashes: false,
+		AllowPathParameters:   false,
 	}
 }
 

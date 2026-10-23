@@ -13,6 +13,18 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Allowance names what SegmentsAsRouted lets through that it refuses
+// otherwise, for a caller that was told the reader keeps it as sent.
+type Allowance uint8
+
+const (
+	// AllowSlashes lets an escaped slash and an empty segment through.
+	AllowSlashes Allowance = 1 << iota
+	// AllowParameters lets a path parameter through on a segment that has a
+	// name other than "." and "..".
+	AllowParameters
+)
+
 // Routed returns the request target to hand on for c: the path the router
 // matched, spelled as a request line has to carry it, then the query.
 //
@@ -96,38 +108,39 @@ func appendQuery(dst, query []byte) []byte {
 // this is false, as the net/http handler adapters do.
 //
 // It is false as well for a backslash, raw or escaped as "%5C", which WHATWG
-// URL parsers and IIS read as a separator, and for a "." or ".." segment that
-// carries path parameters, such as "..;x", which servlet containers such as
-// Tomcat and Jetty resolve as a dot segment once they strip the parameters:
-// "/public/..;/admin" is "/admin" there.
-func SegmentsAsRouted(target string) bool {
-	return segmentsAsRouted(target, false)
-}
-
-// SegmentsAsRoutedSlashesAside is SegmentsAsRouted without its objection to
-// an escaped slash and an empty segment, for a caller that was told the
-// reader keeps those as sent. A backslash, a forged escape and a dot segment
-// carrying parameters are still refused.
-func SegmentsAsRoutedSlashesAside(target string) bool {
-	return segmentsAsRouted(target, true)
-}
-
-// segmentsAsRouted scans target's path once for what SegmentsAsRouted
-// refuses, leaving out escaped slashes and empty segments when slashes is
-// set.
-func segmentsAsRouted(target string, slashes bool) bool { //nolint:revive // flag-parameter: the two exported wrappers name the cases
+// URL parsers and IIS read as a separator, and for a path parameter, a ";" in
+// any segment. Servlet containers such as Tomcat and Jetty strip the
+// parameters from every segment before they match routes, so "/admin;x/secret"
+// and "/admin;/secret" are "/admin/secret" there, "/;/admin/secret" is
+// "//admin/secret" and so "/admin/secret" once the empty segment is merged,
+// and "/public/..;/admin" is "/admin".
+//
+// allow lets some of this through. A "." or ".." segment that carries
+// parameters, such as "..;x", is refused whatever it says, behind a raw slash
+// or, with AllowSlashes, behind an escaped one: a reader that strips the
+// parameters resolves it as a dot segment, and none has a use for it as a
+// name. A segment made of parameters alone, such as ";x", is an empty segment
+// once they are stripped, and is refused as one unless AllowSlashes is set
+// too; as the last segment it spells the trailing slash and passes.
+func SegmentsAsRouted(target string, allow Allowance) bool {
 	path := pathOf(target)
+	slashes := allow&AllowSlashes != 0
 	segment := 0
 	for i := 0; i < len(path); i++ {
 		switch path[i] {
 		case '/':
-			if !slashes && i+1 < len(path) && path[i+1] == '/' {
+			// An empty segment follows, or ends here: one that began with ";"
+			// is empty once its parameters are stripped.
+			if !slashes && ((i+1 < len(path) && path[i+1] == '/') || (segment < i && path[segment] == ';')) {
 				return false
 			}
 			segment = i + 1
 		case '\\':
 			return false
 		case ';':
+			if allow&AllowParameters == 0 {
+				return false
+			}
 			if name := path[segment:i]; name == "." || name == ".." {
 				return false
 			}
@@ -138,6 +151,11 @@ func segmentsAsRouted(target string, slashes bool) bool { //nolint:revive // fla
 					return false
 				}
 				i += 2
+				if v == '/' {
+					// Let through for a reader that keeps it as sent, but a
+					// dot segment behind it is judged as one behind a raw slash.
+					segment = i + 1
+				}
 			}
 		}
 	}

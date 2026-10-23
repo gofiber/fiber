@@ -10,9 +10,11 @@ type stubLock struct {
 	lockErr   error
 	unlockErr error
 	afterLock func()
+	locked    []string // the keys Lock was called with
 }
 
-func (s *stubLock) Lock(string) error {
+func (s *stubLock) Lock(key string) error {
+	s.locked = append(s.locked, key)
 	if s.afterLock != nil {
 		s.afterLock()
 	}

@@ -275,10 +275,15 @@ func HTTPHandlerWithContext(h http.Handler) fiber.Handler {
 // the raw one its own way: "/public/..%2Fadmin" decodes into a URL.Path that
 // http.FileServer cleans to "/admin", although no middleware mounted on
 // "/admin" has run. A routed path whose segments would not survive that
-// reading, one with an empty segment or an escaped slash, is not handed on.
+// reading, one with an empty segment or an escaped slash, is not handed on,
+// nor is one that a handler passing the request on, such as
+// httputil.ReverseProxy, would hand an upstream that reads it as another path:
+// a backslash, or a segment a servlet container strips to a dot or an empty
+// segment ("..;", "/;x/admin"). A path parameter on a named segment is handed
+// on, since net/http reads it as part of the name.
 func serveRouted(c fiber.Ctx, handler fasthttp.RequestHandler) error {
 	target := wiretarget.Routed(c)
-	if !wiretarget.SegmentsAsRouted(target) {
+	if !wiretarget.SegmentsAsRouted(target, wiretarget.AllowParameters) {
 		return fiber.ErrNotFound
 	}
 	if target == c.OriginalURL() {
