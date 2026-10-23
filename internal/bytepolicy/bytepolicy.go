@@ -24,6 +24,7 @@ func Index(s string, policy Policy) int {
 			case HeaderValue:
 				invalid &^= swar.MatchByteMask(w, '\t')
 			case QuotedString:
+				// Mask bits sit on each lane's bit 7, so &^w clears the lanes of bytes >= 0x80, which pass raw.
 				invalid = invalid&^w | swar.MatchByteMask(w, '\\') | swar.MatchByteMask(w, '"')
 			}
 			if invalid != 0 {
