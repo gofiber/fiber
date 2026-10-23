@@ -514,6 +514,116 @@ func Test_Bind_Query_Map(t *testing.T) {
 	require.ErrorIs(t, c.Bind().Query(&em), binder.ErrMapNotConvertible)
 }
 
+// go test -run Test_Bind_Query_MapField -v
+func Test_Bind_Query_MapField(t *testing.T) {
+	t.Parallel()
+
+	type Filter struct {
+		Attributes map[string]string   `query:"attributes"`
+		Tags       map[string][]string `query:"tags"`
+		Limits     map[string]int      `query:"limits"`
+		Unused     map[string]string   `query:"unused"`
+		Name       string              `query:"name"`
+	}
+
+	t.Run("brackets and dots", func(t *testing.T) {
+		t.Parallel()
+		c := New().AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().URI().SetQueryString("name=shoes&attributes[color]=red&attributes.size=m" +
+			"&tags[sale]=yes&tags[sale]=new&limits[max]=5&attributes[color]=blue")
+
+		f := new(Filter)
+		require.NoError(t, c.Bind().Query(f))
+		require.Equal(t, "shoes", f.Name)
+		// the last value wins for a single-value map
+		require.Equal(t, map[string]string{"color": "blue", "size": "m"}, f.Attributes)
+		require.Equal(t, map[string][]string{"sale": {"yes", "new"}}, f.Tags)
+		require.Equal(t, map[string]int{"max": 5}, f.Limits)
+		require.Nil(t, f.Unused)
+	})
+
+	t.Run("comma splitting", func(t *testing.T) {
+		t.Parallel()
+		c := New(Config{EnableSplittingOnParsers: true}).AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().URI().SetQueryString("tags[sale]=yes,new&tags[a][b]=x,y&attributes[color]=red,blue")
+
+		f := new(Filter)
+		require.NoError(t, c.Bind().Query(f))
+		require.Equal(t, map[string][]string{"sale": {"yes", "new"}, "a.b": {"x", "y"}}, f.Tags)
+		// only slice values are split
+		require.Equal(t, map[string]string{"color": "red,blue"}, f.Attributes)
+	})
+
+	t.Run("conversion error", func(t *testing.T) {
+		t.Parallel()
+		c := New().AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().URI().SetQueryString("limits[max]=many")
+
+		err := c.Bind().Query(new(Filter))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), `"limits.max"`)
+	})
+}
+
+// go test -run Test_Bind_Body_MapField -v
+func Test_Bind_Body_MapField(t *testing.T) {
+	t.Parallel()
+
+	type Filter struct {
+		Attributes map[string]string   `form:"attributes"`
+		Tags       map[string][]string `form:"tags"`
+		Limits     map[string]int      `form:"limits"`
+	}
+	want := Filter{
+		Attributes: map[string]string{"color": "red", "size": "m"},
+		Tags:       map[string][]string{"sale": {"yes", "new"}},
+		Limits:     map[string]int{"max": 5},
+	}
+	fields := [][2]string{
+		{"attributes[color]", "red"},
+		{"attributes.size", "m"},
+		{"tags[sale]", "yes"},
+		{"tags[sale]", "new"},
+		{"limits[max]", "5"},
+	}
+
+	t.Run("urlencoded", func(t *testing.T) {
+		t.Parallel()
+		c := New().AcquireCtx(&fasthttp.RequestCtx{})
+		pairs := make([]string, 0, len(fields))
+		for _, field := range fields {
+			pairs = append(pairs, field[0]+"="+field[1])
+		}
+		c.Request().Header.SetContentType(MIMEApplicationForm)
+		c.Request().SetBodyString(strings.Join(pairs, "&"))
+
+		f := new(Filter)
+		require.NoError(t, c.Bind().Body(f))
+		require.Equal(t, want, *f)
+
+		f = new(Filter)
+		require.NoError(t, c.Bind().Form(f))
+		require.Equal(t, want, *f)
+	})
+
+	t.Run("multipart", func(t *testing.T) {
+		t.Parallel()
+		c := New().AcquireCtx(&fasthttp.RequestCtx{})
+		buf := &bytes.Buffer{}
+		writer := multipart.NewWriter(buf)
+		for _, field := range fields {
+			require.NoError(t, writer.WriteField(field[0], field[1]))
+		}
+		require.NoError(t, writer.Close())
+		c.Request().Header.SetContentType(writer.FormDataContentType())
+		c.Request().SetBody(buf.Bytes())
+
+		f := new(Filter)
+		require.NoError(t, c.Bind().Body(f))
+		require.Equal(t, want, *f)
+	})
+}
+
 // go test -run Test_Bind_Query_WithSetParserDecoder -v
 func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 	type NonRFCTime time.Time
