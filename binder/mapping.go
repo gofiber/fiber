@@ -815,8 +815,8 @@ func (d *bindData) split(aliasTag string, out any, key, value string, enableSpli
 	if enableSplitting && strings.IndexByte(value, ',') >= 0 && equalFieldType(out, reflect.Slice, key, aliasTag) {
 		// A header value is an RFC 9110 list: its elements carry no surrounding OWS.
 		if aliasTag == bindingHeader || aliasTag == bindingRespHeader {
-			for v := range headerlist.All(value) {
-				d.add(key, v)
+			for v := range strings.SplitSeq(value, ",") {
+				d.add(key, headerlist.TrimOWS(v))
 			}
 			return
 		}

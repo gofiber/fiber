@@ -135,6 +135,7 @@ func Test_HeaderBinder_Bind_Splitting_TrimsListWhitespace(t *testing.T) {
 
 	type User struct {
 		Roles []string `header:"X-Roles"`
+		Tags  []string `header:"X-Tags"`
 		IDs   []int    `header:"X-Ids"`
 	}
 
@@ -147,9 +148,40 @@ func Test_HeaderBinder_Bind_Splitting_TrimsListWhitespace(t *testing.T) {
 	// and the space around a list element is not part of it.
 	req.Header.Set("X-Roles", "admin, editor")
 	req.Header.Set("X-Ids", "1, 2,\t3")
+	// Only SP and HTAB are OWS: another control byte stays in the element.
+	req.Header.Set("X-Tags", "a,\vb")
 
 	var user User
 	require.NoError(t, b.Bind(req, &user))
 	require.Equal(t, []string{"admin", "editor"}, user.Roles)
+	require.Equal(t, []string{"a", "\vb"}, user.Tags)
 	require.Equal(t, []int{1, 2, 3}, user.IDs)
+}
+
+func Test_HeaderBinder_Bind_Splitting_KeepsEmptyListElements(t *testing.T) {
+	t.Parallel()
+
+	b := &HeaderBinding{
+		EnableSplitting: true,
+	}
+
+	type User struct {
+		Roles []string `header:"X-Roles"`
+	}
+
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
+	// A present header replaces what was bound, even when its elements are all empty.
+	req.Header.Set("X-Roles", " , ")
+
+	user := User{Roles: []string{"stale"}}
+	require.NoError(t, b.Bind(req, &user))
+	require.Equal(t, []string{"", ""}, user.Roles)
+
+	roles := map[string][]string{"X-Roles": {"stale"}}
+	require.NoError(t, b.Bind(req, &roles))
+	require.Equal(t, []string{"", ""}, roles["X-Roles"])
 }
