@@ -13,6 +13,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2/swar"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -143,14 +144,45 @@ func registerLogContextTags() {
 }
 
 // containsCTL reports whether s contains a Unicode control character
-// (C0, DEL, or C1). The shared byte scan finds ASCII controls or the first
-// non-ASCII byte, where rune decoding starts to check the C1 range.
+// (C0, DEL, or C1). ASCII spans are scanned eight bytes at a time; the
+// first word holding a byte >= 0x80 defers the rest to the rune loop,
+// which handles the multi-byte C1 range. The handoff happens only where
+// every preceding byte is ASCII, i.e. on a rune boundary.
 func containsCTL(s string) bool {
-	i := bytepolicy.Index(s, bytepolicy.VisibleASCII)
-	if i == -1 {
+	n := len(s)
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		w := swar.Load8(s, i)
+		if w&swar.HighBits != 0 {
+			return containsCTLUnicode(s[i:])
+		}
+		// The word is ASCII here, so the mask can only mark C0 and DEL.
+		if bytepolicy.NonVisibleASCIIMask(w) != 0 {
+			return true
+		}
+	}
+	if i == n {
 		return false
 	}
-	return s[i] < 0x80 || containsCTLUnicode(s[i:])
+	if n >= swar.WordLen {
+		// One overlapping word: the re-checked bytes are known ASCII and
+		// clean, so any hit lands in the new bytes — still a rune boundary.
+		w := swar.Load8(s, n-swar.WordLen)
+		if w&swar.HighBits != 0 {
+			return containsCTLUnicode(s[n-swar.WordLen:])
+		}
+		return bytepolicy.NonVisibleASCIIMask(w) != 0
+	}
+	for ; i < n; i++ {
+		c := s[i]
+		if c >= 0x80 {
+			return containsCTLUnicode(s[i:])
+		}
+		if bytepolicy.IsNonVisibleASCII(c) {
+			return true
+		}
+	}
+	return false
 }
 
 // containsCTLUnicode is the rune-decoding slow path of containsCTL.
@@ -167,7 +199,27 @@ func containsCTLUnicode(s string) bool {
 // on this having rejected every byte unicode.IsSpace could otherwise match
 // (>= 0x80 and C0 except HTAB); keep the two in sync.
 func containsInvalidHeaderChars(s string) bool {
-	return bytepolicy.Index(s, bytepolicy.HeaderValue) != -1
+	n := len(s)
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		if bytepolicy.NonVisibleASCIIOrTabMask(swar.Load8(s, i)) != 0 {
+			return true
+		}
+	}
+	if i == n {
+		return false
+	}
+	if n >= swar.WordLen {
+		// Finish with one overlapping word; re-checking bytes that already
+		// passed cannot change the outcome.
+		return bytepolicy.NonVisibleASCIIOrTabMask(swar.Load8(s, n-swar.WordLen)) != 0
+	}
+	for ; i < n; i++ {
+		if bytepolicy.IsNonVisibleASCIIOrTab(s[i]) {
+			return true
+		}
+	}
+	return false
 }
 
 // UsernameFromContext returns the username found in the context.

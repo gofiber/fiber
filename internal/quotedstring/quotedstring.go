@@ -3,8 +3,37 @@ package quotedstring
 
 import (
 	"github.com/gofiber/fiber/v3/internal/bytepolicy"
+	"github.com/gofiber/utils/v2/swar"
 	"github.com/valyala/bytebufferpool"
 )
+
+// indexEscape returns the index of the first byte Escape must encode, or -1
+// when raw needs no escaping. It scans eight bytes at a time, finishing inputs
+// of 8+ bytes with one overlapping word; shorter inputs are checked byte-wise.
+func indexEscape(raw string) int {
+	n := len(raw)
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		if m := bytepolicy.QuotedStringEscapeMask(swar.Load8(raw, i)); m != 0 {
+			return i + swar.FirstLane(m)
+		}
+	}
+	if i == n {
+		return -1
+	}
+	if n >= swar.WordLen {
+		if m := bytepolicy.QuotedStringEscapeMask(swar.Load8(raw, n-swar.WordLen)); m != 0 {
+			return n - swar.WordLen + swar.FirstLane(m)
+		}
+		return -1
+	}
+	for ; i < n; i++ {
+		if bytepolicy.IsQuotedStringEscape(raw[i]) {
+			return i
+		}
+	}
+	return -1
+}
 
 // Escape encodes raw for placement inside an RFC 9110 quoted-string. Quotes
 // and backslashes use quoted-pair escaping, LF and CR use their conventional
@@ -14,7 +43,7 @@ import (
 // Escape is a serializer, not input validation; callers apply their own
 // rejection or sanitization policy before calling it.
 func Escape(raw string) string {
-	end := bytepolicy.Index(raw, bytepolicy.QuotedString)
+	end := indexEscape(raw)
 	if end == -1 {
 		return raw
 	}
