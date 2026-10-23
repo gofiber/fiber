@@ -605,7 +605,8 @@ func structKeyKind(cache *fieldCache, t reflect.Type, kind reflect.Kind, key, al
 			}
 			cur = unwrapType(cur.Elem())
 		case reflect.Map:
-			cur = unwrapType(cur.Elem())
+			// The decoder reads the rest of the key as one map key.
+			return unwrapType(cur.Elem()).Kind() == kind
 		default:
 			// A scalar has nothing below it.
 			return false

@@ -545,11 +545,11 @@ func Test_Bind_Query_MapField(t *testing.T) {
 	t.Run("comma splitting", func(t *testing.T) {
 		t.Parallel()
 		c := New(Config{EnableSplittingOnParsers: true}).AcquireCtx(&fasthttp.RequestCtx{})
-		c.Request().URI().SetQueryString("tags[sale]=yes,new&attributes[color]=red,blue")
+		c.Request().URI().SetQueryString("tags[sale]=yes,new&tags[a][b]=x,y&attributes[color]=red,blue")
 
 		f := new(Filter)
 		require.NoError(t, c.Bind().Query(f))
-		require.Equal(t, map[string][]string{"sale": {"yes", "new"}}, f.Tags)
+		require.Equal(t, map[string][]string{"sale": {"yes", "new"}, "a.b": {"x", "y"}}, f.Tags)
 		// only slice values are split
 		require.Equal(t, map[string]string{"color": "red,blue"}, f.Attributes)
 	})
