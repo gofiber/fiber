@@ -123,8 +123,10 @@ func New(config ...Config) fiber.Handler {
 	if cfg.AllowOrigins != "" && cfg.AllowOrigins != "*" {
 		origins := strings.Split(cfg.AllowOrigins, ",")
 		for _, origin := range origins {
+			// Trim first: i also slices normalizedOrigin, so it must not count leading spaces.
+			origin = strings.TrimSpace(origin)
 			if i := strings.Index(origin, "://*."); i != -1 {
-				trimmedOrigin := strings.TrimSpace(origin[:i+3] + origin[i+4:])
+				trimmedOrigin := origin[:i+3] + origin[i+4:]
 				isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 				if !isValid {
 					panic("[CORS] Invalid origin format in configuration: " + trimmedOrigin)
@@ -132,10 +134,9 @@ func New(config ...Config) fiber.Handler {
 				sd := subdomain{prefix: normalizedOrigin[:i+3], suffix: normalizedOrigin[i+3:]}
 				allowSOrigins = append(allowSOrigins, sd)
 			} else {
-				trimmedOrigin := strings.TrimSpace(origin)
-				isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
+				isValid, normalizedOrigin := normalizeOrigin(origin)
 				if !isValid {
-					panic("[CORS] Invalid origin format in configuration: " + trimmedOrigin)
+					panic("[CORS] Invalid origin format in configuration: " + origin)
 				}
 				allowOrigins = append(allowOrigins, normalizedOrigin)
 			}

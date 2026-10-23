@@ -185,6 +185,36 @@ func Test_CORS_SubdomainMatch(t *testing.T) {
 			origin:   "https://api.example.com",
 			expected: false,
 		},
+		{
+			name:     "no match without dot boundary",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://evil-example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with empty subdomain label",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with empty label before suffix",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://a..example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with empty inner label",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://a..b.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with leading empty label",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://.a.example.com",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {

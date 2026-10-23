@@ -62,5 +62,10 @@ type subdomain struct {
 }
 
 func (s subdomain) match(o string) bool {
-	return len(o) >= len(s.prefix)+len(s.suffix) && strings.HasPrefix(o, s.prefix) && strings.HasSuffix(o, s.suffix)
+	if len(o) <= len(s.prefix)+len(s.suffix) || !strings.HasPrefix(o, s.prefix) || !strings.HasSuffix(o, s.suffix) {
+		return false
+	}
+	// suffix starts with the dot, so reject empty labels like "https://.example.com" or "https://a..example.com".
+	sub := o[len(s.prefix) : len(o)-len(s.suffix)]
+	return sub[0] != '.' && sub[len(sub)-1] != '.' && !strings.Contains(sub, "..")
 }

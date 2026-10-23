@@ -417,6 +417,26 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 			reqOrigin:         "http://domain-1.com",
 			shouldAllowOrigin: true,
 		},
+		{
+			pattern:           "http://domain-1.com, http://*.example.com",
+			reqOrigin:         "http://aaa.example.com",
+			shouldAllowOrigin: true,
+		},
+		{
+			pattern:           "http://domain-1.com,  http://*.example.com",
+			reqOrigin:         "http://aaa.example.com",
+			shouldAllowOrigin: true,
+		},
+		{
+			pattern:           "http://domain-1.com, http://*.example.com",
+			reqOrigin:         "http://.evil-example.com",
+			shouldAllowOrigin: false,
+		},
+		{
+			pattern:           "http://*.example.com",
+			reqOrigin:         "http://.example.com",
+			shouldAllowOrigin: false,
+		},
 	}
 
 	for _, tt := range tests {
