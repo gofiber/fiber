@@ -128,7 +128,7 @@ type SecurityPolicy struct {
 	// carrying parameters, behind a raw slash or an escaped one, a backslash
 	// and a forged escape are refused regardless, and so is a segment made of
 	// parameters alone, such as "/;x/admin", unless AllowAmbiguousSlashes is
-	// set as well.
+	// set as well. No effect under UnescapePath, which forwards a ";" as "%3B".
 	// Default: false.
 	AllowPathParameters bool
 }
