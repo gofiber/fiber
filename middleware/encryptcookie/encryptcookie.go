@@ -132,15 +132,24 @@ func hasExceptedName(cookies []requestCookie, name string) bool {
 
 // responseCookie is one entry of the Set-Cookie headers as the encrypt pass
 // read it. raw keeps the whole field value, so an entry is written back with
-// every attribute it arrived with.
+// every attribute it arrived with. valueStart and valueEnd are the byte range
+// of the value inside raw, recorded once at read time so the rewrite splices
+// the encrypted value in without parsing the line a second time.
 type responseCookie struct {
 	name string
 	raw  string
-	// value is the field value on its own, then the value to write back.
+	// value is the plaintext read from raw, then the value to write back.
 	value string
+	// valueStart and valueEnd delimit value inside raw.
+	valueStart int
+	valueEnd   int
 	// except marks a name listed in Config.Except: raw is added back as it
 	// arrived.
 	except bool
+	// encrypt is false for an excepted name and for a line whose name-value
+	// segment carries no '=', which RFC 6265 Section 5.2 says to ignore and
+	// which therefore goes back exactly as it arrived.
+	encrypt bool
 }
 
 // encryptResponseCookies replaces the value of every response cookie with its
@@ -154,7 +163,10 @@ type responseCookie struct {
 // entries straight through in clear text. The lines are read in full first and
 // the store is rebuilt from them afterwards, so each entry is encrypted
 // exactly once and keeps its own attributes and position, however often its
-// name repeats. Names in Except keep the value they arrived with.
+// name repeats. Names in Except keep the value they arrived with, and the value
+// is read with fasthttp's own rules (only in the first ';'-delimited segment,
+// spaces trimmed, one surrounding DQUOTE pair stripped), so a quoted or padded
+// value round-trips the way main did.
 //
 // When the Encryptor rejects a value, the response cookies that are not in
 // Except are dropped, so a value it refused can never leave the response in
@@ -162,73 +174,128 @@ type responseCookie struct {
 func encryptResponseCookies(c fiber.Ctx, cfg *Config, stackErr error) error {
 	header := &c.Response().Header
 	cookies := make([]responseCookie, 0, 4)
+	encryptable := false
 
 	for name, raw := range header.Cookies() {
-		key := string(name)
-		cookies = append(cookies, responseCookie{
-			name:   key,
-			raw:    string(raw),
-			value:  responseCookieValue(string(raw)),
-			except: isDisabled(key, cfg.Except),
-		})
+		line := string(raw)
+		entry := responseCookie{name: string(name), raw: line}
+		if isDisabled(entry.name, cfg.Except) {
+			entry.except = true
+		} else if parts, ok := splitResponseCookie(line); ok {
+			entry.name = parts.name
+			entry.value = parts.value
+			entry.valueStart = parts.start
+			entry.valueEnd = parts.end
+			entry.encrypt = true
+			encryptable = true
+		}
+
+		cookies = append(cookies, entry)
+	}
+
+	// Nothing to encrypt: every entry is excepted or carries no name-value
+	// pair, so the header is left exactly as it arrived.
+	if !encryptable {
+		return stackErr
 	}
 
 	for i := range cookies {
-		if cookies[i].except {
+		if !cookies[i].encrypt {
 			continue
 		}
 
 		encrypted, err := cfg.Encryptor(cookies[i].name, cookies[i].value, cfg.Key)
 		if err != nil {
+			// Rebuild with only the excepted lines, in their original order,
+			// so the error path keeps the same order guarantee as the success
+			// path and never leaves a refused value in clear text.
+			header.DelAllCookies()
 			for j := range cookies {
-				if !cookies[j].except {
-					header.DelCookie(cookies[j].name)
+				if cookies[j].except {
+					header.Add(fiber.HeaderSetCookie, cookies[j].raw)
 				}
 			}
 
 			return errors.Join(stackErr, err)
 		}
-		cookies[i].value = encrypted
+		// ';' separates the attributes of a Set-Cookie line, so a value that
+		// carries one would inject attributes. fasthttp's SetValue strips it
+		// the same way, so a custom Encryptor cannot change the cookie shape.
+		cookies[i].value = strings.ReplaceAll(encrypted, ";", " ")
 	}
 
 	header.DelAllCookies()
 	for i := range cookies {
-		if cookies[i].except {
-			header.Add(fiber.HeaderSetCookie, cookies[i].raw)
+		if cookies[i].encrypt {
+			header.Add(fiber.HeaderSetCookie, responseCookieWithValue(cookies[i]))
 			continue
 		}
-		header.Add(fiber.HeaderSetCookie, responseCookieWithValue(cookies[i].raw, cookies[i].value))
+		header.Add(fiber.HeaderSetCookie, cookies[i].raw)
 	}
 
 	return stackErr
 }
 
-// responseCookieValue returns the value of the Set-Cookie field value raw,
-// which is everything after the first '=' and before the first ';'.
-func responseCookieValue(raw string) string {
-	_, value, found := strings.Cut(raw, "=")
-	if !found {
-		return ""
+// cookieValueRange is the name and plaintext value of one Set-Cookie field
+// value, with the byte range of the value inside the line so the value can be
+// replaced without parsing the line a second time.
+type cookieValueRange struct {
+	name  string
+	value string
+	start int
+	end   int
+}
+
+// splitResponseCookie reads the name and the plaintext value of the Set-Cookie
+// field value raw. The second result is false when the name-value segment
+// carries no '=', a line RFC 6265 Section 5.2 says to ignore. The value is
+// taken only from the segment before the first ';', the way fasthttp's
+// cookieScanner reads it, so an '=' inside an attribute (Path=/x) cannot be
+// mistaken for the value.
+func splitResponseCookie(raw string) (cookieValueRange, bool) {
+	segmentEnd := len(raw)
+	if i := strings.IndexByte(raw, ';'); i >= 0 {
+		segmentEnd = i
 	}
 
-	if end := strings.IndexByte(value, ';'); end >= 0 {
-		value = value[:end]
+	eq := strings.IndexByte(raw[:segmentEnd], '=')
+	if eq < 0 {
+		return cookieValueRange{}, false
+	}
+
+	return cookieValueRange{
+		name:  strings.Trim(raw[:eq], " "),
+		value: trimCookieValue(raw[eq+1 : segmentEnd]),
+		start: eq + 1,
+		end:   segmentEnd,
+	}, true
+}
+
+// trimCookieValue removes leading and trailing spaces and one surrounding
+// DQUOTE pair, the same trim fasthttp's cookieScanner applies to a Set-Cookie
+// value.
+func trimCookieValue(value string) string {
+	value = strings.Trim(value, " ")
+	if len(value) > 1 && value[0] == '"' && value[len(value)-1] == '"' {
+		value = value[1 : len(value)-1]
 	}
 
 	return value
 }
 
-// responseCookieWithValue returns the Set-Cookie field value raw with only its
-// value replaced, so every attribute of the entry is kept as it was.
-func responseCookieWithValue(raw, value string) string {
-	name, rest, found := strings.Cut(raw, "=")
-	if !found {
-		return raw
+// responseCookieValue returns the plaintext value of the Set-Cookie field value
+// raw, read with the same trimming fasthttp uses.
+func responseCookieValue(raw string) string {
+	value, ok := splitResponseCookie(raw)
+	if !ok {
+		return ""
 	}
 
-	if end := strings.IndexByte(rest, ';'); end >= 0 {
-		return name + "=" + value + rest[end:]
-	}
+	return value.value
+}
 
-	return name + "=" + value
+// responseCookieWithValue returns the Set-Cookie field value of ck with its
+// value replaced, so every attribute and the position of the entry are kept.
+func responseCookieWithValue(ck responseCookie) string {
+	return ck.raw[:ck.valueStart] + ck.value + ck.raw[ck.valueEnd:]
 }
