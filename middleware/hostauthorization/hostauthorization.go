@@ -99,7 +99,26 @@ func normalizeHost(host string) string {
 
 	host = trimOneTrailingDot(host)
 	host = utilsstrings.ToLower(host)
-	return idnafold.ToASCII(host)
+	return canonicalIPv6(idnafold.ToASCII(host))
+}
+
+// canonicalIPv6 returns host in the RFC 5952 canonical text form when it is an
+// IPv6 address, and unchanged otherwise. An IPv6 address has many textual
+// spellings (RFC 4291 Section 2.2), so comparing the text as written let an
+// allowed "[::1]" refuse a Host of "[0:0:0:0:0:0:0:1]", and an allowed
+// "[2001:db8:0:0:0:0:0:1]" refuse the "[2001:db8::1]" every browser sends.
+// Both the configured hosts and the request host pass through here, so each
+// spelling of one address compares equal. Anything that is not an IPv6
+// address is left as it is for isValidHostSyntax to judge.
+func canonicalIPv6(host string) string {
+	if strings.IndexByte(host, ':') < 0 {
+		return host
+	}
+	addr, ok := utils.ParseIPv6(host)
+	if !ok {
+		return host
+	}
+	return addr.String()
 }
 
 func trimOneTrailingDot(host string) string {

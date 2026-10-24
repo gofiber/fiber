@@ -190,6 +190,7 @@ Before matching, the host of each request is normalized, and the `AllowedHosts` 
 - Port is stripped (`example.com:8080` → `example.com`)
 - Trailing dot removed (`example.com.` → `example.com`)
 - IPv6 brackets removed (`[::1]` → `::1`)
+- IPv6 addresses written in their canonical form (`[0:0:0:0:0:0:0:1]` → `::1`, `[2001:0db8::0001]` → `2001:db8::1`), so every spelling of one address matches
 - Lowercased
 - IDN labels converted to ASCII/Punycode (`münchen.example.com` → `xn--mnchen-3ya.example.com`)
 - RFC 1035 length limits enforced at startup: ≤253 chars total, ≤63 chars per label (panic on violation)
