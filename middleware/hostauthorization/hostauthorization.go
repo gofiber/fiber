@@ -237,7 +237,7 @@ func isValidPort(raw string) bool {
 	// A port is *DIGIT (RFC 3986 Section 3.2.3), so leading zeros are valid and do
 	// not change the value. Strip them before bounding the digits that carry it, so
 	// an oversized run of zeros is rejected without walking it one digit at a time.
-	digits := strings.TrimLeft(raw, "0")
+	digits := utils.TrimLeft(raw, '0')
 	if len(digits) > 5 {
 		return false
 	}
