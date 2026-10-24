@@ -917,3 +917,38 @@ func FuzzNormalizeHost(f *testing.F) {
 		_ = normalizeHost(input)
 	})
 }
+
+func Test_HostAuthorization_LeadingZeroPort(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		AllowedHosts: []string{"example.com"},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	for _, tc := range []struct {
+		host string
+		want int
+	}{
+		{"example.com:80", fiber.StatusOK},
+		{"example.com:080", fiber.StatusOK},
+		{"example.com:00080", fiber.StatusOK},
+		{"example.com:000080", fiber.StatusOK},
+		{"example.com:065535", fiber.StatusOK},
+		{"example.com:000000000000065535", fiber.StatusOK},
+		{"example.com:65536", fiber.StatusForbidden},
+		{"example.com:00065536", fiber.StatusForbidden},
+	} {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Host = tc.host
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, tc.want, resp.StatusCode, tc.host)
+	}
+}

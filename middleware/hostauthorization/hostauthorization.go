@@ -230,19 +230,25 @@ func isValidHostSyntax(host string) bool {
 }
 
 func isValidPort(raw string) bool {
-	if raw == "" || len(raw) > 5 {
+	if raw == "" {
 		return false
 	}
 
+	// A port is *DIGIT (RFC 3986 Section 3.2.3), so leading zeros are valid and do
+	// not change the value. Bound the value rather than the number of digits; the
+	// early return also keeps the accumulator from overflowing.
 	var port int
 	for i := 0; i < len(raw); i++ {
 		if raw[i] < '0' || raw[i] > '9' {
 			return false
 		}
 		port = port*10 + int(raw[i]-'0')
+		if port > 65535 {
+			return false
+		}
 	}
 
-	return port <= 65535
+	return true
 }
 
 // matchHost evaluates exact → wildcard → AllowedHostsFunc.
