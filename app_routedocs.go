@@ -335,6 +335,10 @@ func docResponseHeader(status int, name, description string, schema any) func(ro
 }
 
 func docOperationExternalDocs(description, url string) func(route *Route) {
+	// The External Documentation Object requires its url.
+	if utils.TrimSpace(url) == "" {
+		panic("OperationExternalDocs: url is required")
+	}
 	docs := map[string]any{"url": url}
 	if description != "" {
 		docs["description"] = description
@@ -470,11 +474,6 @@ func docAccepts(model any, mediaTypes ...string) func(route *Route) {
 
 func docReturns(status int, model any, mediaTypes ...string) func(route *Route) {
 	return docAddResponse(status, "", model, "", nil, nil, mediaTypes...)
-}
-
-// docSetInnerHandlers records the unwrapped handlers of a wrapped route; merges append to both chains so they stay aligned.
-func docSetInnerHandlers(inner []Handler) func(route *Route) {
-	return func(route *Route) { route.docHandlers = append(route.docHandlers, inner...) }
 }
 
 // validParamLocation reports whether location, already normalized, is one a parameter may

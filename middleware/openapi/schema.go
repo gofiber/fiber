@@ -221,14 +221,19 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 	defer delete(visited, t)
 
 	properties := make(map[string]any)
+	objectExample := make(map[string]any)
 	var required []string
 
 	// Names resolve level by level like encoding/json: the shallowest depth
 	// wins, and there one tagged field wins or the name is dropped.
 	type fieldCandidate struct {
-		schema   map[string]any
-		required bool
-		tagged   bool
+		// example is what the property adds to the object's example, read before a nullable or 3.0 $ref
+		// wrapper hides the reference it may come from.
+		example    any
+		schema     map[string]any
+		hasExample bool
+		required   bool
+		tagged     bool
 	}
 	type embedRef struct {
 		t reflect.Type
@@ -301,6 +306,7 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 				applyOpenAPITag(&field, fieldSchema)
 				// A validate rule outranks omitempty.
 				mustValidate := applyValidateTag(&field, fieldSchema)
+				fieldExample, hasExample := propertyExample(fieldSchema, reg)
 				// A pointer is written as null when nil, which the schema has to allow.
 				// An uploaded file is a part of a form and is never null.
 				if field.Type.Kind() == reflect.Pointer && !holdsFileHeaders(field.Type) {
@@ -312,9 +318,11 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 					order = append(order, name)
 				}
 				candidates[name] = append(candidates[name], fieldCandidate{
-					schema:   fieldSchema,
-					required: mustValidate || (implicitRequired && !tagInfo.omit && field.Type.Kind() != reflect.Pointer && !ref.optional),
-					tagged:   tagInfo.name != "",
+					schema:     fieldSchema,
+					example:    fieldExample,
+					hasExample: hasExample,
+					required:   mustValidate || (implicitRequired && !tagInfo.omit && field.Type.Kind() != reflect.Pointer && !ref.optional),
+					tagged:     tagInfo.name != "",
 				})
 			}
 		}
@@ -344,6 +352,9 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 				chosen = taggedIdx
 			}
 			properties[name] = cands[chosen].schema
+			if cands[chosen].hasExample {
+				objectExample[name] = cands[chosen].example
+			}
 			if cands[chosen].required {
 				required = append(required, name)
 			}
@@ -362,50 +373,25 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 	if len(required) > 0 {
 		schema["required"] = required
 	}
-	if example := structExample(properties, reg); len(example) > 0 {
-		schema["example"] = example
+	if len(objectExample) > 0 {
+		schema["example"] = objectExample
 	}
 	return schema
 }
 
-// structExample builds an example object from the properties that have one,
-// following references to registered types.
-func structExample(properties map[string]any, reg *schemaRegistry) map[string]any {
-	example := make(map[string]any)
-	for name, raw := range properties {
-		prop, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		if value, found := prop["example"]; found {
-			example[name] = value
-			continue
-		}
-		ref, isRef := referenceOf(prop)
-		if !isRef || reg == nil {
-			continue
-		}
-		if target := reg.schemas[strings.TrimPrefix(ref, componentsSchemasRef)]; target != nil {
-			if value, found := target["example"]; found {
-				example[name] = value
-			}
-		}
+// propertyExample returns what a property adds to its object's example: its own example, or that of the
+// registered type it references, nested models included. It reads the schema before nullable or a 3.0 allOf
+// wrapper is applied, as both move the "$ref" out of reach; a type still being built has no example yet.
+func propertyExample(prop map[string]any, reg *schemaRegistry) (any, bool) {
+	if value, found := prop["example"]; found {
+		return value, true
 	}
-	return example
-}
-
-// referenceOf returns the "$ref" a property schema points at, directly or, in 3.0, through a one-entry "allOf".
-func referenceOf(schema map[string]any) (string, bool) {
-	if target, ok := schema[schemaKeyRef].(string); ok {
-		return target, true
+	ref, isRef := prop[schemaKeyRef].(string)
+	if !isRef || reg == nil {
+		return nil, false
 	}
-	if all, ok := schema["allOf"].([]any); ok && len(all) == 1 {
-		if entry, isMap := all[0].(map[string]any); isMap {
-			target, found := entry[schemaKeyRef].(string)
-			return target, found
-		}
-	}
-	return "", false
+	value, found := reg.schemas[strings.TrimPrefix(ref, componentsSchemasRef)]["example"]
+	return value, found
 }
 
 type jsonTagInfo struct {

@@ -1491,6 +1491,13 @@ func (app *App) explicitHeadPositionLocked(m int, route *Route) int {
 
 // register creates one stack entry per method and returns the registration ID.
 func (app *App) register(methods []string, pathRaw string, group *Group, domain string, handlers ...Handler) uint64 {
+	return app.registerChain(methods, pathRaw, group, domain, nil, handlers)
+}
+
+// registerChain is register for a chain a domain router wrapped in its host check. inner is the chain as
+// registered, which the routes carry for InnerHandlers from the moment they exist, so the OnRoute hooks see it
+// too; it is nil for a chain that was not wrapped.
+func (app *App) registerChain(methods []string, pathRaw string, group *Group, domain string, inner, handlers []Handler) uint64 {
 	// A regular route requires at least one ctx handler
 	if len(handlers) == 0 && group == nil {
 		panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
@@ -1553,6 +1560,8 @@ func (app *App) register(methods []string, pathRaw string, group *Group, domain 
 			Path:     pathRaw,
 			Method:   method,
 			Handlers: handlers,
+			// Clipped so that a merge appending to one method's copy reallocates instead of writing into another's.
+			docHandlers: slices.Clip(inner),
 		}
 		route.buildPrefixFilter()
 
@@ -1608,6 +1617,8 @@ func (app *App) insertRoute(method string, route *Route) *Route {
 		!route.mount && !app.stack[m][l-1].mount && app.stack[m][l-1].domain == route.domain {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
+		// The chain as registered grows with it, so InnerHandlers stays aligned with Handlers.
+		preRoute.docHandlers = append(preRoute.docHandlers, route.docHandlers...)
 		// The entry keeps its id and is also indexed under this registration.
 		// Name prefixes with the group of the route it renames, which for this
 		// name is the group the merging registration was made through.

@@ -357,7 +357,11 @@ form one with a `_form` suffix. Pointer fields are nullable: `nullable: true` ne
 accepts only null (`{"type": "null"}` from 3.1, and
 `{"type": "object", "nullable": true, "enum": [null]}` before it, as 3.0 defines
 `nullable` only next to a type). `Params` skips fields tagged for another
-location. Generic types get readable component names, statuses that carry no
+location. Generic types get readable component names. Of two types sharing a
+name, the one the document reaches first keeps it and the other is
+package-qualified (`billing.User`); routes are read method by method in
+registration order and a route's responses and media types in sorted order, so
+every build of the document names them the same way. Statuses that carry no
 body (such as 204 and 304) drop their `content`, and tags used by operations
 are declared at the top level automatically.
 
@@ -586,7 +590,8 @@ app.Get("/users", listUsers).
 
 ### Operation external docs & extensions
 
-`OperationExternalDocs` sets the operation's `externalDocs`, and
+`OperationExternalDocs` sets the operation's `externalDocs` and panics on an
+empty URL, which the External Documentation Object requires, and
 `OperationExtension` shallow-merges any other operation-object fields (such as
 `servers`, `callbacks` or `x-*` extensions) without clobbering generated keys:
 

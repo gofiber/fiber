@@ -11,9 +11,54 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+// Test_App_Mount_ExpansionLockOrder checks that a parent expanding the mounts of a sub-app takes the sub-app's
+// lock before its Once, in the order the sub-app's own startup does. Taken inside the Once, a parent and a
+// sub-app starting together deadlock: the parent holds the Once and waits for the lock, the sub-app holds the
+// lock and waits for the Once.
+func Test_App_Mount_ExpansionLockOrder(t *testing.T) {
+	t.Parallel()
+
+	leaf := New()
+	leaf.Get("/x", testEmptyHandler)
+	sub := New()
+	sub.Use("/leaf", leaf)
+	parent := New()
+	parent.Use("/sub", sub)
+
+	// The sub-app's own startup holds its lock throughout, mount expansion included.
+	sub.mutex.Lock()
+	released := false
+	defer func() {
+		if !released {
+			sub.mutex.Unlock()
+		}
+	}()
+	sub.collectSubApps()
+
+	expanded := make(chan struct{})
+	go func() {
+		defer close(expanded)
+		parent.mutex.Lock()
+		defer parent.mutex.Unlock()
+		parent.mountStartupProcess()
+	}()
+	// Let the parent reach the sub-app, where taking the lock inside the Once would leave it holding the Once.
+	time.Sleep(50 * time.Millisecond)
+
+	runBounded(t, "a sub-app expanding its mounts while its parent expands them", sub.mountStartupProcess)
+	released = true
+	sub.mutex.Unlock()
+	<-expanded
+
+	resp, err := parent.Test(httptest.NewRequest(MethodGet, "/sub/leaf/x", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
 
 func Test_App_Mount_PreservesSubAppRegexHandler(t *testing.T) {
 	t.Parallel()

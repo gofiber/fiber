@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"maps"
+	"slices"
 	"strconv"
 
 	"github.com/gofiber/fiber/v3/internal/schemautil"
@@ -58,16 +59,24 @@ func isExampleObject(object map[string]any) bool {
 	return hasContent
 }
 
+// sortedKeys returns the keys of m in order. Maps whose values may be Go models are walked this way: reflecting a
+// model registers its component, and of two types sharing a name the first takes the bare one, so walking in map
+// order would rename components from one generation of the document to the next.
+func sortedKeys[V any](m map[string]V) []string {
+	return slices.Sorted(maps.Keys(m))
+}
+
 // routeMediaTypeContent builds a content map with a schema, example and encoding per media type.
 func routeMediaTypeContent(content map[string]fiber.RouteMediaType, reg *schemaRegistry) map[string]map[string]any {
 	if len(content) == 0 {
 		return nil
 	}
 	out := make(map[string]map[string]any, len(content))
-	for mediaType, mt := range content {
+	for _, mediaType := range sortedKeys(content) {
 		if mediaType == "" {
 			continue
 		}
+		mt := content[mediaType]
 		entry := contentEntryFor(mediaType, mt, reg)
 		if len(mt.Encoding) > 0 {
 			entry["encoding"] = mt.Encoding
@@ -98,7 +107,8 @@ func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallba
 		return nil
 	}
 	merged := make(map[string]response, len(routeResponses))
-	for code, resp := range routeResponses {
+	for _, code := range sortedKeys(routeResponses) {
+		resp := routeResponses[code]
 		content := routeMediaTypeContent(resp.Content, reg)
 		if content == nil {
 			mediaTypes := resp.MediaTypes
@@ -208,7 +218,8 @@ func resolveHeaderSchemas(headers map[string]any, reg *schemaRegistry) map[strin
 		return headers
 	}
 	resolved := make(map[string]any, len(headers))
-	for name, raw := range headers {
+	for _, name := range sortedKeys(headers) {
+		raw := headers[name]
 		header, ok := schemautil.AsMap(raw)
 		if !ok {
 			resolved[name] = raw

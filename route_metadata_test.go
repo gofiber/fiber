@@ -1241,6 +1241,15 @@ func Test_ResponseHeader_RequiresName(t *testing.T) {
 	})
 }
 
+func Test_OperationExternalDocs_RequiresURL(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	require.PanicsWithValue(t, "OperationExternalDocs: url is required", func() {
+		app.Get("/a", testHandlerOK).OperationExternalDocs("More info", " ")
+	})
+}
+
 func Test_ResponseHeader_DefaultsToStringSchema(t *testing.T) {
 	t.Parallel()
 
@@ -1499,6 +1508,30 @@ func Test_Route_InnerHandlers(t *testing.T) {
 		require.Len(t, route.InnerHandlers(), 2)
 		require.Equal(t, handlerPointer(other), handlerPointer(route.InnerHandlers()[0]))
 		require.Equal(t, handlerPointer(testHandlerOK), handlerPointer(route.InnerHandlers()[1]))
+	})
+
+	t.Run("an OnRoute hook sees the registered handlers", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		var seen [][]uintptr
+		app.Hooks().OnRoute(func(r Route) error {
+			pointers := make([]uintptr, 0, len(r.InnerHandlers()))
+			for _, h := range r.InnerHandlers() {
+				pointers = append(pointers, handlerPointer(h))
+			}
+			seen = append(seen, pointers)
+			return nil
+		})
+		api := app.Domain("api.example")
+		api.Get("/h", other)
+		// The second registration merges into the first, so its hook sees both chains.
+		api.Get("/h", testHandlerOK)
+		api.RouteChain("/c").Get(testHandlerOK)
+		require.Equal(t, [][]uintptr{
+			{handlerPointer(other)},
+			{handlerPointer(other), handlerPointer(testHandlerOK)},
+			{handlerPointer(testHandlerOK)},
+		}, seen)
 	})
 
 	t.Run("a mounted sub app keeps its own handlers", func(t *testing.T) {

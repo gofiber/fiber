@@ -288,9 +288,7 @@ var _ Router = (*domainRouter)(nil)
 
 // registerWrapped registers handlers behind the host check, keeping the originals on the route for documentation.
 func (d *domainRouter) registerWrapped(methods []string, path string, group *Group, handlers []Handler) uint64 {
-	regID := d.app.register(methods, path, group, d.pattern(), d.wrapHandlers(handlers)...)
-	d.app.applyToRegistration(regID, docSetInnerHandlers(handlers))
-	return regID
+	return d.app.registerChain(methods, path, group, d.pattern(), handlers, d.wrapHandlers(handlers))
 }
 
 // wrapHandlers wraps every handler in the slice with domain checking.

@@ -570,6 +570,59 @@ func Test_OpenAPI_PointerFieldsAreNullable(t *testing.T) {
 	}
 }
 
+type exampleInner struct {
+	Name string `json:"name" openapi:"example:bob"`
+}
+
+type exampleOuter struct {
+	Pointer *exampleInner `json:"pointer"`
+	Plain   exampleInner  `json:"plain" openapi:"description:the plain one"`
+}
+
+// Test_OpenAPI_NullableReferenceKeepsNestedExample checks that a struct pointer, whose reference nullable wraps
+// in an anyOf, still lends its model's example to the object example in every dialect.
+func Test_OpenAPI_NullableReferenceKeepsNestedExample(t *testing.T) {
+	t.Parallel()
+
+	for _, version := range []string{"3.0.3", "3.1.0", "3.2.0"} {
+		app := fiber.New()
+		app.Post("/x", listUsers).Accepts(exampleOuter{})
+		outer := requireMap(t, modelSchemas(t, modelSpec(t, app, Config{OpenAPIVersion: version}))["exampleOuter"])
+		want := map[string]any{"name": "bob"}
+		require.Equal(t, map[string]any{"pointer": want, "plain": want}, outer["example"], version)
+	}
+}
+
+func sameNamedOK() any {
+	type Response struct {
+		Data string `json:"data"`
+	}
+	return Response{}
+}
+
+func sameNamedError() any {
+	type Response struct {
+		Message string `json:"message"`
+	}
+	return Response{}
+}
+
+// Test_OpenAPI_SameNamedModelsKeepTheirNames checks that two models sharing a type name get the same component
+// names in every generation: responses are walked in order, so map order cannot hand the bare name to either.
+func Test_OpenAPI_SameNamedModelsKeepTheirNames(t *testing.T) {
+	t.Parallel()
+
+	for range 50 {
+		app := fiber.New()
+		app.Get("/x", listUsers).
+			Returns(fiber.StatusOK, sameNamedOK()).
+			Returns(fiber.StatusBadRequest, sameNamedError())
+		responses := chainResponses(t, modelOperation(t, modelSpec(t, app), "/x", "get"))
+		require.Equal(t, componentRef("Response"), contentSchema(t, requireMap(t, responses["200"])))
+		require.Equal(t, componentRef("openapi.Response"), contentSchema(t, requireMap(t, responses["400"])))
+	}
+}
+
 type mixedLocations struct {
 	Trace  string `header:"X-Trace" validate:"required"`
 	Cookie string `cookie:"sid"`

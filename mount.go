@@ -773,6 +773,17 @@ func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
 	}
 }
 
+// expandMountsOnce expands the mounts of a mounted app once, under its lock, as it rewrites its own stack. The
+// lock is taken before the Once, in the order the app's own startup takes them: taking it inside would deadlock
+// a parent expanding the app against the app starting by itself, each holding what the other waits on.
+func (app *App) expandMountsOnce() {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+	if app.hasMountedApps() {
+		app.mountFields.subAppsRoutesAdded.Do(app.processSubAppsRoutes)
+	}
+}
+
 // processSubAppsRoutes adds routes of sub-apps recursively when the server is started
 func (app *App) processSubAppsRoutes() {
 	for prefix, subApp := range app.mountFields.appList {
@@ -781,14 +792,7 @@ func (app *App) processSubAppsRoutes() {
 			continue
 		}
 		// process the inner routes
-		if subApp.hasMountedApps() {
-			subApp.mountFields.subAppsRoutesAdded.Do(func() {
-				// The sub-app rewrites its own stack here, so it needs its own lock, taken under the parent's.
-				subApp.mutex.Lock()
-				defer subApp.mutex.Unlock()
-				subApp.processSubAppsRoutes()
-			})
-		}
+		subApp.expandMountsOnce()
 	}
 	var handlersCount uint32
 	// Iterate over the stack of the parent app
