@@ -1009,3 +1009,157 @@ func Test_Middleware_Duplicate_Cookie_Names(t *testing.T) {
 		require.Equal(t, []string{"test=first", "test=second"}, cookies)
 	})
 }
+
+// Test_Middleware_Duplicate_Response_Cookie_Names covers a response that
+// carries the same cookie name more than once (RFC 6265 Section 5.4, the shape
+// a server sends when one cookie lives on two Paths). fasthttp resolves a
+// cookie name to the first entry that has it, so every line has to be
+// encrypted from its own value and keep its attributes and position.
+func Test_Middleware_Duplicate_Response_Cookie_Names(t *testing.T) {
+	t.Parallel()
+	testKey := GenerateKey(32)
+
+	newApp := func(encryptor func(name, value, key string) (string, error), except ...string) *fiber.App {
+		app := fiber.New()
+		app.Use(New(Config{
+			Key:       testKey,
+			Except:    except,
+			Encryptor: encryptor,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			// One cookie on two paths, with a second name between the lines.
+			c.Res().Add(fiber.HeaderSetCookie, "sid=old; Path=/; Max-Age=0")
+			c.Res().Add(fiber.HeaderSetCookie, "theme=dark; Path=/")
+			c.Res().Add(fiber.HeaderSetCookie, "sid=new; Path=/admin")
+			return nil
+		})
+		return app
+	}
+
+	// lines runs app and returns the Set-Cookie field values in order.
+	lines := func(t *testing.T, app *fiber.App) []string {
+		t.Helper()
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		return resp.Header.Values(fiber.HeaderSetCookie)
+	}
+
+	// decrypt returns the plaintext of a Set-Cookie field value, and fails
+	// when the line holds a value the key cannot open. The value is read with
+	// the same helper the middleware uses, so the test and the implementation
+	// cannot drift apart.
+	decrypt := func(t *testing.T, line string) string {
+		t.Helper()
+		name, _, found := strings.Cut(line, "=")
+		require.True(t, found, line)
+		plain, err := DecryptCookie(name, responseCookieValue(line), testKey)
+		require.NoError(t, err, line)
+		return plain
+	}
+
+	t.Run("every duplicate is encrypted once and keeps its attributes", func(t *testing.T) {
+		t.Parallel()
+		got := lines(t, newApp(nil))
+		require.Len(t, got, 3)
+		require.Equal(t, "old", decrypt(t, got[0]))
+		require.Equal(t, "dark", decrypt(t, got[1]))
+		require.Equal(t, "new", decrypt(t, got[2]))
+		require.Contains(t, got[0], "; Path=/; Max-Age=0")
+		require.Contains(t, got[2], "; Path=/admin")
+	})
+
+	t.Run("excepted duplicates are written back as they arrived", func(t *testing.T) {
+		t.Parallel()
+		got := lines(t, newApp(nil, "sid"))
+		require.Len(t, got, 3)
+		require.Equal(t, "sid=old; Path=/; Max-Age=0", got[0])
+		require.Equal(t, "sid=new; Path=/admin", got[2])
+		require.Equal(t, "dark", decrypt(t, got[1]))
+	})
+
+	t.Run("a failed value drops every line that is not excepted", func(t *testing.T) {
+		t.Parallel()
+		encryptErr := errors.New("encrypt failed")
+		app := newApp(func(name, _, _ string) (string, error) {
+			if name == "sid" {
+				return "", encryptErr
+			}
+			return EncryptCookie(name, "dark", testKey)
+		}, "theme")
+
+		got := lines(t, app)
+		require.Equal(t, []string{"theme=dark; Path=/"}, got)
+	})
+
+	t.Run("the error path keeps the excepted lines in order", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Key:    testKey,
+			Except: []string{"pref"},
+			Encryptor: func(name, _, _ string) (string, error) {
+				if name == "sid" {
+					return "", errors.New("encrypt failed")
+				}
+				return EncryptCookie(name, "dark", testKey)
+			},
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Res().Add(fiber.HeaderSetCookie, "sid=old; Path=/")
+			c.Res().Add(fiber.HeaderSetCookie, "pref=; Max-Age=0")
+			c.Res().Add(fiber.HeaderSetCookie, "pref=new; Path=/")
+			return nil
+		})
+
+		require.Equal(t, []string{"pref=; Max-Age=0", "pref=new; Path=/"}, lines(t, app))
+	})
+
+	t.Run("a quoted or padded value keeps its plaintext", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Key: testKey}))
+		app.Get("/", func(c fiber.Ctx) error {
+			// Fiber wire-quotes a value with a space, and fasthttp trims a
+			// padded value. Both have to reach the Encryptor without the
+			// quotes or the padding.
+			c.Cookie(&fiber.Cookie{Name: "greet", Value: "hello world"})
+			c.Res().Add(fiber.HeaderSetCookie, "sp= padded ; Path=/")
+			return nil
+		})
+
+		got := lines(t, app)
+		require.Len(t, got, 2)
+		require.Equal(t, "hello world", decrypt(t, got[0]))
+		require.Equal(t, "padded", decrypt(t, got[1]))
+	})
+
+	t.Run("a nameless line is left as it arrived", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Key: testKey}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Res().Add(fiber.HeaderSetCookie, "flag; Path=/x")
+			c.Res().Add(fiber.HeaderSetCookie, "sid=old; Path=/")
+			return nil
+		})
+
+		got := lines(t, app)
+		require.Len(t, got, 2)
+		require.Equal(t, "flag; Path=/x", got[0])
+		require.Equal(t, "old", decrypt(t, got[1]))
+	})
+
+	t.Run("a semicolon in the encrypted value cannot inject attributes", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Key: testKey, Encryptor: func(_, _, _ string) (string, error) {
+			return "x; Domain=evil.com", nil
+		}}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Res().Add(fiber.HeaderSetCookie, "sid=a; Path=/")
+			return nil
+		})
+
+		require.Equal(t, []string{"sid=x  Domain=evil.com; Path=/"}, lines(t, app))
+	})
+}
