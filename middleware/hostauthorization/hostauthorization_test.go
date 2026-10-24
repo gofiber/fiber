@@ -123,6 +123,11 @@ func Test_NormalizeHost(t *testing.T) {
 		{"ipv6 brackets", "[::1]", "::1"},
 		{"ipv6 bare", "::1", "::1"},
 		{"ipv6 with port", "[::1]:8080", "::1"},
+		{"ipv6 uncompressed", "[0:0:0:0:0:0:0:1]", "::1"},
+		{"ipv6 zero padded", "[2001:0db8:0000:0000:0000:0000:0000:0001]", "2001:db8::1"},
+		{"ipv6 zero padded with port", "[2001:0db8:0000:0000:0000:0000:0000:0001]:8080", "2001:db8::1"},
+		{"ipv6 uppercase hex", "[2001:DB8::1]", "2001:db8::1"},
+		{"ipv6 ipv4-mapped hex form", "[::ffff:7f00:1]", "::ffff:127.0.0.1"},
 		{"empty", "", ""},
 		{"idn unicode → punycode", "münchen.example.com", "xn--mnchen-3ya.example.com"},
 		{"idn already punycode", "xn--mnchen-3ya.example.com", "xn--mnchen-3ya.example.com"},
@@ -150,6 +155,9 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 		{name: "multiple trailing dots are rejected as malformed", input: "api.example.com...:443", expectOK: false},
 		{name: "ipv6 with port", input: "[::1]:443", expected: "::1", expectOK: true},
 		{name: "ipv6 without port", input: "[::1]", expected: "::1", expectOK: true},
+		{name: "ipv6 uncompressed", input: "[0:0:0:0:0:0:0:1]:443", expected: "::1", expectOK: true},
+		{name: "ipv6 zero padded", input: "[2001:0db8:0000:0000:0000:0000:0000:0001]", expected: "2001:db8::1", expectOK: true},
+		{name: "ipv6 ipv4-mapped hex form", input: "[::ffff:7f00:1]:8080", expected: "::ffff:127.0.0.1", expectOK: true},
 		{name: "empty port", input: "example.com:", expectOK: false},
 		{name: "signed port", input: "example.com:+80", expectOK: false},
 		{name: "port out of range", input: "example.com:65536", expectOK: false},
@@ -804,6 +812,46 @@ func Test_NormalizeHost_IPv6WithPortInConfig(t *testing.T) {
 	require.False(t, matchHost("::2", parsed, nil))
 }
 
+// go test -run Test_HostAuthorization_IPv6CanonicalForm
+func Test_HostAuthorization_IPv6CanonicalForm(t *testing.T) {
+	t.Parallel()
+
+	// Every spelling of one IPv6 address names the same host (RFC 4291
+	// Section 2.2), whichever one the configuration or the client wrote.
+	for _, tc := range []struct {
+		name    string
+		allowed string
+		host    string
+		want    int
+	}{
+		{name: "allowed compressed, host uncompressed", allowed: "[::1]", host: "[0:0:0:0:0:0:0:1]:3000", want: fiber.StatusOK},
+		{name: "allowed compressed, host zero padded", allowed: "[::1]", host: "[0000:0000:0000:0000:0000:0000:0000:0001]", want: fiber.StatusOK},
+		{name: "allowed uncompressed, host as a browser sends it", allowed: "[2001:db8:0:0:0:0:0:1]", host: "[2001:db8::1]:8080", want: fiber.StatusOK},
+		{name: "allowed zero padded, host compressed", allowed: "[2001:0db8::0001]", host: "[2001:db8::1]", want: fiber.StatusOK},
+		{name: "allowed ipv4-mapped dotted, host hex", allowed: "[::ffff:127.0.0.1]", host: "[::ffff:7f00:1]", want: fiber.StatusOK},
+		{name: "different address still refused", allowed: "[::1]", host: "[0:0:0:0:0:0:0:2]", want: fiber.StatusForbidden},
+		{name: "different address with matching prefix still refused", allowed: "[2001:db8::1]", host: "[2001:db8::1:0]", want: fiber.StatusForbidden},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				AllowedHosts: []string{tc.allowed},
+			}))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("OK")
+			})
+
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Host = tc.host
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, resp.StatusCode)
+		})
+	}
+}
+
 // --- Benchmarks ---
 
 func Benchmark_matchHost_ExactMatch(b *testing.B) {
@@ -916,4 +964,34 @@ func FuzzNormalizeHost(f *testing.F) {
 	f.Fuzz(func(_ *testing.T, input string) {
 		_ = normalizeHost(input)
 	})
+}
+
+func Benchmark_HostAuthorization_IPv6ExactMatch(b *testing.B) {
+	app := fiber.New()
+	app.Use(New(Config{
+		AllowedHosts: []string{"[2001:db8::1]"},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "[2001:db8::1]:8080"
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp, err := app.Test(req)
+		if err != nil {
+			b.Fatal(err)
+		}
+		resp.Body.Close() //nolint:errcheck // benchmark cleanup
+	}
+}
+
+func Benchmark_normalizeHost_IPv6(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = normalizeHost("[2001:db8::1]:8080")
+	}
 }
