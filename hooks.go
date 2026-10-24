@@ -331,13 +331,19 @@ func (h *Hooks) executeOnRouteHooks(route *Route) error {
 
 	cloned := *route
 
+	// Read the hook list and mount path under the lock that guards registering hooks; the hooks run without it.
+	h.app.mutex.Lock()
+	handlers := h.onRoute
+	mountPath := h.app.mountFields.mountPath
+	h.app.mutex.Unlock()
+
 	// Check mounting
-	if h.app.mountFields.mountPath != "" {
-		cloned.path = h.app.mountFields.mountPath + cloned.path
+	if mountPath != "" {
+		cloned.path = mountPath + cloned.path
 		cloned.Path = cloned.path
 	}
 
-	for _, v := range h.onRoute {
+	for _, v := range handlers {
 		if err := v(cloned); err != nil {
 			return err
 		}
@@ -353,13 +359,19 @@ func (h *Hooks) executeOnNameHooks(route *Route) error {
 
 	cloned := *route
 
+	// Read the hook list and mount path under the lock that guards registering hooks; the hooks run without it.
+	h.app.mutex.Lock()
+	handlers := h.onName
+	mountPath := h.app.mountFields.mountPath
+	h.app.mutex.Unlock()
+
 	// Check mounting
-	if h.app.mountFields.mountPath != "" {
-		cloned.path = h.app.mountFields.mountPath + cloned.path
+	if mountPath != "" {
+		cloned.path = mountPath + cloned.path
 		cloned.Path = cloned.path
 	}
 
-	for _, v := range h.onName {
+	for _, v := range handlers {
 		if err := v(cloned); err != nil {
 			return err
 		}
@@ -368,34 +380,35 @@ func (h *Hooks) executeOnNameHooks(route *Route) error {
 	return nil
 }
 
-func (h *Hooks) executeOnGroupHooks(group Group) error {
-	// Check mounting
-	if h.app.mountFields.mountPath != "" {
-		group.Prefix = h.app.mountFields.mountPath + group.Prefix
-	}
+// runGroupHooks gives each handler the group with the mount path in front of its prefix. The hook list is read
+// under the lock that guards registering hooks, and the handlers run without it.
+//
+//nolint:gocritic // hugeParam: the hook API passes the Group by value.
+func (h *Hooks) runGroupHooks(group Group, handlersOf func(*Hooks) []OnGroupHandler) error {
+	h.app.mutex.Lock()
+	handlers := handlersOf(h)
+	mountPath := h.app.mountFields.mountPath
+	h.app.mutex.Unlock()
 
-	for _, v := range h.onGroup {
+	if mountPath != "" {
+		group.Prefix = mountPath + group.Prefix
+	}
+	for _, v := range handlers {
 		if err := v(group); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
+//nolint:gocritic // hugeParam: the hook API passes the Group by value.
+func (h *Hooks) executeOnGroupHooks(group Group) error {
+	return h.runGroupHooks(group, func(h *Hooks) []OnGroupHandler { return h.onGroup })
+}
+
+//nolint:gocritic // hugeParam: the hook API passes the Group by value.
 func (h *Hooks) executeOnGroupNameHooks(group Group) error {
-	// Check mounting
-	if h.app.mountFields.mountPath != "" {
-		group.Prefix = h.app.mountFields.mountPath + group.Prefix
-	}
-
-	for _, v := range h.onGroupName {
-		if err := v(group); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return h.runGroupHooks(group, func(h *Hooks) []OnGroupNameHandler { return h.onGroupName })
 }
 
 func (h *Hooks) executeOnListenHooks(listenData *ListenData) error {

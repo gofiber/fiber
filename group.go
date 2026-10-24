@@ -12,11 +12,13 @@ import (
 // Group represents a collection of routes that share middleware and a common
 // path prefix.
 type Group struct {
-	app         *App
+	docTarget[Router]
+
 	parentGroup *Group
 	name        string
 
-	Prefix      string
+	Prefix string
+
 	hasAnyRoute bool
 }
 
@@ -26,7 +28,7 @@ type Group struct {
 // Otherwise, it'll set route name and OnName hook will be used.
 func (grp *Group) Name(name string) Router {
 	if grp.hasAnyRoute {
-		grp.app.Name(name)
+		grp.app.applyNameToRegistration(grp.cursor.Load(), name)
 
 		return grp
 	}
@@ -37,11 +39,13 @@ func (grp *Group) Name(name string) Router {
 	} else {
 		grp.name = name
 	}
+	snapshot := *grp
+	grp.app.mutex.Unlock()
 
-	if err := grp.app.hooks.executeOnGroupNameHooks(*grp); err != nil {
+	// Hooks fire unlocked so they may call locking app methods.
+	if err := grp.app.hooks.executeOnGroupNameHooks(snapshot); err != nil {
 		panic(err)
 	}
-	grp.app.mutex.Unlock()
 
 	return grp
 }
@@ -100,7 +104,7 @@ func (grp *Group) Use(args ...any) Router {
 			continue
 		}
 
-		grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, handlers...)
+		grp.cursor.Store(grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, allHosts, handlers...))
 	}
 
 	if !grp.hasAnyRoute {
@@ -173,7 +177,7 @@ func (grp *Group) Query(path string, handler any, handlers ...any) Router {
 // The provided handlers are executed in order, starting with `handler` and then the variadic `handlers`.
 func (grp *Group) Add(methods []string, path string, handler any, handlers ...any) Router {
 	converted := collectHandlers("group", append([]any{handler}, handlers...)...)
-	grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, converted...)
+	grp.cursor.Store(grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, allHosts, converted...))
 	if !grp.hasAnyRoute {
 		grp.hasAnyRoute = true
 	}
@@ -193,13 +197,14 @@ func (grp *Group) All(path string, handler any, handlers ...any) Router {
 //	api.Get("/users", handler)
 func (grp *Group) Group(prefix string, handlers ...any) Router {
 	prefix = getGroupPath(grp.Prefix, prefix)
-	if len(handlers) > 0 {
-		converted := collectHandlers("group", handlers...)
-		grp.app.register([]string{methodUse}, prefix, grp, converted...)
-	}
 
 	// Create new group
-	newGrp := &Group{Prefix: prefix, app: grp.app, parentGroup: grp}
+	newGrp := newGroup(grp.app, prefix, grp)
+	if len(handlers) > 0 {
+		converted := collectHandlers("group", handlers...)
+		// Record on the sub-group; the parent's doc helpers must not retarget this Use route.
+		newGrp.cursor.Store(grp.app.register([]string{methodUse}, prefix, grp, allHosts, converted...))
+	}
 	if err := grp.app.hooks.executeOnGroupHooks(*newGrp); err != nil {
 		panic(err)
 	}
@@ -220,18 +225,14 @@ func (grp *Group) Group(prefix string, handlers ...any) Router {
 //	api := app.Group("/api")
 //	api.Domain("api.example.com").Get("/users", listUsers)
 func (grp *Group) Domain(host string) Router {
-	return &domainRouter{
-		app:     grp.app,
-		group:   grp,
-		matcher: parseDomainPattern(host),
-	}
+	return newDomainRouter(grp.app, grp, parseDomainPattern(host), 0)
 }
 
 // RouteChain creates a Registering instance scoped to the group's prefix,
 // allowing chained route declarations for the same path.
 func (grp *Group) RouteChain(path string) Register {
 	// Create new group
-	register := &Registering{app: grp.app, group: grp, path: getGroupPath(grp.Prefix, path)}
+	register := newRegistering(grp.app, grp, nil, getGroupPath(grp.Prefix, path))
 
 	return register
 }
