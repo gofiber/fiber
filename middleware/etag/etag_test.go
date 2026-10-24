@@ -3,9 +3,12 @@ package etag
 import (
 	"bytes"
 	"errors"
+	"hash/crc32"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -500,4 +503,40 @@ func Test_ETag_HandlerETagWithoutNormalizing(t *testing.T) {
 		}
 	}
 	require.Equal(t, []string{`"custom"`}, lines)
+}
+
+// go test -run Test_Generate_MatchesCRC
+func Test_Generate_MatchesCRC(t *testing.T) {
+	t.Parallel()
+
+	tab := crc32.MakeTable(0xD5828281)
+	r := rand.New(rand.NewPCG(1, 2))
+	check := func(n int) {
+		body := make([]byte, n)
+		for i := range body {
+			body[i] = byte(r.UintN(256))
+		}
+		want := `"` + strconv.Itoa(n) + "-" + strconv.FormatUint(uint64(crc32.Checksum(body, tab)), 10) + `"`
+		require.Equal(t, want, string(Generate(body)), "length %d", n)
+	}
+	for n := range 300 {
+		check(n)
+	}
+	for _, n := range []int{1 << 10, 4<<10 + 3, 64<<10 - 1} {
+		check(n)
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Generate -benchmem -count=4
+func Benchmark_Generate(b *testing.B) {
+	for _, size := range []int{13, 100, 1 << 10, 10 << 10, 100 << 10} {
+		body := bytes.Repeat([]byte("0123456789abcdef"), size/16+1)[:size]
+		b.Run(utils.FormatInt(int64(size))+"B", func(b *testing.B) {
+			b.SetBytes(int64(size))
+			b.ReportAllocs()
+			for b.Loop() {
+				_ = Generate(body)
+			}
+		})
+	}
 }

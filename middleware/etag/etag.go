@@ -1,7 +1,6 @@
 package etag
 
 import (
-	"hash/crc32"
 	"math"
 	"slices"
 
@@ -17,7 +16,7 @@ import (
 
 var (
 	weakPrefix = []byte("W/")
-	crc32q     = crc32.MakeTable(0xD5828281)
+	crc32q     = newCRCTable(0xD5828281)
 )
 
 // Generate returns a strong ETag for body.
@@ -31,7 +30,7 @@ func Generate(body []byte) []byte {
 	b = append(b, '"')
 	b = appendUint(b, uint32(len(body))) // #nosec G115 -- length checked above
 	b = append(b, '-')
-	b = appendUint(b, crc32.Checksum(body, crc32q))
+	b = appendUint(b, crc32q.checksum(body))
 	b = append(b, '"')
 	return slices.Clone(b)
 }
