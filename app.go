@@ -106,15 +106,16 @@ type Error struct {
 // App is safe for concurrent use, except for route mutation methods that
 // explicitly document otherwise.
 type App struct {
-	// docTarget provides the route-documentation helpers, applied to the latest registration.
-	docTarget[Router]
-
 	// App config
 	config Config
 	// Indicates if the value was explicitly configured
 	configured Config
 	// Ctx pool
 	pool sync.Pool
+
+	// docTarget provides the route-documentation helpers, applied to the latest registration. It is last so
+	// the fields the request path reads, config first, keep their offsets.
+	docTarget[Router]
 	// Fasthttp server
 	server *fasthttp.Server
 	// Converts byte slice to a string
