@@ -965,3 +965,33 @@ func FuzzNormalizeHost(f *testing.F) {
 		_ = normalizeHost(input)
 	})
 }
+
+func Benchmark_HostAuthorization_IPv6ExactMatch(b *testing.B) {
+	app := fiber.New()
+	app.Use(New(Config{
+		AllowedHosts: []string{"[2001:db8::1]"},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "[2001:db8::1]:8080"
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp, err := app.Test(req)
+		if err != nil {
+			b.Fatal(err)
+		}
+		resp.Body.Close() //nolint:errcheck // benchmark cleanup
+	}
+}
+
+func Benchmark_normalizeHost_IPv6(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = normalizeHost("[2001:db8::1]:8080")
+	}
+}

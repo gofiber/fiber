@@ -118,7 +118,15 @@ func canonicalIPv6(host string) string {
 	if !ok {
 		return host
 	}
-	return addr.String()
+	// Format into a stack buffer and hand back the input when it is already
+	// canonical, which is what browsers send, so the per-request path stays
+	// allocation-free. Only a non-canonical spelling pays for a new string.
+	var buf [len("ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255")]byte
+	canonical := addr.AppendTo(buf[:0])
+	if string(canonical) == host {
+		return host
+	}
+	return string(canonical)
 }
 
 func trimOneTrailingDot(host string) string {
