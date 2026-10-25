@@ -812,6 +812,72 @@ func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 	require.ElementsMatch(t, []string{"X-Client", "X-Request"}, transport.got)
 }
 
+// rewritingTransport fails its first DoRedirects after rewriting the request as a redirect to another
+// host would, and records how each attempt found it.
+type rewritingTransport struct {
+	*delayedTransport
+
+	starts  []string // target and X-Api-Key of each attempt
+	streams []bool   // whether each attempt had a body stream
+}
+
+func (r *rewritingTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int, _ []string) error {
+	r.starts = append(r.starts, req.URI().String()+"|"+string(req.Header.Peek("X-Api-Key")))
+	r.streams = append(r.streams, req.IsBodyStream())
+	if len(r.starts) > 1 {
+		req.SetRequestURI("http://final.example/done")
+		resp.SetStatusCode(fasthttp.StatusOK)
+		return nil
+	}
+	req.SetRequestURI("http://attacker.example/collect")
+	req.Header.Del("X-Api-Key")
+	return errors.New("connection reset")
+}
+
+// Test_Core_RetryRestartsRedirects pins that an attempt after a failed redirect chain starts from the
+// request as it was sent. The chain rewrites the request it is given, so resuming from it would retry the
+// hop the chain had reached, without the headers that hop's redirect dropped.
+func Test_Core_RetryRestartsRedirects(t *testing.T) {
+	t.Parallel()
+
+	// run returns the transport and the host the response was recorded as served from, which a cookie
+	// jar reads from the request after the chain: the successful attempt must leave it at its last hop.
+	run := func(t *testing.T, prepare func(req *Request)) (*rewritingTransport, string) {
+		t.Helper()
+
+		transport := &rewritingTransport{delayedTransport: newDelayedTransport(0)}
+		client := New().
+			SetRetryConfig(&RetryConfig{InitialInterval: time.Millisecond, MaxBackoffTime: 2 * time.Millisecond, MaxRetryCount: 2}).
+			SetCookieJar(AcquireCookieJar())
+		client.transport = transport
+
+		req := client.R().SetHeader("X-Api-Key", "key").SetMaxRedirects(3)
+		prepare(req)
+		resp, err := req.Get("http://example.com/start")
+		require.NoError(t, err)
+		host := string(resp.respondedHost)
+		resp.Close()
+		return transport, host
+	}
+
+	t.Run("from the request as it was sent", func(t *testing.T) {
+		t.Parallel()
+
+		transport, host := run(t, func(*Request) {})
+		require.Equal(t, []string{"http://example.com/start|key", "http://example.com/start|key"}, transport.starts)
+		require.Equal(t, "final.example", host)
+	})
+
+	t.Run("a streamed body is left alone", func(t *testing.T) {
+		t.Parallel()
+
+		transport, _ := run(t, func(req *Request) {
+			req.RawRequest.SetBodyStream(bytes.NewBufferString("payload"), len("payload"))
+		})
+		require.Equal(t, []bool{true, true}, transport.streams)
+	})
+}
+
 // Test_Core_RedirectSensitiveHeadersConcurrentSet replaces the client's list while redirected requests
 // run, for the race detector.
 func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {

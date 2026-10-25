@@ -100,12 +100,24 @@ func (c *core) execFunc() (*Response, error) {
 
 		var err error
 		if cfg != nil {
+			// A redirect chain rewrites reqv, so a failed attempt is undone to restart from the request as
+			// sent. A stream cannot be rewound, so such a request is left as it is.
+			var sent *fasthttp.Request
+			if followRedirects && !reqv.IsBodyStream() {
+				sent = fasthttp.AcquireRequest()
+				defer fasthttp.ReleaseRequest(sent)
+				reqv.CopyTo(sent)
+			}
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
-				if followRedirects {
-					return c.client.doRedirectsDropping(reqv, respv, maxRedirects, sensitiveHeaders)
+				if !followRedirects {
+					return c.client.Do(reqv, respv)
 				}
-				return c.client.Do(reqv, respv)
+				redirectErr := c.client.doRedirectsDropping(reqv, respv, maxRedirects, sensitiveHeaders)
+				if redirectErr != nil && sent != nil {
+					sent.CopyTo(reqv)
+				}
+				return redirectErr
 			})
 		} else {
 			if followRedirects {
