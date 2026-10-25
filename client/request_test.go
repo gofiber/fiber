@@ -1691,6 +1691,161 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	})
 }
 
+func Test_Request_RedirectSensitiveHeaders(t *testing.T) {
+	t.Parallel()
+
+	t.Run("set trims, drops blanks and copies", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest()
+		defer ReleaseRequest(req)
+		require.Nil(t, req.RedirectSensitiveHeaders(), "none by default")
+
+		names := []string{" X-Api-Key", "", "X-Auth-Token\t"}
+		require.Same(t, req, req.SetRedirectSensitiveHeaders(names...))
+		require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, req.RedirectSensitiveHeaders())
+
+		names[0] = "X-Changed"
+		require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, req.RedirectSensitiveHeaders(), "the caller's slice must not reach the request")
+	})
+
+	t.Run("the getter returns a copy", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest()
+		defer ReleaseRequest(req)
+		req.SetRedirectSensitiveHeaders("X-Api-Key")
+
+		got := req.RedirectSensitiveHeaders()
+		got[0] = "X-Changed"
+		require.Equal(t, []string{"X-Api-Key"}, req.RedirectSensitiveHeaders())
+	})
+
+	t.Run("a second call replaces the list and no names clears it", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest()
+		defer ReleaseRequest(req)
+
+		req.SetRedirectSensitiveHeaders("X-One").SetRedirectSensitiveHeaders("X-Two")
+		require.Equal(t, []string{"X-Two"}, req.RedirectSensitiveHeaders())
+
+		req.SetRedirectSensitiveHeaders()
+		require.Nil(t, req.RedirectSensitiveHeaders())
+
+		req.SetRedirectSensitiveHeaders(" ", "")
+		require.Nil(t, req.RedirectSensitiveHeaders(), "only blanks leave nothing")
+	})
+
+	t.Run("Reset clears the list without touching a copy handed out", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest()
+		defer ReleaseRequest(req)
+		req.SetRedirectSensitiveHeaders("X-Api-Key")
+		handedOut := req.RedirectSensitiveHeaders()
+
+		req.Reset()
+		require.Nil(t, req.RedirectSensitiveHeaders())
+
+		// A recycled request must not write into the array an earlier caller still holds.
+		req.SetRedirectSensitiveHeaders("X-Other")
+		require.Equal(t, []string{"X-Api-Key"}, handedOut)
+	})
+}
+
+// Test_Request_RedirectSensitiveHeaders_EndToEnd sends real requests through every way of naming a
+// header and checks what the server behind a cross-host redirect receives.
+func Test_Request_RedirectSensitiveHeaders_EndToEnd(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/start", func(c fiber.Ctx) error {
+			return c.Redirect().Status(fiber.StatusFound).To("http://attacker.example/collect")
+		})
+		app.Get("/same-host", func(c fiber.Ctx) error {
+			return c.Redirect().Status(fiber.StatusFound).To("http://example.com/collect")
+		})
+		app.Get("/collect", func(c fiber.Ctx) error {
+			return c.SendString(c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token") + "|" + c.Get("X-Trace-Id"))
+		})
+	})
+	// Not a defer: the subtests run in parallel and finish after this function returns.
+	t.Cleanup(server.stop)
+
+	headers := map[string]string{"X-Api-Key": "key", "X-Auth-Token": "tok", "X-Trace-Id": "trace"}
+
+	for _, tc := range []struct {
+		prepare func(client *Client)
+		send    func(client *Client, url string) (*Response, error)
+		name    string
+		want    string
+	}{
+		{
+			name: "nothing listed forwards every header",
+			send: func(client *Client, url string) (*Response, error) {
+				return client.Get(url, Config{Header: headers, MaxRedirects: 5})
+			},
+			want: "key|tok|trace",
+		},
+		{
+			name: "Config",
+			send: func(client *Client, url string) (*Response, error) {
+				return client.Get(url, Config{Header: headers, MaxRedirects: 5, RedirectSensitiveHeaders: []string{"X-Api-Key"}})
+			},
+			want: "|tok|trace",
+		},
+		{
+			name: "Request",
+			send: func(client *Client, url string) (*Response, error) {
+				return client.R().SetHeaders(headers).SetMaxRedirects(5).SetRedirectSensitiveHeaders("x-api-key").Get(url)
+			},
+			want: "|tok|trace",
+		},
+		{
+			name:    "Client",
+			prepare: func(client *Client) { client.SetHeaders(headers).SetRedirectSensitiveHeaders("X-Api-Key") },
+			send: func(client *Client, url string) (*Response, error) {
+				return client.Get(url, Config{MaxRedirects: 5})
+			},
+			want: "|tok|trace",
+		},
+		{
+			name:    "the client's names and the request's are added together",
+			prepare: func(client *Client) { client.SetHeaders(headers).SetRedirectSensitiveHeaders("X-Api-Key") },
+			send: func(client *Client, url string) (*Response, error) {
+				return client.R().SetMaxRedirects(5).SetRedirectSensitiveHeaders("X-Auth-Token").Get(url)
+			},
+			want: "||trace",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := New().SetDial(server.dial())
+			if tc.prepare != nil {
+				tc.prepare(client)
+			}
+
+			// Control: a redirect that stays on the host keeps every header, so what the
+			// cross-host request lacks below is the list's doing.
+			same, err := tc.send(client, "http://example.com/same-host")
+			require.NoError(t, err)
+			defer same.Close()
+			require.Equal(t, "key|tok|trace", same.String())
+
+			resp, err := tc.send(client, "http://example.com/start")
+			require.NoError(t, err)
+			defer resp.Close()
+			require.Equal(t, fiber.StatusOK, resp.StatusCode())
+			require.Equal(t, tc.want, resp.String())
+
+			// The hop that lost the header was a copy: the request that was sent still holds it.
+			require.Equal(t, "key", string(resp.request.RawRequest.Header.Peek("X-Api-Key")))
+		})
+	}
+}
+
 func Test_Request_Query_Redirect(t *testing.T) {
 	t.Parallel()
 

@@ -69,6 +69,12 @@ func (c *core) execFunc() (*Response, error) {
 	maxRedirects := c.req.maxRedirects
 	method := string(reqv.Header.Method())
 	followRedirects := maxRedirects > 0 && (method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodQuery)
+	// The names to drop on a redirect come from the request and the client, so they are read here
+	// for the same reason: a fresh slice that stays valid after the request is recycled.
+	var sensitiveHeaders []string
+	if followRedirects {
+		sensitiveHeaders = c.client.redirectSensitiveHeadersFor(c.req)
+	}
 
 	go func() {
 		// retain both channels until they are drained
@@ -99,13 +105,13 @@ func (c *core) execFunc() (*Response, error) {
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
 				if followRedirects {
-					return c.client.DoRedirects(reqv, respv, maxRedirects)
+					return c.client.doRedirectsDropping(reqv, respv, maxRedirects, sensitiveHeaders)
 				}
 				return c.client.Do(reqv, respv)
 			})
 		} else {
 			if followRedirects {
-				err = c.client.DoRedirects(reqv, respv, maxRedirects)
+				err = c.client.doRedirectsDropping(reqv, respv, maxRedirects, sensitiveHeaders)
 			} else {
 				err = c.client.Do(reqv, respv)
 			}

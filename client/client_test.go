@@ -309,6 +309,75 @@ func Test_Client_SetRootCertificate_InvalidInput(t *testing.T) {
 	}
 }
 
+func TestClient_RedirectSensitiveHeaders(t *testing.T) {
+	t.Parallel()
+
+	t.Run("set trims, drops blanks and copies", func(t *testing.T) {
+		t.Parallel()
+
+		client := New()
+		require.Nil(t, client.RedirectSensitiveHeaders(), "none by default")
+
+		names := []string{" X-Api-Key", "", "X-Auth-Token\t"}
+		require.Same(t, client, client.SetRedirectSensitiveHeaders(names...))
+		require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, client.RedirectSensitiveHeaders())
+
+		names[0] = "X-Changed"
+		require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, client.RedirectSensitiveHeaders(), "the caller's slice must not reach the client")
+	})
+
+	t.Run("the getter returns a copy", func(t *testing.T) {
+		t.Parallel()
+
+		client := New().SetRedirectSensitiveHeaders("X-Api-Key")
+
+		got := client.RedirectSensitiveHeaders()
+		got[0] = "X-Changed"
+		require.Equal(t, []string{"X-Api-Key"}, client.RedirectSensitiveHeaders())
+	})
+
+	t.Run("a second call replaces the list and no names clears it", func(t *testing.T) {
+		t.Parallel()
+
+		client := New().SetRedirectSensitiveHeaders("X-One").SetRedirectSensitiveHeaders("X-Two")
+		require.Equal(t, []string{"X-Two"}, client.RedirectSensitiveHeaders())
+
+		client.SetRedirectSensitiveHeaders()
+		require.Nil(t, client.RedirectSensitiveHeaders())
+
+		client.SetRedirectSensitiveHeaders(" ", "")
+		require.Nil(t, client.RedirectSensitiveHeaders(), "only blanks leave nothing")
+	})
+
+	t.Run("the names for a request are the client's and the request's together", func(t *testing.T) {
+		t.Parallel()
+
+		client := New().SetRedirectSensitiveHeaders("X-One")
+		req := AcquireRequest().SetRedirectSensitiveHeaders("X-Two")
+		defer ReleaseRequest(req)
+
+		got := client.redirectSensitiveHeadersFor(req)
+		require.Equal(t, []string{"X-One", "X-Two"}, got)
+
+		// A fresh slice: changing it reaches neither list.
+		got[0] = "X-Changed"
+		got[1] = "X-Changed"
+		require.Equal(t, []string{"X-One"}, client.RedirectSensitiveHeaders())
+		require.Equal(t, []string{"X-Two"}, req.RedirectSensitiveHeaders())
+
+		// Either list alone, whether the request is absent or empty.
+		empty := AcquireRequest()
+		defer ReleaseRequest(empty)
+		require.Equal(t, []string{"X-One"}, client.redirectSensitiveHeadersFor(nil))
+		require.Equal(t, []string{"X-One"}, client.redirectSensitiveHeadersFor(empty))
+		require.Equal(t, []string{"X-Two"}, New().redirectSensitiveHeadersFor(req))
+
+		// Neither names anything, which costs nothing.
+		require.Nil(t, New().redirectSensitiveHeadersFor(nil))
+		require.Nil(t, New().redirectSensitiveHeadersFor(empty))
+	})
+}
+
 func TestClientResetClearsState(t *testing.T) {
 	t.Parallel()
 
@@ -325,6 +394,7 @@ func TestClientResetClearsState(t *testing.T) {
 	client.SetRetryConfig(&RetryConfig{MaxRetryCount: 3})
 	client.Debug()
 	client.SetDisablePathNormalizing(true)
+	client.SetRedirectSensitiveHeaders("X-Api-Key")
 	client.SetHeaders(map[string]string{"X-Test": "value"})
 	client.SetParams(map[string]string{"p": "1"})
 	client.SetCookies(map[string]string{"cookie": "value"})
@@ -342,6 +412,7 @@ func TestClientResetClearsState(t *testing.T) {
 	require.Nil(t, client.retryConfig)
 	require.False(t, client.isDebug)
 	require.False(t, client.isPathNormalizingDisabled)
+	require.Nil(t, client.redirectSensitiveHeaders)
 	require.Nil(t, client.cookieJar)
 	require.Nil(t, jar.hostCookies)
 	require.Empty(t, *client.path)
@@ -2287,6 +2358,24 @@ func Test_Set_Config_To_Request(t *testing.T) {
 		setConfigToRequest(req, Config{MaxRedirects: 1})
 
 		require.Equal(t, 1, req.MaxRedirects())
+	})
+
+	t.Run("set redirect sensitive headers", func(t *testing.T) {
+		t.Parallel()
+		req := AcquireRequest()
+
+		setConfigToRequest(req, Config{RedirectSensitiveHeaders: []string{" X-Api-Key", ""}})
+
+		require.Equal(t, []string{"X-Api-Key"}, req.RedirectSensitiveHeaders())
+	})
+
+	t.Run("a config without redirect sensitive headers leaves the request's", func(t *testing.T) {
+		t.Parallel()
+		req := AcquireRequest().SetRedirectSensitiveHeaders("X-Api-Key")
+
+		setConfigToRequest(req, Config{MaxRedirects: 1})
+
+		require.Equal(t, []string{"X-Api-Key"}, req.RedirectSensitiveHeaders())
 	})
 
 	t.Run("set body string", func(t *testing.T) {

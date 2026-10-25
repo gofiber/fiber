@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -62,6 +63,8 @@ type Request struct {
 	boundary   string
 	referer    string
 	files      []*File
+
+	redirectSensitiveHeaders []string
 
 	timeout      time.Duration
 	maxRedirects int
@@ -613,6 +616,20 @@ func (r *Request) SetMaxRedirects(count int) *Request {
 	return r
 }
 
+// RedirectSensitiveHeaders returns a copy of the header names set on this Request. The client's own
+// list is not included.
+func (r *Request) RedirectSensitiveHeaders() []string {
+	return slices.Clone(r.redirectSensitiveHeaders)
+}
+
+// SetRedirectSensitiveHeaders names request headers that must not follow a redirect to another
+// host, such as a credential of your own like X-Api-Key, in addition to the client's list and the
+// built-in set. It replaces any list set before on this Request; no names clears it.
+func (r *Request) SetRedirectSensitiveHeaders(names ...string) *Request {
+	r.redirectSensitiveHeaders = crosshost.CopyNames(names)
+	return r
+}
+
 // DisablePathNormalizing reports whether path normalizing is disabled for the Request.
 func (r *Request) DisablePathNormalizing() bool {
 	return r.isPathNormalizingDisabled
@@ -696,6 +713,8 @@ func (r *Request) Reset() {
 	r.body = nil
 	r.timeout = 0
 	r.maxRedirects = 0
+	// nil rather than [:0], so a recycled request cannot share a backing array with a list it handed out.
+	r.redirectSensitiveHeaders = nil
 	r.bodyType = noBody
 	r.boundary = boundary
 	r.isPathNormalizingDisabled = false

@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -616,7 +617,7 @@ func (d *delayedTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Resp
 	return d.Do(req, resp)
 }
 
-func (d *delayedTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+func (d *delayedTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int, _ []string) error {
 	return d.Do(req, resp)
 }
 
@@ -680,7 +681,7 @@ func (b *blockingErrTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.
 	return b.Do(req, resp)
 }
 
-func (b *blockingErrTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+func (b *blockingErrTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int, _ []string) error {
 	return b.Do(req, resp)
 }
 
@@ -728,7 +729,7 @@ func (p *panicTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Respon
 	return p.Do(req, resp)
 }
 
-func (p *panicTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+func (p *panicTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int, _ []string) error {
 	return p.Do(req, resp)
 }
 
@@ -754,6 +755,144 @@ func (*panicTransport) StreamResponseBody() bool {
 }
 
 func (*panicTransport) SetStreamResponseBody(_ bool) {
+}
+
+// namesTransport holds DoRedirects open until released and records the header names it was handed,
+// reading them only then, after the test has changed the request and the client they came from.
+type namesTransport struct {
+	*delayedTransport
+
+	proceed chan struct{}
+	got     chan []string
+}
+
+func newNamesTransport() *namesTransport {
+	return &namesTransport{
+		delayedTransport: newDelayedTransport(0),
+		proceed:          make(chan struct{}),
+		got:              make(chan []string, 1),
+	}
+}
+
+func (n *namesTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, sensitiveHeaders []string) error {
+	<-n.proceed
+	n.got <- slices.Clone(sensitiveHeaders)
+	return n.delayedTransport.DoRedirects(req, resp, maxRedirects, sensitiveHeaders)
+}
+
+// Test_Core_RedirectSensitiveHeadersSurviveRequestReuse pins that the names handed to the transport
+// are the ones the client and the request held when the call began. Once the caller gives up it may
+// release the request, and the pool may hand it to someone else while the transport goroutine is
+// still working, so reading the list from that goroutine would see the wrong names and race with
+// the reuse.
+//
+// The context is done before the call, so execute returns without waiting for the goroutine, and
+// nothing orders what the goroutine reads after the changes below. Waiting for the transport to be
+// reached first would order them: the goroutine's read would then happen before the test's writes
+// as far as the race detector can tell, and a late read would go unnoticed.
+func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
+	t.Parallel()
+
+	client := New().SetRedirectSensitiveHeaders("X-Client")
+	transport := newNamesTransport()
+	client.transport = transport
+
+	req := AcquireRequest()
+	defer ReleaseRequest(req)
+	req.SetURL("http://example.com/redirect-names")
+	req.SetMaxRedirects(3)
+	req.SetRedirectSensitiveHeaders("X-Request")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	resp, err := newCore().execute(ctx, client, req)
+	require.Nil(t, resp)
+	require.ErrorIs(t, err, ErrTimeoutOrCancel)
+
+	// The request is recycled and the client reconfigured, with the goroutine still to run or running.
+	req.Reset()
+	req.SetRedirectSensitiveHeaders("X-Reused")
+	client.SetRedirectSensitiveHeaders("X-Reconfigured")
+	close(transport.proceed)
+
+	select {
+	case got := <-transport.got:
+		require.Equal(t, []string{"X-Client", "X-Request"}, got)
+	case <-time.After(time.Second):
+		t.Fatal("transport DoRedirects did not finish")
+	}
+
+	select {
+	case <-transport.finished:
+	case <-time.After(time.Second):
+		t.Fatal("transport Do did not finish")
+	}
+}
+
+// Test_Core_RedirectSensitiveHeadersConcurrentSet runs requests that follow redirects while the
+// client's list is being replaced, for the race detector to judge. The server only sees the header
+// or does not, according to the list the request started with.
+func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/start", func(c fiber.Ctx) error {
+			return c.Redirect().Status(fiber.StatusFound).To("http://attacker.example/collect")
+		})
+		app.Get("/collect", func(c fiber.Ctx) error {
+			return c.SendString(c.Get("X-Api-Key"))
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+
+	const workers, rounds = 4, 25
+	bodies := make(chan string, workers*rounds)
+	listed := make(chan int, workers*rounds)
+	errs := make(chan error, workers)
+
+	// The workers only report; the assertions run on the test goroutine, where require is allowed.
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			for range rounds {
+				resp, err := client.R().
+					SetHeader("X-Api-Key", "key").
+					SetMaxRedirects(3).
+					SetRedirectSensitiveHeaders("X-Request").
+					Get("http://example.com/start")
+				if err != nil {
+					errs <- err
+					return
+				}
+				bodies <- resp.String()
+				resp.Close()
+			}
+		})
+		wg.Go(func() {
+			for range rounds {
+				client.SetRedirectSensitiveHeaders("X-Api-Key")
+				listed <- len(client.RedirectSensitiveHeaders())
+				client.SetRedirectSensitiveHeaders()
+			}
+		})
+	}
+	wg.Wait()
+	close(bodies)
+	close(listed)
+	close(errs)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	for body := range bodies {
+		require.Contains(t, []string{"", "key"}, body)
+	}
+	for n := range listed {
+		require.LessOrEqual(t, n, 1)
+	}
 }
 
 func Test_Core_RequestBodyStream(t *testing.T) {
