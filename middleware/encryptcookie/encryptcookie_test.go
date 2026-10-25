@@ -1198,6 +1198,18 @@ func Test_Middleware_Duplicate_Response_Cookie_Names(t *testing.T) {
 		require.Equal(t, "old", decrypt(t, got[0]))
 	})
 
+	t.Run("an empty name in Except keeps the line as it arrived", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Key: testKey, Except: []string{""}}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Res().Add(fiber.HeaderSetCookie, "=secret; Path=/")
+			return nil
+		})
+
+		require.Equal(t, []string{"=secret; Path=/"}, lines(t, app))
+	})
+
 	t.Run("except keeps a bare name exactly as it arrived", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
