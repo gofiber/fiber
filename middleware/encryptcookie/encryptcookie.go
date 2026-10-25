@@ -6,12 +6,17 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 )
 
 // responseCookie is one entry of the Set-Cookie header as the encrypt pass read
-// it. line keeps the whole field value, so an entry is written back with every
-// attribute it arrived with.
+// it. key is the name fasthttp stores the line under, name is the one the
+// caller wrote, line is the field value as it arrived, and ck holds the parsed
+// form of a line that still has to be sealed. An entry with no line and no ck
+// is dropped.
 type responseCookie struct {
+	ck   *fasthttp.Cookie
+	key  string
 	name string
 	line string
 }
@@ -36,55 +41,100 @@ func New(config ...Config) fiber.Handler {
 
 		// Encrypt response cookies
 		header := &c.Response().Header
-		cookieLines := make([]responseCookie, 0, 4)
-		for name, raw := range header.Cookies() {
-			cookieLines = append(cookieLines, responseCookie{name: string(name), line: string(raw)})
+
+		// A response can set the same name more than once, and the order of the
+		// lines decides which value the browser keeps, so every line is sealed
+		// on its own instead of once per name. The name is read from the first
+		// ';' segment, the same segment the value lives in, so Except matches
+		// the name the caller wrote.
+		var cookies []responseCookie
+
+		for key, raw := range header.Cookies() {
+			line := string(raw)
+			segment, _, _ := strings.Cut(line, ";")
+			name, _, found := strings.Cut(segment, "=")
+			name = utils.Trim(name, ' ')
+
+			cookie := responseCookie{key: string(key), name: name, line: line}
+			switch {
+			case isDisabled(name, cfg.Except):
+				// Except keeps the line exactly as it arrived.
+			case !found || name == "":
+				// A line with no name, or with an empty one, has nothing to
+				// seal its value under, so it is not sent instead of going out
+				// in clear text. The Except check above can still keep it.
+				cookie.line = ""
+			default:
+				cookie.ck = fasthttp.AcquireCookie()
+			}
+
+			cookies = append(cookies, cookie)
 		}
 
-		cookies := make([]string, 0, len(cookieLines))
-		encryptable := false
-		for i := range cookieLines {
-			ck := &cookieLines[i]
-			if isDisabled(ck.name, cfg.Except) {
-				cookies = append(cookies, ck.line)
+		defer releaseResponseCookies(cookies)
+
+		var encErr error
+		for i := range cookies {
+			cookie := &cookies[i]
+			if cookie.ck == nil {
 				continue
 			}
 
-			encryptable = true
-			// The value ends at the first ';', so an '=' inside an attribute
-			// is never read as the value.
-			segment, attributes, hasAttributes := strings.Cut(ck.line, ";")
-			_, value, found := strings.Cut(segment, "=")
-			if !found {
-				// No name to seal the value under, so the line is not sent.
+			// fasthttp's parser is the one the request side reads with, so a
+			// quoted or padded value is sealed as the plain text it stands for.
+			// It rejects a value holding a quote or a backslash, and such a
+			// line cannot be sealed under its name, so it is not sent either.
+			if parseErr := cookie.ck.ParseBytes([]byte(cookie.line)); parseErr != nil {
+				fasthttp.ReleaseCookie(cookie.ck)
+				cookie.ck, cookie.line = nil, ""
 				continue
 			}
 
-			encryptedValue, encErr := cfg.Encryptor(ck.name, trimCookieValue(value), cfg.Key)
-			if encErr != nil {
-				header.DelAllCookies()
-				for j := range cookieLines {
-					if isDisabled(cookieLines[j].name, cfg.Except) {
-						header.Add(fiber.HeaderSetCookie, cookieLines[j].line)
-					}
-				}
-
-				return errors.Join(err, encErr)
+			// name is the same '=' segment the parser read as the key, so it is
+			// the name the request side decrypts under, which the default
+			// helpers bind as AAD.
+			encryptedValue, sealErr := cfg.Encryptor(cookie.name, string(cookie.ck.Value()), cfg.Key)
+			if sealErr != nil {
+				encErr = sealErr
+				break
 			}
 
-			// A ';' in the encrypted value would inject attributes, the same way
-			// fasthttp's Cookie.SetValue strips it.
-			line := ck.name + "=" + strings.ReplaceAll(encryptedValue, ";", " ")
-			if hasAttributes {
-				line += ";" + attributes
-			}
-			cookies = append(cookies, line)
+			// SetValue replaces every ';', which would otherwise start a new
+			// attribute and let the value add one.
+			cookie.ck.SetValue(encryptedValue)
 		}
 
-		if encryptable {
+		// Write once, in the order the lines arrived. A repeated name or a
+		// dropped line needs the whole header built again, while a unique name
+		// goes back into its own slot without touching the others.
+		switch {
+		case encErr != nil:
 			header.DelAllCookies()
-			for _, line := range cookies {
-				header.Add(fiber.HeaderSetCookie, line)
+			for i := range cookies {
+				if cookies[i].ck == nil && cookies[i].line != "" {
+					header.Add(fiber.HeaderSetCookie, cookies[i].line)
+				}
+			}
+
+			return errors.Join(err, encErr)
+
+		case rebuildResponseCookies(cookies):
+			header.DelAllCookies()
+			for i := range cookies {
+				cookie := &cookies[i]
+				switch {
+				case cookie.ck != nil:
+					header.Add(fiber.HeaderSetCookie, string(cookie.ck.Cookie()))
+				case cookie.line != "":
+					header.Add(fiber.HeaderSetCookie, cookie.line)
+				}
+			}
+
+		default:
+			for i := range cookies {
+				if cookies[i].ck != nil {
+					header.SetCookie(cookies[i].ck)
+				}
 			}
 		}
 
@@ -192,12 +242,32 @@ func hasExceptedName(cookies []requestCookie, name string) bool {
 	return false
 }
 
-// trimCookieValue trims the spaces and the single pair of quotes that fasthttp
-// strips from a cookie value.
-func trimCookieValue(value string) string {
-	value = utils.Trim(value, ' ')
-	if len(value) > 1 && value[0] == '"' && value[len(value)-1] == '"' {
-		return value[1 : len(value)-1]
+// releaseResponseCookies returns every parsed line to the pool.
+func releaseResponseCookies(cookies []responseCookie) {
+	for i := range cookies {
+		if cookies[i].ck != nil {
+			fasthttp.ReleaseCookie(cookies[i].ck)
+		}
 	}
-	return value
+}
+
+// rebuildResponseCookies reports whether the Set-Cookie header has to be built
+// again from scratch: a line is dropped, or two lines share a name so they
+// cannot be written back one by one.
+func rebuildResponseCookies(cookies []responseCookie) bool {
+	dropped := false
+
+	for i := range cookies {
+		if cookies[i].ck == nil && cookies[i].line == "" {
+			dropped = true
+		}
+
+		for j := i + 1; j < len(cookies); j++ {
+			if cookies[i].key == cookies[j].key {
+				return true
+			}
+		}
+	}
+
+	return dropped
 }

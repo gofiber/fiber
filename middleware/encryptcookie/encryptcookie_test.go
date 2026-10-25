@@ -1045,15 +1045,14 @@ func Test_Middleware_Duplicate_Response_Cookie_Names(t *testing.T) {
 	}
 
 	// decrypt returns the plaintext of a Set-Cookie field value, and fails
-	// when the line holds a value the key cannot open. The value is read with
-	// the same helper the middleware uses, so the test and the implementation
-	// cannot drift apart.
+	// when the line holds a value the key cannot open. fasthttp's own parser
+	// reads the name and the value here, so a bug in the middleware cannot hide
+	// behind the same parsing in the test.
 	decrypt := func(t *testing.T, line string) string {
 		t.Helper()
-		name, rest, found := strings.Cut(line, "=")
-		require.True(t, found, line)
-		value, _, _ := strings.Cut(rest, ";")
-		plain, err := DecryptCookie(name, trimCookieValue(value), testKey)
+		var ck fasthttp.Cookie
+		require.NoError(t, ck.ParseBytes([]byte(line)), line)
+		plain, err := DecryptCookie(string(ck.Key()), string(ck.Value()), testKey)
 		require.NoError(t, err, line)
 		return plain
 	}
@@ -1065,8 +1064,11 @@ func Test_Middleware_Duplicate_Response_Cookie_Names(t *testing.T) {
 		require.Equal(t, "old", decrypt(t, got[0]))
 		require.Equal(t, "dark", decrypt(t, got[1]))
 		require.Equal(t, "new", decrypt(t, got[2]))
-		require.Contains(t, got[0], "; Path=/; Max-Age=0")
-		require.Contains(t, got[2], "; Path=/admin")
+		// fasthttp writes the attributes back in its own casing, the same
+		// way the middleware did before this change.
+		require.Contains(t, got[0], "max-age=0")
+		require.Contains(t, got[0], "path=/")
+		require.Contains(t, got[2], "path=/admin")
 	})
 
 	t.Run("excepted duplicates are written back as they arrived", func(t *testing.T) {
@@ -1178,6 +1180,84 @@ func Test_Middleware_Duplicate_Response_Cookie_Names(t *testing.T) {
 			return nil
 		})
 
-		require.Equal(t, []string{"sid=x  Domain=evil.com; Path=/"}, lines(t, app))
+		require.Equal(t, []string{"sid=x  Domain=evil.com; path=/"}, lines(t, app))
 	})
+
+	t.Run("an empty name is dropped like a bare name", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Key: testKey}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Res().Add(fiber.HeaderSetCookie, "=secret; Path=/")
+			c.Res().Add(fiber.HeaderSetCookie, "sid=old; Path=/")
+			return nil
+		})
+
+		got := lines(t, app)
+		require.Len(t, got, 1)
+		require.Equal(t, "old", decrypt(t, got[0]))
+	})
+
+	t.Run("except keeps a bare name exactly as it arrived", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Key: testKey, Except: []string{"flag"}}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Res().Add(fiber.HeaderSetCookie, "flag; Path=/x")
+			c.Res().Add(fiber.HeaderSetCookie, "sid=old; Path=/")
+			return nil
+		})
+
+		got := lines(t, app)
+		require.Len(t, got, 2)
+		require.Equal(t, "flag; Path=/x", got[0])
+		require.Equal(t, "old", decrypt(t, got[1]))
+	})
+
+	t.Run("a value fasthttp rejects is dropped instead of going out in clear", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Key: testKey}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Res().Add(fiber.HeaderSetCookie, "bad=a\"b; Path=/")
+			c.Res().Add(fiber.HeaderSetCookie, "sid=old; Path=/")
+			return nil
+		})
+
+		got := lines(t, app)
+		require.Len(t, got, 1)
+		require.Equal(t, "old", decrypt(t, got[0]))
+	})
+}
+
+// Benchmark_Middleware_EncryptCookie_ResponseCookies measures the response pass
+// on three cookies, two of them sharing a name, which is the shape this change
+// rewrites.
+func Benchmark_Middleware_EncryptCookie_ResponseCookies(b *testing.B) {
+	app := fiber.New()
+	app.Use(New(Config{Key: GenerateKey(32)}))
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Res().Add(fiber.HeaderSetCookie, "sid=old; Path=/; Max-Age=0")
+		c.Res().Add(fiber.HeaderSetCookie, "theme=dark; Path=/")
+		c.Res().Add(fiber.HeaderSetCookie, "sid=new; Path=/admin")
+		return nil
+	})
+
+	h := app.Handler()
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		fctx.Response.Header.Reset()
+		h(fctx)
+	}
+
+	lines := 0
+	for range fctx.Response.Header.Cookies() {
+		lines++
+	}
+	require.Equal(b, 3, lines)
 }
