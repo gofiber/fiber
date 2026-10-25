@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -594,6 +595,71 @@ func TestDoRedirectsWithClient_StripsCredentialsCrossHost(t *testing.T) {
 		require.Empty(t, req.Header.Peek(fasthttp.HeaderAuthorization))
 		require.Empty(t, req.Header.Peek(fasthttp.HeaderProxyAuthorization))
 		require.Empty(t, req.Header.Peek(fasthttp.HeaderCookie))
+	})
+}
+
+// TestDoRedirectsWithClient_DropsBuiltInHeadersWhateverTheirCase verifies that the built-in set
+// goes whatever spelling a header is stored under. A request that keeps the names as written
+// (DisableNormalizing, as a peer's HTTP/2 or HTTP/3 headers are) holds "authorization", which the
+// byte-exact Header.Del this loop used to call does not match.
+func TestDoRedirectsWithClient_DropsBuiltInHeadersWhateverTheirCase(t *testing.T) {
+	t.Parallel()
+
+	names := []string{
+		"authorization",
+		"proxy-authorization",
+		"proxy-authenticate",
+		"www-authenticate",
+		"cookie",
+		"cookie2",
+	}
+
+	follow := func(t *testing.T, location string) *fasthttp.Request {
+		t.Helper()
+
+		req := fasthttp.AcquireRequest()
+		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+		req.SetRequestURI("http://example.com/start")
+		req.Header.DisableNormalizing()
+		for _, name := range names {
+			req.Header.Add(name, "k=secret")
+		}
+		req.Header.Add("x-api-key", "key")
+		for _, name := range names {
+			// The control that makes the assertions below mean something: each one is
+			// stored before the redirect, so what is gone afterwards was removed by it.
+			require.Len(t, fieldname.Lines(&req.Header, name, false), 1, name)
+		}
+
+		resp := fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseResponse(resp)
+		client := &stubRedirectClient{calls: []stubRedirectCall{
+			{status: new(fasthttp.StatusFound), location: &location},
+			{status: new(fasthttp.StatusOK)},
+		}}
+		require.NoError(t, doRedirectsWithClient(req, resp, 5, client))
+		return req
+	}
+
+	t.Run("another host drops every one", func(t *testing.T) {
+		t.Parallel()
+
+		req := follow(t, "http://attacker.example/collect")
+		for _, name := range names {
+			require.Empty(t, fieldname.Lines(&req.Header, name, false), name)
+		}
+		// A header of the application's own is not in the set.
+		require.Len(t, fieldname.Lines(&req.Header, "x-api-key", false), 1)
+	})
+
+	t.Run("same host keeps every one", func(t *testing.T) {
+		t.Parallel()
+
+		req := follow(t, "http://example.com/next")
+		for _, name := range names {
+			require.Len(t, fieldname.Lines(&req.Header, name, false), 1, name)
+		}
+		require.Len(t, fieldname.Lines(&req.Header, "x-api-key", false), 1)
 	})
 }
 

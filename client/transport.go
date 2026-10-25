@@ -513,10 +513,10 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 		// Credentials are scoped to the origin that issued them, so drop them once
 		// the chain leaves it. net/http's boundary, which fasthttp also implements:
 		// against the initial host, ignoring the port, subdomains still trusted.
+		// Whatever case they are stored under: Header.Del is byte-exact, so it
+		// missed a header kept as "authorization" under DisableHeaderNormalizing.
 		if !trustedRedirectTarget(nextHost, initialHostname) {
-			for _, h := range crosshost.SensitiveHeaders {
-				req.Header.Del(h)
-			}
+			crosshost.Strip(&req.Header, nil)
 		}
 	}
 }
