@@ -70,6 +70,50 @@ func (ts *testServer) dial() func(addr string) (net.Conn, error) {
 	}
 }
 
+// startRedirectServer serves /start and /same-host, which redirect off and on the host example.com, and
+// /collect, which answers with collect.
+func startRedirectServer(tb testing.TB, collect fiber.Handler) *testServer {
+	tb.Helper()
+
+	return startTestServer(tb, func(app *fiber.App) {
+		app.Get("/start", func(c fiber.Ctx) error {
+			return c.Redirect().Status(fiber.StatusFound).To("http://attacker.example/collect")
+		})
+		app.Get("/same-host", func(c fiber.Ctx) error {
+			return c.Redirect().Status(fiber.StatusFound).To("http://example.com/collect")
+		})
+		app.Get("/collect", collect)
+	})
+}
+
+// requireNameList pins how a Client or a Request keeps the names given to its SetRedirectSensitiveHeaders.
+func requireNameList(t *testing.T, set func(names ...string), get func() []string) {
+	t.Helper()
+
+	require.Nil(t, get(), "none by default")
+
+	names := []string{" X-Api-Key", "", "X-Auth-Token\t"}
+	set(names...)
+	require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, get())
+
+	names[0] = "X-Changed"
+	require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, get(), "the caller's slice must not reach the list")
+
+	got := get()
+	got[0] = "X-Changed"
+	require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, get(), "the getter returns a copy")
+
+	set("X-One")
+	set("X-Two")
+	require.Equal(t, []string{"X-Two"}, get(), "a second call replaces the list")
+
+	set()
+	require.Nil(t, get(), "no names clears it")
+
+	set(" ", "")
+	require.Nil(t, get(), "only blanks leave nothing")
+}
+
 func createHelperServer(tb testing.TB) (app *fiber.App, dial func(addr string) (net.Conn, error), start func()) { //nolint:nonamedreturns // gocritic unnamedResult requires explicit result identifiers for helper components
 	tb.Helper()
 

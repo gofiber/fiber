@@ -654,19 +654,11 @@ func (c *Client) SetRedirectSensitiveHeaders(names ...string) *Client {
 	return c
 }
 
-// redirectSensitiveHeadersFor returns the client's names joined with req's (req may be nil) in a
-// fresh slice, or nil when neither names any. The stored lists are never changed in place.
-func (c *Client) redirectSensitiveHeadersFor(req *Request) []string {
+// redirectSensitiveHeadersFor returns the client's names joined with own in a fresh slice.
+func (c *Client) redirectSensitiveHeadersFor(own []string) []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	var own []string
-	if req != nil {
-		own = req.redirectSensitiveHeaders
-	}
-	if len(c.redirectSensitiveHeaders) == 0 && len(own) == 0 {
-		return nil
-	}
 	return slices.Concat(c.redirectSensitiveHeaders, own)
 }
 

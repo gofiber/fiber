@@ -71,7 +71,7 @@ func (c *core) execFunc() (*Response, error) {
 	followRedirects := maxRedirects > 0 && (method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodQuery)
 	var sensitiveHeaders []string // a fresh slice, safe to use after the request is recycled
 	if followRedirects {
-		sensitiveHeaders = c.client.redirectSensitiveHeadersFor(c.req)
+		sensitiveHeaders = c.client.redirectSensitiveHeadersFor(c.req.redirectSensitiveHeaders)
 	}
 
 	go func() {

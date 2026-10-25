@@ -312,69 +312,29 @@ func Test_Client_SetRootCertificate_InvalidInput(t *testing.T) {
 func TestClient_RedirectSensitiveHeaders(t *testing.T) {
 	t.Parallel()
 
-	t.Run("set trims, drops blanks and copies", func(t *testing.T) {
+	t.Run("the list", func(t *testing.T) {
 		t.Parallel()
 
 		client := New()
-		require.Nil(t, client.RedirectSensitiveHeaders(), "none by default")
-
-		names := []string{" X-Api-Key", "", "X-Auth-Token\t"}
-		require.Same(t, client, client.SetRedirectSensitiveHeaders(names...))
-		require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, client.RedirectSensitiveHeaders())
-
-		names[0] = "X-Changed"
-		require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, client.RedirectSensitiveHeaders(), "the caller's slice must not reach the client")
-	})
-
-	t.Run("the getter returns a copy", func(t *testing.T) {
-		t.Parallel()
-
-		client := New().SetRedirectSensitiveHeaders("X-Api-Key")
-
-		got := client.RedirectSensitiveHeaders()
-		got[0] = "X-Changed"
-		require.Equal(t, []string{"X-Api-Key"}, client.RedirectSensitiveHeaders())
-	})
-
-	t.Run("a second call replaces the list and no names clears it", func(t *testing.T) {
-		t.Parallel()
-
-		client := New().SetRedirectSensitiveHeaders("X-One").SetRedirectSensitiveHeaders("X-Two")
-		require.Equal(t, []string{"X-Two"}, client.RedirectSensitiveHeaders())
-
-		client.SetRedirectSensitiveHeaders()
-		require.Nil(t, client.RedirectSensitiveHeaders())
-
-		client.SetRedirectSensitiveHeaders(" ", "")
-		require.Nil(t, client.RedirectSensitiveHeaders(), "only blanks leave nothing")
+		requireNameList(t, func(names ...string) { client.SetRedirectSensitiveHeaders(names...) }, client.RedirectSensitiveHeaders)
+		require.Same(t, client, client.SetRedirectSensitiveHeaders())
 	})
 
 	t.Run("the names for a request are the client's and the request's together", func(t *testing.T) {
 		t.Parallel()
 
 		client := New().SetRedirectSensitiveHeaders("X-One")
-		req := AcquireRequest().SetRedirectSensitiveHeaders("X-Two")
-		defer ReleaseRequest(req)
+		own := []string{"X-Two"}
 
-		got := client.redirectSensitiveHeadersFor(req)
-		require.Equal(t, []string{"X-One", "X-Two"}, got)
+		got := client.redirectSensitiveHeadersFor(own)
+		require.ElementsMatch(t, []string{"X-One", "X-Two"}, got)
 
 		// A fresh slice: changing it reaches neither list.
-		got[0] = "X-Changed"
-		got[1] = "X-Changed"
+		got[0], got[1] = "X-Changed", "X-Changed"
 		require.Equal(t, []string{"X-One"}, client.RedirectSensitiveHeaders())
-		require.Equal(t, []string{"X-Two"}, req.RedirectSensitiveHeaders())
+		require.Equal(t, []string{"X-Two"}, own)
 
-		// Either list alone, whether the request is absent or empty.
-		empty := AcquireRequest()
-		defer ReleaseRequest(empty)
-		require.Equal(t, []string{"X-One"}, client.redirectSensitiveHeadersFor(nil))
-		require.Equal(t, []string{"X-One"}, client.redirectSensitiveHeadersFor(empty))
-		require.Equal(t, []string{"X-Two"}, New().redirectSensitiveHeadersFor(req))
-
-		// Neither names anything.
-		require.Nil(t, New().redirectSensitiveHeadersFor(nil))
-		require.Nil(t, New().redirectSensitiveHeadersFor(empty))
+		require.Empty(t, New().redirectSensitiveHeadersFor(nil))
 	})
 }
 

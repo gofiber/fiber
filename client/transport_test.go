@@ -767,16 +767,8 @@ func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 func TestClient_DoRedirects_DropsClientListedHeaders(t *testing.T) {
 	t.Parallel()
 
-	server := startTestServer(t, func(app *fiber.App) {
-		app.Get("/start", func(c fiber.Ctx) error {
-			return c.Redirect().Status(fiber.StatusFound).To("http://attacker.example/collect")
-		})
-		app.Get("/same-host", func(c fiber.Ctx) error {
-			return c.Redirect().Status(fiber.StatusFound).To("http://example.com/collect")
-		})
-		app.Get("/collect", func(c fiber.Ctx) error {
-			return c.SendString(c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token"))
-		})
+	server := startRedirectServer(t, func(c fiber.Ctx) error {
+		return c.SendString(c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token"))
 	})
 	defer server.stop()
 

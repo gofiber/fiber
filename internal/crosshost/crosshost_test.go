@@ -89,7 +89,8 @@ func Test_Strip(t *testing.T) {
 
 		h := requestWith()
 
-		Strip(h, []string{"X-Api-Key"})
+		// An extra name may repeat, or already be built in.
+		Strip(h, []string{"authorization", "X-Api-Key", "X-Api-Key"})
 
 		for _, name := range SensitiveHeaders {
 			require.Empty(t, fieldname.Lines(h, name, false), name)
@@ -97,18 +98,6 @@ func Test_Strip(t *testing.T) {
 		require.Empty(t, fieldname.Lines(h, "X-Api-Key", false))
 		require.Len(t, fieldname.Lines(h, "X-Auth-Token", false), 1)
 		require.Len(t, fieldname.Lines(h, fasthttp.HeaderAccept, false), 1)
-	})
-
-	t.Run("extra name that is already built in", func(t *testing.T) {
-		t.Parallel()
-
-		h := requestWith()
-
-		Strip(h, []string{"authorization", "X-Api-Key", "X-Api-Key"})
-
-		require.Empty(t, fieldname.Lines(h, fasthttp.HeaderAuthorization, false))
-		require.Empty(t, fieldname.Lines(h, "X-Api-Key", false))
-		require.Len(t, fieldname.Lines(h, "X-Auth-Token", false), 1)
 	})
 
 	t.Run("whatever case they are stored under", func(t *testing.T) {

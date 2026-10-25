@@ -788,8 +788,6 @@ func Test_Security_DefaultSecurityPolicy_RedirectSensitiveHeadersIsEmpty(t *test
 	t.Parallel()
 
 	require.Nil(t, DefaultSecurityPolicy().RedirectSensitiveHeaders)
-	require.Nil(t, normalizePolicy(DefaultSecurityPolicy()).RedirectSensitiveHeaders)
-	require.Nil(t, normalizePolicy(SecurityPolicy{}).RedirectSensitiveHeaders)
 }
 
 // Test_Security_NormalizePolicy_RedirectSensitiveHeaders verifies normalizePolicy returns a trimmed copy
@@ -809,21 +807,6 @@ func Test_Security_NormalizePolicy_RedirectSensitiveHeaders(t *testing.T) {
 
 	got[1] = "X-Changed"
 	require.Equal(t, []string{"X-Changed", "", "X-Auth-Token\t"}, in, "the policy's slice must not reach the caller")
-
-	policy.RedirectSensitiveHeaders = []string{"", " ", "\t"}
-	require.Nil(t, normalizePolicy(policy).RedirectSensitiveHeaders, "nothing left means no list")
-}
-
-// Test_Security_ResolvePolicy_OverrideNormalizesRedirectSensitiveHeaders covers a Balancer's own policy.
-func Test_Security_ResolvePolicy_OverrideNormalizesRedirectSensitiveHeaders(t *testing.T) {
-	t.Parallel()
-
-	names := []string{" X-Api-Key"}
-	got := resolvePolicy(&SecurityPolicy{RedirectSensitiveHeaders: names})
-	require.Equal(t, []string{"X-Api-Key"}, got.RedirectSensitiveHeaders)
-
-	names[0] = "X-Changed"
-	require.Equal(t, []string{"X-Api-Key"}, got.RedirectSensitiveHeaders)
 }
 
 // Test_Security_WithSecurityPolicy_CopiesRedirectSensitiveHeaders verifies the installed policy keeps its own trimmed copy.

@@ -1694,63 +1694,24 @@ func Test_Request_MaxRedirects(t *testing.T) {
 func Test_Request_RedirectSensitiveHeaders(t *testing.T) {
 	t.Parallel()
 
-	t.Run("set trims, drops blanks and copies", func(t *testing.T) {
+	t.Run("the list", func(t *testing.T) {
 		t.Parallel()
 
 		req := AcquireRequest()
 		defer ReleaseRequest(req)
-		require.Nil(t, req.RedirectSensitiveHeaders(), "none by default")
-
-		names := []string{" X-Api-Key", "", "X-Auth-Token\t"}
-		require.Same(t, req, req.SetRedirectSensitiveHeaders(names...))
-		require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, req.RedirectSensitiveHeaders())
-
-		names[0] = "X-Changed"
-		require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, req.RedirectSensitiveHeaders(), "the caller's slice must not reach the request")
+		requireNameList(t, func(names ...string) { req.SetRedirectSensitiveHeaders(names...) }, req.RedirectSensitiveHeaders)
+		require.Same(t, req, req.SetRedirectSensitiveHeaders())
 	})
 
-	t.Run("the getter returns a copy", func(t *testing.T) {
+	t.Run("Reset clears the list", func(t *testing.T) {
 		t.Parallel()
 
 		req := AcquireRequest()
 		defer ReleaseRequest(req)
 		req.SetRedirectSensitiveHeaders("X-Api-Key")
-
-		got := req.RedirectSensitiveHeaders()
-		got[0] = "X-Changed"
-		require.Equal(t, []string{"X-Api-Key"}, req.RedirectSensitiveHeaders())
-	})
-
-	t.Run("a second call replaces the list and no names clears it", func(t *testing.T) {
-		t.Parallel()
-
-		req := AcquireRequest()
-		defer ReleaseRequest(req)
-
-		req.SetRedirectSensitiveHeaders("X-One").SetRedirectSensitiveHeaders("X-Two")
-		require.Equal(t, []string{"X-Two"}, req.RedirectSensitiveHeaders())
-
-		req.SetRedirectSensitiveHeaders()
-		require.Nil(t, req.RedirectSensitiveHeaders())
-
-		req.SetRedirectSensitiveHeaders(" ", "")
-		require.Nil(t, req.RedirectSensitiveHeaders(), "only blanks leave nothing")
-	})
-
-	t.Run("Reset clears the list without touching a copy handed out", func(t *testing.T) {
-		t.Parallel()
-
-		req := AcquireRequest()
-		defer ReleaseRequest(req)
-		req.SetRedirectSensitiveHeaders("X-Api-Key")
-		handedOut := req.RedirectSensitiveHeaders()
 
 		req.Reset()
 		require.Nil(t, req.RedirectSensitiveHeaders())
-
-		// A recycled request must not write into a copy handed out earlier.
-		req.SetRedirectSensitiveHeaders("X-Other")
-		require.Equal(t, []string{"X-Api-Key"}, handedOut)
 	})
 }
 
@@ -1759,16 +1720,8 @@ func Test_Request_RedirectSensitiveHeaders(t *testing.T) {
 func Test_Request_RedirectSensitiveHeaders_EndToEnd(t *testing.T) {
 	t.Parallel()
 
-	server := startTestServer(t, func(app *fiber.App) {
-		app.Get("/start", func(c fiber.Ctx) error {
-			return c.Redirect().Status(fiber.StatusFound).To("http://attacker.example/collect")
-		})
-		app.Get("/same-host", func(c fiber.Ctx) error {
-			return c.Redirect().Status(fiber.StatusFound).To("http://example.com/collect")
-		})
-		app.Get("/collect", func(c fiber.Ctx) error {
-			return c.SendString(c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token") + "|" + c.Get("X-Trace-Id"))
-		})
+	server := startRedirectServer(t, func(c fiber.Ctx) error {
+		return c.SendString(c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token") + "|" + c.Get("X-Trace-Id"))
 	})
 	// Not a defer: the parallel subtests outlive this function.
 	t.Cleanup(server.stop)

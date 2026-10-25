@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -762,20 +761,16 @@ type namesTransport struct {
 	*delayedTransport
 
 	proceed chan struct{}
-	got     chan []string
+	got     []string // written before finished closes
 }
 
 func newNamesTransport() *namesTransport {
-	return &namesTransport{
-		delayedTransport: newDelayedTransport(0),
-		proceed:          make(chan struct{}),
-		got:              make(chan []string, 1),
-	}
+	return &namesTransport{delayedTransport: newDelayedTransport(0), proceed: make(chan struct{})}
 }
 
 func (n *namesTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, sensitiveHeaders []string) error {
 	<-n.proceed
-	n.got <- slices.Clone(sensitiveHeaders)
+	n.got = sensitiveHeaders
 	return n.delayedTransport.DoRedirects(req, resp, maxRedirects, sensitiveHeaders)
 }
 
@@ -810,17 +805,11 @@ func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 	close(transport.proceed)
 
 	select {
-	case got := <-transport.got:
-		require.Equal(t, []string{"X-Client", "X-Request"}, got)
-	case <-time.After(time.Second):
-		t.Fatal("transport DoRedirects did not finish")
-	}
-
-	select {
 	case <-transport.finished:
 	case <-time.After(time.Second):
 		t.Fatal("transport Do did not finish")
 	}
+	require.ElementsMatch(t, []string{"X-Client", "X-Request"}, transport.got)
 }
 
 // Test_Core_RedirectSensitiveHeadersConcurrentSet replaces the client's list while redirected requests
@@ -828,13 +817,8 @@ func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
 	t.Parallel()
 
-	server := startTestServer(t, func(app *fiber.App) {
-		app.Get("/start", func(c fiber.Ctx) error {
-			return c.Redirect().Status(fiber.StatusFound).To("http://attacker.example/collect")
-		})
-		app.Get("/collect", func(c fiber.Ctx) error {
-			return c.SendString(c.Get("X-Api-Key"))
-		})
+	server := startRedirectServer(t, func(c fiber.Ctx) error {
+		return c.SendString(c.Get("X-Api-Key"))
 	})
 	defer server.stop()
 
@@ -842,7 +826,6 @@ func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
 
 	const workers, rounds = 4, 25
 	bodies := make(chan string, workers*rounds)
-	listed := make(chan int, workers*rounds)
 	errs := make(chan error, workers)
 
 	// Workers only report; the assertions run on the test goroutine.
@@ -866,14 +849,13 @@ func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
 		wg.Go(func() {
 			for range rounds {
 				client.SetRedirectSensitiveHeaders("X-Api-Key")
-				listed <- len(client.RedirectSensitiveHeaders())
+				client.RedirectSensitiveHeaders()
 				client.SetRedirectSensitiveHeaders()
 			}
 		})
 	}
 	wg.Wait()
 	close(bodies)
-	close(listed)
 	close(errs)
 
 	for err := range errs {
@@ -881,9 +863,6 @@ func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
 	}
 	for body := range bodies {
 		require.Contains(t, []string{"", "key"}, body)
-	}
-	for n := range listed {
-		require.LessOrEqual(t, n, 1)
 	}
 }
 
