@@ -309,7 +309,8 @@ policy.RedirectSensitiveHeaders = []string{"X-Api-Key"}
 proxy.WithSecurityPolicy(policy)
 
 app.Get("/proxy", func(c fiber.Ctx) error {
-    // Del first: Set replaces only one line of a header the client sent twice
+    // Delete first, as for X-Real-IP above: Set replaces only one line of a
+    // header the client sent twice (see there for DisableHeaderNormalizing)
     c.Request().Header.Del("X-Api-Key")
     c.Request().Header.Set("X-Api-Key", os.Getenv("UPSTREAM_API_KEY"))
     return proxy.DoRedirects(c, "https://api.example.com/items", 3)
