@@ -45,6 +45,49 @@ func (c *core) getRetryConfig() *RetryConfig {
 	return c.client.RetryConfig()
 }
 
+// redirectPlan is what a request that follows redirects needs once its Request may have been recycled.
+// It is one object, and only for such requests, so the goroutine that carries it stays small: a
+// request that never redirects pays nothing for it.
+type redirectPlan struct {
+	original         *fasthttp.Request // reqv as it was sent, for a retry to restart from
+	sensitiveHeaders []string
+	maxRedirects     int
+}
+
+// newRedirectPlan resolves the plan in the caller's goroutine, before the request can be recycled.
+func (c *core) newRedirectPlan() *redirectPlan {
+	return &redirectPlan{
+		sensitiveHeaders: c.client.redirectSensitiveHeadersFor(c.req.redirectSensitiveHeaders),
+		maxRedirects:     c.req.maxRedirects,
+	}
+}
+
+// keepOriginal copies reqv as it was sent, for a retry to restart from, as a redirect chain rewrites
+// the request it is given. A stream cannot be rewound, so such a request is left as it is.
+func (p *redirectPlan) keepOriginal(reqv *fasthttp.Request) {
+	if reqv.IsBodyStream() {
+		return
+	}
+	p.original = fasthttp.AcquireRequest()
+	reqv.CopyTo(p.original)
+}
+
+// do follows redirects from req. If that fails, req is put back as it was sent.
+func (p *redirectPlan) do(client *Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+	err := client.followRedirects(req, resp, p.maxRedirects, p.sensitiveHeaders)
+	if err != nil && p.original != nil {
+		p.original.CopyTo(req)
+	}
+	return err
+}
+
+// release returns the copy of the request to the pool. It is safe on a nil plan.
+func (p *redirectPlan) release() {
+	if p != nil && p.original != nil {
+		fasthttp.ReleaseRequest(p.original)
+	}
+}
+
 // execFunc is the core logic to send the request and receive the response.
 // It leverages the fasthttp client, optionally with retries or redirects.
 func (c *core) execFunc() (*Response, error) {
@@ -66,12 +109,13 @@ func (c *core) execFunc() (*Response, error) {
 	// client-owned request and the pool may hand it to another call while the
 	// transport is still finishing, so reading the flag from the goroutine races.
 	reqOwned := c.req.clientOwned
-	maxRedirects := c.req.maxRedirects
 	method := string(reqv.Header.Method())
-	followRedirects := maxRedirects > 0 && (method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodQuery)
-	var sensitiveHeaders []string // a fresh slice, safe to use after the request is recycled
-	if followRedirects {
-		sensitiveHeaders = c.client.redirectSensitiveHeadersFor(c.req.redirectSensitiveHeaders)
+	var redirects *redirectPlan // nil unless the request follows redirects
+	if c.req.maxRedirects > 0 && (method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodQuery) {
+		redirects = c.newRedirectPlan()
+		if cfg != nil {
+			redirects.keepOriginal(reqv)
+		}
 	}
 
 	go func() {
@@ -99,32 +143,20 @@ func (c *core) execFunc() (*Response, error) {
 		}()
 
 		var err error
-		if cfg != nil {
-			// A redirect chain rewrites reqv, so a failed attempt is undone to restart from the request as
-			// sent. A stream cannot be rewound, so such a request is left as it is.
-			var sent *fasthttp.Request
-			if followRedirects && !reqv.IsBodyStream() {
-				sent = fasthttp.AcquireRequest()
-				defer fasthttp.ReleaseRequest(sent)
-				reqv.CopyTo(sent)
-			}
+		switch {
+		case cfg != nil:
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
-				if !followRedirects {
-					return c.client.Do(reqv, respv)
+				if redirects != nil {
+					return redirects.do(c.client, reqv, respv)
 				}
-				redirectErr := c.client.followRedirects(reqv, respv, maxRedirects, sensitiveHeaders)
-				if redirectErr != nil && sent != nil {
-					sent.CopyTo(reqv)
-				}
-				return redirectErr
+				return c.client.Do(reqv, respv)
 			})
-		} else {
-			if followRedirects {
-				err = c.client.followRedirects(reqv, respv, maxRedirects, sensitiveHeaders)
-			} else {
-				err = c.client.Do(reqv, respv)
-			}
+			redirects.release()
+		case redirects != nil:
+			err = redirects.do(c.client, reqv, respv)
+		default:
+			err = c.client.Do(reqv, respv)
 		}
 
 		if err != nil {
