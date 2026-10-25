@@ -59,13 +59,24 @@ func New(config ...Config) fiber.Handler {
 			switch {
 			case isDisabled(name, cfg.Except):
 				// Except keeps the line exactly as it arrived.
+
 			case !found || name == "":
 				// A line with no name, or with an empty one, has nothing to
 				// seal its value under, so it is not sent instead of going out
 				// in clear text. The Except check above can still keep it.
 				cookie.line = ""
+
 			default:
+				// fasthttp's parser is the one the request side reads with, so
+				// a quoted or padded value is sealed as the plain text it
+				// stands for. It rejects a value holding a quote or a
+				// backslash, and such a line cannot be sealed under its name,
+				// so it is not sent either.
 				cookie.ck = fasthttp.AcquireCookie()
+				if parseErr := cookie.ck.ParseBytes(raw); parseErr != nil {
+					fasthttp.ReleaseCookie(cookie.ck)
+					cookie.ck, cookie.line = nil, ""
+				}
 			}
 
 			cookies = append(cookies, cookie)
@@ -77,16 +88,6 @@ func New(config ...Config) fiber.Handler {
 		for i := range cookies {
 			cookie := &cookies[i]
 			if cookie.ck == nil {
-				continue
-			}
-
-			// fasthttp's parser is the one the request side reads with, so a
-			// quoted or padded value is sealed as the plain text it stands for.
-			// It rejects a value holding a quote or a backslash, and such a
-			// line cannot be sealed under its name, so it is not sent either.
-			if parseErr := cookie.ck.ParseBytes([]byte(cookie.line)); parseErr != nil {
-				fasthttp.ReleaseCookie(cookie.ck)
-				cookie.ck, cookie.line = nil, ""
 				continue
 			}
 
