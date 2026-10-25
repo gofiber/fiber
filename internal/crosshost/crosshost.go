@@ -3,6 +3,8 @@
 package crosshost
 
 import (
+	"slices"
+
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -38,11 +40,12 @@ func CopyNames(names []string) []string {
 	return out
 }
 
-// Strip removes SensitiveHeaders and the extra names from h, whatever case they are stored under.
-// The second pass runs only when extra names some.
+// Strip removes SensitiveHeaders and the extra names from h in one pass, whatever case they are
+// stored under.
 func Strip(h fieldname.Deleter, extra []string) {
-	fieldname.DelSet(h, SensitiveHeaders)
+	names := SensitiveHeaders
 	if len(extra) > 0 {
-		fieldname.DelSet(h, extra)
+		names = slices.Concat(SensitiveHeaders, extra)
 	}
+	fieldname.DelSet(h, names)
 }
