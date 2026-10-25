@@ -1133,7 +1133,7 @@ func Test_Middleware_Duplicate_Response_Cookie_Names(t *testing.T) {
 		require.Equal(t, "padded", decrypt(t, got[1]))
 	})
 
-	t.Run("a nameless line is left as it arrived", func(t *testing.T) {
+	t.Run("a nameless line never goes out in clear text", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
 		app.Use(New(Config{Key: testKey}))
@@ -1143,10 +1143,27 @@ func Test_Middleware_Duplicate_Response_Cookie_Names(t *testing.T) {
 			return nil
 		})
 
+		// There is no name to seal the value under, so the line is dropped
+		// instead of leaving the response with the plaintext value.
 		got := lines(t, app)
-		require.Len(t, got, 2)
-		require.Equal(t, "flag; Path=/x", got[0])
-		require.Equal(t, "old", decrypt(t, got[1]))
+		require.Len(t, got, 1)
+		require.Equal(t, "old", decrypt(t, got[0]))
+	})
+
+	t.Run("a nameless value sealed under an empty key never goes out", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Key: testKey}))
+		app.Get("/", func(c fiber.Ctx) error {
+			ck := fasthttp.AcquireCookie()
+			defer fasthttp.ReleaseCookie(ck)
+			ck.SetValue("secret")
+			ck.SetPath("/")
+			c.Response().Header.SetCookie(ck)
+			return nil
+		})
+
+		require.Empty(t, lines(t, app))
 	})
 
 	t.Run("a semicolon in the encrypted value cannot inject attributes", func(t *testing.T) {

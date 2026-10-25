@@ -147,8 +147,9 @@ type responseCookie struct {
 	// arrived.
 	except bool
 	// encrypt is false for an excepted name and for a line whose name-value
-	// segment carries no '=', which RFC 6265 Section 5.2 says to ignore and
-	// which therefore goes back exactly as it arrived.
+	// segment carries no '=', a line RFC 6265 Section 5.2 says to ignore. Such
+	// a line is dropped in the rebuild, because the value it carries is the one
+	// this middleware is meant to seal and there is no name to seal it under.
 	encrypt bool
 }
 
@@ -168,9 +169,13 @@ type responseCookie struct {
 // spaces trimmed, one surrounding DQUOTE pair stripped), so a quoted or padded
 // value round-trips the way main did.
 //
-// When the Encryptor rejects a value, the response cookies that are not in
-// Except are dropped, so a value it refused can never leave the response in
+// A line whose name-value segment carries no '=', the shape fasthttp stores for
+// a cookie with an empty key, has no name to seal its value under. It is dropped
+// instead of written back, so the value it carries cannot reach the client in
 // clear text.
+//
+// When the Encryptor rejects a value, the response cookies that are not in
+// Except are dropped for the same reason.
 func encryptResponseCookies(c fiber.Ctx, cfg *Config, stackErr error) error {
 	header := &c.Response().Header
 	cookies := make([]responseCookie, 0, 4)
@@ -187,6 +192,12 @@ func encryptResponseCookies(c fiber.Ctx, cfg *Config, stackErr error) error {
 			entry.valueStart = parts.start
 			entry.valueEnd = parts.end
 			entry.encrypt = true
+			encryptable = true
+		} else {
+			// The name-value segment carries no '=', so there is no name to
+			// seal the value under. The line is dropped in the rebuild below
+			// rather than written back, so its value cannot reach the client in
+			// clear text.
 			encryptable = true
 		}
 
@@ -226,11 +237,12 @@ func encryptResponseCookies(c fiber.Ctx, cfg *Config, stackErr error) error {
 
 	header.DelAllCookies()
 	for i := range cookies {
-		if cookies[i].encrypt {
+		switch {
+		case cookies[i].encrypt:
 			header.Add(fiber.HeaderSetCookie, responseCookieWithValue(cookies[i]))
-			continue
+		case cookies[i].except:
+			header.Add(fiber.HeaderSetCookie, cookies[i].raw)
 		}
-		header.Add(fiber.HeaderSetCookie, cookies[i].raw)
 	}
 
 	return stackErr
