@@ -8,7 +8,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func Test_NormalizeNames(t *testing.T) {
+func Test_NewHeaderNames(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -33,26 +33,65 @@ func Test_NormalizeNames(t *testing.T) {
 			t.Parallel()
 
 			// Equal tells nil from empty.
-			require.Equal(t, tt.want, NormalizeNames(tt.in))
+			require.Equal(t, tt.want, NewHeaderNames(tt.in).List())
 		})
 	}
 
-	t.Run("input and output are independent", func(t *testing.T) {
+	t.Run("the list is independent of its input and of what List returns", func(t *testing.T) {
 		t.Parallel()
 
 		in := []string{"X-Api-Key", "X-Auth-Token"}
-		out := NormalizeNames(in)
+		names := NewHeaderNames(in)
 
 		in[0] = "changed-in"
-		require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, out)
+		require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, names.List())
 
-		out[1] = "changed-out"
-		require.Equal(t, []string{"changed-in", "X-Auth-Token"}, in)
+		got := names.List()
+		got[1] = "changed-out"
+		require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, names.List())
+	})
+
+	t.Run("the zero value is the empty list", func(t *testing.T) {
+		t.Parallel()
+
+		require.Nil(t, HeaderNames{}.List())
 	})
 }
 
-// requestWith holds every built-in sensitive header and three others.
-func requestWith() *fasthttp.RequestHeader {
+func Test_HeaderNames_Join(t *testing.T) {
+	t.Parallel()
+
+	one := NewHeaderNames([]string{"X-One"})
+	two := NewHeaderNames([]string{"X-Two", "X-Three"})
+
+	t.Run("one list after the other", func(t *testing.T) {
+		t.Parallel()
+
+		require.Equal(t, []string{"X-One", "X-Two", "X-Three"}, one.Join(two).List())
+		require.Equal(t, []string{"X-Two", "X-Three", "X-One"}, two.Join(one).List())
+	})
+
+	t.Run("an empty side leaves the other as it is", func(t *testing.T) {
+		t.Parallel()
+
+		require.Equal(t, []string{"X-One"}, one.Join(HeaderNames{}).List())
+		require.Equal(t, []string{"X-One"}, HeaderNames{}.Join(one).List())
+		require.Nil(t, HeaderNames{}.Join(HeaderNames{}).List())
+	})
+
+	t.Run("the result shares nothing with either side", func(t *testing.T) {
+		t.Parallel()
+
+		joined := one.Join(two)
+		joined.names[0], joined.names[1] = "changed", "changed"
+
+		require.Equal(t, []string{"X-One"}, one.List())
+		require.Equal(t, []string{"X-Two", "X-Three"}, two.List())
+	})
+}
+
+// headerWithSensitiveAndOthers holds every built-in sensitive header and three others.
+func headerWithSensitiveAndOthers() *fasthttp.RequestHeader {
 	h := &fasthttp.RequestHeader{}
 	for _, name := range SensitiveHeaders {
 		h.Set(name, "k=v")
@@ -69,12 +108,12 @@ func Test_Strip(t *testing.T) {
 	t.Run("built-in set", func(t *testing.T) {
 		t.Parallel()
 
-		h := requestWith()
+		h := headerWithSensitiveAndOthers()
 		for _, name := range SensitiveHeaders {
 			require.NotEmpty(t, fieldname.Lines(h, name, false), name)
 		}
 
-		Strip(h, nil)
+		Strip(h, HeaderNames{})
 
 		for _, name := range SensitiveHeaders {
 			require.Empty(t, fieldname.Lines(h, name, false), name)
@@ -87,16 +126,28 @@ func Test_Strip(t *testing.T) {
 	t.Run("built-in set and extra names", func(t *testing.T) {
 		t.Parallel()
 
-		h := requestWith()
+		h := headerWithSensitiveAndOthers()
 
 		// An extra name may repeat, or already be built in.
-		Strip(h, []string{"authorization", "X-Api-Key", "X-Api-Key"})
+		Strip(h, NewHeaderNames([]string{"authorization", "X-Api-Key", "X-Api-Key"}))
 
 		for _, name := range SensitiveHeaders {
 			require.Empty(t, fieldname.Lines(h, name, false), name)
 		}
 		require.Empty(t, fieldname.Lines(h, "X-Api-Key", false))
 		require.Len(t, fieldname.Lines(h, "X-Auth-Token", false), 1)
+		require.Len(t, fieldname.Lines(h, fasthttp.HeaderAccept, false), 1)
+	})
+
+	t.Run("every extra name, whatever its case", func(t *testing.T) {
+		t.Parallel()
+
+		h := headerWithSensitiveAndOthers()
+
+		Strip(h, NewHeaderNames([]string{"x-API-key", "X-AUTH-token"}))
+
+		require.Empty(t, fieldname.Lines(h, "X-Api-Key", false))
+		require.Empty(t, fieldname.Lines(h, "X-Auth-Token", false))
 		require.Len(t, fieldname.Lines(h, fasthttp.HeaderAccept, false), 1)
 	})
 
@@ -118,7 +169,7 @@ func Test_Strip(t *testing.T) {
 		require.Len(t, fieldname.Lines(h, "Proxy-Authorization", false), 1)
 		require.Len(t, fieldname.Lines(h, "X-Api-Key", false), 2)
 
-		Strip(h, []string{"X-Api-Key"})
+		Strip(h, NewHeaderNames([]string{"X-Api-Key"}))
 
 		require.Empty(t, fieldname.Lines(h, "Authorization", false))
 		require.Empty(t, fieldname.Lines(h, "Proxy-Authorization", false))

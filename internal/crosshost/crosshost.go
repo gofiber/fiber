@@ -27,25 +27,39 @@ var SensitiveHeaders = []string{
 	"Cookie2",
 }
 
-// NormalizeNames returns a copy of names without surrounding whitespace or empty entries. A name split
-// from a comma-separated setting often keeps a leading space, and one that never matches leaves its
-// header in place. It returns nil when nothing is left, so an unset list costs nothing.
-func NormalizeNames(names []string) []string {
+// HeaderNames is a list of header names. Only NewHeaderNames builds one, so a name with stray whitespace,
+// which would never match its header, cannot get through. The zero value is the empty list.
+type HeaderNames struct{ names []string }
+
+// NewHeaderNames returns names without surrounding whitespace or empty entries, in a fresh list. A name
+// split from a comma-separated setting often keeps a leading space, and one that never matches leaves its
+// header in place.
+func NewHeaderNames(names []string) HeaderNames {
 	var out []string
 	for _, name := range names {
 		if name = utils.TrimSpace(name); name != "" {
 			out = append(out, name)
 		}
 	}
-	return out
+	return HeaderNames{names: out}
+}
+
+// List returns a copy of the names, nil when there are none.
+func (n HeaderNames) List() []string {
+	return slices.Clone(n.names)
+}
+
+// Join returns the names of n followed by those of other, in a fresh list.
+func (n HeaderNames) Join(other HeaderNames) HeaderNames {
+	return HeaderNames{names: slices.Concat(n.names, other.names)}
 }
 
 // Strip removes SensitiveHeaders and the extra names from h in one pass, whatever case they are
 // stored under.
-func Strip(h fieldname.Deleter, extra []string) {
+func Strip(h fieldname.Deleter, extra HeaderNames) {
 	names := SensitiveHeaders
-	if len(extra) > 0 {
-		names = slices.Concat(SensitiveHeaders, extra)
+	if len(extra.names) > 0 {
+		names = slices.Concat(SensitiveHeaders, extra.names)
 	}
 	fieldname.DelSet(h, names)
 }

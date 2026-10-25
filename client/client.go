@@ -68,7 +68,7 @@ type Client struct {
 	finalRequestHooks        []RequestHook
 	userResponseHooks        []ResponseHook
 	builtinResponseHooks     []ResponseHook
-	redirectSensitiveHeaders []string
+	redirectSensitiveHeaders crosshost.HeaderNames
 
 	timeout                   time.Duration
 	mu                        sync.RWMutex
@@ -99,13 +99,8 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 // DoRedirects executes the request following redirects up to maxRedirects.
 // Headers named with SetRedirectSensitiveHeaders are dropped when a redirect leaves the host.
 func (c *Client) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
-	return c.followRedirects(req, resp, maxRedirects, c.redirectSensitiveHeadersFor(nil))
-}
-
-// followRedirects is DoRedirects with the names already resolved, which execFunc
-// does before its goroutine starts.
-func (c *Client) followRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, sensitiveHeaders []string) error {
-	return c.transport.DoRedirects(req, resp, maxRedirects, sensitiveHeaders)
+	opts := c.redirectOptionsFor(maxRedirects, crosshost.HeaderNames{})
+	return c.transport.DoRedirects(req, resp, &opts)
 }
 
 // CloseIdleConnections closes idle connections on the underlying fasthttp transport when supported.
@@ -635,32 +630,33 @@ func (c *Client) RedirectSensitiveHeaders() []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return slices.Clone(c.redirectSensitiveHeaders)
+	return c.redirectSensitiveHeaders.List()
 }
 
 // SetRedirectSensitiveHeaders names request headers that must not follow a redirect to another
 // host, such as a credential of your own like X-Api-Key. When a redirect goes to a host that is
 // neither the one the request started on (on any port) nor one of its subdomains, they are dropped
 // with Authorization, Proxy-Authorization, Proxy-Authenticate, WWW-Authenticate, Cookie and Cookie2;
-// every other header is forwarded. proxy.DoRedirects draws the line at the origin instead, so it
-// also drops them when only the scheme or port changes. Names match case-insensitively;
-// surrounding whitespace and empty entries are ignored. The list applies to every request of the
-// client that follows redirects, and to DoRedirects. A request can add names of its own with
-// Request.SetRedirectSensitiveHeaders. Calling it with no names clears the list.
+// every other header is forwarded. proxy.SecurityPolicy.RedirectSensitiveHeaders draws its boundary
+// elsewhere. Names match case-insensitively; surrounding whitespace and empty entries are ignored.
+// The list applies to every request of the client that follows redirects, and to DoRedirects. A
+// request can add names of its own with Request.SetRedirectSensitiveHeaders. Calling it with no
+// names clears the list.
 func (c *Client) SetRedirectSensitiveHeaders(names ...string) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.redirectSensitiveHeaders = crosshost.NormalizeNames(names)
+	c.redirectSensitiveHeaders = crosshost.NewHeaderNames(names)
 	return c
 }
 
-// redirectSensitiveHeadersFor returns the client's names joined with own in a fresh slice.
-func (c *Client) redirectSensitiveHeadersFor(own []string) []string {
+// redirectOptionsFor returns the options for a chain of up to maxRedirects redirects: the client's sensitive
+// header names followed by own, in a fresh list that stays valid after the request is recycled.
+func (c *Client) redirectOptionsFor(maxRedirects int, own crosshost.HeaderNames) redirectOptions {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return slices.Concat(c.redirectSensitiveHeaders, own)
+	return redirectOptions{maxRedirects: maxRedirects, sensitiveHeaders: c.redirectSensitiveHeaders.Join(own)}
 }
 
 // writesPathAsBuilt reports whether the wrapped fasthttp client sends the request
@@ -919,7 +915,7 @@ func (c *Client) Reset() {
 	c.retryConfig = nil
 	c.isDebug = false
 	c.isPathNormalizingDisabled = false
-	c.redirectSensitiveHeaders = nil
+	c.redirectSensitiveHeaders = crosshost.HeaderNames{}
 
 	if c.cookieJar != nil {
 		c.cookieJar.Release()

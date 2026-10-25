@@ -2100,9 +2100,9 @@ func Test_Proxy_CrossHostStripsEveryCredentialHeader(t *testing.T) {
 	require.Empty(t, <-seen, "no credential header may follow a redirect off the addressed host")
 }
 
-// redirectOffTheOrigin serves a chain that leaves the origin and returns where it starts; the last
+// serveOffOriginChain serves a chain that leaves the origin and returns where it starts; the last
 // server sends what it was sent on seen.
-func redirectOffTheOrigin(t *testing.T, seen chan<- []string) string {
+func serveOffOriginChain(t *testing.T, seen chan<- []string) string {
 	t.Helper()
 
 	_, finalAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
@@ -2127,7 +2127,7 @@ func Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin(t *testing.T) {
 	withSecurityPolicyForTest(t, policy)
 
 	seen := make(chan []string, 1)
-	redirectAddr := redirectOffTheOrigin(t, seen)
+	redirectAddr := serveOffOriginChain(t, seen)
 
 	var own string
 	app := fiber.New()
@@ -2156,7 +2156,7 @@ func Test_Proxy_DoRedirects_ForwardsUnlistedHeadersOffTheOrigin(t *testing.T) {
 	t.Parallel()
 
 	seen := make(chan []string, 1)
-	redirectAddr := redirectOffTheOrigin(t, seen)
+	redirectAddr := serveOffOriginChain(t, seen)
 
 	app := fiber.New()
 	app.Use(func(c fiber.Ctx) error {

@@ -83,7 +83,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 				redirectRequest(hop)
 			}
 			if crossOrigin {
-				crosshost.Strip(&hop.Header, policy.RedirectSensitiveHeaders)
+				crosshost.Strip(&hop.Header, crosshost.NewHeaderNames(policy.RedirectSensitiveHeaders))
 			}
 		}
 		currentURL = nextURL

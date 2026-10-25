@@ -79,9 +79,9 @@ type SecurityPolicy struct {
 	// credentials the application defines, such as X-Api-Key, which DoRedirects cannot tell from
 	// any other header and otherwise forwards to the redirect target. Names match
 	// case-insensitively, whatever case the header is stored under; surrounding whitespace and
-	// empty entries are ignored. A redirect that keeps the origin keeps every header; the Fiber
-	// client's boundary is the hostname instead, so a change of scheme or port alone keeps them
-	// there. Only DoRedirects reads it: the other helpers and Balancer never follow a redirect.
+	// empty entries are ignored. A redirect that keeps the origin drops none of them. The Fiber
+	// client draws its boundary elsewhere, see Client.SetRedirectSensitiveHeaders. Only
+	// DoRedirects reads it: the other helpers and Balancer never follow a redirect.
 	// Default: nil.
 	RedirectSensitiveHeaders []string
 
@@ -190,7 +190,7 @@ func normalizePolicy(policy SecurityPolicy) SecurityPolicy {
 	} else {
 		policy.AllowedSchemes = append([]string(nil), policy.AllowedSchemes...)
 	}
-	policy.RedirectSensitiveHeaders = crosshost.NormalizeNames(policy.RedirectSensitiveHeaders)
+	policy.RedirectSensitiveHeaders = crosshost.NewHeaderNames(policy.RedirectSensitiveHeaders).List()
 	return policy
 }
 

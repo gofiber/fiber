@@ -31,7 +31,7 @@ type httpClientTransport interface {
 	Do(req *fasthttp.Request, resp *fasthttp.Response) error
 	DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error
 	DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, deadline time.Time) error
-	DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, sensitiveHeaders []string) error
+	DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error
 	CloseIdleConnections()
 	TLSConfig() *tls.Config
 	SetTLSConfig(config *tls.Config)
@@ -125,7 +125,7 @@ func (s *standardClientTransport) DoDeadline(req *fasthttp.Request, resp *fastht
 // DoRedirects follows redirects through doRedirectsWithClient rather than
 // fasthttp's own loop, so every transport applies the same target validation.
 // fasthttp's loop takes an HTTPS-to-HTTP hop; this one refuses it.
-func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, sensitiveHeaders []string) error {
+func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
 	s.noteSend()
 	// Before the loop serializes the URI, as fasthttp's own DoRedirects does:
 	// the setting has to reach req.URI() first or "/a//b" is normalized away on
@@ -133,7 +133,7 @@ func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasth
 	if s.client.DisablePathNormalizing {
 		req.URI().DisablePathNormalizing = true
 	}
-	return doRedirectsWithClient(req, resp, maxRedirects, s.client, sensitiveHeaders)
+	return doRedirectsWithClient(req, resp, opts, s.client)
 }
 
 func (s *standardClientTransport) CloseIdleConnections() {
@@ -201,12 +201,12 @@ func (h *hostClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.R
 
 // DoRedirects uses the shared loop for the same reasons as
 // standardClientTransport.DoRedirects.
-func (h *hostClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, sensitiveHeaders []string) error {
+func (h *hostClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
 	// See standardClientTransport.DoRedirects.
 	if h.client.DisablePathNormalizing {
 		req.URI().DisablePathNormalizing = true
 	}
-	return doRedirectsWithClient(req, resp, maxRedirects, h.client, sensitiveHeaders)
+	return doRedirectsWithClient(req, resp, opts, h.client)
 }
 
 func (h *hostClientTransport) CloseIdleConnections() {
@@ -270,8 +270,8 @@ func (l *lbClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Res
 // DoRedirects proxies redirect handling through doRedirectsWithClient so the
 // load-balanced transport mirrors fasthttp.Client semantics despite
 // fasthttp.LBClient not exposing DoRedirects directly.
-func (l *lbClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, sensitiveHeaders []string) error {
-	return doRedirectsWithClient(req, resp, maxRedirects, l.client, sensitiveHeaders)
+func (l *lbClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
+	return doRedirectsWithClient(req, resp, opts, l.client)
 }
 
 func (l *lbClientTransport) CloseIdleConnections() {
@@ -444,9 +444,9 @@ type redirectClient interface {
 // from one that stopped at a hop, and it is what the DoRedirects this stands in
 // for does.
 //
-// sensitiveHeaders names extra request headers to drop when the chain leaves the initial host. It is
-// required, not optional, so a transport added later fails to compile instead of skipping it.
-func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, client redirectClient, sensitiveHeaders []string) error {
+// opts carries the redirect limit and the extra request headers to drop when the chain leaves the
+// initial host; a transport hands it over untouched.
+func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions, client redirectClient) error {
 	if resp == nil {
 		// "Response is ignored if resp is nil", per fasthttp's own DoRedirects
 		// doc. Its loop reads resp.Header regardless and panics, so honor the
@@ -459,6 +459,7 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 	initialHostname := hostnameWithoutPort(string(req.URI().Host()))
 	redirects := 0
 
+	maxRedirects := opts.maxRedirects
 	if maxRedirects < 0 {
 		maxRedirects = defaultRedirectLimit
 	}
@@ -519,7 +520,7 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 		// Case-insensitive: Header.Del is byte-exact. The request is edited in place,
 		// so dropped headers stay gone if a later hop returns to the initial host.
 		if !trustedRedirectTarget(nextHost, initialHostname) {
-			crosshost.Strip(&req.Header, sensitiveHeaders)
+			crosshost.Strip(&req.Header, opts.sensitiveHeaders)
 		}
 	}
 }

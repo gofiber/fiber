@@ -64,7 +64,7 @@ type Request struct {
 	referer    string
 	files      []*File
 
-	redirectSensitiveHeaders []string
+	redirectSensitiveHeaders crosshost.HeaderNames
 
 	timeout      time.Duration
 	maxRedirects int
@@ -619,14 +619,14 @@ func (r *Request) SetMaxRedirects(count int) *Request {
 // RedirectSensitiveHeaders returns a copy of the header names set on this Request. The client's own
 // list is not included.
 func (r *Request) RedirectSensitiveHeaders() []string {
-	return slices.Clone(r.redirectSensitiveHeaders)
+	return r.redirectSensitiveHeaders.List()
 }
 
 // SetRedirectSensitiveHeaders names request headers that must not follow a redirect to another
 // host, such as a credential of your own like X-Api-Key, in addition to the client's list and the
 // built-in set. It replaces any list set before on this Request; no names clears it.
 func (r *Request) SetRedirectSensitiveHeaders(names ...string) *Request {
-	r.redirectSensitiveHeaders = crosshost.NormalizeNames(names)
+	r.redirectSensitiveHeaders = crosshost.NewHeaderNames(names)
 	return r
 }
 
@@ -713,7 +713,7 @@ func (r *Request) Reset() {
 	r.body = nil
 	r.timeout = 0
 	r.maxRedirects = 0
-	r.redirectSensitiveHeaders = nil // not [:0]: a recycled request must not share a backing array
+	r.redirectSensitiveHeaders = crosshost.HeaderNames{}
 	r.bodyType = noBody
 	r.boundary = boundary
 	r.isPathNormalizingDisabled = false

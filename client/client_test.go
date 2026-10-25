@@ -23,6 +23,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/addon/retry"
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
@@ -320,21 +321,23 @@ func TestClient_RedirectSensitiveHeaders(t *testing.T) {
 		require.Same(t, client, client.SetRedirectSensitiveHeaders())
 	})
 
-	t.Run("the names for a request are the client's and the request's together", func(t *testing.T) {
+	t.Run("the options for a request carry the client's and the request's names together", func(t *testing.T) {
 		t.Parallel()
 
 		client := New().SetRedirectSensitiveHeaders("X-One")
-		own := []string{"X-Two"}
+		own := New().R().SetRedirectSensitiveHeaders("X-Two")
 
-		got := client.redirectSensitiveHeadersFor(own)
-		require.ElementsMatch(t, []string{"X-One", "X-Two"}, got)
+		opts := client.redirectOptionsFor(3, own.redirectSensitiveHeaders)
+		require.Equal(t, 3, opts.maxRedirects)
+		require.ElementsMatch(t, []string{"X-One", "X-Two"}, opts.sensitiveHeaders.List())
 
-		// A fresh slice: changing it reaches neither list.
-		got[0], got[1] = "X-Changed", "X-Changed"
+		// A fresh list: changing it reaches neither side.
+		again := client.redirectOptionsFor(3, own.redirectSensitiveHeaders)
+		require.ElementsMatch(t, []string{"X-One", "X-Two"}, again.sensitiveHeaders.List())
 		require.Equal(t, []string{"X-One"}, client.RedirectSensitiveHeaders())
-		require.Equal(t, []string{"X-Two"}, own)
+		require.Equal(t, []string{"X-Two"}, own.RedirectSensitiveHeaders())
 
-		require.Empty(t, New().redirectSensitiveHeadersFor(nil))
+		require.Nil(t, New().redirectOptionsFor(3, crosshost.HeaderNames{}).sensitiveHeaders.List())
 	})
 }
 
@@ -372,7 +375,7 @@ func TestClientResetClearsState(t *testing.T) {
 	require.Nil(t, client.retryConfig)
 	require.False(t, client.isDebug)
 	require.False(t, client.isPathNormalizingDisabled)
-	require.Nil(t, client.redirectSensitiveHeaders)
+	require.Nil(t, client.RedirectSensitiveHeaders())
 	require.Nil(t, client.cookieJar)
 	require.Nil(t, jar.hostCookies)
 	require.Empty(t, *client.path)

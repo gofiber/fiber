@@ -616,7 +616,7 @@ func (d *delayedTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Resp
 	return d.Do(req, resp)
 }
 
-func (d *delayedTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int, _ []string) error {
+func (d *delayedTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ *redirectOptions) error {
 	return d.Do(req, resp)
 }
 
@@ -680,7 +680,7 @@ func (b *blockingErrTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.
 	return b.Do(req, resp)
 }
 
-func (b *blockingErrTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int, _ []string) error {
+func (b *blockingErrTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ *redirectOptions) error {
 	return b.Do(req, resp)
 }
 
@@ -728,7 +728,7 @@ func (p *panicTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Respon
 	return p.Do(req, resp)
 }
 
-func (p *panicTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int, _ []string) error {
+func (p *panicTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ *redirectOptions) error {
 	return p.Do(req, resp)
 }
 
@@ -768,10 +768,10 @@ func newNamesTransport() *namesTransport {
 	return &namesTransport{delayedTransport: newDelayedTransport(0), proceed: make(chan struct{})}
 }
 
-func (n *namesTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, sensitiveHeaders []string) error {
+func (n *namesTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
 	<-n.proceed
-	n.got = sensitiveHeaders
-	return n.delayedTransport.DoRedirects(req, resp, maxRedirects, sensitiveHeaders)
+	n.got = opts.sensitiveHeaders.List()
+	return n.delayedTransport.DoRedirects(req, resp, opts)
 }
 
 // Test_Core_RedirectSensitiveHeadersSurviveRequestReuse pins that execFunc resolves the names before its
@@ -822,10 +822,10 @@ type rewritingTransport struct {
 	names   [][]string // the names each attempt was handed
 }
 
-func (r *rewritingTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int, sensitiveHeaders []string) error {
+func (r *rewritingTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
 	r.starts = append(r.starts, req.URI().String()+"|"+string(req.Header.Peek("X-Api-Key")))
 	r.streams = append(r.streams, req.IsBodyStream())
-	r.names = append(r.names, sensitiveHeaders)
+	r.names = append(r.names, opts.sensitiveHeaders.List())
 	if len(r.starts) > 1 {
 		req.SetRequestURI("http://final.example/done")
 		resp.SetStatusCode(fasthttp.StatusOK)
