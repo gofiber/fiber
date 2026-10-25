@@ -642,10 +642,11 @@ func (c *Client) RedirectSensitiveHeaders() []string {
 // host, such as a credential of your own like X-Api-Key. When a redirect goes to a host that is
 // neither the one the request started on (on any port) nor one of its subdomains, they are dropped
 // with Authorization, Proxy-Authorization, Proxy-Authenticate, WWW-Authenticate, Cookie and Cookie2;
-// every other header is forwarded. Names match case-insensitively; surrounding whitespace and empty
-// entries are ignored. The list applies to every request of the client that follows redirects, and
-// to DoRedirects. A request can add names of its own with Request.SetRedirectSensitiveHeaders.
-// Calling it with no names clears the list.
+// every other header is forwarded. proxy.DoRedirects draws the line at the origin instead, so it
+// also drops them when only the scheme or port changes. Names match case-insensitively;
+// surrounding whitespace and empty entries are ignored. The list applies to every request of the
+// client that follows redirects, and to DoRedirects. A request can add names of its own with
+// Request.SetRedirectSensitiveHeaders. Calling it with no names clears the list.
 func (c *Client) SetRedirectSensitiveHeaders(names ...string) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()

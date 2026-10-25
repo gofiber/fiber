@@ -85,6 +85,8 @@ policy.RedirectSensitiveHeaders = []string{"X-Api-Key", "X-Auth-Token"}
 proxy.WithSecurityPolicy(policy)
 ```
 
+The Fiber client draws the line elsewhere, as `net/http` does: it keeps these headers for the same hostname on any port and for its subdomains, and drops them only for another hostname. A redirect from `http` to `https`, or to another port, of the same host therefore drops them here and keeps them there, see [SetRedirectSensitiveHeaders](../client/rest.md#setredirectsensitiveheaders) on the client.
+
 ### Redirect method and body
 
 `DoRedirects` rewrites the request for each hop according to the status that sent it there ([RFC 9110 §15.4](https://www.rfc-editor.org/rfc/rfc9110#section-15.4)). A `303 See Other` turns every method except `GET` and `HEAD` into `GET`. A `301 Moved Permanently` or `302 Found` turns `POST` into `GET`, as browsers and fasthttp do, and leaves any other method alone. A `307 Temporary Redirect` or `308 Permanent Redirect` repeats the request as it was. When the method changes, the body is dropped, including a form your handler already read, together with the fields that frame or describe it or expect it: `Content-Type`, `Content-Length`, `Content-Encoding`, `Content-Language`, `Content-Location`, `Transfer-Encoding`, `Trailer`, `Expect`, `Digest` and `Content-MD5`. A hop that differs from the request your handler holds goes out as a copy, so that request keeps its method, body, form, uploaded files and credentials. The copy keeps what it is sent with: the request timeout, the user values and the body of a multipart form the server parsed before your handler ran.

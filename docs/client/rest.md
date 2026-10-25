@@ -804,6 +804,8 @@ func (c *Client) RedirectSensitiveHeaders() []string
 
 Names request headers that must not follow a redirect to another host, such as a credential of your own like `X-Api-Key`, for every request of the client. A redirect to a host that is neither the original hostname (on any port) nor one of its subdomains drops them with the built-in sensitive headers; every other header is forwarded. Names match case-insensitively, and surrounding whitespace and empty entries are ignored. A request can add names of its own with [SetRedirectSensitiveHeaders](./request.md#setredirectsensitiveheaders). The list applies to [DoRedirects](#doredirects) too. It is empty by default, calling the method with no names clears it, and `Reset` clears it. It matters only while redirects are followed, see [SetMaxRedirects](./request.md#setmaxredirects).
 
+The boundary is the hostname, as in `net/http`: a redirect of the same host to another port or scheme keeps the headers. [proxy.DoRedirects](../middleware/proxy.md#headers-on-a-cross-origin-redirect) is stricter and drops them whenever the scheme, host or port changes.
+
 ```go title="Signature"
 func (c *Client) SetRedirectSensitiveHeaders(names ...string) *Client
 ```
