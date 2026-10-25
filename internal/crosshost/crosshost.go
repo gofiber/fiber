@@ -27,10 +27,10 @@ var SensitiveHeaders = []string{
 	"Cookie2",
 }
 
-// CopyNames returns a copy of names without surrounding whitespace or empty entries. A name split
+// NormalizeNames returns a copy of names without surrounding whitespace or empty entries. A name split
 // from a comma-separated setting often keeps a leading space, and one that never matches leaves its
 // header in place. It returns nil when nothing is left, so an unset list costs nothing.
-func CopyNames(names []string) []string {
+func NormalizeNames(names []string) []string {
 	var out []string
 	for _, name := range names {
 		if name = utils.TrimSpace(name); name != "" {

@@ -817,13 +817,15 @@ func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 type rewritingTransport struct {
 	*delayedTransport
 
-	starts  []string // target and X-Api-Key of each attempt
-	streams []bool   // whether each attempt had a body stream
+	starts  []string   // target and X-Api-Key of each attempt
+	streams []bool     // whether each attempt had a body stream
+	names   [][]string // the names each attempt was handed
 }
 
-func (r *rewritingTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int, _ []string) error {
+func (r *rewritingTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int, sensitiveHeaders []string) error {
 	r.starts = append(r.starts, req.URI().String()+"|"+string(req.Header.Peek("X-Api-Key")))
 	r.streams = append(r.streams, req.IsBodyStream())
+	r.names = append(r.names, sensitiveHeaders)
 	if len(r.starts) > 1 {
 		req.SetRequestURI("http://final.example/done")
 		resp.SetStatusCode(fasthttp.StatusOK)
@@ -848,10 +850,11 @@ func Test_Core_RetryRestartsRedirects(t *testing.T) {
 		transport := &rewritingTransport{delayedTransport: newDelayedTransport(0)}
 		client := New().
 			SetRetryConfig(&RetryConfig{InitialInterval: time.Millisecond, MaxBackoffTime: 2 * time.Millisecond, MaxRetryCount: 2}).
-			SetCookieJar(AcquireCookieJar())
+			SetCookieJar(AcquireCookieJar()).
+			SetRedirectSensitiveHeaders("X-Client")
 		client.transport = transport
 
-		req := client.R().SetHeader("X-Api-Key", "key").SetMaxRedirects(3)
+		req := client.R().SetHeader("X-Api-Key", "key").SetMaxRedirects(3).SetRedirectSensitiveHeaders("X-Request")
 		prepare(req)
 		resp, err := req.Get("http://example.com/start")
 		require.NoError(t, err)
@@ -866,6 +869,12 @@ func Test_Core_RetryRestartsRedirects(t *testing.T) {
 		transport, host := run(t, func(*Request) {})
 		require.Equal(t, []string{"http://example.com/start|key", "http://example.com/start|key"}, transport.starts)
 		require.Equal(t, "final.example", host)
+
+		// Each attempt follows redirects with both lists, the retried one included.
+		require.Len(t, transport.names, 2)
+		for _, names := range transport.names {
+			require.ElementsMatch(t, []string{"X-Client", "X-Request"}, names)
+		}
 	})
 
 	t.Run("a streamed body is left alone", func(t *testing.T) {

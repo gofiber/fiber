@@ -626,7 +626,7 @@ func (r *Request) RedirectSensitiveHeaders() []string {
 // host, such as a credential of your own like X-Api-Key, in addition to the client's list and the
 // built-in set. It replaces any list set before on this Request; no names clears it.
 func (r *Request) SetRedirectSensitiveHeaders(names ...string) *Request {
-	r.redirectSensitiveHeaders = crosshost.CopyNames(names)
+	r.redirectSensitiveHeaders = crosshost.NormalizeNames(names)
 	return r
 }
 

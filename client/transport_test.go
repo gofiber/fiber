@@ -682,53 +682,55 @@ func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 		req.Header.Add("x-auth-token", "tok")
 	}
 
-	// want counts the lines of Authorization, X-Api-Key and X-Auth-Token each request carried.
+	// carried is how many lines of each header a request had when it reached the transport.
+	type carried struct{ authorization, apiKey, authToken int }
+
 	for _, tc := range []struct {
 		setup     func(req *fasthttp.Request)
 		name      string
 		listed    []string
 		locations []string
-		want      [][3]int
+		want      []carried
 	}{
 		{
 			name: "a listed name is dropped on another host, an unlisted one is kept", setup: plain,
 			listed: []string{"X-Api-Key"}, locations: []string{"http://attacker.example/collect"},
-			want: [][3]int{{1, 1, 1}, {0, 0, 1}},
+			want: []carried{{1, 1, 1}, {0, 0, 1}},
 		},
 		{
 			name: "the case of a listed name does not matter", setup: plain,
 			listed: []string{"x-API-key"}, locations: []string{"http://attacker.example/collect"},
-			want: [][3]int{{1, 1, 1}, {0, 0, 1}},
+			want: []carried{{1, 1, 1}, {0, 0, 1}},
 		},
 		{
 			name: "every listed name is dropped", setup: plain,
 			listed: []string{"X-Api-Key", "X-Auth-Token"}, locations: []string{"http://attacker.example/collect"},
-			want: [][3]int{{1, 1, 1}, {0, 0, 0}},
+			want: []carried{{1, 1, 1}, {0, 0, 0}},
 		},
 		{
 			name: "every spelling a header is stored under is dropped", setup: lowerCase,
 			listed: []string{"X-Api-Key"}, locations: []string{"http://attacker.example/collect"},
-			want: [][3]int{{1, 2, 1}, {0, 0, 1}},
+			want: []carried{{1, 2, 1}, {0, 0, 1}},
 		},
 		{
 			name: "another port of the same host keeps every header", setup: plain,
 			listed: []string{"X-Api-Key"}, locations: []string{"http://example.com:8080/next"},
-			want: [][3]int{{1, 1, 1}, {1, 1, 1}},
+			want: []carried{{1, 1, 1}, {1, 1, 1}},
 		},
 		{
 			name: "a subdomain keeps every header", setup: plain,
 			listed: []string{"X-Api-Key"}, locations: []string{"http://www.example.com/next"},
-			want: [][3]int{{1, 1, 1}, {1, 1, 1}},
+			want: []carried{{1, 1, 1}, {1, 1, 1}},
 		},
 		{
 			name: "nothing listed forwards the application's headers and drops the built-in set", setup: plain,
 			locations: []string{"http://attacker.example/collect"},
-			want:      [][3]int{{1, 1, 1}, {0, 1, 1}},
+			want:      []carried{{1, 1, 1}, {0, 1, 1}},
 		},
 		{
 			name: "they stay gone when a later hop returns to the initial host", setup: plain,
 			listed: []string{"X-Api-Key"}, locations: []string{"http://attacker.example/collect", "http://example.com/back"},
-			want: [][3]int{{1, 1, 1}, {0, 0, 1}, {0, 0, 1}},
+			want: []carried{{1, 1, 1}, {0, 0, 1}, {0, 0, 1}},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -747,12 +749,12 @@ func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 			}
 			calls = append(calls, stubRedirectCall{status: new(fasthttp.StatusOK)})
 
-			var got [][3]int
+			var got []carried
 			client := &stubRedirectClient{calls: calls, onRequest: func(req *fasthttp.Request) {
-				got = append(got, [3]int{
-					len(fieldname.Lines(&req.Header, fasthttp.HeaderAuthorization, false)),
-					len(fieldname.Lines(&req.Header, "X-Api-Key", false)),
-					len(fieldname.Lines(&req.Header, "X-Auth-Token", false)),
+				got = append(got, carried{
+					authorization: len(fieldname.Lines(&req.Header, fasthttp.HeaderAuthorization, false)),
+					apiKey:        len(fieldname.Lines(&req.Header, "X-Api-Key", false)),
+					authToken:     len(fieldname.Lines(&req.Header, "X-Auth-Token", false)),
 				})
 			}}
 
@@ -762,15 +764,16 @@ func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 	}
 }
 
-// TestClient_DoRedirects_DropsClientListedHeaders runs Client.DoRedirects end to end; a raw request has no
-// list of its own.
+// TestClient_DoRedirects_DropsClientListedHeaders runs Client.DoRedirects end to end on every kind of
+// client; a raw request has no list of its own.
 func TestClient_DoRedirects_DropsClientListedHeaders(t *testing.T) {
 	t.Parallel()
 
 	server := startRedirectServer(t, func(c fiber.Ctx) error {
 		return c.SendString(c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token"))
 	})
-	defer server.stop()
+	// Not a defer: the parallel subtests outlive this function.
+	t.Cleanup(server.stop)
 
 	do := func(t *testing.T, client *Client, path string) string {
 		t.Helper()
@@ -787,18 +790,34 @@ func TestClient_DoRedirects_DropsClientListedHeaders(t *testing.T) {
 		return string(resp.Body())
 	}
 
-	client := New().SetDial(server.dial())
+	for name, newClient := range map[string]func() *Client{
+		"standard": func() *Client { return New().SetDial(server.dial()) },
+		"host": func() *Client {
+			return NewWithHostClient(&fasthttp.HostClient{Addr: "example.com:80", Dial: server.dial()})
+		},
+		"balanced": func() *Client {
+			return NewWithLBClient(&fasthttp.LBClient{Clients: []fasthttp.BalancingClient{
+				&fasthttp.HostClient{Addr: "example.com:80", Dial: server.dial()},
+			}})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	// Default: nothing listed, so the header follows the redirect.
-	require.Equal(t, "key|tok", do(t, client, "/start"))
+			client := newClient()
 
-	client.SetRedirectSensitiveHeaders("x-api-key")
-	require.Equal(t, "|tok", do(t, client, "/start"))
-	// Control: staying on the host keeps it.
-	require.Equal(t, "key|tok", do(t, client, "/same-host"))
+			// Default: nothing listed, so the header follows the redirect.
+			require.Equal(t, "key|tok", do(t, client, "/start"))
 
-	client.SetRedirectSensitiveHeaders()
-	require.Equal(t, "key|tok", do(t, client, "/start"), "an empty call clears the list")
+			client.SetRedirectSensitiveHeaders("x-api-key")
+			require.Equal(t, "|tok", do(t, client, "/start"))
+			// Control: staying on the host keeps it.
+			require.Equal(t, "key|tok", do(t, client, "/same-host"))
+
+			client.SetRedirectSensitiveHeaders()
+			require.Equal(t, "key|tok", do(t, client, "/start"), "an empty call clears the list")
+		})
+	}
 }
 
 // TestDoRedirectsWithClient_ValidatesTargets covers the target validation that

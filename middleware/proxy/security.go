@@ -190,7 +190,7 @@ func normalizePolicy(policy SecurityPolicy) SecurityPolicy {
 	} else {
 		policy.AllowedSchemes = append([]string(nil), policy.AllowedSchemes...)
 	}
-	policy.RedirectSensitiveHeaders = crosshost.CopyNames(policy.RedirectSensitiveHeaders)
+	policy.RedirectSensitiveHeaders = crosshost.NormalizeNames(policy.RedirectSensitiveHeaders)
 	return policy
 }
 

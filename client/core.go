@@ -113,7 +113,7 @@ func (c *core) execFunc() (*Response, error) {
 				if !followRedirects {
 					return c.client.Do(reqv, respv)
 				}
-				redirectErr := c.client.doRedirectsDropping(reqv, respv, maxRedirects, sensitiveHeaders)
+				redirectErr := c.client.followRedirects(reqv, respv, maxRedirects, sensitiveHeaders)
 				if redirectErr != nil && sent != nil {
 					sent.CopyTo(reqv)
 				}
@@ -121,7 +121,7 @@ func (c *core) execFunc() (*Response, error) {
 			})
 		} else {
 			if followRedirects {
-				err = c.client.doRedirectsDropping(reqv, respv, maxRedirects, sensitiveHeaders)
+				err = c.client.followRedirects(reqv, respv, maxRedirects, sensitiveHeaders)
 			} else {
 				err = c.client.Do(reqv, respv)
 			}

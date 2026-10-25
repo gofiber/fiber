@@ -8,7 +8,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func Test_CopyNames(t *testing.T) {
+func Test_NormalizeNames(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -33,7 +33,7 @@ func Test_CopyNames(t *testing.T) {
 			t.Parallel()
 
 			// Equal tells nil from empty.
-			require.Equal(t, tt.want, CopyNames(tt.in))
+			require.Equal(t, tt.want, NormalizeNames(tt.in))
 		})
 	}
 
@@ -41,7 +41,7 @@ func Test_CopyNames(t *testing.T) {
 		t.Parallel()
 
 		in := []string{"X-Api-Key", "X-Auth-Token"}
-		out := CopyNames(in)
+		out := NormalizeNames(in)
 
 		in[0] = "changed-in"
 		require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, out)

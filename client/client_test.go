@@ -2524,6 +2524,29 @@ func Benchmark_Client_Request(b *testing.B) {
 	require.NoError(b, err)
 }
 
+// Benchmark_Client_Request_RetryRedirects sets both a retry config and a redirect limit, which makes execFunc
+// keep a copy of the request for a retry to restart from.
+func Benchmark_Client_Request_RetryRedirects(b *testing.B) {
+	app, dial, start := createHelperServer(b)
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("hello world")
+	})
+
+	go start()
+
+	client := New().SetDial(dial).SetRetryConfig(&RetryConfig{MaxRetryCount: 2})
+
+	b.ReportAllocs()
+
+	var err error
+	var resp *Response
+	for b.Loop() {
+		resp, err = client.Get("http://example.com", Config{MaxRedirects: 3})
+		resp.Close()
+	}
+	require.NoError(b, err)
+}
+
 func Benchmark_Client_Request_Parallel(b *testing.B) {
 	app, dial, start := createHelperServer(b)
 	app.Get("/", func(c fiber.Ctx) error {

@@ -99,12 +99,12 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 // DoRedirects executes the request following redirects up to maxRedirects.
 // Headers named with SetRedirectSensitiveHeaders are dropped when a redirect leaves the host.
 func (c *Client) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
-	return c.doRedirectsDropping(req, resp, maxRedirects, c.redirectSensitiveHeadersFor(nil))
+	return c.followRedirects(req, resp, maxRedirects, c.redirectSensitiveHeadersFor(nil))
 }
 
-// doRedirectsDropping is DoRedirects with the names already resolved, which execFunc
+// followRedirects is DoRedirects with the names already resolved, which execFunc
 // does before its goroutine starts.
-func (c *Client) doRedirectsDropping(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, sensitiveHeaders []string) error {
+func (c *Client) followRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, sensitiveHeaders []string) error {
 	return c.transport.DoRedirects(req, resp, maxRedirects, sensitiveHeaders)
 }
 
@@ -651,7 +651,7 @@ func (c *Client) SetRedirectSensitiveHeaders(names ...string) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.redirectSensitiveHeaders = crosshost.CopyNames(names)
+	c.redirectSensitiveHeaders = crosshost.NormalizeNames(names)
 	return c
 }
 
