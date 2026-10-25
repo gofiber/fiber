@@ -2331,11 +2331,14 @@ func Test_Set_Config_To_Request(t *testing.T) {
 
 	t.Run("a config without redirect sensitive headers leaves the request's", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireRequest().SetRedirectSensitiveHeaders("X-Api-Key")
 
-		setConfigToRequest(req, Config{MaxRedirects: 1})
+		for _, names := range [][]string{nil, {}} {
+			req := AcquireRequest().SetRedirectSensitiveHeaders("X-Api-Key")
 
-		require.Equal(t, []string{"X-Api-Key"}, req.RedirectSensitiveHeaders())
+			setConfigToRequest(req, Config{MaxRedirects: 1, RedirectSensitiveHeaders: names})
+
+			require.Equal(t, []string{"X-Api-Key"}, req.RedirectSensitiveHeaders())
+		}
 	})
 
 	t.Run("set body string", func(t *testing.T) {

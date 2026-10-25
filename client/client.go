@@ -935,8 +935,8 @@ func (c *Client) Reset() {
 // JSON is used as the default serialization mechanism. The priority is:
 // Body > FormData > File.
 //
-// RedirectSensitiveHeaders is passed to Request.SetRedirectSensitiveHeaders. It matters only while
-// MaxRedirects is non-zero.
+// RedirectSensitiveHeaders is passed to Request.SetRedirectSensitiveHeaders; an empty list leaves the
+// request's own names alone. It matters only while MaxRedirects is non-zero.
 type Config struct {
 	Ctx                      context.Context //nolint:containedctx // It's needed to be stored in the config.
 	Body                     any
@@ -997,7 +997,7 @@ func setConfigToRequest(req *Request, config ...Config) {
 		req.SetMaxRedirects(cfg.MaxRedirects)
 	}
 
-	if cfg.RedirectSensitiveHeaders != nil {
+	if len(cfg.RedirectSensitiveHeaders) > 0 {
 		req.SetRedirectSensitiveHeaders(cfg.RedirectSensitiveHeaders...)
 	}
 

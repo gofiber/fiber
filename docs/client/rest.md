@@ -238,7 +238,7 @@ The REST helpers accept an optional `Config` and use only the first one passed. 
 
 `MaxRedirects` is honored for `GET`, `HEAD` and `QUERY` requests only; other methods receive the redirect response as-is. The default is `0`, which follows no redirects. See [SetMaxRedirects](./request.md#setmaxredirects) for how redirects are followed.
 
-`RedirectSensitiveHeaders` sets [SetRedirectSensitiveHeaders](./request.md#setredirectsensitiveheaders) for the request.
+`RedirectSensitiveHeaders` sets [SetRedirectSensitiveHeaders](./request.md#setredirectsensitiveheaders) for the request; an empty list leaves the request's own names as they are.
 
 `DisablePathNormalizing: true` turns path normalizing off for the request, like [SetDisablePathNormalizing](./request.md#setdisablepathnormalizing) on the request, which also says when the path is really sent as written; `false` leaves the client's setting in place.
 
