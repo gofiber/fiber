@@ -8,30 +8,12 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// requestCookie is one entry of the Cookie header as the decrypt pass read it.
-type requestCookie struct {
-	name   string
-	value  string
-	except bool
-	keep   bool
-}
-
-// responseCookie is one entry of the Set-Cookie header as the encrypt pass read it.
+// responseCookie is one entry of the Set-Cookie header as the encrypt pass read
+// it. line keeps the whole field value, so an entry is written back with every
+// attribute it arrived with.
 type responseCookie struct {
-	name       string
-	raw        string
-	value      string
-	valueStart int
-	valueEnd   int
-	except     bool
-	encrypt    bool
-}
-
-type cookieValueRange struct {
-	name  string
-	value string
-	start int
-	end   int
+	name string
+	line string
 }
 
 // New creates a new middleware handler
@@ -54,56 +36,55 @@ func New(config ...Config) fiber.Handler {
 
 		// Encrypt response cookies
 		header := &c.Response().Header
-		cookies := make([]responseCookie, 0, 4)
-		encryptable := false
-
+		cookieLines := make([]responseCookie, 0, 4)
 		for name, raw := range header.Cookies() {
-			line := string(raw)
-			entry := responseCookie{name: string(name), raw: line}
-			if isDisabled(entry.name, cfg.Except) {
-				entry.except = true
-			} else if parts, ok := splitResponseCookie(line); ok {
-				entry.name = parts.name
-				entry.value = parts.value
-				entry.valueStart = parts.start
-				entry.valueEnd = parts.end
-				entry.encrypt = true
-				encryptable = true
-			} else {
-				encryptable = true
-			}
-			cookies = append(cookies, entry)
+			cookieLines = append(cookieLines, responseCookie{name: string(name), line: string(raw)})
 		}
 
-		if !encryptable {
-			return err
-		}
-
-		for i := range cookies {
-			if !cookies[i].encrypt {
+		cookies := make([]string, 0, len(cookieLines))
+		encryptable := false
+		for i := range cookieLines {
+			ck := &cookieLines[i]
+			if isDisabled(ck.name, cfg.Except) {
+				cookies = append(cookies, ck.line)
 				continue
 			}
 
-			encrypted, encErr := cfg.Encryptor(cookies[i].name, cookies[i].value, cfg.Key)
+			encryptable = true
+			// The value ends at the first ';', so an '=' inside an attribute
+			// is never read as the value.
+			segment, attributes, hasAttributes := strings.Cut(ck.line, ";")
+			_, value, found := strings.Cut(segment, "=")
+			if !found {
+				// No name to seal the value under, so the line is not sent.
+				continue
+			}
+
+			encryptedValue, encErr := cfg.Encryptor(ck.name, trimCookieValue(value), cfg.Key)
 			if encErr != nil {
 				header.DelAllCookies()
-				for j := range cookies {
-					if cookies[j].except {
-						header.Add(fiber.HeaderSetCookie, cookies[j].raw)
+				for j := range cookieLines {
+					if isDisabled(cookieLines[j].name, cfg.Except) {
+						header.Add(fiber.HeaderSetCookie, cookieLines[j].line)
 					}
 				}
+
 				return errors.Join(err, encErr)
 			}
-			cookies[i].value = strings.ReplaceAll(encrypted, ";", " ")
+
+			// A ';' in the encrypted value would inject attributes, the same way
+			// fasthttp's Cookie.SetValue strips it.
+			line := ck.name + "=" + strings.ReplaceAll(encryptedValue, ";", " ")
+			if hasAttributes {
+				line += ";" + attributes
+			}
+			cookies = append(cookies, line)
 		}
 
-		header.DelAllCookies()
-		for i := range cookies {
-			switch {
-			case cookies[i].encrypt:
-				header.Add(fiber.HeaderSetCookie, responseCookieWithValue(cookies[i]))
-			case cookies[i].except:
-				header.Add(fiber.HeaderSetCookie, cookies[i].raw)
+		if encryptable {
+			header.DelAllCookies()
+			for _, line := range cookies {
+				header.Add(fiber.HeaderSetCookie, line)
 			}
 		}
 
@@ -111,8 +92,31 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
+// requestCookie is one entry of the Cookie header as the decrypt pass read it.
+type requestCookie struct {
+	name  string
+	value string
+	// except marks a name listed in Config.Except: value is the raw cookie
+	// and is written back unchanged.
+	except bool
+	// keep is false for an entry that is dropped: one the Decryptor rejected,
+	// or a later duplicate of a name that already decrypted.
+	keep bool
+}
+
 // decryptRequestCookies replaces each request cookie with its decrypted value
 // and drops the ones the Decryptor rejects.
+//
+// A Cookie header may carry the same name more than once (RFC 6265 Section
+// 5.4, e.g. set under two Paths or Domains), and fasthttp's cookie API works by
+// name: SetCookie rewrites the first entry with that name, DelCookie removes
+// every entry with it, and DelCookie swaps the last entry into the hole, so a
+// deletion reorders what remains. The header is therefore read in full first,
+// and mutated only afterwards. When nothing failed and no name repeats, each
+// value is written back in place. Otherwise the cookies are cleared and the
+// survivors re-added in their original order, which keeps at most one entry
+// per name: the first value that decrypts, as c.Cookies returns the first
+// plaintext cookie of a name. Names in Except keep every entry as it arrived.
 func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 	header := &c.Request().Header
 	cookies := make([]requestCookie, 0, 8)
@@ -124,20 +128,19 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 			cookies = append(cookies, requestCookie{name: name, value: string(value), except: true, keep: true})
 			continue
 		}
-
 		if hasCookieName(cookies, name) {
+			// The name already has its value; a later duplicate is dropped
+			// without decrypting it.
 			rebuild = true
 			cookies = append(cookies, requestCookie{name: name})
 			continue
 		}
-
 		decrypted, err := cfg.Decryptor(name, string(value), cfg.Key)
 		if err != nil {
 			rebuild = true
 			cookies = append(cookies, requestCookie{name: name})
 			continue
 		}
-
 		cookies = append(cookies, requestCookie{name: name, value: decrypted, keep: true})
 	}
 
@@ -157,8 +160,13 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 		case !ck.keep:
 			continue
 		case ck.except && hasExceptedName(cookies[:i], ck.name):
+			// SetCookie would overwrite the entry already written for this
+			// name. Add appends a Cookie entry and keeps the existing ones, so
+			// a repeated excepted name survives as it arrived.
 			header.Add(fiber.HeaderCookie, ck.name+"="+ck.value)
 		default:
+			// The name is absent after DelAllCookies, so SetCookie appends the
+			// entry in order and stores the value verbatim.
 			header.SetCookie(ck.name, ck.value)
 		}
 	}
@@ -184,45 +192,12 @@ func hasExceptedName(cookies []requestCookie, name string) bool {
 	return false
 }
 
-// splitResponseCookie reads the name and plaintext value of raw Set-Cookie.
-func splitResponseCookie(raw string) (cookieValueRange, bool) {
-	segmentEnd := len(raw)
-	if i := strings.IndexByte(raw, 59); i >= 0 { // 59 is ''';''''
-		segmentEnd = i
-	}
-
-	eq := strings.IndexByte(raw[:segmentEnd], 61) // 61 is '''=''''
-	if eq < 0 {
-		return cookieValueRange{}, false
-	}
-
-	return cookieValueRange{
-		name:  utils.Trim(raw[:eq], ' '),
-		value: trimCookieValue(raw[eq+1 : segmentEnd]),
-		start: eq + 1,
-		end:   segmentEnd,
-	}, true
-}
-
-// trimCookieValue removes leading/trailing spaces and one surrounding DQUOTE pair.
+// trimCookieValue trims the spaces and the single pair of quotes that fasthttp
+// strips from a cookie value.
 func trimCookieValue(value string) string {
 	value = utils.Trim(value, ' ')
 	if len(value) > 1 && value[0] == '"' && value[len(value)-1] == '"' {
-		value = value[1 : len(value)-1]
+		return value[1 : len(value)-1]
 	}
 	return value
-}
-
-// responseCookieValue returns the plaintext value of raw Set-Cookie.
-func responseCookieValue(raw string) string {
-	parts, ok := splitResponseCookie(raw)
-	if !ok {
-		return ""
-	}
-	return parts.value
-}
-
-// responseCookieWithValue returns the Set-Cookie line with value replaced.
-func responseCookieWithValue(ck responseCookie) string {
-	return ck.raw[:ck.valueStart] + ck.value + ck.raw[ck.valueEnd:]
 }

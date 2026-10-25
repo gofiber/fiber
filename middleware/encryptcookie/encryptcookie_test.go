@@ -1050,9 +1050,10 @@ func Test_Middleware_Duplicate_Response_Cookie_Names(t *testing.T) {
 	// cannot drift apart.
 	decrypt := func(t *testing.T, line string) string {
 		t.Helper()
-		name, _, found := strings.Cut(line, "=")
+		name, rest, found := strings.Cut(line, "=")
 		require.True(t, found, line)
-		plain, err := DecryptCookie(name, responseCookieValue(line), testKey)
+		value, _, _ := strings.Cut(rest, ";")
+		plain, err := DecryptCookie(name, trimCookieValue(value), testKey)
 		require.NoError(t, err, line)
 		return plain
 	}
