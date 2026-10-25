@@ -74,7 +74,7 @@ Only `http` and `https` upstream schemes are accepted by default; `file://`, `go
 When a redirect crosses to a **different origin**, that is another scheme, host or port ([RFC 6454](https://www.rfc-editor.org/rfc/rfc6454), where the default port stands in for a missing one), `DoRedirects` drops `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and the obsolete `Cookie2` from that hop and from every hop after it, so credentials bound to the original origin are not forwarded to a third-party upstream. This is `net/http`'s own set. A redirect to the same origin retains these headers. Spelling the default port out in the `Location` (`http://example.com/` to `http://example.com:80/next`) is still the same origin, while `http` to `https` is not.
 
 :::caution Application-defined credentials
-Every other header is forwarded to the redirect target unchanged, as `net/http` does. That includes credentials the proxy cannot recognize, such as `X-Api-Key` or `X-Auth-Token`, whether your handler set them or the client sent them. The upstream chooses where a redirect goes, so if it can be made to redirect to a host you do not control (an open redirect, for example), list the names of such headers in `SecurityPolicy.RedirectSensitiveHeaders`, or call `Do` and decide on each redirect yourself.
+Every other header the request still carries after the [hop-by-hop stripping](#rfc-9110-hop-by-hop-header-stripping) is forwarded to the redirect target unchanged, as `net/http` does. That includes credentials the proxy cannot recognize, such as `X-Api-Key` or `X-Auth-Token`, whether your handler set them or the client sent them. The upstream chooses where a redirect goes, so if it can be made to redirect to a host you do not control (an open redirect, for example), list the names of such headers in `SecurityPolicy.RedirectSensitiveHeaders`, or call `Do` and decide on each redirect yourself.
 :::
 
 `SecurityPolicy.RedirectSensitiveHeaders` names extra request headers that `DoRedirects` drops on a cross-origin redirect, in addition to the set above. Names match case-insensitively, and surrounding whitespace and empty entries are ignored. The list is empty by default, so nothing changes until you set it. Only `DoRedirects` reads it: `Do`, `Forward`, `Balancer` and the other helpers never follow a redirect.
@@ -309,6 +309,8 @@ policy.RedirectSensitiveHeaders = []string{"X-Api-Key"}
 proxy.WithSecurityPolicy(policy)
 
 app.Get("/proxy", func(c fiber.Ctx) error {
+    // Del first: Set replaces only one line of a header the client sent twice
+    c.Request().Header.Del("X-Api-Key")
     c.Request().Header.Set("X-Api-Key", os.Getenv("UPSTREAM_API_KEY"))
     return proxy.DoRedirects(c, "https://api.example.com/items", 3)
 })

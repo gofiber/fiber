@@ -96,11 +96,12 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 //
 // When a redirect changes the origin (scheme, host or port), Authorization,
 // Proxy-Authorization, Proxy-Authenticate, WWW-Authenticate, Cookie and Cookie2
-// are dropped from that hop and every hop after it. Every other header is
-// forwarded as it is, including credentials the application defines, such as
-// X-Api-Key, whether the application set them or the client sent them. Name
-// such headers in SecurityPolicy.RedirectSensitiveHeaders to drop them too,
-// or use Do and follow the redirect yourself.
+// are dropped from that hop and every hop after it. Every other header the
+// request still carries after the hop-by-hop stripping is forwarded as it is,
+// including credentials the application defines, such as X-Api-Key, whether
+// the application set them or the client sent them. Name such headers in
+// SecurityPolicy.RedirectSensitiveHeaders to drop them too, or use Do and
+// follow the redirect yourself.
 //
 // SSRF note: every hop's host is validated against the policy, and when
 // AllowPrivateIPs is false each dial is re-validated by the guard on the
