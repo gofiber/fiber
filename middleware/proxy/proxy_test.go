@@ -2100,8 +2100,7 @@ func Test_Proxy_CrossHostStripsEveryCredentialHeader(t *testing.T) {
 	require.Empty(t, <-seen, "no credential header may follow a redirect off the addressed host")
 }
 
-// serveOffOriginChain serves a chain that leaves the origin and returns where it starts; the last
-// server sends what it was sent on seen.
+// serveOffOriginChain leaves the origin and returns; the last server reports on seen.
 func serveOffOriginChain(t *testing.T, seen chan<- []string) string {
 	t.Helper()
 
@@ -2117,12 +2116,10 @@ func serveOffOriginChain(t *testing.T, seen chan<- []string) string {
 	return redirectAddr
 }
 
-// Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin checks that a listed header does not follow a
-// cross-origin redirect, an unlisted one does, and the handler's own request keeps both.
 func Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
 	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true // TestMain relaxed the global policy, and this one replaces it
+	policy.AllowPrivateIPs = true // replaces TestMain's relaxed policy
 	policy.RedirectSensitiveHeaders = []string{"x-api-key"}
 	withSecurityPolicyForTest(t, policy)
 
@@ -2150,8 +2147,6 @@ func Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin(t *testing.T) {
 	require.Equal(t, "key|tok|Bearer caller-token", own, "the handler's request is untouched")
 }
 
-// Test_Proxy_DoRedirects_ForwardsUnlistedHeadersOffTheOrigin pins the default: without a list only the
-// built-in set is dropped.
 func Test_Proxy_DoRedirects_ForwardsUnlistedHeadersOffTheOrigin(t *testing.T) {
 	t.Parallel()
 

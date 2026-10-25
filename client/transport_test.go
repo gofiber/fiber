@@ -50,7 +50,6 @@ type stubRedirectCall struct {
 }
 
 type stubRedirectClient struct {
-	// onRequest, if set, sees each request that reaches Do.
 	onRequest func(req *fasthttp.Request)
 	calls     []stubRedirectCall
 	callCount int
@@ -603,8 +602,6 @@ func TestDoRedirectsWithClient_StripsCredentialsCrossHost(t *testing.T) {
 	})
 }
 
-// TestDoRedirectsWithClient_DropsBuiltInHeadersWhateverTheirCase verifies the built-in set goes whatever case
-// it is stored under: the byte-exact Header.Del missed "authorization" under DisableNormalizing.
 func TestDoRedirectsWithClient_DropsBuiltInHeadersWhateverTheirCase(t *testing.T) {
 	t.Parallel()
 
@@ -623,13 +620,13 @@ func TestDoRedirectsWithClient_DropsBuiltInHeadersWhateverTheirCase(t *testing.T
 		req := fasthttp.AcquireRequest()
 		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
 		req.SetRequestURI("http://example.com/start")
+		// Header.Del is byte-exact and missed these under DisableNormalizing.
 		req.Header.DisableNormalizing()
 		for _, name := range names {
 			req.Header.Add(name, "k=secret")
 		}
 		req.Header.Add("x-api-key", "key")
 		for _, name := range names {
-			// Control: each one is stored before the redirect.
 			require.Len(t, fieldname.Lines(&req.Header, name, false), 1, name)
 		}
 
@@ -664,8 +661,6 @@ func TestDoRedirectsWithClient_DropsBuiltInHeadersWhateverTheirCase(t *testing.T
 	})
 }
 
-// TestDoRedirectsWithClient_DropsListedHeadersCrossHost verifies listed names go with the built-in set once a
-// redirect leaves the initial host, stay gone, and are kept while it stays on the host or its subdomains.
 func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 	t.Parallel()
 
@@ -674,7 +669,6 @@ func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 		req.Header.Set("X-Api-Key", "key")
 		req.Header.Set("X-Auth-Token", "tok")
 	}
-	// Kept as written, as a peer's HTTP/2 headers are, with one name twice.
 	lowerCase := func(req *fasthttp.Request) {
 		req.Header.DisableNormalizing()
 		req.Header.Add("authorization", "Bearer secret")
@@ -683,15 +677,14 @@ func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 		req.Header.Add("x-auth-token", "tok")
 	}
 
-	// carried is how many lines of each header a request had when it reached the transport.
+	// carried counts the lines of each header that reach the transport.
 	type carried struct{ authorization, apiKey, authToken int }
 
-	// What a request carries, named for what has happened to it.
 	var (
 		asSent       = carried{authorization: 1, apiKey: 1, authToken: 1}
-		twiceSent    = carried{authorization: 1, apiKey: 2, authToken: 1} // X-Api-Key in two spellings
-		listedGone   = carried{authToken: 1}                              // Authorization and the listed X-Api-Key are gone
-		builtInsGone = carried{apiKey: 1, authToken: 1}                   // only the built-in set is gone
+		twiceSent    = carried{authorization: 1, apiKey: 2, authToken: 1}
+		listedGone   = carried{authToken: 1}
+		builtInsGone = carried{apiKey: 1, authToken: 1}
 	)
 
 	for _, tc := range []struct {
@@ -763,8 +756,6 @@ func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 	}
 }
 
-// TestClient_DoRedirects_DropsClientListedHeaders runs Client.DoRedirects end to end on every kind of
-// client; a raw request has no list of its own.
 func TestClient_DoRedirects_DropsClientListedHeaders(t *testing.T) {
 	t.Parallel()
 
@@ -805,12 +796,10 @@ func TestClient_DoRedirects_DropsClientListedHeaders(t *testing.T) {
 
 			client := newClient()
 
-			// Default: nothing listed, so the header follows the redirect.
 			require.Equal(t, "key|tok", do(t, client, "/start"))
 
 			client.SetRedirectSensitiveHeaders("x-api-key")
 			require.Equal(t, "|tok", do(t, client, "/start"))
-			// Control: staying on the host keeps it.
 			require.Equal(t, "key|tok", do(t, client, "/same-host"))
 
 			client.SetRedirectSensitiveHeaders()

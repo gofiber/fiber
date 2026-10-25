@@ -10,7 +10,6 @@ import (
 	"github.com/gofiber/fiber/v3/internal/crosshost"
 )
 
-// followTransport records whether it was asked to follow redirects.
 type followTransport struct {
 	*delayedTransport
 
@@ -22,7 +21,6 @@ func (f *followTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Resp
 	return f.delayedTransport.DoRedirects(req, resp, opts)
 }
 
-// sentRequest is a request with a header and a body, as a caller sends one.
 func sentRequest(t *testing.T) *fasthttp.Request {
 	t.Helper()
 
@@ -34,7 +32,7 @@ func sentRequest(t *testing.T) *fasthttp.Request {
 	return req
 }
 
-// rewrite does to req what a redirect chain that failed part-way would leave behind.
+// rewrite leaves req as a failed redirect chain would.
 func rewrite(req *fasthttp.Request) {
 	req.SetRequestURI("http://attacker.example/collect")
 	req.Header.Del("X-Api-Key")

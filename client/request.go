@@ -616,15 +616,13 @@ func (r *Request) SetMaxRedirects(count int) *Request {
 	return r
 }
 
-// RedirectSensitiveHeaders returns a copy of the header names set on this Request. The client's own
-// list is not included.
+// RedirectSensitiveHeaders returns a copy of this Request's names.
 func (r *Request) RedirectSensitiveHeaders() []string {
 	return r.redirectSensitiveHeaders.List()
 }
 
-// SetRedirectSensitiveHeaders names request headers that must not follow a redirect to another
-// host, such as a credential of your own like X-Api-Key, in addition to the client's list and the
-// built-in set. It replaces any list set before on this Request; no names clears it.
+// SetRedirectSensitiveHeaders names headers to drop when a redirect leaves the host, in addition to
+// the client's list and the built-in set. It replaces this Request's previous names.
 func (r *Request) SetRedirectSensitiveHeaders(names ...string) *Request {
 	r.redirectSensitiveHeaders = crosshost.NewHeaderNames(names)
 	return r

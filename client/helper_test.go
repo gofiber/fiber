@@ -70,8 +70,7 @@ func (ts *testServer) dial() func(addr string) (net.Conn, error) {
 	}
 }
 
-// startRedirectServer serves /start and /same-host, which redirect off and on the host example.com, and
-// /collect, which answers with collect.
+// startRedirectServer redirects /start off example.com and /same-host within it.
 func startRedirectServer(tb testing.TB, collect fiber.Handler) *testServer {
 	tb.Helper()
 
@@ -86,7 +85,6 @@ func startRedirectServer(tb testing.TB, collect fiber.Handler) *testServer {
 	})
 }
 
-// requireNameList pins how a Client or a Request keeps the names given to its SetRedirectSensitiveHeaders.
 func requireNameList(t *testing.T, set func(names ...string), get func() []string) {
 	t.Helper()
 

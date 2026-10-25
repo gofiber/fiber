@@ -331,7 +331,6 @@ func TestClient_RedirectSensitiveHeaders(t *testing.T) {
 		require.Equal(t, 3, opts.maxRedirects)
 		require.ElementsMatch(t, []string{"X-One", "X-Two"}, opts.sensitiveHeaders.List())
 
-		// A fresh list: changing it reaches neither side.
 		again := client.redirectOptionsFor(3, own.redirectSensitiveHeaders)
 		require.ElementsMatch(t, []string{"X-One", "X-Two"}, again.sensitiveHeaders.List())
 		require.Equal(t, []string{"X-One"}, client.RedirectSensitiveHeaders())
@@ -2527,8 +2526,7 @@ func Benchmark_Client_Request(b *testing.B) {
 	require.NoError(b, err)
 }
 
-// Benchmark_Client_Request_RetryRedirects sets both a retry config and a redirect limit, which makes execFunc
-// keep a copy of the request for a retry to restart from.
+// Benchmark_Client_Request_RetryRedirects is the request shape that takes a backup.
 func Benchmark_Client_Request_RetryRedirects(b *testing.B) {
 	app, dial, start := createHelperServer(b)
 	app.Get("/", func(c fiber.Ctx) error {

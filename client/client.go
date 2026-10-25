@@ -97,7 +97,7 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 }
 
 // DoRedirects executes the request following redirects up to maxRedirects.
-// Headers named with SetRedirectSensitiveHeaders are dropped when a redirect leaves the host.
+// It honors SetRedirectSensitiveHeaders.
 func (c *Client) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
 	opts := c.redirectOptionsFor(maxRedirects, crosshost.HeaderNames{})
 	return c.transport.DoRedirects(req, resp, &opts)
@@ -624,8 +624,7 @@ func (c *Client) SetDisablePathNormalizing(disable bool) *Client {
 	return c
 }
 
-// RedirectSensitiveHeaders returns a copy of the header names the client drops, besides the
-// built-in set, when a redirect leaves the host a request started on.
+// RedirectSensitiveHeaders returns a copy of the names set with SetRedirectSensitiveHeaders.
 func (c *Client) RedirectSensitiveHeaders() []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -633,15 +632,9 @@ func (c *Client) RedirectSensitiveHeaders() []string {
 	return c.redirectSensitiveHeaders.List()
 }
 
-// SetRedirectSensitiveHeaders names request headers that must not follow a redirect to another
-// host, such as a credential of your own like X-Api-Key. When a redirect goes to a host that is
-// neither the one the request started on (on any port) nor one of its subdomains, they are dropped
-// with Authorization, Proxy-Authorization, Proxy-Authenticate, WWW-Authenticate, Cookie and Cookie2;
-// every other header is forwarded. proxy.SecurityPolicy.RedirectSensitiveHeaders draws its boundary
-// elsewhere. Names match case-insensitively; surrounding whitespace and empty entries are ignored.
-// The list applies to every request of the client that follows redirects, and to DoRedirects. A
-// request can add names of its own with Request.SetRedirectSensitiveHeaders. Calling it with no
-// names clears the list.
+// SetRedirectSensitiveHeaders names request headers, such as an X-Api-Key of your own, to drop with the
+// built-in set when a redirect leaves the host a request started on. Names match case-insensitively;
+// no names clears the list. Request.SetRedirectSensitiveHeaders adds names for one request.
 func (c *Client) SetRedirectSensitiveHeaders(names ...string) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -650,8 +643,7 @@ func (c *Client) SetRedirectSensitiveHeaders(names ...string) *Client {
 	return c
 }
 
-// redirectOptionsFor returns the options for a chain of up to maxRedirects redirects: the client's sensitive
-// header names followed by own, in a fresh list that stays valid after the request is recycled.
+// redirectOptionsFor joins the names into a fresh list, which a recycled request cannot change.
 func (c *Client) redirectOptionsFor(maxRedirects int, own crosshost.HeaderNames) redirectOptions {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -932,8 +924,7 @@ func (c *Client) Reset() {
 // JSON is used as the default serialization mechanism. The priority is:
 // Body > FormData > File.
 //
-// RedirectSensitiveHeaders is passed to Request.SetRedirectSensitiveHeaders; an empty list leaves the
-// request's own names alone. It matters only while MaxRedirects is non-zero.
+// RedirectSensitiveHeaders is passed to Request.SetRedirectSensitiveHeaders; an empty list changes nothing.
 type Config struct {
 	Ctx                      context.Context //nolint:containedctx // It's needed to be stored in the config.
 	Body                     any

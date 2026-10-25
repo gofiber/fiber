@@ -756,7 +756,6 @@ func (*panicTransport) StreamResponseBody() bool {
 func (*panicTransport) SetStreamResponseBody(_ bool) {
 }
 
-// namesTransport holds DoRedirects open and, once released, records the names it was handed.
 type namesTransport struct {
 	*delayedTransport
 
@@ -774,10 +773,6 @@ func (n *namesTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Respo
 	return n.delayedTransport.DoRedirects(req, resp, opts)
 }
 
-// Test_Core_RedirectSensitiveHeadersSurviveRequestReuse pins that execFunc resolves the names before its
-// goroutine starts, so a request recycled after the caller gives up cannot change them. The context is
-// already done so execute returns without waiting for the goroutine: waiting for the transport first would
-// order its read before the test's writes and hide a late read from the race detector.
 func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 	t.Parallel()
 
@@ -791,6 +786,8 @@ func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 	req.SetMaxRedirects(3)
 	req.SetRedirectSensitiveHeaders("X-Request")
 
+	// Canceled first, so execute returns without waiting on the transport
+	// and a late read still races the writes below.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -798,7 +795,6 @@ func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 	require.Nil(t, resp)
 	require.ErrorIs(t, err, ErrTimeoutOrCancel)
 
-	// Recycle the request and reconfigure the client meanwhile.
 	req.Reset()
 	req.SetRedirectSensitiveHeaders("X-Reused")
 	client.SetRedirectSensitiveHeaders("X-Reconfigured")
@@ -812,14 +808,13 @@ func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 	require.ElementsMatch(t, []string{"X-Client", "X-Request"}, transport.got)
 }
 
-// rewritingTransport fails its first DoRedirects after rewriting the request as a redirect to another
-// host would, and records how each attempt found it.
+// rewritingTransport rewrites the request as a cross-host redirect would, then fails its first attempt.
 type rewritingTransport struct {
 	*delayedTransport
 
-	starts  []string   // target and X-Api-Key of each attempt
-	streams []bool     // whether each attempt had a body stream
-	names   [][]string // the names each attempt was handed
+	starts  []string // target and X-Api-Key of each attempt
+	streams []bool
+	names   [][]string
 }
 
 func (r *rewritingTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
@@ -836,14 +831,10 @@ func (r *rewritingTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.R
 	return errors.New("connection reset")
 }
 
-// Test_Core_RetryRestartsRedirects pins that an attempt after a failed redirect chain starts from the
-// request as it was sent. The chain rewrites the request it is given, so resuming from it would retry the
-// hop the chain had reached, without the headers that hop's redirect dropped.
 func Test_Core_RetryRestartsRedirects(t *testing.T) {
 	t.Parallel()
 
-	// run returns the transport and the host the response was recorded as served from, which a cookie
-	// jar reads from the request after the chain: the successful attempt must leave it at its last hop.
+	// run returns the transport and the last hop's host, which a cookie jar reads after the chain.
 	run := func(t *testing.T, prepare func(req *Request)) (*rewritingTransport, string) {
 		t.Helper()
 
@@ -870,7 +861,6 @@ func Test_Core_RetryRestartsRedirects(t *testing.T) {
 		require.Equal(t, []string{"http://example.com/start|key", "http://example.com/start|key"}, transport.starts)
 		require.Equal(t, "final.example", host)
 
-		// Each attempt follows redirects with both lists, the retried one included.
 		require.Len(t, transport.names, 2)
 		for _, names := range transport.names {
 			require.ElementsMatch(t, []string{"X-Client", "X-Request"}, names)
@@ -887,8 +877,6 @@ func Test_Core_RetryRestartsRedirects(t *testing.T) {
 	})
 }
 
-// Test_Core_RedirectSensitiveHeadersConcurrentSet replaces the client's list while redirected requests
-// run, for the race detector.
 func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
 	t.Parallel()
 

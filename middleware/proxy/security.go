@@ -73,16 +73,9 @@ type SecurityPolicy struct {
 	// targets. Empty defaults to []string{schemeHTTP, schemeHTTPS}.
 	AllowedSchemes []string
 
-	// RedirectSensitiveHeaders lists request headers, beyond the built-in set (Authorization,
-	// Proxy-Authorization, Proxy-Authenticate, WWW-Authenticate, Cookie and Cookie2), that
-	// DoRedirects drops when a redirect changes the origin: scheme, host or port. Use it for
-	// credentials the application defines, such as X-Api-Key, which DoRedirects cannot tell from
-	// any other header and otherwise forwards to the redirect target. Names match
-	// case-insensitively, whatever case the header is stored under; surrounding whitespace and
-	// empty entries are ignored. A redirect that keeps the origin drops none of them. The Fiber
-	// client draws its boundary elsewhere, see Client.SetRedirectSensitiveHeaders. Only
-	// DoRedirects reads it: the other helpers and Balancer never follow a redirect.
-	// Default: nil.
+	// RedirectSensitiveHeaders lists request headers, beyond the built-in set, that DoRedirects drops when
+	// a redirect changes the origin (scheme, host or port), such as an X-Api-Key of your own. Names match
+	// case-insensitively. Default: nil.
 	RedirectSensitiveHeaders []string
 
 	// AllowPrivateIPs allows upstream hosts to resolve to loopback, private (RFC 1918), link-local,
@@ -171,13 +164,12 @@ func DefaultSecurityPolicy() SecurityPolicy {
 // non-Balancer proxy request. Reads are lock-free via atomic.Pointer.
 // The pointed-to SecurityPolicy is treated as immutable once installed:
 // WithSecurityPolicy is the only writer, and it stores a value whose
-// AllowedSchemes and RedirectSensitiveHeaders slices have been deep-copied to
-// defend against later mutation by the caller.
+// slices have been deep-copied to defend against later
+// mutation by the caller.
 var activePolicy atomic.Pointer[SecurityPolicy]
 
-// normalizePolicy returns a copy of policy whose AllowedSchemes and
-// RedirectSensitiveHeaders slices are always freshly allocated (the latter
-// without blanks). This guarantees callers cannot mutate the
+// normalizePolicy returns a copy of policy whose slices are
+// always freshly allocated. This guarantees callers cannot mutate the
 // global allowlist out from under a balancer (or another goroutine) by
 // retaining a reference to the slice they passed in — including the
 // package-level defaultAllowedSchemes, which must never be handed out by
@@ -203,8 +195,8 @@ func WithSecurityPolicy(policy SecurityPolicy) SecurityPolicy {
 }
 
 // currentSecurityPolicy returns a snapshot of the active global policy.
-// The snapshot is by-value, but its slice headers alias
-// the immutable backing arrays installed by WithSecurityPolicy — no copy
+// The snapshot is by-value, but its AllowedSchemes slice header aliases
+// the immutable backing array installed by WithSecurityPolicy — no copy
 // is taken on the read path.
 func currentSecurityPolicy() SecurityPolicy {
 	return *activePolicy.Load()
@@ -213,7 +205,7 @@ func currentSecurityPolicy() SecurityPolicy {
 // resolvePolicy returns override when non-nil; otherwise the current
 // global policy. Both Balancer and the runtime helpers funnel through
 // this so a single source of truth governs upstream validation and
-// header stripping. Override paths still copy the slices so a
+// header stripping. Override paths still copy AllowedSchemes so a
 // caller passing Config.SecurityPolicy by reference cannot mutate the
 // Balancer's view after construction.
 func resolvePolicy(override *SecurityPolicy) SecurityPolicy {

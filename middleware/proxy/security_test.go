@@ -783,15 +783,12 @@ func Test_Security_ResolvePolicy_OverrideEmptySchemes(t *testing.T) {
 	require.True(t, got.AllowPrivateIPs)
 }
 
-// Test_Security_DefaultSecurityPolicy_RedirectSensitiveHeadersIsEmpty pins that nothing extra is dropped by default.
 func Test_Security_DefaultSecurityPolicy_RedirectSensitiveHeadersIsEmpty(t *testing.T) {
 	t.Parallel()
 
 	require.Nil(t, DefaultSecurityPolicy().RedirectSensitiveHeaders)
 }
 
-// Test_Security_NormalizePolicy_RedirectSensitiveHeaders verifies normalizePolicy returns a trimmed copy
-// that shares nothing with the caller's slice.
 func Test_Security_NormalizePolicy_RedirectSensitiveHeaders(t *testing.T) {
 	t.Parallel()
 
@@ -809,7 +806,6 @@ func Test_Security_NormalizePolicy_RedirectSensitiveHeaders(t *testing.T) {
 	require.Equal(t, []string{"X-Changed", "", "X-Auth-Token\t"}, in, "the policy's slice must not reach the caller")
 }
 
-// Test_Security_WithSecurityPolicy_CopiesRedirectSensitiveHeaders verifies the installed policy keeps its own trimmed copy.
 func Test_Security_WithSecurityPolicy_CopiesRedirectSensitiveHeaders(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy and reads it back.
 	names := []string{" X-Api-Key", "X-Auth-Token"}
@@ -1311,7 +1307,6 @@ func followRecordingErr(t *testing.T, start string, steps map[string]redirectSte
 	return followRecordingPolicy(t, redirectTestPolicy(), start, steps, setup, record)
 }
 
-// redirectTestPolicy is followRecording's policy, with listed as redirect-sensitive names.
 func redirectTestPolicy(listed ...string) SecurityPolicy {
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
@@ -1320,7 +1315,6 @@ func redirectTestPolicy(listed ...string) SecurityPolicy {
 	return policy
 }
 
-// followRecordingPolicy is followRecordingErr under policy.
 func followRecordingPolicy(t *testing.T, policy SecurityPolicy, start string, steps map[string]redirectStep, setup, record func(req *fasthttp.Request)) (*fasthttp.Request, error) {
 	t.Helper()
 
@@ -1550,14 +1544,11 @@ func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T)
 	}
 }
 
-// withAppHeaders gives req headers the built-in set does not name.
 func withAppHeaders(req *fasthttp.Request) {
 	req.Header.Set("X-Api-Key", "key")
 	req.Header.Set("X-Auth-Token", "tok")
 }
 
-// Test_Security_FollowRedirects_StripsRedirectSensitiveHeaders pins that listed names go with the built-in
-// set when the origin changes, and only then.
 func Test_Security_FollowRedirects_StripsRedirectSensitiveHeaders(t *testing.T) {
 	t.Parallel()
 
@@ -1614,8 +1605,6 @@ func Test_Security_FollowRedirects_StripsRedirectSensitiveHeaders(t *testing.T) 
 	}
 }
 
-// Test_Security_FollowRedirects_RedirectSensitiveHeadersStayGone pins that a dropped header is not restored
-// by a later hop, and that the caller's request keeps it.
 func Test_Security_FollowRedirects_RedirectSensitiveHeadersStayGone(t *testing.T) {
 	t.Parallel()
 
@@ -1632,8 +1621,6 @@ func Test_Security_FollowRedirects_RedirectSensitiveHeadersStayGone(t *testing.T
 	require.Equal(t, "key", string(req.Header.Peek("X-Api-Key")), "the caller's request keeps its header")
 }
 
-// Test_Security_FollowRedirects_RedirectSensitiveHeadersWhateverTheirCase pins that a listed name matches
-// every stored spelling; Del is byte-exact under DisableNormalizing.
 func Test_Security_FollowRedirects_RedirectSensitiveHeadersWhateverTheirCase(t *testing.T) {
 	t.Parallel()
 
@@ -1641,6 +1628,7 @@ func Test_Security_FollowRedirects_RedirectSensitiveHeadersWhateverTheirCase(t *
 	_, err := followRecordingPolicy(t, redirectTestPolicy("X-Api-Key"), "http://first.example/start", map[string]redirectStep{
 		"http://first.example/start": {status: fasthttp.StatusFound, location: "http://second.example/next"},
 	}, func(req *fasthttp.Request) {
+		// Header.Del is byte-exact under DisableNormalizing.
 		req.Header.DisableNormalizing()
 		req.Header.Add("x-api-key", "k1")
 		req.Header.Add("X-API-KEY", "k2")

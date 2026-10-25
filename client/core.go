@@ -67,7 +67,7 @@ func (c *core) execFunc() (*Response, error) {
 	// transport is still finishing, so reading the flag from the goroutine races.
 	reqOwned := c.req.clientOwned
 	method := string(reqv.Header.Method())
-	var plan *redirectPlan // nil unless the request follows redirects
+	var plan *redirectPlan
 	if c.req.maxRedirects > 0 && (method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodQuery) {
 		plan = &redirectPlan{opts: c.client.redirectOptionsFor(c.req.maxRedirects, c.req.redirectSensitiveHeaders)}
 	}

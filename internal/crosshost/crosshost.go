@@ -1,5 +1,5 @@
 // Package crosshost names the request headers that must not survive a redirect
-// to a host other than the one they were sent to, and removes them.
+// to a host other than the one they were sent to.
 package crosshost
 
 import (
@@ -27,13 +27,10 @@ var SensitiveHeaders = []string{
 	"Cookie2",
 }
 
-// HeaderNames is a list of header names. Only NewHeaderNames builds one, so a name with stray whitespace,
-// which would never match its header, cannot get through. The zero value is the empty list.
+// HeaderNames holds header names without stray whitespace; only NewHeaderNames builds one.
 type HeaderNames struct{ names []string }
 
-// NewHeaderNames returns names without surrounding whitespace or empty entries, in a fresh list. A name
-// split from a comma-separated setting often keeps a leading space, and one that never matches leaves its
-// header in place.
+// NewHeaderNames trims names and drops empty ones, in a fresh list.
 func NewHeaderNames(names []string) HeaderNames {
 	var out []string
 	for _, name := range names {
@@ -44,18 +41,17 @@ func NewHeaderNames(names []string) HeaderNames {
 	return HeaderNames{names: out}
 }
 
-// List returns a copy of the names, nil when there are none.
+// List returns a copy of the names.
 func (n HeaderNames) List() []string {
 	return slices.Clone(n.names)
 }
 
-// Join returns the names of n followed by those of other, in a fresh list.
+// Join returns n's names followed by other's, in a fresh list.
 func (n HeaderNames) Join(other HeaderNames) HeaderNames {
 	return HeaderNames{names: slices.Concat(n.names, other.names)}
 }
 
-// Strip removes SensitiveHeaders and the extra names from h in one pass, whatever case they are
-// stored under.
+// Strip removes SensitiveHeaders and extra from h, whatever case they are stored under.
 func Strip(h fieldname.Deleter, extra HeaderNames) {
 	names := SensitiveHeaders
 	if len(extra.names) > 0 {

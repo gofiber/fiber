@@ -90,7 +90,6 @@ func Test_HeaderNames_Join(t *testing.T) {
 	})
 }
 
-// headerWithSensitiveAndOthers holds every built-in sensitive header and three others.
 func headerWithSensitiveAndOthers() *fasthttp.RequestHeader {
 	h := &fasthttp.RequestHeader{}
 	for _, name := range SensitiveHeaders {
@@ -128,7 +127,7 @@ func Test_Strip(t *testing.T) {
 
 		h := headerWithSensitiveAndOthers()
 
-		// An extra name may repeat, or already be built in.
+		// Repeated, and already built in.
 		Strip(h, NewHeaderNames([]string{"authorization", "X-Api-Key", "X-Api-Key"}))
 
 		for _, name := range SensitiveHeaders {
@@ -154,7 +153,6 @@ func Test_Strip(t *testing.T) {
 	t.Run("whatever case they are stored under", func(t *testing.T) {
 		t.Parallel()
 
-		// Keeps spellings as given, like an HTTP/2 peer's headers.
 		h := &fasthttp.RequestHeader{}
 		h.DisableNormalizing()
 		h.Add("authorization", "a")
@@ -164,7 +162,7 @@ func Test_Strip(t *testing.T) {
 		h.Add("X-API-KEY", "k2")
 		h.Add("X-Auth-Token", "tok")
 
-		// Control: a byte-exact lookup would miss most of these.
+		// Control: a byte-exact lookup would miss these.
 		require.Len(t, fieldname.Lines(h, "Authorization", false), 2)
 		require.Len(t, fieldname.Lines(h, "Proxy-Authorization", false), 1)
 		require.Len(t, fieldname.Lines(h, "X-Api-Key", false), 2)

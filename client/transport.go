@@ -443,9 +443,6 @@ type redirectClient interface {
 // redirect response instead left a caller unable to tell a request that finished
 // from one that stopped at a hop, and it is what the DoRedirects this stands in
 // for does.
-//
-// opts carries the redirect limit and the extra request headers to drop when the chain leaves the
-// initial host; a transport hands it over untouched.
 func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions, client redirectClient) error {
 	if resp == nil {
 		// "Response is ignored if resp is nil", per fasthttp's own DoRedirects
@@ -517,8 +514,7 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, opts 
 		// Credentials are scoped to the origin that issued them, so drop them once
 		// the chain leaves it. net/http's boundary, which fasthttp also implements:
 		// against the initial host, ignoring the port, subdomains still trusted.
-		// Case-insensitive: Header.Del is byte-exact. The request is edited in place,
-		// so dropped headers stay gone if a later hop returns to the initial host.
+		// In place, so dropped headers stay gone if a later hop returns to the initial host.
 		if !trustedRedirectTarget(nextHost, initialHostname) {
 			crosshost.Strip(&req.Header, opts.sensitiveHeaders)
 		}

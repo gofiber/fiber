@@ -1715,8 +1715,6 @@ func Test_Request_RedirectSensitiveHeaders(t *testing.T) {
 	})
 }
 
-// Test_Request_RedirectSensitiveHeaders_EndToEnd checks what the server behind a cross-host redirect
-// receives for every way of naming a header.
 func Test_Request_RedirectSensitiveHeaders_EndToEnd(t *testing.T) {
 	t.Parallel()
 
@@ -1780,7 +1778,6 @@ func Test_Request_RedirectSensitiveHeaders_EndToEnd(t *testing.T) {
 				tc.prepare(client)
 			}
 
-			// Control: staying on the host keeps every header.
 			same, err := tc.send(client, "http://example.com/same-host")
 			require.NoError(t, err)
 			defer same.Close()
@@ -1792,7 +1789,6 @@ func Test_Request_RedirectSensitiveHeaders_EndToEnd(t *testing.T) {
 			require.Equal(t, fiber.StatusOK, resp.StatusCode())
 			require.Equal(t, tc.want, resp.String())
 
-			// The caller's request keeps its header.
 			require.Equal(t, "key", string(resp.request.RawRequest.Header.Peek("X-Api-Key")))
 		})
 	}
