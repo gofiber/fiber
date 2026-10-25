@@ -852,6 +852,116 @@ func Test_HostAuthorization_IPv6CanonicalForm(t *testing.T) {
 	}
 }
 
+func Test_HostAuthorization_IPv6ZonedStillRefused(t *testing.T) {
+	t.Parallel()
+
+	// Canonicalization must not drop the zone: a zoned host is refused even
+	// when the same address without a zone is allowed.
+	app := fiber.New()
+	app.Use(New(Config{
+		AllowedHosts: []string{"[fe80::1]"},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	for _, host := range []string{"[fe80::1%25eth0]", "[FE80:0:0:0:0:0:0:1%25eth0]:80"} {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Host = host
+		resp, err := app.Test(req)
+		require.NoError(t, err, host)
+		require.Equal(t, fiber.StatusForbidden, resp.StatusCode, host)
+	}
+}
+
+func Test_HostAuthorization_AllowedHostsFuncReceivesCanonicalIPv6(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		host string
+		want string
+	}{
+		{host: "[0:0:0:0:0:0:0:1]:3000", want: "::1"},
+		{host: "[2001:0DB8::0001]", want: "2001:db8::1"},
+		{host: "[::ffff:7f00:1]", want: "::ffff:127.0.0.1"},
+		{host: "[2001:db8::1]:8080", want: "2001:db8::1"},
+	} {
+		t.Run(tc.host, func(t *testing.T) {
+			t.Parallel()
+
+			var got string
+			app := fiber.New()
+			app.Use(New(Config{
+				AllowedHostsFunc: func(host string) bool {
+					got = host
+					return true
+				},
+			}))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("OK")
+			})
+
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Host = tc.host
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func Test_MatchHost_WildcardSkipsIPLiterals(t *testing.T) {
+	t.Parallel()
+
+	// The canonical form of an IPv4-mapped address ends in a dotted IPv4
+	// tail, which must not satisfy a DNS subdomain rule.
+	parsed := parseAllowedHosts([]string{"*.0.0.1", "*.example.com"})
+	require.False(t, matchHost("::ffff:127.0.0.1", parsed, nil))
+	require.True(t, matchHost("10.0.0.1", parsed, nil))
+	require.True(t, matchHost("api.example.com", parsed, nil))
+}
+
+func Test_ParseNormalizedAuthority_IPv6KindAndAllocs(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		authority string
+		want      string
+		ok        bool
+	}{
+		{authority: "[2001:db8::1]:8080", want: "2001:db8::1", ok: true},
+		{authority: "[0:0:0:0:0:0:0:1]", want: "::1", ok: true},
+		{authority: "[fe80::1%25eth0]", ok: false},
+		{authority: "[::1%eth0]", ok: false},
+		{authority: "[2001:db8::g]", ok: false},
+	} {
+		got, ok := parseNormalizedAuthority(tc.authority)
+		require.Equal(t, tc.ok, ok, tc.authority)
+		require.Equal(t, tc.want, got, tc.authority)
+	}
+}
+
+// AllocsPerRun panics under t.Parallel, so this test stays sequential.
+func Test_ParseNormalizedAuthority_IPv6Allocations(t *testing.T) {
+	zone := "[fe80::1%" + strings.Repeat("a", 4000) + "]:80"
+
+	for _, tc := range []struct {
+		name      string
+		authority string
+		maxAllocs float64
+	}{
+		{name: "canonical", authority: "[2001:db8::1]:8080", maxAllocs: 0},
+		{name: "zoned and refused", authority: zone, maxAllocs: 0},
+		{name: "non-canonical pays for its canonical string once", authority: "[0:0:0:0:0:0:0:1]:8080", maxAllocs: 1},
+	} {
+		got := testing.AllocsPerRun(100, func() {
+			_, _ = parseNormalizedAuthority(tc.authority)
+		})
+		require.LessOrEqual(t, got, tc.maxAllocs, tc.name)
+	}
+}
+
 // --- Benchmarks ---
 
 func Benchmark_matchHost_ExactMatch(b *testing.B) {

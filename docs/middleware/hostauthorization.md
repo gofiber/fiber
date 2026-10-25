@@ -160,7 +160,7 @@ app.Get("/healthz", healthCheck)
 |:-----------------|:------------------------------|:--------------------------------------------------------------------------------------------------|:--------|
 | Next             | `func(fiber.Ctx) bool`        | Defines a function to skip this middleware when returned true.                                     | `nil`   |
 | AllowedHosts     | `[]string`                    | List of permitted hosts. Supports exact match and subdomain wildcard (`*.example.com`).            | `nil`   |
-| AllowedHostsFunc | `func(string) bool`           | Dynamic validator called only when no static AllowedHosts rule matches. Receives the normalized hostname: port stripped, trailing dot removed, IPv6 brackets removed, lowercased, IDN converted to Punycode.  | `nil`   |
+| AllowedHostsFunc | `func(string) bool`           | Dynamic validator called only when no static AllowedHosts rule matches. Receives the normalized hostname: port stripped, trailing dot removed, IPv6 brackets removed, lowercased, IDN converted to Punycode, IPv6 written in its canonical form.  | `nil`   |
 | ErrorHandler     | `fiber.ErrorHandler`          | Called when a request is rejected. Receives `ErrForbiddenHost` as the error.                      | 403     |
 
 Either `AllowedHosts` or `AllowedHostsFunc` (or both) must be provided. The middleware panics at startup if neither is set.
@@ -190,7 +190,8 @@ Before matching, the host of each request is normalized, and the `AllowedHosts` 
 - Port is stripped (`example.com:8080` → `example.com`)
 - Trailing dot removed (`example.com.` → `example.com`)
 - IPv6 brackets removed (`[::1]` → `::1`)
-- IPv6 addresses written in their canonical form (`[0:0:0:0:0:0:0:1]` → `::1`, `[2001:0db8::0001]` → `2001:db8::1`), so every spelling of one address matches
+- IPv6 addresses written in their RFC 5952 canonical form (`[0:0:0:0:0:0:0:1]` → `::1`, `[2001:0db8::0001]` → `2001:db8::1`), so every spelling of one IPv6 address matches. `AllowedHostsFunc` receives this canonical form. An IPv4-mapped address stays in the `::ffff:a.b.c.d` form and does not match an IPv4 entry such as `127.0.0.1`
+- IPv6 literals never match a `*.` subdomain rule
 - Lowercased
 - IDN labels converted to ASCII/Punycode (`münchen.example.com` → `xn--mnchen-3ya.example.com`)
 - RFC 1035 length limits enforced at startup: ≤253 chars total, ≤63 chars per label (panic on violation)

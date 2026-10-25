@@ -81,13 +81,21 @@ func validateHostLength(host string) {
 }
 
 // normalizeHost strips port, trailing dot, and IPv6 brackets, lowercases,
-// and converts IDN labels to Punycode (matching what browsers send).
+// converts IDN labels to Punycode (matching what browsers send), and writes
+// IPv6 addresses in their RFC 5952 canonical form.
 func normalizeHost(host string) string {
+	host, _ = normalizeHostKind(host)
+	return host
+}
+
+// normalizeHostKind is normalizeHost that also reports whether the result is a
+// valid IPv6 address, so callers do not have to parse it a second time.
+func normalizeHostKind(host string) (string, bool) {
 	// Fast path for plain hostnames — skips the split and the bracket trims.
 	if host != "" && host[0] != '[' && strings.IndexByte(host, ':') < 0 {
 		host = trimOneTrailingDot(host)
 		host = utilsstrings.ToLower(host)
-		return idnafold.ToASCII(host)
+		return idnafold.ToASCII(host), false
 	}
 
 	if h, _, ok := utils.SplitHostPort(host); ok {
@@ -102,31 +110,36 @@ func normalizeHost(host string) string {
 	return canonicalIPv6(idnafold.ToASCII(host))
 }
 
-// canonicalIPv6 returns host in the RFC 5952 canonical text form when it is an
-// IPv6 address, and unchanged otherwise. An IPv6 address has many textual
-// spellings (RFC 4291 Section 2.2), so comparing the text as written let an
-// allowed "[::1]" refuse a Host of "[0:0:0:0:0:0:0:1]", and an allowed
+// canonicalIPv6 returns host in the RFC 5952 canonical text form and true when
+// it is an IPv6 address. An IPv6 address has many textual spellings
+// (RFC 4291 Section 2.2), so comparing the text as written let an allowed
+// "[::1]" refuse a Host of "[0:0:0:0:0:0:0:1]", and an allowed
 // "[2001:db8:0:0:0:0:0:1]" refuse the "[2001:db8::1]" every browser sends.
 // Both the configured hosts and the request host pass through here, so each
-// spelling of one address compares equal. Anything that is not an IPv6
-// address is left as it is for isValidHostSyntax to judge.
-func canonicalIPv6(host string) string {
-	if strings.IndexByte(host, ':') < 0 {
-		return host
+// spelling of one address compares equal.
+//
+// Anything else, including a zoned address, is returned unchanged with false
+// so that isValidHostSyntax can refuse it. A zone is checked before parsing
+// because utils.ParseIPv6 copies it into a new string, which a client could
+// otherwise force on every refused request.
+//
+// The canonical form is written into a stack buffer and the input is returned
+// when it already matches, which is what browsers send, so that case does not
+// allocate. Only a non-canonical spelling pays for its new string.
+func canonicalIPv6(host string) (string, bool) {
+	if strings.IndexByte(host, ':') < 0 || strings.IndexByte(host, '%') >= 0 {
+		return host, false
 	}
 	addr, ok := utils.ParseIPv6(host)
 	if !ok {
-		return host
+		return host, false
 	}
-	// Format into a stack buffer and hand back the input when it is already
-	// canonical, which is what browsers send, so the per-request path stays
-	// allocation-free. Only a non-canonical spelling pays for a new string.
 	var buf [len("ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255")]byte
 	canonical := addr.AppendTo(buf[:0])
 	if string(canonical) == host {
-		return host
+		return host, true
 	}
-	return string(canonical)
+	return string(canonical), true
 }
 
 func trimOneTrailingDot(host string) string {
@@ -193,12 +206,13 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 		}
 	}
 
-	host = normalizeHost(host)
+	host, isIPv6 := normalizeHostKind(host)
 	if host == "" {
 		return "", false
 	}
 
-	if !isValidHostSyntax(host) {
+	// An IPv6 address was already validated while it was canonicalized.
+	if !isIPv6 && !isValidHostSyntax(host) {
 		return "", false
 	}
 
@@ -279,9 +293,14 @@ func matchHost(host string, parsed parsedHosts, allowedHostsFunc func(string) bo
 		return true
 	}
 
-	for _, suffix := range parsed.wildcardSuffixes {
-		if strings.HasSuffix(host, suffix) {
-			return true
+	// Subdomain wildcards apply to DNS names only. An IP literal, which is the
+	// only kind of host that contains a colon, never matches one: the dotted
+	// tail of an IPv4-mapped address such as ::ffff:127.0.0.1 is not a label.
+	if strings.IndexByte(host, ':') < 0 {
+		for _, suffix := range parsed.wildcardSuffixes {
+			if strings.HasSuffix(host, suffix) {
+				return true
+			}
 		}
 	}
 
