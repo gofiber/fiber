@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync/atomic"
 
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -71,6 +72,17 @@ type SecurityPolicy struct {
 	// AllowedSchemes restricts the URL schemes accepted as upstream
 	// targets. Empty defaults to []string{schemeHTTP, schemeHTTPS}.
 	AllowedSchemes []string
+
+	// RedirectSensitiveHeaders lists request headers, beyond the built-in set (Authorization,
+	// Proxy-Authorization, Proxy-Authenticate, WWW-Authenticate, Cookie and Cookie2), that
+	// DoRedirects drops when a redirect changes the origin: scheme, host or port. Use it for
+	// credentials the application defines, such as X-Api-Key, which DoRedirects cannot tell from
+	// any other header and otherwise forwards to the redirect target. Names match
+	// case-insensitively, whatever case the header is stored under; surrounding whitespace and
+	// empty entries are ignored. A redirect that keeps the origin keeps every header. Only
+	// DoRedirects reads it: the other helpers and Balancer never follow a redirect.
+	// Default: nil.
+	RedirectSensitiveHeaders []string
 
 	// AllowPrivateIPs allows upstream hosts to resolve to loopback, private (RFC 1918), link-local,
 	// multicast, unspecified, CGNAT (RFC 6598) or other special-use addresses: 0.0.0.0/8, 192.0.0.0/24
@@ -144,12 +156,13 @@ type SecurityPolicy struct {
 // them.
 func DefaultSecurityPolicy() SecurityPolicy {
 	return SecurityPolicy{
-		AllowedSchemes:        append([]string(nil), defaultAllowedSchemes...),
-		AllowPrivateIPs:       false,
-		AllowHTTPSDowngrade:   false,
-		KeepHopByHopHeaders:   false,
-		AllowAmbiguousSlashes: false,
-		AllowPathParameters:   false,
+		AllowedSchemes:           append([]string(nil), defaultAllowedSchemes...),
+		RedirectSensitiveHeaders: nil,
+		AllowPrivateIPs:          false,
+		AllowHTTPSDowngrade:      false,
+		KeepHopByHopHeaders:      false,
+		AllowAmbiguousSlashes:    false,
+		AllowPathParameters:      false,
 	}
 }
 
@@ -157,16 +170,19 @@ func DefaultSecurityPolicy() SecurityPolicy {
 // non-Balancer proxy request. Reads are lock-free via atomic.Pointer.
 // The pointed-to SecurityPolicy is treated as immutable once installed:
 // WithSecurityPolicy is the only writer, and it stores a value whose
-// AllowedSchemes slice has been deep-copied to defend against later
-// mutation by the caller.
+// AllowedSchemes and RedirectSensitiveHeaders slices have been deep-copied to
+// defend against later mutation by the caller.
 var activePolicy atomic.Pointer[SecurityPolicy]
 
-// normalizePolicy returns a copy of policy whose AllowedSchemes slice is
-// always freshly allocated. This guarantees callers cannot mutate the
-// global allowlist out from under a balancer (or another goroutine) by
-// retaining a reference to the slice they passed in — including the
-// package-level defaultAllowedSchemes, which must never be handed out by
-// reference. The defensive copy happens at install time only — readers
+// normalizePolicy returns a copy of policy whose AllowedSchemes and
+// RedirectSensitiveHeaders slices are always freshly allocated. This
+// guarantees callers cannot mutate the global allowlist out from under a
+// balancer (or another goroutine) by retaining a reference to the slice they
+// passed in — including the package-level defaultAllowedSchemes, which must
+// never be handed out by reference. RedirectSensitiveHeaders is also trimmed
+// of surrounding whitespace and empty entries: a name with a stray space, as
+// a comma-separated setting leaves, would never match and its header would be
+// forwarded. The defensive copy happens at install time only — readers
 // consume the immutable result via activePolicy.Load() without further
 // copying.
 func normalizePolicy(policy SecurityPolicy) SecurityPolicy {
@@ -175,6 +191,7 @@ func normalizePolicy(policy SecurityPolicy) SecurityPolicy {
 	} else {
 		policy.AllowedSchemes = append([]string(nil), policy.AllowedSchemes...)
 	}
+	policy.RedirectSensitiveHeaders = crosshost.CopyNames(policy.RedirectSensitiveHeaders)
 	return policy
 }
 
@@ -187,9 +204,9 @@ func WithSecurityPolicy(policy SecurityPolicy) SecurityPolicy {
 }
 
 // currentSecurityPolicy returns a snapshot of the active global policy.
-// The snapshot is by-value, but its AllowedSchemes slice header aliases
-// the immutable backing array installed by WithSecurityPolicy — no copy
-// is taken on the read path.
+// The snapshot is by-value, but its AllowedSchemes and
+// RedirectSensitiveHeaders slice headers alias the immutable backing arrays
+// installed by WithSecurityPolicy — no copy is taken on the read path.
 func currentSecurityPolicy() SecurityPolicy {
 	return *activePolicy.Load()
 }
@@ -197,9 +214,9 @@ func currentSecurityPolicy() SecurityPolicy {
 // resolvePolicy returns override when non-nil; otherwise the current
 // global policy. Both Balancer and the runtime helpers funnel through
 // this so a single source of truth governs upstream validation and
-// header stripping. Override paths still copy AllowedSchemes so a
-// caller passing Config.SecurityPolicy by reference cannot mutate the
-// Balancer's view after construction.
+// header stripping. Override paths still copy AllowedSchemes and
+// RedirectSensitiveHeaders so a caller passing Config.SecurityPolicy by
+// reference cannot mutate the Balancer's view after construction.
 func resolvePolicy(override *SecurityPolicy) SecurityPolicy {
 	if override != nil {
 		return normalizePolicy(*override)

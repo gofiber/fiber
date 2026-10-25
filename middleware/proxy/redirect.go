@@ -4,6 +4,7 @@ import (
 	"net/url"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
 	"github.com/gofiber/utils/v2"
@@ -59,7 +60,8 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		}
 		// Strip credentials when the redirect crosses to another origin so
 		// secrets bound to the original origin are not leaked to a third
-		// party (RFC 9110 §15.4 advisory; matches browser behavior).
+		// party (RFC 9110 §15.4 advisory; matches browser behavior), and so
+		// are the extra names the policy lists.
 		crossOrigin := !schemehost.Match(currentURL.Scheme, currentURL.Host, nextURL.Scheme, nextURL.Host)
 		changesMethod := redirectChangesMethod(hop, status)
 		if streamed {
@@ -81,7 +83,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 				redirectRequest(hop)
 			}
 			if crossOrigin {
-				stripCrossOriginHeaders(hop)
+				crosshost.Strip(&hop.Header, policy.RedirectSensitiveHeaders)
 			}
 		}
 		currentURL = nextURL
