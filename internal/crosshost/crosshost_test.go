@@ -32,7 +32,7 @@ func Test_CopyNames(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Equal tells nil from empty, which is the point: an unset list must cost nothing.
+			// Equal tells nil from empty.
 			require.Equal(t, tt.want, CopyNames(tt.in))
 		})
 	}
@@ -51,8 +51,7 @@ func Test_CopyNames(t *testing.T) {
 	})
 }
 
-// requestWith returns a request header holding every built-in sensitive header and three that are
-// not.
+// requestWith holds every built-in sensitive header and three others.
 func requestWith() *fasthttp.RequestHeader {
 	h := &fasthttp.RequestHeader{}
 	for _, name := range SensitiveHeaders {
@@ -80,7 +79,6 @@ func Test_Strip(t *testing.T) {
 		for _, name := range SensitiveHeaders {
 			require.Empty(t, fieldname.Lines(h, name, false), name)
 		}
-		// A nil list leaves headers of the application's own alone.
 		require.Len(t, fieldname.Lines(h, "X-Api-Key", false), 1)
 		require.Len(t, fieldname.Lines(h, "X-Auth-Token", false), 1)
 		require.Len(t, fieldname.Lines(h, fasthttp.HeaderAccept, false), 1)
@@ -116,7 +114,7 @@ func Test_Strip(t *testing.T) {
 	t.Run("whatever case they are stored under", func(t *testing.T) {
 		t.Parallel()
 
-		// A store that keeps the spelling it was given, as an HTTP/2 or HTTP/3 peer's is.
+		// Keeps spellings as given, like an HTTP/2 peer's headers.
 		h := &fasthttp.RequestHeader{}
 		h.DisableNormalizing()
 		h.Add("authorization", "a")
@@ -126,7 +124,7 @@ func Test_Strip(t *testing.T) {
 		h.Add("X-API-KEY", "k2")
 		h.Add("X-Auth-Token", "tok")
 
-		// The positive control: a byte-exact lookup would miss most of these.
+		// Control: a byte-exact lookup would miss most of these.
 		require.Len(t, fieldname.Lines(h, "Authorization", false), 2)
 		require.Len(t, fieldname.Lines(h, "Proxy-Authorization", false), 1)
 		require.Len(t, fieldname.Lines(h, "X-Api-Key", false), 2)

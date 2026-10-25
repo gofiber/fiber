@@ -757,8 +757,7 @@ func (*panicTransport) StreamResponseBody() bool {
 func (*panicTransport) SetStreamResponseBody(_ bool) {
 }
 
-// namesTransport holds DoRedirects open until released and records the header names it was handed,
-// reading them only then, after the test has changed the request and the client they came from.
+// namesTransport holds DoRedirects open and, once released, records the names it was handed.
 type namesTransport struct {
 	*delayedTransport
 
@@ -780,16 +779,10 @@ func (n *namesTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Respo
 	return n.delayedTransport.DoRedirects(req, resp, maxRedirects, sensitiveHeaders)
 }
 
-// Test_Core_RedirectSensitiveHeadersSurviveRequestReuse pins that the names handed to the transport
-// are the ones the client and the request held when the call began. Once the caller gives up it may
-// release the request, and the pool may hand it to someone else while the transport goroutine is
-// still working, so reading the list from that goroutine would see the wrong names and race with
-// the reuse.
-//
-// The context is done before the call, so execute returns without waiting for the goroutine, and
-// nothing orders what the goroutine reads after the changes below. Waiting for the transport to be
-// reached first would order them: the goroutine's read would then happen before the test's writes
-// as far as the race detector can tell, and a late read would go unnoticed.
+// Test_Core_RedirectSensitiveHeadersSurviveRequestReuse pins that execFunc resolves the names before its
+// goroutine starts, so a request recycled after the caller gives up cannot change them. The context is
+// already done so execute returns without waiting for the goroutine: waiting for the transport first would
+// order its read before the test's writes and hide a late read from the race detector.
 func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 	t.Parallel()
 
@@ -810,7 +803,7 @@ func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 	require.Nil(t, resp)
 	require.ErrorIs(t, err, ErrTimeoutOrCancel)
 
-	// The request is recycled and the client reconfigured, with the goroutine still to run or running.
+	// Recycle the request and reconfigure the client meanwhile.
 	req.Reset()
 	req.SetRedirectSensitiveHeaders("X-Reused")
 	client.SetRedirectSensitiveHeaders("X-Reconfigured")
@@ -830,9 +823,8 @@ func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 	}
 }
 
-// Test_Core_RedirectSensitiveHeadersConcurrentSet runs requests that follow redirects while the
-// client's list is being replaced, for the race detector to judge. The server only sees the header
-// or does not, according to the list the request started with.
+// Test_Core_RedirectSensitiveHeadersConcurrentSet replaces the client's list while redirected requests
+// run, for the race detector.
 func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
 	t.Parallel()
 
@@ -853,7 +845,7 @@ func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
 	listed := make(chan int, workers*rounds)
 	errs := make(chan error, workers)
 
-	// The workers only report; the assertions run on the test goroutine, where require is allowed.
+	// Workers only report; the assertions run on the test goroutine.
 	var wg sync.WaitGroup
 	for range workers {
 		wg.Go(func() {

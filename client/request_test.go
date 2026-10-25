@@ -1748,14 +1748,14 @@ func Test_Request_RedirectSensitiveHeaders(t *testing.T) {
 		req.Reset()
 		require.Nil(t, req.RedirectSensitiveHeaders())
 
-		// A recycled request must not write into the array an earlier caller still holds.
+		// A recycled request must not write into a copy handed out earlier.
 		req.SetRedirectSensitiveHeaders("X-Other")
 		require.Equal(t, []string{"X-Api-Key"}, handedOut)
 	})
 }
 
-// Test_Request_RedirectSensitiveHeaders_EndToEnd sends real requests through every way of naming a
-// header and checks what the server behind a cross-host redirect receives.
+// Test_Request_RedirectSensitiveHeaders_EndToEnd checks what the server behind a cross-host redirect
+// receives for every way of naming a header.
 func Test_Request_RedirectSensitiveHeaders_EndToEnd(t *testing.T) {
 	t.Parallel()
 
@@ -1770,7 +1770,7 @@ func Test_Request_RedirectSensitiveHeaders_EndToEnd(t *testing.T) {
 			return c.SendString(c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token") + "|" + c.Get("X-Trace-Id"))
 		})
 	})
-	// Not a defer: the subtests run in parallel and finish after this function returns.
+	// Not a defer: the parallel subtests outlive this function.
 	t.Cleanup(server.stop)
 
 	headers := map[string]string{"X-Api-Key": "key", "X-Auth-Token": "tok", "X-Trace-Id": "trace"}
@@ -1827,8 +1827,7 @@ func Test_Request_RedirectSensitiveHeaders_EndToEnd(t *testing.T) {
 				tc.prepare(client)
 			}
 
-			// Control: a redirect that stays on the host keeps every header, so what the
-			// cross-host request lacks below is the list's doing.
+			// Control: staying on the host keeps every header.
 			same, err := tc.send(client, "http://example.com/same-host")
 			require.NoError(t, err)
 			defer same.Close()
@@ -1840,7 +1839,7 @@ func Test_Request_RedirectSensitiveHeaders_EndToEnd(t *testing.T) {
 			require.Equal(t, fiber.StatusOK, resp.StatusCode())
 			require.Equal(t, tc.want, resp.String())
 
-			// The hop that lost the header was a copy: the request that was sent still holds it.
+			// The caller's request keeps its header.
 			require.Equal(t, "key", string(resp.request.RawRequest.Header.Peek("X-Api-Key")))
 		})
 	}

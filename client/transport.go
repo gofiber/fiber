@@ -444,9 +444,8 @@ type redirectClient interface {
 // from one that stopped at a hop, and it is what the DoRedirects this stands in
 // for does.
 //
-// sensitiveHeaders names request headers that go, with the built-in set, once the
-// chain leaves the initial host; nil names none. It is a required parameter so
-// that a transport added later fails to compile instead of quietly skipping it.
+// sensitiveHeaders names extra request headers to drop when the chain leaves the initial host. It is
+// required, not optional, so a transport added later fails to compile instead of skipping it.
 func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, client redirectClient, sensitiveHeaders []string) error {
 	if resp == nil {
 		// "Response is ignored if resp is nil", per fasthttp's own DoRedirects
@@ -517,10 +516,8 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 		// Credentials are scoped to the origin that issued them, so drop them once
 		// the chain leaves it. net/http's boundary, which fasthttp also implements:
 		// against the initial host, ignoring the port, subdomains still trusted.
-		// Whatever case they are stored under: Header.Del is byte-exact, so it
-		// missed a header kept as "authorization" under DisableHeaderNormalizing.
-		// The names the caller listed go with them. The request is changed in
-		// place, so they stay gone if a later hop returns to the initial host.
+		// Case-insensitive: Header.Del is byte-exact. The request is edited in place,
+		// so dropped headers stay gone if a later hop returns to the initial host.
 		if !trustedRedirectTarget(nextHost, initialHostname) {
 			crosshost.Strip(&req.Header, sensitiveHeaders)
 		}

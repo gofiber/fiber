@@ -175,14 +175,12 @@ func DefaultSecurityPolicy() SecurityPolicy {
 var activePolicy atomic.Pointer[SecurityPolicy]
 
 // normalizePolicy returns a copy of policy whose AllowedSchemes and
-// RedirectSensitiveHeaders slices are always freshly allocated. This
-// guarantees callers cannot mutate the global allowlist out from under a
-// balancer (or another goroutine) by retaining a reference to the slice they
-// passed in — including the package-level defaultAllowedSchemes, which must
-// never be handed out by reference. RedirectSensitiveHeaders is also trimmed
-// of surrounding whitespace and empty entries: a name with a stray space, as
-// a comma-separated setting leaves, would never match and its header would be
-// forwarded. The defensive copy happens at install time only — readers
+// RedirectSensitiveHeaders slices are always freshly allocated (the latter
+// without blanks). This guarantees callers cannot mutate the
+// global allowlist out from under a balancer (or another goroutine) by
+// retaining a reference to the slice they passed in — including the
+// package-level defaultAllowedSchemes, which must never be handed out by
+// reference. The defensive copy happens at install time only — readers
 // consume the immutable result via activePolicy.Load() without further
 // copying.
 func normalizePolicy(policy SecurityPolicy) SecurityPolicy {
@@ -204,9 +202,9 @@ func WithSecurityPolicy(policy SecurityPolicy) SecurityPolicy {
 }
 
 // currentSecurityPolicy returns a snapshot of the active global policy.
-// The snapshot is by-value, but its AllowedSchemes and
-// RedirectSensitiveHeaders slice headers alias the immutable backing arrays
-// installed by WithSecurityPolicy — no copy is taken on the read path.
+// The snapshot is by-value, but its slice headers alias
+// the immutable backing arrays installed by WithSecurityPolicy — no copy
+// is taken on the read path.
 func currentSecurityPolicy() SecurityPolicy {
 	return *activePolicy.Load()
 }
@@ -214,9 +212,9 @@ func currentSecurityPolicy() SecurityPolicy {
 // resolvePolicy returns override when non-nil; otherwise the current
 // global policy. Both Balancer and the runtime helpers funnel through
 // this so a single source of truth governs upstream validation and
-// header stripping. Override paths still copy AllowedSchemes and
-// RedirectSensitiveHeaders so a caller passing Config.SecurityPolicy by
-// reference cannot mutate the Balancer's view after construction.
+// header stripping. Override paths still copy the slices so a
+// caller passing Config.SecurityPolicy by reference cannot mutate the
+// Balancer's view after construction.
 func resolvePolicy(override *SecurityPolicy) SecurityPolicy {
 	if override != nil {
 		return normalizePolicy(*override)

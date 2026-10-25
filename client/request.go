@@ -713,8 +713,7 @@ func (r *Request) Reset() {
 	r.body = nil
 	r.timeout = 0
 	r.maxRedirects = 0
-	// nil rather than [:0], so a recycled request cannot share a backing array with a list it handed out.
-	r.redirectSensitiveHeaders = nil
+	r.redirectSensitiveHeaders = nil // not [:0]: a recycled request must not share a backing array
 	r.bodyType = noBody
 	r.boundary = boundary
 	r.isPathNormalizingDisabled = false

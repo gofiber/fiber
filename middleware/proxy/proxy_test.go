@@ -2100,30 +2100,25 @@ func Test_Proxy_CrossHostStripsEveryCredentialHeader(t *testing.T) {
 	require.Empty(t, <-seen, "no credential header may follow a redirect off the addressed host")
 }
 
-// redirectOffTheOrigin serves a chain that leaves the origin the proxy addressed: the first server
-// redirects to the second under another authority, which hands back the application headers it was
-// sent. The seen channel receives them once.
-func redirectOffTheOrigin(t *testing.T) (redirectAddr string, seen <-chan []string) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming the address and the channel for readability
+// redirectOffTheOrigin serves a chain that leaves the origin and returns where it starts; the last
+// server sends what it was sent on seen.
+func redirectOffTheOrigin(t *testing.T, seen chan<- []string) string {
 	t.Helper()
 
-	got := make(chan []string, 1)
 	_, finalAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		got <- matchingFieldLines(c, "X-Api-Key", "X-Auth-Token", fiber.HeaderAuthorization)
+		seen <- matchingFieldLines(c, "X-Api-Key", "X-Auth-Token", fiber.HeaderAuthorization)
 		return c.SendString("final")
 	})
 
-	// Named "localhost" rather than bound to a second address, as in
-	// Test_Proxy_CrossHostCredentialsStrippedWhateverTheirCase.
-	_, redirectAddr = createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+	_, redirectAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		c.Location("http://" + loopbackAlias(t, finalAddr) + "/")
 		return c.SendStatus(fiber.StatusFound)
 	})
-	return redirectAddr, got
+	return redirectAddr
 }
 
-// Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin checks that a header the policy names does
-// not follow a redirect to another origin, that one it does not name still does, and that the
-// handler's own request keeps both: the hop that lost them was a copy.
+// Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin checks that a listed header does not follow a
+// cross-origin redirect, an unlisted one does, and the handler's own request keeps both.
 func Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
 	policy := DefaultSecurityPolicy()
@@ -2131,7 +2126,8 @@ func Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin(t *testing.T) {
 	policy.RedirectSensitiveHeaders = []string{"x-api-key"}
 	withSecurityPolicyForTest(t, policy)
 
-	redirectAddr, seen := redirectOffTheOrigin(t)
+	seen := make(chan []string, 1)
+	redirectAddr := redirectOffTheOrigin(t, seen)
 
 	var own string
 	app := fiber.New()
@@ -2154,12 +2150,13 @@ func Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin(t *testing.T) {
 	require.Equal(t, "key|tok|Bearer caller-token", own, "the handler's request is untouched")
 }
 
-// Test_Proxy_DoRedirects_ForwardsUnlistedHeadersOffTheOrigin pins the default: with no list, a
-// redirect to another origin drops the built-in credentials and forwards every other header.
+// Test_Proxy_DoRedirects_ForwardsUnlistedHeadersOffTheOrigin pins the default: without a list only the
+// built-in set is dropped.
 func Test_Proxy_DoRedirects_ForwardsUnlistedHeadersOffTheOrigin(t *testing.T) {
 	t.Parallel()
 
-	redirectAddr, seen := redirectOffTheOrigin(t)
+	seen := make(chan []string, 1)
+	redirectAddr := redirectOffTheOrigin(t, seen)
 
 	app := fiber.New()
 	app.Use(func(c fiber.Ctx) error {

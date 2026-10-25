@@ -97,16 +97,13 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 }
 
 // DoRedirects executes the request following redirects up to maxRedirects.
-//
-// When a redirect leaves the host the request started on, it drops the headers named with
-// SetRedirectSensitiveHeaders along with the built-in set. A raw fasthttp request has no list of
-// its own, so the client's is the only one.
+// Headers named with SetRedirectSensitiveHeaders are dropped when a redirect leaves the host.
 func (c *Client) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
 	return c.doRedirectsDropping(req, resp, maxRedirects, c.redirectSensitiveHeadersFor(nil))
 }
 
-// doRedirectsDropping follows redirects with sensitiveHeaders already resolved, which core.execFunc
-// reads before its goroutine starts: the Request that held the names may be recycled by then.
+// doRedirectsDropping is DoRedirects with the names already resolved, which execFunc
+// does before its goroutine starts.
 func (c *Client) doRedirectsDropping(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, sensitiveHeaders []string) error {
 	return c.transport.DoRedirects(req, resp, maxRedirects, sensitiveHeaders)
 }
@@ -946,9 +943,8 @@ func (c *Client) Reset() {
 // JSON is used as the default serialization mechanism. The priority is:
 // Body > FormData > File.
 //
-// RedirectSensitiveHeaders is passed to Request.SetRedirectSensitiveHeaders: request headers
-// dropped, in addition to the client's list and the built-in set, when a redirect leaves the host
-// the request started on. It matters only while MaxRedirects is non-zero.
+// RedirectSensitiveHeaders is passed to Request.SetRedirectSensitiveHeaders. It matters only while
+// MaxRedirects is non-zero.
 type Config struct {
 	Ctx                      context.Context //nolint:containedctx // It's needed to be stored in the config.
 	Body                     any

@@ -372,7 +372,7 @@ func TestClient_RedirectSensitiveHeaders(t *testing.T) {
 		require.Equal(t, []string{"X-One"}, client.redirectSensitiveHeadersFor(empty))
 		require.Equal(t, []string{"X-Two"}, New().redirectSensitiveHeadersFor(req))
 
-		// Neither names anything, which costs nothing.
+		// Neither names anything.
 		require.Nil(t, New().redirectSensitiveHeadersFor(nil))
 		require.Nil(t, New().redirectSensitiveHeadersFor(empty))
 	})
