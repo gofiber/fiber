@@ -223,9 +223,10 @@ type Config struct {
     Cookie    map[string]string
     PathParam map[string]string
 
-    Timeout                time.Duration
-    MaxRedirects           int
-    DisablePathNormalizing bool
+    Timeout                  time.Duration
+    MaxRedirects             int
+    RedirectSensitiveHeaders []string
+    DisablePathNormalizing   bool
 
     Body     any
     FormData map[string]string
@@ -236,6 +237,8 @@ type Config struct {
 The REST helpers accept an optional `Config` and use only the first one passed. A `string` or `[]byte` `Body` is sent as is; any other value is encoded as JSON.
 
 `MaxRedirects` is honored for `GET`, `HEAD` and `QUERY` requests only; other methods receive the redirect response as-is. The default is `0`, which follows no redirects. See [SetMaxRedirects](./request.md#setmaxredirects) for how redirects are followed.
+
+`RedirectSensitiveHeaders` sets [SetRedirectSensitiveHeaders](./request.md#setredirectsensitiveheaders) for the request.
 
 `DisablePathNormalizing: true` turns path normalizing off for the request, like [SetDisablePathNormalizing](./request.md#setdisablepathnormalizing) on the request, which also says when the path is really sent as written; `false` leaves the client's setting in place.
 
@@ -787,6 +790,32 @@ Turns path normalizing off or on for every request of the client. It is on by de
 func (c *Client) SetDisablePathNormalizing(disable bool) *Client
 ```
 
+## Redirects
+
+### RedirectSensitiveHeaders
+
+Returns a copy of the header names set with [SetRedirectSensitiveHeaders](#setredirectsensitiveheaders). The names a request adds with [SetRedirectSensitiveHeaders](./request.md#setredirectsensitiveheaders) are not included.
+
+```go title="Signature"
+func (c *Client) RedirectSensitiveHeaders() []string
+```
+
+### SetRedirectSensitiveHeaders
+
+Names request headers that must not follow a redirect to another host, such as a credential of your own like `X-Api-Key`, for every request of the client. A redirect to a host that is neither the original hostname (on any port) nor one of its subdomains drops them with the built-in sensitive headers; every other header is forwarded. Names match case-insensitively, and surrounding whitespace and empty entries are ignored. A request can add names of its own with [SetRedirectSensitiveHeaders](./request.md#setredirectsensitiveheaders). The list applies to [DoRedirects](#doredirects) too. It is empty by default, calling the method with no names clears it, and `Reset` clears it. It matters only while redirects are followed, see [SetMaxRedirects](./request.md#setmaxredirects).
+
+```go title="Signature"
+func (c *Client) SetRedirectSensitiveHeaders(names ...string) *Client
+```
+
+```go title="Example"
+cli := client.New().
+    SetHeader("X-Api-Key", os.Getenv("UPSTREAM_API_KEY")).
+    SetRedirectSensitiveHeaders("X-Api-Key")
+
+resp, err := cli.Get("https://api.example.com/items", client.Config{MaxRedirects: 3})
+```
+
 ## Cookies
 
 A cookie set on a request replaces a client cookie with the same name, and a client cookie replaces one from the [cookie jar](#cookie-jar).
@@ -1044,7 +1073,7 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 
 ### DoRedirects
 
-Like `Do`, but follows up to `maxRedirects` redirects, on every kind of client, with the rules described under [SetMaxRedirects](./request.md#setmaxredirects). A chain of more than `maxRedirects` redirects fails with `fasthttp.ErrTooManyRedirects`, so `0` fails on the first redirect, and a negative value allows 16. Unlike the `Request` methods, it follows redirects for any request method.
+Like `Do`, but follows up to `maxRedirects` redirects, on every kind of client, with the rules described under [SetMaxRedirects](./request.md#setmaxredirects). A chain of more than `maxRedirects` redirects fails with `fasthttp.ErrTooManyRedirects`, so `0` fails on the first redirect, and a negative value allows 16. Unlike the `Request` methods, it follows redirects for any request method. It drops the headers named with [SetRedirectSensitiveHeaders](#setredirectsensitiveheaders) on the client as well; there is no request-level list, because it takes a raw `fasthttp` request.
 
 ```go title="Signature"
 func (c *Client) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error
@@ -1063,8 +1092,9 @@ func (c *Client) CloseIdleConnections()
 ### Reset
 
 Resets the client's configuration: it clears the base URL, timeout, user agent,
-referer, retry configuration, debug flag, path-normalizing setting, headers,
-query and path parameters and cookies, and it empties and detaches the cookie
+referer, retry configuration, debug flag, path-normalizing setting, the
+redirect-sensitive header names, headers, query and path parameters and
+cookies, and it empties and detaches the cookie
 jar. It also replaces the transport with a new default `fasthttp.Client`, which
 drops a `HostClient` or `LBClient` the client wrapped together with any custom
 dial function, proxy, TLS configuration and response streaming setting. Request
