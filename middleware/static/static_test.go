@@ -961,6 +961,22 @@ func Test_Static_Compress(t *testing.T) {
 	}
 }
 
+func Test_Static_Compress_FileRoot(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "index.html")
+	require.NoError(t, os.WriteFile(root, []byte(strings.Repeat("<p>hello</p>", 200)), 0o600))
+	app := fiber.New()
+	app.Get("/", New(root, Config{Compress: true}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAcceptEncoding, "gzip")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+}
+
 func Test_Static_Compress_WithoutEncoding(t *testing.T) {
 	t.Parallel()
 	dir := "../../.github/testdata/fs"

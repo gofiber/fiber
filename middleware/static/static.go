@@ -180,10 +180,11 @@ func New(root string, cfg ...Config) fiber.Handler {
 		}
 
 		files := &fasthttp.FS{
-			Root:                     fsRoot,
-			FS:                       config.FS,
-			AllowEmptyRoot:           true,
-			AllowSymlinksOutsideRoot: config.AllowSymlinksOutsideRoot,
+			Root:           fsRoot,
+			FS:             config.FS,
+			AllowEmptyRoot: true,
+			// A file root serves only itself, and its compressed copy lies beside it, outside the root.
+			AllowSymlinksOutsideRoot: config.AllowSymlinksOutsideRoot || (rootIsFile && config.FS == nil),
 			GenerateIndexPages:       config.Browse,
 			AcceptByteRange:          config.ByteRange,
 			Compress:                 config.Compress,
