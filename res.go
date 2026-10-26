@@ -1370,6 +1370,24 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	response := &r.c.fasthttp.Response
 	status := response.StatusCode()
 
+	// Ranges and preconditions apply only to a 2xx (RFC 9110 §13.2.1, §14.2), so a
+	// page sent with an error status goes out whole.
+	if status >= StatusMultipleChoices {
+		fields := [...]string{HeaderRange, HeaderIfRange, HeaderIfModifiedSince}
+		var values [len(fields)][]byte
+		for i, name := range fields {
+			values[i] = utils.CopyBytes(request.Header.Peek(name))
+			request.Header.Del(name)
+		}
+		defer func() {
+			for i, name := range fields {
+				if len(values[i]) > 0 {
+					request.Header.SetBytesV(name, values[i])
+				}
+			}
+		}()
+	}
+
 	// Serve file
 	fsHandler(r.c.fasthttp)
 
@@ -1398,20 +1416,21 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
 	}
 
-	// Only a served file is an attachment; the header must not leak onto an error such as 416.
-	if cfg.Download && fsStatus >= StatusOK && fsStatus < StatusMultipleChoices {
-		r.Attachment()
-	}
-
 	// A status set before SendFile replaces the file server's 200; a 206, 304 or 416 describes the body sent.
 	if status != StatusOK && fsStatus == StatusOK {
 		r.Status(status)
+	}
+	finalStatus := response.StatusCode()
+
+	// Only a served file is an attachment; the header must not leak onto an error such as 416.
+	if cfg.Download && finalStatus >= StatusOK && finalStatus < StatusMultipleChoices {
+		r.Attachment()
 	}
 
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
 		// An error response such as 416 must not be cached under the file's MaxAge.
-		if cacheControlValue != "" && fsStatus < StatusBadRequest {
+		if cacheControlValue != "" && finalStatus < StatusBadRequest {
 			response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 
