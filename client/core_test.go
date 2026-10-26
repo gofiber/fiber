@@ -875,6 +875,19 @@ func Test_Core_RetryRestartsRedirects(t *testing.T) {
 		})
 		require.Equal(t, []bool{true, true}, transport.streams)
 	})
+
+	t.Run("a request that follows no redirects is sent as is", func(t *testing.T) {
+		t.Parallel()
+
+		transport := &rewritingTransport{delayedTransport: newDelayedTransport(0)}
+		client := New().SetRetryConfig(&RetryConfig{MaxRetryCount: 2})
+		client.transport = transport
+
+		resp, err := client.Get("http://example.com/start")
+		require.NoError(t, err)
+		resp.Close()
+		require.Empty(t, transport.starts)
+	})
 }
 
 func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {

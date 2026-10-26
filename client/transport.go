@@ -24,6 +24,12 @@ var (
 	httpsScheme = []byte("https")
 )
 
+// redirectOptions is passed by pointer: by value it widens the frames of every transport.
+type redirectOptions struct {
+	sensitiveHeaders crosshost.HeaderNames
+	maxRedirects     int
+}
+
 // httpClientTransport unifies the operations exposed by the Fiber client across
 // the fasthttp.Client, fasthttp.HostClient, and fasthttp.LBClient adapters so
 // helper logic can treat the concrete transports uniformly.
