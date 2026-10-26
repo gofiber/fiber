@@ -1,6 +1,7 @@
 package mediatype
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -198,6 +199,12 @@ func Test_Params(t *testing.T) {
 		{name: "several parameters", in: "text/plain;a=1;\tb=2 ; c=3", want: []string{"a", "1", "b", "2", "c", "3"}},
 		{name: "quoted semicolon", in: `text/plain; title="x;charset=bad"; charset=utf-8`, want: []string{"title", `"x;charset=bad"`, "charset", "utf-8"}},
 		{name: "quoted escaped quote", in: `text/plain; title="a\";c=bad"; c=ok`, want: []string{"title", `"a\";c=bad"`, "c", "ok"}},
+		{name: "even backslashes before closing quote", in: `text/plain; a="x\\"; b=2`, want: []string{"a", `"x\\"`, "b", "2"}},
+		{name: "odd backslashes before quote", in: `text/plain; a="x\\\";y=z"; b=2`, want: []string{"a", `"x\\\";y=z"`, "b", "2"}},
+		{name: "escaped quote before closing quote", in: `text/plain; a="x\""; b=2`, want: []string{"a", `"x\""`, "b", "2"}},
+		{name: "multiple escaped quotes", in: `text/plain; a="x\";\"y"; b=2`, want: []string{"a", `"x\";\"y"`, "b", "2"}},
+		{name: "unterminated after escaped quote", in: `text/plain; a="x\"; b=2`, want: []string{"a", `"x\"; b=2`}},
+		{name: "unterminated after escaped quote and backslash", in: `text/plain; a="x\"; end\`, want: []string{"a", `"x\"; end\`}},
 		{name: "quote after whitespace opens", in: `text/plain; a= "x;y"; b=2`, want: []string{"a", `"x;y"`, "b", "2"}},
 		{name: "stray quote in bare value", in: `text/plain; a=b"; c=bad"; d=1`, want: []string{"a", `b"`, "c", `bad"`, "d", "1"}},
 		{name: "unterminated quote", in: `text/plain; a="x; b=2`, want: []string{"a", `"x; b=2`}},
@@ -277,15 +284,30 @@ func Benchmark_StripParams(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_Params -benchmem -count=4
 func Benchmark_Params(b *testing.B) {
-	ct := []byte(`multipart/form-data; boundary="a;b"; charset=utf-8`)
-	var n int
-	b.ReportAllocs()
-	for b.Loop() {
-		for name, value := range Params(ct) {
-			n += len(name) + len(value)
-		}
+	for _, bench := range []struct {
+		name string
+		ct   []byte
+	}{
+		{name: "no_parameters", ct: []byte("application/json")},
+		{name: "charset", ct: []byte("application/json; charset=utf-8")},
+		{name: "charset_last", ct: []byte(`multipart/form-data; boundary="a;b"; charset=utf-8`)},
+		{name: "many_bare", ct: []byte("text/plain; a=1; b=2; c=3; d=4; charset=utf-8")},
+		{name: "long_quoted", ct: []byte(`text/plain; title="` + strings.Repeat("a", 1024) + `"; charset=utf-8`)},
+		{name: "escaped_quotes", ct: []byte(`text/plain; title="` + strings.Repeat(`\"`, 512) + `"; charset=utf-8`)},
+	} {
+		b.Run(bench.name, func(b *testing.B) {
+			var n int
+			b.ReportAllocs()
+			for b.Loop() {
+				for name, value := range Params(bench.ct) {
+					n += len(name) + len(value)
+				}
+			}
+			if bytes.IndexByte(bench.ct, ';') >= 0 {
+				require.Positive(b, n)
+			}
+		})
 	}
-	require.Positive(b, n)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Unescape -benchmem -count=4

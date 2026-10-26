@@ -30,6 +30,7 @@ var (
 	xForwardedSslBytes      = []byte(HeaderXForwardedSsl)
 	xURLSchemeBytes         = []byte(HeaderXUrlScheme)
 	onBytes                 = []byte("on")
+	charsetBytes            = []byte("charset")
 )
 
 // Range represents the parsed HTTP Range header extracted by DefaultReq.Range.
@@ -345,7 +346,7 @@ func (r *DefaultReq) MediaType() string {
 // Charset returns the charset parameter from the Content-Type header.
 func (r *DefaultReq) Charset() string {
 	for name, v := range mediatype.Params(r.c.fasthttp.Request.Header.ContentType()) {
-		if !utils.EqualFold(name, []byte("charset")) {
+		if !utils.EqualFold(name, charsetBytes) {
 			continue
 		}
 		if len(v) > 0 && v[0] == '"' {

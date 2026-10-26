@@ -141,11 +141,11 @@ func Params(ct []byte) iter.Seq2[[]byte, []byte] {
 			} else {
 				params = nil
 			}
-			name, value, ok := utils.CutByte(param, '=')
-			if !ok {
+			eq := bytes.IndexByte(param, '=')
+			if eq < 0 {
 				continue
 			}
-			if !yield(utils.TrimSpace(name), utils.TrimSpace(value)) {
+			if !yield(utils.TrimSpace(param[:eq]), utils.TrimSpace(param[eq+1:])) {
 				return
 			}
 		}
@@ -154,24 +154,47 @@ func Params(ct []byte) iter.Seq2[[]byte, []byte] {
 
 // paramEnd returns the index of the ';' that ends the first parameter, or -1.
 func paramEnd(params []byte) int {
+	// A quote before the first ';' may enclose it in a quoted-string.
+	end := bytes.IndexByte(params, ';')
+	if end < 0 || bytes.IndexByte(params[:end], '"') < 0 {
+		return end
+	}
+
 	// A DQUOTE opens a quoted-string only at value position, so a stray quote in
 	// a bare value cannot swallow the parameters after it.
-	inQuotes, escaped, expectValue := false, false, false
-	for i, c := range params {
-		switch {
-		case escaped:
-			escaped = false
-		case inQuotes:
-			switch c {
-			case '\\':
-				escaped = true
-			case '"':
-				inQuotes = false
-			}
+	expectValue := false
+	for i := 0; i < len(params); i++ {
+		switch c := params[i]; {
 		case c == '=':
 			expectValue = true
 		case c == '"' && expectValue:
-			inQuotes, expectValue = true, false
+			end := bytes.IndexByte(params[i+1:], '"')
+			if end < 0 {
+				return -1
+			}
+			end += i + 1
+			// A quote closes the string only after an even run of backslashes.
+			escaped := false
+			for j := end - 1; j > i && params[j] == '\\'; j-- {
+				escaped = !escaped
+			}
+			if escaped {
+				// Avoid repeated IndexByte calls for escape-heavy values.
+				for end++; end < len(params); end++ {
+					if params[end] == '\\' {
+						end++
+						continue
+					}
+					if params[end] == '"' {
+						break
+					}
+				}
+				if end >= len(params) {
+					return -1
+				}
+			}
+			i = end
+			expectValue = false
 		case c == ';':
 			return i
 		case c != ' ' && c != '\t':
