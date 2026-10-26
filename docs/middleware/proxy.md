@@ -69,7 +69,23 @@ Only `http` and `https` upstream schemes are accepted by default; `file://`, `go
 
 `DoRedirects` rejects redirects from HTTPS origins to plaintext HTTP targets with `ErrRedirectDowngrade`. Following such a redirect would leak any cookies or `Authorization` headers established under TLS. Set `SecurityPolicy.AllowHTTPSDowngrade = true` to override.
 
-When a redirect crosses to a **different origin**, that is another scheme, host or port ([RFC 6454](https://www.rfc-editor.org/rfc/rfc6454), where the default port stands in for a missing one), `DoRedirects` strips `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and the obsolete `Cookie2`, so credentials bound to the original origin are not forwarded to a third-party upstream. This is `net/http`'s own set. A redirect to the same origin retains these headers. Spelling the default port out in the `Location` (`http://example.com/` to `http://example.com:80/next`) is still the same origin, while `http` to `https` is not.
+### Headers on a cross-origin redirect
+
+When a redirect crosses to a **different origin**, that is another scheme, host or port ([RFC 6454](https://www.rfc-editor.org/rfc/rfc6454), where the default port stands in for a missing one), `DoRedirects` drops `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and the obsolete `Cookie2` from that hop and from every hop after it, so credentials bound to the original origin are not forwarded to a third-party upstream. This is `net/http`'s own set. A redirect to the same origin retains these headers. Spelling the default port out in the `Location` (`http://example.com/` to `http://example.com:80/next`) is still the same origin, while `http` to `https` is not.
+
+:::caution Application-defined credentials
+Every other header the request still carries after the [hop-by-hop stripping](#rfc-9110-hop-by-hop-header-stripping) is forwarded to the redirect target unchanged, as `net/http` does. That includes credentials the proxy cannot recognize, such as `X-Api-Key` or `X-Auth-Token`, whether your handler set them or the client sent them. The upstream chooses where a redirect goes, so if it can be made to redirect to a host you do not control (an open redirect, for example), list the names of such headers in `SecurityPolicy.RedirectSensitiveHeaders`, or call `Do` and decide on each redirect yourself.
+:::
+
+`SecurityPolicy.RedirectSensitiveHeaders` names extra request headers that `DoRedirects` drops on a cross-origin redirect, in addition to the set above. Names match case-insensitively, and surrounding whitespace and empty entries are ignored. The list is empty by default, so nothing changes until you set it. Only `DoRedirects` reads it: `Do`, `Forward`, `Balancer` and the other helpers never follow a redirect.
+
+```go
+policy := proxy.DefaultSecurityPolicy()
+policy.RedirectSensitiveHeaders = []string{"X-Api-Key", "X-Auth-Token"}
+proxy.WithSecurityPolicy(policy)
+```
+
+The Fiber client draws the line elsewhere, as `net/http` does: it keeps these headers for the same hostname on any port and for its subdomains, and drops them only for another hostname. A redirect from `http` to `https`, or to another port, of the same host therefore drops them here and keeps them there, see [SetRedirectSensitiveHeaders](../client/rest.md#setredirectsensitiveheaders) on the client.
 
 ### Redirect method and body
 
@@ -286,6 +302,20 @@ app.Get("/proxy", func(c fiber.Ctx) error {
     return nil
 })
 
+// Proxy requests while following redirects, and keep an application API key
+// from leaving the origin it was sent to
+policy := proxy.DefaultSecurityPolicy()
+policy.RedirectSensitiveHeaders = []string{"X-Api-Key"}
+proxy.WithSecurityPolicy(policy)
+
+app.Get("/proxy", func(c fiber.Ctx) error {
+    // Delete first, as for X-Real-IP above: Set replaces only one line of a
+    // header the client sent twice (see there for DisableHeaderNormalizing)
+    c.Request().Header.Del("X-Api-Key")
+    c.Request().Header.Set("X-Api-Key", os.Getenv("UPSTREAM_API_KEY"))
+    return proxy.DoRedirects(c, "https://api.example.com/items", 3)
+})
+
 // Proxy requests and wait up to five seconds before timing out
 app.Get("/proxy", func(c fiber.Ctx) error {
     if err := proxy.DoTimeout(c, "http://localhost:3000", time.Second * 5); err != nil {
@@ -404,12 +434,13 @@ When `Config.SecurityPolicy` is `nil` (and `proxy.WithSecurityPolicy` has not be
 // DefaultSecurityPolicy returns the secure-by-default policy.
 func DefaultSecurityPolicy() proxy.SecurityPolicy {
     return proxy.SecurityPolicy{
-        AllowedSchemes:        []string{"http", "https"},
-        AllowPrivateIPs:       false,
-        AllowHTTPSDowngrade:   false,
-        KeepHopByHopHeaders:   false,
-        AllowAmbiguousSlashes: false,
-        AllowPathParameters:   false,
+        AllowedSchemes:           []string{"http", "https"},
+        RedirectSensitiveHeaders: nil,
+        AllowPrivateIPs:          false,
+        AllowHTTPSDowngrade:      false,
+        KeepHopByHopHeaders:      false,
+        AllowAmbiguousSlashes:    false,
+        AllowPathParameters:      false,
     }
 }
 ```

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -62,6 +63,8 @@ type Request struct {
 	boundary   string
 	referer    string
 	files      []*File
+
+	redirectSensitiveHeaders crosshost.HeaderNames
 
 	timeout      time.Duration
 	maxRedirects int
@@ -613,6 +616,18 @@ func (r *Request) SetMaxRedirects(count int) *Request {
 	return r
 }
 
+// RedirectSensitiveHeaders returns a copy of this Request's names.
+func (r *Request) RedirectSensitiveHeaders() []string {
+	return r.redirectSensitiveHeaders.List()
+}
+
+// SetRedirectSensitiveHeaders names headers to drop when a redirect leaves the host, in addition to
+// the client's list and the built-in set. It replaces this Request's previous names.
+func (r *Request) SetRedirectSensitiveHeaders(names ...string) *Request {
+	r.redirectSensitiveHeaders = crosshost.NewHeaderNames(names)
+	return r
+}
+
 // DisablePathNormalizing reports whether path normalizing is disabled for the Request.
 func (r *Request) DisablePathNormalizing() bool {
 	return r.isPathNormalizingDisabled
@@ -696,6 +711,7 @@ func (r *Request) Reset() {
 	r.body = nil
 	r.timeout = 0
 	r.maxRedirects = 0
+	r.redirectSensitiveHeaders = crosshost.HeaderNames{}
 	r.bodyType = noBody
 	r.boundary = boundary
 	r.isPathNormalizingDisabled = false

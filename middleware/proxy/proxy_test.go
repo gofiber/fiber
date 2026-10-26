@@ -2100,6 +2100,75 @@ func Test_Proxy_CrossHostStripsEveryCredentialHeader(t *testing.T) {
 	require.Empty(t, <-seen, "no credential header may follow a redirect off the addressed host")
 }
 
+// serveOffOriginChain leaves the origin and returns; the last server reports on seen.
+func serveOffOriginChain(t *testing.T, seen chan<- []string) string {
+	t.Helper()
+
+	_, finalAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen <- matchingFieldLines(c, "X-Api-Key", "X-Auth-Token", fiber.HeaderAuthorization)
+		return c.SendString("final")
+	})
+
+	_, redirectAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		c.Location("http://" + loopbackAlias(t, finalAddr) + "/")
+		return c.SendStatus(fiber.StatusFound)
+	})
+	return redirectAddr
+}
+
+func Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin(t *testing.T) {
+	// Intentionally not parallel: it sets a process-wide security policy.
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true // replaces TestMain's relaxed policy
+	policy.RedirectSensitiveHeaders = []string{"x-api-key"}
+	withSecurityPolicyForTest(t, policy)
+
+	seen := make(chan []string, 1)
+	redirectAddr := serveOffOriginChain(t, seen)
+
+	var own string
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		err := DoRedirects(c, "http://"+redirectAddr, 3)
+		own = c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token") + "|" + c.Get(fiber.HeaderAuthorization)
+		return err
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer caller-token")
+	req.Header.Set("X-Api-Key", "key")
+	req.Header.Set("X-Auth-Token", "tok")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	require.Equal(t, []string{"X-Auth-Token=tok"}, <-seen, "only the header nobody named reaches the target")
+	require.Equal(t, "key|tok|Bearer caller-token", own, "the handler's request is untouched")
+}
+
+func Test_Proxy_DoRedirects_ForwardsUnlistedHeadersOffTheOrigin(t *testing.T) {
+	t.Parallel()
+
+	seen := make(chan []string, 1)
+	redirectAddr := serveOffOriginChain(t, seen)
+
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		return DoRedirects(c, "http://"+redirectAddr, 3)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer caller-token")
+	req.Header.Set("X-Api-Key", "key")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	require.Equal(t, []string{"X-Api-Key=key"}, <-seen)
+}
+
 // Test_Proxy_ResponseStripIgnoresTheAppsNormalizationSetting checks the
 // response-side hop-by-hop strip against a proxy whose outbound client
 // preserves upstream header casing while the app itself normalizes.

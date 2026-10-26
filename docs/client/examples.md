@@ -254,7 +254,9 @@ The jar follows RFC 6265 for storage and retrieval:
   there carries it. This only arises once redirects are being followed, which
   is not the default: leave `MaxRedirects` unset — or set `0`, via
   `Request.SetMaxRedirects` or `Config{MaxRedirects: 0}` — and issue each hop
-  yourself, so the jar decides for each one.
+  yourself, so the jar decides for each one. A header of your own that must not
+  follow a redirect to another host, such as `X-Api-Key`, can be named with
+  [SetRedirectSensitiveHeaders](./rest.md#setredirectsensitiveheaders).
 
 ### Request
 

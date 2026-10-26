@@ -662,7 +662,7 @@ func (c fiber.Ctx) OverrideParam(name, value string)
 ```
 
 ```go title="Example"
-// GET http://example.com/user
+// GET http://example.com/user/john
 app.Get("/user/:name", func(c fiber.Ctx) error {
   // mutate parameter
   c.OverrideParam("name", "new value")
@@ -818,12 +818,12 @@ func (c fiber.Ctx) Route() *Route
 ```
 
 ```go title="Example"
-// http://localhost:8080/hello
+// http://localhost:8080/hello/john
 
 app.Get("/hello/:name", func(c fiber.Ctx) error {
   r := c.Route()
-  fmt.Println(r.Method, r.Path, r.Params, r.Handlers)
-  // GET /hello/:name handler [name]
+  fmt.Println(r.Method, r.Path, r.Params, len(r.Handlers))
+  // GET /hello/:name [name] 1
 
   // ...
 })
@@ -1025,6 +1025,7 @@ func (r fiber.Req) AcceptsLanguagesExtended(offers ...string) string
 ```
 
 ```go title="Example"
+// Accept: text/html, application/json; q=0.8, text/plain; q=0.5; charset="utf-8"
 app.Get("/", func(c fiber.Ctx) error {
   c.Accepts("html")             // "html"
   c.Accepts("text/html")        // "text/html"
@@ -1594,7 +1595,7 @@ func (r fiber.Req) FullURL() string
 ```go title="Example"
 // GET http://example.com/search?q=fiber
 
-app.Get("/", func(c fiber.Ctx) error {
+app.Get("/search", func(c fiber.Ctx) error {
   c.FullURL() // "http://example.com/search?q=fiber"
   return nil
 })
@@ -1735,7 +1736,7 @@ func (r fiber.Req) Host() string
 ```go title="Example"
 // GET http://google.com:8080/search
 
-app.Get("/", func(c fiber.Ctx) error {
+app.Get("/search", func(c fiber.Ctx) error {
   c.Host()      // "google.com:8080"
   c.Hostname()  // "google.com"
 
@@ -1760,7 +1761,7 @@ func (r fiber.Req) Hostname() string
 ```go title="Example"
 // GET http://google.com/search
 
-app.Get("/", func(c fiber.Ctx) error {
+app.Get("/search", func(c fiber.Ctx) error {
   c.Hostname() // "google.com"
 
   // ...
@@ -2262,7 +2263,7 @@ func (r fiber.Req) OriginalURL() string
 ```go title="Example"
 // GET http://example.com/search?q=something
 
-app.Get("/", func(c fiber.Ctx) error {
+app.Get("/search", func(c fiber.Ctx) error {
   c.OriginalURL() // "/search?q=something"
 
   // ...
@@ -2463,7 +2464,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```go title="Example"
 // GET /api/posts?filters.author.name=John&filters.category.name=Technology
 
-app.Get("/", func(c fiber.Ctx) error {
+app.Get("/api/posts", func(c fiber.Ctx) error {
     m := c.Queries()
     m["filters.author.name"] // John
     m["filters.category.name"] // Technology
@@ -2473,7 +2474,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```go title="Example"
 // GET /api/posts?tags=apple,orange,banana&filters[tags]=apple,orange,banana&filters[category][name]=fruits&filters.tags=apple,orange,banana&filters.category.name=fruits
 
-app.Get("/", func(c fiber.Ctx) error {
+app.Get("/api/posts", func(c fiber.Ctx) error {
     m := c.Queries()
     m["tags"] // apple,orange,banana
     m["filters[tags]"] // apple,orange,banana
@@ -3579,14 +3580,14 @@ app.Get("/json", func(c fiber.Ctx) error {
 
   return c.JSON(data)
   // => Content-Type: application/json; charset=utf-8
-  // => {"Name": "Grame", "Age": 20}
+  // => {"Name":"Grame","Age":20}
 
   return c.JSON(fiber.Map{
     "name": "Grame",
     "age":  20,
   })
   // => Content-Type: application/json; charset=utf-8
-  // => {"name": "Grame", "age": 20}
+  // => {"age":20,"name":"Grame"}
 
   return c.JSON(fiber.Map{
     "type":     "https://example.com/probs/out-of-credit",
@@ -3596,13 +3597,7 @@ app.Get("/json", func(c fiber.Ctx) error {
     "instance": "/account/12345/msgs/abc",
   }, "application/problem+json")
   // => Content-Type: application/problem+json
-  // => "{
-  // =>     "type": "https://example.com/probs/out-of-credit",
-  // =>     "title": "You do not have enough credit.",
-  // =>     "status": 403,
-  // =>     "detail": "Your current balance is 30, but that costs 50.",
-  // =>     "instance": "/account/12345/msgs/abc",
-  // => }"
+  // => {"detail":"Your current balance is 30, but that costs 50.","instance":"/account/12345/msgs/abc","status":403,"title":"You do not have enough credit.","type":"https://example.com/probs/out-of-credit"}
 })
 ```
 
@@ -3633,10 +3628,10 @@ app.Get("/", func(c fiber.Ctx) error {
   }
 
   return c.JSONP(data)
-  // => callback({"Name": "Grame", "Age": 20})
+  // => callback({"Name":"Grame","Age":20});
 
   return c.JSONP(data, "customFunc")
-  // => customFunc({"Name": "Grame", "Age": 20})
+  // => customFunc({"Name":"Grame","Age":20});
 })
 ```
 
@@ -3962,7 +3957,11 @@ With `ByteRange` on, the file server answers one range of a `GET` request: `Rang
 - The unit is case-insensitive, so `Range: Bytes=0-499` is a range.
 - A request for **several ranges** (`bytes=0-499,1000-1499`), with a **unit the server does not know**, or with a method other than `GET` (`HEAD` included) is answered with the whole file, as if it carried no `Range`. Several ranges used to be refused with `416`, a status that is for ranges that cannot be satisfied.
 - **`If-Range`** makes the range conditional on the file being the one the client holds. The range is served only when the date it carries is exactly the file's `Last-Modified`, and that time is at least two seconds old (the header has whole-second resolution, and a younger file may still change within the second it names); when the file has changed, the whole file is sent instead of a piece that would be spliced onto the client's stale copy. An entity-tag matches only an `ETag` your handler set before calling `SendFile`: the file server sends none. A date cannot tell apart two versions written within the same second, so a file that is replaced in place while clients resume it should carry a strong `ETag`.
-- A range that cannot be satisfied is answered with `416 Range Not Satisfiable`, and with `Content-Range: bytes */<size>` for `SendFile`.
+- A range that cannot be satisfied is answered with `416 Range Not Satisfiable` and `Content-Range: bytes */<size>`.
+:::
+
+:::info Status
+A status set with `Status` before `SendFile` is the status of the whole file. From `300` up, the file is sent whole without looking at `Range`, `If-Range` or `If-Modified-Since`, which apply only to a `2xx` ([RFC 9110 §13.2.1](https://www.rfc-editor.org/rfc/rfc9110#section-13.2.1)). Below `300` it replaces only a `200`: a `206`, `304` or `416` keeps its own. `Download` applies only to a `2xx` and `MaxAge` only below `400`.
 :::
 
 :::info

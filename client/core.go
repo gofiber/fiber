@@ -66,9 +66,12 @@ func (c *core) execFunc() (*Response, error) {
 	// client-owned request and the pool may hand it to another call while the
 	// transport is still finishing, so reading the flag from the goroutine races.
 	reqOwned := c.req.clientOwned
-	maxRedirects := c.req.maxRedirects
 	method := string(reqv.Header.Method())
-	followRedirects := maxRedirects > 0 && (method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodQuery)
+	var redirects *redirectOptions // nil: the request follows no redirects
+	if c.req.maxRedirects > 0 && (method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodQuery) {
+		opts := c.client.redirectOptionsFor(c.req.maxRedirects, c.req.redirectSensitiveHeaders)
+		redirects = &opts
+	}
 
 	go func() {
 		// retain both channels until they are drained
@@ -95,20 +98,30 @@ func (c *core) execFunc() (*Response, error) {
 		}()
 
 		var err error
-		if cfg != nil {
+		switch {
+		case cfg != nil:
+			// A failed chain rewrites reqv, so each attempt restarts from a copy; a body stream cannot be copied.
+			var sent *fasthttp.Request
+			if redirects != nil && !reqv.IsBodyStream() {
+				sent = fasthttp.AcquireRequest()
+				reqv.CopyTo(sent)
+				defer fasthttp.ReleaseRequest(sent)
+			}
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
-				if followRedirects {
-					return c.client.DoRedirects(reqv, respv, maxRedirects)
+				if redirects == nil {
+					return c.client.Do(reqv, respv)
 				}
-				return c.client.Do(reqv, respv)
+				chainErr := c.client.transport.DoRedirects(reqv, respv, redirects)
+				if chainErr != nil && sent != nil {
+					sent.CopyTo(reqv)
+				}
+				return chainErr
 			})
-		} else {
-			if followRedirects {
-				err = c.client.DoRedirects(reqv, respv, maxRedirects)
-			} else {
-				err = c.client.Do(reqv, respv)
-			}
+		case redirects != nil:
+			err = c.client.transport.DoRedirects(reqv, respv, redirects)
+		default:
+			err = c.client.Do(reqv, respv)
 		}
 
 		if err != nil {

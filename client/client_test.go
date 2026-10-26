@@ -23,6 +23,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/addon/retry"
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
@@ -309,6 +310,36 @@ func Test_Client_SetRootCertificate_InvalidInput(t *testing.T) {
 	}
 }
 
+func TestClient_RedirectSensitiveHeaders(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the list", func(t *testing.T) {
+		t.Parallel()
+
+		client := New()
+		requireNameList(t, func(names ...string) { client.SetRedirectSensitiveHeaders(names...) }, client.RedirectSensitiveHeaders)
+		require.Same(t, client, client.SetRedirectSensitiveHeaders())
+	})
+
+	t.Run("the options for a request carry the client's and the request's names together", func(t *testing.T) {
+		t.Parallel()
+
+		client := New().SetRedirectSensitiveHeaders("X-One")
+		own := New().R().SetRedirectSensitiveHeaders("X-Two")
+
+		opts := client.redirectOptionsFor(3, own.redirectSensitiveHeaders)
+		require.Equal(t, 3, opts.maxRedirects)
+		require.ElementsMatch(t, []string{"X-One", "X-Two"}, opts.sensitiveHeaders.List())
+
+		again := client.redirectOptionsFor(3, own.redirectSensitiveHeaders)
+		require.ElementsMatch(t, []string{"X-One", "X-Two"}, again.sensitiveHeaders.List())
+		require.Equal(t, []string{"X-One"}, client.RedirectSensitiveHeaders())
+		require.Equal(t, []string{"X-Two"}, own.RedirectSensitiveHeaders())
+
+		require.Nil(t, New().redirectOptionsFor(3, crosshost.HeaderNames{}).sensitiveHeaders.List())
+	})
+}
+
 func TestClientResetClearsState(t *testing.T) {
 	t.Parallel()
 
@@ -325,6 +356,7 @@ func TestClientResetClearsState(t *testing.T) {
 	client.SetRetryConfig(&RetryConfig{MaxRetryCount: 3})
 	client.Debug()
 	client.SetDisablePathNormalizing(true)
+	client.SetRedirectSensitiveHeaders("X-Api-Key")
 	client.SetHeaders(map[string]string{"X-Test": "value"})
 	client.SetParams(map[string]string{"p": "1"})
 	client.SetCookies(map[string]string{"cookie": "value"})
@@ -342,6 +374,7 @@ func TestClientResetClearsState(t *testing.T) {
 	require.Nil(t, client.retryConfig)
 	require.False(t, client.isDebug)
 	require.False(t, client.isPathNormalizingDisabled)
+	require.Nil(t, client.RedirectSensitiveHeaders())
 	require.Nil(t, client.cookieJar)
 	require.Nil(t, jar.hostCookies)
 	require.Empty(t, *client.path)
@@ -2289,6 +2322,27 @@ func Test_Set_Config_To_Request(t *testing.T) {
 		require.Equal(t, 1, req.MaxRedirects())
 	})
 
+	t.Run("set redirect sensitive headers", func(t *testing.T) {
+		t.Parallel()
+		req := AcquireRequest()
+
+		setConfigToRequest(req, Config{RedirectSensitiveHeaders: []string{" X-Api-Key", ""}})
+
+		require.Equal(t, []string{"X-Api-Key"}, req.RedirectSensitiveHeaders())
+	})
+
+	t.Run("a config without redirect sensitive headers leaves the request's", func(t *testing.T) {
+		t.Parallel()
+
+		for _, names := range [][]string{nil, {}} {
+			req := AcquireRequest().SetRedirectSensitiveHeaders("X-Api-Key")
+
+			setConfigToRequest(req, Config{MaxRedirects: 1, RedirectSensitiveHeaders: names})
+
+			require.Equal(t, []string{"X-Api-Key"}, req.RedirectSensitiveHeaders())
+		}
+	})
+
 	t.Run("set body string", func(t *testing.T) {
 		t.Parallel()
 		req := AcquireRequest()
@@ -2467,6 +2521,28 @@ func Benchmark_Client_Request(b *testing.B) {
 	var resp *Response
 	for b.Loop() {
 		resp, err = client.Get("http://example.com")
+		resp.Close()
+	}
+	require.NoError(b, err)
+}
+
+// Benchmark_Client_Request_RetryRedirects is the request shape that takes a backup.
+func Benchmark_Client_Request_RetryRedirects(b *testing.B) {
+	app, dial, start := createHelperServer(b)
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("hello world")
+	})
+
+	go start()
+
+	client := New().SetDial(dial).SetRetryConfig(&RetryConfig{MaxRetryCount: 2})
+
+	b.ReportAllocs()
+
+	var err error
+	var resp *Response
+	for b.Loop() {
+		resp, err = client.Get("http://example.com", Config{MaxRedirects: 3})
 		resp.Close()
 	}
 	require.NoError(b, err)

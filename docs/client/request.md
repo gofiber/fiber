@@ -1094,9 +1094,34 @@ Redirects are followed only for `GET`, `HEAD` and `QUERY` requests. Other method
 While redirects are followed:
 
 - After a `301`, `302` or `303` the request is repeated as a `GET` without its body; a `HEAD` stays a `HEAD`. A `307` or `308` keeps the method and the body.
-- When the target is on another host, the `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and `Cookie2` headers are dropped. The same host on any port, and its subdomains, keep them.
+- When the target is on another host, the `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and `Cookie2` headers are dropped. They are removed whatever case they are stored under. The names set with [SetRedirectSensitiveHeaders](#setredirectsensitiveheaders) on the request or the client are dropped with them. The same host on any port, and its subdomains, keep them.
 - A redirect from `https` to `http` fails with `ErrRedirectDowngrade`. Leave the limit at `0` to take such a hop yourself.
 - A redirect without a `Location` fails with `fasthttp.ErrMissingLocation`. A `Location` that cannot be parsed or names a `scheme://` other than `http` or `https` fails with `fasthttp.ErrorInvalidURI` without being requested, as does a request URL that cannot be parsed. A chain longer than the limit fails with `fasthttp.ErrTooManyRedirects`.
+- With a [retry configuration](./rest.md#setretryconfig), a chain that fails, on one of the errors above or on a hop that cannot be sent, is retried from the request as it was sent: the original URL, method, body and headers. A request with a streamed body cannot be copied, so its retry starts from the hop the failed attempt reached. A chain that succeeds is not repeated.
+
+## RedirectSensitiveHeaders
+
+**RedirectSensitiveHeaders** returns a copy of the header names set on the request with [SetRedirectSensitiveHeaders](#setredirectsensitiveheaders). The client's own list is not included.
+
+```go title="Signature"
+func (r *Request) RedirectSensitiveHeaders() []string
+```
+
+## SetRedirectSensitiveHeaders
+
+**SetRedirectSensitiveHeaders** names request headers that must not follow a redirect to another host, such as a credential of your own like `X-Api-Key`. When the target is on a host that is neither the original hostname (on any port) nor one of its subdomains, they are dropped with `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and `Cookie2`; every other header is forwarded, as `net/http` does. Names match case-insensitively, and surrounding whitespace and empty entries are ignored. The names are added to the client's own list ([SetRedirectSensitiveHeaders](./rest.md#setredirectsensitiveheaders)). The default is none, and it matters only while redirects are followed, see [SetMaxRedirects](#setmaxredirects). Calling it with no names clears the request's list.
+
+```go title="Signature"
+func (r *Request) SetRedirectSensitiveHeaders(names ...string) *Request
+```
+
+```go title="Example"
+resp, err := client.New().Get("https://api.example.com/items", client.Config{
+    Header:                   map[string]string{"X-Api-Key": os.Getenv("UPSTREAM_API_KEY")},
+    MaxRedirects:             3,
+    RedirectSensitiveHeaders: []string{"X-Api-Key"},
+})
+```
 
 ## DisablePathNormalizing
 

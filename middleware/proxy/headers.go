@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
@@ -113,11 +112,6 @@ func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte) {
 	for name := range headerlist.AllLines(values) {
 		fieldname.Del(h, name, false)
 	}
-}
-
-// stripCrossOriginHeaders removes the credential headers, whatever case they are stored under.
-func stripCrossOriginHeaders(req *fasthttp.Request) {
-	fieldname.DelSet(&req.Header, crosshost.SensitiveHeaders)
 }
 
 // realIPHeader is the field the proxy overwrites with the peer address Fiber

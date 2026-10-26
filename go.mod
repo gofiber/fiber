@@ -4,20 +4,20 @@ go 1.26.0
 
 require (
 	github.com/gofiber/schema v1.9.0
-	github.com/gofiber/utils/v2 v2.6.2
+	github.com/gofiber/utils/v2 v2.6.3
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-colorable v0.1.16
 	github.com/mattn/go-isatty v0.0.24
-	github.com/shamaton/msgpack/v3 v3.2.5
+	github.com/shamaton/msgpack/v3 v3.2.6
 	github.com/stretchr/testify v1.12.1
 	github.com/tinylib/msgp v1.6.5
 	github.com/valyala/bytebufferpool v1.0.0
-	github.com/valyala/fasthttp v1.76.0
+	github.com/valyala/fasthttp v1.77.0
 	golang.org/x/crypto v0.58.0
 )
 
 require (
-	github.com/molecule-man/go-brrr v1.3.0 // indirect
+	github.com/molecule-man/go-brrr v1.3.1 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 )
 

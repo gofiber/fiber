@@ -94,6 +94,10 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 // Unless AllowHTTPSDowngrade is enabled, redirects from an HTTPS origin
 // to a plaintext HTTP target are rejected with ErrRedirectDowngrade.
 //
+// When a redirect changes the origin (scheme, host or port), Authorization, Proxy-Authorization,
+// Proxy-Authenticate, WWW-Authenticate, Cookie and Cookie2 are dropped from that hop on. Other headers,
+// such as an X-Api-Key, are forwarded unless named in SecurityPolicy.RedirectSensitiveHeaders.
+//
 // SSRF note: every hop's host is validated against the policy, and when
 // AllowPrivateIPs is false each dial is re-validated by the guard on the
 // dispatching client — so per-hop redirects (including cross-host ones)

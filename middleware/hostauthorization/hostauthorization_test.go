@@ -153,6 +153,12 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 		{name: "empty port", input: "example.com:", expectOK: false},
 		{name: "signed port", input: "example.com:+80", expectOK: false},
 		{name: "port out of range", input: "example.com:65536", expectOK: false},
+		{name: "zero-padded port", input: "example.com:000080", expected: "example.com", expectOK: true},
+		{name: "long zero-padded max port", input: "example.com:000000000000065535", expected: "example.com", expectOK: true},
+		{name: "zero-padded port out of range", input: "example.com:00065536", expectOK: false},
+		{name: "ipv6 with zero-padded port", input: "[::1]:0080", expected: "::1", expectOK: true},
+		{name: "ipv6 with zero-padded port out of range", input: "[::1]:065536", expectOK: false},
+		{name: "port with a long non-zero digit run", input: "example.com:999999999999999999999999999999", expectOK: false},
 		{name: "userinfo style authority", input: "allowed.com:443@attacker.example", expectOK: false},
 		{name: "invalid port syntax", input: "allowed.com:http", expectOK: false},
 		{name: "bare ipv6", input: "::1", expectOK: false},
@@ -916,4 +922,37 @@ func FuzzNormalizeHost(f *testing.F) {
 	f.Fuzz(func(_ *testing.T, input string) {
 		_ = normalizeHost(input)
 	})
+}
+
+func Test_HostAuthorization_LeadingZeroPort(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		AllowedHosts: []string{"example.com"},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	for _, tc := range []struct {
+		host string
+		want int
+	}{
+		{"example.com:80", fiber.StatusOK},
+		{"example.com:080", fiber.StatusOK},
+		{"example.com:00080", fiber.StatusOK},
+		{"example.com:000080", fiber.StatusOK},
+		{"example.com:65536", fiber.StatusForbidden},
+		{"example.com:00065536", fiber.StatusForbidden},
+	} {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Host = tc.host
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, tc.want, resp.StatusCode, tc.host)
+	}
 }
