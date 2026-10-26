@@ -554,7 +554,7 @@ func (c *Client) RetryConfig() *RetryConfig
 
 ## SetRetryConfig
 
-Sets the retry configuration for the client. `RetryConfig` is an alias of `retry.Config` from the [Retry addon](../addon/retry.md), which describes its fields and defaults. Without a retry configuration, which is the default, Fiber does not retry failed requests. With one, a request that fails to send is retried with exponential backoff; an HTTP error status such as `500` is a response rather than a failure, so it is not retried.
+Sets the retry configuration for the client. `RetryConfig` is an alias of `retry.Config` from the [Retry addon](../addon/retry.md), which describes its fields and defaults. Without a retry configuration, which is the default, Fiber does not retry failed requests. With one, a request that fails to send is retried with exponential backoff; an HTTP error status such as `500` is a response rather than a failure, so it is not retried. A request that follows redirects starts each retry at its original URL, see [SetMaxRedirects](./request.md#setmaxredirects).
 
 ```go title="Signature"
 func (c *Client) SetRetryConfig(config *RetryConfig) *Client
