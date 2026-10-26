@@ -8893,6 +8893,63 @@ func Test_SendFile_ByteRange_IfRangeETag(t *testing.T) {
 	}
 }
 
+// A status set before SendFile, Download and MaxAge apply to the file, not to a
+// 206, 304 or 416 the file server answered with.
+func Test_SendFile_KeepsFileServerAnswer(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == windowsOS {
+		t.Skip("SendFile byte-range tests are flaky on Windows")
+	}
+
+	fixture := byteRangeFixture(t)
+	app := New()
+	app.Get("/status", func(c Ctx) error {
+		return c.Status(StatusCreated).SendFile(fixture, SendFile{ByteRange: true})
+	})
+	app.Get("/headers", func(c Ctx) error {
+		return c.SendFile(fixture, SendFile{ByteRange: true, Download: true, MaxAge: 60})
+	})
+
+	tests := []struct {
+		fields      map[string]string
+		name        string
+		path        string
+		wantStatus  int
+		wantHeaders bool // Content-Disposition and Cache-Control
+	}{
+		{name: "whole file", path: "/status", wantStatus: StatusCreated},
+		{name: "a range", path: "/status", fields: map[string]string{HeaderRange: "bytes=0-4"}, wantStatus: StatusPartialContent},
+		{name: "unsatisfiable", path: "/status", fields: map[string]string{HeaderRange: "bytes=100-200"}, wantStatus: StatusRequestedRangeNotSatisfiable},
+		{name: "not modified", path: "/status", fields: map[string]string{HeaderIfModifiedSince: byteRangeLastModified}, wantStatus: StatusNotModified},
+		{name: "a range, downloaded", path: "/headers", fields: map[string]string{HeaderRange: "bytes=0-4"}, wantStatus: StatusPartialContent, wantHeaders: true},
+		{name: "unsatisfiable, downloaded", path: "/headers", fields: map[string]string{HeaderRange: "bytes=100-200"}, wantStatus: StatusRequestedRangeNotSatisfiable},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(MethodGet, tc.path, http.NoBody)
+			for k, v := range tc.fields {
+				req.Header.Set(k, v)
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+
+			require.Equal(t, tc.wantStatus, resp.StatusCode)
+			if tc.wantHeaders {
+				require.Equal(t, "attachment", resp.Header.Get(HeaderContentDisposition))
+				require.Equal(t, "public, max-age=60", resp.Header.Get(HeaderCacheControl))
+			} else {
+				require.Empty(t, resp.Header.Get(HeaderContentDisposition))
+				require.Empty(t, resp.Header.Get(HeaderCacheControl))
+			}
+		})
+	}
+}
+
 func Benchmark_Ctx_SendFile(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})

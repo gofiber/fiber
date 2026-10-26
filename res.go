@@ -1373,11 +1373,6 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	// Serve file
 	fsHandler(r.c.fasthttp)
 
-	// Sets the response Content-Disposition header to attachment if the Download option is true
-	if cfg.Download {
-		r.Attachment()
-	}
-
 	// Get the status code which is set by fasthttp
 	fsStatus := response.StatusCode()
 
@@ -1403,14 +1398,20 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
 	}
 
-	// Set the status code set by the user if it is different from the fasthttp status code and 200
-	if status != fsStatus && status != StatusOK {
+	// Only a served file is an attachment; the header must not leak onto an error such as 416.
+	if cfg.Download && fsStatus >= StatusOK && fsStatus < StatusMultipleChoices {
+		r.Attachment()
+	}
+
+	// A status set before SendFile replaces the file server's 200; a 206, 304 or 416 describes the body sent.
+	if status != StatusOK && fsStatus == StatusOK {
 		r.Status(status)
 	}
 
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
-		if cacheControlValue != "" {
+		// An error response such as 416 must not be cached under the file's MaxAge.
+		if cacheControlValue != "" && fsStatus < StatusBadRequest {
 			response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 
