@@ -616,7 +616,7 @@ func (d *delayedTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Resp
 	return d.Do(req, resp)
 }
 
-func (d *delayedTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+func (d *delayedTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ *redirectOptions) error {
 	return d.Do(req, resp)
 }
 
@@ -680,7 +680,7 @@ func (b *blockingErrTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.
 	return b.Do(req, resp)
 }
 
-func (b *blockingErrTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+func (b *blockingErrTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ *redirectOptions) error {
 	return b.Do(req, resp)
 }
 
@@ -728,7 +728,7 @@ func (p *panicTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Respon
 	return p.Do(req, resp)
 }
 
-func (p *panicTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+func (p *panicTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ *redirectOptions) error {
 	return p.Do(req, resp)
 }
 
@@ -754,6 +754,192 @@ func (*panicTransport) StreamResponseBody() bool {
 }
 
 func (*panicTransport) SetStreamResponseBody(_ bool) {
+}
+
+type namesTransport struct {
+	*delayedTransport
+
+	proceed chan struct{}
+	got     []string // written before finished closes
+}
+
+func newNamesTransport() *namesTransport {
+	return &namesTransport{delayedTransport: newDelayedTransport(0), proceed: make(chan struct{})}
+}
+
+func (n *namesTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
+	<-n.proceed
+	n.got = opts.sensitiveHeaders.List()
+	return n.delayedTransport.DoRedirects(req, resp, opts)
+}
+
+func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
+	t.Parallel()
+
+	client := New().SetRedirectSensitiveHeaders("X-Client")
+	transport := newNamesTransport()
+	client.transport = transport
+
+	req := AcquireRequest()
+	defer ReleaseRequest(req)
+	req.SetURL("http://example.com/redirect-names")
+	req.SetMaxRedirects(3)
+	req.SetRedirectSensitiveHeaders("X-Request")
+
+	// Canceled first, so execute returns without waiting on the transport
+	// and a late read still races the writes below.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	resp, err := newCore().execute(ctx, client, req)
+	require.Nil(t, resp)
+	require.ErrorIs(t, err, ErrTimeoutOrCancel)
+
+	req.Reset()
+	req.SetRedirectSensitiveHeaders("X-Reused")
+	client.SetRedirectSensitiveHeaders("X-Reconfigured")
+	close(transport.proceed)
+
+	select {
+	case <-transport.finished:
+	case <-time.After(time.Second):
+		t.Fatal("transport Do did not finish")
+	}
+	require.ElementsMatch(t, []string{"X-Client", "X-Request"}, transport.got)
+}
+
+// rewritingTransport rewrites the request as a cross-host redirect would, then fails its first attempt.
+type rewritingTransport struct {
+	*delayedTransport
+
+	starts  []string // target and X-Api-Key of each attempt
+	streams []bool
+	names   [][]string
+}
+
+func (r *rewritingTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
+	r.starts = append(r.starts, req.URI().String()+"|"+string(req.Header.Peek("X-Api-Key")))
+	r.streams = append(r.streams, req.IsBodyStream())
+	r.names = append(r.names, opts.sensitiveHeaders.List())
+	if len(r.starts) > 1 {
+		req.SetRequestURI("http://final.example/done")
+		resp.SetStatusCode(fasthttp.StatusOK)
+		return nil
+	}
+	req.SetRequestURI("http://attacker.example/collect")
+	req.Header.Del("X-Api-Key")
+	return errors.New("connection reset")
+}
+
+func Test_Core_RetryRestartsRedirects(t *testing.T) {
+	t.Parallel()
+
+	// run returns the transport and the last hop's host, which a cookie jar reads after the chain.
+	run := func(t *testing.T, prepare func(req *Request)) (*rewritingTransport, string) {
+		t.Helper()
+
+		transport := &rewritingTransport{delayedTransport: newDelayedTransport(0)}
+		client := New().
+			SetRetryConfig(&RetryConfig{InitialInterval: time.Millisecond, MaxBackoffTime: 2 * time.Millisecond, MaxRetryCount: 2}).
+			SetCookieJar(AcquireCookieJar()).
+			SetRedirectSensitiveHeaders("X-Client")
+		client.transport = transport
+
+		req := client.R().SetHeader("X-Api-Key", "key").SetMaxRedirects(3).SetRedirectSensitiveHeaders("X-Request")
+		prepare(req)
+		resp, err := req.Get("http://example.com/start")
+		require.NoError(t, err)
+		host := string(resp.respondedHost)
+		resp.Close()
+		return transport, host
+	}
+
+	t.Run("from the request as it was sent", func(t *testing.T) {
+		t.Parallel()
+
+		transport, host := run(t, func(*Request) {})
+		require.Equal(t, []string{"http://example.com/start|key", "http://example.com/start|key"}, transport.starts)
+		require.Equal(t, "final.example", host)
+
+		require.Len(t, transport.names, 2)
+		for _, names := range transport.names {
+			require.ElementsMatch(t, []string{"X-Client", "X-Request"}, names)
+		}
+	})
+
+	t.Run("a streamed body is left alone", func(t *testing.T) {
+		t.Parallel()
+
+		transport, _ := run(t, func(req *Request) {
+			req.RawRequest.SetBodyStream(bytes.NewBufferString("payload"), len("payload"))
+		})
+		require.Equal(t, []bool{true, true}, transport.streams)
+	})
+
+	t.Run("a request that follows no redirects is sent as is", func(t *testing.T) {
+		t.Parallel()
+
+		transport := &rewritingTransport{delayedTransport: newDelayedTransport(0)}
+		client := New().SetRetryConfig(&RetryConfig{MaxRetryCount: 2})
+		client.transport = transport
+
+		resp, err := client.Get("http://example.com/start")
+		require.NoError(t, err)
+		resp.Close()
+		require.Empty(t, transport.starts)
+	})
+}
+
+func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
+	t.Parallel()
+
+	server := startRedirectServer(t, func(c fiber.Ctx) error {
+		return c.SendString(c.Get("X-Api-Key"))
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+
+	const workers, rounds = 4, 25
+	bodies := make(chan string, workers*rounds)
+	errs := make(chan error, workers)
+
+	// Workers only report; the assertions run on the test goroutine.
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			for range rounds {
+				resp, err := client.R().
+					SetHeader("X-Api-Key", "key").
+					SetMaxRedirects(3).
+					SetRedirectSensitiveHeaders("X-Request").
+					Get("http://example.com/start")
+				if err != nil {
+					errs <- err
+					return
+				}
+				bodies <- resp.String()
+				resp.Close()
+			}
+		})
+		wg.Go(func() {
+			for range rounds {
+				client.SetRedirectSensitiveHeaders("X-Api-Key")
+				client.RedirectSensitiveHeaders()
+				client.SetRedirectSensitiveHeaders()
+			}
+		})
+	}
+	wg.Wait()
+	close(bodies)
+	close(errs)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	for body := range bodies {
+		require.Contains(t, []string{"", "key"}, body)
+	}
 }
 
 func Test_Core_RequestBodyStream(t *testing.T) {

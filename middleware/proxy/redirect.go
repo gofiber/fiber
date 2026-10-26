@@ -4,6 +4,7 @@ import (
 	"net/url"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
 	"github.com/gofiber/utils/v2"
@@ -81,7 +82,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 				redirectRequest(hop)
 			}
 			if crossOrigin {
-				stripCrossOriginHeaders(hop)
+				crosshost.Strip(&hop.Header, crosshost.NewHeaderNames(policy.RedirectSensitiveHeaders))
 			}
 		}
 		currentURL = nextURL

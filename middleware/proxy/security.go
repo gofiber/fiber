@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync/atomic"
 
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -71,6 +72,11 @@ type SecurityPolicy struct {
 	// AllowedSchemes restricts the URL schemes accepted as upstream
 	// targets. Empty defaults to []string{schemeHTTP, schemeHTTPS}.
 	AllowedSchemes []string
+
+	// RedirectSensitiveHeaders lists request headers, beyond the built-in set, that DoRedirects drops when
+	// a redirect changes the origin (scheme, host or port), such as an X-Api-Key of your own. Names match
+	// case-insensitively. Default: nil.
+	RedirectSensitiveHeaders []string
 
 	// AllowPrivateIPs allows upstream hosts to resolve to loopback, private (RFC 1918), link-local,
 	// multicast, unspecified, CGNAT (RFC 6598) or other special-use addresses: 0.0.0.0/8, 192.0.0.0/24
@@ -144,12 +150,13 @@ type SecurityPolicy struct {
 // them.
 func DefaultSecurityPolicy() SecurityPolicy {
 	return SecurityPolicy{
-		AllowedSchemes:        append([]string(nil), defaultAllowedSchemes...),
-		AllowPrivateIPs:       false,
-		AllowHTTPSDowngrade:   false,
-		KeepHopByHopHeaders:   false,
-		AllowAmbiguousSlashes: false,
-		AllowPathParameters:   false,
+		AllowedSchemes:           append([]string(nil), defaultAllowedSchemes...),
+		RedirectSensitiveHeaders: nil,
+		AllowPrivateIPs:          false,
+		AllowHTTPSDowngrade:      false,
+		KeepHopByHopHeaders:      false,
+		AllowAmbiguousSlashes:    false,
+		AllowPathParameters:      false,
 	}
 }
 
@@ -157,11 +164,11 @@ func DefaultSecurityPolicy() SecurityPolicy {
 // non-Balancer proxy request. Reads are lock-free via atomic.Pointer.
 // The pointed-to SecurityPolicy is treated as immutable once installed:
 // WithSecurityPolicy is the only writer, and it stores a value whose
-// AllowedSchemes slice has been deep-copied to defend against later
+// slices have been deep-copied to defend against later
 // mutation by the caller.
 var activePolicy atomic.Pointer[SecurityPolicy]
 
-// normalizePolicy returns a copy of policy whose AllowedSchemes slice is
+// normalizePolicy returns a copy of policy whose slices are
 // always freshly allocated. This guarantees callers cannot mutate the
 // global allowlist out from under a balancer (or another goroutine) by
 // retaining a reference to the slice they passed in — including the
@@ -175,6 +182,7 @@ func normalizePolicy(policy SecurityPolicy) SecurityPolicy {
 	} else {
 		policy.AllowedSchemes = append([]string(nil), policy.AllowedSchemes...)
 	}
+	policy.RedirectSensitiveHeaders = crosshost.NewHeaderNames(policy.RedirectSensitiveHeaders).List()
 	return policy
 }
 

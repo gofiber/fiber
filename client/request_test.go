@@ -1691,6 +1691,109 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	})
 }
 
+func Test_Request_RedirectSensitiveHeaders(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the list", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest()
+		defer ReleaseRequest(req)
+		requireNameList(t, func(names ...string) { req.SetRedirectSensitiveHeaders(names...) }, req.RedirectSensitiveHeaders)
+		require.Same(t, req, req.SetRedirectSensitiveHeaders())
+	})
+
+	t.Run("Reset clears the list", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest()
+		defer ReleaseRequest(req)
+		req.SetRedirectSensitiveHeaders("X-Api-Key")
+
+		req.Reset()
+		require.Nil(t, req.RedirectSensitiveHeaders())
+	})
+}
+
+func Test_Request_RedirectSensitiveHeaders_EndToEnd(t *testing.T) {
+	t.Parallel()
+
+	server := startRedirectServer(t, func(c fiber.Ctx) error {
+		return c.SendString(c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token") + "|" + c.Get("X-Trace-Id"))
+	})
+	// Not a defer: the parallel subtests outlive this function.
+	t.Cleanup(server.stop)
+
+	headers := map[string]string{"X-Api-Key": "key", "X-Auth-Token": "tok", "X-Trace-Id": "trace"}
+
+	for _, tc := range []struct {
+		prepare func(client *Client)
+		send    func(client *Client, url string) (*Response, error)
+		name    string
+		want    string
+	}{
+		{
+			name: "nothing listed forwards every header",
+			send: func(client *Client, url string) (*Response, error) {
+				return client.Get(url, Config{Header: headers, MaxRedirects: 5})
+			},
+			want: "key|tok|trace",
+		},
+		{
+			name: "Config",
+			send: func(client *Client, url string) (*Response, error) {
+				return client.Get(url, Config{Header: headers, MaxRedirects: 5, RedirectSensitiveHeaders: []string{"X-Api-Key"}})
+			},
+			want: "|tok|trace",
+		},
+		{
+			name: "Request",
+			send: func(client *Client, url string) (*Response, error) {
+				return client.R().SetHeaders(headers).SetMaxRedirects(5).SetRedirectSensitiveHeaders("x-api-key").Get(url)
+			},
+			want: "|tok|trace",
+		},
+		{
+			name:    "Client",
+			prepare: func(client *Client) { client.SetHeaders(headers).SetRedirectSensitiveHeaders("X-Api-Key") },
+			send: func(client *Client, url string) (*Response, error) {
+				return client.Get(url, Config{MaxRedirects: 5})
+			},
+			want: "|tok|trace",
+		},
+		{
+			name:    "the client's names and the request's are added together",
+			prepare: func(client *Client) { client.SetHeaders(headers).SetRedirectSensitiveHeaders("X-Api-Key") },
+			send: func(client *Client, url string) (*Response, error) {
+				return client.R().SetMaxRedirects(5).SetRedirectSensitiveHeaders("X-Auth-Token").Get(url)
+			},
+			want: "||trace",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := New().SetDial(server.dial())
+			if tc.prepare != nil {
+				tc.prepare(client)
+			}
+
+			same, err := tc.send(client, "http://example.com/same-host")
+			require.NoError(t, err)
+			defer same.Close()
+			require.Equal(t, "key|tok|trace", same.String())
+
+			resp, err := tc.send(client, "http://example.com/start")
+			require.NoError(t, err)
+			defer resp.Close()
+			require.Equal(t, fiber.StatusOK, resp.StatusCode())
+			require.Equal(t, tc.want, resp.String())
+
+			require.Equal(t, "key", string(resp.request.RawRequest.Header.Peek("X-Api-Key")))
+		})
+	}
+}
+
 func Test_Request_Query_Redirect(t *testing.T) {
 	t.Parallel()
 
