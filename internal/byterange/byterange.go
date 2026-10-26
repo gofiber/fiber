@@ -31,7 +31,7 @@ const (
 type verdict int
 
 const (
-	pass    verdict = iota // as is; the file server rejects what it cannot parse
+	pass    verdict = iota // as is; the file server decides
 	rewrite                // spelled the way the file server parses it
 	ignore                 // without the field, so the whole file is sent
 )
@@ -54,8 +54,7 @@ func classify(dst, field []byte) plan {
 		return plan{verdict: ignore}
 	}
 
-	// The file server answers one range. Several are ignored, which §14.2 allows,
-	// rather than refused with a 416.
+	// The file server answers one range; several are ignored, which §14.2 allows.
 	var spec []byte
 	for set != nil {
 		var element []byte
@@ -171,9 +170,12 @@ func serveConditional(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler,
 	case fasthttp.StatusRequestedRangeNotSatisfiable:
 		// The 416 has no validators. The whole file has, and is the answer when
 		// If-Range does not match.
+		contentRange := utils.CopyBytes(ctx.Response.Header.Peek(fasthttp.HeaderContentRange))
 		serveWhole(ctx, handler, callerHeader)
 		if ctx.Response.StatusCode() == fasthttp.StatusOK && ifRangeMatches(ifRange, &ctx.Response, now()) {
 			ctx.Error("Range Not Satisfiable", fasthttp.StatusRequestedRangeNotSatisfiable)
+			// Error wipes the header, and the whole file may be compressed: keep the file server's length.
+			ctx.Response.Header.SetBytesV(fasthttp.HeaderContentRange, contentRange)
 		}
 	}
 }

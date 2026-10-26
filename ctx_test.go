@@ -8893,6 +8893,75 @@ func Test_SendFile_ByteRange_IfRangeETag(t *testing.T) {
 	}
 }
 
+// A status set before SendFile replaces only the file server's 200, and an error
+// page goes out whole; Download and MaxAge follow the status that is sent.
+func Test_SendFile_KeepsFileServerAnswer(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == windowsOS {
+		t.Skip("SendFile byte-range tests are flaky on Windows")
+	}
+
+	fixture := byteRangeFixture(t)
+	serve := func(status int, cfg SendFile) Handler {
+		return func(c Ctx) error {
+			err := c.Status(status).SendFile(fixture, cfg)
+			c.Set("X-Range", c.Get(HeaderRange))
+			return err
+		}
+	}
+	app := New()
+	app.Get("/status", serve(StatusCreated, SendFile{ByteRange: true}))
+	app.Get("/headers", serve(StatusOK, SendFile{ByteRange: true, Download: true, MaxAge: 60}))
+	app.Get("/error", serve(StatusInternalServerError, SendFile{ByteRange: true, Download: true, MaxAge: 60}))
+
+	notModified := map[string]string{HeaderIfModifiedSince: byteRangeLastModified}
+	inRange := map[string]string{HeaderRange: "bytes=0-4"}
+	unsatisfiable := map[string]string{HeaderRange: "bytes=100-200"}
+
+	tests := []struct {
+		fields          map[string]string
+		name            string
+		path            string
+		wantStatus      int
+		wantLength      int
+		wantAttachment  bool
+		wantCacheHeader bool
+	}{
+		{name: "whole file", path: "/status", wantStatus: StatusCreated, wantLength: 20},
+		{name: "a range", path: "/status", fields: inRange, wantStatus: StatusPartialContent, wantLength: 5},
+		{name: "unsatisfiable", path: "/status", fields: unsatisfiable, wantStatus: StatusRequestedRangeNotSatisfiable},
+		{name: "not modified", path: "/status", fields: notModified, wantStatus: StatusNotModified},
+		{name: "a range, downloaded", path: "/headers", fields: inRange, wantStatus: StatusPartialContent, wantLength: 5, wantAttachment: true, wantCacheHeader: true},
+		{name: "not modified, downloaded", path: "/headers", fields: notModified, wantStatus: StatusNotModified, wantCacheHeader: true},
+		{name: "unsatisfiable, downloaded", path: "/headers", fields: unsatisfiable, wantStatus: StatusRequestedRangeNotSatisfiable},
+		{name: "error page, a range", path: "/error", fields: inRange, wantStatus: StatusInternalServerError, wantLength: 20},
+		{name: "error page, not modified", path: "/error", fields: notModified, wantStatus: StatusInternalServerError, wantLength: 20},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(MethodGet, tc.path, http.NoBody)
+			for k, v := range tc.fields {
+				req.Header.Set(k, v)
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+
+			require.Equal(t, tc.wantStatus, resp.StatusCode)
+			if tc.wantLength > 0 {
+				require.Equal(t, strconv.Itoa(tc.wantLength), resp.Header.Get(HeaderContentLength))
+			}
+			require.Equal(t, tc.wantAttachment, resp.Header.Get(HeaderContentDisposition) == "attachment")
+			require.Equal(t, tc.wantCacheHeader, resp.Header.Get(HeaderCacheControl) == "public, max-age=60")
+			require.Equal(t, tc.fields[HeaderRange], resp.Header.Get("X-Range"))
+		})
+	}
+}
+
 func Benchmark_Ctx_SendFile(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})

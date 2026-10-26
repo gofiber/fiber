@@ -68,6 +68,12 @@ type Config struct {
 	//
 	// Optional. Default: false.
 	Download bool `json:"download"`
+
+	// When set to true, symbolic links that leave the root, and absolute ones,
+	// are followed. Without FS only; leave it off unless such links are intended.
+	//
+	// Optional. Default: false.
+	AllowSymlinksOutsideRoot bool `json:"allow_symlinks_outside_root"`
 }
 
 // ConfigDefault is the default config

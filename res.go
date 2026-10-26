@@ -8,8 +8,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"os"
-	pathpkg "path"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -21,7 +19,6 @@ import (
 	"github.com/gofiber/fiber/v3/internal/byterange"
 	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
-	"github.com/gofiber/fiber/v3/internal/fspath"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/quotedstring"
 	"github.com/gofiber/utils/v2"
@@ -1369,34 +1366,30 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	request.SetRequestURIBytes(uriBuf.B)
 	bytebufferpool.Put(uriBuf)
 
-	var (
-		sendFileSize    int64
-		hasSendFileSize bool
-	)
-
-	if cfg.ByteRange && len(request.Header.Peek(HeaderRange)) > 0 {
-		sizePath := file
-		if cfg.FS != nil {
-			sizePath = filepath.ToSlash(filename)
-		}
-
-		if size, err := sendFileContentLength(sizePath, cfg); err == nil {
-			sendFileSize = size
-			hasSendFileSize = true
-		}
-	}
-
 	// Save status code
 	response := &r.c.fasthttp.Response
 	status := response.StatusCode()
 
+	// Ranges and preconditions apply only to a 2xx (RFC 9110 §13.2.1, §14.2), so a
+	// page sent with an error status goes out whole.
+	if status >= StatusMultipleChoices {
+		fields := [...]string{HeaderRange, HeaderIfRange, HeaderIfModifiedSince}
+		var values [len(fields)][]byte
+		for i, name := range fields {
+			values[i] = utils.CopyBytes(request.Header.Peek(name))
+			request.Header.Del(name)
+		}
+		defer func() {
+			for i, name := range fields {
+				if len(values[i]) > 0 {
+					request.Header.SetBytesV(name, values[i])
+				}
+			}
+		}()
+	}
+
 	// Serve file
 	fsHandler(r.c.fasthttp)
-
-	// Sets the response Content-Disposition header to attachment if the Download option is true
-	if cfg.Download {
-		r.Attachment()
-	}
 
 	// Get the status code which is set by fasthttp
 	fsStatus := response.StatusCode()
@@ -1423,18 +1416,21 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
 	}
 
-	// Set the status code set by the user if it is different from the fasthttp status code and 200
-	if status != fsStatus && status != StatusOK {
+	// A status set before SendFile replaces the file server's 200; a 206, 304 or 416 describes the body sent.
+	if status != StatusOK && fsStatus == StatusOK {
 		r.Status(status)
+	}
+	finalStatus := response.StatusCode()
+
+	// Only a served file is an attachment; the header must not leak onto an error such as 416.
+	if cfg.Download && finalStatus >= StatusOK && finalStatus < StatusMultipleChoices {
+		r.Attachment()
 	}
 
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
-		if cfg.ByteRange && hasSendFileSize && response.StatusCode() == StatusRequestedRangeNotSatisfiable && len(response.Header.Peek(HeaderContentRange)) == 0 {
-			response.Header.Set(HeaderContentRange, "bytes */"+utils.FormatInt(sendFileSize))
-		}
-
-		if cacheControlValue != "" {
+		// An error response such as 416 must not be cached under the file's MaxAge.
+		if cacheControlValue != "" && finalStatus < StatusBadRequest {
 			response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 
@@ -1442,40 +1438,6 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	}
 
 	return nil
-}
-
-// sendFileContentLength stats the file the file handler opens for path: in
-// both branches the name is cleaned as fasthttp's Path() normalization cleans
-// the request URI that carries it. A directory is served by its index file,
-// so that is the file stated.
-func sendFileContentLength(path string, cfg SendFile) (int64, error) {
-	if cfg.FS != nil {
-		name := fspath.FSName(path)
-		if name == "" {
-			name = "."
-		}
-		info, err := fs.Stat(cfg.FS, name)
-		if err == nil && info.IsDir() {
-			name = pathpkg.Join(name, sendFileIndexName)
-			info, err = fs.Stat(cfg.FS, name)
-		}
-		if err != nil {
-			return 0, fmt.Errorf("stat %q: %w", name, err)
-		}
-		return info.Size(), nil
-	}
-
-	name := fspath.OSName(path)
-	info, err := os.Stat(name)
-	if err == nil && info.IsDir() {
-		name = filepath.Join(name, sendFileIndexName)
-		info, err = os.Stat(name)
-	}
-	if err != nil {
-		return 0, fmt.Errorf("stat %q: %w", name, err)
-	}
-
-	return info.Size(), nil
 }
 
 // NoContent replies 204 No Content. SendStatus already discards the body; this
