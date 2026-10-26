@@ -180,18 +180,19 @@ func New(root string, cfg ...Config) fiber.Handler {
 		}
 
 		files := &fasthttp.FS{
-			Root:                   fsRoot,
-			FS:                     config.FS,
-			AllowEmptyRoot:         true,
-			GenerateIndexPages:     config.Browse,
-			AcceptByteRange:        config.ByteRange,
-			Compress:               config.Compress,
-			CompressBrotli:         config.Compress, // Brotli compression won't work without this
-			CompressZstd:           config.Compress, // Zstd compression won't work without this
-			CompressedFileSuffixes: compressedFileSuffixes,
-			CacheDuration:          config.CacheDuration,
-			SkipCache:              config.CacheDuration < 0,
-			IndexNames:             config.IndexNames,
+			Root:                     fsRoot,
+			FS:                       config.FS,
+			AllowEmptyRoot:           true,
+			AllowSymlinksOutsideRoot: config.AllowSymlinksOutsideRoot,
+			GenerateIndexPages:       config.Browse,
+			AcceptByteRange:          config.ByteRange,
+			Compress:                 config.Compress,
+			CompressBrotli:           config.Compress, // Brotli compression won't work without this
+			CompressZstd:             config.Compress, // Zstd compression won't work without this
+			CompressedFileSuffixes:   compressedFileSuffixes,
+			CacheDuration:            config.CacheDuration,
+			SkipCache:                config.CacheDuration < 0,
+			IndexNames:               config.IndexNames,
 			PathNotFound: func(fctx *fasthttp.RequestCtx) {
 				fctx.Response.SetStatusCode(fiber.StatusNotFound)
 			},

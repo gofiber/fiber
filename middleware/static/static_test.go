@@ -2442,3 +2442,38 @@ func Test_Static_NonMountRoutes_Served(t *testing.T) {
 		require.Equal(t, want, string(body), "target=%s", target)
 	}
 }
+
+func Test_Static_Symlinks(t *testing.T) {
+	t.Parallel()
+
+	outside := t.TempDir()
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "shared.txt"), []byte("shared"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "local.txt"), []byte("local"), 0o600))
+	for link, target := range map[string]string{
+		"outside.txt":  filepath.Join(outside, "shared.txt"),
+		"absolute.txt": filepath.Join(root, "local.txt"),
+		"relative.txt": "local.txt",
+	} {
+		if err := os.Symlink(target, filepath.Join(root, link)); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+	}
+
+	app := fiber.New()
+	app.Get("/confined/*", New(root))
+	app.Get("/open/*", New(root, Config{AllowSymlinksOutsideRoot: true}))
+
+	for path, want := range map[string]int{
+		"/confined/relative.txt": fiber.StatusOK,
+		"/confined/absolute.txt": fiber.StatusNotFound,
+		"/confined/outside.txt":  fiber.StatusNotFound,
+		"/open/absolute.txt":     fiber.StatusOK,
+		"/open/outside.txt":      fiber.StatusOK,
+	} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, want, resp.StatusCode, path)
+		require.NoError(t, resp.Body.Close())
+	}
+}
