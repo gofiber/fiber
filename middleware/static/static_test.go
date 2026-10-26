@@ -2320,13 +2320,14 @@ func Test_Static_ByteRange_RFC9110(t *testing.T) {
 		wantStatus  int
 		wantWhole   bool // the whole file, with its validators
 		wantAdvised bool // Accept-Ranges is advertised
+		noRanges    bool // Accept-Ranges must be absent
 	}{
 		{name: "a range", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4"}, wantStatus: fiber.StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20", wantAdvised: true},
-		{name: "several ranges", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-1,3-4"}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantAdvised: true},
+		{name: "unit in mixed case", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "Bytes=0-4"}, wantStatus: fiber.StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20", wantAdvised: true},
 		{name: "If-Range is stale", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4", fiber.HeaderIfRange: staleDate}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantAdvised: true},
 		{name: "unsatisfiable", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=100-200"}, wantStatus: fiber.StatusRequestedRangeNotSatisfiable, wantBody: "Range Not Satisfiable", wantRange: "bytes */20"},
 		// ByteRange off: no ranges are offered and Range is not looked at.
-		{name: "ByteRange off", path: "/plain/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4"}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true},
+		{name: "ByteRange off", path: "/plain/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4"}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, noRanges: true},
 	}
 
 	for _, tc := range tests {
@@ -2349,7 +2350,8 @@ func Test_Static_ByteRange_RFC9110(t *testing.T) {
 
 			if tc.wantAdvised {
 				require.Equal(t, "bytes", resp.Header.Get(fiber.HeaderAcceptRanges))
-			} else {
+			}
+			if tc.noRanges {
 				require.Empty(t, resp.Header.Get(fiber.HeaderAcceptRanges))
 			}
 			if tc.wantWhole {

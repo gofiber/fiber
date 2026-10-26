@@ -31,7 +31,7 @@ const (
 type verdict int
 
 const (
-	pass    verdict = iota // as is; the file server rejects what it cannot parse
+	pass    verdict = iota // as is; the file server decides
 	rewrite                // spelled the way the file server parses it
 	ignore                 // without the field, so the whole file is sent
 )
@@ -54,8 +54,7 @@ func classify(dst, field []byte) plan {
 		return plan{verdict: ignore}
 	}
 
-	// The file server answers one range. Several are ignored, which §14.2 allows,
-	// rather than refused with a 416.
+	// The file server answers one range; several are ignored, which §14.2 allows.
 	var spec []byte
 	for set != nil {
 		var element []byte
