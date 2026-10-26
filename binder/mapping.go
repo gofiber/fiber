@@ -813,15 +813,24 @@ func (d *bindData) bindAll(aliasTag string, out any, key string, values []string
 // the key names a slice of out's.
 func (d *bindData) split(aliasTag string, out any, key, value string, enableSplitting bool) { //nolint:revive // the flag is the binder's setting
 	if enableSplitting && strings.IndexByte(value, ',') >= 0 && equalFieldType(out, reflect.Slice, key, aliasTag) {
-		// A header value is an RFC 9110 list: its elements carry no surrounding OWS.
-		if aliasTag == bindingHeader || aliasTag == bindingRespHeader {
-			for v := range strings.SplitSeq(value, ",") {
-				d.add(key, headerlist.TrimOWS(v))
-			}
-			return
-		}
+		// A header value is a comma-separated list (RFC 9110 Section 5.6.1): its
+		// elements carry no surrounding OWS, and empty ones are ignored. Quoted
+		// strings are not parsed, so a comma inside one still splits.
+		list := aliasTag == bindingHeader || aliasTag == bindingRespHeader
+		added := false
 		for v := range strings.SplitSeq(value, ",") {
+			if list {
+				if v = headerlist.TrimOWS(v); v == "" {
+					continue
+				}
+			}
 			d.add(key, v)
+			added = true
+		}
+		if !added {
+			// Only empty elements: bind it as an empty value, so that the header
+			// still replaces what was bound.
+			d.add(key, "")
 		}
 		return
 	}

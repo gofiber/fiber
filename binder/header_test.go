@@ -158,7 +158,7 @@ func Test_HeaderBinder_Bind_Splitting_TrimsListWhitespace(t *testing.T) {
 	require.Equal(t, []int{1, 2, 3}, user.IDs)
 }
 
-func Test_HeaderBinder_Bind_Splitting_KeepsEmptyListElements(t *testing.T) {
+func Test_HeaderBinder_Bind_Splitting_SkipsEmptyListElements(t *testing.T) {
 	t.Parallel()
 
 	b := &HeaderBinding{
@@ -166,7 +166,9 @@ func Test_HeaderBinder_Bind_Splitting_KeepsEmptyListElements(t *testing.T) {
 	}
 
 	type User struct {
-		Roles []string `header:"X-Roles"`
+		Roles  []string `header:"X-Roles"`
+		IDs    []int    `header:"X-Ids"`
+		Counts []int    `header:"X-Counts"`
 	}
 
 	req := fasthttp.AcquireRequest()
@@ -174,14 +176,22 @@ func Test_HeaderBinder_Bind_Splitting_KeepsEmptyListElements(t *testing.T) {
 		fasthttp.ReleaseRequest(req)
 	})
 
-	// A present header replaces what was bound, even when its elements are all empty.
+	// Empty elements are ignored (RFC 9110 Section 5.6.1), so a trailing or
+	// doubled comma adds no zero value.
+	req.Header.Set("X-Ids", "1, 2,")
+	req.Header.Set("X-Counts", "3,, 4")
+	// A present header still replaces what was bound: one made only of empty
+	// elements binds as an empty value.
 	req.Header.Set("X-Roles", " , ")
 
 	user := User{Roles: []string{"stale"}}
 	require.NoError(t, b.Bind(req, &user))
-	require.Equal(t, []string{"", ""}, user.Roles)
+	require.Equal(t, []int{1, 2}, user.IDs)
+	require.Equal(t, []int{3, 4}, user.Counts)
+	require.Equal(t, []string{""}, user.Roles)
 
-	roles := map[string][]string{"X-Roles": {"stale"}}
-	require.NoError(t, b.Bind(req, &roles))
-	require.Equal(t, []string{"", ""}, roles["X-Roles"])
+	values := map[string][]string{"X-Roles": {"stale"}}
+	require.NoError(t, b.Bind(req, &values))
+	require.Equal(t, []string{"1", "2"}, values["X-Ids"])
+	require.Equal(t, []string{""}, values["X-Roles"])
 }

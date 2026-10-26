@@ -1001,6 +1001,43 @@ func Test_Bind_StringMap_KeepsLastValue(t *testing.T) {
 	}
 }
 
+func Test_Bind_Splitting_KeepsElementWhitespace(t *testing.T) {
+	t.Parallel()
+
+	// Only the header binders read a value as an HTTP list and trim its
+	// elements; these keep each element as written.
+	type Data struct {
+		IDs []string `query:"ids" form:"ids" cookie:"ids"`
+	}
+
+	binders := []struct {
+		bind func(out any) error
+		name string
+	}{
+		{name: "query", bind: func(out any) error {
+			req := &fasthttp.Request{}
+			req.URI().SetQueryString("ids=a,%20b")
+			return (&QueryBinding{EnableSplitting: true}).Bind(req, out)
+		}},
+		{name: "form", bind: func(out any) error {
+			req := &fasthttp.Request{}
+			req.Header.SetContentType("application/x-www-form-urlencoded")
+			req.SetBodyString("ids=a,%20b")
+			return (&FormBinding{EnableSplitting: true}).Bind(req, out)
+		}},
+		{name: "cookie", bind: func(out any) error {
+			req := &fasthttp.Request{}
+			req.Header.Set(fasthttp.HeaderCookie, "ids=a, b")
+			return (&CookieBinding{EnableSplitting: true}).Bind(req, out)
+		}},
+	}
+	for _, b := range binders {
+		var data Data
+		require.NoError(t, b.bind(&data), b.name)
+		require.Equal(t, []string{"a", " b"}, data.IDs, b.name)
+	}
+}
+
 // Test_Bind_StringMap_Destinations pins how a bind into a map[string]string
 // treats its destination, as parseToMap and parse do: a map given by value is
 // filled, a nil one given by value is an error, a pointer to a nil map gets

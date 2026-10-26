@@ -985,6 +985,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 - Support for unified binding (`Bind().All()`) with defined precedence order: (URI -> Body -> Query -> Headers -> Cookies). A struct can customize the order for all its fields with one `binding_source` tag on any top-level field. [Learn more](./api/bind.md#all).
 - Support MsgPack binding for request body.
 - Support `map[string]T` struct fields in query and form binding: `attributes[color]=red` or `attributes.color=red` fills `Attributes map[string]string`, and maps of slices keep repeated values. [Learn more](./api/bind.md#map-fields).
+- With `EnableSplittingOnParsers`, the header and response header binders read a comma-separated value as an HTTP list: the spaces and tabs around each element are removed and empty elements are skipped, so `X-Ids: 1, 2` binds `[]int{1, 2}`. This also applies to a `map[string][]string`, whose elements no longer keep a leading space. [Learn more](./api/bind.md#header).
 
 <details>
 <summary>Example</summary>
