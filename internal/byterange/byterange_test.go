@@ -379,8 +379,7 @@ func Test_Wrap_IfRange_UnsatisfiableCompressed(t *testing.T) {
 	require.Equal(t, "bytes */4000", got.header(fasthttp.HeaderContentRange))
 }
 
-// Headers set before the file server ran survive every outcome; those of a
-// partial response do not.
+// Headers set before the file server ran survive every outcome.
 func Test_Wrap_KeepsCallerHeaders(t *testing.T) {
 	t.Parallel()
 
