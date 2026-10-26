@@ -8,8 +8,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"os"
-	pathpkg "path"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -21,7 +19,6 @@ import (
 	"github.com/gofiber/fiber/v3/internal/byterange"
 	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
-	"github.com/gofiber/fiber/v3/internal/fspath"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/quotedstring"
 	"github.com/gofiber/utils/v2"
@@ -1369,23 +1366,6 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	request.SetRequestURIBytes(uriBuf.B)
 	bytebufferpool.Put(uriBuf)
 
-	var (
-		sendFileSize    int64
-		hasSendFileSize bool
-	)
-
-	if cfg.ByteRange && len(request.Header.Peek(HeaderRange)) > 0 {
-		sizePath := file
-		if cfg.FS != nil {
-			sizePath = filepath.ToSlash(filename)
-		}
-
-		if size, err := sendFileContentLength(sizePath, cfg); err == nil {
-			sendFileSize = size
-			hasSendFileSize = true
-		}
-	}
-
 	// Save status code
 	response := &r.c.fasthttp.Response
 	status := response.StatusCode()
@@ -1430,10 +1410,6 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
-		if cfg.ByteRange && hasSendFileSize && response.StatusCode() == StatusRequestedRangeNotSatisfiable && len(response.Header.Peek(HeaderContentRange)) == 0 {
-			response.Header.Set(HeaderContentRange, "bytes */"+utils.FormatInt(sendFileSize))
-		}
-
 		if cacheControlValue != "" {
 			response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
@@ -1442,40 +1418,6 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	}
 
 	return nil
-}
-
-// sendFileContentLength stats the file the file handler opens for path: in
-// both branches the name is cleaned as fasthttp's Path() normalization cleans
-// the request URI that carries it. A directory is served by its index file,
-// so that is the file stated.
-func sendFileContentLength(path string, cfg SendFile) (int64, error) {
-	if cfg.FS != nil {
-		name := fspath.FSName(path)
-		if name == "" {
-			name = "."
-		}
-		info, err := fs.Stat(cfg.FS, name)
-		if err == nil && info.IsDir() {
-			name = pathpkg.Join(name, sendFileIndexName)
-			info, err = fs.Stat(cfg.FS, name)
-		}
-		if err != nil {
-			return 0, fmt.Errorf("stat %q: %w", name, err)
-		}
-		return info.Size(), nil
-	}
-
-	name := fspath.OSName(path)
-	info, err := os.Stat(name)
-	if err == nil && info.IsDir() {
-		name = filepath.Join(name, sendFileIndexName)
-		info, err = os.Stat(name)
-	}
-	if err != nil {
-		return 0, fmt.Errorf("stat %q: %w", name, err)
-	}
-
-	return info.Size(), nil
 }
 
 // NoContent replies 204 No Content. SendStatus already discards the body; this
