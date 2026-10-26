@@ -171,9 +171,12 @@ func serveConditional(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler,
 	case fasthttp.StatusRequestedRangeNotSatisfiable:
 		// The 416 has no validators. The whole file has, and is the answer when
 		// If-Range does not match.
+		contentRange := utils.CopyBytes(ctx.Response.Header.Peek(fasthttp.HeaderContentRange))
 		serveWhole(ctx, handler, callerHeader)
 		if ctx.Response.StatusCode() == fasthttp.StatusOK && ifRangeMatches(ifRange, &ctx.Response, now()) {
 			ctx.Error("Range Not Satisfiable", fasthttp.StatusRequestedRangeNotSatisfiable)
+			// Error wipes the header, and the whole file may be compressed: keep the file server's length.
+			ctx.Response.Header.SetBytesV(fasthttp.HeaderContentRange, contentRange)
 		}
 	}
 }

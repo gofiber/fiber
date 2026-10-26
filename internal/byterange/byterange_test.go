@@ -3,6 +3,7 @@ package byterange
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -235,9 +236,9 @@ func Test_Wrap_RangeRules(t *testing.T) {
 		{name: "garbage", method: fasthttp.MethodGet, rangeField: "garbage", wantStatus: 200, wantBody: fileContent, wantLength: "20", wantAccepted: true},
 
 		// Refused by the file server, as before.
-		{name: "start past the end", method: fasthttp.MethodGet, rangeField: "bytes=100-200", wantStatus: 416, wantBody: "Range Not Satisfiable"},
-		{name: "reversed range", method: fasthttp.MethodGet, rangeField: "bytes=5-1", wantStatus: 416, wantBody: "Range Not Satisfiable"},
-		{name: "no range set", method: fasthttp.MethodGet, rangeField: "bytes=", wantStatus: 416, wantBody: "Range Not Satisfiable"},
+		{name: "start past the end", method: fasthttp.MethodGet, rangeField: "bytes=100-200", wantStatus: 416, wantBody: "Range Not Satisfiable", wantRange: "bytes */20"},
+		{name: "reversed range", method: fasthttp.MethodGet, rangeField: "bytes=5-1", wantStatus: 416, wantBody: "Range Not Satisfiable", wantRange: "bytes */20"},
+		{name: "no range set", method: fasthttp.MethodGet, rangeField: "bytes=", wantStatus: 416, wantBody: "Range Not Satisfiable", wantRange: "bytes */20"},
 	}
 
 	for _, tc := range tests {
@@ -284,7 +285,7 @@ func Test_Wrap_IfRange(t *testing.T) {
 		// The validator matches: the range is served.
 		{name: "matching date", rangeField: "bytes=0-4", ifRange: fileModified, wantStatus: 206, wantBody: "01234", wantRange: "bytes 0-4/20"},
 		{name: "matching date, unit in upper case", rangeField: "BYTES=0-4", ifRange: fileModified, wantStatus: 206, wantBody: "01234", wantRange: "bytes 0-4/20"},
-		{name: "matching date, unsatisfiable range", rangeField: "bytes=100-200", ifRange: fileModified, wantStatus: 416, wantBody: "Range Not Satisfiable"},
+		{name: "matching date, unsatisfiable range", rangeField: "bytes=100-200", ifRange: fileModified, wantStatus: 416, wantBody: "Range Not Satisfiable", wantRange: "bytes */20"},
 
 		// It does not: the whole file is sent (§13.1.5).
 		{name: "stale date", rangeField: "bytes=0-4", ifRange: stale, wantStatus: 200, wantBody: fileContent},
@@ -351,6 +352,27 @@ func Test_Wrap_IfRange_Strength(t *testing.T) {
 			require.Equal(t, wantStatus, requestAt(t, now, handler, fasthttp.MethodGet, fields).status())
 		})
 	}
+}
+
+// The 416 states the file's length, not that of the compressed whole file the
+// If-Range check fetched.
+func Test_Wrap_IfRange_UnsatisfiableCompressed(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	name := filepath.Join(dir, "file.txt")
+	require.NoError(t, os.WriteFile(name, []byte(strings.Repeat("a", 4000)), 0o600))
+	require.NoError(t, os.Chtimes(name, time.Time{}, time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)))
+	server := &fasthttp.FS{Root: dir, AcceptByteRange: true, Compress: true, SkipCache: true}
+
+	got := request(t, server.NewRequestHandler(), fasthttp.MethodGet, map[string]string{
+		fasthttp.HeaderRange:          "bytes=100000-200000",
+		fasthttp.HeaderIfRange:        fileModified,
+		fasthttp.HeaderAcceptEncoding: "gzip",
+	})
+
+	require.Equal(t, 416, got.status())
+	require.Equal(t, "bytes */4000", got.header(fasthttp.HeaderContentRange))
 }
 
 // Headers set before the file server ran survive every outcome; those of a
