@@ -23,6 +23,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/loggertest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
+	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1148,6 +1149,110 @@ func Test_Session_ReleaseMiddleware_DoesNotRecycleAPublishedOne(t *testing.T) {
 		require.NotSame(t, published, got)
 		releaseMiddleware(got)
 	}
+}
+
+// Test_Session_Middleware_TimedOutHandler checks that a late write of a handler
+// timeout.New gave up on stays in its own session, never in another request's.
+func Test_Session_Middleware_TimedOutHandler(t *testing.T) {
+	t.Parallel()
+
+	const others = 16
+
+	var (
+		held     = make(chan *Middleware, 1)
+		release  = make(chan struct{})
+		finished = make(chan struct{})
+		entered  = make(chan struct{}, others)
+		proceed  = make(chan struct{})
+	)
+
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/login", timeout.New(func(c fiber.Ctx) error {
+		defer close(finished)
+		sess := FromContext(c)
+		held <- sess
+		<-release
+		sess.Set("user", "alice")
+		return nil
+	}, timeout.Config{Timeout: 10 * time.Millisecond}))
+	app.Get("/me", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		entered <- struct{}{}
+		<-proceed
+		return c.SendString(fmt.Sprint(sess.Get("user")))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/login", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+
+	m := <-held
+	m.mu.RLock()
+	sess := m.Session
+	m.mu.RUnlock()
+	require.NotNil(t, sess, "the running handler's middleware was reset")
+	id := sess.ID()
+	require.NotEmpty(t, id, "the running handler's session was reset")
+
+	type result struct {
+		err  error
+		body string
+	}
+	results := make(chan result, others)
+	var wg sync.WaitGroup
+	for range others {
+		wg.Go(func() {
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/me", http.NoBody), fiber.TestConfig{Timeout: 0})
+			if err != nil {
+				results <- result{err: err}
+				return
+			}
+			body, err := io.ReadAll(resp.Body)
+			results <- result{err: err, body: string(body)}
+		})
+	}
+	for range others {
+		<-entered
+	}
+
+	close(release)
+	<-finished
+	close(proceed)
+	wg.Wait()
+	close(results)
+	for r := range results {
+		require.NoError(t, r.err)
+		require.Equal(t, "<nil>", r.body, "the timed-out handler wrote to another request's session")
+	}
+
+	require.Equal(t, id, m.ID())
+	require.Equal(t, "alice", m.Get("user"), "the late write must reach the handler's own session")
+}
+
+// Test_Session_Middleware_FinishesOnTimedOutGoroutine mounts the session below a
+// timeout.New that runs c.Next, so its check runs on the abandoned goroutine.
+func Test_Session_Middleware_FinishesOnTimedOutGoroutine(t *testing.T) {
+	t.Parallel()
+
+	finished := make(chan struct{})
+	app := fiber.New()
+	app.Use(timeout.New(func(c fiber.Ctx) error { return c.Next() }, timeout.Config{Timeout: 10 * time.Millisecond}))
+	app.Use(func(c fiber.Ctx) error {
+		defer close(finished)
+		return c.Next()
+	})
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		FromContext(c).Set("user", "alice")
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	<-finished
 }
 
 // Benchmark_Middleware drives the whole handler, which the store benchmarks do

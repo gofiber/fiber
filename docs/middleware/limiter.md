@@ -151,6 +151,8 @@ A request that passes costs one storage read and one write. A second read and wr
 - `SkipSuccessfulRequests` applies to the response (status below 400) or `SkipFailedRequests` does (status 400 or above), to give the hit back.
 - The algorithm is the sliding window and headers are enabled, so that `X-RateLimit-Remaining` and `X-RateLimit-Reset` describe the state at the end of the request. Set `DisableHeaders` to avoid it.
 
+A request the [timeout middleware](./timeout.md) gave up on is answered with the timeout response, while its handler may still be writing the response in the context. The limiter leaves that response alone: the timeout response carries no `X-RateLimit-*` headers, and `SkipFailedRequests` and `SkipSuccessfulRequests` judge the status of the timeout response.
+
 ## Config
 
 | Property               | Type                      | Description                                                                                 | Default                                  |

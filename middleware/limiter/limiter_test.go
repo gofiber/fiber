@@ -23,6 +23,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -330,6 +331,57 @@ func Test_getEffectiveStatusCode_TypedNilCustomError(t *testing.T) {
 	require.NotPanics(t, func() {
 		require.Equal(t, fiber.StatusAccepted, getEffectiveStatusCode(c, err))
 	})
+}
+
+func Test_getEffectiveStatusCode_TimedOut(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(c.ForceRelease)
+
+	c.Response().SetStatusCode(fiber.StatusOK)
+	c.RequestCtx().TimeoutErrorWithCode("upstream too slow", fiber.StatusGatewayTimeout)
+	c.Abandon()
+
+	require.Equal(t, fiber.StatusGatewayTimeout, getEffectiveStatusCode(c, nil))
+	require.Equal(t, fiber.StatusGatewayTimeout, getEffectiveStatusCode(c, errors.New("generic")))
+}
+
+// Test_Limiter_TimedOutRequest checks that the limiter leaves the response of a
+// handler timeout.New gave up on alone; fasthttp sends the timeout response.
+func Test_Limiter_TimedOutRequest(t *testing.T) {
+	t.Parallel()
+
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			t.Parallel()
+
+			release := make(chan struct{})
+			finished := make(chan struct{})
+			app := fiber.New()
+			app.Use(New(Config{Max: 10, LimiterMiddleware: strategy.handler}))
+			app.Get("/", timeout.New(func(c fiber.Ctx) error {
+				defer close(finished)
+				c.Set("X-Handler", "1")
+				<-release
+				return nil
+			}, timeout.Config{Timeout: 10 * time.Millisecond}))
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.SetRequestURI("/")
+			app.Handler()(fctx)
+
+			resp := fctx.LastTimeoutErrorResponse()
+			require.NotNil(t, resp)
+			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode())
+
+			close(release)
+			<-finished
+			require.Equal(t, "1", string(fctx.Response.Header.Peek("X-Handler")))
+			require.Empty(t, fctx.Response.Header.Peek(xRateLimitLimit), "the limiter wrote to the timed-out handler's response")
+		})
+	}
 }
 
 func Test_Limiter_StorageErrorMessages(t *testing.T) {

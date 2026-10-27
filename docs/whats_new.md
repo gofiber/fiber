@@ -1890,6 +1890,8 @@ Limiter now redacts request keys in error paths by default. A new `DisableValueR
 
 A custom `Storage` is handed a copy of the key the `KeyGenerator` returned, one allocation per request: the key can point into request memory that fasthttp reuses, and the storage may keep it. The built-in store copies the keys it keeps, so nothing changes there.
 
+For a request the timeout middleware gave up on, the limiter leaves the response alone, since the timed-out handler may still be writing it: the timeout response carries no `X-RateLimit-*` headers, and `SkipFailedRequests` and `SkipSuccessfulRequests` judge the timeout response's status.
+
 :::note
 Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `Expiration`, `Storage`, and `KeyGenerator` instead.
 :::
@@ -1943,6 +1945,8 @@ The session middleware has undergone significant improvements in v3, focusing on
 - **Context-Aware Lifecycle Methods**: The `DestroyWithContext`, `RegenerateWithContext`, and `ResetWithContext` methods (on both `Session` and `Middleware`), and `SaveWithContext` (on `Session`, since the middleware saves the session itself), accept a `context.Context` to propagate cancellation and deadlines to the underlying storage I/O, mirroring the existing `Storage` and `SharedState` `WithContext` convention. The non-context variants delegate to these. A nil context is treated as `context.Background()`.
 
 - **Session ID Write-Back**: When a request already carries a session ID, the ID is written back only through the extractor that supplied it, and only when that extractor is a cookie or a non-Authorization header. An ID from a read-only source (Authorization header, Query, Form, Param, or Custom) is never copied into a cookie or header, which prevents session fixation. A request without an ID gets a server-generated one through every cookie and non-Authorization header extractor of the chain. When the middleware issues a new ID for a request that carried one, because of `Regenerate()`, `Reset()`, or an ID the storage does not know, the new ID goes back through the same cookie or header, or through every such extractor of the chain when the old ID came from a read-only source. An extractor error other than `extractors.ErrNotFound` is passed to `ErrorHandler` instead of being treated as a new visitor.
+
+- **Timed-out Requests**: The session of a request the timeout middleware gave up on is neither saved nor handed to another request while its handler may still run.
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
