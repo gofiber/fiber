@@ -10,6 +10,7 @@
 package fieldname
 
 import (
+	"bytes"
 	"iter"
 	"slices"
 
@@ -80,6 +81,95 @@ func dropTrailerSection(h *fasthttp.RequestHeader) bool {
 		h.Add(kept[i], kept[i+1])
 	}
 	return true
+}
+
+// ReceivedLines returns name's field lines in received order, which the store loses whenever fasthttp moves
+// its last line into a removed one's slot, as it does for Transfer-Encoding after an empty chunked body.
+// ok is false unless the wire block holds exactly the stored lines; a header edited in code reads as stored.
+func ReceivedLines(h *fasthttp.RequestHeader, name string) ([][]byte, bool) {
+	if len(h.RawHeaders()) == 0 {
+		return nil, false
+	}
+	pending := make(map[string]int)
+	stored := 0
+	h.VisitAll(func(k, v []byte) {
+		if utils.EqualFold(utils.UnsafeString(k), name) {
+			pending[string(v)]++
+			stored++
+		}
+	})
+
+	// A copy, because AllInOrder joins folded lines in place and the next walk would read them differently.
+	scratch := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(scratch)
+	h.CopyTo(&scratch.Header)
+
+	lines := make([][]byte, 0, stored)
+	for k, v := range scratch.Header.AllInOrder() {
+		if !utils.EqualFold(utils.UnsafeString(k), name) {
+			continue
+		}
+		if pending[string(v)] == 0 {
+			return nil, false
+		}
+		pending[string(v)]--
+		lines = append(lines, utils.CopyBytes(v))
+	}
+	return lines, len(lines) == stored
+}
+
+// KeepReceivedOrder writes the names match accepts that are stored on several lines back in received order
+// (see ReceivedLines), so a request forwarded after lines were removed carries them as they arrived.
+//
+//nolint:revive // flag-parameter: canonical is a property of the header store
+func KeepReceivedOrder(h *fasthttp.RequestHeader, match func(name []byte) bool, canonical bool) {
+	var repeated []string
+	seen := make([][]byte, 0, 8)
+	h.VisitAll(func(k, _ []byte) {
+		if !match(k) {
+			return
+		}
+		name := utils.UnsafeString(k)
+		for _, s := range seen {
+			if utils.EqualFold(utils.UnsafeString(s), name) {
+				if !ContainsFold(repeated, name) {
+					repeated = append(repeated, string(k))
+				}
+				return
+			}
+		}
+		seen = append(seen, k)
+	})
+	if len(repeated) == 0 {
+		return
+	}
+
+	// Taken before any Del, each of which can move another name's lines; an edited name keeps its stored order.
+	lines := make([][][]byte, len(repeated))
+	reordered := false
+	for i, name := range repeated {
+		stored := Lines(h, name, false)
+		received, ok := ReceivedLines(h, name)
+		if !ok {
+			received = make([][]byte, len(stored))
+			for j, v := range stored {
+				received[j] = utils.CopyBytes(v)
+			}
+		}
+		reordered = reordered || !slices.EqualFunc(stored, received, bytes.Equal)
+		lines[i] = received
+	}
+	if !reordered {
+		return
+	}
+	for _, name := range repeated {
+		Del(h, name, canonical)
+	}
+	for i, name := range repeated {
+		for _, v := range lines[i] {
+			h.AddBytesV(name, v)
+		}
+	}
 }
 
 // Lines returns every field line stored under name. The walk replaces the

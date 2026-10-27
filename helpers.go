@@ -31,6 +31,7 @@ import (
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	etagpkg "github.com/gofiber/fiber/v3/internal/etag"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/log"
@@ -572,7 +573,7 @@ func lookupJoinedRequestHeader(h *fasthttp.RequestHeader, key string) ([]byte, b
 	// only holds headers read off the wire, so headers set programmatically
 	// (e.g. by net/http adaptors) would be missed entirely. VisitAll keeps
 	// repeated field lines in received order only until a line is removed,
-	// see receivedRequestLines.
+	// see fieldname.ReceivedLines.
 	h.VisitAll(j.visit)
 	return j.combined, j.seen
 }
@@ -583,7 +584,7 @@ func peekReceivedRequestHeader(h *fasthttp.RequestHeader, key string) []byte {
 	j := joinedHeaderValue{key: key}
 	h.VisitAll(j.visit)
 	if j.multi && !joinedInReceivedOrder(h.RawHeaders(), key, j.combined) {
-		if lines, ok := receivedRequestLines(h, key); ok {
+		if lines, ok := fieldname.ReceivedLines(h, key); ok {
 			return headerlist.Join(lines)
 		}
 	}
@@ -640,41 +641,6 @@ func wireFieldValue(line []byte, key string) ([]byte, bool) {
 		return nil, false
 	}
 	return headerlist.TrimOWS(line[len(key)+1:]), true
-}
-
-// receivedRequestLines returns key's field lines in received order, which the store loses whenever fasthttp
-// moves its last line into a removed one's slot, as it does for Transfer-Encoding after an empty chunked body.
-// ok is false unless the wire block holds exactly the stored lines; a header edited in code reads as stored.
-func receivedRequestLines(h *fasthttp.RequestHeader, key string) ([][]byte, bool) {
-	if len(h.RawHeaders()) == 0 {
-		return nil, false
-	}
-	pending := make(map[string]int)
-	stored := 0
-	h.VisitAll(func(k, v []byte) {
-		if utils.EqualFold(utils.UnsafeString(k), key) {
-			pending[string(v)]++
-			stored++
-		}
-	})
-
-	// A copy, because AllInOrder joins folded lines in place and the next walk would read them differently.
-	scratch := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(scratch)
-	h.CopyTo(&scratch.Header)
-
-	lines := make([][]byte, 0, stored)
-	for k, v := range scratch.Header.AllInOrder() {
-		if !utils.EqualFold(utils.UnsafeString(k), key) {
-			continue
-		}
-		if pending[string(v)] == 0 {
-			return nil, false
-		}
-		pending[string(v)]--
-		lines = append(lines, utils.CopyBytes(v))
-	}
-	return lines, len(lines) == stored
 }
 
 // peekJoinedResponseHeader is peekJoinedRequestHeader for response headers.

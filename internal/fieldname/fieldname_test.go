@@ -250,6 +250,50 @@ func Test_DropTrailers(t *testing.T) {
 	})
 }
 
+// Test_KeepReceivedOrder pins that repeated lines go back to received order after
+// fasthttp's Del moved the last line into the removed one's slot.
+func Test_KeepReceivedOrder(t *testing.T) {
+	t.Parallel()
+
+	forwarding := func(name []byte) bool { return bytes.HasPrefix(bytes.ToLower(name), []byte("x-forwarded-")) }
+	lines := func(h *fasthttp.RequestHeader, name string, canonical bool) []string {
+		var values []string
+		for _, v := range Lines(h, name, canonical) {
+			values = append(values, string(v))
+		}
+		return values
+	}
+
+	for _, canonical := range []bool{true, false} {
+		t.Run(fmt.Sprintf("canonical=%v", canonical), func(t *testing.T) {
+			t.Parallel()
+
+			const raw = "GET / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\nX-Forwarded-For: client\r\nX-Forwarded-Proto: http\r\n" +
+				"X-Other: o\r\nX-Forwarded-For: proxy\r\nX-Forwarded-Proto: https\r\n\r\n"
+
+			h := readRequestHeader(t, raw, canonical)
+			before := h.String()
+			KeepReceivedOrder(h, forwarding, canonical)
+			require.Equal(t, before, h.String(), "nothing to restore")
+
+			Del(h, "X-Junk", canonical)
+			require.Equal(t, []string{"https", "http"}, lines(h, "X-Forwarded-Proto", canonical))
+			KeepReceivedOrder(h, forwarding, canonical)
+			require.Equal(t, []string{"client", "proxy"}, lines(h, "X-Forwarded-For", canonical))
+			require.Equal(t, []string{"http", "https"}, lines(h, "X-Forwarded-Proto", canonical))
+			require.Equal(t, []string{"o"}, lines(h, "X-Other", canonical))
+
+			h = readRequestHeader(t, raw, canonical)
+			Del(h, "X-Junk", canonical)
+			h.Add("X-Forwarded-For", "app")
+			stored := lines(h, "X-Forwarded-For", canonical)
+			KeepReceivedOrder(h, forwarding, canonical)
+			require.Equal(t, stored, lines(h, "X-Forwarded-For", canonical), "an edited name keeps its stored order")
+			require.Equal(t, []string{"http", "https"}, lines(h, "X-Forwarded-Proto", canonical))
+		})
+	}
+}
+
 func Test_Del_TerminatesOnSynthesizedContentType(t *testing.T) {
 	t.Parallel()
 

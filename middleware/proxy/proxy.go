@@ -37,8 +37,7 @@ func segmentsAsRouted(target string, policy SecurityPolicy) bool {
 func forwardWithRealIP(c fiber.Ctx, addr string, policy SecurityPolicy, clients ...*fasthttp.Client) error {
 	var scratch [realIPScratch]byte
 	ip := realIP(c, scratch[:0])
-	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
-		setRealIP(c, ip)
+	return doActionWithPolicy(c, addr, policy, ip, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.Do(req, resp)
 	}, clients...)
 }
@@ -104,7 +103,7 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 // cannot be rebound to a private IP between validation and connection.
 func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error {
 	policy := currentSecurityPolicy()
-	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
+	return doActionWithPolicy(c, addr, policy, nil, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
 		return followRedirects(cli, req, resp, maxRedirectsCount, u, policy)
 	}, clients...)
 }
@@ -142,13 +141,15 @@ func doAction(
 	action doActionFunc,
 	clients ...*fasthttp.Client,
 ) error {
-	return doActionWithPolicy(c, addr, currentSecurityPolicy(), action, clients...)
+	return doActionWithPolicy(c, addr, currentSecurityPolicy(), nil, action, clients...)
 }
 
+// doActionWithPolicy writes ip, unless nil, as X-Real-IP once the hop-by-hop fields are gone.
 func doActionWithPolicy(
 	c fiber.Ctx,
 	addr string,
 	policy SecurityPolicy,
+	ip []byte,
 	action doActionFunc,
 	clients ...*fasthttp.Client,
 ) error {
@@ -206,6 +207,10 @@ func doActionWithPolicy(
 	if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized) {
 		return fiber.ErrRequestHeaderFieldsTooLarge
 	}
+	if ip != nil {
+		setRealIP(c, ip)
+	}
+	keepForwardingOrder(c)
 	// The upstream connection speaks HTTP/1.1: reset a protocol token
 	// inherited from the inbound request (e.g. "HTTP/2" propagated by the
 	// net/http adaptor) so the serialized request line stays valid.

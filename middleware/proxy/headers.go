@@ -142,6 +142,22 @@ func setRealIP(c fiber.Ctx, ip []byte) {
 	c.Request().Header.AddBytesV(realIPHeader, ip)
 }
 
+// keepForwardingOrder puts the forwarding fields sent on several lines back in the order they were received,
+// as the last header step: fasthttp moves the last line into the slot of each one it removes.
+func keepForwardingOrder(c fiber.Ctx) {
+	fieldname.KeepReceivedOrder(&c.Request().Header, isOrderedForwardingHeader, headerlookup.Canonical(c))
+}
+
+// isOrderedForwardingHeader reports whether name is a forwarding field, or X-Url-Scheme, which Ctx.Scheme reads too.
+func isOrderedForwardingHeader(name []byte) bool {
+	// Each of them starts with X or F, which settles most lines at the first byte.
+	if len(name) == 0 || (name[0]|0x20 != 'x' && name[0]|0x20 != 'f') {
+		return false
+	}
+	s := utils.UnsafeString(name)
+	return isForwardingHeader(s) || utils.EqualFold(s, fiber.HeaderXUrlScheme)
+}
+
 // realIPScratch is the stack room for an address copied out of the request:
 // the longest IPv6 text form is 45 bytes, and a zone may follow it. A longer
 // value, such as a whole forwarding chain read without validation, spills to

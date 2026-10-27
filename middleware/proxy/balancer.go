@@ -121,6 +121,7 @@ func Balancer(config ...Config) fiber.Handler {
 		// hop's and not one the client named there; before ModifyRequest, so
 		// the application still has the last word.
 		setRealIP(c, ip)
+		keepForwardingOrder(c)
 
 		// Modify request
 		if cfg.ModifyRequest != nil {

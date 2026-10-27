@@ -1420,7 +1420,7 @@ func (r *DefaultReq) Scheme() string {
 	}
 	if conflict {
 		// Repeats of one header keep the last line, so the order they were received in decides.
-		if lines, inOrder := receivedRequestLines(header, schemeHeaders[rank]); inOrder {
+		if lines, inOrder := fieldname.ReceivedLines(header, schemeHeaders[rank]); inOrder {
 			for _, line := range lines {
 				if announced, ok := announcedScheme(rank, line); ok {
 					scheme = announced

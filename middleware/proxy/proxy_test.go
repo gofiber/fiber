@@ -1052,6 +1052,45 @@ func Test_Proxy_StreamedBodyTrailerSection(t *testing.T) {
 	}
 }
 
+// Test_Proxy_ForwardingLinesKeepReceivedOrder checks that a client's forwarding line and the one a front
+// proxy appended reach the upstream in the order received, after fasthttp removed a line in front of them.
+func Test_Proxy_ForwardingLinesKeepReceivedOrder(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range trailerHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				lines := matchingFieldLines(c, fiber.HeaderXForwardedFor, fiber.HeaderXForwardedProto, fiber.HeaderXUrlScheme)
+				// Only the order within a name counts (RFC 9110 Section 5.3).
+				slices.SortStableFunc(lines, func(a, b string) int {
+					return strings.Compare(strings.Split(a, "=")[0], strings.Split(b, "=")[0])
+				})
+				return c.SendString(strings.Join(lines, ","))
+			})
+
+			app := fiber.New()
+			app.Use(tc.build(addr))
+
+			const (
+				lines = "X-Forwarded-For: 6.6.6.6\r\nX-Forwarded-Proto: http\r\nX-Url-Scheme: http\r\n" +
+					"X-Forwarded-For: 203.0.113.7\r\nX-Forwarded-Proto: https\r\nX-Url-Scheme: https\r\n"
+				want = "X-Forwarded-For=6.6.6.6,X-Forwarded-For=203.0.113.7,X-Forwarded-Proto=http," +
+					"X-Forwarded-Proto=https,X-Url-Scheme=http,X-Url-Scheme=https"
+			)
+			for name, head := range map[string]string{
+				"empty chunked body": "Transfer-Encoding: chunked\r\n" + lines + "\r\n0\r\n\r\n",
+				"connection listed":  "X-Junk: 1\r\nConnection: X-Junk\r\n" + lines + "\r\n",
+				"hop-by-hop":         "Keep-Alive: timeout=5\r\n" + lines + "\r\n",
+				"real ip":            "X-Real-IP: 192.0.2.1\r\n" + lines + "\r\n",
+			} {
+				require.Equal(t, want, sendRaw(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\n"+head), name)
+			}
+		})
+	}
+}
+
 // Test_Proxy_Do_ConnectionCannotRemoveRealIP checks that the X-Real-IP written
 // by hand before Do, as the docs show, is not the client's to remove either.
 func Test_Proxy_Do_ConnectionCannotRemoveRealIP(t *testing.T) {
