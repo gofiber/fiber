@@ -50,8 +50,9 @@ func isForwardingHeader(name string) bool {
 		utils.EqualFold(name, fiber.HeaderForwarded)
 }
 
-// maxConnectionOptions bounds the names a request may list in Connection: each
-// one costs a scan of every header and trailer line.
+// maxConnectionOptions bounds the names a message may list in Connection plus
+// the other spellings of a removed name that a raw store holds: each costs a
+// scan of every header and trailer line.
 const maxConnectionOptions = 32
 
 // stripHopByHopRequestHeaders removes RFC 9110 §7.6.1 hop-by-hop headers
@@ -59,7 +60,7 @@ const maxConnectionOptions = 32
 // headers — used by the legacy KeepConnectionHeader option to retain the
 // literal Connection header while still dropping the other hop-by-hop
 // headers. It reports false, for the caller to refuse the request, when
-// Connection lists more than maxConnectionOptions names.
+// that takes more than maxConnectionOptions names and spellings.
 func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except ...string) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
 	// Headers listed in Connection must be removed first so the listing is
 	// honored before the Connection field itself is dropped. A walk of its
@@ -67,22 +68,26 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 	// the forwarding fields are not the client's to remove (see
 	// isForwardingHeader). The names alias the Connection value buffers,
 	// which is sound for the reason given there.
-	listed := 0
+	budget := maxConnectionOptions
 	for name := range headerlist.AllLines(fieldname.Lines(&req.Header, fiber.HeaderConnection, normalized)) {
-		listed++
-		if listed > maxConnectionOptions {
+		budget--
+		if budget < 0 {
 			return false
 		}
 		if isForwardingHeader(name) {
 			continue
 		}
-		fieldname.Del(&req.Header, name, normalized)
+		if budget = fieldname.DelWithin(&req.Header, name, normalized, budget); budget < 0 {
+			return false
+		}
 	}
 	for _, h := range hopByHopHeaders {
 		if fieldname.ContainsFold(except, h) {
 			continue
 		}
-		fieldname.Del(&req.Header, h, normalized)
+		if budget = fieldname.DelWithin(&req.Header, h, normalized, budget); budget < 0 {
+			return false
+		}
 	}
 	return true
 }

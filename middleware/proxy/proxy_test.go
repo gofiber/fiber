@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -866,6 +867,73 @@ func Test_Proxy_ConnectionListLimit(t *testing.T) {
 			}
 			require.Equal(t, int32(1), forwarded.Load())
 		})
+	}
+}
+
+// caseSpellings returns n spellings of name, a lower-case token, that differ
+// from it and from each other only in case.
+func caseSpellings(name string, n int) []string {
+	var out []string
+	for mask := 1; len(out) < n && mask < 1<<len(name); mask++ {
+		b := []byte(name)
+		for i := range b {
+			if mask&(1<<i) != 0 && b[i] >= 'a' && b[i] <= 'z' {
+				b[i] -= 'a' - 'A'
+			}
+		}
+		if s := string(b); s != name && !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// Test_Proxy_ConnectionListLimitCountsSpellings checks that under
+// DisableHeaderNormalizing each other spelling of a removed name counts against
+// the limit like a listed name, as each costs another scan, while a name
+// repeated in one spelling costs once.
+func Test_Proxy_ConnectionListLimitCountsSpellings(t *testing.T) {
+	t.Parallel()
+
+	seen := make(chan []string, 1)
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen <- matchingFieldLines(c, "X-Abcdef", fiber.HeaderUpgrade)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(Forward("http://" + addr))
+
+	repeated := make([]string, 200)
+	for i := range repeated {
+		repeated[i] = "X-ABCDEF"
+	}
+	for _, tt := range []struct {
+		name       string
+		connection string
+		lines      []string
+		status     int
+	}{
+		// The listed name takes one of the budget.
+		{name: "within", connection: "x-abcdef", lines: caseSpellings("x-abcdef", maxConnectionOptions-1), status: fiber.StatusOK},
+		{name: "beyond", connection: "x-abcdef", lines: caseSpellings("x-abcdef", maxConnectionOptions), status: fiber.StatusRequestHeaderFieldsTooLarge},
+		{name: "repeated", connection: "x-abcdef", lines: repeated, status: fiber.StatusOK},
+		{name: "hop-by-hop", lines: caseSpellings("upgrade", 2*maxConnectionOptions), status: fiber.StatusRequestHeaderFieldsTooLarge},
+	} {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		if tt.connection != "" {
+			req.Header[fiber.HeaderConnection] = []string{tt.connection}
+		}
+		for _, k := range tt.lines {
+			// Assigned rather than added, which would canonicalize the key.
+			req.Header[k] = append(req.Header[k], "v")
+		}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, tt.status, resp.StatusCode, tt.name)
+		if tt.status == fiber.StatusOK {
+			require.Empty(t, <-seen, tt.name)
+		}
 	}
 }
 
