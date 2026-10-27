@@ -9,8 +9,14 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/log"
 )
+
+type contextKey int
+
+// timeoutContextKey holds the context a timeout.New handed to its handler goroutine.
+const timeoutContextKey contextKey = 0
 
 // New enforces a timeout for each incoming request. It replaces the request's
 // context with one that has the configured deadline, which is exposed through
@@ -38,13 +44,14 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 
 		// Create timeout context - handler can check c.Context().Done()
 		parent := ctx.Context()
-		// An enclosing deadline that fires first already guards h, usually an outer timeout.New;
-		// a goroutine of our own would time out and abandon the same ctx a second time.
-		if deadline, ok := parent.Deadline(); ok && !deadline.After(time.Now().Add(timeout)) {
+		// An enclosing timeout.New whose deadline fires first already guards h; a goroutine
+		// of our own would time out and abandon the same ctx a second time.
+		if enclosingFiresFirst(parent, ctx, timeout) {
 			return handleResult(runInline(h, ctx), ctx, cfg)
 		}
 		tCtx, cancel := context.WithTimeout(parent, timeout)
 		ctx.SetContext(tCtx)
+		_ = ctxlocal.Set(ctx, timeoutContextKey, tCtx)
 
 		// Channels for handler result and panics
 		done := make(chan error, 1)
@@ -97,6 +104,21 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			return handleTimeout(parent, ctx, cancel, handlerDone, cfg)
 		}
 	}
+}
+
+// enclosingFiresFirst reports whether parent's deadline is that of an enclosing timeout.New
+// and comes no later than timeout. A deadline set elsewhere does not count: nothing answers when it fires.
+func enclosingFiresFirst(parent context.Context, ctx fiber.Ctx, timeout time.Duration) bool {
+	enclosing, ok := ctx.Locals(timeoutContextKey).(context.Context)
+	if !ok {
+		return false
+	}
+	deadline, ok := parent.Deadline()
+	if !ok || deadline.After(time.Now().Add(timeout)) {
+		return false
+	}
+	enclosingDeadline, ok := enclosing.Deadline()
+	return ok && enclosingDeadline.Equal(deadline)
 }
 
 // runInline runs h on the calling goroutine with the panic handling of the goroutine path.

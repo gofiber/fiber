@@ -967,12 +967,7 @@ func Test_Timeout_EnclosingDeadlineRunsInline(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(func(c fiber.Ctx) error {
-		ctx, cancel := context.WithTimeout(c.Context(), 20*time.Millisecond)
-		defer cancel()
-		c.SetContext(ctx)
-		return c.Next()
-	})
+	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{Timeout: 20 * time.Millisecond}))
 	app.Get("/wait", New(func(c fiber.Ctx) error {
 		<-c.Context().Done()
 		return c.Context().Err()
@@ -988,6 +983,30 @@ func Test_Timeout_EnclosingDeadlineRunsInline(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+}
+
+// A shorter deadline no timeout.New installed answers nothing when it fires, so the
+// route's own timeout still does.
+func Test_Timeout_ForeignDeadlineStillTimesOut(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		ctx, cancel := context.WithTimeout(c.Context(), 20*time.Millisecond)
+		defer cancel()
+		c.SetContext(ctx)
+		return c.Next()
+	})
+	release := make(chan struct{})
+	defer close(release)
+	app.Get("/", New(func(fiber.Ctx) error {
+		<-release
+		return nil
+	}, Config{Timeout: 100 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{Timeout: 2 * time.Second})
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
 }
 
 // Middleware before timeout.New sees an error, so it skips its work on the response the handler still writes.
