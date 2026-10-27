@@ -872,7 +872,12 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		fctx := &pctx.fctx
 		fctx.Response.Reset()
 		fctx.Request.Reset()
-		defer ctxPool.Put(pctx)
+		defer func() {
+			// As fasthttp's server does, leave a timed-out ctx to the handler that may still run on it.
+			if fctx.LastTimeoutErrorResponse() == nil {
+				ctxPool.Put(pctx)
+			}
+		}()
 
 		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey))
 		if err != nil {
@@ -989,22 +994,27 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 
 		// Convert fasthttp Ctx -> net/http
-		copyResponseHeaders(w.Header(), &fctx.Response.Header)
-		w.WriteHeader(fctx.Response.StatusCode())
+		resp := &fctx.Response
+		if timeoutResp := fctx.LastTimeoutErrorResponse(); timeoutResp != nil {
+			// The timed-out handler still owns fctx.Response; send what fasthttp would.
+			resp = timeoutResp
+		}
+		copyResponseHeaders(w.Header(), &resp.Header)
+		w.WriteHeader(resp.StatusCode())
 
 		// Check if streaming is not possible or unnecessary.
-		bodyStream := fctx.Response.BodyStream()
+		bodyStream := resp.BodyStream()
 		flusher, ok := w.(http.Flusher)
 		if !ok || bodyStream == nil {
-			_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck // not needed
+			_, _ = w.Write(resp.Body()) //nolint:errcheck // not needed
 			return
 		}
 
 		defer func() {
-			_ = fctx.Response.CloseBodyStream() //nolint:errcheck // not needed
+			_ = resp.CloseBodyStream() //nolint:errcheck // not needed
 		}()
 
-		// Stream fctx.Response.BodyStream() -> w
+		// Stream resp.BodyStream() -> w
 		// in chunks.
 		bufPtr, ok := bufferPool.Get().(*[bufferSize]byte)
 		if !ok {
