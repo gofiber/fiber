@@ -915,3 +915,32 @@ func Test_Idempotency_StreamIsPassedOnUnrecorded(t *testing.T) {
 	}
 	require.Equal(t, 2, calls)
 }
+
+// A refused request replays the Use chain without its handler; storing what it
+// left answered the retry with an empty 413 for the whole Lifetime.
+func Test_Idempotency_RefusedRequestIsNotStored(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{BodyLimit: 8})
+	s := &stubStorage{}
+	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
+
+	var calls int
+	app.Post("/", func(c fiber.Ctx) error {
+		calls++
+		return c.SendString("ok")
+	})
+
+	refused := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader(strings.Repeat("x", 64)))
+	refused.Header.Set(ConfigDefault.KeyHeader, validKey)
+	_, err := app.Test(refused)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+	require.Zero(t, s.setCount)
+
+	retry := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("ok"))
+	retry.Header.Set(ConfigDefault.KeyHeader, validKey)
+	resp, body := do(app, retry)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "ok", body)
+	require.Equal(t, 1, calls)
+}

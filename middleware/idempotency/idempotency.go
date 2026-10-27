@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -147,6 +148,10 @@ func New(config ...Config) fiber.Handler {
 		// Don't execute middleware if the idempotency key is empty
 		key := c.Get(cfg.KeyHeader)
 		if key == "" {
+			return c.Next()
+		}
+		// A refused request runs no handler, so there is nothing to store for its retry.
+		if errorreplay.Active(c.RequestCtx()) {
 			return c.Next()
 		}
 		// Copied once, before anything reads it: the validator may keep what it

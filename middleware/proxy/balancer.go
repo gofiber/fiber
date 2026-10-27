@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
@@ -71,6 +72,10 @@ func Balancer(config ...Config) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
+			return c.Next()
+		}
+		// The client is told the request was refused, so the upstream must not run it.
+		if errorreplay.Active(c.RequestCtx()) {
 			return c.Next()
 		}
 
