@@ -773,18 +773,6 @@ func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
 
 // processSubAppsRoutes adds routes of sub-apps recursively when the server is started
 func (app *App) processSubAppsRoutes() {
-	for prefix, subApp := range app.mountFields.appList {
-		// skip real app
-		if prefix == "" {
-			continue
-		}
-		// process the inner routes
-		if subApp.hasMountedApps() {
-			subApp.mountFields.subAppsRoutesAdded.Do(func() {
-				subApp.processSubAppsRoutes()
-			})
-		}
-	}
 	var handlersCount uint32
 	// Iterate over the stack of the parent app
 	for m := range app.stack {
@@ -800,8 +788,8 @@ func (app *App) processSubAppsRoutes() {
 				continue
 			}
 
-			// appList keeps one app per prefix, so a second mount there displaces
-			// the first: prepare the app the placeholder names, not the listed one.
+			// Prepared here, not from appList, which keeps one app per prefix; its own HEAD
+			// routes come first, so a flattened child's HEAD route cannot stand in for them.
 			subApp := route.group.app
 			subApp.ensureAutoHeadRoutes()
 			if subApp.hasMountedApps() {

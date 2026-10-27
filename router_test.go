@@ -5995,6 +5995,37 @@ func Test_App_Mount_NestedRootMounts(t *testing.T) {
 	}
 }
 
+// Test_App_Mount_DisplacedAppKeepsHeadGuard pins that a child's HEAD route on
+// the guard's path does not replace the guard's own HEAD route in a displaced app.
+func Test_App_Mount_DisplacedAppKeepsHeadGuard(t *testing.T) {
+	t.Parallel()
+
+	// Which app the app list keeps at "/admin" depends on map iteration order.
+	for range 100 {
+		logger := New()
+		logger.Head("/*", func(c Ctx) error { return c.Next() })
+		admin := New()
+		admin.Use("/", logger)
+		admin.Get("/*", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
+		admin.Get("/flush", func(c Ctx) error { return c.SendString("flushed") })
+		wrap := New()
+		wrap.Use("/", admin)
+		other, pages := New(), New()
+		other.Use("/", New())
+		pages.Use("/admin", other)
+		app := New()
+		app.Use("/admin", wrap)
+		app.Use("/", pages)
+
+		for _, method := range []string{MethodGet, MethodHead} {
+			resp, err := app.Test(httptest.NewRequest(method, "/admin/flush", http.NoBody))
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.Equal(t, StatusUnauthorized, resp.StatusCode, method)
+		}
+	}
+}
+
 func Test_Router_PathOverride_ContinuesInNewBucket(t *testing.T) {
 	t.Parallel()
 
