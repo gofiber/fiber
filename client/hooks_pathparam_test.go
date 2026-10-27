@@ -236,6 +236,45 @@ func Test_SubstitutePathParams(t *testing.T) {
 			keepEsc: true,
 		},
 		{
+			// Normalizing writes the ";" raw, and a servlet container strips it
+			// before it resolves the dot segment: "/files/pub/..;/meta" is "/files/meta".
+			name:    "a dot-dot value carrying path parameters is rejected",
+			uri:     "http://example.com/files/pub/:name/meta",
+			params:  PathParam{"name": "..;"},
+			wantErr: ErrPathParamInPath,
+		},
+		{
+			name:    "a dot-dot value with a named path parameter is rejected",
+			uri:     "http://example.com/files/pub/:name/meta",
+			params:  PathParam{"name": "..;jsessionid=x"},
+			wantErr: ErrPathParamInPath,
+		},
+		{
+			name:    "a dot value carrying path parameters is rejected",
+			uri:     "http://example.com/files/pub/:name/meta",
+			params:  PathParam{"name": ".;"},
+			wantErr: ErrPathParamInPath,
+		},
+		{
+			name:    "a value that is only path parameters is rejected",
+			uri:     "http://example.com/files/pub/:name/meta",
+			params:  PathParam{"name": ";x"},
+			wantErr: ErrPathParamInPath,
+		},
+		{
+			name:    "a dot-dot value carrying path parameters is rejected when normalizing is off",
+			uri:     "http://example.com/files/pub/:name/meta",
+			params:  PathParam{"name": "..;"},
+			wantErr: ErrPathParamInPath,
+			keepEsc: true,
+		},
+		{
+			name:   "a segment that merely carries path parameters is kept",
+			uri:    "http://example.com/files/pub/:name/meta",
+			params: PathParam{"name": "a;jsessionid=x"},
+			want:   "http://example.com/files/pub/a%3Bjsessionid=x/meta",
+		},
+		{
 			// A "%2F" the caller typed is escaped to "%252F" and decodes to a
 			// literal "%2F", so it never becomes a separator.
 			name:   "an already-escaped separator in a value is not a separator",
@@ -956,7 +995,7 @@ func Test_Client_DisablePathNormalizing_AfterFirstRequest(t *testing.T) {
 // escaping is undone again by fasthttp's path normalizing, which is how
 // "../../admin" used to reach "/admin/end".
 func FuzzPathParamTarget(f *testing.F) {
-	for _, seed := range []string{"", "..", ".", "a/b", "../../admin", "%2e%2e", "..%2f", `a\b`, "a;b", "\r\n", "//", "....//", ".%2e", "%252e%252e", "a?b", "a#b", "\u00fc"} {
+	for _, seed := range []string{"", "..", ".", "a/b", "../../admin", "%2e%2e", "..%2f", `a\b`, "a;b", "..;", "..;jsessionid=x", ".;", ";x", "\r\n", "//", "....//", ".%2e", "%252e%252e", "a?b", "a#b", "\u00fc"} {
 		f.Add(seed)
 	}
 
@@ -971,7 +1010,7 @@ func FuzzPathParamTarget(f *testing.F) {
 // path as built. An escape holds a "/" in its segment there, but not a dot
 // segment, which the server resolves however the client writes it.
 func FuzzPathParamTargetAsWritten(f *testing.F) {
-	for _, seed := range []string{"", "..", ".", "...", "a/b", "../../admin", "%2e%2e", "..%2f", `a\b`, "a;b", "\r\n", "//", "....//", ".%2e", "%252e%252e", "a?b", "a#b", "ü"} {
+	for _, seed := range []string{"", "..", ".", "...", "a/b", "../../admin", "%2e%2e", "..%2f", `a\b`, "a;b", "..;", "..;jsessionid=x", ".;", ";x", "\r\n", "//", "....//", ".%2e", "%252e%252e", "a?b", "a#b", "ü"} {
 		f.Add(seed)
 	}
 
@@ -984,9 +1023,10 @@ func FuzzPathParamTargetAsWritten(f *testing.F) {
 
 // checkPathParamTarget builds the URL of "/api/v1/:id/end" with val for id and
 // requires that it either fails or still targets exactly that path, with val as
-// one non-empty segment that is no dot segment. The path is read from the
-// request target, which is what goes out on the wire: the normalized path, or
-// the original one when the client sends paths as written.
+// one non-empty segment that is no dot segment, also once a servlet container
+// has stripped its ";" parameters. The path is read from the request target,
+// which is what goes out on the wire: the normalized path, or the original one
+// when the client sends paths as written.
 func checkPathParamTarget(t *testing.T, client *Client, val string) {
 	t.Helper()
 
@@ -1011,6 +1051,9 @@ func checkPathParamTarget(t *testing.T, client *Client, val string) {
 	require.Equal(t, "end", segments[3], "value left the template path: %q", path)
 	require.NotEmpty(t, segments[2], "value dropped its segment: %q", path)
 	require.NotContains(t, []string{".", ".."}, segments[2], "value made a dot segment: %q", path)
+	name, _, _ := strings.Cut(segments[2], ";")
+	require.NotEmpty(t, name, "value drops its segment once its path parameters are stripped: %q", path)
+	require.NotContains(t, []string{".", ".."}, name, "value is a dot segment once its path parameters are stripped: %q", path)
 	require.Equal(t, "example.com", string(uri.Host()), "value changed the host")
 }
 

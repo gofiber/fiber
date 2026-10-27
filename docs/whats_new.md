@@ -1132,8 +1132,9 @@ fmt.Println(resp.StatusCode(), resp.String())
 
 :::caution
 A path parameter value now fills exactly one path segment. A value holding `/`
-or `\`, a value that is exactly `.` or `..`, and an empty value are rejected
-with `ErrPathParamInPath`; a value substituted into the host must already be a
+or `\`, a value that is exactly `.` or `..`, an empty value, and one of those
+followed by `;` parameters, such as `..;`, are rejected with
+`ErrPathParamInPath`; a value substituted into the host must already be a
 valid host or the request fails with `ErrPathParamInHost`. Previously such a
 value was pasted in unchanged, so `SetPathParam("id", "../../admin")` on
 `/api/:id` quietly sent the request to `/admin`. Call
@@ -1141,8 +1142,8 @@ value was pasted in unchanged, so `SetPathParam("id", "../../admin")` on
 purpose (for a client from `NewWithClient`, create the fasthttp client with
 `DisablePathNormalizing: true` as well); the setting on a single request only
 counts for a client that already sends paths as written. `.`, `..` and an empty
-value stay rejected either way, because a server resolves a dot segment and may
-merge slashes.
+value stay rejected either way, with or without `;` parameters, because a server
+resolves a dot segment and may merge slashes.
 :::
 
 :::note
