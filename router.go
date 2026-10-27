@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/urlnorm"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -1001,6 +1002,12 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// Before a handler writes a header under a name the client announced as a trailer.
+	if !fieldname.DropTrailers(&rctx.Request.Header) {
+		_ = ctx.SendStatus(StatusRequestHeaderFieldsTooLarge) //nolint:errcheck // Always return nil
+		return
+	}
+
 	// Optional: check flash messages (hot path, see hasFlashCookie); before the
 	// short-circuit so a skipped 404/405 still clears them.
 	if !app.config.DisableFlashMessages && hasFlashCookie(&ctx.fasthttp.Request.Header) {
@@ -1040,6 +1047,12 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	// Check if the HTTP method is valid
 	if ctx.getMethodInt() == -1 {
 		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
+		return
+	}
+
+	// Before a handler writes a header under a name the client announced as a trailer.
+	if !fieldname.DropTrailers(&rctx.Request.Header) {
+		_ = ctx.SendStatus(StatusRequestHeaderFieldsTooLarge) //nolint:errcheck // Always return nil
 		return
 	}
 

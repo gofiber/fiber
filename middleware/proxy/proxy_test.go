@@ -3,11 +3,13 @@ package proxy
 import (
 	"bufio"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -928,11 +930,10 @@ func Test_Proxy_TrailerDoesNotBecomeHeader(t *testing.T) {
 	}
 }
 
-// Test_Proxy_TrailerRefusedWhereDropTakesAHeaderLine checks that a trailer
-// section the proxy cannot drop alone is refused: Del takes a header line of the
-// same name with it, and a line the application writes under an announced name
-// is filed with the trailer section.
-func Test_Proxy_TrailerRefusedWhereDropTakesAHeaderLine(t *testing.T) {
+// Test_Proxy_TrailerDropKeepsHeaderLines checks that dropping the trailer section
+// keeps the header lines that share its names, and a header the application
+// writes under a name the client announced.
+func Test_Proxy_TrailerDropKeepsHeaderLines(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range trailerHandlers() {
@@ -940,7 +941,9 @@ func Test_Proxy_TrailerRefusedWhereDropTakesAHeaderLine(t *testing.T) {
 			t.Parallel()
 
 			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-				return c.SendString(strings.Join(matchingFieldLines(c, fiber.HeaderForwarded), ","))
+				lines := matchingFieldLines(c, fiber.HeaderForwarded, "X-Remote-User", fiber.HeaderUserAgent)
+				slices.Sort(lines)
+				return c.SendString(strings.Join(lines, ","))
 			})
 
 			app := fiber.New()
@@ -953,18 +956,45 @@ func Test_Proxy_TrailerRefusedWhereDropTakesAHeaderLine(t *testing.T) {
 			const (
 				head    = "GET / HTTP/1.1\r\nHost: example.com\r\n"
 				chunked = "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"
+				written = "Forwarded=for=192.0.2.1"
 			)
-			require.Equal(t, "Forwarded=for=192.0.2.1", sendRaw(t, app, head+"\r\n"))
-			for _, raw := range []string{
-				head + "Trailer: Forwarded\r\n\r\n",
-				head + chunked + "Forwarded: for=127.0.0.1\r\n\r\n",
-				head + "X-Remote-User: alice\r\n" + chunked + "X-Remote-User: admin\r\n\r\n",
-				head + "User-Agent: early\r\n" + chunked + "User-Agent: late\r\n\r\n",
+			for raw, want := range map[string]string{
+				head + "\r\n":                                       written,
+				head + "Trailer: Forwarded\r\n\r\n":                 written,
+				head + chunked + "Forwarded: for=127.0.0.1\r\n\r\n": written,
+				head + "X-Remote-User: alice\r\n" + chunked + "X-Remote-User: admin\r\n\r\n": written + ",X-Remote-User=alice",
+				head + "User-Agent: early\r\n" + chunked + "User-Agent: late\r\n\r\n":        written + ",User-Agent=early",
 			} {
-				require.Equal(t, fiber.ErrBadRequest.Message, sendRaw(t, app, raw), raw)
+				require.Equal(t, want, sendRaw(t, app, raw), raw)
 			}
 		})
 	}
+}
+
+// Test_Proxy_StripDropsTrailerSection checks the drop for a trailer section read
+// after the request started, as a streamed body reads it.
+func Test_Proxy_StripDropsTrailerSection(t *testing.T) {
+	t.Parallel()
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader("POST / HTTP/1.1\r\nHost: example.com\r\n"+
+		"X-Remote-User: alice\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"+
+		"X-Remote-User: admin\r\nX-Other: late\r\n\r\n"))))
+
+	require.True(t, stripHopByHopRequestHeaders(req, true))
+
+	require.Empty(t, req.Header.PeekTrailerKeys())
+	require.Equal(t, [][]byte{[]byte("alice")}, req.Header.PeekAll("X-Remote-User"))
+	require.Empty(t, req.Header.PeekAll("X-Other"))
+
+	var trailers strings.Builder
+	for i := range 17 {
+		fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
+	}
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader("POST / HTTP/1.1\r\nHost: example.com\r\n"+
+		"Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"+trailers.String()+"\r\n"))))
+	require.False(t, stripHopByHopRequestHeaders(req, true), "too many names to drop")
 }
 
 // Test_Proxy_Do_ConnectionCannotRemoveRealIP checks that the X-Real-IP written

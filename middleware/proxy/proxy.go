@@ -204,7 +204,7 @@ func doActionWithPolicy(
 	req.URI().SetScheme(u.Scheme)
 
 	if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized) {
-		return fiber.ErrBadRequest
+		return fiber.ErrRequestHeaderFieldsTooLarge
 	}
 	// The upstream connection speaks HTTP/1.1: reset a protocol token
 	// inherited from the inbound request (e.g. "HTTP/2" propagated by the

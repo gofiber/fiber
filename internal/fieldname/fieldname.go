@@ -11,6 +11,7 @@ package fieldname
 
 import (
 	"iter"
+	"slices"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -39,6 +40,46 @@ type Deleter interface {
 // Peek and PeekAll fall through to it, so the keyed reads are taken only without one.
 func HasTrailers(h Peeker) bool {
 	return len(h.PeekTrailerKeys()) > 0
+}
+
+// maxTrailers bounds the names DropTrailers takes on, since fasthttp's Del walks the whole header for each.
+const maxTrailers = 16
+
+// DropTrailers discards a request's trailer section and the names announced for it (RFC 9112 §7.1.2):
+// fasthttp files a later Set or Add under such a name with that section, out of the header readers' reach.
+// It reports false, leaving h as it is, for more than maxTrailers names.
+func DropTrailers(h *fasthttp.RequestHeader) bool {
+	if len(h.PeekTrailerKeys()) == 0 {
+		return true
+	}
+	return dropTrailerSection(h)
+}
+
+func dropTrailerSection(h *fasthttp.RequestHeader) bool {
+	keys := h.PeekTrailerKeys()
+	if len(keys) > maxTrailers {
+		return false
+	}
+	names := make([]string, len(keys))
+	for i, key := range keys {
+		names[i] = string(key)
+	}
+	// Del takes a name's header lines along with its trailer fields, so they are put back after.
+	var kept []string
+	for k, v := range h.All() {
+		if slices.Contains(names, utils.UnsafeString(k)) {
+			kept = append(kept, string(k), string(v))
+		}
+	}
+	for _, name := range names {
+		h.Del(name)
+	}
+	// With the trailer section empty, this has nothing to move into the header section.
+	h.Del(fasthttp.HeaderTrailer)
+	for i := 0; i < len(kept); i += 2 {
+		h.Add(kept[i], kept[i+1])
+	}
+	return true
 }
 
 // Lines returns every field line stored under name. The walk replaces the

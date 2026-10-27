@@ -1,8 +1,6 @@
 package proxy
 
 import (
-	"slices"
-
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
@@ -52,44 +50,15 @@ func isForwardingHeader(name string) bool {
 		utils.EqualFold(name, fiber.HeaderForwarded)
 }
 
-// dropTrailerSection deletes the trailer fields ahead of Trailer, which would move them into
-// the header section (RFC 9112 §7.1.2), and refuses, leaving h untouched, where that loses a header.
-func dropTrailerSection(h *fasthttp.RequestHeader) bool {
-	keys := h.PeekTrailerKeys()
-	if len(keys) == 0 {
-		return true
-	}
-	names := make([]string, 0, len(keys))
-	for _, key := range keys {
-		// A forwarding field the application writes under an announced name lands in the trailer section.
-		if isForwardingHeader(utils.UnsafeString(key)) {
-			return false
-		}
-		// Copied: deleting Trailer empties the set the keys view.
-		names = append(names, string(key))
-	}
-	// Del takes a name from both sections; All walks the header section only, byte-exact as Del.
-	for k := range h.All() {
-		if slices.Contains(names, utils.UnsafeString(k)) {
-			return false
-		}
-	}
-	for _, name := range names {
-		h.Del(name)
-	}
-	h.Del(fiber.HeaderTrailer)
-	return true
-}
-
 // stripHopByHopRequestHeaders removes RFC 9110 §7.6.1 hop-by-hop headers
 // from req. Callers can pass header names in except to preserve specific
 // headers — used by the legacy KeepConnectionHeader option to retain the
 // literal Connection header while still dropping the other hop-by-hop
-// headers. It reports false for a request the caller must refuse (see
-// dropTrailerSection).
+// headers. It reports false for a trailer section too large to drop, see
+// fieldname.DropTrailers.
 func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except ...string) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
-	// Before anything below removes Trailer, by the listing or by name.
-	if !dropTrailerSection(&req.Header) {
+	// A streamed body can have read a trailer section by now, which removing Trailer below would make header lines.
+	if !fieldname.DropTrailers(&req.Header) {
 		return false
 	}
 

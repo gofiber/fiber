@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 const (
@@ -2324,20 +2325,26 @@ func Test_HTTPMiddleware_PropagatesHeaderRemoval(t *testing.T) {
 }
 
 // Test_HTTPMiddleware_TrailerDoesNotBecomeHeader asserts that a field the client
-// sent after the last chunk, which net/http keeps in r.Trailer, does not reach
-// the fiber handler as a header the middleware removed or replaced.
+// sent after the last chunk does not reach the fiber handler as a header the
+// middleware removed or replaced.
 func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
 	t.Parallel()
 
 	const owned = "X-Authenticated-User"
 
 	tests := []struct {
-		name  string
-		write string
-		want  []string
+		name    string
+		write   string
+		want    []string
+		trailer []string
+		stream  bool
 	}{
+		// Fiber drops the trailer section as the request arrives, before r.Trailer is built.
 		{name: "stripped"},
 		{name: "replaced", write: "alice", want: []string{"alice"}},
+		// Streamed, the trailer section arrives only as the middleware reads the body.
+		{name: "stripped streamed", trailer: []string{"admin"}, stream: true},
+		{name: "replaced streamed", write: "alice", want: []string{"alice"}, trailer: []string{"admin"}, stream: true},
 	}
 
 	for _, tt := range tests {
@@ -2345,15 +2352,19 @@ func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
 			t.Parallel()
 
 			var (
-				trailer []string
-				got     []string
-				headers map[string][]string
-				body    string
+				trailer     []string
+				body        string
+				got         []string
+				headers     map[string][]string
+				trailerKeys int
 			)
 
-			app := fiber.New()
+			app := fiber.New(fiber.Config{StreamRequestBody: tt.stream})
 			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					b, err := io.ReadAll(r.Body)
+					assert.NoError(t, err)
+					body = string(b)
 					trailer = r.Trailer.Values(owned)
 					r.Header.Del(owned)
 					if tt.write != "" {
@@ -2365,23 +2376,38 @@ func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
 			app.Post("/", func(c fiber.Ctx) error {
 				got = c.GetAll(owned)
 				headers = c.GetReqHeaders()
-				body = string(c.Body())
+				trailerKeys = len(c.Request().Header.PeekTrailerKeys())
 				return c.SendString("ok")
 			})
 
-			// Parsed from the wire: only a received message has a trailer section.
-			fctx := &fasthttp.RequestCtx{}
-			raw := "POST / HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\n\r\n" +
-				"3\r\na=1\r\n0\r\n" + owned + ": admin\r\n\r\n"
-			require.NoError(t, fctx.Request.Read(bufio.NewReader(strings.NewReader(raw))))
-			app.Handler()(fctx)
+			ln := fasthttputil.NewInmemoryListener()
+			errCh := make(chan error, 1)
+			go func() {
+				errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+			}()
+			t.Cleanup(func() {
+				require.NoError(t, app.Shutdown())
+				if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
+					require.NoError(t, err)
+				}
+			})
 
-			require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
-			require.Equal(t, []string{"admin"}, trailer)
+			conn, err := ln.Dial()
+			require.NoError(t, err)
+			defer conn.Close() //nolint:errcheck // closed by the server already
+			_, err = conn.Write([]byte("POST / HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" +
+				"3\r\na=1\r\n0\r\n" + owned + ": admin\r\n\r\n"))
+			require.NoError(t, err)
+			resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.Equal(t, "a=1", body)
+			require.Equal(t, tt.trailer, trailer)
 			require.Equal(t, tt.want, got)
 			require.Equal(t, tt.want, headers[owned])
-			require.Equal(t, "a=1", body)
-			require.Empty(t, fctx.Request.Header.PeekTrailerKeys())
+			require.Zero(t, trailerKeys)
 		})
 	}
 }

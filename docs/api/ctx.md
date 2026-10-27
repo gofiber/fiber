@@ -1610,7 +1610,7 @@ The match is **case-insensitive**.
 :::
 
 :::note
-Only the header section is read. A field a chunked request sends after its last chunk (the trailer section) is not a header ([RFC 9112 Section 7.1.2](https://www.rfc-editor.org/rfc/rfc9112#section-7.1.2)), and `Get`, `GetAll`, `HasHeader` and the other request header helpers do not return it. Read it from `c.Request().Header` if you need it.
+Only the header section is read. Fiber drops the trailer section of a request (the fields a chunked request sends after its last chunk) and the `Trailer` field announcing it as the request arrives, which [RFC 9112 Section 7.1.2](https://www.rfc-editor.org/rfc/rfc9112#section-7.1.2) permits, so `Get`, `GetAll`, `HasHeader` and the other request header helpers never return such a field, and a header your code writes under one of its names is returned like any other. A request that names more than 16 trailer fields is refused with `431 Request Header Fields Too Large`. With [`StreamRequestBody`](fiber.md#streamrequestbody), the trailer section arrives only as the body is read; the helpers skip it, and with it a header your code writes under one of its names after that.
 :::
 
 ```go title="Signature"

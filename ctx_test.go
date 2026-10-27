@@ -3638,6 +3638,68 @@ func Test_Ctx_HeaderAccessors_SkipTrailerSection(t *testing.T) {
 	}
 }
 
+// go test -run Test_Ctx_HeaderWrittenUnderTrailerName
+func Test_Ctx_HeaderWrittenUnderTrailerName(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		cfg    Config
+		name   string
+		custom bool
+	}{
+		{name: "default"},
+		{name: "raw names", cfg: Config{DisableHeaderNormalizing: true}},
+		{name: "custom ctx", custom: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var app *App
+			if tc.custom {
+				app = NewWithCustomCtx(func(app *App) CustomCtx {
+					return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+				}, tc.cfg)
+			} else {
+				app = New(tc.cfg)
+			}
+			app.Use(func(c Ctx) error {
+				h := &c.Request().Header
+				h.Set("X-Flag", "1")
+				h.Set("X-Tenant", "safe")
+				h.Del("X-Role")
+				h.Set("X-Role", "user")
+				return c.Next()
+			})
+			app.All("/", func(c Ctx) error {
+				return c.SendString(fmt.Sprintf("flag=%s has=%v tenant=%q role=%q trailers=%d", c.Get("X-Flag"), c.HasHeader("X-Flag"),
+					c.GetAll("X-Tenant"), c.GetAll("X-Role"), len(c.Request().Header.PeekTrailerKeys())))
+			})
+			ln := startRawServer(t, app)
+
+			const (
+				head    = "POST / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\nX-Tenant: evil\r\nX-Role: admin\r\n"
+				chunked = "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"
+				want    = `flag=1 has=true tenant=["safe"] role=["user"] trailers=0`
+			)
+			for _, raw := range []string{
+				head + chunked + "X-Flag: 0\r\nX-Tenant: x\r\nX-Role: x\r\n\r\n",
+				head + "Trailer: X-Flag, X-Tenant, X-Role\r\n" + chunked + "\r\n",
+				head + "Trailer: X-Flag, X-Tenant, X-Role\r\nContent-Length: 5\r\n\r\nhello",
+				"GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\nX-Tenant: evil\r\nX-Role: admin\r\nTrailer: X-Flag, X-Tenant, X-Role\r\n\r\n",
+			} {
+				responses, _ := rawExchange(t, ln, raw, 1)
+				require.Equal(t, StatusOK, responses[0].status, raw)
+				require.Equal(t, want, responses[0].body, raw)
+			}
+
+			// Each name costs fasthttp a pass over the header to drop.
+			responses, _ := rawExchange(t, ln, head+"Trailer: X-1, X-2, X-3, X-4, X-5, X-6, X-7, X-8, X-9, "+
+				"X-10, X-11, X-12, X-13, X-14, X-15, X-16, X-17\r\n"+chunked+"\r\n", 1)
+			require.Equal(t, StatusRequestHeaderFieldsTooLarge, responses[0].status)
+		})
+	}
+}
+
 // go test -run Test_Ctx_GetReqHeader
 func Test_Ctx_GetReqHeader(t *testing.T) {
 	t.Parallel()

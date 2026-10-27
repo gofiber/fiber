@@ -170,6 +170,86 @@ func Test_First_Lines_SkipTrailerSection(t *testing.T) {
 	}
 }
 
+// Test_DropTrailers pins that the header lines stay and that a later Set lands
+// in the header section, where fasthttp filed it with the trailer section before.
+func Test_DropTrailers(t *testing.T) {
+	t.Parallel()
+
+	const (
+		post    = "POST / HTTP/1.1\r\nHost: app.example\r\n"
+		chunked = "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"
+	)
+
+	tests := []struct {
+		name      string
+		raw       string
+		wantUA    string
+		wantLines []string
+	}{
+		{name: "trailer only", raw: post + chunked + "X-User: admin\r\n\r\n"},
+		{name: "announced only", raw: "GET / HTTP/1.1\r\nHost: app.example\r\nTrailer: X-User\r\n\r\n"},
+		{
+			name: "header lines beside a trailer", raw: post + "X-User: alice\r\nX-User: bob\r\n" + chunked + "X-User: admin\r\n\r\n",
+			wantLines: []string{"alice", "bob"},
+		},
+		{
+			name: "header line announced on a sized body", raw: post + "X-User: alice\r\nTrailer: X-User\r\nContent-Length: 0\r\n\r\n",
+			wantLines: []string{"alice"},
+		},
+		{
+			name: "own slot", raw: post + "User-Agent: early\r\n" + chunked + "User-Agent: late\r\nX-User: admin\r\n\r\n",
+			wantUA: "early",
+		},
+	}
+
+	for _, tc := range tests {
+		for _, canonical := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s canonical=%v", tc.name, canonical), func(t *testing.T) {
+				t.Parallel()
+
+				req := &fasthttp.Request{}
+				if !canonical {
+					req.Header.DisableNormalizing()
+				}
+				require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(tc.raw))))
+
+				require.True(t, DropTrailers(&req.Header))
+
+				require.Empty(t, req.Header.PeekTrailerKeys())
+				require.Empty(t, req.Header.Peek(fasthttp.HeaderTrailer))
+				require.Equal(t, tc.wantUA, string(req.Header.UserAgent()))
+				var lines []string
+				for _, line := range req.Header.PeekAll("X-User") {
+					lines = append(lines, string(line))
+				}
+				require.Equal(t, tc.wantLines, lines)
+
+				req.Header.Set("X-User", "app")
+				require.Equal(t, "app", string(First(&req.Header, "X-User", canonical)))
+			})
+		}
+	}
+
+	t.Run("too many names", func(t *testing.T) {
+		t.Parallel()
+
+		req := &fasthttp.Request{}
+		raw := post + "Trailer: " + strings.Repeat("X-A, ", maxTrailers) + "X-B\r\n" + chunked + "\r\n"
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+		require.Len(t, req.Header.PeekTrailerKeys(), 2)
+		require.True(t, DropTrailers(&req.Header))
+
+		var trailers strings.Builder
+		for i := range maxTrailers + 1 {
+			fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
+		}
+		req = &fasthttp.Request{}
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(post+chunked+trailers.String()+"\r\n"))))
+		require.False(t, DropTrailers(&req.Header))
+		require.Len(t, req.Header.PeekTrailerKeys(), maxTrailers+1)
+	})
+}
+
 func Test_Del_TerminatesOnSynthesizedContentType(t *testing.T) {
 	t.Parallel()
 

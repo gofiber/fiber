@@ -86,7 +86,7 @@ func Balancer(config ...Config) fiber.Handler {
 		ip := realIP(c, scratch[:0])
 
 		if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized, keepHeaders...) {
-			return fiber.ErrBadRequest
+			return fiber.ErrRequestHeaderFieldsTooLarge
 		}
 
 		// The Host field holds no userinfo (RFC 9112 Section 3.2). fasthttp
