@@ -2939,3 +2939,67 @@ func Test_Session_DeleteWaitsForRunningSave(t *testing.T) {
 	_, err := store.GetByID(t.Context(), id)
 	require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
 }
+
+// A request that loaded a session before another request ended it must not
+// carry the session on to a new ID.
+//
+// go test -run Test_Session_RegenerateAfterConcurrentEnd
+func Test_Session_RegenerateAfterConcurrentEnd(t *testing.T) {
+	t.Parallel()
+
+	ends := []struct {
+		end   func(t *testing.T, app *fiber.App, store *Store, id string)
+		name  string
+		ended bool
+	}{
+		{name: "Reset", ended: true, end: func(t *testing.T, app *fiber.App, store *Store, id string) {
+			t.Helper()
+			require.NoError(t, loadSession(t, app, store, id).Reset())
+		}},
+		{name: "Destroy", ended: true, end: func(t *testing.T, app *fiber.App, store *Store, id string) {
+			t.Helper()
+			require.NoError(t, loadSession(t, app, store, id).Destroy())
+		}},
+		{name: "store.Delete", ended: true, end: func(t *testing.T, _ *fiber.App, store *Store, id string) {
+			t.Helper()
+			require.NoError(t, store.Delete(t.Context(), id))
+		}},
+		{name: "unrelated delete", end: func(t *testing.T, _ *fiber.App, store *Store, id string) {
+			t.Helper()
+			sibling := store.KeyGenerator()
+			for lockFor(storageKeyPrefix+sibling) != lockFor(storageKeyPrefix+id) {
+				sibling = store.KeyGenerator()
+			}
+			require.NoError(t, store.Delete(t.Context(), sibling))
+		}},
+	}
+
+	for _, tc := range ends {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			store := NewStore(Config{Storage: memory.New(), AbsoluteTimeout: time.Hour})
+			id := seedSession(t, app, store, func(sess *Session) {
+				sess.Set("user", "alice")
+			})
+
+			inFlight := loadSession(t, app, store, id)
+			tc.end(t, app, store, id)
+			require.NoError(t, inFlight.Regenerate())
+			require.NoError(t, inFlight.Save())
+
+			_, err := store.GetByID(t.Context(), id)
+			require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
+			rotated, err := store.GetByID(t.Context(), inFlight.ID())
+			require.NoError(t, err)
+			defer rotated.Release()
+			if tc.ended {
+				require.Nil(t, rotated.Get("user"))
+			} else {
+				require.Equal(t, "alice", rotated.Get("user"))
+			}
+			require.False(t, rotated.absExpiration().IsZero())
+		})
+	}
+}

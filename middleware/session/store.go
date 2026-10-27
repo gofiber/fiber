@@ -368,6 +368,25 @@ func (s *Store) deleteKey(ctx context.Context, key string) error {
 	return err
 }
 
+// deleteLoadedKey is deleteKey for a session read at loadGen; it reports whether
+// another request had deleted the key since.
+func (s *Store) deleteLoadedKey(ctx context.Context, key string, loadGen uint64) (bool, error) {
+	l := lockFor(key)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	ended := false
+	if l.gen.Load() != loadGen {
+		raw, err := s.Storage.GetWithContext(ctx, key)
+		if err != nil {
+			return false, err
+		}
+		ended = raw == nil
+	}
+	err := s.Storage.DeleteWithContext(ctx, key)
+	l.gen.Add(1)
+	return ended, err
+}
+
 // GetByID retrieves a session by its ID from the storage.
 // If the session is not found, it returns nil and an error.
 //

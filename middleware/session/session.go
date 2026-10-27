@@ -273,8 +273,19 @@ func (s *Session) RegenerateWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	// Delete old id from storage
-	if err := s.config.deleteKey(ctx, s.storageKey()); err != nil {
+	var ended bool
+	var err error
+	if s.loaded {
+		ended, err = s.config.deleteLoadedKey(ctx, s.storageKey(), s.loadGen)
+	} else {
+		err = s.config.deleteKey(ctx, s.storageKey())
+	}
+	if err != nil {
 		return err
+	}
+	// Another request ended it: the new ID must not carry the session on.
+	if ended {
+		s.clearData()
 	}
 
 	// Generate a new session, and set session.isFresh to true
@@ -321,12 +332,7 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	// Reset local state only after the storage delete succeeded, so a
 	// canceled/failed delete leaves the session data intact.
 	if s.data != nil {
-		s.data.Reset()
-		s.rawData = nil
-		// Reset wiped the absolute expiration, so the rotated session must be armed again.
-		if s.config != nil && s.config.AbsoluteTimeout > 0 {
-			s.setAbsExpiration(time.Now().Add(s.config.AbsoluteTimeout))
-		}
+		s.clearData()
 	}
 	s.idleTimeout = 0
 
@@ -337,6 +343,16 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	s.refresh()
 
 	return nil
+}
+
+// clearData drops the session data; the caller holds s.mu.
+func (s *Session) clearData() {
+	s.data.Reset()
+	s.rawData = nil
+	// That wiped the absolute expiration, so the rotated session must be armed again.
+	if s.config != nil && s.config.AbsoluteTimeout > 0 {
+		s.setAbsExpiration(time.Now().Add(s.config.AbsoluteTimeout))
+	}
 }
 
 // refresh generates a new session, and sets session.isFresh to be true.
