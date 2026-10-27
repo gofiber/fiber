@@ -1957,6 +1957,10 @@ Fiber now includes an [SSE middleware](./middleware/sse.md) for Server-Sent Even
 disconnect detection through flush errors while leaving application-level hubs, topics, replay stores, and
 pub/sub bridges to user code or recipes.
 
+`Handler` starts when the server begins to send the response body, after the middleware before the route has
+returned from `c.Next()`, and the server waits for `Handler` and `OnClose` before it reuses the request. A
+response whose body is never sent, such as the answer to a `HEAD` request, runs neither.
+
 ### Timeout
 
 The timeout middleware is now configurable. A new `Config` struct allows customizing the timeout duration, defining a handler that runs when a timeout occurs, and specifying errors to treat as timeouts. The `New` function now accepts a `Config` value instead of a duration.
