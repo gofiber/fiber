@@ -5614,13 +5614,13 @@ func Test_App_Add_MergedRoute_KeepsRegistrationID(t *testing.T) {
 	// it over unchanged would step over the wildcard below.
 	app.Get("/a", func(c Ctx) error { return c.SendString("a") })
 	app.Add([]string{MethodGet, MethodPost}, "/x", func(c Ctx) error { return c.Next() })
-	app.Post("/*", func(c Ctx) error { return c.SendString("wildcard") })
-	// Merges into the GET route of the registration above, whose POST copy is
-	// the one the switch below has to find.
-	app.Get("/x", func(c Ctx) error {
+	// Merges into both routes of the registration above, whose POST copy is
+	// the one the switch has to find.
+	app.Add([]string{MethodGet, MethodPost}, "/x", func(c Ctx) error {
 		c.Method(MethodPost)
 		return c.Next()
 	})
+	app.Post("/*", func(c Ctx) error { return c.SendString("wildcard") })
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
 	require.NoError(t, err)
@@ -5646,12 +5646,13 @@ func Test_App_Name_MergedRouteUsesLatestGroup(t *testing.T) {
 	two := app.Group("/api")
 	two.Name("two.")
 
-	one.Get("/x", h).Name("first")
+	one.Add([]string{MethodGet, MethodPost}, "/x", h).Name("first")
 	two.Add([]string{MethodGet, MethodPost}, "/x", h).Name("second")
 
 	names := map[string]string{}
 	for _, route := range app.GetRoutes() {
 		if route.Path == "/api/x" {
+			require.NotContains(t, names, route.Method, "merged")
 			names[route.Method] = route.Name
 		}
 	}
@@ -5669,7 +5670,7 @@ func Test_App_Name_OnlyLatestRegistration(t *testing.T) {
 
 	app.Get("/x", h).Name("first")
 	app.Post("/x", h).Name("first")
-	// Registering another path moves /x off the tail of both stacks, so the
+	// Registering another path moves /x off the tail of the GET stack, so the
 	// routes above survive rather than being merged into the ones below.
 	app.Get("/y", h)
 	app.Add([]string{MethodGet, MethodPost}, "/x", h).Name("second")
@@ -5684,7 +5685,7 @@ func Test_App_Name_OnlyLatestRegistration(t *testing.T) {
 
 	// The earlier registrations keep their own name; only the routes the latest
 	// Add created are renamed.
-	require.Equal(t, []string{"GET:first", "GET:second", "POST:second"}, names)
+	require.Equal(t, []string{"GET:first", "GET:second", "POST:first", "POST:second"}, names)
 }
 
 // Test_App_Name_OnlyLatestRegistration_ReverseMethodOrder is the test above
@@ -5836,6 +5837,28 @@ func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 			sub.Get("/admin/*", guard)
 			sub.Use("/admin", endpoint)
 			app.Domain("example.com").Use("/", sub)
+		}},
+		{name: "Domain mount with an older Head route", register: func(app *App) {
+			inner := New()
+			inner.Head("/secret", endpoint)
+			inner.Get("/secret", endpoint)
+			sub := New()
+			sub.Get("/admin/*", guard)
+			sub.Use("/admin", inner)
+			app.Domain("example.com").Use("/", sub)
+		}},
+		{name: "All after Get", register: func(app *App) {
+			app.Get("/admin/*", guard)
+			app.All("/admin/*", endpoint)
+		}},
+		{name: "Add of both methods after Get", register: func(app *App) {
+			app.Get("/admin/*", guard)
+			app.Add([]string{MethodGet, MethodHead}, "/admin/*", endpoint)
+		}},
+		{name: "Get after All", register: func(app *App) {
+			app.All("/admin/*", next)
+			app.Get("/admin/*", guard)
+			app.Get("/admin/secret", endpoint)
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -6092,6 +6115,35 @@ func Test_Router_PathOverride_AppMountedTwice(t *testing.T) {
 
 // Test_Router_MethodOverride_FromRouteOfOneMethod covers a method change made by
 // a route the new method holds no copy of.
+func Test_Router_MethodOverride_GetAfterRouteOfSeveralMethods(t *testing.T) {
+	t.Parallel()
+
+	override := func(c Ctx) error {
+		c.Method(c.Get("X-HTTP-Method-Override"))
+		return c.Next()
+	}
+	for name, register := range map[string]func(app *App){
+		"All": func(app *App) { app.All("/admin/*", override) },
+		"Add": func(app *App) { app.Add([]string{MethodPost, MethodGet}, "/admin/*", override) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			register(app)
+			app.Get("/admin/*", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
+			app.Get("/admin/flush", func(c Ctx) error { return c.SendString("flushed") })
+
+			req := httptest.NewRequest(MethodPost, "/admin/flush", http.NoBody)
+			req.Header.Set("X-HTTP-Method-Override", MethodGet)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.Equal(t, StatusUnauthorized, resp.StatusCode)
+		})
+	}
+}
+
 func Test_Router_MethodOverride_FromRouteOfOneMethod(t *testing.T) {
 	t.Parallel()
 

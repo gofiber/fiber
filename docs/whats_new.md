@@ -375,7 +375,7 @@ The router normalizes every request path before matching, as [RFC 3986 Section 6
 
 ### Path and method overrides
 
-After `c.Path(...)` or `c.Method(...)`, `c.Next()` continues with the routes registered after the current one that match the new path and method. Before, a handler mounted on a prefix, such as `app.Use("/v1", rewrite.New(...))` or `http.StripPrefix` through `adaptor.HTTPMiddleware`, or registered for a single method resumed at a position taken from another route list, and skipped routes registered after it, middleware included. A `Use` registered right after a route for a single method is no longer merged into the previous `Use` under the other methods, so `app.Stack()` can list one more route there.
+After `c.Path(...)` or `c.Method(...)`, `c.Next()` continues with the routes registered after the current one that match the new path and method. Before, a handler mounted on a prefix, such as `app.Use("/v1", rewrite.New(...))` or `http.StripPrefix` through `adaptor.HTTPMiddleware`, or registered for a single method resumed at a position taken from another route list, and skipped routes registered after it, middleware included. A `Use` registered right after a route for a single method is no longer merged into the previous `Use` under the other methods, and a route is merged into the one before it on the same path only when both were registered for the same methods: `app.Get` after `app.All` or a multi-method `app.Add` on one path stays a route of its own, so `app.Stack()` can list one more route there.
 
 ### Trailing slashes
 
@@ -561,7 +561,7 @@ app.Get("/health", handler) // HEAD /health now returns 405 unless you add it ma
 
 Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers.
 
-Each automatic `HEAD` route runs where its `GET` route does, and every `GET` route gets its own, also when a path has several. Before, they ran after every `Use` handler, mounted app and explicit `HEAD` route, so a guard registered with `Get`, such as `app.Get("/admin/*", auth)` followed by `app.Use("/admin", adminApp)` or `app.Use(static.New(dir))`, did not run for `HEAD`, and a `GET` route followed by a catch-all `Use` answered `HEAD` with that handler. A `HEAD` route registered for a path still replaces all of its automatic ones. Two apps mounted on one prefix now both get their `HEAD` routes, and a sub-app that leaves `HEAD` out of its `RequestMethods` answers `HEAD` with `405` behind nested `Domain` mounts as well.
+Each automatic `HEAD` route runs where its `GET` route does, and every `GET` route gets its own, also when a path has several. Before, they ran after every `Use` handler, mounted app and explicit `HEAD` route, so a guard registered with `Get`, such as `app.Get("/admin/*", auth)` followed by `app.Use("/admin", adminApp)` or `app.Use(static.New(dir))`, did not run for `HEAD`, and a `GET` route followed by a catch-all `Use` answered `HEAD` with that handler. A route registered for `HEAD` alone still replaces the automatic ones of its path; one registered for `GET` and `HEAD` together, with `All` or `Add`, answers only for itself. Two apps mounted on one prefix now both get their `HEAD` routes, and a sub-app that leaves `HEAD` out of its `RequestMethods` answers `HEAD` with `405` behind nested `Domain` mounts as well.
 
 ### QUERY method (RFC 10008)
 

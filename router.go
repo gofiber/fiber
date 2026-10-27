@@ -120,6 +120,8 @@ type Route struct { // betteralign:ignore - see below
 	// merge only appends handlers, leaving each method's route with the id of
 	// the registration that first created it.
 	latestID uint64
+	// copies is the number of method stacks the registration filed a copy in.
+	copies int
 
 	Handlers []Handler `json:"-"` // Ctx handlers
 
@@ -1130,6 +1132,7 @@ func (*App) copyRoute(route *Route) *Route {
 		// still be found in another method's tree (see routeIndexInTree).
 		id:       route.id,
 		latestID: route.latestID,
+		copies:   route.copies,
 		hosts:    route.hosts,
 
 		// Leading-byte filter
@@ -1288,7 +1291,8 @@ func (app *App) registerForHosts(hosts []domainMatcher, methods []string, pathRa
 	}
 
 	// Precompute path normalization ONCE
-	pathRaw, pathPretty, pathClean := normalizeRoutePattern(pathRaw, &app.config, slices.Contains(methods, methodUse))
+	use := slices.Contains(methods, methodUse)
+	pathRaw, pathPretty, pathClean := normalizeRoutePattern(pathRaw, &app.config, use)
 
 	parsedRaw := parseRoute(pathRaw, app.config.RegexHandler, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.config.RegexHandler, app.customConstraints...)
@@ -1301,6 +1305,10 @@ func (app *App) registerForHosts(hosts []domainMatcher, methods []string, pathRa
 
 	isMount := group != nil && group.app != app
 	routeID := routeIDs.Add(1)
+	// Merge in every stack the registration files a copy in, or in none, so the copies
+	// keep one layout for routeIndexInTree and the automatic HEAD routes.
+	stacks := app.registrationStacks(methods)
+	merge := app.mergesInEveryStack(&Route{Path: pathRaw, use: use, mount: isMount, hosts: hosts}, stacks)
 
 	for _, method := range methods {
 		method = utilsstrings.ToUpper(method)
@@ -1322,6 +1330,7 @@ func (app *App) registerForHosts(hosts []domainMatcher, methods []string, pathRa
 			unescapePath:  app.config.UnescapePath,
 			id:            routeID,
 			latestID:      routeID,
+			copies:        len(stacks),
 			hosts:         hosts,
 
 			path:        pathClean,
@@ -1340,9 +1349,6 @@ func (app *App) registerForHosts(hosts []domainMatcher, methods []string, pathRa
 
 		// Middleware route matches all HTTP methods
 		if isUse {
-			// Merge in every method's stack or in none, so the copies keep one
-			// layout for routeIndexInTree when a handler switches method.
-			merge := app.useMergesInEveryStack(&route)
 			// Add route to all HTTP methods stack
 			for _, m := range app.config.RequestMethods {
 				// Create a route copy to avoid duplicates during compression
@@ -1351,9 +1357,25 @@ func (app *App) registerForHosts(hosts []domainMatcher, methods []string, pathRa
 			}
 		} else {
 			// Add route to stack
-			app.addRoute(method, &route, true)
+			app.addRoute(method, &route, merge)
 		}
 	}
+}
+
+// registrationStacks returns the indexes of the method stacks register files a copy in.
+func (app *App) registrationStacks(methods []string) []int {
+	stacks := make([]int, 0, len(methods))
+	for _, method := range methods {
+		method = utilsstrings.ToUpper(method)
+		if method == methodUse {
+			for m := range app.config.RequestMethods {
+				stacks = append(stacks, m)
+			}
+		} else if m := app.methodInt(method); m != -1 {
+			stacks = append(stacks, m)
+		}
+	}
+	return stacks
 }
 
 // mergesIntoLastLocked reports whether route merges into the last route of
@@ -1365,22 +1387,29 @@ func (app *App) mergesIntoLastLocked(m int, route *Route) bool {
 		return false
 	}
 	last := app.stack[m][l-1]
-	return last.Path == route.Path && route.use == last.use && !route.mount && !last.mount &&
+	return last.Path == route.Path && route.use == last.use && !route.mount && !last.mount && !last.autoHead &&
 		matchersKey(last.hosts) == matchersKey(route.hosts)
 }
 
-// useMergesInEveryStack reports whether a Use registration merges into the last
-// route of every method's stack; a single-method route in between stops that.
-func (app *App) useMergesInEveryStack(route *Route) bool {
+// mergesInEveryStack reports whether a registration filing route in stacks merges
+// into the last route of each: the copies of one registration made for as many stacks.
+func (app *App) mergesInEveryStack(route *Route, stacks []int) bool {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	for m := range app.config.RequestMethods {
+	var last *Route
+	for _, m := range stacks {
 		if !app.mergesIntoLastLocked(m, route) {
 			return false
 		}
+		prev := last
+		last = app.stack[m][len(app.stack[m])-1]
+		if prev != nil && prev.id != last.id {
+			return false
+		}
 	}
-	return true
+	// A copy under another method would miss the handlers and fall out of step.
+	return last != nil && last.copies == len(stacks)
 }
 
 // addRoute files route under method, merging it into the last route there
@@ -1508,7 +1537,9 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 	explicit := make(map[autoHeadKey]struct{}, len(headStack))
 	for i, route := range headStack {
 		if key := (routeCopyKey{path: route.Path, id: route.id}); onGet[key] > 0 {
+			// The HEAD copy of an All or Add answers for that registration alone.
 			copies[key] = append(copies[key], i)
+			continue
 		}
 		if !route.mount && !route.use && !route.autoHead {
 			explicit[app.autoHeadKey(route)] = struct{}{}
