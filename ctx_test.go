@@ -12276,6 +12276,63 @@ func Test_Ctx_GetReqHeaders(t *testing.T) {
 	}, c.GetHeaders())
 }
 
+// go test -run Test_Ctx_GetReqHeaders_TrailerSection
+func Test_Ctx_GetReqHeaders_TrailerSection(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{DisableHeaderNormalizing: !normalize})
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+			if !normalize {
+				c.Request().Header.DisableNormalizing()
+			}
+			// A request read outside the router keeps the section, as a streamed body does past the cap.
+			raw := "POST / HTTP/1.1\r\nHost: example.com\r\nX-Kept: 1\r\nx-user: admin\r\nTransfer-Encoding: chunked\r\n\r\n" +
+				"5\r\nhello\r\n0\r\nX-User: x\r\nX-Role: x\r\n\r\n"
+			require.NoError(t, c.Request().Read(bufio.NewReader(strings.NewReader(raw))))
+			require.Len(t, c.Request().Header.PeekTrailerKeys(), 2)
+
+			headers := c.GetReqHeaders()
+			require.Equal(t, []string{"1"}, headers["X-Kept"])
+			for name := range headers {
+				require.NotContains(t, []string{"x-user", "x-role"}, strings.ToLower(name))
+			}
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_GetReqHeaders_TrailerSection -benchmem -count=4
+func Benchmark_Ctx_GetReqHeaders_TrailerSection(b *testing.B) {
+	for _, n := range []int{256, 4096} {
+		b.Run(strconv.Itoa(n), func(b *testing.B) {
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
+			var lines, trailers strings.Builder
+			for i := range n {
+				fmt.Fprintf(&lines, "H%d: 1\r\n", i)
+				fmt.Fprintf(&trailers, "T%d: 1\r\n", i)
+			}
+			raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + lines.String() +
+				"Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n" + trailers.String() + "\r\n"
+			require.NoError(b, c.Request().Read(bufio.NewReaderSize(strings.NewReader(raw), len(raw))))
+			require.Len(b, c.Request().Header.PeekTrailerKeys(), n)
+
+			b.ReportAllocs()
+			var headers map[string][]string
+			for b.Loop() {
+				headers = c.GetReqHeaders()
+			}
+			require.Contains(b, headers, "H0")
+		})
+	}
+}
+
 func Test_Ctx_Set_SanitizeHeaderValue(t *testing.T) {
 	t.Parallel()
 

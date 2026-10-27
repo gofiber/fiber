@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
+	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -717,10 +718,24 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 	reqHeader := &r.c.fasthttp.Request.Header
 	// Pre-allocate map with known header count to avoid reallocations
 	headers := make(map[string][]string, reqHeader.Len())
-	trailers := fieldname.HasTrailers(reqHeader)
+	// Lines under a trailer name are left out, as c.Get leaves them; one set, not InTrailer per line, keeps it linear.
+	var (
+		trailers map[string]struct{}
+		lower    []byte
+	)
+	if keys := reqHeader.PeekTrailerKeys(); len(keys) > 0 {
+		trailers = make(map[string]struct{}, len(keys))
+		for _, key := range keys {
+			lower = utilsbytes.UnsafeToLower(append(lower[:0], key...))
+			trailers[string(lower)] = struct{}{}
+		}
+	}
 	for k, v := range reqHeader.All() {
-		if trailers && fieldname.InTrailer(reqHeader, utils.UnsafeString(k)) {
-			continue
+		if trailers != nil {
+			lower = utilsbytes.UnsafeToLower(append(lower[:0], k...))
+			if _, ok := trailers[string(lower)]; ok {
+				continue
+			}
 		}
 		key := app.toString(k)
 		headers[key] = append(headers[key], app.toString(v))
