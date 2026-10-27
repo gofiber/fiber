@@ -3,6 +3,7 @@ package bodystream
 import (
 	"bytes"
 	"io"
+	"math"
 	"mime/multipart"
 	"strings"
 	"testing"
@@ -118,4 +119,15 @@ func Test_Buffer_KeepsParsedMultipartForm(t *testing.T) {
 	again, err := req.MultipartFormWithLimit(limit)
 	require.NoError(t, err)
 	require.Same(t, form, again)
+}
+
+func Test_Buffer_MaxIntLimit(t *testing.T) {
+	t.Parallel()
+
+	var req fasthttp.Request
+	req.SetBodyStream(strings.NewReader("hello"), -1)
+
+	require.NoError(t, Buffer(&req, math.MaxInt))
+	require.False(t, req.IsBodyStream())
+	require.Equal(t, "hello", string(req.Body()))
 }

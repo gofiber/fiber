@@ -3,6 +3,7 @@ package bodystream
 
 import (
 	"io"
+	"math"
 
 	"github.com/valyala/fasthttp"
 )
@@ -15,11 +16,8 @@ func (f failedReader) Read([]byte) (int, error) {
 	return 0, f.err
 }
 
-// Buffer bounds a body that is still a stream (StreamRequestBody) before fasthttp's
-// Body or PostArgs drain it, which they do whatever its size. A limit <= 0 is no limit.
-//
-// A body over limit returns fasthttp.ErrBodyTooLarge after at most limit+1 bytes
-// and fails every later read. The server drains or drops the rest.
+// Buffer reads a streamed body into req, since fasthttp's Body and PostArgs drain one whatever its size.
+// Past limit (<= 0 is none) it stops at limit+1 bytes and fails with fasthttp.ErrBodyTooLarge, now and later.
 func Buffer(req *fasthttp.Request, limit int) error {
 	stream := req.BodyStream()
 	if stream == nil || limit <= 0 {
@@ -31,7 +29,11 @@ func Buffer(req *fasthttp.Request, limit int) error {
 	}
 
 	// A declared length over limit is read too: the handler may have drained the stream already.
-	body, err := io.ReadAll(io.LimitReader(stream, int64(limit)+1))
+	readLimit := int64(limit)
+	if readLimit < math.MaxInt64 {
+		readLimit++
+	}
+	body, err := io.ReadAll(io.LimitReader(stream, readLimit))
 	if err == nil && len(body) > limit {
 		err = fasthttp.ErrBodyTooLarge
 	}
