@@ -125,6 +125,10 @@ type Route struct { // betteralign:ignore - see below
 
 	group *Group // Group instance. used for routes in groups
 
+	// hosts are the patterns of the Domain routers the route was registered
+	// through, outermost last; its handlers decline a hostname that fails one.
+	hosts []domainMatcher
+
 	// Public fields
 	Method string `json:"method"` // HTTP method
 	Name   string `json:"name"`   // Route's name
@@ -1126,6 +1130,7 @@ func (*App) copyRoute(route *Route) *Route {
 		// still be found in another method's tree (see routeIndexInTree).
 		id:       route.id,
 		latestID: route.latestID,
+		hosts:    route.hosts,
 
 		// Leading-byte filter
 		prefix:     route.prefix,
@@ -1231,7 +1236,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			}
 
 			if method == MethodGet && !route.use && !route.mount {
-				app.pruneAutoHeadRouteLocked(route.path)
+				app.pruneAutoHeadRouteLocked(route.path, route.hosts)
 			}
 		}
 	}
@@ -1239,18 +1244,20 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 
 // pruneAutoHeadRouteLocked removes an automatically generated HEAD route so a
 // later explicit registration can take its place without duplicating handler
-// chains. The caller must already hold app.mutex.
-func (app *App) pruneAutoHeadRouteLocked(path string) {
+// chains. Only the companion of a route behind the same Domain patterns goes.
+// The caller must already hold app.mutex.
+func (app *App) pruneAutoHeadRouteLocked(path string, hosts []domainMatcher) {
 	headIndex := app.methodInt(MethodHead)
 	if headIndex == -1 {
 		return
 	}
 
 	norm := app.normalizePath(path)
+	hostsKey := matchersKey(hosts)
 
 	headStack := app.stack[headIndex]
 	for i, headRoute := range slices.Backward(headStack) {
-		if headRoute.path != norm || headRoute.mount || headRoute.use || !headRoute.autoHead {
+		if headRoute.path != norm || headRoute.mount || headRoute.use || !headRoute.autoHead || matchersKey(headRoute.hosts) != hostsKey {
 			continue
 		}
 
@@ -1265,6 +1272,12 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 var routeIDs atomic.Uint64
 
 func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...Handler) {
+	app.registerForHosts(nil, methods, pathRaw, group, handlers...)
+}
+
+// registerForHosts is register for a Domain router, whose handlers decline
+// every hostname that does not match hosts.
+func (app *App) registerForHosts(hosts []domainMatcher, methods []string, pathRaw string, group *Group, handlers ...Handler) {
 	// A regular route requires at least one ctx handler
 	if len(handlers) == 0 && group == nil {
 		panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
@@ -1311,6 +1324,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			unescapePath:  app.config.UnescapePath,
 			id:            routeID,
 			latestID:      routeID,
+			hosts:         hosts,
 
 			path:        pathClean,
 			routeParser: parsedPretty,
@@ -1345,10 +1359,16 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 }
 
 // mergesIntoLastLocked reports whether route merges into the last route of
-// stack m. The caller holds app.mutex.
+// stack m. One path behind two Domain patterns stays two routes, each with its
+// own name. The caller holds app.mutex.
 func (app *App) mergesIntoLastLocked(m int, route *Route) bool {
 	l := len(app.stack[m])
-	return l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use && !route.mount && !app.stack[m][l-1].mount
+	if l == 0 {
+		return false
+	}
+	last := app.stack[m][l-1]
+	return last.Path == route.Path && route.use == last.use && !route.mount && !last.mount &&
+		matchersKey(last.hosts) == matchersKey(route.hosts)
 }
 
 // useMergesInEveryStack reports whether a Use registration merges into the last
@@ -1375,7 +1395,7 @@ func (app *App) addRoute(method string, route *Route, merge bool) { //nolint:rev
 	m := app.methodInt(method)
 
 	if method == MethodHead && !route.mount && !route.use {
-		app.pruneAutoHeadRouteLocked(route.path)
+		app.pruneAutoHeadRouteLocked(route.path, route.hosts)
 	}
 
 	// prevent identically route registration
@@ -1423,6 +1443,8 @@ type autoHeadKey struct {
 	// HEAD route of one mounted app from standing in for another app's GET
 	owner *App
 	path  string
+	// hosts keeps one Domain pattern's HEAD route from standing in for another's GET
+	hosts string
 }
 
 // autoHeadKey returns the key route is deduplicated under. Where an app's
@@ -1432,10 +1454,10 @@ type autoHeadKey struct {
 // a companion to answer for it.
 func (app *App) autoHeadKey(route *Route) autoHeadKey {
 	if !app.mountFields.hostScopedRoutes {
-		return autoHeadKey{path: route.path}
+		return autoHeadKey{path: route.path, hosts: matchersKey(route.hosts)}
 	}
 
-	return autoHeadKey{owner: app.routeOwner(route), path: route.path}
+	return autoHeadKey{owner: app.routeOwner(route), path: route.path, hosts: matchersKey(route.hosts)}
 }
 
 func (app *App) ensureAutoHeadRoutesLocked() {

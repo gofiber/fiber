@@ -324,6 +324,29 @@ func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 	return result
 }
 
+// hosts returns the patterns a route registered through d records, which are
+// the ones wrapHandlers filters its handlers on. See Route.hosts.
+func (d *domainRouter) hosts() []domainMatcher {
+	return []domainMatcher{d.matcher}
+}
+
+// servesHost reports whether the request's hostname satisfies every Domain
+// pattern the route is behind, which is whether its handlers run or decline.
+func (r *Route) servesHost(c *DefaultCtx) bool {
+	if len(r.hosts) == 0 {
+		return true
+	}
+
+	hostname := c.Hostname()
+	for i := range r.hosts {
+		if matched, _ := r.hosts[i].match(hostname); !matched {
+			return false
+		}
+	}
+
+	return true
+}
+
 // registerPath returns the full path for registration, taking group prefix into account.
 func (d *domainRouter) registerPath(path string) string {
 	if d.group != nil {
@@ -382,7 +405,7 @@ func (d *domainRouter) Use(args ...any) Router {
 		}
 
 		wrapped := d.wrapHandlers(handlers)
-		d.app.register([]string{methodUse}, d.registerPath(prefix), d.registerGroup(), wrapped...)
+		d.app.registerForHosts(d.hosts(), []string{methodUse}, d.registerPath(prefix), d.registerGroup(), wrapped...)
 	}
 
 	// Mark the underlying group so Name() can distinguish between
@@ -657,6 +680,7 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 				dst.addPrefixToRoute(walk.prefix, clonedRoute, src.config.RegexHandler, constraints...)
 			}
 			clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
+			clonedRoute.hosts = append(slices.Clone(clonedRoute.hosts), d.matcher)
 
 			// Record the app the route came from, so a request that runs it
 			// resolves that app's config rather than one inferred from the host
@@ -739,7 +763,7 @@ func (d *domainRouter) Query(path string, handler any, handlers ...any) Router {
 func (d *domainRouter) Add(methods []string, path string, handler any, handlers ...any) Router {
 	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
 	wrapped := d.wrapHandlers(converted)
-	d.app.register(methods, d.registerPath(path), d.registerGroup(), wrapped...)
+	d.app.registerForHosts(d.hosts(), methods, d.registerPath(path), d.registerGroup(), wrapped...)
 
 	// Mark the underlying group so Name() can distinguish between
 	// group-name-prefix calls (before routes) and route-name calls (after routes).
@@ -764,7 +788,7 @@ func (d *domainRouter) Group(prefix string, handlers ...any) Router {
 	if len(handlers) > 0 {
 		converted := collectHandlers("domain", handlers...)
 		wrapped := d.wrapHandlers(converted)
-		d.app.register([]string{methodUse}, fullPrefix, d.registerGroup(), wrapped...)
+		d.app.registerForHosts(d.hosts(), []string{methodUse}, fullPrefix, d.registerGroup(), wrapped...)
 	}
 
 	// Create a new group on the app
@@ -840,7 +864,7 @@ var _ Register = (*domainRegistering)(nil)
 func (r *domainRegistering) All(handler any, handlers ...any) Register {
 	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
 	wrapped := r.domain.wrapHandlers(converted)
-	r.domain.app.register([]string{methodUse}, r.path, r.domain.registerGroup(), wrapped...)
+	r.domain.app.registerForHosts(r.domain.hosts(), []string{methodUse}, r.path, r.domain.registerGroup(), wrapped...)
 
 	return r
 }
@@ -888,7 +912,7 @@ func (r *domainRegistering) Query(handler any, handlers ...any) Register {
 func (r *domainRegistering) Add(methods []string, handler any, handlers ...any) Register {
 	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
 	wrapped := r.domain.wrapHandlers(converted)
-	r.domain.app.register(methods, r.path, r.domain.registerGroup(), wrapped...)
+	r.domain.app.registerForHosts(r.domain.hosts(), methods, r.path, r.domain.registerGroup(), wrapped...)
 
 	return r
 }

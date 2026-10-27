@@ -1012,6 +1012,8 @@ func (app *App) Name(name string) Router {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
+	hosts := matchersKey(app.latestRoute.hosts)
+
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			// The shared registration id covers every method of a multi-method
@@ -1025,7 +1027,9 @@ func (app *App) Name(name string) Router {
 				app.latestRoute.use ||
 				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
 
-			if route.Path == app.latestRoute.Path && isMethodValid {
+			// The path alone does not make it the same route: another Domain
+			// pattern can serve it too, under a name of its own.
+			if route.Path == app.latestRoute.Path && isMethodValid && matchersKey(route.hosts) == hosts {
 				route.Name = name
 				if route.group != nil {
 					route.Name = route.group.name + route.Name

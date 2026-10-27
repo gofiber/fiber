@@ -300,6 +300,82 @@ func Test_Domain_Head(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
+// One path on two patterns is two routes: merged into one, both hostnames would
+// run under the name given last, and c.Route() could not tell them apart.
+func Test_Domain_SamePathKeepsItsOwnRoute(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	served := func(c Ctx) error { return c.SendString(c.Route().Name) }
+
+	app.Domain("admin.example.com").Get("/test", served).Name("admin")
+	app.Domain("www.example.com").Get("/test", served).Name("www")
+	app.Get("/test", served).Name("any")
+	// One pattern twice is still one route
+	app.Domain("api.example.com").Get("/merged", func(c Ctx) error { return c.Next() })
+	app.Domain("API.example.com.").Get("/merged", served).Name("api")
+
+	for host, want := range map[string]string{
+		"admin.example.com": "admin",
+		"www.example.com":   "www",
+		"other.example.com": "any",
+	} {
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = host
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, want, string(body), host)
+	}
+
+	var merged []Route
+	for _, route := range app.GetRoutes(true) {
+		if route.Method == MethodGet && route.Path == "/merged" {
+			merged = append(merged, route)
+		}
+	}
+	require.Len(t, merged, 1)
+	require.Len(t, merged[0].Handlers, 2)
+}
+
+// The automatic HEAD route of one pattern declines every other hostname, so it
+// cannot stand in for the GET route another pattern has on the same path.
+func Test_Domain_AutoHeadPerPattern(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	served := func(c Ctx) error {
+		c.Set("X-Served", c.Route().Name)
+		return c.SendStatus(StatusOK)
+	}
+
+	app.Domain("admin.example.com").Get("/test", served).Name("admin")
+	app.Domain("www.example.com").Get("/test", served).Name("www")
+	app.Domain("api.example.com").Head("/test", served).Name("api.head")
+	app.Get("/test", served).Name("any")
+
+	head := func(host string) *http.Response {
+		req := httptest.NewRequest(MethodHead, "/test", http.NoBody)
+		req.Host = host
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		return resp
+	}
+
+	require.Equal(t, "admin", head("admin.example.com").Header.Get("X-Served"))
+	require.Equal(t, "www", head("www.example.com").Header.Get("X-Served"))
+	require.Equal(t, "api.head", head("api.example.com").Header.Get("X-Served"), "renamed by another host's GET route")
+	require.Equal(t, "any", head("other.example.com").Header.Get("X-Served"))
+
+	// Removing one pattern's GET route takes its own companion along, not another's
+	app.RemoveRouteByName("admin", MethodGet)
+	app.RebuildTree()
+
+	require.Equal(t, "any", head("admin.example.com").Header.Get("X-Served"))
+	require.Equal(t, "www", head("www.example.com").Header.Get("X-Served"))
+}
+
 func Test_Domain_All(t *testing.T) {
 	t.Parallel()
 

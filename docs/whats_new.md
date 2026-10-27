@@ -468,6 +468,8 @@ Named routes retrieved with `app.GetRoute(name)` also support `route.URL(params)
 
 The pattern can contain parameters prefixed with `:`, accessible via `fiber.DomainParam`.
 
+Routes for one path registered through different `Domain` patterns stay separate routes, each with its own name and automatic `HEAD` route, even when they are registered one after another; [`c.Endpoint()`](./api/ctx#endpoint) reports a `Domain` route only for a hostname its pattern matches.
+
 Domain routing has **zero performance impact** on routes that don't use it because the hostname check is applied as a handler wrapper, not a change to the core router.
 
 > **Note:** Because domain filtering happens at handler-execution time, Fiber's `405 Method Not Allowed` responses may advertise methods from domain-scoped routes even when the requesting host does not match. This is a known trade-off of the handler-wrapping approach.
@@ -743,7 +745,7 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 - **AcceptsXML**: Reports whether the `Accept` header allows XML.
 - **AcceptsEventStream**: Reports whether the `Accept` header allows `text/event-stream`.
 - **Matched**: Detects when the current request path matched a registered route.
-- **Endpoint**: Looks ahead to the route that will handle the request, without advancing the handler chain, so global middleware can read its `Path` or `Name` before calling `Next`. It returns `nil` when no route will run.
+- **Endpoint**: Looks ahead to the route that will handle the request, without advancing the handler chain, so global middleware can read its `Path` or `Name` before calling `Next`. It returns `nil` when no route will run. A route registered through `Domain` is reported only for a hostname its pattern matches.
 - **IsMiddleware**: Indicates if the current handler was registered as middleware.
 - **HasBody**: Quickly checks whether the request includes a body.
 - **OverrideParam**: Overwrites the value of an existing route parameter, or does nothing if the parameter does not exist
