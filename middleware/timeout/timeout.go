@@ -30,6 +30,19 @@ type request struct {
 	answered atomic.Bool // set once one has started to answer
 }
 
+// snapshot is what OnTimeout sees after the deadline, taken before the handler starts:
+// from then on the handler owns ctx and may still write any of it.
+type snapshot struct {
+	locals []local
+	uri    fasthttp.URI
+	req    fasthttp.RequestHeader
+	resp   fasthttp.ResponseHeader
+}
+
+type local struct{ key, value any }
+
+var snapshotPool = sync.Pool{New: func() any { return new(snapshot) }}
+
 // New enforces a timeout for each incoming request. It replaces the request's
 // context with one that has the configured deadline, which is exposed through
 // c.Context(). Handlers can detect the timeout by listening on c.Context().Done()
@@ -76,6 +89,11 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		tCtx, cancel := context.WithDeadline(parent, deadline)
 		ctx.SetContext(tCtx)
 		_ = ctxlocal.Set(ctx, timeoutContextKey, tCtx)
+		var snap *snapshot
+		if cfg.OnTimeout != nil {
+			snap = takeSnapshot(ctx.RequestCtx())
+			defer snap.release()
+		}
 
 		// Channel for handler result, fiber.ErrInternalServerError after a panic
 		done := make(chan error, 1)
@@ -122,7 +140,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			// Timeout occurred - abandon context and return immediately.
 			// Reclamation is scheduled so the abandoned fiber.Ctx is returned to
 			// the pool once the handler goroutine finishes, instead of leaking.
-			return handleTimeout(ctx, cancel, handlerDone, req, cfg)
+			return handleTimeout(ctx, cancel, handlerDone, req, snap, cfg)
 		}
 	}
 }
@@ -167,6 +185,7 @@ func handleTimeout(
 	cancel context.CancelFunc,
 	handlerDone <-chan struct{},
 	req *request,
+	snap *snapshot,
 	cfg Config,
 ) error {
 	req.mu.Lock()
@@ -187,15 +206,13 @@ func handleTimeout(
 		ctx.RequestCtx().TimeoutErrorWithCode(fiber.ErrServiceUnavailable.Message, fiber.StatusServiceUnavailable)
 		timeoutErr = fiber.ErrServiceUnavailable
 	default:
-		// Prepare the timeout response before marking the RequestCtx as timed out so
-		// custom OnTimeout handlers can shape the response body.
-		timeoutErr = invokeOnTimeout(ctx, cfg)
+		var resp *fasthttp.Response
+		resp, timeoutErr = snap.runOnTimeout(ctx, cfg)
 
 		// If the response is still the default 200/empty, ensure a sensible timeout
 		// response is captured for fasthttp to send. ResetBody closes a body
-		// stream rather than draining it, so a reader the timed-out handler never
-		// finishes writing cannot block this path.
-		resp := ctx.Response()
+		// stream rather than draining it, so a reader OnTimeout never finishes
+		// writing cannot block this path.
 		if resp.StatusCode() == fiber.StatusOK && timeoutResponseUnwritten(resp) {
 			resp.ResetBody()
 			// An error OnTimeout returned is the response the client will see.
@@ -211,7 +228,7 @@ func handleTimeout(
 		// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one
 		// for the response and send the captured payload from OnTimeout. All ctx
 		// mutations after this call are ignored by fasthttp.
-		ctx.RequestCtx().TimeoutErrorWithResponse(&ctx.RequestCtx().Response)
+		ctx.RequestCtx().TimeoutErrorWithResponse(resp)
 		if timeoutErr == nil {
 			// An error keeps the middleware before us off the response the handler still writes.
 			timeoutErr = fiber.ErrServiceUnavailable
@@ -253,6 +270,51 @@ func handleTimeout(
 // carry one over, and is checked first because Body would drain it.
 func timeoutResponseUnwritten(resp *fasthttp.Response) bool {
 	return resp.IsBodyStream() || len(resp.Body()) == 0
+}
+
+func takeSnapshot(fctx *fasthttp.RequestCtx) *snapshot {
+	snap, ok := snapshotPool.Get().(*snapshot)
+	if !ok {
+		snap = new(snapshot)
+	}
+	// The body is left out: copying it would cost every request, and aliasing it is unsafe.
+	fctx.Request.URI().CopyTo(&snap.uri)
+	fctx.Request.Header.CopyTo(&snap.req)
+	fctx.Response.Header.CopyTo(&snap.resp)
+	fctx.VisitUserValuesAll(func(key, value any) {
+		snap.locals = append(snap.locals, local{key: key, value: value})
+	})
+	return snap
+}
+
+// runOnTimeout runs OnTimeout on a ctx of its own and returns the response it wrote.
+func (s *snapshot) runOnTimeout(ctx fiber.Ctx, cfg Config) (*fasthttp.Response, error) {
+	orig := ctx.RequestCtx()
+	fctx := new(fasthttp.RequestCtx)
+	// The real conn keeps IsTLS, LocalAddr and the TLS state; fctx is never served on it.
+	fctx.Init2(orig.Conn(), nil, true)
+	fctx.SetRemoteAddr(orig.RemoteAddr())
+	s.req.CopyTo(&fctx.Request.Header)
+	s.uri.CopyTo(fctx.Request.URI())
+	s.resp.CopyTo(&fctx.Response.Header)
+	for _, l := range s.locals {
+		fctx.SetUserValue(l.key, l.value)
+	}
+
+	app := ctx.App()
+	c := app.AcquireCtx(fctx)
+	err := cfg.OnTimeout(c)
+	app.ReleaseCtx(c)
+	return &fctx.Response, err
+}
+
+func (s *snapshot) release() {
+	s.uri.Reset()
+	s.req.Reset()
+	s.resp.Reset()
+	clear(s.locals)
+	s.locals = s.locals[:0]
+	snapshotPool.Put(s)
 }
 
 // invokeOnTimeout calls the OnTimeout handler if configured

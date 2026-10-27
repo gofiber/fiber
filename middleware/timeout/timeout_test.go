@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -720,10 +722,7 @@ type neverReturningReader struct{}
 
 func (neverReturningReader) Read(_ []byte) (int, error) { select {} }
 
-// Test_Timeout_ResponseUnwritten covers the OnTimeout fallback's decision on its
-// own. Driving it through a served request would mean reading the response while
-// the timed-out handler still writes to it, which is a race this middleware has
-// either way: the handler is abandoned by design and keeps running.
+// Test_Timeout_ResponseUnwritten covers the OnTimeout fallback's decision on its own.
 func Test_Timeout_ResponseUnwritten(t *testing.T) {
 	t.Parallel()
 
@@ -844,6 +843,79 @@ func Test_Timeout_OnTimeoutReturnedErrorShapesResponse(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "upstream too slow", string(body))
+}
+
+// OnTimeout answers from a response of its own, so the handler's late writes neither race nor leak into it.
+func Test_Timeout_OnTimeoutLeavesHandlerResponseAlone(t *testing.T) {
+	t.Parallel()
+
+	for name, waitForHandler := range map[string]bool{"concurrent": false, "after the handler wrote": true} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			wrote := make(chan struct{})
+			app := fiber.New()
+			app.Get("/", New(func(c fiber.Ctx) error {
+				defer close(wrote)
+				_ = c.Cookies("session")
+				<-c.Context().Done()
+				c.Set("X-Late", "1")
+				return c.SendString("late")
+			}, Config{Timeout: 20 * time.Millisecond, OnTimeout: func(fiber.Ctx) error {
+				if waitForHandler {
+					<-wrote
+				}
+				return fiber.ErrGatewayTimeout
+			}}))
+
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Header.Set("Cookie", "session=s1")
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			<-wrote
+			require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+			require.Empty(t, resp.Header.Get("X-Late"))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, fiber.ErrGatewayTimeout.Message, string(body))
+		})
+	}
+}
+
+// After the deadline OnTimeout sees the request, locals and response headers as the handler got them.
+func Test_Timeout_OnTimeoutSeesCtxAsHandlerGotIt(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		c.Locals("id", "42")
+		c.Locals("conn", c.RequestCtx().Conn())
+		c.Set("X-Early", "1")
+		return c.Next()
+	})
+	release := make(chan struct{})
+	defer close(release)
+	app.Post("/items", New(func(c fiber.Ctx) error {
+		c.Locals("id", "handler")
+		<-c.Context().Done()
+		<-release
+		return nil
+	}, Config{Timeout: 20 * time.Millisecond, OnTimeout: func(c fiber.Ctx) error {
+		sameConn := c.RequestCtx().Conn() == fiber.Locals[net.Conn](c, "conn")
+		return c.Status(fiber.StatusGatewayTimeout).SendString(strings.Join([]string{
+			c.Method(), c.Path(), c.Query("q"), c.Get("X-Req"), fiber.Locals[string](c, "id"), strconv.FormatBool(sameConn),
+		}, " "))
+	}}))
+
+	req := httptest.NewRequest(fiber.MethodPost, "/items?q=1", http.NoBody)
+	req.Header.Set("X-Req", "r1")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	require.Equal(t, "1", resp.Header.Get("X-Early"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "POST /items 1 r1 42 true", string(body))
 }
 
 func Test_Timeout_ErrorHandlerSkippedAfterTimeout(t *testing.T) {
