@@ -306,7 +306,7 @@ type Ctx interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	BodyRaw() []byte
-	// tryDecodeBodyInOrder undoes the codings last-applied first and never modifies the request.
+	// tryDecodeBodyInOrder undoes the codings last-applied first and never replaces the request body.
 	tryDecodeBodyInOrder(encodings []string) ([]byte, error)
 	// BodyStream returns the request body as a stream, non-nil only when
 	// Config.StreamRequestBody is enabled and the body is not already buffered.
@@ -595,6 +595,8 @@ type Ctx interface {
 	// IsFromUnixSocket returns true if the request arrived over a Unix domain socket.
 	IsFromUnixSocket() bool
 	getBody() []byte
+	// bufferBodyStream applies BodyLimit to a streamed body and answers a larger one 413, as the server would.
+	bufferBodyStream() error
 	// Append the specified value to the HTTP response header field.
 	// If the header is not already set, it creates the header with the specified value.
 	// Empty values are skipped: a sender must not generate empty list elements

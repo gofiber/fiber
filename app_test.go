@@ -3290,6 +3290,46 @@ func Test_App_ReadBodyStream(t *testing.T) {
 	require.Equal(t, "true "+testString, string(body))
 }
 
+func Test_App_ReadBodyStream_BodyLimit(t *testing.T) {
+	t.Parallel()
+	app := New(Config{StreamRequestBody: true, BodyLimit: 1024})
+	app.Post("/", func(c Ctx) error {
+		return c.SendString(strconv.Itoa(len(c.Body())))
+	})
+	app.Post("/stream", func(c Ctx) error {
+		n, err := io.Copy(io.Discard, c.BodyStream())
+		if err != nil {
+			return fmt.Errorf("failed to read: %w", err)
+		}
+		return c.SendString(strconv.FormatInt(n, 10))
+	})
+
+	for _, tc := range []struct {
+		name    string
+		target  string
+		size    int
+		status  int
+		chunked bool
+	}{
+		{name: "declared", target: "/", size: 1024, status: StatusOK},
+		{name: "chunked", target: "/", size: 1024, chunked: true, status: StatusOK},
+		{name: "declared over the limit", target: "/", size: 1025, status: StatusRequestEntityTooLarge},
+		{name: "chunked over the limit", target: "/", size: 1025, chunked: true, status: StatusRequestEntityTooLarge},
+		{name: "BodyStream is not limited", target: "/stream", size: 4096, chunked: true, status: StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(MethodPost, tc.target, strings.NewReader(strings.Repeat("a", tc.size)))
+			if tc.chunked {
+				req.TransferEncoding = []string{"chunked"}
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, tc.status, resp.StatusCode)
+		})
+	}
+}
+
 func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 	t.Parallel()
 	// Must be used with both otherwise there is no point.
@@ -3336,6 +3376,52 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 	require.NoError(t, err, "io.ReadAll(resp.Body)")
 
 	require.Equal(t, testString, string(body))
+}
+
+// With StreamRequestBody the server must not pre-parse a multipart body of any length before the
+// handlers run: FormFile parses it on demand within BodyLimit.
+func Test_App_StreamRequestBody_MultipartBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	const limit = 64 * 1024
+	app := New(Config{StreamRequestBody: true, BodyLimit: limit})
+	app.Post("/", func(c Ctx) error {
+		file, err := c.FormFile("test")
+		if errors.Is(err, fasthttp.ErrBodyTooLarge) {
+			return ErrRequestEntityTooLarge
+		}
+		if err != nil {
+			return err
+		}
+		return c.SendString(strconv.FormatInt(file.Size, 10))
+	})
+
+	for _, tc := range []struct {
+		name   string
+		size   int
+		status int
+	}{
+		{name: "within limit", size: limit / 2, status: StatusOK},
+		{name: "over limit", size: 10 * limit, status: StatusRequestEntityTooLarge},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			b := &bytes.Buffer{}
+			w := multipart.NewWriter(b)
+			writer, err := w.CreateFormFile("test", "test")
+			require.NoError(t, err)
+			_, err = writer.Write(make([]byte, tc.size))
+			require.NoError(t, err)
+			require.NoError(t, w.Close())
+
+			req := httptest.NewRequest(MethodPost, "/", b)
+			req.Header.Set(HeaderContentType, w.FormDataContentType())
+			resp, err := app.Test(req)
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, tc.status, resp.StatusCode)
+		})
+	}
 }
 
 func Test_App_Test_no_timeout_infinitely(t *testing.T) {

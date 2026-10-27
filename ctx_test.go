@@ -1520,6 +1520,86 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 	}
 }
 
+// With StreamRequestBody the server passes on a body of any size, so the accessors that buffer it apply BodyLimit.
+func Test_Ctx_Body_StreamedBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	const limit = 1024
+	app := New(Config{StreamRequestBody: true, BodyLimit: limit})
+	tooLarge := fasthttp.ErrBodyTooLarge.Error()
+
+	for _, tc := range []struct {
+		read        func(c Ctx) string
+		name        string
+		contentType string
+		coding      string
+		refused     string
+	}{
+		{name: "Body", read: func(c Ctx) string { return string(c.Body()) }, refused: tooLarge},
+		{name: "BodyRaw", read: func(c Ctx) string { return string(c.BodyRaw()) }, refused: tooLarge},
+		{name: "Body with a coding", coding: StrIdentity, read: func(c Ctx) string { return string(c.Body()) }, refused: tooLarge},
+		{name: "FormValue", contentType: MIMEApplicationForm, read: func(c Ctx) string { return "a=" + c.FormValue("a", "none") }, refused: "a=none"},
+		// fasthttp's PostArgs reads any media type with this prefix.
+		{name: "FormValue by prefix", contentType: MIMEApplicationForm + "-x", read: func(c Ctx) string { return "a=" + c.FormValue("a", "none") }, refused: "a=none"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			acquire := func(size, declared int) (Ctx, *strings.Reader) {
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				t.Cleanup(func() { app.ReleaseCtx(c) })
+				c.Request().Header.SetContentType(tc.contentType)
+				if tc.coding != "" {
+					c.Request().Header.Set(HeaderContentEncoding, tc.coding)
+				}
+				stream := strings.NewReader("a=" + strings.Repeat("a", size-2))
+				c.Request().SetBodyStream(stream, declared)
+				return c, stream
+			}
+
+			c, _ := acquire(limit, -1)
+			require.Equal(t, "a="+strings.Repeat("a", limit-2), tc.read(c))
+			require.Equal(t, StatusOK, c.Response().StatusCode())
+
+			c, stream := acquire(100*limit, -1)
+			for range 2 {
+				require.Equal(t, tc.refused, tc.read(c))
+				require.Equal(t, StatusRequestEntityTooLarge, c.Response().StatusCode())
+				require.Equal(t, 99*limit-1, stream.Len(), "the rest of the stream is not read")
+			}
+
+			c, stream = acquire(limit+1, limit+1)
+			require.Equal(t, tc.refused, tc.read(c))
+			require.Equal(t, StatusRequestEntityTooLarge, c.Response().StatusCode())
+			require.Equal(t, limit+1, stream.Len(), "a declared length is refused unread")
+		})
+	}
+}
+
+// FormValue leaves a streamed body to BodyStream when the body is not a form or the key is in the query.
+func Test_Ctx_FormValue_KeepsBodyStream(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{StreamRequestBody: true, BodyLimit: 8})
+	for _, contentType := range []string{MIMEOctetStream, MIMEApplicationForm} {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().URI().SetQueryString("name=upload")
+		c.Request().Header.SetContentType(contentType)
+		c.Request().SetBodyStream(strings.NewReader("payload-over-limit"), -1)
+
+		require.Equal(t, "upload", c.FormValue("name"), contentType)
+		if contentType == MIMEOctetStream {
+			require.Empty(t, c.FormValue("other"), contentType)
+		}
+		require.Equal(t, StatusOK, c.Response().StatusCode(), contentType)
+
+		body, err := io.ReadAll(c.BodyStream())
+		require.NoError(t, err, contentType)
+		require.Equal(t, "payload-over-limit", string(body), contentType)
+		app.ReleaseCtx(c)
+	}
+}
+
 func Test_Ctx_Body_With_Compression_BodyLimitExceeded(t *testing.T) {
 	t.Parallel()
 

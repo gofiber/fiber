@@ -17,6 +17,7 @@ import (
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/idna"
 
+	"github.com/gofiber/fiber/v3/internal/bodystream"
 	etagpkg "github.com/gofiber/fiber/v3/internal/etag"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
@@ -115,7 +116,7 @@ func (r *DefaultReq) BodyRaw() []byte {
 	return r.getBody()
 }
 
-// tryDecodeBodyInOrder undoes the codings last-applied first and never modifies the request.
+// tryDecodeBodyInOrder undoes the codings last-applied first and never replaces the request body.
 func (r *DefaultReq) tryDecodeBodyInOrder(encodings []string) ([]byte, error) {
 	// Each member may inflate to BodyLimit on its own, so the list length bounds the work.
 	if len(encodings) > maxContentCodings {
@@ -124,6 +125,10 @@ func (r *DefaultReq) tryDecodeBodyInOrder(encodings []string) ([]byte, error) {
 
 	request := &r.c.fasthttp.Request
 	maxBodySize := r.c.app.config.BodyLimit
+	// The decoders bound what they write, not the stream they read.
+	if err := bodystream.Buffer(request, maxBodySize); err != nil {
+		return nil, err
+	}
 	if len(encodings) > 1 {
 		// Replacing the request body would pool its buffer while Body and BodyRaw
 		// results still alias it (ReduceMemoryUsage, adaptor).
@@ -500,6 +505,16 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 			return vals[0]
 		}
 		return defaultString("", defaultValue)
+	}
+	// PostArgs drains a streamed urlencoded body whatever its size.
+	if r.c.fasthttp.Request.IsBodyStream() &&
+		strings.HasPrefix(utils.UnsafeString(r.c.fasthttp.Request.Header.ContentType()), MIMEApplicationForm) {
+		if v := r.c.fasthttp.QueryArgs().Peek(key); len(v) > 0 {
+			return r.c.app.toString(v)
+		}
+		if err := r.bufferBodyStream(); err != nil {
+			return defaultString("", defaultValue)
+		}
 	}
 	return defaultString(r.c.app.toString(r.c.fasthttp.FormValue(key)), defaultValue)
 }
@@ -1819,5 +1834,19 @@ func (r *DefaultReq) IsFromUnixSocket() bool {
 }
 
 func (r *DefaultReq) getBody() []byte {
+	if r.c.fasthttp.Request.IsBodyStream() {
+		if err := r.bufferBodyStream(); err != nil {
+			return []byte(err.Error())
+		}
+	}
 	return r.c.app.GetBytes(r.c.fasthttp.Request.Body())
+}
+
+// bufferBodyStream applies BodyLimit to a streamed body and answers a larger one 413, as the server would.
+func (r *DefaultReq) bufferBodyStream() error {
+	err := bodystream.Buffer(&r.c.fasthttp.Request, r.c.app.config.BodyLimit)
+	if errors.Is(err, fasthttp.ErrBodyTooLarge) {
+		_ = r.c.DefaultRes.SendStatus(StatusRequestEntityTooLarge) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
+	}
+	return err
 }

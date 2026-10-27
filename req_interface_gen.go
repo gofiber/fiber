@@ -36,7 +36,7 @@ type Req interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	BodyRaw() []byte
-	// tryDecodeBodyInOrder undoes the codings last-applied first and never modifies the request.
+	// tryDecodeBodyInOrder undoes the codings last-applied first and never replaces the request body.
 	tryDecodeBodyInOrder(encodings []string) ([]byte, error)
 	// Body contains the raw body submitted in a POST request.
 	// This method will decompress the body if the 'Content-Encoding' header is provided.
@@ -369,4 +369,6 @@ type Req interface {
 	// IsFromUnixSocket returns true if the request arrived over a Unix domain socket.
 	IsFromUnixSocket() bool
 	getBody() []byte
+	// bufferBodyStream applies BodyLimit to a streamed body and answers a larger one 413, as the server would.
+	bufferBodyStream() error
 }

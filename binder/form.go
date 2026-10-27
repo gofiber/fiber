@@ -4,6 +4,7 @@ import (
 	"mime/multipart"
 	"sync"
 
+	"github.com/gofiber/fiber/v3/internal/bodystream"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -55,6 +56,11 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 	// (RFC 9110 Section 8.3.1), so compare accordingly.
 	if utils.EqualFold(FilterFlags(utils.UnsafeString(req.Header.ContentType())), MIMEMultipartForm) {
 		return b.bindMultipart(req, out)
+	}
+
+	// PostArgs drains a streamed body whatever its size.
+	if err := bodystream.Buffer(req, b.MaxBodySize); err != nil {
+		return err
 	}
 
 	args := req.PostArgs()

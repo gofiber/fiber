@@ -79,6 +79,13 @@ We have made several changes to the Fiber app, including:
 - **Trusted Proxy Configuration**: The `EnabledTrustedProxyCheck` has been moved to `app.Config.TrustProxy`, and `TrustedProxies` has been moved to `TrustProxyConfig.Proxies`. Additionally, `ProxyHeader` must be set to read client IPs from proxy headers (e.g., `X-Forwarded-For`).
 - **XMLDecoder Config Property**: The `XMLDecoder` property has been added to allow usage of 3rd-party XML libraries in XML binder.
 - **SkipUnmatchedRoutes Config Property**: Opt-in flag that answers requests with no matching route with `404`/`405` before the middleware chain runs. Note that middleware (loggers, static or catch-all responders) does not run for these requests; CORS preflight requests are exempt so cors middleware keeps working. Customize the responses via `ErrorHandler`.
+- **StreamRequestBody**: A `multipart/form-data` body is no longer parsed by the server before the handlers run, as if
+  `DisablePreParseMultipartForm` were set: the pre-parse ignored `BodyLimit` and stored an upload of any declared length
+  before a middleware could refuse it. `FormFile`, `MultipartForm` and `Bind().Form()` parse it on demand within
+  `BodyLimit`, so an app that takes larger uploads this way has to raise the limit or read `BodyStream()`. `Body()`,
+  `BodyRaw()` and `FormValue()` now read a streamed body within `BodyLimit` too and answer a larger one
+  `413 Request Entity Too Large`, and the body binders fail on it; only `BodyStream()` reads past the limit.
+  `Bind().All()` reads the body only when the request has a `Content-Type`.
 - **Buffer sizes**: The default `ReadBufferSize` and `WriteBufferSize` are now `8192` bytes (they were `4096` in v2). The read buffer also limits the size of the request headers, so requests with larger headers or cookies are accepted by default. Set either field to keep a different size.
 
 ### New Methods
