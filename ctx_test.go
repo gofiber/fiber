@@ -5116,6 +5116,30 @@ func Benchmark_Ctx_IP_With_ProxyHeader_Chain(b *testing.B) {
 	require.Equal(b, "203.0.113.50", res)
 }
 
+// Benchmark_Ctx_IP_With_ProxyHeader_Lines reads a chain a proxy extended with a line of its own, off the wire.
+func Benchmark_Ctx_IP_With_ProxyHeader_Lines(b *testing.B) {
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"10.0.0.1", "10.0.0.2"},
+		},
+	})
+	req := &fasthttp.Request{}
+	require.NoError(b, req.Read(bufio.NewReader(strings.NewReader("GET / HTTP/1.1\r\nHost: example.com\r\n"+
+		"X-Forwarded-For: 203.0.113.50\r\nAccept: */*\r\nX-Forwarded-For: 10.0.0.1\r\n\r\n"))))
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.Init(req, &net.TCPAddr{IP: net.ParseIP("10.0.0.2")}, nil)
+	c := app.AcquireCtx(fastCtx)
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.IP()
+	}
+	require.Equal(b, "203.0.113.50", res)
+}
+
 // go test -run Test_Ctx_Is
 func Test_Ctx_Is(t *testing.T) {
 	t.Parallel()

@@ -582,12 +582,64 @@ func lookupJoinedRequestHeader(h *fasthttp.RequestHeader, key string) ([]byte, b
 func peekReceivedRequestHeader(h *fasthttp.RequestHeader, key string) []byte {
 	j := joinedHeaderValue{key: key}
 	h.VisitAll(j.visit)
-	if j.multi {
+	if j.multi && !joinedInReceivedOrder(h.RawHeaders(), key, j.combined) {
 		if lines, ok := receivedRequestLines(h, key); ok {
 			return headerlist.Join(lines)
 		}
 	}
 	return j.combined
+}
+
+// joinedInReceivedOrder reports whether combined joins key's lines in the received header block raw, in order.
+// raw is read in place, so a folded line, which only a copy can unfold, reports false.
+func joinedInReceivedOrder(raw []byte, key string, combined []byte) bool {
+	found, matched := false, false
+	for len(raw) > 0 {
+		line := raw
+		if i := bytes.IndexByte(raw, '\n'); i >= 0 {
+			line, raw = raw[:i], raw[i+1:]
+		} else {
+			raw = nil
+		}
+		if n := len(line); n > 0 && line[n-1] == '\r' {
+			line = line[:n-1]
+		}
+		if len(line) == 0 {
+			break
+		}
+		if line[0] == ' ' || line[0] == '\t' {
+			if matched {
+				return false
+			}
+			continue
+		}
+		value, ok := wireFieldValue(line, key)
+		if matched = ok; !ok {
+			continue
+		}
+		if found {
+			if len(combined) == 0 || combined[0] != ',' {
+				return false
+			}
+			combined = combined[1:]
+		}
+		if !bytes.HasPrefix(combined, value) {
+			return false
+		}
+		combined = combined[len(value):]
+		found = true
+	}
+	return found && len(combined) == 0
+}
+
+// wireFieldValue returns the value of a field line named key, trimmed as fasthttp stores it. A request
+// with whitespace before the colon never gets this far (RFC 9112 Section 5.1).
+func wireFieldValue(line []byte, key string) ([]byte, bool) {
+	// The colon settles most lines before the name is compared.
+	if len(line) <= len(key) || line[len(key)] != ':' || !utils.EqualFold(utils.UnsafeString(line[:len(key)]), key) {
+		return nil, false
+	}
+	return headerlist.TrimOWS(line[len(key)+1:]), true
 }
 
 // receivedRequestLines returns key's field lines in received order, which the store loses whenever fasthttp
