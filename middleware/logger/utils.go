@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/bodystream"
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
@@ -102,6 +103,16 @@ func LoggerToWriter[T any](logger fiberlog.AllLogger[T], level fiberlog.Level) i
 // body or a decoded query parameter cannot inject CR/LF and forge log lines.
 func writeSanitized(output Buffer, p []byte) (int, error) {
 	return logtemplate.WriteSanitized(output, p)
+}
+
+// bufferBodyStream bounds a streamed body before Body or FormValue would answer one past
+// BodyLimit 413 and so replace the response the handler already chose.
+func bufferBodyStream(c fiber.Ctx) error {
+	req := c.Request()
+	if !req.IsBodyStream() {
+		return nil
+	}
+	return bodystream.Buffer(req, c.App().Server().MaxRequestBodySize)
 }
 
 // writeSanitizedString is writeSanitized for strings.
