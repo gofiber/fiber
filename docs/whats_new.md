@@ -1569,7 +1569,7 @@ The middleware also caches `308 Permanent Redirect` responses and honors the req
 
 Cache hits replay the stored `Vary` header even when `StoreResponseHeaders` is off, and a hit on an entry keyed by a cookie or credential (`Vary: Cookie`, `KeyCookies`, `KeyCredentialHeaders`, or `KeyHeaders` naming `Cookie`, `Authorization` or another header that carries a credential) is sent with `Cache-Control: private` rather than `public`, so a shared cache in front of the app does not store one user's response for the next.
 
-A response is stored under the request headers its own `Vary` names, also when other responses of the same URL name a different list, so a page sent with `Vary: Cookie` is served only to requests with the same `Cookie`.
+A response is stored under the request headers its own `Vary` names, also when other responses of the same URL name a different list, so a page sent with `Vary: Cookie` is served only to requests with the same `Cookie`. The values are the ones the request carried when it reached the cache: middleware registered after it that rewrites a request header, as `encryptcookie` does with the cookies it decrypts, no longer changes the key a response is stored under.
 
 A request the server refused while reading it, such as one over `BodyLimit`, is neither served from the cache nor stored: its route never ran. With `QUERY` in `Methods`, the default key includes `Content-Type` and `Content-Encoding` besides the body. With an external `Storage`, a response past the size limits an entry is decoded under is not stored (`X-Cache: unreachable`) instead of making every later lookup of its key fail with `500`.
 

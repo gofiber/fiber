@@ -854,6 +854,13 @@ func New(config ...Config) fiber.Handler {
 
 		// Read before the handler can clear the credential or rewrite the path.
 		urlGroup := refusals.group(c, generatedKey)
+		// Also the headers, for a response that varies on other names than the lookup used: an inner
+		// middleware may rewrite them in place, as encryptcookie does with the cookie it decrypts.
+		var lookupHeader *fasthttp.RequestHeader
+		if !cfg.DisableVaryHeaders {
+			lookupHeader = acquireLookupHeader(&c.Request().Header)
+			defer lookupHeaders.Put(lookupHeader)
+		}
 		var (
 			scope     credentialScope
 			recordKey string
@@ -1040,7 +1047,7 @@ func New(config ...Config) fiber.Handler {
 			// Keyed by the response's own Vary, not the manifest the lookup used, or a
 			// Vary: Cookie page lands under a key no cookie is part of.
 			if !slices.Equal(respVaryNames, varyNames) {
-				key = varyKey(baseKey, respVaryNames, &c.Request().Header, canonical)
+				key = varyKey(baseKey, respVaryNames, lookupHeader, canonical)
 			}
 		} else if !cfg.DisableVaryHeaders && hasVaryManifest {
 			if err := manager.del(reqCtx, manifestKey); err != nil {

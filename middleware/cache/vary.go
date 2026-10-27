@@ -8,6 +8,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3/internal/headerlist"
@@ -124,6 +125,18 @@ func varyKey(base string, names []string, hdr *fasthttp.RequestHeader, normalize
 	key := string(buf)
 	releaseKeyBuffer(bufPtr, buf)
 	return key
+}
+
+// lookupHeaders pools the copies of the request headers a miss keeps while the handler runs.
+var lookupHeaders = sync.Pool{New: func() any { return new(fasthttp.RequestHeader) }}
+
+func acquireLookupHeader(src *fasthttp.RequestHeader) *fasthttp.RequestHeader {
+	h, ok := lookupHeaders.Get().(*fasthttp.RequestHeader)
+	if !ok {
+		h = new(fasthttp.RequestHeader)
+	}
+	src.CopyTo(h)
+	return h
 }
 
 func storeVaryManifest(ctx context.Context, manager *manager, manifestKey string, names []string, exp time.Duration) error {

@@ -29,6 +29,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/middleware/compress"
+	"github.com/gofiber/fiber/v3/middleware/encryptcookie"
 	"github.com/gofiber/fiber/v3/middleware/etag"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/utils/v2"
@@ -8620,6 +8621,56 @@ func Test_Cache_VaryReplayedWithCompress(t *testing.T) {
 		require.Equal(t, want, resp.Header.Get("X-Cache"))
 		require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding), "(%s)", want)
 		require.Equal(t, []string{fiber.HeaderAcceptEncoding}, resp.Header.Values(fiber.HeaderVary), "(%s)", want)
+	}
+}
+
+// Test_Cache_VaryKeyedByTheHeadersTheLookupSaw stores a response that varies on a header an inner
+// middleware rewrites under the value the lookup hashed. encryptcookie decrypts the cookie in place, and
+// keyed by the decrypted value the page went to anyone sending that value as a plain cookie.
+func Test_Cache_VaryKeyedByTheHeadersTheLookupSaw(t *testing.T) {
+	t.Parallel()
+
+	secret := encryptcookie.GenerateKey(32)
+	sealed, err := encryptcookie.EncryptCookie("user", "alice", secret)
+	require.NoError(t, err)
+
+	app := fiber.New()
+	app.Use(New(Config{MaxBytes: 1024}))
+	app.Use(encryptcookie.New(encryptcookie.Config{Key: secret}))
+	app.Get("/account", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "max-age=30")
+		c.Vary(fiber.HeaderCookie)
+		if c.Cookies("user") == "alice" {
+			return c.SendString("alice's recovery codes")
+		}
+		return c.SendString("please sign in")
+	})
+	app.Get("/other", func(c fiber.Ctx) error {
+		return c.SendString(strings.Repeat("x", 300))
+	})
+
+	get := func(path, cookie string) [2]string {
+		t.Helper()
+		req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
+		if cookie != "" {
+			req.Header.Set(fiber.HeaderCookie, cookie)
+		}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		return [2]string{string(body), resp.Header.Get("X-Cache")}
+	}
+
+	// The second round starts after the URL's entries, and with them its Vary manifest, were evicted.
+	for _, round := range []string{"first store", "after eviction"} {
+		require.Equal(t, [2]string{"alice's recovery codes", cacheMiss}, get("/account", "user="+sealed), round)
+		require.Equal(t, [2]string{"please sign in", cacheMiss}, get("/account", "user=alice"), round)
+		require.Equal(t, [2]string{"alice's recovery codes", cacheHit}, get("/account", "user="+sealed), round)
+		for i := range 8 {
+			get("/other?q="+strconv.Itoa(i), "")
+		}
 	}
 }
 
