@@ -66,7 +66,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			// the uncolored branch has always counted bytes, and the
 			// concatenated format string's error padding is parsed the same
 			// way the uncolored branch parses it.
-			status := response(c).StatusCode()
+			status := response(c, data).StatusCode()
 			method := c.Method()
 			errPadding, _ := strconv.Atoi(data.ErrPaddingStr) //nolint:errcheck // It is fine to ignore the error
 
@@ -80,7 +80,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			buf.WriteString("| ")
 			appendDurationColumns(buf, data.Stop.Sub(data.Start), 13)
 			buf.WriteString(" | ")
-			writeColumnRight(buf, sanitizeLogValue(clientIP(c)), 15)
+			writeColumnRight(buf, sanitizeLogValue(clientIP(c, data)), 15)
 			buf.WriteString(" |")
 			buf.WriteString(methodColor(method, &colors))
 			buf.WriteByte(' ')
@@ -118,7 +118,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 
 			// Status Code with 3 fixed width, right aligned; appended digit-wise
 			// to avoid the per-request Itoa string.
-			appendIntPadded(buf, response(c).StatusCode(), 3)
+			appendIntPadded(buf, response(c, data).StatusCode(), 3)
 			buf.WriteString(" | ")
 
 			// Duration with 13 fixed width, right aligned; rendered straight
@@ -127,7 +127,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			buf.WriteString(" | ")
 
 			// Client IP with 15 fixed width, right aligned
-			fixedWidth(sanitizeLogValue(clientIP(c)), 15, true)
+			fixedWidth(sanitizeLogValue(clientIP(c, data)), 15, true)
 			buf.WriteString(" | ")
 
 			// HTTP Method with 7 fixed width, left aligned

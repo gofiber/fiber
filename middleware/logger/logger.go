@@ -139,6 +139,7 @@ func New(config ...Config) fiber.Handler {
 		chainErr := c.Next()
 
 		data.ChainErr = chainErr
+		data.timeoutResp = timeoutResponse(c)
 		// Manually call error handler
 		if chainErr != nil {
 			if err := errHandler(c, chainErr); err != nil {

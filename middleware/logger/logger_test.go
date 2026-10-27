@@ -2460,7 +2460,7 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 		buf := bytebufferpool.Get()
 		defer bytebufferpool.Put(buf)
 
-		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), &Data{}, "")
 		require.NoError(t, err)
 		require.Equal(t, "1.1.1.1,2.2.2.2", buf.String())
 		require.Equal(t, len(buf.String()), n)
@@ -2472,7 +2472,7 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
 		defer bytebufferpool.Put(buf.ByteBuffer)
 
-		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), &Data{}, "")
 		require.ErrorIs(t, err, errWriteFailed)
 		require.Zero(t, n)
 	})
@@ -2484,7 +2484,7 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
 		defer bytebufferpool.Put(buf.ByteBuffer)
 
-		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), &Data{}, "")
 		require.ErrorIs(t, err, errWriteFailed)
 		require.Equal(t, len("1.1.1.1"), n, "only the first address reached the sink")
 	})
@@ -2496,7 +2496,7 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
 		defer bytebufferpool.Put(buf.ByteBuffer)
 
-		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), &Data{}, "")
 		require.ErrorIs(t, err, errWriteFailed)
 		require.Equal(t, len("1.1.1.1,"), n)
 	})
