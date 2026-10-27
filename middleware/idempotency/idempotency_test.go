@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -936,6 +937,59 @@ func Test_Idempotency_SizedStreamIsReplayed(t *testing.T) {
 		require.Equal(t, "receipt", body)
 	}
 	require.Equal(t, 1, calls)
+}
+
+// Body read a sized stream to its end and kept a read error as the body, which was stored and replayed.
+func Test_Idempotency_SizedStreamIsStoredOnlyWhole(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		stream   func() io.Reader
+		declared int
+		maxRead  int
+	}{
+		"fails": {
+			declared: 10, maxRead: 4,
+			stream: func() io.Reader {
+				return io.MultiReader(strings.NewReader("part"), iotest.ErrReader(errors.New("upstream reset")))
+			},
+		},
+		"longer than declared": {
+			declared: 10, maxRead: 64 << 10, // short of the whole MiB
+			stream: func() io.Reader { return strings.NewReader(strings.Repeat("x", 1<<20)) },
+		},
+		"too long to store": {
+			declared: maxStoredStream + 1,
+			stream:   func() io.Reader { return strings.NewReader(strings.Repeat("x", maxStoredStream+1)) },
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New())
+
+			var calls int
+			var read strings.Builder
+			app.Post("/", func(c fiber.Ctx) error {
+				calls++
+				read.Reset()
+				return c.SendStream(io.TeeReader(tc.stream(), &read), tc.declared)
+			})
+
+			for range 2 {
+				fctx := &fasthttp.RequestCtx{}
+				fctx.Request.Header.SetMethod(fiber.MethodPost)
+				fctx.Request.SetRequestURI("/")
+				fctx.Request.Header.Set(ConfigDefault.KeyHeader, validKey)
+				app.Handler()(fctx)
+
+				require.True(t, fctx.Response.IsBodyStream())
+				require.Equal(t, tc.declared, fctx.Response.Header.ContentLength())
+				require.LessOrEqual(t, read.Len(), tc.maxRead)
+			}
+			require.Equal(t, 2, calls)
+		})
+	}
 }
 
 // A refused request replays the Use chain without its handler; storing what it

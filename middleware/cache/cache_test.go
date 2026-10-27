@@ -23,6 +23,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -2858,6 +2859,54 @@ func Test_Cache_MaxBytesSizes(t *testing.T) {
 		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tcase[0], http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, tcase[1], rsp.Header.Get("X-Cache"), "Case %v", idx)
+	}
+}
+
+// Body read a sized stream to its end and kept a read error as the body, which was then cached as a 200.
+func Test_Cache_SizedStreamIsStoredOnlyWhole(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		stream  func() io.Reader
+		maxRead int
+	}{
+		"fails": {
+			maxRead: 4,
+			stream: func() io.Reader {
+				return io.MultiReader(strings.NewReader("part"), iotest.ErrReader(errors.New("upstream reset")))
+			},
+		},
+		"longer than declared": {
+			maxRead: 64 << 10, // short of the whole MiB
+			stream:  func() io.Reader { return strings.NewReader(strings.Repeat("x", 1<<20)) },
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{Expiration: time.Hour}))
+
+			var calls int
+			var read strings.Builder
+			app.Get("/", func(c fiber.Ctx) error {
+				calls++
+				read.Reset()
+				return c.SendStream(io.TeeReader(tc.stream(), &read), 10)
+			})
+
+			for range 2 {
+				fctx := &fasthttp.RequestCtx{}
+				fctx.Request.Header.SetMethod(fiber.MethodGet)
+				fctx.Request.SetRequestURI("/")
+				app.Handler()(fctx)
+
+				require.Equal(t, cacheUnreachable, string(fctx.Response.Header.Peek("X-Cache")))
+				require.True(t, fctx.Response.IsBodyStream())
+				require.Equal(t, 10, fctx.Response.Header.ContentLength())
+				require.LessOrEqual(t, read.Len(), tc.maxRead)
+			}
+			require.Equal(t, 2, calls)
+		})
 	}
 }
 

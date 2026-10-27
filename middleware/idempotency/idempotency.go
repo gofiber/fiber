@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
+	"github.com/gofiber/fiber/v3/internal/sizedstream"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -27,6 +28,9 @@ const (
 )
 
 const redactedKey = "[redacted]"
+
+// maxStoredStream is the longest stream of known length read into memory to store it.
+const maxStoredStream = 1 << 20
 
 // isCookieHeader reports whether name is a header that sets a cookie: Set-Cookie
 // or its obsolete RFC 2965 spelling.
@@ -200,9 +204,12 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
-		// Body would hold a stream that declares no length until it ends, maybe never, so it goes out unrecorded.
-		if c.Response().IsBodyStream() && c.Response().Header.ContentLength() < 0 {
-			return nil
+		// Body reads a stream to its end, maybe never, and keeps a read error as the body. One that
+		// declares no length or more than maxStoredStream, or delivers other than it declares, goes out unrecorded.
+		if c.Response().IsBodyStream() {
+			if n := c.Response().Header.ContentLength(); n < 0 || n > maxStoredStream || !sizedstream.Read(c.Response(), n) {
+				return nil
+			}
 		}
 
 		// Construct response

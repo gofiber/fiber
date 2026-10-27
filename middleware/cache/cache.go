@@ -19,6 +19,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	"github.com/gofiber/fiber/v3/internal/sizedstream"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -1073,10 +1074,11 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		// Body reads a stream into memory, so a stream is judged by its declared length;
-		// one that declares none may never end and is passed on unstored.
+		// A stream is judged by its declared length: one that declares none may never end, and one
+		// that delivers other than it declares is passed on unstored.
 		if c.Response().IsBodyStream() {
-			if length := c.Response().Header.ContentLength(); length < 0 || (cfg.MaxBytes > 0 && uint(length) > cfg.MaxBytes) {
+			if length := c.Response().Header.ContentLength(); length < 0 || (cfg.MaxBytes > 0 && uint(length) > cfg.MaxBytes) ||
+				!sizedstream.Read(c.Response(), length) {
 				markUnreachable()
 				return nil
 			}
