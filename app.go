@@ -364,7 +364,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// This option is useful as anti-DoS protection for servers
 	// accepting only GET requests. The request size is limited
 	// by ReadBufferSize if GETOnly is set. A rejected request gets 405 with
-	// "Allow: GET, HEAD".
+	// "Allow: GET, HEAD", and no middleware runs for it.
 	//
 	// Default: false
 	GETOnly bool `json:"get_only"`
@@ -1804,7 +1804,10 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		c.Status(fiberErr.Code)
 	}
 
-	if c.getMethodInt() != -1 {
+	// A method GETOnly refuses is not replayed: a Use handler that ends the chain would carry it out.
+	// Asked of the method, not ErrGetOnly, since a header error is reported first.
+	methodRefused := app.server.GetOnly && !fctx.IsGet() && !fctx.IsHead()
+	if !methodRefused && c.getMethodInt() != -1 {
 		c.setSkipNonUseRoutes(true)
 		defer c.setSkipNonUseRoutes(false)
 		// The route never runs, so what the chain leaves is no response for the URL.

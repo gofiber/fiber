@@ -154,7 +154,7 @@ The HTTP server rejects some requests while it reads them. Fiber maps those erro
 | A timeout while reading the request, or another network error            | `408 Request Timeout`, or `502 Bad Gateway`          |
 | Any other malformed request                                              | `400 Bad Request`, with the parser's message         |
 
-When the request method is a known one, middleware registered with `Use` runs first and already sees the mapped status on the response, while route handlers are skipped. The error handler then writes the response, so what the chain produced, such as the answer of a catch-all `Use` handler, is never sent. The cache and idempotency middleware neither serve nor store such a request, and the proxy forwarders do not send it upstream.
+When the request method is a known one, and not one that `GETOnly` rejects, middleware registered with `Use` runs first and already sees the mapped status on the response, while route handlers are skipped. The error handler then writes the response, so what the chain produced, such as the answer of a catch-all `Use` handler, is never sent. The cache and idempotency middleware neither serve nor store such a request, and the proxy forwarders do not send it upstream.
 
 A well-formed method that is not in [`RequestMethods`](../api/fiber.md#requestmethods), such as `FOO`, or a known one in another letter case, such as `get`, does not get that far: Fiber answers `501 Not Implemented` itself, and neither middleware nor the error handler runs.
 

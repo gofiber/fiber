@@ -1113,11 +1113,11 @@ func Test_App_GETOnly(t *testing.T) {
 	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
 }
 
-// go test -run Test_App_GETOnly_Middleware_Status
-func Test_App_GETOnly_Middleware_Status(t *testing.T) {
+// go test -run Test_App_RefusedRequest_Middleware_Status
+func Test_App_RefusedRequest_Middleware_Status(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
-		GETOnly: true,
+		BodyLimit: 8,
 	})
 
 	observed := make(chan int, 1)
@@ -1131,11 +1131,36 @@ func Test_App_GETOnly_Middleware_Status(t *testing.T) {
 		return c.SendString("Hello 👋!")
 	})
 
-	req := httptest.NewRequest(MethodPost, "/", http.NoBody)
-	resp, err := app.Test(req)
+	req := httptest.NewRequest(MethodPost, "/", strings.NewReader(strings.Repeat("x", 64)))
+	_, err := app.Test(req)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+	require.Equal(t, StatusRequestEntityTooLarge, <-observed, "Status code seen by middleware")
+}
+
+// The replay would run a Use handler that ends the chain with the method GETOnly refused.
+// go test -run Test_App_GETOnly_RefusedMethodIsNotReplayed
+func Test_App_GETOnly_RefusedMethodIsNotReplayed(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		GETOnly: true,
+	})
+
+	var ran []string
+	app.Use("/api", func(c Ctx) error {
+		ran = append(ran, c.Method())
+		return c.SendString("done")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodPost, "/api/jobs/7/cancel", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
-	require.Equal(t, StatusMethodNotAllowed, <-observed, "Status code seen by middleware")
+	require.Equal(t, "GET, HEAD", resp.Header.Get(HeaderAllow))
+	require.Empty(t, ran)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/api/jobs/7", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, []string{MethodGet}, ran)
 }
 
 // An ErrorHandler that writes only a body used to answer a transport-refused
