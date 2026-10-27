@@ -213,6 +213,49 @@ func Test_Proxy_Balancer_RejectsHostUserinfo(t *testing.T) {
 	require.Equal(t, int32(1), hits.Load())
 }
 
+// Test_Proxy_Balancer_AbsoluteFormHost pins that the upstream is addressed by
+// the host c.Host() and the host checks went by: for an absolute-form line
+// that is the line's, not the received Host (RFC 9112 Section 3.2.2).
+func Test_Proxy_Balancer_AbsoluteFormHost(t *testing.T) {
+	t.Parallel()
+	addr := echoIdentity(t)
+
+	var routed string
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		routed = strings.Clone(c.Host())
+		return c.Next()
+	})
+	app.Use(Balancer(Config{Servers: []string{addr}}))
+
+	for _, tc := range []struct{ target, host, want string }{
+		{"http://public.example/x", "internal.example", "/x|public.example|"},
+		{"http://PUBLIC.example:8080/x?q=1", "internal.example", "/x?q=1|public.example:8080|"},
+		{"https://u:pw@public.example/x", "internal.example", "/x|public.example|"},
+		{"//public.example/a?x=://", "internal.example", "/a?x=://|public.example|"},
+		{"http://public.example/x", "svc:pw@internal.example", "/x|public.example|"},
+		{"/x", "internal.example", "/x|internal.example|"},
+	} {
+		resp := rawRequest(t, app, tc.target, tc.host)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode(), tc.target)
+		require.Equal(t, tc.want, string(resp.Body()), tc.target)
+		require.Contains(t, tc.want, "|"+routed+"|", tc.target)
+	}
+	require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, "http:///x", "internal.example").StatusCode())
+
+	// A Host set in ModifyRequest still wins, and one set before the handler
+	// is kept for an origin-form line.
+	pinned := fiber.New()
+	pinned.Use(func(c fiber.Ctx) error {
+		c.Request().Header.SetHost("early.internal")
+		return c.Next()
+	})
+	pinned.Use("/late", Balancer(Config{Servers: []string{addr}, ModifyRequest: pinIdentity}))
+	pinned.Use(Balancer(Config{Servers: []string{addr}}))
+	require.Equal(t, "/late|backend.internal|Bearer pinned", string(rawRequest(t, pinned, "http://public.example/late", "internal.example").Body()))
+	require.Equal(t, "/x|early.internal|", string(rawRequest(t, pinned, "/x", "public.example").Body()))
+}
+
 // go test -run Test_Proxy_Balancer_RejectsNonOriginServer
 func Test_Proxy_Balancer_RejectsNonOriginServer(t *testing.T) {
 	t.Parallel()

@@ -89,6 +89,16 @@ func Balancer(config ...Config) fiber.Handler {
 			stripHopByHopRequestHeaders(req, normalized, keepHeaders...)
 		}
 
+		// An absolute-form line names the request's host in place of the received Host (RFC 9112
+		// Section 3.2.2); c.Host() and the host checks went by it, so the upstream gets it too.
+		if !wiretarget.ParsesAsPath(c.OriginalURL(), req.Header.Host()) {
+			host := req.URI().Host()
+			if len(host) == 0 {
+				return fiber.ErrBadRequest
+			}
+			req.Header.SetHostBytes(host)
+		}
+
 		// The Host field holds no userinfo (RFC 9112 Section 3.2). fasthttp
 		// reads "svc:pw@backend" as one when it parses the origin-form
 		// target below, and writes it upstream as a Basic Authorization
