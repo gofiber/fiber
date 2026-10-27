@@ -848,6 +848,11 @@ resolve to the **request**; use `c.Res().Get()`, `c.Res().GetHeaders()`, `c.Res(
   The unit is case-insensitive (`Bytes=0-4` used to get `416`). `If-Range` was ignored, so a resumed download was
   spliced onto a file that had changed; the range is now served only when the date in `If-Range` is exactly the file's
   `Last-Modified` (and at least two seconds old), and the whole file is sent otherwise.
+- **Render()**: The `fiber.Map` passed as `bind` is no longer modified. `ViewBind` values and, with
+  `PassLocalsToViews`, the `Locals` used to be written into it, so a map kept across requests carried the first
+  request's values into every later render, and a nil `fiber.Map` panicked. They are now merged into a copy, and a
+  key in the passed map still wins. Without a `Views` engine, `Render` now parses a copy of the template file, so
+  the output no longer depends on `Config.Immutable`.
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
 - **IP()**: When `EnableIPValidation` is `true` and `TrustProxyConfig` is set, `c.IP()` now walks the `X-Forwarded-For` chain from right to left and returns the first non-trusted IP, instead of the leftmost syntactically valid IP. This closes an IP-spoofing vector where an attacker could prepend a fake address and have it returned by `c.IP()`. Apps with `EnableIPValidation = false` (the default) are unaffected. See [`Ctx.IP`](./api/ctx.md#ip) and the [reverse proxy guide](./guide/reverse-proxy.md#getting-the-real-client-ip-address) for details.
 
