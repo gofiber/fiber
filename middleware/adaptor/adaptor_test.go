@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/sse"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2873,4 +2874,34 @@ func Test_FiberAdaptors_TimedOutRequest(t *testing.T) {
 			<-finished
 		})
 	}
+}
+
+// net/http discards a HEAD body, so a stream read for one would run with every write succeeding.
+func Test_FiberAdaptors_HeadLeavesStreamUnread(t *testing.T) {
+	t.Parallel()
+
+	var handlers atomic.Int32
+	events := sse.New(sse.Config{
+		DisableHeartbeat: true,
+		Handler: func(_ fiber.Ctx, stream *sse.Stream) error {
+			handlers.Add(1)
+			return stream.Comment("open")
+		},
+	})
+	app := fiber.New()
+	app.Get("/events", events)
+
+	for _, handler := range []http.Handler{FiberApp(app), FiberHandler(events)} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodHead, "/events", http.NoBody))
+		require.Equal(t, fiber.StatusOK, rec.Code)
+		require.Equal(t, fiber.MIMETextEventStream, rec.Header().Get(fiber.HeaderContentType))
+		require.Empty(t, rec.Body.String())
+	}
+	require.Zero(t, handlers.Load())
+
+	rec := httptest.NewRecorder()
+	FiberApp(app).ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
+	require.Equal(t, ": open\n\n", rec.Body.String())
+	require.Equal(t, int32(1), handlers.Load())
 }

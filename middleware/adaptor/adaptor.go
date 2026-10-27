@@ -1004,6 +1004,11 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 
 		// Check if streaming is not possible or unnecessary.
 		bodyStream := resp.BodyStream()
+		if bodyStream != nil && r.Method == http.MethodHead {
+			// net/http discards a HEAD body, so as fasthttp's server does, close the stream unread.
+			_ = resp.CloseBodyStream() //nolint:errcheck // not needed
+			return
+		}
 		flusher, ok := w.(http.Flusher)
 		if !ok || bodyStream == nil {
 			_, _ = w.Write(resp.Body()) //nolint:errcheck // not needed
