@@ -108,7 +108,44 @@ func decoderBuilder(aliasTag string, parserConfig ParserConfig) any {
 		decoder.RegisterConverter(reflect.ValueOf(v.CustomType).Interface(), v.Converter)
 	}
 	decoder.ZeroEmpty(parserConfig.ZeroEmpty)
-	return decoder
+	return &pooledDecoder{Decoder: decoder, keys: make(map[string]struct{})}
+}
+
+// pooledDecoder is a pooled schema.Decoder and the nested keys it was given:
+// schema caches a parsed path per key spelling for the decoder's lifetime.
+type pooledDecoder struct {
+	*schema.Decoder
+	keys     map[string]struct{}
+	keyBytes int
+}
+
+// A decoder whose nested keys, each counted with what schema caches for it,
+// pass maxDecoderKeyBytes is left to the GC instead of being pooled again.
+const (
+	maxDecoderKeyBytes = 4 << 20
+	cachedKeyOverhead  = 512
+)
+
+// admit checks key before d decodes it.
+func (d *pooledDecoder) admit(key string) error {
+	if err := checkKeyDepth(key); err != nil {
+		return err
+	}
+	// schema never caches a key without a dot.
+	if strings.IndexByte(key, '.') < 0 {
+		return nil
+	}
+	if _, ok := d.keys[key]; !ok {
+		d.keys[strings.Clone(key)] = struct{}{}
+		d.keyBytes += len(key) + cachedKeyOverhead
+	}
+	return nil
+}
+
+func putDecoder(pool *sync.Pool, d *pooledDecoder) {
+	if d.keyBytes <= maxDecoderKeyBytes {
+		pool.Put(d)
+	}
 }
 
 func init() {
@@ -153,23 +190,23 @@ func checkKeyDepth(key string) error {
 
 // Parse data into the struct with gofiber/schema
 func parseToStruct(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
+	// Get decoder from pool
+	pool := getDecoderPool(aliasTag)
+	schemaDecoder := pool.Get().(*pooledDecoder) //nolint:errcheck,forcetypeassert // not needed
+	defer putDecoder(pool, schemaDecoder)
+
 	for key := range data {
-		if err := checkKeyDepth(key); err != nil {
+		if err := schemaDecoder.admit(key); err != nil {
 			return err
 		}
 	}
 	for _, f := range files {
 		for key := range f {
-			if err := checkKeyDepth(key); err != nil {
+			if err := schemaDecoder.admit(key); err != nil {
 				return err
 			}
 		}
 	}
-
-	// Get decoder from pool
-	pool := getDecoderPool(aliasTag)
-	schemaDecoder := pool.Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
-	defer pool.Put(schemaDecoder)
 
 	// Alias tag is baked in at build time (see decoderBuilder); setting it here
 	// would reset the decoder's type cache on every request.
@@ -183,15 +220,15 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 // parseValuesToStruct is parseToStruct for key/value pairs: values[i] is a
 // value of keys[i].
 func parseValuesToStruct(aliasTag string, out any, keys, values []string) error {
+	pool := getDecoderPool(aliasTag)
+	schemaDecoder := pool.Get().(*pooledDecoder) //nolint:errcheck,forcetypeassert // not needed
+	defer putDecoder(pool, schemaDecoder)
+
 	for _, key := range keys {
-		if err := checkKeyDepth(key); err != nil {
+		if err := schemaDecoder.admit(key); err != nil {
 			return err
 		}
 	}
-
-	pool := getDecoderPool(aliasTag)
-	schemaDecoder := pool.Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
-	defer pool.Put(schemaDecoder)
 
 	if err := schemaDecoder.DecodeValues(out, keys, values); err != nil {
 		return fmt.Errorf("%w", err)

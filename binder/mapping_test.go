@@ -12,7 +12,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gofiber/schema"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -351,7 +350,7 @@ func Test_decoderBuilder(t *testing.T) {
 		ZeroEmpty:         false,
 	}
 	decAny := decoderBuilder(bindingForm, parserConfig)
-	dec, ok := decAny.(*schema.Decoder)
+	dec, ok := decAny.(*pooledDecoder)
 	require.True(t, ok)
 	var out struct {
 		X customInt `custom:"x"`
@@ -387,7 +386,7 @@ func Test_decoderPoolMapInit(t *testing.T) {
 
 	for _, tag := range tags {
 		decAny := getDecoderPool(tag).Get()
-		dec, ok := decAny.(*schema.Decoder)
+		dec, ok := decAny.(*pooledDecoder)
 		require.True(t, ok)
 		require.NotNil(t, dec)
 		getDecoderPool(tag).Put(decAny)
@@ -1207,6 +1206,62 @@ func Test_Binders_KeyDepthLimit(t *testing.T) {
 			require.NoError(t, bind(t, levels+1, &m))
 			if name != "multipart file" {
 				require.Len(t, m, 1)
+			}
+		})
+	}
+}
+
+func Test_PooledDecoder_KeyBudget(t *testing.T) {
+	t.Parallel()
+
+	t.Run("repeated keys", func(t *testing.T) {
+		t.Parallel()
+		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
+		require.True(t, ok)
+		for range 10_000 {
+			require.NoError(t, d.admit("items.0.sku"))
+			require.NoError(t, d.admit("name"))
+		}
+		require.Equal(t, len("items.0.sku")+cachedKeyOverhead, d.keyBytes)
+	})
+
+	type item struct {
+		SKU string `form:"sku"`
+	}
+	type order struct {
+		Items []item `form:"items"`
+	}
+	// Every key is a new spelling of one of 1000 items, as a client choosing them would send.
+	const perBind = maxDecoderKeyBytes / cachedKeyOverhead
+	keys := make([]string, 0, perBind)
+	for n := range perBind {
+		keys = append(keys, "items."+strings.Repeat("0", n/1000)+strconv.Itoa(n%1000)+".sku")
+	}
+	values := slices.Repeat([]string{"a"}, len(keys))
+	data := make(map[string][]string, len(keys))
+	files := make(map[string][]*multipart.FileHeader, len(keys))
+	for _, key := range keys {
+		data[key] = []string{"a"}
+		files[key] = nil
+	}
+
+	for name, decode := range map[string]func(out any) error{
+		"pairs": func(out any) error { return parseValuesToStruct(bindingForm, out, keys, values) },
+		"map":   func(out any) error { return parseToStruct(bindingForm, out, data) },
+		"files": func(out any) error { return parseToStruct(bindingForm, out, nil, files) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			pool := getDecoderPool(bindingForm)
+			// Under the race detector a sync.Pool drops some of what it is given.
+			for range 8 {
+				out := new(order)
+				require.NoError(t, decode(out))
+				require.Len(t, out.Items, 1000)
+				dec, ok := pool.Get().(*pooledDecoder)
+				require.True(t, ok)
+				require.LessOrEqual(t, dec.keyBytes, maxDecoderKeyBytes)
+				pool.Put(dec)
 			}
 		})
 	}
