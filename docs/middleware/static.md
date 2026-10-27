@@ -142,11 +142,13 @@ curl http://localhost:3000/web
 </details>
 
 :::caution
-To define static routes using `Get`, append the wildcard (`*`) operator at the end of the route. Under a `/static*` route the rest of the path must start at a segment boundary, so `/static-v2/app.js` or `/staticapp.js` are no longer served; only `/static` and paths below `/static/` are.
+To define static routes using `Get`, append the wildcard (`*`) operator at the end of the route. Under a `/static*` or `/static+` route the rest of the path must start at a segment boundary, so `/static-v2/app.js` or `/staticapp.js` are no longer served; only `/static` and paths below `/static/` are.
+
+After a parameter, a directory root takes the file name from the wildcard that ends the route: under `/:lang/*` the path `/en/app.js` serves `app.js`. A route with a parameter and no trailing wildcard, such as `app.Use("/:tenant", ...)` or a sub-app mounted on it, does not tell where the file name starts, so a directory root serves nothing there; register it as `Get("/*", ...)` inside the sub-app instead. A root that is a single file is not affected.
 :::
 
 :::info
-The file server resolves the path the router matched. Fiber normalizes request paths before routing (see [Path normalization](../guide/routing.md#path-normalization)), so middleware mounted on `/static/private` also guards `/static/%70rivate/secret.txt` and `/static/x/../private/secret.txt`.
+The file server resolves the path the router matched. Fiber normalizes request paths before routing (see [Path normalization](../guide/routing.md#path-normalization)), so middleware mounted on `/static/private` also guards `/static/%70rivate/secret.txt` and `/static/x/../private/secret.txt`. With `Browse`, the title and links of a directory listing follow that path as well.
 
 Escapes the router leaves encoded, such as `%20`, `%40` or `%25`, also remain encoded for file lookup. This keeps routing, including path-scoped authorization middleware, and static-file resolution on the same resource name. Consequently, `/static/hello%20world.txt` does not serve `hello world.txt`; enable [`UnescapePath`](../api/fiber.md#config) when encoded spellings should resolve to decoded file names.
 
@@ -161,6 +163,8 @@ A path that cannot name a file inside the root is answered with `404 Not Found`:
 With `UnescapePath` enabled the router has already decoded every escape, so a malformed escape is an ordinary part of the name: `/static/100%zz.txt` names `100%zz.txt`.
 
 A root mount, such as `app.Use(static.New(dir))` or `app.Get("/*", static.New(dir))`, refuses a path whose first segment is empty too, whether it serves a directory or a single file. The router keeps the empty first segment of `//private/secret.txt` apart from `/private/secret.txt`, so a root mount answers it with `404 Not Found` instead of serving anything for a path that middleware mounted on `/private` never saw. That includes any spelling the router turns into such a path, such as `/.//private/secret.txt` or, with `UnescapePath` enabled, `/%2Fprivate/secret.txt`.
+
+The router reads `/static/private` and `/static/private/` as one path, and so does the file server: either spelling serves the directory's index, or a file of that name. With [`StrictRouting`](../api/fiber.md#config) enabled the router keeps the two apart, so middleware mounted on `/static/private/` does not run for `/static/private`, and the file server follows the router. A directory, the mount point `/static` included, is then served for the spelling that ends in a slash only, and the other one is redirected to it with `302 Found`. A file is served for the spelling without the slash only, so `/static/secret.txt/` is answered with `404 Not Found`.
 
 A root that is a single file looks nothing up by the path, so it serves its file for every other path the route matches, whatever its spelling, and no spelling of a path can select another file. An empty segment further in is an ordinary part of a name there, as in `/web/https://example.com`.
 :::
