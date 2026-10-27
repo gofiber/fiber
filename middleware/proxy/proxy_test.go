@@ -997,6 +997,61 @@ func Test_Proxy_StripDropsTrailerSection(t *testing.T) {
 	require.False(t, stripHopByHopRequestHeaders(req, true), "too many names to drop")
 }
 
+// Test_Proxy_StreamedBodyTrailerSection checks that the trailer section of a streamed body
+// reaches the upstream neither as header lines nor as trailers, and does not take the
+// place of a header written once the body has been read.
+func Test_Proxy_StreamedBodyTrailerSection(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		fmt.Fprintf(w, "body=%s header=%q trailer=%q", body, r.Header.Values("X-User"), r.Trailer.Values("X-User"))
+	}))
+	t.Cleanup(upstream.Close)
+
+	app := fiber.New(fiber.Config{StreamRequestBody: true})
+	balancer := Balancer(Config{Servers: []string{upstream.Listener.Addr().String()}})
+	app.Post("/forward", balancer)
+	app.Post("/read", func(c fiber.Ctx) error {
+		c.Body()
+		c.Request().Header.Set("X-User", "alice")
+		return c.Next()
+	}, balancer)
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	startServer(app, ln)
+
+	for _, tc := range []struct{ head, forwarded string }{
+		{head: "", forwarded: `[]`},
+		{head: "X-User: admin\r\n", forwarded: `["admin"]`},
+		{head: "X-User: admin\r\nTrailer: X-User\r\n", forwarded: `["admin"]`},
+	} {
+		for path, want := range map[string]string{
+			"/forward": "body=hi header=" + tc.forwarded + " trailer=[]",
+			"/read":    `body=hi header=["alice"] trailer=[]`,
+		} {
+			head := tc.head
+			conn, err := net.Dial(fiber.NetworkTCP4, ln.Addr().String())
+			require.NoError(t, err)
+			require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+			_, err = conn.Write([]byte("POST " + path + " HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n" + head +
+				"Transfer-Encoding: chunked\r\n\r\n2\r\nhi\r\n0\r\nX-User: x\r\n\r\n"))
+			require.NoError(t, err)
+			resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+			require.NoError(t, err)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.NoError(t, conn.Close())
+			require.Equal(t, want, string(body), path+" "+head)
+		}
+	}
+}
+
 // Test_Proxy_Do_ConnectionCannotRemoveRealIP checks that the X-Real-IP written
 // by hand before Do, as the docs show, is not the client's to remove either.
 func Test_Proxy_Do_ConnectionCannotRemoveRealIP(t *testing.T) {

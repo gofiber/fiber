@@ -2332,19 +2332,17 @@ func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
 
 	const owned = "X-Authenticated-User"
 
+	// Fiber drops the trailer section before r.Trailer is built: as the request arrives or, streamed, once the body is read.
 	tests := []struct {
-		name    string
-		write   string
-		want    []string
-		trailer []string
-		stream  bool
+		name   string
+		write  string
+		want   []string
+		stream bool
 	}{
-		// Fiber drops the trailer section as the request arrives, before r.Trailer is built.
 		{name: "stripped"},
 		{name: "replaced", write: "alice", want: []string{"alice"}},
-		// Streamed, the trailer section arrives only as the middleware reads the body.
-		{name: "stripped streamed", trailer: []string{"admin"}, stream: true},
-		{name: "replaced streamed", write: "alice", want: []string{"alice"}, trailer: []string{"admin"}, stream: true},
+		{name: "stripped streamed", stream: true},
+		{name: "replaced streamed", write: "alice", want: []string{"alice"}, stream: true},
 	}
 
 	for _, tt := range tests {
@@ -2404,7 +2402,7 @@ func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
 
 			require.Equal(t, fiber.StatusOK, resp.StatusCode)
 			require.Equal(t, "a=1", body)
-			require.Equal(t, tt.trailer, trailer)
+			require.Empty(t, trailer)
 			require.Equal(t, tt.want, got)
 			require.Equal(t, tt.want, headers[owned])
 			require.Zero(t, trailerKeys)

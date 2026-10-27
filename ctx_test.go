@@ -3700,6 +3700,61 @@ func Test_Ctx_HeaderWrittenUnderTrailerName(t *testing.T) {
 	}
 }
 
+// go test -run Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody
+func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
+	t.Parallel()
+
+	for _, custom := range []bool{false, true} {
+		t.Run(fmt.Sprintf("custom=%v", custom), func(t *testing.T) {
+			t.Parallel()
+
+			cfg := Config{StreamRequestBody: true}
+			app := New(cfg)
+			if custom {
+				app = NewWithCustomCtx(func(app *App) CustomCtx {
+					return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+				}, cfg)
+			}
+			respond := func(c Ctx, body []byte) error {
+				h := &c.Request().Header
+				h.Set("X-User", "alice")
+				h.Del("X-Role")
+				h.Set("X-Role", "user")
+				return c.SendString(fmt.Sprintf("body=%s user=%q role=%q trailers=%d", body, c.GetAll("X-User"),
+					c.GetAll("X-Role"), len(h.PeekTrailerKeys())))
+			}
+			app.Post("/body", func(c Ctx) error {
+				return respond(c, c.Body())
+			})
+			app.Post("/stream", func(c Ctx) error {
+				body, err := io.ReadAll(c.BodyStream())
+				if err != nil {
+					return err //nolint:wrapcheck // the status rides on the stream's own error
+				}
+				return respond(c, body)
+			})
+			ln := startRawServer(t, app)
+
+			const chunked = "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n"
+			for _, path := range []string{"/body", "/stream"} {
+				for _, head := range []string{"", "X-User: admin\r\nX-Role: admin\r\n", "X-User: admin\r\nTrailer: X-User, X-Role\r\n"} {
+					raw := "POST " + path + " HTTP/1.1\r\nHost: example.com\r\n" + head + chunked + "X-User: x\r\nX-Role: x\r\n\r\n"
+					responses, _ := rawExchange(t, ln, raw, 1)
+					require.Equal(t, StatusOK, responses[0].status, raw)
+					require.Equal(t, `body=hello user=["alice"] role=["user"] trailers=0`, responses[0].body, raw)
+				}
+			}
+
+			var trailers strings.Builder
+			for i := range 17 {
+				fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
+			}
+			responses, _ := rawExchange(t, ln, "POST /stream HTTP/1.1\r\nHost: example.com\r\n"+chunked+trailers.String()+"\r\n", 1)
+			require.Equal(t, StatusRequestHeaderFieldsTooLarge, responses[0].status)
+		})
+	}
+}
+
 // go test -run Test_Ctx_GetReqHeader
 func Test_Ctx_GetReqHeader(t *testing.T) {
 	t.Parallel()

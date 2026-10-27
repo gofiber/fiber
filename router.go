@@ -6,7 +6,9 @@ package fiber
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"math/bits"
 	"slices"
 	"strings"
@@ -1007,6 +1009,9 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 		_ = ctx.SendStatus(StatusRequestHeaderFieldsTooLarge) //nolint:errcheck // Always return nil
 		return
 	}
+	if rctx.Request.IsBodyStream() {
+		dropStreamedTrailers(&rctx.Request)
+	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie); before the
 	// short-circuit so a skipped 404/405 still clears them.
@@ -1055,6 +1060,9 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 		_ = ctx.SendStatus(StatusRequestHeaderFieldsTooLarge) //nolint:errcheck // Always return nil
 		return
 	}
+	if rctx.Request.IsBodyStream() {
+		dropStreamedTrailers(&rctx.Request)
+	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie); before the
 	// short-circuit so a skipped 404/405 still clears them.
@@ -1086,6 +1094,27 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 			_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
 		}
 	}
+}
+
+// dropStreamedTrailers has a streamed chunked body drop the trailer section it reads at its end, since
+// fasthttp files a later Set or Add under a received trailer name with that section.
+func dropStreamedTrailers(req *fasthttp.Request) {
+	if req.Header.ContentLength() == -1 {
+		req.SetBodyStream(&trailerDropReader{r: req.BodyStream(), h: &req.Header}, -1)
+	}
+}
+
+type trailerDropReader struct {
+	r io.Reader
+	h *fasthttp.RequestHeader
+}
+
+func (t *trailerDropReader) Read(p []byte) (int, error) {
+	n, err := t.r.Read(p)
+	if errors.Is(err, io.EOF) && !fieldname.DropTrailers(t.h) {
+		return n, ErrRequestHeaderFieldsTooLarge
+	}
+	return n, err //nolint:wrapcheck // io.Reader passes io.EOF through as is
 }
 
 func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) {
