@@ -127,7 +127,7 @@ const (
 	cachedKeyOverhead  = 512
 )
 
-// admit checks key before d decodes it.
+// admit checks key before d decodes it and adds its nestedElements to d.elements.
 func (d *pooledDecoder) admit(key string) error {
 	if err := checkKeyDepth(key); err != nil {
 		return err
@@ -142,7 +142,14 @@ func (d *pooledDecoder) admit(key string) error {
 		d.keys[strings.Clone(key)] = n
 		d.keyBytes += len(key) + cachedKeyOverhead
 	}
-	if d.elements += n; d.elements > maxNestedElements {
+	d.elements += n
+	return nil
+}
+
+// checkElements refuses the admitted keys past maxNestedElements, unless out
+// cannot fan them out: then each slice exists once per bind, whatever the keys.
+func (d *pooledDecoder) checkElements(out any) error {
+	if d.elements > maxNestedElements && fansOut(reflect.TypeOf(out)) {
 		return ErrTooManyElements
 	}
 	return nil
@@ -161,25 +168,83 @@ const maxNestedElements = 1 << 18
 // maxSliceIndex is schema's largest slice index; it refuses a key with a larger one.
 const maxSliceIndex = 1000
 
-// nestedElements is how many slice elements key can make schema allocate past its
-// first index: each later index grows a slice per parent element to exactly index+1.
+// nestedElements is how many slice elements key can make schema allocate: each
+// index grows its slice to index+1. A root field's index, the second segment, is free.
 func nestedElements(key string) int {
-	n, first := 0, true
+	n, pos := 0, 0
 	for seg := range strings.SplitSeq(key, ".") {
+		pos++
 		// Checked first since ParseInt allocates the error for a field name.
-		if seg == "" || (seg[0] < '0' || seg[0] > '9') && seg[0] != '+' && seg[0] != '-' {
+		if pos == 2 || seg == "" || (seg[0] < '0' || seg[0] > '9') && seg[0] != '+' && seg[0] != '-' {
 			continue
 		}
 		i, err := utils.ParseInt(seg)
 		if err != nil || i < 0 {
 			continue
 		}
-		if !first {
-			n += int(min(i, maxSliceIndex)) + 1
-		}
-		first = false
+		n += int(min(i, maxSliceIndex)) + 1
 	}
 	return n
+}
+
+// fansOut reports whether binding into t can grow a slice of structs once per
+// element of another slice or per level of a recursive type.
+func fansOut(t reflect.Type) bool {
+	if t == nil {
+		return false
+	}
+	t = unwrapType(t)
+	return t.Kind() == reflect.Struct && fansOutFrom(t, make(map[reflect.Type]uint8))
+}
+
+// fansOutFrom is fansOut for struct type t; state marks the types on the
+// current path (1) and those already walked (2).
+func fansOutFrom(t reflect.Type, state map[reflect.Type]uint8) bool {
+	state[t] = 1
+	for i := range t.NumField() {
+		elem, slice := structElem(t.Field(i).Type)
+		if elem == nil {
+			continue
+		}
+		if (slice || state[elem] == 1) && hasSliceOfStructs(elem, make(map[reflect.Type]bool)) {
+			return true
+		}
+		if state[elem] == 0 && fansOutFrom(elem, state) {
+			return true
+		}
+	}
+	state[t] = 2
+	return false
+}
+
+// hasSliceOfStructs reports whether struct type t or a struct below it has a
+// slice of structs field.
+func hasSliceOfStructs(t reflect.Type, seen map[reflect.Type]bool) bool {
+	seen[t] = true
+	for i := range t.NumField() {
+		elem, slice := structElem(t.Field(i).Type)
+		if elem != nil && (slice || !seen[elem] && hasSliceOfStructs(elem, seen)) {
+			return true
+		}
+	}
+	return false
+}
+
+// structElem returns the struct type schema walks into through a field of type
+// t, and whether t is a slice of it. Maps end a path, so they yield nil.
+func structElem(t reflect.Type) (reflect.Type, bool) {
+	t = unwrapType(t)
+	slice := t.Kind() == reflect.Slice
+	if slice {
+		t = unwrapType(t.Elem())
+	}
+	if t.Kind() == reflect.Array {
+		t = unwrapType(t.Elem())
+	}
+	if t.Kind() != reflect.Struct {
+		return nil, false
+	}
+	return t, slice
 }
 
 func init() {
@@ -241,6 +306,9 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 			}
 		}
 	}
+	if err := schemaDecoder.checkElements(out); err != nil {
+		return err
+	}
 
 	// Alias tag is baked in at build time (see decoderBuilder); setting it here
 	// would reset the decoder's type cache on every request.
@@ -262,6 +330,9 @@ func parseValuesToStruct(aliasTag string, out any, keys, values []string) error 
 		if err := schemaDecoder.admit(key); err != nil {
 			return err
 		}
+	}
+	if err := schemaDecoder.checkElements(out); err != nil {
+		return err
 	}
 
 	if err := schemaDecoder.DecodeValues(out, keys, values); err != nil {

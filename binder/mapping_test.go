@@ -1068,6 +1068,26 @@ type depthChain struct {
 	Text   string      `form:"text,default:none"`
 }
 
+// Two self pointers: every index-free chain reaches a fresh phones slice.
+type fanOutPerson struct {
+	Mother *fanOutPerson `form:"mother"`
+	Father *fanOutPerson `form:"father"`
+	Phones []fanOutPhone `form:"phones"`
+}
+
+type fanOutPhone struct {
+	Number string `form:"number"`
+}
+
+type stockVariant struct {
+	Stock map[string]int `form:"stock"`
+	SKU   string         `form:"sku"`
+}
+
+type stockProduct struct {
+	Variants []stockVariant `form:"variants"`
+}
+
 type depthRequired struct {
 	A string `form:"a,required"`
 	B string `form:"b,required"`
@@ -1280,10 +1300,38 @@ func Test_NestedElements(t *testing.T) {
 		"items.0.variants.3x.sku":   0,
 		"items.0.variants.5000.sku": maxSliceIndex + 1,
 		"attrs.7":                   0,
-		"a..0.b.2":                  3,
+		"a..0.b.2":                  4,
+		"billing.lines.5.sku":       6,
+
+		"mother.father.phones.1000.number":            maxSliceIndex + 1,
 		"children.0.children.1000.children.1000.name": 2 * (maxSliceIndex + 1),
 	} {
 		require.Equal(t, want, nestedElements(key), key)
+	}
+}
+
+func Test_FansOut(t *testing.T) {
+	t.Parallel()
+
+	type item struct{ SKU string }
+	type group struct{ Items []item }
+	for name, tc := range map[string]struct {
+		typ  reflect.Type
+		want bool
+	}{
+		"slice in a slice element":  {reflect.TypeFor[*struct{ Groups []group }](), true},
+		"slice in an array element": {reflect.TypeFor[*struct{ Groups [][2]group }](), true},
+		"recursive slice":           {reflect.TypeFor[depthTree](), true},
+		"recursive pointers":        {reflect.TypeFor[*fanOutPerson](), true},
+		"recursive without slices":  {reflect.TypeFor[*depthChain](), false},
+		"root slice":                {reflect.TypeFor[*struct{ Items []item }](), false},
+		"slice in a struct field":   {reflect.TypeFor[*struct{ Billing, Shipping *group }](), false},
+		"map in a slice element":    {reflect.TypeFor[*stockProduct](), false},
+		"slice in a map value":      {reflect.TypeFor[*struct{ M map[string]group }](), false},
+		"not a struct":              {reflect.TypeFor[*map[string]string](), false},
+		"nil":                       {nil, false},
+	} {
+		require.Equal(t, tc.want, fansOut(tc.typ), name)
 	}
 }
 
@@ -1292,19 +1340,18 @@ func Test_PooledDecoder_ElementBudget(t *testing.T) {
 
 	d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
 	require.True(t, ok)
-	i := 0
-	for ; ; i++ {
-		if err := d.admit("a." + strconv.Itoa(i) + ".b.1000.c"); err != nil {
-			require.ErrorIs(t, err, ErrTooManyElements)
-			break
-		}
+	for i := range maxNestedElements / (maxSliceIndex + 1) {
+		require.NoError(t, d.admit("a."+strconv.Itoa(i)+".b.1000.c"))
 	}
-	require.Equal(t, maxNestedElements/(maxSliceIndex+1), i)
+	require.NoError(t, d.checkElements(new(depthTree)))
+	require.NoError(t, d.admit("a.0.b.1000.c"))
+	require.ErrorIs(t, d.checkElements(new(depthTree)), ErrTooManyElements)
+	require.NoError(t, d.checkElements(new(stockProduct)))
 
 	// The budget is per bind.
-	pool := &sync.Pool{}
-	putDecoder(pool, d)
+	putDecoder(&sync.Pool{}, d)
 	require.NoError(t, d.admit("a.0.b.1000.c"))
+	require.NoError(t, d.checkElements(new(depthTree)))
 }
 
 func Test_FormBinder_NestedElementLimit(t *testing.T) {
@@ -1329,4 +1376,31 @@ func Test_FormBinder_NestedElementLimit(t *testing.T) {
 	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
 	req.URI().SetQueryString(body)
 	require.ErrorIs(t, (&QueryBinding{}).Bind(req, new(depthTree)), ErrTooManyElements)
+
+	person := new(fanOutPerson)
+	require.NoError(t, bindFormBody(t, "mother.father.phones.1.number=x", person))
+	require.Len(t, person.Mother.Father.Phones, 2)
+	require.Equal(t, "x", person.Mother.Father.Phones[1].Number)
+
+	chains := make([]string, 0, maxNestedElements/(maxSliceIndex+1)+1)
+	for i := 2; len(chains) < cap(chains); i++ {
+		var hops []string
+		for j := i; j > 1; j >>= 1 {
+			hops = append(hops, [...]string{"mother", "father"}[j&1])
+		}
+		chains = append(chains, strings.Join(hops, ".")+".phones.1000.number=x")
+	}
+	require.ErrorIs(t, bindFormBody(t, strings.Join(chains, "&"), new(fanOutPerson)), ErrTooManyElements)
+
+	// Numeric map keys past the budget: stockProduct grows no slice per element.
+	stock := make([]string, 0, 300)
+	for v := range 30 {
+		for w := 1000; w < 1010; w++ {
+			stock = append(stock, "variants["+strconv.Itoa(v)+"][stock]["+strconv.Itoa(w)+"]=5")
+		}
+	}
+	product := new(stockProduct)
+	require.NoError(t, bindFormBody(t, strings.Join(stock, "&"), product))
+	require.Len(t, product.Variants, 30)
+	require.Equal(t, 5, product.Variants[29].Stock["1009"])
 }

@@ -343,7 +343,7 @@ An index only ever addresses a struct field. `colors[0]=red` and `colors.0=red` 
 
 Indexes above 1000 are rejected: `items.1001.sku=A1` fails with `schema: index exceeds parser limit`.
 
-Every index after the first in a key, such as the `3` in `items[0][variants][3][sku]`, sizes a slice of its own inside one element. Each counts as its value plus one, and keys that add up to more than 262,144 fail a bind into a struct with `binder.ErrTooManyElements`.
+A struct with a slice of structs inside a slice element, or below a field that refers back to its own type (`Children []Category`, `Mother, Father *Person`), gets a slice for every element or level a key reaches. For such a struct every index except the one right after the first field name, such as the `3` in `items[0][variants][3][sku]` or the `1000` in `mother[father][phones][1000][number]`, counts as its value plus one, and keys that add up to more than 262,144 fail the bind with `binder.ErrTooManyElements`. Only the key is read, so a numeric map key at such a position, such as the `2026` in `items[0][stock][2026]`, counts as well.
 :::
 
 :::note
