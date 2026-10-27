@@ -3680,11 +3680,12 @@ func Test_Domain_UseMountAutoHeadPerMount(t *testing.T) {
 	})
 
 	outer := New()
+	// mounted first, so its HEAD route runs ahead of the GET route's on its hostnames
+	outer.Domain("admin.example.com").Use("/", inner)
 	outer.Get("/x", func(c Ctx) error {
 		c.Set("X-Handler", "outer")
 		return nil
 	})
-	outer.Domain("admin.example.com").Use("/", inner)
 
 	app := New()
 	app.Domain(":tenant.example.com").Use("/api", outer)

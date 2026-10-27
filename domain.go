@@ -588,6 +588,11 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 	}
 
 	src.mutex.Lock()
+	// As startupProcess does before a plain mount: src's HEAD routes are placed in its
+	// own route order, never by id against the routes of the apps it is flattened with.
+	if !skipAutoHead {
+		src.ensureAutoHeadRoutesLocked()
+	}
 	stack := make([][]sourceRoute, len(routes))
 	for m := range stack {
 		srcRoutes := src.routesForMethod(dst.method(m))
