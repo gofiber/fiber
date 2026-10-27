@@ -1318,7 +1318,6 @@ func New(config ...Config) fiber.Handler {
 			spaceReserved = true
 
 			// Now evict entries until we're under the limit
-			var keysToRemove []string
 			var candidates []evictionCandidate
 
 			for storedBytes > cfg.MaxBytes || heap.Len() >= maxEntries {
@@ -1338,7 +1337,6 @@ func New(config ...Config) fiber.Handler {
 				}
 				next := heap.entries[0]
 				keyToRemove, size := heap.removeFirst()
-				keysToRemove = append(keysToRemove, keyToRemove)
 				candidates = append(candidates, evictionCandidate{
 					key:      keyToRemove,
 					manifest: next.manifest,
@@ -1351,8 +1349,9 @@ func New(config ...Config) fiber.Handler {
 			mux.Unlock()
 
 			// Perform deletions outside the lock
-			if len(keysToRemove) > 0 {
-				for i, keyToRemove := range keysToRemove {
+			if len(candidates) > 0 {
+				for i := range candidates {
+					keyToRemove := candidates[i].key
 					delErr := deleteKey(reqCtx, keyToRemove)
 					if delErr == nil {
 						continue

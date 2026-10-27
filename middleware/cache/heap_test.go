@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"math/rand/v2"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -52,4 +54,44 @@ func TestIndexedHeapOrphansAManifestWithItsLastEntry(t *testing.T) {
 	h.remove(h.keys["m|b"])
 	require.Equal(t, []string{"m"}, h.takeOrphans())
 	require.Nil(t, h.takeOrphans())
+}
+
+func TestIndexedHeapRemoveKeepsOrder(t *testing.T) {
+	t.Parallel()
+
+	rng := rand.New(rand.NewPCG(1, 2))
+	h := &indexedHeap{}
+	idx := make([]int, 200)
+	for i := range idx {
+		exp := rng.Uint64N(1000)
+		idx[i] = h.put(strconv.Itoa(i), exp, uint(exp), "")
+	}
+	for _, i := range rng.Perm(len(idx))[:100] {
+		key, _ := h.remove(idx[i])
+		require.Equal(t, strconv.Itoa(i), key)
+	}
+
+	var last uint
+	for h.Len() > 0 {
+		key, size := h.removeFirst()
+		require.GreaterOrEqual(t, size, last)
+		require.NotContains(t, h.keys, key)
+		last = size
+	}
+	require.Empty(t, h.keys)
+}
+
+// Sequential: testing.AllocsPerRun panics during a parallel test.
+func TestIndexedHeapEvictionDoesNotAllocate(t *testing.T) {
+	h := &indexedHeap{}
+	for i := range 64 {
+		h.put(strconv.Itoa(i), uint64(i), 1, "")
+	}
+	exp := uint64(64)
+	allocs := testing.AllocsPerRun(100, func() {
+		key, size := h.removeFirst()
+		h.put(key, exp, size, "")
+		exp++
+	})
+	require.Zero(t, allocs)
 }

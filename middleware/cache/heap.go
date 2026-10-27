@@ -93,6 +93,10 @@ func (h *indexedHeap) Push(x any) {
 
 // Pop implements heap.Interface and removes the last entry from the heap.
 func (h *indexedHeap) Pop() any {
+	return h.popInternal()
+}
+
+func (h *indexedHeap) popInternal() heapEntry {
 	n := len(h.entries)
 	entry := h.entries[n-1]
 	if h.keys[entry.key] == entry.idx {
@@ -193,7 +197,15 @@ func (h *indexedHeap) matches(key string, idx int, gen uint64) bool {
 }
 
 func (h *indexedHeap) removeInternal(realIdx int) (key string, size uint) { //nolint:nonamedreturns // gocritic unnamedResult prefers named key and size when removing heap entries
-	x := heap.Remove(h, realIdx).(heapEntry) //nolint:forcetypeassert,errcheck // Forced type assertion required to implement the heap.Interface interface
+	// heap.Remove, unrolled so Pop does not box the entry on every eviction.
+	last := len(h.entries) - 1
+	if realIdx != last {
+		h.Swap(realIdx, last)
+	}
+	x := h.popInternal()
+	if realIdx != last {
+		heap.Fix(h, realIdx)
+	}
 	return x.key, x.bytes
 }
 
