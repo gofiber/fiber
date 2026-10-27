@@ -828,6 +828,47 @@ func Test_Proxy_ConnectionCannotRemoveForwardingHeaders(t *testing.T) {
 	}
 }
 
+// Test_Proxy_ConnectionListLimit checks that a request listing more names in
+// Connection than the proxy removes one by one is refused, not forwarded.
+func Test_Proxy_ConnectionListLimit(t *testing.T) {
+	t.Parallel()
+
+	names := func(n int) string { return strings.TrimSuffix(strings.Repeat("a,", n), ",") }
+	for _, tc := range realIPHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var forwarded atomic.Int32
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				forwarded.Add(1)
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			app := fiber.New()
+			app.Use(tc.build(addr))
+
+			for _, tt := range []struct {
+				lines  []string
+				status int
+			}{
+				{lines: []string{names(maxConnectionOptions)}, status: fiber.StatusOK},
+				{lines: []string{names(maxConnectionOptions + 1)}, status: fiber.StatusRequestHeaderFieldsTooLarge},
+				{lines: []string{names(maxConnectionOptions), "a"}, status: fiber.StatusRequestHeaderFieldsTooLarge},
+			} {
+				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+				req.Host = "example.com"
+				for _, line := range tt.lines {
+					req.Header.Add(fiber.HeaderConnection, line)
+				}
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, tt.status, resp.StatusCode)
+			}
+			require.Equal(t, int32(1), forwarded.Load())
+		})
+	}
+}
+
 // Test_Proxy_RealIPOutlivesTheTrailerReturn checks that the address written
 // into X-Real-IP is the one the request carried when the field it was read
 // from is deleted before the write. Removing Trailer returns the received
