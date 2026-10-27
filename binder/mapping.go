@@ -696,11 +696,24 @@ func FilterFlags(content string) string {
 	return content
 }
 
+// maxKeySegments is the most segments a bound key may have ("a.0.b" has three).
+// The decoder recurses and walks prefixes per segment, and a type that contains
+// itself puts no other bound on the depth.
+const maxKeySegments = 64
+
 // bindKey returns key as the binders file it: rewritten from bracket notation
-// to dots when the source supports that notation and key uses it.
+// to dots when the source supports that notation and key uses it. A key of
+// more than maxKeySegments segments is refused.
 func bindKey(key string, supportBracketNotation bool) (string, error) { //nolint:revive // the flag is the source's setting
 	if supportBracketNotation && strings.IndexByte(key, '[') >= 0 {
-		return parseParamSquareBrackets(key)
+		var err error
+		if key, err = parseParamSquareBrackets(key); err != nil {
+			return "", err
+		}
+	}
+	// A key shorter than the limit cannot hold that many dots.
+	if len(key) >= maxKeySegments && strings.Count(key, ".") >= maxKeySegments {
+		return "", ErrKeyTooDeep
 	}
 	return key, nil
 }

@@ -1044,3 +1044,161 @@ func Test_tagIndex_MatchesTags(t *testing.T) {
 	require.Equal(t, -1, tagIndex("unknown"))
 	require.Panics(t, func() { getDecoderPool("unknown") })
 }
+
+func Test_BindKey_MaxKeySegments(t *testing.T) {
+	t.Parallel()
+
+	atLimit := strings.Repeat("a.", maxKeySegments-1) + "a"
+	key, err := bindKey(atLimit, false)
+	require.NoError(t, err)
+	require.Equal(t, atLimit, key)
+
+	_, err = bindKey(atLimit+".a", false)
+	require.ErrorIs(t, err, ErrKeyTooDeep)
+	_, err = bindKey(atLimit+"[a]", true)
+	require.ErrorIs(t, err, ErrKeyTooDeep)
+	_, err = bindKey(strings.Repeat(".", maxKeySegments), false)
+	require.ErrorIs(t, err, ErrKeyTooDeep)
+}
+
+// The decoding cost of these types grows with the depth of a key.
+type depthTree struct {
+	Name     string
+	Children []depthTree
+}
+
+type depthChain struct {
+	Parent *depthChain `form:"parent"`
+	Text   string      `form:"text,default:none"`
+}
+
+type depthRequired struct {
+	A string `form:"a,required"`
+	B string `form:"b,required"`
+	C string `form:"c,required"`
+	D string `form:"d,required"`
+	E string `form:"e,required"`
+	F string `form:"f,required"`
+	G string `form:"g,required"`
+	H string `form:"h,required"`
+	I string `form:"i,required"`
+}
+
+func bindFormBody(t *testing.T, body string, out any) error {
+	t.Helper()
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	req.Header.SetContentType("application/x-www-form-urlencoded")
+	req.SetBodyString(body)
+	return (&FormBinding{}).Bind(req, out)
+}
+
+func Test_FormBinder_KeyDepthLimit(t *testing.T) {
+	t.Parallel()
+
+	// "children.0." is two segments, so these keys have 63 and 65.
+	const levels = (maxKeySegments - 1) / 2
+
+	t.Run("self-referencing slice", func(t *testing.T) {
+		t.Parallel()
+		root := new(depthTree)
+		require.NoError(t, bindFormBody(t, strings.Repeat("children.0.", levels)+"name=x", root))
+		leaf := root
+		for range levels {
+			require.Len(t, leaf.Children, 1)
+			leaf = &leaf.Children[0]
+		}
+		require.Equal(t, "x", leaf.Name)
+		require.ErrorIs(t, bindFormBody(t, strings.Repeat("children.0.", levels+1)+"name=x", new(depthTree)), ErrKeyTooDeep)
+	})
+
+	t.Run("self-referencing pointer with a default", func(t *testing.T) {
+		t.Parallel()
+		root := new(depthChain)
+		require.NoError(t, bindFormBody(t, strings.Repeat("parent.", maxKeySegments-1)+"text=x", root))
+		leaf := root
+		for range maxKeySegments - 1 {
+			require.NotNil(t, leaf.Parent)
+			leaf = leaf.Parent
+		}
+		require.Equal(t, "x", leaf.Text)
+		require.ErrorIs(t, bindFormBody(t, strings.Repeat("parent.", maxKeySegments)+"text=x", new(depthChain)), ErrKeyTooDeep)
+	})
+
+	t.Run("required keys left out", func(t *testing.T) {
+		t.Parallel()
+		err := bindFormBody(t, strings.Repeat("x.", maxKeySegments-1)+"x=1", new(depthRequired))
+		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrKeyTooDeep)
+		require.ErrorIs(t, bindFormBody(t, strings.Repeat("x.", maxKeySegments)+"x=1", new(depthRequired)), ErrKeyTooDeep)
+	})
+}
+
+func Test_Binders_KeyDepthLimit(t *testing.T) {
+	t.Parallel()
+
+	const levels = (maxKeySegments - 1) / 2
+	dotted := func(n int) string { return strings.Repeat("children.0.", n) + "name" }
+
+	multipartReq := func(t *testing.T, key string, file bool) *fasthttp.Request {
+		t.Helper()
+		body := new(bytes.Buffer)
+		mw := multipart.NewWriter(body)
+		if file {
+			w, err := mw.CreateFormFile(key, "x.txt")
+			require.NoError(t, err)
+			_, err = w.Write([]byte("x"))
+			require.NoError(t, err)
+		} else {
+			require.NoError(t, mw.WriteField(key, "x"))
+		}
+		require.NoError(t, mw.Close())
+		req := fasthttp.AcquireRequest()
+		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+		req.Header.SetContentType(mw.FormDataContentType())
+		req.SetBody(body.Bytes())
+		return req
+	}
+	newReq := func(t *testing.T) *fasthttp.Request {
+		t.Helper()
+		req := fasthttp.AcquireRequest()
+		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+		return req
+	}
+
+	sources := map[string]func(t *testing.T, n int) error{
+		"multipart value": func(t *testing.T, n int) error {
+			t.Helper()
+			return (&FormBinding{}).Bind(multipartReq(t, dotted(n), false), new(depthTree))
+		},
+		"multipart file": func(t *testing.T, n int) error {
+			t.Helper()
+			return (&FormBinding{}).Bind(multipartReq(t, dotted(n), true), new(depthTree))
+		},
+		"query": func(t *testing.T, n int) error {
+			t.Helper()
+			req := newReq(t)
+			req.URI().SetQueryString("children" + strings.Repeat("[0][children]", n-1) + "[0][name]=x")
+			return (&QueryBinding{}).Bind(req, new(depthTree))
+		},
+		"header": func(t *testing.T, n int) error {
+			t.Helper()
+			req := newReq(t)
+			req.Header.Set(dotted(n), "x")
+			return (&HeaderBinding{}).Bind(req, new(depthTree))
+		},
+		"cookie": func(t *testing.T, n int) error {
+			t.Helper()
+			req := newReq(t)
+			req.Header.SetCookie(dotted(n), "x")
+			return (&CookieBinding{}).Bind(req, new(depthTree))
+		},
+	}
+	for name, bind := range sources {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			require.NoError(t, bind(t, levels))
+			require.ErrorIs(t, bind(t, levels+1), ErrKeyTooDeep)
+		})
+	}
+}
