@@ -91,39 +91,53 @@ func InTrailer(h Peeker, name string) bool {
 	return false
 }
 
-// ReceivedLines returns name's field lines in received order, which the store loses whenever fasthttp moves
-// its last line into a removed one's slot, as it does for Transfer-Encoding after an empty chunked body.
-// ok is false unless the wire block holds exactly the stored lines; a header edited in code reads as stored.
-func ReceivedLines(h *fasthttp.RequestHeader, name string) ([][]byte, bool) {
-	if len(h.RawHeaders()) == 0 {
-		return nil, false
+type receivedKey struct{}
+
+// SetReceived records block, field lines in the order they were received, for a request built in code from one
+// received elsewhere, such as the net/http adaptor's: fasthttp keeps no received block for it.
+func SetReceived(req *fasthttp.Request, block *[]byte) {
+	req.SetUserValue(receivedKey{}, block)
+}
+
+// Received returns the field lines req was received with: those fasthttp read off the wire, or SetReceived's.
+func Received(req *fasthttp.Request) []byte {
+	if raw := req.Header.RawHeaders(); len(raw) > 0 {
+		return raw
 	}
-	pending := make(map[string]int)
-	stored := 0
+	if block, ok := req.UserValue(receivedKey{}).(*[]byte); ok {
+		return *block
+	}
+	return nil
+}
+
+// ReceivedOrder calls f with name's lines in the order raw received them, which a Del can lose in the store; a line
+// raw lacks, such as one added in code, follows in stored order. Above MaxOrderedLines lines f gets raw's alone.
+func ReceivedOrder(h *fasthttp.RequestHeader, raw []byte, name string, f func(value []byte)) {
+	named := func(k []byte) bool { return utils.EqualFold(utils.UnsafeString(k), name) }
+	var buf [8]orderedLine
+	lines := buf[:0]
+	over := false
 	h.VisitAll(func(k, v []byte) {
-		if utils.EqualFold(utils.UnsafeString(k), name) {
-			pending[string(v)]++
-			stored++
+		if over || !named(k) {
+			return
+		}
+		if over = len(lines) == MaxOrderedLines; !over {
+			lines = append(lines, orderedLine{name: k, value: v, rank: MaxOrderedLines + len(lines)})
 		}
 	})
-
-	// A copy, because AllInOrder joins folded lines in place and the next walk would read them differently.
-	scratch := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(scratch)
-	h.CopyTo(&scratch.Header)
-
-	lines := make([][]byte, 0, stored)
-	for k, v := range scratch.Header.AllInOrder() {
-		if !utils.EqualFold(utils.UnsafeString(k), name) {
-			continue
-		}
-		if pending[string(v)] == 0 {
-			return nil, false
-		}
-		pending[string(v)]--
-		lines = append(lines, utils.CopyBytes(v))
+	if over {
+		visitReceived(h, raw, func(k, v []byte) {
+			if named(k) {
+				f(v)
+			}
+		})
+		return
 	}
-	return lines, len(lines) == stored
+	rankReceived(h, raw, lines, named)
+	slices.SortStableFunc(lines, func(a, b orderedLine) int { return a.rank - b.rank })
+	for _, l := range lines {
+		f(l.value)
+	}
 }
 
 // rawLine returns the first field line of the received header block raw, or nil at the end of the block, and the
@@ -191,28 +205,8 @@ func JoinedInReceivedOrder(raw []byte, name string, combined []byte) bool {
 	}
 }
 
-// LinesInReceivedOrder reports whether lines are name's lines in the received header block raw, in order.
-// raw is read in place, so a folded line reports false.
-func LinesInReceivedOrder(raw []byte, name string, lines [][]byte) bool {
-	n := 0
-	for {
-		line, used, folded := rawLine(raw)
-		if line == nil {
-			return n == len(lines)
-		}
-		raw = raw[used:]
-		v, named := rawValue(line, name)
-		if !named {
-			continue
-		}
-		if folded || n == len(lines) || !bytes.Equal(v, lines[n]) {
-			return false
-		}
-		n++
-	}
-}
-
-// MaxOrderedLines is the most lines KeepReceivedOrder takes on, since it matches each received line against them.
+// MaxOrderedLines is the most lines KeepReceivedOrder and ReceivedOrder rank, since they match each received line
+// against them.
 const MaxOrderedLines = 64
 
 // orderedLine is a stored line KeepReceivedOrder may move. rank is its place among the received lines, or
@@ -225,8 +219,8 @@ type orderedLine struct {
 // KeepReceivedOrder puts the lines of each name match accepts that is stored on several lines back in the order
 // they were received, which the store loses whenever fasthttp moves its last line into a removed one's slot, as
 // it does for Transfer-Encoding after an empty chunked body. A line added or changed in code follows them.
-// It reports false, leaving h as it is, for more than MaxOrderedLines such lines.
-func KeepReceivedOrder(h *fasthttp.RequestHeader, match func(name []byte) bool) bool {
+// It reports false, leaving h as it is, for more than MaxOrderedLines such lines. raw is the block from Received.
+func KeepReceivedOrder(h *fasthttp.RequestHeader, raw []byte, match func(name []byte) bool) bool {
 	var buf [8]orderedLine
 	lines := buf[:0]
 	over := false
@@ -250,11 +244,11 @@ func KeepReceivedOrder(h *fasthttp.RequestHeader, match func(name []byte) bool) 
 			}
 		}
 	}
-	if !repeated || len(h.RawHeaders()) == 0 {
+	if !repeated || len(raw) == 0 {
 		return true
 	}
 
-	rankReceived(h, lines, match)
+	rankReceived(h, raw, lines, match)
 	for g := range lines {
 		if lines[g].group == g && !rankedInOrder(lines, g) {
 			rewriteInRankOrder(h, lines)
@@ -265,46 +259,46 @@ func KeepReceivedOrder(h *fasthttp.RequestHeader, match func(name []byte) bool) 
 }
 
 // rankReceived ranks the stored lines by the received lines they equal, walking the received block once.
-func rankReceived(h *fasthttp.RequestHeader, lines []orderedLine, match func(name []byte) bool) {
+func rankReceived(h *fasthttp.RequestHeader, raw []byte, lines []orderedLine, match func(name []byte) bool) {
 	rank := 0
-	visit := func(k, v []byte) {
+	visitReceived(h, raw, func(k, v []byte) {
 		if !match(k) {
 			return
 		}
 		for i := range lines {
 			l := &lines[i]
-			if l.rank >= MaxOrderedLines && bytes.Equal(l.value, v) && utils.EqualFold(utils.UnsafeString(l.name), utils.UnsafeString(k)) {
+			// Trimmed: a value net/http read off HTTP/2 keeps the edge whitespace its received line drops.
+			if l.rank >= MaxOrderedLines && bytes.Equal(headerlist.TrimOWS(l.value), v) &&
+				utils.EqualFold(utils.UnsafeString(l.name), utils.UnsafeString(k)) {
 				l.rank = rank
 				rank++
 				return
 			}
 		}
-	}
+	})
+}
 
-	for raw := h.RawHeaders(); ; {
-		line, n, folded := rawLine(raw)
+// visitReceived calls visit with each field line of the received block raw, in order.
+func visitReceived(h *fasthttp.RequestHeader, raw []byte, visit func(k, v []byte)) {
+	// A folded line (obs-fold) only AllInOrder joins, and it does so in place, so on a copy.
+	if bytes.Contains(raw, []byte("\n ")) || bytes.Contains(raw, []byte("\n\t")) {
+		scratch := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(scratch)
+		h.CopyTo(&scratch.Header)
+		for k, v := range scratch.Header.AllInOrder() {
+			visit(k, v)
+		}
+		return
+	}
+	for {
+		line, n, _ := rawLine(raw)
 		if line == nil {
 			return
-		}
-		if folded {
-			break
 		}
 		raw = raw[n:]
 		if colon := bytes.IndexByte(line, ':'); colon > 0 {
 			visit(line[:colon], headerlist.TrimOWS(line[colon+1:]))
 		}
-	}
-
-	// A folded line, which only a copy can join: AllInOrder does so in place.
-	for i := range lines {
-		lines[i].rank = MaxOrderedLines + i
-	}
-	rank = 0
-	scratch := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(scratch)
-	h.CopyTo(&scratch.Header)
-	for k, v := range scratch.Header.AllInOrder() {
-		visit(k, v)
 	}
 }
 

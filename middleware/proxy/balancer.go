@@ -129,7 +129,7 @@ func Balancer(config ...Config) fiber.Handler {
 			}
 		}
 		// Last: a Del in ModifyRequest can move a forwarding line as the strip's can.
-		if !keepForwardingOrder(&req.Header) {
+		if !keepForwardingOrder(req) {
 			return fiber.ErrRequestHeaderFieldsTooLarge
 		}
 

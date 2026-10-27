@@ -938,7 +938,7 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 // RFC 9110 Section 5.2. This ensures security-sensitive IP extraction sees the
 // complete chain when an adapter or proxy preserves separate field lines.
 func proxyHeaderValue(r *DefaultReq, header string) string {
-	value := peekReceivedRequestHeader(&r.c.fasthttp.Request.Header, header)
+	value := peekReceivedRequestHeader(&r.c.fasthttp.Request, header)
 	return r.c.app.toString(value)
 }
 
@@ -1426,18 +1426,11 @@ func (r *DefaultReq) Scheme() string {
 		return scheme
 	}
 	// Repeats of one header keep the last line, so the order they were received in decides.
-	name := schemeHeaders[rank]
-	stored := fieldname.Lines(header, name, !r.c.app.config.DisableHeaderNormalizing)
-	if fieldname.LinesInReceivedOrder(header.RawHeaders(), name, stored) {
-		return scheme
-	}
-	if lines, inOrder := fieldname.ReceivedLines(header, name); inOrder {
-		for _, line := range lines {
-			if announced, ok := announcedScheme(rank, line); ok {
-				scheme = announced
-			}
+	fieldname.ReceivedOrder(header, fieldname.Received(&ctx.Request), schemeHeaders[rank], func(line []byte) {
+		if announced, ok := announcedScheme(rank, line); ok {
+			scheme = announced
 		}
-	}
+	})
 	return scheme
 }
 

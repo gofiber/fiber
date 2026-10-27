@@ -573,22 +573,33 @@ func lookupJoinedRequestHeader(h *fasthttp.RequestHeader, key string) ([]byte, b
 	// only holds headers read off the wire, so headers set programmatically
 	// (e.g. by net/http adaptors) would be missed entirely. VisitAll keeps
 	// repeated field lines in received order only until a line is removed,
-	// see fieldname.ReceivedLines.
+	// see fieldname.ReceivedOrder.
 	h.VisitAll(j.visit)
 	return j.combined, j.seen
 }
 
 // peekReceivedRequestHeader is peekJoinedRequestHeader for a chain whose line
 // order decides whom to trust, such as X-Forwarded-For.
-func peekReceivedRequestHeader(h *fasthttp.RequestHeader, key string) []byte {
+func peekReceivedRequestHeader(req *fasthttp.Request, key string) []byte {
 	j := joinedHeaderValue{key: key}
-	h.VisitAll(j.visit)
-	if j.multi && !fieldname.JoinedInReceivedOrder(h.RawHeaders(), key, j.combined) {
-		if lines, ok := fieldname.ReceivedLines(h, key); ok {
-			return headerlist.Join(lines)
-		}
+	req.Header.VisitAll(j.visit)
+	if !j.multi {
+		return j.combined
 	}
-	return j.combined
+	raw := fieldname.Received(req)
+	if len(raw) == 0 || fieldname.JoinedInReceivedOrder(raw, key, j.combined) {
+		return j.combined
+	}
+	// Rejoined in the buffer JoinNext allocated, which the lines do not alias.
+	joined, n := j.combined[:0], 0
+	fieldname.ReceivedOrder(&req.Header, raw, key, func(v []byte) {
+		if n > 0 {
+			joined = append(joined, ',')
+		}
+		joined = append(joined, v...)
+		n++
+	})
+	return joined
 }
 
 // peekJoinedResponseHeader is peekJoinedRequestHeader for response headers.

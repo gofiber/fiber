@@ -84,7 +84,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 			if crossOrigin {
 				crosshost.Strip(&hop.Header, crosshost.NewHeaderNames(policy.RedirectSensitiveHeaders))
 			}
-			if !keepForwardingOrder(&hop.Header) {
+			if !keepForwardingOrder(hop) {
 				return fiber.ErrRequestHeaderFieldsTooLarge
 			}
 		}

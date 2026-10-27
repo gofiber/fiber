@@ -19,6 +19,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	clientpkg "github.com/gofiber/fiber/v3/client"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 
@@ -1116,6 +1117,36 @@ func forwardingLinesByName(c fiber.Ctx) string {
 	return strings.Join(lines, ",")
 }
 
+// Test_Proxy_ForwardingLinesKeepReceivedOrderBehindAdaptor checks the order for a request net/http read, for
+// which fasthttp holds no received block: the strip's Del can move a forwarding line all the same.
+func Test_Proxy_ForwardingLinesKeepReceivedOrderBehindAdaptor(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString(forwardingLinesByName(c))
+	})
+	app := fiber.New()
+	app.Use(Balancer(Config{Servers: []string{addr}}))
+	h := adaptor.FiberApp(app)
+
+	// r.Header's map order decides which line is stored last, so several rounds. HTTP/2 keeps a value's edge
+	// whitespace, which a received line drops.
+	for _, client := range []string{"6.6.6.6", "6.6.6.6 "} {
+		for range 32 {
+			for name, value := range map[string]string{"X-Junk": "1", fiber.HeaderKeepAlive: "timeout=5"} {
+				r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+				r.Header.Set(name, value)
+				r.Header.Set(fiber.HeaderConnection, "X-Junk")
+				r.Header.Add(fiber.HeaderXForwardedFor, client)
+				r.Header.Add(fiber.HeaderXForwardedFor, "203.0.113.7")
+				w := httptest.NewRecorder()
+				h.ServeHTTP(w, r)
+				require.Equal(t, "X-Forwarded-For=6.6.6.6,X-Forwarded-For=203.0.113.7", w.Body.String(), "%s %q", name, client)
+			}
+		}
+	}
+}
+
 // Test_Proxy_ForwardingLinesKeepReceivedOrderAfterEdits checks the order when the application added a forwarding
 // line before the proxy, or removed a line in ModifyRequest: fasthttp moves the last line into a removed one's slot.
 func Test_Proxy_ForwardingLinesKeepReceivedOrderAfterEdits(t *testing.T) {
@@ -1232,7 +1263,7 @@ func Test_Proxy_ForwardingOrderInOrderDoesNotAllocate(t *testing.T) {
 	strip := testing.AllocsPerRun(100, func() { stripHopByHopRequestHeaders(req, true) })
 	both := testing.AllocsPerRun(100, func() {
 		stripHopByHopRequestHeaders(req, true)
-		if !keepForwardingOrder(&req.Header) {
+		if !keepForwardingOrder(req) {
 			t.Fatal("refused")
 		}
 	})

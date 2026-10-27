@@ -1865,6 +1865,44 @@ func Test_FiberHandlerFunc_MultiValueHeaders(t *testing.T) {
 	require.Equal(t, []string{"one", "two", "three"}, got)
 }
 
+// Test_FiberApp_ProxyHeaderLinesKeepReceivedOrder checks that a removed header line cannot move the line a
+// front proxy appended in front of the client's: fasthttp moves the store's last line into the removed slot.
+func Test_FiberApp_ProxyHeaderLinesKeepReceivedOrder(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{
+		ProxyHeader:        fiber.HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig:   fiber.TrustProxyConfig{Loopback: true},
+	})
+	app.Use(func(c fiber.Ctx) error {
+		c.Request().Header.Del(fiber.HeaderAuthorization)
+		return c.Next()
+	})
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(c.IP() + " " + c.Scheme())
+	})
+	h := FiberApp(app)
+
+	// r.Header's map order decides which line is stored last, so several rounds. HTTP/2 keeps a value's edge
+	// whitespace, which a received line drops.
+	for _, client := range []string{"6.6.6.6", "6.6.6.6 ", "\t6.6.6.6"} {
+		for range 32 {
+			r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+			r.RemoteAddr = "127.0.0.1:40000"
+			r.Header.Set(fiber.HeaderAuthorization, "Bearer t")
+			r.Header.Add(fiber.HeaderXForwardedFor, client)
+			r.Header.Add(fiber.HeaderXForwardedFor, "203.0.113.7")
+			r.Header.Add(fiber.HeaderXForwardedProto, "http")
+			r.Header.Add(fiber.HeaderXForwardedProto, "https")
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			require.Equal(t, "203.0.113.7 https", w.Body.String(), "%q", client)
+		}
+	}
+}
+
 // Test_FiberHandlerFunc_EmptyHeaderValues verifies a header key mapped to an
 // empty value slice is skipped instead of panicking or producing an empty
 // header.
