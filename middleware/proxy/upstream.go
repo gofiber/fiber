@@ -189,8 +189,14 @@ func joinURLPath(out, base, target *url.URL) {
 	if raw, ok := strings.CutSuffix(baseRaw, "/"); ok {
 		basePath, baseRaw = strings.TrimSuffix(basePath, "/"), raw
 	}
+	// Routed escapes every byte a path may not carry raw, so the target's RawPath is what EscapedPath,
+	// which unescapes it again to check, would return. A base RawPath may not be: "/café" stays raw.
+	targetRaw := target.RawPath
+	if targetRaw == "" {
+		targetRaw = target.EscapedPath()
+	}
 	out.Path = basePath + "/" + strings.TrimPrefix(target.Path, "/")
-	out.RawPath = baseRaw + "/" + strings.TrimPrefix(target.EscapedPath(), "/")
+	out.RawPath = baseRaw + "/" + strings.TrimPrefix(targetRaw, "/")
 }
 
 // baseIsPlainOrigin reports whether base carries only a scheme + host
