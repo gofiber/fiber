@@ -28,6 +28,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/timeout"
 )
 
 const (
@@ -2593,6 +2594,27 @@ func Test_Logger_Body_LeavesResponseAlone(t *testing.T) {
 			require.Regexp(t, `^202 \[.+\] 202$`, logged.String())
 		})
 	}
+}
+
+func Test_Logger_Body_TimedOutRequest(t *testing.T) {
+	t.Parallel()
+
+	var logged bytes.Buffer
+	app := fiber.New()
+	app.Use(New(Config{Format: "${body}", Stream: &logged}))
+	written := make(chan struct{})
+	app.Post("/", timeout.New(func(c fiber.Ctx) error {
+		defer close(written)
+		<-c.Context().Done()
+		time.Sleep(5 * time.Millisecond)
+		return c.SendString("late")
+	}, timeout.Config{Timeout: 20 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("payload")))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	<-written
+	require.Equal(t, "payload", logged.String())
 }
 
 // Test_LatencyColumns_MatchFmt pins the two latency renderers against the
