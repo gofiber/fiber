@@ -2617,6 +2617,41 @@ func Test_Logger_Body_TimedOutRequest(t *testing.T) {
 	require.Equal(t, "payload", logged.String())
 }
 
+func Test_Logger_TimedOutRequestLogsTimeoutResponse(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		want string
+		cfg  Config
+	}{
+		"tags":            {cfg: Config{Format: "${status} ${bytesSent} [${respHeader:X-Late}] [${resBody}]"}, want: "503 0 [] [Service Unavailable]"},
+		"default":         {cfg: Config{Format: DefaultFormat}, want: "| 503 |"},
+		"default colored": {cfg: Config{Format: DefaultFormat, ForceColors: true}, want: " 503 "},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var logged bytes.Buffer
+			tc.cfg.Stream = &logged
+			app := fiber.New()
+			app.Use(New(tc.cfg))
+			written := make(chan struct{})
+			app.Get("/", timeout.New(func(c fiber.Ctx) error {
+				defer close(written)
+				<-c.Context().Done()
+				c.Set("X-Late", "1")
+				return c.SendString("late")
+			}, timeout.Config{Timeout: 20 * time.Millisecond}))
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+			<-written
+			require.Contains(t, logged.String(), tc.want)
+		})
+	}
+}
+
 // Test_LatencyColumns_MatchFmt pins the two latency renderers against the
 // fmt-based forms they replaced, over random durations spread across every
 // magnitude Duration.String distinguishes. appendDurationTag, behind

@@ -66,7 +66,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			// the uncolored branch has always counted bytes, and the
 			// concatenated format string's error padding is parsed the same
 			// way the uncolored branch parses it.
-			status := c.Res().StatusCode()
+			status := response(c).StatusCode()
 			method := c.Method()
 			errPadding, _ := strconv.Atoi(data.ErrPaddingStr) //nolint:errcheck // It is fine to ignore the error
 
@@ -118,7 +118,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 
 			// Status Code with 3 fixed width, right aligned; appended digit-wise
 			// to avoid the per-request Itoa string.
-			appendIntPadded(buf, c.Res().StatusCode(), 3)
+			appendIntPadded(buf, response(c).StatusCode(), 3)
 			buf.WriteString(" | ")
 
 			// Duration with 13 fixed width, right aligned; rendered straight

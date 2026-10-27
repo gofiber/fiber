@@ -348,6 +348,10 @@ Logger provides predefined formats that you can use by name or directly by speci
 `${body}` logs what `Ctx.Body()` returns, so a compressed request body is logged decoded and a `Content-Encoding` that cannot be undone logs the error text. Unlike a call from a handler, the tag never answers such a request with `415`, `501` or `413`: the response goes out as the handler left it. For a request the timeout middleware gave up on, the tag logs the body as received, since the timed-out handler may still be writing the response.
 :::
 
+:::note
+For a request the timeout middleware gave up on, `${status}`, `${bytesSent}`, `${resBody}`, `${respHeader:}` and the status column of the default format report the timeout response the client receives, not the response the timed-out handler may still be writing.
+:::
+
 ## The `${ips}` tag
 
 `${ips}` logs the chain the framework parsed, `Ctx.IPs()`, joined with `,`.

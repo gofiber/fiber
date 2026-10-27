@@ -6,7 +6,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/valyala/fasthttp"
+
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 )
 
 // Logger variables
@@ -141,8 +144,8 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, c.Get(fiber.HeaderUserAgent))
 		},
 		TagBody: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			// A handler timeout.New gave up on may still write the response Body can touch; IsAbandoned orders the read.
-			if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
+			// A handler timeout.New gave up on may still write the response Body can touch.
+			if timeoutResponse(c) != nil {
 				return writeSanitized(output, c.Request().Body())
 			}
 			res := c.Res()
@@ -162,7 +165,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return appendInt(output, c.Req().ContentLength())
 		},
 		TagBytesSent: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return appendInt(output, c.Res().ContentLength())
+			return appendInt(output, response(c).Header.ContentLength())
 		},
 		TagRoute: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			// Normally the registered pattern, but Ctx.Route falls back to a
@@ -171,6 +174,9 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, c.Route().Path)
 		},
 		TagResBody: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+			if resp := timeoutResponse(c); resp != nil {
+				return writeSanitized(output, resp.Body())
+			}
 			// Res.Body answers nil for a streamed response rather than draining
 			// it, so logging cannot buffer an SSE or SendFile body it was only
 			// meant to observe.
@@ -233,7 +239,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, c.Get(extraParam))
 		},
 		TagRespHeader: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
-			return writeSanitizedString(output, c.GetRespHeader(extraParam))
+			return writeSanitized(output, fieldname.Peek(&response(c).Header, extraParam))
 		},
 		TagQuery: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
 			return writeSanitizedString(output, fiber.Query[string](c, extraParam))
@@ -259,7 +265,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			}
 		},
 		TagStatus: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			status := c.Res().StatusCode()
+			status := response(c).StatusCode()
 			if cfg.areColorsEnabled {
 				// Written in place rather than with fmt: "%s%3d%s" reflects
 				// over three arguments and boxes the status, which measured
@@ -298,4 +304,21 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 	maps.Copy(tagFunctions, cfg.CustomTags)
 
 	return tagFunctions
+}
+
+// timeoutResponse returns what fasthttp sends for a request timeout.New gave up on, or nil.
+// IsAbandoned goes first: its atomic load orders the read after the timeout middleware's write.
+func timeoutResponse(c fiber.Ctx) *fasthttp.Response {
+	if !c.IsAbandoned() {
+		return nil
+	}
+	return c.RequestCtx().LastTimeoutErrorResponse()
+}
+
+// response returns the response the client receives: the timed-out handler may still write c's own.
+func response(c fiber.Ctx) *fasthttp.Response {
+	if resp := timeoutResponse(c); resp != nil {
+		return resp
+	}
+	return c.Response()
 }
