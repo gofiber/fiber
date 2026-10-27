@@ -1,6 +1,7 @@
 package static
 
 import (
+	"bufio"
 	"embed"
 	"io"
 	"io/fs"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttputil"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -448,6 +450,47 @@ func Test_Static_Next(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, string(body), "Hello, World!")
 	})
+}
+
+// A refused request replays the Use chain without its routes, a guard registered as one included.
+func Test_Static_RefusedRequestServesNoFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "admin"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "admin", "secret.txt"), []byte("TOP-SECRET"), 0o600))
+
+	app := fiber.New(fiber.Config{BodyLimit: 16})
+	app.All("/admin/*", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusUnauthorized)
+	})
+	app.Use(New(dir))
+
+	ln := fasthttputil.NewInmemoryListener()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+	}()
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+		require.NoError(t, <-errCh)
+	})
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	defer conn.Close() //nolint:errcheck // closed by the server already
+	require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+	_, err = conn.Write([]byte("GET /admin/secret.txt HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n"))
+	require.NoError(t, err)
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, fiber.StatusRequestEntityTooLarge, resp.StatusCode)
+	require.Equal(t, "Request Entity Too Large", string(body))
+	require.Empty(t, resp.Header.Get(fiber.HeaderLastModified))
 }
 
 func Test_Route_Static_Root(t *testing.T) {

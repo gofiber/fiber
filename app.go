@@ -1827,6 +1827,8 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		if nextErr != nil && !errors.Is(nextErr, ErrNotFound) && !errors.Is(nextErr, ErrMethodNotAllowed) {
 			log.Errorf("serverErrorHandler: middleware traversal failed: %v", nextErr)
 		}
+		// Route guards were skipped too: drop the chain's body, which an ErrorHandler calling SendStatus would send.
+		fctx.Response.ResetBody()
 	}
 
 	if catch := app.ErrorHandler(c, err); catch != nil {

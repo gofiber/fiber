@@ -15,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/byterange"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/fspath"
 )
 
@@ -260,6 +261,11 @@ func New(root string, cfg ...Config) fiber.Handler {
 		// We only serve static assets on GET or HEAD methods
 		method := c.Method()
 		if method != fiber.MethodGet && method != fiber.MethodHead {
+			return c.Next()
+		}
+
+		// A refused request skipped any route guarding the file, and its headers would go out with the refusal.
+		if errorreplay.Active(c.RequestCtx()) {
 			return c.Next()
 		}
 

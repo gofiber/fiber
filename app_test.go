@@ -1163,6 +1163,37 @@ func Test_App_GETOnly_RefusedMethodIsNotReplayed(t *testing.T) {
 	require.Equal(t, []string{MethodGet}, ran)
 }
 
+// The replay skips a guard registered as a route, and SendStatus keeps a body already written.
+// go test -run Test_App_RefusedRequest_ChainBodyIsNotSent
+func Test_App_RefusedRequest_ChainBodyIsNotSent(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		BodyLimit: 16,
+		ErrorHandler: func(c Ctx, err error) error {
+			var fiberErr *Error
+			if !errors.As(err, &fiberErr) {
+				return err
+			}
+			return c.SendStatus(fiberErr.Code)
+		},
+	})
+
+	app.All("/admin/*", func(c Ctx) error {
+		return c.SendStatus(StatusUnauthorized)
+	})
+	app.Use(func(c Ctx) error {
+		return c.SendString("TOP-SECRET")
+	})
+	ln := startRawServer(t, app)
+
+	responses, _ := rawExchange(t, ln, "GET /admin/secret.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", 1)
+	require.Equal(t, StatusUnauthorized, responses[0].status)
+
+	responses, _ = rawExchange(t, ln, "GET /admin/secret.txt HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n", 1)
+	require.Equal(t, StatusRequestEntityTooLarge, responses[0].status)
+	require.Equal(t, "Request Entity Too Large", responses[0].body)
+}
+
 // An ErrorHandler that writes only a body used to answer a transport-refused
 // request with 200. Seeding the status changes that, so pin it.
 // go test -run Test_App_GETOnly_ErrorHandler_WithoutStatus
