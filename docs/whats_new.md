@@ -86,7 +86,9 @@ We have made several changes to the Fiber app, including:
   `BodyRaw()` and `FormValue()` now read a streamed body within `BodyLimit` too and answer a larger one
   `413 Request Entity Too Large`, and the body binders fail on it; only `BodyStream()` reads past the limit.
   `Bind().All()` reads the body only when the request has a `Content-Type`. `net/http` handlers, registered directly or
-  through the adaptor, and `adaptor.ConvertRequest` answer a streamed body larger than `BodyLimit` with `413` as well.
+  through the adaptor, and `adaptor.ConvertRequest` answer a streamed body larger than `BodyLimit` with `413` as well,
+  and the cache middleware leaves a request whose streamed body is chunked or longer than `BodyLimit` uncached instead
+  of reading it to build the key.
 - **Buffer sizes**: The default `ReadBufferSize` and `WriteBufferSize` are now `8192` bytes (they were `4096` in v2). The read buffer also limits the size of the request headers, so requests with larger headers or cookies are accepted by default. Set either field to keep a different size.
 
 ### New Methods

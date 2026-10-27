@@ -976,6 +976,61 @@ func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T)
 	require.Equal(t, int32(2), count.Load())
 }
 
+// With StreamRequestBody the key must not drain a QUERY body it cannot bound, nor key two such bodies alike.
+func Test_Cache_Security_QueryBody_StreamedBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	const limit = 1024
+	app := fiber.New(fiber.Config{StreamRequestBody: true, BodyLimit: limit})
+	app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodQuery}}))
+	app.Query("/", func(c fiber.Ctx) error {
+		streamed := c.Request().IsBodyStream()
+		body := []byte(nil)
+		if streamed {
+			var err error
+			if body, err = io.ReadAll(c.BodyStream()); err != nil {
+				return fmt.Errorf("read body stream: %w", err)
+			}
+		} else {
+			body = c.Body()
+		}
+		return c.SendString(fmt.Sprintf("%.1s%d streamed=%v", body, len(body), streamed))
+	})
+
+	doQuery := func(body string, chunked bool) (string, string) {
+		req := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(body))
+		if chunked {
+			req.TransferEncoding = []string{"chunked"}
+		}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		answer, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return resp.Header.Get("X-Cache"), string(answer)
+	}
+
+	for _, chunked := range []bool{false, true} {
+		for _, fill := range []string{"A", "B"} {
+			xCache, answer := doQuery(strings.Repeat(fill, 4*limit), chunked)
+			require.Equal(t, cacheUnreachable, xCache, "chunked=%v", chunked)
+			require.Equal(t, fill+"4096 streamed=true", answer, "chunked=%v", chunked)
+		}
+	}
+
+	xCache, answer := doQuery("small", true)
+	require.Equal(t, cacheUnreachable, xCache, "a chunked body has no length to bound")
+	require.Equal(t, "s5 streamed=true", answer)
+
+	for _, want := range []string{cacheMiss, cacheHit} {
+		xCache, answer = doQuery("small", false)
+		require.Equal(t, want, xCache)
+		require.Equal(t, "s5 streamed=false", answer)
+	}
+	xCache, _ = doQuery("other", false)
+	require.Equal(t, cacheMiss, xCache)
+}
+
 // Test_VaryCookie_KeyIsStableAcrossCookieCollection pins the reason
 // keyFieldLines forces fasthttp's lazy cookie collection before reading the
 // field lines.

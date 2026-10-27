@@ -360,6 +360,15 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
+		// A key generator may read the body (QUERY), and only a declared length bounds a streamed one;
+		// otherwise the stream is left to the handler.
+		if req := c.Request(); req.IsBodyStream() {
+			if n := req.Header.ContentLength(); n < 0 || n > c.App().Config().BodyLimit {
+				c.Set(cfg.CacheHeader, cacheUnreachable)
+				return c.Next()
+			}
+		}
+
 		// Get key from request. Assembled in one pooled buffer so the whole key
 		// costs a single allocation: the pieces used to be concatenated one at a
 		// time, and every join copied the key built so far into a fresh string.
