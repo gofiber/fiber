@@ -1520,6 +1520,19 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 	}
 }
 
+func Test_Ctx_Body_LeavesWrittenResponseAlone(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	c.Request().Header.Set(HeaderContentEncoding, "x")
+	require.NoError(t, c.SendString("ok"))
+	require.Equal(t, []byte(ErrUnsupportedMediaType.Error()), c.Body())
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	require.Equal(t, "ok", string(c.Response().Body()))
+}
+
 func Test_Ctx_Body_With_Compression_BodyLimitExceeded(t *testing.T) {
 	t.Parallel()
 
@@ -10440,6 +10453,18 @@ func Test_Ctx_SendStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 415, c.Response().StatusCode())
 	require.Equal(t, "Unsupported Media Type", string(c.Response().Body()))
+}
+
+func Test_Ctx_SendStatus_DoesNotDrainStream(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	require.NoError(t, c.SendStream(strings.NewReader("streamed")))
+	require.NoError(t, c.SendStatus(StatusUnsupportedMediaType))
+	require.Equal(t, StatusUnsupportedMediaType, c.Response().StatusCode())
+	require.True(t, c.Response().IsBodyStream())
 }
 
 func Test_Ctx_SendStatusNoBodyResponses(t *testing.T) {

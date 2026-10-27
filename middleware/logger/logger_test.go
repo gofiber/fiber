@@ -2540,6 +2540,61 @@ func Test_Logger_ResBody_DoesNotDrainStream(t *testing.T) {
 	require.Equal(t, "[hello]", logged.String())
 }
 
+func Test_Logger_Body_LeavesResponseAlone(t *testing.T) {
+	t.Parallel()
+
+	// Ctx.Body answers these codings with 415 and 501 of its own.
+	for _, coding := range []string{"x", "compress"} {
+		t.Run(coding, func(t *testing.T) {
+			t.Parallel()
+
+			var logged bytes.Buffer
+			app := fiber.New()
+			app.Use(New(Config{
+				Format: "${status} [${body}] ${status}",
+				Stream: &logged,
+			}))
+			app.Get("/events", func(c fiber.Ctx) error {
+				return c.SendStreamWriter(func(w *bufio.Writer) {
+					w.WriteString("data: one\n\n") //nolint:errcheck // nothing to do with a stream-writer error here
+					w.Flush()                      //nolint:errcheck // same
+				})
+			})
+			app.Get("/hello", func(c fiber.Ctx) error {
+				return c.SendString("hello")
+			})
+			app.Get("/empty", func(c fiber.Ctx) error {
+				c.Status(fiber.StatusAccepted)
+				return nil
+			})
+
+			serve := func(target string) *fasthttp.RequestCtx {
+				logged.Reset()
+				fctx := &fasthttp.RequestCtx{}
+				fctx.Request.SetRequestURI(target)
+				fctx.Request.Header.SetMethod(fiber.MethodGet)
+				fctx.Request.Header.Set(fiber.HeaderContentEncoding, coding)
+				app.Handler()(fctx)
+				return fctx
+			}
+
+			fctx := serve("/events")
+			require.True(t, fctx.Response.IsBodyStream(), "logging must leave a streamed response streamed")
+			require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+
+			fctx = serve("/hello")
+			require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+			require.Equal(t, "hello", string(fctx.Response.Body()))
+			require.Regexp(t, `^200 \[.+\] 200$`, logged.String())
+
+			fctx = serve("/empty")
+			require.Equal(t, fiber.StatusAccepted, fctx.Response.StatusCode())
+			require.Empty(t, fctx.Response.Body())
+			require.Regexp(t, `^202 \[.+\] 202$`, logged.String())
+		})
+	}
+}
+
 // Test_LatencyColumns_MatchFmt pins the two latency renderers against the
 // fmt-based forms they replaced, over random durations spread across every
 // magnitude Duration.String distinguishes. appendDurationTag, behind

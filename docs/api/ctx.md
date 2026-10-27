@@ -1305,7 +1305,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### Body
 
-As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. It decodes `gzip`, `deflate`, `br` and `zstd`, and several codings are undone in reverse order. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`. Decompression is bounded by the app [BodyLimit](./fiber.md#bodylimit): a body that decompresses to more than that sets `413 Request Entity Too Large`. Whenever decoding fails, the returned slice holds the error message instead of request data.
+As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. It decodes `gzip`, `deflate`, `br` and `zstd`, and several codings are undone in reverse order. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`. Decompression is bounded by the app [BodyLimit](./fiber.md#bodylimit): a body that decompresses to more than that sets `413 Request Entity Too Large`. These statuses are set only while the response has no body; a response already written, or streamed, is left as it is. Whenever decoding fails, the returned slice holds the error message instead of request data.
 
 ```go title="Signature"
 func (c fiber.Ctx) Body() []byte
@@ -4012,7 +4012,7 @@ For sending multiple files from an embedded file system, [this functionality](..
 
 ### SendStatus
 
-Sets the status code and the correct status message in the body if the response body is **empty**.
+Sets the status code and the correct status message in the body if the response body is **empty**. A streamed body counts as a body and is left unread.
 
 A status that cannot carry a body (`1xx`, `204`, `205` and `304`) empties the response body instead, and drops a `Content-Length` header the handler had set. [RFC 9110 Section 8.6](https://www.rfc-editor.org/rfc/rfc9110#section-8.6) requires that for `1xx` and `204`; Fiber also does it for `205` and `304`. A `205` still goes out with `Content-Length: 0`: it has no content ([Section 15.3.6](https://www.rfc-editor.org/rfc/rfc9110#section-15.3.6)), but unlike `1xx`, `204` and `304` it still has to be framed ([RFC 9112 Section 6.3](https://www.rfc-editor.org/rfc/rfc9112#section-6.3)).
 

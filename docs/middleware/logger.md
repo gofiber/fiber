@@ -344,6 +344,10 @@ Logger provides predefined formats that you can use by name or directly by speci
 `${resBody}` logs nothing for a streamed response (`SendStream`, `SendStreamWriter`, and `SendFile` for a large file). Reading such a body would pull the whole stream into memory and turn the response into a buffered one — an SSE route would deliver nothing until its writer finished — so logging leaves it alone.
 :::
 
+:::tip
+`${body}` logs what `Ctx.Body()` returns, so a compressed request body is logged decoded and a `Content-Encoding` that cannot be undone logs the error text. Unlike a call from a handler, the tag never answers such a request with `415`, `501` or `413`: the response goes out as the handler left it.
+:::
+
 ## The `${ips}` tag
 
 `${ips}` logs the chain the framework parsed, `Ctx.IPs()`, joined with `,`.

@@ -822,7 +822,11 @@ resolve to the **request**; use `c.Res().Get()`, `c.Res().GetHeaders()`, `c.Res(
   `Content-Length: 0`: it has no content ([Section 15.3.6](https://www.rfc-editor.org/rfc/rfc9110#section-15.3.6)),
   but unlike `1xx`, `204` and `304` it still has to be framed
   ([RFC 9112, Section 6.3](https://www.rfc-editor.org/rfc/rfc9112#section-6.3)).
-  Unlike the two above, this applies under the default configuration.
+  Unlike the two above, this applies under the default configuration. A streamed body counts as a body, so
+  `SendStatus` leaves it unread instead of reading it into memory to check its length.
+- **Body()**: A `Content-Encoding` that cannot be undone sets `415`, `501` or `413` only while the response has no
+  body yet. A middleware that reads `c.Body()` after `c.Next()`, such as the logger's `${body}` tag, no longer
+  replaces the status the handler sent.
 - **AcceptsEncodings()**: Follows [RFC 9110, Section 12.5.3](https://www.rfc-editor.org/rfc/rfc9110#section-12.5.3).
   `identity`, the absence of a coding, is now acceptable when the `Accept-Encoding` header does not list it, unless
   the header excludes it with `identity;q=0` or `*;q=0`: `c.AcceptsEncodings("br", "identity")` answers `"identity"`

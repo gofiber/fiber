@@ -141,7 +141,16 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, c.Get(fiber.HeaderUserAgent))
 		},
 		TagBody: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return writeSanitized(output, c.Body())
+			res := c.Res()
+			if res.Written() {
+				return writeSanitized(output, c.Body())
+			}
+			// Body answers an undecodable Content-Encoding itself; the tag only observes.
+			status := res.StatusCode()
+			body := c.Body()
+			res.Status(status)
+			res.ResetBody()
+			return writeSanitized(output, body)
 		},
 		TagBytesReceived: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return appendInt(output, c.Req().ContentLength())

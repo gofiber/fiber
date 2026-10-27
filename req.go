@@ -210,6 +210,8 @@ func (r *DefaultReq) Body() []byte {
 	}
 	if err != nil {
 		switch {
+		case r.c.Written():
+			// a response already written stays as the handler left it
 		case errors.Is(err, ErrUnsupportedMediaType):
 			_ = r.c.DefaultRes.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		case errors.Is(err, ErrNotImplemented):

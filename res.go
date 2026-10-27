@@ -1467,8 +1467,8 @@ func (r *DefaultRes) SendStatus(status int) error {
 		return nil
 	}
 
-	// Only set status body when there is no response body
-	if len(r.c.fasthttp.Response.Body()) == 0 {
+	// Only set status body when there is no response body; Written does not drain a stream
+	if !r.Written() {
 		return r.SendString(utils.StatusMessage(status))
 	}
 
