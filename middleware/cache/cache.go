@@ -1156,6 +1156,13 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
+		// Written past a decode limit, the entry would fail every later lookup with
+		// a 500 until it expired. The in-memory store never encodes it.
+		if cfg.Storage != nil && !e.decodable() {
+			markUnreachable()
+			return nil
+		}
+
 		expirationSource := expirationSourceConfig
 		expiresParseError := false
 		mustRevalidate := respCacheControl.mustRevalidate || respCacheControl.proxyRevalidate

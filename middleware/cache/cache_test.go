@@ -8538,6 +8538,140 @@ func Test_Cache_VaryLongerThanEntryLimitIsUncacheable(t *testing.T) {
 	}
 }
 
+// The other decode limits of an entry, as Test_Cache_VaryLongerThanEntryLimitIsUncacheable
+// does for Vary: past one the response is not stored, at it the entry round-trips.
+func Test_Cache_EntryPastDecodeLimitIsNotStored(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		set   func(c fiber.Ctx, n int)
+		name  string
+		limit int
+	}{
+		{name: "Content-Type", limit: maxStoredContentType, set: func(c fiber.Ctx, n int) {
+			c.Set(fiber.HeaderContentType, strings.Repeat("a", n))
+		}},
+		{name: "Content-Encoding", limit: maxStoredContentEncoding, set: func(c fiber.Ctx, n int) {
+			c.Set(fiber.HeaderContentEncoding, strings.Repeat("a", n))
+		}},
+		{name: "Cache-Control", limit: maxStoredCacheControl, set: func(c fiber.Ctx, n int) {
+			const prefix = "max-age=60, x="
+			c.Set(fiber.HeaderCacheControl, prefix+strings.Repeat("a", n-len(prefix)))
+		}},
+		{name: "Expires", limit: maxStoredExpires, set: func(c fiber.Ctx, n int) {
+			// max-age wins, so the value is stored without being parsed.
+			c.Set(fiber.HeaderCacheControl, "max-age=60")
+			c.Set(fiber.HeaderExpires, strings.Repeat("a", n))
+		}},
+		{name: "ETag", limit: maxStoredETag, set: func(c fiber.Ctx, n int) {
+			c.Set(fiber.HeaderETag, strings.Repeat("a", n))
+		}},
+		{name: "Location", limit: maxStoredHeaderValue, set: func(c fiber.Ctx, n int) {
+			c.Status(fiber.StatusMovedPermanently).Set(fiber.HeaderLocation, strings.Repeat("a", n))
+		}},
+		{name: "header value", limit: maxStoredHeaderValue, set: func(c fiber.Ctx, n int) {
+			c.Set("X-Long", strings.Repeat("a", n))
+		}},
+		{name: "header name", limit: maxStoredHeaderKey, set: func(c fiber.Ctx, n int) {
+			c.Set(strings.Repeat("a", n), "v")
+		}},
+		{name: "header count", limit: maxStoredHeaders, set: func(c fiber.Ctx, n int) {
+			have := 0
+			for key := range c.Response().Header.All() {
+				if !isIgnoredHeader(key) {
+					have++
+				}
+			}
+			for i := range n - have {
+				c.Set("X-H-"+strconv.Itoa(i), "v")
+			}
+		}},
+	}
+
+	for _, tt := range tests {
+		for _, over := range []int{0, 1} {
+			t.Run(fmt.Sprintf("%s/%d", tt.name, tt.limit+over), func(t *testing.T) {
+				t.Parallel()
+
+				// Location is kept without StoreResponseHeaders, the rest of the list needs it.
+				app := fiber.New()
+				app.Use(New(Config{Storage: memory.New(), Expiration: time.Minute, StoreResponseHeaders: tt.name != "Location"}))
+				app.Get("/", func(c fiber.Ctx) error {
+					tt.set(c, tt.limit+over)
+					return c.SendString("body")
+				})
+
+				want := []string{cacheMiss, cacheHit}
+				if over > 0 {
+					want = []string{cacheUnreachable, cacheUnreachable}
+				}
+				for i, status := range want {
+					resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+					require.NoError(t, err)
+					require.Less(t, resp.StatusCode, fiber.StatusInternalServerError, "request %d", i+1)
+					require.Equal(t, status, resp.Header.Get("X-Cache"), "request %d", i+1)
+					require.NoError(t, resp.Body.Close())
+				}
+			})
+		}
+	}
+
+	t.Run("echoed header keeps the earlier entry", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New(fiber.Config{ReadBufferSize: 2 * maxStoredHeaderValue})
+		app.Use(New(Config{Storage: memory.New(), Expiration: time.Minute, StoreResponseHeaders: true}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set("X-Echo", c.Get("X-Echo"))
+			return c.SendString("body")
+		})
+
+		get := func(t *testing.T, headers map[string]string) string {
+			t.Helper()
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			for k, v := range headers {
+				req.Header.Set(k, v)
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "body", string(body))
+			require.NoError(t, resp.Body.Close())
+			return resp.Header.Get("X-Cache")
+		}
+
+		require.Equal(t, cacheMiss, get(t, nil))
+		require.Equal(t, cacheUnreachable, get(t, map[string]string{
+			fiber.HeaderCacheControl: "no-cache",
+			"X-Echo":                 strings.Repeat("x", maxStoredHeaderValue+1),
+		}))
+		require.Equal(t, cacheHit, get(t, nil))
+		require.Equal(t, cacheMiss, get(t, map[string]string{fiber.HeaderCacheControl: "no-cache"}))
+		require.Equal(t, cacheHit, get(t, nil))
+	})
+
+	t.Run("in-memory store is not limited", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{Expiration: time.Minute}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderETag, strings.Repeat("a", maxStoredETag+1))
+			return c.SendString("body")
+		})
+
+		for i, status := range []string{cacheMiss, cacheHit} {
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode, "request %d", i+1)
+			require.Equal(t, status, resp.Header.Get("X-Cache"), "request %d", i+1)
+			require.NoError(t, resp.Body.Close())
+		}
+	})
+}
+
 func Test_Cache_CredentialHeadersAreHashedInTheKey(t *testing.T) {
 	t.Parallel()
 

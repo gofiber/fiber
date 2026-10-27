@@ -136,6 +136,8 @@ Cache lookup/storage is applied only for `GET` and `HEAD` requests by default. O
 
 If a response sets `Vary`, request lookup/storage is also partitioned by those header values unless `DisableVaryHeaders` is `true`. Each response is stored under the headers its own `Vary` names, while a lookup uses the list of the response stored last for the URL: when the responses of one URL name different lists, a variant stored under another list is a miss until a response names that list again, so send the same `Vary` on every response of a URL to keep all of them reachable. With `MaxBytes` set, the URL's record of that list, its Vary manifest, is deleted by the next stored response once no entry stored under it is left, so URLs evicted to stay within the limit leave none behind. Responses with `Vary: *` remain uncacheable, and so does a response whose `Vary` names more than 32 fields or is longer than 2048 bytes. That holds when `DisableVaryHeaders` is `true` as well.
 
+With an external `Storage`, an entry is decoded under size limits, and a response past one of them is not stored and reports `unreachable`: 256 bytes for `Content-Type` and `ETag`, 128 for `Content-Encoding` and `Expires`, 2048 for `Cache-Control`, and for the stored header list (`Location`, or every header with `StoreResponseHeaders`) 1024 fields with 512 bytes per name and 16384 per value. The default in-memory store keeps the entry as it is and has no such limits.
+
 ### Cached redirects
 
 `300`, `301` and `308` are cacheable statuses, so a redirect can be served from

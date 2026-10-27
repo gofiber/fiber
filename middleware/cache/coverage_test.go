@@ -281,6 +281,44 @@ func Test_item_Decode_FieldLimits(t *testing.T) {
 	}
 }
 
+// Pins each constant decodable compares against to its msgp tag.
+func Test_item_decodable_MatchesUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		set   func(e *item, n int)
+		field string
+		limit int
+	}{
+		{field: "headers", limit: maxStoredHeaders, set: func(e *item, n int) { e.headers = make([]cachedHeader, n) }},
+		{field: "header key", limit: maxStoredHeaderKey, set: func(e *item, n int) { e.headers = []cachedHeader{{key: make([]byte, n)}} }},
+		{field: "header value", limit: maxStoredHeaderValue, set: func(e *item, n int) { e.headers = []cachedHeader{{value: make([]byte, n)}} }},
+		{field: "ctype", limit: maxStoredContentType, set: func(e *item, n int) { e.ctype = make([]byte, n) }},
+		{field: "cencoding", limit: maxStoredContentEncoding, set: func(e *item, n int) { e.cencoding = make([]byte, n) }},
+		{field: "cacheControl", limit: maxStoredCacheControl, set: func(e *item, n int) { e.cacheControl = make([]byte, n) }},
+		{field: "expires", limit: maxStoredExpires, set: func(e *item, n int) { e.expires = make([]byte, n) }},
+		{field: "etag", limit: maxStoredETag, set: func(e *item, n int) { e.etag = make([]byte, n) }},
+		{field: "vary", limit: maxVaryLen, set: func(e *item, n int) { e.vary = make([]byte, n) }},
+	}
+	for _, tc := range cases {
+		for _, over := range []int{0, 1} {
+			var e, out item
+			tc.set(&e, tc.limit+over)
+			raw, err := e.MarshalMsg(nil)
+			require.NoError(t, err, "field %s", tc.field)
+
+			_, err = out.UnmarshalMsg(raw)
+			if over == 0 {
+				require.NoError(t, err, "field %s at the limit", tc.field)
+				require.True(t, e.decodable(), "field %s at the limit", tc.field)
+				continue
+			}
+			require.ErrorIs(t, err, msgp.ErrLimitExceeded, "field %s past the limit", tc.field)
+			require.False(t, e.decodable(), "field %s past the limit", tc.field)
+		}
+	}
+}
+
 func Test_indexedHeap_PushAndOps(t *testing.T) {
 	t.Parallel()
 
