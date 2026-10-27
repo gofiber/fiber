@@ -262,18 +262,14 @@ func Test_Coverage_DialValidatedIPs_SkipsV6ThenDialsV4(t *testing.T) {
 	require.Equal(t, "203.0.113.5:443", dialed)
 }
 
-// Test_Coverage_JoinUpstreamPath_RawPathFallback exercises the
-// `parsedRaw == "" → parsed.Path` fallback inside the RawPath join when
-// the base has a RawPath but the request path does not.
+// Test_Coverage_JoinUpstreamPath_RawPathFallback exercises the RawPath join
+// when the base has a RawPath but the request path does not.
 func Test_Coverage_JoinUpstreamPath_RawPathFallback(t *testing.T) {
 	t.Parallel()
 	base, err := url.Parse("http://upstream.example/a%2Fb")
 	require.NoError(t, err)
 	require.NotEmpty(t, base.RawPath, "test setup: base must have a RawPath")
 	out := joinUpstreamPath(base, "/plain")
-	// Plain segment had no escaped chars so its RawPath is empty; the
-	// fallback must use parsed.Path verbatim while preserving the base's
-	// escaped prefix.
 	require.Contains(t, out, "/a%2Fb/plain")
 }
 

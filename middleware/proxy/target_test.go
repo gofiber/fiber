@@ -353,6 +353,35 @@ func Test_Proxy_BalancerForward_ForwardsRoutedPath(t *testing.T) {
 	}
 }
 
+// Test_Proxy_Forward_EscapedUpstreamPathKeepsTarget pins that an escape in the
+// upstream URL's path does not cost the routed target its escapes: with "%3B"
+// sent as ";", a servlet container serves "/admin/secret" for
+// "/public/..%3B/admin/secret" although no middleware on "/admin" ran.
+func Test_Proxy_Forward_EscapedUpstreamPathKeepsTarget(t *testing.T) {
+	t.Parallel()
+	addr := echoTarget(t)
+
+	for name, handler := range map[string]fiber.Handler{
+		"DomainForward":   DomainForward("example.com", "http://"+addr+"/my%20app"),
+		"BalancerForward": BalancerForward([]string{"http://" + addr + "/my%20app"}),
+	} {
+		app := fiber.New()
+		app.Use("/admin", forbid)
+		app.Use(handler)
+
+		for target, want := range map[string]string{
+			"/public/x":                  "/my%20app/public/x",
+			"/public/..%3B/admin/secret": "/my%20app/public/..%3B/admin/secret",
+			"/..%3B/other/a%40b?q=%3B":   "/my%20app/..%3B/other/a%40b?q=%3B",
+		} {
+			resp := rawRequest(t, app, target, "example.com")
+			require.Equal(t, fiber.StatusOK, resp.StatusCode(), "%s %s", name, target)
+			require.Equal(t, want, string(resp.Body()), "%s upstream target for %q", name, target)
+		}
+		require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, "/public/..;/admin/secret", "example.com").StatusCode(), name)
+	}
+}
+
 // Test_Proxy_RejectsEncodedSeparator pins that a routed path an upstream could
 // read as another path is refused by every forwarding handler rather than
 // forwarded: an upstream that decodes "%2F" into a separator or merges "//"
