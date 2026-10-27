@@ -121,7 +121,7 @@ func AcquireRedirect() *Redirect {
 func ReleaseRedirect(r *Redirect) {
 	// A large WithInput form grows the array past what the cookie can carry; once
 	// pooled, every later release would clear all of it.
-	if cap(r.messages) > maxPoolableMessages {
+	if len(r.messages) > maxPoolableMessages {
 		return
 	}
 	r.release()
