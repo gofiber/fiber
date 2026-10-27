@@ -6,6 +6,7 @@ import (
 	"maps"
 	"mime/multipart"
 	"reflect"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -1234,25 +1235,40 @@ func Test_Binders_KeyDepthLimit(t *testing.T) {
 func Test_PooledDecoder_KeyBudget(t *testing.T) {
 	t.Parallel()
 
-	t.Run("repeated keys", func(t *testing.T) {
-		t.Parallel()
-		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
-		require.True(t, ok)
-		for range 10_000 {
-			require.NoError(t, d.admit("items.0.sku"))
-			require.NoError(t, d.admit("name"))
-		}
-		require.Equal(t, len("items.0.sku")+cachedKeyOverhead, d.keyBytes)
-	})
-
 	type item struct {
 		SKU string `form:"sku"`
 	}
 	type order struct {
 		Items []item `form:"items"`
 	}
+	type cart struct {
+		Items []item `form:"items"`
+	}
+
+	t.Run("repeated keys", func(t *testing.T) {
+		t.Parallel()
+		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
+		require.True(t, ok)
+		for range 10_000 {
+			require.NoError(t, d.admit(new(order), "items.0.sku"))
+			require.NoError(t, d.admit(new(order), "name"))
+		}
+		require.Equal(t, cachedKeyBytes("items.0.sku"), d.keyBytes)
+	})
+
+	t.Run("per destination type", func(t *testing.T) {
+		t.Parallel()
+		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
+		require.True(t, ok)
+		for _, out := range []any{new(order), new(cart), new(order)} {
+			require.NoError(t, d.admit(out, "items.0.sku"))
+			putDecoder(&sync.Pool{}, d)
+		}
+		require.Equal(t, 2*cachedKeyBytes("items.0.sku"), d.keyBytes)
+	})
+
 	// Every key is a new spelling of one of 1000 items, as a client choosing them would send.
-	const perBind = maxDecoderKeyBytes / cachedKeyOverhead
+	perBind := maxDecoderKeyBytes/cachedKeyBytes("items.0.sku") + 1
 	keys := make([]string, 0, perBind)
 	for n := range perBind {
 		keys = append(keys, "items."+strings.Repeat("0", n/1000)+strconv.Itoa(n%1000)+".sku")
@@ -1287,71 +1303,192 @@ func Test_PooledDecoder_KeyBudget(t *testing.T) {
 	}
 }
 
-func Test_NestedElements(t *testing.T) {
-	t.Parallel()
+// respell sets the case of the letters of key from the bits of n.
+func respell(key string, n int) string {
+	b := []byte(key)
+	for i, bit := 0, 0; i < len(b); i++ {
+		if b[i] >= 'a' && b[i] <= 'z' {
+			if n&(1<<bit) != 0 {
+				b[i] -= 'a' - 'A'
+			}
+			bit++
+		}
+	}
+	return string(b)
+}
 
-	for key, want := range map[string]int{
-		"name":                      0,
-		"items.5.sku":               0,
-		"items.5.variants.7.sku":    8,
-		"items.0.variants.+3.sku":   4,
-		"items.0.variants.-0.sku":   1,
-		"items.0.variants.-1.sku":   0,
-		"items.0.variants.3x.sku":   0,
-		"items.0.variants.5000.sku": maxSliceIndex + 1,
-		"attrs.7":                   0,
-		"a..0.b.2":                  4,
-		"billing.lines.5.sku":       6,
+func liveHeap() uint64 {
+	// revive:disable-next-line:call-to-gc // only a collection leaves the live heap to read
+	runtime.GC()
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.HeapAlloc
+}
 
-		"mother.father.phones.1000.number":            maxSliceIndex + 1,
-		"children.0.children.1000.children.1000.name": 2 * (maxSliceIndex + 1),
+// Sequential: it reads the live heap, which parallel tests would disturb.
+func Test_CachedKeyBytes_CoversSchemaCache(t *testing.T) {
+	type chain struct {
+		Parent *chain `form:"parent"`
+		Text   string `form:"text"`
+	}
+	type item struct {
+		SKU string `form:"sku"`
+	}
+	type order struct {
+		Items []item `form:"items"`
+	}
+
+	for name, tc := range map[string]struct {
+		out func() any
+		key func(n int) string
+	}{
+		"shallow": {
+			out: func() any { return new(order) },
+			key: func(n int) string { return respell("items."+strconv.Itoa(n%1000)+".sku", n/1000) },
+		},
+		"deep": {
+			out: func() any { return new(chain) },
+			key: func(n int) string { return respell(strings.Repeat("parent.", maxKeySegments-1)+"text", n) },
+		},
 	} {
-		require.Equal(t, want, nestedElements(key), key)
+		d, ok := decoderBuilder(bindingForm, ParserConfig{IgnoreUnknownKeys: true}).(*pooledDecoder)
+		require.True(t, ok)
+		decode := func(key string) {
+			require.NoError(t, d.admit(tc.out(), key))
+			require.NoError(t, d.DecodeValues(tc.out(), []string{key}, []string{"x"}))
+			putDecoder(&sync.Pool{}, d)
+		}
+		decode(tc.key(0))
+		charged, before := d.keyBytes, liveHeap()
+		for n := 1; n <= 500; n++ {
+			decode(tc.key(n))
+		}
+		require.LessOrEqual(t, int64(liveHeap())-int64(before), int64(d.keyBytes-charged), name)
+		runtime.KeepAlive(d)
 	}
 }
 
-func Test_FansOut(t *testing.T) {
+func Test_BindShape_Elements(t *testing.T) {
+	t.Parallel()
+
+	acyclic := bindShape{elemSize: 1}
+	cyclic := bindShape{elemSize: 1, cyclic: true}
+	for key, want := range map[string][2]int{
+		"name":                      {0, 0},
+		"items.5.sku":               {0, 0},
+		"items.5.variants.7.sku":    {8, 8},
+		"items.0.variants.+3.sku":   {4, 4},
+		"items.0.variants.-0.sku":   {1, 1},
+		"items.0.variants.-1.sku":   {0, 0},
+		"items.0.variants.3x.sku":   {0, 0},
+		"items.0.variants.5000.sku": {maxSliceIndex + 1, maxSliceIndex + 1},
+		"attrs.7":                   {0, 0},
+		"5.x.6":                     {0, 7},
+		"a..0.b.2":                  {3, 4},
+		"billing.lines.5.sku":       {0, 6},
+
+		"mother.father.phones.1000.number":            {0, maxSliceIndex + 1},
+		"children.0.children.1000.children.1000.name": {2 * (maxSliceIndex + 1), 2 * (maxSliceIndex + 1)},
+	} {
+		require.Equal(t, want[0], acyclic.elements(key), key)
+		require.Equal(t, want[1], cyclic.elements(key), key)
+	}
+	require.Zero(t, bindShape{cyclic: true}.elements("a.b.0.c.5"))
+
+	prefixes := map[string]int{}
+	for end, n := range cyclic.indexes("a.b.10.c.5.d") {
+		prefixes["a.b.10.c.5.d"[:end]] = n
+	}
+	require.Equal(t, map[string]int{"a.b.10": 11, "a.b.10.c.5": 6}, prefixes)
+}
+
+func Test_ShapeOf(t *testing.T) {
 	t.Parallel()
 
 	type item struct{ SKU string }
 	type group struct{ Items []item }
+	itemSize := reflect.TypeFor[item]().Size()
 	for name, tc := range map[string]struct {
 		typ  reflect.Type
-		want bool
+		want bindShape
 	}{
-		"slice in a slice element":  {reflect.TypeFor[*struct{ Groups []group }](), true},
-		"slice in an array element": {reflect.TypeFor[*struct{ Groups [][2]group }](), true},
-		"recursive slice":           {reflect.TypeFor[depthTree](), true},
-		"recursive pointers":        {reflect.TypeFor[*fanOutPerson](), true},
-		"recursive without slices":  {reflect.TypeFor[*depthChain](), false},
-		"root slice":                {reflect.TypeFor[*struct{ Items []item }](), false},
-		"slice in a struct field":   {reflect.TypeFor[*struct{ Billing, Shipping *group }](), false},
-		"map in a slice element":    {reflect.TypeFor[*stockProduct](), false},
-		"slice in a map value":      {reflect.TypeFor[*struct{ M map[string]group }](), false},
-		"not a struct":              {reflect.TypeFor[*map[string]string](), false},
-		"nil":                       {nil, false},
+		"slice in a slice element":  {reflect.TypeFor[*struct{ Groups []group }](), bindShape{elemSize: itemSize}},
+		"pointer elements":          {reflect.TypeFor[*struct{ Groups []struct{ Items []*item } }](), bindShape{elemSize: reflect.TypeFor[*item]().Size() + itemSize}},
+		"slice in an array element": {reflect.TypeFor[*struct{ Groups [][2]group }](), bindShape{elemSize: itemSize}},
+		"recursive slice":           {reflect.TypeFor[depthTree](), bindShape{elemSize: reflect.TypeFor[depthTree]().Size()}},
+		"recursive pointers":        {reflect.TypeFor[*fanOutPerson](), bindShape{elemSize: reflect.TypeFor[fanOutPhone]().Size(), cyclic: true}},
+		"recursive without slices":  {reflect.TypeFor[*depthChain](), bindShape{cyclic: true}},
+		"root slice":                {reflect.TypeFor[*struct{ Items []item }](), bindShape{}},
+		"slice in a struct field":   {reflect.TypeFor[*struct{ Billing, Shipping *group }](), bindShape{}},
+		"map in a slice element":    {reflect.TypeFor[*stockProduct](), bindShape{}},
+		"slice in a map value":      {reflect.TypeFor[*struct{ M map[string]group }](), bindShape{}},
+		"not a struct":              {reflect.TypeFor[*map[string]string](), bindShape{}},
+		"nil":                       {nil, bindShape{}},
 	} {
-		require.Equal(t, tc.want, fansOut(tc.typ), name)
+		require.Equal(t, tc.want, shapeOf(tc.typ), name)
 	}
 }
 
 func Test_PooledDecoder_ElementBudget(t *testing.T) {
 	t.Parallel()
 
+	// Each key grows a depthTree slice of 1001 elements below its first index.
+	fit := maxNestedBytes / ((maxSliceIndex + 1) * int(reflect.TypeFor[depthTree]().Size()))
+	keys := make([]string, 0, fit+1)
+	for i := range fit + 1 {
+		keys = append(keys, "children."+strconv.Itoa(i)+".children.1000.name")
+	}
+	out := new(depthTree)
 	d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
 	require.True(t, ok)
-	for i := range maxNestedElements / (maxSliceIndex + 1) {
-		require.NoError(t, d.admit("a."+strconv.Itoa(i)+".b.1000.c"))
+	for _, key := range keys[:fit] {
+		require.NoError(t, d.admit(out, key))
 	}
-	require.NoError(t, d.checkElements(new(depthTree)))
-	require.NoError(t, d.admit("a.0.b.1000.c"))
-	require.ErrorIs(t, d.checkElements(new(depthTree)), ErrTooManyElements)
-	require.NoError(t, d.checkElements(new(stockProduct)))
+	require.NoError(t, d.checkElements(slices.Values(keys[:fit])))
+	require.NoError(t, d.admit(out, keys[fit]))
+	require.ErrorIs(t, d.checkElements(slices.Values(keys)), ErrTooManyElements)
 
 	// The budget is per bind.
 	putDecoder(&sync.Pool{}, d)
-	require.NoError(t, d.admit("a.0.b.1000.c"))
-	require.NoError(t, d.checkElements(new(depthTree)))
+	require.NoError(t, d.admit(out, keys[0]))
+	require.NoError(t, d.checkElements(slices.Values(keys[:1])))
+	putDecoder(&sync.Pool{}, d)
+
+	// The fields of one element share its index.
+	var fields []string
+	for i := range fit {
+		for _, f := range []string{"name", "a", "b", "c"} {
+			fields = append(fields, "children."+strconv.Itoa(i)+".children.1000."+f)
+		}
+	}
+	for _, key := range fields {
+		require.NoError(t, d.admit(out, key))
+	}
+	require.Greater(t, d.elements, maxNestedBytes/int(d.bound.shape.elemSize))
+	require.NoError(t, d.checkElements(slices.Values(fields)))
+}
+
+type catalogVariant struct {
+	SKU      string `form:"sku"`
+	Name     string `form:"name"`
+	Color    string `form:"color"`
+	Size     string `form:"size"`
+	Material string `form:"material"`
+	Pattern  string `form:"pattern"`
+	Brand    string `form:"brand"`
+	Model    string `form:"model"`
+	EAN      string `form:"ean"`
+	UPC      string `form:"upc"`
+}
+
+var catalogFields = []string{"sku", "name", "color", "size", "material", "pattern", "brand", "model", "ean", "upc"}
+
+type catalogLine struct {
+	Variants []catalogVariant `form:"variants"`
+}
+
+type catalog struct {
+	Lines []catalogLine `form:"lines"`
 }
 
 func Test_FormBinder_NestedElementLimit(t *testing.T) {
@@ -1364,7 +1501,7 @@ func Test_FormBinder_NestedElementLimit(t *testing.T) {
 	require.Equal(t, "x", root.Children[1].Children[2].Name)
 
 	// Each key grows 30 slices of 1001 elements below its first index.
-	const keys = maxNestedElements/(30*(maxSliceIndex+1)) + 1
+	keys := maxNestedBytes/(30*(maxSliceIndex+1)*int(reflect.TypeFor[depthTree]().Size())) + 1
 	pairs := make([]string, 0, keys)
 	for k := range keys {
 		pairs = append(pairs, "children."+strconv.Itoa(k)+strings.Repeat(".children.1000", 30)+".name=x")
@@ -1382,7 +1519,7 @@ func Test_FormBinder_NestedElementLimit(t *testing.T) {
 	require.Len(t, person.Mother.Father.Phones, 2)
 	require.Equal(t, "x", person.Mother.Father.Phones[1].Number)
 
-	chains := make([]string, 0, maxNestedElements/(maxSliceIndex+1)+1)
+	chains := make([]string, 0, maxNestedBytes/((maxSliceIndex+1)*int(reflect.TypeFor[fanOutPhone]().Size()))+1)
 	for i := 2; len(chains) < cap(chains); i++ {
 		var hops []string
 		for j := i; j > 1; j >>= 1 {
@@ -1403,4 +1540,62 @@ func Test_FormBinder_NestedElementLimit(t *testing.T) {
 	require.NoError(t, bindFormBody(t, strings.Join(stock, "&"), product))
 	require.Len(t, product.Variants, 30)
 	require.Equal(t, 5, product.Variants[29].Stock["1009"])
+}
+
+func Test_FormBinder_NestedElementBytes(t *testing.T) {
+	t.Parallel()
+
+	variant := func(line, v int, field string) string {
+		return "lines[" + strconv.Itoa(line) + "][variants][" + strconv.Itoa(v) + "][" + field + "]=x"
+	}
+
+	t.Run("large elements", func(t *testing.T) {
+		t.Parallel()
+		fit := maxNestedBytes / ((maxSliceIndex + 1) * int(reflect.TypeFor[catalogVariant]().Size()))
+		pairs := make([]string, 0, fit+1)
+		for l := range fit + 1 {
+			pairs = append(pairs, variant(l, maxSliceIndex, "sku"))
+		}
+		out := new(catalog)
+		require.NoError(t, bindFormBody(t, strings.Join(pairs[:fit], "&"), out))
+		require.Len(t, out.Lines, fit)
+		require.Len(t, out.Lines[fit-1].Variants, maxSliceIndex+1)
+		require.ErrorIs(t, bindFormBody(t, strings.Join(pairs, "&"), new(catalog)), ErrTooManyElements)
+	})
+
+	t.Run("fields of one element", func(t *testing.T) {
+		t.Parallel()
+		pairs := make([]string, 0, 30*50*len(catalogFields))
+		for l := range 30 {
+			for v := range 50 {
+				for _, f := range catalogFields {
+					pairs = append(pairs, variant(l, v, f))
+				}
+			}
+		}
+		out := new(catalog)
+		require.NoError(t, bindFormBody(t, strings.Join(pairs, "&"), out))
+		require.Len(t, out.Lines, 30)
+		require.Len(t, out.Lines[29].Variants, 50)
+		require.Equal(t, "x", out.Lines[29].Variants[49].UPC)
+	})
+
+	t.Run("first index below a root field", func(t *testing.T) {
+		t.Parallel()
+		type cartForm struct {
+			Cart struct {
+				Items []catalogVariant `form:"items"`
+			} `form:"cart"`
+			Groups []catalogLine `form:"groups"`
+		}
+		pairs := make([]string, 0, 10*(maxSliceIndex+1))
+		for i := range maxSliceIndex + 1 {
+			for _, f := range catalogFields {
+				pairs = append(pairs, "cart[items]["+strconv.Itoa(i)+"]["+f+"]=x")
+			}
+		}
+		out := new(cartForm)
+		require.NoError(t, bindFormBody(t, strings.Join(pairs, "&"), out))
+		require.Len(t, out.Cart.Items, maxSliceIndex+1)
+	})
 }

@@ -2,9 +2,11 @@ package binder
 
 import (
 	"fmt"
+	"iter"
 	"maps"
 	"mime/multipart"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -108,27 +110,40 @@ func decoderBuilder(aliasTag string, parserConfig ParserConfig) any {
 		decoder.RegisterConverter(reflect.ValueOf(v.CustomType).Interface(), v.Converter)
 	}
 	decoder.ZeroEmpty(parserConfig.ZeroEmpty)
-	return &pooledDecoder{Decoder: decoder, keys: make(map[string]int)}
+	return &pooledDecoder{Decoder: decoder, types: make(map[reflect.Type]*boundType)}
 }
 
-// pooledDecoder is a pooled schema.Decoder and the nested keys it was given:
-// schema caches a parsed path per key spelling for the decoder's lifetime.
+// pooledDecoder is a pooled schema.Decoder and the nested keys it was given: schema
+// caches a parsed path per destination type and key spelling for the decoder's lifetime.
 type pooledDecoder struct {
 	*schema.Decoder
-	keys     map[string]int // nested key -> its nestedElements
+	types    map[reflect.Type]*boundType
+	bound    *boundType // the current bind's destination, set by its first nested key
 	keyBytes int
-	elements int // nestedElements summed over the current bind
+	elements int // counted elements summed over the current bind
 }
 
-// A decoder whose nested keys, each counted with what schema caches for it,
-// pass maxDecoderKeyBytes is left to the GC instead of being pooled again.
+// boundType is what a pooledDecoder keeps per destination type.
+type boundType struct {
+	keys  map[string]int // nested key -> its counted elements
+	shape bindShape
+}
+
+// A decoder whose cached keys, charged with what schema and the decoder keep per
+// key, pass maxDecoderKeyBytes is left to the GC instead of being pooled again.
 const (
-	maxDecoderKeyBytes = 4 << 20
-	cachedKeyOverhead  = 512
+	maxDecoderKeyBytes = 1 << 20
+	cachedKeyOverhead  = 320
+	cachedSegmentBytes = 160
 )
 
-// admit checks key before d decodes it and adds its nestedElements to d.elements.
-func (d *pooledDecoder) admit(key string) error {
+// cachedKeyBytes is what caching key costs; schema keeps a path hop per segment.
+func cachedKeyBytes(key string) int {
+	return 2*len(key) + cachedKeyOverhead + cachedSegmentBytes*(strings.Count(key, ".")+1)
+}
+
+// admit checks key before d decodes it into out and adds its counted elements to d.elements.
+func (d *pooledDecoder) admit(out any, key string) error {
 	if err := checkKeyDepth(key); err != nil {
 		return err
 	}
@@ -136,115 +151,211 @@ func (d *pooledDecoder) admit(key string) error {
 	if strings.IndexByte(key, '.') < 0 {
 		return nil
 	}
-	n, ok := d.keys[key]
+	if d.bound == nil {
+		d.bound = d.boundType(reflect.TypeOf(out))
+	}
+	n, ok := d.bound.keys[key]
 	if !ok {
-		n = nestedElements(key)
-		d.keys[strings.Clone(key)] = n
-		d.keyBytes += len(key) + cachedKeyOverhead
+		n = d.bound.shape.elements(key)
+		d.bound.keys[strings.Clone(key)] = n
+		d.keyBytes += cachedKeyBytes(key)
 	}
 	d.elements += n
 	return nil
 }
 
-// checkElements refuses the admitted keys past maxNestedElements, unless out
-// cannot fan them out: then each slice exists once per bind, whatever the keys.
-func (d *pooledDecoder) checkElements(out any) error {
-	if d.elements > maxNestedElements && fansOut(reflect.TypeOf(out)) {
+func (d *pooledDecoder) boundType(t reflect.Type) *boundType {
+	b, ok := d.types[t]
+	if !ok {
+		b = &boundType{keys: make(map[string]int), shape: shapeOf(t)}
+		d.types[t] = b
+	}
+	return b
+}
+
+// checkElements refuses the admitted keys, which keys yields again, when their
+// counted indexes can make schema allocate more than maxNestedBytes.
+func (d *pooledDecoder) checkElements(keys iter.Seq[string]) error {
+	if d.elements == 0 {
+		return nil
+	}
+	limit := maxNestedBytes / int(d.bound.shape.elemSize)
+	if d.elements > limit && d.distinctElements(keys, limit) > limit {
 		return ErrTooManyElements
 	}
 	return nil
 }
 
-func putDecoder(pool *sync.Pool, d *pooledDecoder) {
-	if d.keyBytes <= maxDecoderKeyBytes {
-		d.elements = 0
-		pool.Put(d)
-	}
-}
-
-// maxNestedElements bounds what nestedElements adds up to over a bind's keys.
-const maxNestedElements = 1 << 18
-
-// maxSliceIndex is schema's largest slice index; it refuses a key with a larger one.
-const maxSliceIndex = 1000
-
-// nestedElements is how many slice elements key can make schema allocate: each
-// index grows its slice to index+1. A root field's index, the second segment, is free.
-func nestedElements(key string) int {
-	n, pos := 0, 0
-	for seg := range strings.SplitSeq(key, ".") {
-		pos++
-		// Checked first since ParseInt allocates the error for a field name.
-		if pos == 2 || seg == "" || (seg[0] < '0' || seg[0] > '9') && seg[0] != '+' && seg[0] != '-' {
+// distinctElements is d.elements with each distinct prefix up to an index counted once,
+// since a slice grows at most once per index; it stops once the sum passes limit.
+func (d *pooledDecoder) distinctElements(keys iter.Seq[string], limit int) int {
+	seen := make(map[string]struct{})
+	n := 0
+	for key := range keys {
+		if d.bound.keys[key] == 0 {
 			continue
 		}
-		i, err := utils.ParseInt(seg)
-		if err != nil || i < 0 {
-			continue
+		for end, elems := range d.bound.shape.indexes(key) {
+			if _, dup := seen[key[:end]]; dup {
+				continue
+			}
+			seen[key[:end]] = struct{}{}
+			if n += elems; n > limit {
+				return n
+			}
 		}
-		n += int(min(i, maxSliceIndex)) + 1
 	}
 	return n
 }
 
-// fansOut reports whether binding into t can grow a slice of structs once per
-// element of another slice or per level of a recursive type.
-func fansOut(t reflect.Type) bool {
-	if t == nil {
-		return false
+func putDecoder(pool *sync.Pool, d *pooledDecoder) {
+	d.bound, d.elements = nil, 0
+	if d.keyBytes <= maxDecoderKeyBytes {
+		pool.Put(d)
 	}
-	t = unwrapType(t)
-	return t.Kind() == reflect.Struct && fansOutFrom(t, make(map[reflect.Type]uint8))
 }
 
-// fansOutFrom is fansOut for struct type t; state marks the types on the
-// current path (1) and those already walked (2).
-func fansOutFrom(t reflect.Type, state map[reflect.Type]uint8) bool {
-	state[t] = 1
+// maxNestedBytes bounds the slice elements the counted indexes of a bind's keys may allocate.
+const maxNestedBytes = 8 << 20
+
+// maxSliceIndex is schema's largest slice index; it refuses a key with a larger one.
+const maxSliceIndex = 1000
+
+// bindShape is what the element budget needs to know about a destination type.
+type bindShape struct {
+	// elemSize is the largest element of a slice a counted index can grow, 0 if none.
+	elemSize uintptr
+	// cyclic is set when a field leads back to a type on its path without passing
+	// a slice, so the index-free paths to a slice have no bound.
+	cyclic bool
+}
+
+// elements is how many slice elements the counted indexes of key can make schema allocate.
+func (s bindShape) elements(key string) int {
+	if s.elemSize == 0 {
+		return 0
+	}
+	n := 0
+	for _, elems := range s.indexes(key) {
+		n += elems
+	}
+	return n
+}
+
+// indexes yields where each counted index of key ends and the length it grows its slice to.
+// A first index is free after a root field or in an acyclic type: the type bounds its slices.
+func (s bindShape) indexes(key string) iter.Seq2[int, int] {
+	return func(yield func(int, int) bool) {
+		end, pos, first := -1, 0, true
+		for seg := range strings.SplitSeq(key, ".") {
+			end += len(seg) + 1
+			pos++
+			// Checked first since ParseInt allocates the error for a field name.
+			if pos == 1 || seg == "" || (seg[0] < '0' || seg[0] > '9') && seg[0] != '+' && seg[0] != '-' {
+				continue
+			}
+			i, err := utils.ParseInt(seg)
+			if err != nil || i < 0 {
+				continue
+			}
+			if first {
+				first = false
+				if pos == 2 || !s.cyclic {
+					continue
+				}
+			}
+			if !yield(end, int(min(i, maxSliceIndex))+1) {
+				return
+			}
+		}
+	}
+}
+
+func shapeOf(t reflect.Type) bindShape {
+	if t == nil {
+		return bindShape{}
+	}
+	t = unwrapType(t)
+	if t.Kind() != reflect.Struct {
+		return bindShape{}
+	}
+	w := shapeWalk{path: make(map[reflect.Type]bool), inElem: make(map[reflect.Type]bool)}
+	w.indexFree(t)
+	s := bindShape{elemSize: w.nested, cyclic: w.cyclic}
+	if s.cyclic {
+		s.elemSize = max(s.elemSize, w.direct)
+	}
+	return s
+}
+
+// shapeWalk collects a bindShape from the struct types below a root.
+type shapeWalk struct {
+	path   map[reflect.Type]bool // reached without an index: true while on the path
+	inElem map[reflect.Type]bool // reached through a slice element
+	direct uintptr               // largest element of a slice reached without an index
+	nested uintptr               // largest element of a slice inside a slice element
+	cyclic bool
+}
+
+func (w *shapeWalk) indexFree(t reflect.Type) {
+	w.path[t] = true
 	for i := range t.NumField() {
-		elem, slice := structElem(t.Field(i).Type)
+		elem, size, slice := structElem(t.Field(i).Type)
 		if elem == nil {
 			continue
 		}
-		if (slice || state[elem] == 1) && hasSliceOfStructs(elem, make(map[reflect.Type]bool)) {
-			return true
-		}
-		if state[elem] == 0 && fansOutFrom(elem, state) {
-			return true
+		onPath, seen := w.path[elem]
+		switch {
+		case slice:
+			w.direct = max(w.direct, size)
+			w.inElement(elem)
+		case onPath:
+			w.cyclic = true
+		case !seen:
+			w.indexFree(elem)
 		}
 	}
-	state[t] = 2
-	return false
+	w.path[t] = false
 }
 
-// hasSliceOfStructs reports whether struct type t or a struct below it has a
-// slice of structs field.
-func hasSliceOfStructs(t reflect.Type, seen map[reflect.Type]bool) bool {
-	seen[t] = true
+func (w *shapeWalk) inElement(t reflect.Type) {
+	if w.inElem[t] {
+		return
+	}
+	w.inElem[t] = true
 	for i := range t.NumField() {
-		elem, slice := structElem(t.Field(i).Type)
-		if elem != nil && (slice || !seen[elem] && hasSliceOfStructs(elem, seen)) {
-			return true
+		elem, size, slice := structElem(t.Field(i).Type)
+		if elem == nil {
+			continue
 		}
+		if slice {
+			w.nested = max(w.nested, size)
+		}
+		w.inElement(elem)
 	}
-	return false
 }
 
-// structElem returns the struct type schema walks into through a field of type
-// t, and whether t is a slice of it. Maps end a path, so they yield nil.
-func structElem(t reflect.Type) (reflect.Type, bool) {
+// structElem returns the struct type schema walks into through a field of type t and,
+// for a slice, the bytes each element it grows can take. Maps end a path.
+func structElem(t reflect.Type) (reflect.Type, uintptr, bool) {
 	t = unwrapType(t)
+	var size uintptr
 	slice := t.Kind() == reflect.Slice
 	if slice {
-		t = unwrapType(t.Elem())
+		e := t.Elem()
+		size = e.Size()
+		t = unwrapType(e)
+		if e != t {
+			size += t.Size() // a pointer element is allocated once a key reaches it
+		}
 	}
 	if t.Kind() == reflect.Array {
 		t = unwrapType(t.Elem())
 	}
 	if t.Kind() != reflect.Struct {
-		return nil, false
+		return nil, 0, false
 	}
-	return t, slice
+	return t, size, slice
 }
 
 func init() {
@@ -294,19 +405,12 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 	schemaDecoder := pool.Get().(*pooledDecoder) //nolint:errcheck,forcetypeassert // not needed
 	defer putDecoder(pool, schemaDecoder)
 
-	for key := range data {
-		if err := schemaDecoder.admit(key); err != nil {
+	for key := range formKeys(data, files) {
+		if err := schemaDecoder.admit(out, key); err != nil {
 			return err
 		}
 	}
-	for _, f := range files {
-		for key := range f {
-			if err := schemaDecoder.admit(key); err != nil {
-				return err
-			}
-		}
-	}
-	if err := schemaDecoder.checkElements(out); err != nil {
+	if err := schemaDecoder.checkElements(formKeys(data, files)); err != nil {
 		return err
 	}
 
@@ -319,6 +423,24 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 	return nil
 }
 
+// formKeys yields the keys of data and of each of files.
+func formKeys(data map[string][]string, files []map[string][]*multipart.FileHeader) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for key := range data {
+			if !yield(key) {
+				return
+			}
+		}
+		for _, f := range files {
+			for key := range f {
+				if !yield(key) {
+					return
+				}
+			}
+		}
+	}
+}
+
 // parseValuesToStruct is parseToStruct for key/value pairs: values[i] is a
 // value of keys[i].
 func parseValuesToStruct(aliasTag string, out any, keys, values []string) error {
@@ -327,11 +449,11 @@ func parseValuesToStruct(aliasTag string, out any, keys, values []string) error 
 	defer putDecoder(pool, schemaDecoder)
 
 	for _, key := range keys {
-		if err := schemaDecoder.admit(key); err != nil {
+		if err := schemaDecoder.admit(out, key); err != nil {
 			return err
 		}
 	}
-	if err := schemaDecoder.checkElements(out); err != nil {
+	if err := schemaDecoder.checkElements(slices.Values(keys)); err != nil {
 		return err
 	}
 
