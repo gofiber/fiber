@@ -24,6 +24,7 @@ type Session struct {
 	data        *data             // key value data
 	rawData     []byte            // snapshot from the last decode, reused by Save while the data is unchanged
 	id          string            // session id
+	key         string            // storage key of id, built on first use
 	extractor   extractors.Result // provenance of the extractor that supplied the session ID
 	idleTimeout time.Duration     // idleTimeout of this session
 	loadGen     uint64            // idLock generation when the data was read from storage
@@ -96,6 +97,7 @@ func (s *Session) Release() {
 func releaseSession(s *Session) {
 	s.mu.Lock()
 	s.id = ""
+	s.key = ""
 	s.idleTimeout = 0
 	s.ctx = nil
 	s.config = nil
@@ -225,7 +227,7 @@ func (s *Session) DestroyWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	// Use external Storage if exist
-	if err := s.config.deleteID(ctx, s.id); err != nil {
+	if err := s.config.deleteKey(ctx, s.storageKey()); err != nil {
 		return err
 	}
 
@@ -271,7 +273,7 @@ func (s *Session) RegenerateWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	// Delete old id from storage
-	if err := s.config.deleteID(ctx, s.id); err != nil {
+	if err := s.config.deleteKey(ctx, s.storageKey()); err != nil {
 		return err
 	}
 
@@ -312,7 +314,7 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	// Delete old id from storage
-	if err := s.config.deleteID(ctx, s.id); err != nil {
+	if err := s.config.deleteKey(ctx, s.storageKey()); err != nil {
 		return err
 	}
 
@@ -340,8 +342,17 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 // refresh generates a new session, and sets session.isFresh to be true.
 func (s *Session) refresh() {
 	s.id = s.config.KeyGenerator()
+	s.key = ""
 	s.isFresh = true
 	s.loaded = false
+}
+
+// storageKey returns the key the session is stored under; the caller holds s.mu.
+func (s *Session) storageKey() string {
+	if s.key == "" {
+		s.key = storageKeyPrefix + s.id
+	}
+	return s.key
 }
 
 // Save saves the session data and updates the cookie
@@ -406,13 +417,14 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 		s.idleTimeout = s.config.IdleTimeout
 	}
 
+	key := s.storageKey()
 	if s.loaded {
-		l := lockFor(s.id)
+		l := lockFor(key)
 		l.mu.RLock()
 		defer l.mu.RUnlock()
 		// An ID of this shard was deleted since the load; write only if it was not this one.
 		if l.gen.Load() != s.loadGen {
-			raw, err := s.config.Storage.GetWithContext(ctx, storageKeyPrefix+s.id)
+			raw, err := s.config.Storage.GetWithContext(ctx, key)
 			if err != nil {
 				return err
 			}
@@ -428,7 +440,7 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	// Unchanged since the decode: write the snapshot back so the idle timeout still
 	// slides. Lock-free is enough; dirty is set before the mutation it reports.
 	if s.rawData != nil && !s.data.dirty.Load() {
-		return s.config.Storage.SetWithContext(ctx, storageKeyPrefix+s.id, s.rawData, s.idleTimeout)
+		return s.config.Storage.SetWithContext(ctx, key, s.rawData, s.idleTimeout)
 	}
 
 	// Encode session data
@@ -440,7 +452,7 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	}
 
 	// Pass copied bytes with session id to provider
-	return s.config.Storage.SetWithContext(ctx, storageKeyPrefix+s.id, encodedBytes, s.idleTimeout)
+	return s.config.Storage.SetWithContext(ctx, key, encodedBytes, s.idleTimeout)
 }
 
 // Keys retrieves all keys in the current session.

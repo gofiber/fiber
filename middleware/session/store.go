@@ -15,7 +15,6 @@ import (
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/log"
-	"github.com/gofiber/utils/v2"
 )
 
 // ErrEmptySessionID is an error that occurs when the session ID is empty.
@@ -90,8 +89,8 @@ var (
 	idSeed  = maphash.MakeSeed()
 )
 
-func lockFor(id string) *idLock {
-	return &idLocks[maphash.String(idSeed, id)&(idLockShards-1)]
+func lockFor(key string) *idLock {
+	return &idLocks[maphash.String(idSeed, key)&(idLockShards-1)]
 }
 
 // Store manages session data using the configured storage backend.
@@ -210,20 +209,22 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 
 	isFresh := false // Session is not fresh initially; only set to true if we generate a new ID
 	var loadGen uint64
+	var key string
 
 	// Attempt to fetch session data if an ID is provided
 	if id != "" {
-		loadGen = lockFor(id).gen.Load()
-		rawData, err = s.Storage.GetWithContext(c, storageKeyPrefix+id)
+		key = storageKeyPrefix + id
+		loadGen = lockFor(key).gen.Load()
+		rawData, err = s.Storage.GetWithContext(c, key)
 		if err != nil {
 			return nil, err
 		}
 		if rawData == nil {
 			// Data not found, prepare to generate a new session
-			id = ""
+			id, key = "", ""
 		} else {
-			// The extracted ID points into the request buffer the next request reuses.
-			id = utils.CopyString(id)
+			// Sliced off the key: the extracted ID points into the request buffer the next request reuses.
+			id = key[len(storageKeyPrefix):]
 		}
 	}
 
@@ -242,6 +243,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	sess.ctx = c
 	sess.config = s
 	sess.id = id
+	sess.key = key
 	sess.isFresh = isFresh
 	sess.extractor = selectedExtractor
 
@@ -354,14 +356,14 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	if id == "" {
 		return ErrEmptySessionID
 	}
-	return s.deleteID(ctx, id)
+	return s.deleteKey(ctx, storageKeyPrefix+id)
 }
 
-func (s *Store) deleteID(ctx context.Context, id string) error {
-	l := lockFor(id)
+func (s *Store) deleteKey(ctx context.Context, key string) error {
+	l := lockFor(key)
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	err := s.Storage.DeleteWithContext(ctx, storageKeyPrefix+id)
+	err := s.Storage.DeleteWithContext(ctx, key)
 	l.gen.Add(1) // after the delete, so a load that sees the new value cannot read the entry
 	return err
 }
@@ -404,8 +406,9 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 		return nil, ErrEmptySessionID
 	}
 
-	loadGen := lockFor(id).gen.Load()
-	rawData, err := s.Storage.GetWithContext(ctx, storageKeyPrefix+id)
+	key := storageKeyPrefix + id
+	loadGen := lockFor(key).gen.Load()
+	rawData, err := s.Storage.GetWithContext(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +421,8 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 	sess.mu.Lock()
 
 	sess.config = s
-	sess.id = utils.CopyString(id) // the caller may pass a view of the request, such as c.Cookies
+	sess.id = key[len(storageKeyPrefix):] // the caller may pass a view of the request, such as c.Cookies
+	sess.key = key
 	sess.isFresh = false
 	sess.loaded = true
 	sess.loadGen = loadGen

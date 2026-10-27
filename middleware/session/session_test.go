@@ -2861,7 +2861,7 @@ func Test_Session_SaveAfterUnrelatedDelete(t *testing.T) {
 		sess.Set("user", "alice")
 	})
 	sibling := store.KeyGenerator()
-	for lockFor(sibling) != lockFor(id) {
+	for lockFor(storageKeyPrefix+sibling) != lockFor(storageKeyPrefix+id) {
 		sibling = store.KeyGenerator()
 	}
 
