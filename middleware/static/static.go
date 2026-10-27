@@ -355,7 +355,8 @@ func New(root string, cfg ...Config) fiber.Handler {
 
 			// fasthttp caches a listing under the routed path but writes its links from
 			// the request URI, which reads "/pub/..%2F..%2Fx/.." as "/x/", not "/pub/"
-			if config.Browse {
+			rerouted := config.Browse && path != utils.UnsafeString(fctx.URI().PathOriginal())
+			if rerouted {
 				uri := fctx.URI()
 				rw.sent = append(rw.sent[:0], uri.PathOriginal()...)
 				target := wiretarget.Routed(c)
@@ -365,7 +366,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 			// Serve file
 			server.handler(fctx)
 
-			if config.Browse {
+			if rerouted {
 				fctx.URI().SetPathBytes(rw.sent)
 			}
 			fctx.RemoveUserValue(rewriteKey{})

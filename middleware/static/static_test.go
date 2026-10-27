@@ -2887,3 +2887,34 @@ func Test_Static_Browse_ParameterPrefixControlByte(t *testing.T) {
 		}
 	}
 }
+
+func Benchmark_Static_Browse(b *testing.B) {
+	root := b.TempDir()
+	require.NoError(b, os.Mkdir(filepath.Join(root, "pub"), 0o750))
+	require.NoError(b, os.WriteFile(filepath.Join(root, "pub", "a.txt"), []byte("A"), 0o600))
+
+	for name, unescape := range map[string]bool{"default": false, "unescape": true} {
+		b.Run(name, func(b *testing.B) {
+			app := fiber.New(fiber.Config{UnescapePath: unescape})
+			app.Use("/files", New(root, Config{Browse: true}))
+			h := app.Handler()
+
+			var req fasthttp.Request
+			req.Header.SetMethod(fiber.MethodGet)
+			req.SetRequestURI("/files/pub/a.txt")
+			fctx := new(fasthttp.RequestCtx)
+			fctx.Init(&req, nil, discardLogger{})
+
+			h(fctx)
+			require.Equal(b, fiber.StatusOK, fctx.Response.StatusCode())
+			require.Equal(b, "A", string(fctx.Response.Body()))
+			fctx.Response.Reset()
+
+			b.ReportAllocs()
+			for b.Loop() {
+				h(fctx)
+				fctx.Response.Reset()
+			}
+		})
+	}
+}
