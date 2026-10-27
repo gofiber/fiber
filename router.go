@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"math/bits"
 	"slices"
+	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3/internal/urlnorm"
@@ -164,8 +166,13 @@ type routeTree struct {
 	globalFilter *bucketFilter
 	// globals is the bucket for tree hash 0, which is also where misses go
 	globals []*Route
+	// positions maps each route of routes to its index, and ids each registration id
+	// to its first route there that is no automatic HEAD route; built on first use
+	positions map[*Route]int
+	ids       map[uint64]int
 	// routes is the method's stack this tree was built from, in registration order
-	routes []*Route
+	routes        []*Route
+	positionsOnce sync.Once
 	// mask is len(hashes)-1, used to wrap the probe
 	mask uint32
 	// shift is 32-log2(len(hashes)), so slot keeps the high bits of the
@@ -1641,31 +1648,46 @@ func (app *App) routeIndexInTree(methodInt, treeHash int, route *Route, current 
 		return current
 	}
 	tree := app.treeIndex[methodInt]
+	tree.indexPositions()
 
 	// route itself after a path change, else its copy under the new method. An
 	// automatic HEAD copy shares the id but is left to routesAhead.
-	pos := slices.Index(tree.routes, route)
-	if pos == -1 {
-		pos = slices.IndexFunc(tree.routes, func(r *Route) bool { return r.id == route.id && !r.autoHead })
+	pos, ok := tree.positions[route]
+	if !ok {
+		pos, ok = tree.ids[route.id]
 	}
-	if pos == -1 {
-		ahead, ok := app.routesAhead(route)
-		if !ok {
+	if !ok {
+		ahead, found := app.routesAhead(route)
+		if !found {
 			// Resume early: rerunning a route is safer than skipping a guard.
 			return -1
 		}
 		pos = lastCopyIndex(tree.routes, ahead)
 	}
 
-	// Every bucket is a subsequence of tree.routes, so count its routes up to pos.
+	// Every bucket is a subsequence of tree.routes, so its routes up to pos lead it. The
+	// search gallops from the front, where they end for a route registered ahead of most.
 	bucket, _ := tree.lookup(treeHash)
-	index := -1
-	for _, registered := range tree.routes[:pos+1] {
-		if index+1 < len(bucket) && registered == bucket[index+1] {
-			index++
-		}
+	n := 1
+	for n <= len(bucket) && tree.positions[bucket[n-1]] <= pos {
+		n *= 2
 	}
-	return index
+	lo, hi := n/2, min(n-1, len(bucket))
+	return lo + sort.Search(hi-lo, func(i int) bool { return tree.positions[bucket[lo+i]] > pos }) - 1
+}
+
+// indexPositions builds positions and ids once per tree, as only overrides read them.
+func (t *routeTree) indexPositions() {
+	t.positionsOnce.Do(func() {
+		t.positions = make(map[*Route]int, len(t.routes))
+		t.ids = make(map[uint64]int, len(t.routes))
+		for i, route := range t.routes {
+			t.positions[route] = i
+			if _, ok := t.ids[route.id]; !ok && !route.autoHead {
+				t.ids[route.id] = i
+			}
+		}
+	})
 }
 
 // routesAhead returns route's own method stack up to and including route. An
@@ -1678,15 +1700,16 @@ func (app *App) routesAhead(route *Route) ([]*Route, bool) {
 	if own < 0 || own >= len(app.treeIndex) {
 		return nil, false
 	}
-	stack := app.treeIndex[own].routes
-	end := slices.Index(stack, route)
-	if end == -1 && route.autoHead {
-		end = slices.IndexFunc(stack, func(r *Route) bool { return r.id == route.id && !r.autoHead })
+	tree := app.treeIndex[own]
+	tree.indexPositions()
+	end, ok := tree.positions[route]
+	if !ok && route.autoHead {
+		end, ok = tree.ids[route.id]
 	}
-	if end == -1 {
+	if !ok {
 		return nil, false
 	}
-	return stack[:end+1], true
+	return tree.routes[:end+1], true
 }
 
 // lastCopyIndex returns the index of the last route in routes that copies one in

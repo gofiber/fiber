@@ -6052,7 +6052,7 @@ func Test_Router_PathOverride_ContinuesInNewBucket(t *testing.T) {
 func Test_Router_PathOverride_FromPrefixedRoute(t *testing.T) {
 	t.Parallel()
 
-	for _, ahead := range []int{0, 1, 3} {
+	for _, ahead := range []int{0, 1, 3, 6, 13} {
 		for _, global := range []bool{false, true} {
 			t.Run(fmt.Sprintf("ahead=%d/global=%v", ahead, global), func(t *testing.T) {
 				t.Parallel()
