@@ -1580,11 +1580,12 @@ func Test_Route_Registration_Prevent_Duplicate_With_Middleware(t *testing.T) {
 	verifyRequest(t, app, "/dynamically-defined", StatusOK)
 	require.Equal(t, uint32(8), app.handlersCount)
 
+	// The merged handler reaches the HEAD companion as well.
 	verifyRequest(t, app, "/test", StatusOK)
-	require.Equal(t, uint32(9), app.handlersCount)
+	require.Equal(t, uint32(10), app.handlersCount)
 
 	verifyRequest(t, app, "/dynamically-defined", StatusOK)
-	require.Equal(t, uint32(9), app.handlersCount)
+	require.Equal(t, uint32(10), app.handlersCount)
 }
 
 func TestNormalizePath(t *testing.T) {
@@ -5776,6 +5777,149 @@ func Test_Mount_Nested_AutoHead_SingleStartup(t *testing.T) {
 	}
 }
 
+// Test_App_AutoHead_KeepsRegistrationOrder pins that an automatic HEAD route
+// runs where its GET route does, so a Get guard covers HEAD too.
+func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
+	t.Parallel()
+
+	guard := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
+	next := func(c Ctx) error { return c.Next() }
+	endpoint := func(c Ctx) error {
+		c.Set("X-Secret", "1")
+		return c.SendString("secret")
+	}
+
+	for _, tc := range []struct {
+		register func(app *App)
+		name     string
+	}{
+		{name: "mounted app", register: func(app *App) {
+			app.Get("/admin/*", guard)
+			sub := New()
+			sub.Get("/secret", endpoint)
+			app.Use("/admin", sub)
+		}},
+		{name: "Use", register: func(app *App) {
+			app.Get("/admin/*", guard)
+			app.Use("/admin", endpoint)
+		}},
+		{name: "Add", register: func(app *App) {
+			app.Get("/admin/*", guard)
+			app.Add([]string{MethodGet, MethodHead}, "/admin/secret", endpoint)
+		}},
+		{name: "explicit Head", register: func(app *App) {
+			app.Get("/admin/*", guard)
+			app.Get("/admin/secret", endpoint)
+			app.Head("/admin/secret", endpoint)
+		}},
+		{name: "Use before and after", register: func(app *App) {
+			app.Use(next)
+			app.Get("/admin/*", guard)
+			app.Use(endpoint)
+		}},
+		{name: "late explicit Head on another path", register: func(app *App) {
+			app.Get("/x", endpoint)
+			app.Get("/admin/*", guard)
+			sub := New()
+			sub.Get("/secret", endpoint)
+			app.Use("/admin", sub)
+			app.Head("/x", endpoint)
+		}},
+		{name: "repeated Get path", register: func(app *App) {
+			app.Get("/admin/*", next)
+			app.Use(next)
+			app.Get("/admin/*", guard)
+			app.Get("/admin/secret", endpoint)
+		}},
+		{name: "Domain mount", register: func(app *App) {
+			sub := New()
+			sub.Get("/admin/*", guard)
+			sub.Use("/admin", endpoint)
+			app.Domain("example.com").Use("/", sub)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			tc.register(app)
+
+			// Twice: the second startup sees any mount already expanded.
+			for range 2 {
+				for _, method := range []string{MethodGet, MethodHead} {
+					resp, err := app.Test(httptest.NewRequest(method, "/admin/secret", http.NoBody))
+					require.NoError(t, err)
+					require.NoError(t, resp.Body.Close())
+					require.Equal(t, StatusUnauthorized, resp.StatusCode, method)
+					require.Empty(t, resp.Header.Get("X-Secret"), method)
+				}
+			}
+		})
+	}
+
+	t.Run("catch-all after Get", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		app.Get("/hello", endpoint)
+		app.Use(func(c Ctx) error { return c.SendStatus(StatusNotFound) })
+
+		resp, err := app.Test(httptest.NewRequest(MethodHead, "/hello", http.NoBody))
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("earlier Head on another path stays first", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		app.Head("/:name", func(c Ctx) error { return c.SendStatus(StatusTeapot) })
+		app.Get("/hello", endpoint)
+
+		resp, err := app.Test(httptest.NewRequest(MethodHead, "/hello", http.NoBody))
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, StatusTeapot, resp.StatusCode)
+	})
+
+	t.Run("late Head replaces every copy", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		app.Get("/a", endpoint)
+		app.Use(next)
+		app.Get("/a", endpoint)
+		app.Handler()
+
+		app.Head("/a", func(c Ctx) error { return c.SendStatus(StatusTeapot) })
+		app.RebuildTree()
+
+		resp, err := app.Test(httptest.NewRequest(MethodHead, "/a", http.NoBody))
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, StatusTeapot, resp.StatusCode)
+	})
+
+	t.Run("Get merged after startup", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		app.Get("/admin/*", next)
+		app.Handler()
+
+		app.Get("/admin/*", guard)
+		app.Get("/admin/secret", endpoint)
+		app.RebuildTree()
+
+		resp, err := app.Test(httptest.NewRequest(MethodHead, "/admin/secret", http.NoBody))
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, StatusUnauthorized, resp.StatusCode)
+		require.Empty(t, resp.Header.Get("X-Secret"))
+	})
+}
+
 // Test_App_Mount_SamePrefixKeepsAutoHead pins that a second mount on one prefix
 // does not cost the first one its automatic HEAD routes.
 func Test_App_Mount_SamePrefixKeepsAutoHead(t *testing.T) {
@@ -6014,7 +6158,7 @@ func Test_Router_MethodOverride_FromRouteOfOneMethod(t *testing.T) {
 	}
 }
 
-// Test_Router_MethodOverride_IgnoresAutoHeadRoute pins that the appended HEAD
+// Test_Router_MethodOverride_IgnoresAutoHeadRoute pins that the automatic HEAD
 // copy of a GET route does not mark where that route stands.
 func Test_Router_MethodOverride_IgnoresAutoHeadRoute(t *testing.T) {
 	t.Parallel()

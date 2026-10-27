@@ -1242,9 +1242,9 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 	}
 }
 
-// pruneAutoHeadRouteLocked removes an automatically generated HEAD route so a
-// later explicit registration can take its place without duplicating handler
-// chains. Only the companion of a route behind the same Domain patterns goes.
+// pruneAutoHeadRouteLocked removes the automatically generated HEAD routes of
+// path so a later explicit registration can take their place without duplicating
+// handler chains. Only companions of routes behind the same Domain patterns go.
 // The caller must already hold app.mutex.
 func (app *App) pruneAutoHeadRouteLocked(path string, hosts []domainMatcher) {
 	headIndex := app.methodInt(MethodHead)
@@ -1255,17 +1255,15 @@ func (app *App) pruneAutoHeadRouteLocked(path string, hosts []domainMatcher) {
 	norm := app.normalizePath(path)
 	hostsKey := matchersKey(hosts)
 
-	headStack := app.stack[headIndex]
-	for i, headRoute := range slices.Backward(headStack) {
+	app.stack[headIndex] = slices.DeleteFunc(app.stack[headIndex], func(headRoute *Route) bool {
 		if headRoute.path != norm || headRoute.mount || headRoute.use || !headRoute.autoHead || matchersKey(headRoute.hosts) != hostsKey {
-			continue
+			return false
 		}
 
-		app.stack[headIndex] = append(headStack[:i], headStack[i+1:]...)
 		app.hasRoutesRefreshed = true
 		atomic.AddUint32(&app.handlersCount, ^uint32(len(headRoute.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
-		return
-	}
+		return true
+	})
 }
 
 // routeIDs hands out the ids shared by the per-method copies of a registration.
@@ -1460,6 +1458,13 @@ func (app *App) autoHeadKey(route *Route) autoHeadKey {
 	return autoHeadKey{owner: app.routeOwner(route), path: route.path, hosts: matchersKey(route.hosts)}
 }
 
+// routeCopyKey pairs the copies one registration leaves in different method
+// stacks; an automatic HEAD route counts as a copy of its GET route.
+type routeCopyKey struct {
+	path string
+	id   uint64
+}
+
 func (app *App) ensureAutoHeadRoutesLocked() {
 	if app.config.DisableHeadAutoRegister {
 		return
@@ -1487,30 +1492,64 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 	}
 
 	headStack := app.stack[headIndex]
-	existing := make(map[autoHeadKey]struct{}, len(headStack))
-	for _, route := range headStack {
-		if route.mount || route.use {
-			continue
-		}
-		existing[app.autoHeadKey(route)] = struct{}{}
-	}
-
-	if len(app.stack[getIndex]) == 0 {
+	getStack := app.stack[getIndex]
+	if len(getStack) == 0 {
 		recordScan()
 		return
 	}
 
+	// A HEAD route that copies a GET route's registration (a Use, a mount, an
+	// Add of both methods or an earlier companion) holds that route's position.
+	onGet := make(map[routeCopyKey]int, len(getStack))
+	for _, route := range getStack {
+		onGet[routeCopyKey{path: route.Path, id: route.id}]++
+	}
+	copies := make(map[routeCopyKey][]int)
+	explicit := make(map[autoHeadKey]struct{}, len(headStack))
+	for i, route := range headStack {
+		if key := (routeCopyKey{path: route.Path, id: route.id}); onGet[key] > 0 {
+			copies[key] = append(copies[key], i)
+		}
+		if !route.mount && !route.use && !route.autoHead {
+			explicit[app.autoHeadKey(route)] = struct{}{}
+		}
+	}
+
+	// Rebuilt in GET order, so a guard registered with Get runs for HEAD where it runs for GET.
+	merged := make([]*Route, 0, len(headStack)+len(getStack))
+	next := 0 // headStack[:next] is in merged
 	var added bool
 
-	for _, route := range app.stack[getIndex] {
+	for _, route := range getStack {
+		key := routeCopyKey{path: route.Path, id: route.id}
+		if at := copies[key]; len(at) > 0 {
+			copies[key] = at[1:]
+			// A Get registered after startup can have merged into route.
+			if head := headStack[at[0]]; head.autoHead && len(head.Handlers) != len(route.Handlers) {
+				atomic.AddUint32(&app.handlersCount, uint32(len(route.Handlers)-len(head.Handlers))) //nolint:gosec // G115 - a merge only appends
+				head.Handlers = route.Handlers
+			}
+			if at[0] >= next {
+				merged = append(merged, headStack[next:at[0]+1]...)
+				next = at[0] + 1
+			}
+			continue
+		}
 		if route.mount || route.use {
 			continue
 		}
-		if _, ok := existing[app.autoHeadKey(route)]; ok {
+		if _, ok := explicit[app.autoHeadKey(route)]; ok {
 			continue
 		}
 		if app.skipsAutoHeadFor(route) {
 			continue
+		}
+
+		// A HEAD-only route has no GET position; one registered earlier stays ahead.
+		for next < len(headStack) && headStack[next].id < route.id &&
+			onGet[routeCopyKey{path: headStack[next].Path, id: headStack[next].id}] == 0 {
+			merged = append(merged, headStack[next])
+			next++
 		}
 
 		headRoute := app.copyRoute(route)
@@ -1528,8 +1567,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		// HEAD responses, so the copied GET handler stack can execute
 		// unchanged while still producing an empty body on the wire.
 
-		headStack = append(headStack, headRoute)
-		existing[app.autoHeadKey(route)] = struct{}{}
+		merged = append(merged, headRoute)
 		app.hasRoutesRefreshed = true
 		added = true
 
@@ -1542,7 +1580,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 	}
 
 	if added {
-		app.stack[headIndex] = headStack
+		app.stack[headIndex] = append(merged, headStack[next:]...)
 	}
 	recordScan()
 }
@@ -1574,7 +1612,7 @@ func (app *App) routeIndexInTree(methodInt, treeHash int, route *Route, current 
 	tree := app.treeIndex[methodInt]
 
 	// route itself after a path change, else its copy under the new method. An
-	// automatic HEAD copy shares the id but is appended out of registration order.
+	// automatic HEAD copy shares the id but is left to routesAhead.
 	pos := slices.Index(tree.routes, route)
 	if pos == -1 {
 		pos = slices.IndexFunc(tree.routes, func(r *Route) bool { return r.id == route.id && !r.autoHead })

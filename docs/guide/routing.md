@@ -619,7 +619,7 @@ Pick the helper that fits: a single endpoint uses `Get`/`Post`/…; a fixed set 
 
 ## Automatic HEAD routes
 
-Fiber automatically registers a `HEAD` route for every `GET` route you add. The generated handler chain mirrors the `GET` chain, so `HEAD` requests reuse middleware, status codes, and headers while the response body is suppressed. This covers the routes of mounted sub-apps at any nesting depth, and routes added at runtime get their `HEAD` companion when [`RebuildTree`](../api/app.md#rebuildtree) publishes them.
+Fiber automatically registers a `HEAD` route for every `GET` route you add. The generated handler chain mirrors the `GET` chain, so `HEAD` requests reuse middleware, status codes, and headers while the response body is suppressed. Each generated route runs at the position of its `GET` route, so a guard registered with `Get` covers `HEAD` as well. This covers the routes of mounted sub-apps at any nesting depth, and routes added at runtime get their `HEAD` companion when [`RebuildTree`](../api/app.md#rebuildtree) publishes them.
 
 ```go title="GET handlers automatically expose HEAD"
 app := fiber.New()
@@ -632,7 +632,7 @@ app.Get("/users/:id", func(c fiber.Ctx) error {
 // HEAD /users/:id now returns the same headers and status without a body.
 ```
 
-You can still register dedicated `HEAD` handlers, even with auto-registration enabled, and Fiber replaces the generated route so your implementation wins:
+You can still register dedicated `HEAD` handlers, even with auto-registration enabled, and Fiber replaces the generated routes of that path so your implementation wins:
 
 ```go title="Override the generated HEAD handler"
 app.Head("/users/:id", func(c fiber.Ctx) error {

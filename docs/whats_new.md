@@ -561,6 +561,8 @@ app.Get("/health", handler) // HEAD /health now returns 405 unless you add it ma
 
 Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers.
 
+Each automatic `HEAD` route runs where its `GET` route does, and every `GET` route gets its own, also when a path has several. Before, they ran after every `Use` handler, mounted app and explicit `HEAD` route, so a guard registered with `Get`, such as `app.Get("/admin/*", auth)` followed by `app.Use("/admin", adminApp)` or `app.Use(static.New(dir))`, did not run for `HEAD`, and a `GET` route followed by a catch-all `Use` answered `HEAD` with that handler. A `HEAD` route registered for a path still replaces all of its automatic ones. Two apps mounted on one prefix now both get their `HEAD` routes, and a sub-app that leaves `HEAD` out of its `RequestMethods` answers `HEAD` with `405` behind nested `Domain` mounts as well.
+
 ### QUERY method (RFC 10008)
 
 Fiber now supports the HTTP `QUERY` method ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html)) as a first-class verb. `QUERY` is safe and idempotent like `GET`, but allows a request body for complex queries.
