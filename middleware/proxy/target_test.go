@@ -24,10 +24,14 @@ func rawRequest(t *testing.T, app *fiber.App, target, host string) *fasthttp.Res
 	t.Helper()
 
 	var req fasthttp.Request
-	raw := fiber.MethodGet + " " + target + " HTTP/1.1\r\nHost: " + host + "\r\n\r\n"
+	method := fiber.MethodGet
+	if target == "*" {
+		method = fiber.MethodOptions // the only method asterisk-form is for
+	}
+	raw := method + " " + target + " HTTP/1.1\r\nHost: " + host + "\r\n\r\n"
 	if host == "" {
 		// HTTP/1.0 needs no Host header.
-		raw = fiber.MethodGet + " " + target + " HTTP/1.0\r\n\r\n"
+		raw = method + " " + target + " HTTP/1.0\r\n\r\n"
 	}
 	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
 
@@ -231,6 +235,7 @@ func Test_Proxy_Balancer_AbsoluteFormHost(t *testing.T) {
 	for _, tc := range []struct{ target, host, want string }{
 		{"http://public.example/x", "internal.example", ""},
 		{"http://public.example:8080/x", "public.example", ""},
+		{"http://public.example:443/x", "public.example", ""},
 		{"https://u:pw@public.example/x", "internal.example", ""},
 		{"//public.example/a?x=://", "internal.example", ""},
 		{"http://public.example/x", "svc:pw@public.example", ""},
@@ -251,6 +256,19 @@ func Test_Proxy_Balancer_AbsoluteFormHost(t *testing.T) {
 		require.Contains(t, tc.want, "|"+routed+"|", tc.target)
 	}
 
+	// A port that is empty or the scheme's default names the same host (RFC 9110 Section 4.2.3).
+	for target, host := range map[string]string{
+		"http://public.example:80/x":   "public.example",
+		"http://public.example:/x":     "public.example",
+		"https://public.example:443/x": "public.example",
+		"http://public.example/x":      "public.example:80",
+		"http://[::1]:80/x":            "[::1]",
+	} {
+		resp := rawRequest(t, app, target, host)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
+		require.Equal(t, "/x|"+host+"|", string(resp.Body()), target)
+	}
+
 	// A Host set before the handler is kept, and no request line replaces it.
 	pinned := fiber.New()
 	pinned.Use(func(c fiber.Ctx) error {
@@ -259,7 +277,14 @@ func Test_Proxy_Balancer_AbsoluteFormHost(t *testing.T) {
 	})
 	pinned.Use(Balancer(Config{Servers: []string{addr}}))
 	require.Equal(t, "/x|early.internal|", string(rawRequest(t, pinned, "/x", "public.example").Body()))
+	require.Equal(t, "/*|early.internal|", string(rawRequest(t, pinned, "*", "public.example").Body()))
 	require.Equal(t, fiber.StatusBadRequest, rawRequest(t, pinned, "http://other.internal/x", "public.example").StatusCode())
+	require.Equal(t, fiber.StatusBadRequest, rawRequest(t, pinned, "http://public.example/x", "public.example").StatusCode())
+
+	// ModifyRequest runs after the check, so a Host pinned there serves absolute-form requests too.
+	late := fiber.New()
+	late.Use(Balancer(Config{Servers: []string{addr}, ModifyRequest: pinIdentity}))
+	require.Equal(t, "/x|backend.internal|Bearer pinned", string(rawRequest(t, late, "http://public.example/x", "public.example").Body()))
 }
 
 // go test -run Test_Proxy_Balancer_RejectsNonOriginServer

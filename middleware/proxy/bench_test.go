@@ -296,6 +296,20 @@ func BenchmarkBalancer_ProxyPath(b *testing.B) {
 	benchProxyPath(b, app, "api.example", "/v1/widgets?q=1")
 }
 
+// BenchmarkBalancer_AbsoluteFormImmutable measures an absolute-form request, whose hosts Balancer compares,
+// under Immutable, where reading the request line through c.OriginalURL() would copy it.
+func BenchmarkBalancer_AbsoluteFormImmutable(b *testing.B) {
+	lbc := &fasthttp.LBClient{
+		Timeout: time.Second,
+		Clients: []fasthttp.BalancingClient{
+			&fasthttp.HostClient{Addr: "203.0.113.5:8080", Transport: noopRoundTripper{}},
+		},
+	}
+	app := fiber.New(fiber.Config{Immutable: true})
+	app.Use(Balancer(Config{Client: lbc}))
+	benchProxyPath(b, app, "API.example", "http://api.example:80/v1/widgets?q=1")
+}
+
 // BenchmarkForward_ProxyPath measures a request through Forward.
 func BenchmarkForward_ProxyPath(b *testing.B) {
 	benchNoopUpstream(b)
