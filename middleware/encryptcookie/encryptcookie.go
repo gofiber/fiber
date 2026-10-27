@@ -2,8 +2,7 @@ package encryptcookie
 
 import (
 	"errors"
-
-	"github.com/valyala/fasthttp"
+	"slices"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -26,38 +25,49 @@ func New(config ...Config) fiber.Handler {
 		// Continue stack
 		err := c.Next()
 
-		// Encrypt response cookies
-		responseCookieKeys := make([]string, 0, 4)
-		for key := range c.Response().Header.Cookies() {
-			responseCookieKeys = append(responseCookieKeys, string(key))
-		}
-
-		for _, keyString := range responseCookieKeys {
-			if isDisabled(keyString, cfg.Except) {
-				continue
-			}
-
-			cookieValue := fasthttp.Cookie{}
-			cookieValue.SetKey(keyString)
-			if c.Response().Header.Cookie(&cookieValue) {
-				encryptedValue, encErr := cfg.Encryptor(keyString, string(cookieValue.Value()), cfg.Key)
-				if encErr != nil {
-					for _, responseCookieKey := range responseCookieKeys {
-						if !isDisabled(responseCookieKey, cfg.Except) {
-							c.Response().Header.DelCookie(responseCookieKey)
-						}
-					}
-
-					return errors.Join(err, encErr)
-				}
-
-				cookieValue.SetValue(encryptedValue)
-				c.Response().Header.SetCookie(&cookieValue)
-			}
+		if encErr := encryptResponseCookies(c, &cfg); encErr != nil {
+			return errors.Join(err, encErr)
 		}
 
 		return err
 	}
+}
+
+// encryptResponseCookies rewrites each Set-Cookie line on its own: a lookup by name
+// misses a repeated name, and a re-serialize drops what fasthttp cannot parse.
+func encryptResponseCookies(c fiber.Ctx, cfg *Config) error {
+	header := &c.Response().Header
+
+	lines := make([]string, 0, 4)
+	for _, line := range header.Cookies() {
+		lines = append(lines, string(line))
+	}
+
+	var encErr error
+	for i, line := range lines {
+		name, value, attributes := splitSetCookie(line)
+		if isDisabled(name, cfg.Except) {
+			continue
+		}
+
+		var encrypted string
+		if encrypted, encErr = cfg.Encryptor(name, value, cfg.Key); encErr != nil {
+			lines = slices.DeleteFunc(lines, func(l string) bool {
+				n, _, _ := splitSetCookie(l)
+				return !isDisabled(n, cfg.Except)
+			})
+			break
+		}
+
+		lines[i] = name + "=" + encrypted + attributes
+	}
+
+	header.DelAllCookies()
+	for _, line := range lines {
+		header.Add(fiber.HeaderSetCookie, line)
+	}
+
+	return encErr
 }
 
 // requestCookie is one entry of the Cookie header as the decrypt pass read it.

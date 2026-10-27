@@ -1009,3 +1009,129 @@ func Test_Middleware_Duplicate_Cookie_Names(t *testing.T) {
 		require.Equal(t, []string{"test=first", "test=second"}, cookies)
 	})
 }
+
+func Test_Middleware_Encrypts_Every_SetCookie_Line(t *testing.T) {
+	t.Parallel()
+	testKey := GenerateKey(32)
+
+	type line struct{ value, attributes string }
+	testCases := []struct {
+		write func(c fiber.Ctx)
+		name  string
+		cname string
+		want  []line
+	}{
+		{
+			name: "one name at two paths",
+			write: func(c fiber.Ctx) {
+				c.Cookie(&fiber.Cookie{Name: "token", Path: "/app", MaxAge: -1})
+				c.Add(fiber.HeaderSetCookie, "token=SomeThing; Path=/; HttpOnly")
+			},
+			cname: "token",
+			want:  []line{{"", "; max-age=0; path=/app; SameSite=Lax"}, {"SomeThing", "; Path=/; HttpOnly"}},
+		},
+		{
+			name: "a quoted value with a backslash",
+			write: func(c fiber.Ctx) {
+				c.Add(fiber.HeaderSetCookie, `token="Some\054Thing"; HttpOnly`)
+			},
+			cname: "token",
+			want:  []line{{`Some\054Thing`, "; HttpOnly"}},
+		},
+		{
+			name: "a percent-encoded path",
+			write: func(c fiber.Ctx) {
+				c.Cookie(&fiber.Cookie{Name: "token", Value: "SomeThing", Path: "/caf%C3%A9", HTTPOnly: true, Secure: true})
+			},
+			cname: "token",
+			want:  []line{{"SomeThing", "; path=/café; HttpOnly; secure; SameSite=Lax"}},
+		},
+		{
+			name: "an attribute fasthttp does not know",
+			write: func(c fiber.Ctx) {
+				c.Add(fiber.HeaderSetCookie, "token=SomeThing; Path=/; Priority=High")
+			},
+			cname: "token",
+			want:  []line{{"SomeThing", "; Path=/; Priority=High"}},
+		},
+		{
+			name: "spaces around name and value",
+			write: func(c fiber.Ctx) {
+				c.Add(fiber.HeaderSetCookie, "token = SomeThing ; Path=/")
+			},
+			cname: "token",
+			want:  []line{{"SomeThing", "; Path=/"}},
+		},
+		{
+			name: "a value with no name",
+			write: func(c fiber.Ctx) {
+				c.Add(fiber.HeaderSetCookie, "SomeThing; Path=/")
+			},
+			cname: "",
+			want:  []line{{"SomeThing", "; Path=/"}},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{Key: testKey}))
+			app.Get("/", func(c fiber.Ctx) error {
+				tc.write(c)
+				return nil
+			})
+
+			ctx := &fasthttp.RequestCtx{}
+			ctx.Request.Header.SetMethod(fiber.MethodGet)
+			app.Handler()(ctx)
+
+			var lines []string
+			for _, l := range ctx.Response.Header.Cookies() {
+				lines = append(lines, string(l))
+			}
+			require.Len(t, lines, len(tc.want))
+
+			for i, l := range lines {
+				encrypted, found := strings.CutPrefix(l, tc.cname+"=")
+				require.True(t, found, l)
+				encrypted, found = strings.CutSuffix(encrypted, tc.want[i].attributes)
+				require.True(t, found, l)
+
+				value, err := DecryptCookie(tc.cname, encrypted, testKey)
+				require.NoError(t, err, l)
+				require.Equal(t, tc.want[i].value, value)
+			}
+		})
+	}
+}
+
+func Test_Middleware_EncryptionError_Removes_Every_SetCookie_Line(t *testing.T) {
+	t.Parallel()
+	expected := errors.New("encrypt failed")
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Key:    GenerateKey(32),
+		Except: []string{"plain"},
+		Encryptor: func(_, value, _ string) (string, error) {
+			if value == "second" {
+				return "", expected
+			}
+			return "encrypted", nil
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Add(fiber.HeaderSetCookie, "plain=one; Path=/a")
+		c.Add(fiber.HeaderSetCookie, "token=first; Path=/a")
+		c.Add(fiber.HeaderSetCookie, "token=second; Path=/b")
+		c.Add(fiber.HeaderSetCookie, "token=third; Path=/c")
+		c.Add(fiber.HeaderSetCookie, "plain=two; Path=/b")
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Equal(t, []string{"plain=one; Path=/a", "plain=two; Path=/b"}, resp.Header.Values(fiber.HeaderSetCookie))
+}
