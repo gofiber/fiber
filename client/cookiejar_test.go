@@ -1723,3 +1723,97 @@ func Test_CookieJar_AttributesCookiesToRespondingHost(t *testing.T) {
 		require.Equal(t, map[string]string{"session": "legitimate"}, jarCookies(t, jar, "good.example"))
 	})
 }
+
+func Test_CookieJar_CookieName(t *testing.T) {
+	t.Parallel()
+
+	// cookieHeader is what a request to url carries once the application has set
+	// its own "session" cookie on top of the jar's, as parserRequestHeader does.
+	cookieHeader := func(t *testing.T, jar *CookieJar, url string) string {
+		t.Helper()
+
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		req.SetRequestURI(url)
+		jar.dumpCookiesToReq(req)
+		req.Header.SetCookie("session", "real")
+		return string(req.Header.Peek(fasthttp.HeaderCookie))
+	}
+
+	for _, setCookie := range []string{
+		"=session=evil; Domain=example.com; Path=/",
+		" =session=evil; Domain=example.com; Path=/",
+		"\t=session=evil; Domain=example.com; Path=/",
+		"=session=evil",
+		"session\t=evil; Domain=example.com; Path=/",
+		"session \t =evil; Domain=example.com; Path=/",
+		"evil; Domain=example.com; Path=/",
+	} {
+		t.Run("response "+setCookie, func(t *testing.T) {
+			t.Parallel()
+
+			jar := AcquireCookieJar()
+			defer ReleaseCookieJar(jar)
+
+			resp := fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseResponse(resp)
+			resp.Header.Add(fasthttp.HeaderSetCookie, setCookie)
+			jar.parseCookiesFromResp([]byte("evil.example.com"), []byte("/"), resp)
+
+			require.Equal(t, "session=real", cookieHeader(t, jar, "http://evil.example.com/"))
+			require.Equal(t, "session=real", cookieHeader(t, jar, "http://api.example.com/"))
+		})
+	}
+
+	for _, kv := range [][2]string{
+		{"", "session=evil"},
+		{" ", "session=evil"},
+		{"\t", "session=evil"},
+		{"session\t", "evil"},
+		{" session", "evil"},
+		{"session;", "evil"},
+	} {
+		t.Run("set "+kv[0], func(t *testing.T) {
+			t.Parallel()
+
+			jar := AcquireCookieJar()
+			defer ReleaseCookieJar(jar)
+
+			jar.SetKeyValue("example.com", kv[0], kv[1])
+
+			require.Equal(t, "session=real", cookieHeader(t, jar, "http://example.com/"))
+		})
+	}
+
+	t.Run("trimmed name replaces the stored cookie", func(t *testing.T) {
+		t.Parallel()
+
+		jar := AcquireCookieJar()
+		defer ReleaseCookieJar(jar)
+
+		jar.SetKeyValue("example.com", "k", "old")
+
+		resp := fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseResponse(resp)
+		resp.Header.Add(fasthttp.HeaderSetCookie, "k\t=new; Path=/")
+		jar.parseCookiesFromResp([]byte("example.com"), []byte("/"), resp)
+
+		require.Equal(t, "k=new; session=real", cookieHeader(t, jar, "http://example.com/"))
+	})
+
+	t.Run("caller's cookie is left alone", func(t *testing.T) {
+		t.Parallel()
+
+		jar := AcquireCookieJar()
+		defer ReleaseCookieJar(jar)
+
+		c := fasthttp.AcquireCookie()
+		defer fasthttp.ReleaseCookie(c)
+		c.SetKey("k\t")
+		c.SetValue("v")
+		jar.SetByHost([]byte("example.com"), c)
+
+		require.Equal(t, "k\t", string(c.Key()))
+		require.Equal(t, "k=v; session=real", cookieHeader(t, jar, "http://example.com/"))
+	})
+}

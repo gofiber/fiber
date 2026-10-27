@@ -945,7 +945,7 @@ func (c *Client) DisableDebug() *Client
 
 ### SetCookieJar
 
-Assigns a cookie jar to the client to store and manage cookies across requests. A cookie received with a `Max-Age` attribute expires that many seconds after it was received, taking precedence over `Expires`; a `Max-Age` of zero or less expires it immediately (RFC 6265). A `Max-Age` that is not an integer is ignored on its own, as is any other attribute the parser cannot read, such as an `Expires` in an unrecognized format (RFC 6265 Section 5.2): the cookie keeps its name, its value and every other attribute, `Path`, `Domain` and `Secure` included. When the attribute repeats, the last integer value counts. A `Set-Cookie` whose name and value cannot be parsed is dropped. Cookies for the same host and path are stored under the origin that answered, so a redirect cannot plant cookies for another host. See [Cookie jar](./examples.md#cookie-jar) for how the jar scopes, orders and limits cookies.
+Assigns a cookie jar to the client to store and manage cookies across requests. A cookie received with a `Max-Age` attribute expires that many seconds after it was received, taking precedence over `Expires`; a `Max-Age` of zero or less expires it immediately (RFC 6265). A `Max-Age` that is not an integer is ignored on its own, as is any other attribute the parser cannot read, such as an `Expires` in an unrecognized format (RFC 6265 Section 5.2): the cookie keeps its name, its value and every other attribute, `Path`, `Domain` and `Secure` included. When the attribute repeats, the last integer value counts. A `Set-Cookie` whose name and value cannot be parsed is dropped, and so is one without a name, such as `=value`; whitespace around the name is not part of it. Cookies for the same host and path are stored under the origin that answered, so a redirect cannot plant cookies for another host. See [Cookie jar](./examples.md#cookie-jar) for how the jar scopes, orders and limits cookies.
 
 ```go title="Signature"
 func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client
@@ -979,7 +979,7 @@ func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie
 
 ### CookieJar.Set
 
-**Set** stores copies of the cookies for the host of a URI, ignoring the port. A cookie without a usable `Path` is scoped to the default path of the URI (RFC 6265), so cookies set against `/a/b` apply to `/a` and below; set `Path` on the cookie to widen it. A cookie whose `Domain` the host may not set, such as an unrelated domain or a public suffix, is skipped.
+**Set** stores copies of the cookies for the host of a URI, ignoring the port. A cookie without a usable `Path` is scoped to the default path of the URI (RFC 6265), so cookies set against `/a/b` apply to `/a` and below; set `Path` on the cookie to widen it. A cookie whose `Domain` the host may not set, such as an unrelated domain or a public suffix, is skipped. This and the other setters below also skip a cookie without a name, and whitespace around a name is not part of it.
 
 ```go title="Signature"
 func (cj *CookieJar) Set(uri *fasthttp.URI, cookies ...*fasthttp.Cookie)
