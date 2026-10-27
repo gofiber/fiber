@@ -640,6 +640,8 @@ app.Head("/users/:id", func(c fiber.Ctx) error {
 })
 ```
 
+The replacement covers the `GET` routes of the same app registered with the same [`Domain`](../api/app.md#domain) pattern, or with none. A `HEAD` route on another `Domain` pattern, or in a mounted sub-app, keeps its place in the route order instead: the generated route of a `GET` route registered before it runs first, so register or mount it ahead of that `GET` route when it has to answer first.
+
 To opt out globally, start the app with `DisableHeadAutoRegister`:
 
 ```go title="Disable automatic HEAD registration"

@@ -376,6 +376,80 @@ func Test_Domain_AutoHeadPerPattern(t *testing.T) {
 	require.Equal(t, "www", head("www.example.com").Header.Get("X-Served"))
 }
 
+// Test_Domain_AutoHeadAheadOfLaterHead pins that a HEAD route on another Domain
+// pattern, or in a mounted app, runs behind the automatic route of an earlier GET.
+func Test_Domain_AutoHeadAheadOfLaterHead(t *testing.T) {
+	t.Parallel()
+
+	handler := func(name string) Handler {
+		return func(c Ctx) error {
+			c.Set("X-Handler", name)
+			return nil
+		}
+	}
+
+	testCases := []struct {
+		register func(app *App)
+		want     map[string]string
+		name     string
+	}{
+		{
+			name: "Domain HEAD after GET",
+			register: func(app *App) {
+				app.Get("/x", handler("get"))
+				app.Domain("admin.example.com").Head("/x", handler("domain head"))
+			},
+			want: map[string]string{"admin.example.com": "get", "other.example.com": "get"},
+		},
+		{
+			name: "HEAD after Domain GET",
+			register: func(app *App) {
+				app.Domain("admin.example.com").Get("/x", handler("domain get"))
+				app.Head("/x", handler("head"))
+			},
+			want: map[string]string{"admin.example.com": "domain get", "other.example.com": "head"},
+		},
+		{
+			name: "mounted HEAD after GET",
+			register: func(app *App) {
+				app.Get("/x", handler("get"))
+				sub := New()
+				sub.Head("/x", handler("sub head"))
+				app.Use("/", sub)
+			},
+			want: map[string]string{"admin.example.com": "get"},
+		},
+		{
+			name: "Domain-mounted HEAD after GET",
+			register: func(app *App) {
+				app.Get("/x", handler("get"))
+				sub := New()
+				sub.Head("/x", handler("sub head"))
+				app.Domain("admin.example.com").Use("/", sub)
+			},
+			want: map[string]string{"admin.example.com": "get", "other.example.com": "get"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			tc.register(app)
+
+			for host, want := range tc.want {
+				req := httptest.NewRequest(MethodHead, "/x", http.NoBody)
+				req.Host = host
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, StatusOK, resp.StatusCode, host)
+				require.Equal(t, want, resp.Header.Get("X-Handler"), host)
+			}
+		})
+	}
+}
+
 func Test_Domain_All(t *testing.T) {
 	t.Parallel()
 
