@@ -925,10 +925,52 @@ func Test_CookieJar_DomainMatchBoundary(t *testing.T) {
 		{"EXAMPLE.com", "example.com", true},
 		{"sub.EXAMPLE.com", "example.COM", true},
 		{"evilEXAMPLE.com", "example.com", false},
+		// An IPv6 zone identifier is not a run of DNS labels.
+		{"::1%.example.com", "example.com", false},
+		{"fe80::1%25.example.com", "example.com", false},
+		{"::1%.example.com", "::1%.example.com", true},
+		{"::ffff:127.0.0.1%.example.com", "example.com", false},
+		// Nor is the tail of an IPv4 address.
+		{"192.0.2.1", "2.1", false},
+		{"192.0.2.1", "192.0.2.1", true},
 	}
 	for _, tc := range testCases {
 		require.Equal(t, tc.want, domainMatch(tc.host, tc.domain), "domainMatch(%q, %q)", tc.host, tc.domain)
 	}
+}
+
+// A zone ending in a site's domain must neither receive nor set its cookies.
+func Test_CookieJar_IPv6ZoneIsNotASubdomain(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+
+	site := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(site)
+	require.NoError(t, site.Parse(nil, []byte("http://example.com/")))
+
+	zoned := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(zoned)
+	require.NoError(t, zoned.Parse(nil, []byte("http://[::1%25.example.com]:8080/")))
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("sess")
+	c.SetValue("secret")
+	c.SetDomain("example.com")
+	c.SetPath("/")
+	jar.Set(site, c)
+
+	require.Empty(t, jar.Get(zoned))
+
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+	c.SetValue("evil")
+	resp.Header.SetCookie(c)
+	jar.parseCookiesFromResp(zoned.Host(), zoned.Path(), resp)
+
+	cookies := jar.Get(site)
+	require.Len(t, cookies, 1)
+	require.Equal(t, "secret", string(cookies[0].Value()))
 }
 
 // Test_CookieJar_DistinctPathsCoexist covers RFC 6265 Section 5.3 step 11:

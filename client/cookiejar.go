@@ -786,9 +786,14 @@ func domainMatch(host, domain string) bool {
 	if utils.EqualFold(host, domain) {
 		return true
 	}
-	return len(host) > len(domain) &&
-		host[len(host)-len(domain)-1] == '.' &&
-		utils.HasSuffixFold(host, domain)
+	if len(host) <= len(domain) ||
+		host[len(host)-len(domain)-1] != '.' ||
+		!utils.HasSuffixFold(host, domain) {
+		return false
+	}
+	// Only a host name has parent domains. isIPLiteral misses zoned addresses,
+	// whose free-text zone would make "::1%.example.com" a subdomain of example.com.
+	return utils.IndexAny2(host, ':', '%') == -1 && !isIPLiteral(host)
 }
 
 // acceptCookieDomain enforces RFC 6265 response-domain acceptance. Trailing-dot,
