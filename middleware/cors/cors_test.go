@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -213,6 +214,79 @@ func Test_CORS_Wildcard(t *testing.T) {
 	require.NotContains(t, string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin, "Vary header should not be set")
 	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	require.Equal(t, "X-Request-ID", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlExposeHeaders)))
+}
+
+// A cache may reuse the response stored for a request without Origin for one
+// with it, unless the two carry the same CORS headers or the stored one varies on Origin.
+func Test_CORS_ResponsesAreSafeToCache(t *testing.T) {
+	t.Parallel()
+
+	const origin = "http://localhost"
+	corsHeaders := []string{
+		fiber.HeaderAccessControlAllowOrigin,
+		fiber.HeaderAccessControlExposeHeaders,
+		fiber.HeaderAccessControlAllowMethods,
+	}
+
+	configs := []struct {
+		name   string
+		config Config
+	}{
+		{name: "wildcard", config: Config{ExposeHeaders: []string{"X-Request-ID"}}},
+		{name: "allow list", config: Config{AllowOrigins: []string{origin}, ExposeHeaders: []string{"X-Request-ID"}}},
+	}
+
+	requests := []struct {
+		name    string
+		method  string
+		headers [][2]string // the stored request lacks the last one
+	}{
+		{name: "simple request", method: fiber.MethodGet, headers: [][2]string{
+			{fiber.HeaderOrigin, origin},
+		}},
+		{name: "preflight after OPTIONS without Origin", method: fiber.MethodOptions, headers: [][2]string{
+			{fiber.HeaderAccessControlRequestMethod, fiber.MethodPut},
+			{fiber.HeaderOrigin, origin},
+		}},
+	}
+
+	for _, cfg := range configs {
+		for _, req := range requests {
+			t.Run(cfg.name+"/"+req.name, func(t *testing.T) {
+				t.Parallel()
+
+				app := fiber.New()
+				app.Use(New(cfg.config))
+				app.All("/", func(c fiber.Ctx) error {
+					return c.SendString("ok")
+				})
+				handler := app.Handler()
+
+				do := func(headers [][2]string) *fasthttp.RequestCtx {
+					ctx := &fasthttp.RequestCtx{}
+					ctx.Request.SetRequestURI("/")
+					ctx.Request.Header.SetMethod(req.method)
+					for _, h := range headers {
+						ctx.Request.Header.Set(h[0], h[1])
+					}
+					handler(ctx)
+					return ctx
+				}
+
+				last := len(req.headers) - 1
+				stored := do(req.headers[:last])
+				later := do(req.headers)
+
+				require.NotEmpty(t, string(later.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+				if slices.Contains(strings.Split(string(stored.Response.Header.Peek(fiber.HeaderVary)), ", "), req.headers[last][0]) {
+					return
+				}
+				for _, name := range corsHeaders {
+					require.Equal(t, string(later.Response.Header.Peek(name)), string(stored.Response.Header.Peek(name)), name)
+				}
+			})
+		}
+	}
 }
 
 // go test -run -v Test_CORS_Origin_AllowCredentials
@@ -628,7 +702,8 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			ctx.Request.SetRequestURI("https://example.com/")
 			handler(ctx)
 			require.Equal(t, 200, ctx.Response.StatusCode(), "Status code should be 200")
-			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should not be set")
+			require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "the wildcard is sent on every response")
+			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should not be set (non-preflight request)")
 		}
 	})
 
@@ -2043,6 +2118,11 @@ func Test_CORS_VaryDoesNotShareFieldsWithCustomCtx(t *testing.T) {
 	simple.Request.Header.SetMethod(fiber.MethodGet)
 	simple.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	handler(simple)
+
+	noOrigin := &fasthttp.RequestCtx{}
+	noOrigin.Request.SetRequestURI("/")
+	noOrigin.Request.Header.SetMethod(fiber.MethodOptions)
+	handler(noOrigin)
 
 	preflight := &fasthttp.RequestCtx{}
 	preflight.Request.SetRequestURI("/")

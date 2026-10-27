@@ -1612,6 +1612,8 @@ We've updated several fields from a single string (containing comma-separated va
 
 Additionally, the panic for an invalid `AllowOrigins` entry redacts the origin by default, and a `DisableValueRedaction` flag (default `false`) lets you reveal it when necessary.
 
+When all origins are allowed (the default), `Access-Control-Allow-Origin: *` is also sent on responses to requests without `Origin`, `OPTIONS` excepted, so a cache in front of the middleware cannot hand a response without it to a cross-origin request.
+
 ### Compression
 
 - Added support for `zstd` compression alongside `gzip`, `deflate`, and `brotli`.
