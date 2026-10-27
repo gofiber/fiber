@@ -28,7 +28,7 @@ func Test_Read(t *testing.T) {
 		"exact":  {stream: func() io.Reader { return strings.NewReader("hello") }, declared: 5, complete: true, body: "hello"},
 		"empty":  {stream: func() io.Reader { return strings.NewReader("") }, complete: true},
 		"short":  {stream: func() io.Reader { return strings.NewReader("hel") }, declared: 5, cut: true},
-		"longer": {stream: func() io.Reader { return strings.NewReader("hello, world") }, declared: 5},
+		"longer": {stream: func() io.Reader { return strings.NewReader("hello, world") }, declared: 5, cut: true},
 		"failed": {
 			stream:   func() io.Reader { return io.MultiReader(strings.NewReader("hel"), iotest.ErrReader(reset)) },
 			declared: 5, cut: true,

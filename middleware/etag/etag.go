@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
+	"github.com/gofiber/fiber/v3/internal/sizedstream"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 )
@@ -71,6 +72,10 @@ func New(config ...Config) fiber.Handler {
 
 		// Don't generate ETags for invalid responses
 		if c.Res().StatusCode() != fiber.StatusOK {
+			return nil
+		}
+		// Body keeps a read error as the body; a stream that fails or delivers other than it declares goes out untagged.
+		if c.Response().IsBodyStream() && !sizedstream.Read(c.Response(), c.Response().Header.ContentLength()) {
 			return nil
 		}
 		body := c.Response().Body()

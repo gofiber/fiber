@@ -1659,6 +1659,10 @@ The key alone identifies a request, so whoever sends a stored key receives the r
   Decryptor func(name, value, key string) (string, error)
   ```
 
+### ETag
+
+A streamed response that declares no length is sent without an `ETag` and no longer read to its end to hash it. A stream of known length is tagged only when it delivers that length without an error; a failed read used to be hashed and sent as the body of a `200` with an `ETag`, which `cache` or `idempotency` registered before it then stored.
+
 ### Favicon
 
 The favicon middleware now caps cached favicon assets with a configurable `MaxBytes` limit (default `1 MiB`) and uses a limited reader to guard against oversized files when loading from disk.

@@ -2881,32 +2881,42 @@ func Test_Cache_SizedStreamIsStoredOnlyWhole(t *testing.T) {
 			stream:  func() io.Reader { return strings.NewReader(strings.Repeat("x", 1<<20)) },
 		},
 	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			app := fiber.New()
-			app.Use(New(Config{Expiration: time.Hour}))
+		// etag reads the stream as well, inside the cache or over the one the cache sends on.
+		for _, chain := range []string{"cache", "cache, etag", "etag, cache"} {
+			t.Run(name+"/"+chain, func(t *testing.T) {
+				t.Parallel()
+				app := fiber.New()
+				for mw := range strings.SplitSeq(chain, ", ") {
+					if mw == "etag" {
+						app.Use(etag.New())
+					} else {
+						app.Use(New(Config{Expiration: time.Hour}))
+					}
+				}
 
-			var calls int
-			var read strings.Builder
-			app.Get("/", func(c fiber.Ctx) error {
-				calls++
-				read.Reset()
-				return c.SendStream(io.TeeReader(tc.stream(), &read), 10)
+				var calls int
+				var read strings.Builder
+				app.Get("/", func(c fiber.Ctx) error {
+					calls++
+					read.Reset()
+					return c.SendStream(io.TeeReader(tc.stream(), &read), 10)
+				})
+
+				for range 2 {
+					fctx := &fasthttp.RequestCtx{}
+					fctx.Request.Header.SetMethod(fiber.MethodGet)
+					fctx.Request.SetRequestURI("/")
+					app.Handler()(fctx)
+
+					require.Equal(t, cacheUnreachable, string(fctx.Response.Header.Peek("X-Cache")))
+					require.True(t, fctx.Response.IsBodyStream())
+					require.Equal(t, 10, fctx.Response.Header.ContentLength())
+					require.Empty(t, fctx.Response.Header.Peek(fiber.HeaderETag))
+					require.LessOrEqual(t, read.Len(), tc.maxRead)
+				}
+				require.Equal(t, 2, calls)
 			})
-
-			for range 2 {
-				fctx := &fasthttp.RequestCtx{}
-				fctx.Request.Header.SetMethod(fiber.MethodGet)
-				fctx.Request.SetRequestURI("/")
-				app.Handler()(fctx)
-
-				require.Equal(t, cacheUnreachable, string(fctx.Response.Header.Peek("X-Cache")))
-				require.True(t, fctx.Response.IsBodyStream())
-				require.Equal(t, 10, fctx.Response.Header.ContentLength())
-				require.LessOrEqual(t, read.Len(), tc.maxRead)
-			}
-			require.Equal(t, 2, calls)
-		})
+		}
 	}
 }
 

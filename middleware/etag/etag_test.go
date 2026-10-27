@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -122,6 +124,48 @@ func Test_ETag_StreamOfUnknownLength(t *testing.T) {
 				return
 			}
 			require.Equal(t, string(Generate([]byte("hello"))), etag)
+		})
+	}
+}
+
+// Body keeps a read error as the body, and an outer cache would store it under this ETag.
+func Test_ETag_SizedStreamIsTaggedOnlyWhole(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		stream  func() io.Reader
+		maxRead int
+	}{
+		"fails": {
+			maxRead: 4,
+			stream: func() io.Reader {
+				return io.MultiReader(strings.NewReader("part"), iotest.ErrReader(errors.New("upstream reset")))
+			},
+		},
+		"longer than declared": {
+			maxRead: 64 << 10, // short of the whole MiB
+			stream:  func() io.Reader { return strings.NewReader(strings.Repeat("x", 1<<20)) },
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New())
+
+			var read strings.Builder
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendStream(io.TeeReader(tc.stream(), &read), 10)
+			})
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(fiber.MethodGet)
+			fctx.Request.SetRequestURI("/")
+			app.Handler()(fctx)
+
+			require.Empty(t, fctx.Response.Header.Peek(fiber.HeaderETag))
+			require.True(t, fctx.Response.IsBodyStream())
+			require.Equal(t, 10, fctx.Response.Header.ContentLength())
+			require.LessOrEqual(t, read.Len(), tc.maxRead)
 		})
 	}
 }

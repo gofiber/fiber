@@ -18,7 +18,7 @@ var errTooLong = errors.New("sizedstream: body stream runs past its declared len
 // maxPresized bounds the declared length a buffer is sized for before anything arrives.
 const maxPresized = 1 << 20
 
-// buffer keeps the first limit bytes written to it and refuses the rest.
+// buffer keeps the first limit bytes written to it, and one more to show a stream runs longer.
 type buffer struct {
 	bb    *bytebufferpool.ByteBuffer
 	limit int
@@ -31,8 +31,8 @@ func (w *buffer) WriteString(s string) (int, error) { return keep(w, s) }
 
 func keep[T []byte | string](w *buffer, p T) (int, error) {
 	if room := w.limit - len(w.bb.B); len(p) > room {
-		w.bb.B = append(w.bb.B, p[:room]...)
-		return room, errTooLong
+		w.bb.B = append(w.bb.B, p[:room+1]...)
+		return room + 1, errTooLong
 	}
 	w.bb.B = append(w.bb.B, p...)
 	return len(p), nil
@@ -48,13 +48,12 @@ func (w *buffer) ReadFrom(r io.Reader) (int64, error) {
 		}
 		p := b[len(b):cap(b)]
 		if room := w.limit - len(b); len(p) > room {
-			p = p[:room+1] // the byte past the limit tells a stream that runs longer from one that ends there
+			p = p[:room+1]
 		}
 		m, err := r.Read(p)
 		w.bb.B = b[:len(b)+m]
 		if len(w.bb.B) > w.limit {
-			w.bb.B = w.bb.B[:w.limit]
-			return int64(w.limit - start), errTooLong
+			return int64(len(w.bb.B) - start), errTooLong
 		}
 		if errors.Is(err, io.EOF) {
 			return int64(len(w.bb.B) - start), nil
@@ -95,7 +94,7 @@ func Read(resp *fasthttp.Response, n int) bool {
 		resp.SetBody(w.bb.B)
 		return true
 	}
-	// Sent on as far as it arrived, so a client still sees a stream that fell short cut off.
+	// Sent on as it arrived, so a stream that fell short or ran longer still does for the client and an outer reader.
 	resp.SetBodyStream(bytes.NewReader(bytes.Clone(w.bb.B)), n)
 	return false
 }
