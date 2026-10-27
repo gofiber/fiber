@@ -5021,6 +5021,107 @@ func Test_Router_MethodOverride_ContinuesInNewMethodTree(t *testing.T) {
 	})
 }
 
+// Test_Router_MethodOverride_UseAfterMethodRoute pins that a single-method route
+// between two Use registrations keeps them apart in every method's stack.
+func Test_Router_MethodOverride_UseAfterMethodRoute(t *testing.T) {
+	t.Parallel()
+
+	override := func(c Ctx) error {
+		if m := c.Get("X-HTTP-Method-Override"); m != "" {
+			c.Method(m)
+		}
+		return c.Next()
+	}
+	guard := func(c Ctx) error {
+		if c.Get(HeaderAuthorization) != "Bearer letmein" {
+			return c.SendStatus(StatusUnauthorized)
+		}
+		return c.Next()
+	}
+	secret := func(c Ctx) error { return c.SendString("secret") }
+	login := func(c Ctx) error { return c.SendString("login") }
+
+	layouts := []struct {
+		build func(Router)
+		name  string
+	}{
+		{name: "guard after override", build: func(r Router) {
+			r.Use(override)
+			r.Post("/login", login)
+			r.Use(guard)
+			r.Get("/admin/secret", secret)
+		}},
+		{name: "override after use", build: func(r Router) {
+			r.Use(func(c Ctx) error { return c.Next() })
+			r.Post("/login", login)
+			r.Use(override)
+			r.Use("/admin", guard)
+			r.Get("/admin/secret", secret)
+		}},
+	}
+	apps := []struct {
+		newApp func(build func(Router)) (*App, string)
+		name   string
+	}{
+		{name: "default ctx", newApp: func(build func(Router)) (*App, string) {
+			app := New()
+			build(app)
+			return app, ""
+		}},
+		{name: "custom ctx", newApp: func(build func(Router)) (*App, string) {
+			app := NewWithCustomCtx(func(app *App) CustomCtx {
+				return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+			})
+			build(app)
+			return app, ""
+		}},
+		{name: "group", newApp: func(build func(Router)) (*App, string) {
+			app := New()
+			build(app.Group("/v1"))
+			return app, "/v1"
+		}},
+		{name: "mounted sub-app", newApp: func(build func(Router)) (*App, string) {
+			sub := New()
+			build(sub)
+			app := New()
+			app.Use("/api", sub)
+			return app, "/api"
+		}},
+	}
+
+	for _, layout := range layouts {
+		for _, tc := range apps {
+			t.Run(layout.name+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				app, prefix := tc.newApp(layout.build)
+				target := prefix + "/admin/secret"
+
+				resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, StatusUnauthorized, resp.StatusCode, "GET")
+
+				req := httptest.NewRequest(MethodPost, target, http.NoBody)
+				req.Header.Set("X-HTTP-Method-Override", MethodGet)
+				resp, err = app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, StatusUnauthorized, resp.StatusCode, "POST overridden to GET")
+
+				req = httptest.NewRequest(MethodPost, target, http.NoBody)
+				req.Header.Set("X-HTTP-Method-Override", MethodGet)
+				req.Header.Set(HeaderAuthorization, "Bearer letmein")
+				resp, err = app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, StatusOK, resp.StatusCode, "POST overridden to GET with credentials")
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.NoError(t, resp.Body.Close())
+				require.Equal(t, "secret", string(body))
+			})
+		}
+	}
+}
+
 func Test_Router_EscapedStar_IsLiteral(t *testing.T) {
 	t.Parallel()
 

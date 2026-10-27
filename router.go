@@ -1321,20 +1321,46 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 
 		// Middleware route matches all HTTP methods
 		if isUse {
+			// Merge in every method's stack or in none, so the copies keep one
+			// layout for routeIndexInTree when a handler switches method.
+			merge := app.useMergesInEveryStack(&route)
 			// Add route to all HTTP methods stack
 			for _, m := range app.config.RequestMethods {
 				// Create a route copy to avoid duplicates during compression
 				r := route
-				app.addRoute(m, &r)
+				app.addRoute(m, &r, merge)
 			}
 		} else {
 			// Add route to stack
-			app.addRoute(method, &route)
+			app.addRoute(method, &route, true)
 		}
 	}
 }
 
-func (app *App) addRoute(method string, route *Route) {
+// mergesIntoLastLocked reports whether route merges into the last route of
+// stack m. The caller holds app.mutex.
+func (app *App) mergesIntoLastLocked(m int, route *Route) bool {
+	l := len(app.stack[m])
+	return l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use && !route.mount && !app.stack[m][l-1].mount
+}
+
+// useMergesInEveryStack reports whether a Use registration merges into the last
+// route of every method's stack; a single-method route in between stops that.
+func (app *App) useMergesInEveryStack(route *Route) bool {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	for m := range app.config.RequestMethods {
+		if !app.mergesIntoLastLocked(m, route) {
+			return false
+		}
+	}
+	return true
+}
+
+// addRoute files route under method, merging it into the last route there
+// when merge allows it.
+func (app *App) addRoute(method string, route *Route, merge bool) { //nolint:revive // flag-parameter: register decides it once for every method of a Use
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
@@ -1346,9 +1372,8 @@ func (app *App) addRoute(method string, route *Route) {
 	}
 
 	// prevent identically route registration
-	l := len(app.stack[m])
-	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use && !route.mount && !app.stack[m][l-1].mount {
-		preRoute := app.stack[m][l-1]
+	if merge && app.mergesIntoLastLocked(m, route) {
+		preRoute := app.stack[m][len(app.stack[m])-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
 		// The merged route now carries this registration's handlers, so Name has
 		// to reach it — and the routes the same Add merged into under the other
