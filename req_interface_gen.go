@@ -38,6 +38,8 @@ type Req interface {
 	BodyRaw() []byte
 	// tryDecodeBodyInOrder undoes the codings last-applied first and never replaces the request body.
 	tryDecodeBodyInOrder(encodings []string) ([]byte, error)
+	// decodeContentCoding undoes one content coding of src's body within BodyLimit.
+	decodeContentCoding(src *fasthttp.Request, encoding string) ([]byte, error)
 	// Body contains the raw body submitted in a POST request.
 	// This method will decompress the body if the 'Content-Encoding' header is provided.
 	// It returns the original (or decompressed) body data which is valid only within the handler.

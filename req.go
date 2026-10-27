@@ -124,50 +124,51 @@ func (r *DefaultReq) tryDecodeBodyInOrder(encodings []string) ([]byte, error) {
 	}
 
 	request := &r.c.fasthttp.Request
-	maxBodySize := r.c.app.config.BodyLimit
 	// The decoders bound what they write, not the stream they read.
-	if err := bodystream.Buffer(request, maxBodySize); err != nil {
+	if err := bodystream.Buffer(request, r.c.app.config.BodyLimit); err != nil {
 		return nil, err
 	}
-	if len(encodings) > 1 {
-		// Replacing the request body would pool its buffer while Body and BodyRaw
-		// results still alias it (ReduceMemoryUsage, adaptor).
-		scratch := fasthttp.AcquireRequest()
-		defer fasthttp.ReleaseRequest(scratch)
-		scratch.SetBodyRaw(request.Body())
-		request = scratch
+	last := len(encodings) - 1
+	body, err := r.decodeContentCoding(request, encodings[last])
+	if err != nil {
+		return nil, err
+	}
+	if last == 0 {
+		return body, nil
 	}
 
-	var body []byte
-	for i, encoding := range slices.Backward(encodings) {
-		var err error
-		switch encoding {
-		case StrGzip, "x-gzip":
-			body, err = request.BodyGunzipWithLimit(maxBodySize)
-		case StrBr, StrBrotli:
-			body, err = request.BodyUnbrotliWithLimit(maxBodySize)
-		case StrDeflate:
-			body, err = request.BodyInflateWithLimit(maxBodySize)
-		case StrZstd:
-			body, err = request.BodyUnzstdWithLimit(maxBodySize)
-		case StrIdentity:
-			body = request.Body()
-		case StrCompress, "x-compress":
-			return nil, ErrNotImplemented
-		default:
-			return nil, ErrUnsupportedMediaType
-		}
-
-		if err != nil {
+	// Replacing the request body would pool its buffer while Body and BodyRaw
+	// results still alias it (ReduceMemoryUsage, adaptor).
+	scratch := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(scratch)
+	for _, encoding := range slices.Backward(encodings[:last]) {
+		scratch.SetBodyRaw(body)
+		if body, err = r.decodeContentCoding(scratch, encoding); err != nil {
 			return nil, err
 		}
-
-		if i > 0 {
-			request.SetBodyRaw(body)
-		}
 	}
-
 	return body, nil
+}
+
+// decodeContentCoding undoes one content coding of src's body within BodyLimit.
+func (r *DefaultReq) decodeContentCoding(src *fasthttp.Request, encoding string) ([]byte, error) {
+	maxBodySize := r.c.app.config.BodyLimit
+	switch encoding {
+	case StrGzip, "x-gzip":
+		return src.BodyGunzipWithLimit(maxBodySize)
+	case StrBr, StrBrotli:
+		return src.BodyUnbrotliWithLimit(maxBodySize)
+	case StrDeflate:
+		return src.BodyInflateWithLimit(maxBodySize)
+	case StrZstd:
+		return src.BodyUnzstdWithLimit(maxBodySize)
+	case StrIdentity:
+		return src.Body(), nil
+	case StrCompress, "x-compress":
+		return nil, ErrNotImplemented
+	default:
+		return nil, ErrUnsupportedMediaType
+	}
 }
 
 // Body contains the raw body submitted in a POST request.

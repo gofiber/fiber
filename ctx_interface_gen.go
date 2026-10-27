@@ -308,6 +308,8 @@ type Ctx interface {
 	BodyRaw() []byte
 	// tryDecodeBodyInOrder undoes the codings last-applied first and never replaces the request body.
 	tryDecodeBodyInOrder(encodings []string) ([]byte, error)
+	// decodeContentCoding undoes one content coding of src's body within BodyLimit.
+	decodeContentCoding(src *fasthttp.Request, encoding string) ([]byte, error)
 	// BodyStream returns the request body as a stream, non-nil only when
 	// Config.StreamRequestBody is enabled and the body is not already buffered.
 	// Reading it consumes the body, so a later Body call will not see it.
