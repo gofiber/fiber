@@ -1,7 +1,6 @@
 package mediatype
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
@@ -32,6 +31,12 @@ func Test_NormalizeRequestContentType(t *testing.T) {
 		{"tab and space after semicolon", "Text/Plain;\t CHARSET=UTF-8", "text/plain;\t charset=UTF-8"},
 		{"empty parameter between semicolons", "Text/Plain;; CHARSET=UTF-8", "text/plain;; charset=UTF-8"},
 		{"quoted value holding a semicolon", `Multipart/Form-Data; Boundary="a;B"; Name=X`, `multipart/form-data; boundary="a;B"; name=X`},
+		{"space before quoted value", `Text/Plain; X= "A;B"; Y=Z`, `text/plain; x= "A;B"; y=Z`},
+		{"tab before quoted value", "Text/Plain; X=\t\"A;B\"; Y=Z", "text/plain; x=\t\"A;B\"; y=Z"},
+		{"later equals does not open quotes", `Text/Plain; X=ab="CD; Y=Z`, `text/plain; x=ab="CD; y=Z`},
+		{"quote in bare value", `Text/Plain; X=ab"CD; Y=Z`, `text/plain; x=ab"CD; y=Z`},
+		{"terminal quoted value", `Text/Plain; X="A;B"`, `text/plain; x="A;B"`},
+		{"whitespace after quoted value", "Text/Plain; X=\"A;B\" \t; Y=Z", "text/plain; x=\"A;B\" \t; y=Z"},
 		{"parameter with no value", "Text/Plain; Flag; Charset=x", "text/plain; flag; charset=x"},
 		{"trailing semicolon", "Text/Plain;", "text/plain;"},
 		{"empty", "", ""},
@@ -135,6 +140,21 @@ func Test_NormalizeRequestContentType_QuotedPair(t *testing.T) {
 			want: `multipart/form-data; x="ab\`,
 		},
 		{
+			name: "space before quoted decoy",
+			in:   `Multipart/Form-Data; X= "; BOUNDARY=bogus"; BOUNDARY=Real`,
+			want: `multipart/form-data; x= "; BOUNDARY=bogus"; boundary=Real`,
+		},
+		{
+			name: "whitespace before escaped quote",
+			in:   "Multipart/Form-Data; X= \t\"\\\"; BOUNDARY=bogus\"; BOUNDARY=Real",
+			want: "multipart/form-data; x= \t\"\\\"; BOUNDARY=bogus\"; boundary=Real",
+		},
+		{
+			name: "whitespace before unterminated quote",
+			in:   "Multipart/Form-Data; X=\t\"ab; BOUNDARY=bogus",
+			want: "multipart/form-data; x=\t\"ab; BOUNDARY=bogus",
+		},
+		{
 			name: "escaped backslash still closes the value",
 			in:   `Multipart/Form-Data; X="a\\"; BOUNDARY=Real`,
 			want: `multipart/form-data; x="a\\"; boundary=Real`,
@@ -203,10 +223,20 @@ func Test_Params(t *testing.T) {
 		{name: "odd backslashes before quote", in: `text/plain; a="x\\\";y=z"; b=2`, want: []string{"a", `"x\\\";y=z"`, "b", "2"}},
 		{name: "escaped quote before closing quote", in: `text/plain; a="x\""; b=2`, want: []string{"a", `"x\""`, "b", "2"}},
 		{name: "multiple escaped quotes", in: `text/plain; a="x\";\"y"; b=2`, want: []string{"a", `"x\";\"y"`, "b", "2"}},
+		{name: "escaped quotes around semicolon", in: `text/plain; a="x\";\";c=bad"; c=ok`, want: []string{"a", `"x\";\";c=bad"`, "c", "ok"}},
+		{name: "quote after closing quote stays bare", in: `text/plain; a="x""; c=bad"; c=ok`, want: []string{"a", `"x""`, "c", `bad"`, "c", "ok"}},
+		{name: "escaped quote at start of value", in: `text/plain; a="\";c=bad"; c=ok`, want: []string{"a", `"\";c=bad"`, "c", "ok"}},
+		{name: "semicolon at start of quoted value", in: `text/plain; a="; c=bad"; c=ok`, want: []string{"a", `"; c=bad"`, "c", "ok"}},
 		{name: "unterminated after escaped quote", in: `text/plain; a="x\"; b=2`, want: []string{"a", `"x\"; b=2`}},
 		{name: "unterminated after escaped quote and backslash", in: `text/plain; a="x\"; end\`, want: []string{"a", `"x\"; end\`}},
 		{name: "quote after whitespace opens", in: `text/plain; a= "x;y"; b=2`, want: []string{"a", `"x;y"`, "b", "2"}},
 		{name: "stray quote in bare value", in: `text/plain; a=b"; c=bad"; d=1`, want: []string{"a", `b"`, "c", `bad"`, "d", "1"}},
+		{name: "quote in name before quoted value", in: `text/plain; "a=";b=c"; d=1`, want: []string{`"a`, `";b=c"`, "d", "1"}},
+		{name: "quote without equals does not open", in: `text/plain; "a; b=2`, want: []string{"b", "2"}},
+		{name: "later equals does not open quotes", in: `text/plain; a=b="; c=bad"; c=ok`, want: []string{"a", `b="`, "c", `bad"`, "c", "ok"}},
+		{name: "later equals after closed quote", in: `text/plain; a="x"="; c=bad"; c=ok`, want: []string{"a", `"x"="`, "c", `bad"`, "c", "ok"}},
+		{name: "later equals after whitespace", in: `text/plain; a= = "; c=bad"; c=ok`, want: []string{"a", `= "`, "c", `bad"`, "c", "ok"}},
+		{name: "consecutive empty parameters", in: "text/plain;;;;a=1;;;b=2;;", want: []string{"a", "1", "b", "2"}},
 		{name: "unterminated quote", in: `text/plain; a="x; b=2`, want: []string{"a", `"x; b=2`}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -284,16 +314,33 @@ func Benchmark_StripParams(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_Params -benchmem -count=4
 func Benchmark_Params(b *testing.B) {
+	ct := []byte(`multipart/form-data; boundary="a;b"; charset=utf-8`)
+	var n int
+	b.ReportAllocs()
+	for b.Loop() {
+		for name, value := range Params(ct) {
+			n += len(name) + len(value)
+		}
+	}
+	require.Equal(b, 25*b.N, n)
+}
+
+// go test -v -run=^$ -bench=Benchmark_ParamsInputs -benchmem -count=4
+func Benchmark_ParamsInputs(b *testing.B) {
 	for _, bench := range []struct {
 		name string
 		ct   []byte
+		want int
 	}{
-		{name: "no_parameters", ct: []byte("application/json")},
-		{name: "charset", ct: []byte("application/json; charset=utf-8")},
-		{name: "charset_last", ct: []byte(`multipart/form-data; boundary="a;b"; charset=utf-8`)},
-		{name: "many_bare", ct: []byte("text/plain; a=1; b=2; c=3; d=4; charset=utf-8")},
-		{name: "long_quoted", ct: []byte(`text/plain; title="` + strings.Repeat("a", 1024) + `"; charset=utf-8`)},
-		{name: "escaped_quotes", ct: []byte(`text/plain; title="` + strings.Repeat(`\"`, 512) + `"; charset=utf-8`)},
+		{name: "no_parameters", ct: []byte("application/json"), want: 0},
+		{name: "charset", ct: []byte("application/json; charset=utf-8"), want: 12},
+		{name: "charset_last", ct: []byte(`multipart/form-data; boundary="a;b"; charset=utf-8`), want: 25},
+		{name: "many_bare", ct: []byte("text/plain; a=1; b=2; c=3; d=4; charset=utf-8"), want: 20},
+		{name: "long_quoted", ct: []byte(`text/plain; title="` + strings.Repeat("a", 1024) + `"; charset=utf-8`), want: 1043},
+		{name: "escaped_quotes", ct: []byte(`text/plain; title="` + strings.Repeat(`\"`, 512) + `"; charset=utf-8`), want: 1043},
+		{name: "empty_parameters", ct: []byte("text/plain;" + strings.Repeat(";", 4000)), want: 0},
+		{name: "empty_parameters_before_charset", ct: []byte("text/plain;;;charset=utf-8"), want: 12},
+		{name: "missing_equals", ct: []byte("text/plain; flag"), want: 0},
 	} {
 		b.Run(bench.name, func(b *testing.B) {
 			var n int
@@ -303,9 +350,31 @@ func Benchmark_Params(b *testing.B) {
 					n += len(name) + len(value)
 				}
 			}
-			if bytes.IndexByte(bench.ct, ';') >= 0 {
-				require.Positive(b, n)
+			require.Equal(b, bench.want*b.N, n)
+		})
+	}
+}
+
+func Benchmark_NormalizeRequestContentType(b *testing.B) {
+	for _, bench := range []struct {
+		name string
+		ct   string
+	}{
+		{name: "lowercase", ct: "multipart/form-data; boundary=lower"},
+		{name: "uppercase_value", ct: "multipart/form-data; boundary=Real"},
+		{name: "quoted_value", ct: `multipart/form-data; boundary="Real"`},
+		{name: "long_quoted", ct: `multipart/form-data; boundary="` + strings.Repeat("A", 70) + `"`},
+		{name: "escaped_quotes", ct: `multipart/form-data; x="A` + strings.Repeat(`\"`, 512) + `"; boundary=Real`},
+	} {
+		b.Run(bench.name, func(b *testing.B) {
+			var h fasthttp.RequestHeader
+			h.SetContentType(bench.ct)
+			var got []byte
+			b.ReportAllocs()
+			for b.Loop() {
+				got = NormalizeRequestContentType(&h)
 			}
+			require.Equal(b, bench.ct, string(got))
 		})
 	}
 }

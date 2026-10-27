@@ -56,17 +56,17 @@ func NormalizeRequestContentType(h *fasthttp.RequestHeader) []byte {
 		// what makes it the one fasthttp picks: on
 		// `X="\"; BOUNDARY=bogus"; BOUNDARY=Real` it took bogus over Real.
 		i++ // step over the '='
-		if i < len(ct) && ct[i] == '"' {
+		// Params tolerates SP/HTAB before a value; preserve the same quoted
+		// region here even though RFC 9110 forbids whitespace around '='.
+		for i < len(ct) && (ct[i] == ' ' || ct[i] == '\t') {
 			i++
-			for i < len(ct) && ct[i] != '"' {
-				if ct[i] == '\\' && i+1 < len(ct) {
-					i++ // the escaped byte cannot close the string
-				}
-				i++
+		}
+		if i < len(ct) && ct[i] == '"' {
+			end := quotedParamEnd(ct, i)
+			if end < 0 {
+				return ct
 			}
-			if i < len(ct) {
-				i++ // closing quote
-			}
+			i = end
 		}
 		for i < len(ct) && ct[i] != ';' {
 			i++
@@ -130,13 +130,33 @@ func IsToken(b []byte) bool {
 // Params yields the trimmed name and value of each parameter in ct that has an "=".
 func Params(ct []byte) iter.Seq2[[]byte, []byte] {
 	return func(yield func(name, value []byte) bool) {
-		_, params, ok := utils.CutByte(ct, ';')
-		if !ok {
+		// CutByte and bytes.Cut do not inline here; keep the entry scan inline.
+		params := ct
+		semi := bytes.IndexByte(params, ';')
+		if semi < 0 {
 			return
 		}
+		params = params[semi+1:]
 		for len(params) > 0 {
+			if params[0] == ';' {
+				params = params[1:]
+				continue
+			}
 			param := params
-			if end := paramEnd(params); end >= 0 {
+			end := bytes.IndexByte(params, ';')
+			if end > 0 && bytes.IndexByte(params[:end], '"') >= 0 {
+				eq := bytes.IndexByte(params[:end], '=')
+				open := eq + 1
+				for open < end && (params[open] == ' ' || params[open] == '\t') {
+					open++
+				}
+				// Only the first '=' starts a value; later '=' and stray quotes
+				// in bare values must not hide subsequent parameters.
+				if eq >= 0 && open < end && params[open] == '"' {
+					end = quotedParamEnd(params, open)
+				}
+			}
+			if end >= 0 {
 				param, params = params[:end], params[end+1:]
 			} else {
 				params = nil
@@ -152,54 +172,43 @@ func Params(ct []byte) iter.Seq2[[]byte, []byte] {
 	}
 }
 
-// paramEnd returns the index of the ';' that ends the first parameter, or -1.
-func paramEnd(params []byte) int {
-	// A quote before the first ';' may enclose it in a quoted-string.
-	end := bytes.IndexByte(params, ';')
-	if end < 0 || bytes.IndexByte(params[:end], '"') < 0 {
+// quotedParamEnd returns the first ';' after the quoted value opened at b[open],
+// or -1 if the parameter consumes the rest of b.
+func quotedParamEnd(b []byte, open int) int {
+	end := bytes.IndexByte(b[open+1:], '"')
+	if end < 0 {
+		return -1
+	}
+	end += open + 1
+	// A quote closes the string only after an even run of backslashes.
+	escaped := false
+	for j := end - 1; j > open && b[j] == '\\'; j-- {
+		escaped = !escaped
+	}
+	if escaped {
+		// Avoid repeated IndexByte calls for escape-heavy values.
+		for end++; end < len(b); end++ {
+			if b[end] == '\\' {
+				end++
+				continue
+			}
+			if b[end] == '"' {
+				break
+			}
+		}
+		if end >= len(b) {
+			return -1
+		}
+	}
+	end++
+	if end == len(b) {
+		return -1
+	}
+	if b[end] == ';' {
 		return end
 	}
-
-	// A DQUOTE opens a quoted-string only at value position, so a stray quote in
-	// a bare value cannot swallow the parameters after it.
-	expectValue := false
-	for i := 0; i < len(params); i++ {
-		switch c := params[i]; {
-		case c == '=':
-			expectValue = true
-		case c == '"' && expectValue:
-			end := bytes.IndexByte(params[i+1:], '"')
-			if end < 0 {
-				return -1
-			}
-			end += i + 1
-			// A quote closes the string only after an even run of backslashes.
-			escaped := false
-			for j := end - 1; j > i && params[j] == '\\'; j-- {
-				escaped = !escaped
-			}
-			if escaped {
-				// Avoid repeated IndexByte calls for escape-heavy values.
-				for end++; end < len(params); end++ {
-					if params[end] == '\\' {
-						end++
-						continue
-					}
-					if params[end] == '"' {
-						break
-					}
-				}
-				if end >= len(params) {
-					return -1
-				}
-			}
-			i = end
-			expectValue = false
-		case c == ';':
-			return i
-		case c != ' ' && c != '\t':
-			expectValue = false
-		}
+	if semi := bytes.IndexByte(b[end:], ';'); semi >= 0 {
+		return end + semi
 	}
 	return -1
 }
