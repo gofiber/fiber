@@ -3763,6 +3763,74 @@ func Test_Domain_UseMountNestedPrefixConstraint(t *testing.T) {
 	}
 }
 
+// Test_Domain_UseMountPrefixAsWritten verifies that a domain mount is recorded
+// with its prefix as written, so its config answers for the paths its routes match.
+func Test_Domain_UseMountPrefixAsWritten(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		prefix  string
+		covered string
+		outside string
+	}{
+		{prefix: `/v1\:internal`, covered: "/v1:internal", outside: "/v1foo"},
+		{prefix: `/a\*`, covered: "/a*", outside: "/a/b"},
+		{prefix: "/even/:n<isEven>", covered: "/even/4", outside: "/even/3"},
+		{prefix: "/code/:code<regex(^[A-Z]{2}$)>", covered: "/code/US", outside: "/code/us"},
+		{prefix: `/num/:n<regex(^\d+$)>`, covered: "/num/12", outside: "/num/dd"},
+	}
+
+	mounts := map[string]func(app *App, prefix string, child *App){
+		"domain": func(app *App, prefix string, child *App) {
+			app.Domain("example.com").Use(prefix, child)
+		},
+		"domain in app": func(app *App, prefix string, child *App) {
+			mid := New()
+			mid.RegisterCustomConstraint(&evenConstraint{})
+			mid.Domain("example.com").Use(prefix, child)
+			app.Use("/", mid)
+		},
+		"domain in domain": func(app *App, prefix string, child *App) {
+			mid := New()
+			mid.RegisterCustomConstraint(&evenConstraint{})
+			mid.Domain("example.com").Use(prefix, child)
+			app.Domain("example.com").Use("/", mid)
+		},
+	}
+
+	for name, mount := range mounts {
+		for _, tc := range testCases {
+			t.Run(name+" "+tc.prefix, func(t *testing.T) {
+				t.Parallel()
+
+				child := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+					return c.Status(607).SendString("child")
+				}})
+				child.Get("/boom", func(_ Ctx) error {
+					return errors.New("boom")
+				})
+
+				app := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+					return c.Status(608).SendString("root")
+				}})
+				app.RegisterCustomConstraint(&evenConstraint{})
+				mount(app, tc.prefix, child)
+
+				for path, want := range map[string]int{
+					tc.covered + "/boom": 607,
+					tc.covered + "/nope": 607,
+					tc.outside + "/boom": 608,
+					tc.outside + "/nope": 608,
+				} {
+					resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, want, resp.StatusCode, path)
+				}
+			})
+		}
+	}
+}
+
 // Test_Domain_UseMountAncestryIsStable verifies that a mount reached both
 // through its own parent and as an entry of the app above it keeps the ancestry
 // of the former, whichever the unordered walk happens to record first.

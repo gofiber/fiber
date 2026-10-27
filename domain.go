@@ -633,7 +633,7 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 						mounted = make(map[*Group][][]*Route)
 					}
 					mounted[group] = d.domainRoutes(dst, group.app, domainClone{
-						prefix:       getGroupPath(walk.prefix, source.route.path),
+						prefix:       getGroupPath(walk.prefix, source.route.Path),
 						chain:        append(walk.chain, src),
 						skipAutoHead: skipAutoHead,
 					})
