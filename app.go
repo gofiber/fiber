@@ -1756,6 +1756,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	var (
 		errNetOP    *net.OpError
 		netErr      net.Error
+		timeoutErr  interface{ Timeout() bool }
 		brokenChunk fasthttp.ErrBrokenChunk
 	)
 
@@ -1791,7 +1792,9 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	case strings.HasPrefix(innermostMessage(err), unsupportedTransferCodingMarker):
 		// An unknown transfer coding is a 501, not a 400 (RFC 9112 §6.1).
 		err = ErrNotImplemented
-	case errors.As(err, &brokenChunk) && strings.HasSuffix(brokenChunk.Error(), "timeout"):
+	case errors.As(err, &timeoutErr) && timeoutErr.Timeout(),
+		errors.As(err, &brokenChunk) && strings.HasSuffix(brokenChunk.Error(), "timeout"):
+		// fasthttp.ErrTimeout, as a stalled trailer returns it, is no net.Error;
 		// ErrBrokenChunk does not unwrap to the read error it ends with.
 		err = ErrRequestTimeout
 	default:

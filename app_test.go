@@ -4508,8 +4508,17 @@ func Test_App_serverErrorHandler_ChunkReadTimeout(t *testing.T) {
 	app.Post("/", func(c Ctx) error { return c.SendString("posted") })
 	ln := startRawServer(t, app)
 
-	responses, _ := rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n5\r", 1)
-	require.Equal(t, StatusRequestTimeout, responses[0].status)
+	for name, stalled := range map[string]string{
+		"in chunk data":           "5\r",
+		"before the trailer ends": "0\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			responses, _ := rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n"+stalled, 1)
+			require.Equal(t, StatusRequestTimeout, responses[0].status)
+		})
+	}
 }
 
 // RFC 9112 §6.1: a request with both Content-Length and Transfer-Encoding is
