@@ -4443,6 +4443,50 @@ func Test_App_TransferEncoding_SecureErrorLogMessage(t *testing.T) {
 	require.Equal(t, StatusOK, responses[0].status)
 }
 
+// The status follows what the parser reported, never request bytes its error quotes.
+func Test_App_serverErrorHandler_StatusIgnoresQuotedBytes(t *testing.T) {
+	t.Parallel()
+
+	const chunked = "GET / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n"
+	tests := []struct {
+		name   string
+		raw    string
+		status int
+		secure bool
+	}{
+		{name: "rejected method token", raw: "GE(T / HTTP/1.1\r\nHost: example.com\r\n\r\n", status: StatusNotImplemented},
+		{name: "rejected method token, secure message", raw: "GE(T / HTTP/1.1\r\nHost: example.com\r\n\r\n", status: StatusNotImplemented, secure: true},
+		{name: "trailer quoting the method wording", raw: chunked + "Content-Length: unsupported http request method\r\n\r\n", status: StatusBadRequest},
+		{name: "trailer quoting a timeout", raw: chunked + "Content-Length: timeout\r\n\r\n", status: StatusBadRequest},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.Server().SecureErrorLogMessage = tc.secure
+			app.Get("/", func(c Ctx) error { return c.SendString("page") })
+			ln := startRawServer(t, app)
+
+			responses, _ := rawExchange(t, ln, tc.raw, 1)
+			require.Equal(t, tc.status, responses[0].status)
+		})
+	}
+}
+
+// A read timeout inside a chunked body surfaces as ErrBrokenChunk, which hides the net error.
+func Test_App_serverErrorHandler_ChunkReadTimeout(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{ReadTimeout: 200 * time.Millisecond})
+	app.Post("/", func(c Ctx) error { return c.SendString("posted") })
+	ln := startRawServer(t, app)
+
+	responses, _ := rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n5\r", 1)
+	require.Equal(t, StatusRequestTimeout, responses[0].status)
+}
+
 // RFC 9112 §6.1: a request with both Content-Length and Transfer-Encoding is
 // framed by Transfer-Encoding, and the connection must close after the response.
 func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {

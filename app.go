@@ -1753,8 +1753,9 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	defer app.ReleaseCtx(c)
 
 	var (
-		errNetOP *net.OpError
-		netErr   net.Error
+		errNetOP    *net.OpError
+		netErr      net.Error
+		brokenChunk fasthttp.ErrBrokenChunk
 	)
 
 	errMessage := utils.StatusMessage(StatusBadRequest)
@@ -1781,12 +1782,16 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = ErrMethodNotAllowed
 		// A 405 must carry Allow (RFC 9110 §15.5.6).
 		c.Set(HeaderAllow, getOnlyAllow)
-	case strings.Contains(errMessage, "unsupported http request method"):
+	case errors.Is(err, fasthttp.ErrUnsupportedRequestMethod),
+		strings.HasPrefix(innermostMessage(err), "unsupported http request method"):
+		// The innermost error, not the whole text: the wrappers quote request
+		// bytes, so a malformed trailer could otherwise pick its own status.
 		err = ErrNotImplemented
-	case strings.Contains(errMessage, unsupportedTransferCodingMarker):
+	case strings.HasPrefix(innermostMessage(err), unsupportedTransferCodingMarker):
 		// An unknown transfer coding is a 501, not a 400 (RFC 9112 §6.1).
 		err = ErrNotImplemented
-	case strings.Contains(errMessage, "timeout"):
+	case errors.As(err, &brokenChunk) && strings.HasSuffix(brokenChunk.Error(), "timeout"):
+		// ErrBrokenChunk does not unwrap to the read error it ends with.
 		err = ErrRequestTimeout
 	default:
 		err = NewError(StatusBadRequest, errMessage)
@@ -1818,6 +1823,18 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		log.Errorf("serverErrorHandler: failed to call ErrorHandler: %v", catch)
 		_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // It is fine to ignore the error here
 		return
+	}
+}
+
+// innermostMessage returns the text of the error err wraps last, which fasthttp
+// starts with its own words before any bytes of the request it quotes.
+func innermostMessage(err error) string {
+	for {
+		inner := errors.Unwrap(err)
+		if inner == nil {
+			return err.Error()
+		}
+		err = inner
 	}
 }
 
