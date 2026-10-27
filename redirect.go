@@ -38,6 +38,9 @@ var (
 
 const maxPoolableMapSize = 64
 
+// maxPoolableMessages matches the msgp arrays limit below: a redirect holding more sets no cookie.
+const maxPoolableMessages = 256
+
 // FlashCookieName Cookie name to send flash messages when to use redirection.
 const (
 	FlashCookieName = "fiber_flash"
@@ -116,6 +119,11 @@ func AcquireRedirect() *Redirect {
 // It is forbidden accessing req and/or its members after returning
 // it to redirect pool.
 func ReleaseRedirect(r *Redirect) {
+	// A large WithInput form grows the array past what the cookie can carry; once
+	// pooled, every later release would clear all of it.
+	if cap(r.messages) > maxPoolableMessages {
+		return
+	}
 	r.release()
 	redirectPool.Put(r)
 }

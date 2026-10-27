@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -941,6 +942,19 @@ func Test_Redirect_release_ZeroesMessages(t *testing.T) {
 	for i := range full {
 		require.Equal(t, redirectionMsg{}, full[i], "index %d survived release", i)
 	}
+}
+
+func Test_ReleaseRedirect_DropsOversizedMessages(t *testing.T) {
+	t.Parallel()
+
+	r := AcquireRedirect()
+	for i := range maxPoolableMessages + 1 {
+		r.With(strconv.Itoa(i), "v")
+	}
+	ReleaseRedirect(r)
+
+	// Dropped rather than cleared and pooled, so the array is left as it was.
+	require.Len(t, r.messages, maxPoolableMessages+1)
 }
 
 func Test_Redirect_Messages_ClearsFlashMessages(t *testing.T) {
