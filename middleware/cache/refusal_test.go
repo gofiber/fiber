@@ -312,10 +312,11 @@ func Test_Cache_RejectedCredentialDropsEntry(t *testing.T) {
 								refuse:    refusal(status, directive),
 							})
 
-							bodySize := uint(len(accountBody("a", "")))
-							f.warm([]string{"a", "b"})
+							f.warm([]string{"a"})
+							entrySize := f.probe.counted()
+							f.warm([]string{"b"})
 							f.requireHit("a", "")
-							require.Equal(t, 2*bodySize, f.probe.counted())
+							require.Equal(t, 2*entrySize, f.probe.counted())
 							require.Equal(t, 2, f.probe.nodes())
 
 							// A refusal that found no entry of its own purges nothing.
@@ -326,7 +327,7 @@ func Test_Cache_RejectedCredentialDropsEntry(t *testing.T) {
 							}
 							f.requireHit("b", "")
 							f.requireHit("a", "")
-							require.Equal(t, 2*bodySize, f.probe.counted())
+							require.Equal(t, 2*entrySize, f.probe.counted())
 							require.Equal(t, 2, f.probe.nodes())
 
 							f.ended.Store("a", true)
@@ -338,7 +339,7 @@ func Test_Cache_RejectedCredentialDropsEntry(t *testing.T) {
 							require.Equal(t, cacheUnreachable, got.cache)
 
 							// The purge gave back exactly the refused entry's accounting.
-							require.Equal(t, bodySize, f.probe.counted())
+							require.Equal(t, entrySize, f.probe.counted())
 							require.Equal(t, 1, f.probe.nodes())
 
 							// Only the refused credential's entry went, whatever directive the refusal carried.
@@ -870,7 +871,10 @@ func Test_Cache_RefusalOutlivesAConcurrentReplacement(t *testing.T) {
 						f.ended.Store("a", true)
 					},
 				})
-				f.warm([]string{"a", "b"}, "one", "two")
+				f.warm([]string{"a"}, "one")
+				entrySize := f.probe.counted()
+				f.warm([]string{"a"}, "two")
+				f.warm([]string{"b"}, "one", "two")
 
 				f.ended.Store("a", true)
 				armed.Store(true)
@@ -887,7 +891,7 @@ func Test_Cache_RefusalOutlivesAConcurrentReplacement(t *testing.T) {
 				if partition == "keyCookies" || partition == "authorization" {
 					want = 3
 				}
-				require.Equal(t, uint(want)*uint(len(accountBody("a", "one"))), f.probe.counted())
+				require.Equal(t, uint(want)*entrySize, f.probe.counted())
 				require.Equal(t, want, f.probe.nodes())
 			})
 		}
@@ -1662,7 +1666,9 @@ func Test_Cache_RefusalToleratesAStorageThatFailsWhileDroppingTheReplacement(t *
 					watched.Store(&key)
 				},
 			})
-			f.warm([]string{"a", "b"})
+			f.warm([]string{"a"})
+			entrySize := f.probe.counted()
+			f.warm([]string{"b"})
 
 			f.ended.Store("a", true)
 			armed.Store(true)
@@ -1677,7 +1683,7 @@ func Test_Cache_RefusalToleratesAStorageThatFailsWhileDroppingTheReplacement(t *
 
 			// Still stored, so still tracked and counted, beside the other session's entry.
 			require.Equal(t, 2, f.probe.nodes())
-			require.Equal(t, 2*uint(len(accountBody("a", ""))), f.probe.counted())
+			require.Equal(t, 2*entrySize, f.probe.counted())
 
 			f.requireRefused(fiber.StatusUnauthorized, "", "")
 			f.requireHit("b", "")

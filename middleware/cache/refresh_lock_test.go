@@ -39,6 +39,9 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 		started:             make(chan struct{}),
 		resume:              make(chan struct{}),
 	}
+	// Room for /old and /hot, so /new evicts /old.
+	stored := charged(storage.key, len("stale"), textPlain, "public, max-age=30") +
+		charged(cacheKeyVersion+"|GET|/hot", len("hot"), textPlain, "public, max-age=60")
 	probe := &accountingProbe{}
 	app := fiber.New()
 	app.Use(New(Config{
@@ -46,7 +49,7 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 		KeyGenerator: func(c fiber.Ctx) string {
 			return c.Path()
 		},
-		MaxBytes:   10,
+		MaxBytes:   stored,
 		Storage:    storage,
 		accounting: probe.record,
 	}))
@@ -70,7 +73,7 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 		require.NoError(t, resp.Body.Close())
 	}
-	require.Equal(t, uint(8), probe.counted())
+	require.Equal(t, stored, probe.counted())
 	require.Equal(t, 2, probe.nodes())
 
 	storage.mu.Lock()
@@ -122,7 +125,7 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("unrelated cache hit blocked on restore storage I/O")
 	}
-	require.Equal(t, uint(8), probe.counted(), "pending restore must retain its byte reservation")
+	require.Equal(t, stored, probe.counted(), "pending restore must retain its byte reservation")
 	require.Equal(t, 2, probe.nodes())
 
 	release()
@@ -132,7 +135,7 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("eviction did not finish after storage resumed")
 	}
-	require.Equal(t, uint(8), probe.counted())
+	require.Equal(t, stored, probe.counted())
 	require.Equal(t, 2, probe.nodes())
 }
 
@@ -145,6 +148,8 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 		started:             make(chan struct{}),
 		continueDelete:      make(chan struct{}),
 	}
+	stale := charged(storage.key, len("stale"), textPlain, "public, max-age=30")
+	slot := charged(cacheKeyVersion+"|GET|/slot", len("x"), textPlain, "public, max-age=60")
 	probe := &accountingProbe{}
 	var uncacheable atomic.Bool
 	app := fiber.New()
@@ -153,7 +158,7 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 		KeyGenerator: func(c fiber.Ctx) string {
 			return c.Path()
 		},
-		MaxBytes:   10,
+		MaxBytes:   charged(cacheKeyVersion+"|GET|/new", len("012345678"), textPlain, "public, max-age=60") + slot,
 		Storage:    storage,
 		accounting: probe.record,
 	}))
@@ -215,7 +220,7 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("eviction did not finish")
 	}
-	require.Equal(t, uint(6), probe.counted())
+	require.Equal(t, stale+slot, probe.counted())
 	require.Equal(t, 2, probe.nodes())
 
 	uncacheable.Store(true)
@@ -225,6 +230,6 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, uint(1), probe.counted())
+	require.Equal(t, slot, probe.counted())
 	require.Equal(t, 1, probe.nodes())
 }

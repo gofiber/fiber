@@ -71,7 +71,7 @@ func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsNotKept(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		Expiration: time.Hour,
-		MaxBytes:   100,
+		MaxBytes:   charged(defaultKey("/second"), 100, textPlain), // one entry
 		Storage:    storage,
 		accounting: probe.record,
 	}))
@@ -113,7 +113,7 @@ func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsNotKept(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusGatewayTimeout, status)
 	require.Equal(t, 1, probe.nodes())
-	require.Equal(t, uint(100), probe.counted())
+	require.Equal(t, charged(defaultKey("/second"), 100, textPlain), probe.counted())
 	require.Equal(t, 1, storage.bodiesOfSize(100))
 }
 
@@ -128,7 +128,7 @@ func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsTrackedWhenDeleteFails(t *test
 	app := fiber.New()
 	app.Use(New(Config{
 		Expiration: time.Hour,
-		MaxBytes:   100,
+		MaxBytes:   charged(defaultKey("/second"), 100, textPlain), // one entry
 		Storage:    storage,
 		accounting: probe.record,
 	}))
@@ -158,14 +158,14 @@ func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsTrackedWhenDeleteFails(t *test
 	require.NoError(t, errSecond)
 	require.Equal(t, fiber.StatusOK, secondStatus)
 	require.Equal(t, 2, probe.nodes())
-	require.Equal(t, uint(200), probe.counted())
+	require.Equal(t, charged(defaultKey("/first"), 100, textPlain)+charged(defaultKey("/second"), 100, textPlain), probe.counted())
 
 	storage.failDeletes.Store(false)
 	status, err = get("/third")
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, status)
 	require.Equal(t, 1, probe.nodes())
-	require.Equal(t, uint(100), probe.counted())
+	require.Equal(t, charged(defaultKey("/third"), 100, textPlain), probe.counted())
 	require.Equal(t, 1, storage.bodiesOfSize(100))
 }
 
@@ -231,8 +231,13 @@ func Test_Cache_MaxBytes_NoSpaceKeepsPoppedEntriesTracked(t *testing.T) {
 		failingCacheStorage: newFailingCacheStorage(),
 		deleteStarted:       make(chan struct{}),
 		continueDelete:      make(chan struct{}),
-		key:                 cacheKeyVersion + "|GET|/first/2",
+		key:                 cacheKeyVersion + "|GET|/first/200",
 	}
+	charge := func(target string, size int) uint {
+		return charged(cacheKeyVersion+"|GET|"+target, size, textPlain)
+	}
+	// Room for /second, /third and /inflight, so /inflight evicts /first.
+	maxBytes := charge("/second/200", 200) + charge("/third/200", 200) + charge("/inflight/600", 600)
 	probe := &accountingProbe{}
 	app := fiber.New()
 	app.Use(New(Config{
@@ -240,7 +245,7 @@ func Test_Cache_MaxBytes_NoSpaceKeepsPoppedEntriesTracked(t *testing.T) {
 		KeyGenerator: func(c fiber.Ctx) string {
 			return c.Path()
 		},
-		MaxBytes:   10,
+		MaxBytes:   maxBytes,
 		Storage:    storage,
 		accounting: probe.record,
 	}))
@@ -248,19 +253,19 @@ func Test_Cache_MaxBytes_NoSpaceKeepsPoppedEntriesTracked(t *testing.T) {
 		return c.Send(make([]byte, fiber.Params[int](c, "size")))
 	})
 
-	for _, target := range []string{"/first/2", "/second/2", "/third/2"} {
+	for _, target := range []string{"/first/200", "/second/200", "/third/200"} {
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 		require.NoError(t, resp.Body.Close())
 	}
 
-	// Reserves 6 of the 10 bytes and stops while it deletes the entry it evicted.
+	// Reserves its room and stops while it deletes the entry it evicted.
 	inFlightDone := make(chan struct{})
 	var inFlightResp *http.Response
 	var inFlightErr error
 	go func() {
-		inFlightResp, inFlightErr = app.Test(httptest.NewRequest(fiber.MethodGet, "/inflight/6", http.NoBody))
+		inFlightResp, inFlightErr = app.Test(httptest.NewRequest(fiber.MethodGet, "/inflight/600", http.NoBody))
 		close(inFlightDone)
 	}()
 	<-storage.deleteStarted
@@ -272,23 +277,23 @@ func Test_Cache_MaxBytes_NoSpaceKeepsPoppedEntriesTracked(t *testing.T) {
 		}
 	}()
 
-	// 6 reserved + 6 do not fit, whatever is evicted.
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/nospace/6", http.NoBody))
+	// /inflight's reservation and /nospace do not fit, whatever is evicted.
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/nospace/600", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, uint(10), probe.counted(), "the entries that stay stored must stay counted")
+	require.Equal(t, maxBytes, probe.counted(), "the entries that stay stored must stay counted")
 	require.Equal(t, 2, probe.nodes(), "the entries that stay stored must stay evictable")
 
 	// A refresh still finds the node its entry recorded and takes over its share.
-	refresh := httptest.NewRequest(fiber.MethodGet, "/third/2", http.NoBody)
+	refresh := httptest.NewRequest(fiber.MethodGet, "/third/200", http.NoBody)
 	refresh.Header.Set(fiber.HeaderCacheControl, "no-cache")
 	resp, err = app.Test(refresh)
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, uint(10), probe.counted())
+	require.Equal(t, maxBytes, probe.counted())
 	require.Equal(t, 2, probe.nodes())
 
 	close(storage.continueDelete)
@@ -299,14 +304,14 @@ func Test_Cache_MaxBytes_NoSpaceKeepsPoppedEntriesTracked(t *testing.T) {
 	require.NoError(t, inFlightResp.Body.Close())
 
 	// Needs the room of both entries and of the one that was in flight.
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/later/10", http.NoBody))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/later/1000", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, uint(10), probe.counted())
+	require.Equal(t, charge("/later/1000", 1000), probe.counted())
 	require.Equal(t, 1, probe.nodes())
 
-	for _, target := range []string{"/second/2", "/third/2", "/inflight/6"} {
+	for _, target := range []string{"/second/200", "/third/200", "/inflight/600"} {
 		req := httptest.NewRequest(fiber.MethodGet, target, http.NoBody)
 		req.Header.Set(fiber.HeaderCacheControl, "only-if-cached")
 		resp, err = app.Test(req)

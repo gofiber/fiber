@@ -78,6 +78,15 @@ func (e *item) decodable() bool {
 	return true
 }
 
+// metaSize is what e stores besides its body and key.
+func (e *item) metaSize() uint {
+	n := len(e.ctype) + len(e.cencoding) + len(e.cacheControl) + len(e.expires) + len(e.etag) + len(e.vary)
+	for i := range e.headers {
+		n += len(e.headers[i].key) + len(e.headers[i].value)
+	}
+	return uint(n)
+}
+
 //msgp:ignore manager
 type manager struct {
 	pool             sync.Pool

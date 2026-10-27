@@ -83,7 +83,7 @@ const (
 const cacheKeyVersion = "v5"
 
 // MaxBytes also caps the entries tracked at once, one per trackedEntryOverhead bytes and at least
-// minTrackedEntries: an entry holds its key and heap node however short its body is.
+// minTrackedEntries: an entry holds a heap node and bookkeeping MaxBytes does not count.
 const (
 	trackedEntryOverhead = 256
 	minTrackedEntries    = 1024
@@ -238,7 +238,7 @@ func New(config ...Config) fiber.Handler {
 	refusals := newRefusalRecords(&cfg, manager)
 	// Create indexed heap for tracking expirations ( see heap.go )
 	heap := newIndexedHeap()
-	// count stored bytes (sizes of response bodies)
+	// count stored bytes (each entry's body, key and stored headers)
 	var storedBytes uint
 	maxEntries := max(minTrackedEntries, int(min(cfg.MaxBytes/trackedEntryOverhead, math.MaxInt32)))
 
@@ -1167,6 +1167,13 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		// A short body can sit under a key or Location many times its size, so all three are charged.
+		entrySize := bodySize + uint(len(key)) + e.metaSize()
+		if cfg.MaxBytes > 0 && entrySize > cfg.MaxBytes {
+			markUnreachable()
+			return nil
+		}
+
 		expirationSource := expirationSourceConfig
 		expiresParseError := false
 		mustRevalidate := respCacheControl.mustRevalidate || respCacheControl.proxyRevalidate
@@ -1271,7 +1278,7 @@ func New(config ...Config) fiber.Handler {
 			mux.Lock()
 			// If we reserved space but the entry was not successfully added to heap, unreserve it
 			if spaceReserved {
-				storedBytes -= bodySize
+				storedBytes -= entrySize
 			}
 			// A replacement body that landed overwrote the one the old entry
 			// pointed at, and the store-error cleanup then deletes it, so that
@@ -1305,7 +1312,7 @@ func New(config ...Config) fiber.Handler {
 				}
 			}
 			// Reserve space for the new entry first
-			storedBytes += bodySize
+			storedBytes += entrySize
 			spaceReserved = true
 
 			// Now evict entries until we're under the limit
@@ -1320,7 +1327,7 @@ func New(config ...Config) fiber.Handler {
 						heap.putWithGeneration(candidate.key, candidate.exp, candidate.size, candidate.oldGen, candidate.manifest)
 						storedBytes += candidate.size
 					}
-					storedBytes -= bodySize
+					storedBytes -= entrySize
 					// Set spaceReserved to false so the deferred cleanup does not unreserve again
 					spaceReserved = false
 					mux.Unlock()
@@ -1352,7 +1359,7 @@ func New(config ...Config) fiber.Handler {
 					// Deletion failed: restore only entries still present in storage.
 					mux.Lock()
 					// Unreserve space for the new entry
-					storedBytes -= bodySize
+					storedBytes -= entrySize
 					spaceReserved = false
 					mux.Unlock()
 
@@ -1397,7 +1404,7 @@ func New(config ...Config) fiber.Handler {
 					replaced, replacedOK = candidate, true
 				}
 			}
-			heapIdx = heap.put(key, e.exp, bodySize, entryManifest)
+			heapIdx = heap.put(key, e.exp, entrySize, entryManifest)
 			e.heapidx = heapIdx
 			heapGen = heap.generation(heapIdx)
 			e.heapgen = heapGen
@@ -1471,7 +1478,7 @@ func New(config ...Config) fiber.Handler {
 				if !tracked {
 					if delErr := deleteKey(reqCtx, key); delErr != nil {
 						// Still stored, so track it again for a later eviction to retry.
-						untracked := evictionCandidate{key: key, manifest: entryManifest, size: bodySize, exp: entryExp, oldGen: heapGen}
+						untracked := evictionCandidate{key: key, manifest: entryManifest, size: entrySize, exp: entryExp, oldGen: heapGen}
 						return errors.Join(
 							fmt.Errorf("cache: failed to delete key %q evicted while it was stored: %w", maskKey(key), delErr),
 							restoreHeapEntry(reqCtx, untracked),

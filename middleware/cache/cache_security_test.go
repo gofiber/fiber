@@ -1056,7 +1056,7 @@ func Test_Cache_Security_StreamIsNotBufferedToMeasureIt(t *testing.T) {
 		"declared, too large":     {maxBytes: maxBytes, size: 64 * maxBytes, declared: true},
 		"undeclared":              {maxBytes: maxBytes, size: 64 * maxBytes},
 		"undeclared, no MaxBytes": {size: 64 * maxBytes},
-		"declared, fits":          {maxBytes: maxBytes, size: maxBytes, declared: true, stored: true},
+		"declared, fits":          {maxBytes: maxBytes, size: maxBytes / 2, declared: true, stored: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -2591,7 +2591,9 @@ func Test_Cache_Security_StoredUnderTheResponsesOwnVary(t *testing.T) {
 			}
 			// The sign-in entry alice's reload looked up stays beside hers.
 			require.Equal(t, 2, probe.nodes())
-			require.Equal(t, uint(len("sign in")+len("private to alice")), probe.counted())
+			signIn := charged(variantKey(defaultKey("/"), "accept-encoding"), len("sign in"), textPlain, "Accept-Encoding")
+			alice := charged(variantKey(defaultKey("/"), "accept-encoding", "cookie"), len("private to alice"), textPlain, "Accept-Encoding, Cookie")
+			require.Equal(t, signIn+alice, probe.counted())
 
 			require.Equal(t, varyReply{body: "private to bob", cacheStatus: cacheMiss}, get(t, app, "session=bob", "max-age=0"))
 			require.Equal(t, varyReply{body: "private to alice", cacheStatus: cacheHit}, get(t, app, "session=alice", ""))
@@ -2674,7 +2676,7 @@ func Test_Cache_Security_ShortBodiesAreBoundedByEntryCount(t *testing.T) {
 	t.Parallel()
 
 	const (
-		maxBytes = 4096 // caps the entries at minTrackedEntries
+		maxBytes = minTrackedEntries * trackedEntryOverhead // caps the entries at minTrackedEntries before their bytes
 		urls     = 3 * minTrackedEntries
 	)
 
@@ -2739,7 +2741,9 @@ func Test_Cache_Security_EvictionRemovesVaryManifest(t *testing.T) {
 
 	storage := newFailingCacheStorage()
 	app := fiber.New()
-	app.Use(New(Config{Storage: storage, MaxBytes: 10, Expiration: time.Hour}))
+	// Room for two of the last entries, whose query has two digits.
+	entry := charged(variantKey(strings.Replace(defaultKey("/"), "|q=", "|q=n=10", 1), "accept-encoding"), len("12345"), textPlain, "Accept-Encoding")
+	app.Use(New(Config{Storage: storage, MaxBytes: 2 * entry, Expiration: time.Hour}))
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Vary(fiber.HeaderAcceptEncoding)
 		return c.SendString("12345")
@@ -2761,7 +2765,7 @@ func Test_Cache_Security_DroppedVariantRemovesVaryManifest(t *testing.T) {
 	storage := newFailingCacheStorage()
 	clock := newTestClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
-	app.Use(New(Config{Storage: storage, MaxBytes: 100, Expiration: time.Hour, clock: clock.Now}))
+	app.Use(New(Config{Storage: storage, MaxBytes: 1000, Expiration: time.Hour, clock: clock.Now}))
 	app.Get("/*", func(c fiber.Ctx) error {
 		c.Vary(fiber.HeaderAcceptEncoding)
 		c.Set(fiber.HeaderCacheControl, "max-age=1")
@@ -2792,7 +2796,8 @@ func Test_Cache_Security_EvictedVariantKeepsSiblingManifest(t *testing.T) {
 
 	storage := newFailingCacheStorage()
 	app := fiber.New()
-	app.Use(New(Config{Storage: storage, MaxBytes: 10, ExpirationGenerator: stableAscendingExpiration()}))
+	entry := charged(variantKey(defaultKey("/a"), "x-variant"), len("12345"), textPlain, "X-Variant")
+	app.Use(New(Config{Storage: storage, MaxBytes: 2 * entry, ExpirationGenerator: stableAscendingExpiration()}))
 	app.Get("/*", func(c fiber.Ctx) error {
 		c.Vary("X-Variant")
 		return c.SendString("12345")
