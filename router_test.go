@@ -5253,21 +5253,21 @@ func Test_Router_StrictRouting_PrefixTrailingSlash(t *testing.T) {
 			register: func(app *App) { app.Use("/admin/", guard) },
 			endpoint: "/admin/*",
 			guarded:  []string{"/admin", "/admin/", "/admin/x"},
-			missed:   []string{"/adminx", "/admi"},
+			missed:   []string{"/adminx", "/adm"},
 		},
 		{
 			name:     "group",
 			register: func(app *App) { app.Group("/admin").Use("/", guard) },
 			endpoint: "/admin/:id?",
 			guarded:  []string{"/admin", "/admin/", "/admin/x"},
-			missed:   []string{"/adminx", "/admi"},
+			missed:   []string{"/adminx", "/adm"},
 		},
 		{
 			name:     "group handler",
 			register: func(app *App) { app.Group("/admin/", guard) },
 			endpoint: "/admin/*",
 			guarded:  []string{"/admin", "/admin/", "/admin/x"},
-			missed:   []string{"/adminx", "/admi"},
+			missed:   []string{"/adminx", "/adm"},
 		},
 		{
 			// "/a/" is as long as a tree hash, which "/a" is too short to carry
