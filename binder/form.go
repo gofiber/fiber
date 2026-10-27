@@ -2,6 +2,7 @@ package binder
 
 import (
 	"mime/multipart"
+	"strings"
 	"sync"
 
 	"github.com/gofiber/fiber/v3/internal/bodystream"
@@ -11,6 +12,8 @@ import (
 )
 
 const MIMEMultipartForm string = "multipart/form-data"
+
+const mimeApplicationForm = "application/x-www-form-urlencoded"
 
 var (
 	bindDataPool = sync.Pool{
@@ -58,9 +61,11 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 		return b.bindMultipart(req, out)
 	}
 
-	// PostArgs drains a streamed body whatever its size.
-	if err := bodystream.Buffer(req, b.MaxBodySize); err != nil {
-		return err
+	// PostArgs drains a streamed urlencoded body whatever its size and never reads any other.
+	if strings.HasPrefix(utils.UnsafeString(req.Header.ContentType()), mimeApplicationForm) {
+		if err := bodystream.Buffer(req, b.MaxBodySize); err != nil {
+			return err
+		}
 	}
 
 	args := req.PostArgs()
