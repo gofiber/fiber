@@ -4122,7 +4122,7 @@ on the provided writer. Otherwise, the buffered stream flushes after
 :::
 
 :::caution
-`streamWriter` runs after the handler has returned, when `c` may already serve another request, so copy what it needs from `c` before calling `SendStreamWriter` instead of using `c` inside it.
+`streamWriter` runs on a goroutine of its own that starts when `SendStreamWriter` is called and keeps running after the handler has returned, when `c` may already serve another request, so copy what it needs from `c` before calling `SendStreamWriter` instead of using `c` inside it.
 :::
 
 :::caution HTTP/1.0 clients
