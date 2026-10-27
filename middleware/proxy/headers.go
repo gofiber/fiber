@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"slices"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
@@ -50,12 +52,47 @@ func isForwardingHeader(name string) bool {
 		utils.EqualFold(name, fiber.HeaderForwarded)
 }
 
+// dropTrailerSection deletes the trailer fields ahead of Trailer, which would move them into
+// the header section (RFC 9112 §7.1.2), and refuses, leaving h untouched, where that loses a header.
+func dropTrailerSection(h *fasthttp.RequestHeader) bool {
+	keys := h.PeekTrailerKeys()
+	if len(keys) == 0 {
+		return true
+	}
+	names := make([]string, 0, len(keys))
+	for _, key := range keys {
+		// A forwarding field the application writes under an announced name lands in the trailer section.
+		if isForwardingHeader(utils.UnsafeString(key)) {
+			return false
+		}
+		// Copied: deleting Trailer empties the set the keys view.
+		names = append(names, string(key))
+	}
+	// Del takes a name from both sections; All walks the header section only, byte-exact as Del.
+	for k := range h.All() {
+		if slices.Contains(names, utils.UnsafeString(k)) {
+			return false
+		}
+	}
+	for _, name := range names {
+		h.Del(name)
+	}
+	h.Del(fiber.HeaderTrailer)
+	return true
+}
+
 // stripHopByHopRequestHeaders removes RFC 9110 §7.6.1 hop-by-hop headers
 // from req. Callers can pass header names in except to preserve specific
 // headers — used by the legacy KeepConnectionHeader option to retain the
 // literal Connection header while still dropping the other hop-by-hop
-// headers.
-func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except ...string) { //nolint:revive // flag-parameter: normalized is a property of the header store
+// headers. It reports false for a request the caller must refuse (see
+// dropTrailerSection).
+func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except ...string) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
+	// Before anything below removes Trailer, by the listing or by name.
+	if !dropTrailerSection(&req.Header) {
+		return false
+	}
+
 	// Headers listed in Connection must be removed first so the listing is
 	// honored before the Connection field itself is dropped. A walk of its
 	// own rather than delConnectionListedHeaders, which the response keeps:
@@ -74,6 +111,7 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 		}
 		fieldname.Del(&req.Header, h, normalized)
 	}
+	return true
 }
 
 // stripHopByHopResponseHeaders applies the same filtering on the way back.
@@ -143,10 +181,8 @@ const realIPScratch = 64
 
 // realIP copies the peer address Fiber derived into buf, which the caller
 // keeps for as long as the address is needed. A copy rather than the string
-// itself: with ProxyHeader set, c.IP() aliases that header's own buffer, and
-// removing Trailer afterwards returns the received trailer fields to the
-// header section, where fasthttp reuses the buffers of the lines deleted
-// before them in place.
+// itself: with ProxyHeader set, c.IP() aliases that header's own buffer, which
+// fasthttp reuses in place for a line added once that header is deleted.
 func realIP(c fiber.Ctx, buf []byte) []byte {
 	return append(buf[:0], c.IP()...)
 }

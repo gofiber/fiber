@@ -2323,6 +2323,69 @@ func Test_HTTPMiddleware_PropagatesHeaderRemoval(t *testing.T) {
 	require.Equal(t, "a=1", got.body)
 }
 
+// Test_HTTPMiddleware_TrailerDoesNotBecomeHeader asserts that a field the client
+// sent after the last chunk, which net/http keeps in r.Trailer, does not reach
+// the fiber handler as a header the middleware removed or replaced.
+func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
+	t.Parallel()
+
+	const owned = "X-Authenticated-User"
+
+	tests := []struct {
+		name  string
+		write string
+		want  []string
+	}{
+		{name: "stripped"},
+		{name: "replaced", write: "alice", want: []string{"alice"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var (
+				trailer []string
+				got     []string
+				headers map[string][]string
+				body    string
+			)
+
+			app := fiber.New()
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					trailer = r.Trailer.Values(owned)
+					r.Header.Del(owned)
+					if tt.write != "" {
+						r.Header.Set(owned, tt.write)
+					}
+					next.ServeHTTP(w, r)
+				})
+			}))
+			app.Post("/", func(c fiber.Ctx) error {
+				got = c.GetAll(owned)
+				headers = c.GetReqHeaders()
+				body = string(c.Body())
+				return c.SendString("ok")
+			})
+
+			// Parsed from the wire: only a received message has a trailer section.
+			fctx := &fasthttp.RequestCtx{}
+			raw := "POST / HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\n\r\n" +
+				"3\r\na=1\r\n0\r\n" + owned + ": admin\r\n\r\n"
+			require.NoError(t, fctx.Request.Read(bufio.NewReader(strings.NewReader(raw))))
+			app.Handler()(fctx)
+
+			require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+			require.Equal(t, []string{"admin"}, trailer)
+			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.want, headers[owned])
+			require.Equal(t, "a=1", body)
+			require.Empty(t, fctx.Request.Header.PeekTrailerKeys())
+		})
+	}
+}
+
 // Test_HTTPMiddleware_HeaderFidelity asserts that the fiber request ends up
 // holding exactly what the wrapped net/http middleware left in r.Header.
 //

@@ -113,6 +113,33 @@ func Test_Value(t *testing.T) {
 		c.Request().Header.Set("X-Token", "xyz")
 		require.Equal(t, "abc", v, "Immutable promises a value that outlives the request's buffer")
 	})
+
+	t.Run("a trailer field is not a header", func(t *testing.T) {
+		t.Parallel()
+
+		for _, normalize := range []bool{true, false} {
+			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+			readChunked(t, c, "X-User: alice\r\n")
+			v, ok := Value(c, "X-User")
+			require.True(t, ok, "normalize=%v", normalize)
+			require.Equal(t, "alice", v, "normalize=%v", normalize)
+
+			c = newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+			readChunked(t, c, "")
+			v, ok = Value(c, "X-User")
+			require.True(t, ok, "normalize=%v", normalize)
+			require.Empty(t, v, "normalize=%v", normalize)
+		}
+	})
+}
+
+// readChunked parses into c a whole chunked request with the given header
+// lines and an X-User trailer field.
+func readChunked(t *testing.T, c fiber.Ctx, headers string) {
+	t.Helper()
+
+	raw := "POST / HTTP/1.1\r\nHost: e.com\r\n" + headers + "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\nX-User: admin\r\n\r\n"
+	require.NoError(t, c.Request().Read(bufio.NewReader(strings.NewReader(raw))))
 }
 
 func Test_Combined(t *testing.T) {
@@ -175,6 +202,20 @@ func Test_Combined(t *testing.T) {
 		v := Combined(c, "X-Token")
 		c.Request().Header.Set("X-Token", "xyz")
 		require.Equal(t, "abc", v)
+	})
+
+	t.Run("a trailer field is not a header", func(t *testing.T) {
+		t.Parallel()
+
+		for _, normalize := range []bool{true, false} {
+			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+			readChunked(t, c, "X-User: alice\r\n")
+			require.Equal(t, "alice", Combined(c, "X-User"), "normalize=%v", normalize)
+
+			c = newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+			readChunked(t, c, "")
+			require.Empty(t, Combined(c, "X-User"), "normalize=%v", normalize)
+		}
 	})
 }
 

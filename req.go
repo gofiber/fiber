@@ -250,12 +250,21 @@ func (r *DefaultReq) FullURL() string {
 
 // UserAgent returns the User-Agent request header.
 func (r *DefaultReq) UserAgent() string {
-	return r.c.app.toString(r.c.fasthttp.Request.Header.UserAgent())
+	h := &r.c.fasthttp.Request.Header
+	// fasthttp's accessors fall through to the trailer section.
+	if fieldname.HasTrailers(h) {
+		return r.c.app.toString(r.headerField(HeaderUserAgent))
+	}
+	return r.c.app.toString(h.UserAgent())
 }
 
 // Referer returns the Referer request header.
 func (r *DefaultReq) Referer() string {
-	return r.c.app.toString(r.c.fasthttp.Request.Header.Referer())
+	h := &r.c.fasthttp.Request.Header
+	if fieldname.HasTrailers(h) {
+		return r.c.app.toString(r.headerField(HeaderReferer))
+	}
+	return r.c.app.toString(h.Referer())
 }
 
 // Origin returns the Origin request header.

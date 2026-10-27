@@ -3601,6 +3601,43 @@ func Test_Ctx_Get_EmptyFirstLine(t *testing.T) {
 	require.Len(t, c.Request().Header.PeekAll("X-Token"), 2)
 }
 
+// go test -run Test_Ctx_HeaderAccessors_SkipTrailerSection
+func Test_Ctx_HeaderAccessors_SkipTrailerSection(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{DisableHeaderNormalizing: !normalize})
+			app.Post("/", func(c Ctx) error {
+				return c.JSON(Map{
+					"get":       c.Get("X-User", "anonymous"),
+					"generic":   GetReqHeader[string](c, "X-User"),
+					"all":       c.GetAll("X-User"),
+					"has":       c.HasHeader("X-User"),
+					"hasValue":  c.HasHeaderValue("X-User", "admin"),
+					"userAgent": c.UserAgent(),
+					"referer":   c.Referer(),
+					"origin":    c.Origin(),
+					"xhr":       c.XHR(),
+					"kept":      c.Get("X-Kept"),
+				})
+			})
+			ln := startRawServer(t, app)
+
+			trailers := "X-User: admin\r\nUser-Agent: late\r\nReferer: http://evil.example/\r\n" +
+				"Origin: http://evil.example\r\nX-Requested-With: XMLHttpRequest\r\nX-Kept: late\r\n"
+			raw := "POST / HTTP/1.1\r\nHost: example.com\r\nX-Kept: early\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" +
+				"5\r\nhello\r\n0\r\n" + trailers + "\r\n"
+			responses, _ := rawExchange(t, ln, raw, 1)
+			require.Equal(t, StatusOK, responses[0].status)
+			require.JSONEq(t, `{"get":"anonymous","generic":"","all":null,"has":false,"hasValue":false,`+
+				`"userAgent":"","referer":"","origin":"","xhr":false,"kept":"early"}`, responses[0].body)
+		})
+	}
+}
+
 // go test -run Test_Ctx_GetReqHeader
 func Test_Ctx_GetReqHeader(t *testing.T) {
 	t.Parallel()

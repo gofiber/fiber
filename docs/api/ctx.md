@@ -1609,6 +1609,10 @@ Returns the HTTP request header specified by the field. `Res` has a `Get` as wel
 The match is **case-insensitive**.
 :::
 
+:::note
+Only the header section is read. A field a chunked request sends after its last chunk (the trailer section) is not a header ([RFC 9112 Section 7.1.2](https://www.rfc-editor.org/rfc/rfc9112#section-7.1.2)), and `Get`, `GetAll`, `HasHeader` and the other request header helpers do not return it. Read it from `c.Request().Header` if you need it.
+:::
+
 ```go title="Signature"
 func (c fiber.Ctx) Get(key string, defaultValue ...string) string
 func (r fiber.Req) Get(key string, defaultValue ...string) string

@@ -3,6 +3,7 @@ package fieldname
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -112,6 +113,60 @@ func Test_First_EmptyLineDoesNotHideTheValue(t *testing.T) {
 			h := readRequestHeader(t, tc.raw, tc.canonical)
 			require.Equal(t, tc.want, string(First(h, fasthttp.HeaderOrigin, tc.canonical)))
 		})
+	}
+}
+
+// Test_First_Lines_SkipTrailerSection pins that a field sent after the last
+// chunk is not read as a header: fasthttp's Peek and PeekAll fall through to it.
+func Test_First_Lines_SkipTrailerSection(t *testing.T) {
+	t.Parallel()
+
+	const (
+		chunked = "POST / HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\n"
+		body    = "\r\n5\r\nhello\r\n0\r\n"
+	)
+
+	tests := []struct {
+		name      string
+		raw       string
+		wantFirst string
+		wantLines []string
+	}{
+		{name: "trailer only", raw: chunked + body + "X-User: admin\r\n\r\n"},
+		{name: "announced trailer only", raw: chunked + "Trailer: X-User\r\n" + body + "X-User: admin\r\n\r\n"},
+		{
+			name: "empty header line ahead of a trailer", raw: chunked + "X-User:\r\n" + body + "X-User: admin\r\n\r\n",
+			wantLines: []string{""},
+		},
+		{
+			name: "header line beside a trailer", raw: chunked + "X-User: alice\r\n" + body + "X-User: admin\r\n\r\n",
+			wantFirst: "alice", wantLines: []string{"alice"},
+		},
+		{
+			name: "no trailer section", raw: chunked + "X-User: alice\r\n" + body + "\r\n",
+			wantFirst: "alice", wantLines: []string{"alice"},
+		},
+	}
+
+	for _, tc := range tests {
+		for _, canonical := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s canonical=%v", tc.name, canonical), func(t *testing.T) {
+				t.Parallel()
+
+				req := &fasthttp.Request{}
+				if !canonical {
+					req.Header.DisableNormalizing()
+				}
+				require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(tc.raw))))
+
+				require.Equal(t, tc.wantFirst, string(First(&req.Header, "X-User", canonical)))
+				var lines []string
+				for _, line := range Lines(&req.Header, "X-User", canonical) {
+					lines = append(lines, string(line))
+				}
+				require.Equal(t, tc.wantLines, lines)
+			})
+		}
 	}
 }
 

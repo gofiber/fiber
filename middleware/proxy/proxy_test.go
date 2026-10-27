@@ -830,7 +830,7 @@ func Test_Proxy_ConnectionCannotRemoveForwardingHeaders(t *testing.T) {
 
 // Test_Proxy_RealIPOutlivesTheTrailerReturn checks that the address written
 // into X-Real-IP is the one the request carried when the field it was read
-// from is deleted before the write. Removing Trailer returns the received
+// from is deleted before the write. Removing Trailer returned the received
 // trailer fields to the header section, where fasthttp reuses the buffers of
 // the lines deleted before them, so an address still aliasing such a buffer
 // read as whatever trailer landed on it.
@@ -866,6 +866,103 @@ func Test_Proxy_RealIPOutlivesTheTrailerReturn(t *testing.T) {
 				"X-A: 192.168.1.1\r\nX-B: 192.168.1.1\r\nX-C: 192.168.1.1\r\n\r\n")
 			require.Equal(t, "upstream", body)
 			require.Equal(t, []string{"X-Real-Ip=203.0.113.5"}, <-seen)
+		})
+	}
+}
+
+// trailerHandlers returns every helper that strips the hop-by-hop fields.
+func trailerHandlers() []realIPHandler {
+	return append(realIPHandlers(), realIPHandler{name: "Do", build: func(addr string) fiber.Handler {
+		return func(c fiber.Ctx) error { return Do(c, "http://"+addr) }
+	}})
+}
+
+// Test_Proxy_TrailerDoesNotBecomeHeader checks that a field sent after the last
+// chunk does not reach the upstream as a header line, which removing Trailer
+// alone made it.
+func Test_Proxy_TrailerDoesNotBecomeHeader(t *testing.T) {
+	t.Parallel()
+
+	const owned = "X-Remote-User"
+
+	for _, tc := range trailerHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			seen := make(chan []string, 1)
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				lines := matchingFieldLines(c, owned, fiber.HeaderUserAgent, fiber.HeaderTrailer, "X-Kept")
+				for _, key := range c.Request().Header.PeekTrailerKeys() {
+					lines = append(lines, "trailer "+string(key))
+				}
+				seen <- append(lines, string(c.Body()))
+				return c.SendString("upstream")
+			})
+
+			app := fiber.New()
+			app.Use(tc.build(addr))
+
+			for _, tt := range []struct {
+				send    func(*testing.T, *fiber.App, string) string
+				name    string
+				head    string
+				trailer string
+			}{
+				{name: "unannounced", trailer: owned + ": admin"},
+				{name: "announced", head: "Trailer: " + owned + "\r\n", trailer: owned + ": admin"},
+				{name: "listed", head: "Connection: Trailer\r\n", trailer: owned + ": admin"},
+				{name: "repeated", trailer: owned + ": admin\r\n" + owned + ": root"},
+				{name: "own slot", trailer: "User-Agent: late"},
+				{name: "as spelled", send: sendRawUnnormalized, head: "trailer: x-remote-user\r\n", trailer: "x-remote-user: admin"},
+			} {
+				send := tt.send
+				if send == nil {
+					send = sendRaw
+				}
+				body := send(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\nX-Kept: early\r\n"+tt.head+
+					"Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"+tt.trailer+"\r\n\r\n")
+				require.Equal(t, "upstream", body, tt.name)
+				require.ElementsMatch(t, []string{"X-Kept=early", "hello"}, <-seen, tt.name)
+			}
+		})
+	}
+}
+
+// Test_Proxy_TrailerRefusedWhereDropTakesAHeaderLine checks that a trailer
+// section the proxy cannot drop alone is refused: Del takes a header line of the
+// same name with it, and a line the application writes under an announced name
+// is filed with the trailer section.
+func Test_Proxy_TrailerRefusedWhereDropTakesAHeaderLine(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range trailerHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				return c.SendString(strings.Join(matchingFieldLines(c, fiber.HeaderForwarded), ","))
+			})
+
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				c.Request().Header.Set(fiber.HeaderForwarded, "for=192.0.2.1")
+				return c.Next()
+			})
+			app.Use(tc.build(addr))
+
+			const (
+				head    = "GET / HTTP/1.1\r\nHost: example.com\r\n"
+				chunked = "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"
+			)
+			require.Equal(t, "Forwarded=for=192.0.2.1", sendRaw(t, app, head+"\r\n"))
+			for _, raw := range []string{
+				head + "Trailer: Forwarded\r\n\r\n",
+				head + chunked + "Forwarded: for=127.0.0.1\r\n\r\n",
+				head + "X-Remote-User: alice\r\n" + chunked + "X-Remote-User: admin\r\n\r\n",
+				head + "User-Agent: early\r\n" + chunked + "User-Agent: late\r\n\r\n",
+			} {
+				require.Equal(t, fiber.ErrBadRequest.Message, sendRaw(t, app, raw), raw)
+			}
 		})
 	}
 }

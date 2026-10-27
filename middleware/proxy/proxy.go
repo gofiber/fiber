@@ -203,8 +203,8 @@ func doActionWithPolicy(
 	// https://github.com/gofiber/fiber/issues/1762.
 	req.URI().SetScheme(u.Scheme)
 
-	if !policy.KeepHopByHopHeaders {
-		stripHopByHopRequestHeaders(req, normalized)
+	if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized) {
+		return fiber.ErrBadRequest
 	}
 	// The upstream connection speaks HTTP/1.1: reset a protocol token
 	// inherited from the inbound request (e.g. "HTTP/2" propagated by the

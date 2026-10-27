@@ -532,6 +532,11 @@ func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 	// pre-sizing would traverse them twice — and the walk also collects the
 	// cookie store and re-serializes it, on a per-request path.
 	var removed []string
+	// Trailer fields first: All never names them, and deleting Trailer would move
+	// them into the header section, where r.Header.Del never reached them.
+	for _, key := range fhdr.PeekTrailerKeys() {
+		removed = append(removed, string(key))
+	}
 	for key := range fhdr.All() {
 		name := utils.UnsafeString(key)
 		if isFramingHeader(name) {

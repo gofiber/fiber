@@ -20,6 +20,7 @@ import (
 type Peeker interface {
 	Peek(key string) []byte
 	PeekAll(key string) [][]byte
+	PeekTrailerKeys() [][]byte
 	All() iter.Seq2[[]byte, []byte]
 	// VisitAll is deprecated in fasthttp in favor of All, but All builds an
 	// iterator per call while this walks the store directly. Kept for the reads
@@ -34,13 +35,19 @@ type Deleter interface {
 	All() iter.Seq2[[]byte, []byte]
 }
 
+// HasTrailers reports whether h holds a trailer section, received or announced.
+// Peek and PeekAll fall through to it, so the keyed reads are taken only without one.
+func HasTrailers(h Peeker) bool {
+	return len(h.PeekTrailerKeys()) > 0
+}
+
 // Lines returns every field line stored under name. The walk replaces the
 // byte-exact lookup rather than backing it up: a message can carry both
 // spellings, and an empty canonical line would hide the value beside it.
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store, not a mode of operation
 func Lines(h Peeker, name string, canonical bool) [][]byte {
-	if canonical {
+	if canonical && !HasTrailers(h) {
 		// PeekAll hands back the header's own slice without allocating.
 		return h.PeekAll(name)
 	}
@@ -75,7 +82,7 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
-	if canonical {
+	if canonical && !HasTrailers(h) {
 		v := Peek(h, name)
 		if len(v) > 0 {
 			return v
