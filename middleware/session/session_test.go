@@ -2940,37 +2940,49 @@ func Test_Session_DeleteWaitsForRunningSave(t *testing.T) {
 	require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
 }
 
-// A request that loaded a session before another request ended it must not
-// carry the session on to a new ID.
+// A request that loaded a session before another request ended or rotated it
+// must neither carry the session on to a new ID nor send a cookie for one.
 //
 // go test -run Test_Session_RegenerateAfterConcurrentEnd
 func Test_Session_RegenerateAfterConcurrentEnd(t *testing.T) {
 	t.Parallel()
 
+	// end returns the ID that holds the session afterwards, if any.
 	ends := []struct {
-		end   func(t *testing.T, app *fiber.App, store *Store, id string)
+		end   func(t *testing.T, app *fiber.App, store *Store, id string) string
 		name  string
 		ended bool
 	}{
-		{name: "Reset", ended: true, end: func(t *testing.T, app *fiber.App, store *Store, id string) {
+		{name: "Reset", ended: true, end: func(t *testing.T, app *fiber.App, store *Store, id string) string {
 			t.Helper()
 			require.NoError(t, loadSession(t, app, store, id).Reset())
+			return ""
 		}},
-		{name: "Destroy", ended: true, end: func(t *testing.T, app *fiber.App, store *Store, id string) {
+		{name: "Destroy", ended: true, end: func(t *testing.T, app *fiber.App, store *Store, id string) string {
 			t.Helper()
 			require.NoError(t, loadSession(t, app, store, id).Destroy())
+			return ""
 		}},
-		{name: "store.Delete", ended: true, end: func(t *testing.T, _ *fiber.App, store *Store, id string) {
+		{name: "store.Delete", ended: true, end: func(t *testing.T, _ *fiber.App, store *Store, id string) string {
 			t.Helper()
 			require.NoError(t, store.Delete(t.Context(), id))
+			return ""
 		}},
-		{name: "unrelated delete", end: func(t *testing.T, _ *fiber.App, store *Store, id string) {
+		{name: "Regenerate", ended: true, end: func(t *testing.T, app *fiber.App, store *Store, id string) string {
+			t.Helper()
+			first := loadSession(t, app, store, id)
+			require.NoError(t, first.Regenerate())
+			require.NoError(t, first.Save())
+			return first.ID()
+		}},
+		{name: "unrelated delete", end: func(t *testing.T, _ *fiber.App, store *Store, id string) string {
 			t.Helper()
 			sibling := store.KeyGenerator()
 			for lockFor(storageKeyPrefix+sibling) != lockFor(storageKeyPrefix+id) {
 				sibling = store.KeyGenerator()
 			}
 			require.NoError(t, store.Delete(t.Context(), sibling))
+			return ""
 		}},
 	}
 
@@ -2979,27 +2991,33 @@ func Test_Session_RegenerateAfterConcurrentEnd(t *testing.T) {
 			t.Parallel()
 
 			app := fiber.New()
-			store := NewStore(Config{Storage: memory.New(), AbsoluteTimeout: time.Hour})
+			store := NewStore(Config{Storage: memory.New()})
 			id := seedSession(t, app, store, func(sess *Session) {
 				sess.Set("user", "alice")
 			})
 
 			inFlight := loadSession(t, app, store, id)
-			tc.end(t, app, store, id)
+			holder := tc.end(t, app, store, id)
 			require.NoError(t, inFlight.Regenerate())
 			require.NoError(t, inFlight.Save())
 
 			_, err := store.GetByID(t.Context(), id)
 			require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
-			rotated, err := store.GetByID(t.Context(), inFlight.ID())
-			require.NoError(t, err)
-			defer rotated.Release()
+			setCookie := inFlight.ctx.Response().Header.Peek(fiber.HeaderSetCookie)
 			if tc.ended {
-				require.Nil(t, rotated.Get("user"))
+				require.Empty(t, setCookie)
+				_, err = store.GetByID(t.Context(), inFlight.ID())
+				require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
 			} else {
-				require.Equal(t, "alice", rotated.Get("user"))
+				require.NotEmpty(t, setCookie)
+				holder = inFlight.ID()
 			}
-			require.False(t, rotated.absExpiration().IsZero())
+			if holder != "" {
+				held, err := store.GetByID(t.Context(), holder)
+				require.NoError(t, err)
+				defer held.Release()
+				require.Equal(t, "alice", held.Get("user"))
+			}
 		})
 	}
 }
