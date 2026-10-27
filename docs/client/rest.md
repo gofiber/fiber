@@ -842,7 +842,7 @@ resp, err := cli.Get("https://api.example.com/items", client.Config{MaxRedirects
 
 ## Cookies
 
-A cookie set on a request replaces a client cookie with the same name, and a client cookie replaces one from the [cookie jar](#cookie-jar).
+A cookie set on a request replaces a client cookie with the same name, and a client cookie replaces one from the [cookie jar](#cookie-jar). Cookies are selected anew each time a request is sent, so a `Request` that is sent again carries only what applies to its current URL: a jar cookie does not follow it to another host, and a cookie that expired or was deleted since the last send is not sent. Cookies written straight to `RawRequest` before the send are discarded; use `SetCookie`, a `Cookie` header or a [final request hook](./hooks.md#final-request-hooks).
 
 ### Cookie
 

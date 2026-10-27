@@ -3261,6 +3261,83 @@ func Test_Request_Resend_DoesNotAccumulateHeaders(t *testing.T) {
 	}
 }
 
+func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/login", func(c fiber.Ctx) error {
+			c.Cookie(&fiber.Cookie{Name: "sid", Value: "secret", Path: "/"})
+			return c.SendStatus(fiber.StatusNoContent)
+		})
+		app.Get("/logout", func(c fiber.Ctx) error {
+			c.Cookie(&fiber.Cookie{Name: "sid", Path: "/", MaxAge: -1})
+			return c.SendStatus(fiber.StatusNoContent)
+		})
+		app.Get("/cookies", func(c fiber.Ctx) error {
+			return c.SendString(c.Get(fiber.HeaderCookie))
+		})
+	})
+	t.Cleanup(server.stop)
+
+	send := func(t *testing.T, req *Request, url string) string {
+		t.Helper()
+		resp, err := req.Get(url)
+		require.NoError(t, err)
+		defer resp.Close()
+		return resp.String()
+	}
+
+	t.Run("a jar cookie does not follow the request to another host", func(t *testing.T) {
+		t.Parallel()
+
+		jar := AcquireCookieJar()
+		defer ReleaseCookieJar(jar)
+		req := AcquireRequest().SetClient(New().SetDial(server.dial()).SetCookieJar(jar))
+		defer ReleaseRequest(req)
+
+		send(t, req, "http://a.example/login")
+		require.Equal(t, "sid=secret", send(t, req, "http://a.example/cookies"))
+		require.Empty(t, send(t, req, "http://b.example/cookies"))
+	})
+
+	t.Run("a jar cookie the server expired is not sent again", func(t *testing.T) {
+		t.Parallel()
+
+		jar := AcquireCookieJar()
+		defer ReleaseCookieJar(jar)
+		req := AcquireRequest().SetClient(New().SetDial(server.dial()).SetCookieJar(jar))
+		defer ReleaseRequest(req)
+
+		send(t, req, "http://a.example/login")
+		send(t, req, "http://a.example/logout")
+		require.Empty(t, send(t, req, "http://a.example/cookies"))
+	})
+
+	t.Run("a deleted cookie is not sent again", func(t *testing.T) {
+		t.Parallel()
+
+		client := New().SetDial(server.dial()).SetCookie("a", "1")
+		req := AcquireRequest().SetClient(client).SetCookie("b", "2")
+		defer ReleaseRequest(req)
+
+		require.Equal(t, "a=1; b=2", send(t, req, "http://a.example/cookies"))
+		require.Equal(t, "a=1", send(t, req.DelCookies("b"), "http://a.example/cookies"))
+		client.DelCookies("a")
+		require.Empty(t, send(t, req, "http://a.example/cookies"))
+	})
+
+	t.Run("a Cookie header set on the request is kept", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest().SetClient(New().SetDial(server.dial())).SetHeader(fiber.HeaderCookie, "a=1")
+		defer ReleaseRequest(req)
+
+		for range 2 {
+			require.Equal(t, "a=1", send(t, req, "http://a.example/cookies"))
+		}
+	})
+}
+
 func Test_Client_UppercaseScheme(t *testing.T) {
 	t.Parallel()
 

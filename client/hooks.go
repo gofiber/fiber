@@ -364,6 +364,10 @@ func parserRequestHeader(c *Client, req *Request) error {
 	// Set HTTP method.
 	req.RawRequest.Header.SetMethod(req.Method())
 
+	// RawRequest outlives a send: the jar's cookies for the previous URL must not
+	// follow it to another host. A Cookie header from SetHeader is merged below.
+	req.RawRequest.Header.DelAllCookies()
+
 	// Merge headers from the client, clearing each key first so a resend does not accumulate values.
 	for key := range c.header.All() {
 		req.RawRequest.Header.DelBytes(key)
