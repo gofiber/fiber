@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"math"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -114,4 +115,41 @@ func Test_Read_ChunkedStreamDoesNotAllocate(t *testing.T) {
 		require.Zero(t, fewest, size)
 		require.Equal(t, body, resp.Body())
 	}
+}
+
+// Sequential, as above, and it counts the whole process's bytes. Once fasthttp's body pool has settled on
+// 1000-byte bodies, as on a server of small files, a body of exactly a size class must stay pooled, and a
+// larger one may cost no more than Response.Body, which Read replaces.
+func Test_Read_CostsNoMoreThanBodyOnceThePoolSettled(t *testing.T) {
+	var resp fasthttp.Response
+	src := bytes.NewReader(nil)
+	var stream io.Reader = struct{ io.Reader }{src} // no WriteTo, so it arrives in chunks, as a file does
+	fewestBytes := func(body []byte, read func()) uint64 {
+		fewest := uint64(math.MaxUint64)
+		var before, after runtime.MemStats
+		for range 10 {
+			src.Reset(body)
+			resp.SetBodyStream(stream, len(body))
+			runtime.ReadMemStats(&before)
+			read()
+			runtime.ReadMemStats(&after)
+			fewest = min(fewest, after.TotalAlloc-before.TotalAlloc)
+		}
+		require.Equal(t, body, resp.Body())
+		return fewest
+	}
+
+	small := bytes.Repeat([]byte("x"), 1000)
+	for range 50000 {
+		src.Reset(small)
+		resp.SetBodyStream(stream, len(small))
+		require.True(t, Read(&resp, len(small)))
+	}
+
+	exact := bytes.Repeat([]byte("x"), 1024)
+	require.Zero(t, fewestBytes(exact, func() { Read(&resp, len(exact)) }))
+
+	large := bytes.Repeat([]byte("x"), 1500000)
+	viaBody := fewestBytes(large, func() { resp.Body() })
+	require.LessOrEqual(t, fewestBytes(large, func() { Read(&resp, len(large)) }), viaBody)
 }
