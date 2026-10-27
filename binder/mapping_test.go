@@ -1045,20 +1045,17 @@ func Test_tagIndex_MatchesTags(t *testing.T) {
 	require.Panics(t, func() { getDecoderPool("unknown") })
 }
 
-func Test_BindKey_MaxKeySegments(t *testing.T) {
+func Test_CheckKeyDepth(t *testing.T) {
 	t.Parallel()
 
 	atLimit := strings.Repeat("a.", maxKeySegments-1) + "a"
-	key, err := bindKey(atLimit, false)
-	require.NoError(t, err)
-	require.Equal(t, atLimit, key)
+	require.NoError(t, checkKeyDepth(atLimit))
+	require.ErrorIs(t, checkKeyDepth(atLimit+".a"), ErrKeyTooDeep)
+	require.ErrorIs(t, checkKeyDepth(strings.Repeat(".", maxKeySegments)), ErrKeyTooDeep)
 
-	_, err = bindKey(atLimit+".a", false)
-	require.ErrorIs(t, err, ErrKeyTooDeep)
-	_, err = bindKey(atLimit+"[a]", true)
-	require.ErrorIs(t, err, ErrKeyTooDeep)
-	_, err = bindKey(strings.Repeat(".", maxKeySegments), false)
-	require.ErrorIs(t, err, ErrKeyTooDeep)
+	key, err := bindKey(atLimit+"[a]", true)
+	require.NoError(t, err)
+	require.ErrorIs(t, checkKeyDepth(key), ErrKeyTooDeep)
 }
 
 // The decoding cost of these types grows with the depth of a key.
@@ -1110,6 +1107,11 @@ func Test_FormBinder_KeyDepthLimit(t *testing.T) {
 		}
 		require.Equal(t, "x", leaf.Name)
 		require.ErrorIs(t, bindFormBody(t, strings.Repeat("children.0.", levels+1)+"name=x", new(depthTree)), ErrKeyTooDeep)
+
+		deep := strings.Repeat("children.0.", levels+1) + "name"
+		m := make(map[string]string)
+		require.NoError(t, bindFormBody(t, deep+"=x", &m))
+		require.Equal(t, map[string]string{deep: "x"}, m)
 	})
 
 	t.Run("self-referencing pointer with a default", func(t *testing.T) {
@@ -1166,39 +1168,46 @@ func Test_Binders_KeyDepthLimit(t *testing.T) {
 		return req
 	}
 
-	sources := map[string]func(t *testing.T, n int) error{
-		"multipart value": func(t *testing.T, n int) error {
+	sources := map[string]func(t *testing.T, n int, out any) error{
+		"multipart value": func(t *testing.T, n int, out any) error {
 			t.Helper()
-			return (&FormBinding{}).Bind(multipartReq(t, dotted(n), false), new(depthTree))
+			return (&FormBinding{}).Bind(multipartReq(t, dotted(n), false), out)
 		},
-		"multipart file": func(t *testing.T, n int) error {
+		"multipart file": func(t *testing.T, n int, out any) error {
 			t.Helper()
-			return (&FormBinding{}).Bind(multipartReq(t, dotted(n), true), new(depthTree))
+			return (&FormBinding{}).Bind(multipartReq(t, dotted(n), true), out)
 		},
-		"query": func(t *testing.T, n int) error {
+		"query": func(t *testing.T, n int, out any) error {
 			t.Helper()
 			req := newReq(t)
 			req.URI().SetQueryString("children" + strings.Repeat("[0][children]", n-1) + "[0][name]=x")
-			return (&QueryBinding{}).Bind(req, new(depthTree))
+			return (&QueryBinding{}).Bind(req, out)
 		},
-		"header": func(t *testing.T, n int) error {
+		"header": func(t *testing.T, n int, out any) error {
 			t.Helper()
 			req := newReq(t)
 			req.Header.Set(dotted(n), "x")
-			return (&HeaderBinding{}).Bind(req, new(depthTree))
+			return (&HeaderBinding{}).Bind(req, out)
 		},
-		"cookie": func(t *testing.T, n int) error {
+		"cookie": func(t *testing.T, n int, out any) error {
 			t.Helper()
 			req := newReq(t)
 			req.Header.SetCookie(dotted(n), "x")
-			return (&CookieBinding{}).Bind(req, new(depthTree))
+			return (&CookieBinding{}).Bind(req, out)
 		},
 	}
 	for name, bind := range sources {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			require.NoError(t, bind(t, levels))
-			require.ErrorIs(t, bind(t, levels+1), ErrKeyTooDeep)
+			require.NoError(t, bind(t, levels, new(depthTree)))
+			require.ErrorIs(t, bind(t, levels+1, new(depthTree)), ErrKeyTooDeep)
+
+			// A map destination is filled without the decoder, so its keys are not limited.
+			m := make(map[string][]string)
+			require.NoError(t, bind(t, levels+1, &m))
+			if name != "multipart file" {
+				require.Len(t, m, 1)
+			}
 		})
 	}
 }

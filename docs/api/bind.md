@@ -303,7 +303,7 @@ A form body is a flat list of key/value pairs, so structure lives in the field n
 | Map key            | `attributes[color]=red`      | entry of a [map field](#map-fields)  |
 | Dot map key        | `attributes.color=red`       | entry of a [map field](#map-fields)  |
 
-Bracket and dot notation are interchangeable and can be nested up to 64 segments deep (`items[0][sku]` has three). A key with more segments fails the bind with `binder.ErrKeyTooDeep`, map destinations included:
+Bracket and dot notation are interchangeable and can be nested up to 64 segments deep (`items[0][sku]` has three). A key with more segments fails a bind into a struct with `binder.ErrKeyTooDeep`; map destinations are not limited:
 
 ```go title="Struct"
 type Address struct {

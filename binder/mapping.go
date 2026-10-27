@@ -136,8 +136,36 @@ func parse(aliasTag string, out any, data map[string][]string, files ...map[stri
 	return parseToStruct(aliasTag, out, data, files...)
 }
 
+// maxKeySegments is the most segments a key decoded into a struct may have
+// ("a.0.b" has three). The decoder recurses and walks prefixes per segment, and
+// a type that contains itself puts no other bound on the depth.
+const maxKeySegments = 64
+
+// checkKeyDepth refuses a key of more than maxKeySegments segments. Map
+// destinations never reach the decoder, so their keys are not limited.
+func checkKeyDepth(key string) error {
+	// A key shorter than the limit cannot hold that many dots.
+	if len(key) >= maxKeySegments && strings.Count(key, ".") >= maxKeySegments {
+		return ErrKeyTooDeep
+	}
+	return nil
+}
+
 // Parse data into the struct with gofiber/schema
 func parseToStruct(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
+	for key := range data {
+		if err := checkKeyDepth(key); err != nil {
+			return err
+		}
+	}
+	for _, f := range files {
+		for key := range f {
+			if err := checkKeyDepth(key); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Get decoder from pool
 	pool := getDecoderPool(aliasTag)
 	schemaDecoder := pool.Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
@@ -155,6 +183,12 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 // parseValuesToStruct is parseToStruct for key/value pairs: values[i] is a
 // value of keys[i].
 func parseValuesToStruct(aliasTag string, out any, keys, values []string) error {
+	for _, key := range keys {
+		if err := checkKeyDepth(key); err != nil {
+			return err
+		}
+	}
+
 	pool := getDecoderPool(aliasTag)
 	schemaDecoder := pool.Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
 	defer pool.Put(schemaDecoder)
@@ -696,24 +730,11 @@ func FilterFlags(content string) string {
 	return content
 }
 
-// maxKeySegments is the most segments a bound key may have ("a.0.b" has three).
-// The decoder recurses and walks prefixes per segment, and a type that contains
-// itself puts no other bound on the depth.
-const maxKeySegments = 64
-
 // bindKey returns key as the binders file it: rewritten from bracket notation
-// to dots when the source supports that notation and key uses it. A key of
-// more than maxKeySegments segments is refused.
+// to dots when the source supports that notation and key uses it.
 func bindKey(key string, supportBracketNotation bool) (string, error) { //nolint:revive // the flag is the source's setting
 	if supportBracketNotation && strings.IndexByte(key, '[') >= 0 {
-		var err error
-		if key, err = parseParamSquareBrackets(key); err != nil {
-			return "", err
-		}
-	}
-	// A key shorter than the limit cannot hold that many dots.
-	if len(key) >= maxKeySegments && strings.Count(key, ".") >= maxKeySegments {
-		return "", ErrKeyTooDeep
+		return parseParamSquareBrackets(key)
 	}
 	return key, nil
 }
