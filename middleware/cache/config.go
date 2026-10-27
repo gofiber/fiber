@@ -113,7 +113,8 @@ type Config struct {
 
 	// Max number of bytes of response bodies simultaneously stored in cache. When limit is reached,
 	// entries with the nearest expiration are deleted to make room for new.
-	// An empty body counts as the length of its cache key.
+	// The number of entries is limited along with it, to MaxBytes/256 but no fewer than 1024,
+	// since an entry takes memory for its key even when its body is short or empty.
 	// 0 means no limit
 	//
 	// Optional. Default: 1 * 1024 * 1024

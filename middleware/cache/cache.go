@@ -82,6 +82,13 @@ const (
 // readers skip the new field without changing the response or key semantics.
 const cacheKeyVersion = "v5"
 
+// MaxBytes also caps the entries tracked at once, one per trackedEntryOverhead bytes and at least
+// minTrackedEntries: an entry holds its key and heap node however short its body is.
+const (
+	trackedEntryOverhead = 256
+	minTrackedEntries    = 1024
+)
+
 type expirationSource uint8
 
 const (
@@ -231,8 +238,9 @@ func New(config ...Config) fiber.Handler {
 	refusals := newRefusalRecords(&cfg, manager)
 	// Create indexed heap for tracking expirations ( see heap.go )
 	heap := newIndexedHeap()
-	// count stored bytes (sizes of response bodies, the key's length for an empty one)
+	// count stored bytes (sizes of response bodies)
 	var storedBytes uint
+	maxEntries := max(minTrackedEntries, int(min(cfg.MaxBytes/trackedEntryOverhead, math.MaxInt32)))
 
 	// Delete key from both manager and storage
 	deleteKey := func(ctx context.Context, dkey string) error {
@@ -1074,13 +1082,9 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// Don't try to cache if body won't fit into cache. An empty body is charged its key:
-		// charged nothing, 204s and redirects never forced an eviction, and their nodes piled up.
-		entrySize := uint(len(c.Response().Body()))
-		if entrySize == 0 {
-			entrySize = uint(len(key))
-		}
-		if cfg.MaxBytes > 0 && entrySize > cfg.MaxBytes {
+		// Don't try to cache if body won't fit into cache
+		bodySize := uint(len(c.Response().Body()))
+		if cfg.MaxBytes > 0 && bodySize > cfg.MaxBytes {
 			markUnreachable()
 			return nil
 		}
@@ -1267,7 +1271,7 @@ func New(config ...Config) fiber.Handler {
 			mux.Lock()
 			// If we reserved space but the entry was not successfully added to heap, unreserve it
 			if spaceReserved {
-				storedBytes -= entrySize
+				storedBytes -= bodySize
 			}
 			// A replacement body that landed overwrote the one the old entry
 			// pointed at, and the store-error cleanup then deletes it, so that
@@ -1301,14 +1305,14 @@ func New(config ...Config) fiber.Handler {
 				}
 			}
 			// Reserve space for the new entry first
-			storedBytes += entrySize
+			storedBytes += bodySize
 			spaceReserved = true
 
 			// Now evict entries until we're under the limit
 			var keysToRemove []string
 			var candidates []evictionCandidate
 
-			for storedBytes > cfg.MaxBytes {
+			for storedBytes > cfg.MaxBytes || heap.Len() >= maxEntries {
 				if heap.Len() == 0 {
 					// The rest is reserved by stores still in flight. The popped entries are
 					// still stored, so they go back, in reverse to regain their heap indices.
@@ -1316,7 +1320,7 @@ func New(config ...Config) fiber.Handler {
 						heap.putWithGeneration(candidate.key, candidate.exp, candidate.size, candidate.oldGen, candidate.manifest)
 						storedBytes += candidate.size
 					}
-					storedBytes -= entrySize
+					storedBytes -= bodySize
 					// Set spaceReserved to false so the deferred cleanup does not unreserve again
 					spaceReserved = false
 					mux.Unlock()
@@ -1348,7 +1352,7 @@ func New(config ...Config) fiber.Handler {
 					// Deletion failed: restore only entries still present in storage.
 					mux.Lock()
 					// Unreserve space for the new entry
-					storedBytes -= entrySize
+					storedBytes -= bodySize
 					spaceReserved = false
 					mux.Unlock()
 
@@ -1393,7 +1397,7 @@ func New(config ...Config) fiber.Handler {
 					replaced, replacedOK = candidate, true
 				}
 			}
-			heapIdx = heap.put(key, e.exp, entrySize, entryManifest)
+			heapIdx = heap.put(key, e.exp, bodySize, entryManifest)
 			e.heapidx = heapIdx
 			heapGen = heap.generation(heapIdx)
 			e.heapgen = heapGen
@@ -1467,7 +1471,7 @@ func New(config ...Config) fiber.Handler {
 				if !tracked {
 					if delErr := deleteKey(reqCtx, key); delErr != nil {
 						// Still stored, so track it again for a later eviction to retry.
-						untracked := evictionCandidate{key: key, manifest: entryManifest, size: entrySize, exp: entryExp, oldGen: heapGen}
+						untracked := evictionCandidate{key: key, manifest: entryManifest, size: bodySize, exp: entryExp, oldGen: heapGen}
 						return errors.Join(
 							fmt.Errorf("cache: failed to delete key %q evicted while it was stored: %w", maskKey(key), delErr),
 							restoreHeapEntry(reqCtx, untracked),

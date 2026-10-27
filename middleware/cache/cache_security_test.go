@@ -2668,19 +2668,20 @@ func Test_Cache_Security_VaryManifestOwnsItsBytes(t *testing.T) {
 	require.Equal(t, "user=mallory", got.body)
 }
 
-// An empty body was charged nothing, so 204s and redirects never forced an
-// eviction and every new URL left a heap node behind.
-func Test_Cache_Security_EmptyBodiesCountTowardMaxBytes(t *testing.T) {
+// A short or empty body barely moved the byte count, so a flood of new URLs
+// never forced an eviction and every one left a heap node behind.
+func Test_Cache_Security_ShortBodiesAreBoundedByEntryCount(t *testing.T) {
 	t.Parallel()
 
 	const (
-		maxBytes = 4096
-		urls     = 1000
+		maxBytes = 4096 // caps the entries at minTrackedEntries
+		urls     = 3 * minTrackedEntries
 	)
 
 	for name, handler := range map[string]fiber.Handler{
-		"204": func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) },
-		"301": func(c fiber.Ctx) error { return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new") },
+		"204":    func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) },
+		"301":    func(c fiber.Ctx) error { return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new") },
+		"1 byte": func(c fiber.Ctx) error { return c.SendString("x") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -2707,9 +2708,8 @@ func Test_Cache_Security_EmptyBodiesCountTowardMaxBytes(t *testing.T) {
 				_, xCache := get(i, "")
 				require.Equal(t, cacheMiss, xCache)
 			}
-			require.NotZero(t, probe.counted())
 			require.LessOrEqual(t, probe.counted(), uint(maxBytes))
-			require.Less(t, probe.nodes(), urls/10)
+			require.Equal(t, minTrackedEntries, probe.nodes())
 
 			_, xCache := get(urls-1, "")
 			require.Equal(t, cacheHit, xCache)
