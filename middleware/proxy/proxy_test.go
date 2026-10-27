@@ -1070,33 +1070,163 @@ func Test_Proxy_ForwardingLinesKeepReceivedOrder(t *testing.T) {
 			t.Parallel()
 
 			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-				lines := matchingFieldLines(c, fiber.HeaderXForwardedFor, fiber.HeaderXForwardedProto, fiber.HeaderXUrlScheme)
-				// Only the order within a name counts (RFC 9110 Section 5.3).
-				slices.SortStableFunc(lines, func(a, b string) int {
-					return strings.Compare(strings.Split(a, "=")[0], strings.Split(b, "=")[0])
-				})
-				return c.SendString(strings.Join(lines, ","))
+				return c.SendString(forwardingLinesByName(c))
 			})
 
 			app := fiber.New()
 			app.Use(tc.build(addr))
 
-			const (
-				lines = "X-Forwarded-For: 6.6.6.6\r\nX-Forwarded-Proto: http\r\nX-Url-Scheme: http\r\n" +
-					"X-Forwarded-For: 203.0.113.7\r\nX-Forwarded-Proto: https\r\nX-Url-Scheme: https\r\n"
-				want = "X-Forwarded-For=6.6.6.6,X-Forwarded-For=203.0.113.7,X-Forwarded-Proto=http," +
-					"X-Forwarded-Proto=https,X-Url-Scheme=http,X-Url-Scheme=https"
-			)
 			for name, head := range map[string]string{
-				"empty chunked body": "Transfer-Encoding: chunked\r\n" + lines + "\r\n0\r\n\r\n",
-				"connection listed":  "X-Junk: 1\r\nConnection: X-Junk\r\n" + lines + "\r\n",
-				"hop-by-hop":         "Keep-Alive: timeout=5\r\n" + lines + "\r\n",
-				"real ip":            "X-Real-IP: 192.0.2.1\r\n" + lines + "\r\n",
+				"empty chunked body": "Transfer-Encoding: chunked\r\n" + forwardingLines + "\r\n0\r\n\r\n",
+				"connection listed":  "X-Junk: 1\r\nConnection: X-Junk\r\n" + forwardingLines + "\r\n",
+				"hop-by-hop":         "Keep-Alive: timeout=5\r\n" + forwardingLines + "\r\n",
+				"real ip":            "X-Real-IP: 192.0.2.1\r\n" + forwardingLines + "\r\n",
 			} {
-				require.Equal(t, want, sendRaw(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\n"+head), name)
+				require.Equal(t, forwardingLinesWant, sendRaw(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\n"+head), name)
 			}
 		})
 	}
+}
+
+// A client's forwarding lines followed by the ones a front proxy appended.
+const (
+	forwardingLines = "X-Forwarded-For: 6.6.6.6\r\nX-Forwarded-Proto: http\r\nX-Url-Scheme: http\r\n" +
+		"X-Forwarded-For: 203.0.113.7\r\nX-Forwarded-Proto: https\r\nX-Url-Scheme: https\r\n"
+	forwardingLinesWant = "X-Forwarded-For=6.6.6.6,X-Forwarded-For=203.0.113.7,X-Forwarded-Proto=http," +
+		"X-Forwarded-Proto=https,X-Url-Scheme=http,X-Url-Scheme=https"
+)
+
+// forwardingLinesByName reports the forwarding lines of c grouped by name, since only the order within a name
+// counts (RFC 9110 Section 5.3).
+func forwardingLinesByName(c fiber.Ctx) string {
+	lines := matchingFieldLines(c, fiber.HeaderXForwardedFor, fiber.HeaderXForwardedProto, fiber.HeaderXUrlScheme)
+	slices.SortStableFunc(lines, func(a, b string) int {
+		return strings.Compare(strings.Split(a, "=")[0], strings.Split(b, "=")[0])
+	})
+	return strings.Join(lines, ",")
+}
+
+// Test_Proxy_ForwardingLinesKeepReceivedOrderAfterEdits checks the order when the application added a forwarding
+// line before the proxy, or removed a line in ModifyRequest: fasthttp moves the last line into a removed one's slot.
+func Test_Proxy_ForwardingLinesKeepReceivedOrderAfterEdits(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString(forwardingLinesByName(c))
+	})
+	const added = "X-Forwarded-For=6.6.6.6,X-Forwarded-For=203.0.113.7,X-Forwarded-For=127.0.0.1,X-Forwarded-Proto=http," +
+		"X-Forwarded-Proto=https,X-Url-Scheme=http,X-Url-Scheme=https"
+	heads := map[string]string{
+		"empty chunked body": "Transfer-Encoding: chunked\r\n" + forwardingLines + "\r\n0\r\n\r\n",
+		"connection listed":  "X-Junk: 1\r\nConnection: X-Junk\r\n" + forwardingLines + "\r\n",
+	}
+
+	for _, tc := range trailerHandlers() {
+		t.Run("added before "+tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				c.Request().Header.Add(fiber.HeaderXForwardedFor, "127.0.0.1")
+				return c.Next()
+			}, tc.build(addr))
+			for name, head := range heads {
+				require.Equal(t, added, sendRaw(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\n"+head), name)
+			}
+		})
+	}
+
+	t.Run("removed in ModifyRequest", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(Balancer(Config{Servers: []string{addr}, ModifyRequest: func(c fiber.Ctx) error {
+			c.Request().Header.Del(fiber.HeaderAuthorization)
+			c.Request().Header.Del("X-Api-Key")
+			return nil
+		}}))
+		for name, head := range heads {
+			head = "Authorization: Bearer x\r\nX-Api-Key: k\r\n" + head
+			require.Equal(t, forwardingLinesWant, sendRaw(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\n"+head), name)
+		}
+	})
+}
+
+// Test_Proxy_DoRedirects_ForwardingLinesKeepReceivedOrder checks a redirect hop, from which fields are removed
+// after the first hop went out: the body fields when the method changes, the credentials off the origin.
+func Test_Proxy_DoRedirects_ForwardingLinesKeepReceivedOrder(t *testing.T) {
+	t.Parallel()
+
+	target := fiber.New()
+	target.Post("/303", func(c fiber.Ctx) error {
+		c.Location("/final")
+		return c.SendStatus(fiber.StatusSeeOther)
+	})
+	target.Post("/307", func(c fiber.Ctx) error {
+		c.Location("http://" + loopbackAlias(t, string(c.Request().Host())) + "/final")
+		return c.SendStatus(fiber.StatusTemporaryRedirect)
+	})
+	target.All("/final", func(c fiber.Ctx) error {
+		return c.SendString(forwardingLinesByName(c))
+	})
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	startServer(target, ln)
+
+	for path, first := range map[string]string{
+		"/303": "Content-Language: de\r\n",
+		"/307": "Authorization: Bearer x\r\n",
+	} {
+		app := fiber.New()
+		app.Use(func(c fiber.Ctx) error {
+			return DoRedirects(c, "http://"+addr+path, 1)
+		})
+		body := sendRaw(t, app, "POST / HTTP/1.1\r\nHost: example.com\r\n"+first+forwardingLines+"Content-Length: 2\r\n\r\nhi")
+		require.Equal(t, forwardingLinesWant, body, path)
+	}
+}
+
+// Test_Proxy_TooManyForwardingLines checks that a request carrying more forwarding lines than the order is kept
+// for is refused rather than forwarded with them in whatever order fasthttp left.
+func Test_Proxy_TooManyForwardingLines(t *testing.T) {
+	t.Parallel()
+
+	var head strings.Builder
+	for i := range fieldname.MaxOrderedLines + 1 {
+		fmt.Fprintf(&head, "X-Forwarded-%d: v\r\n", i)
+	}
+	for _, tc := range trailerHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendString("upstream") })
+			app := fiber.New()
+			app.Use(tc.build(addr))
+			require.Equal(t, utils.StatusMessage(fiber.StatusRequestHeaderFieldsTooLarge),
+				sendRaw(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\n"+head.String()+"\r\n"))
+		})
+	}
+}
+
+// Test_Proxy_ForwardingOrderInOrderDoesNotAllocate pins that the order check adds no allocation for the common
+// shape, a client's line and the one a front proxy appended, already in received order.
+// Not parallel: AllocsPerRun panics in a parallel test.
+func Test_Proxy_ForwardingOrderInOrderDoesNotAllocate(t *testing.T) {
+	const raw = "GET / HTTP/1.1\r\nHost: example.com\r\nX-Forwarded-For: 6.6.6.6\r\nAccept: */*\r\n" +
+		"X-Forwarded-For: 203.0.113.7\r\nX-Forwarded-Proto: https\r\n\r\n"
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	strip := testing.AllocsPerRun(100, func() { stripHopByHopRequestHeaders(req, true) })
+	both := testing.AllocsPerRun(100, func() {
+		stripHopByHopRequestHeaders(req, true)
+		if !keepForwardingOrder(&req.Header) {
+			t.Fatal("refused")
+		}
+	})
+	require.InDelta(t, strip, both, 0)
 }
 
 // Test_Proxy_Do_ConnectionCannotRemoveRealIP checks that the X-Real-IP written

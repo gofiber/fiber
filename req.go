@@ -1418,13 +1418,19 @@ func (r *DefaultReq) Scheme() string {
 			scheme, rank = announced, keyRank
 		}
 	}
-	if conflict {
-		// Repeats of one header keep the last line, so the order they were received in decides.
-		if lines, inOrder := fieldname.ReceivedLines(header, schemeHeaders[rank]); inOrder {
-			for _, line := range lines {
-				if announced, ok := announcedScheme(rank, line); ok {
-					scheme = announced
-				}
+	if !conflict {
+		return scheme
+	}
+	// Repeats of one header keep the last line, so the order they were received in decides.
+	name := schemeHeaders[rank]
+	stored := fieldname.Lines(header, name, !r.c.app.config.DisableHeaderNormalizing)
+	if fieldname.LinesInReceivedOrder(header.RawHeaders(), name, stored) {
+		return scheme
+	}
+	if lines, inOrder := fieldname.ReceivedLines(header, name); inOrder {
+		for _, line := range lines {
+			if announced, ok := announcedScheme(rank, line); ok {
+				scheme = announced
 			}
 		}
 	}

@@ -18,6 +18,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -69,7 +70,7 @@ func Test_JoinedInReceivedOrder(t *testing.T) {
 			if tc.combined == "" {
 				combined = peekJoinedRequestHeader(&req.Header, HeaderXForwardedFor)
 			}
-			require.Equal(t, tc.want, joinedInReceivedOrder(req.Header.RawHeaders(), HeaderXForwardedFor, combined))
+			require.Equal(t, tc.want, fieldname.JoinedInReceivedOrder(req.Header.RawHeaders(), HeaderXForwardedFor, combined))
 		})
 	}
 }

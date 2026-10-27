@@ -210,7 +210,9 @@ func doActionWithPolicy(
 	if ip != nil {
 		setRealIP(c, ip)
 	}
-	keepForwardingOrder(c)
+	if !keepForwardingOrder(&req.Header) {
+		return fiber.ErrRequestHeaderFieldsTooLarge
+	}
 	// The upstream connection speaks HTTP/1.1: reset a protocol token
 	// inherited from the inbound request (e.g. "HTTP/2" propagated by the
 	// net/http adaptor) so the serialized request line stays valid.

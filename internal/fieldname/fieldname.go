@@ -14,6 +14,7 @@ import (
 	"iter"
 	"slices"
 
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -110,57 +111,233 @@ func ReceivedLines(h *fasthttp.RequestHeader, name string) ([][]byte, bool) {
 	return lines, len(lines) == stored
 }
 
-// KeepReceivedOrder writes the names match accepts that are stored on several lines back in received order
-// (see ReceivedLines), so a request forwarded after lines were removed carries them as they arrived.
-//
-//nolint:revive // flag-parameter: canonical is a property of the header store
-func KeepReceivedOrder(h *fasthttp.RequestHeader, match func(name []byte) bool, canonical bool) {
-	var repeated []string
-	seen := make([][]byte, 0, 8)
-	h.VisitAll(func(k, _ []byte) {
+// rawLine returns the first field line of the received header block raw, or nil at the end of the block, and the
+// length it takes up. folded reports a line the next one continues (obs-fold), which only a copy can join.
+func rawLine(raw []byte) (line []byte, n int, folded bool) { //nolint:nonamedreturns // gocritic unnamedResult asks for names
+	for n < len(raw) {
+		line = raw[n:]
+		if i := bytes.IndexByte(line, '\n'); i >= 0 {
+			line = line[:i]
+			n += i + 1
+		} else {
+			n = len(raw)
+		}
+		if l := len(line); l > 0 && line[l-1] == '\r' {
+			line = line[:l-1]
+		}
+		if len(line) == 0 {
+			break
+		}
+		if line[0] != ' ' && line[0] != '\t' {
+			return line, n, n < len(raw) && (raw[n] == ' ' || raw[n] == '\t')
+		}
+	}
+	return nil, len(raw), false
+}
+
+// rawValue returns the value of line, trimmed as fasthttp stores it, if line is a field line named name. A request
+// with whitespace before the colon never gets this far (RFC 9112 Section 5.1).
+func rawValue(line []byte, name string) ([]byte, bool) {
+	// The colon settles most lines before the name is compared.
+	if len(line) <= len(name) || line[len(name)] != ':' || !utils.EqualFold(utils.UnsafeString(line[:len(name)]), name) {
+		return nil, false
+	}
+	return headerlist.TrimOWS(line[len(name)+1:]), true
+}
+
+// JoinedInReceivedOrder reports whether combined joins name's lines in the received header block raw, in order.
+// raw is read in place, so a folded line reports false.
+func JoinedInReceivedOrder(raw []byte, name string, combined []byte) bool {
+	found := false
+	for {
+		line, n, folded := rawLine(raw)
+		if line == nil {
+			return found && len(combined) == 0
+		}
+		raw = raw[n:]
+		v, named := rawValue(line, name)
+		if !named {
+			continue
+		}
+		if folded {
+			return false
+		}
+		if found {
+			if len(combined) == 0 || combined[0] != ',' {
+				return false
+			}
+			combined = combined[1:]
+		}
+		if !bytes.HasPrefix(combined, v) {
+			return false
+		}
+		combined = combined[len(v):]
+		found = true
+	}
+}
+
+// LinesInReceivedOrder reports whether lines are name's lines in the received header block raw, in order.
+// raw is read in place, so a folded line reports false.
+func LinesInReceivedOrder(raw []byte, name string, lines [][]byte) bool {
+	n := 0
+	for {
+		line, used, folded := rawLine(raw)
+		if line == nil {
+			return n == len(lines)
+		}
+		raw = raw[used:]
+		v, named := rawValue(line, name)
+		if !named {
+			continue
+		}
+		if folded || n == len(lines) || !bytes.Equal(v, lines[n]) {
+			return false
+		}
+		n++
+	}
+}
+
+// MaxOrderedLines is the most lines KeepReceivedOrder takes on, since it matches each received line against them.
+const MaxOrderedLines = 64
+
+// orderedLine is a stored line KeepReceivedOrder may move. rank is its place among the received lines, or
+// MaxOrderedLines plus its stored place for one that was not received, which so stays behind them in stored order.
+type orderedLine struct {
+	name, value []byte
+	group, rank int
+}
+
+// KeepReceivedOrder puts the lines of each name match accepts that is stored on several lines back in the order
+// they were received, which the store loses whenever fasthttp moves its last line into a removed one's slot, as
+// it does for Transfer-Encoding after an empty chunked body. A line added or changed in code follows them.
+// It reports false, leaving h as it is, for more than MaxOrderedLines such lines.
+func KeepReceivedOrder(h *fasthttp.RequestHeader, match func(name []byte) bool) bool {
+	var buf [8]orderedLine
+	lines := buf[:0]
+	over := false
+	h.VisitAll(func(k, v []byte) {
+		if !match(k) || over {
+			return
+		}
+		if over = len(lines) == MaxOrderedLines; !over {
+			lines = append(lines, orderedLine{name: k, value: v, group: len(lines), rank: MaxOrderedLines + len(lines)})
+		}
+	})
+	if over {
+		return false
+	}
+	repeated := false
+	for i := range lines {
+		for j := range i {
+			if utils.EqualFold(utils.UnsafeString(lines[j].name), utils.UnsafeString(lines[i].name)) {
+				lines[i].group, repeated = lines[j].group, true
+				break
+			}
+		}
+	}
+	if !repeated || len(h.RawHeaders()) == 0 {
+		return true
+	}
+
+	rankReceived(h, lines, match)
+	for g := range lines {
+		if lines[g].group == g && !rankedInOrder(lines, g) {
+			rewriteInRankOrder(h, lines)
+			break
+		}
+	}
+	return true
+}
+
+// rankReceived ranks the stored lines by the received lines they equal, walking the received block once.
+func rankReceived(h *fasthttp.RequestHeader, lines []orderedLine, match func(name []byte) bool) {
+	rank := 0
+	visit := func(k, v []byte) {
 		if !match(k) {
 			return
 		}
-		name := utils.UnsafeString(k)
-		for _, s := range seen {
-			if utils.EqualFold(utils.UnsafeString(s), name) {
-				if !ContainsFold(repeated, name) {
-					repeated = append(repeated, string(k))
-				}
+		for i := range lines {
+			l := &lines[i]
+			if l.rank >= MaxOrderedLines && bytes.Equal(l.value, v) && utils.EqualFold(utils.UnsafeString(l.name), utils.UnsafeString(k)) {
+				l.rank = rank
+				rank++
 				return
 			}
 		}
-		seen = append(seen, k)
-	})
-	if len(repeated) == 0 {
-		return
 	}
 
-	// Taken before any Del, each of which can move another name's lines; an edited name keeps its stored order.
-	lines := make([][][]byte, len(repeated))
-	reordered := false
-	for i, name := range repeated {
-		stored := Lines(h, name, false)
-		received, ok := ReceivedLines(h, name)
-		if !ok {
-			received = make([][]byte, len(stored))
-			for j, v := range stored {
-				received[j] = utils.CopyBytes(v)
+	for raw := h.RawHeaders(); ; {
+		line, n, folded := rawLine(raw)
+		if line == nil {
+			return
+		}
+		if folded {
+			break
+		}
+		raw = raw[n:]
+		if colon := bytes.IndexByte(line, ':'); colon > 0 {
+			visit(line[:colon], headerlist.TrimOWS(line[colon+1:]))
+		}
+	}
+
+	// A folded line, which only a copy can join: AllInOrder does so in place.
+	for i := range lines {
+		lines[i].rank = MaxOrderedLines + i
+	}
+	rank = 0
+	scratch := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(scratch)
+	h.CopyTo(&scratch.Header)
+	for k, v := range scratch.Header.AllInOrder() {
+		visit(k, v)
+	}
+}
+
+func rankedInOrder(lines []orderedLine, group int) bool {
+	last := -1
+	for _, l := range lines[group:] {
+		if l.group == group {
+			if l.rank < last {
+				return false
 			}
+			last = l.rank
 		}
-		reordered = reordered || !slices.EqualFunc(stored, received, bytes.Equal)
-		lines[i] = received
 	}
-	if !reordered {
-		return
+	return true
+}
+
+// rewriteInRankOrder writes every name of lines anew, in rank order: each Del can move another name's lines.
+func rewriteInRankOrder(h *fasthttp.RequestHeader, lines []orderedLine) {
+	// Copied into one buffer, since the Adds below reuse the buffers Del frees.
+	type copied struct{ rank, name, value, end int }
+	var (
+		space [512]byte
+		buf   [8]copied
+	)
+	arena, ordered := space[:0], buf[:0]
+	for _, l := range lines {
+		c := copied{rank: l.rank, name: len(arena)}
+		arena = append(arena, lines[l.group].name...)
+		c.value = len(arena)
+		arena = append(arena, l.value...)
+		c.end = len(arena)
+		ordered = append(ordered, c)
 	}
-	for _, name := range repeated {
-		Del(h, name, canonical)
-	}
-	for i, name := range repeated {
-		for _, v := range lines[i] {
-			h.AddBytesV(name, v)
+	slices.SortStableFunc(ordered, func(a, b copied) int { return a.rank - b.rank })
+
+	for g, l := range lines {
+		if l.group != g {
+			continue
 		}
+		// One canonical spelling lets the byte-exact Del find every line, in either store.
+		canonical := IsCanonical(utils.UnsafeString(l.name))
+		for _, m := range lines[g+1:] {
+			canonical = canonical && (m.group != g || bytes.Equal(m.name, l.name))
+		}
+		Del(h, utils.UnsafeString(l.name), canonical)
+	}
+	for _, c := range ordered {
+		h.AddBytesKV(arena[c.name:c.value], arena[c.value:c.end])
 	}
 }
 

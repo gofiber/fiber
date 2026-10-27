@@ -273,23 +273,102 @@ func Test_KeepReceivedOrder(t *testing.T) {
 
 			h := readRequestHeader(t, raw, canonical)
 			before := h.String()
-			KeepReceivedOrder(h, forwarding, canonical)
+			require.True(t, KeepReceivedOrder(h, forwarding))
 			require.Equal(t, before, h.String(), "nothing to restore")
 
 			Del(h, "X-Junk", canonical)
 			require.Equal(t, []string{"https", "http"}, lines(h, "X-Forwarded-Proto", canonical))
-			KeepReceivedOrder(h, forwarding, canonical)
+			require.True(t, KeepReceivedOrder(h, forwarding))
 			require.Equal(t, []string{"client", "proxy"}, lines(h, "X-Forwarded-For", canonical))
 			require.Equal(t, []string{"http", "https"}, lines(h, "X-Forwarded-Proto", canonical))
 			require.Equal(t, []string{"o"}, lines(h, "X-Other", canonical))
 
+			// An added line, which a later Del moves in front of the received ones, follows them.
 			h = readRequestHeader(t, raw, canonical)
-			Del(h, "X-Junk", canonical)
 			h.Add("X-Forwarded-For", "app")
-			stored := lines(h, "X-Forwarded-For", canonical)
-			KeepReceivedOrder(h, forwarding, canonical)
-			require.Equal(t, stored, lines(h, "X-Forwarded-For", canonical), "an edited name keeps its stored order")
+			Del(h, "X-Junk", canonical)
+			require.Equal(t, []string{"app", "client", "proxy"}, lines(h, "X-Forwarded-For", canonical))
+			require.True(t, KeepReceivedOrder(h, forwarding))
+			require.Equal(t, []string{"client", "proxy", "app"}, lines(h, "X-Forwarded-For", canonical))
 			require.Equal(t, []string{"http", "https"}, lines(h, "X-Forwarded-Proto", canonical))
+
+			// So does a changed one.
+			h = readRequestHeader(t, raw, canonical)
+			h.Set("X-Forwarded-For", "app")
+			require.True(t, KeepReceivedOrder(h, forwarding))
+			require.Equal(t, []string{"proxy", "app"}, lines(h, "X-Forwarded-For", canonical))
+		})
+	}
+
+	t.Run("folded", func(t *testing.T) {
+		t.Parallel()
+
+		h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\nX-Forwarded-For: client,\r\n 6.6.6.6\r\n"+
+			"X-Forwarded-For: proxy\r\n\r\n", true)
+		Del(h, "X-Junk", true)
+		require.True(t, KeepReceivedOrder(h, forwarding))
+		require.Equal(t, []string{"client, 6.6.6.6", "proxy"}, lines(h, "X-Forwarded-For", true))
+	})
+
+	t.Run("too many lines", func(t *testing.T) {
+		t.Parallel()
+
+		var raw strings.Builder
+		fmt.Fprint(&raw, "GET / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\n")
+		for i := range MaxOrderedLines + 1 {
+			fmt.Fprintf(&raw, "X-Forwarded-%d: v\r\n", i%2)
+		}
+		h := readRequestHeader(t, raw.String()+"\r\n", true)
+		Del(h, "X-Junk", true)
+		before := h.String()
+		require.False(t, KeepReceivedOrder(h, forwarding))
+		require.Equal(t, before, h.String())
+	})
+}
+
+// Test_KeepReceivedOrder_InOrderDoesNotAllocate pins the common shape, a client line and the line a front
+// proxy appended, already in received order. Not parallel: AllocsPerRun panics in a parallel test.
+func Test_KeepReceivedOrder_InOrderDoesNotAllocate(t *testing.T) {
+	h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\nX-Forwarded-For: client\r\nAccept: */*\r\n"+
+		"X-Forwarded-For: proxy\r\nX-Forwarded-Proto: https\r\n\r\n", true)
+	forwarding := func(name []byte) bool { return len(name) > 12 && (name[0] == 'X' || name[0] == 'x') }
+	allocs := testing.AllocsPerRun(100, func() {
+		if !KeepReceivedOrder(h, forwarding) {
+			t.Fatal("refused")
+		}
+	})
+	require.Zero(t, allocs)
+}
+
+// Test_LinesInReceivedOrder pins the read-only scan to the values fasthttp parses.
+func Test_LinesInReceivedOrder(t *testing.T) {
+	t.Parallel()
+
+	const head = "GET / HTTP/1.1\r\nHost: example.com\r\n"
+	for _, tc := range []struct {
+		name, lines string
+		stored      []string // nil: as stored
+		want        bool
+	}{
+		{name: "in order", lines: "X-Forwarded-Proto: http\r\nAccept: */*\r\nX-Forwarded-Proto: https\r\n", want: true},
+		{name: "OWS and spelling", lines: "x-forwarded-proto:\thttp \r\nX-FORWARDED-PROTO:https\t\r\n", want: true},
+		{name: "reordered", lines: "X-Forwarded-Proto: http\r\nX-Forwarded-Proto: https\r\n", stored: []string{"https", "http"}},
+		{name: "added", lines: "X-Forwarded-Proto: http\r\n", stored: []string{"http", "https"}},
+		{name: "removed", lines: "X-Forwarded-Proto: http\r\nX-Forwarded-Proto: https\r\n", stored: []string{"http"}},
+		{name: "folded", lines: "X-Forwarded-Proto: http\r\n https\r\nX-Forwarded-Proto: https\r\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := readRequestHeader(t, head+tc.lines+"\r\n", false)
+			stored := Lines(h, "X-Forwarded-Proto", false)
+			if tc.stored != nil {
+				stored = nil
+				for _, v := range tc.stored {
+					stored = append(stored, []byte(v))
+				}
+			}
+			require.Equal(t, tc.want, LinesInReceivedOrder(h.RawHeaders(), "X-Forwarded-Proto", stored))
 		})
 	}
 }

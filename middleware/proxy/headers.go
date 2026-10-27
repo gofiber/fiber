@@ -139,9 +139,10 @@ func setRealIP(c fiber.Ctx, ip []byte) {
 }
 
 // keepForwardingOrder puts the forwarding fields sent on several lines back in the order they were received,
-// as the last header step: fasthttp moves the last line into the slot of each one it removes.
-func keepForwardingOrder(c fiber.Ctx) {
-	fieldname.KeepReceivedOrder(&c.Request().Header, isOrderedForwardingHeader, headerlookup.Canonical(c))
+// as the last header step before a request goes out: fasthttp moves the last line into the slot of each one
+// it removes. It reports false for more forwarding lines than fieldname.MaxOrderedLines.
+func keepForwardingOrder(h *fasthttp.RequestHeader) bool {
+	return fieldname.KeepReceivedOrder(h, isOrderedForwardingHeader)
 }
 
 // isOrderedForwardingHeader reports whether name is a forwarding field, or X-Url-Scheme, which Ctx.Scheme reads too.

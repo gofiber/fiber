@@ -84,6 +84,9 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 			if crossOrigin {
 				crosshost.Strip(&hop.Header, crosshost.NewHeaderNames(policy.RedirectSensitiveHeaders))
 			}
+			if !keepForwardingOrder(&hop.Header) {
+				return fiber.ErrRequestHeaderFieldsTooLarge
+			}
 		}
 		currentURL = nextURL
 		// Rendered once per hop: SetRequestURI copies it and the next resolveRedirect uses it as base.

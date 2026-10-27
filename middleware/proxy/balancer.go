@@ -121,13 +121,16 @@ func Balancer(config ...Config) fiber.Handler {
 		// hop's and not one the client named there; before ModifyRequest, so
 		// the application still has the last word.
 		setRealIP(c, ip)
-		keepForwardingOrder(c)
 
 		// Modify request
 		if cfg.ModifyRequest != nil {
 			if err := cfg.ModifyRequest(c); err != nil {
 				return err
 			}
+		}
+		// Last: a Del in ModifyRequest can move a forwarding line as the strip's can.
+		if !keepForwardingOrder(&req.Header) {
+			return fiber.ErrRequestHeaderFieldsTooLarge
 		}
 
 		// The upstream connection speaks HTTP/1.1: reset a protocol token

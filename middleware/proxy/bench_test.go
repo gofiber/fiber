@@ -1,16 +1,20 @@
 package proxy
 
 import (
+	"bufio"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/valyala/fasthttp"
 )
 
@@ -155,6 +159,28 @@ func BenchmarkStripHopByHop_WithConnection(b *testing.B) {
 		seedWithConnectionRequest(req)
 		b.StartTimer()
 		stripHopByHopRequestHeaders(req, true)
+	}
+}
+
+// BenchmarkKeepForwardingOrder_ManyRepeated measures the order step on the most forwarding lines it takes on,
+// each name on two lines and moved by a removed line, copying the header included.
+func BenchmarkKeepForwardingOrder_ManyRepeated(b *testing.B) {
+	var raw strings.Builder
+	fmt.Fprint(&raw, "GET / HTTP/1.1\r\nHost: example.com\r\nX-Junk: 1\r\n")
+	for i := range fieldname.MaxOrderedLines {
+		fmt.Fprintf(&raw, "X-Forwarded-%d: v%d\r\n", i%(fieldname.MaxOrderedLines/2), i)
+	}
+	var src, req fasthttp.Request
+	if err := src.Read(bufio.NewReader(strings.NewReader(raw.String() + "\r\n"))); err != nil {
+		b.Fatal(err)
+	}
+	src.Header.Del("X-Junk")
+	b.ReportAllocs()
+	for b.Loop() {
+		src.Header.CopyTo(&req.Header)
+		if !keepForwardingOrder(&req.Header) {
+			b.Fatal("refused")
+		}
 	}
 }
 
