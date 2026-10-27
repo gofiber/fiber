@@ -108,15 +108,16 @@ func decoderBuilder(aliasTag string, parserConfig ParserConfig) any {
 		decoder.RegisterConverter(reflect.ValueOf(v.CustomType).Interface(), v.Converter)
 	}
 	decoder.ZeroEmpty(parserConfig.ZeroEmpty)
-	return &pooledDecoder{Decoder: decoder, keys: make(map[string]struct{})}
+	return &pooledDecoder{Decoder: decoder, keys: make(map[string]int)}
 }
 
 // pooledDecoder is a pooled schema.Decoder and the nested keys it was given:
 // schema caches a parsed path per key spelling for the decoder's lifetime.
 type pooledDecoder struct {
 	*schema.Decoder
-	keys     map[string]struct{}
+	keys     map[string]int // nested key -> its nestedElements
 	keyBytes int
+	elements int // nestedElements summed over the current bind
 }
 
 // A decoder whose nested keys, each counted with what schema caches for it,
@@ -135,17 +136,50 @@ func (d *pooledDecoder) admit(key string) error {
 	if strings.IndexByte(key, '.') < 0 {
 		return nil
 	}
-	if _, ok := d.keys[key]; !ok {
-		d.keys[strings.Clone(key)] = struct{}{}
+	n, ok := d.keys[key]
+	if !ok {
+		n = nestedElements(key)
+		d.keys[strings.Clone(key)] = n
 		d.keyBytes += len(key) + cachedKeyOverhead
+	}
+	if d.elements += n; d.elements > maxNestedElements {
+		return ErrTooManyElements
 	}
 	return nil
 }
 
 func putDecoder(pool *sync.Pool, d *pooledDecoder) {
 	if d.keyBytes <= maxDecoderKeyBytes {
+		d.elements = 0
 		pool.Put(d)
 	}
+}
+
+// maxNestedElements bounds what nestedElements adds up to over a bind's keys.
+const maxNestedElements = 1 << 18
+
+// maxSliceIndex is schema's largest slice index; it refuses a key with a larger one.
+const maxSliceIndex = 1000
+
+// nestedElements is how many slice elements key can make schema allocate past its
+// first index: each later index grows a slice per parent element to exactly index+1.
+func nestedElements(key string) int {
+	n, first := 0, true
+	for seg := range strings.SplitSeq(key, ".") {
+		// Checked first since ParseInt allocates the error for a field name.
+		if seg == "" || (seg[0] < '0' || seg[0] > '9') && seg[0] != '+' && seg[0] != '-' {
+			continue
+		}
+		i, err := utils.ParseInt(seg)
+		if err != nil || i < 0 {
+			continue
+		}
+		if !first {
+			n += int(min(i, maxSliceIndex)) + 1
+		}
+		first = false
+	}
+	return n
 }
 
 func init() {

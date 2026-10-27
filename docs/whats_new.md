@@ -991,7 +991,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 - Support MsgPack binding for request body.
 - Support `map[string]T` struct fields in query and form binding: `attributes[color]=red` or `attributes.color=red` fills `Attributes map[string]string`, and maps of slices keep repeated values. [Learn more](./api/bind.md#map-fields).
 
-A key bound into a struct can have at most 64 segments (`items[0][sku]` has three). A deeper key fails the bind with `binder.ErrKeyTooDeep`; map destinations are not limited. [Learn more](./api/bind.md#nested-and-array-form-fields).
+A key bound into a struct can have at most 64 segments (`items[0][sku]` has three). A deeper key fails the bind with `binder.ErrKeyTooDeep`; map destinations are not limited. Every index after a key's first, such as the `3` in `items[0][variants][3][sku]`, counts as its value plus one, and keys that add up to more than 262,144 fail the bind with `binder.ErrTooManyElements`. [Learn more](./api/bind.md#nested-and-array-form-fields).
 
 <details>
 <summary>Example</summary>

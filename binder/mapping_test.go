@@ -1266,3 +1266,67 @@ func Test_PooledDecoder_KeyBudget(t *testing.T) {
 		})
 	}
 }
+
+func Test_NestedElements(t *testing.T) {
+	t.Parallel()
+
+	for key, want := range map[string]int{
+		"name":                      0,
+		"items.5.sku":               0,
+		"items.5.variants.7.sku":    8,
+		"items.0.variants.+3.sku":   4,
+		"items.0.variants.-0.sku":   1,
+		"items.0.variants.-1.sku":   0,
+		"items.0.variants.3x.sku":   0,
+		"items.0.variants.5000.sku": maxSliceIndex + 1,
+		"attrs.7":                   0,
+		"a..0.b.2":                  3,
+		"children.0.children.1000.children.1000.name": 2 * (maxSliceIndex + 1),
+	} {
+		require.Equal(t, want, nestedElements(key), key)
+	}
+}
+
+func Test_PooledDecoder_ElementBudget(t *testing.T) {
+	t.Parallel()
+
+	d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
+	require.True(t, ok)
+	i := 0
+	for ; ; i++ {
+		if err := d.admit("a." + strconv.Itoa(i) + ".b.1000.c"); err != nil {
+			require.ErrorIs(t, err, ErrTooManyElements)
+			break
+		}
+	}
+	require.Equal(t, maxNestedElements/(maxSliceIndex+1), i)
+
+	// The budget is per bind.
+	pool := &sync.Pool{}
+	putDecoder(pool, d)
+	require.NoError(t, d.admit("a.0.b.1000.c"))
+}
+
+func Test_FormBinder_NestedElementLimit(t *testing.T) {
+	t.Parallel()
+
+	root := new(depthTree)
+	require.NoError(t, bindFormBody(t, "children.1.children.2.name=x", root))
+	require.Len(t, root.Children, 2)
+	require.Len(t, root.Children[1].Children, 3)
+	require.Equal(t, "x", root.Children[1].Children[2].Name)
+
+	// Each key grows 30 slices of 1001 elements below its first index.
+	const keys = maxNestedElements/(30*(maxSliceIndex+1)) + 1
+	pairs := make([]string, 0, keys)
+	for k := range keys {
+		pairs = append(pairs, "children."+strconv.Itoa(k)+strings.Repeat(".children.1000", 30)+".name=x")
+	}
+	body := strings.Join(pairs, "&")
+	require.ErrorIs(t, bindFormBody(t, body, new(depthTree)), ErrTooManyElements)
+
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	req.URI().SetQueryString(body)
+	require.ErrorIs(t, (&QueryBinding{}).Bind(req, new(depthTree)), ErrTooManyElements)
+}
