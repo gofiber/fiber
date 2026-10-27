@@ -3709,7 +3709,13 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 		t.Run(fmt.Sprintf("custom=%v", custom), func(t *testing.T) {
 			t.Parallel()
 
-			cfg := Config{StreamRequestBody: true}
+			cfg := Config{
+				StreamRequestBody:  true,
+				TrustProxy:         true,
+				TrustProxyConfig:   TrustProxyConfig{Loopback: true},
+				ProxyHeader:        HeaderXForwardedFor,
+				EnableIPValidation: true,
+			}
 			app := New(cfg)
 			if custom {
 				app = NewWithCustomCtx(func(app *App) CustomCtx {
@@ -3735,19 +3741,20 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 				return respond(c, body)
 			})
 			app.Post("/fields", func(c Ctx) error {
-				body := c.Body()
-				return c.SendString(fmt.Sprintf("body=%s client=%q host=%q", body, c.GetAll("X-Client"), c.Host()))
+				read := string(c.Body()) == "hello"
+				return c.SendString(fmt.Sprintf("read=%v client=%q ip=%s scheme=%s host=%q", read, c.GetAll("X-Client"),
+					c.IP(), c.Scheme(), c.Host()))
 			})
 			ln := startRawServer(t, app)
 
-			// Past the cap a request start refuses at: read with the body, the section is dropped whatever its size.
 			var many strings.Builder
-			for i := range fieldname.MaxTrailers {
+			for i := range fieldname.MaxTrailers - 2 {
 				fmt.Fprintf(&many, "X-%d: v\r\n", i)
 			}
 			const chunked = "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n"
+			heads := []string{"", "X-User: admin\r\nX-Role: admin\r\n", "X-User: admin\r\nTrailer: X-User, X-Role\r\n"}
 			for _, path := range []string{"/body", "/stream"} {
-				for _, head := range []string{"", "X-User: admin\r\nX-Role: admin\r\n", "X-User: admin\r\nTrailer: X-User, X-Role\r\n"} {
+				for _, head := range heads {
 					for _, extra := range []string{"", many.String()} {
 						raw := "POST " + path + " HTTP/1.1\r\nHost: example.com\r\n" + head + chunked + extra + "X-User: x\r\nX-Role: x\r\n\r\n"
 						responses, _ := rawExchange(t, ln, raw, 1)
@@ -3757,11 +3764,25 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 				}
 			}
 
-			// Too many names to drop one by one: every header field goes along, Host aside.
-			for extra, want := range map[string]string{"": `["c"]`, many.String(): `[]`} {
-				raw := "POST /fields HTTP/1.1\r\nHost: example.com\r\nX-Client: c\r\n" + chunked + extra + "X-User: x\r\n\r\n"
+			// One name past the cap: the read fails and the section stays, so its names read as absent.
+			tooMany := many.String() + "X-14: v\r\n"
+			for _, head := range heads {
+				raw := "POST /stream HTTP/1.1\r\nHost: example.com\r\n" + head + chunked + tooMany + "X-User: x\r\nX-Role: x\r\n\r\n"
 				responses, _ := rawExchange(t, ln, raw, 1)
-				require.Equal(t, `body=hello client=`+want+` host="example.com"`, responses[0].body)
+				require.Equal(t, StatusRequestHeaderFieldsTooLarge, responses[0].status, raw)
+
+				raw = "POST /body HTTP/1.1\r\nHost: example.com\r\n" + head + chunked + tooMany + "X-User: x\r\nX-Role: x\r\n\r\n"
+				responses, _ = rawExchange(t, ln, raw, 1)
+				require.Equal(t, `body=Request Header Fields Too Large user=[] role=[] trailers=17`, responses[0].body, raw)
+			}
+
+			// The header section stays as received either way, the proxy's forwarding fields included.
+			for _, extra := range []string{"", tooMany} {
+				raw := "POST /fields HTTP/1.1\r\nHost: example.com\r\nX-Client: c\r\nX-Forwarded-For: 203.0.113.7\r\n" +
+					"X-Forwarded-Proto: https\r\n" + chunked + extra + "X-User: x\r\nX-Role: x\r\n\r\n"
+				responses, _ := rawExchange(t, loopbackDialer{ln}, raw, 1)
+				require.Equal(t, fmt.Sprintf(`read=%v client=["c"] ip=203.0.113.7 scheme=https host="example.com"`, extra == ""),
+					responses[0].body)
 			}
 		})
 	}

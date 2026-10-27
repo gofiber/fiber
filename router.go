@@ -1093,10 +1093,9 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 // dropTrailers drops the trailer section a request carries into the handlers, since fasthttp files a later Set or
 // Add under a received trailer name with that section. It reports false for more than fieldname.MaxTrailers names.
 func dropTrailers(req *fasthttp.Request) bool {
-	if len(req.Header.PeekTrailerKeys()) > fieldname.MaxTrailers {
+	if !fieldname.DropTrailers(&req.Header) {
 		return false
 	}
-	fieldname.DropTrailers(&req.Header)
 	if req.IsBodyStream() {
 		dropStreamedTrailers(req)
 	}
@@ -1118,37 +1117,13 @@ type trailerDropReader struct {
 	h *fasthttp.RequestHeader
 }
 
+// Read fails the end of a body whose trailer section is too large to drop, as dropTrailers refuses the request.
 func (t *trailerDropReader) Read(p []byte) (int, error) {
 	n, err := t.r.Read(p)
-	if errors.Is(err, io.EOF) {
-		dropReadTrailers(t.h)
+	if errors.Is(err, io.EOF) && !fieldname.DropTrailers(t.h) {
+		return n, ErrRequestHeaderFieldsTooLarge
 	}
 	return n, err //nolint:wrapcheck // io.Reader passes io.EOF through as is
-}
-
-// dropReadTrailers drops a trailer section read once the handlers ran, too late to refuse the request. Above
-// fieldname.MaxTrailers names it drops every header field but Host instead, rather than walk the whole
-// header per name.
-func dropReadTrailers(h *fasthttp.RequestHeader) {
-	if len(h.PeekTrailerKeys()) <= fieldname.MaxTrailers {
-		fieldname.DropTrailers(h)
-		return
-	}
-	method, uri := utils.CopyBytes(h.Method()), utils.CopyBytes(h.RequestURI())
-	protocol, host := utils.CopyBytes(h.Protocol()), utils.CopyBytes(h.Host())
-	// Each returns the previous setting, which Reset clears.
-	normalizing, special := !h.DisableNormalizing(), !h.DisableSpecialHeader()
-	h.Reset()
-	if !normalizing {
-		h.DisableNormalizing()
-	}
-	if !special {
-		h.DisableSpecialHeader()
-	}
-	h.SetMethodBytes(method)
-	h.SetRequestURIBytes(uri)
-	h.SetProtocolBytes(protocol)
-	h.SetHostBytes(host)
 }
 
 func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) {

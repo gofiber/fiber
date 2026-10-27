@@ -717,7 +717,11 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 	reqHeader := &r.c.fasthttp.Request.Header
 	// Pre-allocate map with known header count to avoid reallocations
 	headers := make(map[string][]string, reqHeader.Len())
+	trailers := fieldname.HasTrailers(reqHeader)
 	for k, v := range reqHeader.All() {
+		if trailers && fieldname.InTrailer(reqHeader, utils.UnsafeString(k)) {
+			continue
+		}
 		key := app.toString(k)
 		headers[key] = append(headers[key], app.toString(v))
 	}

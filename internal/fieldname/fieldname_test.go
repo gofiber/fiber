@@ -118,6 +118,7 @@ func Test_First_EmptyLineDoesNotHideTheValue(t *testing.T) {
 
 // Test_First_Lines_SkipTrailerSection pins that a field sent after the last
 // chunk is not read as a header: fasthttp's Peek and PeekAll fall through to it.
+// Nor is a header line of its name, which a Set may not have replaced.
 func Test_First_Lines_SkipTrailerSection(t *testing.T) {
 	t.Parallel()
 
@@ -134,12 +135,10 @@ func Test_First_Lines_SkipTrailerSection(t *testing.T) {
 	}{
 		{name: "trailer only", raw: chunked + body + "X-User: admin\r\n\r\n"},
 		{name: "announced trailer only", raw: chunked + "Trailer: X-User\r\n" + body + "X-User: admin\r\n\r\n"},
+		{name: "empty header line ahead of a trailer", raw: chunked + "X-User:\r\n" + body + "X-User: admin\r\n\r\n"},
+		{name: "header line beside a trailer", raw: chunked + "X-User: alice\r\n" + body + "X-User: admin\r\n\r\n"},
 		{
-			name: "empty header line ahead of a trailer", raw: chunked + "X-User:\r\n" + body + "X-User: admin\r\n\r\n",
-			wantLines: []string{""},
-		},
-		{
-			name: "header line beside a trailer", raw: chunked + "X-User: alice\r\n" + body + "X-User: admin\r\n\r\n",
+			name: "header line beside another trailer", raw: chunked + "X-User: alice\r\n" + body + "X-Other: admin\r\n\r\n",
 			wantFirst: "alice", wantLines: []string{"alice"},
 		},
 		{
@@ -213,7 +212,7 @@ func Test_DropTrailers(t *testing.T) {
 				}
 				require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(tc.raw))))
 
-				DropTrailers(&req.Header)
+				require.True(t, DropTrailers(&req.Header))
 
 				require.Empty(t, req.Header.PeekTrailerKeys())
 				require.Empty(t, req.Header.Peek(fasthttp.HeaderTrailer))
@@ -230,7 +229,7 @@ func Test_DropTrailers(t *testing.T) {
 		}
 	}
 
-	t.Run("many names", func(t *testing.T) {
+	t.Run("too many names", func(t *testing.T) {
 		t.Parallel()
 
 		var trailers strings.Builder
@@ -240,13 +239,11 @@ func Test_DropTrailers(t *testing.T) {
 		req := &fasthttp.Request{}
 		raw := post + "X-0: header\r\n" + chunked + trailers.String() + "\r\n"
 		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+		before := req.Header.String()
+
+		require.False(t, DropTrailers(&req.Header))
+		require.Equal(t, before, req.Header.String())
 		require.Len(t, req.Header.PeekTrailerKeys(), MaxTrailers+1)
-
-		DropTrailers(&req.Header)
-
-		require.Empty(t, req.Header.PeekTrailerKeys())
-		require.Equal(t, [][]byte{[]byte("header")}, req.Header.PeekAll("X-0"))
-		require.Empty(t, req.Header.PeekAll("X-1"))
 	})
 }
 

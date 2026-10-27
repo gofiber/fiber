@@ -114,21 +114,23 @@ func Test_Value(t *testing.T) {
 		require.Equal(t, "abc", v, "Immutable promises a value that outlives the request's buffer")
 	})
 
-	t.Run("a trailer field is not a header", func(t *testing.T) {
+	t.Run("a field of a held trailer section is refused", func(t *testing.T) {
 		t.Parallel()
 
 		for _, normalize := range []bool{true, false} {
-			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
-			readChunked(t, c, "X-User: alice\r\n")
-			v, ok := Value(c, "X-User")
-			require.True(t, ok, "normalize=%v", normalize)
-			require.Equal(t, "alice", v, "normalize=%v", normalize)
+			for _, headers := range []string{"X-User: alice\r\n", ""} {
+				c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+				readChunked(t, c, headers)
+				v, ok := Value(c, "X-User")
+				require.False(t, ok, "normalize=%v %q", normalize, headers)
+				require.Empty(t, v, "normalize=%v %q", normalize, headers)
+			}
 
-			c = newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
-			readChunked(t, c, "")
-			v, ok = Value(c, "X-User")
+			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+			readChunked(t, c, "Origin: https://app.example\r\n")
+			v, ok := Value(c, "Origin")
 			require.True(t, ok, "normalize=%v", normalize)
-			require.Empty(t, v, "normalize=%v", normalize)
+			require.Equal(t, "https://app.example", v, "normalize=%v", normalize)
 		}
 	})
 }
@@ -204,17 +206,19 @@ func Test_Combined(t *testing.T) {
 		require.Equal(t, "abc", v)
 	})
 
-	t.Run("a trailer field is not a header", func(t *testing.T) {
+	t.Run("a field of a held trailer section is not read", func(t *testing.T) {
 		t.Parallel()
 
 		for _, normalize := range []bool{true, false} {
-			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
-			readChunked(t, c, "X-User: alice\r\n")
-			require.Equal(t, "alice", Combined(c, "X-User"), "normalize=%v", normalize)
+			for _, headers := range []string{"X-User: alice\r\n", ""} {
+				c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+				readChunked(t, c, headers)
+				require.Empty(t, Combined(c, "X-User"), "normalize=%v %q", normalize, headers)
+			}
 
-			c = newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
-			readChunked(t, c, "")
-			require.Empty(t, Combined(c, "X-User"), "normalize=%v", normalize)
+			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+			readChunked(t, c, "X-Key: k\r\nX-Key: l\r\n")
+			require.Equal(t, "k, l", Combined(c, "X-Key"), "normalize=%v", normalize)
 		}
 	})
 }

@@ -44,16 +44,19 @@ func HasTrailers(h Peeker) bool {
 	return len(h.PeekTrailerKeys()) > 0
 }
 
-// MaxTrailers is the most trailer names a request may carry into the handlers: DropTrailers walks the whole header
-// for each, so a caller that can still refuse the request does so above it.
+// MaxTrailers is the most trailer names DropTrailers takes on, since it walks the whole header for each.
 const MaxTrailers = 16
 
 // DropTrailers discards a request's trailer section and the names announced for it (RFC 9112 §7.1.2):
 // fasthttp files a later Set or Add under such a name with that section, out of the header readers' reach.
-func DropTrailers(h *fasthttp.RequestHeader) {
+// It reports false, leaving h as it is, for more than MaxTrailers names.
+func DropTrailers(h *fasthttp.RequestHeader) bool {
 	keys := h.PeekTrailerKeys()
 	if len(keys) == 0 {
-		return
+		return true
+	}
+	if len(keys) > MaxTrailers {
+		return false
 	}
 	names := make([]string, len(keys))
 	for i, key := range keys {
@@ -74,6 +77,18 @@ func DropTrailers(h *fasthttp.RequestHeader) {
 	for i := 0; i < len(kept); i += 2 {
 		h.Add(kept[i], kept[i+1])
 	}
+	return true
+}
+
+// InTrailer reports whether name is a field of h's trailer section. A header line under such a name is not read:
+// it may be the client's, with the Set meant to replace it filed with the section.
+func InTrailer(h Peeker, name string) bool {
+	for _, key := range h.PeekTrailerKeys() {
+		if utils.EqualFold(utils.UnsafeString(key), name) {
+			return true
+		}
+	}
+	return false
 }
 
 // ReceivedLines returns name's field lines in received order, which the store loses whenever fasthttp moves
@@ -351,6 +366,9 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 		// PeekAll hands back the header's own slice without allocating.
 		return h.PeekAll(name)
 	}
+	if InTrailer(h, name) {
+		return nil
+	}
 
 	// Walked rather than ranged: this runs per key header on every cacheable
 	// request, and All's iterator costs more than the match itself does.
@@ -408,6 +426,9 @@ func First(h Peeker, name string, canonical bool) []byte {
 		return nil
 	}
 
+	if InTrailer(h, name) {
+		return nil
+	}
 	// Split out rather than written below: All's iterator is heap-allocated
 	// where the compiler cannot see the branch is dead, so holding it in this
 	// function cost the canonical path an allocation it never used.

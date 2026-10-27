@@ -983,21 +983,21 @@ func Test_Proxy_StripDropsTrailerSection(t *testing.T) {
 		"X-Remote-User: alice\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"+
 		"X-Remote-User: admin\r\nX-Other: late\r\n\r\n"))))
 
-	stripHopByHopRequestHeaders(req, true)
+	require.True(t, stripHopByHopRequestHeaders(req, true))
 
 	require.Empty(t, req.Header.PeekTrailerKeys())
 	require.Equal(t, [][]byte{[]byte("alice")}, req.Header.PeekAll("X-Remote-User"))
 	require.Empty(t, req.Header.PeekAll("X-Other"))
 
 	var trailers strings.Builder
-	for i := range 17 {
+	for i := range fieldname.MaxTrailers + 1 {
 		fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
 	}
 	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader("POST / HTTP/1.1\r\nHost: example.com\r\n"+
 		"Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"+trailers.String()+"\r\n"))))
-	stripHopByHopRequestHeaders(req, true)
-	require.Empty(t, req.Header.PeekTrailerKeys(), "dropped whatever its size")
-	require.Empty(t, req.Header.PeekAll("X-0"))
+	before := req.Header.String()
+	require.False(t, stripHopByHopRequestHeaders(req, true), "too many names to drop")
+	require.Equal(t, before, req.Header.String())
 }
 
 // Test_Proxy_StreamedBodyTrailerSection checks that the trailer section of a streamed body
@@ -1028,8 +1028,24 @@ func Test_Proxy_StreamedBodyTrailerSection(t *testing.T) {
 	require.NoError(t, err)
 	startServer(app, ln)
 
+	exchange := func(path, head, trailers string) (int, string) {
+		conn, err := net.Dial(fiber.NetworkTCP4, ln.Addr().String())
+		require.NoError(t, err)
+		require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+		_, err = conn.Write([]byte("POST " + path + " HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n" + head +
+			"Transfer-Encoding: chunked\r\n\r\n2\r\nhi\r\n0\r\n" + trailers + "X-User: x\r\n\r\n"))
+		require.NoError(t, err)
+		resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.NoError(t, conn.Close())
+		return resp.StatusCode, string(body)
+	}
+
 	var many strings.Builder
-	for i := range fieldname.MaxTrailers {
+	for i := range fieldname.MaxTrailers - 1 {
 		fmt.Fprintf(&many, "X-T%d: v\r\n", i)
 	}
 	for _, tc := range []struct{ head, forwarded, trailers string }{
@@ -1042,21 +1058,15 @@ func Test_Proxy_StreamedBodyTrailerSection(t *testing.T) {
 			"/forward": "body=hi header=" + tc.forwarded + " trailer=[]",
 			"/read":    `body=hi header=["alice"] trailer=[]`,
 		} {
-			head := tc.head
-			conn, err := net.Dial(fiber.NetworkTCP4, ln.Addr().String())
-			require.NoError(t, err)
-			require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
-			_, err = conn.Write([]byte("POST " + path + " HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n" + head +
-				"Transfer-Encoding: chunked\r\n\r\n2\r\nhi\r\n0\r\n" + tc.trailers + "X-User: x\r\n\r\n"))
-			require.NoError(t, err)
-			resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
-			require.NoError(t, err)
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.NoError(t, resp.Body.Close())
-			require.NoError(t, conn.Close())
-			require.Equal(t, want, string(body), path+" "+head)
+			_, body := exchange(path, tc.head, tc.trailers)
+			require.Equal(t, want, body, path+" "+tc.head)
 		}
+	}
+
+	// One name past the cap fails the body read, and neither the client's line nor the app's goes upstream.
+	for _, path := range []string{"/forward", "/read"} {
+		status, body := exchange(path, "X-User: admin\r\n", many.String()+"X-T15: v\r\n")
+		require.Equal(t, fiber.StatusRequestHeaderFieldsTooLarge, status, path+" "+body)
 	}
 }
 

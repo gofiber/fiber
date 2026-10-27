@@ -818,8 +818,9 @@ resolve to the **request**; use `c.Res().Get()`, `c.Res().GetHeaders()`, `c.Res(
   announced is returned like any other. `c.Request().Header` and the `r.Trailer` of an adapted `net/http`
   handler no longer hold those fields either. A request that names more than 16 trailer fields before the handlers
   run is refused with `431 Request Header Fields Too Large`. With `StreamRequestBody`, the trailer section arrives
-  at the end of the body and is dropped once the body has been read; one that names more than 16 fields takes
-  every request header field but `Host` with it.
+  at the end of the body and is dropped once the body has been read; when it names more than 16 fields, reading
+  the body fails with `ErrRequestHeaderFieldsTooLarge` instead, and the helpers return neither its fields nor a
+  header line under one of their names.
 - **Fresh()**: `If-None-Match`, `If-Modified-Since` and `Cache-Control` are read case-insensitively for the
   same reason, so `c.Fresh()` can now return `true` where it returned `false` under `DisableHeaderNormalizing`.
   That changes which requests are answered `304 Not Modified`.

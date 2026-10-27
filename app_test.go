@@ -4283,6 +4283,19 @@ func (d tcpDialer) Dial() (net.Conn, error) {
 	return conn, nil
 }
 
+// loopbackDialer dials an in-memory listener from a loopback TCP address, which the proxy trust checks accept.
+type loopbackDialer struct {
+	ln *fasthttputil.InmemoryListener
+}
+
+func (d loopbackDialer) Dial() (net.Conn, error) {
+	conn, err := d.ln.DialWithLocalAddr(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 40000})
+	if err != nil {
+		return nil, fmt.Errorf("dial: %w", err)
+	}
+	return conn, nil
+}
+
 // rawExchange writes raw to a new connection, reads want responses and reports
 // what the connection did next.
 func rawExchange(t *testing.T, server dialer, raw string, want int) (responses []rawResponse, after string) { //nolint:nonamedreturns // gocritic's unnamedResult asks for names
