@@ -1561,7 +1561,7 @@ We are excited to introduce a new option in our caching middleware: Cache Invali
 
 `CacheInvalidator` is called before the cache takes its lock, so a slow one stalls no other request; it can therefore be running for several requests at once, and one that keeps state of its own has to guard it. It is not asked about an entry the request or the entry's own lifetime has already ruled out.
 
-The middleware now emits `Cache-Control` headers by default via the new `DisableCacheControl` flag, increases the default `Expiration` from `1 minute` to `5 minutes`, and applies a new `MaxBytes` limit of `1 MB` (previously unlimited). That limit is the default of `cache.New()` called without a `Config`: a `Config` that leaves `MaxBytes` unset still stores bodies without a limit.
+The middleware now emits `Cache-Control` headers by default via the new `DisableCacheControl` flag, increases the default `Expiration` from `1 minute` to `5 minutes`, and applies a new `MaxBytes` limit of `1 MB` (previously unlimited). That limit is the default of `cache.New()` called without a `Config`: a `Config` that leaves `MaxBytes` unset still stores bodies without a limit. A streamed response is not read into memory to measure it: one that declares more than `MaxBytes`, or no length, is passed on as a stream and not stored.
 
 The middleware also caches `308 Permanent Redirect` responses and honors the request directives `max-age`, `min-fresh`, `max-stale` and `only-if-cached`, as well as `Pragma: no-cache`. A hit served stale carries a `Warning` header; an entry that holds one client's response (keyed or varied by a cookie or credential) is not served stale unless `AllowStaleCredentialResponses` is set, and one that `CacheInvalidator` has invalidated never is. See [Request directives](./middleware/cache.md#request-directives).
 
@@ -1632,6 +1632,8 @@ The CSRF middleware now validates the [`Sec-Fetch-Site`](https://developer.mozil
 ### Idempotency
 
 Idempotency middleware now redacts keys by default and offers a `DisableValueRedaction` configuration flag (default `false`) to expose them when debugging.
+
+A streamed response is sent as it is produced and no longer read to its end to store it, so a retry with its key runs the handler again.
 
 The key alone identifies a request, so whoever sends a stored key receives the response stored for it, whatever the user or route. The new `KeyScope` function returns the scope a key belongs to, such as the ID of the authenticated user, and a response is then stored, replayed and locked per scope and key. `Set-Cookie` and `Set-Cookie2` are no longer stored, and an entry that holds one is replayed without it, unless `KeepResponseHeaders` names the header; a replay no longer hands the cookie of the first client to the next one, while a session or token carried in another response header is still replayed unless `KeepResponseHeaders` leaves it out or `KeyScope` scopes the key. Have clients draw keys from a cryptographically secure random source, as the default validator checks only the length. See [Behavior](./middleware/idempotency.md#behavior).
 

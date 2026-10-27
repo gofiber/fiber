@@ -880,3 +880,38 @@ func Test_Idempotency_Store_After_Handler_Cancel(t *testing.T) {
 	require.Equal(t, "response", body)
 	require.Equal(t, 1, calls, "second request was not served from the idempotency cache")
 }
+
+// countingStream counts the reads of a response body stream.
+type countingStream struct{ reads int }
+
+func (s *countingStream) Read(_ []byte) (int, error) {
+	s.reads++
+	return 0, io.EOF
+}
+
+// Recording a stream read it to its end before the response was sent.
+func Test_Idempotency_StreamIsPassedOnUnrecorded(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+
+	var calls int
+	var stream *countingStream
+	app.Post("/", func(c fiber.Ctx) error {
+		calls++
+		stream = &countingStream{}
+		return c.SendStream(stream)
+	})
+
+	for range 2 {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodPost)
+		fctx.Request.SetRequestURI("/")
+		fctx.Request.Header.Set(ConfigDefault.KeyHeader, validKey)
+		app.Handler()(fctx)
+
+		require.True(t, fctx.Response.IsBodyStream())
+		require.Zero(t, stream.reads)
+	}
+	require.Equal(t, 2, calls)
+}

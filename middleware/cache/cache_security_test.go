@@ -976,6 +976,72 @@ func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T)
 	require.Equal(t, int32(2), count.Load())
 }
 
+// countingReader yields zeros and counts how many were read.
+type countingReader struct {
+	left int
+	read int
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	if r.left == 0 {
+		return 0, io.EOF
+	}
+	n := min(len(p), r.left)
+	clear(p[:n])
+	r.left -= n
+	r.read += n
+	return n, nil
+}
+
+// Measuring a stream with Response.Body read all of it into memory first.
+func Test_Cache_Security_StreamIsNotBufferedToMeasureIt(t *testing.T) {
+	t.Parallel()
+
+	const maxBytes = 1024
+
+	for name, tc := range map[string]struct {
+		maxBytes uint
+		size     int
+		declared bool
+		stored   bool
+	}{
+		"declared, too large":     {maxBytes: maxBytes, size: 64 * maxBytes, declared: true},
+		"undeclared":              {maxBytes: maxBytes, size: 64 * maxBytes},
+		"undeclared, no MaxBytes": {size: 64 * maxBytes},
+		"declared, fits":          {maxBytes: maxBytes, size: maxBytes, declared: true, stored: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stream := &countingReader{left: tc.size}
+			app := fiber.New()
+			app.Use(New(Config{MaxBytes: tc.maxBytes, Expiration: time.Hour}))
+			app.Get("/", func(c fiber.Ctx) error {
+				if tc.declared {
+					return c.SendStream(stream, tc.size)
+				}
+				return c.SendStream(stream)
+			})
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(fiber.MethodGet)
+			fctx.Request.Header.SetHost("example.com")
+			fctx.Request.SetRequestURI("/")
+			app.Handler()(fctx)
+
+			require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+			if tc.stored {
+				require.Equal(t, cacheMiss, string(fctx.Response.Header.Peek("X-Cache")))
+				require.Equal(t, tc.size, stream.read)
+				return
+			}
+			require.Equal(t, cacheUnreachable, string(fctx.Response.Header.Peek("X-Cache")))
+			require.True(t, fctx.Response.IsBodyStream())
+			require.Zero(t, stream.read)
+		})
+	}
+}
+
 // Test_VaryCookie_KeyIsStableAcrossCookieCollection pins the reason
 // keyFieldLines forces fasthttp's lazy cookie collection before reading the
 // field lines.

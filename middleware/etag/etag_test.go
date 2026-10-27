@@ -89,6 +89,43 @@ func Test_ETag_SSE_Stream(t *testing.T) {
 	require.Empty(t, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
 }
 
+// A stream of unknown length may never end, so hashing it would hold it; a sized one is still hashed.
+func Test_ETag_StreamOfUnknownLength(t *testing.T) {
+	t.Parallel()
+
+	for name, size := range map[string]int{"unknown length": -1, "declared length": 5} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New())
+
+			stream := &failOnReadStream{}
+			app.Get("/", func(c fiber.Ctx) error {
+				if size < 0 {
+					c.Response().SetBodyStream(stream, size)
+				} else {
+					c.Response().SetBodyStream(bytes.NewReader([]byte("hello")), size)
+				}
+				return nil
+			})
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(fiber.MethodGet)
+			fctx.Request.SetRequestURI("/")
+			app.Handler()(fctx)
+
+			etag := string(fctx.Response.Header.Peek(fiber.HeaderETag))
+			if size < 0 {
+				require.True(t, fctx.Response.IsBodyStream())
+				require.Zero(t, stream.readCalls)
+				require.Empty(t, etag)
+				return
+			}
+			require.Equal(t, string(Generate([]byte("hello"))), etag)
+		})
+	}
+}
+
 // go test -run Test_ETag_SkipError
 func Test_ETag_SkipError(t *testing.T) {
 	t.Parallel()

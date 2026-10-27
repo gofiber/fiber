@@ -1054,6 +1054,15 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		// Body reads a stream into memory, so a stream is judged by its declared length;
+		// one that declares none may never end and is passed on unstored.
+		if c.Response().IsBodyStream() {
+			if length := c.Response().Header.ContentLength(); length < 0 || (cfg.MaxBytes > 0 && uint(length) > cfg.MaxBytes) {
+				markUnreachable()
+				return nil
+			}
+		}
+
 		// Don't try to cache if body won't fit into cache
 		bodySize := uint(len(c.Response().Body()))
 		if cfg.MaxBytes > 0 && bodySize > cfg.MaxBytes {

@@ -195,6 +195,11 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
+		// Body would read a stream to its end before anything is sent, so it is passed on unrecorded.
+		if c.Response().IsBodyStream() {
+			return nil
+		}
+
 		// Construct response
 		res := &response{
 			StatusCode: c.Res().StatusCode(),

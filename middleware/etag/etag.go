@@ -63,9 +63,9 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
-		// Never generate ETags for Server-Sent Events: hashing the body would
-		// materialize the stream and break real-time delivery.
-		if isEventStream(c) {
+		// Never generate ETags for Server-Sent Events or a stream of unknown length: hashing the
+		// body would materialize the stream and break real-time delivery.
+		if isEventStream(c) || (c.Response().IsBodyStream() && c.Response().Header.ContentLength() < 0) {
 			return nil
 		}
 
