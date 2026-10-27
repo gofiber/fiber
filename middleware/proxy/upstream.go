@@ -184,19 +184,22 @@ func joinURLPath(out, base, target *url.URL) {
 		out.Path, out.RawPath = strings.TrimSuffix(base.Path, "/")+"/"+strings.TrimPrefix(target.Path, "/"), ""
 		return
 	}
-	basePath, baseRaw := base.Path, base.EscapedPath()
+	basePath, baseRaw := base.Path, escapedPath(base)
 	// A trailing "%2F" belongs to the last segment and stays.
 	if raw, ok := strings.CutSuffix(baseRaw, "/"); ok {
 		basePath, baseRaw = strings.TrimSuffix(basePath, "/"), raw
 	}
-	// Routed escapes every byte a path may not carry raw, so the target's RawPath is what EscapedPath,
-	// which unescapes it again to check, would return. A base RawPath may not be: "/café" stays raw.
-	targetRaw := target.RawPath
-	if targetRaw == "" {
-		targetRaw = target.EscapedPath()
-	}
 	out.Path = basePath + "/" + strings.TrimPrefix(target.Path, "/")
-	out.RawPath = baseRaw + "/" + strings.TrimPrefix(targetRaw, "/")
+	out.RawPath = baseRaw + "/" + strings.TrimPrefix(escapedPath(target), "/")
+}
+
+// escapedPath is u.EscapedPath() without its unescape for a RawPath String() writes as it is ("/café"
+// is not); url.Parse made sure such a RawPath decodes to Path.
+func escapedPath(u *url.URL) string {
+	if u.RawPath != "" && canFastJoinPath(u.RawPath) {
+		return u.RawPath
+	}
+	return u.EscapedPath()
 }
 
 // baseIsPlainOrigin reports whether base carries only a scheme + host

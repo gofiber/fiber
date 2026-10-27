@@ -191,6 +191,17 @@ func BenchmarkJoinUpstreamPath_EscapedTarget(b *testing.B) {
 	}
 }
 
+func BenchmarkJoinUpstreamPath_EscapedBase(b *testing.B) {
+	base, err := url.Parse("http://upstream.example/a%3Bb")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = joinUpstreamPath(base, "/api/c%3Bd")
+	}
+}
+
 func BenchmarkIsBlockedIP_PublicV4(b *testing.B) {
 	ip := net.ParseIP("203.0.113.5")
 	b.ReportAllocs()
