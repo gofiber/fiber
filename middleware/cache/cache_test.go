@@ -5570,7 +5570,7 @@ func Test_CacheStorage_NoStoreRevalidationCleansVaryManifest(t *testing.T) {
 			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 			require.NoError(t, resp.Body.Close())
 
-			manifestKey := manifestKeyPrefix + "GET|/cached"
+			manifestKey := manifestKeyPrefix + cacheKeyVersion + "|GET|/cached"
 			storage.mu.Lock()
 			_, manifestStored := storage.data[manifestKey]
 			if failDelete {
@@ -8209,7 +8209,7 @@ func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
 		return c.SendString(body)
 	})
 
-	manifestKey := manifestKeyPrefix + "GET|scheme=http|host=example.com|/a|q=|h=accept:0|accept-encoding:0|accept-language:0"
+	manifestKey := manifestKeyPrefix + cacheKeyVersion + "|GET|scheme=http|host=example.com|/a|q=|h=accept:0|accept-encoding:0|accept-language:0"
 	storage.mu.Lock()
 	storage.errs["set|"+manifestKey] = errors.New("boom")
 	storage.mu.Unlock()

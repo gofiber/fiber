@@ -50,7 +50,7 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 						cfg.Storage = storage
 					}
 					baseKey := cacheKeyVersion + "|GET|/cached"
-					manifestKey := manifestKeyPrefix + "GET|/cached"
+					manifestKey := manifestKeyPrefix + cacheKeyVersion + "|GET|/cached"
 					var header fasthttp.RequestHeader
 					header.Set("X-Variant", "a")
 					key := varyKey(baseKey, []string{"x-variant"}, &header, true)

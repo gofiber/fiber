@@ -206,12 +206,12 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 	}{
 		{
 			name: "anonymous",
-			want: []string{"v6|manifest|GET|/demo", "v6|GET|/demo"},
+			want: []string{"v6|manifest|v6|GET|/demo", "v6|GET|/demo"},
 		},
 		{
 			name: "authenticated",
 			auth: "Bearer token",
-			want: []string{"v6|manifest|GET|/demo|auth=" + authHash, "v6|GET|/demo|auth=" + authHash},
+			want: []string{"v6|manifest|v6|GET|/demo|auth=" + authHash, "v6|GET|/demo|auth=" + authHash},
 		},
 		{
 			name:        "vary disabled",

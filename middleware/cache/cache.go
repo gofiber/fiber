@@ -379,11 +379,17 @@ func New(config ...Config) fiber.Handler {
 		// time, and every join copied the key built so far into a fresh string.
 		keyBufPtr := acquireKeyBuffer()
 		keyBuf := (*keyBufPtr)[:0]
+		// The manifest key is the base key behind its prefix: one string holds both,
+		// and slicing the base key off it shares its bytes.
+		if !cfg.DisableVaryHeaders {
+			keyBuf = append(keyBuf, manifestKeyPrefix...)
+		}
+		start := len(keyBuf)
 		keyBuf = append(keyBuf, cacheKeyVersion...)
 		keyBuf = append(keyBuf, '|')
 		keyBuf = append(keyBuf, requestMethod...)
 		keyBuf = append(keyBuf, '|')
-		generatedAt := len(keyBuf)
+		generatedAt := len(keyBuf) - start
 		keyBuf = appendGeneratedKey(keyBuf, c, &cfg)
 		if hasAuthorization {
 			// Read at the point of use: the result aliases the header's storage, and
@@ -397,18 +403,12 @@ func New(config ...Config) fiber.Handler {
 			keyBuf = append(keyBuf, "|auth="...)
 			keyBuf = appendAuthHash(keyBuf, authLines)
 		}
-		baseLen := len(keyBuf)
 
-		// One string holds both keys, the manifest key laid out behind the base key:
-		// slicing each off it shares its bytes, which separate conversions could not do.
-		var baseKey, manifestKey string
-		if cfg.DisableVaryHeaders {
-			baseKey = string(keyBuf)
-		} else {
-			keyBuf = append(keyBuf, manifestKeyPrefix...)
-			keyBuf = append(keyBuf, keyBuf[len(cacheKeyVersion)+1:baseLen]...)
-			both := string(keyBuf)
-			baseKey, manifestKey = both[:baseLen], both[baseLen:]
+		both := string(keyBuf)
+		baseKey := both[start:]
+		var manifestKey string
+		if !cfg.DisableVaryHeaders {
+			manifestKey = both
 		}
 		key := baseKey
 		generatedKey := baseKey[generatedAt:] // baseKey without the version and method, for the refusal records
@@ -425,8 +425,8 @@ func New(config ...Config) fiber.Handler {
 				return err
 			}
 			if len(varyNames) > 0 {
-				keyBuf = appendVaryKey(keyBuf[:baseLen], varyNames, &c.Request().Header, canonical)
-				key = string(keyBuf)
+				keyBuf = appendVaryKey(keyBuf, varyNames, &c.Request().Header, canonical)
+				key = string(keyBuf[start:])
 			}
 		}
 		releaseKeyBuffer(keyBufPtr, keyBuf)
