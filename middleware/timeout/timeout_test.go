@@ -1134,6 +1134,30 @@ func Test_Timeout_NestedInnerFirstLeavesContextToHandler(t *testing.T) {
 	require.Zero(t, outerCalls.Load())
 }
 
+type customCtx struct {
+	fiber.DefaultCtx
+}
+
+// A ctx other than *fiber.DefaultCtx is never pooled, so neither timeout.New touches its context after timing out.
+func Test_Timeout_NestedCustomCtxLeavesContextToHandler(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+		return &customCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
+	})
+	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{Timeout: 20 * time.Millisecond}))
+	app.Get("/", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		return c.Context().Err()
+	}, Config{Timeout: 19 * time.Millisecond}))
+
+	for range 20 {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	}
+}
+
 // A handler wrapped by timeout.New inside OnTimeout runs while the request is being answered.
 func Test_Timeout_OnTimeoutCallsTimeoutHandler(t *testing.T) {
 	t.Parallel()

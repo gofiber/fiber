@@ -120,7 +120,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			// Timeout occurred - abandon context and return immediately.
 			// Reclamation is scheduled so the abandoned fiber.Ctx is returned to
 			// the pool once the handler goroutine finishes, instead of leaking.
-			return handleTimeout(parent, ctx, cancel, handlerDone, req, cfg)
+			return handleTimeout(ctx, cancel, handlerDone, req, cfg)
 		}
 	}
 }
@@ -161,7 +161,6 @@ func handleResult(err error, ctx fiber.Ctx, cfg Config) error {
 
 // handleTimeout handles the timeout case using the Abandon mechanism
 func handleTimeout(
-	parent context.Context,
 	ctx fiber.Ctx,
 	cancel context.CancelFunc,
 	handlerDone <-chan struct{},
@@ -233,9 +232,8 @@ func handleTimeout(
 		return timeoutErr
 	}
 
-	// Custom context implementations fall back to the previous behavior: once the
-	// handler finishes, cancel the timeout context and restore the parent. The
-	// context stays out of the pool.
+	// Custom context implementations stay out of the pool, so only cancel the timeout context
+	// once the handler finishes: restoring the parent would race an inner timeout's handler.
 	//
 	// Mark the context as abandoned so ReleaseCtx will skip pooling, allowing the
 	// handler goroutine to continue safely using the context.
@@ -243,7 +241,6 @@ func handleTimeout(
 	go func() {
 		<-handlerDone
 		cancel()
-		ctx.SetContext(parent)
 	}()
 
 	return timeoutErr
