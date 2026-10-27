@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"runtime/debug"
+	"time"
 
 	"github.com/valyala/fasthttp"
 
@@ -37,6 +38,11 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 
 		// Create timeout context - handler can check c.Context().Done()
 		parent := ctx.Context()
+		// An enclosing deadline that fires first already guards h, usually an outer timeout.New;
+		// a goroutine of our own would time out and abandon the same ctx a second time.
+		if deadline, ok := parent.Deadline(); ok && !deadline.After(time.Now().Add(timeout)) {
+			return handleResult(runInline(h, ctx), ctx, cfg)
+		}
 		tCtx, cancel := context.WithTimeout(parent, timeout)
 		ctx.SetContext(tCtx)
 
@@ -93,6 +99,17 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 	}
 }
 
+// runInline runs h on the calling goroutine with the panic handling of the goroutine path.
+func runInline(h fiber.Handler, ctx fiber.Ctx) (err error) { //nolint:nonamedreturns // Uses recover() to overwrite the error
+	defer func() {
+		if p := recover(); p != nil {
+			log.Errorw("panic recovered in timeout handler", "panic", p, "stack", string(debug.Stack()))
+			err = fiber.ErrInternalServerError
+		}
+	}()
+	return h(ctx)
+}
+
 // handleResult processes the handler's return value
 func handleResult(err error, ctx fiber.Ctx, cfg Config) error {
 	if err != nil && isTimeoutError(err, cfg.Errors) {
@@ -110,7 +127,12 @@ func handleTimeout(
 	cfg Config,
 ) error {
 	var timeoutErr error
-	if cfg.OnTimeout == nil {
+	switch {
+	case ctx.IsAbandoned() && ctx.RequestCtx().LastTimeoutErrorResponse() != nil:
+		// An inner timeout.New answered first and fasthttp holds its response, so only
+		// wait for our goroutine too. IsAbandoned orders the read after that write.
+		timeoutErr = fiber.ErrServiceUnavailable
+	case cfg.OnTimeout == nil:
 		// Build the default timeout response separately from the RequestCtx response.
 		// The timed-out handler can keep running and may have already buffered
 		// application data there, so reusing it could disclose partial output.
@@ -118,7 +140,7 @@ func handleTimeout(
 		// the active RequestCtx response is never read.
 		ctx.RequestCtx().TimeoutErrorWithCode(fiber.ErrServiceUnavailable.Message, fiber.StatusServiceUnavailable)
 		timeoutErr = fiber.ErrServiceUnavailable
-	} else {
+	default:
 		// Prepare the timeout response before marking the RequestCtx as timed out so
 		// custom OnTimeout handlers can shape the response body.
 		timeoutErr = invokeOnTimeout(ctx, cfg)

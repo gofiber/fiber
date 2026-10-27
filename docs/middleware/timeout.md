@@ -23,6 +23,8 @@ This is the recommended pattern for cooperative cancellation.
 
 If a handler panics, the middleware catches it and returns `500 Internal Server Error`.
 
+When `c.Context()` already carries a deadline that comes no later than the configured one, such as that of a shorter timeout registered with `app.Use`, the middleware runs the handler on the calling goroutine and leaves the timeout to whoever set that deadline. Its `OnTimeout` then runs only for a timeout error the handler returns.
+
 ## Why 503
 
 A handler that outlives its deadline is slow on the server's side: the request arrived complete. `408 Request Timeout` means the server did not receive a complete request in time ([RFC 9110 §15.5.9](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.9)), and it tells the client that it may send the request again, while the timed-out handler can still be running and may finish its work. The default is therefore `503 Service Unavailable` ([§15.6.4](https://www.rfc-editor.org/rfc/rfc9110#section-15.6.4)). Use `504 Gateway Timeout` ([§15.6.5](https://www.rfc-editor.org/rfc/rfc9110#section-15.6.5)) when the handler stands in front of an upstream that did not answer in time, and return it from `OnTimeout`:

@@ -889,3 +889,103 @@ func Test_Timeout_ErrorHandlerSkippedAfterTimeout(t *testing.T) {
 	}
 	require.Equal(t, int32(0), errorHandlerCalls.Load())
 }
+
+// Test_Timeout_NestedOuterDeadlineFirst covers a route timeout under a shorter one
+// on app.Use: only the outer middleware times the request out and abandons the ctx.
+func Test_Timeout_NestedOuterDeadlineFirst(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{Timeout: 20 * time.Millisecond}))
+
+	var innerOnTimeout atomic.Int32
+	ctxCh := make(chan fiber.Ctx, 1)
+	release := make(chan struct{})
+	app.Get("/", New(func(c fiber.Ctx) error {
+		ctxCh <- c
+		<-release
+		return nil
+	}, Config{Timeout: time.Second, OnTimeout: func(fiber.Ctx) error {
+		innerOnTimeout.Add(1)
+		return fiber.ErrServiceUnavailable
+	}}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+
+	c := <-ctxCh
+	require.Never(t, func() bool {
+		return !c.IsAbandoned() || innerOnTimeout.Load() != 0
+	}, 50*time.Millisecond, 5*time.Millisecond, "ctx reclaimed or timed out twice while the handler still runs")
+
+	close(release)
+	require.Eventually(t, func() bool {
+		return !c.IsAbandoned()
+	}, time.Second, 5*time.Millisecond, "ctx was not reclaimed after the handler finished")
+	require.Zero(t, innerOnTimeout.Load())
+}
+
+// Test_Timeout_NestedInnerFirst covers an inner timeout that fires first while the
+// outer goroutine is still unwinding when the outer deadline fires too.
+func Test_Timeout_NestedInnerFirst(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{Timeout: 50 * time.Millisecond}))
+	unwind := make(chan struct{})
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		<-unwind
+		return err
+	})
+	ctxCh := make(chan fiber.Ctx, 1)
+	release := make(chan struct{})
+	app.Get("/", New(func(c fiber.Ctx) error {
+		ctxCh <- c
+		<-release
+		return nil
+	}, Config{Timeout: 10 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+
+	c := <-ctxCh
+	close(unwind)
+	require.Never(t, func() bool {
+		return !c.IsAbandoned()
+	}, 50*time.Millisecond, 5*time.Millisecond, "ctx reclaimed while the inner handler still runs")
+
+	close(release)
+	require.Eventually(t, func() bool {
+		return !c.IsAbandoned()
+	}, time.Second, 5*time.Millisecond, "ctx was not reclaimed after both goroutines finished")
+}
+
+func Test_Timeout_EnclosingDeadlineRunsInline(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		ctx, cancel := context.WithTimeout(c.Context(), 20*time.Millisecond)
+		defer cancel()
+		c.SetContext(ctx)
+		return c.Next()
+	})
+	app.Get("/wait", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		return c.Context().Err()
+	}, Config{Timeout: time.Second}))
+	app.Get("/panic", New(func(fiber.Ctx) error {
+		panic("boom")
+	}, Config{Timeout: time.Second}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/wait", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+}
