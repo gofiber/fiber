@@ -120,7 +120,7 @@ func NewWithHostClient(c *fasthttp.HostClient) *Client
 
 ### NewWithLBClient
 
-**NewWithLBClient** creates and returns a new Client object from an existing `fasthttp.LBClient`. TLS, dialer, proxy and response streaming settings are applied to every host client behind the load balancer. Requests go through `LBClient.Do`, so they fail with `fasthttp.ErrTimeout` after `LBClient.Timeout`, which is one second when left unset, even if the client timeout is longer. It panics if `c` is `nil`.
+**NewWithLBClient** creates and returns a new Client object from an existing `fasthttp.LBClient`. TLS, dialer, proxy, response streaming and response size settings are applied to every host client behind the load balancer. Requests go through `LBClient.Do`, so they fail with `fasthttp.ErrTimeout` after `LBClient.Timeout`, which is one second when left unset, even if the client timeout is longer. It panics if `c` is `nil`.
 
 ```go title="Signature"
 func NewWithLBClient(c *fasthttp.LBClient) *Client
@@ -543,6 +543,28 @@ for {
     fmt.Print(line) // Process SSE event
 }
 ```
+
+## Response Size
+
+### MaxResponseBodySize
+
+Returns the largest response body the client buffers, in bytes. Zero or less means no limit.
+
+```go title="Signature"
+func (c *Client) MaxResponseBodySize() int
+```
+
+### SetMaxResponseBodySize
+
+Sets the largest response body the client buffers, in bytes. A response that declares or sends more fails with `fasthttp.ErrBodyTooLarge`. A client from `New`, the default client behind the package-level helpers included, starts at 100 MiB; a client built around a `fasthttp.Client`, `HostClient` or `LBClient` keeps that client's `MaxResponseBodySize`, which `fasthttp` leaves unlimited. Zero or less removes the limit. Call it before the first request: a `fasthttp.Client` gives each host the limit it has when it first serves that host. A body read through [response streaming](#response-streaming) is not buffered and not limited, which makes streaming the way to receive a larger one.
+
+```go title="Signature"
+func (c *Client) SetMaxResponseBodySize(size int) *Client
+```
+
+:::caution
+`fasthttp` allocates a buffered body from the `Content-Length` or chunk size the server declares, before the body arrives. Without a limit, a server can end the process with a response of a few bytes that declares a body too large to allocate: the Go runtime reports that as a fatal error, which `recover` cannot catch. Keep a limit for servers you do not control.
+:::
 
 ## RetryConfig
 
@@ -1099,7 +1121,8 @@ redirect-sensitive header names, headers, query and path parameters and
 cookies, and it empties and detaches the cookie
 jar. It also replaces the transport with a new default `fasthttp.Client`, which
 drops a `HostClient` or `LBClient` the client wrapped together with any custom
-dial function, proxy, TLS configuration and response streaming setting. Request
+dial function, proxy, TLS configuration and response streaming setting, and it
+puts the response size limit back to 100 MiB. Request
 and response hooks, the JSON, XML and CBOR marshal and unmarshal functions and
 the logger are kept.
 

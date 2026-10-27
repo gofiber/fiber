@@ -644,6 +644,13 @@ func (*delayedTransport) StreamResponseBody() bool {
 func (*delayedTransport) SetStreamResponseBody(_ bool) {
 }
 
+func (*delayedTransport) MaxResponseBodySize() int {
+	return 0
+}
+
+func (*delayedTransport) SetMaxResponseBodySize(_ int) {
+}
+
 type blockingErrTransport struct {
 	err error
 
@@ -708,6 +715,13 @@ func (*blockingErrTransport) StreamResponseBody() bool {
 func (*blockingErrTransport) SetStreamResponseBody(_ bool) {
 }
 
+func (*blockingErrTransport) MaxResponseBodySize() int {
+	return 0
+}
+
+func (*blockingErrTransport) SetMaxResponseBodySize(_ int) {
+}
+
 func (b *blockingErrTransport) release() {
 	b.releaseOnce.Do(func() { close(b.unblock) })
 }
@@ -754,6 +768,13 @@ func (*panicTransport) StreamResponseBody() bool {
 }
 
 func (*panicTransport) SetStreamResponseBody(_ bool) {
+}
+
+func (*panicTransport) MaxResponseBodySize() int {
+	return 0
+}
+
+func (*panicTransport) SetMaxResponseBodySize(_ int) {
 }
 
 type namesTransport struct {

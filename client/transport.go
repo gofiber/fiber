@@ -18,6 +18,10 @@ import (
 // defaultRedirectLimit mirrors fasthttp's default when callers supply a negative redirect cap.
 const defaultRedirectLimit = 16
 
+// defaultMaxResponseBodySize bounds the buffer fasthttp allocates from a declared
+// Content-Length or chunk size before the body arrives; an unmappable size is a fatal error.
+const defaultMaxResponseBodySize = 100 << 20
+
 var (
 	// Pre-allocated byte slice for http/https scheme comparison
 	httpScheme  = []byte("http")
@@ -45,6 +49,8 @@ type httpClientTransport interface {
 	Client() any
 	StreamResponseBody() bool
 	SetStreamResponseBody(enable bool)
+	MaxResponseBodySize() int
+	SetMaxResponseBodySize(size int)
 }
 
 // pathNormalizingTransport is implemented by the transports whose wrapped client
@@ -102,7 +108,12 @@ func newStandardClientTransport(client *fasthttp.Client) *standardClientTranspor
 // newOwnedStandardClientTransport wraps a new fasthttp.Client that nothing else
 // holds yet.
 func newOwnedStandardClientTransport() *standardClientTransport {
-	return &standardClientTransport{client: &fasthttp.Client{}, settingKnown: true}
+	return &standardClientTransport{
+		client: &fasthttp.Client{
+			MaxResponseBodySize: defaultMaxResponseBodySize,
+		},
+		settingKnown: true,
+	}
 }
 
 // noteSend records a request about to be sent through a client that normalizes.
@@ -168,6 +179,14 @@ func (s *standardClientTransport) StreamResponseBody() bool {
 
 func (s *standardClientTransport) SetStreamResponseBody(enable bool) {
 	s.client.StreamResponseBody = enable
+}
+
+func (s *standardClientTransport) MaxResponseBodySize() int {
+	return s.client.MaxResponseBodySize
+}
+
+func (s *standardClientTransport) SetMaxResponseBodySize(size int) {
+	s.client.MaxResponseBodySize = size
 }
 
 // DisablePathNormalizing is false once a request has gone out while the client
@@ -241,6 +260,14 @@ func (h *hostClientTransport) StreamResponseBody() bool {
 
 func (h *hostClientTransport) SetStreamResponseBody(enable bool) {
 	h.client.StreamResponseBody = enable
+}
+
+func (h *hostClientTransport) MaxResponseBodySize() int {
+	return h.client.MaxResponseBodySize
+}
+
+func (h *hostClientTransport) SetMaxResponseBodySize(size int) {
+	h.client.MaxResponseBodySize = size
 }
 
 func (h *hostClientTransport) DisablePathNormalizing() bool {
@@ -329,6 +356,26 @@ func (l *lbClientTransport) StreamResponseBody() bool {
 func (l *lbClientTransport) SetStreamResponseBody(enable bool) {
 	forEachHostClient(l.client, func(hc *fasthttp.HostClient) {
 		hc.StreamResponseBody = enable
+	})
+}
+
+// MaxResponseBodySize returns the limit of the first host client, as StreamResponseBody does.
+func (l *lbClientTransport) MaxResponseBodySize() int {
+	var size int
+	for _, c := range l.client.Clients {
+		if walkBalancingClientWithBreak(c, func(hc *fasthttp.HostClient) bool {
+			size = hc.MaxResponseBodySize
+			return true
+		}) {
+			break
+		}
+	}
+	return size
+}
+
+func (l *lbClientTransport) SetMaxResponseBodySize(size int) {
+	forEachHostClient(l.client, func(hc *fasthttp.HostClient) {
+		hc.MaxResponseBodySize = size
 	})
 }
 

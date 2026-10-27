@@ -31,6 +31,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (app *fiber.App, addr string) { //nolint:nonamedreturns // gocritic unnamedResult requires explicit result names for clarity when returning app and address
@@ -2676,6 +2677,85 @@ func Test_Client_StreamResponseBody(t *testing.T) {
 		client.SetStreamResponseBody(true)
 		require.True(t, client.StreamResponseBody())
 		require.True(t, hostClient.StreamResponseBody)
+	})
+}
+
+func Test_Client_MaxResponseBodySize(t *testing.T) {
+	t.Parallel()
+
+	// answerWith serves response on every connection after reading the request.
+	answerWith := func(t *testing.T, response string) fasthttp.DialFunc {
+		t.Helper()
+
+		ln := fasthttputil.NewInmemoryListener()
+		t.Cleanup(func() { require.NoError(t, ln.Close()) })
+		go func() {
+			for {
+				conn, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				_, err = conn.Read(make([]byte, 4096))
+				assert.NoError(t, err)
+				_, err = conn.Write([]byte(response))
+				assert.NoError(t, err)
+				assert.NoError(t, conn.Close())
+			}
+		}()
+		return func(string) (net.Conn, error) { return ln.Dial() }
+	}
+
+	t.Run("a new client refuses a declared size over the limit", func(t *testing.T) {
+		t.Parallel()
+
+		over := defaultMaxResponseBodySize + 1
+		for _, response := range []string{
+			"HTTP/1.1 200 OK\r\nContent-Length: " + strconv.Itoa(over) + "\r\n\r\nok",
+			"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + strconv.FormatInt(int64(over), 16) + "\r\nok",
+		} {
+			client := New().SetDial(answerWith(t, response))
+			require.Equal(t, defaultMaxResponseBodySize, client.MaxResponseBodySize())
+
+			_, err := client.Get("http://example.com/")
+			require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+		}
+	})
+
+	t.Run("the limit can be set and Reset restores it", func(t *testing.T) {
+		t.Parallel()
+
+		dial := answerWith(t, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello")
+
+		_, err := New().SetDial(dial).SetMaxResponseBodySize(4).Get("http://example.com/")
+		require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+
+		client := New().SetDial(dial).SetMaxResponseBodySize(5)
+		resp, err := client.Get("http://example.com/")
+		require.NoError(t, err)
+		require.Equal(t, "hello", resp.String())
+		resp.Close()
+
+		client.SetMaxResponseBodySize(0).Reset()
+		require.Equal(t, defaultMaxResponseBodySize, client.MaxResponseBodySize())
+	})
+
+	t.Run("a wrapped client keeps its own setting", func(t *testing.T) {
+		t.Parallel()
+
+		host := &fasthttp.HostClient{Addr: "example.com:80"}
+		first := &fasthttp.HostClient{Addr: "example.com:80"}
+		second := &fasthttp.HostClient{Addr: "example.org:80"}
+		for _, client := range []*Client{
+			NewWithClient(&fasthttp.Client{}),
+			NewWithHostClient(host),
+			NewWithLBClient(&fasthttp.LBClient{Clients: []fasthttp.BalancingClient{first, second}}),
+		} {
+			require.Zero(t, client.MaxResponseBodySize())
+			require.Equal(t, 7, client.SetMaxResponseBodySize(7).MaxResponseBodySize())
+		}
+		require.Equal(t, 7, host.MaxResponseBodySize)
+		require.Equal(t, 7, first.MaxResponseBodySize)
+		require.Equal(t, 7, second.MaxResponseBodySize)
 	})
 }
 
