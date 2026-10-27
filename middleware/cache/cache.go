@@ -73,7 +73,8 @@ const (
 // Cache-Control of its own, under "public, max-age" — telling a shared cache
 // downstream it may store one user's response for every user of the URL. v5:
 // credential values in the key are hashed and a refusal ends the entry of the credential it
-// refused; an entry cached for a credential since ended would still be served. Bump
+// refused; an entry cached for a credential since ended would still be served. It
+// also retires v4 entries stored under the lookup's Vary list instead of their own. Bump
 // this whenever what a key stands for, or what its entry carries, changes; the
 // cost is one cold cache after a deploy. Additive bookkeeping fields such as
 // heapgen need no bump: old entries decode with generation zero, and older
@@ -1016,13 +1017,16 @@ func New(config ...Config) fiber.Handler {
 
 		shouldStoreVaryManifest := !cfg.DisableVaryHeaders && len(respVaryNames) > 0
 		if !cfg.DisableVaryHeaders && len(respVaryNames) > 0 {
-			if key == baseKey {
+			// Keyed by the response's own Vary, not the manifest the lookup used, or a
+			// Vary: Cookie page lands under a key no cookie is part of.
+			if !slices.Equal(respVaryNames, varyNames) {
 				key = varyKey(baseKey, respVaryNames, &c.Request().Header, canonical)
 			}
 		} else if !cfg.DisableVaryHeaders && hasVaryManifest {
 			if err := manager.del(reqCtx, manifestKey); err != nil {
 				return fmt.Errorf("cache: failed to delete stale vary manifest %q: %w", maskKey(manifestKey), err)
 			}
+			key = baseKey
 		}
 
 		// unreachable marks the response uncacheable and hands back any entry still

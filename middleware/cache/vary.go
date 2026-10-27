@@ -130,8 +130,13 @@ func storeVaryManifest(ctx context.Context, manager *manager, manifestKey string
 	if len(names) == 0 {
 		return nil
 	}
-	data := strings.Join(names, ",")
-	return manager.setRaw(ctx, manifestKey, utils.UnsafeBytes(data), exp)
+	data := utils.UnsafeBytes(strings.Join(names, ","))
+	// A lone lower-case name still views the response header, and a Storage may
+	// keep the slice; the in-memory store copies on Set.
+	if manager.storage != nil {
+		data = utils.CopyBytes(data)
+	}
+	return manager.setRaw(ctx, manifestKey, data, exp)
 }
 
 //nolint:gocritic // returning explicit values keeps the signature concise while avoiding unnecessary named results

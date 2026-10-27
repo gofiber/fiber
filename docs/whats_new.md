@@ -1567,6 +1567,8 @@ The middleware also caches `308 Permanent Redirect` responses and honors the req
 
 Cache hits replay the stored `Vary` header even when `StoreResponseHeaders` is off, and a hit on an entry keyed by a cookie or credential (`Vary: Cookie`, `KeyCookies`, `KeyCredentialHeaders`, or `KeyHeaders` naming `Cookie`, `Authorization` or another header that carries a credential) is sent with `Cache-Control: private` rather than `public`, so a shared cache in front of the app does not store one user's response for the next.
 
+A response is stored under the request headers its own `Vary` names, also when other responses of the same URL name a different list, so a page sent with `Vary: Cookie` is served only to requests with the same `Cookie`.
+
 Credential headers named in `KeyHeaders` (`Cookie`, `Authorization`, `Proxy-Authorization`, `X-API-Key`, `X-Auth-Token`, `X-Access-Token` or a header named in `KeyCredentialHeaders`) and the values of the cookies named in `KeyCookies` are hashed in the cache key, so a key listing of an external `Storage` no longer shows them, and the key version moves with that change: every cache starts cold after the upgrade, whatever its config, since the entries of the earlier version are not read. With an external `Storage` they expire on their own, or a shared store can drop them by the earlier version's key prefix (`v4|`).
 
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.

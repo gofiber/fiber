@@ -2415,3 +2415,141 @@ func Test_Cache_Security_KeyAuthorityFollowsTrustedProxy(t *testing.T) {
 		require.Equal(t, "http://backend.internal", reply.body)
 	})
 }
+
+// A URL whose anonymous responses vary on Accept-Encoding only, as compress
+// makes them, and whose signed-in ones add Cookie.
+func Test_Cache_Security_StoredUnderTheResponsesOwnVary(t *testing.T) {
+	t.Parallel()
+
+	type varyReply struct {
+		body        string
+		cacheStatus string
+	}
+	get := func(t *testing.T, app *fiber.App, cookie, cacheControl string) varyReply {
+		t.Helper()
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header.Set(fiber.HeaderCookie, cookie)
+		if cacheControl != "" {
+			req.Header.Set(fiber.HeaderCacheControl, cacheControl)
+		}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		raw, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		return varyReply{body: string(raw), cacheStatus: resp.Header.Get("X-Cache")}
+	}
+
+	backends := []struct {
+		storage func() fiber.Storage
+		name    string
+	}{
+		{name: "memory", storage: func() fiber.Storage { return nil }},
+		{name: "storage", storage: func() fiber.Storage { return memory.New() }},
+	}
+
+	for _, backend := range backends {
+		t.Run(backend.name+"/response adds Cookie", func(t *testing.T) {
+			t.Parallel()
+
+			probe := &accountingProbe{}
+			app := fiber.New()
+			app.Use(New(Config{Storage: backend.storage(), MaxBytes: 1024, accounting: probe.record}))
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Vary(fiber.HeaderAcceptEncoding)
+				user := c.Cookies("session")
+				if user == "" {
+					return c.SendString("sign in")
+				}
+				c.Vary(fiber.HeaderCookie)
+				return c.SendString("private to " + user)
+			})
+
+			// alice reloads while the manifest names Accept-Encoding only.
+			require.Equal(t, varyReply{body: "private to alice", cacheStatus: cacheMiss}, get(t, app, "session=alice", ""))
+			require.Equal(t, varyReply{body: "sign in", cacheStatus: cacheMiss}, get(t, app, "x=1", ""))
+			require.Equal(t, varyReply{body: "private to alice", cacheStatus: cacheMiss}, get(t, app, "session=alice", "max-age=0"))
+			require.Equal(t, varyReply{body: "sign in", cacheStatus: cacheMiss}, get(t, app, "x=2", ""))
+			for _, cookie := range []string{"x=3", "_ga=77", ""} {
+				reply := get(t, app, cookie, "")
+				require.Equal(t, "sign in", reply.body, "Cookie: %q", cookie)
+				require.Equal(t, cacheHit, reply.cacheStatus, "Cookie: %q", cookie)
+			}
+			// The sign-in entry alice's reload looked up stays beside hers.
+			require.Equal(t, 2, probe.nodes())
+			require.Equal(t, uint(len("sign in")+len("private to alice")), probe.counted())
+
+			require.Equal(t, varyReply{body: "private to bob", cacheStatus: cacheMiss}, get(t, app, "session=bob", "max-age=0"))
+			require.Equal(t, varyReply{body: "private to alice", cacheStatus: cacheHit}, get(t, app, "session=alice", ""))
+			require.Equal(t, varyReply{body: "sign in", cacheStatus: cacheMiss}, get(t, app, "x=4", ""))
+		})
+
+		t.Run(backend.name+"/response drops Vary", func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Storage: backend.storage()}))
+			app.Get("/", func(c fiber.Ctx) error {
+				user := c.Cookies("session")
+				if user == "" {
+					return c.SendString("sign in")
+				}
+				c.Vary(fiber.HeaderCookie)
+				return c.SendString("private to " + user)
+			})
+
+			require.Equal(t, varyReply{body: "private to alice", cacheStatus: cacheMiss}, get(t, app, "session=alice", ""))
+			// Drops the manifest, so the entry belongs under the base key.
+			require.Equal(t, varyReply{body: "sign in", cacheStatus: cacheMiss}, get(t, app, "x=1", ""))
+			require.Equal(t, varyReply{body: "sign in", cacheStatus: cacheHit}, get(t, app, "x=2", ""))
+		})
+	}
+}
+
+func Test_Cache_Security_VaryManifestOwnsItsBytes(t *testing.T) {
+	t.Parallel()
+
+	storage := newMutatingStorage(nil) // keeps the slices it is given
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage}))
+	app.Get("/account", func(c fiber.Ctx) error {
+		c.Vary("cookie")
+		return c.SendString("user=" + c.Cookies("user"))
+	})
+	app.Get("/about", func(c fiber.Ctx) error {
+		return c.SendString("about")
+	})
+	handler := app.Handler()
+
+	// One RequestCtx for every request, as the server keeps per connection.
+	fctx := &fasthttp.RequestCtx{}
+	get := func(target, cookie string) reply {
+		fctx.Request.Reset()
+		fctx.Response.Reset()
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI(target)
+		fctx.Request.Header.SetHost("example.com")
+		fctx.Request.Header.Set(fiber.HeaderCookie, cookie)
+		handler(fctx)
+		return reply{cache: string(fctx.Response.Header.Peek("X-Cache")), body: string(fctx.Response.Body())}
+	}
+
+	require.Equal(t, "user=alice", get("/account", "user=alice").body)
+	get("/about?n=1", "")
+
+	manifests := 0
+	for key, value := range storage.data {
+		if strings.HasSuffix(key, "|vary") {
+			manifests++
+			require.Equal(t, "cookie", string(value))
+		}
+	}
+	require.Equal(t, 1, manifests)
+
+	require.Equal(t, "user=bob", get("/account", "user=bob").body)
+	get("/about?n=2", "")
+
+	got := get("/account", "user=mallory")
+	require.Equal(t, cacheMiss, got.cache)
+	require.Equal(t, "user=mallory", got.body)
+}
