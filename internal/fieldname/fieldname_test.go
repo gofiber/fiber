@@ -170,6 +170,31 @@ func Test_First_Lines_SkipTrailerSection(t *testing.T) {
 	}
 }
 
+// Test_First_Lines_ResponseLineUnderTrailerName pins that a response header line is read although the response's
+// Trailer field names it: the cache and etag middleware read Cache-Control, Vary and ETag this way.
+func Test_First_Lines_ResponseLineUnderTrailerName(t *testing.T) {
+	t.Parallel()
+
+	const raw = "HTTP/1.1 200 OK\r\nCache-Control: private, no-store\r\nTrailer: Cache-Control\r\n" +
+		"Transfer-Encoding: chunked\r\n\r\n6\r\nsecret\r\n0\r\nCache-Control: public\r\n\r\n"
+
+	for _, canonical := range []bool{true, false} {
+		t.Run(fmt.Sprintf("canonical=%v", canonical), func(t *testing.T) {
+			t.Parallel()
+
+			resp := &fasthttp.Response{}
+			if !canonical {
+				resp.Header.DisableNormalizing()
+			}
+			require.NoError(t, resp.Read(bufio.NewReader(strings.NewReader(raw))))
+			require.NotEmpty(t, resp.Header.PeekTrailerKeys())
+
+			require.Equal(t, "private, no-store", string(First(&resp.Header, fasthttp.HeaderCacheControl, canonical)))
+			require.Equal(t, [][]byte{[]byte("private, no-store")}, Lines(&resp.Header, fasthttp.HeaderCacheControl, canonical))
+		})
+	}
+}
+
 // Test_DropTrailers pins that the header lines stay and that a later Set lands
 // in the header section, where fasthttp filed it with the trailer section before.
 func Test_DropTrailers(t *testing.T) {

@@ -80,9 +80,9 @@ func DropTrailers(h *fasthttp.RequestHeader) bool {
 	return true
 }
 
-// InTrailer reports whether name is a field of h's trailer section. A header line under such a name is not read:
-// it may be the client's, with the Set meant to replace it filed with the section.
-func InTrailer(h Peeker, name string) bool {
+// InTrailer reports whether name is a field of a request's trailer section. A header line under such a name is not
+// read: it may be the client's, with the Set meant to replace it filed with the section. A response's line still is.
+func InTrailer(h *fasthttp.RequestHeader, name string) bool {
 	for _, key := range h.PeekTrailerKeys() {
 		if utils.EqualFold(utils.UnsafeString(key), name) {
 			return true
@@ -360,7 +360,7 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 		// PeekAll hands back the header's own slice without allocating.
 		return h.PeekAll(name)
 	}
-	if InTrailer(h, name) {
+	if req, ok := h.(*fasthttp.RequestHeader); ok && InTrailer(req, name) {
 		return nil
 	}
 
@@ -420,7 +420,7 @@ func First(h Peeker, name string, canonical bool) []byte {
 		return nil
 	}
 
-	if InTrailer(h, name) {
+	if req, ok := h.(*fasthttp.RequestHeader); ok && InTrailer(req, name) {
 		return nil
 	}
 	// Split out rather than written below: All's iterator is heap-allocated
