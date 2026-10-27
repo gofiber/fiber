@@ -507,8 +507,7 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 		return defaultString("", defaultValue)
 	}
 	// PostArgs drains a streamed urlencoded body whatever its size.
-	if r.c.fasthttp.Request.IsBodyStream() &&
-		strings.HasPrefix(utils.UnsafeString(r.c.fasthttp.Request.Header.ContentType()), MIMEApplicationForm) {
+	if r.c.fasthttp.Request.IsBodyStream() && mediatype.ParsesPostArgs(r.c.fasthttp.Request.Header.ContentType()) {
 		if v := r.c.fasthttp.QueryArgs().Peek(key); len(v) > 0 {
 			return r.c.app.toString(v)
 		}
