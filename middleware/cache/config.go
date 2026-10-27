@@ -38,6 +38,7 @@ type Config struct {
 	//   - Selected cookies (from KeyCookies, their values hashed)
 	//
 	// The resulting cache key is always partitioned by request method internally.
+	// A custom key is stored with '\', '|' and ':' escaped as \\, \p and \c.
 	//
 	// Default: nil
 	KeyGenerator func(fiber.Ctx) string

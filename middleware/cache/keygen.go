@@ -58,11 +58,12 @@ func releaseKeyBuffer(bufPtr *[]byte, buf []byte) {
 // segments go straight into dst instead and the intermediate string is never
 // built — one allocation saved on every cacheable request. A generator the user
 // supplied still returns a string, and is called exactly once either way.
+// Its key is escaped, as it may copy client text that spells a "|vary|" or "|auth=" suffix.
 func appendGeneratedKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	if cfg.usesDefaultKeyGenerator {
 		return appendDefaultKey(dst, c, cfg)
 	}
-	return append(dst, cfg.KeyGenerator(c)...)
+	return appendEscapedKeyDelimiters(dst, cfg.KeyGenerator(c))
 }
 
 func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {

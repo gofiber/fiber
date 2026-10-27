@@ -75,7 +75,8 @@ const (
 // credential values in the key are hashed and a refusal ends the entry of the credential it
 // refused; an entry cached for a credential since ended would still be served. v6:
 // the body slot and the Vary manifest moved from a suffix of the entry key, which
-// a request can spell, to a namespace of their own (see bodyKeyPrefix). Bump
+// a request can spell, to a namespace of their own (see bodyKeyPrefix), and a
+// custom KeyGenerator's key is escaped so it cannot spell a variant's suffix. Bump
 // this whenever what a key stands for, or what its entry carries, changes; the
 // cost is one cold cache after a deploy. Additive bookkeeping fields such as
 // heapgen need no bump: old entries decode with generation zero, and older

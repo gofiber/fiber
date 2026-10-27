@@ -103,6 +103,8 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+A custom key is stored with `\`, `|` and `:` escaped as `\\`, `\p` and `\c`, so client text it copies, such as the `X-Tenant-ID` above, cannot spell the key of another entry's `Vary` variant.
+
 Use `CacheInvalidator` to invalidate entries programmatically:
 
 ```go

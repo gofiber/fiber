@@ -3230,7 +3230,7 @@ func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "body1", string(body))
 
-	expectedKey := cacheKeyVersion + "|GET|/|invalid-expires"
+	expectedKey := cacheKeyVersion + `|GET|/\pinvalid-expires`
 	require.Contains(t, storage.data, expectedKey)
 	require.Contains(t, storage.data, bodyKey(expectedKey))
 
@@ -8723,7 +8723,7 @@ func Test_configDefault_KeyCredentialHeaders(t *testing.T) {
 }
 
 // An entry key ends in what the request chose, so it must never be the key of
-// another entry's body slot or Vary manifest on an external Storage.
+// another entry's body slot, Vary manifest or Vary variant.
 func Test_Cache_EntryKeyNeverNamesDerivedSlot(t *testing.T) {
 	t.Parallel()
 
@@ -8782,6 +8782,43 @@ func Test_Cache_EntryKeyNeverNamesDerivedSlot(t *testing.T) {
 			require.Equal(t, fiber.StatusOK, status, step.tenant)
 			require.Equal(t, "news for "+step.tenant, body)
 			require.Equal(t, step.state, state, step.tenant)
+		}
+	})
+
+	t.Run("variant", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{
+			KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|" + c.Get("X-Tenant") },
+		}))
+		app.Get("/news", func(c fiber.Ctx) error {
+			if c.Get("X-Tenant") != "acme" {
+				return c.SendString("news for " + c.Get("X-Tenant"))
+			}
+			c.Vary(fiber.HeaderAcceptLanguage)
+			return c.SendString("news for acme in " + c.Get(fiber.HeaderAcceptLanguage))
+		})
+
+		var fr fasthttp.RequestHeader
+		fr.Set(fiber.HeaderAcceptLanguage, "fr")
+		spelled := "acme" + string(appendVaryKey(nil, []string{"accept-language"}, &fr, true))
+
+		for _, step := range []struct{ tenant, lang, body string }{
+			{"acme", "de", "news for acme in de"},
+			{spelled, "fr", "news for " + spelled},
+			{"acme", "fr", "news for acme in fr"},
+		} {
+			req := httptest.NewRequest(fiber.MethodGet, "/news", http.NoBody)
+			req.Header.Set("X-Tenant", step.tenant)
+			req.Header.Set(fiber.HeaderAcceptLanguage, step.lang)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			raw, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.Equal(t, step.body, string(raw))
+			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"), step.tenant)
 		}
 	})
 }
