@@ -361,9 +361,9 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// A key generator may read the body (QUERY), and only a declared length bounds a streamed one;
-		// otherwise the stream is left to the handler.
+		// otherwise the stream is left to the handler. MaxRequestBodySize is BodyLimit, read without copying Config.
 		if req := c.Request(); req.IsBodyStream() {
-			if n := req.Header.ContentLength(); n < 0 || n > c.App().Config().BodyLimit {
+			if n := req.Header.ContentLength(); n < 0 || n > c.App().Server().MaxRequestBodySize {
 				c.Set(cfg.CacheHeader, cacheUnreachable)
 				return c.Next()
 			}
