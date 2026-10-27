@@ -273,6 +273,20 @@ func Test_Coverage_JoinUpstreamPath_RawPathFallback(t *testing.T) {
 	require.Contains(t, out, "/a%2Fb/plain")
 }
 
+// Test_Coverage_EscapedPath pins that escapedPath returns what URL.EscapedPath does, without its allocation.
+func Test_Coverage_EscapedPath(t *testing.T) {
+	// Intentionally not parallel: AllocsPerRun counts allocations process-wide and panics in a parallel test.
+	for _, path := range []string{"", "/a", "/my%20app", "/a%3Bb", "/a%3Bb!x:y@z;k=v", "/a%3B[b]", "/a%2F/b", "/a%3B//b", "/café", "/a%3Bb c", "/a%3B\"b"} {
+		u := mustParseTestURL(t, "http://upstream.example"+path)
+		require.Equal(t, u.EscapedPath(), escapedPath(u), path)
+	}
+	for _, path := range []string{"/a%3Bb", "/a%3Bb!x:y@z;k=v", "/api/a%3Bb/widgets"} {
+		u := mustParseTestURL(t, "http://upstream.example"+path)
+		require.NotEmpty(t, u.RawPath, path)
+		require.Zero(t, testing.AllocsPerRun(100, func() { _ = escapedPath(u) }), path)
+	}
+}
+
 // Test_Coverage_DomainForward_HostMismatch_DoesNotProxy covers the
 // host-mismatch branch where DomainForward returns nil without calling
 // the upstream. The assertion target is that the proxy was NOT invoked

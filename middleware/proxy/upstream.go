@@ -193,13 +193,20 @@ func joinURLPath(out, base, target *url.URL) {
 	out.RawPath = baseRaw + "/" + strings.TrimPrefix(escapedPath(target), "/")
 }
 
-// escapedPath is u.EscapedPath() without its unescape for a RawPath String() writes as it is ("/café"
-// is not); url.Parse made sure such a RawPath decodes to Path.
+// escapedPath is u.EscapedPath() without the unescape it checks RawPath with: url.Parse made sure
+// RawPath decodes to Path, so only its bytes are left to check, as net/url's validEncoded does.
 func escapedPath(u *url.URL) string {
-	if u.RawPath != "" && canFastJoinPath(u.RawPath) {
-		return u.RawPath
+	raw := u.RawPath
+	if raw == "" {
+		return u.EscapedPath()
 	}
-	return u.EscapedPath()
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && strings.IndexByte("-._~!$&'()*+,;=:@[]%/", c) < 0 {
+			return u.EscapedPath()
+		}
+	}
+	return raw
 }
 
 // baseIsPlainOrigin reports whether base carries only a scheme + host
