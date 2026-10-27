@@ -197,10 +197,11 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	type evictionCandidate struct {
-		key    string
-		size   uint
-		exp    uint64
-		oldGen uint64
+		key      string
+		manifest string
+		size     uint
+		exp      uint64
+		oldGen   uint64
 	}
 
 	redactKeys := !cfg.DisableValueRedaction
@@ -271,7 +272,7 @@ func New(config ...Config) fiber.Handler {
 		_, size := heap.remove(heapIdx)
 		storedBytes -= size
 
-		return evictionCandidate{key: entryKey, size: size, exp: exp, oldGen: heapGen}, true
+		return evictionCandidate{key: entryKey, manifest: entry.manifest, size: size, exp: exp, oldGen: heapGen}, true
 	}
 
 	restoreHeapEntry := func(ctx context.Context, candidate evictionCandidate) error {
@@ -283,7 +284,7 @@ func New(config ...Config) fiber.Handler {
 			mux.Unlock()
 			return nil
 		}
-		idx := heap.putWithGeneration(candidate.key, candidate.exp, candidate.size, candidate.oldGen)
+		idx := heap.putWithGeneration(candidate.key, candidate.exp, candidate.size, candidate.oldGen, candidate.manifest)
 		storedBytes += candidate.size
 		mux.Unlock()
 
@@ -1016,7 +1017,9 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		shouldStoreVaryManifest := !cfg.DisableVaryHeaders && len(respVaryNames) > 0
+		entryManifest := "" // the manifest the entry is stored under, dropped with the last such entry
 		if !cfg.DisableVaryHeaders && len(respVaryNames) > 0 {
+			entryManifest = manifestKey
 			// Keyed by the response's own Vary, not the manifest the lookup used, or a
 			// Vary: Cookie page lands under a key no cookie is part of.
 			if !slices.Equal(respVaryNames, varyNames) {
@@ -1295,7 +1298,7 @@ func New(config ...Config) fiber.Handler {
 					// The rest is reserved by stores still in flight. The popped entries are
 					// still stored, so they go back, in reverse to regain their heap indices.
 					for _, candidate := range slices.Backward(candidates) {
-						heap.putWithGeneration(candidate.key, candidate.exp, candidate.size, candidate.oldGen)
+						heap.putWithGeneration(candidate.key, candidate.exp, candidate.size, candidate.oldGen, candidate.manifest)
 						storedBytes += candidate.size
 					}
 					storedBytes -= entrySize
@@ -1309,10 +1312,11 @@ func New(config ...Config) fiber.Handler {
 				keyToRemove, size := heap.removeFirst()
 				keysToRemove = append(keysToRemove, keyToRemove)
 				candidates = append(candidates, evictionCandidate{
-					key:    keyToRemove,
-					size:   size,
-					exp:    next.exp,
-					oldGen: next.gen,
+					key:      keyToRemove,
+					manifest: next.manifest,
+					size:     size,
+					exp:      next.exp,
+					oldGen:   next.gen,
 				})
 				storedBytes -= size
 			}
@@ -1374,7 +1378,7 @@ func New(config ...Config) fiber.Handler {
 					replaced, replacedOK = candidate, true
 				}
 			}
-			heapIdx = heap.put(key, e.exp, entrySize)
+			heapIdx = heap.put(key, e.exp, entrySize, entryManifest)
 			e.heapidx = heapIdx
 			heapGen = heap.generation(heapIdx)
 			e.heapgen = heapGen
@@ -1386,7 +1390,15 @@ func New(config ...Config) fiber.Handler {
 				manager.memory.Set(key, e, storageExpiration)
 				stored = true
 			}
+			orphans := heap.takeOrphans()
 			mux.Unlock()
+
+			// MaxBytes counts no manifest, so one whose last entry was evicted or dropped goes too.
+			for _, orphan := range orphans {
+				if err := manager.del(reqCtx, orphan); err != nil {
+					log.Warnf("cache: failed to delete stale vary manifest %q: %v", maskKey(orphan), err)
+				}
+			}
 		} else if cfg.Storage != nil {
 			// Persist an identity even without heap tracking so cleanup can tell
 			// this entry from a same-key replacement.
@@ -1440,7 +1452,7 @@ func New(config ...Config) fiber.Handler {
 				if !tracked {
 					if delErr := deleteKey(reqCtx, key); delErr != nil {
 						// Still stored, so track it again for a later eviction to retry.
-						untracked := evictionCandidate{key: key, size: entrySize, exp: entryExp, oldGen: heapGen}
+						untracked := evictionCandidate{key: key, manifest: entryManifest, size: entrySize, exp: entryExp, oldGen: heapGen}
 						return errors.Join(
 							fmt.Errorf("cache: failed to delete key %q evicted while it was stored: %w", maskKey(key), delErr),
 							restoreHeapEntry(reqCtx, untracked),

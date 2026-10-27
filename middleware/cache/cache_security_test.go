@@ -2670,3 +2670,100 @@ func Test_Cache_Security_EmptyBodiesCountTowardMaxBytes(t *testing.T) {
 		})
 	}
 }
+
+func countVaryManifests(storage *failingCacheStorage) int {
+	storage.mu.RLock()
+	defer storage.mu.RUnlock()
+
+	manifests := 0
+	for key := range storage.data {
+		if strings.HasSuffix(key, "|vary") {
+			manifests++
+		}
+	}
+	return manifests
+}
+
+// A manifest is a record per URL that MaxBytes does not count, so one left
+// behind by eviction let new URLs grow the store until Expiration.
+func Test_Cache_Security_EvictionRemovesVaryManifest(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage, MaxBytes: 10, Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Vary(fiber.HeaderAcceptEncoding)
+		return c.SendString("12345")
+	})
+
+	for i := range 50 {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, fmt.Sprintf("/?n=%d", i), http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	}
+	require.Equal(t, 2, countVaryManifests(storage), "one per entry that fits MaxBytes")
+}
+
+// only-if-cached drops an expired entry and stores nothing, so the manifest goes
+// with the next store instead.
+func Test_Cache_Security_DroppedVariantRemovesVaryManifest(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	clock := newTestClock(time.Now().Truncate(time.Second))
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage, MaxBytes: 100, Expiration: time.Hour, clock: clock.Now}))
+	app.Get("/*", func(c fiber.Ctx) error {
+		c.Vary(fiber.HeaderAcceptEncoding)
+		c.Set(fiber.HeaderCacheControl, "max-age=1")
+		return c.SendString("12345")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.Equal(t, 1, countVaryManifests(storage))
+
+	clock.Add(2 * time.Second)
+	req := httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody)
+	req.Header.Set(fiber.HeaderCacheControl, "only-if-cached")
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/b", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.Equal(t, 1, countVaryManifests(storage), "only the manifest of /b")
+}
+
+// The manifest is shared by the variants of a URL: evicting one leaves it to the others.
+func Test_Cache_Security_EvictedVariantKeepsSiblingManifest(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage, MaxBytes: 10, ExpirationGenerator: stableAscendingExpiration()}))
+	app.Get("/*", func(c fiber.Ctx) error {
+		c.Vary("X-Variant")
+		return c.SendString("12345")
+	})
+
+	get := func(target, variant string) string {
+		t.Helper()
+		req := httptest.NewRequest(fiber.MethodGet, target, http.NoBody)
+		req.Header.Set("X-Variant", variant)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		return resp.Header.Get("X-Cache")
+	}
+
+	require.Equal(t, cacheMiss, get("/a", "one"))
+	require.Equal(t, cacheMiss, get("/a", "two"))
+	// Evicts the first variant, the entry closest to expiring.
+	require.Equal(t, cacheMiss, get("/b", "one"))
+	require.Equal(t, 2, countVaryManifests(storage))
+	require.Equal(t, cacheHit, get("/a", "two"))
+	require.Equal(t, cacheMiss, get("/a", "one"))
+}

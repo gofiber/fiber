@@ -287,9 +287,9 @@ func Test_indexedHeap_PushAndOps(t *testing.T) {
 	h := &indexedHeap{}
 
 	// put inserts entries and returns tracking indices.
-	idxA := h.put("a", 30, 1)
-	idxB := h.put("b", 10, 2)
-	idxC := h.put("c", 20, 3)
+	idxA := h.put("a", 30, 1, "")
+	idxB := h.put("b", 10, 2, "")
+	idxC := h.put("c", 20, 3, "")
 	require.Equal(t, 3, h.Len())
 
 	// The lowest expiration must come out first.
