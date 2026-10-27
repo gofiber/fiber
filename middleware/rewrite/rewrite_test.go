@@ -680,6 +680,46 @@ func Test_Rewrite_UnescapePathDecodesOnce(t *testing.T) {
 	}
 }
 
+// Test_Rewrite_CaptureStaysBelowTheTargetPath pins that a capture cannot spell a
+// dot segment that resolves out of the prefix To names.
+func Test_Rewrite_CaptureStaysBelowTheTargetPath(t *testing.T) {
+	t.Parallel()
+
+	for _, unescape := range []bool{false, true} {
+		app := fiber.New(fiber.Config{UnescapePath: unescape})
+		app.Use(New(Config{
+			RuleList: []Rule{
+				{From: "/@*", To: "/users/$1"},
+				{From: "/f/*-*", To: "/users/$1$2/admin"},
+				{From: "/up/*", To: "/a/../b/$1"},
+			},
+		}))
+		app.Use(func(c fiber.Ctx) error {
+			return c.SendString(c.Path())
+		})
+
+		for target, want := range map[string]string{
+			"/@bob/x":    "/users/bob/x",
+			"/@.../x":    "/users/.../x",
+			"/f/a-b":     "/users/ab/admin",
+			"/up/x":      "/b/x", // the author's own dot segment still resolves
+			"/@../admin": "/@../admin",
+			"/@./admin":  "/@./admin",
+			"/f/.-.":     "/f/.-.",
+		} {
+			require.Equal(t, want, rewrittenRaw(t, app, target), "UnescapePath=%v %s", unescape, target)
+		}
+	}
+
+	// Without UnescapePath a stray "%2" stays as sent, and an "e" completes it.
+	app := fiber.New()
+	app.Use(New(Config{RuleList: []Rule{{From: "/g/*/*", To: "/users/$1$2/admin"}}}))
+	app.Use(func(c fiber.Ctx) error {
+		return c.SendString(c.Path())
+	})
+	require.Equal(t, "/g/.%2/e", rewrittenRaw(t, app, "/g/.%2/e"))
+}
+
 // Test_Rewrite_MountedOnPrefix_RunsLaterGuards pins that routes registered after
 // a rewrite mounted on its own prefix see the rewritten path.
 func Test_Rewrite_MountedOnPrefix_RunsLaterGuards(t *testing.T) {

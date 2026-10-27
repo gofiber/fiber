@@ -3248,6 +3248,8 @@ Fiber now also warns at startup when a rule can never fire because an earlier on
 
 - **A rule matches the whole path**: both ends of the pattern are anchored, so a rule no longer matches just a suffix of the path, and an alternation such as `/a|/b` cannot match by prefix or suffix alone (#4476).
 
+- **A capture cannot leave the target's path**: a rule whose composed location holds more `.` or `..` segments than its target is skipped for that request, so `{From: "/@*", To: "https://cdn.example.com/public/$1"}` no longer sends `/@../other/x` to `https://cdn.example.com/public/../other/x`.
+
 - **A capture may no longer stand inside a target's authority**, which covers the host, the port and any userinfo: `"https://$1.cdn.example.com/"`, `"https://cdn.example.com:$1"` and `"https://$1"` are refused at startup with a warning, and those rules never fire. Whether such a value was safe depended on percent-decoding, IDNA mapping, numeric labels read as IPv4 addresses, IPv6 brackets and userinfo, and each of those was a way to move the host somewhere the target did not name. A capture in the path, query or fragment is unchanged. Where the destination host genuinely varies, pick it in a handler and use `c.Redirect()`, where the value is yours to validate.
 
 #### CSRF
@@ -3490,6 +3492,7 @@ app.Use(rewrite.New(rewrite.Config{
 
 `Rules` keeps working for the whole of v3; its keys are ranked most path text before the first `*`, then most path text overall, then fewest asterisks, then the key. Setting both fields panics.
 
+- **A capture cannot leave `To`**: a rewritten path holding more `.` or `..` segments than `To` itself is skipped for that request, so `{From: "/@*", To: "/users/$1"}` no longer rewrites `/@../admin` to `/admin`.
 - **A rule is path text**: `From` is no longer compiled as an unescaped regular expression. `*` matches a run of any bytes but a newline and every other byte stands for itself, so `/preis-1.000-euro` rewrites that path and no longer also `/preis-1X000-euro`, and `/faq?` no longer rewrites `/fa`. This also completes the anchoring fix from #4476: `"^" + "/a|/b" + "$"` parsed as `(^/a)|(/b$)`, so a rule could match by prefix or suffix alone. Rules written with path text and `*` are unaffected; a rule relying on regular-expression syntax now matches the literal characters it spells.
 
 #### Session

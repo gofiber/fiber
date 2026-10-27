@@ -96,3 +96,30 @@ func Test_CaptureTokens_Unescaped(t *testing.T) {
 	}
 	require.Nil(t, CaptureTokens(pattern, "/other/a", true))
 }
+
+func Test_DotSegments(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		in   string
+		want int
+	}{
+		{in: "", want: 0},
+		{in: "/new/$1", want: 0},
+		{in: "https://h/a/../b", want: 1},
+		{in: "https://h/a/./../b", want: 2},
+		{in: "https://h/a/..", want: 1},
+		{in: "../../a", want: 2},
+		{in: "/a/%2e/.%2E/%2e%2e/%2E.", want: 4},
+		{in: `/a\..\b`, want: 1},
+		{in: "/a/..%2Fb", want: 1},
+		{in: "/a%2f..%5Cb", want: 1},
+		{in: "/a/..?x", want: 1},
+		{in: "/a/../b?/../c#/./d", want: 3},
+		{in: "/a/.../..b/b../%2e%2e%2e/.$1", want: 0},
+		{in: "/a/..%252Fb/%252e%252e/.%09./..%2", want: 0},
+		{in: "/search?q=../x", want: 0},
+	} {
+		require.Equal(t, tc.want, DotSegments(tc.in), "input %q", tc.in)
+	}
+}

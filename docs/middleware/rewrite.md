@@ -39,6 +39,12 @@ that `/files/%252e%252e/secret` decoded to stays that name in `/public/$1`
 rather than being decoded a second time into `..` and resolving out of
 `/public/`.
 
+A capture cannot add a `.` or `..` segment either. `{From: "/@*", To: "/users/$1"}`
+cuts `../admin` out of `/@../admin`, a path with no dot segment for the router to
+resolve, so a rewritten path holding more dot segments than `To` itself is not
+used: the next rule is tried and the path stays as it was. `%2e` counts as a dot
+there, and a backslash, `%2f` and `%5c` as a slash.
+
 ## Rule order
 
 Rules are tried in the order you write them and the first one whose `From`

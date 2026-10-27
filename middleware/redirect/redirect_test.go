@@ -257,6 +257,56 @@ func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 	}
 }
 
+// Test_Redirect_CaptureStaysBelowTheTargetPath pins that a capture adds to the target's path and never climbs out of it.
+func Test_Redirect_CaptureStaysBelowTheTargetPath(t *testing.T) {
+	t.Parallel()
+
+	const target = "https://storage.example.com/acme/$1"
+
+	tests := []struct {
+		name     string
+		pattern  string
+		target   string
+		request  string
+		want     string // "" means the rule must not fire
+		unescape bool
+	}{
+		// The router resolved the request's own dot segments, so the composition spells these.
+		{name: "wildcard cut out of a segment", pattern: "/@*", target: target, request: "/@../evil/x"},
+		{name: "single dot", pattern: "/@*", target: target, request: "/@./x"},
+		{name: "dots split over two captures", pattern: "/f/*-*", target: "https://storage.example.com/acme/$1$2/x", request: "/f/.-."},
+		{name: "path-only target", pattern: "/@*", target: "/users/$1", request: "/@../admin"},
+		{name: "escaped slash", pattern: "/a/*", target: target, request: "/a/..%2Fevil/x"},
+
+		// UnescapePath decodes what kept the segment from being one.
+		{name: "decoded tab is deleted", pattern: "/a/*", target: target, request: "/a/.%09./evil/x", unescape: true},
+		{name: "decoded CR is deleted", pattern: "/a/*", target: target, request: "/a/..%0D/evil/x", unescape: true},
+		{name: "decoded backslash is a slash", pattern: "/a/*", target: target, request: "/a/..%5Cevil/x", unescape: true},
+		{name: "decoded percent spells an escaped dot", pattern: "/a/*", target: target, request: "/a/%252e%252E/evil/x", unescape: true},
+		{name: "trailing space is trimmed", pattern: "/a/*", target: target, request: "/a/..%20", unescape: true},
+
+		// Lookalikes and the author's own dot segments still redirect.
+		{name: "three dots", pattern: "/@*", target: target, request: "/@.../x", want: "https://storage.example.com/acme/.../x"},
+		{name: "dots inside a name", pattern: "/a/*", target: target, request: "/a/..x/y..", want: "https://storage.example.com/acme/..x/y.."},
+		{name: "dots in a query value", pattern: "/@*", target: "/search?q=$1", request: "/@../x", want: "/search?q=../x"},
+		{name: "encoded tab without UnescapePath", pattern: "/a/*", target: target, request: "/a/.%09./x", want: "https://storage.example.com/acme/.%09./x"},
+		{name: "the author's own dot segment", pattern: "/a/*", target: "../new/$1", request: "/a/x", want: "../new/x"},
+		{name: "a value beside the author's own", pattern: "/@*", target: "../new/$1", request: "/@../x"},
+		{
+			name:    "a value trading the author's own for a query",
+			pattern: "/a/*", target: "https://storage.example.com/acme/$1/../b", request: "/a/.%09.%2Fevil%3F", unescape: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			requireRule(t, tc.unescape, tc.pattern, tc.target, tc.request, tc.want)
+		})
+	}
+}
+
 // Test_Redirect_TenthCaptureInAuthority pins the guard on a two-digit "$N" token inside the authority.
 func Test_Redirect_TenthCaptureInAuthority(t *testing.T) {
 	t.Parallel()
