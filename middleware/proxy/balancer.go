@@ -95,7 +95,7 @@ func Balancer(config ...Config) fiber.Handler {
 		line := utils.UnsafeString(req.Header.RequestURI()) // c.OriginalURL() copies under Immutable
 		if line != "*" && !wiretarget.ParsesAsPath(line, req.Header.Host()) {
 			scheme := utils.UnsafeString(req.URI().Scheme())
-			if !schemehost.Match(scheme, utils.UnsafeString(req.URI().Host()), scheme, utils.UnsafeString(req.Header.Host())) {
+			if !schemehost.MatchStrict(scheme, utils.UnsafeString(req.URI().Host()), utils.UnsafeString(req.Header.Host())) {
 				return fiber.ErrBadRequest
 			}
 		}

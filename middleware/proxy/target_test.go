@@ -241,6 +241,9 @@ func Test_Proxy_Balancer_AbsoluteFormHost(t *testing.T) {
 		{"http://public.example/x", "svc:pw@public.example", ""},
 		{"http:///x", "internal.example", ""},
 		{"http://public.example/x", "", ""},
+		// c.Host() keeps the escape, which fasthttp decodes in the Host it sends upstream.
+		{"http://public%25c3%25a9.example/x", "public%c3%a9.example", ""},
+		{"http://public.example/x", "public.example/evil", ""},
 		{"http://PUBLIC.example:8080/x?q=1", "Public.Example:8080", "/x?q=1|public.example:8080|"},
 		{"https://u:pw@public.example/x", "public.example", "/x|public.example|"},
 		{"//public.example/a?x=://", "public.example", "/a?x=://|public.example|"},
@@ -263,6 +266,7 @@ func Test_Proxy_Balancer_AbsoluteFormHost(t *testing.T) {
 		"https://public.example:443/x": "public.example",
 		"http://public.example/x":      "public.example:80",
 		"http://[::1]:80/x":            "[::1]",
+		"http://my_svc:80/x":           "my_svc",
 	} {
 		resp := rawRequest(t, app, target, host)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
