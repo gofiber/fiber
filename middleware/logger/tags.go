@@ -101,13 +101,16 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		TagScheme: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			// Scheme echoes X-Forwarded-Proto / X-Url-Scheme once the proxy is
 			// trusted, so it is request-derived like ${ips} and ${ua}.
+			if proxyHeadersInUse(c) {
+				return 0, nil
+			}
 			return writeSanitizedString(output, c.Scheme())
 		},
 		TagPort: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return output.WriteString(c.Port())
 		},
 		TagIP: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return writeSanitizedString(output, c.IP())
+			return writeSanitizedString(output, clientIP(c))
 		},
 		TagIPs: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			// Ask the framework for the chain rather than read the header a second way:
@@ -132,6 +135,9 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return n, nil
 		},
 		TagHost: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+			if proxyHeadersInUse(c) {
+				return 0, nil
+			}
 			return writeSanitizedString(output, c.Hostname())
 		},
 		TagPath: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
@@ -144,10 +150,6 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, c.Get(fiber.HeaderUserAgent))
 		},
 		TagBody: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			// A handler timeout.New gave up on may still write the response Body can touch.
-			if timeoutResponse(c) != nil {
-				return writeSanitized(output, c.Request().Body())
-			}
 			res := c.Res()
 			if res.Written() {
 				return writeSanitized(output, c.Body())
@@ -296,6 +298,21 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.WriteString(data.Timestamp)
 		},
 	}
+	// The handler timeout.New gave up on may still read or change the request, and even fasthttp's
+	// reads write buffers and parsed args the two would share, so these log nothing for it.
+	for _, tag := range [...]string{
+		TagBody, TagCookie, TagForm, TagIPs, TagLocals, TagQuery,
+		TagQueryStringParams, TagReferer, TagReqHeader, TagReqHeaders, TagUA,
+	} {
+		fn := tagFunctions[tag]
+		tagFunctions[tag] = func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
+			if timeoutResponse(c) != nil {
+				return 0, nil
+			}
+			return fn(output, c, data, extraParam)
+		}
+	}
+
 	registeredTags.RLock()
 	maps.Copy(tagFunctions, registeredTags.m)
 	registeredTags.RUnlock()
@@ -321,4 +338,18 @@ func response(c fiber.Ctx) *fasthttp.Response {
 		return resp
 	}
 	return c.Response()
+}
+
+// proxyHeadersInUse reports whether IP, Host and Scheme would read the headers of a request
+// timeout.New gave up on, which its handler may still be reading.
+func proxyHeadersInUse(c fiber.Ctx) bool {
+	return timeoutResponse(c) != nil && c.IsProxyTrusted()
+}
+
+// clientIP is c.IP, or empty where that would read headers the timed-out handler may still read.
+func clientIP(c fiber.Ctx) string {
+	if proxyHeadersInUse(c) {
+		return ""
+	}
+	return c.IP()
 }

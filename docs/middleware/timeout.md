@@ -40,7 +40,7 @@ timeout.Config{
 
 ## Known limitations
 
-- The timed-out handler keeps running in its own goroutine while the middleware returns `fiber.ErrServiceUnavailable` (or runs `OnTimeout`). A handler must stop using the context once `c.Context()` is done: the client never receives what it writes after that, and middleware registered before the timeout that reads or writes the response after `c.Next()` races with it.
+- The timed-out handler keeps running in its own goroutine while the middleware returns `fiber.ErrServiceUnavailable` (or runs `OnTimeout`). A handler must stop using the context once `c.Context()` is done: the client never receives what it writes after that, and middleware registered before the timeout that uses the request or the response after `c.Next()` races with it, since even fasthttp's reads change state the two share. `c.IsAbandoned()` reports such a request.
 
 - When the deadline passes while the handler still runs, `OnTimeout` runs on a context of its own, so the timed-out handler cannot change the response it writes. That context carries the request, its locals, `c.Context()` and the response headers as they were when the handler started, but neither the request body nor the matched route: `c.Body()` is empty, `c.Params` returns the default value, and `c.Next()` is not available there (calling it answers `500`).
 

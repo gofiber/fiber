@@ -2596,25 +2596,59 @@ func Test_Logger_Body_LeavesResponseAlone(t *testing.T) {
 	}
 }
 
-func Test_Logger_Body_TimedOutRequest(t *testing.T) {
+// Tags reading the request log nothing while the timed-out handler may still read or change it.
+func Test_Logger_TimedOutRequestLeavesRequestToHandler(t *testing.T) {
 	t.Parallel()
 
-	var logged bytes.Buffer
-	app := fiber.New()
-	app.Use(New(Config{Format: "${body}", Stream: &logged}))
-	written := make(chan struct{})
-	app.Post("/", timeout.New(func(c fiber.Ctx) error {
-		defer close(written)
-		<-c.Context().Done()
-		time.Sleep(5 * time.Millisecond)
-		return c.SendString("late")
-	}, timeout.Config{Timeout: 20 * time.Millisecond}))
+	const format = "${method} ${url}|${ip}|${host}|${scheme}|${cookie:theme}|${query:a}|${queryParams}|${reqHeader:x-req}|" +
+		"${referer}|${ua}|${ips}|${form:f}|${locals:user}|${reqHeaders}|${body}"
+	for name, tc := range map[string]struct {
+		cfg  fiber.Config
+		want string
+	}{
+		"direct": {want: "POST /?a=1|0.0.0.0|example.com|http|||||||||||"},
+		"trusted proxy": {
+			cfg: fiber.Config{
+				TrustProxy:       true,
+				ProxyHeader:      fiber.HeaderXForwardedFor,
+				TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
+			},
+			want: "POST /?a=1||||||||||||||",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("payload")))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
-	<-written
-	require.Equal(t, "payload", logged.String())
+			var logged, plain, colored bytes.Buffer
+			app := fiber.New(tc.cfg)
+			app.Use(New(Config{Format: format, Stream: &logged}))
+			app.Use(New(Config{Format: DefaultFormat, Stream: &plain}))
+			app.Use(New(Config{Format: DefaultFormat, Stream: &colored, ForceColors: true}))
+			read := make(chan struct{})
+			app.Post("/", timeout.New(func(c fiber.Ctx) error {
+				defer close(read)
+				<-c.Context().Done()
+				c.Locals("user", "late")
+				return c.SendString(c.Cookies("theme") + c.Query("a") + c.FormValue("f") + string(c.Body()) +
+					c.IP() + strings.Join(c.IPs(), ",") + c.Hostname() + c.Scheme() + c.Get("x-other"))
+			}, timeout.Config{Timeout: 20 * time.Millisecond}))
+
+			req := httptest.NewRequest(fiber.MethodPost, "/?a=1", strings.NewReader("f=2"))
+			req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
+			req.Header.Set(fiber.HeaderCookie, "theme=dark")
+			req.Header.Set(fiber.HeaderReferer, "http://example.com/")
+			req.Header.Set(fiber.HeaderXForwardedFor, "10.0.0.1")
+			req.Header.Set(fiber.HeaderXForwardedHost, "proxied.example")
+			req.Header.Set("X-Req", "r1")
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+			<-read
+			require.Equal(t, tc.want, logged.String())
+			require.NotContains(t, plain.String(), "10.0.0.1")
+			require.NotContains(t, colored.String(), "10.0.0.1")
+		})
+	}
 }
 
 func Test_Logger_TimedOutRequestLogsTimeoutResponse(t *testing.T) {

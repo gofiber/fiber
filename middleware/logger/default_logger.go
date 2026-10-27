@@ -80,7 +80,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			buf.WriteString("| ")
 			appendDurationColumns(buf, data.Stop.Sub(data.Start), 13)
 			buf.WriteString(" | ")
-			writeColumnRight(buf, sanitizeLogValue(c.IP()), 15)
+			writeColumnRight(buf, sanitizeLogValue(clientIP(c)), 15)
 			buf.WriteString(" |")
 			buf.WriteString(methodColor(method, &colors))
 			buf.WriteByte(' ')
@@ -127,7 +127,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			buf.WriteString(" | ")
 
 			// Client IP with 15 fixed width, right aligned
-			fixedWidth(sanitizeLogValue(c.IP()), 15, true)
+			fixedWidth(sanitizeLogValue(clientIP(c)), 15, true)
 			buf.WriteString(" | ")
 
 			// HTTP Method with 7 fixed width, left aligned
