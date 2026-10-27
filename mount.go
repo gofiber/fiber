@@ -800,6 +800,14 @@ func (app *App) processSubAppsRoutes() {
 				continue
 			}
 
+			// appList keeps one app per prefix, so a second mount there displaces
+			// the first: prepare the app the placeholder names, not the listed one.
+			subApp := route.group.app
+			subApp.ensureAutoHeadRoutes()
+			if subApp.hasMountedApps() {
+				subApp.mountFields.subAppsRoutesAdded.Do(subApp.processSubAppsRoutes)
+			}
+
 			// Read the sub-app's routes by method rather than by stack index:
 			// an app is free to configure its own RequestMethods, and the two
 			// tables then neither line up nor have to be the same length.

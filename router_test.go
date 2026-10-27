@@ -5776,6 +5776,58 @@ func Test_Mount_Nested_AutoHead_SingleStartup(t *testing.T) {
 	}
 }
 
+// Test_App_Mount_SamePrefixKeepsAutoHead pins that a second mount on one prefix
+// does not cost the first one its automatic HEAD routes.
+func Test_App_Mount_SamePrefixKeepsAutoHead(t *testing.T) {
+	t.Parallel()
+
+	guards := New()
+	guards.Get("/admin/*", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
+	api := New()
+	api.Get("/admin/flush", func(c Ctx) error {
+		c.Set("X-Secret", "1")
+		return c.SendString("flushed")
+	})
+
+	app := New()
+	app.Use("/api", guards)
+	app.Use("/api", api)
+
+	// One startup: a second one would fill the gap in the expanded stack.
+	handler := app.Handler()
+	for _, method := range []string{MethodGet, MethodHead} {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(method)
+		fctx.Request.SetRequestURI("/api/admin/flush")
+		handler(fctx)
+		require.Equal(t, StatusUnauthorized, fctx.Response.StatusCode(), method)
+		require.Empty(t, fctx.Response.Header.Peek("X-Secret"), method)
+	}
+}
+
+// Test_App_Mount_NestedRootMounts pins that an app displaced from the app list
+// by a nested mount on the same prefix still has its own mounts expanded.
+func Test_App_Mount_NestedRootMounts(t *testing.T) {
+	t.Parallel()
+
+	// Which of the two apps the app list keeps depends on map iteration order.
+	for range 20 {
+		inner := New()
+		inner.Get("/x", func(c Ctx) error { return c.SendString("x") })
+		site := New()
+		site.Use(inner)
+		app := New()
+		app.Use(site)
+
+		for _, method := range []string{MethodGet, MethodHead} {
+			resp, err := app.Test(httptest.NewRequest(method, "/x", http.NoBody))
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.Equal(t, StatusOK, resp.StatusCode, method)
+		}
+	}
+}
+
 func Test_Router_PathOverride_ContinuesInNewBucket(t *testing.T) {
 	t.Parallel()
 
