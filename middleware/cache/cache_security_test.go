@@ -936,6 +936,53 @@ func Test_Cache_Security_QueryBody_RawHashDomain(t *testing.T) {
 	require.Equal(t, int32(2), count.Load())
 }
 
+// The binders pick a decoder by Content-Type and Body inflates by
+// Content-Encoding, so the same bytes declared otherwise are another query.
+func Test_Cache_Security_QueryBody_KeyedWithItsMetadata(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: 1 * time.Hour,
+		Methods:    []string{fiber.MethodQuery},
+	}))
+	app.Query("/", func(c fiber.Ctx) error {
+		var filter struct {
+			Category string `json:"category" form:"category"`
+		}
+		if err := c.Bind().Body(&filter); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+		return c.SendString("category=" + filter.Category)
+	})
+
+	doQuery := func(header, value string) (cacheStatus, body string) { //nolint:nonamedreturns // names document the pair
+		req := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(`{"category":"shoes"}`))
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+		req.Header.Set(header, value)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		got, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return resp.Header.Get("X-Cache"), string(got)
+	}
+
+	cacheStatus, got := doQuery(fiber.HeaderContentType, fiber.MIMEApplicationForm)
+	require.Equal(t, cacheMiss, cacheStatus)
+	require.Equal(t, "category=", got)
+
+	cacheStatus, got = doQuery(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	require.Equal(t, cacheMiss, cacheStatus, "the same bytes as JSON are a different query")
+	require.Equal(t, "category=shoes", got)
+
+	cacheStatus, _ = doQuery(fiber.HeaderContentEncoding, "gzip")
+	require.NotEqual(t, cacheHit, cacheStatus, "the same bytes declared compressed are a different query")
+
+	cacheStatus, got = doQuery(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	require.Equal(t, cacheHit, cacheStatus)
+	require.Equal(t, "category=shoes", got)
+}
+
 func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T) {
 	t.Parallel()
 

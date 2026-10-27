@@ -26,6 +26,10 @@ const (
 // hashPrefix is the reserved namespace prefix for hashed key segments.
 const hashPrefix = "sha256:"
 
+// queryBodyMetadata names the request fields that decide how a QUERY body is
+// read, lower-cased and sorted like Config.KeyHeaders.
+var queryBodyMetadata = []string{"content-encoding", "content-type"}
+
 var keyBufferPool = sync.Pool{
 	New: func() any {
 		buf := make([]byte, 0, defaultKeyBufferCap)
@@ -117,7 +121,9 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 
 	if c.Method() == fiber.MethodQuery {
 		// RFC 10008: incorporate the request body so different QUERY bodies on the
-		// same URL get distinct keys.
+		// same URL get distinct keys, and the fields that say how it is decoded.
+		dst = append(dst, '|', 'm', '=')
+		dst = appendCanonicalHeaderSubset(dst, &c.Request().Header, queryBodyMetadata, nil, headerlookup.Canonical(c))
 		dst = append(dst, '|', 'b', '=')
 		dst = appendQueryBodySegment(dst, c.Request().Body())
 	}
