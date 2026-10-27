@@ -854,6 +854,37 @@ func Test_App_Use_Params(t *testing.T) {
 	})
 }
 
+func Test_App_Use_HandlersWithSubAppPanics(t *testing.T) {
+	t.Parallel()
+
+	deny := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
+
+	for name, use := range map[string]func(app *App, args ...any){
+		"app":    func(app *App, args ...any) { app.Use(args...) },
+		"group":  func(app *App, args ...any) { app.Group("/g").Use(args...) },
+		"domain": func(app *App, args ...any) { app.Domain("example.com").Use(args...) },
+	} {
+		for _, args := range [][]any{
+			{"/admin", deny, New()},
+			{"/admin", New(), deny},
+			{deny, New()},
+			{[]string{"/a", "/b"}, deny, New()},
+		} {
+			require.Panics(t, func() { use(New(), args...) }, "%s %v", name, args)
+		}
+	}
+
+	// separate calls keep working
+	sub := New()
+	sub.Get("/panel", func(c Ctx) error { return c.SendString("panel") })
+	app := New()
+	app.Use("/admin", deny)
+	app.Use("/admin", sub)
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/admin/panel", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusUnauthorized, resp.StatusCode)
+}
+
 func Test_App_Use_UnescapedPath(t *testing.T) {
 	t.Parallel()
 	app := New(Config{UnescapePath: true, CaseSensitive: true})

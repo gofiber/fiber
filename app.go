@@ -1120,6 +1120,11 @@ func (app *App) Use(args ...any) Router {
 		}
 	}
 
+	// The mount would drop the handlers silently.
+	if subApp != nil && len(handlers) > 0 {
+		panic("use: handlers and a sub-app cannot be passed in one call\n")
+	}
+
 	if len(prefixes) == 0 {
 		prefixes = append(prefixes, prefix)
 	}

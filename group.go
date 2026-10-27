@@ -90,6 +90,10 @@ func (grp *Group) Use(args ...any) Router {
 		}
 	}
 
+	if subApp != nil && len(handlers) > 0 {
+		panic("use: handlers and a sub-app cannot be passed in one call\n")
+	}
+
 	if len(prefixes) == 0 {
 		prefixes = append(prefixes, prefix)
 	}
