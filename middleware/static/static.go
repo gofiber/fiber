@@ -52,6 +52,7 @@ type fileServer struct {
 	decodeEscapes bool   // off under UnescapePath, which already decoded everything
 	rootIsFile    bool
 	strictRouting bool // the router keeps name and name/ apart, so a directory has the slash and a file has none
+	browse        bool
 	invalid       bool // the fs.FS root cannot be opened, so no path names a file
 }
 
@@ -91,6 +92,9 @@ func (s *fileServer) requestPath(dst []byte, p string, end int) ([]byte, bool) {
 	// a wildcard right after the prefix, as in /static* or /static+, also
 	// matches /staticx; the rest of the path must start at a segment boundary
 	if end >= 0 && len(p) > end && p[end] != '/' {
+		return dst, false
+	}
+	if s.wildcard != "" && end > 0 && !s.plainPrefix(p[:end]) {
 		return dst, false
 	}
 	addTrailingSlash, mountPoint := false, false
@@ -141,6 +145,16 @@ func (s *fileServer) requestPath(dst []byte, p string, end int) ([]byte, bool) {
 		return dst[:0], false
 	}
 	return dst, true
+}
+
+// plainPrefix reports whether prefix, the routed path before the name on a parameter
+// route, has no empty segment and, for a listing, nothing fasthttp would decode: it
+// writes the links from the prefix decoded twice.
+func (s *fileServer) plainPrefix(prefix string) bool {
+	if prefix[len(prefix)-1] == '/' || strings.Contains(prefix, "//") {
+		return false
+	}
+	return !s.browse || !strings.ContainsAny(prefix, `%\?#`)
 }
 
 // namesFile reports whether p, a path for the file server without its
@@ -199,13 +213,13 @@ func New(root string, cfg ...Config) fiber.Handler {
 		prefix, constant := pattern, true
 		switch params := route.Params; {
 		case len(params) == 0:
-		case !endsInWildcard(pattern, params[len(params)-1]):
-			constant = false
-		case len(params) == 1:
-			// /john* and /john+ -> /john
-			prefix = pattern[:len(pattern)-1]
-		default:
+		case isWildcard(params[0]):
+			// /john*, /john+ and /john/*.js -> /john; the text after the wildcard is part of the name
+			prefix = pattern[:firstWildcard(pattern)]
+		case endsInWildcard(pattern, params[len(params)-1]):
 			wildcard, constant = params[len(params)-1], false
+		default:
+			constant = false
 		}
 		if constant {
 			prefix = fiber.RemoveEscapeChar(prefix)
@@ -233,6 +247,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 			fsRootPrefix = append([]byte{'/'}, root...)
 		}
 
+		// a listing links below the prefix, which the cache key leaves out
+		skipCache := config.CacheDuration < 0 || (config.Browse && wildcard != "")
+
 		files := &fasthttp.FS{
 			Root:           fsRoot,
 			FS:             config.FS,
@@ -246,7 +263,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 			CompressZstd:             config.Compress, // Zstd compression won't work without this
 			CompressedFileSuffixes:   cfg.CompressedFileSuffixes,
 			CacheDuration:            config.CacheDuration,
-			SkipCache:                config.CacheDuration < 0,
+			SkipCache:                skipCache,
 			IndexNames:               config.IndexNames,
 			PathNotFound: func(fctx *fasthttp.RequestCtx) {
 				fctx.Response.SetStatusCode(fiber.StatusNotFound)
@@ -277,6 +294,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 			decodeEscapes: !cfg.UnescapePath,
 			rootIsFile:    rootIsFile,
 			strictRouting: cfg.StrictRouting,
+			browse:        config.Browse,
 			invalid:       rootCheckErr != nil && config.FS != nil,
 		}
 	}
@@ -413,7 +431,25 @@ func New(root string, cfg ...Config) fiber.Handler {
 // endsInWildcard reports whether pattern ends in param, a wildcard.
 func endsInWildcard(pattern, param string) bool {
 	n := len(pattern)
-	return param != "" && (param[0] == '*' || param[0] == '+') && pattern[n-1] == param[0] && pattern[n-2] != '\\'
+	return isWildcard(param) && pattern[n-1] == param[0] && pattern[n-2] != '\\'
+}
+
+// isWildcard reports whether param names a '*' or '+' parameter.
+func isWildcard(param string) bool {
+	return param != "" && (param[0] == '*' || param[0] == '+')
+}
+
+// firstWildcard returns the index of the first unescaped '*' or '+' in pattern.
+func firstWildcard(pattern string) int {
+	for i := 0; i < len(pattern); i++ {
+		switch pattern[i] {
+		case '\\':
+			i++
+		case '*', '+':
+			return i
+		}
+	}
+	return len(pattern)
 }
 
 // pathEnd returns where the path of a request target ends.

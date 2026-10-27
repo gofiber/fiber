@@ -2550,13 +2550,15 @@ func Test_Static_StripsRoutedPrefix(t *testing.T) {
 }
 
 // Test_Static_ParameterRoutes pins that after a parameter a directory root takes the file
-// name from the trailing wildcard's value, and serves nothing on a route without one.
+// name from the trailing wildcard's value, and serves nothing on a route without one. A
+// route whose first parameter is a wildcard keeps the text before it as the prefix.
 func Test_Static_ParameterRoutes(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "private"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.js"), []byte("SECRET"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "app.js"), []byte("JS"), 0o600))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "index.html"), []byte("DOCS"), 0o600))
@@ -2597,6 +2599,60 @@ func Test_Static_ParameterRoutes(t *testing.T) {
 		resp := serveRaw(h, fiber.MethodGet, target)
 		require.Equal(t, want, resp.StatusCode(), "target=%s", target)
 		require.NotContains(t, string(resp.Body()), "SECRET", "target=%s", target)
+	}
+
+	for _, tc := range []struct {
+		targets map[string]int
+		route   string
+		strict  bool
+	}{
+		{route: "/assets/*.js", targets: map[string]int{
+			"/assets/app.js":            fiber.StatusOK,
+			"/assets/private/secret.js": fiber.StatusForbidden,
+			"/assetsapp.js":             fiber.StatusNotFound,
+		}},
+		{route: "/assets/*/index.html", targets: map[string]int{
+			"/assets/docs/index.html":    fiber.StatusOK,
+			"/assets/private/index.html": fiber.StatusForbidden,
+		}},
+		{route: "/:lang?/*", targets: map[string]int{
+			"/en/app.js":             fiber.StatusOK,
+			"/en/private/secret.txt": fiber.StatusForbidden,
+			"//app.js":               fiber.StatusNotFound,
+			"//private/secret.txt":   fiber.StatusNotFound,
+		}},
+		{route: "/:lang?/*", strict: true, targets: map[string]int{
+			"/en/docs": fiber.StatusFound,
+			"//docs":   fiber.StatusNotFound,
+		}},
+		{route: "/*/*", targets: map[string]int{
+			"/app.js":             fiber.StatusOK,
+			"/x/app.js":           fiber.StatusNotFound,
+			"/private/secret.txt": fiber.StatusForbidden,
+		}},
+		{route: "/*/*", strict: true, targets: map[string]int{
+			"/docs":  fiber.StatusFound,
+			"//docs": fiber.StatusNotFound,
+		}},
+	} {
+		app = fiber.New(fiber.Config{StrictRouting: tc.strict})
+		app.Use("/private", deny)
+		app.Use("/assets/private", deny)
+		app.Use("/:lang/private", deny)
+		app.Get(tc.route, New(root, Config{CacheDuration: -1}))
+		h = app.Handler()
+
+		for target, want := range tc.targets {
+			msg := []any{"route=%s strict=%t target=%s", tc.route, tc.strict, target}
+			resp := serveRaw(h, fiber.MethodGet, target)
+			require.Equal(t, want, resp.StatusCode(), msg...)
+			require.NotContains(t, string(resp.Body()), "SECRET", msg...)
+			location := ""
+			if want == fiber.StatusFound {
+				location = target + "/"
+			}
+			require.Equal(t, location, string(resp.Header.Peek(fiber.HeaderLocation)), msg...)
+		}
 	}
 
 	file := filepath.Join(root, "app.js")
@@ -2773,6 +2829,36 @@ func Test_Static_Browse_LinksFollowRoutedPath(t *testing.T) {
 					require.NotContains(t, body, "evil.example", msg...)
 					require.NotContains(t, body, "other", msg...)
 					require.Equal(t, sent, after, msg...)
+				}
+			}
+		}
+	}
+
+	// a parameter makes the prefix differ per request, so each listing links below its own
+	for _, unescape := range []bool{false, true} {
+		for name, handler := range roots {
+			sub := fiber.New()
+			sub.Get("/*", handler(Config{Browse: true}))
+			mounted := fiber.New(fiber.Config{UnescapePath: unescape})
+			mounted.Use("/t/:tenant", sub)
+			param := fiber.New(fiber.Config{UnescapePath: unescape})
+			param.Get("/:lang/*", handler(Config{Browse: true}))
+
+			for prefix, app := range map[string]*fiber.App{"": param, "/t": mounted} {
+				h := app.Handler()
+				for _, value := range []string{`%5Cevil.example`, `%255Cevil.example`, `\evil.example`, `..%2F..%2F%5Cevil.example%2Fx`, "en", "de"} {
+					target := prefix + "/" + value + "/pub/"
+					msg := []any{"root=%s unescape=%t target=%s", name, unescape, target}
+					resp := serveRaw(h, fiber.MethodGet, target)
+					body := string(resp.Body())
+					if value != "en" && value != "de" {
+						require.Equal(t, fiber.StatusNotFound, resp.StatusCode(), msg...)
+						continue
+					}
+					require.Equal(t, fiber.StatusOK, resp.StatusCode(), msg...)
+					require.Contains(t, body, "<title>"+prefix+"/"+value+"/pub/</title>", msg...)
+					require.Contains(t, body, `<a href="`+prefix+"/"+value+`/pub/a.txt" class="file">`, msg...)
+					require.NotContains(t, body, "evil.example", msg...)
 				}
 			}
 		}
