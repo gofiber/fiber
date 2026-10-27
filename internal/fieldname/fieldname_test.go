@@ -218,6 +218,26 @@ func Test_DelWithin_Budget(t *testing.T) {
 	require.Equal(t, 7, DelWithin(rawResponseHeader("x-trace"), "x-trace", true, 7), "a canonical store costs nothing")
 }
 
+func Test_DelSetWithin_Limit(t *testing.T) {
+	t.Parallel()
+
+	lines := []string{"X-Keep"}
+	for range 50 {
+		lines = append(lines, "upgrade", "te", "TE")
+	}
+	h := rawResponseHeader(lines...)
+	names := []string{"Upgrade", "TE"}
+
+	require.False(t, DelSetWithin(h, names, 2))
+	require.Zero(t, h.dels)
+
+	require.True(t, DelSetWithin(h, names, 3))
+	require.Equal(t, 3, h.dels)
+	require.Empty(t, Lines(h, "Upgrade", false))
+	require.Empty(t, Lines(h, "TE", false))
+	require.Equal(t, "v", string(First(h, "X-Keep", false)))
+}
+
 // Test_IsCanonical_MatchesFasthttp checks the form against fasthttp itself: a
 // token name is canonical exactly when Set stores it unchanged, and any other
 // name is not, because fasthttp stores such a key as sent.

@@ -1902,7 +1902,7 @@ The proxy middleware has been updated to improve consistency with Go naming conv
 
 The new `KeepConnectionHeader` option (default `false`) drops the `Connection` header unless explicitly enabled to retain it.
 
-The headers a request lists in `Connection` are removed before it is forwarded, and a request whose `Connection` fields list more than 32 names is answered with `431 Request Header Fields Too Large`. See [hop-by-hop header stripping](./middleware/proxy.md#rfc-9110-hop-by-hop-header-stripping).
+The headers a request lists in `Connection` are removed before it is forwarded, and a request whose `Connection` fields list more than 32 names is answered with `431 Request Header Fields Too Large`; an upstream response that does is answered with `502 Bad Gateway`. See [hop-by-hop header stripping](./middleware/proxy.md#rfc-9110-hop-by-hop-header-stripping).
 
 `proxy.Balancer` takes its `proxy.Config` as an optional variadic argument, like the other middleware constructors. `Servers` (or a custom `Client` with `Clients`) is required, so `proxy.Balancer()` without a config panics at startup, as `proxy.Balancer(proxy.Config{})` does, and so does a `Client` without `Clients`. A server without a port is dialed on the port of its scheme, and each server is reached with its own scheme, so an `https` upstream works behind a plain-HTTP listener.
 

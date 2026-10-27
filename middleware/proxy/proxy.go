@@ -213,8 +213,8 @@ func doActionWithPolicy(
 	if err := action(cli, req, res, u); err != nil {
 		return err
 	}
-	if !policy.KeepHopByHopHeaders {
-		stripHopByHopResponseHeaders(res)
+	if !policy.KeepHopByHopHeaders && !stripHopByHopResponseHeaders(res) {
+		return fiber.ErrBadGateway
 	}
 	return nil
 }

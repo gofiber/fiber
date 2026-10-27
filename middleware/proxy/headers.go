@@ -93,14 +93,15 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 }
 
 // stripHopByHopResponseHeaders applies the same filtering on the way back.
+// It reports false, having reset res, when the same budget runs out.
 //
 // It takes no normalized argument: a proxied response is parsed by the outbound
 // fasthttp.Client, whose own setting is independent of the app's, so ask the
 // header. One pass finds every spelling, cheaper than the per-name scan.
-func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
+func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) bool {
 	// Headers listed in Connection must be removed first so the listing is
 	// honored before the Connection field itself is dropped.
-	delConnectionListedHeaders(&res.Header, fieldname.Lines(&res.Header, fiber.HeaderConnection, false))
+	budget := delConnectionListedHeaders(&res.Header, fieldname.Lines(&res.Header, fiber.HeaderConnection, false))
 
 	names := hopByHopHeaders
 	if len(except) > 0 {
@@ -111,7 +112,13 @@ func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
 			}
 		}
 	}
-	fieldname.DelSet(&res.Header, names)
+	// Each name's own spelling is free, as it is in DelWithin.
+	if budget < 0 || !fieldname.DelSetWithin(&res.Header, names, len(names)+budget) {
+		// Partly stripped, so none of the upstream's fields go out with the 502.
+		res.Reset()
+		return false
+	}
+	return true
 }
 
 // delConnectionListedHeaders deletes every comma-separated header name
@@ -120,14 +127,23 @@ func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
 // names handed to Del alias the Connection value buffers; that is sound
 // because fasthttp's Del only re-slices the header's entry list — it never
 // rewrites other entries' key/value buffers — and Del does not retain the
-// name after returning.
+// name after returning. It returns what is left of maxConnectionOptions, or
+// -1 once the names and their spellings need more.
 //
 // This is the response's walk. The request has one of its own in
 // stripHopByHopRequestHeaders, which leaves the forwarding fields alone.
-func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte) {
+func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte) int {
+	budget := maxConnectionOptions
 	for name := range headerlist.AllLines(values) {
-		fieldname.Del(h, name, false)
+		budget--
+		if budget < 0 {
+			return -1
+		}
+		if budget = fieldname.DelWithin(h, name, false, budget); budget < 0 {
+			return -1
+		}
 	}
+	return budget
 }
 
 // realIPHeader is the field the proxy overwrites with the peer address Fiber

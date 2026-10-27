@@ -139,8 +139,8 @@ func Balancer(config ...Config) fiber.Handler {
 			return err
 		}
 
-		if !policy.KeepHopByHopHeaders {
-			stripHopByHopResponseHeaders(res, keepHeaders...)
+		if !policy.KeepHopByHopHeaders && !stripHopByHopResponseHeaders(res, keepHeaders...) {
+			return fiber.ErrBadGateway
 		}
 
 		// Modify response

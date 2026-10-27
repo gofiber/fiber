@@ -230,16 +230,30 @@ func DelOthers(h Deleter, name string) {
 // DelSet removes every field line matching any of names in a single pass, which
 // beats Del's per-name scan when the whole set is known up front.
 func DelSet(h Deleter, names []string) {
+	DelSetWithin(h, names, math.MaxInt)
+}
+
+// DelSetWithin is DelSet for a caller bounding the work: each distinct spelling
+// found costs a scan of every line, so it deletes none and reports false when
+// there are more than limit.
+func DelSetWithin(h Deleter, names []string, limit int) bool {
 	var removed []string
 	for k := range h.All() {
 		if ks := utils.UnsafeString(k); ContainsFold(names, ks) && !slices.Contains(removed, ks) {
 			removed = append(removed, string(k))
+			if len(removed) > limit {
+				break
+			}
 		}
+	}
+	if len(removed) > limit {
+		return false
 	}
 
 	for _, name := range removed {
 		h.Del(name)
 	}
+	return true
 }
 
 // ContainsFold reports whether needle equals any of haystack, case-insensitively.
