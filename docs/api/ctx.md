@@ -4121,6 +4121,10 @@ on the provided writer. Otherwise, the buffered stream flushes after
 `streamWriter` returns.
 :::
 
+:::caution
+`streamWriter` runs after the handler has returned, when `c` may already serve another request, so copy what it needs from `c` before calling `SendStreamWriter` instead of using `c` inside it.
+:::
+
 :::caution HTTP/1.0 clients
 The response is chunked, even for a request older than HTTP/1.1, for the reasons given under [`SendStream`](#sendstream). A client that cannot read a chunked response cannot be sent a stream of unknown size.
 :::
