@@ -381,6 +381,8 @@ After `c.Path(...)` or `c.Method(...)`, `c.Next()` continues with the routes reg
 
 Without `StrictRouting`, a path of slashes alone, such as `//`, is matched as `/`, the way `/about//` is matched as `/about`. Before, it was matched as the empty path, which a root `app.Use` did not cover while a `/*` or `/:name?` route still answered it. A route registered as `//` is the root route now, and `//` also answers a `/` route. `c.Path()` still returns `//`.
 
+With `StrictRouting`, middleware registered with `Use` on `/users/` also runs for `/users`, which routes below it such as `/users/:id?` and `/users/*` answer. Before, a mounted app's own `Use` middleware, composed as `/users/`, and `Group("/users").Use("/", mw)` did not run for `/users` while such a route of theirs still answered it. `RemoveRoute("/users/")` still removes such middleware.
+
 ### Optional parameters
 
 An optional parameter that ends at a single-character constant, such as `:month?-` or `:name?.`, no longer matches across a `/`. Before, `/api/:day-:month?-:year?` matched `/api/1-/-` with `month` set to `/`, and `/file/:name?.:ext` matched `/file/a/b.txt` with `name` set to `a/b`; both now return 404. A required parameter keeps its behavior: `/file/:name.:ext` still matches `/file/a/b.txt`. With `UnescapePath` on, `Route.URL`, `GetRouteURL` and `Redirect().Route` return `ErrRouteNotRepresentable` for a `/` in the value of such an optional parameter.

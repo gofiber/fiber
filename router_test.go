@@ -1328,6 +1328,22 @@ func Test_App_Remove_Route(t *testing.T) {
 	verifyRequest(t, app, "/test", StatusNotFound)
 }
 
+func Test_App_Remove_Route_StrictRouting_UsePrefix(t *testing.T) {
+	t.Parallel()
+	app := New(Config{StrictRouting: true})
+
+	app.Use("/test/", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	verifyRequest(t, app, "/test", StatusOK)
+	app.RemoveRoute("/test/")
+	app.RebuildTree()
+
+	verifyThereAreNoRoutes(t, app)
+	verifyRequest(t, app, "/test", StatusNotFound)
+}
+
 func Test_App_Remove_Route_Non_Existing_Route(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -5213,6 +5229,88 @@ func Test_Router_StrictRouting_ParamTrailingSlash(t *testing.T) {
 			}
 			require.Equal(t, tc.status == StatusOK, RoutePatternMatch(tc.path, pattern, cfg))
 		})
+	}
+}
+
+// Test_Router_StrictRouting_PrefixTrailingSlash pins that a Use route's trailing
+// slash stays optional under StrictRouting, as "/admin/:id?" matches "/admin".
+func Test_Router_StrictRouting_PrefixTrailingSlash(t *testing.T) {
+	t.Parallel()
+
+	guard := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
+	handler := func(c Ctx) error { return c.SendString("endpoint") }
+
+	testCases := []struct {
+		register func(app *App)
+		name     string
+		endpoint string
+		guarded  []string
+		missed   []string
+	}{
+		{
+			name:     "app",
+			register: func(app *App) { app.Use("/admin/", guard) },
+			endpoint: "/admin/*",
+			guarded:  []string{"/admin", "/admin/", "/admin/x"},
+			missed:   []string{"/adminx", "/admi"},
+		},
+		{
+			name:     "group",
+			register: func(app *App) { app.Group("/admin").Use("/", guard) },
+			endpoint: "/admin/:id?",
+			guarded:  []string{"/admin", "/admin/", "/admin/x"},
+			missed:   []string{"/adminx", "/admi"},
+		},
+		{
+			name:     "group handler",
+			register: func(app *App) { app.Group("/admin/", guard) },
+			endpoint: "/admin/*",
+			guarded:  []string{"/admin", "/admin/", "/admin/x"},
+			missed:   []string{"/adminx", "/admi"},
+		},
+		{
+			// "/a/" is as long as a tree hash, which "/a" is too short to carry
+			name:     "short",
+			register: func(app *App) { app.Use("/a/", guard) },
+			endpoint: "/a/*",
+			guarded:  []string{"/a", "/a/", "/a/x"},
+			missed:   []string{"/ax"},
+		},
+		{
+			name:     "parametric",
+			register: func(app *App) { app.Use("/a/:id/", guard) },
+			endpoint: "/a/:id/:sub?",
+			guarded:  []string{"/a/x", "/a/x/", "/a/x/y"},
+			missed:   []string{"/a", "/a/"},
+		},
+	}
+	for _, tc := range testCases {
+		// The second round fills the buckets until their scan is filtered.
+		for _, fill := range []int{0, 64} {
+			t.Run(fmt.Sprintf("%s/fill=%d", tc.name, fill), func(t *testing.T) {
+				t.Parallel()
+
+				app := New(Config{StrictRouting: true})
+				for i := range fill {
+					app.Get(fmt.Sprintf("/admin/fill/%d", i), handler)
+					app.Get(fmt.Sprintf("/a/fill/fill/%d", i), handler)
+					app.Get(fmt.Sprintf("/%d", i), handler)
+				}
+				tc.register(app)
+				app.Get(tc.endpoint, handler)
+
+				for _, path := range tc.guarded {
+					resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, StatusUnauthorized, resp.StatusCode, path)
+				}
+				for _, path := range tc.missed {
+					resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, StatusNotFound, resp.StatusCode, path)
+				}
+			})
+		}
 	}
 }
 

@@ -1189,3 +1189,36 @@ func Test_App_Mount_StrictRouting(t *testing.T) {
 		}
 	}
 }
+
+// Test_App_Mount_StrictRouting_RootMiddleware pins that a mounted app's root
+// middleware runs for "/users", which "/users/:id?" answers under StrictRouting too.
+func Test_App_Mount_StrictRouting_RootMiddleware(t *testing.T) {
+	t.Parallel()
+
+	for _, strict := range []bool{false, true} {
+		// "/u/" is as long as a tree hash, which "/u" is too short to carry
+		for prefix, mounted := range map[string]string{"/users": "/users", "/u": "/u", "/t/:tenant": "/t/acme"} {
+			for _, pattern := range []string{"/:id?", "/*"} {
+				users := New()
+				users.Use(func(c Ctx) error {
+					return c.SendStatus(StatusUnauthorized)
+				})
+				users.Get(pattern, func(c Ctx) error {
+					return c.SendString("users")
+				})
+				app := New(Config{StrictRouting: strict})
+				app.Use(prefix, users)
+
+				for _, target := range []string{mounted, mounted + "/", mounted + "/7"} {
+					resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, StatusUnauthorized, resp.StatusCode, "strict=%v prefix=%q pattern=%q path=%q", strict, prefix, pattern, target)
+				}
+
+				resp, err := app.Test(httptest.NewRequest(MethodGet, "/other", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, StatusNotFound, resp.StatusCode, "strict=%v prefix=%q pattern=%q", strict, prefix, pattern)
+			}
+		}
+	}
+}

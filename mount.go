@@ -80,7 +80,7 @@ type domainMountedApp struct {
 // with the routing rules of the app it is being mounted on, so the lookups
 // recognize it the same way the router recognizes its routes.
 func (app *App) newDomainMount(mounted *App, path string, matchers []domainMatcher, ancestors []*App, declared []CustomConstraint) domainMountedApp {
-	raw, pretty, clean := normalizeRoutePattern(path, &app.config)
+	raw, pretty, clean := normalizeRoutePattern(path, &app.config, true)
 
 	mount := domainMountedApp{
 		app:       mounted,

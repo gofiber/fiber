@@ -206,7 +206,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 		return false
 	}
 
-	pattern, patternPretty, patternClean := normalizeRoutePattern(pattern, &config)
+	pattern, patternPretty, patternClean := normalizeRoutePattern(pattern, &config, false)
 
 	// Mirror DefaultCtx.configDependentPaths: normalize the path, then derive
 	// the detection path (lowercased when CaseSensitive is off, trailing slash
@@ -260,9 +260,11 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 // raw preserves parameter names and constraint arguments, pretty applies the
 // routing configuration but retains escapes for parsing, and clean is the
 // literal comparison key. It does not decode or normalize request paths.
+// A prefix (use) drops its trailing slash under StrictRouting too: "/users/:id?"
+// answers "/users", so middleware on "/users/" has to cover it.
 //
-//nolint:nonamedreturns // names distinguish the three string representations
-func normalizeRoutePattern(pattern string, config *Config) (raw, pretty, clean string) {
+//nolint:nonamedreturns,revive // names distinguish the three forms; use marks a prefix route
+func normalizeRoutePattern(pattern string, config *Config, use bool) (raw, pretty, clean string) {
 	if pattern == "" {
 		pattern = "/"
 	}
@@ -274,7 +276,7 @@ func normalizeRoutePattern(pattern string, config *Config) (raw, pretty, clean s
 	if !config.CaseSensitive {
 		pretty = utilsstrings.ToLower(pretty)
 	}
-	if !config.StrictRouting && len(pretty) > 1 {
+	if (!config.StrictRouting || use) && len(pretty) > 1 {
 		pretty = utils.TrimRight(pretty, '/')
 		if pretty == "" {
 			// as for a request path: "//" is the root, not an empty pattern

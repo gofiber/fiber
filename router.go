@@ -1078,7 +1078,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 }
 
 func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) {
-	prefixedPath, prettyPath, cleanPath := normalizeRoutePattern(getGroupPath(prefix, route.Path), &app.config)
+	prefixedPath, prettyPath, cleanPath := normalizeRoutePattern(getGroupPath(prefix, route.Path), &app.config, route.use)
 
 	route.Path = prefixedPath
 	route.path = cleanPath
@@ -1154,7 +1154,7 @@ func (*App) copyRoute(route *Route) *Route {
 }
 
 func (app *App) normalizePath(path string) string {
-	_, _, clean := normalizeRoutePattern(path, &app.config)
+	_, _, clean := normalizeRoutePattern(path, &app.config, false)
 	return clean
 }
 
@@ -1162,10 +1162,15 @@ func (app *App) normalizePath(path string) string {
 // If no methods are specified, it will remove the route for all methods defined in the app.
 // You should call RebuildTree after using this to ensure consistency of the tree.
 func (app *App) RemoveRoute(path string, methods ...string) {
-	// Normalize same as register uses
+	// Normalize same as register uses: a prefix (use) route is keyed without
+	// its trailing slash under StrictRouting too (see normalizeRoutePattern)
 	norm := app.normalizePath(path)
+	_, _, normUse := normalizeRoutePattern(path, &app.config, true)
 
 	pathMatchFunc := func(r *Route) bool {
+		if r.use {
+			return r.path == normUse
+		}
 		return r.path == norm // compare private normalized path
 	}
 	app.deleteRoute(methods, pathMatchFunc)
@@ -1272,7 +1277,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 
 	// Precompute path normalization ONCE
-	pathRaw, pathPretty, pathClean := normalizeRoutePattern(pathRaw, &app.config)
+	pathRaw, pathPretty, pathClean := normalizeRoutePattern(pathRaw, &app.config, slices.Contains(methods, methodUse))
 
 	parsedRaw := parseRoute(pathRaw, app.config.RegexHandler, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.config.RegexHandler, app.customConstraints...)

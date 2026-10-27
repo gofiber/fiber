@@ -210,6 +210,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 
 	// When set to true, the router treats "/foo" and "/foo/" as different.
 	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
+	// Middleware registered with Use on "/foo/" runs for "/foo" either way.
 	//
 	// Default: false
 	StrictRouting bool `json:"strict_routing"`

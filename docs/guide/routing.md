@@ -197,7 +197,7 @@ The order in which you declare routes matters: like Express.js, routes are match
 Place routes with variable parameters after fixed paths to avoid unintended matches.
 :::
 
-By default the router ignores letter case and a trailing slash, so a route registered as `/about` also answers `/About` and `/about/`, and parameter values keep the case the client sent. Set [`CaseSensitive`](../api/fiber.md#casesensitive) and [`StrictRouting`](../api/fiber.md#strictrouting) in `fiber.Config` to tell these spellings apart. Without `StrictRouting`, a path of slashes alone, such as `//`, is matched as `/`, the way `/about//` is matched as `/about`.
+By default the router ignores letter case and a trailing slash, so a route registered as `/about` also answers `/About` and `/about/`, and parameter values keep the case the client sent. Set [`CaseSensitive`](../api/fiber.md#casesensitive) and [`StrictRouting`](../api/fiber.md#strictrouting) in `fiber.Config` to tell these spellings apart. Without `StrictRouting`, a path of slashes alone, such as `//`, is matched as `/`, the way `/about//` is matched as `/about`. Middleware registered with `Use` on `/about/` runs for `/about` in either mode.
 
 ### Path normalization
 
