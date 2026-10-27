@@ -51,8 +51,8 @@ func isForwardingHeader(name string) bool {
 }
 
 // maxConnectionOptions bounds the names a message may list in Connection plus
-// the other spellings of a removed name that a raw store holds: each costs a
-// scan of every header and trailer line.
+// the other spellings of a removed name that a raw store holds, here and in
+// setRealIP: each costs a scan of every header and trailer line.
 const maxConnectionOptions = 32
 
 // stripHopByHopRequestHeaders removes RFC 9110 §7.6.1 hop-by-hop headers
@@ -159,12 +159,17 @@ const realIPHeader = "X-Real-IP"
 // any field is removed: with ProxyHeader set to "X-Real-IP", c.IP() reads the
 // very header being replaced, and deleting first handed the upstream an empty
 // value; set to another name, it may read one the client listed in Connection.
-func setRealIP(c fiber.Ctx, ip []byte) {
+// It reports false, for the caller to refuse the request, when the field is
+// spelled in more than maxConnectionOptions other ways.
+func setRealIP(c fiber.Ctx, ip []byte) bool {
 	// Add, not Set: nothing is left to replace, and Add says what is meant.
-	// fieldname.Del rather than Del so a differently-spelled line does not
+	// fieldname.DelWithin rather than Del so a differently-spelled line does not
 	// survive beside it.
-	fieldname.Del(&c.Request().Header, realIPHeader, headerlookup.Canonical(c))
+	if fieldname.DelWithin(&c.Request().Header, realIPHeader, headerlookup.Canonical(c), maxConnectionOptions) < 0 {
+		return false
+	}
 	c.Request().Header.AddBytesV(realIPHeader, ip)
+	return true
 }
 
 // realIPScratch is the stack room for an address copied out of the request:

@@ -38,7 +38,9 @@ func forwardWithRealIP(c fiber.Ctx, addr string, policy SecurityPolicy, clients 
 	var scratch [realIPScratch]byte
 	ip := realIP(c, scratch[:0])
 	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
-		setRealIP(c, ip)
+		if !setRealIP(c, ip) {
+			return fiber.ErrRequestHeaderFieldsTooLarge
+		}
 		return cli.Do(req, resp)
 	}, clients...)
 }

@@ -937,6 +937,48 @@ func Test_Proxy_ConnectionListLimitCountsSpellings(t *testing.T) {
 	}
 }
 
+// Test_Proxy_RealIPSpellingLimit checks that under DisableHeaderNormalizing a
+// request spelling X-Real-IP in more ways than the proxy removes one by one is
+// refused, not forwarded.
+func Test_Proxy_RealIPSpellingLimit(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range realIPHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			seen := make(chan []string, 1)
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				seen <- matchingFieldLines(c, realIPHeader)
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+			app.Use(tc.build(addr))
+
+			for n, status := range map[int]int{
+				maxConnectionOptions:     fiber.StatusOK,
+				maxConnectionOptions + 1: fiber.StatusRequestHeaderFieldsTooLarge,
+			} {
+				spellings := caseSpellings("x-real-ip", n)
+				require.NotContains(t, spellings, realIPHeader, "every spelling counts")
+				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+				req.Host = "example.com"
+				for _, k := range spellings {
+					// Assigned rather than added, which would canonicalize the key.
+					req.Header[k] = []string{"6.6.6.6"}
+				}
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, status, resp.StatusCode)
+				if status == fiber.StatusOK {
+					require.Len(t, <-seen, 1)
+				}
+			}
+		})
+	}
+}
+
 // Test_Proxy_ResponseConnectionListLimit checks that a response listing more
 // names in Connection than the request may is answered with 502, and that none
 // of the upstream's fields go out with it.

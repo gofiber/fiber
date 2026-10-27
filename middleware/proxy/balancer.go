@@ -120,7 +120,9 @@ func Balancer(config ...Config) fiber.Handler {
 		// After the Connection listing has been applied, so the line is this
 		// hop's and not one the client named there; before ModifyRequest, so
 		// the application still has the last word.
-		setRealIP(c, ip)
+		if !setRealIP(c, ip) {
+			return fiber.ErrRequestHeaderFieldsTooLarge
+		}
 
 		// Modify request
 		if cfg.ModifyRequest != nil {
