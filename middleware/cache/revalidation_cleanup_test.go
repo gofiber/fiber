@@ -50,7 +50,7 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 						cfg.Storage = storage
 					}
 					baseKey := cacheKeyVersion + "|GET|/cached"
-					manifestKey := baseKey + "|vary"
+					manifestKey := manifestKeyPrefix + "GET|/cached"
 					var header fasthttp.RequestHeader
 					header.Set("X-Variant", "a")
 					key := varyKey(baseKey, []string{"x-variant"}, &header, true)
@@ -83,13 +83,13 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 								switch scenario {
 								case "absent":
 									delete(storage.data, key)
-									delete(storage.data, key+"_body")
+									delete(storage.data, bodyKey(key))
 								case "readError":
 									storage.errs["get|"+key] = errors.New("verification failed")
 								case "metadataDeleteError":
 									storage.errs["del|"+key] = errors.New("metadata delete failed")
 								case "bodyDeleteError":
-									storage.errs["del|"+key+"_body"] = errors.New("body delete failed")
+									storage.errs["del|"+bodyKey(key)] = errors.New("body delete failed")
 								}
 								storage.mu.Unlock()
 							}
@@ -285,9 +285,9 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 			}
 			request("/a", fiber.StatusOK)
 			storage.mu.Lock()
-			storage.errs["del|"+key+"_body"] = errors.New("body deletion failed")
+			storage.errs["del|"+bodyKey(key)] = errors.New("body deletion failed")
 			if failBodyRead {
-				storage.errs["get|"+key+"_body"] = errors.New("body verification failed")
+				storage.errs["get|"+bodyKey(key)] = errors.New("body verification failed")
 			}
 			storage.mu.Unlock()
 			request("/b", fiber.StatusInternalServerError)
@@ -295,12 +295,12 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 			require.Equal(t, 1, probe.nodes())
 			storage.mu.Lock()
 			require.NotContains(t, storage.data, key)
-			require.Contains(t, storage.data, key+"_body")
+			require.Contains(t, storage.data, bodyKey(key))
 			storage.errs = make(map[string]error)
 			storage.mu.Unlock()
 			request("/c", fiber.StatusOK)
 			storage.mu.RLock()
-			require.NotContains(t, storage.data, key+"_body")
+			require.NotContains(t, storage.data, bodyKey(key))
 			storage.mu.RUnlock()
 			require.Equal(t, uint(10), probe.counted())
 			require.Equal(t, 1, probe.nodes())

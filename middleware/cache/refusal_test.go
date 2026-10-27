@@ -1527,7 +1527,7 @@ func Test_Cache_ExpiredDeleteChecksTheEntry(t *testing.T) {
 
 			var reads atomic.Int32
 			storage := &hookedStorage{failingCacheStorage: newFailingCacheStorage(), onGet: func(key string) {
-				if strings.HasPrefix(key, cacheKeyVersion+"|GET|") && !strings.HasSuffix(key, "_body") {
+				if strings.HasPrefix(key, cacheKeyVersion+"|GET|") && !strings.HasPrefix(key, bodyKeyPrefix) {
 					reads.Add(1)
 				}
 			}}
@@ -1633,7 +1633,7 @@ func Test_Cache_RefusalToleratesAStorageThatFailsWhileDroppingTheReplacement(t *
 				base.mu.RLock()
 				defer base.mu.RUnlock()
 				for key := range base.data {
-					if strings.Contains(key, "session:sha256:"+authDigest(session)) && !strings.HasSuffix(key, "_body") && !isRefusalRecord(key) {
+					if strings.Contains(key, "session:sha256:"+authDigest(session)) && !strings.HasPrefix(key, bodyKeyPrefix) && !isRefusalRecord(key) {
 						return key
 					}
 				}
@@ -1760,7 +1760,7 @@ func Test_Cache_RefusalOfCustomKeyAuthorizationOutlivesTheManifestComingBack(t *
 		defer storage.mu.RUnlock()
 		found := map[string][]byte{}
 		for key, value := range storage.data {
-			if strings.HasSuffix(key, "|vary") && strings.Contains(key, "|auth="+authDigest("Bearer a")) {
+			if strings.HasPrefix(key, manifestKeyPrefix) && strings.Contains(key, "|auth="+authDigest("Bearer a")) {
 				found[key] = slices.Clone(value)
 			}
 		}

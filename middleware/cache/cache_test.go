@@ -314,7 +314,7 @@ func (s *restoreMutationStorage) DeleteWithContext(ctx context.Context, key stri
 	defer s.mu.Unlock()
 	if s.mutation == "missing" {
 		delete(s.data, key)
-		delete(s.data, key+"_body")
+		delete(s.data, bodyKey(key))
 	} else {
 		var entry item
 		if _, err := entry.UnmarshalMsg(s.data[key]); err != nil {
@@ -408,7 +408,7 @@ func TestCacheStorageSetError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCacheStorage()
-	storage.errs["set|"+cacheKeyVersion+"|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body"] = errors.New("boom")
+	storage.errs["set|"+bodyKeyPrefix+"GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -524,7 +524,7 @@ func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 
 	require.ElementsMatch(t, []string{
 		cacheKeyVersion + "|GET|scheme=http|host=example.com|/first|q=|h=accept:0|accept-encoding:0|accept-language:0",
-		cacheKeyVersion + "|GET|scheme=http|host=example.com|/first|q=|h=accept:0|accept-encoding:0|accept-language:0_body",
+		bodyKeyPrefix + "GET|scheme=http|host=example.com|/first|q=|h=accept:0|accept-encoding:0|accept-language:0",
 	}, keys)
 }
 
@@ -561,7 +561,7 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 
 	records := storage.recordedDeletes()
 	require.Len(t, records, 1)
-	require.Equal(t, cacheKeyVersion+"|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body", records[0].key)
+	require.Equal(t, bodyKeyPrefix+"GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0", records[0].key)
 	require.Equal(t, "cleanup", records[0].value)
 	require.True(t, records[0].canceled)
 }
@@ -614,7 +614,7 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 	for _, rec := range setRecords {
 		require.Contains(t, []string{
 			cacheKeyVersion + "|GET|scheme=http|host=example.com|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0",
-			cacheKeyVersion + "|GET|scheme=http|host=example.com|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0_body",
+			bodyKeyPrefix + "GET|scheme=http|host=example.com|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0",
 		}, rec.key)
 		require.Equal(t, "store", rec.value)
 		require.True(t, rec.canceled)
@@ -633,7 +633,7 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 			require.True(t, rec.canceled)
 			fetchEntry = true
 		}
-		if rec.key == cacheKeyVersion+"|GET|scheme=http|host=example.com|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0_body" {
+		if rec.key == bodyKeyPrefix+"GET|scheme=http|host=example.com|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0" {
 			require.True(t, rec.canceled)
 			fetchBody = true
 		}
@@ -2541,7 +2541,7 @@ func Test_Cache_StorageMissingBodyIsMiss(t *testing.T) {
 	storage.mu.Lock()
 	dropped := 0
 	for key := range storage.data {
-		if strings.HasSuffix(key, "_body") {
+		if strings.HasPrefix(key, bodyKeyPrefix) {
 			delete(storage.data, key)
 			dropped++
 		}
@@ -2652,7 +2652,7 @@ func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
 func Test_Cache_FailedRefreshKeepsOldEntryTracked(t *testing.T) {
 	t.Parallel()
 
-	const bodyKey = "set|" + cacheKeyVersion + "|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body"
+	const bodySet = "set|" + bodyKeyPrefix + "GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"
 
 	storage := newFailingCacheStorage()
 	probe := &accountingProbe{}
@@ -2678,7 +2678,7 @@ func Test_Cache_FailedRefreshKeepsOldEntryTracked(t *testing.T) {
 	// superseded stays in the backend, so it must stay counted and tracked
 	// rather than leaking its bytes and its expiry.
 	storage.mu.Lock()
-	storage.errs[bodyKey] = errors.New("boom")
+	storage.errs[bodySet] = errors.New("boom")
 	storage.mu.Unlock()
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
@@ -3232,7 +3232,7 @@ func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 
 	expectedKey := cacheKeyVersion + "|GET|/|invalid-expires"
 	require.Contains(t, storage.data, expectedKey)
-	require.Contains(t, storage.data, expectedKey+"_body")
+	require.Contains(t, storage.data, bodyKey(expectedKey))
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
@@ -3241,7 +3241,7 @@ func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "body2", string(body))
 	require.Contains(t, storage.data, expectedKey)
-	require.Contains(t, storage.data, expectedKey+"_body")
+	require.Contains(t, storage.data, bodyKey(expectedKey))
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
@@ -3250,7 +3250,7 @@ func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "body3", string(body))
 	require.Contains(t, storage.data, expectedKey)
-	require.Contains(t, storage.data, expectedKey+"_body")
+	require.Contains(t, storage.data, bodyKey(expectedKey))
 }
 
 func Test_CacheStoreDoesNotAgeItsOwnResponse(t *testing.T) {
@@ -3714,7 +3714,7 @@ func Test_CacheClampsInvalidStoredDate(t *testing.T) {
 	t.Parallel()
 
 	storage := newMutatingStorage(func(key string, val []byte) []byte {
-		if strings.HasSuffix(key, "_body") {
+		if strings.HasPrefix(key, bodyKeyPrefix) {
 			return val
 		}
 
@@ -3765,7 +3765,7 @@ func Test_CacheClampsFutureStoredDate(t *testing.T) {
 	t.Parallel()
 
 	storage := newMutatingStorage(func(key string, val []byte) []byte {
-		if strings.HasSuffix(key, "_body") {
+		if strings.HasPrefix(key, bodyKeyPrefix) {
 			return val
 		}
 
@@ -3970,7 +3970,7 @@ func Test_CacheHeuristicFreshnessAddsWarning113AfterThreshold(t *testing.T) {
 	t.Parallel()
 
 	storage := newMutatingStorage(func(key string, val []byte) []byte {
-		if strings.HasSuffix(key, "_body") {
+		if strings.HasPrefix(key, bodyKeyPrefix) {
 			return val
 		}
 
@@ -4033,7 +4033,7 @@ func Test_CacheAgeHeaderIsCappedAtMaxDeltaSeconds(t *testing.T) {
 
 	const veryLargeAge = uint64(math.MaxInt32) + 1000
 	storage := newMutatingStorage(func(key string, val []byte) []byte {
-		if strings.HasSuffix(key, "_body") {
+		if strings.HasPrefix(key, bodyKeyPrefix) {
 			return val
 		}
 
@@ -4591,10 +4591,10 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 			require.NoError(t, resp.Body.Close())
 
 			key := cacheKeyVersion + "|GET|/cached"
-			bodyKey := key + "_body"
+			bodySlot := bodyKey(key)
 			storage.mu.RLock()
 			require.Contains(t, storage.data, key)
-			require.Contains(t, storage.data, bodyKey)
+			require.Contains(t, storage.data, bodySlot)
 			storage.mu.RUnlock()
 
 			returnUncacheable.Store(true)
@@ -4609,20 +4609,20 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 
 			storage.mu.RLock()
 			require.NotContains(t, storage.data, key)
-			require.NotContains(t, storage.data, bodyKey)
+			require.NotContains(t, storage.data, bodySlot)
 			storage.mu.RUnlock()
 
 			deletes := storage.recordedDeletes()
-			require.Equal(t, []contextRecord{{key: key}, {key: bodyKey}}, deletes)
+			require.Equal(t, []contextRecord{{key: key}, {key: bodySlot}}, deletes)
 			for _, get := range storage.recordedGets() {
-				require.NotEqual(t, bodyKey, get.key, "revalidation must not fetch the stale body")
+				require.NotEqual(t, bodySlot, get.key, "revalidation must not fetch the stale body")
 			}
 
 			// If heap accounting retained the deleted entry, caching /next would
 			// try to evict it and encounter these sentinel errors.
 			storage.mu.Lock()
 			storage.errs["del|"+key] = errors.New("stale metadata remained in heap")
-			storage.errs["del|"+bodyKey] = errors.New("stale body remained in heap")
+			storage.errs["del|"+bodySlot] = errors.New("stale body remained in heap")
 			storage.mu.Unlock()
 
 			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/next", http.NoBody))
@@ -4651,8 +4651,8 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 
 	tests := []struct {
 		name              string
-		failedKeySuffix   string
 		wantDeletes       []string
+		failBodyDelete    bool
 		metadataRemaining bool
 	}{
 		{
@@ -4661,9 +4661,9 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 			wantDeletes:       []string{cacheKeyVersion + "|GET|/cached"},
 		},
 		{
-			name:            "body",
-			failedKeySuffix: "_body",
-			wantDeletes:     []string{cacheKeyVersion + "|GET|/cached", cacheKeyVersion + "|GET|/cached_body"},
+			name:           "body",
+			failBodyDelete: true,
+			wantDeletes:    []string{cacheKeyVersion + "|GET|/cached", bodyKeyPrefix + "GET|/cached"},
 		},
 	}
 
@@ -4706,9 +4706,13 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 			require.NoError(t, resp.Body.Close())
 
 			key := cacheKeyVersion + "|GET|/cached"
-			bodyKey := key + "_body"
+			bodySlot := bodyKey(key)
+			failedKey := key
+			if tt.failBodyDelete {
+				failedKey = bodySlot
+			}
 			storage.mu.Lock()
-			storage.errs["del|"+key+tt.failedKeySuffix] = errors.New("delete failed")
+			storage.errs["del|"+failedKey] = errors.New("delete failed")
 			storage.mu.Unlock()
 			returnNoCache.Store(true)
 
@@ -4723,7 +4727,7 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 
 			storage.mu.RLock()
 			_, metadataRemaining := storage.data[key]
-			_, bodyRemaining := storage.data[bodyKey]
+			_, bodyRemaining := storage.data[bodySlot]
 			storage.mu.RUnlock()
 			require.Equal(t, tt.metadataRemaining, metadataRemaining)
 			require.True(t, bodyRemaining)
@@ -4735,13 +4739,13 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 			}
 			require.Equal(t, tt.wantDeletes, deleteKeys)
 			for _, get := range storage.recordedGets() {
-				require.NotEqual(t, bodyKey, get.key, "revalidation must not fetch the stale body")
+				require.NotEqual(t, bodySlot, get.key, "revalidation must not fetch the stale body")
 			}
 
 			// The old heap entry remains tracked after a deletion error so a later
 			// eviction can retry cleanup and restore byte accounting.
 			storage.mu.Lock()
-			delete(storage.errs, "del|"+key+tt.failedKeySuffix)
+			delete(storage.errs, "del|"+failedKey)
 			storage.mu.Unlock()
 			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/next", http.NoBody))
 			require.NoError(t, err)
@@ -4750,7 +4754,7 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 
 			storage.mu.RLock()
 			require.NotContains(t, storage.data, key)
-			require.NotContains(t, storage.data, bodyKey)
+			require.NotContains(t, storage.data, bodySlot)
 			storage.mu.RUnlock()
 		})
 	}
@@ -4782,7 +4786,7 @@ func Test_CacheStorage_UncacheableRevalidationPrecheckFailuresReturnOrigin(t *te
 					storage.mu.Lock()
 					if missing {
 						delete(storage.data, key)
-						delete(storage.data, key+"_body")
+						delete(storage.data, bodyKey(key))
 					} else {
 						storage.errs["get|"+key] = errors.New("metadata lookup failed")
 					}
@@ -5429,7 +5433,7 @@ func Test_Cache_ExternalUncacheableRevalidationPreservesCompletedReplacement(t *
 			key := cacheKeyVersion + "|GET|/cached"
 			storage.mu.RLock()
 			require.Contains(t, storage.data, key)
-			require.Equal(t, []byte("newer!"), storage.data[key+"_body"])
+			require.Equal(t, []byte("newer!"), storage.data[bodyKey(key)])
 			storage.mu.RUnlock()
 
 			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
@@ -5566,7 +5570,7 @@ func Test_CacheStorage_NoStoreRevalidationCleansVaryManifest(t *testing.T) {
 			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 			require.NoError(t, resp.Body.Close())
 
-			manifestKey := cacheKeyVersion + "|GET|/cached|vary"
+			manifestKey := manifestKeyPrefix + "GET|/cached"
 			storage.mu.Lock()
 			_, manifestStored := storage.data[manifestKey]
 			if failDelete {
@@ -5746,7 +5750,7 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 
 	metadataKey := ""
 	for key, value := range storage.data {
-		if strings.HasSuffix(key, "_body") {
+		if strings.HasPrefix(key, bodyKeyPrefix) {
 			continue
 		}
 
@@ -5766,7 +5770,7 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
 	require.Equal(t, int32(1), originCalls.Load())
 	require.Contains(t, storage.data, metadataKey)
-	require.Contains(t, storage.data, metadataKey+"_body")
+	require.Contains(t, storage.data, bodyKey(metadataKey))
 
 	resp, err = app.Test(newAuthorizationRequest("no-cache, only-if-cached", ""))
 	require.NoError(t, err)
@@ -5774,7 +5778,7 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
 	require.Equal(t, int32(1), originCalls.Load())
 	require.Contains(t, storage.data, metadataKey)
-	require.Contains(t, storage.data, metadataKey+"_body")
+	require.Contains(t, storage.data, bodyKey(metadataKey))
 
 	resp, err = app.Test(newAuthorizationRequest("only-if-cached", "no-cache"))
 	require.NoError(t, err)
@@ -5782,7 +5786,7 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
 	require.Equal(t, int32(1), originCalls.Load())
 	require.Contains(t, storage.data, metadataKey)
-	require.Contains(t, storage.data, metadataKey+"_body")
+	require.Contains(t, storage.data, bodyKey(metadataKey))
 
 	resp, err = app.Test(newAuthorizationRequest("no-cache", ""))
 	require.NoError(t, err)
@@ -5793,7 +5797,7 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 	require.Equal(t, "origin-2", string(body))
 	require.Equal(t, int32(2), originCalls.Load())
 	require.Contains(t, storage.data, metadataKey)
-	require.Contains(t, storage.data, metadataKey+"_body")
+	require.Contains(t, storage.data, bodyKey(metadataKey))
 }
 
 func TestCacheAllowsSharedCacheWithAuthorization(t *testing.T) {
@@ -7544,7 +7548,7 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 		hasBodyKey := false
 		storage.mu.RLock()
 		for k := range storage.data {
-			if strings.Contains(k, "_body") {
+			if strings.HasPrefix(k, bodyKeyPrefix) {
 				hasBodyKey = true
 				break
 			}
@@ -8103,8 +8107,8 @@ func Test_Cache_OrphanedMetadataWithoutBody(t *testing.T) {
 			var metadataKey string
 			storage.mu.Lock()
 			for key := range storage.data {
-				if trimmed, ok := strings.CutSuffix(key, "_body"); ok {
-					metadataKey = trimmed
+				if rest, ok := strings.CutPrefix(key, bodyKeyPrefix); ok {
+					metadataKey = cacheKeyVersion + "|" + rest
 					delete(storage.data, key)
 					break
 				}
@@ -8149,8 +8153,8 @@ func Test_Cache_BodyFetchFailure(t *testing.T) {
 		var metadataKey string
 		storage.mu.RLock()
 		for key := range storage.data {
-			if trimmed, ok := strings.CutSuffix(key, "_body"); ok {
-				metadataKey = trimmed
+			if rest, ok := strings.CutPrefix(key, bodyKeyPrefix); ok {
+				metadataKey = cacheKeyVersion + "|" + rest
 				break
 			}
 		}
@@ -8167,7 +8171,7 @@ func Test_Cache_BodyFetchFailure(t *testing.T) {
 		key := prime(t, app, storage)
 
 		storage.mu.Lock()
-		storage.errs["get|"+key+"_body"] = errors.New("boom")
+		storage.errs["get|"+bodyKey(key)] = errors.New("boom")
 		storage.mu.Unlock()
 
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
@@ -8183,7 +8187,7 @@ func Test_Cache_BodyFetchFailure(t *testing.T) {
 		key := prime(t, app, storage)
 
 		storage.mu.Lock()
-		delete(storage.data, key+"_body")
+		delete(storage.data, bodyKey(key))
 		storage.errs["del|"+key] = errors.New("boom")
 		storage.mu.Unlock()
 
@@ -8205,7 +8209,7 @@ func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
 		return c.SendString(body)
 	})
 
-	manifestKey := cacheKeyVersion + "|GET|scheme=http|host=example.com|/a|q=|h=accept:0|accept-encoding:0|accept-language:0|vary"
+	manifestKey := manifestKeyPrefix + "GET|scheme=http|host=example.com|/a|q=|h=accept:0|accept-encoding:0|accept-language:0"
 	storage.mu.Lock()
 	storage.errs["set|"+manifestKey] = errors.New("boom")
 	storage.mu.Unlock()
@@ -8716,4 +8720,68 @@ func Test_configDefault_KeyCredentialHeaders(t *testing.T) {
 			require.Equal(t, credentials, tc.cfg.KeyCredentialHeaders)
 		})
 	}
+}
+
+// An entry key ends in what the request chose, so it must never be the key of
+// another entry's body slot or Vary manifest on an external Storage.
+func Test_Cache_EntryKeyNeverNamesDerivedSlot(t *testing.T) {
+	t.Parallel()
+
+	get := func(t *testing.T, app *fiber.App, header, value string) (int, string, string) {
+		t.Helper()
+		req := httptest.NewRequest(fiber.MethodGet, "/news", http.NoBody)
+		req.Header.Set(header, value)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		raw, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		return resp.StatusCode, string(raw), resp.Header.Get("X-Cache")
+	}
+
+	t.Run("body", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{Storage: memory.New()}))
+		app.Get("/news", func(c fiber.Ctx) error {
+			return c.SendString("news for " + c.Get(fiber.HeaderAcceptLanguage))
+		})
+
+		for _, step := range []struct{ lang, state string }{
+			{"en", cacheMiss},
+			{"en_body", cacheMiss},
+			{"en", cacheHit},
+			{"en_body", cacheHit},
+		} {
+			status, body, state := get(t, app, fiber.HeaderAcceptLanguage, step.lang)
+			require.Equal(t, fiber.StatusOK, status, step.lang)
+			require.Equal(t, "news for "+step.lang, body)
+			require.Equal(t, step.state, state, step.lang)
+		}
+	})
+
+	t.Run("manifest", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{
+			Storage:      memory.New(),
+			KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|" + c.Get("X-Tenant") },
+		}))
+		app.Get("/news", func(c fiber.Ctx) error {
+			return c.SendString("news for " + c.Get("X-Tenant"))
+		})
+
+		for _, step := range []struct{ tenant, state string }{
+			{"acme", cacheMiss},
+			{"acme|vary", cacheMiss},
+			{"acme", cacheHit},
+		} {
+			status, body, state := get(t, app, "X-Tenant", step.tenant)
+			require.Equal(t, fiber.StatusOK, status, step.tenant)
+			require.Equal(t, "news for "+step.tenant, body)
+			require.Equal(t, step.state, state, step.tenant)
+		}
+	})
 }
