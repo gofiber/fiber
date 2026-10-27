@@ -200,8 +200,8 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
-		// Body would read a stream to its end before anything is sent, so it is passed on unrecorded.
-		if c.Response().IsBodyStream() {
+		// Body would hold a stream that declares no length until it ends, maybe never, so it goes out unrecorded.
+		if c.Response().IsBodyStream() && c.Response().Header.ContentLength() < 0 {
 			return nil
 		}
 

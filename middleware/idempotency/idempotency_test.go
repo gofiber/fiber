@@ -889,7 +889,7 @@ func (s *countingStream) Read(_ []byte) (int, error) {
 	return 0, io.EOF
 }
 
-// Recording a stream read it to its end before the response was sent.
+// Recording a stream without a declared length read it to its end before the response was sent.
 func Test_Idempotency_StreamIsPassedOnUnrecorded(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -914,6 +914,28 @@ func Test_Idempotency_StreamIsPassedOnUnrecorded(t *testing.T) {
 		require.Zero(t, stream.reads)
 	}
 	require.Equal(t, 2, calls)
+}
+
+// A stream of known length, such as SendFile serves, is still stored and replayed.
+func Test_Idempotency_SizedStreamIsReplayed(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+
+	var calls int
+	app.Post("/", func(c fiber.Ctx) error {
+		calls++
+		return c.SendStream(strings.NewReader("receipt"), len("receipt"))
+	})
+
+	for range 2 {
+		req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
+		req.Header.Set(ConfigDefault.KeyHeader, validKey)
+		resp, body := do(app, req)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		require.Equal(t, "receipt", body)
+	}
+	require.Equal(t, 1, calls)
 }
 
 // A refused request replays the Use chain without its handler; storing what it
