@@ -18,6 +18,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 )
 
 var (
@@ -1257,4 +1258,40 @@ func Test_Timeout_OnTimeoutCallsTimeoutHandler(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
 	require.Equal(t, "fallback", string(body))
+}
+
+// OnTimeout panicking, or calling c.Next on its ctx without a route, must not hand ctx back while the handler runs.
+func Test_Timeout_OnTimeoutPanicLeavesCtxToHandler(t *testing.T) {
+	t.Parallel()
+
+	for name, onTimeout := range map[string]fiber.Handler{
+		"panic": func(fiber.Ctx) error { panic("boom") },
+		"next":  func(c fiber.Ctx) error { return c.Next() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			release := make(chan struct{})
+			abandoned := make(chan bool, 1)
+			app := fiber.New()
+			app.Use(recoverer.New())
+			app.Get("/", New(func(c fiber.Ctx) error {
+				<-c.Context().Done()
+				<-release
+				abandoned <- c.IsAbandoned()
+				c.Cookie(&fiber.Cookie{Name: "session", Value: "late"})
+				return nil
+			}, Config{Timeout: 20 * time.Millisecond, OnTimeout: onTimeout}))
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			close(release)
+			require.True(t, <-abandoned, "ctx was released while the handler still ran")
+			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+			require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, fiber.ErrInternalServerError.Message, string(body))
+		})
+	}
 }

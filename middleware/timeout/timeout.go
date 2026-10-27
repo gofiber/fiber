@@ -288,9 +288,20 @@ func takeSnapshot(fctx *fasthttp.RequestCtx) *snapshot {
 }
 
 // runOnTimeout runs OnTimeout on a ctx of its own and returns the response it wrote.
-func (s *snapshot) runOnTimeout(ctx fiber.Ctx, cfg Config) (*fasthttp.Response, error) {
+// A panic there answers 500, so handleTimeout still hands fasthttp a response and abandons ctx.
+func (s *snapshot) runOnTimeout(ctx fiber.Ctx, cfg Config) (resp *fasthttp.Response, err error) { //nolint:nonamedreturns // Uses recover() to overwrite the error
 	orig := ctx.RequestCtx()
 	fctx := new(fasthttp.RequestCtx)
+	resp = &fctx.Response
+	defer func() {
+		if p := recover(); p != nil {
+			log.Errorw("panic recovered in timeout OnTimeout", "panic", p, "stack", string(debug.Stack()))
+			resp.ResetBody()
+			resp.SetStatusCode(fiber.StatusInternalServerError)
+			resp.SetBodyString(fiber.ErrInternalServerError.Message)
+			err = fiber.ErrInternalServerError
+		}
+	}()
 	// The real conn keeps IsTLS, LocalAddr and the TLS state; fctx is never served on it.
 	fctx.Init2(orig.Conn(), nil, true)
 	fctx.SetRemoteAddr(orig.RemoteAddr())
@@ -303,9 +314,8 @@ func (s *snapshot) runOnTimeout(ctx fiber.Ctx, cfg Config) (*fasthttp.Response, 
 
 	app := ctx.App()
 	c := app.AcquireCtx(fctx)
-	err := cfg.OnTimeout(c)
-	app.ReleaseCtx(c)
-	return &fctx.Response, err
+	defer app.ReleaseCtx(c)
+	return resp, cfg.OnTimeout(c)
 }
 
 func (s *snapshot) release() {

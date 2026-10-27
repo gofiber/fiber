@@ -18,7 +18,7 @@ type Config struct {
 	// fiber.ErrServiceUnavailable, so middleware that runs before it leaves the response alone.
 	// The timed-out handler may still be running and must stop using the context.
 	// After the deadline OnTimeout gets a ctx of its own: the request headers, locals and response headers
-	// as the handler got them, without the request body or route params.
+	// as the handler got them, without the request body, route params or c.Next; a panic there answers 500.
 	// Optional. Default: nil (return fiber.ErrServiceUnavailable)
 	OnTimeout fiber.Handler
 
