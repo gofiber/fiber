@@ -19,6 +19,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 // Test_Cache_Security_DoS_ExcessiveQueryParams tests protection against DoS via excessive query parameters
@@ -2766,4 +2767,86 @@ func Test_Cache_Security_EvictedVariantKeepsSiblingManifest(t *testing.T) {
 	require.Equal(t, 2, countVaryManifests(storage))
 	require.Equal(t, cacheHit, get("/a", "two"))
 	require.Equal(t, cacheMiss, get("/a", "one"))
+}
+
+// A request the server refuses replays the Use chain without its route, so what
+// the chain leaves, a catch-all's 404 or the seeded status, is not the URL's response.
+func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		refused  string
+		catchAll bool
+	}{
+		{
+			name:     "body over BodyLimit with a catch-all",
+			refused:  "Content-Length: 99999999\r\n\r\n",
+			catchAll: true,
+		},
+		{
+			name:    "malformed trailer",
+			refused: "Transfer-Encoding: chunked\r\n\r\n0\r\nContent-Length: unsupported http request method\r\n\r\n",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New())
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("home page")
+			})
+			if tc.catchAll {
+				app.Use(func(c fiber.Ctx) error {
+					return c.Status(fiber.StatusNotFound).SendString("no such page")
+				})
+			}
+
+			ln := fasthttputil.NewInmemoryListener()
+			errCh := make(chan error, 1)
+			go func() {
+				errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+			}()
+			t.Cleanup(func() {
+				require.NoError(t, app.Shutdown())
+				require.NoError(t, <-errCh)
+			})
+
+			send := func(target, extra string) (status int, body, cacheStatus string) { //nolint:nonamedreturns // names document the triple
+				conn, err := ln.Dial()
+				require.NoError(t, err)
+				defer conn.Close() //nolint:errcheck // usually closed by the server already
+				require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+				raw := "GET " + target + " HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n"
+				if extra == "" {
+					extra = "\r\n"
+				}
+				_, err = conn.Write([]byte(raw + extra))
+				require.NoError(t, err)
+				resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+				require.NoError(t, err)
+				got, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.NoError(t, resp.Body.Close())
+				return resp.StatusCode, string(got), resp.Header.Get("X-Cache")
+			}
+
+			// "/" holds a fresh entry the refused request asks to replace, "/?page=2" none yet.
+			status, _, _ := send("/", "")
+			require.Equal(t, fiber.StatusOK, status)
+
+			for _, target := range []string{"/", "/?page=2"} {
+				status, _, cacheStatus := send(target, "Cache-Control: no-cache\r\n"+tc.refused)
+				require.GreaterOrEqual(t, status, fiber.StatusBadRequest, target)
+				require.Equal(t, cacheUnreachable, cacheStatus, target)
+
+				status, body, _ := send(target, "")
+				require.Equal(t, fiber.StatusOK, status, target)
+				require.Equal(t, "home page", body, target)
+			}
+		})
+	}
 }

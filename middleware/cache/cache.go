@@ -16,6 +16,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/log"
@@ -358,6 +359,13 @@ func New(config ...Config) fiber.Handler {
 
 		// Only cache methods listed in cfg.Methods (default: GET, HEAD).
 		if !slices.Contains(cfg.Methods, requestMethod) {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return c.Next()
+		}
+
+		// A request the server refused runs the chain without its route, and the
+		// error handler answers it: nothing here is the URL's response.
+		if errorreplay.Active(c.RequestCtx()) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
