@@ -2069,6 +2069,41 @@ func Benchmark_Router_Next(b *testing.B) {
 	require.Equal(b, 4, c.indexRoute)
 }
 
+// Benchmark_Router_PathOverride measures placing a prefix-mounted rewrite in the
+// new bucket, registered ahead of the route table and behind it.
+func Benchmark_Router_PathOverride(b *testing.B) {
+	rewrite := func(c Ctx) error {
+		c.Path(strings.TrimPrefix(c.Path(), "/v1"))
+		return c.Next()
+	}
+	for _, tc := range []struct {
+		name  string
+		first bool
+	}{{name: "rewrite first", first: true}, {name: "rewrite last"}} {
+		b.Run(tc.name, func(b *testing.B) {
+			app := New()
+			if tc.first {
+				app.Use("/v1", rewrite)
+			}
+			registerDummyRoutes(app)
+			if !tc.first {
+				app.Use("/v1", rewrite)
+				app.Get("/user/keys/:id", func(c Ctx) error { return c.SendStatus(StatusOK) })
+			}
+			h := app.Handler()
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(MethodGet)
+
+			b.ReportAllocs()
+			for b.Loop() {
+				fctx.URI().SetPath("/v1/user/keys/1337")
+				h(fctx)
+			}
+			require.Equal(b, StatusOK, fctx.Response.StatusCode())
+		})
+	}
+}
+
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Next_Default -benchmem -count=4
 func Benchmark_Router_Next_Default(b *testing.B) {
 	app := New()
@@ -5590,6 +5625,200 @@ func Test_Router_PathOverride_ContinuesInNewBucket(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "aaa x", string(body))
+}
+
+// Test_Router_PathOverride_FromPrefixedRoute pins that a path change made by a
+// route filed under its own prefix bucket resumes with the routes registered after it.
+func Test_Router_PathOverride_FromPrefixedRoute(t *testing.T) {
+	t.Parallel()
+
+	for _, ahead := range []int{0, 1, 3} {
+		for _, global := range []bool{false, true} {
+			t.Run(fmt.Sprintf("ahead=%d/global=%v", ahead, global), func(t *testing.T) {
+				t.Parallel()
+
+				app := New()
+				var ran []string
+				note := func(name string) Handler {
+					return func(c Ctx) error {
+						ran = append(ran, name)
+						return c.Next()
+					}
+				}
+				deny := func(c Ctx) error { return c.SendStatus(StatusForbidden) }
+
+				app.Use("/admin", note("early"))
+				for range ahead {
+					app.Use(note("global"))
+					app.Use("/v1", note("v1"))
+				}
+				app.Use("/v1", func(c Ctx) error {
+					c.Path(strings.TrimPrefix(c.Path(), "/v1"))
+					return c.Next()
+				})
+				if global {
+					app.Use(deny)
+				} else {
+					app.Use("/admin", deny)
+				}
+				app.Get("/admin/report", func(c Ctx) error { return c.SendString("report") })
+				app.Get("/public/page", func(c Ctx) error { return c.SendString("page") })
+
+				resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/admin/report", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, StatusForbidden, resp.StatusCode)
+				require.NoError(t, resp.Body.Close())
+				require.NotContains(t, ran, "early")
+				require.Equal(t, ahead, countOf(ran, "global"))
+
+				// The handler heading its bucket is not skipped either.
+				resp, err = app.Test(httptest.NewRequest(MethodGet, "/v1/public/page", http.NoBody))
+				require.NoError(t, err)
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.NoError(t, resp.Body.Close())
+				if global {
+					require.Equal(t, StatusForbidden, resp.StatusCode)
+					return
+				}
+				require.Equal(t, StatusOK, resp.StatusCode)
+				require.Equal(t, "page", string(body))
+			})
+		}
+	}
+}
+
+// Test_Router_PathOverride_AppMountedTwice pins that the running route is placed
+// by itself, not by its copy under another mount prefix.
+func Test_Router_PathOverride_AppMountedTwice(t *testing.T) {
+	t.Parallel()
+
+	// No HEAD copies, so a miss is a 404 rather than a 405.
+	sub := New(Config{DisableHeadAutoRegister: true})
+	sub.Use(func(c Ctx) error {
+		for _, prefix := range []string{"/aaa", "/ccc"} {
+			if rest, ok := strings.CutPrefix(c.Path(), prefix); ok {
+				c.Path("/bbb" + rest)
+			}
+		}
+		return c.Next()
+	})
+	sub.Get("/x", func(c Ctx) error { return c.SendString("x") })
+
+	app := New()
+	app.Use("/aaa", sub)
+	app.Use("/bbb", func(c Ctx) error { return c.SendStatus(StatusForbidden) })
+	app.Use("/bbb", sub)
+	app.Use("/ccc", sub)
+
+	// Registered after the /aaa mount, so the guard runs.
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/aaa/x", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Registered before the /ccc mount, so neither the guard nor /bbb runs.
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ccc/x", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+// Test_Router_MethodOverride_FromRouteOfOneMethod covers a method change made by
+// a route the new method holds no copy of.
+func Test_Router_MethodOverride_FromRouteOfOneMethod(t *testing.T) {
+	t.Parallel()
+
+	build := func(guarded bool, override Handler) (*App, *[]string) {
+		app := New()
+		ran := new([]string)
+		note := func(name string) Handler {
+			return func(c Ctx) error {
+				*ran = append(*ran, name)
+				return c.Next()
+			}
+		}
+
+		app.Use(note("global"))
+		app.All("/admin/*", note("all"))
+		app.Get("/other", note("other"))
+		app.Post("/*", override)
+		if guarded {
+			app.Use("/admin", func(c Ctx) error { return c.SendStatus(StatusForbidden) })
+		}
+		app.Delete("/admin/x", func(c Ctx) error { return c.SendString("deleted") })
+		return app, ran
+	}
+
+	testCases := []struct {
+		override Handler
+		name     string
+		target   string
+	}{
+		{name: "method", target: "/admin/x", override: func(c Ctx) error {
+			c.Method(MethodDelete)
+			return c.Next()
+		}},
+		{name: "method then path", target: "/v1/x", override: func(c Ctx) error {
+			c.Method(MethodDelete)
+			c.Path("/admin/x")
+			return c.Next()
+		}},
+		{name: "path then method", target: "/v1/x", override: func(c Ctx) error {
+			c.Path("/admin/x")
+			c.Method(MethodDelete)
+			return c.Next()
+		}},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app, _ := build(true, tc.override)
+			resp, err := app.Test(httptest.NewRequest(MethodPost, tc.target, http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, StatusForbidden, resp.StatusCode)
+			require.NoError(t, resp.Body.Close())
+
+			app, ran := build(false, tc.override)
+			resp, err = app.Test(httptest.NewRequest(MethodPost, tc.target, http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, StatusOK, resp.StatusCode)
+			require.NoError(t, resp.Body.Close())
+			// Shared routes ahead of the override do not run twice.
+			require.Equal(t, 1, countOf(*ran, "global"))
+			require.LessOrEqual(t, countOf(*ran, "all"), 1)
+		})
+	}
+}
+
+// Test_Router_MethodOverride_IgnoresAutoHeadRoute pins that the appended HEAD
+// copy of a GET route does not mark where that route stands.
+func Test_Router_MethodOverride_IgnoresAutoHeadRoute(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/admin/*", func(c Ctx) error {
+		c.Method(MethodHead)
+		return c.Next()
+	})
+	app.Use("/admin", func(c Ctx) error { return c.SendStatus(StatusForbidden) })
+	app.Get("/admin/x", func(c Ctx) error { return c.SendString("x") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/admin/x", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+func countOf(values []string, value string) int {
+	n := 0
+	for _, v := range values {
+		if v == value {
+			n++
+		}
+	}
+	return n
 }
 
 func Test_Router_Constraints_MixedCaseNames(t *testing.T) {

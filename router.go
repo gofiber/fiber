@@ -158,6 +158,8 @@ type routeTree struct {
 	globalFilter *bucketFilter
 	// globals is the bucket for tree hash 0, which is also where misses go
 	globals []*Route
+	// routes is the method's stack this tree was built from, in registration order
+	routes []*Route
 	// mask is len(hashes)-1, used to wrap the probe
 	mask uint32
 	// shift is 32-log2(len(hashes)), so slot keeps the high bits of the
@@ -1536,19 +1538,78 @@ func (app *App) RebuildTree() *App {
 	return app.buildTree()
 }
 
-// routeIndexInTree returns the position of route in another method's tree
-// bucket, or current when it is not there; copies are told apart by their shared id.
+// routeIndexInTree returns the index in the bucket of methodInt and treeHash
+// that Next resumes behind: the last route there registered no later than route.
 func (app *App) routeIndexInTree(methodInt, treeHash int, route *Route, current int) int {
 	if route == nil || methodInt < 0 || methodInt >= len(app.treeIndex) {
 		return current
 	}
-	candidates, _ := app.treeIndex[methodInt].lookup(treeHash)
-	for i, candidate := range candidates {
-		if candidate.id == route.id {
-			return i
+	tree := app.treeIndex[methodInt]
+
+	// route itself after a path change, else its copy under the new method. An
+	// automatic HEAD copy shares the id but is appended out of registration order.
+	pos := slices.Index(tree.routes, route)
+	if pos == -1 {
+		pos = slices.IndexFunc(tree.routes, func(r *Route) bool { return r.id == route.id && !r.autoHead })
+	}
+	if pos == -1 {
+		ahead, ok := app.routesAhead(route)
+		if !ok {
+			// Resume early: rerunning a route is safer than skipping a guard.
+			return -1
+		}
+		pos = lastCopyIndex(tree.routes, ahead)
+	}
+
+	// Every bucket is a subsequence of tree.routes, so count its routes up to pos.
+	bucket, _ := tree.lookup(treeHash)
+	index := -1
+	for _, registered := range tree.routes[:pos+1] {
+		if index+1 < len(bucket) && registered == bucket[index+1] {
+			index++
 		}
 	}
-	return current
+	return index
+}
+
+// routesAhead returns route's own method stack up to and including route. An
+// automatic HEAD route stands where its GET route does.
+func (app *App) routesAhead(route *Route) ([]*Route, bool) {
+	own := app.methodInt(route.Method)
+	if route.autoHead {
+		own = app.methodInt(MethodGet)
+	}
+	if own < 0 || own >= len(app.treeIndex) {
+		return nil, false
+	}
+	stack := app.treeIndex[own].routes
+	end := slices.Index(stack, route)
+	if end == -1 && route.autoHead {
+		end = slices.IndexFunc(stack, func(r *Route) bool { return r.id == route.id && !r.autoHead })
+	}
+	if end == -1 {
+		return nil, false
+	}
+	return stack[:end+1], true
+}
+
+// lastCopyIndex returns the index of the last route in routes that copies one in
+// ahead, or -1. Routes only the other method holds stay behind it, unordered.
+func lastCopyIndex(routes, ahead []*Route) int {
+	// Counted, not collected: an app mounted twice repeats its ids.
+	counts := make(map[uint64]int, len(ahead))
+	for _, route := range ahead {
+		counts[route.id]++
+	}
+	last := -1
+	for i, route := range routes {
+		if route.autoHead || counts[route.id] == 0 {
+			continue
+		}
+		counts[route.id]--
+		last = i
+	}
+	return last
 }
 
 // buildTree build the prefix tree from the previously registered routes
@@ -1636,7 +1697,10 @@ func (app *App) buildTree() *App {
 		}
 
 		app.treeStack[method] = tsMap
-		app.treeIndex[method] = buildRouteTree(tsMap)
+		tree := buildRouteTree(tsMap)
+		// Cloned like the buckets: the stack is edited in place.
+		tree.routes = slices.Clone(routes)
+		app.treeIndex[method] = tree
 	}
 	app.hasParamRoutes = hasParamRoutes
 

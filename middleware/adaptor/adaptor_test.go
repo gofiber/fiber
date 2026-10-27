@@ -2676,6 +2676,38 @@ func Test_HTTPMiddleware_URLRewrite(t *testing.T) {
 	require.Equal(t, "users at /users", string(body))
 }
 
+// Test_HTTPMiddleware_URLRewrite_OnPrefix pins that routes registered after a
+// StripPrefix mounted on its own prefix see the stripped path.
+func Test_HTTPMiddleware_URLRewrite_OnPrefix(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use("/api", HTTPMiddleware(func(next http.Handler) http.Handler {
+		return http.StripPrefix("/api", next)
+	}))
+	app.Use("/admin", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusForbidden)
+	})
+	app.Get("/admin/report", func(c fiber.Ctx) error {
+		return c.SendString("report")
+	})
+	app.Get("/users", func(c fiber.Ctx) error {
+		return c.SendString("users at " + c.Path())
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/api/admin/report", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/api/users", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "users at /users", string(body))
+}
+
 func Test_HTTPHandler_TLSConnectionStateCarried(t *testing.T) {
 	t.Parallel()
 

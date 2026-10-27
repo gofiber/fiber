@@ -1242,8 +1242,8 @@ func (r *DefaultReq) Method(override ...string) string {
 	if methodInt == r.c.methodInt {
 		return method
 	}
-	// A middleware sits at a position of its own in every method's tree, so
-	// carry the index over or Next would skip the routes before it.
+	// The old index is a position in another tree, so place this route in the
+	// new one or Next would skip routes registered after it.
 	r.c.indexRoute = app.routeIndexInTree(methodInt, r.c.treePathHash, r.c.route, r.c.indexRoute)
 	r.c.methodInt = methodInt
 	// Method changed; invalidate the lookahead index
@@ -1332,8 +1332,8 @@ func (r *DefaultReq) Path(override ...string) string {
 		r.c.configDependentPaths()
 		// The detection path/tree hash changed; invalidate the lookahead index.
 		r.c.firstMatchIndex = -1
-		// The new path may live in another bucket, so carry the index over for
-		// Next to resume after this route.
+		// The new path may live in another bucket, so place this route there for
+		// Next to resume after it.
 		r.c.indexRoute = r.c.app.routeIndexInTree(r.c.methodInt, r.c.treePathHash, r.c.route, r.c.indexRoute)
 	}
 	return r.c.app.toString(r.c.path)

@@ -679,3 +679,28 @@ func Test_Rewrite_UnescapePathDecodesOnce(t *testing.T) {
 		}
 	}
 }
+
+// Test_Rewrite_MountedOnPrefix_RunsLaterGuards pins that routes registered after
+// a rewrite mounted on its own prefix see the rewritten path.
+func Test_Rewrite_MountedOnPrefix_RunsLaterGuards(t *testing.T) {
+	t.Parallel()
+
+	for _, global := range []bool{false, true} {
+		app := fiber.New()
+		app.Use("/v1", New(Config{RuleList: []Rule{{From: "/v1/*", To: "/$1"}}}))
+		deny := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusUnauthorized) }
+		if global {
+			app.Use(deny)
+		} else {
+			app.Use("/admin", deny)
+		}
+		app.Get("/admin/report", func(c fiber.Ctx) error { return c.SendString("report") })
+
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/v1/admin/report", http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode, "global guard: %v", global)
+	}
+}
