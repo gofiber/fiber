@@ -1288,12 +1288,18 @@ func New(config ...Config) fiber.Handler {
 
 			for storedBytes > cfg.MaxBytes {
 				if heap.Len() == 0 {
-					// Can't evict more, unreserve space and fail
+					// The rest is reserved by stores still in flight. The popped entries are
+					// still stored, so they go back, in reverse to regain their heap indices.
+					for _, candidate := range slices.Backward(candidates) {
+						heap.putWithGeneration(candidate.key, candidate.exp, candidate.size, candidate.oldGen)
+						storedBytes += candidate.size
+					}
 					storedBytes -= bodySize
 					// Set spaceReserved to false so the deferred cleanup does not unreserve again
 					spaceReserved = false
 					mux.Unlock()
-					return errors.New("cache: insufficient space and no entries to evict")
+					markUnreachable()
+					return nil
 				}
 				next := heap.entries[0]
 				keyToRemove, size := heap.removeFirst()
@@ -1371,6 +1377,11 @@ func New(config ...Config) fiber.Handler {
 			// Note: storedBytes was incremented during reservation, and evictions
 			// have already been accounted for, so no additional increment is needed
 			spaceReserved = false // Clear flag to prevent defer from unreserving
+			if cfg.Storage == nil {
+				// Set with its node, so no eviction pops the node before the entry exists.
+				manager.memory.Set(key, e, storageExpiration)
+				stored = true
+			}
 			mux.Unlock()
 		} else if cfg.Storage != nil {
 			// Persist an identity even without heap tracking so cleanup can tell
@@ -1408,13 +1419,32 @@ func New(config ...Config) fiber.Handler {
 			rawWritten = true
 			// avoid body msgp encoding
 			e.body = nil
+			entryExp := e.exp // manager.set hands e back to the pool
 			if err := manager.set(reqCtx, key, e, storageExpiration); err != nil {
 				if cleanupErr := cleanupOnStoreError(reqCtx, false, true); cleanupErr != nil {
 					err = errors.Join(err, cleanupErr)
 				}
 				return err
 			}
-		} else {
+
+			// The write runs outside the lock, so an eviction may have popped the node and run
+			// its delete before the entry existed. Take the entry back out then, or nothing counts it.
+			if cfg.MaxBytes > 0 {
+				mux.Lock()
+				_, tracked := heap.findKey(key)
+				mux.Unlock()
+				if !tracked {
+					if delErr := deleteKey(reqCtx, key); delErr != nil {
+						// Still stored, so track it again for a later eviction to retry.
+						untracked := evictionCandidate{key: key, size: bodySize, exp: entryExp, oldGen: heapGen}
+						return errors.Join(
+							fmt.Errorf("cache: failed to delete key %q evicted while it was stored: %w", maskKey(key), delErr),
+							restoreHeapEntry(reqCtx, untracked),
+						)
+					}
+				}
+			}
+		} else if !stored {
 			// Store entry in memory
 			if err := manager.set(reqCtx, key, e, storageExpiration); err != nil {
 				if cleanupErr := cleanupOnStoreError(reqCtx, true, false); cleanupErr != nil {
