@@ -12904,6 +12904,89 @@ func Test_Ctx_Body_With_Compression_IdentityChain(t *testing.T) {
 	}
 }
 
+func gzipLayers(t *testing.T, data []byte, layers int) []byte {
+	t.Helper()
+	for range layers {
+		var buf bytes.Buffer
+		gz := gzip.NewWriter(&buf)
+		_, err := gz.Write(data)
+		require.NoError(t, err)
+		require.NoError(t, gz.Close())
+		data = buf.Bytes()
+	}
+	return data
+}
+
+func Test_Ctx_Body_With_Compression_TooManyCodings(t *testing.T) {
+	t.Parallel()
+
+	codings := func(coding string, n int) string {
+		return strings.TrimSuffix(strings.Repeat(coding+",", n), ",")
+	}
+	plain := []byte("john=doe")
+	refused := []byte(ErrUnsupportedMediaType.Error())
+
+	app := New()
+	for _, tc := range []struct {
+		encoding string
+		sent     []byte
+		want     []byte
+		wantCode int
+	}{
+		{encoding: codings(StrGzip, maxContentCodings), sent: gzipLayers(t, plain, maxContentCodings), want: plain, wantCode: StatusOK},
+		{encoding: codings(StrGzip, maxContentCodings+1), sent: gzipLayers(t, plain, maxContentCodings+1), want: refused, wantCode: StatusUnsupportedMediaType},
+		{encoding: codings(StrIdentity, maxContentCodings+1), sent: plain, want: refused, wantCode: StatusUnsupportedMediaType},
+		// 256 members wrapped the former one-byte decode counter.
+		{encoding: codings(StrIdentity, 255) + "," + StrGzip, sent: gzipLayers(t, plain, 2), want: refused, wantCode: StatusUnsupportedMediaType},
+	} {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderContentEncoding, tc.encoding)
+		c.Request().SetBody(tc.sent)
+
+		members := strings.Count(tc.encoding, ",") + 1
+		require.Equal(t, tc.want, c.Body(), "%d members", members)
+		require.Equal(t, tc.wantCode, c.Response().StatusCode(), "%d members", members)
+		require.Equal(t, tc.sent, c.Request().Body(), "%d members", members)
+		app.ReleaseCtx(c)
+	}
+}
+
+// Body and BodyRaw results alias the request body buffer, so decoding must not hand it back to the pool.
+func Test_Ctx_Body_With_Compression_KeepsRequestBuffer(t *testing.T) {
+	t.Parallel()
+
+	plain := []byte("john=doe")
+
+	app := New()
+	for _, tc := range []struct {
+		encoding string
+		sent     []byte
+		want     []byte
+	}{
+		{encoding: "identity, identity", sent: plain, want: plain},
+		{encoding: "gzip, identity", sent: gzipLayers(t, plain, 1), want: plain},
+		{encoding: "identity, gzip", sent: gzipLayers(t, plain, 1), want: plain},
+		{encoding: "gzip, gzip", sent: gzipLayers(t, plain, 2), want: plain},
+		{encoding: "unknown, gzip", sent: gzipLayers(t, plain, 1), want: []byte(ErrUnsupportedMediaType.Error())},
+	} {
+		// A bare RequestCtx does not keep its body buffer, like ReduceMemoryUsage or the adaptor.
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderContentEncoding, tc.encoding)
+		c.Request().SetBody(tc.sent)
+
+		raw := c.BodyRaw()
+		body := c.Body()
+		require.Same(t, &raw[0], &c.Request().Body()[0], tc.encoding)
+
+		next := fasthttp.AcquireRequest()
+		next.SetBody(bytes.Repeat([]byte("!"), len(tc.sent)))
+		require.Equal(t, tc.sent, raw, tc.encoding)
+		require.Equal(t, tc.want, body, tc.encoding)
+		fasthttp.ReleaseRequest(next)
+		app.ReleaseCtx(c)
+	}
+}
+
 type funcFS func(string) (fs.File, error)
 
 func (f funcFS) Open(name string) (fs.File, error) { return f(name) }

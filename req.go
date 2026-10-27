@@ -7,6 +7,7 @@ import (
 	"math"
 	"mime/multipart"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,6 +32,9 @@ var (
 	xURLSchemeBytes         = []byte(HeaderXUrlScheme)
 	onBytes                 = []byte("on")
 )
+
+// maxContentCodings is the longest Content-Encoding list Body undoes; curl stops at five as well.
+const maxContentCodings = 5
 
 // Range represents the parsed HTTP Range header extracted by DefaultReq.Range.
 type Range struct {
@@ -111,54 +115,54 @@ func (r *DefaultReq) BodyRaw() []byte {
 	return r.getBody()
 }
 
-//nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
-func (r *DefaultReq) tryDecodeBodyInOrder(
-	originalBody *[]byte,
-	encodings []string,
-) (body []byte, decodesRealized uint8, err error) {
+// tryDecodeBodyInOrder undoes the codings last-applied first and never modifies the request.
+func (r *DefaultReq) tryDecodeBodyInOrder(encodings []string) ([]byte, error) {
+	// Each member may inflate to BodyLimit on its own, so the list length bounds the work.
+	if len(encodings) > maxContentCodings {
+		return nil, ErrUnsupportedMediaType
+	}
+
 	request := &r.c.fasthttp.Request
 	maxBodySize := r.c.app.config.BodyLimit
-	for idx := range encodings {
-		i := len(encodings) - 1 - idx
-		encoding := encodings[i]
-		decodesRealized++
-		var decodeErr error
+	if len(encodings) > 1 {
+		// Replacing the request body would pool its buffer while Body and BodyRaw
+		// results still alias it (ReduceMemoryUsage, adaptor).
+		scratch := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(scratch)
+		scratch.SetBodyRaw(request.Body())
+		request = scratch
+	}
+
+	var body []byte
+	for i, encoding := range slices.Backward(encodings) {
+		var err error
 		switch encoding {
 		case StrGzip, "x-gzip":
-			body, decodeErr = request.BodyGunzipWithLimit(maxBodySize)
+			body, err = request.BodyGunzipWithLimit(maxBodySize)
 		case StrBr, StrBrotli:
-			body, decodeErr = request.BodyUnbrotliWithLimit(maxBodySize)
+			body, err = request.BodyUnbrotliWithLimit(maxBodySize)
 		case StrDeflate:
-			body, decodeErr = request.BodyInflateWithLimit(maxBodySize)
+			body, err = request.BodyInflateWithLimit(maxBodySize)
 		case StrZstd:
-			body, decodeErr = request.BodyUnzstdWithLimit(maxBodySize)
+			body, err = request.BodyUnzstdWithLimit(maxBodySize)
 		case StrIdentity:
 			body = request.Body()
 		case StrCompress, "x-compress":
-			return nil, decodesRealized - 1, ErrNotImplemented
+			return nil, ErrNotImplemented
 		default:
-			return nil, decodesRealized - 1, ErrUnsupportedMediaType
+			return nil, ErrUnsupportedMediaType
 		}
 
-		if decodeErr != nil {
-			return nil, decodesRealized, decodeErr
+		if err != nil {
+			return nil, err
 		}
 
-		if i > 0 && decodesRealized > 0 {
-			if i == len(encodings)-1 {
-				tempBody := request.Body()
-				*originalBody = make([]byte, len(tempBody))
-				copy(*originalBody, tempBody)
-			}
-			// identity leaves the body as it is; re-setting an aliasing slice would
-			// release its buffer under ReduceMemoryUsage.
-			if encoding != StrIdentity {
-				request.SetBodyRaw(body)
-			}
+		if i > 0 {
+			request.SetBodyRaw(body)
 		}
 	}
 
-	return body, decodesRealized, nil
+	return body, nil
 }
 
 // Body contains the raw body submitted in a POST request.
@@ -168,10 +172,10 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 // If you need to keep the body's data later, make a copy or use the Immutable option.
 func (r *DefaultReq) Body() []byte {
 	var (
-		err                error
-		body, originalBody []byte
-		headerEncoding     string
-		encodingOrder      = []string{"", "", ""}
+		err            error
+		body           []byte
+		headerEncoding string
+		encodingOrder  = []string{"", "", ""}
 	)
 
 	request := &r.c.fasthttp.Request
@@ -201,13 +205,7 @@ func (r *DefaultReq) Body() []byte {
 		return r.getBody()
 	}
 
-	var decodesRealized uint8
-	body, decodesRealized, err = r.tryDecodeBodyInOrder(&originalBody, encodingOrder)
-
-	// Ensure that the body will be the original
-	if originalBody != nil && decodesRealized > 0 {
-		request.SetBodyRaw(originalBody)
-	}
+	body, err = r.tryDecodeBodyInOrder(encodingOrder)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUnsupportedMediaType):

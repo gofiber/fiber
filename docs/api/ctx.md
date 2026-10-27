@@ -1305,7 +1305,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### Body
 
-As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. It decodes `gzip`, `deflate`, `br` and `zstd`, and several codings are undone in reverse order. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`. Decompression is bounded by the app [BodyLimit](./fiber.md#bodylimit): a body that decompresses to more than that sets `413 Request Entity Too Large`. Whenever decoding fails, the returned slice holds the error message instead of request data.
+As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. It decodes `gzip`, `deflate`, `br` and `zstd`, and several codings are undone in reverse order, up to five: a longer list, `identity` members included, is answered `415 Unsupported Media Type` before anything is decoded. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`. Decompression is bounded by the app [BodyLimit](./fiber.md#bodylimit): a body that decompresses to more than that sets `413 Request Entity Too Large`. Whenever decoding fails, the returned slice holds the error message instead of request data.
 
 ```go title="Signature"
 func (c fiber.Ctx) Body() []byte
