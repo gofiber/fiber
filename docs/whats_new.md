@@ -1977,6 +1977,7 @@ The timeout middleware is now configurable. A new `Config` struct allows customi
 - **Panic handling**: Panics in the handler are caught and converted to `500 Internal Server Error` responses.
 - **Race-free design**: The implementation uses fasthttp's `TimeoutErrorWithCode` combined with Fiber's Abandon mechanism to ensure complete race-freedom between the middleware, handler goroutine, and context pooling.
 - **Nesting**: Under an enclosing deadline that comes no later than its own, such as a shorter timeout on `app.Use`, the middleware runs the handler on the calling goroutine and leaves the timeout to the enclosing one. `ScheduleReclaim` may be armed more than once per request; the context is reclaimed once every abandoned goroutine has finished.
+- **Returned error**: When `OnTimeout` writes the response and returns `nil` while the handler still runs, the middleware returns `fiber.ErrServiceUnavailable`, so middleware before it, such as `compress`, `etag`, `cache` or `idempotency`, leaves the response to the timed-out handler. The client still receives the response `OnTimeout` wrote.
 
 **New Ctx methods for the Abandon mechanism:**
 

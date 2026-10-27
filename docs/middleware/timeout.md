@@ -42,6 +42,8 @@ timeout.Config{
 
 - The timed-out handler keeps running in its own goroutine while the middleware returns `fiber.ErrServiceUnavailable` (or runs `OnTimeout`). A handler must stop using the context once `c.Context()` is done: one that keeps writing the response races with `OnTimeout`.
 
+- When `OnTimeout` writes the response and returns `nil` while the handler still runs, the middleware returns `fiber.ErrServiceUnavailable` instead, so middleware registered before it that skips its work on an error, such as `compress`, `etag` or `cache`, leaves the response to the timed-out handler. The client receives the response `OnTimeout` wrote.
+
 - The error is returned to the outer middleware, but the app's `ErrorHandler` is not run for a timed-out request: fasthttp already holds the response it will send, so the handler could not change it, and the timed-out handler may still be writing to the context.
 
 - Timed-out requests abandon their `fiber.Ctx` to avoid data races with the core

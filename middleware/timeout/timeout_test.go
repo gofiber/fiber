@@ -989,3 +989,33 @@ func Test_Timeout_EnclosingDeadlineRunsInline(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 }
+
+// Middleware before timeout.New sees an error, so it skips its work on the response the handler still writes.
+func Test_Timeout_OnTimeoutNilStillReturnsError(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	chainErr := make(chan error, 1)
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		chainErr <- err
+		return err
+	})
+	release := make(chan struct{})
+	defer close(release)
+	app.Get("/", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		<-release
+		return nil
+	}, Config{Timeout: 20 * time.Millisecond, OnTimeout: func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).SendString("fallback")
+	}}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "fallback", string(body))
+	require.ErrorIs(t, <-chainErr, fiber.ErrServiceUnavailable)
+}

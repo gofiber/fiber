@@ -18,7 +18,7 @@ import (
 // and return early.
 //
 // When a timeout occurs, the middleware returns immediately with fiber.ErrServiceUnavailable
-// (or the result of OnTimeout if configured). The status is 503, not 408: a slow handler
+// (or the error OnTimeout returns, if it returns one). The status is 503, not 408: a slow handler
 // is a server-side delay, and 408 (RFC 9110 §15.5.9) invites the client to resend a
 // request whose handler may still be running. The handler goroutine can continue
 // safely, and resources are recycled when it finishes via the Abandon/ForceRelease
@@ -166,6 +166,10 @@ func handleTimeout(
 		// for the response and send the captured payload from OnTimeout. All ctx
 		// mutations after this call are ignored by fasthttp.
 		ctx.RequestCtx().TimeoutErrorWithResponse(&ctx.RequestCtx().Response)
+		if timeoutErr == nil {
+			// An error keeps the middleware before us off the response the handler still writes.
+			timeoutErr = fiber.ErrServiceUnavailable
+		}
 	}
 
 	// Schedule race-free reclamation of the abandoned context. The context is
