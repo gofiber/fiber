@@ -1008,7 +1008,7 @@ func (r *Request) Timeout() time.Duration
 
 ## SetTimeout
 
-**SetTimeout** sets a timeout for the request, overriding any timeout set at the client level. When the timeout elapses, or the request's context is canceled, the request fails with `ErrTimeoutOrCancel`.
+**SetTimeout** sets a timeout for the request, overriding any timeout set at the client level. When the timeout elapses, or the request's context is canceled, the request fails with `ErrTimeoutOrCancel`. See the client's [SetTimeout](./rest.md#settimeout) for what the timeout covers.
 
 ```go title="Signature"
 func (r *Request) SetTimeout(t time.Duration) *Request
