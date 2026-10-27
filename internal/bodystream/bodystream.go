@@ -18,20 +18,19 @@ func (f failedReader) Read([]byte) (int, error) {
 // Buffer bounds a body that is still a stream (StreamRequestBody) before fasthttp's
 // Body or PostArgs drain it, which they do whatever its size. A limit <= 0 is no limit.
 //
-// A body over limit returns fasthttp.ErrBodyTooLarge: a declared one is left
-// unread, a chunked one fails every later read. The server drains or drops the rest.
+// A body over limit returns fasthttp.ErrBodyTooLarge after at most limit+1 bytes
+// and fails every later read. The server drains or drops the rest.
 func Buffer(req *fasthttp.Request, limit int) error {
 	stream := req.BodyStream()
 	if stream == nil || limit <= 0 {
 		return nil
 	}
-	if n := req.Header.ContentLength(); n > limit {
-		return fasthttp.ErrBodyTooLarge
-	} else if n >= 0 {
+	if n := req.Header.ContentLength(); n >= 0 && n <= limit {
 		// The server's stream ends at the declared length, so fasthttp may read it.
 		return nil
 	}
 
+	// A declared length over limit is read too: the handler may have drained the stream already.
 	body, err := io.ReadAll(io.LimitReader(stream, int64(limit)+1))
 	if err == nil && len(body) > limit {
 		err = fasthttp.ErrBodyTooLarge

@@ -39,36 +39,41 @@ func Test_Buffer_WithinLimit(t *testing.T) {
 	}
 }
 
-func Test_Buffer_ChunkedOverLimit(t *testing.T) {
+func Test_Buffer_OverLimit(t *testing.T) {
 	t.Parallel()
 
 	for _, size := range []int{limit + 1, limit + 2, 100 * limit} {
-		var req fasthttp.Request
-		stream := strings.NewReader(strings.Repeat("a", size))
-		req.SetBodyStream(stream, -1)
+		for _, declared := range []int{-1, size} {
+			var req fasthttp.Request
+			stream := strings.NewReader(strings.Repeat("a", size))
+			req.SetBodyStream(stream, declared)
 
-		require.ErrorIs(t, Buffer(&req, limit), fasthttp.ErrBodyTooLarge)
-		require.Equal(t, size-limit-1, stream.Len(), "the rest of the stream is not read")
-		require.Equal(t, -1, req.Header.ContentLength())
+			require.ErrorIs(t, Buffer(&req, limit), fasthttp.ErrBodyTooLarge)
+			require.Equal(t, size-limit-1, stream.Len(), "the rest of the stream is not read")
+			require.Equal(t, declared, req.Header.ContentLength())
 
-		require.ErrorIs(t, Buffer(&req, limit), fasthttp.ErrBodyTooLarge, "what follows is not taken for the body")
-		_, err := io.ReadAll(req.BodyStream())
-		require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
-		require.Equal(t, size-limit-1, stream.Len())
+			require.ErrorIs(t, Buffer(&req, limit), fasthttp.ErrBodyTooLarge, "what follows is not taken for the body")
+			_, err := io.ReadAll(req.BodyStream())
+			require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+			require.Equal(t, size-limit-1, stream.Len())
+		}
 	}
 }
 
-func Test_Buffer_DeclaredOverLimit(t *testing.T) {
+func Test_Buffer_DeclaredOverLimitPartlyRead(t *testing.T) {
 	t.Parallel()
 
-	var req fasthttp.Request
-	stream := strings.NewReader(strings.Repeat("a", limit+1))
-	req.SetBodyStream(stream, limit+1)
+	for _, left := range []int{0, limit} {
+		var req fasthttp.Request
+		stream := strings.NewReader(strings.Repeat("a", 4*limit))
+		req.SetBodyStream(stream, 4*limit)
+		_, err := io.CopyN(io.Discard, req.BodyStream(), int64(4*limit-left))
+		require.NoError(t, err)
 
-	require.ErrorIs(t, Buffer(&req, limit), fasthttp.ErrBodyTooLarge)
-	require.ErrorIs(t, Buffer(&req, limit), fasthttp.ErrBodyTooLarge)
-	require.Equal(t, limit+1, stream.Len(), "nothing is read")
-	require.Equal(t, io.Reader(stream), req.BodyStream())
+		require.NoError(t, Buffer(&req, limit), "what is left of the stream is within the limit")
+		require.False(t, req.IsBodyStream())
+		require.Len(t, req.Body(), left)
+	}
 }
 
 func Test_Buffer_NoLimit(t *testing.T) {

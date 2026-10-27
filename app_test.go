@@ -3296,12 +3296,18 @@ func Test_App_ReadBodyStream_BodyLimit(t *testing.T) {
 	app.Post("/", func(c Ctx) error {
 		return c.SendString(strconv.Itoa(len(c.Body())))
 	})
+	// Like logger's ${body}, a body read after the handler has drained the stream must not change its answer.
+	app.Use("/stream", func(c Ctx) error {
+		err := c.Next()
+		c.Body()
+		return err
+	})
 	app.Post("/stream", func(c Ctx) error {
 		n, err := io.Copy(io.Discard, c.BodyStream())
 		if err != nil {
 			return fmt.Errorf("failed to read: %w", err)
 		}
-		return c.SendString(strconv.FormatInt(n, 10))
+		return c.Status(StatusCreated).SendString(strconv.FormatInt(n, 10))
 	})
 
 	for _, tc := range []struct {
@@ -3315,7 +3321,8 @@ func Test_App_ReadBodyStream_BodyLimit(t *testing.T) {
 		{name: "chunked", target: "/", size: 1024, chunked: true, status: StatusOK},
 		{name: "declared over the limit", target: "/", size: 1025, status: StatusRequestEntityTooLarge},
 		{name: "chunked over the limit", target: "/", size: 1025, chunked: true, status: StatusRequestEntityTooLarge},
-		{name: "BodyStream is not limited", target: "/stream", size: 4096, chunked: true, status: StatusOK},
+		{name: "BodyStream is not limited", target: "/stream", size: 4096, status: StatusCreated},
+		{name: "chunked BodyStream is not limited", target: "/stream", size: 4096, chunked: true, status: StatusCreated},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

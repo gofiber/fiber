@@ -1561,17 +1561,14 @@ func Test_Ctx_Body_StreamedBodyLimit(t *testing.T) {
 			require.Equal(t, "a="+strings.Repeat("a", limit-2), tc.read(c))
 			require.Equal(t, StatusOK, c.Response().StatusCode())
 
-			c, stream := acquire(100*limit, -1)
-			for range 2 {
-				require.Equal(t, tc.refused, tc.read(c))
-				require.Equal(t, StatusRequestEntityTooLarge, c.Response().StatusCode())
-				require.Equal(t, 99*limit-1, stream.Len(), "the rest of the stream is not read")
+			for _, declared := range []int{-1, 100 * limit} {
+				c, stream := acquire(100*limit, declared)
+				for range 2 {
+					require.Equal(t, tc.refused, tc.read(c))
+					require.Equal(t, StatusRequestEntityTooLarge, c.Response().StatusCode())
+					require.Equal(t, 99*limit-1, stream.Len(), "the rest of the stream is not read")
+				}
 			}
-
-			c, stream = acquire(limit+1, limit+1)
-			require.Equal(t, tc.refused, tc.read(c))
-			require.Equal(t, StatusRequestEntityTooLarge, c.Response().StatusCode())
-			require.Equal(t, limit+1, stream.Len(), "a declared length is refused unread")
 		})
 	}
 }
