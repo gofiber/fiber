@@ -85,7 +85,8 @@ We have made several changes to the Fiber app, including:
   `BodyLimit`, so an app that takes larger uploads this way has to raise the limit or read `BodyStream()`. `Body()`,
   `BodyRaw()` and `FormValue()` now read a streamed body within `BodyLimit` too and answer a larger one
   `413 Request Entity Too Large`, and the body binders fail on it; only `BodyStream()` reads past the limit.
-  `Bind().All()` reads the body only when the request has a `Content-Type`.
+  `Bind().All()` reads the body only when the request has a `Content-Type`. `net/http` handlers, registered directly or
+  through the adaptor, and `adaptor.ConvertRequest` answer a streamed body larger than `BodyLimit` with `413` as well.
 - **Buffer sizes**: The default `ReadBufferSize` and `WriteBufferSize` are now `8192` bytes (they were `4096` in v2). The read buffer also limits the size of the request headers, so requests with larger headers or cookies are accepted by default. Set either field to keep a different size.
 
 ### New Methods

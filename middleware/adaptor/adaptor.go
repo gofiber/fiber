@@ -17,6 +17,7 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/bodystream"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
@@ -286,6 +287,9 @@ func serveRouted(c fiber.Ctx, handler fasthttp.RequestHandler) error {
 	if !wiretarget.SegmentsAsRouted(target, wiretarget.AllowParameters) {
 		return fiber.ErrNotFound
 	}
+	if err := bufferBodyStream(c); err != nil {
+		return err
+	}
 	if target == c.OriginalURL() {
 		// the request line already spells the routed path
 		handler(c.RequestCtx())
@@ -306,6 +310,21 @@ func serveRouted(c fiber.Ctx, handler fasthttp.RequestHandler) error {
 		}
 	}()
 	handler(c.RequestCtx())
+	return nil
+}
+
+// bufferBodyStream applies BodyLimit to a streamed body, which fasthttpadaptor would read whatever its size.
+func bufferBodyStream(c fiber.Ctx) error {
+	req := c.Request()
+	if !req.IsBodyStream() {
+		return nil
+	}
+	if err := bodystream.Buffer(req, c.App().Config().BodyLimit); err != nil {
+		if errors.Is(err, fasthttp.ErrBodyTooLarge) {
+			return fiber.ErrRequestEntityTooLarge
+		}
+		return fiber.ErrBadRequest
+	}
 	return nil
 }
 
@@ -348,11 +367,15 @@ func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
 // fiber.ErrBadRequest instead of being set, since the request's host would
 // then be read out of it; so is one holding a forged escape (see
 // wiretarget.HasForgedEscape), which URL.Path would decode into a segment the
-// router never matched.
+// router never matched. A streamed body over the app's BodyLimit returns
+// fiber.ErrRequestEntityTooLarge.
 func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 	target := wiretarget.Routed(c)
 	if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) || wiretarget.HasForgedEscape(target) {
 		return nil, fiber.ErrBadRequest
+	}
+	if err := bufferBodyStream(c); err != nil {
+		return nil, err
 	}
 	setRoutedTarget(c, target)
 	var req http.Request
@@ -660,6 +683,9 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		target := wiretarget.Routed(c)
 		if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) || wiretarget.HasForgedEscape(target) {
 			return fiber.ErrBadRequest
+		}
+		if err := bufferBodyStream(c); err != nil {
+			return err
 		}
 		setRoutedTarget(c, target)
 		// Call the fasthttp adaptor directly: HTTPHandler would wrap it in a
