@@ -132,7 +132,7 @@ type boundType struct {
 // A decoder whose cached keys, charged with what schema and the decoder keep per
 // key, pass maxDecoderKeyBytes is left to the GC instead of being pooled again.
 const (
-	maxDecoderKeyBytes = 1 << 20
+	maxDecoderKeyBytes = 4 << 20 // about 5,000 form keys; a form past it rebuilds schema's path cache every bind
 	cachedKeyOverhead  = 320
 	cachedSegmentBytes = 160
 )

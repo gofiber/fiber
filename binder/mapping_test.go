@@ -1267,6 +1267,19 @@ func Test_PooledDecoder_KeyBudget(t *testing.T) {
 		require.Equal(t, 2*cachedKeyBytes("items.0.sku"), d.keyBytes)
 	})
 
+	t.Run("table form stays pooled", func(t *testing.T) {
+		t.Parallel()
+		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
+		require.True(t, ok)
+		out := new(order)
+		for row := range 400 {
+			for field := range 10 {
+				require.NoError(t, d.admit(out, "items."+strconv.Itoa(row)+".field"+strconv.Itoa(field)))
+			}
+		}
+		require.LessOrEqual(t, d.keyBytes, maxDecoderKeyBytes)
+	})
+
 	// Every key is a new spelling of one of 1000 items, as a client choosing them would send.
 	perBind := maxDecoderKeyBytes/cachedKeyBytes("items.0.sku") + 1
 	keys := make([]string, 0, perBind)
