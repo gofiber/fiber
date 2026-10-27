@@ -1038,3 +1038,127 @@ func Test_Timeout_OnTimeoutNilStillReturnsError(t *testing.T) {
 	require.Equal(t, "fallback", string(body))
 	require.ErrorIs(t, <-chainErr, fiber.ErrServiceUnavailable)
 }
+
+func nestedOnTimeout(header string, status int, calls *atomic.Int32) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		calls.Add(1)
+		c.Set(header, "1")
+		return c.Status(status).SendString(header)
+	}
+}
+
+func Test_Timeout_NestedInlineLeavesOnTimeoutToEnclosing(t *testing.T) {
+	t.Parallel()
+
+	var outerCalls, innerCalls atomic.Int32
+	app := fiber.New()
+	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{
+		Timeout:   20 * time.Millisecond,
+		OnTimeout: nestedOnTimeout("X-Outer", fiber.StatusServiceUnavailable, &outerCalls),
+	}))
+	app.Get("/", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		return c.Context().Err()
+	}, Config{
+		Timeout:   time.Second,
+		OnTimeout: nestedOnTimeout("X-Inner", fiber.StatusGatewayTimeout, &innerCalls),
+	}))
+
+	for range 3 {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+		require.Equal(t, "X-Outer", string(body))
+		require.Empty(t, resp.Header.Get("X-Inner"))
+	}
+	require.Zero(t, innerCalls.Load())
+}
+
+func Test_Timeout_NestedOuterWaitsForInnerAnswer(t *testing.T) {
+	t.Parallel()
+
+	var outerCalls, innerCalls atomic.Int32
+	app := fiber.New()
+	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{
+		Timeout:   30 * time.Millisecond,
+		OnTimeout: nestedOnTimeout("X-Outer", fiber.StatusServiceUnavailable, &outerCalls),
+	}))
+	inner := nestedOnTimeout("X-Inner", fiber.StatusGatewayTimeout, &innerCalls)
+	app.Get("/", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		return c.Context().Err()
+	}, Config{Timeout: 10 * time.Millisecond, OnTimeout: func(c fiber.Ctx) error {
+		// Still answering when the outer deadline passes.
+		time.Sleep(50 * time.Millisecond)
+		return inner(c)
+	}}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	require.Equal(t, "X-Inner", string(body))
+	require.Empty(t, resp.Header.Get("X-Outer"))
+	require.Zero(t, outerCalls.Load())
+}
+
+func Test_Timeout_NestedInnerFirstLeavesContextToHandler(t *testing.T) {
+	t.Parallel()
+
+	var outerCalls atomic.Int32
+	app := fiber.New()
+	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{
+		Timeout:   time.Second,
+		OnTimeout: nestedOnTimeout("X-Outer", fiber.StatusServiceUnavailable, &outerCalls),
+	}))
+	handlerDone := make(chan struct{})
+	app.Get("/", New(func(c fiber.Ctx) error {
+		defer close(handlerDone)
+		<-c.Context().Done()
+		for range 20 {
+			if c.Context().Err() == nil {
+				return errors.New("context restored under the timed-out handler")
+			}
+			time.Sleep(time.Millisecond)
+		}
+		return nil
+	}, Config{Timeout: 10 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	<-handlerDone
+	require.Zero(t, outerCalls.Load())
+}
+
+// A handler wrapped by timeout.New inside OnTimeout runs while the request is being answered.
+func Test_Timeout_OnTimeoutCallsTimeoutHandler(t *testing.T) {
+	t.Parallel()
+
+	fallback := New(func(c fiber.Ctx) error {
+		time.Sleep(30 * time.Millisecond)
+		return c.Status(fiber.StatusGatewayTimeout).SendString("fallback")
+	}, Config{Timeout: 5 * time.Millisecond})
+	started := make(chan struct{})
+	app := fiber.New()
+	app.Get("/", New(func(c fiber.Ctx) error {
+		tc := c.Context()
+		close(started)
+		<-tc.Done()
+		return tc.Err()
+	}, Config{Timeout: 20 * time.Millisecond, OnTimeout: func(c fiber.Ctx) error {
+		<-started
+		c.SetContext(context.Background())
+		return fallback(c)
+	}}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{Timeout: 2 * time.Second})
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	require.Equal(t, "fallback", string(body))
+}

@@ -23,7 +23,7 @@ This is the recommended pattern for cooperative cancellation.
 
 If a handler panics, the middleware catches it and returns `500 Internal Server Error`.
 
-When an enclosing timeout middleware already guards the request with a deadline that comes no later than the configured one, such as a shorter timeout registered with `app.Use`, the middleware runs the handler on the calling goroutine and leaves the timeout to the enclosing one. Its `OnTimeout` then runs only for a timeout error the handler returns. A shorter deadline set any other way, such as with `c.SetContext`, does not count: the middleware times the request out when it passes.
+When an enclosing timeout middleware already guards the request with a deadline that comes no later than the configured one, such as a shorter timeout registered with `app.Use`, the middleware runs the handler on the calling goroutine and leaves the timeout to the enclosing one. Its `OnTimeout` then runs only for a timeout error the handler returns before the enclosing deadline passes; after that, the enclosing middleware answers the request. When nested timeouts fire at the same time, only the first to answer writes the timeout response. A shorter deadline set any other way, such as with `c.SetContext`, does not count: the middleware times the request out when it passes.
 
 ## Why 503
 

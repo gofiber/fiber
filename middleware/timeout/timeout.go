@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"runtime/debug"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -15,8 +17,18 @@ import (
 
 type contextKey int
 
-// timeoutContextKey holds the context a timeout.New handed to its handler goroutine.
-const timeoutContextKey contextKey = 0
+const (
+	// timeoutContextKey holds the context a timeout.New handed to its handler goroutine.
+	timeoutContextKey contextKey = iota
+	// requestKey holds the *request the timeout.New of one request share.
+	requestKey
+)
+
+// request is shared by the nested timeout.New of one request, whose timers fire on different goroutines.
+type request struct {
+	mu       sync.Mutex  // held while one of them answers, so only one writes the timeout response
+	answered atomic.Bool // set once one has started to answer
+}
 
 // New enforces a timeout for each incoming request. It replaces the request's
 // context with one that has the configured deadline, which is exposed through
@@ -44,18 +56,27 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 
 		// Create timeout context - handler can check c.Context().Done()
 		parent := ctx.Context()
-		// An enclosing timeout.New whose deadline fires first already guards h; a goroutine
-		// of our own would time out and abandon the same ctx a second time.
-		if enclosingFiresFirst(parent, ctx, timeout) {
-			return handleResult(runInline(h, ctx), ctx, cfg)
+		req, nested := ctx.Locals(requestKey).(*request)
+		// An enclosing timeout.New whose deadline fires first, or one that already answered,
+		// leaves nothing to guard: a goroutine of our own would time the ctx out a second time.
+		if nested && (req.answered.Load() || enclosingFiresFirst(parent, ctx, timeout)) {
+			err := runInline(h, ctx)
+			if parent.Err() != nil || req.answered.Load() {
+				// The enclosing timeout.New answers this request.
+				return err
+			}
+			return handleResult(err, ctx, cfg)
+		}
+		if !nested {
+			req = new(request)
+			_ = ctxlocal.Set(ctx, requestKey, req)
 		}
 		tCtx, cancel := context.WithTimeout(parent, timeout)
 		ctx.SetContext(tCtx)
 		_ = ctxlocal.Set(ctx, timeoutContextKey, tCtx)
 
-		// Channels for handler result and panics
+		// Channel for handler result, fiber.ErrInternalServerError after a panic
 		done := make(chan error, 1)
-		panicChan := make(chan any, 1)
 		// handlerDone is closed once the handler goroutine has fully exited
 		// (covering both the normal and panic paths). It tells the timeout path
 		// when the goroutine has stopped touching the context, which is what makes
@@ -69,9 +90,9 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 				if p := recover(); p != nil {
 					log.Errorw("panic recovered in timeout handler", "panic", p, "stack", string(debug.Stack()))
 					select {
-					case panicChan <- p:
+					case done <- fiber.ErrInternalServerError:
 					default:
-						// Middleware already returned, panic value discarded
+						// Middleware already returned, panic discarded
 					}
 				}
 			}()
@@ -86,22 +107,20 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		// Wait for handler completion, panic, or timeout
 		select {
 		case err := <-done:
-			// Handler finished normally - cleanup and return
+			// Handler finished or panicked - cleanup and return
 			cancel()
+			if req.answered.Load() {
+				// An inner timeout.New answered, and the handler it gave up on may still read the context.
+				return err
+			}
 			ctx.SetContext(parent)
 			return handleResult(err, ctx, cfg)
-
-		case <-panicChan:
-			// Handler panicked - cleanup and return error
-			cancel()
-			ctx.SetContext(parent)
-			return fiber.ErrInternalServerError
 
 		case <-tCtx.Done():
 			// Timeout occurred - abandon context and return immediately.
 			// Reclamation is scheduled so the abandoned fiber.Ctx is returned to
 			// the pool once the handler goroutine finishes, instead of leaking.
-			return handleTimeout(parent, ctx, cancel, handlerDone, cfg)
+			return handleTimeout(parent, ctx, cancel, handlerDone, req, cfg)
 		}
 	}
 }
@@ -146,13 +165,17 @@ func handleTimeout(
 	ctx fiber.Ctx,
 	cancel context.CancelFunc,
 	handlerDone <-chan struct{},
+	req *request,
 	cfg Config,
 ) error {
+	req.mu.Lock()
+	defer req.mu.Unlock()
+
 	var timeoutErr error
 	switch {
-	case ctx.IsAbandoned() && ctx.RequestCtx().LastTimeoutErrorResponse() != nil:
-		// An inner timeout.New answered first and fasthttp holds its response, so only
-		// wait for our goroutine too. IsAbandoned orders the read after that write.
+	case req.answered.Swap(true):
+		// Another timeout.New of this request answered and fasthttp holds its response,
+		// so only wait for our goroutine too.
 		timeoutErr = fiber.ErrServiceUnavailable
 	case cfg.OnTimeout == nil:
 		// Build the default timeout response separately from the RequestCtx response.
