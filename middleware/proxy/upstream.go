@@ -25,6 +25,10 @@ func parseUpstream(raw string) (*url.URL, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrUpstreamHostInvalid, err)
 	}
+	// net/url ignores a RawPath it would not write ("/café"); dropping it spares each join escaping Path again.
+	if !rawPathValid(u.RawPath) {
+		u.RawPath = ""
+	}
 	return u, nil
 }
 
@@ -194,19 +198,23 @@ func joinURLPath(out, base, target *url.URL) {
 }
 
 // escapedPath is u.EscapedPath() without the unescape it checks RawPath with: url.Parse made sure
-// RawPath decodes to Path, so only its bytes are left to check, as net/url's validEncoded does.
+// RawPath decodes to Path, so only its bytes are left to check.
 func escapedPath(u *url.URL) string {
-	raw := u.RawPath
-	if raw == "" {
-		return u.EscapedPath()
+	if u.RawPath != "" && rawPathValid(u.RawPath) {
+		return u.RawPath
 	}
+	return u.EscapedPath()
+}
+
+// rawPathValid reports whether raw holds only the bytes net/url's validEncoded accepts in a path.
+func rawPathValid(raw string) bool {
 	for i := 0; i < len(raw); i++ {
 		c := raw[i]
 		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && strings.IndexByte("-._~!$&'()*+,;=:@[]%/", c) < 0 {
-			return u.EscapedPath()
+			return false
 		}
 	}
-	return raw
+	return true
 }
 
 // baseIsPlainOrigin reports whether base carries only a scheme + host

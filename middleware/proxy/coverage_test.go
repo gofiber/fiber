@@ -273,7 +273,8 @@ func Test_Coverage_JoinUpstreamPath_RawPathFallback(t *testing.T) {
 	require.Contains(t, out, "/a%2Fb/plain")
 }
 
-// Test_Coverage_EscapedPath pins that escapedPath returns what URL.EscapedPath does, without its allocation.
+// Test_Coverage_EscapedPath pins that escapedPath returns what URL.EscapedPath does, without its allocation,
+// and that parseUpstream drops a RawPath net/url would not write.
 func Test_Coverage_EscapedPath(t *testing.T) {
 	// Intentionally not parallel: AllocsPerRun counts allocations process-wide and panics in a parallel test.
 	for _, path := range []string{"", "/a", "/my%20app", "/a%3Bb", "/a%3Bb!x:y@z;k=v", "/a%3B[b]", "/a%2F/b", "/a%3B//b", "/café", "/a%3Bb c", "/a%3B\"b"} {
@@ -285,6 +286,11 @@ func Test_Coverage_EscapedPath(t *testing.T) {
 		require.NotEmpty(t, u.RawPath, path)
 		require.Zero(t, testing.AllocsPerRun(100, func() { _ = escapedPath(u) }), path)
 	}
+
+	u, err := parseUpstream("http://upstream.example/café")
+	require.NoError(t, err)
+	require.Empty(t, u.RawPath)
+	require.Equal(t, mustParseTestURL(t, "http://upstream.example/café").String(), u.String())
 }
 
 // Test_Coverage_DomainForward_HostMismatch_DoesNotProxy covers the
