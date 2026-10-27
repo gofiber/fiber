@@ -570,11 +570,59 @@ func lookupJoinedRequestHeader(h *fasthttp.RequestHeader, key string) ([]byte, b
 	//
 	// VisitAllInOrder is deliberately not used: it reparses rawHeaders, which
 	// only holds headers read off the wire, so headers set programmatically
-	// (e.g. by net/http adaptors) would be missed entirely. VisitAll already
-	// preserves the relative order of repeated field lines sharing a key,
-	// which is all this helper needs; it only reorders across distinct keys.
+	// (e.g. by net/http adaptors) would be missed entirely. VisitAll keeps
+	// repeated field lines in received order only until a line is removed,
+	// see receivedRequestLines.
 	h.VisitAll(j.visit)
 	return j.combined, j.seen
+}
+
+// peekReceivedRequestHeader is peekJoinedRequestHeader for a chain whose line
+// order decides whom to trust, such as X-Forwarded-For.
+func peekReceivedRequestHeader(h *fasthttp.RequestHeader, key string) []byte {
+	j := joinedHeaderValue{key: key}
+	h.VisitAll(j.visit)
+	if j.multi {
+		if lines, ok := receivedRequestLines(h, key); ok {
+			return headerlist.Join(lines)
+		}
+	}
+	return j.combined
+}
+
+// receivedRequestLines returns key's field lines in received order, which the store loses whenever fasthttp
+// moves its last line into a removed one's slot, as it does for Transfer-Encoding after an empty chunked body.
+// ok is false unless the wire block holds exactly the stored lines; a header edited in code reads as stored.
+func receivedRequestLines(h *fasthttp.RequestHeader, key string) ([][]byte, bool) {
+	if len(h.RawHeaders()) == 0 {
+		return nil, false
+	}
+	pending := make(map[string]int)
+	stored := 0
+	h.VisitAll(func(k, v []byte) {
+		if utils.EqualFold(utils.UnsafeString(k), key) {
+			pending[string(v)]++
+			stored++
+		}
+	})
+
+	// A copy, because AllInOrder joins folded lines in place and the next walk would read them differently.
+	scratch := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(scratch)
+	h.CopyTo(&scratch.Header)
+
+	lines := make([][]byte, 0, stored)
+	for k, v := range scratch.Header.AllInOrder() {
+		if !utils.EqualFold(utils.UnsafeString(k), key) {
+			continue
+		}
+		if pending[string(v)] == 0 {
+			return nil, false
+		}
+		pending[string(v)]--
+		lines = append(lines, utils.CopyBytes(v))
+	}
+	return lines, len(lines) == stored
 }
 
 // peekJoinedResponseHeader is peekJoinedRequestHeader for response headers.

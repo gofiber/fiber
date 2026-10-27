@@ -4422,6 +4422,90 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 			header:   "203.0.113.50, 10.0.0.1,",
 			expected: "203.0.113.50",
 		},
+		{
+			name: "empty chain element between entries",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "203.0.113.50, , 10.0.0.1",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "entry with a port ends the walk",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "1.2.3.4, 203.0.113.50:51234",
+			expected: "10.0.0.1",
+		},
+		{
+			name: "entry with a port behind a trusted proxy ends the walk",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1", "10.0.0.2"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "1.2.3.4, 203.0.113.50:51234, 10.0.0.2",
+			expected: "10.0.0.2",
+		},
+		{
+			name: "bracketed IPv6 entry with a port ends the walk",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "1.2.3.4, [2001:db8::1]:51234",
+			expected: "10.0.0.1",
+		},
+		{
+			name: "zoned IPv6 entry ends the walk",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "1.2.3.4, fe80::1%eth0",
+			expected: "10.0.0.1",
+		},
+		{
+			name: "obfuscated entry ends the walk",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "1.2.3.4, unknown",
+			expected: "10.0.0.1",
+		},
 	}
 
 	for _, tc := range tests {
@@ -4504,6 +4588,84 @@ func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines_Wire(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "198.51.100.77", string(body))
+}
+
+// serveRawFromLoopback runs a request read off the wire, so its raw header block is kept, from 127.0.0.1.
+func serveRawFromLoopback(t *testing.T, handler fasthttp.RequestHandler, raw string) string {
+	t.Helper()
+
+	var req fasthttp.Request
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.Init(&req, &net.TCPAddr{IP: net.ParseIP("127.0.0.1")}, nil)
+	handler(fastCtx)
+	return string(fastCtx.Response.Body())
+}
+
+// fasthttp fills the slot of a removed header line with the last line, and removes
+// Transfer-Encoding itself after an empty chunked body.
+func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines_ReceivedOrder(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"127.0.0.1"},
+		},
+	})
+	result := func(c Ctx) error {
+		// Twice: the first read must not change what the second sees.
+		return c.SendString(c.IP() + "|" + c.IP() + "|" + strings.Join(c.IPs(), ","))
+	}
+	app.Post("/", result)
+	app.Post("/del", func(c Ctx) error {
+		c.Request().Header.Del("X-Request-Id")
+		return result(c)
+	})
+	app.Post("/add", func(c Ctx) error {
+		c.Request().Header.Add(HeaderXForwardedFor, "203.0.113.9")
+		return result(c)
+	})
+	handler := app.Handler()
+
+	testCases := []struct {
+		name     string
+		raw      string
+		expected string
+	}{
+		{
+			name: "empty chunked body",
+			raw: "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n" +
+				"X-Forwarded-For: 6.6.6.6\r\nX-Forwarded-For: 198.51.100.77\r\n\r\n0\r\n\r\n",
+			expected: "198.51.100.77|198.51.100.77|6.6.6.6,198.51.100.77",
+		},
+		{
+			name: "empty chunked body with a folded line",
+			raw: "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n" +
+				"X-Forwarded-For: 6.6.6.6,\r\n 8.8.8.8\r\nX-Forwarded-For: 198.51.100.77\r\n\r\n0\r\n\r\n",
+			expected: "198.51.100.77|198.51.100.77|6.6.6.6,8.8.8.8,198.51.100.77",
+		},
+		{
+			name: "line removed by a handler",
+			raw: "POST /del HTTP/1.1\r\nHost: example.com\r\nX-Request-Id: 1\r\n" +
+				"X-Forwarded-For: 6.6.6.6\r\nX-Forwarded-For: 198.51.100.77\r\nContent-Length: 0\r\n\r\n",
+			expected: "198.51.100.77|198.51.100.77|6.6.6.6,198.51.100.77",
+		},
+		{
+			name: "line added by a handler",
+			raw: "POST /add HTTP/1.1\r\nHost: example.com\r\n" +
+				"X-Forwarded-For: 6.6.6.6\r\nX-Forwarded-For: 198.51.100.77\r\nContent-Length: 0\r\n\r\n",
+			expected: "203.0.113.9|203.0.113.9|6.6.6.6,198.51.100.77,203.0.113.9",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.expected, serveRawFromLoopback(t, handler, tc.raw))
+		})
+	}
 }
 
 // fasthttp trims the OWS at either end of a field value but keeps the OWS
@@ -6068,6 +6230,95 @@ func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
 	c.Request().URI().SetHost("example.com")
 	c.Request().Header.Set(HeaderXForwardedProto, "javascript")
 	require.Equal(t, "http://example.com", c.BaseURL())
+}
+
+// go test -run Test_Ctx_Scheme_HeaderPrecedence
+func Test_Ctx_Scheme_HeaderPrecedence(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+
+	// A proxy overwrites X-Forwarded-Proto and relays the others, so its value wins in either order.
+	testCases := []struct {
+		proto  string
+		header string
+		value  string
+	}{
+		{proto: schemeHTTPS, header: HeaderXForwardedProtocol, value: schemeHTTP},
+		{proto: schemeHTTPS, header: HeaderXUrlScheme, value: schemeHTTP},
+		{proto: schemeHTTP, header: HeaderXForwardedProtocol, value: schemeHTTPS},
+		{proto: schemeHTTP, header: HeaderXForwardedSsl, value: "on"},
+		{proto: schemeHTTP, header: HeaderXUrlScheme, value: schemeHTTPS},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.header+"_"+tc.value, func(t *testing.T) {
+			t.Parallel()
+
+			freq := &fasthttp.RequestCtx{}
+			freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+			c := app.AcquireCtx(freq)
+			defer app.ReleaseCtx(c)
+
+			c.Request().Header.Set(HeaderXForwardedProto, tc.proto)
+			c.Request().Header.Set(tc.header, tc.value)
+			require.Equal(t, tc.proto, c.Scheme())
+			c.Request().Header.Reset()
+
+			c.Request().Header.Set(tc.header, tc.value)
+			c.Request().Header.Set(HeaderXForwardedProto, tc.proto)
+			require.Equal(t, tc.proto, c.Scheme())
+		})
+	}
+
+	t.Run("Ranking", func(t *testing.T) {
+		t.Parallel()
+
+		freq := &fasthttp.RequestCtx{}
+		freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+		c := app.AcquireCtx(freq)
+		defer app.ReleaseCtx(c)
+
+		c.Request().Header.Set(HeaderXUrlScheme, schemeHTTPS)
+		c.Request().Header.Set(HeaderXForwardedSsl, "on")
+		c.Request().Header.Set(HeaderXForwardedProtocol, schemeHTTP)
+		require.Equal(t, schemeHTTP, c.Scheme())
+		c.Request().Header.Reset()
+
+		c.Request().Header.Set(HeaderXUrlScheme, schemeHTTP)
+		c.Request().Header.Set(HeaderXForwardedSsl, "on")
+		require.Equal(t, schemeHTTPS, c.Scheme())
+		c.Request().Header.Reset()
+
+		// An invalid value outranks nothing.
+		c.Request().Header.Set(HeaderXForwardedProto, "javascript")
+		c.Request().Header.Set(HeaderXForwardedSsl, "off")
+		c.Request().Header.Set(HeaderXUrlScheme, schemeHTTPS)
+		require.Equal(t, schemeHTTPS, c.Scheme())
+	})
+}
+
+// Repeats of one header keep the last line, which an empty chunked body used to move.
+func Test_Ctx_Scheme_RepeatedFieldLines_ReceivedOrder(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"127.0.0.1"},
+		},
+	})
+	app.Post("/", func(c Ctx) error {
+		return c.SendString(c.Scheme())
+	})
+
+	raw := "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n" +
+		"X-Forwarded-Proto: http\r\nX-Forwarded-Proto: https\r\n\r\n0\r\n\r\n"
+	require.Equal(t, schemeHTTPS, serveRawFromLoopback(t, app.Handler(), raw))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
