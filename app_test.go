@@ -854,10 +854,12 @@ func Test_App_Use_Params(t *testing.T) {
 	})
 }
 
-func Test_App_Use_HandlersWithSubAppPanics(t *testing.T) {
+func Test_App_Use_PanicsOnDroppedArguments(t *testing.T) {
 	t.Parallel()
 
 	deny := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
+	guardApp := New()
+	guardApp.Use(deny)
 
 	for name, use := range map[string]func(app *App, args ...any){
 		"app":    func(app *App, args ...any) { app.Use(args...) },
@@ -869,6 +871,10 @@ func Test_App_Use_HandlersWithSubAppPanics(t *testing.T) {
 			{"/admin", New(), deny},
 			{deny, New()},
 			{[]string{"/a", "/b"}, deny, New()},
+			{"/admin", guardApp, New()},
+			{"/admin", "/internal", deny},
+			{"/admin", []string{"/internal"}, deny},
+			{[]string{"/a"}, []string{"/b"}, deny},
 		} {
 			require.Panics(t, func() { use(New(), args...) }, "%s %v", name, args)
 		}

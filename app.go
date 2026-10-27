@@ -1098,36 +1098,7 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (app *App) Use(args ...any) Router {
-	var prefix string
-	var subApp *App
-	var prefixes []string
-	var handlers []Handler
-
-	for i := range args {
-		switch arg := args[i].(type) {
-		case string:
-			prefix = arg
-		case *App:
-			subApp = arg
-		case []string:
-			prefixes = arg
-		default:
-			handler, ok := toFiberHandler(arg)
-			if !ok {
-				panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
-			}
-			handlers = append(handlers, handler)
-		}
-	}
-
-	// The mount would drop the handlers silently.
-	if subApp != nil && len(handlers) > 0 {
-		panic("use: handlers and a sub-app cannot be passed in one call\n")
-	}
-
-	if len(prefixes) == 0 {
-		prefixes = append(prefixes, prefix)
-	}
+	prefixes, subApp, handlers := useArgs(args)
 
 	for _, prefix := range prefixes {
 		if subApp != nil {
@@ -1140,6 +1111,44 @@ func (app *App) Use(args ...any) Router {
 	}
 
 	return app
+}
+
+// useArgs sorts the arguments of a Use call. Anything it would otherwise drop
+// silently panics: a second prefix argument, a second sub-app, or handlers next to a sub-app.
+func useArgs(args []any) (prefixes []string, subApp *App, handlers []Handler) { //nolint:nonamedreturns // names tell the three results apart
+	prefixArgs := 0
+	for _, arg := range args {
+		switch arg := arg.(type) {
+		case string:
+			prefixes = []string{arg}
+			prefixArgs++
+		case []string:
+			prefixes = arg
+			prefixArgs++
+		case *App:
+			if subApp != nil {
+				panic("use: only one sub-app can be passed in one call\n")
+			}
+			subApp = arg
+		default:
+			handler, ok := toFiberHandler(arg)
+			if !ok {
+				panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
+			}
+			handlers = append(handlers, handler)
+		}
+	}
+
+	if prefixArgs > 1 {
+		panic("use: pass several prefixes as one []string\n")
+	}
+	if subApp != nil && len(handlers) > 0 {
+		panic("use: handlers and a sub-app cannot be passed in one call\n")
+	}
+	if len(prefixes) == 0 {
+		prefixes = []string{""}
+	}
+	return prefixes, subApp, handlers
 }
 
 // Get registers a route for GET methods that requests a representation

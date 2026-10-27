@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -372,35 +371,7 @@ func (d *domainRouter) registerGroup() *Group {
 //	    return c.Next()
 //	})
 func (d *domainRouter) Use(args ...any) Router {
-	var subApp *App
-	var prefix string
-	var prefixes []string
-	var handlers []Handler
-
-	for i := range args {
-		switch arg := args[i].(type) {
-		case string:
-			prefix = arg
-		case []string:
-			prefixes = arg
-		case *App:
-			subApp = arg
-		default:
-			handler, ok := toFiberHandler(arg)
-			if !ok {
-				panic(fmt.Sprintf("use: invalid handler %v", reflect.TypeOf(arg)))
-			}
-			handlers = append(handlers, handler)
-		}
-	}
-
-	if subApp != nil && len(handlers) > 0 {
-		panic("use: handlers and a sub-app cannot be passed in one call")
-	}
-
-	if len(prefixes) == 0 {
-		prefixes = append(prefixes, prefix)
-	}
+	prefixes, subApp, handlers := useArgs(args)
 
 	for _, prefix := range prefixes {
 		if subApp != nil {

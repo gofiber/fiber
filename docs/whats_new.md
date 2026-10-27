@@ -393,7 +393,7 @@ The routes of a mounted app are re-parsed with the mount prefix as written. Befo
 
 ### Use with a sub-app
 
-`Use` panics when one call receives both handlers and a sub-app, as in `app.Use("/admin", auth, adminApp)`, on an `App`, a `Group` and a `Domain` router. Before, it mounted the sub-app and dropped the handlers without an error. Register them in separate calls: `app.Use("/admin", auth)`, then `app.Use("/admin", adminApp)`.
+`Use` panics when one call receives both handlers and a sub-app, as in `app.Use("/admin", auth, adminApp)`, on an `App`, a `Group` and a `Domain` router. Before, it mounted the sub-app and dropped the handlers without an error. Register them in separate calls: `app.Use("/admin", auth)`, then `app.Use("/admin", adminApp)`. It also panics on two sub-apps in one call, which mounted only the last, and on two path arguments, such as `app.Use("/admin", "/internal", auth)` or a path next to a `[]string`, which registered the handlers on only one of them. Pass several paths as one `[]string`.
 
 ### Generated route URLs
 
