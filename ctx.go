@@ -847,6 +847,11 @@ func (c *DefaultCtx) configDependentPaths() {
 	if !c.app.config.StrictRouting && len(c.detectionPath) > 1 && c.detectionPath[len(c.detectionPath)-1] == '/' {
 		n := len(c.detectionPath)
 		c.detectionPath = utils.TrimRight(c.detectionPath, '/')
+		if len(c.detectionPath) == 0 {
+			// Slashes alone are the root, as "/a//" is "/a"; emptied, the path
+			// skipped every root Use while "/*" still matched it.
+			c.detectionPath = c.detectionPath[:1]
+		}
 		if counted {
 			// every byte trimmed was a '/' the count included
 			slashes -= n - len(c.detectionPath)

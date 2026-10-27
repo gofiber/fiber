@@ -377,6 +377,10 @@ The router normalizes every request path before matching, as [RFC 3986 Section 6
 
 After `c.Path(...)` or `c.Method(...)`, `c.Next()` continues with the routes registered after the current one that match the new path and method. Before, a handler mounted on a prefix, such as `app.Use("/v1", rewrite.New(...))` or `http.StripPrefix` through `adaptor.HTTPMiddleware`, or registered for a single method resumed at a position taken from another route list, and skipped routes registered after it, middleware included. A `Use` registered right after a route for a single method is no longer merged into the previous `Use` under the other methods, so `app.Stack()` can list one more route there.
 
+### Trailing slashes
+
+Without `StrictRouting`, a path of slashes alone, such as `//`, is matched as `/`, the way `/about//` is matched as `/about`. Before, it was matched as the empty path, which a root `app.Use` did not cover while a `/*` or `/:name?` route still answered it. A route registered as `//` is the root route now, and `//` also answers a `/` route. `c.Path()` still returns `//`.
+
 ### Optional parameters
 
 An optional parameter that ends at a single-character constant, such as `:month?-` or `:name?.`, no longer matches across a `/`. Before, `/api/:day-:month?-:year?` matched `/api/1-/-` with `month` set to `/`, and `/file/:name?.:ext` matched `/file/a/b.txt` with `name` set to `a/b`; both now return 404. A required parameter keeps its behavior: `/file/:name.:ext` still matches `/file/a/b.txt`. With `UnescapePath` on, `Route.URL`, `GetRouteURL` and `Redirect().Route` return `ErrRouteNotRepresentable` for a `/` in the value of such an optional parameter.

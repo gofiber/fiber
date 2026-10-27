@@ -5394,6 +5394,78 @@ func Test_Router_UnrootedTargetIsRooted(t *testing.T) {
 	require.Equal(t, "/rewritten", string(body))
 }
 
+// Test_Router_SlashesOnlyTargetIsRoot pins that a target of slashes alone is
+// routed as the root without StrictRouting, as "/a//" is routed as "/a".
+func Test_Router_SlashesOnlyTargetIsRoot(t *testing.T) {
+	t.Parallel()
+
+	serve := func(app *App, target string) int {
+		var req fasthttp.Request
+		req.Header.SetMethod(MethodGet)
+		req.SetRequestURI(target)
+		req.Header.SetHost("example.com")
+		var fctx fasthttp.RequestCtx
+		fctx.Init(&req, nil, nil)
+		app.Handler()(&fctx)
+		return fctx.Response.StatusCode()
+	}
+
+	testCases := []struct {
+		target, path string
+		unescape     bool
+	}{
+		{target: "//", path: "//"},
+		{target: "///", path: "///"},
+		{target: "//?x=1", path: "//"},
+		{target: "http://example.com//", path: "//"},
+		{target: "/a/..//", path: "//"},
+		{target: "/%2F", path: "//", unescape: true},
+	}
+	for _, pattern := range []string{"/*", "/:name?"} {
+		for _, tc := range testCases {
+			app := New(Config{UnescapePath: tc.unescape})
+			guardRan, seen := false, ""
+			app.Use(func(c Ctx) error {
+				guardRan = true
+				return c.Next()
+			})
+			app.Get(pattern, func(c Ctx) error {
+				seen = c.Path()
+				return c.SendString("catch-all")
+			})
+
+			require.Equal(t, StatusOK, serve(app, tc.target), "%s %s", pattern, tc.target)
+			require.True(t, guardRan, "%s %s: root middleware skipped", pattern, tc.target)
+			require.Equal(t, tc.path, seen, "%s %s", pattern, tc.target)
+		}
+	}
+
+	// StrictRouting keeps "//" apart from "/"
+	for _, strict := range []bool{false, true} {
+		app := New(Config{StrictRouting: strict})
+		app.Get("/", func(c Ctx) error { return c.SendString("root") })
+
+		want := StatusOK
+		if strict {
+			want = StatusNotFound
+		}
+		require.Equal(t, want, serve(app, "//"), "strict=%v", strict)
+	}
+
+	// a pattern of slashes alone is the root too
+	app := New()
+	app.Use("//", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
+	app.Get("//", func(c Ctx) error { return c.SendString("root") })
+	for _, target := range []string{"/", "//", "///"} {
+		require.Equal(t, StatusUnauthorized, serve(app, target), target)
+	}
+
+	require.True(t, RoutePatternMatch("//", "/"))
+	require.True(t, RoutePatternMatch("///", "/"))
+	require.True(t, RoutePatternMatch("/", "//"))
+	require.False(t, RoutePatternMatch("//", "/", Config{StrictRouting: true}))
+}
+
 func Test_App_Add_MultipleMethods_Name(t *testing.T) {
 	t.Parallel()
 

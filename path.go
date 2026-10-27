@@ -222,6 +222,9 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	}
 	if !config.StrictRouting && len(detectionPath) > 1 {
 		detectionPath = utils.TrimRight(detectionPath, '/')
+		if detectionPath == "" {
+			detectionPath = "/"
+		}
 	}
 
 	parser, _ := routerParserPool.Get().(*routeParser) //nolint:errcheck // only contains routeParser
@@ -273,6 +276,10 @@ func normalizeRoutePattern(pattern string, config *Config) (raw, pretty, clean s
 	}
 	if !config.StrictRouting && len(pretty) > 1 {
 		pretty = utils.TrimRight(pretty, '/')
+		if pretty == "" {
+			// as for a request path: "//" is the root, not an empty pattern
+			pretty = "/"
+		}
 	}
 	clean = RemoveEscapeChar(pretty)
 	return raw, pretty, clean
