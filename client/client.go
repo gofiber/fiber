@@ -472,11 +472,12 @@ func (c *Client) AddHeader(key, val string) *Client {
 	return c
 }
 
-// SetHeader sets a single header field and its value in the client.
+// SetHeader sets a single header field and its value in the client, overriding any previously set value.
 func (c *Client) SetHeader(key, val string) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.header.Del(key)
 	c.header.Set(key, val)
 	return c
 }

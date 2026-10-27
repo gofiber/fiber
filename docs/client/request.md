@@ -1207,6 +1207,14 @@ type QueryParam struct {
 func (p *QueryParam) Keys() []string
 ```
 
+### Set
+
+**Set** sets a single query parameter key-value pair, overriding any previously set values for that key.
+
+```go title="Signature"
+func (p *QueryParam) Set(key, val string)
+```
+
 ### AddParams
 
 **AddParams** adds multiple query parameters from a map of string slices.

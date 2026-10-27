@@ -1490,6 +1490,15 @@ func Test_Client_Header(t *testing.T) {
 		require.Equal(t, "fiber", res[0])
 	})
 
+	t.Run("set header overrides every value", func(t *testing.T) {
+		t.Parallel()
+		req := New()
+		req.AddHeaders(map[string][]string{"foo": {"bar", "buaa"}, "bar": {"foo"}}).SetHeader("foo", "fiber")
+
+		require.Equal(t, []string{"fiber"}, req.Header("foo"))
+		require.Equal(t, []string{"foo"}, req.Header("bar"))
+	})
+
 	t.Run("add headers", func(t *testing.T) {
 		t.Parallel()
 		req := New()
@@ -1813,6 +1822,25 @@ func Test_Client_QueryParam(t *testing.T) {
 		res := req.Param("foo")
 		require.Len(t, res, 1)
 		require.Equal(t, "fiber", res[0])
+	})
+
+	t.Run("set param overrides every value", func(t *testing.T) {
+		t.Parallel()
+		req := New()
+		req.AddParams(map[string][]string{"foo": {"bar", "buaa"}, "bar": {"foo"}}).SetParam("foo", "fiber")
+
+		require.Equal(t, []string{"fiber"}, req.Param("foo"))
+		require.Equal(t, []string{"foo"}, req.Param("bar"))
+	})
+
+	t.Run("set params overrides every value", func(t *testing.T) {
+		t.Parallel()
+		req := New()
+		req.AddParams(map[string][]string{"foo": {"bar", "buaa"}, "bar": {"foo"}}).
+			SetParams(map[string]string{"foo": "fiber"})
+
+		require.Equal(t, []string{"fiber"}, req.Param("foo"))
+		require.Equal(t, []string{"foo"}, req.Param("bar"))
 	})
 
 	t.Run("add params", func(t *testing.T) {
