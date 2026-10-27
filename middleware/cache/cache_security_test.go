@@ -2619,3 +2619,54 @@ func Test_Cache_Security_VaryManifestOwnsItsBytes(t *testing.T) {
 	require.Equal(t, cacheMiss, got.cache)
 	require.Equal(t, "user=mallory", got.body)
 }
+
+// An empty body was charged nothing, so 204s and redirects never forced an
+// eviction and every new URL left a heap node behind.
+func Test_Cache_Security_EmptyBodiesCountTowardMaxBytes(t *testing.T) {
+	t.Parallel()
+
+	const (
+		maxBytes = 4096
+		urls     = 1000
+	)
+
+	for name, handler := range map[string]fiber.Handler{
+		"204": func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) },
+		"301": func(c fiber.Ctx) error { return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			probe := &accountingProbe{}
+			app := fiber.New()
+			app.Use(New(Config{MaxBytes: maxBytes, Expiration: time.Hour, accounting: probe.record}))
+			app.Get("/", handler)
+			h := app.Handler()
+
+			get := func(i int, cacheControl string) (int, string) {
+				fctx := &fasthttp.RequestCtx{}
+				fctx.Request.Header.SetMethod(fiber.MethodGet)
+				fctx.Request.Header.SetHost("example.com")
+				fctx.Request.SetRequestURI(fmt.Sprintf("/?i=%d", i))
+				if cacheControl != "" {
+					fctx.Request.Header.Set(fiber.HeaderCacheControl, cacheControl)
+				}
+				h(fctx)
+				return fctx.Response.StatusCode(), string(fctx.Response.Header.Peek("X-Cache"))
+			}
+
+			for i := range urls {
+				_, xCache := get(i, "")
+				require.Equal(t, cacheMiss, xCache)
+			}
+			require.NotZero(t, probe.counted())
+			require.LessOrEqual(t, probe.counted(), uint(maxBytes))
+			require.Less(t, probe.nodes(), urls/10)
+
+			_, xCache := get(urls-1, "")
+			require.Equal(t, cacheHit, xCache)
+			status, _ := get(0, "only-if-cached")
+			require.Equal(t, fiber.StatusGatewayTimeout, status)
+		})
+	}
+}

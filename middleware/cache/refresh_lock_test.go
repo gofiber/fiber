@@ -167,11 +167,12 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 			c.Set(fiber.HeaderCacheControl, "public, max-age=30")
 			return c.SendString("stale")
 		case "/slot":
+			// Fits beside the reservation of /new only while /old is popped.
 			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
-			return c.SendString("")
+			return c.SendString("x")
 		default:
 			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
-			return c.SendString("0123456789")
+			return c.SendString("012345678")
 		}
 	})
 
@@ -214,7 +215,7 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("eviction did not finish")
 	}
-	require.Equal(t, uint(5), probe.counted())
+	require.Equal(t, uint(6), probe.counted())
 	require.Equal(t, 2, probe.nodes())
 
 	uncacheable.Store(true)
@@ -224,6 +225,6 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Zero(t, probe.counted())
+	require.Equal(t, uint(1), probe.counted())
 	require.Equal(t, 1, probe.nodes())
 }

@@ -4892,11 +4892,12 @@ func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *
 	}))
 	app.Get("/:name", func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+		// The replacement fits beside the reservation of /new only while /old is popped.
 		if c.Path() == "/new" {
-			return c.SendString("0123456789")
+			return c.SendString("012345678")
 		}
 		if fiber.Query[string](c, "replacement") == "true" {
-			return c.SendString("")
+			return c.SendString("x")
 		}
 		return c.SendString("stale")
 	})
@@ -4936,7 +4937,7 @@ func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *
 	require.NoError(t, oldErr)
 	require.Equal(t, fiber.StatusInternalServerError, oldResp.StatusCode)
 	require.NoError(t, oldResp.Body.Close())
-	require.Equal(t, uint(0), probe.counted())
+	require.Equal(t, uint(1), probe.counted())
 	require.Equal(t, 1, probe.nodes())
 	storage.mu.Lock()
 	_, replacementStored := storage.data[storage.key]
