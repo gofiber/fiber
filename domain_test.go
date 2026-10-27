@@ -2956,6 +2956,64 @@ func Test_Domain_UseMountAutoHeadKeepsMiddleware(t *testing.T) {
 	}
 }
 
+// Test_Domain_UseMountAutoHeadKeepsMiddlewareWhenFlattened pins the same once
+// the app that left HEAD out is no longer walked, only its routes' marks are.
+func Test_Domain_UseMountAutoHeadKeepsMiddlewareWhenFlattened(t *testing.T) {
+	t.Parallel()
+
+	newSubApp := func() *App {
+		subApp := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
+		subApp.Use(func(c Ctx) error {
+			return c.SendStatus(StatusUnauthorized)
+		})
+		subApp.Get("/secret", func(c Ctx) error {
+			c.Set("X-Secret", "leaked")
+			return c.SendString("secret")
+		})
+		return subApp
+	}
+
+	for name, mountOn := range map[string]func(mid *App){
+		"inner domain mount": func(mid *App) {
+			mid.Domain("api.example.com").Use("/sub", newSubApp())
+		},
+		"plain mount over a domain mount": func(mid *App) {
+			inner := New()
+			inner.Domain("api.example.com").Use("/sub", newSubApp())
+			mid.Use("/", inner)
+		},
+		"started before mounting": func(mid *App) {
+			mid.Use("/sub", newSubApp())
+			mid.Handler()
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			mid := New()
+			mountOn(mid)
+
+			app := New()
+			app.Domain("api.example.com").Use("/mid", mid)
+
+			req := httptest.NewRequest(MethodGet, "/mid/sub/secret", http.NoBody)
+			req.Host = "api.example.com"
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, StatusUnauthorized, resp.StatusCode)
+
+			for range 2 {
+				req = httptest.NewRequest(MethodHead, "/mid/sub/secret", http.NoBody)
+				req.Host = "api.example.com"
+				resp, err = app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+				require.Empty(t, resp.Header.Get("X-Secret"))
+			}
+		})
+	}
+}
+
 // Test_Domain_UseMountNestedAutoHeadDisabled verifies that a nested app which
 // turned automatic HEAD routes off does not get them from the mount either.
 func Test_Domain_UseMountNestedAutoHeadDisabled(t *testing.T) {

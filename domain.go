@@ -612,6 +612,8 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 		route       *Route
 		owner       *App
 		constraints []CustomConstraint
+		// src's own mark: the app that opted out may be flattened into src already
+		skipAutoHead bool
 	}
 
 	src.mutex.Lock()
@@ -634,9 +636,10 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 			}
 
 			stack[m][i] = sourceRoute{
-				route:       src.copyRoute(route),
-				owner:       owner,
-				constraints: src.routeConstraintsFor(route),
+				route:        src.copyRoute(route),
+				owner:        owner,
+				constraints:  src.routeConstraintsFor(route),
+				skipAutoHead: src.skipsAutoHeadFor(route),
 			}
 		}
 	}
@@ -691,7 +694,7 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 			// and the path.
 			dst.markRouteOwner(clonedRoute, source.owner)
 
-			if skipAutoHead {
+			if skipAutoHead || source.skipAutoHead {
 				dst.markSkipAutoHead(clonedRoute)
 			}
 
