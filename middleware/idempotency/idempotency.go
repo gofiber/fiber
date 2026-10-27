@@ -27,6 +27,10 @@ const (
 
 const redactedKey = "[redacted]"
 
+// storagePrefix keeps responses apart from other middleware sharing the Storage,
+// as the client chooses the key.
+const storagePrefix = "idempotency:"
+
 // isCookieHeader reports whether name is a header that sets a cookie: Set-Cookie
 // or its obsolete RFC 2965 spelling.
 func isCookieHeader(name string) bool {
@@ -165,9 +169,10 @@ func New(config ...Config) fiber.Handler {
 		if cfg.KeyScope != nil {
 			storageKey = scopedKey(cfg.KeyScope(c), key)
 		}
+		entryKey := storagePrefix + storageKey
 
 		// First-pass: if the idempotency key is in the storage, get and return the response
-		if ok, err := maybeWriteCachedResponse(c, storageKey); err != nil {
+		if ok, err := maybeWriteCachedResponse(c, entryKey); err != nil {
 			return fmt.Errorf("failed to write cached response at fastpath: %w", err)
 		} else if ok {
 			return nil
@@ -183,7 +188,7 @@ func New(config ...Config) fiber.Handler {
 		}()
 
 		// Lock acquired. If the idempotency key now is in the storage, get and return the response
-		if ok, err := maybeWriteCachedResponse(c, storageKey); err != nil {
+		if ok, err := maybeWriteCachedResponse(c, entryKey); err != nil {
 			return fmt.Errorf("failed to write cached response while locked: %w", err)
 		} else if ok {
 			return nil
@@ -225,7 +230,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Store response
-		if err := cfg.Storage.SetWithContext(c, storageKey, bs, cfg.Lifetime); err != nil {
+		if err := cfg.Storage.SetWithContext(c, entryKey, bs, cfg.Lifetime); err != nil {
 			return fmt.Errorf("failed to save response: %w", err)
 		}
 

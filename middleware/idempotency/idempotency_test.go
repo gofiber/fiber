@@ -340,7 +340,7 @@ func Test_New_StorageGetError(t *testing.T) {
 func Test_New_UnmarshalError(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	s := &stubStorage{data: map[string][]byte{validKey: []byte("bad")}}
+	s := &stubStorage{data: map[string][]byte{storagePrefix + validKey: []byte("bad")}}
 	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
 	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
@@ -350,6 +350,26 @@ func Test_New_UnmarshalError(t *testing.T) {
 
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Contains(t, body, "failed to write cached response at fastpath")
+}
+
+// The client chooses the key, so it must not reach an entry another middleware
+// keeps in a shared Storage.
+func Test_New_SharedStorage_KeyNamespace(t *testing.T) {
+	t.Parallel()
+	foreign := []byte("entry of another middleware")
+	s := &stubStorage{data: map[string][]byte{validKey: foreign}}
+	app := fiber.New()
+	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req.Header.Set(ConfigDefault.KeyHeader, validKey)
+	resp, body := do(app, req)
+
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "ok", body)
+	require.Equal(t, foreign, s.data[validKey])
+	require.Contains(t, s.data, storagePrefix+validKey)
 }
 
 func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
@@ -572,7 +592,7 @@ func Test_New_ReplayDropsStoredCookies(t *testing.T) {
 		}
 		bs, err := res.MarshalMsg(nil)
 		require.NoError(t, err)
-		return &stubStorage{data: map[string][]byte{validKey: bs}}
+		return &stubStorage{data: map[string][]byte{storagePrefix + validKey: bs}}
 	}
 	replay := func(keep []string) *http.Response {
 		app := fiber.New()
@@ -651,7 +671,7 @@ func Test_New_KeyScope(t *testing.T) {
 	// Each entry holds its own user's cookie and nobody else's, under the key
 	// the scope and the idempotency key digest to.
 	for _, user := range []string{"alice", "bob", ""} {
-		val := string(s.data[scopedKey(user, validKey)])
+		val := string(s.data[storagePrefix+scopedKey(user, validKey)])
 		require.Contains(t, val, "sid="+user+"-session")
 		for _, other := range []string{"alice", "bob"} {
 			if other != user {
@@ -664,7 +684,7 @@ func Test_New_KeyScope(t *testing.T) {
 	// the other.
 	require.Len(t, l.locked, 3)
 	for _, key := range l.locked {
-		require.Contains(t, s.data, key)
+		require.Contains(t, s.data, storagePrefix+key)
 	}
 }
 
