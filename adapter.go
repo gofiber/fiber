@@ -7,6 +7,8 @@ import (
 
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
+
+	"github.com/gofiber/fiber/v3/internal/wiretarget"
 )
 
 // toFiberHandler converts a supported handler type to a Fiber handler.
@@ -256,8 +258,11 @@ func wrapHTTPHandler(handler http.Handler) Handler {
 
 	adapted := fasthttpadaptor.NewFastHTTPHandler(handler)
 
+	// Same routed-path handling as adaptor.HTTPHandler: net/http decodes and cleans the raw line its own way.
 	return func(c Ctx) error {
-		adapted(c.RequestCtx())
+		if !wiretarget.Serve(c, adapted) {
+			return ErrNotFound
+		}
 		return nil
 	}
 }

@@ -2198,6 +2198,12 @@ and are slower than native Fiber handlers because of the extra conversion layer.
 them to ease migrations, but prefer Fiber handlers in performance-critical paths.
 :::
 
+Like `adaptor.HTTPHandler`, a directly registered handler is given the path the router
+matched rather than the request line as it arrived, and a routed path with an empty
+segment or an escaped slash, such as `//admin/x` or `/admin%2Fx`, is answered with
+`404 Not Found`, since `net/http` would decode and clean it into a path no Fiber
+middleware ran for.
+
 ```go
 httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
     if _, err := w.Write([]byte("served by net/http")); err != nil {

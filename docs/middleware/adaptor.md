@@ -9,7 +9,8 @@ The `adaptor` package converts between Fiber and `net/http`, letting you reuse h
 :::tip
 Fiber can register plain `net/http` handlers directly—just pass an `http.Handler`,
 `http.HandlerFunc`, or `func(http.ResponseWriter, *http.Request)` to any router
-method and it will be adapted automatically. The adaptor helpers remain valuable
+method and it will be adapted automatically, with the same routed-path handling as
+`HTTPHandler` (see [notes and limitations](#notes-and-limitations)). The adaptor helpers remain valuable
 when you need to convert middleware, swap handler directions, or transform
 requests explicitly.
 :::
