@@ -156,7 +156,8 @@ func New(config ...Config) fiber.Handler {
 		// Copied once, before anything reads it: the validator may keep what it
 		// is handed, a handler that rewrote the header would not change what is
 		// hashed or logged, and the lock and the storage retain the unscoped key.
-		key = utils.CopyString(key)
+		entryKey := storagePrefix + key
+		key = entryKey[len(storagePrefix):]
 
 		// Validate key
 		if err := cfg.KeyHeaderValidate(key); err != nil {
@@ -168,8 +169,8 @@ func New(config ...Config) fiber.Handler {
 		storageKey := key
 		if cfg.KeyScope != nil {
 			storageKey = scopedKey(cfg.KeyScope(c), key)
+			entryKey = storagePrefix + storageKey
 		}
-		entryKey := storagePrefix + storageKey
 
 		// First-pass: if the idempotency key is in the storage, get and return the response
 		if ok, err := maybeWriteCachedResponse(c, entryKey); err != nil {
