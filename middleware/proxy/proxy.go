@@ -204,8 +204,8 @@ func doActionWithPolicy(
 	// https://github.com/gofiber/fiber/issues/1762.
 	req.URI().SetScheme(u.Scheme)
 
-	if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized) {
-		return fiber.ErrRequestHeaderFieldsTooLarge
+	if !policy.KeepHopByHopHeaders {
+		stripHopByHopRequestHeaders(req, normalized)
 	}
 	if ip != nil {
 		setRealIP(c, ip)

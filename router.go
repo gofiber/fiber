@@ -1005,12 +1005,9 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	}
 
 	// Before a handler writes a header under a name the client announced as a trailer.
-	if !fieldname.DropTrailers(&rctx.Request.Header) {
+	if !dropTrailers(&rctx.Request) {
 		_ = ctx.SendStatus(StatusRequestHeaderFieldsTooLarge) //nolint:errcheck // Always return nil
 		return
-	}
-	if rctx.Request.IsBodyStream() {
-		dropStreamedTrailers(&rctx.Request)
 	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie); before the
@@ -1056,12 +1053,9 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	}
 
 	// Before a handler writes a header under a name the client announced as a trailer.
-	if !fieldname.DropTrailers(&rctx.Request.Header) {
+	if !dropTrailers(&rctx.Request) {
 		_ = ctx.SendStatus(StatusRequestHeaderFieldsTooLarge) //nolint:errcheck // Always return nil
 		return
-	}
-	if rctx.Request.IsBodyStream() {
-		dropStreamedTrailers(&rctx.Request)
 	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie); before the
@@ -1096,12 +1090,27 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	}
 }
 
-// dropStreamedTrailers has a streamed chunked body drop the trailer section it reads at its end, since
-// fasthttp files a later Set or Add under a received trailer name with that section.
-func dropStreamedTrailers(req *fasthttp.Request) {
-	if req.Header.ContentLength() == -1 {
-		req.SetBodyStream(&trailerDropReader{r: req.BodyStream(), h: &req.Header}, -1)
+// dropTrailers drops the trailer section a request carries into the handlers, since fasthttp files a later Set or
+// Add under a received trailer name with that section. It reports false for more than fieldname.MaxTrailers names.
+func dropTrailers(req *fasthttp.Request) bool {
+	if len(req.Header.PeekTrailerKeys()) > fieldname.MaxTrailers {
+		return false
 	}
+	fieldname.DropTrailers(&req.Header)
+	if req.IsBodyStream() {
+		dropStreamedTrailers(req)
+	}
+	return true
+}
+
+// dropStreamedTrailers has a streamed chunked body drop the trailer section it reads at its end.
+func dropStreamedTrailers(req *fasthttp.Request) {
+	// Only the server's own stream reads a trailer section, and it is no io.Closer; SetBodyStream would close any
+	// other stream, such as one handed to App.Handler, before the handler read it.
+	if _, closer := req.BodyStream().(io.Closer); closer || req.Header.ContentLength() != -1 {
+		return
+	}
+	req.SetBodyStream(&trailerDropReader{r: req.BodyStream(), h: &req.Header}, -1)
 }
 
 type trailerDropReader struct {
@@ -1111,10 +1120,35 @@ type trailerDropReader struct {
 
 func (t *trailerDropReader) Read(p []byte) (int, error) {
 	n, err := t.r.Read(p)
-	if errors.Is(err, io.EOF) && !fieldname.DropTrailers(t.h) {
-		return n, ErrRequestHeaderFieldsTooLarge
+	if errors.Is(err, io.EOF) {
+		dropReadTrailers(t.h)
 	}
 	return n, err //nolint:wrapcheck // io.Reader passes io.EOF through as is
+}
+
+// dropReadTrailers drops a trailer section read once the handlers ran, too late to refuse the request. Above
+// fieldname.MaxTrailers names it drops every header field but Host instead, rather than walk the whole
+// header per name.
+func dropReadTrailers(h *fasthttp.RequestHeader) {
+	if len(h.PeekTrailerKeys()) <= fieldname.MaxTrailers {
+		fieldname.DropTrailers(h)
+		return
+	}
+	method, uri := utils.CopyBytes(h.Method()), utils.CopyBytes(h.RequestURI())
+	protocol, host := utils.CopyBytes(h.Protocol()), utils.CopyBytes(h.Host())
+	// Each returns the previous setting, which Reset clears.
+	normalizing, special := !h.DisableNormalizing(), !h.DisableSpecialHeader()
+	h.Reset()
+	if !normalizing {
+		h.DisableNormalizing()
+	}
+	if !special {
+		h.DisableSpecialHeader()
+	}
+	h.SetMethodBytes(method)
+	h.SetRequestURIBytes(uri)
+	h.SetProtocolBytes(protocol)
+	h.SetHostBytes(host)
 }
 
 func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) {

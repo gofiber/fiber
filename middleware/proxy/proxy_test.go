@@ -22,6 +22,7 @@ import (
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/valyala/fasthttp"
 )
@@ -982,7 +983,7 @@ func Test_Proxy_StripDropsTrailerSection(t *testing.T) {
 		"X-Remote-User: alice\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"+
 		"X-Remote-User: admin\r\nX-Other: late\r\n\r\n"))))
 
-	require.True(t, stripHopByHopRequestHeaders(req, true))
+	stripHopByHopRequestHeaders(req, true)
 
 	require.Empty(t, req.Header.PeekTrailerKeys())
 	require.Equal(t, [][]byte{[]byte("alice")}, req.Header.PeekAll("X-Remote-User"))
@@ -994,7 +995,9 @@ func Test_Proxy_StripDropsTrailerSection(t *testing.T) {
 	}
 	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader("POST / HTTP/1.1\r\nHost: example.com\r\n"+
 		"Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"+trailers.String()+"\r\n"))))
-	require.False(t, stripHopByHopRequestHeaders(req, true), "too many names to drop")
+	stripHopByHopRequestHeaders(req, true)
+	require.Empty(t, req.Header.PeekTrailerKeys(), "dropped whatever its size")
+	require.Empty(t, req.Header.PeekAll("X-0"))
 }
 
 // Test_Proxy_StreamedBodyTrailerSection checks that the trailer section of a streamed body
@@ -1025,10 +1028,15 @@ func Test_Proxy_StreamedBodyTrailerSection(t *testing.T) {
 	require.NoError(t, err)
 	startServer(app, ln)
 
-	for _, tc := range []struct{ head, forwarded string }{
+	var many strings.Builder
+	for i := range fieldname.MaxTrailers {
+		fmt.Fprintf(&many, "X-T%d: v\r\n", i)
+	}
+	for _, tc := range []struct{ head, forwarded, trailers string }{
 		{head: "", forwarded: `[]`},
 		{head: "X-User: admin\r\n", forwarded: `["admin"]`},
 		{head: "X-User: admin\r\nTrailer: X-User\r\n", forwarded: `["admin"]`},
+		{head: "X-User: admin\r\n", forwarded: `["admin"]`, trailers: many.String()},
 	} {
 		for path, want := range map[string]string{
 			"/forward": "body=hi header=" + tc.forwarded + " trailer=[]",
@@ -1039,7 +1047,7 @@ func Test_Proxy_StreamedBodyTrailerSection(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
 			_, err = conn.Write([]byte("POST " + path + " HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n" + head +
-				"Transfer-Encoding: chunked\r\n\r\n2\r\nhi\r\n0\r\nX-User: x\r\n\r\n"))
+				"Transfer-Encoding: chunked\r\n\r\n2\r\nhi\r\n0\r\n" + tc.trailers + "X-User: x\r\n\r\n"))
 			require.NoError(t, err)
 			resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 			require.NoError(t, err)

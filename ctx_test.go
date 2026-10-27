@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/shamaton/msgpack/v3"
@@ -3733,24 +3734,76 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 				}
 				return respond(c, body)
 			})
+			app.Post("/fields", func(c Ctx) error {
+				body := c.Body()
+				return c.SendString(fmt.Sprintf("body=%s client=%q host=%q", body, c.GetAll("X-Client"), c.Host()))
+			})
 			ln := startRawServer(t, app)
 
+			// Past the cap a request start refuses at: read with the body, the section is dropped whatever its size.
+			var many strings.Builder
+			for i := range fieldname.MaxTrailers {
+				fmt.Fprintf(&many, "X-%d: v\r\n", i)
+			}
 			const chunked = "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n"
 			for _, path := range []string{"/body", "/stream"} {
 				for _, head := range []string{"", "X-User: admin\r\nX-Role: admin\r\n", "X-User: admin\r\nTrailer: X-User, X-Role\r\n"} {
-					raw := "POST " + path + " HTTP/1.1\r\nHost: example.com\r\n" + head + chunked + "X-User: x\r\nX-Role: x\r\n\r\n"
-					responses, _ := rawExchange(t, ln, raw, 1)
-					require.Equal(t, StatusOK, responses[0].status, raw)
-					require.Equal(t, `body=hello user=["alice"] role=["user"] trailers=0`, responses[0].body, raw)
+					for _, extra := range []string{"", many.String()} {
+						raw := "POST " + path + " HTTP/1.1\r\nHost: example.com\r\n" + head + chunked + extra + "X-User: x\r\nX-Role: x\r\n\r\n"
+						responses, _ := rawExchange(t, ln, raw, 1)
+						require.Equal(t, StatusOK, responses[0].status, raw)
+						require.Equal(t, `body=hello user=["alice"] role=["user"] trailers=0`, responses[0].body, raw)
+					}
 				}
 			}
 
-			var trailers strings.Builder
-			for i := range 17 {
-				fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
+			// Too many names to drop one by one: every header field goes along, Host aside.
+			for extra, want := range map[string]string{"": `["c"]`, many.String(): `[]`} {
+				raw := "POST /fields HTTP/1.1\r\nHost: example.com\r\nX-Client: c\r\n" + chunked + extra + "X-User: x\r\n\r\n"
+				responses, _ := rawExchange(t, ln, raw, 1)
+				require.Equal(t, `body=hello client=`+want+` host="example.com"`, responses[0].body)
 			}
-			responses, _ := rawExchange(t, ln, "POST /stream HTTP/1.1\r\nHost: example.com\r\n"+chunked+trailers.String()+"\r\n", 1)
-			require.Equal(t, StatusRequestHeaderFieldsTooLarge, responses[0].status)
+		})
+	}
+}
+
+// Test_Ctx_BodyOfClosableStream checks that a stream handed to App.Handler is read, not closed: only the
+// server's own stream reads a trailer section, and wrapping another closed it before the handler read it.
+func Test_Ctx_BodyOfClosableStream(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Post("/", func(c Ctx) error {
+		return c.Send(c.Body())
+	})
+
+	for name, set := range map[string]func(*fasthttp.Request){
+		"stream writer": func(req *fasthttp.Request) {
+			req.SetBodyStreamWriter(func(w *bufio.Writer) {
+				_, err := w.WriteString("hello")
+				require.NoError(t, err)
+			})
+		},
+		"pipe": func(req *fasthttp.Request) {
+			r, w := io.Pipe()
+			go func() {
+				_, err := w.Write([]byte("hello"))
+				w.CloseWithError(err) //nolint:errcheck // CloseWithError always returns nil
+			}()
+			req.SetBodyStream(r, -1)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(MethodPost)
+			fctx.Request.SetRequestURI("/")
+			set(&fctx.Request)
+			app.Handler()(fctx)
+
+			require.Equal(t, StatusOK, fctx.Response.StatusCode())
+			require.Equal(t, "hello", string(fctx.Response.Body()))
 		})
 	}
 }

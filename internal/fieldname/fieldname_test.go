@@ -213,7 +213,7 @@ func Test_DropTrailers(t *testing.T) {
 				}
 				require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(tc.raw))))
 
-				require.True(t, DropTrailers(&req.Header))
+				DropTrailers(&req.Header)
 
 				require.Empty(t, req.Header.PeekTrailerKeys())
 				require.Empty(t, req.Header.Peek(fasthttp.HeaderTrailer))
@@ -230,23 +230,23 @@ func Test_DropTrailers(t *testing.T) {
 		}
 	}
 
-	t.Run("too many names", func(t *testing.T) {
+	t.Run("many names", func(t *testing.T) {
 		t.Parallel()
 
-		req := &fasthttp.Request{}
-		raw := post + "Trailer: " + strings.Repeat("X-A, ", maxTrailers) + "X-B\r\n" + chunked + "\r\n"
-		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
-		require.Len(t, req.Header.PeekTrailerKeys(), 2)
-		require.True(t, DropTrailers(&req.Header))
-
 		var trailers strings.Builder
-		for i := range maxTrailers + 1 {
+		for i := range MaxTrailers + 1 {
 			fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
 		}
-		req = &fasthttp.Request{}
-		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(post+chunked+trailers.String()+"\r\n"))))
-		require.False(t, DropTrailers(&req.Header))
-		require.Len(t, req.Header.PeekTrailerKeys(), maxTrailers+1)
+		req := &fasthttp.Request{}
+		raw := post + "X-0: header\r\n" + chunked + trailers.String() + "\r\n"
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+		require.Len(t, req.Header.PeekTrailerKeys(), MaxTrailers+1)
+
+		DropTrailers(&req.Header)
+
+		require.Empty(t, req.Header.PeekTrailerKeys())
+		require.Equal(t, [][]byte{[]byte("header")}, req.Header.PeekAll("X-0"))
+		require.Empty(t, req.Header.PeekAll("X-1"))
 	})
 }
 

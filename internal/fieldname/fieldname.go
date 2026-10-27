@@ -43,23 +43,16 @@ func HasTrailers(h Peeker) bool {
 	return len(h.PeekTrailerKeys()) > 0
 }
 
-// maxTrailers bounds the names DropTrailers takes on, since fasthttp's Del walks the whole header for each.
-const maxTrailers = 16
+// MaxTrailers is the most trailer names a request may carry into the handlers: DropTrailers walks the whole header
+// for each, so a caller that can still refuse the request does so above it.
+const MaxTrailers = 16
 
 // DropTrailers discards a request's trailer section and the names announced for it (RFC 9112 §7.1.2):
 // fasthttp files a later Set or Add under such a name with that section, out of the header readers' reach.
-// It reports false, leaving h as it is, for more than maxTrailers names.
-func DropTrailers(h *fasthttp.RequestHeader) bool {
-	if len(h.PeekTrailerKeys()) == 0 {
-		return true
-	}
-	return dropTrailerSection(h)
-}
-
-func dropTrailerSection(h *fasthttp.RequestHeader) bool {
+func DropTrailers(h *fasthttp.RequestHeader) {
 	keys := h.PeekTrailerKeys()
-	if len(keys) > maxTrailers {
-		return false
+	if len(keys) == 0 {
+		return
 	}
 	names := make([]string, len(keys))
 	for i, key := range keys {
@@ -80,7 +73,6 @@ func dropTrailerSection(h *fasthttp.RequestHeader) bool {
 	for i := 0; i < len(kept); i += 2 {
 		h.Add(kept[i], kept[i+1])
 	}
-	return true
 }
 
 // ReceivedLines returns name's field lines in received order, which the store loses whenever fasthttp moves

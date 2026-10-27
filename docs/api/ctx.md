@@ -1610,7 +1610,7 @@ The match is **case-insensitive**.
 :::
 
 :::note
-Only the header section is read. Fiber drops the trailer section of a request (the fields a chunked request sends after its last chunk) and the `Trailer` field announcing it as the request arrives, which [RFC 9112 Section 7.1.2](https://www.rfc-editor.org/rfc/rfc9112#section-7.1.2) permits, so `Get`, `GetAll`, `HasHeader` and the other request header helpers never return such a field, and a header your code writes under one of its names is returned like any other. A request that names more than 16 trailer fields is refused with `431 Request Header Fields Too Large`. With [`StreamRequestBody`](fiber.md#streamrequestbody), the trailer section arrives only at the end of the body, and Fiber drops it once the body has been read; reading such a body fails when its trailer section holds more than 16 fields.
+Only the header section is read. Fiber drops the trailer section of a request (the fields a chunked request sends after its last chunk) and the `Trailer` field announcing it as the request arrives, which [RFC 9112 Section 7.1.2](https://www.rfc-editor.org/rfc/rfc9112#section-7.1.2) permits, so `Get`, `GetAll`, `HasHeader` and the other request header helpers never return such a field, and a header your code writes under one of its names is returned like any other. A request that names more than 16 trailer fields before the handlers run is refused with `431 Request Header Fields Too Large`. With [`StreamRequestBody`](fiber.md#streamrequestbody), the trailer section arrives only at the end of the body, and Fiber drops it once the body has been read; one that names more than 16 fields takes every request header field but `Host` with it.
 :::
 
 ```go title="Signature"

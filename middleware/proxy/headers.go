@@ -54,13 +54,10 @@ func isForwardingHeader(name string) bool {
 // from req. Callers can pass header names in except to preserve specific
 // headers — used by the legacy KeepConnectionHeader option to retain the
 // literal Connection header while still dropping the other hop-by-hop
-// headers. It reports false for a trailer section too large to drop, see
-// fieldname.DropTrailers.
-func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except ...string) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
+// headers.
+func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except ...string) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	// A streamed body can have read a trailer section by now, which removing Trailer below would make header lines.
-	if !fieldname.DropTrailers(&req.Header) {
-		return false
-	}
+	fieldname.DropTrailers(&req.Header)
 
 	// Headers listed in Connection must be removed first so the listing is
 	// honored before the Connection field itself is dropped. A walk of its
@@ -80,7 +77,6 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 		}
 		fieldname.Del(&req.Header, h, normalized)
 	}
-	return true
 }
 
 // stripHopByHopResponseHeaders applies the same filtering on the way back.
