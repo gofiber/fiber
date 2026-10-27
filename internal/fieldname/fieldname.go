@@ -235,17 +235,17 @@ func DelSet(h Deleter, names []string) {
 
 // DelSetWithin is DelSet for a caller bounding the work: each distinct spelling
 // found costs a scan of every line, so it deletes none and reports false when
-// there are more than limit.
-func DelSetWithin(h Deleter, names []string, limit int) bool {
+// there are more than one per name plus spare.
+func DelSetWithin(h Deleter, names []string, spare int) bool {
 	var removed []string
 	// Called rather than ranged: the range form heap-allocates its loop state too.
 	h.All()(func(k, _ []byte) bool {
 		if ks := utils.UnsafeString(k); ContainsFold(names, ks) && !slices.Contains(removed, ks) {
 			removed = append(removed, string(k))
 		}
-		return len(removed) <= limit
+		return len(removed)-len(names) <= spare
 	})
-	if len(removed) > limit {
+	if len(removed)-len(names) > spare {
 		return false
 	}
 

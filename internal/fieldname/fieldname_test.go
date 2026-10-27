@@ -228,10 +228,10 @@ func Test_DelSetWithin_Limit(t *testing.T) {
 	h := rawResponseHeader(lines...)
 	names := []string{"Upgrade", "TE"}
 
-	require.False(t, DelSetWithin(h, names, 2))
+	require.False(t, DelSetWithin(h, names, 0))
 	require.Zero(t, h.dels)
 
-	require.True(t, DelSetWithin(h, names, 3))
+	require.True(t, DelSetWithin(h, names, 1))
 	require.Equal(t, 3, h.dels)
 	require.Empty(t, Lines(h, "Upgrade", false))
 	require.Empty(t, Lines(h, "TE", false))

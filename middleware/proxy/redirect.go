@@ -78,11 +78,11 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 					carryFormBody(hop, req)
 				}
 			}
-			if changesMethod {
-				redirectRequest(hop)
+			if changesMethod && !redirectRequest(hop) {
+				return fiber.ErrRequestHeaderFieldsTooLarge
 			}
-			if crossOrigin {
-				crosshost.Strip(&hop.Header, crosshost.NewHeaderNames(policy.RedirectSensitiveHeaders))
+			if crossOrigin && !crosshost.StripWithin(&hop.Header, crosshost.NewHeaderNames(policy.RedirectSensitiveHeaders), maxConnectionOptions) {
+				return fiber.ErrRequestHeaderFieldsTooLarge
 			}
 		}
 		currentURL = nextURL
@@ -152,8 +152,9 @@ var contentFields = []string{
 }
 
 // redirectRequest rewrites req, a hop's private copy, as a GET without the body and the fields that
-// framed or described it.
-func redirectRequest(req *fasthttp.Request) {
+// framed or described it. It reports false when those are spelled in more than maxConnectionOptions
+// further ways, as fieldname.DelSetWithin counts them.
+func redirectRequest(req *fasthttp.Request) bool {
 	req.Header.SetMethod(fasthttp.MethodGet)
 	req.ResetBody()
 	// A form the handler already read lives on in the post args, which fasthttp
@@ -163,7 +164,7 @@ func redirectRequest(req *fasthttp.Request) {
 	req.Header.Del(fasthttp.HeaderContentLength)
 	req.Header.Del(fasthttp.HeaderTransferEncoding)
 	req.Header.Del(fasthttp.HeaderTrailer)
-	fieldname.DelSet(&req.Header, contentFields)
+	return fieldname.DelSetWithin(&req.Header, contentFields, maxConnectionOptions)
 }
 
 // resolveRedirect parses a redirect target relative to the current URL

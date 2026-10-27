@@ -3,6 +3,7 @@
 package crosshost
 
 import (
+	"math"
 	"slices"
 
 	"github.com/gofiber/fiber/v3/internal/fieldname"
@@ -53,9 +54,15 @@ func (n HeaderNames) Join(other HeaderNames) HeaderNames {
 
 // Strip removes SensitiveHeaders and extra from h, whatever case they are stored under.
 func Strip(h fieldname.Deleter, extra HeaderNames) {
+	StripWithin(h, extra, math.MaxInt)
+}
+
+// StripWithin is Strip bounded as fieldname.DelSetWithin is: it removes none and
+// reports false when h spells the names in more than spare further ways.
+func StripWithin(h fieldname.Deleter, extra HeaderNames, spare int) bool {
 	names := SensitiveHeaders
 	if len(extra.names) > 0 {
 		names = slices.Concat(SensitiveHeaders, extra.names)
 	}
-	fieldname.DelSet(h, names)
+	return fieldname.DelSetWithin(h, names, spare)
 }

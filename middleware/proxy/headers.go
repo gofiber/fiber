@@ -51,8 +51,8 @@ func isForwardingHeader(name string) bool {
 }
 
 // maxConnectionOptions bounds the names a message may list in Connection plus
-// the other spellings of a removed name that a raw store holds, here and in
-// setRealIP: each costs a scan of every header and trailer line.
+// the other spellings of a removed name that a raw store holds, here, in
+// setRealIP and on a redirect: each costs a scan of every header and trailer line.
 const maxConnectionOptions = 32
 
 // stripHopByHopRequestHeaders removes RFC 9110 §7.6.1 hop-by-hop headers
@@ -112,8 +112,7 @@ func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) bool
 			}
 		}
 	}
-	// Each name's own spelling is free, as it is in DelWithin.
-	if budget < 0 || !fieldname.DelSetWithin(&res.Header, names, len(names)+budget) {
+	if budget < 0 || !fieldname.DelSetWithin(&res.Header, names, budget) {
 		// Partly stripped, so none of the upstream's fields go out with the 502.
 		res.Reset()
 		return false

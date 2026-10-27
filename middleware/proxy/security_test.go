@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/stretchr/testify/require"
@@ -1638,6 +1639,53 @@ func Test_Security_FollowRedirects_RedirectSensitiveHeadersWhateverTheirCase(t *
 	require.NoError(t, err)
 
 	require.Equal(t, []int{2, 0}, lines)
+}
+
+// Test_Security_FollowRedirects_SpellingLimit pins that under DisableNormalizing a hop is refused, not
+// sent, when the fields it drops are spelled in more ways than one per name plus maxConnectionOptions.
+func Test_Security_FollowRedirects_SpellingLimit(t *testing.T) {
+	t.Parallel()
+
+	const start = "http://first.example/start"
+	for name, tc := range map[string]struct {
+		location string
+		field    string
+		names    int
+		status   int
+	}{
+		"303 drops the content fields": {
+			status: fasthttp.StatusSeeOther, location: "http://first.example/next", field: "content-language", names: len(contentFields),
+		},
+		"another origin drops the credentials": {
+			status: fasthttp.StatusTemporaryRedirect, location: "http://second.example/next", field: "authorization", names: len(crosshost.SensitiveHeaders),
+		},
+	} {
+		for _, over := range []int{0, 1} {
+			t.Run(name+"/"+strconv.Itoa(over), func(t *testing.T) {
+				t.Parallel()
+
+				var reached bool
+				_, err := followRecordingPolicy(t, redirectTestPolicy(), start, map[string]redirectStep{
+					start: {status: tc.status, location: tc.location},
+				}, func(req *fasthttp.Request) {
+					req.Header.DisableNormalizing()
+					req.Header.SetMethod(fasthttp.MethodPost)
+					for _, k := range caseSpellings(tc.field, tc.names+maxConnectionOptions+over) {
+						req.Header.Add(k, "v")
+					}
+				}, func(req *fasthttp.Request) {
+					reached = reached || string(req.URI().Path()) == "/next"
+				})
+				if over == 0 {
+					require.NoError(t, err)
+					require.True(t, reached)
+					return
+				}
+				require.ErrorIs(t, err, fiber.ErrRequestHeaderFieldsTooLarge)
+				require.False(t, reached)
+			})
+		}
+	}
 }
 
 // Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart pins that a copied hop keeps the body
