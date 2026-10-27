@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -1134,4 +1135,89 @@ func Test_Middleware_EncryptionError_Removes_Every_SetCookie_Line(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Equal(t, []string{"plain=one; Path=/a", "plain=two; Path=/b"}, resp.Header.Values(fiber.HeaderSetCookie))
+}
+
+func Test_Middleware_Request_Cookies_Linear(t *testing.T) {
+	t.Parallel()
+	const n = 1 << 16
+	errRefused := errors.New("refused")
+
+	// A cheap Decryptor leaves the middleware's own bookkeeping as the cost
+	app := fiber.New()
+	app.Use(New(Config{
+		Key:    GenerateKey(32),
+		Except: []string{"plain"},
+		Decryptor: func(name, value, _ string) (string, error) {
+			if name == "token" {
+				return value, nil
+			}
+			return "", errRefused
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(c.Cookies("plain") + "|" + c.Cookies("token"))
+	})
+	h := app.Handler()
+
+	parts := make([]string, n)
+	for i := range parts {
+		parts[i] = "c" + strconv.Itoa(i) + "="
+	}
+	refused := strings.Join(parts, "; ") + "; "
+
+	testCases := []struct {
+		name    string
+		cookies string
+		entries int
+	}{
+		{name: "refused names", cookies: refused + "plain=one; token=v", entries: 2},
+		{name: "refused names before a repeated excepted name", cookies: refused + strings.Repeat("plain=one; ", n) + "token=v", entries: n + 1},
+		{name: "repeated name behind others", cookies: strings.Repeat("plain=one; ", n) + strings.Repeat("token=v; ", n), entries: n + 1},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := &fasthttp.RequestCtx{}
+			ctx.Request.Header.SetMethod(fiber.MethodGet)
+			ctx.Request.Header.Set(fiber.HeaderCookie, tc.cookies)
+
+			start := time.Now()
+			h(ctx)
+			// A walk of the list per cookie is n*n/2 steps, which takes many seconds
+			require.Less(t, time.Since(start), 10*time.Second)
+
+			require.Equal(t, "one|v", string(ctx.Response.Body()))
+			entries := 0
+			for range ctx.Request.Header.Cookies() {
+				entries++
+			}
+			require.Equal(t, tc.entries, entries)
+		})
+	}
+}
+
+func Benchmark_Middleware_Request_Cookies_Refused(b *testing.B) {
+	app := fiber.New()
+	app.Use(New(Config{Key: GenerateKey(32)}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("value=" + c.Cookies("test"))
+	})
+	h := app.Handler()
+
+	// 1000 distinct names that do not decrypt fit the default 8 KB ReadBufferSize
+	parts := make([]string, 1000)
+	for i := range parts {
+		parts[i] = "c" + strconv.Itoa(i) + "=x"
+	}
+	cookies := strings.Join(parts, "; ")
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(cookies)))
+	for b.Loop() {
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Request.Header.SetMethod(fiber.MethodGet)
+		ctx.Request.Header.Set(fiber.HeaderCookie, cookies)
+		h(ctx)
+	}
 }

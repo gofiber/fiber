@@ -98,6 +98,8 @@ type requestCookie struct {
 func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 	header := &c.Request().Header
 	cookies := make([]requestCookie, 0, 8)
+	// A scan of cookies per entry would be quadratic in what the client sends
+	seen := make(map[string]struct{})
 	rebuild := false
 
 	for key, value := range header.Cookies() {
@@ -106,7 +108,7 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 			cookies = append(cookies, requestCookie{name: name, value: string(value), except: true, keep: true})
 			continue
 		}
-		if hasCookieName(cookies, name) {
+		if _, ok := seen[name]; ok {
 			// The name already has its value; a later duplicate is dropped
 			// without decrypting it.
 			rebuild = true
@@ -119,6 +121,7 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 			cookies = append(cookies, requestCookie{name: name})
 			continue
 		}
+		seen[name] = struct{}{}
 		cookies = append(cookies, requestCookie{name: name, value: decrypted, keep: true})
 	}
 
@@ -132,40 +135,21 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 	}
 
 	header.DelAllCookies()
+	clear(seen)
 	for i := range cookies {
 		ck := &cookies[i]
-		switch {
-		case !ck.keep:
+		if !ck.keep {
 			continue
-		case ck.except && hasExceptedName(cookies[:i], ck.name):
-			// SetCookie would overwrite the entry already written for this
-			// name. Add appends a Cookie entry and keeps the existing ones, so
-			// a repeated excepted name survives as it arrived.
+		}
+		if _, ok := seen[ck.name]; ok {
+			// Only an excepted name repeats here. SetCookie would overwrite the
+			// entry already written; Add appends one, so it survives as it arrived.
 			header.Add(fiber.HeaderCookie, ck.name+"="+ck.value)
-		default:
-			// The name is absent after DelAllCookies, so SetCookie appends the
-			// entry in order and stores the value verbatim.
-			header.SetCookie(ck.name, ck.value)
+			continue
 		}
+		seen[ck.name] = struct{}{}
+		// The name is absent after DelAllCookies, so SetCookie appends the
+		// entry in order and stores the value verbatim.
+		header.SetCookie(ck.name, ck.value)
 	}
-}
-
-// hasCookieName reports whether cookies holds a kept, non-excepted entry named name.
-func hasCookieName(cookies []requestCookie, name string) bool {
-	for i := range cookies {
-		if cookies[i].keep && !cookies[i].except && cookies[i].name == name {
-			return true
-		}
-	}
-	return false
-}
-
-// hasExceptedName reports whether cookies holds an excepted entry named name.
-func hasExceptedName(cookies []requestCookie, name string) bool {
-	for i := range cookies {
-		if cookies[i].except && cookies[i].name == name {
-			return true
-		}
-	}
-	return false
 }
