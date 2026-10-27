@@ -2864,3 +2864,26 @@ func Test_Static_Browse_LinksFollowRoutedPath(t *testing.T) {
 		}
 	}
 }
+
+// Test_Static_Browse_ParameterPrefixControlByte pins that a listing refuses a
+// parameter prefix with a control byte, which a browser drops from a link.
+func Test_Static_Browse_ParameterPrefixControlByte(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "pub"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "pub", "a.txt"), []byte("A"), 0o600))
+
+	for route, rest := range map[string]string{"/:lang/*": "/pub/", "/:a/:b/*": "/evil.example/"} {
+		app := fiber.New(fiber.Config{UnescapePath: true})
+		app.Get(route, New(root, Config{Browse: true}))
+		h := app.Handler()
+
+		require.Equal(t, fiber.StatusOK, serveRaw(h, fiber.MethodGet, "/en"+rest).StatusCode(), route)
+		for _, escape := range []string{"%09", "%0A", "%0D", "%00", "%7F"} {
+			for _, target := range []string{"/" + escape + rest, "/e" + escape + "n" + rest} {
+				require.Equal(t, fiber.StatusNotFound, serveRaw(h, fiber.MethodGet, target).StatusCode(), "route=%s target=%s", route, target)
+			}
+		}
+	}
+}

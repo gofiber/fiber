@@ -148,13 +148,13 @@ func (s *fileServer) requestPath(dst []byte, p string, end int) ([]byte, bool) {
 }
 
 // plainPrefix reports whether prefix, the routed path before the name on a parameter
-// route, has no empty segment and, for a listing, nothing fasthttp would decode: it
-// writes the links from the prefix decoded twice.
+// route, has no empty segment and, for a listing, nothing fasthttp would decode or a
+// browser would drop: it writes the links from the prefix decoded twice.
 func (s *fileServer) plainPrefix(prefix string) bool {
 	if prefix[len(prefix)-1] == '/' || strings.Contains(prefix, "//") {
 		return false
 	}
-	return !s.browse || !strings.ContainsAny(prefix, `%\?#`)
+	return !s.browse || (!strings.ContainsAny(prefix, `%\?#`) && utils.IndexControl(prefix) < 0)
 }
 
 // namesFile reports whether p, a path for the file server without its
@@ -247,7 +247,8 @@ func New(root string, cfg ...Config) fiber.Handler {
 			fsRootPrefix = append([]byte{'/'}, root...)
 		}
 
-		// a listing links below the prefix, which the cache key leaves out
+		// a listing links below the prefix, which the cache key leaves out; fasthttp
+		// can only skip its whole cache, so files on such a route are not cached either
 		skipCache := config.CacheDuration < 0 || (config.Browse && wildcard != "")
 
 		files := &fasthttp.FS{
