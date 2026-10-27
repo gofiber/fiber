@@ -1623,6 +1623,8 @@ The `Expiration` field in the CSRF middleware configuration has been renamed to 
 
 CSRF now redacts tokens and storage keys by default and exposes a `DisableValueRedaction` toggle (default `false`) if you must surface those values in diagnostics.
 
+With a `Storage`, a token is stored under `csrf:<token>`, so a token sent by a client cannot read, extend or delete an entry another middleware keeps in the same storage. Tokens stored by an earlier version are not found after the upgrade: an unsafe request that still carries one is rejected, and the next safe request receives a new token.
+
 The CSRF middleware now validates the [`Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site) header for unsafe HTTP methods. When present, requests with invalid `Sec-Fetch-Site` values (not one of "same-origin", "none", "same-site", or "cross-site") are rejected with `ErrFetchSiteInvalid`. Valid or absent headers proceed to standard origin and token validation checks, providing an early gate to catch malformed requests while maintaining compatibility with legitimate cross-site traffic.
 
 `csrf.NewCrossOriginProtection` adds a tokenless alternative that follows Go's [`net/http.CrossOriginProtection`](https://pkg.go.dev/net/http#CrossOriginProtection). It rejects unsafe cross-origin browser requests by their `Sec-Fetch-Site` and `Origin` headers and needs no cookie, token, or storage. See [Cross-Origin Protection Without Tokens](./middleware/csrf.md#cross-origin-protection-without-tokens) for the rules and the differences from `net/http`.
@@ -1886,7 +1888,7 @@ Custom limiter algorithms should now implement the updated `limiter.Handler` int
 
 Limiter now redacts request keys in error paths by default. A new `DisableValueRedaction` boolean (default `false`) lets you reveal the limiter key, as the storage sees it, if diagnostics require it.
 
-A custom `Storage` is handed a copy of the key the `KeyGenerator` returned, one allocation per request: the key can point into request memory that fasthttp reuses, and the storage may keep it. The built-in store copies the keys it keeps, so nothing changes there.
+A custom `Storage` keeps an entry under `limiter:` followed by the key the `KeyGenerator` returned, so a key a client controls cannot reach an entry another middleware keeps in the same storage. Building that key copies it, one allocation per request: the key can point into request memory that fasthttp reuses, and the storage may keep it. The built-in store copies the keys it keeps, so nothing changes there. Counters stored by an earlier version are not read after the upgrade, so every window starts over once.
 
 :::note
 Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `Expiration`, `Storage`, and `KeyGenerator` instead.
@@ -1941,6 +1943,8 @@ The session middleware has undergone significant improvements in v3, focusing on
 - **Context-Aware Lifecycle Methods**: The `DestroyWithContext`, `RegenerateWithContext`, and `ResetWithContext` methods (on both `Session` and `Middleware`), and `SaveWithContext` (on `Session`, since the middleware saves the session itself), accept a `context.Context` to propagate cancellation and deadlines to the underlying storage I/O, mirroring the existing `Storage` and `SharedState` `WithContext` convention. The non-context variants delegate to these. A nil context is treated as `context.Background()`.
 
 - **Session ID Write-Back**: When a request already carries a session ID, the ID is written back only through the extractor that supplied it, and only when that extractor is a cookie or a non-Authorization header. An ID from a read-only source (Authorization header, Query, Form, Param, or Custom) is never copied into a cookie or header, which prevents session fixation. A request without an ID gets a server-generated one through every cookie and non-Authorization header extractor of the chain. When the middleware issues a new ID for a request that carried one, because of `Regenerate()`, `Reset()`, or an ID the storage does not know, the new ID goes back through the same cookie or header, or through every such extractor of the chain when the old ID came from a read-only source. An extractor error other than `extractors.ErrNotFound` is passed to `ErrorHandler` instead of being treated as a new visitor.
+
+- **Storage Key Prefix**: Sessions are stored under `session:<session ID>` instead of the bare ID, so a session ID from a request cannot name an entry another middleware keeps in the same `Storage`. `store.GetByID` and `store.Delete` still take the bare ID. Sessions an earlier version stored are not found after the upgrade, so users sign in once more.
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 

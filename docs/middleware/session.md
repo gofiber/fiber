@@ -430,6 +430,8 @@ app.Use(session.New(session.Config{
 }))
 ```
 
+A session is stored under `session:<session ID>`, so a session ID sent by a client cannot name an entry another middleware keeps in the same `Storage`. `store.GetByID` and `store.Delete` take the bare session ID. `store.Reset` clears the whole `Storage`, the entries of other middleware included.
+
 ### Production Security Settings
 
 ```go

@@ -222,7 +222,7 @@ func (s *Session) DestroyWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	// Use external Storage if exist
-	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
+	if err := s.config.Storage.DeleteWithContext(ctx, storageKeyPrefix+s.id); err != nil {
 		return err
 	}
 
@@ -267,7 +267,7 @@ func (s *Session) RegenerateWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	// Delete old id from storage
-	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
+	if err := s.config.Storage.DeleteWithContext(ctx, storageKeyPrefix+s.id); err != nil {
 		return err
 	}
 
@@ -308,7 +308,7 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	// Delete old id from storage
-	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
+	if err := s.config.Storage.DeleteWithContext(ctx, storageKeyPrefix+s.id); err != nil {
 		return err
 	}
 
@@ -407,7 +407,7 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	// Unchanged since the decode: write the snapshot back so the idle timeout still
 	// slides. Lock-free is enough; dirty is set before the mutation it reports.
 	if s.rawData != nil && !s.data.dirty.Load() {
-		return s.config.Storage.SetWithContext(ctx, s.id, s.rawData, s.idleTimeout)
+		return s.config.Storage.SetWithContext(ctx, storageKeyPrefix+s.id, s.rawData, s.idleTimeout)
 	}
 
 	// Encode session data
@@ -419,7 +419,7 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	}
 
 	// Pass copied bytes with session id to provider
-	return s.config.Storage.SetWithContext(ctx, s.id, encodedBytes, s.idleTimeout)
+	return s.config.Storage.SetWithContext(ctx, storageKeyPrefix+s.id, encodedBytes, s.idleTimeout)
 }
 
 // Keys retrieves all keys in the current session.

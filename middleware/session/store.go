@@ -13,6 +13,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/utils/v2"
 )
 
 // ErrEmptySessionID is an error that occurs when the session ID is empty.
@@ -66,6 +67,10 @@ func (b *provenanceBox) Close() error {
 	provenancePool.Put(b)
 	return nil
 }
+
+// storageKeyPrefix keeps sessions apart from other middleware sharing the Storage:
+// the ID comes from the request, so a bare one could name any of their entries.
+const storageKeyPrefix = "session:"
 
 // Store manages session data using the configured storage backend.
 type Store struct {
@@ -185,13 +190,16 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 
 	// Attempt to fetch session data if an ID is provided
 	if id != "" {
-		rawData, err = s.Storage.GetWithContext(c, id)
+		rawData, err = s.Storage.GetWithContext(c, storageKeyPrefix+id)
 		if err != nil {
 			return nil, err
 		}
 		if rawData == nil {
 			// Data not found, prepare to generate a new session
 			id = ""
+		} else {
+			// The extracted ID points into the request buffer the next request reuses.
+			id = utils.CopyString(id)
 		}
 	}
 
@@ -311,7 +319,7 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	if id == "" {
 		return ErrEmptySessionID
 	}
-	return s.Storage.DeleteWithContext(ctx, id)
+	return s.Storage.DeleteWithContext(ctx, storageKeyPrefix+id)
 }
 
 // GetByID retrieves a session by its ID from the storage.
@@ -352,7 +360,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 		return nil, ErrEmptySessionID
 	}
 
-	rawData, err := s.Storage.GetWithContext(ctx, id)
+	rawData, err := s.Storage.GetWithContext(ctx, storageKeyPrefix+id)
 	if err != nil {
 		return nil, err
 	}
@@ -365,7 +373,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 	sess.mu.Lock()
 
 	sess.config = s
-	sess.id = id
+	sess.id = utils.CopyString(id) // the caller may pass a view of the request, such as c.Cookies
 	sess.isFresh = false
 
 	sess.data.Lock()

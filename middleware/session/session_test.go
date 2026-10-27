@@ -1796,7 +1796,7 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 	sessionID := uuid.New().String()
 
 	// Store invalid session data to simulate decode error
-	err := store.Storage.Set(sessionID, []byte("invalid data"), 0)
+	err := store.Storage.Set(storageKeyPrefix+sessionID, []byte("invalid data"), 0)
 	require.NoError(t, err, "Failed to set invalid session data")
 
 	// Create a new request context
@@ -2457,7 +2457,7 @@ func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 
 	written := rec.writes()
 	require.Len(t, written, 1, "a clean save must still write to storage")
-	require.Equal(t, id, written[0].key)
+	require.Equal(t, storageKeyPrefix+id, written[0].key)
 	require.Equal(t, seeded[0].value, written[0].value, "the retained snapshot must be written back verbatim")
 	require.Equal(t, idleTimeout, written[0].exp, "a clean save must slide the idle timeout")
 
@@ -2700,7 +2700,7 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 
 		written := rec.writes()
 		require.Len(t, written, 1)
-		require.Equal(t, id, written[0].key)
+		require.Equal(t, storageKeyPrefix+id, written[0].key)
 		require.NotContains(t, string(written[0].value), "bypassed")
 	})
 }

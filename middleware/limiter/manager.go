@@ -99,6 +99,18 @@ func (m *manager) copiesKeys() bool {
 	return m.storage == nil
 }
 
+// storagePrefix keeps the limiter's entries apart from other middleware sharing the Storage.
+const storagePrefix = "limiter:"
+
+// entryKey is the key get and set take: bounded, and for an external Storage namespaced
+// in a fresh string, so a Storage that keeps it holds no view of the request.
+func (m *manager) entryKey(key string) string {
+	if m.storage != nil {
+		return storagePrefix + boundKey(key)
+	}
+	return boundKey(key)
+}
+
 // acquire returns an *item from the sync.Pool
 func (m *manager) acquire() *item {
 	return m.pool.Get().(*item) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
@@ -114,7 +126,6 @@ func (m *manager) release(e *item) {
 
 // get data from storage or memory
 func (m *manager) get(ctx context.Context, key string) (*item, error) {
-	key = boundKey(key)
 	if m.storage != nil {
 		raw, err := m.storage.GetWithContext(ctx, key)
 		if err != nil {
@@ -146,7 +157,6 @@ func (m *manager) get(ctx context.Context, key string) (*item, error) {
 
 // set data to storage or memory
 func (m *manager) set(ctx context.Context, key string, it *item, exp time.Duration) error {
-	key = boundKey(key)
 	if m.storage != nil {
 		raw, err := it.MarshalMsg(nil)
 		if err != nil {
