@@ -2999,6 +2999,7 @@ func Test_Session_RegenerateAfterConcurrentEnd(t *testing.T) {
 			inFlight := loadSession(t, app, store, id)
 			holder := tc.end(t, app, store, id)
 			require.NoError(t, inFlight.Regenerate())
+			require.NotEqual(t, id, inFlight.ID())
 			require.NoError(t, inFlight.Save())
 
 			_, err := store.GetByID(t.Context(), id)
@@ -3020,4 +3021,37 @@ func Test_Session_RegenerateAfterConcurrentEnd(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Another instance sharing the Storage can write the ended ID back before the
+// save, so a login must not land on the old, possibly planted ID.
+//
+// go test -run Test_Session_RegenerateAfterConcurrentEnd_OldIDWrittenBack
+func Test_Session_RegenerateAfterConcurrentEnd_OldIDWrittenBack(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	storage := memory.New()
+	store := NewStore(Config{Storage: storage})
+	id := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("visitor", true)
+	})
+	raw, err := storage.Get(storageKeyPrefix + id)
+	require.NoError(t, err)
+
+	inFlight := loadSession(t, app, store, id)
+	require.NoError(t, store.Delete(t.Context(), id))
+	require.NoError(t, inFlight.Regenerate())
+	require.NoError(t, storage.Set(storageKeyPrefix+id, raw, 0))
+	inFlight.Set("user", "victim")
+	require.NoError(t, inFlight.Save())
+
+	require.NotEqual(t, id, inFlight.ID())
+	require.Empty(t, inFlight.ctx.Response().Header.Peek(fiber.HeaderSetCookie))
+	old, err := store.GetByID(t.Context(), id)
+	require.NoError(t, err)
+	defer old.Release()
+	require.Nil(t, old.Get("user"))
+	_, err = store.GetByID(t.Context(), inFlight.ID())
+	require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
 }

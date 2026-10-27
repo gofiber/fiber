@@ -1949,7 +1949,7 @@ The session middleware has undergone significant improvements in v3, focusing on
 
 - **Storage Key Prefix**: Sessions are stored under `session:<session ID>` instead of the bare ID, so a session ID from a request cannot name an entry another middleware keeps in the same `Storage`. `store.GetByID` and `store.Delete` still take the bare ID. Sessions an earlier version stored are not found after the upgrade, so users sign in once more.
 
-- **Logout Holds Against Running Requests**: A request that loaded a session before another request ended it with `Reset()`, `Destroy()` or `Regenerate()`, or before `store.Delete` or `store.Reset`, no longer stores it again or sends its cookie when it finishes, even after a `Regenerate()` of its own, so a logout is not undone by a request that was still running. Within one process, saves and deletes of the same session ID are serialized; processes that share one `Storage` are not coordinated, as `fiber.Storage` has no conditional write.
+- **Logout Holds Against Running Requests**: A request that loaded a session before another request ended it with `Reset()`, `Destroy()` or `Regenerate()`, or before `store.Delete` or `store.Reset`, no longer stores it again or sends its cookie when it finishes, even after a `Regenerate()` of its own, which still changes the ID but neither stores nor sends the new one, so a logout is not undone by a request that was still running. Within one process, saves and deletes of the same session ID are serialized; processes that share one `Storage` are not coordinated, as `fiber.Storage` has no conditional write.
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 

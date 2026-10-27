@@ -31,6 +31,7 @@ type Session struct {
 	mu          sync.RWMutex      // Mutex to protect non-data fields
 	isFresh     bool              // if new session
 	loaded      bool              // the data was read from storage under the current id
+	dropped     bool              // another request ended or rotated it: never stored or sent again
 }
 
 type absExpirationKeyType int
@@ -104,6 +105,7 @@ func releaseSession(s *Session) {
 	s.extractor = extractors.Result{}
 	s.rawData = nil
 	s.loaded = false
+	s.dropped = false
 	if s.data != nil {
 		s.data.Reset()
 	}
@@ -283,9 +285,10 @@ func (s *Session) RegenerateWithContext(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// Another request ended or rotated it: the stale copy's save then stores nothing and sends no cookie.
+	// Another request ended or rotated it: still rotate, as another instance may write
+	// the old ID back, but store and send nothing.
 	if ended {
-		return nil
+		s.dropped = true
 	}
 
 	// Generate a new session, and set session.isFresh to true
@@ -422,6 +425,10 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if s.dropped {
+		return nil
+	}
 
 	// Set idleTimeout if not already set
 	if s.idleTimeout <= 0 {
