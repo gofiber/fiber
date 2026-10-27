@@ -214,8 +214,8 @@ func Test_Proxy_Balancer_RejectsHostUserinfo(t *testing.T) {
 }
 
 // Test_Proxy_Balancer_AbsoluteFormHost pins that the upstream is addressed by
-// the host c.Host() and the host checks went by: for an absolute-form line
-// that is the line's, not the received Host (RFC 9112 Section 3.2.2).
+// the host c.Host() and the host checks went by: an absolute-form line naming
+// another host than the Host field is refused (RFC 9112 Sections 3.2, 3.2.2).
 func Test_Proxy_Balancer_AbsoluteFormHost(t *testing.T) {
 	t.Parallel()
 	addr := echoIdentity(t)
@@ -229,31 +229,37 @@ func Test_Proxy_Balancer_AbsoluteFormHost(t *testing.T) {
 	app.Use(Balancer(Config{Servers: []string{addr}}))
 
 	for _, tc := range []struct{ target, host, want string }{
-		{"http://public.example/x", "internal.example", "/x|public.example|"},
-		{"http://PUBLIC.example:8080/x?q=1", "internal.example", "/x?q=1|public.example:8080|"},
-		{"https://u:pw@public.example/x", "internal.example", "/x|public.example|"},
-		{"//public.example/a?x=://", "internal.example", "/a?x=://|public.example|"},
-		{"http://public.example/x", "svc:pw@internal.example", "/x|public.example|"},
+		{"http://public.example/x", "internal.example", ""},
+		{"http://public.example:8080/x", "public.example", ""},
+		{"https://u:pw@public.example/x", "internal.example", ""},
+		{"//public.example/a?x=://", "internal.example", ""},
+		{"http://public.example/x", "svc:pw@public.example", ""},
+		{"http:///x", "internal.example", ""},
+		{"http://public.example/x", "", ""},
+		{"http://PUBLIC.example:8080/x?q=1", "Public.Example:8080", "/x?q=1|public.example:8080|"},
+		{"https://u:pw@public.example/x", "public.example", "/x|public.example|"},
+		{"//public.example/a?x=://", "public.example", "/a?x=://|public.example|"},
 		{"/x", "internal.example", "/x|internal.example|"},
 	} {
 		resp := rawRequest(t, app, tc.target, tc.host)
+		if tc.want == "" {
+			require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), tc.target)
+			continue
+		}
 		require.Equal(t, fiber.StatusOK, resp.StatusCode(), tc.target)
 		require.Equal(t, tc.want, string(resp.Body()), tc.target)
 		require.Contains(t, tc.want, "|"+routed+"|", tc.target)
 	}
-	require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, "http:///x", "internal.example").StatusCode())
 
-	// A Host set in ModifyRequest still wins, and one set before the handler
-	// is kept for an origin-form line.
+	// A Host set before the handler is kept, and no request line replaces it.
 	pinned := fiber.New()
 	pinned.Use(func(c fiber.Ctx) error {
 		c.Request().Header.SetHost("early.internal")
 		return c.Next()
 	})
-	pinned.Use("/late", Balancer(Config{Servers: []string{addr}, ModifyRequest: pinIdentity}))
 	pinned.Use(Balancer(Config{Servers: []string{addr}}))
-	require.Equal(t, "/late|backend.internal|Bearer pinned", string(rawRequest(t, pinned, "http://public.example/late", "internal.example").Body()))
 	require.Equal(t, "/x|early.internal|", string(rawRequest(t, pinned, "/x", "public.example").Body()))
+	require.Equal(t, fiber.StatusBadRequest, rawRequest(t, pinned, "http://other.internal/x", "public.example").StatusCode())
 }
 
 // go test -run Test_Proxy_Balancer_RejectsNonOriginServer
