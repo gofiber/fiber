@@ -238,14 +238,13 @@ func DelSet(h Deleter, names []string) {
 // there are more than limit.
 func DelSetWithin(h Deleter, names []string, limit int) bool {
 	var removed []string
-	for k := range h.All() {
+	// Called rather than ranged: the range form heap-allocates its loop state too.
+	h.All()(func(k, _ []byte) bool {
 		if ks := utils.UnsafeString(k); ContainsFold(names, ks) && !slices.Contains(removed, ks) {
 			removed = append(removed, string(k))
-			if len(removed) > limit {
-				break
-			}
 		}
-	}
+		return len(removed) <= limit
+	})
 	if len(removed) > limit {
 		return false
 	}
