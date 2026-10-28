@@ -1573,17 +1573,33 @@ func Test_Ctx_Body_StreamedBodyLimit(t *testing.T) {
 	}
 }
 
-func Test_Ctx_Body_StreamedBodyLimit_KeepsWrittenResponse(t *testing.T) {
+func Test_Ctx_Body_BodyLimit_KeepsWrittenResponse(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{StreamRequestBody: true, BodyLimit: 1024})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	c.Request().SetBodyStream(strings.NewReader(strings.Repeat("a", 4096)), -1)
-	require.NoError(t, c.SendString("ok"))
-	require.Equal(t, fasthttp.ErrBodyTooLarge.Error(), string(c.Body()))
-	require.Equal(t, StatusOK, c.Response().StatusCode())
-	require.Equal(t, "ok", string(c.Response().Body()))
+	for _, tc := range []struct {
+		encoding string
+		stream   bool
+	}{{"", true}, {StrIdentity, true}, {StrGzip, true}, {StrGzip, false}} {
+		t.Run(fmt.Sprintf("encoding=%s stream=%v", tc.encoding, tc.stream), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{StreamRequestBody: true, BodyLimit: 1024})
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+			if tc.encoding != "" {
+				c.Request().Header.Set(HeaderContentEncoding, tc.encoding)
+			}
+			if tc.stream {
+				c.Request().SetBodyStream(strings.NewReader(strings.Repeat("a", 4096)), -1)
+			} else {
+				c.Request().SetBody(fasthttp.AppendGzipBytes(nil, []byte(strings.Repeat("a", 4096))))
+			}
+			require.NoError(t, c.SendString("ok"))
+			require.Equal(t, fasthttp.ErrBodyTooLarge.Error(), string(c.Body()))
+			require.Equal(t, StatusOK, c.Response().StatusCode())
+			require.Equal(t, "ok", string(c.Response().Body()))
+		})
+	}
 }
 
 // FormValue leaves a streamed body to BodyStream when the body is not a form or the key is in the query.

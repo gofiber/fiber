@@ -218,7 +218,7 @@ func (r *DefaultReq) Body() []byte {
 			_ = r.c.DefaultRes.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		case errors.Is(err, ErrNotImplemented):
 			_ = r.c.DefaultRes.SendStatus(StatusNotImplemented) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
-		case errors.Is(err, fasthttp.ErrBodyTooLarge):
+		case errors.Is(err, fasthttp.ErrBodyTooLarge) && !r.c.Written():
 			_ = r.c.DefaultRes.SendStatus(StatusRequestEntityTooLarge) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		default:
 			// do nothing
@@ -1842,7 +1842,7 @@ func (r *DefaultReq) getBody() []byte {
 	return r.c.app.GetBytes(r.c.fasthttp.Request.Body())
 }
 
-// bufferBodyStream applies BodyLimit to a streamed body and answers a larger one 413 while no response was written, as the server would.
+// bufferBodyStream applies BodyLimit to a streamed body and answers a larger one 413 while no response body was written, as the server would.
 func (r *DefaultReq) bufferBodyStream() error {
 	err := bodystream.Buffer(&r.c.fasthttp.Request, r.c.app.config.BodyLimit)
 	if errors.Is(err, fasthttp.ErrBodyTooLarge) && !r.c.Written() {

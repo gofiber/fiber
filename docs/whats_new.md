@@ -84,7 +84,7 @@ We have made several changes to the Fiber app, including:
   before a middleware could refuse it. `FormFile`, `MultipartForm` and `Bind().Form()` parse it on demand within
   `BodyLimit`, so an app that takes larger uploads this way has to raise the limit or read `BodyStream()`. `Body()`,
   `BodyRaw()` and `FormValue()` now read a streamed body within `BodyLimit` too and answer a larger one
-  `413 Request Entity Too Large`, and the body binders fail on it; only `BodyStream()` reads past the limit.
+  `413 Request Entity Too Large` while no response body was written, and the body binders fail on it; only `BodyStream()` reads past the limit.
   `Bind().All()` reads the body only when the request has a `Content-Type`. `net/http` handlers, registered directly or
   through the adaptor, and `adaptor.ConvertRequest` answer a streamed body larger than `BodyLimit` with `413` as well,
   and the cache middleware leaves a request whose streamed body is chunked or longer than `BodyLimit` uncached instead

@@ -371,6 +371,6 @@ type Req interface {
 	// IsFromUnixSocket returns true if the request arrived over a Unix domain socket.
 	IsFromUnixSocket() bool
 	getBody() []byte
-	// bufferBodyStream applies BodyLimit to a streamed body and answers a larger one 413, as the server would.
+	// bufferBodyStream applies BodyLimit to a streamed body and answers a larger one 413 while no response body was written, as the server would.
 	bufferBodyStream() error
 }
