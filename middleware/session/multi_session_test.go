@@ -316,6 +316,76 @@ func Test_Session_MultipleStores_NewestPublisherCounts(t *testing.T) {
 	require.Equal(t, idB, cookiesByName(resp)["b_sid"].Value)
 }
 
+// The provenance cached on the request belongs to the store that resolved it.
+// Store A saves a new session and so caches its ID; store B then finds its own
+// session through another cookie, which makes B's provenance the cached one. A's
+// next Get still passes for the publisher of the cached ID, but must not take B's
+// provenance with it: A's session would be written back to B's cookie, replacing
+// the ID of B's session in the response.
+func Test_Session_MultipleStores_CachedProvenanceBelongsToItsStore(t *testing.T) {
+	t.Parallel()
+
+	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
+	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
+
+	app := fiber.New()
+	app.Get("/seed", func(c fiber.Ctx) error {
+		sess, err := storeB.Get(c)
+		if err != nil {
+			return err
+		}
+		defer sess.Release()
+		sess.Set("n", 1)
+		if err := sess.Save(); err != nil {
+			return err
+		}
+		return c.SendString(sess.ID())
+	})
+	app.Get("/touch", func(c fiber.Ctx) error {
+		first, err := storeA.Get(c)
+		if err != nil {
+			return err
+		}
+		defer first.Release()
+		first.Set("n", 1)
+		if saveErr := first.Save(); saveErr != nil {
+			return saveErr
+		}
+
+		b, err := storeB.Get(c)
+		if err != nil {
+			return err
+		}
+		defer b.Release()
+
+		again, err := storeA.Get(c)
+		if err != nil {
+			return err
+		}
+		defer again.Release()
+
+		// A last: were its session tied to B's cookie, the later header would win.
+		if saveErr := b.Save(); saveErr != nil {
+			return saveErr
+		}
+		if saveErr := again.Save(); saveErr != nil {
+			return saveErr
+		}
+		return c.SendString(fmt.Sprintf("%v|%s", b.Fresh(), b.ID()))
+	})
+
+	_, idB := sendRequest(t, app, "/seed", nil)
+
+	resp, body := sendRequest(t, app, "/touch", map[string]string{"b_sid": idB})
+	require.Equal(t, "false|"+idB, body, "B loaded its own session")
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "b_sid" {
+			require.Equal(t, idB, cookie.Value, "nothing but B's session may be written to B's cookie")
+		}
+	}
+	require.Contains(t, cookiesByName(resp), "a_sid", "A's session goes to A's cookie")
+}
+
 // With only one of two stacked sessions in existence, each store finds its own,
 // whichever of them is new. The new one caches an ID the other must not adopt.
 func Test_Session_MultipleStores_Middleware_OnlyOneSessionExists(t *testing.T) {
