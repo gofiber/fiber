@@ -15,7 +15,9 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// defaultRedirectLimit mirrors fasthttp's default when callers supply a negative redirect cap.
+// defaultRedirectLimit is the cap fiber applies for a negative redirect count.
+// fasthttp would take a negative cap literally and fail the first redirect with
+// ErrTooManyRedirects; 16 is the value its Get and Post helpers use.
 const defaultRedirectLimit = 16
 
 var (

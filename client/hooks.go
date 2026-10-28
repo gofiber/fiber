@@ -121,7 +121,7 @@ func parserRequestURL(c *Client, req *Request) error {
 		args.AddBytesKV(key, value)
 	}
 
-	req.RawRequest.URI().SetQueryStringBytes(utils.CopyBytes(args.QueryString()))
+	req.RawRequest.URI().SetQueryStringBytes(args.QueryString())
 	req.RawRequest.URI().SetHash(hashPart)
 
 	return nil

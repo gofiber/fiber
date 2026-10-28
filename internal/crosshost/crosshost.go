@@ -23,8 +23,7 @@ var SensitiveHeaders = []string{
 	fasthttp.HeaderProxyAuthenticate,
 	fasthttp.HeaderWWWAuthenticate,
 	fasthttp.HeaderCookie,
-	// fasthttp has no constant for the obsolete spelling.
-	"Cookie2",
+	fasthttp.HeaderCookie2,
 }
 
 // HeaderNames holds header names without stray whitespace; only NewHeaderNames builds one.

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/valyala/fasthttp"
 )
 
 // Config defines the config for middleware.
@@ -79,7 +80,7 @@ type Config struct {
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	IndexNames:    []string{"index.html"},
-	CacheDuration: 10 * time.Second,
+	CacheDuration: fasthttp.FSHandlerCacheDuration,
 }
 
 // Helper function to set default values

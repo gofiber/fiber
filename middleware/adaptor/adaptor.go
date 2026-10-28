@@ -17,7 +17,6 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -638,14 +637,13 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			if len(connection) > 0 {
 				joined := strings.Join(connection, ", ")
 				fhdr.Set(fiber.HeaderConnection, joined)
-				// RFC 9110 Section 7.6.1 matches connection options
-				// case-insensitively.
-				if headerlist.ContainsFold(joined, "close") {
-					// Set raises fasthttp's request flag for a close token anywhere
-					// in the list and keeps the complete list for Peek, which is how
-					// a proxy downstream learns what to strip. The server read that
-					// flag before calling the handler, though, so the instruction is
-					// carried separately and moved to the response below.
+				// Set raises fasthttp's request flag for a close token anywhere in
+				// the list, matched case-insensitively (RFC 9110 Section 7.6.1), and
+				// keeps the complete list for Peek, which is how a proxy downstream
+				// learns what to strip. The server read that flag before calling the
+				// handler, though, so the instruction is carried separately and moved
+				// to the response below.
+				if fhdr.ConnectionClose() {
 					connectionClose = true
 				}
 			}

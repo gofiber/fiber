@@ -1227,7 +1227,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	}
 
 	if cfg.CacheDuration == 0 {
-		cfg.CacheDuration = 10 * time.Second
+		cfg.CacheDuration = fasthttp.FSHandlerCacheDuration
 	}
 
 	var fsHandler fasthttp.RequestHandler
@@ -1634,13 +1634,8 @@ func (r *DefaultRes) End() error {
 		return nil
 	}
 
-	bw := bufio.NewWriter(conn)
-	if err := ctx.Response.Write(bw); err != nil {
+	if _, err := ctx.Response.WriteTo(conn); err != nil {
 		return err
-	}
-
-	if err := bw.Flush(); err != nil {
-		return err //nolint:wrapcheck // unnecessary to wrap it
 	}
 
 	return conn.Close() //nolint:wrapcheck // unnecessary to wrap it
