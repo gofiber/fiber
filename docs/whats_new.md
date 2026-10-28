@@ -2052,6 +2052,18 @@ The session middleware has undergone significant improvements in v3, focusing on
 
 - **Timed-out Requests**: The session of a request the timeout middleware gave up on is neither saved nor handed to another request while its handler may still run.
 
+- **Several Sessions per Request**: Give each session its own middleware over its own cookie or header and reach it with `Store.FromContext`, for example a short-lived login-flow session next to the session that keeps the user signed in. A store no longer adopts the session ID that a store over other cookies cached on the request, which used to make the second session fail to persist, or alias the first one over a shared storage. Stores that read the same cookie still agree on one ID. See [Multiple Sessions per Request](./middleware/session.md#multiple-sessions-per-request).
+
+- **`SkipEmptySessions`**: Keeps a new session that holds no data out of the storage and out of the response, so clients that send no cookies, such as health checks and crawlers, stop leaving a record behind with every request. Off by default. See [Skipping Empty Sessions](./middleware/session.md#skipping-empty-sessions).
+
+- **Storage Key Policy**: `StorageKeyPrefix` goes in front of the `session:` namespace and keeps the sessions of applications, environments or stores that share a storage apart (`myapp:session:<id>`), and `HashStorageKeys` stores each session under `session:` and the SHA-256 digest of its ID, so that what a backup or a leaked dump of the storage holds cannot be sent as a session cookie. Both are off by default. Choose prefixes so that none, followed by `session:`, is the start of another. See [Storage Keys](./middleware/session.md#storage-keys).
+
+- **Lifetime Capped by `AbsoluteTimeout`**: Near the end of a session, a save keeps the record and sets the cookie only for the time that is left, never for less than one second, instead of for the full idle timeout.
+
+- **Startup Checks**: A `Storage` that is a typed nil, such as an unset `*redis.Storage`, panics when the middleware or the store is created instead of on the first request. A warning is logged for a `__Host-` or `__Secure-` session cookie that breaks the rules browsers enforce for those prefixes; the configuration is still accepted.
+
+- **Typed Reads and Expiry Getters**: `session.GetAs[V]` reads a value as a given type without a type assertion and accepts a `nil` session. `IdleTimeout()` and `AbsoluteExpiry()` on `Session` and `Middleware` report when a session ends.
+
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
 ### SSE
