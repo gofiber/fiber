@@ -222,14 +222,25 @@ func requestIDPublisher(c fiber.Ctx) *Store {
 	return nil
 }
 
+// requestProvenance returns the provenance box cached on the request, nil if
+// there is none.
+func requestProvenance(c fiber.Ctx) *provenanceBox {
+	box, ok := c.Locals(sessionExtractorContextKey).(*provenanceBox)
+	if !ok {
+		return nil
+	}
+	return box
+}
+
 // mayReuseRequestID reports whether the session ID and provenance cached on the
-// request were published by a store that shares a cookie or header with s.
-func (s *Store) mayReuseRequestID(c fiber.Ctx) bool {
-	if publisher := requestIDPublisher(c); publisher != nil && !s.sharesSource(publisher) {
+// request, the latter in box, were published by a store that shares a cookie or
+// header with s.
+func (s *Store) mayReuseRequestID(c fiber.Ctx, box *provenanceBox) bool {
+	if box != nil && box.owner != nil && !s.sharesSource(box.owner) {
 		return false
 	}
-	box, ok := c.Locals(sessionExtractorContextKey).(*provenanceBox)
-	return !ok || box == nil || box.owner == nil || s.sharesSource(box.owner)
+	publisher := requestIDPublisher(c)
+	return publisher == nil || s.sharesSource(publisher)
 }
 
 // NewStore creates a new session store with the provided configuration.
@@ -335,9 +346,13 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 
 	var selectedExtractor extractors.Result
 	id, ok := c.Locals(sessionIDContextKey).(string)
-	if ok && !s.mayReuseRequestID(c) {
-		// Cached by a store over other cookies or headers: its ID is not ours.
-		ok = false
+	var cached *provenanceBox
+	if ok {
+		cached = requestProvenance(c)
+		if !s.mayReuseRequestID(c, cached) {
+			// Cached by a store over other cookies or headers: its ID is not ours.
+			ok = false
+		}
 	}
 	if !ok {
 		var resolveErr error
@@ -351,8 +366,8 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 			// cached-ID path above and would otherwise lose the provenance.
 			storeProvenance(c, s, selectedExtractor)
 		}
-	} else if stored, found := c.Locals(sessionExtractorContextKey).(*provenanceBox); found && stored != nil {
-		selectedExtractor = stored.res
+	} else if cached != nil {
+		selectedExtractor = cached.res
 	}
 
 	isFresh := false // Session is not fresh initially; only set to true if we generate a new ID

@@ -427,7 +427,11 @@ func (s *Session) storageKey() string {
 //
 //	err := s.Save()
 func (s *Session) Save() error {
-	return s.SaveWithContext(s.resolveContext())
+	c := s.requestCtx()
+	if c == nil {
+		return s.saveUnlessManaged(context.Background(), nil)
+	}
+	return s.saveUnlessManaged(c, c)
 }
 
 // SaveWithContext saves the session data and updates the cookie,
@@ -450,20 +454,22 @@ func (s *Session) Save() error {
 //
 //	err := s.SaveWithContext(ctx)
 func (s *Session) SaveWithContext(ctx context.Context) error {
-	ctx = backgroundIfNil(ctx)
+	return s.saveUnlessManaged(backgroundIfNil(ctx), s.requestCtx())
+}
 
-	c := s.requestCtx()
-	if c == nil {
-		return s.saveSessionWithContext(ctx)
-	}
-
-	// If the session is being used in the handler, it should not be saved. With
-	// several session middleware registered, the one managing s may be an outer one.
-	if current, ok := c.Locals(middlewareContextKey).(*Middleware); ok {
-		managing := current.find(func(m *Middleware) bool { return m.Session == s })
-		if managing != nil {
-			// Session is in use, so we do nothing and return
-			return nil
+// saveUnlessManaged saves the session through ctx, unless a session middleware
+// manages it and will save it when its handler returns. c is the request the
+// session belongs to, nil if it has none, and is read once by the callers.
+func (s *Session) saveUnlessManaged(ctx context.Context, c fiber.Ctx) error {
+	if c != nil {
+		// If the session is being used in the handler, it should not be saved. With
+		// several session middleware registered, the one managing s may be an outer one.
+		if current, ok := c.Locals(middlewareContextKey).(*Middleware); ok {
+			managing := current.find(func(m *Middleware) bool { return m.Session == s })
+			if managing != nil {
+				// Session is in use, so we do nothing and return
+				return nil
+			}
 		}
 	}
 
@@ -916,8 +922,9 @@ func (s *Session) resolveContext() context.Context {
 // if it has none, or none any more.
 func (s *Session) requestCtx() fiber.Ctx {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.ctx
+	c := s.ctx
+	s.mu.RUnlock()
+	return c
 }
 
 // forgetContext cuts the session off from its request. The session of an
