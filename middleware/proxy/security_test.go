@@ -1688,6 +1688,46 @@ func Test_Security_FollowRedirects_SpellingLimit(t *testing.T) {
 	}
 }
 
+// Test_Security_DoRedirects_ErrorDropsUpstreamResponse pins that a redirect DoRedirects gives up on
+// does not reach the client along with the error.
+func Test_Security_DoRedirects_ErrorDropsUpstreamResponse(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderSetCookie, "up=secret")
+		// Another port is another origin, so this hop drops the credentials.
+		c.Location("http://127.0.0.1:1/next")
+		return c.SendStatus(fiber.StatusTemporaryRedirect)
+	})
+
+	for name, tc := range map[string]struct {
+		redirects, spellings, status int
+	}{
+		"too many redirects": {status: fiber.StatusInternalServerError},
+		"too many spellings": {
+			redirects: 1, spellings: len(crosshost.SensitiveHeaders) + maxConnectionOptions + 1, status: fiber.StatusRequestHeaderFieldsTooLarge,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+			app.Get("/", func(c fiber.Ctx) error {
+				return DoRedirects(c, "http://"+addr, tc.redirects)
+			})
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			for _, k := range caseSpellings("authorization", tc.spellings) {
+				req.Header[k] = []string{"v"}
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.status, resp.StatusCode)
+			require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie))
+			require.Empty(t, resp.Header.Values(fiber.HeaderLocation))
+		})
+	}
+}
+
 // Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart pins that a copied hop keeps the body
 // of a multipart form the server parsed ahead of the handler: CopyTo leaves such a form out.
 func Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart(t *testing.T) {
