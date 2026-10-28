@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
@@ -204,8 +205,12 @@ func doActionWithPolicy(
 	// https://github.com/gofiber/fiber/issues/1762.
 	req.URI().SetScheme(u.Scheme)
 
-	if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized) {
+	// Whatever the policy: a Set under a held trailer name is filed with the section, not over the client's line.
+	if !fieldname.DropTrailers(&req.Header) {
 		return fiber.ErrRequestHeaderFieldsTooLarge
+	}
+	if !policy.KeepHopByHopHeaders {
+		stripHopByHopRequestHeaders(req, normalized)
 	}
 	if ip != nil {
 		setRealIP(c, ip)

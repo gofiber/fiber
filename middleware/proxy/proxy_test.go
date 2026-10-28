@@ -973,32 +973,59 @@ func Test_Proxy_TrailerDropKeepsHeaderLines(t *testing.T) {
 	}
 }
 
-// Test_Proxy_StripDropsTrailerSection checks the drop for a trailer section read
-// after the request started, as a streamed body reads it.
-func Test_Proxy_StripDropsTrailerSection(t *testing.T) {
+// Test_Proxy_TrailerSectionWhateverThePolicy checks that a trailer section the request still holds is dropped
+// before it goes upstream, or refused above fieldname.MaxTrailers names, with the hop-by-hop fields kept too.
+func Test_Proxy_TrailerSectionWhateverThePolicy(t *testing.T) {
 	t.Parallel()
 
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
-	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader("POST / HTTP/1.1\r\nHost: example.com\r\n"+
-		"X-Remote-User: alice\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"+
-		"X-Remote-User: admin\r\nX-Other: late\r\n\r\n"))))
-
-	require.True(t, stripHopByHopRequestHeaders(req, true))
-
-	require.Empty(t, req.Header.PeekTrailerKeys())
-	require.Equal(t, [][]byte{[]byte("alice")}, req.Header.PeekAll("X-Remote-User"))
-	require.Empty(t, req.Header.PeekAll("X-Other"))
-
-	var trailers strings.Builder
-	for i := range fieldname.MaxTrailers + 1 {
-		fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
+	// Not a Fiber app, which would drop the section or refuse the request itself.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "header=%q trailer=%d", r.Header.Values(fiber.HeaderTrailer), len(r.Trailer))
+	}))
+	t.Cleanup(upstream.Close)
+	addr := upstream.Listener.Addr().String()
+	announced := make([]string, fieldname.MaxTrailers+1)
+	for i := range announced {
+		announced[i] = "X-" + strconv.Itoa(i)
 	}
-	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader("POST / HTTP/1.1\r\nHost: example.com\r\n"+
-		"Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"+trailers.String()+"\r\n"))))
-	before := req.Header.String()
-	require.False(t, stripHopByHopRequestHeaders(req, true), "too many names to drop")
-	require.Equal(t, before, req.Header.String())
+	names := strings.Join(announced, ", ")
+
+	for _, keep := range []bool{false, true} {
+		t.Run(fmt.Sprintf("keep=%v", keep), func(t *testing.T) {
+			t.Parallel()
+
+			policy := DefaultSecurityPolicy()
+			policy.AllowPrivateIPs = true
+			policy.KeepHopByHopHeaders = keep
+			for name, handler := range map[string]fiber.Handler{
+				"Balancer": Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy}),
+				"Forward": func(c fiber.Ctx) error {
+					return forwardWithRealIP(c, "http://"+addr, normalizePolicy(policy))
+				},
+			} {
+				app := fiber.New()
+				app.Use(func(c fiber.Ctx) error {
+					// Announced after the router dropped the client's, as only the application can.
+					require.NoError(t, c.Request().Header.AddTrailer(c.Get("X-Announce")))
+					return c.Next()
+				})
+				app.Get("/", handler)
+
+				for announce, want := range map[string]int{"X-T": fiber.StatusOK, names: fiber.StatusRequestHeaderFieldsTooLarge} {
+					req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+					req.Header.Set("X-Announce", announce)
+					resp, err := app.Test(req)
+					require.NoError(t, err)
+					body, err := io.ReadAll(resp.Body)
+					require.NoError(t, err)
+					require.Equal(t, want, resp.StatusCode, name+" "+string(body))
+					if want == fiber.StatusOK {
+						require.Equal(t, "header=[] trailer=0", string(body), name)
+					}
+				}
+			}
+		})
+	}
 }
 
 // Test_Proxy_StreamedBodyTrailerSection checks that the trailer section of a streamed body

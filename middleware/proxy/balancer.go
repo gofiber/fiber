@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
@@ -85,8 +86,12 @@ func Balancer(config ...Config) fiber.Handler {
 		var scratch [realIPScratch]byte
 		ip := realIP(c, scratch[:0])
 
-		if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized, keepHeaders...) {
+		// Whatever the policy, as in doActionWithPolicy.
+		if !fieldname.DropTrailers(&req.Header) {
 			return fiber.ErrRequestHeaderFieldsTooLarge
+		}
+		if !policy.KeepHopByHopHeaders {
+			stripHopByHopRequestHeaders(req, normalized, keepHeaders...)
 		}
 
 		// The Host field holds no userinfo (RFC 9112 Section 3.2). fasthttp
