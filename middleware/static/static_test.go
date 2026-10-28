@@ -2750,7 +2750,7 @@ func Test_Static_StrictRouting_TrailingSlash(t *testing.T) {
 		{target: "/files/missing", status: fiber.StatusNotFound},
 		{target: "/files/missing/", status: fiber.StatusNotFound},
 		{target: "/files/admin/", status: fiber.StatusUnauthorized},
-		{target: "/files/admin", status: fiber.StatusFound, location: "/files/admin/"},
+		{target: "/files/admin", status: fiber.StatusUnauthorized},
 		{target: "/files/secret.txt", status: fiber.StatusUnauthorized},
 		{target: "/files/secret.txt/", status: fiber.StatusNotFound},
 	}
@@ -2794,9 +2794,10 @@ func Test_Static_StrictRouting_TrailingSlash(t *testing.T) {
 	app := fiber.New(fiber.Config{StrictRouting: true})
 	app.Use("/files", sub)
 	h := app.Handler()
-	resp := serveRaw(h, fiber.MethodGet, "/files/admin")
+	resp := serveRaw(h, fiber.MethodGet, "/files/pub")
 	require.Equal(t, fiber.StatusFound, resp.StatusCode())
-	require.Equal(t, "/files/admin/", string(resp.Header.Peek(fiber.HeaderLocation)))
+	require.Equal(t, "/files/pub/", string(resp.Header.Peek(fiber.HeaderLocation)))
+	require.Equal(t, fiber.StatusUnauthorized, serveRaw(h, fiber.MethodGet, "/files/admin").StatusCode())
 	require.Equal(t, fiber.StatusUnauthorized, serveRaw(h, fiber.MethodGet, "/files/admin/").StatusCode())
 	require.Equal(t, fiber.StatusNotFound, serveRaw(h, fiber.MethodGet, "/files/public.txt/").StatusCode())
 
