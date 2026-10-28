@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -953,6 +954,51 @@ func Test_StreamedBodyLimit(t *testing.T) {
 	c.Request().SetBodyStream(iotest.ErrReader(fiber.ErrRequestHeaderFieldsTooLarge), -1)
 	_, err = ConvertRequest(c, true)
 	require.ErrorIs(t, err, fiber.ErrRequestHeaderFieldsTooLarge)
+}
+
+func Test_StreamedTrailerCap(t *testing.T) {
+	t.Parallel()
+
+	echo := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.Copy(w, r.Body)
+		assert.NoError(t, err)
+	})
+	app := fiber.New(fiber.Config{StreamRequestBody: true})
+	app.Post("/handler", HTTPHandler(echo))
+	app.Post("/middleware", HTTPMiddleware(func(http.Handler) http.Handler { return echo }))
+	app.Post("/convert", func(c fiber.Ctx) error {
+		_, err := ConvertRequest(c, true)
+		return err
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+	}()
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+		if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
+			require.NoError(t, err)
+		}
+	})
+
+	var trailers strings.Builder
+	for i := range fieldname.MaxTrailers + 1 {
+		fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
+	}
+	for _, path := range []string{"/handler", "/middleware", "/convert"} {
+		conn, err := ln.Dial()
+		require.NoError(t, err)
+		_, err = conn.Write([]byte("POST " + path + " HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\n" +
+			"Connection: close\r\n\r\n5\r\nhello\r\n0\r\n" + trailers.String() + "\r\n"))
+		require.NoError(t, err)
+		resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.NoError(t, conn.Close())
+		require.Equal(t, fiber.StatusRequestHeaderFieldsTooLarge, resp.StatusCode, path)
+	}
 }
 
 func Test_ConvertRequest(t *testing.T) {

@@ -1379,14 +1379,13 @@ func Test_Proxy_StreamedBodyTrailerSection(t *testing.T) {
 				}
 			}
 
-			// One name past the cap fails the body read and drops the section all the same: the proxy reading
-			// the body answers 431, and after a handler that read it and went on, the app's line goes upstream.
+			// One name past the cap fails the body read and drops the section all the same: the proxy answers 431,
+			// also after a handler that read the body and went on, since the failed read sticks to the stream.
 			over := many.String() + "X-T15: v\r\n"
-			status, body := exchange("/forward", "X-User: admin\r\n", over)
-			require.Equal(t, fiber.StatusRequestHeaderFieldsTooLarge, status, body)
-			status, body = exchange("/read", "X-User: admin\r\n", over)
-			require.Equal(t, fiber.StatusOK, status, body)
-			require.Equal(t, `body=Request Header Fields Too Large header=["alice"] trailer=[]`, body)
+			for _, path := range []string{"/forward", "/read"} {
+				status, body := exchange(path, "X-User: admin\r\n", over)
+				require.Equal(t, fiber.StatusRequestHeaderFieldsTooLarge, status, path+" "+body)
+			}
 		})
 	}
 }

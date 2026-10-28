@@ -14,6 +14,7 @@ import (
 	"testing/iotest"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -869,6 +870,26 @@ func TestWrapHTTPHandler_StreamedBodyLimit(t *testing.T) {
 	require.ErrorIs(t, wrapHTTPHandler(http.NotFoundHandler())(c), ErrBadRequest)
 	c.Request().SetBodyStream(iotest.ErrReader(ErrRequestHeaderFieldsTooLarge), -1)
 	require.ErrorIs(t, wrapHTTPHandler(http.NotFoundHandler())(c), ErrRequestHeaderFieldsTooLarge)
+}
+
+func TestWrapHTTPHandler_StreamedTrailerCap(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{StreamRequestBody: true})
+	app.Post("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.Copy(w, r.Body)
+		assert.NoError(t, err)
+	}))
+	ln := startRawServer(t, app)
+
+	var trailers strings.Builder
+	for i := range fieldname.MaxTrailers + 1 {
+		fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
+	}
+	raw := "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n" +
+		trailers.String() + "\r\n"
+	responses, _ := rawExchange(t, ln, raw, 1)
+	require.Equal(t, StatusRequestHeaderFieldsTooLarge, responses[0].status)
 }
 
 func TestCollectHandlers_InvalidType(t *testing.T) {
