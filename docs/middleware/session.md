@@ -347,7 +347,7 @@ app.Use(session.New(session.Config{
   - Any route that uses the middleware will reset the idle timer
   - Calling `sess.Save()` will also reset the idle timer
 - `AbsoluteTimeout`: Sessions are forcibly expired after maximum duration
-  - Near the end, a save keeps the record and the cookie only for the time that is left, so neither outlives the deadline. A save made at or after the deadline keeps them for one second, because a storage may read a shorter lifetime as "never expires"
+  - Near the end, a save keeps the record and the cookie only for the time that is left, so neither outlives the deadline. A save made less than a second before the deadline, or after it, keeps them for one second, because a storage may read a shorter lifetime as "never expires"
   - `sess.AbsoluteExpiry()` reports when the session ends, for example to warn the user
 - No manual cleanup required - the storage layer handles this
 
