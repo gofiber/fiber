@@ -949,6 +949,9 @@ func Test_StreamedBodyLimit(t *testing.T) {
 	c.Request().SetBodyStream(iotest.ErrReader(errors.New("broken chunk")), -1)
 	_, err := ConvertRequest(c, true)
 	require.ErrorIs(t, err, fiber.ErrBadRequest)
+	c.Request().SetBodyStream(iotest.ErrReader(fiber.ErrRequestHeaderFieldsTooLarge), -1)
+	_, err = ConvertRequest(c, true)
+	require.ErrorIs(t, err, fiber.ErrRequestHeaderFieldsTooLarge)
 }
 
 func Test_ConvertRequest(t *testing.T) {

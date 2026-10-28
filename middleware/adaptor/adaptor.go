@@ -321,8 +321,12 @@ func bufferBodyStream(c fiber.Ctx) error {
 	}
 	// The server's limit is BodyLimit; Config() would copy the whole struct per request.
 	if err := bodystream.Buffer(req, c.App().Server().MaxRequestBodySize); err != nil {
-		if errors.Is(err, fasthttp.ErrBodyTooLarge) {
+		var fe *fiber.Error
+		switch {
+		case errors.Is(err, fasthttp.ErrBodyTooLarge):
 			return fiber.ErrRequestEntityTooLarge
+		case errors.As(err, &fe): // a stream that fails with a status keeps it
+			return fe
 		}
 		return fiber.ErrBadRequest
 	}

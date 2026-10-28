@@ -867,6 +867,8 @@ func TestWrapHTTPHandler_StreamedBodyLimit(t *testing.T) {
 	defer app.ReleaseCtx(c)
 	c.Request().SetBodyStream(iotest.ErrReader(errors.New("broken chunk")), -1)
 	require.ErrorIs(t, wrapHTTPHandler(http.NotFoundHandler())(c), ErrBadRequest)
+	c.Request().SetBodyStream(iotest.ErrReader(ErrRequestHeaderFieldsTooLarge), -1)
+	require.ErrorIs(t, wrapHTTPHandler(http.NotFoundHandler())(c), ErrRequestHeaderFieldsTooLarge)
 }
 
 func TestCollectHandlers_InvalidType(t *testing.T) {

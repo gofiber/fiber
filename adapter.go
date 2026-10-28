@@ -262,8 +262,12 @@ func wrapHTTPHandler(handler http.Handler) Handler {
 	return func(c Ctx) error {
 		// fasthttpadaptor reads a streamed body whatever its size.
 		if err := bodystream.Buffer(c.Request(), c.App().config.BodyLimit); err != nil {
-			if errors.Is(err, fasthttp.ErrBodyTooLarge) {
+			var fe *Error
+			switch {
+			case errors.Is(err, fasthttp.ErrBodyTooLarge):
 				return ErrRequestEntityTooLarge
+			case errors.As(err, &fe): // a stream that fails with a status keeps it
+				return fe
 			}
 			return ErrBadRequest
 		}

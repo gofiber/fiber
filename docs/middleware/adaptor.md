@@ -34,7 +34,7 @@ or `FiberApp`, the adaptor enforces the app's configured `BodyLimit`. The app's 
 :::
 
 :::note Streamed request bodies
-`HTTPHandler`, `HTTPHandlerFunc`, `HTTPHandlerWithContext`, `HTTPMiddleware` and `ConvertRequest` buffer the request body to build the `http.Request`. With [`StreamRequestBody`](../api/fiber.md#streamrequestbody) they read it within the app's `BodyLimit` and answer a larger one with `413 Request Entity Too Large`, and a body that fails to read, such as a malformed chunk, with `400 Bad Request` (`ConvertRequest` returns `fiber.ErrRequestEntityTooLarge` or `fiber.ErrBadRequest`).
+`HTTPHandler`, `HTTPHandlerFunc`, `HTTPHandlerWithContext`, `HTTPMiddleware` and `ConvertRequest` buffer the request body to build the `http.Request`. With [`StreamRequestBody`](../api/fiber.md#streamrequestbody) they read it within the app's `BodyLimit` and answer a larger one with `413 Request Entity Too Large`, and a body that fails to read, such as a malformed chunk, with `400 Bad Request` (`ConvertRequest` returns `fiber.ErrRequestEntityTooLarge` or `fiber.ErrBadRequest`). A read error that already carries a `*fiber.Error` keeps its status.
 :::
 
 ## API Reference
