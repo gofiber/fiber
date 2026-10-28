@@ -221,7 +221,7 @@ func (r *DefaultReq) Body() []byte {
 			_ = r.c.DefaultRes.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		case errors.Is(err, ErrNotImplemented):
 			_ = r.c.DefaultRes.SendStatus(StatusNotImplemented) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
-		case errors.Is(err, fasthttp.ErrBodyTooLarge) && !r.c.Written():
+		case errors.Is(err, fasthttp.ErrBodyTooLarge):
 			_ = r.c.DefaultRes.SendStatus(StatusRequestEntityTooLarge) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		default:
 			// do nothing
