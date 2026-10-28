@@ -24,7 +24,10 @@ type Middleware struct {
 	// parent is the session middleware this one runs inside when several are
 	// registered, so a store can find its own among them. It is only ever set by
 	// adopt, which keeps parent from being recycled while this middleware runs,
-	// and releaseMiddleware clears it.
+	// and releaseMiddleware clears it. A panic that unwinds this middleware leaves
+	// it, for whatever recovers the panic. The chain is only walked from the
+	// middleware the request currently holds (find), never from one a goroutine
+	// kept past its request.
 	parent *Middleware
 	config Config
 	mu     sync.RWMutex
@@ -126,35 +129,59 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 			return nil
 		}
 
-		var stackErr error
 		if m.linked {
-			stackErr = m.nextInside(c)
-		} else {
-			stackErr = c.Next()
+			return m.serveInside(c, &cfg)
 		}
-
-		// A handler timeout.New gave up on may still use m: neither save nor pool it or its session.
-		// IsAbandoned goes first: its atomic load orders the read after the timeout middleware's write.
-		if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
-			return stackErr
-		}
-
-		m.mu.RLock()
-		isDestroyed := m.isDestroyed
-		m.mu.RUnlock()
-
-		// A destroyed session is not saved, and neither is a new one that holds
-		// nothing when SkipEmptySessions is on.
-		skipSave := isDestroyed || (cfg.SkipEmptySessions && m.Session.isEmptyFresh())
-		if !skipSave {
-			m.saveSession()
-		}
-
-		releaseMiddleware(m)
-		return stackErr
+		return m.serve(c, &cfg)
 	}
 
 	return handler, cfg.Store
+}
+
+// serve runs the rest of the stack, then saves the session and releases the
+// middleware.
+func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
+	stackErr := c.Next()
+
+	// A handler timeout.New gave up on may still use m: neither save nor pool it or its session.
+	// IsAbandoned goes first: its atomic load orders the read after the timeout middleware's write.
+	if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
+		return stackErr
+	}
+
+	m.mu.RLock()
+	isDestroyed := m.isDestroyed
+	m.mu.RUnlock()
+
+	// A destroyed session is not saved, and neither is a new one that holds
+	// nothing when SkipEmptySessions is on.
+	skipSave := isDestroyed || (cfg.SkipEmptySessions && m.Session.isEmptyFresh())
+	if !skipSave {
+		m.saveSession()
+	}
+
+	releaseMiddleware(m)
+	return stackErr
+}
+
+// serveInside is serve for a middleware that runs inside another. A panic that
+// unwinds it, in the rest of the stack or in the save, skips its release, and the
+// outer middleware would then count it as running inside for good, and be dropped
+// instead of recycled when it finishes: the deferred call ends the link. The
+// panic goes on as before, and this middleware stays the current one for whatever
+// recovers it, as one without an outer middleware does. Only nested middleware
+// pay for the defer.
+func (m *Middleware) serveInside(c fiber.Ctx, cfg *Config) error {
+	finished := false
+	defer func() {
+		if !finished {
+			m.unlinkFromOuter()
+		}
+	}()
+
+	err := m.serve(c, cfg)
+	finished = true
+	return err
 }
 
 var registerLogContextTagsOnce sync.Once
@@ -242,26 +269,6 @@ func (m *Middleware) adopt(c fiber.Ctx) bool {
 // unlink ends the link adopt made; m must not be used afterwards.
 func (m *Middleware) unlink() {
 	m.children.Add(-1)
-}
-
-// nextInside runs the rest of the stack for a middleware that runs inside
-// another. A panic that unwinds it skips its release, and the outer middleware
-// would then count it as running inside for good, and be dropped instead of
-// recycled when it finishes: the deferred call ends the link. The panic goes on
-// as before, and this middleware stays the current one for whatever recovers it,
-// as one without an outer middleware does. Only nested middleware pay for the
-// defer.
-func (m *Middleware) nextInside(c fiber.Ctx) error {
-	finished := false
-	defer func() {
-		if !finished {
-			m.unlinkFromOuter()
-		}
-	}()
-
-	err := c.Next()
-	finished = true
-	return err
 }
 
 // unlinkFromOuter ends the link to the outer middleware, once.
@@ -382,8 +389,12 @@ func releaseMiddleware(m *Middleware) {
 
 	// After m let go of it: until then a goroutine that holds m could still reach
 	// the session through m.Session once it was handed to another request.
-	if session != nil && !abandoned {
-		releaseSession(session)
+	if session != nil {
+		if abandoned {
+			session.forgetContext()
+		} else {
+			releaseSession(session)
+		}
 	}
 	if outer != nil {
 		if c != nil {
@@ -412,9 +423,9 @@ func releaseMiddleware(m *Middleware) {
 // The Middleware belongs to its request, as the type documents. A handler that a
 // timeout middleware abandoned gets nil from here once the request ended, and a
 // Middleware it got before stays finished: it is never recycled for another
-// request, but its session is gone, so calling its methods panics. A goroutine of
-// your own that outlives the handler has no such guarantee: give it the session
-// ID, not the Middleware.
+// request, but its session is gone, so the methods that use it panic. A goroutine
+// of your own that outlives the handler has no such guarantee: give it the
+// session ID, not the Middleware.
 //
 // Parameters:
 //   - c: The Fiber context.

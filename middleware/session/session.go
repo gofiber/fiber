@@ -451,13 +451,14 @@ func (s *Session) Save() error {
 func (s *Session) SaveWithContext(ctx context.Context) error {
 	ctx = backgroundIfNil(ctx)
 
-	if s.ctx == nil {
+	c := s.requestCtx()
+	if c == nil {
 		return s.saveSessionWithContext(ctx)
 	}
 
 	// If the session is being used in the handler, it should not be saved. With
 	// several session middleware registered, the one managing s may be an outer one.
-	if current, ok := s.ctx.Locals(middlewareContextKey).(*Middleware); ok {
+	if current, ok := c.Locals(middlewareContextKey).(*Middleware); ok {
 		managing := current.find(func(m *Middleware) bool { return m.Session == s })
 		if managing != nil {
 			// Session is in use, so we do nothing and return
@@ -545,8 +546,9 @@ const minLifetime = time.Second
 
 // lifetime returns how long a save keeps the record and the cookie: the idle
 // timeout, cut down to the time left until the absolute deadline, but never
-// below minLifetime. A request that outlasts the deadline therefore still ends
-// with a record that expires at once, and never with one that does not expire.
+// below minLifetime. A save in the last second before the deadline, or after it,
+// therefore keeps the record for minLifetime, not for less, and never leaves one
+// that does not expire.
 //
 // Returns:
 //   - time.Duration: The time to live for the storage and the cookie.
@@ -903,8 +905,27 @@ func backgroundIfNil(ctx context.Context) context.Context {
 // fiber.Ctx implements context.Context directly, so no allocation is needed.
 // This is used as the default context for non-WithContext method variants.
 func (s *Session) resolveContext() context.Context {
-	if s.ctx != nil {
-		return s.ctx
+	if c := s.requestCtx(); c != nil {
+		return c
 	}
 	return context.Background()
+}
+
+// requestCtx returns the context of the request the session belongs to, or nil
+// if it has none, or none any more.
+func (s *Session) requestCtx() fiber.Ctx {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ctx
+}
+
+// forgetContext cuts the session off from its request. The session of an
+// abandoned request is not recycled, since a handler that outlives the request
+// may still be using it, but the context is: it is reused for another request
+// once those handlers are done, and whoever still holds the session must not
+// write to that request's response, or run its storage calls under its context.
+func (s *Session) forgetContext() {
+	s.mu.Lock()
+	s.ctx = nil
+	s.mu.Unlock()
 }
