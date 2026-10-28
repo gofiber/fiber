@@ -188,7 +188,7 @@ app.Get("/auth/callback", func(c fiber.Ctx) error {
 
 - `store.FromContext(c)` returns the middleware that store installed for the request, or `nil` if it did not run, for example because its `Next` skipped it. The package-level `session.FromContext(c)` keeps returning the innermost middleware, the last one to run.
 - Each middleware saves its own session when the handler returns, the inner one first, and reports a failed save to its own `ErrorHandler`. `Destroy()` removes only its own session; the others are saved as usual.
-- Use a different cookie or header for every session. Stores that read the same cookie or header resolve the same session. That is how the session middleware and the store you give another middleware, such as CSRF, agree on one ID for a visitor who has no cookie yet. A store that reads its ID only from a source it cannot write back to, such as the query string, an `Authorization` header, a form field, a route parameter or a custom extractor, cannot be told apart from the others and keeps sharing their ID, as it did before.
+- Use a different cookie or header for every session. Stores that read the same cookie or header resolve the same session. That is how the session middleware and the store you give another middleware, such as CSRF, agree on one ID for a visitor who has no cookie yet. A store that reads its ID only from a source it cannot write back to, such as the query string, an `Authorization` header, a form field, a route parameter or a custom extractor, cannot be told apart from the others and keeps sharing their ID, as it did before: a store behind it can end up with that ID instead of the one in its own cookie. Do not mix such a store with cookie or header stores in one request.
 - Sessions can share one storage if their stores have different [`StorageKeyPrefix`](#storage-keys) values, none of which is the start of another. Separate storages work as well, and are the better choice when the data of one store must never be reachable through another.
 - A `timeout` middleware answers the request while the handlers behind it can still be running. When the session middleware in front of it has finished by then, `store.FromContext` returns `nil` for its store in those handlers, and never the session of another request.
 - `store.Get(c)` serves several stores without the middleware too. Call it once per store and request and keep the session: asking a store again after a store over another cookie was asked, for a visitor who has no cookie yet, issues a second new ID.
@@ -347,7 +347,7 @@ app.Use(session.New(session.Config{
   - Any route that uses the middleware will reset the idle timer
   - Calling `sess.Save()` will also reset the idle timer
 - `AbsoluteTimeout`: Sessions are forcibly expired after maximum duration
-  - Near the end, a save keeps the record and the cookie only for the time that is left, so neither outlives the deadline by more than one second. The lifetime is never shorter than that, because a storage may read a shorter one as "never expires"
+  - Near the end, a save keeps the record and the cookie only for the time that is left, so neither outlives the deadline. A save made at or after the deadline keeps them for one second, because a storage may read a shorter lifetime as "never expires"
   - `sess.AbsoluteExpiry()` reports when the session ends, for example to warn the user
 - No manual cleanup required - the storage layer handles this
 
@@ -797,9 +797,9 @@ store.RegisterType(User{})
 
 `store.Reset` clears the whole storage, including keys that are not sessions and the sessions of other stores that share it. A `StorageKeyPrefix` does not limit it, because the storage interface cannot list keys.
 
-`sess.IdleTimeout()` is the timeout set with `SetIdleTimeout`, or else the store's. A save applies it, cut down to the time left until the absolute deadline. A timeout set with `SetIdleTimeout` holds for every save of that session in the request and is not kept for the next request, so set it again where it matters. `sess.AbsoluteExpiry()` reports `false` for a store without an `AbsoluteTimeout`.
+`sess.IdleTimeout()` is the timeout set with `SetIdleTimeout`, or else the store's. A save applies it, cut down to the time left until the absolute deadline. A timeout set with `SetIdleTimeout` holds for every later save of that session in the request, unless the session is reset, and is not kept for the next request, so set it again where it matters. `sess.AbsoluteExpiry()` reports `false` for a store without an `AbsoluteTimeout`.
 
-Like the other methods of the middleware, `sess.IdleTimeout()` and `store.FromContext` take a lock. Call them from handlers, not from inside a `Storage` implementation, which the session calls while it holds that lock to save, destroy, reset or regenerate.
+Like the other methods of the middleware, these take a lock. `store.FromContext` and `sess.Save` take the read lock of the middleware, which is held while it destroys, resets or regenerates its session, and `sess.IdleTimeout()` takes the lock of the session, which is held while it saves. Call them from handlers, not from inside a `Storage` implementation, which the session calls during those operations.
 
 ### Errors
 
