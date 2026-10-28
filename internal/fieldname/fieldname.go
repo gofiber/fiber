@@ -405,7 +405,8 @@ func rewriteInRankOrder(h *fasthttp.RequestHeader, lines []orderedLine) {
 // Lines returns every field line stored under name. The walk replaces the
 // byte-exact lookup rather than backing it up: a message can carry both
 // spellings, and an empty canonical line would hide the value beside it.
-// A name a request holds in its trailer section has no lines (see InTrailer); a response's header lines are read.
+// A name a request holds in its trailer section has no lines (see InTrailer);
+// a response's header lines are read.
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store, not a mode of operation
 func Lines(h Peeker, name string, canonical bool) [][]byte {
@@ -445,7 +446,8 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 // resolved by picking one. headerlookup.Value refuses that case for the request
 // fields where it arises.
 //
-// A name a request holds in its trailer section reads as absent (see InTrailer); a response's header line is read.
+// A name a request holds in its trailer section reads as absent (see
+// InTrailer); a response's header line is read.
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
@@ -477,13 +479,12 @@ func First(h Peeker, name string, canonical bool) []byte {
 
 	// Split out rather than written below: All's iterator is heap-allocated
 	// where the compiler cannot see the branch is dead, so holding it in this
-	// function cost the canonical path an allocation it never used. The request
-	// trailer check sits there too: inlined here, it slowed the canonical path.
+	// function cost the canonical path an allocation it never used.
 	return firstFold(h, name)
 }
 
-// firstFold answers First for a store whose field names are spelled however the
-// peer sent them, or that holds a trailer section.
+// firstFold answers First for field names spelled as the peer sent them, or for a
+// request holding a trailer section, a check kept here since it slowed First's canonical path.
 func firstFold(h Peeker, name string) []byte {
 	if req, ok := h.(*fasthttp.RequestHeader); ok && InTrailer(req, name) {
 		return nil

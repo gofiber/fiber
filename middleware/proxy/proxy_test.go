@@ -1006,7 +1006,9 @@ func Test_Proxy_TrailerSectionWhateverThePolicy(t *testing.T) {
 				app := fiber.New()
 				app.Use(func(c fiber.Ctx) error {
 					// Announced after the router dropped the client's, as only the application can.
-					require.NoError(t, c.Request().Header.AddTrailer(c.Get("X-Announce")))
+					if err := c.Request().Header.AddTrailer(c.Get("X-Announce")); err != nil {
+						return err
+					}
 					return c.Next()
 				})
 				app.Get("/", handler)

@@ -313,6 +313,7 @@ func Test_ClearTrailers(t *testing.T) {
 				}
 
 				require.Equal(t, names <= MaxTrailers, ClearTrailers(req))
+				require.Equal(t, -1, req.Header.ContentLength())
 
 				require.Empty(t, req.Header.PeekTrailerKeys())
 				want.Header.Cookie("") // collected, as the clear collects them
@@ -323,6 +324,8 @@ func Test_ClearTrailers(t *testing.T) {
 				}
 				req.Header.Set("X-Role", "app")
 				require.Equal(t, "app", string(First(&req.Header, "X-Role", canonical)))
+				req.Header.Set("x-probe", "1")
+				require.Equal(t, !canonical, strings.Contains(req.Header.String(), "x-probe:"))
 			})
 		}
 	}
