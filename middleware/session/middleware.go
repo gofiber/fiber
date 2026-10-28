@@ -301,8 +301,10 @@ func acquireMiddleware() *Middleware {
 // pointer pointing at a finished, empty middleware that nothing else uses.
 //
 // So is one that other middleware still run inside, since they hold it as their
-// parent. That happens when a timeout middleware around them let this one finish
-// first, and they find it finished instead of serving another request.
+// parent, and one whose request context was abandoned: both happen when a
+// timeout middleware lets handlers outlive the middleware around them, and such a
+// handler finds a finished middleware instead of another request's. The session
+// of an abandoned request is not recycled either, for the same reason.
 //
 // The middleware this one ran inside becomes the current one of the request
 // again, and learns that one fewer runs inside it.
@@ -315,13 +317,17 @@ func acquireMiddleware() *Middleware {
 //	releaseMiddleware(m)
 func releaseMiddleware(m *Middleware) {
 	m.mu.Lock()
-	drop := m.escaped || m.children.Load() > 0
+	outer, c, session := m.parent, m.ctx, m.Session
+	// A request whose context was abandoned, as the timeout middleware does, can have
+	// handlers still running that hold its middleware and its session: neither goes
+	// back to the pool, or such a handler could find the next request's in its place.
+	abandoned := c != nil && c.IsAbandoned()
+	drop := m.escaped || abandoned || m.children.Load() > 0
 	if drop {
 		// First, so a lookup that races the release finds a middleware that is
 		// visibly gone instead of one that is half reset.
 		m.released.Store(true)
 	}
-	outer, c, session := m.parent, m.ctx, m.Session
 	if c != nil {
 		clearMiddlewareContext(c)
 	}
@@ -334,7 +340,7 @@ func releaseMiddleware(m *Middleware) {
 
 	// After m let go of it: until then a goroutine that holds m could still reach
 	// the session through m.Session once it was handed to another request.
-	if session != nil {
+	if session != nil && !abandoned {
 		releaseSession(session)
 	}
 	if outer != nil {
@@ -359,9 +365,12 @@ func releaseMiddleware(m *Middleware) {
 // innermost one, the last to run. Use Store.FromContext to reach the middleware
 // of a particular store.
 //
-// The Middleware belongs to its request, as the type documents: a goroutine
-// that outlives the request, such as a handler a timeout middleware abandoned,
-// must not use one it got from here before the request ended.
+// The Middleware belongs to its request, as the type documents. A handler that a
+// timeout middleware abandoned gets nil from here once the request ended, and a
+// Middleware it got before stays finished: it is never recycled for another
+// request, but its session is gone, so calling its methods panics. A goroutine of
+// your own that outlives the handler has no such guarantee: give it the session
+// ID, not the Middleware.
 //
 // Parameters:
 //   - c: The Fiber context.

@@ -24,10 +24,10 @@ type Config struct {
 	// other handlers or one that has custom types registered.
 	//
 	// With a Store, the options that shape how sessions are stored and sent are
-	// the store's own (Storage, Extractor, the timeouts, the cookie options,
-	// StorageKeyPrefix and HashStorageKeys), and the ones set for them here are
-	// not used. The Config of the middleware supplies Next, ErrorHandler and
-	// SkipEmptySessions.
+	// the store's own (Storage, Extractor, KeyGenerator, the timeouts, the cookie
+	// options, StorageKeyPrefix and HashStorageKeys), and the ones set for them
+	// here are not used. The Config of the middleware supplies Next, ErrorHandler
+	// and SkipEmptySessions.
 	//
 	// Optional. Default: nil, which creates a store from this Config.
 	Store *Store

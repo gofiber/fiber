@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -45,11 +46,12 @@ func Test_Session_Middleware_NestedLinkIsBalanced(t *testing.T) {
 	require.Equal(t, int32(1), outer.children.Load())
 	require.Same(t, inner, c.Locals(middlewareContextKey))
 
-	innerSession := inner.Session
+	// Dropped instead of recycled, so that the test can look at it afterwards
+	// without a parallel test having taken it from the pool in the meantime.
+	inner.escaped = true
 	releaseMiddleware(inner)
 	require.Nil(t, inner.parent, "a finished middleware keeps no link")
 	require.Nil(t, inner.Session)
-	require.Empty(t, innerSession.ID(), "its session went back to the pool with it")
 	require.Zero(t, outer.children.Load(), "and the outer one is not counted as having it inside any more")
 	require.Same(t, outer, c.Locals(middlewareContextKey), "the outer middleware is current again")
 	require.False(t, outer.released.Load())
@@ -266,4 +268,172 @@ func Test_Session_Middleware_FindDoesNotAllocate(t *testing.T) {
 	require.Zero(t, testing.AllocsPerRun(100, func() { _ = storeA.FromContext(c) }), "the one it runs inside")
 	require.Zero(t, testing.AllocsPerRun(100, save(inner.Session)), "the session of the innermost middleware")
 	require.Zero(t, testing.AllocsPerRun(100, save(outer.Session)), "the session of the one it runs inside")
+}
+
+// Not parallel: it looks at a session after it went back to the shared pool,
+// where a parallel test could take it.
+func Test_Session_ReleaseMiddleware_ReleasesTheSession(t *testing.T) {
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	m := startMiddleware(t, c, NewStore())
+	sess := m.Session
+	require.NotEmpty(t, sess.ID())
+
+	releaseMiddleware(m)
+	require.Nil(t, m.Session)
+	require.Empty(t, sess.ID(), "the session was reset and went back to the pool with the middleware")
+}
+
+// A handler that a timeout middleware abandoned can hold the middleware and the
+// session of its request after the request is answered. Neither is recycled then,
+// or the next request would find itself in the abandoned handler's hands.
+func Test_Session_ReleaseMiddleware_AbandonedRequestKeepsItsObjects(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer c.ForceRelease()
+
+	m := startMiddleware(t, c, NewStore())
+	sess := m.Session
+	sess.Set("k", "v")
+
+	c.Abandon()
+	releaseMiddleware(m)
+	require.True(t, m.released.Load(), "the middleware is marked finished, so lookups stop returning it")
+	require.Nil(t, m.Session)
+
+	for range 100 {
+		got := acquireMiddleware()
+		require.NotSame(t, m, got, "the middleware of an abandoned request went back to the pool")
+		releaseMiddleware(got)
+
+		next := acquireSession()
+		require.NotSame(t, sess, next, "the session of an abandoned request went back to the pool")
+		releaseSession(next)
+	}
+	require.Equal(t, "v", sess.Get("k"), "and what the abandoned handler holds is left as it was")
+}
+
+// The interleaving behind a timeout middleware: the abandoned handler reads the
+// request local, the request is answered and the middleware in front of it
+// finishes, the next request starts, and then the handler goes on with its lookup.
+// It must not find the next request's middleware.
+func Test_Session_Middleware_AbandonedLookupDoesNotFindTheNextRequest(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c1 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer c1.ForceRelease()
+	c2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c2)
+
+	store := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
+	first := startMiddleware(t, c1, store)
+	first.Set("req", "first")
+
+	held := FromContext(c1) // the abandoned handler begins its lookup
+	require.Same(t, first, held)
+
+	c1.Abandon() // the timeout middleware abandons the request and answers it
+	releaseMiddleware(first)
+
+	second := startMiddleware(t, c2, store) // the next request starts
+	second.Set("req", "secret-of-the-second-request")
+	require.NotSame(t, first, second)
+
+	found := held.find(func(m *Middleware) bool { return m.config.Store == store })
+	require.Nil(t, found, "the abandoned handler found a middleware after its request ended")
+	require.Nil(t, store.FromContext(c1))
+	require.Equal(t, "secret-of-the-second-request", second.Get("req"))
+
+	releaseMiddleware(second)
+}
+
+// A walk stops at a middleware that finished, even if nothing but its flag says so.
+func Test_Session_Middleware_FindStopsAtAFinishedOuter(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
+	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
+	outer := startMiddleware(t, c, storeA)
+	inner := startMiddleware(t, c, storeB)
+
+	require.Same(t, outer, storeA.FromContext(c))
+
+	outer.released.Store(true)
+	require.Nil(t, storeA.FromContext(c), "the walk went on to a middleware that finished")
+	require.Same(t, inner, storeB.FromContext(c), "the middleware in front of it is still found")
+	require.Nil(t, inner.find(func(m *Middleware) bool { return m == outer }), "even one a caller asks for by name")
+	outer.released.Store(false)
+
+	releaseMiddleware(inner)
+	releaseMiddleware(outer)
+}
+
+// adopt, the restore and the release of the outer middleware run on different
+// goroutines when a timeout middleware abandons the handlers inside it. They must
+// not race on the middleware: run with -race.
+func Test_Session_Middleware_LinkProtocolIsRaceFree(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	store := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
+
+	// outer is a running middleware of the request on c1, which a goroutine is
+	// about to link to or restore. It is dropped instead of recycled when it
+	// finishes, so that the test can look at it afterwards.
+	run := func(t *testing.T, inner func(outer *Middleware, c1, c2 fiber.Ctx), beforeRelease func(outer *Middleware)) {
+		t.Helper()
+
+		for range 200 {
+			c1 := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c2 := app.AcquireCtx(&fasthttp.RequestCtx{}) // restore writes the locals of the request it is given
+			outer := startMiddleware(t, c1, store)
+			outer.escaped = true
+
+			var wg sync.WaitGroup
+			wg.Go(func() { inner(outer, c1, c2) })
+			beforeRelease(outer)
+			releaseMiddleware(outer)
+			wg.Wait()
+
+			require.Zero(t, outer.children.Load(), "every link that was made was undone")
+			app.ReleaseCtx(c1)
+			app.ReleaseCtx(c2)
+		}
+	}
+
+	t.Run("linking while the outer middleware finishes", func(t *testing.T) {
+		t.Parallel()
+		run(t, func(outer *Middleware, c1, c2 fiber.Ctx) {
+			if outer.adopt(c1) {
+				restoreMiddlewareContext(c2, outer)
+				outer.unlink()
+			}
+		}, func(*Middleware) {})
+	})
+
+	t.Run("restoring while the outer middleware finishes", func(t *testing.T) {
+		t.Parallel()
+
+		// The link is made first; from then on the goroutine and the release run on their own.
+		linked := make(chan bool, 1)
+		run(t, func(outer *Middleware, c1, c2 fiber.Ctx) {
+			ok := outer.adopt(c1)
+			linked <- ok
+			if ok {
+				restoreMiddlewareContext(c2, outer)
+				outer.unlink()
+			}
+		}, func(*Middleware) {
+			require.True(t, <-linked, "the outer middleware was still running")
+		})
+	})
 }

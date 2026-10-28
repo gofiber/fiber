@@ -435,6 +435,9 @@ func (s *Session) Save() error {
 //
 // Note: If the session is being used in the handler, calling SaveWithContext will have
 // no effect and the session will automatically be saved when the handler returns.
+// To tell, it takes the read lock of the session middleware, which is held while
+// that middleware destroys, resets or regenerates its session: do not call it from
+// a Storage then.
 //
 // Parameters:
 //   - ctx: The context to use for the storage operation.
@@ -593,8 +596,8 @@ func (s *Session) SetIdleTimeout(idleTimeout time.Duration) {
 // IdleTimeout returns the idle timeout of the session: the one set with
 // SetIdleTimeout, or else the store's. A save applies it, cut down to the time
 // left until the absolute deadline. A timeout set with SetIdleTimeout holds for
-// every save of this session in the request, but is not kept between requests,
-// so the next request has to set it again.
+// every later save of this session in the request, unless the session is reset,
+// but is not kept between requests, so the next request has to set it again.
 //
 // Returns:
 //   - time.Duration: The idle timeout of this session.
