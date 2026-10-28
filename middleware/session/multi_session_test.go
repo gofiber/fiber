@@ -744,3 +744,46 @@ func Test_Session_MultipleStores_LoginCallbackExample(t *testing.T) {
 	_, body = sendRequest(t, app, "/me", map[string]string{"app_sid": appID, "login_sid": loginID})
 	require.Equal(t, "123/true/false", body, "the login session cannot be revived with its old cookie")
 }
+
+// Benchmark_Middleware_TwoStores is a request through two session middleware,
+// each over its own cookie, that reaches both sessions through their stores.
+//
+// go test -v -run=^$ -bench=Benchmark_Middleware_TwoStores -benchmem -count=4
+func Benchmark_Middleware_TwoStores(b *testing.B) {
+	handlerA, storeA := NewWithStore(Config{
+		Extractor:    extractors.FromCookie("a_sid"),
+		KeyGenerator: func() string { return "session-a" },
+	})
+	handlerB, storeB := NewWithStore(Config{
+		Extractor:    extractors.FromCookie("b_sid"),
+		KeyGenerator: func() string { return "session-b" },
+	})
+
+	app := fiber.New()
+	app.Use(handlerA, handlerB)
+	app.Get("/", func(c fiber.Ctx) error {
+		storeA.FromContext(c).Set("john", "doe")
+		storeB.FromContext(c).Set("john", "doe")
+		return nil
+	})
+	handler := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI("/")
+	// The first request creates both sessions, the rest load them, so the
+	// storages do not grow while the benchmark runs.
+	handler(fctx)
+
+	b.ReportAllocs()
+	for b.Loop() {
+		fctx.ResetUserValues()
+		fctx.Response.Reset()
+		fctx.Request.Header.SetCookie("a_sid", "session-a")
+		fctx.Request.Header.SetCookie("b_sid", "session-b")
+		handler(fctx)
+	}
+	if fctx.Response.StatusCode() != fiber.StatusOK {
+		b.Fatalf("status %d", fctx.Response.StatusCode())
+	}
+}

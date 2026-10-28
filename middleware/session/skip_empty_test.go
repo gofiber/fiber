@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 // skipEmptyApp builds an app whose routes exercise every way a request can
@@ -268,4 +269,31 @@ func Test_Session_IsEmptyFresh(t *testing.T) {
 		t.Parallel()
 		require.False(t, (&Session{isFresh: true}).isEmptyFresh())
 	})
+}
+
+// Benchmark_Middleware_NewVisitor is a request from a client that sends no
+// cookie and never uses the session, such as a health check. With
+// SkipEmptySessions it stores nothing and sets no cookie.
+//
+// go test -v -run=^$ -bench=Benchmark_Middleware_NewVisitor -benchmem -count=4
+func Benchmark_Middleware_NewVisitor(b *testing.B) {
+	for _, skip := range []bool{false, true} {
+		b.Run("SkipEmptySessions="+strconv.FormatBool(skip), func(b *testing.B) {
+			app := fiber.New()
+			app.Use(New(Config{SkipEmptySessions: skip}))
+			app.Get("/", func(_ fiber.Ctx) error { return nil })
+			handler := app.Handler()
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(fiber.MethodGet)
+			fctx.Request.SetRequestURI("/")
+
+			b.ReportAllocs()
+			for b.Loop() {
+				fctx.ResetUserValues()
+				fctx.Response.Reset()
+				handler(fctx)
+			}
+		})
+	}
 }

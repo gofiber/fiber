@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 type getterProfile struct{ Name string }
@@ -274,5 +275,39 @@ func Test_Session_AbsoluteExpiry(t *testing.T) {
 		})
 		_, body := sendRequest(t, app, "/", nil)
 		require.Equal(t, "true|true", body)
+	})
+}
+
+// Benchmark_GetAs compares the typed read with the type assertion it replaces.
+//
+// go test -v -run=^$ -bench=Benchmark_GetAs -benchmem -count=4
+func Benchmark_GetAs(b *testing.B) {
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	sess, err := NewStore().Get(c)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer sess.Release()
+	sess.Set("name", "alice")
+
+	b.Run("GetAs", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			if _, ok := GetAs[string](sess, "name"); !ok {
+				b.Fatal("not found")
+			}
+		}
+	})
+
+	b.Run("Get and assert", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			if _, ok := sess.Get("name").(string); !ok {
+				b.Fatal("not found")
+			}
+		}
 	})
 }

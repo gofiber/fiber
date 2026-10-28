@@ -311,3 +311,31 @@ func Test_Store_Reset_ClearsTheWholeStorageDespiteAPrefix(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, keys)
 }
+
+// Benchmark_Store_StorageKey measures the key every read, write and delete of a
+// session goes through. Without a prefix or hashing it costs one allocation, the key itself.
+//
+// go test -v -run=^$ -bench=Benchmark_Store_StorageKey -benchmem -count=4
+func Benchmark_Store_StorageKey(b *testing.B) {
+	const id = "wuyjDTdyBzOvL4mUnQ6qiM0nsSYUdyAxnXn0X2VgbX4"
+
+	for _, tc := range []struct {
+		name   string
+		prefix string
+		hash   bool
+	}{
+		{name: "default"},
+		{name: "prefix", prefix: "app:session:"},
+		{name: "hash", hash: true},
+		{name: "prefix and hash", prefix: "app:session:", hash: true},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			store := NewStore(Config{StorageKeyPrefix: tc.prefix, HashStorageKeys: tc.hash})
+
+			b.ReportAllocs()
+			for b.Loop() {
+				_ = store.storageKey(id)
+			}
+		})
+	}
+}
