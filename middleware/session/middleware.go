@@ -307,12 +307,26 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 
 	// The middleware still current in this request, if any, is the one this runs
 	// inside; storeMiddlewareContext is about to replace it.
-	if outer, ok := c.Locals(middlewareContextKey).(*Middleware); ok && outer != nil && outer.adopt(c) {
+	outer := currentMiddleware(c)
+	m.escaped = storeMiddlewareContext(c, session, m)
+
+	// Last, so that nothing after the count is taken can panic: the call that gives
+	// it back is only installed once initialize has returned.
+	if outer != nil && outer.adopt(c) {
 		m.parent = outer
 		m.pinned = outer
 	}
-	m.escaped = storeMiddlewareContext(c, session, m)
 	return nil
+}
+
+// currentMiddleware returns the session middleware the request currently holds, or
+// nil if it holds none.
+func currentMiddleware(c fiber.Ctx) *Middleware {
+	m, ok := c.Locals(middlewareContextKey).(*Middleware)
+	if !ok {
+		return nil
+	}
+	return m
 }
 
 // saveSession handles session saving and error management after the response.

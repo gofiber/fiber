@@ -726,8 +726,9 @@ func Test_Session_Middleware_UnpinUnlessFinished(t *testing.T) {
 	releaseMiddleware(outer)
 }
 
-// panicAtCtx is a custom context that panics at one chosen point of the release of
-// a session middleware, as a Ctx of an application could: where the request locals
+// panicAtCtx is a custom context that panics at one chosen point of the life of a
+// session middleware, as a Ctx of an application could: where the middleware is
+// published to the request as it starts, and, as it ends, where the request locals
 // are cleared, which happens while the middleware holds its lock, where the Go
 // context is replaced, where it asks whether the request was abandoned, and where
 // the outer middleware is made current again.
@@ -738,6 +739,10 @@ type panicAtCtx struct {
 
 func (c *panicAtCtx) Locals(key any, value ...any) any {
 	switch c.point.Load() {
+	case "publishing the inner middleware":
+		if key == middlewareContextKey && len(value) == 1 && value[0] != nil {
+			panic("custom context: Locals panicked while publishing")
+		}
 	case "clearing the locals":
 		if key == middlewareContextKey && len(value) == 1 && value[0] == nil {
 			panic("custom context: Locals panicked while clearing")
@@ -765,22 +770,23 @@ func (c *panicAtCtx) IsAbandoned() bool {
 	return c.DefaultCtx.IsAbandoned()
 }
 
-// A panic inside the release of a nested middleware, wherever it comes from, goes on
-// as it does for a middleware without an outer one: nothing waits for the lock the
-// release holds, and the outer middleware's count is given back, so that it is
-// recycled when it finishes.
+// A panic in the start or in the release of a nested middleware, wherever it comes
+// from, goes on as it does for a middleware without an outer one: nothing waits for
+// the lock the release holds, and the outer middleware's count is given back, or was
+// never taken, so that it is recycled when it finishes.
 func Test_Session_MultipleStores_PanicInReleaseGoesOn(t *testing.T) {
 	t.Parallel()
 
 	for _, point := range []string{
+		"publishing the inner middleware",
 		"clearing the locals",
 		"replacing the Go context",
 		"asking whether the request was abandoned",
 		"restoring the outer middleware",
 	} {
 		for _, nested := range []bool{false, true} {
-			if point == "restoring the outer middleware" && !nested {
-				continue // there is no outer middleware to restore
+			if (point == "restoring the outer middleware" || point == "publishing the inner middleware") && !nested {
+				continue // there is no outer middleware to restore or to run inside
 			}
 			t.Run(point+" nested="+strconv.FormatBool(nested), func(t *testing.T) {
 				t.Parallel()
@@ -795,14 +801,21 @@ func Test_Session_MultipleStores_PanicInReleaseGoesOn(t *testing.T) {
 				if nested {
 					app.Use(handlerA)
 				}
-				app.Use(handlerB)
-
 				var outer atomic.Pointer[Middleware]
-				app.Get("/", func(c fiber.Ctx) error {
+				app.Use(func(c fiber.Ctx) error { // between the two session middleware
 					if nested {
 						outer.Store(storeA.FromContext(c))
 					}
-					armed.Store(point) // the release of the middleware that runs last panics
+					if point == "publishing the inner middleware" {
+						armed.Store(point) // the start of the middleware that runs last panics
+					}
+					return c.Next()
+				})
+				app.Use(handlerB)
+				app.Get("/", func(fiber.Ctx) error {
+					if point != "publishing the inner middleware" {
+						armed.Store(point) // the release of the middleware that runs last panics
+					}
 					return nil
 				})
 				handler := app.Handler()
