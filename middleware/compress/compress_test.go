@@ -1206,8 +1206,7 @@ func Test_Compress_Response_Quoted_Cache_Control_Argument_Is_Not_No_Transform(t 
 
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
-		c.Response().Header.Add(fiber.HeaderCacheControl, "public")
-		c.Response().Header.Add(fiber.HeaderCacheControl, `ext="x,no-transform,y"`)
+		c.Set(fiber.HeaderCacheControl, `public, ext="x,no-transform,y"`)
 		return c.Send(filedata)
 	})
 
