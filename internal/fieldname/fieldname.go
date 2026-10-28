@@ -405,6 +405,7 @@ func rewriteInRankOrder(h *fasthttp.RequestHeader, lines []orderedLine) {
 // Lines returns every field line stored under name. The walk replaces the
 // byte-exact lookup rather than backing it up: a message can carry both
 // spellings, and an empty canonical line would hide the value beside it.
+// A name a request holds in its trailer section has no lines (see InTrailer); a response's header lines are read.
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store, not a mode of operation
 func Lines(h Peeker, name string, canonical bool) [][]byte {
@@ -444,6 +445,8 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 // resolved by picking one. headerlookup.Value refuses that case for the request
 // fields where it arises.
 //
+// A name a request holds in its trailer section reads as absent (see InTrailer); a response's header line is read.
+//
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
 	if canonical && !HasTrailers(h) {
@@ -472,18 +475,19 @@ func First(h Peeker, name string, canonical bool) []byte {
 		return nil
 	}
 
-	if req, ok := h.(*fasthttp.RequestHeader); ok && InTrailer(req, name) {
-		return nil
-	}
 	// Split out rather than written below: All's iterator is heap-allocated
 	// where the compiler cannot see the branch is dead, so holding it in this
-	// function cost the canonical path an allocation it never used.
+	// function cost the canonical path an allocation it never used. The request
+	// trailer check sits there too: inlined here, it slowed the canonical path.
 	return firstFold(h, name)
 }
 
 // firstFold answers First for a store whose field names are spelled however the
-// peer sent them.
+// peer sent them, or that holds a trailer section.
 func firstFold(h Peeker, name string) []byte {
+	if req, ok := h.(*fasthttp.RequestHeader); ok && InTrailer(req, name) {
+		return nil
+	}
 	// Walked rather than ranged, for the reason Lines gives: All builds a
 	// heap-allocated iterator per call. Scanning past the match costs less than
 	// the early exit ranging would buy.
