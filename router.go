@@ -1102,6 +1102,9 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	if app.config.StrictRouting {
 		route.routeParser.applyStrictRouting()
 	}
+	if route.use {
+		route.routeParser.markGreedyTail()
+	}
 	// A prefix can introduce parameters of its own — a sub-app mounted at
 	// "/v1/:version" is prefixing every one of its routes with one. Params
 	// decides whether the router matches a route by pattern or by string
@@ -1307,6 +1310,9 @@ func (app *App) registerForHosts(hosts []domainMatcher, methods []string, pathRa
 	parsedPretty.adoptConstraints(&parsedRaw)
 	if app.config.StrictRouting {
 		parsedPretty.applyStrictRouting()
+	}
+	if use {
+		parsedPretty.markGreedyTail()
 	}
 
 	isMount := group != nil && group.app != app

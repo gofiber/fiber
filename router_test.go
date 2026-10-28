@@ -1038,6 +1038,69 @@ func Test_Route_Match_Middleware_NoBoundary(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 }
 
+func Test_Route_Match_Middleware_WildcardBeforeConst(t *testing.T) {
+	t.Parallel()
+
+	deny := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
+	guards := map[string]func(app *App){
+		"use":       func(app *App) { app.Use("/api/*/admin", deny) },
+		"use slash": func(app *App) { app.Use("/api/*/admin/", deny) },
+		"plus":      func(app *App) { app.Use("/api/+/admin", deny) },
+		"group":     func(app *App) { app.Group("/api/*/admin").Use(deny) },
+		"mount": func(app *App) {
+			sub := New(Config{StrictRouting: app.config.StrictRouting})
+			sub.Use(deny)
+			app.Use("/api/*/admin", sub)
+		},
+	}
+	for name, guard := range guards {
+		for _, strict := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/strict=%v", name, strict), func(t *testing.T) {
+				t.Parallel()
+
+				app := New(Config{StrictRouting: strict})
+				guard(app)
+				app.Get("/api/:tenant/admin/:page", func(c Ctx) error { return c.SendStatus(StatusOK) })
+				app.Get("/api/*", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+				for _, target := range []string{
+					"/api/acme/admin",
+					"/api/acme/admin/admins",
+					"/api/acme/admin/admin-settings",
+					"/api/acme/admin/users/admin.json",
+					"/api/a/admin/b/admin/c",
+					"/api/ACME/Admin/Admins",
+				} {
+					resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, StatusUnauthorized, resp.StatusCode, target)
+				}
+				for _, target := range []string{"/api/acme/admins", "/api/acme/admin.json", "/api/acme/status"} {
+					resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, StatusOK, resp.StatusCode, target)
+				}
+			})
+		}
+	}
+
+	t.Run("case sensitive", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{CaseSensitive: true})
+		app.Use("/api/*/Admin", deny)
+		app.Get("/api/*", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/acme/Admin/admins", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusUnauthorized, resp.StatusCode)
+
+		resp, err = app.Test(httptest.NewRequest(MethodGet, "/api/acme/admin/Admins", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+}
+
 func Test_Route_Match_Middleware_Root(t *testing.T) {
 	t.Parallel()
 
@@ -5283,6 +5346,20 @@ func Test_Router_StrictRouting_PrefixTrailingSlash(t *testing.T) {
 			endpoint: "/a/:id/:sub?",
 			guarded:  []string{"/a/x", "/a/x/", "/a/x/y"},
 			missed:   []string{"/a", "/a/"},
+		},
+		{
+			name:     "greedy tail",
+			register: func(app *App) { app.Group("/api/*/admin").Use("/", guard) },
+			endpoint: "/api/:tenant/admin/:page?",
+			guarded:  []string{"/api/acme/admin", "/api/acme/admin/", "/api/acme/admin/admins"},
+			missed:   []string{"/api/acme/admins"},
+		},
+		{
+			// other greedy shapes keep the '/', which steers the guess as in v3.6.1
+			name:     "greedy guess",
+			register: func(app *App) { app.Group("/**/+/admin").Use("/", guard) },
+			endpoint: "/**/+/admin/*",
+			guarded:  []string{"/a/b/admin/x", "/x/admin/admin/x", "/a/b/c/admin/users"},
 		},
 	}
 	for _, tc := range testCases {

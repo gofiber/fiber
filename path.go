@@ -65,6 +65,7 @@ type routeSegment struct {
 	// common information
 	IsLast           bool // shows if the segment is the last one for the route
 	HasOptionalSlash bool // segment has the possibility of an optional slash
+	GreedyTail       bool // a prefix's only greedy parameter, right before its last constant; see findGreedyTailLen
 }
 
 // different special routing signs
@@ -261,7 +262,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 // routing configuration but retains escapes for parsing, and clean is the
 // literal comparison key. It does not decode or normalize request paths.
 // A prefix (use) drops its trailing slash under StrictRouting too: "/users/:id?"
-// answers "/users", so middleware on "/users/" has to cover it.
+// answers "/users", so middleware on "/users/" has to cover it. See keepsSlash.
 //
 //nolint:nonamedreturns,revive // names distinguish the three forms; use marks a prefix route
 func normalizeRoutePattern(pattern string, config *Config, use bool) (raw, pretty, clean string) {
@@ -276,7 +277,7 @@ func normalizeRoutePattern(pattern string, config *Config, use bool) (raw, prett
 	if !config.CaseSensitive {
 		pretty = utilsstrings.ToLower(pretty)
 	}
-	if (!config.StrictRouting || use) && len(pretty) > 1 {
+	if (!config.StrictRouting || (use && !keepsSlash(pretty))) && len(pretty) > 1 {
 		pretty = utils.TrimRight(pretty, '/')
 		if pretty == "" {
 			// as for a request path: "//" is the root, not an empty pattern
@@ -1437,6 +1438,9 @@ func findParamLen(s string, segment *routeSegment) int {
 	if segment.Length != 0 && len(s) >= segment.Length {
 		return segment.Length
 	} else if segment.IsGreedy {
+		if segment.GreedyTail {
+			return findGreedyTailLen(s, segment.ComparePart)
+		}
 		// Search the parameters until the next constant part
 		// special logic for greedy params
 		searchCount := strings.Count(s, segment.ComparePart)
@@ -1505,6 +1509,52 @@ func findGreedyParamLen(s string, searchCount int, segment *routeSegment) int {
 	}
 
 	return len(s)
+}
+
+// findGreedyTailLen ends a prefix's greedy parameter before the last tail that ends s or a
+// path segment, so the prefix covers every path below it.
+func findGreedyTailLen(s, tail string) int {
+	for end := len(s); end >= len(tail); end = strings.LastIndexByte(s[:end], slashDelimiter) {
+		if strings.HasSuffix(s[:end], tail) {
+			return end - len(tail)
+		}
+	}
+	return len(s)
+}
+
+// greedyTail returns the only greedy parameter when the last segment, a constant that does
+// not end in '/', directly follows it.
+func (parser *routeParser) greedyTail() *routeSegment {
+	n := len(parser.segs)
+	if n < 2 || parser.wildCardCount+parser.plusCount != 1 {
+		return nil
+	}
+	g, last := parser.segs[n-2], parser.segs[n-1]
+	if !g.IsGreedy || last.IsParam || last.Const == "" || last.Const[len(last.Const)-1] == slashDelimiter {
+		return nil
+	}
+	return g
+}
+
+// markGreedyTail is for prefixes only: an endpoint keeps findGreedyParamLen's guess.
+func (parser *routeParser) markGreedyTail() {
+	if g := parser.greedyTail(); g != nil {
+		g.GreedyTail = true
+	}
+}
+
+// keepsSlash reports whether a StrictRouting prefix keeps its trailing '/', as in v3.6.1: a
+// greedy parameter that is not last ends where findGreedyParamLen guesses, which the '/' steers.
+func keepsSlash(pattern string) bool {
+	var parser routeParser
+	parser.parseRoute(utils.TrimRight(pattern, '/'), nil)
+	tail := parser.greedyTail()
+	for _, seg := range parser.segs {
+		if seg.IsGreedy && !seg.IsLast && seg != tail {
+			return true
+		}
+	}
+	return false
 }
 
 // GetTrimmedParam trims the ':' & '?' from a string

@@ -391,6 +391,10 @@ An optional parameter that ends at a single-character constant, such as `:month?
 
 The routes of a mounted app are re-parsed with the mount prefix as written. Before, they were re-parsed from its comparison key, which has the case folded and the escapes removed: an escaped literal such as `/v1\:internal` became a parameter, and a custom constraint with an upper-case name such as `/tenants/:id<tenantID>` was dropped, so the mounted routes answered paths that middleware on the same prefix did not cover. `Route.Path` of a mounted route now keeps the prefix's case and escapes, as it does for a route registered through a `Group`.
 
+### Wildcards in middleware prefixes
+
+A `Use`, `Group` or mount prefix whose only wildcard is followed only by literal text, such as `app.Use("/api/*/admin", mw)`, now covers every path in which that text ends a path segment, such as `/api/acme/admin/admins`, which it skipped before while `/api/:tenant/admin/:page` answered it; other greedy shapes in a prefix keep the v3.6.1 behavior, including the trailing slash with `StrictRouting`, so use a named parameter in the prefix and in the routes below it, as in `/api/:tenant/admin/:id`.
+
 ### Use with a sub-app
 
 `Use` panics when one call receives both handlers and a sub-app, as in `app.Use("/admin", auth, adminApp)`, on an `App`, a `Group` and a `Domain` router. Before, it mounted the sub-app and dropped the handlers without an error. Register them in separate calls: `app.Use("/admin", auth)`, then `app.Use("/admin", adminApp)`. It also panics on two sub-apps in one call, which mounted only the last, and on two path arguments, such as `app.Use("/admin", "/internal", auth)` or a path next to a `[]string`, which registered the handlers on only one of them. Pass several paths as one `[]string`.

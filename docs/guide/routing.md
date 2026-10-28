@@ -218,6 +218,8 @@ An optional parameter makes only its value optional, never the text around it: l
 
 If an optional parameter sits directly before another parameter and the value it consumed makes the rest of the pattern fail, Fiber retries it as empty: `/:a?:b` matches `/x` with `a` empty and `b` set to `x`. Matching allows at most 16 such retries per route to bound the work for adjacent optional parameters. A route that needs more retries does not match, even if a valid assignment exists. Greedy wildcards do not participate in these retries, and a value that fails its constraint is not retried as empty.
 
+A `Use`, `Group` or mount prefix whose only wildcard is followed only by literal text, such as `/api/*/admin`, covers every path in which that text ends a path segment, such as `/api/acme/admin/admins`. In other prefix shapes, such as `/api/*/admin/:id` or `/*/+/admin`, a wildcard ends where the router guesses and can miss paths that a route below the prefix answers, and with `StrictRouting` such a prefix keeps its trailing slash. Use a named parameter there, in the prefix and in the routes below it, as in `/api/:tenant/admin/:id`.
+
 <Tabs>
 <TabItem value="named" label="Named, optional, greedy">
 

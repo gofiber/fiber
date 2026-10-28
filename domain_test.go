@@ -3437,6 +3437,26 @@ func Test_Domain_UseMountOverlappingErrorHandler(t *testing.T) {
 	}
 }
 
+func Test_Domain_UseMountWildcardPrefixErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	sub := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(581).SendString("sub")
+	}})
+	sub.Get("/:page", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Domain("admin.example.com").Use("/api/*/admin", sub)
+
+	req := httptest.NewRequest(MethodGet, "/api/acme/admin/admins", http.NoBody)
+	req.Host = "admin.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 581, resp.StatusCode)
+}
+
 // Test_Domain_UseMountOverlappingErrorHandlerAutoHead verifies that an automatic
 // HEAD route resolves the same owner its GET route does, rather than falling
 // back to the first mount that covers the path.
