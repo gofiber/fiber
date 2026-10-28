@@ -188,8 +188,9 @@ app.Get("/auth/callback", func(c fiber.Ctx) error {
 
 - `store.FromContext(c)` returns the middleware that store installed for the request, or `nil` if it did not run, for example because its `Next` skipped it. The package-level `session.FromContext(c)` keeps returning the innermost middleware, the last one to run.
 - Each middleware saves its own session when the handler returns, the inner one first, and reports a failed save to its own `ErrorHandler`. `Destroy()` removes only its own session; the others are saved as usual.
-- Use a different cookie or header for every session. Stores that read the same cookie or header resolve the same session. That is how the session middleware and the store you give another middleware, such as CSRF, agree on one ID for a visitor who has no cookie yet.
-- Sessions can share one storage if their stores have different [`StorageKeyPrefix`](#storage-keys) values, so that their keys cannot meet. Separate storages work as well.
+- Use a different cookie or header for every session. Stores that read the same cookie or header resolve the same session. That is how the session middleware and the store you give another middleware, such as CSRF, agree on one ID for a visitor who has no cookie yet. A store that reads its ID only from a source it cannot write back to, such as the query string, an `Authorization` header, a form field, a route parameter or a custom extractor, cannot be told apart from the others and keeps sharing their ID, as it did before.
+- Sessions can share one storage if their stores have different [`StorageKeyPrefix`](#storage-keys) values, none of which is the start of another. Separate storages work as well, and are the better choice when the data of one store must never be reachable through another.
+- A `timeout` middleware answers the request while the handlers behind it can still be running. When the session middleware in front of it has finished by then, `store.FromContext` returns `nil` for its store in those handlers, and never the session of another request.
 - `store.Get(c)` serves several stores without the middleware too. Call it once per store and request and keep the session: asking a store again after a store over another cookie was asked, for a visitor who has no cookie yet, issues a second new ID.
 
 ## Session Security
@@ -346,7 +347,7 @@ app.Use(session.New(session.Config{
   - Any route that uses the middleware will reset the idle timer
   - Calling `sess.Save()` will also reset the idle timer
 - `AbsoluteTimeout`: Sessions are forcibly expired after maximum duration
-  - Near the end, a save keeps the record and the cookie only for the time that is left, so neither outlives the deadline. The lifetime is never shorter than one second, because a storage may read a shorter one as "never expires"
+  - Near the end, a save keeps the record and the cookie only for the time that is left, so neither outlives the deadline by more than one second. The lifetime is never shorter than that, because a storage may read a shorter one as "never expires"
   - `sess.AbsoluteExpiry()` reports when the session ends, for example to warn the user
 - No manual cleanup required - the storage layer handles this
 
@@ -484,7 +485,7 @@ app.Use(session.New(session.Config{
 
 A session is stored under `session:<session ID>`, so a session ID sent by a client cannot name an entry another middleware keeps in the same `Storage`. `store.GetByID` and `store.Delete` take the bare session ID. `store.Reset` clears the whole `Storage`, the entries of other middleware included. Sessions stored by an earlier version under the bare ID are not found after the upgrade, so users sign in again; those entries expire on their own in an external `Storage`.
 
-A `Storage` that is a typed nil, such as an unset `*redis.Storage`, panics when the middleware or the store is created, instead of on the first request. A plain `nil` stands for the default in-memory storage.
+A `Storage` that is a typed nil, such as an unset `*redis.Storage`, panics when the store is created, instead of on the first request, even if its methods would cope with a nil receiver. A plain `nil` stands for the default in-memory storage, and a `Storage` next to a `Config.Store` is not used, so it is not checked.
 
 ### Skipping Empty Sessions
 
@@ -499,7 +500,7 @@ app.Use(session.New(session.Config{
 - A session that holds data is saved exactly as before. A handler that wants a session to exist for a visitor stores something in it, if only a flag. Do not use `sess.ID()` as a visitor identifier while nothing is stored: without a cookie, the next request gets another one.
 - A session that already exists is still saved on every request that goes through the middleware, so its idle timeout keeps sliding.
 - A `sess.Reset()` that leaves nothing behind, such as a logout, expires the cookie and stores no new session. `sess.Fresh()` is `true` for a new session either way.
-- The option applies to the middleware. A session from `store.Get(c)` is saved when you call `Save`.
+- The option applies to the middleware. A session from `store.Get(c)` is saved when you call `Save`. With `Config.Store`, set it on the config of the middleware; a warning is logged when only the store has it.
 
 It is off by default so that existing applications keep their behavior. It is recommended for any application that clients without cookies can reach.
 
@@ -515,11 +516,11 @@ app.Use(session.New(session.Config{
 }))
 ```
 
-- `StorageKeyPrefix` goes in front of `session:`, so that several applications, environments or stores can share one storage without their sessions meeting: the key is `myapp:session:<id>`. End it with a separator such as `:`, so that no prefix, followed by `session:`, is the start of another.
+- `StorageKeyPrefix` goes in front of `session:`, so that several applications, environments or stores can share one storage without their sessions meeting: the key is `myapp:session:<id>`. End it with a separator such as `:`, and choose prefixes so that none, followed by `session:`, is the start of another: `app:` and `admin:` stay apart, `app:` and `app:admin:` too, but `app:` and `app:session:admin:` do not, and a store without a prefix reaches the stores whose prefix starts with `session:`. The ID comes from the client and is appended as it is, so a store with the prefix `app:` reads the key `app:session:admin:session:<id>` when the client sends it the ID `admin:session:<id>`, which is the key of a store with the prefix `app:session:admin:`. An ID is unguessable, so this does not reach a session whose ID the client does not hold, but it does mean a prefix alone does not keep stores apart for a client that holds an ID of the other.
 - `HashStorageKeys` stores each session under `session:` and the SHA-256 digest of its ID (base64url-encoded, 43 characters) instead of the ID. Whoever can read the storage, through a backup, a replica or a leaked dump, then holds digests that cannot be sent as a session cookie. The ID the client holds does not change, and neither do `store.GetByID` and `store.Delete`, which take that ID. It does not make a guessable ID from a custom `KeyGenerator` safe.
-- Changing either option changes the key of every session, so sessions stored before the change are not found afterwards and their visitors get new ones. Plan the switch like any other invalidation of all sessions.
+- Changing either option changes the key of every session, so sessions stored before the change are not found afterwards and their visitors get new ones, as after the upgrade that added the `session:` namespace. Plan the switch like any other invalidation of all sessions. Do not run a hashed and an unhashed store over the same storage and prefix, as during a rolling deployment that turns `HashStorageKeys` on: the unhashed store takes a digest read from the storage for a session ID. Switch to a new prefix instead.
 - `store.Reset` clears the whole storage, not only the keys under the prefix.
-- Like `Storage` and `Extractor`, both options belong to the store. With `Config.Store`, set them on the config the store was built with.
+- Like `Storage` and `Extractor`, both options belong to the store. With `Config.Store`, set them on the config the store was built with; a warning is logged when the config of the middleware sets them and the store does not.
 
 ### Production Security Settings
 
@@ -569,7 +570,7 @@ app.Use(session.New(session.Config{
 
 A custom `ErrorHandler` has to write the response itself. When the session cannot be loaded from the storage, the request is not passed on, so a handler that only logs answers with an empty `200`. When the session cannot be saved, the route handler has already run: the status and body that `ErrorHandler` writes replace its own, while its headers stay, and a handler that only logs leaves that response, usually a success, for a session the storage did not keep.
 
-Browsers, not the middleware, enforce the rules of the `__Host-` and `__Secure-` cookie name prefixes, and they drop a cookie that breaks them without a word, which shows up as sessions that never persist. A `__Host-` cookie needs `CookieSecure`, `CookiePath: "/"` and no `CookieDomain`; a `__Secure-` cookie needs `CookieSecure` (`CookieSameSite: "None"` sets it too). The prefixes are matched case-insensitively. When the store is created, a warning is logged for each cookie of the `Extractor` that breaks its rules. The configuration is accepted as before.
+Browsers, not the middleware, enforce the rules of the `__Host-` and `__Secure-` cookie name prefixes, and they drop a cookie that breaks them without a word, which shows up as sessions that never persist. A `__Host-` cookie needs `CookieSecure`, the path `/` and no `CookieDomain`; the default `CookiePath` is sent as `/`, so it meets that rule. A `__Secure-` cookie needs `CookieSecure` (`CookieSameSite: "None"` sets it too). The prefixes are matched case-insensitively. When the store is created, a warning is logged for each cookie of the `Extractor` that breaks its rules. The configuration is accepted as before.
 
 ### Custom Types
 
@@ -751,7 +752,7 @@ visits, ok := session.GetAs[int](sess, "visits")
 // Session management
 sess.ID() string
 sess.Fresh() bool
-sess.IdleTimeout() time.Duration         // Idle timeout the next save applies
+sess.IdleTimeout() time.Duration         // Idle timeout of the session
 sess.AbsoluteExpiry() (time.Time, bool)  // When the session ends however active it is
 sess.Regenerate() error  // Change ID, keep data
 sess.Reset() error       // Change ID, clear data
@@ -796,7 +797,9 @@ store.RegisterType(User{})
 
 `store.Reset` clears the whole storage, including keys that are not sessions and the sessions of other stores that share it. A `StorageKeyPrefix` does not limit it, because the storage interface cannot list keys.
 
-`sess.IdleTimeout()` is the timeout set with `SetIdleTimeout`, or else the store's. A timeout set with `SetIdleTimeout` applies to the next save only and is not kept for the next request, so set it again where it matters. `sess.AbsoluteExpiry()` reports `false` for a store without an `AbsoluteTimeout`.
+`sess.IdleTimeout()` is the timeout set with `SetIdleTimeout`, or else the store's. A save applies it, cut down to the time left until the absolute deadline. A timeout set with `SetIdleTimeout` holds for every save of that session in the request and is not kept for the next request, so set it again where it matters. `sess.AbsoluteExpiry()` reports `false` for a store without an `AbsoluteTimeout`.
+
+Like the other methods of the middleware, `sess.IdleTimeout()` and `store.FromContext` take a lock. Call them from handlers, not from inside a `Storage` implementation, which the session calls while it holds that lock to save, destroy, reset or regenerate.
 
 ### Errors
 
@@ -870,7 +873,7 @@ extractors.Chain(extractors ...extractors.Extractor) extractors.Extractor
 
 | Property            | Type                        | Description                 | Default                                    |
 |---------------------|-----------------------------|-----------------------------|--------------------------------------------|
-| `Store`             | `*session.Store`            | Pre-built session store (use when you need to share/register types) | `nil` (auto-created)                       |
+| `Store`             | `*session.Store`            | Pre-built session store (use when you need to share/register types). The store's own options decide how sessions are stored and sent; this config supplies only `Next`, `ErrorHandler` and `SkipEmptySessions` | `nil` (auto-created)                       |
 | `Storage`           | `fiber.Storage`             | Session storage backend (used when creating a store if `Store` is nil) | `memory.New()`                             |
 | `Extractor`         | `extractors.Extractor`      | Session ID extraction       | `extractors.FromCookie("session_id")`     |
 | `KeyGenerator`      | `func() string`             | Session ID generator        | `utils.SecureToken`                             |
