@@ -1003,7 +1003,7 @@ func Test_Proxy_StripDropsTrailerSection(t *testing.T) {
 
 // Test_Proxy_StreamedBodyTrailerSection checks that the trailer section of a streamed body
 // reaches the upstream neither as header lines nor as trailers, and does not take the
-// place of a header written once the body has been read.
+// place of a header written once the body has been read, whatever the hop-by-hop policy.
 func Test_Proxy_StreamedBodyTrailerSection(t *testing.T) {
 	t.Parallel()
 
@@ -1017,57 +1017,70 @@ func Test_Proxy_StreamedBodyTrailerSection(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 
-	app := fiber.New(fiber.Config{StreamRequestBody: true})
-	balancer := Balancer(Config{Servers: []string{upstream.Listener.Addr().String()}})
-	app.Post("/forward", balancer)
-	app.Post("/read", func(c fiber.Ctx) error {
-		c.Body()
-		c.Request().Header.Set("X-User", "alice")
-		return c.Next()
-	}, balancer)
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	startServer(app, ln)
-
-	exchange := func(path, head, trailers string) (int, string) {
-		conn, err := net.Dial(fiber.NetworkTCP4, ln.Addr().String())
-		require.NoError(t, err)
-		require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
-		_, err = conn.Write([]byte("POST " + path + " HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n" + head +
-			"Transfer-Encoding: chunked\r\n\r\n2\r\nhi\r\n0\r\n" + trailers + "X-User: x\r\n\r\n"))
-		require.NoError(t, err)
-		resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
-		require.NoError(t, err)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-		require.NoError(t, conn.Close())
-		return resp.StatusCode, string(body)
-	}
-
 	var many strings.Builder
 	for i := range fieldname.MaxTrailers - 1 {
 		fmt.Fprintf(&many, "X-T%d: v\r\n", i)
 	}
-	for _, tc := range []struct{ head, forwarded, trailers string }{
-		{head: "", forwarded: `[]`},
-		{head: "X-User: admin\r\n", forwarded: `["admin"]`},
-		{head: "X-User: admin\r\nTrailer: X-User\r\n", forwarded: `["admin"]`},
-		{head: "X-User: admin\r\n", forwarded: `["admin"]`, trailers: many.String()},
-	} {
-		for path, want := range map[string]string{
-			"/forward": "body=hi header=" + tc.forwarded + " trailer=[]",
-			"/read":    `body=hi header=["alice"] trailer=[]`,
-		} {
-			_, body := exchange(path, tc.head, tc.trailers)
-			require.Equal(t, want, body, path+" "+tc.head)
-		}
-	}
 
-	// One name past the cap fails the body read, and neither the client's line nor the app's goes upstream.
-	for _, path := range []string{"/forward", "/read"} {
-		status, body := exchange(path, "X-User: admin\r\n", many.String()+"X-T15: v\r\n")
-		require.Equal(t, fiber.StatusRequestHeaderFieldsTooLarge, status, path+" "+body)
+	for _, keep := range []bool{false, true} {
+		t.Run(fmt.Sprintf("keep=%v", keep), func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{StreamRequestBody: true})
+			balancer := Balancer(Config{
+				Servers:        []string{upstream.Listener.Addr().String()},
+				SecurityPolicy: &SecurityPolicy{AllowPrivateIPs: true, KeepHopByHopHeaders: keep},
+			})
+			app.Post("/forward", balancer)
+			app.Post("/read", func(c fiber.Ctx) error {
+				c.Body()
+				c.Request().Header.Set("X-User", "alice")
+				return c.Next()
+			}, balancer)
+			ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+			require.NoError(t, err)
+			startServer(app, ln)
+
+			exchange := func(path, head, trailers string) (int, string) {
+				conn, err := net.Dial(fiber.NetworkTCP4, ln.Addr().String())
+				require.NoError(t, err)
+				require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+				_, err = conn.Write([]byte("POST " + path + " HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n" + head +
+					"Transfer-Encoding: chunked\r\n\r\n2\r\nhi\r\n0\r\n" + trailers + "X-User: x\r\n\r\n"))
+				require.NoError(t, err)
+				resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+				require.NoError(t, err)
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.NoError(t, resp.Body.Close())
+				require.NoError(t, conn.Close())
+				return resp.StatusCode, string(body)
+			}
+
+			for _, tc := range []struct{ head, forwarded, trailers string }{
+				{head: "", forwarded: `[]`},
+				{head: "X-User: admin\r\n", forwarded: `["admin"]`},
+				{head: "X-User: admin\r\nTrailer: X-User\r\n", forwarded: `["admin"]`},
+				{head: "X-User: admin\r\n", forwarded: `["admin"]`, trailers: many.String()},
+			} {
+				for path, want := range map[string]string{
+					"/forward": "body=hi header=" + tc.forwarded + " trailer=[]",
+					"/read":    `body=hi header=["alice"] trailer=[]`,
+				} {
+					_, body := exchange(path, tc.head, tc.trailers)
+					require.Equal(t, want, body, path+" "+tc.head)
+				}
+			}
+
+			// One name past the cap fails the body read and drops the section all the same: the proxy reading
+			// the body answers 431, and after a handler that read it and went on, the app's line goes upstream.
+			over := many.String() + "X-T15: v\r\n"
+			status, body := exchange("/forward", "X-User: admin\r\n", over)
+			require.Equal(t, fiber.StatusRequestHeaderFieldsTooLarge, status, body)
+			status, body = exchange("/read", "X-User: admin\r\n", over)
+			require.Equal(t, fiber.StatusOK, status, body)
+			require.Equal(t, `body=Request Header Fields Too Large header=["alice"] trailer=[]`, body)
+		})
 	}
 }
 

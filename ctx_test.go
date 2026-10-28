@@ -3741,9 +3741,10 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 				return respond(c, body)
 			})
 			app.Post("/fields", func(c Ctx) error {
+				role := c.Get("X-Role")
 				read := string(c.Body()) == "hello"
-				return c.SendString(fmt.Sprintf("read=%v client=%q ip=%s scheme=%s host=%q", read, c.GetAll("X-Client"),
-					c.IP(), c.Scheme(), c.Host()))
+				return c.SendString(fmt.Sprintf("read=%v role=%s blocked=%q client=%q ip=%s scheme=%s host=%q", read, role,
+					c.Get("X-Blocked"), c.GetAll("X-Client"), c.IP(), c.Scheme(), c.Host()))
 			})
 			ln := startRawServer(t, app)
 
@@ -3764,7 +3765,7 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 				}
 			}
 
-			// One name past the cap: the read fails and the section stays, so its names read as absent.
+			// One name past the cap: the read fails, and the section is dropped all the same.
 			tooMany := many.String() + "X-14: v\r\n"
 			for _, head := range heads {
 				raw := "POST /stream HTTP/1.1\r\nHost: example.com\r\n" + head + chunked + tooMany + "X-User: x\r\nX-Role: x\r\n\r\n"
@@ -3773,16 +3774,17 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 
 				raw = "POST /body HTTP/1.1\r\nHost: example.com\r\n" + head + chunked + tooMany + "X-User: x\r\nX-Role: x\r\n\r\n"
 				responses, _ = rawExchange(t, ln, raw, 1)
-				require.Equal(t, `body=Request Header Fields Too Large user=[] role=[] trailers=17`, responses[0].body, raw)
+				require.Equal(t, `body=Request Header Fields Too Large user=["alice"] role=["user"] trailers=0`, responses[0].body, raw)
 			}
 
-			// The header section stays as received either way, the proxy's forwarding fields included.
+			// The header section stays as received either way, the proxy's lines included, and so does a value read before.
 			for _, extra := range []string{"", tooMany} {
-				raw := "POST /fields HTTP/1.1\r\nHost: example.com\r\nX-Client: c\r\nX-Forwarded-For: 203.0.113.7\r\n" +
-					"X-Forwarded-Proto: https\r\n" + chunked + extra + "X-User: x\r\nX-Role: x\r\n\r\n"
+				raw := "POST /fields HTTP/1.1\r\nHost: example.com\r\nX-Client: c\r\nX-Role: user\r\nX-Evil: root\r\n" +
+					"X-Blocked: 1\r\nX-Forwarded-For: 203.0.113.7\r\nX-Forwarded-Proto: https\r\n" + chunked + extra +
+					"X-Role: x\r\nX-Evil: x\r\nX-Blocked: x\r\n\r\n"
 				responses, _ := rawExchange(t, loopbackDialer{ln}, raw, 1)
-				require.Equal(t, fmt.Sprintf(`read=%v client=["c"] ip=203.0.113.7 scheme=https host="example.com"`, extra == ""),
-					responses[0].body)
+				require.Equal(t, fmt.Sprintf(`read=%v role=user blocked="1" client=["c"] ip=203.0.113.7 scheme=https host="example.com"`,
+					extra == ""), responses[0].body)
 			}
 		})
 	}

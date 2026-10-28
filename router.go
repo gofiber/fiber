@@ -1109,18 +1109,19 @@ func dropStreamedTrailers(req *fasthttp.Request) {
 	if _, closer := req.BodyStream().(io.Closer); closer || req.Header.ContentLength() != -1 {
 		return
 	}
-	req.SetBodyStream(&trailerDropReader{r: req.BodyStream(), h: &req.Header}, -1)
+	req.SetBodyStream(&trailerDropReader{r: req.BodyStream(), req: req}, -1)
 }
 
 type trailerDropReader struct {
-	r io.Reader
-	h *fasthttp.RequestHeader
+	r   io.Reader
+	req *fasthttp.Request
 }
 
-// Read fails the end of a body whose trailer section is too large to drop, as dropTrailers refuses the request.
+// Read fails the end of a body whose trailer section holds more names than dropTrailers takes, as it refuses the
+// request; the section is dropped either way, for a handler that goes on regardless.
 func (t *trailerDropReader) Read(p []byte) (int, error) {
 	n, err := t.r.Read(p)
-	if errors.Is(err, io.EOF) && !fieldname.DropTrailers(t.h) {
+	if errors.Is(err, io.EOF) && !fieldname.ClearTrailers(t.req) {
 		return n, ErrRequestHeaderFieldsTooLarge
 	}
 	return n, err //nolint:wrapcheck // io.Reader passes io.EOF through as is

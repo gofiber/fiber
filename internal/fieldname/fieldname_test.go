@@ -273,6 +273,61 @@ func Test_DropTrailers(t *testing.T) {
 	})
 }
 
+// Test_ClearTrailers pins that the header comes back as it was without the trailer section, whatever the number of
+// names, with every value read before still holding what it held.
+func Test_ClearTrailers(t *testing.T) {
+	t.Parallel()
+
+	const head = "POST / HTTP/1.1\r\nHost: app.example\r\nUser-Agent: ua\r\nCookie: a=1\r\nX-Role: user\r\nConnection: x-a\r\n" +
+		"Cookie: b=2\r\nConnection: x-b\r\nConnection: close\r\nX-Evil: root\r\nX-Forwarded-For: client\r\n" +
+		"Transfer-Encoding: chunked\r\nX-Forwarded-For: proxy\r\nX-After: zz\r\n\r\n5\r\nhello\r\n0\r\n"
+
+	for _, names := range []int{2, MaxTrailers + 1} {
+		for _, canonical := range []bool{true, false} {
+			t.Run(fmt.Sprintf("names=%d canonical=%v", names, canonical), func(t *testing.T) {
+				t.Parallel()
+
+				read := func(trailer string) *fasthttp.Request {
+					req := &fasthttp.Request{}
+					if !canonical {
+						req.Header.DisableNormalizing()
+					}
+					require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(head+trailer+"\r\n"))))
+					return req
+				}
+				var extra strings.Builder
+				for i := range names - 2 {
+					fmt.Fprintf(&extra, "X-T%d: v\r\n", i)
+				}
+				req, want := read("X-Role: x\r\nX-Evil: x\r\n"+extra.String()), read("")
+				require.Len(t, req.Header.PeekTrailerKeys(), names)
+				raw := string(req.Header.RawHeaders())
+
+				var aliased [][]byte
+				for _, name := range []string{"X-Role", "X-Evil", "X-Forwarded-For", "X-After"} {
+					aliased = append(aliased, req.Header.PeekAll(name)...)
+				}
+				var held []string
+				for _, v := range aliased {
+					held = append(held, string(v))
+				}
+
+				require.Equal(t, names <= MaxTrailers, ClearTrailers(req))
+
+				require.Empty(t, req.Header.PeekTrailerKeys())
+				want.Header.Cookie("") // collected, as the clear collects them
+				require.Equal(t, want.Header.String(), req.Header.String())
+				require.Equal(t, raw, string(Received(req)))
+				for i, v := range aliased {
+					require.Equal(t, held[i], string(v))
+				}
+				req.Header.Set("X-Role", "app")
+				require.Equal(t, "app", string(First(&req.Header, "X-Role", canonical)))
+			})
+		}
+	}
+}
+
 // Test_KeepReceivedOrder pins that repeated lines go back to received order after
 // fasthttp's Del moved the last line into the removed one's slot.
 func Test_KeepReceivedOrder(t *testing.T) {

@@ -80,6 +80,58 @@ func DropTrailers(h *fasthttp.RequestHeader) bool {
 	return true
 }
 
+// ClearTrailers is DropTrailers in one pass for any number of names, putting each line back in the buffer a value
+// read earlier aliases. It reports false, having dropped the section all the same, for more than MaxTrailers names.
+func ClearTrailers(req *fasthttp.Request) bool {
+	h := &req.Header
+	keys := len(h.PeekTrailerKeys())
+	if keys == 0 {
+		return true
+	}
+	// Collected first, as the walk below collects them, so each line keeps its slot.
+	h.Cookie("")
+	tmp := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(tmp)
+	saved := &tmp.Header
+	h.CopyTo(saved)
+	// Reset empties the received block, which the forwarding order is read from.
+	if raw := h.RawHeaders(); len(raw) > 0 {
+		block := slices.Clone(raw)
+		SetReceived(req, &block)
+	}
+
+	// It returns the previous setting, which Reset clears.
+	disabled := h.DisableNormalizing()
+	h.Reset()
+	if disabled {
+		h.DisableNormalizing()
+	}
+	h.SetMethodBytes(saved.Method())
+	h.SetRequestURIBytes(saved.RequestURI())
+	h.SetProtocolBytes(saved.Protocol())
+	for k, v := range saved.All() {
+		switch name := utils.UnsafeString(k); {
+		case utils.EqualFold(name, fasthttp.HeaderTrailer),
+			utils.EqualFold(name, fasthttp.HeaderConnection) && utils.EqualFold(utils.UnsafeString(v), "close"):
+			// The announced names, and the close flag, which holds no line of the store.
+		case utils.EqualFold(name, fasthttp.HeaderConnection), utils.EqualFold(name, fasthttp.HeaderTransferEncoding):
+			// As stored: Add drops the framing field and folds a second Connection line into the first.
+			h.DisableSpecialHeader()
+			h.AddBytesKV(k, v)
+			h.EnableSpecialHeader()
+		default:
+			h.AddBytesKV(k, v)
+		}
+	}
+	if saved.ConnectionClose() {
+		h.SetConnectionClose()
+	}
+	if saved.ContentLength() == -1 {
+		h.SetContentLength(-1)
+	}
+	return keys <= MaxTrailers
+}
+
 // InTrailer reports whether name is a field of a request's trailer section. A header line under such a name is not
 // read: it may be the client's, with the Set meant to replace it filed with the section. A response's line still is.
 func InTrailer(h *fasthttp.RequestHeader, name string) bool {
