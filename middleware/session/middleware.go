@@ -41,6 +41,9 @@ type Middleware struct {
 	// escaped marks a middleware the request context holds, which releaseMiddleware
 	// must not recycle.
 	escaped bool
+	// linked is set while this middleware is counted in parent.children, and is
+	// cleared by whichever ends that: its release, or the unwinding of a panic.
+	linked bool
 }
 
 // Context key for session middleware lookup.
@@ -123,7 +126,12 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 			return nil
 		}
 
-		stackErr := c.Next()
+		var stackErr error
+		if m.linked {
+			stackErr = m.nextInside(c)
+		} else {
+			stackErr = c.Next()
+		}
 
 		// A handler timeout.New gave up on may still use m: neither save nor pool it or its session.
 		// IsAbandoned goes first: its atomic load orders the read after the timeout middleware's write.
@@ -236,6 +244,38 @@ func (m *Middleware) unlink() {
 	m.children.Add(-1)
 }
 
+// nextInside runs the rest of the stack for a middleware that runs inside
+// another. A panic that unwinds it skips its release, and the outer middleware
+// would then count it as running inside for good, and be dropped instead of
+// recycled when it finishes: the deferred call ends the link. The panic goes on
+// as before, and this middleware stays the current one for whatever recovers it,
+// as one without an outer middleware does. Only nested middleware pay for the
+// defer.
+func (m *Middleware) nextInside(c fiber.Ctx) error {
+	finished := false
+	defer func() {
+		if !finished {
+			m.unlinkFromOuter()
+		}
+	}()
+
+	err := c.Next()
+	finished = true
+	return err
+}
+
+// unlinkFromOuter ends the link to the outer middleware, once.
+func (m *Middleware) unlinkFromOuter() {
+	m.mu.Lock()
+	outer, linked := m.parent, m.linked
+	m.linked = false
+	m.mu.Unlock()
+
+	if linked {
+		outer.unlink()
+	}
+}
+
 // initialize sets up middleware for the request. It returns an error when the
 // session cannot be loaded from the store (e.g. the backing storage is down)
 // so the request can fail gracefully instead of crashing the server.
@@ -256,6 +296,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 	// inside; storeMiddlewareContext is about to replace it.
 	if outer, ok := c.Locals(middlewareContextKey).(*Middleware); ok && outer != nil && outer.adopt(c) {
 		m.parent = outer
+		m.linked = true
 	}
 	m.escaped = storeMiddlewareContext(c, session, m)
 	return nil
@@ -317,7 +358,7 @@ func acquireMiddleware() *Middleware {
 //	releaseMiddleware(m)
 func releaseMiddleware(m *Middleware) {
 	m.mu.Lock()
-	outer, c, session := m.parent, m.ctx, m.Session
+	outer, c, session, linked := m.parent, m.ctx, m.Session, m.linked
 	// A request whose context was abandoned, as the timeout middleware does, can have
 	// handlers still running that hold its middleware and its session: neither goes
 	// back to the pool, or such a handler could find the next request's in its place.
@@ -335,6 +376,7 @@ func releaseMiddleware(m *Middleware) {
 	m.Session = nil
 	m.ctx = nil
 	m.parent = nil
+	m.linked = false
 	m.isDestroyed = false
 	m.mu.Unlock()
 
@@ -347,7 +389,9 @@ func releaseMiddleware(m *Middleware) {
 		if c != nil {
 			restoreMiddlewareContext(c, outer)
 		}
-		outer.unlink()
+		if linked {
+			outer.unlink()
+		}
 	}
 	if !drop {
 		middlewarePool.Put(m)

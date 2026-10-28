@@ -2,6 +2,8 @@ package session
 
 import (
 	"fmt"
+	"runtime"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -436,4 +438,136 @@ func Test_Session_Middleware_LinkProtocolIsRaceFree(t *testing.T) {
 			require.True(t, <-linked, "the outer middleware was still running")
 		})
 	})
+}
+
+// A panic that unwinds a middleware inside another skips its release, so the link
+// to the outer middleware has to be ended some other way, once.
+func Test_Session_Middleware_UnlinkFromOuterIsOnce(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	outer := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
+	inner := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("b_sid")}))
+	require.True(t, inner.linked)
+	require.Equal(t, int32(1), outer.children.Load())
+
+	inner.unlinkFromOuter()
+	require.False(t, inner.linked)
+	require.Zero(t, outer.children.Load(), "the outer middleware no longer counts the one that was unwound")
+	require.Same(t, outer, inner.parent, "the way to it stays, for whatever recovers the panic")
+
+	inner.unlinkFromOuter()
+	require.Zero(t, outer.children.Load(), "and a second call finds nothing to undo")
+
+	// A release after that does not undo the link again.
+	inner.escaped = true
+	releaseMiddleware(inner)
+	require.Zero(t, outer.children.Load())
+
+	releaseMiddleware(outer)
+	require.False(t, outer.released.Load(), "so the outer middleware is recycled like any other")
+}
+
+// recoverBetween is a middleware that recovers the panic of whatever runs behind it and
+// reports what it can still reach of the session middleware at that point.
+func recoverBetween(storeA *Store, seen *atomic.Value) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		var err error
+		func() {
+			defer func() {
+				if recover() != nil {
+					seen.Store(fmt.Sprintf("outer=%t current=%t", storeA.FromContext(c) != nil, FromContext(c) != nil))
+					err = fiber.ErrInternalServerError
+				}
+			}()
+			err = c.Next()
+		}()
+		return err
+	}
+}
+
+// A handler panics behind an inner session middleware and a middleware that
+// recovers it, in front of an outer session middleware. As it does without an outer
+// one, the inner middleware stays the current one for the recovering middleware, which
+// can still reach the outer one; the outer one then saves its session as usual and the
+// inner one, unwound by the panic, does not save.
+func Test_Session_MultipleStores_PanicInsideKeepsWhatItShould(t *testing.T) {
+	t.Parallel()
+
+	recA, recB := newRecordingStorage(), newRecordingStorage()
+	handlerA, storeA := NewWithStore(Config{Storage: recA, Extractor: extractors.FromCookie("a_sid")})
+	handlerB, _ := NewWithStore(Config{Storage: recB, Extractor: extractors.FromCookie("b_sid")})
+
+	var seen atomic.Value
+	app := fiber.New()
+	app.Use(handlerA)
+	app.Use(recoverBetween(storeA, &seen))
+	app.Use(handlerB)
+	app.Get("/", func(c fiber.Ctx) error {
+		storeA.FromContext(c).Set("k", "v")
+		panic("boom")
+	})
+
+	resp, _ := sendRequest(t, app, "/", nil)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Equal(t, "outer=true current=true", seen.Load())
+	require.Len(t, recA.writes(), 1, "the outer middleware saved its session")
+	require.Empty(t, recB.writes(), "the inner one was unwound before it could")
+}
+
+// Not parallel: it replaces the New of the shared middleware pool to count what the
+// pool creates, and keeps the process on one P without garbage collection so that
+// the pool hands back what it was given.
+//
+// The inner middleware is unwound by the panic and never comes back, with or
+// without an outer one, so each request creates one. The outer middleware must not
+// cost another: it is recycled, because nothing runs inside it any more.
+func Test_Session_MultipleStores_PanicInsideRecyclesTheOuterMiddleware(t *testing.T) {
+	prevGC := debug.SetGCPercent(-1)
+	prevProcs := runtime.GOMAXPROCS(1)
+	defer debug.SetGCPercent(prevGC)
+	defer runtime.GOMAXPROCS(prevProcs)
+
+	var created atomic.Int64
+	oldNew := middlewarePool.New
+	middlewarePool.New = func() any {
+		created.Add(1)
+		return &Middleware{}
+	}
+	defer func() { middlewarePool.New = oldNew }()
+
+	handlerA, storeA := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
+	handlerB, _ := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
+
+	var seen atomic.Value
+	app := fiber.New()
+	app.Use(handlerA)
+	app.Use(recoverBetween(storeA, &seen))
+	app.Use(handlerB)
+	app.Get("/", func(fiber.Ctx) error { panic("boom") })
+	handler := app.Handler()
+
+	do := func() int {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI("/")
+		handler(fctx)
+		return fctx.Response.StatusCode()
+	}
+
+	require.Equal(t, fiber.StatusInternalServerError, do(), "warm-up")
+	created.Store(0)
+
+	const requests = 100
+	for range requests {
+		require.Equal(t, fiber.StatusInternalServerError, do())
+	}
+	// One per request for the inner middleware. The race detector makes a pool drop
+	// some of what it is given, so the outer one is allowed a quarter more, but not
+	// one more per request.
+	require.Less(t, created.Load(), int64(requests)*8/5,
+		"the outer middleware was dropped instead of recycled: %d created for %d requests", created.Load(), requests)
 }
