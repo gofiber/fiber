@@ -391,9 +391,11 @@ An optional parameter that ends at a single-character constant, such as `:month?
 
 The routes of a mounted app are re-parsed with the mount prefix as written. Before, they were re-parsed from its comparison key, which has the case folded and the escapes removed: an escaped literal such as `/v1\:internal` became a parameter, and a custom constraint with an upper-case name such as `/tenants/:id<tenantID>` was dropped, so the mounted routes answered paths that middleware on the same prefix did not cover. `Route.Path` of a mounted route now keeps the prefix's case and escapes, as it does for a route registered through a `Group`.
 
-### Wildcards in middleware prefixes
+### Wildcards and parameters in middleware prefixes
 
 A `Use`, `Group` or mount prefix whose only wildcard is followed only by literal text, such as `app.Use("/api/*/admin", mw)`, now covers every path in which that text ends a path segment, such as `/api/acme/admin/admins`, which it skipped before while `/api/:tenant/admin/:page` answered it; other greedy shapes in a prefix keep the v3.6.1 behavior, including the trailing slash with `StrictRouting`, so use a named parameter in the prefix and in the routes below it, as in `/api/:tenant/admin/:id`.
+
+Likewise, a prefix without wildcards whose last segment ends in a named parameter followed by literal text, such as `app.Use("/files/:name.json", mw)`, now covers `/files/a.json.json/raw`, which `/files/:name.json/raw` answered with `name` set to `a.json`; the parameter still ends at the first copy of the text when it is optional, has a constraint or shares its segment with another parameter.
 
 ### Use with a sub-app
 

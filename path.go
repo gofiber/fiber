@@ -66,6 +66,7 @@ type routeSegment struct {
 	IsLast           bool // shows if the segment is the last one for the route
 	HasOptionalSlash bool // segment has the possibility of an optional slash
 	GreedyTail       bool // a prefix's only greedy parameter, right before its last constant; see findGreedyTailLen
+	ParamTail        bool // a prefix's plain parameter, the only one in its segment before its last constant; see findParamTailLen
 }
 
 // different special routing signs
@@ -1457,6 +1458,9 @@ func findParamLen(s string, segment *routeSegment) int {
 			if segment.IsOptional && !segment.IsGreedy && strings.IndexByte(s[:constPosition], slashDelimiter) != -1 {
 				return 0
 			}
+			if segment.ParamTail {
+				return findParamTailLen(s, segment.ComparePart, constPosition)
+			}
 			return constPosition
 		}
 	} else if len(segment.ComparePart) > 1 && !segment.IsGreedy && segment.ComparePart[0] == slashDelimiter {
@@ -1477,6 +1481,9 @@ func findParamLen(s string, segment *routeSegment) int {
 		// example: /api/:param/fixedEnd -> path: /api/123/456/fixedEnd = no match , /api/123/fixedEnd = match
 		if !segment.IsGreedy && strings.IndexByte(s[:constPosition], slashDelimiter) != -1 {
 			return 0
+		}
+		if segment.ParamTail {
+			return findParamTailLen(s, segment.ComparePart, constPosition)
 		}
 		return constPosition
 	}
@@ -1522,6 +1529,18 @@ func findGreedyTailLen(s, tail string) int {
 	return len(s)
 }
 
+// findParamTailLen ends a prefix's parameter where tail ends its path segment, else at first:
+// the first match, which a one-byte tail lets cross a '/' as on an endpoint.
+func findParamTailLen(s, tail string, first int) int {
+	if i := strings.IndexByte(s, slashDelimiter); i != -1 {
+		s = s[:i]
+	}
+	if strings.HasSuffix(s, tail) {
+		return len(s) - len(tail)
+	}
+	return first
+}
+
 // greedyTail returns the only greedy parameter when the last segment, a constant that does
 // not end in '/', directly follows it.
 func (parser *routeParser) greedyTail() *routeSegment {
@@ -1536,10 +1555,19 @@ func (parser *routeParser) greedyTail() *routeSegment {
 	return g
 }
 
-// markGreedyTail is for prefixes only: an endpoint keeps findGreedyParamLen's guess.
-func (parser *routeParser) markGreedyTail() {
+// markTail is for prefixes only: an endpoint keeps findParamLen's guess.
+func (parser *routeParser) markTail() {
 	if g := parser.greedyTail(); g != nil {
 		g.GreedyTail = true
+	}
+	n := len(parser.segs)
+	if n < 3 || parser.wildCardCount+parser.plusCount != 0 {
+		return
+	}
+	c, p, last := parser.segs[n-3], parser.segs[n-2], parser.segs[n-1]
+	if strings.IndexByte(c.Const, slashDelimiter) != -1 && p.IsParam && !p.IsOptional && len(p.Constraints) == 0 &&
+		last.Const != "" && strings.IndexByte(last.Const, slashDelimiter) == -1 {
+		p.ParamTail = true
 	}
 }
 

@@ -1101,6 +1101,88 @@ func Test_Route_Match_Middleware_WildcardBeforeConst(t *testing.T) {
 	})
 }
 
+func Test_Route_Match_Middleware_ParamBeforeConst(t *testing.T) {
+	t.Parallel()
+
+	deny := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
+	ok := func(c Ctx) error { return c.SendStatus(StatusOK) }
+	guards := map[string]func(app *App, prefix string){
+		"use":       func(app *App, prefix string) { app.Use(prefix, deny) },
+		"use slash": func(app *App, prefix string) { app.Use(prefix+"/", deny) },
+		"group":     func(app *App, prefix string) { app.Group(prefix).Use("/", deny) },
+		"mount": func(app *App, prefix string) {
+			sub := New(Config{StrictRouting: app.config.StrictRouting})
+			sub.Use("/", deny)
+			app.Use(prefix, sub)
+		},
+		"domain mount": func(app *App, prefix string) {
+			sub := New(Config{StrictRouting: app.config.StrictRouting})
+			sub.Use("/", deny)
+			app.Domain("example.com").Use(prefix, sub)
+		},
+	}
+	shapes := []struct {
+		prefix, below string
+		guarded, open []string
+	}{
+		{
+			prefix:  "/files/:name.json",
+			below:   "/files/:name.json/raw",
+			guarded: []string{"/files/a.json", "/files/a.json/raw", "/files/a.json.json/raw", "/files/A.JSON.Json/raw"},
+			open:    []string{"/files/a.jsonx/raw", "/files/a.json.bak", "/files/a/b.json"},
+		},
+		{
+			prefix:  "/admin/:v.",
+			below:   "/admin/:v./x",
+			guarded: []string{"/admin/a./x", "/admin/a.b./x", "/admin/a/b./x"},
+			open:    []string{"/admin/a.b/x", "/admin/./x"},
+		},
+	}
+	for name, guard := range guards {
+		for _, strict := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/strict=%v", name, strict), func(t *testing.T) {
+				t.Parallel()
+
+				for _, shape := range shapes {
+					app := New(Config{StrictRouting: strict})
+					guard(app, shape.prefix)
+					app.Get(shape.below, ok)
+					app.Get("/*", ok)
+
+					for _, method := range []string{MethodGet, MethodHead} {
+						for _, target := range shape.guarded {
+							resp, err := app.Test(httptest.NewRequest(method, target, http.NoBody))
+							require.NoError(t, err)
+							require.Equal(t, StatusUnauthorized, resp.StatusCode, "%s %s", method, target)
+						}
+						for _, target := range shape.open {
+							resp, err := app.Test(httptest.NewRequest(method, target, http.NoBody))
+							require.NoError(t, err)
+							require.Equal(t, StatusOK, resp.StatusCode, "%s %s", method, target)
+						}
+					}
+				}
+			})
+		}
+	}
+
+	t.Run("case sensitive", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{CaseSensitive: true})
+		app.Use("/files/:name.JSON", deny)
+		app.Get("/*", ok)
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/files/a.JSON.JSON/raw", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusUnauthorized, resp.StatusCode)
+
+		resp, err = app.Test(httptest.NewRequest(MethodGet, "/files/a.JSON.json/raw", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+}
+
 func Test_Route_Match_Middleware_Root(t *testing.T) {
 	t.Parallel()
 

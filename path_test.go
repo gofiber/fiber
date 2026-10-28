@@ -166,7 +166,7 @@ func Test_Path_matchParams(t *testing.T) {
 	testCaseFn := func(testCollection routeCaseCollection) {
 		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
 		prefix := parseRoute(testCollection.pattern, regexp.MustCompile)
-		prefix.markGreedyTail() // as register does for a Use prefix
+		prefix.markTail() // as register does for a Use prefix
 		for _, c := range testCollection.testCases {
 			p := &parser
 			if c.partialCheck {
@@ -348,7 +348,7 @@ func Test_Route_Match_SlashBoundsConsistency(t *testing.T) {
 			Path:        testCollection.pattern,
 		}
 		prefix := parseRoute(testCollection.pattern, regexp.MustCompile)
-		prefix.markGreedyTail()
+		prefix.markTail()
 		for _, c := range testCollection.testCases {
 			route.use = c.partialCheck
 			route.routeParser = parser

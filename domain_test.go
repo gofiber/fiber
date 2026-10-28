@@ -3457,6 +3457,26 @@ func Test_Domain_UseMountWildcardPrefixErrorHandler(t *testing.T) {
 	require.Equal(t, 581, resp.StatusCode)
 }
 
+func Test_Domain_UseMountParamPrefixErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	sub := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(581).SendString("sub")
+	}})
+	sub.Get("/raw", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/files/:name.json", sub)
+
+	req := httptest.NewRequest(MethodGet, "/files/a.json.json/raw", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 581, resp.StatusCode)
+}
+
 // Test_Domain_UseMountOverlappingErrorHandlerAutoHead verifies that an automatic
 // HEAD route resolves the same owner its GET route does, rather than falling
 // back to the first mount that covers the path.

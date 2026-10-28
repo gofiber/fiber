@@ -100,7 +100,7 @@ func (app *App) newDomainMount(mounted *App, path string, matchers []domainMatch
 		// As in register: the constraints come from the pattern as written.
 		rawParser := parseRoute(raw, app.config.RegexHandler, constraints...)
 		parser.adoptConstraints(&rawParser)
-		parser.markGreedyTail()
+		parser.markTail()
 		mount.parser = &parser
 	}
 
