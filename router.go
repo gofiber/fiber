@@ -1252,10 +1252,9 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 	}
 }
 
-// pruneAutoHeadRouteLocked removes the automatically generated HEAD routes of
-// path so a later explicit registration can take their place without duplicating
-// handler chains. Only companions of routes behind the same Domain patterns go.
-// The caller must already hold app.mutex.
+// pruneAutoHeadRouteLocked removes the automatic HEAD routes of path behind the same Domain
+// patterns, so a later explicit registration can take their place without duplicating handler
+// chains. The caller must already hold app.mutex.
 func (app *App) pruneAutoHeadRouteLocked(path string, hosts []domainMatcher) {
 	headIndex := app.methodInt(MethodHead)
 	if headIndex == -1 {
@@ -1385,9 +1384,8 @@ func (app *App) registrationStacks(methods []string) []int {
 	return stacks
 }
 
-// mergesIntoLastLocked reports whether route merges into the last route of
-// stack m. One path behind two Domain patterns stays two routes, each with its
-// own name. The caller holds app.mutex.
+// mergesIntoLastLocked reports whether route merges into the last route of stack m. One path
+// behind two Domain patterns stays two routes, each with its own name; the caller holds app.mutex.
 func (app *App) mergesIntoLastLocked(m int, route *Route) bool {
 	l := len(app.stack[m])
 	if l == 0 {
