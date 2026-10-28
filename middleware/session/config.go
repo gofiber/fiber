@@ -23,6 +23,12 @@ type Config struct {
 	// Store defines a pre-built session store, for example one shared with
 	// other handlers or one that has custom types registered.
 	//
+	// With a Store, the options that shape how sessions are stored and sent are
+	// the store's own (Storage, Extractor, the timeouts, the cookie options,
+	// StorageKeyPrefix and HashStorageKeys), and the ones set for them here are
+	// not used. The Config of the middleware supplies Next, ErrorHandler and
+	// SkipEmptySessions.
+	//
 	// Optional. Default: nil, which creates a store from this Config.
 	Store *Store
 
@@ -210,10 +216,6 @@ func configDefault(config ...Config) Config {
 		panic("[session] CookieSameSite must be one of Disabled, Lax, Strict, or None")
 	}
 
-	if isNilStorage(cfg.Storage) {
-		panic("[session] Storage must not be a typed nil")
-	}
-
 	return cfg
 }
 
@@ -247,16 +249,22 @@ func warnCookiePrefixes(cfg *Config) {
 	sameSite, _ := internalcookie.ParseSameSite(cfg.CookieSameSite)
 	secure := cfg.CookieSecure || sameSite.RequiresSecure
 
+	// An empty CookiePath is sent as Path=/, which is what __Host- asks for.
+	path := cfg.CookiePath
+	if path == "" {
+		path = "/"
+	}
+
 	cfg.Extractor.Walk(func(candidate extractors.Extractor) bool {
 		if len(candidate.Chain) > 0 || candidate.Source != extractors.SourceCookie || candidate.Key == "" {
 			return true
 		}
 		name := utilsstrings.ToLower(candidate.Key)
 		switch {
-		case strings.HasPrefix(name, "__host-") && (!secure || cfg.CookiePath != "/" || cfg.CookieDomain != ""):
+		case strings.HasPrefix(name, "__host-") && (!secure || path != "/" || cfg.CookieDomain != ""):
 			log.Warnf("[session] cookie %q has the __Host- prefix, which browsers accept only with Secure, Path=/ and no Domain; "+
 				"it is configured with Secure=%t, Path=%q and Domain=%q, so browsers will reject it",
-				candidate.Key, secure, cfg.CookiePath, cfg.CookieDomain)
+				candidate.Key, secure, path, cfg.CookieDomain)
 		case strings.HasPrefix(name, "__secure-") && !secure:
 			log.Warnf("[session] cookie %q has the __Secure- prefix, which browsers accept only with Secure; "+
 				"set CookieSecure, or browsers will reject it", candidate.Key)
@@ -264,4 +272,22 @@ func warnCookiePrefixes(cfg *Config) {
 		}
 		return true
 	})
+}
+
+// warnStoreOptions logs a warning when the Config of a middleware that was given
+// a Store sets an option the store owns, or leaves one the middleware owns off
+// while the store has it on. Neither takes effect, and the ones concerned here
+// decide where sessions are stored and whether empty ones are kept, which a
+// misplaced option would silently leave at its default.
+func warnStoreOptions(cfg *Config) {
+	store := cfg.Store
+	if (cfg.HashStorageKeys && !store.HashStorageKeys) ||
+		(cfg.StorageKeyPrefix != "" && cfg.StorageKeyPrefix != store.StorageKeyPrefix) {
+		log.Warnf("[session] HashStorageKeys and StorageKeyPrefix are taken from Config.Store, not from the Config of the middleware; "+
+			"sessions are stored with HashStorageKeys=%t and StorageKeyPrefix=%q", store.HashStorageKeys, store.StorageKeyPrefix)
+	}
+	if store.SkipEmptySessions && !cfg.SkipEmptySessions {
+		log.Warnf("[session] SkipEmptySessions is taken from the Config of the middleware, not from Config.Store; " +
+			"empty sessions are still stored")
+	}
 }

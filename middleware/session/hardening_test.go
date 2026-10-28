@@ -222,6 +222,14 @@ func Test_Config_TypedNilStorage(t *testing.T) {
 		require.NotPanics(t, func() { NewStore(Config{Storage: memory.New()}) })
 		require.NotPanics(t, func() { NewStore(Config{Storage: mapStorage{}}) }, "an empty map is not nil")
 	})
+
+	t.Run("a storage the middleware does not use is not checked", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore()
+		require.NotPanics(t, func() { New(Config{Store: store, Storage: nilPointer}) },
+			"the store was built before, so this Storage is never touched")
+		require.NotPanics(t, func() { NewWithStore(Config{Store: store, Storage: nilMap}) })
+	})
 }
 
 // Not parallel: the log output is process-global, so these tests capture it.
@@ -234,7 +242,8 @@ func Test_Config_CookiePrefixWarnings(t *testing.T) {
 		{name: "__Host- over plain defaults", cfg: Config{Extractor: extractors.FromCookie("__Host-sid")}, want: []string{"__Host-", "Secure=false"}},
 		{name: "__Host- that meets its rules", cfg: Config{Extractor: extractors.FromCookie("__Host-sid"), CookieSecure: true, CookiePath: "/"}},
 		{name: "__Host- with a domain", cfg: Config{Extractor: extractors.FromCookie("__Host-sid"), CookieSecure: true, CookiePath: "/", CookieDomain: "example.com"}, want: []string{"__Host-", `Domain="example.com"`}},
-		{name: "__Host- without the path", cfg: Config{Extractor: extractors.FromCookie("__Host-sid"), CookieSecure: true}, want: []string{"__Host-", `Path=""`}},
+		{name: "__Host- with the default path, which is sent as Path=/", cfg: Config{Extractor: extractors.FromCookie("__Host-sid"), CookieSecure: true}},
+		{name: "__Host- with SameSite=None, which forces Secure", cfg: Config{Extractor: extractors.FromCookie("__Host-sid"), CookieSameSite: "None"}},
 		{name: "__Host- on another path", cfg: Config{Extractor: extractors.FromCookie("__Host-sid"), CookieSecure: true, CookiePath: "/app"}, want: []string{"__Host-", `Path="/app"`}},
 		{name: "__Secure- over plain defaults", cfg: Config{Extractor: extractors.FromCookie("__Secure-sid")}, want: []string{"__Secure-"}},
 		{name: "__Secure- with Secure", cfg: Config{Extractor: extractors.FromCookie("__Secure-sid"), CookieSecure: true}},
@@ -284,4 +293,42 @@ func Test_Config_CookiePrefixWarnings(t *testing.T) {
 		_ = New(Config{Store: store})
 		require.Empty(t, buf.String(), "a store that was built before is not checked again")
 	})
+}
+
+// Not parallel: the log output is process-global, so these tests capture it.
+func Test_Config_StoreOptionWarnings(t *testing.T) {
+	hashed := NewStore(Config{HashStorageKeys: true, StorageKeyPrefix: "app:"})
+	skipping := NewStore(Config{SkipEmptySessions: true})
+	plain := NewStore()
+
+	for _, tc := range []struct {
+		name string
+		want []string // fragments the warning must contain; none means no warning at all
+		cfg  Config
+	}{
+		{name: "without a store, the options are the middleware's own", cfg: Config{HashStorageKeys: true, StorageKeyPrefix: "app:", SkipEmptySessions: true}},
+		{name: "options set on the store only", cfg: Config{Store: hashed}},
+		{name: "hashing asked of the middleware", cfg: Config{Store: plain, HashStorageKeys: true}, want: []string{"taken from Config.Store", "HashStorageKeys=false"}},
+		{name: "a prefix asked of the middleware", cfg: Config{Store: plain, StorageKeyPrefix: "app:"}, want: []string{"taken from Config.Store", `StorageKeyPrefix=""`}},
+		{name: "the same prefix on both", cfg: Config{Store: hashed, StorageKeyPrefix: "app:"}},
+		{name: "another prefix on the middleware", cfg: Config{Store: hashed, StorageKeyPrefix: "other:"}, want: []string{"taken from Config.Store", `StorageKeyPrefix="app:"`}},
+		{name: "skipping asked of the store only", cfg: Config{Store: skipping}, want: []string{"SkipEmptySessions is taken from the Config of the middleware"}},
+		{name: "skipping asked of the middleware", cfg: Config{Store: plain, SkipEmptySessions: true}},
+		{name: "skipping asked of both", cfg: Config{Store: skipping, SkipEmptySessions: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := loggertest.CaptureContextLog(t, "")
+			New(tc.cfg)
+
+			out := buf.String()
+			if len(tc.want) == 0 {
+				require.Empty(t, out)
+				return
+			}
+			require.Equal(t, 1, strings.Count(out, "[Warn]"), "one warning: %q", out)
+			for _, fragment := range tc.want {
+				require.Contains(t, out, fragment)
+			}
+		})
+	}
 }

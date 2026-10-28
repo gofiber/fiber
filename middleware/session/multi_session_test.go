@@ -539,9 +539,13 @@ func Test_Session_MultipleStores_NextSkipsOnlyItsOwn(t *testing.T) {
 func Test_Session_ReleaseMiddleware_DropsParent(t *testing.T) {
 	t.Parallel()
 
-	outer := acquireMiddleware()
-	inner := acquireMiddleware()
-	inner.parent = outer
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	outer := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
+	inner := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("b_sid")}))
+	require.Same(t, outer, inner.parent)
 	inner.escaped = true
 
 	releaseMiddleware(inner)

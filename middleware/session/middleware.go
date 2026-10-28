@@ -22,15 +22,21 @@ type Middleware struct {
 	Session *Session
 	ctx     fiber.Ctx
 	// parent is the session middleware this one runs inside when several are
-	// registered, so a store can find its own among them. releaseMiddleware
-	// clears it, which keeps a middleware the request context still holds from
-	// reaching one that went back to the pool.
+	// registered, so a store can find its own among them. It is only ever set by
+	// adopt, which keeps parent from being recycled while this middleware runs,
+	// and releaseMiddleware clears it.
 	parent *Middleware
 	config Config
 	mu     sync.RWMutex
-	// released is set when the request is over and the middleware was published
-	// to the request context, so FromContext stops returning it.
-	released    atomic.Bool
+	// released is set when the request is over and the middleware was not recycled,
+	// because the request context holds it or another middleware still refers to it,
+	// so FromContext stops returning it.
+	released atomic.Bool
+	// children counts the middleware that run inside this one and still refer to it
+	// as their parent. Ordinarily each finishes before this one does. A timeout
+	// middleware around the inner one breaks that: this one can finish while the
+	// handlers it abandoned go on running.
+	children    atomic.Int32
 	isDestroyed bool
 	// escaped marks a middleware the request context holds, which releaseMiddleware
 	// must not recycle.
@@ -100,6 +106,8 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 
 	if cfg.Store == nil {
 		cfg.Store = NewStore(cfg)
+	} else {
+		warnStoreOptions(&cfg)
 	}
 
 	handler := func(c fiber.Ctx) error {
@@ -127,13 +135,11 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		isDestroyed := m.isDestroyed
 		m.mu.RUnlock()
 
-		if skipSave := isDestroyed || (cfg.SkipEmptySessions && m.Session.isEmptyFresh()); !skipSave {
+		// A destroyed session is not saved, and neither is a new one that holds
+		// nothing when SkipEmptySessions is on.
+		skipSave := isDestroyed || (cfg.SkipEmptySessions && m.Session.isEmptyFresh())
+		if !skipSave {
 			m.saveSession()
-		} else {
-			// saveSession is skipped for a destroyed session and, with
-			// SkipEmptySessions, for a new one that holds nothing, so the
-			// session must be returned to the pool here.
-			releaseSession(m.Session)
 		}
 
 		releaseMiddleware(m)
@@ -190,12 +196,44 @@ func clearMiddlewareContext(c fiber.Ctx) {
 // again, once the middleware that ran inside it has finished and cleared its
 // own. Code that runs between the two after c.Next() returns, and an explicit
 // Save of the outer session, then still find the middleware that manages it.
+//
+// outer may have finished in the meantime, as it does when a timeout middleware
+// abandons the handlers inside it. It is then left out of the request, whose
+// locals were cleared when it finished. The check and the publication happen
+// under outer's lock, which its own release takes before it clears them, so one
+// cannot overtake the other.
 func restoreMiddlewareContext(c fiber.Ctx, outer *Middleware) {
+	outer.mu.RLock()
+	defer outer.mu.RUnlock()
+
 	if outer.Session == nil {
 		return
 	}
 	fiber.StoreInContext(c, sessionIDContextKey, outer.Session.ID())
 	fiber.StoreInContext(c, middlewareContextKey, outer)
+}
+
+// adopt records that a middleware is about to run inside m, and reports whether
+// it may. It succeeds only while m still serves the request of c: m can have
+// finished, and even been handed to another request, while a handler that a
+// timeout middleware abandoned goes on running. The middleware that was adopted
+// must call unlink when it finishes.
+func (m *Middleware) adopt(c fiber.Ctx) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// The request is identified by its fasthttp context, which the locals live on
+	// and which, unlike the fiber.Ctx, is comparable whatever Ctx the app uses.
+	if m.Session == nil || m.ctx == nil || m.ctx.RequestCtx() != c.RequestCtx() {
+		return false
+	}
+	m.children.Add(1)
+	return true
+}
+
+// unlink ends the link adopt made; m must not be used afterwards.
+func (m *Middleware) unlink() {
+	m.children.Add(-1)
 }
 
 // initialize sets up middleware for the request. It returns an error when the
@@ -216,7 +254,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 
 	// The middleware still current in this request, if any, is the one this runs
 	// inside; storeMiddlewareContext is about to replace it.
-	if outer, ok := c.Locals(middlewareContextKey).(*Middleware); ok {
+	if outer, ok := c.Locals(middlewareContextKey).(*Middleware); ok && outer != nil && outer.adopt(c) {
 		m.parent = outer
 	}
 	m.escaped = storeMiddlewareContext(c, session, m)
@@ -232,8 +270,6 @@ func (m *Middleware) saveSession() {
 			DefaultErrorHandler(m.ctx, err)
 		}
 	}
-
-	releaseSession(m.Session)
 }
 
 // resolveContext returns the middleware's stored fiber context if available,
@@ -255,13 +291,21 @@ func acquireMiddleware() *Middleware {
 	return m
 }
 
-// releaseMiddleware resets the middleware and returns it to the pool.
+// releaseMiddleware resets the middleware, returns its session to the pool and
+// returns the middleware to the pool too, unless something still refers to it.
 //
 // A middleware the request context holds is reset and marked released but not
 // pooled. A goroutine can keep that context, and with it the pointer, past the
 // end of the request; if the object were reused, the next request's session
 // would be reachable through the old context. Dropping it leaves the old
 // pointer pointing at a finished, empty middleware that nothing else uses.
+//
+// So is one that other middleware still run inside, since they hold it as their
+// parent. That happens when a timeout middleware around them let this one finish
+// first, and they find it finished instead of serving another request.
+//
+// The middleware this one ran inside becomes the current one of the request
+// again, and learns that one fewer runs inside it.
 //
 // Parameters:
 //   - m: The middleware object to release.
@@ -271,17 +315,15 @@ func acquireMiddleware() *Middleware {
 //	releaseMiddleware(m)
 func releaseMiddleware(m *Middleware) {
 	m.mu.Lock()
-	escaped := m.escaped
-	if escaped {
+	drop := m.escaped || m.children.Load() > 0
+	if drop {
 		// First, so a lookup that races the release finds a middleware that is
 		// visibly gone instead of one that is half reset.
 		m.released.Store(true)
 	}
-	if m.ctx != nil {
-		clearMiddlewareContext(m.ctx)
-		if m.parent != nil {
-			restoreMiddlewareContext(m.ctx, m.parent)
-		}
+	outer, c, session := m.parent, m.ctx, m.Session
+	if c != nil {
+		clearMiddlewareContext(c)
 	}
 	m.config = Config{}
 	m.Session = nil
@@ -290,7 +332,18 @@ func releaseMiddleware(m *Middleware) {
 	m.isDestroyed = false
 	m.mu.Unlock()
 
-	if !escaped {
+	// After m let go of it: until then a goroutine that holds m could still reach
+	// the session through m.Session once it was handed to another request.
+	if session != nil {
+		releaseSession(session)
+	}
+	if outer != nil {
+		if c != nil {
+			restoreMiddlewareContext(c, outer)
+		}
+		outer.unlink()
+	}
+	if !drop {
 		middlewarePool.Put(m)
 	}
 }
@@ -305,6 +358,10 @@ func releaseMiddleware(m *Middleware) {
 // When several session middleware are registered, FromContext returns the
 // innermost one, the last to run. Use Store.FromContext to reach the middleware
 // of a particular store.
+//
+// The Middleware belongs to its request, as the type documents: a goroutine
+// that outlives the request, such as a handler a timeout middleware abandoned,
+// must not use one it got from here before the request ended.
 //
 // Parameters:
 //   - c: The Fiber context.
@@ -344,6 +401,10 @@ func FromContext(ctx any) *Middleware {
 //	login := loginStore.FromContext(c)
 //	appSession := appStore.FromContext(c)
 //
+// Like the methods of Middleware it takes the read lock of the middleware it
+// visits, so call it from handlers, not from a Storage while that middleware is
+// destroying, resetting or regenerating its session, which hold the lock.
+//
 // Parameters:
 //   - ctx: The Fiber context, a *fasthttp.RequestCtx, or a context.Context.
 //
@@ -351,20 +412,41 @@ func FromContext(ctx any) *Middleware {
 //   - *Middleware: The store's middleware if it is running for the request;
 //     otherwise, nil.
 func (s *Store) FromContext(ctx any) *Middleware {
-	m := FromContext(ctx)
-	for m != nil {
-		m.mu.RLock()
-		own, released, outer := m.config.Store == s, m.released.Load(), m.parent
-		m.mu.RUnlock()
-		if released {
+	return FromContext(ctx).find(func(m *Middleware) bool {
+		return m.config.Store == s
+	})
+}
+
+// find returns the first middleware for which match reports true, looking at m
+// and then at the ones it runs inside, from the inside out. It returns nil when
+// none matches, or when it reaches one that has finished. match runs with the
+// read lock of the middleware it is given, so it must not call out.
+func (m *Middleware) find(match func(*Middleware) bool) *Middleware {
+	if m == nil {
+		return nil
+	}
+
+	m.mu.RLock()
+	for {
+		if m.released.Load() {
+			m.mu.RUnlock()
 			return nil
 		}
-		if own {
+		if match(m) {
+			m.mu.RUnlock()
 			return m
 		}
+		outer := m.parent
+		if outer == nil {
+			m.mu.RUnlock()
+			return nil
+		}
+		// outer is locked before m is let go. While m is locked it cannot finish,
+		// and while it has not finished outer cannot be recycled.
+		outer.mu.RLock()
+		m.mu.RUnlock()
 		m = outer
 	}
-	return nil
 }
 
 // Set sets a key-value pair in the session.
@@ -431,7 +513,10 @@ func (m *Middleware) Keys() []any {
 	return m.Session.Keys()
 }
 
-// IdleTimeout returns the idle timeout the next save applies. See Session.IdleTimeout.
+// IdleTimeout returns the idle timeout of the session. See Session.IdleTimeout.
+//
+// Like the other methods of the middleware it takes a lock of the session, which
+// a save holds while it calls the storage: do not call it from a Storage.
 //
 // Returns:
 //   - time.Duration: The idle timeout of the session.

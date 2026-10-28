@@ -454,8 +454,9 @@ func (s *Session) SaveWithContext(ctx context.Context) error {
 
 	// If the session is being used in the handler, it should not be saved. With
 	// several session middleware registered, the one managing s may be an outer one.
-	for m, ok := s.ctx.Locals(middlewareContextKey).(*Middleware); ok && m != nil; m = m.parent {
-		if m.Session == s {
+	if current, ok := s.ctx.Locals(middlewareContextKey).(*Middleware); ok {
+		managing := current.find(func(m *Middleware) bool { return m.Session == s })
+		if managing != nil {
 			// Session is in use, so we do nothing and return
 			return nil
 		}
@@ -589,9 +590,11 @@ func (s *Session) SetIdleTimeout(idleTimeout time.Duration) {
 	s.idleTimeout = idleTimeout
 }
 
-// IdleTimeout returns the idle timeout the next save applies: the one set with
-// SetIdleTimeout, or else the store's. It is not kept between requests, so a
-// timeout set with SetIdleTimeout has to be set again by the next request.
+// IdleTimeout returns the idle timeout of the session: the one set with
+// SetIdleTimeout, or else the store's. A save applies it, cut down to the time
+// left until the absolute deadline. A timeout set with SetIdleTimeout holds for
+// every save of this session in the request, but is not kept between requests,
+// so the next request has to set it again.
 //
 // Returns:
 //   - time.Duration: The idle timeout of this session.

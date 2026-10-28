@@ -209,7 +209,12 @@ func (s *Store) ownedID(key, id string) string {
 // store behind in sessionOwnerContextKey.
 func requestIDPublisher(c fiber.Ctx) *Store {
 	if m, ok := c.Locals(middlewareContextKey).(*Middleware); ok && m != nil {
-		return m.config.Store
+		// Under the lock: the middleware may be finishing on another goroutine,
+		// as it does when a timeout middleware abandoned the handlers inside it.
+		m.mu.RLock()
+		publisher := m.config.Store
+		m.mu.RUnlock()
+		return publisher
 	}
 	if owner, ok := c.Locals(sessionOwnerContextKey).(*Store); ok {
 		return owner
@@ -241,6 +246,9 @@ func (s *Store) mayReuseRequestID(c fiber.Ctx) bool {
 func NewStore(config ...Config) *Store {
 	// Set default config
 	cfg := configDefault(config...)
+	if isNilStorage(cfg.Storage) {
+		panic("[session] Storage must not be a typed nil")
+	}
 	warnCookiePrefixes(&cfg)
 
 	if cfg.Storage == nil {
