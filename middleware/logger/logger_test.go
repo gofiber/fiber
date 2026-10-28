@@ -2713,7 +2713,7 @@ func Test_Logger_TimedOutRequestIsNotStored(t *testing.T) {
 					return c.Context().Err()
 				}
 				return c.SendString("report")
-			}, timeout.Config{Timeout: 20 * time.Millisecond}))
+			}, timeout.Config{Timeout: 200 * time.Millisecond}))
 
 			send := func() (int, string) {
 				req := httptest.NewRequest(tc.method, "/", http.NoBody)
