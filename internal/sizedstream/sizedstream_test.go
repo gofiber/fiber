@@ -104,6 +104,7 @@ func Test_Read_ChunkedStreamDoesNotAllocate(t *testing.T) {
 		src := bytes.NewReader(nil)
 		var stream io.Reader = struct{ io.Reader }{src} // no WriteTo, so it arrives in chunks
 		var resp fasthttp.Response
+		resp.KeepBodyBuffer = true // as a server without ReduceMemoryUsage, so the shared body pool never sees it
 		fewest := math.MaxFloat64
 		for range 50 {
 			fewest = min(fewest, testing.AllocsPerRun(1, func() {
