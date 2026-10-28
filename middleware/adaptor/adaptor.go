@@ -115,6 +115,12 @@ var ctxPool = sync.Pool{
 	},
 }
 
+// poolable reports whether fctx can be reused: a timed-out or hijacked ctx keeps
+// state only the server's own release clears.
+func poolable(fctx *fasthttp.RequestCtx) bool {
+	return fctx.LastTimeoutErrorResponse() == nil && !fctx.Hijacked()
+}
+
 // disabledLogger is shared: it is stateless, and reusing one value keeps
 // the logger interface conversion off the per-request path.
 var disabledLogger = &disableLogger{}
@@ -872,7 +878,11 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		fctx := &pctx.fctx
 		fctx.Response.Reset()
 		fctx.Request.Reset()
-		defer ctxPool.Put(pctx)
+		defer func() {
+			if poolable(fctx) {
+				ctxPool.Put(pctx)
+			}
+		}()
 
 		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey))
 		if err != nil {
@@ -988,23 +998,31 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			app.Handler()(fctx)
 		}
 
+		// A handler that timed out may still be running on fctx, so its response is
+		// neither read nor overwritten: the copy fasthttp took for the timeout is
+		// what is sent, as fasthttp's own server does.
+		resp := &fctx.Response
+		if timedOut := fctx.LastTimeoutErrorResponse(); timedOut != nil {
+			resp = timedOut
+		}
+
 		// Convert fasthttp Ctx -> net/http
-		copyResponseHeaders(w.Header(), &fctx.Response.Header)
-		w.WriteHeader(fctx.Response.StatusCode())
+		copyResponseHeaders(w.Header(), &resp.Header)
+		w.WriteHeader(resp.StatusCode())
 
 		// Check if streaming is not possible or unnecessary.
-		bodyStream := fctx.Response.BodyStream()
+		bodyStream := resp.BodyStream()
 		flusher, ok := w.(http.Flusher)
 		if !ok || bodyStream == nil {
-			_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck // not needed
+			_, _ = w.Write(resp.Body()) //nolint:errcheck // not needed
 			return
 		}
 
 		defer func() {
-			_ = fctx.Response.CloseBodyStream() //nolint:errcheck // not needed
+			_ = resp.CloseBodyStream() //nolint:errcheck // not needed
 		}()
 
-		// Stream fctx.Response.BodyStream() -> w
+		// Stream resp.BodyStream() -> w
 		// in chunks.
 		bufPtr, ok := bufferPool.Get().(*[bufferSize]byte)
 		if !ok {

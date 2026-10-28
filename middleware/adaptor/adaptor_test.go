@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -2265,6 +2266,94 @@ func Test_FiberApp_RemoteAddrSurvivesPooling(t *testing.T) {
 	require.Len(t, retained, len(addrs))
 	for i, addr := range addrs {
 		require.Equal(t, addr, retained[i].String())
+	}
+}
+
+// poolable is what keeps a ctx that fasthttp still holds state for out of the
+// pool: only the server's own release clears a timeout response or a hijack
+// handler, so a ctx that has either must be left to the garbage collector.
+func Test_poolable(t *testing.T) {
+	t.Parallel()
+
+	t.Run("fresh", func(t *testing.T) {
+		t.Parallel()
+
+		require.True(t, poolable(&fasthttp.RequestCtx{}))
+	})
+
+	t.Run("timed out", func(t *testing.T) {
+		t.Parallel()
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.TimeoutErrorWithCode("x", fiber.StatusServiceUnavailable)
+		require.False(t, poolable(fctx))
+	})
+
+	t.Run("hijacked", func(t *testing.T) {
+		t.Parallel()
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Hijack(func(net.Conn) {})
+		require.False(t, poolable(fctx))
+	})
+}
+
+// A request the timeout middleware answered leaves fasthttp holding a timeout
+// response on the RequestCtx, and the handler that timed out may still be running
+// on it. fasthttp's own server never reuses such a ctx, so the adaptor must not
+// either: App.ErrorHandler skips a ctx that holds a timeout response, and the
+// errors of the requests that reused it came back 200 with no body. The timed-out
+// request itself is answered with the timeout response, as app.Test does.
+//
+// This shows up only when sync.Pool hands the ctx out again, so Test_poolable is
+// the guard that does not depend on it.
+func Test_FiberApp_TimedOutCtxIsNotReused(t *testing.T) {
+	t.Parallel()
+
+	// The timed-out handler outlives its request: the test waits for it, so that
+	// -race sees nothing run after the test has ended.
+	const slowCalls = 2 // one through app.Test, one through FiberApp
+	slowDone := make(chan struct{}, slowCalls)
+	t.Cleanup(func() {
+		for range slowCalls {
+			<-slowDone
+		}
+	})
+
+	app := fiber.New()
+	app.Get("/slow", timeout.New(func(c fiber.Ctx) error {
+		defer func() { slowDone <- struct{}{} }()
+		time.Sleep(100 * time.Millisecond)
+		return c.SendString("late")
+	}, timeout.Config{Timeout: 20 * time.Millisecond}))
+	app.Get("/boom", func(fiber.Ctx) error { return fiber.NewError(fiber.StatusTeapot, "teapot") })
+	app.Get("/ok", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	type answer struct {
+		body   string
+		status int
+	}
+
+	// What the same app answers through fasthttp's own server.
+	want := make(map[string]answer, 3)
+	for _, path := range []string{"/slow", "/boom", "/ok"} {
+		resp, err := app.Test(httptest.NewRequest(http.MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		want[path] = answer{body: string(body), status: resp.StatusCode}
+	}
+	require.Equal(t, answer{body: "Service Unavailable", status: fiber.StatusServiceUnavailable}, want["/slow"])
+	require.Equal(t, answer{body: "teapot", status: fiber.StatusTeapot}, want["/boom"])
+	require.Equal(t, answer{body: "ok", status: fiber.StatusOK}, want["/ok"])
+
+	handler := FiberApp(app)
+	for _, path := range []string{"/slow", "/boom", "/boom", "/ok", "/boom"} {
+		w := httptest.NewRecorder()
+		handler(w, httptest.NewRequest(http.MethodGet, path, http.NoBody))
+		require.Equal(t, want[path].status, w.Code, path)
+		require.Equal(t, want[path].body, w.Body.String(), path)
 	}
 }
 
