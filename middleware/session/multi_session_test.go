@@ -420,6 +420,9 @@ func Test_Session_MultipleStores_SharingStoreAdoptsCachedProvenance(t *testing.T
 	require.False(t, q.Fresh(), "and finds the session the first one saved")
 	require.Equal(t, p.extractor, q.extractor, "and the provenance cached with it")
 
+	// The first store's save wrote the cookie into this response as well: clear it,
+	// so that what is left is what the second store writes.
+	c.Response().Header.DelCookie("sid")
 	require.NoError(t, q.Save())
 	require.Empty(t, c.Response().Header.Peek("X-Sid"), "the ID goes back to the cookie it came from, not to the header too")
 

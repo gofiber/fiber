@@ -435,6 +435,8 @@ func Test_Session_ReleaseMiddleware_AbandonedSessionIsRaceFree(t *testing.T) {
 
 // Save and SaveWithContext read the context of the session under its lock, while
 // the end of a request forgets it. Run with -race: it fails if either reads it bare.
+// Whether the detector sees the bare read depends on how the goroutines interleave:
+// on several CPUs it always does, on a single one it does in most runs, not in all.
 func Test_Session_Save_EntryPointsReadTheContextUnderItsLock(t *testing.T) {
 	t.Parallel()
 
