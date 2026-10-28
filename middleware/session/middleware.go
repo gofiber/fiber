@@ -45,8 +45,10 @@ type Middleware struct {
 	// must not recycle.
 	escaped bool
 	// linked is set while this middleware is counted in parent.children, and is
-	// cleared by whichever ends that: its release, or the unwinding of a panic.
-	linked bool
+	// cleared by whichever ends that: its release, or the unwinding of a panic. It
+	// is atomic because the unwinding must not need the lock: the panic may have
+	// come from a part of the release that holds it.
+	linked atomic.Bool
 }
 
 // Context key for session middleware lookup.
@@ -129,7 +131,7 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 			return nil
 		}
 
-		if m.linked {
+		if m.linked.Load() {
 			return m.serveInside(c, &cfg)
 		}
 		return m.serve(c, &cfg)
@@ -173,15 +175,19 @@ func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
 // pay for the defer.
 func (m *Middleware) serveInside(c fiber.Ctx, cfg *Config) error {
 	finished := false
-	defer func() {
-		if !finished {
-			m.unlinkFromOuter()
-		}
-	}()
+	defer m.unlinkUnlessFinished(&finished)
 
 	err := m.serve(c, cfg)
 	finished = true
 	return err
+}
+
+// unlinkUnlessFinished ends the link to the outer middleware unless the middleware
+// finished: once it did, it was released, and may already belong to another request.
+func (m *Middleware) unlinkUnlessFinished(finished *bool) {
+	if !*finished {
+		m.unlinkFromOuter()
+	}
 }
 
 var registerLogContextTagsOnce sync.Once
@@ -271,15 +277,12 @@ func (m *Middleware) unlink() {
 	m.children.Add(-1)
 }
 
-// unlinkFromOuter ends the link to the outer middleware, once.
+// unlinkFromOuter ends the link to the outer middleware, once. It takes no lock:
+// it runs while a panic unwinds this goroutine, which may hold the lock of this
+// middleware, and parent is only written by that goroutine.
 func (m *Middleware) unlinkFromOuter() {
-	m.mu.Lock()
-	outer, linked := m.parent, m.linked
-	m.linked = false
-	m.mu.Unlock()
-
-	if linked {
-		outer.unlink()
+	if m.linked.Swap(false) {
+		m.parent.unlink()
 	}
 }
 
@@ -303,7 +306,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 	// inside; storeMiddlewareContext is about to replace it.
 	if outer, ok := c.Locals(middlewareContextKey).(*Middleware); ok && outer != nil && outer.adopt(c) {
 		m.parent = outer
-		m.linked = true
+		m.linked.Store(true)
 	}
 	m.escaped = storeMiddlewareContext(c, session, m)
 	return nil
@@ -328,6 +331,15 @@ func (m *Middleware) resolveContext() context.Context {
 		return m.ctx
 	}
 	return context.Background()
+}
+
+// requestContext is resolveContext for the callers that may run while the request
+// is ending, as a handler that a timeout middleware abandoned does: release clears
+// the context under the lock, and the read must not tear against that.
+func (m *Middleware) requestContext() context.Context {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.resolveContext()
 }
 
 // acquireMiddleware retrieves a middleware instance from the pool.
@@ -365,7 +377,8 @@ func acquireMiddleware() *Middleware {
 //	releaseMiddleware(m)
 func releaseMiddleware(m *Middleware) {
 	m.mu.Lock()
-	outer, c, session, linked := m.parent, m.ctx, m.Session, m.linked
+	outer, c, session := m.parent, m.ctx, m.Session
+	linked := m.linked.Swap(false)
 	// A request whose context was abandoned, as the timeout middleware does, can have
 	// handlers still running that hold its middleware and its session: neither goes
 	// back to the pool, or such a handler could find the next request's in its place.
@@ -383,7 +396,6 @@ func releaseMiddleware(m *Middleware) {
 	m.Session = nil
 	m.ctx = nil
 	m.parent = nil
-	m.linked = false
 	m.isDestroyed = false
 	m.mu.Unlock()
 
@@ -621,7 +633,7 @@ func (m *Middleware) AbsoluteExpiry() (time.Time, bool) {
 //
 //	err := m.Destroy()
 func (m *Middleware) Destroy() error {
-	return m.DestroyWithContext(m.resolveContext())
+	return m.DestroyWithContext(m.requestContext())
 }
 
 // DestroyWithContext destroys the session using the provided context for cancellation and timeout control.
@@ -677,7 +689,7 @@ func (m *Middleware) ID() string {
 //
 //	err := m.Reset()
 func (m *Middleware) Reset() error {
-	return m.ResetWithContext(m.resolveContext())
+	return m.ResetWithContext(m.requestContext())
 }
 
 // ResetWithContext resets the session using the provided context for cancellation and timeout control.
@@ -710,7 +722,7 @@ func (m *Middleware) ResetWithContext(ctx context.Context) error {
 //
 //	err := m.Regenerate()
 func (m *Middleware) Regenerate() error {
-	return m.RegenerateWithContext(m.resolveContext())
+	return m.RegenerateWithContext(m.requestContext())
 }
 
 // RegenerateWithContext generates a new session ID while preserving session data,

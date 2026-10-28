@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -406,6 +407,7 @@ func Test_Session_ReleaseMiddleware_AbandonedSessionIsRaceFree(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Go(func() { _ = sess.resolveContext() })
+		wg.Go(func() { _ = m.requestContext() })
 		releaseMiddleware(m)
 		wg.Wait()
 
@@ -510,11 +512,11 @@ func Test_Session_Middleware_UnlinkFromOuterIsOnce(t *testing.T) {
 
 	outer := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
 	inner := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("b_sid")}))
-	require.True(t, inner.linked)
+	require.True(t, inner.linked.Load())
 	require.Equal(t, int32(1), outer.children.Load())
 
 	inner.unlinkFromOuter()
-	require.False(t, inner.linked)
+	require.False(t, inner.linked.Load())
 	require.Zero(t, outer.children.Load(), "the outer middleware no longer counts the one that was unwound")
 	require.Same(t, outer, inner.parent, "the way to it stays, for whatever recovers the panic")
 
@@ -676,6 +678,93 @@ func Test_Session_MultipleStores_PanicInsideRecyclesTheOuterMiddleware(t *testin
 			// but not one more per request.
 			require.Less(t, created.Load(), int64(requests)*8/5,
 				"the outer middleware was dropped instead of recycled: %d created for %d requests", created.Load(), requests)
+		})
+	}
+}
+
+// Once a middleware finished it was released, and may already serve another
+// request: the deferred call that ends the link of a middleware that was unwound
+// must leave a finished one alone.
+func Test_Session_Middleware_UnlinkUnlessFinished(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	outer := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
+	inner := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("b_sid")}))
+	require.Equal(t, int32(1), outer.children.Load())
+
+	finished := true
+	inner.unlinkUnlessFinished(&finished)
+	require.Equal(t, int32(1), outer.children.Load(), "the link of a finished middleware was undone")
+	require.True(t, inner.linked.Load())
+
+	finished = false
+	inner.unlinkUnlessFinished(&finished)
+	require.Zero(t, outer.children.Load(), "the link of one that was unwound was not")
+
+	inner.escaped = true
+	releaseMiddleware(inner)
+	releaseMiddleware(outer)
+}
+
+// panicOnClearCtx is a custom context whose Locals panics when it is asked to clear
+// the session middleware, as the release of the middleware does while it holds its lock.
+type panicOnClearCtx struct {
+	armed *atomic.Bool
+	fiber.DefaultCtx
+}
+
+func (c *panicOnClearCtx) Locals(key any, value ...any) any {
+	if c.armed.Load() && len(value) == 1 && value[0] == nil && key == middlewareContextKey {
+		panic("custom context: Locals panicked while clearing")
+	}
+	return c.DefaultCtx.Locals(key, value...)
+}
+
+// A panic inside the release of a nested middleware, which holds its lock, goes
+// on as it does for a middleware without an outer one: the call that ends the link
+// to the outer middleware must not wait for that lock.
+func Test_Session_MultipleStores_PanicInReleaseDoesNotHang(t *testing.T) {
+	t.Parallel()
+
+	for _, nested := range []bool{false, true} {
+		t.Run("nested="+strconv.FormatBool(nested), func(t *testing.T) {
+			t.Parallel()
+
+			armed := &atomic.Bool{}
+			app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+				return &panicOnClearCtx{DefaultCtx: *fiber.NewDefaultCtx(app), armed: armed}
+			})
+			handlerA, _ := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
+			handlerB, _ := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
+			if nested {
+				app.Use(handlerA)
+			}
+			app.Use(handlerB)
+			app.Get("/", func(fiber.Ctx) error {
+				armed.Store(true) // the release of the middleware that runs last panics
+				return nil
+			})
+			handler := app.Handler()
+
+			recovered := make(chan any, 1)
+			go func() {
+				defer func() { recovered <- recover() }()
+				fctx := &fasthttp.RequestCtx{}
+				fctx.Request.Header.SetMethod(fiber.MethodGet)
+				fctx.Request.SetRequestURI("/")
+				handler(fctx)
+			}()
+
+			select {
+			case got := <-recovered:
+				require.NotNil(t, got, "the panic did not come out of the handler")
+			case <-time.After(5 * time.Second):
+				t.Fatal("the request hung: the panic in the release was swallowed by a deadlock")
+			}
 		})
 	}
 }

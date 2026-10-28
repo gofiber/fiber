@@ -19,7 +19,7 @@ import (
 // Session serializes access to its internal state with mutexes, but it is
 // request-scoped and must not be used after the request lifecycle ends.
 type Session struct {
-	ctx         fiber.Ctx         // fiber context
+	ctx         fiber.Ctx         // fiber context of the request; read it with requestCtx, forgetContext clears it
 	config      *Store            // store configuration
 	data        *data             // key value data
 	rawData     []byte            // snapshot from the last decode, reused by Save while the data is unchanged
@@ -436,7 +436,8 @@ func (s *Session) Save() error {
 // Note: If the session is being used in the handler, calling SaveWithContext will have
 // no effect and the session will automatically be saved when the handler returns.
 // To tell, it takes the read lock of the session middleware, which is held while
-// that middleware destroys, resets or regenerates its session: do not call it from
+// that middleware destroys, resets or regenerates its session, and the lock of the
+// session, to read its context, which is held while it saves: do not call it from
 // a Storage then.
 //
 // Parameters:
