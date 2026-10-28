@@ -799,7 +799,7 @@ store.RegisterType(User{})
 
 `sess.IdleTimeout()` is the timeout set with `SetIdleTimeout`, or else the store's. A save applies it, cut down to the time left until the absolute deadline. A timeout set with `SetIdleTimeout` holds for every later save of that session in the request, unless the session is reset, and is not kept for the next request, so set it again where it matters. `sess.AbsoluteExpiry()` reports `false` for a store without an `AbsoluteTimeout`.
 
-Like the other methods of the middleware, these take a lock. `store.FromContext` and `sess.Save` take the read lock of the middleware, which is held while it destroys, resets or regenerates its session, `sess.Save` and `sess.IdleTimeout()` take the lock of the session, which is held while it saves. Call them from handlers, not from inside a `Storage` implementation, which the session calls during those operations.
+Like the other methods of the middleware, these take a lock. `store.FromContext` and `sess.Save` take the read lock of the middleware, which is held while it destroys, resets or regenerates its session. `sess.Save` and `sess.IdleTimeout()` take the lock of the session, which is held while it saves. Call them from handlers, not from inside a `Storage` implementation, which the session calls during those operations.
 
 ### Errors
 

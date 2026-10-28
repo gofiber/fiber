@@ -19,8 +19,8 @@ import (
 // Middleware serializes access to its internal state with a mutex, but it is
 // request-scoped and must not be used after the request lifecycle ends.
 type Middleware struct {
-	Session *Session
 	ctx     fiber.Ctx
+	Session *Session
 	// parent is the session middleware this one runs inside when several are
 	// registered, so a store can find its own among them. It is only ever set by
 	// adopt, which keeps parent from being recycled while this middleware runs,
@@ -29,6 +29,13 @@ type Middleware struct {
 	// middleware the request currently holds (find), never from one a goroutine
 	// kept past its request.
 	parent *Middleware
+	// pinned is the middleware this one holds a count on, in its children, while it
+	// runs inside it. It is cleared when that count is given back, once, by the end
+	// of its release or by the unwinding of a panic, whichever comes first. Unlike
+	// parent it is read and written by the goroutine that runs the middleware only,
+	// without the lock: a panic can unwind it from inside the locked part of the
+	// release, and it must still be able to give the count back.
+	pinned *Middleware
 	config Config
 	mu     sync.RWMutex
 	// released is set when the request is over and the middleware was not recycled,
@@ -44,11 +51,6 @@ type Middleware struct {
 	// escaped marks a middleware the request context holds, which releaseMiddleware
 	// must not recycle.
 	escaped bool
-	// linked is set while this middleware is counted in parent.children, and is
-	// cleared by whichever ends that: its release, or the unwinding of a panic. It
-	// is atomic because the unwinding must not need the lock: the panic may have
-	// come from a part of the release that holds it.
-	linked atomic.Bool
 }
 
 // Context key for session middleware lookup.
@@ -131,7 +133,7 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 			return nil
 		}
 
-		if m.linked.Load() {
+		if m.pinned != nil {
 			return m.serveInside(c, &cfg)
 		}
 		return m.serve(c, &cfg)
@@ -175,18 +177,18 @@ func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
 // pay for the defer.
 func (m *Middleware) serveInside(c fiber.Ctx, cfg *Config) error {
 	finished := false
-	defer m.unlinkUnlessFinished(&finished)
+	defer m.unpinUnlessFinished(&finished)
 
 	err := m.serve(c, cfg)
 	finished = true
 	return err
 }
 
-// unlinkUnlessFinished ends the link to the outer middleware unless the middleware
-// finished: once it did, it was released, and may already belong to another request.
-func (m *Middleware) unlinkUnlessFinished(finished *bool) {
+// unpinUnlessFinished gives the count back unless the middleware finished: once it
+// did, it was released, and may already belong to another request.
+func (m *Middleware) unpinUnlessFinished(finished *bool) {
 	if !*finished {
-		m.unlinkFromOuter()
+		m.unpin()
 	}
 }
 
@@ -277,12 +279,13 @@ func (m *Middleware) unlink() {
 	m.children.Add(-1)
 }
 
-// unlinkFromOuter ends the link to the outer middleware, once. It takes no lock:
-// it runs while a panic unwinds this goroutine, which may hold the lock of this
-// middleware, and parent is only written by that goroutine.
-func (m *Middleware) unlinkFromOuter() {
-	if m.linked.Swap(false) {
-		m.parent.unlink()
+// unpin gives back the count this middleware holds on the one it runs inside, once.
+// It takes no lock: it runs while a panic unwinds this goroutine, which may hold
+// the lock of this middleware.
+func (m *Middleware) unpin() {
+	if outer := m.pinned; outer != nil {
+		m.pinned = nil
+		outer.unlink()
 	}
 }
 
@@ -306,7 +309,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 	// inside; storeMiddlewareContext is about to replace it.
 	if outer, ok := c.Locals(middlewareContextKey).(*Middleware); ok && outer != nil && outer.adopt(c) {
 		m.parent = outer
-		m.linked.Store(true)
+		m.pinned = outer
 	}
 	m.escaped = storeMiddlewareContext(c, session, m)
 	return nil
@@ -378,7 +381,6 @@ func acquireMiddleware() *Middleware {
 func releaseMiddleware(m *Middleware) {
 	m.mu.Lock()
 	outer, c, session := m.parent, m.ctx, m.Session
-	linked := m.linked.Swap(false)
 	// A request whose context was abandoned, as the timeout middleware does, can have
 	// handlers still running that hold its middleware and its session: neither goes
 	// back to the pool, or such a handler could find the next request's in its place.
@@ -412,9 +414,9 @@ func releaseMiddleware(m *Middleware) {
 		if c != nil {
 			restoreMiddlewareContext(c, outer)
 		}
-		if linked {
-			outer.unlink()
-		}
+		// Last: until here the outer middleware must not be recycled, and if anything
+		// above panics, the unwinding gives the count back.
+		m.unpin()
 	}
 	if !drop {
 		middlewarePool.Put(m)
