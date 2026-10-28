@@ -696,7 +696,7 @@ func (app *App) Handler() fasthttp.RequestHandler
 ```
 
 :::caution
-When Fiber starts its own server, it closes the connection after the response to a request that carries both `Content-Length` and `Transfer-Encoding`, using a `HeaderReceived` callback it installs on that server. A `fasthttp.Server` of your own that serves `Handler()` does not get that callback and needs the same check in its own `HeaderReceived`. See [Protocol error responses](../whats_new.md#protocol-error-responses).
+Fiber relies on fasthttp (v1.76.0 and later) to close the connection after the response to a request that carries both `Content-Length` and `Transfer-Encoding`. fasthttp does this in its header parser, so a `fasthttp.Server` of your own that serves `Handler()` gets it with no extra `HeaderReceived` check. See [Protocol error responses](../whats_new.md#protocol-error-responses).
 :::
 
 ## AcquireCtx / ReleaseCtx

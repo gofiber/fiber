@@ -4236,17 +4236,10 @@ const (
 func startRawServer(t *testing.T, app *App) *fasthttputil.InmemoryListener {
 	t.Helper()
 
-	return startRawServerWith(t, app, nil)
-}
-
-// startRawServerWith is startRawServer with a ListenConfig.BeforeServeFunc.
-func startRawServerWith(t *testing.T, app *App, beforeServe func(*App) error) *fasthttputil.InmemoryListener {
-	t.Helper()
-
 	ln := fasthttputil.NewInmemoryListener()
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- app.Listener(ln, ListenConfig{DisableStartupMessage: true, BeforeServeFunc: beforeServe})
+		errCh <- app.Listener(ln, ListenConfig{DisableStartupMessage: true})
 	}()
 
 	t.Cleanup(func() {
@@ -4445,6 +4438,9 @@ func Test_App_TransferEncoding_SecureErrorLogMessage(t *testing.T) {
 
 // RFC 9112 §6.1: a request with both Content-Length and Transfer-Encoding is
 // framed by Transfer-Encoding, and the connection must close after the response.
+// fasthttp (>= v1.76.0) closes the connection after a request carrying both fields
+// (RequestHeader.parseHeaders). Fiber relies on it; if this fails after a fasthttp
+// bump, restore a HeaderReceived check.
 func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
 	t.Parallel()
 
@@ -4527,126 +4523,10 @@ func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
 	})
 }
 
-// The close hook must keep the application's HeaderReceived callback and its limits,
-// whether it is set before the app starts or in ListenConfig.BeforeServeFunc, and
-// whether or not an earlier Test has already installed the hook.
-func Test_App_ContentLengthWithTransferEncoding_KeepsUserHeaderReceived(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name          string
-		inBeforeServe bool
-		testFirst     bool
-	}{
-		{name: "set before start"},
-		{name: "set in BeforeServeFunc", inBeforeServe: true},
-		{name: "set in BeforeServeFunc after Test", inBeforeServe: true, testFirst: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			app := New()
-			app.Post("/", func(c Ctx) error { return c.SendString(strconv.Itoa(len(c.Body()))) })
-
-			var calls atomic.Int32
-			var chunkedSeen atomic.Bool
-			callback := func(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
-				calls.Add(1)
-				if header.ContentLength() == -1 {
-					chunkedSeen.Store(true)
-				}
-				return fasthttp.RequestConfig{MaxRequestBodySize: 8}
-			}
-
-			if tc.testFirst {
-				resp, err := app.Test(httptest.NewRequest(MethodPost, "/", http.NoBody))
-				require.NoError(t, err)
-				require.NoError(t, resp.Body.Close())
-			}
-
-			var beforeServe func(*App) error
-			if tc.inBeforeServe {
-				beforeServe = func(app *App) error {
-					app.Server().HeaderReceived = callback
-					return nil
-				}
-			} else {
-				app.Server().HeaderReceived = callback
-			}
-			ln := startRawServerWith(t, app, beforeServe)
-
-			// Within the limit: served, then closed.
-			responses, after := rawExchange(t, ln,
-				"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 1)
-			require.Equal(t, StatusOK, responses[0].status)
-			require.Equal(t, "5", responses[0].body)
-			require.True(t, responses[0].closes)
-			require.Equal(t, connClosed, after)
-
-			// Over the callback's limit: refused.
-			responses, _ = rawExchange(t, ln,
-				"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 20\r\nConnection: close\r\n\r\n01234567890123456789", 1)
-			require.Equal(t, StatusRequestEntityTooLarge, responses[0].status)
-
-			require.Equal(t, int32(2), calls.Load(), "the application's callback runs for every request")
-			require.True(t, chunkedSeen.Load(), "the callback still sees the chunked framing")
-		})
-	}
-}
-
-// The hook is installed once and a replaced callback is wrapped again.
-func Test_App_HeaderReceivedHook_Reinstalled(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	app.hookHeaderReceived()
-	installed := app.Server().HeaderReceived
-	require.NotNil(t, installed)
-
-	app.hookHeaderReceived()
-	require.True(t, sameFunc(app.Server().HeaderReceived, installed), "the hook is not wrapped again")
-
-	replaced := func(*fasthttp.RequestHeader) fasthttp.RequestConfig { return fasthttp.RequestConfig{} }
-	app.Server().HeaderReceived = replaced
-	app.hookHeaderReceived()
-	require.False(t, sameFunc(app.Server().HeaderReceived, replaced), "a replaced callback is wrapped")
-	require.False(t, sameFunc(app.Server().HeaderReceived, installed))
-}
-
-// Test and a listener run on one server at the same time, and the connections they
-// serve read the callback, so installing the hook must not write it again. Meant
-// for -race.
-func Test_App_HeaderReceivedHook_RaceFreeWithTest(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
-
-	stop := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		for {
-			select {
-			case <-stop:
-				return
-			default:
-				app.hookHeaderReceived()
-				runtime.Gosched()
-			}
-		}
-	})
-
-	for range 50 {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-		if assert.NoError(t, err) {
-			assert.NoError(t, resp.Body.Close())
-		}
-	}
-	close(stop)
-	wg.Wait()
-}
-
-// Test serves the connection itself, so it installs the close hook too.
+// Test serves the connection through fasthttp as well, so the same close applies.
+// fasthttp (>= v1.76.0) closes the connection after a request carrying both fields
+// (RequestHeader.parseHeaders). Fiber relies on it; if this fails after a fasthttp
+// bump, restore a HeaderReceived check.
 func Test_App_Test_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 	t.Parallel()
 

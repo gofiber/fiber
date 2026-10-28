@@ -934,7 +934,8 @@ func Test_Listen_BeforeServeFunc(t *testing.T) {
 	require.Zero(t, handlers)
 }
 
-// Listen serves with the close hook installed.
+// Listen serves through fasthttp as well, so the same close applies (see
+// Test_App_ContentLengthWithTransferEncoding_ClosesConnection).
 func Test_Listen_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 	t.Parallel()
 

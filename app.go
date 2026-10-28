@@ -97,9 +97,6 @@ type App struct {
 	state *State
 	// shared state management (prefork-safe, storage-backed)
 	sharedState *SharedState
-	// headerHook is the HeaderReceived callback hookHeaderReceived installed, kept
-	// to tell it from one set since
-	headerHook func(*fasthttp.RequestHeader) fasthttp.RequestConfig
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// customConstraints is a list of external constraints
@@ -1517,7 +1514,6 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	}
 	// prepare the server for the start
 	app.startupProcess()
-	app.hookHeaderReceived()
 
 	// Serve conn to server
 	channel := make(chan error, 1)
@@ -1872,35 +1868,6 @@ func (app *App) hookConnState() {
 			user(conn, state)
 		}
 	}
-}
-
-// hookHeaderReceived makes the server close the connection after a request that
-// carries both Content-Length and Transfer-Encoding (RFC 9112 §6.1), keeping a
-// user HeaderReceived callback. It must run before the body is decoded: after that
-// fasthttp has replaced the length and dropped the Content-Length value. Call it
-// right before the server serves: it wraps the callback set by then, in
-// ListenConfig.BeforeServeFunc too, and one replaced since an earlier start. Its
-// own hook is left alone: Test and a listener run on one server at the same time,
-// and the connections they serve read the callback.
-func (app *App) hookHeaderReceived() {
-	app.mutex.Lock()
-	defer app.mutex.Unlock()
-
-	if app.server == nil || sameFunc(app.server.HeaderReceived, app.headerHook) {
-		return
-	}
-	user := app.server.HeaderReceived
-	app.headerHook = func(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
-		if bothFramingFields(header) {
-			header.SetConnectionClose()
-		}
-		if user != nil {
-			return user(header)
-		}
-		// The zero value keeps the server's own limits and timeouts.
-		return fasthttp.RequestConfig{}
-	}
-	app.server.HeaderReceived = app.headerHook
 }
 
 // Run onListen hooks. If they return an error, panic.

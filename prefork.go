@@ -128,7 +128,6 @@ func (app *App) preforkServe(tlsConfig *tls.Config, cfg *ListenConfig) func(ln n
 
 		// prepare the server for the start
 		app.startupProcess()
-		app.hookHeaderReceived()
 
 		if cfg.ListenerAddrFunc != nil {
 			cfg.ListenerAddrFunc(ln.Addr())
