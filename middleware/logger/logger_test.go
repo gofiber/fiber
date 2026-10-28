@@ -28,6 +28,9 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/cache"
+	"github.com/gofiber/fiber/v3/middleware/compress"
+	"github.com/gofiber/fiber/v3/middleware/idempotency"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
 )
 
@@ -2684,6 +2687,81 @@ func Test_Logger_TimedOutRequestLogsTimeoutResponse(t *testing.T) {
 			require.Contains(t, logged.String(), tc.want)
 		})
 	}
+}
+
+func Test_Logger_TimedOutRequestIsNotStored(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		mw     fiber.Handler
+		method string
+	}{
+		"cache":       {mw: cache.New(), method: fiber.MethodGet},
+		"idempotency": {mw: idempotency.New(), method: fiber.MethodPost},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(tc.mw)
+			app.Use(New(Config{Stream: io.Discard}))
+			var slow atomic.Bool
+			slow.Store(true)
+			app.All("/", timeout.New(func(c fiber.Ctx) error {
+				if slow.Load() {
+					<-c.Context().Done()
+					return c.Context().Err()
+				}
+				return c.SendString("report")
+			}, timeout.Config{Timeout: 20 * time.Millisecond}))
+
+			send := func() (int, string) {
+				req := httptest.NewRequest(tc.method, "/", http.NoBody)
+				req.Header.Set("X-Idempotency-Key", "00000000-0000-4000-8000-000000000001")
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				return resp.StatusCode, string(body)
+			}
+			status, _ := send()
+			require.Equal(t, fiber.StatusServiceUnavailable, status)
+			slow.Store(false)
+			status, body := send()
+			require.Equal(t, fiber.StatusOK, status)
+			require.Equal(t, "report", body)
+		})
+	}
+}
+
+// Under -race this also catches compress reading the headers the timed-out handler still sets.
+func Test_Logger_TimedOutRequestReturnsTimeoutError(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	chainErr := make(chan error, 1)
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		chainErr <- err
+		return err
+	})
+	app.Use(compress.New())
+	app.Use(New(Config{Stream: io.Discard}))
+	written := make(chan struct{})
+	app.Get("/", timeout.New(func(c fiber.Ctx) error {
+		defer close(written)
+		<-c.Context().Done()
+		c.Set("X-Late", "1")
+		return c.SendString(strings.Repeat("late ", 100))
+	}, timeout.Config{Timeout: 20 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAcceptEncoding, "gzip")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	<-written
+	require.ErrorIs(t, <-chainErr, fiber.ErrServiceUnavailable)
 }
 
 // Test_LatencyColumns_MatchFmt pins the two latency renderers against the

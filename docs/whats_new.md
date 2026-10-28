@@ -1727,7 +1727,7 @@ func main() {
 
 </details>
 
-For a request the timeout middleware gave up on, `${status}`, `${bytesSent}`, `${resBody}`, `${respHeader:}` and the default format report the timeout response the client receives. Tags that read the request, such as `${cookie:}`, `${query:}`, `${reqHeader:}` or `${body}`, and behind a trusted proxy `${ip}`, log nothing, since the timed-out handler may still read or change it.
+For a request the timeout middleware gave up on, `${status}`, `${bytesSent}`, `${resBody}`, `${respHeader:}` and the default format report the timeout response the client receives. Tags that read the request, such as `${cookie:}`, `${query:}`, `${reqHeader:}` or `${body}`, and behind a trusted proxy `${ip}`, log nothing, since the timed-out handler may still read or change it. The logger returns the timeout error for such a request instead of `nil`, so `cache`, `compress`, `etag` or `idempotency` registered before it no longer store or rewrite the timed-out handler's response.
 
 :::note
 The deprecated `TagHeader` constant was removed. Use `TagReqHeader` when you need to log request headers.
