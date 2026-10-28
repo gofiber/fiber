@@ -7,6 +7,7 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
@@ -20,8 +21,13 @@ import (
 type Middleware struct {
 	Session *Session
 	ctx     fiber.Ctx
-	config  Config
-	mu      sync.RWMutex
+	// parent is the session middleware this one runs inside when several are
+	// registered, so a store can find its own among them. releaseMiddleware
+	// clears it, which keeps a middleware the request context still holds from
+	// reaching one that went back to the pool.
+	parent *Middleware
+	config Config
+	mu     sync.RWMutex
 	// released is set when the request is over and the middleware was published
 	// to the request context, so FromContext stops returning it.
 	released    atomic.Bool
@@ -121,11 +127,12 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		isDestroyed := m.isDestroyed
 		m.mu.RUnlock()
 
-		if !isDestroyed {
+		if skipSave := isDestroyed || (cfg.SkipEmptySessions && m.Session.isEmptyFresh()); !skipSave {
 			m.saveSession()
 		} else {
-			// saveSession is skipped for destroyed sessions, so the session must
-			// be returned to the pool here.
+			// saveSession is skipped for a destroyed session and, with
+			// SkipEmptySessions, for a new one that holds nothing, so the
+			// session must be returned to the pool here.
 			releaseSession(m.Session)
 		}
 
@@ -179,6 +186,18 @@ func clearMiddlewareContext(c fiber.Ctx) {
 	c.SetContext(context.WithValue(ctx, middlewareContextKey, (*Middleware)(nil)))
 }
 
+// restoreMiddlewareContext makes outer the current middleware of the request
+// again, once the middleware that ran inside it has finished and cleared its
+// own. Code that runs between the two after c.Next() returns, and an explicit
+// Save of the outer session, then still find the middleware that manages it.
+func restoreMiddlewareContext(c fiber.Ctx, outer *Middleware) {
+	if outer.Session == nil {
+		return
+	}
+	fiber.StoreInContext(c, sessionIDContextKey, outer.Session.ID())
+	fiber.StoreInContext(c, middlewareContextKey, outer)
+}
+
 // initialize sets up middleware for the request. It returns an error when the
 // session cannot be loaded from the store (e.g. the backing storage is down)
 // so the request can fail gracefully instead of crashing the server.
@@ -195,6 +214,11 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 	m.Session = session
 	m.ctx = c
 
+	// The middleware still current in this request, if any, is the one this runs
+	// inside; storeMiddlewareContext is about to replace it.
+	if outer, ok := c.Locals(middlewareContextKey).(*Middleware); ok {
+		m.parent = outer
+	}
 	m.escaped = storeMiddlewareContext(c, session, m)
 	return nil
 }
@@ -255,10 +279,14 @@ func releaseMiddleware(m *Middleware) {
 	}
 	if m.ctx != nil {
 		clearMiddlewareContext(m.ctx)
+		if m.parent != nil {
+			restoreMiddlewareContext(m.ctx, m.parent)
+		}
 	}
 	m.config = Config{}
 	m.Session = nil
 	m.ctx = nil
+	m.parent = nil
 	m.isDestroyed = false
 	m.mu.Unlock()
 
@@ -273,6 +301,10 @@ func releaseMiddleware(m *Middleware) {
 // A context kept from c.Context() (with PassLocalsToContext enabled) stops
 // resolving when the request ends: FromContext returns nil for it afterwards,
 // never another request's session.
+//
+// When several session middleware are registered, FromContext returns the
+// innermost one, the last to run. Use Store.FromContext to reach the middleware
+// of a particular store.
 //
 // Parameters:
 //   - c: The Fiber context.
@@ -291,6 +323,48 @@ func FromContext(ctx any) *Middleware {
 	}
 
 	return m
+}
+
+// FromContext returns the Middleware that this store's session middleware
+// installed for the request, or nil when the store has none there. It accepts
+// the same contexts as the package-level FromContext and ends the same way: a
+// context kept past the request returns nil.
+//
+// Register one session middleware per store, each over its own cookie or
+// header, and a handler reaches every session of the request:
+//
+//	loginHandler, loginStore := session.NewWithStore(session.Config{
+//	    Extractor: extractors.FromCookie("login_sid"),
+//	})
+//	appHandler, appStore := session.NewWithStore(session.Config{
+//	    Extractor: extractors.FromCookie("app_sid"),
+//	})
+//	app.Use(loginHandler, appHandler)
+//
+//	login := loginStore.FromContext(c)
+//	appSession := appStore.FromContext(c)
+//
+// Parameters:
+//   - ctx: The Fiber context, a *fasthttp.RequestCtx, or a context.Context.
+//
+// Returns:
+//   - *Middleware: The store's middleware if it is running for the request;
+//     otherwise, nil.
+func (s *Store) FromContext(ctx any) *Middleware {
+	m := FromContext(ctx)
+	for m != nil {
+		m.mu.RLock()
+		own, released, outer := m.config.Store == s, m.released.Load(), m.parent
+		m.mu.RUnlock()
+		if released {
+			return nil
+		}
+		if own {
+			return m
+		}
+		m = outer
+	}
+	return nil
 }
 
 // Set sets a key-value pair in the session.
@@ -355,6 +429,38 @@ func (m *Middleware) Keys() []any {
 	defer m.mu.RUnlock()
 
 	return m.Session.Keys()
+}
+
+// IdleTimeout returns the idle timeout the next save applies. See Session.IdleTimeout.
+//
+// Returns:
+//   - time.Duration: The idle timeout of the session.
+//
+// Usage:
+//
+//	timeout := m.IdleTimeout()
+func (m *Middleware) IdleTimeout() time.Duration {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.Session.IdleTimeout()
+}
+
+// AbsoluteExpiry returns the time at which the session ends however active it
+// is, and whether it has one. See Session.AbsoluteExpiry.
+//
+// Returns:
+//   - time.Time: The absolute expiration time, or the zero time.
+//   - bool: True if the session has an absolute expiration time; otherwise, false.
+//
+// Usage:
+//
+//	expiry, ok := m.AbsoluteExpiry()
+func (m *Middleware) AbsoluteExpiry() (time.Time, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.Session.AbsoluteExpiry()
 }
 
 // Destroy destroys the session.
