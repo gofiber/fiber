@@ -910,7 +910,9 @@ func backgroundIfNil(ctx context.Context) context.Context {
 // resolveContext returns the session's stored fiber context if available,
 // otherwise returns context.Background().
 // fiber.Ctx implements context.Context directly, so no allocation is needed.
-// This is used as the default context for non-WithContext method variants.
+// This is used as the default context for the non-WithContext variants of
+// Destroy, Regenerate and Reset. Save reads the context itself, since it needs
+// the request as well to tell whether a middleware manages the session.
 func (s *Session) resolveContext() context.Context {
 	if c := s.requestCtx(); c != nil {
 		return c

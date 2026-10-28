@@ -378,12 +378,83 @@ func Test_Session_MultipleStores_CachedProvenanceBelongsToItsStore(t *testing.T)
 
 	resp, body := sendRequest(t, app, "/touch", map[string]string{"b_sid": idB})
 	require.Equal(t, "false|"+idB, body, "B loaded its own session")
+	var written []string
 	for _, cookie := range resp.Cookies() {
 		if cookie.Name == "b_sid" {
-			require.Equal(t, idB, cookie.Value, "nothing but B's session may be written to B's cookie")
+			written = append(written, cookie.Value)
 		}
 	}
+	require.Equal(t, []string{idB}, written, "B's cookie carries B's session and nothing else")
 	require.Contains(t, cookiesByName(resp), "a_sid", "A's session goes to A's cookie")
+}
+
+// Stores over the same cookie agree on one ID, and the store that asks second
+// takes the provenance the first one cached together with it, so its session
+// goes back to the cookie the ID came from and not to every sink of the chain.
+func Test_Session_MultipleStores_SharingStoreAdoptsCachedProvenance(t *testing.T) {
+	t.Parallel()
+
+	chain := func() extractors.Extractor {
+		return extractors.Chain(extractors.FromCookie("sid"), extractors.FromHeader("X-Sid"))
+	}
+	shared := memory.New()
+	first := NewStore(Config{Storage: shared, Extractor: chain()})
+	second := NewStore(Config{Storage: shared, Extractor: chain()})
+	require.NotSame(t, first, second)
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.SetCookie("sid", "unknown")
+
+	p, err := first.Get(c)
+	require.NoError(t, err)
+	defer p.Release()
+	require.True(t, p.Fresh(), "the cookie names no session, so the first store starts one and caches its ID")
+	require.NoError(t, p.Save())
+
+	q, err := second.Get(c)
+	require.NoError(t, err)
+	defer q.Release()
+	require.Equal(t, p.ID(), q.ID(), "the second store takes the cached ID")
+	require.False(t, q.Fresh(), "and finds the session the first one saved")
+	require.Equal(t, p.extractor, q.extractor, "and the provenance cached with it")
+
+	require.NoError(t, q.Save())
+	require.Empty(t, c.Response().Header.Peek("X-Sid"), "the ID goes back to the cookie it came from, not to the header too")
+
+	written := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(written)
+	written.SetKey("sid")
+	require.True(t, c.Response().Header.Cookie(written), "and to the cookie")
+	require.Equal(t, q.ID(), string(written.Value()))
+}
+
+// Save leaves a session to the middleware that manages it, and only that one: a
+// session no middleware of the request manages is saved, even while the middleware
+// of another store is the current one.
+func Test_Session_MultipleStores_SaveOfASessionNoMiddlewareManages(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
+	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
+
+	early, err := storeA.Get(c)
+	require.NoError(t, err)
+	defer early.Release()
+	early.Set("k", "v")
+
+	m := startMiddleware(t, c, storeB)
+	defer releaseMiddleware(m)
+
+	require.NoError(t, early.Save())
+	stored, err := storeA.Storage.GetWithContext(context.Background(), storeA.storageKey(early.ID()))
+	require.NoError(t, err)
+	require.NotEmpty(t, stored, "the session was saved")
 }
 
 // With only one of two stacked sessions in existence, each store finds its own,

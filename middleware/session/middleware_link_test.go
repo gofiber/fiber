@@ -15,6 +15,7 @@ import (
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -430,6 +431,101 @@ func Test_Session_ReleaseMiddleware_AbandonedSessionIsRaceFree(t *testing.T) {
 
 		c.ForceRelease()
 	}
+}
+
+// Save and SaveWithContext read the context of the session under its lock, while
+// the end of a request forgets it. Run with -race: it fails if either reads it bare.
+func Test_Session_Save_EntryPointsReadTheContextUnderItsLock(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	store := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
+	sess, err := store.Get(c)
+	require.NoError(t, err)
+	defer sess.Release()
+	sess.Set("k", "v")
+
+	stop := make(chan struct{})
+	var writer sync.WaitGroup
+	writer.Go(func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			sess.forgetContext()
+			sess.mu.Lock()
+			sess.ctx = c
+			sess.mu.Unlock()
+		}
+	})
+
+	var readers sync.WaitGroup
+	for range 4 {
+		readers.Go(func() {
+			for range 200 {
+				assert.NoError(t, sess.Save())
+				assert.NoError(t, sess.SaveWithContext(context.Background()))
+			}
+		})
+	}
+	readers.Wait()
+	close(stop)
+	writer.Wait()
+}
+
+// contextSpyStorage records the context each save runs under.
+type contextSpyStorage struct {
+	fiber.Storage
+	sets []context.Context
+	mu   sync.Mutex
+}
+
+func (s *contextSpyStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	s.mu.Lock()
+	s.sets = append(s.sets, ctx)
+	s.mu.Unlock()
+	return s.Storage.SetWithContext(ctx, key, val, exp)
+}
+
+// Save runs its storage call under the context of the request, SaveWithContext
+// under the one it is given, and a session that belongs to no request falls back
+// to the background context.
+func Test_Session_Save_RunsUnderTheRequestContext(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	spy := &contextSpyStorage{Storage: memory.New()}
+	store := NewStore(Config{Storage: spy})
+	sess, err := store.Get(c)
+	require.NoError(t, err)
+	defer sess.Release()
+	sess.Set("k", "v")
+
+	require.NoError(t, sess.Save())
+	require.Len(t, spy.sets, 1)
+	require.Same(t, c, spy.sets[0], "Save runs its storage call under the context of the request")
+
+	type ctxKey struct{}
+	given := context.WithValue(context.Background(), ctxKey{}, "given")
+	require.NoError(t, sess.SaveWithContext(given))
+	require.Len(t, spy.sets, 2)
+	require.Same(t, given, spy.sets[1], "SaveWithContext runs it under the context it is given")
+
+	byID, err := store.GetByID(context.Background(), sess.ID())
+	require.NoError(t, err)
+	defer byID.Release()
+	byID.Set("k", "w")
+	require.NoError(t, byID.Save())
+	require.Len(t, spy.sets, 3)
+	require.Equal(t, context.Background(), spy.sets[2], "a session without a request saves under the background context")
 }
 
 // A walk stops at a middleware that finished, even if nothing but its flag says so.
