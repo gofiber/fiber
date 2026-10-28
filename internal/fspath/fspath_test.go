@@ -3,7 +3,6 @@ package fspath
 import (
 	"io/fs"
 	"os"
-	"path/filepath"
 	"runtime"
 	"testing"
 	"testing/fstest"
@@ -276,62 +275,5 @@ func Test_Unhex(t *testing.T) {
 			want = c - 'A' + 10
 		}
 		require.Equal(t, want, unhex(byte(c)), "c=%q", c)
-	}
-}
-
-func Test_FSName(t *testing.T) {
-	t.Parallel()
-
-	for input, want := range map[string]string{
-		"":            "",
-		"/":           "",
-		".":           "",
-		"index.html":  "index.html",
-		"/index.html": "index.html",
-		"//a//b.txt":  "a/b.txt",
-		"a/./b.txt":   "a/b.txt",
-		"a/../b.txt":  "b.txt",
-		"dir/":        "dir",
-		// a request path never climbs above the root, so neither does the name
-		"../b.txt":      "b.txt",
-		"a/../../b.txt": "b.txt",
-		"/../../etc":    "etc",
-		// escapes are names here: SendFile escapes them before fasthttp decodes once
-		"100%25.txt": "100%25.txt",
-		"a%2F..":     "a%2F..",
-	} {
-		got := FSName(input)
-		require.Equal(t, want, got, "input=%q", input)
-		require.True(t, got == "" || fs.ValidPath(got), "input=%q", input)
-	}
-}
-
-func Test_OSName(t *testing.T) {
-	t.Parallel()
-
-	for input, want := range map[string]string{
-		"/srv/www/index.html":    "/srv/www/index.html",
-		"/srv/www/../index.html": "/srv/index.html",
-		"/srv//www/./a.txt":      "/srv/www/a.txt",
-		"/srv/www/dir/":          "/srv/www/dir",
-		"/../../etc/passwd":      "/etc/passwd",
-	} {
-		require.Equal(t, filepath.FromSlash(want), OSName(input), "input=%q", input)
-	}
-}
-
-// Test_OSName_Windows covers the volume a Windows SendFile path keeps.
-func Test_OSName_Windows(t *testing.T) {
-	t.Parallel()
-	if runtime.GOOS != windowsOS {
-		t.Skip("volume names exist only on Windows")
-	}
-
-	for input, want := range map[string]string{
-		"C:/srv/../index.html":    `C:\index.html`,
-		"C:/../../index.html":     `C:\index.html`,
-		"//server/share/../a.txt": `\\server\share\a.txt`,
-	} {
-		require.Equal(t, want, OSName(input), "input=%q", input)
 	}
 }

@@ -25,7 +25,7 @@
 //  5. A PathRewrite path skips Path() normalization, and the handler's own
 //     ".." check answers 500 and lets "." and "//" through. SendFile hands
 //     fasthttp a request URI instead, whose Path() resolves dot segments and
-//     merges "//"; FSName and OSName give the name that comes out.
+//     merges "//".
 //  6. Windows strips a trailing dot or space from a path component when it
 //     opens a file, so "private./x" would open "private/x".
 //  7. fasthttp refuses ":" only on Windows and only for its OS file system,
@@ -48,7 +48,6 @@ package fspath
 import (
 	"bytes"
 	"io/fs"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -84,19 +83,6 @@ func Valid(p []byte, fsys fs.FS, escaped bool) bool { //nolint:revive // the fla
 		return name == "" || fs.ValidPath(name)
 	}
 	return filepath.VolumeName(name) == "" && !hasDriveLetter(name)
-}
-
-// FSName returns the name the fasthttp file handler opens in an fs.FS for the
-// slash-separated name SendFile hands it: rooted and cleaned as Path()
-// normalization cleans a request path, then without the leading slash.
-func FSName(name string) string {
-	return path.Clean("/" + name)[1:]
-}
-
-// OSName is FSName for the OS file system, where the name keeps its root and
-// takes the OS separator.
-func OSName(name string) string {
-	return filepath.Clean(filepath.FromSlash(name))
 }
 
 // validName validates the escapes the router left in p. The router already

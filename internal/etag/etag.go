@@ -29,32 +29,6 @@ func Parse(t string) (value string, weak, ok bool) { //nolint:nonamedreturns // 
 	return t[1 : len(t)-1], weak, true
 }
 
-// Match performs a weak comparison of entity tags according to
-// RFC 9110 Section 8.8.3.2. The weak indicator ("W/") is ignored, but both tags
-// must be properly quoted. Invalid tags result in a mismatch.
-func Match(s, etag string) bool {
-	n1, _, ok1 := Parse(s)
-	n2, _, ok2 := Parse(etag)
-	if !ok1 || !ok2 {
-		return false
-	}
-
-	return n1 == n2
-}
-
-// MatchStrong performs a strong entity-tag comparison following
-// RFC 9110 Section 8.8.3.1. A weak tag never matches a strong one, even if the
-// quoted values are identical.
-func MatchStrong(s, etag string) bool {
-	n1, w1, ok1 := Parse(s)
-	n2, w2, ok2 := Parse(etag)
-	if !ok1 || !ok2 || w1 || w2 {
-		return false
-	}
-
-	return n1 == n2
-}
-
 // Split returns the entity tags in a raw If-None-Match or If-Match field value.
 // A comma inside a quoted opaque-tag does not separate it (RFC 9110
 // Section 8.8.3), and empty list elements are skipped. Returns nil for no tags.
@@ -83,8 +57,8 @@ func AnyMatch(header, etag string) bool {
 		return true
 	}
 
-	// etag is the same for every element, so parse it once rather than through
-	// Match on each. An unparseable one matches nothing (RFC 9110 8.8.3.2).
+	// etag is the same for every element, so parse it once. An unparseable one
+	// matches nothing (RFC 9110 8.8.3.2).
 	want, _, ok := Parse(etag)
 	if !ok {
 		return false

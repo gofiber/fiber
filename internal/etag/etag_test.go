@@ -39,33 +39,6 @@ func Test_Parse(t *testing.T) {
 	}
 }
 
-func Test_Match(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, Match(`"a"`, `"a"`))
-	require.True(t, Match(`W/"a"`, `"a"`))
-	require.True(t, Match(`"a"`, `W/"a"`))
-	require.True(t, Match(`W/"a"`, `W/"a"`))
-	require.False(t, Match(`"a"`, `"b"`))
-	require.False(t, Match(`a`, `"a"`))
-	require.False(t, Match(`"a"`, `b`))
-	require.False(t, Match(``, `"a"`))
-	require.False(t, Match(`"a"`, ``))
-	require.False(t, Match(`W/`, `"a"`))
-}
-
-func Test_MatchStrong(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, MatchStrong(`"a"`, `"a"`))
-	require.False(t, MatchStrong(`W/"a"`, `"a"`))
-	require.False(t, MatchStrong(`"a"`, `W/"a"`))
-	require.False(t, MatchStrong(`W/"a"`, `W/"a"`))
-	require.False(t, MatchStrong(`"a"`, `"b"`))
-	require.False(t, MatchStrong(`a`, `"a"`))
-	require.False(t, MatchStrong(`"a"`, `b`))
-}
-
 func Test_AnyMatch(t *testing.T) {
 	t.Parallel()
 
