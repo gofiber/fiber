@@ -2,7 +2,6 @@ package fiber
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"html/template"
 	"io"
@@ -438,7 +437,7 @@ func (r *DefaultRes) GetCookie(name string) (*Cookie, bool) {
 		if fcookie.ParseBytes(value) != nil {
 			return nil, false
 		}
-		return responseCookie(fcookie, value), true
+		return responseCookie(fcookie), true
 	}
 
 	return nil, false
@@ -464,41 +463,17 @@ func (r *DefaultRes) GetCookies() []*Cookie {
 		if fcookie.ParseBytes(value) != nil {
 			continue
 		}
-		cookies = append(cookies, responseCookie(fcookie, value))
+		cookies = append(cookies, responseCookie(fcookie))
 	}
 
 	return cookies
 }
 
-// cookieAttrPresent reports whether a Set-Cookie value carries the named
-// attribute. RFC 6265 Section 4.1.1 excludes ";" from cookie-value, so splitting
-// on it is safe; the first element is the name=value pair and is skipped.
-func cookieAttrPresent(value []byte, attr string) bool {
-	_, rest, found := utils.CutByte(value, ';')
-	if !found {
-		return false
-	}
-
-	for len(rest) > 0 {
-		part := rest
-		if i := bytes.IndexByte(rest, ';'); i >= 0 {
-			part, rest = rest[:i], rest[i+1:]
-		} else {
-			rest = nil
-		}
-		name, _, _ := utils.CutByte(part, '=')
-		if utils.EqualFold(utils.UnsafeString(utils.TrimSpace(name)), attr) {
-			return true
-		}
-	}
-
-	return false
-}
-
 // responseCookie converts a parsed Set-Cookie back into the Cookie Res.Cookie
-// accepts. fasthttp writes a deletion as "max-age=0" and parses it back as 0,
-// so raw is consulted to tell that from an absent attribute.
-func responseCookie(fcookie *fasthttp.Cookie, raw []byte) *Cookie {
+// accepts. MaxAge is what fasthttp parsed: -1 for a Max-Age of zero or less (a
+// deletion), the seconds for a positive one, and 0 when the attribute is absent or
+// not an integer.
+func responseCookie(fcookie *fasthttp.Cookie) *Cookie {
 	cookie := &Cookie{
 		Name:        string(fcookie.Key()),
 		Value:       string(fcookie.Value()),
@@ -510,9 +485,6 @@ func responseCookie(fcookie *fasthttp.Cookie, raw []byte) *Cookie {
 		HTTPOnly:    fcookie.HTTPOnly(),
 		SameSite:    internalcookie.FormatSameSite(fcookie.SameSite()),
 		Partitioned: fcookie.Partitioned(),
-	}
-	if cookie.MaxAge == 0 && cookieAttrPresent(raw, "max-age") {
-		cookie.MaxAge = -1
 	}
 	cookie.SessionOnly = cookie.MaxAge == 0 && cookie.Expires.IsZero()
 

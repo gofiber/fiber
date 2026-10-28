@@ -3196,13 +3196,67 @@ func Test_Client_UppercaseScheme(t *testing.T) {
 	require.Equal(t, "ok", resp.String())
 }
 
+// applyMaxAge follows fasthttp's reading of the attribute (RFC 6265 §5.2.2): the
+// value must start with a digit or "-", a quoted one is unquoted, the last integer
+// wins, and one that is not an integer leaves the Expires as parsed.
+func Test_CookieJar_MaxAgeFromParsedCookie(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+	expires := now.Add(time.Hour)
+
+	tests := []struct {
+		want   time.Time
+		name   string
+		maxAge string // no Max-Age attribute when empty
+	}{
+		{name: "absent", want: expires},
+		{name: "seconds", maxAge: "Max-Age=60", want: now.Add(60 * time.Second)},
+		{name: "zero deletes", maxAge: "Max-Age=0", want: now.Add(-time.Second)},
+		{name: "negative deletes", maxAge: "Max-Age=-5", want: now.Add(-time.Second)},
+		{name: "not an integer is ignored", maxAge: "Max-Age=never", want: expires},
+		{name: "a plus sign is ignored", maxAge: "Max-Age=+5", want: expires},
+		{name: "a quoted value is honored", maxAge: `Max-Age="7"`, want: now.Add(7 * time.Second)},
+		{name: "a quoted zero deletes", maxAge: `Max-Age="0"`, want: now.Add(-time.Second)},
+		{name: "a later invalid value keeps the valid one", maxAge: "Max-Age=60; Max-Age=bogus", want: now.Add(60 * time.Second)},
+		{name: "the last valid value wins", maxAge: "Max-Age=0; Max-Age=3600", want: now.Add(time.Hour)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			attrs := []string{"sid=x"}
+			if tc.maxAge != "" {
+				attrs = append(attrs, tc.maxAge)
+			}
+			attrs = append(attrs, "Expires="+string(fasthttp.AppendHTTPDate(nil, expires)))
+
+			cookie := fasthttp.AcquireCookie()
+			t.Cleanup(func() { fasthttp.ReleaseCookie(cookie) })
+			require.NoError(t, parseSetCookie(cookie, []byte(strings.Join(attrs, "; "))))
+
+			applyMaxAge(cookie, now)
+			require.WithinDuration(t, tc.want, cookie.Expire(), time.Second)
+		})
+	}
+}
+
 func Test_CookieJar_MaxAgeBeyond32Bit(t *testing.T) {
 	t.Parallel()
 
-	// int is 32 bits on 386 and arm, where this used to fail to parse and leave
-	// a session cookie behind.
-	seconds, ok := lastMaxAge([]byte("sid=x; Max-Age=3000000000"))
-	require.True(t, ok)
-	require.Equal(t, int64(3000000000), seconds)
-	require.Equal(t, 3000000000*time.Second, maxAgeDuration(seconds))
+	// fasthttp keeps Max-Age in an int, which is 32 bits on 386 and arm, where
+	// this is not an integer to it and is ignored.
+	if strconv.IntSize < 64 {
+		t.Skip("fasthttp ignores a Max-Age past 2^31-1 on a 32-bit build")
+	}
+
+	cookie := fasthttp.AcquireCookie()
+	t.Cleanup(func() { fasthttp.ReleaseCookie(cookie) })
+	require.NoError(t, cookie.Parse("sid=x; Max-Age=3000000000"))
+
+	now := time.Now()
+	applyMaxAge(cookie, now)
+	require.WithinDuration(t, now.Add(3000000000*time.Second), cookie.Expire(), time.Second)
+	require.Equal(t, 3000000000*time.Second, maxAgeDuration(int64(cookie.MaxAge())))
 }

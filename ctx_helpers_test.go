@@ -659,6 +659,48 @@ func Test_Res_GetCookie_Deletion(t *testing.T) {
 	require.Equal(t, "example.com", rewritten.Domain)
 }
 
+// GetCookie and GetCookies report the Max-Age fasthttp parsed: a zero or negative one
+// is a deletion (-1), one that is not an integer is ignored, and the last valid one wins.
+func Test_Res_GetCookie_MaxAge(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	tests := []struct {
+		name        string
+		setCookie   string
+		wantMaxAge  int
+		wantSession bool
+	}{
+		{name: "absent", setCookie: "sid=x", wantMaxAge: 0, wantSession: true},
+		{name: "not an integer is ignored", setCookie: "sid=x; Max-Age=never", wantMaxAge: 0, wantSession: true},
+		{name: "zero is a deletion", setCookie: "sid=x; Max-Age=0", wantMaxAge: -1},
+		{name: "negative is a deletion", setCookie: "sid=x; Max-Age=-5", wantMaxAge: -1},
+		{name: "seconds", setCookie: "sid=x; Max-Age=60", wantMaxAge: 60},
+		{name: "a later invalid value keeps the valid one", setCookie: "sid=x; Max-Age=60; Max-Age=bogus", wantMaxAge: 60},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			c.Response().Header.Add(HeaderSetCookie, tc.setCookie)
+
+			got, ok := c.Res().GetCookie("sid")
+			require.True(t, ok)
+			require.Equal(t, tc.wantMaxAge, got.MaxAge)
+			require.Equal(t, tc.wantSession, got.SessionOnly)
+
+			all := c.Res().GetCookies()
+			require.Len(t, all, 1)
+			require.Equal(t, tc.wantMaxAge, all[0].MaxAge)
+			require.Equal(t, tc.wantSession, all[0].SessionOnly)
+		})
+	}
+}
+
 func Test_Res_Body_DoesNotDrainStream(t *testing.T) {
 	t.Parallel()
 	app := New()

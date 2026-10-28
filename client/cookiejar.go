@@ -542,7 +542,7 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 			fasthttp.ReleaseCookie(tmp)
 			continue
 		}
-		applyMaxAge(tmp, now, value)
+		applyMaxAge(tmp, now)
 
 		// A Set-Cookie whose Path attribute is missing — or does not begin
 		// with '/', which fasthttp's ParseBytes stores verbatim — is scoped to
@@ -839,46 +839,21 @@ func isPublicSuffixDomain(domain string) bool {
 	return suffix == domain
 }
 
-// lastMaxAge returns the Max-Age a Set-Cookie value asks for: the last
-// occurrence that is an integer, since a repeated attribute is resolved by the
-// last one and a value that is not an integer is ignored (RFC 6265 §5.2.2).
-// The raw value has to be read because fasthttp cannot answer this — it parses
-// MaxAge as 0 whether the attribute is absent, zero or negative.
-func lastMaxAge(value []byte) (int64, bool) {
-	_, rest, found := utils.CutByte(value, ';')
-	if !found {
-		return 0, false
-	}
-
-	// Parsed at 64 bits: int is 32 bits on 386 and arm, where a Max-Age past
-	// two billion would fail to parse and silently downgrade a persistent
-	// cookie to a session one.
-	seconds, ok := int64(0), false
-	for len(rest) > 0 {
-		var part []byte
-		part, rest, _ = utils.CutByte(rest, ';')
-		name, raw, hasValue := utils.CutByte(part, '=')
-		if !hasValue || !utils.EqualFold(utils.UnsafeString(utils.TrimSpace(name)), "max-age") {
-			continue
-		}
-		if n, err := utils.ParseInt(utils.TrimSpace(raw)); err == nil {
-			seconds, ok = n, true
-		}
-	}
-
-	return seconds, ok
-}
-
 // applyMaxAge turns Max-Age into the absolute expiry the jar keeps. It takes
 // precedence over Expires, and zero or less expires the cookie at once (RFC 6265 §5.2.2).
-func applyMaxAge(c *fasthttp.Cookie, now time.Time, value []byte) {
-	seconds, ok := lastMaxAge(value)
+// It reads what fasthttp parsed: MaxAge is negative for a Max-Age of zero or less, the
+// seconds for a positive one, and 0 when there is no integer one, which leaves Expires
+// as parsed. Two deviations from RFC 6265 §5.2.2 come with that: fasthttp keeps the
+// seconds in an int, so on a 32-bit build a Max-Age past 2^31-1 is not an integer to
+// it and is ignored, and it strips a pair of double quotes from the value, so
+// Max-Age="7" counts as 7 where the RFC would ignore it.
+func applyMaxAge(c *fasthttp.Cookie, now time.Time) {
+	seconds := c.MaxAge()
 	switch {
-	case !ok:
-	case seconds <= 0:
+	case seconds < 0:
 		c.SetExpire(now.Add(-time.Second))
-	default:
-		c.SetExpire(now.Add(maxAgeDuration(seconds)))
+	case seconds > 0:
+		c.SetExpire(now.Add(maxAgeDuration(int64(seconds))))
 	}
 }
 
