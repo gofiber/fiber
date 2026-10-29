@@ -85,8 +85,8 @@ func Balancer(config ...Config) fiber.Handler {
 		var scratch [realIPScratch]byte
 		ip := realIP(c, scratch[:0])
 
-		if !policy.KeepHopByHopHeaders {
-			stripHopByHopRequestHeaders(req, normalized, keepHeaders...)
+		if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized, keepHeaders...) {
+			return fiber.ErrRequestHeaderFieldsTooLarge
 		}
 
 		// The Host field holds no userinfo (RFC 9112 Section 3.2). fasthttp
@@ -120,7 +120,9 @@ func Balancer(config ...Config) fiber.Handler {
 		// After the Connection listing has been applied, so the line is this
 		// hop's and not one the client named there; before ModifyRequest, so
 		// the application still has the last word.
-		setRealIP(c, ip)
+		if !setRealIP(c, ip) {
+			return fiber.ErrRequestHeaderFieldsTooLarge
+		}
 
 		// Modify request
 		if cfg.ModifyRequest != nil {
@@ -139,8 +141,8 @@ func Balancer(config ...Config) fiber.Handler {
 			return err
 		}
 
-		if !policy.KeepHopByHopHeaders {
-			stripHopByHopResponseHeaders(res, keepHeaders...)
+		if !policy.KeepHopByHopHeaders && !stripHopByHopResponseHeaders(res, keepHeaders...) {
+			return fiber.ErrBadGateway
 		}
 
 		// Modify response

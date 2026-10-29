@@ -3980,6 +3980,8 @@ app.Get("/file", func(c fiber.Ctx) error {
 You can use multiple `SendFile` calls with different configurations in a single route. Fiber creates different filesystem handlers per config.
 
 A file system whose type is a function (a `func` type with an `Open` method) cannot be told apart from another one, so Fiber keeps no handler for it: a new handler is built, without the file cache, on every call. That keeps the handler cache from growing, but each call costs more than with a struct or pointer type.
+
+Fiber keeps at most 64 handlers per app. A config that is new on every call, such as one whose `FS` is the pointer `fs.Sub` returns or whose `MaxAge` comes from the request, uses them up, and every config that has no handler by then is served the same way, without the file cache. Create such a file system once, outside the handler.
 :::
 
 ```go title="Example"

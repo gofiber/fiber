@@ -167,6 +167,10 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 		{name: "path delimiter in host", input: "attacker.test/.example.com", expectOK: false},
 		{name: "query delimiter in host", input: "attacker.test?.example.com", expectOK: false},
 		{name: "space in host", input: "bad host.example.com", expectOK: false},
+		{name: "253 bytes", input: strings.Repeat("a.", 125) + "com", expected: strings.Repeat("a.", 125) + "com", expectOK: true},
+		{name: "253 bytes with trailing dot and port", input: strings.Repeat("a.", 125) + "com.:443", expected: strings.Repeat("a.", 125) + "com", expectOK: true},
+		{name: "254 bytes", input: strings.Repeat("a.", 125) + "coms", expectOK: false},
+		{name: "254 bytes in brackets", input: "[" + strings.Repeat("a.", 125) + "coms]", expectOK: false},
 	}
 
 	for _, tt := range tests {
@@ -177,6 +181,22 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 			require.Equal(t, tt.expected, host)
 		})
 	}
+}
+
+// Not parallel: AllocsPerRun counts allocations process-wide and refuses to run
+// under a parallel test.
+func Test_ParseNormalizedAuthority_LongUnicodeHostNotConverted(t *testing.T) {
+	var label strings.Builder
+	for r := rune(0x4E00); label.Len() < 8000; r++ {
+		_, err := label.WriteRune(r)
+		require.NoError(t, err)
+	}
+	host := label.String()
+
+	require.Zero(t, testing.AllocsPerRun(10, func() {
+		_, ok := parseNormalizedAuthority(host)
+		require.False(t, ok)
+	}))
 }
 
 func Test_IsValidHostSyntax(t *testing.T) {

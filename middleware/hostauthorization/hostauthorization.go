@@ -166,6 +166,11 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 		}
 	}
 
+	// Punycode conversion is quadratic in the label length, so bound the raw name first.
+	if len(trimOneTrailingDot(host)) > maxDomainLength {
+		return "", false
+	}
+
 	host = normalizeHost(host)
 	if host == "" {
 		return "", false

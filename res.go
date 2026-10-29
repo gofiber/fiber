@@ -1234,6 +1234,10 @@ func (r *DefaultRes) SendEarlyHints(hints []string) error {
 // sendFileIndexName is the file SendFile serves for a directory.
 const sendFileIndexName = "index.html"
 
+// maxSendFileHandlers bounds the handlers an app keeps, one per distinct SendFile
+// config; each holds a file cache and a goroutine for as long as it is kept.
+const maxSendFileHandlers = 64
+
 // SendFile transfers the file from the specified path.
 // By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
 // The Content-Type response HTTP header field is set based on the file's extension.
@@ -1275,6 +1279,10 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 				cacheControlValue = sf.cacheControlValue
 				break
 			}
+		}
+		// A config new on every call, such as an fs.Sub result, must not grow the cache.
+		if fsHandler == nil && len(app.sendfiles) >= maxSendFileHandlers {
+			cacheHandler = false
 		}
 		app.sendfilesMutex.RUnlock()
 	}
@@ -1318,7 +1326,10 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 		if cacheHandler {
 			app.sendfilesMutex.Lock()
-			app.sendfiles = append(app.sendfiles, sf)
+			// Concurrent misses may have filled the cache since the search.
+			if len(app.sendfiles) < maxSendFileHandlers {
+				app.sendfiles = append(app.sendfiles, sf)
+			}
 			app.sendfilesMutex.Unlock()
 		}
 	}
