@@ -607,6 +607,29 @@ func init() {
 				},
 			},
 			{
+				// the constraint holds the delimiter that ends the parameter
+				pattern: `/api/v1/:param<regex(a.b)>.x`,
+				testCases: []routeTestCase{
+					{url: "/api/v1/a.b.x", params: []string{"a.b"}, match: true},
+					{url: "/api/v1/a.b", params: nil, match: false},
+					{url: "/api/v1/a.b.zzz", params: nil, match: false},
+				},
+			},
+			{
+				pattern: `/api/v1/:param<regex(a-b)>-x`,
+				testCases: []routeTestCase{
+					{url: "/api/v1/a-b-x", params: []string{"a-b"}, match: true},
+					{url: "/api/v1/a-b", params: nil, match: false},
+				},
+			},
+			{
+				pattern: `/api/v1/:param<regex(\d{4})>\:x`,
+				testCases: []routeTestCase{
+					{url: "/api/v1/1001:x", params: []string{"1001"}, match: true},
+					{url: "/api/v1/1001", params: nil, match: false},
+				},
+			},
+			{
 				pattern: "/api/v1/:param<int;bool((>",
 				testCases: []routeTestCase{
 					{url: "/api/v1/entity", params: nil, match: false},

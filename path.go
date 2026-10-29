@@ -449,12 +449,20 @@ func findNextCharsetPositionConstraint(search string, charset []byte) int {
 	nextPosition := -1
 
 	for _, char := range charset {
-		pos := strings.IndexByte(search, char)
-
-		if pos != -1 && (pos < nextPosition || nextPosition == -1) {
-			if (pos > constraintStart && pos > constraintEnd) || (pos < constraintStart && pos < constraintEnd) {
-				nextPosition = pos
+		// check every occurrence of char: the first one can be inside the constraint
+		for offset := 0; offset < len(search); {
+			i := strings.IndexByte(search[offset:], char)
+			if i == -1 {
+				break
 			}
+			pos := offset + i
+			if (pos > constraintStart && pos > constraintEnd) || (pos < constraintStart && pos < constraintEnd) {
+				if pos < nextPosition || nextPosition == -1 {
+					nextPosition = pos
+				}
+				break
+			}
+			offset = pos + 1
 		}
 	}
 
