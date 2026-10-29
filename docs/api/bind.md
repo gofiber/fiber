@@ -566,7 +566,7 @@ Run tests with the following `curl` command:
 curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,hat"
 ```
 
-Header names are matched case-insensitively. A header sent on several lines, such as `-H "products: shoe" -H "products: hat"`, fills a slice with one element per line, with or without `EnableSplittingOnParsers`.
+Header names are matched case-insensitively. A header sent on several lines, such as `-H "products: shoe" -H "products: hat"`, fills a slice with one element per line, with or without `EnableSplittingOnParsers`. With `EnableSplittingOnParsers`, each line's value is also split at its commas, the spaces and tabs around each element are removed and empty elements are skipped, so `products: shoe, hat,` followed by `products: glove` gives `["shoe", "hat", "glove"]`. A value made only of empty elements, such as `products: ,`, binds as an empty value does. Quoted strings are not parsed: a comma inside one splits as well, so `"a, b"` gives two elements.
 
 ### Query
 
@@ -609,7 +609,7 @@ curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
 ```
 
 :::info
-`EnableSplittingOnParsers` applies to the Cookie, Form, Header, Query, and RespHeader binders. For more parser settings, please refer to [Config](fiber.md#enablesplittingonparsers)
+`EnableSplittingOnParsers` applies to the Cookie, Form, Header, Query, and RespHeader binders. The Header and RespHeader binders also remove the spaces and tabs around each element and skip empty elements (see [Header](#header)); the Cookie, Form and Query binders keep each element as written. For more parser settings, please refer to [Config](fiber.md#enablesplittingonparsers)
 :::
 
 #### Array Query Parameters
@@ -836,6 +836,8 @@ app.Get("/", func(c fiber.Ctx) error {
     return nil
 })
 ```
+
+With `EnableSplittingOnParsers`, a response header value is split as a request header value is, see [Header](#header).
 
 ### URI
 
