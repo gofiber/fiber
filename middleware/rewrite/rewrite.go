@@ -14,6 +14,8 @@ import (
 type compiledRule struct {
 	pattern *regexp.Regexp
 	to      string
+	// dotSegments counts the dot segments the author wrote into to.
+	dotSegments int
 }
 
 // New creates a new middleware handler
@@ -25,8 +27,9 @@ func New(config ...Config) fiber.Handler {
 	compiled := make([]compiledRule, 0, len(rules))
 	for _, rule := range rules {
 		compiled = append(compiled, compiledRule{
-			pattern: compilePattern(rule.From),
-			to:      rule.To,
+			pattern:     compilePattern(rule.From),
+			to:          rule.To,
+			dotSegments: rulematch.DotSegments(rule.To),
 		})
 	}
 
@@ -42,10 +45,16 @@ func New(config ...Config) fiber.Handler {
 		// Rewrite
 		for _, rule := range compiled {
 			replacer := rulematch.CaptureTokens(rule.pattern, c.Path(), appconfig.Of(c.App()).UnescapePath)
-			if replacer != nil {
-				c.Path(replacer.Replace(rule.to))
-				break
+			if replacer == nil {
+				continue
 			}
+			path := replacer.Replace(rule.to)
+			// c.Path resolves dot segments, so one spelled by a capture leaves To's prefix.
+			if rulematch.DotSegments(path) > rule.dotSegments {
+				continue
+			}
+			c.Path(path)
+			break
 		}
 		return c.Next()
 	}

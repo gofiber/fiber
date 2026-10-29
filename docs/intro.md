@@ -112,7 +112,8 @@ app.Get("/", func(c fiber.Ctx) error {
 
 app.Get("/:value", func(c fiber.Ctx) error {
     return c.SendString("value: " + c.Params("value"))
-    // => Response: "value: hello world"
+    // => Response: "value: hello%20world"
+    // With UnescapePath enabled: "value: hello world"
 })
 ```
 

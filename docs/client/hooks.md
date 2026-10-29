@@ -172,7 +172,10 @@ query string, and `Header.Host()` is empty.
 
 The hook runs once per call, not once per attempt: retries resend the request it
 signed, and a redirect is followed below it, carrying a signature bound to the
-previous URL. Sign with a nonce or a timestamp only when retries are off.
+previous URL. Sign with a nonce or a timestamp only when retries are off. Name
+the signature header with
+[SetRedirectSensitiveHeaders](./rest.md#setredirectsensitiveheaders) to keep it
+from following a redirect to another host.
 
 Hence the `IsBodyStream` guard above. Reading `RawRequest.Body()` drains a body
 stream into memory, and a stream that fails mid-read leaves fasthttp's error

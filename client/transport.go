@@ -5,7 +5,9 @@ package client
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -18,11 +20,22 @@ import (
 // defaultRedirectLimit mirrors fasthttp's default when callers supply a negative redirect cap.
 const defaultRedirectLimit = 16
 
+// defaultMaxResponseBodySize bounds the buffer fasthttp allocates from a declared
+// Content-Length or chunk size before the body arrives; an unmappable size is a fatal error.
+const defaultMaxResponseBodySize = 100 << 20
+
 var (
 	// Pre-allocated byte slice for http/https scheme comparison
 	httpScheme  = []byte("http")
 	httpsScheme = []byte("https")
 )
+
+// redirectOptions is passed by pointer: by value it widens the frames of every transport.
+type redirectOptions struct {
+	deadline         time.Time // zero: each hop keeps the request's own timeout
+	sensitiveHeaders crosshost.HeaderNames
+	maxRedirects     int
+}
 
 // httpClientTransport unifies the operations exposed by the Fiber client across
 // the fasthttp.Client, fasthttp.HostClient, and fasthttp.LBClient adapters so
@@ -31,7 +44,7 @@ type httpClientTransport interface {
 	Do(req *fasthttp.Request, resp *fasthttp.Response) error
 	DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error
 	DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, deadline time.Time) error
-	DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error
+	DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error
 	CloseIdleConnections()
 	TLSConfig() *tls.Config
 	SetTLSConfig(config *tls.Config)
@@ -39,6 +52,8 @@ type httpClientTransport interface {
 	Client() any
 	StreamResponseBody() bool
 	SetStreamResponseBody(enable bool)
+	MaxResponseBodySize() int
+	SetMaxResponseBodySize(size int)
 }
 
 // pathNormalizingTransport is implemented by the transports whose wrapped client
@@ -96,7 +111,50 @@ func newStandardClientTransport(client *fasthttp.Client) *standardClientTranspor
 // newOwnedStandardClientTransport wraps a new fasthttp.Client that nothing else
 // holds yet.
 func newOwnedStandardClientTransport() *standardClientTransport {
-	return &standardClientTransport{client: &fasthttp.Client{}, settingKnown: true}
+	return &standardClientTransport{
+		client: &fasthttp.Client{
+			MaxResponseBodySize: defaultMaxResponseBodySize,
+			ConfigureClient:     boundTLSHandshake,
+		},
+		settingKnown: true,
+	}
+}
+
+// boundTLSHandshake gives a new TLS connection a read deadline of the request timeout.
+// fasthttp handshakes inside the first write, where only a write deadline applies.
+func boundTLSHandshake(hc *fasthttp.HostClient) error {
+	if !hc.IsTLS || hc.WriteTimeout > 0 { // with WriteTimeout fasthttp handshakes at dial time, under a deadline
+		return nil
+	}
+	dial, dialTimeout, dualStack := hc.Dial, hc.DialTimeout, hc.DialDualStack
+	hc.DialTimeout = func(addr string, timeout time.Duration) (net.Conn, error) {
+		var conn net.Conn
+		var err error
+		// The dialer fasthttp's callDialFunc would pick; addr already carries the port.
+		switch {
+		case dialTimeout != nil:
+			conn, err = dialTimeout(addr, timeout)
+		case dial != nil:
+			conn, err = dial(addr)
+		case timeout <= 0 && dualStack:
+			conn, err = fasthttp.DialDualStack(addr)
+		case timeout <= 0:
+			conn, err = fasthttp.Dial(addr)
+		case dualStack:
+			conn, err = fasthttp.DialDualStackTimeout(addr, timeout)
+		default:
+			conn, err = fasthttp.DialTimeout(addr, timeout)
+		}
+		if err != nil || timeout <= 0 {
+			return conn, err
+		}
+		// The request sets its own read deadline after the handshake, replacing this one.
+		if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+			return nil, errors.Join(err, conn.Close())
+		}
+		return conn, nil
+	}
+	return nil
 }
 
 // noteSend records a request about to be sent through a client that normalizes.
@@ -125,7 +183,7 @@ func (s *standardClientTransport) DoDeadline(req *fasthttp.Request, resp *fastht
 // DoRedirects follows redirects through doRedirectsWithClient rather than
 // fasthttp's own loop, so every transport applies the same target validation.
 // fasthttp's loop takes an HTTPS-to-HTTP hop; this one refuses it.
-func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
+func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
 	s.noteSend()
 	// Before the loop serializes the URI, as fasthttp's own DoRedirects does:
 	// the setting has to reach req.URI() first or "/a//b" is normalized away on
@@ -133,7 +191,7 @@ func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasth
 	if s.client.DisablePathNormalizing {
 		req.URI().DisablePathNormalizing = true
 	}
-	return doRedirectsWithClient(req, resp, maxRedirects, s.client)
+	return doRedirectsWithClient(req, resp, opts, s.client)
 }
 
 func (s *standardClientTransport) CloseIdleConnections() {
@@ -162,6 +220,14 @@ func (s *standardClientTransport) StreamResponseBody() bool {
 
 func (s *standardClientTransport) SetStreamResponseBody(enable bool) {
 	s.client.StreamResponseBody = enable
+}
+
+func (s *standardClientTransport) MaxResponseBodySize() int {
+	return s.client.MaxResponseBodySize
+}
+
+func (s *standardClientTransport) SetMaxResponseBodySize(size int) {
+	s.client.MaxResponseBodySize = size
 }
 
 // DisablePathNormalizing is false once a request has gone out while the client
@@ -201,12 +267,12 @@ func (h *hostClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.R
 
 // DoRedirects uses the shared loop for the same reasons as
 // standardClientTransport.DoRedirects.
-func (h *hostClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
+func (h *hostClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
 	// See standardClientTransport.DoRedirects.
 	if h.client.DisablePathNormalizing {
 		req.URI().DisablePathNormalizing = true
 	}
-	return doRedirectsWithClient(req, resp, maxRedirects, h.client)
+	return doRedirectsWithClient(req, resp, opts, h.client)
 }
 
 func (h *hostClientTransport) CloseIdleConnections() {
@@ -235,6 +301,14 @@ func (h *hostClientTransport) StreamResponseBody() bool {
 
 func (h *hostClientTransport) SetStreamResponseBody(enable bool) {
 	h.client.StreamResponseBody = enable
+}
+
+func (h *hostClientTransport) MaxResponseBodySize() int {
+	return h.client.MaxResponseBodySize
+}
+
+func (h *hostClientTransport) SetMaxResponseBodySize(size int) {
+	h.client.MaxResponseBodySize = size
 }
 
 func (h *hostClientTransport) DisablePathNormalizing() bool {
@@ -270,8 +344,8 @@ func (l *lbClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Res
 // DoRedirects proxies redirect handling through doRedirectsWithClient so the
 // load-balanced transport mirrors fasthttp.Client semantics despite
 // fasthttp.LBClient not exposing DoRedirects directly.
-func (l *lbClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
-	return doRedirectsWithClient(req, resp, maxRedirects, l.client)
+func (l *lbClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
+	return doRedirectsWithClient(req, resp, opts, l.client)
 }
 
 func (l *lbClientTransport) CloseIdleConnections() {
@@ -323,6 +397,26 @@ func (l *lbClientTransport) StreamResponseBody() bool {
 func (l *lbClientTransport) SetStreamResponseBody(enable bool) {
 	forEachHostClient(l.client, func(hc *fasthttp.HostClient) {
 		hc.StreamResponseBody = enable
+	})
+}
+
+// MaxResponseBodySize returns the limit of the first host client, as StreamResponseBody does.
+func (l *lbClientTransport) MaxResponseBodySize() int {
+	var size int
+	for _, c := range l.client.Clients {
+		if walkBalancingClientWithBreak(c, func(hc *fasthttp.HostClient) bool {
+			size = hc.MaxResponseBodySize
+			return true
+		}) {
+			break
+		}
+	}
+	return size
+}
+
+func (l *lbClientTransport) SetMaxResponseBodySize(size int) {
+	forEachHostClient(l.client, func(hc *fasthttp.HostClient) {
+		hc.MaxResponseBodySize = size
 	})
 }
 
@@ -443,7 +537,7 @@ type redirectClient interface {
 // redirect response instead left a caller unable to tell a request that finished
 // from one that stopped at a hop, and it is what the DoRedirects this stands in
 // for does.
-func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, client redirectClient) error {
+func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions, client redirectClient) error {
 	if resp == nil {
 		// "Response is ignored if resp is nil", per fasthttp's own DoRedirects
 		// doc. Its loop reads resp.Header regardless and panics, so honor the
@@ -456,6 +550,7 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 	initialHostname := hostnameWithoutPort(string(req.URI().Host()))
 	redirects := 0
 
+	maxRedirects := opts.maxRedirects
 	if maxRedirects < 0 {
 		maxRedirects = defaultRedirectLimit
 	}
@@ -472,6 +567,15 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 		// are composed; this is the same check for the URI the caller supplied.
 		if err := parsesAsURI([]byte(currentURL)); err != nil {
 			return err
+		}
+
+		// One deadline for the chain, or every hop would get the full timeout again.
+		if !opts.deadline.IsZero() {
+			remaining := time.Until(opts.deadline)
+			if remaining <= 0 {
+				return fasthttp.ErrTimeout
+			}
+			req.SetTimeout(remaining)
 		}
 
 		if err := client.Do(req, resp); err != nil {
@@ -513,10 +617,9 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 		// Credentials are scoped to the origin that issued them, so drop them once
 		// the chain leaves it. net/http's boundary, which fasthttp also implements:
 		// against the initial host, ignoring the port, subdomains still trusted.
+		// In place, so dropped headers stay gone if a later hop returns to the initial host.
 		if !trustedRedirectTarget(nextHost, initialHostname) {
-			for _, h := range crosshost.SensitiveHeaders {
-				req.Header.Del(h)
-			}
+			crosshost.Strip(&req.Header, opts.sensitiveHeaders)
 		}
 	}
 }

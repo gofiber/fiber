@@ -15,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/byterange"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/fspath"
 )
 
@@ -180,18 +181,20 @@ func New(root string, cfg ...Config) fiber.Handler {
 		}
 
 		files := &fasthttp.FS{
-			Root:                   fsRoot,
-			FS:                     config.FS,
-			AllowEmptyRoot:         true,
-			GenerateIndexPages:     config.Browse,
-			AcceptByteRange:        config.ByteRange,
-			Compress:               config.Compress,
-			CompressBrotli:         config.Compress, // Brotli compression won't work without this
-			CompressZstd:           config.Compress, // Zstd compression won't work without this
-			CompressedFileSuffixes: compressedFileSuffixes,
-			CacheDuration:          config.CacheDuration,
-			SkipCache:              config.CacheDuration < 0,
-			IndexNames:             config.IndexNames,
+			Root:           fsRoot,
+			FS:             config.FS,
+			AllowEmptyRoot: true,
+			// A file root serves only itself, and its compressed copy lies beside it, outside the root.
+			AllowSymlinksOutsideRoot: config.AllowSymlinksOutsideRoot || (rootIsFile && config.FS == nil),
+			GenerateIndexPages:       config.Browse,
+			AcceptByteRange:          config.ByteRange,
+			Compress:                 config.Compress,
+			CompressBrotli:           config.Compress, // Brotli compression won't work without this
+			CompressZstd:             config.Compress, // Zstd compression won't work without this
+			CompressedFileSuffixes:   compressedFileSuffixes,
+			CacheDuration:            config.CacheDuration,
+			SkipCache:                config.CacheDuration < 0,
+			IndexNames:               config.IndexNames,
 			PathNotFound: func(fctx *fasthttp.RequestCtx) {
 				fctx.Response.SetStatusCode(fiber.StatusNotFound)
 			},
@@ -258,6 +261,11 @@ func New(root string, cfg ...Config) fiber.Handler {
 		// We only serve static assets on GET or HEAD methods
 		method := c.Method()
 		if method != fiber.MethodGet && method != fiber.MethodHead {
+			return c.Next()
+		}
+
+		// A refused request skipped any route guarding the file, and its headers would go out with the refusal.
+		if errorreplay.Active(c.RequestCtx()) {
 			return c.Next()
 		}
 

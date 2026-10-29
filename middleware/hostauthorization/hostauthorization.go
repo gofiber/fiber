@@ -206,6 +206,11 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 		}
 	}
 
+	// Punycode conversion is quadratic in the label length, so bound the raw name first.
+	if len(trimOneTrailingDot(host)) > maxDomainLength {
+		return "", false
+	}
+
 	host, isIPv6 := normalizeHostKind(host)
 	if host == "" {
 		return "", false
@@ -271,16 +276,24 @@ func isValidHostSyntax(host string) bool {
 }
 
 func isValidPort(raw string) bool {
-	if raw == "" || len(raw) > 5 {
+	if raw == "" {
+		return false
+	}
+
+	// A port is *DIGIT (RFC 3986 Section 3.2.3), so leading zeros are valid and do
+	// not change the value. Strip them before bounding the digits that carry it, so
+	// an oversized run of zeros is rejected without walking it one digit at a time.
+	digits := utils.TrimLeft(raw, '0')
+	if len(digits) > 5 {
 		return false
 	}
 
 	var port int
-	for i := 0; i < len(raw); i++ {
-		if raw[i] < '0' || raw[i] > '9' {
+	for i := 0; i < len(digits); i++ {
+		if digits[i] < '0' || digits[i] > '9' {
 			return false
 		}
-		port = port*10 + int(raw[i]-'0')
+		port = port*10 + int(digits[i]-'0')
 	}
 
 	return port <= 65535

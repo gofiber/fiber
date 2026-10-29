@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
+	"github.com/gofiber/fiber/v3/internal/sizedstream"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 )
@@ -63,14 +64,18 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
-		// Never generate ETags for Server-Sent Events: hashing the body would
-		// materialize the stream and break real-time delivery.
-		if isEventStream(c) {
+		// Never generate ETags for Server-Sent Events or a stream of unknown length: hashing the
+		// body would materialize the stream and break real-time delivery.
+		if isEventStream(c) || (c.Response().IsBodyStream() && c.Response().Header.ContentLength() < 0) {
 			return nil
 		}
 
 		// Don't generate ETags for invalid responses
 		if c.Res().StatusCode() != fiber.StatusOK {
+			return nil
+		}
+		// Body keeps a read error as the body; a stream that fails or delivers other than it declares goes out untagged.
+		if c.Response().IsBodyStream() && !sizedstream.Read(c.Response(), c.Response().Header.ContentLength()) {
 			return nil
 		}
 		body := c.Response().Body()

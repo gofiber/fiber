@@ -36,8 +36,10 @@ type Req interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	BodyRaw() []byte
-	//nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
-	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) (body []byte, decodesRealized uint8, err error)
+	// tryDecodeBodyInOrder undoes the codings last-applied first and never replaces the request body.
+	tryDecodeBodyInOrder(encodings []string) ([]byte, error)
+	// decodeContentCoding undoes one content coding of src's body within BodyLimit.
+	decodeContentCoding(src *fasthttp.Request, encoding string) ([]byte, error)
 	// Body contains the raw body submitted in a POST request.
 	// This method will decompress the body if the 'Content-Encoding' header is provided.
 	// It returns the original (or decompressed) body data which is valid only within the handler.
@@ -157,6 +159,7 @@ type Req interface {
 	// Freshness only applies to GET and HEAD requests; for any other method false is
 	// returned, as RFC 9110 defines 304 Not Modified only for those methods and
 	// requires If-Modified-Since to be ignored otherwise.
+	// The response status must be 2xx or 304; redirects and errors are never fresh.
 	// When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
 	// reload request, this module will return false to make handling these requests transparent.
 	// https://github.com/jshttp/fresh/blob/master/index.js#L33
@@ -369,4 +372,6 @@ type Req interface {
 	// IsFromUnixSocket returns true if the request arrived over a Unix domain socket.
 	IsFromUnixSocket() bool
 	getBody() []byte
+	// bufferBodyStream applies BodyLimit to a streamed body and answers a larger one 413 while no response body was written, as the server would.
+	bufferBodyStream() error
 }

@@ -120,7 +120,7 @@ func NewWithHostClient(c *fasthttp.HostClient) *Client
 
 ### NewWithLBClient
 
-**NewWithLBClient** creates and returns a new Client object from an existing `fasthttp.LBClient`. TLS, dialer, proxy and response streaming settings are applied to every host client behind the load balancer. Requests go through `LBClient.Do`, so they fail with `fasthttp.ErrTimeout` after `LBClient.Timeout`, which is one second when left unset, even if the client timeout is longer. It panics if `c` is `nil`.
+**NewWithLBClient** creates and returns a new Client object from an existing `fasthttp.LBClient`. TLS, dialer, proxy, response streaming and response size settings are applied to every host client behind the load balancer. Requests go through `LBClient.Do`, so they fail with `fasthttp.ErrTimeout` after `LBClient.Timeout`, which is one second when left unset, even if the client timeout is longer. It panics if `c` is `nil`.
 
 ```go title="Signature"
 func NewWithLBClient(c *fasthttp.LBClient) *Client
@@ -223,9 +223,10 @@ type Config struct {
     Cookie    map[string]string
     PathParam map[string]string
 
-    Timeout                time.Duration
-    MaxRedirects           int
-    DisablePathNormalizing bool
+    Timeout                  time.Duration
+    MaxRedirects             int
+    RedirectSensitiveHeaders []string
+    DisablePathNormalizing   bool
 
     Body     any
     FormData map[string]string
@@ -236,6 +237,8 @@ type Config struct {
 The REST helpers accept an optional `Config` and use only the first one passed. A `string` or `[]byte` `Body` is sent as is; any other value is encoded as JSON.
 
 `MaxRedirects` is honored for `GET`, `HEAD` and `QUERY` requests only; other methods receive the redirect response as-is. The default is `0`, which follows no redirects. See [SetMaxRedirects](./request.md#setmaxredirects) for how redirects are followed.
+
+`RedirectSensitiveHeaders` sets [SetRedirectSensitiveHeaders](./request.md#setredirectsensitiveheaders) for the request; an empty list leaves the request's own names as they are.
 
 `DisablePathNormalizing: true` turns path normalizing off for the request, like [SetDisablePathNormalizing](./request.md#setdisablepathnormalizing) on the request, which also says when the path is really sent as written; `false` leaves the client's setting in place.
 
@@ -474,7 +477,7 @@ func (c *Client) StreamResponseBody() bool
 
 ### SetStreamResponseBody
 
-Enables or disables response body streaming. When enabled, responses can be consumed incrementally without loading the entire body into memory.
+Enables or disables response body streaming. When enabled, responses can be consumed incrementally without loading the entire body into memory. A client timeout also ends reads from the stream once it passes, see [SetTimeout](#settimeout).
 
 ```go title="Signature"
 func (c *Client) SetStreamResponseBody(enable bool) *Client
@@ -541,6 +544,28 @@ for {
 }
 ```
 
+## Response Size
+
+### MaxResponseBodySize
+
+Returns the largest response body the client buffers, in bytes. Zero or less means no limit.
+
+```go title="Signature"
+func (c *Client) MaxResponseBodySize() int
+```
+
+### SetMaxResponseBodySize
+
+Sets the largest response body the client buffers, in bytes. A response that declares or sends more fails with `fasthttp.ErrBodyTooLarge`. A client from `New`, the default client behind the package-level helpers included, starts at 100 MiB; a client built around a `fasthttp.Client`, `HostClient` or `LBClient` keeps that client's `MaxResponseBodySize`, which `fasthttp` leaves unlimited. Zero or less removes the limit. Call it before the first request: a `fasthttp.Client` gives each host the limit it has when it first serves that host. A body read through [response streaming](#response-streaming) is not buffered and not limited, which makes streaming the way to receive a larger one.
+
+```go title="Signature"
+func (c *Client) SetMaxResponseBodySize(size int) *Client
+```
+
+:::caution
+`fasthttp` allocates a buffered body from the `Content-Length` or chunk size the server declares, before the body arrives. Without a limit, a server can end the process with a response of a few bytes that declares a body too large to allocate: the Go runtime reports that as a fatal error, which `recover` cannot catch. Keep a limit for servers you do not control.
+:::
+
 ## RetryConfig
 
 Returns a copy of the retry configuration of the client, or `nil` when none is set.
@@ -551,7 +576,7 @@ func (c *Client) RetryConfig() *RetryConfig
 
 ## SetRetryConfig
 
-Sets the retry configuration for the client. `RetryConfig` is an alias of `retry.Config` from the [Retry addon](../addon/retry.md), which describes its fields and defaults. Without a retry configuration, which is the default, Fiber does not retry failed requests. With one, a request that fails to send is retried with exponential backoff; an HTTP error status such as `500` is a response rather than a failure, so it is not retried.
+Sets the retry configuration for the client. `RetryConfig` is an alias of `retry.Config` from the [Retry addon](../addon/retry.md), which describes its fields and defaults. Without a retry configuration, which is the default, Fiber does not retry failed requests. With one, a request that fails to send is retried with exponential backoff; an HTTP error status such as `500` is a response rather than a failure, so it is not retried. A request that follows redirects starts each retry at its original URL, see [SetMaxRedirects](./request.md#setmaxredirects).
 
 ```go title="Signature"
 func (c *Client) SetRetryConfig(config *RetryConfig) *Client
@@ -787,9 +812,37 @@ Turns path normalizing off or on for every request of the client. It is on by de
 func (c *Client) SetDisablePathNormalizing(disable bool) *Client
 ```
 
+## Redirects
+
+### RedirectSensitiveHeaders
+
+Returns a copy of the header names set with [SetRedirectSensitiveHeaders](#setredirectsensitiveheaders). The names a request adds with [SetRedirectSensitiveHeaders](./request.md#setredirectsensitiveheaders) are not included.
+
+```go title="Signature"
+func (c *Client) RedirectSensitiveHeaders() []string
+```
+
+### SetRedirectSensitiveHeaders
+
+Names request headers that must not follow a redirect to another host, such as a credential of your own like `X-Api-Key`, for every request of the client. A redirect to a host that is neither the original hostname (on any port) nor one of its subdomains drops them with the built-in sensitive headers; every other header is forwarded. Names match case-insensitively, and surrounding whitespace and empty entries are ignored. A request can add names of its own with [SetRedirectSensitiveHeaders](./request.md#setredirectsensitiveheaders). The list applies to [DoRedirects](#doredirects) too. It is empty by default, calling the method with no names clears it, and `Reset` clears it. It matters only while redirects are followed, see [SetMaxRedirects](./request.md#setmaxredirects).
+
+The boundary is the hostname, as in `net/http`: a redirect of the same host to another port or scheme keeps the headers. [proxy.DoRedirects](../middleware/proxy.md#headers-on-a-cross-origin-redirect) is stricter and drops them whenever the scheme, host or port changes.
+
+```go title="Signature"
+func (c *Client) SetRedirectSensitiveHeaders(names ...string) *Client
+```
+
+```go title="Example"
+cli := client.New().
+    SetHeader("X-Api-Key", os.Getenv("UPSTREAM_API_KEY")).
+    SetRedirectSensitiveHeaders("X-Api-Key")
+
+resp, err := cli.Get("https://api.example.com/items", client.Config{MaxRedirects: 3})
+```
+
 ## Cookies
 
-A cookie set on a request replaces a client cookie with the same name, and a client cookie replaces one from the [cookie jar](#cookie-jar).
+A cookie set on a request replaces a client cookie with the same name, and a client cookie replaces one from the [cookie jar](#cookie-jar). Cookies are selected anew each time a request is sent, so a `Request` that is sent again carries only what applies to its current URL: a jar cookie does not follow it to another host, and a cookie that expired or was deleted since the last send is not sent. Cookies written straight to `RawRequest` before the send are discarded; use `SetCookie`, a `Cookie` header or a [final request hook](./hooks.md#final-request-hooks).
 
 ### Cookie
 
@@ -864,6 +917,8 @@ func (c *Client) DelCookies(key ...string) *Client
 
 Sets a default timeout for all requests, which can be overridden per request. A new client has no timeout. When the timeout elapses, or the request's context is canceled, the request fails with `ErrTimeoutOrCancel`.
 
+The timeout, like a deadline on the request's context, bounds the whole call: every retry and redirect hop gets what is left of it, and the transport closes the connection when it passes, so a server that never answers keeps no connection or goroutine after the call has failed. On a client from `New` it also bounds the TLS handshake; a `fasthttp` client passed to `NewWithClient`, `NewWithHostClient` or `NewWithLBClient` bounds the handshake only with its own `WriteTimeout`. A client from `NewWithLBClient` gives the transport `LBClient.Timeout` in place of this timeout, see [NewWithLBClient](#newwithlbclient). With [response streaming](#response-streaming) the deadline stays on the connection after the call returns and ends reads from `Response.BodyStream()`, as `Client.Timeout` does in `net/http`, so leave the timeout unset for a long-lived stream such as server-sent events. A context canceled without a deadline stops further retries but cannot interrupt a request already on the wire.
+
 ```go title="Signature"
 func (c *Client) SetTimeout(t time.Duration) *Client
 ```
@@ -890,7 +945,7 @@ func (c *Client) DisableDebug() *Client
 
 ### SetCookieJar
 
-Assigns a cookie jar to the client to store and manage cookies across requests. A cookie received with a `Max-Age` attribute expires that many seconds after it was received, taking precedence over `Expires`; a `Max-Age` of zero or less expires it immediately (RFC 6265). A `Max-Age` that is not an integer is ignored on its own, as is any other attribute the parser cannot read, such as an `Expires` in an unrecognized format (RFC 6265 Section 5.2): the cookie keeps its name, its value and every other attribute, `Path`, `Domain` and `Secure` included. When the attribute repeats, the last integer value counts. A `Set-Cookie` whose name and value cannot be parsed is dropped. Cookies for the same host and path are stored under the origin that answered, so a redirect cannot plant cookies for another host. See [Cookie jar](./examples.md#cookie-jar) for how the jar scopes, orders and limits cookies.
+Assigns a cookie jar to the client to store and manage cookies across requests. A cookie received with a `Max-Age` attribute expires that many seconds after it was received, taking precedence over `Expires`; a `Max-Age` of zero or less expires it immediately (RFC 6265). A `Max-Age` that is not an integer is ignored on its own, as is any other attribute the parser cannot read, such as an `Expires` in an unrecognized format (RFC 6265 Section 5.2): the cookie keeps its name, its value and every other attribute, `Path`, `Domain` and `Secure` included. When the attribute repeats, the last integer value counts. A `Set-Cookie` whose name and value cannot be parsed is dropped, and so is one without a name, such as `=value`; whitespace around the name is not part of it. Cookies for the same host and path are stored under the origin that answered, so a redirect cannot plant cookies for another host. See [Cookie jar](./examples.md#cookie-jar) for how the jar scopes, orders and limits cookies.
 
 ```go title="Signature"
 func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client
@@ -924,7 +979,7 @@ func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie
 
 ### CookieJar.Set
 
-**Set** stores copies of the cookies for the host of a URI, ignoring the port. A cookie without a usable `Path` is scoped to the default path of the URI (RFC 6265), so cookies set against `/a/b` apply to `/a` and below; set `Path` on the cookie to widen it. A cookie whose `Domain` the host may not set, such as an unrelated domain or a public suffix, is skipped.
+**Set** stores copies of the cookies for the host of a URI, ignoring the port. A cookie without a usable `Path` is scoped to the default path of the URI (RFC 6265), so cookies set against `/a/b` apply to `/a` and below; set `Path` on the cookie to widen it. A cookie whose `Domain` the host may not set, such as an unrelated domain or a public suffix, is skipped. This and the other setters below also skip a cookie without a name, and whitespace around a name is not part of it.
 
 ```go title="Signature"
 func (cj *CookieJar) Set(uri *fasthttp.URI, cookies ...*fasthttp.Cookie)
@@ -1044,7 +1099,7 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 
 ### DoRedirects
 
-Like `Do`, but follows up to `maxRedirects` redirects, on every kind of client, with the rules described under [SetMaxRedirects](./request.md#setmaxredirects). A chain of more than `maxRedirects` redirects fails with `fasthttp.ErrTooManyRedirects`, so `0` fails on the first redirect, and a negative value allows 16. Unlike the `Request` methods, it follows redirects for any request method.
+Like `Do`, but follows up to `maxRedirects` redirects, on every kind of client, with the rules described under [SetMaxRedirects](./request.md#setmaxredirects). A chain of more than `maxRedirects` redirects fails with `fasthttp.ErrTooManyRedirects`, so `0` fails on the first redirect, and a negative value allows 16. Unlike the `Request` methods, it follows redirects for any request method. It drops the headers named with [SetRedirectSensitiveHeaders](#setredirectsensitiveheaders) on the client as well; there is no request-level list, because it takes a raw `fasthttp` request.
 
 ```go title="Signature"
 func (c *Client) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error
@@ -1063,11 +1118,13 @@ func (c *Client) CloseIdleConnections()
 ### Reset
 
 Resets the client's configuration: it clears the base URL, timeout, user agent,
-referer, retry configuration, debug flag, path-normalizing setting, headers,
-query and path parameters and cookies, and it empties and detaches the cookie
+referer, retry configuration, debug flag, path-normalizing setting, the
+redirect-sensitive header names, headers, query and path parameters and
+cookies, and it empties and detaches the cookie
 jar. It also replaces the transport with a new default `fasthttp.Client`, which
 drops a `HostClient` or `LBClient` the client wrapped together with any custom
-dial function, proxy, TLS configuration and response streaming setting. Request
+dial function, proxy, TLS configuration and response streaming setting, and it
+puts the response size limit back to 100 MiB. Request
 and response hooks, the JSON, XML and CBOR marshal and unmarshal functions and
 the logger are kept.
 

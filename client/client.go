@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/gofiber/utils/v2"
@@ -57,16 +58,17 @@ type Client struct {
 	cborMarshal   utils.CBORMarshal
 	cborUnmarshal utils.CBORUnmarshal
 
-	cookieJar            *CookieJar
-	retryConfig          *RetryConfig
-	baseURL              string
-	userAgent            string
-	referer              string
-	userRequestHooks     []RequestHook
-	builtinRequestHooks  []RequestHook
-	finalRequestHooks    []RequestHook
-	userResponseHooks    []ResponseHook
-	builtinResponseHooks []ResponseHook
+	cookieJar                *CookieJar
+	retryConfig              *RetryConfig
+	baseURL                  string
+	userAgent                string
+	referer                  string
+	userRequestHooks         []RequestHook
+	builtinRequestHooks      []RequestHook
+	finalRequestHooks        []RequestHook
+	userResponseHooks        []ResponseHook
+	builtinResponseHooks     []ResponseHook
+	redirectSensitiveHeaders crosshost.HeaderNames
 
 	timeout                   time.Duration
 	mu                        sync.RWMutex
@@ -95,8 +97,10 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 }
 
 // DoRedirects executes the request following redirects up to maxRedirects.
+// It honors SetRedirectSensitiveHeaders.
 func (c *Client) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
-	return c.transport.DoRedirects(req, resp, maxRedirects)
+	opts := c.redirectOptionsFor(maxRedirects, crosshost.HeaderNames{})
+	return c.transport.DoRedirects(req, resp, &opts)
 }
 
 // CloseIdleConnections closes idle connections on the underlying fasthttp transport when supported.
@@ -468,11 +472,12 @@ func (c *Client) AddHeader(key, val string) *Client {
 	return c
 }
 
-// SetHeader sets a single header field and its value in the client.
+// SetHeader sets a single header field and its value in the client, overriding any previously set value.
 func (c *Client) SetHeader(key, val string) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.header.Del(key)
 	c.header.Set(key, val)
 	return c
 }
@@ -620,6 +625,33 @@ func (c *Client) SetDisablePathNormalizing(disable bool) *Client {
 	return c
 }
 
+// RedirectSensitiveHeaders returns a copy of the names set with SetRedirectSensitiveHeaders.
+func (c *Client) RedirectSensitiveHeaders() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.redirectSensitiveHeaders.List()
+}
+
+// SetRedirectSensitiveHeaders names request headers, such as an X-Api-Key of your own, to drop with the
+// built-in set when a redirect leaves the host a request started on. Names match case-insensitively;
+// no names clears the list. Request.SetRedirectSensitiveHeaders adds names for one request.
+func (c *Client) SetRedirectSensitiveHeaders(names ...string) *Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.redirectSensitiveHeaders = crosshost.NewHeaderNames(names)
+	return c
+}
+
+// redirectOptionsFor joins the names into a fresh list, which a recycled request cannot change.
+func (c *Client) redirectOptionsFor(maxRedirects int, own crosshost.HeaderNames) redirectOptions {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return redirectOptions{maxRedirects: maxRedirects, sensitiveHeaders: c.redirectSensitiveHeaders.Join(own)}
+}
+
 // writesPathAsBuilt reports whether the wrapped fasthttp client sends the request
 // path exactly as built, so nothing normalizes it after Fiber has put it together.
 func (c *Client) writesPathAsBuilt() bool {
@@ -763,6 +795,23 @@ func (c *Client) SetStreamResponseBody(enable bool) *Client {
 	return c
 }
 
+// MaxResponseBodySize returns the largest response body the client buffers, in
+// bytes. Zero or less means no limit.
+func (c *Client) MaxResponseBodySize() int {
+	return c.transport.MaxResponseBodySize()
+}
+
+// SetMaxResponseBodySize sets the largest response body the client buffers, in
+// bytes; a larger one fails with fasthttp.ErrBodyTooLarge. A client from New
+// starts at 100 MiB, a wrapped fasthttp client keeps its own setting, and zero or
+// less removes the limit. A streamed body is not limited. Call it before the
+// first request: a fasthttp.Client gives each host the limit it has when it
+// first serves that host.
+func (c *Client) SetMaxResponseBodySize(size int) *Client {
+	c.transport.SetMaxResponseBodySize(size)
+	return c
+}
+
 // SetCookieJar sets the cookie jar for the client.
 func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client {
 	c.mu.Lock()
@@ -876,6 +925,7 @@ func (c *Client) Reset() {
 	c.retryConfig = nil
 	c.isDebug = false
 	c.isPathNormalizingDisabled = false
+	c.redirectSensitiveHeaders = crosshost.HeaderNames{}
 
 	if c.cookieJar != nil {
 		c.cookieJar.Release()
@@ -891,20 +941,23 @@ func (c *Client) Reset() {
 // Config is used to easily set request parameters. Note that when setting a request body,
 // JSON is used as the default serialization mechanism. The priority is:
 // Body > FormData > File.
+//
+// RedirectSensitiveHeaders is passed to Request.SetRedirectSensitiveHeaders; an empty list changes nothing.
 type Config struct {
-	Ctx                    context.Context //nolint:containedctx // It's needed to be stored in the config.
-	Body                   any
-	Header                 map[string]string
-	Param                  map[string]string
-	Cookie                 map[string]string
-	PathParam              map[string]string
-	FormData               map[string]string
-	UserAgent              string
-	Referer                string
-	File                   []*File
-	Timeout                time.Duration
-	MaxRedirects           int
-	DisablePathNormalizing bool
+	Ctx                      context.Context //nolint:containedctx // It's needed to be stored in the config.
+	Body                     any
+	Header                   map[string]string
+	Param                    map[string]string
+	Cookie                   map[string]string
+	PathParam                map[string]string
+	FormData                 map[string]string
+	UserAgent                string
+	Referer                  string
+	File                     []*File
+	RedirectSensitiveHeaders []string
+	Timeout                  time.Duration
+	MaxRedirects             int
+	DisablePathNormalizing   bool
 }
 
 // setConfigToRequest sets the parameters passed via Config to the Request.
@@ -948,6 +1001,10 @@ func setConfigToRequest(req *Request, config ...Config) {
 
 	if cfg.MaxRedirects != 0 {
 		req.SetMaxRedirects(cfg.MaxRedirects)
+	}
+
+	if len(cfg.RedirectSensitiveHeaders) > 0 {
+		req.SetRedirectSensitiveHeaders(cfg.RedirectSensitiveHeaders...)
 	}
 
 	if cfg.DisablePathNormalizing {

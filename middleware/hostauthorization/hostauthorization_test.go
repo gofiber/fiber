@@ -161,6 +161,12 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 		{name: "empty port", input: "example.com:", expectOK: false},
 		{name: "signed port", input: "example.com:+80", expectOK: false},
 		{name: "port out of range", input: "example.com:65536", expectOK: false},
+		{name: "zero-padded port", input: "example.com:000080", expected: "example.com", expectOK: true},
+		{name: "long zero-padded max port", input: "example.com:000000000000065535", expected: "example.com", expectOK: true},
+		{name: "zero-padded port out of range", input: "example.com:00065536", expectOK: false},
+		{name: "ipv6 with zero-padded port", input: "[::1]:0080", expected: "::1", expectOK: true},
+		{name: "ipv6 with zero-padded port out of range", input: "[::1]:065536", expectOK: false},
+		{name: "port with a long non-zero digit run", input: "example.com:999999999999999999999999999999", expectOK: false},
 		{name: "userinfo style authority", input: "allowed.com:443@attacker.example", expectOK: false},
 		{name: "invalid port syntax", input: "allowed.com:http", expectOK: false},
 		{name: "bare ipv6", input: "::1", expectOK: false},
@@ -169,6 +175,10 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 		{name: "path delimiter in host", input: "attacker.test/.example.com", expectOK: false},
 		{name: "query delimiter in host", input: "attacker.test?.example.com", expectOK: false},
 		{name: "space in host", input: "bad host.example.com", expectOK: false},
+		{name: "253 bytes", input: strings.Repeat("a.", 125) + "com", expected: strings.Repeat("a.", 125) + "com", expectOK: true},
+		{name: "253 bytes with trailing dot and port", input: strings.Repeat("a.", 125) + "com.:443", expected: strings.Repeat("a.", 125) + "com", expectOK: true},
+		{name: "254 bytes", input: strings.Repeat("a.", 125) + "coms", expectOK: false},
+		{name: "254 bytes in brackets", input: "[" + strings.Repeat("a.", 125) + "coms]", expectOK: false},
 	}
 
 	for _, tt := range tests {
@@ -179,6 +189,22 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 			require.Equal(t, tt.expected, host)
 		})
 	}
+}
+
+// Not parallel: AllocsPerRun counts allocations process-wide and refuses to run
+// under a parallel test.
+func Test_ParseNormalizedAuthority_LongUnicodeHostNotConverted(t *testing.T) {
+	var label strings.Builder
+	for r := rune(0x4E00); label.Len() < 8000; r++ {
+		_, err := label.WriteRune(r)
+		require.NoError(t, err)
+	}
+	host := label.String()
+
+	require.Zero(t, testing.AllocsPerRun(10, func() {
+		_, ok := parseNormalizedAuthority(host)
+		require.False(t, ok)
+	}))
 }
 
 func Test_IsValidHostSyntax(t *testing.T) {
@@ -1103,5 +1129,38 @@ func Benchmark_normalizeHost_IPv6(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = normalizeHost("[2001:db8::1]:8080")
+	}
+}
+
+func Test_HostAuthorization_LeadingZeroPort(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		AllowedHosts: []string{"example.com"},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	for _, tc := range []struct {
+		host string
+		want int
+	}{
+		{"example.com:80", fiber.StatusOK},
+		{"example.com:080", fiber.StatusOK},
+		{"example.com:00080", fiber.StatusOK},
+		{"example.com:000080", fiber.StatusOK},
+		{"example.com:65536", fiber.StatusForbidden},
+		{"example.com:00065536", fiber.StatusForbidden},
+	} {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Host = tc.host
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, tc.want, resp.StatusCode, tc.host)
 	}
 }

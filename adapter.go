@@ -1,12 +1,15 @@
 package fiber
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
 
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
+
+	"github.com/gofiber/fiber/v3/internal/bodystream"
 )
 
 // toFiberHandler converts a supported handler type to a Fiber handler.
@@ -257,6 +260,17 @@ func wrapHTTPHandler(handler http.Handler) Handler {
 	adapted := fasthttpadaptor.NewFastHTTPHandler(handler)
 
 	return func(c Ctx) error {
+		// fasthttpadaptor reads a streamed body whatever its size.
+		if err := bodystream.Buffer(c.Request(), c.App().config.BodyLimit); err != nil {
+			var fe *Error
+			switch {
+			case errors.Is(err, fasthttp.ErrBodyTooLarge):
+				return ErrRequestEntityTooLarge
+			case errors.As(err, &fe): // a stream that fails with a status keeps it
+				return fe
+			}
+			return ErrBadRequest
+		}
 		adapted(c.RequestCtx())
 		return nil
 	}

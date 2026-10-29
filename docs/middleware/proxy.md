@@ -69,17 +69,37 @@ Only `http` and `https` upstream schemes are accepted by default; `file://`, `go
 
 `DoRedirects` rejects redirects from HTTPS origins to plaintext HTTP targets with `ErrRedirectDowngrade`. Following such a redirect would leak any cookies or `Authorization` headers established under TLS. Set `SecurityPolicy.AllowHTTPSDowngrade = true` to override.
 
-When a redirect crosses to a **different origin**, that is another scheme, host or port ([RFC 6454](https://www.rfc-editor.org/rfc/rfc6454), where the default port stands in for a missing one), `DoRedirects` strips `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and the obsolete `Cookie2`, so credentials bound to the original origin are not forwarded to a third-party upstream. This is `net/http`'s own set. A redirect to the same origin retains these headers. Spelling the default port out in the `Location` (`http://example.com/` to `http://example.com:80/next`) is still the same origin, while `http` to `https` is not.
+### Headers on a cross-origin redirect
+
+When a redirect crosses to a **different origin**, that is another scheme, host or port ([RFC 6454](https://www.rfc-editor.org/rfc/rfc6454), where the default port stands in for a missing one), `DoRedirects` drops `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and the obsolete `Cookie2` from that hop and from every hop after it, so credentials bound to the original origin are not forwarded to a third-party upstream. This is `net/http`'s own set. A redirect to the same origin retains these headers. Spelling the default port out in the `Location` (`http://example.com/` to `http://example.com:80/next`) is still the same origin, while `http` to `https` is not.
+
+:::caution Application-defined credentials
+Every other header the request still carries after the [hop-by-hop stripping](#rfc-9110-hop-by-hop-header-stripping) is forwarded to the redirect target unchanged, as `net/http` does. That includes credentials the proxy cannot recognize, such as `X-Api-Key` or `X-Auth-Token`, whether your handler set them or the client sent them. The upstream chooses where a redirect goes, so if it can be made to redirect to a host you do not control (an open redirect, for example), list the names of such headers in `SecurityPolicy.RedirectSensitiveHeaders`, or call `Do` and decide on each redirect yourself.
+:::
+
+`SecurityPolicy.RedirectSensitiveHeaders` names extra request headers that `DoRedirects` drops on a cross-origin redirect, in addition to the set above. Names match case-insensitively, and surrounding whitespace and empty entries are ignored. The list is empty by default, so nothing changes until you set it. Only `DoRedirects` reads it: `Do`, `Forward`, `Balancer` and the other helpers never follow a redirect.
+
+```go
+policy := proxy.DefaultSecurityPolicy()
+policy.RedirectSensitiveHeaders = []string{"X-Api-Key", "X-Auth-Token"}
+proxy.WithSecurityPolicy(policy)
+```
+
+The Fiber client draws the line elsewhere, as `net/http` does: it keeps these headers for the same hostname on any port and for its subdomains, and drops them only for another hostname. A redirect from `http` to `https`, or to another port, of the same host therefore drops them here and keeps them there, see [SetRedirectSensitiveHeaders](../client/rest.md#setredirectsensitiveheaders) on the client.
 
 ### Redirect method and body
 
 `DoRedirects` rewrites the request for each hop according to the status that sent it there ([RFC 9110 §15.4](https://www.rfc-editor.org/rfc/rfc9110#section-15.4)). A `303 See Other` turns every method except `GET` and `HEAD` into `GET`. A `301 Moved Permanently` or `302 Found` turns `POST` into `GET`, as browsers and fasthttp do, and leaves any other method alone. A `307 Temporary Redirect` or `308 Permanent Redirect` repeats the request as it was. When the method changes, the body is dropped, including a form your handler already read, together with the fields that frame or describe it or expect it: `Content-Type`, `Content-Length`, `Content-Encoding`, `Content-Language`, `Content-Location`, `Transfer-Encoding`, `Trailer`, `Expect`, `Digest` and `Content-MD5`. A hop that differs from the request your handler holds goes out as a copy, so that request keeps its method, body, form, uploaded files and credentials. The copy keeps what it is sent with: the request timeout, the user values and the body of a multipart form the server parsed before your handler ran.
 
+Where header names are kept as sent (`DisableHeaderNormalizing`), each spelling of a field a redirect drops costs a pass over every header line. The fields above, and separately the credentials a [cross-origin redirect](#headers-on-a-cross-origin-redirect) drops, may therefore take one spelling per field and 32 more between them; a request that spells them in more ways fails the redirect with `431 Request Header Fields Too Large`.
+
 A redirect that keeps the body of a request whose body is streamed (`StreamRequestBody`) is followed when the first hop left all of that body in memory: a body of known length that fits what the server reads ahead of the handler, 8 KiB, an empty one included. A chunked body or a longer one fails the redirect with `fasthttp.ErrRedirectBodyStream`, as in fasthttp's own redirect loop: the first hop consumed the stream, and what it left cannot be sent again. A redirect that drops the body goes on.
+
+When following the chain fails, `fasthttp.ErrTooManyRedirects` included, `DoRedirects` leaves the response empty: the redirect it stopped at, with its `Location`, its cookies and its hop-by-hop fields, does not go out with the error.
 
 ### RFC 9110 hop-by-hop header stripping
 
-`Connection`, `Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`, `TE`, `Trailer`, `Transfer-Encoding`, and `Upgrade` are stripped from both the outbound request and the inbound response, along with every header listed in the `Connection` field per RFC 9110 §7.6.1. This prevents request smuggling (`TE`/`Transfer-Encoding`), proxy-credential forwarding, and protocol-upgrade leaks. The legacy `KeepConnectionHeader` option preserves only the literal `Connection` header for backwards compatibility; the other hop-by-hop headers are still stripped. To preserve every hop-by-hop header (not recommended), set `SecurityPolicy.KeepHopByHopHeaders = true`.
+`Connection`, `Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`, `TE`, `Trailer`, `Transfer-Encoding`, and `Upgrade` are stripped from both the outbound request and the inbound response, along with every header listed in the `Connection` field per RFC 9110 §7.6.1. This prevents request smuggling (`TE`/`Transfer-Encoding`), proxy-credential forwarding, and protocol-upgrade leaks. A request whose `Connection` fields list more than 32 names is refused with `431 Request Header Fields Too Large` before it is forwarded, and an upstream response that does is answered with `502 Bad Gateway`, since each name costs a pass over every header line. Where header names are kept as sent (`DisableHeaderNormalizing` for the request, a client with `DisableHeaderNamesNormalizing` for the response), further spellings of a removed name count toward the same 32: every spelling besides the one listed in `Connection` or the standard one, except that on the response the standard names share one free spelling each, whichever name uses it. `Balancer`, `Forward`, `DomainForward`, and `BalancerForward` likewise answer `431` to a request that spells `X-Real-IP` in more than 32 ways besides `X-Real-IP`, since they replace every one of them. The legacy `KeepConnectionHeader` option preserves only the literal `Connection` header for backwards compatibility; the other hop-by-hop headers are still stripped. To preserve every hop-by-hop header (not recommended), set `SecurityPolicy.KeepHopByHopHeaders = true`.
 
 The names a client lists in `Connection` are removed from the request as it was received, with one intentional exception to RFC 9110 §7.6.1: the forwarding headers `X-Real-IP`, `Forwarded`, and every `X-Forwarded-*` header stay. They tell the upstream about the client as this hop saw it, and an upstream that trusts the gateway acts on them, so they are the gateway's to write and not the client's to have removed. `Balancer`, `Forward`, `DomainForward`, and `BalancerForward` write `X-Real-IP` only after the listing has been applied, and the exception also covers a forwarding header your application sets before the proxy runs, including `X-Real-IP` set by hand before `Do`. A client loses nothing by it: a forwarding header it sends is forwarded whenever `Connection` does not name it.
 
@@ -192,7 +212,8 @@ h.Add("X-Real-IP", ip)
 The query is forwarded byte for byte as the client sent it, so a signed URL keeps its signature. Only when a handler changed the arguments through `QueryArgs()` is it the changed arguments, as fasthttp serializes them; reading them, as `c.Query()` does, changes nothing. `Balancer` puts the original request line back once the upstream has answered, so `c.OriginalURL()` in a middleware that runs afterwards is unchanged.
 
 - `Balancer` reaches each server with the port and the scheme it was configured with, whichever the request arrived on: an entry without a port is dialed on 80 (`http`) or 443 (`https`), and an `https` server works behind a plain-HTTP listener, as an `http` server does behind a TLS one. With a custom `Config.Client` the `HostClient`s are yours, and so is the scheme they expect: set it on the request in `ModifyRequest`.
-- `Balancer` dials the configured host and forwards the target as is, so every entry in `Servers` must be a scheme and host only. An entry with a path, userinfo, query or fragment panics at startup with `ErrUpstreamNotOrigin` instead of dropping that part silently, which would have left `http://backend/api` reaching all of the upstream. An entry without a scheme, such as `backend:8080`, is read as `http://backend:8080`, and a lone trailing slash (`http://backend/`) is ignored. `DomainForward` and `BalancerForward` prepend the path of their upstream URL, and the joined path keeps the upstream host pinned in configuration whatever the request contains: `//attacker.example/path`, `@attacker` and `/foo://hijack.example` all stay paths.
+- `Balancer` dials the configured host and forwards the target as is, so every entry in `Servers` must be a scheme and host only. An entry with a path, userinfo, query or fragment panics at startup with `ErrUpstreamNotOrigin` instead of dropping that part silently, which would have left `http://backend/api` reaching all of the upstream. An entry without a scheme, such as `backend:8080`, is read as `http://backend:8080`, and a lone trailing slash (`http://backend/`) is ignored. `DomainForward` and `BalancerForward` prepend the path of their upstream URL, and the joined path keeps the upstream host pinned in configuration whatever the request contains: `//attacker.example/path`, `@attacker` and `/foo://hijack.example` all stay paths. Both parts keep their escapes as written, so behind `http://backend/my%20app` the target `/pub/..%3B/admin` is forwarded as `/my%20app/pub/..%3B/admin`, not as `/my%20app/pub/..;/admin`.
+- `Balancer` answers `400 Bad Request` for an absolute-form request whose request line names another host than the `Host` header, such as `GET http://public.example/x` with `Host: internal.example`, or that has no `Host` header. The host of the request line is the one `c.Host()` reports and `app.Domain` and `hostauthorization` match ([RFC 9112 Section 3.2.2](https://www.rfc-editor.org/rfc/rfc9112#section-3.2.2)), while the upstream is addressed by the `Host` header. A client has to send the same host in both ([RFC 9112 Section 3.2](https://www.rfc-editor.org/rfc/rfc9112#section-3.2)), and such a request is forwarded; the two are compared without regard to case, and a port that is empty or the default of the scheme counts as none, so `http://public.example:80/x` with `Host: public.example` is forwarded as well. Only a host name or an IP address, with an optional port, can match: a host that holds an escape or any other byte is refused even when both spell it alike, since the upstream receives the `Host` header decoded while `c.Host()` may keep the escape. RFC 9112 has a proxy replace the received `Host` with the host of the line instead, but at this point the header may hold a `Host` the application set in an earlier middleware, which a request line must not override. An application that sets the `Host` header before `Balancer` therefore gets `400` for every absolute-form request whose line names another host than the one it set, even when the client sent the same host in both; set the upstream `Host` in `ModifyRequest` instead, which runs after this check. An HTTP/1.0 absolute-form request without a `Host` header is refused before `ModifyRequest` runs.
 - `Balancer` answers a request whose `Host` header carries userinfo, such as `svc:pw@backend`, with `400 Bad Request`. fasthttp would read the userinfo as credentials and send them upstream as a `Basic` `Authorization` header, replacing one the application had set.
 - `Balancer` also answers `400 Bad Request` for a routed target fasthttp would read as an authority rather than a path: one that begins with `//` and holds `://`, or any target beginning with `//` on a request without a `Host` header. The router never saw such a target as an authority, and it need not have arrived as one: `..` resolution builds `//u:pw@evil.example/a://b` out of `//u:pw@evil.example/a:/x/..//b`, and under `UnescapePath` a decoded `%3A%2F%2F` spells the `://`. Set as the request line, it would hand the upstream a `Host`, and a `Basic` `Authorization` header, taken from the path rather than from the application.
 - `Balancer`, `DomainForward` and `BalancerForward` answer `400 Bad Request` for a routed path an upstream could read as another path, one under a prefix whose middleware never ran for it. That is a path holding:
@@ -207,6 +228,8 @@ The query is forwarded byte for byte as the client sent it, so a signed URL keep
 - A path override without a leading slash, as a rewrite of `/go/*` to `$1` produces for `/go/http://u:pw@evil.example/x`, is forwarded rooted, as the path `/http://u:pw@evil.example/x`, rather than as the absolute URL a request line would read it as.
 - With a custom `Client`, every `*fasthttp.HostClient` among its `Clients` gets `DisablePathNormalizing` set, since a client left normalizing would decode `%2F` into a separator and merge `//` on the way out. Any other `BalancingClient` cannot be told, so with one present `Balancer` answers `400 Bad Request` for a routed target that normalization would change: one holding an empty segment or an escape it would decode into a byte it then writes raw, such as `%3B` or `%40`. An escape of a byte it writes escaped again, such as `%20` or the `%C3%BC` of `/über`, is forwarded.
 - `Do`, `Forward`, `DomainForward`, `BalancerForward` and their variants switch path normalization off on the default client, on a client registered with `WithClient` and on every host client a per-call `*fasthttp.Client` creates once the proxy has it. fasthttp applies that setting only to the host client it creates for an upstream, so a per-call client that already reached that upstream before it was handed to the proxy keeps the host client it made then, and that one still normalizes: `/public/..%2Fadmin/secret` would leave it as `/admin/secret`. Register such a client with `WithClient` before it serves requests, hand the proxy a client used for nothing else, or create the client with `DisablePathNormalizing: true`.
+
+A request the server refused while reading it, such as one declaring a body over `BodyLimit`, is not forwarded by `Balancer`, `Forward`, `DomainForward` or `BalancerForward`: the client is answered by the error handler, so the upstream must not carry it out. `Do` and its variants called from your own `Use` handler do not check this.
 
 :::caution Upstream normalization
 The proxy cannot control what the upstream does with the target beyond what it refuses to forward. A target holding `%2F`, `//`, a backslash, a path parameter (`;`) or a forged escape is not forwarded by default, so an upstream that decodes, merges or strips parameters cannot be handed a path the router did not match through them. An escape of another reserved character, such as `%3B`, `%3F` or `%23`, is forwarded as sent, and so are a segment's case and a trailing dot or space, any of which an upstream on Windows or a case-insensitive filesystem may treat as another name. Authorize on the upstream as well.
@@ -284,6 +307,20 @@ app.Get("/proxy", func(c fiber.Ctx) error {
     // Remove Server header from response
     c.Response().Header.Del(fiber.HeaderServer)
     return nil
+})
+
+// Proxy requests while following redirects, and keep an application API key
+// from leaving the origin it was sent to
+policy := proxy.DefaultSecurityPolicy()
+policy.RedirectSensitiveHeaders = []string{"X-Api-Key"}
+proxy.WithSecurityPolicy(policy)
+
+app.Get("/proxy", func(c fiber.Ctx) error {
+    // Delete first, as for X-Real-IP above: Set replaces only one line of a
+    // header the client sent twice (see there for DisableHeaderNormalizing)
+    c.Request().Header.Del("X-Api-Key")
+    c.Request().Header.Set("X-Api-Key", os.Getenv("UPSTREAM_API_KEY"))
+    return proxy.DoRedirects(c, "https://api.example.com/items", 3)
 })
 
 // Proxy requests and wait up to five seconds before timing out
@@ -404,12 +441,13 @@ When `Config.SecurityPolicy` is `nil` (and `proxy.WithSecurityPolicy` has not be
 // DefaultSecurityPolicy returns the secure-by-default policy.
 func DefaultSecurityPolicy() proxy.SecurityPolicy {
     return proxy.SecurityPolicy{
-        AllowedSchemes:        []string{"http", "https"},
-        AllowPrivateIPs:       false,
-        AllowHTTPSDowngrade:   false,
-        KeepHopByHopHeaders:   false,
-        AllowAmbiguousSlashes: false,
-        AllowPathParameters:   false,
+        AllowedSchemes:           []string{"http", "https"},
+        RedirectSensitiveHeaders: nil,
+        AllowPrivateIPs:          false,
+        AllowHTTPSDowngrade:      false,
+        KeepHopByHopHeaders:      false,
+        AllowAmbiguousSlashes:    false,
+        AllowPathParameters:      false,
     }
 }
 ```

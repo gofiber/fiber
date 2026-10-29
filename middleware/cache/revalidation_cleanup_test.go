@@ -40,7 +40,6 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 					clock := newTestClock(time.Now())
 					cfg := Config{
 						Expiration: time.Hour,
-						MaxBytes:   10,
 						clock:      clock.Now,
 						KeyGenerator: func(c fiber.Ctx) string {
 							return c.Path()
@@ -54,6 +53,7 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 					var header fasthttp.RequestHeader
 					header.Set("X-Variant", "a")
 					key := varyKey(baseKey, []string{"x-variant"}, &header, true)
+					cfg.MaxBytes = 2 * charged(key, len("fresh"), textPlain, "public, max-age=60", "X-Variant") // two variants
 					app := fiber.New()
 					app.Use(New(cfg))
 					app.Get("/cached", func(c fiber.Ctx) error {
@@ -265,9 +265,10 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 			storage := newFailingCacheStorage()
 			probe := &accountingProbe{}
 			key := cacheKeyVersion + "|GET|/a"
+			entry := charged(key, len("0123456789"), textPlain)
 			app := fiber.New()
 			app.Use(New(Config{
-				Storage: storage, MaxBytes: 15, Expiration: time.Hour,
+				Storage: storage, MaxBytes: entry, Expiration: time.Hour,
 				accounting: probe.record,
 				KeyGenerator: func(c fiber.Ctx) string {
 					return c.Path()
@@ -291,7 +292,7 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 			}
 			storage.mu.Unlock()
 			request("/b", fiber.StatusInternalServerError)
-			require.Equal(t, uint(10), probe.counted())
+			require.Equal(t, entry, probe.counted())
 			require.Equal(t, 1, probe.nodes())
 			storage.mu.Lock()
 			require.NotContains(t, storage.data, key)
@@ -302,7 +303,7 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 			storage.mu.RLock()
 			require.NotContains(t, storage.data, key+"_body")
 			storage.mu.RUnlock()
-			require.Equal(t, uint(10), probe.counted())
+			require.Equal(t, entry, probe.counted())
 			require.Equal(t, 1, probe.nodes())
 		})
 	}

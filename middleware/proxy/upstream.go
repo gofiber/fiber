@@ -25,6 +25,10 @@ func parseUpstream(raw string) (*url.URL, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrUpstreamHostInvalid, err)
 	}
+	// net/url ignores a RawPath it would not write ("/café"); dropping it spares each join escaping Path again.
+	if !rawPathValid(u.RawPath) {
+		u.RawPath = ""
+	}
 	return u, nil
 }
 
@@ -161,11 +165,7 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 		if fallback[0] != '/' {
 			fallback = "/" + fallback
 		}
-		if base.Path != "" {
-			fallback = strings.TrimSuffix(base.Path, "/") + fallback
-		}
-		out.Path = fallback
-		out.RawPath = ""
+		joinURLPath(&out, base, &url.URL{Path: fallback})
 		out.RawQuery = ""
 		out.Fragment = ""
 		return out.String()
@@ -174,22 +174,47 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 		// Preserve any path prefix configured on the upstream base (e.g.
 		// "http://upstream/api" + "/foo" -> "http://upstream/api/foo")
 		// rather than overwriting it with the request path alone.
-		out.Path = strings.TrimSuffix(base.Path, "/") + "/" + strings.TrimPrefix(parsed.Path, "/")
-		if base.RawPath != "" || parsed.RawPath != "" {
-			baseRaw := base.RawPath
-			if baseRaw == "" {
-				baseRaw = base.Path
-			}
-			parsedRaw := parsed.RawPath
-			if parsedRaw == "" {
-				parsedRaw = parsed.Path
-			}
-			out.RawPath = strings.TrimSuffix(baseRaw, "/") + "/" + strings.TrimPrefix(parsedRaw, "/")
-		}
+		joinURLPath(&out, base, parsed)
 	}
 	out.RawQuery = parsed.RawQuery
 	out.Fragment = parsed.Fragment
 	return out.String()
+}
+
+// joinURLPath sets out's Path and RawPath to base's path joined with target's, as net/http/httputil
+// does: the RawPath from both EscapedPaths, since an empty RawPath stands for Path's default escaping.
+func joinURLPath(out, base, target *url.URL) {
+	if base.RawPath == "" && target.RawPath == "" {
+		out.Path, out.RawPath = strings.TrimSuffix(base.Path, "/")+"/"+strings.TrimPrefix(target.Path, "/"), ""
+		return
+	}
+	basePath, baseRaw := base.Path, escapedPath(base)
+	// A trailing "%2F" belongs to the last segment and stays.
+	if raw, ok := strings.CutSuffix(baseRaw, "/"); ok {
+		basePath, baseRaw = strings.TrimSuffix(basePath, "/"), raw
+	}
+	out.Path = basePath + "/" + strings.TrimPrefix(target.Path, "/")
+	out.RawPath = baseRaw + "/" + strings.TrimPrefix(escapedPath(target), "/")
+}
+
+// escapedPath is u.EscapedPath() without the unescape it checks RawPath with: url.Parse made sure
+// RawPath decodes to Path, so only its bytes are left to check.
+func escapedPath(u *url.URL) string {
+	if u.RawPath != "" && rawPathValid(u.RawPath) {
+		return u.RawPath
+	}
+	return u.EscapedPath()
+}
+
+// rawPathValid reports whether raw holds only the bytes net/url's validEncoded accepts in a path.
+func rawPathValid(raw string) bool {
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && strings.IndexByte("-._~!$&'()*+,;=:@[]%/", c) < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // baseIsPlainOrigin reports whether base carries only a scheme + host

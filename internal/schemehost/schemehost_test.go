@@ -161,6 +161,39 @@ func Test_Match(t *testing.T) {
 	}
 }
 
+func Test_MatchStrict(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		scheme, hostA, hostB string
+		want                 bool
+	}{
+		{"http", "example.com", "example.com", true},
+		{"http", "example.com:80", "Example.COM", true},
+		{"HTTP", "example.com:", "example.com", true},
+		{"https", "example.com", "example.com:443", true},
+		{"https", "[::1]:443", "[::1]", true},
+		{"http", "my_svc:80", "my_svc", true},
+		{"ws", "example.com", "example.com", true},
+		{"https", "example.com:80", "example.com", false},
+		{"http", "example.com:080", "example.com", false},
+		{"ws", "example.com:80", "example.com", false},
+		{"http", "example.com", "example.org", false},
+		{"http", "[::1]", "[0::1]", false},
+		{"http", "", "", false},
+		{"http", "example.com:x", "example.com:x", false},
+		// Match accepts these; fasthttp reads the second as another host or refuses it.
+		{"http", "example.com", "example.com/evil", false},
+		{"http", "example.com", "u@example.com", false},
+		{"http", "ex%c3%a4mple.com", "ex%c3%a4mple.com", false},
+		{"http", "[fe80::1%25en0]", "[fe80::1%25en0]", false},
+		{"http", "[::1", "[::1", false},
+	}
+	for _, tc := range tests {
+		got := MatchStrict(tc.scheme, tc.hostA, tc.hostB)
+		assert.Equal(t, tc.want, got, "MatchStrict(%q,%q,%q)", tc.scheme, tc.hostA, tc.hostB)
+	}
+}
+
 func Benchmark_normalizeSchemeHost(b *testing.B) {
 	cases := []struct{ name, scheme, host string }{
 		{"noport", "https", "example.com"},

@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -324,6 +323,29 @@ func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 	return result
 }
 
+// hosts returns the patterns a route registered through d records, which are
+// the ones wrapHandlers filters its handlers on. See Route.hosts.
+func (d *domainRouter) hosts() []domainMatcher {
+	return []domainMatcher{d.matcher}
+}
+
+// servesHost reports whether the request's hostname satisfies every Domain
+// pattern the route is behind, which is whether its handlers run or decline.
+func (r *Route) servesHost(c *DefaultCtx) bool {
+	if len(r.hosts) == 0 {
+		return true
+	}
+
+	hostname := c.Hostname()
+	for i := range r.hosts {
+		if matched, _ := r.hosts[i].match(hostname); !matched {
+			return false
+		}
+	}
+
+	return true
+}
+
 // registerPath returns the full path for registration, taking group prefix into account.
 func (d *domainRouter) registerPath(path string) string {
 	if d.group != nil {
@@ -349,31 +371,7 @@ func (d *domainRouter) registerGroup() *Group {
 //	    return c.Next()
 //	})
 func (d *domainRouter) Use(args ...any) Router {
-	var subApp *App
-	var prefix string
-	var prefixes []string
-	var handlers []Handler
-
-	for i := range args {
-		switch arg := args[i].(type) {
-		case string:
-			prefix = arg
-		case []string:
-			prefixes = arg
-		case *App:
-			subApp = arg
-		default:
-			handler, ok := toFiberHandler(arg)
-			if !ok {
-				panic(fmt.Sprintf("use: invalid handler %v", reflect.TypeOf(arg)))
-			}
-			handlers = append(handlers, handler)
-		}
-	}
-
-	if len(prefixes) == 0 {
-		prefixes = append(prefixes, prefix)
-	}
+	prefixes, subApp, handlers := useArgs(args)
 
 	for _, prefix := range prefixes {
 		if subApp != nil {
@@ -382,7 +380,7 @@ func (d *domainRouter) Use(args ...any) Router {
 		}
 
 		wrapped := d.wrapHandlers(handlers)
-		d.app.register([]string{methodUse}, d.registerPath(prefix), d.registerGroup(), wrapped...)
+		d.app.registerForHosts(d.hosts(), []string{methodUse}, d.registerPath(prefix), d.registerGroup(), wrapped...)
 	}
 
 	// Mark the underlying group so Name() can distinguish between
@@ -585,9 +583,16 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 		route       *Route
 		owner       *App
 		constraints []CustomConstraint
+		// src's own mark: the app that opted out may be flattened into src already
+		skipAutoHead bool
 	}
 
 	src.mutex.Lock()
+	// As startupProcess does before a plain mount: src's HEAD routes are placed in its
+	// own route order, never by id against the routes of the apps it is flattened with.
+	if !skipAutoHead {
+		src.ensureAutoHeadRoutesLocked()
+	}
 	stack := make([][]sourceRoute, len(routes))
 	for m := range stack {
 		srcRoutes := src.routesForMethod(dst.method(m))
@@ -607,9 +612,10 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 			}
 
 			stack[m][i] = sourceRoute{
-				route:       src.copyRoute(route),
-				owner:       owner,
-				constraints: src.routeConstraintsFor(route),
+				route:        src.copyRoute(route),
+				owner:        owner,
+				constraints:  src.routeConstraintsFor(route),
+				skipAutoHead: src.skipsAutoHeadFor(route),
 			}
 		}
 	}
@@ -633,7 +639,7 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 						mounted = make(map[*Group][][]*Route)
 					}
 					mounted[group] = d.domainRoutes(dst, group.app, domainClone{
-						prefix:       getGroupPath(walk.prefix, source.route.path),
+						prefix:       getGroupPath(walk.prefix, source.route.Path),
 						chain:        append(walk.chain, src),
 						skipAutoHead: skipAutoHead,
 					})
@@ -657,13 +663,14 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 				dst.addPrefixToRoute(walk.prefix, clonedRoute, src.config.RegexHandler, constraints...)
 			}
 			clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
+			clonedRoute.hosts = append(slices.Clone(clonedRoute.hosts), d.matcher)
 
 			// Record the app the route came from, so a request that runs it
 			// resolves that app's config rather than one inferred from the host
 			// and the path.
 			dst.markRouteOwner(clonedRoute, source.owner)
 
-			if skipAutoHead {
+			if skipAutoHead || source.skipAutoHead {
 				dst.markSkipAutoHead(clonedRoute)
 			}
 
@@ -739,7 +746,7 @@ func (d *domainRouter) Query(path string, handler any, handlers ...any) Router {
 func (d *domainRouter) Add(methods []string, path string, handler any, handlers ...any) Router {
 	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
 	wrapped := d.wrapHandlers(converted)
-	d.app.register(methods, d.registerPath(path), d.registerGroup(), wrapped...)
+	d.app.registerForHosts(d.hosts(), methods, d.registerPath(path), d.registerGroup(), wrapped...)
 
 	// Mark the underlying group so Name() can distinguish between
 	// group-name-prefix calls (before routes) and route-name calls (after routes).
@@ -764,7 +771,7 @@ func (d *domainRouter) Group(prefix string, handlers ...any) Router {
 	if len(handlers) > 0 {
 		converted := collectHandlers("domain", handlers...)
 		wrapped := d.wrapHandlers(converted)
-		d.app.register([]string{methodUse}, fullPrefix, d.registerGroup(), wrapped...)
+		d.app.registerForHosts(d.hosts(), []string{methodUse}, fullPrefix, d.registerGroup(), wrapped...)
 	}
 
 	// Create a new group on the app
@@ -840,7 +847,7 @@ var _ Register = (*domainRegistering)(nil)
 func (r *domainRegistering) All(handler any, handlers ...any) Register {
 	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
 	wrapped := r.domain.wrapHandlers(converted)
-	r.domain.app.register([]string{methodUse}, r.path, r.domain.registerGroup(), wrapped...)
+	r.domain.app.registerForHosts(r.domain.hosts(), []string{methodUse}, r.path, r.domain.registerGroup(), wrapped...)
 
 	return r
 }
@@ -888,7 +895,7 @@ func (r *domainRegistering) Query(handler any, handlers ...any) Register {
 func (r *domainRegistering) Add(methods []string, handler any, handlers ...any) Register {
 	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
 	wrapped := r.domain.wrapHandlers(converted)
-	r.domain.app.register(methods, r.path, r.domain.registerGroup(), wrapped...)
+	r.domain.app.registerForHosts(r.domain.hosts(), methods, r.path, r.domain.registerGroup(), wrapped...)
 
 	return r
 }

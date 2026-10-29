@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -835,11 +836,28 @@ func offerQuality(types []acceptedType, isAccepted func(spec, offer string, spec
 	return quality, rank, bestSpecificity > 0 && quality > 0
 }
 
+// maxInsertionSortedTypes is the longest list sortAcceptedTypes sorts by insertion.
+const maxInsertionSortedTypes = 32
+
 // sortAcceptedTypes sorts accepted types by quality and specificity, preserving order of equal elements
 // A type with parameters has higher priority than an equivalent one without parameters.
 // e.g., text/html;a=1;b=2 comes before text/html;a=1
 // See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
 func sortAcceptedTypes(at []acceptedType) {
+	// The insertion sort swaps once per inversion, quadratic in a list the client controls.
+	if len(at) > maxInsertionSortedTypes {
+		// order is unique, so no two elements tie and an unstable sort is exact.
+		slices.SortFunc(at, func(a, b acceptedType) int {
+			return cmp.Or(
+				cmp.Compare(b.quality, a.quality),
+				cmp.Compare(b.specificity, a.specificity),
+				cmp.Compare(len(b.params), len(a.params)),
+				cmp.Compare(a.order, b.order),
+			)
+		})
+		return
+	}
+
 	for i := 1; i < len(at); i++ {
 		lo, hi := 0, i-1
 		for lo <= hi {

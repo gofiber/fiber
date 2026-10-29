@@ -1,6 +1,7 @@
 package static
 
 import (
+	"bufio"
 	"embed"
 	"io"
 	"io/fs"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttputil"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -448,6 +450,47 @@ func Test_Static_Next(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, string(body), "Hello, World!")
 	})
+}
+
+// A refused request replays the Use chain without its routes, a guard registered as one included.
+func Test_Static_RefusedRequestServesNoFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "admin"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "admin", "secret.txt"), []byte("TOP-SECRET"), 0o600))
+
+	app := fiber.New(fiber.Config{BodyLimit: 16})
+	app.All("/admin/*", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusUnauthorized)
+	})
+	app.Use(New(dir))
+
+	ln := fasthttputil.NewInmemoryListener()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+	}()
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+		require.NoError(t, <-errCh)
+	})
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	defer conn.Close() //nolint:errcheck // closed by the server already
+	require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+	_, err = conn.Write([]byte("GET /admin/secret.txt HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n"))
+	require.NoError(t, err)
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, fiber.StatusRequestEntityTooLarge, resp.StatusCode)
+	require.Equal(t, "Request Entity Too Large", string(body))
+	require.Empty(t, resp.Header.Get(fiber.HeaderLastModified))
 }
 
 func Test_Route_Static_Root(t *testing.T) {
@@ -959,6 +1002,22 @@ func Test_Static_Compress(t *testing.T) {
 			require.Greater(t, "299", resp.Header.Get(fiber.HeaderContentLength))
 		})
 	}
+}
+
+func Test_Static_Compress_FileRoot(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "index.html")
+	require.NoError(t, os.WriteFile(root, []byte(strings.Repeat("<p>hello</p>", 200)), 0o600))
+	app := fiber.New()
+	app.Get("/", New(root, Config{Compress: true}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAcceptEncoding, "gzip")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 }
 
 func Test_Static_Compress_WithoutEncoding(t *testing.T) {
@@ -2312,21 +2371,22 @@ func Test_Static_ByteRange_RFC9110(t *testing.T) {
 	app.Get("/plain/*", New(dir))
 
 	tests := []struct {
-		fields      map[string]string
-		name        string
-		path        string
-		wantRange   string
-		wantBody    string
-		wantStatus  int
-		wantWhole   bool // the whole file, with its validators
-		wantAdvised bool // Accept-Ranges is advertised
+		fields       map[string]string
+		name         string
+		path         string
+		wantRange    string
+		wantBody     string
+		wantStatus   int
+		wantWhole    bool // the whole file, with its validators
+		wantAdvised  bool // Accept-Ranges is advertised
+		wantNoRanges bool // Accept-Ranges must be absent
 	}{
 		{name: "a range", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4"}, wantStatus: fiber.StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20", wantAdvised: true},
-		{name: "several ranges", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-1,3-4"}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantAdvised: true},
+		{name: "unit in mixed case", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "Bytes=0-4"}, wantStatus: fiber.StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20", wantAdvised: true},
 		{name: "If-Range is stale", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4", fiber.HeaderIfRange: staleDate}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantAdvised: true},
-		{name: "unsatisfiable", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=100-200"}, wantStatus: fiber.StatusRequestedRangeNotSatisfiable, wantBody: "Range Not Satisfiable"},
+		{name: "unsatisfiable", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=100-200"}, wantStatus: fiber.StatusRequestedRangeNotSatisfiable, wantBody: "Range Not Satisfiable", wantRange: "bytes */20"},
 		// ByteRange off: no ranges are offered and Range is not looked at.
-		{name: "ByteRange off", path: "/plain/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4"}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true},
+		{name: "ByteRange off", path: "/plain/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4"}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantNoRanges: true},
 	}
 
 	for _, tc := range tests {
@@ -2349,7 +2409,8 @@ func Test_Static_ByteRange_RFC9110(t *testing.T) {
 
 			if tc.wantAdvised {
 				require.Equal(t, "bytes", resp.Header.Get(fiber.HeaderAcceptRanges))
-			} else {
+			}
+			if tc.wantNoRanges {
 				require.Empty(t, resp.Header.Get(fiber.HeaderAcceptRanges))
 			}
 			if tc.wantWhole {
@@ -2440,5 +2501,40 @@ func Test_Static_NonMountRoutes_Served(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode, "target=%s", target)
 		require.Equal(t, want, string(body), "target=%s", target)
+	}
+}
+
+func Test_Static_Symlinks(t *testing.T) {
+	t.Parallel()
+
+	outside := t.TempDir()
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "shared.txt"), []byte("shared"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "local.txt"), []byte("local"), 0o600))
+	for link, target := range map[string]string{
+		"outside.txt":  filepath.Join(outside, "shared.txt"),
+		"absolute.txt": filepath.Join(root, "local.txt"),
+		"relative.txt": "local.txt",
+	} {
+		if err := os.Symlink(target, filepath.Join(root, link)); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+	}
+
+	app := fiber.New()
+	app.Get("/confined/*", New(root))
+	app.Get("/open/*", New(root, Config{AllowSymlinksOutsideRoot: true}))
+
+	for path, want := range map[string]int{
+		"/confined/relative.txt": fiber.StatusOK,
+		"/confined/absolute.txt": fiber.StatusNotFound,
+		"/confined/outside.txt":  fiber.StatusNotFound,
+		"/open/absolute.txt":     fiber.StatusOK,
+		"/open/outside.txt":      fiber.StatusOK,
+	} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, want, resp.StatusCode, path)
+		require.NoError(t, resp.Body.Close())
 	}
 }

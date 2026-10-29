@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -616,7 +618,7 @@ func (d *delayedTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Resp
 	return d.Do(req, resp)
 }
 
-func (d *delayedTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+func (d *delayedTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ *redirectOptions) error {
 	return d.Do(req, resp)
 }
 
@@ -642,6 +644,13 @@ func (*delayedTransport) StreamResponseBody() bool {
 }
 
 func (*delayedTransport) SetStreamResponseBody(_ bool) {
+}
+
+func (*delayedTransport) MaxResponseBodySize() int {
+	return 0
+}
+
+func (*delayedTransport) SetMaxResponseBodySize(_ int) {
 }
 
 type blockingErrTransport struct {
@@ -680,7 +689,7 @@ func (b *blockingErrTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.
 	return b.Do(req, resp)
 }
 
-func (b *blockingErrTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+func (b *blockingErrTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ *redirectOptions) error {
 	return b.Do(req, resp)
 }
 
@@ -708,6 +717,13 @@ func (*blockingErrTransport) StreamResponseBody() bool {
 func (*blockingErrTransport) SetStreamResponseBody(_ bool) {
 }
 
+func (*blockingErrTransport) MaxResponseBodySize() int {
+	return 0
+}
+
+func (*blockingErrTransport) SetMaxResponseBodySize(_ int) {
+}
+
 func (b *blockingErrTransport) release() {
 	b.releaseOnce.Do(func() { close(b.unblock) })
 }
@@ -728,7 +744,7 @@ func (p *panicTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Respon
 	return p.Do(req, resp)
 }
 
-func (p *panicTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+func (p *panicTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ *redirectOptions) error {
 	return p.Do(req, resp)
 }
 
@@ -754,6 +770,204 @@ func (*panicTransport) StreamResponseBody() bool {
 }
 
 func (*panicTransport) SetStreamResponseBody(_ bool) {
+}
+
+func (*panicTransport) MaxResponseBodySize() int {
+	return 0
+}
+
+func (*panicTransport) SetMaxResponseBodySize(_ int) {
+}
+
+type namesTransport struct {
+	*delayedTransport
+
+	entered chan struct{}
+	proceed chan struct{}
+	got     []string // written before finished closes
+}
+
+func newNamesTransport() *namesTransport {
+	return &namesTransport{delayedTransport: newDelayedTransport(0), entered: make(chan struct{}), proceed: make(chan struct{})}
+}
+
+func (n *namesTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
+	close(n.entered)
+	<-n.proceed
+	n.got = opts.sensitiveHeaders.List()
+	return n.delayedTransport.DoRedirects(req, resp, opts)
+}
+
+func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
+	t.Parallel()
+
+	client := New().SetRedirectSensitiveHeaders("X-Client")
+	transport := newNamesTransport()
+	client.transport = transport
+
+	req := AcquireRequest()
+	defer ReleaseRequest(req)
+	req.SetURL("http://example.com/redirect-names")
+	req.SetMaxRedirects(3)
+	req.SetRedirectSensitiveHeaders("X-Request")
+
+	// Canceled once the transport holds the options, so execute returns without
+	// waiting on it and a late read still races the writes below.
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-transport.entered
+		cancel()
+	}()
+
+	resp, err := newCore().execute(ctx, client, req)
+	require.Nil(t, resp)
+	require.ErrorIs(t, err, ErrTimeoutOrCancel)
+
+	req.Reset()
+	req.SetRedirectSensitiveHeaders("X-Reused")
+	client.SetRedirectSensitiveHeaders("X-Reconfigured")
+	close(transport.proceed)
+
+	select {
+	case <-transport.finished:
+	case <-time.After(time.Second):
+		t.Fatal("transport Do did not finish")
+	}
+	require.ElementsMatch(t, []string{"X-Client", "X-Request"}, transport.got)
+}
+
+// rewritingTransport rewrites the request as a cross-host redirect would, then fails its first attempt.
+type rewritingTransport struct {
+	*delayedTransport
+
+	starts  []string // target and X-Api-Key of each attempt
+	streams []bool
+	names   [][]string
+}
+
+func (r *rewritingTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
+	r.starts = append(r.starts, req.URI().String()+"|"+string(req.Header.Peek("X-Api-Key")))
+	r.streams = append(r.streams, req.IsBodyStream())
+	r.names = append(r.names, opts.sensitiveHeaders.List())
+	if len(r.starts) > 1 {
+		req.SetRequestURI("http://final.example/done")
+		resp.SetStatusCode(fasthttp.StatusOK)
+		return nil
+	}
+	req.SetRequestURI("http://attacker.example/collect")
+	req.Header.Del("X-Api-Key")
+	return errors.New("connection reset")
+}
+
+func Test_Core_RetryRestartsRedirects(t *testing.T) {
+	t.Parallel()
+
+	// run returns the transport and the last hop's host, which a cookie jar reads after the chain.
+	run := func(t *testing.T, prepare func(req *Request)) (*rewritingTransport, string) {
+		t.Helper()
+
+		transport := &rewritingTransport{delayedTransport: newDelayedTransport(0)}
+		client := New().
+			SetRetryConfig(&RetryConfig{InitialInterval: time.Millisecond, MaxBackoffTime: 2 * time.Millisecond, MaxRetryCount: 2}).
+			SetCookieJar(AcquireCookieJar()).
+			SetRedirectSensitiveHeaders("X-Client")
+		client.transport = transport
+
+		req := client.R().SetHeader("X-Api-Key", "key").SetMaxRedirects(3).SetRedirectSensitiveHeaders("X-Request")
+		prepare(req)
+		resp, err := req.Get("http://example.com/start")
+		require.NoError(t, err)
+		host := string(resp.respondedHost)
+		resp.Close()
+		return transport, host
+	}
+
+	t.Run("from the request as it was sent", func(t *testing.T) {
+		t.Parallel()
+
+		transport, host := run(t, func(*Request) {})
+		require.Equal(t, []string{"http://example.com/start|key", "http://example.com/start|key"}, transport.starts)
+		require.Equal(t, "final.example", host)
+
+		require.Len(t, transport.names, 2)
+		for _, names := range transport.names {
+			require.ElementsMatch(t, []string{"X-Client", "X-Request"}, names)
+		}
+	})
+
+	t.Run("a streamed body is left alone", func(t *testing.T) {
+		t.Parallel()
+
+		transport, _ := run(t, func(req *Request) {
+			req.RawRequest.SetBodyStream(bytes.NewBufferString("payload"), len("payload"))
+		})
+		require.Equal(t, []bool{true, true}, transport.streams)
+	})
+
+	t.Run("a request that follows no redirects is sent as is", func(t *testing.T) {
+		t.Parallel()
+
+		transport := &rewritingTransport{delayedTransport: newDelayedTransport(0)}
+		client := New().SetRetryConfig(&RetryConfig{MaxRetryCount: 2})
+		client.transport = transport
+
+		resp, err := client.Get("http://example.com/start")
+		require.NoError(t, err)
+		resp.Close()
+		require.Empty(t, transport.starts)
+	})
+}
+
+func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
+	t.Parallel()
+
+	server := startRedirectServer(t, func(c fiber.Ctx) error {
+		return c.SendString(c.Get("X-Api-Key"))
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+
+	const workers, rounds = 4, 25
+	bodies := make(chan string, workers*rounds)
+	errs := make(chan error, workers)
+
+	// Workers only report; the assertions run on the test goroutine.
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			for range rounds {
+				resp, err := client.R().
+					SetHeader("X-Api-Key", "key").
+					SetMaxRedirects(3).
+					SetRedirectSensitiveHeaders("X-Request").
+					Get("http://example.com/start")
+				if err != nil {
+					errs <- err
+					return
+				}
+				bodies <- resp.String()
+				resp.Close()
+			}
+		})
+		wg.Go(func() {
+			for range rounds {
+				client.SetRedirectSensitiveHeaders("X-Api-Key")
+				client.RedirectSensitiveHeaders()
+				client.SetRedirectSensitiveHeaders()
+			}
+		})
+	}
+	wg.Wait()
+	close(bodies)
+	close(errs)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	for body := range bodies {
+		require.Contains(t, []string{"", "key"}, body)
+	}
 }
 
 func Test_Core_RequestBodyStream(t *testing.T) {
@@ -902,4 +1116,161 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 		require.Equal(t, streamContent, result.body)
 		require.Equal(t, len(streamContent), result.length)
 	})
+}
+
+// silentServer reads what it is sent and never answers; hungUp receives once per connection the client closes.
+func silentServer(t *testing.T) (dial fasthttp.DialFunc, hungUp <-chan struct{}) { //nolint:nonamedreturns // gocritic unnamedResult requires result names
+	t.Helper()
+
+	ln := fasthttputil.NewInmemoryListener()
+	t.Cleanup(func() { require.NoError(t, ln.Close()) })
+
+	closed := make(chan struct{}, 16)
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				_, err := io.Copy(io.Discard, conn)
+				assert.NoError(t, err)
+				assert.NoError(t, conn.Close())
+				closed <- struct{}{}
+			}()
+		}
+	}()
+	return func(string) (net.Conn, error) { return ln.Dial() }, closed
+}
+
+func Test_Execute_TimeoutEndsTheExchange(t *testing.T) {
+	t.Parallel()
+
+	for _, url := range []string{"http://example.com/", "https://example.com/"} {
+		t.Run(url, func(t *testing.T) {
+			t.Parallel()
+
+			dial, hungUp := silentServer(t)
+			client := New().SetDial(dial).SetTimeout(50 * time.Millisecond)
+
+			_, err := client.Get(url)
+			require.ErrorIs(t, err, ErrTimeoutOrCancel)
+
+			select {
+			case <-hungUp:
+			case <-time.After(2 * time.Second):
+				require.Fail(t, "the connection is still open long after the call timed out")
+			}
+		})
+	}
+
+	t.Run("redirects share the deadline", func(t *testing.T) {
+		t.Parallel()
+
+		transport := &deadlineTransport{delayedTransport: newDelayedTransport(0)}
+		client := New()
+		client.transport = transport
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		resp, err := client.R().SetContext(ctx).SetMaxRedirects(3).Get("http://example.com/")
+		require.NoError(t, err)
+		resp.Close()
+
+		want, ok := ctx.Deadline()
+		require.True(t, ok)
+		require.Equal(t, want, transport.deadline)
+	})
+
+	for _, tc := range []struct {
+		newContext func() (context.Context, context.CancelFunc)
+		name       string
+		attempts   int32 // -1: any number
+	}{
+		{
+			name: "retries stop at the deadline",
+			newContext: func() (context.Context, context.CancelFunc) {
+				return context.WithTimeout(context.Background(), 50*time.Millisecond)
+			},
+			attempts: -1,
+		},
+		{
+			name: "retries stop on cancel",
+			newContext: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				time.AfterFunc(50*time.Millisecond, cancel)
+				return ctx, cancel
+			},
+			attempts: -1,
+		},
+		{
+			name: "a canceled call is not sent",
+			newContext: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, cancel
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var attempts atomic.Int32
+			client := New().
+				SetDial(func(string) (net.Conn, error) {
+					attempts.Add(1)
+					return nil, errors.New("connection refused")
+				}).
+				SetRetryConfig(&RetryConfig{
+					InitialInterval: 5 * time.Millisecond,
+					MaxBackoffTime:  5 * time.Millisecond,
+					Multiplier:      1,
+					MaxRetryCount:   1000,
+				})
+
+			ctx, cancel := tc.newContext()
+			defer cancel()
+
+			body := &closeSignal{Reader: bytes.NewReader(nil), closed: make(chan struct{})}
+			req := client.R().SetContext(ctx)
+			req.RawRequest.SetBodyStream(body, 0)
+			_, err := req.Get("http://example.com/")
+			require.ErrorIs(t, err, ErrTimeoutOrCancel)
+
+			// The transport goroutine closes the body when it releases its request.
+			select {
+			case <-body.closed:
+			case <-time.After(time.Second):
+				require.Fail(t, "the call kept retrying after it was given up")
+			}
+			if tc.attempts >= 0 {
+				require.Equal(t, tc.attempts, attempts.Load())
+			}
+		})
+	}
+}
+
+// closeSignal is a request body that reports being closed.
+type closeSignal struct {
+	io.Reader
+
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (c *closeSignal) Close() error {
+	c.once.Do(func() { close(c.closed) })
+	return nil
+}
+
+// deadlineTransport records the deadline a redirect chain was given.
+type deadlineTransport struct {
+	*delayedTransport
+
+	deadline time.Time
+}
+
+func (d *deadlineTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
+	d.deadline = opts.deadline
+	return d.delayedTransport.DoRedirects(req, resp, opts)
 }

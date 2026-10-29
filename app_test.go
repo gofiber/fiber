@@ -854,6 +854,43 @@ func Test_App_Use_Params(t *testing.T) {
 	})
 }
 
+func Test_App_Use_PanicsOnDroppedArguments(t *testing.T) {
+	t.Parallel()
+
+	deny := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
+	guardApp := New()
+	guardApp.Use(deny)
+
+	for name, use := range map[string]func(app *App, args ...any){
+		"app":    func(app *App, args ...any) { app.Use(args...) },
+		"group":  func(app *App, args ...any) { app.Group("/g").Use(args...) },
+		"domain": func(app *App, args ...any) { app.Domain("example.com").Use(args...) },
+	} {
+		for _, args := range [][]any{
+			{"/admin", deny, New()},
+			{"/admin", New(), deny},
+			{deny, New()},
+			{[]string{"/a", "/b"}, deny, New()},
+			{"/admin", guardApp, New()},
+			{"/admin", "/internal", deny},
+			{"/admin", []string{"/internal"}, deny},
+			{[]string{"/a"}, []string{"/b"}, deny},
+		} {
+			require.Panics(t, func() { use(New(), args...) }, "%s %v", name, args)
+		}
+	}
+
+	// separate calls keep working
+	sub := New()
+	sub.Get("/panel", func(c Ctx) error { return c.SendString("panel") })
+	app := New()
+	app.Use("/admin", deny)
+	app.Use("/admin", sub)
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/admin/panel", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusUnauthorized, resp.StatusCode)
+}
+
 func Test_App_Use_UnescapedPath(t *testing.T) {
 	t.Parallel()
 	app := New(Config{UnescapePath: true, CaseSensitive: true})
@@ -1113,11 +1150,11 @@ func Test_App_GETOnly(t *testing.T) {
 	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
 }
 
-// go test -run Test_App_GETOnly_Middleware_Status
-func Test_App_GETOnly_Middleware_Status(t *testing.T) {
+// go test -run Test_App_RefusedRequest_Middleware_Status
+func Test_App_RefusedRequest_Middleware_Status(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
-		GETOnly: true,
+		BodyLimit: 8,
 	})
 
 	observed := make(chan int, 1)
@@ -1131,11 +1168,67 @@ func Test_App_GETOnly_Middleware_Status(t *testing.T) {
 		return c.SendString("Hello 👋!")
 	})
 
-	req := httptest.NewRequest(MethodPost, "/", http.NoBody)
-	resp, err := app.Test(req)
+	req := httptest.NewRequest(MethodPost, "/", strings.NewReader(strings.Repeat("x", 64)))
+	_, err := app.Test(req)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+	require.Equal(t, StatusRequestEntityTooLarge, <-observed, "Status code seen by middleware")
+}
+
+// The replay would run a Use handler that ends the chain with the method GETOnly refused.
+// go test -run Test_App_GETOnly_RefusedMethodIsNotReplayed
+func Test_App_GETOnly_RefusedMethodIsNotReplayed(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		GETOnly: true,
+	})
+
+	var ran []string
+	app.Use("/api", func(c Ctx) error {
+		ran = append(ran, c.Method())
+		return c.SendString("done")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodPost, "/api/jobs/7/cancel", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
-	require.Equal(t, StatusMethodNotAllowed, <-observed, "Status code seen by middleware")
+	require.Equal(t, "GET, HEAD", resp.Header.Get(HeaderAllow))
+	require.Empty(t, ran)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/api/jobs/7", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, []string{MethodGet}, ran)
+}
+
+// The replay skips a guard registered as a route, and SendStatus keeps a body already written.
+// go test -run Test_App_RefusedRequest_ChainBodyIsNotSent
+func Test_App_RefusedRequest_ChainBodyIsNotSent(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		BodyLimit: 16,
+		ErrorHandler: func(c Ctx, err error) error {
+			var fiberErr *Error
+			if !errors.As(err, &fiberErr) {
+				return err
+			}
+			return c.SendStatus(fiberErr.Code)
+		},
+	})
+
+	app.All("/admin/*", func(c Ctx) error {
+		return c.SendStatus(StatusUnauthorized)
+	})
+	app.Use(func(c Ctx) error {
+		return c.SendString("TOP-SECRET")
+	})
+	ln := startRawServer(t, app)
+
+	responses, _ := rawExchange(t, ln, "GET /admin/secret.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", 1)
+	require.Equal(t, StatusUnauthorized, responses[0].status)
+
+	responses, _ = rawExchange(t, ln, "GET /admin/secret.txt HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n", 1)
+	require.Equal(t, StatusRequestEntityTooLarge, responses[0].status)
+	require.Equal(t, "Request Entity Too Large", responses[0].body)
 }
 
 // An ErrorHandler that writes only a body used to answer a transport-refused
@@ -3290,6 +3383,53 @@ func Test_App_ReadBodyStream(t *testing.T) {
 	require.Equal(t, "true "+testString, string(body))
 }
 
+func Test_App_ReadBodyStream_BodyLimit(t *testing.T) {
+	t.Parallel()
+	app := New(Config{StreamRequestBody: true, BodyLimit: 1024})
+	app.Post("/", func(c Ctx) error {
+		return c.SendString(strconv.Itoa(len(c.Body())))
+	})
+	// Like logger's ${body}, a body read after the handler has drained the stream must not change its answer.
+	app.Use("/stream", func(c Ctx) error {
+		err := c.Next()
+		c.Body()
+		return err
+	})
+	app.Post("/stream", func(c Ctx) error {
+		n, err := io.Copy(io.Discard, c.BodyStream())
+		if err != nil {
+			return fmt.Errorf("failed to read: %w", err)
+		}
+		return c.Status(StatusCreated).SendString(strconv.FormatInt(n, 10))
+	})
+
+	for _, tc := range []struct {
+		name    string
+		target  string
+		size    int
+		status  int
+		chunked bool
+	}{
+		{name: "declared", target: "/", size: 1024, status: StatusOK},
+		{name: "chunked", target: "/", size: 1024, chunked: true, status: StatusOK},
+		{name: "declared over the limit", target: "/", size: 1025, status: StatusRequestEntityTooLarge},
+		{name: "chunked over the limit", target: "/", size: 1025, chunked: true, status: StatusRequestEntityTooLarge},
+		{name: "BodyStream is not limited", target: "/stream", size: 4096, status: StatusCreated},
+		{name: "chunked BodyStream is not limited", target: "/stream", size: 4096, chunked: true, status: StatusCreated},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(MethodPost, tc.target, strings.NewReader(strings.Repeat("a", tc.size)))
+			if tc.chunked {
+				req.TransferEncoding = []string{"chunked"}
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, tc.status, resp.StatusCode)
+		})
+	}
+}
+
 func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 	t.Parallel()
 	// Must be used with both otherwise there is no point.
@@ -3336,6 +3476,52 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 	require.NoError(t, err, "io.ReadAll(resp.Body)")
 
 	require.Equal(t, testString, string(body))
+}
+
+// With StreamRequestBody the server must not pre-parse a multipart body of any length before the
+// handlers run: FormFile parses it on demand within BodyLimit.
+func Test_App_StreamRequestBody_MultipartBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	const limit = 64 * 1024
+	app := New(Config{StreamRequestBody: true, BodyLimit: limit})
+	app.Post("/", func(c Ctx) error {
+		file, err := c.FormFile("test")
+		if errors.Is(err, fasthttp.ErrBodyTooLarge) {
+			return ErrRequestEntityTooLarge
+		}
+		if err != nil {
+			return err
+		}
+		return c.SendString(strconv.FormatInt(file.Size, 10))
+	})
+
+	for _, tc := range []struct {
+		name   string
+		size   int
+		status int
+	}{
+		{name: "within limit", size: limit / 2, status: StatusOK},
+		{name: "over limit", size: 10 * limit, status: StatusRequestEntityTooLarge},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			b := &bytes.Buffer{}
+			w := multipart.NewWriter(b)
+			writer, err := w.CreateFormFile("test", "test")
+			require.NoError(t, err)
+			_, err = writer.Write(make([]byte, tc.size))
+			require.NoError(t, err)
+			require.NoError(t, w.Close())
+
+			req := httptest.NewRequest(MethodPost, "/", b)
+			req.Header.Set(HeaderContentType, w.FormDataContentType())
+			resp, err := app.Test(req)
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, tc.status, resp.StatusCode)
+		})
+	}
 }
 
 func Test_App_Test_no_timeout_infinitely(t *testing.T) {
@@ -4441,6 +4627,59 @@ func Test_App_TransferEncoding_SecureErrorLogMessage(t *testing.T) {
 
 	responses, _ = rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n0\r\n\r\n", 1)
 	require.Equal(t, StatusOK, responses[0].status)
+}
+
+// The status follows what the parser reported, never request bytes its error quotes.
+func Test_App_serverErrorHandler_StatusIgnoresQuotedBytes(t *testing.T) {
+	t.Parallel()
+
+	const chunked = "GET / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n"
+	tests := []struct {
+		name   string
+		raw    string
+		status int
+		secure bool
+	}{
+		{name: "rejected method token", raw: "GE(T / HTTP/1.1\r\nHost: example.com\r\n\r\n", status: StatusNotImplemented},
+		{name: "rejected method token, secure message", raw: "GE(T / HTTP/1.1\r\nHost: example.com\r\n\r\n", status: StatusNotImplemented, secure: true},
+		{name: "trailer quoting the method wording", raw: chunked + "Content-Length: unsupported http request method\r\n\r\n", status: StatusBadRequest},
+		{name: "trailer quoting a timeout", raw: chunked + "Content-Length: timeout\r\n\r\n", status: StatusBadRequest},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.Server().SecureErrorLogMessage = tc.secure
+			app.Get("/", func(c Ctx) error { return c.SendString("page") })
+			ln := startRawServer(t, app)
+
+			responses, _ := rawExchange(t, ln, tc.raw, 1)
+			require.Equal(t, tc.status, responses[0].status)
+		})
+	}
+}
+
+// A read timeout inside a chunked body surfaces as ErrBrokenChunk, which hides the net error.
+func Test_App_serverErrorHandler_ChunkReadTimeout(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{ReadTimeout: 200 * time.Millisecond})
+	app.Post("/", func(c Ctx) error { return c.SendString("posted") })
+	ln := startRawServer(t, app)
+
+	for name, stalled := range map[string]string{
+		"in chunk data":           "5\r",
+		"before the trailer ends": "0\r\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			responses, _ := rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n"+stalled, 1)
+			require.Equal(t, StatusRequestTimeout, responses[0].status)
+		})
+	}
 }
 
 // RFC 9112 §6.1: a request with both Content-Length and Transfer-Encoding is

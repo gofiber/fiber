@@ -1,6 +1,6 @@
 // Package schemehost compares the scheme and host of two URLs for same-origin
-// checks. It is shared by the CSRF middleware (Origin/Referer validation) and
-// the core redirect logic (open-redirect prevention).
+// checks. It is shared by the CSRF middleware (Origin/Referer validation), the
+// core redirect logic (open-redirect prevention) and the proxy Balancer.
 package schemehost
 
 import (
@@ -78,6 +78,64 @@ func Match(schemeA, hostA, schemeB, hostB string) bool {
 	// Anything unusual (userinfo, percent-encoding, bracketed IPv6, control
 	// chars, invalid port, ...) takes the legacy normalize-and-compare path.
 	return normalizeHostPort(scheme, hostA, defaultPort) == normalizeHostPort(scheme, hostB, defaultPort)
+}
+
+// MatchStrict is Match for one scheme without the url.Parse fallback: a value that is not a plain
+// host with an optional port matches nothing, so no other parser can read it as another host.
+func MatchStrict(scheme, hostA, hostB string) bool {
+	_, defaultPort, _ := foldSchemePort(scheme)
+	nameA, portA, okA := splitStrictHostPort(hostA, defaultPort)
+	nameB, portB, okB := splitStrictHostPort(hostB, defaultPort)
+	return okA && okB && portA == portB && utils.EqualFold(nameA, nameB)
+}
+
+// splitStrictHostPort splits a reg-name, IPv4 or bracketed IPv6 host from its port, defaultPort when
+// absent or empty. Userinfo, an escape, an IPv6 zone or any other byte makes it not ok.
+func splitStrictHostPort(s, defaultPort string) (host, port string, ok bool) { //nolint:nonamedreturns // names document the three results
+	end := 0
+	if inner, bracketed := strings.CutPrefix(s, "["); bracketed {
+		end = strings.IndexByte(inner, ']')
+		if end <= 0 || !onlyBytes(inner[:end], &ipv6LiteralBytes) {
+			return "", "", false
+		}
+		end += len("[]")
+	} else {
+		for end < len(s) && regNameBytes[s[end]] {
+			end++
+		}
+	}
+	switch rest := s[end:]; {
+	case end == 0:
+		return "", "", false
+	case rest == "" || rest == ":":
+		return s[:end], defaultPort, true
+	case rest[0] == ':' && allDigits(rest[1:]):
+		return s[:end], rest[1:], true
+	default:
+		return "", "", false
+	}
+}
+
+var (
+	regNameBytes     = byteSet("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
+	ipv6LiteralBytes = byteSet("0123456789abcdefABCDEF:.")
+)
+
+func byteSet(s string) [256]bool {
+	var set [256]bool
+	for i := 0; i < len(s); i++ {
+		set[s[i]] = true
+	}
+	return set
+}
+
+func onlyBytes(s string, set *[256]bool) bool {
+	for i := 0; i < len(s); i++ {
+		if !set[s[i]] {
+			return false
+		}
+	}
+	return true
 }
 
 // normalizeHostPort lowercases host and appends defaultPort when no explicit
