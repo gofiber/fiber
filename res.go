@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"maps"
 	"net/http"
 	"path/filepath"
 	"reflect"
@@ -1043,6 +1044,7 @@ func (r *DefaultRes) GetRouteURL(routeName string, params Map) (string, error) {
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: https://github.com/gofiber/template
+// Render does not modify bind, so a Map may be reused across requests.
 func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
@@ -1051,6 +1053,11 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 	// Initialize empty bind map if bind is nil
 	if bind == nil {
 		bind = make(Map)
+	} else if bindMap, ok := bind.(Map); ok && (len(r.c.viewBindMap) > 0 || r.c.app.config.PassLocalsToViews) {
+		// renderExtensions adds per-request values; keep them out of the caller's map
+		merged := make(Map, len(bindMap)+len(r.c.viewBindMap))
+		maps.Copy(merged, bindMap)
+		bind = merged
 	}
 
 	// Pass-locals-to-views, bind, appListKeys
@@ -1143,8 +1150,8 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 		if _, err := readContent(buf, name); err != nil {
 			return err
 		}
-		// Parse template
-		tmpl, err := template.New("").Parse(rootApp.toString(buf.Bytes()))
+		// Parse a copy: the parse tree keeps substrings of the source, and buf is reused for the output
+		tmpl, err := template.New("").Parse(buf.String())
 		if err != nil {
 			return fmt.Errorf("failed to parse: %w", err)
 		}
@@ -1234,6 +1241,10 @@ func (r *DefaultRes) SendEarlyHints(hints []string) error {
 // sendFileIndexName is the file SendFile serves for a directory.
 const sendFileIndexName = "index.html"
 
+// maxSendFileHandlers bounds the handlers an app keeps, one per distinct SendFile
+// config; each holds a file cache and a goroutine for as long as it is kept.
+const maxSendFileHandlers = 64
+
 // SendFile transfers the file from the specified path.
 // By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
 // The Content-Type response HTTP header field is set based on the file's extension.
@@ -1275,6 +1286,10 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 				cacheControlValue = sf.cacheControlValue
 				break
 			}
+		}
+		// A config new on every call, such as an fs.Sub result, must not grow the cache.
+		if fsHandler == nil && len(app.sendfiles) >= maxSendFileHandlers {
+			cacheHandler = false
 		}
 		app.sendfilesMutex.RUnlock()
 	}
@@ -1318,7 +1333,10 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 		if cacheHandler {
 			app.sendfilesMutex.Lock()
-			app.sendfiles = append(app.sendfiles, sf)
+			// Concurrent misses may have filled the cache since the search.
+			if len(app.sendfiles) < maxSendFileHandlers {
+				app.sendfiles = append(app.sendfiles, sf)
+			}
 			app.sendfilesMutex.Unlock()
 		}
 	}

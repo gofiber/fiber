@@ -3547,3 +3547,34 @@ func Test_Bind_CustomBinder_CustomCtx(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "custom,custom", string(body))
 }
+
+func Test_Bind_Body_FormKeyTooDeep(t *testing.T) {
+	t.Parallel()
+
+	// A JSON type is decoded from a form body too, by its field names.
+	type category struct {
+		Name     string     `json:"name"`
+		Children []category `json:"children"`
+	}
+
+	app := New()
+	ctxWithBody := func(levels int) Ctx {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().Header.SetContentType(MIMEApplicationForm)
+		c.Request().SetBodyString(strings.Repeat("children.0.", levels) + "name=x")
+		return c
+	}
+
+	require.NoError(t, ctxWithBody(31).Bind().Body(new(category)))
+
+	err := ctxWithBody(32).Bind().Body(new(category))
+	require.ErrorIs(t, err, binder.ErrKeyTooDeep)
+	var bindErr *BindError
+	require.ErrorAs(t, err, &bindErr)
+	require.Equal(t, BindSourceBody, bindErr.Source)
+
+	c := ctxWithBody(32)
+	require.Error(t, c.Bind().WithAutoHandling().Body(new(category)))
+	require.Equal(t, StatusBadRequest, c.Response().StatusCode())
+}

@@ -29,6 +29,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/nilerror"
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -363,7 +364,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// This option is useful as anti-DoS protection for servers
 	// accepting only GET requests. The request size is limited
 	// by ReadBufferSize if GETOnly is set. A rejected request gets 405 with
-	// "Allow: GET, HEAD".
+	// "Allow: GET, HEAD", and no middleware runs for it.
 	//
 	// Default: false
 	GETOnly bool `json:"get_only"`
@@ -1759,8 +1760,10 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	defer app.ReleaseCtx(c)
 
 	var (
-		errNetOP *net.OpError
-		netErr   net.Error
+		errNetOP    *net.OpError
+		netErr      net.Error
+		timeoutErr  interface{ Timeout() bool }
+		brokenChunk fasthttp.ErrBrokenChunk
 	)
 
 	errMessage := utils.StatusMessage(StatusBadRequest)
@@ -1787,12 +1790,18 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = ErrMethodNotAllowed
 		// A 405 must carry Allow (RFC 9110 §15.5.6).
 		c.Set(HeaderAllow, getOnlyAllow)
-	case strings.Contains(errMessage, "unsupported http request method"):
+	case errors.Is(err, fasthttp.ErrUnsupportedRequestMethod),
+		strings.HasPrefix(innermostMessage(err), "unsupported http request method"):
+		// The innermost error, not the whole text: the wrappers quote request
+		// bytes, so a malformed trailer could otherwise pick its own status.
 		err = ErrNotImplemented
-	case strings.Contains(errMessage, unsupportedTransferCodingMarker):
+	case strings.HasPrefix(innermostMessage(err), unsupportedTransferCodingMarker):
 		// An unknown transfer coding is a 501, not a 400 (RFC 9112 §6.1).
 		err = ErrNotImplemented
-	case strings.Contains(errMessage, "timeout"):
+	case errors.As(err, &timeoutErr) && timeoutErr.Timeout(),
+		errors.As(err, &brokenChunk) && strings.HasSuffix(brokenChunk.Error(), "timeout"):
+		// fasthttp.ErrTimeout, as a stalled trailer returns it, is no net.Error;
+		// ErrBrokenChunk does not unwrap to the read error it ends with.
 		err = ErrRequestTimeout
 	default:
 		err = NewError(StatusBadRequest, errMessage)
@@ -1804,9 +1813,15 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		c.Status(fiberErr.Code)
 	}
 
-	if c.getMethodInt() != -1 {
+	// A method GETOnly refuses is not replayed: a Use handler that ends the chain would carry it out.
+	// Asked of the method, not ErrGetOnly, since a header error is reported first.
+	methodRefused := app.server.GetOnly && !fctx.IsGet() && !fctx.IsHead()
+	if !methodRefused && c.getMethodInt() != -1 {
 		c.setSkipNonUseRoutes(true)
 		defer c.setSkipNonUseRoutes(false)
+		// The route never runs, so what the chain leaves is no response for the URL.
+		errorreplay.Mark(fctx)
+		defer errorreplay.Unmark(fctx)
 
 		var nextErr error
 		if d, isDefault := c.(*DefaultCtx); isDefault {
@@ -1818,12 +1833,26 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		if nextErr != nil && !errors.Is(nextErr, ErrNotFound) && !errors.Is(nextErr, ErrMethodNotAllowed) {
 			log.Errorf("serverErrorHandler: middleware traversal failed: %v", nextErr)
 		}
+		// Route guards were skipped too: drop the chain's body, which an ErrorHandler calling SendStatus would send.
+		fctx.Response.ResetBody()
 	}
 
 	if catch := app.ErrorHandler(c, err); catch != nil {
 		log.Errorf("serverErrorHandler: failed to call ErrorHandler: %v", catch)
 		_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // It is fine to ignore the error here
 		return
+	}
+}
+
+// innermostMessage returns the text of the error err wraps last, which fasthttp
+// starts with its own words before any bytes of the request it quotes.
+func innermostMessage(err error) string {
+	for {
+		inner := errors.Unwrap(err)
+		if inner == nil {
+			return err.Error()
+		}
+		err = inner
 	}
 }
 

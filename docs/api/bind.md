@@ -303,7 +303,7 @@ A form body is a flat list of key/value pairs, so structure lives in the field n
 | Map key            | `attributes[color]=red`      | entry of a [map field](#map-fields)  |
 | Dot map key        | `attributes.color=red`       | entry of a [map field](#map-fields)  |
 
-Bracket and dot notation are interchangeable and can be nested to any depth:
+Bracket and dot notation are interchangeable and can be nested up to 64 segments deep (`items[0][sku]` has three). A key with more segments fails a bind into a struct with `binder.ErrKeyTooDeep`; map destinations are not limited:
 
 ```go title="Struct"
 type Address struct {
@@ -342,6 +342,8 @@ Order{
 An index only ever addresses a struct field. `colors[0]=red` and `colors.0=red` do **not** fill a `[]string`. With the default decoder the value is dropped and no error is returned; after `SetParserDecoder(ParserConfig{IgnoreUnknownKeys: false})` the same input fails with `schema: invalid path "colors.0"`. Use a repeated key or `colors[]` for slices of scalars.
 
 Indexes above 1000 are rejected: `items.1001.sku=A1` fails with `schema: index exceeds parser limit`.
+
+A struct with a slice of structs inside a slice element, or below a field that refers back to its own type (`Children []Category`, `Mother, Father *Person`), gets a slice for every element or level a key reaches, so for such a struct the keys are limited by the memory their indexes can make a bind allocate. Every index after a key's first, such as the `3` in `items[0][variants][3][sku]`, counts as its value plus one, and so does a first index that does not follow the first field name in a struct that refers back to its own type, such as the `1000` in `mother[father][phones][1000][number]`. Keys that share everything up to an index count it once, and each counted element weighs as much as the largest element of such a slice in the struct. Keys that add up to more than 8 MiB fail the bind with `binder.ErrTooManyElements`. For example, 30 lines of 50 variants of 160 bytes each, sent as `lines[l][variants][v][field]`, count 30 times 1 + 2 + ... + 50, that is 38,250 elements or about 6 MiB, and still bind. Only the key is read, so a numeric map key at such a position, such as the `2026` in `items[0][stock][2026]`, counts as well.
 :::
 
 :::note
@@ -933,7 +935,7 @@ if err := c.Bind().All(&req); err != nil {
 
 `BindError` unwraps to the error of the decoder, so `errors.As` and `errors.Is` see through it. Fiber re-exports the types you are most likely to look for:
 
-- The Cookie, Form, Header, Query, RespHeader, and URI binders (and `Body` for form content) fail with a `fiber.MultiError`, a `map[string]error` keyed by the request key that failed. Its entries are a `fiber.ConversionError` when a value cannot be converted to the field type, a `fiber.EmptyFieldError` when a [`required`](#required-fields) key is missing or empty, and a `fiber.UnknownKeyError` for a key that names no field (only reported when `IgnoreUnknownKeys` is `false`, see [SetParserDecoder](#setparserdecoder)). Not every failure is a `MultiError`: a key with unmatched square brackets, such as `?a[=1`, is refused earlier with a plain `binder.ErrUnmatchedBrackets`, so keep a fallback for other errors.
+- The Cookie, Form, Header, Query, RespHeader, and URI binders (and `Body` for form content) fail with a `fiber.MultiError`, a `map[string]error` keyed by the request key that failed. Its entries are a `fiber.ConversionError` when a value cannot be converted to the field type, a `fiber.EmptyFieldError` when a [`required`](#required-fields) key is missing or empty, and a `fiber.UnknownKeyError` for a key that names no field (only reported when `IgnoreUnknownKeys` is `false`, see [SetParserDecoder](#setparserdecoder)). Not every failure is a `MultiError`: a key with unmatched square brackets, such as `?a[=1`, is refused earlier with a plain `binder.ErrUnmatchedBrackets`, a key of more than 64 segments with `binder.ErrKeyTooDeep`, and keys whose nested indexes add up past the [limit](#nested-and-array-form-fields) with `binder.ErrTooManyElements`, so keep a fallback for other errors.
 - With the default `JSONDecoder`, a JSON body fails with the errors of `encoding/json`: `*fiber.UnmarshalTypeError` for a value of the wrong JSON type, `*fiber.SyntaxError` for malformed JSON, and `*fiber.InvalidUnmarshalError` for a destination that is not a non-nil pointer.
 
 `Field` is taken from a `ConversionError`, `UnknownKeyError`, `EmptyFieldError`, `MultiError` (one of its keys, so any of them when several fields failed), or `UnmarshalTypeError`. For any other error it stays empty.

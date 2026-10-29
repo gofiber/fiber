@@ -168,6 +168,76 @@ func Test_Del_RemovesEverySpelling(t *testing.T) {
 	require.Equal(t, "k", string(First(h, "X-Keep", false)))
 }
 
+// countingDeleter counts the Del calls, each of which scans every line.
+type countingDeleter struct {
+	*fasthttp.ResponseHeader
+	dels int
+}
+
+func (d *countingDeleter) Del(key string) {
+	d.dels++
+	d.ResponseHeader.Del(key)
+}
+
+func rawResponseHeader(lines ...string) *countingDeleter {
+	h := &fasthttp.ResponseHeader{}
+	h.SetNoDefaultContentType(true)
+	h.DisableNormalizing()
+	for _, k := range lines {
+		h.Add(k, "v")
+	}
+	return &countingDeleter{ResponseHeader: h}
+}
+
+func Test_Del_DeletesEachSpellingOnce(t *testing.T) {
+	t.Parallel()
+
+	lines := []string{"X-Keep"}
+	for range 50 {
+		lines = append(lines, "x-trace", "X-TRACE")
+	}
+	h := rawResponseHeader(lines...)
+
+	Del(h, "X-Trace", false)
+
+	require.Equal(t, 3, h.dels)
+	require.Empty(t, Lines(h, "X-Trace", false))
+	require.Equal(t, "v", string(First(h, "X-Keep", false)))
+}
+
+func Test_DelWithin_Budget(t *testing.T) {
+	t.Parallel()
+
+	h := rawResponseHeader("X-Trace", "x-trace", "X-TRACE", "x-TRACE")
+	require.Equal(t, -1, DelWithin(h, "X-Trace", false, 2))
+	require.Len(t, Lines(h, "X-Trace", false), 3, "none of the other spellings is deleted")
+
+	require.Equal(t, 1, DelWithin(h, "X-Trace", false, 4))
+	require.Empty(t, Lines(h, "X-Trace", false))
+
+	require.Equal(t, 7, DelWithin(rawResponseHeader("x-trace"), "x-trace", true, 7), "a canonical store costs nothing")
+}
+
+func Test_DelSetWithin_Limit(t *testing.T) {
+	t.Parallel()
+
+	lines := []string{"X-Keep"}
+	for range 50 {
+		lines = append(lines, "upgrade", "te", "TE")
+	}
+	h := rawResponseHeader(lines...)
+	names := []string{"Upgrade", "TE"}
+
+	require.False(t, DelSetWithin(h, names, 0))
+	require.Zero(t, h.dels)
+
+	require.True(t, DelSetWithin(h, names, 1))
+	require.Equal(t, 3, h.dels)
+	require.Empty(t, Lines(h, "Upgrade", false))
+	require.Empty(t, Lines(h, "TE", false))
+	require.Equal(t, "v", string(First(h, "X-Keep", false)))
+}
+
 // Test_IsCanonical_MatchesFasthttp checks the form against fasthttp itself: a
 // token name is canonical exactly when Set stores it unchanged, and any other
 // name is not, because fasthttp stores such a key as sent.
