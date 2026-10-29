@@ -78,10 +78,10 @@ const storageKeyPrefix = "session:"
 const idLockShards = 64
 
 // idLock keeps a request that loaded a session from writing it back after
-// another request deleted its ID: fiber.Storage has no conditional write.
+// another request deleted or changed it: fiber.Storage has no conditional write.
 type idLock struct {
-	mu  sync.RWMutex  // saves share it, a delete holds it alone
-	gen atomic.Uint64 // bumped after every delete in the shard; a load reads it before the storage
+	mu  sync.RWMutex  // write-backs share it, a delete or a change holds it alone
+	gen atomic.Uint64 // bumped after every delete or change in the shard; a load reads it before the storage
 }
 
 var (

@@ -435,12 +435,35 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 		s.idleTimeout = s.config.IdleTimeout
 	}
 
+	// Unchanged since the decode: write the snapshot back so the idle timeout still
+	// slides. Lock-free is enough; dirty is set before the mutation it reports.
+	data := s.rawData
+	changed := data == nil || s.data.dirty.Load()
+	if changed {
+		s.data.RLock()
+		encoded, err := s.encodeSessionData()
+		s.data.RUnlock()
+		if err != nil {
+			return fmt.Errorf("failed to encode data: %w", err)
+		}
+		data = encoded
+	}
+
 	key := s.storageKey()
 	if s.loaded {
 		l := lockFor(key)
-		l.mu.RLock()
-		defer l.mu.RUnlock()
-		// An ID of this shard was deleted since the load; write only if it was not this one.
+		if changed {
+			// Held alone, so no write-back of an older snapshot lands after this change.
+			l.mu.Lock()
+			defer func() {
+				l.gen.Add(1)
+				l.mu.Unlock()
+			}()
+		} else {
+			l.mu.RLock()
+			defer l.mu.RUnlock()
+		}
+		// An ID of this shard was deleted or changed since the load; look at this one.
 		if l.gen.Load() != s.loadGen {
 			raw, err := s.config.Storage.GetWithContext(ctx, key)
 			if err != nil {
@@ -449,28 +472,16 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 			if raw == nil {
 				return nil // ended by another request: neither store it nor send its cookie again
 			}
+			if !changed && !bytes.Equal(raw, data) {
+				s.setSession()
+				return nil // changed by another request: the older snapshot must not undo that
+			}
 		}
 	}
 
 	// Update client cookie
 	s.setSession()
-
-	// Unchanged since the decode: write the snapshot back so the idle timeout still
-	// slides. Lock-free is enough; dirty is set before the mutation it reports.
-	if s.rawData != nil && !s.data.dirty.Load() {
-		return s.config.Storage.SetWithContext(ctx, key, s.rawData, s.idleTimeout)
-	}
-
-	// Encode session data
-	s.data.RLock()
-	encodedBytes, err := s.encodeSessionData()
-	s.data.RUnlock()
-	if err != nil {
-		return fmt.Errorf("failed to encode data: %w", err)
-	}
-
-	// Pass copied bytes with session id to provider
-	return s.config.Storage.SetWithContext(ctx, key, encodedBytes, s.idleTimeout)
+	return s.config.Storage.SetWithContext(ctx, key, data, s.idleTimeout)
 }
 
 // Keys retrieves all keys in the current session.

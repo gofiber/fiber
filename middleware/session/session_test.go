@@ -2882,6 +2882,66 @@ func Test_Session_SaveAfterUnrelatedDelete(t *testing.T) {
 	require.Equal(t, "bob", reloaded.Get("user"))
 }
 
+// A request that left the session unchanged must not write the snapshot it
+// loaded back over a change another request stored meanwhile.
+//
+// go test -run Test_Session_SaveAfterConcurrentChange
+func Test_Session_SaveAfterConcurrentChange(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	store := NewStore(Config{Storage: memory.New()})
+	id := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("role", "admin")
+	})
+
+	inFlight := loadSession(t, app, store, id)
+	demote := loadSession(t, app, store, id)
+	demote.Set("role", "guest")
+	require.NoError(t, demote.Save())
+	require.NoError(t, inFlight.Save())
+	require.NotEmpty(t, inFlight.ctx.Response().Header.Peek(fiber.HeaderSetCookie))
+
+	reloaded, err := store.GetByID(t.Context(), id)
+	require.NoError(t, err)
+	defer reloaded.Release()
+	require.Equal(t, "guest", reloaded.Get("role"))
+}
+
+// A change to another ID of the same lock shard must not cost an unchanged
+// session its write-back, which slides the idle timeout.
+//
+// go test -run Test_Session_WriteBackAfterUnrelatedChange
+func Test_Session_WriteBackAfterUnrelatedChange(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	storage := newRecordingStorage()
+	store := NewStore(Config{Storage: storage})
+	id := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("user", "alice")
+	})
+	sibling := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("user", "bob")
+	})
+	for lockFor(storageKeyPrefix+sibling) != lockFor(storageKeyPrefix+id) {
+		sibling = seedSession(t, app, store, func(sess *Session) {
+			sess.Set("user", "bob")
+		})
+	}
+
+	sess := loadSession(t, app, store, id)
+	other := loadSession(t, app, store, sibling)
+	other.Set("user", "carol")
+	require.NoError(t, other.Save())
+	storage.reset()
+
+	require.NoError(t, sess.Save())
+	writes := storage.writes()
+	require.Len(t, writes, 1)
+	require.Equal(t, storageKeyPrefix+id, writes[0].key)
+}
+
 // gateStorage parks the first Set after arming until release is closed.
 type gateStorage struct {
 	fiber.Storage
