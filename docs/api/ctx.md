@@ -3763,6 +3763,8 @@ func (c fiber.Ctx) Render(name string, bind any, layouts ...string) error
 func (r fiber.Res) Render(name string, bind any, layouts ...string) error
 ```
 
+`Render` does not modify `bind`. The [`ViewBind`](#viewbind) values and, with [`PassLocalsToViews`](./fiber.md#passlocalstoviews), the `Locals` of the request are merged into a copy, so the same `fiber.Map` can be reused across requests.
+
 ### ResetBody
 
 Discards the response body, keeping the status and headers. Use it before replacing a partially written body — an error page over a half-rendered view, a cached body over a fresh one.

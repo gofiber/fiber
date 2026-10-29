@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"maps"
 	"net/http"
 	"path/filepath"
 	"reflect"
@@ -1043,6 +1044,7 @@ func (r *DefaultRes) GetRouteURL(routeName string, params Map) (string, error) {
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: https://github.com/gofiber/template
+// Render does not modify bind, so a Map may be reused across requests.
 func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
@@ -1051,6 +1053,11 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 	// Initialize empty bind map if bind is nil
 	if bind == nil {
 		bind = make(Map)
+	} else if bindMap, ok := bind.(Map); ok && (len(r.c.viewBindMap) > 0 || r.c.app.config.PassLocalsToViews) {
+		// renderExtensions adds per-request values; keep them out of the caller's map
+		merged := make(Map, len(bindMap)+len(r.c.viewBindMap))
+		maps.Copy(merged, bindMap)
+		bind = merged
 	}
 
 	// Pass-locals-to-views, bind, appListKeys
@@ -1143,8 +1150,8 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 		if _, err := readContent(buf, name); err != nil {
 			return err
 		}
-		// Parse template
-		tmpl, err := template.New("").Parse(rootApp.toString(buf.Bytes()))
+		// Parse a copy: the parse tree keeps substrings of the source, and buf is reused for the output
+		tmpl, err := template.New("").Parse(buf.String())
 		if err != nil {
 			return fmt.Errorf("failed to parse: %w", err)
 		}

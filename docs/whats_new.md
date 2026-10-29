@@ -850,6 +850,11 @@ resolve to the **request**; use `c.Res().Get()`, `c.Res().GetHeaders()`, `c.Res(
   The unit is case-insensitive (`Bytes=0-4` used to get `416`). `If-Range` was ignored, so a resumed download was
   spliced onto a file that had changed; the range is now served only when the date in `If-Range` is exactly the file's
   `Last-Modified` (and at least two seconds old), and the whole file is sent otherwise.
+- **Render()**: The `fiber.Map` passed as `bind` is no longer modified. `ViewBind` values and, with
+  `PassLocalsToViews`, the `Locals` used to be written into it, so a map kept across requests carried the first
+  request's values into every later render, and a nil `fiber.Map` panicked. They are now merged into a copy, and a
+  key in the passed map still wins. Without a `Views` engine, `Render` now parses a copy of the template file, so
+  the output no longer depends on `Config.Immutable`.
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
 - **IP()**: When `EnableIPValidation` is `true` and `TrustProxyConfig` is set, `c.IP()` now walks the `X-Forwarded-For` chain from right to left and returns the first non-trusted IP, instead of the leftmost syntactically valid IP. This closes an IP-spoofing vector where an attacker could prepend a fake address and have it returned by `c.IP()`. Apps with `EnableIPValidation = false` (the default) are unaffected. See [`Ctx.IP`](./api/ctx.md#ip) and the [reverse proxy guide](./guide/reverse-proxy.md#getting-the-real-client-ip-address) for details.
 
@@ -987,6 +992,8 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 - Support for unified binding (`Bind().All()`) with defined precedence order: (URI -> Body -> Query -> Headers -> Cookies). A struct can customize the order for all its fields with one `binding_source` tag on any top-level field. [Learn more](./api/bind.md#all).
 - Support MsgPack binding for request body.
 - Support `map[string]T` struct fields in query and form binding: `attributes[color]=red` or `attributes.color=red` fills `Attributes map[string]string`, and maps of slices keep repeated values. [Learn more](./api/bind.md#map-fields).
+
+A key bound into a struct can have at most 64 segments (`items[0][sku]` has three). A deeper key fails the bind with `binder.ErrKeyTooDeep`; map destinations are not limited. In a struct with a slice of structs inside a slice element or below a field of its own type, an index that can grow such a slice, such as the `3` in `items[0][variants][3][sku]`, counts as its value plus one elements of the largest such slice element, and keys that add up to more than 8 MiB fail the bind with `binder.ErrTooManyElements`. [Learn more](./api/bind.md#nested-and-array-form-fields).
 
 <details>
 <summary>Example</summary>
