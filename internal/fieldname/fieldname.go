@@ -11,6 +11,8 @@ package fieldname
 
 import (
 	"iter"
+	"math"
+	"slices"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -165,11 +167,21 @@ func isCanonicalName(name []byte) bool {
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func Del(h Deleter, name string, canonical bool) {
+	DelWithin(h, name, canonical, math.MaxInt)
+}
+
+// DelWithin is Del for a caller bounding the work across several names: each
+// spelling stored besides name costs another scan of every line and one unit of
+// budget. It returns the budget left, or -1, none of them deleted, when they
+// cost more.
+//
+//nolint:revive // flag-parameter: canonical is a property of the header store
+func DelWithin(h Deleter, name string, canonical bool, budget int) int {
 	h.Del(name)
 	if canonical {
 		// The scan below would only confirm Del found everything, at the cost
 		// of an iterator allocation per name on an otherwise alloc-free path.
-		return
+		return budget
 	}
 
 	// Collected before deleting, like DelOthers, rather than rescanning after
@@ -180,14 +192,22 @@ func Del(h Deleter, name string, canonical bool) {
 	// it at all.
 	var others []string
 	for k := range h.All() {
-		if utils.EqualFold(utils.UnsafeString(k), name) {
+		// One Del per spelling, not per line: each Del scans every line.
+		if ks := utils.UnsafeString(k); utils.EqualFold(ks, name) && !slices.Contains(others, ks) {
 			others = append(others, string(k))
+			if len(others) > budget {
+				break
+			}
 		}
+	}
+	if len(others) > budget {
+		return -1
 	}
 
 	for _, k := range others {
 		h.Del(k)
 	}
+	return budget - len(others)
 }
 
 // DelOthers removes every stored spelling of name except name itself, which the
@@ -197,7 +217,7 @@ func DelOthers(h Deleter, name string) {
 	// Collected before deleting: removing while ranging over the store is not safe.
 	var others []string
 	for k := range h.All() {
-		if ks := utils.UnsafeString(k); ks != name && utils.EqualFold(ks, name) {
+		if ks := utils.UnsafeString(k); ks != name && utils.EqualFold(ks, name) && !slices.Contains(others, ks) {
 			others = append(others, string(k))
 		}
 	}
@@ -210,18 +230,29 @@ func DelOthers(h Deleter, name string) {
 // DelSet removes every field line matching any of names in a single pass, which
 // beats Del's per-name scan when the whole set is known up front.
 func DelSet(h Deleter, names []string) {
+	DelSetWithin(h, names, math.MaxInt)
+}
+
+// DelSetWithin is DelSet for a caller bounding the work: each distinct spelling
+// found costs a scan of every line, so it deletes none and reports false when
+// there are more than one per name plus spare.
+func DelSetWithin(h Deleter, names []string, spare int) bool {
 	var removed []string
-	for k := range h.All() {
-		if ContainsFold(names, utils.UnsafeString(k)) {
+	// Called rather than ranged: the range form heap-allocates its loop state too.
+	h.All()(func(k, _ []byte) bool {
+		if ks := utils.UnsafeString(k); ContainsFold(names, ks) && !slices.Contains(removed, ks) {
 			removed = append(removed, string(k))
 		}
+		return len(removed)-len(names) <= spare
+	})
+	if len(removed)-len(names) > spare {
+		return false
 	}
 
-	// A repeated name is deleted twice; Del removes every line at once, so
-	// scanning to avoid that costs more than making the call.
 	for _, name := range removed {
 		h.Del(name)
 	}
+	return true
 }
 
 // ContainsFold reports whether needle equals any of haystack, case-insensitively.

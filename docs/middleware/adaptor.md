@@ -33,6 +33,10 @@ When Fiber is executed from a `net/http` server through `FiberHandler`, `FiberHa
 or `FiberApp`, the adaptor enforces the app's configured `BodyLimit`. The app's `BodyLimit` defaults to **4 MiB** if a non-positive value is provided during configuration. `FiberHandler` and `FiberHandlerFunc` run the handler on a fresh app with the default configuration, so they always apply the 4 MiB default; pass your own app to `FiberApp` to use a different `BodyLimit`. Requests exceeding the active limit receive `413 Request Entity Too Large`.
 :::
 
+:::note Streamed request bodies
+`HTTPHandler`, `HTTPHandlerFunc`, `HTTPHandlerWithContext`, `HTTPMiddleware` and `ConvertRequest` buffer the request body to build the `http.Request`. With [`StreamRequestBody`](../api/fiber.md#streamrequestbody) they read it within the app's `BodyLimit` and answer a larger one with `413 Request Entity Too Large`, and a body that fails to read, such as a malformed chunk, with `400 Bad Request` (`ConvertRequest` returns `fiber.ErrRequestEntityTooLarge` or `fiber.ErrBadRequest`). A read error that already carries a `*fiber.Error` keeps its status.
+:::
+
 ## API Reference
 
 | Name                          | Signature                                                                     | Description                                                                   |

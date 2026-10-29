@@ -29,6 +29,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/nilerror"
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -210,6 +211,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 
 	// When set to true, the router treats "/foo" and "/foo/" as different.
 	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
+	// Middleware registered with Use on "/foo/" runs for "/foo" either way.
 	//
 	// Default: false
 	StrictRouting bool `json:"strict_routing"`
@@ -363,7 +365,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// This option is useful as anti-DoS protection for servers
 	// accepting only GET requests. The request size is limited
 	// by ReadBufferSize if GETOnly is set. A rejected request gets 405 with
-	// "Allow: GET, HEAD".
+	// "Allow: GET, HEAD", and no middleware runs for it.
 	//
 	// Default: false
 	GETOnly bool `json:"get_only"`
@@ -417,6 +419,9 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// and calls the handler sooner when given body is
 	// larger than the current limit.
 	//
+	// Only BodyStream reads such a body: Body, FormValue and the binders still
+	// apply BodyLimit, and a multipart form is never pre-parsed.
+	//
 	// Default: false
 	StreamRequestBody bool
 
@@ -425,7 +430,8 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// This option is useful for servers that desire to treat
 	// multipart form data as a binary blob, or choose when to parse the data.
 	//
-	// Server pre parses multipart form data by default.
+	// Server pre parses multipart form data by default, but never with
+	// StreamRequestBody.
 	//
 	// Default: false
 	DisablePreParseMultipartForm bool
@@ -1011,6 +1017,8 @@ func (app *App) Name(name string) Router {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
+	hosts := matchersKey(app.latestRoute.hosts)
+
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			// The shared registration id covers every method of a multi-method
@@ -1024,7 +1032,9 @@ func (app *App) Name(name string) Router {
 				app.latestRoute.use ||
 				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
 
-			if route.Path == app.latestRoute.Path && isMethodValid {
+			// The path alone does not make it the same route: another Domain
+			// pattern can serve it too, under a name of its own.
+			if route.Path == app.latestRoute.Path && isMethodValid && matchersKey(route.hosts) == hosts {
 				route.Name = name
 				if route.group != nil {
 					route.Name = route.group.name + route.Name
@@ -1093,31 +1103,7 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (app *App) Use(args ...any) Router {
-	var prefix string
-	var subApp *App
-	var prefixes []string
-	var handlers []Handler
-
-	for i := range args {
-		switch arg := args[i].(type) {
-		case string:
-			prefix = arg
-		case *App:
-			subApp = arg
-		case []string:
-			prefixes = arg
-		default:
-			handler, ok := toFiberHandler(arg)
-			if !ok {
-				panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
-			}
-			handlers = append(handlers, handler)
-		}
-	}
-
-	if len(prefixes) == 0 {
-		prefixes = append(prefixes, prefix)
-	}
+	prefixes, subApp, handlers := useArgs(args)
 
 	for _, prefix := range prefixes {
 		if subApp != nil {
@@ -1130,6 +1116,44 @@ func (app *App) Use(args ...any) Router {
 	}
 
 	return app
+}
+
+// useArgs sorts the arguments of a Use call. Anything it would otherwise drop
+// silently panics: a second prefix argument, a second sub-app, or handlers next to a sub-app.
+func useArgs(args []any) (prefixes []string, subApp *App, handlers []Handler) { //nolint:nonamedreturns // names tell the three results apart
+	prefixArgs := 0
+	for _, arg := range args {
+		switch arg := arg.(type) {
+		case string:
+			prefixes = []string{arg}
+			prefixArgs++
+		case []string:
+			prefixes = arg
+			prefixArgs++
+		case *App:
+			if subApp != nil {
+				panic("use: only one sub-app can be passed in one call\n")
+			}
+			subApp = arg
+		default:
+			handler, ok := toFiberHandler(arg)
+			if !ok {
+				panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
+			}
+			handlers = append(handlers, handler)
+		}
+	}
+
+	if prefixArgs > 1 {
+		panic("use: pass several prefixes as one []string\n")
+	}
+	if subApp != nil && len(handlers) > 0 {
+		panic("use: handlers and a sub-app cannot be passed in one call\n")
+	}
+	if len(prefixes) == 0 {
+		prefixes = []string{""}
+	}
+	return prefixes, subApp, handlers
 }
 
 // Get registers a route for GET methods that requests a representation
@@ -1644,7 +1668,9 @@ func (app *App) init() *App {
 		app.server.GetOnly = app.config.GETOnly
 		app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
 		app.server.StreamRequestBody = app.config.StreamRequestBody
-		app.server.DisablePreParseMultipartForm = app.config.DisablePreParseMultipartForm
+		// fasthttp pre-parses a streamed multipart body of any length before the
+		// handler runs; MultipartForm parses it on demand within BodyLimit instead.
+		app.server.DisablePreParseMultipartForm = app.config.DisablePreParseMultipartForm || app.config.StreamRequestBody
 	}()
 
 	// Register the Services shutdown handler once the app is initialized and unlocked.
@@ -1753,8 +1779,10 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	defer app.ReleaseCtx(c)
 
 	var (
-		errNetOP *net.OpError
-		netErr   net.Error
+		errNetOP    *net.OpError
+		netErr      net.Error
+		timeoutErr  interface{ Timeout() bool }
+		brokenChunk fasthttp.ErrBrokenChunk
 	)
 
 	errMessage := utils.StatusMessage(StatusBadRequest)
@@ -1781,12 +1809,18 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = ErrMethodNotAllowed
 		// A 405 must carry Allow (RFC 9110 §15.5.6).
 		c.Set(HeaderAllow, getOnlyAllow)
-	case strings.Contains(errMessage, "unsupported http request method"):
+	case errors.Is(err, fasthttp.ErrUnsupportedRequestMethod),
+		strings.HasPrefix(innermostMessage(err), "unsupported http request method"):
+		// The innermost error, not the whole text: the wrappers quote request
+		// bytes, so a malformed trailer could otherwise pick its own status.
 		err = ErrNotImplemented
-	case strings.Contains(errMessage, unsupportedTransferCodingMarker):
+	case strings.HasPrefix(innermostMessage(err), unsupportedTransferCodingMarker):
 		// An unknown transfer coding is a 501, not a 400 (RFC 9112 §6.1).
 		err = ErrNotImplemented
-	case strings.Contains(errMessage, "timeout"):
+	case errors.As(err, &timeoutErr) && timeoutErr.Timeout(),
+		errors.As(err, &brokenChunk) && strings.HasSuffix(brokenChunk.Error(), "timeout"):
+		// fasthttp.ErrTimeout, as a stalled trailer returns it, is no net.Error;
+		// ErrBrokenChunk does not unwrap to the read error it ends with.
 		err = ErrRequestTimeout
 	default:
 		err = NewError(StatusBadRequest, errMessage)
@@ -1798,9 +1832,15 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		c.Status(fiberErr.Code)
 	}
 
-	if c.getMethodInt() != -1 {
+	// A method GETOnly refuses is not replayed: a Use handler that ends the chain would carry it out.
+	// Asked of the method, not ErrGetOnly, since a header error is reported first.
+	methodRefused := app.server.GetOnly && !fctx.IsGet() && !fctx.IsHead()
+	if !methodRefused && c.getMethodInt() != -1 {
 		c.setSkipNonUseRoutes(true)
 		defer c.setSkipNonUseRoutes(false)
+		// The route never runs, so what the chain leaves is no response for the URL.
+		errorreplay.Mark(fctx)
+		defer errorreplay.Unmark(fctx)
 
 		var nextErr error
 		if d, isDefault := c.(*DefaultCtx); isDefault {
@@ -1812,12 +1852,26 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		if nextErr != nil && !errors.Is(nextErr, ErrNotFound) && !errors.Is(nextErr, ErrMethodNotAllowed) {
 			log.Errorf("serverErrorHandler: middleware traversal failed: %v", nextErr)
 		}
+		// Route guards were skipped too: drop the chain's body, which an ErrorHandler calling SendStatus would send.
+		fctx.Response.ResetBody()
 	}
 
 	if catch := app.ErrorHandler(c, err); catch != nil {
 		log.Errorf("serverErrorHandler: failed to call ErrorHandler: %v", catch)
 		_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // It is fine to ignore the error here
 		return
+	}
+}
+
+// innermostMessage returns the text of the error err wraps last, which fasthttp
+// starts with its own words before any bytes of the request it quotes.
+func innermostMessage(err error) string {
+	for {
+		inner := errors.Unwrap(err)
+		if inner == nil {
+			return err.Error()
+		}
+		err = inner
 	}
 }
 

@@ -216,8 +216,11 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 // that a server merging slashes drops even from a path sent as written, so the
 // segment is gone. "." and ".." are dot segments: whoever receives one removes
 // it or resolves it against the segment before, and no escape hides it.
+// Only the part before ";" counts: normalizing writes "..%3B" as "..;", and
+// servlet containers such as Tomcat strip ";" parameters before resolving dots.
 func cannotFillSegment(val string) bool {
-	return val == "" || val == "." || val == ".."
+	name, _, _ := strings.Cut(val, ";")
+	return name == "" || name == "." || name == ".."
 }
 
 // hasSeparator reports whether val holds a byte that ends its segment once
@@ -363,6 +366,10 @@ func lookupPathParam(name string, sources []PathParam) (string, bool) {
 func parserRequestHeader(c *Client, req *Request) error {
 	// Set HTTP method.
 	req.RawRequest.Header.SetMethod(req.Method())
+
+	// RawRequest outlives a send: the jar's cookies for the previous URL must not
+	// follow it to another host. A Cookie header from SetHeader is merged below.
+	req.RawRequest.Header.DelAllCookies()
 
 	// Merge headers from the client, clearing each key first so a resend does not accumulate values.
 	for key := range c.header.All() {

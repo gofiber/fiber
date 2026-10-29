@@ -845,6 +845,105 @@ func init() {
 					{url: "/x/b/a/", params: nil, match: false},
 				},
 			},
+			// a prefix's greedy parameter ends before the last constant that ends a segment;
+			// an endpoint keeps the guess
+			{
+				pattern: "/api/*/admin",
+				testCases: []routeTestCase{
+					{url: "/api/acme/admin", params: []string{"acme"}, match: true, partialCheck: true},
+					{url: "/api/acme/admin/users", params: []string{"acme"}, match: true, partialCheck: true},
+					{url: "/api/acme/admin/admins", params: []string{"acme"}, match: true, partialCheck: true},
+					{url: "/api/acme/admin/admin-settings", params: []string{"acme"}, match: true, partialCheck: true},
+					{url: "/api/acme/admin/users/admin.json", params: []string{"acme"}, match: true, partialCheck: true},
+					{url: "/api/a/admin/b/admin/c", params: []string{"a/admin/b"}, match: true, partialCheck: true},
+					{url: "/api/acme/admin/x/admin/admins", params: []string{"acme/admin/x"}, match: true, partialCheck: true},
+					{url: "/api//admin/x", params: []string{""}, match: true, partialCheck: true},
+					{url: "/api/acme/admins/admins", params: nil, match: false, partialCheck: true},
+					{url: "/api/acme/admin.json", params: nil, match: false, partialCheck: true},
+					{url: "/api/acme/admin/x/admin", params: []string{"acme/admin/x"}, match: true},
+					{url: "/api/acme/admin/admins", params: nil, match: false},
+				},
+			},
+			{
+				pattern: "/api/+/admin",
+				testCases: []routeTestCase{
+					{url: "/api/acme/admin/admins", params: []string{"acme"}, match: true, partialCheck: true},
+					{url: "/api/admin/admin/admins", params: []string{"admin"}, match: true, partialCheck: true},
+					{url: "/api//admin/admins", params: nil, match: false, partialCheck: true},
+				},
+			},
+			{
+				pattern: "/files/*.json",
+				testCases: []routeTestCase{
+					{url: "/files/a.json/b.json.bak", params: []string{"a"}, match: true, partialCheck: true},
+					{url: "/files/a/b.json", params: []string{"a/b"}, match: true, partialCheck: true},
+					{url: "/files/a.json.bak", params: nil, match: false, partialCheck: true},
+				},
+			},
+			{
+				// two wildcards keep the guess
+				pattern: "/api/*/x/*/admin",
+				testCases: []routeTestCase{
+					{url: "/api/a/x/b/admin/c", params: []string{"a", "b"}, match: true, partialCheck: true},
+					{url: "/api/a/x/b/admin/admins", params: nil, match: false, partialCheck: true},
+				},
+			},
+			// a prefix's plain parameter ends where the constant after it ends the segment;
+			// an endpoint keeps the first match
+			{
+				pattern: "/files/:name.json",
+				testCases: []routeTestCase{
+					{url: "/files/a.json", params: []string{"a"}, match: true, partialCheck: true},
+					{url: "/files/a.json/raw", params: []string{"a"}, match: true, partialCheck: true},
+					{url: "/files/a.json.json/raw", params: []string{"a.json"}, match: true, partialCheck: true},
+					{url: "/files/a.json.json", params: []string{"a.json"}, match: true, partialCheck: true},
+					{url: "/files/a.jsonx/raw", params: nil, match: false, partialCheck: true},
+					{url: "/files/.json/raw", params: nil, match: false, partialCheck: true},
+					{url: "/files/a/b.json", params: nil, match: false, partialCheck: true},
+					{url: "/files/a.json.json", params: nil, match: false},
+				},
+			},
+			{
+				pattern: "/admin/:v.",
+				testCases: []routeTestCase{
+					{url: "/admin/a.b./x", params: []string{"a.b"}, match: true, partialCheck: true},
+					{url: "/admin/a.b/x", params: nil, match: false, partialCheck: true},
+					// a one-byte constant still lets the parameter cross a '/', as on the endpoint
+					{url: "/admin/a/b./x", params: []string{"a/b"}, match: true, partialCheck: true},
+					{url: "/admin/a/b.", params: []string{"a/b"}, match: true},
+				},
+			},
+			{
+				pattern: "/v1/:id/x:v-x",
+				testCases: []routeTestCase{
+					{url: "/v1/7/xa-x-x/y", params: []string{"7", "a-x"}, match: true, partialCheck: true},
+				},
+			},
+			// other shapes keep the first match
+			{
+				pattern: "/files/:name<minLen(2)>.json",
+				testCases: []routeTestCase{
+					{url: "/files/ab.json.json/raw", params: nil, match: false, partialCheck: true},
+				},
+			},
+			{
+				pattern: "/files/:name?.json",
+				testCases: []routeTestCase{
+					{url: "/files/a.json.json/raw", params: nil, match: false, partialCheck: true},
+				},
+			},
+			{
+				pattern: "/files/:a-:b.json",
+				testCases: []routeTestCase{
+					{url: "/files/x-a.json.json/raw", params: nil, match: false, partialCheck: true},
+				},
+			},
+			{
+				pattern: "/files/*/:name.json",
+				testCases: []routeTestCase{
+					{url: "/files/x/a.json.json", params: nil, match: false, partialCheck: true},
+				},
+			},
 		}...,
 	)
 }

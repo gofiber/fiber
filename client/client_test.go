@@ -31,6 +31,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (app *fiber.App, addr string) { //nolint:nonamedreturns // gocritic unnamedResult requires explicit result names for clarity when returning app and address
@@ -1489,6 +1490,15 @@ func Test_Client_Header(t *testing.T) {
 		require.Equal(t, "fiber", res[0])
 	})
 
+	t.Run("set header overrides every value", func(t *testing.T) {
+		t.Parallel()
+		req := New()
+		req.AddHeaders(map[string][]string{"foo": {"bar", "buaa"}, "bar": {"foo"}}).SetHeader("foo", "fiber")
+
+		require.Equal(t, []string{"fiber"}, req.Header("foo"))
+		require.Equal(t, []string{"foo"}, req.Header("bar"))
+	})
+
 	t.Run("add headers", func(t *testing.T) {
 		t.Parallel()
 		req := New()
@@ -1812,6 +1822,25 @@ func Test_Client_QueryParam(t *testing.T) {
 		res := req.Param("foo")
 		require.Len(t, res, 1)
 		require.Equal(t, "fiber", res[0])
+	})
+
+	t.Run("set param overrides every value", func(t *testing.T) {
+		t.Parallel()
+		req := New()
+		req.AddParams(map[string][]string{"foo": {"bar", "buaa"}, "bar": {"foo"}}).SetParam("foo", "fiber")
+
+		require.Equal(t, []string{"fiber"}, req.Param("foo"))
+		require.Equal(t, []string{"foo"}, req.Param("bar"))
+	})
+
+	t.Run("set params overrides every value", func(t *testing.T) {
+		t.Parallel()
+		req := New()
+		req.AddParams(map[string][]string{"foo": {"bar", "buaa"}, "bar": {"foo"}}).
+			SetParams(map[string]string{"foo": "fiber"})
+
+		require.Equal(t, []string{"fiber"}, req.Param("foo"))
+		require.Equal(t, []string{"foo"}, req.Param("bar"))
 	})
 
 	t.Run("add params", func(t *testing.T) {
@@ -2679,6 +2708,85 @@ func Test_Client_StreamResponseBody(t *testing.T) {
 	})
 }
 
+func Test_Client_MaxResponseBodySize(t *testing.T) {
+	t.Parallel()
+
+	// answerWith serves response on every connection after reading the request.
+	answerWith := func(t *testing.T, response string) fasthttp.DialFunc {
+		t.Helper()
+
+		ln := fasthttputil.NewInmemoryListener()
+		t.Cleanup(func() { require.NoError(t, ln.Close()) })
+		go func() {
+			for {
+				conn, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				_, err = conn.Read(make([]byte, 4096))
+				assert.NoError(t, err)
+				_, err = conn.Write([]byte(response))
+				assert.NoError(t, err)
+				assert.NoError(t, conn.Close())
+			}
+		}()
+		return func(string) (net.Conn, error) { return ln.Dial() }
+	}
+
+	t.Run("a new client refuses a declared size over the limit", func(t *testing.T) {
+		t.Parallel()
+
+		over := defaultMaxResponseBodySize + 1
+		for _, response := range []string{
+			"HTTP/1.1 200 OK\r\nContent-Length: " + strconv.Itoa(over) + "\r\n\r\nok",
+			"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + strconv.FormatInt(int64(over), 16) + "\r\nok",
+		} {
+			client := New().SetDial(answerWith(t, response))
+			require.Equal(t, defaultMaxResponseBodySize, client.MaxResponseBodySize())
+
+			_, err := client.Get("http://example.com/")
+			require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+		}
+	})
+
+	t.Run("the limit can be set and Reset restores it", func(t *testing.T) {
+		t.Parallel()
+
+		dial := answerWith(t, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello")
+
+		_, err := New().SetDial(dial).SetMaxResponseBodySize(4).Get("http://example.com/")
+		require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+
+		client := New().SetDial(dial).SetMaxResponseBodySize(5)
+		resp, err := client.Get("http://example.com/")
+		require.NoError(t, err)
+		require.Equal(t, "hello", resp.String())
+		resp.Close()
+
+		client.SetMaxResponseBodySize(0).Reset()
+		require.Equal(t, defaultMaxResponseBodySize, client.MaxResponseBodySize())
+	})
+
+	t.Run("a wrapped client keeps its own setting", func(t *testing.T) {
+		t.Parallel()
+
+		host := &fasthttp.HostClient{Addr: "example.com:80"}
+		first := &fasthttp.HostClient{Addr: "example.com:80"}
+		second := &fasthttp.HostClient{Addr: "example.org:80"}
+		for _, client := range []*Client{
+			NewWithClient(&fasthttp.Client{}),
+			NewWithHostClient(host),
+			NewWithLBClient(&fasthttp.LBClient{Clients: []fasthttp.BalancingClient{first, second}}),
+		} {
+			require.Zero(t, client.MaxResponseBodySize())
+			require.Equal(t, 7, client.SetMaxResponseBodySize(7).MaxResponseBodySize())
+		}
+		require.Equal(t, 7, host.MaxResponseBodySize)
+		require.Equal(t, 7, first.MaxResponseBodySize)
+		require.Equal(t, 7, second.MaxResponseBodySize)
+	})
+}
+
 func Test_Client_UnparsableCookieAttributesIgnored(t *testing.T) {
 	t.Parallel()
 
@@ -3179,6 +3287,83 @@ func Test_Request_Resend_DoesNotAccumulateHeaders(t *testing.T) {
 		require.Equal(t, "1", resp.String(), "each send must carry the header once")
 		resp.Close()
 	}
+}
+
+func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/login", func(c fiber.Ctx) error {
+			c.Cookie(&fiber.Cookie{Name: "sid", Value: "secret", Path: "/"})
+			return c.SendStatus(fiber.StatusNoContent)
+		})
+		app.Get("/logout", func(c fiber.Ctx) error {
+			c.Cookie(&fiber.Cookie{Name: "sid", Path: "/", MaxAge: -1})
+			return c.SendStatus(fiber.StatusNoContent)
+		})
+		app.Get("/cookies", func(c fiber.Ctx) error {
+			return c.SendString(c.Get(fiber.HeaderCookie))
+		})
+	})
+	t.Cleanup(server.stop)
+
+	send := func(t *testing.T, req *Request, url string) string {
+		t.Helper()
+		resp, err := req.Get(url)
+		require.NoError(t, err)
+		defer resp.Close()
+		return resp.String()
+	}
+
+	t.Run("a jar cookie does not follow the request to another host", func(t *testing.T) {
+		t.Parallel()
+
+		jar := AcquireCookieJar()
+		defer ReleaseCookieJar(jar)
+		req := AcquireRequest().SetClient(New().SetDial(server.dial()).SetCookieJar(jar))
+		defer ReleaseRequest(req)
+
+		send(t, req, "http://a.example/login")
+		require.Equal(t, "sid=secret", send(t, req, "http://a.example/cookies"))
+		require.Empty(t, send(t, req, "http://b.example/cookies"))
+	})
+
+	t.Run("a jar cookie the server expired is not sent again", func(t *testing.T) {
+		t.Parallel()
+
+		jar := AcquireCookieJar()
+		defer ReleaseCookieJar(jar)
+		req := AcquireRequest().SetClient(New().SetDial(server.dial()).SetCookieJar(jar))
+		defer ReleaseRequest(req)
+
+		send(t, req, "http://a.example/login")
+		send(t, req, "http://a.example/logout")
+		require.Empty(t, send(t, req, "http://a.example/cookies"))
+	})
+
+	t.Run("a deleted cookie is not sent again", func(t *testing.T) {
+		t.Parallel()
+
+		client := New().SetDial(server.dial()).SetCookie("a", "1")
+		req := AcquireRequest().SetClient(client).SetCookie("b", "2")
+		defer ReleaseRequest(req)
+
+		require.Equal(t, "a=1; b=2", send(t, req, "http://a.example/cookies"))
+		require.Equal(t, "a=1", send(t, req.DelCookies("b"), "http://a.example/cookies"))
+		client.DelCookies("a")
+		require.Empty(t, send(t, req, "http://a.example/cookies"))
+	})
+
+	t.Run("a Cookie header set on the request is kept", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest().SetClient(New().SetDial(server.dial())).SetHeader(fiber.HeaderCookie, "a=1")
+		defer ReleaseRequest(req)
+
+		for range 2 {
+			require.Equal(t, "a=1", send(t, req, "http://a.example/cookies"))
+		}
+	})
 }
 
 func Test_Client_UppercaseScheme(t *testing.T) {

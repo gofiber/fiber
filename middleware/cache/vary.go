@@ -8,6 +8,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3/internal/headerlist"
@@ -126,12 +127,29 @@ func varyKey(base string, names []string, hdr *fasthttp.RequestHeader, normalize
 	return key
 }
 
+// lookupHeaders pools the copies of the request headers a miss keeps while the handler runs.
+var lookupHeaders = sync.Pool{New: func() any { return new(fasthttp.RequestHeader) }}
+
+func acquireLookupHeader(src *fasthttp.RequestHeader) *fasthttp.RequestHeader {
+	h, ok := lookupHeaders.Get().(*fasthttp.RequestHeader)
+	if !ok {
+		h = new(fasthttp.RequestHeader)
+	}
+	src.CopyTo(h)
+	return h
+}
+
 func storeVaryManifest(ctx context.Context, manager *manager, manifestKey string, names []string, exp time.Duration) error {
 	if len(names) == 0 {
 		return nil
 	}
-	data := strings.Join(names, ",")
-	return manager.setRaw(ctx, manifestKey, utils.UnsafeBytes(data), exp)
+	data := utils.UnsafeBytes(strings.Join(names, ","))
+	// A lone lower-case name still views the response header, and a Storage may
+	// keep the slice; the in-memory store copies on Set.
+	if manager.storage != nil {
+		data = utils.CopyBytes(data)
+	}
+	return manager.setRaw(ctx, manifestKey, data, exp)
 }
 
 //nolint:gocritic // returning explicit values keeps the signature concise while avoiding unnecessary named results

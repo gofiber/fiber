@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 )
 
 // Logger variables
@@ -163,6 +164,9 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			if data.timeoutResp != nil {
 				return 0, nil
 			}
+			if err := bufferBodyStream(c); err != nil {
+				return writeSanitizedString(output, err.Error())
+			}
 			res := c.Res()
 			if res.Written() {
 				return writeSanitized(output, c.Body())
@@ -274,6 +278,13 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		TagForm: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
 			if data.timeoutResp != nil {
 				return 0, nil
+			}
+			if req := c.Request(); req.IsBodyStream() {
+				// Only a form body is a FormValue source; past BodyLimit just the query string is left.
+				ct := req.Header.ContentType()
+				if (mediatype.IsForm(ct) || mediatype.ParsesPostArgs(ct)) && bufferBodyStream(c) != nil {
+					return writeSanitizedString(output, c.Query(extraParam))
+				}
 			}
 			return writeSanitizedString(output, c.FormValue(extraParam))
 		},

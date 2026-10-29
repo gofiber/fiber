@@ -6,13 +6,13 @@ import (
 	"maps"
 	"mime/multipart"
 	"reflect"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/gofiber/schema"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -351,7 +351,7 @@ func Test_decoderBuilder(t *testing.T) {
 		ZeroEmpty:         false,
 	}
 	decAny := decoderBuilder(bindingForm, parserConfig)
-	dec, ok := decAny.(*schema.Decoder)
+	dec, ok := decAny.(*pooledDecoder)
 	require.True(t, ok)
 	var out struct {
 		X customInt `custom:"x"`
@@ -387,7 +387,7 @@ func Test_decoderPoolMapInit(t *testing.T) {
 
 	for _, tag := range tags {
 		decAny := getDecoderPool(tag).Get()
-		dec, ok := decAny.(*schema.Decoder)
+		dec, ok := decAny.(*pooledDecoder)
 		require.True(t, ok)
 		require.NotNil(t, dec)
 		getDecoderPool(tag).Put(decAny)
@@ -1001,6 +1001,43 @@ func Test_Bind_StringMap_KeepsLastValue(t *testing.T) {
 	}
 }
 
+func Test_Bind_Splitting_KeepsElementWhitespace(t *testing.T) {
+	t.Parallel()
+
+	// Only the header binders read a value as an HTTP list and trim its
+	// elements; these keep each element as written.
+	type Data struct {
+		IDs []string `query:"ids" form:"ids" cookie:"ids"`
+	}
+
+	binders := []struct {
+		bind func(out any) error
+		name string
+	}{
+		{name: "query", bind: func(out any) error {
+			req := &fasthttp.Request{}
+			req.URI().SetQueryString("ids=a,%20b")
+			return (&QueryBinding{EnableSplitting: true}).Bind(req, out)
+		}},
+		{name: "form", bind: func(out any) error {
+			req := &fasthttp.Request{}
+			req.Header.SetContentType("application/x-www-form-urlencoded")
+			req.SetBodyString("ids=a,%20b")
+			return (&FormBinding{EnableSplitting: true}).Bind(req, out)
+		}},
+		{name: "cookie", bind: func(out any) error {
+			req := &fasthttp.Request{}
+			req.Header.Set(fasthttp.HeaderCookie, "ids=a, b")
+			return (&CookieBinding{EnableSplitting: true}).Bind(req, out)
+		}},
+	}
+	for _, b := range binders {
+		var data Data
+		require.NoError(t, b.bind(&data), b.name)
+		require.Equal(t, []string{"a", " b"}, data.IDs, b.name)
+	}
+}
+
 // Test_Bind_StringMap_Destinations pins how a bind into a map[string]string
 // treats its destination, as parseToMap and parse do: a map given by value is
 // filled, a nil one given by value is an error, a pointer to a nil map gets
@@ -1043,4 +1080,572 @@ func Test_tagIndex_MatchesTags(t *testing.T) {
 	}
 	require.Equal(t, -1, tagIndex("unknown"))
 	require.Panics(t, func() { getDecoderPool("unknown") })
+}
+
+func Test_CheckKeyDepth(t *testing.T) {
+	t.Parallel()
+
+	atLimit := strings.Repeat("a.", maxKeySegments-1) + "a"
+	require.NoError(t, checkKeyDepth(atLimit))
+	require.ErrorIs(t, checkKeyDepth(atLimit+".a"), ErrKeyTooDeep)
+	require.ErrorIs(t, checkKeyDepth(strings.Repeat(".", maxKeySegments)), ErrKeyTooDeep)
+
+	key, err := bindKey(atLimit+"[a]", true)
+	require.NoError(t, err)
+	require.ErrorIs(t, checkKeyDepth(key), ErrKeyTooDeep)
+}
+
+// The decoding cost of these types grows with the depth of a key.
+type depthTree struct {
+	Name     string
+	Children []depthTree
+}
+
+type depthChain struct {
+	Parent *depthChain `form:"parent"`
+	Text   string      `form:"text,default:none"`
+}
+
+// Two self pointers: every index-free chain reaches a fresh phones slice.
+type fanOutPerson struct {
+	Mother *fanOutPerson `form:"mother"`
+	Father *fanOutPerson `form:"father"`
+	Phones []fanOutPhone `form:"phones"`
+}
+
+type fanOutPhone struct {
+	Number string `form:"number"`
+}
+
+type stockVariant struct {
+	Stock map[string]int `form:"stock"`
+	SKU   string         `form:"sku"`
+}
+
+type stockProduct struct {
+	Variants []stockVariant `form:"variants"`
+}
+
+type depthRequired struct {
+	A string `form:"a,required"`
+	B string `form:"b,required"`
+	C string `form:"c,required"`
+	D string `form:"d,required"`
+	E string `form:"e,required"`
+	F string `form:"f,required"`
+	G string `form:"g,required"`
+	H string `form:"h,required"`
+	I string `form:"i,required"`
+}
+
+func bindFormBody(t *testing.T, body string, out any) error {
+	t.Helper()
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	req.Header.SetContentType("application/x-www-form-urlencoded")
+	req.SetBodyString(body)
+	return (&FormBinding{}).Bind(req, out)
+}
+
+func Test_FormBinder_KeyDepthLimit(t *testing.T) {
+	t.Parallel()
+
+	// "children.0." is two segments, so these keys have 63 and 65.
+	const levels = (maxKeySegments - 1) / 2
+
+	t.Run("self-referencing slice", func(t *testing.T) {
+		t.Parallel()
+		root := new(depthTree)
+		require.NoError(t, bindFormBody(t, strings.Repeat("children.0.", levels)+"name=x", root))
+		leaf := root
+		for range levels {
+			require.Len(t, leaf.Children, 1)
+			leaf = &leaf.Children[0]
+		}
+		require.Equal(t, "x", leaf.Name)
+		require.ErrorIs(t, bindFormBody(t, strings.Repeat("children.0.", levels+1)+"name=x", new(depthTree)), ErrKeyTooDeep)
+
+		deep := strings.Repeat("children.0.", levels+1) + "name"
+		m := make(map[string]string)
+		require.NoError(t, bindFormBody(t, deep+"=x", &m))
+		require.Equal(t, map[string]string{deep: "x"}, m)
+	})
+
+	t.Run("self-referencing pointer with a default", func(t *testing.T) {
+		t.Parallel()
+		root := new(depthChain)
+		require.NoError(t, bindFormBody(t, strings.Repeat("parent.", maxKeySegments-1)+"text=x", root))
+		leaf := root
+		for range maxKeySegments - 1 {
+			require.NotNil(t, leaf.Parent)
+			leaf = leaf.Parent
+		}
+		require.Equal(t, "x", leaf.Text)
+		require.ErrorIs(t, bindFormBody(t, strings.Repeat("parent.", maxKeySegments)+"text=x", new(depthChain)), ErrKeyTooDeep)
+	})
+
+	t.Run("required keys left out", func(t *testing.T) {
+		t.Parallel()
+		err := bindFormBody(t, strings.Repeat("x.", maxKeySegments-1)+"x=1", new(depthRequired))
+		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrKeyTooDeep)
+		require.ErrorIs(t, bindFormBody(t, strings.Repeat("x.", maxKeySegments)+"x=1", new(depthRequired)), ErrKeyTooDeep)
+	})
+}
+
+func Test_Binders_KeyDepthLimit(t *testing.T) {
+	t.Parallel()
+
+	const levels = (maxKeySegments - 1) / 2
+	dotted := func(n int) string { return strings.Repeat("children.0.", n) + "name" }
+
+	multipartReq := func(t *testing.T, key string, file bool) *fasthttp.Request {
+		t.Helper()
+		body := new(bytes.Buffer)
+		mw := multipart.NewWriter(body)
+		if file {
+			w, err := mw.CreateFormFile(key, "x.txt")
+			require.NoError(t, err)
+			_, err = w.Write([]byte("x"))
+			require.NoError(t, err)
+		} else {
+			require.NoError(t, mw.WriteField(key, "x"))
+		}
+		require.NoError(t, mw.Close())
+		req := fasthttp.AcquireRequest()
+		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+		req.Header.SetContentType(mw.FormDataContentType())
+		req.SetBody(body.Bytes())
+		return req
+	}
+	newReq := func(t *testing.T) *fasthttp.Request {
+		t.Helper()
+		req := fasthttp.AcquireRequest()
+		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+		return req
+	}
+
+	sources := map[string]func(t *testing.T, n int, out any) error{
+		"multipart value": func(t *testing.T, n int, out any) error {
+			t.Helper()
+			return (&FormBinding{}).Bind(multipartReq(t, dotted(n), false), out)
+		},
+		"multipart file": func(t *testing.T, n int, out any) error {
+			t.Helper()
+			return (&FormBinding{}).Bind(multipartReq(t, dotted(n), true), out)
+		},
+		"query": func(t *testing.T, n int, out any) error {
+			t.Helper()
+			req := newReq(t)
+			req.URI().SetQueryString("children" + strings.Repeat("[0][children]", n-1) + "[0][name]=x")
+			return (&QueryBinding{}).Bind(req, out)
+		},
+		"header": func(t *testing.T, n int, out any) error {
+			t.Helper()
+			req := newReq(t)
+			req.Header.Set(dotted(n), "x")
+			return (&HeaderBinding{}).Bind(req, out)
+		},
+		"cookie": func(t *testing.T, n int, out any) error {
+			t.Helper()
+			req := newReq(t)
+			req.Header.SetCookie(dotted(n), "x")
+			return (&CookieBinding{}).Bind(req, out)
+		},
+	}
+	for name, bind := range sources {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			require.NoError(t, bind(t, levels, new(depthTree)))
+			require.ErrorIs(t, bind(t, levels+1, new(depthTree)), ErrKeyTooDeep)
+
+			// A map destination is filled without the decoder, so its keys are not limited.
+			m := make(map[string][]string)
+			require.NoError(t, bind(t, levels+1, &m))
+			if name != "multipart file" {
+				require.Len(t, m, 1)
+			}
+		})
+	}
+}
+
+func Test_PooledDecoder_KeyBudget(t *testing.T) {
+	t.Parallel()
+
+	type item struct {
+		SKU string `form:"sku"`
+	}
+	type order struct {
+		Items []item `form:"items"`
+	}
+	type cart struct {
+		Items []item `form:"items"`
+	}
+
+	t.Run("repeated keys", func(t *testing.T) {
+		t.Parallel()
+		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
+		require.True(t, ok)
+		for range 10_000 {
+			require.NoError(t, d.admit(new(order), "items.0.sku"))
+			require.NoError(t, d.admit(new(order), "name"))
+		}
+		require.Equal(t, cachedKeyBytes("items.0.sku"), d.keyBytes)
+	})
+
+	t.Run("per destination type", func(t *testing.T) {
+		t.Parallel()
+		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
+		require.True(t, ok)
+		for _, out := range []any{new(order), new(cart), new(order)} {
+			require.NoError(t, d.admit(out, "items.0.sku"))
+			putDecoder(&sync.Pool{}, d)
+		}
+		require.Equal(t, 2*cachedKeyBytes("items.0.sku"), d.keyBytes)
+	})
+
+	t.Run("table form stays pooled", func(t *testing.T) {
+		t.Parallel()
+		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
+		require.True(t, ok)
+		out := new(order)
+		for row := range 400 {
+			for field := range 10 {
+				require.NoError(t, d.admit(out, "items."+strconv.Itoa(row)+".field"+strconv.Itoa(field)))
+			}
+		}
+		require.LessOrEqual(t, d.keyBytes, maxDecoderKeyBytes)
+	})
+
+	// Every key is a new spelling of one of 1000 items, as a client choosing them would send.
+	perBind := maxDecoderKeyBytes/cachedKeyBytes("items.0.sku") + 1
+	keys := make([]string, 0, perBind)
+	for n := range perBind {
+		keys = append(keys, "items."+strings.Repeat("0", n/1000)+strconv.Itoa(n%1000)+".sku")
+	}
+	values := slices.Repeat([]string{"a"}, len(keys))
+	data := make(map[string][]string, len(keys))
+	files := make(map[string][]*multipart.FileHeader, len(keys))
+	for _, key := range keys {
+		data[key] = []string{"a"}
+		files[key] = nil
+	}
+
+	for name, decode := range map[string]func(out any) error{
+		"pairs": func(out any) error { return parseValuesToStruct(bindingForm, out, keys, values) },
+		"map":   func(out any) error { return parseToStruct(bindingForm, out, data) },
+		"files": func(out any) error { return parseToStruct(bindingForm, out, nil, files) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			pool := getDecoderPool(bindingForm)
+			// Under the race detector a sync.Pool drops some of what it is given.
+			for range 8 {
+				out := new(order)
+				require.NoError(t, decode(out))
+				require.Len(t, out.Items, 1000)
+				dec, ok := pool.Get().(*pooledDecoder)
+				require.True(t, ok)
+				require.LessOrEqual(t, dec.keyBytes, maxDecoderKeyBytes)
+				pool.Put(dec)
+			}
+		})
+	}
+}
+
+// respell sets the case of the letters of key from the bits of n.
+func respell(key string, n int) string {
+	b := []byte(key)
+	for i, bit := 0, 0; i < len(b); i++ {
+		if b[i] >= 'a' && b[i] <= 'z' {
+			if n&(1<<bit) != 0 {
+				b[i] -= 'a' - 'A'
+			}
+			bit++
+		}
+	}
+	return string(b)
+}
+
+func liveHeap() uint64 {
+	// revive:disable-next-line:call-to-gc // only a collection leaves the live heap to read
+	runtime.GC()
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.HeapAlloc
+}
+
+// Sequential: it reads the live heap, which parallel tests would disturb.
+func Test_CachedKeyBytes_CoversSchemaCache(t *testing.T) {
+	type chain struct {
+		Parent *chain `form:"parent"`
+		Text   string `form:"text"`
+	}
+	type item struct {
+		SKU string `form:"sku"`
+	}
+	type order struct {
+		Items []item `form:"items"`
+	}
+
+	for name, tc := range map[string]struct {
+		out func() any
+		key func(n int) string
+	}{
+		"shallow": {
+			out: func() any { return new(order) },
+			key: func(n int) string { return respell("items."+strconv.Itoa(n%1000)+".sku", n/1000) },
+		},
+		"deep": {
+			out: func() any { return new(chain) },
+			key: func(n int) string { return respell(strings.Repeat("parent.", maxKeySegments-1)+"text", n) },
+		},
+	} {
+		d, ok := decoderBuilder(bindingForm, ParserConfig{IgnoreUnknownKeys: true}).(*pooledDecoder)
+		require.True(t, ok)
+		decode := func(key string) {
+			require.NoError(t, d.admit(tc.out(), key))
+			require.NoError(t, d.DecodeValues(tc.out(), []string{key}, []string{"x"}))
+			putDecoder(&sync.Pool{}, d)
+		}
+		decode(tc.key(0))
+		charged, before := d.keyBytes, liveHeap()
+		for n := 1; n <= 500; n++ {
+			decode(tc.key(n))
+		}
+		require.LessOrEqual(t, int64(liveHeap())-int64(before), int64(d.keyBytes-charged), name)
+		runtime.KeepAlive(d)
+	}
+}
+
+func Test_BindShape_Elements(t *testing.T) {
+	t.Parallel()
+
+	acyclic := bindShape{elemSize: 1}
+	cyclic := bindShape{elemSize: 1, cyclic: true}
+	for key, want := range map[string][2]int{
+		"name":                      {0, 0},
+		"items.5.sku":               {0, 0},
+		"items.5.variants.7.sku":    {8, 8},
+		"items.0.variants.+3.sku":   {4, 4},
+		"items.0.variants.-0.sku":   {1, 1},
+		"items.0.variants.-1.sku":   {0, 0},
+		"items.0.variants.3x.sku":   {0, 0},
+		"items.0.variants.5000.sku": {maxSliceIndex + 1, maxSliceIndex + 1},
+		"attrs.7":                   {0, 0},
+		"5.x.6":                     {0, 7},
+		"a..0.b.2":                  {3, 4},
+		"billing.lines.5.sku":       {0, 6},
+
+		"mother.father.phones.1000.number":            {0, maxSliceIndex + 1},
+		"children.0.children.1000.children.1000.name": {2 * (maxSliceIndex + 1), 2 * (maxSliceIndex + 1)},
+	} {
+		require.Equal(t, want[0], acyclic.elements(key), key)
+		require.Equal(t, want[1], cyclic.elements(key), key)
+	}
+	require.Zero(t, bindShape{cyclic: true}.elements("a.b.0.c.5"))
+
+	prefixes := map[string]int{}
+	for end, n := range cyclic.indexes("a.b.10.c.5.d") {
+		prefixes["a.b.10.c.5.d"[:end]] = n
+	}
+	require.Equal(t, map[string]int{"a.b.10": 11, "a.b.10.c.5": 6}, prefixes)
+}
+
+func Test_ShapeOf(t *testing.T) {
+	t.Parallel()
+
+	type item struct{ SKU string }
+	type group struct{ Items []item }
+	itemSize := reflect.TypeFor[item]().Size()
+	for name, tc := range map[string]struct {
+		typ  reflect.Type
+		want bindShape
+	}{
+		"slice in a slice element":  {reflect.TypeFor[*struct{ Groups []group }](), bindShape{elemSize: itemSize}},
+		"pointer elements":          {reflect.TypeFor[*struct{ Groups []struct{ Items []*item } }](), bindShape{elemSize: reflect.TypeFor[*item]().Size() + itemSize}},
+		"slice in an array element": {reflect.TypeFor[*struct{ Groups [][2]group }](), bindShape{elemSize: itemSize}},
+		"recursive slice":           {reflect.TypeFor[depthTree](), bindShape{elemSize: reflect.TypeFor[depthTree]().Size()}},
+		"recursive pointers":        {reflect.TypeFor[*fanOutPerson](), bindShape{elemSize: reflect.TypeFor[fanOutPhone]().Size(), cyclic: true}},
+		"recursive without slices":  {reflect.TypeFor[*depthChain](), bindShape{cyclic: true}},
+		"root slice":                {reflect.TypeFor[*struct{ Items []item }](), bindShape{}},
+		"slice in a struct field":   {reflect.TypeFor[*struct{ Billing, Shipping *group }](), bindShape{}},
+		"map in a slice element":    {reflect.TypeFor[*stockProduct](), bindShape{}},
+		"slice in a map value":      {reflect.TypeFor[*struct{ M map[string]group }](), bindShape{}},
+		"not a struct":              {reflect.TypeFor[*map[string]string](), bindShape{}},
+		"nil":                       {nil, bindShape{}},
+	} {
+		require.Equal(t, tc.want, shapeOf(tc.typ), name)
+	}
+}
+
+func Test_PooledDecoder_ElementBudget(t *testing.T) {
+	t.Parallel()
+
+	// Each key grows a depthTree slice of 1001 elements below its first index.
+	fit := maxNestedBytes / ((maxSliceIndex + 1) * int(reflect.TypeFor[depthTree]().Size()))
+	keys := make([]string, 0, fit+1)
+	for i := range fit + 1 {
+		keys = append(keys, "children."+strconv.Itoa(i)+".children.1000.name")
+	}
+	out := new(depthTree)
+	d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
+	require.True(t, ok)
+	for _, key := range keys[:fit] {
+		require.NoError(t, d.admit(out, key))
+	}
+	require.NoError(t, d.checkElements(slices.Values(keys[:fit])))
+	require.NoError(t, d.admit(out, keys[fit]))
+	require.ErrorIs(t, d.checkElements(slices.Values(keys)), ErrTooManyElements)
+
+	// The budget is per bind.
+	putDecoder(&sync.Pool{}, d)
+	require.NoError(t, d.admit(out, keys[0]))
+	require.NoError(t, d.checkElements(slices.Values(keys[:1])))
+	putDecoder(&sync.Pool{}, d)
+
+	// The fields of one element share its index.
+	var fields []string
+	for i := range fit {
+		for _, f := range []string{"name", "a", "b", "c"} {
+			fields = append(fields, "children."+strconv.Itoa(i)+".children.1000."+f)
+		}
+	}
+	for _, key := range fields {
+		require.NoError(t, d.admit(out, key))
+	}
+	require.Greater(t, d.elements, maxNestedBytes/int(d.bound.shape.elemSize))
+	require.NoError(t, d.checkElements(slices.Values(fields)))
+}
+
+type catalogVariant struct {
+	SKU      string `form:"sku"`
+	Name     string `form:"name"`
+	Color    string `form:"color"`
+	Size     string `form:"size"`
+	Material string `form:"material"`
+	Pattern  string `form:"pattern"`
+	Brand    string `form:"brand"`
+	Model    string `form:"model"`
+	EAN      string `form:"ean"`
+	UPC      string `form:"upc"`
+}
+
+var catalogFields = []string{"sku", "name", "color", "size", "material", "pattern", "brand", "model", "ean", "upc"}
+
+type catalogLine struct {
+	Variants []catalogVariant `form:"variants"`
+}
+
+type catalog struct {
+	Lines []catalogLine `form:"lines"`
+}
+
+func Test_FormBinder_NestedElementLimit(t *testing.T) {
+	t.Parallel()
+
+	root := new(depthTree)
+	require.NoError(t, bindFormBody(t, "children.1.children.2.name=x", root))
+	require.Len(t, root.Children, 2)
+	require.Len(t, root.Children[1].Children, 3)
+	require.Equal(t, "x", root.Children[1].Children[2].Name)
+
+	// Each key grows 30 slices of 1001 elements below its first index.
+	keys := maxNestedBytes/(30*(maxSliceIndex+1)*int(reflect.TypeFor[depthTree]().Size())) + 1
+	pairs := make([]string, 0, keys)
+	for k := range keys {
+		pairs = append(pairs, "children."+strconv.Itoa(k)+strings.Repeat(".children.1000", 30)+".name=x")
+	}
+	body := strings.Join(pairs, "&")
+	require.ErrorIs(t, bindFormBody(t, body, new(depthTree)), ErrTooManyElements)
+
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	req.URI().SetQueryString(body)
+	require.ErrorIs(t, (&QueryBinding{}).Bind(req, new(depthTree)), ErrTooManyElements)
+
+	person := new(fanOutPerson)
+	require.NoError(t, bindFormBody(t, "mother.father.phones.1.number=x", person))
+	require.Len(t, person.Mother.Father.Phones, 2)
+	require.Equal(t, "x", person.Mother.Father.Phones[1].Number)
+
+	chains := make([]string, 0, maxNestedBytes/((maxSliceIndex+1)*int(reflect.TypeFor[fanOutPhone]().Size()))+1)
+	for i := 2; len(chains) < cap(chains); i++ {
+		var hops []string
+		for j := i; j > 1; j >>= 1 {
+			hops = append(hops, [...]string{"mother", "father"}[j&1])
+		}
+		chains = append(chains, strings.Join(hops, ".")+".phones.1000.number=x")
+	}
+	require.ErrorIs(t, bindFormBody(t, strings.Join(chains, "&"), new(fanOutPerson)), ErrTooManyElements)
+
+	// Numeric map keys past the budget: stockProduct grows no slice per element.
+	stock := make([]string, 0, 300)
+	for v := range 30 {
+		for w := 1000; w < 1010; w++ {
+			stock = append(stock, "variants["+strconv.Itoa(v)+"][stock]["+strconv.Itoa(w)+"]=5")
+		}
+	}
+	product := new(stockProduct)
+	require.NoError(t, bindFormBody(t, strings.Join(stock, "&"), product))
+	require.Len(t, product.Variants, 30)
+	require.Equal(t, 5, product.Variants[29].Stock["1009"])
+}
+
+func Test_FormBinder_NestedElementBytes(t *testing.T) {
+	t.Parallel()
+
+	variant := func(line, v int, field string) string {
+		return "lines[" + strconv.Itoa(line) + "][variants][" + strconv.Itoa(v) + "][" + field + "]=x"
+	}
+
+	t.Run("large elements", func(t *testing.T) {
+		t.Parallel()
+		fit := maxNestedBytes / ((maxSliceIndex + 1) * int(reflect.TypeFor[catalogVariant]().Size()))
+		pairs := make([]string, 0, fit+1)
+		for l := range fit + 1 {
+			pairs = append(pairs, variant(l, maxSliceIndex, "sku"))
+		}
+		out := new(catalog)
+		require.NoError(t, bindFormBody(t, strings.Join(pairs[:fit], "&"), out))
+		require.Len(t, out.Lines, fit)
+		require.Len(t, out.Lines[fit-1].Variants, maxSliceIndex+1)
+		require.ErrorIs(t, bindFormBody(t, strings.Join(pairs, "&"), new(catalog)), ErrTooManyElements)
+	})
+
+	t.Run("fields of one element", func(t *testing.T) {
+		t.Parallel()
+		pairs := make([]string, 0, 30*50*len(catalogFields))
+		for l := range 30 {
+			for v := range 50 {
+				for _, f := range catalogFields {
+					pairs = append(pairs, variant(l, v, f))
+				}
+			}
+		}
+		out := new(catalog)
+		require.NoError(t, bindFormBody(t, strings.Join(pairs, "&"), out))
+		require.Len(t, out.Lines, 30)
+		require.Len(t, out.Lines[29].Variants, 50)
+		require.Equal(t, "x", out.Lines[29].Variants[49].UPC)
+	})
+
+	t.Run("first index below a root field", func(t *testing.T) {
+		t.Parallel()
+		type cartForm struct {
+			Cart struct {
+				Items []catalogVariant `form:"items"`
+			} `form:"cart"`
+			Groups []catalogLine `form:"groups"`
+		}
+		pairs := make([]string, 0, 10*(maxSliceIndex+1))
+		for i := range maxSliceIndex + 1 {
+			for _, f := range catalogFields {
+				pairs = append(pairs, "cart[items]["+strconv.Itoa(i)+"]["+f+"]=x")
+			}
+		}
+		out := new(cartForm)
+		require.NoError(t, bindFormBody(t, strings.Join(pairs, "&"), out))
+		require.Len(t, out.Cart.Items, maxSliceIndex+1)
+	})
 }

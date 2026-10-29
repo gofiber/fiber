@@ -133,7 +133,9 @@ type Ctx interface {
 	// Endpoint returns the route that will handle this request, without advancing the
 	// handler chain, so global middleware can read its Path or Name before calling
 	// Next. Returns nil when no endpoint will run: 404, 405, and while the error
-	// handler replays the chain for a request rejected at the protocol level.
+	// handler replays the chain for a request rejected at the protocol level. A
+	// route registered through Domain is reported only for a hostname its pattern
+	// matches, as its handlers decline every other one.
 	//
 	// It looks ahead, where the neighboring accessors look back: Route reports the
 	// route currently executing, which inside middleware is the middleware itself,
@@ -310,8 +312,10 @@ type Ctx interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	BodyRaw() []byte
-	//nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
-	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) (body []byte, decodesRealized uint8, err error)
+	// tryDecodeBodyInOrder undoes the codings last-applied first and never replaces the request body.
+	tryDecodeBodyInOrder(encodings []string) ([]byte, error)
+	// decodeContentCoding undoes one content coding of src's body within BodyLimit.
+	decodeContentCoding(src *fasthttp.Request, encoding string) ([]byte, error)
 	// BodyStream returns the request body as a stream, non-nil only when
 	// Config.StreamRequestBody is enabled and the body is not already buffered.
 	// Reading it consumes the body, so a later Body call will not see it.
@@ -404,6 +408,7 @@ type Ctx interface {
 	// Freshness only applies to GET and HEAD requests; for any other method false is
 	// returned, as RFC 9110 defines 304 Not Modified only for those methods and
 	// requires If-Modified-Since to be ignored otherwise.
+	// The response status must be 2xx or 304; redirects and errors are never fresh.
 	// When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
 	// reload request, this module will return false to make handling these requests transparent.
 	// https://github.com/jshttp/fresh/blob/master/index.js#L33
@@ -599,6 +604,8 @@ type Ctx interface {
 	// IsFromUnixSocket returns true if the request arrived over a Unix domain socket.
 	IsFromUnixSocket() bool
 	getBody() []byte
+	// bufferBodyStream applies BodyLimit to a streamed body and answers a larger one 413 while no response body was written, as the server would.
+	bufferBodyStream() error
 	// Append the specified value to the HTTP response header field.
 	// If the header is not already set, it creates the header with the specified value.
 	// Empty values are skipped: a sender must not generate empty list elements
@@ -702,6 +709,7 @@ type Ctx interface {
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.
 	// We support the following engines: https://github.com/gofiber/template
+	// Render does not modify bind, so a Map may be reused across requests.
 	Render(name string, bind any, layouts ...string) error
 	// ResetBody discards the response body, keeping the status and headers.
 	// Use it before replacing a partially written body — an error page over a

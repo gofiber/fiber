@@ -88,3 +88,33 @@ func Test_RespHeaderBinder_Bind_ParseError(t *testing.T) {
 	err := b.Bind(resp, &user)
 	require.Error(t, err)
 }
+
+func Test_RespHeaderBinder_Bind_Splitting_TrimsListWhitespace(t *testing.T) {
+	t.Parallel()
+
+	b := &RespHeaderBinding{
+		EnableSplitting: true,
+	}
+
+	type User struct {
+		Posts []string `respHeader:"posts"`
+		IDs   []int    `respHeader:"ids"`
+	}
+
+	resp := fasthttp.AcquireResponse()
+	t.Cleanup(func() {
+		fasthttp.ReleaseResponse(resp)
+	})
+
+	resp.Header.Set("posts", "post1, post2")
+	resp.Header.Set("ids", "1,	2,")
+
+	var user User
+	require.NoError(t, b.Bind(resp, &user))
+	require.Equal(t, []string{"post1", "post2"}, user.Posts)
+	require.Equal(t, []int{1, 2}, user.IDs)
+
+	values := make(map[string][]string)
+	require.NoError(t, b.Bind(resp, &values))
+	require.Equal(t, []string{"post1", "post2"}, values["Posts"])
+}

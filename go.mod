@@ -3,7 +3,7 @@ module github.com/gofiber/fiber/v3
 go 1.26.0
 
 require (
-	github.com/gofiber/schema v1.9.0
+	github.com/gofiber/schema v1.9.1
 	github.com/gofiber/utils/v2 v2.6.3
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-colorable v0.1.16
@@ -22,11 +22,11 @@ require (
 )
 
 require (
-	github.com/fxamacker/cbor/v2 v2.9.6 // direct
+	github.com/fxamacker/cbor/v2 v2.10.0 // direct
 	github.com/klauspost/compress v1.20.3 // indirect
 	github.com/philhofer/fwd v1.2.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0
 )

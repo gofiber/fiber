@@ -345,7 +345,7 @@ Logger provides predefined formats that you can use by name or directly by speci
 :::
 
 :::tip
-`${body}` logs what `Ctx.Body()` returns, so a compressed request body is logged decoded and a `Content-Encoding` that cannot be undone logs the error text. Unlike a call from a handler, the tag never answers such a request with `415`, `501` or `413`: the response goes out as the handler left it.
+`${body}` logs what `Ctx.Body()` returns, so a compressed request body is logged decoded and a `Content-Encoding` that cannot be undone logs the error text. With [`StreamRequestBody`](../api/fiber.md#streamrequestbody), `${body}` and `${form:}` read a streamed request body the handler left unread within `BodyLimit`, `${form:}` only a form body; for a larger one `${body}` logs the error message and `${form:}` searches only the query string. Unlike a call from a handler, the tags never answer such a request with `415`, `501` or `413`: the response goes out as the handler left it.
 :::
 
 :::note
