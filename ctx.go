@@ -499,7 +499,9 @@ func (c *DefaultCtx) routeFallback() *Route {
 // Endpoint returns the route that will handle this request, without advancing the
 // handler chain, so global middleware can read its Path or Name before calling
 // Next. Returns nil when no endpoint will run: 404, 405, and while the error
-// handler replays the chain for a request rejected at the protocol level.
+// handler replays the chain for a request rejected at the protocol level. A
+// route registered through Domain is reported only for a hostname its pattern
+// matches, as its handlers decline every other one.
 //
 // It looks ahead, where the neighboring accessors look back: Route reports the
 // route currently executing, which inside middleware is the middleware itself,
@@ -508,8 +510,9 @@ func (c *DefaultCtx) routeFallback() *Route {
 // It scans the remaining routes in the request's tree bucket, so calling it from
 // global middleware costs a second router scan per request.
 func (c *DefaultCtx) Endpoint() *Route {
-	// Already on a non-middleware endpoint.
-	if c.route != nil && !c.route.use && !c.route.mount {
+	// Already on a non-middleware endpoint, unless it is a Domain route that
+	// passed the request on.
+	if c.route != nil && !c.route.use && !c.route.mount && c.route.servesHost(c) {
 		return c.route
 	}
 	if c.methodInt == -1 || c.app == nil {
@@ -529,10 +532,11 @@ func (c *DefaultCtx) Endpoint() *Route {
 
 	// SkipUnmatchedRoutes already resolved the endpoint, but the index only answers
 	// while routing has not walked past it, and a route registered mid-request can
-	// shift the bucket under it, so it still has to clear the prefix filter.
+	// shift the bucket under it, so it still has to clear the prefix filter. The
+	// index was resolved on the path alone, so the hostname is still to be checked.
 	if c.firstMatchIndex > c.indexRoute && c.firstMatchIndex < len(tree) {
 		if route := tree[c.firstMatchIndex]; route != nil && !route.use && !route.mount &&
-			!route.prefixRejects(head) {
+			!route.prefixRejects(head) && route.servesHost(c) {
 			return route
 		}
 	}
@@ -550,7 +554,9 @@ func (c *DefaultCtx) Endpoint() *Route {
 		if route.prefixRejects(head) {
 			continue
 		}
-		if route.match(detectionPath, path, &scratch, pathSlashes) {
+		// A Domain route declines a request for another hostname, and next() then
+		// goes on to the routes behind it.
+		if route.match(detectionPath, path, &scratch, pathSlashes) && route.servesHost(c) {
 			return route
 		}
 	}
@@ -847,6 +853,11 @@ func (c *DefaultCtx) configDependentPaths() {
 	if !c.app.config.StrictRouting && len(c.detectionPath) > 1 && c.detectionPath[len(c.detectionPath)-1] == '/' {
 		n := len(c.detectionPath)
 		c.detectionPath = utils.TrimRight(c.detectionPath, '/')
+		if len(c.detectionPath) == 0 {
+			// Slashes alone are the root, as "/a//" is "/a"; emptied, the path
+			// skipped every root Use while "/*" still matched it.
+			c.detectionPath = c.detectionPath[:1]
+		}
 		if counted {
 			// every byte trimmed was a '/' the count included
 			slashes -= n - len(c.detectionPath)

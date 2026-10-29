@@ -16,6 +16,8 @@ func (app *App) Use(args ...any) Router
 // - app.Use(paths []string, subApp *App)
 ```
 
+A sub-app is mounted on its own: passing handlers and a sub-app in one call panics, so register the middleware with a separate `Use` before mounting. Passing two sub-apps, or two path arguments, panics as well; several paths go in one `[]string`.
+
 Each handler argument can independently be a Fiber handler (with or without an `error` return), an Express-style callback, a `net/http` handler, or any other supported shape including fasthttp callbacks that return errors.
 
 ```go title="Examples"
