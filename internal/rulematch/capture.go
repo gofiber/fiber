@@ -37,3 +37,37 @@ func CaptureTokens(pattern *regexp.Regexp, input string, unescaped bool) *string
 	}
 	return strings.NewReplacer(replace...)
 }
+
+// DotSegments counts the "." and ".." segments of s as some reader may: "%2e" is a dot, "\", "%2f"
+// and "%5c" are slashes, and "?" and "#" end a segment, not the count, so a capture cannot hide one.
+func DotSegments(s string) int {
+	count := 0
+	// dots in the current segment, -1 once it holds anything else
+	dots := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '%' && i+2 < len(s) {
+			switch hi, lo := s[i+1], s[i+2]|0x20; {
+			case hi == '2' && lo == 'e':
+				c, i = '.', i+2
+			case hi == '2' && lo == 'f', hi == '5' && lo == 'c':
+				c, i = '/', i+2
+			}
+		}
+		switch {
+		case c == '/', c == '\\', c == '?', c == '#':
+			if dots == 1 || dots == 2 {
+				count++
+			}
+			dots = 0
+		case c == '.' && dots >= 0:
+			dots++
+		default:
+			dots = -1
+		}
+	}
+	if dots == 1 || dots == 2 {
+		count++
+	}
+	return count
+}

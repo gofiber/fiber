@@ -7,6 +7,7 @@ import (
 	"math"
 	"mime/multipart"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/idna"
 
+	"github.com/gofiber/fiber/v3/internal/bodystream"
 	etagpkg "github.com/gofiber/fiber/v3/internal/etag"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
@@ -30,7 +32,11 @@ var (
 	xForwardedSslBytes      = []byte(HeaderXForwardedSsl)
 	xURLSchemeBytes         = []byte(HeaderXUrlScheme)
 	onBytes                 = []byte("on")
+	charsetBytes            = []byte("charset")
 )
+
+// maxContentCodings is the longest Content-Encoding list Body undoes; curl stops at five as well.
+const maxContentCodings = 5
 
 // Range represents the parsed HTTP Range header extracted by DefaultReq.Range.
 type Range struct {
@@ -111,54 +117,59 @@ func (r *DefaultReq) BodyRaw() []byte {
 	return r.getBody()
 }
 
-//nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
-func (r *DefaultReq) tryDecodeBodyInOrder(
-	originalBody *[]byte,
-	encodings []string,
-) (body []byte, decodesRealized uint8, err error) {
-	request := &r.c.fasthttp.Request
-	maxBodySize := r.c.app.config.BodyLimit
-	for idx := range encodings {
-		i := len(encodings) - 1 - idx
-		encoding := encodings[i]
-		decodesRealized++
-		var decodeErr error
-		switch encoding {
-		case StrGzip, "x-gzip":
-			body, decodeErr = request.BodyGunzipWithLimit(maxBodySize)
-		case StrBr, StrBrotli:
-			body, decodeErr = request.BodyUnbrotliWithLimit(maxBodySize)
-		case StrDeflate:
-			body, decodeErr = request.BodyInflateWithLimit(maxBodySize)
-		case StrZstd:
-			body, decodeErr = request.BodyUnzstdWithLimit(maxBodySize)
-		case StrIdentity:
-			body = request.Body()
-		case StrCompress, "x-compress":
-			return nil, decodesRealized - 1, ErrNotImplemented
-		default:
-			return nil, decodesRealized - 1, ErrUnsupportedMediaType
-		}
-
-		if decodeErr != nil {
-			return nil, decodesRealized, decodeErr
-		}
-
-		if i > 0 && decodesRealized > 0 {
-			if i == len(encodings)-1 {
-				tempBody := request.Body()
-				*originalBody = make([]byte, len(tempBody))
-				copy(*originalBody, tempBody)
-			}
-			// identity leaves the body as it is; re-setting an aliasing slice would
-			// release its buffer under ReduceMemoryUsage.
-			if encoding != StrIdentity {
-				request.SetBodyRaw(body)
-			}
-		}
+// tryDecodeBodyInOrder undoes the codings last-applied first and never replaces the request body.
+func (r *DefaultReq) tryDecodeBodyInOrder(encodings []string) ([]byte, error) {
+	// Each member may inflate to BodyLimit on its own, so the list length bounds the work.
+	if len(encodings) > maxContentCodings {
+		return nil, ErrUnsupportedMediaType
 	}
 
-	return body, decodesRealized, nil
+	request := &r.c.fasthttp.Request
+	// The decoders bound what they write, not the stream they read.
+	if err := bodystream.Buffer(request, r.c.app.config.BodyLimit); err != nil {
+		return nil, err
+	}
+	last := len(encodings) - 1
+	body, err := r.decodeContentCoding(request, encodings[last])
+	if err != nil {
+		return nil, err
+	}
+	if last == 0 {
+		return body, nil
+	}
+
+	// Replacing the request body would pool its buffer while Body and BodyRaw
+	// results still alias it (ReduceMemoryUsage, adaptor).
+	scratch := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(scratch)
+	for _, encoding := range slices.Backward(encodings[:last]) {
+		scratch.SetBodyRaw(body)
+		if body, err = r.decodeContentCoding(scratch, encoding); err != nil {
+			return nil, err
+		}
+	}
+	return body, nil
+}
+
+// decodeContentCoding undoes one content coding of src's body within BodyLimit.
+func (r *DefaultReq) decodeContentCoding(src *fasthttp.Request, encoding string) ([]byte, error) {
+	maxBodySize := r.c.app.config.BodyLimit
+	switch encoding {
+	case StrGzip, "x-gzip":
+		return src.BodyGunzipWithLimit(maxBodySize)
+	case StrBr, StrBrotli:
+		return src.BodyUnbrotliWithLimit(maxBodySize)
+	case StrDeflate:
+		return src.BodyInflateWithLimit(maxBodySize)
+	case StrZstd:
+		return src.BodyUnzstdWithLimit(maxBodySize)
+	case StrIdentity:
+		return src.Body(), nil
+	case StrCompress, "x-compress":
+		return nil, ErrNotImplemented
+	default:
+		return nil, ErrUnsupportedMediaType
+	}
 }
 
 // Body contains the raw body submitted in a POST request.
@@ -168,10 +179,10 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 // If you need to keep the body's data later, make a copy or use the Immutable option.
 func (r *DefaultReq) Body() []byte {
 	var (
-		err                error
-		body, originalBody []byte
-		headerEncoding     string
-		encodingOrder      = []string{"", "", ""}
+		err            error
+		body           []byte
+		headerEncoding string
+		encodingOrder  = []string{"", "", ""}
 	)
 
 	request := &r.c.fasthttp.Request
@@ -201,20 +212,14 @@ func (r *DefaultReq) Body() []byte {
 		return r.getBody()
 	}
 
-	var decodesRealized uint8
-	body, decodesRealized, err = r.tryDecodeBodyInOrder(&originalBody, encodingOrder)
-
-	// Ensure that the body will be the original
-	if originalBody != nil && decodesRealized > 0 {
-		request.SetBodyRaw(originalBody)
-	}
+	body, err = r.tryDecodeBodyInOrder(encodingOrder)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUnsupportedMediaType):
 			_ = r.c.DefaultRes.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		case errors.Is(err, ErrNotImplemented):
 			_ = r.c.DefaultRes.SendStatus(StatusNotImplemented) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
-		case errors.Is(err, fasthttp.ErrBodyTooLarge):
+		case errors.Is(err, fasthttp.ErrBodyTooLarge) && !r.c.Written():
 			_ = r.c.DefaultRes.SendStatus(StatusRequestEntityTooLarge) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		default:
 			// do nothing
@@ -345,7 +350,7 @@ func (r *DefaultReq) MediaType() string {
 // Charset returns the charset parameter from the Content-Type header.
 func (r *DefaultReq) Charset() string {
 	for name, v := range mediatype.Params(r.c.fasthttp.Request.Header.ContentType()) {
-		if !utils.EqualFold(name, []byte("charset")) {
+		if !utils.EqualFold(name, charsetBytes) {
 			continue
 		}
 		if len(v) > 0 && v[0] == '"' {
@@ -503,6 +508,15 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 		}
 		return defaultString("", defaultValue)
 	}
+	// PostArgs drains a streamed urlencoded body whatever its size.
+	if r.c.fasthttp.Request.IsBodyStream() && mediatype.ParsesPostArgs(r.c.fasthttp.Request.Header.ContentType()) {
+		if v := r.c.fasthttp.QueryArgs().Peek(key); len(v) > 0 {
+			return r.c.app.toString(v)
+		}
+		if err := r.bufferBodyStream(); err != nil {
+			return defaultString("", defaultValue)
+		}
+	}
 	return defaultString(r.c.app.toString(r.c.fasthttp.FormValue(key)), defaultValue)
 }
 
@@ -512,6 +526,7 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 // Freshness only applies to GET and HEAD requests; for any other method false is
 // returned, as RFC 9110 defines 304 Not Modified only for those methods and
 // requires If-Modified-Since to be ignored otherwise.
+// The response status must be 2xx or 304; redirects and errors are never fresh.
 // When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
 // reload request, this module will return false to make handling these requests transparent.
 // https://github.com/jshttp/fresh/blob/master/index.js#L33
@@ -525,6 +540,13 @@ func (r *DefaultReq) Fresh() bool {
 		return false
 	}
 	if method := r.c.app.method(r.c.methodInt); method != MethodGet && method != MethodHead {
+		return false
+	}
+
+	// Redirects and errors take precedence over request preconditions (RFC
+	// 9110 Section 13.2.1). Like Express, an existing 304 can remain fresh.
+	status := r.c.fasthttp.Response.StatusCode()
+	if (status < StatusOK || status >= StatusMultipleChoices) && status != StatusNotModified {
 		return false
 	}
 
@@ -1242,8 +1264,8 @@ func (r *DefaultReq) Method(override ...string) string {
 	if methodInt == r.c.methodInt {
 		return method
 	}
-	// A middleware sits at a position of its own in every method's tree, so
-	// carry the index over or Next would skip the routes before it.
+	// The old index is a position in another tree, so place this route in the
+	// new one or Next would skip routes registered after it.
 	r.c.indexRoute = app.routeIndexInTree(methodInt, r.c.treePathHash, r.c.route, r.c.indexRoute)
 	r.c.methodInt = methodInt
 	// Method changed; invalidate the lookahead index
@@ -1332,8 +1354,8 @@ func (r *DefaultReq) Path(override ...string) string {
 		r.c.configDependentPaths()
 		// The detection path/tree hash changed; invalidate the lookahead index.
 		r.c.firstMatchIndex = -1
-		// The new path may live in another bucket, so carry the index over for
-		// Next to resume after this route.
+		// The new path may live in another bucket, so place this route there for
+		// Next to resume after it.
 		r.c.indexRoute = r.c.app.routeIndexInTree(r.c.methodInt, r.c.treePathHash, r.c.route, r.c.indexRoute)
 	}
 	return r.c.app.toString(r.c.path)
@@ -1821,5 +1843,19 @@ func (r *DefaultReq) IsFromUnixSocket() bool {
 }
 
 func (r *DefaultReq) getBody() []byte {
+	if r.c.fasthttp.Request.IsBodyStream() {
+		if err := r.bufferBodyStream(); err != nil {
+			return []byte(err.Error())
+		}
+	}
 	return r.c.app.GetBytes(r.c.fasthttp.Request.Body())
+}
+
+// bufferBodyStream applies BodyLimit to a streamed body and answers a larger one 413 while no response body was written, as the server would.
+func (r *DefaultReq) bufferBodyStream() error {
+	err := bodystream.Buffer(&r.c.fasthttp.Request, r.c.app.config.BodyLimit)
+	if errors.Is(err, fasthttp.ErrBodyTooLarge) && !r.c.Written() {
+		_ = r.c.DefaultRes.SendStatus(StatusRequestEntityTooLarge) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
+	}
+	return err
 }

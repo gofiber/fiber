@@ -124,6 +124,13 @@ the browser follows to evil.com.
 redirects wherever it says. A `$N` after the authority may hold anything,
 including slashes; it can only add to the path.
 
+**A capture never climbs out of the target's path.** The router resolves the `.`
+and `..` segments of the request before a rule sees it, but a composed location
+can spell new ones: `{From: "/@*", To: "/users/$1"}` against `/@../admin`, or
+`/a/.%09./x` under `UnescapePath`, whose decoded tab a client deletes. A location
+holding more dot segments than the target itself is not used, and the next rule
+is tried. `%2e` counts as a dot there, and a backslash, `%2f` and `%5c` as a slash.
+
 **A target naming a scheme but no authority**, `{From: "/m/*", To: "myapp:$1"}`,
 also leaves this application, so the rooting above does not apply to it. A
 capture there may not open an authority of its own: a value that writes the

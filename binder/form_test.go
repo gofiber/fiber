@@ -353,6 +353,62 @@ func Test_FormBinder_BindMultipart_BodyLimitExceeded(t *testing.T) {
 	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
 }
 
+func Test_FormBinder_Bind_StreamedBodyLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	b := &FormBinding{
+		MaxBodySize: 64,
+	}
+
+	type User struct {
+		Name string `form:"name"`
+	}
+	var user User
+
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
+	req.Header.SetContentType("application/x-www-form-urlencoded")
+	req.SetBodyStream(strings.NewReader("name=john"), -1)
+	require.NoError(t, b.Bind(req, &user))
+	require.Equal(t, "john", user.Name)
+
+	req.Reset()
+	stream := strings.NewReader("name=" + strings.Repeat("a", 1024))
+	req.Header.SetContentType("application/x-www-form-urlencoded")
+	req.SetBodyStream(stream, -1)
+	require.ErrorIs(t, b.Bind(req, &user), fasthttp.ErrBodyTooLarge)
+	require.Equal(t, 5+1024-65, stream.Len(), "the rest of the stream is not read")
+}
+
+func Test_FormBinder_Bind_StreamedNonFormBodyUnread(t *testing.T) {
+	t.Parallel()
+
+	b := &FormBinding{
+		MaxBodySize: 64,
+	}
+
+	type User struct {
+		Name string `form:"name"`
+	}
+	var user User
+
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
+	stream := strings.NewReader("name=" + strings.Repeat("a", 1024))
+	req.Header.SetContentType("application/octet-stream")
+	req.SetBodyStream(stream, -1)
+	require.NoError(t, b.Bind(req, &user))
+	require.Empty(t, user.Name)
+	require.True(t, req.IsBodyStream())
+	require.Equal(t, 5+1024, stream.Len())
+}
+
 func Test_FormBinder_BindMultipart_ValueError(t *testing.T) {
 	b := &FormBinding{}
 	req := fasthttp.AcquireRequest()

@@ -661,6 +661,22 @@ func Test_Parser_Request_Header(t *testing.T) {
 		require.Equal(t, "67", string(req.RawRequest.Header.Cookie("bar")))
 		require.Equal(t, "foo1", string(req.RawRequest.Header.Cookie("bar1")))
 	})
+
+	t.Run("a cookie that is no longer set does not linger on a resend", func(t *testing.T) {
+		t.Parallel()
+		client := New().SetCookie("foo", "bar")
+		req := AcquireRequest().SetCookie("baz", "qux")
+
+		require.NoError(t, parserRequestHeader(client, req))
+		require.Equal(t, "bar", string(req.RawRequest.Header.Cookie("foo")))
+		require.Equal(t, "qux", string(req.RawRequest.Header.Cookie("baz")))
+
+		client.DelCookies("foo")
+		req.DelCookies("baz")
+		require.NoError(t, parserRequestHeader(client, req))
+		require.Empty(t, req.RawRequest.Header.Cookie("foo"))
+		require.Empty(t, req.RawRequest.Header.Cookie("baz"))
+	})
 }
 
 func Test_Parser_Request_Body(t *testing.T) {

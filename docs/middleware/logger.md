@@ -344,6 +344,10 @@ Logger provides predefined formats that you can use by name or directly by speci
 `${resBody}` logs nothing for a streamed response (`SendStream`, `SendStreamWriter`, and `SendFile` for a large file). Reading such a body would pull the whole stream into memory and turn the response into a buffered one — an SSE route would deliver nothing until its writer finished — so logging leaves it alone.
 :::
 
+:::tip
+With [`StreamRequestBody`](../api/fiber.md#streamrequestbody), `${body}` and `${form:}` read a streamed request body the handler left unread within `BodyLimit`, `${form:}` only a form body. For a larger one `${body}` logs the error message and `${form:}` searches only the query string, and the response stays as the handler set it.
+:::
+
 ## The `${ips}` tag
 
 `${ips}` logs the chain the framework parsed, `Ctx.IPs()`, joined with `,`.

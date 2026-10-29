@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 )
 
 // Logger variables
@@ -141,6 +142,9 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, c.Get(fiber.HeaderUserAgent))
 		},
 		TagBody: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+			if err := bufferBodyStream(c); err != nil {
+				return writeSanitizedString(output, err.Error())
+			}
 			return writeSanitized(output, c.Body())
 		},
 		TagBytesReceived: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
@@ -224,6 +228,13 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, fiber.Query[string](c, extraParam))
 		},
 		TagForm: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
+			if req := c.Request(); req.IsBodyStream() {
+				// Only a form body is a FormValue source; past BodyLimit just the query string is left.
+				ct := req.Header.ContentType()
+				if (mediatype.IsForm(ct) || mediatype.ParsesPostArgs(ct)) && bufferBodyStream(c) != nil {
+					return writeSanitizedString(output, c.Query(extraParam))
+				}
+			}
 			return writeSanitizedString(output, c.FormValue(extraParam))
 		},
 		TagCookie: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {

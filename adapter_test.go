@@ -10,8 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -831,6 +833,44 @@ func TestWrapHTTPHandler_Nil(t *testing.T) {
 	t.Parallel()
 
 	require.Nil(t, wrapHTTPHandler(nil))
+}
+
+// fasthttpadaptor buffers the body for the http.Request, and with StreamRequestBody the server passes on a body of any size.
+func TestWrapHTTPHandler_StreamedBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	const limit = 1024
+	app := New(Config{StreamRequestBody: true, BodyLimit: limit})
+	app.Post("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n, err := io.Copy(io.Discard, r.Body)
+		assert.NoError(t, err)
+		_, err = w.Write([]byte(strconv.FormatInt(n, 10)))
+		assert.NoError(t, err)
+	}))
+
+	for _, chunked := range []bool{false, true} {
+		for size, status := range map[int]int{limit: StatusOK, limit + 1: StatusRequestEntityTooLarge} {
+			req := httptest.NewRequest(MethodPost, "/", strings.NewReader(strings.Repeat("a", size)))
+			if chunked {
+				req.TransferEncoding = []string{"chunked"}
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, status, resp.StatusCode, "chunked=%v size=%d", chunked, size)
+			if status == StatusOK {
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, strconv.Itoa(size), string(body), "chunked=%v", chunked)
+			}
+		}
+	}
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().SetBodyStream(iotest.ErrReader(errors.New("broken chunk")), -1)
+	require.ErrorIs(t, wrapHTTPHandler(http.NotFoundHandler())(c), ErrBadRequest)
+	c.Request().SetBodyStream(iotest.ErrReader(ErrRequestHeaderFieldsTooLarge), -1)
+	require.ErrorIs(t, wrapHTTPHandler(http.NotFoundHandler())(c), ErrRequestHeaderFieldsTooLarge)
 }
 
 func TestCollectHandlers_InvalidType(t *testing.T) {

@@ -109,7 +109,7 @@ app.Get("/", func(c fiber.Ctx) error {
 When `PassLocalsToViews` is enabled, all values set using `ctx.Locals(key, value)` are passed to the template. Use unique keys to avoid collisions.
 :::
 
-Locals, and the values you add with [`c.ViewBind`](../api/ctx.md#viewbind), are merged into the data only when you pass a `fiber.Map` or `nil` to `Render`. A key in the map you pass wins over a local or a `ViewBind` value with the same name.
+Locals, and the values you add with [`c.ViewBind`](../api/ctx.md#viewbind), are merged into the data only when you pass a `fiber.Map` or `nil` to `Render`. A key in the map you pass wins over a local or a `ViewBind` value with the same name. The merge goes into a copy, so the map you pass is left unchanged and can be shared across requests.
 
 ### Rendering Without a Request
 

@@ -197,7 +197,7 @@ app.Get("/api/users/:id", handler).Name("user.show")
 :::info
 `Endpoint` looks ahead, while its neighbors look back: [`Route`](#route) is the route currently executing, which inside middleware is the middleware itself, and [`Matched`](#matched) reports whether an endpoint has been selected yet.
 
-Mounted sub-apps report the flattened, prefixed route. The result is the route the router *would* reach, not a promise that it runs: an earlier middleware can still end the request first.
+Mounted sub-apps report the flattened, prefixed route. The result is the route the router *would* reach, not a promise that it runs: an earlier middleware can still end the request first. A route registered through [`Domain`](./app.md#domain) is only reported for a hostname its pattern matches.
 
 It scans the remaining routes in the request's tree bucket, so calling it from global middleware costs a second router scan per request. That is cheap for routes spread over many prefixes and noticeable when a hundred or more share one, as with everything under `/api/v1`.
 :::
@@ -1305,7 +1305,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### Body
 
-As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. It decodes `gzip`, `deflate`, `br` and `zstd`, and several codings are undone in reverse order. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`. Decompression is bounded by the app [BodyLimit](./fiber.md#bodylimit): a body that decompresses to more than that sets `413 Request Entity Too Large`. Whenever decoding fails, the returned slice holds the error message instead of request data.
+As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. It decodes `gzip`, `deflate`, `br` and `zstd`, and several codings are undone in reverse order, up to five: a longer list, `identity` members included, is answered `415 Unsupported Media Type` before anything is decoded. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`. Decompression is bounded by the app [BodyLimit](./fiber.md#bodylimit): a body that decompresses to more than that, or a streamed body larger than that under [`StreamRequestBody`](./fiber.md#streamrequestbody), sets `413 Request Entity Too Large` while no response body was written. Whenever reading or decoding fails, the returned slice holds the error message instead of request data.
 
 ```go title="Signature"
 func (c fiber.Ctx) Body() []byte
@@ -1328,7 +1328,7 @@ Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. 
 
 ### BodyRaw
 
-Returns the raw request **body**.
+Returns the raw request **body**. Under [`StreamRequestBody`](./fiber.md#streamrequestbody), a body larger than the app [BodyLimit](./fiber.md#bodylimit) sets `413 Request Entity Too Large` while no response body was written, and the returned slice holds the error message instead of request data.
 
 ```go title="Signature"
 func (c fiber.Ctx) BodyRaw() []byte
@@ -1351,7 +1351,7 @@ Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. 
 
 ### BodyStream
 
-Returns the request body as a stream. It is only non-`nil` when [`StreamRequestBody`](./fiber.md#config) is enabled and the body has not already been buffered.
+Returns the request body as a stream. It is only non-`nil` when [`StreamRequestBody`](./fiber.md#config) is enabled and the body has not already been buffered. It is the one way to read a body larger than the app [BodyLimit](./fiber.md#bodylimit).
 
 :::caution
 Reading from the returned reader consumes the body, so a later [`Body`](#body) call will not see it.
@@ -1533,7 +1533,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 ### FormValue
 
-Form values can be retrieved by name, the **first** value for the given key is returned. The query string is searched first, then the urlencoded body, then the multipart form, so a query parameter hides a form field of the same name. A multipart form is parsed within the app [BodyLimit](./fiber.md#bodylimit).
+Form values can be retrieved by name, the **first** value for the given key is returned. The query string is searched first, then the urlencoded body, then the multipart form, so a query parameter hides a form field of the same name. A multipart form is parsed within the app [BodyLimit](./fiber.md#bodylimit) and yields no values past it. So is a streamed urlencoded body, under [`StreamRequestBody`](./fiber.md#streamrequestbody), which also sets `413 Request Entity Too Large` while no response body was written.
 
 :::caution
 
@@ -1573,6 +1573,8 @@ When the response is still **fresh** in the client's cache **true** is returned;
 When a client sends the Cache-Control: no-cache request header to indicate an end-to-end reload request, `Fresh` will return false to make handling these requests transparent.
 
 `Fresh` only applies to GET and HEAD requests and returns false for any other method, since a 304 Not Modified response is only defined for those methods and RFC 9110 requires If-Modified-Since to be ignored otherwise.
+
+The response status must be 2xx or 304. Redirects and errors return false even when the request's validators match, so a freshness check cannot replace them with a 304 response.
 
 The request fields it reads (`If-None-Match`, `If-Modified-Since` and `Cache-Control`) are matched case-insensitively, which matters under [`DisableHeaderNormalizing`](./fiber.md#disableheadernormalizing), where the names are kept as the peer sent them. `If-None-Match` and `Cache-Control` are read across repeated field lines.
 
@@ -2156,7 +2158,7 @@ app.Post("/", func(c fiber.Ctx) error {
 ### Method
 
 Returns a string corresponding to the HTTP method of the request: `GET`, `POST`, `PUT`, and so on.
-Optionally, you can override the method by passing a string.
+Optionally, you can override the method by passing a string; [Next](#next) then continues with the routes registered after the current one for the new method.
 
 Method tokens are case-sensitive (RFC 9110): the override is first matched exactly against the methods registered in [`Config.RequestMethods`](./fiber.md#requestmethods), and only falls back to the uppercase form as a convenience for the standard methods (e.g. `"get"` → `GET`). An unregistered override is ignored.
 
@@ -2356,7 +2358,7 @@ The generic `Params` function supports returning the following data types based 
 
 ### Path
 
-Contains the path part of the request URL, normalized before routing as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes: percent-encoded unreserved characters are decoded, other escapes keep their encoding with uppercase hex digits, and `.` and `..` segments are removed, so a request for `/users/../users/%6Aohn` reports `/users/john`. A target without a leading slash is rooted: the asterisk form `OPTIONS *` reports `/*`, and an absolute-form target with an empty path, such as `GET http://host?q`, reports `/`. An encoded slash stays encoded and empty segments are kept unless [`UnescapePath`](fiber.md#config) decodes every escape. A stray `%` that begins no escape is kept as sent, except where an escape decoded after it would complete a new escape with it: that `%` is written as `%25`, so `/%%370rivate` reports `/%2570rivate`. The result is not a path to percent-decode again, since an escape it keeps, such as `%2F`, is meant to stay one (see [Routing](../guide/routing.md)). Use [OriginalURL](#originalurl) for the request target as the client sent it. Optionally, you can override the path by passing a string. For internal redirects, you might want to call [RestartRouting](ctx.md#restartrouting) instead of [Next](ctx.md#next).
+Contains the path part of the request URL, normalized before routing as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes: percent-encoded unreserved characters are decoded, other escapes keep their encoding with uppercase hex digits, and `.` and `..` segments are removed, so a request for `/users/../users/%6Aohn` reports `/users/john`. A target without a leading slash is rooted: the asterisk form `OPTIONS *` reports `/*`, and an absolute-form target with an empty path, such as `GET http://host?q`, reports `/`. An encoded slash stays encoded and empty segments are kept unless [`UnescapePath`](fiber.md#config) decodes every escape. A stray `%` that begins no escape is kept as sent, except where an escape decoded after it would complete a new escape with it: that `%` is written as `%25`, so `/%%370rivate` reports `/%2570rivate`. The result is not a path to percent-decode again, since an escape it keeps, such as `%2F`, is meant to stay one (see [Routing](../guide/routing.md)). Use [OriginalURL](#originalurl) for the request target as the client sent it. Optionally, you can override the path by passing a string; [Next](ctx.md#next) then continues with the routes registered after the current one that match the new path. For internal redirects, you might want to call [RestartRouting](ctx.md#restartrouting) instead of [Next](ctx.md#next).
 
 ```go title="Signature"
 func (c fiber.Ctx) Path(override ...string) string
@@ -3763,6 +3765,8 @@ func (c fiber.Ctx) Render(name string, bind any, layouts ...string) error
 func (r fiber.Res) Render(name string, bind any, layouts ...string) error
 ```
 
+`Render` does not modify `bind`. The [`ViewBind`](#viewbind) values and, with [`PassLocalsToViews`](./fiber.md#passlocalstoviews), the `Locals` of the request are merged into a copy, so the same `fiber.Map` can be reused across requests.
+
 ### ResetBody
 
 Discards the response body, keeping the status and headers. Use it before replacing a partially written body — an error page over a half-rendered view, a cached body over a fresh one.
@@ -3980,6 +3984,8 @@ app.Get("/file", func(c fiber.Ctx) error {
 You can use multiple `SendFile` calls with different configurations in a single route. Fiber creates different filesystem handlers per config.
 
 A file system whose type is a function (a `func` type with an `Open` method) cannot be told apart from another one, so Fiber keeps no handler for it: a new handler is built, without the file cache, on every call. That keeps the handler cache from growing, but each call costs more than with a struct or pointer type.
+
+Fiber keeps at most 64 handlers per app. A config that is new on every call, such as one whose `FS` is the pointer `fs.Sub` returns or whose `MaxAge` comes from the request, uses them up, and every config that has no handler by then is served the same way, without the file cache. Create such a file system once, outside the handler.
 :::
 
 ```go title="Example"
