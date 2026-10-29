@@ -69,6 +69,15 @@ an exact one, so a long wildcard rule can still outrank a shorter exact one.
 `RuleList` is the exact control.
 :::
 
+## Middleware order
+
+After a rewrite, the request goes on to the routes registered after the
+middleware that match the new path. Middleware registered before it had its turn
+with the original path and is not run again, so register the rewrite ahead
+of the middleware that must see the new path, such as an auth guard for it. To
+run the whole chain for the new path, call
+[`RestartRouting`](../api/ctx.md#restartrouting) from a handler of your own instead.
+
 ## Examples
 
 ```go
