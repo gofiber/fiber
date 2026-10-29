@@ -13292,6 +13292,50 @@ func Test_Ctx_SendFile_FunctionFSDoesNotGrowHandlerCache(t *testing.T) {
 	require.Empty(t, app.sendfiles)
 }
 
+func Test_Ctx_SendFile_FreshConfigPerCallDoesNotGrowHandlerCache(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{"public/hello.txt": &fstest.MapFile{Data: []byte("hello")}}
+	for name, handler := range map[string]Handler{
+		"file system": func(c Ctx) error {
+			public, err := fs.Sub(files, "public") // a new pointer on every call
+			if err != nil {
+				return fmt.Errorf("sub: %w", err)
+			}
+			return c.SendFile("hello.txt", SendFile{FS: public})
+		},
+		"max age": func(c Ctx) error {
+			return c.SendFile("public/hello.txt", SendFile{FS: files, MaxAge: Query[int](c, "age")})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.Get("/", handler)
+			app.Get("/kept", func(c Ctx) error {
+				return c.SendFile("public/hello.txt", SendFile{FS: files, Download: true})
+			})
+
+			for i := range 2 * maxSendFileHandlers {
+				for _, target := range []string{"/kept", "/?age=" + strconv.Itoa(i)} {
+					resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, StatusOK, resp.StatusCode)
+					body, err := io.ReadAll(resp.Body)
+					require.NoError(t, err)
+					require.Equal(t, "hello", string(body))
+				}
+			}
+
+			app.sendfilesMutex.RLock()
+			defer app.sendfilesMutex.RUnlock()
+			require.Len(t, app.sendfiles, maxSendFileHandlers)
+			require.True(t, app.sendfiles[0].config.Download, "a handler kept before the cache filled up stays")
+		})
+	}
+}
+
 func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {
 	t.Parallel()
 

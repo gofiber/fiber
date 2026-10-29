@@ -832,6 +832,238 @@ func Test_Proxy_ConnectionCannotRemoveForwardingHeaders(t *testing.T) {
 	}
 }
 
+// Test_Proxy_ConnectionListLimit checks that a request listing more names in
+// Connection than the proxy removes one by one is refused, not forwarded.
+func Test_Proxy_ConnectionListLimit(t *testing.T) {
+	t.Parallel()
+
+	names := func(n int) string { return strings.TrimSuffix(strings.Repeat("a,", n), ",") }
+	for _, tc := range realIPHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var forwarded atomic.Int32
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				forwarded.Add(1)
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			app := fiber.New()
+			app.Use(tc.build(addr))
+
+			for _, tt := range []struct {
+				lines  []string
+				status int
+			}{
+				{lines: []string{names(maxConnectionOptions)}, status: fiber.StatusOK},
+				{lines: []string{names(maxConnectionOptions + 1)}, status: fiber.StatusRequestHeaderFieldsTooLarge},
+				{lines: []string{names(maxConnectionOptions), "a"}, status: fiber.StatusRequestHeaderFieldsTooLarge},
+			} {
+				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+				req.Host = "example.com"
+				for _, line := range tt.lines {
+					req.Header.Add(fiber.HeaderConnection, line)
+				}
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, tt.status, resp.StatusCode)
+			}
+			require.Equal(t, int32(1), forwarded.Load())
+		})
+	}
+}
+
+// caseSpellings returns n spellings of name, a lower-case token, that differ
+// from it and from each other only in case.
+func caseSpellings(name string, n int) []string {
+	var out []string
+	for mask := 1; len(out) < n && mask < 1<<len(name); mask++ {
+		b := []byte(name)
+		for i := range b {
+			if mask&(1<<i) != 0 && b[i] >= 'a' && b[i] <= 'z' {
+				b[i] -= 'a' - 'A'
+			}
+		}
+		if s := string(b); s != name && !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// Test_Proxy_ConnectionListLimitCountsSpellings checks that under
+// DisableHeaderNormalizing each other spelling of a removed name counts against
+// the limit like a listed name, as each costs another scan, while a name
+// repeated in one spelling costs once.
+func Test_Proxy_ConnectionListLimitCountsSpellings(t *testing.T) {
+	t.Parallel()
+
+	seen := make(chan []string, 1)
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen <- matchingFieldLines(c, "X-Abcdef", fiber.HeaderUpgrade)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(Forward("http://" + addr))
+
+	repeated := make([]string, 200)
+	for i := range repeated {
+		repeated[i] = "X-ABCDEF"
+	}
+	for _, tt := range []struct {
+		name       string
+		connection string
+		lines      []string
+		status     int
+	}{
+		// The listed name takes one of the budget.
+		{name: "within", connection: "x-abcdef", lines: caseSpellings("x-abcdef", maxConnectionOptions-1), status: fiber.StatusOK},
+		{name: "beyond", connection: "x-abcdef", lines: caseSpellings("x-abcdef", maxConnectionOptions), status: fiber.StatusRequestHeaderFieldsTooLarge},
+		{name: "repeated", connection: "x-abcdef", lines: repeated, status: fiber.StatusOK},
+		{name: "hop-by-hop", lines: caseSpellings("upgrade", 2*maxConnectionOptions), status: fiber.StatusRequestHeaderFieldsTooLarge},
+	} {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		if tt.connection != "" {
+			req.Header[fiber.HeaderConnection] = []string{tt.connection}
+		}
+		for _, k := range tt.lines {
+			// Assigned rather than added, which would canonicalize the key.
+			req.Header[k] = append(req.Header[k], "v")
+		}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, tt.status, resp.StatusCode, tt.name)
+		if tt.status == fiber.StatusOK {
+			require.Empty(t, <-seen, tt.name)
+		}
+	}
+}
+
+// Test_Proxy_RealIPSpellingLimit checks that under DisableHeaderNormalizing a
+// request spelling X-Real-IP in more ways than the proxy removes one by one is
+// refused, not forwarded.
+func Test_Proxy_RealIPSpellingLimit(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range realIPHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			seen := make(chan []string, 1)
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				seen <- matchingFieldLines(c, realIPHeader)
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+			app.Use(tc.build(addr))
+
+			for n, status := range map[int]int{
+				maxConnectionOptions:     fiber.StatusOK,
+				maxConnectionOptions + 1: fiber.StatusRequestHeaderFieldsTooLarge,
+			} {
+				spellings := caseSpellings("x-real-ip", n)
+				require.NotContains(t, spellings, realIPHeader, "every spelling counts")
+				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+				req.Host = "example.com"
+				for _, k := range spellings {
+					// Assigned rather than added, which would canonicalize the key.
+					req.Header[k] = []string{"6.6.6.6"}
+				}
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, status, resp.StatusCode)
+				if status == fiber.StatusOK {
+					require.Len(t, <-seen, 1)
+				}
+			}
+		})
+	}
+}
+
+// Test_Proxy_ResponseConnectionListLimit checks that a response listing more
+// names in Connection than the request may is answered with 502, and that none
+// of the upstream's fields go out with it.
+func Test_Proxy_ResponseConnectionListLimit(t *testing.T) {
+	t.Parallel()
+
+	names := func(n int) string { return strings.TrimSuffix(strings.Repeat("a,", n), ",") }
+	for _, tc := range realIPHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				n, err := strconv.Atoi(c.Get("X-Count"))
+				if err != nil {
+					return fiber.ErrBadRequest
+				}
+				c.Set(fiber.HeaderConnection, names(n))
+				c.Set("X-Upstream", "1")
+				return c.SendString("upstream")
+			})
+
+			app := fiber.New()
+			app.Use(tc.build(addr))
+
+			for n, status := range map[int]int{
+				maxConnectionOptions:     fiber.StatusOK,
+				maxConnectionOptions + 1: fiber.StatusBadGateway,
+			} {
+				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+				req.Host = "example.com"
+				req.Header.Set("X-Count", strconv.Itoa(n))
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, status, resp.StatusCode)
+				require.Equal(t, status == fiber.StatusOK, resp.Header.Get("X-Upstream") == "1")
+			}
+		})
+	}
+}
+
+// Test_Proxy_ResponseSpellingLimit checks the same budget against an upstream
+// whose fields the client keeps as sent: each other spelling of a hop-by-hop
+// name costs a scan, a name repeated in one spelling costs once.
+func Test_Proxy_ResponseSpellingLimit(t *testing.T) {
+	t.Parallel()
+
+	upstream := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	upstream.Get("/", func(c fiber.Ctx) error {
+		n, err := strconv.Atoi(c.Get("X-Count"))
+		if err != nil {
+			return fiber.ErrBadRequest
+		}
+		for _, k := range caseSpellings("upgrade", n) {
+			c.Response().Header.Add(k, "v")
+		}
+		for range 100 {
+			c.Response().Header.Add("keep-alive", "v")
+		}
+		return c.SendString("upstream")
+	})
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	startServer(upstream, ln)
+
+	app := fiber.New()
+	app.Use(Forward("http://"+addr, &fasthttp.Client{DisableHeaderNamesNormalizing: true}))
+
+	for n, status := range map[int]int{
+		3:                          fiber.StatusOK,
+		2*maxConnectionOptions + 1: fiber.StatusBadGateway,
+	} {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header.Set("X-Count", strconv.Itoa(n))
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, status, resp.StatusCode)
+		require.Empty(t, resp.Header.Values(fiber.HeaderUpgrade))
+		require.Empty(t, resp.Header.Values(fiber.HeaderKeepAlive))
+	}
+}
+
 // Test_Proxy_RealIPOutlivesTheTrailerReturn checks that the address written
 // into X-Real-IP is the one the request carried when the field it was read
 // from is deleted before the write. Removing Trailer returned the received

@@ -630,6 +630,78 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 	}, acceptedTypes)
 }
 
+// Every element ranks above all the ones before it: one swap per pair for an insertion sort.
+func Test_Utils_SortAcceptedTypes_NotQuadratic(t *testing.T) {
+	t.Parallel()
+	const n = 1 << 17
+	acceptedTypes := make([]acceptedType, n)
+	for i := range acceptedTypes {
+		acceptedTypes[i] = acceptedType{quality: float64(i), specificity: 4, order: i}
+	}
+
+	start := time.Now()
+	sortAcceptedTypes(acceptedTypes)
+	// Quadratic takes tens of seconds here, n log n a few milliseconds.
+	require.Less(t, time.Since(start), 5*time.Second)
+
+	for i := range acceptedTypes {
+		require.Equal(t, n-1-i, acceptedTypes[i].order)
+	}
+}
+
+func Test_Utils_SortAcceptedTypes_LongMatchesShort(t *testing.T) {
+	t.Parallel()
+	pattern := []acceptedType{
+		{quality: 0.5, specificity: 3},
+		{quality: 1, specificity: 1},
+		{quality: 1, specificity: 3},
+		{quality: 1, specificity: 3, params: headerParams{"a": []byte("1")}},
+		{quality: 0, specificity: 4},
+	}
+	long := make([]acceptedType, 0, 4*maxInsertionSortedTypes)
+	for i := range cap(long) {
+		element := pattern[i%len(pattern)]
+		element.order = i
+		long = append(long, element)
+	}
+	sortAcceptedTypes(long)
+
+	for i := 1; i < len(long); i++ {
+		pair := []acceptedType{long[i], long[i-1]}
+		sortAcceptedTypes(pair)
+		require.Equal(t, long[i-1].order, pair[0].order)
+	}
+}
+
+func Test_Utils_GetOffer_ManyRanges(t *testing.T) {
+	t.Parallel()
+	// 1500 wildcards, then 2000 empty members that sort in front of every one of them.
+	header := []byte(strings.Repeat("*/*,", 1500) + strings.Repeat(",", 2000))
+
+	require.Equal(t, "text/html", getOffer(header, acceptsOfferType, "text/html"))
+	require.Equal(t, "application/json", getOffer(header, acceptsOfferType, "application/json", "text/html"))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Utils_SortAcceptedTypes_Long -benchmem -count=4
+func Benchmark_Utils_SortAcceptedTypes_Long(b *testing.B) {
+	const n = 6000
+	acceptedTypes := make([]acceptedType, n)
+	b.ReportAllocs()
+	for b.Loop() {
+		// 2000 wildcards, then 4000 more specific members.
+		for i := range acceptedTypes {
+			specificity := 4
+			if i < n/3 {
+				specificity = 1
+			}
+			acceptedTypes[i] = acceptedType{quality: 1, specificity: specificity, order: i}
+		}
+		sortAcceptedTypes(acceptedTypes)
+	}
+	require.Equal(b, n/3, acceptedTypes[0].order)
+	require.Equal(b, 0, acceptedTypes[n-n/3].order)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Utils_SortAcceptedTypes_Sorted -benchmem -count=4
 func Benchmark_Utils_SortAcceptedTypes_Sorted(b *testing.B) {
 	acceptedTypes := make([]acceptedType, 3)
