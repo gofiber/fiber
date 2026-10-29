@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -383,7 +382,7 @@ func Test_Session_Middleware_AbandonedLookupDoesNotFindTheNextRequest(t *testing
 	second.Set("req", "secret-of-the-second-request")
 	require.NotSame(t, first, second)
 
-	found := held.find(func(m *Middleware) bool { return m.config.Store == store })
+	found := held.find(func(m *Middleware) bool { return m.store == store })
 	require.Nil(t, found, "the abandoned handler found a middleware after its request ended")
 	require.Nil(t, store.FromContext(c1))
 	require.Equal(t, "secret-of-the-second-request", second.Get("req"))
@@ -875,6 +874,12 @@ func (c *panicAtCtx) IsAbandoned() bool {
 func Test_Session_MultipleStores_PanicInReleaseGoesOn(t *testing.T) {
 	t.Parallel()
 
+	type panicCase struct {
+		point  string
+		nested bool
+		pass   bool
+	}
+	var cases []panicCase
 	for _, point := range []string{
 		"publishing the inner middleware",
 		"clearing the locals",
@@ -886,59 +891,68 @@ func Test_Session_MultipleStores_PanicInReleaseGoesOn(t *testing.T) {
 			if (point == "restoring the outer middleware" || point == "publishing the inner middleware") && !nested {
 				continue // there is no outer middleware to restore or to run inside
 			}
-			t.Run(point+" nested="+strconv.FormatBool(nested), func(t *testing.T) {
-				t.Parallel()
-
-				armed := &atomic.Value{}
-				armed.Store("")
-				app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
-					return &panicAtCtx{DefaultCtx: *fiber.NewDefaultCtx(app), point: armed}
-				})
-				handlerA, storeA := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
-				handlerB, _ := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
-				if nested {
-					app.Use(handlerA)
+			for _, pass := range []bool{false, true} {
+				if point == "replacing the Go context" && !pass {
+					continue // without PassLocalsToContext the release leaves the Go context alone
 				}
-				var outer atomic.Pointer[Middleware]
-				app.Use(func(c fiber.Ctx) error { // between the two session middleware
-					if nested {
-						outer.Store(storeA.FromContext(c))
-					}
-					if point == "publishing the inner middleware" {
-						armed.Store(point) // the start of the middleware that runs last panics
-					}
-					return c.Next()
-				})
-				app.Use(handlerB)
-				app.Get("/", func(fiber.Ctx) error {
-					if point != "publishing the inner middleware" {
-						armed.Store(point) // the release of the middleware that runs last panics
-					}
-					return nil
-				})
-				handler := app.Handler()
-
-				recovered := make(chan any, 1)
-				go func() {
-					defer func() { recovered <- recover() }()
-					fctx := &fasthttp.RequestCtx{}
-					fctx.Request.Header.SetMethod(fiber.MethodGet)
-					fctx.Request.SetRequestURI("/")
-					handler(fctx)
-				}()
-
-				select {
-				case got := <-recovered:
-					require.NotNil(t, got, "the panic did not come out of the handler")
-				case <-time.After(5 * time.Second):
-					t.Fatal("the request hung: the panic in the release was swallowed by a deadlock")
-				}
-				if nested {
-					require.NotNil(t, outer.Load())
-					require.Zero(t, outer.Load().children.Load(), "the outer middleware still counts the one that panicked")
-				}
-			})
+				cases = append(cases, panicCase{point: point, nested: nested, pass: pass})
+			}
 		}
+	}
+
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%s nested=%t pass=%t", tc.point, tc.nested, tc.pass), func(t *testing.T) {
+			t.Parallel()
+
+			armed := &atomic.Value{}
+			armed.Store("")
+			app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+				return &panicAtCtx{DefaultCtx: *fiber.NewDefaultCtx(app), point: armed}
+			}, fiber.Config{PassLocalsToContext: tc.pass})
+			handlerA, storeA := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
+			handlerB, _ := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
+			if tc.nested {
+				app.Use(handlerA)
+			}
+			var outer atomic.Pointer[Middleware]
+			app.Use(func(c fiber.Ctx) error { // between the two session middleware
+				if tc.nested {
+					outer.Store(storeA.FromContext(c))
+				}
+				if tc.point == "publishing the inner middleware" {
+					armed.Store(tc.point) // the start of the middleware that runs last panics
+				}
+				return c.Next()
+			})
+			app.Use(handlerB)
+			app.Get("/", func(fiber.Ctx) error {
+				if tc.point != "publishing the inner middleware" {
+					armed.Store(tc.point) // the release of the middleware that runs last panics
+				}
+				return nil
+			})
+			handler := app.Handler()
+
+			recovered := make(chan any, 1)
+			go func() {
+				defer func() { recovered <- recover() }()
+				fctx := &fasthttp.RequestCtx{}
+				fctx.Request.Header.SetMethod(fiber.MethodGet)
+				fctx.Request.SetRequestURI("/")
+				handler(fctx)
+			}()
+
+			select {
+			case got := <-recovered:
+				require.NotNil(t, got, "the panic did not come out of the handler")
+			case <-time.After(5 * time.Second):
+				t.Fatal("the request hung: the panic in the release was swallowed by a deadlock")
+			}
+			if tc.nested {
+				require.NotNil(t, outer.Load())
+				require.Zero(t, outer.Load().children.Load(), "the outer middleware still counts the one that panicked")
+			}
+		})
 	}
 }
 

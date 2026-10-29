@@ -39,8 +39,9 @@ const (
 	// sessionExtractorContextKey stores the extractor that provided the session ID.
 	sessionExtractorContextKey
 	// sessionOwnerContextKey stores the *Store whose Store.Get published the session
-	// ID, so that a store reading other cookies or headers does not adopt it. The
-	// session middleware publishes itself instead, and its config names the store.
+	// ID, so that a store reading other cookies or headers does not adopt it, when
+	// the request has no provenance box to say so in. The session middleware
+	// publishes itself instead, and it names the store.
 	sessionOwnerContextKey
 )
 
@@ -51,20 +52,23 @@ const (
 type provenanceBox struct {
 	// owner is the store whose extractor produced res.
 	owner *Store
-	res   extractors.Result
+	// publisher is the store whose Store.Get cached the session ID on the request,
+	// when the request had a box to say so in; otherwise it is in a local of its own.
+	publisher *Store
+	res       extractors.Result
 }
 
 // A pointer so a test can swap in a pool of its own; nothing else reassigns it.
 var provenancePool = &sync.Pool{New: func() any { return new(provenanceBox) }}
 
 // storeProvenance records res, resolved by s, in the request, reusing the box
-// already there. Overwriting the local with a fresh box would strand the old
-// one outside the pool: fasthttp only reclaims the box the local currently
-// holds.
-func storeProvenance(c fiber.Ctx, s *Store, res extractors.Result) {
+// already there, and returns the box. Overwriting the local with a fresh box would
+// strand the old one outside the pool: fasthttp only reclaims the box the local
+// currently holds.
+func storeProvenance(c fiber.Ctx, s *Store, res extractors.Result) *provenanceBox {
 	if b, ok := c.Locals(sessionExtractorContextKey).(*provenanceBox); ok && b != nil {
 		b.res, b.owner = res, s
-		return
+		return b
 	}
 	b, ok := provenancePool.Get().(*provenanceBox)
 	if !ok || b == nil {
@@ -72,6 +76,7 @@ func storeProvenance(c fiber.Ctx, s *Store, res extractors.Result) {
 	}
 	b.res, b.owner = res, s
 	ctxlocal.Set(c, sessionExtractorContextKey, b)
+	return b
 }
 
 // Close returns the box to the pool. fasthttp calls it on every request-local
@@ -79,6 +84,7 @@ func storeProvenance(c fiber.Ctx, s *Store, res extractors.Result) {
 func (b *provenanceBox) Close() error {
 	b.res = extractors.Result{}
 	b.owner = nil
+	b.publisher = nil
 	provenancePool.Put(b)
 	return nil
 }
@@ -109,31 +115,83 @@ func lockFor(key string) *idLock {
 
 // Store manages session data using the configured storage backend.
 type Store struct {
+	// sinks are the cookies and headers a session ID can be written back to, in the
+	// order of the extractor. NewStore works them out once; a Store built without it
+	// has none (nil), and walks its extractor when it needs them. Read-only: every
+	// session of the store shares the slice.
+	sinks []extractors.Extractor
 	// sources names the cookies and headers the store reads the session ID from
 	// and writes it back to, such as "cookie:session_id".
 	sources []string
+	// localsMode remembers whether the app that last served the store passes the
+	// request locals to the request context.
+	localsMode atomic.Pointer[localsMode]
 	Config
 }
 
-// writableSources lists the cookies and headers an extractor reads a session ID
-// from and the store can write one back to. Header names are lower-cased.
-func writableSources(ext extractors.Extractor) []string {
-	var sources []string
+// localsMode is whether an app passes the request locals to the request context.
+type localsMode struct {
+	app  *fiber.App
+	pass bool
+}
+
+// passesLocalsToContext reports whether the app serving c passes the request locals
+// to the request context (Config.PassLocalsToContext). The answer is kept for the
+// app, since asking the app for it copies its whole configuration, about 600 bytes,
+// on every request.
+func (s *Store) passesLocalsToContext(c fiber.Ctx) bool {
+	app := c.App()
+	if mode := s.localsMode.Load(); mode != nil && mode.app == app {
+		return mode.pass
+	}
+	mode := &localsMode{app: app, pass: app.Config().PassLocalsToContext}
+	s.localsMode.Store(mode)
+	return mode.pass
+}
+
+// collectSinks lists the cookies and headers an extractor reads a session ID from,
+// which are the ones a session ID can be written back to: the leaves of the
+// extractor that name a cookie or a header.
+func collectSinks(ext extractors.Extractor) []extractors.Extractor {
+	var sinks []extractors.Extractor
+	// Walked rather than ranged over Chain: a nested chain reports its first
+	// child's metadata, so direct children alone hide every sink inside it, and
+	// a cookie one level down would never be written.
 	ext.Walk(func(candidate extractors.Extractor) bool {
+		// Only a leaf names a place to write, and a keyless one would name a
+		// cookie or header with no name at all.
 		if len(candidate.Chain) > 0 || candidate.Key == "" {
 			return true
 		}
-		switch candidate.Source {
-		case extractors.SourceCookie:
-			sources = append(sources, "cookie:"+candidate.Key)
-		case extractors.SourceHeader:
-			sources = append(sources, "header:"+utilsstrings.ToLower(candidate.Key))
-		default:
-			// A read-only source names nothing the store could write back to.
+		if candidate.Source == extractors.SourceCookie || candidate.Source == extractors.SourceHeader {
+			sinks = append(sinks, candidate)
 		}
 		return true
 	})
-	return sources
+	return sinks
+}
+
+// sourceNames names sinks as sharesSource compares them, such as
+// "cookie:session_id". Header names are lower-cased.
+func sourceNames(sinks []extractors.Extractor) []string {
+	var names []string
+	for _, sink := range sinks {
+		if sink.Source == extractors.SourceCookie {
+			names = append(names, "cookie:"+sink.Key)
+		} else {
+			names = append(names, "header:"+utilsstrings.ToLower(sink.Key))
+		}
+	}
+	return names
+}
+
+// writableSinks returns the cookies and headers a session ID of s can be written
+// back to. The slice is shared: do not modify it.
+func (s *Store) writableSinks() []extractors.Extractor {
+	if s.sinks != nil {
+		return s.sinks
+	}
+	return collectSinks(s.Extractor)
 }
 
 // sharesSource reports whether s and other read the session ID from a common
@@ -206,15 +264,20 @@ func (s *Store) ownedID(key, id string) string {
 // The session middleware publishes the ID together with itself, so the middleware
 // still current in the request names the store, and costs the request nothing
 // extra. A session from Store.Get cannot be told apart that way, so it leaves its
-// store behind in sessionOwnerContextKey.
-func requestIDPublisher(c fiber.Ctx) *Store {
+// store behind: in the provenance box of the request, box, when there is one, and
+// otherwise in sessionOwnerContextKey. The box is the one written last, since a
+// publication goes to the box as soon as the request has one.
+func requestIDPublisher(c fiber.Ctx, box *provenanceBox) *Store {
 	if m, ok := c.Locals(middlewareContextKey).(*Middleware); ok && m != nil {
 		// Under the lock: the middleware may be finishing on another goroutine,
 		// as it does when a timeout middleware abandoned the handlers inside it.
 		m.mu.RLock()
-		publisher := m.config.Store
+		publisher := m.store
 		m.mu.RUnlock()
 		return publisher
+	}
+	if box != nil && box.publisher != nil {
+		return box.publisher
 	}
 	if owner, ok := c.Locals(sessionOwnerContextKey).(*Store); ok {
 		return owner
@@ -239,7 +302,7 @@ func (s *Store) mayReuseRequestID(c fiber.Ctx, box *provenanceBox) bool {
 	if box != nil && box.owner != nil && !s.sharesSource(box.owner) {
 		return false
 	}
-	publisher := requestIDPublisher(c)
+	publisher := requestIDPublisher(c, box)
 	return publisher == nil || s.sharesSource(publisher)
 }
 
@@ -266,9 +329,15 @@ func NewStore(config ...Config) *Store {
 		cfg.Storage = memory.New()
 	}
 
+	sinks := collectSinks(cfg.Extractor)
+	if sinks == nil {
+		// Worked out, and none: not the nil that marks a Store built without NewStore.
+		sinks = []extractors.Extractor{}
+	}
 	store := &Store{
 		Config:  cfg,
-		sources: writableSources(cfg.Extractor),
+		sinks:   sinks,
+		sources: sourceNames(sinks),
 	}
 
 	if cfg.AbsoluteTimeout > 0 {
@@ -317,10 +386,14 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 		return nil, ErrSessionAlreadyLoadedByMiddleware
 	}
 
-	sess, err := s.getSession(c)
+	sess, box, err := s.getSessionBox(c)
 	if err == nil && sess.isFresh {
 		// getSession has just cached the new ID on the request; say whose it is.
-		ctxlocal.Set(c, sessionOwnerContextKey, s)
+		if box != nil {
+			box.publisher = s
+		} else {
+			ctxlocal.Set(c, sessionOwnerContextKey, s)
+		}
 	}
 	return sess, err
 }
@@ -341,6 +414,13 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 //	    // handle error
 //	}
 func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
+	sess, _, err := s.getSessionBox(c)
+	return sess, err
+}
+
+// getSessionBox is getSession, and also returns the provenance box of the request
+// when it has one, so that Store.Get can say in it whose session ID is cached.
+func (s *Store) getSessionBox(c fiber.Ctx) (*Session, *provenanceBox, error) {
 	var rawData []byte
 	var err error
 
@@ -358,13 +438,13 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		var resolveErr error
 		selectedExtractor, resolveErr = s.getSessionID(c)
 		if resolveErr != nil {
-			return nil, resolveErr
+			return nil, nil, resolveErr
 		}
 		id = selectedExtractor.Value
 		if id != "" {
 			// Kept for a second getSession on the same request, which takes the
 			// cached-ID path above and would otherwise lose the provenance.
-			storeProvenance(c, s, selectedExtractor)
+			cached = storeProvenance(c, s, selectedExtractor)
 		}
 	} else if cached != nil {
 		selectedExtractor = cached.res
@@ -380,7 +460,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		loadGen = lockFor(key).gen.Load()
 		rawData, err = s.Storage.GetWithContext(c, key)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if rawData == nil {
 			// Data not found, prepare to generate a new session
@@ -418,7 +498,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		if err != nil {
 			sess.mu.Unlock()
 			sess.Release()
-			return nil, fmt.Errorf("failed to decode session data: %w", err)
+			return nil, nil, fmt.Errorf("failed to decode session data: %w", err)
 		}
 		sess.loaded = true
 		sess.loadGen = loadGen
@@ -430,12 +510,12 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		sess.setAbsExpiration(time.Now().Add(s.AbsoluteTimeout))
 	} else if sess.isAbsExpired() {
 		if err := sess.Reset(); err != nil {
-			return nil, fmt.Errorf("failed to reset session: %w", err)
+			return nil, nil, fmt.Errorf("failed to reset session: %w", err)
 		}
 		sess.setAbsExpiration(time.Now().Add(s.AbsoluteTimeout))
 	}
 
-	return sess, nil
+	return sess, cached, nil
 }
 
 // getSessionID returns the session ID using the configured extractor, together

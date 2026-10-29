@@ -36,8 +36,13 @@ type Middleware struct {
 	// without the lock: a panic can unwind it from inside the locked part of the
 	// release, and it must still be able to give the count back.
 	pinned *Middleware
-	config Config
-	mu     sync.RWMutex
+	// store and errorHandler are the parts of the configuration a running middleware
+	// reads. Keeping them, rather than a copy of the whole Config, spares every
+	// request a copy and a reset of about 200 bytes, and the request context that
+	// holds the middleware that much memory. releaseMiddleware clears both.
+	store        *Store
+	errorHandler func(fiber.Ctx, error)
+	mu           sync.RWMutex
 	// released is set when the request is over and the middleware was not recycled,
 	// because the request context holds it or another middleware still refers to it,
 	// so FromContext stops returning it.
@@ -222,15 +227,28 @@ func storeMiddlewareContext(c fiber.Ctx, session *Session, m *Middleware) bool {
 	fiber.StoreInContext(c, sessionIDContextKey, session.ID())
 	fiber.StoreInContext(c, middlewareContextKey, m)
 
+	// Without PassLocalsToContext the request context never holds the middleware,
+	// and asking it for one would only make Fiber create a context for the request.
+	if !m.store.passesLocalsToContext(c) {
+		return false
+	}
 	held, ok := c.Context().Value(middlewareContextKey).(*Middleware)
 	return ok && held == m
 }
 
-// clearMiddlewareContext clears both Fiber locals and the request context
-// because session middleware stores these values in both layers.
-func clearMiddlewareContext(c fiber.Ctx) {
+// clearMiddlewareLocals clears the session ID and the middleware from the Fiber
+// locals.
+func clearMiddlewareLocals(c fiber.Ctx) {
 	ctxlocal.Set(c, sessionIDContextKey, "")
 	ctxlocal.Set(c, middlewareContextKey, nil)
+}
+
+// shadowMiddlewareContext hides the session ID and the middleware that the request
+// context holds, which only a middleware that stored them there needs: a context
+// cannot lose a value, only hide it behind a newer one. Without
+// PassLocalsToContext nothing was stored there, and wrapping the context twice per
+// request would only allocate.
+func shadowMiddlewareContext(c fiber.Ctx) {
 	ctx := context.WithValue(c.Context(), sessionIDContextKey, "")
 	c.SetContext(context.WithValue(ctx, middlewareContextKey, (*Middleware)(nil)))
 }
@@ -301,7 +319,8 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 		return err
 	}
 
-	m.config = *cfg
+	m.store = cfg.Store
+	m.errorHandler = cfg.ErrorHandler
 	m.Session = session
 	m.ctx = c
 
@@ -332,8 +351,8 @@ func currentMiddleware(c fiber.Ctx) *Middleware {
 // saveSession handles session saving and error management after the response.
 func (m *Middleware) saveSession() {
 	if err := m.Session.saveSessionWithContext(m.resolveContext()); err != nil {
-		if m.config.ErrorHandler != nil {
-			m.config.ErrorHandler(m.ctx, err)
+		if m.errorHandler != nil {
+			m.errorHandler(m.ctx, err)
 		} else {
 			DefaultErrorHandler(m.ctx, err)
 		}
@@ -406,9 +425,13 @@ func releaseMiddleware(m *Middleware) {
 		m.released.Store(true)
 	}
 	if c != nil {
-		clearMiddlewareContext(c)
+		clearMiddlewareLocals(c)
+		if m.escaped {
+			shadowMiddlewareContext(c)
+		}
 	}
-	m.config = Config{}
+	m.store = nil
+	m.errorHandler = nil
 	m.Session = nil
 	m.ctx = nil
 	m.parent = nil
@@ -505,7 +528,7 @@ func FromContext(ctx any) *Middleware {
 //     otherwise, nil.
 func (s *Store) FromContext(ctx any) *Middleware {
 	return FromContext(ctx).find(func(m *Middleware) bool {
-		return m.config.Store == s
+		return m.store == s
 	})
 }
 
@@ -772,5 +795,5 @@ func (m *Middleware) RegenerateWithContext(ctx context.Context) error {
 //
 //	store := m.Store()
 func (m *Middleware) Store() *Store {
-	return m.config.Store
+	return m.store
 }
