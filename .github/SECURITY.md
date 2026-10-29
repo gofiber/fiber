@@ -13,8 +13,8 @@ The table below shows the supported versions for Fiber which include security up
 
 | Version   | Supported          |
 | --------- | ------------------ |
-| >= 1.12.6 | :white_check_mark: |
-| < 1.12.6  | :x:                |
+| >= 3.0.0 | :white_check_mark: |
+| < 3.0.0  | :x:                |
 
 <a name="reporting"></a>
 
