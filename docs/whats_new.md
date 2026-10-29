@@ -375,9 +375,33 @@ The router normalizes every request path before matching, as [RFC 3986 Section 6
 
 `c.Path()` returns the normalized path. `c.OriginalURL()` still returns the request target as the client sent it.
 
+### Path and method overrides
+
+After `c.Path(...)` or `c.Method(...)`, `c.Next()` continues with the routes registered after the current one that match the new path and method. Before, a handler mounted on a prefix, such as `app.Use("/v1", rewrite.New(...))` or `http.StripPrefix` through `adaptor.HTTPMiddleware`, or registered for a single method resumed at a position taken from another route list, and skipped routes registered after it, middleware included. A `Use` registered right after a route for a single method is no longer merged into the previous `Use` under the other methods, and a route is merged into the one before it on the same path only when both were registered for the same methods: `app.Get` after `app.All` or a multi-method `app.Add` on one path stays a route of its own, so `app.Stack()` can list one more route there.
+
+### Trailing slashes
+
+Without `StrictRouting`, a path of slashes alone, such as `//`, is matched as `/`, the way `/about//` is matched as `/about`. Before, it was matched as the empty path, which a root `app.Use` did not cover while a `/*` or `/:name?` route still answered it. A route registered as `//` is the root route now, and `//` also answers a `/` route. `c.Path()` still returns `//`.
+
+With `StrictRouting`, middleware registered with `Use` on `/users/` also runs for `/users`, which routes below it such as `/users/:id?` and `/users/*` answer. Before, a mounted app's own `Use` middleware, composed as `/users/`, and `Group("/users").Use("/", mw)` did not run for `/users` while such a route of theirs still answered it. `RemoveRoute("/users/")` still removes such middleware.
+
 ### Optional parameters
 
 An optional parameter that ends at a single-character constant, such as `:month?-` or `:name?.`, no longer matches across a `/`. Before, `/api/:day-:month?-:year?` matched `/api/1-/-` with `month` set to `/`, and `/file/:name?.:ext` matched `/file/a/b.txt` with `name` set to `a/b`; both now return 404. A required parameter keeps its behavior: `/file/:name.:ext` still matches `/file/a/b.txt`. With `UnescapePath` on, `Route.URL`, `GetRouteURL` and `Redirect().Route` return `ErrRouteNotRepresentable` for a `/` in the value of such an optional parameter.
+
+### Mount prefixes
+
+The routes of a mounted app are re-parsed with the mount prefix as written. Before, they were re-parsed from its comparison key, which has the case folded and the escapes removed: an escaped literal such as `/v1\:internal` became a parameter, and a custom constraint with an upper-case name such as `/tenants/:id<tenantID>` was dropped, so the mounted routes answered paths that middleware on the same prefix did not cover. `Route.Path` of a mounted route now keeps the prefix's case and escapes, as it does for a route registered through a `Group`.
+
+### Wildcards and parameters in middleware prefixes
+
+A `Use`, `Group` or mount prefix whose only wildcard is followed only by literal text, such as `app.Use("/api/*/admin", mw)`, now covers every path in which that text ends a path segment, such as `/api/acme/admin/admins`, which it skipped before while `/api/:tenant/admin/:page` answered it; other greedy shapes in a prefix keep the v3.6.1 behavior, including the trailing slash with `StrictRouting`, so use a named parameter in the prefix and in the routes below it, as in `/api/:tenant/admin/:id`.
+
+Likewise, a prefix without wildcards whose last segment ends in a named parameter followed by literal text, such as `app.Use("/files/:name.json", mw)`, now covers `/files/a.json.json/raw`, which `/files/:name.json/raw` answered with `name` set to `a.json`; the parameter still ends at the first copy of the text when it is optional, has a constraint or shares its segment with another parameter.
+
+### Use with a sub-app
+
+`Use` panics when one call receives both handlers and a sub-app, as in `app.Use("/admin", auth, adminApp)`, on an `App`, a `Group` and a `Domain` router. Before, it mounted the sub-app and dropped the handlers without an error. Register them in separate calls: `app.Use("/admin", auth)`, then `app.Use("/admin", adminApp)`. It also panics on two sub-apps in one call, which mounted only the last, and on two path arguments, such as `app.Use("/admin", "/internal", auth)` or a path next to a `[]string`, which registered the handlers on only one of them. Pass several paths as one `[]string`.
 
 ### Generated route URLs
 
@@ -455,6 +479,8 @@ Named routes retrieved with `app.GetRoute(name)` also support `route.URL(params)
 `Domain` creates a router scoped to a specific hostname pattern. Routes registered through the returned `Router` only match requests whose hostname (from `c.Hostname()`) matches the pattern. When `TrustProxy` is enabled and the proxy is trusted (as defined by [`TrustProxyConfig`](./api/fiber#trustproxyconfig)), the hostname may be derived from the `X-Forwarded-Host` header. Be sure to configure `TrustProxyConfig` to restrict which proxies are trusted and prevent header spoofing when enabling `TrustProxy`.
 
 The pattern can contain parameters prefixed with `:`, accessible via `fiber.DomainParam`.
+
+Routes for one path registered through different `Domain` patterns stay separate routes, each with its own name and automatic `HEAD` route, even when they are registered one after another; [`c.Endpoint()`](./api/ctx#endpoint) reports a `Domain` route only for a hostname its pattern matches.
 
 Domain routing has **zero performance impact** on routes that don't use it because the hostname check is applied as a handler wrapper, not a change to the core router.
 
@@ -542,6 +568,8 @@ app.Get("/health", handler) // HEAD /health now returns 405 unless you add it ma
 ```
 
 Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers.
+
+Each automatic `HEAD` route runs where its `GET` route does, and every `GET` route gets its own, also when a path has several. Before, they ran after every `Use` handler, mounted app and explicit `HEAD` route, so a guard registered with `Get`, such as `app.Get("/admin/*", auth)` followed by `app.Use("/admin", adminApp)` or `app.Use(static.New(dir))`, did not run for `HEAD`, and a `GET` route followed by a catch-all `Use` answered `HEAD` with that handler. A route registered for `HEAD` alone still replaces the automatic ones of its path in the same app and `Domain` pattern. One on another `Domain` pattern or in a mounted app now keeps its place in the route order, behind the automatic route of a `GET` route registered before it. One registered for `GET` and `HEAD` together, with `All` or `Add`, answers only for itself. Two apps mounted on one prefix now both get their `HEAD` routes, and a sub-app that leaves `HEAD` out of its `RequestMethods` answers `HEAD` with `405` behind nested `Domain` mounts as well.
 
 ### QUERY method (RFC 10008)
 
@@ -731,7 +759,7 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 - **AcceptsXML**: Reports whether the `Accept` header allows XML.
 - **AcceptsEventStream**: Reports whether the `Accept` header allows `text/event-stream`.
 - **Matched**: Detects when the current request path matched a registered route.
-- **Endpoint**: Looks ahead to the route that will handle the request, without advancing the handler chain, so global middleware can read its `Path` or `Name` before calling `Next`. It returns `nil` when no route will run.
+- **Endpoint**: Looks ahead to the route that will handle the request, without advancing the handler chain, so global middleware can read its `Path` or `Name` before calling `Next`. It returns `nil` when no route will run. A route registered through `Domain` is reported only for a hostname its pattern matches.
 - **IsMiddleware**: Indicates if the current handler was registered as middleware.
 - **HasBody**: Quickly checks whether the request includes a body.
 - **OverrideParam**: Overwrites the value of an existing route parameter, or does nothing if the parameter does not exist
@@ -3274,6 +3302,8 @@ Fiber now also warns at startup when a rule can never fire because an earlier on
 
 - **A rule matches the whole path**: both ends of the pattern are anchored, so a rule no longer matches just a suffix of the path, and an alternation such as `/a|/b` cannot match by prefix or suffix alone (#4476).
 
+- **A capture cannot leave the target's path**: a rule whose composed location holds more `.` or `..` segments than its target is skipped for that request, so `{From: "/@*", To: "https://cdn.example.com/public/$1"}` no longer sends `/@../other/x` to `https://cdn.example.com/public/../other/x`.
+
 - **A capture may no longer stand inside a target's authority**, which covers the host, the port and any userinfo: `"https://$1.cdn.example.com/"`, `"https://cdn.example.com:$1"` and `"https://$1"` are refused at startup with a warning, and those rules never fire. Whether such a value was safe depended on percent-decoding, IDNA mapping, numeric labels read as IPv4 addresses, IPv6 brackets and userinfo, and each of those was a way to move the host somewhere the target did not name. A capture in the path, query or fragment is unchanged. Where the destination host genuinely varies, pick it in a handler and use `c.Redirect()`, where the value is yours to validate.
 
 #### CSRF
@@ -3516,6 +3546,7 @@ app.Use(rewrite.New(rewrite.Config{
 
 `Rules` keeps working for the whole of v3; its keys are ranked most path text before the first `*`, then most path text overall, then fewest asterisks, then the key. Setting both fields panics.
 
+- **A capture cannot leave `To`**: a rewritten path holding more `.` or `..` segments than `To` itself is skipped for that request, so `{From: "/@*", To: "/users/$1"}` no longer rewrites `/@../admin` to `/admin`.
 - **A rule is path text**: `From` is no longer compiled as an unescaped regular expression. `*` matches a run of any bytes but a newline and every other byte stands for itself, so `/preis-1.000-euro` rewrites that path and no longer also `/preis-1X000-euro`, and `/faq?` no longer rewrites `/fa`. This also completes the anchoring fix from #4476: `"^" + "/a|/b" + "$"` parsed as `(^/a)|(/b$)`, so a rule could match by prefix or suffix alone. Rules written with path text and `*` are unaffected; a rule relying on regular-expression syntax now matches the literal characters it spells.
 
 #### Session

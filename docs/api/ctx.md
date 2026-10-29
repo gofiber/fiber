@@ -197,7 +197,7 @@ app.Get("/api/users/:id", handler).Name("user.show")
 :::info
 `Endpoint` looks ahead, while its neighbors look back: [`Route`](#route) is the route currently executing, which inside middleware is the middleware itself, and [`Matched`](#matched) reports whether an endpoint has been selected yet.
 
-Mounted sub-apps report the flattened, prefixed route. The result is the route the router *would* reach, not a promise that it runs: an earlier middleware can still end the request first.
+Mounted sub-apps report the flattened, prefixed route. The result is the route the router *would* reach, not a promise that it runs: an earlier middleware can still end the request first. A route registered through [`Domain`](./app.md#domain) is only reported for a hostname its pattern matches.
 
 It scans the remaining routes in the request's tree bucket, so calling it from global middleware costs a second router scan per request. That is cheap for routes spread over many prefixes and noticeable when a hundred or more share one, as with everything under `/api/v1`.
 :::
@@ -2156,7 +2156,7 @@ app.Post("/", func(c fiber.Ctx) error {
 ### Method
 
 Returns a string corresponding to the HTTP method of the request: `GET`, `POST`, `PUT`, and so on.
-Optionally, you can override the method by passing a string.
+Optionally, you can override the method by passing a string; [Next](#next) then continues with the routes registered after the current one for the new method.
 
 Method tokens are case-sensitive (RFC 9110): the override is first matched exactly against the methods registered in [`Config.RequestMethods`](./fiber.md#requestmethods), and only falls back to the uppercase form as a convenience for the standard methods (e.g. `"get"` → `GET`). An unregistered override is ignored.
 
@@ -2356,7 +2356,7 @@ The generic `Params` function supports returning the following data types based 
 
 ### Path
 
-Contains the path part of the request URL, normalized before routing as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes: percent-encoded unreserved characters are decoded, other escapes keep their encoding with uppercase hex digits, and `.` and `..` segments are removed, so a request for `/users/../users/%6Aohn` reports `/users/john`. A target without a leading slash is rooted: the asterisk form `OPTIONS *` reports `/*`, and an absolute-form target with an empty path, such as `GET http://host?q`, reports `/`. An encoded slash stays encoded and empty segments are kept unless [`UnescapePath`](fiber.md#config) decodes every escape. A stray `%` that begins no escape is kept as sent, except where an escape decoded after it would complete a new escape with it: that `%` is written as `%25`, so `/%%370rivate` reports `/%2570rivate`. The result is not a path to percent-decode again, since an escape it keeps, such as `%2F`, is meant to stay one (see [Routing](../guide/routing.md)). Use [OriginalURL](#originalurl) for the request target as the client sent it. Optionally, you can override the path by passing a string. For internal redirects, you might want to call [RestartRouting](ctx.md#restartrouting) instead of [Next](ctx.md#next).
+Contains the path part of the request URL, normalized before routing as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes: percent-encoded unreserved characters are decoded, other escapes keep their encoding with uppercase hex digits, and `.` and `..` segments are removed, so a request for `/users/../users/%6Aohn` reports `/users/john`. A target without a leading slash is rooted: the asterisk form `OPTIONS *` reports `/*`, and an absolute-form target with an empty path, such as `GET http://host?q`, reports `/`. An encoded slash stays encoded and empty segments are kept unless [`UnescapePath`](fiber.md#config) decodes every escape. A stray `%` that begins no escape is kept as sent, except where an escape decoded after it would complete a new escape with it: that `%` is written as `%25`, so `/%%370rivate` reports `/%2570rivate`. The result is not a path to percent-decode again, since an escape it keeps, such as `%2F`, is meant to stay one (see [Routing](../guide/routing.md)). Use [OriginalURL](#originalurl) for the request target as the client sent it. Optionally, you can override the path by passing a string; [Next](ctx.md#next) then continues with the routes registered after the current one that match the new path. For internal redirects, you might want to call [RestartRouting](ctx.md#restartrouting) instead of [Next](ctx.md#next).
 
 ```go title="Signature"
 func (c fiber.Ctx) Path(override ...string) string

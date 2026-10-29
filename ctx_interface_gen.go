@@ -133,7 +133,9 @@ type Ctx interface {
 	// Endpoint returns the route that will handle this request, without advancing the
 	// handler chain, so global middleware can read its Path or Name before calling
 	// Next. Returns nil when no endpoint will run: 404, 405, and while the error
-	// handler replays the chain for a request rejected at the protocol level.
+	// handler replays the chain for a request rejected at the protocol level. A
+	// route registered through Domain is reported only for a hostname its pattern
+	// matches, as its handlers decline every other one.
 	//
 	// It looks ahead, where the neighboring accessors look back: Route reports the
 	// route currently executing, which inside middleware is the middleware itself,

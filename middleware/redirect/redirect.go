@@ -21,6 +21,8 @@ type compiledRule struct {
 	// from is the rule as the author wrote it, kept for the warnings only.
 	from   string
 	target string
+	// dotSegments counts the dot segments the author wrote into target.
+	dotSegments int
 	// opaquePath is set when the target names a scheme but no authority of its
 	// own. A capture may write the "//" that opens one, and it need only supply
 	// half of it, so the composed location is what gets checked.
@@ -201,11 +203,12 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		cfg.rulesRegex = append(cfg.rulesRegex, compiledRule{
-			from:       k,
-			pattern:    regexp.MustCompile(pattern),
-			target:     v,
-			opaquePath: spanStart == spanEnd && schemeEnd(v) > 0,
-			sameOrigin: !targetNamesAuthority(v),
+			from:        k,
+			pattern:     regexp.MustCompile(pattern),
+			target:      v,
+			dotSegments: rulematch.DotSegments(v),
+			opaquePath:  spanStart == spanEnd && schemeEnd(v) > 0,
+			sameOrigin:  !targetNamesAuthority(v),
 		})
 	}
 
@@ -238,6 +241,11 @@ func New(config ...Config) fiber.Handler {
 			// and the client drops them anyway, so the guard below always runs
 			// on the location as it will be read.
 			location := urlnorm.AsBrowserReads(replacer.Replace(rule.target))
+			// A capture may add to the target's path but not climb out of it. Checked
+			// after AsBrowserReads, which turns a decoded ".\t." into "..".
+			if rulematch.DotSegments(location) > rule.dotSegments {
+				continue
+			}
 			// The target had a scheme and an opaque path, so it named no host at all. A
 			// value writing the "//" that opens one hands the destination to the
 			// request: "myapp:$1@example.com" against "//evil.com/x".

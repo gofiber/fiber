@@ -251,6 +251,8 @@ The pattern can contain parameters prefixed with `:`. Use [`DomainParam`](#domai
 
 Groups offer `Domain` too: `api.Domain("api.example.com")` keeps the group prefix and adds the host filter.
 
+Routes for one path registered through different `Domain` patterns stay separate routes, each with its own name and automatic `HEAD` route, even when they are registered one after another; [`c.Endpoint()`](./ctx.md#endpoint) reports a `Domain` route only for a hostname its pattern matches.
+
 Domain routing has **zero performance impact** on routes that don't use it — the hostname check is applied as a handler wrapper, not a change to the core router.
 
 :::note

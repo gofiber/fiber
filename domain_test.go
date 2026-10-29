@@ -300,6 +300,156 @@ func Test_Domain_Head(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
+// One path on two patterns is two routes: merged into one, both hostnames would
+// run under the name given last, and c.Route() could not tell them apart.
+func Test_Domain_SamePathKeepsItsOwnRoute(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	served := func(c Ctx) error { return c.SendString(c.Route().Name) }
+
+	app.Domain("admin.example.com").Get("/test", served).Name("admin")
+	app.Domain("www.example.com").Get("/test", served).Name("www")
+	app.Get("/test", served).Name("any")
+	// One pattern twice is still one route
+	app.Domain("api.example.com").Get("/merged", func(c Ctx) error { return c.Next() })
+	app.Domain("API.example.com.").Get("/merged", served).Name("api")
+
+	for host, want := range map[string]string{
+		"admin.example.com": "admin",
+		"www.example.com":   "www",
+		"other.example.com": "any",
+	} {
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = host
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, want, string(body), host)
+	}
+
+	var merged []Route
+	for _, route := range app.GetRoutes(true) {
+		if route.Method == MethodGet && route.Path == "/merged" {
+			merged = append(merged, route)
+		}
+	}
+	require.Len(t, merged, 1)
+	require.Len(t, merged[0].Handlers, 2)
+}
+
+// The automatic HEAD route of one pattern declines every other hostname, so it
+// cannot stand in for the GET route another pattern has on the same path.
+func Test_Domain_AutoHeadPerPattern(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	served := func(c Ctx) error {
+		c.Set("X-Served", c.Route().Name)
+		return c.SendStatus(StatusOK)
+	}
+
+	app.Domain("admin.example.com").Get("/test", served).Name("admin")
+	app.Domain("www.example.com").Get("/test", served).Name("www")
+	app.Domain("api.example.com").Head("/test", served).Name("api.head")
+	app.Get("/test", served).Name("any")
+
+	head := func(host string) *http.Response {
+		req := httptest.NewRequest(MethodHead, "/test", http.NoBody)
+		req.Host = host
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		return resp
+	}
+
+	require.Equal(t, "admin", head("admin.example.com").Header.Get("X-Served"))
+	require.Equal(t, "www", head("www.example.com").Header.Get("X-Served"))
+	require.Equal(t, "api.head", head("api.example.com").Header.Get("X-Served"), "renamed by another host's GET route")
+	require.Equal(t, "any", head("other.example.com").Header.Get("X-Served"))
+
+	// Removing one pattern's GET route takes its own companion along, not another's
+	app.RemoveRouteByName("admin", MethodGet)
+	app.RebuildTree()
+
+	require.Equal(t, "any", head("admin.example.com").Header.Get("X-Served"))
+	require.Equal(t, "www", head("www.example.com").Header.Get("X-Served"))
+}
+
+// Test_Domain_AutoHeadAheadOfLaterHead pins that a HEAD route on another Domain
+// pattern, or in a mounted app, runs behind the automatic route of an earlier GET.
+func Test_Domain_AutoHeadAheadOfLaterHead(t *testing.T) {
+	t.Parallel()
+
+	handler := func(name string) Handler {
+		return func(c Ctx) error {
+			c.Set("X-Handler", name)
+			return nil
+		}
+	}
+
+	testCases := []struct {
+		register func(app *App)
+		want     map[string]string
+		name     string
+	}{
+		{
+			name: "Domain HEAD after GET",
+			register: func(app *App) {
+				app.Get("/x", handler("get"))
+				app.Domain("admin.example.com").Head("/x", handler("domain head"))
+			},
+			want: map[string]string{"admin.example.com": "get", "other.example.com": "get"},
+		},
+		{
+			name: "HEAD after Domain GET",
+			register: func(app *App) {
+				app.Domain("admin.example.com").Get("/x", handler("domain get"))
+				app.Head("/x", handler("head"))
+			},
+			want: map[string]string{"admin.example.com": "domain get", "other.example.com": "head"},
+		},
+		{
+			name: "mounted HEAD after GET",
+			register: func(app *App) {
+				app.Get("/x", handler("get"))
+				sub := New()
+				sub.Head("/x", handler("sub head"))
+				app.Use("/", sub)
+			},
+			want: map[string]string{"admin.example.com": "get"},
+		},
+		{
+			name: "Domain-mounted HEAD after GET",
+			register: func(app *App) {
+				app.Get("/x", handler("get"))
+				sub := New()
+				sub.Head("/x", handler("sub head"))
+				app.Domain("admin.example.com").Use("/", sub)
+			},
+			want: map[string]string{"admin.example.com": "get", "other.example.com": "get"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			tc.register(app)
+
+			for host, want := range tc.want {
+				req := httptest.NewRequest(MethodHead, "/x", http.NoBody)
+				req.Host = host
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, StatusOK, resp.StatusCode, host)
+				require.Equal(t, want, resp.Header.Get("X-Handler"), host)
+			}
+		})
+	}
+}
+
 func Test_Domain_All(t *testing.T) {
 	t.Parallel()
 
@@ -2880,6 +3030,64 @@ func Test_Domain_UseMountAutoHeadKeepsMiddleware(t *testing.T) {
 	}
 }
 
+// Test_Domain_UseMountAutoHeadKeepsMiddlewareWhenFlattened pins the same once
+// the app that left HEAD out is no longer walked, only its routes' marks are.
+func Test_Domain_UseMountAutoHeadKeepsMiddlewareWhenFlattened(t *testing.T) {
+	t.Parallel()
+
+	newSubApp := func() *App {
+		subApp := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
+		subApp.Use(func(c Ctx) error {
+			return c.SendStatus(StatusUnauthorized)
+		})
+		subApp.Get("/secret", func(c Ctx) error {
+			c.Set("X-Secret", "leaked")
+			return c.SendString("secret")
+		})
+		return subApp
+	}
+
+	for name, mountOn := range map[string]func(mid *App){
+		"inner domain mount": func(mid *App) {
+			mid.Domain("api.example.com").Use("/sub", newSubApp())
+		},
+		"plain mount over a domain mount": func(mid *App) {
+			inner := New()
+			inner.Domain("api.example.com").Use("/sub", newSubApp())
+			mid.Use("/", inner)
+		},
+		"started before mounting": func(mid *App) {
+			mid.Use("/sub", newSubApp())
+			mid.Handler()
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			mid := New()
+			mountOn(mid)
+
+			app := New()
+			app.Domain("api.example.com").Use("/mid", mid)
+
+			req := httptest.NewRequest(MethodGet, "/mid/sub/secret", http.NoBody)
+			req.Host = "api.example.com"
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, StatusUnauthorized, resp.StatusCode)
+
+			for range 2 {
+				req = httptest.NewRequest(MethodHead, "/mid/sub/secret", http.NoBody)
+				req.Host = "api.example.com"
+				resp, err = app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+				require.Empty(t, resp.Header.Get("X-Secret"))
+			}
+		})
+	}
+}
+
 // Test_Domain_UseMountNestedAutoHeadDisabled verifies that a nested app which
 // turned automatic HEAD routes off does not get them from the mount either.
 func Test_Domain_UseMountNestedAutoHeadDisabled(t *testing.T) {
@@ -3229,6 +3437,46 @@ func Test_Domain_UseMountOverlappingErrorHandler(t *testing.T) {
 	}
 }
 
+func Test_Domain_UseMountWildcardPrefixErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	sub := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(581).SendString("sub")
+	}})
+	sub.Get("/:page", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Domain("admin.example.com").Use("/api/*/admin", sub)
+
+	req := httptest.NewRequest(MethodGet, "/api/acme/admin/admins", http.NoBody)
+	req.Host = "admin.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 581, resp.StatusCode)
+}
+
+func Test_Domain_UseMountParamPrefixErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	sub := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(581).SendString("sub")
+	}})
+	sub.Get("/raw", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/files/:name.json", sub)
+
+	req := httptest.NewRequest(MethodGet, "/files/a.json.json/raw", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 581, resp.StatusCode)
+}
+
 // Test_Domain_UseMountOverlappingErrorHandlerAutoHead verifies that an automatic
 // HEAD route resolves the same owner its GET route does, rather than falling
 // back to the first mount that covers the path.
@@ -3546,11 +3794,12 @@ func Test_Domain_UseMountAutoHeadPerMount(t *testing.T) {
 	})
 
 	outer := New()
+	// mounted first, so its HEAD route runs ahead of the GET route's on its hostnames
+	outer.Domain("admin.example.com").Use("/", inner)
 	outer.Get("/x", func(c Ctx) error {
 		c.Set("X-Handler", "outer")
 		return nil
 	})
-	outer.Domain("admin.example.com").Use("/", inner)
 
 	app := New()
 	app.Domain(":tenant.example.com").Use("/api", outer)
@@ -3760,6 +4009,74 @@ func Test_Domain_UseMountNestedPrefixConstraint(t *testing.T) {
 		resp, err := app.Test(req)
 		require.NoError(t, err)
 		require.Equal(t, want, resp.StatusCode, path)
+	}
+}
+
+// Test_Domain_UseMountPrefixAsWritten verifies that a domain mount is recorded
+// with its prefix as written, so its config answers for the paths its routes match.
+func Test_Domain_UseMountPrefixAsWritten(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		prefix  string
+		covered string
+		outside string
+	}{
+		{prefix: `/v1\:internal`, covered: "/v1:internal", outside: "/v1foo"},
+		{prefix: `/a\*`, covered: "/a*", outside: "/a/b"},
+		{prefix: "/even/:n<isEven>", covered: "/even/4", outside: "/even/3"},
+		{prefix: "/code/:code<regex(^[A-Z]{2}$)>", covered: "/code/US", outside: "/code/us"},
+		{prefix: `/num/:n<regex(^\d+$)>`, covered: "/num/12", outside: "/num/dd"},
+	}
+
+	mounts := map[string]func(app *App, prefix string, child *App){
+		"domain": func(app *App, prefix string, child *App) {
+			app.Domain("example.com").Use(prefix, child)
+		},
+		"domain in app": func(app *App, prefix string, child *App) {
+			mid := New()
+			mid.RegisterCustomConstraint(&evenConstraint{})
+			mid.Domain("example.com").Use(prefix, child)
+			app.Use("/", mid)
+		},
+		"domain in domain": func(app *App, prefix string, child *App) {
+			mid := New()
+			mid.RegisterCustomConstraint(&evenConstraint{})
+			mid.Domain("example.com").Use(prefix, child)
+			app.Domain("example.com").Use("/", mid)
+		},
+	}
+
+	for name, mount := range mounts {
+		for _, tc := range testCases {
+			t.Run(name+" "+tc.prefix, func(t *testing.T) {
+				t.Parallel()
+
+				child := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+					return c.Status(607).SendString("child")
+				}})
+				child.Get("/boom", func(_ Ctx) error {
+					return errors.New("boom")
+				})
+
+				app := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+					return c.Status(608).SendString("root")
+				}})
+				app.RegisterCustomConstraint(&evenConstraint{})
+				mount(app, tc.prefix, child)
+
+				for path, want := range map[string]int{
+					tc.covered + "/boom": 607,
+					tc.covered + "/nope": 607,
+					tc.outside + "/boom": 608,
+					tc.outside + "/nope": 608,
+				} {
+					resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, want, resp.StatusCode, path)
+				}
+			})
+		}
 	}
 }
 
