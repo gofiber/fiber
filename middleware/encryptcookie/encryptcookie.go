@@ -9,11 +9,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// responseCookie is one entry of the Set-Cookie header as the encrypt pass read
-// it. key is the name fasthttp stores the line under, name is the one the
-// caller wrote, line is the field value as it arrived, and ck holds the parsed
-// form of a line that still has to be sealed. An entry with no line and no ck
-// is dropped.
+// responseCookie is one Set-Cookie line as it arrived, plus its parsed form
+// once the line has to be sealed.
 type responseCookie struct {
 	ck   *fasthttp.Cookie
 	key  string
@@ -42,11 +39,8 @@ func New(config ...Config) fiber.Handler {
 		// Encrypt response cookies
 		header := &c.Response().Header
 
-		// A response can set the same name more than once, and the order of the
-		// lines decides which value the browser keeps, so every line is sealed
-		// on its own instead of once per name. The name is read from the first
-		// ';' segment, the same segment the value lives in, so Except matches
-		// the name the caller wrote.
+		// The order of the lines decides which value the browser keeps, so each
+		// line is sealed on its own instead of once per name.
 		var cookies []responseCookie
 
 		for key, raw := range header.Cookies() {
@@ -58,20 +52,17 @@ func New(config ...Config) fiber.Handler {
 			cookie := responseCookie{key: string(key), name: name, line: line}
 			switch {
 			case isDisabled(name, cfg.Except):
-				// Except keeps the line exactly as it arrived.
+				// Except keeps the line as it arrived.
 
 			case !found || name == "":
-				// A line with no name, or with an empty one, has nothing to
-				// seal its value under, so it is not sent instead of going out
-				// in clear text. The Except check above can still keep it.
+				// There is no name to seal the value under, so the line is
+				// dropped instead of going out in clear text.
 				cookie.line = ""
 
 			default:
-				// fasthttp's parser is the one the request side reads with, so
-				// a quoted or padded value is sealed as the plain text it
-				// stands for. It rejects a value holding a quote or a
-				// backslash, and such a line cannot be sealed under its name,
-				// so it is not sent either.
+				// A quoted value is sealed as the plain text it stands for, and
+				// a line the parser rejects is dropped for the same reason as
+				// above.
 				cookie.ck = fasthttp.AcquireCookie()
 				if parseErr := cookie.ck.ParseBytes(raw); parseErr != nil {
 					fasthttp.ReleaseCookie(cookie.ck)
@@ -91,23 +82,20 @@ func New(config ...Config) fiber.Handler {
 				continue
 			}
 
-			// name is the same '=' segment the parser read as the key, so it is
-			// the name the request side decrypts under, which the default
-			// helpers bind as AAD.
+			// The default helpers bind the name as AAD, so it has to be the
+			// name the request side decrypts under.
 			encryptedValue, sealErr := cfg.Encryptor(cookie.name, string(cookie.ck.Value()), cfg.Key)
 			if sealErr != nil {
 				encErr = sealErr
 				break
 			}
 
-			// SetValue replaces every ';', which would otherwise start a new
-			// attribute and let the value add one.
+			// SetValue turns ';' into a space, so the value cannot add an attribute.
 			cookie.ck.SetValue(encryptedValue)
 		}
 
-		// Write once, in the order the lines arrived. A repeated name or a
-		// dropped line needs the whole header built again, while a unique name
-		// goes back into its own slot without touching the others.
+		// Write once in arrival order, and rebuild the header only when a name
+		// repeats or a line was dropped.
 		switch {
 		case encErr != nil:
 			header.DelAllCookies()
