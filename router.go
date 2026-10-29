@@ -1093,6 +1093,9 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 // dropTrailers drops the trailer section a request carries into the handlers, since fasthttp files a later Set or
 // Add under a received trailer name with that section. It reports false for more than fieldname.MaxTrailers names.
 func dropTrailers(req *fasthttp.Request) bool {
+	if len(req.Header.PeekTrailerKeys()) == 0 && !req.IsBodyStream() {
+		return true // most requests, without a call into fieldname
+	}
 	if !fieldname.DropTrailers(&req.Header) {
 		return false
 	}
