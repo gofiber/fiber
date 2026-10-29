@@ -253,6 +253,21 @@ func Test_Ctx_Charset(t *testing.T) {
 			expected:    "",
 		},
 		{
+			name:        "later_equals_does_not_open_quotes",
+			contentType: `multipart/form-data; boundary=ab="cd; charset=utf-8`,
+			expected:    "utf-8",
+		},
+		{
+			name:        "later_equals_does_not_hide_first_charset",
+			contentType: `text/plain; a=b="; charset=bad"; charset=utf-8`,
+			expected:    "",
+		},
+		{
+			name:        "escaped_quote_at_start_of_earlier_value",
+			contentType: `text/plain; a="\";charset=bad"; charset=utf-8`,
+			expected:    "utf-8",
+		},
+		{
 			name:        "unterminated_quoted_value",
 			contentType: `text/plain; charset="utf-8`,
 			expected:    "",
@@ -353,6 +368,8 @@ func Benchmark_Ctx_Charset(b *testing.B) {
 		{name: "charset", contentType: MIMEApplicationJSONCharsetUTF8},
 		{name: "charset_last", contentType: `multipart/form-data; boundary="a;b"; charset=utf-8`},
 		{name: "quoted_pair", contentType: `text/plain; charset="utf\-8"`},
+		{name: "empty_parameters", contentType: "text/plain;" + strings.Repeat(";", 4000)},
+		{name: "empty_parameters_before_charset", contentType: "text/plain;;;charset=utf-8"},
 	} {
 		b.Run(bench.name, func(b *testing.B) {
 			app := New()
@@ -3159,6 +3176,34 @@ func Test_Ctx_FormValue_NonMultipart(t *testing.T) {
 // call Bind first to get its own form back.
 func Test_Ctx_Form_MixedCaseContentType(t *testing.T) {
 	t.Parallel()
+
+	for _, accessor := range []string{"FormValue", "MultipartForm", "Bind"} {
+		t.Run("quoted_decoy_"+accessor, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+			c.Request().Header.SetMethod(MethodPost)
+			c.Request().Header.Set(HeaderContentType, `Multipart/Form-Data; X= "; BOUNDARY=bogus"; BOUNDARY=Real`)
+			c.Request().SetBodyString("--Real\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\ncarol\r\n--Real--\r\n")
+
+			switch accessor {
+			case "FormValue":
+				require.Equal(t, "carol", c.FormValue("name"))
+			case "MultipartForm":
+				form, err := c.MultipartForm()
+				require.NoError(t, err)
+				require.Equal(t, []string{"carol"}, form.Value["name"])
+			case "Bind":
+				var out struct {
+					Name string `form:"name"`
+				}
+				require.NoError(t, c.Bind().Form(&out))
+				require.Equal(t, "carol", out.Name)
+			}
+		})
+	}
 
 	t.Run("urlencoded", func(t *testing.T) {
 		t.Parallel()
