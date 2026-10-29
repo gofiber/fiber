@@ -37,12 +37,12 @@ func isCookieHeader(name string) bool {
 	return utils.EqualFold(name, fiber.HeaderSetCookie) || utils.EqualFold(name, fiber.HeaderSetCookie2)
 }
 
-// scopedKey returns the key a response is stored and locked under when
-// Config.KeyScope is set: a digest of the scope and the key together. The
-// length of the scope goes in front of it, so no two pairs share the bytes
-// that are hashed and a key cannot spell out another scope, and the digest has
-// the same length whatever either is, which a storage that limits the length of
-// its keys needs.
+// scopedKey returns the key a response is stored under when Config.KeyScope is
+// set: storagePrefix and a digest of the scope and the key together, the digest
+// alone being the key it is locked under. The length of the scope goes in front
+// of it, so no two pairs share the bytes that are hashed and a key cannot spell
+// out another scope, and the digest has the same length whatever either is,
+// which a storage that limits the length of its keys needs.
 func scopedKey(scope, key string) string {
 	// A user ID and a UUID fit the array; a longer pair grows onto the heap.
 	var buf [128]byte
@@ -51,8 +51,9 @@ func scopedKey(scope, key string) string {
 	b = append(b, scope...)
 	b = append(b, key...)
 	sum := sha256.Sum256(b)
-	var out [sha256.Size * 2]byte
-	hex.Encode(out[:], sum[:])
+	var out [len(storagePrefix) + sha256.Size*2]byte
+	copy(out[:], storagePrefix)
+	hex.Encode(out[len(storagePrefix):], sum[:])
 	return string(out[:])
 }
 
@@ -168,8 +169,8 @@ func New(config ...Config) fiber.Handler {
 		// and the key when the config scopes it, otherwise the key alone.
 		storageKey := key
 		if cfg.KeyScope != nil {
-			storageKey = scopedKey(cfg.KeyScope(c), key)
-			entryKey = storagePrefix + storageKey
+			entryKey = scopedKey(cfg.KeyScope(c), key)
+			storageKey = entryKey[len(storagePrefix):]
 		}
 
 		// First-pass: if the idempotency key is in the storage, get and return the response

@@ -671,7 +671,7 @@ func Test_New_KeyScope(t *testing.T) {
 	// Each entry holds its own user's cookie and nobody else's, under the key
 	// the scope and the idempotency key digest to.
 	for _, user := range []string{"alice", "bob", ""} {
-		val := string(s.data[storagePrefix+scopedKey(user, validKey)])
+		val := string(s.data[scopedKey(user, validKey)])
 		require.Contains(t, val, "sid="+user+"-session")
 		for _, other := range []string{"alice", "bob"} {
 			if other != user {
@@ -723,9 +723,9 @@ func Test_scopedKey(t *testing.T) {
 
 	first := scopedKey("alice", validKey)
 	require.Equal(t, first, scopedKey("alice", validKey))
-	require.Len(t, scopedKey("", ""), 64)
-	require.Len(t, scopedKey(strings.Repeat("s", 1000), strings.Repeat("k", 1000)), 64)
-	require.NotEqual(t, validKey, scopedKey("", validKey))
+	require.Len(t, scopedKey("", ""), len(storagePrefix)+64)
+	require.Len(t, scopedKey(strings.Repeat("s", 1000), strings.Repeat("k", 1000)), len(storagePrefix)+64)
+	require.NotEqual(t, storagePrefix+validKey, scopedKey("", validKey))
 
 	seen := make(map[string][2]string)
 	for _, pair := range [][2]string{
