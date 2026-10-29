@@ -56,28 +56,31 @@ func Fuzz_Session_ClientInput(f *testing.F) {
 	f.Add("b:abc", "a:abc", "unknown", "unknown")
 	f.Add(strings.Repeat("g", 512), "\x00\x01\x02", "\"quoted\"", "x y")
 
-	w := newInvariantWorld(1)
-	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		var rec invariantRecord
-		for name := range strings.SplitSeq(c.Query("ops"), ",") {
-			sess, err := w.stores[name].Get(c)
-			if err != nil {
-				return err
-			}
-			sess.Set("n", 1)
-			if err := sess.Save(); err != nil {
-				sess.Release()
-				return err
-			}
-			rec.Sessions = append(rec.Sessions, invariantSession{Store: name, ID: sess.ID(), Fresh: sess.Fresh()})
-			sess.Release()
-		}
-		return c.JSON(rec)
-	})
-	handler := app.Handler()
-
 	f.Fuzz(func(t *testing.T, a, b, c, header string) {
+		// A world of its own for every input: nothing carries over from one input to
+		// the next, so an input that fails fails alone, and the storage does not grow
+		// for as long as the fuzzing runs.
+		w := newInvariantWorld(1)
+		app := fiber.New()
+		app.Get("/", func(c fiber.Ctx) error {
+			var rec invariantRecord
+			for name := range strings.SplitSeq(c.Query("ops"), ",") {
+				sess, err := w.stores[name].Get(c)
+				if err != nil {
+					return err
+				}
+				sess.Set("n", 1)
+				if err := sess.Save(); err != nil {
+					sess.Release()
+					return err
+				}
+				rec.Sessions = append(rec.Sessions, invariantSession{Store: name, ID: sess.ID(), Fresh: sess.Fresh()})
+				sess.Release()
+			}
+			return c.JSON(rec)
+		})
+		handler := app.Handler()
+
 		fctx := &fasthttp.RequestCtx{}
 		fctx.Request.Header.SetMethod(fiber.MethodGet)
 		fctx.Request.SetRequestURI("/?ops=A,B,C,A2,B")

@@ -115,6 +115,8 @@ func lockFor(key string) *idLock {
 
 // Store manages session data using the configured storage backend.
 type Store struct {
+	// root identifies the extractor that sinks and sources were worked out from.
+	root extractorRoot
 	// sinks are the cookies and headers a session ID can be written back to, in the
 	// order of the extractor. NewStore works them out once; a Store built without it
 	// has none (nil), and walks its extractor when it needs them. Read-only: every
@@ -123,30 +125,31 @@ type Store struct {
 	// sources names the cookies and headers the store reads the session ID from
 	// and writes it back to, such as "cookie:session_id".
 	sources []string
-	// localsMode remembers whether the app that last served the store passes the
-	// request locals to the request context.
-	localsMode atomic.Pointer[localsMode]
 	Config
 }
 
-// localsMode is whether an app passes the request locals to the request context.
-type localsMode struct {
-	app  *fiber.App
-	pass bool
+// extractorRoot identifies an extractor well enough to notice that the Extractor of
+// a store was replaced after NewStore, which Config being embedded allows: it holds
+// what tells one extractor from another without calling it, the key and source of
+// the root and the identity of its chain. Changing a nested extractor in place is
+// not noticed.
+type extractorRoot struct {
+	key    string
+	scheme string
+	chain  []extractors.Extractor
+	source extractors.Source
 }
 
-// passesLocalsToContext reports whether the app serving c passes the request locals
-// to the request context (Config.PassLocalsToContext). The answer is kept for the
-// app, since asking the app for it copies its whole configuration, about 600 bytes,
-// on every request.
-func (s *Store) passesLocalsToContext(c fiber.Ctx) bool {
-	app := c.App()
-	if mode := s.localsMode.Load(); mode != nil && mode.app == app {
-		return mode.pass
+func rootOf(ext extractors.Extractor) extractorRoot {
+	return extractorRoot{key: ext.Key, scheme: ext.AuthScheme, chain: ext.Chain, source: ext.Source}
+}
+
+// matches reports whether ext is the extractor r was taken from.
+func (r extractorRoot) matches(ext extractors.Extractor) bool {
+	if r.key != ext.Key || r.scheme != ext.AuthScheme || r.source != ext.Source || len(r.chain) != len(ext.Chain) {
+		return false
 	}
-	mode := &localsMode{app: app, pass: app.Config().PassLocalsToContext}
-	s.localsMode.Store(mode)
-	return mode.pass
+	return len(r.chain) == 0 || &r.chain[0] == &ext.Chain[0]
 }
 
 // collectSinks lists the cookies and headers an extractor reads a session ID from,
@@ -185,13 +188,28 @@ func sourceNames(sinks []extractors.Extractor) []string {
 	return names
 }
 
+// worked reports whether sinks and sources are those of the extractor the store has
+// now: NewStore worked them out, and the Extractor was not replaced since.
+func (s *Store) worked() bool {
+	return s.sinks != nil && s.root.matches(s.Extractor)
+}
+
 // writableSinks returns the cookies and headers a session ID of s can be written
 // back to. The slice is shared: do not modify it.
 func (s *Store) writableSinks() []extractors.Extractor {
-	if s.sinks != nil {
+	if s.worked() {
 		return s.sinks
 	}
 	return collectSinks(s.Extractor)
+}
+
+// sourceList returns the names of the cookies and headers s reads its session ID
+// from. The slice is shared: do not modify it.
+func (s *Store) sourceList() []string {
+	if s.worked() {
+		return s.sources
+	}
+	return sourceNames(collectSinks(s.Extractor))
 }
 
 // sharesSource reports whether s and other read the session ID from a common
@@ -204,11 +222,15 @@ func (s *Store) writableSinks() []extractors.Extractor {
 // other's cached ID would look up a foreign session, or write its own ID to a
 // cookie it does not own.
 func (s *Store) sharesSource(other *Store) bool {
-	if s == other || len(s.sources) == 0 || len(other.sources) == 0 {
+	if s == other {
 		return true
 	}
-	return slices.ContainsFunc(s.sources, func(source string) bool {
-		return slices.Contains(other.sources, source)
+	mine, theirs := s.sourceList(), other.sourceList()
+	if len(mine) == 0 || len(theirs) == 0 {
+		return true
+	}
+	return slices.ContainsFunc(mine, func(source string) bool {
+		return slices.Contains(theirs, source)
 	})
 }
 
@@ -299,11 +321,13 @@ func requestProvenance(c fiber.Ctx) *provenanceBox {
 // request, the latter in box, were published by a store that shares a cookie or
 // header with s.
 func (s *Store) mayReuseRequestID(c fiber.Ctx, box *provenanceBox) bool {
-	if box != nil && box.owner != nil && !s.sharesSource(box.owner) {
+	// A store always shares with itself: the check is made here, before the call, since
+	// a request with a single store is by far the common one.
+	if box != nil && box.owner != nil && box.owner != s && !s.sharesSource(box.owner) {
 		return false
 	}
 	publisher := requestIDPublisher(c, box)
-	return publisher == nil || s.sharesSource(publisher)
+	return publisher == nil || publisher == s || s.sharesSource(publisher)
 }
 
 // NewStore creates a new session store with the provided configuration.
@@ -336,6 +360,7 @@ func NewStore(config ...Config) *Store {
 	}
 	store := &Store{
 		Config:  cfg,
+		root:    rootOf(cfg.Extractor),
 		sinks:   sinks,
 		sources: sourceNames(sinks),
 	}

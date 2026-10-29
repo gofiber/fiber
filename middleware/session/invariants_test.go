@@ -311,6 +311,23 @@ func (w *invariantWorld) check(t *testing.T, step int, req invariantRequest, res
 	w.ledger.mu.Unlock()
 	require.Empty(t, violations, where)
 
+	// What was saved reaches the client: the last session saved for a cookie has its ID
+	// in that cookie, or in the header of the store, since every save writes it.
+	last := make(map[string]invariantSession)
+	for _, sess := range rec.Sessions {
+		last[w.stores[sess.Store].cookies[0]] = sess
+	}
+	for cookieName, sess := range last {
+		written := false
+		for _, cookie := range resp.Cookies() {
+			written = written || (cookie.Name == cookieName && cookie.Value == sess.ID)
+		}
+		for _, header := range w.stores[sess.Store].headers {
+			written = written || resp.Header.Get(header) == sess.ID
+		}
+		require.True(t, written, "%s: the session %q of store %s was saved, but its ID reached the client in none of the cookies and headers of the store", where, sess.ID, sess.Store)
+	}
+
 	// A hashed store keeps the ID out of its storage key.
 	for id := range idsOf["C"] {
 		key := w.stores["C"].storageKey(id)
