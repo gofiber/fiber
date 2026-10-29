@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
@@ -38,7 +39,9 @@ func forwardWithRealIP(c fiber.Ctx, addr string, policy SecurityPolicy, clients 
 	var scratch [realIPScratch]byte
 	ip := realIP(c, scratch[:0])
 	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
-		setRealIP(c, ip)
+		if !setRealIP(c, ip) {
+			return fiber.ErrRequestHeaderFieldsTooLarge
+		}
 		return cli.Do(req, resp)
 	}, clients...)
 }
@@ -56,6 +59,10 @@ func forwardWithRealIP(c fiber.Ctx, addr string, policy SecurityPolicy, clients 
 // The default client sets no timeout and no response size cap.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
+		// See Balancer: a refused request is not forwarded.
+		if errorreplay.Active(c.RequestCtx()) {
+			return c.Next()
+		}
 		return forwardWithRealIP(c, addr, currentSecurityPolicy(), clients...)
 	}
 }
@@ -88,6 +95,7 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 
 // DoRedirects performs the given http request and fills the given http response, following up to maxRedirectsCount redirects.
 // When the redirect count exceeds maxRedirectsCount, ErrTooManyRedirects is returned.
+// An error while following the chain resets the response, so no upstream answer goes out with it.
 // This method can be used within a fiber.Handler
 //
 // Each redirect target is re-validated against the active SecurityPolicy.
@@ -105,7 +113,12 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error {
 	policy := currentSecurityPolicy()
 	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
-		return followRedirects(cli, req, resp, maxRedirectsCount, u, policy)
+		err := followRedirects(cli, req, resp, maxRedirectsCount, u, policy)
+		if err != nil {
+			// resp holds the hop the loop stopped at, unstripped: none of it is the client's.
+			resp.Reset()
+		}
+		return err
 	}, clients...)
 }
 
@@ -203,8 +216,8 @@ func doActionWithPolicy(
 	// https://github.com/gofiber/fiber/issues/1762.
 	req.URI().SetScheme(u.Scheme)
 
-	if !policy.KeepHopByHopHeaders {
-		stripHopByHopRequestHeaders(req, normalized)
+	if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized) {
+		return fiber.ErrRequestHeaderFieldsTooLarge
 	}
 	// The upstream connection speaks HTTP/1.1: reset a protocol token
 	// inherited from the inbound request (e.g. "HTTP/2" propagated by the
@@ -213,8 +226,8 @@ func doActionWithPolicy(
 	if err := action(cli, req, res, u); err != nil {
 		return err
 	}
-	if !policy.KeepHopByHopHeaders {
-		stripHopByHopResponseHeaders(res)
+	if !policy.KeepHopByHopHeaders && !stripHopByHopResponseHeaders(res) {
+		return fiber.ErrBadGateway
 	}
 	return nil
 }
@@ -272,6 +285,10 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 	}
 	r := &urlRoundrobin{pool: bases}
 	return func(c fiber.Ctx) error {
+		// See Balancer: a refused request is not forwarded.
+		if errorreplay.Active(c.RequestCtx()) {
+			return c.Next()
+		}
 		return forwardRouted(c, r.get(), clients...)
 	}
 }

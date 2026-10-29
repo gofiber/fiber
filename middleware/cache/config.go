@@ -112,8 +112,10 @@ type Config struct {
 	// Optional. Default: 5 * time.Minute
 	Expiration time.Duration
 
-	// Max number of bytes of response bodies simultaneously stored in cache. When limit is reached,
-	// entries with the nearest expiration are deleted to make room for new.
+	// Max number of bytes simultaneously stored in cache, counting each entry's body, key and stored
+	// headers. When limit is reached, entries with the nearest expiration are deleted to make room for new.
+	// The number of entries is limited along with it, to MaxBytes/256 but no fewer than 1024,
+	// since an entry also takes memory for bookkeeping that is not counted.
 	// 0 means no limit
 	//
 	// Optional. Default: 1 * 1024 * 1024

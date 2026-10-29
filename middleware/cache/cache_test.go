@@ -23,11 +23,13 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/middleware/compress"
+	"github.com/gofiber/fiber/v3/middleware/encryptcookie"
 	"github.com/gofiber/fiber/v3/middleware/etag"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/utils/v2"
@@ -494,7 +496,8 @@ func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 		return c.Next()
 	})
 
-	app.Use(New(Config{Storage: storage, Expiration: time.Minute, MaxBytes: 5}))
+	// Room for /second alone, so storing it evicts /first.
+	app.Use(New(Config{Storage: storage, Expiration: time.Minute, MaxBytes: charged(defaultKey("/second"), len("bbbb"), textPlain)}))
 
 	app.Get("/first", func(c fiber.Ctx) error {
 		return c.SendString("aaa")
@@ -2591,6 +2594,28 @@ func (p *accountingProbe) nodes() int {
 	return p.heapLen
 }
 
+// charged is what MaxBytes counts for an entry: its key, its body and the headers it stores.
+func charged(key string, bodyLen int, stored ...string) uint {
+	n := len(key) + bodyLen
+	for _, s := range stored {
+		n += len(s)
+	}
+	return uint(n)
+}
+
+// defaultKey is the key the default config stores a GET of path on example.com under.
+func defaultKey(path string) string {
+	return cacheKeyVersion + "|GET|scheme=http|host=example.com|" + path + "|q=|h=accept:0|accept-encoding:0|accept-language:0"
+}
+
+// variantKey is the key an entry stored under the Vary names gets for a request that sends none
+// of them; one that sends them gets a key of the same length.
+func variantKey(base string, names ...string) string {
+	return varyKey(base, names, &fasthttp.RequestHeader{}, true)
+}
+
+const textPlain = fiber.MIMETextPlainCharsetUTF8
+
 func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
 	t.Parallel()
 
@@ -2627,7 +2652,7 @@ func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-			require.Equal(t, uint(600), probe.counted(), "the refreshed entry must be counted once")
+			require.Equal(t, charged(defaultKey("/x"), 600, textPlain), probe.counted(), "the refreshed entry must be counted once")
 			require.Equal(t, 1, probe.nodes(), "the refreshed entry must own a single heap node")
 
 			// 600 + 600 fits within 1500, so /y must not evict anything.
@@ -2643,7 +2668,7 @@ func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 
-			require.Equal(t, uint(1200), probe.counted())
+			require.Equal(t, charged(defaultKey("/x"), 600, textPlain)+charged(defaultKey("/y"), 600, textPlain), probe.counted())
 			require.Equal(t, 2, probe.nodes())
 		})
 	}
@@ -2737,7 +2762,7 @@ func Test_Cache_UncacheableResponseDoesNotEvict(t *testing.T) {
 	probe := &accountingProbe{}
 	app := fiber.New()
 	app.Use(New(Config{
-		MaxBytes:   10,
+		MaxBytes:   charged(defaultKey("/b"), len("bbbbbbbbbb"), textPlain, "max-age=0"),
 		Expiration: time.Hour,
 		accounting: probe.record,
 	}))
@@ -2758,7 +2783,7 @@ func Test_Cache_UncacheableResponseDoesNotEvict(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 
-	require.Equal(t, uint(5), probe.counted(), "an uncacheable response must not displace stored entries")
+	require.Equal(t, charged(defaultKey("/a"), len("aaaaa"), textPlain), probe.counted(), "an uncacheable response must not displace stored entries")
 	require.Equal(t, 1, probe.nodes())
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody))
@@ -2770,7 +2795,7 @@ func Test_Cache_MaxBytesOrder(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		MaxBytes:            2,
+		MaxBytes:            2 * charged(defaultKey("/a"), 1, textPlain),
 		ExpirationGenerator: stableAscendingExpiration(),
 	}))
 
@@ -2779,7 +2804,7 @@ func Test_Cache_MaxBytesOrder(t *testing.T) {
 	})
 
 	cases := [][]string{
-		// Insert a, b into cache of size 2 bytes (responses are 1 byte)
+		// Insert a, b into a cache with room for two entries
 		{"/a", cacheMiss},
 		{"/b", cacheMiss},
 		{"/a", cacheHit},
@@ -2806,8 +2831,10 @@ func Test_Cache_MaxBytesSizes(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
+	// Room for 7 body bytes in three entries, each also charged its key and Content-Type.
+	maxBytes := 7 + 3*charged(defaultKey("/1"), 0, textPlain)
 	app.Use(New(Config{
-		MaxBytes:            7,
+		MaxBytes:            maxBytes,
 		ExpirationGenerator: stableAscendingExpiration(),
 	}))
 
@@ -2826,13 +2853,114 @@ func Test_Cache_MaxBytesSizes(t *testing.T) {
 		{"/3", cacheHit},
 		{"/1", cacheMiss},
 		{"/2", cacheMiss},
-		{"/8", cacheUnreachable}, // too big to cache -> unreachable
+		{"/" + strconv.Itoa(int(maxBytes)), cacheUnreachable}, // too big to cache -> unreachable
 	}
 
 	for idx, tcase := range cases {
 		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tcase[0], http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, tcase[1], rsp.Header.Get("X-Cache"), "Case %v", idx)
+	}
+}
+
+// Body read a sized stream to its end and kept a read error as the body, which was then cached as a 200.
+func Test_Cache_SizedStreamIsStoredOnlyWhole(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		stream  func() io.Reader
+		maxRead int
+	}{
+		"fails": {
+			maxRead: 4,
+			stream: func() io.Reader {
+				return io.MultiReader(strings.NewReader("part"), iotest.ErrReader(errors.New("upstream reset")))
+			},
+		},
+		"longer than declared": {
+			maxRead: 64 << 10, // short of the whole MiB
+			stream:  func() io.Reader { return strings.NewReader(strings.Repeat("x", 1<<20)) },
+		},
+	} {
+		// etag reads the stream as well, inside the cache or over the one the cache sends on.
+		for _, chain := range []string{"cache", "cache, etag", "etag, cache"} {
+			t.Run(name+"/"+chain, func(t *testing.T) {
+				t.Parallel()
+				app := fiber.New()
+				for mw := range strings.SplitSeq(chain, ", ") {
+					if mw == "etag" {
+						app.Use(etag.New())
+					} else {
+						app.Use(New(Config{Expiration: time.Hour}))
+					}
+				}
+
+				var calls int
+				var read strings.Builder
+				app.Get("/", func(c fiber.Ctx) error {
+					calls++
+					read.Reset()
+					return c.SendStream(io.TeeReader(tc.stream(), &read), 10)
+				})
+
+				for range 2 {
+					fctx := &fasthttp.RequestCtx{}
+					fctx.Request.Header.SetMethod(fiber.MethodGet)
+					fctx.Request.SetRequestURI("/")
+					app.Handler()(fctx)
+
+					require.Equal(t, cacheUnreachable, string(fctx.Response.Header.Peek("X-Cache")))
+					require.True(t, fctx.Response.IsBodyStream())
+					require.Equal(t, 10, fctx.Response.Header.ContentLength())
+					require.Empty(t, fctx.Response.Header.Peek(fiber.HeaderETag))
+					require.LessOrEqual(t, read.Len(), tc.maxRead)
+				}
+				require.Equal(t, 2, calls)
+			})
+		}
+	}
+}
+
+// A one-byte body under a URL-long key or Location holds kilobytes, so those count too.
+func Test_Cache_MaxBytes_CountsKeyAndHeaders(t *testing.T) {
+	t.Parallel()
+
+	const (
+		maxBytes = 64 * 1024
+		urlLen   = 3000
+		urls     = 200
+	)
+
+	for name, cfg := range map[string]Config{
+		"key":      {KeyGenerator: func(c fiber.Ctx) string { return c.OriginalURL() }},
+		"Location": {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			probe := &accountingProbe{}
+			cfg.MaxBytes, cfg.Expiration, cfg.accounting = maxBytes, time.Hour, probe.record
+			app := fiber.New()
+			app.Use(New(cfg))
+			app.Get("/*", func(c fiber.Ctx) error {
+				if name == "Location" {
+					return c.Redirect().Status(fiber.StatusMovedPermanently).To("/login?next=" + c.OriginalURL())
+				}
+				return c.SendString("x")
+			})
+			h := app.Handler()
+
+			for i := range urls {
+				fctx := &fasthttp.RequestCtx{}
+				fctx.Request.Header.SetMethod(fiber.MethodGet)
+				fctx.Request.Header.SetHost("example.com")
+				fctx.Request.SetRequestURI(fmt.Sprintf("/%d/%s", i, strings.Repeat("a", urlLen)))
+				h(fctx)
+				require.Equal(t, cacheMiss, string(fctx.Response.Header.Peek("X-Cache")))
+			}
+			require.LessOrEqual(t, probe.counted(), uint(maxBytes))
+			require.LessOrEqual(t, probe.nodes(), maxBytes/urlLen)
+		})
 	}
 }
 
@@ -4568,7 +4696,8 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 				KeyGenerator: func(c fiber.Ctx) string {
 					return c.Path()
 				},
-				MaxBytes: 5,
+				// Room for one entry, so storing /next evicts whatever is still tracked.
+				MaxBytes: charged(cacheKeyVersion+"|GET|/cached", len("stale"), textPlain, "public, max-age=60, must-revalidate"),
 				Storage:  storage,
 			}))
 			app.Get("/cached", func(c fiber.Ctx) error {
@@ -4683,7 +4812,8 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 				KeyGenerator: func(c fiber.Ctx) string {
 					return c.Path()
 				},
-				MaxBytes: 5,
+				// Room for one entry, so storing /next evicts whatever is still tracked.
+				MaxBytes: charged(cacheKeyVersion+"|GET|/cached", len("stale"), textPlain, "public, max-age=60, must-revalidate"),
 				Storage:  storage,
 			}))
 			app.Get("/cached", func(c fiber.Ctx) error {
@@ -4777,7 +4907,7 @@ func Test_CacheStorage_UncacheableRevalidationPrecheckFailuresReturnOrigin(t *te
 				KeyGenerator: func(c fiber.Ctx) string {
 					return c.Path()
 				},
-				MaxBytes:   5,
+				MaxBytes:   charged(key, len("stale"), textPlain, "public, max-age=60"),
 				Storage:    storage,
 				accounting: probe.record,
 			}))
@@ -4819,7 +4949,7 @@ func Test_CacheStorage_UncacheableRevalidationPrecheckFailuresReturnOrigin(t *te
 				require.Zero(t, probe.counted())
 				require.Zero(t, probe.nodes())
 			} else {
-				require.Equal(t, uint(5), probe.counted())
+				require.Equal(t, charged(key, len("stale"), textPlain, "public, max-age=60"), probe.counted())
 				require.Equal(t, 1, probe.nodes())
 			}
 		})
@@ -4845,7 +4975,7 @@ func Test_CacheStorage_EvictionRestoreDropsAbsentOrReplacedEntry(t *testing.T) {
 				KeyGenerator: func(c fiber.Ctx) string {
 					return c.Path()
 				},
-				MaxBytes:   5,
+				MaxBytes:   charged(storage.key, len("stale"), textPlain),
 				Storage:    storage,
 				accounting: probe.record,
 			}))
@@ -4860,7 +4990,7 @@ func Test_CacheStorage_EvictionRestoreDropsAbsentOrReplacedEntry(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 			require.NoError(t, resp.Body.Close())
-			require.Equal(t, uint(5), probe.counted())
+			require.Equal(t, charged(storage.key, len("stale"), textPlain), probe.counted())
 			require.Equal(t, 1, probe.nodes())
 
 			storage.armed.Store(true)
@@ -4890,17 +5020,18 @@ func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *
 		KeyGenerator: func(c fiber.Ctx) string {
 			return c.Path()
 		},
-		MaxBytes:   10,
+		MaxBytes:   charged(cacheKeyVersion+"|GET|/new", len("012345678"), textPlain, "public, max-age=60") + charged(storage.key, len("x"), textPlain, "public, max-age=60"),
 		Storage:    storage,
 		accounting: probe.record,
 	}))
 	app.Get("/:name", func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+		// The replacement fits beside the reservation of /new only while /old is popped.
 		if c.Path() == "/new" {
-			return c.SendString("0123456789")
+			return c.SendString("012345678")
 		}
 		if fiber.Query[string](c, "replacement") == "true" {
-			return c.SendString("")
+			return c.SendString("x")
 		}
 		return c.SendString("stale")
 	})
@@ -4940,7 +5071,7 @@ func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *
 	require.NoError(t, oldErr)
 	require.Equal(t, fiber.StatusInternalServerError, oldResp.StatusCode)
 	require.NoError(t, oldResp.Body.Close())
-	require.Equal(t, uint(0), probe.counted())
+	require.Equal(t, charged(storage.key, len("x"), textPlain, "public, max-age=60"), probe.counted())
 	require.Equal(t, 1, probe.nodes())
 	storage.mu.Lock()
 	_, replacementStored := storage.data[storage.key]
@@ -4960,7 +5091,7 @@ func Test_CacheStorage_MinFreshUncacheableRevalidationCleansEntry(t *testing.T) 
 		KeyGenerator: func(c fiber.Ctx) string {
 			return c.Path()
 		},
-		MaxBytes:   5,
+		MaxBytes:   charged(cacheKeyVersion+"|GET|/cached", len("stale"), textPlain, "public, max-age=5"),
 		Storage:    storage,
 		accounting: probe.record,
 	}))
@@ -4999,6 +5130,7 @@ func Test_CacheStorage_MinFreshUncacheableRevalidationCleansEntry(t *testing.T) 
 func Test_Cache_InMemoryUncacheableRevalidationRemovesStaleEntry(t *testing.T) {
 	t.Parallel()
 
+	stale := charged(cacheKeyVersion+"|GET|/cached", len("stale"), textPlain, "public, max-age=60, must-revalidate")
 	probe := &accountingProbe{}
 	var uncacheable atomic.Bool
 	app := fiber.New()
@@ -5010,7 +5142,7 @@ func Test_Cache_InMemoryUncacheableRevalidationRemovesStaleEntry(t *testing.T) {
 		KeyGenerator: func(c fiber.Ctx) string {
 			return c.Path()
 		},
-		MaxBytes:   10,
+		MaxBytes:   2 * stale,
 		accounting: probe.record,
 	}))
 	app.Get("/cached", func(c fiber.Ctx) error {
@@ -5026,7 +5158,7 @@ func Test_Cache_InMemoryUncacheableRevalidationRemovesStaleEntry(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, uint(5), probe.counted())
+	require.Equal(t, stale, probe.counted())
 	require.Equal(t, 1, probe.nodes())
 
 	uncacheable.Store(true)
@@ -5092,7 +5224,7 @@ func Test_Cache_InvalidExpiresMemoryRevalidationCleansEntry(t *testing.T) {
 
 	var noCache atomic.Bool
 	app := fiber.New()
-	app.Use(New(Config{Expiration: 30 * time.Second, MaxBytes: 5}))
+	app.Use(New(Config{Expiration: 30 * time.Second, MaxBytes: charged(defaultKey("/cached"), len("stale"), textPlain, "public", "invalid-date")}))
 	app.Get("/cached", func(c fiber.Ctx) error {
 		if noCache.Load() {
 			c.Set(fiber.HeaderCacheControl, "no-cache")
@@ -5132,7 +5264,7 @@ func Test_CacheStorage_ExpiredMetadataRemovesMatchingHeapEntry(t *testing.T) {
 		KeyGenerator: func(c fiber.Ctx) string {
 			return c.Path()
 		},
-		MaxBytes:   5,
+		MaxBytes:   charged(cacheKeyVersion+"|GET|/cached", 5, textPlain, "public, max-age=60"),
 		Storage:    storage,
 		accounting: probe.record,
 	}))
@@ -5165,9 +5297,12 @@ func Test_CacheStorage_ExpiredMetadataRemovesMatchingHeapEntry(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "00002", string(body))
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, uint(5), probe.counted())
+	require.Equal(t, charged(key, len(body), textPlain, "public, max-age=60"), probe.counted())
 	require.Equal(t, 1, probe.nodes())
 }
+
+// replacementCharge is the "newer!" entry the replacement tests store for /cached.
+var replacementCharge = charged(cacheKeyVersion+"|GET|/cached", len("newer!"), textPlain, "public, max-age=60")
 
 func Test_Cache_ConcurrentUncacheableCleanupPreservesReplacementAccounting(t *testing.T) {
 	t.Parallel()
@@ -5186,7 +5321,7 @@ func Test_Cache_ConcurrentUncacheableCleanupPreservesReplacementAccounting(t *te
 		KeyGenerator: func(c fiber.Ctx) string {
 			return c.Path()
 		},
-		MaxBytes:   20,
+		MaxBytes:   2 * replacementCharge,
 		Storage:    storage,
 		accounting: probe.record,
 	}))
@@ -5234,7 +5369,7 @@ func Test_Cache_ConcurrentUncacheableCleanupPreservesReplacementAccounting(t *te
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, uint(6), probe.counted())
+	require.Equal(t, replacementCharge, probe.counted())
 	require.Equal(t, 1, probe.nodes())
 
 	close(storage.continueDelete)
@@ -5247,7 +5382,7 @@ func Test_Cache_ConcurrentUncacheableCleanupPreservesReplacementAccounting(t *te
 	require.NoError(t, err)
 	require.Equal(t, "old origin", string(body))
 	require.NoError(t, oldResp.Body.Close())
-	require.Equal(t, uint(6), probe.counted(), "cleanup must not subtract a replacement's bytes")
+	require.Equal(t, replacementCharge, probe.counted(), "cleanup must not subtract a replacement's bytes")
 	require.Equal(t, 1, probe.nodes(), "cleanup must not remove a replacement's heap node")
 }
 
@@ -5263,7 +5398,7 @@ func Test_Cache_InMemoryUncacheableRevalidationPreservesConcurrentReplacement(t 
 		KeyGenerator: func(c fiber.Ctx) string {
 			return c.Path()
 		},
-		MaxBytes:   20,
+		MaxBytes:   2 * replacementCharge,
 		accounting: probe.record,
 	}))
 	app.Get("/cached", func(c fiber.Ctx) error {
@@ -5312,7 +5447,7 @@ func Test_Cache_InMemoryUncacheableRevalidationPreservesConcurrentReplacement(t 
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, uint(6), probe.counted())
+	require.Equal(t, replacementCharge, probe.counted())
 	require.Equal(t, 1, probe.nodes())
 
 	close(continueOrigin)
@@ -5325,7 +5460,7 @@ func Test_Cache_InMemoryUncacheableRevalidationPreservesConcurrentReplacement(t 
 	require.NoError(t, err)
 	require.Equal(t, "old origin", string(body))
 	require.NoError(t, oldResp.Body.Close())
-	require.Equal(t, uint(6), probe.counted())
+	require.Equal(t, replacementCharge, probe.counted())
 	require.Equal(t, 1, probe.nodes())
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
@@ -5344,7 +5479,7 @@ func Test_Cache_ExternalUncacheableRevalidationPreservesCompletedReplacement(t *
 		name     string
 		maxBytes uint
 	}{
-		{name: "with MaxBytes", maxBytes: 20},
+		{name: "with MaxBytes", maxBytes: 2 * replacementCharge},
 		{name: "without MaxBytes"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -5411,7 +5546,7 @@ func Test_Cache_ExternalUncacheableRevalidationPreservesCompletedReplacement(t *
 			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 			require.NoError(t, resp.Body.Close())
 			if tt.maxBytes > 0 {
-				require.Equal(t, uint(6), probe.counted())
+				require.Equal(t, replacementCharge, probe.counted())
 				require.Equal(t, 1, probe.nodes())
 			}
 
@@ -5426,7 +5561,7 @@ func Test_Cache_ExternalUncacheableRevalidationPreservesCompletedReplacement(t *
 			require.Equal(t, "old origin", string(body))
 			require.NoError(t, oldResp.Body.Close())
 			if tt.maxBytes > 0 {
-				require.Equal(t, uint(6), probe.counted())
+				require.Equal(t, replacementCharge, probe.counted())
 				require.Equal(t, 1, probe.nodes())
 			}
 
@@ -5450,7 +5585,7 @@ func Test_Cache_ExternalUncacheableRevalidationPreservesCompletedReplacement(t *
 func Test_CacheStorage_UncacheableRevalidationPreservesCompletedReplacement(t *testing.T) {
 	t.Parallel()
 
-	for _, maxBytes := range []uint{0, 20} {
+	for _, maxBytes := range []uint{0, 2 * replacementCharge} {
 		t.Run(fmt.Sprintf("MaxBytes=%d", maxBytes), func(t *testing.T) {
 			t.Parallel()
 
@@ -5522,7 +5657,7 @@ func Test_CacheStorage_UncacheableRevalidationPreservesCompletedReplacement(t *t
 			require.NoError(t, oldResp.Body.Close())
 
 			if maxBytes > 0 {
-				require.Equal(t, uint(6), probe.counted())
+				require.Equal(t, replacementCharge, probe.counted())
 				require.Equal(t, 1, probe.nodes())
 			}
 			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
@@ -6231,8 +6366,8 @@ func Benchmark_Cache_MaxSize(b *testing.B) {
 	// The benchmark is run with three different MaxSize parameters
 	// 1) 0:        Tracking is disabled = no overhead
 	// 2) MaxInt32: Enough to store all entries = no removals
-	// 3) 100:      Small size = constant insertions and removals
-	cases := []uint{0, math.MaxUint32, 100}
+	// 3) 16 KiB:   Small size = constant insertions and removals
+	cases := []uint{0, math.MaxUint32, 16 * 1024}
 	names := []string{"Disabled", "Unlim", "LowBounded"}
 	for i, size := range cases {
 		b.Run(names[i], func(b *testing.B) {
@@ -6277,7 +6412,7 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		app := fiber.New()
 
 		app.Use(New(Config{
-			MaxBytes: 100,
+			MaxBytes: 1000,
 		}))
 
 		requestCount := 0
@@ -6318,7 +6453,7 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		app := fiber.New()
 
 		app.Use(New(Config{
-			MaxBytes: 100,
+			MaxBytes: 1000,
 		}))
 
 		requestCount := 0
@@ -6362,7 +6497,7 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		app := fiber.New()
 
 		app.Use(New(Config{
-			MaxBytes:            20, // Only room for 2 responses of 10 bytes each
+			MaxBytes:            2 * charged(defaultKey("/a"), len("1234567890"), textPlain, "max-age=60"), // Only room for 2 responses
 			ExpirationGenerator: stableAscendingExpiration(),
 		}))
 
@@ -6418,7 +6553,7 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		app := fiber.New()
 
 		app.Use(New(Config{
-			MaxBytes: 100,
+			MaxBytes: 1000,
 		}))
 
 		requestCount := 0
@@ -6614,7 +6749,7 @@ func Test_Cache_MaxBytes_InsufficientSpace(t *testing.T) {
 		app := fiber.New()
 
 		app.Use(New(Config{
-			MaxBytes:            15,
+			MaxBytes:            charged(defaultKey("/large"), 20, textPlain) - 1,
 			ExpirationGenerator: stableAscendingExpiration(),
 		}))
 
@@ -6645,7 +6780,7 @@ func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		MaxBytes:   4,
+		MaxBytes:   charged(defaultKey("/second"), len("data"), textPlain), // one entry
 		Expiration: 1 * time.Hour,
 		Storage:    storage,
 	}))
@@ -8203,7 +8338,8 @@ func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
 	const body = "0123456789abcdef"
 	storage := newFailingCacheStorage()
 	app := fiber.New()
-	app.Use(New(Config{Storage: storage, Expiration: time.Hour, MaxBytes: 2 * uint(len(body))}))
+	variant := variantKey(defaultKey("/a"), "accept-language")
+	app.Use(New(Config{Storage: storage, Expiration: time.Hour, MaxBytes: 2 * charged(variant, len(body), textPlain, "Accept-Language")}))
 	app.Get("/:name", func(c fiber.Ctx) error {
 		c.Response().Header.Set(fiber.HeaderVary, "Accept-Language")
 		return c.SendString(body)
@@ -8492,6 +8628,56 @@ func Test_Cache_VaryReplayedWithCompress(t *testing.T) {
 	}
 }
 
+// Test_Cache_VaryKeyedByTheHeadersTheLookupSaw stores a response that varies on a header an inner
+// middleware rewrites under the value the lookup hashed. encryptcookie decrypts the cookie in place, and
+// keyed by the decrypted value the page went to anyone sending that value as a plain cookie.
+func Test_Cache_VaryKeyedByTheHeadersTheLookupSaw(t *testing.T) {
+	t.Parallel()
+
+	secret := encryptcookie.GenerateKey(32)
+	sealed, err := encryptcookie.EncryptCookie("user", "alice", secret)
+	require.NoError(t, err)
+
+	app := fiber.New()
+	app.Use(New(Config{MaxBytes: 1024}))
+	app.Use(encryptcookie.New(encryptcookie.Config{Key: secret}))
+	app.Get("/account", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "max-age=30")
+		c.Vary(fiber.HeaderCookie)
+		if c.Cookies("user") == "alice" {
+			return c.SendString("alice's recovery codes")
+		}
+		return c.SendString("please sign in")
+	})
+	app.Get("/other", func(c fiber.Ctx) error {
+		return c.SendString(strings.Repeat("x", 300))
+	})
+
+	get := func(path, cookie string) [2]string {
+		t.Helper()
+		req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
+		if cookie != "" {
+			req.Header.Set(fiber.HeaderCookie, cookie)
+		}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		return [2]string{string(body), resp.Header.Get("X-Cache")}
+	}
+
+	// The second round starts after the URL's entries, and with them its Vary manifest, were evicted.
+	for _, round := range []string{"first store", "after eviction"} {
+		require.Equal(t, [2]string{"alice's recovery codes", cacheMiss}, get("/account", "user="+sealed), round)
+		require.Equal(t, [2]string{"please sign in", cacheMiss}, get("/account", "user=alice"), round)
+		require.Equal(t, [2]string{"alice's recovery codes", cacheHit}, get("/account", "user="+sealed), round)
+		for i := range 8 {
+			get("/other?q="+strconv.Itoa(i), "")
+		}
+	}
+}
+
 // Test_Cache_VaryLongerThanEntryLimitIsUncacheable pins the cap on a stored
 // Vary to the limit the entry decodes it under. The encoder does not enforce
 // that limit, so a longer value reached an external Storage and every later
@@ -8539,6 +8725,140 @@ func Test_Cache_VaryLongerThanEntryLimitIsUncacheable(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The other decode limits of an entry, as Test_Cache_VaryLongerThanEntryLimitIsUncacheable
+// does for Vary: past one the response is not stored, at it the entry round-trips.
+func Test_Cache_EntryPastDecodeLimitIsNotStored(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		set   func(c fiber.Ctx, n int)
+		name  string
+		limit int
+	}{
+		{name: "Content-Type", limit: maxStoredContentType, set: func(c fiber.Ctx, n int) {
+			c.Set(fiber.HeaderContentType, strings.Repeat("a", n))
+		}},
+		{name: "Content-Encoding", limit: maxStoredContentEncoding, set: func(c fiber.Ctx, n int) {
+			c.Set(fiber.HeaderContentEncoding, strings.Repeat("a", n))
+		}},
+		{name: "Cache-Control", limit: maxStoredCacheControl, set: func(c fiber.Ctx, n int) {
+			const prefix = "max-age=60, x="
+			c.Set(fiber.HeaderCacheControl, prefix+strings.Repeat("a", n-len(prefix)))
+		}},
+		{name: "Expires", limit: maxStoredExpires, set: func(c fiber.Ctx, n int) {
+			// max-age wins, so the value is stored without being parsed.
+			c.Set(fiber.HeaderCacheControl, "max-age=60")
+			c.Set(fiber.HeaderExpires, strings.Repeat("a", n))
+		}},
+		{name: "ETag", limit: maxStoredETag, set: func(c fiber.Ctx, n int) {
+			c.Set(fiber.HeaderETag, strings.Repeat("a", n))
+		}},
+		{name: "Location", limit: maxStoredHeaderValue, set: func(c fiber.Ctx, n int) {
+			c.Status(fiber.StatusMovedPermanently).Set(fiber.HeaderLocation, strings.Repeat("a", n))
+		}},
+		{name: "header value", limit: maxStoredHeaderValue, set: func(c fiber.Ctx, n int) {
+			c.Set("X-Long", strings.Repeat("a", n))
+		}},
+		{name: "header name", limit: maxStoredHeaderKey, set: func(c fiber.Ctx, n int) {
+			c.Set(strings.Repeat("a", n), "v")
+		}},
+		{name: "header count", limit: maxStoredHeaders, set: func(c fiber.Ctx, n int) {
+			have := 0
+			for key := range c.Response().Header.All() {
+				if !isIgnoredHeader(key) {
+					have++
+				}
+			}
+			for i := range n - have {
+				c.Set("X-H-"+strconv.Itoa(i), "v")
+			}
+		}},
+	}
+
+	for _, tt := range tests {
+		for _, over := range []int{0, 1} {
+			t.Run(fmt.Sprintf("%s/%d", tt.name, tt.limit+over), func(t *testing.T) {
+				t.Parallel()
+
+				// Location is kept without StoreResponseHeaders, the rest of the list needs it.
+				app := fiber.New()
+				app.Use(New(Config{Storage: memory.New(), Expiration: time.Minute, StoreResponseHeaders: tt.name != "Location"}))
+				app.Get("/", func(c fiber.Ctx) error {
+					tt.set(c, tt.limit+over)
+					return c.SendString("body")
+				})
+
+				want := []string{cacheMiss, cacheHit}
+				if over > 0 {
+					want = []string{cacheUnreachable, cacheUnreachable}
+				}
+				for i, status := range want {
+					resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+					require.NoError(t, err)
+					require.Less(t, resp.StatusCode, fiber.StatusInternalServerError, "request %d", i+1)
+					require.Equal(t, status, resp.Header.Get("X-Cache"), "request %d", i+1)
+					require.NoError(t, resp.Body.Close())
+				}
+			})
+		}
+	}
+
+	t.Run("echoed header keeps the earlier entry", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New(fiber.Config{ReadBufferSize: 2 * maxStoredHeaderValue})
+		app.Use(New(Config{Storage: memory.New(), Expiration: time.Minute, StoreResponseHeaders: true}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set("X-Echo", c.Get("X-Echo"))
+			return c.SendString("body")
+		})
+
+		get := func(t *testing.T, headers map[string]string) string {
+			t.Helper()
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			for k, v := range headers {
+				req.Header.Set(k, v)
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "body", string(body))
+			require.NoError(t, resp.Body.Close())
+			return resp.Header.Get("X-Cache")
+		}
+
+		require.Equal(t, cacheMiss, get(t, nil))
+		require.Equal(t, cacheUnreachable, get(t, map[string]string{
+			fiber.HeaderCacheControl: "no-cache",
+			"X-Echo":                 strings.Repeat("x", maxStoredHeaderValue+1),
+		}))
+		require.Equal(t, cacheHit, get(t, nil))
+		require.Equal(t, cacheMiss, get(t, map[string]string{fiber.HeaderCacheControl: "no-cache"}))
+		require.Equal(t, cacheHit, get(t, nil))
+	})
+
+	t.Run("in-memory store is not limited", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{Expiration: time.Minute}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderETag, strings.Repeat("a", maxStoredETag+1))
+			return c.SendString("body")
+		})
+
+		for i, status := range []string{cacheMiss, cacheHit} {
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode, "request %d", i+1)
+			require.Equal(t, status, resp.Header.Get("X-Cache"), "request %d", i+1)
+			require.NoError(t, resp.Body.Close())
+		}
+	})
 }
 
 func Test_Cache_CredentialHeadersAreHashedInTheKey(t *testing.T) {

@@ -49,7 +49,7 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-The middleware sets an `ETag` only on a `200` response with a non-empty body. It skips the response, without comparing `If-None-Match`, when the handler already set an `ETag` (in any letter case) and for Server-Sent Events (`text/event-stream`) responses, whose body it would otherwise have to buffer.
+The middleware sets an `ETag` only on a `200` response with a non-empty body. It skips the response, without comparing `If-None-Match`, when the handler already set an `ETag` (in any letter case) and for Server-Sent Events (`text/event-stream`) responses and other streams that declare no length, whose body it would otherwise have to buffer to its end. A stream of known length, such as `SendFile` serves, is read into memory to hash it, and one that ends early, fails or runs past that length is sent on without an `ETag`.
 
 A matching `If-None-Match` yields `304 Not Modified` only for `GET` and `HEAD` requests, the methods RFC 9110 defines it for. Other methods pass through unchanged, with the `ETag` header still set. They are not answered with `412 Precondition Failed`: the middleware runs after the handler, over the response it produced, so the method has already been applied and the status whose purpose is to prevent that would misreport what happened.
 

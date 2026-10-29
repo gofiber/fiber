@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -941,6 +942,32 @@ func Test_Redirect_release_ZeroesMessages(t *testing.T) {
 	for i := range full {
 		require.Equal(t, redirectionMsg{}, full[i], "index %d survived release", i)
 	}
+}
+
+func Test_ReleaseRedirect_DropsOversizedMessages(t *testing.T) {
+	t.Parallel()
+
+	r := AcquireRedirect()
+	for i := range maxPoolableMessages + 1 {
+		r.With(strconv.Itoa(i), "v")
+	}
+	ReleaseRedirect(r)
+
+	// Dropped rather than cleared and pooled, so the array is left as it was.
+	require.Len(t, r.messages, maxPoolableMessages+1)
+}
+
+// Not parallel: r is read after the pool took it, and Go pauses the parallel
+// tests, which could be handed it meanwhile, while a sequential one runs.
+func Test_ReleaseRedirect_PoolsUpToTheLimit(t *testing.T) {
+	r := AcquireRedirect()
+	for i := range maxPoolableMessages {
+		r.With(strconv.Itoa(i), "v")
+	}
+	require.Greater(t, cap(r.messages), maxPoolableMessages, "append grew the array past the limit")
+	ReleaseRedirect(r)
+
+	require.Empty(t, r.messages, "cleared and pooled, not dropped")
 }
 
 func Test_Redirect_Messages_ClearsFlashMessages(t *testing.T) {

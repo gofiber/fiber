@@ -10,6 +10,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
+	"github.com/gofiber/fiber/v3/internal/sizedstream"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -26,6 +28,9 @@ const (
 )
 
 const redactedKey = "[redacted]"
+
+// maxStoredStream is the longest stream of known length read into memory to store it.
+const maxStoredStream = 1 << 20
 
 // storagePrefix keeps responses apart from other middleware sharing the Storage,
 // as the client chooses the key.
@@ -154,6 +159,10 @@ func New(config ...Config) fiber.Handler {
 		if key == "" {
 			return c.Next()
 		}
+		// A refused request runs no handler, so there is nothing to store for its retry.
+		if errorreplay.Active(c.RequestCtx()) {
+			return c.Next()
+		}
 		// Copied once, before anything reads it: the validator may keep what it
 		// is handed, a handler that rewrote the header would not change what is
 		// hashed or logged, and the lock and the storage retain the unscoped key.
@@ -200,6 +209,14 @@ func New(config ...Config) fiber.Handler {
 		if err := c.Next(); err != nil {
 			// If the request handler returned an error, return it and skip idempotency
 			return err
+		}
+
+		// Body reads a stream to its end, maybe never, and keeps a read error as the body. One that
+		// declares no length or more than maxStoredStream, or delivers other than it declares, goes out unrecorded.
+		if c.Response().IsBodyStream() {
+			if n := c.Response().Header.ContentLength(); n < 0 || n > maxStoredStream || !sizedstream.Read(c.Response(), n) {
+				return nil
+			}
 		}
 
 		// Construct response

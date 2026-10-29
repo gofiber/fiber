@@ -9987,6 +9987,34 @@ func Test_Ctx_RenderWithOverwrittenViewBind(t *testing.T) {
 	require.Equal(t, "<h1>Hello from Fiber!</h1>", string(c.Response().Body()))
 }
 
+func Test_Ctx_Render_LeavesBindMapAlone(t *testing.T) {
+	t.Parallel()
+	app := New(Config{PassLocalsToViews: true})
+	page := Map{"Unrelated": "same for everyone"}
+
+	for _, title := range []string{"first", "second"} {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		require.NoError(t, c.ViewBind(Map{"Title": title}))
+		c.Locals("Local", title)
+		require.NoError(t, c.Render("./.github/testdata/index.tmpl", page))
+		require.Equal(t, "<h1>"+title+"</h1>", string(c.Response().Body()))
+		app.ReleaseCtx(c)
+	}
+
+	require.Equal(t, Map{"Unrelated": "same for everyone"}, page)
+}
+
+func Test_Ctx_Render_NilBindMap(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	require.NoError(t, c.ViewBind(Map{"Title": "Hello, World!"}))
+	require.NoError(t, c.Render("./.github/testdata/index.tmpl", Map(nil)))
+	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+}
+
 func Test_Ctx_RenderWithViewBindLocals(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -10400,6 +10428,40 @@ func Test_Ctx_Render_Go_Template(t *testing.T) {
 	err = c.Render(file.Name(), nil)
 	require.NoError(t, err)
 	require.Equal(t, "template", string(c.Response().Body()))
+}
+
+// go test -run Test_Ctx_Render_Go_Template_OutputKeepsSource
+func Test_Ctx_Render_Go_Template_OutputKeepsSource(t *testing.T) {
+	t.Parallel()
+
+	render := func(t *testing.T, source string, bind Map) string {
+		t.Helper()
+		name := filepath.Join(t.TempDir(), "page.html")
+		require.NoError(t, os.WriteFile(name, []byte(source), 0o600))
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+
+		require.NoError(t, c.Render(name, bind))
+		return string(c.Response().Body())
+	}
+
+	t.Run("field name", func(t *testing.T) {
+		t.Parallel()
+		// Puts "Pass" at the offset where the source spells "Body".
+		title := strings.Repeat("A", 21) + "Pass"
+		body := render(t, "<h1>{{.Title}}</h1><p>{{.Body}}</p>", Map{"Title": title, "Body": "public", "Pass": "secret"})
+		require.Equal(t, "<h1>"+title+"</h1><p>public</p>", body)
+	})
+
+	t.Run("string constant", func(t *testing.T) {
+		t.Parallel()
+		// Puts "guest" at the offset where the source spells "admin".
+		q := "xxxxxxxxxxxxxxxeqxxRolexxguest"
+		body := render(t, `<p>{{.Q}}</p>{{if eq .Role "admin"}}ADMIN PANEL{{end}}`, Map{"Q": q, "Role": "guest"})
+		require.Equal(t, "<p>"+q+"</p>", body)
+	})
 }
 
 // go test -run Test_Ctx_Send
@@ -12703,6 +12765,50 @@ func Test_Ctx_SendFile_FunctionFSDoesNotGrowHandlerCache(t *testing.T) {
 	app.sendfilesMutex.RLock()
 	defer app.sendfilesMutex.RUnlock()
 	require.Empty(t, app.sendfiles)
+}
+
+func Test_Ctx_SendFile_FreshConfigPerCallDoesNotGrowHandlerCache(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{"public/hello.txt": &fstest.MapFile{Data: []byte("hello")}}
+	for name, handler := range map[string]Handler{
+		"file system": func(c Ctx) error {
+			public, err := fs.Sub(files, "public") // a new pointer on every call
+			if err != nil {
+				return fmt.Errorf("sub: %w", err)
+			}
+			return c.SendFile("hello.txt", SendFile{FS: public})
+		},
+		"max age": func(c Ctx) error {
+			return c.SendFile("public/hello.txt", SendFile{FS: files, MaxAge: Query[int](c, "age")})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.Get("/", handler)
+			app.Get("/kept", func(c Ctx) error {
+				return c.SendFile("public/hello.txt", SendFile{FS: files, Download: true})
+			})
+
+			for i := range 2 * maxSendFileHandlers {
+				for _, target := range []string{"/kept", "/?age=" + strconv.Itoa(i)} {
+					resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, StatusOK, resp.StatusCode)
+					body, err := io.ReadAll(resp.Body)
+					require.NoError(t, err)
+					require.Equal(t, "hello", string(body))
+				}
+			}
+
+			app.sendfilesMutex.RLock()
+			defer app.sendfilesMutex.RUnlock()
+			require.Len(t, app.sendfiles, maxSendFileHandlers)
+			require.True(t, app.sendfiles[0].config.Download, "a handler kept before the cache filled up stays")
+		})
+	}
 }
 
 func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {

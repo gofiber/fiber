@@ -109,7 +109,7 @@ func Test_Cache_ConcurrentReloadsReplaceSameKeyHeapNode(t *testing.T) {
 	require.NoError(t, <-secondResult)
 
 	require.Equal(t, 1, probe.nodes())
-	require.Equal(t, uint(100), probe.counted())
+	require.Equal(t, charged(defaultKey("/entry"), 100, textPlain), probe.counted())
 
 	final, err := request(false)
 	require.NoError(t, err)
@@ -197,7 +197,7 @@ func Test_Cache_ConcurrentReloadAfterReservationReplacesHeapNode(t *testing.T) {
 	require.NoError(t, <-secondResult)
 
 	require.Equal(t, 1, probe.nodes())
-	require.Equal(t, uint(100), probe.counted())
+	require.Equal(t, charged(variantKey(strings.Replace(defaultKey("/entry"), "accept-language:0", "accept-language:1|en", 1), "accept-language"), 100, textPlain, fiber.HeaderAcceptLanguage), probe.counted())
 
 	final, err := request(false)
 	require.NoError(t, err)
@@ -289,7 +289,7 @@ func Test_Cache_ConcurrentReloadStoreFailureRestoresLatestHeapNode(t *testing.T)
 	storage.failBodySet.Store(false)
 
 	require.Equal(t, 1, probe.nodes())
-	require.Equal(t, uint(100), probe.counted())
+	require.Equal(t, charged(variantKey(strings.Replace(defaultKey("/entry"), "accept-language:0", "accept-language:1|en", 1), "accept-language"), 100, textPlain, fiber.HeaderAcceptLanguage), probe.counted())
 
 	final, err := request(false)
 	require.NoError(t, err)

@@ -118,7 +118,13 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 
 	if c.Method() == fiber.MethodQuery {
 		// RFC 10008: incorporate the request body so different QUERY bodies on the
-		// same URL get distinct keys.
+		// same URL get distinct keys, and the fields that say how it is decoded.
+		// Unnamed, as their order is fixed: the names would lengthen every QUERY key.
+		normalized := headerlookup.Canonical(c)
+		dst = append(dst, '|', 'm', '=')
+		dst = appendKeyFieldLines(dst, &c.Request().Header, "content-encoding", nil, normalized)
+		dst = append(dst, '|')
+		dst = appendKeyFieldLines(dst, &c.Request().Header, "content-type", nil, normalized)
 		dst = append(dst, '|', 'b', '=')
 		dst = appendQueryBodySegment(dst, c.Request().Body())
 	}
@@ -188,9 +194,8 @@ func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	buf := (*bufPtr)[:0]
 
 	for _, key := range keys {
-		values := parsed[key]
-		sort.Strings(values)
-		for _, value := range values {
+		// Values keep the order sent: c.Query reads the first, so a reordering is another request.
+		for _, value := range parsed[key] {
 			if len(buf) > 0 {
 				buf = append(buf, '&')
 			}
@@ -225,38 +230,42 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 		// Escape name (though names are normalized and trusted)
 		dst = appendEscapedKeyDelimiters(dst, name)
 		dst = append(dst, ':')
-
-		// Every field line, not just the first: the split and comma-joined forms are
-		// equivalent (RFC 9110 §5.2), so a key header sent twice keyed like one sent
-		// once and was served its cached response.
-		values := keyFieldLines(header, name, normalized)
-
-		// The count keeps the framing injective: without it an absent header and
-		// an empty one both emit nothing, and a list could not be told from a
-		// single value containing the separator.
-		dst = utils.AppendInt(dst, int64(len(values)))
-
-		// Each value is bounded, but not how many there are, and a few hundred field
-		// lines build a multi-kilobyte map key. Hash past the bound; the hash covers
-		// raw lines, which the verbatim form never is, so the two cannot collide. A
-		// credential is hashed whatever its size.
-		total := 0
-		for _, value := range values {
-			total += len(value) + 1
-		}
-		if total > maxKeyDimensionSegmentLength || (len(values) > 0 && slices.Contains(credentials, name)) {
-			dst = append(dst, hashPrefix...)
-			dst = appendAuthHash(dst, values)
-			continue
-		}
-
-		for _, value := range values {
-			dst = append(dst, '|')
-			// Escape value to prevent delimiter injection
-			dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(value))
-		}
+		dst = appendKeyFieldLines(dst, header, name, credentials, normalized)
 	}
 
+	return dst
+}
+
+// appendKeyFieldLines appends the field lines of name, counted, hashed when name is a credential.
+func appendKeyFieldLines(dst []byte, header *fasthttp.RequestHeader, name string, credentials []string, normalized bool) []byte { //nolint:revive // flag-parameter: normalized is a property of the header store
+	// Every field line, not just the first: the split and comma-joined forms are
+	// equivalent (RFC 9110 §5.2), so a key header sent twice keyed like one sent
+	// once and was served its cached response.
+	values := keyFieldLines(header, name, normalized)
+
+	// The count keeps the framing injective: without it an absent header and
+	// an empty one both emit nothing, and a list could not be told from a
+	// single value containing the separator.
+	dst = utils.AppendInt(dst, int64(len(values)))
+
+	// Each value is bounded, but not how many there are, and a few hundred field
+	// lines build a multi-kilobyte map key. Hash past the bound; the hash covers
+	// raw lines, which the verbatim form never is, so the two cannot collide. A
+	// credential is hashed whatever its size.
+	total := 0
+	for _, value := range values {
+		total += len(value) + 1
+	}
+	if total > maxKeyDimensionSegmentLength || (len(values) > 0 && slices.Contains(credentials, name)) {
+		dst = append(dst, hashPrefix...)
+		return appendAuthHash(dst, values)
+	}
+
+	for _, value := range values {
+		dst = append(dst, '|')
+		// Escape value to prevent delimiter injection
+		dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(value))
+	}
 	return dst
 }
 
