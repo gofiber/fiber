@@ -3813,3 +3813,17 @@ func Test_CSRF_VaryDoesNotShareFieldsWithCustomCtx(t *testing.T) {
 		"the custom Vary must still be the one that ran")
 	require.Equal(t, []string{fiber.HeaderCookie}, varyCookie)
 }
+
+// Test_CSRF_SessionStoreWithCodec: the token is kept under a key that is not a
+// string, which a session store with a Codec does not hold, so the middleware refuses
+// the combination when it is made, not on the first request.
+func Test_CSRF_SessionStoreWithCodec(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithValue(t,
+		"CSRF: Session is a store with a Codec, which keeps its values under string keys; use a session store without a Codec, or Storage",
+		func() {
+			New(Config{Session: session.NewStore(session.Config{Codec: session.JSONCodec{}})})
+		})
+	require.NotPanics(t, func() { New(Config{Session: session.NewStore()}) })
+}
