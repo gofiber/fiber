@@ -4,11 +4,6 @@
 
 package fiber
 
-import (
-	"fmt"
-	"reflect"
-)
-
 // Group represents a collection of routes that share middleware and a common
 // path prefix.
 type Group struct {
@@ -68,31 +63,7 @@ func (grp *Group) Name(name string) Router {
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (grp *Group) Use(args ...any) Router {
-	var subApp *App
-	var prefix string
-	var prefixes []string
-	var handlers []Handler
-
-	for i := range args {
-		switch arg := args[i].(type) {
-		case string:
-			prefix = arg
-		case *App:
-			subApp = arg
-		case []string:
-			prefixes = arg
-		default:
-			handler, ok := toFiberHandler(arg)
-			if !ok {
-				panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
-			}
-			handlers = append(handlers, handler)
-		}
-	}
-
-	if len(prefixes) == 0 {
-		prefixes = append(prefixes, prefix)
-	}
+	prefixes, subApp, handlers := useArgs(args)
 
 	for _, prefix := range prefixes {
 		if subApp != nil {

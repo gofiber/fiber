@@ -1068,6 +1068,95 @@ func Test_App_Mount_ParametricPrefixConstraint(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode, "the prefix constraint still rejects")
 }
 
+// Test_App_Mount_PrefixAsWritten verifies that mounted routes are re-parsed with
+// the mount prefix as written, so they answer only where middleware on it runs.
+func Test_App_Mount_PrefixAsWritten(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		prefix   string
+		guarded  string
+		notFound []string
+	}{
+		{prefix: `/v1\:internal`, guarded: "/v1:internal/doe", notFound: []string{"/v1foo/doe", "/v1/doe"}},
+		{prefix: `/a\*`, guarded: "/a*/doe", notFound: []string{"/a/doe", "/a/b/doe"}},
+		{prefix: "/even/:n<isEven>", guarded: "/even/4/doe", notFound: []string{"/even/3/doe", "/even/abc/doe"}},
+		{prefix: "/code/:code<regex(^[A-Z]{2}$)>", guarded: "/code/US/doe", notFound: []string{"/code/us/doe"}},
+		{prefix: `/num/:n<regex(^\d+$)>`, guarded: "/num/12/doe", notFound: []string{"/num/dd/doe"}},
+	}
+
+	mounts := map[string]func(app *App, prefix string, guard Handler, micro *App){
+		"app": func(app *App, prefix string, guard Handler, micro *App) {
+			app.Use(prefix, guard)
+			app.Use(prefix, micro)
+		},
+		"group": func(app *App, prefix string, guard Handler, micro *App) {
+			grp := app.Group("/")
+			grp.Use(prefix, guard)
+			grp.Use(prefix, micro)
+		},
+		"domain": func(app *App, prefix string, guard Handler, micro *App) {
+			app.Use(prefix, guard)
+			app.Domain("example.com").Use(prefix, micro)
+		},
+		"nested in domain": func(app *App, prefix string, guard Handler, micro *App) {
+			mid := New()
+			mid.RegisterCustomConstraint(&evenConstraint{})
+			mid.Use(prefix, guard)
+			mid.Use(prefix, micro)
+			app.Domain("example.com").Use("/", mid)
+		},
+	}
+
+	for name, mount := range mounts {
+		for _, tc := range testCases {
+			t.Run(name+" "+tc.prefix, func(t *testing.T) {
+				t.Parallel()
+
+				micro := New()
+				micro.Get("/doe", func(c Ctx) error { return c.SendString("doe") })
+
+				app := New()
+				app.RegisterCustomConstraint(&evenConstraint{})
+				mount(app, tc.prefix, func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }, micro)
+
+				resp, err := app.Test(httptest.NewRequest(MethodGet, tc.guarded, http.NoBody))
+				require.NoError(t, err, "app.Test(req)")
+				require.Equal(t, StatusUnauthorized, resp.StatusCode, "GET %s", tc.guarded)
+
+				for _, path := range tc.notFound {
+					resp, err = app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+					require.NoError(t, err, "app.Test(req)")
+					require.Equal(t, StatusNotFound, resp.StatusCode, "GET %s", path)
+				}
+			})
+		}
+	}
+}
+
+// Test_App_Mount_NestedPrefixKeepsCase verifies that a nested mount keeps the
+// case of its prefix when only the top-level app is case-sensitive.
+func Test_App_Mount_NestedPrefixKeepsCase(t *testing.T) {
+	t.Parallel()
+
+	sub := New()
+	sub.Get("/secret", func(c Ctx) error { return c.SendString("secret") })
+	mid := New()
+	mid.Use("/Admin", sub)
+
+	app := New(Config{CaseSensitive: true})
+	app.Use("/v1/Admin", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
+	app.Use("/v1", mid)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/Admin/secret", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusUnauthorized, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v1/admin/secret", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
 func Test_App_Mount_StrictRouting(t *testing.T) {
 	t.Parallel()
 
@@ -1097,6 +1186,39 @@ func Test_App_Mount_StrictRouting(t *testing.T) {
 			resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, want, resp.StatusCode, "strict=%v path=%q", strict, tc.path)
+		}
+	}
+}
+
+// Test_App_Mount_StrictRouting_RootMiddleware pins that a mounted app's root
+// middleware runs for "/users", which "/users/:id?" answers under StrictRouting too.
+func Test_App_Mount_StrictRouting_RootMiddleware(t *testing.T) {
+	t.Parallel()
+
+	for _, strict := range []bool{false, true} {
+		// "/u/" is as long as a tree hash, which "/u" is too short to carry
+		for prefix, mounted := range map[string]string{"/users": "/users", "/u": "/u", "/t/:tenant": "/t/acme"} {
+			for _, pattern := range []string{"/:id?", "/*"} {
+				users := New()
+				users.Use(func(c Ctx) error {
+					return c.SendStatus(StatusUnauthorized)
+				})
+				users.Get(pattern, func(c Ctx) error {
+					return c.SendString("users")
+				})
+				app := New(Config{StrictRouting: strict})
+				app.Use(prefix, users)
+
+				for _, target := range []string{mounted, mounted + "/", mounted + "/7"} {
+					resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, StatusUnauthorized, resp.StatusCode, "strict=%v prefix=%q pattern=%q path=%q", strict, prefix, pattern, target)
+				}
+
+				resp, err := app.Test(httptest.NewRequest(MethodGet, "/other", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, StatusNotFound, resp.StatusCode, "strict=%v prefix=%q pattern=%q", strict, prefix, pattern)
+			}
 		}
 	}
 }

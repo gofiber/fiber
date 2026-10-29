@@ -165,8 +165,14 @@ func Test_Path_matchParams(t *testing.T) {
 	var ctxParams [maxParams]string
 	testCaseFn := func(testCollection routeCaseCollection) {
 		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
+		prefix := parseRoute(testCollection.pattern, regexp.MustCompile)
+		prefix.markTail() // as register does for a Use prefix
 		for _, c := range testCollection.testCases {
-			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
+			p := &parser
+			if c.partialCheck {
+				p = &prefix
+			}
+			match := p.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
 			require.Equal(t, c.match, match, "route: '%s', url: '%s'", testCollection.pattern, c.url)
 			if match && len(c.params) > 0 {
 				require.Equal(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], "route: '%s', url: '%s'", testCollection.pattern, c.url)
@@ -341,8 +347,14 @@ func Test_Route_Match_SlashBoundsConsistency(t *testing.T) {
 			path:        testCollection.pattern,
 			Path:        testCollection.pattern,
 		}
+		prefix := parseRoute(testCollection.pattern, regexp.MustCompile)
+		prefix.markTail()
 		for _, c := range testCollection.testCases {
 			route.use = c.partialCheck
+			route.routeParser = parser
+			if c.partialCheck {
+				route.routeParser = prefix
+			}
 			var ctxParams [maxParams]string
 			match := route.match(c.url, c.url, &ctxParams, strings.Count(c.url, "/"))
 			require.Equal(t, c.match, match, "route: '%s', url: '%s'", testCollection.pattern, c.url)

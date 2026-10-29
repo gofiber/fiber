@@ -197,7 +197,7 @@ The order in which you declare routes matters: like Express.js, routes are match
 Place routes with variable parameters after fixed paths to avoid unintended matches.
 :::
 
-By default the router ignores letter case and a trailing slash, so a route registered as `/about` also answers `/About` and `/about/`, and parameter values keep the case the client sent. Set [`CaseSensitive`](../api/fiber.md#casesensitive) and [`StrictRouting`](../api/fiber.md#strictrouting) in `fiber.Config` to tell these spellings apart.
+By default the router ignores letter case and a trailing slash, so a route registered as `/about` also answers `/About` and `/about/`, and parameter values keep the case the client sent. Set [`CaseSensitive`](../api/fiber.md#casesensitive) and [`StrictRouting`](../api/fiber.md#strictrouting) in `fiber.Config` to tell these spellings apart. Without `StrictRouting`, a path of slashes alone, such as `//`, is matched as `/`, the way `/about//` is matched as `/about`. Middleware registered with `Use` on `/about/` runs for `/about` in either mode.
 
 ### Path normalization
 
@@ -217,6 +217,8 @@ The characters `:`, `+`, and `*` introduce parameters. Append `?` to a named par
 An optional parameter makes only its value optional, never the text around it: literal characters after it must still be present. `/user/:name?/books` matches `/user/john/books` and `/user//books`, but not `/user/books`, so register a second route for the shorter form. At the end of a path the slash before the parameter can be left out as well: `/user/:name?` matches `/user`, `/user/` and `/user/john`. An optional parameter followed by a single character stays within its path segment: `/file/:name?.:ext` matches `/file/b.txt` but not `/file/a/b.txt`.
 
 If an optional parameter sits directly before another parameter and the value it consumed makes the rest of the pattern fail, Fiber retries it as empty: `/:a?:b` matches `/x` with `a` empty and `b` set to `x`. Matching allows at most 16 such retries per route to bound the work for adjacent optional parameters. A route that needs more retries does not match, even if a valid assignment exists. Greedy wildcards do not participate in these retries, and a value that fails its constraint is not retried as empty.
+
+A `Use`, `Group` or mount prefix whose only wildcard is followed only by literal text, such as `/api/*/admin`, covers every path in which that text ends a path segment, such as `/api/acme/admin/admins`, and so does a prefix without wildcards whose last segment holds one named parameter, without a constraint or `?`, followed by literal text, such as `/files/:name.json` for `/files/a.json.json/raw`; an optional or constrained parameter, or two parameters in one segment, still end at the first copy of the text. In other prefix shapes, such as `/api/*/admin/:id` or `/*/+/admin`, a wildcard ends where the router guesses and can miss paths that a route below the prefix answers, and with `StrictRouting` such a prefix keeps its trailing slash. Use a named parameter there, in the prefix and in the routes below it, as in `/api/:tenant/admin/:id`.
 
 <Tabs>
 <TabItem value="named" label="Named, optional, greedy">
@@ -619,7 +621,7 @@ Pick the helper that fits: a single endpoint uses `Get`/`Post`/…; a fixed set 
 
 ## Automatic HEAD routes
 
-Fiber automatically registers a `HEAD` route for every `GET` route you add. The generated handler chain mirrors the `GET` chain, so `HEAD` requests reuse middleware, status codes, and headers while the response body is suppressed. This covers the routes of mounted sub-apps at any nesting depth, and routes added at runtime get their `HEAD` companion when [`RebuildTree`](../api/app.md#rebuildtree) publishes them.
+Fiber automatically registers a `HEAD` route for every `GET` route you add. The generated handler chain mirrors the `GET` chain, so `HEAD` requests reuse middleware, status codes, and headers while the response body is suppressed. Each generated route runs at the position of its `GET` route, so a guard registered with `Get` covers `HEAD` as well. This covers the routes of mounted sub-apps at any nesting depth, and routes added at runtime get their `HEAD` companion when [`RebuildTree`](../api/app.md#rebuildtree) publishes them.
 
 ```go title="GET handlers automatically expose HEAD"
 app := fiber.New()
@@ -632,13 +634,15 @@ app.Get("/users/:id", func(c fiber.Ctx) error {
 // HEAD /users/:id now returns the same headers and status without a body.
 ```
 
-You can still register dedicated `HEAD` handlers, even with auto-registration enabled, and Fiber replaces the generated route so your implementation wins:
+You can still register dedicated `HEAD` handlers, even with auto-registration enabled, and Fiber replaces the generated routes of that path so your implementation wins:
 
 ```go title="Override the generated HEAD handler"
 app.Head("/users/:id", func(c fiber.Ctx) error {
     return c.SendStatus(fiber.StatusNoContent)
 })
 ```
+
+The replacement covers the `GET` routes of the same app registered with the same [`Domain`](../api/app.md#domain) pattern, or with none. A `HEAD` route on another `Domain` pattern, or in a mounted sub-app, keeps its place in the route order instead: the generated route of a `GET` route registered before it runs first, so register or mount it ahead of that `GET` route when it has to answer first.
 
 To opt out globally, start the app with `DisableHeadAutoRegister`:
 

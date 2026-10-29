@@ -211,6 +211,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 
 	// When set to true, the router treats "/foo" and "/foo/" as different.
 	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
+	// Middleware registered with Use on "/foo/" runs for "/foo" either way.
 	//
 	// Default: false
 	StrictRouting bool `json:"strict_routing"`
@@ -1016,6 +1017,8 @@ func (app *App) Name(name string) Router {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
+	hosts := matchersKey(app.latestRoute.hosts)
+
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			// The shared registration id covers every method of a multi-method
@@ -1029,7 +1032,9 @@ func (app *App) Name(name string) Router {
 				app.latestRoute.use ||
 				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
 
-			if route.Path == app.latestRoute.Path && isMethodValid {
+			// The path alone does not make it the same route: another Domain
+			// pattern can serve it too, under a name of its own.
+			if route.Path == app.latestRoute.Path && isMethodValid && matchersKey(route.hosts) == hosts {
 				route.Name = name
 				if route.group != nil {
 					route.Name = route.group.name + route.Name
@@ -1098,31 +1103,7 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (app *App) Use(args ...any) Router {
-	var prefix string
-	var subApp *App
-	var prefixes []string
-	var handlers []Handler
-
-	for i := range args {
-		switch arg := args[i].(type) {
-		case string:
-			prefix = arg
-		case *App:
-			subApp = arg
-		case []string:
-			prefixes = arg
-		default:
-			handler, ok := toFiberHandler(arg)
-			if !ok {
-				panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
-			}
-			handlers = append(handlers, handler)
-		}
-	}
-
-	if len(prefixes) == 0 {
-		prefixes = append(prefixes, prefix)
-	}
+	prefixes, subApp, handlers := useArgs(args)
 
 	for _, prefix := range prefixes {
 		if subApp != nil {
@@ -1135,6 +1116,44 @@ func (app *App) Use(args ...any) Router {
 	}
 
 	return app
+}
+
+// useArgs sorts the arguments of a Use call. Anything it would otherwise drop
+// silently panics: a second prefix argument, a second sub-app, or handlers next to a sub-app.
+func useArgs(args []any) (prefixes []string, subApp *App, handlers []Handler) { //nolint:nonamedreturns // names tell the three results apart
+	prefixArgs := 0
+	for _, arg := range args {
+		switch arg := arg.(type) {
+		case string:
+			prefixes = []string{arg}
+			prefixArgs++
+		case []string:
+			prefixes = arg
+			prefixArgs++
+		case *App:
+			if subApp != nil {
+				panic("use: only one sub-app can be passed in one call\n")
+			}
+			subApp = arg
+		default:
+			handler, ok := toFiberHandler(arg)
+			if !ok {
+				panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
+			}
+			handlers = append(handlers, handler)
+		}
+	}
+
+	if prefixArgs > 1 {
+		panic("use: pass several prefixes as one []string\n")
+	}
+	if subApp != nil && len(handlers) > 0 {
+		panic("use: handlers and a sub-app cannot be passed in one call\n")
+	}
+	if len(prefixes) == 0 {
+		prefixes = []string{""}
+	}
+	return prefixes, subApp, handlers
 }
 
 // Get registers a route for GET methods that requests a representation

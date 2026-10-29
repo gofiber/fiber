@@ -253,6 +253,21 @@ func Test_Ctx_Charset(t *testing.T) {
 			expected:    "",
 		},
 		{
+			name:        "later_equals_does_not_open_quotes",
+			contentType: `multipart/form-data; boundary=ab="cd; charset=utf-8`,
+			expected:    "utf-8",
+		},
+		{
+			name:        "later_equals_does_not_hide_first_charset",
+			contentType: `text/plain; a=b="; charset=bad"; charset=utf-8`,
+			expected:    "",
+		},
+		{
+			name:        "escaped_quote_at_start_of_earlier_value",
+			contentType: `text/plain; a="\";charset=bad"; charset=utf-8`,
+			expected:    "utf-8",
+		},
+		{
 			name:        "unterminated_quoted_value",
 			contentType: `text/plain; charset="utf-8`,
 			expected:    "",
@@ -353,6 +368,8 @@ func Benchmark_Ctx_Charset(b *testing.B) {
 		{name: "charset", contentType: MIMEApplicationJSONCharsetUTF8},
 		{name: "charset_last", contentType: `multipart/form-data; boundary="a;b"; charset=utf-8`},
 		{name: "quoted_pair", contentType: `text/plain; charset="utf\-8"`},
+		{name: "empty_parameters", contentType: "text/plain;" + strings.Repeat(";", 4000)},
+		{name: "empty_parameters_before_charset", contentType: "text/plain;;;charset=utf-8"},
 	} {
 		b.Run(bench.name, func(b *testing.B) {
 			app := New()
@@ -3265,6 +3282,34 @@ func Test_Ctx_FormValue_NonMultipart(t *testing.T) {
 // call Bind first to get its own form back.
 func Test_Ctx_Form_MixedCaseContentType(t *testing.T) {
 	t.Parallel()
+
+	for _, accessor := range []string{"FormValue", "MultipartForm", "Bind"} {
+		t.Run("quoted_decoy_"+accessor, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+			c.Request().Header.SetMethod(MethodPost)
+			c.Request().Header.Set(HeaderContentType, `Multipart/Form-Data; X= "; BOUNDARY=bogus"; BOUNDARY=Real`)
+			c.Request().SetBodyString("--Real\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\ncarol\r\n--Real--\r\n")
+
+			switch accessor {
+			case "FormValue":
+				require.Equal(t, "carol", c.FormValue("name"))
+			case "MultipartForm":
+				form, err := c.MultipartForm()
+				require.NoError(t, err)
+				require.Equal(t, []string{"carol"}, form.Value["name"])
+			case "Bind":
+				var out struct {
+					Name string `form:"name"`
+				}
+				require.NoError(t, c.Bind().Form(&out))
+				require.Equal(t, "carol", out.Name)
+			}
+		})
+	}
 
 	t.Run("urlencoded", func(t *testing.T) {
 		t.Parallel()
@@ -6993,6 +7038,90 @@ func Test_Ctx_Endpoint_LooksPastTheCurrentRoute(t *testing.T) {
 			require.Equal(t, StatusOK, resp.StatusCode)
 			require.NotNil(t, seen, "an endpoint is still ahead")
 			require.Equal(t, "/:second", seen.Path, "the /:first endpoint already ran")
+		})
+	}
+}
+
+// go test -run Test_Ctx_Endpoint_DomainRoutes
+// A Domain route declines a request for another hostname and a later route takes
+// it, so the look-ahead must not name a route the host filter turns down.
+func Test_Ctx_Endpoint_DomainRoutes(t *testing.T) {
+	t.Parallel()
+
+	for _, skipUnmatched := range []bool{false, true} {
+		t.Run(fmt.Sprintf("SkipUnmatchedRoutes=%v", skipUnmatched), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{SkipUnmatchedRoutes: skipUnmatched})
+
+			app.Use(func(c Ctx) error {
+				if route := c.Endpoint(); route != nil {
+					c.Set("X-Predicted", route.Name)
+				}
+				err := c.Next()
+				if route := c.Endpoint(); route != nil {
+					c.Set("X-Reported", route.Name)
+				}
+				return err
+			})
+			served := func(c Ctx) error { return c.SendString(c.Route().Name) }
+
+			www := app.Domain("www.example.com")
+			admin := app.Domain("admin.example.com")
+
+			www.Get("/dashboard", served).Name("www.dashboard")
+			www.Get("/:page", served).Name("www.page")
+			admin.Get("/dashboard", served).Name("admin.dashboard")
+			admin.Get("/users", served).Name("admin.users")
+
+			// Registered back to back, which is where addRoute merges one path
+			admin.Get("/reports", served).Name("admin.reports")
+			app.Domain("ops.example.com").Get("/reports", served).Name("ops.reports")
+			app.Get("/reports", served).Name("reports")
+
+			mounted := New()
+			mounted.Get("/dashboard", served).Name("ops.dashboard")
+			mounted.Domain("other.example.com").Get("/users", served).Name("ops.unreachable")
+			app.Domain("ops.example.com").Use("/", mounted)
+
+			app.Get("/users", served).Name("users")
+
+			for _, tc := range []struct{ host, path, want string }{
+				{host: "www.example.com", path: "/dashboard", want: "www.dashboard"},
+				{host: "www.example.com", path: "/users", want: "www.page"},
+				{host: "admin.example.com", path: "/dashboard", want: "admin.dashboard"},
+				{host: "admin.example.com", path: "/users", want: "admin.users"},
+				{host: "admin.example.com", path: "/reports", want: "admin.reports"},
+				{host: "ops.example.com", path: "/reports", want: "ops.reports"},
+				{host: "other.example.com", path: "/reports", want: "reports"},
+				{host: "ops.example.com", path: "/dashboard", want: "ops.dashboard"},
+				{host: "ops.example.com", path: "/users", want: "users"},
+				{host: "other.example.com", path: "/users", want: "users"},
+				{host: "other.example.com", path: "/dashboard"},
+			} {
+				for _, method := range []string{MethodGet, MethodHead} {
+					req := httptest.NewRequest(method, tc.path, http.NoBody)
+					req.Host = tc.host
+					resp, err := app.Test(req)
+					require.NoError(t, err, "app.Test(req)")
+					body, err := io.ReadAll(resp.Body)
+					require.NoError(t, err)
+					require.NoError(t, resp.Body.Close())
+
+					if tc.want == "" {
+						require.Equal(t, StatusNotFound, resp.StatusCode, "%s %s%s", method, tc.host, tc.path)
+					} else {
+						require.Equal(t, StatusOK, resp.StatusCode, "%s %s%s", method, tc.host, tc.path)
+					}
+					if tc.want != "" && method == MethodGet {
+						require.Equal(t, tc.want, string(body), "%s%s", tc.host, tc.path)
+					}
+					require.Equal(t, tc.want, resp.Header.Get("X-Predicted"),
+						"%s %s%s: the look-ahead named another route than the one that ran", method, tc.host, tc.path)
+					require.Equal(t, tc.want, resp.Header.Get("X-Reported"),
+						"%s %s%s: a route that declined was reported once the chain returned", method, tc.host, tc.path)
+				}
+			}
 		})
 	}
 }
