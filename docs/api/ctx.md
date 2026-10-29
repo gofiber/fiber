@@ -1574,6 +1574,8 @@ When a client sends the Cache-Control: no-cache request header to indicate an en
 
 `Fresh` only applies to GET and HEAD requests and returns false for any other method, since a 304 Not Modified response is only defined for those methods and RFC 9110 requires If-Modified-Since to be ignored otherwise.
 
+The response status must be 2xx or 304. Redirects and errors return false even when the request's validators match, so a freshness check cannot replace them with a 304 response.
+
 The request fields it reads (`If-None-Match`, `If-Modified-Since` and `Cache-Control`) are matched case-insensitively, which matters under [`DisableHeaderNormalizing`](./fiber.md#disableheadernormalizing), where the names are kept as the peer sent them. `If-None-Match` and `Cache-Control` are read across repeated field lines.
 
 Read more on [https://expressjs.com/en/4x/api.html\#req.fresh](https://expressjs.com/en/4x/api.html#req.fresh)

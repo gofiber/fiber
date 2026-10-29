@@ -513,6 +513,7 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 // Freshness only applies to GET and HEAD requests; for any other method false is
 // returned, as RFC 9110 defines 304 Not Modified only for those methods and
 // requires If-Modified-Since to be ignored otherwise.
+// The response status must be 2xx or 304; redirects and errors are never fresh.
 // When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
 // reload request, this module will return false to make handling these requests transparent.
 // https://github.com/jshttp/fresh/blob/master/index.js#L33
@@ -526,6 +527,13 @@ func (r *DefaultReq) Fresh() bool {
 		return false
 	}
 	if method := r.c.app.method(r.c.methodInt); method != MethodGet && method != MethodHead {
+		return false
+	}
+
+	// Redirects and errors take precedence over request preconditions (RFC
+	// 9110 Section 13.2.1). Like Express, an existing 304 can remain fresh.
+	status := r.c.fasthttp.Response.StatusCode()
+	if (status < StatusOK || status >= StatusMultipleChoices) && status != StatusNotModified {
 		return false
 	}
 
