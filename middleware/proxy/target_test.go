@@ -24,10 +24,14 @@ func rawRequest(t *testing.T, app *fiber.App, target, host string) *fasthttp.Res
 	t.Helper()
 
 	var req fasthttp.Request
-	raw := fiber.MethodGet + " " + target + " HTTP/1.1\r\nHost: " + host + "\r\n\r\n"
+	method := fiber.MethodGet
+	if target == "*" {
+		method = fiber.MethodOptions // the only method asterisk-form is for
+	}
+	raw := method + " " + target + " HTTP/1.1\r\nHost: " + host + "\r\n\r\n"
 	if host == "" {
 		// HTTP/1.0 needs no Host header.
-		raw = fiber.MethodGet + " " + target + " HTTP/1.0\r\n\r\n"
+		raw = method + " " + target + " HTTP/1.0\r\n\r\n"
 	}
 	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
 
@@ -213,6 +217,80 @@ func Test_Proxy_Balancer_RejectsHostUserinfo(t *testing.T) {
 	require.Equal(t, int32(1), hits.Load())
 }
 
+// Test_Proxy_Balancer_AbsoluteFormHost pins that the upstream is addressed by
+// the host c.Host() and the host checks went by: an absolute-form line naming
+// another host than the Host field is refused (RFC 9112 Sections 3.2, 3.2.2).
+func Test_Proxy_Balancer_AbsoluteFormHost(t *testing.T) {
+	t.Parallel()
+	addr := echoIdentity(t)
+
+	var routed string
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		routed = strings.Clone(c.Host())
+		return c.Next()
+	})
+	app.Use(Balancer(Config{Servers: []string{addr}}))
+
+	for _, tc := range []struct{ target, host, want string }{
+		{"http://public.example/x", "internal.example", ""},
+		{"http://public.example:8080/x", "public.example", ""},
+		{"http://public.example:443/x", "public.example", ""},
+		{"https://u:pw@public.example/x", "internal.example", ""},
+		{"//public.example/a?x=://", "internal.example", ""},
+		{"http://public.example/x", "svc:pw@public.example", ""},
+		{"http:///x", "internal.example", ""},
+		{"http://public.example/x", "", ""},
+		// c.Host() keeps the escape, which fasthttp decodes in the Host it sends upstream.
+		{"http://public%25c3%25a9.example/x", "public%c3%a9.example", ""},
+		{"http://public.example/x", "public.example/evil", ""},
+		{"http://PUBLIC.example:8080/x?q=1", "Public.Example:8080", "/x?q=1|public.example:8080|"},
+		{"https://u:pw@public.example/x", "public.example", "/x|public.example|"},
+		{"//public.example/a?x=://", "public.example", "/a?x=://|public.example|"},
+		{"/x", "internal.example", "/x|internal.example|"},
+	} {
+		resp := rawRequest(t, app, tc.target, tc.host)
+		if tc.want == "" {
+			require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), tc.target)
+			continue
+		}
+		require.Equal(t, fiber.StatusOK, resp.StatusCode(), tc.target)
+		require.Equal(t, tc.want, string(resp.Body()), tc.target)
+		require.Contains(t, tc.want, "|"+routed+"|", tc.target)
+	}
+
+	// A port that is empty or the scheme's default names the same host (RFC 9110 Section 4.2.3).
+	for target, host := range map[string]string{
+		"http://public.example:80/x":   "public.example",
+		"http://public.example:/x":     "public.example",
+		"https://public.example:443/x": "public.example",
+		"http://public.example/x":      "public.example:80",
+		"http://[::1]:80/x":            "[::1]",
+		"http://my_svc:80/x":           "my_svc",
+	} {
+		resp := rawRequest(t, app, target, host)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
+		require.Equal(t, "/x|"+host+"|", string(resp.Body()), target)
+	}
+
+	// A Host set before the handler is kept, and no request line replaces it.
+	pinned := fiber.New()
+	pinned.Use(func(c fiber.Ctx) error {
+		c.Request().Header.SetHost("early.internal")
+		return c.Next()
+	})
+	pinned.Use(Balancer(Config{Servers: []string{addr}}))
+	require.Equal(t, "/x|early.internal|", string(rawRequest(t, pinned, "/x", "public.example").Body()))
+	require.Equal(t, "/*|early.internal|", string(rawRequest(t, pinned, "*", "public.example").Body()))
+	require.Equal(t, fiber.StatusBadRequest, rawRequest(t, pinned, "http://other.internal/x", "public.example").StatusCode())
+	require.Equal(t, fiber.StatusBadRequest, rawRequest(t, pinned, "http://public.example/x", "public.example").StatusCode())
+
+	// ModifyRequest runs after the check, so a Host pinned there serves absolute-form requests too.
+	late := fiber.New()
+	late.Use(Balancer(Config{Servers: []string{addr}, ModifyRequest: pinIdentity}))
+	require.Equal(t, "/x|backend.internal|Bearer pinned", string(rawRequest(t, late, "http://public.example/x", "public.example").Body()))
+}
+
 // go test -run Test_Proxy_Balancer_RejectsNonOriginServer
 func Test_Proxy_Balancer_RejectsNonOriginServer(t *testing.T) {
 	t.Parallel()
@@ -307,6 +385,35 @@ func Test_Proxy_BalancerForward_ForwardsRoutedPath(t *testing.T) {
 	require.Equal(t, fiber.StatusForbidden, resp.StatusCode())
 	for _, target := range []string{"//internal", "/public/..%2Fadmin/secret"} {
 		require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), target)
+	}
+}
+
+// Test_Proxy_Forward_EscapedUpstreamPathKeepsTarget pins that an escape in the
+// upstream URL's path does not cost the routed target its escapes: with "%3B"
+// sent as ";", a servlet container serves "/admin/secret" for
+// "/public/..%3B/admin/secret" although no middleware on "/admin" ran.
+func Test_Proxy_Forward_EscapedUpstreamPathKeepsTarget(t *testing.T) {
+	t.Parallel()
+	addr := echoTarget(t)
+
+	for name, handler := range map[string]fiber.Handler{
+		"DomainForward":   DomainForward("example.com", "http://"+addr+"/my%20app"),
+		"BalancerForward": BalancerForward([]string{"http://" + addr + "/my%20app"}),
+	} {
+		app := fiber.New()
+		app.Use("/admin", forbid)
+		app.Use(handler)
+
+		for target, want := range map[string]string{
+			"/public/x":                  "/my%20app/public/x",
+			"/public/..%3B/admin/secret": "/my%20app/public/..%3B/admin/secret",
+			"/..%3B/other/a%40b?q=%3B":   "/my%20app/..%3B/other/a%40b?q=%3B",
+		} {
+			resp := rawRequest(t, app, target, "example.com")
+			require.Equal(t, fiber.StatusOK, resp.StatusCode(), "%s %s", name, target)
+			require.Equal(t, want, string(resp.Body()), "%s upstream target for %q", name, target)
+		}
+		require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, "/public/..;/admin/secret", "example.com").StatusCode(), name)
 	}
 }
 

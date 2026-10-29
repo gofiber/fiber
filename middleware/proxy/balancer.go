@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	"github.com/gofiber/fiber/v3/internal/schemehost"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -94,6 +95,16 @@ func Balancer(config ...Config) fiber.Handler {
 			return fiber.ErrRequestHeaderFieldsTooLarge
 		}
 
+		// c.Host() and the host checks went by an absolute-form line's host (RFC 9112 Section 3.2.2), the upstream goes by
+		// the Host field: refuse a mismatch, as overwriting the field would replace an app's pin. "*" names no host.
+		line := utils.UnsafeString(req.Header.RequestURI()) // c.OriginalURL() copies under Immutable
+		if line != "*" && !wiretarget.ParsesAsPath(line, req.Header.Host()) {
+			scheme := utils.UnsafeString(req.URI().Scheme())
+			if !schemehost.MatchStrict(scheme, utils.UnsafeString(req.URI().Host()), utils.UnsafeString(req.Header.Host())) {
+				return fiber.ErrBadRequest
+			}
+		}
+
 		// The Host field holds no userinfo (RFC 9112 Section 3.2). fasthttp
 		// reads "svc:pw@backend" as one when it parses the origin-form
 		// target below, and writes it upstream as a Basic Authorization
@@ -118,7 +129,7 @@ func Balancer(config ...Config) fiber.Handler {
 			(opaqueClient && !wiretarget.SurvivesNormalization(target)) {
 			return fiber.ErrBadRequest
 		}
-		originalURL := utils.CopyString(c.OriginalURL())
+		originalURL := utils.CopyString(line)
 		defer req.SetRequestURI(originalURL)
 		req.SetRequestURI(target)
 

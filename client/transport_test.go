@@ -954,6 +954,38 @@ func TestDoRedirectsWithClientDefaultLimit(t *testing.T) {
 	require.Equal(t, defaultRedirectLimit+1, client.CallCount())
 }
 
+func TestDoRedirectsWithClientDeadlineCoversTheChain(t *testing.T) {
+	t.Parallel()
+
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+	req.SetRequestURI("http://example.com/start")
+
+	const budget, hop = 100 * time.Millisecond, 30 * time.Millisecond
+	calls := make([]stubRedirectCall, 0, 20)
+	for range 20 {
+		calls = append(calls, stubRedirectCall{status: new(fasthttp.StatusFound), location: new("/loop")})
+	}
+	var timeouts []time.Duration
+	client := &stubRedirectClient{calls: calls, onRequest: func(req *fasthttp.Request) {
+		timeouts = append(timeouts, req.GetTimeOut())
+		time.Sleep(hop)
+	}}
+
+	opts := &redirectOptions{maxRedirects: 20, deadline: time.Now().Add(budget)}
+	require.ErrorIs(t, doRedirectsWithClient(req, resp, opts, client), fasthttp.ErrTimeout)
+
+	require.LessOrEqual(t, len(timeouts), int(budget/hop)+1)
+	left := budget
+	for _, got := range timeouts {
+		require.Positive(t, got)
+		require.LessOrEqual(t, got, left)
+		left = got - hop
+	}
+}
+
 func Test_StandardClientTransport_StreamResponseBody(t *testing.T) {
 	t.Parallel()
 
