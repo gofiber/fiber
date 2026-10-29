@@ -119,8 +119,9 @@ type Store struct {
 	root extractorRoot
 	// sinks are the cookies and headers a session ID can be written back to, in the
 	// order of the extractor. NewStore works them out once; a Store built without it
-	// has none (nil), and walks its extractor when it needs them. Read-only: every
-	// session of the store shares the slice.
+	// has none (nil), and a Store whose Extractor was replaced since has stale ones:
+	// both walk the extractor when they need them. Read-only: every session of the
+	// store shares the slice.
 	sinks []extractors.Extractor
 	// sources names the cookies and headers the store reads the session ID from
 	// and writes it back to, such as "cookie:session_id".
@@ -130,23 +131,24 @@ type Store struct {
 
 // extractorRoot identifies an extractor well enough to notice that the Extractor of
 // a store was replaced after NewStore, which Config being embedded allows: it holds
-// what tells one extractor from another without calling it, the key and source of
-// the root and the identity of its chain. Changing a nested extractor in place is
-// not noticed.
+// what the cookies and headers of an extractor depend on and tells one extractor
+// from another without calling it, the key and source of the root and the identity
+// of its chain (a chain reports the key and source of its first child, so these two
+// alone cannot tell a leaf from a chain that starts with it). Changing a nested
+// extractor in place is not noticed.
 type extractorRoot struct {
 	key    string
-	scheme string
 	chain  []extractors.Extractor
 	source extractors.Source
 }
 
 func rootOf(ext extractors.Extractor) extractorRoot {
-	return extractorRoot{key: ext.Key, scheme: ext.AuthScheme, chain: ext.Chain, source: ext.Source}
+	return extractorRoot{key: ext.Key, chain: ext.Chain, source: ext.Source}
 }
 
 // matches reports whether ext is the extractor r was taken from.
 func (r extractorRoot) matches(ext extractors.Extractor) bool {
-	if r.key != ext.Key || r.scheme != ext.AuthScheme || r.source != ext.Source || len(r.chain) != len(ext.Chain) {
+	if r.key != ext.Key || r.source != ext.Source || len(r.chain) != len(ext.Chain) {
 		return false
 	}
 	return len(r.chain) == 0 || &r.chain[0] == &ext.Chain[0]

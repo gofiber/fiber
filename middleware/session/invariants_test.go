@@ -85,15 +85,28 @@ type invariantStore struct {
 // invariantWorld is the stores of one run and the IDs of the sessions saved so far,
 // which a client can send back.
 type invariantWorld struct {
-	stores map[string]*invariantStore
-	saved  map[string][]string
-	ledger *invariantLedger
-	rng    *rand.Rand
+	stores   map[string]*invariantStore
+	saved    map[string][]string
+	ledger   *invariantLedger
+	rng      *rand.Rand
+	storages []*memory.Storage
+}
+
+// shutdown stops the garbage collection of the storages of the world. A memory storage
+// runs a goroutine of its own until it is closed, so a world that is not closed
+// costs two goroutines and what they hold for as long as the process runs, which a
+// fuzz target that builds a world for every input adds up to megabytes per second.
+func (w *invariantWorld) shutdown(tb testing.TB) {
+	tb.Helper()
+
+	for _, storage := range w.storages {
+		require.NoError(tb, storage.Close())
+	}
 }
 
 func newInvariantWorld(seed uint64) *invariantWorld {
 	ledger := &invariantLedger{writers: make(map[string]string)}
-	shared := memory.New()
+	shared, private := memory.New(), memory.New()
 	stores := make(map[string]*invariantStore)
 	add := func(name string, ext extractors.Extractor, storage fiber.Storage, group, prefix string, hashed bool, cookies, headers []string) {
 		policy := fmt.Sprintf("%s|%s|%t", group, prefix, hashed)
@@ -111,14 +124,15 @@ func newInvariantWorld(seed uint64) *invariantWorld {
 	add("A", extractors.FromCookie("a_sid"), shared, "shared", "a:", false, []string{"a_sid"}, nil)
 	add("A2", extractors.FromCookie("a_sid"), shared, "shared", "a:", false, []string{"a_sid"}, nil)
 	add("B", extractors.FromCookie("b_sid"), shared, "shared", "b:", false, []string{"b_sid"}, nil)
-	add("C", extractors.Chain(extractors.FromCookie("c_sid"), extractors.FromHeader("X-C")), memory.New(), "private", "", true,
+	add("C", extractors.Chain(extractors.FromCookie("c_sid"), extractors.FromHeader("X-C")), private, "private", "", true,
 		[]string{"c_sid"}, []string{"X-C"})
 
 	return &invariantWorld{
-		stores: stores,
-		saved:  make(map[string][]string),
-		ledger: ledger,
-		rng:    rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15)),
+		stores:   stores,
+		saved:    make(map[string][]string),
+		ledger:   ledger,
+		rng:      rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15)),
+		storages: []*memory.Storage{shared, private},
 	}
 }
 
@@ -360,6 +374,7 @@ func Test_Session_Invariants_StoreAPI(t *testing.T) {
 			t.Parallel()
 
 			w := newInvariantWorld(seed)
+			t.Cleanup(func() { w.shutdown(t) })
 			app := fiber.New()
 			var visits int
 			var mu sync.Mutex
@@ -404,6 +419,7 @@ func Test_Session_Invariants_Middleware(t *testing.T) {
 			t.Parallel()
 
 			w := newInvariantWorld(seed)
+			t.Cleanup(func() { w.shutdown(t) })
 			names := []string{"A", "B", "C"}
 			app := fiber.New()
 			for _, name := range names {

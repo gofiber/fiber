@@ -107,6 +107,53 @@ func Test_Session_Store_LaterPublicationToTheBoxCounts(t *testing.T) {
 	require.Equal(t, idB, r.ID())
 }
 
+// A new session whose cookie names an ID the storage does not know is published to
+// the box the request already has, as the session of a cookie that names a stored
+// one is. W and X publish into the box first; Y, whose cookie is unknown, publishes
+// after them; R shares Y's cookie but neither W's nor X's, so it must take the ID
+// that Y cached, and not find its own session as it would if the box still named X.
+func Test_Session_Store_FreshSessionOfAnUnknownCookiePublishesToTheBox(t *testing.T) {
+	t.Parallel()
+
+	shared := memory.New()
+	app := fiber.New()
+	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid"), Storage: shared})
+	storeW := NewStore(Config{Extractor: extractors.FromCookie("w_sid")})
+	storeX := NewStore(Config{Extractor: extractors.FromCookie("x_sid")})
+	storeY := NewStore(Config{Extractor: extractors.FromCookie("y_sid"), Storage: shared})
+	storeR := NewStore(Config{
+		Extractor: extractors.Chain(extractors.FromCookie("b_sid"), extractors.FromCookie("y_sid")),
+		Storage:   shared,
+	})
+	idB := seedStoredSession(t, app, storeB)
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.SetCookie("b_sid", idB)
+	c.Request().Header.SetCookie("y_sid", "names-no-session")
+
+	for _, store := range []*Store{storeB, storeW, storeX} {
+		sess, err := store.Get(c)
+		require.NoError(t, err)
+		sess.Release()
+	}
+	y, err := storeY.Get(c)
+	require.NoError(t, err)
+	defer y.Release()
+	require.True(t, y.Fresh(), "Y's cookie names no stored session")
+	require.NoError(t, y.Save())
+	box, ok := c.Locals(sessionExtractorContextKey).(*provenanceBox)
+	require.True(t, ok)
+	require.Same(t, storeY, box.publisher, "Y published into the box, after W and X")
+
+	r, err := storeR.Get(c)
+	require.NoError(t, err)
+	defer r.Release()
+	require.Equal(t, y.ID(), r.ID(), "R shares Y's cookie, and Y published last")
+	require.NotEqual(t, idB, r.ID(), "R went to its own cookie instead of the ID that Y cached")
+	require.False(t, r.Fresh(), "R found the session that Y saved")
+}
+
 // A middleware that starts after a Store.Get published without a box is the
 // publisher of the ID it caches, not the store of the earlier one.
 func Test_Session_Store_MiddlewareIsThePublisherOverTheOwnerLocal(t *testing.T) {
@@ -245,4 +292,18 @@ func Test_Store_ExtractorReplacedAfterNewStore(t *testing.T) {
 	require.Equal(t, []string{"cookie:c_sid", "header:X-D"}, sinkNames(chained.writableSinks()))
 	require.True(t, chained.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("x-d")})))
 	require.False(t, chained.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("x-c")})))
+
+	// A chain reports the key and the source of its first child, so a cookie replaced
+	// by a header of the same name, and a leaf replaced by a chain that starts with it,
+	// differ in one thing each, and each is another extractor.
+	swapped := NewStore(Config{Extractor: extractors.FromCookie("sid")})
+	swapped.Extractor = extractors.FromHeader("sid")
+	require.Equal(t, []string{"header:sid"}, sinkNames(swapped.writableSinks()), "a header, not the cookie of that name")
+	require.True(t, swapped.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("SID")})))
+	require.False(t, swapped.sharesSource(NewStore(Config{Extractor: extractors.FromCookie("sid")})))
+
+	grown := NewStore(Config{Extractor: extractors.FromCookie("a")})
+	grown.Extractor = extractors.Chain(extractors.FromCookie("a"), extractors.FromHeader("X-A"))
+	require.Equal(t, []string{"cookie:a", "header:X-A"}, sinkNames(grown.writableSinks()), "the chain has the header as well")
+	require.True(t, grown.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("x-a")})))
 }

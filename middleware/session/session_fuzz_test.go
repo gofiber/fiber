@@ -57,10 +57,12 @@ func Fuzz_Session_ClientInput(f *testing.F) {
 	f.Add(strings.Repeat("g", 512), "\x00\x01\x02", "\"quoted\"", "x y")
 
 	f.Fuzz(func(t *testing.T, a, b, c, header string) {
-		// A world of its own for every input: nothing carries over from one input to
-		// the next, so an input that fails fails alone, and the storage does not grow
-		// for as long as the fuzzing runs.
+		// A world of its own for every input, closed with it: nothing carries over from
+		// one input to the next, so an input that fails fails alone, and neither the
+		// storage nor the goroutines of the storages grow for as long as the fuzzing
+		// runs.
 		w := newInvariantWorld(1)
+		t.Cleanup(func() { w.shutdown(t) })
 		app := fiber.New()
 		app.Get("/", func(c fiber.Ctx) error {
 			var rec invariantRecord
