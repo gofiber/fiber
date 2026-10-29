@@ -239,6 +239,63 @@ func Test_ProvenanceBox_CloseForgetsEverything(t *testing.T) {
 	require.Equal(t, provenanceBox{}, *box)
 }
 
+// A store that reads its ID only from a source it cannot write back to names no
+// cookie or header to compare, so it counts as sharing with every other store, as
+// on main. Two middleware over read-only sources agree on the ID of a new visitor,
+// and a cookie store behind a query store takes the session that the query names,
+// without setting a cookie for it: the limitation that the docs ask to avoid by not
+// mixing such stores. The test pins it so that changing it is a decision.
+func Test_Session_Store_WithoutSinksSharesWithEveryStore(t *testing.T) {
+	t.Parallel()
+
+	shared := memory.New()
+	app := fiber.New()
+	byQuery := NewStore(Config{Extractor: extractors.FromQuery("sid"), Storage: shared})
+	byOtherQuery := NewStore(Config{Extractor: extractors.FromQuery("token"), Storage: shared})
+	byAuth := NewStore(Config{Extractor: extractors.FromAuthHeader("Bearer"), Storage: shared})
+	byCookie := NewStore(Config{Extractor: extractors.FromCookie("c_sid"), Storage: shared})
+	byOtherCookie := NewStore(Config{Extractor: extractors.FromCookie("d_sid"), Storage: shared})
+
+	for _, pair := range [][2]*Store{{byQuery, byOtherQuery}, {byQuery, byAuth}, {byQuery, byCookie}, {byCookie, byQuery}, {byAuth, byOtherCookie}} {
+		require.True(t, pair[0].sharesSource(pair[1]), "a store without cookies or headers to compare shares with every store")
+	}
+	require.False(t, byCookie.sharesSource(byOtherCookie), "two cookies are two places")
+
+	// A new visitor: once the first store has saved its session, the others find it.
+	visitor := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(visitor)
+	first, err := byQuery.Get(visitor)
+	require.NoError(t, err)
+	defer first.Release()
+	first.Set("k", "v")
+	require.NoError(t, first.Save())
+	second, err := byOtherQuery.Get(visitor)
+	require.NoError(t, err)
+	defer second.Release()
+	third, err := byCookie.Get(visitor)
+	require.NoError(t, err)
+	defer third.Release()
+	require.Equal(t, first.ID(), second.ID(), "a second read-only store took the ID that the first one saved")
+	require.False(t, second.Fresh())
+	require.Equal(t, first.ID(), third.ID(), "a cookie store behind them took it too")
+	require.False(t, third.Fresh())
+
+	// A session that the query names is served by the cookie store behind it, as a
+	// middleware caches the ID it resolved on the request for the next one to take.
+	id := seedStoredSession(t, app, byQuery)
+	queryHandler, _ := NewWithStore(Config{Extractor: extractors.FromQuery("sid"), Storage: shared})
+	cookieHandler, cookieStore := NewWithStore(Config{Extractor: extractors.FromCookie("c_sid"), Storage: shared})
+	stacked := fiber.New()
+	stacked.Use(queryHandler, cookieHandler)
+	stacked.Get("/", func(c fiber.Ctx) error {
+		m := cookieStore.FromContext(c)
+		return c.SendString(fmt.Sprintf("%s|%t|%v", m.ID(), m.Fresh(), m.Get("k")))
+	})
+	resp, body := sendRequest(t, stacked, "/?sid="+id, nil)
+	require.Equal(t, id+"|false|v", body, "the cookie store served the session that the query names")
+	require.Empty(t, resp.Cookies(), "no cookie is set for an ID that came from a source that cannot be written back")
+}
+
 // Header names are case-insensitive, so stores over X-Sid and x-sid read one
 // header and share the session of a new visitor; a cookie and a header of one name
 // are two places and do not.
