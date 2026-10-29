@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
@@ -58,6 +59,10 @@ func forwardWithRealIP(c fiber.Ctx, addr string, policy SecurityPolicy, clients 
 // The default client sets no timeout and no response size cap.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
+		// See Balancer: a refused request is not forwarded.
+		if errorreplay.Active(c.RequestCtx()) {
+			return c.Next()
+		}
 		return forwardWithRealIP(c, addr, currentSecurityPolicy(), clients...)
 	}
 }
@@ -280,6 +285,10 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 	}
 	r := &urlRoundrobin{pool: bases}
 	return func(c fiber.Ctx) error {
+		// See Balancer: a refused request is not forwarded.
+		if errorreplay.Active(c.RequestCtx()) {
+			return c.Next()
+		}
 		return forwardRouted(c, r.get(), clients...)
 	}
 }

@@ -46,6 +46,47 @@ type cachedHeader struct {
 	value []byte `msg:",limit=16384"` // Header values are bounded to reasonable sizes.
 }
 
+// The msgp limits above, which only the decoder enforces; each must match its
+// tag. maxVaryLen in vary.go is the one on vary.
+const (
+	maxStoredHeaders         = 1024
+	maxStoredHeaderKey       = 512
+	maxStoredHeaderValue     = 16384
+	maxStoredContentType     = 256
+	maxStoredContentEncoding = 128
+	maxStoredCacheControl    = 2048
+	maxStoredExpires         = 128
+	maxStoredETag            = 256
+)
+
+// decodable reports whether UnmarshalMsg accepts what MarshalMsg writes for e.
+func (e *item) decodable() bool {
+	if len(e.headers) > maxStoredHeaders ||
+		len(e.ctype) > maxStoredContentType ||
+		len(e.cencoding) > maxStoredContentEncoding ||
+		len(e.cacheControl) > maxStoredCacheControl ||
+		len(e.expires) > maxStoredExpires ||
+		len(e.etag) > maxStoredETag ||
+		len(e.vary) > maxVaryLen {
+		return false
+	}
+	for i := range e.headers {
+		if len(e.headers[i].key) > maxStoredHeaderKey || len(e.headers[i].value) > maxStoredHeaderValue {
+			return false
+		}
+	}
+	return true
+}
+
+// metaSize is what e stores besides its body and key.
+func (e *item) metaSize() uint {
+	n := len(e.ctype) + len(e.cencoding) + len(e.cacheControl) + len(e.expires) + len(e.etag) + len(e.vary)
+	for i := range e.headers {
+		n += len(e.headers[i].key) + len(e.headers[i].value)
+	}
+	return uint(n)
+}
+
 //msgp:ignore manager
 type manager struct {
 	pool             sync.Pool

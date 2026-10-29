@@ -36,6 +36,7 @@ func keygenCorpus() []keygenCase {
 		{name: "noquery", uri: "/demo", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
 		{name: "single", uri: "/demo?foo=bar", want: "scheme=http|host=example.com|/|q=foo=bar|h=accept:0|accept-encoding:0|accept-language:0"},
 		{name: "multi_dup", uri: "/demo?b=2&a=1&a=3", want: "scheme=http|host=example.com|/|q=a=1&a=3&b=2|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "dup_order", uri: "/demo?a=3&a=1", want: "scheme=http|host=example.com|/|q=a=3&a=1|h=accept:0|accept-encoding:0|accept-language:0"},
 		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: "scheme=http|host=example.com|/|q=x=1|h=accept:0|accept-encoding:0|accept-language:0"},
 		{name: "query_escape", uri: "/p?k=a b&z=%2F&k=z", want: "scheme=http|host=example.com|/|q=k=a+b&k=z&z=%2F|h=accept:0|accept-encoding:0|accept-language:0"},
 		{name: "with_headers", uri: "/p?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: "scheme=http|host=example.com|/|q=foo=bar|h=accept:1|text/html|accept-encoding:1|gzip|accept-language:0"},
@@ -52,10 +53,11 @@ func keygenCorpus() []keygenCase {
 		{name: "header_val_delims", uri: "/p", headers: map[string]string{"Accept": "a|b:c"}, want: "scheme=http|host=example.com|/|q=|h=accept:1|a\\pb\\cc|accept-encoding:0|accept-language:0"},
 		{name: "empty_query", uri: "/p?", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
 		{name: "many_params", uri: "/p?" + strings.Repeat("k=v&", 200) + "z=1", want: "scheme=http|host=example.com|/|q=sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "query_empty_body", uri: "/q", method: fiber.MethodQuery, want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|b="},
-		{name: "query_body", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|b=foo=bar"},
-		{name: "query_body_delims", uri: "/q", method: fiber.MethodQuery, body: "a|b:c", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|b=a\\pb\\cc"},
-		{name: "query_with_querystring", uri: "/q?x=1", method: fiber.MethodQuery, body: "foo=bar", want: "scheme=http|host=example.com|/|q=x=1|h=accept:0|accept-encoding:0|accept-language:0|b=foo=bar"},
+		{name: "query_empty_body", uri: "/q", method: fiber.MethodQuery, want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|m=0|0|b="},
+		{name: "query_body", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|m=0|0|b=foo=bar"},
+		{name: "query_body_delims", uri: "/q", method: fiber.MethodQuery, body: "a|b:c", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|m=0|0|b=a\\pb\\cc"},
+		{name: "query_with_querystring", uri: "/q?x=1", method: fiber.MethodQuery, body: "foo=bar", want: "scheme=http|host=example.com|/|q=x=1|h=accept:0|accept-encoding:0|accept-language:0|m=0|0|b=foo=bar"},
+		{name: "query_body_metadata", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", headers: map[string]string{"Content-Type": "application/json", "Content-Encoding": "gzip"}, want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|m=1|gzip|1|application/json|b=foo=bar"},
 		// The authority: the port is part of it, its delimiters are escaped like
 		// every other segment's, and past the bound it is hashed rather than
 		// allowed to grow the key.

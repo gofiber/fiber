@@ -212,7 +212,7 @@ The `ExposeHeaders` option defines an allowlist of headers that clients are allo
 
 The `MaxAge` option indicates how long the results of a preflight request can be cached. If `MaxAge` is set to `3600`, the middleware adds the header `Access-Control-Max-Age: 3600` to the response.
 
-The `Vary` header helps caches store the correct response. For simple requests the middleware sets `Vary: Origin` unless all origins are allowed. Preflight responses add `Vary: Origin, Access-Control-Request-Method, Access-Control-Request-Headers` (and `Access-Control-Request-Private-Network` when enabled and requested). This ensures caches know when to reuse a response and when to revalidate with the server.
+The `Vary` header helps caches store the correct response. For simple requests the middleware sets `Vary: Origin` unless all origins are allowed. When all origins are allowed, `Access-Control-Allow-Origin: *` (and `Access-Control-Expose-Headers`) is static and is also sent in response to requests without an `Origin` header, `OPTIONS` excepted, so any stored response can be reused for a cross-origin request. Preflight responses add `Vary: Origin, Access-Control-Request-Method, Access-Control-Request-Headers` (and `Access-Control-Request-Private-Network` when enabled and requested). This ensures caches know when to reuse a response and when to revalidate with the server.
 
 ## Infrastructure Considerations
 
@@ -276,7 +276,7 @@ The middleware sets these response headers based on your configuration:
 - `Access-Control-Allow-Origin` - Set to the allowed origin or "*"
 - `Access-Control-Allow-Credentials` - Set to "true" when `AllowCredentials: true`
 - `Access-Control-Expose-Headers` - Lists headers the client can access
-- `Vary` - Set to "Origin" (unless wildcard origins are used)
+- `Vary` - Set to "Origin" (unless wildcard origins are used, which send `Access-Control-Allow-Origin: *` and `Access-Control-Expose-Headers` on every non-`OPTIONS` response instead)
 
 **For preflight responses only:**
 
@@ -354,6 +354,7 @@ curl -X GET https://your-app.com/api/test \
 The middleware sets appropriate `Vary` headers to ensure proper caching:
 
 - **Non-wildcard origins**: `Vary: Origin` is set to cache responses per origin
+- **Wildcard origins**: no `Vary: Origin`; `Access-Control-Allow-Origin: *` is sent whether or not the request carries an `Origin` header, so every stored response serves a cross-origin request
 - **Preflight requests**: `Vary: Access-Control-Request-Method, Access-Control-Request-Headers, Origin`
 - **OPTIONS without preflight headers**: `Vary: Origin` to avoid cache poisoning
 
