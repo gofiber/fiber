@@ -90,6 +90,9 @@ type invariantWorld struct {
 	ledger   *invariantLedger
 	rng      *rand.Rand
 	storages []*memory.Storage
+	// frozen stops check from adding the sessions it sees to saved, so that a test
+	// that sends the same fixed set of IDs again and again keeps them few.
+	frozen bool
 }
 
 // shutdown stops the garbage collection of the storages of the world. A memory storage
@@ -134,6 +137,72 @@ func newInvariantWorld(seed uint64) *invariantWorld {
 		rng:      rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15)),
 		storages: []*memory.Storage{shared, private},
 	}
+}
+
+// storeAPIApp is an app whose handler gets the session of each store named in the ops
+// of the query through Store.Get, gives it data, saves it and reports it.
+func (w *invariantWorld) storeAPIApp() *fiber.App {
+	app := fiber.New()
+	var visits int
+	var mu sync.Mutex
+	app.Get("/", func(c fiber.Ctx) error {
+		var rec invariantRecord
+		for name := range strings.SplitSeq(c.Query("ops"), ",") {
+			sess, err := w.stores[name].Get(c)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			visits++
+			n := visits
+			mu.Unlock()
+			sess.Set("n", n)
+			if err := sess.Save(); err != nil {
+				sess.Release()
+				return err
+			}
+			rec.Sessions = append(rec.Sessions, invariantSession{Store: name, ID: sess.ID(), Fresh: sess.Fresh()})
+			sess.Release()
+		}
+		return c.JSON(rec)
+	})
+	return app
+}
+
+// middlewareApp is an app with a session middleware for each of the named stores,
+// over the config the store was built with, in that order. The handler reports the
+// session of every one of them through Store.FromContext, and gives the ones named in
+// the ops of the query some data.
+func (w *invariantWorld) middlewareApp(names []string) *fiber.App {
+	app := fiber.New()
+	for _, name := range names {
+		cfg := w.stores[name].Config
+		cfg.Store = w.stores[name].Store
+		handler, _ := NewWithStore(cfg)
+		app.Use(handler)
+	}
+	app.Get("/", func(c fiber.Ctx) error {
+		// Every middleware of the stack runs and saves its session, whichever the
+		// handler touches: all of them are reported, and the ops pick the ones that
+		// get data.
+		touched := make(map[string]bool)
+		for name := range strings.SplitSeq(c.Query("ops"), ",") {
+			touched[name] = true
+		}
+		var rec invariantRecord
+		for _, name := range names {
+			mw := w.stores[name].FromContext(c)
+			if mw == nil {
+				return fmt.Errorf("no middleware for store %s", name)
+			}
+			if touched[name] {
+				mw.Set("n", 1)
+			}
+			rec.Sessions = append(rec.Sessions, invariantSession{Store: name, ID: mw.ID(), Fresh: mw.Fresh()})
+		}
+		return c.JSON(rec)
+	})
+	return app
 }
 
 // clientValue is what the client sends for one cookie, header or query value: nothing,
@@ -350,6 +419,9 @@ func (w *invariantWorld) check(t *testing.T, step int, req invariantRequest, res
 	}
 
 	// What was saved can be sent back.
+	if w.frozen {
+		return
+	}
 	for _, s := range rec.Sessions {
 		w.saved[strings.TrimSuffix(s.Store, "2")] = append(w.saved[strings.TrimSuffix(s.Store, "2")], s.ID)
 	}
@@ -375,30 +447,7 @@ func Test_Session_Invariants_StoreAPI(t *testing.T) {
 
 			w := newInvariantWorld(seed)
 			t.Cleanup(func() { w.shutdown(t) })
-			app := fiber.New()
-			var visits int
-			var mu sync.Mutex
-			app.Get("/", func(c fiber.Ctx) error {
-				var rec invariantRecord
-				for name := range strings.SplitSeq(c.Query("ops"), ",") {
-					sess, err := w.stores[name].Get(c)
-					if err != nil {
-						return err
-					}
-					mu.Lock()
-					visits++
-					n := visits
-					mu.Unlock()
-					sess.Set("n", n)
-					if err := sess.Save(); err != nil {
-						sess.Release()
-						return err
-					}
-					rec.Sessions = append(rec.Sessions, invariantSession{Store: name, ID: sess.ID(), Fresh: sess.Fresh()})
-					sess.Release()
-				}
-				return c.JSON(rec)
-			})
+			app := w.storeAPIApp()
 
 			for step := range 150 {
 				req := w.newRequest([]string{"A", "A2", "B", "C"})
@@ -421,35 +470,7 @@ func Test_Session_Invariants_Middleware(t *testing.T) {
 			w := newInvariantWorld(seed)
 			t.Cleanup(func() { w.shutdown(t) })
 			names := []string{"A", "B", "C"}
-			app := fiber.New()
-			for _, name := range names {
-				// Each store gets its own middleware, over the config it was built with.
-				cfg := w.stores[name].Config
-				cfg.Store = w.stores[name].Store
-				handler, _ := NewWithStore(cfg)
-				app.Use(handler)
-			}
-			app.Get("/", func(c fiber.Ctx) error {
-				// Every middleware of the stack runs and saves its session, whichever the
-				// handler touches: all of them are reported, and the ops pick the ones that
-				// get data.
-				touched := make(map[string]bool)
-				for name := range strings.SplitSeq(c.Query("ops"), ",") {
-					touched[name] = true
-				}
-				var rec invariantRecord
-				for _, name := range names {
-					mw := w.stores[name].FromContext(c)
-					if mw == nil {
-						return fmt.Errorf("no middleware for store %s", name)
-					}
-					if touched[name] {
-						mw.Set("n", 1)
-					}
-					rec.Sessions = append(rec.Sessions, invariantSession{Store: name, ID: mw.ID(), Fresh: mw.Fresh()})
-				}
-				return c.JSON(rec)
-			})
+			app := w.middlewareApp(names)
 
 			for step := range 150 {
 				req := w.newRequest(names)
