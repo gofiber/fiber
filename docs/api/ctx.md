@@ -1305,7 +1305,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### Body
 
-As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. It decodes `gzip`, `deflate`, `br` and `zstd`, and several codings are undone in reverse order. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`. Decompression is bounded by the app [BodyLimit](./fiber.md#bodylimit): a body that decompresses to more than that sets `413 Request Entity Too Large`. Whenever decoding fails, the returned slice holds the error message instead of request data.
+As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. It decodes `gzip`, `deflate`, `br` and `zstd`, and several codings are undone in reverse order, up to five: a longer list, `identity` members included, is answered `415 Unsupported Media Type` before anything is decoded. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`. Decompression is bounded by the app [BodyLimit](./fiber.md#bodylimit): a body that decompresses to more than that, or a streamed body larger than that under [`StreamRequestBody`](./fiber.md#streamrequestbody), sets `413 Request Entity Too Large` while no response body was written. Whenever reading or decoding fails, the returned slice holds the error message instead of request data.
 
 ```go title="Signature"
 func (c fiber.Ctx) Body() []byte
@@ -1328,7 +1328,7 @@ Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. 
 
 ### BodyRaw
 
-Returns the raw request **body**.
+Returns the raw request **body**. Under [`StreamRequestBody`](./fiber.md#streamrequestbody), a body larger than the app [BodyLimit](./fiber.md#bodylimit) sets `413 Request Entity Too Large` while no response body was written, and the returned slice holds the error message instead of request data.
 
 ```go title="Signature"
 func (c fiber.Ctx) BodyRaw() []byte
@@ -1351,7 +1351,7 @@ Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. 
 
 ### BodyStream
 
-Returns the request body as a stream. It is only non-`nil` when [`StreamRequestBody`](./fiber.md#config) is enabled and the body has not already been buffered.
+Returns the request body as a stream. It is only non-`nil` when [`StreamRequestBody`](./fiber.md#config) is enabled and the body has not already been buffered. It is the one way to read a body larger than the app [BodyLimit](./fiber.md#bodylimit).
 
 :::caution
 Reading from the returned reader consumes the body, so a later [`Body`](#body) call will not see it.
@@ -1533,7 +1533,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 ### FormValue
 
-Form values can be retrieved by name, the **first** value for the given key is returned. The query string is searched first, then the urlencoded body, then the multipart form, so a query parameter hides a form field of the same name. A multipart form is parsed within the app [BodyLimit](./fiber.md#bodylimit).
+Form values can be retrieved by name, the **first** value for the given key is returned. The query string is searched first, then the urlencoded body, then the multipart form, so a query parameter hides a form field of the same name. A multipart form is parsed within the app [BodyLimit](./fiber.md#bodylimit) and yields no values past it. So is a streamed urlencoded body, under [`StreamRequestBody`](./fiber.md#streamrequestbody), which also sets `413 Request Entity Too Large` while no response body was written.
 
 :::caution
 

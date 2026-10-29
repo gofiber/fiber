@@ -372,6 +372,15 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
+		// A key generator may read the body (QUERY), and only a declared length bounds a streamed one;
+		// otherwise the stream is left to the handler. MaxRequestBodySize is BodyLimit, read without copying Config.
+		if req := c.Request(); req.IsBodyStream() {
+			if n := req.Header.ContentLength(); n < 0 || n > c.App().Server().MaxRequestBodySize {
+				c.Set(cfg.CacheHeader, cacheUnreachable)
+				return c.Next()
+			}
+		}
+
 		// A request the server refused runs the chain without its route, and the
 		// error handler answers it: nothing here is the URL's response.
 		if errorreplay.Active(c.RequestCtx()) {

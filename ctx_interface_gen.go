@@ -308,8 +308,10 @@ type Ctx interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	BodyRaw() []byte
-	//nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
-	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) (body []byte, decodesRealized uint8, err error)
+	// tryDecodeBodyInOrder undoes the codings last-applied first and never replaces the request body.
+	tryDecodeBodyInOrder(encodings []string) ([]byte, error)
+	// decodeContentCoding undoes one content coding of src's body within BodyLimit.
+	decodeContentCoding(src *fasthttp.Request, encoding string) ([]byte, error)
 	// BodyStream returns the request body as a stream, non-nil only when
 	// Config.StreamRequestBody is enabled and the body is not already buffered.
 	// Reading it consumes the body, so a later Body call will not see it.
@@ -598,6 +600,8 @@ type Ctx interface {
 	// IsFromUnixSocket returns true if the request arrived over a Unix domain socket.
 	IsFromUnixSocket() bool
 	getBody() []byte
+	// bufferBodyStream applies BodyLimit to a streamed body and answers a larger one 413 while no response body was written, as the server would.
+	bufferBodyStream() error
 	// Append the specified value to the HTTP response header field.
 	// If the header is not already set, it creates the header with the specified value.
 	// Empty values are skipped: a sender must not generate empty list elements

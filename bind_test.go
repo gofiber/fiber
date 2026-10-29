@@ -3174,6 +3174,76 @@ func Test_Bind_All_CustomPrecedence_DoesNotReadOmittedBody(t *testing.T) {
 	require.True(t, ctx.Request().IsBodyStream(), "query-only binding must not consume the request body stream")
 }
 
+// With StreamRequestBody the server passes on a body of any size, so the binders read it within BodyLimit.
+func Test_Bind_StreamedBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	const limit = 1024
+	app := New(Config{StreamRequestBody: true, BodyLimit: limit})
+
+	type Req struct {
+		Name string `json:"name" form:"name"`
+	}
+
+	for _, tc := range []struct {
+		bind        func(c Ctx, out any) error
+		name        string
+		contentType string
+		format      string
+	}{
+		{name: "Body JSON", contentType: MIMEApplicationJSON, format: `{"name":%q}`, bind: func(c Ctx, out any) error { return c.Bind().Body(out) }},
+		{name: "Body form", contentType: MIMEApplicationForm, format: "name=%s", bind: func(c Ctx, out any) error { return c.Bind().Body(out) }},
+		{name: "Form", contentType: MIMEApplicationForm, format: "name=%s", bind: func(c Ctx, out any) error { return c.Bind().Form(out) }},
+		{name: "All JSON", contentType: MIMEApplicationJSON, format: `{"name":%q}`, bind: func(c Ctx, out any) error { return c.Bind().All(out) }},
+		{name: "All form", contentType: MIMEApplicationForm, format: "name=%s", bind: func(c Ctx, out any) error { return c.Bind().All(out) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+			c.Request().Header.SetContentType(tc.contentType)
+			c.Request().SetBodyStream(strings.NewReader(fmt.Sprintf(tc.format, "john")), -1)
+			out := new(Req)
+			require.NoError(t, tc.bind(c, out))
+			require.Equal(t, "john", out.Name)
+
+			tooLarge := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(tooLarge)
+			stream := strings.NewReader(fmt.Sprintf(tc.format, strings.Repeat("a", 100*limit)))
+			size := stream.Len()
+			tooLarge.Request().Header.SetContentType(tc.contentType)
+			tooLarge.Request().SetBodyStream(stream, -1)
+			out = new(Req)
+			require.Error(t, tc.bind(tooLarge, out))
+			require.Empty(t, out.Name)
+			require.Equal(t, size-limit-1, stream.Len(), "the rest of the stream is not read")
+		})
+	}
+}
+
+// All binds the body only with a Content-Type, so without one a streamed body stays unread.
+func Test_Bind_All_StreamedBodyWithoutContentType(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{StreamRequestBody: true, BodyLimit: 8})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	type Req struct {
+		ID string `query:"id"`
+	}
+
+	stream := strings.NewReader(strings.Repeat("a", 1024))
+	c.Request().URI().SetQueryString("id=1")
+	c.Request().SetBodyStream(stream, -1)
+
+	out := new(Req)
+	require.NoError(t, c.Bind().All(out))
+	require.Equal(t, "1", out.ID)
+	require.Equal(t, 1024, stream.Len(), "the body is not read")
+}
+
 // go test -run Test_Bind_All_CustomPrecedence_Duplicates
 func Test_Bind_All_CustomPrecedence_Duplicates(t *testing.T) {
 	t.Parallel()

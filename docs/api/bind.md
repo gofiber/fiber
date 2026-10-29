@@ -44,7 +44,7 @@ The binding sources have the following precedence:
 5. **Cookies**
 
 :::info
-The request body is only included as a binding source when the request has both a non-empty body **and** a non-empty `Content-Type` header.
+The request body is only included as a binding source when the request has both a non-empty body **and** a non-empty `Content-Type` header. Without a `Content-Type` the body is not read, so a streamed body stays available to [`BodyStream`](./ctx.md#bodystream).
 :::
 
 Each source fills only the top-level fields of `out` that are still at their zero value, so the first source in the order that provides a non-zero value for a field wins. A non-zero value you set on `out` before the call is never overwritten. A zero one counts as unset, so a source can fill it, and a zero value from an earlier source (`0`, `""`, `false`) does not stop a later source from filling the field. A nested struct, slice or map that an earlier source set, even partly, is kept as a whole, so a later source cannot fill its remaining zero fields. A configured [`StructValidator`](#validation) runs once, on the merged struct.
@@ -282,7 +282,7 @@ curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe"
 ```
 
 :::info
-`Form` reads only the request body, never the query string. A `multipart/form-data` body is read with the app's [`BodyLimit`](fiber.md#bodylimit) as its size limit, which also bounds the size of a `Content-Encoding: gzip` body after decompression. A larger body fails with an error that wraps `fasthttp.ErrBodyTooLarge`.
+`Form` reads only the request body, never the query string. A `multipart/form-data` body is read with the app's [`BodyLimit`](fiber.md#bodylimit) as its size limit, which also bounds the size of a `Content-Encoding: gzip` body after decompression. A larger body fails with an error that wraps `fasthttp.ErrBodyTooLarge`, and so does a larger urlencoded body under [`StreamRequestBody`](fiber.md#streamrequestbody).
 
 On a form request, `Form` and `Body` also lowercase the case-insensitive parts of the request's own `Content-Type` (the media type and the parameter names, never the `boundary` value), so copy a value you read earlier from `Get(HeaderContentType)` if you need it to outlive the call, see [FormValue](./ctx.md#formvalue). Other body types leave the header untouched.
 :::

@@ -2688,3 +2688,73 @@ func Test_Logger_DefaultFormat_WithColor_MatchesFmt(t *testing.T) {
 		})
 	}
 }
+
+func Test_Logger_StreamedBody_KeepsHandlerResponse(t *testing.T) {
+	t.Parallel()
+
+	const limit = 1024
+	overLimit := "x=" + strings.Repeat("a", 4*limit)
+	cases := []struct {
+		format, target, body, logged string
+	}{
+		{format: "${body}", target: "/", body: "x=b", logged: "x=b"},
+		{format: "${form:x}", target: "/", body: "x=b", logged: "b"},
+		{format: "${body}", target: "/", body: overLimit, logged: fasthttp.ErrBodyTooLarge.Error()},
+		{format: "${form:x}", target: "/?x=q", body: overLimit, logged: "q"},
+		{format: "${form:x}", target: "/", body: overLimit, logged: ""},
+	}
+	for _, tc := range cases {
+		for _, ct := range []string{fiber.MIMEApplicationForm, "Application/X-WWW-Form-Urlencoded"} {
+			for _, chunked := range []bool{false, true} {
+				buf := bytebufferpool.Get()
+				app := fiber.New(fiber.Config{StreamRequestBody: true, BodyLimit: limit})
+				app.Use(New(Config{Format: tc.format, Stream: buf}))
+				app.Post("/", func(c fiber.Ctx) error {
+					return c.Status(fiber.StatusUnauthorized).SendString("no")
+				})
+
+				req := httptest.NewRequest(fiber.MethodPost, tc.target, strings.NewReader(tc.body))
+				req.Header.Set(fiber.HeaderContentType, ct)
+				if chunked {
+					req.TransferEncoding = []string{"chunked"}
+				}
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				name := fmt.Sprintf("%s %s %s len=%d chunked=%v", tc.format, tc.target, ct, len(tc.body), chunked)
+				require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode, name)
+				respBody, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, "no", string(respBody), name)
+				require.Equal(t, tc.logged, buf.String(), name)
+				bytebufferpool.Put(buf)
+			}
+		}
+	}
+}
+
+func Test_Logger_Form_LeavesNonFormStreamUnread(t *testing.T) {
+	t.Parallel()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+	var unread atomic.Bool
+	app := fiber.New(fiber.Config{StreamRequestBody: true, BodyLimit: 1024})
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		unread.Store(c.Request().IsBodyStream())
+		return err
+	})
+	app.Use(New(Config{Format: "${form:x}", Stream: buf}))
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusUnauthorized)
+	})
+
+	req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader(`{"x":"b"}`))
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	req.TransferEncoding = []string{"chunked"}
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+	require.True(t, unread.Load())
+	require.Empty(t, buf.String())
+}

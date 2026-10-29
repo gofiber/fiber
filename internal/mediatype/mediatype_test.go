@@ -94,6 +94,30 @@ func Test_IsForm(t *testing.T) {
 	}
 }
 
+func Test_ParsesPostArgs(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		in   string
+		want bool
+	}{
+		{"application/x-www-form-urlencoded", true},
+		{"application/x-www-form-urlencoded; charset=utf-8", true},
+		{"application/x-www-form-urlencoded-not", true},
+
+		{"Application/X-WWW-Form-Urlencoded", false},
+		{" application/x-www-form-urlencoded", false},
+		{"multipart/form-data", false},
+		{"", false},
+	} {
+		var req fasthttp.Request
+		req.Header.SetContentType(tc.in)
+		req.SetBodyString("k=v")
+		require.Equal(t, tc.want, req.PostArgs().Has("k"), "fasthttp, input %q", tc.in)
+		require.Equal(t, tc.want, ParsesPostArgs([]byte(tc.in)), "input %q", tc.in)
+	}
+}
+
 // Test_NormalizeRequestContentType_KeepsBoundaryUsable is the property the
 // whole package exists for: fasthttp locates the multipart boundary with
 // case-sensitive comparisons, so a legal "Multipart/Form-Data" with an

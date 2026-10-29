@@ -79,6 +79,17 @@ We have made several changes to the Fiber app, including:
 - **Trusted Proxy Configuration**: The `EnabledTrustedProxyCheck` has been moved to `app.Config.TrustProxy`, and `TrustedProxies` has been moved to `TrustProxyConfig.Proxies`. Additionally, `ProxyHeader` must be set to read client IPs from proxy headers (e.g., `X-Forwarded-For`).
 - **XMLDecoder Config Property**: The `XMLDecoder` property has been added to allow usage of 3rd-party XML libraries in XML binder.
 - **SkipUnmatchedRoutes Config Property**: Opt-in flag that answers requests with no matching route with `404`/`405` before the middleware chain runs. Note that middleware (loggers, static or catch-all responders) does not run for these requests; CORS preflight requests are exempt so cors middleware keeps working. Customize the responses via `ErrorHandler`.
+- **StreamRequestBody**: A `multipart/form-data` body is no longer parsed by the server before the handlers run, as if
+  `DisablePreParseMultipartForm` were set: the pre-parse ignored `BodyLimit` and stored an upload of any declared length
+  before a middleware could refuse it. `FormFile`, `MultipartForm` and `Bind().Form()` parse it on demand within
+  `BodyLimit`, so an app that takes larger uploads this way has to raise the limit or read `BodyStream()`. `Body()`,
+  `BodyRaw()` and `FormValue()` now read a streamed body within `BodyLimit` too and answer a larger one
+  `413 Request Entity Too Large` while no response body was written, and the body binders fail on it; only `BodyStream()` reads past the limit.
+  `Bind().All()` reads the body only when the request has a `Content-Type`. `net/http` handlers, registered directly or
+  through the adaptor, and `adaptor.ConvertRequest` answer a streamed body larger than `BodyLimit` with `413` as well,
+  and the cache middleware leaves a request whose streamed body is chunked or longer than `BodyLimit` uncached instead
+  of reading it to build the key. The logger's `${body}` and `${form:}` read it within `BodyLimit` too, without
+  changing the handler's response.
 - **Buffer sizes**: The default `ReadBufferSize` and `WriteBufferSize` are now `8192` bytes (they were `4096` in v2). The read buffer also limits the size of the request headers, so requests with larger headers or cookies are accepted by default. Set either field to keep a different size.
 
 ### New Methods
@@ -878,6 +889,11 @@ resolve to the **request**; use `c.Res().Get()`, `c.Res().GetHeaders()`, `c.Res(
   The unit is case-insensitive (`Bytes=0-4` used to get `416`). `If-Range` was ignored, so a resumed download was
   spliced onto a file that had changed; the range is now served only when the date in `If-Range` is exactly the file's
   `Last-Modified` (and at least two seconds old), and the whole file is sent otherwise.
+- **Body()**: A `Content-Encoding` list of more than five codings, `identity` members included, is now answered
+  `415 Unsupported Media Type` before anything is decoded, since `BodyLimit` bounds each decoding step but not their
+  number. A chain of codings is now undone without replacing the request body, so slices returned by an earlier
+  `BodyRaw()` or by `Body()` stay valid for the whole handler, also under `ReduceMemoryUsage` and behind the adaptor
+  middleware.
 - **Render()**: The `fiber.Map` passed as `bind` is no longer modified. `ViewBind` values and, with
   `PassLocalsToViews`, the `Locals` used to be written into it, so a map kept across requests carried the first
   request's values into every later render, and a nil `fiber.Map` panicked. They are now merged into a copy, and a
