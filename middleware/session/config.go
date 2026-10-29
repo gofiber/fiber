@@ -91,6 +91,9 @@ type Config struct {
 	//
 	// If set to 0, the session will not have an absolute timeout, and will expire after the idle timeout.
 	//
+	// A session that was stored before the timeout was set has no deadline: it ends
+	// with the idle timeout alone, until it is reset.
+	//
 	// Optional. Default: 0
 	AbsoluteTimeout time.Duration
 
