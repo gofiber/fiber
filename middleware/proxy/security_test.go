@@ -504,6 +504,33 @@ func Test_Security_JoinUpstreamPath_PreservesBasePathPrefix(t *testing.T) {
 	require.Equal(t, "http://upstream.example/api/foo", joinUpstreamPath(baseSlash, "/foo"))
 }
 
+// Test_Security_JoinUpstreamPath_KeepsEscapes ensures the escapes of the base
+// and of the request target leave as written, whichever side net/url escapes
+// by default: joined from a decoded path, "%3B" left as ";" and "%2F" as "/".
+func Test_Security_JoinUpstreamPath_KeepsEscapes(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ base, target, want string }{
+		{"/my%20app", "/pub/..%3B/admin", "/my%20app/pub/..%3B/admin"},
+		{"/my%20app/", "/admin%3Bx/secret", "/my%20app/admin%3Bx/secret"},
+		{"/my%20app", "/pub/..%2Fadmin", "/my%20app/pub/..%2Fadmin"},
+		{"/caf%C3%A9", "/a%40b%3Ac%24%26%2B%2C%3D", "/caf%C3%A9/a%40b%3Ac%24%26%2B%2C%3D"},
+		{"/café", "/pub/..%3B/admin", "/caf%C3%A9/pub/..%3B/admin"},
+		{"/a%2Fb", "/c%3Fd%23e%25f%20g", "/a%2Fb/c%3Fd%23e%25f%20g"},
+		{"/a%2Fb", "/caf%C3%A9", "/a%2Fb/caf%C3%A9"},
+		{"/api", "/pub/..%3B/admin", "/api/pub/..%3B/admin"},
+		{"/a%2F", "/pub/..%3B/admin", "/a%2F/pub/..%3B/admin"},
+		{"/a%2F/", "/pub/..%3B/admin", "/a%2F/pub/..%3B/admin"},
+		// The parse-error fallback keeps the base's spelling as well.
+		{"/a%2Fb", "/%zz", "/a%2Fb/%25zz"},
+		{"/my%20app", "/%zz", "/my%20app/%25zz"},
+	} {
+		base, err := parseUpstream("http://upstream.example" + tc.base)
+		require.NoError(t, err)
+		require.Equal(t, "http://upstream.example"+tc.want, joinUpstreamPath(base, tc.target), "%s + %s", tc.base, tc.target)
+	}
+}
+
 // Test_Security_FollowRedirects_ReappliesSchemePerHop verifies that a
 // redirect which changes the scheme is dispatched with the new scheme.
 // followRedirects re-applies currentURL.Scheme after each SetRequestURI

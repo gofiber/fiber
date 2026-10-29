@@ -788,6 +788,13 @@ func uniqueKeys(all iter.Seq2[[]byte, []byte], n int) []string {
 	return keys
 }
 
+// Set sets a single parameter, overriding previously set values.
+// It shadows Args.Set, which replaces only the first pair with that key.
+func (p *QueryParam) Set(key, val string) {
+	p.Del(key)
+	p.Args.Set(key, val)
+}
+
 // AddParams adds multiple parameters from a map.
 func (p *QueryParam) AddParams(r map[string][]string) {
 	for k, v := range r {
@@ -923,6 +930,7 @@ func (f *FormData) Add(key, val string) {
 
 // Set sets a single form field, overriding previously set values.
 func (f *FormData) Set(key, val string) {
+	f.Del(key)
 	f.Args.Set(key, val)
 }
 

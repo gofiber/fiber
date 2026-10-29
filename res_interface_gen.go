@@ -152,6 +152,7 @@ type Res interface {
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.
 	// We support the following engines: https://github.com/gofiber/template
+	// Render does not modify bind, so a Map may be reused across requests.
 	Render(name string, bind any, layouts ...string) error
 	renderExtensions(bind any)
 	// Body returns the response body buffered so far, or nil for a streamed one,

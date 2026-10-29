@@ -698,6 +698,7 @@ type Ctx interface {
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.
 	// We support the following engines: https://github.com/gofiber/template
+	// Render does not modify bind, so a Map may be reused across requests.
 	Render(name string, bind any, layouts ...string) error
 	// ResetBody discards the response body, keeping the status and headers.
 	// Use it before replacing a partially written body — an error page over a

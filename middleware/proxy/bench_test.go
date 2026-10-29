@@ -206,6 +206,28 @@ func BenchmarkJoinUpstreamPath_PrefixBase(b *testing.B) {
 	}
 }
 
+func BenchmarkJoinUpstreamPath_EscapedTarget(b *testing.B) {
+	base, err := url.Parse("http://upstream.example/service")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = joinUpstreamPath(base, "/api/a%3Bb/widgets")
+	}
+}
+
+func BenchmarkJoinUpstreamPath_EscapedBase(b *testing.B) {
+	base, err := url.Parse("http://upstream.example/a%3Bb")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = joinUpstreamPath(base, "/api/c%3Bd")
+	}
+}
+
 func BenchmarkIsBlockedIP_PublicV4(b *testing.B) {
 	ip := net.ParseIP("203.0.113.5")
 	b.ReportAllocs()
@@ -357,6 +379,20 @@ func BenchmarkBalancer_ProxyPath_ForwardingLines(b *testing.B) {
 			b.Fatalf("status = %d, want %d", got, fasthttp.StatusNoContent)
 		}
 	}
+}
+
+// BenchmarkBalancer_AbsoluteFormImmutable measures an absolute-form request, whose hosts Balancer compares,
+// under Immutable, where reading the request line through c.OriginalURL() would copy it.
+func BenchmarkBalancer_AbsoluteFormImmutable(b *testing.B) {
+	lbc := &fasthttp.LBClient{
+		Timeout: time.Second,
+		Clients: []fasthttp.BalancingClient{
+			&fasthttp.HostClient{Addr: "203.0.113.5:8080", Transport: noopRoundTripper{}},
+		},
+	}
+	app := fiber.New(fiber.Config{Immutable: true})
+	app.Use(Balancer(Config{Client: lbc}))
+	benchProxyPath(b, app, "API.example", "http://api.example:80/v1/widgets?q=1")
 }
 
 // BenchmarkForward_ProxyPath measures a request through Forward.

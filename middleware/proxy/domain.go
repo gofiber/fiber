@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/idnafold"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -70,6 +71,10 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 		// Match the host with or without its port; another host is passed on to the next handler.
 		host := utils.UnsafeString(c.Request().Host())
 		if !utils.EqualFold(host, hostname) && !utils.EqualFold(hostWithoutPort(host), hostname) {
+			return c.Next()
+		}
+		// See Balancer: a refused request is not forwarded.
+		if errorreplay.Active(c.RequestCtx()) {
 			return c.Next()
 		}
 		return forwardRouted(c, base, clients...)

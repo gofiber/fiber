@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/valyala/fasthttp"
 
@@ -97,6 +98,8 @@ func (c *core) execFunc() (*Response, error) {
 			}
 		}()
 
+		// Deadline and error handling stay outside the transport call: a frame live
+		// across it makes every retried redirect request grow its stack.
 		var err error
 		switch {
 		case cfg != nil:
@@ -107,21 +110,37 @@ func (c *core) execFunc() (*Response, error) {
 				reqv.CopyTo(sent)
 				defer fasthttp.ReleaseRequest(sent)
 			}
-			// Use an exponential backoff retry strategy.
+			// Retry stops early only on nil, so an attempt nobody waits for any more ends it that way.
+			var attemptErr error
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
-				if redirects == nil {
-					return c.client.Do(reqv, respv)
+				if attemptErr = c.applyDeadline(reqv, redirects); attemptErr == nil {
+					if redirects == nil {
+						attemptErr = c.client.Do(reqv, respv)
+					} else {
+						attemptErr = c.client.transport.DoRedirects(reqv, respv, redirects)
+						if attemptErr != nil && sent != nil {
+							sent.CopyTo(reqv)
+						}
+					}
+					attemptErr = c.callErr(attemptErr)
 				}
-				chainErr := c.client.transport.DoRedirects(reqv, respv, redirects)
-				if chainErr != nil && sent != nil {
-					sent.CopyTo(reqv)
+				if errors.Is(attemptErr, ErrTimeoutOrCancel) {
+					return nil
 				}
-				return chainErr
+				return attemptErr
 			})
-		case redirects != nil:
-			err = c.client.transport.DoRedirects(reqv, respv, redirects)
+			if err == nil {
+				err = attemptErr
+			}
 		default:
-			err = c.client.Do(reqv, respv)
+			if err = c.applyDeadline(reqv, redirects); err == nil {
+				if redirects != nil {
+					err = c.client.transport.DoRedirects(reqv, respv, redirects)
+				} else {
+					err = c.client.Do(reqv, respv)
+				}
+				err = c.callErr(err)
+			}
 		}
 
 		if err != nil {
@@ -167,6 +186,39 @@ func (c *core) execFunc() (*Response, error) {
 		}()
 		return nil, ErrTimeoutOrCancel
 	}
+}
+
+// applyDeadline gives an attempt what is left of the caller's deadline, which fasthttp
+// turns into connection deadlines, so a call that timed out does not wait on the server.
+func (c *core) applyDeadline(req *fasthttp.Request, redirects *redirectOptions) error {
+	if c.ctx.Err() != nil {
+		return ErrTimeoutOrCancel
+	}
+	deadline, ok := c.ctx.Deadline()
+	if !ok {
+		return nil
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 { // fasthttp reads a non-positive timeout as none
+		return ErrTimeoutOrCancel
+	}
+	req.SetTimeout(remaining)
+	if redirects != nil {
+		redirects.deadline = deadline
+	}
+	return nil
+}
+
+// callErr reports a failure seen once nobody waits for the call as ErrTimeoutOrCancel:
+// the transport may reach the deadline before the context does.
+func (c *core) callErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if deadline, ok := c.ctx.Deadline(); c.ctx.Err() != nil || ok && time.Until(deadline) <= 0 {
+		return ErrTimeoutOrCancel
+	}
+	return err
 }
 
 // preHooks runs all request hooks before sending the request.

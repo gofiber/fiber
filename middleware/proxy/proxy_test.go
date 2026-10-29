@@ -592,6 +592,52 @@ func Test_Proxy_Forward(t *testing.T) {
 	require.Equal(t, "forwarded", string(b))
 }
 
+// A refused request replays the Use chain; forwarded, the upstream ran it with
+// an empty body while the client was told 413.
+func Test_Proxy_RefusedRequestIsNotForwarded(t *testing.T) {
+	t.Parallel()
+
+	var hits sync.Map
+	upstream := fiber.New()
+	upstream.Use(func(c fiber.Ctx) error {
+		hits.Store(c.Get("X-Forwarder"), true)
+		return c.SendString("executed")
+	})
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := "http://" + ln.Addr().String()
+	startServer(upstream, ln)
+
+	for name, forwarder := range map[string]fiber.Handler{
+		"Balancer":        Balancer(Config{Servers: []string{addr}}),
+		"Forward":         Forward(addr),
+		"DomainForward":   DomainForward("example.com", addr),
+		"BalancerForward": BalancerForward([]string{addr}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{BodyLimit: 8})
+			app.Use(forwarder)
+
+			refused := httptest.NewRequest(fiber.MethodPost, "http://example.com/transfer", strings.NewReader(strings.Repeat("x", 64)))
+			refused.Header.Set("X-Forwarder", name)
+			_, err := app.Test(refused)
+			require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+			_, forwarded := hits.Load(name)
+			require.False(t, forwarded)
+
+			accepted := httptest.NewRequest(fiber.MethodPost, "http://example.com/transfer", strings.NewReader("ok"))
+			accepted.Header.Set("X-Forwarder", name+" accepted")
+			resp, err := app.Test(accepted)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			_, forwarded = hits.Load(name + " accepted")
+			require.True(t, forwarded)
+		})
+	}
+}
+
 // go test -run Test_Proxy_Forward_ReplacesClientSuppliedRealIP
 func Test_Proxy_Forward_ReplacesClientSuppliedRealIP(t *testing.T) {
 	t.Parallel()

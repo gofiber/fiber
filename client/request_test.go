@@ -220,6 +220,27 @@ func Test_Request_QueryParam(t *testing.T) {
 		require.Equal(t, "fiber", res[0])
 	})
 
+	t.Run("set param overrides every value", func(t *testing.T) {
+		t.Parallel()
+		req := AcquireRequest()
+		defer ReleaseRequest(req)
+		req.AddParams(map[string][]string{"foo": {"bar", "buaa"}, "bar": {"foo"}}).SetParam("foo", "fiber")
+
+		require.Equal(t, []string{"fiber"}, req.Param("foo"))
+		require.Equal(t, []string{"foo"}, req.Param("bar"))
+	})
+
+	t.Run("set params overrides every value", func(t *testing.T) {
+		t.Parallel()
+		req := AcquireRequest()
+		defer ReleaseRequest(req)
+		req.AddParams(map[string][]string{"foo": {"bar", "buaa"}, "bar": {"foo"}}).
+			SetParams(map[string]string{"foo": "fiber"})
+
+		require.Equal(t, []string{"fiber"}, req.Param("foo"))
+		require.Equal(t, []string{"foo"}, req.Param("bar"))
+	})
+
 	t.Run("add params", func(t *testing.T) {
 		t.Parallel()
 		req := AcquireRequest()
@@ -714,6 +735,27 @@ func Test_Request_FormData(t *testing.T) {
 		res := req.FormData("foo")
 		require.Len(t, res, 1)
 		require.Equal(t, "fiber", res[0])
+	})
+
+	t.Run("set form data overrides every value", func(t *testing.T) {
+		t.Parallel()
+		req := AcquireRequest()
+		defer ReleaseRequest(req)
+		req.AddFormDataWithMap(map[string][]string{"foo": {"bar", "buaa"}, "bar": {"foo"}}).SetFormData("foo", "fiber")
+
+		require.Equal(t, []string{"fiber"}, req.FormData("foo"))
+		require.Equal(t, []string{"foo"}, req.FormData("bar"))
+	})
+
+	t.Run("set form data with map overrides every value", func(t *testing.T) {
+		t.Parallel()
+		req := AcquireRequest()
+		defer ReleaseRequest(req)
+		req.AddFormDataWithMap(map[string][]string{"foo": {"bar", "buaa"}, "bar": {"foo"}}).
+			SetFormDataWithMap(map[string]string{"foo": "fiber"})
+
+		require.Equal(t, []string{"fiber"}, req.FormData("foo"))
+		require.Equal(t, []string{"foo"}, req.FormData("bar"))
 	})
 
 	t.Run("add params", func(t *testing.T) {

@@ -188,8 +188,11 @@ func New(config ...Config) fiber.Handler {
 		// If the request does not have Origin header, the request is outside the scope of CORS
 		if originHeader == "" {
 			// See https://fetch.spec.whatwg.org/#cors-protocol-and-http-caches
-			// Unless all origins are allowed, we include the Vary header to cache the response correctly
-			if !allowAllOrigins {
+			// The wildcard headers are static, so they go on every response and need no
+			// Vary. OPTIONS is the exception: with Origin it may be a preflight.
+			if allowAllOrigins && c.Method() != fiber.MethodOptions {
+				setSimpleHeaders(c, "*", &cfg, &lists)
+			} else {
 				vary(c, varyOrigin)
 			}
 

@@ -329,6 +329,11 @@ func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fast
 	now := time.Now()
 
 	for _, cookie := range cookies {
+		name := cookieName(cookie)
+		if len(name) == 0 {
+			continue
+		}
+
 		// Fold with utilsstrings.ToLower rather than in place: the cookie
 		// belongs to the caller, and the jar documents that it only stores
 		// copies. ToLower returns its input unchanged when there is nothing to
@@ -381,7 +386,7 @@ func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fast
 		lookupPath := scratch.Path()
 
 		seq := cj.nextSeqLocked()
-		existing := searchCookieByKeyAndPath(cookie.Key(), lookupPath, hostCookies)
+		existing := searchCookieByKeyAndPath(name, lookupPath, hostCookies)
 		if existing == nil {
 			existing = fasthttp.AcquireCookie()
 			hostCookies = append(hostCookies, storedCookie{cookie: existing, seq: seq, isHostOnly: isHostOnly})
@@ -395,6 +400,7 @@ func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fast
 			}
 		}
 		existing.CopyTo(cookie)
+		existing.SetKeyBytes(name)
 		// Store through the same setter the lookup path came out of, so the
 		// entry carries exactly the bytes the next lookup will search for.
 		setDefaultCookiePath(existing, lookupPath)
@@ -476,6 +482,12 @@ func containsCookieName(cookies []*fasthttp.Cookie, name []byte) bool {
 	return false
 }
 
+// cookieName is the name the jar stores c under, empty when c must be dropped (RFC 6265
+// Section 5.2): fasthttp parses "=a=b" as name "" and would send it as a cookie named "a".
+func cookieName(c *fasthttp.Cookie) []byte {
+	return utils.TrimSpace(c.Key())
+}
+
 // defaultCookiePathFor implements the RFC 6265 Section 5.1.4 default-path
 // algorithm. A cookie that arrives without a Path attribute is scoped to the
 // directory of the request that set it, not to the whole host: a Set-Cookie on
@@ -539,6 +551,11 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 		// attribute after it, Secure and Path included. A name and value that
 		// will not parse leave nothing worth storing.
 		if err := parseSetCookie(tmp, value); err != nil {
+			fasthttp.ReleaseCookie(tmp)
+			continue
+		}
+		tmp.SetKeyBytes(cookieName(tmp))
+		if len(tmp.Key()) == 0 {
 			fasthttp.ReleaseCookie(tmp)
 			continue
 		}
@@ -786,9 +803,18 @@ func domainMatch(host, domain string) bool {
 	if utils.EqualFold(host, domain) {
 		return true
 	}
-	return len(host) > len(domain) &&
-		host[len(host)-len(domain)-1] == '.' &&
-		utils.HasSuffixFold(host, domain)
+	if len(host) <= len(domain) ||
+		host[len(host)-len(domain)-1] != '.' ||
+		!utils.HasSuffixFold(host, domain) {
+		return false
+	}
+	// Only a host name has parent domains. ':' or '%' marks an IPv6 address, zoned ones
+	// included, whose free-text zone would make "::1%.example.com" a subdomain of example.com.
+	if utils.IndexAny2(host, ':', '%') != -1 {
+		return false
+	}
+	_, isIPv4 := utils.ParseIPv4(host)
+	return !isIPv4
 }
 
 // acceptCookieDomain enforces RFC 6265 response-domain acceptance. Trailing-dot,

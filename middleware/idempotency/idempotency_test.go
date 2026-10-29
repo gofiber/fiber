@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -879,4 +880,143 @@ func Test_Idempotency_Store_After_Handler_Cancel(t *testing.T) {
 	_, body = do(app, newReq())
 	require.Equal(t, "response", body)
 	require.Equal(t, 1, calls, "second request was not served from the idempotency cache")
+}
+
+// countingStream counts the reads of a response body stream.
+type countingStream struct{ reads int }
+
+func (s *countingStream) Read(_ []byte) (int, error) {
+	s.reads++
+	return 0, io.EOF
+}
+
+// Recording a stream without a declared length read it to its end before the response was sent.
+func Test_Idempotency_StreamIsPassedOnUnrecorded(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+
+	var calls int
+	var stream *countingStream
+	app.Post("/", func(c fiber.Ctx) error {
+		calls++
+		stream = &countingStream{}
+		return c.SendStream(stream)
+	})
+
+	for range 2 {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodPost)
+		fctx.Request.SetRequestURI("/")
+		fctx.Request.Header.Set(ConfigDefault.KeyHeader, validKey)
+		app.Handler()(fctx)
+
+		require.True(t, fctx.Response.IsBodyStream())
+		require.Zero(t, stream.reads)
+	}
+	require.Equal(t, 2, calls)
+}
+
+// A stream of known length, such as SendFile serves, is still stored and replayed.
+func Test_Idempotency_SizedStreamIsReplayed(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+
+	var calls int
+	app.Post("/", func(c fiber.Ctx) error {
+		calls++
+		return c.SendStream(strings.NewReader("receipt"), len("receipt"))
+	})
+
+	for range 2 {
+		req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
+		req.Header.Set(ConfigDefault.KeyHeader, validKey)
+		resp, body := do(app, req)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		require.Equal(t, "receipt", body)
+	}
+	require.Equal(t, 1, calls)
+}
+
+// Body read a sized stream to its end and kept a read error as the body, which was stored and replayed.
+func Test_Idempotency_SizedStreamIsStoredOnlyWhole(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		stream   func() io.Reader
+		declared int
+		maxRead  int
+	}{
+		"fails": {
+			declared: 10, maxRead: 4,
+			stream: func() io.Reader {
+				return io.MultiReader(strings.NewReader("part"), iotest.ErrReader(errors.New("upstream reset")))
+			},
+		},
+		"longer than declared": {
+			declared: 10, maxRead: 64 << 10, // short of the whole MiB
+			stream: func() io.Reader { return strings.NewReader(strings.Repeat("x", 1<<20)) },
+		},
+		"too long to store": {
+			declared: maxStoredStream + 1,
+			stream:   func() io.Reader { return strings.NewReader(strings.Repeat("x", maxStoredStream+1)) },
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New())
+
+			var calls int
+			var read strings.Builder
+			app.Post("/", func(c fiber.Ctx) error {
+				calls++
+				read.Reset()
+				return c.SendStream(io.TeeReader(tc.stream(), &read), tc.declared)
+			})
+
+			for range 2 {
+				fctx := &fasthttp.RequestCtx{}
+				fctx.Request.Header.SetMethod(fiber.MethodPost)
+				fctx.Request.SetRequestURI("/")
+				fctx.Request.Header.Set(ConfigDefault.KeyHeader, validKey)
+				app.Handler()(fctx)
+
+				require.True(t, fctx.Response.IsBodyStream())
+				require.Equal(t, tc.declared, fctx.Response.Header.ContentLength())
+				require.LessOrEqual(t, read.Len(), tc.maxRead)
+			}
+			require.Equal(t, 2, calls)
+		})
+	}
+}
+
+// A refused request replays the Use chain without its handler; storing what it
+// left answered the retry with an empty 413 for the whole Lifetime.
+func Test_Idempotency_RefusedRequestIsNotStored(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{BodyLimit: 8})
+	s := &stubStorage{}
+	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
+
+	var calls int
+	app.Post("/", func(c fiber.Ctx) error {
+		calls++
+		return c.SendString("ok")
+	})
+
+	refused := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader(strings.Repeat("x", 64)))
+	refused.Header.Set(ConfigDefault.KeyHeader, validKey)
+	_, err := app.Test(refused)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+	require.Zero(t, s.setCount)
+
+	retry := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("ok"))
+	retry.Header.Set(ConfigDefault.KeyHeader, validKey)
+	resp, body := do(app, retry)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "ok", body)
+	require.Equal(t, 1, calls)
 }

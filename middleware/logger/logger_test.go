@@ -890,6 +890,28 @@ func Test_Query_Params(t *testing.T) {
 	require.Equal(t, expected, buf.String())
 }
 
+func Test_Logger_ReqHeaders_DeepName(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Format: "${reqHeaders} | ${method} ${path}\n",
+		Stream: buf,
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(strings.Repeat("a.", 64)+"a", "1")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	require.Contains(t, buf.String(), "A"+strings.Repeat(".a", 64)+"=1")
+	require.True(t, strings.HasSuffix(buf.String(), " | GET /\n"), buf.String())
+}
+
 // go test -run Test_Response_Body
 func Test_Response_Body(t *testing.T) {
 	t.Parallel()
