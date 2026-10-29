@@ -124,7 +124,7 @@ By default, cache keys include:
 - request method (partitioned internally by the middleware),
 - request scheme and host, as `c.Scheme()` and `c.Host()` report them (so `X-Forwarded-Proto` and `X-Forwarded-Host` apply behind a trusted proxy),
 - request path,
-- canonicalized query string (enabled unless `DisableQueryKeys` is `true`),
+- canonicalized query string, its keys sorted and the values of a repeated key in the order sent (enabled unless `DisableQueryKeys` is `true`),
 - representation-driving request headers (`accept`, `accept-encoding`, `accept-language`),
 - a digest of the `Authorization` header, when the request carries one. The middleware adds it to every key, a custom `KeyGenerator`'s included, so a response stored for one credential is never served to another.
 

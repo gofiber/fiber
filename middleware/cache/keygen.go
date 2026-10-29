@@ -193,9 +193,8 @@ func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	buf := (*bufPtr)[:0]
 
 	for _, key := range keys {
-		values := parsed[key]
-		sort.Strings(values)
-		for _, value := range values {
+		// Values keep the order sent: c.Query reads the first, so a reordering is another request.
+		for _, value := range parsed[key] {
 			if len(buf) > 0 {
 				buf = append(buf, '&')
 			}
