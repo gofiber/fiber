@@ -105,10 +105,10 @@ func Test_Session_MultipleStores_Middleware(t *testing.T) {
 				"both sessions load again, keep their own data and see none of the other's")
 
 			// Each record is stored once, under its own ID.
-			rawA, err := storageA.Get(storageKeyPrefix + idA)
+			rawA, err := storageA.Get(sessionKey(idA))
 			require.NoError(t, err)
 			require.NotNil(t, rawA)
-			rawB, err := storageB.Get(storageKeyPrefix + idB)
+			rawB, err := storageB.Get(sessionKey(idB))
 			require.NoError(t, err)
 			require.NotNil(t, rawB)
 		})

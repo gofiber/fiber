@@ -115,8 +115,8 @@ func lockFor(key string) *idLock {
 
 // Store manages session data using the configured storage backend.
 type Store struct {
-	// root identifies the extractor that sinks and sources were worked out from.
-	root extractorRoot
+	// codecName is the name of the Codec, asked once.
+	codecName string
 	// sinks are the cookies and headers a session ID can be written back to, in the
 	// order of the extractor. NewStore works them out once; a Store built without it
 	// has none (nil), and a Store whose Extractor was replaced since has stale ones:
@@ -126,7 +126,12 @@ type Store struct {
 	// sources names the cookies and headers the store reads the session ID from
 	// and writes it back to, such as "cookie:session_id".
 	sources []string
+	// root identifies the extractor that sinks and sources were worked out from.
+	root extractorRoot
 	Config
+	// unreadableWarned is set once the store has said that it met a session it
+	// cannot read.
+	unreadableWarned atomic.Bool
 }
 
 // extractorRoot identifies an extractor well enough to notice that the Extractor of
@@ -349,6 +354,14 @@ func NewStore(config ...Config) *Store {
 	if isNilStorage(cfg.Storage) {
 		panic("[session] Storage must not be a typed nil")
 	}
+	if isNilCodec(cfg.Codec) {
+		panic("[session] Codec must not be a typed nil")
+	}
+	codecName := ""
+	if cfg.Codec != nil {
+		codecName = cfg.Codec.Name()
+		checkCodecName(codecName)
+	}
 	warnCookiePrefixes(&cfg)
 
 	if cfg.Storage == nil {
@@ -361,10 +374,11 @@ func NewStore(config ...Config) *Store {
 		sinks = []extractors.Extractor{}
 	}
 	store := &Store{
-		Config:  cfg,
-		root:    rootOf(cfg.Extractor),
-		sinks:   sinks,
-		sources: sourceNames(sinks),
+		Config:    cfg,
+		root:      rootOf(cfg.Extractor),
+		sinks:     sinks,
+		sources:   sourceNames(sinks),
+		codecName: codecName,
 	}
 
 	if cfg.AbsoluteTimeout > 0 {
@@ -385,6 +399,58 @@ func NewStore(config ...Config) *Store {
 //	store.RegisterType(MyCustomType{})
 func (*Store) RegisterType(i any) {
 	gob.Register(i)
+}
+
+// codecID returns the name of the codec of the store. NewStore asks for it once;
+// a Store built without NewStore asks every time.
+func (s *Store) codecID() string {
+	if s.codecName == "" && s.Codec != nil {
+		return s.Codec.Name()
+	}
+	return s.codecName
+}
+
+// readable reports whether the store can read raw, a record: a store reads the
+// records of the codec that wrote them, and no other. (Stored sessions that are not
+// records are gob, which every store reads, a store with a codec as a session that
+// stays gob.) Of a record that is damaged, readable says yes, and the decode says
+// what is wrong with it.
+func (s *Store) readable(raw []byte) bool {
+	if s.Codec == nil {
+		return false
+	}
+	version, name, ok := recordCodecOf(raw)
+	if !ok {
+		return true
+	}
+	return version == recordVersion && string(name) == s.codecID()
+}
+
+// warnUnreadable says, once per store, that a stored session is a record this store
+// cannot read, and is treated as a session that does not exist.
+func (s *Store) warnUnreadable(raw []byte) {
+	if !s.unreadableWarned.CompareAndSwap(false, true) {
+		return
+	}
+	have := "has no codec"
+	if id := s.codecID(); id != "" {
+		have = fmt.Sprintf("uses the codec %q", id)
+	}
+	version, name, known := recordCodecOf(raw)
+	switch {
+	case len(name) > 0:
+		log.Warnf("[session] a stored session is a record of the codec %q (format version %d), which this store, which %s, cannot read; "+
+			"it is treated as a new session, and the record is left alone. This is expected once after Config.Codec was changed or turned off; "+
+			"if it goes on, applications with different codecs share a storage and a session cookie",
+			name, version, have)
+	case known:
+		log.Warnf("[session] a stored session is a record of format version %d, which this store, which %s, does not know; "+
+			"it was probably written by a newer release of the application. It is treated as a new session, and the record is left alone",
+			version, have)
+	default:
+		log.Warn("[session] a stored session starts like a record, but its header is damaged; " +
+			"it is treated as a new session, and the record is left alone")
+	}
 }
 
 // Get will get/create a session.
@@ -489,6 +555,10 @@ func (s *Store) getSessionBox(c fiber.Ctx) (*Session, *provenanceBox, error) {
 		if err != nil {
 			return nil, nil, err
 		}
+		if isRecord(rawData) && !s.readable(rawData) {
+			s.warnUnreadable(rawData)
+			rawData = nil
+		}
 		if rawData == nil {
 			// Data not found, prepare to generate a new session
 			id, key = "", ""
@@ -516,6 +586,9 @@ func (s *Store) getSessionBox(c fiber.Ctx) (*Session, *provenanceBox, error) {
 	sess.key = key
 	sess.isFresh = isFresh
 	sess.extractor = selectedExtractor
+	if s.Codec != nil {
+		sess.data.setCodec(s.Codec, s.codecID())
+	}
 
 	// Decode session data if found
 	if rawData != nil {
@@ -704,6 +777,10 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 	if rawData == nil {
 		return nil, ErrSessionIDNotFoundInStore
 	}
+	if isRecord(rawData) && !s.readable(rawData) {
+		s.warnUnreadable(rawData)
+		return nil, ErrSessionIDNotFoundInStore
+	}
 
 	sess := acquireSession()
 
@@ -713,6 +790,9 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 	sess.id = s.ownedID(key, id) // the caller may pass a view of the request, such as c.Cookies
 	sess.key = key
 	sess.isFresh = false
+	if s.Codec != nil {
+		sess.data.setCodec(s.Codec, s.codecID())
+	}
 	sess.loaded = true
 	sess.loadGen = loadGen
 

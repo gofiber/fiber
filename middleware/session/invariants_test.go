@@ -111,7 +111,7 @@ func newInvariantWorld(seed uint64) *invariantWorld {
 	ledger := &invariantLedger{writers: make(map[string]string)}
 	shared, private := memory.New(), memory.New()
 	stores := make(map[string]*invariantStore)
-	add := func(name string, ext extractors.Extractor, storage fiber.Storage, group, prefix string, hashed bool, cookies, headers []string) {
+	add := func(name string, ext extractors.Extractor, storage fiber.Storage, group, prefix string, hashed bool, codec Codec, cookies, headers []string) {
 		policy := fmt.Sprintf("%s|%s|%t", group, prefix, hashed)
 		stores[name] = &invariantStore{
 			Store: NewStore(Config{
@@ -119,15 +119,17 @@ func newInvariantWorld(seed uint64) *invariantWorld {
 				Storage:          &invariantStorage{Storage: storage, ledger: ledger, group: group, policy: policy},
 				StorageKeyPrefix: prefix,
 				HashStorageKeys:  hashed,
+				Codec:            codec,
 			}),
 			cookies: cookies,
 			headers: headers,
 		}
 	}
-	add("A", extractors.FromCookie("a_sid"), shared, "shared", "a:", false, []string{"a_sid"}, nil)
-	add("A2", extractors.FromCookie("a_sid"), shared, "shared", "a:", false, []string{"a_sid"}, nil)
-	add("B", extractors.FromCookie("b_sid"), shared, "shared", "b:", false, []string{"b_sid"}, nil)
-	add("C", extractors.Chain(extractors.FromCookie("c_sid"), extractors.FromHeader("X-C")), private, "private", "", true,
+	add("A", extractors.FromCookie("a_sid"), shared, "shared", "a:", false, nil, []string{"a_sid"}, nil)
+	add("A2", extractors.FromCookie("a_sid"), shared, "shared", "a:", false, nil, []string{"a_sid"}, nil)
+	add("B", extractors.FromCookie("b_sid"), shared, "shared", "b:", false, nil, []string{"b_sid"}, nil)
+	// Store C keeps its sessions as records: everything the world checks holds for them too.
+	add("C", extractors.Chain(extractors.FromCookie("c_sid"), extractors.FromHeader("X-C")), private, "private", "", true, JSONCodec{},
 		[]string{"c_sid"}, []string{"X-C"})
 
 	return &invariantWorld{

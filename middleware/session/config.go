@@ -20,13 +20,33 @@ type Config struct {
 	// Optional. Default: memory.New()
 	Storage fiber.Storage
 
+	// Codec encodes the values of a session, each on its own, in place of gob, which
+	// encodes the whole session as one stream. A request then decodes only the
+	// values it reads, with GetInto or GetAs, straight into your own types, a save
+	// encodes only the values that were set, and your types need no RegisterType.
+	// JSONCodec is one, and NewCodec makes one of the functions of another library.
+	//
+	// With a Codec, the keys of a session are strings, and Get returns what the
+	// codec decodes into an interface{} (for JSON, a float64 for every number),
+	// not the type that was stored: read typed values with GetInto or GetAs.
+	// A value is encoded when it is set, so changing it afterwards is not stored.
+	//
+	// A session that a store without a Codec stored is read as before, and stays
+	// gob until it ends or is reset: nothing is converted. A store that cannot read
+	// a record, because it has no Codec or another one, treats it as a session that
+	// does not exist, so turn the option on, after every instance runs a release
+	// that has it, for all of them at once. See the documentation for the details.
+	//
+	// Optional. Default: nil, which stores sessions as gob.
+	Codec Codec
+
 	// Store defines a pre-built session store, for example one shared with
 	// other handlers or one that has custom types registered.
 	//
 	// With a Store, the options that shape how sessions are stored and sent are
 	// the store's own (Storage, Extractor, KeyGenerator, the timeouts, the cookie
-	// options, StorageKeyPrefix and HashStorageKeys), and the ones set for them
-	// here are not used. The Config of the middleware supplies Next, ErrorHandler
+	// options, StorageKeyPrefix, HashStorageKeys and Codec), and the ones set for
+	// them here are not used. The Config of the middleware supplies Next, ErrorHandler
 	// and SkipEmptySessions.
 	//
 	// Optional. Default: nil, which creates a store from this Config.
@@ -288,6 +308,10 @@ func warnStoreOptions(cfg *Config) {
 		(cfg.StorageKeyPrefix != "" && cfg.StorageKeyPrefix != store.StorageKeyPrefix) {
 		log.Warnf("[session] HashStorageKeys and StorageKeyPrefix are taken from Config.Store, not from the Config of the middleware; "+
 			"sessions are stored with HashStorageKeys=%t and StorageKeyPrefix=%q", store.HashStorageKeys, store.StorageKeyPrefix)
+	}
+	if cfg.Codec != nil && (store.Codec == nil || cfg.Codec.Name() != store.Codec.Name()) {
+		log.Warnf("[session] Codec is taken from Config.Store, not from the Config of the middleware; " +
+			"sessions are stored with the codec of the store, or as gob if it has none")
 	}
 	if store.SkipEmptySessions && !cfg.SkipEmptySessions {
 		log.Warnf("[session] SkipEmptySessions is taken from the Config of the middleware, not from Config.Store; " +

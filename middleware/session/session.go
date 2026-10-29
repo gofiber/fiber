@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -108,7 +110,7 @@ func releaseSession(s *Session) {
 	s.loaded = false
 	s.dropped = false
 	if s.data != nil {
-		s.data.Reset()
+		s.data.recycle()
 	}
 	s.mu.Unlock()
 	sessionPool.Put(s)
@@ -164,6 +166,15 @@ func (s *Session) Get(key any) any {
 	return s.data.Get(key)
 }
 
+// lookup returns what is stored under key and the codec of the session, nil for
+// gob. See data.lookup.
+func (s *Session) lookup(key any) (any, Codec) {
+	if s.data == nil {
+		return nil, nil
+	}
+	return s.data.lookup(key)
+}
+
 // GetAs returns the value stored under key as a V, and whether it is one: ok is
 // false when the key is absent or holds a value of another type, and the zero
 // value is returned with it. It spares the type assertion, and with it the
@@ -172,8 +183,12 @@ func (s *Session) Get(key any) any {
 // src is a *Session or a *Middleware. A nil one finds nothing, so the result of
 // FromContext can be passed as it is.
 //
-// Like Get, it gives up the saved snapshot when the value it returns could share
-// memory with the session (a map, slice, array, pointer or struct).
+// Without a Codec the value is the one that was stored, and like Get, GetAs gives
+// up the saved snapshot when it could share memory with the session (a map,
+// slice, array, pointer or struct). With a Codec the value is decoded into a new
+// V, ok is false when that fails, and nothing is shared: V is what the stored
+// value decodes into, not a check that this is what it was stored as, and src has
+// to be the *Session or *Middleware itself, not a type that embeds one.
 //
 // Parameters:
 //   - src: The session or middleware to read from.
@@ -188,6 +203,7 @@ func (s *Session) Get(key any) any {
 //	name, ok := session.GetAs[string](session.FromContext(c), "name")
 func GetAs[V any](src interface{ Get(key any) any }, key any) (V, bool) {
 	var zero V
+	var v any
 	switch typed := src.(type) {
 	case nil:
 		return zero, false
@@ -195,19 +211,74 @@ func GetAs[V any](src interface{ Get(key any) any }, key any) (V, bool) {
 		if typed == nil {
 			return zero, false
 		}
+		var codec Codec
+		if v, codec = typed.lookup(key); codec != nil {
+			return decodeAs[V](v, codec)
+		}
 	case *Session:
 		if typed == nil {
 			return zero, false
 		}
+		var codec Codec
+		if v, codec = typed.lookup(key); codec != nil {
+			return decodeAs[V](v, codec)
+		}
 	default:
 		// Any other reader is trusted to cope with a missing key.
+		v = src.Get(key)
 	}
 
-	value, ok := src.Get(key).(V)
+	value, ok := v.(V)
 	if !ok {
 		return zero, false
 	}
 	return value, true
+}
+
+// GetInto stores the value under key into target, a non-nil pointer, and reports
+// why it could not: ErrKeyNotFound when there is no such key, in which case target
+// is left as it is.
+//
+// With a Codec, only that value is decoded, straight into target: the other
+// values of the session are not touched, and nothing is shared with the session.
+// Without one, the stored value is assigned to target, which has to be able to
+// hold it, and like Get, GetInto gives up the saved snapshot when the value could
+// share memory with the session.
+//
+// Parameters:
+//   - key: The key to retrieve.
+//   - target: A pointer to the variable to fill.
+//
+// Returns:
+//   - error: ErrKeyNotFound, or why the value could not be decoded or assigned.
+//
+// Usage:
+//
+//	var user User
+//	err := s.GetInto("user", &user)
+func (s *Session) GetInto(key, target any) error {
+	rv, err := intoTarget(target)
+	if err != nil {
+		return err
+	}
+	v, codec, err := s.fetch(key)
+	if err != nil {
+		return err
+	}
+	return valueInto(key, v, codec, rv)
+}
+
+// fetch returns what is stored under key and the codec of the session, nil for
+// gob, or ErrKeyNotFound.
+func (s *Session) fetch(key any) (any, Codec, error) {
+	if s.data == nil {
+		return nil, nil, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
+	}
+	v, codec, ok := s.data.fetch(key)
+	if !ok {
+		return nil, nil, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
+	}
+	return v, codec, nil
 }
 
 // Set updates or creates a new key-value pair in the session.
@@ -282,8 +353,7 @@ func (s *Session) DestroyWithContext(ctx context.Context) error {
 
 	// Reset local data only after the storage delete succeeded, so a
 	// canceled/failed delete leaves the session data intact.
-	s.data.Reset()
-	s.rawData = nil
+	s.resetData()
 	s.loaded = false
 
 	// Expire session
@@ -382,8 +452,7 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	// Reset local state only after the storage delete succeeded, so a
 	// canceled/failed delete leaves the session data intact.
 	if s.data != nil {
-		s.data.Reset()
-		s.rawData = nil
+		s.resetData()
 		// Reset wiped the absolute expiration, so the rotated session must be armed again.
 		if s.config != nil && s.config.AbsoluteTimeout > 0 {
 			s.setAbsExpiration(time.Now().Add(s.config.AbsoluteTimeout))
@@ -398,6 +467,17 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	s.refresh()
 
 	return nil
+}
+
+// resetData empties the data. A session of a store with a codec starts over as a
+// session of the store, which one that was stored as gob did not belong to.
+func (s *Session) resetData() {
+	if s.config != nil && s.config.Codec != nil {
+		s.data.resetAs(s.config.Codec, s.config.codecID())
+	} else {
+		s.data.Reset()
+	}
+	s.rawData = nil
 }
 
 // refresh generates a new session, and sets session.isFresh to be true.
@@ -786,6 +866,10 @@ func (s *Session) decodeSessionData(rawData []byte) error {
 	// Copied before decoding: the storage owns rawData and may reuse it after Get
 	// returns, so the decode and the snapshot Save writes back read the same bytes.
 	raw := utils.CopyBytes(rawData)
+	if isRecord(raw) {
+		// The caller has seen to it that the store can read the record.
+		return s.decodeRecord(raw)
+	}
 	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 	defer byteBufferPool.Put(byteBuffer)
 	defer byteBuffer.Reset()
@@ -794,23 +878,57 @@ func (s *Session) decodeSessionData(rawData []byte) error {
 	if err := decCache.Decode(&s.data.Data); err != nil {
 		return fmt.Errorf("failed to decode session data: %w", err)
 	}
+	// A session that a store without a codec stored stays gob, with all that goes with
+	// it, until it ends or is reset: its values are not converted, which could not
+	// be done without loss for every type.
+	if s.data.codec != nil {
+		s.data.codec = nil
+		s.data.codecName = ""
+	}
 	s.rawData = raw
 	s.data.dirty.Store(false)
 	return nil
 }
 
+// decodeRecord decodes raw, a record of the codec of the session, into the data.
+// It leaves the values encoded: they are decoded when they are read.
+func (s *Session) decodeRecord(raw []byte) error {
+	d := s.data
+	if d.codec == nil {
+		return errRecordNeedsCodec
+	}
+	header, err := parseRecord(raw, func(key, value []byte) {
+		// The values stay in the snapshot, which Save writes back while the data is unchanged.
+		d.Data[string(key)] = value
+	})
+	if err == nil && string(header.codec) != d.codecName {
+		err = fmt.Errorf("%w: the record was written by the codec %q, the store has %q", errCodecMismatch, header.codec, d.codecName)
+	}
+	if err != nil {
+		clear(d.Data)
+		return fmt.Errorf("failed to decode session data: %w", err)
+	}
+	if header.deadline.set {
+		d.Data[absExpirationKey] = time.Unix(header.deadline.sec, int64(header.deadline.nanos))
+	}
+	s.rawData = raw
+	d.dirty.Store(false)
+	return nil
+}
+
 // encodeSessionData encodes session data to raw bytes
 //
-// Parameters:
-//   - rawData: The raw byte data to encode.
-//
 // Returns:
+//   - []byte: The encoded session data.
 //   - error: An error if the encoding fails.
 //
 // Usage:
 //
-//	err := s.encodeSessionData(rawData)
+//	encoded, err := s.encodeSessionData()
 func (s *Session) encodeSessionData() ([]byte, error) {
+	if s.data.codec != nil {
+		return s.encodeRecord()
+	}
 	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 	defer byteBufferPool.Put(byteBuffer)
 	defer byteBuffer.Reset()
@@ -824,6 +942,39 @@ func (s *Session) encodeSessionData() ([]byte, error) {
 	copy(encodedBytes, byteBuffer.Bytes())
 
 	return encodedBytes, nil
+}
+
+// encodeRecord writes the data, whose values are encoded already, as a record.
+func (s *Session) encodeRecord() ([]byte, error) {
+	d := s.data
+	if err := d.pendingError(); err != nil {
+		return nil, err
+	}
+
+	entries := make([]recordEntry, 0, len(d.Data))
+	var deadline recordDeadline
+	for key, value := range d.Data {
+		if key == absExpirationKey {
+			if at, ok := value.(time.Time); ok && !at.IsZero() {
+				deadline = recordDeadline{sec: at.Unix(), nanos: uint32(at.Nanosecond()), set: true} //nolint:gosec // below a second
+			}
+			continue
+		}
+		name, okKey := key.(string)
+		encoded, okValue := value.([]byte)
+		if !okKey || !okValue {
+			// Set keeps nothing else under a codec.
+			return nil, fmt.Errorf("%w: unexpected entry %v of type %T", errInvalidRecord, key, value)
+		}
+		entries = append(entries, recordEntry{key: name, value: encoded})
+	}
+	slices.SortFunc(entries, func(a, b recordEntry) int { return strings.Compare(a.key, b.key) })
+
+	encoded, err := appendRecord(nil, d.codecName, deadline, entries)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode session data: %w", err)
+	}
+	return encoded, nil
 }
 
 // isEmptyFresh reports whether the session is new and holds nothing a handler
@@ -842,6 +993,10 @@ func (s *Session) isEmptyFresh() bool {
 
 	s.data.RLock()
 	defer s.data.RUnlock()
+	if len(s.data.errs) > 0 {
+		// A value that could not be encoded is not nothing: the save reports it.
+		return false
+	}
 	for key := range s.data.Data {
 		if key != absExpirationKey {
 			return false
@@ -859,7 +1014,10 @@ func (s *Session) isEmptyFresh() bool {
 //
 //	expiration := s.absExpiration()
 func (s *Session) absExpiration() time.Time {
-	absExpiration, ok := s.Get(absExpirationKey).(time.Time)
+	if s.data == nil {
+		return time.Time{}
+	}
+	absExpiration, ok := s.data.getRaw(absExpirationKey).(time.Time)
 	if ok {
 		return absExpiration
 	}
@@ -887,7 +1045,10 @@ func (s *Session) isAbsExpired() bool {
 //
 //	s.setAbsExpiration(time.Now().Add(time.Hour))
 func (s *Session) setAbsExpiration(absExpiration time.Time) {
-	s.Set(absExpirationKey, absExpiration)
+	if s.data == nil {
+		return
+	}
+	s.data.setRaw(absExpirationKey, absExpiration)
 }
 
 // backgroundIfNil returns ctx unchanged when it is non-nil, and

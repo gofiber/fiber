@@ -83,6 +83,7 @@ func Test_Session_Invariants_Flows(t *testing.T) {
 				Storage:           ledgered(private, "private", "", true),
 				HashStorageKeys:   true,
 				SkipEmptySessions: true,
+				Codec:             JSONCodec{},
 			})
 			names := []string{"A", "B", "C"}
 			stores := map[string]*Store{"A": storeA, "B": storeB, "C": storeC}

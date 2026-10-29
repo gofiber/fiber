@@ -611,10 +611,55 @@ func (m *Middleware) Set(key, value any) {
 //
 //	value := m.Get("key")
 func (m *Middleware) Get(key any) any {
+	// The lock is held for the lookup only: a codec decodes without it.
+	v, codec := m.lookup(key)
+	if codec != nil {
+		return decodeAny(codec, v)
+	}
+	return v
+}
+
+// lookup is Session.lookup under the read lock of the middleware, as Get takes it.
+func (m *Middleware) lookup(key any) (any, Codec) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	return m.Session.Get(key)
+	return m.Session.lookup(key)
+}
+
+// fetch is Session.fetch under the read lock of the middleware.
+func (m *Middleware) fetch(key any) (any, Codec, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.Session.fetch(key)
+}
+
+// GetInto stores the value under key into target, a non-nil pointer. See
+// Session.GetInto.
+//
+// Parameters:
+//   - key: The key to retrieve.
+//   - target: A pointer to the variable to fill.
+//
+// Returns:
+//   - error: ErrKeyNotFound, or why the value could not be decoded or assigned.
+//
+// Usage:
+//
+//	var user User
+//	err := m.GetInto("user", &user)
+func (m *Middleware) GetInto(key, target any) error {
+	rv, err := intoTarget(target)
+	if err != nil {
+		return err
+	}
+	// Under the lock, only the lookup: a codec is not called with it held.
+	v, codec, err := m.fetch(key)
+	if err != nil {
+		return err
+	}
+	return valueInto(key, v, codec, rv)
 }
 
 // Delete removes a key-value pair from the session.

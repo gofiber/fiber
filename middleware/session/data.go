@@ -1,7 +1,11 @@
 package session
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,7 +17,22 @@ import (
 //go:generate msgp -o=data_msgp.go -tests=true -unexported
 //msgp:ignore data
 type data struct {
-	Data         map[any]any // Session key counts are expected to be bounded.
+	// codec is the Codec of the store the session belongs to, nil for gob: the
+	// session of a store with a codec is gob as well, when it was stored before the
+	// codec was turned on. With a codec, Data holds the encoded values ([]byte) of
+	// the string keys, and the deadline under absExpirationKey. It is set when the
+	// session is acquired, and read under the lock.
+	codec Codec
+
+	Data map[any]any // Session key counts are expected to be bounded.
+
+	// errs are the Sets under a codec that failed, by key. A save reports them, and a
+	// later Set or Delete of the key forgets its error. Allocated by the first failure.
+	errs map[any]error
+
+	// codecName is the name of codec, written into a record.
+	codecName string
+
 	sync.RWMutex `msg:"-"`
 
 	// Stored before each mutation, so false means Data is unchanged since the decode.
@@ -64,7 +83,7 @@ var dataPool = sync.Pool{
 func acquireData() *data {
 	obj := dataPool.Get()
 	if d, ok := obj.(*data); ok {
-		d.Reset()
+		d.recycle()
 		return d
 	}
 	// Handle unexpected type in the pool
@@ -78,11 +97,12 @@ func releaseData(d *data) {
 	if d == nil {
 		return
 	}
-	d.Reset()
+	d.recycle()
 	dataPool.Put(d)
 }
 
-// Reset clears the data map and resets the data object.
+// Reset clears the data map and resets the data object. The data keeps the codec
+// of its session.
 //
 // Usage:
 //
@@ -91,7 +111,42 @@ func (d *data) Reset() {
 	d.Lock()
 	defer d.Unlock()
 	d.dirty.Store(true)
+	d.errs = nil
 	clear(d.Data)
+}
+
+// resetAs is Reset that also makes the data hold what codec says, in one step: a
+// session of a store with a codec starts over as a session of the store, whatever
+// it was stored as, and no value is set in between that the codec has not encoded.
+func (d *data) resetAs(codec Codec, name string) {
+	d.Lock()
+	defer d.Unlock()
+	d.dirty.Store(true)
+	d.errs = nil
+	d.codec = codec
+	d.codecName = name
+	clear(d.Data)
+}
+
+// recycle is Reset for a session that goes back to the pool: the data also lets
+// go of the codec of the store it served.
+func (d *data) recycle() {
+	d.Lock()
+	defer d.Unlock()
+	d.dirty.Store(true)
+	d.errs = nil
+	d.codec = nil
+	d.codecName = ""
+	clear(d.Data)
+}
+
+// setCodec makes the data hold encoded values, those of codec, which is called name.
+// A nil codec makes it hold the values themselves, for gob.
+func (d *data) setCodec(codec Codec, name string) {
+	d.Lock()
+	d.codec = codec
+	d.codecName = name
+	d.Unlock()
 }
 
 // Get retrieves a value from the data map by key.
@@ -106,14 +161,51 @@ func (d *data) Reset() {
 //
 //	value := d.Get("key")
 func (d *data) Get(key any) any {
+	v, codec := d.lookup(key)
+	if codec != nil {
+		return decodeAny(codec, v)
+	}
+	return v
+}
+
+// lookup returns what is stored under key and the codec of the session, nil for
+// gob. With a codec the value is in its encoded form, which the caller decodes
+// outside the lock.
+func (d *data) lookup(key any) (any, Codec) {
 	d.RLock()
 	defer d.RUnlock()
 	v := d.Data[key]
+	if d.codec != nil {
+		// What the caller gets is decoded from v, so nothing it holds aliases the session.
+		return v, d.codec
+	}
 	if valueMayAlias(v) {
 		// The caller can now mutate the session through v without calling Set.
 		d.dirty.Store(true)
 	}
-	return v
+	return v, nil
+}
+
+// fetch is lookup that also says whether there is a value under key.
+func (d *data) fetch(key any) (any, Codec, bool) {
+	d.RLock()
+	defer d.RUnlock()
+	v, ok := d.Data[key]
+	if d.codec != nil {
+		return v, d.codec, ok
+	}
+	if valueMayAlias(v) {
+		d.dirty.Store(true)
+	}
+	return v, nil, ok
+}
+
+// getRaw returns what is stored under key as it is held, which under a codec is
+// the encoded form.
+func (d *data) getRaw(key any) any {
+	d.RLock()
+	defer d.RUnlock()
+	return d.Data[key]
 }
 
 // Set updates or creates a new key-value pair in the data map.
@@ -127,9 +219,75 @@ func (d *data) Get(key any) any {
 //	d.Set("key", "value")
 func (d *data) Set(key, value any) {
 	d.Lock()
+	if codec := d.codec; codec != nil {
+		d.Unlock()
+		d.setEncoded(codec, key, value)
+		return
+	}
 	defer d.Unlock()
 	d.dirty.Store(true)
 	d.Data[key] = value
+}
+
+// setRaw stores value under key as it is, whatever the codec: the bookkeeping of
+// the session itself is not encoded.
+func (d *data) setRaw(key, value any) {
+	d.Lock()
+	defer d.Unlock()
+	d.dirty.Store(true)
+	d.Data[key] = value
+}
+
+// setEncoded is Set under a codec: it encodes value now, outside the lock, so a
+// later change to what value refers to is not stored, and keeps the result. A key
+// that is not a string, or a value the codec cannot encode, is remembered and
+// fails the save, until the key is set again or deleted.
+func (d *data) setEncoded(codec Codec, key, value any) {
+	name, ok := key.(string)
+	if !ok {
+		d.fail(key, fmt.Errorf("%w, got a key of type %T", errNonStringKey, key))
+		return
+	}
+	encoded, err := codec.Marshal(value)
+	if err != nil {
+		d.fail(key, fmt.Errorf("failed to encode session value %q: %w", name, err))
+		return
+	}
+	// The session keeps its own copy: a codec may hand out a buffer that it reuses.
+	owned := append(make([]byte, 0, len(encoded)), encoded...)
+
+	d.Lock()
+	defer d.Unlock()
+	d.dirty.Store(true)
+	d.Data[name] = owned
+	delete(d.errs, name)
+}
+
+// fail remembers that the Set of key failed.
+func (d *data) fail(key any, err error) {
+	d.Lock()
+	defer d.Unlock()
+	d.dirty.Store(true)
+	if d.errs == nil {
+		d.errs = make(map[any]error)
+	}
+	d.errs[key] = err
+}
+
+// pendingError returns the errors of the Sets that failed and have not been made up
+// for, nil if there are none. They come in the order of their messages.
+func (d *data) pendingError() error {
+	if len(d.errs) == 0 {
+		return nil
+	}
+	errs := make([]error, 0, len(d.errs))
+	for _, err := range d.errs {
+		errs = append(errs, err)
+	}
+	slices.SortFunc(errs, func(a, b error) int {
+		return strings.Compare(a.Error(), b.Error())
+	})
+	return errors.Join(errs...)
 }
 
 // Delete removes a key-value pair from the data map.
@@ -145,6 +303,9 @@ func (d *data) Delete(key any) {
 	defer d.Unlock()
 	d.dirty.Store(true)
 	delete(d.Data, key)
+	if d.errs != nil {
+		delete(d.errs, key)
+	}
 }
 
 // Keys retrieves all keys in the data map.
@@ -159,6 +320,15 @@ func (d *data) Keys() []any {
 	d.RLock()
 	defer d.RUnlock()
 	keys := make([]any, 0, len(d.Data))
+	if d.codec != nil {
+		// Strings, and the deadline of the session, which is not one of its values.
+		for k := range d.Data {
+			if k != absExpirationKey {
+				keys = append(keys, k)
+			}
+		}
+		return keys
+	}
 	for k := range d.Data {
 		if valueMayAlias(k) {
 			// gob flattens pointer keys, so mutating a pointee changes the payload.
