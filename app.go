@@ -419,6 +419,9 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// and calls the handler sooner when given body is
 	// larger than the current limit.
 	//
+	// Only BodyStream reads such a body: Body, FormValue and the binders still
+	// apply BodyLimit, and a multipart form is never pre-parsed.
+	//
 	// Default: false
 	StreamRequestBody bool
 
@@ -427,7 +430,8 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// This option is useful for servers that desire to treat
 	// multipart form data as a binary blob, or choose when to parse the data.
 	//
-	// Server pre parses multipart form data by default.
+	// Server pre parses multipart form data by default, but never with
+	// StreamRequestBody.
 	//
 	// Default: false
 	DisablePreParseMultipartForm bool
@@ -1664,7 +1668,9 @@ func (app *App) init() *App {
 		app.server.GetOnly = app.config.GETOnly
 		app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
 		app.server.StreamRequestBody = app.config.StreamRequestBody
-		app.server.DisablePreParseMultipartForm = app.config.DisablePreParseMultipartForm
+		// fasthttp pre-parses a streamed multipart body of any length before the
+		// handler runs; MultipartForm parses it on demand within BodyLimit instead.
+		app.server.DisablePreParseMultipartForm = app.config.DisablePreParseMultipartForm || app.config.StreamRequestBody
 	}()
 
 	// Register the Services shutdown handler once the app is initialized and unlocked.

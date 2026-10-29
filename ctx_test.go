@@ -1538,6 +1538,112 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 	}
 }
 
+// With StreamRequestBody the server passes on a body of any size, so the accessors that buffer it apply BodyLimit.
+func Test_Ctx_Body_StreamedBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	const limit = 1024
+	app := New(Config{StreamRequestBody: true, BodyLimit: limit})
+	tooLarge := fasthttp.ErrBodyTooLarge.Error()
+
+	for _, tc := range []struct {
+		read        func(c Ctx) string
+		name        string
+		contentType string
+		coding      string
+		refused     string
+	}{
+		{name: "Body", read: func(c Ctx) string { return string(c.Body()) }, refused: tooLarge},
+		{name: "BodyRaw", read: func(c Ctx) string { return string(c.BodyRaw()) }, refused: tooLarge},
+		{name: "Body with a coding", coding: StrIdentity, read: func(c Ctx) string { return string(c.Body()) }, refused: tooLarge},
+		{name: "FormValue", contentType: MIMEApplicationForm, read: func(c Ctx) string { return "a=" + c.FormValue("a", "none") }, refused: "a=none"},
+		// fasthttp's PostArgs reads any media type with this prefix.
+		{name: "FormValue by prefix", contentType: MIMEApplicationForm + "-x", read: func(c Ctx) string { return "a=" + c.FormValue("a", "none") }, refused: "a=none"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			acquire := func(size, declared int) (Ctx, *strings.Reader) {
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				t.Cleanup(func() { app.ReleaseCtx(c) })
+				c.Request().Header.SetContentType(tc.contentType)
+				if tc.coding != "" {
+					c.Request().Header.Set(HeaderContentEncoding, tc.coding)
+				}
+				stream := strings.NewReader("a=" + strings.Repeat("a", size-2))
+				c.Request().SetBodyStream(stream, declared)
+				return c, stream
+			}
+
+			c, _ := acquire(limit, -1)
+			require.Equal(t, "a="+strings.Repeat("a", limit-2), tc.read(c))
+			require.Equal(t, StatusOK, c.Response().StatusCode())
+
+			for _, declared := range []int{-1, 100 * limit} {
+				c, stream := acquire(100*limit, declared)
+				for range 2 {
+					require.Equal(t, tc.refused, tc.read(c))
+					require.Equal(t, StatusRequestEntityTooLarge, c.Response().StatusCode())
+					require.Equal(t, 99*limit-1, stream.Len(), "the rest of the stream is not read")
+				}
+			}
+		})
+	}
+}
+
+func Test_Ctx_Body_BodyLimit_KeepsWrittenResponse(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		encoding string
+		stream   bool
+	}{{"", true}, {StrIdentity, true}, {StrGzip, true}, {StrGzip, false}} {
+		t.Run(fmt.Sprintf("encoding=%s stream=%v", tc.encoding, tc.stream), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{StreamRequestBody: true, BodyLimit: 1024})
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+			if tc.encoding != "" {
+				c.Request().Header.Set(HeaderContentEncoding, tc.encoding)
+			}
+			if tc.stream {
+				c.Request().SetBodyStream(strings.NewReader(strings.Repeat("a", 4096)), -1)
+			} else {
+				c.Request().SetBody(fasthttp.AppendGzipBytes(nil, []byte(strings.Repeat("a", 4096))))
+			}
+			require.NoError(t, c.SendString("ok"))
+			require.Equal(t, fasthttp.ErrBodyTooLarge.Error(), string(c.Body()))
+			require.Equal(t, StatusOK, c.Response().StatusCode())
+			require.Equal(t, "ok", string(c.Response().Body()))
+		})
+	}
+}
+
+// FormValue leaves a streamed body to BodyStream when the body is not a form or the key is in the query.
+func Test_Ctx_FormValue_KeepsBodyStream(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{StreamRequestBody: true, BodyLimit: 8})
+	for _, contentType := range []string{MIMEOctetStream, MIMEApplicationForm} {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().URI().SetQueryString("name=upload")
+		c.Request().Header.SetContentType(contentType)
+		c.Request().SetBodyStream(strings.NewReader("payload-over-limit"), -1)
+
+		require.Equal(t, "upload", c.FormValue("name"), contentType)
+		if contentType == MIMEOctetStream {
+			require.Empty(t, c.FormValue("other"), contentType)
+		}
+		require.Equal(t, StatusOK, c.Response().StatusCode(), contentType)
+
+		body, err := io.ReadAll(c.BodyStream())
+		require.NoError(t, err, contentType)
+		require.Equal(t, "payload-over-limit", string(body), contentType)
+		app.ReleaseCtx(c)
+	}
+}
+
 func Test_Ctx_Body_With_Compression_BodyLimitExceeded(t *testing.T) {
 	t.Parallel()
 
@@ -3297,6 +3403,76 @@ func Test_Ctx_Fresh(t *testing.T) {
 	// A wildcard If-None-Match is fresh too, ignoring the date headers.
 	c.Request().Header.Set(HeaderIfNoneMatch, "*")
 	require.True(t, c.Fresh())
+}
+
+func Test_Ctx_Fresh_ResponseStatus(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		status int
+		fresh  bool
+	}{
+		{StatusOK, true},
+		{StatusNoContent, true},
+		{StatusPartialContent, true},
+		{299, true},
+		{StatusMovedPermanently, false},
+		{StatusFound, false},
+		{StatusNotModified, true},
+		{StatusTemporaryRedirect, false},
+		{StatusBadRequest, false},
+		{StatusNotFound, false},
+		{StatusPreconditionFailed, false},
+		{StatusInternalServerError, false},
+	} {
+		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
+			t.Parallel()
+
+			for _, conditional := range []struct {
+				name  string
+				value string
+			}{
+				{HeaderIfNoneMatch, `"version"`},
+				{HeaderIfNoneMatch, "*"},
+				{HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT"},
+			} {
+				app := New()
+				ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+				ctx.Method(MethodGet)
+				ctx.Request().Header.Set(conditional.name, conditional.value)
+				ctx.Response().Header.Set(HeaderETag, `"version"`)
+				ctx.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
+				ctx.Status(tc.status)
+
+				require.Equal(t, tc.fresh, ctx.Fresh(), "%s: %s", conditional.name, conditional.value)
+				require.Equal(t, !tc.fresh, ctx.Stale(), "%s: %s", conditional.name, conditional.value)
+				app.ReleaseCtx(ctx)
+			}
+		})
+	}
+}
+
+func Test_Ctx_Fresh_PreservesNotFoundResponse(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		c.Status(StatusNotFound)
+		if c.Fresh() {
+			return c.SendStatus(StatusNotModified)
+		}
+		return c.SendString("resource no longer exists")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Header.Set(HeaderIfNoneMatch, "*")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	require.Equal(t, "resource no longer exists", string(body))
 }
 
 // Test_Ctx_Fresh_ModifiedSinceOnly verifies that If-Modified-Since is evaluated
@@ -13723,6 +13899,89 @@ func Test_Ctx_Body_With_Compression_IdentityChain(t *testing.T) {
 			require.Equal(t, []byte("john=doe"), c.Body(), "decoding again still works")
 			app.ReleaseCtx(c)
 		}
+	}
+}
+
+func gzipLayers(t *testing.T, data []byte, layers int) []byte {
+	t.Helper()
+	for range layers {
+		var buf bytes.Buffer
+		gz := gzip.NewWriter(&buf)
+		_, err := gz.Write(data)
+		require.NoError(t, err)
+		require.NoError(t, gz.Close())
+		data = buf.Bytes()
+	}
+	return data
+}
+
+func Test_Ctx_Body_With_Compression_TooManyCodings(t *testing.T) {
+	t.Parallel()
+
+	codings := func(coding string, n int) string {
+		return strings.TrimSuffix(strings.Repeat(coding+",", n), ",")
+	}
+	plain := []byte("john=doe")
+	refused := []byte(ErrUnsupportedMediaType.Error())
+
+	app := New()
+	for _, tc := range []struct {
+		encoding string
+		sent     []byte
+		want     []byte
+		wantCode int
+	}{
+		{encoding: codings(StrGzip, maxContentCodings), sent: gzipLayers(t, plain, maxContentCodings), want: plain, wantCode: StatusOK},
+		{encoding: codings(StrGzip, maxContentCodings+1), sent: gzipLayers(t, plain, maxContentCodings+1), want: refused, wantCode: StatusUnsupportedMediaType},
+		{encoding: codings(StrIdentity, maxContentCodings+1), sent: plain, want: refused, wantCode: StatusUnsupportedMediaType},
+		// 256 members wrapped the former one-byte decode counter.
+		{encoding: codings(StrIdentity, 255) + "," + StrGzip, sent: gzipLayers(t, plain, 2), want: refused, wantCode: StatusUnsupportedMediaType},
+	} {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderContentEncoding, tc.encoding)
+		c.Request().SetBody(tc.sent)
+
+		members := strings.Count(tc.encoding, ",") + 1
+		require.Equal(t, tc.want, c.Body(), "%d members", members)
+		require.Equal(t, tc.wantCode, c.Response().StatusCode(), "%d members", members)
+		require.Equal(t, tc.sent, c.Request().Body(), "%d members", members)
+		app.ReleaseCtx(c)
+	}
+}
+
+// Body and BodyRaw results alias the request body buffer, so decoding must not hand it back to the pool.
+func Test_Ctx_Body_With_Compression_KeepsRequestBuffer(t *testing.T) {
+	t.Parallel()
+
+	plain := []byte("john=doe")
+
+	app := New()
+	for _, tc := range []struct {
+		encoding string
+		sent     []byte
+		want     []byte
+	}{
+		{encoding: "identity, identity", sent: plain, want: plain},
+		{encoding: "gzip, identity", sent: gzipLayers(t, plain, 1), want: plain},
+		{encoding: "identity, gzip", sent: gzipLayers(t, plain, 1), want: plain},
+		{encoding: "gzip, gzip", sent: gzipLayers(t, plain, 2), want: plain},
+		{encoding: "unknown, gzip", sent: gzipLayers(t, plain, 1), want: []byte(ErrUnsupportedMediaType.Error())},
+	} {
+		// A bare RequestCtx does not keep its body buffer, like ReduceMemoryUsage or the adaptor.
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderContentEncoding, tc.encoding)
+		c.Request().SetBody(tc.sent)
+
+		raw := c.BodyRaw()
+		body := c.Body()
+		require.Same(t, &raw[0], &c.Request().Body()[0], tc.encoding)
+
+		next := fasthttp.AcquireRequest()
+		next.SetBody(bytes.Repeat([]byte("!"), len(tc.sent)))
+		require.Equal(t, tc.sent, raw, tc.encoding)
+		require.Equal(t, tc.want, body, tc.encoding)
+		fasthttp.ReleaseRequest(next)
+		app.ReleaseCtx(c)
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -898,6 +899,61 @@ func (w *netHTTPResponseWriter) Write(p []byte) (int, error) {
 }
 
 func (*netHTTPResponseWriter) Flush() {}
+
+// fasthttpadaptor buffers the body for the http.Request, and with StreamRequestBody the server passes on a body of any size.
+func Test_StreamedBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	const limit = 1024
+	echoLen := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n, err := io.Copy(io.Discard, r.Body)
+		assert.NoError(t, err)
+		_, err = w.Write([]byte(strconv.FormatInt(n, 10)))
+		assert.NoError(t, err)
+	})
+
+	app := fiber.New(fiber.Config{StreamRequestBody: true, BodyLimit: limit})
+	app.Post("/handler", HTTPHandler(echoLen))
+	app.Post("/middleware", HTTPMiddleware(func(http.Handler) http.Handler { return echoLen }))
+	app.Post("/next", HTTPMiddleware(func(next http.Handler) http.Handler { return next }), func(c fiber.Ctx) error {
+		return c.SendString(strconv.Itoa(len(c.Body())))
+	})
+	app.Post("/convert", func(c fiber.Ctx) error {
+		r, err := ConvertRequest(c, true)
+		if err != nil {
+			return err
+		}
+		return c.SendString(strconv.FormatInt(r.ContentLength, 10))
+	})
+
+	for _, target := range []string{"/handler", "/middleware", "/next", "/convert"} {
+		for _, chunked := range []bool{false, true} {
+			for size, status := range map[int]int{limit: fiber.StatusOK, limit + 1: fiber.StatusRequestEntityTooLarge} {
+				req := httptest.NewRequest(fiber.MethodPost, target, strings.NewReader(strings.Repeat("a", size)))
+				if chunked {
+					req.TransferEncoding = []string{"chunked"}
+				}
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, status, resp.StatusCode, "%s chunked=%v size=%d", target, chunked, size)
+				if status == fiber.StatusOK {
+					body, err := io.ReadAll(resp.Body)
+					require.NoError(t, err)
+					require.Equal(t, strconv.Itoa(size), string(body), "%s chunked=%v", target, chunked)
+				}
+			}
+		}
+	}
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().SetBodyStream(iotest.ErrReader(errors.New("broken chunk")), -1)
+	_, err := ConvertRequest(c, true)
+	require.ErrorIs(t, err, fiber.ErrBadRequest)
+	c.Request().SetBodyStream(iotest.ErrReader(fiber.ErrRequestHeaderFieldsTooLarge), -1)
+	_, err = ConvertRequest(c, true)
+	require.ErrorIs(t, err, fiber.ErrRequestHeaderFieldsTooLarge)
+}
 
 func Test_ConvertRequest(t *testing.T) {
 	t.Parallel()

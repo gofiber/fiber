@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/fiber/v3/internal/bodystream"
 	"github.com/gofiber/fiber/v3/internal/nilerror"
 	"github.com/gofiber/schema"
 )
@@ -496,6 +497,19 @@ func getBindingPrecedence(t reflect.Type) ([]bindSource, error) {
 	return precedence, nil
 }
 
+// hasBodySource reports whether All binds the body: both Content-Type and body are set.
+// Content-Type goes first, so a streamed body All does not bind stays unread.
+func (b *Bind) hasBodySource() (bool, error) {
+	req := b.ctx.Request()
+	if len(req.Header.ContentType()) == 0 {
+		return false, nil
+	}
+	if err := bodystream.Buffer(req, b.ctx.App().config.BodyLimit); err != nil {
+		return false, b.returnBindErr(err, BindSourceBody)
+	}
+	return len(req.Body()) > 0, nil
+}
+
 // All binds values from URI params, the request body, the query string,
 // headers, and cookies into the provided struct in precedence order.
 // Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
@@ -522,7 +536,11 @@ func (b *Bind) All(out any) error {
 			case sourceURI:
 				sources = append(sources, b.URI)
 			case sourceBody:
-				if len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
+				hasBody, err := b.hasBodySource()
+				if err != nil {
+					return err
+				}
+				if hasBody {
 					sources = append(sources, b.Body)
 				}
 			case sourceQuery:
@@ -537,8 +555,11 @@ func (b *Bind) All(out any) error {
 		// Precedence: URL Params -> Body -> Query -> Headers -> Cookies
 		sources = append(sources, b.URI)
 
-		// Check if both Body and Content-Type are set
-		if len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
+		hasBody, err := b.hasBodySource()
+		if err != nil {
+			return err
+		}
+		if hasBody {
 			sources = append(sources, b.Body)
 		}
 		sources = append(sources, b.Query, b.Header, b.Cookie)
