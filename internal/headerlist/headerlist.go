@@ -20,9 +20,10 @@
 //     takes CR, LF, VT and FF. [TrimOWS] takes only SP and HTAB, the OWS of
 //     RFC 9110 Section 5.6.3, for a caller that validates what is left.
 //
-// Empty elements are skipped throughout: "a,,b" yields "a" and "b". A list is
+// The iterators skip empty elements: "a,,b" yields "a" and "b". A list is
 // permitted to carry them (RFC 9110 Section 5.6.1 allows the empty element for
-// legacy reasons) and no caller here has ever wanted one.
+// legacy reasons). [Next] and [Prev] expose raw elements, including empty ones,
+// for callers with their own whitespace, validation and traversal policies.
 package headerlist
 
 import (
