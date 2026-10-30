@@ -2538,3 +2538,243 @@ func Test_Limiter_OversizedKeyGeneratorIsBounded(t *testing.T) {
 		})
 	}
 }
+
+// Test_Limiter_HeadersExactWireFormat pins serialized field-name casing, values,
+// order and CRLF for both strategies, normalization modes and disabled headers.
+func Test_Limiter_HeadersExactWireFormat(t *testing.T) {
+	t.Parallel()
+
+	type step struct {
+		headers string
+		status  int
+	}
+	for _, ws := range windowStrategies {
+		for _, mode := range []struct {
+			name            string
+			prefix          string
+			disableApp      bool
+			disableResponse bool
+		}{
+			{name: "normalized", prefix: "X-Ratelimit-"},
+			{name: "app_unnormalized", prefix: "X-RateLimit-", disableApp: true},
+			{name: "response_unnormalized", prefix: "X-RateLimit-", disableResponse: true},
+		} {
+			allowed := func(remaining, reset string) step {
+				return step{status: fiber.StatusOK, headers: mode.prefix + "Limit: 2\r\n" +
+					mode.prefix + "Remaining: " + remaining + "\r\n" +
+					mode.prefix + "Reset: " + reset + "\r\n"}
+			}
+			for _, disableHeaders := range []bool{false, true} {
+				t.Run(ws.name+"/"+mode.name+"/disabled="+strconv.FormatBool(disableHeaders), func(t *testing.T) {
+					t.Parallel()
+					steps := []step{allowed("1", "10"), allowed("0", "9"), {
+						status: fiber.StatusTooManyRequests, headers: "Retry-After: 8\r\n",
+					}}
+					if disableHeaders {
+						for i := range steps {
+							steps[i].headers = ""
+						}
+					}
+					clock := newTestClock(time.Unix(1_700_000_000, 0))
+					app := fiber.New(fiber.Config{DisableHeaderNormalizing: mode.disableApp})
+					if mode.disableResponse {
+						app.Use(func(c fiber.Ctx) error {
+							c.Response().Header.DisableNormalizing()
+							return c.Next()
+						})
+					}
+					app.Use(New(Config{
+						Max:               2,
+						Expiration:        10 * time.Second,
+						LimiterMiddleware: ws.handler,
+						DisableHeaders:    disableHeaders,
+						clock:             clock.Now,
+					}))
+					app.Get("/", func(c fiber.Ctx) error {
+						return c.SendString("ok")
+					})
+					handler := app.Handler()
+
+					for i, want := range steps {
+						fctx := &fasthttp.RequestCtx{}
+						fctx.Request.Header.SetMethod(fiber.MethodGet)
+						fctx.Request.SetRequestURI("/")
+						// Calling Handler directly bypasses fasthttp's setup of the header store.
+						if app.Server().DisableHeaderNamesNormalizing {
+							fctx.Response.Header.DisableNormalizing()
+						}
+						handler(fctx)
+
+						require.Equal(t, want.status, fctx.Response.StatusCode(), "request %d", i)
+						var got []string
+						for line := range strings.SplitAfterSeq(string(fctx.Response.Header.Header()), "\r\n") {
+							lower := strings.ToLower(line)
+							if strings.HasPrefix(lower, "x-ratelimit-") || strings.HasPrefix(lower, "retry-after:") {
+								got = append(got, line)
+							}
+						}
+						require.Equal(t, want.headers, strings.Join(got, ""), "request %d", i)
+						clock.Add(time.Second)
+					}
+				})
+			}
+		}
+	}
+}
+
+type limiterHeaderWrite struct {
+	key   string
+	value string
+}
+
+// limiterHeaderCtx retains the original strings as well as suppressing and
+// rewriting headers, all of which a custom Set implementation is allowed to do.
+type limiterHeaderCtx struct {
+	writes *[]limiterHeaderWrite
+	fiber.DefaultCtx
+}
+
+func (c *limiterHeaderCtx) Set(key, value string) {
+	switch key {
+	case xRateLimitLimit, xRateLimitRemaining, xRateLimitReset, fiber.HeaderRetryAfter:
+		*c.writes = append(*c.writes, limiterHeaderWrite{key: key, value: value})
+	}
+	switch key {
+	case xRateLimitLimit:
+		return
+	case xRateLimitRemaining:
+		value = "custom-" + value
+	}
+	c.DefaultCtx.Set(key, value)
+}
+
+func Test_Limiter_HeadersCustomCtx(t *testing.T) {
+	t.Parallel()
+
+	for _, ws := range windowStrategies {
+		for _, disableHeaders := range []bool{false, true} {
+			t.Run(ws.name+"/disabled="+strconv.FormatBool(disableHeaders), func(t *testing.T) {
+				t.Parallel()
+				var writes []limiterHeaderWrite
+				app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+					return &limiterHeaderCtx{DefaultCtx: *fiber.NewDefaultCtx(app), writes: &writes}
+				})
+				clock := newTestClock(time.Unix(1_700_000_000, 0))
+				app.Use(New(Config{
+					Max:               2,
+					Expiration:        10 * time.Second,
+					LimiterMiddleware: ws.handler,
+					DisableHeaders:    disableHeaders,
+					clock:             clock.Now,
+				}))
+				app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+				handler := app.Handler()
+				for i := range 3 {
+					fctx := &fasthttp.RequestCtx{}
+					fctx.Request.Header.SetMethod(fiber.MethodGet)
+					fctx.Request.SetRequestURI("/")
+					handler(fctx)
+					h := &fctx.Response.Header
+					require.Empty(t, h.Peek(xRateLimitLimit))
+					if i < 2 {
+						require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+						if !disableHeaders {
+							require.Equal(t, "custom-"+strconv.Itoa(1-i), string(h.Peek(xRateLimitRemaining)))
+							require.Equal(t, strconv.Itoa(10-i), string(h.Peek(xRateLimitReset)))
+						}
+					} else {
+						require.Equal(t, fiber.StatusTooManyRequests, fctx.Response.StatusCode())
+						if !disableHeaders {
+							require.Equal(t, "8", string(h.Peek(fiber.HeaderRetryAfter)))
+						}
+					}
+					clock.Add(time.Second)
+				}
+				if disableHeaders {
+					require.Empty(t, writes)
+				} else {
+					require.Equal(t, []limiterHeaderWrite{
+						{key: xRateLimitLimit, value: "2"},
+						{key: xRateLimitRemaining, value: "1"},
+						{key: xRateLimitReset, value: "10"},
+						{key: xRateLimitLimit, value: "2"},
+						{key: xRateLimitRemaining, value: "0"},
+						{key: xRateLimitReset, value: "9"},
+						{key: fiber.HeaderRetryAfter, value: "8"},
+					}, writes)
+				}
+			})
+		}
+	}
+}
+
+func Test_Limiter_HeaderValues(t *testing.T) {
+	t.Parallel()
+
+	for _, unnormalized := range []bool{false, true} {
+		t.Run("unnormalized="+strconv.FormatBool(unnormalized), func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+			var want fasthttp.ResponseHeader
+			if unnormalized {
+				c.Response().Header.DisableNormalizing()
+				want.DisableNormalizing()
+			}
+			cfg := Config{}
+			for _, values := range []struct {
+				limit     int
+				remaining int
+				reset     uint64
+			}{
+				{limit: math.MinInt, remaining: math.MinInt, reset: math.MaxUint64},
+				{limit: math.MaxInt, remaining: math.MaxInt, reset: math.MaxUint64},
+				{limit: 10000, remaining: 9999, reset: 86400},
+				{limit: 0, remaining: 0, reset: 0},
+			} {
+				want.Set(xRateLimitLimit, utils.FormatInt(int64(values.limit)))
+				want.Set(xRateLimitRemaining, utils.FormatInt(int64(max(values.remaining, 0))))
+				want.Set(xRateLimitReset, utils.FormatUint(values.reset))
+				cfg.setRateLimitHeaders(c, values.limit, values.remaining, values.reset)
+				require.Equal(t, string(want.Header()), string(c.Response().Header.Header()))
+			}
+		})
+	}
+}
+
+func Benchmark_Limiter_Headers(b *testing.B) {
+	for _, values := range []struct {
+		name      string
+		limit     int
+		remaining int
+		reset     uint64
+	}{
+		{name: "small", limit: 2, remaining: 1, reset: 10},
+		{name: "large", limit: math.MaxInt, remaining: math.MaxInt - 1, reset: math.MaxUint64},
+	} {
+		for _, legacy := range []bool{false, true} {
+			b.Run(values.name+"/legacy="+strconv.FormatBool(legacy), func(b *testing.B) {
+				app := fiber.New()
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				defer app.ReleaseCtx(c)
+				cfg := Config{}
+				set := func() {
+					cfg.setRateLimitHeaders(c, values.limit, values.remaining, values.reset)
+				}
+				if legacy {
+					set = func() {
+						c.Set(xRateLimitLimit, utils.FormatInt(int64(values.limit)))
+						c.Set(xRateLimitRemaining, utils.FormatInt(int64(max(values.remaining, 0))))
+						c.Set(xRateLimitReset, utils.FormatUint(values.reset))
+					}
+				}
+				set() // Warm the header storage; measure number formatting and writes.
+				b.ReportAllocs()
+				for b.Loop() {
+					set()
+				}
+			})
+		}
+	}
+}
