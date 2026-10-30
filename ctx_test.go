@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/shamaton/msgpack/v3"
@@ -3822,6 +3823,235 @@ func Test_Ctx_Get_EmptyFirstLine(t *testing.T) {
 	require.Len(t, c.Request().Header.PeekAll("X-Token"), 2)
 }
 
+// go test -run Test_Ctx_HeaderAccessors_SkipTrailerSection
+func Test_Ctx_HeaderAccessors_SkipTrailerSection(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{DisableHeaderNormalizing: !normalize})
+			app.Post("/", func(c Ctx) error {
+				return c.JSON(Map{
+					"get":       c.Get("X-User", "anonymous"),
+					"generic":   GetReqHeader[string](c, "X-User"),
+					"all":       c.GetAll("X-User"),
+					"has":       c.HasHeader("X-User"),
+					"hasValue":  c.HasHeaderValue("X-User", "admin"),
+					"userAgent": c.UserAgent(),
+					"referer":   c.Referer(),
+					"origin":    c.Origin(),
+					"xhr":       c.XHR(),
+					"kept":      c.Get("X-Kept"),
+				})
+			})
+			ln := startRawServer(t, app)
+
+			trailers := "X-User: admin\r\nUser-Agent: late\r\nReferer: http://evil.example/\r\n" +
+				"Origin: http://evil.example\r\nX-Requested-With: XMLHttpRequest\r\nX-Kept: late\r\n"
+			raw := "POST / HTTP/1.1\r\nHost: example.com\r\nX-Kept: early\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" +
+				"5\r\nhello\r\n0\r\n" + trailers + "\r\n"
+			responses, _ := rawExchange(t, ln, raw, 1)
+			require.Equal(t, StatusOK, responses[0].status)
+			require.JSONEq(t, `{"get":"anonymous","generic":"","all":null,"has":false,"hasValue":false,`+
+				`"userAgent":"","referer":"","origin":"","xhr":false,"kept":"early"}`, responses[0].body)
+		})
+	}
+}
+
+// go test -run Test_Ctx_HeaderWrittenUnderTrailerName
+func Test_Ctx_HeaderWrittenUnderTrailerName(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		cfg    Config
+		name   string
+		custom bool
+	}{
+		{name: "default"},
+		{name: "raw names", cfg: Config{DisableHeaderNormalizing: true}},
+		{name: "custom ctx", custom: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var app *App
+			if tc.custom {
+				app = NewWithCustomCtx(func(app *App) CustomCtx {
+					return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+				}, tc.cfg)
+			} else {
+				app = New(tc.cfg)
+			}
+			app.Use(func(c Ctx) error {
+				h := &c.Request().Header
+				h.Set("X-Flag", "1")
+				h.Set("X-Tenant", "safe")
+				h.Del("X-Role")
+				h.Set("X-Role", "user")
+				return c.Next()
+			})
+			app.All("/", func(c Ctx) error {
+				return c.SendString(fmt.Sprintf("flag=%s has=%v tenant=%q role=%q trailers=%d", c.Get("X-Flag"), c.HasHeader("X-Flag"),
+					c.GetAll("X-Tenant"), c.GetAll("X-Role"), len(c.Request().Header.PeekTrailerKeys())))
+			})
+			ln := startRawServer(t, app)
+
+			const (
+				head    = "POST / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\nX-Tenant: evil\r\nX-Role: admin\r\n"
+				chunked = "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"
+				want    = `flag=1 has=true tenant=["safe"] role=["user"] trailers=0`
+			)
+			for _, raw := range []string{
+				head + chunked + "X-Flag: 0\r\nX-Tenant: x\r\nX-Role: x\r\n\r\n",
+				head + "Trailer: X-Flag, X-Tenant, X-Role\r\n" + chunked + "\r\n",
+				head + "Trailer: X-Flag, X-Tenant, X-Role\r\nContent-Length: 5\r\n\r\nhello",
+				"GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\nX-Tenant: evil\r\nX-Role: admin\r\nTrailer: X-Flag, X-Tenant, X-Role\r\n\r\n",
+			} {
+				responses, _ := rawExchange(t, ln, raw, 1)
+				require.Equal(t, StatusOK, responses[0].status, raw)
+				require.Equal(t, want, responses[0].body, raw)
+			}
+
+			// Each name costs fasthttp a pass over the header to drop.
+			responses, _ := rawExchange(t, ln, head+"Trailer: X-1, X-2, X-3, X-4, X-5, X-6, X-7, X-8, X-9, "+
+				"X-10, X-11, X-12, X-13, X-14, X-15, X-16, X-17\r\n"+chunked+"\r\n", 1)
+			require.Equal(t, StatusRequestHeaderFieldsTooLarge, responses[0].status)
+		})
+	}
+}
+
+// go test -run Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody
+func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
+	t.Parallel()
+
+	for _, custom := range []bool{false, true} {
+		t.Run(fmt.Sprintf("custom=%v", custom), func(t *testing.T) {
+			t.Parallel()
+
+			cfg := Config{
+				StreamRequestBody:  true,
+				TrustProxy:         true,
+				TrustProxyConfig:   TrustProxyConfig{Loopback: true},
+				ProxyHeader:        HeaderXForwardedFor,
+				EnableIPValidation: true,
+			}
+			app := New(cfg)
+			if custom {
+				app = NewWithCustomCtx(func(app *App) CustomCtx {
+					return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+				}, cfg)
+			}
+			respond := func(c Ctx, body []byte) error {
+				h := &c.Request().Header
+				h.Set("X-User", "alice")
+				h.Del("X-Role")
+				h.Set("X-Role", "user")
+				return c.SendString(fmt.Sprintf("body=%s user=%q role=%q trailers=%d", body, c.GetAll("X-User"),
+					c.GetAll("X-Role"), len(h.PeekTrailerKeys())))
+			}
+			app.Post("/body", func(c Ctx) error {
+				return respond(c, c.Body())
+			})
+			app.Post("/stream", func(c Ctx) error {
+				body, err := io.ReadAll(c.BodyStream())
+				if err != nil {
+					return err //nolint:wrapcheck // the status rides on the stream's own error
+				}
+				return respond(c, body)
+			})
+			app.Post("/fields", func(c Ctx) error {
+				role := c.Get("X-Role")
+				read := string(c.Body()) == "hello"
+				return c.SendString(fmt.Sprintf("read=%v role=%s blocked=%q client=%q ip=%s scheme=%s host=%q", read, role,
+					c.Get("X-Blocked"), c.GetAll("X-Client"), c.IP(), c.Scheme(), c.Host()))
+			})
+			ln := startRawServer(t, app)
+
+			var many strings.Builder
+			for i := range fieldname.MaxTrailers - 2 {
+				fmt.Fprintf(&many, "X-%d: v\r\n", i)
+			}
+			const chunked = "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n"
+			heads := []string{"", "X-User: admin\r\nX-Role: admin\r\n", "X-User: admin\r\nTrailer: X-User, X-Role\r\n"}
+			for _, path := range []string{"/body", "/stream"} {
+				for _, head := range heads {
+					for _, extra := range []string{"", many.String()} {
+						raw := "POST " + path + " HTTP/1.1\r\nHost: example.com\r\n" + head + chunked + extra + "X-User: x\r\nX-Role: x\r\n\r\n"
+						responses, _ := rawExchange(t, ln, raw, 1)
+						require.Equal(t, StatusOK, responses[0].status, raw)
+						require.Equal(t, `body=hello user=["alice"] role=["user"] trailers=0`, responses[0].body, raw)
+					}
+				}
+			}
+
+			// One name past the cap: the read fails, and the section is dropped all the same.
+			tooMany := many.String() + "X-14: v\r\n"
+			for _, head := range heads {
+				raw := "POST /stream HTTP/1.1\r\nHost: example.com\r\n" + head + chunked + tooMany + "X-User: x\r\nX-Role: x\r\n\r\n"
+				responses, _ := rawExchange(t, ln, raw, 1)
+				require.Equal(t, StatusRequestHeaderFieldsTooLarge, responses[0].status, raw)
+
+				raw = "POST /body HTTP/1.1\r\nHost: example.com\r\n" + head + chunked + tooMany + "X-User: x\r\nX-Role: x\r\n\r\n"
+				responses, _ = rawExchange(t, ln, raw, 1)
+				require.Equal(t, `body=Request Header Fields Too Large user=["alice"] role=["user"] trailers=0`, responses[0].body, raw)
+			}
+
+			// The header section stays as received either way, the proxy's lines included, and so does a value read before.
+			for _, extra := range []string{"", tooMany} {
+				raw := "POST /fields HTTP/1.1\r\nHost: example.com\r\nX-Client: c\r\nX-Role: user\r\nX-Evil: root\r\n" +
+					"X-Blocked: 1\r\nX-Forwarded-For: 203.0.113.7\r\nX-Forwarded-Proto: https\r\n" + chunked + extra +
+					"X-Role: x\r\nX-Evil: x\r\nX-Blocked: x\r\n\r\n"
+				responses, _ := rawExchange(t, loopbackDialer{ln}, raw, 1)
+				require.Equal(t, fmt.Sprintf(`read=%v role=user blocked="1" client=["c"] ip=203.0.113.7 scheme=https host="example.com"`,
+					extra == ""), responses[0].body)
+			}
+		})
+	}
+}
+
+// Test_Ctx_BodyOfClosableStream checks that a stream handed to App.Handler is read, not closed: only the
+// server's own stream reads a trailer section, and wrapping another closed it before the handler read it.
+func Test_Ctx_BodyOfClosableStream(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Post("/", func(c Ctx) error {
+		return c.Send(c.Body())
+	})
+
+	for name, set := range map[string]func(*fasthttp.Request){
+		"stream writer": func(req *fasthttp.Request) {
+			req.SetBodyStreamWriter(func(w *bufio.Writer) {
+				_, err := w.WriteString("hello")
+				require.NoError(t, err)
+			})
+		},
+		"pipe": func(req *fasthttp.Request) {
+			r, w := io.Pipe()
+			go func() {
+				_, err := w.Write([]byte("hello"))
+				w.CloseWithError(err) //nolint:errcheck // CloseWithError always returns nil
+			}()
+			req.SetBodyStream(r, -1)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(MethodPost)
+			fctx.Request.SetRequestURI("/")
+			set(&fctx.Request)
+			app.Handler()(fctx)
+
+			require.Equal(t, StatusOK, fctx.Response.StatusCode())
+			require.Equal(t, "hello", string(fctx.Response.Body()))
+		})
+	}
+}
+
 // go test -run Test_Ctx_GetReqHeader
 func Test_Ctx_GetReqHeader(t *testing.T) {
 	t.Parallel()
@@ -4643,6 +4873,90 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 			header:   "203.0.113.50, 10.0.0.1,",
 			expected: "203.0.113.50",
 		},
+		{
+			name: "empty chain element between entries",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "203.0.113.50, , 10.0.0.1",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "entry with a port ends the walk",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "1.2.3.4, 203.0.113.50:51234",
+			expected: "10.0.0.1",
+		},
+		{
+			name: "entry with a port behind a trusted proxy ends the walk",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1", "10.0.0.2"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "1.2.3.4, 203.0.113.50:51234, 10.0.0.2",
+			expected: "10.0.0.2",
+		},
+		{
+			name: "bracketed IPv6 entry with a port ends the walk",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "1.2.3.4, [2001:db8::1]:51234",
+			expected: "10.0.0.1",
+		},
+		{
+			name: "zoned IPv6 entry ends the walk",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "1.2.3.4, fe80::1%eth0",
+			expected: "10.0.0.1",
+		},
+		{
+			name: "obfuscated entry ends the walk",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "1.2.3.4, unknown",
+			expected: "10.0.0.1",
+		},
 	}
 
 	for _, tc := range tests {
@@ -4725,6 +5039,84 @@ func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines_Wire(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "198.51.100.77", string(body))
+}
+
+// serveRawFromLoopback runs a request read off the wire, so its raw header block is kept, from 127.0.0.1.
+func serveRawFromLoopback(t *testing.T, handler fasthttp.RequestHandler, raw string) string {
+	t.Helper()
+
+	var req fasthttp.Request
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.Init(&req, &net.TCPAddr{IP: net.ParseIP("127.0.0.1")}, nil)
+	handler(fastCtx)
+	return string(fastCtx.Response.Body())
+}
+
+// fasthttp fills the slot of a removed header line with the last line, and removes
+// Transfer-Encoding itself after an empty chunked body.
+func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines_ReceivedOrder(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"127.0.0.1"},
+		},
+	})
+	result := func(c Ctx) error {
+		// Twice: the first read must not change what the second sees.
+		return c.SendString(c.IP() + "|" + c.IP() + "|" + strings.Join(c.IPs(), ","))
+	}
+	app.Post("/", result)
+	app.Post("/del", func(c Ctx) error {
+		c.Request().Header.Del("X-Request-Id")
+		return result(c)
+	})
+	app.Post("/add", func(c Ctx) error {
+		c.Request().Header.Add(HeaderXForwardedFor, "203.0.113.9")
+		return result(c)
+	})
+	handler := app.Handler()
+
+	testCases := []struct {
+		name     string
+		raw      string
+		expected string
+	}{
+		{
+			name: "empty chunked body",
+			raw: "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n" +
+				"X-Forwarded-For: 6.6.6.6\r\nX-Forwarded-For: 198.51.100.77\r\n\r\n0\r\n\r\n",
+			expected: "198.51.100.77|198.51.100.77|6.6.6.6,198.51.100.77",
+		},
+		{
+			name: "empty chunked body with a folded line",
+			raw: "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n" +
+				"X-Forwarded-For: 6.6.6.6,\r\n 8.8.8.8\r\nX-Forwarded-For: 198.51.100.77\r\n\r\n0\r\n\r\n",
+			expected: "198.51.100.77|198.51.100.77|6.6.6.6,8.8.8.8,198.51.100.77",
+		},
+		{
+			name: "line removed by a handler",
+			raw: "POST /del HTTP/1.1\r\nHost: example.com\r\nX-Request-Id: 1\r\n" +
+				"X-Forwarded-For: 6.6.6.6\r\nX-Forwarded-For: 198.51.100.77\r\nContent-Length: 0\r\n\r\n",
+			expected: "198.51.100.77|198.51.100.77|6.6.6.6,198.51.100.77",
+		},
+		{
+			name: "line added by a handler",
+			raw: "POST /add HTTP/1.1\r\nHost: example.com\r\n" +
+				"X-Forwarded-For: 6.6.6.6\r\nX-Forwarded-For: 198.51.100.77\r\nContent-Length: 0\r\n\r\n",
+			expected: "203.0.113.9|203.0.113.9|6.6.6.6,198.51.100.77,203.0.113.9",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.expected, serveRawFromLoopback(t, handler, tc.raw))
+		})
+	}
 }
 
 // fasthttp trims the OWS at either end of a field value but keeps the OWS
@@ -5068,6 +5460,55 @@ func Benchmark_Ctx_IP_With_ProxyHeader_Chain(b *testing.B) {
 	fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("10.0.0.2")}))
 	c := app.AcquireCtx(fastCtx)
 	c.Request().Header.Set(HeaderXForwardedFor, "203.0.113.50, 10.0.0.1, 10.0.0.2")
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.IP()
+	}
+	require.Equal(b, "203.0.113.50", res)
+}
+
+// Benchmark_Ctx_IP_With_ProxyHeader_Lines reads a chain a proxy extended with a line of its own, off the wire.
+func Benchmark_Ctx_IP_With_ProxyHeader_Lines(b *testing.B) {
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"10.0.0.1", "10.0.0.2"},
+		},
+	})
+	req := &fasthttp.Request{}
+	require.NoError(b, req.Read(bufio.NewReader(strings.NewReader("GET / HTTP/1.1\r\nHost: example.com\r\n"+
+		"X-Forwarded-For: 203.0.113.50\r\nAccept: */*\r\nX-Forwarded-For: 10.0.0.1\r\n\r\n"))))
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.Init(req, &net.TCPAddr{IP: net.ParseIP("10.0.0.2")}, nil)
+	c := app.AcquireCtx(fastCtx)
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.IP()
+	}
+	require.Equal(b, "203.0.113.50", res)
+}
+
+// Benchmark_Ctx_IP_With_ProxyHeader_LinesMoved reads the chain after a Del moved the proxy's line in front of the client's.
+func Benchmark_Ctx_IP_With_ProxyHeader_LinesMoved(b *testing.B) {
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"10.0.0.1", "10.0.0.2"},
+		},
+	})
+	req := &fasthttp.Request{}
+	require.NoError(b, req.Read(bufio.NewReader(strings.NewReader("GET / HTTP/1.1\r\nHost: example.com\r\nX-Junk: 1\r\n"+
+		"X-Forwarded-For: 203.0.113.50\r\nAccept: */*\r\nX-Forwarded-For: 10.0.0.1\r\n\r\n"))))
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.Init(req, &net.TCPAddr{IP: net.ParseIP("10.0.0.2")}, nil)
+	c := app.AcquireCtx(fastCtx)
+	c.Request().Header.Del("X-Junk")
 	var res string
 	b.ReportAllocs()
 	for b.Loop() {
@@ -6289,6 +6730,95 @@ func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
 	c.Request().URI().SetHost("example.com")
 	c.Request().Header.Set(HeaderXForwardedProto, "javascript")
 	require.Equal(t, "http://example.com", c.BaseURL())
+}
+
+// go test -run Test_Ctx_Scheme_HeaderPrecedence
+func Test_Ctx_Scheme_HeaderPrecedence(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+
+	// A proxy overwrites X-Forwarded-Proto and relays the others, so its value wins in either order.
+	testCases := []struct {
+		proto  string
+		header string
+		value  string
+	}{
+		{proto: schemeHTTPS, header: HeaderXForwardedProtocol, value: schemeHTTP},
+		{proto: schemeHTTPS, header: HeaderXUrlScheme, value: schemeHTTP},
+		{proto: schemeHTTP, header: HeaderXForwardedProtocol, value: schemeHTTPS},
+		{proto: schemeHTTP, header: HeaderXForwardedSsl, value: "on"},
+		{proto: schemeHTTP, header: HeaderXUrlScheme, value: schemeHTTPS},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.header+"_"+tc.value, func(t *testing.T) {
+			t.Parallel()
+
+			freq := &fasthttp.RequestCtx{}
+			freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+			c := app.AcquireCtx(freq)
+			defer app.ReleaseCtx(c)
+
+			c.Request().Header.Set(HeaderXForwardedProto, tc.proto)
+			c.Request().Header.Set(tc.header, tc.value)
+			require.Equal(t, tc.proto, c.Scheme())
+			c.Request().Header.Reset()
+
+			c.Request().Header.Set(tc.header, tc.value)
+			c.Request().Header.Set(HeaderXForwardedProto, tc.proto)
+			require.Equal(t, tc.proto, c.Scheme())
+		})
+	}
+
+	t.Run("Ranking", func(t *testing.T) {
+		t.Parallel()
+
+		freq := &fasthttp.RequestCtx{}
+		freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+		c := app.AcquireCtx(freq)
+		defer app.ReleaseCtx(c)
+
+		c.Request().Header.Set(HeaderXUrlScheme, schemeHTTPS)
+		c.Request().Header.Set(HeaderXForwardedSsl, "on")
+		c.Request().Header.Set(HeaderXForwardedProtocol, schemeHTTP)
+		require.Equal(t, schemeHTTP, c.Scheme())
+		c.Request().Header.Reset()
+
+		c.Request().Header.Set(HeaderXUrlScheme, schemeHTTP)
+		c.Request().Header.Set(HeaderXForwardedSsl, "on")
+		require.Equal(t, schemeHTTPS, c.Scheme())
+		c.Request().Header.Reset()
+
+		// An invalid value outranks nothing.
+		c.Request().Header.Set(HeaderXForwardedProto, "javascript")
+		c.Request().Header.Set(HeaderXForwardedSsl, "off")
+		c.Request().Header.Set(HeaderXUrlScheme, schemeHTTPS)
+		require.Equal(t, schemeHTTPS, c.Scheme())
+	})
+}
+
+// Repeats of one header keep the last line, which an empty chunked body used to move.
+func Test_Ctx_Scheme_RepeatedFieldLines_ReceivedOrder(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"127.0.0.1"},
+		},
+	})
+	app.Post("/", func(c Ctx) error {
+		return c.SendString(c.Scheme())
+	})
+
+	raw := "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n" +
+		"X-Forwarded-Proto: http\r\nX-Forwarded-Proto: https\r\n\r\n0\r\n\r\n"
+	require.Equal(t, schemeHTTPS, serveRawFromLoopback(t, app.Handler(), raw))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
@@ -12113,6 +12643,63 @@ func Test_Ctx_GetReqHeaders(t *testing.T) {
 		"Test":         {"Hello, World 👋!"},
 		"Multi":        {"one", "two"},
 	}, c.GetHeaders())
+}
+
+// go test -run Test_Ctx_GetReqHeaders_TrailerSection
+func Test_Ctx_GetReqHeaders_TrailerSection(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{DisableHeaderNormalizing: !normalize})
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+			if !normalize {
+				c.Request().Header.DisableNormalizing()
+			}
+			// A request read outside the router keeps the section, as a streamed body does past the cap.
+			raw := "POST / HTTP/1.1\r\nHost: example.com\r\nX-Kept: 1\r\nx-user: admin\r\nTransfer-Encoding: chunked\r\n\r\n" +
+				"5\r\nhello\r\n0\r\nX-User: x\r\nX-Role: x\r\n\r\n"
+			require.NoError(t, c.Request().Read(bufio.NewReader(strings.NewReader(raw))))
+			require.Len(t, c.Request().Header.PeekTrailerKeys(), 2)
+
+			headers := c.GetReqHeaders()
+			require.Equal(t, []string{"1"}, headers["X-Kept"])
+			for name := range headers {
+				require.NotContains(t, []string{"x-user", "x-role"}, strings.ToLower(name))
+			}
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_GetReqHeaders_TrailerSection -benchmem -count=4
+func Benchmark_Ctx_GetReqHeaders_TrailerSection(b *testing.B) {
+	for _, n := range []int{256, 4096} {
+		b.Run(strconv.Itoa(n), func(b *testing.B) {
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
+			var lines, trailers strings.Builder
+			for i := range n {
+				fmt.Fprintf(&lines, "H%d: 1\r\n", i)
+				fmt.Fprintf(&trailers, "T%d: 1\r\n", i)
+			}
+			raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + lines.String() +
+				"Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n" + trailers.String() + "\r\n"
+			require.NoError(b, c.Request().Read(bufio.NewReaderSize(strings.NewReader(raw), len(raw))))
+			require.Len(b, c.Request().Header.PeekTrailerKeys(), n)
+
+			b.ReportAllocs()
+			var headers map[string][]string
+			for b.Loop() {
+				headers = c.GetReqHeaders()
+			}
+			require.Contains(b, headers, "H0")
+		})
+	}
 }
 
 func Test_Ctx_Set_SanitizeHeaderValue(t *testing.T) {

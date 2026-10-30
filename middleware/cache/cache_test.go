@@ -3,6 +3,7 @@
 package cache
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -9039,6 +9040,29 @@ func Test_configDefault_KeyCredentialHeaders(t *testing.T) {
 			require.Equal(t, keyHeaders, tc.cfg.KeyHeaders)
 			require.Equal(t, credentials, tc.cfg.KeyCredentialHeaders)
 		})
+	}
+}
+
+// Test_Cache_ResponseLinesUnderTrailerNames checks that a response's Cache-Control and Vary lines are honored
+// although its Trailer field names them, as an upstream may send.
+func Test_Cache_ResponseLinesUnderTrailerNames(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		raw := "HTTP/1.1 200 OK\r\nCache-Control: private, no-store\r\nVary: X-User\r\nTrailer: Cache-Control, Vary\r\n" +
+			"Transfer-Encoding: chunked\r\n\r\n6\r\nsecret\r\n0\r\n\r\n"
+		return c.Response().Read(bufio.NewReader(strings.NewReader(raw)))
+	})
+
+	for _, user := range []string{"u0", "u1"} {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header.Set("X-User", user)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		require.Equal(t, "private, no-store", resp.Header.Get(fiber.HeaderCacheControl))
 	}
 }
 
