@@ -98,8 +98,9 @@ func Test_Session_Middleware_AdoptOnlyWithinItsRequest(t *testing.T) {
 	require.Zero(t, outer.children.Load())
 }
 
-// The shape a timeout middleware gives a request: the outer middleware finishes
-// and its request is answered while the middleware inside it still runs. The
+// The shape of a request that a middleware abandoned, as sse does: the outer
+// middleware finishes and its request is answered while the middleware inside it
+// still runs. The
 // outer one must not be recycled then, for the inner one holds it, and when the
 // inner one finishes it must not hand the request an outer middleware that now
 // belongs to somebody else.
@@ -298,9 +299,9 @@ func Test_Session_ReleaseMiddleware_ReleasesTheSession(t *testing.T) {
 	require.Empty(t, outerSession.ID())
 }
 
-// A handler that a timeout middleware abandoned can hold the middleware and the
-// session of its request after the request is answered. Neither is recycled then,
-// or the next request would find itself in the abandoned handler's hands.
+// A handler that a middleware abandoned, as sse does, can hold the middleware and
+// the session of its request after the request is answered. Neither is recycled
+// then, or the next request would find itself in the abandoned handler's hands.
 func Test_Session_ReleaseMiddleware_AbandonedRequestKeepsItsObjects(t *testing.T) {
 	t.Parallel()
 
@@ -356,10 +357,10 @@ func Test_Session_ReleaseMiddleware_AbandonedSessionLetsGoOfItsContext(t *testin
 	require.NotEmpty(t, stored, "but the session was saved")
 }
 
-// The interleaving behind a timeout middleware: the abandoned handler reads the
-// request local, the request is answered and the middleware in front of it
-// finishes, the next request starts, and then the handler goes on with its lookup.
-// It must not find the next request's middleware.
+// The interleaving behind a middleware that abandons the request: the abandoned
+// handler reads the request local, the request is answered and the middleware in
+// front of it finishes, the next request starts, and then the handler goes on with
+// its lookup. It must not find the next request's middleware.
 func Test_Session_Middleware_AbandonedLookupDoesNotFindTheNextRequest(t *testing.T) {
 	t.Parallel()
 
@@ -376,7 +377,7 @@ func Test_Session_Middleware_AbandonedLookupDoesNotFindTheNextRequest(t *testing
 	held := FromContext(c1) // the abandoned handler begins its lookup
 	require.Same(t, first, held)
 
-	c1.Abandon() // the timeout middleware abandons the request and answers it
+	c1.Abandon() // a middleware abandons the request and answers it
 	releaseMiddleware(first)
 
 	second := startMiddleware(t, c2, store) // the next request starts
@@ -556,8 +557,8 @@ func Test_Session_Middleware_FindStopsAtAFinishedOuter(t *testing.T) {
 }
 
 // adopt, the restore and the release of the outer middleware run on different
-// goroutines when a timeout middleware abandons the handlers inside it. They must
-// not race on the middleware: run with -race.
+// goroutines when a handler outlives its request. They must not race on the
+// middleware: run with -race.
 func Test_Session_Middleware_LinkProtocolIsRaceFree(t *testing.T) {
 	t.Parallel()
 
@@ -1014,9 +1015,9 @@ func Test_Session_Middleware_OuterStaysPinnedWhileItIsRestored(t *testing.T) {
 	require.Zero(t, after.Load(), "and it was given back by the time the inner middleware was done")
 }
 
-// A handler that a timeout middleware abandoned calls Destroy, Reset or Regenerate
-// while the request ends: the read of the middleware's context in those methods
-// must not race with the release. Run with -race.
+// A handler that outlives its request calls Destroy, Reset or Regenerate while the
+// request ends: the read of the middleware's context in those methods must not
+// race with the release. Run with -race.
 func Test_Session_Middleware_DestroyResetRegenerateRaceTheRelease(t *testing.T) {
 	t.Parallel()
 

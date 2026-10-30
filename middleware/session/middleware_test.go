@@ -1255,6 +1255,40 @@ func Test_Session_Middleware_FinishesOnTimedOutGoroutine(t *testing.T) {
 	<-finished
 }
 
+// Test_Session_Middleware_AbandonedWithoutTimeoutKeepsItsObjects abandons the request
+// the way the sse middleware does, with no timeout response. The session is saved
+// as usual, and then neither the middleware nor the session goes back to the pool,
+// where the next request would take them while the handler still holds them.
+func Test_Session_Middleware_AbandonedWithoutTimeoutKeepsItsObjects(t *testing.T) {
+	t.Parallel()
+
+	var (
+		m    *Middleware
+		sess *Session
+	)
+	store := NewStore()
+	app := fiber.New()
+	app.Use(New(Config{Store: store}))
+	app.Get("/stream", func(c fiber.Ctx) error {
+		m = FromContext(c)
+		sess = m.Session
+		m.Set("user", "alice")
+		c.Abandon()
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/stream", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.NotEmpty(t, resp.Header.Get(fiber.HeaderSetCookie), "an abandoned request is still answered with its cookie")
+	stored, err := store.Storage.GetWithContext(context.Background(), store.storageKey(sess.ID()))
+	require.NoError(t, err)
+	require.NotEmpty(t, stored, "and its session is saved")
+
+	require.True(t, m.released.Load(), "the middleware is finished, and not in the pool")
+	require.Equal(t, "alice", sess.Get("user"), "its session is left as it was, not reset for the pool")
+}
+
 // Benchmark_Middleware drives the whole handler, which the store benchmarks do
 // not: it is where the middleware object is acquired, published to the request
 // context and released again.

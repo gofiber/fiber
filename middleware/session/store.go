@@ -299,7 +299,7 @@ func (s *Store) ownedID(key, id string) string {
 func requestIDPublisher(c fiber.Ctx, box *provenanceBox) *Store {
 	if m, ok := c.Locals(middlewareContextKey).(*Middleware); ok && m != nil {
 		// Under the lock: the middleware may be finishing on another goroutine,
-		// as it does when a timeout middleware abandoned the handlers inside it.
+		// as it does when a handler outlives its request.
 		m.mu.RLock()
 		publisher := m.store
 		m.mu.RUnlock()

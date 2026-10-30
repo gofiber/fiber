@@ -48,9 +48,9 @@ type Middleware struct {
 	// so FromContext stops returning it.
 	released atomic.Bool
 	// children counts the middleware that run inside this one and still refer to it
-	// as their parent. Ordinarily each finishes before this one does. A timeout
-	// middleware around the inner one breaks that: this one can finish while the
-	// handlers it abandoned go on running.
+	// as their parent. Ordinarily each finishes before this one does. A middleware
+	// that abandons the request around the inner one breaks that: this one can
+	// finish while the handlers it abandoned go on running.
 	children    atomic.Int32
 	isDestroyed bool
 	// escaped marks a middleware the request context holds, which releaseMiddleware
@@ -277,9 +277,9 @@ func shadowMiddlewareContext(c fiber.Ctx) {
 // own. Code that runs between the two after c.Next() returns, and an explicit
 // Save of the outer session, then still find the middleware that manages it.
 //
-// outer may have finished in the meantime, as it does when a timeout middleware
-// abandons the handlers inside it. It is then left out of the request, whose
-// locals were cleared when it finished. The check and the publication happen
+// outer may have finished in the meantime, as it does when a middleware that
+// abandons the request, such as sse, lets the handlers inside it outlive it. It is
+// then left out of the request, whose locals were cleared when it finished. The check and the publication happen
 // under outer's lock, which its own release takes before it clears them, so one
 // cannot overtake the other.
 func restoreMiddlewareContext(c fiber.Ctx, outer *Middleware) {
@@ -295,9 +295,9 @@ func restoreMiddlewareContext(c fiber.Ctx, outer *Middleware) {
 
 // adopt records that a middleware is about to run inside m, and reports whether
 // it may. It succeeds only while m still serves the request of c: m can have
-// finished, and even been handed to another request, while a handler that a
-// timeout middleware abandoned goes on running. The middleware that was adopted
-// must call unlink when it finishes.
+// finished, and even been handed to another request, while a handler that
+// outlives its request goes on running. The middleware that was adopted must call
+// unlink when it finishes.
 func (m *Middleware) adopt(c fiber.Ctx) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -389,8 +389,8 @@ func (m *Middleware) resolveContext() context.Context {
 }
 
 // requestContext is resolveContext for the callers that may run while the request
-// is ending, as a handler that a timeout middleware abandoned does: release clears
-// the context under the lock, and the read must not tear against that.
+// is ending, as a handler that outlives its request does: release clears the
+// context under the lock, and the read must not tear against that.
 func (m *Middleware) requestContext() context.Context {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -417,9 +417,11 @@ func acquireMiddleware() *Middleware {
 //
 // So is one that other middleware still run inside, since they hold it as their
 // parent, and one whose request context was abandoned: both happen when a
-// timeout middleware lets handlers outlive the middleware around them, and such a
-// handler finds a finished middleware instead of another request's. The session
-// of an abandoned request is not recycled either, for the same reason.
+// middleware that abandons the request, such as sse, lets handlers outlive the
+// middleware around them, and such a handler finds a finished middleware instead
+// of another request's. The session of an abandoned request is not recycled
+// either, for the same reason. A request that the timeout middleware answered
+// itself never gets here: serve leaves it alone, see there.
 //
 // The middleware this one ran inside becomes the current one of the request
 // again, and learns that one fewer runs inside it.
@@ -433,7 +435,7 @@ func acquireMiddleware() *Middleware {
 func releaseMiddleware(m *Middleware) {
 	m.mu.Lock()
 	outer, c, session := m.parent, m.ctx, m.Session
-	// A request whose context was abandoned, as the timeout middleware does, can have
+	// A request whose context was abandoned, as the sse middleware does, can have
 	// handlers still running that hold its middleware and its session: neither goes
 	// back to the pool, or such a handler could find the next request's in its place.
 	abandoned := c != nil && c.IsAbandoned()
@@ -490,12 +492,15 @@ func releaseMiddleware(m *Middleware) {
 // innermost one, the last to run. Use Store.FromContext to reach the middleware
 // of a particular store.
 //
-// The Middleware belongs to its request, as the type documents. A handler that a
-// timeout middleware abandoned gets nil from here once the request ended, and a
-// Middleware it got before stays finished: it is never recycled for another
-// request, but its session is gone, so the methods that use it panic. A goroutine
-// of your own that outlives the handler has no such guarantee: give it the
-// session ID, not the Middleware.
+// The Middleware belongs to its request, as the type documents. A handler that the
+// timeout middleware gave up on keeps its own: the session is neither saved nor
+// recycled, and the handler goes on using it, never another request's. A request
+// abandoned any other way, as the sse middleware does, is saved as usual when its
+// handler returns, and FromContext returns nil for it from then on; a Middleware
+// that a handler still running got before stays finished: it is never recycled
+// for another request, but its session is gone, so the methods that use it panic.
+// A goroutine of your own that outlives the handler has no such guarantee: give it
+// the session ID, not the Middleware.
 //
 // Parameters:
 //   - c: The Fiber context.
