@@ -62,7 +62,8 @@ func (w *invariantWorld) seed(t *testing.T, app *fiber.App, ops []string) map[st
 
 // sendDirect is send without the network round trip app.Test makes: the request goes to
 // the handler of the app as a fasthttp request, which is several times cheaper and what
-// tens of thousands of requests need.
+// tens of thousands of requests need. Every Set-Cookie of the response has to be readable by
+// fasthttp and by net/http, whose reading the checks rely on.
 func (r invariantRequest) sendDirect(t *testing.T, handler fasthttp.RequestHandler) (*http.Response, invariantRecord) {
 	t.Helper()
 
@@ -79,8 +80,13 @@ func (r invariantRequest) sendDirect(t *testing.T, handler fasthttp.RequestHandl
 
 	resp := &http.Response{StatusCode: fctx.Response.StatusCode(), Header: make(http.Header)}
 	for _, raw := range fctx.Response.Header.Cookies() {
+		cookie := fasthttp.AcquireCookie()
+		require.NoError(t, cookie.ParseBytes(raw), "unparsable Set-Cookie %q", raw)
+		fasthttp.ReleaseCookie(cookie)
 		resp.Header.Add("Set-Cookie", string(raw))
 	}
+	// The checks look at the cookies through net/http, which drops one it cannot read: it would escape them.
+	require.Len(t, resp.Cookies(), len(resp.Header.Values("Set-Cookie")), "net/http cannot read a Set-Cookie of the response")
 	resp.Header.Set("X-C", string(fctx.Response.Header.Peek("X-C")))
 
 	var rec invariantRecord

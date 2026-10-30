@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -20,32 +19,6 @@ import (
 
 func init() {
 	gob.Register(map[string]int{})
-}
-
-// The tag alone is a record, a damaged one: a store without a codec treats it as a session that
-// does not exist, and does not hand it to gob, which would fail on it.
-func Test_Record_BareTagIsARecord(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, isRecord([]byte(recordTag)))
-	require.False(t, isRecord([]byte(recordTag)[:len(recordTag)-1]))
-
-	app := fiber.New()
-	mem := memory.New()
-	require.NoError(t, mem.Set(sessionKey("victim"), []byte(recordTag), time.Hour))
-	store := NewStore(Config{Storage: mem})
-
-	sess := loadSession(t, app, store, "victim")
-	require.True(t, sess.Fresh(), "a record the store cannot read is a session that does not exist")
-}
-
-// The longest codec name is part of the format: 255 bytes.
-func Test_Codec_NameIsAtMost255Bytes(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, 255, maxCodecNameLen)
-	require.NotPanics(t, func() { NewCodec(strings.Repeat("a", 255), json.Marshal, json.Unmarshal) })
-	require.Panics(t, func() { NewCodec(strings.Repeat("a", 256), json.Marshal, json.Unmarshal) })
 }
 
 // scribblingCodec overwrites the bytes it is handed once it has decoded them.
@@ -359,25 +332,6 @@ func Test_Middleware_ReadsTakeTheReadLock(t *testing.T) {
 	}
 }
 
-// A record that was read is written back as it is, from the snapshot, without encoding it again.
-func Test_Codec_LoadKeepsTheSnapshotOfTheRecord(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	store := NewStore(Config{Storage: memory.New(), Codec: JSONCodec{}})
-	id := seedSession(t, app, store, func(s *Session) { s.Set("a", 1) })
-
-	sess := loadSession(t, app, store, id)
-	require.NotNil(t, sess.rawData)
-	require.True(t, isRecord(sess.rawData))
-	require.False(t, sess.data.dirty.Load())
-	_ = sess.Get("a")
-	_, _ = GetAs[int](sess, "a")
-	var n int
-	require.NoError(t, sess.GetInto("a", &n))
-	require.False(t, sess.data.dirty.Load(), "a read under a codec never changes the session")
-}
-
 // What decodeRecord cannot read it refuses, whatever the store did before it: a session without a
 // codec, and a record of another codec. A failed decode leaves no entries behind.
 func Test_Session_DecodeRecordRefusesWhatItCannotRead(t *testing.T) {
@@ -480,39 +434,4 @@ func serveGet(app *fiber.App, uri string) int {
 	fctx.Request.SetRequestURI(uri)
 	app.Handler()(fctx)
 	return fctx.Response.StatusCode()
-}
-
-// The bounds of the deadline are the years 1 and 9999, spelled out, not through the constants
-// that define them. The zero time itself, the first nanosecond of the year 1, is no deadline.
-func Test_Record_DeadlineBoundsAreTheYears1To9999(t *testing.T) {
-	t.Parallel()
-
-	for name, tc := range map[string]struct {
-		deadline recordDeadline
-		valid    bool
-	}{
-		"the first second of the year 1, plus a nanosecond": {recordDeadline{sec: -62_135_596_800, nanos: 1, set: true}, true},
-		"the zero time":                        {recordDeadline{sec: -62_135_596_800, set: true}, false},
-		"a second before the year 1":           {recordDeadline{sec: -62_135_596_801, set: true}, false},
-		"the last nanosecond of the year 9999": {recordDeadline{sec: 253_402_300_799, nanos: 999_999_999, set: true}, true},
-		"a second after the year 9999":         {recordDeadline{sec: 253_402_300_800, set: true}, false},
-		"a billion nanoseconds":                {recordDeadline{sec: 1, nanos: 1_000_000_000, set: true}, false},
-		"no deadline":                          {recordDeadline{}, true},
-		"no deadline with seconds":             {recordDeadline{sec: 1}, false},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			require.Equal(t, tc.valid, tc.deadline.valid())
-			encoded, err := appendRecord(nil, "json", tc.deadline, nil)
-			if !tc.valid {
-				require.ErrorIs(t, err, errInvalidRecord)
-				return
-			}
-			require.NoError(t, err)
-			header, _, err := collectRecord(encoded)
-			require.NoError(t, err)
-			require.Equal(t, tc.deadline, header.deadline)
-		})
-	}
 }

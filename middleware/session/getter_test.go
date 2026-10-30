@@ -122,6 +122,8 @@ func Test_GetAs(t *testing.T) {
 		require.Equal(t, 5, value)
 		_, ok = GetAs[int](mapReader{}, "k")
 		require.False(t, ok)
+		_, ok = GetAs[int](mapReader{"k": "five"}, "k")
+		require.False(t, ok, "a value of another type is not found either")
 	})
 }
 

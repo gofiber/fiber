@@ -57,48 +57,6 @@ func digestOf(id string) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
-func Test_Store_StorageKey(t *testing.T) {
-	t.Parallel()
-
-	t.Run("the ID behind the namespace by default", func(t *testing.T) {
-		t.Parallel()
-		require.Equal(t, storageKeyPrefix+"abc", NewStore().storageKey("abc"))
-	})
-
-	t.Run("with a prefix", func(t *testing.T) {
-		t.Parallel()
-		require.Equal(t, "app:"+storageKeyPrefix+"abc", NewStore(Config{StorageKeyPrefix: "app:"}).storageKey("abc"))
-	})
-
-	t.Run("hashed", func(t *testing.T) {
-		t.Parallel()
-		key := NewStore(Config{HashStorageKeys: true}).storageKey("abc")
-		require.Equal(t, storageKeyPrefix+digestOf("abc"), key)
-		require.Len(t, key, len(storageKeyPrefix)+hashedKeyLen)
-		require.NotContains(t, key, "abc")
-	})
-
-	t.Run("hashed with a prefix", func(t *testing.T) {
-		t.Parallel()
-		key := NewStore(Config{HashStorageKeys: true, StorageKeyPrefix: "app:"}).storageKey("abc")
-		require.Equal(t, "app:"+storageKeyPrefix+digestOf("abc"), key)
-	})
-
-	t.Run("the digest length constant matches the encoding", func(t *testing.T) {
-		t.Parallel()
-		require.Equal(t, hashedKeyLen, base64.RawURLEncoding.EncodedLen(sha256.Size))
-	})
-
-	t.Run("distinct IDs get distinct keys and one ID always the same", func(t *testing.T) {
-		t.Parallel()
-		store := NewStore(Config{HashStorageKeys: true})
-		first, again := store.storageKey("a"), store.storageKey("a")
-		require.Equal(t, first, again)
-		require.NotEqual(t, first, store.storageKey("b"))
-		require.NotEqual(t, first, store.storageKey("A"))
-	})
-}
-
 // testing.AllocsPerRun panics in a parallel test, so this one stays sequential.
 func Test_Store_StorageKey_Allocations(t *testing.T) {
 	id := "wuyjDTdyBzOvL4mUnQ6qiM0nsSYUdyAxnXn0X2VgbX4"

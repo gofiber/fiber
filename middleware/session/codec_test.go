@@ -186,6 +186,9 @@ func Test_Codec_ReadsDecodeIntoFreshValues(t *testing.T) {
 	store := NewStore(Config{Codec: JSONCodec{}})
 	id := seedSession(t, app, store, func(s *Session) { s.Set("list", []string{"a", "b"}) })
 	sess := loadSession(t, app, store, id)
+	require.NotNil(t, sess.rawData, "a record that was read is written back as it is, from the snapshot")
+	require.True(t, isRecord(sess.rawData))
+	require.False(t, sess.data.dirty.Load())
 
 	first, ok := GetAs[[]string](sess, "list")
 	require.True(t, ok)
@@ -196,7 +199,10 @@ func Test_Codec_ReadsDecodeIntoFreshValues(t *testing.T) {
 	require.Equal(t, []string{"a", "b"}, second, "a value read does not alias the session")
 
 	// And a read that cannot change the session leaves it unchanged, so a save writes the snapshot back.
-	require.False(t, sess.data.dirty.Load())
+	_ = sess.Get("list")
+	var viaInto []string
+	require.NoError(t, sess.GetInto("list", &viaInto))
+	require.False(t, sess.data.dirty.Load(), "a read under a codec never changes the session")
 }
 
 func Test_Codec_SetStoresASnapshot(t *testing.T) {
@@ -812,6 +818,7 @@ func Test_Codec_ConfigErrors(t *testing.T) {
 	require.Panics(t, func() { NewCodec("", json.Marshal, json.Unmarshal) })
 	require.Panics(t, func() { NewCodec("x", nil, json.Unmarshal) })
 	require.Panics(t, func() { NewCodec("x", json.Marshal, nil) })
+	require.Equal(t, 255, maxCodecNameLen, "the longest name is part of the format")
 	require.NotPanics(t, func() { NewCodec(string(make([]byte, maxCodecNameLen)), json.Marshal, json.Unmarshal) })
 	require.Panics(t, func() { NewCodec(string(make([]byte, maxCodecNameLen+1)), json.Marshal, json.Unmarshal) })
 
@@ -832,35 +839,6 @@ func (nameless) Name() string { return "" }
 type longName struct{ JSONCodec }
 
 func (longName) Name() string { return string(make([]byte, maxCodecNameLen+1)) }
-
-// Not parallel: the log output is process-global, so this test captures it.
-func Test_Config_CodecStoreOptionWarning(t *testing.T) {
-	withCodec := NewStore(Config{Codec: JSONCodec{}})
-	plain := NewStore()
-
-	for _, tc := range []struct {
-		name string
-		cfg  Config
-		warn bool
-	}{
-		{name: "the codec is the store's own", cfg: Config{Store: withCodec}},
-		{name: "the same codec on both", cfg: Config{Store: withCodec, Codec: JSONCodec{}}},
-		{name: "a codec asked of the middleware only", cfg: Config{Store: plain, Codec: JSONCodec{}}, warn: true},
-		{name: "another codec on the middleware", cfg: Config{Store: withCodec, Codec: NewCodec("other", json.Marshal, json.Unmarshal)}, warn: true},
-		{name: "no store, the codec is the middleware's", cfg: Config{Codec: JSONCodec{}}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			buf := loggertest.CaptureContextLog(t, "")
-			New(tc.cfg)
-			if !tc.warn {
-				require.Empty(t, buf.String())
-				return
-			}
-			require.Equal(t, 1, bytes.Count(buf.Bytes(), []byte("[Warn]")), "one warning: %q", buf.String())
-			require.Contains(t, buf.String(), "Codec is taken from Config.Store")
-		})
-	}
-}
 
 func Test_Session_GetInto_WithoutCodec(t *testing.T) {
 	t.Parallel()
@@ -942,25 +920,6 @@ func Test_Session_GetInto_WithoutCodec(t *testing.T) {
 		require.Equal(t, []string{"a"}, list)
 		require.True(t, own.data.dirty.Load())
 	})
-}
-
-func Test_GetAs_WithAnyReader(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, 5, mustGetAs[int](t, readerFunc(func(any) any { return 5 })))
-	_, ok := GetAs[int](readerFunc(func(any) any { return "five" }), "k")
-	require.False(t, ok)
-}
-
-type readerFunc func(key any) any
-
-func (f readerFunc) Get(key any) any { return f(key) }
-
-func mustGetAs[V any](t *testing.T, src interface{ Get(key any) any }) V {
-	t.Helper()
-	v, ok := GetAs[V](src, "k")
-	require.True(t, ok)
-	return v
 }
 
 func Test_Codec_ErrorsNamePortableCauses(t *testing.T) {

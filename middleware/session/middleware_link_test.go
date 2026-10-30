@@ -55,7 +55,8 @@ func Test_Session_Middleware_NestedLinkIsBalanced(t *testing.T) {
 	// without a parallel test having taken it from the pool in the meantime.
 	inner.escaped = true
 	releaseMiddleware(inner)
-	require.Nil(t, inner.parent, "a finished middleware keeps no link")
+	require.True(t, inner.released.Load())
+	require.Nil(t, inner.parent, "a finished middleware keeps no link, so one the request context still holds cannot lead to an object that went back to the pool")
 	require.Nil(t, inner.Session)
 	require.Zero(t, outer.children.Load(), "and the outer one is not counted as having it inside any more")
 	require.Same(t, outer, c.Locals(middlewareContextKey), "the outer middleware is current again")

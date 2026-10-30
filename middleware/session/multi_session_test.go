@@ -678,26 +678,6 @@ func Test_Session_MultipleStores_NextSkipsOnlyItsOwn(t *testing.T) {
 	require.Contains(t, cookiesByName(resp), "b_sid")
 }
 
-// releaseMiddleware drops the link to the outer middleware, so one the request
-// context still holds cannot lead to an object that went back to the pool.
-func Test_Session_ReleaseMiddleware_DropsParent(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-
-	outer := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
-	inner := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("b_sid")}))
-	require.Same(t, outer, inner.parent)
-	inner.escaped = true
-
-	releaseMiddleware(inner)
-	require.True(t, inner.released.Load())
-	require.Nil(t, inner.parent)
-	releaseMiddleware(outer)
-}
-
 // Many requests at once through two nested middleware: nothing leaks from one
 // request's sessions into another's. Run with -race.
 func Test_Session_MultipleStores_Concurrent(t *testing.T) {

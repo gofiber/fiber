@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
@@ -32,35 +33,64 @@ func mustAppendRecord(tb testing.TB, codec string, deadline recordDeadline, entr
 	return b
 }
 
+// The bounds of the deadline of a record are the years 1 and 9999. They are spelled out here and
+// not written through the constants that define them.
+const (
+	zeroTimeSec = -62_135_596_800 // the zero time: the first second of the year 1
+	lastSec     = 253_402_300_799 // the last second of the year 9999
+)
+
+// A record of every shape is written into a buffer of exactly its size, follows the bytes it is
+// appended to, reads back as what it was made of and has one spelling. The shapes are the edges of
+// the varints (sizes, counts, lengths of names) and of the deadline (the years 1 and 9999).
 func Test_Record_RoundTrip(t *testing.T) {
 	t.Parallel()
 
+	// Each key is a prefix of the next one, which puts them in ascending order.
+	var sizes []recordEntry
+	for _, size := range []int{0, 1, 127, 128, 16_383, 16_384} {
+		sizes = append(sizes, recordEntry{key: strings.Repeat("k", size), value: bytes.Repeat([]byte("v"), size)})
+	}
+	many := make([]recordEntry, 0, 130)
+	for i := range 130 {
+		many = append(many, recordEntry{key: fmt.Sprintf("%03d", i), value: []byte{byte(i)}})
+	}
+
 	cases := []struct {
 		name     string
+		codec    string // "json" when empty
 		entries  []recordEntry
 		deadline recordDeadline
 	}{
-		{name: "empty"},
+		{name: "empty", codec: "j"},
 		{name: "one entry", entries: []recordEntry{{key: "a", value: []byte("1")}}},
 		{name: "empty key and value", entries: []recordEntry{{key: "", value: []byte{}}, {key: "a", value: []byte{}}}},
 		{name: "binary", entries: []recordEntry{{key: "\x00\xff", value: []byte{0, 1, 2, 255}}, {key: "\xff", value: []byte{0}}}},
+		{name: "sizes at the edges of the varints", entries: sizes},
+		{name: "count at the edge of a varint", entries: many[:127]},
+		{name: "count past the edge of a varint", entries: many},
+		{name: "long value", entries: []recordEntry{{key: "k", value: bytes.Repeat([]byte("x"), 70_000)}}},
+		{name: "long name", codec: strings.Repeat("n", 128)},
+		{name: "longest name", codec: strings.Repeat("n", maxCodecNameLen)},
 		{name: "deadline", deadline: recordDeadline{sec: 1_700_000_000, nanos: 999_999_999, set: true}},
 		{name: "deadline at the epoch", deadline: recordDeadline{set: true}},
-		{name: "deadline before the epoch", deadline: recordDeadline{sec: minDeadlineSec + 1, set: true}},
-		{name: "deadline at the last second of the year 9999", deadline: recordDeadline{sec: maxDeadlineSec, nanos: 999_999_999, set: true}},
-		{name: "deadline a nanosecond after the zero time", deadline: recordDeadline{sec: minDeadlineSec, nanos: 1, set: true}},
-		{name: "long value", entries: []recordEntry{{key: "k", value: bytes.Repeat([]byte("x"), 70_000)}}},
+		{name: "deadline before the epoch", deadline: recordDeadline{sec: -1, nanos: 1, set: true}},
+		{name: "a second after the zero time", deadline: recordDeadline{sec: zeroTimeSec + 1, set: true}},
+		{name: "first deadline: a nanosecond after the zero time", deadline: recordDeadline{sec: zeroTimeSec, nanos: 1, set: true}},
+		{name: "last deadline: the last nanosecond of the year 9999", deadline: recordDeadline{sec: lastSec, nanos: 999_999_999, set: true}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			encoded := mustAppendRecord(t, "json", tc.deadline, tc.entries)
+			codec := cmp.Or(tc.codec, "json")
+			encoded := mustAppendRecord(t, codec, tc.deadline, tc.entries)
 			require.True(t, isRecord(encoded))
+			require.Equal(t, len(encoded), cap(encoded), "no growth, and no spare room that a storage which keeps the slice would hold on to")
 
 			h, entries, err := collectRecord(encoded)
 			require.NoError(t, err)
-			require.Equal(t, "json", string(h.codec))
+			require.Equal(t, codec, string(h.codec))
 			require.Equal(t, tc.deadline, h.deadline)
 			require.Len(t, entries, len(tc.entries))
 			for i := range entries {
@@ -69,22 +99,17 @@ func Test_Record_RoundTrip(t *testing.T) {
 			}
 
 			// One record has one spelling.
-			again := mustAppendRecord(t, "json", h.deadline, entries)
+			again := mustAppendRecord(t, codec, h.deadline, entries)
 			require.Equal(t, encoded, again)
+
+			// Appended to bytes that are there already, the record follows them as it is.
+			prefix := []byte("prefix")
+			out, err := appendRecord(slices.Clone(prefix), codec, tc.deadline, tc.entries)
+			require.NoError(t, err)
+			require.Equal(t, prefix, out[:len(prefix)])
+			require.Equal(t, encoded, out[len(prefix):])
 		})
 	}
-}
-
-func Test_Record_AppendKeepsThePrefix(t *testing.T) {
-	t.Parallel()
-
-	prefix := []byte("prefix")
-	out, err := appendRecord(slices.Clone(prefix), "json", recordDeadline{}, []recordEntry{{key: "a", value: []byte("b")}})
-	require.NoError(t, err)
-	require.Equal(t, prefix, out[:len(prefix)])
-
-	_, _, err = collectRecord(out[len(prefix):])
-	require.NoError(t, err)
 }
 
 // uvarintLen and zigzag size the buffer of appendRecord, so they have to agree with
@@ -111,49 +136,6 @@ func Test_Record_VarintSizes(t *testing.T) {
 	}
 }
 
-// A record is written into a buffer of exactly its length: no growth, no spare room
-// that a storage which keeps the slice would hold on to.
-func Test_Record_AppendReservesExactly(t *testing.T) {
-	t.Parallel()
-
-	// Each key is a prefix of the next one, which puts them in ascending order.
-	sizes := []int{0, 1, 127, 128, 16_383, 16_384}
-	var entries []recordEntry
-	for _, size := range sizes {
-		entries = append(entries, recordEntry{key: strings.Repeat("k", size), value: bytes.Repeat([]byte("v"), size)})
-	}
-	many := make([]recordEntry, 0, 130)
-	for i := range 130 {
-		many = append(many, recordEntry{key: fmt.Sprintf("%03d", i), value: []byte{byte(i)}})
-	}
-
-	for _, tc := range []struct {
-		name     string
-		codec    string
-		entries  []recordEntry
-		deadline recordDeadline
-	}{
-		{name: "empty", codec: "j"},
-		{name: "sizes at the edges of the varints", codec: "json", entries: entries},
-		{name: "count at the edge of a varint", codec: "json", entries: many[:127]},
-		{name: "count past the edge of a varint", codec: "json", entries: many},
-		{name: "long name", codec: strings.Repeat("n", 128)},
-		{name: "longest name", codec: strings.Repeat("n", maxCodecNameLen)},
-		{name: "deadline", codec: "json", deadline: recordDeadline{sec: 1_700_000_000, nanos: 999_999_999, set: true}},
-		{name: "deadline at the epoch", codec: "json", deadline: recordDeadline{set: true}},
-		{name: "deadline before the epoch", codec: "json", deadline: recordDeadline{sec: -1, nanos: 1, set: true}},
-		{name: "first deadline", codec: "json", deadline: recordDeadline{sec: minDeadlineSec, nanos: 1, set: true}},
-		{name: "last deadline", codec: "json", deadline: recordDeadline{sec: maxDeadlineSec, nanos: 999_999_999, set: true}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			out := mustAppendRecord(t, tc.codec, tc.deadline, tc.entries)
-			require.Equal(t, len(out), cap(out))
-		})
-	}
-}
-
 func Test_Record_AppendRefusesWhatItCannotParse(t *testing.T) {
 	t.Parallel()
 
@@ -167,11 +149,11 @@ func Test_Record_AppendRefusesWhatItCannotParse(t *testing.T) {
 		"long codec":                   {codec: strings.Repeat("c", maxCodecNameLen+1)},
 		"unsorted keys":                {codec: "c", entries: []recordEntry{{key: "b"}, {key: "a"}}},
 		"duplicate keys":               {codec: "c", entries: []recordEntry{{key: "a"}, {key: "a"}}},
-		"nanoseconds too big":          {codec: "c", deadline: recordDeadline{set: true, nanos: nanosPerSecond}},
-		"deadline after the year 9999": {codec: "c", deadline: recordDeadline{set: true, sec: maxDeadlineSec + 1}},
-		"deadline before the year 1":   {codec: "c", deadline: recordDeadline{set: true, sec: minDeadlineSec - 1}},
+		"nanoseconds too big":          {codec: "c", deadline: recordDeadline{set: true, nanos: 1_000_000_000}},
+		"deadline after the year 9999": {codec: "c", deadline: recordDeadline{set: true, sec: lastSec + 1}},
+		"deadline before the year 1":   {codec: "c", deadline: recordDeadline{set: true, sec: zeroTimeSec - 1}},
 		"deadline that wraps":          {codec: "c", deadline: recordDeadline{set: true, sec: math.MaxInt64}},
-		"the zero time":                {codec: "c", deadline: recordDeadline{set: true, sec: minDeadlineSec}},
+		"the zero time":                {codec: "c", deadline: recordDeadline{set: true, sec: zeroTimeSec}},
 		"seconds without a deadline":   {codec: "c", deadline: recordDeadline{sec: 5}},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -182,10 +164,6 @@ func Test_Record_AppendRefusesWhatItCannotParse(t *testing.T) {
 			require.Equal(t, dst, out)
 		})
 	}
-
-	// The longest name is fine.
-	_, err := appendRecord(nil, strings.Repeat("c", maxCodecNameLen), recordDeadline{}, nil)
-	require.NoError(t, err)
 }
 
 // Every proper prefix of a record is refused, and so is the record with a byte
@@ -285,6 +263,10 @@ func Test_Record_GobStreamsDoNotLookLikeRecords(t *testing.T) {
 		require.NotEqual(t, testRecordMagic[0], buf.Bytes()[0])
 		require.False(t, isRecord(buf.Bytes()))
 	}
+
+	// The tag alone is a record, a damaged one; a byte less is not one.
+	require.True(t, isRecord([]byte(recordTag)))
+	require.False(t, isRecord([]byte(recordTag)[:len(recordTag)-1]))
 }
 
 func Fuzz_Record_Parse(f *testing.F) {

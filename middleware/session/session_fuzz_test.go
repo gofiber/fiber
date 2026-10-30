@@ -1,14 +1,11 @@
 package session
 
 import (
-	"encoding/json"
-	"slices"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 // base64URLAlphabet is what a hashed storage key is made of after its prefix.
@@ -47,9 +44,9 @@ func Fuzz_Store_StorageKey(f *testing.F) {
 }
 
 // Arbitrary bytes in the cookies and the header of a request, for stores over several
-// cookies and a header, never panic the middleware, never make it write a session ID
-// to a cookie that no store of that ID reads, and never make a new session take what
-// the client sent.
+// cookies and a header, never panic the middleware and never break a property of the
+// invariant world: a new session never takes what the client sent, an ID is only written
+// to a cookie or header that a store which owns it reads, and the rest of what check holds.
 func Fuzz_Session_ClientInput(f *testing.F) {
 	f.Add("", "", "", "")
 	f.Add("a", "b", "c", "d")
@@ -63,71 +60,17 @@ func Fuzz_Session_ClientInput(f *testing.F) {
 		// runs.
 		w := newInvariantWorld(1)
 		t.Cleanup(func() { w.shutdown(t) })
-		app := fiber.New()
-		app.Get("/", func(c fiber.Ctx) error {
-			var rec invariantRecord
-			for name := range strings.SplitSeq(c.Query("ops"), ",") {
-				sess, err := w.stores[name].Get(c)
-				if err != nil {
-					return err
-				}
-				sess.Set("n", 1)
-				if err := sess.Save(); err != nil {
-					sess.Release()
-					return err
-				}
-				rec.Sessions = append(rec.Sessions, invariantSession{Store: name, ID: sess.ID(), Fresh: sess.Fresh()})
-				sess.Release()
-			}
-			return c.JSON(rec)
-		})
-		handler := app.Handler()
+		app := w.storeAPIApp()
 
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.Header.SetMethod(fiber.MethodGet)
-		fctx.Request.SetRequestURI("/?ops=A,B,C,A2,B")
-		fctx.Request.Header.SetCookie("a_sid", a)
-		fctx.Request.Header.SetCookie("b_sid", b)
-		fctx.Request.Header.SetCookie("c_sid", c)
-		fctx.Request.Header.Set("X-C", header)
-
-		handler(fctx)
-		if fctx.Response.StatusCode() != fiber.StatusOK {
+		req := invariantRequest{
+			cookies: map[string]string{"a_sid": a, "b_sid": b, "c_sid": c},
+			header:  header,
+			ops:     []string{"A", "B", "C", "A2", "B"},
+		}
+		resp, rec := req.sendDirect(t, app.Handler())
+		if resp.StatusCode != fiber.StatusOK {
 			return
 		}
-
-		var rec invariantRecord
-		require.NoError(t, json.Unmarshal(fctx.Response.Body(), &rec))
-		supplied := map[string]bool{a: true, b: true, c: true, header: true}
-		owned := make(map[string]map[string]bool) // store -> IDs
-		for _, s := range rec.Sessions {
-			if owned[s.Store] == nil {
-				owned[s.Store] = make(map[string]bool)
-			}
-			owned[s.Store][s.ID] = true
-			if s.Fresh {
-				require.False(t, supplied[s.ID], "a new session of %s took the ID the client sent", s.Store)
-			}
-		}
-		reads := func(cookie, value string) bool {
-			for store, ids := range owned {
-				if !ids[value] {
-					continue
-				}
-				if slices.Contains(w.stores[store].cookies, cookie) {
-					return true
-				}
-			}
-			return false
-		}
-		for _, raw := range fctx.Response.Header.Cookies() {
-			cookie := fasthttp.AcquireCookie()
-			if err := cookie.ParseBytes(raw); err != nil {
-				t.Errorf("unparsable Set-Cookie %q: %v", raw, err)
-			} else if !reads(string(cookie.Key()), string(cookie.Value())) {
-				t.Errorf("cookie %s=%q was written, but no store reading it owns that ID", cookie.Key(), cookie.Value())
-			}
-			fasthttp.ReleaseCookie(cookie)
-		}
+		w.check(t, 0, req, resp, rec)
 	})
 }

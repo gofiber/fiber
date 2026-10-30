@@ -296,22 +296,6 @@ func Test_Session_Store_WithoutSinksSharesWithEveryStore(t *testing.T) {
 	require.Empty(t, resp.Cookies(), "no cookie is set for an ID that came from a source that cannot be written back")
 }
 
-// Header names are case-insensitive, so stores over X-Sid and x-sid read one
-// header and share the session of a new visitor; a cookie and a header of one name
-// are two places and do not.
-func Test_Store_SharesSource_HeaderNamesAreCaseInsensitive(t *testing.T) {
-	t.Parallel()
-
-	byHeader := NewStore(Config{Extractor: extractors.FromHeader("X-Sid")})
-	require.True(t, byHeader.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("x-sid")})))
-	require.False(t, byHeader.sharesSource(NewStore(Config{Extractor: extractors.FromCookie("X-Sid")})), "a cookie is not a header")
-	require.False(t, byHeader.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("X-Other")})))
-
-	byCookie := NewStore(Config{Extractor: extractors.FromCookie("sid")})
-	require.False(t, byCookie.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("sid")})), "a cookie and a header of one name are two places")
-	require.False(t, byCookie.sharesSource(NewStore(Config{Extractor: extractors.FromCookie("SID")})), "cookie names are case-sensitive")
-}
-
 // Config is embedded, so its fields can be assigned after NewStore. A store whose
 // Extractor was replaced writes the ID to, and shares with, what it reads now.
 func Test_Store_ExtractorReplacedAfterNewStore(t *testing.T) {
@@ -336,6 +320,7 @@ func Test_Store_ExtractorReplacedAfterNewStore(t *testing.T) {
 
 	require.True(t, store.sharesSource(NewStore(Config{Extractor: extractors.FromCookie("b_sid")})))
 	require.False(t, store.sharesSource(NewStore(Config{Extractor: extractors.FromCookie("a_sid")})))
+	require.False(t, store.sharesSource(NewStore(Config{Extractor: extractors.FromCookie("B_SID")})), "cookie names are case-sensitive")
 
 	store.Extractor = extractors.Chain(extractors.FromCookie("c_sid"), extractors.FromHeader("X-C"))
 	require.Equal(t, []string{"cookie:c_sid", "header:X-C"}, sinkNames(store.writableSinks()))

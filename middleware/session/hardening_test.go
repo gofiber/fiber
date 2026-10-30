@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -299,6 +300,7 @@ func Test_Config_CookiePrefixWarnings(t *testing.T) {
 func Test_Config_StoreOptionWarnings(t *testing.T) {
 	hashed := NewStore(Config{HashStorageKeys: true, StorageKeyPrefix: "app:"})
 	skipping := NewStore(Config{SkipEmptySessions: true})
+	withCodec := NewStore(Config{Codec: JSONCodec{}})
 	plain := NewStore()
 
 	for _, tc := range []struct {
@@ -315,6 +317,11 @@ func Test_Config_StoreOptionWarnings(t *testing.T) {
 		{name: "skipping asked of the store only", cfg: Config{Store: skipping}, want: []string{"SkipEmptySessions is taken from the Config of the middleware"}},
 		{name: "skipping asked of the middleware", cfg: Config{Store: plain, SkipEmptySessions: true}},
 		{name: "skipping asked of both", cfg: Config{Store: skipping, SkipEmptySessions: true}},
+		{name: "the codec is the store's own", cfg: Config{Store: withCodec}},
+		{name: "the same codec on both", cfg: Config{Store: withCodec, Codec: JSONCodec{}}},
+		{name: "a codec asked of the middleware only", cfg: Config{Store: plain, Codec: JSONCodec{}}, want: []string{"Codec is taken from Config.Store"}},
+		{name: "another codec on the middleware", cfg: Config{Store: withCodec, Codec: NewCodec("other", json.Marshal, json.Unmarshal)}, want: []string{"Codec is taken from Config.Store"}},
+		{name: "no store, the codec is the middleware's", cfg: Config{Codec: JSONCodec{}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := loggertest.CaptureContextLog(t, "")
