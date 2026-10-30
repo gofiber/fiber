@@ -1611,6 +1611,10 @@ Returns the HTTP request header specified by the field. `Res` has a `Get` as wel
 The match is **case-insensitive**.
 :::
 
+:::note
+Only the header section is read. Fiber drops the trailer section of a request (the fields a chunked request sends after its last chunk) and the `Trailer` field announcing it as the request arrives, which [RFC 9112 Section 7.1.2](https://www.rfc-editor.org/rfc/rfc9112#section-7.1.2) permits, so `Get`, `GetAll`, `HasHeader` and the other request header helpers never return such a field, and a header your code writes under one of its names is returned like any other. A request that names more than 16 trailer fields before the handlers run is refused with `431 Request Header Fields Too Large`. With [`StreamRequestBody`](fiber.md#streamrequestbody), the trailer section arrives only at the end of the body, and Fiber drops it once the body has been read, which also empties `c.Request().Header.RawHeaders()` when the section holds a field. When it names more than 16 fields, reading the body also fails with `ErrRequestHeaderFieldsTooLarge` (`c.Body()` then holds the error text), and the section is dropped all the same.
+:::
+
 ```go title="Signature"
 func (c fiber.Ctx) Get(key string, defaultValue ...string) string
 func (r fiber.Req) Get(key string, defaultValue ...string) string
@@ -1846,9 +1850,9 @@ By default, `c.IP()` returns the remote IP address from the TCP connection. When
 
 **Important:** You must enable `TrustProxy` and configure trusted proxy IPs to prevent header spoofing. Simply setting `ProxyHeader` alone will not work.
 
-**Note:** When using a proxy header such as `X-Forwarded-For`, `c.IP()` returns the raw header value unless [`EnableIPValidation`](fiber.md#enableipvalidation) is enabled. A header sent on several field lines is read as one comma-joined list ([RFC 9110 Section 5.2](https://www.rfc-editor.org/rfc/rfc9110#section-5.2)), so the raw value and the chain walk below see every proxy's entry whichever line carries it. Without validation, an absent or empty header gives an empty string rather than the TCP remote address. Enable it whenever `c.IP()` is used as a single client identifier, for example by the [limiter](../middleware/limiter.md) middleware or an IP allowlist, unless your proxy overwrites the header with a single address: otherwise the raw value can be a comma-separated chain whose leading entries are supplied by the client.
+**Note:** When using a proxy header such as `X-Forwarded-For`, `c.IP()` returns the raw header value unless [`EnableIPValidation`](fiber.md#enableipvalidation) is enabled. A header sent on several field lines is read as one comma-joined list in the order the lines were received ([RFC 9110 Section 5.2](https://www.rfc-editor.org/rfc/rfc9110#section-5.2)), so the raw value and the chain walk below see every proxy's entry whichever line carries it. Without validation, an absent or empty header gives an empty string rather than the TCP remote address. Enable it whenever `c.IP()` is used as a single client identifier, for example by the [limiter](../middleware/limiter.md) middleware or an IP allowlist, unless your proxy overwrites the header with a single address: otherwise the raw value can be a comma-separated chain whose leading entries are supplied by the client.
 
-**Chain parsing with `EnableIPValidation`:** For `X-Forwarded-For`, the raw value is a comma-separated chain that grows from left to right as the request passes through each proxy. With validation enabled, `c.IP()` walks the chain from right to left, skipping every IP that matches the configured `TrustProxyConfig` (exact IPs, CIDR ranges, loopback, private or link-local) and returns the first non-trusted IP it finds. This matches the behavior recommended by [MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) and the convention used by Nginx (`set_real_ip_from` + `real_ip_recursive`), Apache `mod_remoteip`, and Envoy (`xff_num_trusted_hops`).
+**Chain parsing with `EnableIPValidation`:** For `X-Forwarded-For`, the raw value is a comma-separated chain that grows from left to right as the request passes through each proxy. With validation enabled, `c.IP()` walks the chain from right to left, skipping every IP that matches the configured `TrustProxyConfig` (exact IPs, CIDR ranges, loopback, private or link-local) and returns the first non-trusted IP it finds. An entry that is not an IP address, such as `203.0.113.50:51234` or `unknown`, ends the walk like a non-trusted IP, because no trusted proxy wrote it and so nothing to its left can be trusted: `c.IP()` then returns the last trusted proxy it passed, or the TCP remote address. Configure a proxy that appends `IP:port` entries to send the bare address. This matches the behavior recommended by [MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) and the convention used by Nginx (`set_real_ip_from` + `real_ip_recursive`), Apache `mod_remoteip`, and Envoy (`xff_num_trusted_hops`).
 
 If every IP in the chain matches the trusted set, the leftmost IP is returned as a fallback. Trust only your proxies: blanket `Private`, `Loopback` or `LinkLocal` trust is unsafe when clients can also connect from those ranges, because such a client's own entry is skipped and the address it supplied is returned instead; prefer exact proxy addresses or ranges that exclude client networks, or have the proxy overwrite the header. When `TrustProxyConfig` trusts only `UnixSocket`, there are no proxy IPs to skip and the first valid IP from the left is returned. If the chain is empty, `c.IP()` falls back to the TCP remote address.
 :::
@@ -2713,9 +2717,13 @@ forwarding headers (`X-Forwarded-Proto`, `X-Forwarded-Protocol`,
 ignored rather than passed through — the result is spliced into
 [`BaseURL`](#baseurl) and compared for origin equality by CSRF and
 `Redirect().Back()`, so a header announcing, say, `javascript` must not become
-part of a URL. The first value of a comma-separated `X-Forwarded-Proto` or
-`X-Forwarded-Protocol` list is the one used. A proxy that terminates a different
-protocol should send the scheme the client used to reach it.
+part of a URL. The headers are ranked in the order listed rather than read in
+the order they arrive: `X-Forwarded-Proto`, the one a reverse proxy sets, wins
+over the other three, which a proxy usually passes through from the client. When
+one header is sent on several lines, the last line received wins. The first
+value of a comma-separated `X-Forwarded-Proto` or `X-Forwarded-Protocol` list is
+the one used. A proxy that terminates a different protocol should send the
+scheme the client used to reach it.
 
 :::
 

@@ -1,16 +1,20 @@
 package proxy
 
 import (
+	"bufio"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/valyala/fasthttp"
 )
 
@@ -155,6 +159,28 @@ func BenchmarkStripHopByHop_WithConnection(b *testing.B) {
 		seedWithConnectionRequest(req)
 		b.StartTimer()
 		stripHopByHopRequestHeaders(req, true)
+	}
+}
+
+// BenchmarkKeepForwardingOrder_ManyRepeated measures the order step on the most forwarding lines it takes on,
+// each name on two lines and moved by a removed line, copying the header included.
+func BenchmarkKeepForwardingOrder_ManyRepeated(b *testing.B) {
+	var raw strings.Builder
+	fmt.Fprint(&raw, "GET / HTTP/1.1\r\nHost: example.com\r\nX-Junk: 1\r\n")
+	for i := range fieldname.MaxOrderedLines {
+		fmt.Fprintf(&raw, "X-Forwarded-%d: v%d\r\n", i%(fieldname.MaxOrderedLines/2), i)
+	}
+	var src, req fasthttp.Request
+	if err := src.Read(bufio.NewReader(strings.NewReader(raw.String() + "\r\n"))); err != nil {
+		b.Fatal(err)
+	}
+	src.Header.Del("X-Junk")
+	b.ReportAllocs()
+	for b.Loop() {
+		src.Header.CopyTo(&req.Header)
+		if !keepForwardingOrder(&req) {
+			b.Fatal("refused")
+		}
 	}
 }
 
@@ -316,6 +342,43 @@ func BenchmarkBalancer_ProxyPath(b *testing.B) {
 	app := fiber.New()
 	app.Use(Balancer(Config{Client: lbc}))
 	benchProxyPath(b, app, "api.example", "/v1/widgets?q=1")
+}
+
+// BenchmarkBalancer_ProxyPath_ForwardingLines measures Balancer on a request off the wire whose strip moves a
+// forwarding line, so the order step rewrites the lines.
+func BenchmarkBalancer_ProxyPath_ForwardingLines(b *testing.B) {
+	lbc := &fasthttp.LBClient{
+		Timeout: time.Second,
+		Clients: []fasthttp.BalancingClient{
+			&fasthttp.HostClient{Addr: "203.0.113.5:8080", Transport: noopRoundTripper{}},
+		},
+	}
+	app := fiber.New(fiber.Config{
+		ProxyHeader:        fiber.HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig:   fiber.TrustProxyConfig{Proxies: []string{"203.0.113.9"}},
+	})
+	app.Use(Balancer(Config{Client: lbc}))
+
+	var req fasthttp.Request
+	if err := req.Read(bufio.NewReader(strings.NewReader("GET /v1/widgets?q=1 HTTP/1.1\r\nHost: api.example\r\n" +
+		"Connection: X-Junk\r\nX-Junk: 1\r\nX-Forwarded-For: 198.51.100.7\r\nX-Forwarded-Proto: http\r\n" +
+		"X-Forwarded-For: 203.0.113.9\r\nX-Forwarded-Proto: https\r\n\r\n"))); err != nil {
+		b.Fatal(err)
+	}
+	handler := app.Handler()
+	remote := &net.TCPAddr{IP: net.IPv4(203, 0, 113, 9), Port: 40000}
+
+	var fctx fasthttp.RequestCtx
+	b.ReportAllocs()
+	for b.Loop() {
+		fctx.Init(&req, remote, nil)
+		handler(&fctx)
+		if got := fctx.Response.StatusCode(); got != fasthttp.StatusNoContent {
+			b.Fatalf("status = %d, want %d", got, fasthttp.StatusNoContent)
+		}
+	}
 }
 
 // BenchmarkBalancer_AbsoluteFormImmutable measures an absolute-form request, whose hosts Balancer compares,

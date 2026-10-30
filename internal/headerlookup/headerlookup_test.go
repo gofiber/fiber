@@ -113,6 +113,35 @@ func Test_Value(t *testing.T) {
 		c.Request().Header.Set("X-Token", "xyz")
 		require.Equal(t, "abc", v, "Immutable promises a value that outlives the request's buffer")
 	})
+
+	t.Run("a field of a held trailer section is refused", func(t *testing.T) {
+		t.Parallel()
+
+		for _, normalize := range []bool{true, false} {
+			for _, headers := range []string{"X-User: alice\r\n", ""} {
+				c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+				readChunked(t, c, headers)
+				v, ok := Value(c, "X-User")
+				require.False(t, ok, "normalize=%v %q", normalize, headers)
+				require.Empty(t, v, "normalize=%v %q", normalize, headers)
+			}
+
+			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+			readChunked(t, c, "Origin: https://app.example\r\n")
+			v, ok := Value(c, "Origin")
+			require.True(t, ok, "normalize=%v", normalize)
+			require.Equal(t, "https://app.example", v, "normalize=%v", normalize)
+		}
+	})
+}
+
+// readChunked parses into c a whole chunked request with the given header
+// lines and an X-User trailer field.
+func readChunked(t *testing.T, c fiber.Ctx, headers string) {
+	t.Helper()
+
+	raw := "POST / HTTP/1.1\r\nHost: e.com\r\n" + headers + "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\nX-User: admin\r\n\r\n"
+	require.NoError(t, c.Request().Read(bufio.NewReader(strings.NewReader(raw))))
 }
 
 func Test_Combined(t *testing.T) {
@@ -175,6 +204,22 @@ func Test_Combined(t *testing.T) {
 		v := Combined(c, "X-Token")
 		c.Request().Header.Set("X-Token", "xyz")
 		require.Equal(t, "abc", v)
+	})
+
+	t.Run("a field of a held trailer section is not read", func(t *testing.T) {
+		t.Parallel()
+
+		for _, normalize := range []bool{true, false} {
+			for _, headers := range []string{"X-User: alice\r\n", ""} {
+				c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+				readChunked(t, c, headers)
+				require.Empty(t, Combined(c, "X-User"), "normalize=%v %q", normalize, headers)
+			}
+
+			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+			readChunked(t, c, "X-Key: k\r\nX-Key: l\r\n")
+			require.Equal(t, "k, l", Combined(c, "X-Key"), "normalize=%v", normalize)
+		}
 	})
 }
 

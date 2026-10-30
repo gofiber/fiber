@@ -18,6 +18,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/bodystream"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
@@ -104,10 +105,11 @@ func newTCPAddr(ip []byte, port int, zone string) *net.TCPAddr {
 // request path stays allocation-free. The conn comes first to keep the
 // struct's trailing pointer span minimal (govet fieldalignment).
 type pooledCtx struct {
-	conn    noopConn
-	tlsConn tlsNoopConn
-	lr      io.LimitedReader
-	fctx    fasthttp.RequestCtx
+	conn     noopConn
+	tlsConn  tlsNoopConn
+	lr       io.LimitedReader
+	received []byte
+	fctx     fasthttp.RequestCtx
 }
 
 var ctxPool = sync.Pool{
@@ -127,8 +129,8 @@ var localContextKey = &struct{}{}
 const (
 	bufferSize = 32 * 1024
 
-	// maxHeaderScratch bounds the response-header staging buffers that are
-	// returned to the pool.
+	// maxHeaderScratch bounds the header staging buffers that are returned to
+	// the pool.
 	maxHeaderScratch = 16 * 1024
 )
 
@@ -509,6 +511,11 @@ func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 	// pre-sizing would traverse them twice — and the walk also collects the
 	// cookie store and re-serializes it, on a per-request path.
 	var removed []string
+	// Trailer fields first: All never names them, and deleting Trailer would move
+	// them into the header section, where r.Header.Del never reached them.
+	for _, key := range fhdr.PeekTrailerKeys() {
+		removed = append(removed, string(key))
+	}
 	for key := range fhdr.All() {
 		name := utils.UnsafeString(key)
 		if isFramingHeader(name) {
@@ -838,6 +845,23 @@ func fromHex(c byte) byte {
 	}
 }
 
+// appendReceived appends key's lines to dst as a received header block holds them.
+func appendReceived(dst []byte, key string, vals []string) []byte {
+	for _, v := range vals {
+		// CR or LF would not read back as stored, so such a field, only ever set in code, keeps the stored order.
+		if strings.ContainsAny(v, "\r\n") {
+			return dst
+		}
+	}
+	for _, v := range vals {
+		dst = append(dst, key...)
+		dst = append(dst, ": "...)
+		dst = append(dst, v...)
+		dst = append(dst, "\r\n"...)
+	}
+	return dst
+}
+
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 	// App.Config returns the config by value, so read the body limit once at
 	// construction instead of copying the whole 624-byte struct on every
@@ -942,6 +966,10 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 		req.Header.SetProtocol(proto)
 
+		received := pctx.received[:0]
+		if cap(received) > maxHeaderScratch {
+			received = nil
+		}
 		for key, vals := range r.Header {
 			if len(vals) == 0 {
 				continue
@@ -956,6 +984,14 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			for _, v := range vals[1:] {
 				req.Header.Add(key, v)
 			}
+			if len(vals) > 1 {
+				received = appendReceived(received, key, vals)
+			}
+		}
+		pctx.received = received
+		if len(received) > 0 {
+			// A removed line moves the store's last one into its slot; c.IP() and the proxy read this order instead.
+			fieldname.SetReceived(req, &pctx.received)
 		}
 
 		if len(h) > 0 {
