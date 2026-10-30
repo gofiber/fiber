@@ -825,6 +825,7 @@ func (r *DefaultReq) IP() string {
 }
 
 // extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
+// Empty elements are ignored after trimming optional whitespace.
 // When IP validation is enabled, any invalid IPs will be omitted.
 func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 	headerValue := proxyHeaderValue(r, header)
@@ -840,15 +841,13 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 	validate := r.c.app.config.EnableIPValidation
 
 	for start := 0; start < len(headerValue); {
-		// Preserve IPs' handling of empty elements: its scanner historically
-		// skipped one leading comma before looking for the next separator.
-		if headerValue[start] == ',' {
-			start++
-		}
-
 		var s string
 		s, start = headerlist.Next(headerValue, start)
 		s = headerlist.TrimOWS(s)
+		// RFC 9110 Section 5.6.1.2: recipients ignore empty list elements.
+		if s == "" {
+			continue
+		}
 		if validate && !utils.IsIPv4(s) && !utils.IsIPv6(s) {
 			continue
 		}

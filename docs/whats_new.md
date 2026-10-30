@@ -901,6 +901,7 @@ resolve to the **request**; use `c.Res().Get()`, `c.Res().GetHeaders()`, `c.Res(
   the output no longer depends on `Config.Immutable`.
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
 - **IP()**: When `EnableIPValidation` is `true` and `TrustProxyConfig` is set, `c.IP()` now walks the `X-Forwarded-For` chain from right to left and returns the first non-trusted IP, instead of the leftmost syntactically valid IP. This closes an IP-spoofing vector where an attacker could prepend a fake address and have it returned by `c.IP()`. Apps with `EnableIPValidation = false` (the default) are unaffected. See [`Ctx.IP`](./api/ctx.md#ip) and the [reverse proxy guide](./guide/reverse-proxy.md#getting-the-real-client-ip-address) for details.
+- **IPs()**: Empty `X-Forwarded-For` elements are now ignored after trimming spaces and tabs, even when `EnableIPValidation` is disabled. Repeated commas and whitespace-only elements no longer produce empty strings in the returned slice. See [`Ctx.IPs`](./api/ctx.md#ips).
 
 ### SendEarlyHints
 
