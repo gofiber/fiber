@@ -32,7 +32,7 @@ func (c fiber.Ctx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context.C
 | `ForceRelease()`| Releases an abandoned context back to the pool. Must only be called after every goroutine that touches the context has finished, Fiber's own request handler and `ErrorHandler` included; calling it earlier races with them. |
 | `ScheduleReclaim(handlerDone, cancel)`| Abandons the context and returns it to the pool by itself once that is safe: after `handlerDone` is closed and Fiber has released the context. `cancel`, when not `nil`, is called as soon as `handlerDone` is closed. |
 
-`ScheduleReclaim` is the race-free alternative to calling `ForceRelease` yourself, and the way the timeout middleware hands the context to a handler that outlives the request. It calls `Abandon` itself, so calling `Abandon` first is harmless. Close `handlerDone` once the goroutine that still uses the context has completely finished. If it never closes, because the handler never returns, the context is deliberately never reclaimed.
+`ScheduleReclaim` is the race-free alternative to calling `ForceRelease` yourself, and the way the timeout middleware hands the context to a handler that outlives the request. It calls `Abandon` itself, so calling `Abandon` first is harmless. Close `handlerDone` once the goroutine that still uses the context has completely finished. If it never closes, because the handler never returns, the context is deliberately never reclaimed. It may be called more than once for a request, as happens when one timeout middleware runs inside another: the context is then reclaimed once every `handlerDone` is closed.
 
 :::note
 Only `*fiber.DefaultCtx` signals `ReleaseCtx` that reclamation is armed. With a custom `Ctx` type that embeds it the signal never arrives, so the context is never reclaimed. The timeout middleware uses `Abandon` alone for such types.
@@ -1305,7 +1305,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### Body
 
-As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. It decodes `gzip`, `deflate`, `br` and `zstd`, and several codings are undone in reverse order, up to five: a longer list, `identity` members included, is answered `415 Unsupported Media Type` before anything is decoded. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`. Decompression is bounded by the app [BodyLimit](./fiber.md#bodylimit): a body that decompresses to more than that, or a streamed body larger than that under [`StreamRequestBody`](./fiber.md#streamrequestbody), sets `413 Request Entity Too Large` while no response body was written. Whenever reading or decoding fails, the returned slice holds the error message instead of request data.
+As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. It decodes `gzip`, `deflate`, `br` and `zstd`, and several codings are undone in reverse order, up to five: a longer list, `identity` members included, is answered `415 Unsupported Media Type` before anything is decoded. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`. Decompression is bounded by the app [BodyLimit](./fiber.md#bodylimit): a body that decompresses to more than that, or a streamed body larger than that under [`StreamRequestBody`](./fiber.md#streamrequestbody), sets `413 Request Entity Too Large`. These statuses are set only while the response has no body; a response already written, or streamed, is left as it is. Whenever reading or decoding fails, the returned slice holds the error message instead of request data.
 
 ```go title="Signature"
 func (c fiber.Ctx) Body() []byte
@@ -4026,7 +4026,7 @@ For sending multiple files from an embedded file system, [this functionality](..
 
 ### SendStatus
 
-Sets the status code and the correct status message in the body if the response body is **empty**.
+Sets the status code and the correct status message in the body if the response body is **empty**. A streamed body counts as a body and is left unread.
 
 A status that cannot carry a body (`1xx`, `204`, `205` and `304`) empties the response body instead, and drops a `Content-Length` header the handler had set. [RFC 9110 Section 8.6](https://www.rfc-editor.org/rfc/rfc9110#section-8.6) requires that for `1xx` and `204`; Fiber also does it for `205` and `304`. A `205` still goes out with `Content-Length: 0`: it has no content ([Section 15.3.6](https://www.rfc-editor.org/rfc/rfc9110#section-15.3.6)), but unlike `1xx`, `204` and `304` it still has to be framed ([RFC 9112 Section 6.3](https://www.rfc-editor.org/rfc/rfc9112#section-6.3)).
 
@@ -4133,6 +4133,10 @@ app.Get("/", func (c fiber.Ctx) error {
 To send data before `streamWriter` returns, you can call `w.Flush()`
 on the provided writer. Otherwise, the buffered stream flushes after
 `streamWriter` returns.
+:::
+
+:::caution
+`streamWriter` runs on a goroutine of its own that starts when `SendStreamWriter` is called and keeps running after the handler has returned, when `c` may already serve another request, so copy what it needs from `c` before calling `SendStreamWriter` instead of using `c` inside it.
 :::
 
 :::caution HTTP/1.0 clients

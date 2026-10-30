@@ -224,11 +224,13 @@ func (r *DefaultReq) Body() []byte {
 	body, err = r.tryDecodeBodyInOrder(encodingOrder)
 	if err != nil {
 		switch {
+		case r.c.Written():
+			// a response already written stays as the handler left it
 		case errors.Is(err, ErrUnsupportedMediaType):
 			_ = r.c.DefaultRes.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		case errors.Is(err, ErrNotImplemented):
 			_ = r.c.DefaultRes.SendStatus(StatusNotImplemented) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
-		case errors.Is(err, fasthttp.ErrBodyTooLarge) && !r.c.Written():
+		case errors.Is(err, fasthttp.ErrBodyTooLarge):
 			_ = r.c.DefaultRes.SendStatus(StatusRequestEntityTooLarge) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		default:
 			// do nothing

@@ -24,6 +24,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/middleware/sse"
+	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -3073,4 +3075,92 @@ func Test_HTTPMiddleware_NoRewriteKeepsChainPosition(t *testing.T) {
 			require.False(t, authRan.Load())
 		})
 	}
+}
+
+func Test_FiberAdaptors_TimedOutRequest(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		build func(h fiber.Handler) http.Handler
+		name  string
+	}{
+		{name: "FiberApp", build: func(h fiber.Handler) http.Handler {
+			app := fiber.New()
+			app.Get("/*", h)
+			return FiberApp(app)
+		}},
+		{name: "FiberHandler", build: FiberHandler},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			held := make(chan *fasthttp.RequestCtx, 1)
+			seen := make(chan *fasthttp.RequestCtx, 1)
+			release := make(chan struct{})
+			finished := make(chan struct{})
+			handler := tc.build(timeout.New(func(c fiber.Ctx) error {
+				if c.Path() != "/slow" {
+					seen <- c.RequestCtx()
+					return fiber.ErrUnauthorized
+				}
+				defer close(finished)
+				c.Cookie(&fiber.Cookie{Name: "early", Value: "1"})
+				held <- c.RequestCtx()
+				<-release
+				c.Cookie(&fiber.Cookie{Name: "session", Value: "late"})
+				return c.SendString("late")
+			}, timeout.Config{
+				Timeout: 10 * time.Millisecond,
+				Next:    func(c fiber.Ctx) bool { return c.Path() != "/slow" },
+			}))
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+			require.Equal(t, fiber.StatusServiceUnavailable, rec.Code)
+			require.Equal(t, fiber.ErrServiceUnavailable.Message, rec.Body.String())
+			require.Empty(t, rec.Header().Values(fiber.HeaderSetCookie))
+			timedOut := <-held
+
+			for range 20 {
+				rec := httptest.NewRecorder()
+				handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/private", http.NoBody))
+				require.Equal(t, fiber.StatusUnauthorized, rec.Code)
+				require.Empty(t, rec.Header().Values(fiber.HeaderSetCookie))
+				require.NotSame(t, timedOut, <-seen, "the timed-out handler's RequestCtx was handed to another request")
+			}
+
+			close(release)
+			<-finished
+		})
+	}
+}
+
+// net/http discards a HEAD body, so a stream read for one would run with every write succeeding.
+func Test_FiberAdaptors_HeadLeavesStreamUnread(t *testing.T) {
+	t.Parallel()
+
+	var handlers atomic.Int32
+	events := sse.New(sse.Config{
+		DisableHeartbeat: true,
+		Handler: func(_ fiber.Ctx, stream *sse.Stream) error {
+			handlers.Add(1)
+			return stream.Comment("open")
+		},
+	})
+	app := fiber.New()
+	app.Get("/events", events)
+
+	for _, handler := range []http.Handler{FiberApp(app), FiberHandler(events)} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodHead, "/events", http.NoBody))
+		require.Equal(t, fiber.StatusOK, rec.Code)
+		require.Equal(t, fiber.MIMETextEventStream, rec.Header().Get(fiber.HeaderContentType))
+		require.Empty(t, rec.Body.String())
+	}
+	require.Zero(t, handlers.Load())
+
+	rec := httptest.NewRecorder()
+	FiberApp(app).ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
+	require.Equal(t, ": open\n\n", rec.Body.String())
+	require.Equal(t, int32(1), handlers.Load())
 }

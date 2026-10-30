@@ -46,6 +46,8 @@ app.Get("/events", sse.New(sse.Config{
 
 Before `Handler` runs, the middleware sets `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`, and `X-Accel-Buffering: no`, which stops nginx from buffering the stream.
 
+`Handler` runs in its own goroutine, which starts when the server begins to send the response body. By then every middleware registered before the route has returned from `c.Next()`, the response headers are on their way, and a session middleware has already saved its session, so read what `Handler` needs from such middleware in a handler that runs before `sse.New`. A response whose body is never sent, such as the answer to a `HEAD` request, runs neither `Handler` nor `OnClose`.
+
 For long-running streams, subscribe each client to its own event channel and stop when the client disconnects.
 A single shared channel load-balances messages across clients; use a fan-out source when every client must receive every event:
 
@@ -99,7 +101,7 @@ app.Get("/events", sse.New(sse.Config{
 | Property          | Type                     | Description                                                                                          | Default               |
 |:------------------|:-------------------------|:-----------------------------------------------------------------------------------------------------|:----------------------|
 | Handler           | `sse.Handler`            | Required. Writes events to the stream. `New` panics if this field is omitted or `nil`.              | required (`nil` panics) |
-| OnClose           | `func(fiber.Ctx, error)` | Called when the stream ends, with `nil` when the handler returned successfully and no stream write failed. A panic in `Handler` is recovered and passed here as an error (`sse: handler panic: ...`). | `nil`              |
+| OnClose           | `func(fiber.Ctx, error)` | Called when the stream ends, with `nil` when the handler returned successfully and no stream write failed. A panic in `Handler` is recovered and passed here as an error (`sse: handler panic: ...`). Not called when `Handler` never ran. | `nil`              |
 | Retry             | `time.Duration`          | Initial EventSource reconnect delay.                                                                 | `0`                |
 | HeartbeatInterval | `time.Duration`          | Interval for SSE comment heartbeats. A value less than or equal to zero uses the default.            | `15 * time.Second` |
 | DisableHeartbeat  | `bool`                   | Disable automatic heartbeat comments. When disabled, disconnected clients may not be detected until the next write. | `false`            |
@@ -151,6 +153,8 @@ func (s *Stream) LastEventID() string
 ```
 
 Every write is flushed. A failed write closes `Done`, stores the error returned by `Err`, and lets the handler stop without relying on `fasthttp.RequestCtx.Done`, which is not a per-client disconnect signal. A write fails when the flush fails, and also when `Event` rejects an `ID` or `Name` with a line break or cannot encode `Data`. In every case the stream ends and later writes return the same error. After a normal handler return, `Done` is closed and `Context()` is canceled while `Err()` remains `nil`; writes after that return `sse: stream closed`.
+
+The stream also ends, with `Err()` returning `sse: stream closed`, when the server closes the response body, for example after a write to a client that has gone failed. The server waits for `Handler` and `OnClose` to return before it reuses the request, so `c` stays the stream's own request in both, and a handler that ignores `Done` and `Context()` holds its connection until it returns. Write to the client only through `stream`: replacing the response body through `c` (`Send`, `SendString`, `JSON` and the like) inside either callback waits for that callback and never returns.
 
 Automatic heartbeat comments keep idle streams active and make silent client disconnects observable through the next flush error. If heartbeats are disabled, a handler waiting on an external source might not notice a disconnected client until it writes again. Stopping a stream waits for an in-flight heartbeat write to finish, so a very slow client can delay shutdown until the underlying write unblocks.
 

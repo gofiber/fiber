@@ -252,6 +252,10 @@ type Ctx interface {
 	// that never returns — the context is intentionally never reclaimed, because the
 	// handler still owns it.
 	//
+	// It may be called more than once per request, also concurrently, as nested
+	// timeout middlewares do: the context is then reclaimed once every handlerDone is
+	// closed. Each call must come from a goroutine that still owns the context.
+	//
 	// This method calls Abandon internally, so callers do not need to call Abandon
 	// separately. Calling Abandon before ScheduleReclaim is still safe (idempotent).
 	ScheduleReclaim(handlerDone <-chan struct{}, cancel context.CancelFunc)

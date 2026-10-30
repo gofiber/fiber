@@ -14,7 +14,11 @@ type Config struct {
 
 	// OnTimeout is executed when a timeout occurs. It may write the response or
 	// return a *fiber.Error that shapes it; otherwise the default 503 is sent.
+	// When it returns nil while the handler still runs, the middleware returns
+	// fiber.ErrServiceUnavailable, so middleware that runs before it leaves the response alone.
 	// The timed-out handler may still be running and must stop using the context.
+	// After the deadline OnTimeout gets a ctx of its own: the request headers, locals and response headers
+	// as the handler got them, without the request body, route params or c.Next; a panic there answers 500.
 	// Optional. Default: nil (return fiber.ErrServiceUnavailable)
 	OnTimeout fiber.Handler
 

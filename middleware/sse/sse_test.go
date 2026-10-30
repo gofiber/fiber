@@ -3,6 +3,7 @@ package sse
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,11 +14,15 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/compress"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 type panicStringer struct{}
@@ -633,4 +638,147 @@ func Test_SSE_RetryMillisecondsStaysPositive(t *testing.T) {
 	require.Positive(t, retryMilliseconds(time.Duration(math.MaxInt64)-1))
 	require.Equal(t, int64(1), retryMilliseconds(time.Nanosecond))
 	require.Equal(t, int64(2), retryMilliseconds(time.Millisecond+time.Nanosecond))
+}
+
+// Middleware still uses c after c.Next, and reading the request rearranges its
+// header store, so Handler must not get c before the chain has returned.
+func Test_SSE_HandlerStartsAfterMiddlewareChain(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(compress.New())
+	var isUnwound atomic.Bool
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		time.Sleep(5 * time.Millisecond)
+		c.IPs() // walks the headers, which moves the cookies out of the header store
+		isUnwound.Store(true)
+		return err
+	})
+	app.Get("/events", New(Config{
+		DisableHeartbeat: true,
+		Handler: func(c fiber.Ctx, stream *Stream) error {
+			return stream.Event(Event{Name: c.Cookies("theme"), Data: isUnwound.Load()})
+		},
+	}))
+
+	for _, coding := range []string{"", "gzip"} {
+		isUnwound.Store(false)
+		req := httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody)
+		req.Header.Set(fiber.HeaderCookie, "theme=dark")
+		req.Header.Set(fiber.HeaderAcceptEncoding, coding)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+
+		var body io.Reader = resp.Body
+		if coding == "gzip" {
+			require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+			body, err = gzip.NewReader(resp.Body)
+			require.NoError(t, err)
+		}
+		got, err := io.ReadAll(body)
+		require.NoError(t, err)
+		require.Equal(t, "event: dark\ndata: true\n\n", string(got))
+	}
+}
+
+// fasthttp closes a HEAD response's body unread, and the connection is free
+// for the next request at once.
+func Test_SSE_UnreadBodyRunsNoHandler(t *testing.T) {
+	t.Parallel()
+
+	var handlers, closes atomic.Int32
+	app := fiber.New()
+	app.Get("/events", New(Config{
+		DisableHeartbeat: true,
+		Handler: func(_ fiber.Ctx, stream *Stream) error {
+			handlers.Add(1)
+			return stream.Comment("open")
+		},
+		OnClose: func(fiber.Ctx, error) {
+			closes.Add(1)
+		},
+	}))
+
+	for range 20 {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodHead, "/events", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		require.Equal(t, fiber.MIMETextEventStream, resp.Header.Get(fiber.HeaderContentType))
+	}
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, ": open\n\n", string(body))
+	require.Equal(t, int32(1), handlers.Load())
+	require.Equal(t, int32(1), closes.Load(), "the body ends after OnClose")
+}
+
+// fasthttp reuses the RequestCtx once it has closed the response body, which it
+// does when the client is gone.
+func Test_SSE_CloseWaitsForCallbacks(t *testing.T) {
+	t.Parallel()
+
+	type seen struct {
+		user          any
+		authorization string
+	}
+	started := make(chan *Stream, 1)
+	handlerSaw := make(chan seen, 1)
+	onCloseSaw := make(chan seen, 1)
+	onCloseErr := make(chan error, 1)
+
+	app := fiber.New()
+	app.Get("/events", New(Config{
+		DisableHeartbeat: true,
+		Handler: func(c fiber.Ctx, stream *Stream) error {
+			started <- stream
+			if err := stream.Comment("open"); err != nil {
+				return err
+			}
+			<-stream.Done()
+			handlerSaw <- seen{user: c.Locals("user"), authorization: utils.CopyString(c.Get(fiber.HeaderAuthorization))}
+			return stream.Err()
+		},
+		OnClose: func(c fiber.Ctx, err error) {
+			onCloseSaw <- seen{user: c.Locals("user"), authorization: utils.CopyString(c.Get(fiber.HeaderAuthorization))}
+			onCloseErr <- err
+		},
+	}))
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.SetRequestURI("/events")
+	fctx.Request.Header.Set(fiber.HeaderLastEventID, "first-request")
+	fctx.Request.Header.Set(fiber.HeaderAuthorization, "Bearer first")
+	fctx.SetUserValue("user", "first")
+	app.Handler()(fctx)
+
+	// The server sends part of the stream, fails to write to the gone client,
+	// closes the body and parses the next request into the same RequestCtx.
+	n, err := fctx.Response.BodyStream().Read(make([]byte, 64))
+	require.NoError(t, err)
+	require.Positive(t, n)
+	require.NoError(t, fctx.Response.CloseBodyStream())
+	fctx.Request.Reset()
+	fctx.Request.Header.Set(fiber.HeaderAuthorization, "Bearer other")
+	fctx.Request.Header.Set(fiber.HeaderLastEventID, "other-request")
+	fctx.SetUserValue("user", "other")
+
+	first := seen{user: "first", authorization: "Bearer first"}
+	select {
+	case got := <-handlerSaw:
+		require.Equal(t, first, got)
+	default:
+		t.Fatal("Handler was still running after the body was closed")
+	}
+	select {
+	case got := <-onCloseSaw:
+		require.Equal(t, first, got)
+		require.ErrorIs(t, <-onCloseErr, errStreamClosed)
+	default:
+		t.Fatal("OnClose had not run when the body was closed")
+	}
+	require.Equal(t, "first-request", (<-started).LastEventID())
 }

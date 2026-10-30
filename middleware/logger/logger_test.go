@@ -28,6 +28,10 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/cache"
+	"github.com/gofiber/fiber/v3/middleware/compress"
+	"github.com/gofiber/fiber/v3/middleware/idempotency"
+	"github.com/gofiber/fiber/v3/middleware/timeout"
 )
 
 const (
@@ -2481,7 +2485,7 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 		buf := bytebufferpool.Get()
 		defer bytebufferpool.Put(buf)
 
-		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), &Data{}, "")
 		require.NoError(t, err)
 		require.Equal(t, "1.1.1.1,2.2.2.2", buf.String())
 		require.Equal(t, len(buf.String()), n)
@@ -2493,7 +2497,7 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
 		defer bytebufferpool.Put(buf.ByteBuffer)
 
-		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), &Data{}, "")
 		require.ErrorIs(t, err, errWriteFailed)
 		require.Zero(t, n)
 	})
@@ -2505,7 +2509,7 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
 		defer bytebufferpool.Put(buf.ByteBuffer)
 
-		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), &Data{}, "")
 		require.ErrorIs(t, err, errWriteFailed)
 		require.Equal(t, len("1.1.1.1"), n, "only the first address reached the sink")
 	})
@@ -2517,7 +2521,7 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
 		defer bytebufferpool.Put(buf.ByteBuffer)
 
-		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), &Data{}, "")
 		require.ErrorIs(t, err, errWriteFailed)
 		require.Equal(t, len("1.1.1.1,"), n)
 	})
@@ -2560,6 +2564,226 @@ func Test_Logger_ResBody_DoesNotDrainStream(t *testing.T) {
 	buffered.Handler()(bctx)
 
 	require.Equal(t, "[hello]", logged.String())
+}
+
+func Test_Logger_Body_LeavesResponseAlone(t *testing.T) {
+	t.Parallel()
+
+	// Ctx.Body answers these codings with 415 and 501 of its own.
+	for _, coding := range []string{"x", "compress"} {
+		t.Run(coding, func(t *testing.T) {
+			t.Parallel()
+
+			var logged bytes.Buffer
+			app := fiber.New()
+			app.Use(New(Config{
+				Format: "${status} [${body}] ${status}",
+				Stream: &logged,
+			}))
+			app.Get("/events", func(c fiber.Ctx) error {
+				return c.SendStreamWriter(func(w *bufio.Writer) {
+					w.WriteString("data: one\n\n") //nolint:errcheck // nothing to do with a stream-writer error here
+					w.Flush()                      //nolint:errcheck // same
+				})
+			})
+			app.Get("/hello", func(c fiber.Ctx) error {
+				return c.SendString("hello")
+			})
+			app.Get("/empty", func(c fiber.Ctx) error {
+				c.Status(fiber.StatusAccepted)
+				return nil
+			})
+
+			serve := func(target string) *fasthttp.RequestCtx {
+				logged.Reset()
+				fctx := &fasthttp.RequestCtx{}
+				fctx.Request.SetRequestURI(target)
+				fctx.Request.Header.SetMethod(fiber.MethodGet)
+				fctx.Request.Header.Set(fiber.HeaderContentEncoding, coding)
+				app.Handler()(fctx)
+				return fctx
+			}
+
+			fctx := serve("/events")
+			require.True(t, fctx.Response.IsBodyStream(), "logging must leave a streamed response streamed")
+			require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+
+			fctx = serve("/hello")
+			require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+			require.Equal(t, "hello", string(fctx.Response.Body()))
+			require.Regexp(t, `^200 \[.+\] 200$`, logged.String())
+
+			fctx = serve("/empty")
+			require.Equal(t, fiber.StatusAccepted, fctx.Response.StatusCode())
+			require.Empty(t, fctx.Response.Body())
+			require.Regexp(t, `^202 \[.+\] 202$`, logged.String())
+		})
+	}
+}
+
+// Tags reading the request log nothing while the timed-out handler may still read or change it.
+func Test_Logger_TimedOutRequestLeavesRequestToHandler(t *testing.T) {
+	t.Parallel()
+
+	const format = "${method} ${url}|${ip}|${host}|${scheme}|${cookie:theme}|${query:a}|${queryParams}|${reqHeader:x-req}|" +
+		"${referer}|${ua}|${ips}|${form:f}|${locals:user}|${reqHeaders}|${body}"
+	for name, tc := range map[string]struct {
+		cfg  fiber.Config
+		want string
+	}{
+		"direct": {want: "POST /?a=1|0.0.0.0|example.com|http|||||||||||"},
+		"trusted proxy": {
+			cfg: fiber.Config{
+				TrustProxy:       true,
+				ProxyHeader:      fiber.HeaderXForwardedFor,
+				TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
+			},
+			want: "POST /?a=1||||||||||||||",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var logged, plain, colored bytes.Buffer
+			app := fiber.New(tc.cfg)
+			app.Use(New(Config{Format: format, Stream: &logged}))
+			app.Use(New(Config{Format: DefaultFormat, Stream: &plain}))
+			app.Use(New(Config{Format: DefaultFormat, Stream: &colored, ForceColors: true}))
+			read := make(chan struct{})
+			app.Post("/", timeout.New(func(c fiber.Ctx) error {
+				defer close(read)
+				<-c.Context().Done()
+				c.Locals("user", "late")
+				return c.SendString(c.Cookies("theme") + c.Query("a") + c.FormValue("f") + string(c.Body()) +
+					c.IP() + strings.Join(c.IPs(), ",") + c.Hostname() + c.Scheme() + c.Get("x-other"))
+			}, timeout.Config{Timeout: 20 * time.Millisecond}))
+
+			req := httptest.NewRequest(fiber.MethodPost, "/?a=1", strings.NewReader("f=2"))
+			req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
+			req.Header.Set(fiber.HeaderCookie, "theme=dark")
+			req.Header.Set(fiber.HeaderReferer, "http://example.com/")
+			req.Header.Set(fiber.HeaderXForwardedFor, "10.0.0.1")
+			req.Header.Set(fiber.HeaderXForwardedHost, "proxied.example")
+			req.Header.Set("X-Req", "r1")
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+			<-read
+			require.Equal(t, tc.want, logged.String())
+			require.NotContains(t, plain.String(), "10.0.0.1")
+			require.NotContains(t, colored.String(), "10.0.0.1")
+		})
+	}
+}
+
+func Test_Logger_TimedOutRequestLogsTimeoutResponse(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		want string
+		cfg  Config
+	}{
+		"tags":            {cfg: Config{Format: "${status} ${bytesSent} [${respHeader:X-Late}] [${resBody}]"}, want: "503 0 [] [Service Unavailable]"},
+		"default":         {cfg: Config{Format: DefaultFormat}, want: "| 503 |"},
+		"default colored": {cfg: Config{Format: DefaultFormat, ForceColors: true}, want: " 503 "},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var logged bytes.Buffer
+			tc.cfg.Stream = &logged
+			app := fiber.New()
+			app.Use(New(tc.cfg))
+			written := make(chan struct{})
+			app.Get("/", timeout.New(func(c fiber.Ctx) error {
+				defer close(written)
+				<-c.Context().Done()
+				c.Set("X-Late", "1")
+				return c.SendString("late")
+			}, timeout.Config{Timeout: 20 * time.Millisecond}))
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+			<-written
+			require.Contains(t, logged.String(), tc.want)
+		})
+	}
+}
+
+func Test_Logger_TimedOutRequestIsNotStored(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		mw     fiber.Handler
+		method string
+	}{
+		"cache":       {mw: cache.New(), method: fiber.MethodGet},
+		"idempotency": {mw: idempotency.New(), method: fiber.MethodPost},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(tc.mw)
+			app.Use(New(Config{Stream: io.Discard}))
+			var slow atomic.Bool
+			slow.Store(true)
+			app.All("/", timeout.New(func(c fiber.Ctx) error {
+				if slow.Load() {
+					<-c.Context().Done()
+					return c.Context().Err()
+				}
+				return c.SendString("report")
+			}, timeout.Config{Timeout: 200 * time.Millisecond}))
+
+			send := func() (int, string) {
+				req := httptest.NewRequest(tc.method, "/", http.NoBody)
+				req.Header.Set("X-Idempotency-Key", "00000000-0000-4000-8000-000000000001")
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				return resp.StatusCode, string(body)
+			}
+			status, _ := send()
+			require.Equal(t, fiber.StatusServiceUnavailable, status)
+			slow.Store(false)
+			status, body := send()
+			require.Equal(t, fiber.StatusOK, status)
+			require.Equal(t, "report", body)
+		})
+	}
+}
+
+// Under -race this also catches compress reading the headers the timed-out handler still sets.
+func Test_Logger_TimedOutRequestReturnsTimeoutError(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	chainErr := make(chan error, 1)
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		chainErr <- err
+		return err
+	})
+	app.Use(compress.New())
+	app.Use(New(Config{Stream: io.Discard}))
+	written := make(chan struct{})
+	app.Get("/", timeout.New(func(c fiber.Ctx) error {
+		defer close(written)
+		<-c.Context().Done()
+		c.Set("X-Late", "1")
+		return c.SendString(strings.Repeat("late ", 100))
+	}, timeout.Config{Timeout: 20 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAcceptEncoding, "gzip")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	<-written
+	require.ErrorIs(t, <-chainErr, fiber.ErrServiceUnavailable)
 }
 
 // Test_LatencyColumns_MatchFmt pins the two latency renderers against the

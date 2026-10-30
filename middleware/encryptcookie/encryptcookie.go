@@ -25,6 +25,11 @@ func New(config ...Config) fiber.Handler {
 		// Continue stack
 		err := c.Next()
 
+		// A handler timeout.New gave up on may still write the response; IsAbandoned orders the read.
+		if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
+			return err
+		}
+
 		if encErr := encryptResponseCookies(c, &cfg); encErr != nil {
 			return errors.Join(err, encErr)
 		}

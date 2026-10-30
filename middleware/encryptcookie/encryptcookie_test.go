@@ -15,6 +15,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/timeout"
 )
 
 func Test_Middleware_Panics(t *testing.T) {
@@ -1220,4 +1221,30 @@ func Benchmark_Middleware_Request_Cookies_Refused(b *testing.B) {
 		ctx.Request.Header.Set(fiber.HeaderCookie, cookies)
 		h(ctx)
 	}
+}
+
+func Test_Middleware_LeavesTimedOutResponse(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{Key: GenerateKey(32)}))
+	ctxCh := make(chan fiber.Ctx, 1)
+	release := make(chan struct{})
+	defer close(release)
+	app.Get("/", timeout.New(func(c fiber.Ctx) error {
+		c.Cookie(&fiber.Cookie{Name: "late", Value: "plain"})
+		<-c.Context().Done()
+		ctxCh <- c
+		<-release
+		return nil
+	}, timeout.Config{Timeout: 10 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	c := <-ctxCh
+	cookie := fasthttp.Cookie{}
+	cookie.SetKey("late")
+	require.True(t, c.Response().Header.Cookie(&cookie))
+	require.Equal(t, "plain", string(cookie.Value()), "the timed-out handler still owns the response")
 }
