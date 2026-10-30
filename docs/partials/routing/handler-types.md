@@ -39,6 +39,8 @@ Fiber has no Express-style four-argument error handler (`func(err, req, res, nex
 Fiber adapts these handlers through `fasthttpadaptor`. They do not receive `fiber.Ctx`, cannot call `c.Next()`, and therefore always terminate the handler chain. The compatibility layer also adds more overhead than running a native Fiber handler, so prefer the other forms when possible.
 :::
 
+These handlers get the same routed-path handling as `adaptor.HTTPHandler`: they are given the path the router matched, `c.Path()`, followed by the query, not the request line as it arrived, so `/a/../admin/x` reaches them as `/admin/x`, after the middleware on `/admin` has run. A routed path that `net/http` would read as another one, such as `/admin%2Fx`, `//admin/x` or `/public/..%2Fadmin/x`, is answered with `404 Not Found`.
+
 ### fasthttp handlers (cases 16-17)
 
 - **Case 16.** `fasthttp.RequestHandler` - the named fasthttp type; a plain `func(*fasthttp.RequestCtx)` has to be converted to it first.

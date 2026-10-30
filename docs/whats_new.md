@@ -2171,10 +2171,10 @@ app.Get("*", static.New("./public/index.html"))
 ```
 
 :::caution
-You have to put `*` to the end of the route if you don't define static route with `app.Use`. Under a `/prefix*` route such as `/static*`, only `/static` and paths below `/static/` are served; `/static-v2/app.js` or `/staticapp.js` are no longer served.
+You have to put `*` to the end of the route if you don't define static route with `app.Use`. Under a `/prefix*` or `/prefix+` route such as `/static*`, only `/static` and paths below `/static/` are served; `/static-v2/app.js` or `/staticapp.js` are no longer served. A route whose first parameter is a wildcard strips the text before it (`/assets/*.js` serves `app.js` for `/assets/app.js`). After a named parameter, a directory root takes the file name from the trailing wildcard (`/:lang/*` serves `app.js` for `/en/app.js`, and `//app.js` under `/:lang?/*` is `404`), and on a route with a named parameter but no trailing wildcard it serves nothing.
 :::
 
-The static middleware opens the name the router matched and does not percent-decode it a second time. Escapes the router keeps encoded, such as `%20`, stay encoded in the file name unless `UnescapePath` is enabled, and an escape of an unreserved character left in the routed path, which only a stray `%` can forge, is answered with `404` rather than decoded into a different file, so `/static/%%370rivate/secret.txt` never opens `private/secret.txt`. A path with an empty first segment, such as `//private/secret.txt` on a root mount, is `404` too, since the router keeps it apart from `/private/secret.txt`; [Static](./middleware/static.md) shows how to collapse a doubled slash for clients that send one. On Windows a path segment ending in a dot or a space is `404` as well, since the OS strips both when it opens a file. See [Static](./middleware/static.md).
+The static middleware opens the name the router matched and does not percent-decode it a second time. Escapes the router keeps encoded, such as `%20`, stay encoded in the file name unless `UnescapePath` is enabled, and an escape of an unreserved character left in the routed path, which only a stray `%` can forge, is answered with `404` rather than decoded into a different file, so `/static/%%370rivate/secret.txt` never opens `private/secret.txt`. A path with an empty first segment, such as `//private/secret.txt` on a root mount, is `404` too, since the router keeps it apart from `/private/secret.txt`; [Static](./middleware/static.md) shows how to collapse a doubled slash for clients that send one. On Windows a path segment ending in a dot or a space is `404` as well, since the OS strips both when it opens a file. With `StrictRouting`, which keeps `/x` and `/x/` apart, a directory requested without its trailing slash is redirected to it with `302 Found` and a file requested with one is `404`. With `Browse`, a directory listing links below the routed path rather than the request target; on a route whose prefix holds a parameter, such as `/:lang/*`, the file cache is then off for files and listings alike, and a prefix that holds `%`, `\`, `?`, `#` or a control character is `404`. See [Static](./middleware/static.md).
 
 A directory root on disk is confined: a symbolic link that leaves it, and an absolute link even when it points inside, is handled like a missing file. Set `AllowSymlinksOutsideRoot` to follow such links. A file root, and a root given through `FS`, are not confined.
 
@@ -2272,6 +2272,12 @@ Adapted handlers stick to `net/http` semantics. They do not interact with `fiber
 and are slower than native Fiber handlers because of the extra conversion layer. Use
 them to ease migrations, but prefer Fiber handlers in performance-critical paths.
 :::
+
+Like `adaptor.HTTPHandler`, a directly registered handler is given the path the router
+matched rather than the request line as it arrived, and a routed path with an empty
+segment or an escaped slash, such as `//admin/x` or `/admin%2Fx`, is answered with
+`404 Not Found`, since `net/http` would decode and clean it into a path no Fiber
+middleware ran for.
 
 ```go
 httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
