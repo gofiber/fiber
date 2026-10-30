@@ -97,9 +97,21 @@ func (cfg *Config) setRateLimitHeaders(c fiber.Ctx, maxRequests, remaining int, 
 	if cfg.DisableHeaders || timeoutResponse(c) != nil {
 		return
 	}
-	c.Set(xRateLimitLimit, utils.FormatInt(int64(maxRequests)))
-	c.Set(xRateLimitRemaining, utils.FormatInt(int64(max(remaining, 0))))
-	c.Set(xRateLimitReset, utils.FormatUint(resetInSec))
+	if _, ok := c.(*fiber.DefaultCtx); !ok {
+		// Custom Set implementations may rewrite, suppress or retain these values.
+		c.Set(xRateLimitLimit, utils.FormatInt(int64(maxRequests)))
+		c.Set(xRateLimitRemaining, utils.FormatInt(int64(max(remaining, 0))))
+		c.Set(xRateLimitReset, utils.FormatUint(resetInSec))
+		return
+	}
+	// SetBytesV normalizes the key exactly as c.Set does for these
+	// non-canonical names and copies the value, so one stack buffer serves all three
+	// headers without allocating a string per number.
+	var buf [20]byte
+	h := &c.Response().Header
+	h.SetBytesV(xRateLimitLimit, utils.AppendInt(buf[:0], int64(maxRequests)))
+	h.SetBytesV(xRateLimitRemaining, utils.AppendInt(buf[:0], int64(max(remaining, 0))))
+	h.SetBytesV(xRateLimitReset, utils.AppendUint(buf[:0], resetInSec))
 }
 
 // timeoutResponse returns what fasthttp sends for a request timeout.New gave up on, or nil.
