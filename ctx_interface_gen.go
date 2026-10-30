@@ -467,6 +467,7 @@ type Ctx interface {
 	// header spoofing if your app is behind a proxy.
 	IP() string
 	// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
+	// Empty elements are ignored after trimming optional whitespace.
 	// When IP validation is enabled, any invalid IPs will be omitted.
 	extractIPsFromHeader(header string) []string
 	// extractIPFromHeader returns the client IP from the given proxy header by walking the

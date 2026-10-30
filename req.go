@@ -863,10 +863,9 @@ func (r *DefaultReq) IP() string {
 }
 
 // extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
+// Empty elements are ignored after trimming optional whitespace.
 // When IP validation is enabled, any invalid IPs will be omitted.
 func (r *DefaultReq) extractIPsFromHeader(header string) []string {
-	// TODO: Reuse the c.extractIPFromHeader func somehow in here
-
 	headerValue := proxyHeaderValue(r, header)
 
 	// We can't know how many IPs we will return, but we will try to guess with this constant division.
@@ -877,44 +876,18 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 		maxEstimatedCount)
 
 	ipsFound := make([]string, 0, estimatedCount)
+	validate := r.c.app.config.EnableIPValidation
 
-	i := 0
-	j := -1
-
-	for {
-		var v4, v6 bool
-
-		// Manually splitting string without allocating slice, working with parts directly
-		i, j = j+1, j+2
-
-		if j > len(headerValue) {
-			break
+	for start := 0; start < len(headerValue); {
+		var s string
+		s, start = headerlist.Next(headerValue, start)
+		s = headerlist.TrimOWS(s)
+		// RFC 9110 Section 5.6.1.2: recipients ignore empty list elements.
+		if s == "" {
+			continue
 		}
-
-		for j < len(headerValue) && headerValue[j] != ',' {
-			switch headerValue[j] {
-			case ':':
-				v6 = true
-			case '.':
-				v4 = true
-			default:
-				// do nothing
-			}
-			j++
-		}
-
-		for i < j && headerValue[i] == ',' {
-			i++
-		}
-
-		s := headerlist.TrimOWS(headerValue[i:j])
-
-		if r.c.app.config.EnableIPValidation {
-			// Skip validation if IP is clearly not IPv4/IPv6; otherwise, validate without allocations.
-			// A colon decides: an IPv4-mapped IPv6 address carries both separators.
-			if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (!v6 && v4 && !utils.IsIPv4(s)) {
-				continue
-			}
+		if validate && !utils.IsIPv4(s) && !utils.IsIPv6(s) {
+			continue
 		}
 
 		ipsFound = append(ipsFound, s)
@@ -938,34 +911,23 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 	headerValue := proxyHeaderValue(r, header)
 	hasTrustedProxyConfig := r.hasTrustedProxyConfig()
 	if !hasTrustedProxyConfig {
-		start := 0
-		for {
-			end := start
-			for end < len(headerValue) && headerValue[end] != ',' {
-				end++
-			}
-
-			ipStr := headerlist.TrimOWS(headerValue[start:end])
+		for start := 0; start <= len(headerValue); {
+			var ipStr string
+			ipStr, start = headerlist.Next(headerValue, start)
+			ipStr = headerlist.TrimOWS(ipStr)
 			if isValidProxyIP(ipStr) {
 				return ipStr
 			}
-			if end == len(headerValue) {
-				break
-			}
-			start = end + 1
 		}
 	}
 
 	var leftmostIP string
 
 	for end := len(headerValue); end > 0; {
-		start := end
-		for start > 0 && headerValue[start-1] != ',' {
-			start--
-		}
+		ipStr, prev := headerlist.Prev(headerValue, end)
 
 		// An empty list element is no element (RFC 9110 Section 5.6.1).
-		if ipStr := headerlist.TrimOWS(headerValue[start:end]); ipStr != "" {
+		if ipStr = headerlist.TrimOWS(ipStr); ipStr != "" {
 			if !isValidProxyIP(ipStr) {
 				// "IP:port", "unknown" and the like name no trusted proxy, so nothing left of them can be trusted.
 				break
@@ -975,11 +937,10 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 				return ipStr
 			}
 		}
-
-		if start == 0 {
+		if prev < 0 {
 			break
 		}
-		end = start - 1
+		end = prev
 	}
 
 	if leftmostIP != "" {
