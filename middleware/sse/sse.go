@@ -22,6 +22,18 @@ import (
 
 var errStreamClosed = errors.New("sse: stream closed")
 
+// streamBody starts Handler on the first Read, once the middleware chain has returned. Close waits
+// for Handler and OnClose, as fasthttp reuses the RequestCtx next; an unread body runs neither.
+type streamBody struct {
+	reader    io.ReadCloser
+	stream    *Stream
+	run       func()
+	done      chan struct{}
+	closeErr  error
+	startOnce sync.Once
+	closeOnce sync.Once
+}
+
 // New creates a new SSE handler.
 func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
@@ -78,18 +90,6 @@ func New(config ...Config) fiber.Handler {
 			}
 		}})
 	}
-}
-
-// streamBody starts Handler on the first Read, once the middleware chain has returned. Close waits
-// for Handler and OnClose, as fasthttp reuses the RequestCtx next; an unread body runs neither.
-type streamBody struct {
-	reader    io.ReadCloser
-	stream    *Stream
-	run       func()
-	done      chan struct{}
-	closeErr  error
-	startOnce sync.Once
-	closeOnce sync.Once
 }
 
 func (b *streamBody) start() {
