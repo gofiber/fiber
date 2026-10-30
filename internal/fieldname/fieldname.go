@@ -20,6 +20,13 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// MaxTrailers is the most trailer names DropTrailers takes on, since it walks the whole header for each.
+const MaxTrailers = 16
+
+// MaxOrderedLines is the most lines KeepReceivedOrder and ReceivedOrder rank, since they match each received line
+// against them.
+const MaxOrderedLines = 64
+
 // Peeker is the part of fasthttp's headers needed to read field lines by name.
 type Peeker interface {
 	Peek(key string) []byte
@@ -39,14 +46,20 @@ type Deleter interface {
 	All() iter.Seq2[[]byte, []byte]
 }
 
+type receivedKey struct{}
+
+// orderedLine is a stored line KeepReceivedOrder may move. rank is its place among the received lines, or
+// MaxOrderedLines plus its stored place for one that was not received, which so stays behind them in stored order.
+type orderedLine struct {
+	name, value []byte
+	group, rank int
+}
+
 // HasTrailers reports whether h holds a trailer section, received or announced.
 // Peek and PeekAll fall through to it, so the keyed reads are taken only without one.
 func HasTrailers(h Peeker) bool {
 	return len(h.PeekTrailerKeys()) > 0
 }
-
-// MaxTrailers is the most trailer names DropTrailers takes on, since it walks the whole header for each.
-const MaxTrailers = 16
 
 // DropTrailers discards a request's trailer section and the names announced for it (RFC 9112 §7.1.2):
 // fasthttp files a later Set or Add under such a name with that section, out of the header readers' reach.
@@ -143,8 +156,6 @@ func InTrailer(h *fasthttp.RequestHeader, name string) bool {
 	}
 	return false
 }
-
-type receivedKey struct{}
 
 // SetReceived records block, field lines in the order they were received, for a request built in code from one
 // received elsewhere, such as the net/http adaptor's: fasthttp keeps no received block for it.
@@ -256,17 +267,6 @@ func JoinedInReceivedOrder(raw []byte, name string, combined []byte) bool {
 		combined = combined[len(v):]
 		found = true
 	}
-}
-
-// MaxOrderedLines is the most lines KeepReceivedOrder and ReceivedOrder rank, since they match each received line
-// against them.
-const MaxOrderedLines = 64
-
-// orderedLine is a stored line KeepReceivedOrder may move. rank is its place among the received lines, or
-// MaxOrderedLines plus its stored place for one that was not received, which so stays behind them in stored order.
-type orderedLine struct {
-	name, value []byte
-	group, rank int
 }
 
 // KeepReceivedOrder puts the lines of each name match accepts that is stored on several lines back in the order

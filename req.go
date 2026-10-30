@@ -31,6 +31,22 @@ var charsetBytes = []byte("charset")
 // maxContentCodings is the longest Content-Encoding list Body undoes; curl stops at five as well.
 const maxContentCodings = 5
 
+// Ranks of the headers Scheme reads, lowest first.
+const (
+	schemeRankNone = iota
+	schemeRankXURLScheme
+	schemeRankXForwardedSsl
+	schemeRankXForwardedProtocol
+	schemeRankXForwardedProto
+)
+
+var schemeHeaders = [...]string{
+	schemeRankXURLScheme:         HeaderXUrlScheme,
+	schemeRankXForwardedSsl:      HeaderXForwardedSsl,
+	schemeRankXForwardedProtocol: HeaderXForwardedProtocol,
+	schemeRankXForwardedProto:    HeaderXForwardedProto,
+}
+
 // Range represents the parsed HTTP Range header extracted by DefaultReq.Range.
 type Range struct {
 	Type   string
@@ -1471,22 +1487,6 @@ func (r *DefaultReq) Scheme() string {
 		}
 	})
 	return scheme
-}
-
-// Ranks of the headers Scheme reads, lowest first.
-const (
-	schemeRankNone = iota
-	schemeRankXURLScheme
-	schemeRankXForwardedSsl
-	schemeRankXForwardedProtocol
-	schemeRankXForwardedProto
-)
-
-var schemeHeaders = [...]string{
-	schemeRankXURLScheme:         HeaderXUrlScheme,
-	schemeRankXForwardedSsl:      HeaderXForwardedSsl,
-	schemeRankXForwardedProtocol: HeaderXForwardedProtocol,
-	schemeRankXForwardedProto:    HeaderXForwardedProto,
 }
 
 func schemeHeaderRank(key []byte) int {
