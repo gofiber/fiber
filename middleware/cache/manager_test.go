@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/redact"
+
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
@@ -36,7 +38,7 @@ func Test_manager_logKey(t *testing.T) {
 	t.Parallel()
 
 	redactedManager := newManager(nil, true)
-	assert.Equal(t, redactedKey, redactedManager.logKey("secret"))
+	assert.Equal(t, redact.Placeholder, redactedManager.logKey("secret"))
 
 	plainManager := newManager(nil, false)
 	assert.Equal(t, "secret", plainManager.logKey("secret"))

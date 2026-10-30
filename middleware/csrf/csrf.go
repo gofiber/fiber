@@ -85,12 +85,7 @@ func New(config ...Config) fiber.Handler {
 
 	redactKeys := !cfg.DisableValueRedaction
 
-	maskValue := func(value string) string {
-		if redactKeys {
-			return redactedKey
-		}
-		return value
-	}
+	maskValue := redact.Masker(redactKeys)
 
 	// Create manager to simplify storage operations ( see *_manager.go )
 	var sessionManager *sessionManager

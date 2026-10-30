@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/gofiber/fiber/v3/internal/redact"
+
 	"github.com/gofiber/utils/v2"
 
 	"github.com/gofiber/fiber/v3"
@@ -26,8 +28,6 @@ const (
 	localsKeyIsFromCache contextKey = iota //
 	localsKeyWasPutToCache
 )
-
-const redactedKey = "[redacted]"
 
 // maxStoredStream is the longest stream of known length read into memory to store it.
 const maxStoredStream = 1 << 20
@@ -84,14 +84,7 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
-	redactKeys := !cfg.DisableValueRedaction
-
-	maskKey := func(key string) string {
-		if redactKeys {
-			return redactedKey
-		}
-		return key
-	}
+	maskKey := redact.Masker(!cfg.DisableValueRedaction)
 
 	// Snapshot the configured names so later mutation of the caller's slice
 	// cannot change an already-constructed handler. Matching uses

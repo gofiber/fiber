@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/url"
 
+	"github.com/gofiber/fiber/v3/internal/redact"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 )
@@ -45,7 +47,7 @@ func NewCrossOriginProtection(config ...CrossOriginConfig) fiber.Handler {
 		cfg.ErrorHandler = defaultErrorHandler
 	}
 
-	trusted := parseTrustedOrigins(cfg.TrustedOrigins, func(string) string { return redactedKey })
+	trusted := parseTrustedOrigins(cfg.TrustedOrigins, redact.Masker(true))
 
 	return func(c fiber.Ctx) error {
 		if cfg.Next != nil && cfg.Next(c) {

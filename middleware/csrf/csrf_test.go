@@ -2245,7 +2245,7 @@ func Test_storageManager_logKey(t *testing.T) {
 	t.Parallel()
 
 	redacted := newStorageManager(nil, true)
-	require.Equal(t, redactedKey, redacted.logKey("secret"))
+	require.Equal(t, redact.Placeholder, redacted.logKey("secret"))
 
 	plain := newStorageManager(nil, false)
 	require.Equal(t, "secret", plain.logKey("secret"))
