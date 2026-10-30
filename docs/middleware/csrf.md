@@ -252,6 +252,8 @@ This is a more secure, stateful pattern that is **automatically enabled** when y
 
 - **Why it is more secure:** Tying the token to the server-side session provides the strongest CSRF protection, as the token is then guaranteed to have been generated for the specific user. While browsers automatically send the required cookie, custom API clients must remember to include the cookie with their requests for validation to succeed.
 
+- **Several session middleware:** the token is kept in the session of the innermost session middleware, the last to run, whichever store you give as `Session`. With more than one session middleware in a request, register the one that should hold the token last.
+
 ```go
 // Enable the more secure Synchronizer Token pattern
 app.Use(csrf.New(csrf.Config{
