@@ -252,6 +252,10 @@ type Ctx interface {
 	// that never returns — the context is intentionally never reclaimed, because the
 	// handler still owns it.
 	//
+	// It may be called more than once per request, also concurrently, as nested
+	// timeout middlewares do: the context is then reclaimed once every handlerDone is
+	// closed. Each call must come from a goroutine that still owns the context.
+	//
 	// This method calls Abandon internally, so callers do not need to call Abandon
 	// separately. Calling Abandon before ScheduleReclaim is still safe (idempotent).
 	ScheduleReclaim(handlerDone <-chan struct{}, cancel context.CancelFunc)
@@ -467,9 +471,9 @@ type Ctx interface {
 	extractIPsFromHeader(header string) []string
 	// extractIPFromHeader returns the client IP from the given proxy header by walking the
 	// X-Forwarded-For chain from right to left and stripping trusted proxy IPs. When trusted
-	// proxies are configured, the rightmost non-trusted IP is returned; otherwise the first
-	// valid IP (left-to-right) is returned. When IP validation is disabled, the raw header
-	// value is returned as-is.
+	// proxies are configured, the rightmost non-trusted IP is returned, and an entry that is not
+	// an IP ends the walk; otherwise the first valid IP (left-to-right) is returned. When IP
+	// validation is disabled, the raw header value is returned as-is.
 	extractIPFromHeader(header string) string
 	// hasTrustedProxyConfig returns true if any trusted proxy configuration is set.
 	hasTrustedProxyConfig() bool

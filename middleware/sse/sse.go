@@ -11,14 +11,28 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 )
 
 var errStreamClosed = errors.New("sse: stream closed")
+
+// streamBody starts Handler on the first Read, once the middleware chain has returned. Close waits
+// for Handler and OnClose, as fasthttp reuses the RequestCtx next; an unread body runs neither.
+type streamBody struct {
+	reader    io.ReadCloser
+	stream    *Stream
+	run       func()
+	done      chan struct{}
+	closeErr  error
+	startOnce sync.Once
+	closeOnce sync.Once
+}
 
 // New creates a new SSE handler.
 func New(config ...Config) fiber.Handler {
@@ -33,13 +47,12 @@ func New(config ...Config) fiber.Handler {
 		c.Set(fiber.HeaderConnection, "keep-alive")
 		c.Set("X-Accel-Buffering", "no")
 
-		streamContext := c.Context()
-		lastEventID := c.Get(fiber.HeaderLastEventID)
+		// A Stream kept past the request must not alias its header buffer.
+		stream := newStream(c.Context(), nil, utils.CopyString(c.Get(fiber.HeaderLastEventID)), c.App().Config().JSONEncoder)
 
 		c.Abandon()
 
-		return c.SendStreamWriter(func(w *bufio.Writer) {
-			stream := newStream(streamContext, w, lastEventID, c.App().Config().JSONEncoder)
+		return c.SendStream(&streamBody{stream: stream, done: make(chan struct{}), run: func() {
 			var streamErr error
 			defer func() {
 				if cfg.OnClose != nil {
@@ -75,8 +88,40 @@ func New(config ...Config) fiber.Handler {
 			if streamErr == nil {
 				streamErr = stream.Err()
 			}
-		})
+		}})
 	}
+}
+
+func (b *streamBody) start() {
+	b.reader = fasthttp.NewStreamReader(func(w *bufio.Writer) {
+		defer close(b.done)
+		b.stream.w = w
+		b.run()
+	})
+}
+
+func (b *streamBody) Read(p []byte) (int, error) {
+	b.startOnce.Do(b.start)
+	if b.reader == nil {
+		return 0, io.ErrClosedPipe
+	}
+	return b.reader.Read(p) //nolint:wrapcheck // fasthttp expects the reader's own io.EOF
+}
+
+func (b *streamBody) Close() error {
+	b.closeOnce.Do(func() {
+		started := true
+		b.startOnce.Do(func() { started = false })
+		if !started {
+			b.stream.closeStream()
+			return
+		}
+		// Closing the pipe first frees a write that holds the stream lock.
+		b.closeErr = b.reader.Close()
+		b.stream.abort()
+		<-b.done
+	})
+	return b.closeErr
 }
 
 // Stream is an active SSE response stream.
@@ -114,7 +159,8 @@ func (s *Stream) Context() context.Context {
 	return s.ctx
 }
 
-// Done returns a channel closed when a write fails or the handler returns.
+// Done returns a channel closed when a write fails, the server closes the
+// response body, or the handler returns.
 func (s *Stream) Done() <-chan struct{} {
 	return s.done
 }
@@ -191,6 +237,16 @@ func (s *Stream) failLocked(err error) error {
 		close(s.done)
 	})
 	return err
+}
+
+// abort ends a stream the handler has not finished, so Err reports it.
+func (s *Stream) abort() {
+	s.mu.Lock()
+	if !s.isClosed {
+		s.err = errStreamClosed
+	}
+	s.mu.Unlock()
+	s.closeStream()
 }
 
 func (s *Stream) closeStream() {

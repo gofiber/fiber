@@ -139,6 +139,7 @@ func New(config ...Config) fiber.Handler {
 		chainErr := c.Next()
 
 		data.ChainErr = chainErr
+		data.timeoutResp = timeoutResponse(c)
 		// Manually call error handler
 		if chainErr != nil {
 			if err := errHandler(c, chainErr); err != nil {
@@ -152,7 +153,12 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Logger instance & update some logger data fields
-		return cfg.LoggerFunc(c, data, &cfg)
+		err := cfg.LoggerFunc(c, data, &cfg)
+		if err == nil && data.timeoutResp != nil {
+			// errHandler answered nothing, and the error keeps the middleware before us off the handler's response.
+			return chainErr
+		}
+		return err
 	}
 }
 

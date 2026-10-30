@@ -23,9 +23,13 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/middleware/sse"
+	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 const (
@@ -952,6 +956,51 @@ func Test_StreamedBodyLimit(t *testing.T) {
 	c.Request().SetBodyStream(iotest.ErrReader(fiber.ErrRequestHeaderFieldsTooLarge), -1)
 	_, err = ConvertRequest(c, true)
 	require.ErrorIs(t, err, fiber.ErrRequestHeaderFieldsTooLarge)
+}
+
+func Test_StreamedTrailerCap(t *testing.T) {
+	t.Parallel()
+
+	echo := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.Copy(w, r.Body)
+		assert.NoError(t, err)
+	})
+	app := fiber.New(fiber.Config{StreamRequestBody: true})
+	app.Post("/handler", HTTPHandler(echo))
+	app.Post("/middleware", HTTPMiddleware(func(http.Handler) http.Handler { return echo }))
+	app.Post("/convert", func(c fiber.Ctx) error {
+		_, err := ConvertRequest(c, true)
+		return err
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+	}()
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+		if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
+			require.NoError(t, err)
+		}
+	})
+
+	var trailers strings.Builder
+	for i := range fieldname.MaxTrailers + 1 {
+		fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
+	}
+	for _, path := range []string{"/handler", "/middleware", "/convert"} {
+		conn, err := ln.Dial()
+		require.NoError(t, err)
+		_, err = conn.Write([]byte("POST " + path + " HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\n" +
+			"Connection: close\r\n\r\n5\r\nhello\r\n0\r\n" + trailers.String() + "\r\n"))
+		require.NoError(t, err)
+		resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.NoError(t, conn.Close())
+		require.Equal(t, fiber.StatusRequestHeaderFieldsTooLarge, resp.StatusCode, path)
+	}
 }
 
 func Test_ConvertRequest(t *testing.T) {
@@ -1920,6 +1969,44 @@ func Test_FiberHandlerFunc_MultiValueHeaders(t *testing.T) {
 	require.Equal(t, []string{"one", "two", "three"}, got)
 }
 
+// Test_FiberApp_ProxyHeaderLinesKeepReceivedOrder checks that a removed header line cannot move the line a
+// front proxy appended in front of the client's: fasthttp moves the store's last line into the removed slot.
+func Test_FiberApp_ProxyHeaderLinesKeepReceivedOrder(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{
+		ProxyHeader:        fiber.HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig:   fiber.TrustProxyConfig{Loopback: true},
+	})
+	app.Use(func(c fiber.Ctx) error {
+		c.Request().Header.Del(fiber.HeaderAuthorization)
+		return c.Next()
+	})
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(c.IP() + " " + c.Scheme())
+	})
+	h := FiberApp(app)
+
+	// r.Header's map order decides which line is stored last, so several rounds. HTTP/2 keeps a value's edge
+	// whitespace, which a received line drops.
+	for _, client := range []string{"6.6.6.6", "6.6.6.6 ", "\t6.6.6.6"} {
+		for range 32 {
+			r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+			r.RemoteAddr = "127.0.0.1:40000"
+			r.Header.Set(fiber.HeaderAuthorization, "Bearer t")
+			r.Header.Add(fiber.HeaderXForwardedFor, client)
+			r.Header.Add(fiber.HeaderXForwardedFor, "203.0.113.7")
+			r.Header.Add(fiber.HeaderXForwardedProto, "http")
+			r.Header.Add(fiber.HeaderXForwardedProto, "https")
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			require.Equal(t, "203.0.113.7 https", w.Body.String(), "%q", client)
+		}
+	}
+}
+
 // Test_FiberHandlerFunc_EmptyHeaderValues verifies a header key mapped to an
 // empty value slice is skipped instead of panicking or producing an empty
 // header.
@@ -2377,6 +2464,92 @@ func Test_HTTPMiddleware_PropagatesHeaderRemoval(t *testing.T) {
 	require.Equal(t, "still here", got.kept)
 	require.Equal(t, "application/x-www-form-urlencoded", got.contentType)
 	require.Equal(t, "a=1", got.body)
+}
+
+// Test_HTTPMiddleware_TrailerDoesNotBecomeHeader asserts that a field the client
+// sent after the last chunk does not reach the fiber handler as a header the
+// middleware removed or replaced.
+func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
+	t.Parallel()
+
+	const owned = "X-Authenticated-User"
+
+	// Fiber drops the trailer section before r.Trailer is built: as the request arrives or, streamed, once the body is read.
+	tests := []struct {
+		name   string
+		write  string
+		want   []string
+		stream bool
+	}{
+		{name: "stripped"},
+		{name: "replaced", write: "alice", want: []string{"alice"}},
+		{name: "stripped streamed", stream: true},
+		{name: "replaced streamed", write: "alice", want: []string{"alice"}, stream: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var (
+				trailer     []string
+				body        string
+				got         []string
+				headers     map[string][]string
+				trailerKeys int
+			)
+
+			app := fiber.New(fiber.Config{StreamRequestBody: tt.stream})
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					b, err := io.ReadAll(r.Body)
+					assert.NoError(t, err)
+					body = string(b)
+					trailer = r.Trailer.Values(owned)
+					r.Header.Del(owned)
+					if tt.write != "" {
+						r.Header.Set(owned, tt.write)
+					}
+					next.ServeHTTP(w, r)
+				})
+			}))
+			app.Post("/", func(c fiber.Ctx) error {
+				got = c.GetAll(owned)
+				headers = c.GetReqHeaders()
+				trailerKeys = len(c.Request().Header.PeekTrailerKeys())
+				return c.SendString("ok")
+			})
+
+			ln := fasthttputil.NewInmemoryListener()
+			errCh := make(chan error, 1)
+			go func() {
+				errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+			}()
+			t.Cleanup(func() {
+				require.NoError(t, app.Shutdown())
+				if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
+					require.NoError(t, err)
+				}
+			})
+
+			conn, err := ln.Dial()
+			require.NoError(t, err)
+			defer conn.Close() //nolint:errcheck // closed by the server already
+			_, err = conn.Write([]byte("POST / HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" +
+				"3\r\na=1\r\n0\r\n" + owned + ": admin\r\n\r\n"))
+			require.NoError(t, err)
+			resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.Equal(t, "a=1", body)
+			require.Empty(t, trailer)
+			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.want, headers[owned])
+			require.Zero(t, trailerKeys)
+		})
+	}
 }
 
 // Test_HTTPMiddleware_HeaderFidelity asserts that the fiber request ends up
@@ -2902,4 +3075,92 @@ func Test_HTTPMiddleware_NoRewriteKeepsChainPosition(t *testing.T) {
 			require.False(t, authRan.Load())
 		})
 	}
+}
+
+func Test_FiberAdaptors_TimedOutRequest(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		build func(h fiber.Handler) http.Handler
+		name  string
+	}{
+		{name: "FiberApp", build: func(h fiber.Handler) http.Handler {
+			app := fiber.New()
+			app.Get("/*", h)
+			return FiberApp(app)
+		}},
+		{name: "FiberHandler", build: FiberHandler},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			held := make(chan *fasthttp.RequestCtx, 1)
+			seen := make(chan *fasthttp.RequestCtx, 1)
+			release := make(chan struct{})
+			finished := make(chan struct{})
+			handler := tc.build(timeout.New(func(c fiber.Ctx) error {
+				if c.Path() != "/slow" {
+					seen <- c.RequestCtx()
+					return fiber.ErrUnauthorized
+				}
+				defer close(finished)
+				c.Cookie(&fiber.Cookie{Name: "early", Value: "1"})
+				held <- c.RequestCtx()
+				<-release
+				c.Cookie(&fiber.Cookie{Name: "session", Value: "late"})
+				return c.SendString("late")
+			}, timeout.Config{
+				Timeout: 10 * time.Millisecond,
+				Next:    func(c fiber.Ctx) bool { return c.Path() != "/slow" },
+			}))
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+			require.Equal(t, fiber.StatusServiceUnavailable, rec.Code)
+			require.Equal(t, fiber.ErrServiceUnavailable.Message, rec.Body.String())
+			require.Empty(t, rec.Header().Values(fiber.HeaderSetCookie))
+			timedOut := <-held
+
+			for range 20 {
+				rec := httptest.NewRecorder()
+				handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/private", http.NoBody))
+				require.Equal(t, fiber.StatusUnauthorized, rec.Code)
+				require.Empty(t, rec.Header().Values(fiber.HeaderSetCookie))
+				require.NotSame(t, timedOut, <-seen, "the timed-out handler's RequestCtx was handed to another request")
+			}
+
+			close(release)
+			<-finished
+		})
+	}
+}
+
+// net/http discards a HEAD body, so a stream read for one would run with every write succeeding.
+func Test_FiberAdaptors_HeadLeavesStreamUnread(t *testing.T) {
+	t.Parallel()
+
+	var handlers atomic.Int32
+	events := sse.New(sse.Config{
+		DisableHeartbeat: true,
+		Handler: func(_ fiber.Ctx, stream *sse.Stream) error {
+			handlers.Add(1)
+			return stream.Comment("open")
+		},
+	})
+	app := fiber.New()
+	app.Get("/events", events)
+
+	for _, handler := range []http.Handler{FiberApp(app), FiberHandler(events)} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodHead, "/events", http.NoBody))
+		require.Equal(t, fiber.StatusOK, rec.Code)
+		require.Equal(t, fiber.MIMETextEventStream, rec.Header().Get(fiber.HeaderContentType))
+		require.Empty(t, rec.Body.String())
+	}
+	require.Zero(t, handlers.Load())
+
+	rec := httptest.NewRecorder()
+	FiberApp(app).ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
+	require.Equal(t, ": open\n\n", rec.Body.String())
+	require.Equal(t, int32(1), handlers.Load())
 }

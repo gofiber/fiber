@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -63,6 +64,71 @@ func TestDefaultCtx_ScheduleReclaim_ReleaseBeforeHandlerDone(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return !c.IsAbandoned()
 	}, time.Second, 5*time.Millisecond, "ctx must be reclaimed after handlerDone closes")
+}
+
+// TestDefaultCtx_ScheduleReclaim_Nested arms one ctx twice, as nested timeout
+// middlewares do, in every order relative to the release.
+func TestDefaultCtx_ScheduleReclaim_Nested(t *testing.T) {
+	t.Parallel()
+
+	for _, order := range [][]string{
+		{"outer", "inner", "release"},
+		{"inner", "outer", "release"},
+		{"outer", "release", "inner"},
+	} {
+		t.Run(strings.Join(order, "_"), func(t *testing.T) {
+			t.Parallel()
+			app, c := acquireReclaimTestCtx(t)
+
+			var calls atomic.Int32
+			cancel := func() { calls.Add(1) }
+			outerDone, innerDone := make(chan struct{}), make(chan struct{})
+
+			steps := map[string]func(){
+				"outer":   func() { c.ScheduleReclaim(outerDone, cancel) },
+				"inner":   func() { c.ScheduleReclaim(innerDone, cancel) },
+				"release": func() { app.ReleaseCtx(c) },
+			}
+			for _, step := range order {
+				steps[step]()
+			}
+
+			close(outerDone)
+			require.Never(t, func() bool {
+				return !c.IsAbandoned()
+			}, 50*time.Millisecond, 5*time.Millisecond, "ctx must not be reclaimed while the inner handler is still running")
+
+			close(innerDone)
+			require.Eventually(t, func() bool {
+				return !c.IsAbandoned() && calls.Load() == 2
+			}, time.Second, 5*time.Millisecond, "ctx must be reclaimed once both goroutines have finished")
+		})
+	}
+}
+
+// TestDefaultCtx_ScheduleReclaim_Concurrent arms the ctx from the request
+// goroutine and from the goroutine it abandons at the same time.
+func TestDefaultCtx_ScheduleReclaim_Concurrent(t *testing.T) {
+	t.Parallel()
+	app, c := acquireReclaimTestCtx(t)
+
+	outerDone, innerDone := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(outerDone)
+		c.ScheduleReclaim(innerDone, nil)
+	}()
+	c.ScheduleReclaim(outerDone, nil)
+	app.ReleaseCtx(c)
+
+	<-outerDone
+	require.Never(t, func() bool {
+		return !c.IsAbandoned()
+	}, 50*time.Millisecond, 5*time.Millisecond, "ctx must not be reclaimed while the inner handler is still running")
+
+	close(innerDone)
+	require.Eventually(t, func() bool {
+		return !c.IsAbandoned()
+	}, time.Second, 5*time.Millisecond, "ctx must be reclaimed once both goroutines have finished")
 }
 
 // TestDefaultCtx_ScheduleReclaim_CancelInvoked verifies the cancel hook fires

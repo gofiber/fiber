@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
@@ -38,10 +39,7 @@ func segmentsAsRouted(target string, policy SecurityPolicy) bool {
 func forwardWithRealIP(c fiber.Ctx, addr string, policy SecurityPolicy, clients ...*fasthttp.Client) error {
 	var scratch [realIPScratch]byte
 	ip := realIP(c, scratch[:0])
-	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
-		if !setRealIP(c, ip) {
-			return fiber.ErrRequestHeaderFieldsTooLarge
-		}
+	return doActionWithPolicy(c, addr, policy, ip, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.Do(req, resp)
 	}, clients...)
 }
@@ -112,7 +110,7 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 // cannot be rebound to a private IP between validation and connection.
 func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error {
 	policy := currentSecurityPolicy()
-	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
+	return doActionWithPolicy(c, addr, policy, nil, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
 		err := followRedirects(cli, req, resp, maxRedirectsCount, u, policy)
 		if err != nil {
 			// resp holds the hop the loop stopped at, unstripped: none of it is the client's.
@@ -155,13 +153,15 @@ func doAction(
 	action doActionFunc,
 	clients ...*fasthttp.Client,
 ) error {
-	return doActionWithPolicy(c, addr, currentSecurityPolicy(), action, clients...)
+	return doActionWithPolicy(c, addr, currentSecurityPolicy(), nil, action, clients...)
 }
 
+// doActionWithPolicy writes ip, unless nil, as X-Real-IP once the hop-by-hop fields are gone.
 func doActionWithPolicy(
 	c fiber.Ctx,
 	addr string,
 	policy SecurityPolicy,
+	ip []byte,
 	action doActionFunc,
 	clients ...*fasthttp.Client,
 ) error {
@@ -216,7 +216,17 @@ func doActionWithPolicy(
 	// https://github.com/gofiber/fiber/issues/1762.
 	req.URI().SetScheme(u.Scheme)
 
+	// Whatever the policy: a Set under a held trailer name is filed with the section, not over the client's line.
+	if !fieldname.DropTrailers(&req.Header) {
+		return fiber.ErrRequestHeaderFieldsTooLarge
+	}
 	if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized) {
+		return fiber.ErrRequestHeaderFieldsTooLarge
+	}
+	if ip != nil && !setRealIP(c, ip) {
+		return fiber.ErrRequestHeaderFieldsTooLarge
+	}
+	if !keepForwardingOrder(req) {
 		return fiber.ErrRequestHeaderFieldsTooLarge
 	}
 	// The upstream connection speaks HTTP/1.1: reset a protocol token

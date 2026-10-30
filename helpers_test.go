@@ -18,6 +18,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -36,6 +37,40 @@ func Benchmark_PeekJoinedRequestHeader(b *testing.B) {
 				joined = peekJoinedRequestHeader(&h, HeaderAccept)
 			}
 			require.NotEmpty(b, joined)
+		})
+	}
+}
+
+// Test_JoinedInReceivedOrder pins the read-only scan to the values fasthttp parses.
+func Test_JoinedInReceivedOrder(t *testing.T) {
+	t.Parallel()
+
+	const head = "GET / HTTP/1.1\r\nHost: example.com\r\n"
+	tests := []struct {
+		name     string
+		lines    string
+		combined string // empty: as stored
+		want     bool
+	}{
+		{name: "in order", lines: "X-Forwarded-For: 1.1.1.1\r\nAccept: */*\r\nX-Forwarded-For: 2.2.2.2\r\n", want: true},
+		{name: "OWS and spelling", lines: "x-forwarded-for:\t1.1.1.1 \r\nX-FORWARDED-FOR:2.2.2.2\t\r\n", want: true},
+		{name: "longer name", lines: "X-Forwarded-For-Extra: 9.9.9.9\r\nX-Forwarded-For: 1.1.1.1\r\nX-Forwarded-For: 2.2.2.2\r\n", want: true},
+		{name: "reordered", lines: "X-Forwarded-For: 1.1.1.1\r\nX-Forwarded-For: 2.2.2.2\r\n", combined: "2.2.2.2,1.1.1.1"},
+		{name: "added", lines: "X-Forwarded-For: 1.1.1.1\r\nX-Forwarded-For: 2.2.2.2\r\n", combined: "1.1.1.1,2.2.2.2,3.3.3.3"},
+		{name: "folded", lines: "X-Forwarded-For: 1.1.1.1,\r\n 3.3.3.3\r\nX-Forwarded-For: 2.2.2.2\r\n"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var req fasthttp.Request
+			require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(head+tc.lines+"\r\n"))))
+			combined := []byte(tc.combined)
+			if tc.combined == "" {
+				combined = peekJoinedRequestHeader(&req.Header, HeaderXForwardedFor)
+			}
+			require.Equal(t, tc.want, fieldname.JoinedInReceivedOrder(req.Header.RawHeaders(), HeaderXForwardedFor, combined))
 		})
 	}
 }

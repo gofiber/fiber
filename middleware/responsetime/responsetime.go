@@ -22,6 +22,11 @@ func New(config ...Config) fiber.Handler {
 
 		err := c.Next()
 
+		// A handler timeout.New gave up on may still write the response; IsAbandoned orders the read.
+		if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
+			return err
+		}
+
 		c.Set(cfg.Header, time.Since(start).String())
 
 		return err
