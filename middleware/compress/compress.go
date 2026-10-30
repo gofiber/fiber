@@ -4,7 +4,9 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/middleware/etag"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -23,7 +25,7 @@ func shouldSkip(c fiber.Ctx) bool {
 		status == fiber.StatusPartialContent ||
 		c.Get(fiber.HeaderRange) != "" ||
 		c.HasHeaderValue(fiber.HeaderCacheControl, "no-transform") ||
-		headerlist.ContainsFold(c.GetRespHeader(fiber.HeaderCacheControl), "no-transform") {
+		hasResponseNoTransform(c) {
 		return true
 	}
 
@@ -33,6 +35,22 @@ func shouldSkip(c fiber.Ctx) bool {
 		return true
 	}
 
+	return false
+}
+
+func hasResponseNoTransform(c fiber.Ctx) bool {
+	respHeader := &c.Response().Header
+	canonical := headerlookup.Canonical(c)
+	if len(fieldname.First(respHeader, fiber.HeaderCacheControl, canonical)) == 0 {
+		return false
+	}
+	for _, line := range fieldname.Lines(respHeader, fiber.HeaderCacheControl, canonical) {
+		for member := range headerlist.AllQuotedPairs(utils.UnsafeString(line)) {
+			if utils.EqualFold(member, "no-transform") {
+				return true
+			}
+		}
+	}
 	return false
 }
 
