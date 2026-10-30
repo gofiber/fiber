@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/redact"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/memory"
 )
-
-const redactedKey = "[redacted]"
 
 // storagePrefix keeps tokens apart from other middleware sharing the Storage, as the client
 // names the token; the concatenation also gives the Storage a key that outlives the request.
@@ -84,8 +84,5 @@ func (m *storageManager) delRaw(ctx context.Context, key string) error {
 }
 
 func (m *storageManager) logKey(key string) string {
-	if m.shouldRedactKeys {
-		return redactedKey
-	}
-	return key
+	return redact.Value(key, m.shouldRedactKeys)
 }

@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/redact"
+
 	"github.com/stretchr/testify/require"
 	"github.com/tinylib/msgp/msgp"
 )
@@ -89,7 +91,7 @@ func Test_manager_get_UnmarshalError(t *testing.T) {
 	m := newManager(storage, true)
 	_, err := m.get(context.Background(), "k")
 	require.Error(t, err)
-	require.ErrorContains(t, err, redactedKey)
+	require.ErrorContains(t, err, redact.Placeholder)
 }
 
 func Test_manager_get_RoundTripWithStorage(t *testing.T) {

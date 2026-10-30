@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/redact"
+
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 
@@ -230,12 +232,7 @@ func New(config ...Config) fiber.Handler {
 
 	redactKeys := !cfg.DisableValueRedaction
 
-	maskKey := func(key string) string {
-		if redactKeys {
-			return redactedKey
-		}
-		return key
-	}
+	maskKey := redact.Masker(redactKeys)
 
 	// Nothing to cache
 	if int(cfg.Expiration.Seconds()) < 0 {

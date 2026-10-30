@@ -28,3 +28,18 @@ func Test_Prefix(t *testing.T) {
 		})
 	}
 }
+
+func Test_Value(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "[redacted]", Placeholder)
+	require.Equal(t, Placeholder, Value("secret", true))
+	require.Equal(t, Placeholder, Value("", true))
+	require.Equal(t, "secret", Value("secret", false))
+	require.Empty(t, Value("", false))
+}
+
+func Test_Masker(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, Placeholder, Masker(true)("https://example.com"))
+	require.Equal(t, "https://example.com", Masker(false)("https://example.com"))
+}

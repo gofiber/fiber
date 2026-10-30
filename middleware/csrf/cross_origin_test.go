@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gofiber/fiber/v3/internal/redact"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -275,7 +277,7 @@ func Test_CSRF_CrossOriginProtection_InvalidTrustedOrigin(t *testing.T) {
 		t.Run(origin, func(t *testing.T) {
 			t.Parallel()
 
-			require.PanicsWithValue(t, "[CSRF] Invalid origin format in configuration:"+redactedKey, func() {
+			require.PanicsWithValue(t, "[CSRF] Invalid origin format in configuration:"+redact.Placeholder, func() {
 				NewCrossOriginProtection(CrossOriginConfig{TrustedOrigins: []string{origin}})
 			})
 		})

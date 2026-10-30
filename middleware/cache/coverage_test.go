@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/redact"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/tinylib/msgp/msgp"
@@ -500,7 +502,7 @@ func Test_manager_get_StorageErrors(t *testing.T) {
 	storage.errs["get|k"] = errors.New("boom")
 	m := newManager(storage, true)
 	_, err := m.get(context.Background(), "k")
-	require.ErrorContains(t, err, redactedKey)
+	require.ErrorContains(t, err, redact.Placeholder)
 
 	// Stored bytes fail to unmarshal.
 	storage2 := newFailingCacheStorage()

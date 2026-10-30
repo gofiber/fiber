@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/redact"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/memory"
 	"github.com/gofiber/utils/v2"
@@ -30,8 +32,6 @@ type manager struct {
 	storage          fiber.Storage
 	shouldRedactKeys bool
 }
-
-const redactedKey = "[redacted]"
 
 // maxKeyLength bounds a rate-limit key before it ever reaches storage or the
 // in-memory map.
@@ -176,8 +176,5 @@ func (m *manager) set(ctx context.Context, key string, it *item, exp time.Durati
 }
 
 func (m *manager) logKey(key string) string {
-	if m.shouldRedactKeys {
-		return redactedKey
-	}
-	return key
+	return redact.Value(key, m.shouldRedactKeys)
 }

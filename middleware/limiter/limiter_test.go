@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/redact"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -381,9 +383,9 @@ func Test_Limiter_StorageErrorMessages(t *testing.T) {
 					}
 					if disableRedaction {
 						require.ErrorContains(t, captured, testLimiterClientKey)
-						require.NotContains(t, captured.Error(), redactedKey)
+						require.NotContains(t, captured.Error(), redact.Placeholder)
 					} else {
-						require.ErrorContains(t, captured, redactedKey)
+						require.ErrorContains(t, captured, redact.Placeholder)
 						require.NotContains(t, captured.Error(), testLimiterClientKey)
 					}
 				})
