@@ -19,7 +19,9 @@ type Config struct {
 
 	// AllowedHostsFunc is a dynamic validator called only when no static
 	// AllowedHosts rule matches. Receives the normalized hostname: port stripped,
-	// trailing dot removed, IPv6 brackets removed, lowercased.
+	// trailing dot removed, IPv6 brackets removed, lowercased, IDN converted to
+	// Punycode. An IPv6 address is passed in its RFC 5952 canonical form
+	// ("::1", "::ffff:127.0.0.1"), whatever spelling the client sent.
 	// Return true to allow.
 	//
 	// Optional. Default: nil
@@ -37,7 +39,8 @@ type Config struct {
 	//   - Subdomain: "*.myapp.com" (matches any subdomain, NOT the bare domain — list both for apex+subdomains)
 	//
 	// Entries are normalized at startup: port stripped, trailing dot removed,
-	// lowercased, IDN labels converted to Punycode, RFC 1035 length limits enforced
+	// lowercased, IDN labels converted to Punycode, IPv6 addresses written in
+	// their RFC 5952 canonical form, RFC 1035 length limits enforced
 	// (≤253 total / ≤63 per-label).
 	//
 	// Required if AllowedHostsFunc is nil.
