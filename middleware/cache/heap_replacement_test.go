@@ -24,10 +24,10 @@ type blockingManifestStorage struct {
 }
 
 func (s *blockingManifestStorage) SetWithContext(ctx context.Context, key string, value []byte, exp time.Duration) error {
-	if strings.HasSuffix(key, "_body") && s.failBodySet.Load() {
+	if strings.HasPrefix(key, bodyKeyPrefix) && s.failBodySet.Load() {
 		return errors.New("body write failed")
 	}
-	if strings.HasSuffix(key, "|vary") && s.manifestSets.Add(1) == 2 {
+	if strings.HasPrefix(key, manifestKeyPrefix) && s.manifestSets.Add(1) == 2 {
 		close(s.blocked)
 		<-s.release
 	}

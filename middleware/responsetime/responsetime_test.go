@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/stretchr/testify/require"
 )
 
@@ -96,4 +97,27 @@ func TestResponseTimeMiddleware(t *testing.T) {
 			require.Empty(t, header)
 		})
 	}
+}
+
+func TestResponseTimeLeavesTimedOutResponse(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+	ctxCh := make(chan fiber.Ctx, 1)
+	release := make(chan struct{})
+	defer close(release)
+	app.Get("/", timeout.New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		ctxCh <- c
+		<-release
+		c.Set("X-Late", "1")
+		return nil
+	}, timeout.Config{Timeout: 10 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	c := <-ctxCh
+	require.Empty(t, c.GetRespHeader(fiber.HeaderXResponseTime), "the timed-out handler still owns the response")
 }

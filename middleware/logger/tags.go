@@ -6,7 +6,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/valyala/fasthttp"
+
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 )
 
@@ -88,26 +91,36 @@ func MustRegisterTag(tag string, fn LogFunc) {
 
 // createTagMap function merged the default with the custom tags
 func createTagMap(cfg *Config) map[string]LogFunc {
-	// Set default tags
+	// Set default tags. Those reading the request log nothing once data.timeoutResp is set:
+	// the timed-out handler may still use it, and even fasthttp's reads write shared state.
 	tagFunctions := map[string]LogFunc{
-		TagReferer: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagReferer: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			return writeSanitizedString(output, c.Get(fiber.HeaderReferer))
 		},
 		TagProtocol: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return output.WriteString(c.Protocol())
 		},
-		TagScheme: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagScheme: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
 			// Scheme echoes X-Forwarded-Proto / X-Url-Scheme once the proxy is
 			// trusted, so it is request-derived like ${ips} and ${ua}.
+			if proxyHeadersInUse(c, data) {
+				return 0, nil
+			}
 			return writeSanitizedString(output, c.Scheme())
 		},
 		TagPort: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return output.WriteString(c.Port())
 		},
-		TagIP: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return writeSanitizedString(output, c.IP())
+		TagIP: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			return writeSanitizedString(output, clientIP(c, data))
 		},
-		TagIPs: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagIPs: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			// Ask the framework for the chain rather than read the header a second way:
 			// a lower-case "x-forwarded-for:" logged an empty chain while the trust
 			// decisions used it. c.IPs() splits and trims, so both wire forms match.
@@ -129,7 +142,10 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			}
 			return n, nil
 		},
-		TagHost: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagHost: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			if proxyHeadersInUse(c, data) {
+				return 0, nil
+			}
 			return writeSanitizedString(output, c.Hostname())
 		},
 		TagPath: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
@@ -138,20 +154,37 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		TagURL: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return writeSanitizedString(output, c.OriginalURL())
 		},
-		TagUA: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagUA: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			return writeSanitizedString(output, c.Get(fiber.HeaderUserAgent))
 		},
-		TagBody: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagBody: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			if err := bufferBodyStream(c); err != nil {
 				return writeSanitizedString(output, err.Error())
 			}
-			return writeSanitized(output, c.Body())
+			res := c.Res()
+			if res.Written() {
+				return writeSanitized(output, c.Body())
+			}
+			// Body answers an undecodable Content-Encoding itself; the tag only observes.
+			status := res.StatusCode()
+			body := c.Body()
+			if res.Written() {
+				res.Status(status)
+				res.ResetBody()
+			}
+			return writeSanitized(output, body)
 		},
 		TagBytesReceived: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return appendInt(output, c.Req().ContentLength())
 		},
-		TagBytesSent: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return appendInt(output, c.Res().ContentLength())
+		TagBytesSent: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			return appendInt(output, response(c, data).Header.ContentLength())
 		},
 		TagRoute: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			// Normally the registered pattern, but Ctx.Route falls back to a
@@ -159,13 +192,19 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			// matched, so this can be request-derived too.
 			return writeSanitizedString(output, c.Route().Path)
 		},
-		TagResBody: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagResBody: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			if resp := data.timeoutResp; resp != nil {
+				return writeSanitized(output, resp.Body())
+			}
 			// Res.Body answers nil for a streamed response rather than draining
 			// it, so logging cannot buffer an SSE or SendFile body it was only
 			// meant to observe.
 			return writeSanitized(output, c.Res().Body())
 		},
-		TagReqHeaders: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagReqHeaders: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			out := make(map[string][]string)
 			if err := c.Bind().Header(&out); err != nil {
 				return 0, err
@@ -177,7 +216,10 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			}
 			return writeSanitizedString(output, strings.Join(reqHeaders, "&"))
 		},
-		TagQueryStringParams: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagQueryStringParams: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			return writeSanitizedString(output, c.Req().URI().QueryArgs().String())
 		},
 
@@ -218,16 +260,25 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			}
 			return output.WriteString("-")
 		},
-		TagReqHeader: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
+		TagReqHeader: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			return writeSanitizedString(output, c.Get(extraParam))
 		},
-		TagRespHeader: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
-			return writeSanitizedString(output, c.GetRespHeader(extraParam))
+		TagRespHeader: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
+			return writeSanitized(output, fieldname.Peek(&response(c, data).Header, extraParam))
 		},
-		TagQuery: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
+		TagQuery: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			return writeSanitizedString(output, fiber.Query[string](c, extraParam))
 		},
-		TagForm: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
+		TagForm: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			if req := c.Request(); req.IsBodyStream() {
 				// Only a form body is a FormValue source; past BodyLimit just the query string is left.
 				ct := req.Header.ContentType()
@@ -237,10 +288,16 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			}
 			return writeSanitizedString(output, c.FormValue(extraParam))
 		},
-		TagCookie: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
+		TagCookie: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			return writeSanitizedString(output, c.Cookies(extraParam))
 		},
-		TagLocals: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
+		TagLocals: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			switch v := c.Locals(extraParam).(type) {
 			case []byte:
 				return writeSanitized(output, v)
@@ -254,8 +311,8 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 				return writeSanitizedValue(output, v)
 			}
 		},
-		TagStatus: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			status := c.Res().StatusCode()
+		TagStatus: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			status := response(c, data).StatusCode()
 			if cfg.areColorsEnabled {
 				// Written in place rather than with fmt: "%s%3d%s" reflects
 				// over three arguments and boxes the status, which measured
@@ -294,4 +351,35 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 	maps.Copy(tagFunctions, cfg.CustomTags)
 
 	return tagFunctions
+}
+
+// timeoutResponse returns what fasthttp sends for a request timeout.New gave up on, or nil.
+// IsAbandoned goes first: its atomic load orders the read after the timeout middleware's write.
+func timeoutResponse(c fiber.Ctx) *fasthttp.Response {
+	if !c.IsAbandoned() {
+		return nil
+	}
+	return c.RequestCtx().LastTimeoutErrorResponse()
+}
+
+// response returns the response the client receives: the timed-out handler may still write c's own.
+func response(c fiber.Ctx, data *Data) *fasthttp.Response {
+	if data.timeoutResp != nil {
+		return data.timeoutResp
+	}
+	return c.Response()
+}
+
+// proxyHeadersInUse reports whether IP, Host and Scheme would read the headers of a request
+// timeout.New gave up on, which its handler may still be reading.
+func proxyHeadersInUse(c fiber.Ctx, data *Data) bool {
+	return data.timeoutResp != nil && c.IsProxyTrusted()
+}
+
+// clientIP is c.IP, or empty where that would read headers the timed-out handler may still read.
+func clientIP(c fiber.Ctx, data *Data) string {
+	if proxyHeadersInUse(c, data) {
+		return ""
+	}
+	return c.IP()
 }

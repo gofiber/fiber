@@ -18,6 +18,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/bodystream"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
@@ -104,10 +105,11 @@ func newTCPAddr(ip []byte, port int, zone string) *net.TCPAddr {
 // request path stays allocation-free. The conn comes first to keep the
 // struct's trailing pointer span minimal (govet fieldalignment).
 type pooledCtx struct {
-	conn    noopConn
-	tlsConn tlsNoopConn
-	lr      io.LimitedReader
-	fctx    fasthttp.RequestCtx
+	conn     noopConn
+	tlsConn  tlsNoopConn
+	lr       io.LimitedReader
+	received []byte
+	fctx     fasthttp.RequestCtx
 }
 
 var ctxPool = sync.Pool{
@@ -127,8 +129,8 @@ var localContextKey = &struct{}{}
 const (
 	bufferSize = 32 * 1024
 
-	// maxHeaderScratch bounds the response-header staging buffers that are
-	// returned to the pool.
+	// maxHeaderScratch bounds the header staging buffers that are returned to
+	// the pool.
 	maxHeaderScratch = 16 * 1024
 )
 
@@ -269,47 +271,14 @@ func HTTPHandlerWithContext(h http.Handler) fiber.Handler {
 	}
 }
 
-// serveRouted runs handler, a net/http handler adapted by fasthttpadaptor, on
-// a request line that spells the path the router matched (wiretarget.Routed)
-// rather than the one that arrived, and puts the original back afterwards.
-// The two differ for an escaped or non-canonical request, and net/http reads
-// the raw one its own way: "/public/..%2Fadmin" decodes into a URL.Path that
-// http.FileServer cleans to "/admin", although no middleware mounted on
-// "/admin" has run. A routed path whose segments would not survive that
-// reading, one with an empty segment or an escaped slash, is not handed on,
-// nor is one that a handler passing the request on, such as
-// httputil.ReverseProxy, would hand an upstream that reads it as another path:
-// a backslash, or a segment a servlet container strips to a dot or an empty
-// segment ("..;", "/;x/admin"). A path parameter on a named segment is handed
-// on, since net/http reads it as part of the name.
+// serveRouted runs handler on the routed request line (see wiretarget.Serve).
 func serveRouted(c fiber.Ctx, handler fasthttp.RequestHandler) error {
-	target := wiretarget.Routed(c)
-	if !wiretarget.SegmentsAsRouted(target, wiretarget.AllowParameters) {
-		return fiber.ErrNotFound
-	}
 	if err := bufferBodyStream(c); err != nil {
 		return err
 	}
-	if target == c.OriginalURL() {
-		// the request line already spells the routed path
-		handler(c.RequestCtx())
-		return nil
+	if !wiretarget.Serve(c, handler) {
+		return fiber.ErrNotFound
 	}
-	req := c.Request()
-	original := utils.CopyString(c.OriginalURL())
-	setRoutedTarget(c, target)
-	// Buffered, the handler has returned, or panicked, in which case
-	// fasthttpadaptor re-panics here and the recover middleware or error
-	// handler that catches it still has to see the original line. Streaming
-	// or hijacked, the handler is still running with an http.Request whose
-	// URL aliases the request line's storage, so the line is left as the
-	// handler read it.
-	defer func() {
-		if !c.Response().IsBodyStream() && !c.RequestCtx().Hijacked() {
-			req.SetRequestURI(original)
-		}
-	}()
-	handler(c.RequestCtx())
 	return nil
 }
 
@@ -331,24 +300,6 @@ func bufferBodyStream(c fiber.Ctx) error {
 		return fiber.ErrBadRequest
 	}
 	return nil
-}
-
-// setRoutedTarget sets target, the routed request target, as c's request line.
-// A target that is the line as it arrived is left alone, which spares a second
-// parse of it. Otherwise the host fasthttp parsed is kept: a target that is a
-// path makes fasthttp take the host from the Host header again, while an
-// absolute-form request line names its own, which RFC 9112 Section 3.2.2 says
-// the server uses and which c.Hostname() reported. Kept, the adapted handler
-// sees in r.Host the host Fiber saw.
-func setRoutedTarget(c fiber.Ctx, target string) {
-	if target == c.OriginalURL() {
-		return
-	}
-	req := c.Request()
-	var buf [64]byte
-	host := append(buf[:0], req.URI().Host()...)
-	req.SetRequestURI(target)
-	req.URI().SetHostBytes(host)
 }
 
 // LocalContextFromHTTPRequest extracts the Fiber user context previously stored into r.Context() by the adaptor.
@@ -382,7 +333,7 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 	if err := bufferBodyStream(c); err != nil {
 		return nil, err
 	}
-	setRoutedTarget(c, target)
+	wiretarget.SetTarget(c, target)
 	var req http.Request
 	if err := fasthttpadaptor.ConvertRequest(c.RequestCtx(), &req, forServer); err != nil {
 		return nil, err //nolint:wrapcheck // This must not be wrapped
@@ -560,6 +511,11 @@ func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 	// pre-sizing would traverse them twice — and the walk also collects the
 	// cookie store and re-serializes it, on a per-request path.
 	var removed []string
+	// Trailer fields first: All never names them, and deleting Trailer would move
+	// them into the header section, where r.Header.Del never reached them.
+	for _, key := range fhdr.PeekTrailerKeys() {
+		removed = append(removed, string(key))
+	}
 	for key := range fhdr.All() {
 		name := utils.UnsafeString(key)
 		if isFramingHeader(name) {
@@ -692,7 +648,7 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		if err := bufferBodyStream(c); err != nil {
 			return err
 		}
-		setRoutedTarget(c, target)
+		wiretarget.SetTarget(c, target)
 		// Call the fasthttp adaptor directly: HTTPHandler would wrap it in a
 		// second closure that has to be built on every request, and its
 		// error result is always nil.
@@ -889,6 +845,23 @@ func fromHex(c byte) byte {
 	}
 }
 
+// appendReceived appends key's lines to dst as a received header block holds them.
+func appendReceived(dst []byte, key string, vals []string) []byte {
+	for _, v := range vals {
+		// CR or LF would not read back as stored, so such a field, only ever set in code, keeps the stored order.
+		if strings.ContainsAny(v, "\r\n") {
+			return dst
+		}
+	}
+	for _, v := range vals {
+		dst = append(dst, key...)
+		dst = append(dst, ": "...)
+		dst = append(dst, v...)
+		dst = append(dst, "\r\n"...)
+	}
+	return dst
+}
+
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 	// App.Config returns the config by value, so read the body limit once at
 	// construction instead of copying the whole 624-byte struct on every
@@ -903,7 +876,12 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		fctx := &pctx.fctx
 		fctx.Response.Reset()
 		fctx.Request.Reset()
-		defer ctxPool.Put(pctx)
+		defer func() {
+			// As fasthttp's server does, leave a timed-out ctx to the handler that may still run on it.
+			if fctx.LastTimeoutErrorResponse() == nil {
+				ctxPool.Put(pctx)
+			}
+		}()
 
 		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey))
 		if err != nil {
@@ -988,6 +966,10 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 		req.Header.SetProtocol(proto)
 
+		received := pctx.received[:0]
+		if cap(received) > maxHeaderScratch {
+			received = nil
+		}
 		for key, vals := range r.Header {
 			if len(vals) == 0 {
 				continue
@@ -1002,6 +984,14 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			for _, v := range vals[1:] {
 				req.Header.Add(key, v)
 			}
+			if len(vals) > 1 {
+				received = appendReceived(received, key, vals)
+			}
+		}
+		pctx.received = received
+		if len(received) > 0 {
+			// A removed line moves the store's last one into its slot; c.IP() and the proxy read this order instead.
+			fieldname.SetReceived(req, &pctx.received)
 		}
 
 		if len(h) > 0 {
@@ -1020,22 +1010,32 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 
 		// Convert fasthttp Ctx -> net/http
-		copyResponseHeaders(w.Header(), &fctx.Response.Header)
-		w.WriteHeader(fctx.Response.StatusCode())
+		resp := &fctx.Response
+		if timeoutResp := fctx.LastTimeoutErrorResponse(); timeoutResp != nil {
+			// The timed-out handler still owns fctx.Response; send what fasthttp would.
+			resp = timeoutResp
+		}
+		copyResponseHeaders(w.Header(), &resp.Header)
+		w.WriteHeader(resp.StatusCode())
 
 		// Check if streaming is not possible or unnecessary.
-		bodyStream := fctx.Response.BodyStream()
+		bodyStream := resp.BodyStream()
+		if bodyStream != nil && r.Method == http.MethodHead {
+			// net/http discards a HEAD body, so as fasthttp's server does, close the stream unread.
+			_ = resp.CloseBodyStream() //nolint:errcheck // not needed
+			return
+		}
 		flusher, ok := w.(http.Flusher)
 		if !ok || bodyStream == nil {
-			_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck // not needed
+			_, _ = w.Write(resp.Body()) //nolint:errcheck // not needed
 			return
 		}
 
 		defer func() {
-			_ = fctx.Response.CloseBodyStream() //nolint:errcheck // not needed
+			_ = resp.CloseBodyStream() //nolint:errcheck // not needed
 		}()
 
-		// Stream fctx.Response.BodyStream() -> w
+		// Stream resp.BodyStream() -> w
 		// in chunks.
 		bufPtr, ok := bufferPool.Get().(*[bufferSize]byte)
 		if !ok {

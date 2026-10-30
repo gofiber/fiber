@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -402,6 +403,57 @@ func Test_Cache_RejectedCredentialReturnedAsError(t *testing.T) {
 			}
 		}
 	}
+}
+
+// A refusal OnTimeout returns ends the entry, but the response stays the timed-out handler's.
+func Test_Cache_RejectedCredentialFromOnTimeout(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	answered := make(chan struct{})
+	finished := make(chan struct{})
+	app := fiber.New()
+	app.Use(New(Config{KeyCookies: []string{"session"}}))
+	app.Get("/", timeout.New(func(c fiber.Ctx) error {
+		if calls.Add(1) != 2 {
+			return c.SendString("ok")
+		}
+		defer close(finished)
+		// Nothing orders this write against the cache's after c.Next().
+		<-answered
+		c.Set("X-Handler", "1")
+		return nil
+	}, timeout.Config{
+		Timeout: 100 * time.Millisecond,
+		OnTimeout: func(fiber.Ctx) error {
+			close(answered)
+			return fiber.ErrUnauthorized
+		},
+	}))
+
+	get := func(cacheControl string) *fasthttp.RequestCtx {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.SetRequestURI("/")
+		fctx.Request.Header.SetCookie("session", "a")
+		if cacheControl != "" {
+			fctx.Request.Header.Set(fiber.HeaderCacheControl, cacheControl)
+		}
+		app.Handler()(fctx)
+		return fctx
+	}
+
+	require.Equal(t, cacheMiss, string(get("").Response.Header.Peek("X-Cache")))
+
+	fctx := get("no-cache")
+	resp := fctx.LastTimeoutErrorResponse()
+	require.NotNil(t, resp)
+	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode())
+	<-finished
+	require.Equal(t, "1", string(fctx.Response.Header.Peek("X-Handler")))
+	require.Empty(t, fctx.Response.Header.Peek("X-Cache"), "the cache wrote to the timed-out handler's response")
+
+	require.Equal(t, cacheMiss, string(get("").Response.Header.Peek("X-Cache")))
+	require.Equal(t, int32(3), calls.Load())
 }
 
 // A refusal ends the credential's entry and its other variants, through the manifest when that is its own, else a record.
@@ -1531,7 +1583,7 @@ func Test_Cache_ExpiredDeleteChecksTheEntry(t *testing.T) {
 
 			var reads atomic.Int32
 			storage := &hookedStorage{failingCacheStorage: newFailingCacheStorage(), onGet: func(key string) {
-				if strings.HasPrefix(key, cacheKeyVersion+"|GET|") && !strings.HasSuffix(key, "_body") {
+				if strings.HasPrefix(key, cacheKeyVersion+"|GET|") && !strings.HasPrefix(key, bodyKeyPrefix) {
 					reads.Add(1)
 				}
 			}}
@@ -1637,7 +1689,7 @@ func Test_Cache_RefusalToleratesAStorageThatFailsWhileDroppingTheReplacement(t *
 				base.mu.RLock()
 				defer base.mu.RUnlock()
 				for key := range base.data {
-					if strings.Contains(key, "session:sha256:"+authDigest(session)) && !strings.HasSuffix(key, "_body") && !isRefusalRecord(key) {
+					if strings.Contains(key, "session:sha256:"+authDigest(session)) && !strings.HasPrefix(key, bodyKeyPrefix) && !isRefusalRecord(key) {
 						return key
 					}
 				}
@@ -1766,7 +1818,7 @@ func Test_Cache_RefusalOfCustomKeyAuthorizationOutlivesTheManifestComingBack(t *
 		defer storage.mu.RUnlock()
 		found := map[string][]byte{}
 		for key, value := range storage.data {
-			if strings.HasSuffix(key, "|vary") && strings.Contains(key, "|auth="+authDigest("Bearer a")) {
+			if strings.HasPrefix(key, manifestKeyPrefix) && strings.Contains(key, "|auth="+authDigest("Bearer a")) {
 				found[key] = slices.Clone(value)
 			}
 		}

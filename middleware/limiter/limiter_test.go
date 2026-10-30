@@ -23,6 +23,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -332,6 +333,57 @@ func Test_getEffectiveStatusCode_TypedNilCustomError(t *testing.T) {
 	})
 }
 
+func Test_getEffectiveStatusCode_TimedOut(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(c.ForceRelease)
+
+	c.Response().SetStatusCode(fiber.StatusOK)
+	c.RequestCtx().TimeoutErrorWithCode("upstream too slow", fiber.StatusGatewayTimeout)
+	c.Abandon()
+
+	require.Equal(t, fiber.StatusGatewayTimeout, getEffectiveStatusCode(c, nil))
+	require.Equal(t, fiber.StatusGatewayTimeout, getEffectiveStatusCode(c, errors.New("generic")))
+}
+
+// Test_Limiter_TimedOutRequest checks that the limiter leaves the response of a
+// handler timeout.New gave up on alone; fasthttp sends the timeout response.
+func Test_Limiter_TimedOutRequest(t *testing.T) {
+	t.Parallel()
+
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			t.Parallel()
+
+			release := make(chan struct{})
+			finished := make(chan struct{})
+			app := fiber.New()
+			app.Use(New(Config{Max: 10, LimiterMiddleware: strategy.handler}))
+			app.Get("/", timeout.New(func(c fiber.Ctx) error {
+				defer close(finished)
+				c.Set("X-Handler", "1")
+				<-release
+				return nil
+			}, timeout.Config{Timeout: 10 * time.Millisecond}))
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.SetRequestURI("/")
+			app.Handler()(fctx)
+
+			resp := fctx.LastTimeoutErrorResponse()
+			require.NotNil(t, resp)
+			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode())
+
+			close(release)
+			<-finished
+			require.Equal(t, "1", string(fctx.Response.Header.Peek("X-Handler")))
+			require.Empty(t, fctx.Response.Header.Peek(xRateLimitLimit), "the limiter wrote to the timed-out handler's response")
+		})
+	}
+}
+
 func Test_Limiter_StorageErrorMessages(t *testing.T) {
 	t.Parallel()
 
@@ -350,7 +402,7 @@ func Test_Limiter_StorageErrorMessages(t *testing.T) {
 					t.Parallel()
 
 					storage := newFakeLimiterStorage()
-					storage.errs[step.name+"|"+testLimiterClientKey] = errors.New("boom")
+					storage.errs[step.name+"|"+storagePrefix+testLimiterClientKey] = errors.New("boom")
 
 					var captured error
 					app := fiber.New(fiber.Config{
@@ -457,10 +509,10 @@ func Test_Limiter_PropagatesRequestContextToStorage(t *testing.T) {
 			sets := storage.recordedSets()
 			require.Len(t, sets, 4)
 
-			requireContextRecords(t, gets, "/normal", strategy.name+"-normal", false)
-			requireContextRecords(t, gets, "/rollback", strategy.name+"-rollback", true)
-			requireContextRecords(t, sets, "/normal", strategy.name+"-normal", false)
-			requireContextRecords(t, sets, "/rollback", strategy.name+"-rollback", true)
+			requireContextRecords(t, gets, storagePrefix+"/normal", strategy.name+"-normal", false)
+			requireContextRecords(t, gets, storagePrefix+"/rollback", strategy.name+"-rollback", true)
+			requireContextRecords(t, sets, storagePrefix+"/normal", strategy.name+"-normal", false)
+			requireContextRecords(t, sets, storagePrefix+"/rollback", strategy.name+"-rollback", true)
 		})
 	}
 }
@@ -482,7 +534,7 @@ func Test_Limiter_StorageErrorsReleaseShard(t *testing.T) {
 			middleware: SlidingWindow{},
 			newStorage: func() fiber.Storage {
 				st := newFakeLimiterStorage()
-				st.errs["get|"+testLimiterClientKey] = errors.New("boom")
+				st.errs["get|"+storagePrefix+testLimiterClientKey] = errors.New("boom")
 				return st
 			},
 			wantErr: "limiter: failed to get key",
@@ -492,7 +544,7 @@ func Test_Limiter_StorageErrorsReleaseShard(t *testing.T) {
 			middleware: SlidingWindow{},
 			newStorage: func() fiber.Storage {
 				st := newFakeLimiterStorage()
-				st.errs["set|"+testLimiterClientKey] = errors.New("boom")
+				st.errs["set|"+storagePrefix+testLimiterClientKey] = errors.New("boom")
 				return st
 			},
 			wantErr: "limiter: failed to persist state",
@@ -521,7 +573,7 @@ func Test_Limiter_StorageErrorsReleaseShard(t *testing.T) {
 			middleware: FixedWindow{},
 			newStorage: func() fiber.Storage {
 				st := newFakeLimiterStorage()
-				st.errs["get|"+testLimiterClientKey] = errors.New("boom")
+				st.errs["get|"+storagePrefix+testLimiterClientKey] = errors.New("boom")
 				return st
 			},
 			wantErr: "limiter: failed to get key",
@@ -531,7 +583,7 @@ func Test_Limiter_StorageErrorsReleaseShard(t *testing.T) {
 			middleware: FixedWindow{},
 			newStorage: func() fiber.Storage {
 				st := newFakeLimiterStorage()
-				st.errs["set|"+testLimiterClientKey] = errors.New("boom")
+				st.errs["set|"+storagePrefix+testLimiterClientKey] = errors.New("boom")
 				return st
 			},
 			wantErr: "limiter: failed to persist state",
@@ -1079,7 +1131,7 @@ func Test_Limiter_Concurrency_UnrelatedKeys(t *testing.T) {
 	t.Parallel()
 
 	fast := "fast"
-	for i := 0; shardIndex(fast) == shardIndex("slow"); i++ {
+	for i := 0; shardIndex(storagePrefix+fast) == shardIndex(storagePrefix+"slow"); i++ {
 		fast = "fast" + strconv.Itoa(i)
 	}
 
@@ -1090,7 +1142,7 @@ func Test_Limiter_Concurrency_UnrelatedKeys(t *testing.T) {
 	}
 
 	for _, mw := range []Handler{FixedWindow{}, SlidingWindow{}} {
-		st := &stallingStorage{Storage: memory.New(), stallKey: "slow", entered: make(chan struct{}), release: make(chan struct{})}
+		st := &stallingStorage{Storage: memory.New(), stallKey: storagePrefix + "slow", entered: make(chan struct{}), release: make(chan struct{})}
 		app := fiber.New()
 		app.Use(New(Config{
 			Storage:           st,
@@ -2078,12 +2130,48 @@ func Test_Limiter_AdmitKeyCopiesWithBuiltInStore(t *testing.T) {
 	}
 }
 
+// The key comes from the request, so the entry must not land on one that another
+// middleware keeps in a shared Storage.
+func Test_Limiter_SharedStorage_KeyNamespace(t *testing.T) {
+	t.Parallel()
+
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			t.Parallel()
+
+			const foreignKey = "csrf:token"
+			storage := newFakeLimiterStorage()
+			storage.data[foreignKey] = []byte("+")
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Storage:           storage,
+				Max:               1,
+				Expiration:        time.Minute,
+				LimiterMiddleware: strategy.handler,
+				KeyGenerator:      func(c fiber.Ctx) string { return c.Get("X-Client") },
+			}))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Header.Set("X-Client", foreignKey)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.Equal(t, []byte("+"), storage.data[foreignKey])
+			require.Contains(t, storage.data, storagePrefix+foreignKey)
+		})
+	}
+}
+
 func Test_Limiter_DisableValueRedaction_ShowsBoundedKey(t *testing.T) {
 	t.Parallel()
 
 	oversizedKey := strings.Repeat("k", maxKeyLength*2)
 	storage := newFakeLimiterStorage()
-	storage.errs["get|"+boundKey(oversizedKey)] = errors.New("boom")
+	storage.errs["get|"+storagePrefix+boundKey(oversizedKey)] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -2489,7 +2577,7 @@ func Test_Limiter_OversizedKeyGeneratorIsBounded(t *testing.T) {
 			for storedKey := range storage.data {
 				require.NotEqual(t, oversizedKey, storedKey, "the raw oversized key must never reach storage")
 				require.LessOrEqual(t, len(storedKey), maxKeyLength)
-				require.True(t, strings.HasPrefix(storedKey, hashPrefix))
+				require.True(t, strings.HasPrefix(storedKey, storagePrefix+hashPrefix))
 			}
 
 			// The same oversized key must still be recognized as the same client on

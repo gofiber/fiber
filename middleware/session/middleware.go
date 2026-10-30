@@ -111,6 +111,12 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 
 		stackErr := c.Next()
 
+		// A handler timeout.New gave up on may still use m: neither save nor pool it or its session.
+		// IsAbandoned goes first: its atomic load orders the read after the timeout middleware's write.
+		if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
+			return stackErr
+		}
+
 		m.mu.RLock()
 		isDestroyed := m.isDestroyed
 		m.mu.RUnlock()

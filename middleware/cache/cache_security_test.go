@@ -2710,7 +2710,7 @@ func Test_Cache_Security_VaryManifestOwnsItsBytes(t *testing.T) {
 
 	manifests := 0
 	for key, value := range storage.data {
-		if strings.HasSuffix(key, "|vary") {
+		if strings.HasPrefix(key, manifestKeyPrefix) {
 			manifests++
 			require.Equal(t, "cookie", string(value))
 		}
@@ -2782,7 +2782,7 @@ func countVaryManifests(storage *failingCacheStorage) int {
 
 	manifests := 0
 	for key := range storage.data {
-		if strings.HasSuffix(key, "|vary") {
+		if strings.HasPrefix(key, manifestKeyPrefix) {
 			manifests++
 		}
 	}

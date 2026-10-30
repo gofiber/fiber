@@ -113,7 +113,7 @@ func TestCSRFStorageGetError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCSRFStorage()
-	storage.errs["get|token"] = errors.New("boom")
+	storage.errs["get|"+storagePrefix+"token"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New()
@@ -144,7 +144,7 @@ func TestCSRFStorageSetError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCSRFStorage()
-	storage.errs["set|token"] = errors.New("boom")
+	storage.errs["set|"+storagePrefix+"token"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New()
@@ -175,8 +175,8 @@ func TestCSRFStorageDeleteError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCSRFStorage()
-	storage.data["token"] = []byte("value")
-	storage.errs["del|token"] = errors.New("boom")
+	storage.data[storagePrefix+"token"] = []byte("value")
+	storage.errs["del|"+storagePrefix+"token"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New()
@@ -2790,7 +2790,7 @@ func Test_CSRF_StorageGetError_OnValidation(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCSRFStorage()
-	storage.errs["get|token"] = errors.New("boom")
+	storage.errs["get|"+storagePrefix+"token"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New()
@@ -2813,6 +2813,106 @@ func Test_CSRF_StorageGetError_OnValidation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 	require.ErrorContains(t, captured, "csrf: failed to fetch token from storage")
+}
+
+// A shared Storage holds more than tokens, such as a limiter's counters. The
+// client names the token, so it must not reach those.
+func Test_CSRF_TokenCannotNameForeignStorageEntry(t *testing.T) {
+	t.Parallel()
+
+	const foreignKey = "198.51.100.9"
+	foreignValue := []byte("entry of another middleware")
+
+	for _, singleUse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("SingleUseToken=%t", singleUse), func(t *testing.T) {
+			t.Parallel()
+
+			storage := newFailingCSRFStorage()
+			storage.data[foreignKey] = foreignValue
+
+			app := fiber.New()
+			app.Use(New(Config{Storage: storage, SingleUseToken: singleUse}))
+			app.All("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusOK)
+			})
+			app.Get("/logout", func(c fiber.Ctx) error {
+				return HandlerFromContext(c).DeleteToken(c)
+			})
+
+			for _, target := range []string{"/", "/logout"} {
+				req := httptest.NewRequest(fiber.MethodGet, target, http.NoBody)
+				req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: foreignKey})
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusOK, resp.StatusCode)
+				require.NotContains(t, resp.Header.Get(fiber.HeaderSetCookie), foreignKey)
+				require.Equal(t, foreignValue, storage.data[foreignKey])
+			}
+
+			req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
+			req.Header.Set(HeaderName, foreignKey)
+			req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: foreignKey})
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+			require.Equal(t, foreignValue, storage.data[foreignKey])
+		})
+	}
+}
+
+// keyKeepingStorage records every key it is given as is, beside a copy made at
+// the same moment.
+type keyKeepingStorage struct {
+	*failingCSRFStorage
+	kept   []string
+	copied []string
+}
+
+func (s *keyKeepingStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	s.kept = append(s.kept, key)
+	s.copied = append(s.copied, strings.Clone(key))
+	return s.failingCSRFStorage.SetWithContext(ctx, key, val, exp)
+}
+
+// The key handed to the Storage must not change when the connection's next
+// request reuses the request buffers.
+func Test_CSRF_Storage_KeyOutlivesRequest(t *testing.T) {
+	t.Parallel()
+
+	storage := &keyKeepingStorage{failingCSRFStorage: newFailingCSRFStorage()}
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage}))
+	app.All("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+	h := app.Handler()
+
+	// One RequestCtx for every request, as the server keeps one per connection.
+	fctx := &fasthttp.RequestCtx{}
+	send := func(method, token string) {
+		fctx.Request.Reset()
+		fctx.Response.Reset()
+		fctx.Request.Header.SetMethod(method)
+		fctx.Request.SetRequestURI("/")
+		if token != "" {
+			fctx.Request.Header.Set(fiber.HeaderCookie, ConfigDefault.CookieName+"="+token)
+			fctx.Request.Header.Set(HeaderName, token)
+		}
+		h(fctx)
+		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+	}
+
+	send(fiber.MethodGet, "")
+	require.Len(t, storage.copied, 1)
+	token, ok := strings.CutPrefix(storage.copied[0], storagePrefix)
+	require.True(t, ok)
+
+	send(fiber.MethodGet, token)
+	send(fiber.MethodPost, token)
+	send(fiber.MethodGet, strings.Repeat("A", len(token)))
+
+	require.Len(t, storage.kept, 4)
+	require.Equal(t, storage.copied, storage.kept)
 }
 
 // Test_CSRF_DeleteToken_NoCookie covers the early return in DeleteToken when no
@@ -2851,8 +2951,8 @@ func Test_CSRF_DeleteToken_StorageError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCSRFStorage()
-	storage.data["token"] = []byte("value")
-	storage.errs["del|token"] = errors.New("boom")
+	storage.data[storagePrefix+"token"] = []byte("value")
+	storage.errs["del|"+storagePrefix+"token"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New()

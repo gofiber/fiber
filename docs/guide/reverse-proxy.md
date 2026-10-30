@@ -40,7 +40,7 @@ In addition, your reverse proxy should be configured to **set or overwrite** the
 :::
 
 :::info Chain parsing with `EnableIPValidation`
-`X-Forwarded-For` is a comma-separated chain that each proxy appends to. With `EnableIPValidation` enabled, `c.IP()` walks the chain from **right to left** and strips every IP that matches the configured `TrustProxyConfig`. The first non-trusted IP is returned as the client. Trust only your proxies: blanket `Private`, `Loopback` or `LinkLocal` trust is unsafe when clients can also connect from those ranges, because such a client's own entry is skipped and the address it supplied is returned instead. This matches the [MDN guidance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) and the convention used by Nginx (`set_real_ip_from` + `real_ip_recursive`), Apache `mod_remoteip`, Envoy (`xff_num_trusted_hops`), and most CDNs.
+`X-Forwarded-For` is a comma-separated chain that each proxy appends to. With `EnableIPValidation` enabled, `c.IP()` walks the chain from **right to left** and strips every IP that matches the configured `TrustProxyConfig`. The first non-trusted IP is returned as the client. An entry that is not an IP address, such as `203.0.113.50:51234` or `unknown`, ends the walk like a non-trusted IP, and `c.IP()` returns the last trusted proxy it passed or the TCP remote address; configure a proxy that appends `IP:port` entries to send the bare address. Repeated `X-Forwarded-For` lines are read in the order they were received. Trust only your proxies: blanket `Private`, `Loopback` or `LinkLocal` trust is unsafe when clients can also connect from those ranges, because such a client's own entry is skipped and the address it supplied is returned instead. This matches the [MDN guidance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) and the convention used by Nginx (`set_real_ip_from` + `real_ip_recursive`), Apache `mod_remoteip`, Envoy (`xff_num_trusted_hops`), and most CDNs.
 
 If `TrustProxyConfig` names no proxy IPs or ranges (`Proxies`, `Loopback`, `Private` and `LinkLocal` are all unset), for example when only `UnixSocket` is set, there is nothing to skip: `c.IP()` returns the first valid IP from the left, which is the entry a client can supply itself unless your proxy overwrites the header.
 
@@ -134,6 +134,10 @@ server {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # Drop the other scheme headers so a client cannot send them.
+        proxy_set_header X-Forwarded-Protocol "";
+        proxy_set_header X-Forwarded-Ssl "";
+        proxy_set_header X-Url-Scheme "";
     }
 }
 ```
@@ -172,7 +176,7 @@ func main() {
 
 The same trust check guards the other values a proxy forwards. When the connecting peer is trusted:
 
-- `c.Scheme()` follows `X-Forwarded-Proto`, `X-Forwarded-Protocol`, `X-Forwarded-Ssl: on` or `X-Url-Scheme`, and accepts only `http` or `https`.
+- `c.Scheme()` follows `X-Forwarded-Proto`, `X-Forwarded-Protocol`, `X-Forwarded-Ssl: on` or `X-Url-Scheme`, in that order of precedence whatever order they arrive in, and accepts only `http` or `https`. A proxy that sets `X-Forwarded-Proto` therefore decides the scheme even when it passes the other three through from the client. Have the proxy set `X-Forwarded-Proto` and drop the other three; a proxy that sets one of the others instead must drop every header ranked above it.
 - `c.Host()` and `c.Hostname()` use the first value of `X-Forwarded-Host`, and the `Host` header when it is absent.
 - `c.BaseURL()` is built from those two.
 

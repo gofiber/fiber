@@ -1,4 +1,4 @@
-package wiretarget
+package wiretarget_test
 
 import (
 	"bufio"
@@ -8,12 +8,13 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
 // answerFor hands app a request line exactly as written, which net/http's
-// request builders would reject or rewrite, and returns what Routed answered.
+// request builders would reject or rewrite, and returns what wiretarget.Routed answered.
 func answerFor(t *testing.T, app *fiber.App, target string) string {
 	t.Helper()
 
@@ -29,7 +30,7 @@ func answerFor(t *testing.T, app *fiber.App, target string) string {
 }
 
 func echoRouted(c fiber.Ctx) error {
-	return c.SendString(Routed(c))
+	return c.SendString(wiretarget.Routed(c))
 }
 
 func Test_Routed(t *testing.T) {
@@ -131,13 +132,13 @@ func Test_Routed(t *testing.T) {
 func Test_SegmentsAsRouted(t *testing.T) {
 	t.Parallel()
 
-	const both = AllowSlashes | AllowParameters
-	all := []Allowance{0, AllowSlashes, AllowParameters, both}
+	const both = wiretarget.AllowSlashes | wiretarget.AllowParameters
+	all := []wiretarget.Allowance{0, wiretarget.AllowSlashes, wiretarget.AllowParameters, both}
 
 	for _, tc := range []struct {
 		name    string
 		targets []string
-		passes  []Allowance // the allowances under which every target is let through
+		passes  []wiretarget.Allowance // the allowances under which every target is let through
 	}{
 		{
 			name: "plain",
@@ -157,24 +158,24 @@ func Test_SegmentsAsRouted(t *testing.T) {
 				"/a;b/c", "/m;x=1;y=2", "/..x;y/a", "/a/.b;c", "/admin;x/secret", "/admin;/secret",
 				"/a/b;jsessionid=1", "/a;x/b;y?q=1", "/a;", "/;jsessionid=1", "/a/;x", "/;x;y",
 			},
-			passes: []Allowance{AllowParameters, both},
+			passes: []wiretarget.Allowance{wiretarget.AllowParameters, both},
 		},
 		{
 			// Stripped, a segment of parameters alone is an empty segment:
 			// "/;/admin/secret" is "//admin/secret", merged into "/admin/secret".
 			name:    "parameters alone before another segment",
 			targets: []string{"/;/admin/secret", "/;x/admin", "/a/;x/b", "/a/;/", "/;x;y/b", "/a/;jsessionid=1/b"},
-			passes:  []Allowance{both},
+			passes:  []wiretarget.Allowance{both},
 		},
 		{
 			name:    "escaped slash and a parameter",
 			targets: []string{"/a%2Fb;c", "/group%2Fname;x", "/a%2F;x/b", "/a%2fb;c"},
-			passes:  []Allowance{both},
+			passes:  []wiretarget.Allowance{both},
 		},
 		{
 			name:    "escaped slash or empty segment",
 			targets: []string{"//", "//admin", "/a//b", "/a/b//", "/public/..%2Fadmin", "/a%2fb", "/a%2Fb?x=1"},
-			passes:  []Allowance{AllowSlashes, both},
+			passes:  []wiretarget.Allowance{wiretarget.AllowSlashes, both},
 		},
 		{
 			// "%2E" is an escape the router decodes, so one still in the routed
@@ -199,7 +200,7 @@ func Test_SegmentsAsRouted(t *testing.T) {
 			for _, allow := range all {
 				want := slices.Contains(tc.passes, allow)
 				for _, target := range tc.targets {
-					require.Equal(t, want, SegmentsAsRouted(target, allow), "%s allowing %d", target, allow)
+					require.Equal(t, want, wiretarget.SegmentsAsRouted(target, allow), "%s allowing %d", target, allow)
 				}
 			}
 		})
@@ -211,16 +212,16 @@ func Test_ParsesAsPath(t *testing.T) {
 
 	host := []byte("example.com")
 	for _, target := range []string{"/", "/a://b", "/a//b://c", "//evil.example/x", "//u:pw@evil.example/a:/b", "/x?u=http://y"} {
-		require.True(t, ParsesAsPath(target, host), target)
+		require.True(t, wiretarget.ParsesAsPath(target, host), target)
 	}
 	for _, target := range []string{"//u:pw@evil.example/a://b", "//evil.example/x?u=http://y", "//?x=1://"} {
-		require.False(t, ParsesAsPath(target, host), target)
+		require.False(t, wiretarget.ParsesAsPath(target, host), target)
 	}
 	// Without a Host header fasthttp reads any target that begins with "//"
 	// as an authority.
-	require.False(t, ParsesAsPath("//evil.example/x", nil))
-	require.True(t, ParsesAsPath("/x", nil))
-	require.True(t, ParsesAsPath("/a//b", nil))
+	require.False(t, wiretarget.ParsesAsPath("//evil.example/x", nil))
+	require.True(t, wiretarget.ParsesAsPath("/x", nil))
+	require.True(t, wiretarget.ParsesAsPath("/a//b", nil))
 }
 
 // Test_Routed_RootsUnrootedPath pins that a path override without a leading
@@ -232,7 +233,7 @@ func Test_Routed_RootsUnrootedPath(t *testing.T) {
 	app := fiber.New()
 	app.Get("/go/*", func(c fiber.Ctx) error {
 		c.Path(c.Params("*"))
-		return c.SendString(Routed(c))
+		return c.SendString(wiretarget.Routed(c))
 	})
 	require.Equal(t, "/http://u:pw@evil.example/x", answerFor(t, app, "/go/http://u:pw@evil.example/x"))
 	require.Equal(t, "/evil.example/x?q=1", answerFor(t, app, "/go/evil.example/x?q=1"))
@@ -242,16 +243,16 @@ func Test_HasForgedEscape(t *testing.T) {
 	t.Parallel()
 
 	for _, target := range []string{"/public/%2e%2e/admin", "/%2E", "/a%41", "/%7e", "/x%5F?q=%41", "/a%25%41"} {
-		require.True(t, HasForgedEscape(target), target)
+		require.True(t, wiretarget.HasForgedEscape(target), target)
 	}
 	// every unreserved character, digits and "-" included
 	for _, c := range []byte("09azAZ-._~") {
 		target := "/x/%" + strings.ToUpper(hex.EncodeToString([]byte{c}))
-		require.True(t, HasForgedEscape(target), target)
-		require.True(t, HasForgedEscape(strings.ToLower(target)), target)
+		require.True(t, wiretarget.HasForgedEscape(target), target)
+		require.True(t, wiretarget.HasForgedEscape(strings.ToLower(target)), target)
 	}
 	for _, target := range []string{"/", "/a/b", "/a%20b", "/a%2Fb", "/a%25b", "/%2541", "/a%3Fb", "/%", "/%2", "/%zz", "/a?q=%41", "/a%25/%2"} {
-		require.False(t, HasForgedEscape(target), target)
+		require.False(t, wiretarget.HasForgedEscape(target), target)
 	}
 }
 
@@ -264,7 +265,7 @@ func Test_SurvivesNormalization(t *testing.T) {
 		"/", "/a/b", "/a/b?q=%2F&x=//", "/a.b/c-d_e~f", "/a%20b", "/%25", "/caf%C3%A9",
 		"/a%7Cb%7bc", "/a%3Fb%23c", "/%21%27%28%29%2A",
 	} {
-		require.True(t, SurvivesNormalization(target), target)
+		require.True(t, wiretarget.SurvivesNormalization(target), target)
 	}
 	// An escape of a byte it writes raw is decoded into that byte, as is a
 	// backslash Windows resolves dot segments around, an empty segment is
@@ -273,7 +274,7 @@ func Test_SurvivesNormalization(t *testing.T) {
 		"/public/..%2Fadmin", "/a//b", "//x", "/..%3B/admin", "/a%40b", "/a%2Cb", "/%41", "/%2e%2e/x",
 		"/a%5Cb", "/a%", "/a%2", "/a%zz",
 	} {
-		require.False(t, SurvivesNormalization(target), target)
+		require.False(t, wiretarget.SurvivesNormalization(target), target)
 	}
 }
 
@@ -282,8 +283,8 @@ func Test_ParsesAsPath_Unrooted(t *testing.T) {
 
 	host := []byte("example.com")
 	for _, target := range []string{"", "http://u:pw@evil.example/x", "evil.example/x", "*"} {
-		require.False(t, ParsesAsPath(target, host), target)
+		require.False(t, wiretarget.ParsesAsPath(target, host), target)
 	}
-	require.True(t, ParsesAsPath("/http://u:pw@evil.example/x", host))
-	require.True(t, ParsesAsPath("/http://u:pw@evil.example/x", nil))
+	require.True(t, wiretarget.ParsesAsPath("/http://u:pw@evil.example/x", host))
+	require.True(t, wiretarget.ParsesAsPath("/http://u:pw@evil.example/x", nil))
 }

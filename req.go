@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
+	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -24,19 +25,27 @@ import (
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 )
 
-// Pre-allocated byte slices for common header comparisons to avoid allocations
-var (
-	xForwardedPrefix        = []byte("X-Forwarded-")
-	xForwardedProtoBytes    = []byte(HeaderXForwardedProto)
-	xForwardedProtocolBytes = []byte(HeaderXForwardedProtocol)
-	xForwardedSslBytes      = []byte(HeaderXForwardedSsl)
-	xURLSchemeBytes         = []byte(HeaderXUrlScheme)
-	onBytes                 = []byte("on")
-	charsetBytes            = []byte("charset")
-)
+// Pre-allocated for the charset parameter comparison to avoid allocations
+var charsetBytes = []byte("charset")
 
 // maxContentCodings is the longest Content-Encoding list Body undoes; curl stops at five as well.
 const maxContentCodings = 5
+
+// Ranks of the headers Scheme reads, lowest first.
+const (
+	schemeRankNone = iota
+	schemeRankXURLScheme
+	schemeRankXForwardedSsl
+	schemeRankXForwardedProtocol
+	schemeRankXForwardedProto
+)
+
+var schemeHeaders = [...]string{
+	schemeRankXURLScheme:         HeaderXUrlScheme,
+	schemeRankXForwardedSsl:      HeaderXForwardedSsl,
+	schemeRankXForwardedProtocol: HeaderXForwardedProtocol,
+	schemeRankXForwardedProto:    HeaderXForwardedProto,
+}
 
 // Range represents the parsed HTTP Range header extracted by DefaultReq.Range.
 type Range struct {
@@ -215,11 +224,13 @@ func (r *DefaultReq) Body() []byte {
 	body, err = r.tryDecodeBodyInOrder(encodingOrder)
 	if err != nil {
 		switch {
+		case r.c.Written():
+			// a response already written stays as the handler left it
 		case errors.Is(err, ErrUnsupportedMediaType):
 			_ = r.c.DefaultRes.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		case errors.Is(err, ErrNotImplemented):
 			_ = r.c.DefaultRes.SendStatus(StatusNotImplemented) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
-		case errors.Is(err, fasthttp.ErrBodyTooLarge) && !r.c.Written():
+		case errors.Is(err, fasthttp.ErrBodyTooLarge):
 			_ = r.c.DefaultRes.SendStatus(StatusRequestEntityTooLarge) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		default:
 			// do nothing
@@ -265,12 +276,21 @@ func (r *DefaultReq) FullURL() string {
 
 // UserAgent returns the User-Agent request header.
 func (r *DefaultReq) UserAgent() string {
-	return r.c.app.toString(r.c.fasthttp.Request.Header.UserAgent())
+	h := &r.c.fasthttp.Request.Header
+	// fasthttp's accessors fall through to the trailer section.
+	if fieldname.HasTrailers(h) {
+		return r.c.app.toString(r.headerField(HeaderUserAgent))
+	}
+	return r.c.app.toString(h.UserAgent())
 }
 
 // Referer returns the Referer request header.
 func (r *DefaultReq) Referer() string {
-	return r.c.app.toString(r.c.fasthttp.Request.Header.Referer())
+	h := &r.c.fasthttp.Request.Header
+	if fieldname.HasTrailers(h) {
+		return r.c.app.toString(r.headerField(HeaderReferer))
+	}
+	return r.c.app.toString(h.Referer())
 }
 
 // Origin returns the Origin request header.
@@ -740,7 +760,25 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 	reqHeader := &r.c.fasthttp.Request.Header
 	// Pre-allocate map with known header count to avoid reallocations
 	headers := make(map[string][]string, reqHeader.Len())
+	// Lines under a trailer name are left out, as c.Get leaves them; one set, not InTrailer per line, keeps it linear.
+	var (
+		trailers map[string]struct{}
+		lower    []byte
+	)
+	if keys := reqHeader.PeekTrailerKeys(); len(keys) > 0 {
+		trailers = make(map[string]struct{}, len(keys))
+		for _, key := range keys {
+			lower = utilsbytes.UnsafeToLower(append(lower[:0], key...))
+			trailers[string(lower)] = struct{}{}
+		}
+	}
 	for k, v := range reqHeader.All() {
+		if trailers != nil {
+			lower = utilsbytes.UnsafeToLower(append(lower[:0], k...))
+			if _, ok := trailers[string(lower)]; ok {
+				continue
+			}
+		}
 		key := app.toString(k)
 		headers[key] = append(headers[key], app.toString(v))
 	}
@@ -860,9 +898,9 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 
 // extractIPFromHeader returns the client IP from the given proxy header by walking the
 // X-Forwarded-For chain from right to left and stripping trusted proxy IPs. When trusted
-// proxies are configured, the rightmost non-trusted IP is returned; otherwise the first
-// valid IP (left-to-right) is returned. When IP validation is disabled, the raw header
-// value is returned as-is.
+// proxies are configured, the rightmost non-trusted IP is returned, and an entry that is not
+// an IP ends the walk; otherwise the first valid IP (left-to-right) is returned. When IP
+// validation is disabled, the raw header value is returned as-is.
 func (r *DefaultReq) extractIPFromHeader(header string) string {
 	app := r.c.app
 
@@ -887,8 +925,13 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 
 	for end := len(headerValue); end > 0; {
 		ipStr, prev := headerlist.Prev(headerValue, end)
-		ipStr = headerlist.TrimOWS(ipStr)
-		if isValidProxyIP(ipStr) {
+
+		// An empty list element is no element (RFC 9110 Section 5.6.1).
+		if ipStr = headerlist.TrimOWS(ipStr); ipStr != "" {
+			if !isValidProxyIP(ipStr) {
+				// "IP:port", "unknown" and the like name no trusted proxy, so nothing left of them can be trusted.
+				break
+			}
 			leftmostIP = ipStr
 			if !r.isTrustedProxyIP(ipStr) {
 				return ipStr
@@ -913,7 +956,7 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 // RFC 9110 Section 5.2. This ensures security-sensitive IP extraction sees the
 // complete chain when an adapter or proxy preserves separate field lines.
 func proxyHeaderValue(r *DefaultReq, header string) string {
-	value := peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, header)
+	value := peekReceivedRequestHeader(&r.c.fasthttp.Request, header)
 	return r.c.app.toString(value)
 }
 
@@ -1384,37 +1427,64 @@ func (r *DefaultReq) Scheme() string {
 		return schemeHTTP
 	}
 
-	app := r.c.app
-	scheme := schemeHTTP
-	const lenXHeaderName = 12
-	for key, val := range ctx.Request.Header.All() {
-		if len(key) < lenXHeaderName {
-			continue // Neither "X-Forwarded-" nor "X-Url-Scheme"
-		}
-		switch {
-		case utils.EqualFold(key[:len(xForwardedPrefix)], xForwardedPrefix):
-			if utils.EqualFold(key, xForwardedProtoBytes) ||
-				utils.EqualFold(key, xForwardedProtocolBytes) {
-				v := app.toString(val)
-				if before, _, found := utils.CutByte(v, ','); found {
-					v = before
-				}
-				if forwarded, ok := forwardedScheme(v); ok {
-					scheme = forwarded
-				}
-			} else if utils.EqualFold(key, xForwardedSslBytes) && utils.EqualFold(val, onBytes) {
-				scheme = schemeHTTPS
-			}
-
-		case utils.EqualFold(key, xURLSchemeBytes):
-			if forwarded, ok := forwardedScheme(app.toString(val)); ok {
-				scheme = forwarded
-			}
-		default:
+	// Ranked, not read in wire order: a proxy sets X-Forwarded-Proto and usually relays the others from the client.
+	header := &ctx.Request.Header
+	scheme, rank, conflict := schemeHTTP, schemeRankNone, false
+	for key, val := range header.All() {
+		keyRank := schemeHeaderRank(key)
+		if keyRank == schemeRankNone || keyRank < rank {
 			continue
 		}
+		if announced, ok := announcedScheme(keyRank, val); ok {
+			conflict = keyRank == rank && (conflict || announced != scheme)
+			scheme, rank = announced, keyRank
+		}
 	}
+	if !conflict {
+		return scheme
+	}
+	// Repeats of one header keep the last line, so the order they were received in decides.
+	fieldname.ReceivedOrder(header, fieldname.Received(&ctx.Request), schemeHeaders[rank], func(line []byte) {
+		if announced, ok := announcedScheme(rank, line); ok {
+			scheme = announced
+		}
+	})
 	return scheme
+}
+
+func schemeHeaderRank(key []byte) int {
+	// The four names differ in length, which the compiler checks through the case values.
+	var rank int
+	switch len(key) {
+	case len(HeaderXForwardedProto):
+		rank = schemeRankXForwardedProto
+	case len(HeaderXForwardedProtocol):
+		rank = schemeRankXForwardedProtocol
+	case len(HeaderXForwardedSsl):
+		rank = schemeRankXForwardedSsl
+	case len(HeaderXUrlScheme):
+		rank = schemeRankXURLScheme
+	default:
+		return schemeRankNone
+	}
+	if !utils.EqualFold(utils.UnsafeString(key), schemeHeaders[rank]) {
+		return schemeRankNone
+	}
+	return rank
+}
+
+// announcedScheme returns the scheme a header of the given rank announces.
+func announcedScheme(rank int, val []byte) (string, bool) {
+	v := utils.UnsafeString(val)
+	switch rank {
+	case schemeRankXForwardedSsl:
+		return schemeHTTPS, utils.EqualFold(v, "on")
+	case schemeRankXForwardedProto, schemeRankXForwardedProtocol:
+		if before, _, found := utils.CutByte(v, ','); found {
+			v = before
+		}
+	}
+	return forwardedScheme(v)
 }
 
 // forwardedScheme canonicalizes a scheme announced by a proxy header. Only

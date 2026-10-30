@@ -76,12 +76,27 @@ const (
 // downstream it may store one user's response for every user of the URL. v5:
 // credential values in the key are hashed and a refusal ends the entry of the credential it
 // refused; an entry cached for a credential since ended would still be served. It
-// also retires v4 entries stored under the lookup's Vary list instead of their own. Bump
+// also retires v4 entries stored under the lookup's Vary list instead of their own. v6:
+// the body slot and the Vary manifest moved from a suffix of the entry key, which
+// a request can spell, to a namespace of their own (see bodyKeyPrefix), and a
+// custom KeyGenerator's key is escaped so it cannot spell a variant's suffix. Bump
 // this whenever what a key stands for, or what its entry carries, changes; the
 // cost is one cold cache after a deploy. Additive bookkeeping fields such as
 // heapgen need no bump: old entries decode with generation zero, and older
 // readers skip the new field without changing the response or key semantics.
-const cacheKeyVersion = "v5"
+const cacheKeyVersion = "v6"
+
+// The keys derived from an entry key sit right after the version, where no entry
+// key goes: those continue with their method.
+const (
+	bodyKeyPrefix     = cacheKeyVersion + "|body|"
+	manifestKeyPrefix = cacheKeyVersion + "|manifest|"
+)
+
+// bodyKey names the slot an external Storage keeps the body of entryKey in.
+func bodyKey(entryKey string) string {
+	return bodyKeyPrefix + entryKey[len(cacheKeyVersion)+1:]
+}
 
 // MaxBytes also caps the entries tracked at once, one per trackedEntryOverhead bytes and at least
 // minTrackedEntries: an entry holds a heap node and bookkeeping MaxBytes does not count.
@@ -250,7 +265,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		// External storage saves body data with different key
 		if cfg.Storage != nil {
-			if err := manager.del(ctx, dkey+"_body"); err != nil {
+			if err := manager.del(ctx, bodyKey(dkey)); err != nil {
 				return err
 			}
 		}
@@ -304,7 +319,7 @@ func New(config ...Config) fiber.Handler {
 				if cfg.Storage != nil {
 					// Metadata may have been deleted before the body deletion failed.
 					// Keep its reservation so a later eviction can retry the body.
-					_, bodyErr := manager.getRaw(ctx, candidate.key+"_body")
+					_, bodyErr := manager.getRaw(ctx, bodyKey(candidate.key))
 					if bodyErr == nil {
 						return nil
 					}
@@ -393,11 +408,17 @@ func New(config ...Config) fiber.Handler {
 		// time, and every join copied the key built so far into a fresh string.
 		keyBufPtr := acquireKeyBuffer()
 		keyBuf := (*keyBufPtr)[:0]
+		// The manifest key is the base key behind its prefix: one string holds both,
+		// and slicing the base key off it shares its bytes.
+		if !cfg.DisableVaryHeaders {
+			keyBuf = append(keyBuf, manifestKeyPrefix...)
+		}
+		start := len(keyBuf)
 		keyBuf = append(keyBuf, cacheKeyVersion...)
 		keyBuf = append(keyBuf, '|')
 		keyBuf = append(keyBuf, requestMethod...)
 		keyBuf = append(keyBuf, '|')
-		generatedAt := len(keyBuf)
+		generatedAt := len(keyBuf) - start
 		keyBuf = appendGeneratedKey(keyBuf, c, &cfg)
 		if hasAuthorization {
 			// Read at the point of use: the result aliases the header's storage, and
@@ -411,18 +432,12 @@ func New(config ...Config) fiber.Handler {
 			keyBuf = append(keyBuf, "|auth="...)
 			keyBuf = appendAuthHash(keyBuf, authLines)
 		}
-		baseLen := len(keyBuf)
 
-		// baseKey and manifestKey differ only by the suffix, so one string holds
-		// both: slicing a string off the front of another shares its bytes rather
-		// than copying them, which the separate concatenation could not do.
-		var baseKey, manifestKey string
-		if cfg.DisableVaryHeaders {
-			baseKey = string(keyBuf)
-		} else {
-			keyBuf = append(keyBuf, "|vary"...)
-			manifestKey = string(keyBuf)
-			baseKey = manifestKey[:baseLen]
+		both := string(keyBuf)
+		baseKey := both[start:]
+		var manifestKey string
+		if !cfg.DisableVaryHeaders {
+			manifestKey = both
 		}
 		key := baseKey
 		generatedKey := baseKey[generatedAt:] // baseKey without the version and method, for the refusal records
@@ -439,8 +454,8 @@ func New(config ...Config) fiber.Handler {
 				return err
 			}
 			if len(varyNames) > 0 {
-				keyBuf = appendVaryKey(keyBuf[:baseLen], varyNames, &c.Request().Header, canonical)
-				key = string(keyBuf)
+				keyBuf = appendVaryKey(keyBuf, varyNames, &c.Request().Header, canonical)
+				key = string(keyBuf[start:])
 			}
 		}
 		releaseKeyBuffer(keyBufPtr, keyBuf)
@@ -700,7 +715,7 @@ func New(config ...Config) fiber.Handler {
 					// We can store raw bytes with Storage 👍
 					if cfg.Storage != nil {
 						guard.Unlock()
-						rawBody, err := manager.getRaw(reqCtx, key+"_body")
+						rawBody, err := manager.getRaw(reqCtx, bodyKey(key))
 						if err != nil {
 							if !errors.Is(err, errCacheMiss) {
 								manager.release(e)
@@ -976,7 +991,10 @@ func New(config ...Config) fiber.Handler {
 			// A handler that returns the refusal (fiber.ErrUnauthorized) writes no status.
 			if scope.entry && errorRefusesCredential(err) {
 				dropRefused()
-				c.Set(cfg.CacheHeader, cacheUnreachable)
+				// A handler timeout.New gave up on may still write the response; IsAbandoned orders the read.
+				if !c.IsAbandoned() || c.RequestCtx().LastTimeoutErrorResponse() == nil {
+					c.Set(cfg.CacheHeader, cacheUnreachable)
+				}
 			}
 			releaseEntry()
 			return err
@@ -1459,7 +1477,7 @@ func New(config ...Config) fiber.Handler {
 				manager.release(e)
 			}
 			if rawStored {
-				rawKey := key + "_body"
+				rawKey := bodyKey(key)
 				if err := manager.del(ctx, rawKey); err != nil {
 					cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cache: failed to delete raw key %q after store error: %w", maskKey(rawKey), err))
 				}
@@ -1469,7 +1487,7 @@ func New(config ...Config) fiber.Handler {
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
-			if err := manager.setRaw(reqCtx, key+"_body", e.body, storageExpiration); err != nil {
+			if err := manager.setRaw(reqCtx, bodyKey(key), e.body, storageExpiration); err != nil {
 				if cleanupErr := cleanupOnStoreError(reqCtx, true, false); cleanupErr != nil {
 					err = errors.Join(err, cleanupErr)
 				}
