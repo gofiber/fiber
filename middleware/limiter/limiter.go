@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/nilerror"
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 )
 
 const (
@@ -93,7 +94,7 @@ func (cfg *Config) reject(c fiber.Ctx, resetInSec uint64) error {
 
 // setRateLimitHeaders clamps remaining: blocked requests keep their hit, so it can go negative.
 func (cfg *Config) setRateLimitHeaders(c fiber.Ctx, maxRequests, remaining int, resetInSec uint64) {
-	if cfg.DisableHeaders {
+	if cfg.DisableHeaders || timeoutResponse(c) != nil {
 		return
 	}
 	if _, ok := c.(*fiber.DefaultCtx); !ok {
@@ -113,6 +114,15 @@ func (cfg *Config) setRateLimitHeaders(c fiber.Ctx, maxRequests, remaining int, 
 	h.SetBytesV(xRateLimitReset, utils.AppendUint(buf[:0], resetInSec))
 }
 
+// timeoutResponse returns what fasthttp sends for a request timeout.New gave up on, or nil.
+// IsAbandoned goes first: its atomic load orders the read after the timeout middleware's write.
+func timeoutResponse(c fiber.Ctx) *fasthttp.Response {
+	if !c.IsAbandoned() {
+		return nil
+	}
+	return c.RequestCtx().LastTimeoutErrorResponse()
+}
+
 func errPersist(err error) error {
 	return fmt.Errorf("limiter: failed to persist state: %w", err)
 }
@@ -120,6 +130,9 @@ func errPersist(err error) error {
 // getEffectiveStatusCode returns the status the Skip* options judge: a plain error
 // counts as a 500 unless an error status is already set.
 func getEffectiveStatusCode(c fiber.Ctx, err error) int {
+	if resp := timeoutResponse(c); resp != nil {
+		return resp.StatusCode()
+	}
 	if nilerror.IsNil(err) {
 		return c.Res().StatusCode()
 	}

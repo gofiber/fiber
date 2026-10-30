@@ -991,7 +991,10 @@ func New(config ...Config) fiber.Handler {
 			// A handler that returns the refusal (fiber.ErrUnauthorized) writes no status.
 			if scope.entry && errorRefusesCredential(err) {
 				dropRefused()
-				c.Set(cfg.CacheHeader, cacheUnreachable)
+				// A handler timeout.New gave up on may still write the response; IsAbandoned orders the read.
+				if !c.IsAbandoned() || c.RequestCtx().LastTimeoutErrorResponse() == nil {
+					c.Set(cfg.CacheHeader, cacheUnreachable)
+				}
 			}
 			releaseEntry()
 			return err

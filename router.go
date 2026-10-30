@@ -6,7 +6,9 @@ package fiber
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"math/bits"
 	"slices"
 	"sort"
@@ -14,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/urlnorm"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -1016,6 +1019,12 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// Before a handler writes a header under a name the client announced as a trailer.
+	if !dropTrailers(&rctx.Request) {
+		_ = ctx.SendStatus(StatusRequestHeaderFieldsTooLarge) //nolint:errcheck // Always return nil
+		return
+	}
+
 	// Optional: check flash messages (hot path, see hasFlashCookie); before the
 	// short-circuit so a skipped 404/405 still clears them.
 	if !app.config.DisableFlashMessages && hasFlashCookie(&ctx.fasthttp.Request.Header) {
@@ -1058,6 +1067,12 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// Before a handler writes a header under a name the client announced as a trailer.
+	if !dropTrailers(&rctx.Request) {
+		_ = ctx.SendStatus(StatusRequestHeaderFieldsTooLarge) //nolint:errcheck // Always return nil
+		return
+	}
+
 	// Optional: check flash messages (hot path, see hasFlashCookie); before the
 	// short-circuit so a skipped 404/405 still clears them.
 	if !app.config.DisableFlashMessages && hasFlashCookie(&ctx.Request().Header) {
@@ -1088,6 +1103,46 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 			_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
 		}
 	}
+}
+
+// dropTrailers drops the trailer section a request carries into the handlers, since fasthttp files a later Set or
+// Add under a received trailer name with that section. It reports false for more than fieldname.MaxTrailers names.
+func dropTrailers(req *fasthttp.Request) bool {
+	if len(req.Header.PeekTrailerKeys()) == 0 && !req.IsBodyStream() {
+		return true // most requests, without a call into fieldname
+	}
+	if !fieldname.DropTrailers(&req.Header) {
+		return false
+	}
+	if req.IsBodyStream() {
+		dropStreamedTrailers(req)
+	}
+	return true
+}
+
+// dropStreamedTrailers has a streamed chunked body drop the trailer section it reads at its end.
+func dropStreamedTrailers(req *fasthttp.Request) {
+	// Only the server's own stream reads a trailer section, and it is no io.Closer; SetBodyStream would close any
+	// other stream, such as one handed to App.Handler, before the handler read it.
+	if _, closer := req.BodyStream().(io.Closer); closer || req.Header.ContentLength() != -1 {
+		return
+	}
+	req.SetBodyStream(&trailerDropReader{r: req.BodyStream(), req: req}, -1)
+}
+
+type trailerDropReader struct {
+	r   io.Reader
+	req *fasthttp.Request
+}
+
+// Read fails the end of a body whose trailer section holds more names than dropTrailers takes, as it refuses the
+// request; the section is dropped either way, for a handler that goes on regardless.
+func (t *trailerDropReader) Read(p []byte) (int, error) {
+	n, err := t.r.Read(p)
+	if errors.Is(err, io.EOF) && !fieldname.ClearTrailers(t.req) {
+		return n, ErrRequestHeaderFieldsTooLarge
+	}
+	return n, err //nolint:wrapcheck // io.Reader passes io.EOF through as is
 }
 
 func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) {
