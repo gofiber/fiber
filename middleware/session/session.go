@@ -1093,3 +1093,15 @@ func (s *Session) forgetContext() {
 	s.ctx = nil
 	s.mu.Unlock()
 }
+
+// forgetContextSoon is forgetContext for a caller that must not wait: when the
+// session is locked, by a save that is writing to the storage for instance, the cut
+// follows from a goroutine of its own.
+func (s *Session) forgetContextSoon() {
+	if s.mu.TryLock() {
+		s.ctx = nil
+		s.mu.Unlock()
+		return
+	}
+	go s.forgetContext()
+}

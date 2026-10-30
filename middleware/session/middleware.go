@@ -180,13 +180,31 @@ func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
 // response is fixed, so nothing those handlers write to it counts. What they must
 // not do is hold the session past their end and write into whichever request gets
 // the context next, or run storage calls under it.
+//
+// The answer does not wait for the cut. A handler the timeout middleware gave up on
+// can be inside a call that holds the lock of m or of the session across the
+// storage, such as Destroy or Save, and the answer is what that middleware is there
+// to send on time. The cut then follows from a goroutine of its own, as soon as the
+// call is done, and always before the handler is: a handler holding the lock is
+// still running, so its context has not been given back yet.
 func (m *Middleware) forgetContext() {
-	m.mu.Lock()
+	if !m.mu.TryLock() {
+		go func() {
+			m.mu.Lock()
+			session := m.Session
+			m.ctx = nil
+			m.mu.Unlock()
+			if session != nil {
+				session.forgetContext()
+			}
+		}()
+		return
+	}
 	session := m.Session
 	m.ctx = nil
 	m.mu.Unlock()
 	if session != nil {
-		session.forgetContext()
+		session.forgetContextSoon()
 	}
 }
 
@@ -510,9 +528,10 @@ func releaseMiddleware(m *Middleware) {
 // of a particular store.
 //
 // The Middleware belongs to its request, as the type documents. A handler that the
-// timeout middleware gave up on keeps its own: the session is neither saved nor
-// recycled, and the handler goes on using it, never another request's; both let go
-// of the request, whose context is reused once the handler is done. A request
+// timeout middleware gave up on keeps its own: the middleware neither saves the
+// session nor recycles it, and the handler goes on using it, never another
+// request's; both let go of the request, whose context is reused once the handler
+// is done. A request
 // abandoned any other way, as the sse middleware does, is saved as usual when its
 // handler returns, and FromContext returns nil for it from then on; a Middleware
 // that a handler still running got before stays finished: it is never recycled

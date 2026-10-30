@@ -21,6 +21,7 @@ import (
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
+	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
@@ -1305,6 +1306,76 @@ func Test_Session_Middleware_TimedOutRequestLetsGoOfItsContext(t *testing.T) {
 
 	close(release)
 	<-done
+}
+
+// slowStorage makes every write and delete take a while, as a storage under load does.
+type slowStorage struct {
+	fiber.Storage
+	delay time.Duration
+}
+
+func (s slowStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	time.Sleep(s.delay)
+	return s.Storage.SetWithContext(ctx, key, val, exp)
+}
+
+func (s slowStorage) DeleteWithContext(ctx context.Context, key string) error {
+	time.Sleep(s.delay)
+	return s.Storage.DeleteWithContext(ctx, key)
+}
+
+// Test_Session_Middleware_TimedOutAnswerDoesNotWaitForTheHandlerInTheStorage checks that
+// the answer of the timeout middleware does not wait for the handler it gave up on. The
+// handler is inside a call that holds a lock across the storage, the one of its
+// middleware (Destroy) or the one of its session (a save), and the cut from the request,
+// which needs that lock, follows when the call is done.
+func Test_Session_Middleware_TimedOutAnswerDoesNotWaitForTheHandlerInTheStorage(t *testing.T) {
+	t.Parallel()
+
+	const (
+		storageDelay = 600 * time.Millisecond
+		answerWithin = 400 * time.Millisecond
+	)
+	for name, call := range map[string]func(m *Middleware) error{
+		"Destroy holds the lock of the middleware": func(m *Middleware) error { return m.Destroy() },
+		"a save holds the lock of the session": func(m *Middleware) error {
+			m.Set("k", "v")
+			return m.Session.saveSessionWithContext(context.Background())
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var (
+				held = make(chan *Middleware, 1)
+				done = make(chan struct{})
+			)
+			store := NewStore(Config{Storage: slowStorage{Storage: memory.New(), delay: storageDelay}})
+			app := fiber.New()
+			app.Use(New(Config{Store: store}))
+			app.Get("/slow", timeout.New(func(c fiber.Ctx) error {
+				defer close(done)
+				m := FromContext(c)
+				held <- m
+				return call(m)
+			}, timeout.Config{Timeout: 20 * time.Millisecond}))
+
+			start := time.Now()
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody), fiber.TestConfig{Timeout: 5 * time.Second})
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+			require.Less(t, time.Since(start), answerWithin, "the answer waited for the handler in the storage")
+
+			m := <-held
+			<-done
+			require.Eventually(t, func() bool {
+				m.mu.RLock()
+				sess, ctx := m.Session, m.ctx
+				m.mu.RUnlock()
+				return sess != nil && ctx == nil && sess.requestCtx() == nil
+			}, 5*time.Second, 5*time.Millisecond, "the middleware and its session still refer to the request")
+		})
+	}
 }
 
 // Test_Session_Middleware_AbandonedWithoutTimeoutKeepsItsObjects abandons the request
