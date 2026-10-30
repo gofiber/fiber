@@ -40,7 +40,7 @@ func shouldSkip(c fiber.Ctx) bool {
 
 func hasResponseNoTransform(c fiber.Ctx) bool {
 	respHeader := &c.Response().Header
-	canonical := headerlookup.Canonical(c) && fieldname.Canonical(respHeader)
+	canonical := headerlookup.Canonical(c)
 	if len(fieldname.First(respHeader, fiber.HeaderCacheControl, canonical)) == 0 {
 		return false
 	}
