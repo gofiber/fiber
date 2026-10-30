@@ -1,12 +1,14 @@
 package fiber
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -1095,4 +1097,124 @@ func TestCollectHandlers_Nil(t *testing.T) {
 	require.PanicsWithValue(t, "nil: invalid handler #0 (<nil>)\n", func() {
 		collectHandlers("nil", nil)
 	})
+}
+
+// serveRawTarget runs app on a request whose request line carries target as is.
+func serveRawTarget(t *testing.T, app *App, target string) *fasthttp.Response {
+	t.Helper()
+
+	var req fasthttp.Request
+	raw := MethodGet + " " + target + " HTTP/1.1\r\nHost: example.com\r\n\r\n"
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+	var fctx fasthttp.RequestCtx
+	fctx.Init(&req, nil, nil)
+	app.Handler()(&fctx)
+	return &fctx.Response
+}
+
+func Test_HTTPHandler_Direct_ServesRoutedPath(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "admin"), 0o750))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "pub"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "admin", "secret.txt"), []byte("secret"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pub", "ok.txt"), []byte("ok"), 0o600))
+
+	fileServer := http.FileServer(http.Dir(dir))
+	shapes := map[string]any{
+		"http.Handler":     fileServer,
+		"http.HandlerFunc": http.HandlerFunc(fileServer.ServeHTTP),
+		"http func":        fileServer.ServeHTTP,
+	}
+	mounts := map[string]func(app *App, h any){
+		"Use":     func(app *App, h any) { app.Use(h) },
+		"Get /*":  func(app *App, h any) { app.Get("/*", h) },
+		"Group /": func(app *App, h any) { app.Group("/", h) },
+	}
+	// target -> status without and with UnescapePath; under UnescapePath the router decodes %2F itself
+	respelled := map[string][2]int{
+		"/admin%2Fsecret.txt":              {StatusNotFound, StatusUnauthorized},
+		"/admin%2F":                        {StatusNotFound, StatusUnauthorized},
+		"/pub/..%2Fadmin/secret.txt":       {StatusNotFound, StatusUnauthorized},
+		"/pub/..%2fadmin%2fsecret.txt":     {StatusNotFound, StatusUnauthorized},
+		"//admin/secret.txt":               {StatusNotFound, StatusNotFound},
+		"/%2Fadmin/secret.txt":             {StatusNotFound, StatusNotFound},
+		"/pub//../admin/secret.txt":        {StatusNotFound, StatusNotFound},
+		`/pub/..\admin/secret.txt`:         {StatusNotFound, StatusNotFound},
+		"/pub/%%32e%%32e/admin/secret.txt": {StatusNotFound, StatusNotFound},
+	}
+
+	for shape, handler := range shapes {
+		for mount, register := range mounts {
+			for i, unescape := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/unescape=%v", shape, mount, unescape), func(t *testing.T) {
+					t.Parallel()
+
+					app := New(Config{UnescapePath: unescape})
+					app.Use("/admin", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
+					register(app, handler)
+
+					for _, target := range []string{
+						"/pub/ok.txt", "/pub/ok.txt?a=%2F", "/pub/./ok.txt", "/%70ub/ok.txt", "/x/../pub/ok.txt",
+						"http://example.org/pub/ok.txt",
+					} {
+						resp := serveRawTarget(t, app, target)
+						require.Equal(t, StatusOK, resp.StatusCode(), target)
+						require.Equal(t, "ok", string(resp.Body()), target)
+					}
+					for _, target := range []string{"/admin/secret.txt", "/pub/../admin/secret.txt", "/%61dmin/secret.txt"} {
+						require.Equal(t, StatusUnauthorized, serveRawTarget(t, app, target).StatusCode(), target)
+					}
+					for target, want := range respelled {
+						resp := serveRawTarget(t, app, target)
+						require.Equal(t, want[i], resp.StatusCode(), target)
+						require.NotContains(t, string(resp.Body()), "secret", target)
+					}
+				})
+			}
+		}
+	}
+}
+
+func Test_HTTPHandler_Direct_RestoresRequestLine(t *testing.T) {
+	t.Parallel()
+
+	const target = "/a/../%70ub/x%20y?q=%2F"
+
+	for name, handler := range map[string]any{
+		"returns": func(w http.ResponseWriter, r *http.Request) {
+			_, err := io.WriteString(w, r.RequestURI+" "+r.URL.Path)
+			assert.NoError(t, err)
+		},
+		"panics": func(http.ResponseWriter, *http.Request) {
+			panic("direct handler")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var after string
+			app := New()
+			app.Use(func(c Ctx) error {
+				defer func() {
+					after = c.OriginalURL()
+					if recover() != nil {
+						c.Status(StatusTeapot)
+					}
+				}()
+				return c.Next()
+			})
+			app.Get("/pub/*", handler)
+
+			resp := serveRawTarget(t, app, target)
+			require.Equal(t, target, after)
+			if name == "panics" {
+				require.Equal(t, StatusTeapot, resp.StatusCode())
+				return
+			}
+			require.Equal(t, StatusOK, resp.StatusCode())
+			require.Equal(t, "/pub/x%20y?q=%2F /pub/x y", string(resp.Body()))
+		})
+	}
 }

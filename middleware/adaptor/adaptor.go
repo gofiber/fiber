@@ -271,47 +271,14 @@ func HTTPHandlerWithContext(h http.Handler) fiber.Handler {
 	}
 }
 
-// serveRouted runs handler, a net/http handler adapted by fasthttpadaptor, on
-// a request line that spells the path the router matched (wiretarget.Routed)
-// rather than the one that arrived, and puts the original back afterwards.
-// The two differ for an escaped or non-canonical request, and net/http reads
-// the raw one its own way: "/public/..%2Fadmin" decodes into a URL.Path that
-// http.FileServer cleans to "/admin", although no middleware mounted on
-// "/admin" has run. A routed path whose segments would not survive that
-// reading, one with an empty segment or an escaped slash, is not handed on,
-// nor is one that a handler passing the request on, such as
-// httputil.ReverseProxy, would hand an upstream that reads it as another path:
-// a backslash, or a segment a servlet container strips to a dot or an empty
-// segment ("..;", "/;x/admin"). A path parameter on a named segment is handed
-// on, since net/http reads it as part of the name.
+// serveRouted runs handler on the routed request line (see wiretarget.Serve).
 func serveRouted(c fiber.Ctx, handler fasthttp.RequestHandler) error {
-	target := wiretarget.Routed(c)
-	if !wiretarget.SegmentsAsRouted(target, wiretarget.AllowParameters) {
-		return fiber.ErrNotFound
-	}
 	if err := bufferBodyStream(c); err != nil {
 		return err
 	}
-	if target == c.OriginalURL() {
-		// the request line already spells the routed path
-		handler(c.RequestCtx())
-		return nil
+	if !wiretarget.Serve(c, handler) {
+		return fiber.ErrNotFound
 	}
-	req := c.Request()
-	original := utils.CopyString(c.OriginalURL())
-	setRoutedTarget(c, target)
-	// Buffered, the handler has returned, or panicked, in which case
-	// fasthttpadaptor re-panics here and the recover middleware or error
-	// handler that catches it still has to see the original line. Streaming
-	// or hijacked, the handler is still running with an http.Request whose
-	// URL aliases the request line's storage, so the line is left as the
-	// handler read it.
-	defer func() {
-		if !c.Response().IsBodyStream() && !c.RequestCtx().Hijacked() {
-			req.SetRequestURI(original)
-		}
-	}()
-	handler(c.RequestCtx())
 	return nil
 }
 
@@ -333,24 +300,6 @@ func bufferBodyStream(c fiber.Ctx) error {
 		return fiber.ErrBadRequest
 	}
 	return nil
-}
-
-// setRoutedTarget sets target, the routed request target, as c's request line.
-// A target that is the line as it arrived is left alone, which spares a second
-// parse of it. Otherwise the host fasthttp parsed is kept: a target that is a
-// path makes fasthttp take the host from the Host header again, while an
-// absolute-form request line names its own, which RFC 9112 Section 3.2.2 says
-// the server uses and which c.Hostname() reported. Kept, the adapted handler
-// sees in r.Host the host Fiber saw.
-func setRoutedTarget(c fiber.Ctx, target string) {
-	if target == c.OriginalURL() {
-		return
-	}
-	req := c.Request()
-	var buf [64]byte
-	host := append(buf[:0], req.URI().Host()...)
-	req.SetRequestURI(target)
-	req.URI().SetHostBytes(host)
 }
 
 // LocalContextFromHTTPRequest extracts the Fiber user context previously stored into r.Context() by the adaptor.
@@ -384,7 +333,7 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 	if err := bufferBodyStream(c); err != nil {
 		return nil, err
 	}
-	setRoutedTarget(c, target)
+	wiretarget.SetTarget(c, target)
 	var req http.Request
 	if err := fasthttpadaptor.ConvertRequest(c.RequestCtx(), &req, forServer); err != nil {
 		return nil, err //nolint:wrapcheck // This must not be wrapped
@@ -699,7 +648,7 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		if err := bufferBodyStream(c); err != nil {
 			return err
 		}
-		setRoutedTarget(c, target)
+		wiretarget.SetTarget(c, target)
 		// Call the fasthttp adaptor directly: HTTPHandler would wrap it in a
 		// second closure that has to be built on every request, and its
 		// error result is always nil.

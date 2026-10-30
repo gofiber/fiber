@@ -600,7 +600,7 @@ func Test_Proxy_RefusedRequestIsNotForwarded(t *testing.T) {
 	var hits sync.Map
 	upstream := fiber.New()
 	upstream.Use(func(c fiber.Ctx) error {
-		hits.Store(c.Get("X-Forwarder"), true)
+		hits.Store(utils.CopyString(c.Get("X-Forwarder")), true)
 		return c.SendString("executed")
 	})
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")

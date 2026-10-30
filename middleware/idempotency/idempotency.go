@@ -32,18 +32,22 @@ const redactedKey = "[redacted]"
 // maxStoredStream is the longest stream of known length read into memory to store it.
 const maxStoredStream = 1 << 20
 
+// storagePrefix keeps responses apart from other middleware sharing the Storage,
+// as the client chooses the key.
+const storagePrefix = "idempotency:"
+
 // isCookieHeader reports whether name is a header that sets a cookie: Set-Cookie
 // or its obsolete RFC 2965 spelling.
 func isCookieHeader(name string) bool {
 	return utils.EqualFold(name, fiber.HeaderSetCookie) || utils.EqualFold(name, fiber.HeaderSetCookie2)
 }
 
-// scopedKey returns the key a response is stored and locked under when
-// Config.KeyScope is set: a digest of the scope and the key together. The
-// length of the scope goes in front of it, so no two pairs share the bytes
-// that are hashed and a key cannot spell out another scope, and the digest has
-// the same length whatever either is, which a storage that limits the length of
-// its keys needs.
+// scopedKey returns the key a response is stored under when Config.KeyScope is
+// set: storagePrefix and a digest of the scope and the key together, the digest
+// alone being the key it is locked under. The length of the scope goes in front
+// of it, so no two pairs share the bytes that are hashed and a key cannot spell
+// out another scope, and the digest has the same length whatever either is,
+// which a storage that limits the length of its keys needs.
 func scopedKey(scope, key string) string {
 	// A user ID and a UUID fit the array; a longer pair grows onto the heap.
 	var buf [128]byte
@@ -52,8 +56,9 @@ func scopedKey(scope, key string) string {
 	b = append(b, scope...)
 	b = append(b, key...)
 	sum := sha256.Sum256(b)
-	var out [sha256.Size * 2]byte
-	hex.Encode(out[:], sum[:])
+	var out [len(storagePrefix) + sha256.Size*2]byte
+	copy(out[:], storagePrefix)
+	hex.Encode(out[len(storagePrefix):], sum[:])
 	return string(out[:])
 }
 
@@ -161,7 +166,8 @@ func New(config ...Config) fiber.Handler {
 		// Copied once, before anything reads it: the validator may keep what it
 		// is handed, a handler that rewrote the header would not change what is
 		// hashed or logged, and the lock and the storage retain the unscoped key.
-		key = utils.CopyString(key)
+		entryKey := storagePrefix + key
+		key = entryKey[len(storagePrefix):]
 
 		// Validate key
 		if err := cfg.KeyHeaderValidate(key); err != nil {
@@ -172,11 +178,12 @@ func New(config ...Config) fiber.Handler {
 		// and the key when the config scopes it, otherwise the key alone.
 		storageKey := key
 		if cfg.KeyScope != nil {
-			storageKey = scopedKey(cfg.KeyScope(c), key)
+			entryKey = scopedKey(cfg.KeyScope(c), key)
+			storageKey = entryKey[len(storagePrefix):]
 		}
 
 		// First-pass: if the idempotency key is in the storage, get and return the response
-		if ok, err := maybeWriteCachedResponse(c, storageKey); err != nil {
+		if ok, err := maybeWriteCachedResponse(c, entryKey); err != nil {
 			return fmt.Errorf("failed to write cached response at fastpath: %w", err)
 		} else if ok {
 			return nil
@@ -192,7 +199,7 @@ func New(config ...Config) fiber.Handler {
 		}()
 
 		// Lock acquired. If the idempotency key now is in the storage, get and return the response
-		if ok, err := maybeWriteCachedResponse(c, storageKey); err != nil {
+		if ok, err := maybeWriteCachedResponse(c, entryKey); err != nil {
 			return fmt.Errorf("failed to write cached response while locked: %w", err)
 		} else if ok {
 			return nil
@@ -242,7 +249,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Store response
-		if err := cfg.Storage.SetWithContext(c, storageKey, bs, cfg.Lifetime); err != nil {
+		if err := cfg.Storage.SetWithContext(c, entryKey, bs, cfg.Lifetime); err != nil {
 			return fmt.Errorf("failed to save response: %w", err)
 		}
 

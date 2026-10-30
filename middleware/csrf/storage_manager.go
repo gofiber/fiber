@@ -11,6 +11,10 @@ import (
 
 const redactedKey = "[redacted]"
 
+// storagePrefix keeps tokens apart from other middleware sharing the Storage, as the client
+// names the token; the concatenation also gives the Storage a key that outlives the request.
+const storagePrefix = "csrf:"
+
 type storageManager struct {
 	memory           *memory.Storage
 	storage          fiber.Storage
@@ -35,7 +39,7 @@ func newStorageManager(storage fiber.Storage, shouldRedactKeys bool) *storageMan
 // get raw data from storage or memory
 func (m *storageManager) getRaw(ctx context.Context, key string) ([]byte, error) {
 	if m.storage != nil {
-		raw, err := m.storage.GetWithContext(ctx, key)
+		raw, err := m.storage.GetWithContext(ctx, storagePrefix+key)
 		if err != nil {
 			return nil, fmt.Errorf("csrf: failed to get value from storage: %w", err)
 		}
@@ -56,7 +60,7 @@ func (m *storageManager) getRaw(ctx context.Context, key string) ([]byte, error)
 // set data to storage or memory
 func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp time.Duration) error {
 	if m.storage != nil {
-		if err := m.storage.SetWithContext(ctx, key, raw, exp); err != nil {
+		if err := m.storage.SetWithContext(ctx, storagePrefix+key, raw, exp); err != nil {
 			return fmt.Errorf("csrf: failed to store key %q: %w", m.logKey(key), err)
 		}
 		return nil
@@ -69,7 +73,7 @@ func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp
 // delete data from storage or memory
 func (m *storageManager) delRaw(ctx context.Context, key string) error {
 	if m.storage != nil {
-		if err := m.storage.DeleteWithContext(ctx, key); err != nil {
+		if err := m.storage.DeleteWithContext(ctx, storagePrefix+key); err != nil {
 			return fmt.Errorf("csrf: failed to delete key %q: %w", m.logKey(key), err)
 		}
 		return nil

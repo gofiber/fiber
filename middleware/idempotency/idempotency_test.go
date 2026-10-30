@@ -341,7 +341,7 @@ func Test_New_StorageGetError(t *testing.T) {
 func Test_New_UnmarshalError(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	s := &stubStorage{data: map[string][]byte{validKey: []byte("bad")}}
+	s := &stubStorage{data: map[string][]byte{storagePrefix + validKey: []byte("bad")}}
 	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
 	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
@@ -351,6 +351,26 @@ func Test_New_UnmarshalError(t *testing.T) {
 
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Contains(t, body, "failed to write cached response at fastpath")
+}
+
+// The client chooses the key, so it must not reach an entry another middleware
+// keeps in a shared Storage.
+func Test_New_SharedStorage_KeyNamespace(t *testing.T) {
+	t.Parallel()
+	foreign := []byte("entry of another middleware")
+	s := &stubStorage{data: map[string][]byte{validKey: foreign}}
+	app := fiber.New()
+	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req.Header.Set(ConfigDefault.KeyHeader, validKey)
+	resp, body := do(app, req)
+
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "ok", body)
+	require.Equal(t, foreign, s.data[validKey])
+	require.Contains(t, s.data, storagePrefix+validKey)
 }
 
 func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
@@ -573,7 +593,7 @@ func Test_New_ReplayDropsStoredCookies(t *testing.T) {
 		}
 		bs, err := res.MarshalMsg(nil)
 		require.NoError(t, err)
-		return &stubStorage{data: map[string][]byte{validKey: bs}}
+		return &stubStorage{data: map[string][]byte{storagePrefix + validKey: bs}}
 	}
 	replay := func(keep []string) *http.Response {
 		app := fiber.New()
@@ -665,7 +685,7 @@ func Test_New_KeyScope(t *testing.T) {
 	// the other.
 	require.Len(t, l.locked, 3)
 	for _, key := range l.locked {
-		require.Contains(t, s.data, key)
+		require.Contains(t, s.data, storagePrefix+key)
 	}
 }
 
@@ -704,9 +724,9 @@ func Test_scopedKey(t *testing.T) {
 
 	first := scopedKey("alice", validKey)
 	require.Equal(t, first, scopedKey("alice", validKey))
-	require.Len(t, scopedKey("", ""), 64)
-	require.Len(t, scopedKey(strings.Repeat("s", 1000), strings.Repeat("k", 1000)), 64)
-	require.NotEqual(t, validKey, scopedKey("", validKey))
+	require.Len(t, scopedKey("", ""), len(storagePrefix)+64)
+	require.Len(t, scopedKey(strings.Repeat("s", 1000), strings.Repeat("k", 1000)), len(storagePrefix)+64)
+	require.NotEqual(t, storagePrefix+validKey, scopedKey("", validKey))
 
 	seen := make(map[string][2]string)
 	for _, pair := range [][2]string{

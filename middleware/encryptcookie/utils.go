@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+
+	"github.com/gofiber/utils/v2"
 )
 
 var (
@@ -112,4 +114,23 @@ func GenerateKey(length int) string {
 // Check given cookie key is disabled for encryption or not
 func isDisabled(key string, except []string) bool {
 	return slices.Contains(except, key)
+}
+
+// splitSetCookie reads a line as RFC 6265 Section 5.2 does, but keeps a nameless value as
+// RFC 6265bis does; one pair of quotes goes, as the request parser drops them anyway.
+func splitSetCookie(line string) (name, value, attributes string) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming the three string parts
+	pair, _, _ := utils.CutByte(line, ';')
+	attributes = line[len(pair):]
+
+	name, value, found := utils.CutByte(pair, '=')
+	if !found {
+		name, value = "", pair
+	}
+
+	name, value = utils.TrimSpace(name), utils.TrimSpace(value)
+	if len(value) > 1 && value[0] == '"' && value[len(value)-1] == '"' {
+		value = value[1 : len(value)-1]
+	}
+
+	return name, value, attributes
 }
