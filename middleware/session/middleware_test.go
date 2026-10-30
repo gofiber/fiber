@@ -1300,3 +1300,69 @@ func Benchmark_Middleware(b *testing.B) {
 		})
 	}
 }
+
+// A request still in its handler when another request of the same session logs
+// out must not bring the session back when the middleware saves it.
+//
+// go test -run Test_Session_Middleware_LogoutDuringRequest
+func Test_Session_Middleware_LogoutDuringRequest(t *testing.T) {
+	t.Parallel()
+
+	for _, logout := range []string{"/reset", "/destroy"} {
+		t.Run(logout, func(t *testing.T) {
+			t.Parallel()
+
+			loaded, loggedOut := make(chan struct{}), make(chan struct{})
+			app := fiber.New()
+			app.Use(New())
+			app.Post("/login", func(c fiber.Ctx) error {
+				sess := FromContext(c)
+				if err := sess.Regenerate(); err != nil {
+					return err
+				}
+				sess.Set("user", "alice")
+				return nil
+			})
+			app.Post("/reset", func(c fiber.Ctx) error { return FromContext(c).Reset() })
+			app.Post("/destroy", func(c fiber.Ctx) error { return FromContext(c).Destroy() })
+			app.Get("/report", func(_ fiber.Ctx) error {
+				close(loaded)
+				<-loggedOut
+				return nil
+			})
+			app.Get("/whoami", func(c fiber.Ctx) error {
+				return c.SendString(fmt.Sprint(FromContext(c).Get("user")))
+			})
+			h := app.Handler()
+
+			send := func(method, path, id string) *fasthttp.RequestCtx {
+				ctx := &fasthttp.RequestCtx{}
+				ctx.Request.Header.SetMethod(method)
+				ctx.Request.SetRequestURI(path)
+				if id != "" {
+					ctx.Request.Header.SetCookie("session_id", id)
+				}
+				h(ctx)
+				return ctx
+			}
+
+			cookie := fasthttp.AcquireCookie()
+			defer fasthttp.ReleaseCookie(cookie)
+			cookie.SetKey("session_id")
+			require.True(t, send(fiber.MethodPost, "/login", "").Response.Header.Cookie(cookie))
+			id := string(cookie.Value())
+			require.Equal(t, "alice", string(send(fiber.MethodGet, "/whoami", id).Response.Body()))
+
+			reported := make(chan *fasthttp.RequestCtx, 1)
+			go func() { reported <- send(fiber.MethodGet, "/report", id) }()
+			<-loaded
+			require.Equal(t, fiber.StatusOK, send(fiber.MethodPost, logout, id).Response.StatusCode())
+			close(loggedOut)
+
+			report := <-reported
+			require.Equal(t, fiber.StatusOK, report.Response.StatusCode())
+			require.Empty(t, report.Response.Header.Peek(fiber.HeaderSetCookie))
+			require.Equal(t, "<nil>", string(send(fiber.MethodGet, "/whoami", id).Response.Body()))
+		})
+	}
+}
