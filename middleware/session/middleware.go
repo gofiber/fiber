@@ -152,9 +152,11 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
 	stackErr := c.Next()
 
-	// A handler timeout.New gave up on may still use m: neither save nor pool it or its session.
+	// A handler timeout.New gave up on may still use m: neither save nor pool it or its session,
+	// but cut both off from the request, whose context is reused once such handlers are done.
 	// IsAbandoned goes first: its atomic load orders the read after the timeout middleware's write.
 	if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
+		m.forgetContext()
 		return stackErr
 	}
 
@@ -171,6 +173,21 @@ func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
 
 	releaseMiddleware(m)
 	return stackErr
+}
+
+// forgetContext cuts m and its session off from the request that the timeout
+// middleware answered. They stay as they are for the handlers that outlive it: the
+// response is fixed, so nothing those handlers write to it counts. What they must
+// not do is hold the session past their end and write into whichever request gets
+// the context next, or run storage calls under it.
+func (m *Middleware) forgetContext() {
+	m.mu.Lock()
+	session := m.Session
+	m.ctx = nil
+	m.mu.Unlock()
+	if session != nil {
+		session.forgetContext()
+	}
 }
 
 // serveInside is serve for a middleware that runs inside another. A panic that
@@ -494,7 +511,8 @@ func releaseMiddleware(m *Middleware) {
 //
 // The Middleware belongs to its request, as the type documents. A handler that the
 // timeout middleware gave up on keeps its own: the session is neither saved nor
-// recycled, and the handler goes on using it, never another request's. A request
+// recycled, and the handler goes on using it, never another request's; both let go
+// of the request, whose context is reused once the handler is done. A request
 // abandoned any other way, as the sse middleware does, is saved as usual when its
 // handler returns, and FromContext returns nil for it from then on; a Middleware
 // that a handler still running got before stays finished: it is never recycled

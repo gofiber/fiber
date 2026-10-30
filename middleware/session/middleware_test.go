@@ -1255,6 +1255,58 @@ func Test_Session_Middleware_FinishesOnTimedOutGoroutine(t *testing.T) {
 	<-finished
 }
 
+// Test_Session_Middleware_TimedOutRequestLetsGoOfItsContext checks that, once the timeout
+// middleware answered the request, neither the middleware nor the session of the handler
+// it gave up on refers to the request any more. The context of the request is reused for
+// another one when the handler is done, and whoever still holds the session then must not
+// write into that request. Both stay as they are for the handler itself.
+func Test_Session_Middleware_TimedOutRequestLetsGoOfItsContext(t *testing.T) {
+	t.Parallel()
+
+	var (
+		held    = make(chan *Middleware, 1)
+		release = make(chan struct{})
+		done    = make(chan struct{})
+	)
+	store := NewStore()
+	app := fiber.New()
+	app.Use(New(Config{Store: store}))
+	app.Get("/slow", timeout.New(func(c fiber.Ctx) error {
+		defer close(done)
+		held <- FromContext(c)
+		<-release
+		return nil
+	}, timeout.Config{Timeout: 10 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+
+	m := <-held
+	m.mu.RLock()
+	sess, ctx := m.Session, m.ctx
+	m.mu.RUnlock()
+	require.NotNil(t, sess, "the middleware of the running handler was reset")
+	require.Nil(t, ctx, "the middleware still refers to the request that was answered")
+	require.Nil(t, sess.requestCtx(), "and so does its session")
+
+	m.Set("late", "x")
+	require.Equal(t, "x", m.Get("late"), "the handler goes on with its own session")
+
+	// nothing saved it, since the response was fixed; a save of its own writes the record, and no cookie
+	key := store.storageKey(sess.ID())
+	stored, err := store.Storage.GetWithContext(context.Background(), key)
+	require.NoError(t, err)
+	require.Empty(t, stored)
+	require.NoError(t, sess.Save())
+	stored, err = store.Storage.GetWithContext(context.Background(), key)
+	require.NoError(t, err)
+	require.NotEmpty(t, stored)
+
+	close(release)
+	<-done
+}
+
 // Test_Session_Middleware_AbandonedWithoutTimeoutKeepsItsObjects abandons the request
 // the way the sse middleware does, with no timeout response. The session is saved
 // as usual, and then neither the middleware nor the session goes back to the pool,
