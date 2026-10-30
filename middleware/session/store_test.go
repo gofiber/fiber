@@ -1,9 +1,12 @@
 package session
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -102,6 +105,80 @@ func Test_Store_Get(t *testing.T) {
 
 		require.NotEqual(t, unexpectedID, acquiredSession.ID())
 	})
+}
+
+// An ID from the request must not reach an entry another middleware keeps in
+// the same Storage, even one whose bytes decode as session data.
+//
+// go test -run Test_Store_SharedStorage_ForeignRecord
+func Test_Store_SharedStorage_ForeignRecord(t *testing.T) {
+	t.Parallel()
+
+	// where an earlier cache version kept a response body
+	const foreignKey = "v5|GET|scheme=http|host=example.com|/files/0|q=|h=accept:0|accept-encoding:0|accept-language:0_body"
+
+	var forged bytes.Buffer
+	require.NoError(t, gob.NewEncoder(&forged).Encode(&map[any]any{"user": "admin"}))
+
+	store := NewStore()
+	require.NoError(t, store.Storage.Set(foreignKey, forged.Bytes(), 0))
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.SetCookie(store.Extractor.Key, foreignKey)
+
+	sess, err := store.Get(ctx)
+	require.NoError(t, err)
+	defer sess.Release()
+	require.True(t, sess.Fresh())
+	require.NotEqual(t, foreignKey, sess.ID())
+	require.Nil(t, sess.Get("user"))
+	require.NoError(t, sess.Save())
+
+	_, err = store.GetByID(context.Background(), foreignKey)
+	require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
+
+	require.NoError(t, store.Delete(context.Background(), foreignKey))
+	kept, err := store.Storage.Get(foreignKey)
+	require.NoError(t, err)
+	require.Equal(t, forged.Bytes(), kept)
+}
+
+// A session can outlive its request, so its ID must not point into the request
+// buffer the connection's next request reuses.
+//
+// go test -run Test_Store_SessionIDOutlivesRequest
+func Test_Store_SessionIDOutlivesRequest(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	store := NewStore()
+	id := seedSession(t, app, store, func(s *Session) { s.Set("user", "alice") })
+
+	loaders := map[string]func(fiber.Ctx) (*Session, error){
+		"Get": store.Get,
+		"GetByID": func(c fiber.Ctx) (*Session, error) {
+			return store.GetByID(c, c.Cookies("session_id"))
+		},
+	}
+	for name, load := range loaders {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetCookie("session_id", id)
+			ctx := app.AcquireCtx(fctx)
+			sess, err := load(ctx)
+			app.ReleaseCtx(ctx)
+			require.NoError(t, err)
+			defer sess.Release()
+
+			fctx.Request.Reset()
+			fctx.Request.Header.SetCookie("session_id", strings.Repeat("A", len(id)))
+			require.Equal(t, id, sess.ID())
+		})
+	}
 }
 
 // go test -run Test_Store_DeleteSession

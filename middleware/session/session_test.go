@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1796,7 +1797,7 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 	sessionID := uuid.New().String()
 
 	// Store invalid session data to simulate decode error
-	err := store.Storage.Set(sessionID, []byte("invalid data"), 0)
+	err := store.Storage.Set(storageKeyPrefix+sessionID, []byte("invalid data"), 0)
 	require.NoError(t, err, "Failed to set invalid session data")
 
 	// Create a new request context
@@ -2457,7 +2458,7 @@ func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 
 	written := rec.writes()
 	require.Len(t, written, 1, "a clean save must still write to storage")
-	require.Equal(t, id, written[0].key)
+	require.Equal(t, storageKeyPrefix+id, written[0].key)
 	require.Equal(t, seeded[0].value, written[0].value, "the retained snapshot must be written back verbatim")
 	require.Equal(t, idleTimeout, written[0].exp, "a clean save must slide the idle timeout")
 
@@ -2700,7 +2701,7 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 
 		written := rec.writes()
 		require.Len(t, written, 1)
-		require.Equal(t, id, written[0].key)
+		require.Equal(t, storageKeyPrefix+id, written[0].key)
 		require.NotContains(t, string(written[0].value), "bypassed")
 	})
 }
@@ -2779,4 +2780,338 @@ func Test_Session_ConcurrentAliasedReadAndSave(t *testing.T) {
 	require.NoError(t, err)
 	defer reloaded.Release()
 	require.Equal(t, "fenny", reloaded.Get("user"))
+}
+
+// A request that loaded a session before another request ended it must not
+// store it again, or the logout is undone.
+//
+// go test -run Test_Session_SaveAfterConcurrentEnd
+func Test_Session_SaveAfterConcurrentEnd(t *testing.T) {
+	t.Parallel()
+
+	ends := []struct {
+		end  func(t *testing.T, store *Store, sess *Session)
+		name string
+	}{
+		{name: "Destroy", end: func(t *testing.T, _ *Store, sess *Session) {
+			t.Helper()
+			require.NoError(t, sess.Destroy())
+		}},
+		{name: "Reset", end: func(t *testing.T, _ *Store, sess *Session) {
+			t.Helper()
+			require.NoError(t, sess.Reset())
+		}},
+		{name: "Regenerate", end: func(t *testing.T, _ *Store, sess *Session) {
+			t.Helper()
+			require.NoError(t, sess.Regenerate())
+		}},
+		{name: "store.Delete", end: func(t *testing.T, store *Store, sess *Session) {
+			t.Helper()
+			require.NoError(t, store.Delete(t.Context(), sess.ID()))
+		}},
+		{name: "store.Reset", end: func(t *testing.T, store *Store, _ *Session) {
+			t.Helper()
+			require.NoError(t, store.Reset(t.Context()))
+		}},
+	}
+
+	for _, tc := range ends {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, modified := range []bool{false, true} {
+				name := "read only"
+				if modified {
+					name = "modified"
+				}
+				t.Run(name, func(t *testing.T) {
+					t.Parallel()
+
+					app := fiber.New()
+					store := NewStore(Config{Storage: memory.New()})
+					id := seedSession(t, app, store, func(sess *Session) {
+						sess.Set("user", "alice")
+					})
+
+					inFlight := loadSession(t, app, store, id)
+					tc.end(t, store, loadSession(t, app, store, id))
+					if modified {
+						inFlight.Set("cart", "1")
+					}
+					require.NoError(t, inFlight.Save())
+
+					_, err := store.GetByID(t.Context(), id)
+					require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
+					require.Empty(t, inFlight.ctx.Response().Header.Peek(fiber.HeaderSetCookie))
+				})
+			}
+		})
+	}
+}
+
+// Deleting another ID of the same lock shard must not cost a session its save.
+//
+// go test -run Test_Session_SaveAfterUnrelatedDelete
+func Test_Session_SaveAfterUnrelatedDelete(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	store := NewStore(Config{Storage: memory.New()})
+	id := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("user", "alice")
+	})
+	sibling := store.KeyGenerator()
+	for lockFor(storageKeyPrefix+sibling) != lockFor(storageKeyPrefix+id) {
+		sibling = store.KeyGenerator()
+	}
+
+	sess := loadSession(t, app, store, id)
+	require.NoError(t, store.Delete(t.Context(), sibling))
+	sess.Set("user", "bob")
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.ErrorIs(t, sess.SaveWithContext(canceled), context.Canceled)
+
+	require.NoError(t, sess.Save())
+	require.NotEmpty(t, sess.ctx.Response().Header.Peek(fiber.HeaderSetCookie))
+
+	reloaded, err := store.GetByID(t.Context(), id)
+	require.NoError(t, err)
+	defer reloaded.Release()
+	require.Equal(t, "bob", reloaded.Get("user"))
+}
+
+// A request that left the session unchanged must not write the snapshot it
+// loaded back over a change another request stored meanwhile.
+//
+// go test -run Test_Session_SaveAfterConcurrentChange
+func Test_Session_SaveAfterConcurrentChange(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	store := NewStore(Config{Storage: memory.New()})
+	id := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("role", "admin")
+	})
+
+	inFlight := loadSession(t, app, store, id)
+	demote := loadSession(t, app, store, id)
+	demote.Set("role", "guest")
+	require.NoError(t, demote.Save())
+	require.NoError(t, inFlight.Save())
+	require.NotEmpty(t, inFlight.ctx.Response().Header.Peek(fiber.HeaderSetCookie))
+
+	reloaded, err := store.GetByID(t.Context(), id)
+	require.NoError(t, err)
+	defer reloaded.Release()
+	require.Equal(t, "guest", reloaded.Get("role"))
+}
+
+// A change to another ID of the same lock shard must not cost an unchanged
+// session its write-back, which slides the idle timeout.
+//
+// go test -run Test_Session_WriteBackAfterUnrelatedChange
+func Test_Session_WriteBackAfterUnrelatedChange(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	storage := newRecordingStorage()
+	store := NewStore(Config{Storage: storage})
+	id := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("user", "alice")
+	})
+	sibling := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("user", "bob")
+	})
+	for lockFor(storageKeyPrefix+sibling) != lockFor(storageKeyPrefix+id) {
+		sibling = seedSession(t, app, store, func(sess *Session) {
+			sess.Set("user", "bob")
+		})
+	}
+
+	sess := loadSession(t, app, store, id)
+	other := loadSession(t, app, store, sibling)
+	other.Set("user", "carol")
+	require.NoError(t, other.Save())
+	storage.reset()
+
+	require.NoError(t, sess.Save())
+	writes := storage.writes()
+	require.Len(t, writes, 1)
+	require.Equal(t, storageKeyPrefix+id, writes[0].key)
+}
+
+// gateStorage parks the first Set after arming until release is closed.
+type gateStorage struct {
+	fiber.Storage
+	entered chan struct{}
+	release chan struct{}
+	armed   atomic.Bool
+}
+
+func (s *gateStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	if s.armed.CompareAndSwap(true, false) {
+		close(s.entered)
+		<-s.release
+	}
+	return s.Storage.SetWithContext(ctx, key, val, exp)
+}
+
+func (s *gateStorage) Set(key string, val []byte, exp time.Duration) error {
+	return s.SetWithContext(context.Background(), key, val, exp)
+}
+
+// A save that passed its check is still writing; a delete of the same ID has to
+// wait for it, or the write lands after the delete.
+//
+// go test -run Test_Session_DeleteWaitsForRunningSave
+func Test_Session_DeleteWaitsForRunningSave(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	storage := &gateStorage{Storage: memory.New(), entered: make(chan struct{}), release: make(chan struct{})}
+	store := NewStore(Config{Storage: storage})
+	id := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("user", "alice")
+	})
+	inFlight := loadSession(t, app, store, id)
+	ending := loadSession(t, app, store, id)
+
+	storage.armed.Store(true)
+	saved := make(chan error, 1)
+	go func() { saved <- inFlight.Save() }()
+	<-storage.entered
+
+	destroyed := make(chan error, 1)
+	go func() { destroyed <- ending.Destroy() }()
+	select {
+	case <-destroyed:
+		close(storage.release)
+		<-saved
+		t.Fatal("Destroy returned while a save of the same ID was still writing")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(storage.release)
+	require.NoError(t, <-saved)
+	require.NoError(t, <-destroyed)
+
+	_, err := store.GetByID(t.Context(), id)
+	require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
+}
+
+// A request that loaded a session before another request ended or rotated it
+// must neither carry the session on to a new ID nor send a cookie for one.
+//
+// go test -run Test_Session_RegenerateAfterConcurrentEnd
+func Test_Session_RegenerateAfterConcurrentEnd(t *testing.T) {
+	t.Parallel()
+
+	// end returns the ID that holds the session afterwards, if any.
+	ends := []struct {
+		end   func(t *testing.T, app *fiber.App, store *Store, id string) string
+		name  string
+		ended bool
+	}{
+		{name: "Reset", ended: true, end: func(t *testing.T, app *fiber.App, store *Store, id string) string {
+			t.Helper()
+			require.NoError(t, loadSession(t, app, store, id).Reset())
+			return ""
+		}},
+		{name: "Destroy", ended: true, end: func(t *testing.T, app *fiber.App, store *Store, id string) string {
+			t.Helper()
+			require.NoError(t, loadSession(t, app, store, id).Destroy())
+			return ""
+		}},
+		{name: "store.Delete", ended: true, end: func(t *testing.T, _ *fiber.App, store *Store, id string) string {
+			t.Helper()
+			require.NoError(t, store.Delete(t.Context(), id))
+			return ""
+		}},
+		{name: "Regenerate", ended: true, end: func(t *testing.T, app *fiber.App, store *Store, id string) string {
+			t.Helper()
+			first := loadSession(t, app, store, id)
+			require.NoError(t, first.Regenerate())
+			require.NoError(t, first.Save())
+			return first.ID()
+		}},
+		{name: "unrelated delete", end: func(t *testing.T, _ *fiber.App, store *Store, id string) string {
+			t.Helper()
+			sibling := store.KeyGenerator()
+			for lockFor(storageKeyPrefix+sibling) != lockFor(storageKeyPrefix+id) {
+				sibling = store.KeyGenerator()
+			}
+			require.NoError(t, store.Delete(t.Context(), sibling))
+			return ""
+		}},
+	}
+
+	for _, tc := range ends {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			store := NewStore(Config{Storage: memory.New()})
+			id := seedSession(t, app, store, func(sess *Session) {
+				sess.Set("user", "alice")
+			})
+
+			inFlight := loadSession(t, app, store, id)
+			holder := tc.end(t, app, store, id)
+			require.NoError(t, inFlight.Regenerate())
+			require.NotEqual(t, id, inFlight.ID())
+			require.NoError(t, inFlight.Save())
+
+			_, err := store.GetByID(t.Context(), id)
+			require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
+			setCookie := inFlight.ctx.Response().Header.Peek(fiber.HeaderSetCookie)
+			if tc.ended {
+				require.Empty(t, setCookie)
+				_, err = store.GetByID(t.Context(), inFlight.ID())
+				require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
+			} else {
+				require.NotEmpty(t, setCookie)
+				holder = inFlight.ID()
+			}
+			if holder != "" {
+				held, err := store.GetByID(t.Context(), holder)
+				require.NoError(t, err)
+				defer held.Release()
+				require.Equal(t, "alice", held.Get("user"))
+			}
+		})
+	}
+}
+
+// Another instance sharing the Storage can write the ended ID back before the
+// save, so a login must not land on the old, possibly planted ID.
+//
+// go test -run Test_Session_RegenerateAfterConcurrentEnd_OldIDWrittenBack
+func Test_Session_RegenerateAfterConcurrentEnd_OldIDWrittenBack(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	storage := memory.New()
+	store := NewStore(Config{Storage: storage})
+	id := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("visitor", true)
+	})
+	raw, err := storage.Get(storageKeyPrefix + id)
+	require.NoError(t, err)
+
+	inFlight := loadSession(t, app, store, id)
+	require.NoError(t, store.Delete(t.Context(), id))
+	require.NoError(t, inFlight.Regenerate())
+	require.NoError(t, storage.Set(storageKeyPrefix+id, raw, 0))
+	inFlight.Set("user", "victim")
+	require.NoError(t, inFlight.Save())
+
+	require.NotEqual(t, id, inFlight.ID())
+	require.Empty(t, inFlight.ctx.Response().Header.Peek(fiber.HeaderSetCookie))
+	old, err := store.GetByID(t.Context(), id)
+	require.NoError(t, err)
+	defer old.Release()
+	require.Nil(t, old.Get("user"))
+	_, err = store.GetByID(t.Context(), inFlight.ID())
+	require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
 }

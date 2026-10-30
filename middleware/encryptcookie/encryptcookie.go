@@ -2,8 +2,7 @@ package encryptcookie
 
 import (
 	"errors"
-
-	"github.com/valyala/fasthttp"
+	"slices"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -26,38 +25,49 @@ func New(config ...Config) fiber.Handler {
 		// Continue stack
 		err := c.Next()
 
-		// Encrypt response cookies
-		responseCookieKeys := make([]string, 0, 4)
-		for key := range c.Response().Header.Cookies() {
-			responseCookieKeys = append(responseCookieKeys, string(key))
-		}
-
-		for _, keyString := range responseCookieKeys {
-			if isDisabled(keyString, cfg.Except) {
-				continue
-			}
-
-			cookieValue := fasthttp.Cookie{}
-			cookieValue.SetKey(keyString)
-			if c.Response().Header.Cookie(&cookieValue) {
-				encryptedValue, encErr := cfg.Encryptor(keyString, string(cookieValue.Value()), cfg.Key)
-				if encErr != nil {
-					for _, responseCookieKey := range responseCookieKeys {
-						if !isDisabled(responseCookieKey, cfg.Except) {
-							c.Response().Header.DelCookie(responseCookieKey)
-						}
-					}
-
-					return errors.Join(err, encErr)
-				}
-
-				cookieValue.SetValue(encryptedValue)
-				c.Response().Header.SetCookie(&cookieValue)
-			}
+		if encErr := encryptResponseCookies(c, &cfg); encErr != nil {
+			return errors.Join(err, encErr)
 		}
 
 		return err
 	}
+}
+
+// encryptResponseCookies rewrites each Set-Cookie line on its own: a lookup by name
+// misses a repeated name, and a re-serialize drops what fasthttp cannot parse.
+func encryptResponseCookies(c fiber.Ctx, cfg *Config) error {
+	header := &c.Response().Header
+
+	lines := make([]string, 0, 4)
+	for _, line := range header.Cookies() {
+		lines = append(lines, string(line))
+	}
+
+	var encErr error
+	for i, line := range lines {
+		name, value, attributes := splitSetCookie(line)
+		if isDisabled(name, cfg.Except) {
+			continue
+		}
+
+		var encrypted string
+		if encrypted, encErr = cfg.Encryptor(name, value, cfg.Key); encErr != nil {
+			lines = slices.DeleteFunc(lines, func(l string) bool {
+				n, _, _ := splitSetCookie(l)
+				return !isDisabled(n, cfg.Except)
+			})
+			break
+		}
+
+		lines[i] = name + "=" + encrypted + attributes
+	}
+
+	header.DelAllCookies()
+	for _, line := range lines {
+		header.Add(fiber.HeaderSetCookie, line)
+	}
+
+	return encErr
 }
 
 // requestCookie is one entry of the Cookie header as the decrypt pass read it.
@@ -88,6 +98,8 @@ type requestCookie struct {
 func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 	header := &c.Request().Header
 	cookies := make([]requestCookie, 0, 8)
+	// A scan of cookies per entry would be quadratic in what the client sends
+	seen := make(map[string]struct{})
 	rebuild := false
 
 	for key, value := range header.Cookies() {
@@ -96,7 +108,7 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 			cookies = append(cookies, requestCookie{name: name, value: string(value), except: true, keep: true})
 			continue
 		}
-		if hasCookieName(cookies, name) {
+		if _, ok := seen[name]; ok {
 			// The name already has its value; a later duplicate is dropped
 			// without decrypting it.
 			rebuild = true
@@ -109,6 +121,7 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 			cookies = append(cookies, requestCookie{name: name})
 			continue
 		}
+		seen[name] = struct{}{}
 		cookies = append(cookies, requestCookie{name: name, value: decrypted, keep: true})
 	}
 
@@ -122,40 +135,21 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 	}
 
 	header.DelAllCookies()
+	clear(seen)
 	for i := range cookies {
 		ck := &cookies[i]
-		switch {
-		case !ck.keep:
+		if !ck.keep {
 			continue
-		case ck.except && hasExceptedName(cookies[:i], ck.name):
-			// SetCookie would overwrite the entry already written for this
-			// name. Add appends a Cookie entry and keeps the existing ones, so
-			// a repeated excepted name survives as it arrived.
+		}
+		if _, ok := seen[ck.name]; ok {
+			// Only an excepted name repeats here. SetCookie would overwrite the
+			// entry already written; Add appends one, so it survives as it arrived.
 			header.Add(fiber.HeaderCookie, ck.name+"="+ck.value)
-		default:
-			// The name is absent after DelAllCookies, so SetCookie appends the
-			// entry in order and stores the value verbatim.
-			header.SetCookie(ck.name, ck.value)
+			continue
 		}
+		seen[ck.name] = struct{}{}
+		// The name is absent after DelAllCookies, so SetCookie appends the
+		// entry in order and stores the value verbatim.
+		header.SetCookie(ck.name, ck.value)
 	}
-}
-
-// hasCookieName reports whether cookies holds a kept, non-excepted entry named name.
-func hasCookieName(cookies []requestCookie, name string) bool {
-	for i := range cookies {
-		if cookies[i].keep && !cookies[i].except && cookies[i].name == name {
-			return true
-		}
-	}
-	return false
-}
-
-// hasExceptedName reports whether cookies holds an excepted entry named name.
-func hasExceptedName(cookies []requestCookie, name string) bool {
-	for i := range cookies {
-		if cookies[i].except && cookies[i].name == name {
-			return true
-		}
-	}
-	return false
 }

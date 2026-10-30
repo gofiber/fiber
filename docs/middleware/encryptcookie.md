@@ -87,6 +87,8 @@ Custom encryptor and decryptor functions receive three arguments:
 - `string`: The cookie payload. `EncryptCookie` accepts the decrypted value and returns ciphertext, while `DecryptCookie` receives ciphertext and must return the decrypted value.
 - `key`: The base64-encoded key pulled from the middleware configuration. Use it to derive or validate any encryption keys your implementation requires.
 
+Every `Set-Cookie` line of the response is encrypted on its own, however it was written (`c.Cookie`, `c.Add`, a proxied or adapted response), also when a name repeats. Only the value is replaced, without the double quotes around it, and the attributes are sent as they were written.
+
 A request cookie for which the `Decryptor` returns an error, such as a tampered value, a cookie that was never encrypted, or one sealed with another key, is removed from the request, so handlers see it as absent. When a request carries the same cookie name more than once, for example set under two paths or domains, the handler sees a single entry for that name holding the first value that decrypts; the other entries, including any that do not decrypt, are dropped. Names listed in `Except` keep every entry as it arrived. When the `Encryptor` returns an error for a response cookie, the middleware removes every response cookie that is not listed in `Except` and returns that error, joined with any error from the rest of the chain. The default helpers return `ErrInvalidEncryptedValue` for a payload too short to hold the nonce and authentication tag, and `ErrInvalidKeyLength` for a key that does not decode to 16, 24, or 32 bytes.
 
 ## Default Config
