@@ -19,11 +19,11 @@ import (
 // Session serializes access to its internal state with mutexes, but it is
 // request-scoped and must not be used after the request lifecycle ends.
 type Session struct {
-	ctx fiber.Ctx // fiber context of the request; read it with requestCtx, forgetContext clears it
+	ctx fiber.Ctx // fiber context of the request; read it with requestCtx, cut clears it
 	// rctx is the request itself, for a session a panic unwound the middleware of: the
 	// fiber.Ctx goes back to the pool as soon as the handlers return, while the request
 	// lives on until fasthttp resets it, and until then the session still writes its
-	// cookies to it. Set by detach, cleared by forgetContext.
+	// cookies to it. Set and cleared by cut.
 	rctx        *fasthttp.RequestCtx
 	config      *Store                  // store configuration
 	data        *data                   // key value data
@@ -1037,43 +1037,28 @@ func (s *Session) requestCtx() fiber.Ctx {
 	return c
 }
 
-// forgetContext cuts the session off from its request. The session of an
-// abandoned request is not recycled, since a handler that outlives the request
-// may still be using it, but the context is: it is reused for another request
-// once those handlers are done, and whoever still holds the session must not
-// write to that request's response, or run its storage calls under its context.
-func (s *Session) forgetContext() {
+// cut points the session at rctx, the request itself, instead of at the fiber.Ctx
+// of its request, or at nothing when rctx is nil. The session of an abandoned or
+// unwound request is not recycled, since a handler that outlives the request may
+// still be using it, but the fiber.Ctx is: it is reused for another request once
+// those handlers are done, and whoever still holds the session must not write to
+// that request's response, or run its storage calls under its context. The request
+// itself lives on until fasthttp resets it, and a session a panic unwound the
+// middleware of still writes its cookies there, for whatever recovers the panic.
+func (s *Session) cut(rctx *fasthttp.RequestCtx) {
 	s.mu.Lock()
-	s.ctx, s.rctx = nil, nil
+	s.ctx, s.rctx = nil, rctx
 	s.mu.Unlock()
 }
 
-// forgetContextSoon is forgetContext for a caller that must not wait: when the
-// session is locked, by a save that is writing to the storage for instance, the cut
-// follows from a goroutine of its own.
-func (s *Session) forgetContextSoon() {
-	if s.mu.TryLock() {
-		s.ctx, s.rctx = nil, nil
-		s.mu.Unlock()
-		return
-	}
-	go s.forgetContext()
-}
-
-// detachSoon moves the session from its fiber.Ctx, which goes back to the pool as
-// soon as the handlers return, to rctx, the request itself, which lives on until
-// fasthttp resets it: a session a panic unwound the middleware of still writes its
-// cookies there, for whatever recovers the panic. Like forgetContextSoon it does
-// not wait for the lock.
-func (s *Session) detachSoon(rctx *fasthttp.RequestCtx) {
+// cutSoon is cut for a caller that must not wait: when the session is locked, by a
+// save that is writing to the storage for instance, the cut follows from a
+// goroutine of its own.
+func (s *Session) cutSoon(rctx *fasthttp.RequestCtx) {
 	if s.mu.TryLock() {
 		s.ctx, s.rctx = nil, rctx
 		s.mu.Unlock()
 		return
 	}
-	go func() {
-		s.mu.Lock()
-		s.ctx, s.rctx = nil, rctx
-		s.mu.Unlock()
-	}()
+	go s.cut(rctx)
 }

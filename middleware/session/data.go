@@ -109,9 +109,7 @@ func releaseData(d *data) {
 func (d *data) Reset() {
 	d.Lock()
 	defer d.Unlock()
-	d.dirty.Store(true)
-	d.errs = nil
-	clear(d.Data)
+	d.emptyLocked()
 }
 
 // resetAs is Reset that also makes the data hold what codec says, in one step: a
@@ -122,9 +120,14 @@ func (d *data) Reset() {
 func (d *data) resetAs(codec *namedCodec) {
 	d.Lock()
 	defer d.Unlock()
+	d.codec = codec
+	d.emptyLocked()
+}
+
+// emptyLocked drops every value and every failed Set. The caller holds the lock.
+func (d *data) emptyLocked() {
 	d.dirty.Store(true)
 	d.errs = nil
-	d.codec = codec
 	clear(d.Data)
 }
 

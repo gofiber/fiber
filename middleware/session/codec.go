@@ -9,9 +9,6 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// ErrKeyNotFound is returned by GetInto when the session holds nothing under the key.
-var ErrKeyNotFound = errors.New("session key not found")
-
 // errRecordNeedsCodec is returned for a record of a Codec found by a store without one.
 var errRecordNeedsCodec = errors.New("failed to decode session data: the session was stored by a store with a Codec, and this store has none")
 
@@ -109,23 +106,6 @@ func NewCodec(name string, marshal func(v any) ([]byte, error), unmarshal func(d
 func checkCodecName(name string) {
 	if name == "" || len(name) > maxCodecNameLen {
 		panic(fmt.Sprintf("[session] the name of a Codec must be 1 to %d bytes long, got %d", maxCodecNameLen, len(name)))
-	}
-}
-
-// isNilCodec reports whether codec holds a nil pointer, map, slice, channel or
-// function. Such a value is not equal to nil, so it passes for a codec and then
-// fails on the first request. A codec that is plainly nil is fine: it stands for
-// gob.
-func isNilCodec(codec Codec) bool {
-	if codec == nil {
-		return false
-	}
-	switch rv := reflect.ValueOf(codec); rv.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface,
-		reflect.Map, reflect.Pointer, reflect.Slice:
-		return rv.IsNil()
-	default:
-		return false
 	}
 }
 

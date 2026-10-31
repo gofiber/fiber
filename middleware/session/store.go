@@ -27,6 +27,8 @@ var (
 	ErrEmptySessionID                   = errors.New("session ID cannot be empty")
 	ErrSessionAlreadyLoadedByMiddleware = errors.New("session already loaded by middleware")
 	ErrSessionIDNotFoundInStore         = errors.New("session ID not found in session store")
+	// ErrKeyNotFound is returned by GetInto when the session holds nothing under the key.
+	ErrKeyNotFound = errors.New("session key not found")
 )
 
 // sessionIDKey is the local key type used to store and retrieve the session ID in context.
@@ -221,16 +223,16 @@ func sourceName(leaf extractors.Extractor) string {
 	}
 }
 
-// worked reports whether sinks and sources are those of the extractor the store has
-// now: NewStore worked them out, and the Extractor was not replaced since.
-func (s *Store) worked() bool {
+// extractorCached reports whether sinks and sources are those of the extractor the
+// store has now: NewStore worked them out, and the Extractor was not replaced since.
+func (s *Store) extractorCached() bool {
 	return s.sinks != nil && s.root.matches(s.Extractor)
 }
 
 // writableSinks returns the cookies and headers a session ID of s can be written
 // back to. The slice is shared: do not modify it.
 func (s *Store) writableSinks() []extractors.Extractor {
-	if s.worked() {
+	if s.extractorCached() {
 		return s.sinks
 	}
 	return collectSinks(s.Extractor)
@@ -239,7 +241,7 @@ func (s *Store) writableSinks() []extractors.Extractor {
 // sourceList returns the names of the sources s reads its session ID from. The
 // slice is shared: do not modify it.
 func (s *Store) sourceList() []string {
-	if s.worked() {
+	if s.extractorCached() {
 		return s.sources
 	}
 	return collectSources(s.Extractor)
@@ -404,10 +406,10 @@ func (s *Store) ownsSink(res extractors.Result) bool {
 func NewStore(config ...Config) *Store {
 	// Set default config
 	cfg := configDefault(config...)
-	if isNilStorage(cfg.Storage) {
+	if isTypedNil(cfg.Storage) {
 		panic("[session] Storage must not be a typed nil")
 	}
-	if isNilCodec(cfg.Codec) {
+	if isTypedNil(cfg.Codec) {
 		panic("[session] Codec must not be a typed nil")
 	}
 	var named *namedCodec
@@ -539,9 +541,9 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 		return nil, ErrSessionAlreadyLoadedByMiddleware
 	}
 
-	sess, box, err := s.getSessionBox(c)
+	sess, box, err := s.loadSession(c)
 	if err == nil && sess.isFresh {
-		// getSession has just cached the new ID on the request; say whose it is.
+		// loadSession has just cached the new ID on the request; say whose it is.
 		if box != nil {
 			box.publisher = s
 		} else {
@@ -551,29 +553,25 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 	return sess, err
 }
 
-// getSession retrieves a session based on the context.
+// loadSession retrieves a session based on the context, and returns the provenance
+// box of the request when it has one, so that Store.Get can say in it whose session
+// ID is cached.
 //
 // Parameters:
 //   - c: The Fiber context.
 //
 // Returns:
 //   - *Session: The session object.
+//   - *provenanceBox: The provenance box of the request, nil if it has none.
 //   - error: An error if the session retrieval fails.
 //
 // Usage:
 //
-//	sess, err := store.getSession(c)
+//	sess, _, err := store.loadSession(c)
 //	if err != nil {
 //	    // handle error
 //	}
-func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
-	sess, _, err := s.getSessionBox(c)
-	return sess, err
-}
-
-// getSessionBox is getSession, and also returns the provenance box of the request
-// when it has one, so that Store.Get can say in it whose session ID is cached.
-func (s *Store) getSessionBox(c fiber.Ctx) (*Session, *provenanceBox, error) {
+func (s *Store) loadSession(c fiber.Ctx) (*Session, *provenanceBox, error) {
 	var rawData []byte
 	var err error
 
@@ -605,7 +603,7 @@ func (s *Store) getSessionBox(c fiber.Ctx) (*Session, *provenanceBox, error) {
 		}
 		id = selectedExtractor.Value
 		if id != "" {
-			// Kept for a second getSession on the same request, which takes the
+			// Kept for a second loadSession on the same request, which takes the
 			// cached-ID path above and would otherwise lose the provenance.
 			cached = storeProvenance(c, s, selectedExtractor)
 		}

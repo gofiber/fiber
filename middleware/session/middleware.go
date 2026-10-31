@@ -165,7 +165,7 @@ func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
 	// but cut both off from the request, whose context is reused once such handlers are done.
 	// IsAbandoned goes first: its atomic load orders the read after the timeout middleware's write.
 	if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
-		m.forgetContext()
+		m.cutSoon(nil)
 		finished = true
 		return stackErr
 	}
@@ -186,11 +186,24 @@ func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
 	return stackErr
 }
 
-// forgetContext cuts m and its session off from the request that the timeout
-// middleware answered. They stay as they are for the handlers that outlive it: the
-// response is fixed, so nothing those handlers write to it counts. What they must
-// not do is hold the session past their end and write into whichever request gets
-// the context next, or run storage calls under it.
+// cut cuts m and its session off from the fiber.Ctx of the request, and has the
+// session keep rctx, the request itself, instead, when it is not nil (see
+// Session.cut). It waits for the locks.
+func (m *Middleware) cut(rctx *fasthttp.RequestCtx) {
+	m.mu.Lock()
+	session := m.Session
+	m.ctx = nil
+	m.mu.Unlock()
+	if session != nil {
+		session.cut(rctx)
+	}
+}
+
+// cutSoon is cut for the request that the timeout middleware answered, or one that a
+// panic unwound: m and its session stay as they are for the handlers that outlive
+// the request, and the response is fixed, so nothing those handlers write to it
+// counts. What they must not do is hold the session past their end and write into
+// whichever request gets the context next, or run storage calls under it.
 //
 // The answer does not wait for the cut. A handler the timeout middleware gave up on
 // can be inside a call that holds the lock of m or of the session across the
@@ -198,24 +211,16 @@ func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
 // to send on time. The cut then follows from a goroutine of its own, as soon as the
 // call is done, and always before the handler is: a handler holding the lock is
 // still running, so its context has not been given back yet.
-func (m *Middleware) forgetContext() {
+func (m *Middleware) cutSoon(rctx *fasthttp.RequestCtx) {
 	if !m.mu.TryLock() {
-		go func() {
-			m.mu.Lock()
-			session := m.Session
-			m.ctx = nil
-			m.mu.Unlock()
-			if session != nil {
-				session.forgetContext()
-			}
-		}()
+		go m.cut(rctx)
 		return
 	}
 	session := m.Session
 	m.ctx = nil
 	m.mu.Unlock()
 	if session != nil {
-		session.forgetContextSoon()
+		session.cutSoon(rctx)
 	}
 }
 
@@ -255,35 +260,11 @@ func (m *Middleware) unwound(c fiber.Ctx) {
 	m.unpin()
 	m.isUnwound.Store(true)
 	rctx := c.RequestCtx()
-	if rctx == nil {
-		m.forgetContext()
-		return
+	if rctx != nil {
+		rctx.SetUserValue(unwoundKey{}, m)
 	}
-	rctx.SetUserValue(unwoundKey{}, m)
-	m.detach(rctx)
-}
-
-// detach is forgetContext for a middleware a panic unwound: its session keeps the
-// request, rctx, until the request ends.
-func (m *Middleware) detach(rctx *fasthttp.RequestCtx) {
-	if !m.mu.TryLock() {
-		go func() {
-			m.mu.Lock()
-			session := m.Session
-			m.ctx = nil
-			m.mu.Unlock()
-			if session != nil {
-				session.detachSoon(rctx)
-			}
-		}()
-		return
-	}
-	session := m.Session
-	m.ctx = nil
-	m.mu.Unlock()
-	if session != nil {
-		session.detachSoon(rctx)
-	}
+	// The session keeps the request until it ends; a Ctx that has none lets go of it too.
+	m.cutSoon(rctx)
 }
 
 // Close ends the request of a middleware a panic unwound: fasthttp calls it when it
@@ -297,7 +278,7 @@ func (m *Middleware) Close() error {
 // endRequest is Close for the release of an outer middleware that finishes first.
 func (m *Middleware) endRequest() {
 	if m.isUnwound.Load() {
-		m.forgetContext()
+		m.cutSoon(nil)
 	}
 }
 
@@ -439,7 +420,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	session, err := cfg.Store.getSession(c)
+	session, _, err := cfg.Store.loadSession(c)
 	if err != nil {
 		return err
 	}
@@ -592,7 +573,7 @@ func releaseMiddleware(m *Middleware) {
 	// the session through m.Session once it was handed to another request.
 	if session != nil {
 		if abandoned {
-			session.forgetContext()
+			session.cut(nil)
 		} else {
 			releaseSession(session)
 		}

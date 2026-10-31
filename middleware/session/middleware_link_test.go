@@ -460,7 +460,7 @@ func Test_Session_Save_EntryPointsReadTheContextUnderItsLock(t *testing.T) {
 				return
 			default:
 			}
-			sess.forgetContext()
+			sess.cut(nil)
 			sess.mu.Lock()
 			sess.ctx = c
 			sess.mu.Unlock()

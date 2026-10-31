@@ -241,15 +241,15 @@ func configDefault(config ...Config) Config {
 	return cfg
 }
 
-// isNilStorage reports whether storage holds a nil pointer, map, slice, channel
-// or function. Such a value is not equal to nil, so it passes for a storage and
-// then fails on the first request. A storage that is plainly nil is fine: it
-// stands for the default.
-func isNilStorage(storage fiber.Storage) bool {
-	if storage == nil {
+// isTypedNil reports whether v holds a nil pointer, map, slice, channel or
+// function. Such a value is not equal to nil, so it passes for a Storage or a Codec
+// that was set, and then fails on the first request. A v that is plainly nil is
+// fine: it stands for the default.
+func isTypedNil(v any) bool {
+	if v == nil {
 		return false
 	}
-	switch rv := reflect.ValueOf(storage); rv.Kind() {
+	switch rv := reflect.ValueOf(v); rv.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface,
 		reflect.Map, reflect.Pointer, reflect.Slice:
 		return rv.IsNil()
