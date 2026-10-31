@@ -260,8 +260,18 @@ func Test_Session_Store_SourcesAreToldApartByKindAndName(t *testing.T) {
 	byCustom := NewStore(Config{Extractor: extractors.FromCustom("legacy", custom), Storage: shared})
 	bySameCustom := NewStore(Config{Extractor: extractors.FromCustom("legacy", custom), Storage: shared})
 	byOtherCustom := NewStore(Config{Extractor: extractors.FromCustom("other", custom), Storage: shared})
+	byForm := NewStore(Config{Extractor: extractors.FromForm("sid"), Storage: shared})
+	bySameForm := NewStore(Config{Extractor: extractors.FromForm("sid"), Storage: shared})
+	byParam := NewStore(Config{Extractor: extractors.FromParam("sid"), Storage: shared})
+	bySameParam := NewStore(Config{Extractor: extractors.FromParam("sid"), Storage: shared})
 
-	for _, pair := range [][2]*Store{{byQuery, bySameQuery}, {byAuth, byAuthLower}, {byCustom, bySameCustom}} {
+	for _, pair := range [][2]*Store{
+		{byQuery, bySameQuery},
+		{byAuth, byAuthLower},
+		{byCustom, bySameCustom},
+		{byForm, bySameForm},
+		{byParam, bySameParam},
+	} {
 		require.True(t, pair[0].sharesSource(pair[1]), "stores over the same source share")
 	}
 	for _, pair := range [][2]*Store{
@@ -272,6 +282,9 @@ func Test_Session_Store_SourcesAreToldApartByKindAndName(t *testing.T) {
 		{byAuth, byCookie},
 		{byCustom, byOtherCustom},
 		{byCustom, byQuery},
+		{byForm, byQuery}, // the same name in another kind is another source
+		{byParam, byForm},
+		{byParam, byCookie},
 	} {
 		require.False(t, pair[0].sharesSource(pair[1]), "stores over different sources are told apart")
 	}
