@@ -396,4 +396,3 @@ func (d *data) record() ([]byte, error) {
 	}
 	return encoded, nil
 }
-

@@ -848,7 +848,7 @@ func Test_Session_Middleware_UnwoundUnlessFinished(t *testing.T) {
 	require.Same(t, c.RequestCtx(), inner.Session.rctx, "its session keeps the request itself until the request ends")
 	require.False(t, inner.released.Load(), "it stays reachable for whatever recovers the panic")
 	require.True(t, inner.isUnwound.Load(), "and is marked unwound, for a context kept past the request")
-	require.NoError(t, inner.Close())
+	c.RequestCtx().ResetUserValues() // what fasthttp does when it resets the request: it closes the middleware
 	require.Nil(t, inner.Session.rctx, "the end of the request did not cut the session off from it")
 
 	inner.escaped = true

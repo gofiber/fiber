@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -200,4 +201,62 @@ func decodeInto(key any, encoded []byte, codec *namedCodec, target reflect.Value
 	}
 	elem.Set(fresh.Elem())
 	return nil
+}
+
+// sessionCodec returns the codec the sessions of the store hold, with its name, nil
+// for gob. NewStore asks for the name once; a Store built without NewStore asks
+// every time.
+func (s *Store) sessionCodec() *namedCodec {
+	if s.named != nil || s.Codec == nil {
+		return s.named
+	}
+	return &namedCodec{Codec: s.Codec, name: s.Codec.Name()}
+}
+
+// refusesRecord reports whether raw, a stored session, is a record this store
+// cannot read, and says so, once per store. A store reads the records of the codec
+// that wrote them, and no other. (A stored session that is not a record is gob,
+// which every store reads, a store with a codec as a session that stays gob.) A
+// record that is damaged counts as one the store can read, and the decode says
+// what is wrong with it.
+func (s *Store) refusesRecord(raw []byte) bool {
+	if !isRecord(raw) {
+		return false
+	}
+	codec := s.sessionCodec()
+	if codec != nil {
+		version, name, ok := recordCodecOf(raw)
+		if !ok || (version == recordVersion && string(name) == codec.name) {
+			return false
+		}
+	}
+	s.warnUnreadable(raw, codec)
+	return true
+}
+
+// warnUnreadable says, once per store, that a stored session is a record this store,
+// whose codec is codec, cannot read, and is treated as a session that does not exist.
+func (s *Store) warnUnreadable(raw []byte, codec *namedCodec) {
+	if !s.unreadableWarned.CompareAndSwap(false, true) {
+		return
+	}
+	have := "has no codec"
+	if codec != nil {
+		have = fmt.Sprintf("uses the codec %q", codec.name)
+	}
+	version, name, known := recordCodecOf(raw)
+	switch {
+	case len(name) > 0:
+		log.Warnf("[session] a stored session is a record of the codec %q (format version %d), which this store, which %s, cannot read; "+
+			"it is treated as a new session, and the record is left alone. This is expected once after Config.Codec was changed or turned off; "+
+			"if it goes on, applications with different codecs share a storage and a session cookie",
+			name, version, have)
+	case known:
+		log.Warnf("[session] a stored session is a record of format version %d, which this store, which %s, does not know; "+
+			"it was probably written by a newer release of the application. It is treated as a new session, and the record is left alone",
+			version, have)
+	default:
+		log.Warn("[session] a stored session starts like a record, but its header is damaged; " +
+			"it is treated as a new session, and the record is left alone")
+	}
 }
