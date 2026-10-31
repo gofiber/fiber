@@ -5,12 +5,17 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
+	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/stretchr/testify/require"
 )
 
@@ -196,4 +201,165 @@ func Test_Session_DeadlineHonouredWithoutAbsoluteTimeout(t *testing.T) {
 			require.Equal(t, "false|false|<nil>", body, "the session that took its place was started over again")
 		})
 	}
+}
+
+// A panic that unwinds the session middleware skips its release. The middleware and
+// its session are cut off from the request, which whatever recovers the panic
+// answers and hands back to the pool: a save by a goroutine of the handler that
+// still holds the session writes its record, and no cookie, into no request. A
+// context kept past the request does not find the middleware. The middleware does
+// not save the session.
+func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
+	t.Parallel()
+
+	t.Run("recovered in front of the middleware", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			held atomic.Pointer[Middleware]
+			kept atomic.Value // context.Context
+		)
+		store := NewStore()
+		app := fiber.New(fiber.Config{PassLocalsToContext: true})
+		app.Use(recoverer.New())
+		app.Use(New(Config{Store: store}))
+		app.Get("/", func(c fiber.Ctx) error {
+			m := FromContext(c)
+			m.Set("k", "v")
+			held.Store(m)
+			kept.Store(c.Context())
+			panic("boom")
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+		require.Empty(t, resp.Cookies(), "the middleware set a cookie for a request that panicked")
+
+		require.Nil(t, FromContext(kept.Load()), "a context kept past the request still finds the middleware the panic unwound")
+		m := held.Load()
+		m.mu.RLock()
+		ctx, sess := m.ctx, m.Session
+		m.mu.RUnlock()
+		require.Nil(t, ctx, "the middleware still refers to the request")
+		require.NotNil(t, sess, "its session was recycled")
+		require.Nil(t, sess.requestCtx(), "the session still refers to the request")
+
+		key := store.storageKey(sess.ID())
+		stored, err := store.Storage.GetWithContext(context.Background(), key)
+		require.NoError(t, err)
+		require.Nil(t, stored, "the middleware saved the session of a request that panicked")
+		require.NoError(t, sess.Save(), "a save by the handler's own goroutine")
+		stored, err = store.Storage.GetWithContext(context.Background(), key)
+		require.NoError(t, err)
+		require.NotEmpty(t, stored, "writes the record")
+	})
+
+	t.Run("timed out, then panics", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			held    = make(chan *Middleware, 1)
+			release = make(chan struct{})
+			done    = make(chan struct{})
+		)
+		store := NewStore()
+		app := fiber.New()
+		app.Use(timeout.New(func(c fiber.Ctx) error { return c.Next() }, timeout.Config{Timeout: 10 * time.Millisecond}))
+		app.Use(New(Config{Store: store}))
+		app.Get("/slow", func(c fiber.Ctx) error {
+			defer close(done)
+			held <- FromContext(c)
+			<-release
+			panic("boom")
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody), fiber.TestConfig{Timeout: 5 * time.Second})
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+
+		m := <-held
+		close(release)
+		<-done
+		require.Eventually(t, func() bool {
+			m.mu.RLock()
+			sess, ctx := m.Session, m.ctx
+			m.mu.RUnlock()
+			return sess != nil && ctx == nil && sess.requestCtx() == nil
+		}, 5*time.Second, 5*time.Millisecond, "the middleware and its session still refer to the request")
+	})
+}
+
+// A custom Ctx that panics while the release clears the locals leaves the
+// middleware in the request for whatever recovers the panic, and the lock of the
+// middleware free: the recovering middleware can still ask it for the session.
+func Test_Session_Middleware_ReleasePanicLeavesTheLockFree(t *testing.T) {
+	t.Parallel()
+
+	armed := &atomic.Value{}
+	armed.Store("")
+	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+		return &panicAtCtx{DefaultCtx: *fiber.NewDefaultCtx(app), point: armed}
+	})
+	keys := make(chan []any, 1)
+	app.Use(func(c fiber.Ctx) error {
+		defer func() {
+			if recover() == nil {
+				return
+			}
+			m := FromContext(c)
+			if m == nil {
+				keys <- nil
+				return
+			}
+			got := make(chan []any, 1)
+			go func() { got <- m.Keys() }()
+			select {
+			case k := <-got:
+				keys <- k
+			case <-time.After(2 * time.Second):
+				keys <- []any{"hung"}
+			}
+		}()
+		return c.Next()
+	})
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		FromContext(c).Set("k", "v")
+		armed.Store("clearing the locals")
+		return nil
+	})
+
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, []any{"k"}, <-keys, "the recovering middleware could not read the session: the release left the lock held")
+}
+
+// Once the session middleware has finished with the request, a Store.Get reads the
+// session ID from the request again, and finds the session of the cookie.
+func Test_Store_Get_AfterTheMiddlewareEndedReadsTheRequest(t *testing.T) {
+	t.Parallel()
+
+	store := NewStore()
+	var after atomic.Value // string
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		sess, getErr := store.Get(c)
+		if getErr != nil {
+			return getErr
+		}
+		defer sess.Release()
+		after.Store(fmt.Sprintf("%t|%s", sess.Fresh(), sess.ID()))
+		return err
+	})
+	app.Use(New(Config{Store: store}))
+	app.Get("/", func(c fiber.Ctx) error {
+		FromContext(c).Set("k", "v")
+		return c.SendString(FromContext(c).ID())
+	})
+
+	_, id := sendRequest(t, app, "/", nil)
+	sendRequest(t, app, "/", map[string]string{"session_id": id})
+	require.Equal(t, "false|"+id, after.Load(), "Store.Get after the middleware ended started a new session instead of reading the cookie")
 }

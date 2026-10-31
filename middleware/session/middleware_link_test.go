@@ -798,9 +798,10 @@ func Test_Session_MultipleStores_PanicInsideRecyclesTheOuterMiddleware(t *testin
 }
 
 // Once a middleware finished it was released, and may already serve another
-// request: the deferred call that ends the link of a middleware that was unwound
-// must leave a finished one alone.
-func Test_Session_Middleware_UnpinUnlessFinished(t *testing.T) {
+// request: the deferred call that ends a middleware that was unwound must leave a
+// finished one alone. One that was unwound gives the outer middleware its count
+// back and lets go of the request, and keeps its session.
+func Test_Session_Middleware_UnwoundUnlessFinished(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -812,13 +813,18 @@ func Test_Session_Middleware_UnpinUnlessFinished(t *testing.T) {
 	require.Equal(t, int32(1), outer.children.Load())
 
 	finished := true
-	inner.unpinUnlessFinished(&finished)
+	inner.unwoundUnlessFinished(&finished)
 	require.Equal(t, int32(1), outer.children.Load(), "the count of a finished middleware was given back")
 	require.Same(t, outer, inner.pinned)
+	require.NotNil(t, inner.ctx, "a finished middleware was cut off")
 
 	finished = false
-	inner.unpinUnlessFinished(&finished)
+	inner.unwoundUnlessFinished(&finished)
 	require.Zero(t, outer.children.Load(), "the count of one that was unwound was not")
+	require.Nil(t, inner.ctx, "the middleware that was unwound still refers to the request")
+	require.NotNil(t, inner.Session, "its session was let go of")
+	require.Nil(t, inner.Session.requestCtx(), "its session still refers to the request")
+	require.False(t, inner.released.Load(), "it stays reachable for whatever recovers the panic")
 
 	inner.escaped = true
 	releaseMiddleware(inner)

@@ -138,9 +138,6 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 			return nil
 		}
 
-		if m.pinned != nil {
-			return m.serveInside(c, &cfg)
-		}
 		return m.serve(c, &cfg)
 	}
 
@@ -148,8 +145,14 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 }
 
 // serve runs the rest of the stack, then saves the session and releases the
-// middleware.
+// middleware. A panic that unwinds it, in the rest of the stack, in the save or in
+// the release, skips all of that: the deferred call ends the middleware instead,
+// see unwound. The panic itself goes on as before. The defer is open-coded, and
+// costs the request a few instructions; the closure does not escape.
 func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
+	finished := false
+	defer m.unwoundUnlessFinished(&finished)
+
 	stackErr := c.Next()
 
 	// A handler timeout.New gave up on may still use m: neither save nor pool it or its session,
@@ -157,6 +160,7 @@ func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
 	// IsAbandoned goes first: its atomic load orders the read after the timeout middleware's write.
 	if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
 		m.forgetContext()
+		finished = true
 		return stackErr
 	}
 
@@ -172,6 +176,7 @@ func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
 	}
 
 	releaseMiddleware(m)
+	finished = true
 	return stackErr
 }
 
@@ -208,28 +213,34 @@ func (m *Middleware) forgetContext() {
 	}
 }
 
-// serveInside is serve for a middleware that runs inside another. A panic that
-// unwinds it, in the rest of the stack or in the save, skips its release, and the
-// outer middleware would then count it as running inside for good, and be dropped
-// instead of recycled when it finishes: the deferred call ends the link. The
-// panic goes on as before, and this middleware stays the current one for whatever
-// recovers it, as one without an outer middleware does. Only nested middleware
-// pay for the defer.
-func (m *Middleware) serveInside(c fiber.Ctx, cfg *Config) error {
-	finished := false
-	defer m.unpinUnlessFinished(&finished)
-
-	err := m.serve(c, cfg)
-	finished = true
-	return err
+// unwoundUnlessFinished is the deferred call of serve: it ends the middleware when
+// a panic unwinds it. Once serve finished, the middleware was released or cut off,
+// and may already belong to another request, so nothing is done.
+func (m *Middleware) unwoundUnlessFinished(finished *bool) {
+	if !*finished {
+		m.unwound()
+	}
 }
 
-// unpinUnlessFinished gives the count back unless the middleware finished: once it
-// did, it was released, and may already belong to another request.
-func (m *Middleware) unpinUnlessFinished(finished *bool) {
-	if !*finished {
-		m.unpin()
+// unwound ends a middleware that a panic unwound, whose release never runs. The
+// outer middleware gets its count back, so that it is recycled when it finishes
+// instead of counting this one as running inside for good. The middleware and its
+// session are cut off from the request: whatever recovers the panic answers it and
+// hands the context back to the pool, where the next request takes it, and a
+// goroutine of the handler that still held the session would otherwise write its
+// cookie into that request, or run its storage calls under it. Neither is saved or
+// recycled, and the middleware stays the current one of the request, as one
+// without an outer middleware does: whatever recovers the panic can still reach it
+// and the one it runs inside. A middleware the request context holds is marked
+// released, as the release marks it, so that a context kept past the request does
+// not find it. Nothing here waits for a lock or calls into the Ctx: a panic in the
+// locked part of the release leaves the lock held, and the Ctx may be what panicked.
+func (m *Middleware) unwound() {
+	m.unpin()
+	if m.escaped {
+		m.released.Store(true)
 	}
+	m.forgetContext()
 }
 
 var registerLogContextTagsOnce sync.Once
@@ -272,9 +283,11 @@ func storeMiddlewareContext(c fiber.Ctx, session *Session, m *Middleware) bool {
 }
 
 // clearMiddlewareLocals clears the session ID and the middleware from the Fiber
-// locals.
+// locals. Cleared, not emptied: an empty ID would count as a cached one, and a
+// Store.Get after the middleware ended would start a new session instead of
+// reading the ID from the request again.
 func clearMiddlewareLocals(c fiber.Ctx) {
-	ctxlocal.Set(c, sessionIDContextKey, "")
+	ctxlocal.Set(c, sessionIDContextKey, nil)
 	ctxlocal.Set(c, middlewareContextKey, nil)
 }
 
@@ -468,31 +481,42 @@ func acquireMiddleware() *Middleware {
 //
 //	releaseMiddleware(m)
 func releaseMiddleware(m *Middleware) {
-	m.mu.Lock()
-	outer, c, session := m.parent, m.ctx, m.Session
-	// A request whose context was abandoned, as the sse middleware does, can have
-	// handlers still running that hold its middleware and its session: neither goes
-	// back to the pool, or such a handler could find the next request's in its place.
-	abandoned := c != nil && c.IsAbandoned()
-	drop := m.escaped || abandoned || m.children.Load() > 0
-	if drop {
-		// First, so a lookup that races the release finds a middleware that is
-		// visibly gone instead of one that is half reset.
-		m.released.Store(true)
-	}
-	if c != nil {
-		clearMiddlewareLocals(c)
-		if m.escaped {
-			shadowMiddlewareContext(c)
+	var (
+		outer           *Middleware
+		c               fiber.Ctx
+		session         *Session
+		abandoned, drop bool
+	)
+	// The lock is given back by a deferred call: the Ctx is called under it, and a
+	// custom one that panics there would otherwise leave the lock held for good, and
+	// whatever recovers the panic and asks the middleware for the session waiting.
+	func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		outer, c, session = m.parent, m.ctx, m.Session
+		// A request whose context was abandoned, as the sse middleware does, can have
+		// handlers still running that hold its middleware and its session: neither goes
+		// back to the pool, or such a handler could find the next request's in its place.
+		abandoned = c != nil && c.IsAbandoned()
+		drop = m.escaped || abandoned || m.children.Load() > 0
+		if drop {
+			// First, so a lookup that races the release finds a middleware that is
+			// visibly gone instead of one that is half reset.
+			m.released.Store(true)
 		}
-	}
-	m.store = nil
-	m.errorHandler = nil
-	m.Session = nil
-	m.ctx = nil
-	m.parent = nil
-	m.isDestroyed = false
-	m.mu.Unlock()
+		if c != nil {
+			clearMiddlewareLocals(c)
+			if m.escaped {
+				shadowMiddlewareContext(c)
+			}
+		}
+		m.store = nil
+		m.errorHandler = nil
+		m.Session = nil
+		m.ctx = nil
+		m.parent = nil
+		m.isDestroyed = false
+	}()
 
 	// After m let go of it: until then a goroutine that holds m could still reach
 	// the session through m.Session once it was handed to another request.
@@ -536,8 +560,11 @@ func releaseMiddleware(m *Middleware) {
 // handler returns, and FromContext returns nil for it from then on; a Middleware
 // that a handler still running got before stays finished: it is never recycled
 // for another request, but its session is gone, so the methods that use it panic.
-// A goroutine of your own that outlives the handler has no such guarantee: give it
-// the session ID, not the Middleware.
+// A middleware that a panic unwound is not saved or recycled either, and stays the
+// current one for whatever recovers the panic, with its session, cut off from the
+// request like one the timeout middleware answered. A goroutine of your own that
+// outlives the handler has no such guarantee: give it the session ID, not the
+// Middleware.
 //
 // Parameters:
 //   - c: The Fiber context.
