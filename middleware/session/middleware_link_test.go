@@ -673,25 +673,33 @@ func recoverBetween(storeA *Store, seen *atomic.Value) fiber.Handler {
 func Test_Session_MultipleStores_PanicInsideKeepsWhatItShould(t *testing.T) {
 	t.Parallel()
 
-	recA, recB := newRecordingStorage(), newRecordingStorage()
-	handlerA, storeA := NewWithStore(Config{Storage: recA, Extractor: extractors.FromCookie("a_sid")})
-	handlerB, _ := NewWithStore(Config{Storage: recB, Extractor: extractors.FromCookie("b_sid")})
+	// With PassLocalsToContext the request context holds the inner middleware too;
+	// it is still the recovering middleware's to reach through the request.
+	for _, pass := range []bool{false, true} {
+		t.Run(fmt.Sprintf("PassLocalsToContext=%t", pass), func(t *testing.T) {
+			t.Parallel()
 
-	var seen atomic.Value
-	app := fiber.New()
-	app.Use(handlerA)
-	app.Use(recoverBetween(storeA, &seen))
-	app.Use(handlerB)
-	app.Get("/", func(c fiber.Ctx) error {
-		storeA.FromContext(c).Set("k", "v")
-		panic("boom")
-	})
+			recA, recB := newRecordingStorage(), newRecordingStorage()
+			handlerA, storeA := NewWithStore(Config{Storage: recA, Extractor: extractors.FromCookie("a_sid")})
+			handlerB, _ := NewWithStore(Config{Storage: recB, Extractor: extractors.FromCookie("b_sid")})
 
-	resp, _ := sendRequest(t, app, "/", nil)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Equal(t, "outer=true current=true", seen.Load())
-	require.Len(t, recA.writes(), 1, "the outer middleware saved its session")
-	require.Empty(t, recB.writes(), "the inner one was unwound before it could")
+			var seen atomic.Value
+			app := fiber.New(fiber.Config{PassLocalsToContext: pass})
+			app.Use(handlerA)
+			app.Use(recoverBetween(storeA, &seen))
+			app.Use(handlerB)
+			app.Get("/", func(c fiber.Ctx) error {
+				storeA.FromContext(c).Set("k", "v")
+				panic("boom")
+			})
+
+			resp, _ := sendRequest(t, app, "/", nil)
+			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+			require.Equal(t, "outer=true current=true", seen.Load())
+			require.Len(t, recA.writes(), 1, "the outer middleware saved its session")
+			require.Empty(t, recB.writes(), "the inner one was unwound before it could")
+		})
+	}
 }
 
 // panickingStorage is a storage that reads but panics when it is asked to save.
@@ -825,6 +833,7 @@ func Test_Session_Middleware_UnwoundUnlessFinished(t *testing.T) {
 	require.NotNil(t, inner.Session, "its session was let go of")
 	require.Nil(t, inner.Session.requestCtx(), "its session still refers to the request")
 	require.False(t, inner.released.Load(), "it stays reachable for whatever recovers the panic")
+	require.True(t, inner.isUnwound.Load(), "and is marked unwound, for a context kept past the request")
 
 	inner.escaped = true
 	releaseMiddleware(inner)

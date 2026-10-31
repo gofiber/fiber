@@ -13,6 +13,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/fiber/v3/middleware/logger"
+	"github.com/valyala/fasthttp"
 )
 
 // Middleware holds session data and configuration.
@@ -47,6 +48,11 @@ type Middleware struct {
 	// because the request context holds it or another middleware still refers to it,
 	// so FromContext stops returning it.
 	released atomic.Bool
+	// isUnwound is set when a panic unwound the middleware. It then belongs to its
+	// request until the end of it, where nothing of this package runs any more, so
+	// FromContext returns it for the request itself, for whatever recovers the
+	// panic, and not for a Go context kept past the request.
+	isUnwound atomic.Bool
 	// children counts the middleware that run inside this one and still refer to it
 	// as their parent. Ordinarily each finishes before this one does. A middleware
 	// that abandons the request around the inner one breaks that: this one can
@@ -228,18 +234,18 @@ func (m *Middleware) unwoundUnlessFinished(finished *bool) {
 // session are cut off from the request: whatever recovers the panic answers it and
 // hands the context back to the pool, where the next request takes it, and a
 // goroutine of the handler that still held the session would otherwise write its
-// cookie into that request, or run its storage calls under it. Neither is saved or
-// recycled, and the middleware stays the current one of the request, as one
-// without an outer middleware does: whatever recovers the panic can still reach it
-// and the one it runs inside. A middleware the request context holds is marked
-// released, as the release marks it, so that a context kept past the request does
-// not find it. Nothing here waits for a lock or calls into the Ctx: a panic in the
-// locked part of the release leaves the lock held, and the Ctx may be what panicked.
+// cookie into that request, or run its storage calls under it. This is the last
+// moment this package runs on the request, so the cut cannot wait for the end of
+// it: whatever recovers the panic can still reach the middleware, its session and
+// the one it runs inside, and change the storage through them, but sets no cookie
+// that way. Neither is saved or recycled, and the middleware stays the current one
+// of the request, as one without an outer middleware does; it is marked unwound,
+// so that a Go context kept past the request does not find it. Nothing here waits
+// for a lock or calls into the Ctx: a panic in the locked part of the release
+// leaves the lock held, and the Ctx may be what panicked.
 func (m *Middleware) unwound() {
 	m.unpin()
-	if m.escaped {
-		m.released.Store(true)
-	}
+	m.isUnwound.Store(true)
 	m.forgetContext()
 }
 
@@ -516,6 +522,7 @@ func releaseMiddleware(m *Middleware) {
 		m.ctx = nil
 		m.parent = nil
 		m.isDestroyed = false
+		m.isUnwound.Store(false)
 	}()
 
 	// After m let go of it: until then a goroutine that holds m could still reach
@@ -561,10 +568,12 @@ func releaseMiddleware(m *Middleware) {
 // that a handler still running got before stays finished: it is never recycled
 // for another request, but its session is gone, so the methods that use it panic.
 // A middleware that a panic unwound is not saved or recycled either, and stays the
-// current one for whatever recovers the panic, with its session, cut off from the
-// request like one the timeout middleware answered. A goroutine of your own that
-// outlives the handler has no such guarantee: give it the session ID, not the
-// Middleware.
+// current one for whatever recovers the panic, with its session and the one it
+// runs inside, but cut off from the request like one the timeout middleware
+// answered: a Destroy, Reset, Regenerate or Save from there changes the storage
+// and sets no cookie, and a Go context kept past the request does not find it. A
+// goroutine of your own that outlives the handler has no such guarantee: give it
+// the session ID, not the Middleware.
 //
 // Parameters:
 //   - c: The Fiber context.
@@ -581,8 +590,24 @@ func FromContext(ctx any) *Middleware {
 	if !ok || m == nil || m.released.Load() {
 		return nil
 	}
+	if m.isUnwound.Load() && !isRequest(ctx) {
+		// A panic unwound it: it belongs to its request until the end of it, and a
+		// Go context kept past the request must not find it.
+		return nil
+	}
 
 	return m
+}
+
+// isRequest reports whether ctx is a request itself, a fiber.Ctx or the
+// *fasthttp.RequestCtx under it, as opposed to a Go context taken from one.
+func isRequest(ctx any) bool {
+	switch ctx.(type) {
+	case fiber.Ctx, *fasthttp.RequestCtx:
+		return true
+	default:
+		return false
+	}
 }
 
 // FromContext returns the Middleware that this store's session middleware

@@ -199,11 +199,24 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 		t.Parallel()
 
 		var (
-			held atomic.Pointer[Middleware]
-			kept atomic.Value // context.Context
+			held  atomic.Pointer[Middleware]
+			kept  atomic.Value // context.Context
+			after atomic.Value // string: what the middleware in front of the recovering one could do
 		)
 		store := NewStore()
 		app := fiber.New(fiber.Config{PassLocalsToContext: true})
+		app.Use(func(c fiber.Ctx) error {
+			err := c.Next()
+			// The panic was recovered behind this point: the middleware is still the
+			// request's to reach, and a Destroy from here changes the storage.
+			m := FromContext(c)
+			if m == nil {
+				after.Store("unreachable")
+				return err
+			}
+			after.Store(fmt.Sprintf("reached|destroy=%v", m.Destroy()))
+			return err
+		})
 		app.Use(recoverer.New())
 		app.Use(New(Config{Store: store}))
 		app.Get("/", func(c fiber.Ctx) error {
@@ -217,7 +230,8 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-		require.Empty(t, resp.Cookies(), "the middleware set a cookie for a request that panicked")
+		require.Equal(t, "reached|destroy=<nil>", after.Load(), "the recovering side could not reach the middleware")
+		require.Empty(t, resp.Cookies(), "a cookie was set for a request that panicked, by the middleware or by the Destroy")
 
 		require.Nil(t, FromContext(kept.Load()), "a context kept past the request still finds the middleware the panic unwound")
 		m := held.Load()
