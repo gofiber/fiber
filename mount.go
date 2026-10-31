@@ -26,6 +26,8 @@ type mountFields struct {
 	// path for different hosts would displace each other, and a lookup would
 	// answer for hosts the domain pattern rejects.
 	domainAppList []domainMountedApp
+	// HEAD routes created for mounted apps while expanding mounts, whose hooks fire after the lock is released.
+	createdTwins []subAppTwins
 	// Routes that arrived from a mount which registers no automatic HEAD
 	// routes, kept by route because a path can belong to a mount and to this
 	// app at once
@@ -74,6 +76,13 @@ type domainMountedApp struct {
 	// declared are the constraints of the apps whose mount prefixes the path is
 	// composed of, which is where a constraint named in one of them is defined
 	declared []CustomConstraint
+}
+
+type mountedRoute struct {
+	clone        *Route
+	owner        *App
+	constraints  []CustomConstraint
+	skipAutoHead bool
 }
 
 // newDomainMount records a mount of mounted at path, normalized and parsed
@@ -198,7 +207,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 	app.mutex.Unlock()
 
 	// register mounted group
-	mountGroup := &Group{Prefix: prefix, app: subApp}
+	mountGroup := newGroup(subApp, prefix, nil)
 	app.register([]string{methodUse}, prefix, mountGroup)
 
 	// Execute onMount hooks
@@ -230,8 +239,8 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 	grp.app.mutex.Unlock()
 
 	// register mounted group
-	mountGroup := &Group{Prefix: groupPath, app: subApp}
-	grp.app.register([]string{methodUse}, groupPath, mountGroup)
+	mountGroup := newGroup(subApp, groupPath, nil)
+	grp.cursor.Store(grp.app.register([]string{methodUse}, groupPath, mountGroup))
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(grp.app); err != nil {
@@ -772,6 +781,25 @@ func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
 	}
 }
 
+// expandMountsOnce expands the mounts of a mounted app once, under its lock, taken before the Once as in
+// the app's own startup, so a parent expanding it cannot deadlock against it starting by itself. It
+// returns the automatic HEAD routes the expansion created, whose hooks the caller fires unlocked.
+func (app *App) expandMountsOnce() []subAppTwins {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+	if app.hasMountedApps() {
+		app.mountFields.subAppsRoutesAdded.Do(app.processSubAppsRoutes)
+	}
+	return app.takeCreatedTwinsLocked()
+}
+
+// takeCreatedTwinsLocked hands over the HEAD routes created for mounted apps while expanding mounts.
+func (app *App) takeCreatedTwinsLocked() []subAppTwins {
+	twins := app.mountFields.createdTwins
+	app.mountFields.createdTwins = nil
+	return twins
+}
+
 // processSubAppsRoutes adds routes of sub-apps recursively when the server is started
 func (app *App) processSubAppsRoutes() {
 	var handlersCount uint32
@@ -792,68 +820,68 @@ func (app *App) processSubAppsRoutes() {
 			// Prepared here, not from appList, which keeps one app per prefix; its own HEAD
 			// routes come first, so a flattened child's HEAD route cannot stand in for them.
 			subApp := route.group.app
-			subApp.ensureAutoHeadRoutes()
-			if subApp.hasMountedApps() {
-				subApp.mountFields.subAppsRoutesAdded.Do(subApp.processSubAppsRoutes)
+			if created := subApp.ensureAutoHeadRoutes(); len(created) > 0 {
+				app.mountFields.createdTwins = append(app.mountFields.createdTwins, subAppTwins{app: subApp, twins: created})
 			}
+			app.mountFields.createdTwins = append(app.mountFields.createdTwins, subApp.expandMountsOnce()...)
 
-			// Read the sub-app's routes by method rather than by stack index:
-			// an app is free to configure its own RequestMethods, and the two
-			// tables then neither line up nor have to be the same length.
-			subAppRoutes := route.group.app.routesForMethod(app.method(m))
-
-			// The sub-app's routes are about to be re-parsed against this app,
-			// so its constraints have to be resolvable here too.
-			app.customConstraints = mergeCustomConstraints(app.customConstraints, route.group.app.customConstraints)
-
+			// Locks are taken parent first, then sub-app, and released before the routes are re-parsed.
+			subApp.mutex.Lock()
+			subAppRoutes := subApp.routesForMethod(app.method(m))
+			subConstraints := slices.Clone(subApp.customConstraints)
 			// A sub-app that registers no automatic HEAD routes of its own
 			// must not be given them here either: its middleware is
 			// registered for the methods it serves, and a HEAD route
 			// synthesized from the GET one would run without it.
-			skipsAutoHead := route.group.app.config.DisableHeadAutoRegister || route.group.app.methodInt(MethodHead) < 0
+			skipsAutoHead := subApp.config.DisableHeadAutoRegister || subApp.methodInt(MethodHead) < 0
+			sources := make([]mountedRoute, len(subAppRoutes))
+			for j, subAppRoute := range subAppRoutes {
+				clone := app.copyRoute(subAppRoute)
+
+				owner := subApp.routeOwner(subAppRoute)
+				if owner == nil {
+					owner = subApp
+				}
+
+				sources[j] = mountedRoute{
+					clone:        clone,
+					owner:        owner,
+					constraints:  slices.Clone(subApp.routeConstraintsFor(subAppRoute)),
+					skipAutoHead: skipsAutoHead || subApp.skipsAutoHeadFor(subAppRoute),
+				}
+			}
+			subApp.mutex.Unlock()
+
+			app.customConstraints = mergeCustomConstraints(app.customConstraints, subConstraints)
 
 			// Create a slice to hold the sub-app's routes
-			subRoutes := make([]*Route, len(subAppRoutes))
+			subRoutes := make([]*Route, len(sources))
 
-			// Iterate over the sub-app's routes
-			for j, subAppRoute := range subAppRoutes {
-				// Clone the sub-app's route
-				subAppRouteClone := app.copyRoute(subAppRoute)
+			for j := range sources {
+				source := &sources[j]
 
 				// The prefix is this app's, and may name a constraint only this
 				// app knows; the route brings the constraints of the apps that
 				// composed its path, and those win where a name is defined
 				// twice. Kept per route: two apps mounted side by side can name
 				// one constraint differently, and neither binds the other.
-				constraints := mergeCustomConstraints(
-					slices.Clone(route.group.app.routeConstraintsFor(subAppRoute)),
-					app.customConstraints,
-				)
+				constraints := mergeCustomConstraints(source.constraints, app.customConstraints)
 
 				// The prefix is parsed again, so it has to be the pattern as written:
 				// route.path lost the case and escapes parameters are read from.
-				app.addPrefixToRoute(route.Path, subAppRouteClone, route.group.app.config.RegexHandler, constraints...)
-				app.markRouteConstraints(subAppRouteClone, constraints)
+				app.addPrefixToRoute(route.Path, source.clone, subApp.config.RegexHandler, constraints...)
+				app.markRouteConstraints(source.clone, constraints)
 
 				// Carry the sub-app's stance on automatic HEAD routes over to
 				// the clone, so this app's own routes at the same path keep
 				// theirs and the sub-app's descendants keep skipping.
-				if skipsAutoHead || route.group.app.skipsAutoHeadFor(subAppRoute) {
-					app.markSkipAutoHead(subAppRouteClone)
+				if source.skipAutoHead {
+					app.markSkipAutoHead(source.clone)
 				}
-
-				// Carry the app each route came from over as well. The sub-app
-				// here is the wrapper the domain router built when the mount is
-				// a domain one, and the apps behind it are the ones whose config
-				// has to answer; an ordinary mount is its own routes' owner.
-				owner := route.group.app.routeOwner(subAppRoute)
-				if owner == nil {
-					owner = route.group.app
-				}
-				app.markRouteOwner(subAppRouteClone, owner)
+				app.markRouteOwner(source.clone, source.owner)
 
 				// Add the cloned sub-app's route to the slice of sub-app routes
-				subRoutes[j] = subAppRouteClone
+				subRoutes[j] = source.clone
 			}
 
 			// Insert the sub-app's routes into the parent app's stack
@@ -867,6 +895,7 @@ func (app *App) processSubAppsRoutes() {
 
 			// Mark the parent app's routes as refreshed
 			app.hasRoutesRefreshed = true
+			app.bumpRoutesRevision()
 			// update stackLen after appending subRoutes to app.stack[m]
 			stackLen = len(app.stack[m])
 		}
