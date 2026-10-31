@@ -254,6 +254,8 @@ This is a more secure, stateful pattern that is **automatically enabled** when y
 
 - **Several session middleware:** the token is kept in the session of the innermost session middleware, the last to run, whichever store you give as `Session`. With more than one session middleware in a request, register the one that should hold the token last.
 
+- **No session store with a codec:** the token is kept under a key that is not a string, which a store with a `Codec` does not hold, so `csrf.New` panics when `Session` is such a store. Give `Session` a store without a `Codec`, or use `Storage`.
+
 ```go
 // Enable the more secure Synchronizer Token pattern
 app.Use(csrf.New(csrf.Config{
@@ -473,7 +475,7 @@ func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 | ErrorHandler      | `fiber.ErrorHandler`               | Custom error handler                                                                                                          | `defaultErrorHandler`        |
 | Extractor         | `extractors.Extractor`             | Token extraction method with metadata                                                                                         | `extractors.FromHeader("X-Csrf-Token")` |
 | DisableValueRedaction | `bool`                         | Disables redaction of tokens and storage keys in logs and error messages. | `false`                      |
-| Session           | `*session.Store`                   | Session store (**recommended for production**)                                                                                | `nil`                        |
+| Session           | `*session.Store`                   | Session store (**recommended for production**). It must not have a `Codec`: `csrf.New` panics for one that has                 | `nil`                        |
 | Storage           | `fiber.Storage`                    | Token storage (ignored if Session is set). A token is stored under `csrf:<token>`, so the storage can be shared with other middleware. Tokens stored by an earlier version are not found after the upgrade: the next safe request gets a new token, and the old entries expire on their own. | In-memory store              |
 | TrustedOrigins    | `[]string`                         | Trusted origins for cross-origin requests. Entries must be `http` or `https` origins without a path, such as `https://app.example.com`. `https://*.example.com` matches subdomains at any depth, but not `example.com` itself. An entry is matched as written, so a default port (`https://app.example.com:443`) matches only an `Origin` that carries it. An invalid entry panics at startup. | `[]`                         |
 | SingleUseToken    | `bool`                             | Generate new token after each use                                                                                             | `false`                      |
