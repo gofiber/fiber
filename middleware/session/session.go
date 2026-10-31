@@ -21,7 +21,12 @@ import (
 // Session serializes access to its internal state with mutexes, but it is
 // request-scoped and must not be used after the request lifecycle ends.
 type Session struct {
-	ctx         fiber.Ctx               // fiber context of the request; read it with requestCtx, forgetContext clears it
+	ctx fiber.Ctx // fiber context of the request; read it with requestCtx, forgetContext clears it
+	// rctx is the request itself, for a session a panic unwound the middleware of: the
+	// fiber.Ctx goes back to the pool as soon as the handlers return, while the request
+	// lives on until fasthttp resets it, and until then the session still writes its
+	// cookies to it. Set by detach, cleared by forgetContext.
+	rctx        *fasthttp.RequestCtx
 	config      *Store                  // store configuration
 	data        *data                   // key value data
 	rawData     []byte                  // snapshot from the last decode, reused by Save while the data is unchanged
@@ -104,6 +109,7 @@ func releaseSession(s *Session) {
 	s.key = ""
 	s.idleTimeout = 0
 	s.ctx = nil
+	s.rctx = nil
 	s.config = nil
 	s.extractor = extractors.Result{}
 	s.rawData = nil
@@ -768,9 +774,23 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 	return s.config.writableSinks()
 }
 
+// requestResponse returns the request and the response the session writes its ID
+// to: those of its fiber.Ctx, or of the request itself once the middleware was
+// unwound, or nil when the session has let go of the request. The caller holds s.mu.
+func (s *Session) requestResponse() (*fasthttp.Request, *fasthttp.Response) {
+	if s.ctx != nil {
+		return s.ctx.Request(), s.ctx.Response()
+	}
+	if s.rctx != nil {
+		return &s.rctx.Request, &s.rctx.Response
+	}
+	return nil, nil
+}
+
 // setSession writes the session ID to the response, with a lifetime of ttl.
 func (s *Session) setSession(ttl time.Duration) {
-	if s.ctx == nil {
+	_, resp := s.requestResponse()
+	if resp == nil {
 		return
 	}
 
@@ -781,7 +801,7 @@ func (s *Session) setSession(ttl time.Duration) {
 	for _, ext := range relevantExtractors {
 		switch ext.Source {
 		case extractors.SourceHeader:
-			s.ctx.Response().Header.SetBytesV(ext.Key, utils.UnsafeBytes(s.id))
+			resp.Header.SetBytesV(ext.Key, utils.UnsafeBytes(s.id))
 		case extractors.SourceCookie:
 			fcookie := fasthttp.AcquireCookie()
 
@@ -797,7 +817,7 @@ func (s *Session) setSession(ttl time.Duration) {
 			}
 
 			s.setCookieAttributes(fcookie)
-			s.ctx.Response().Header.SetCookie(fcookie)
+			resp.Header.SetCookie(fcookie)
 			fasthttp.ReleaseCookie(fcookie)
 		default:
 			// For non-cookie/header sources, do nothing (read-only)
@@ -806,7 +826,8 @@ func (s *Session) setSession(ttl time.Duration) {
 }
 
 func (s *Session) delSession() {
-	if s.ctx == nil {
+	req, resp := s.requestResponse()
+	if resp == nil {
 		return
 	}
 
@@ -817,11 +838,11 @@ func (s *Session) delSession() {
 	for _, ext := range relevantExtractors {
 		switch ext.Source {
 		case extractors.SourceHeader:
-			s.ctx.Request().Header.Del(ext.Key)
-			s.ctx.Res().Del(ext.Key)
+			req.Header.Del(ext.Key)
+			resp.Header.Del(ext.Key)
 		case extractors.SourceCookie:
-			s.ctx.Request().Header.DelCookie(ext.Key)
-			s.ctx.Response().Header.DelCookie(ext.Key)
+			req.Header.DelCookie(ext.Key)
+			resp.Header.DelCookie(ext.Key)
 
 			fcookie := fasthttp.AcquireCookie()
 
@@ -832,7 +853,7 @@ func (s *Session) delSession() {
 			fcookie.SetExpire(time.Now().Add(-1 * time.Minute))
 
 			s.setCookieAttributes(fcookie)
-			s.ctx.Response().Header.SetCookie(fcookie)
+			resp.Header.SetCookie(fcookie)
 			fasthttp.ReleaseCookie(fcookie)
 		default:
 			// For non-cookie/header sources, do nothing (read-only)
@@ -1090,7 +1111,7 @@ func (s *Session) requestCtx() fiber.Ctx {
 // write to that request's response, or run its storage calls under its context.
 func (s *Session) forgetContext() {
 	s.mu.Lock()
-	s.ctx = nil
+	s.ctx, s.rctx = nil, nil
 	s.mu.Unlock()
 }
 
@@ -1099,9 +1120,27 @@ func (s *Session) forgetContext() {
 // follows from a goroutine of its own.
 func (s *Session) forgetContextSoon() {
 	if s.mu.TryLock() {
-		s.ctx = nil
+		s.ctx, s.rctx = nil, nil
 		s.mu.Unlock()
 		return
 	}
 	go s.forgetContext()
+}
+
+// detachSoon moves the session from its fiber.Ctx, which goes back to the pool as
+// soon as the handlers return, to rctx, the request itself, which lives on until
+// fasthttp resets it: a session a panic unwound the middleware of still writes its
+// cookies there, for whatever recovers the panic. Like forgetContextSoon it does
+// not wait for the lock.
+func (s *Session) detachSoon(rctx *fasthttp.RequestCtx) {
+	if s.mu.TryLock() {
+		s.ctx, s.rctx = nil, rctx
+		s.mu.Unlock()
+		return
+	}
+	go func() {
+		s.mu.Lock()
+		s.ctx, s.rctx = nil, rctx
+		s.mu.Unlock()
+	}()
 }

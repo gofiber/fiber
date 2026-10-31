@@ -186,12 +186,13 @@ func Test_Session_DeadlineHonouredWithoutAbsoluteTimeout(t *testing.T) {
 	}
 }
 
-// A panic that unwinds the session middleware skips its release. The middleware and
-// its session are cut off from the request, which whatever recovers the panic
-// answers and hands back to the pool: a save by a goroutine of the handler that
-// still holds the session writes its record, and no cookie, into no request. A
-// context kept past the request does not find the middleware. The middleware does
-// not save the session.
+// A panic that unwinds the session middleware skips its release. The middleware
+// and its session let go of the fiber.Ctx, which whatever recovers the panic
+// answers and hands back to the pool, and keep the request itself until fasthttp
+// resets it: the recovering middleware still sets cookies through them, and a save
+// by a goroutine of the handler that still holds the session afterwards writes its
+// record, and no cookie, into no request. A context kept past the request does not
+// find the middleware. The middleware does not save the session.
 func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 	t.Parallel()
 
@@ -208,7 +209,8 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 		app.Use(func(c fiber.Ctx) error {
 			err := c.Next()
 			// The panic was recovered behind this point: the middleware is still the
-			// request's to reach, and a Destroy from here changes the storage.
+			// request's to reach, and a Destroy from here deletes the record and
+			// expires the cookie, as before the panic.
 			m := FromContext(c)
 			if m == nil {
 				after.Store("unreachable")
@@ -231,16 +233,27 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 		require.Equal(t, "reached|destroy=<nil>", after.Load(), "the recovering side could not reach the middleware")
-		require.Empty(t, resp.Cookies(), "a cookie was set for a request that panicked, by the middleware or by the Destroy")
+		cookies := cookiesByName(resp)
+		require.Len(t, cookies, 1, "the Destroy of the recovering side set no cookie, or the middleware set one")
+		require.NotNil(t, cookies["session_id"])
+		require.Negative(t, cookies["session_id"].MaxAge, "the Destroy of the recovering side did not expire the cookie")
 
 		require.Nil(t, FromContext(kept.Load()), "a context kept past the request still finds the middleware the panic unwound")
 		m := held.Load()
 		m.mu.RLock()
 		ctx, sess := m.ctx, m.Session
 		m.mu.RUnlock()
-		require.Nil(t, ctx, "the middleware still refers to the request")
+		require.Nil(t, ctx, "the middleware still refers to the fiber.Ctx")
 		require.NotNil(t, sess, "its session was recycled")
-		require.Nil(t, sess.requestCtx(), "the session still refers to the request")
+		require.Nil(t, sess.requestCtx(), "the session still refers to the fiber.Ctx")
+		// fasthttp resets the request once the response is written, and closes the
+		// middleware then: the session has nothing to write to from then on.
+		require.Eventually(t, func() bool {
+			sess.mu.RLock()
+			defer sess.mu.RUnlock()
+			_, response := sess.requestResponse()
+			return response == nil
+		}, 5*time.Second, 5*time.Millisecond, "the session still writes to the request after it ended")
 
 		key := store.storageKey(sess.ID())
 		stored, err := store.Storage.GetWithContext(context.Background(), key)

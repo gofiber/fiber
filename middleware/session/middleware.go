@@ -157,7 +157,7 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 // costs the request a few instructions; the closure does not escape.
 func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
 	finished := false
-	defer m.unwoundUnlessFinished(&finished)
+	defer m.unwoundUnlessFinished(&finished, c)
 
 	stackErr := c.Next()
 
@@ -222,31 +222,83 @@ func (m *Middleware) forgetContext() {
 // unwoundUnlessFinished is the deferred call of serve: it ends the middleware when
 // a panic unwinds it. Once serve finished, the middleware was released or cut off,
 // and may already belong to another request, so nothing is done.
-func (m *Middleware) unwoundUnlessFinished(finished *bool) {
+func (m *Middleware) unwoundUnlessFinished(finished *bool, c fiber.Ctx) {
 	if !*finished {
-		m.unwound()
+		m.unwound(c)
 	}
 }
+
+// unwoundKey is the request value under which a middleware a panic unwound is
+// kept, so that fasthttp closes it when it resets the request. A key of its own:
+// the Fiber locals of a custom Ctx need not be the request's values.
+type unwoundKey struct{}
 
 // unwound ends a middleware that a panic unwound, whose release never runs. The
 // outer middleware gets its count back, so that it is recycled when it finishes
 // instead of counting this one as running inside for good. The middleware and its
-// session are cut off from the request: whatever recovers the panic answers it and
-// hands the context back to the pool, where the next request takes it, and a
-// goroutine of the handler that still held the session would otherwise write its
-// cookie into that request, or run its storage calls under it. This is the last
-// moment this package runs on the request, so the cut cannot wait for the end of
-// it: whatever recovers the panic can still reach the middleware, its session and
-// the one it runs inside, and change the storage through them, but sets no cookie
-// that way. Neither is saved or recycled, and the middleware stays the current one
-// of the request, as one without an outer middleware does; it is marked unwound,
-// so that a Go context kept past the request does not find it. Nothing here waits
-// for a lock or calls into the Ctx: a panic in the locked part of the release
+// session let go of the fiber.Ctx, which goes back to the pool as soon as the
+// handlers return, where the next request takes it; a goroutine of the handler
+// that still held the session would otherwise write its cookie into that request,
+// or run its storage calls under it. The session keeps the request itself, which
+// lives on until fasthttp resets it: whatever recovers the panic can still reach
+// the middleware, its session and the one it runs inside, change the storage
+// through them and set the cookies, as before the panic; the middleware is kept in
+// the request's values, so that fasthttp closes it when it resets the request, and
+// the session lets go of the request then, before fasthttp reuses it (Close). An
+// outer middleware that finishes first closes it itself. Neither is saved or
+// recycled, and the middleware stays the current one of the request, as one
+// without an outer middleware does; it is marked unwound, so that a Go context
+// kept past the request does not find it. Nothing here waits for a lock, and the
+// Ctx is asked only for the request: a panic in the locked part of the release
 // leaves the lock held, and the Ctx may be what panicked.
-func (m *Middleware) unwound() {
+func (m *Middleware) unwound(c fiber.Ctx) {
 	m.unpin()
 	m.isUnwound.Store(true)
-	m.forgetContext()
+	rctx := c.RequestCtx()
+	if rctx == nil {
+		m.forgetContext()
+		return
+	}
+	rctx.SetUserValue(unwoundKey{}, m)
+	m.detach(rctx)
+}
+
+// detach is forgetContext for a middleware a panic unwound: its session keeps the
+// request, rctx, until the request ends.
+func (m *Middleware) detach(rctx *fasthttp.RequestCtx) {
+	if !m.mu.TryLock() {
+		go func() {
+			m.mu.Lock()
+			session := m.Session
+			m.ctx = nil
+			m.mu.Unlock()
+			if session != nil {
+				session.detachSoon(rctx)
+			}
+		}()
+		return
+	}
+	session := m.Session
+	m.ctx = nil
+	m.mu.Unlock()
+	if session != nil {
+		session.detachSoon(rctx)
+	}
+}
+
+// Close ends the request of a middleware a panic unwound: fasthttp calls it when it
+// resets the request, before the request is reused, and the session lets go of it
+// then. It is harmless for a middleware that already let go.
+func (m *Middleware) Close() error {
+	m.endRequest()
+	return nil
+}
+
+// endRequest is Close for the release of an outer middleware that finishes first.
+func (m *Middleware) endRequest() {
+	if m.isUnwound.Load() {
+		m.forgetContext()
+	}
 }
 
 var registerLogContextTagsOnce sync.Once
@@ -488,7 +540,7 @@ func acquireMiddleware() *Middleware {
 //	releaseMiddleware(m)
 func releaseMiddleware(m *Middleware) {
 	var (
-		outer           *Middleware
+		outer, inner    *Middleware
 		c               fiber.Ctx
 		session         *Session
 		abandoned, drop bool
@@ -511,6 +563,11 @@ func releaseMiddleware(m *Middleware) {
 			m.released.Store(true)
 		}
 		if c != nil {
+			// The current middleware of the request is m, unless a panic unwound one
+			// that ran inside it: that one ends with this request, now.
+			if current := currentMiddleware(c); current != nil && current != m {
+				inner = current
+			}
 			clearMiddlewareLocals(c)
 			if m.escaped {
 				shadowMiddlewareContext(c)
@@ -524,6 +581,12 @@ func releaseMiddleware(m *Middleware) {
 		m.isDestroyed = false
 		m.isUnwound.Store(false)
 	}()
+
+	// Outside the lock of m: the walk from an inner middleware takes the locks the
+	// other way round.
+	if inner != nil {
+		inner.endRequest()
+	}
 
 	// After m let go of it: until then a goroutine that holds m could still reach
 	// the session through m.Session once it was handed to another request.
@@ -569,11 +632,13 @@ func releaseMiddleware(m *Middleware) {
 // for another request, but its session is gone, so the methods that use it panic.
 // A middleware that a panic unwound is not saved or recycled either, and stays the
 // current one for whatever recovers the panic, with its session and the one it
-// runs inside, but cut off from the request like one the timeout middleware
-// answered: a Destroy, Reset, Regenerate or Save from there changes the storage
-// and sets no cookie, and a Go context kept past the request does not find it. A
-// goroutine of your own that outlives the handler has no such guarantee: give it
-// the session ID, not the Middleware.
+// runs inside, until the request ends: a Destroy, Reset, Regenerate or Save from
+// there changes the storage and sets the cookies as before the panic. It has let
+// go of the fiber.Ctx, and lets go of the request when fasthttp resets it, so a
+// goroutine of the handler that still holds the session reaches no other request;
+// a Go context kept past the request does not find the middleware. A goroutine of
+// your own that outlives the handler has no such guarantee: give it the session
+// ID, not the Middleware.
 //
 // Parameters:
 //   - c: The Fiber context.

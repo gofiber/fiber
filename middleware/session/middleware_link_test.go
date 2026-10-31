@@ -684,12 +684,14 @@ func Test_Session_MultipleStores_PanicInsideKeepsWhatItShould(t *testing.T) {
 			handlerB, _ := NewWithStore(Config{Storage: recB, Extractor: extractors.FromCookie("b_sid")})
 
 			var seen atomic.Value
+			var inner atomic.Pointer[Middleware]
 			app := fiber.New(fiber.Config{PassLocalsToContext: pass})
 			app.Use(handlerA)
 			app.Use(recoverBetween(storeA, &seen))
 			app.Use(handlerB)
 			app.Get("/", func(c fiber.Ctx) error {
 				storeA.FromContext(c).Set("k", "v")
+				inner.Store(FromContext(c))
 				panic("boom")
 			})
 
@@ -698,6 +700,17 @@ func Test_Session_MultipleStores_PanicInsideKeepsWhatItShould(t *testing.T) {
 			require.Equal(t, "outer=true current=true", seen.Load())
 			require.Len(t, recA.writes(), 1, "the outer middleware saved its session")
 			require.Empty(t, recB.writes(), "the inner one was unwound before it could")
+
+			// The outer middleware, which finished after it, ended the inner one's request.
+			m := inner.Load()
+			m.mu.RLock()
+			sess := m.Session
+			m.mu.RUnlock()
+			require.NotNil(t, sess)
+			sess.mu.RLock()
+			_, response := sess.requestResponse()
+			sess.mu.RUnlock()
+			require.Nil(t, response, "the session of the inner middleware still writes to the request")
 		})
 	}
 }
@@ -821,19 +834,22 @@ func Test_Session_Middleware_UnwoundUnlessFinished(t *testing.T) {
 	require.Equal(t, int32(1), outer.children.Load())
 
 	finished := true
-	inner.unwoundUnlessFinished(&finished)
+	inner.unwoundUnlessFinished(&finished, c)
 	require.Equal(t, int32(1), outer.children.Load(), "the count of a finished middleware was given back")
 	require.Same(t, outer, inner.pinned)
 	require.NotNil(t, inner.ctx, "a finished middleware was cut off")
 
 	finished = false
-	inner.unwoundUnlessFinished(&finished)
+	inner.unwoundUnlessFinished(&finished, c)
 	require.Zero(t, outer.children.Load(), "the count of one that was unwound was not")
-	require.Nil(t, inner.ctx, "the middleware that was unwound still refers to the request")
+	require.Nil(t, inner.ctx, "the middleware that was unwound still refers to the fiber.Ctx")
 	require.NotNil(t, inner.Session, "its session was let go of")
-	require.Nil(t, inner.Session.requestCtx(), "its session still refers to the request")
+	require.Nil(t, inner.Session.requestCtx(), "its session still refers to the fiber.Ctx")
+	require.Same(t, c.RequestCtx(), inner.Session.rctx, "its session keeps the request itself until the request ends")
 	require.False(t, inner.released.Load(), "it stays reachable for whatever recovers the panic")
 	require.True(t, inner.isUnwound.Load(), "and is marked unwound, for a context kept past the request")
+	require.NoError(t, inner.Close())
+	require.Nil(t, inner.Session.rctx, "the end of the request did not cut the session off from it")
 
 	inner.escaped = true
 	releaseMiddleware(inner)
