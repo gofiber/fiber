@@ -1245,48 +1245,69 @@ func Test_Ctx_Body_With_Compression_BodyLimitExceeded(t *testing.T) {
 	require.Equal(t, StatusRequestEntityTooLarge, c.Response().StatusCode())
 }
 
-// ctxBenchCompressedBody runs the sub-benchmark contentEncoding: Body decoding
-// body on an app with the given Config.Immutable, which must yield want.
-//
-//nolint:revive // flag-parameter: this selects which of the two benchmarks runs
-func ctxBenchCompressedBody(b *testing.B, immutable bool, contentEncoding string, body, want []byte) {
-	b.Helper()
-	b.Run(contentEncoding, func(b *testing.B) {
-		app := New()
-		app.config.Immutable = immutable
-		c := apptest.Ctx(b, app)
-
-		c.Request().Header.Set("Content-Encoding", contentEncoding)
-		c.Request().SetBody(body)
-		for b.Loop() {
-			_ = c.Body()
-		}
-
-		require.Equal(b, want, c.Body())
-	})
+// ctxBenchCompression is one Body decoding sub-benchmark: a body sent with contentEncoding that must decode to want.
+type ctxBenchCompression struct {
+	contentEncoding string
+	body            []byte
+	want            []byte
 }
 
-// ctxBenchCompressedBodies runs the Body decoding sub-benchmarks on an app with
-// the given Config.Immutable: a gzip body, an unsupported coding, a deflate body
+// ctxBenchCompressions returns the Body decoding sub-benchmarks: a gzip body, an unsupported coding, a deflate body
 // and a gzip,deflate chain whose inner layer is not deflate.
-//
-//nolint:revive // flag-parameter: this selects which of the two benchmarks runs
-func ctxBenchCompressedBodies(b *testing.B, immutable bool) {
+func ctxBenchCompressions(b *testing.B) []ctxBenchCompression {
 	b.Helper()
 	input := []byte("john=doe")
 	gzipped, deflated := ctxTestACompress(b, StrGzip, input), ctxTestACompress(b, StrDeflate, input)
 	// deflated, then gzipped: the reverse of the order "gzip,deflate" names
 	gzippedDeflated := ctxTestACompress(b, StrGzip, deflated)
-	b.ReportAllocs()
-	ctxBenchCompressedBody(b, immutable, "gzip", gzipped, input)
-	ctxBenchCompressedBody(b, immutable, "gzip,invalid", gzipped, []byte(ErrUnsupportedMediaType.Error()))
-	ctxBenchCompressedBody(b, immutable, StrDeflate, deflated, input)
-	ctxBenchCompressedBody(b, immutable, "gzip,deflate", gzippedDeflated, []byte(zlib.ErrHeader.Error()))
+	return []ctxBenchCompression{
+		{contentEncoding: "gzip", body: gzipped, want: input},
+		{contentEncoding: "gzip,invalid", body: gzipped, want: []byte(ErrUnsupportedMediaType.Error())},
+		{contentEncoding: StrDeflate, body: deflated, want: input},
+		{contentEncoding: "gzip,deflate", body: gzippedDeflated, want: []byte(zlib.ErrHeader.Error())},
+	}
 }
 
-func Benchmark_Ctx_Body_With_Compression(b *testing.B) { ctxBenchCompressedBodies(b, false) }
+// ctxBenchCompressedCtx returns a context of an app with the given Config.Immutable that holds bc's body.
+//
+//nolint:revive // flag-parameter: this selects which of the two benchmarks runs
+func ctxBenchCompressedCtx(b *testing.B, immutable bool, bc ctxBenchCompression) Ctx {
+	b.Helper()
+	app := New()
+	app.config.Immutable = immutable
+	c := apptest.Ctx(b, app)
+	c.Request().Header.Set("Content-Encoding", bc.contentEncoding)
+	c.Request().SetBody(bc.body)
+	return c
+}
 
-func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) { ctxBenchCompressedBodies(b, true) }
+func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
+	b.ReportAllocs()
+	for _, bc := range ctxBenchCompressions(b) {
+		b.Run(bc.contentEncoding, func(b *testing.B) {
+			c := ctxBenchCompressedCtx(b, false, bc)
+			for b.Loop() {
+				_ = c.Body()
+			}
+
+			require.Equal(b, bc.want, c.Body())
+		})
+	}
+}
+
+func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
+	b.ReportAllocs()
+	for _, bc := range ctxBenchCompressions(b) {
+		b.Run(bc.contentEncoding, func(b *testing.B) {
+			c := ctxBenchCompressedCtx(b, true, bc)
+			for b.Loop() {
+				_ = c.Body()
+			}
+
+			require.Equal(b, bc.want, c.Body())
+		})
+	}
+}
 
 func Test_Ctx_RequestCtx(t *testing.T) {
 	t.Parallel()
@@ -1932,13 +1953,16 @@ func Test_Ctx_AutoFormat_XSS_Prevention(t *testing.T) {
 	})
 }
 
-// ctxBenchAutoFormat measures AutoFormat of "Hello, World!" for a client that
-// accepts accept, and checks the body it leaves.
-func ctxBenchAutoFormat(b *testing.B, accept, want string, config ...Config) {
+// ctxBenchAccepting returns a context of an app with config whose request accepts accept.
+func ctxBenchAccepting(b *testing.B, accept string, config ...Config) Ctx {
 	b.Helper()
 	c := apptest.Ctx(b, New(config...))
-
 	c.Request().Header.Set("Accept", accept)
+	return c
+}
+
+func Benchmark_Ctx_AutoFormat(b *testing.B) {
+	c := ctxBenchAccepting(b, "text/plain")
 	b.ReportAllocs()
 
 	var err error
@@ -1946,28 +1970,55 @@ func ctxBenchAutoFormat(b *testing.B, accept, want string, config ...Config) {
 		err = c.AutoFormat("Hello, World!")
 	}
 	require.NoError(b, err)
-	require.Equal(b, want, string(c.Response().Body()))
-}
-
-func Benchmark_Ctx_AutoFormat(b *testing.B) {
-	ctxBenchAutoFormat(b, "text/plain", `Hello, World!`)
+	require.Equal(b, `Hello, World!`, string(c.Response().Body()))
 }
 
 func Benchmark_Ctx_AutoFormat_HTML(b *testing.B) {
-	ctxBenchAutoFormat(b, "text/html", "<p>Hello, World!</p>")
+	c := ctxBenchAccepting(b, "text/html")
+	b.ReportAllocs()
+
+	var err error
+	for b.Loop() {
+		err = c.AutoFormat("Hello, World!")
+	}
+	require.NoError(b, err)
+	require.Equal(b, "<p>Hello, World!</p>", string(c.Response().Body()))
 }
 
 func Benchmark_Ctx_AutoFormat_JSON(b *testing.B) {
-	ctxBenchAutoFormat(b, "application/json", `"Hello, World!"`)
+	c := ctxBenchAccepting(b, "application/json")
+	b.ReportAllocs()
+
+	var err error
+	for b.Loop() {
+		err = c.AutoFormat("Hello, World!")
+	}
+	require.NoError(b, err)
+	require.Equal(b, `"Hello, World!"`, string(c.Response().Body()))
 }
 
 func Benchmark_Ctx_AutoFormat_MsgPack(b *testing.B) {
-	ctxBenchAutoFormat(b, MIMEApplicationMsgPack, "\xadHello, World!",
-		Config{MsgPackEncoder: msgpack.Marshal, MsgPackDecoder: msgpack.Unmarshal})
+	c := ctxBenchAccepting(b, MIMEApplicationMsgPack, Config{MsgPackEncoder: msgpack.Marshal, MsgPackDecoder: msgpack.Unmarshal})
+	b.ReportAllocs()
+
+	var err error
+	for b.Loop() {
+		err = c.AutoFormat("Hello, World!")
+	}
+	require.NoError(b, err)
+	require.Equal(b, "\xadHello, World!", string(c.Response().Body()))
 }
 
 func Benchmark_Ctx_AutoFormat_XML(b *testing.B) {
-	ctxBenchAutoFormat(b, "application/xml", `<string>Hello, World!</string>`)
+	c := ctxBenchAccepting(b, "application/xml")
+	b.ReportAllocs()
+
+	var err error
+	for b.Loop() {
+		err = c.AutoFormat("Hello, World!")
+	}
+	require.NoError(b, err)
+	require.Equal(b, `<string>Hello, World!</string>`, string(c.Response().Body()))
 }
 
 func Test_Ctx_FormFile(t *testing.T) {
@@ -3561,83 +3612,110 @@ func Test_Ctx_ForwardedIPScanning(t *testing.T) {
 	}
 }
 
-// ctxBenchIPs measures IPs for an X-Forwarded-For header and checks what it returns.
-func ctxBenchIPs(b *testing.B, forwardedFor string, want []string, config ...Config) {
+// ctxBenchForwardedFor returns a context of an app with config whose request carries the X-Forwarded-For header forwardedFor.
+func ctxBenchForwardedFor(b *testing.B, forwardedFor string, config ...Config) Ctx {
 	b.Helper()
 	c := apptest.Ctx(b, New(config...))
 	c.Request().Header.Set(HeaderXForwardedFor, forwardedFor)
+	return c
+}
+
+func Benchmark_Ctx_IPs(b *testing.B) {
+	c := ctxBenchForwardedFor(b, "127.0.0.1, invalid, 127.0.0.1")
 	var res []string
 	b.ReportAllocs()
 	for b.Loop() {
 		res = c.IPs()
 	}
-	require.Equal(b, want, res)
-}
-
-func Benchmark_Ctx_IPs(b *testing.B) {
-	ctxBenchIPs(b, "127.0.0.1, invalid, 127.0.0.1", []string{"127.0.0.1", "invalid", "127.0.0.1"})
+	require.Equal(b, []string{"127.0.0.1", "invalid", "127.0.0.1"}, res)
 }
 
 func Benchmark_Ctx_IPs_v6(b *testing.B) {
-	ctxBenchIPs(b, "f037:825e:eadb:1b7b:1667:6f0a:5356:f604, invalid, 2345:0425:2CA1::0567:5673:23b5",
-		[]string{"f037:825e:eadb:1b7b:1667:6f0a:5356:f604", "invalid", "2345:0425:2CA1::0567:5673:23b5"})
+	c := ctxBenchForwardedFor(b, "f037:825e:eadb:1b7b:1667:6f0a:5356:f604, invalid, 2345:0425:2CA1::0567:5673:23b5")
+	var res []string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.IPs()
+	}
+	require.Equal(b, []string{"f037:825e:eadb:1b7b:1667:6f0a:5356:f604", "invalid", "2345:0425:2CA1::0567:5673:23b5"}, res)
 }
 
 func Benchmark_Ctx_IPs_With_IP_Validation(b *testing.B) {
-	ctxBenchIPs(b, "127.0.0.1, invalid, 127.0.0.1", []string{"127.0.0.1", "127.0.0.1"},
-		Config{EnableIPValidation: true})
+	c := ctxBenchForwardedFor(b, "127.0.0.1, invalid, 127.0.0.1", Config{EnableIPValidation: true})
+	var res []string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.IPs()
+	}
+	require.Equal(b, []string{"127.0.0.1", "127.0.0.1"}, res)
 }
 
 func Benchmark_Ctx_IPs_v6_With_IP_Validation(b *testing.B) {
-	ctxBenchIPs(b, "2345:0425:2CA1:0000:0000:0567:5673:23b5, invalid, 2345:0425:2CA1::0567:5673:23b5",
-		[]string{"2345:0425:2CA1:0000:0000:0567:5673:23b5", "2345:0425:2CA1::0567:5673:23b5"},
-		Config{EnableIPValidation: true})
+	c := ctxBenchForwardedFor(b, "2345:0425:2CA1:0000:0000:0567:5673:23b5, invalid, 2345:0425:2CA1::0567:5673:23b5", Config{EnableIPValidation: true})
+	var res []string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.IPs()
+	}
+	require.Equal(b, []string{"2345:0425:2CA1:0000:0000:0567:5673:23b5", "2345:0425:2CA1::0567:5673:23b5"}, res)
 }
 
-// ctxBenchIPBehindProxy measures IP for a request from remoteIP that carries an
-// X-Forwarded-For header, and checks the IP it returns.
-func ctxBenchIPBehindProxy(b *testing.B, config *Config, remoteIP, forwardedFor, want string) {
+// ctxBenchProxied returns a context of an app with config for a request from remoteIP that carries the X-Forwarded-For
+// header forwardedFor.
+func ctxBenchProxied(b *testing.B, config *Config, remoteIP, forwardedFor string) Ctx {
 	b.Helper()
 	c := ctxFromIP(b, New(*config), remoteIP)
 	c.Request().Header.Set(HeaderXForwardedFor, forwardedFor)
-	ctxBenchIP(b, c, want)
+	return c
 }
 
-// ctxBenchIP measures IP on c and checks the IP it returns.
-func ctxBenchIP(b *testing.B, c Ctx, want string) {
-	b.Helper()
+func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
+	c := ctxBenchProxied(b, &Config{
+		ProxyHeader: HeaderXForwardedFor, TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Loopback: true},
+	}, "127.0.0.1", "127.0.0.1")
 	var res string
 	b.ReportAllocs()
 	for b.Loop() {
 		res = c.IP()
 	}
-	require.Equal(b, want, res)
-}
-
-func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
-	ctxBenchIPBehindProxy(b, &Config{
-		ProxyHeader: HeaderXForwardedFor, TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Loopback: true},
-	}, "127.0.0.1", "127.0.0.1", "127.0.0.1")
+	require.Equal(b, "127.0.0.1", res)
 }
 
 func Benchmark_Ctx_IP_With_ProxyHeader_and_IP_Validation(b *testing.B) {
-	ctxBenchIPBehindProxy(b, &Config{
+	c := ctxBenchProxied(b, &Config{
 		ProxyHeader: HeaderXForwardedFor, TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Loopback: true},
 		EnableIPValidation: true,
-	}, "127.0.0.1", "127.0.0.1", "127.0.0.1")
+	}, "127.0.0.1", "127.0.0.1")
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.IP()
+	}
+	require.Equal(b, "127.0.0.1", res)
 }
 
 func Benchmark_Ctx_IP(b *testing.B) {
 	c := apptest.Ctx(b, New())
 	c.Request()
-	ctxBenchIP(b, c, "0.0.0.0")
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.IP()
+	}
+	require.Equal(b, "0.0.0.0", res)
 }
 
 func Benchmark_Ctx_IP_With_ProxyHeader_Chain(b *testing.B) {
-	ctxBenchIPBehindProxy(b, &Config{
+	c := ctxBenchProxied(b, &Config{
 		ProxyHeader: HeaderXForwardedFor, TrustProxy: true, EnableIPValidation: true,
 		TrustProxyConfig: TrustProxyConfig{Proxies: []string{"10.0.0.1", "10.0.0.2"}},
-	}, "10.0.0.2", "203.0.113.50, 10.0.0.1, 10.0.0.2", "203.0.113.50")
+	}, "10.0.0.2", "203.0.113.50, 10.0.0.1, 10.0.0.2")
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.IP()
+	}
+	require.Equal(b, "203.0.113.50", res)
 }
 
 // Benchmark_Ctx_IP_With_ProxyHeader_Lines reads a chain a proxy extended with a line of its own, off the wire.
@@ -3645,7 +3723,13 @@ func Benchmark_Ctx_IP_With_ProxyHeader_Lines(b *testing.B) {
 	raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" +
 		"X-Forwarded-For: 203.0.113.50\r\nAccept: */*\r\nX-Forwarded-For: 10.0.0.1\r\n\r\n"
 	fctx := wireRequestCtx(b, raw, &net.TCPAddr{IP: net.ParseIP("10.0.0.2")})
-	ctxBenchIP(b, apptest.CtxFor(b, New(forwardedForProxies("10.0.0.1", "10.0.0.2")), fctx), "203.0.113.50")
+	c := apptest.CtxFor(b, New(forwardedForProxies("10.0.0.1", "10.0.0.2")), fctx)
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.IP()
+	}
+	require.Equal(b, "203.0.113.50", res)
 }
 
 // Benchmark_Ctx_IP_With_ProxyHeader_LinesMoved reads the chain after a Del moved the proxy's line in front of the client's.
@@ -3655,7 +3739,12 @@ func Benchmark_Ctx_IP_With_ProxyHeader_LinesMoved(b *testing.B) {
 	fctx := wireRequestCtx(b, raw, &net.TCPAddr{IP: net.ParseIP("10.0.0.2")})
 	c := apptest.CtxFor(b, New(forwardedForProxies("10.0.0.1", "10.0.0.2")), fctx)
 	c.Request().Header.Del("X-Junk")
-	ctxBenchIP(b, c, "203.0.113.50")
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.IP()
+	}
+	require.Equal(b, "203.0.113.50", res)
 }
 
 func Test_Ctx_Is(t *testing.T) {

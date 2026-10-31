@@ -340,7 +340,18 @@ func BenchmarkBalancer_ProxyPath_ForwardingLines(b *testing.B) {
 	proxyTestReadRequest(b, &req, "GET /v1/widgets?q=1 HTTP/1.1\r\nHost: api.example\r\n"+
 		"Connection: X-Junk\r\nX-Junk: 1\r\nX-Forwarded-For: 198.51.100.7\r\nX-Forwarded-Proto: http\r\n"+
 		"X-Forwarded-For: 203.0.113.9\r\nX-Forwarded-Proto: https\r\n\r\n")
-	benchProxyPath(b, app, &req)
+	handler := app.Handler()
+	remote := &net.TCPAddr{IP: net.IPv4(203, 0, 113, 9), Port: 40000}
+
+	var fctx fasthttp.RequestCtx
+	b.ReportAllocs()
+	for b.Loop() {
+		fctx.Init(&req, remote, nil)
+		handler(&fctx)
+		if got := fctx.Response.StatusCode(); got != fasthttp.StatusNoContent {
+			b.Fatalf("status = %d, want %d", got, fasthttp.StatusNoContent)
+		}
+	}
 }
 
 // BenchmarkBalancer_AbsoluteFormImmutable measures an absolute-form request, whose hosts Balancer compares,

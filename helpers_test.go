@@ -1079,34 +1079,35 @@ func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, 
 	})
 }
 
-// benchGenericParseType times genericParseType[V](str) in parallel and hands the last result to check.
-func benchGenericParseType[V GenericType](b *testing.B, name, str string, check func(v V, err error)) {
-	b.Helper()
-	b.Run(name, func(b *testing.B) {
-		var v V
-		var err error
-		b.ReportAllocs()
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				v, err = genericParseType[V](str)
-			}
-		})
-		check(v, err)
-	})
-}
-
 func Benchmark_GenericParseTypeFloats(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	for _, test := range miscParseFloats {
-		benchGenericParseType(b, "benchmark_genericParseTypeFloat32s", test.str, func(v float32, err error) {
+		b.Run("benchmark_genericParseTypeFloat32s", func(b *testing.B) {
+			var v float32
+			var err error
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[float32](test.str)
+				}
+			})
 			require.NoError(b, err)
 			require.InEpsilon(b, float32(test.value), v, epsilon)
 		})
 	}
 
 	for _, test := range miscParseFloats {
-		benchGenericParseType(b, "benchmark_genericParseTypeFloat64s", test.str, func(v float64, err error) {
+		b.Run("benchmark_genericParseTypeFloat64s", func(b *testing.B) {
+			var v float64
+			var err error
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[float64](test.str)
+				}
+			})
 			require.NoError(b, err)
 			require.InEpsilon(b, test.value, v, epsilon)
 		})
@@ -1116,7 +1117,16 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 func Benchmark_GenericParseTypeBytes(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	for _, test := range miscParseBytes {
-		benchGenericParseType(b, "benchmark_genericParseTypeBytes", test.str, func(v []byte, err error) {
+		b.Run("benchmark_genericParseTypeBytes", func(b *testing.B) {
+			var v []byte
+			var err error
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[[]byte](test.str)
+				}
+			})
 			if test.err == nil {
 				require.NoError(b, err)
 			} else {
@@ -1132,7 +1142,16 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 	tests := []string{"john", "doe", "hello", "fiber"}
 
 	for _, test := range tests {
-		benchGenericParseType(b, "benchmark_genericParseTypeString", test, func(v string, err error) {
+		b.Run("benchmark_genericParseTypeString", func(b *testing.B) {
+			var v string
+			var err error
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[string](test)
+				}
+			})
 			require.NoError(b, err)
 			require.Equal(b, test, v)
 		})
@@ -1142,7 +1161,16 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 func Benchmark_GenericParseTypeBoolean(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	for _, test := range miscParseBools {
-		benchGenericParseType(b, "benchmark_genericParseTypeBoolean", test.str, func(v bool, err error) {
+		b.Run("benchmark_genericParseTypeBoolean", func(b *testing.B) {
+			var v bool
+			var err error
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[bool](test.str)
+				}
+			})
 			require.NoError(b, err)
 			if test.value {
 				require.True(b, v)

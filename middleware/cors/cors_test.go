@@ -691,84 +691,130 @@ func corsBenchCtx(origin, method string) *fasthttp.RequestCtx {
 	return ctx
 }
 
-// corsBench measures h serving the request corsBenchCtx(origin, method) builds, over and over.
-func corsBench(b *testing.B, h fasthttp.RequestHandler, origin, method string) {
-	b.Helper()
-
-	ctx := corsBenchCtx(origin, method)
-
+func Benchmark_CORS_NewHandler(b *testing.B) {
+	h := corsBenchHandler([]string{"http://localhost", "http://example.com"}, true)
+	ctx := corsBenchCtx("http://localhost", fiber.MethodGet)
 	b.ReportAllocs()
-
 	for b.Loop() {
 		h(ctx)
 	}
 }
 
-// corsBenchParallel is corsBench on every goroutine, each with a context of its own.
-func corsBenchParallel(b *testing.B, h fasthttp.RequestHandler, origin, method string) {
-	b.Helper()
-
+func Benchmark_CORS_NewHandler_Parallel(b *testing.B) {
+	h := corsBenchHandler([]string{"http://localhost", "http://example.com"}, true)
 	b.ReportAllocs()
 	b.ResetTimer()
-
 	b.RunParallel(func(pb *testing.PB) {
-		ctx := corsBenchCtx(origin, method)
-
+		ctx := corsBenchCtx("http://localhost", fiber.MethodGet)
 		for pb.Next() {
 			h(ctx)
 		}
 	})
 }
 
-func Benchmark_CORS_NewHandler(b *testing.B) {
-	corsBench(b, corsBenchHandler([]string{"http://localhost", "http://example.com"}, true), "http://localhost", fiber.MethodGet)
-}
-
-func Benchmark_CORS_NewHandler_Parallel(b *testing.B) {
-	h := corsBenchHandler([]string{"http://localhost", "http://example.com"}, true)
-	corsBenchParallel(b, h, "http://localhost", fiber.MethodGet)
-}
-
 func Benchmark_CORS_NewHandlerSingleOrigin(b *testing.B) {
-	corsBench(b, corsBenchHandler([]string{"http://example.com"}, true), "http://example.com", fiber.MethodGet)
+	h := corsBenchHandler([]string{"http://example.com"}, true)
+	ctx := corsBenchCtx("http://example.com", fiber.MethodGet)
+	b.ReportAllocs()
+	for b.Loop() {
+		h(ctx)
+	}
 }
 
 func Benchmark_CORS_NewHandlerSingleOrigin_Parallel(b *testing.B) {
-	corsBenchParallel(b, corsBenchHandler([]string{"http://example.com"}, true), "http://example.com", fiber.MethodGet)
+	h := corsBenchHandler([]string{"http://example.com"}, true)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		ctx := corsBenchCtx("http://example.com", fiber.MethodGet)
+		for pb.Next() {
+			h(ctx)
+		}
+	})
 }
 
 func Benchmark_CORS_NewHandlerWildcard(b *testing.B) {
-	corsBench(b, corsBenchHandler(nil, false), "http://example.com", fiber.MethodGet)
+	h := corsBenchHandler(nil, false)
+	ctx := corsBenchCtx("http://example.com", fiber.MethodGet)
+	b.ReportAllocs()
+	for b.Loop() {
+		h(ctx)
+	}
 }
 
 func Benchmark_CORS_NewHandlerWildcard_Parallel(b *testing.B) {
-	corsBenchParallel(b, corsBenchHandler(nil, false), "http://example.com", fiber.MethodGet)
+	h := corsBenchHandler(nil, false)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		ctx := corsBenchCtx("http://example.com", fiber.MethodGet)
+		for pb.Next() {
+			h(ctx)
+		}
+	})
 }
 
 func Benchmark_CORS_NewHandlerPreflight(b *testing.B) {
 	h := corsBenchHandler([]string{"http://localhost", "http://example.com"}, true)
-	corsBench(b, h, "http://example.com", fiber.MethodOptions)
+	ctx := corsBenchCtx("http://example.com", fiber.MethodOptions)
+	b.ReportAllocs()
+	for b.Loop() {
+		h(ctx)
+	}
 }
 
 func Benchmark_CORS_NewHandlerPreflight_Parallel(b *testing.B) {
 	h := corsBenchHandler([]string{"http://localhost", "http://example.com"}, true)
-	corsBenchParallel(b, h, "http://example.com", fiber.MethodOptions)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		ctx := corsBenchCtx("http://example.com", fiber.MethodOptions)
+		for pb.Next() {
+			h(ctx)
+		}
+	})
 }
 
 func Benchmark_CORS_NewHandlerPreflightSingleOrigin(b *testing.B) {
-	corsBench(b, corsBenchHandler([]string{"http://example.com"}, true), "http://example.com", fiber.MethodOptions)
+	h := corsBenchHandler([]string{"http://example.com"}, true)
+	ctx := corsBenchCtx("http://example.com", fiber.MethodOptions)
+	b.ReportAllocs()
+	for b.Loop() {
+		h(ctx)
+	}
 }
 
 func Benchmark_CORS_NewHandlerPreflightSingleOrigin_Parallel(b *testing.B) {
-	corsBenchParallel(b, corsBenchHandler([]string{"http://example.com"}, true), "http://example.com", fiber.MethodOptions)
+	h := corsBenchHandler([]string{"http://example.com"}, true)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		ctx := corsBenchCtx("http://example.com", fiber.MethodOptions)
+		for pb.Next() {
+			h(ctx)
+		}
+	})
 }
 
 func Benchmark_CORS_NewHandlerPreflightWildcard(b *testing.B) {
-	corsBench(b, corsBenchHandler(nil, false), "http://example.com", fiber.MethodOptions)
+	h := corsBenchHandler(nil, false)
+	ctx := corsBenchCtx("http://example.com", fiber.MethodOptions)
+	b.ReportAllocs()
+	for b.Loop() {
+		h(ctx)
+	}
 }
 
 func Benchmark_CORS_NewHandlerPreflightWildcard_Parallel(b *testing.B) {
-	corsBenchParallel(b, corsBenchHandler(nil, false), "http://example.com", fiber.MethodOptions)
+	h := corsBenchHandler(nil, false)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		ctx := corsBenchCtx("http://example.com", fiber.MethodOptions)
+		for pb.Next() {
+			h(ctx)
+		}
+	})
 }
 
 // Test_CORS_setSimpleHeaders_NilConfig ensures the nil-config guard returns

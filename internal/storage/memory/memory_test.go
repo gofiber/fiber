@@ -344,7 +344,8 @@ func Benchmark_Memory_Set_Asserted(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		require.NoError(b, testStore.Set("john", []byte("doe"), 0))
+		err := testStore.Set("john", []byte("doe"), 0)
+		require.NoError(b, err)
 	}
 }
 
@@ -355,7 +356,8 @@ func Benchmark_Memory_Set_Asserted_Parallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			require.NoError(b, testStore.Set("john", []byte("doe"), 0))
+			err := testStore.Set("john", []byte("doe"), 0)
+			require.NoError(b, err)
 		}
 	})
 }

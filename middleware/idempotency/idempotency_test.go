@@ -150,8 +150,8 @@ func Benchmark_Idempotency(b *testing.B) {
 		c := &fasthttp.RequestCtx{}
 		c.Request.Header.SetMethod(fiber.MethodPost)
 		c.Request.SetRequestURI("/")
-		for i := 0; i+1 < len(kv); i += 2 {
-			c.Request.Header.Set(kv[i], kv[i+1])
+		for name, value := range apptest.Pairs(kv) {
+			c.Request.Header.Set(name, value)
 		}
 		return c
 	}
@@ -210,9 +210,7 @@ func Test_configDefault_defaults(t *testing.T) {
 	for method, skipped := range map[string]bool{fiber.MethodGet: true, fiber.MethodPost: false} {
 		fctx := &fasthttp.RequestCtx{}
 		fctx.Request.Header.SetMethod(method)
-		ctx := app.AcquireCtx(fctx)
-		require.Equal(t, skipped, cfg.Next(ctx), method)
-		app.ReleaseCtx(ctx)
+		require.Equal(t, skipped, cfg.Next(apptest.CtxFor(t, app, fctx)), method)
 	}
 
 	require.NoError(t, cfg.KeyHeaderValidate(validKey))
