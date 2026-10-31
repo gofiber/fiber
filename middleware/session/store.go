@@ -2,10 +2,14 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/gob"
 	"errors"
 	"fmt"
 	"hash/maphash"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,6 +19,8 @@ import (
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
 // ErrEmptySessionID is an error that occurs when the session ID is empty.
@@ -32,6 +38,11 @@ const (
 	sessionIDContextKey sessionIDKey = iota
 	// sessionExtractorContextKey stores the extractor that provided the session ID.
 	sessionExtractorContextKey
+	// sessionOwnerContextKey stores the *Store whose Store.Get published the session
+	// ID, so that a store reading other cookies or headers does not adopt it, when
+	// the request has no provenance box to say so in. The session middleware
+	// publishes itself instead, and it names the store.
+	sessionOwnerContextKey
 )
 
 // provenanceBox carries the resolved provenance through request locals behind a
@@ -39,32 +50,41 @@ const (
 // request carrying a session ID. fasthttp hands it back through Close on
 // request reset, as it does the extractors package's chain state.
 type provenanceBox struct {
-	res extractors.Result
+	// owner is the store whose extractor produced res.
+	owner *Store
+	// publisher is the store whose Store.Get cached the session ID on the request,
+	// when the request had a box to say so in; otherwise it is in a local of its own.
+	publisher *Store
+	res       extractors.Result
 }
 
 // A pointer so a test can swap in a pool of its own; nothing else reassigns it.
 var provenancePool = &sync.Pool{New: func() any { return new(provenanceBox) }}
 
-// storeProvenance records res in the request, reusing the box already there.
-// Overwriting the local with a fresh box would strand the old one outside the
-// pool: fasthttp only reclaims the box the local currently holds.
-func storeProvenance(c fiber.Ctx, res extractors.Result) {
+// storeProvenance records res, resolved by s, in the request, reusing the box
+// already there, and returns the box. Overwriting the local with a fresh box would
+// strand the old one outside the pool: fasthttp only reclaims the box the local
+// currently holds.
+func storeProvenance(c fiber.Ctx, s *Store, res extractors.Result) *provenanceBox {
 	if b, ok := c.Locals(sessionExtractorContextKey).(*provenanceBox); ok && b != nil {
-		b.res = res
-		return
+		b.res, b.owner = res, s
+		return b
 	}
 	b, ok := provenancePool.Get().(*provenanceBox)
 	if !ok || b == nil {
 		b = new(provenanceBox)
 	}
-	b.res = res
+	b.res, b.owner = res, s
 	ctxlocal.Set(c, sessionExtractorContextKey, b)
+	return b
 }
 
 // Close returns the box to the pool. fasthttp calls it on every request-local
 // io.Closer when it resets the request; callers should not.
 func (b *provenanceBox) Close() error {
 	b.res = extractors.Result{}
+	b.owner = nil
+	b.publisher = nil
 	provenancePool.Put(b)
 	return nil
 }
@@ -95,7 +115,279 @@ func lockFor(key string) *idLock {
 
 // Store manages session data using the configured storage backend.
 type Store struct {
+	// codecName is the name of the Codec, asked once.
+	codecName string
+	// sinks are the cookies and headers a session ID can be written back to, in the
+	// order of the extractor. NewStore works them out once; a Store built without it
+	// has none (nil), and a Store whose Extractor was replaced since has stale ones:
+	// both walk the extractor when they need them. Read-only: every session of the
+	// store shares the slice.
+	sinks []extractors.Extractor
+	// sources names every source the store reads the session ID from, by kind and
+	// name, such as "cookie:session_id" or "query:sid", as sharesSource compares them.
+	sources []string
+	// root identifies the extractor that sinks and sources were worked out from.
+	root extractorRoot
 	Config
+	// unreadableWarned is set once the store has said that it met a session it
+	// cannot read.
+	unreadableWarned atomic.Bool
+}
+
+// extractorRoot identifies an extractor well enough to notice that the Extractor of
+// a store was replaced after NewStore, which Config being embedded allows: it holds
+// what the cookies and headers of an extractor depend on and tells one extractor
+// from another without calling it, the key and source of the root and the identity
+// of its chain (a chain reports the key and source of its first child, so these two
+// alone cannot tell a leaf from a chain that starts with it). Changing a nested
+// extractor in place is not noticed.
+type extractorRoot struct {
+	key    string
+	chain  []extractors.Extractor
+	source extractors.Source
+}
+
+func rootOf(ext extractors.Extractor) extractorRoot {
+	return extractorRoot{key: ext.Key, chain: ext.Chain, source: ext.Source}
+}
+
+// matches reports whether ext is the extractor r was taken from.
+func (r extractorRoot) matches(ext extractors.Extractor) bool {
+	if r.key != ext.Key || r.source != ext.Source || len(r.chain) != len(ext.Chain) {
+		return false
+	}
+	return len(r.chain) == 0 || &r.chain[0] == &ext.Chain[0]
+}
+
+// collectSinks lists the cookies and headers an extractor reads a session ID from,
+// which are the ones a session ID can be written back to: the leaves of the
+// extractor that name a cookie or a header.
+func collectSinks(ext extractors.Extractor) []extractors.Extractor {
+	var sinks []extractors.Extractor
+	// Walked rather than ranged over Chain: a nested chain reports its first
+	// child's metadata, so direct children alone hide every sink inside it, and
+	// a cookie one level down would never be written.
+	ext.Walk(func(candidate extractors.Extractor) bool {
+		// Only a leaf names a place to write, and a keyless one would name a
+		// cookie or header with no name at all.
+		if len(candidate.Chain) > 0 || candidate.Key == "" {
+			return true
+		}
+		if candidate.Source == extractors.SourceCookie || candidate.Source == extractors.SourceHeader {
+			sinks = append(sinks, candidate)
+		}
+		return true
+	})
+	return sinks
+}
+
+// collectSources names every source an extractor reads a session ID from, as
+// sharesSource compares them: the leaves of the extractor, by kind and name, such
+// as "cookie:session_id", "header:x-session" or "query:sid". Header names and
+// authentication schemes are compared without regard to case. A leaf without a
+// name is named by its kind alone, so two custom extractors without a key count as
+// one source.
+func collectSources(ext extractors.Extractor) []string {
+	var sources []string
+	ext.Walk(func(candidate extractors.Extractor) bool {
+		if len(candidate.Chain) == 0 {
+			sources = append(sources, sourceName(candidate))
+		}
+		return true
+	})
+	return sources
+}
+
+// sourceName names a leaf extractor as collectSources does.
+func sourceName(leaf extractors.Extractor) string {
+	switch leaf.Source {
+	case extractors.SourceCookie:
+		return "cookie:" + leaf.Key
+	case extractors.SourceHeader:
+		return "header:" + utilsstrings.ToLower(leaf.Key)
+	case extractors.SourceAuthHeader:
+		// The header is always Authorization; the scheme is what tells one apart.
+		return "auth:" + utilsstrings.ToLower(leaf.AuthScheme)
+	case extractors.SourceForm:
+		return "form:" + leaf.Key
+	case extractors.SourceQuery:
+		return "query:" + leaf.Key
+	case extractors.SourceParam:
+		return "param:" + leaf.Key
+	case extractors.SourceCustom:
+		return "custom:" + leaf.Key
+	default:
+		return "other:" + leaf.Key
+	}
+}
+
+// worked reports whether sinks and sources are those of the extractor the store has
+// now: NewStore worked them out, and the Extractor was not replaced since.
+func (s *Store) worked() bool {
+	return s.sinks != nil && s.root.matches(s.Extractor)
+}
+
+// writableSinks returns the cookies and headers a session ID of s can be written
+// back to. The slice is shared: do not modify it.
+func (s *Store) writableSinks() []extractors.Extractor {
+	if s.worked() {
+		return s.sinks
+	}
+	return collectSinks(s.Extractor)
+}
+
+// sourceList returns the names of the sources s reads its session ID from. The
+// slice is shared: do not modify it.
+func (s *Store) sourceList() []string {
+	if s.worked() {
+		return s.sources
+	}
+	return collectSources(s.Extractor)
+}
+
+// sharesSource reports whether s and other read the session ID from a common
+// source, by kind and name, or cannot be told apart because one of them names
+// none.
+//
+// A request can hold the sessions of several stores. Stores over the same
+// cookie, such as a session middleware and the store the CSRF middleware was
+// given, resolve the same session and so share the ID cached on the request.
+// Stores over different sources keep independent sessions: one adopting the
+// other's cached ID would look up a foreign session, or write its own ID to a
+// cookie it does not own. A source that cannot be written back to, such as the
+// query string, counts like any other: the ID a link carries reaches the stores
+// that read the query string, and no cookie store next to them.
+func (s *Store) sharesSource(other *Store) bool {
+	if s == other {
+		return true
+	}
+	mine, theirs := s.sourceList(), other.sourceList()
+	if len(mine) == 0 || len(theirs) == 0 {
+		return true
+	}
+	return slices.ContainsFunc(mine, func(source string) bool {
+		return slices.Contains(theirs, source)
+	})
+}
+
+// hashedKeyLen is the length of a base64url-encoded SHA-256 digest without padding.
+const hashedKeyLen = 43
+
+// storageKey returns the key the session with the given ID is stored under: the
+// StorageKeyPrefix of the store, the namespace of the middleware ("session:"), and
+// the ID itself, or its digest with HashStorageKeys. Every read, write and delete
+// of a session goes through it.
+//
+// Parameters:
+//   - id: The session ID the client holds.
+//
+// Returns:
+//   - string: The key to use with the storage.
+func (s *Store) storageKey(id string) string {
+	// The default is the common case, and kept small enough to inline.
+	if s.StorageKeyPrefix == "" && !s.HashStorageKeys {
+		return storageKeyPrefix + id
+	}
+	return s.derivedStorageKey(id)
+}
+
+// derivedStorageKey is storageKey for a store with a prefix or hashing.
+func (s *Store) derivedStorageKey(id string) string {
+	if !s.HashStorageKeys {
+		return s.StorageKeyPrefix + storageKeyPrefix + id
+	}
+	sum := sha256.Sum256(utils.UnsafeBytes(id))
+	// One buffer of the exact size, handed over as the key: nothing writes to it
+	// afterwards, and it spares the second allocation a string conversion costs.
+	key := make([]byte, 0, len(s.StorageKeyPrefix)+len(storageKeyPrefix)+hashedKeyLen)
+	key = append(key, s.StorageKeyPrefix...)
+	key = append(key, storageKeyPrefix...)
+	key = base64.RawURLEncoding.AppendEncode(key, sum[:])
+	return utils.UnsafeString(key)
+}
+
+// ownedID returns id as a string that does not point into the request: the end of
+// the key when the key holds the ID, a copy when it holds its digest. A session
+// outlives the request that named it, and the buffer of the request is reused.
+func (s *Store) ownedID(key, id string) string {
+	if s.HashStorageKeys {
+		return strings.Clone(id)
+	}
+	return key[len(key)-len(id):]
+}
+
+// requestIDPublisher returns the store that published the session ID cached on
+// the request, or nil if that is not known.
+//
+// The session middleware publishes the ID together with itself, so the middleware
+// still current in the request names the store, and costs the request nothing
+// extra. A session from Store.Get cannot be told apart that way, so it leaves its
+// store behind: in the provenance box of the request, box, when there is one, and
+// otherwise in sessionOwnerContextKey. The box is the one written last, since a
+// publication goes to the box as soon as the request has one.
+func requestIDPublisher(c fiber.Ctx, box *provenanceBox) *Store {
+	if m, ok := c.Locals(middlewareContextKey).(*Middleware); ok && m != nil {
+		// Under the lock: the middleware may be finishing on another goroutine,
+		// as it does when a handler outlives its request.
+		m.mu.RLock()
+		publisher := m.store
+		m.mu.RUnlock()
+		return publisher
+	}
+	if box != nil && box.publisher != nil {
+		return box.publisher
+	}
+	if owner, ok := c.Locals(sessionOwnerContextKey).(*Store); ok {
+		return owner
+	}
+	return nil
+}
+
+// requestProvenance returns the provenance box cached on the request, nil if
+// there is none.
+func requestProvenance(c fiber.Ctx) *provenanceBox {
+	box, ok := c.Locals(sessionExtractorContextKey).(*provenanceBox)
+	if !ok {
+		return nil
+	}
+	return box
+}
+
+// publisherShares reports whether the store that published the session ID cached
+// on the request, if it is known, shares a cookie or header with s. box is the
+// provenance box of the request, nil if it has none.
+func (s *Store) publisherShares(c fiber.Ctx, box *provenanceBox) bool {
+	publisher := requestIDPublisher(c, box)
+	return publisher == nil || publisher == s || s.sharesSource(publisher)
+}
+
+// adoptProvenance returns res, the provenance of a session ID that another store
+// cached on the request, as it holds for s. A cookie or header that is not one of
+// the sinks of s is not its to write the ID back to: the ID is then treated as one
+// from a source that cannot be written back to, which is what Resolved false means
+// to getExtractorInfo. A read-only source, and a sink of s, stay as they are.
+func (s *Store) adoptProvenance(res extractors.Result) extractors.Result {
+	if res.Resolved && (res.Source == extractors.SourceCookie || res.Source == extractors.SourceHeader) && !s.ownsSink(res) {
+		res.Resolved = false
+	}
+	return res
+}
+
+// ownsSink reports whether res names a cookie or header s reads its session ID from.
+func (s *Store) ownsSink(res extractors.Result) bool {
+	for _, sink := range s.writableSinks() {
+		if sink.Source != res.Source {
+			continue
+		}
+		if sink.Source == extractors.SourceHeader {
+			if strings.EqualFold(sink.Key, res.Key) {
+				return true
+			}
+		} else if sink.Key == res.Key {
+			return true
+		}
+	}
+	return false
 }
 
 // NewStore creates a new session store with the provided configuration.
@@ -112,13 +404,34 @@ type Store struct {
 func NewStore(config ...Config) *Store {
 	// Set default config
 	cfg := configDefault(config...)
+	if isNilStorage(cfg.Storage) {
+		panic("[session] Storage must not be a typed nil")
+	}
+	if isNilCodec(cfg.Codec) {
+		panic("[session] Codec must not be a typed nil")
+	}
+	codecName := ""
+	if cfg.Codec != nil {
+		codecName = cfg.Codec.Name()
+		checkCodecName(codecName)
+	}
+	warnCookiePrefixes(&cfg)
 
 	if cfg.Storage == nil {
 		cfg.Storage = memory.New()
 	}
 
+	sinks := collectSinks(cfg.Extractor)
+	if sinks == nil {
+		// Worked out, and none: not the nil that marks a Store built without NewStore.
+		sinks = []extractors.Extractor{}
+	}
 	store := &Store{
-		Config: cfg,
+		Config:    cfg,
+		root:      rootOf(cfg.Extractor),
+		sinks:     sinks,
+		sources:   collectSources(cfg.Extractor),
+		codecName: codecName,
 	}
 
 	if cfg.AbsoluteTimeout > 0 {
@@ -139,6 +452,58 @@ func NewStore(config ...Config) *Store {
 //	store.RegisterType(MyCustomType{})
 func (*Store) RegisterType(i any) {
 	gob.Register(i)
+}
+
+// codecID returns the name of the codec of the store. NewStore asks for it once;
+// a Store built without NewStore asks every time.
+func (s *Store) codecID() string {
+	if s.codecName == "" && s.Codec != nil {
+		return s.Codec.Name()
+	}
+	return s.codecName
+}
+
+// readable reports whether the store can read raw, a record: a store reads the
+// records of the codec that wrote them, and no other. (Stored sessions that are not
+// records are gob, which every store reads, a store with a codec as a session that
+// stays gob.) Of a record that is damaged, readable says yes, and the decode says
+// what is wrong with it.
+func (s *Store) readable(raw []byte) bool {
+	if s.Codec == nil {
+		return false
+	}
+	version, name, ok := recordCodecOf(raw)
+	if !ok {
+		return true
+	}
+	return version == recordVersion && string(name) == s.codecID()
+}
+
+// warnUnreadable says, once per store, that a stored session is a record this store
+// cannot read, and is treated as a session that does not exist.
+func (s *Store) warnUnreadable(raw []byte) {
+	if !s.unreadableWarned.CompareAndSwap(false, true) {
+		return
+	}
+	have := "has no codec"
+	if id := s.codecID(); id != "" {
+		have = fmt.Sprintf("uses the codec %q", id)
+	}
+	version, name, known := recordCodecOf(raw)
+	switch {
+	case len(name) > 0:
+		log.Warnf("[session] a stored session is a record of the codec %q (format version %d), which this store, which %s, cannot read; "+
+			"it is treated as a new session, and the record is left alone. This is expected once after Config.Codec was changed or turned off; "+
+			"if it goes on, applications with different codecs share a storage and a session cookie",
+			name, version, have)
+	case known:
+		log.Warnf("[session] a stored session is a record of format version %d, which this store, which %s, does not know; "+
+			"it was probably written by a newer release of the application. It is treated as a new session, and the record is left alone",
+			version, have)
+	default:
+		log.Warn("[session] a stored session starts like a record, but its header is damaged; " +
+			"it is treated as a new session, and the record is left alone")
+	}
 }
 
 // Get will get/create a session.
@@ -167,7 +532,16 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 		return nil, ErrSessionAlreadyLoadedByMiddleware
 	}
 
-	return s.getSession(c)
+	sess, box, err := s.getSessionBox(c)
+	if err == nil && sess.isFresh {
+		// getSession has just cached the new ID on the request; say whose it is.
+		if box != nil {
+			box.publisher = s
+		} else {
+			ctxlocal.Set(c, sessionOwnerContextKey, s)
+		}
+	}
+	return sess, err
 }
 
 // getSession retrieves a session based on the context.
@@ -186,25 +560,53 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 //	    // handle error
 //	}
 func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
+	sess, _, err := s.getSessionBox(c)
+	return sess, err
+}
+
+// getSessionBox is getSession, and also returns the provenance box of the request
+// when it has one, so that Store.Get can say in it whose session ID is cached.
+func (s *Store) getSessionBox(c fiber.Ctx) (*Session, *provenanceBox, error) {
 	var rawData []byte
 	var err error
 
 	var selectedExtractor extractors.Result
 	id, ok := c.Locals(sessionIDContextKey).(string)
+	var cached *provenanceBox
+	// Whether the store that left the provenance box shares a cookie or header with
+	// s. A store always shares with itself, and a request with a single store is by
+	// far the common one, so the question is only asked of another store's box.
+	ownerShares := true
+	if ok {
+		cached = requestProvenance(c)
+		if cached != nil && cached.owner != nil && cached.owner != s {
+			ownerShares = s.sharesSource(cached.owner)
+		}
+		// The owner of the box has a say when the cached ID is the one its extractor
+		// supplied. When that one named no session, the ID cached since is a fresh one
+		// of its publisher, and the box still describes the earlier one.
+		if (!ownerShares && cached.res.Value == id) || !s.publisherShares(c, cached) {
+			// Cached by a store over other cookies or headers: its ID is not ours.
+			ok = false
+		}
+	}
 	if !ok {
 		var resolveErr error
 		selectedExtractor, resolveErr = s.getSessionID(c)
 		if resolveErr != nil {
-			return nil, resolveErr
+			return nil, nil, resolveErr
 		}
 		id = selectedExtractor.Value
 		if id != "" {
 			// Kept for a second getSession on the same request, which takes the
 			// cached-ID path above and would otherwise lose the provenance.
-			storeProvenance(c, selectedExtractor)
+			cached = storeProvenance(c, s, selectedExtractor)
 		}
-	} else if stored, found := c.Locals(sessionExtractorContextKey).(*provenanceBox); found && stored != nil {
-		selectedExtractor = stored.res
+	} else if cached != nil && ownerShares {
+		// The provenance of the cached ID, which says where it is written back to. A
+		// box that a store over other cookies or headers left describes an ID of its
+		// own, and says nothing about the one cached since.
+		selectedExtractor = s.adoptProvenance(cached.res)
 	}
 
 	isFresh := false // Session is not fresh initially; only set to true if we generate a new ID
@@ -213,18 +615,22 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 
 	// Attempt to fetch session data if an ID is provided
 	if id != "" {
-		key = storageKeyPrefix + id
+		key = s.storageKey(id)
 		loadGen = lockFor(key).gen.Load()
 		rawData, err = s.Storage.GetWithContext(c, key)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		if isRecord(rawData) && !s.readable(rawData) {
+			s.warnUnreadable(rawData)
+			rawData = nil
 		}
 		if rawData == nil {
 			// Data not found, prepare to generate a new session
 			id, key = "", ""
 		} else {
-			// Sliced off the key: the extracted ID points into the request buffer the next request reuses.
-			id = key[len(storageKeyPrefix):]
+			// Not the extracted ID: it points into the request buffer the next request reuses.
+			id = s.ownedID(key, id)
 		}
 	}
 
@@ -246,6 +652,9 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	sess.key = key
 	sess.isFresh = isFresh
 	sess.extractor = selectedExtractor
+	if s.Codec != nil {
+		sess.data.setCodec(s.Codec, s.codecID())
+	}
 
 	// Decode session data if found
 	if rawData != nil {
@@ -255,7 +664,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		if err != nil {
 			sess.mu.Unlock()
 			sess.Release()
-			return nil, fmt.Errorf("failed to decode session data: %w", err)
+			return nil, nil, fmt.Errorf("failed to decode session data: %w", err)
 		}
 		sess.loaded = true
 		sess.loadGen = loadGen
@@ -266,13 +675,16 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	if isFresh && s.AbsoluteTimeout > 0 {
 		sess.setAbsExpiration(time.Now().Add(s.AbsoluteTimeout))
 	} else if sess.isAbsExpired() {
+		// Whatever AbsoluteTimeout the store has now: the session was stored with a
+		// deadline, and it has passed. Reset arms the session that takes its place
+		// when the store has an AbsoluteTimeout; a store without one gives it none,
+		// where a deadline of now would make the next load start it over again.
 		if err := sess.Reset(); err != nil {
-			return nil, fmt.Errorf("failed to reset session: %w", err)
+			return nil, nil, fmt.Errorf("failed to reset session: %w", err)
 		}
-		sess.setAbsExpiration(time.Now().Add(s.AbsoluteTimeout))
 	}
 
-	return sess, nil
+	return sess, cached, nil
 }
 
 // getSessionID returns the session ID using the configured extractor, together
@@ -356,7 +768,7 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	if id == "" {
 		return ErrEmptySessionID
 	}
-	return s.deleteKey(ctx, storageKeyPrefix+id)
+	return s.deleteKey(ctx, s.storageKey(id))
 }
 
 func (s *Store) deleteKey(ctx context.Context, key string) error {
@@ -425,7 +837,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 		return nil, ErrEmptySessionID
 	}
 
-	key := storageKeyPrefix + id
+	key := s.storageKey(id)
 	loadGen := lockFor(key).gen.Load()
 	rawData, err := s.Storage.GetWithContext(ctx, key)
 	if err != nil {
@@ -434,15 +846,22 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 	if rawData == nil {
 		return nil, ErrSessionIDNotFoundInStore
 	}
+	if isRecord(rawData) && !s.readable(rawData) {
+		s.warnUnreadable(rawData)
+		return nil, ErrSessionIDNotFoundInStore
+	}
 
 	sess := acquireSession()
 
 	sess.mu.Lock()
 
 	sess.config = s
-	sess.id = key[len(storageKeyPrefix):] // the caller may pass a view of the request, such as c.Cookies
+	sess.id = s.ownedID(key, id) // the caller may pass a view of the request, such as c.Cookies
 	sess.key = key
 	sess.isFresh = false
+	if s.Codec != nil {
+		sess.data.setCodec(s.Codec, s.codecID())
+	}
 	sess.loaded = true
 	sess.loadGen = loadGen
 
@@ -455,14 +874,14 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 		return nil, fmt.Errorf("failed to decode session data: %w", decodeErr)
 	}
 
-	if s.AbsoluteTimeout > 0 {
-		if sess.isAbsExpired() {
-			if err := sess.Destroy(); err != nil { //nolint:contextcheck // it is not right
-				sess.Release()
-				log.Errorf("failed to destroy session: %v", err)
-			}
-			return nil, ErrSessionIDNotFoundInStore
+	// Whatever AbsoluteTimeout the store has now, as on the request path: the
+	// session was stored with a deadline, and it has passed.
+	if sess.isAbsExpired() {
+		if err := sess.Destroy(); err != nil { //nolint:contextcheck // it is not right
+			sess.Release()
+			log.Errorf("failed to destroy session: %v", err)
 		}
+		return nil, ErrSessionIDNotFoundInStore
 	}
 
 	return sess, nil
