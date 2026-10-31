@@ -12,11 +12,13 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
@@ -131,34 +133,139 @@ type benchListener struct{ conn net.Conn }
 
 var benchSinkConn net.Conn
 
-// go test -run Test_Listen
+// rootMiscBShutdownAfter shuts app down once d has passed, which ends the Listen or Listener call that
+// the test makes next. The goroutine fails the test if the shutdown does.
+func rootMiscBShutdownAfter(t *testing.T, app *App, d time.Duration) {
+	t.Helper()
+
+	go func() {
+		time.Sleep(d)
+		assert.NoError(t, app.Shutdown())
+	}()
+}
+
+// rootrestListenFor serves app with Listen on a free port until d has passed and requires the call to end without an
+// error.
+func rootrestListenFor(t *testing.T, app *App, d time.Duration, cfg ...ListenConfig) {
+	t.Helper()
+
+	rootMiscBShutdownAfter(t, app, d)
+	require.NoError(t, app.Listen(":0", cfg...))
+}
+
+// rootrestRequireOverRecovery requires a prefork master that listens with cfg to give up on its children at once.
+func rootrestRequireOverRecovery(t *testing.T, app *App, cfg *ListenConfig) {
+	t.Helper()
+
+	cfg.DisableStartupMessage = true
+	cfg.EnablePrefork = true
+	cfg.PreforkRecoverThreshold = 1
+	require.ErrorIs(t, app.Listen(":0", *cfg), prefork.ErrOverRecovery)
+}
+
+// rootMiscBWaitDialable waits until ln accepts a connection, which is when the server behind it is up.
+func rootMiscBWaitDialable(t *testing.T, ln *fasthttputil.InmemoryListener) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		conn, err := ln.Dial()
+		if err != nil {
+			return false
+		}
+		_ = conn.Close() //nolint:errcheck // not needed
+		return true
+	}, time.Second, 20*time.Millisecond, "server failed to become ready")
+}
+
+// rootMiscBSendOnNewConn writes raw on a new connection of ln. The connection stays open until the test
+// ends, which keeps a request in flight for as long as the server has not answered it.
+func rootMiscBSendOnNewConn(t *testing.T, ln *fasthttputil.InmemoryListener, raw string) {
+	t.Helper()
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // not needed
+	_, err = conn.Write([]byte(raw))
+	require.NoError(t, err)
+}
+
+// rootMiscBFreePort returns a loopback TCP port that was free a moment ago.
+func rootMiscBFreePort(t *testing.T) int {
+	t.Helper()
+
+	ln := newLocalListener(t)
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	require.NoError(t, ln.Close())
+
+	return addr.Port
+}
+
+// rootMiscBTestCert loads the self-signed certificate that the TLS tests serve.
+func rootMiscBTestCert(t *testing.T) tls.Certificate {
+	t.Helper()
+
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	return cert
+}
+
+// rootMiscBTLSClientConfig is how the TLS tests connect: it accepts the self-signed test certificate.
+func rootMiscBTLSClientConfig(serverName string) *tls.Config {
+	return &tls.Config{
+		ServerName:         serverName,
+		InsecureSkipVerify: true, // self-signed test certificate
+		MinVersion:         tls.VersionTLS12,
+	}
+}
+
+// rootMiscBTLSGet sends a GET over conn, whose server closes it after answering, and returns the body.
+func rootMiscBTLSGet(t *testing.T, conn *tls.Conn) string {
+	t.Helper()
+
+	_, err := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
+	require.NoError(t, err)
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+	require.NoError(t, resp.Read(bufio.NewReader(conn)))
+
+	return string(resp.Body())
+}
+
+// rootMiscBRequireContains fails the test unless out contains every one of wants.
+func rootMiscBRequireContains(t *testing.T, out string, wants ...string) {
+	t.Helper()
+
+	for _, want := range wants {
+		require.Contains(t, out, want)
+	}
+}
+
+// rootMiscBRequireNotContains fails the test if out contains any one of unwanted.
+func rootMiscBRequireNotContains(t *testing.T, out string, unwanted ...string) {
+	t.Helper()
+
+	for _, s := range unwanted {
+		require.NotContains(t, out, s)
+	}
+}
+
 func Test_Listen(t *testing.T) {
 	app := New()
 
 	require.Error(t, app.Listen(":99999"))
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true}))
+	rootrestListenFor(t, app, 1000*time.Millisecond, ListenConfig{DisableStartupMessage: true})
 }
 
-// go test -run Test_Listen_ClosesListenerOnBeforeServeError
 func Test_Listen_ClosesListenerOnBeforeServeError(t *testing.T) {
-	// Grab a free port, then release it so we can bind it via Listen.
-	probe, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	addr := probe.Addr().String()
-	require.NoError(t, probe.Close())
+	addr := fmt.Sprintf("127.0.0.1:%d", rootMiscBFreePort(t))
 
 	app := New()
-	err = app.Listen(addr, ListenConfig{
+	err := app.Listen(addr, ListenConfig{
 		DisableStartupMessage: true,
-		BeforeServeFunc: func(_ *App) error {
-			return errors.New("stop before serving")
-		},
+		BeforeServeFunc:       func(_ *App) error { return errors.New("stop before serving") },
 	})
 	require.Error(t, err)
 
@@ -169,22 +276,14 @@ func Test_Listen_ClosesListenerOnBeforeServeError(t *testing.T) {
 	require.NoError(t, ln.Close())
 }
 
-// go test -run Test_Listen_Graceful_Shutdown
 func Test_Listen_Graceful_Shutdown(t *testing.T) {
-	t.Run("Basic Graceful Shutdown", func(t *testing.T) {
-		testGracefulShutdown(t, 0)
-	})
+	t.Run("Basic Graceful Shutdown", func(t *testing.T) { testGracefulShutdown(t, 0) })
 
-	t.Run("Shutdown With Timeout", func(t *testing.T) {
-		testGracefulShutdown(t, 500*time.Millisecond)
-	})
+	t.Run("Shutdown With Timeout", func(t *testing.T) { testGracefulShutdown(t, 500*time.Millisecond) })
 
-	t.Run("Shutdown With Timeout Error", func(t *testing.T) {
-		testGracefulShutdown(t, 1*time.Nanosecond)
-	})
+	t.Run("Shutdown With Timeout Error", func(t *testing.T) { testGracefulShutdown(t, 1*time.Nanosecond) })
 }
 
-// go test -run Test_ShutdownWithContext_PostShutdownHookReceivesError
 func Test_ShutdownWithContext_PostShutdownHookReceivesError(t *testing.T) {
 	app := New()
 	app.Get("/", func(c Ctx) error {
@@ -203,76 +302,34 @@ func Test_ShutdownWithContext_PostShutdownHookReceivesError(t *testing.T) {
 		_ = app.Listener(ln, ListenConfig{DisableStartupMessage: true}) //nolint:errcheck // not needed
 	}()
 
-	require.Eventually(t, func() bool {
-		conn, err := ln.Dial()
-		if err == nil {
-			_ = conn.Close() //nolint:errcheck // not needed
-			return true
-		}
-		return false
-	}, time.Second, 20*time.Millisecond, "server failed to become ready")
+	rootMiscBWaitDialable(t, ln)
 
 	// Keep a request in flight so shutdown cannot drain before the 1ns deadline.
-	conn, err := ln.Dial()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // not needed
-	_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n"))
-	require.NoError(t, err)
+	rootMiscBSendOnNewConn(t, ln, "GET / HTTP/1.1\r\nHost: example.com\r\n")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
 	shutdownErr := app.ShutdownWithContext(ctx)
 	require.Error(t, shutdownErr)
 
-	select {
-	case got := <-hookErr:
-		// The hook must receive the actual shutdown error, not the nil value
-		// captured when the defer was registered.
-		require.Equal(t, shutdownErr, got)
-	case <-time.After(time.Second):
-		t.Fatal("OnPostShutdown hook was not called")
-	}
+	got := apptest.Recv(t, hookErr, time.Second, "OnPostShutdown hook was not called")
+	// The hook must receive the actual shutdown error, not the nil value
+	// captured when the defer was registered.
+	require.Equal(t, shutdownErr, got)
 }
 
-// go test -run Test_GracefulShutdown_PostShutdownFiresOnce
 func Test_GracefulShutdown_PostShutdownFiresOnce(t *testing.T) {
-	app := New()
-	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+	t.Parallel()
+	f := newGracefulFixture(t)
+	f.start(listenerEntry.run)
+	rootMiscBWaitDialable(t, f.ln)
 
-	fires := make(chan error, 8)
-	app.Hooks().OnPostShutdown(func(err error) error {
-		fires <- err
-		return nil
-	})
-
-	ln := fasthttputil.NewInmemoryListener()
-	gctx, gcancel := context.WithCancel(context.Background())
-	go func() {
-		_ = app.Listener(ln, ListenConfig{DisableStartupMessage: true, GracefulContext: gctx}) //nolint:errcheck,contextcheck // not needed
-	}()
-
-	require.Eventually(t, func() bool {
-		conn, err := ln.Dial()
-		if err == nil {
-			_ = conn.Close() //nolint:errcheck // not needed
-			return true
-		}
-		return false
-	}, time.Second, 20*time.Millisecond, "server failed to become ready")
-
-	gcancel() // trigger graceful shutdown
+	f.cancel() // trigger graceful shutdown
 
 	// The hook must fire exactly once.
-	select {
-	case <-fires:
-	case <-time.After(2 * time.Second):
-		t.Fatal("OnPostShutdown was not called")
-	}
-	select {
-	case <-fires:
-		t.Fatal("OnPostShutdown fired more than once")
-	case <-time.After(300 * time.Millisecond):
-	}
+	apptest.Recv(t, f.probe.posted, 2*time.Second, "OnPostShutdown was not called")
+	time.Sleep(300 * time.Millisecond)
+	require.Equal(t, int32(1), f.probe.post.Load(), "OnPostShutdown fired more than once")
 }
 
 func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
@@ -324,20 +381,10 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 	if shutdownTimeout == time.Nanosecond {
 		// keep a request in flight so shutdown cannot drain to zero open
 		// connections before the 1ns deadline is checked (would yield a nil error)
-		conn, err := ln.Dial()
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			if closeErr := conn.Close(); closeErr != nil {
-				t.Logf("error closing connection: %v", closeErr)
-			}
-		})
-		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n"))
-		require.NoError(t, err)
+		rootMiscBSendOnNewConn(t, ln, "GET / HTTP/1.1\r\nHost: example.com\r\n")
 	}
 
-	client := fasthttp.HostClient{
-		Dial: func(_ string) (net.Conn, error) { return ln.Dial() },
-	}
+	client := fasthttp.HostClient{Dial: func(_ string) (net.Conn, error) { return ln.Dial() }}
 
 	type testCase struct {
 		expectedErr        error
@@ -400,335 +447,197 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 	mu.Unlock()
 }
 
-// go test -run Test_Listen_Prefork
 func Test_Listen_Prefork(t *testing.T) {
 	enableTestPreforkMaster(t)
 
-	app := New()
-
-	err := app.Listen(":0", ListenConfig{
-		DisableStartupMessage:   true,
-		EnablePrefork:           true,
-		PreforkRecoverThreshold: 1,
-	})
-	require.ErrorIs(t, err, prefork.ErrOverRecovery)
+	rootrestRequireOverRecovery(t, New(), &ListenConfig{})
 }
 
-// go test -run Test_Listen_TLSMinVersion
 func Test_Listen_TLSMinVersion(t *testing.T) {
 	enableTestPreforkMaster(t)
 
 	app := New()
 
-	// Invalid TLSMinVersion
-	require.Panics(t, func() {
-		_ = app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
-	})
-	require.Panics(t, func() {
-		_ = app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
-	})
-
-	// Prefork
-	require.Panics(t, func() {
-		_ = app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
-	})
-	require.Panics(t, func() {
-		_ = app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
-	})
+	// Invalid TLSMinVersion, without and with prefork
+	for _, cfg := range []ListenConfig{
+		{TLSMinVersion: tls.VersionTLS10},
+		{TLSMinVersion: tls.VersionTLS11},
+		{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS10},
+		{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS11},
+	} {
+		require.Panics(t, func() { _ = app.Listen(":0", cfg) }, "%+v", cfg) //nolint:errcheck // ignore error
+	}
 
 	// Valid TLSMinVersion
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-	require.NoError(t, app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS13}))
+	rootrestListenFor(t, app, 1000*time.Millisecond, ListenConfig{TLSMinVersion: tls.VersionTLS13})
 
 	// Valid TLSMinVersion with Prefork
-	err := app.Listen(":0", ListenConfig{
-		DisableStartupMessage:   true,
-		EnablePrefork:           true,
-		TLSMinVersion:           tls.VersionTLS13,
-		PreforkRecoverThreshold: 1,
-	})
-	require.ErrorIs(t, err, prefork.ErrOverRecovery)
+	rootrestRequireOverRecovery(t, app, &ListenConfig{TLSMinVersion: tls.VersionTLS13})
 }
 
-// go test -run Test_Listen_TLS
 func Test_Listen_TLS(t *testing.T) {
-	app := New()
+	// Sequential, as the two tests behind these cases were: each case runs a server for a second.
+	tests := []struct {
+		name           string
+		certClientFile string
+	}{
+		{name: "TLS"},
+		{name: "MutualTLS", certClientFile: "./.github/testdata/ca-chain.cert.pem"},
+	}
 
-	// invalid port
-	require.Error(t, app.Listen(":99999", ListenConfig{
-		CertFile:    "./.github/testdata/ssl.pem",
-		CertKeyFile: "./.github/testdata/ssl.key",
-	}))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			app := New()
+			cfg := ListenConfig{
+				CertFile:       "./.github/testdata/ssl.pem",
+				CertKeyFile:    "./.github/testdata/ssl.key",
+				CertClientFile: tc.certClientFile,
+			}
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
+			require.Error(t, app.Listen(":99999", cfg))
 
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		CertFile:    "./.github/testdata/ssl.pem",
-		CertKeyFile: "./.github/testdata/ssl.key",
-	}))
+			rootrestListenFor(t, app, 1000*time.Millisecond, cfg)
+		})
+	}
 }
 
-// go test -run Test_Listen_TLS_Prefork
 func Test_Listen_TLS_Prefork(t *testing.T) {
-	enableTestPreforkMaster(t)
+	// Not parallel: enableTestPreforkMaster sets a package-level flag that the other tests read.
+	tests := []struct {
+		name           string
+		invalidKeyFile string
+		certClientFile string
+	}{
+		{name: "TLS", invalidKeyFile: "./.github/testdata/template.tmpl"},
+		{name: "MutualTLS", invalidKeyFile: "./.github/testdata/template.html", certClientFile: "./.github/testdata/ca-chain.cert.pem"},
+	}
 
-	app := New()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			enableTestPreforkMaster(t)
 
-	// invalid key file content
-	require.Error(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		EnablePrefork:         true,
-		CertFile:              "./.github/testdata/ssl.pem",
-		CertKeyFile:           "./.github/testdata/template.tmpl",
-	}))
+			app := New()
 
-	tlsErr := app.Listen(":0", ListenConfig{
-		DisableStartupMessage:   true,
-		EnablePrefork:           true,
-		CertFile:                "./.github/testdata/ssl.pem",
-		CertKeyFile:             "./.github/testdata/ssl.key",
-		PreforkRecoverThreshold: 1,
-	})
-	require.ErrorIs(t, tlsErr, prefork.ErrOverRecovery)
+			// invalid key file content
+			require.Error(t, app.Listen(":0", ListenConfig{
+				DisableStartupMessage: true,
+				EnablePrefork:         true,
+				CertFile:              "./.github/testdata/ssl.pem",
+				CertKeyFile:           tc.invalidKeyFile,
+				CertClientFile:        tc.certClientFile,
+			}))
+
+			rootrestRequireOverRecovery(t, app, &ListenConfig{
+				CertFile:       "./.github/testdata/ssl.pem",
+				CertKeyFile:    "./.github/testdata/ssl.key",
+				CertClientFile: tc.certClientFile,
+			})
+		})
+	}
 }
 
-// go test -run Test_Listen_MutualTLS
-func Test_Listen_MutualTLS(t *testing.T) {
-	app := New()
-
-	// invalid port
-	require.Error(t, app.Listen(":99999", ListenConfig{
-		CertFile:       "./.github/testdata/ssl.pem",
-		CertKeyFile:    "./.github/testdata/ssl.key",
-		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
-	}))
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		CertFile:       "./.github/testdata/ssl.pem",
-		CertKeyFile:    "./.github/testdata/ssl.key",
-		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
-	}))
-}
-
-// go test -run Test_Listen_MutualTLS_Prefork
-func Test_Listen_MutualTLS_Prefork(t *testing.T) {
-	enableTestPreforkMaster(t)
-
-	app := New()
-
-	// invalid key file content
-	require.Error(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		EnablePrefork:         true,
-		CertFile:              "./.github/testdata/ssl.pem",
-		CertKeyFile:           "./.github/testdata/template.html",
-		CertClientFile:        "./.github/testdata/ca-chain.cert.pem",
-	}))
-
-	mtlsErr := app.Listen(":0", ListenConfig{
-		DisableStartupMessage:   true,
-		EnablePrefork:           true,
-		CertFile:                "./.github/testdata/ssl.pem",
-		CertKeyFile:             "./.github/testdata/ssl.key",
-		CertClientFile:          "./.github/testdata/ca-chain.cert.pem",
-		PreforkRecoverThreshold: 1,
-	})
-	require.ErrorIs(t, mtlsErr, prefork.ErrOverRecovery)
-}
-
-// go test -run Test_Listener
 func Test_Listener(t *testing.T) {
 	app := New()
 
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
+	rootMiscBShutdownAfter(t, app, 500*time.Millisecond)
 
 	ln := fasthttputil.NewInmemoryListener()
 	require.NoError(t, app.Listener(ln))
 }
 
 func Test_App_Listener_TLS_Listener(t *testing.T) {
-	// Create tls certificate
-	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	if err != nil {
-		require.NoError(t, err)
-	}
-	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+	config := &tls.Config{Certificates: []tls.Certificate{rootMiscBTestCert(t)}}
 
 	ln, err := tls.Listen(NetworkTCP4, ":0", config)
 	require.NoError(t, err)
 
 	app := New()
 
-	go func() {
-		time.Sleep(time.Millisecond * 500)
-		assert.NoError(t, app.Shutdown())
-	}()
+	rootMiscBShutdownAfter(t, app, 500*time.Millisecond)
 
 	require.NoError(t, app.Listener(ln))
 }
 
-// go test -run Test_Listen_TLSConfigFunc
 func Test_Listen_TLSConfigFunc(t *testing.T) {
 	var callTLSConfig bool
-	app := New()
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
+	rootrestListenFor(t, New(), 1000*time.Millisecond, ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfigFunc: func(_ *tls.Config) {
-			callTLSConfig = true
-		},
-		CertFile:    "./.github/testdata/ssl.pem",
-		CertKeyFile: "./.github/testdata/ssl.key",
-	}))
+		TLSConfigFunc:         func(_ *tls.Config) { callTLSConfig = true },
+		CertFile:              "./.github/testdata/ssl.pem",
+		CertKeyFile:           "./.github/testdata/ssl.key",
+	})
 
 	require.True(t, callTLSConfig)
 }
 
-// go test -run Test_Listen_TLSConfig
 func Test_Listen_TLSConfig(t *testing.T) {
 	t.Parallel()
+	cert := rootMiscBTestCert(t)
 
-	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	require.NoError(t, err)
-
-	run := func(name string, cfg ListenConfig) {
+	// run serves cfg for a second in a parallel subtest, then runs checks on what the Listen call left behind.
+	run := func(name string, cfg ListenConfig, checks ...func(t *testing.T)) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
-			app := New()
-
-			go func() {
-				time.Sleep(1000 * time.Millisecond)
-				assert.NoError(t, app.Shutdown())
-			}()
-
-			require.NoError(t, app.Listen(":0", cfg))
+			rootrestListenFor(t, New(), 1000*time.Millisecond, cfg)
+			for _, check := range checks {
+				check(t)
+			}
 		})
 	}
 
 	run("TLSConfig with certificates", ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-		},
+		TLSConfig:             &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
 	})
 
 	run("TLSConfig with GetCertificate", ListenConfig{
 		DisableStartupMessage: true,
 		TLSConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-				return &cert, nil
-			},
+			MinVersion:     tls.VersionTLS12,
+			GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return &cert, nil },
 		},
 	})
 
 	run("TLSConfig ignores other TLS fields", ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-		},
-		CertFile:       "./.github/testdata/does-not-exist.pem",
-		CertKeyFile:    "./.github/testdata/does-not-exist.key",
-		CertClientFile: "./.github/testdata/does-not-exist-ca.pem",
-		AutoCertManager: &autocert.Manager{
-			Prompt: autocert.AcceptTOS,
-		},
+		TLSConfig:             &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
+		CertFile:              "./.github/testdata/does-not-exist.pem",
+		CertKeyFile:           "./.github/testdata/does-not-exist.key",
+		CertClientFile:        "./.github/testdata/does-not-exist-ca.pem",
+		AutoCertManager:       &autocert.Manager{Prompt: autocert.AcceptTOS},
 	})
-}
 
-// go test -run Test_Listen_TLSCertFiles
-func Test_Listen_TLSCertFiles(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
+	run("certificate files with a client CA", ListenConfig{
 		DisableStartupMessage: true,
 		CertFile:              "./.github/testdata/ssl.pem",
 		CertKeyFile:           "./.github/testdata/ssl.key",
 		CertClientFile:        "./.github/testdata/ssl.pem",
-	}))
-}
-
-// go test -run Test_Listen_TLSConfig_WithTLSConfigFunc
-func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
-	t.Parallel()
-
-	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	require.NoError(t, err)
+	})
 
 	var calledTLSConfigFunc bool
-	app := New()
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
+	run("TLSConfig with TLSConfigFunc", ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-		},
-		TLSConfigFunc: func(_ *tls.Config) {
-			calledTLSConfigFunc = true
-		},
-	}))
-
-	require.False(t, calledTLSConfigFunc)
+		TLSConfig:             &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
+		TLSConfigFunc:         func(_ *tls.Config) { calledTLSConfigFunc = true },
+	}, func(t *testing.T) {
+		t.Helper()
+		require.False(t, calledTLSConfigFunc)
+	})
 }
 
-// go test -run Test_Listen_TLSConfig_WarnsSupersededFields
 func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
 	// Not parallel: it captures the package-level log output, and Go keeps no
-	// parallel test in flight while a serial one runs. Test_Listen_TLSConfig_WithTLSConfigFunc
+	// parallel test in flight while a serial one runs. Test_Listen_TLSConfig/TLSConfig_with_TLSConfigFunc
 	// is parallel and warns, so it would otherwise write into this buffer.
-	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	require.NoError(t, err)
+	cert := rootMiscBTestCert(t)
 
 	var buf bytes.Buffer
 	withCapturedLogOutput(t, &buf)
 
-	app := New()
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
+	rootrestListenFor(t, New(), 500*time.Millisecond, ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-		},
+		TLSConfig:             &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
 		// Superseded by TLSConfig. CertClientFile is the one that matters: a
 		// listener that silently drops it serves every client without asking
 		// for a certificate, which reads as working mTLS until someone checks.
@@ -736,58 +645,43 @@ func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
 		TLSConfigFunc:  func(*tls.Config) {},
 		// The supplied TLSConfig permits TLS 1.2, so this request is dropped.
 		TLSMinVersion: tls.VersionTLS13,
-	}))
+	})
 
-	out := buf.String()
-	require.Contains(t, out, "CertClientFile")
-	// Not "no client certificate will be required": the supplied TLSConfig may
-	// ask for one itself, and then one is. What the warning has to say is which
-	// of the two decides, and that ClientAuth is what decides it.
-	require.Contains(t, out, "required only if TLSConfig sets ClientAuth to a Require mode")
-	require.Contains(t, out, "TLSConfigFunc")
-	require.Contains(t, out, "TLSMinVersion")
+	rootMiscBRequireContains(t, buf.String(),
+		"CertClientFile",
+		// Not "no client certificate will be required": the supplied TLSConfig may
+		// ask for one itself, and then one is. What the warning has to say is which
+		// of the two decides, and that ClientAuth is what decides it.
+		"required only if TLSConfig sets ClientAuth to a Require mode",
+		"TLSConfigFunc",
+		"TLSMinVersion",
+	)
 }
 
-// go test -run Test_Listen_TLSConfig_NoWarningWhenAlone
 func Test_Listen_TLSConfig_NoWarningWhenAlone(t *testing.T) {
 	// Not parallel: captures the package-level log output.
-	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	require.NoError(t, err)
+	cert := rootMiscBTestCert(t)
 
 	var buf bytes.Buffer
 	withCapturedLogOutput(t, &buf)
 
-	app := New()
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
+	rootrestListenFor(t, New(), 500*time.Millisecond, ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-		},
-	}))
+		TLSConfig:             &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
+	})
 
 	require.NotContains(t, buf.String(), "supersedes")
 }
 
-// go test -run Test_Listener_WarnsIgnoredTLSFields
 func Test_Listener_WarnsIgnoredTLSFields(t *testing.T) {
 	// Not parallel: captures the package-level log output.
 	var buf bytes.Buffer
 	withCapturedLogOutput(t, &buf)
 
-	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	ln := newLocalListener(t)
 
 	app := New()
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
+	rootMiscBShutdownAfter(t, app, 500*time.Millisecond)
 
 	// Listener serves ln untouched, so mTLS here is silently absent unless the
 	// caller wrapped the listener themselves.
@@ -803,23 +697,19 @@ func Test_Listener_WarnsIgnoredTLSFields(t *testing.T) {
 	require.Contains(t, out, "required only if the supplied listener already asks for one")
 }
 
-// go test -run Test_Listen_AutoCert_Conflicts
 func Test_Listen_AutoCert_Conflicts(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
-	err := app.Listen(":0", ListenConfig{
+	require.ErrorIs(t, app.Listen(":0", ListenConfig{
 		AutoCertManager: &autocert.Manager{},
 		CertFile:        "./.github/testdata/ssl.pem",
 		CertKeyFile:     "./.github/testdata/ssl.key",
-	})
-	require.ErrorIs(t, err, ErrAutoCertWithCertFile)
+	}), ErrAutoCertWithCertFile)
 }
 
 func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
 	t.Parallel()
-
 	invalidClientCAPath := filepath.Join(t.TempDir(), "client-ca.pem")
 	require.NoError(t, os.WriteFile(invalidClientCAPath, []byte("not a pem"), 0o600))
 
@@ -843,7 +733,6 @@ func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			done := make(chan struct{})
 			defer close(done)
@@ -857,10 +746,8 @@ func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
 			}()
 
 			err := app.Listen(":0", ListenConfig{
-				CertClientFile: tc.clientCAPath,
-				AutoCertManager: &autocert.Manager{
-					Prompt: autocert.AcceptTOS,
-				},
+				CertClientFile:  tc.clientCAPath,
+				AutoCertManager: &autocert.Manager{Prompt: autocert.AcceptTOS},
 			})
 			require.Error(t, err)
 			require.ErrorContains(t, err, tc.expectedErrMsg)
@@ -870,56 +757,40 @@ func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
 
 func Test_Listen_ClientCertErrorDoesNotSetTLSHandler(t *testing.T) {
 	t.Parallel()
-
 	invalidClientCAPath := filepath.Join(t.TempDir(), "client-ca.pem")
 	require.NoError(t, os.WriteFile(invalidClientCAPath, []byte("not a pem"), 0o600))
 
 	app := New()
 
-	err := app.Listen(":0", ListenConfig{
+	require.ErrorContains(t, app.Listen(":0", ListenConfig{
 		CertFile:       "./.github/testdata/ssl.pem",
 		CertKeyFile:    "./.github/testdata/ssl.key",
 		CertClientFile: invalidClientCAPath,
-	})
-	require.ErrorContains(t, err, filepath.Base(invalidClientCAPath))
+	}), filepath.Base(invalidClientCAPath))
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(t, app)
 
 	require.Nil(t, c.ClientHelloInfo())
 }
 
-// go test -run Test_Listen_ListenerAddrFunc
 func Test_Listen_ListenerAddrFunc(t *testing.T) {
 	var network string
-	app := New()
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
+	rootrestListenFor(t, New(), 1000*time.Millisecond, ListenConfig{
 		DisableStartupMessage: true,
-		ListenerAddrFunc: func(addr net.Addr) {
-			network = addr.Network()
-		},
-		CertFile:    "./.github/testdata/ssl.pem",
-		CertKeyFile: "./.github/testdata/ssl.key",
-	}))
+		ListenerAddrFunc:      func(addr net.Addr) { network = addr.Network() },
+		CertFile:              "./.github/testdata/ssl.pem",
+		CertKeyFile:           "./.github/testdata/ssl.key",
+	})
 
 	require.Equal(t, "tcp", network)
 }
 
-// go test -run Test_Listen_BeforeServeFunc
 func Test_Listen_BeforeServeFunc(t *testing.T) {
 	var handlers uint32
 	app := New()
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
+	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
 
 	wantErr := errors.New("test")
 	require.ErrorIs(t, app.Listen(":0", ListenConfig{
@@ -937,7 +808,6 @@ func Test_Listen_BeforeServeFunc(t *testing.T) {
 // Listen serves with the close hook installed.
 func Test_Listen_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Post("/", func(c Ctx) error { return c.SendString("ok") })
 
@@ -955,12 +825,7 @@ func Test_Listen_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 		require.NoError(t, <-errCh)
 	})
 
-	var addr string
-	select {
-	case addr = <-addrCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the server did not start")
-	}
+	addr := apptest.Recv(t, addrCh, 5*time.Second, "the server did not start")
 
 	responses, _ := rawExchange(t, tcpDialer(addr),
 		"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 1)
@@ -979,51 +844,27 @@ func skipIfNoIPv6(t *testing.T) {
 	require.NoError(t, probe.Close())
 }
 
-// go test -run Test_Listen_ListenerNetwork
 func Test_Listen_ListenerNetwork(t *testing.T) {
 	skipIfNoIPv6(t)
 
 	var network string
 	app := New()
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
+	for _, tc := range []struct{ network, want string }{{NetworkTCP6, "[::]:"}, {NetworkTCP4, "0.0.0.0:"}} {
+		rootrestListenFor(t, app, 1000*time.Millisecond, ListenConfig{
+			DisableStartupMessage: true,
+			ListenerNetwork:       tc.network,
+			ListenerAddrFunc:      func(addr net.Addr) { network = addr.String() },
+		})
 
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		ListenerNetwork:       NetworkTCP6,
-		ListenerAddrFunc: func(addr net.Addr) {
-			network = addr.String()
-		},
-	}))
-
-	require.Contains(t, network, "[::]:")
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		ListenerNetwork:       NetworkTCP4,
-		ListenerAddrFunc: func(addr net.Addr) {
-			network = addr.String()
-		},
-	}))
-
-	require.Contains(t, network, "0.0.0.0:")
+		require.Contains(t, network, tc.want)
+	}
 }
 
-// go test -run Test_Listen_ListenerNetwork_Unix
 func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
 	app := New()
 
-	app.Get("/test", func(c Ctx) error {
-		return c.SendString("all good")
-	})
+	app.Get("/test", func(c Ctx) error { return c.SendString("all good") })
 
 	var (
 		f       os.FileInfo
@@ -1033,23 +874,17 @@ func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
 		resp   = &fasthttp.Response{}
 	)
 
-	// Create temporary directory for storing socket in
 	tmp, err := os.MkdirTemp(os.TempDir(), "fiber-test")
 	require.NoError(t, err)
 	sock := filepath.Join(tmp, "fiber-test.sock")
-
-	// Make sure temporary directory is cleaned up
 	defer func() { assert.NoError(t, os.RemoveAll(tmp)) }()
 
-	// Send request through socket
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
 
 		client := &fasthttp.HostClient{
 			Addr: sock,
-			Dial: func(addr string) (net.Conn, error) {
-				return net.Dial("unix", addr)
-			},
+			Dial: func(addr string) (net.Conn, error) { return net.Dial("unix", addr) },
 		}
 
 		req := &fasthttp.Request{}
@@ -1069,232 +904,145 @@ func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
 		},
 	}))
 
-	// Verify that listening and setting permissions works correctly
 	require.Equal(t, sock, network)
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o666), f.Mode().Perm())
 
-	// Verify that request was successful
 	require.NoError(t, reqErr)
 	require.Equal(t, 200, resp.StatusCode())
 	require.Equal(t, "all good", string(resp.Body()))
 }
 
-// go test -run Test_Listen_Master_Process_Show_Startup_Message
+// Test_Listen_Master_Process_Show_Startup_Message renders the startup message of a master process for a host, an
+// app name and child PIDs, and checks the lines that depend on them.
 func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
-	cfg := ListenConfig{
-		EnablePrefork: true,
-	}
-
-	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	addr, ok := ln.Addr().(*net.TCPAddr)
-	require.True(t, ok)
-	port := addr.Port
-	require.NoError(t, ln.Close())
-
-	childTemplate := []int{11111, 22222, 33333, 44444, 55555, 60000}
-	childPIDs := make([]int, 0, len(childTemplate)*10)
-	for range 10 {
-		childPIDs = append(childPIDs, childTemplate...)
-	}
-
-	app := New()
-	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), true, &cfg, childPIDs)
-
-	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, &cfg)
-	})
+	// Not parallel: captureOutput redirects the process-wide stdout.
+	childPIDs := slices.Repeat([]int{11111, 22222, 33333, 44444, 55555, 60000}, 10)
 	colors := Colors{}
-	require.Contains(t, startupMessage, fmt.Sprintf("https://127.0.0.1:%d", port))
-	require.Contains(t, startupMessage, fmt.Sprintf("(bound on host 0.0.0.0 and port %d)", port))
-	require.Contains(t, startupMessage, "Child PIDs")
-	require.Contains(t, startupMessage, "11111, 22222, 33333, 44444, 55555, 60000")
-	require.Contains(t, startupMessage, fmt.Sprintf("Prefork: \t\t\t%sEnabled%s", colors.Blue, colors.Reset))
-}
+	for _, tc := range []struct {
+		contains  func(port int) []string // lines besides the app name, given the port of the message
+		name      string
+		appName   string
+		host      string
+		childPIDs []int
+		prefork   bool
+		isTLS     bool
+	}{
+		{name: "prefork with child PIDs", prefork: true, isTLS: true, childPIDs: childPIDs, contains: func(port int) []string {
+			return []string{
+				fmt.Sprintf("https://127.0.0.1:%d", port),
+				fmt.Sprintf("(bound on host 0.0.0.0 and port %d)", port),
+				"Child PIDs",
+				"11111, 22222, 33333, 44444, 55555, 60000",
+				fmt.Sprintf("Prefork: \t\t\t%sEnabled%s", colors.Blue, colors.Reset),
+			}
+		}},
+		{name: "app name with child PIDs", appName: "Test App v3.0.0", prefork: true, isTLS: true, childPIDs: childPIDs},
+		{name: "non-ASCII app name", appName: "Serveur de vérification des données", prefork: true},
+		{
+			name: "disabled prefork and custom endpoint", appName: "Fiber Example Application", host: "server.com",
+			isTLS: true,
+			contains: func(port int) []string {
+				return []string{
+					fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset),
+					fmt.Sprintf("%s%s%s", colors.Blue, "Fiber Example Application", colors.Reset),
+					fmt.Sprintf("%s%s%s", colors.Blue, fmt.Sprintf("https://server.com:%d", port), colors.Reset),
+					fmt.Sprintf("Prefork: \t\t\t%sDisabled%s", colors.Red, colors.Reset),
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := ListenConfig{EnablePrefork: tc.prefork}
+			app := New(Config{AppName: tc.appName})
+			port := rootMiscBFreePort(t)
+			listenData := app.prepareListenData(fmt.Sprintf("%s:%d", tc.host, port), tc.isTLS, &cfg, tc.childPIDs)
 
-// go test -run Test_Listen_Master_Process_Show_Startup_MessageWithAppName
-func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
-	cfg := ListenConfig{
-		EnablePrefork: true,
+			startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
+			require.Equal(t, tc.appName, app.Config().AppName)
+			require.Contains(t, startupMessage, tc.appName)
+			if tc.contains != nil {
+				rootMiscBRequireContains(t, startupMessage, tc.contains(port)...)
+			}
+		})
 	}
+}
 
-	app := New(Config{AppName: "Test App v3.0.0"})
-	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	addr, ok := ln.Addr().(*net.TCPAddr)
-	require.True(t, ok)
-	port := addr.Port
-	require.NoError(t, ln.Close())
+// Test_Listen_StartupMessage_Hooks prints the startup message with an OnPreStartupMessage hook that customizes or
+// prevents it, or with the message disabled, and checks what the OnPostStartupMessage hook is told.
+func Test_Listen_StartupMessage_Hooks(t *testing.T) {
+	// Not parallel: captureOutput redirects the process-wide stdout.
+	for _, tc := range []struct {
+		pre       func(data *PreStartupMessageData) error // the OnPreStartupMessage hook, if any
+		name      string
+		addr      string
+		contains  []string
+		absent    []string
+		cfg       ListenConfig
+		silent    bool // nothing is printed
+		disabled  bool // PostStartupMessageData.Disabled
+		prevented bool // PostStartupMessageData.Prevented
+	}{
+		{
+			name: "Customization", addr: ":8080",
+			pre: func(data *PreStartupMessageData) error {
+				data.BannerHeader = "FOOBER v98\n-------"
 
-	childTemplate := []int{11111, 22222, 33333, 44444, 55555, 60000}
-	childPIDs := make([]int, 0, len(childTemplate)*10)
-	for range 10 {
-		childPIDs = append(childPIDs, childTemplate...)
+				data.ResetEntries()
+				data.AddInfo("git_hash", "Git hash", "abc123", 3)
+				data.AddInfo("version", "Version", "v98", 2)
+
+				return nil
+			},
+			contains: []string{"FOOBER v98", "Git hash: \tabc123", "Version: \tv98"},
+			absent:   []string{"Server started on:", "Prefork:"},
+		},
+		{name: "DisabledPostHook", addr: ":7070", cfg: ListenConfig{DisableStartupMessage: true}, silent: true, disabled: true},
+		{
+			name: "PreventedByHook", addr: ":9090", silent: true, prevented: true,
+			pre: func(data *PreStartupMessageData) error {
+				data.PreventDefault = true
+
+				return nil
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := tc.cfg
+			app := New()
+			listenData := app.prepareListenData(tc.addr, false, &cfg, nil)
+
+			if tc.pre != nil {
+				app.Hooks().OnPreStartupMessage(tc.pre)
+			}
+			var post PostStartupMessageData
+			app.Hooks().OnPostStartupMessage(func(data *PostStartupMessageData) error {
+				post = *data
+
+				return nil
+			})
+
+			startupMessage := captureOutput(func() { app.startupMessage(listenData, &cfg) })
+
+			if tc.silent {
+				require.Empty(t, startupMessage)
+			}
+			rootMiscBRequireContains(t, startupMessage, tc.contains...)
+			rootMiscBRequireNotContains(t, startupMessage, tc.absent...)
+			require.Equal(t, tc.disabled, post.Disabled)
+			require.False(t, post.IsChild)
+			require.Equal(t, tc.prevented, post.Prevented)
+		})
 	}
-
-	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), true, &cfg, childPIDs)
-
-	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, &cfg)
-	})
-	require.Equal(t, "Test App v3.0.0", app.Config().AppName)
-	require.Contains(t, startupMessage, app.Config().AppName)
 }
 
-// go test -run Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii
-func Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.T) {
-	cfg := ListenConfig{
-		EnablePrefork: true,
-	}
-
-	appName := "Serveur de vérification des données"
-	app := New(Config{AppName: appName})
-
-	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	addr, ok := ln.Addr().(*net.TCPAddr)
-	require.True(t, ok)
-	port := addr.Port
-	require.NoError(t, ln.Close())
-
-	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), false, &cfg, nil)
-
-	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, &cfg)
-	})
-	require.Contains(t, startupMessage, "Serveur de vérification des données")
-}
-
-// go test -run Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustomEndpoint
-func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustomEndpoint(t *testing.T) {
-	cfg := ListenConfig{
-		EnablePrefork: false,
-	}
-
-	appName := "Fiber Example Application"
-	app := New(Config{AppName: appName})
-	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	addr, ok := ln.Addr().(*net.TCPAddr)
-	require.True(t, ok)
-	port := addr.Port
-	require.NoError(t, ln.Close())
-
-	listenData := app.prepareListenData(fmt.Sprintf("server.com:%d", port), true, &cfg, nil)
-
-	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, &cfg)
-	})
-	colors := Colors{}
-	require.Contains(t, startupMessage, fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset))
-	require.Contains(t, startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, appName, colors.Reset))
-	expectedURL := fmt.Sprintf("https://server.com:%d", port)
-	require.Contains(t, startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, expectedURL, colors.Reset))
-	require.Contains(t, startupMessage, fmt.Sprintf("Prefork: \t\t\t%sDisabled%s", colors.Red, colors.Reset))
-}
-
-func Test_StartupMessageCustomization(t *testing.T) {
-	cfg := ListenConfig{}
-	app := New()
-	listenData := app.prepareListenData(":8080", false, &cfg, nil)
-
-	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
-		data.BannerHeader = "FOOBER v98\n-------"
-
-		data.ResetEntries()
-		data.AddInfo("git_hash", "Git hash", "abc123", 3)
-		data.AddInfo("version", "Version", "v98", 2)
-
-		return nil
-	})
-
-	var post PostStartupMessageData
-	app.Hooks().OnPostStartupMessage(func(data *PostStartupMessageData) error {
-		post = *data
-
-		return nil
-	})
-
-	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, &cfg)
-	})
-
-	require.Contains(t, startupMessage, "FOOBER v98")
-	require.Contains(t, startupMessage, "Git hash: \tabc123")
-	require.Contains(t, startupMessage, "Version: \tv98")
-	require.NotContains(t, startupMessage, "Server started on:")
-	require.NotContains(t, startupMessage, "Prefork:")
-
-	require.False(t, post.Disabled)
-	require.False(t, post.IsChild)
-	require.False(t, post.Prevented)
-}
-
-func Test_StartupMessageDisabledPostHook(t *testing.T) {
-	cfg := ListenConfig{DisableStartupMessage: true}
-	app := New()
-	listenData := app.prepareListenData(":7070", false, &cfg, nil)
-
-	var post PostStartupMessageData
-	app.Hooks().OnPostStartupMessage(func(data *PostStartupMessageData) error {
-		post = *data
-
-		return nil
-	})
-
-	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, &cfg)
-	})
-
-	require.Empty(t, startupMessage)
-	require.True(t, post.Disabled)
-	require.False(t, post.IsChild)
-	require.False(t, post.Prevented)
-}
-
-func Test_StartupMessagePreventedByHook(t *testing.T) {
-	cfg := ListenConfig{}
-	app := New()
-	listenData := app.prepareListenData(":9090", false, &cfg, nil)
-
-	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
-		data.PreventDefault = true
-
-		return nil
-	})
-
-	var post PostStartupMessageData
-	app.Hooks().OnPostStartupMessage(func(data *PostStartupMessageData) error {
-		post = *data
-
-		return nil
-	})
-
-	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, &cfg)
-	})
-
-	require.Empty(t, startupMessage)
-	require.False(t, post.Disabled)
-	require.False(t, post.IsChild)
-	require.True(t, post.Prevented)
-}
-
-// go test -run Test_Listen_Print_Route
 func Test_Listen_Print_Route(t *testing.T) {
 	app := New()
 	app.Get("/", emptyHandler).Name("routeName")
-	printRoutesMessage := captureOutput(func() {
-		app.printRoutesMessage()
-	})
-	require.Contains(t, printRoutesMessage, MethodGet)
-	require.Contains(t, printRoutesMessage, "/")
-	require.Contains(t, printRoutesMessage, "emptyHandler")
-	require.Contains(t, printRoutesMessage, "routeName")
+	printRoutesMessage := captureOutput(func() { app.printRoutesMessage() })
+	rootMiscBRequireContains(t, printRoutesMessage, MethodGet, "/", "emptyHandler", "routeName")
 }
 
-// go test -run Test_Listen_Print_Route_With_Group
 func Test_Listen_Print_Route_With_Group(t *testing.T) {
 	app := New()
 	app.Get("/", emptyHandler)
@@ -1304,18 +1052,14 @@ func Test_Listen_Print_Route_With_Group(t *testing.T) {
 	v1.Post("/test/fiber", emptyHandler)
 	v1.Put("/test/fiber/*", emptyHandler)
 
-	printRoutesMessage := captureOutput(func() {
-		app.printRoutesMessage()
-	})
+	printRoutesMessage := captureOutput(func() { app.printRoutesMessage() })
 
-	require.Contains(t, printRoutesMessage, MethodGet)
-	require.Contains(t, printRoutesMessage, "/")
-	require.Contains(t, printRoutesMessage, "emptyHandler")
-	require.Contains(t, printRoutesMessage, "/v1/test")
-	require.Contains(t, printRoutesMessage, "POST")
-	require.Contains(t, printRoutesMessage, "/v1/test/fiber")
-	require.Contains(t, printRoutesMessage, "PUT")
-	require.Contains(t, printRoutesMessage, "/v1/test/fiber/*")
+	rootMiscBRequireContains(t, printRoutesMessage,
+		MethodGet, "/", "emptyHandler",
+		"/v1/test",
+		"POST", "/v1/test/fiber",
+		"PUT", "/v1/test/fiber/*",
+	)
 }
 
 func captureOutput(f func()) string {
@@ -1354,8 +1098,6 @@ func emptyHandler(_ Ctx) error {
 	return nil
 }
 
-// go test -run Test_WarnIgnoredTLSFieldsOnListener_Branches
-//
 // Listener serves the listener it is handed, so every TLS field in the config
 // is dropped. The end-to-end tests above cover CertClientFile, which returns
 // before the rest; this drives the remaining fields, the singular/plural
@@ -1363,19 +1105,13 @@ func emptyHandler(_ Ctx) error {
 // which is worth saying, and a TLS one already is.
 func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
 	// Not parallel: captures the package-level log output.
-	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	require.NoError(t, err)
+	cert := rootMiscBTestCert(t)
 
-	plain, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	plain := newLocalListener(t)
 	t.Cleanup(func() { _ = plain.Close() }) //nolint:errcheck // closing a test listener
 
-	secure, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	tlsLn := tls.NewListener(secure, &tls.Config{
-		MinVersion:   tls.VersionTLS12,
-		Certificates: []tls.Certificate{cert},
-	})
+	secure := newLocalListener(t)
+	tlsLn := tls.NewListener(secure, &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}})
 	t.Cleanup(func() { _ = tlsLn.Close() }) //nolint:errcheck // closing a test listener
 
 	tests := []struct {
@@ -1385,12 +1121,7 @@ func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
 		name     string
 		cfg      ListenConfig
 	}{
-		{
-			name:     "nothing to report",
-			cfg:      ListenConfig{},
-			listener: plain,
-			absent:   []string{"ignored"},
-		},
+		{name: "nothing to report", cfg: ListenConfig{}, listener: plain, absent: []string{"ignored"}},
 		{
 			name:     "one field reads singular",
 			cfg:      ListenConfig{TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
@@ -1445,19 +1176,12 @@ func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
 			cfg := tc.cfg
 			warnIgnoredTLSFieldsOnListener(&cfg, tc.listener)
 
-			out := buf.String()
-			for _, want := range tc.contains {
-				require.Contains(t, out, want)
-			}
-			for _, unwanted := range tc.absent {
-				require.NotContains(t, out, unwanted)
-			}
+			rootMiscBRequireContains(t, buf.String(), tc.contains...)
+			rootMiscBRequireNotContains(t, buf.String(), tc.absent...)
 		})
 	}
 }
 
-// go test -run Test_WarnSupersededTLSFields_Branches
-//
 // TLSConfig replaces the other TLS settings rather than seeding them, so each
 // one it displaces is named. The end-to-end test above covers the pair a real
 // deployment hits; this drives the two that are otherwise unreached.
@@ -1469,11 +1193,7 @@ func Test_WarnSupersededTLSFields_Branches(t *testing.T) {
 		absent   []string
 		cfg      ListenConfig
 	}{
-		{
-			name:   "nothing to report",
-			cfg:    ListenConfig{},
-			absent: []string{"supersedes"},
-		},
+		{name: "nothing to report", cfg: ListenConfig{}, absent: []string{"supersedes"}},
 		{
 			name:     "certificate files",
 			cfg:      ListenConfig{CertFile: "./.github/testdata/ssl.pem"},
@@ -1515,13 +1235,8 @@ func Test_WarnSupersededTLSFields_Branches(t *testing.T) {
 			cfg := tc.cfg
 			warnSupersededTLSFields(&cfg)
 
-			out := buf.String()
-			for _, want := range tc.contains {
-				require.Contains(t, out, want)
-			}
-			for _, unwanted := range tc.absent {
-				require.NotContains(t, out, unwanted)
-			}
+			rootMiscBRequireContains(t, buf.String(), tc.contains...)
+			rootMiscBRequireNotContains(t, buf.String(), tc.absent...)
 		})
 	}
 }
@@ -1553,8 +1268,7 @@ func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
 		var buf bytes.Buffer
 		withCapturedLogOutput(t, &buf)
 
-		ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-		require.NoError(t, err)
+		ln := newLocalListener(t)
 		defer func() { require.NoError(t, ln.Close()) }()
 
 		cfg := listenConfigDefault(ListenConfig{TLSMinVersion: tls.VersionTLS11})
@@ -1564,7 +1278,6 @@ func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
 
 	t.Run("still rejected where it is read", func(t *testing.T) {
 		t.Parallel()
-
 		cfg := listenConfigDefault(ListenConfig{TLSMinVersion: tls.VersionTLS11})
 		require.PanicsWithValue(t,
 			"unsupported TLS version, please use tls.VersionTLS12 or tls.VersionTLS13",
@@ -1573,7 +1286,6 @@ func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
 
 	t.Run("the default is accepted", func(t *testing.T) {
 		t.Parallel()
-
 		cfg := listenConfigDefault()
 		require.Equal(t, uint16(tls.VersionTLS12), cfg.TLSMinVersion)
 		require.NotPanics(t, func() { validateTLSMinVersion(&cfg) })
@@ -1582,56 +1294,22 @@ func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
 
 func Test_Listen_GracefulShutdown_HooksOnce(t *testing.T) {
 	t.Parallel()
+	f := newGracefulFixture(t)
+	errs := f.start(listenerEntry.run)
+	rootMiscBWaitDialable(t, f.ln)
 
-	app := New()
-	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
-
-	var preShutdown, postShutdown atomic.Int32
-	app.Hooks().OnPreShutdown(func() error {
-		preShutdown.Add(1)
-		return nil
-	})
-	app.Hooks().OnPostShutdown(func(_ error) error {
-		postShutdown.Add(1)
-		return nil
-	})
-
-	gctx := t.Context()
-
-	ln := fasthttputil.NewInmemoryListener()
-	errs := make(chan error, 1)
-	go func() {
-		errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true, GracefulContext: gctx}) //nolint:contextcheck // the context is the shutdown trigger, not a request context
-	}()
-
-	require.Eventually(t, func() bool {
-		conn, err := ln.Dial()
-		if err == nil {
-			_ = conn.Close() //nolint:errcheck // not needed
-			return true
-		}
-		return false
-	}, time.Second, 20*time.Millisecond, "server failed to become ready")
-
-	require.NoError(t, app.Shutdown())
-
-	select {
-	case err := <-errs:
-		require.NoError(t, err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("Listener did not return after Shutdown")
-	}
+	require.NoError(t, f.app.Shutdown())
+	require.NoError(t, awaitServe(t, errs))
 
 	// Leave the graceful-shutdown goroutine time to misfire before asserting.
 	time.Sleep(300 * time.Millisecond)
-	require.Equal(t, int32(1), preShutdown.Load(), "OnPreShutdown must fire exactly once")
-	require.Equal(t, int32(1), postShutdown.Load(), "OnPostShutdown must fire exactly once")
+	require.Equal(t, int32(1), f.probe.pre.Load(), "OnPreShutdown must fire exactly once")
+	require.Equal(t, int32(1), f.probe.post.Load(), "OnPostShutdown must fire exactly once")
 }
 
 // Issue #3370: Listen must not hand control back while requests are draining.
 func Test_Listen_GracefulShutdown_DrainsBeforeReturn(t *testing.T) {
 	t.Parallel()
-
 	var handlerDone atomic.Bool
 	inHandler := make(chan struct{}, 1)
 
@@ -1656,14 +1334,7 @@ func Test_Listen_GracefulShutdown_DrainsBeforeReturn(t *testing.T) {
 		})
 	}()
 
-	require.Eventually(t, func() bool {
-		conn, err := ln.Dial()
-		if err == nil {
-			_ = conn.Close() //nolint:errcheck // not needed
-			return true
-		}
-		return false
-	}, time.Second, 20*time.Millisecond, "server failed to become ready")
+	rootMiscBWaitDialable(t, ln)
 
 	client := fasthttp.HostClient{Dial: func(_ string) (net.Conn, error) { return ln.Dial() }}
 	responses := make(chan string, 1)
@@ -1679,87 +1350,54 @@ func Test_Listen_GracefulShutdown_DrainsBeforeReturn(t *testing.T) {
 		responses <- fmt.Sprintf("%d %s", resp.StatusCode(), resp.Body())
 	}()
 
-	select {
-	case <-inHandler:
-	case <-time.After(2 * time.Second):
-		t.Fatal("request never reached the handler")
-	}
+	apptest.Recv(t, inHandler, 2*time.Second, "request never reached the handler")
 	gcancel()
 
-	select {
-	case err := <-errs:
-		require.NoError(t, err)
-		require.True(t, handlerDone.Load(), "Listener returned while a request was still in flight")
-	case <-time.After(3 * time.Second):
-		t.Fatal("Listener did not return")
-	}
+	require.NoError(t, apptest.Recv(t, errs, 3*time.Second, "Listener did not return"))
+	require.True(t, handlerDone.Load(), "Listener returned while a request was still in flight")
 
 	// Awaited rather than checked at the return: the client reads on its own goroutine.
-	select {
-	case got := <-responses:
-		require.Equal(t, "200 ok", got, "the drained request lost its response")
-	case <-time.After(time.Second):
-		t.Fatal("client never received the response")
-	}
+	got := apptest.Recv(t, responses, time.Second, "client never received the response")
+	require.Equal(t, "200 ok", got, "the drained request lost its response")
 }
 
 func Test_Listen_GracefulShutdown_NoHooksOnListenError(t *testing.T) {
 	t.Parallel()
+	f := newGracefulFixture(t)
 
-	app := New()
-
-	var fired atomic.Int32
-	app.Hooks().OnPreShutdown(func() error {
-		fired.Add(1)
-		return nil
-	})
-	app.Hooks().OnPostShutdown(func(_ error) error {
-		fired.Add(1)
-		return nil
-	})
-
-	gctx := t.Context()
-
-	require.Error(t, app.Listen(":99999", ListenConfig{DisableStartupMessage: true, GracefulContext: gctx}))
+	require.Error(t, f.app.Listen(":99999", f.cfg))
 
 	time.Sleep(300 * time.Millisecond)
-	require.Zero(t, fired.Load(), "shutdown hooks must not run for a server that never started")
+	require.Zero(t, f.probe.pre.Load()+f.probe.post.Load(), "shutdown hooks must not run for a server that never started")
 }
 
 func Test_ListenConfigDefault_ShutdownTimeout(t *testing.T) {
 	t.Parallel()
+	tests := []struct {
+		name string
+		cfg  []ListenConfig
+		want time.Duration
+	}{
+		{name: "without config", want: 10 * time.Second},
+		{
+			name: "user config with zero value gets the default",
+			cfg:  []ListenConfig{{GracefulContext: context.Background()}},
+			want: 10 * time.Second,
+		},
+		{name: "explicit value is kept", cfg: []ListenConfig{{ShutdownTimeout: 3 * time.Second}}, want: 3 * time.Second},
+		{name: "negative value disables the timeout", cfg: []ListenConfig{{ShutdownTimeout: -1}}, want: time.Duration(-1)},
+	}
 
-	t.Run("without config", func(t *testing.T) {
-		t.Parallel()
-
-		require.Equal(t, 10*time.Second, listenConfigDefault().ShutdownTimeout)
-	})
-
-	t.Run("user config with zero value gets the default", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := listenConfigDefault(ListenConfig{GracefulContext: context.Background()})
-		require.Equal(t, 10*time.Second, cfg.ShutdownTimeout)
-	})
-
-	t.Run("explicit value is kept", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := listenConfigDefault(ListenConfig{ShutdownTimeout: 3 * time.Second})
-		require.Equal(t, 3*time.Second, cfg.ShutdownTimeout)
-	})
-
-	t.Run("negative value disables the timeout", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := listenConfigDefault(ListenConfig{ShutdownTimeout: -1})
-		require.Equal(t, time.Duration(-1), cfg.ShutdownTimeout)
-	})
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, listenConfigDefault(tc.cfg...).ShutdownTimeout)
+		})
+	}
 }
 
 func Test_GracefulShutdown_NegativeTimeoutWaitsIndefinitely(t *testing.T) {
 	t.Parallel()
-
 	inHandler := make(chan struct{}, 1)
 	app := New()
 	app.Get("/", func(c Ctx) error {
@@ -1787,50 +1425,22 @@ func Test_GracefulShutdown_NegativeTimeoutWaitsIndefinitely(t *testing.T) {
 		})
 	}()
 
-	require.Eventually(t, func() bool {
-		conn, err := ln.Dial()
-		if err == nil {
-			_ = conn.Close() //nolint:errcheck // not needed
-			return true
-		}
-		return false
-	}, time.Second, 20*time.Millisecond, "server failed to become ready")
+	rootMiscBWaitDialable(t, ln)
 
 	// Keep a request in flight while the context is canceled.
-	conn, err := ln.Dial()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // not needed
-	_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
-	require.NoError(t, err)
+	rootMiscBSendOnNewConn(t, ln, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
 
-	select {
-	case <-inHandler:
-	case <-time.After(2 * time.Second):
-		t.Fatal("request never reached the handler")
-	}
+	apptest.Recv(t, inHandler, 2*time.Second, "request never reached the handler")
 
 	gcancel()
 
-	select {
-	case err := <-hookErr:
-		require.NoError(t, err)
-	case <-time.After(3 * time.Second):
-		t.Fatal("OnPostShutdown was not called")
-	}
+	require.NoError(t, apptest.Recv(t, hookErr, 3*time.Second, "OnPostShutdown was not called"))
 	require.NoError(t, <-errs)
 }
 
-// receiveOrTimeout returns what ch delivers, or false after five seconds. A hang is what these tests
+// listenWait is how long these tests wait for something that has to happen. A hang is what they
 // catch, so the bound only has to outlast a slow machine.
-func receiveOrTimeout[T any](ch <-chan T) (T, bool) {
-	select {
-	case v := <-ch:
-		return v, true
-	case <-time.After(5 * time.Second):
-		var zero T
-		return zero, false
-	}
-}
+const listenWait = 5 * time.Second
 
 func newShutdownProbe(app *App) *shutdownProbe {
 	p := &shutdownProbe{posted: make(chan struct{})}
@@ -1850,13 +1460,16 @@ func newShutdownProbe(app *App) *shutdownProbe {
 	return p
 }
 
-// await returns once the shutdown has finished, or when receiveOrTimeout gives up. Called from the
+// await returns once the shutdown has finished, or after listenWait. Called from the
 // startup, it puts the whole shutdown ahead of Serve without relying on timing. It reports nothing,
 // on purpose: when the shutdown does not come, Serve never returns and awaitServe fails the test
 // from the test goroutine, whereas a report from here could land after the test has completed,
 // which panics the whole test binary.
 func (p *shutdownProbe) await() {
-	_, _ = receiveOrTimeout(p.posted)
+	select {
+	case <-p.posted:
+	case <-time.After(listenWait):
+	}
 }
 
 // requireCleanShutdown expects one shutdown that finished without an error.
@@ -1878,12 +1491,7 @@ func (p *shutdownProbe) requireCleanShutdown(t *testing.T) {
 func awaitServe(t *testing.T, errs <-chan error) error {
 	t.Helper()
 
-	err, ok := receiveOrTimeout(errs)
-	if !ok {
-		t.Fatal("the server kept serving: it did not return")
-	}
-
-	return err
+	return apptest.Recv(t, errs, listenWait, "the server kept serving: it did not return")
 }
 
 // getOnNewConn makes one request over a new connection of ln, so that it needs an Accept.
@@ -1969,13 +1577,11 @@ func (e gracefulEntry) requireClosed(t *testing.T, f *gracefulFixture) {
 // whole shutdown before Serve, so none of them relies on timing.
 func Test_GracefulContext_DoneBeforeServe(t *testing.T) {
 	t.Parallel()
-
 	for _, entry := range gracefulEntries {
 		for _, point := range gracefulPoints {
 			for _, state := range gracefulContextStates {
 				t.Run(entry.name+"/"+point.name+"/"+state.name, func(t *testing.T) {
 					t.Parallel()
-
 					f := newGracefulFixture(t)
 					point.wire(f, func() { f.cancelAndAwait() })
 					state.prepare(f)
@@ -1992,11 +1598,9 @@ func Test_GracefulContext_DoneBeforeServe(t *testing.T) {
 // already done. The docs promise "not at all when Listen fails before serving".
 func Test_Listen_GracefulContext_BindFailureRunsNoHooks(t *testing.T) {
 	t.Parallel()
-
 	for _, state := range gracefulContextStates {
 		t.Run(state.name, func(t *testing.T) {
 			t.Parallel()
-
 			f := newGracefulFixture(t)
 			state.prepare(f)
 
@@ -2010,7 +1614,6 @@ func Test_Listen_GracefulContext_BindFailureRunsNoHooks(t *testing.T) {
 // The listener Listen created is closed, not left bound after Listen returned.
 func Test_Listen_GracefulContext_ClosesListener(t *testing.T) {
 	t.Parallel()
-
 	dir, err := os.MkdirTemp("", "fiber-test")
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, os.RemoveAll(dir)) })
@@ -2038,7 +1641,6 @@ func (l *closeSignalListener) Close() error {
 // then closed twice, and the second close, by Shutdown, must not hand OnPostShutdown an error.
 func Test_gracefulRun_Draining_ClosesListenerOnce(t *testing.T) {
 	t.Parallel()
-
 	f := newGracefulFixture(t)
 	ln := &closeSignalListener{Listener: f.ln, closed: make(chan struct{})}
 
@@ -2053,9 +1655,7 @@ func Test_gracefulRun_Draining_ClosesListenerOnce(t *testing.T) {
 	code, err := getOnNewConn(f.ln)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, code)
-	if _, ok := receiveOrTimeout(ln.closed); !ok {
-		t.Fatal("Accept did not see the drain")
-	}
+	apptest.Recv(t, ln.closed, listenWait, "Accept did not see the drain")
 	require.NoError(t, awaitServe(t, served))
 	graceful.stopAndWait()
 
@@ -2067,7 +1667,6 @@ func Test_gracefulRun_Draining_ClosesListenerOnce(t *testing.T) {
 // A Shutdown after the early cancel succeeds, although fasthttp still holds the listener Serve refused.
 func Test_GracefulContext_ShutdownAfterEarlyCancel(t *testing.T) {
 	t.Parallel()
-
 	f := newGracefulFixture(t)
 	onListenPoint.wire(f, func() { f.cancelAndAwait() })
 
@@ -2079,7 +1678,6 @@ func Test_GracefulContext_ShutdownAfterEarlyCancel(t *testing.T) {
 // holds the shutdown, whether the cancel came while it served or while it started up.
 func Test_GracefulContext_ServesDuringOnPreShutdown(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		prepare func(f *gracefulFixture)
 		trigger func(t *testing.T, f *gracefulFixture)
@@ -2109,7 +1707,6 @@ func Test_GracefulContext_ServesDuringOnPreShutdown(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			f := newGracefulFixture(t)
 			inHook := make(chan struct{})
 			release := make(chan struct{})
@@ -2127,9 +1724,7 @@ func Test_GracefulContext_ServesDuringOnPreShutdown(t *testing.T) {
 				tc.trigger(t, f)
 			}
 
-			if _, ok := receiveOrTimeout(inHook); !ok {
-				t.Fatal("OnPreShutdown did not run")
-			}
+			apptest.Recv(t, inHook, listenWait, "OnPreShutdown did not run")
 			for i := range 3 {
 				code, err := getOnNewConn(f.ln)
 				require.NoError(t, err, "request %d while OnPreShutdown holds the shutdown", i)
@@ -2160,10 +1755,8 @@ func (*stubListener) Addr() net.Addr { return &net.TCPAddr{} }
 
 func Test_gracefulListener(t *testing.T) {
 	t.Parallel()
-
 	t.Run("forwards Accept until the shutdown is draining", func(t *testing.T) {
 		t.Parallel()
-
 		acceptErr := errors.New("accept failed")
 		stub := &stubListener{acceptErr: acceptErr}
 		ln := &gracefulListener{Listener: stub, draining: new(atomic.Bool)}
@@ -2176,7 +1769,6 @@ func Test_gracefulListener(t *testing.T) {
 
 	t.Run("refuses and closes once the shutdown is draining", func(t *testing.T) {
 		t.Parallel()
-
 		draining := new(atomic.Bool)
 		draining.Store(true)
 		stub := &stubListener{}
@@ -2193,7 +1785,6 @@ func Test_gracefulListener(t *testing.T) {
 
 	t.Run("closes the wrapped listener once and repeats its result", func(t *testing.T) {
 		t.Parallel()
-
 		closeErr := errors.New("close failed")
 		stub := &stubListener{closeErr: closeErr}
 		ln := &gracefulListener{Listener: stub, draining: new(atomic.Bool)}
@@ -2262,10 +1853,8 @@ func Test_gracefulListener_LogsAFailedCloseOnce(t *testing.T) {
 
 func Test_gracefulRun(t *testing.T) {
 	t.Parallel()
-
 	t.Run("without a GracefulContext the watch is inert and hands the listener back as it is", func(t *testing.T) {
 		t.Parallel()
-
 		watch := New().watchGracefulContext(&ListenConfig{})
 		plain := &stubListener{}
 
@@ -2276,7 +1865,6 @@ func Test_gracefulRun(t *testing.T) {
 
 	t.Run("with a GracefulContext the watch is a run, which wraps the listener and follows its own flag", func(t *testing.T) {
 		t.Parallel()
-
 		watch := New().watchGracefulContext(&ListenConfig{GracefulContext: t.Context()})
 		run, ok := watch.(*gracefulRun)
 		require.True(t, ok, "a context needs a run that watches it")
@@ -2294,7 +1882,6 @@ func Test_gracefulRun(t *testing.T) {
 
 	t.Run("runs on one app do not share their drain", func(t *testing.T) {
 		t.Parallel()
-
 		app := New()
 		first := app.newGracefulRun(&ListenConfig{GracefulContext: t.Context()})
 		second := app.newGracefulRun(&ListenConfig{GracefulContext: t.Context()})
@@ -2337,7 +1924,6 @@ func Benchmark_gracefulListener_Accept(b *testing.B) {
 
 func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name string
 		cfg  ListenConfig
@@ -2349,99 +1935,96 @@ func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			cfg := tc.cfg
 			cfg.DisableStartupMessage = true
 			// Fail instead of serving plaintext.
-			cfg.BeforeServeFunc = func(_ *App) error {
-				return errors.New("server would have served plaintext HTTP")
-			}
+			cfg.BeforeServeFunc = func(_ *App) error { return errors.New("server would have served plaintext HTTP") }
 
-			err := app.Listen("127.0.0.1:0", cfg)
-			require.ErrorIs(t, err, ErrCertFileAndKeyRequired)
+			require.ErrorIs(t, app.Listen("127.0.0.1:0", cfg), ErrCertFileAndKeyRequired)
 			require.Nil(t, app.tlsHandler)
 		})
 	}
 }
 
-func Test_Listener_TLS_ClientHelloInfo_PerConnection(t *testing.T) {
-	t.Parallel()
+// rootrestServeTLSHandler serves app on a TLS listener over base, whose certificate lookup records the
+// ClientHelloInfo of each connection in handler. The app is shut down, which has to end cleanly, when the test ends.
+func rootrestServeTLSHandler(t *testing.T, app *App, handler *TLSHandler, base net.Listener) {
+	t.Helper()
 
-	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	require.NoError(t, err)
-
-	tlsHandler := &TLSHandler{}
-	app := New()
-	app.SetTLSHandler(tlsHandler)
-	app.Get("/", func(c Ctx) error {
-		if info := c.ClientHelloInfo(); info != nil {
-			return c.SendString(info.ServerName)
-		}
-		return c.SendString("<nil>")
-	})
-
-	ln := fasthttputil.NewInmemoryListener()
-	tlsLn := tls.NewListener(ln, &tls.Config{
+	app.SetTLSHandler(handler)
+	tlsLn := tls.NewListener(base, &tls.Config{
 		MinVersion:     tls.VersionTLS12,
-		Certificates:   []tls.Certificate{cert},
-		GetCertificate: tlsHandler.GetClientInfo,
+		Certificates:   []tls.Certificate{rootMiscBTestCert(t)},
+		GetCertificate: handler.GetClientInfo,
 	})
 
 	errs := make(chan error, 1)
-	go func() {
-		errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true})
-	}()
+	go func() { errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true}) }()
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+		require.NoError(t, <-errs)
+	})
+}
 
-	require.Eventually(t, func() bool {
-		conn, dialErr := ln.Dial()
-		if dialErr == nil {
-			_ = conn.Close() //nolint:errcheck // not needed
-			return true
-		}
-		return false
-	}, time.Second, 20*time.Millisecond, "server failed to become ready")
+func Test_Listener_TLS_ClientHelloInfo_PerConnection(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		// maxConnsPerIP makes fasthttp wrap every accepted connection for its accounting, and the wrapper is
+		// what the request side sees.
+		maxConnsPerIP int
+		inMemory      bool
+	}{
+		{name: "in-memory listener", inMemory: true},
+		{name: "MaxConnsPerIP", maxConnsPerIP: 8},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.Server().MaxConnsPerIP = tc.maxConnsPerIP
+			app.Get("/", func(c Ctx) error {
+				if info := c.ClientHelloInfo(); info != nil {
+					return c.SendString(info.ServerName)
+				}
+				return c.SendString("<nil>")
+			})
 
-	dial := func(serverName string) *tls.Conn {
-		t.Helper()
+			var dialRaw func() (net.Conn, error)
+			if tc.inMemory {
+				ln := fasthttputil.NewInmemoryListener()
+				rootrestServeTLSHandler(t, app, &TLSHandler{}, ln)
+				rootMiscBWaitDialable(t, ln)
+				dialRaw = ln.Dial
+			} else {
+				ln := newLocalListener(t)
+				rootrestServeTLSHandler(t, app, &TLSHandler{}, ln)
+				dialRaw = func() (net.Conn, error) { return net.Dial("tcp", ln.Addr().String()) }
+			}
 
-		raw, dialErr := ln.Dial()
-		require.NoError(t, dialErr)
-		conn := tls.Client(raw, &tls.Config{
-			ServerName:         serverName,
-			InsecureSkipVerify: true, // self-signed test certificate
-			MinVersion:         tls.VersionTLS12,
+			dial := func(serverName string) *tls.Conn {
+				t.Helper()
+
+				raw, dialErr := dialRaw()
+				require.NoError(t, dialErr)
+				conn := tls.Client(raw, rootMiscBTLSClientConfig(serverName))
+				require.NoError(t, conn.Handshake())
+				t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // not needed
+				return conn
+			}
+
+			first := dial("first.example")
+			second := dial("second.example")
+
+			// Both handshakes complete before either request, so a shared value would report second.example twice.
+			require.Equal(t, "first.example", rootMiscBTLSGet(t, first))
+			require.Equal(t, "second.example", rootMiscBTLSGet(t, second))
 		})
-		require.NoError(t, conn.Handshake())
-		return conn
 	}
-	serverNameSeenBy := func(conn *tls.Conn) string {
-		t.Helper()
-
-		_, writeErr := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
-		require.NoError(t, writeErr)
-		resp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(resp)
-		require.NoError(t, resp.Read(bufio.NewReader(conn)))
-		return string(resp.Body())
-	}
-
-	first := dial("first.example")
-	t.Cleanup(func() { _ = first.Close() }) //nolint:errcheck // not needed
-	second := dial("second.example")
-	t.Cleanup(func() { _ = second.Close() }) //nolint:errcheck // not needed
-
-	// Both handshakes complete before either request, so a shared value would report second.example twice.
-	require.Equal(t, "first.example", serverNameSeenBy(first))
-	require.Equal(t, "second.example", serverNameSeenBy(second))
-
-	require.NoError(t, app.Shutdown())
-	require.NoError(t, <-errs)
 }
 
 func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
 
@@ -2458,9 +2041,7 @@ func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 	errs := make(chan error, 1)
-	go func() {
-		errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true})
-	}()
+	go func() { errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true}) }()
 
 	conn, err := ln.Dial()
 	require.NoError(t, err)
@@ -2470,11 +2051,7 @@ func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, conn.Close())
 
-	select {
-	case <-closed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the user ConnState callback was not called")
-	}
+	apptest.Recv(t, closed, 5*time.Second, "the user ConnState callback was not called")
 
 	require.NoError(t, app.Shutdown())
 	require.NoError(t, <-errs)
@@ -2482,42 +2059,19 @@ func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
 
 func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP_NoLeak(t *testing.T) {
 	t.Parallel()
-
-	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	require.NoError(t, err)
-
 	tlsHandler := &TLSHandler{}
 	app := New()
-	app.SetTLSHandler(tlsHandler)
 	app.Server().MaxConnsPerIP = 8
 	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
 
-	raw, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	tlsLn := tls.NewListener(raw, &tls.Config{
-		MinVersion:     tls.VersionTLS12,
-		Certificates:   []tls.Certificate{cert},
-		GetCertificate: tlsHandler.GetClientInfo,
-	})
-
-	errs := make(chan error, 1)
-	go func() {
-		errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true})
-	}()
+	raw := newLocalListener(t)
+	rootrestServeTLSHandler(t, app, tlsHandler, raw)
 
 	// Sequential handshakes: the per-IP cap bounds concurrency, not the total.
 	for range 12 {
-		conn, dialErr := tls.Dial("tcp", raw.Addr().String(), &tls.Config{
-			ServerName:         "example.com",
-			InsecureSkipVerify: true, // self-signed test certificate
-			MinVersion:         tls.VersionTLS12,
-		})
+		conn, dialErr := tls.Dial("tcp", raw.Addr().String(), rootMiscBTLSClientConfig("example.com"))
 		require.NoError(t, dialErr)
-		_, writeErr := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
-		require.NoError(t, writeErr)
-		resp := fasthttp.AcquireResponse()
-		require.NoError(t, resp.Read(bufio.NewReader(conn)))
-		fasthttp.ReleaseResponse(resp)
+		rootMiscBTLSGet(t, conn)
 		require.NoError(t, conn.Close())
 	}
 
@@ -2530,74 +2084,4 @@ func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP_NoLeak(t *testing.T) {
 		return count(&tlsHandler.clientHelloInfos) == 0 && count(&tlsHandler.serverConns) == 0
 	}, 5*time.Second, 20*time.Millisecond, "closed connections left %d ClientHelloInfo and %d wrapper entries behind",
 		count(&tlsHandler.clientHelloInfos), count(&tlsHandler.serverConns))
-
-	require.NoError(t, app.Shutdown())
-	require.NoError(t, <-errs)
-}
-
-func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP(t *testing.T) {
-	t.Parallel()
-
-	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	require.NoError(t, err)
-
-	tlsHandler := &TLSHandler{}
-	app := New()
-	app.SetTLSHandler(tlsHandler)
-	// fasthttp wraps every accepted connection for this accounting, and the
-	// wrapper is what the request side sees.
-	app.Server().MaxConnsPerIP = 8
-	app.Get("/", func(c Ctx) error {
-		if info := c.ClientHelloInfo(); info != nil {
-			return c.SendString(info.ServerName)
-		}
-		return c.SendString("<nil>")
-	})
-
-	raw, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	tlsLn := tls.NewListener(raw, &tls.Config{
-		MinVersion:     tls.VersionTLS12,
-		Certificates:   []tls.Certificate{cert},
-		GetCertificate: tlsHandler.GetClientInfo,
-	})
-
-	errs := make(chan error, 1)
-	go func() {
-		errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true})
-	}()
-
-	addr := raw.Addr().String()
-	dial := func(serverName string) *tls.Conn {
-		t.Helper()
-
-		conn, dialErr := tls.Dial("tcp", addr, &tls.Config{
-			ServerName:         serverName,
-			InsecureSkipVerify: true, // self-signed test certificate
-			MinVersion:         tls.VersionTLS12,
-		})
-		require.NoError(t, dialErr)
-		return conn
-	}
-	serverNameSeenBy := func(conn *tls.Conn) string {
-		t.Helper()
-
-		_, writeErr := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
-		require.NoError(t, writeErr)
-		resp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(resp)
-		require.NoError(t, resp.Read(bufio.NewReader(conn)))
-		return string(resp.Body())
-	}
-
-	first := dial("first.example")
-	t.Cleanup(func() { _ = first.Close() }) //nolint:errcheck // not needed
-	second := dial("second.example")
-	t.Cleanup(func() { _ = second.Close() }) //nolint:errcheck // not needed
-
-	require.Equal(t, "first.example", serverNameSeenBy(first))
-	require.Equal(t, "second.example", serverNameSeenBy(second))
-
-	require.NoError(t, app.Shutdown())
-	require.NoError(t, <-errs)
 }

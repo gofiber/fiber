@@ -25,36 +25,48 @@ var (
 	routeTestCases []routeCaseCollection
 )
 
+// pathTestRoute returns the fixture entry of pattern: the urls tried against
+// it, each with the outcome the route must produce.
+func pathTestRoute(pattern string, cases ...routeTestCase) routeCaseCollection {
+	return routeCaseCollection{pattern: pattern, testCases: cases}
+}
+
+// pathTestMatch is a case where url matches the pattern and yields params.
+func pathTestMatch(url string, params ...string) routeTestCase {
+	return routeTestCase{url: url, params: params, match: true}
+}
+
+// pathTestMiss is a case where url does not match the pattern.
+func pathTestMiss(url string) routeTestCase {
+	return routeTestCase{url: url}
+}
+
+// pathTestPartialMatch is pathTestMatch for a prefix route, which also matches
+// the paths below it (partialCheck).
+func pathTestPartialMatch(url string, params ...string) routeTestCase {
+	return routeTestCase{url: url, params: params, match: true, partialCheck: true}
+}
+
+// pathTestPartialMiss is pathTestMiss for a prefix route (partialCheck).
+func pathTestPartialMiss(url string) routeTestCase {
+	return routeTestCase{url: url, partialCheck: true}
+}
+
 func init() {
 	// smaller list for benchmark cases
 	benchmarkCases = []routeCaseCollection{
-		{
-			pattern: "/api/v1/const",
-			testCases: []routeTestCase{
-				{url: "/api/v1/const", params: []string{}, match: true},
-				{url: "/api/v1", params: nil, match: false},
-				{url: "/api/v1/", params: nil, match: false},
-				{url: "/api/v1/something", params: nil, match: false},
-			},
-		},
-		{
-			pattern: "/api/:param/fixedEnd",
-			testCases: []routeTestCase{
-				{url: "/api/abc/fixedEnd", params: []string{"abc"}, match: true},
-				{url: "/api/abc/def/fixedEnd", params: nil, match: false},
-			},
-		},
-		{
-			pattern: "/api/v1/:param/*",
-			testCases: []routeTestCase{
-				{url: "/api/v1/entity", params: []string{"entity", ""}, match: true},
-				{url: "/api/v1/entity/", params: []string{"entity", ""}, match: true},
-				{url: "/api/v1/entity/1", params: []string{"entity", "1"}, match: true},
-				{url: "/api/v", params: nil, match: false},
-				{url: "/api/v2", params: nil, match: false},
-				{url: "/api/v1/", params: nil, match: false},
-			},
-		},
+		pathTestRoute("/api/v1/const",
+			pathTestMatch("/api/v1/const"), pathTestMiss("/api/v1"), pathTestMiss("/api/v1/"),
+			pathTestMiss("/api/v1/something"),
+		),
+		pathTestRoute("/api/:param/fixedEnd",
+			pathTestMatch("/api/abc/fixedEnd", "abc"), pathTestMiss("/api/abc/def/fixedEnd"),
+		),
+		pathTestRoute("/api/v1/:param/*",
+			pathTestMatch("/api/v1/entity", "entity", ""), pathTestMatch("/api/v1/entity/", "entity", ""),
+			pathTestMatch("/api/v1/entity/1", "entity", "1"), pathTestMiss("/api/v"), pathTestMiss("/api/v2"),
+			pathTestMiss("/api/v1/"),
+		),
 	}
 
 	// combine benchmark cases and other cases
@@ -62,888 +74,394 @@ func init() {
 	routeTestCases = append(
 		routeTestCases,
 		[]routeCaseCollection{
-			{
-				pattern: "/api/v1/:param/+",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/entity/", params: nil, match: false},
-					{url: "/api/v1/entity/1", params: []string{"entity", "1"}, match: true},
-					{url: "/api/v", params: nil, match: false},
-					{url: "/api/v2", params: nil, match: false},
-					{url: "/api/v1/", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param?",
-				testCases: []routeTestCase{
-					{url: "/api/v1", params: []string{""}, match: true},
-					{url: "/api/v1/", params: []string{""}, match: true},
-					{url: "/api/v1/optional", params: []string{"optional"}, match: true},
-					{url: "/api/v", params: nil, match: false},
-					{url: "/api/v2", params: nil, match: false},
-					{url: "/api/xyz", params: nil, match: false},
-				},
-			},
-			{
-				pattern: `/v1/some/resource/name\:customVerb`,
-				testCases: []routeTestCase{
-					{url: "/v1/some/resource/name:customVerb", params: nil, match: true},
-					{url: "/v1/some/resource/name:test", params: nil, match: false},
-				},
-			},
-			{
-				pattern: `/v1/some/resource/:name\:customVerb`,
-				testCases: []routeTestCase{
-					{url: "/v1/some/resource/test:customVerb", params: []string{"test"}, match: true},
-					{url: "/v1/some/resource/test:test", params: nil, match: false},
-				},
-			},
-			{
-				pattern: `/v1/some/resource/name\\:customVerb?\?/:param/*`,
-				testCases: []routeTestCase{
-					{url: "/v1/some/resource/name:customVerb??/test/optionalWildCard/character", params: []string{"test", "optionalWildCard/character"}, match: true},
-					{url: "/v1/some/resource/name:customVerb??/test", params: []string{"test", ""}, match: true},
-				},
-			},
-			{
-				pattern: "/api/v1/*",
-				testCases: []routeTestCase{
-					{url: "/api/v1", params: []string{""}, match: true},
-					{url: "/api/v1/", params: []string{""}, match: true},
-					{url: "/api/v1/entity", params: []string{"entity"}, match: true},
-					{url: "/api/v1/entity/1/2", params: []string{"entity/1/2"}, match: true},
-					{url: "/api/v1/Entity/1/2", params: []string{"Entity/1/2"}, match: true},
-					{url: "/api/v", params: nil, match: false},
-					{url: "/api/v2", params: nil, match: false},
-					{url: "/api/abc", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: []string{"entity"}, match: true},
-					{url: "/api/v1/entity/8728382", params: nil, match: false},
-					{url: "/api/v1", params: nil, match: false},
-					{url: "/api/v1/", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param-:param2",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity-entity2", params: []string{"entity", "entity2"}, match: true},
-					{url: "/api/v1/entity/8728382", params: nil, match: false},
-					{url: "/api/v1/entity-8728382", params: []string{"entity", "8728382"}, match: true},
-					{url: "/api/v1", params: nil, match: false},
-					{url: "/api/v1/", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:filename.:extension",
-				testCases: []routeTestCase{
-					{url: "/api/v1/test.pdf", params: []string{"test", "pdf"}, match: true},
-					{url: "/api/v1/test/pdf", params: nil, match: false},
-					{url: "/api/v1/test-pdf", params: nil, match: false},
-					{url: "/api/v1/test_pdf", params: nil, match: false},
-					{url: "/api/v1", params: nil, match: false},
-					{url: "/api/v1/", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/shop/product/::filter/color::color/size::size",
-				testCases: []routeTestCase{
-					{url: "/shop/product/:test/color:blue/size:xs", params: []string{"test", "blue", "xs"}, match: true},
-					{url: "/shop/product/test/color:blue/size:xs", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/::param?",
-				testCases: []routeTestCase{
-					{url: "/:hello", params: []string{"hello"}, match: true},
-					{url: "/:", params: []string{""}, match: true},
-					{url: "/", params: nil, match: false},
-				},
-			},
+			pathTestRoute("/api/v1/:param/+",
+				pathTestMiss("/api/v1/entity"), pathTestMiss("/api/v1/entity/"),
+				pathTestMatch("/api/v1/entity/1", "entity", "1"), pathTestMiss("/api/v"), pathTestMiss("/api/v2"),
+				pathTestMiss("/api/v1/"),
+			),
+			pathTestRoute("/api/v1/:param?",
+				pathTestMatch("/api/v1", ""), pathTestMatch("/api/v1/", ""),
+				pathTestMatch("/api/v1/optional", "optional"), pathTestMiss("/api/v"), pathTestMiss("/api/v2"),
+				pathTestMiss("/api/xyz"),
+			),
+			pathTestRoute(`/v1/some/resource/name\:customVerb`,
+				pathTestMatch("/v1/some/resource/name:customVerb"), pathTestMiss("/v1/some/resource/name:test"),
+			),
+			pathTestRoute(`/v1/some/resource/:name\:customVerb`,
+				pathTestMatch("/v1/some/resource/test:customVerb", "test"), pathTestMiss("/v1/some/resource/test:test"),
+			),
+			pathTestRoute(`/v1/some/resource/name\\:customVerb?\?/:param/*`,
+				pathTestMatch("/v1/some/resource/name:customVerb??/test/optionalWildCard/character", "test", "optionalWildCard/character"),
+				pathTestMatch("/v1/some/resource/name:customVerb??/test", "test", ""),
+			),
+			pathTestRoute("/api/v1/*",
+				pathTestMatch("/api/v1", ""), pathTestMatch("/api/v1/", ""), pathTestMatch("/api/v1/entity", "entity"),
+				pathTestMatch("/api/v1/entity/1/2", "entity/1/2"), pathTestMatch("/api/v1/Entity/1/2", "Entity/1/2"),
+				pathTestMiss("/api/v"), pathTestMiss("/api/v2"), pathTestMiss("/api/abc"),
+			),
+			pathTestRoute("/api/v1/:param",
+				pathTestMatch("/api/v1/entity", "entity"), pathTestMiss("/api/v1/entity/8728382"),
+				pathTestMiss("/api/v1"), pathTestMiss("/api/v1/"),
+			),
+			pathTestRoute("/api/v1/:param-:param2",
+				pathTestMatch("/api/v1/entity-entity2", "entity", "entity2"), pathTestMiss("/api/v1/entity/8728382"),
+				pathTestMatch("/api/v1/entity-8728382", "entity", "8728382"), pathTestMiss("/api/v1"),
+				pathTestMiss("/api/v1/"),
+				// a parameter terminated by a single-byte compare part can swallow '/'
+				// (findParamLen's IndexByte branch has no slash guard)
+				pathTestMatch("/api/v1/enti/ty-x", "enti/ty", "x"),
+			),
+			pathTestRoute("/api/v1/:filename.:extension",
+				pathTestMatch("/api/v1/test.pdf", "test", "pdf"), pathTestMiss("/api/v1/test/pdf"),
+				pathTestMiss("/api/v1/test-pdf"), pathTestMiss("/api/v1/test_pdf"), pathTestMiss("/api/v1"),
+				pathTestMiss("/api/v1/"),
+			),
+			pathTestRoute("/shop/product/::filter/color::color/size::size",
+				pathTestMatch("/shop/product/:test/color:blue/size:xs", "test", "blue", "xs"),
+				pathTestMiss("/shop/product/test/color:blue/size:xs"),
+			),
+			pathTestRoute("/::param?", pathTestMatch("/:hello", "hello"), pathTestMatch("/:", ""), pathTestMiss("/")),
 			// successive parameters, each take one character and the last parameter gets everything
-			{
-				pattern: "/test:sign:param",
-				testCases: []routeTestCase{
-					{url: "/test-abc", params: []string{"-", "abc"}, match: true},
-					{url: "/test", params: nil, match: false},
-				},
-			},
+			pathTestRoute("/test:sign:param",
+				pathTestMatch("/test-abc", "-", "abc"), pathTestMiss("/test"),
+				// successive parameters consume one byte each, which may be a '/'
+				pathTestMatch("/test/x", "/", "x"),
+			),
 			// optional parameters are not greedy
-			{
-				pattern: "/:param1:param2?:param3",
-				testCases: []routeTestCase{
-					{url: "/abbbc", params: []string{"a", "b", "bbc"}, match: true},
-					{url: "/ac", params: []string{"a", "", "c"}, match: true},
-					{url: "/test", params: []string{"t", "e", "st"}, match: true},
-				},
-			},
-			{
-				pattern: "/test:optional?:mandatory",
-				testCases: []routeTestCase{
-					{url: "/testo", params: []string{"", "o"}, match: true},
-					{url: "/testoaaa", params: []string{"o", "aaa"}, match: true},
-					{url: "/test", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/test:optional?:optional2?",
-				testCases: []routeTestCase{
-					{url: "/testo", params: []string{"o", ""}, match: true},
-					{url: "/testoaaa", params: []string{"o", "aaa"}, match: true},
-					{url: "/test", params: []string{"", ""}, match: true},
-					{url: "/tes", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/:a?:b?:c:d",
-				testCases: []routeTestCase{
-					{url: "/xy", params: []string{"", "", "x", "y"}, match: true},
-					{url: "/wxyz", params: []string{"w", "x", "y", "z"}, match: true},
-				},
-			},
-			{
-				pattern: "/:a?:b<int>:c",
-				testCases: []routeTestCase{
-					{url: "/1xy", params: []string{"", "1", "xy"}, match: true},
-					{url: "/x1y", params: []string{"x", "1", "y"}, match: true},
-					{url: "/xyz", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/foo:param?bar",
-				testCases: []routeTestCase{
-					{url: "/foofaselbar", params: []string{"fasel"}, match: true},
-					{url: "/foobar", params: []string{""}, match: true},
-					{url: "/fooba", params: nil, match: false},
-					{url: "/fobar", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/foo*bar",
-				testCases: []routeTestCase{
-					{url: "/foofaselbar", params: []string{"fasel"}, match: true},
-					{url: "/foobar", params: []string{""}, match: true},
-					{url: "/", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/foo+bar",
-				testCases: []routeTestCase{
-					{url: "/foofaselbar", params: []string{"fasel"}, match: true},
-					{url: "/foobar", params: nil, match: false},
-					{url: "/", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/a*cde*g/",
-				testCases: []routeTestCase{
-					{url: "/abbbcdefffg", params: []string{"bbb", "fff"}, match: true},
-					{url: "/acdeg", params: []string{"", ""}, match: true},
-					{url: "/", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/*v1*/proxy",
-				testCases: []routeTestCase{
-					{url: "/customer/v1/cart/proxy", params: []string{"customer/", "/cart"}, match: true},
-					{url: "/v1/proxy", params: []string{"", ""}, match: true},
-					{url: "/v1/", params: nil, match: false},
-				},
-			},
+			pathTestRoute("/:param1:param2?:param3",
+				pathTestMatch("/abbbc", "a", "b", "bbc"), pathTestMatch("/ac", "a", "", "c"),
+				pathTestMatch("/test", "t", "e", "st"),
+			),
+			pathTestRoute("/test:optional?:mandatory",
+				pathTestMatch("/testo", "", "o"), pathTestMatch("/testoaaa", "o", "aaa"), pathTestMiss("/test"),
+			),
+			pathTestRoute("/test:optional?:optional2?",
+				pathTestMatch("/testo", "o", ""), pathTestMatch("/testoaaa", "o", "aaa"),
+				pathTestMatch("/test", "", ""), pathTestMiss("/tes"),
+			),
+			pathTestRoute("/:a?:b?:c:d",
+				pathTestMatch("/xy", "", "", "x", "y"), pathTestMatch("/wxyz", "w", "x", "y", "z"),
+			),
+			pathTestRoute("/:a?:b<int>:c",
+				pathTestMatch("/1xy", "", "1", "xy"), pathTestMatch("/x1y", "x", "1", "y"), pathTestMiss("/xyz"),
+			),
+			pathTestRoute("/foo:param?bar",
+				pathTestMatch("/foofaselbar", "fasel"), pathTestMatch("/foobar", ""), pathTestMiss("/fooba"),
+				pathTestMiss("/fobar"),
+			),
+			pathTestRoute("/foo*bar",
+				pathTestMatch("/foofaselbar", "fasel"), pathTestMatch("/foobar", ""), pathTestMiss("/"),
+			),
+			pathTestRoute("/foo+bar",
+				pathTestMatch("/foofaselbar", "fasel"), pathTestMiss("/foobar"), pathTestMiss("/"),
+			),
+			pathTestRoute("/a*cde*g/",
+				pathTestMatch("/abbbcdefffg", "bbb", "fff"), pathTestMatch("/acdeg", "", ""), pathTestMiss("/"),
+			),
+			pathTestRoute("/*v1*/proxy",
+				pathTestMatch("/customer/v1/cart/proxy", "customer/", "/cart"), pathTestMatch("/v1/proxy", "", ""),
+				pathTestMiss("/v1/"),
+			),
 			// successive wildcard -> first wildcard is greedy
-			{
-				pattern: "/foo***bar",
-				testCases: []routeTestCase{
-					{url: "/foo*abar", params: []string{"*a", "", ""}, match: true},
-					{url: "/foo*bar", params: []string{"*", "", ""}, match: true},
-					{url: "/foobar", params: []string{"", "", ""}, match: true},
-					{url: "/fooba", params: nil, match: false},
-				},
-			},
+			pathTestRoute("/foo***bar",
+				pathTestMatch("/foo*abar", "*a", "", ""), pathTestMatch("/foo*bar", "*", "", ""),
+				pathTestMatch("/foobar", "", "", ""), pathTestMiss("/fooba"),
+			),
 			// chars in front of a parameter
-			{
-				pattern: "/name::name",
-				testCases: []routeTestCase{
-					{url: "/name:john", params: []string{"john"}, match: true},
-				},
-			},
-			{
-				pattern: "/@:name",
-				testCases: []routeTestCase{
-					{url: "/@john", params: []string{"john"}, match: true},
-				},
-			},
-			{
-				pattern: "/-:name",
-				testCases: []routeTestCase{
-					{url: "/-john", params: []string{"john"}, match: true},
-				},
-			},
-			{
-				pattern: "/.:name",
-				testCases: []routeTestCase{
-					{url: "/.john", params: []string{"john"}, match: true},
-				},
-			},
-			{
-				pattern: "/api/v1/:param/abc/*",
-				testCases: []routeTestCase{
-					{url: "/api/v1/well/abc/wildcard", params: []string{"well", "wildcard"}, match: true},
-					{url: "/api/v1/well/abc/", params: []string{"well", ""}, match: true},
-					{url: "/api/v1/well/abc", params: []string{"well", ""}, match: true},
-					{url: "/api/v1/well/ttt", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/:day/:month?/:year?",
-				testCases: []routeTestCase{
-					{url: "/api/1", params: []string{"1", "", ""}, match: true},
-					{url: "/api/1/", params: []string{"1", "", ""}, match: true},
-					{url: "/api/1//", params: []string{"1", "", ""}, match: true},
-					{url: "/api/1/-/", params: []string{"1", "-", ""}, match: true},
-					{url: "/api/1-", params: []string{"1-", "", ""}, match: true},
-					{url: "/api/1.", params: []string{"1.", "", ""}, match: true},
-					{url: "/api/1/2", params: []string{"1", "2", ""}, match: true},
-					{url: "/api/1/2/3", params: []string{"1", "2", "3"}, match: true},
-					{url: "/api/", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/:day.:month?.:year?",
-				testCases: []routeTestCase{
-					{url: "/api/1", params: nil, match: false},
-					{url: "/api/1/", params: nil, match: false},
-					{url: "/api/1.", params: nil, match: false},
-					{url: "/api/1..", params: []string{"1", "", ""}, match: true},
-					{url: "/api/1.2", params: nil, match: false},
-					{url: "/api/1.2.", params: []string{"1", "2", ""}, match: true},
-					{url: "/api/1.2.3", params: []string{"1", "2", "3"}, match: true},
-					{url: "/api/", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/:day-:month?-:year?",
-				testCases: []routeTestCase{
-					{url: "/api/1", params: nil, match: false},
-					{url: "/api/1/", params: nil, match: false},
-					{url: "/api/1-", params: nil, match: false},
-					{url: "/api/1--", params: []string{"1", "", ""}, match: true},
-					{url: "/api/1-/", params: nil, match: false},
-					{url: "/api/1-/-", params: nil, match: false},
-					{url: "/api/1-2", params: nil, match: false},
-					{url: "/api/1-2-", params: []string{"1", "2", ""}, match: true},
-					{url: "/api/1-2-3", params: []string{"1", "2", "3"}, match: true},
-					{url: "/api/", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/*",
-				testCases: []routeTestCase{
-					{url: "/api/", params: []string{""}, match: true},
-					{url: "/api/joker", params: []string{"joker"}, match: true},
-					{url: "/api", params: []string{""}, match: true},
-					{url: "/api/v1/entity", params: []string{"v1/entity"}, match: true},
-					{url: "/api2/v1/entity", params: nil, match: false},
-					{url: "/api_ignore/v1/entity", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/partialCheck/foo/",
-				testCases: []routeTestCase{
-					{url: "/partialCheck/foo/", params: nil, match: true, partialCheck: true},
-					{url: "/partialCheck/foo/bar", params: nil, match: true, partialCheck: true},
-					{url: "/partialCheck/foo/bar/baz", params: nil, match: true, partialCheck: true},
-					{url: "/partialCheck/foobar", params: nil, match: false, partialCheck: true},
-				},
-			},
-			{
-				pattern: "/partialCheck/foo/bar/:param",
-				testCases: []routeTestCase{
-					{url: "/partialCheck/foo/bar/test", params: []string{"test"}, match: true, partialCheck: true},
-					{url: "/partialCheck/foo/bar/test/test2", params: []string{"test"}, match: true, partialCheck: true},
-					{url: "/partialCheck/foo/bar", params: nil, match: false, partialCheck: true},
-					{url: "/partialFoo", params: nil, match: false, partialCheck: true},
-				},
-			},
-			{
-				pattern: "/partialCheck/foo",
-				testCases: []routeTestCase{
-					{url: "/partialCheck/foo", params: nil, match: true, partialCheck: true},
-					{url: "/partialCheck/foo/", params: nil, match: true, partialCheck: true},
-					{url: "/partialCheck/foo/bar", params: nil, match: true, partialCheck: true},
-					{url: "/partialCheck/foobar", params: nil, match: false, partialCheck: true},
-				},
-			},
-			{
-				pattern: "/partialCheck/:param",
-				testCases: []routeTestCase{
-					{url: "/partialCheck/value", params: []string{"value"}, match: true, partialCheck: true},
-					{url: "/partialCheck/value/", params: []string{"value"}, match: true, partialCheck: true},
-					{url: "/partialCheck/value/next", params: []string{"value"}, match: true, partialCheck: true},
-				},
-			},
-			{
-				pattern: "/",
-				testCases: []routeTestCase{
-					{url: "/api", params: nil, match: false},
-					{url: "", params: []string{}, match: true},
-					{url: "/", params: []string{}, match: true},
-				},
-			},
-			{
-				pattern: "/config/abc.json",
-				testCases: []routeTestCase{
-					{url: "/config/abc.json", params: []string{}, match: true},
-					{url: "config/abc.json", params: nil, match: false},
-					{url: "/config/efg.json", params: nil, match: false},
-					{url: "/config", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/config/*.json",
-				testCases: []routeTestCase{
-					{url: "/config/abc.json", params: []string{"abc"}, match: true},
-					{url: "/config/efg.json", params: []string{"efg"}, match: true},
-					{url: "/config/.json", params: []string{""}, match: true},
-					{url: "/config/efg.csv", params: nil, match: false},
-					{url: "config/abc.json", params: nil, match: false},
-					{url: "/config", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/config/+.json",
-				testCases: []routeTestCase{
-					{url: "/config/abc.json", params: []string{"abc"}, match: true},
-					{url: "/config/.json", params: nil, match: false},
-					{url: "/config/efg.json", params: []string{"efg"}, match: true},
-					{url: "/config/efg.csv", params: nil, match: false},
-					{url: "config/abc.json", params: nil, match: false},
-					{url: "/config", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/xyz",
-				testCases: []routeTestCase{
-					{url: "xyz", params: nil, match: false},
-					{url: "xyz/", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/*/:param?",
-				testCases: []routeTestCase{
-					{url: "/api/", params: []string{"", ""}, match: true},
-					{url: "/api/joker", params: []string{"joker", ""}, match: true},
-					{url: "/api/joker/batman", params: []string{"joker", "batman"}, match: true},
-					{url: "/api/joker//batman", params: []string{"joker/", "batman"}, match: true},
-					{url: "/api/joker/batman/robin", params: []string{"joker/batman", "robin"}, match: true},
-					{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},
-					{url: "/api/joker/batman/robin/1/", params: []string{"joker/batman/robin/1", ""}, match: true},
-					{url: "/api/joker-batman/robin/1", params: []string{"joker-batman/robin", "1"}, match: true},
-					{url: "/api/joker-batman-robin/1", params: []string{"joker-batman-robin", "1"}, match: true},
-					{url: "/api/joker-batman-robin-1", params: []string{"joker-batman-robin-1", ""}, match: true},
-					{url: "/api", params: []string{"", ""}, match: true},
-				},
-			},
-			{
-				pattern: "/api/*/:param",
-				testCases: []routeTestCase{
-					{url: "/api/test/abc", params: []string{"test", "abc"}, match: true},
-					{url: "/api/joker/batman", params: []string{"joker", "batman"}, match: true},
-					{url: "/api/joker/batman/robin", params: []string{"joker/batman", "robin"}, match: true},
-					{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},
-					{url: "/api/joker/batman-robin/1", params: []string{"joker/batman-robin", "1"}, match: true},
-					{url: "/api/joker-batman-robin-1", params: nil, match: false},
-					{url: "/api", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/+/:param",
-				testCases: []routeTestCase{
-					{url: "/api/test/abc", params: []string{"test", "abc"}, match: true},
-					{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},
-					{url: "/api/joker", params: nil, match: false},
-					{url: "/api", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/*/:param/:param2",
-				testCases: []routeTestCase{
-					{url: "/api/test/abc/1", params: []string{"test", "abc", "1"}, match: true},
-					{url: "/api/joker/batman", params: nil, match: false},
-					{url: "/api/joker/batman-robin/1", params: []string{"joker", "batman-robin", "1"}, match: true},
-					{url: "/api/joker-batman-robin-1", params: nil, match: false},
-					{url: "/api/test/abc", params: nil, match: false},
-					{url: "/api/joker/batman/robin", params: []string{"joker", "batman", "robin"}, match: true},
-					{url: "/api/joker/batman/robin/1", params: []string{"joker/batman", "robin", "1"}, match: true},
-					{url: "/api/joker/batman/robin/1/2", params: []string{"joker/batman/robin", "1", "2"}, match: true},
-					{url: "/api", params: nil, match: false},
-					{url: "/api/:test", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<int>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
-					{url: "/api/v1/true", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<bool>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/8728382", params: nil, match: false},
-					{url: "/api/v1/true", params: []string{"true"}, match: true},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<float>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
-					{url: "/api/v1/8728382.5", params: []string{"8728382.5"}, match: true},
-					{url: "/api/v1/true", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<alpha>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: []string{"entity"}, match: true},
-					{url: "/api/v1/#!?", params: nil, match: false},
-					{url: "/api/v1/8728382", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<guid>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/8728382", params: nil, match: false},
-					{url: "/api/v1/f0fa66cc-d22e-445b-866d-1d76e776371d", params: []string{"f0fa66cc-d22e-445b-866d-1d76e776371d"}, match: true},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<minLen>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/8728382", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<minLen(5)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: []string{"entity"}, match: true},
-					{url: "/api/v1/ent", params: nil, match: false},
-					{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
-					{url: "/api/v1/123", params: nil, match: false},
-					{url: "/api/v1/12345", params: []string{"12345"}, match: true},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<maxLen(5)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/ent", params: []string{"ent"}, match: true},
-					{url: "/api/v1/8728382", params: nil, match: false},
-					{url: "/api/v1/123", params: []string{"123"}, match: true},
-					{url: "/api/v1/12345", params: []string{"12345"}, match: true},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<len(5)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/ent", params: nil, match: false},
-					{url: "/api/v1/123", params: nil, match: false},
-					{url: "/api/v1/12345", params: []string{"12345"}, match: true},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<betweenLen(1)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/ent", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<betweenLen(2,5)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/e", params: nil, match: false},
-					{url: "/api/v1/en", params: []string{"en"}, match: true},
-					{url: "/api/v1/8728382", params: nil, match: false},
-					{url: "/api/v1/123", params: []string{"123"}, match: true},
-					{url: "/api/v1/12345", params: []string{"12345"}, match: true},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<betweenLen(2,5)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/e", params: nil, match: false},
-					{url: "/api/v1/en", params: []string{"en"}, match: true},
-					{url: "/api/v1/8728382", params: nil, match: false},
-					{url: "/api/v1/123", params: []string{"123"}, match: true},
-					{url: "/api/v1/12345", params: []string{"12345"}, match: true},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<min(5)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/ent", params: nil, match: false},
-					{url: "/api/v1/1", params: nil, match: false},
-					{url: "/api/v1/5", params: []string{"5"}, match: true},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<max(5)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/ent", params: nil, match: false},
-					{url: "/api/v1/1", params: []string{"1"}, match: true},
-					{url: "/api/v1/5", params: []string{"5"}, match: true},
-					{url: "/api/v1/15", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<range(5,10)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/ent", params: nil, match: false},
-					{url: "/api/v1/9", params: []string{"9"}, match: true},
-					{url: "/api/v1/5", params: []string{"5"}, match: true},
-					{url: "/api/v1/15", params: nil, match: false},
-				},
-			},
-			{
-				pattern: `/api/v1/:param<datetime(2006\-01\-02)>`,
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/8728382", params: nil, match: false},
-					{url: "/api/v1/2005-11-01", params: []string{"2005-11-01"}, match: true},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<regex(p([a-z]+)ch)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/ent", params: nil, match: false},
-					{url: "/api/v1/15", params: nil, match: false},
-					{url: "/api/v1/peach", params: []string{"peach"}, match: true},
-					{url: "/api/v1/p34ch", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<regex(^[a-z0-9]([a-z0-9-]{1,61}[a-z0-9])?$)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/12", params: nil, match: false},
-					{url: "/api/v1/xy", params: nil, match: false},
-					{url: "/api/v1/test", params: []string{"test"}, match: true},
-					{url: "/api/v1/" + strings.Repeat("a", 64), params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<regex(^[^>]+$)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/safe-value", params: []string{"safe-value"}, match: true},
-					{url: "/api/v1/bad>value", params: nil, match: false},
-				},
-			},
-			{
-				pattern: `/api/v1/:param<regex(\d{4}-\d{2}-\d{2})}>`,
-				testCases: []routeTestCase{
-					{url: "/api/v1/ent", params: nil, match: false},
-					{url: "/api/v1/15", params: nil, match: false},
-					{url: "/api/v1/2022-08-27", params: []string{"2022-08-27"}, match: true},
-					{url: "/api/v1/2022/08-27", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<int;bool((>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
-					{url: "/api/v1/true", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<int;max(3000)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/8728382", params: nil, match: false},
-					{url: "/api/v1/123", params: []string{"123"}, match: true},
-					{url: "/api/v1/true", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<int;maxLen(10)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/87283827683", params: nil, match: false},
-					{url: "/api/v1/123", params: []string{"123"}, match: true},
-					{url: "/api/v1/true", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<int;range(10,30)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/87283827683", params: nil, match: false},
-					{url: "/api/v1/25", params: []string{"25"}, match: true},
-					{url: "/api/v1/true", params: nil, match: false},
-				},
-			},
-			{
-				pattern: `/api/v1/:param<int\;range(10,30)>`,
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: []string{"entity"}, match: true},
-					{url: "/api/v1/87283827683", params: []string{"87283827683"}, match: true},
-					{url: "/api/v1/25", params: []string{"25"}, match: true},
-					{url: "/api/v1/true", params: []string{"true"}, match: true},
-				},
-			},
-			{
-				pattern: `/api/v1/:param<range(10\,30,1500)>`,
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/87283827683", params: nil, match: false},
-					{url: "/api/v1/25", params: nil, match: false},
-					{url: "/api/v1/1200", params: nil, match: false},
-					{url: "/api/v1/true", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<range(10,1500)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/87283827683", params: nil, match: false},
-					{url: "/api/v1/25", params: []string{"25"}, match: true},
-					{url: "/api/v1/1200", params: []string{"1200"}, match: true},
-					{url: "/api/v1/true", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:lang<len(2)>/videos/:page<range(100,1500)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/try/videos/200", params: nil, match: false},
-					{url: "/api/v1/tr/videos/1800", params: nil, match: false},
-					{url: "/api/v1/tr/videos/100", params: []string{"tr", "100"}, match: true},
-					{url: "/api/v1/e/videos/10", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:lang<len(2)>/:page<range(100,1500)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/try/200", params: nil, match: false},
-					{url: "/api/v1/tr/1800", params: nil, match: false},
-					{url: "/api/v1/tr/100", params: []string{"tr", "100"}, match: true},
-					{url: "/api/v1/e/10", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:lang/:page<range(100,1500)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/try/200", params: []string{"try", "200"}, match: true},
-					{url: "/api/v1/tr/1800", params: nil, match: false},
-					{url: "/api/v1/tr/100", params: []string{"tr", "100"}, match: true},
-					{url: "/api/v1/e/10", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/v1/:lang<len(2)>/:page",
-				testCases: []routeTestCase{
-					{url: "/api/v1/try/200", params: nil, match: false},
-					{url: "/api/v1/tr/1800", params: []string{"tr", "1800"}, match: true},
-					{url: "/api/v1/tr/100", params: []string{"tr", "100"}, match: true},
-					{url: "/api/v1/e/10", params: nil, match: false},
-				},
-			},
-			{
-				pattern: `/api/v1/:date<datetime(2006\-01\-02)>/:regex<regex(p([a-z]+)ch)>`,
-				testCases: []routeTestCase{
-					{url: "/api/v1/2005-11-01/a", params: nil, match: false},
-					{url: "/api/v1/2005-1101/paach", params: nil, match: false},
-					{url: "/api/v1/2005-11-01/peach", params: []string{"2005-11-01", "peach"}, match: true},
-				},
-			},
-			{
-				pattern: "/api/v1/:param<int>?",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
-					{url: "/api/v1/true", params: nil, match: false},
-					{url: "/api/v1/", params: []string{""}, match: true},
-				},
-			},
-			// Add test case for RegexCompiler == nil
-			{
-				pattern: "/api/v1/:param<regex(\\d+)>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/123", params: []string{"123"}, match: true},
-					{url: "/api/v1/abc", params: nil, match: false},
-				},
-			},
-			// a parameter terminated by a single-byte compare part can swallow '/'
-			// (findParamLen's IndexByte branch has no slash guard)
-			{
-				pattern: "/api/v1/:param-:param2",
-				testCases: []routeTestCase{
-					{url: "/api/v1/enti/ty-x", params: []string{"enti/ty", "x"}, match: true},
-				},
-			},
-			// successive parameters consume one byte each, which may be a '/'
-			{
-				pattern: "/test:sign:param",
-				testCases: []routeTestCase{
-					{url: "/test/x", params: []string{"/", "x"}, match: true},
-				},
-			},
+			pathTestRoute("/name::name", pathTestMatch("/name:john", "john")),
+			pathTestRoute("/@:name", pathTestMatch("/@john", "john")),
+			pathTestRoute("/-:name", pathTestMatch("/-john", "john")),
+			pathTestRoute("/.:name", pathTestMatch("/.john", "john")),
+			pathTestRoute("/api/v1/:param/abc/*",
+				pathTestMatch("/api/v1/well/abc/wildcard", "well", "wildcard"),
+				pathTestMatch("/api/v1/well/abc/", "well", ""), pathTestMatch("/api/v1/well/abc", "well", ""),
+				pathTestMiss("/api/v1/well/ttt"),
+			),
 			// optional trailing segments drop their leading slashes
-			{
-				pattern: "/api/:day/:month?/:year?",
-				testCases: []routeTestCase{
-					{url: "/api/1", params: []string{"1", "", ""}, match: true},
-					{url: "/api/1/2", params: []string{"1", "2", ""}, match: true},
-					{url: "/api/1/2/3", params: []string{"1", "2", "3"}, match: true},
-				},
-			},
+			pathTestRoute("/api/:day/:month?/:year?",
+				pathTestMatch("/api/1", "1", "", ""), pathTestMatch("/api/1/", "1", "", ""),
+				pathTestMatch("/api/1//", "1", "", ""), pathTestMatch("/api/1/-/", "1", "-", ""),
+				pathTestMatch("/api/1-", "1-", "", ""), pathTestMatch("/api/1.", "1.", "", ""),
+				pathTestMatch("/api/1/2", "1", "2", ""), pathTestMatch("/api/1/2/3", "1", "2", "3"),
+				pathTestMiss("/api/"),
+			),
+			pathTestRoute("/api/:day.:month?.:year?",
+				pathTestMiss("/api/1"), pathTestMiss("/api/1/"), pathTestMiss("/api/1."),
+				pathTestMatch("/api/1..", "1", "", ""), pathTestMiss("/api/1.2"),
+				pathTestMatch("/api/1.2.", "1", "2", ""), pathTestMatch("/api/1.2.3", "1", "2", "3"),
+				pathTestMiss("/api/"),
+			),
+			pathTestRoute("/api/:day-:month?-:year?",
+				pathTestMiss("/api/1"), pathTestMiss("/api/1/"), pathTestMiss("/api/1-"),
+				pathTestMatch("/api/1--", "1", "", ""), pathTestMiss("/api/1-/"), pathTestMiss("/api/1-/-"),
+				pathTestMiss("/api/1-2"), pathTestMatch("/api/1-2-", "1", "2", ""),
+				pathTestMatch("/api/1-2-3", "1", "2", "3"), pathTestMiss("/api/"),
+			),
+			pathTestRoute("/api/*",
+				pathTestMatch("/api/", ""), pathTestMatch("/api/joker", "joker"), pathTestMatch("/api", ""),
+				pathTestMatch("/api/v1/entity", "v1/entity"), pathTestMiss("/api2/v1/entity"),
+				pathTestMiss("/api_ignore/v1/entity"),
+			),
+			pathTestRoute("/partialCheck/foo/",
+				pathTestPartialMatch("/partialCheck/foo/"), pathTestPartialMatch("/partialCheck/foo/bar"),
+				pathTestPartialMatch("/partialCheck/foo/bar/baz"), pathTestPartialMiss("/partialCheck/foobar"),
+			),
+			pathTestRoute("/partialCheck/foo/bar/:param",
+				pathTestPartialMatch("/partialCheck/foo/bar/test", "test"),
+				pathTestPartialMatch("/partialCheck/foo/bar/test/test2", "test"),
+				pathTestPartialMiss("/partialCheck/foo/bar"), pathTestPartialMiss("/partialFoo"),
+			),
+			pathTestRoute("/partialCheck/foo",
+				pathTestPartialMatch("/partialCheck/foo"), pathTestPartialMatch("/partialCheck/foo/"),
+				pathTestPartialMatch("/partialCheck/foo/bar"), pathTestPartialMiss("/partialCheck/foobar"),
+			),
+			pathTestRoute("/partialCheck/:param",
+				pathTestPartialMatch("/partialCheck/value", "value"),
+				pathTestPartialMatch("/partialCheck/value/", "value"),
+				pathTestPartialMatch("/partialCheck/value/next", "value"),
+			),
+			pathTestRoute("/", pathTestMiss("/api"), pathTestMatch(""), pathTestMatch("/")),
+			pathTestRoute("/config/abc.json",
+				pathTestMatch("/config/abc.json"), pathTestMiss("config/abc.json"), pathTestMiss("/config/efg.json"),
+				pathTestMiss("/config"),
+			),
+			pathTestRoute("/config/*.json",
+				pathTestMatch("/config/abc.json", "abc"), pathTestMatch("/config/efg.json", "efg"),
+				pathTestMatch("/config/.json", ""), pathTestMiss("/config/efg.csv"), pathTestMiss("config/abc.json"),
+				pathTestMiss("/config"),
+			),
+			pathTestRoute("/config/+.json",
+				pathTestMatch("/config/abc.json", "abc"), pathTestMiss("/config/.json"),
+				pathTestMatch("/config/efg.json", "efg"), pathTestMiss("/config/efg.csv"),
+				pathTestMiss("config/abc.json"), pathTestMiss("/config"),
+			),
+			pathTestRoute("/xyz", pathTestMiss("xyz"), pathTestMiss("xyz/")),
+			pathTestRoute("/api/*/:param?",
+				pathTestMatch("/api/", "", ""), pathTestMatch("/api/joker", "joker", ""),
+				pathTestMatch("/api/joker/batman", "joker", "batman"),
+				pathTestMatch("/api/joker//batman", "joker/", "batman"),
+				pathTestMatch("/api/joker/batman/robin", "joker/batman", "robin"),
+				pathTestMatch("/api/joker/batman/robin/1", "joker/batman/robin", "1"),
+				pathTestMatch("/api/joker/batman/robin/1/", "joker/batman/robin/1", ""),
+				pathTestMatch("/api/joker-batman/robin/1", "joker-batman/robin", "1"),
+				pathTestMatch("/api/joker-batman-robin/1", "joker-batman-robin", "1"),
+				pathTestMatch("/api/joker-batman-robin-1", "joker-batman-robin-1", ""), pathTestMatch("/api", "", ""),
+			),
+			pathTestRoute("/api/*/:param",
+				pathTestMatch("/api/test/abc", "test", "abc"), pathTestMatch("/api/joker/batman", "joker", "batman"),
+				pathTestMatch("/api/joker/batman/robin", "joker/batman", "robin"),
+				pathTestMatch("/api/joker/batman/robin/1", "joker/batman/robin", "1"),
+				pathTestMatch("/api/joker/batman-robin/1", "joker/batman-robin", "1"),
+				pathTestMiss("/api/joker-batman-robin-1"), pathTestMiss("/api"),
+			),
+			pathTestRoute("/api/+/:param",
+				pathTestMatch("/api/test/abc", "test", "abc"),
+				pathTestMatch("/api/joker/batman/robin/1", "joker/batman/robin", "1"), pathTestMiss("/api/joker"),
+				pathTestMiss("/api"),
+			),
+			pathTestRoute("/api/*/:param/:param2",
+				pathTestMatch("/api/test/abc/1", "test", "abc", "1"), pathTestMiss("/api/joker/batman"),
+				pathTestMatch("/api/joker/batman-robin/1", "joker", "batman-robin", "1"),
+				pathTestMiss("/api/joker-batman-robin-1"), pathTestMiss("/api/test/abc"),
+				pathTestMatch("/api/joker/batman/robin", "joker", "batman", "robin"),
+				pathTestMatch("/api/joker/batman/robin/1", "joker/batman", "robin", "1"),
+				pathTestMatch("/api/joker/batman/robin/1/2", "joker/batman/robin", "1", "2"), pathTestMiss("/api"),
+				pathTestMiss("/api/:test"),
+			),
+			pathTestRoute("/api/v1/:param<int>",
+				pathTestMiss("/api/v1/entity"), pathTestMatch("/api/v1/8728382", "8728382"),
+				pathTestMiss("/api/v1/true"),
+			),
+			pathTestRoute("/api/v1/:param<bool>",
+				pathTestMiss("/api/v1/entity"), pathTestMiss("/api/v1/8728382"), pathTestMatch("/api/v1/true", "true"),
+			),
+			pathTestRoute("/api/v1/:param<float>",
+				pathTestMiss("/api/v1/entity"), pathTestMatch("/api/v1/8728382", "8728382"),
+				pathTestMatch("/api/v1/8728382.5", "8728382.5"), pathTestMiss("/api/v1/true"),
+			),
+			pathTestRoute("/api/v1/:param<alpha>",
+				pathTestMatch("/api/v1/entity", "entity"), pathTestMiss("/api/v1/#!?"), pathTestMiss("/api/v1/8728382"),
+			),
+			pathTestRoute("/api/v1/:param<guid>",
+				pathTestMiss("/api/v1/entity"), pathTestMiss("/api/v1/8728382"),
+				pathTestMatch("/api/v1/f0fa66cc-d22e-445b-866d-1d76e776371d", "f0fa66cc-d22e-445b-866d-1d76e776371d"),
+			),
+			pathTestRoute("/api/v1/:param<minLen>", pathTestMiss("/api/v1/entity"), pathTestMiss("/api/v1/8728382")),
+			pathTestRoute("/api/v1/:param<minLen(5)>",
+				pathTestMatch("/api/v1/entity", "entity"), pathTestMiss("/api/v1/ent"),
+				pathTestMatch("/api/v1/8728382", "8728382"), pathTestMiss("/api/v1/123"),
+				pathTestMatch("/api/v1/12345", "12345"),
+			),
+			pathTestRoute("/api/v1/:param<maxLen(5)>",
+				pathTestMiss("/api/v1/entity"), pathTestMatch("/api/v1/ent", "ent"), pathTestMiss("/api/v1/8728382"),
+				pathTestMatch("/api/v1/123", "123"), pathTestMatch("/api/v1/12345", "12345"),
+			),
+			pathTestRoute("/api/v1/:param<len(5)>",
+				pathTestMiss("/api/v1/ent"), pathTestMiss("/api/v1/123"), pathTestMatch("/api/v1/12345", "12345"),
+			),
+			pathTestRoute("/api/v1/:param<betweenLen(1)>", pathTestMiss("/api/v1/entity"), pathTestMiss("/api/v1/ent")),
+			pathTestRoute("/api/v1/:param<betweenLen(2,5)>",
+				pathTestMiss("/api/v1/e"), pathTestMatch("/api/v1/en", "en"), pathTestMiss("/api/v1/8728382"),
+				pathTestMatch("/api/v1/123", "123"), pathTestMatch("/api/v1/12345", "12345"),
+			),
+			pathTestRoute("/api/v1/:param<min(5)>",
+				pathTestMiss("/api/v1/ent"), pathTestMiss("/api/v1/1"), pathTestMatch("/api/v1/5", "5"),
+			),
+			pathTestRoute("/api/v1/:param<max(5)>",
+				pathTestMiss("/api/v1/ent"), pathTestMatch("/api/v1/1", "1"), pathTestMatch("/api/v1/5", "5"),
+				pathTestMiss("/api/v1/15"),
+			),
+			pathTestRoute("/api/v1/:param<range(5,10)>",
+				pathTestMiss("/api/v1/ent"), pathTestMatch("/api/v1/9", "9"), pathTestMatch("/api/v1/5", "5"),
+				pathTestMiss("/api/v1/15"),
+			),
+			pathTestRoute(`/api/v1/:param<datetime(2006\-01\-02)>`,
+				pathTestMiss("/api/v1/entity"), pathTestMiss("/api/v1/8728382"),
+				pathTestMatch("/api/v1/2005-11-01", "2005-11-01"),
+			),
+			pathTestRoute("/api/v1/:param<regex(p([a-z]+)ch)>",
+				pathTestMiss("/api/v1/ent"), pathTestMiss("/api/v1/15"), pathTestMatch("/api/v1/peach", "peach"),
+				pathTestMiss("/api/v1/p34ch"),
+			),
+			pathTestRoute("/api/v1/:param<regex(^[a-z0-9]([a-z0-9-]{1,61}[a-z0-9])?$)>",
+				pathTestMiss("/api/v1/12"), pathTestMiss("/api/v1/xy"), pathTestMatch("/api/v1/test", "test"),
+				pathTestMiss("/api/v1/"+strings.Repeat("a", 64)),
+			),
+			pathTestRoute("/api/v1/:param<regex(^[^>]+$)>",
+				pathTestMatch("/api/v1/safe-value", "safe-value"), pathTestMiss("/api/v1/bad>value"),
+			),
+			pathTestRoute(`/api/v1/:param<regex(\d{4}-\d{2}-\d{2})}>`,
+				pathTestMiss("/api/v1/ent"), pathTestMiss("/api/v1/15"),
+				pathTestMatch("/api/v1/2022-08-27", "2022-08-27"), pathTestMiss("/api/v1/2022/08-27"),
+			),
+			pathTestRoute("/api/v1/:param<int;bool((>",
+				pathTestMiss("/api/v1/entity"), pathTestMatch("/api/v1/8728382", "8728382"),
+				pathTestMiss("/api/v1/true"),
+			),
+			pathTestRoute("/api/v1/:param<int;max(3000)>",
+				pathTestMiss("/api/v1/entity"), pathTestMiss("/api/v1/8728382"), pathTestMatch("/api/v1/123", "123"),
+				pathTestMiss("/api/v1/true"),
+			),
+			pathTestRoute("/api/v1/:param<int;maxLen(10)>",
+				pathTestMiss("/api/v1/entity"), pathTestMiss("/api/v1/87283827683"),
+				pathTestMatch("/api/v1/123", "123"), pathTestMiss("/api/v1/true"),
+			),
+			pathTestRoute("/api/v1/:param<int;range(10,30)>",
+				pathTestMiss("/api/v1/entity"), pathTestMiss("/api/v1/87283827683"), pathTestMatch("/api/v1/25", "25"),
+				pathTestMiss("/api/v1/true"),
+			),
+			pathTestRoute(`/api/v1/:param<int\;range(10,30)>`,
+				pathTestMatch("/api/v1/entity", "entity"), pathTestMatch("/api/v1/87283827683", "87283827683"),
+				pathTestMatch("/api/v1/25", "25"), pathTestMatch("/api/v1/true", "true"),
+			),
+			pathTestRoute(`/api/v1/:param<range(10\,30,1500)>`,
+				pathTestMiss("/api/v1/entity"), pathTestMiss("/api/v1/87283827683"), pathTestMiss("/api/v1/25"),
+				pathTestMiss("/api/v1/1200"), pathTestMiss("/api/v1/true"),
+			),
+			pathTestRoute("/api/v1/:param<range(10,1500)>",
+				pathTestMiss("/api/v1/entity"), pathTestMiss("/api/v1/87283827683"), pathTestMatch("/api/v1/25", "25"),
+				pathTestMatch("/api/v1/1200", "1200"), pathTestMiss("/api/v1/true"),
+			),
+			pathTestRoute("/api/v1/:lang<len(2)>/videos/:page<range(100,1500)>",
+				pathTestMiss("/api/v1/try/videos/200"), pathTestMiss("/api/v1/tr/videos/1800"),
+				pathTestMatch("/api/v1/tr/videos/100", "tr", "100"), pathTestMiss("/api/v1/e/videos/10"),
+			),
+			pathTestRoute("/api/v1/:lang<len(2)>/:page<range(100,1500)>",
+				pathTestMiss("/api/v1/try/200"), pathTestMiss("/api/v1/tr/1800"),
+				pathTestMatch("/api/v1/tr/100", "tr", "100"), pathTestMiss("/api/v1/e/10"),
+			),
+			pathTestRoute("/api/v1/:lang/:page<range(100,1500)>",
+				pathTestMatch("/api/v1/try/200", "try", "200"), pathTestMiss("/api/v1/tr/1800"),
+				pathTestMatch("/api/v1/tr/100", "tr", "100"), pathTestMiss("/api/v1/e/10"),
+			),
+			pathTestRoute("/api/v1/:lang<len(2)>/:page",
+				pathTestMiss("/api/v1/try/200"), pathTestMatch("/api/v1/tr/1800", "tr", "1800"),
+				pathTestMatch("/api/v1/tr/100", "tr", "100"), pathTestMiss("/api/v1/e/10"),
+			),
+			pathTestRoute(`/api/v1/:date<datetime(2006\-01\-02)>/:regex<regex(p([a-z]+)ch)>`,
+				pathTestMiss("/api/v1/2005-11-01/a"), pathTestMiss("/api/v1/2005-1101/paach"),
+				pathTestMatch("/api/v1/2005-11-01/peach", "2005-11-01", "peach"),
+			),
+			pathTestRoute("/api/v1/:param<int>?",
+				pathTestMiss("/api/v1/entity"), pathTestMatch("/api/v1/8728382", "8728382"),
+				pathTestMiss("/api/v1/true"), pathTestMatch("/api/v1/", ""),
+			),
+			// Add test case for RegexCompiler == nil
+			pathTestRoute("/api/v1/:param<regex(\\d+)>",
+				pathTestMatch("/api/v1/123", "123"), pathTestMiss("/api/v1/abc"),
+			),
 			// prefix (partialCheck) routes with parameters match deeper paths
-			{
-				pattern: "/mw/:version",
-				testCases: []routeTestCase{
-					{url: "/mw/v1/users/list", params: []string{"v1"}, match: true, partialCheck: true},
-					{url: "/mw", params: nil, match: false, partialCheck: true},
-				},
-			},
+			pathTestRoute("/mw/:version", pathTestPartialMatch("/mw/v1/users/list", "v1"), pathTestPartialMiss("/mw")),
 			// a non-greedy parameter followed by a multi-byte constant ends at
 			// the first '/' of the remainder, and only if the constant sits there
-			{
-				pattern: "/:owner/keys/:id",
-				testCases: []routeTestCase{
-					{url: "/a/keys/1", params: []string{"a", "1"}, match: true},
-					{url: "/a/b/keys/1", params: nil, match: false},
-					{url: "/a/keysx/1", params: nil, match: false},
-					{url: "/a/xkeys/1", params: nil, match: false},
-					{url: "/a/1", params: nil, match: false},
-					{url: "/a", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/:p/verylongconstantsegment",
-				testCases: []routeTestCase{
-					{url: "/a/verylongconstantsegment", params: []string{"a"}, match: true},
-					{url: "/a/verylongconstantsegmen", params: nil, match: false},
-					{url: "/a/verylongconstantsegmentx", params: nil, match: false},
-					{url: "/a/b/verylongconstantsegment", params: nil, match: false},
-					{url: "/a/verylongconstantsegment/b", params: nil, match: false},
-					{url: "/a/verylongconstantsegment/b", params: []string{"a"}, match: true, partialCheck: true},
-				},
-			},
+			pathTestRoute("/:owner/keys/:id",
+				pathTestMatch("/a/keys/1", "a", "1"), pathTestMiss("/a/b/keys/1"), pathTestMiss("/a/keysx/1"),
+				pathTestMiss("/a/xkeys/1"), pathTestMiss("/a/1"), pathTestMiss("/a"),
+			),
+			pathTestRoute("/:p/verylongconstantsegment",
+				pathTestMatch("/a/verylongconstantsegment", "a"), pathTestMiss("/a/verylongconstantsegmen"),
+				pathTestMiss("/a/verylongconstantsegmentx"), pathTestMiss("/a/b/verylongconstantsegment"),
+				pathTestMiss("/a/verylongconstantsegment/b"), pathTestPartialMatch("/a/verylongconstantsegment/b", "a"),
+			),
 			// the trailing slash of a constant after a parameter stays optional
-			{
-				pattern: "/:q/a/",
-				testCases: []routeTestCase{
-					{url: "/x/a/", params: []string{"x"}, match: true},
-					{url: "/x/a", params: []string{"x"}, match: true},
-					{url: "/x/ab", params: nil, match: false},
-					{url: "/x/b/a/", params: nil, match: false},
-				},
-			},
+			pathTestRoute("/:q/a/",
+				pathTestMatch("/x/a/", "x"), pathTestMatch("/x/a", "x"), pathTestMiss("/x/ab"), pathTestMiss("/x/b/a/"),
+			),
 			// a prefix's greedy parameter ends before the last constant that ends a segment;
 			// an endpoint keeps the guess
-			{
-				pattern: "/api/*/admin",
-				testCases: []routeTestCase{
-					{url: "/api/acme/admin", params: []string{"acme"}, match: true, partialCheck: true},
-					{url: "/api/acme/admin/users", params: []string{"acme"}, match: true, partialCheck: true},
-					{url: "/api/acme/admin/admins", params: []string{"acme"}, match: true, partialCheck: true},
-					{url: "/api/acme/admin/admin-settings", params: []string{"acme"}, match: true, partialCheck: true},
-					{url: "/api/acme/admin/users/admin.json", params: []string{"acme"}, match: true, partialCheck: true},
-					{url: "/api/a/admin/b/admin/c", params: []string{"a/admin/b"}, match: true, partialCheck: true},
-					{url: "/api/acme/admin/x/admin/admins", params: []string{"acme/admin/x"}, match: true, partialCheck: true},
-					{url: "/api//admin/x", params: []string{""}, match: true, partialCheck: true},
-					{url: "/api/acme/admins/admins", params: nil, match: false, partialCheck: true},
-					{url: "/api/acme/admin.json", params: nil, match: false, partialCheck: true},
-					{url: "/api/acme/admin/x/admin", params: []string{"acme/admin/x"}, match: true},
-					{url: "/api/acme/admin/admins", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/api/+/admin",
-				testCases: []routeTestCase{
-					{url: "/api/acme/admin/admins", params: []string{"acme"}, match: true, partialCheck: true},
-					{url: "/api/admin/admin/admins", params: []string{"admin"}, match: true, partialCheck: true},
-					{url: "/api//admin/admins", params: nil, match: false, partialCheck: true},
-				},
-			},
-			{
-				pattern: "/files/*.json",
-				testCases: []routeTestCase{
-					{url: "/files/a.json/b.json.bak", params: []string{"a"}, match: true, partialCheck: true},
-					{url: "/files/a/b.json", params: []string{"a/b"}, match: true, partialCheck: true},
-					{url: "/files/a.json.bak", params: nil, match: false, partialCheck: true},
-				},
-			},
-			{
-				// two wildcards keep the guess
-				pattern: "/api/*/x/*/admin",
-				testCases: []routeTestCase{
-					{url: "/api/a/x/b/admin/c", params: []string{"a", "b"}, match: true, partialCheck: true},
-					{url: "/api/a/x/b/admin/admins", params: nil, match: false, partialCheck: true},
-				},
-			},
+			pathTestRoute("/api/*/admin",
+				pathTestPartialMatch("/api/acme/admin", "acme"), pathTestPartialMatch("/api/acme/admin/users", "acme"),
+				pathTestPartialMatch("/api/acme/admin/admins", "acme"),
+				pathTestPartialMatch("/api/acme/admin/admin-settings", "acme"),
+				pathTestPartialMatch("/api/acme/admin/users/admin.json", "acme"),
+				pathTestPartialMatch("/api/a/admin/b/admin/c", "a/admin/b"),
+				pathTestPartialMatch("/api/acme/admin/x/admin/admins", "acme/admin/x"),
+				pathTestPartialMatch("/api//admin/x", ""), pathTestPartialMiss("/api/acme/admins/admins"),
+				pathTestPartialMiss("/api/acme/admin.json"), pathTestMatch("/api/acme/admin/x/admin", "acme/admin/x"),
+				pathTestMiss("/api/acme/admin/admins"),
+			),
+			pathTestRoute("/api/+/admin",
+				pathTestPartialMatch("/api/acme/admin/admins", "acme"),
+				pathTestPartialMatch("/api/admin/admin/admins", "admin"), pathTestPartialMiss("/api//admin/admins"),
+			),
+			pathTestRoute("/files/*.json",
+				pathTestPartialMatch("/files/a.json/b.json.bak", "a"), pathTestPartialMatch("/files/a/b.json", "a/b"),
+				pathTestPartialMiss("/files/a.json.bak"),
+			),
+			// two wildcards keep the guess
+			pathTestRoute("/api/*/x/*/admin",
+				pathTestPartialMatch("/api/a/x/b/admin/c", "a", "b"), pathTestPartialMiss("/api/a/x/b/admin/admins"),
+			),
 			// a prefix's plain parameter ends where the constant after it ends the segment;
 			// an endpoint keeps the first match
-			{
-				pattern: "/files/:name.json",
-				testCases: []routeTestCase{
-					{url: "/files/a.json", params: []string{"a"}, match: true, partialCheck: true},
-					{url: "/files/a.json/raw", params: []string{"a"}, match: true, partialCheck: true},
-					{url: "/files/a.json.json/raw", params: []string{"a.json"}, match: true, partialCheck: true},
-					{url: "/files/a.json.json", params: []string{"a.json"}, match: true, partialCheck: true},
-					{url: "/files/a.jsonx/raw", params: nil, match: false, partialCheck: true},
-					{url: "/files/.json/raw", params: nil, match: false, partialCheck: true},
-					{url: "/files/a/b.json", params: nil, match: false, partialCheck: true},
-					{url: "/files/a.json.json", params: nil, match: false},
-				},
-			},
-			{
-				pattern: "/admin/:v.",
-				testCases: []routeTestCase{
-					{url: "/admin/a.b./x", params: []string{"a.b"}, match: true, partialCheck: true},
-					{url: "/admin/a.b/x", params: nil, match: false, partialCheck: true},
-					// a one-byte constant still lets the parameter cross a '/', as on the endpoint
-					{url: "/admin/a/b./x", params: []string{"a/b"}, match: true, partialCheck: true},
-					{url: "/admin/a/b.", params: []string{"a/b"}, match: true},
-				},
-			},
-			{
-				pattern: "/v1/:id/x:v-x",
-				testCases: []routeTestCase{
-					{url: "/v1/7/xa-x-x/y", params: []string{"7", "a-x"}, match: true, partialCheck: true},
-				},
-			},
+			pathTestRoute("/files/:name.json",
+				pathTestPartialMatch("/files/a.json", "a"), pathTestPartialMatch("/files/a.json/raw", "a"),
+				pathTestPartialMatch("/files/a.json.json/raw", "a.json"),
+				pathTestPartialMatch("/files/a.json.json", "a.json"), pathTestPartialMiss("/files/a.jsonx/raw"),
+				pathTestPartialMiss("/files/.json/raw"), pathTestPartialMiss("/files/a/b.json"),
+				pathTestMiss("/files/a.json.json"),
+			),
+			pathTestRoute("/admin/:v.",
+				pathTestPartialMatch("/admin/a.b./x", "a.b"), pathTestPartialMiss("/admin/a.b/x"),
+				// a one-byte constant still lets the parameter cross a '/', as on the endpoint
+				pathTestPartialMatch("/admin/a/b./x", "a/b"), pathTestMatch("/admin/a/b.", "a/b"),
+			),
+			pathTestRoute("/v1/:id/x:v-x",
+				pathTestPartialMatch("/v1/7/xa-x-x/y", "7", "a-x"),
+			),
 			// other shapes keep the first match
-			{
-				pattern: "/files/:name<minLen(2)>.json",
-				testCases: []routeTestCase{
-					{url: "/files/ab.json.json/raw", params: nil, match: false, partialCheck: true},
-				},
-			},
-			{
-				pattern: "/files/:name?.json",
-				testCases: []routeTestCase{
-					{url: "/files/a.json.json/raw", params: nil, match: false, partialCheck: true},
-				},
-			},
-			{
-				pattern: "/files/:a-:b.json",
-				testCases: []routeTestCase{
-					{url: "/files/x-a.json.json/raw", params: nil, match: false, partialCheck: true},
-				},
-			},
-			{
-				pattern: "/files/*/:name.json",
-				testCases: []routeTestCase{
-					{url: "/files/x/a.json.json", params: nil, match: false, partialCheck: true},
-				},
-			},
+			pathTestRoute("/files/:name<minLen(2)>.json",
+				pathTestPartialMiss("/files/ab.json.json/raw"),
+			),
+			pathTestRoute("/files/:name?.json",
+				pathTestPartialMiss("/files/a.json.json/raw"),
+			),
+			pathTestRoute("/files/:a-:b.json",
+				pathTestPartialMiss("/files/x-a.json.json/raw"),
+			),
+			pathTestRoute("/files/*/:name.json",
+				pathTestPartialMiss("/files/x/a.json.json"),
+			),
 		}...,
 	)
 }
