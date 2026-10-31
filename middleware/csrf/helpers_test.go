@@ -6,9 +6,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Test_CSRF_Security_CompareConstantTime verifies the logical behavior of the
+// constant-time comparison helpers used to validate tokens. The functions must
+// only report equality for byte/string-identical inputs.
 func Test_CSRF_Security_CompareConstantTime(t *testing.T) {
 	t.Parallel()
-
 	t.Run("strings", func(t *testing.T) {
 		t.Parallel()
 		require.True(t, compareStrings("abc123", "abc123"))

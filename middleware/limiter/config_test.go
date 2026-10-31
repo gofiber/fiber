@@ -10,7 +10,6 @@ import (
 
 func Test_secondsToDuration(t *testing.T) {
 	t.Parallel()
-
 	d, ok := secondsToDuration(5)
 	require.True(t, ok)
 	require.Equal(t, 5*time.Second, d)
@@ -23,7 +22,6 @@ func Test_secondsToDuration(t *testing.T) {
 
 func Test_ttlDuration(t *testing.T) {
 	t.Parallel()
-
 	require.Equal(t, 3*time.Second, ttlDuration(1, 2))
 
 	const maxSeconds = uint64(math.MaxInt64 / int64(time.Second))
@@ -39,7 +37,6 @@ func Test_ttlDuration(t *testing.T) {
 // A pre-epoch clock is clamped to 0 instead of wrapping to a huge uint64.
 func Test_Config_currentSecond_NegativeClock(t *testing.T) {
 	t.Parallel()
-
 	cfg := &Config{clock: func() time.Time { return time.Unix(-100, 0) }}
 	require.Equal(t, uint64(0), cfg.currentSecond())
 
@@ -49,7 +46,6 @@ func Test_Config_currentSecond_NegativeClock(t *testing.T) {
 
 func Test_windowSeconds(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name       string
 		d          time.Duration
@@ -69,7 +65,6 @@ func Test_windowSeconds(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			require.Equal(t, tc.want, windowSeconds(tc.d, tc.configured))
 		})
 	}

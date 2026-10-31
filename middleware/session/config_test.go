@@ -11,7 +11,6 @@ import (
 )
 
 func TestConfigDefault(t *testing.T) {
-	// Test default config
 	cfg := configDefault()
 	require.Equal(t, 30*time.Minute, cfg.IdleTimeout)
 	require.NotNil(t, cfg.KeyGenerator)
@@ -21,7 +20,6 @@ func TestConfigDefault(t *testing.T) {
 }
 
 func TestConfigDefaultWithCustomConfig(t *testing.T) {
-	// Test custom config
 	customConfig := Config{
 		IdleTimeout:  48 * time.Hour,
 		Extractor:    extractors.FromHeader("X-Custom-Session"),
@@ -35,13 +33,8 @@ func TestConfigDefaultWithCustomConfig(t *testing.T) {
 }
 
 func TestDefaultErrorHandler(t *testing.T) {
-	// Create a new Fiber app
 	app := fiber.New()
-
-	// Create a new context
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	// Test DefaultErrorHandler
 	DefaultErrorHandler(ctx, fiber.ErrInternalServerError)
 	require.Equal(t, fiber.StatusInternalServerError, ctx.Response().StatusCode())
 }
@@ -59,13 +52,10 @@ func TestAbsoluteTimeoutValidation(t *testing.T) {
 // supported mode and rejects unsupported non-empty values.
 func TestCookieSameSiteValidation(t *testing.T) {
 	t.Parallel()
-
 	for _, value := range []string{"", "disabled", "LAX", "Strict", "none"} {
 		t.Run(value, func(t *testing.T) {
 			t.Parallel()
-			require.NotPanics(t, func() {
-				configDefault(Config{CookieSameSite: value})
-			})
+			require.NotPanics(t, func() { configDefault(Config{CookieSameSite: value}) })
 		})
 	}
 

@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"errors"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -11,132 +10,93 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
-	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
-// go test -run Test_Session
 func Test_Session(t *testing.T) {
 	t.Parallel()
-
-	// session store
 	store := NewStore()
-
-	// fiber instance
 	app := fiber.New()
 
-	// fiber context
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	// Get a new session
-	sess, err := store.Get(ctx)
-	require.NoError(t, err)
+	sess, _ := sessionTestFresh(t, store)
 	require.True(t, sess.Fresh())
 	token := sess.ID()
 	require.NoError(t, sess.Save())
 
-	sess.Release()
-	app.ReleaseCtx(ctx)
-	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-
 	// set session using default cookie extractor
-	ctx.Request().Header.SetCookie("session_id", token)
-
-	// get session
-	sess, err = store.Get(ctx)
-	require.NoError(t, err)
+	sess = loadSession(t, app, store, token)
 	require.False(t, sess.Fresh())
+	require.Equal(t, []any{}, sess.Keys())
+	require.Nil(t, sess.Get("name"))
 
-	// get keys
-	keys := sess.Keys()
-	require.Equal(t, []any{}, keys)
-
-	// get value
-	name := sess.Get("name")
-	require.Nil(t, name)
-
-	// set value
 	sess.Set("name", "john")
+	require.Equal(t, "john", sess.Get("name"))
+	require.Equal(t, []any{"name"}, sess.Keys())
 
-	// get value
-	name = sess.Get("name")
-	require.Equal(t, "john", name)
-
-	keys = sess.Keys()
-	require.Equal(t, []any{"name"}, keys)
-
-	// delete key
 	sess.Delete("name")
+	require.Nil(t, sess.Get("name"))
+	require.Equal(t, []any{}, sess.Keys())
 
-	// get value
-	name = sess.Get("name")
-	require.Nil(t, name)
-
-	// get keys
-	keys = sess.Keys()
-	require.Equal(t, []any{}, keys)
-
-	// get id
 	id := sess.ID()
 	require.Equal(t, token, id)
 
 	// save the old session first
-	err = sess.Save()
-	require.NoError(t, err)
-
-	// release the session
-	sess.Release()
-	// release the context
-	app.ReleaseCtx(ctx)
+	require.NoError(t, sess.Save())
 
 	// requesting entirely new context to prevent falsy tests
-	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	sess, err = store.Get(ctx)
-	require.NoError(t, err)
+	sess, _ = sessionTestFresh(t, store)
 	require.True(t, sess.Fresh())
 
 	// this id should be randomly generated as session key was deleted
 	require.Len(t, sess.ID(), 43)
 
-	sess.Release()
-
 	// when we use the original session for the second time
 	// the session be should be same if the session is not expired
-	app.ReleaseCtx(ctx)
-	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-
-	// request the server with the old session
-	ctx.Request().Header.SetCookie("session_id", id)
-	sess, err = store.Get(ctx)
-	defer sess.Release()
-	require.NoError(t, err)
+	sess = loadSession(t, app, store, id)
 	require.False(t, sess.Fresh())
 	require.Equal(t, sess.id, id)
 }
 
-// go test -run Test_Session_Types
+// sessionTestBasicValues is one value of each basic type that a session stores
+// without registering it, named after its type.
+var sessionTestBasicValues = []struct {
+	value any
+	name  string
+}{
+	{name: "bool", value: true},
+	{name: "string", value: "str"},
+	{name: "int", value: 13},
+	{name: "int8", value: int8(13)},
+	{name: "int16", value: int16(13)},
+	{name: "int32", value: int32(13)},
+	{name: "int64", value: int64(13)},
+	{name: "uint", value: uint(13)},
+	{name: "uint8", value: uint8(13)},
+	{name: "uint16", value: uint16(13)},
+	{name: "uint32", value: uint32(13)},
+	{name: "uint64", value: uint64(13)},
+	{name: "uintptr", value: uintptr(13)},
+	{name: "byte", value: byte('k')},
+	{name: "rune", value: 'k'},
+	{name: "float32", value: float32(13)},
+	{name: "float64", value: float64(13)},
+	{name: "complex64", value: complex64(13)},
+	{name: "complex128", value: complex128(13)},
+}
+
 func Test_Session_Types(t *testing.T) {
 	t.Parallel()
-
-	// session store
 	store := NewStore()
-
-	// fiber instance
 	app := fiber.New()
-
-	// fiber context
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	// set cookie
+	ctx := apptest.Ctx(t, app)
 	ctx.Request().Header.SetCookie("session_id", "123")
 
-	// get session
 	sess, err := store.Get(ctx)
 	require.NoError(t, err)
 	require.True(t, sess.Fresh())
@@ -148,188 +108,44 @@ func Test_Session_Types(t *testing.T) {
 		Name string
 	}
 	store.RegisterType(User{})
-	vuser := User{
-		Name: "John",
-	}
-	// set value
-	var (
-		vbool                  = true
-		vstring                = "str"
-		vint                   = 13
-		vint8       int8       = 13
-		vint16      int16      = 13
-		vint32      int32      = 13
-		vint64      int64      = 13
-		vuint       uint       = 13
-		vuint8      uint8      = 13
-		vuint16     uint16     = 13
-		vuint32     uint32     = 13
-		vuint64     uint64     = 13
-		vuintptr    uintptr    = 13
-		vbyte       byte       = 'k'
-		vrune                  = 'k'
-		vfloat32    float32    = 13
-		vfloat64    float64    = 13
-		vcomplex64  complex64  = 13
-		vcomplex128 complex128 = 13
-	)
+	vuser := User{Name: "John"}
 	sess.Set("vuser", vuser)
-	sess.Set("vbool", vbool)
-	sess.Set("vstring", vstring)
-	sess.Set("vint", vint)
-	sess.Set("vint8", vint8)
-	sess.Set("vint16", vint16)
-	sess.Set("vint32", vint32)
-	sess.Set("vint64", vint64)
-	sess.Set("vuint", vuint)
-	sess.Set("vuint8", vuint8)
-	sess.Set("vuint16", vuint16)
-	sess.Set("vuint32", vuint32)
-	sess.Set("vuint32", vuint32)
-	sess.Set("vuint64", vuint64)
-	sess.Set("vuintptr", vuintptr)
-	sess.Set("vbyte", vbyte)
-	sess.Set("vrune", vrune)
-	sess.Set("vfloat32", vfloat32)
-	sess.Set("vfloat64", vfloat64)
-	sess.Set("vcomplex64", vcomplex64)
-	sess.Set("vcomplex128", vcomplex128)
-
-	// save session
-	err = sess.Save()
-	require.NoError(t, err)
+	for _, v := range sessionTestBasicValues {
+		sess.Set("v"+v.name, v.value)
+	}
+	require.NoError(t, sess.Save())
 
 	sess.Release()
-	app.ReleaseCtx(ctx)
-	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	ctx.Request().Header.SetCookie("session_id", newSessionIDString)
-
-	// get session
-	sess, err = store.Get(ctx)
-	require.NoError(t, err)
+	sess = loadSession(t, app, store, newSessionIDString)
 	require.False(t, sess.Fresh())
 
-	// get value
-	vuserResult, ok := sess.Get("vuser").(User)
-	require.True(t, ok)
-	require.Equal(t, vuser, vuserResult)
-
-	vboolResult, ok := sess.Get("vbool").(bool)
-	require.True(t, ok)
-	require.Equal(t, vbool, vboolResult)
-
-	vstringResult, ok := sess.Get("vstring").(string)
-	require.True(t, ok)
-	require.Equal(t, vstring, vstringResult)
-
-	vintResult, ok := sess.Get("vint").(int)
-	require.True(t, ok)
-	require.Equal(t, vint, vintResult)
-
-	vint8Result, ok := sess.Get("vint8").(int8)
-	require.True(t, ok)
-	require.Equal(t, vint8, vint8Result)
-
-	vint16Result, ok := sess.Get("vint16").(int16)
-	require.True(t, ok)
-	require.Equal(t, vint16, vint16Result)
-
-	vint32Result, ok := sess.Get("vint32").(int32)
-	require.True(t, ok)
-	require.Equal(t, vint32, vint32Result)
-
-	vint64Result, ok := sess.Get("vint64").(int64)
-	require.True(t, ok)
-	require.Equal(t, vint64, vint64Result)
-
-	vuintResult, ok := sess.Get("vuint").(uint)
-	require.True(t, ok)
-	require.Equal(t, vuint, vuintResult)
-
-	vuint8Result, ok := sess.Get("vuint8").(uint8)
-	require.True(t, ok)
-	require.Equal(t, vuint8, vuint8Result)
-
-	vuint16Result, ok := sess.Get("vuint16").(uint16)
-	require.True(t, ok)
-	require.Equal(t, vuint16, vuint16Result)
-
-	vuint32Result, ok := sess.Get("vuint32").(uint32)
-	require.True(t, ok)
-	require.Equal(t, vuint32, vuint32Result)
-
-	vuint64Result, ok := sess.Get("vuint64").(uint64)
-	require.True(t, ok)
-	require.Equal(t, vuint64, vuint64Result)
-
-	vuintptrResult, ok := sess.Get("vuintptr").(uintptr)
-	require.True(t, ok)
-	require.Equal(t, vuintptr, vuintptrResult)
-
-	vbyteResult, ok := sess.Get("vbyte").(byte)
-	require.True(t, ok)
-	require.Equal(t, vbyte, vbyteResult)
-
-	vruneResult, ok := sess.Get("vrune").(rune)
-	require.True(t, ok)
-	require.Equal(t, vrune, vruneResult)
-
-	vfloat32Result, ok := sess.Get("vfloat32").(float32)
-	require.True(t, ok)
-	require.InEpsilon(t, vfloat32, vfloat32Result, 0.001)
-
-	vfloat64Result, ok := sess.Get("vfloat64").(float64)
-	require.True(t, ok)
-	require.InEpsilon(t, vfloat64, vfloat64Result, 0.001)
-
-	vcomplex64Result, ok := sess.Get("vcomplex64").(complex64)
-	require.True(t, ok)
-	require.Equal(t, vcomplex64, vcomplex64Result)
-
-	vcomplex128Result, ok := sess.Get("vcomplex128").(complex128)
-	require.True(t, ok)
-	require.Equal(t, vcomplex128, vcomplex128Result)
-
-	sess.Release()
-
-	app.ReleaseCtx(ctx)
+	// get value, which must come back with the type it went in with
+	require.Equal(t, vuser, sess.Get("vuser"))
+	for _, v := range sessionTestBasicValues {
+		require.Equal(t, v.value, sess.Get("v"+v.name), v.name)
+	}
 }
 
-// go test -run Test_Session_Store_Reset
 func Test_Session_Store_Reset(t *testing.T) {
 	t.Parallel()
-	// session store
 	store := NewStore()
-	// fiber instance
 	app := fiber.New()
-	// fiber context
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx := apptest.Ctx(t, app)
 
-	// get session
 	sess, err := store.Get(ctx)
 	require.NoError(t, err)
-	// make sure its new
 	require.True(t, sess.Fresh())
-	// set value & save
 	sess.Set("hello", "world")
 	ctx.Request().Header.SetCookie("session_id", sess.ID())
 	require.NoError(t, sess.Save())
 
-	// reset store
 	require.NoError(t, store.Reset(ctx))
 	id := sess.ID()
 
 	sess.Release()
-	app.ReleaseCtx(ctx)
-	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-	ctx.Request().Header.SetCookie("session_id", id)
 
 	// make sure the session is recreated
-	sess, err = store.Get(ctx)
-	defer sess.Release()
-	require.NoError(t, err)
+	sess = loadSession(t, app, store, id)
 	require.True(t, sess.Fresh())
 	require.Nil(t, sess.Get("hello"))
 }
@@ -339,14 +155,10 @@ func Test_Session_KeyTypes(t *testing.T) {
 	// in the global gob registry via store.RegisterType(), which would
 	// cause race conditions with other parallel tests.
 
-	// session store
 	store := NewStore()
-	// fiber instance
 	app := fiber.New()
-	// fiber context
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx := apptest.Ctx(t, app)
 
-	// get session
 	sess, err := store.Get(ctx)
 	require.NoError(t, err)
 	require.True(t, sess.Fresh())
@@ -357,7 +169,6 @@ func Test_Session_KeyTypes(t *testing.T) {
 
 	type unexportedKey int
 
-	// register non-default types
 	store.RegisterType(Person{})
 	store.RegisterType(unexportedKey(0))
 
@@ -370,21 +181,15 @@ func Test_Session_KeyTypes(t *testing.T) {
 		unregisteredValue unregisteredValueType
 	)
 	sess.Set(unregisteredKey, "test")
-	err = sess.Save()
-	require.Error(t, err)
+	require.Error(t, sess.Save())
 	sess.Delete(unregisteredKey)
-	err = sess.Save()
-	require.NoError(t, err)
+	require.NoError(t, sess.Save())
 	sess.Set("abc", unregisteredValue)
-	err = sess.Save()
-	require.Error(t, err)
+	require.Error(t, sess.Save())
 	sess.Delete("abc")
-	err = sess.Save()
-	require.NoError(t, err)
+	require.NoError(t, sess.Save())
 
 	require.NoError(t, sess.Reset())
-
-	// Release session before continuing
 	sess.Release()
 
 	// Get a new session after reset
@@ -392,318 +197,91 @@ func Test_Session_KeyTypes(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, sess.Fresh())
 
-	var (
-		kbool                     = true
-		kstring                   = "str"
-		kint                      = 13
-		kint8          int8       = 13
-		kint16         int16      = 13
-		kint32         int32      = 13
-		kint64         int64      = 13
-		kuint          uint       = 13
-		kuint8         uint8      = 13
-		kuint16        uint16     = 13
-		kuint32        uint32     = 13
-		kuint64        uint64     = 13
-		kuintptr       uintptr    = 13
-		kbyte          byte       = 'k'
-		krune                     = 'k'
-		kfloat32       float32    = 13
-		kfloat64       float64    = 13
-		kcomplex64     complex64  = 13
-		kcomplex128    complex128 = 13
-		kuser                     = Person{Name: "John"}
-		kunexportedKey            = unexportedKey(13)
-	)
-
-	var (
-		vbool                     = true
-		vstring                   = "str"
-		vint                      = 13
-		vint8          int8       = 13
-		vint16         int16      = 13
-		vint32         int32      = 13
-		vint64         int64      = 13
-		vuint          uint       = 13
-		vuint8         uint8      = 13
-		vuint16        uint16     = 13
-		vuint32        uint32     = 13
-		vuint64        uint64     = 13
-		vuintptr       uintptr    = 13
-		vbyte          byte       = 'k'
-		vrune                     = 'k'
-		vfloat32       float32    = 13
-		vfloat64       float64    = 13
-		vcomplex64     complex64  = 13
-		vcomplex128    complex128 = 13
-		vuser                     = Person{Name: "John"}
-		vunexportedKey            = unexportedKey(13)
-	)
-
-	keys := []any{
-		kbool,
-		kstring,
-		kint,
-		kint8,
-		kint16,
-		kint32,
-		kint64,
-		kuint,
-		kuint8,
-		kuint16,
-		kuint32,
-		kuint64,
-		kuintptr,
-		kbyte,
-		krune,
-		kfloat32,
-		kfloat64,
-		kcomplex64,
-		kcomplex128,
-		kuser,
-		kunexportedKey,
+	// every basic type and the registered ones, each stored as a key holding a value equal to it
+	keys := make([]any, 0, len(sessionTestBasicValues)+2)
+	for _, v := range sessionTestBasicValues {
+		keys = append(keys, v.value)
 	}
+	keys = append(keys, Person{Name: "John"}, unexportedKey(13))
 
-	values := []any{
-		vbool,
-		vstring,
-		vint,
-		vint8,
-		vint16,
-		vint32,
-		vint64,
-		vuint,
-		vuint8,
-		vuint16,
-		vuint32,
-		vuint64,
-		vuintptr,
-		vbyte,
-		vrune,
-		vfloat32,
-		vfloat64,
-		vcomplex64,
-		vcomplex128,
-		vuser,
-		vunexportedKey,
-	}
-
-	// loop test all key value pairs
-	for i, key := range keys {
-		sess.Set(key, values[i])
+	for _, key := range keys {
+		sess.Set(key, key)
 	}
 
 	id := sess.ID()
 	ctx.Request().Header.SetCookie("session_id", id)
-	// save session
-	err = sess.Save()
-	require.NoError(t, err)
+	require.NoError(t, sess.Save())
 
 	sess.Release()
-	app.ReleaseCtx(ctx)
-	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-	ctx.Request().Header.SetCookie("session_id", id)
 
-	// get session
-	sess, err = store.Get(ctx)
-	require.NoError(t, err)
-	defer sess.Release()
+	sess = loadSession(t, app, store, id)
 	require.False(t, sess.Fresh())
-
-	// loop test all key value pairs
-	for i, key := range keys {
-		// get value
-		result := sess.Get(key)
-		require.Equal(t, values[i], result)
+	for _, key := range keys {
+		require.Equal(t, key, sess.Get(key))
 	}
 }
 
-// go test -run Test_Session_Save
+// Saving writes the session ID to every sink of the store's extractor that can
+// be written back to: the cookie of a cookie extractor and the response header
+// of a header one, whatever the chain around them. A source that is read-only
+// (query, form) is never written.
 func Test_Session_Save(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		header    string // the response header that has to carry the ID; empty if none does
+		name      string
+		extractor extractors.Extractor // the zero value is the default, the cookie "session_id"
+		cookie    bool                 // whether the "session_id" cookie has to carry the ID
+	}{
+		{name: "save to cookie", cookie: true},
+		{name: "save to header", extractor: extractors.FromHeader("session_id"), header: "session_id"},
+		// Chained extractors: both the cookie and the header are set when both are present.
+		{
+			name:      "cookie and header chain",
+			extractor: extractors.Chain(extractors.FromCookie("session_id"), extractors.FromHeader("x-session-id")),
+			cookie:    true,
+			header:    "x-session-id",
+		},
+		{
+			name:      "header and cookie chain",
+			extractor: extractors.Chain(extractors.FromHeader("x-session-id"), extractors.FromCookie("session_id")),
+			cookie:    true,
+			header:    "x-session-id",
+		},
+		// Only query/form extractors: nothing is set on the response.
+		{
+			name:      "only SourceOther extractors - no response setting",
+			extractor: extractors.Chain(extractors.FromQuery("session_id"), extractors.FromForm("session_id")),
+		},
+		// The query is ignored for the response, the cookie and the header are not.
+		{
+			name:      "mixed chain with SourceOther",
+			extractor: extractors.Chain(extractors.FromCookie("session_id"), extractors.FromQuery("session_id"), extractors.FromHeader("x-session-id")),
+			cookie:    true,
+			header:    "x-session-id",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			sess, ctx := sessionTestFresh(t, NewStore(Config{Extractor: tc.extractor}))
+			sess.Set("name", "john")
+			require.NoError(t, sess.Save())
 
-	t.Run("save to cookie", func(t *testing.T) {
-		t.Parallel()
-		// session store
-		store := NewStore()
-		// fiber instance
-		app := fiber.New()
-		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			cookie := ctx.Response().Header.PeekCookie("session_id")
+			if tc.cookie {
+				require.NotNil(t, cookie)
+				require.Contains(t, string(cookie), sess.ID())
+			} else {
+				require.Nil(t, cookie)
+			}
 
-		// get session
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
-		// set value
-		sess.Set("name", "john")
-
-		// save session
-		err = sess.Save()
-		require.NoError(t, err)
-		sess.Release()
-	})
-
-	t.Run("save to header", func(t *testing.T) {
-		t.Parallel()
-		// session store
-		store := NewStore(Config{
-			Extractor: extractors.FromHeader("session_id"),
+			if tc.header != "" {
+				require.Equal(t, sess.ID(), string(ctx.Response().Header.Peek(tc.header)))
+			} else {
+				require.Empty(t, string(ctx.Response().Header.Peek("session_id")))
+			}
 		})
-		// fiber instance
-		app := fiber.New()
-		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		// get session
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
-		// set value
-		sess.Set("name", "john")
-
-		// save session
-		err = sess.Save()
-		require.NoError(t, err)
-		require.Equal(t, sess.ID(), string(ctx.Response().Header.Peek("session_id")))
-		sess.Release()
-	})
-}
-
-// Test chained extractors to ensure both cookie and header are set when both are present
-func Test_Session_ChainedExtractors(t *testing.T) {
-	t.Parallel()
-
-	t.Run("cookie and header chain", func(t *testing.T) {
-		t.Parallel()
-		// session store with chained extractors
-		store := NewStore(Config{
-			Extractor: extractors.Chain(extractors.FromCookie("session_id"), extractors.FromHeader("x-session-id")),
-		})
-		// fiber instance
-		app := fiber.New()
-		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		// get session
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
-		// set value
-		sess.Set("name", "john")
-
-		// save session
-		err = sess.Save()
-		require.NoError(t, err)
-
-		// verify both cookie and header are set
-		cookie := ctx.Response().Header.PeekCookie("session_id")
-		require.NotNil(t, cookie)
-		require.Contains(t, string(cookie), sess.ID())
-
-		header := string(ctx.Response().Header.Peek("x-session-id"))
-		require.Equal(t, sess.ID(), header)
-
-		sess.Release()
-	})
-
-	t.Run("header and cookie chain", func(t *testing.T) {
-		t.Parallel()
-		// session store with chained extractors (different order)
-		store := NewStore(Config{
-			Extractor: extractors.Chain(extractors.FromHeader("x-session-id"), extractors.FromCookie("session_id")),
-		})
-		// fiber instance
-		app := fiber.New()
-		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		// get session
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
-		// set value
-		sess.Set("name", "john")
-
-		// save session
-		err = sess.Save()
-		require.NoError(t, err)
-
-		// verify both header and cookie are set
-		header := string(ctx.Response().Header.Peek("x-session-id"))
-		require.Equal(t, sess.ID(), header)
-
-		cookie := ctx.Response().Header.PeekCookie("session_id")
-		require.NotNil(t, cookie)
-		require.Contains(t, string(cookie), sess.ID())
-
-		sess.Release()
-	})
-
-	t.Run("only SourceOther extractors - no response setting", func(t *testing.T) {
-		t.Parallel()
-		// session store with only query/form extractors
-		store := NewStore(Config{
-			Extractor: extractors.Chain(extractors.FromQuery("session_id"), extractors.FromForm("session_id")),
-		})
-		// fiber instance
-		app := fiber.New()
-		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		// get session
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
-		// set value
-		sess.Set("name", "john")
-
-		// save session
-		err = sess.Save()
-		require.NoError(t, err)
-
-		// verify no cookie or header is set
-		cookie := ctx.Response().Header.PeekCookie("session_id")
-		require.Nil(t, cookie)
-
-		header := string(ctx.Response().Header.Peek("session_id"))
-		require.Empty(t, header)
-
-		sess.Release()
-	})
-
-	t.Run("mixed chain with SourceOther", func(t *testing.T) {
-		t.Parallel()
-		// session store with mixed extractors including SourceOther
-		store := NewStore(Config{
-			Extractor: extractors.Chain(extractors.FromCookie("session_id"), extractors.FromQuery("session_id"), extractors.FromHeader("x-session-id")),
-		})
-		// fiber instance
-		app := fiber.New()
-		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		// get session
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
-		// set value
-		sess.Set("name", "john")
-
-		// save session
-		err = sess.Save()
-		require.NoError(t, err)
-
-		// verify both cookie and header are set (query is ignored for response)
-		cookie := ctx.Response().Header.PeekCookie("session_id")
-		require.NotNil(t, cookie)
-		require.Contains(t, string(cookie), sess.ID())
-
-		header := string(ctx.Response().Header.Peek("x-session-id"))
-		require.Equal(t, sess.ID(), header)
-
-		sess.Release()
-	})
+	}
 }
 
 // Test_Session_ExtractorPreservation verifies that the extractor which actually
@@ -712,7 +290,6 @@ func Test_Session_ChainedExtractors(t *testing.T) {
 // promoted into cookies/headers for an existing session (session fixation).
 func Test_Session_ExtractorPreservation(t *testing.T) {
 	t.Parallel()
-
 	t.Run("read-only winner is not promoted for existing session", func(t *testing.T) {
 		t.Parallel()
 		// Chain prefers the cookie, but also accepts a read-only query source.
@@ -722,7 +299,7 @@ func Test_Session_ExtractorPreservation(t *testing.T) {
 		app := fiber.New()
 
 		// First request: create and persist a session (written to the cookie).
-		ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
+		ctx1 := apptest.Ctx(t, app)
 		sess, err := store.Get(ctx1)
 		require.NoError(t, err)
 		sess.Set("name", "john")
@@ -730,12 +307,10 @@ func Test_Session_ExtractorPreservation(t *testing.T) {
 		id := sess.ID()
 		require.NotNil(t, ctx1.Response().Header.PeekCookie("session_id"))
 		sess.Release()
-		app.ReleaseCtx(ctx1)
 
 		// Second request: the existing ID is provided only via the query string
 		// (an attacker-controllable, read-only source).
-		ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx2)
+		ctx2 := apptest.Ctx(t, app)
 		ctx2.Request().SetRequestURI("/path?session_id=" + id)
 
 		sess2, err := store.Get(ctx2)
@@ -759,8 +334,7 @@ func Test_Session_ExtractorPreservation(t *testing.T) {
 
 		// The query supplies an ID that does not exist in storage, so a fresh
 		// session with a freshly generated ID is created.
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, app)
 		ctx.Request().SetRequestURI("/path?session_id=does-not-exist")
 
 		sess, err := store.Get(ctx)
@@ -785,17 +359,10 @@ func Test_Session_ExtractorPreservation(t *testing.T) {
 		app := fiber.New()
 
 		// Persist a session first.
-		ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-		sess, err := store.Get(ctx1)
-		require.NoError(t, err)
-		require.NoError(t, sess.Save())
-		id := sess.ID()
-		sess.Release()
-		app.ReleaseCtx(ctx1)
+		id := seedSession(t, app, store, nil)
 
 		// Provide the existing ID via the cookie source.
-		ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx2)
+		ctx2 := apptest.Ctx(t, app)
 		ctx2.Request().Header.SetCookie("session_id", id)
 
 		sess2, err := store.Get(ctx2)
@@ -815,100 +382,70 @@ func Test_Session_ExtractorPreservation(t *testing.T) {
 // configured extractors.
 func Test_Session_getExtractorInfo(t *testing.T) {
 	t.Parallel()
-
-	t.Run("nil config returns safe cookie default", func(t *testing.T) {
-		t.Parallel()
-		sess := &Session{}
-		got := sess.getExtractorInfo()
-		require.Len(t, got, 1)
-		require.Equal(t, extractors.SourceCookie, got[0].Source)
-		require.Equal(t, "session_id", got[0].Key)
-	})
-
-	t.Run("single cookie extractor", func(t *testing.T) {
-		t.Parallel()
-		store := NewStore(Config{Extractor: extractors.FromCookie("session_id")})
-		sess := &Session{config: store}
-		got := sess.getExtractorInfo()
-		require.Len(t, got, 1)
-		require.Equal(t, extractors.SourceCookie, got[0].Source)
-	})
-
-	t.Run("single header extractor", func(t *testing.T) {
-		t.Parallel()
-		store := NewStore(Config{Extractor: extractors.FromHeader("x-session-id")})
-		sess := &Session{config: store}
-		got := sess.getExtractorInfo()
-		require.Len(t, got, 1)
-		require.Equal(t, extractors.SourceHeader, got[0].Source)
-	})
-
-	t.Run("single read-only extractor yields no writable sink", func(t *testing.T) {
-		t.Parallel()
-		store := NewStore(Config{Extractor: extractors.FromQuery("session_id")})
-		sess := &Session{config: store}
-		require.Empty(t, sess.getExtractorInfo())
-	})
+	for _, tc := range []struct {
+		sess *Session
+		name string
+		want []extractors.Extractor // the writable sinks, of which only Source and Key are compared
+	}{
+		{
+			name: "nil config returns safe cookie default",
+			sess: &Session{},
+			want: []extractors.Extractor{{Source: extractors.SourceCookie, Key: "session_id"}},
+		},
+		{
+			name: "single cookie extractor",
+			sess: &Session{config: NewStore(Config{Extractor: extractors.FromCookie("session_id")})},
+			want: []extractors.Extractor{{Source: extractors.SourceCookie, Key: "session_id"}},
+		},
+		{
+			name: "single header extractor",
+			sess: &Session{config: NewStore(Config{Extractor: extractors.FromHeader("x-session-id")})},
+			want: []extractors.Extractor{{Source: extractors.SourceHeader, Key: "x-session-id"}},
+		},
+		{
+			name: "single read-only extractor yields no writable sink",
+			sess: &Session{config: NewStore(Config{Extractor: extractors.FromQuery("session_id")})},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := tc.sess.getExtractorInfo()
+			require.Len(t, got, len(tc.want))
+			for i, want := range tc.want {
+				require.Equal(t, want.Source, got[i].Source)
+				require.Equal(t, want.Key, got[i].Key)
+			}
+		})
+	}
 }
 
 func Test_Session_Save_IdleTimeout(t *testing.T) {
 	t.Parallel()
-
 	t.Run("save to cookie", func(t *testing.T) {
 		t.Parallel()
-
 		const sessionDuration = 5 * time.Second
-		// session store
 		store := NewStore()
-		// fiber instance
 		app := fiber.New()
-		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
 
-		// get session
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
-
-		// set value
+		sess, _ := sessionTestFresh(t, store)
 		sess.Set("name", "john")
-
 		token := sess.ID()
 
 		// expire this session in 5 seconds
 		sess.SetIdleTimeout(sessionDuration)
-
-		// save session
-		err = sess.Save()
-		require.NoError(t, err)
-
-		sess.Release()
-		app.ReleaseCtx(ctx)
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+		require.NoError(t, sess.Save())
 
 		// here you need to get the old session yet
-		ctx.Request().Header.SetCookie("session_id", token)
-		sess, err = store.Get(ctx)
-		require.NoError(t, err)
+		sess = loadSession(t, app, store, token)
 		require.Equal(t, token, sess.ID(), "session ID should match before expiration")
-		name := sess.Get("name")
-		require.Equal(t, "john", name, "session should contain the saved value before expiration")
+		require.Equal(t, "john", sess.Get("name"), "session should contain the saved value before expiration")
 
 		// Wait on the cached clock the storage compares against, not just the
 		// wall clock, or a late timestamp updater keeps the session alive.
 		clocktest.SleepPast(t, sessionDuration)
 
-		sess.Release()
-
-		app.ReleaseCtx(ctx)
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
 		// here you should get a new session
-		ctx.Request().Header.SetCookie("session_id", token)
-		sess, err = store.Get(ctx)
-		defer sess.Release()
-		require.NoError(t, err)
+		sess = loadSession(t, app, store, token)
 		require.Nil(t, sess.Get("name"))
 		require.NotEqual(t, sess.ID(), token)
 	})
@@ -916,155 +453,78 @@ func Test_Session_Save_IdleTimeout(t *testing.T) {
 
 func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 	t.Parallel()
-
 	t.Run("save to cookie", func(t *testing.T) {
 		t.Parallel()
-
 		const absoluteTimeout = 2 * time.Second // extra headroom to avoid flakiness under -race
-		// session store
-		store := NewStore(Config{
-			IdleTimeout:     absoluteTimeout,
-			AbsoluteTimeout: absoluteTimeout,
-		})
+		store := NewStore(Config{IdleTimeout: absoluteTimeout, AbsoluteTimeout: absoluteTimeout})
 
 		// force change to IdleTimeout
 		store.IdleTimeout = 10 * time.Second
 
-		// fiber instance
 		app := fiber.New()
-		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
 
-		// get session
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
-
-		// set value
+		sess, _ := sessionTestFresh(t, store)
 		sess.Set("name", "john")
-
 		token := sess.ID()
-
-		// save session
-		err = sess.Save()
-		require.NoError(t, err)
-
-		sess.Release()
-		app.ReleaseCtx(ctx)
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+		require.NoError(t, sess.Save())
 
 		// here you need to get the old session yet
-		ctx.Request().Header.SetCookie("session_id", token)
-		sess, err = store.Get(ctx)
-		require.NoError(t, err)
+		sess = loadSession(t, app, store, token)
 		require.Equal(t, "john", sess.Get("name"))
 
 		// just to make sure the session has been expired
 		time.Sleep(absoluteTimeout + (200 * time.Millisecond))
 
-		sess.Release()
-
-		app.ReleaseCtx(ctx)
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-
 		// here you should get a new session
-		ctx.Request().Header.SetCookie("session_id", token)
-		sess, err = store.Get(ctx)
-		require.NoError(t, err)
+		sess = loadSession(t, app, store, token)
 		require.Nil(t, sess.Get("name"))
 		require.NotEqual(t, sess.ID(), token)
 		require.True(t, sess.Fresh())
 		require.IsType(t, time.Time{}, sess.Get(absExpirationKey))
 
 		token = sess.ID()
-
 		sess.Set("name", "john")
-
-		// save session
-		err = sess.Save()
-		require.NoError(t, err)
-
-		sess.Release()
-		app.ReleaseCtx(ctx)
+		require.NoError(t, sess.Save())
 
 		// just to make sure the session has been expired
 		time.Sleep(absoluteTimeout + (200 * time.Millisecond))
 
-		// try to get expired session by id
-		sess, err = store.GetByID(ctx, token)
+		sess, err := store.GetByID(t.Context(), token)
 		require.Error(t, err)
 		require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
 		require.Nil(t, sess)
 	})
 }
 
-// go test -run Test_Session_Destroy
 func Test_Session_Destroy(t *testing.T) {
 	t.Parallel()
-
 	t.Run("destroy from cookie", func(t *testing.T) {
 		t.Parallel()
-		// session store
-		store := NewStore()
-		// fiber instance
-		app := fiber.New()
-		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		// get session
-		sess, err := store.Get(ctx)
-		defer sess.Release()
-		require.NoError(t, err)
-
+		sess, _ := sessionTestFresh(t, NewStore())
 		sess.Set("name", "fenny")
 		require.NoError(t, sess.Destroy())
-		name := sess.Get("name")
-		require.Nil(t, name)
+		require.Nil(t, sess.Get("name"))
 	})
 
 	t.Run("destroy from header", func(t *testing.T) {
 		t.Parallel()
-		// session store
-		store := NewStore(Config{
-			Extractor: extractors.FromHeader("session_id"),
-		})
-		// fiber instance
+		store := NewStore(Config{Extractor: extractors.FromHeader("session_id")})
 		app := fiber.New()
-		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		id := seedSession(t, app, store, func(sess *Session) { sess.Set("name", "fenny") })
 
-		// get session
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
-
-		// set value & save
-		sess.Set("name", "fenny")
-		id := sess.ID()
-		require.NoError(t, sess.Save())
-
-		sess.Release()
-		app.ReleaseCtx(ctx)
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		// get session
+		ctx := apptest.Ctx(t, app)
 		ctx.Request().Header.Set("session_id", id)
-		sess, err = store.Get(ctx)
+		sess, err := store.Get(ctx)
 		require.NoError(t, err)
 		defer sess.Release()
 
-		err = sess.Destroy()
-		require.NoError(t, err)
+		require.NoError(t, sess.Destroy())
 		require.Empty(t, string(ctx.Response().Header.Peek("session_id")))
 	})
 }
 
-// go test -run Test_Session_Custom_Config
 func Test_Session_Custom_Config(t *testing.T) {
 	t.Parallel()
-
 	store := NewStore(Config{IdleTimeout: time.Hour, KeyGenerator: func() string { return "very random" }})
 	require.Equal(t, time.Hour, store.IdleTimeout)
 	require.Equal(t, "very random", store.KeyGenerator())
@@ -1073,23 +533,10 @@ func Test_Session_Custom_Config(t *testing.T) {
 	require.Equal(t, ConfigDefault.IdleTimeout, store.IdleTimeout)
 }
 
-// go test -run Test_Session_Cookie
 func Test_Session_Cookie(t *testing.T) {
 	t.Parallel()
-	// session store
-	store := NewStore()
-	// fiber instance
-	app := fiber.New()
-	// fiber context
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-
-	// get session
-	sess, err := store.Get(ctx)
-	require.NoError(t, err)
+	sess, ctx := sessionTestFresh(t, NewStore())
 	require.NoError(t, sess.Save())
-
-	sess.Release()
 
 	// cookie should be set on Save ( even if empty data )
 	cookie := ctx.Response().Header.PeekCookie("session_id")
@@ -1101,112 +548,54 @@ func Test_Session_Cookie(t *testing.T) {
 // attribute and interaction with the Secure flag.
 func Test_Session_Cookie_SameSite(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
-		name             string
-		sameSite         string
-		expectedSameSite string
-		initialSecure    bool
-		expectSecure     bool
+		name       string
+		sameSite   string // Config.CookieSameSite
+		want       string // the SameSite attribute of the cookie; none may be present when empty
+		secure     bool   // Config.CookieSecure
+		wantSecure bool
 	}{
+		{name: "Lax should not force secure", sameSite: "Lax", want: "SameSite=Lax"},
 		{
-			name:             "Lax should not force secure",
-			sameSite:         "Lax",
-			expectedSameSite: "SameSite=Lax",
+			name: "Lax with secure should stay secure", sameSite: "Lax", want: "SameSite=Lax", secure: true,
+			wantSecure: true,
 		},
+		{name: "Strict should not force secure", sameSite: "Strict", want: "SameSite=Strict"},
 		{
-			name:             "Lax with secure should stay secure",
-			sameSite:         "Lax",
-			expectedSameSite: "SameSite=Lax",
-			initialSecure:    true,
-			expectSecure:     true,
+			name: "Strict with secure should stay secure", sameSite: "Strict", want: "SameSite=Strict", secure: true,
+			wantSecure: true,
 		},
+		{name: "None should force secure", sameSite: "None", want: "SameSite=None", wantSecure: true},
 		{
-			name:             "Strict should not force secure",
-			sameSite:         "Strict",
-			expectedSameSite: "SameSite=Strict",
+			name: "None with secure should stay secure", sameSite: "None", want: "SameSite=None", secure: true,
+			wantSecure: true,
 		},
+		{name: "Case-insensitive none should force secure", sameSite: "none", want: "SameSite=None", wantSecure: true},
+		{name: "Case-insensitive strict should not force secure", sameSite: "strict", want: "SameSite=Strict"},
+		{name: "Disabled should omit SameSite", sameSite: fiber.CookieSameSiteDisabled},
 		{
-			name:             "Strict with secure should stay secure",
-			sameSite:         "Strict",
-			expectedSameSite: "SameSite=Strict",
-			initialSecure:    true,
-			expectSecure:     true,
+			name: "Case-insensitive disabled should preserve secure", sameSite: "DISABLED", secure: true,
+			wantSecure: true,
 		},
-		{
-			name:             "None should force secure",
-			sameSite:         "None",
-			expectedSameSite: "SameSite=None",
-			expectSecure:     true,
-		},
-		{
-			name:             "None with secure should stay secure",
-			sameSite:         "None",
-			expectedSameSite: "SameSite=None",
-			initialSecure:    true,
-			expectSecure:     true,
-		},
-		{
-			name:             "Case-insensitive none should force secure",
-			sameSite:         "none",
-			expectedSameSite: "SameSite=None",
-			expectSecure:     true,
-		},
-		{
-			name:             "Case-insensitive strict should not force secure",
-			sameSite:         "strict",
-			expectedSameSite: "SameSite=Strict",
-		},
-		{
-			name:     "Disabled should omit SameSite",
-			sameSite: fiber.CookieSameSiteDisabled,
-		},
-		{
-			name:          "Case-insensitive disabled should preserve secure",
-			sameSite:      "DISABLED",
-			initialSecure: true,
-			expectSecure:  true,
-		},
-		{
-			name:             "Empty should default to Lax",
-			expectedSameSite: "SameSite=Lax",
-		},
+		{name: "Empty should default to Lax", want: "SameSite=Lax"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			// session store
-			store := NewStore(Config{
-				CookieSameSite: tc.sameSite,
-				CookieSecure:   tc.initialSecure,
-			})
-
-			// fiber instance
-			app := fiber.New()
-
-			// fiber context
-			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(ctx)
-
-			// get session
-			sess, err := store.Get(ctx)
-			require.NoError(t, err)
-			defer sess.Release()
+			sess, ctx := sessionTestFresh(t, NewStore(Config{CookieSameSite: tc.sameSite, CookieSecure: tc.secure}))
 
 			// save session to trigger cookie setting
-			err = sess.Save()
-			require.NoError(t, err)
+			require.NoError(t, sess.Save())
 
-			// check cookie
 			cookie := string(ctx.Response().Header.PeekCookie("session_id"))
-			if tc.expectedSameSite == "" {
+			if tc.want == "" {
 				require.NotContains(t, cookie, "SameSite")
 			} else {
-				require.Contains(t, cookie, tc.expectedSameSite)
+				require.Contains(t, cookie, tc.want)
 			}
 
-			if tc.expectSecure {
+			if tc.wantSecure {
 				require.Contains(t, cookie, "secure")
 			} else {
 				require.NotContains(t, cookie, "secure")
@@ -1215,17 +604,11 @@ func Test_Session_Cookie_SameSite(t *testing.T) {
 	}
 }
 
-// go test -run Test_Session_Cookie_In_Response
 // Regression: https://github.com/gofiber/fiber/pull/1191
 func Test_Session_Cookie_In_Middleware_Chain(t *testing.T) {
 	store := NewStore()
-	app := fiber.New()
+	ctx := apptest.Ctx(t, fiber.New())
 
-	// fiber context
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-
-	// get session
 	sess, err := store.Get(ctx)
 	require.NoError(t, err)
 	sess.Set("id", "1")
@@ -1246,128 +629,70 @@ func Test_Session_Cookie_In_Middleware_Chain(t *testing.T) {
 	require.Equal(t, "john", sess.Get("name"))
 }
 
-// go test -run Test_Session_Deletes_Single_Key
 // Regression: https://github.com/gofiber/fiber/issues/1365
 func Test_Session_Deletes_Single_Key(t *testing.T) {
 	t.Parallel()
 	store := NewStore()
 	app := fiber.New()
 
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("id", "1") })
 
-	sess, err := store.Get(ctx)
-	require.NoError(t, err)
-	id := sess.ID()
-	sess.Set("id", "1")
-	require.NoError(t, sess.Save())
-
-	sess.Release()
-	app.ReleaseCtx(ctx)
-	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-	ctx.Request().Header.SetCookie("session_id", id)
-
-	sess, err = store.Get(ctx)
-	require.NoError(t, err)
+	sess := loadSession(t, app, store, id)
 	sess.Delete("id")
 	require.NoError(t, sess.Save())
 
-	sess.Release()
-	app.ReleaseCtx(ctx)
-	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-	ctx.Request().Header.SetCookie("session_id", id)
-
-	sess, err = store.Get(ctx)
-	defer sess.Release()
-	require.NoError(t, err)
+	sess = loadSession(t, app, store, id)
 	require.False(t, sess.Fresh())
 	require.Nil(t, sess.Get("id"))
-
-	app.ReleaseCtx(ctx)
 }
 
-// go test -run Test_Session_Reset
 func Test_Session_Reset(t *testing.T) {
 	t.Parallel()
-	// fiber instance
 	app := fiber.New()
-
-	// session store
 	store := NewStore()
 
 	t.Run("reset session data and id, and set fresh to be true", func(t *testing.T) {
 		t.Parallel()
-		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		// a random session uuid
-		originalSessionUUIDString := ""
-
-		// now the session is in the storage
-		freshSession, err := store.Get(ctx)
-		require.NoError(t, err)
-
-		originalSessionUUIDString = freshSession.ID()
-
-		// set a value
-		freshSession.Set("name", "fenny")
-		freshSession.Set("email", "fenny@example.com")
-
-		err = freshSession.Save()
-		require.NoError(t, err)
-
-		freshSession.Release()
-		app.ReleaseCtx(ctx)
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-
-		// set cookie
-		ctx.Request().Header.SetCookie("session_id", originalSessionUUIDString)
+		// now the session is in the storage, with a value set
+		originalSessionUUIDString := seedSession(t, app, store, func(sess *Session) {
+			sess.Set("name", "fenny")
+			sess.Set("email", "fenny@example.com")
+		})
 
 		// as the session is in the storage, session.fresh should be false
-		acquiredSession, err := store.Get(ctx)
-		require.NoError(t, err)
+		acquiredSession := loadSession(t, app, store, originalSessionUUIDString)
 		require.False(t, acquiredSession.Fresh())
 
-		err = acquiredSession.Reset()
-		require.NoError(t, err)
-
+		require.NoError(t, acquiredSession.Reset())
 		require.NotEqual(t, originalSessionUUIDString, acquiredSession.ID())
 
 		// acquiredSession.fresh should be true after resetting
 		require.True(t, acquiredSession.Fresh())
 
 		// Check that the session data has been reset
-		keys := acquiredSession.Keys()
-		require.Equal(t, []any{}, keys)
+		require.Equal(t, []any{}, acquiredSession.Keys())
 
 		// Set a new value for 'name' and check that it's updated
 		acquiredSession.Set("name", "john")
 		require.Equal(t, "john", acquiredSession.Get("name"))
 		require.Nil(t, acquiredSession.Get("email"))
 
-		// Save after resetting
-		err = acquiredSession.Save()
-		require.NoError(t, err)
-
-		acquiredSession.Release()
+		require.NoError(t, acquiredSession.Save())
 
 		// Check that the session id is not in the header or cookie anymore
+		ctx := acquiredSession.ctx
 		require.Empty(t, string(ctx.Response().Header.Peek("session_id")))
 		require.Empty(t, string(ctx.Request().Header.Peek("session_id")))
-
-		app.ReleaseCtx(ctx)
 	})
 }
 
 func Test_Session_Reset_KeepsAbsoluteTimeout(t *testing.T) {
 	t.Parallel()
-
 	const absoluteTimeout = time.Second
 
 	// newSessionStore keeps the storage TTL out of the way; only the absolute timeout expires the session.
 	newSessionStore := func() *Store {
-		store := NewStore(Config{
-			IdleTimeout:     absoluteTimeout,
-			AbsoluteTimeout: absoluteTimeout,
-		})
+		store := NewStore(Config{IdleTimeout: absoluteTimeout, AbsoluteTimeout: absoluteTimeout})
 		store.IdleTimeout = 10 * time.Second
 		return store
 	}
@@ -1383,24 +708,16 @@ func Test_Session_Reset_KeepsAbsoluteTimeout(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			store := newSessionStore()
 			app := fiber.New()
 
-			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-			sess, err := store.Get(ctx)
-			require.NoError(t, err)
+			sess, _ := sessionTestFresh(t, store)
 			require.True(t, sess.Fresh())
 			sess.Set("name", "john")
 			require.NoError(t, sess.Save())
 			token := sess.ID()
-			sess.Release()
-			app.ReleaseCtx(ctx)
 
-			ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-			ctx.Request().Header.SetCookie("session_id", token)
-			sess, err = store.Get(ctx)
-			require.NoError(t, err)
+			sess = loadSession(t, app, store, token)
 			require.False(t, sess.Fresh())
 			require.NoError(t, tc.rotate(sess))
 			require.NotEqual(t, token, sess.ID())
@@ -1408,17 +725,10 @@ func Test_Session_Reset_KeepsAbsoluteTimeout(t *testing.T) {
 			sess.Set("name", "jane")
 			require.NoError(t, sess.Save())
 			token = sess.ID()
-			sess.Release()
-			app.ReleaseCtx(ctx)
 
 			time.Sleep(absoluteTimeout + 200*time.Millisecond)
 
-			ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(ctx)
-			ctx.Request().Header.SetCookie("session_id", token)
-			sess, err = store.Get(ctx)
-			require.NoError(t, err)
-			defer sess.Release()
+			sess = loadSession(t, app, store, token)
 			require.True(t, sess.Fresh(), "the rotated session must expire absolutely")
 			require.Nil(t, sess.Get("name"))
 			require.NotEqual(t, token, sess.ID())
@@ -1426,86 +736,42 @@ func Test_Session_Reset_KeepsAbsoluteTimeout(t *testing.T) {
 	}
 }
 
-// go test -run Test_Session_Regenerate
 // Regression: https://github.com/gofiber/fiber/issues/1395
 func Test_Session_Regenerate(t *testing.T) {
 	t.Parallel()
-	// fiber instance
 	app := fiber.New()
 	t.Run("set fresh to be true when regenerating a session", func(t *testing.T) {
 		t.Parallel()
-		// session store
 		store := NewStore()
-		// a random session uuid
-		originalSessionUUIDString := ""
-		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
 
 		// now the session is in the storage
-		freshSession, err := store.Get(ctx)
-		require.NoError(t, err)
-
-		originalSessionUUIDString = freshSession.ID()
-
-		err = freshSession.Save()
-		require.NoError(t, err)
-
-		freshSession.Release()
-
-		// release the context
-		app.ReleaseCtx(ctx)
-
-		// acquire a new context
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-
-		// set cookie
-		ctx.Request().Header.SetCookie("session_id", originalSessionUUIDString)
+		originalSessionUUIDString := seedSession(t, app, store, nil)
 
 		// as the session is in the storage, session.fresh should be false
-		acquiredSession, err := store.Get(ctx)
-		require.NoError(t, err)
-		defer acquiredSession.Release()
+		acquiredSession := loadSession(t, app, store, originalSessionUUIDString)
 		require.False(t, acquiredSession.Fresh())
 
-		err = acquiredSession.Regenerate()
-		require.NoError(t, err)
+		require.NoError(t, acquiredSession.Regenerate())
 
 		require.NotEqual(t, originalSessionUUIDString, acquiredSession.ID())
 
 		// acquiredSession.fresh should be true after regenerating
 		require.True(t, acquiredSession.Fresh())
-
-		// release the context
-		app.ReleaseCtx(ctx)
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Session -benchmem -count=4
+// benchSessionStores runs body as the "default" sub-benchmark, on a store with the
+// default storage, and as the "storage" one, on a store with a memory storage of its own.
+func benchSessionStores(b *testing.B, body func(b *testing.B, app *fiber.App, store *Store)) {
+	b.Helper()
+	b.Run("default", func(b *testing.B) { body(b, fiber.New(), NewStore()) })
+	b.Run("storage", func(b *testing.B) { body(b, fiber.New(), NewStore(Config{Storage: memory.New()})) })
+}
+
 func Benchmark_Session(b *testing.B) {
-	b.Run("default", func(b *testing.B) {
-		app, store := fiber.New(), NewStore()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
-		c.Request().Header.SetCookie("session_id", "12356789")
-
-		b.ReportAllocs()
-		for b.Loop() {
-			sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
-			sess.Set("john", "doe")
-			_ = sess.Save() //nolint:errcheck // We're inside a benchmark
-
-			sess.Release()
-		}
-	})
-
-	b.Run("storage", func(b *testing.B) {
-		app := fiber.New()
-		store := NewStore(Config{
-			Storage: memory.New(),
-		})
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
+	benchSessionStores(b, func(b *testing.B, app *fiber.App, store *Store) {
+		b.Helper()
+		c := apptest.Ctx(b, app)
 		c.Request().Header.SetCookie("session_id", "12356789")
 
 		b.ReportAllocs()
@@ -1523,20 +789,14 @@ func Benchmark_Session(b *testing.B) {
 // does per request. The user values are reset every iteration because a reused
 // context answers from the cached session-ID local and never reaches the
 // extractor.
-//
-// go test -v -run=^$ -bench=Benchmark_Session_ChainExtractor -benchmem -count=4
 func Benchmark_Session_ChainExtractor(b *testing.B) {
 	app := fiber.New()
 	store := NewStore(Config{
-		Extractor: extractors.Chain(
-			extractors.FromHeader("X-Session"),
-			extractors.FromCookie("session_id"),
-		),
+		Extractor: extractors.Chain(extractors.FromHeader("X-Session"), extractors.FromCookie("session_id")),
 	})
 
 	fctx := &fasthttp.RequestCtx{}
-	c := app.AcquireCtx(fctx)
-	defer app.ReleaseCtx(c)
+	c := apptest.CtxFor(b, app, fctx)
 	c.Request().Header.SetCookie("session_id", "12356789")
 
 	b.ReportAllocs()
@@ -1551,33 +811,9 @@ func Benchmark_Session_ChainExtractor(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Session_Parallel -benchmem -count=4
 func Benchmark_Session_Parallel(b *testing.B) {
-	b.Run("default", func(b *testing.B) {
-		app, store := fiber.New(), NewStore()
-		b.ReportAllocs()
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				c := app.AcquireCtx(&fasthttp.RequestCtx{})
-				c.Request().Header.SetCookie("session_id", "12356789")
-
-				sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
-				sess.Set("john", "doe")
-				_ = sess.Save() //nolint:errcheck // We're inside a benchmark
-
-				sess.Release()
-
-				app.ReleaseCtx(c)
-			}
-		})
-	})
-
-	b.Run("storage", func(b *testing.B) {
-		app := fiber.New()
-		store := NewStore(Config{
-			Storage: memory.New(),
-		})
+	benchSessionStores(b, func(b *testing.B, app *fiber.App, store *Store) {
+		b.Helper()
 		b.ReportAllocs()
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
@@ -1597,32 +833,10 @@ func Benchmark_Session_Parallel(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Session_Asserted -benchmem -count=4
 func Benchmark_Session_Asserted(b *testing.B) {
-	b.Run("default", func(b *testing.B) {
-		app, store := fiber.New(), NewStore()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
-		c.Request().Header.SetCookie("session_id", "12356789")
-
-		b.ReportAllocs()
-		for b.Loop() {
-			sess, err := store.Get(c)
-			require.NoError(b, err)
-			sess.Set("john", "doe")
-			err = sess.Save()
-			require.NoError(b, err)
-			sess.Release()
-		}
-	})
-
-	b.Run("storage", func(b *testing.B) {
-		app := fiber.New()
-		store := NewStore(Config{
-			Storage: memory.New(),
-		})
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
+	benchSessionStores(b, func(b *testing.B, app *fiber.App, store *Store) {
+		b.Helper()
+		c := apptest.Ctx(b, app)
 		c.Request().Header.SetCookie("session_id", "12356789")
 
 		b.ReportAllocs()
@@ -1637,32 +851,9 @@ func Benchmark_Session_Asserted(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Session_Asserted_Parallel -benchmem -count=4
 func Benchmark_Session_Asserted_Parallel(b *testing.B) {
-	b.Run("default", func(b *testing.B) {
-		app, store := fiber.New(), NewStore()
-		b.ReportAllocs()
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				c := app.AcquireCtx(&fasthttp.RequestCtx{})
-				c.Request().Header.SetCookie("session_id", "12356789")
-
-				sess, err := store.Get(c)
-				require.NoError(b, err)
-				sess.Set("john", "doe")
-				require.NoError(b, sess.Save())
-				sess.Release()
-				app.ReleaseCtx(c)
-			}
-		})
-	})
-
-	b.Run("storage", func(b *testing.B) {
-		app := fiber.New()
-		store := NewStore(Config{
-			Storage: memory.New(),
-		})
+	benchSessionStores(b, func(b *testing.B, app *fiber.App, store *Store) {
+		b.Helper()
 		b.ReportAllocs()
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
@@ -1681,7 +872,6 @@ func Benchmark_Session_Asserted_Parallel(b *testing.B) {
 	})
 }
 
-// go test -v -race -run Test_Session_Concurrency ./...
 func Test_Session_Concurrency(t *testing.T) {
 	app := fiber.New()
 	store := NewStore()
@@ -1690,7 +880,6 @@ func Test_Session_Concurrency(t *testing.T) {
 	errChan := make(chan error, 10) // Buffered channel to collect errors
 	const numGoroutines = 10        // Number of concurrent goroutines to test
 
-	// Start numGoroutines goroutines
 	for range numGoroutines {
 		wg.Go(func() {
 			localCtx := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1701,38 +890,24 @@ func Test_Session_Concurrency(t *testing.T) {
 				return
 			}
 
-			// Set a value
 			sess.Set("name", "john")
-
-			// get the session id
 			id := sess.ID()
-
-			// Check if the session is fresh
 			if !sess.Fresh() {
 				errChan <- errors.New("session should be fresh")
 				return
 			}
-
-			// Save the session
 			if saveErr := sess.Save(); saveErr != nil {
 				errChan <- saveErr
 				return
 			}
 
-			// release the session
 			sess.Release()
-
-			// Release the context
 			app.ReleaseCtx(localCtx)
 
-			// Acquire a new context
 			localCtx = app.AcquireCtx(&fasthttp.RequestCtx{})
 			defer app.ReleaseCtx(localCtx)
-
-			// Set the session id in the header
 			localCtx.Request().Header.SetCookie("session_id", id)
 
-			// Get the session
 			sess, err = store.Get(localCtx)
 			if err != nil {
 				errChan <- err
@@ -1740,36 +915,24 @@ func Test_Session_Concurrency(t *testing.T) {
 			}
 			defer sess.Release()
 
-			// Get the value
-			name := sess.Get("name")
-			if name != "john" {
+			if sess.Get("name") != "john" {
 				errChan <- errors.New("name should be john")
 				return
 			}
-
-			// Get ID from the session
 			if sess.ID() != id {
 				errChan <- errors.New("id should be the same")
 				return
 			}
-
-			// Check if the session is fresh
 			if sess.Fresh() {
 				errChan <- errors.New("session should not be fresh")
 				return
 			}
 
-			// Delete the key
 			sess.Delete("name")
-
-			// Get the value
-			name = sess.Get("name")
-			if name != nil {
+			if sess.Get("name") != nil {
 				errChan <- errors.New("name should be nil")
 				return
 			}
-
-			// Destroy the session
 			if err := sess.Destroy(); err != nil {
 				errChan <- err
 				return
@@ -1780,73 +943,49 @@ func Test_Session_Concurrency(t *testing.T) {
 	wg.Wait()      // Wait for all goroutines to finish
 	close(errChan) // Close the channel to signal no more errors will be sent
 
-	// Check for errors sent to errChan
 	for err := range errChan {
 		require.NoError(t, err)
 	}
 }
 
 func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
-	// Initialize a new store with default config
 	store := NewStore()
-
-	// Create a new Fiber app
 	app := fiber.New()
-
-	// Generate a fake session ID
 	sessionID := uuid.New().String()
 
 	// Store invalid session data to simulate decode error
-	err := store.Storage.Set(storageKeyPrefix+sessionID, []byte("invalid data"), 0)
-	require.NoError(t, err, "Failed to set invalid session data")
+	require.NoError(t, store.Storage.Set(storageKeyPrefix+sessionID, []byte("invalid data"), 0),
+		"Failed to set invalid session data")
 
-	// Create a new request context
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-
-	// Set the session ID in cookies
+	c := apptest.Ctx(t, app)
 	c.Request().Header.SetCookie("session_id", sessionID)
 
-	// Attempt to get the session
-	_, err = store.Get(c)
+	_, err := store.Get(c)
 	require.Error(t, err, "Expected error due to invalid session data, but got nil")
-
-	// Check that the error message is as expected
 	require.Contains(t, err.Error(), "failed to decode session data", "Unexpected error message")
-
-	// Check that the error is as expected
 	require.ErrorContains(t, err, "failed to decode session data", "Unexpected error")
 
-	// Attempt to get the session by ID
 	_, err = store.GetByID(c, sessionID)
 	require.Error(t, err, "Expected error due to invalid session data, but got nil")
-
-	// Check that the error message is as expected
 	require.ErrorContains(t, err, "failed to decode session data", "Unexpected error")
 }
 
-// go test -run Test_Session_Fresh_Flag_Bug
 // This test verifies the fix for the fresh flag bug where calling getSession()
 // multiple times in the same request would incorrectly mark the session as fresh
 // when the ID was found in context locals.
 func Test_Session_Fresh_Flag_Bug(t *testing.T) {
 	t.Parallel()
-
 	store := NewStore()
 	app := fiber.New()
 
 	// Test Case 1: First call with no session cookie - should be fresh
-	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	sess1, err := store.Get(ctx1)
-	require.NoError(t, err)
+	sess1, _ := sessionTestFresh(t, store)
 	require.True(t, sess1.Fresh(), "First session should be fresh (no cookie provided)")
 	sessionID := sess1.ID()
 	require.NoError(t, sess1.Save())
-	sess1.Release()
-	app.ReleaseCtx(ctx1)
 
 	// Test Case 2: Second call with session cookie - should NOT be fresh
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx2 := apptest.Ctx(t, app)
 	ctx2.Request().Header.SetCookie("session_id", sessionID)
 	sess2, err := store.Get(ctx2)
 	require.NoError(t, err)
@@ -1863,10 +1002,9 @@ func Test_Session_Fresh_Flag_Bug(t *testing.T) {
 
 	sess2.Release()
 	sess3.Release()
-	app.ReleaseCtx(ctx2)
 
 	// Test Case 4: Expired session - should generate new ID and be fresh
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx3 := apptest.Ctx(t, app)
 	ctx3.Request().Header.SetCookie("session_id", "expired-or-nonexistent-id")
 	sess4, err := store.Get(ctx3)
 	require.NoError(t, err)
@@ -1874,43 +1012,31 @@ func Test_Session_Fresh_Flag_Bug(t *testing.T) {
 	require.NotEqual(t, "expired-or-nonexistent-id", sess4.ID(), "Should have generated a new session ID")
 
 	sess4.Release()
-	app.ReleaseCtx(ctx3)
 }
 
-// go test -run Test_Session_CSRF_Scenario
 // This test simulates the user-reported issue with CSRF + session middleware
 // where a POST without CSRF token would result in a new session_id cookie
 func Test_Session_CSRF_Scenario(t *testing.T) {
 	t.Parallel()
-
 	const idleTimeout = 2 * time.Second // Longer timeout to ensure session persists
 
-	store := NewStore(Config{
-		IdleTimeout: idleTimeout,
-	})
+	store := NewStore(Config{IdleTimeout: idleTimeout})
 	app := fiber.New()
 
 	// Simulate: First GET request creates session
-	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	sess1, err := store.Get(ctx1)
-	require.NoError(t, err)
+	sess1, _ := sessionTestFresh(t, store)
 	require.True(t, sess1.Fresh())
 	firstSessionID := sess1.ID()
 
 	// Store some data (simulating CSRF token storage)
 	sess1.Set("csrf_token", "token-123")
 	require.NoError(t, sess1.Save())
-	sess1.Release()
-	app.ReleaseCtx(ctx1)
 
 	// Small delay to ensure save completes
 	time.Sleep(10 * time.Millisecond)
 
 	// Simulate: POST request with valid session (before expiration)
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	ctx2.Request().Header.SetCookie("session_id", firstSessionID)
-	sess2, err := store.Get(ctx2)
-	require.NoError(t, err)
+	sess2 := loadSession(t, app, store, firstSessionID)
 	require.False(t, sess2.Fresh(), "Session should not be fresh - it exists")
 	require.Equal(t, firstSessionID, sess2.ID(), "Session ID should remain the same")
 	require.Equal(t, "token-123", sess2.Get("csrf_token"))
@@ -1918,49 +1044,35 @@ func Test_Session_CSRF_Scenario(t *testing.T) {
 	// Simulate CSRF validation failure (session is accessed but request fails)
 	// Session should still maintain the same ID
 	require.Equal(t, firstSessionID, sess2.ID())
-	sess2.Release()
-	app.ReleaseCtx(ctx2)
 
 	// Wait for session to expire on the cached clock the storage compares against
 	clocktest.SleepPast(t, idleTimeout)
 
 	// Simulate: POST request with expired session
 	// This is the scenario the user reported - session data is gone
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	ctx3.Request().Header.SetCookie("session_id", firstSessionID)
-	sess3, err := store.Get(ctx3)
-	require.NoError(t, err)
+	sess3 := loadSession(t, app, store, firstSessionID)
 	require.True(t, sess3.Fresh(), "Session should be fresh - old data expired")
 	require.NotEqual(t, firstSessionID, sess3.ID(), "Should have generated new session ID (expected behavior)")
 	require.Nil(t, sess3.Get("csrf_token"), "Old session data should be gone")
-
-	sess3.Release()
-	app.ReleaseCtx(ctx3)
 }
 
-// go test -run Test_Session_Multiple_GetSession_Calls
 // This test ensures that calling getSession() multiple times within the same
 // request context doesn't incorrectly mark the session as fresh due to the
 // session ID being stored in context locals
 func Test_Session_Multiple_GetSession_Calls(t *testing.T) {
 	t.Parallel()
-
 	store := NewStore()
 	app := fiber.New()
 
 	// Create initial session
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	sess1, err := store.Get(ctx)
-	require.NoError(t, err)
+	sess1, _ := sessionTestFresh(t, store)
 	require.True(t, sess1.Fresh())
 	sessionID := sess1.ID()
 	sess1.Set("test_key", "test_value")
 	require.NoError(t, sess1.Save())
-	sess1.Release()
-	app.ReleaseCtx(ctx)
 
 	// New request with existing session
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx2 := apptest.Ctx(t, app)
 	ctx2.Request().Header.SetCookie("session_id", sessionID)
 
 	// First getSession() call - loads from storage
@@ -1987,28 +1099,16 @@ func Test_Session_Multiple_GetSession_Calls(t *testing.T) {
 	sess2.Release()
 	sess3.Release()
 	sess4.Release()
-	app.ReleaseCtx(ctx2)
 }
 
-// go test -run Test_Session_DestroyWithContext
 func Test_Session_DestroyWithContext(t *testing.T) {
 	t.Parallel()
-
 	t.Run("destroy with context from cookie", func(t *testing.T) {
 		t.Parallel()
-		store := NewStore()
-		app := fiber.New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		sess, err := store.Get(ctx)
-		defer sess.Release()
-		require.NoError(t, err)
-
+		sess, _ := sessionTestFresh(t, NewStore())
 		sess.Set("name", "fenny")
 		require.NoError(t, sess.DestroyWithContext(t.Context()))
-		name := sess.Get("name")
-		require.Nil(t, name)
+		require.Nil(t, sess.Get("name"))
 	})
 
 	t.Run("destroy with nil data", func(t *testing.T) {
@@ -2018,39 +1118,16 @@ func Test_Session_DestroyWithContext(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_RegenerateWithContext
 func Test_Session_RegenerateWithContext(t *testing.T) {
 	t.Parallel()
-
 	t.Run("regenerate with context preserves data pattern", func(t *testing.T) {
 		t.Parallel()
 		store := NewStore()
 		app := fiber.New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		originalID := seedSession(t, app, store, func(sess *Session) { sess.Set("name", "fenny") })
+		sess := loadSession(t, app, store, originalID)
 
-		freshSession, err := store.Get(ctx)
-		require.NoError(t, err)
-
-		originalID := freshSession.ID()
-		freshSession.Set("name", "fenny")
-
-		err = freshSession.Save()
-		require.NoError(t, err)
-
-		freshSession.Release()
-		app.ReleaseCtx(ctx)
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		ctx.Request().Header.SetCookie("session_id", originalID)
-
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
-		defer sess.Release()
-
-		err = sess.RegenerateWithContext(t.Context())
-		require.NoError(t, err)
+		require.NoError(t, sess.RegenerateWithContext(t.Context()))
 		require.NotEqual(t, originalID, sess.ID())
 		require.True(t, sess.Fresh())
 		// Regenerate must preserve session data (unlike Reset, which clears it).
@@ -2058,31 +1135,17 @@ func Test_Session_RegenerateWithContext(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_ResetWithContext
 func Test_Session_ResetWithContext(t *testing.T) {
 	t.Parallel()
-
 	t.Run("reset with context clears data and changes id", func(t *testing.T) {
 		t.Parallel()
-		store := NewStore()
-		app := fiber.New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
-		defer sess.Release()
-
+		sess, _ := sessionTestFresh(t, NewStore())
 		originalID := sess.ID()
 		sess.Set("name", "fenny")
 		sess.Set("email", "fenny@example.com")
+		require.NoError(t, sess.Save())
 
-		err = sess.Save()
-		require.NoError(t, err)
-
-		err = sess.ResetWithContext(t.Context())
-		require.NoError(t, err)
-
+		require.NoError(t, sess.ResetWithContext(t.Context()))
 		require.NotEqual(t, originalID, sess.ID())
 		require.True(t, sess.Fresh())
 		require.Nil(t, sess.Get("name"))
@@ -2090,36 +1153,17 @@ func Test_Session_ResetWithContext(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_SaveWithContext
 func Test_Session_SaveWithContext(t *testing.T) {
 	t.Parallel()
-
 	t.Run("save with context persists data", func(t *testing.T) {
 		t.Parallel()
 		store := NewStore()
-		app := fiber.New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
-
+		sess, _ := sessionTestFresh(t, store)
 		sess.Set("name", "fenny")
-		err = sess.SaveWithContext(t.Context())
-		require.NoError(t, err)
+		require.NoError(t, sess.SaveWithContext(t.Context()))
 
 		// Verify data persisted by getting a new session with same ID
-		savedID := sess.ID()
-		sess.Release()
-		app.ReleaseCtx(ctx)
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		ctx.Request().Header.SetCookie("session_id", savedID)
-		sess2, err := store.Get(ctx)
-		require.NoError(t, err)
-		defer sess2.Release()
-
+		sess2 := loadSession(t, fiber.New(), store, sess.ID())
 		require.Equal(t, "fenny", sess2.Get("name"))
 	})
 
@@ -2133,7 +1177,7 @@ func Test_Session_SaveWithContext(t *testing.T) {
 		t.Parallel()
 		// Back the session with a storage that errors on any write: a real save
 		// would surface that error, so a nil return proves no write happened.
-		sess := newSessionWithStorage(t, &failingStorage{err: errors.New("Set must not be called")})
+		sess := newSessionWithStorage(t, &storagetest.Failing{Err: errors.New("Set must not be called")})
 		sess.Set("name", "fenny")
 
 		// Simulate the session being in use by the middleware handler.
@@ -2145,267 +1189,151 @@ func Test_Session_SaveWithContext(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_ResolveContext
 func Test_Session_ResolveContext(t *testing.T) {
 	t.Parallel()
-
 	t.Run("resolve context returns background when ctx is nil", func(t *testing.T) {
 		t.Parallel()
 		sess := &Session{ctx: nil}
-		ctx := sess.resolveContext()
-		require.NotNil(t, ctx)
+		require.NotNil(t, sess.resolveContext())
 	})
 
 	t.Run("resolve context returns fiber context when ctx is not nil", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-		fctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(fctx)
-
+		fctx := apptest.Ctx(t, fiber.New())
 		sess := &Session{ctx: fctx}
-		ctx := sess.resolveContext()
-		require.Equal(t, fctx, ctx)
+		require.Equal(t, fctx, sess.resolveContext())
 	})
 }
 
-// newSessionWithStorage returns a fresh session backed by the given storage and
-// a cleanup function that releases pooled resources. Because the request has no
-// session cookie, Get does not read from storage, so it succeeds even when the
-// storage backend is unavailable.
+// sessionTestFresh starts a session with store on a blank request and returns
+// it with the request context. Both are released when the test ends, so the
+// test must not release either itself.
+func sessionTestFresh(t *testing.T, store *Store) (*Session, fiber.Ctx) {
+	t.Helper()
+
+	ctx := apptest.Ctx(t, fiber.New())
+	sess, err := store.Get(ctx)
+	require.NoError(t, err)
+	t.Cleanup(sess.Release)
+	return sess, ctx
+}
+
 // newSessionWithStorage returns a fresh session backed by the given storage.
 // Because the request has no session cookie, Get does not read from storage, so
 // it succeeds even when the storage backend is unavailable. Pooled resources
 // (the session and fiber ctx) are released automatically via t.Cleanup.
 func newSessionWithStorage(t *testing.T, storage fiber.Storage) *Session {
 	t.Helper()
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	store := NewStore(Config{Storage: storage})
-	sess, err := store.Get(ctx)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		sess.Release()
-		app.ReleaseCtx(ctx)
-	})
+
+	sess, _ := sessionTestFresh(t, NewStore(Config{Storage: storage}))
 	return sess
 }
 
-// go test -run Test_Session_WithContext_StorageError
-func Test_Session_WithContext_StorageError(t *testing.T) {
+// Test_Session_WithContext runs every *WithContext operation against each way
+// the context variants have to cope with a storage backend: a storage that
+// fails, a context that is already canceled or past its deadline, and a nil
+// context.
+func Test_Session_WithContext(t *testing.T) {
 	t.Parallel()
-
 	storageErr := errors.New("storage unavailable")
 
-	t.Run("DestroyWithContext propagates storage error", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, &failingStorage{err: storageErr})
-		sess.Set("name", "fenny")
-		require.ErrorIs(t, sess.DestroyWithContext(t.Context()), storageErr)
-		// A failed delete must not wipe the in-memory session.
-		require.Equal(t, "fenny", sess.Get("name"))
-	})
-
-	t.Run("RegenerateWithContext propagates storage error", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, &failingStorage{err: storageErr})
-		require.ErrorIs(t, sess.RegenerateWithContext(t.Context()), storageErr)
-	})
-
-	t.Run("ResetWithContext propagates storage error", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, &failingStorage{err: storageErr})
-		sess.Set("name", "fenny")
-		require.ErrorIs(t, sess.ResetWithContext(t.Context()), storageErr)
-		// A failed delete must not wipe the in-memory session.
-		require.Equal(t, "fenny", sess.Get("name"))
-	})
-
-	t.Run("SaveWithContext propagates storage error", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, &failingStorage{err: storageErr})
-		sess.Set("name", "fenny")
-		require.ErrorIs(t, sess.SaveWithContext(t.Context()), storageErr)
-	})
-}
-
-// go test -run Test_Session_WithContext_CanceledContext
-func Test_Session_WithContext_CanceledContext(t *testing.T) {
-	t.Parallel()
-
-	// contextStorage honors cancellation by returning ctx.Err().
-	canceledCtx := func() context.Context {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		return ctx
+	operations := []struct {
+		call          func(*Session, context.Context) error
+		name          string
+		hasData       bool // the session holds a value when the call is made
+		failKeepsData bool // a call that fails must not wipe that value from the in-memory session
+	}{
+		{name: "DestroyWithContext", call: (*Session).DestroyWithContext, hasData: true, failKeepsData: true},
+		{name: "RegenerateWithContext", call: (*Session).RegenerateWithContext},
+		{name: "ResetWithContext", call: (*Session).ResetWithContext, hasData: true, failKeepsData: true},
+		{name: "SaveWithContext", call: (*Session).SaveWithContext, hasData: true},
 	}
 
-	t.Run("DestroyWithContext honors canceled context", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, &contextStorage{})
-		sess.Set("name", "fenny")
-		require.ErrorIs(t, sess.DestroyWithContext(canceledCtx()), context.Canceled)
-		// A canceled delete must not wipe the in-memory session.
-		require.Equal(t, "fenny", sess.Get("name"))
-	})
-
-	t.Run("RegenerateWithContext honors canceled context", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, &contextStorage{})
-		require.ErrorIs(t, sess.RegenerateWithContext(canceledCtx()), context.Canceled)
-	})
-
-	t.Run("ResetWithContext honors canceled context", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, &contextStorage{})
-		sess.Set("name", "fenny")
-		require.ErrorIs(t, sess.ResetWithContext(canceledCtx()), context.Canceled)
-		// A canceled delete must not wipe the in-memory session.
-		require.Equal(t, "fenny", sess.Get("name"))
-	})
-
-	t.Run("SaveWithContext honors canceled context", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, &contextStorage{})
-		sess.Set("name", "fenny")
-		require.ErrorIs(t, sess.SaveWithContext(canceledCtx()), context.Canceled)
-	})
-}
-
-// go test -run Test_Session_WithContext_DeadlineContext
-func Test_Session_WithContext_DeadlineContext(t *testing.T) {
-	t.Parallel()
-
-	// contextStorage honors a deadline by returning ctx.Err(). An already-expired
-	// deadline yields context.DeadlineExceeded, the primary motivation for the
-	// *WithContext variants (bounding slow or unresponsive backends).
-	expiredCtx := func() context.Context {
-		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Hour))
-		t.Cleanup(cancel)
-		return ctx
+	conditions := []struct {
+		storage func() fiber.Storage
+		context func(t *testing.T) context.Context
+		err     error // what every call must return, or nil when it has to succeed without panicking
+		name    string
+	}{
+		{
+			name:    "propagates storage error",
+			storage: func() fiber.Storage { return &storagetest.Failing{Err: storageErr} },
+			context: func(t *testing.T) context.Context {
+				t.Helper()
+				return t.Context()
+			},
+			err: storageErr,
+		},
+		{
+			// A Memory with HonorContext honors cancellation by returning ctx.Err().
+			name:    "honors canceled context",
+			storage: func() fiber.Storage { return &storagetest.Memory{HonorContext: true} },
+			context: func(*testing.T) context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			},
+			err: context.Canceled,
+		},
+		{
+			// A Memory with HonorContext honors a deadline by returning ctx.Err(). An already-expired
+			// deadline yields context.DeadlineExceeded, the primary motivation for the
+			// *WithContext variants (bounding slow or unresponsive backends).
+			name:    "honors expired deadline",
+			storage: func() fiber.Storage { return &storagetest.Memory{HonorContext: true} },
+			context: func(t *testing.T) context.Context {
+				t.Helper()
+				ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Hour))
+				t.Cleanup(cancel)
+				return ctx
+			},
+			err: context.DeadlineExceeded,
+		},
+		{
+			// A nil context must be normalized to context.Background() instead of
+			// panicking when forwarded to storage (see PR #4393 review feedback).
+			name:    "with nil context does not panic",
+			storage: func() fiber.Storage { return memory.New() },
+			context: func(*testing.T) context.Context { return nil },
+		},
 	}
 
-	t.Run("DestroyWithContext honors expired deadline", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, &contextStorage{})
-		sess.Set("name", "fenny")
-		require.ErrorIs(t, sess.DestroyWithContext(expiredCtx()), context.DeadlineExceeded)
-		// A timed-out delete must not wipe the in-memory session.
-		require.Equal(t, "fenny", sess.Get("name"))
-	})
+	for _, condition := range conditions {
+		for _, op := range operations {
+			t.Run(op.name+" "+condition.name, func(t *testing.T) {
+				t.Parallel()
+				sess := newSessionWithStorage(t, condition.storage())
+				if op.hasData {
+					sess.Set("name", "fenny")
+				}
 
-	t.Run("RegenerateWithContext honors expired deadline", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, &contextStorage{})
-		require.ErrorIs(t, sess.RegenerateWithContext(expiredCtx()), context.DeadlineExceeded)
-	})
-
-	t.Run("ResetWithContext honors expired deadline", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, &contextStorage{})
-		sess.Set("name", "fenny")
-		require.ErrorIs(t, sess.ResetWithContext(expiredCtx()), context.DeadlineExceeded)
-		// A timed-out delete must not wipe the in-memory session.
-		require.Equal(t, "fenny", sess.Get("name"))
-	})
-
-	t.Run("SaveWithContext honors expired deadline", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, &contextStorage{})
-		sess.Set("name", "fenny")
-		require.ErrorIs(t, sess.SaveWithContext(expiredCtx()), context.DeadlineExceeded)
-	})
-}
-
-// go test -run Test_Session_WithContext_NilContext
-func Test_Session_WithContext_NilContext(t *testing.T) {
-	t.Parallel()
-
-	// A nil context must be normalized to context.Background() instead of
-	// panicking when forwarded to storage (see PR #4393 review feedback).
-	assertNoNilPanic := func(t *testing.T, fn func() error) {
-		t.Helper()
-		require.NotPanics(t, func() {
-			require.NoError(t, fn())
-		})
+				var err error
+				require.NotPanics(t, func() { err = op.call(sess, condition.context(t)) })
+				if condition.err == nil {
+					require.NoError(t, err)
+					return
+				}
+				require.ErrorIs(t, err, condition.err)
+				if op.failKeepsData {
+					// A failed, canceled or timed-out delete must not wipe the in-memory session.
+					require.Equal(t, "fenny", sess.Get("name"))
+				}
+			})
+		}
 	}
-
-	t.Run("DestroyWithContext with nil context does not panic", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, memory.New())
-		sess.Set("name", "fenny")
-		assertNoNilPanic(t, func() error { return sess.DestroyWithContext(nil) }) //nolint:staticcheck // SA1012: nil is intentional — verifies the nil-context guard
-	})
-
-	t.Run("RegenerateWithContext with nil context does not panic", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, memory.New())
-		assertNoNilPanic(t, func() error { return sess.RegenerateWithContext(nil) }) //nolint:staticcheck // SA1012: nil is intentional — verifies the nil-context guard
-	})
-
-	t.Run("ResetWithContext with nil context does not panic", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, memory.New())
-		assertNoNilPanic(t, func() error { return sess.ResetWithContext(nil) }) //nolint:staticcheck // SA1012: nil is intentional — verifies the nil-context guard
-	})
-
-	t.Run("SaveWithContext with nil context does not panic", func(t *testing.T) {
-		t.Parallel()
-		sess := newSessionWithStorage(t, memory.New())
-		sess.Set("name", "fenny")
-		assertNoNilPanic(t, func() error { return sess.SaveWithContext(nil) }) //nolint:staticcheck // SA1012: nil is intentional — verifies the nil-context guard
-	})
-}
-
-// recordingStorage logs every Set so a test can assert what a save actually
-// wrote, then delegates to an in-memory backend.
-type recordingStorage struct {
-	fiber.Storage
-	setLog []storageWrite
-	mu     sync.Mutex
-}
-
-type storageWrite struct {
-	key   string
-	value []byte
-	exp   time.Duration
-}
-
-func newRecordingStorage() *recordingStorage {
-	return &recordingStorage{Storage: memory.New()}
-}
-
-func (s *recordingStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
-	s.mu.Lock()
-	s.setLog = append(s.setLog, storageWrite{key: key, value: utils.CopyBytes(val), exp: exp})
-	s.mu.Unlock()
-	return s.Storage.SetWithContext(ctx, key, val, exp)
-}
-
-func (s *recordingStorage) Set(key string, val []byte, exp time.Duration) error {
-	return s.SetWithContext(context.Background(), key, val, exp)
-}
-
-func (s *recordingStorage) writes() []storageWrite {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return slices.Clone(s.setLog)
-}
-
-func (s *recordingStorage) reset() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.setLog = nil
 }
 
 // seedSession stores a session through the given store and returns its ID.
+// fill may be nil to store a session without data.
 func seedSession(t *testing.T, app *fiber.App, store *Store, fill func(*Session)) string {
 	t.Helper()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, app)
 
 	sess, err := store.Get(ctx)
 	require.NoError(t, err)
-	fill(sess)
+	if fill != nil {
+		fill(sess)
+	}
 	require.NoError(t, sess.Save())
 	id := sess.ID()
 	sess.Release()
@@ -2413,32 +1341,38 @@ func seedSession(t *testing.T, app *fiber.App, store *Store, fill func(*Session)
 }
 
 // loadSession returns the stored session for id through a request carrying its
-// cookie, which is the path that retains the decoded snapshot.
+// cookie, which is the path that retains the decoded snapshot. The session and
+// the request context are released when the test ends.
 func loadSession(t *testing.T, app *fiber.App, store *Store, id string) *Session {
 	t.Helper()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx := apptest.Ctx(t, app)
 	ctx.Request().Header.SetCookie("session_id", id)
 
 	sess, err := store.Get(ctx)
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		sess.Release()
-		app.ReleaseCtx(ctx)
-	})
+	t.Cleanup(sess.Release)
+	return sess
+}
+
+// sessionTestStored returns the stored session for id through Store.GetByID,
+// which leaves it without a request, and releases it when the test ends.
+func sessionTestStored(t *testing.T, store *Store, id string) *Session {
+	t.Helper()
+
+	sess, err := store.GetByID(t.Context(), id)
+	require.NoError(t, err)
+	t.Cleanup(sess.Release)
 	return sess
 }
 
 // A save that changed nothing still has to refresh storage: the sliding idle
 // timeout is the entire safety argument for reusing the decoded snapshot.
-//
-// go test -run Test_Session_CleanSave_WritesSnapshotToStorage
 func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 	t.Parallel()
-
 	const idleTimeout = 2 * time.Hour
 
 	app := fiber.New()
-	rec := newRecordingStorage()
+	rec := storagetest.New()
 	store := NewStore(Config{Storage: rec, IdleTimeout: idleTimeout})
 
 	id := seedSession(t, app, store, func(sess *Session) {
@@ -2446,9 +1380,9 @@ func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 		sess.Set("admin", true)
 	})
 
-	seeded := rec.writes()
+	seeded := rec.Calls(storagetest.OpSet)
 	require.Len(t, seeded, 1)
-	rec.reset()
+	rec.ClearCalls()
 
 	sess := loadSession(t, app, store, id)
 	require.Equal(t, "fenny", sess.Get("user"))
@@ -2456,26 +1390,21 @@ func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 	sess.data.Data["admin"] = false // bypasses Set, so only a re-encode would persist it
 	require.NoError(t, sess.Save())
 
-	written := rec.writes()
+	written := rec.Calls(storagetest.OpSet)
 	require.Len(t, written, 1, "a clean save must still write to storage")
-	require.Equal(t, storageKeyPrefix+id, written[0].key)
-	require.Equal(t, seeded[0].value, written[0].value, "the retained snapshot must be written back verbatim")
-	require.Equal(t, idleTimeout, written[0].exp, "a clean save must slide the idle timeout")
+	require.Equal(t, storageKeyPrefix+id, written[0].Key)
+	require.Equal(t, seeded[0].Value, written[0].Value, "the retained snapshot must be written back verbatim")
+	require.Equal(t, idleTimeout, written[0].TTL, "a clean save must slide the idle timeout")
 
-	reloaded, err := store.GetByID(t.Context(), id)
-	require.NoError(t, err)
-	defer reloaded.Release()
+	reloaded := sessionTestStored(t, store, id)
 	require.Equal(t, "fenny", reloaded.Get("user"))
 	require.Equal(t, true, reloaded.Get("admin"))
 }
 
 // A value the caller still holds can be mutated in place without Set, so any
 // save after it was handed out must re-encode rather than reuse the snapshot.
-//
-// go test -run Test_Session_AliasedValueMutatedBetweenSaves
 func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
 	t.Parallel()
-
 	newStore := func() (*fiber.App, *Store) {
 		app := fiber.New()
 		store := NewStore(Config{Storage: memory.New()})
@@ -2485,11 +1414,8 @@ func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
 
 	t.Run("mutated through Get", func(t *testing.T) {
 		t.Parallel()
-
 		app, store := newStore()
-		id := seedSession(t, app, store, func(sess *Session) {
-			sess.Set("prefs", map[string]string{"theme": "dark"})
-		})
+		id := seedSession(t, app, store, func(sess *Session) { sess.Set("prefs", map[string]string{"theme": "dark"}) })
 
 		sess := loadSession(t, app, store, id)
 		prefs, ok := sess.Get("prefs").(map[string]string)
@@ -2497,19 +1423,14 @@ func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
 		prefs["theme"] = "light"
 		require.NoError(t, sess.Save())
 
-		reloaded, err := store.GetByID(t.Context(), id)
-		require.NoError(t, err)
-		defer reloaded.Release()
+		reloaded := sessionTestStored(t, store, id)
 		require.Equal(t, map[string]string{"theme": "light"}, reloaded.Get("prefs"))
 	})
 
 	t.Run("mutated after Set on a decoded session", func(t *testing.T) {
 		t.Parallel()
-
 		app, store := newStore()
-		id := seedSession(t, app, store, func(sess *Session) {
-			sess.Set("user", "fenny")
-		})
+		id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
 
 		sess := loadSession(t, app, store, id)
 		prefs := map[string]string{"theme": "dark"}
@@ -2520,9 +1441,7 @@ func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
 		prefs["theme"] = "light"
 		require.NoError(t, sess.Save())
 
-		reloaded, err := store.GetByID(t.Context(), id)
-		require.NoError(t, err)
-		defer reloaded.Release()
+		reloaded := sessionTestStored(t, store, id)
 		require.Equal(t, map[string]string{"theme": "light"}, reloaded.Get("prefs"))
 		require.Equal(t, "fenny", reloaded.Get("user"))
 	})
@@ -2530,8 +1449,6 @@ func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
 
 // Benchmark_Session_ReadOnly measures the request shape the clean-save path
 // targets: load a stored session, read a scalar, save it unmodified.
-//
-// go test -v -run=^$ -bench=Benchmark_Session_ReadOnly -benchmem -count=4
 func Benchmark_Session_ReadOnly(b *testing.B) {
 	app := fiber.New()
 	store := NewStore(Config{Storage: memory.New()})
@@ -2546,8 +1463,7 @@ func Benchmark_Session_ReadOnly(b *testing.B) {
 	sess.Release()
 	app.ReleaseCtx(seed)
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(b, app)
 	c.Request().Header.SetCookie("session_id", id)
 
 	b.ReportAllocs()
@@ -2585,44 +1501,31 @@ func (s *scribbleStorage) scribble() {
 
 // The retained snapshot must be a copy: fiber.Storage promises nothing about
 // the lifetime of the slice its Get returns.
-//
-// go test -run Test_Session_RetainedSnapshotSurvivesStorageBufferReuse
 func Test_Session_RetainedSnapshotSurvivesStorageBufferReuse(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	scribbler := &scribbleStorage{Storage: memory.New()}
 	store := NewStore(Config{Storage: scribbler})
 
-	id := seedSession(t, app, store, func(sess *Session) {
-		sess.Set("user", "fenny")
-	})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
 
 	sess := loadSession(t, app, store, id)
 	scribbler.scribble()
 	require.NoError(t, sess.Save())
 
-	reloaded, err := store.GetByID(t.Context(), id)
-	require.NoError(t, err)
-	defer reloaded.Release()
+	reloaded := sessionTestStored(t, store, id)
 	require.Equal(t, "fenny", reloaded.Get("user"))
 }
 
 // The snapshot outlives operations that do not touch the data, and must not
 // outlive the ones that do.
-//
-// go test -run Test_Session_CleanSave_Lifecycle
 func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 	t.Parallel()
-
 	t.Run("Regenerate writes the snapshot under the new ID", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		store := NewStore(Config{Storage: memory.New()})
-		id := seedSession(t, app, store, func(sess *Session) {
-			sess.Set("user", "fenny")
-		})
+		id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
 
 		sess := loadSession(t, app, store, id)
 		require.NoError(t, sess.Regenerate())
@@ -2634,91 +1537,63 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 		_, err := store.GetByID(t.Context(), id)
 		require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
 
-		reloaded, err := store.GetByID(t.Context(), newID)
-		require.NoError(t, err)
-		defer reloaded.Release()
+		reloaded := sessionTestStored(t, store, newID)
 		require.Equal(t, "fenny", reloaded.Get("user"))
 	})
 
-	t.Run("Reset drops the snapshot", func(t *testing.T) {
-		t.Parallel()
+	// Reset moves the session to a new ID, Destroy keeps it.
+	for _, tc := range []struct {
+		drop func(*Session) error
+		name string
+	}{
+		{name: "Reset drops the snapshot", drop: (*Session).Reset},
+		{name: "Destroy drops the snapshot", drop: (*Session).Destroy},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			store := NewStore(Config{Storage: memory.New()})
+			id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
 
-		app := fiber.New()
-		store := NewStore(Config{Storage: memory.New()})
-		id := seedSession(t, app, store, func(sess *Session) {
-			sess.Set("user", "fenny")
+			sess := loadSession(t, app, store, id)
+			require.NoError(t, tc.drop(sess))
+			require.Nil(t, sess.rawData)
+			require.NoError(t, sess.Save())
+
+			reloaded := sessionTestStored(t, store, sess.ID())
+			require.Nil(t, reloaded.Get("user"))
 		})
-
-		sess := loadSession(t, app, store, id)
-		require.NoError(t, sess.Reset())
-		require.Nil(t, sess.rawData)
-		require.NoError(t, sess.Save())
-
-		reloaded, err := store.GetByID(t.Context(), sess.ID())
-		require.NoError(t, err)
-		defer reloaded.Release()
-		require.Nil(t, reloaded.Get("user"))
-	})
-
-	t.Run("Destroy drops the snapshot", func(t *testing.T) {
-		t.Parallel()
-
-		app := fiber.New()
-		store := NewStore(Config{Storage: memory.New()})
-		id := seedSession(t, app, store, func(sess *Session) {
-			sess.Set("user", "fenny")
-		})
-
-		sess := loadSession(t, app, store, id)
-		require.NoError(t, sess.Destroy())
-		require.Nil(t, sess.rawData)
-		require.NoError(t, sess.Save())
-
-		reloaded, err := store.GetByID(t.Context(), id)
-		require.NoError(t, err)
-		defer reloaded.Release()
-		require.Nil(t, reloaded.Get("user"))
-	})
+	}
 
 	t.Run("a session loaded by ID can take the fast path", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
-		rec := newRecordingStorage()
+		rec := storagetest.New()
 		store := NewStore(Config{Storage: rec})
-		id := seedSession(t, app, store, func(sess *Session) {
-			sess.Set("user", "fenny")
-		})
-		rec.reset()
+		id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
+		rec.ClearCalls()
 
 		// GetByID leaves ctx nil, so this also covers saving without a request.
-		sess, err := store.GetByID(t.Context(), id)
-		require.NoError(t, err)
-		defer sess.Release()
+		sess := sessionTestStored(t, store, id)
 		require.False(t, sess.data.dirty.Load())
 		sess.data.Data["user"] = "bypassed" // only a re-encode would persist it
 		require.NoError(t, sess.Save())
 
-		written := rec.writes()
+		written := rec.Calls(storagetest.OpSet)
 		require.Len(t, written, 1)
-		require.Equal(t, storageKeyPrefix+id, written[0].key)
-		require.NotContains(t, string(written[0].value), "bypassed")
+		require.Equal(t, storageKeyPrefix+id, written[0].Key)
+		require.NotContains(t, string(written[0].Value), "bypassed")
 	})
 }
 
 // With AbsoluteTimeout every load reads the deadline back as a time.Time, and that
 // read must neither dirty the session nor move the deadline.
-//
-// go test -run Test_Session_CleanSave_KeepsAbsoluteExpiration
 func Test_Session_CleanSave_KeepsAbsoluteExpiration(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	store := NewStore(Config{Storage: memory.New(), AbsoluteTimeout: time.Hour})
 
-	id := seedSession(t, app, store, func(sess *Session) {
-		sess.Set("user", "fenny")
-	})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "fenny") })
 
 	first := loadSession(t, app, store, id)
 	deadline := first.absExpiration()
@@ -2734,11 +1609,8 @@ func Test_Session_CleanSave_KeepsAbsoluteExpiration(t *testing.T) {
 
 // Get writes the dirty flag while holding only RLock, so a shared session must
 // stay race-free when a save runs next to a read.
-//
-// go test -race -run Test_Session_ConcurrentAliasedReadAndSave
 func Test_Session_ConcurrentAliasedReadAndSave(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	store := NewStore(Config{Storage: memory.New()})
 	store.RegisterType(map[string]string{})
@@ -2776,9 +1648,7 @@ func Test_Session_ConcurrentAliasedReadAndSave(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	reloaded, err := store.GetByID(t.Context(), id)
-	require.NoError(t, err)
-	defer reloaded.Release()
+	reloaded := sessionTestStored(t, store, id)
 	require.Equal(t, "fenny", reloaded.Get("user"))
 }
 
@@ -2916,7 +1786,7 @@ func Test_Session_WriteBackAfterUnrelatedChange(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	storage := newRecordingStorage()
+	storage := storagetest.New()
 	store := NewStore(Config{Storage: storage})
 	id := seedSession(t, app, store, func(sess *Session) {
 		sess.Set("user", "alice")
@@ -2934,12 +1804,12 @@ func Test_Session_WriteBackAfterUnrelatedChange(t *testing.T) {
 	other := loadSession(t, app, store, sibling)
 	other.Set("user", "carol")
 	require.NoError(t, other.Save())
-	storage.reset()
+	storage.ClearCalls()
 
 	require.NoError(t, sess.Save())
-	writes := storage.writes()
+	writes := storage.Calls(storagetest.OpSet)
 	require.Len(t, writes, 1)
-	require.Equal(t, storageKeyPrefix+id, writes[0].key)
+	require.Equal(t, storageKeyPrefix+id, writes[0].Key)
 }
 
 // gateStorage parks the first Set after arming until release is closed.

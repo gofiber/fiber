@@ -3,15 +3,10 @@ package proxy
 import (
 	"errors"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"net/url"
-	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -29,107 +24,98 @@ func (stubConn) SetDeadline(time.Time) error      { return nil }
 func (stubConn) SetReadDeadline(time.Time) error  { return nil }
 func (stubConn) SetWriteDeadline(time.Time) error { return nil }
 
-// Test_Coverage_ResolveAndValidateHost_IPLiteralOK exercises the IP-literal
-// fast path that skips DNS entirely.
-func Test_Coverage_ResolveAndValidateHost_IPLiteralOK(t *testing.T) {
+// Test_Coverage_ResolveAndValidateHost covers the answers for an IP literal and, through a reserved
+// RFC 6761 TLD that never resolves and so never depends on outbound DNS, the LookupIPAddr error wrapping.
+func Test_Coverage_ResolveAndValidateHost(t *testing.T) {
 	t.Parallel()
-	ips, err := resolveAndValidateHost("8.8.8.8", time.Time{})
-	require.NoError(t, err)
-	require.Len(t, ips, 1)
-	require.True(t, ips[0].Equal(net.ParseIP("8.8.8.8")))
+	for _, tc := range []struct {
+		wantErr error
+		name    string
+		host    string
+	}{
+		{name: "public IP literal", host: "8.8.8.8"},
+		{name: "blocked IP literal", host: "127.0.0.1", wantErr: ErrUpstreamHostBlocked},
+		{name: "lookup fails", host: "definitely-not-a-real-host.invalid", wantErr: ErrUpstreamHostBlocked},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ips, err := resolveAndValidateHost(tc.host, time.Time{})
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, ips, 1)
+			require.True(t, ips[0].Equal(net.ParseIP(tc.host)))
+		})
+	}
 }
 
-// Test_Coverage_ResolveAndValidateHost_BlocksIPLiteral covers the
-// post-resolution loop that rejects a blocked IP literal.
-func Test_Coverage_ResolveAndValidateHost_BlocksIPLiteral(t *testing.T) {
+// Test_Coverage_DialValidatedIPs covers the candidate loop: an IPv6 candidate is skipped before any
+// dial unless DialDualStack is on, in which case the error does not match ErrUpstreamHostBlocked, since
+// nothing was blocked; a dial that fails goes on to the next candidate and the last error is returned.
+func Test_Coverage_DialValidatedIPs(t *testing.T) {
 	t.Parallel()
-	_, err := resolveAndValidateHost("127.0.0.1", time.Time{})
-	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
-}
+	refused := errors.New("dial-refused")
+	for _, tc := range []struct {
+		dialErr     error // what every dial answers, when it fails
+		wantErr     error
+		name        string
+		port        string
+		wantErrText string
+		ips         []string
+		wantDialed  []string // the addresses dialed, in order
+		dualStack   bool
+	}{
+		{name: "IPv4", ips: []string{"203.0.113.1"}, port: "80", wantDialed: []string{"203.0.113.1:80"}},
+		{
+			name: "IPv6 is skipped without dual stack", ips: []string{"2606:4700:4700::1111"}, port: "80",
+			wantErr: errIPv6Only, wantErrText: "example.test has only IPv6 addresses, and DialDualStack is off",
+		},
+		{
+			name: "falls back on error", ips: []string{"203.0.113.1", "203.0.113.2"}, port: "80", dialErr: refused,
+			wantErr: refused, wantDialed: []string{"203.0.113.1:80", "203.0.113.2:80"},
+		},
+		{
+			name: "dual stack tries IPv6", dualStack: true, ips: []string{"2606:4700:4700::1111"}, port: "443",
+			wantDialed: []string{"[2606:4700:4700::1111]:443"},
+		},
+		{
+			name: "IPv6 is skipped, then IPv4 dials", ips: []string{"2001:db8::1", "203.0.113.5"}, port: "443",
+			wantDialed: []string{"203.0.113.5:443"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var dialed []string
+			guard := dialGuard{dualStack: tc.dualStack, dial: func(network, addr string) (net.Conn, error) {
+				require.Equal(t, "tcp", network)
+				dialed = append(dialed, addr)
+				if tc.dialErr != nil {
+					return nil, tc.dialErr
+				}
+				return stubConn{addr: addr}, nil
+			}}
+			ips := make([]net.IP, len(tc.ips))
+			for i, raw := range tc.ips {
+				ips[i] = net.ParseIP(raw)
+			}
 
-// Test_Coverage_ResolveAndValidateHost_LookupFails covers the
-// LookupIPAddr error wrapping branch using a reserved RFC 6761 TLD that
-// never resolves and therefore never depends on outbound DNS.
-func Test_Coverage_ResolveAndValidateHost_LookupFails(t *testing.T) {
-	t.Parallel()
-	_, err := resolveAndValidateHost("definitely-not-a-real-host.invalid", time.Time{})
-	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
-}
-
-// Test_Coverage_DialValidatedIPs_SuccessOnIPv4 exercises the happy path
-// where dialValidatedIPs returns the first successful connection.
-func Test_Coverage_DialValidatedIPs_SuccessOnIPv4(t *testing.T) {
-	t.Parallel()
-	called := atomic.Bool{}
-	guard := dialGuard{dial: func(network, addr string) (net.Conn, error) {
-		called.Store(true)
-		require.Equal(t, "tcp", network)
-		require.Equal(t, "203.0.113.1:80", addr)
-		return stubConn{addr: addr}, nil
-	}}
-	conn, err := guard.dialValidatedIPs([]net.IP{net.ParseIP("203.0.113.1")}, "example.test", "80")
-	require.NoError(t, err)
-	require.NotNil(t, conn)
-	require.True(t, called.Load())
-}
-
-// Test_Coverage_DialValidatedIPs_SkipsV6_WhenNoDualStack covers the IPv4-only branch: an IPv6
-// candidate is skipped before any dial, and the error does not match ErrUpstreamHostBlocked, since
-// nothing was blocked.
-func Test_Coverage_DialValidatedIPs_SkipsV6_WhenNoDualStack(t *testing.T) {
-	t.Parallel()
-	called := atomic.Bool{}
-	guard := dialGuard{dial: func(string, string) (net.Conn, error) {
-		called.Store(true)
-		return nil, errors.New("should not dial")
-	}}
-	_, err := guard.dialValidatedIPs([]net.IP{net.ParseIP("2606:4700:4700::1111")}, "example.test", "80")
-	require.ErrorIs(t, err, errIPv6Only)
-	require.NotErrorIs(t, err, ErrUpstreamHostBlocked)
-	require.NotErrorIs(t, err, ErrUpstreamHostUnresolvable)
-	require.ErrorContains(t, err, "example.test has only IPv6 addresses, and DialDualStack is off")
-	require.False(t, called.Load(), "IPv6 candidate must be skipped without dialing")
-}
-
-// Test_Coverage_DialValidatedIPs_FallsBackOnError exercises the
-// "remember last error, continue to next IP" branch and the final
-// "return lastErr" path.
-func Test_Coverage_DialValidatedIPs_FallsBackOnError(t *testing.T) {
-	t.Parallel()
-	sentinel := errors.New("dial-refused")
-	var attempts atomic.Int32
-	guard := dialGuard{dial: func(string, string) (net.Conn, error) {
-		attempts.Add(1)
-		return nil, sentinel
-	}}
-	_, err := guard.dialValidatedIPs([]net.IP{net.ParseIP("203.0.113.1"), net.ParseIP("203.0.113.2")}, "example.test", "80")
-	require.ErrorIs(t, err, sentinel)
-	require.Equal(t, int32(2), attempts.Load())
-}
-
-// Test_Coverage_DialValidatedIPs_DualStackTriesV6 verifies that when
-// DialDualStack is enabled the IPv6 candidate is dialed instead of
-// skipped.
-func Test_Coverage_DialValidatedIPs_DualStackTriesV6(t *testing.T) {
-	t.Parallel()
-	var addr string
-	guard := dialGuard{dualStack: true, dial: func(_, a string) (net.Conn, error) {
-		addr = a
-		return stubConn{addr: a}, nil
-	}}
-	_, err := guard.dialValidatedIPs([]net.IP{net.ParseIP("2606:4700:4700::1111")}, "example.test", "443")
-	require.NoError(t, err)
-	require.Equal(t, "[2606:4700:4700::1111]:443", addr)
-}
-
-// Test_Coverage_DialChecked_RejectsLoopbackHostname drives the
-// SplitHostPort → resolveAndValidateHost → blocked-IP rejection branch.
-func Test_Coverage_DialChecked_RejectsLoopbackHostname(t *testing.T) {
-	t.Parallel()
-	dial := newDialGuard(false).dialChecked
-	_, err := dial("localhost:65535")
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+			conn, err := guard.dialValidatedIPs(ips, "example.test", tc.port)
+			require.Equal(t, tc.wantDialed, dialed, "the addresses dialed, an IPv6 one being skipped")
+			if tc.wantErr == nil {
+				require.NoError(t, err)
+				require.NotNil(t, conn)
+				return
+			}
+			require.ErrorIs(t, err, tc.wantErr)
+			require.NotErrorIs(t, err, ErrUpstreamHostBlocked)
+			require.NotErrorIs(t, err, ErrUpstreamHostUnresolvable)
+			if tc.wantErrText != "" {
+				require.ErrorContains(t, err, tc.wantErrText)
+			}
+		})
+	}
 }
 
 // Test_Coverage_DialChecked_PassesGuardThenDials covers the post-guard
@@ -161,75 +147,6 @@ func Test_Coverage_ValidateHostForSSRF_PublicHostname(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// Test_Coverage_ResolveRedirect_RejectsHostlessTarget covers the
-// empty-host check after fasthttp's URI.Update merges in the Location.
-// A Location of "http://" produces a URI with scheme but no host.
-func Test_Coverage_ResolveRedirect_RejectsHostlessTarget(t *testing.T) {
-	t.Parallel()
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	_, err := resolveRedirect("https://example.com", []byte("http://"), policy, nil)
-	require.ErrorIs(t, err, fasthttp.ErrorInvalidURI)
-}
-
-// Test_Coverage_JoinUpstreamPath_RejectsAuthorityInjection covers a
-// request path that spells a scheme and host of its own. Parsed behind
-// the placeholder authority it is a path and nothing else, so the
-// upstream host pinned by base cannot be replaced.
-func Test_Coverage_JoinUpstreamPath_RejectsAuthorityInjection(t *testing.T) {
-	t.Parallel()
-	base, err := url.Parse("http://upstream.example")
-	require.NoError(t, err)
-	out := joinUpstreamPath(base, "/foo://hijack.example/bar")
-	require.NotEmpty(t, out)
-	parsed, err := url.Parse(out)
-	require.NoError(t, err)
-	require.Equal(t, "http", parsed.Scheme)
-	require.Equal(t, "upstream.example", parsed.Host, "host must remain pinned")
-	require.Equal(t, "/foo://hijack.example/bar", parsed.Path)
-}
-
-// Test_Coverage_JoinUpstreamPath_FallbackPreservesBasePathPrefix is a
-// regression guard: when the request path fails to parse cleanly the
-// fallback branch must still honor an upstream base path prefix.
-// Without this, a malformed request like "/%zz" could silently bypass
-// a configured "/api" and reach the upstream root.
-func Test_Coverage_JoinUpstreamPath_FallbackPreservesBasePathPrefix(t *testing.T) {
-	t.Parallel()
-	base, err := url.Parse("http://upstream.example/api")
-	require.NoError(t, err)
-
-	// "/%zz" trips url.Parse (invalid escape) — the slow path's
-	// parse-error fallback fires.
-	out := joinUpstreamPath(base, "/%zz")
-	require.NotEmpty(t, out)
-	parsed, err := url.Parse(out)
-	require.NoError(t, err, "fallback must still emit a parseable URL")
-	require.Equal(t, "upstream.example", parsed.Host, "host must remain pinned")
-	require.True(t, strings.HasPrefix(parsed.Path, "/api/"), "base path prefix must survive fallback: %q", parsed.Path)
-}
-
-// Test_Coverage_JoinUpstreamPath_PreservesRawPath_BaseHasPercentEncoded
-// exercises the RawPath join path where both base and request have a
-// percent-encoded segment.
-func Test_Coverage_JoinUpstreamPath_PreservesRawPath_BaseHasPercentEncoded(t *testing.T) {
-	t.Parallel()
-	base, err := url.Parse("http://upstream.example/space%20here")
-	require.NoError(t, err)
-	out := joinUpstreamPath(base, "/sub")
-	require.Contains(t, out, "/space%20here/sub")
-}
-
-// Test_Coverage_ConfigDefault_PanicsOnEmptyServersAndNoClient covers
-// the panic branch in configDefault when neither Servers nor a
-// Client override is supplied.
-func Test_Coverage_ConfigDefault_PanicsOnEmptyServersAndNoClient(t *testing.T) {
-	t.Parallel()
-	require.PanicsWithValue(t, "Servers cannot be empty", func() {
-		configDefault(Config{})
-	})
-}
-
 // Test_Coverage_ConfigDefault_FillsDefaults checks the defaults for a Config with Servers or a Client.
 func Test_Coverage_ConfigDefault_FillsDefaults(t *testing.T) {
 	t.Parallel()
@@ -244,22 +161,6 @@ func Test_Coverage_ConfigDefault_FillsDefaults(t *testing.T) {
 			require.Equal(t, ConfigDefault.MaxConnsPerHost, cfg.MaxConnsPerHost)
 		})
 	}
-}
-
-// Test_Coverage_DialValidatedIPs_SkipsV6ThenDialsV4 verifies the
-// continue branch with a follow-up successful dial: an IPv6 candidate is
-// skipped (DialDualStack=false), then an IPv4 candidate dials cleanly.
-func Test_Coverage_DialValidatedIPs_SkipsV6ThenDialsV4(t *testing.T) {
-	t.Parallel()
-	var dialed string
-	guard := dialGuard{dial: func(_, addr string) (net.Conn, error) {
-		dialed = addr
-		return stubConn{addr: addr}, nil
-	}}
-	conn, err := guard.dialValidatedIPs([]net.IP{net.ParseIP("2001:db8::1"), net.ParseIP("203.0.113.5")}, "example.test", "443")
-	require.NoError(t, err)
-	require.NotNil(t, conn)
-	require.Equal(t, "203.0.113.5:443", dialed)
 }
 
 // Test_Coverage_JoinUpstreamPath_RawPathFallback exercises the RawPath join
@@ -293,29 +194,9 @@ func Test_Coverage_EscapedPath(t *testing.T) {
 	require.Equal(t, mustParseTestURL(t, "http://upstream.example/café").String(), u.String())
 }
 
-// Test_Coverage_DomainForward_HostMismatch_DoesNotProxy covers the
-// host-mismatch branch where DomainForward returns nil without calling
-// the upstream. The assertion target is that the proxy was NOT invoked
-// — if it had been, the unreachable port :1 would surface as a 5xx.
-func Test_Coverage_DomainForward_HostMismatch_DoesNotProxy(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(DomainForward("only-this-host.example", "http://127.0.0.1:1"))
-
-	req := httptest.NewRequest(fiber.MethodGet, "/ping", http.NoBody)
-	req.Host = "other-host.example"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	// Fiber returns 200 when the middleware returns nil and there is no
-	// downstream handler; the important assertion is that we did NOT get
-	// a 5xx from dialing 127.0.0.1:1.
-	require.NotEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
-}
-
 // Test_Coverage_CanFastJoinPath_RepeatedSeparator covers a second '?' or '#' left to the url.Parse path.
 func Test_Coverage_CanFastJoinPath_RepeatedSeparator(t *testing.T) {
 	t.Parallel()
-
 	for _, target := range []string{"/a?b?c", "/a?b#c", "/a#b?c", "/a#b#c"} {
 		require.False(t, canFastJoinPath(target), target)
 	}

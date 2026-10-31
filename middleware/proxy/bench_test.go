@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync"
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/valyala/fasthttp"
 )
@@ -28,8 +27,7 @@ import (
 // safe from dead-code elimination.
 
 func BenchmarkCurrentSecurityPolicy(b *testing.B) {
-	prev := WithSecurityPolicy(DefaultSecurityPolicy())
-	b.Cleanup(func() { WithSecurityPolicy(prev) })
+	withSecurityPolicyForTest(b, DefaultSecurityPolicy())
 	b.ReportAllocs()
 	for b.Loop() {
 		_ = currentSecurityPolicy()
@@ -89,8 +87,7 @@ func BenchmarkValidateUpstreamForBalancer_IPLiteral(b *testing.B) {
 }
 
 func BenchmarkResolveRedirect_HTTPSDowngradeBlocked(b *testing.B) {
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
+	policy := proxyTestAllowPrivatePolicy()
 	location := []byte("http://example.com/landing")
 	b.ReportAllocs()
 	var err error
@@ -104,8 +101,7 @@ func BenchmarkResolveRedirect_HTTPSDowngradeBlocked(b *testing.B) {
 }
 
 func BenchmarkResolveRedirect_AllowedAcrossOrigin(b *testing.B) {
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
+	policy := proxyTestAllowPrivatePolicy()
 	location := []byte("https://other.example/landing")
 	b.ReportAllocs()
 	for b.Loop() {
@@ -185,10 +181,7 @@ func BenchmarkKeepForwardingOrder_ManyRepeated(b *testing.B) {
 }
 
 func BenchmarkJoinUpstreamPath_RootBase(b *testing.B) {
-	base, err := url.Parse("http://upstream.example")
-	if err != nil {
-		b.Fatal(err)
-	}
+	base := mustParseTestURL(b, "http://upstream.example")
 	b.ReportAllocs()
 	for b.Loop() {
 		_ = joinUpstreamPath(base, "/api/v1/widgets?ids=1,2,3")
@@ -196,10 +189,7 @@ func BenchmarkJoinUpstreamPath_RootBase(b *testing.B) {
 }
 
 func BenchmarkJoinUpstreamPath_PrefixBase(b *testing.B) {
-	base, err := url.Parse("http://upstream.example/service")
-	if err != nil {
-		b.Fatal(err)
-	}
+	base := mustParseTestURL(b, "http://upstream.example/service")
 	b.ReportAllocs()
 	for b.Loop() {
 		_ = joinUpstreamPath(base, "/api/v1/widgets")
@@ -240,19 +230,11 @@ func BenchmarkIsBlockedIP_PublicV4(b *testing.B) {
 // cost — initial URL handling, request setup, and one cli.Do call that
 // returns 204 (no Location). The URL arrives validated, so no validateUpstream is measured.
 func BenchmarkFollowRedirects_NoRedirect(b *testing.B) {
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	prev := WithSecurityPolicy(policy)
-	b.Cleanup(func() { WithSecurityPolicy(prev) })
+	policy := proxyTestAllowPrivatePolicy()
+	withSecurityPolicyForTest(b, policy)
 
-	cli := &fasthttp.Client{
-		Transport: noopRoundTripper{},
-	}
-
-	initialURL, err := url.Parse("http://203.0.113.5:8080/api/v1/widgets")
-	if err != nil {
-		b.Fatal(err)
-	}
+	cli := &fasthttp.Client{Transport: noopRoundTripper{}}
+	initialURL := mustParseTestURL(b, "http://203.0.113.5:8080/api/v1/widgets")
 
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
@@ -281,7 +263,8 @@ func BenchmarkDomainForward_HostMatchPath(b *testing.B) {
 
 	app := fiber.New()
 	app.Use(DomainForward("api.example", "http://203.0.113.5:8080"))
-	req := newReqWithHost("api.example", "/v1/widgets?q=1")
+	// The Host header set directly, so the host-match branch of DomainForward fires.
+	req := apptest.Req(fiber.MethodGet, "/v1/widgets?q=1", apptest.WithHost("api.example"))
 	b.ReportAllocs()
 	for b.Loop() {
 		resp, err := app.Test(req, fiber.TestConfig{Timeout: 1})
@@ -303,9 +286,7 @@ func BenchmarkDomainForward_HostMatchPath(b *testing.B) {
 // benchNoopUpstream points the runtime helpers at an upstream that answers 204 without dialing.
 func benchNoopUpstream(b *testing.B) {
 	b.Helper()
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	withSecurityPolicyForTest(b, policy)
+	withSecurityPolicyForTest(b, proxyTestAllowPrivatePolicy())
 
 	restoreGlobalProxyClient(b)
 	sharedClient.Store(&fasthttp.Client{Transport: noopRoundTripper{}})
@@ -467,12 +448,4 @@ func (noopRoundTripper) RoundTrip(_ *fasthttp.HostClient, _ *fasthttp.Request, r
 	resp.Reset()
 	resp.Header.SetStatusCode(fasthttp.StatusNoContent)
 	return false, nil
-}
-
-// newReqWithHost builds an http.Request with the given Host header set
-// directly so DomainForward's host-match branch fires.
-func newReqWithHost(host, target string) *http.Request {
-	req := httptest.NewRequest(fiber.MethodGet, target, http.NoBody)
-	req.Host = host
-	return req
 }

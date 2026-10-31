@@ -4,44 +4,28 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/dns/dnsmessage"
 )
 
-// startRebindingDNS starts a loopback UDP DNS server that answers A queries
-// for any name. The very first A answer for a given name is firstIP (a
-// public-looking address that passes the SSRF blocklist); every A answer
-// after that is rebindIP (the "internal" target). AAAA queries are answered
-// with an empty NODATA response so the Go resolver falls back to the A
-// record. This reproduces a classic DNS-rebinding resolver: safe on the
-// validation lookup, hostile on the dial-time lookup. It returns the
-// server's "host:port" address and a counter of A queries served, which a
-// test can assert is >= 2 to prove the block happened at dial time (a second
-// lookup) rather than up front (the first, public, lookup).
-func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) (string, *atomic.Int64) {
+// serveDNS starts a loopback UDP DNS server that answers each query with the
+// addresses that answer returns for its question, as A records, and with an empty
+// NODATA response when it returns none. It returns the server's "host:port".
+func serveDNS(t *testing.T, answer func(q dnsmessage.Question) []net.IP) string {
 	t.Helper()
 
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { pc.Close() }) //nolint:errcheck // best-effort close in cleanup
-
-	aQueries := &atomic.Int64{}
-
-	var (
-		mu       sync.Mutex
-		answered = map[string]bool{}
-	)
 
 	go func() {
 		buf := make([]byte, 512)
@@ -61,24 +45,7 @@ func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) (string, *atomic.
 				continue
 			}
 
-			var answer net.IP
-			if q.Type == dnsmessage.TypeA {
-				aQueries.Add(1)
-				// Track "first answer" per queried name so a stray lookup for
-				// some other name cannot consume the target name's public
-				// (validation-time) answer and mask a broken dial-time guard.
-				name := q.Name.String()
-				mu.Lock()
-				if answered[name] {
-					answer = rebindIP
-				} else {
-					answer = firstIP
-					answered[name] = true
-				}
-				mu.Unlock()
-			}
-
-			resp, berr := buildDNSResponse(hdr.ID, &q, answer)
+			resp, berr := buildDNSResponse(hdr.ID, &q, answer(q)...)
 			if berr != nil {
 				continue
 			}
@@ -86,18 +53,55 @@ func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) (string, *atomic.
 		}
 	}()
 
-	return pc.LocalAddr().String(), aQueries
+	return pc.LocalAddr().String()
 }
 
-// buildDNSResponse serializes a DNS reply echoing the question. When ip is
-// a non-nil IPv4 address an A record is included; otherwise the reply is a
-// NODATA answer (used for AAAA queries).
-func buildDNSResponse(id uint16, q *dnsmessage.Question, ip net.IP) ([]byte, error) {
-	b := dnsmessage.NewBuilder(nil, dnsmessage.Header{
-		ID:            id,
-		Response:      true,
-		Authoritative: true,
+// startRebindingDNS starts a loopback UDP DNS server that answers A queries
+// for any name. The very first A answer for a given name is firstIP (a
+// public-looking address that passes the SSRF blocklist); every A answer
+// after that is rebindIP (the "internal" target). AAAA queries are answered
+// with an empty NODATA response so the Go resolver falls back to the A
+// record. This reproduces a classic DNS-rebinding resolver: safe on the
+// validation lookup, hostile on the dial-time lookup. It returns the
+// server's "host:port" address and a counter of A queries served, which a
+// test can assert is >= 2 to prove the block happened at dial time (a second
+// lookup) rather than up front (the first, public, lookup).
+func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) (string, *atomic.Int64) {
+	t.Helper()
+
+	aQueries := &atomic.Int64{}
+
+	var (
+		mu       sync.Mutex
+		answered = map[string]bool{}
+	)
+
+	addr := serveDNS(t, func(q dnsmessage.Question) []net.IP {
+		if q.Type != dnsmessage.TypeA {
+			return nil
+		}
+		aQueries.Add(1)
+		// Track "first answer" per queried name so a stray lookup for
+		// some other name cannot consume the target name's public
+		// (validation-time) answer and mask a broken dial-time guard.
+		name := q.Name.String()
+		mu.Lock()
+		defer mu.Unlock()
+		if answered[name] {
+			return []net.IP{rebindIP}
+		}
+		answered[name] = true
+		return []net.IP{firstIP}
 	})
+
+	return addr, aQueries
+}
+
+// buildDNSResponse serializes a DNS reply echoing the question. An A record is
+// included for each of the IPv4 addresses in ips; with none the reply is a
+// NODATA answer (used for AAAA queries).
+func buildDNSResponse(id uint16, q *dnsmessage.Question, ips ...net.IP) ([]byte, error) {
+	b := dnsmessage.NewBuilder(nil, dnsmessage.Header{ID: id, Response: true, Authoritative: true})
 	b.EnableCompression()
 	if err := b.StartQuestions(); err != nil {
 		return nil, fmt.Errorf("dns build questions: %w", err)
@@ -108,15 +112,17 @@ func buildDNSResponse(id uint16, q *dnsmessage.Question, ip net.IP) ([]byte, err
 	if err := b.StartAnswers(); err != nil {
 		return nil, fmt.Errorf("dns build answers: %w", err)
 	}
-	if v4 := ip.To4(); v4 != nil {
-		var a [4]byte
-		copy(a[:], v4)
-		if err := b.AResource(dnsmessage.ResourceHeader{
-			Name:  q.Name,
-			Type:  dnsmessage.TypeA,
-			Class: dnsmessage.ClassINET,
-		}, dnsmessage.AResource{A: a}); err != nil {
-			return nil, fmt.Errorf("dns build A record: %w", err)
+	for _, ip := range ips {
+		if v4 := ip.To4(); v4 != nil {
+			var a [4]byte
+			copy(a[:], v4)
+			if err := b.AResource(dnsmessage.ResourceHeader{
+				Name:  q.Name,
+				Type:  dnsmessage.TypeA,
+				Class: dnsmessage.ClassINET,
+			}, dnsmessage.AResource{A: a}); err != nil {
+				return nil, fmt.Errorf("dns build A record: %w", err)
+			}
 		}
 	}
 	out, err := b.Finish()
@@ -126,56 +132,22 @@ func buildDNSResponse(id uint16, q *dnsmessage.Question, ip net.IP) ([]byte, err
 	return out, nil
 }
 
-// startManyAnswersDNS starts a loopback UDP DNS server that answers every A query with n distinct
-// public addresses and every AAAA query with an empty NODATA response. It returns its "host:port".
+// startManyAnswersDNS starts a loopback UDP DNS server that answers every A query
+// with n distinct public addresses and every AAAA query with an empty NODATA
+// response. It returns its "host:port".
 func startManyAnswersDNS(t *testing.T, n int) string {
 	t.Helper()
 
-	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() { pc.Close() }) //nolint:errcheck // best-effort close in cleanup
-
-	go func() {
-		buf := make([]byte, 512)
-		for {
-			size, addr, rerr := pc.ReadFrom(buf)
-			if rerr != nil {
-				return // listener closed
-			}
-			var p dnsmessage.Parser
-			hdr, perr := p.Start(buf[:size])
-			if perr != nil {
-				continue
-			}
-			q, perr := p.Question()
-			if perr != nil {
-				continue
-			}
-
-			b := dnsmessage.NewBuilder(nil, dnsmessage.Header{ID: hdr.ID, Response: true, Authoritative: true})
-			b.EnableCompression()
-			if b.StartQuestions() != nil || b.Question(q) != nil || b.StartAnswers() != nil {
-				continue
-			}
-			if q.Type == dnsmessage.TypeA {
-				for i := range n {
-					rerr := b.AResource(dnsmessage.ResourceHeader{
-						Name: q.Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET,
-					}, dnsmessage.AResource{A: [4]byte{198, 51, 100, byte(i + 1)}})
-					if rerr != nil {
-						break
-					}
-				}
-			}
-			resp, ferr := b.Finish()
-			if ferr != nil {
-				continue
-			}
-			pc.WriteTo(resp, addr) //nolint:errcheck // best-effort UDP reply
+	return serveDNS(t, func(q dnsmessage.Question) []net.IP {
+		if q.Type != dnsmessage.TypeA {
+			return nil
 		}
-	}()
-
-	return pc.LocalAddr().String()
+		ips := make([]net.IP, n)
+		for i := range ips {
+			ips[i] = net.IPv4(198, 51, 100, byte(i+1))
+		}
+		return ips
+	})
 }
 
 // withRebindingResolver points the proxy's SSRF-validation resolver at the
@@ -258,12 +230,8 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 	// sees the public answer and the block genuinely happens at dial time —
 	// not because a shared resolver already flipped to the loopback answer.
 	dispatch := map[string]func(c fiber.Ctx, target string) error{
-		"default client": func(c fiber.Ctx, target string) error {
-			return Do(c, target)
-		},
-		"custom client": func(c fiber.Ctx, target string) error {
-			return Do(c, target, &fasthttp.Client{})
-		},
+		"default client": func(c fiber.Ctx, target string) error { return Do(c, target) },
+		"custom client":  func(c fiber.Ctx, target string) error { return Do(c, target, &fasthttp.Client{}) },
 		// A client that configures DialTimeout instead of Dial must still be
 		// guarded: fasthttp's callDialFunc prefers DialTimeout, so a guard
 		// that wrapped only Dial would leave this path unvalidated.
@@ -274,9 +242,7 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 		// DoRedirects dispatches through the same guarded client; the first
 		// hop's dial must be blocked. Pins that the redirect path (and its
 		// per-hop cli.Do) is guarded too.
-		"DoRedirects": func(c fiber.Ctx, target string) error {
-			return DoRedirects(c, target, 3)
-		},
+		"DoRedirects": func(c fiber.Ctx, target string) error { return DoRedirects(c, target, 3) },
 	}
 
 	for name, do := range dispatch {
@@ -300,27 +266,20 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 			app := fiber.New()
 			app.Get("/", func(c fiber.Ctx) error { return do(c, target) })
 
-			resp, err := app.Test(
-				httptest.NewRequest(fiber.MethodGet, "/", http.NoBody),
-				fiber.TestConfig{Timeout: 10 * time.Second, FailOnTimeout: false},
-			)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, "/", fiber.TestConfig{Timeout: 10 * time.Second, FailOnTimeout: false})
 
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.NoError(t, resp.Body.Close())
+			body := apptest.Body(t, resp)
 
 			// The dial-time guard must reject the rebound loopback address,
 			// so the internal secret is never proxied back.
 			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-			require.NotContains(t, string(body), "SECRET_INTERNAL_DATA")
-			require.Contains(t, string(body), "blocked")
+			require.NotContains(t, body, "SECRET_INTERNAL_DATA")
+			require.Contains(t, body, "blocked")
 			// >= 2 A lookups proves the up-front validation lookup (public,
 			// allowed) happened AND a second dial-time lookup (rebound,
 			// blocked) happened — i.e. the block is genuinely at dial time,
 			// not an up-front block masking a broken guard.
-			require.GreaterOrEqual(t, aQueries.Load(), int64(2),
-				"expected an up-front and a dial-time DNS lookup")
+			require.GreaterOrEqual(t, aQueries.Load(), int64(2), "expected an up-front and a dial-time DNS lookup")
 		})
 	}
 }
@@ -341,52 +300,49 @@ func Test_Security_ClientDialer_BlocksWhenPrivateDisallowed(t *testing.T) {
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
-// Test_Security_ClientDialer_ComposesWithOrig verifies that, for
-// an allowed (public) target, the guard dials the validated address through
-// the caller-supplied dialer instead of establishing its own connection.
-func Test_Security_ClientDialer_ComposesWithOrig(t *testing.T) {
-	// Intentionally not parallel: it sets the strict security policy process-wide.
-	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
-
-	var got string
-	orig := func(addr string) (net.Conn, error) {
-		got = addr
-		return stubConn{addr: addr}, nil
-	}
-
-	dial := newDialGuard(false).clientDialer(orig)
-	conn, err := dial("203.0.113.5:80") // TEST-NET-3, not blocked
-	require.NoError(t, err)
-	require.NotNil(t, conn)
-	require.Equal(t, "203.0.113.5:80", got)
-}
-
-// Test_Security_ClientDialer_AllowsValidatedHostname is the
-// positive-path counterpart to the rebinding test: under the strict policy, a
-// hostname that resolves to a public (non-blocked) address must resolve,
-// validate, and dial through to that exact IP — proving the guard does not
-// over-block legitimate upstreams. Every end-to-end suite test runs with
-// AllowPrivateIPs=true (the delegate branch), so this is the only coverage of
-// the resolve→validate→dial success path.
-func Test_Security_ClientDialer_AllowsValidatedHostname(t *testing.T) {
+// Test_Security_ClientDialer_DialsThroughOrig verifies that, for an allowed
+// (public) target, the guard dials the validated address through the
+// caller-supplied dialer instead of establishing its own connection.
+func Test_Security_ClientDialer_DialsThroughOrig(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide policy and DNS resolver.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
-	// Resolver maps the name to a public IP on every answer (no rebinding).
-	dnsAddr, _ := startRebindingDNS(t, net.IPv4(198, 51, 100, 7), net.IPv4(198, 51, 100, 7))
-	withRebindingResolver(t, dnsAddr)
+	for _, tc := range []struct {
+		name   string
+		target string
+		want   string // the address the caller's dialer is asked to dial
+		dns    bool   // whether the target is a name that the fake resolver answers
+	}{
+		// TEST-NET-3, not blocked.
+		{name: "public IP literal", target: "203.0.113.5:80", want: "203.0.113.5:80"},
+		// The positive-path counterpart to the rebinding test: under the strict
+		// policy, a hostname that resolves to a public (non-blocked) address must
+		// resolve, validate, and dial through to that exact IP — proving the guard
+		// does not over-block legitimate upstreams. Every end-to-end suite test
+		// runs with AllowPrivateIPs=true (the delegate branch), so this is the only
+		// coverage of the resolve→validate→dial success path.
+		{name: "validated hostname", target: "public.test:80", want: "198.51.100.7:80", dns: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.dns {
+				// Resolver maps the name to a public IP on every answer (no rebinding).
+				dnsAddr, _ := startRebindingDNS(t, net.IPv4(198, 51, 100, 7), net.IPv4(198, 51, 100, 7))
+				withRebindingResolver(t, dnsAddr)
+			}
 
-	var got string
-	orig := func(addr string) (net.Conn, error) {
-		got = addr
-		return stubConn{addr: addr}, nil
+			var got string
+			orig := func(addr string) (net.Conn, error) {
+				got = addr
+				return stubConn{addr: addr}, nil
+			}
+
+			dial := newDialGuard(false).clientDialer(orig)
+			conn, err := dial(tc.target)
+			require.NoError(t, err)
+			require.NotNil(t, conn)
+			require.Equal(t, tc.want, got, "must dial the validated resolved IP")
+		})
 	}
-
-	dial := newDialGuard(false).clientDialer(orig)
-	conn, err := dial("public.test:80")
-	require.NoError(t, err)
-	require.NotNil(t, conn)
-	require.Equal(t, "198.51.100.7:80", got, "must dial the validated resolved IP")
 }
 
 // Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent verifies that
@@ -441,14 +397,9 @@ func Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent(t *testing.T) {
 // goroutines is race-free (run under -race) and leaves one working hook.
 func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
 	t.Parallel()
-
-	for name, withHook := range map[string]bool{
-		"nil ConfigureClient":          false,
-		"pre-existing ConfigureClient": true,
-	} {
+	for name, withHook := range map[string]bool{"nil ConfigureClient": false, "pre-existing ConfigureClient": true} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			var hookCalls atomic.Int32
 			cli := &fasthttp.Client{}
 			if withHook {
@@ -460,9 +411,7 @@ func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
 
 			var wg sync.WaitGroup
 			for range 32 {
-				wg.Go(func() {
-					ensureClientGuarded(cli)
-				})
+				wg.Go(func() { ensureClientGuarded(cli) })
 			}
 			wg.Wait()
 
@@ -502,45 +451,33 @@ func Test_Security_InstallHostClientGuard_GuardsDialTimeout(t *testing.T) {
 // normal dial, so loopback connections still succeed.
 func Test_Security_ClientDialer_DelegatesWhenPrivateAllowed(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	withSecurityPolicyForTest(t, policy)
+	withSecurityPolicyForTest(t, proxyTestAllowPrivatePolicy())
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	defer ln.Close() //nolint:errcheck // best-effort close
+	for _, tc := range []struct {
+		name      string
+		dualStack bool
+	}{
+		{name: "plain dial"},
+		// The AllowPrivateIPs delegate branch with DialDualStack enabled
+		// (fasthttp's DialDualStack fallback).
+		{name: "dual stack", dualStack: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ln := proxyTestListen(t)
+			defer ln.Close() //nolint:errcheck // best-effort close
 
-	dial := newDialGuard(false).clientDialer(nil)
-	conn, err := dial(ln.Addr().String())
-	require.NoError(t, err)
-	require.NoError(t, conn.Close())
-}
-
-// Test_Security_ClientDialer_DelegatesDualStack covers the
-// AllowPrivateIPs delegate branch with DialDualStack enabled (fasthttp's
-// DialDualStack fallback).
-func Test_Security_ClientDialer_DelegatesDualStack(t *testing.T) {
-	// Intentionally not parallel: it sets a process-wide security policy.
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	withSecurityPolicyForTest(t, policy)
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	defer ln.Close() //nolint:errcheck // best-effort close
-
-	conn, err := newDialGuard(true).clientDialer(nil)(ln.Addr().String())
-	require.NoError(t, err)
-	require.NoError(t, conn.Close())
+			conn, err := newDialGuard(tc.dualStack).clientDialer(nil)(ln.Addr().String())
+			require.NoError(t, err)
+			require.NoError(t, conn.Close())
+		})
+	}
 }
 
 // Test_Security_InstallHostClientGuard_DialTimeout pins which HostClients get a guarded DialTimeout.
 func Test_Security_InstallHostClientGuard_DialTimeout(t *testing.T) {
 	t.Parallel()
-
 	t.Run("no dialer of its own", func(t *testing.T) {
 		t.Parallel()
-
 		hc := &fasthttp.HostClient{}
 		installHostClientGuard(hc)
 		require.NotNil(t, hc.DialTimeout)
@@ -562,9 +499,7 @@ func Test_Security_InstallHostClientGuard_DialTimeout(t *testing.T) {
 // the request's timeout, or fasthttp's default when it left none, where DialTimeout would fail at once.
 func Test_Security_DefaultDialTimeout_ConnectsThroughFasthttp(t *testing.T) {
 	t.Parallel()
-
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	ln := proxyTestListen(t)
 	t.Cleanup(func() { ln.Close() }) //nolint:errcheck // best-effort close in cleanup
 
 	for _, dualStack := range []bool{false, true} {
@@ -616,9 +551,7 @@ func Test_Security_GuardedDialTimeouts_HandTheTimeoutOn(t *testing.T) {
 			"a Balancer host client": func() fasthttp.DialFuncWithTimeout {
 				return newHostClient(upstream, &Config{DialDualStack: dualStack}, DefaultSecurityPolicy()).DialTimeout
 			},
-			"the guard": func() fasthttp.DialFuncWithTimeout {
-				return newDialGuard(dualStack).dialCheckedTimeout
-			},
+			"the guard": func() fasthttp.DialFuncWithTimeout { return newDialGuard(dualStack).dialCheckedTimeout },
 		}
 		viaTimeout := "DialTimeout"
 		if dualStack {
@@ -691,7 +624,6 @@ func Test_Security_DialWithin_SharesTheTimeout(t *testing.T) {
 // Test_Security_DialWithin_NoTimeout pins that a dial the request gave no time hands none on.
 func Test_Security_DialWithin_NoTimeout(t *testing.T) {
 	t.Parallel()
-
 	got := time.Hour
 	_, err := newDialGuard(false).dialWithin("198.51.100.7:80", 0, func(_ string, timeout time.Duration) (net.Conn, error) {
 		got = timeout
@@ -738,8 +670,7 @@ func Test_Security_RequestTimeout_ReachesTheConnect(t *testing.T) {
 		*dials = nil
 		app := fiber.New()
 		app.Get("/", handler)
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
-		require.NoError(t, err, name)
+		resp := apptest.Do(t, app, "/", fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
 		require.NoError(t, resp.Body.Close(), name) // the stand-in connection answers nothing, so the request fails
 
 		require.NotEmpty(t, *dials, name)
@@ -756,9 +687,7 @@ func Test_Security_RequestTimeout_ReachesTheConnect(t *testing.T) {
 // it forwards the raw addr and timeout to the caller's dialer.
 func Test_Security_ClientDialerWithTimeout_Delegates(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	withSecurityPolicyForTest(t, policy)
+	withSecurityPolicyForTest(t, proxyTestAllowPrivatePolicy())
 
 	var got string
 	var gotTimeout time.Duration
@@ -777,9 +706,7 @@ func Test_Security_ClientDialerWithTimeout_Delegates(t *testing.T) {
 // dialer of its own delegates to fasthttp's timed or plain dialer when private IPs are allowed.
 func Test_Security_ClientDialerWithTimeout_DefaultDelegatesThroughFasthttp(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide security policy and fasthttp dialers.
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	withSecurityPolicyForTest(t, policy)
+	withSecurityPolicyForTest(t, proxyTestAllowPrivatePolicy())
 	dials := withRecordedDialers(t)
 
 	dial := newDialGuard(false).clientDialerWithTimeout(nil)
@@ -823,15 +750,11 @@ func Test_Security_ClientDialerWithTimeout_ValidatedDialsThrough(t *testing.T) {
 // composed hook surfaces an error from the user's existing ConfigureClient.
 func Test_Security_EnsureClientGuarded_ComposePropagatesError(t *testing.T) {
 	t.Parallel()
-
 	wantErr := errors.New("configure boom")
-	cli := &fasthttp.Client{
-		ConfigureClient: func(_ *fasthttp.HostClient) error { return wantErr },
-	}
+	cli := &fasthttp.Client{ConfigureClient: func(_ *fasthttp.HostClient) error { return wantErr }}
 	ensureClientGuarded(cli)
 
-	err := cli.ConfigureClient(&fasthttp.HostClient{})
-	require.ErrorIs(t, err, wantErr)
+	require.ErrorIs(t, cli.ConfigureClient(&fasthttp.HostClient{}), wantErr)
 }
 
 // Test_Security_ClientDialer_DialsValidatedIPWithGuardDialer covers the strict-policy path for a

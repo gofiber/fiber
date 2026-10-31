@@ -14,7 +14,7 @@ import (
 // inputs. The contract: validateUpstream must never panic, must never
 // return a URL whose scheme is outside the configured allowlist, and
 // must never return a URL with an empty host. Private-IP filtering is
-// covered by Test_Security_ValidateUpstream_BlocksPrivateIPs.
+// covered by Test_Security_ValidateUpstream_Rejects.
 func FuzzValidateUpstream(f *testing.F) {
 	seeds := []string{
 		"http://example.com",
