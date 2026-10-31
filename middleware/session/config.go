@@ -85,9 +85,10 @@ type Config struct {
 	// StorageKeyPrefix is put in front of the "session:" namespace of the key every
 	// session is stored under ("<prefix>session:<ID>"), so that several
 	// applications, environments or stores can share one storage without their
-	// sessions meeting. End it with a separator such as ":", so that no prefix,
-	// followed by "session:", is the start of another. The ID the client holds is
-	// unchanged.
+	// sessions meeting. End it with a separator such as ":", and choose prefixes so
+	// that none, followed by "session:", is the start of another: a store whose
+	// prefix starts with "session:" meets a store without one. The ID the client
+	// holds is unchanged.
 	//
 	// Store.Reset clears the whole storage, not only the keys under the prefix.
 	//

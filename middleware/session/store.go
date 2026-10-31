@@ -324,17 +324,41 @@ func requestProvenance(c fiber.Ctx) *provenanceBox {
 	return box
 }
 
-// mayReuseRequestID reports whether the session ID and provenance cached on the
-// request, the latter in box, were published by a store that shares a cookie or
-// header with s.
-func (s *Store) mayReuseRequestID(c fiber.Ctx, box *provenanceBox) bool {
-	// A store always shares with itself: the check is made here, before the call, since
-	// a request with a single store is by far the common one.
-	if box != nil && box.owner != nil && box.owner != s && !s.sharesSource(box.owner) {
-		return false
-	}
+// publisherShares reports whether the store that published the session ID cached
+// on the request, if it is known, shares a cookie or header with s. box is the
+// provenance box of the request, nil if it has none.
+func (s *Store) publisherShares(c fiber.Ctx, box *provenanceBox) bool {
 	publisher := requestIDPublisher(c, box)
 	return publisher == nil || publisher == s || s.sharesSource(publisher)
+}
+
+// adoptProvenance returns res, the provenance of a session ID that another store
+// cached on the request, as it holds for s. A cookie or header that is not one of
+// the sinks of s is not its to write the ID back to: the ID is then treated as one
+// from a source that cannot be written back to, which is what Resolved false means
+// to getExtractorInfo. A read-only source, and a sink of s, stay as they are.
+func (s *Store) adoptProvenance(res extractors.Result) extractors.Result {
+	if res.Resolved && (res.Source == extractors.SourceCookie || res.Source == extractors.SourceHeader) && !s.ownsSink(res) {
+		res.Resolved = false
+	}
+	return res
+}
+
+// ownsSink reports whether res names a cookie or header s reads its session ID from.
+func (s *Store) ownsSink(res extractors.Result) bool {
+	for _, sink := range s.writableSinks() {
+		if sink.Source != res.Source {
+			continue
+		}
+		if sink.Source == extractors.SourceHeader {
+			if strings.EqualFold(sink.Key, res.Key) {
+				return true
+			}
+		} else if sink.Key == res.Key {
+			return true
+		}
+	}
+	return false
 }
 
 // NewStore creates a new session store with the provided configuration.
@@ -520,9 +544,19 @@ func (s *Store) getSessionBox(c fiber.Ctx) (*Session, *provenanceBox, error) {
 	var selectedExtractor extractors.Result
 	id, ok := c.Locals(sessionIDContextKey).(string)
 	var cached *provenanceBox
+	// Whether the store that left the provenance box shares a cookie or header with
+	// s. A store always shares with itself, and a request with a single store is by
+	// far the common one, so the question is only asked of another store's box.
+	ownerShares := true
 	if ok {
 		cached = requestProvenance(c)
-		if !s.mayReuseRequestID(c, cached) {
+		if cached != nil && cached.owner != nil && cached.owner != s {
+			ownerShares = s.sharesSource(cached.owner)
+		}
+		// The owner of the box has a say when the cached ID is the one its extractor
+		// supplied. When that one named no session, the ID cached since is a fresh one
+		// of its publisher, and the box still describes the earlier one.
+		if (!ownerShares && cached.res.Value == id) || !s.publisherShares(c, cached) {
 			// Cached by a store over other cookies or headers: its ID is not ours.
 			ok = false
 		}
@@ -539,8 +573,11 @@ func (s *Store) getSessionBox(c fiber.Ctx) (*Session, *provenanceBox, error) {
 			// cached-ID path above and would otherwise lose the provenance.
 			cached = storeProvenance(c, s, selectedExtractor)
 		}
-	} else if cached != nil {
-		selectedExtractor = cached.res
+	} else if cached != nil && ownerShares {
+		// The provenance of the cached ID, which says where it is written back to. A
+		// box that a store over other cookies or headers left describes an ID of its
+		// own, and says nothing about the one cached since.
+		selectedExtractor = s.adoptProvenance(cached.res)
 	}
 
 	isFresh := false // Session is not fresh initially; only set to true if we generate a new ID
