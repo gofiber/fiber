@@ -169,7 +169,6 @@ func Test_CORS_Wildcard(t *testing.T) {
 // with it, unless the two carry the same CORS headers or the stored one varies on Origin.
 func Test_CORS_ResponsesAreSafeToCache(t *testing.T) {
 	t.Parallel()
-
 	const origin = "http://localhost"
 	corsHeaders := []string{
 		fiber.HeaderAccessControlAllowOrigin,
@@ -190,9 +189,7 @@ func Test_CORS_ResponsesAreSafeToCache(t *testing.T) {
 		method  string
 		headers [][2]string // the stored request lacks the last one
 	}{
-		{name: "simple request", method: fiber.MethodGet, headers: [][2]string{
-			{fiber.HeaderOrigin, origin},
-		}},
+		{name: "simple request", method: fiber.MethodGet, headers: [][2]string{{fiber.HeaderOrigin, origin}}},
 		{name: "preflight after OPTIONS without Origin", method: fiber.MethodOptions, headers: [][2]string{
 			{fiber.HeaderAccessControlRequestMethod, fiber.MethodPut},
 			{fiber.HeaderOrigin, origin},
@@ -203,12 +200,9 @@ func Test_CORS_ResponsesAreSafeToCache(t *testing.T) {
 		for _, req := range requests {
 			t.Run(cfg.name+"/"+req.name, func(t *testing.T) {
 				t.Parallel()
-
 				app := fiber.New()
 				app.Use(New(cfg.config))
-				app.All("/", func(c fiber.Ctx) error {
-					return c.SendString("ok")
-				})
+				app.All("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 				handler := app.Handler()
 
 				do := func(headers [][2]string) *fasthttp.RequestCtx {

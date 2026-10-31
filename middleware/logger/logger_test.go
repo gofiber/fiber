@@ -720,16 +720,11 @@ func Test_Logger_ReqHeaders_DeepName(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(New(Config{
-		Format: "${reqHeaders} | ${method} ${path}\n",
-		Stream: buf,
-	}))
+	app.Use(New(Config{Format: "${reqHeaders} | ${method} ${path}\n", Stream: buf}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(strings.Repeat("a.", 64)+"a", "1")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusNotFound)
 
 	require.Contains(t, buf.String(), "A"+strings.Repeat(".a", 64)+"=1")
 	require.True(t, strings.HasSuffix(buf.String(), " | GET /\n"), buf.String())
@@ -1499,22 +1494,16 @@ func Test_Logger_Body_LeavesResponseAlone(t *testing.T) {
 	for _, coding := range []string{"x", "compress"} {
 		t.Run(coding, func(t *testing.T) {
 			t.Parallel()
-
 			var logged bytes.Buffer
 			app := fiber.New()
-			app.Use(New(Config{
-				Format: "${status} [${body}] ${status}",
-				Stream: &logged,
-			}))
+			app.Use(New(Config{Format: "${status} [${body}] ${status}", Stream: &logged}))
 			app.Get("/events", func(c fiber.Ctx) error {
 				return c.SendStreamWriter(func(w *bufio.Writer) {
 					w.WriteString("data: one\n\n") //nolint:errcheck // nothing to do with a stream-writer error here
 					w.Flush()                      //nolint:errcheck // same
 				})
 			})
-			app.Get("/hello", func(c fiber.Ctx) error {
-				return c.SendString("hello")
-			})
+			app.Get("/hello", func(c fiber.Ctx) error { return c.SendString("hello") })
 			app.Get("/empty", func(c fiber.Ctx) error {
 				c.Status(fiber.StatusAccepted)
 				return nil
@@ -1550,7 +1539,6 @@ func Test_Logger_Body_LeavesResponseAlone(t *testing.T) {
 // Tags reading the request log nothing while the timed-out handler may still read or change it.
 func Test_Logger_TimedOutRequestLeavesRequestToHandler(t *testing.T) {
 	t.Parallel()
-
 	const format = "${method} ${url}|${ip}|${host}|${scheme}|${cookie:theme}|${query:a}|${queryParams}|${reqHeader:x-req}|" +
 		"${referer}|${ua}|${ips}|${form:f}|${locals:user}|${reqHeaders}|${body}"
 	for name, tc := range map[string]struct {
@@ -1569,7 +1557,6 @@ func Test_Logger_TimedOutRequestLeavesRequestToHandler(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			var logged, plain, colored bytes.Buffer
 			app := fiber.New(tc.cfg)
 			app.Use(New(Config{Format: format, Stream: &logged}))
@@ -1591,9 +1578,7 @@ func Test_Logger_TimedOutRequestLeavesRequestToHandler(t *testing.T) {
 			req.Header.Set(fiber.HeaderXForwardedFor, "10.0.0.1")
 			req.Header.Set(fiber.HeaderXForwardedHost, "proxied.example")
 			req.Header.Set("X-Req", "r1")
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+			apptest.Expect(t, app, req, fiber.StatusServiceUnavailable)
 			<-read
 			require.Equal(t, tc.want, logged.String())
 			require.NotContains(t, plain.String(), "10.0.0.1")
@@ -1604,7 +1589,6 @@ func Test_Logger_TimedOutRequestLeavesRequestToHandler(t *testing.T) {
 
 func Test_Logger_TimedOutRequestLogsTimeoutResponse(t *testing.T) {
 	t.Parallel()
-
 	for name, tc := range map[string]struct {
 		want string
 		cfg  Config
@@ -1615,7 +1599,6 @@ func Test_Logger_TimedOutRequestLogsTimeoutResponse(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			var logged bytes.Buffer
 			tc.cfg.Stream = &logged
 			app := fiber.New()
@@ -1628,9 +1611,7 @@ func Test_Logger_TimedOutRequestLogsTimeoutResponse(t *testing.T) {
 				return c.SendString("late")
 			}, timeout.Config{Timeout: 20 * time.Millisecond}))
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+			apptest.Expect(t, app, "/", fiber.StatusServiceUnavailable)
 			<-written
 			require.Contains(t, logged.String(), tc.want)
 		})
@@ -1639,7 +1620,6 @@ func Test_Logger_TimedOutRequestLogsTimeoutResponse(t *testing.T) {
 
 func Test_Logger_TimedOutRequestIsNotStored(t *testing.T) {
 	t.Parallel()
-
 	for name, tc := range map[string]struct {
 		mw     fiber.Handler
 		method string
@@ -1649,7 +1629,6 @@ func Test_Logger_TimedOutRequestIsNotStored(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(tc.mw)
 			app.Use(New(Config{Stream: io.Discard}))
@@ -1666,11 +1645,9 @@ func Test_Logger_TimedOutRequestIsNotStored(t *testing.T) {
 			send := func() (int, string) {
 				req := httptest.NewRequest(tc.method, "/", http.NoBody)
 				req.Header.Set("X-Idempotency-Key", "00000000-0000-4000-8000-000000000001")
-				resp, err := app.Test(req)
-				require.NoError(t, err)
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
-				return resp.StatusCode, string(body)
+				resp := apptest.Do(t, app, req)
+				body := apptest.Body(t, resp)
+				return resp.StatusCode, body
 			}
 			status, _ := send()
 			require.Equal(t, fiber.StatusServiceUnavailable, status)
@@ -1685,7 +1662,6 @@ func Test_Logger_TimedOutRequestIsNotStored(t *testing.T) {
 // Under -race this also catches compress reading the headers the timed-out handler still sets.
 func Test_Logger_TimedOutRequestReturnsTimeoutError(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	chainErr := make(chan error, 1)
 	app.Use(func(c fiber.Ctx) error {
@@ -1705,9 +1681,7 @@ func Test_Logger_TimedOutRequestReturnsTimeoutError(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAcceptEncoding, "gzip")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusServiceUnavailable)
 	<-written
 	require.ErrorIs(t, <-chainErr, fiber.ErrServiceUnavailable)
 }
@@ -1830,7 +1804,6 @@ func Test_Logger_DefaultFormat_WithColor_MatchesFmt(t *testing.T) {
 
 func Test_Logger_StreamedBody_KeepsHandlerResponse(t *testing.T) {
 	t.Parallel()
-
 	const limit = 1024
 	overLimit := "x=" + strings.Repeat("a", 4*limit)
 	cases := []struct {
@@ -1848,22 +1821,18 @@ func Test_Logger_StreamedBody_KeepsHandlerResponse(t *testing.T) {
 				buf := bytebufferpool.Get()
 				app := fiber.New(fiber.Config{StreamRequestBody: true, BodyLimit: limit})
 				app.Use(New(Config{Format: tc.format, Stream: buf}))
-				app.Post("/", func(c fiber.Ctx) error {
-					return c.Status(fiber.StatusUnauthorized).SendString("no")
-				})
+				app.Post("/", func(c fiber.Ctx) error { return c.Status(fiber.StatusUnauthorized).SendString("no") })
 
 				req := httptest.NewRequest(fiber.MethodPost, tc.target, strings.NewReader(tc.body))
 				req.Header.Set(fiber.HeaderContentType, ct)
 				if chunked {
 					req.TransferEncoding = []string{"chunked"}
 				}
-				resp, err := app.Test(req)
-				require.NoError(t, err)
+				resp := apptest.Do(t, app, req)
 				name := fmt.Sprintf("%s %s %s len=%d chunked=%v", tc.format, tc.target, ct, len(tc.body), chunked)
 				require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode, name)
-				respBody, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
-				require.Equal(t, "no", string(respBody), name)
+				respBody := apptest.Body(t, resp)
+				require.Equal(t, "no", respBody, name)
 				require.Equal(t, tc.logged, buf.String(), name)
 				bytebufferpool.Put(buf)
 			}
@@ -1873,7 +1842,6 @@ func Test_Logger_StreamedBody_KeepsHandlerResponse(t *testing.T) {
 
 func Test_Logger_Form_LeavesNonFormStreamUnread(t *testing.T) {
 	t.Parallel()
-
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 	var unread atomic.Bool
@@ -1884,16 +1852,12 @@ func Test_Logger_Form_LeavesNonFormStreamUnread(t *testing.T) {
 		return err
 	})
 	app.Use(New(Config{Format: "${form:x}", Stream: buf}))
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusUnauthorized)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusUnauthorized) })
 
 	req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader(`{"x":"b"}`))
 	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 	req.TransferEncoding = []string{"chunked"}
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusUnauthorized)
 	require.True(t, unread.Load())
 	require.Empty(t, buf.String())
 }

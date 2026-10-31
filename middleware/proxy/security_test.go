@@ -403,7 +403,6 @@ func Test_Security_DoRedirects_BlocksDowngrade(t *testing.T) {
 // by default: joined from a decoded path, "%3B" left as ";" and "%2F" as "/".
 func Test_Security_JoinUpstreamPath_KeepsEscapes(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct{ base, target, want string }{
 		{"/my%20app", "/pub/..%3B/admin", "/my%20app/pub/..%3B/admin"},
 		{"/my%20app/", "/admin%3Bx/secret", "/my%20app/admin%3Bx/secret"},
@@ -745,13 +744,11 @@ func Test_Security_ResolvePolicy_OverrideEmptySchemes(t *testing.T) {
 
 func Test_Security_DefaultSecurityPolicy_RedirectSensitiveHeadersIsEmpty(t *testing.T) {
 	t.Parallel()
-
 	require.Nil(t, DefaultSecurityPolicy().RedirectSensitiveHeaders)
 }
 
 func Test_Security_NormalizePolicy_RedirectSensitiveHeaders(t *testing.T) {
 	t.Parallel()
-
 	in := []string{" X-Api-Key", "", "X-Auth-Token\t"}
 	policy := DefaultSecurityPolicy()
 	policy.RedirectSensitiveHeaders = in
@@ -1432,7 +1429,6 @@ func withAppHeaders(req *fasthttp.Request) {
 
 func Test_Security_FollowRedirects_StripsRedirectSensitiveHeaders(t *testing.T) {
 	t.Parallel()
-
 	const start = "http://first.example/start"
 	for name, tc := range map[string]struct {
 		location string
@@ -1460,7 +1456,6 @@ func Test_Security_FollowRedirects_StripsRedirectSensitiveHeaders(t *testing.T) 
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			var reached bool
 			var sawAuth, sawKey, sawTok string
 			_, err := followRecordingPolicy(t, redirectTestPolicy(tc.listed...), start, map[string]redirectStep{
@@ -1488,7 +1483,6 @@ func Test_Security_FollowRedirects_StripsRedirectSensitiveHeaders(t *testing.T) 
 
 func Test_Security_FollowRedirects_RedirectSensitiveHeadersStayGone(t *testing.T) {
 	t.Parallel()
-
 	sawKey := map[string]string{}
 	req, err := followRecordingPolicy(t, redirectTestPolicy("X-Api-Key"), "http://first.example/start", map[string]redirectStep{
 		"http://first.example/start": {status: fasthttp.StatusFound, location: "http://second.example/mid"},
@@ -1504,7 +1498,6 @@ func Test_Security_FollowRedirects_RedirectSensitiveHeadersStayGone(t *testing.T
 
 func Test_Security_FollowRedirects_RedirectSensitiveHeadersWhateverTheirCase(t *testing.T) {
 	t.Parallel()
-
 	var lines []int
 	_, err := followRecordingPolicy(t, redirectTestPolicy("X-Api-Key"), "http://first.example/start", map[string]redirectStep{
 		"http://first.example/start": {status: fasthttp.StatusFound, location: "http://second.example/next"},
@@ -1525,7 +1518,6 @@ func Test_Security_FollowRedirects_RedirectSensitiveHeadersWhateverTheirCase(t *
 // sent, when the fields it drops are spelled in more ways than one per name plus maxConnectionOptions.
 func Test_Security_FollowRedirects_SpellingLimit(t *testing.T) {
 	t.Parallel()
-
 	const start = "http://first.example/start"
 	for name, tc := range map[string]struct {
 		location string
@@ -1543,7 +1535,6 @@ func Test_Security_FollowRedirects_SpellingLimit(t *testing.T) {
 		for _, over := range []int{0, 1} {
 			t.Run(name+"/"+strconv.Itoa(over), func(t *testing.T) {
 				t.Parallel()
-
 				var reached bool
 				_, err := followRecordingPolicy(t, redirectTestPolicy(), start, map[string]redirectStep{
 					start: {status: tc.status, location: tc.location},
@@ -1553,9 +1544,7 @@ func Test_Security_FollowRedirects_SpellingLimit(t *testing.T) {
 					for _, k := range caseSpellings(tc.field, tc.names+maxConnectionOptions+over) {
 						req.Header.Add(k, "v")
 					}
-				}, func(req *fasthttp.Request) {
-					reached = reached || string(req.URI().Path()) == "/next"
-				})
+				}, func(req *fasthttp.Request) { reached = reached || string(req.URI().Path()) == "/next" })
 				if over == 0 {
 					require.NoError(t, err)
 					require.True(t, reached)
@@ -1572,7 +1561,6 @@ func Test_Security_FollowRedirects_SpellingLimit(t *testing.T) {
 // does not reach the client along with the error.
 func Test_Security_DoRedirects_ErrorDropsUpstreamResponse(t *testing.T) {
 	t.Parallel()
-
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderSetCookie, "up=secret")
 		// Another port is another origin, so this hop drops the credentials.
@@ -1590,18 +1578,13 @@ func Test_Security_DoRedirects_ErrorDropsUpstreamResponse(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
-			app.Get("/", func(c fiber.Ctx) error {
-				return DoRedirects(c, "http://"+addr, tc.redirects)
-			})
+			app.Get("/", func(c fiber.Ctx) error { return DoRedirects(c, "http://"+addr, tc.redirects) })
 			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 			for _, k := range caseSpellings("authorization", tc.spellings) {
 				req.Header[k] = []string{"v"}
 			}
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.status, resp.StatusCode)
+			resp := apptest.Expect(t, app, req, tc.status)
 			require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie))
 			require.Empty(t, resp.Header.Values(fiber.HeaderLocation))
 		})

@@ -10,7 +10,6 @@ import (
 
 func Test_NewHeaderNames(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name string
 		in   []string
@@ -39,7 +38,6 @@ func Test_NewHeaderNames(t *testing.T) {
 
 	t.Run("the list is independent of its input and of what List returns", func(t *testing.T) {
 		t.Parallel()
-
 		in := []string{"X-Api-Key", "X-Auth-Token"}
 		names := NewHeaderNames(in)
 
@@ -53,27 +51,23 @@ func Test_NewHeaderNames(t *testing.T) {
 
 	t.Run("the zero value is the empty list", func(t *testing.T) {
 		t.Parallel()
-
 		require.Nil(t, HeaderNames{}.List())
 	})
 }
 
 func Test_HeaderNames_Join(t *testing.T) {
 	t.Parallel()
-
 	one := NewHeaderNames([]string{"X-One"})
 	two := NewHeaderNames([]string{"X-Two", "X-Three"})
 
 	t.Run("one list after the other", func(t *testing.T) {
 		t.Parallel()
-
 		require.Equal(t, []string{"X-One", "X-Two", "X-Three"}, one.Join(two).List())
 		require.Equal(t, []string{"X-Two", "X-Three", "X-One"}, two.Join(one).List())
 	})
 
 	t.Run("an empty side leaves the other as it is", func(t *testing.T) {
 		t.Parallel()
-
 		require.Equal(t, []string{"X-One"}, one.Join(HeaderNames{}).List())
 		require.Equal(t, []string{"X-One"}, HeaderNames{}.Join(one).List())
 		require.Nil(t, HeaderNames{}.Join(HeaderNames{}).List())
@@ -81,7 +75,6 @@ func Test_HeaderNames_Join(t *testing.T) {
 
 	t.Run("the result shares nothing with either side", func(t *testing.T) {
 		t.Parallel()
-
 		joined := one.Join(two)
 		joined.names[0], joined.names[1] = "changed", "changed"
 
@@ -103,10 +96,8 @@ func headerWithSensitiveAndOthers() *fasthttp.RequestHeader {
 
 func Test_Strip(t *testing.T) {
 	t.Parallel()
-
 	t.Run("built-in set", func(t *testing.T) {
 		t.Parallel()
-
 		h := headerWithSensitiveAndOthers()
 		for _, name := range SensitiveHeaders {
 			require.NotEmpty(t, fieldname.Lines(h, name, false), name)
@@ -124,7 +115,6 @@ func Test_Strip(t *testing.T) {
 
 	t.Run("built-in set and extra names", func(t *testing.T) {
 		t.Parallel()
-
 		h := headerWithSensitiveAndOthers()
 
 		// Repeated, and already built in.
@@ -140,7 +130,6 @@ func Test_Strip(t *testing.T) {
 
 	t.Run("every extra name, whatever its case", func(t *testing.T) {
 		t.Parallel()
-
 		h := headerWithSensitiveAndOthers()
 
 		Strip(h, NewHeaderNames([]string{"x-API-key", "X-AUTH-token"}))
@@ -152,7 +141,6 @@ func Test_Strip(t *testing.T) {
 
 	t.Run("whatever case they are stored under", func(t *testing.T) {
 		t.Parallel()
-
 		h := &fasthttp.RequestHeader{}
 		h.DisableNormalizing()
 		h.Add("authorization", "a")

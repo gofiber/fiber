@@ -201,7 +201,6 @@ func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 // Test_Redirect_CaptureStaysBelowTheTargetPath pins that a capture adds to the target's path and never climbs out of it.
 func Test_Redirect_CaptureStaysBelowTheTargetPath(t *testing.T) {
 	t.Parallel()
-
 	const target = "https://storage.example.com/acme/$1"
 
 	tests := []struct {
@@ -242,7 +241,6 @@ func Test_Redirect_CaptureStaysBelowTheTargetPath(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			requireRule(t, tc.unescape, tc.pattern, tc.target, tc.request, tc.want)
 		})
 	}

@@ -225,10 +225,7 @@ func Test_FormBinder_BindMultipart_BodyLimitExceeded(t *testing.T) {
 
 func Test_FormBinder_Bind_StreamedBodyLimitExceeded(t *testing.T) {
 	t.Parallel()
-
-	b := &FormBinding{
-		MaxBodySize: 64,
-	}
+	b := &FormBinding{MaxBodySize: 64}
 
 	type User struct {
 		Name string `form:"name"`
@@ -236,9 +233,7 @@ func Test_FormBinder_Bind_StreamedBodyLimitExceeded(t *testing.T) {
 	var user User
 
 	req := fasthttp.AcquireRequest()
-	t.Cleanup(func() {
-		fasthttp.ReleaseRequest(req)
-	})
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
 
 	req.Header.SetContentType("application/x-www-form-urlencoded")
 	req.SetBodyStream(strings.NewReader("name=john"), -1)
@@ -255,10 +250,7 @@ func Test_FormBinder_Bind_StreamedBodyLimitExceeded(t *testing.T) {
 
 func Test_FormBinder_Bind_StreamedNonFormBodyUnread(t *testing.T) {
 	t.Parallel()
-
-	b := &FormBinding{
-		MaxBodySize: 64,
-	}
+	b := &FormBinding{MaxBodySize: 64}
 
 	type User struct {
 		Name string `form:"name"`
@@ -266,9 +258,7 @@ func Test_FormBinder_Bind_StreamedNonFormBodyUnread(t *testing.T) {
 	var user User
 
 	req := fasthttp.AcquireRequest()
-	t.Cleanup(func() {
-		fasthttp.ReleaseRequest(req)
-	})
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
 
 	stream := strings.NewReader("name=" + strings.Repeat("a", 1024))
 	req.Header.SetContentType("application/octet-stream")

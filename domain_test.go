@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -434,7 +433,6 @@ func Test_Domain_HTTPMethods(t *testing.T) {
 // run under the name given last, and c.Route() could not tell them apart.
 func Test_Domain_SamePathKeepsItsOwnRoute(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	served := func(c Ctx) error { return c.SendString(c.Route().Name) }
 
@@ -452,11 +450,9 @@ func Test_Domain_SamePathKeepsItsOwnRoute(t *testing.T) {
 	} {
 		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 		req.Host = host
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, want, string(body), host)
+		resp := apptest.Do(t, app, req)
+		body := apptest.Body(t, resp)
+		require.Equal(t, want, body, host)
 	}
 
 	var merged []Route
@@ -473,7 +469,6 @@ func Test_Domain_SamePathKeepsItsOwnRoute(t *testing.T) {
 // cannot stand in for the GET route another pattern has on the same path.
 func Test_Domain_AutoHeadPerPattern(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	served := func(c Ctx) error {
 		c.Set("X-Served", c.Route().Name)
@@ -488,8 +483,7 @@ func Test_Domain_AutoHeadPerPattern(t *testing.T) {
 	head := func(host string) *http.Response {
 		req := httptest.NewRequest(MethodHead, "/test", http.NoBody)
 		req.Host = host
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		return resp
 	}
 
@@ -510,7 +504,6 @@ func Test_Domain_AutoHeadPerPattern(t *testing.T) {
 // pattern, or in a mounted app, runs behind the automatic route of an earlier GET.
 func Test_Domain_AutoHeadAheadOfLaterHead(t *testing.T) {
 	t.Parallel()
-
 	handler := func(name string) Handler {
 		return func(c Ctx) error {
 			c.Set("X-Handler", name)
@@ -564,15 +557,13 @@ func Test_Domain_AutoHeadAheadOfLaterHead(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			tc.register(app)
 
 			for host, want := range tc.want {
 				req := httptest.NewRequest(MethodHead, "/x", http.NoBody)
 				req.Host = host
-				resp, err := app.Test(req)
-				require.NoError(t, err)
+				resp := apptest.Do(t, app, req)
 				require.Equal(t, StatusOK, resp.StatusCode, host)
 				require.Equal(t, want, resp.Header.Get("X-Handler"), host)
 			}
@@ -1486,12 +1477,9 @@ func Test_Domain_UseMountSelf(t *testing.T) {
 // the app that left HEAD out is no longer walked, only its routes' marks are.
 func Test_Domain_UseMountAutoHeadKeepsMiddlewareWhenFlattened(t *testing.T) {
 	t.Parallel()
-
 	newSubApp := func() *App {
 		subApp := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
-		subApp.Use(func(c Ctx) error {
-			return c.SendStatus(StatusUnauthorized)
-		})
+		subApp.Use(func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
 		subApp.Get("/secret", func(c Ctx) error {
 			c.Set("X-Secret", "leaked")
 			return c.SendString("secret")
@@ -1500,9 +1488,7 @@ func Test_Domain_UseMountAutoHeadKeepsMiddlewareWhenFlattened(t *testing.T) {
 	}
 
 	for name, mountOn := range map[string]func(mid *App){
-		"inner domain mount": func(mid *App) {
-			mid.Domain("api.example.com").Use("/sub", newSubApp())
-		},
+		"inner domain mount": func(mid *App) { mid.Domain("api.example.com").Use("/sub", newSubApp()) },
 		"plain mount over a domain mount": func(mid *App) {
 			inner := New()
 			inner.Domain("api.example.com").Use("/sub", newSubApp())
@@ -1515,7 +1501,6 @@ func Test_Domain_UseMountAutoHeadKeepsMiddlewareWhenFlattened(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			mid := New()
 			mountOn(mid)
 
@@ -1524,16 +1509,12 @@ func Test_Domain_UseMountAutoHeadKeepsMiddlewareWhenFlattened(t *testing.T) {
 
 			req := httptest.NewRequest(MethodGet, "/mid/sub/secret", http.NoBody)
 			req.Host = "api.example.com"
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, StatusUnauthorized, resp.StatusCode)
+			resp := apptest.Expect(t, app, req, StatusUnauthorized)
 
 			for range 2 {
 				req = httptest.NewRequest(MethodHead, "/mid/sub/secret", http.NoBody)
 				req.Host = "api.example.com"
-				resp, err = app.Test(req)
-				require.NoError(t, err)
-				require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+				resp = apptest.Expect(t, app, req, StatusMethodNotAllowed)
 				require.Empty(t, resp.Header.Get("X-Secret"))
 			}
 		})
@@ -1709,42 +1690,28 @@ func Test_Domain_UseMountOverlappingErrorHandler(t *testing.T) {
 
 func Test_Domain_UseMountWildcardPrefixErrorHandler(t *testing.T) {
 	t.Parallel()
-
-	sub := New(Config{ErrorHandler: func(c Ctx, _ error) error {
-		return c.Status(581).SendString("sub")
-	}})
-	sub.Get("/:page", func(_ Ctx) error {
-		return errors.New("boom")
-	})
+	sub := New(Config{ErrorHandler: func(c Ctx, _ error) error { return c.Status(581).SendString("sub") }})
+	sub.Get("/:page", func(_ Ctx) error { return errors.New("boom") })
 
 	app := New()
 	app.Domain("admin.example.com").Use("/api/*/admin", sub)
 
 	req := httptest.NewRequest(MethodGet, "/api/acme/admin/admins", http.NoBody)
 	req.Host = "admin.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 581, resp.StatusCode)
+	apptest.Expect(t, app, req, 581)
 }
 
 func Test_Domain_UseMountParamPrefixErrorHandler(t *testing.T) {
 	t.Parallel()
-
-	sub := New(Config{ErrorHandler: func(c Ctx, _ error) error {
-		return c.Status(581).SendString("sub")
-	}})
-	sub.Get("/raw", func(_ Ctx) error {
-		return errors.New("boom")
-	})
+	sub := New(Config{ErrorHandler: func(c Ctx, _ error) error { return c.Status(581).SendString("sub") }})
+	sub.Get("/raw", func(_ Ctx) error { return errors.New("boom") })
 
 	app := New()
 	app.Domain("api.example.com").Use("/files/:name.json", sub)
 
 	req := httptest.NewRequest(MethodGet, "/files/a.json.json/raw", http.NoBody)
 	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, 581, resp.StatusCode)
+	apptest.Expect(t, app, req, 581)
 }
 
 // Test_Domain_UseMountDeclinedHostKeepsRootErrorHandler verifies that a mount
@@ -2062,7 +2029,6 @@ func Test_Domain_UseMountNestedPrefixConstraint(t *testing.T) {
 // with its prefix as written, so its config answers for the paths its routes match.
 func Test_Domain_UseMountPrefixAsWritten(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		prefix  string
 		covered string
@@ -2076,9 +2042,7 @@ func Test_Domain_UseMountPrefixAsWritten(t *testing.T) {
 	}
 
 	mounts := map[string]func(app *App, prefix string, child *App){
-		"domain": func(app *App, prefix string, child *App) {
-			app.Domain("example.com").Use(prefix, child)
-		},
+		"domain": func(app *App, prefix string, child *App) { app.Domain("example.com").Use(prefix, child) },
 		"domain in app": func(app *App, prefix string, child *App) {
 			mid := New()
 			mid.RegisterCustomConstraint(&evenConstraint{})
@@ -2097,17 +2061,12 @@ func Test_Domain_UseMountPrefixAsWritten(t *testing.T) {
 		for _, tc := range testCases {
 			t.Run(name+" "+tc.prefix, func(t *testing.T) {
 				t.Parallel()
-
 				child := New(Config{ErrorHandler: func(c Ctx, _ error) error {
 					return c.Status(607).SendString("child")
 				}})
-				child.Get("/boom", func(_ Ctx) error {
-					return errors.New("boom")
-				})
+				child.Get("/boom", func(_ Ctx) error { return errors.New("boom") })
 
-				app := New(Config{ErrorHandler: func(c Ctx, _ error) error {
-					return c.Status(608).SendString("root")
-				}})
+				app := New(Config{ErrorHandler: func(c Ctx, _ error) error { return c.Status(608).SendString("root") }})
 				app.RegisterCustomConstraint(&evenConstraint{})
 				mount(app, tc.prefix, child)
 
@@ -2117,9 +2076,7 @@ func Test_Domain_UseMountPrefixAsWritten(t *testing.T) {
 					tc.outside + "/boom": 608,
 					tc.outside + "/nope": 608,
 				} {
-					resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-					require.NoError(t, err)
-					require.Equal(t, want, resp.StatusCode, path)
+					apptest.Expect(t, app, path, want)
 				}
 			})
 		}

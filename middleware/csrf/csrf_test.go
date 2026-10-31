@@ -1505,32 +1505,24 @@ func Test_CSRF_Extractor_NonNotFoundError(t *testing.T) {
 // client names the token, so it must not reach those.
 func Test_CSRF_TokenCannotNameForeignStorageEntry(t *testing.T) {
 	t.Parallel()
-
 	const foreignKey = "198.51.100.9"
 	foreignValue := []byte("entry of another middleware")
 
 	for _, singleUse := range []bool{false, true} {
 		t.Run(fmt.Sprintf("SingleUseToken=%t", singleUse), func(t *testing.T) {
 			t.Parallel()
-
 			storage := storagetest.New()
 			storage.Data[foreignKey] = foreignValue
 
 			app := fiber.New()
 			app.Use(New(Config{Storage: storage, SingleUseToken: singleUse}))
-			app.All("/", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusOK)
-			})
-			app.Get("/logout", func(c fiber.Ctx) error {
-				return HandlerFromContext(c).DeleteToken(c)
-			})
+			app.All("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+			app.Get("/logout", func(c fiber.Ctx) error { return HandlerFromContext(c).DeleteToken(c) })
 
 			for _, target := range []string{"/", "/logout"} {
 				req := httptest.NewRequest(fiber.MethodGet, target, http.NoBody)
 				req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: foreignKey})
-				resp, err := app.Test(req)
-				require.NoError(t, err)
-				require.Equal(t, fiber.StatusOK, resp.StatusCode)
+				resp := apptest.Expect(t, app, req, fiber.StatusOK)
 				require.NotContains(t, resp.Header.Get(fiber.HeaderSetCookie), foreignKey)
 				require.Equal(t, foreignValue, storage.Data[foreignKey])
 			}
@@ -1538,9 +1530,7 @@ func Test_CSRF_TokenCannotNameForeignStorageEntry(t *testing.T) {
 			req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
 			req.Header.Set(HeaderName, foreignKey)
 			req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: foreignKey})
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+			apptest.Expect(t, app, req, fiber.StatusForbidden)
 			require.Equal(t, foreignValue, storage.Data[foreignKey])
 		})
 	}
@@ -1564,13 +1554,10 @@ func (s *keyKeepingStorage) SetWithContext(ctx context.Context, key string, val 
 // request reuses the request buffers.
 func Test_CSRF_Storage_KeyOutlivesRequest(t *testing.T) {
 	t.Parallel()
-
 	storage := &keyKeepingStorage{Memory: storagetest.New()}
 	app := fiber.New()
 	app.Use(New(Config{Storage: storage}))
-	app.All("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.All("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	h := app.Handler()
 
 	// One RequestCtx for every request, as the server keeps one per connection.

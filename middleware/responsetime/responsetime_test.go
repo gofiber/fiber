@@ -2,8 +2,6 @@ package responsetime
 
 import (
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -81,7 +79,6 @@ func TestResponseTimeMiddleware(t *testing.T) {
 
 func TestResponseTimeLeavesTimedOutResponse(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New())
 	ctxCh := make(chan fiber.Ctx, 1)
@@ -95,9 +92,7 @@ func TestResponseTimeLeavesTimedOutResponse(t *testing.T) {
 		return nil
 	}, timeout.Config{Timeout: 10 * time.Millisecond}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusServiceUnavailable)
 	c := <-ctxCh
 	require.Empty(t, c.GetRespHeader(fiber.HeaderXResponseTime), "the timed-out handler still owns the response")
 }

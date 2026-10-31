@@ -46,7 +46,6 @@ func Benchmark_PeekJoinedRequestHeader(b *testing.B) {
 // Test_JoinedInReceivedOrder pins the read-only scan to the values fasthttp parses.
 func Test_JoinedInReceivedOrder(t *testing.T) {
 	t.Parallel()
-
 	const head = "GET / HTTP/1.1\r\nHost: example.com\r\n"
 	tests := []struct {
 		name     string
@@ -65,7 +64,6 @@ func Test_JoinedInReceivedOrder(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var req fasthttp.Request
 			require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(head+tc.lines+"\r\n"))))
 			combined := []byte(tc.combined)
@@ -605,7 +603,6 @@ func Test_Utils_GetOffer_ManyRanges(t *testing.T) {
 	require.Equal(t, "application/json", getOffer(header, acceptsOfferType, "application/json", "text/html"))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Utils_SortAcceptedTypes_Long -benchmem -count=4
 func Benchmark_Utils_SortAcceptedTypes_Long(b *testing.B) {
 	const n = 6000
 	acceptedTypes := make([]acceptedType, n)

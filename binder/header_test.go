@@ -49,10 +49,7 @@ func Test_HeaderBinder_Bind_Splitting_StringMapNotSplit(t *testing.T) {
 
 func Test_HeaderBinder_Bind_Splitting_TrimsListWhitespace(t *testing.T) {
 	t.Parallel()
-
-	b := &HeaderBinding{
-		EnableSplitting: true,
-	}
+	b := &HeaderBinding{EnableSplitting: true}
 
 	type User struct {
 		Roles []string `header:"X-Roles"`
@@ -61,9 +58,7 @@ func Test_HeaderBinder_Bind_Splitting_TrimsListWhitespace(t *testing.T) {
 	}
 
 	req := fasthttp.AcquireRequest()
-	t.Cleanup(func() {
-		fasthttp.ReleaseRequest(req)
-	})
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
 
 	// Clients and proxies join repeated lines with ", " (RFC 9110 Section 5.3),
 	// and the space around a list element is not part of it.
@@ -81,10 +76,7 @@ func Test_HeaderBinder_Bind_Splitting_TrimsListWhitespace(t *testing.T) {
 
 func Test_HeaderBinder_Bind_Splitting_SkipsEmptyListElements(t *testing.T) {
 	t.Parallel()
-
-	b := &HeaderBinding{
-		EnableSplitting: true,
-	}
+	b := &HeaderBinding{EnableSplitting: true}
 
 	type User struct {
 		Roles  []string `header:"X-Roles"`
@@ -93,9 +85,7 @@ func Test_HeaderBinder_Bind_Splitting_SkipsEmptyListElements(t *testing.T) {
 	}
 
 	req := fasthttp.AcquireRequest()
-	t.Cleanup(func() {
-		fasthttp.ReleaseRequest(req)
-	})
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
 
 	// Empty elements are ignored (RFC 9110 Section 5.6.1), so a trailing or
 	// doubled comma adds no zero value.

@@ -606,12 +606,8 @@ func Test_Cache_Security_QueryBody_RawHashDomain(t *testing.T) {
 // Content-Encoding, so the same bytes declared otherwise are another query.
 func Test_Cache_Security_QueryBody_KeyedWithItsMetadata(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
-	app.Use(New(Config{
-		Expiration: 1 * time.Hour,
-		Methods:    []string{fiber.MethodQuery},
-	}))
+	app.Use(New(Config{Expiration: 1 * time.Hour, Methods: []string{fiber.MethodQuery}}))
 	app.Query("/", func(c fiber.Ctx) error {
 		var filter struct {
 			Category string `json:"category" form:"category"`
@@ -626,11 +622,9 @@ func Test_Cache_Security_QueryBody_KeyedWithItsMetadata(t *testing.T) {
 		req := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(`{"category":"shoes"}`))
 		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 		req.Header.Set(header, value)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		got, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		return resp.Header.Get("X-Cache"), string(got)
+		resp := apptest.Do(t, app, req)
+		got := apptest.Body(t, resp)
+		return resp.Header.Get("X-Cache"), got
 	}
 
 	cacheStatus, got := doQuery(fiber.HeaderContentType, fiber.MIMEApplicationForm)
@@ -683,7 +677,6 @@ func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T)
 // With StreamRequestBody the key must not drain a QUERY body it cannot bound, nor key two such bodies alike.
 func Test_Cache_Security_QueryBody_StreamedBodyLimit(t *testing.T) {
 	t.Parallel()
-
 	const limit = 1024
 	app := fiber.New(fiber.Config{StreamRequestBody: true, BodyLimit: limit})
 	app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodQuery}}))
@@ -706,12 +699,9 @@ func Test_Cache_Security_QueryBody_StreamedBodyLimit(t *testing.T) {
 		if chunked {
 			req.TransferEncoding = []string{"chunked"}
 		}
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
-		answer, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		return resp.Header.Get("X-Cache"), string(answer)
+		resp := apptest.Expect(t, app, req, fiber.StatusOK)
+		answer := apptest.Body(t, resp)
+		return resp.Header.Get("X-Cache"), answer
 	}
 
 	for _, chunked := range []bool{false, true} {
@@ -755,7 +745,6 @@ func (r *countingReader) Read(p []byte) (int, error) {
 // Measuring a stream with Response.Body read all of it into memory first.
 func Test_Cache_Security_StreamIsNotBufferedToMeasureIt(t *testing.T) {
 	t.Parallel()
-
 	const maxBytes = 1024
 
 	for name, tc := range map[string]struct {
@@ -771,7 +760,6 @@ func Test_Cache_Security_StreamIsNotBufferedToMeasureIt(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			stream := &countingReader{left: tc.size}
 			app := fiber.New()
 			app.Use(New(Config{MaxBytes: tc.maxBytes, Expiration: time.Hour}))
@@ -1859,7 +1847,6 @@ func Test_Cache_Security_KeyAuthorityFollowsTrustedProxy(t *testing.T) {
 // makes them, and whose signed-in ones add Cookie.
 func Test_Cache_Security_StoredUnderTheResponsesOwnVary(t *testing.T) {
 	t.Parallel()
-
 	type varyReply struct {
 		body        string
 		cacheStatus string
@@ -1871,12 +1858,10 @@ func Test_Cache_Security_StoredUnderTheResponsesOwnVary(t *testing.T) {
 		if cacheControl != "" {
 			req.Header.Set(fiber.HeaderCacheControl, cacheControl)
 		}
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		raw, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
+		raw := apptest.Body(t, resp)
 		require.NoError(t, resp.Body.Close())
-		return varyReply{body: string(raw), cacheStatus: resp.Header.Get("X-Cache")}
+		return varyReply{body: raw, cacheStatus: resp.Header.Get("X-Cache")}
 	}
 
 	backends := []struct {
@@ -1890,7 +1875,6 @@ func Test_Cache_Security_StoredUnderTheResponsesOwnVary(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(backend.name+"/response adds Cookie", func(t *testing.T) {
 			t.Parallel()
-
 			probe := &accountingProbe{}
 			app := fiber.New()
 			app.Use(New(Config{Storage: backend.storage(), MaxBytes: 1024, accounting: probe.record}))
@@ -1927,7 +1911,6 @@ func Test_Cache_Security_StoredUnderTheResponsesOwnVary(t *testing.T) {
 
 		t.Run(backend.name+"/response drops Vary", func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(Config{Storage: backend.storage()}))
 			app.Get("/", func(c fiber.Ctx) error {
@@ -1949,7 +1932,6 @@ func Test_Cache_Security_StoredUnderTheResponsesOwnVary(t *testing.T) {
 
 func Test_Cache_Security_VaryManifestOwnsItsBytes(t *testing.T) {
 	t.Parallel()
-
 	storage := newMutatingStorage(nil) // keeps the slices it is given
 	app := fiber.New()
 	app.Use(New(Config{Storage: storage}))
@@ -1957,9 +1939,7 @@ func Test_Cache_Security_VaryManifestOwnsItsBytes(t *testing.T) {
 		c.Vary("cookie")
 		return c.SendString("user=" + c.Cookies("user"))
 	})
-	app.Get("/about", func(c fiber.Ctx) error {
-		return c.SendString("about")
-	})
+	app.Get("/about", func(c fiber.Ctx) error { return c.SendString("about") })
 	handler := app.Handler()
 
 	// One RequestCtx for every request, as the server keeps per connection.
@@ -1999,7 +1979,6 @@ func Test_Cache_Security_VaryManifestOwnsItsBytes(t *testing.T) {
 // never forced an eviction and every one left a heap node behind.
 func Test_Cache_Security_ShortBodiesAreBoundedByEntryCount(t *testing.T) {
 	t.Parallel()
-
 	const (
 		maxBytes = minTrackedEntries * trackedEntryOverhead // caps the entries at minTrackedEntries before their bytes
 		urls     = 3 * minTrackedEntries
@@ -2012,7 +1991,6 @@ func Test_Cache_Security_ShortBodiesAreBoundedByEntryCount(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			probe := &accountingProbe{}
 			app := fiber.New()
 			app.Use(New(Config{MaxBytes: maxBytes, Expiration: time.Hour, accounting: probe.record}))
@@ -2063,7 +2041,6 @@ func countVaryManifests(storage *storagetest.Memory) int {
 // behind by eviction let new URLs grow the store until Expiration.
 func Test_Cache_Security_EvictionRemovesVaryManifest(t *testing.T) {
 	t.Parallel()
-
 	storage := storagetest.New()
 	app := fiber.New()
 	// Room for two of the last entries, whose query has two digits.
@@ -2075,8 +2052,7 @@ func Test_Cache_Security_EvictionRemovesVaryManifest(t *testing.T) {
 	})
 
 	for i := range 50 {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, fmt.Sprintf("/?n=%d", i), http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, fmt.Sprintf("/?n=%d", i))
 		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 	}
 	require.Equal(t, 2, countVaryManifests(storage), "one per entry that fits MaxBytes")
@@ -2086,7 +2062,6 @@ func Test_Cache_Security_EvictionRemovesVaryManifest(t *testing.T) {
 // with the next store instead.
 func Test_Cache_Security_DroppedVariantRemovesVaryManifest(t *testing.T) {
 	t.Parallel()
-
 	storage := storagetest.New()
 	clock := clocktest.NewClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
@@ -2097,20 +2072,16 @@ func Test_Cache_Security_DroppedVariantRemovesVaryManifest(t *testing.T) {
 		return c.SendString("12345")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/a")
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 	require.Equal(t, 1, countVaryManifests(storage))
 
 	clock.Add(2 * time.Second)
 	req := httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody)
 	req.Header.Set(fiber.HeaderCacheControl, "only-if-cached")
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusGatewayTimeout)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/b", http.NoBody))
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, "/b")
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 	require.Equal(t, 1, countVaryManifests(storage), "only the manifest of /b")
 }
@@ -2118,7 +2089,6 @@ func Test_Cache_Security_DroppedVariantRemovesVaryManifest(t *testing.T) {
 // The manifest is shared by the variants of a URL: evicting one leaves it to the others.
 func Test_Cache_Security_EvictedVariantKeepsSiblingManifest(t *testing.T) {
 	t.Parallel()
-
 	storage := storagetest.New()
 	app := fiber.New()
 	entry := charged(variantKey(defaultKey("/a"), "x-variant"), len("12345"), textPlain, "X-Variant")
@@ -2132,8 +2102,7 @@ func Test_Cache_Security_EvictedVariantKeepsSiblingManifest(t *testing.T) {
 		t.Helper()
 		req := httptest.NewRequest(fiber.MethodGet, target, http.NoBody)
 		req.Header.Set("X-Variant", variant)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		return resp.Header.Get("X-Cache")
 	}
 
@@ -2150,17 +2119,12 @@ func Test_Cache_Security_EvictedVariantKeepsSiblingManifest(t *testing.T) {
 // the chain leaves, a catch-all's 404 or the seeded status, is not the URL's response.
 func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name     string
 		refused  string
 		catchAll bool
 	}{
-		{
-			name:     "body over BodyLimit with a catch-all",
-			refused:  "Content-Length: 99999999\r\n\r\n",
-			catchAll: true,
-		},
+		{name: "body over BodyLimit with a catch-all", refused: "Content-Length: 99999999\r\n\r\n", catchAll: true},
 		{
 			name:    "malformed trailer",
 			refused: "Transfer-Encoding: chunked\r\n\r\n0\r\nContent-Length: unsupported http request method\r\n\r\n",
@@ -2170,23 +2134,16 @@ func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New())
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("home page")
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("home page") })
 			if tc.catchAll {
-				app.Use(func(c fiber.Ctx) error {
-					return c.Status(fiber.StatusNotFound).SendString("no such page")
-				})
+				app.Use(func(c fiber.Ctx) error { return c.Status(fiber.StatusNotFound).SendString("no such page") })
 			}
 
 			ln := fasthttputil.NewInmemoryListener()
 			errCh := make(chan error, 1)
-			go func() {
-				errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
-			}()
+			go func() { errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}) }()
 			t.Cleanup(func() {
 				require.NoError(t, app.Shutdown())
 				require.NoError(t, <-errCh)
@@ -2205,10 +2162,9 @@ func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 				require.NoError(t, err)
 				resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 				require.NoError(t, err)
-				got, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
+				got := apptest.Body(t, resp)
 				require.NoError(t, resp.Body.Close())
-				return resp.StatusCode, string(got), resp.Header.Get("X-Cache")
+				return resp.StatusCode, got, resp.Header.Get("X-Cache")
 			}
 
 			// "/" holds a fresh entry the refused request asks to replace, "/?page=2" none yet.

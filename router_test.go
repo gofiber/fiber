@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -752,7 +751,6 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 
 func Test_Route_Match_Middleware_WildcardBeforeConst(t *testing.T) {
 	t.Parallel()
-
 	deny := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
 	guards := map[string]func(app *App){
 		"use":       func(app *App) { app.Use("/api/*/admin", deny) },
@@ -769,7 +767,6 @@ func Test_Route_Match_Middleware_WildcardBeforeConst(t *testing.T) {
 		for _, strict := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/strict=%v", name, strict), func(t *testing.T) {
 				t.Parallel()
-
 				app := New(Config{StrictRouting: strict})
 				guard(app)
 				app.Get("/api/:tenant/admin/:page", func(c Ctx) error { return c.SendStatus(StatusOK) })
@@ -783,14 +780,10 @@ func Test_Route_Match_Middleware_WildcardBeforeConst(t *testing.T) {
 					"/api/a/admin/b/admin/c",
 					"/api/ACME/Admin/Admins",
 				} {
-					resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
-					require.NoError(t, err)
-					require.Equal(t, StatusUnauthorized, resp.StatusCode, target)
+					apptest.Expect(t, app, target, StatusUnauthorized)
 				}
 				for _, target := range []string{"/api/acme/admins", "/api/acme/admin.json", "/api/acme/status"} {
-					resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
-					require.NoError(t, err)
-					require.Equal(t, StatusOK, resp.StatusCode, target)
+					apptest.Expect(t, app, target, StatusOK)
 				}
 			})
 		}
@@ -798,24 +791,18 @@ func Test_Route_Match_Middleware_WildcardBeforeConst(t *testing.T) {
 
 	t.Run("case sensitive", func(t *testing.T) {
 		t.Parallel()
-
 		app := New(Config{CaseSensitive: true})
 		app.Use("/api/*/Admin", deny)
 		app.Get("/api/*", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/acme/Admin/admins", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusUnauthorized, resp.StatusCode)
+		apptest.Expect(t, app, "/api/acme/Admin/admins", StatusUnauthorized)
 
-		resp, err = app.Test(httptest.NewRequest(MethodGet, "/api/acme/admin/Admins", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, "/api/acme/admin/Admins", StatusOK)
 	})
 }
 
 func Test_Route_Match_Middleware_ParamBeforeConst(t *testing.T) {
 	t.Parallel()
-
 	deny := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
 	ok := func(c Ctx) error { return c.SendStatus(StatusOK) }
 	guards := map[string]func(app *App, prefix string){
@@ -854,7 +841,6 @@ func Test_Route_Match_Middleware_ParamBeforeConst(t *testing.T) {
 		for _, strict := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/strict=%v", name, strict), func(t *testing.T) {
 				t.Parallel()
-
 				for _, shape := range shapes {
 					app := New(Config{StrictRouting: strict})
 					guard(app, shape.prefix)
@@ -863,13 +849,11 @@ func Test_Route_Match_Middleware_ParamBeforeConst(t *testing.T) {
 
 					for _, method := range []string{MethodGet, MethodHead} {
 						for _, target := range shape.guarded {
-							resp, err := app.Test(httptest.NewRequest(method, target, http.NoBody))
-							require.NoError(t, err)
+							resp := apptest.Do(t, app, apptest.Req(method, target))
 							require.Equal(t, StatusUnauthorized, resp.StatusCode, "%s %s", method, target)
 						}
 						for _, target := range shape.open {
-							resp, err := app.Test(httptest.NewRequest(method, target, http.NoBody))
-							require.NoError(t, err)
+							resp := apptest.Do(t, app, apptest.Req(method, target))
 							require.Equal(t, StatusOK, resp.StatusCode, "%s %s", method, target)
 						}
 					}
@@ -880,18 +864,13 @@ func Test_Route_Match_Middleware_ParamBeforeConst(t *testing.T) {
 
 	t.Run("case sensitive", func(t *testing.T) {
 		t.Parallel()
-
 		app := New(Config{CaseSensitive: true})
 		app.Use("/files/:name.JSON", deny)
 		app.Get("/*", ok)
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/files/a.JSON.JSON/raw", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusUnauthorized, resp.StatusCode)
+		apptest.Expect(t, app, "/files/a.JSON.JSON/raw", StatusUnauthorized)
 
-		resp, err = app.Test(httptest.NewRequest(MethodGet, "/files/a.JSON.json/raw", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, "/files/a.JSON.json/raw", StatusOK)
 	})
 }
 
@@ -1141,9 +1120,7 @@ func Test_App_Remove_Route_StrictRouting_UsePrefix(t *testing.T) {
 	t.Parallel()
 	app := New(Config{StrictRouting: true})
 
-	app.Use("/test/", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	app.Use("/test/", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	apptest.Expect(t, app, "/test", StatusOK)
 	app.RemoveRoute("/test/")
@@ -1426,7 +1403,7 @@ func routerBenchRoute(pattern, path string) *Route {
 //
 //nolint:thelper // b.Helper() is the cost being avoided
 func acquireDefaultCtxForRouterBenchmark(b *testing.B, app *App, fctx *fasthttp.RequestCtx) *DefaultCtx {
-	ctx := app.AcquireCtx(fctx)
+	ctx := apptest.CtxFor(b, app, fctx)
 	defaultCtx, ok := ctx.(*DefaultCtx)
 	if !ok {
 		b.Fatal("AcquireCtx did not return *DefaultCtx")
@@ -3785,7 +3762,6 @@ func Test_Router_MethodOverride_ContinuesInNewMethodTree(t *testing.T) {
 // between two Use registrations keeps them apart in every method's stack.
 func Test_Router_MethodOverride_UseAfterMethodRoute(t *testing.T) {
 	t.Parallel()
-
 	override := func(c Ctx) error {
 		if m := c.Get("X-HTTP-Method-Override"); m != "" {
 			c.Method(m)
@@ -3829,9 +3805,7 @@ func Test_Router_MethodOverride_UseAfterMethodRoute(t *testing.T) {
 			return app, ""
 		}},
 		{name: "custom ctx", newApp: func(build func(Router)) (*App, string) {
-			app := NewWithCustomCtx(func(app *App) CustomCtx {
-				return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
-			})
+			app := NewWithCustomCtx(func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} })
 			build(app)
 			return app, ""
 		}},
@@ -3853,30 +3827,25 @@ func Test_Router_MethodOverride_UseAfterMethodRoute(t *testing.T) {
 		for _, tc := range apps {
 			t.Run(layout.name+"/"+tc.name, func(t *testing.T) {
 				t.Parallel()
-
 				app, prefix := tc.newApp(layout.build)
 				target := prefix + "/admin/secret"
 
-				resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
-				require.NoError(t, err)
+				resp := apptest.Do(t, app, target)
 				require.Equal(t, StatusUnauthorized, resp.StatusCode, "GET")
 
 				req := httptest.NewRequest(MethodPost, target, http.NoBody)
 				req.Header.Set("X-HTTP-Method-Override", MethodGet)
-				resp, err = app.Test(req)
-				require.NoError(t, err)
+				resp = apptest.Do(t, app, req)
 				require.Equal(t, StatusUnauthorized, resp.StatusCode, "POST overridden to GET")
 
 				req = httptest.NewRequest(MethodPost, target, http.NoBody)
 				req.Header.Set("X-HTTP-Method-Override", MethodGet)
 				req.Header.Set(HeaderAuthorization, "Bearer letmein")
-				resp, err = app.Test(req)
-				require.NoError(t, err)
+				resp = apptest.Do(t, app, req)
 				require.Equal(t, StatusOK, resp.StatusCode, "POST overridden to GET with credentials")
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
+				body := apptest.Body(t, resp)
 				require.NoError(t, resp.Body.Close())
-				require.Equal(t, "secret", string(body))
+				require.Equal(t, "secret", body)
 			})
 		}
 	}
@@ -3920,7 +3889,6 @@ func Test_Router_StrictRouting_ParamTrailingSlash(t *testing.T) {
 // slash stays optional under StrictRouting, as "/admin/:id?" matches "/admin".
 func Test_Router_StrictRouting_PrefixTrailingSlash(t *testing.T) {
 	t.Parallel()
-
 	guard := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
 	handler := func(c Ctx) error { return c.SendString("endpoint") }
 
@@ -3987,7 +3955,6 @@ func Test_Router_StrictRouting_PrefixTrailingSlash(t *testing.T) {
 		for _, fill := range []int{0, 64} {
 			t.Run(fmt.Sprintf("%s/fill=%d", tc.name, fill), func(t *testing.T) {
 				t.Parallel()
-
 				app := New(Config{StrictRouting: true})
 				for i := range fill {
 					app.Get(fmt.Sprintf("/admin/fill/%d", i), handler)
@@ -3998,14 +3965,10 @@ func Test_Router_StrictRouting_PrefixTrailingSlash(t *testing.T) {
 				app.Get(tc.endpoint, handler)
 
 				for _, path := range tc.guarded {
-					resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-					require.NoError(t, err)
-					require.Equal(t, StatusUnauthorized, resp.StatusCode, path)
+					apptest.Expect(t, app, path, StatusUnauthorized)
 				}
 				for _, path := range tc.missed {
-					resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-					require.NoError(t, err)
-					require.Equal(t, StatusNotFound, resp.StatusCode, path)
+					apptest.Expect(t, app, path, StatusNotFound)
 				}
 			})
 		}
@@ -4174,7 +4137,6 @@ func Test_Router_UnrootedTargetIsRooted(t *testing.T) {
 // routed as the root without StrictRouting, as "/a//" is routed as "/a".
 func Test_Router_SlashesOnlyTargetIsRoot(t *testing.T) {
 	t.Parallel()
-
 	serve := func(app *App, target string) int {
 		var req fasthttp.Request
 		req.Header.SetMethod(MethodGet)
@@ -4441,7 +4403,6 @@ func Test_Mount_Nested_AutoHead_SingleStartup(t *testing.T) {
 // runs where its GET route does, so a Get guard covers HEAD too.
 func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 	t.Parallel()
-
 	guard := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
 	next := func(c Ctx) error { return c.Next() }
 	endpoint := func(c Ctx) error {
@@ -4522,15 +4483,13 @@ func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			tc.register(app)
 
 			// Twice: the second startup sees any mount already expanded.
 			for range 2 {
 				for _, method := range []string{MethodGet, MethodHead} {
-					resp, err := app.Test(httptest.NewRequest(method, "/admin/secret", http.NoBody))
-					require.NoError(t, err)
+					resp := apptest.Do(t, app, apptest.Req(method, "/admin/secret"))
 					require.NoError(t, resp.Body.Close())
 					require.Equal(t, StatusUnauthorized, resp.StatusCode, method)
 					require.Empty(t, resp.Header.Get("X-Secret"), method)
@@ -4541,33 +4500,28 @@ func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 
 	t.Run("catch-all after Get", func(t *testing.T) {
 		t.Parallel()
-
 		app := New()
 		app.Get("/hello", endpoint)
 		app.Use(func(c Ctx) error { return c.SendStatus(StatusNotFound) })
 
-		resp, err := app.Test(httptest.NewRequest(MethodHead, "/hello", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, apptest.Req(MethodHead, "/hello"))
 		require.NoError(t, resp.Body.Close())
 		require.Equal(t, StatusOK, resp.StatusCode)
 	})
 
 	t.Run("earlier Head on another path stays first", func(t *testing.T) {
 		t.Parallel()
-
 		app := New()
 		app.Head("/:name", func(c Ctx) error { return c.SendStatus(StatusTeapot) })
 		app.Get("/hello", endpoint)
 
-		resp, err := app.Test(httptest.NewRequest(MethodHead, "/hello", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, apptest.Req(MethodHead, "/hello"))
 		require.NoError(t, resp.Body.Close())
 		require.Equal(t, StatusTeapot, resp.StatusCode)
 	})
 
 	t.Run("late Head replaces every copy", func(t *testing.T) {
 		t.Parallel()
-
 		app := New()
 		app.Get("/a", endpoint)
 		app.Use(next)
@@ -4577,15 +4531,13 @@ func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 		app.Head("/a", func(c Ctx) error { return c.SendStatus(StatusTeapot) })
 		app.RebuildTree()
 
-		resp, err := app.Test(httptest.NewRequest(MethodHead, "/a", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, apptest.Req(MethodHead, "/a"))
 		require.NoError(t, resp.Body.Close())
 		require.Equal(t, StatusTeapot, resp.StatusCode)
 	})
 
 	t.Run("Get merged after startup", func(t *testing.T) {
 		t.Parallel()
-
 		app := New()
 		app.Get("/admin/*", next)
 		app.Handler()
@@ -4594,8 +4546,7 @@ func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 		app.Get("/admin/secret", endpoint)
 		app.RebuildTree()
 
-		resp, err := app.Test(httptest.NewRequest(MethodHead, "/admin/secret", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, apptest.Req(MethodHead, "/admin/secret"))
 		require.NoError(t, resp.Body.Close())
 		require.Equal(t, StatusUnauthorized, resp.StatusCode)
 		require.Empty(t, resp.Header.Get("X-Secret"))
@@ -4606,7 +4557,6 @@ func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 // does not cost the first one its automatic HEAD routes.
 func Test_App_Mount_SamePrefixKeepsAutoHead(t *testing.T) {
 	t.Parallel()
-
 	guards := New()
 	guards.Get("/admin/*", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
 	api := New()
@@ -4646,8 +4596,7 @@ func Test_App_Mount_NestedRootMounts(t *testing.T) {
 		app.Use(site)
 
 		for _, method := range []string{MethodGet, MethodHead} {
-			resp, err := app.Test(httptest.NewRequest(method, "/x", http.NoBody))
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, apptest.Req(method, "/x"))
 			require.NoError(t, resp.Body.Close())
 			require.Equal(t, StatusOK, resp.StatusCode, method)
 		}
@@ -4677,8 +4626,7 @@ func Test_App_Mount_DisplacedAppKeepsHeadGuard(t *testing.T) {
 		app.Use("/", pages)
 
 		for _, method := range []string{MethodGet, MethodHead} {
-			resp, err := app.Test(httptest.NewRequest(method, "/admin/flush", http.NoBody))
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, apptest.Req(method, "/admin/flush"))
 			require.NoError(t, resp.Body.Close())
 			require.Equal(t, StatusUnauthorized, resp.StatusCode, method)
 		}
@@ -4704,12 +4652,10 @@ func Test_Router_PathOverride_ContinuesInNewBucket(t *testing.T) {
 // route filed under its own prefix bucket resumes with the routes registered after it.
 func Test_Router_PathOverride_FromPrefixedRoute(t *testing.T) {
 	t.Parallel()
-
 	for _, ahead := range []int{0, 1, 3, 6, 13} {
 		for _, global := range []bool{false, true} {
 			t.Run(fmt.Sprintf("ahead=%d/global=%v", ahead, global), func(t *testing.T) {
 				t.Parallel()
-
 				app := New()
 				var ran []string
 				note := func(name string) Handler {
@@ -4737,25 +4683,21 @@ func Test_Router_PathOverride_FromPrefixedRoute(t *testing.T) {
 				app.Get("/admin/report", func(c Ctx) error { return c.SendString("report") })
 				app.Get("/public/page", func(c Ctx) error { return c.SendString("page") })
 
-				resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/admin/report", http.NoBody))
-				require.NoError(t, err)
-				require.Equal(t, StatusForbidden, resp.StatusCode)
+				resp := apptest.Expect(t, app, "/v1/admin/report", StatusForbidden)
 				require.NoError(t, resp.Body.Close())
 				require.NotContains(t, ran, "early")
 				require.Equal(t, ahead, countOf(ran, "global"))
 
 				// The handler heading its bucket is not skipped either.
-				resp, err = app.Test(httptest.NewRequest(MethodGet, "/v1/public/page", http.NoBody))
-				require.NoError(t, err)
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
+				resp = apptest.Do(t, app, "/v1/public/page")
+				body := apptest.Body(t, resp)
 				require.NoError(t, resp.Body.Close())
 				if global {
 					require.Equal(t, StatusForbidden, resp.StatusCode)
 					return
 				}
 				require.Equal(t, StatusOK, resp.StatusCode)
-				require.Equal(t, "page", string(body))
+				require.Equal(t, "page", body)
 			})
 		}
 	}
@@ -4785,15 +4727,11 @@ func Test_Router_PathOverride_AppMountedTwice(t *testing.T) {
 	app.Use("/ccc", sub)
 
 	// Registered after the /aaa mount, so the guard runs.
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/aaa/x", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusForbidden, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/aaa/x", StatusForbidden)
 	require.NoError(t, resp.Body.Close())
 
 	// Registered before the /ccc mount, so neither the guard nor /bbb runs.
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ccc/x", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	resp = apptest.Expect(t, app, "/ccc/x", StatusNotFound)
 	require.NoError(t, resp.Body.Close())
 }
 
@@ -4801,7 +4739,6 @@ func Test_Router_PathOverride_AppMountedTwice(t *testing.T) {
 // a route the new method holds no copy of.
 func Test_Router_MethodOverride_GetAfterRouteOfSeveralMethods(t *testing.T) {
 	t.Parallel()
-
 	override := func(c Ctx) error {
 		c.Method(c.Get("X-HTTP-Method-Override"))
 		return c.Next()
@@ -4812,7 +4749,6 @@ func Test_Router_MethodOverride_GetAfterRouteOfSeveralMethods(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			register(app)
 			app.Get("/admin/*", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
@@ -4820,8 +4756,7 @@ func Test_Router_MethodOverride_GetAfterRouteOfSeveralMethods(t *testing.T) {
 
 			req := httptest.NewRequest(MethodPost, "/admin/flush", http.NoBody)
 			req.Header.Set("X-HTTP-Method-Override", MethodGet)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, req)
 			require.NoError(t, resp.Body.Close())
 			require.Equal(t, StatusUnauthorized, resp.StatusCode)
 		})
@@ -4830,7 +4765,6 @@ func Test_Router_MethodOverride_GetAfterRouteOfSeveralMethods(t *testing.T) {
 
 func Test_Router_MethodOverride_FromRouteOfOneMethod(t *testing.T) {
 	t.Parallel()
-
 	build := func(guarded bool, override Handler) (*App, *[]string) {
 		app := New()
 		ran := new([]string)
@@ -4875,17 +4809,12 @@ func Test_Router_MethodOverride_FromRouteOfOneMethod(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, _ := build(true, tc.override)
-			resp, err := app.Test(httptest.NewRequest(MethodPost, tc.target, http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, StatusForbidden, resp.StatusCode)
+			resp := apptest.Expect(t, app, apptest.Req(MethodPost, tc.target), StatusForbidden)
 			require.NoError(t, resp.Body.Close())
 
 			app, ran := build(false, tc.override)
-			resp, err = app.Test(httptest.NewRequest(MethodPost, tc.target, http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, StatusOK, resp.StatusCode)
+			resp = apptest.Expect(t, app, apptest.Req(MethodPost, tc.target), StatusOK)
 			require.NoError(t, resp.Body.Close())
 			// Shared routes ahead of the override do not run twice.
 			require.Equal(t, 1, countOf(*ran, "global"))
@@ -4898,7 +4827,6 @@ func Test_Router_MethodOverride_FromRouteOfOneMethod(t *testing.T) {
 // copy of a GET route does not mark where that route stands.
 func Test_Router_MethodOverride_IgnoresAutoHeadRoute(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/admin/*", func(c Ctx) error {
 		c.Method(MethodHead)
@@ -4907,9 +4835,7 @@ func Test_Router_MethodOverride_IgnoresAutoHeadRoute(t *testing.T) {
 	app.Use("/admin", func(c Ctx) error { return c.SendStatus(StatusForbidden) })
 	app.Get("/admin/x", func(c Ctx) error { return c.SendString("x") })
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/admin/x", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusForbidden, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/admin/x", StatusForbidden)
 	require.NoError(t, resp.Body.Close())
 }
 

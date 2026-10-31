@@ -105,8 +105,6 @@ func Test_Store_Get(t *testing.T) {
 
 // An ID from the request must not reach an entry another middleware keeps in
 // the same Storage, even one whose bytes decode as session data.
-//
-// go test -run Test_Store_SharedStorage_ForeignRecord
 func Test_Store_SharedStorage_ForeignRecord(t *testing.T) {
 	t.Parallel()
 
@@ -119,9 +117,7 @@ func Test_Store_SharedStorage_ForeignRecord(t *testing.T) {
 	store := NewStore()
 	require.NoError(t, store.Storage.Set(foreignKey, forged.Bytes(), 0))
 
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.Ctx(t, fiber.New())
 	ctx.Request().Header.SetCookie(store.Extractor.Key, foreignKey)
 
 	sess, err := store.Get(ctx)
@@ -143,25 +139,19 @@ func Test_Store_SharedStorage_ForeignRecord(t *testing.T) {
 
 // A session can outlive its request, so its ID must not point into the request
 // buffer the connection's next request reuses.
-//
-// go test -run Test_Store_SessionIDOutlivesRequest
 func Test_Store_SessionIDOutlivesRequest(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	store := NewStore()
 	id := seedSession(t, app, store, func(s *Session) { s.Set("user", "alice") })
 
 	loaders := map[string]func(fiber.Ctx) (*Session, error){
-		"Get": store.Get,
-		"GetByID": func(c fiber.Ctx) (*Session, error) {
-			return store.GetByID(c, c.Cookies("session_id"))
-		},
+		"Get":     store.Get,
+		"GetByID": func(c fiber.Ctx) (*Session, error) { return store.GetByID(c, c.Cookies("session_id")) },
 	}
 	for name, load := range loaders {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			fctx := &fasthttp.RequestCtx{}
 			fctx.Request.Header.SetCookie("session_id", id)
 			ctx := app.AcquireCtx(fctx)

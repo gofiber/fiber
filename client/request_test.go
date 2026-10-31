@@ -1016,10 +1016,8 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 func Test_Request_RedirectSensitiveHeaders(t *testing.T) {
 	t.Parallel()
-
 	t.Run("the list", func(t *testing.T) {
 		t.Parallel()
-
 		req := AcquireRequest()
 		defer ReleaseRequest(req)
 		requireNameList(t, func(names ...string) { req.SetRedirectSensitiveHeaders(names...) }, req.RedirectSensitiveHeaders)
@@ -1028,7 +1026,6 @@ func Test_Request_RedirectSensitiveHeaders(t *testing.T) {
 
 	t.Run("Reset clears the list", func(t *testing.T) {
 		t.Parallel()
-
 		req := AcquireRequest()
 		defer ReleaseRequest(req)
 		req.SetRedirectSensitiveHeaders("X-Api-Key")
@@ -1040,7 +1037,6 @@ func Test_Request_RedirectSensitiveHeaders(t *testing.T) {
 
 func Test_Request_RedirectSensitiveHeaders_EndToEnd(t *testing.T) {
 	t.Parallel()
-
 	server := startRedirectServer(t, func(c fiber.Ctx) error {
 		return c.SendString(c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token") + "|" + c.Get("X-Trace-Id"))
 	})
@@ -1095,7 +1091,6 @@ func Test_Request_RedirectSensitiveHeaders_EndToEnd(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			client := New().SetDial(server.dial())
 			if tc.prepare != nil {
 				tc.prepare(client)

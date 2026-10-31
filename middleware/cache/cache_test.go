@@ -1606,7 +1606,6 @@ func Test_Cache_UncacheableResponseDoesNotEvict(t *testing.T) {
 // Body read a sized stream to its end and kept a read error as the body, which was then cached as a 200.
 func Test_Cache_SizedStreamIsStoredOnlyWhole(t *testing.T) {
 	t.Parallel()
-
 	for name, tc := range map[string]struct {
 		stream  func() io.Reader
 		maxRead int
@@ -1664,7 +1663,6 @@ func Test_Cache_SizedStreamIsStoredOnlyWhole(t *testing.T) {
 // A one-byte body under a URL-long key or Location holds kilobytes, so those count too.
 func Test_Cache_MaxBytes_CountsKeyAndHeaders(t *testing.T) {
 	t.Parallel()
-
 	const (
 		maxBytes = 64 * 1024
 		urlLen   = 3000
@@ -1677,7 +1675,6 @@ func Test_Cache_MaxBytes_CountsKeyAndHeaders(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			probe := &accountingProbe{}
 			cfg.MaxBytes, cfg.Expiration, cfg.accounting = maxBytes, time.Hour, probe.record
 			app := fiber.New()
@@ -4670,7 +4667,6 @@ func Test_Cache_VaryReplayedWithCompress(t *testing.T) {
 // keyed by the decrypted value the page went to anyone sending that value as a plain cookie.
 func Test_Cache_VaryKeyedByTheHeadersTheLookupSaw(t *testing.T) {
 	t.Parallel()
-
 	secret := encryptcookie.GenerateKey(32)
 	sealed, err := encryptcookie.EncryptCookie("user", "alice", secret)
 	require.NoError(t, err)
@@ -4686,9 +4682,7 @@ func Test_Cache_VaryKeyedByTheHeadersTheLookupSaw(t *testing.T) {
 		}
 		return c.SendString("please sign in")
 	})
-	app.Get("/other", func(c fiber.Ctx) error {
-		return c.SendString(strings.Repeat("x", 300))
-	})
+	app.Get("/other", func(c fiber.Ctx) error { return c.SendString(strings.Repeat("x", 300)) })
 
 	get := func(path, cookie string) [2]string {
 		t.Helper()
@@ -4696,12 +4690,10 @@ func Test_Cache_VaryKeyedByTheHeadersTheLookupSaw(t *testing.T) {
 		if cookie != "" {
 			req.Header.Set(fiber.HeaderCookie, cookie)
 		}
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
+		body := apptest.Body(t, resp)
 		require.NoError(t, resp.Body.Close())
-		return [2]string{string(body), resp.Header.Get("X-Cache")}
+		return [2]string{body, resp.Header.Get("X-Cache")}
 	}
 
 	// The second round starts after the URL's entries, and with them its Vary manifest, were evicted.
@@ -4764,7 +4756,6 @@ func Test_Cache_VaryLongerThanEntryLimitIsUncacheable(t *testing.T) {
 // does for Vary: past one the response is not stored, at it the entry round-trips.
 func Test_Cache_EntryPastDecodeLimitIsNotStored(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		set   func(c fiber.Ctx, n int)
 		name  string
@@ -4828,8 +4819,7 @@ func Test_Cache_EntryPastDecodeLimitIsNotStored(t *testing.T) {
 					want = []string{cacheUnreachable, cacheUnreachable}
 				}
 				for i, status := range want {
-					resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-					require.NoError(t, err)
+					resp := apptest.Do(t, app, "/")
 					require.Less(t, resp.StatusCode, fiber.StatusInternalServerError, "request %d", i+1)
 					require.Equal(t, status, resp.Header.Get("X-Cache"), "request %d", i+1)
 					require.NoError(t, resp.Body.Close())
@@ -4840,7 +4830,6 @@ func Test_Cache_EntryPastDecodeLimitIsNotStored(t *testing.T) {
 
 	t.Run("echoed header keeps the earlier entry", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New(fiber.Config{ReadBufferSize: 2 * maxStoredHeaderValue})
 		app.Use(New(Config{Storage: memory.New(), Expiration: time.Minute, StoreResponseHeaders: true}))
 		app.Get("/", func(c fiber.Ctx) error {
@@ -4854,12 +4843,7 @@ func Test_Cache_EntryPastDecodeLimitIsNotStored(t *testing.T) {
 			for k, v := range headers {
 				req.Header.Set(k, v)
 			}
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, "body", string(body))
+			resp := apptest.ExpectBody(t, app, req, fiber.StatusOK, "body")
 			require.NoError(t, resp.Body.Close())
 			return resp.Header.Get("X-Cache")
 		}
@@ -4876,7 +4860,6 @@ func Test_Cache_EntryPastDecodeLimitIsNotStored(t *testing.T) {
 
 	t.Run("in-memory store is not limited", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		app.Use(New(Config{Expiration: time.Minute}))
 		app.Get("/", func(c fiber.Ctx) error {
@@ -4885,8 +4868,7 @@ func Test_Cache_EntryPastDecodeLimitIsNotStored(t *testing.T) {
 		})
 
 		for i, status := range []string{cacheMiss, cacheHit} {
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, "/")
 			require.Equal(t, fiber.StatusOK, resp.StatusCode, "request %d", i+1)
 			require.Equal(t, status, resp.Header.Get("X-Cache"), "request %d", i+1)
 			require.NoError(t, resp.Body.Close())
@@ -5054,7 +5036,6 @@ func Test_configDefault_KeyCredentialHeaders(t *testing.T) {
 // although its Trailer field names them, as an upstream may send.
 func Test_Cache_ResponseLinesUnderTrailerNames(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New())
 	app.Get("/", func(c fiber.Ctx) error {
@@ -5066,8 +5047,7 @@ func Test_Cache_ResponseLinesUnderTrailerNames(t *testing.T) {
 	for _, user := range []string{"u0", "u1"} {
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set("X-User", user)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 		require.Equal(t, "private, no-store", resp.Header.Get(fiber.HeaderCacheControl))
 	}
@@ -5077,22 +5057,18 @@ func Test_Cache_ResponseLinesUnderTrailerNames(t *testing.T) {
 // another entry's body slot, Vary manifest or Vary variant.
 func Test_Cache_EntryKeyNeverNamesDerivedSlot(t *testing.T) {
 	t.Parallel()
-
 	get := func(t *testing.T, app *fiber.App, header, value string) (int, string, string) {
 		t.Helper()
 		req := httptest.NewRequest(fiber.MethodGet, "/news", http.NoBody)
 		req.Header.Set(header, value)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		raw, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
+		raw := apptest.Body(t, resp)
 		require.NoError(t, resp.Body.Close())
-		return resp.StatusCode, string(raw), resp.Header.Get("X-Cache")
+		return resp.StatusCode, raw, resp.Header.Get("X-Cache")
 	}
 
 	t.Run("body", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		app.Use(New(Config{Storage: memory.New()}))
 		app.Get("/news", func(c fiber.Ctx) error {
@@ -5114,15 +5090,12 @@ func Test_Cache_EntryKeyNeverNamesDerivedSlot(t *testing.T) {
 
 	t.Run("manifest", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
 		app.Use(New(Config{
 			Storage:      memory.New(),
 			KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|" + c.Get("X-Tenant") },
 		}))
-		app.Get("/news", func(c fiber.Ctx) error {
-			return c.SendString("news for " + c.Get("X-Tenant"))
-		})
+		app.Get("/news", func(c fiber.Ctx) error { return c.SendString("news for " + c.Get("X-Tenant")) })
 
 		for _, step := range []struct{ tenant, state string }{
 			{"acme", cacheMiss},
@@ -5138,11 +5111,8 @@ func Test_Cache_EntryKeyNeverNamesDerivedSlot(t *testing.T) {
 
 	t.Run("variant", func(t *testing.T) {
 		t.Parallel()
-
 		app := fiber.New()
-		app.Use(New(Config{
-			KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|" + c.Get("X-Tenant") },
-		}))
+		app.Use(New(Config{KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|" + c.Get("X-Tenant") }}))
 		app.Get("/news", func(c fiber.Ctx) error {
 			if c.Get("X-Tenant") != "acme" {
 				return c.SendString("news for " + c.Get("X-Tenant"))
@@ -5163,12 +5133,10 @@ func Test_Cache_EntryKeyNeverNamesDerivedSlot(t *testing.T) {
 			req := httptest.NewRequest(fiber.MethodGet, "/news", http.NoBody)
 			req.Header.Set("X-Tenant", step.tenant)
 			req.Header.Set(fiber.HeaderAcceptLanguage, step.lang)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			raw, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, req)
+			raw := apptest.Body(t, resp)
 			require.NoError(t, resp.Body.Close())
-			require.Equal(t, step.body, string(raw))
+			require.Equal(t, step.body, raw)
 			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"), step.tenant)
 		}
 	})

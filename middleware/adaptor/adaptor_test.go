@@ -667,7 +667,6 @@ func (*netHTTPResponseWriter) Flush() {}
 // fasthttpadaptor buffers the body for the http.Request, and with StreamRequestBody the server passes on a body of any size.
 func Test_StreamedBodyLimit(t *testing.T) {
 	t.Parallel()
-
 	const limit = 1024
 	echoLen := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n, err := io.Copy(io.Discard, r.Body)
@@ -697,20 +696,17 @@ func Test_StreamedBodyLimit(t *testing.T) {
 				if chunked {
 					req.TransferEncoding = []string{"chunked"}
 				}
-				resp, err := app.Test(req)
-				require.NoError(t, err)
+				resp := apptest.Do(t, app, req)
 				require.Equal(t, status, resp.StatusCode, "%s chunked=%v size=%d", target, chunked, size)
 				if status == fiber.StatusOK {
-					body, err := io.ReadAll(resp.Body)
-					require.NoError(t, err)
-					require.Equal(t, strconv.Itoa(size), string(body), "%s chunked=%v", target, chunked)
+					body := apptest.Body(t, resp)
+					require.Equal(t, strconv.Itoa(size), body, "%s chunked=%v", target, chunked)
 				}
 			}
 		}
 	}
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(t, app)
 	c.Request().SetBodyStream(iotest.ErrReader(errors.New("broken chunk")), -1)
 	_, err := ConvertRequest(c, true)
 	require.ErrorIs(t, err, fiber.ErrBadRequest)
@@ -721,7 +717,6 @@ func Test_StreamedBodyLimit(t *testing.T) {
 
 func Test_StreamedTrailerCap(t *testing.T) {
 	t.Parallel()
-
 	echo := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := io.Copy(w, r.Body)
 		assert.NoError(t, err)
@@ -736,9 +731,7 @@ func Test_StreamedTrailerCap(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 	errCh := make(chan error, 1)
-	go func() {
-		errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
-	}()
+	go func() { errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}) }()
 	t.Cleanup(func() {
 		require.NoError(t, app.Shutdown())
 		if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
@@ -1363,7 +1356,6 @@ func Test_ResolveRemoteAddr_FastPathEquivalence(t *testing.T) {
 // front proxy appended in front of the client's: fasthttp moves the store's last line into the removed slot.
 func Test_FiberApp_ProxyHeaderLinesKeepReceivedOrder(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{
 		ProxyHeader:        fiber.HeaderXForwardedFor,
 		TrustProxy:         true,
@@ -1374,9 +1366,7 @@ func Test_FiberApp_ProxyHeaderLinesKeepReceivedOrder(t *testing.T) {
 		c.Request().Header.Del(fiber.HeaderAuthorization)
 		return c.Next()
 	})
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.IP() + " " + c.Scheme())
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.IP() + " " + c.Scheme()) })
 	h := FiberApp(app)
 
 	// r.Header's map order decides which line is stored last, so several rounds. HTTP/2 keeps a value's edge
@@ -1845,7 +1835,6 @@ func Test_HTTPMiddleware_PropagatesHeaderRemoval(t *testing.T) {
 // middleware removed or replaced.
 func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
 	t.Parallel()
-
 	const owned = "X-Authenticated-User"
 
 	// Fiber drops the trailer section before r.Trailer is built: as the request arrives or, streamed, once the body is read.
@@ -1864,7 +1853,6 @@ func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			var (
 				trailer     []string
 				body        string
@@ -1896,9 +1884,7 @@ func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
 
 			ln := fasthttputil.NewInmemoryListener()
 			errCh := make(chan error, 1)
-			go func() {
-				errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
-			}()
+			go func() { errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}) }()
 			t.Cleanup(func() {
 				require.NoError(t, app.Shutdown())
 				if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
@@ -2223,32 +2209,16 @@ func Test_HTTPMiddleware_URLRewrite(t *testing.T) {
 // StripPrefix mounted on its own prefix see the stripped path.
 func Test_HTTPMiddleware_URLRewrite_OnPrefix(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
-	app.Use("/api", HTTPMiddleware(func(next http.Handler) http.Handler {
-		return http.StripPrefix("/api", next)
-	}))
-	app.Use("/admin", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusForbidden)
-	})
-	app.Get("/admin/report", func(c fiber.Ctx) error {
-		return c.SendString("report")
-	})
-	app.Get("/users", func(c fiber.Ctx) error {
-		return c.SendString("users at " + c.Path())
-	})
+	app.Use("/api", HTTPMiddleware(func(next http.Handler) http.Handler { return http.StripPrefix("/api", next) }))
+	app.Use("/admin", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
+	app.Get("/admin/report", func(c fiber.Ctx) error { return c.SendString("report") })
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendString("users at " + c.Path()) })
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/api/admin/report", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/api/admin/report", fiber.StatusForbidden)
 	require.NoError(t, resp.Body.Close())
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/api/users", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "users at /users", string(body))
+	apptest.ExpectBody(t, app, "/api/users", fiber.StatusOK, "users at /users")
 }
 
 // Test_FiberApp_TLS serves a request with a TLS connection state and one without through FiberApp, and
@@ -2401,7 +2371,6 @@ func Test_HTTPMiddleware_NoRewriteKeepsChainPosition(t *testing.T) {
 
 func Test_FiberAdaptors_TimedOutRequest(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		build func(h fiber.Handler) http.Handler
 		name  string
@@ -2415,7 +2384,6 @@ func Test_FiberAdaptors_TimedOutRequest(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			held := make(chan *fasthttp.RequestCtx, 1)
 			seen := make(chan *fasthttp.RequestCtx, 1)
 			release := make(chan struct{})
@@ -2460,7 +2428,6 @@ func Test_FiberAdaptors_TimedOutRequest(t *testing.T) {
 // net/http discards a HEAD body, so a stream read for one would run with every write succeeding.
 func Test_FiberAdaptors_HeadLeavesStreamUnread(t *testing.T) {
 	t.Parallel()
-
 	var handlers atomic.Int32
 	events := sse.New(sse.Config{
 		DisableHeartbeat: true,

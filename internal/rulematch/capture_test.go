@@ -75,7 +75,6 @@ func Test_CaptureTokens_Unescaped(t *testing.T) {
 
 func Test_DotSegments(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		in   string
 		want int

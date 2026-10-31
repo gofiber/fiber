@@ -16,7 +16,8 @@ import (
 
 // acquireReclaimTestCtx wires up a *DefaultCtx for reclaim tests without going
 // through a full request lifecycle, so each test can drive ScheduleReclaim,
-// signalReleased, and ReleaseCtx in isolation.
+// signalReleased, and ReleaseCtx in isolation. The tests release the context
+// themselves: when and whether it is released is what they exercise.
 func acquireReclaimTestCtx(t *testing.T) (*App, *DefaultCtx) {
 	t.Helper()
 	app := New()
@@ -86,7 +87,6 @@ func TestDefaultCtx_ScheduleReclaim_ReleaseBeforeHandlerDone(t *testing.T) {
 // middlewares do, in every order relative to the release.
 func TestDefaultCtx_ScheduleReclaim_Nested(t *testing.T) {
 	t.Parallel()
-
 	for _, order := range [][]string{
 		{"outer", "inner", "release"},
 		{"inner", "outer", "release"},
@@ -142,9 +142,7 @@ func TestDefaultCtx_ScheduleReclaim_Concurrent(t *testing.T) {
 	}, 50*time.Millisecond, 5*time.Millisecond, "ctx must not be reclaimed while the inner handler is still running")
 
 	close(innerDone)
-	require.Eventually(t, func() bool {
-		return !c.IsAbandoned()
-	}, time.Second, 5*time.Millisecond, "ctx must be reclaimed once both goroutines have finished")
+	ctxExpectReclaimed(t, c, "ctx must be reclaimed once both goroutines have finished")
 }
 
 // TestDefaultCtx_ScheduleReclaim_Cancel verifies the cancel hook fires exactly

@@ -653,13 +653,11 @@ func Test_Compress_Response_Repeated_Cache_Control_Lines_No_Transform(t *testing
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
-	resp, err := app.Test(req, testConfig)
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, req, testConfig)
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.BodyBytes(t, resp)
 	require.Len(t, body, len(filedata))
 }
 
@@ -678,8 +676,7 @@ func Test_Compress_Response_No_Transform_After_Escaped_Quote(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
-	resp, err := app.Test(req, testConfig)
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, req, testConfig)
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 }
@@ -699,8 +696,7 @@ func Test_Compress_Response_Quoted_Cache_Control_Argument_Is_Not_No_Transform(t 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
-	resp, err := app.Test(req, testConfig)
-	require.NoError(t, err, "app.Test(req)")
+	resp := apptest.Do(t, app, req, testConfig)
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 }

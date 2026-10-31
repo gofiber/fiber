@@ -622,7 +622,6 @@ func Test_Redirect_release_ZeroesMessages(t *testing.T) {
 
 func Test_ReleaseRedirect_DropsOversizedMessages(t *testing.T) {
 	t.Parallel()
-
 	r := AcquireRedirect()
 	for i := range maxPoolableMessages + 1 {
 		r.With(strconv.Itoa(i), "v")

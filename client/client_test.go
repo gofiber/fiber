@@ -277,10 +277,8 @@ func Test_Client_SetRootCertificate_InvalidInput(t *testing.T) {
 
 func TestClient_RedirectSensitiveHeaders(t *testing.T) {
 	t.Parallel()
-
 	t.Run("the list", func(t *testing.T) {
 		t.Parallel()
-
 		client := New()
 		requireNameList(t, func(names ...string) { client.SetRedirectSensitiveHeaders(names...) }, client.RedirectSensitiveHeaders)
 		require.Same(t, client, client.SetRedirectSensitiveHeaders())
@@ -288,7 +286,6 @@ func TestClient_RedirectSensitiveHeaders(t *testing.T) {
 
 	t.Run("the options for a request carry the client's and the request's names together", func(t *testing.T) {
 		t.Parallel()
-
 		client := New().SetRedirectSensitiveHeaders("X-One")
 		own := New().R().SetRedirectSensitiveHeaders("X-Two")
 
@@ -1436,9 +1433,7 @@ func Benchmark_Client_Request(b *testing.B) {
 // Benchmark_Client_Request_RetryRedirects is the request shape that takes a backup.
 func Benchmark_Client_Request_RetryRedirects(b *testing.B) {
 	app, dial, start := createHelperServer(b)
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("hello world")
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("hello world") })
 
 	go start()
 
@@ -1598,7 +1593,6 @@ func Test_Client_MaxResponseBodySize(t *testing.T) {
 
 	t.Run("a new client refuses a declared size over the limit", func(t *testing.T) {
 		t.Parallel()
-
 		over := defaultMaxResponseBodySize + 1
 		for _, response := range []string{
 			"HTTP/1.1 200 OK\r\nContent-Length: " + strconv.Itoa(over) + "\r\n\r\nok",
@@ -1614,7 +1608,6 @@ func Test_Client_MaxResponseBodySize(t *testing.T) {
 
 	t.Run("the limit can be set and Reset restores it", func(t *testing.T) {
 		t.Parallel()
-
 		dial := answerWith(t, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello")
 
 		_, err := New().SetDial(dial).SetMaxResponseBodySize(4).Get("http://example.com/")
@@ -1632,7 +1625,6 @@ func Test_Client_MaxResponseBodySize(t *testing.T) {
 
 	t.Run("a wrapped client keeps its own setting", func(t *testing.T) {
 		t.Parallel()
-
 		host := &fasthttp.HostClient{Addr: "example.com:80"}
 		first := &fasthttp.HostClient{Addr: "example.com:80"}
 		second := &fasthttp.HostClient{Addr: "example.org:80"}
@@ -2064,7 +2056,6 @@ func Test_Request_Resend_DoesNotAccumulateHeaders(t *testing.T) {
 
 func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 	t.Parallel()
-
 	server := startTestServer(t, func(app *fiber.App) {
 		app.Get("/login", func(c fiber.Ctx) error {
 			c.Cookie(&fiber.Cookie{Name: "sid", Value: "secret", Path: "/"})
@@ -2074,9 +2065,7 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 			c.Cookie(&fiber.Cookie{Name: "sid", Path: "/", MaxAge: -1})
 			return c.SendStatus(fiber.StatusNoContent)
 		})
-		app.Get("/cookies", func(c fiber.Ctx) error {
-			return c.SendString(c.Get(fiber.HeaderCookie))
-		})
+		app.Get("/cookies", func(c fiber.Ctx) error { return c.SendString(c.Get(fiber.HeaderCookie)) })
 	})
 	t.Cleanup(server.stop)
 
@@ -2090,7 +2079,6 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 
 	t.Run("a jar cookie does not follow the request to another host", func(t *testing.T) {
 		t.Parallel()
-
 		jar := AcquireCookieJar()
 		defer ReleaseCookieJar(jar)
 		req := AcquireRequest().SetClient(New().SetDial(server.dial()).SetCookieJar(jar))
@@ -2103,7 +2091,6 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 
 	t.Run("a jar cookie the server expired is not sent again", func(t *testing.T) {
 		t.Parallel()
-
 		jar := AcquireCookieJar()
 		defer ReleaseCookieJar(jar)
 		req := AcquireRequest().SetClient(New().SetDial(server.dial()).SetCookieJar(jar))
@@ -2116,7 +2103,6 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 
 	t.Run("a deleted cookie is not sent again", func(t *testing.T) {
 		t.Parallel()
-
 		client := New().SetDial(server.dial()).SetCookie("a", "1")
 		req := AcquireRequest().SetClient(client).SetCookie("b", "2")
 		defer ReleaseRequest(req)
@@ -2129,7 +2115,6 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 
 	t.Run("a Cookie header set on the request is kept", func(t *testing.T) {
 		t.Parallel()
-
 		req := AcquireRequest().SetClient(New().SetDial(server.dial())).SetHeader(fiber.HeaderCookie, "a=1")
 		defer ReleaseRequest(req)
 

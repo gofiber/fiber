@@ -829,7 +829,6 @@ func Test_Session_ReleaseMiddleware_DoesNotRecycleAPublishedOne(t *testing.T) {
 // timeout.New gave up on stays in its own session, never in another request's.
 func Test_Session_Middleware_TimedOutHandler(t *testing.T) {
 	t.Parallel()
-
 	const others = 16
 
 	var (
@@ -857,9 +856,7 @@ func Test_Session_Middleware_TimedOutHandler(t *testing.T) {
 		return c.SendString(fmt.Sprint(sess.Get("user")))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/login", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	apptest.Expect(t, app, "/login", fiber.StatusServiceUnavailable)
 
 	m := <-held
 	m.mu.RLock()
@@ -908,7 +905,6 @@ func Test_Session_Middleware_TimedOutHandler(t *testing.T) {
 // timeout.New that runs c.Next, so its check runs on the abandoned goroutine.
 func Test_Session_Middleware_FinishesOnTimedOutGoroutine(t *testing.T) {
 	t.Parallel()
-
 	finished := make(chan struct{})
 	app := fiber.New()
 	app.Use(timeout.New(func(c fiber.Ctx) error { return c.Next() }, timeout.Config{Timeout: 10 * time.Millisecond}))
@@ -923,9 +919,7 @@ func Test_Session_Middleware_FinishesOnTimedOutGoroutine(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusServiceUnavailable)
 	<-finished
 }
 
@@ -975,15 +969,11 @@ func Benchmark_Middleware(b *testing.B) {
 
 // A request still in its handler when another request of the same session logs
 // out must not bring the session back when the middleware saves it.
-//
-// go test -run Test_Session_Middleware_LogoutDuringRequest
 func Test_Session_Middleware_LogoutDuringRequest(t *testing.T) {
 	t.Parallel()
-
 	for _, logout := range []string{"/reset", "/destroy"} {
 		t.Run(logout, func(t *testing.T) {
 			t.Parallel()
-
 			loaded, loggedOut := make(chan struct{}), make(chan struct{})
 			app := fiber.New()
 			app.Use(New())
@@ -1002,9 +992,7 @@ func Test_Session_Middleware_LogoutDuringRequest(t *testing.T) {
 				<-loggedOut
 				return nil
 			})
-			app.Get("/whoami", func(c fiber.Ctx) error {
-				return c.SendString(fmt.Sprint(FromContext(c).Get("user")))
-			})
+			app.Get("/whoami", func(c fiber.Ctx) error { return c.SendString(fmt.Sprint(FromContext(c).Get("user"))) })
 			h := app.Handler()
 
 			send := func(method, path, id string) *fasthttp.RequestCtx {

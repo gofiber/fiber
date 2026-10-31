@@ -566,7 +566,6 @@ func TestDoRedirectsWithClient_StripsCredentialsCrossHost(t *testing.T) {
 
 func TestDoRedirectsWithClient_DropsBuiltInHeadersWhateverTheirCase(t *testing.T) {
 	t.Parallel()
-
 	names := []string{
 		"authorization",
 		"proxy-authorization",
@@ -604,7 +603,6 @@ func TestDoRedirectsWithClient_DropsBuiltInHeadersWhateverTheirCase(t *testing.T
 
 	t.Run("another host drops every one", func(t *testing.T) {
 		t.Parallel()
-
 		req := follow(t, "http://attacker.example/collect")
 		for _, name := range names {
 			require.Empty(t, fieldname.Lines(&req.Header, name, false), name)
@@ -614,7 +612,6 @@ func TestDoRedirectsWithClient_DropsBuiltInHeadersWhateverTheirCase(t *testing.T
 
 	t.Run("same host keeps every one", func(t *testing.T) {
 		t.Parallel()
-
 		req := follow(t, "http://example.com/next")
 		for _, name := range names {
 			require.Len(t, fieldname.Lines(&req.Header, name, false), 1, name)
@@ -625,7 +622,6 @@ func TestDoRedirectsWithClient_DropsBuiltInHeadersWhateverTheirCase(t *testing.T
 
 func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 	t.Parallel()
-
 	plain := func(req *fasthttp.Request) {
 		req.Header.Set(fasthttp.HeaderAuthorization, "Bearer secret")
 		req.Header.Set("X-Api-Key", "key")
@@ -689,7 +685,6 @@ func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			req := fasthttp.AcquireRequest()
 			defer fasthttp.ReleaseRequest(req)
 			resp := fasthttp.AcquireResponse()
@@ -720,7 +715,6 @@ func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 
 func TestClient_DoRedirects_DropsClientListedHeaders(t *testing.T) {
 	t.Parallel()
-
 	server := startRedirectServer(t, func(c fiber.Ctx) error {
 		return c.SendString(c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token"))
 	})
@@ -755,7 +749,6 @@ func TestClient_DoRedirects_DropsClientListedHeaders(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			client := newClient()
 
 			require.Equal(t, "key|tok", do(t, client, "/start"))
@@ -894,7 +887,6 @@ func TestDoRedirectsWithClientDefaultLimit(t *testing.T) {
 
 func TestDoRedirectsWithClientDeadlineCoversTheChain(t *testing.T) {
 	t.Parallel()
-
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseRequest(req)

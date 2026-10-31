@@ -106,7 +106,6 @@ func Test_Value(t *testing.T) {
 
 	t.Run("a field of a held trailer section is refused", func(t *testing.T) {
 		t.Parallel()
-
 		for _, normalize := range []bool{true, false} {
 			for _, headers := range []string{"X-User: alice\r\n", ""} {
 				c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
@@ -191,7 +190,6 @@ func Test_Combined(t *testing.T) {
 
 	t.Run("a field of a held trailer section is not read", func(t *testing.T) {
 		t.Parallel()
-
 		for _, normalize := range []bool{true, false} {
 			for _, headers := range []string{"X-User: alice\r\n", ""} {
 				c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})

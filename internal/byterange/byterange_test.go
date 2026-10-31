@@ -347,7 +347,6 @@ func Test_Wrap_IfRange_Strength(t *testing.T) {
 // If-Range check fetched.
 func Test_Wrap_IfRange_UnsatisfiableCompressed(t *testing.T) {
 	t.Parallel()
-
 	dir := t.TempDir()
 	name := filepath.Join(dir, "file.txt")
 	require.NoError(t, os.WriteFile(name, []byte(strings.Repeat("a", 4000)), 0o600))

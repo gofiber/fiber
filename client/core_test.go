@@ -576,7 +576,6 @@ func (n *namesTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Respo
 
 func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 	t.Parallel()
-
 	client := New().SetRedirectSensitiveHeaders("X-Client")
 	transport := newNamesTransport()
 	client.transport = transport
@@ -660,7 +659,6 @@ func Test_Core_RetryRestartsRedirects(t *testing.T) {
 
 	t.Run("from the request as it was sent", func(t *testing.T) {
 		t.Parallel()
-
 		transport, host := run(t, func(*Request) {})
 		require.Equal(t, []string{"http://example.com/start|key", "http://example.com/start|key"}, transport.starts)
 		require.Equal(t, "final.example", host)
@@ -673,7 +671,6 @@ func Test_Core_RetryRestartsRedirects(t *testing.T) {
 
 	t.Run("a streamed body is left alone", func(t *testing.T) {
 		t.Parallel()
-
 		transport, _ := run(t, func(req *Request) {
 			req.RawRequest.SetBodyStream(bytes.NewBufferString("payload"), len("payload"))
 		})
@@ -682,7 +679,6 @@ func Test_Core_RetryRestartsRedirects(t *testing.T) {
 
 	t.Run("a request that follows no redirects is sent as is", func(t *testing.T) {
 		t.Parallel()
-
 		transport := &rewritingTransport{delayedTransport: newDelayedTransport(0)}
 		client := New().SetRetryConfig(&RetryConfig{MaxRetryCount: 2})
 		client.transport = transport
@@ -696,10 +692,7 @@ func Test_Core_RetryRestartsRedirects(t *testing.T) {
 
 func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
 	t.Parallel()
-
-	server := startRedirectServer(t, func(c fiber.Ctx) error {
-		return c.SendString(c.Get("X-Api-Key"))
-	})
+	server := startRedirectServer(t, func(c fiber.Ctx) error { return c.SendString(c.Get("X-Api-Key")) })
 	defer server.stop()
 
 	client := New().SetDial(server.dial())
@@ -713,9 +706,7 @@ func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
 	for range workers {
 		wg.Go(func() {
 			for range rounds {
-				resp, err := client.R().
-					SetHeader("X-Api-Key", "key").
-					SetMaxRedirects(3).
+				resp, err := client.R().SetHeader("X-Api-Key", "key").SetMaxRedirects(3).
 					SetRedirectSensitiveHeaders("X-Request").
 					Get("http://example.com/start")
 				if err != nil {
@@ -841,11 +832,9 @@ func silentServer(t *testing.T) (dial fasthttp.DialFunc, hungUp <-chan struct{})
 
 func Test_Execute_TimeoutEndsTheExchange(t *testing.T) {
 	t.Parallel()
-
 	for _, url := range []string{"http://example.com/", "https://example.com/"} {
 		t.Run(url, func(t *testing.T) {
 			t.Parallel()
-
 			dial, hungUp := silentServer(t)
 			client := New().SetDial(dial).SetTimeout(50 * time.Millisecond)
 
@@ -862,7 +851,6 @@ func Test_Execute_TimeoutEndsTheExchange(t *testing.T) {
 
 	t.Run("redirects share the deadline", func(t *testing.T) {
 		t.Parallel()
-
 		transport := &deadlineTransport{delayedTransport: newDelayedTransport(0)}
 		client := New()
 		client.transport = transport
@@ -910,7 +898,6 @@ func Test_Execute_TimeoutEndsTheExchange(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var attempts atomic.Int32
 			client := New().
 				SetDial(func(string) (net.Conn, error) {

@@ -545,7 +545,6 @@ func Test_App_Use_Params(t *testing.T) {
 
 func Test_App_Use_PanicsOnDroppedArguments(t *testing.T) {
 	t.Parallel()
-
 	deny := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
 	guardApp := New()
 	guardApp.Use(deny)
@@ -575,9 +574,7 @@ func Test_App_Use_PanicsOnDroppedArguments(t *testing.T) {
 	app := New()
 	app.Use("/admin", deny)
 	app.Use("/admin", sub)
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/admin/panel", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusUnauthorized, resp.StatusCode)
+	apptest.Expect(t, app, "/admin/panel", StatusUnauthorized)
 }
 
 func Test_App_Use_UnescapedPath(t *testing.T) {
@@ -715,12 +712,9 @@ func Test_App_GETOnly(t *testing.T) {
 	apptest.Expect(t, app, apptest.Req(MethodPost, "/"), StatusMethodNotAllowed)
 }
 
-// go test -run Test_App_RefusedRequest_Middleware_Status
 func Test_App_RefusedRequest_Middleware_Status(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
-		BodyLimit: 8,
-	})
+	app := New(Config{BodyLimit: 8})
 
 	observed := make(chan int, 1)
 	app.Use(func(c Ctx) error {
@@ -729,9 +723,7 @@ func Test_App_RefusedRequest_Middleware_Status(t *testing.T) {
 		return err
 	})
 
-	app.Post("/", func(c Ctx) error {
-		return c.SendString("Hello 👋!")
-	})
+	app.Post("/", func(c Ctx) error { return c.SendString("Hello 👋!") })
 
 	req := httptest.NewRequest(MethodPost, "/", strings.NewReader(strings.Repeat("x", 64)))
 	_, err := app.Test(req)
@@ -740,12 +732,9 @@ func Test_App_RefusedRequest_Middleware_Status(t *testing.T) {
 }
 
 // The replay would run a Use handler that ends the chain with the method GETOnly refused.
-// go test -run Test_App_GETOnly_RefusedMethodIsNotReplayed
 func Test_App_GETOnly_RefusedMethodIsNotReplayed(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
-		GETOnly: true,
-	})
+	app := New(Config{GETOnly: true})
 
 	var ran []string
 	app.Use("/api", func(c Ctx) error {
@@ -753,20 +742,15 @@ func Test_App_GETOnly_RefusedMethodIsNotReplayed(t *testing.T) {
 		return c.SendString("done")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodPost, "/api/jobs/7/cancel", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+	resp := apptest.Expect(t, app, apptest.Req(MethodPost, "/api/jobs/7/cancel"), StatusMethodNotAllowed)
 	require.Equal(t, "GET, HEAD", resp.Header.Get(HeaderAllow))
 	require.Empty(t, ran)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/api/jobs/7", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/api/jobs/7", StatusOK)
 	require.Equal(t, []string{MethodGet}, ran)
 }
 
 // The replay skips a guard registered as a route, and SendStatus keeps a body already written.
-// go test -run Test_App_RefusedRequest_ChainBodyIsNotSent
 func Test_App_RefusedRequest_ChainBodyIsNotSent(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -780,12 +764,8 @@ func Test_App_RefusedRequest_ChainBodyIsNotSent(t *testing.T) {
 		},
 	})
 
-	app.All("/admin/*", func(c Ctx) error {
-		return c.SendStatus(StatusUnauthorized)
-	})
-	app.Use(func(c Ctx) error {
-		return c.SendString("TOP-SECRET")
-	})
+	app.All("/admin/*", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
+	app.Use(func(c Ctx) error { return c.SendString("TOP-SECRET") })
 	ln := startRawServer(t, app)
 
 	responses, _ := rawExchange(t, ln, "GET /admin/secret.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", 1)
@@ -2297,9 +2277,7 @@ func Test_App_ReadBodyStream(t *testing.T) {
 func Test_App_ReadBodyStream_BodyLimit(t *testing.T) {
 	t.Parallel()
 	app := New(Config{StreamRequestBody: true, BodyLimit: 1024})
-	app.Post("/", func(c Ctx) error {
-		return c.SendString(strconv.Itoa(len(c.Body())))
-	})
+	app.Post("/", func(c Ctx) error { return c.SendString(strconv.Itoa(len(c.Body()))) })
 	// Like logger's ${body}, a body read after the handler has drained the stream must not change its answer.
 	app.Use("/stream", func(c Ctx) error {
 		err := c.Next()
@@ -2334,9 +2312,7 @@ func Test_App_ReadBodyStream_BodyLimit(t *testing.T) {
 			if tc.chunked {
 				req.TransferEncoding = []string{"chunked"}
 			}
-			resp, err := app.Test(req)
-			require.NoError(t, err, "app.Test(req)")
-			require.Equal(t, tc.status, resp.StatusCode)
+			apptest.Expect(t, app, req, tc.status)
 		})
 	}
 }
@@ -2389,7 +2365,6 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 // handlers run: FormFile parses it on demand within BodyLimit.
 func Test_App_StreamRequestBody_MultipartBodyLimit(t *testing.T) {
 	t.Parallel()
-
 	const limit = 64 * 1024
 	app := New(Config{StreamRequestBody: true, BodyLimit: limit})
 	app.Post("/", func(c Ctx) error {
@@ -2413,7 +2388,6 @@ func Test_App_StreamRequestBody_MultipartBodyLimit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			b := &bytes.Buffer{}
 			w := multipart.NewWriter(b)
 			writer, err := w.CreateFormFile("test", "test")
@@ -2424,9 +2398,7 @@ func Test_App_StreamRequestBody_MultipartBodyLimit(t *testing.T) {
 
 			req := httptest.NewRequest(MethodPost, "/", b)
 			req.Header.Set(HeaderContentType, w.FormDataContentType())
-			resp, err := app.Test(req)
-			require.NoError(t, err, "app.Test(req)")
-			require.Equal(t, tc.status, resp.StatusCode)
+			apptest.Expect(t, app, req, tc.status)
 		})
 	}
 }
@@ -2836,7 +2808,7 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 func acquireDefaultCtxForAppBenchmark(b *testing.B, app *App, fctx *fasthttp.RequestCtx) *DefaultCtx {
 	b.Helper()
 
-	ctx := app.AcquireCtx(fctx)
+	ctx := apptest.CtxFor(b, app, fctx)
 	defaultCtx, ok := ctx.(*DefaultCtx)
 	if !ok {
 		b.Fatal("AcquireCtx did not return *DefaultCtx")
@@ -3333,7 +3305,6 @@ func Test_App_TransferEncoding_SecureErrorLogMessage(t *testing.T) {
 // The status follows what the parser reported, never request bytes its error quotes.
 func Test_App_serverErrorHandler_StatusIgnoresQuotedBytes(t *testing.T) {
 	t.Parallel()
-
 	const chunked = "GET / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n"
 	tests := []struct {
 		name   string
@@ -3350,7 +3321,6 @@ func Test_App_serverErrorHandler_StatusIgnoresQuotedBytes(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			app.Server().SecureErrorLogMessage = tc.secure
 			app.Get("/", func(c Ctx) error { return c.SendString("page") })
@@ -3365,18 +3335,13 @@ func Test_App_serverErrorHandler_StatusIgnoresQuotedBytes(t *testing.T) {
 // A read timeout inside a chunked body surfaces as ErrBrokenChunk, which hides the net error.
 func Test_App_serverErrorHandler_ChunkReadTimeout(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{ReadTimeout: 200 * time.Millisecond})
 	app.Post("/", func(c Ctx) error { return c.SendString("posted") })
 	ln := startRawServer(t, app)
 
-	for name, stalled := range map[string]string{
-		"in chunk data":           "5\r",
-		"before the trailer ends": "0\r\n",
-	} {
+	for name, stalled := range map[string]string{"in chunk data": "5\r", "before the trailer ends": "0\r\n"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			responses, _ := rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n"+stalled, 1)
 			require.Equal(t, StatusRequestTimeout, responses[0].status)
 		})

@@ -660,7 +660,6 @@ func Test_CookieJar_DomainMatchBoundary(t *testing.T) {
 // A zone ending in a site's domain must neither receive nor set its cookies.
 func Test_CookieJar_IPv6ZoneIsNotASubdomain(t *testing.T) {
 	t.Parallel()
-
 	jar := &CookieJar{}
 
 	site := fasthttp.AcquireURI()
@@ -1293,7 +1292,6 @@ func Test_CookieJar_CookieName(t *testing.T) {
 	} {
 		t.Run("response "+setCookie, func(t *testing.T) {
 			t.Parallel()
-
 			jar := AcquireCookieJar()
 			defer ReleaseCookieJar(jar)
 
@@ -1317,7 +1315,6 @@ func Test_CookieJar_CookieName(t *testing.T) {
 	} {
 		t.Run("set "+kv[0], func(t *testing.T) {
 			t.Parallel()
-
 			jar := AcquireCookieJar()
 			defer ReleaseCookieJar(jar)
 
@@ -1329,7 +1326,6 @@ func Test_CookieJar_CookieName(t *testing.T) {
 
 	t.Run("trimmed name replaces the stored cookie", func(t *testing.T) {
 		t.Parallel()
-
 		jar := AcquireCookieJar()
 		defer ReleaseCookieJar(jar)
 
@@ -1345,7 +1341,6 @@ func Test_CookieJar_CookieName(t *testing.T) {
 
 	t.Run("caller's cookie is left alone", func(t *testing.T) {
 		t.Parallel()
-
 		jar := AcquireCookieJar()
 		defer ReleaseCookieJar(jar)
 

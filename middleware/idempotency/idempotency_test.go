@@ -823,7 +823,6 @@ func Test_Idempotency_SizedStreamIsReplayed(t *testing.T) {
 // Body read a sized stream to its end and kept a read error as the body, which was stored and replayed.
 func Test_Idempotency_SizedStreamIsStoredOnlyWhole(t *testing.T) {
 	t.Parallel()
-
 	for name, tc := range map[string]struct {
 		stream   func() io.Reader
 		declared int
@@ -877,7 +876,6 @@ func Test_Idempotency_SizedStreamIsStoredOnlyWhole(t *testing.T) {
 // left answered the retry with an empty 413 for the whole Lifetime.
 func Test_Idempotency_RefusedRequestIsNotStored(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{BodyLimit: 8})
 	s := &storagetest.Memory{}
 	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))

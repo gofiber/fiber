@@ -4,8 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -654,10 +652,8 @@ func Test_Middleware_Encrypts_Every_SetCookie_Line(t *testing.T) {
 			want:  []line{{"", "; max-age=0; path=/app; SameSite=Lax"}, {"SomeThing", "; Path=/; HttpOnly"}},
 		},
 		{
-			name: "a quoted value with a backslash",
-			write: func(c fiber.Ctx) {
-				c.Add(fiber.HeaderSetCookie, `token="Some\054Thing"; HttpOnly`)
-			},
+			name:  "a quoted value with a backslash",
+			write: func(c fiber.Ctx) { c.Add(fiber.HeaderSetCookie, `token="Some\054Thing"; HttpOnly`) },
 			cname: "token",
 			want:  []line{{`Some\054Thing`, "; HttpOnly"}},
 		},
@@ -670,26 +666,20 @@ func Test_Middleware_Encrypts_Every_SetCookie_Line(t *testing.T) {
 			want:  []line{{"SomeThing", "; path=/café; HttpOnly; secure; SameSite=Lax"}},
 		},
 		{
-			name: "an attribute fasthttp does not know",
-			write: func(c fiber.Ctx) {
-				c.Add(fiber.HeaderSetCookie, "token=SomeThing; Path=/; Priority=High")
-			},
+			name:  "an attribute fasthttp does not know",
+			write: func(c fiber.Ctx) { c.Add(fiber.HeaderSetCookie, "token=SomeThing; Path=/; Priority=High") },
 			cname: "token",
 			want:  []line{{"SomeThing", "; Path=/; Priority=High"}},
 		},
 		{
-			name: "spaces around name and value",
-			write: func(c fiber.Ctx) {
-				c.Add(fiber.HeaderSetCookie, "token = SomeThing ; Path=/")
-			},
+			name:  "spaces around name and value",
+			write: func(c fiber.Ctx) { c.Add(fiber.HeaderSetCookie, "token = SomeThing ; Path=/") },
 			cname: "token",
 			want:  []line{{"SomeThing", "; Path=/"}},
 		},
 		{
-			name: "a value with no name",
-			write: func(c fiber.Ctx) {
-				c.Add(fiber.HeaderSetCookie, "SomeThing; Path=/")
-			},
+			name:  "a value with no name",
+			write: func(c fiber.Ctx) { c.Add(fiber.HeaderSetCookie, "SomeThing; Path=/") },
 			cname: "",
 			want:  []line{{"SomeThing", "; Path=/"}},
 		},
@@ -753,9 +743,7 @@ func Test_Middleware_EncryptionError_Removes_Every_SetCookie_Line(t *testing.T) 
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 	require.Equal(t, []string{"plain=one; Path=/a", "plain=two; Path=/b"}, resp.Header.Values(fiber.HeaderSetCookie))
 }
 
@@ -776,9 +764,7 @@ func Test_Middleware_Request_Cookies_Linear(t *testing.T) {
 			return "", errRefused
 		},
 	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Cookies("plain") + "|" + c.Cookies("token"))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Cookies("plain") + "|" + c.Cookies("token")) })
 	h := app.Handler()
 
 	parts := make([]string, n)
@@ -822,9 +808,7 @@ func Test_Middleware_Request_Cookies_Linear(t *testing.T) {
 func Benchmark_Middleware_Request_Cookies_Refused(b *testing.B) {
 	app := fiber.New()
 	app.Use(New(Config{Key: GenerateKey(32)}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("value=" + c.Cookies("test"))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + c.Cookies("test")) })
 	h := app.Handler()
 
 	// 1000 distinct names that do not decrypt fit the default 8 KB ReadBufferSize
@@ -846,7 +830,6 @@ func Benchmark_Middleware_Request_Cookies_Refused(b *testing.B) {
 
 func Test_Middleware_LeavesTimedOutResponse(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Key: GenerateKey(32)}))
 	ctxCh := make(chan fiber.Ctx, 1)
@@ -860,9 +843,7 @@ func Test_Middleware_LeavesTimedOutResponse(t *testing.T) {
 		return nil
 	}, timeout.Config{Timeout: 10 * time.Millisecond}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusServiceUnavailable)
 	c := <-ctxCh
 	cookie := fasthttp.Cookie{}
 	cookie.SetKey("late")

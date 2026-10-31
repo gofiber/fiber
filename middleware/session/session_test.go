@@ -1654,11 +1654,8 @@ func Test_Session_ConcurrentAliasedReadAndSave(t *testing.T) {
 
 // A request that loaded a session before another request ended it must not
 // store it again, or the logout is undone.
-//
-// go test -run Test_Session_SaveAfterConcurrentEnd
 func Test_Session_SaveAfterConcurrentEnd(t *testing.T) {
 	t.Parallel()
-
 	ends := []struct {
 		end  func(t *testing.T, store *Store, sess *Session)
 		name string
@@ -1688,7 +1685,6 @@ func Test_Session_SaveAfterConcurrentEnd(t *testing.T) {
 	for _, tc := range ends {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			for _, modified := range []bool{false, true} {
 				name := "read only"
 				if modified {
@@ -1696,12 +1692,9 @@ func Test_Session_SaveAfterConcurrentEnd(t *testing.T) {
 				}
 				t.Run(name, func(t *testing.T) {
 					t.Parallel()
-
 					app := fiber.New()
 					store := NewStore(Config{Storage: memory.New()})
-					id := seedSession(t, app, store, func(sess *Session) {
-						sess.Set("user", "alice")
-					})
+					id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
 
 					inFlight := loadSession(t, app, store, id)
 					tc.end(t, store, loadSession(t, app, store, id))
@@ -1720,16 +1713,11 @@ func Test_Session_SaveAfterConcurrentEnd(t *testing.T) {
 }
 
 // Deleting another ID of the same lock shard must not cost a session its save.
-//
-// go test -run Test_Session_SaveAfterUnrelatedDelete
 func Test_Session_SaveAfterUnrelatedDelete(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	store := NewStore(Config{Storage: memory.New()})
-	id := seedSession(t, app, store, func(sess *Session) {
-		sess.Set("user", "alice")
-	})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
 	sibling := store.KeyGenerator()
 	for lockFor(storageKeyPrefix+sibling) != lockFor(storageKeyPrefix+id) {
 		sibling = store.KeyGenerator()
@@ -1754,16 +1742,11 @@ func Test_Session_SaveAfterUnrelatedDelete(t *testing.T) {
 
 // A request that left the session unchanged must not write the snapshot it
 // loaded back over a change another request stored meanwhile.
-//
-// go test -run Test_Session_SaveAfterConcurrentChange
 func Test_Session_SaveAfterConcurrentChange(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	store := NewStore(Config{Storage: memory.New()})
-	id := seedSession(t, app, store, func(sess *Session) {
-		sess.Set("role", "admin")
-	})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("role", "admin") })
 
 	inFlight := loadSession(t, app, store, id)
 	demote := loadSession(t, app, store, id)
@@ -1780,24 +1763,15 @@ func Test_Session_SaveAfterConcurrentChange(t *testing.T) {
 
 // A change to another ID of the same lock shard must not cost an unchanged
 // session its write-back, which slides the idle timeout.
-//
-// go test -run Test_Session_WriteBackAfterUnrelatedChange
 func Test_Session_WriteBackAfterUnrelatedChange(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	storage := storagetest.New()
 	store := NewStore(Config{Storage: storage})
-	id := seedSession(t, app, store, func(sess *Session) {
-		sess.Set("user", "alice")
-	})
-	sibling := seedSession(t, app, store, func(sess *Session) {
-		sess.Set("user", "bob")
-	})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
+	sibling := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "bob") })
 	for lockFor(storageKeyPrefix+sibling) != lockFor(storageKeyPrefix+id) {
-		sibling = seedSession(t, app, store, func(sess *Session) {
-			sess.Set("user", "bob")
-		})
+		sibling = seedSession(t, app, store, func(sess *Session) { sess.Set("user", "bob") })
 	}
 
 	sess := loadSession(t, app, store, id)
@@ -1834,17 +1808,12 @@ func (s *gateStorage) Set(key string, val []byte, exp time.Duration) error {
 
 // A save that passed its check is still writing; a delete of the same ID has to
 // wait for it, or the write lands after the delete.
-//
-// go test -run Test_Session_DeleteWaitsForRunningSave
 func Test_Session_DeleteWaitsForRunningSave(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	storage := &gateStorage{Storage: memory.New(), entered: make(chan struct{}), release: make(chan struct{})}
 	store := NewStore(Config{Storage: storage})
-	id := seedSession(t, app, store, func(sess *Session) {
-		sess.Set("user", "alice")
-	})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
 	inFlight := loadSession(t, app, store, id)
 	ending := loadSession(t, app, store, id)
 
@@ -1872,8 +1841,6 @@ func Test_Session_DeleteWaitsForRunningSave(t *testing.T) {
 
 // A request that loaded a session before another request ended or rotated it
 // must neither carry the session on to a new ID nor send a cookie for one.
-//
-// go test -run Test_Session_RegenerateAfterConcurrentEnd
 func Test_Session_RegenerateAfterConcurrentEnd(t *testing.T) {
 	t.Parallel()
 
@@ -1919,12 +1886,9 @@ func Test_Session_RegenerateAfterConcurrentEnd(t *testing.T) {
 	for _, tc := range ends {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			store := NewStore(Config{Storage: memory.New()})
-			id := seedSession(t, app, store, func(sess *Session) {
-				sess.Set("user", "alice")
-			})
+			id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
 
 			inFlight := loadSession(t, app, store, id)
 			holder := tc.end(t, app, store, id)
@@ -1955,17 +1919,12 @@ func Test_Session_RegenerateAfterConcurrentEnd(t *testing.T) {
 
 // Another instance sharing the Storage can write the ended ID back before the
 // save, so a login must not land on the old, possibly planted ID.
-//
-// go test -run Test_Session_RegenerateAfterConcurrentEnd_OldIDWrittenBack
 func Test_Session_RegenerateAfterConcurrentEnd_OldIDWrittenBack(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	storage := memory.New()
 	store := NewStore(Config{Storage: storage})
-	id := seedSession(t, app, store, func(sess *Session) {
-		sess.Set("visitor", true)
-	})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("visitor", true) })
 	raw, err := storage.Get(storageKeyPrefix + id)
 	require.NoError(t, err)
 

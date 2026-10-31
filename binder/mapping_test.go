@@ -901,7 +901,6 @@ func Test_tagIndex_MatchesTags(t *testing.T) {
 
 func Test_CheckKeyDepth(t *testing.T) {
 	t.Parallel()
-
 	atLimit := strings.Repeat("a.", maxKeySegments-1) + "a"
 	require.NoError(t, checkKeyDepth(atLimit))
 	require.ErrorIs(t, checkKeyDepth(atLimit+".a"), ErrKeyTooDeep)
@@ -1012,7 +1011,6 @@ func Test_FormBinder_KeyDepthLimit(t *testing.T) {
 
 func Test_Binders_KeyDepthLimit(t *testing.T) {
 	t.Parallel()
-
 	const levels = (maxKeySegments - 1) / 2
 	dotted := func(n int) string { return strings.Repeat("children.0.", n) + "name" }
 
@@ -1088,7 +1086,6 @@ func Test_Binders_KeyDepthLimit(t *testing.T) {
 
 func Test_PooledDecoder_KeyBudget(t *testing.T) {
 	t.Parallel()
-
 	type item struct {
 		SKU string `form:"sku"`
 	}
@@ -1237,7 +1234,6 @@ func Test_CachedKeyBytes_CoversSchemaCache(t *testing.T) {
 
 func Test_BindShape_Elements(t *testing.T) {
 	t.Parallel()
-
 	acyclic := bindShape{elemSize: 1}
 	cyclic := bindShape{elemSize: 1, cyclic: true}
 	for key, want := range map[string][2]int{
@@ -1271,7 +1267,6 @@ func Test_BindShape_Elements(t *testing.T) {
 
 func Test_ShapeOf(t *testing.T) {
 	t.Parallel()
-
 	type item struct{ SKU string }
 	type group struct{ Items []item }
 	itemSize := reflect.TypeFor[item]().Size()
@@ -1360,7 +1355,6 @@ type catalog struct {
 
 func Test_FormBinder_NestedElementLimit(t *testing.T) {
 	t.Parallel()
-
 	root := new(depthTree)
 	require.NoError(t, bindFormBody(t, "children.1.children.2.name=x", root))
 	require.Len(t, root.Children, 2)
@@ -1411,7 +1405,6 @@ func Test_FormBinder_NestedElementLimit(t *testing.T) {
 
 func Test_FormBinder_NestedElementBytes(t *testing.T) {
 	t.Parallel()
-
 	variant := func(line, v int, field string) string {
 		return "lines[" + strconv.Itoa(line) + "][variants][" + strconv.Itoa(v) + "][" + field + "]=x"
 	}

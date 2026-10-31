@@ -6,8 +6,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 func TestConfigDefault(t *testing.T) {
@@ -33,8 +33,7 @@ func TestConfigDefaultWithCustomConfig(t *testing.T) {
 }
 
 func TestDefaultErrorHandler(t *testing.T) {
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx := apptest.Ctx(t, fiber.New())
 	DefaultErrorHandler(ctx, fiber.ErrInternalServerError)
 	require.Equal(t, fiber.StatusInternalServerError, ctx.Response().StatusCode())
 }

@@ -446,22 +446,12 @@ func init() {
 				// a one-byte constant still lets the parameter cross a '/', as on the endpoint
 				pathTestPartialMatch("/admin/a/b./x", "a/b"), pathTestMatch("/admin/a/b.", "a/b"),
 			),
-			pathTestRoute("/v1/:id/x:v-x",
-				pathTestPartialMatch("/v1/7/xa-x-x/y", "7", "a-x"),
-			),
+			pathTestRoute("/v1/:id/x:v-x", pathTestPartialMatch("/v1/7/xa-x-x/y", "7", "a-x")),
 			// other shapes keep the first match
-			pathTestRoute("/files/:name<minLen(2)>.json",
-				pathTestPartialMiss("/files/ab.json.json/raw"),
-			),
-			pathTestRoute("/files/:name?.json",
-				pathTestPartialMiss("/files/a.json.json/raw"),
-			),
-			pathTestRoute("/files/:a-:b.json",
-				pathTestPartialMiss("/files/x-a.json.json/raw"),
-			),
-			pathTestRoute("/files/*/:name.json",
-				pathTestPartialMiss("/files/x/a.json.json"),
-			),
+			pathTestRoute("/files/:name<minLen(2)>.json", pathTestPartialMiss("/files/ab.json.json/raw")),
+			pathTestRoute("/files/:name?.json", pathTestPartialMiss("/files/a.json.json/raw")),
+			pathTestRoute("/files/:a-:b.json", pathTestPartialMiss("/files/x-a.json.json/raw")),
+			pathTestRoute("/files/*/:name.json", pathTestPartialMiss("/files/x/a.json.json")),
 		}...,
 	)
 }

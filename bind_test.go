@@ -2200,7 +2200,6 @@ func Test_Bind_All_CustomPrecedence_DoesNotReadOmittedBody(t *testing.T) {
 // With StreamRequestBody the server passes on a body of any size, so the binders read it within BodyLimit.
 func Test_Bind_StreamedBodyLimit(t *testing.T) {
 	t.Parallel()
-
 	const limit = 1024
 	app := New(Config{StreamRequestBody: true, BodyLimit: limit})
 
@@ -2222,17 +2221,14 @@ func Test_Bind_StreamedBodyLimit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(c)
+			c := apptest.Ctx(t, app)
 			c.Request().Header.SetContentType(tc.contentType)
 			c.Request().SetBodyStream(strings.NewReader(fmt.Sprintf(tc.format, "john")), -1)
 			out := new(Req)
 			require.NoError(t, tc.bind(c, out))
 			require.Equal(t, "john", out.Name)
 
-			tooLarge := app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(tooLarge)
+			tooLarge := apptest.Ctx(t, app)
 			stream := strings.NewReader(fmt.Sprintf(tc.format, strings.Repeat("a", 100*limit)))
 			size := stream.Len()
 			tooLarge.Request().Header.SetContentType(tc.contentType)
@@ -2248,10 +2244,7 @@ func Test_Bind_StreamedBodyLimit(t *testing.T) {
 // All binds the body only with a Content-Type, so without one a streamed body stays unread.
 func Test_Bind_All_StreamedBodyWithoutContentType(t *testing.T) {
 	t.Parallel()
-
-	app := New(Config{StreamRequestBody: true, BodyLimit: 8})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(t, New(Config{StreamRequestBody: true, BodyLimit: 8}))
 
 	type Req struct {
 		ID string `query:"id"`

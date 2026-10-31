@@ -31,10 +31,7 @@ func Benchmark_RespHeaderBinder_Bind(b *testing.B) {
 
 func Test_RespHeaderBinder_Bind_Splitting_TrimsListWhitespace(t *testing.T) {
 	t.Parallel()
-
-	b := &RespHeaderBinding{
-		EnableSplitting: true,
-	}
+	b := &RespHeaderBinding{EnableSplitting: true}
 
 	type User struct {
 		Posts []string `respHeader:"posts"`
@@ -42,9 +39,7 @@ func Test_RespHeaderBinder_Bind_Splitting_TrimsListWhitespace(t *testing.T) {
 	}
 
 	resp := fasthttp.AcquireResponse()
-	t.Cleanup(func() {
-		fasthttp.ReleaseResponse(resp)
-	})
+	t.Cleanup(func() { fasthttp.ReleaseResponse(resp) })
 
 	resp.Header.Set("posts", "post1, post2")
 	resp.Header.Set("ids", "1,	2,")

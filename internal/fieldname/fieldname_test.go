@@ -89,7 +89,6 @@ func Test_First_EmptyLineDoesNotHideTheValue(t *testing.T) {
 // Nor is a header line of its name, which a Set may not have replaced.
 func Test_First_Lines_SkipTrailerSection(t *testing.T) {
 	t.Parallel()
-
 	const (
 		chunked = "POST / HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\n"
 		body    = "\r\n5\r\nhello\r\n0\r\n"
@@ -119,7 +118,6 @@ func Test_First_Lines_SkipTrailerSection(t *testing.T) {
 		for _, canonical := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s canonical=%v", tc.name, canonical), func(t *testing.T) {
 				t.Parallel()
-
 				req := &fasthttp.Request{}
 				if !canonical {
 					req.Header.DisableNormalizing()
@@ -141,14 +139,12 @@ func Test_First_Lines_SkipTrailerSection(t *testing.T) {
 // Trailer field names it: the cache and etag middleware read Cache-Control, Vary and ETag this way.
 func Test_First_Lines_ResponseLineUnderTrailerName(t *testing.T) {
 	t.Parallel()
-
 	const raw = "HTTP/1.1 200 OK\r\nCache-Control: private, no-store\r\nTrailer: Cache-Control\r\n" +
 		"Transfer-Encoding: chunked\r\n\r\n6\r\nsecret\r\n0\r\nCache-Control: public\r\n\r\n"
 
 	for _, canonical := range []bool{true, false} {
 		t.Run(fmt.Sprintf("canonical=%v", canonical), func(t *testing.T) {
 			t.Parallel()
-
 			resp := &fasthttp.Response{}
 			if !canonical {
 				resp.Header.DisableNormalizing()
@@ -166,7 +162,6 @@ func Test_First_Lines_ResponseLineUnderTrailerName(t *testing.T) {
 // in the header section, where fasthttp filed it with the trailer section before.
 func Test_DropTrailers(t *testing.T) {
 	t.Parallel()
-
 	const (
 		post    = "POST / HTTP/1.1\r\nHost: app.example\r\n"
 		chunked = "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"
@@ -198,7 +193,6 @@ func Test_DropTrailers(t *testing.T) {
 		for _, canonical := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s canonical=%v", tc.name, canonical), func(t *testing.T) {
 				t.Parallel()
-
 				req := &fasthttp.Request{}
 				if !canonical {
 					req.Header.DisableNormalizing()
@@ -224,7 +218,6 @@ func Test_DropTrailers(t *testing.T) {
 
 	t.Run("too many names", func(t *testing.T) {
 		t.Parallel()
-
 		var trailers strings.Builder
 		for i := range MaxTrailers + 1 {
 			fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
@@ -244,7 +237,6 @@ func Test_DropTrailers(t *testing.T) {
 // names, with every value read before still holding what it held.
 func Test_ClearTrailers(t *testing.T) {
 	t.Parallel()
-
 	const head = "POST / HTTP/1.1\r\nHost: app.example\r\nUser-Agent: ua\r\nCookie: a=1\r\nX-Role: user\r\nConnection: x-a\r\n" +
 		"Cookie: b=2\r\nConnection: x-b\r\nConnection: close\r\nX-Evil: root\r\nX-Forwarded-For: client\r\n" +
 		"Transfer-Encoding: chunked\r\nX-Forwarded-For: proxy\r\nX-After: zz\r\n\r\n5\r\nhello\r\n0\r\n"
@@ -253,7 +245,6 @@ func Test_ClearTrailers(t *testing.T) {
 		for _, canonical := range []bool{true, false} {
 			t.Run(fmt.Sprintf("names=%d canonical=%v", names, canonical), func(t *testing.T) {
 				t.Parallel()
-
 				read := func(trailer string) *fasthttp.Request {
 					req := &fasthttp.Request{}
 					if !canonical {
@@ -302,7 +293,6 @@ func Test_ClearTrailers(t *testing.T) {
 // fasthttp's Del moved the last line into the removed one's slot.
 func Test_KeepReceivedOrder(t *testing.T) {
 	t.Parallel()
-
 	forwarding := func(name []byte) bool { return bytes.HasPrefix(bytes.ToLower(name), []byte("x-forwarded-")) }
 	lines := func(h *fasthttp.RequestHeader, name string, canonical bool) []string {
 		var values []string
@@ -315,7 +305,6 @@ func Test_KeepReceivedOrder(t *testing.T) {
 	for _, canonical := range []bool{true, false} {
 		t.Run(fmt.Sprintf("canonical=%v", canonical), func(t *testing.T) {
 			t.Parallel()
-
 			const raw = "GET / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\nX-Forwarded-For: client\r\nX-Forwarded-Proto: http\r\n" +
 				"X-Other: o\r\nX-Forwarded-For: proxy\r\nX-Forwarded-Proto: https\r\n\r\n"
 
@@ -350,7 +339,6 @@ func Test_KeepReceivedOrder(t *testing.T) {
 
 	t.Run("folded", func(t *testing.T) {
 		t.Parallel()
-
 		h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\nX-Forwarded-For: client,\r\n 6.6.6.6\r\n"+
 			"X-Forwarded-For: proxy\r\n\r\n", true)
 		Del(h, "X-Junk", true)
@@ -360,7 +348,6 @@ func Test_KeepReceivedOrder(t *testing.T) {
 
 	t.Run("too many lines", func(t *testing.T) {
 		t.Parallel()
-
 		var raw strings.Builder
 		fmt.Fprint(&raw, "GET / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\n")
 		for i := range MaxOrderedLines + 1 {
@@ -391,7 +378,6 @@ func Test_KeepReceivedOrder_InOrderDoesNotAllocate(t *testing.T) {
 // Test_ReceivedOrder pins the order a name's lines are read in after fasthttp's Del moved one of them.
 func Test_ReceivedOrder(t *testing.T) {
 	t.Parallel()
-
 	const head = "GET / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\n"
 	read := func(h *fasthttp.RequestHeader, raw []byte) []string {
 		var values []string
@@ -402,7 +388,6 @@ func Test_ReceivedOrder(t *testing.T) {
 	for _, canonical := range []bool{true, false} {
 		t.Run(fmt.Sprintf("canonical=%v", canonical), func(t *testing.T) {
 			t.Parallel()
-
 			h := readRequestHeader(t, head+"X-Forwarded-For: client\r\nAccept: */*\r\nX-Forwarded-For:\tproxy \r\n\r\n", canonical)
 			Del(h, "X-Junk", canonical)
 			require.Equal(t, []string{"proxy", "client"}, read(h, nil), "the store lost the order")
@@ -421,7 +406,6 @@ func Test_ReceivedOrder(t *testing.T) {
 
 	t.Run("folded", func(t *testing.T) {
 		t.Parallel()
-
 		h := readRequestHeader(t, head+"X-Forwarded-For: client,\r\n 6.6.6.6\r\nX-Forwarded-For: proxy\r\n\r\n", true)
 		Del(h, "X-Junk", true)
 		require.Equal(t, []string{"client, 6.6.6.6", "proxy"}, read(h, h.RawHeaders()))
@@ -429,7 +413,6 @@ func Test_ReceivedOrder(t *testing.T) {
 
 	t.Run("recorded block", func(t *testing.T) {
 		t.Parallel()
-
 		req := &fasthttp.Request{}
 		req.Header.Set("X-Junk", "1")
 		req.Header.Add("X-Forwarded-For", "client")
@@ -443,7 +426,6 @@ func Test_ReceivedOrder(t *testing.T) {
 
 	t.Run("too many lines", func(t *testing.T) {
 		t.Parallel()
-
 		var raw strings.Builder
 		fmt.Fprint(&raw, head)
 		for i := range MaxOrderedLines + 1 {
@@ -547,7 +529,6 @@ func rawResponseHeader(lines ...string) *countingDeleter {
 
 func Test_Del_DeletesEachSpellingOnce(t *testing.T) {
 	t.Parallel()
-
 	lines := []string{"X-Keep"}
 	for range 50 {
 		lines = append(lines, "x-trace", "X-TRACE")
@@ -563,7 +544,6 @@ func Test_Del_DeletesEachSpellingOnce(t *testing.T) {
 
 func Test_DelWithin_Budget(t *testing.T) {
 	t.Parallel()
-
 	h := rawResponseHeader("X-Trace", "x-trace", "X-TRACE", "x-TRACE")
 	require.Equal(t, -1, DelWithin(h, "X-Trace", false, 2))
 	require.Len(t, Lines(h, "X-Trace", false), 3, "none of the other spellings is deleted")
@@ -576,7 +556,6 @@ func Test_DelWithin_Budget(t *testing.T) {
 
 func Test_DelSetWithin_Limit(t *testing.T) {
 	t.Parallel()
-
 	lines := []string{"X-Keep"}
 	for range 50 {
 		lines = append(lines, "upgrade", "te", "TE")

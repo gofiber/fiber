@@ -16,7 +16,6 @@ const limit = 1024
 
 func Test_Buffer_NoStream(t *testing.T) {
 	t.Parallel()
-
 	var req fasthttp.Request
 	req.SetBodyString(strings.Repeat("a", 2*limit))
 
@@ -26,7 +25,6 @@ func Test_Buffer_NoStream(t *testing.T) {
 
 func Test_Buffer_WithinLimit(t *testing.T) {
 	t.Parallel()
-
 	for _, size := range []int{0, 1, limit - 1, limit} {
 		for _, declared := range []int{-1, size} {
 			var req fasthttp.Request
@@ -42,7 +40,6 @@ func Test_Buffer_WithinLimit(t *testing.T) {
 
 func Test_Buffer_OverLimit(t *testing.T) {
 	t.Parallel()
-
 	for _, size := range []int{limit + 1, limit + 2, 100 * limit} {
 		for _, declared := range []int{-1, size} {
 			var req fasthttp.Request
@@ -63,7 +60,6 @@ func Test_Buffer_OverLimit(t *testing.T) {
 
 func Test_Buffer_DeclaredOverLimitPartlyRead(t *testing.T) {
 	t.Parallel()
-
 	for _, left := range []int{0, limit} {
 		var req fasthttp.Request
 		stream := strings.NewReader(strings.Repeat("a", 4*limit))
@@ -79,7 +75,6 @@ func Test_Buffer_DeclaredOverLimitPartlyRead(t *testing.T) {
 
 func Test_Buffer_NoLimit(t *testing.T) {
 	t.Parallel()
-
 	var req fasthttp.Request
 	req.SetBodyStream(strings.NewReader("body"), -1)
 
@@ -89,7 +84,6 @@ func Test_Buffer_NoLimit(t *testing.T) {
 
 func Test_Buffer_ReadError(t *testing.T) {
 	t.Parallel()
-
 	var req fasthttp.Request
 	req.SetBodyStream(io.MultiReader(strings.NewReader("partial"), failedReader{err: io.ErrUnexpectedEOF}), -1)
 
@@ -100,7 +94,6 @@ func Test_Buffer_ReadError(t *testing.T) {
 
 func Test_Buffer_KeepsParsedMultipartForm(t *testing.T) {
 	t.Parallel()
-
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 	require.NoError(t, w.WriteField("name", "john"))
@@ -123,7 +116,6 @@ func Test_Buffer_KeepsParsedMultipartForm(t *testing.T) {
 
 func Test_Buffer_MaxIntLimit(t *testing.T) {
 	t.Parallel()
-
 	var req fasthttp.Request
 	req.SetBodyStream(strings.NewReader("hello"), -1)
 

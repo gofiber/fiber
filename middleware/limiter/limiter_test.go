@@ -236,9 +236,7 @@ func Test_Limiter_DefaultConfigNoPanic(t *testing.T) {
 
 func Test_getEffectiveStatusCode_TimedOut(t *testing.T) {
 	t.Parallel()
-
-	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, fiber.New())
 	t.Cleanup(c.ForceRelease)
 
 	c.Response().SetStatusCode(fiber.StatusOK)
@@ -253,11 +251,9 @@ func Test_getEffectiveStatusCode_TimedOut(t *testing.T) {
 // handler timeout.New gave up on alone; fasthttp sends the timeout response.
 func Test_Limiter_TimedOutRequest(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-
 			release := make(chan struct{})
 			finished := make(chan struct{})
 			app := fiber.New()
@@ -1595,11 +1591,9 @@ func Test_Limiter_AdmitKeyCopiesWithBuiltInStore(t *testing.T) {
 // middleware keeps in a shared Storage.
 func Test_Limiter_SharedStorage_KeyNamespace(t *testing.T) {
 	t.Parallel()
-
 	for _, strategy := range windowStrategies {
 		t.Run(strategy.name, func(t *testing.T) {
 			t.Parallel()
-
 			const foreignKey = "csrf:token"
 			storage := storagetest.New()
 			storage.Data[foreignKey] = []byte("+")
@@ -1612,15 +1606,11 @@ func Test_Limiter_SharedStorage_KeyNamespace(t *testing.T) {
 				LimiterMiddleware: strategy.handler,
 				KeyGenerator:      func(c fiber.Ctx) string { return c.Get("X-Client") },
 			}))
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusOK)
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 			req.Header.Set("X-Client", foreignKey)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, req, fiber.StatusOK)
 			require.Equal(t, []byte("+"), storage.Data[foreignKey])
 			require.Contains(t, storage.Data, storagePrefix+foreignKey)
 		})
@@ -1918,7 +1908,6 @@ func Test_Limiter_OversizedKeyGeneratorIsBounded(t *testing.T) {
 // order and CRLF for both strategies, normalization modes and disabled headers.
 func Test_Limiter_HeadersExactWireFormat(t *testing.T) {
 	t.Parallel()
-
 	type step struct {
 		headers string
 		status  int
@@ -1965,9 +1954,7 @@ func Test_Limiter_HeadersExactWireFormat(t *testing.T) {
 						DisableHeaders:    disableHeaders,
 						clock:             clock.Now,
 					}))
-					app.Get("/", func(c fiber.Ctx) error {
-						return c.SendString("ok")
-					})
+					app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 					handler := app.Handler()
 
 					for i, want := range steps {
@@ -2025,7 +2012,6 @@ func (c *limiterHeaderCtx) Set(key, value string) {
 
 func Test_Limiter_HeadersCustomCtx(t *testing.T) {
 	t.Parallel()
-
 	for _, ws := range windowStrategies {
 		for _, disableHeaders := range []bool{false, true} {
 			t.Run(ws.name+"/disabled="+strconv.FormatBool(disableHeaders), func(t *testing.T) {
@@ -2085,13 +2071,10 @@ func Test_Limiter_HeadersCustomCtx(t *testing.T) {
 
 func Test_Limiter_HeaderValues(t *testing.T) {
 	t.Parallel()
-
 	for _, unnormalized := range []bool{false, true} {
 		t.Run("unnormalized="+strconv.FormatBool(unnormalized), func(t *testing.T) {
 			t.Parallel()
-			app := fiber.New()
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(c)
+			c := apptest.Ctx(t, fiber.New())
 			var want fasthttp.ResponseHeader
 			if unnormalized {
 				c.Response().Header.DisableNormalizing()
@@ -2130,13 +2113,9 @@ func Benchmark_Limiter_Headers(b *testing.B) {
 	} {
 		for _, legacy := range []bool{false, true} {
 			b.Run(values.name+"/legacy="+strconv.FormatBool(legacy), func(b *testing.B) {
-				app := fiber.New()
-				c := app.AcquireCtx(&fasthttp.RequestCtx{})
-				defer app.ReleaseCtx(c)
+				c := apptest.Ctx(b, fiber.New())
 				cfg := Config{}
-				set := func() {
-					cfg.setRateLimitHeaders(c, values.limit, values.remaining, values.reset)
-				}
+				set := func() { cfg.setRateLimitHeaders(c, values.limit, values.remaining, values.reset) }
 				if legacy {
 					set = func() {
 						c.Set(xRateLimitLimit, utils.FormatInt(int64(values.limit)))

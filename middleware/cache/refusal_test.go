@@ -405,7 +405,6 @@ func Test_Cache_RejectedCredentialReturnedAsError(t *testing.T) {
 // A refusal OnTimeout returns ends the entry, but the response stays the timed-out handler's.
 func Test_Cache_RejectedCredentialFromOnTimeout(t *testing.T) {
 	t.Parallel()
-
 	var calls atomic.Int32
 	answered := make(chan struct{})
 	finished := make(chan struct{})

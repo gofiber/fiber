@@ -88,7 +88,6 @@ func Test_ETag_SSE_Stream(t *testing.T) {
 // A stream of unknown length may never end, so hashing it would hold it; a sized one is still hashed.
 func Test_ETag_StreamOfUnknownLength(t *testing.T) {
 	t.Parallel()
-
 	for name, size := range map[string]int{"unknown length": -1, "declared length": 5} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -125,7 +124,6 @@ func Test_ETag_StreamOfUnknownLength(t *testing.T) {
 // Body keeps a read error as the body, and an outer cache would store it under this ETag.
 func Test_ETag_SizedStreamIsTaggedOnlyWhole(t *testing.T) {
 	t.Parallel()
-
 	for name, tc := range map[string]struct {
 		stream  func() io.Reader
 		maxRead int
@@ -147,9 +145,7 @@ func Test_ETag_SizedStreamIsTaggedOnlyWhole(t *testing.T) {
 			app.Use(New())
 
 			var read strings.Builder
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendStream(io.TeeReader(tc.stream(), &read), 10)
-			})
+			app.Get("/", func(c fiber.Ctx) error { return c.SendStream(io.TeeReader(tc.stream(), &read), 10) })
 
 			fctx := &fasthttp.RequestCtx{}
 			fctx.Request.Header.SetMethod(fiber.MethodGet)

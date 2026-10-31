@@ -125,7 +125,6 @@ func Test_IsForm(t *testing.T) {
 
 func Test_ParsesPostArgs(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		in   string
 		want bool
@@ -313,7 +312,6 @@ func Benchmark_Params(b *testing.B) {
 	require.Equal(b, 25*b.N, n)
 }
 
-// go test -v -run=^$ -bench=Benchmark_ParamsInputs -benchmem -count=4
 func Benchmark_ParamsInputs(b *testing.B) {
 	for _, bench := range []struct {
 		name string

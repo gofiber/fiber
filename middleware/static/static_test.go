@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"embed"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -335,22 +334,17 @@ func Test_Static_Next(t *testing.T) {
 // A refused request replays the Use chain without its routes, a guard registered as one included.
 func Test_Static_RefusedRequestServesNoFile(t *testing.T) {
 	t.Parallel()
-
 	dir := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "admin"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "admin", "secret.txt"), []byte("TOP-SECRET"), 0o600))
 
 	app := fiber.New(fiber.Config{BodyLimit: 16})
-	app.All("/admin/*", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusUnauthorized)
-	})
+	app.All("/admin/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusUnauthorized) })
 	app.Use(New(dir))
 
 	ln := fasthttputil.NewInmemoryListener()
 	errCh := make(chan error, 1)
-	go func() {
-		errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
-	}()
+	go func() { errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}) }()
 	t.Cleanup(func() {
 		require.NoError(t, app.Shutdown())
 		require.NoError(t, <-errCh)
@@ -365,11 +359,10 @@ func Test_Static_RefusedRequestServesNoFile(t *testing.T) {
 
 	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.Body(t, resp)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, fiber.StatusRequestEntityTooLarge, resp.StatusCode)
-	require.Equal(t, "Request Entity Too Large", string(body))
+	require.Equal(t, "Request Entity Too Large", body)
 	require.Empty(t, resp.Header.Get(fiber.HeaderLastModified))
 }
 
@@ -645,7 +638,6 @@ func Test_Static_Compress(t *testing.T) {
 
 func Test_Static_Compress_FileRoot(t *testing.T) {
 	t.Parallel()
-
 	root := filepath.Join(t.TempDir(), "index.html")
 	require.NoError(t, os.WriteFile(root, []byte(strings.Repeat("<p>hello</p>", 200)), 0o600))
 	app := fiber.New()
@@ -653,9 +645,7 @@ func Test_Static_Compress_FileRoot(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAcceptEncoding, "gzip")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 }
 
@@ -1844,7 +1834,6 @@ func Test_Static_NonMountRoutes_Served(t *testing.T) {
 
 func Test_Static_Symlinks(t *testing.T) {
 	t.Parallel()
-
 	outside := t.TempDir()
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(outside, "shared.txt"), []byte("shared"), 0o600))
@@ -1870,9 +1859,7 @@ func Test_Static_Symlinks(t *testing.T) {
 		"/open/absolute.txt":     fiber.StatusOK,
 		"/open/outside.txt":      fiber.StatusOK,
 	} {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, want, resp.StatusCode, path)
+		resp := apptest.Expect(t, app, path, want)
 		require.NoError(t, resp.Body.Close())
 	}
 }
@@ -1881,7 +1868,6 @@ func Test_Static_Symlinks(t *testing.T) {
 // the text the router matched, not the pattern, which a plus, an escape or a doubled slash outgrows.
 func Test_Static_StripsRoutedPrefix(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "private"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
@@ -1907,12 +1893,9 @@ func Test_Static_StripsRoutedPrefix(t *testing.T) {
 	} {
 		t.Run(tc.pattern, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New(fiber.Config{StrictRouting: tc.strict})
 			guard := strings.NewReplacer(":", `\:`, "*", `\*`).Replace(tc.prefix) + "/private"
-			app.Use(guard, func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusForbidden)
-			})
+			app.Use(guard, func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
 			tc.register(app, tc.pattern, New(root, Config{CacheDuration: -1}))
 			h := app.Handler()
 
@@ -1936,7 +1919,6 @@ func Test_Static_StripsRoutedPrefix(t *testing.T) {
 // route whose first parameter is a wildcard keeps the text before it as the prefix.
 func Test_Static_ParameterRoutes(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "private"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
@@ -1945,9 +1927,7 @@ func Test_Static_ParameterRoutes(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "index.html"), []byte("DOCS"), 0o600))
 
-	deny := func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusForbidden)
-	}
+	deny := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) }
 
 	app := fiber.New()
 	app.Use("/:lang/private", deny)
@@ -2056,7 +2036,6 @@ func Test_Static_ParameterRoutes(t *testing.T) {
 // is served for dir/ only and a file for file only, as the router keeps them apart.
 func Test_Static_StrictRouting_TrailingSlash(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	for name, content := range map[string]string{
 		"admin/index.html": "ADMIN",
@@ -2069,9 +2048,7 @@ func Test_Static_StrictRouting_TrailingSlash(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(content), 0o600))
 	}
 
-	deny := func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusUnauthorized)
-	}
+	deny := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusUnauthorized) }
 
 	rows := []struct {
 		target   string
@@ -2164,7 +2141,6 @@ func Test_Static_StrictRouting_TrailingSlash(t *testing.T) {
 // for later clients, links below the routed path, not fasthttp's reading of the target.
 func Test_Static_Browse_LinksFollowRoutedPath(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "pub"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "pub", "a.txt"), []byte("A"), 0o600))
@@ -2252,7 +2228,6 @@ func Test_Static_Browse_LinksFollowRoutedPath(t *testing.T) {
 // parameter prefix with a control byte, which a browser drops from a link.
 func Test_Static_Browse_ParameterPrefixControlByte(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "pub"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "pub", "a.txt"), []byte("A"), 0o600))

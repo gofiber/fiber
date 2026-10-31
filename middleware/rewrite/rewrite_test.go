@@ -365,7 +365,6 @@ func Test_Rewrite_UnescapePathDecodesOnce(t *testing.T) {
 // dot segment that resolves out of the prefix To names.
 func Test_Rewrite_CaptureStaysBelowTheTargetPath(t *testing.T) {
 	t.Parallel()
-
 	for _, unescape := range []bool{false, true} {
 		app := fiber.New(fiber.Config{UnescapePath: unescape})
 		app.Use(New(Config{
@@ -375,9 +374,7 @@ func Test_Rewrite_CaptureStaysBelowTheTargetPath(t *testing.T) {
 				{From: "/up/*", To: "/a/../b/$1"},
 			},
 		}))
-		app.Use(func(c fiber.Ctx) error {
-			return c.SendString(c.Path())
-		})
+		app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
 
 		for target, want := range map[string]string{
 			"/@bob/x":    "/users/bob/x",
@@ -395,9 +392,7 @@ func Test_Rewrite_CaptureStaysBelowTheTargetPath(t *testing.T) {
 	// Without UnescapePath a stray "%2" stays as sent, and an "e" completes it.
 	app := fiber.New()
 	app.Use(New(Config{RuleList: []Rule{{From: "/g/*/*", To: "/users/$1$2/admin"}}}))
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendString(c.Path())
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
 	require.Equal(t, "/g/.%2/e", rewrittenRaw(t, app, "/g/.%2/e"))
 }
 
@@ -405,7 +400,6 @@ func Test_Rewrite_CaptureStaysBelowTheTargetPath(t *testing.T) {
 // a rewrite mounted on its own prefix see the rewritten path.
 func Test_Rewrite_MountedOnPrefix_RunsLaterGuards(t *testing.T) {
 	t.Parallel()
-
 	for _, global := range []bool{false, true} {
 		app := fiber.New()
 		app.Use("/v1", New(Config{RuleList: []Rule{{From: "/v1/*", To: "/$1"}}}))
@@ -419,8 +413,7 @@ func Test_Rewrite_MountedOnPrefix_RunsLaterGuards(t *testing.T) {
 
 		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/v1/admin/report", http.NoBody)
 		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		require.NoError(t, resp.Body.Close())
 		require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode, "global guard: %v", global)
 	}

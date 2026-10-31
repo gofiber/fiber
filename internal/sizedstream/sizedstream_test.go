@@ -17,7 +17,6 @@ import (
 
 func Test_Read(t *testing.T) {
 	t.Parallel()
-
 	reset := errors.New("connection reset")
 	for name, tc := range map[string]struct {
 		stream   func() io.Reader
@@ -46,7 +45,6 @@ func Test_Read(t *testing.T) {
 		} {
 			t.Run(name+"/"+kind, func(t *testing.T) {
 				t.Parallel()
-
 				var resp fasthttp.Response
 				resp.SetBodyStream(stream(), tc.declared)
 				require.Equal(t, tc.complete, Read(&resp, tc.declared))

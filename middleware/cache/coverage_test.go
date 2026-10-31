@@ -282,7 +282,6 @@ func Test_item_Decode_FieldLimits(t *testing.T) {
 // Pins each constant decodable compares against to its msgp tag.
 func Test_item_decodable_MatchesUnmarshal(t *testing.T) {
 	t.Parallel()
-
 	cases := []struct {
 		set   func(e *item, n int)
 		field string

@@ -1095,7 +1095,6 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 // With StreamRequestBody the server passes on a body of any size, so the accessors that buffer it apply BodyLimit.
 func Test_Ctx_Body_StreamedBodyLimit(t *testing.T) {
 	t.Parallel()
-
 	const limit = 1024
 	app := New(Config{StreamRequestBody: true, BodyLimit: limit})
 	tooLarge := fasthttp.ErrBodyTooLarge.Error()
@@ -1116,7 +1115,6 @@ func Test_Ctx_Body_StreamedBodyLimit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			acquire := func(size, declared int) (Ctx, *strings.Reader) {
 				c := app.AcquireCtx(&fasthttp.RequestCtx{})
 				t.Cleanup(func() { app.ReleaseCtx(c) })
@@ -1147,17 +1145,13 @@ func Test_Ctx_Body_StreamedBodyLimit(t *testing.T) {
 
 func Test_Ctx_Body_BodyLimit_KeepsWrittenResponse(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		encoding string
 		stream   bool
 	}{{"", true}, {StrIdentity, true}, {StrGzip, true}, {StrGzip, false}} {
 		t.Run(fmt.Sprintf("encoding=%s stream=%v", tc.encoding, tc.stream), func(t *testing.T) {
 			t.Parallel()
-
-			app := New(Config{StreamRequestBody: true, BodyLimit: 1024})
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(c)
+			c := apptest.Ctx(t, New(Config{StreamRequestBody: true, BodyLimit: 1024}))
 			if tc.encoding != "" {
 				c.Request().Header.Set(HeaderContentEncoding, tc.encoding)
 			}
@@ -1177,7 +1171,6 @@ func Test_Ctx_Body_BodyLimit_KeepsWrittenResponse(t *testing.T) {
 // FormValue leaves a streamed body to BodyStream when the body is not a form or the key is in the query.
 func Test_Ctx_FormValue_KeepsBodyStream(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{StreamRequestBody: true, BodyLimit: 8})
 	for _, contentType := range []string{MIMEOctetStream, MIMEApplicationForm} {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1200,9 +1193,7 @@ func Test_Ctx_FormValue_KeepsBodyStream(t *testing.T) {
 
 func Test_Ctx_Body_LeavesWrittenResponseAlone(t *testing.T) {
 	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	c.Request().Header.Set(HeaderContentEncoding, "x")
 	require.NoError(t, c.SendString("ok"))
@@ -2173,7 +2164,6 @@ func Test_Ctx_Fresh(t *testing.T) {
 
 func Test_Ctx_Fresh_ResponseStatus(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		status int
 		fresh  bool
@@ -2193,7 +2183,6 @@ func Test_Ctx_Fresh_ResponseStatus(t *testing.T) {
 	} {
 		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
 			t.Parallel()
-
 			for _, conditional := range []struct {
 				name  string
 				value string
@@ -2220,7 +2209,6 @@ func Test_Ctx_Fresh_ResponseStatus(t *testing.T) {
 
 func Test_Ctx_Fresh_PreservesNotFoundResponse(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/", func(c Ctx) error {
 		c.Status(StatusNotFound)
@@ -2232,13 +2220,11 @@ func Test_Ctx_Fresh_PreservesNotFoundResponse(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Header.Set(HeaderIfNoneMatch, "*")
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, req)
 	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	body := apptest.Body(t, resp)
 	require.Equal(t, StatusNotFound, resp.StatusCode)
-	require.Equal(t, "resource no longer exists", string(body))
+	require.Equal(t, "resource no longer exists", body)
 }
 
 func Test_Ctx_Fresh_NoCache(t *testing.T) {
@@ -2551,14 +2537,11 @@ func Test_Ctx_Get_EmptyFirstLine(t *testing.T) {
 	require.Len(t, c.Request().Header.PeekAll("X-Token"), 2)
 }
 
-// go test -run Test_Ctx_HeaderAccessors_SkipTrailerSection
 func Test_Ctx_HeaderAccessors_SkipTrailerSection(t *testing.T) {
 	t.Parallel()
-
 	for _, normalize := range []bool{true, false} {
 		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
 			t.Parallel()
-
 			app := New(Config{DisableHeaderNormalizing: !normalize})
 			app.Post("/", func(c Ctx) error {
 				return c.JSON(Map{
@@ -2588,10 +2571,8 @@ func Test_Ctx_HeaderAccessors_SkipTrailerSection(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_HeaderWrittenUnderTrailerName
 func Test_Ctx_HeaderWrittenUnderTrailerName(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		cfg    Config
 		name   string
@@ -2603,7 +2584,6 @@ func Test_Ctx_HeaderWrittenUnderTrailerName(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var app *App
 			if tc.custom {
 				app = NewWithCustomCtx(func(app *App) CustomCtx {
@@ -2650,14 +2630,11 @@ func Test_Ctx_HeaderWrittenUnderTrailerName(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody
 func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 	t.Parallel()
-
 	for _, custom := range []bool{false, true} {
 		t.Run(fmt.Sprintf("custom=%v", custom), func(t *testing.T) {
 			t.Parallel()
-
 			cfg := Config{
 				StreamRequestBody:  true,
 				TrustProxy:         true,
@@ -2679,9 +2656,7 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 				return c.SendString(fmt.Sprintf("body=%s user=%q role=%q trailers=%d", body, c.GetAll("X-User"),
 					c.GetAll("X-Role"), len(h.PeekTrailerKeys())))
 			}
-			app.Post("/body", func(c Ctx) error {
-				return respond(c, c.Body())
-			})
+			app.Post("/body", func(c Ctx) error { return respond(c, c.Body()) })
 			app.Post("/stream", func(c Ctx) error {
 				body, err := io.ReadAll(c.BodyStream())
 				if err != nil {
@@ -2743,11 +2718,8 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 // server's own stream reads a trailer section, and wrapping another closed it before the handler read it.
 func Test_Ctx_BodyOfClosableStream(t *testing.T) {
 	t.Parallel()
-
 	app := New()
-	app.Post("/", func(c Ctx) error {
-		return c.Send(c.Body())
-	})
+	app.Post("/", func(c Ctx) error { return c.Send(c.Body()) })
 
 	for name, set := range map[string]func(*fasthttp.Request){
 		"stream writer": func(req *fasthttp.Request) {
@@ -2767,7 +2739,6 @@ func Test_Ctx_BodyOfClosableStream(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			fctx := &fasthttp.RequestCtx{}
 			fctx.Request.Header.SetMethod(MethodPost)
 			fctx.Request.SetRequestURI("/")
@@ -3136,9 +3107,7 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 				ProxyHeader:        HeaderXForwardedFor,
 				TrustProxy:         true,
 				EnableIPValidation: true,
-				TrustProxyConfig: TrustProxyConfig{
-					Proxies: []string{"10.0.0.1"},
-				},
+				TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"10.0.0.1"}},
 			},
 			remoteIP: "10.0.0.1",
 			header:   "203.0.113.50, , 10.0.0.1",
@@ -3150,9 +3119,7 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 				ProxyHeader:        HeaderXForwardedFor,
 				TrustProxy:         true,
 				EnableIPValidation: true,
-				TrustProxyConfig: TrustProxyConfig{
-					Proxies: []string{"10.0.0.1"},
-				},
+				TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"10.0.0.1"}},
 			},
 			remoteIP: "10.0.0.1",
 			header:   "1.2.3.4, 203.0.113.50:51234",
@@ -3164,9 +3131,7 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 				ProxyHeader:        HeaderXForwardedFor,
 				TrustProxy:         true,
 				EnableIPValidation: true,
-				TrustProxyConfig: TrustProxyConfig{
-					Proxies: []string{"10.0.0.1", "10.0.0.2"},
-				},
+				TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"10.0.0.1", "10.0.0.2"}},
 			},
 			remoteIP: "10.0.0.1",
 			header:   "1.2.3.4, 203.0.113.50:51234, 10.0.0.2",
@@ -3178,9 +3143,7 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 				ProxyHeader:        HeaderXForwardedFor,
 				TrustProxy:         true,
 				EnableIPValidation: true,
-				TrustProxyConfig: TrustProxyConfig{
-					Proxies: []string{"10.0.0.1"},
-				},
+				TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"10.0.0.1"}},
 			},
 			remoteIP: "10.0.0.1",
 			header:   "1.2.3.4, [2001:db8::1]:51234",
@@ -3192,9 +3155,7 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 				ProxyHeader:        HeaderXForwardedFor,
 				TrustProxy:         true,
 				EnableIPValidation: true,
-				TrustProxyConfig: TrustProxyConfig{
-					Proxies: []string{"10.0.0.1"},
-				},
+				TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"10.0.0.1"}},
 			},
 			remoteIP: "10.0.0.1",
 			header:   "1.2.3.4, fe80::1%eth0",
@@ -3206,9 +3167,7 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 				ProxyHeader:        HeaderXForwardedFor,
 				TrustProxy:         true,
 				EnableIPValidation: true,
-				TrustProxyConfig: TrustProxyConfig{
-					Proxies: []string{"10.0.0.1"},
-				},
+				TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"10.0.0.1"}},
 			},
 			remoteIP: "10.0.0.1",
 			header:   "1.2.3.4, unknown",
@@ -3259,14 +3218,11 @@ func serveRawFromLoopback(t *testing.T, handler fasthttp.RequestHandler, raw str
 // Transfer-Encoding itself after an empty chunked body.
 func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines_ReceivedOrder(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{
 		ProxyHeader:        HeaderXForwardedFor,
 		TrustProxy:         true,
 		EnableIPValidation: true,
-		TrustProxyConfig: TrustProxyConfig{
-			Proxies: []string{"127.0.0.1"},
-		},
+		TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"127.0.0.1"}},
 	})
 	result := func(c Ctx) error {
 		// Twice: the first read must not change what the second sees.
@@ -3611,8 +3567,7 @@ func Test_Ctx_ForwardedIPScanning(t *testing.T) {
 					app := New(config)
 					fc := &fasthttp.RequestCtx{}
 					fc.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP(remoteIP)})
-					c := app.AcquireCtx(fc)
-					defer app.ReleaseCtx(c)
+					c := apptest.CtxFor(t, app, fc)
 					c.Request().Header.Set(HeaderXForwardedFor, tc.header)
 
 					wantIPs, wantIP := tc.validatedIPs, tc.firstValidIP
@@ -3714,16 +3669,14 @@ func Benchmark_Ctx_IP_With_ProxyHeader_Lines(b *testing.B) {
 		ProxyHeader:        HeaderXForwardedFor,
 		TrustProxy:         true,
 		EnableIPValidation: true,
-		TrustProxyConfig: TrustProxyConfig{
-			Proxies: []string{"10.0.0.1", "10.0.0.2"},
-		},
+		TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"10.0.0.1", "10.0.0.2"}},
 	})
 	req := &fasthttp.Request{}
 	require.NoError(b, req.Read(bufio.NewReader(strings.NewReader("GET / HTTP/1.1\r\nHost: example.com\r\n"+
 		"X-Forwarded-For: 203.0.113.50\r\nAccept: */*\r\nX-Forwarded-For: 10.0.0.1\r\n\r\n"))))
 	fastCtx := &fasthttp.RequestCtx{}
 	fastCtx.Init(req, &net.TCPAddr{IP: net.ParseIP("10.0.0.2")}, nil)
-	c := app.AcquireCtx(fastCtx)
+	c := apptest.CtxFor(b, app, fastCtx)
 	var res string
 	b.ReportAllocs()
 	for b.Loop() {
@@ -3738,16 +3691,14 @@ func Benchmark_Ctx_IP_With_ProxyHeader_LinesMoved(b *testing.B) {
 		ProxyHeader:        HeaderXForwardedFor,
 		TrustProxy:         true,
 		EnableIPValidation: true,
-		TrustProxyConfig: TrustProxyConfig{
-			Proxies: []string{"10.0.0.1", "10.0.0.2"},
-		},
+		TrustProxyConfig:   TrustProxyConfig{Proxies: []string{"10.0.0.1", "10.0.0.2"}},
 	})
 	req := &fasthttp.Request{}
 	require.NoError(b, req.Read(bufio.NewReader(strings.NewReader("GET / HTTP/1.1\r\nHost: example.com\r\nX-Junk: 1\r\n"+
 		"X-Forwarded-For: 203.0.113.50\r\nAccept: */*\r\nX-Forwarded-For: 10.0.0.1\r\n\r\n"))))
 	fastCtx := &fasthttp.RequestCtx{}
 	fastCtx.Init(req, &net.TCPAddr{IP: net.ParseIP("10.0.0.2")}, nil)
-	c := app.AcquireCtx(fastCtx)
+	c := apptest.CtxFor(b, app, fastCtx)
 	c.Request().Header.Del("X-Junk")
 	var res string
 	b.ReportAllocs()
@@ -4673,16 +4624,9 @@ func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
 	require.Equal(t, "http://example.com", c.BaseURL())
 }
 
-// go test -run Test_Ctx_Scheme_HeaderPrecedence
 func Test_Ctx_Scheme_HeaderPrecedence(t *testing.T) {
 	t.Parallel()
-
-	app := New(Config{
-		TrustProxy: true,
-		TrustProxyConfig: TrustProxyConfig{
-			Proxies: []string{"0.0.0.0"},
-		},
-	})
+	app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}}})
 
 	// A proxy overwrites X-Forwarded-Proto and relays the others, so its value wins in either order.
 	testCases := []struct {
@@ -4699,11 +4643,9 @@ func Test_Ctx_Scheme_HeaderPrecedence(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.header+"_"+tc.value, func(t *testing.T) {
 			t.Parallel()
-
 			freq := &fasthttp.RequestCtx{}
 			freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
-			c := app.AcquireCtx(freq)
-			defer app.ReleaseCtx(c)
+			c := apptest.CtxFor(t, app, freq)
 
 			c.Request().Header.Set(HeaderXForwardedProto, tc.proto)
 			c.Request().Header.Set(tc.header, tc.value)
@@ -4718,11 +4660,9 @@ func Test_Ctx_Scheme_HeaderPrecedence(t *testing.T) {
 
 	t.Run("Ranking", func(t *testing.T) {
 		t.Parallel()
-
 		freq := &fasthttp.RequestCtx{}
 		freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
-		c := app.AcquireCtx(freq)
-		defer app.ReleaseCtx(c)
+		c := apptest.CtxFor(t, app, freq)
 
 		c.Request().Header.Set(HeaderXUrlScheme, schemeHTTPS)
 		c.Request().Header.Set(HeaderXForwardedSsl, "on")
@@ -4746,16 +4686,8 @@ func Test_Ctx_Scheme_HeaderPrecedence(t *testing.T) {
 // Repeats of one header keep the last line, which an empty chunked body used to move.
 func Test_Ctx_Scheme_RepeatedFieldLines_ReceivedOrder(t *testing.T) {
 	t.Parallel()
-
-	app := New(Config{
-		TrustProxy: true,
-		TrustProxyConfig: TrustProxyConfig{
-			Proxies: []string{"127.0.0.1"},
-		},
-	})
-	app.Post("/", func(c Ctx) error {
-		return c.SendString(c.Scheme())
-	})
+	app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"127.0.0.1"}}})
+	app.Post("/", func(c Ctx) error { return c.SendString(c.Scheme()) })
 
 	raw := "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n" +
 		"X-Forwarded-Proto: http\r\nX-Forwarded-Proto: https\r\n\r\n0\r\n\r\n"
@@ -5346,16 +5278,13 @@ func Test_Ctx_Endpoint_LooksPastTheCurrentRoute(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Endpoint_DomainRoutes
 // A Domain route declines a request for another hostname and a later route takes
 // it, so the look-ahead must not name a route the host filter turns down.
 func Test_Ctx_Endpoint_DomainRoutes(t *testing.T) {
 	t.Parallel()
-
 	for _, skipUnmatched := range []bool{false, true} {
 		t.Run(fmt.Sprintf("SkipUnmatchedRoutes=%v", skipUnmatched), func(t *testing.T) {
 			t.Parallel()
-
 			app := New(Config{SkipUnmatchedRoutes: skipUnmatched})
 
 			app.Use(func(c Ctx) error {
@@ -5406,10 +5335,8 @@ func Test_Ctx_Endpoint_DomainRoutes(t *testing.T) {
 				for _, method := range []string{MethodGet, MethodHead} {
 					req := httptest.NewRequest(method, tc.path, http.NoBody)
 					req.Host = tc.host
-					resp, err := app.Test(req)
-					require.NoError(t, err, "app.Test(req)")
-					body, err := io.ReadAll(resp.Body)
-					require.NoError(t, err)
+					resp := apptest.Do(t, app, req)
+					body := apptest.Body(t, resp)
 					require.NoError(t, resp.Body.Close())
 
 					if tc.want == "" {
@@ -5418,7 +5345,7 @@ func Test_Ctx_Endpoint_DomainRoutes(t *testing.T) {
 						require.Equal(t, StatusOK, resp.StatusCode, "%s %s%s", method, tc.host, tc.path)
 					}
 					if tc.want != "" && method == MethodGet {
-						require.Equal(t, tc.want, string(body), "%s%s", tc.host, tc.path)
+						require.Equal(t, tc.want, body, "%s%s", tc.host, tc.path)
 					}
 					require.Equal(t, tc.want, resp.Header.Get("X-Predicted"),
 						"%s %s%s: the look-ahead named another route than the one that ran", method, tc.host, tc.path)
@@ -6744,7 +6671,6 @@ func Test_SendFile_ByteRange_IfRangeETag(t *testing.T) {
 // page goes out whole; Download and MaxAge follow the status that is sent.
 func Test_SendFile_KeepsFileServerAnswer(t *testing.T) {
 	t.Parallel()
-
 	if runtime.GOOS == windowsOS {
 		t.Skip("SendFile byte-range tests are flaky on Windows")
 	}
@@ -6789,13 +6715,11 @@ func Test_SendFile_KeepsFileServerAnswer(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			req := httptest.NewRequest(MethodGet, tc.path, http.NoBody)
 			for k, v := range tc.fields {
 				req.Header.Set(k, v)
 			}
-			resp, err := app.Test(req)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, req)
 			require.NoError(t, resp.Body.Close())
 
 			require.Equal(t, tc.wantStatus, resp.StatusCode)
@@ -7561,9 +7485,7 @@ func Test_Ctx_Render_LeavesBindMapAlone(t *testing.T) {
 
 func Test_Ctx_Render_NilBindMap(t *testing.T) {
 	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(t, New())
 
 	require.NoError(t, c.ViewBind(Map{"Title": "Hello, World!"}))
 	require.NoError(t, c.Render("./.github/testdata/index.tmpl", Map(nil)))
@@ -7800,18 +7722,14 @@ func Test_Ctx_Render_Go_Template(t *testing.T) {
 	require.Equal(t, "template", string(c.Response().Body()))
 }
 
-// go test -run Test_Ctx_Render_Go_Template_OutputKeepsSource
 func Test_Ctx_Render_Go_Template_OutputKeepsSource(t *testing.T) {
 	t.Parallel()
-
 	render := func(t *testing.T, source string, bind Map) string {
 		t.Helper()
 		name := filepath.Join(t.TempDir(), "page.html")
 		require.NoError(t, os.WriteFile(name, []byte(source), 0o600))
 
-		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
+		c := apptest.Ctx(t, New())
 
 		require.NoError(t, c.Render(name, bind))
 		return string(c.Response().Body())
@@ -7869,9 +7787,7 @@ func Test_Ctx_SendStatus(t *testing.T) {
 
 func Test_Ctx_SendStatus_DoesNotDrainStream(t *testing.T) {
 	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	require.NoError(t, c.SendStream(strings.NewReader("streamed")))
 	require.NoError(t, c.SendStatus(StatusUnsupportedMediaType))
@@ -8939,17 +8855,12 @@ func Test_Ctx_GetReqHeaders(t *testing.T) {
 	require.Equal(t, want, c.GetHeaders())
 }
 
-// go test -run Test_Ctx_GetReqHeaders_TrailerSection
 func Test_Ctx_GetReqHeaders_TrailerSection(t *testing.T) {
 	t.Parallel()
-
 	for _, normalize := range []bool{true, false} {
 		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
 			t.Parallel()
-
-			app := New(Config{DisableHeaderNormalizing: !normalize})
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(c)
+			c := apptest.Ctx(t, New(Config{DisableHeaderNormalizing: !normalize}))
 			if !normalize {
 				c.Request().Header.DisableNormalizing()
 			}
@@ -8968,13 +8879,10 @@ func Test_Ctx_GetReqHeaders_TrailerSection(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_GetReqHeaders_TrailerSection -benchmem -count=4
 func Benchmark_Ctx_GetReqHeaders_TrailerSection(b *testing.B) {
 	for _, n := range []int{256, 4096} {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
-			app := New()
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(c)
+			c := apptest.Ctx(b, New())
 
 			var lines, trailers strings.Builder
 			for i := range n {
@@ -9469,7 +9377,6 @@ func Test_Ctx_SendFile_FunctionFSDoesNotGrowHandlerCache(t *testing.T) {
 
 func Test_Ctx_SendFile_FreshConfigPerCallDoesNotGrowHandlerCache(t *testing.T) {
 	t.Parallel()
-
 	files := fstest.MapFS{"public/hello.txt": &fstest.MapFile{Data: []byte("hello")}}
 	for name, handler := range map[string]Handler{
 		"file system": func(c Ctx) error {
@@ -9485,7 +9392,6 @@ func Test_Ctx_SendFile_FreshConfigPerCallDoesNotGrowHandlerCache(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			app.Get("/", handler)
 			app.Get("/kept", func(c Ctx) error {
@@ -9494,12 +9400,7 @@ func Test_Ctx_SendFile_FreshConfigPerCallDoesNotGrowHandlerCache(t *testing.T) {
 
 			for i := range 2 * maxSendFileHandlers {
 				for _, target := range []string{"/kept", "/?age=" + strconv.Itoa(i)} {
-					resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
-					require.NoError(t, err)
-					require.Equal(t, StatusOK, resp.StatusCode)
-					body, err := io.ReadAll(resp.Body)
-					require.NoError(t, err)
-					require.Equal(t, "hello", string(body))
+					apptest.ExpectBody(t, app, target, StatusOK, "hello")
 				}
 			}
 
@@ -9682,10 +9583,7 @@ func gzipLayers(t *testing.T, data []byte, layers int) []byte {
 
 func Test_Ctx_Body_With_Compression_TooManyCodings(t *testing.T) {
 	t.Parallel()
-
-	codings := func(coding string, n int) string {
-		return strings.TrimSuffix(strings.Repeat(coding+",", n), ",")
-	}
+	codings := func(coding string, n int) string { return strings.TrimSuffix(strings.Repeat(coding+",", n), ",") }
 	plain := []byte("john=doe")
 	refused := []byte(ErrUnsupportedMediaType.Error())
 
@@ -9717,7 +9615,6 @@ func Test_Ctx_Body_With_Compression_TooManyCodings(t *testing.T) {
 // Body and BodyRaw results alias the request body buffer, so decoding must not hand it back to the pool.
 func Test_Ctx_Body_With_Compression_KeepsRequestBuffer(t *testing.T) {
 	t.Parallel()
-
 	plain := []byte("john=doe")
 
 	app := New()

@@ -439,7 +439,6 @@ func Test_SSE_RetryMillisecondsStaysPositive(t *testing.T) {
 // header store, so Handler must not get c before the chain has returned.
 func Test_SSE_HandlerStartsAfterMiddlewareChain(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(compress.New())
 	var isUnwound atomic.Bool
@@ -481,7 +480,6 @@ func Test_SSE_HandlerStartsAfterMiddlewareChain(t *testing.T) {
 // for the next request at once.
 func Test_SSE_UnreadBodyRunsNoHandler(t *testing.T) {
 	t.Parallel()
-
 	var handlers, closes atomic.Int32
 	app := fiber.New()
 	app.Get("/events", New(Config{
@@ -490,23 +488,16 @@ func Test_SSE_UnreadBodyRunsNoHandler(t *testing.T) {
 			handlers.Add(1)
 			return stream.Comment("open")
 		},
-		OnClose: func(fiber.Ctx, error) {
-			closes.Add(1)
-		},
+		OnClose: func(fiber.Ctx, error) { closes.Add(1) },
 	}))
 
 	for range 20 {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodHead, "/events", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, apptest.Req(fiber.MethodHead, "/events"), fiber.StatusOK)
 		require.Equal(t, fiber.MIMETextEventStream, resp.Header.Get(fiber.HeaderContentType))
 	}
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, ": open\n\n", string(body))
+	resp := apptest.Do(t, app, "/events")
+	require.Equal(t, ": open\n\n", apptest.Body(t, resp))
 	require.Equal(t, int32(1), handlers.Load())
 	require.Equal(t, int32(1), closes.Load(), "the body ends after OnClose")
 }
@@ -515,7 +506,6 @@ func Test_SSE_UnreadBodyRunsNoHandler(t *testing.T) {
 // does when the client is gone.
 func Test_SSE_CloseWaitsForCallbacks(t *testing.T) {
 	t.Parallel()
-
 	type seen struct {
 		user          any
 		authorization string
