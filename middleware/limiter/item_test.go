@@ -9,7 +9,6 @@ import (
 
 func Test_item_hitBucket(t *testing.T) {
 	t.Parallel()
-
 	e := &item{currHits: 3, prevHits: 7}
 
 	// Current window.
@@ -69,7 +68,6 @@ func Test_item_rotateFixed(t *testing.T) {
 
 func Test_item_rate(t *testing.T) {
 	t.Parallel()
-
 	e := &item{prevHits: 4, currHits: 2}
 
 	// Weights 1, 1/2, 1/10 (rounded up) and 0.

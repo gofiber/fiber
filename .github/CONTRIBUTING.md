@@ -17,6 +17,8 @@ Titles always we must use prefix according to below:
 
 All pull requests that contain a feature or fix are mandatory to have unit tests. Your PR is only to be merged if you respect this flow.
 
+Please do not copy the request/response plumbing from one test into the next, and do not write another fake storage or clock: the helpers in [`internal/apptest`](https://github.com/gofiber/fiber/tree/main/internal/apptest), [`internal/storagetest`](https://github.com/gofiber/fiber/tree/main/internal/storagetest) and [`internal/clocktest`](https://github.com/gofiber/fiber/tree/main/internal/clocktest) cover them, and tests that differ only in their data belong in one table-driven test with a subtest per row. Every test and subtest starts with `t.Parallel()`. The helpers, the few exceptions to `t.Parallel()` and the compact layout the test files use (single-statement closures and short table rows on one line, no blank line after `t.Parallel()`) are described in [`AGENTS.md`](https://github.com/gofiber/fiber/blob/main/AGENTS.md).
+
 ## 👍 Contribute
 
 If you want to say **thank you** and/or support the active development of `Fiber`:

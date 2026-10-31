@@ -1,6 +1,7 @@
 package headerlist
 
 import (
+	"iter"
 	"slices"
 	"testing"
 
@@ -9,11 +10,7 @@ import (
 
 func Test_NextPrev(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name string
-		list string
-		want []string
-	}{
+	for _, tc := range []yieldCase{
 		{name: "empty", list: "", want: []string{""}},
 		{name: "single", list: "203.0.113.50", want: []string{"203.0.113.50"}},
 		{name: "empty elements", list: ",a,,,b,", want: []string{"", "a", "", "", "b", ""}},
@@ -47,75 +44,28 @@ func Test_NextPrev(t *testing.T) {
 func Test_Append(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {
-		description  string
-		headerValue  string
-		expectedList []string
+		name string
+		list string
+		want []string
 	}{
-		{
-			description:  "normal case",
-			headerValue:  "gzip, deflate,br",
-			expectedList: []string{"gzip", "deflate", "br"},
-		},
-		{
-			description:  "no matter the value",
-			headerValue:  "   gzip,deflate, br, zip",
-			expectedList: []string{"gzip", "deflate", "br", "zip"},
-		},
-		{
-			description:  "comma with trailing spaces around values",
-			headerValue:  "gzip , br",
-			expectedList: []string{"gzip", "br"},
-		},
-		{
-			description:  "comma with tabbed whitespace",
-			headerValue:  "gzip\t,br",
-			expectedList: []string{"gzip", "br"},
-		},
-		{
-			description:  "headerValue is empty",
-			headerValue:  "",
-			expectedList: nil,
-		},
-		{
-			// RFC 9110 §5.6.1.2: empty list elements are parsed and ignored.
-			description:  "has a comma without element",
-			headerValue:  "gzip,",
-			expectedList: []string{"gzip"},
-		},
-		{
-			description:  "has a space between words",
-			headerValue:  "  foo bar, hello  world",
-			expectedList: []string{"foo bar", "hello  world"},
-		},
-		{
-			description:  "single comma",
-			headerValue:  ",",
-			expectedList: []string{},
-		},
-		{
-			description:  "multiple comma",
-			headerValue:  ",,",
-			expectedList: []string{},
-		},
-		{
-			description:  "comma with space",
-			headerValue:  ",  ,",
-			expectedList: []string{},
-		},
-		{
-			description:  "empty element between values",
-			headerValue:  "gzip, , br",
-			expectedList: []string{"gzip", "br"},
-		},
+		{"normal case", "gzip, deflate,br", []string{"gzip", "deflate", "br"}},
+		{"no matter the value", "   gzip,deflate, br, zip", []string{"gzip", "deflate", "br", "zip"}},
+		{"comma with trailing spaces around values", "gzip , br", []string{"gzip", "br"}},
+		{"comma with tabbed whitespace", "gzip\t,br", []string{"gzip", "br"}},
+		{"headerValue is empty", "", nil},
+		// RFC 9110 §5.6.1.2: empty list elements are parsed and ignored.
+		{"has a comma without element", "gzip,", []string{"gzip"}},
+		{"has a space between words", "  foo bar, hello  world", []string{"foo bar", "hello  world"}},
+		{"single comma", ",", []string{}},
+		{"multiple comma", ",,", []string{}},
+		{"comma with space", ",  ,", []string{}},
+		{"empty element between values", "gzip, , br", []string{"gzip", "br"}},
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.description, func(t *testing.T) {
-			tc := tc // create a new 'tc' variable for the goroutine
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			dst := make([]string, 10)
-			result := Append(dst, tc.headerValue)
-			require.Equal(t, tc.expectedList, result)
+			require.Equal(t, tc.want, Append(make([]string, 10), tc.list))
 		})
 	}
 }
@@ -131,48 +81,63 @@ func Benchmark_Append(b *testing.B) {
 	require.Equal(b, []string{"deflate", "gzip", "br", "brotli", "zstd"}, result)
 }
 
+// Test_Contains runs every case through Contains, which compares byte for
+// byte, and through ContainsFold, which folds ASCII case.
 func Test_Contains(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {
-		header   string
-		value    string
-		expected bool
+		name   string
+		header string
+		value  string
+		want   bool // from Contains
+		fold   bool // from ContainsFold
 	}{
 		// Exact match
-		{header: "gzip", value: "gzip", expected: true},
-		{header: "gzip", value: "deflate", expected: false},
+		{name: "exact match", header: "gzip", value: "gzip", want: true, fold: true},
+		{name: "exact mismatch", header: "gzip", value: "deflate"},
 		// Prefix match (value at start with comma)
-		{header: "gzip, deflate", value: "gzip", expected: true},
-		{header: "gzip,deflate", value: "gzip", expected: true},
-		// Suffix match (value at end)
-		{header: "deflate, gzip", value: "gzip", expected: true},
-		{header: "deflate,gzip", value: "gzip", expected: true}, // No space - OWS is optional per RFC 9110
-		{header: "br, gzip", value: "gzip", expected: true},
+		{name: "prefix", header: "gzip, deflate", value: "gzip", want: true, fold: true},
+		{name: "prefix without OWS", header: "gzip,deflate", value: "gzip", want: true, fold: true},
+		// Suffix match (value at end); OWS is optional per RFC 9110
+		{name: "suffix", header: "deflate, gzip", value: "gzip", want: true, fold: true},
+		{name: "suffix without OWS", header: "deflate,gzip", value: "gzip", want: true, fold: true},
+		{name: "suffix after br", header: "br, gzip", value: "gzip", want: true, fold: true},
 		// Middle match (value in middle)
-		{header: "deflate, gzip, br", value: "gzip", expected: true},
-		{header: "deflate,gzip,br", value: "gzip", expected: true}, // No spaces - OWS is optional per RFC 9110
+		{name: "middle", header: "deflate, gzip, br", value: "gzip", want: true, fold: true},
+		{name: "middle without OWS", header: "deflate,gzip,br", value: "gzip", want: true, fold: true},
 		// No match - similar but not equal
-		{header: "gzip2", value: "gzip", expected: false},
-		{header: "2gzip", value: "gzip", expected: false},
-		{header: "gzip2, deflate", value: "gzip", expected: false},
+		{name: "longer element", header: "gzip2", value: "gzip"},
+		{name: "element with a prefix", header: "2gzip", value: "gzip"},
+		{name: "longer element in a list", header: "gzip2, deflate", value: "gzip"},
 		// Whitespace handling (OWS per RFC 9110)
-		{header: "  gzip  ,  deflate  ", value: "gzip", expected: true},
-		{header: "deflate,  gzip  ", value: "gzip", expected: true},
-		// Empty cases
-		{header: "", value: "gzip", expected: false},
-		{header: "gzip", value: "", expected: false},
-		{header: "", value: "", expected: false}, // Both empty - should return false
+		{name: "OWS around every element", header: "  gzip  ,  deflate  ", value: "gzip", want: true, fold: true},
+		{name: "OWS around the last element", header: "deflate,  gzip  ", value: "gzip", want: true, fold: true},
+		// Contains compares against what All yields, so OWS around the element is
+		// not part of it. A value carrying its own OWS is not an element, and that
+		// holds whether or not it happens to span the whole list.
+		{name: "OWS around a lone element", header: " gzip ", value: "gzip", want: true, fold: true},
+		{name: "value with OWS spanning the list", header: " gzip ", value: " gzip "},
+		{name: "value with OWS", header: "br, gzip", value: " gzip "},
+		// Empty cases: an empty value is never present
+		{name: "empty list", header: "", value: "gzip"},
+		{name: "empty value", header: "gzip", value: ""},
+		{name: "both empty", header: "", value: ""},
+		// The documented split from ContainsFold: Contains compares byte for byte.
+		{name: "other case in a list", header: "gzip, BR", value: "br", fold: true},
+		{name: "upper case element", header: "GZIP", value: "gzip", fold: true},
+		{name: "upper case value", header: " close ", value: "CLOSE", fold: true},
+		{name: "field name in another case", header: "Accept-Encoding", value: "accept-encoding", fold: true},
 	}
 
 	for _, tc := range testCases {
-		result := Contains(tc.header, tc.value)
-		require.Equal(t, tc.expected, result,
-			"Contains(%q, %q) = %v, want %v",
-			tc.header, tc.value, result, tc.expected)
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, Contains(tc.header, tc.value), "Contains(%q, %q)", tc.header, tc.value)
+			require.Equal(t, tc.fold, ContainsFold(tc.header, tc.value), "ContainsFold(%q, %q)", tc.header, tc.value)
+		})
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Contains -benchmem -count=4
 func Benchmark_Contains(b *testing.B) {
 	var ok bool
 	b.ReportAllocs()
@@ -190,6 +155,8 @@ func Test_Join(t *testing.T) {
 	require.Nil(t, Join(nil))
 	require.Equal(t, []byte("a"), Join([][]byte{[]byte("a")}))
 	require.Equal(t, []byte("a,b"), Join([][]byte{[]byte("a"), []byte("b")}))
+	line := []byte("gzip")
+	require.Same(t, &line[0], &Join([][]byte{line})[0], "a lone line must be returned as it stands")
 }
 
 func Test_JoinNext(t *testing.T) {
@@ -216,26 +183,35 @@ func collect(seq func(func(string) bool)) []string {
 	return got
 }
 
+// yieldCase is a list value and the elements an iterator must yield for it, or Next and Prev step over.
+type yieldCase struct {
+	name string
+	list string
+	want []string
+}
+
+// requireYields runs each case through seq in a parallel subtest of its own.
+func requireYields(t *testing.T, seq func(string) iter.Seq[string], cases []yieldCase) {
+	t.Helper()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, collect(seq(tc.list)))
+		})
+	}
+}
+
 func Test_All(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name string
-		list string
-		want []string
-	}{
+	requireYields(t, All, []yieldCase{
 		{"empty", "", nil},
 		{"single", "gzip", []string{"gzip"}},
 		{"trims OWS", "  gzip ,\tbr\t", []string{"gzip", "br"}},
+		{"trims OWS around a lone element", " gzip ", []string{"gzip"}},
 		{"skips empty elements", "gzip, , br", []string{"gzip", "br"}},
 		{"only separators", ",  ,", nil},
 		{"quotes are not special", `"a,b"`, []string{`"a`, `b"`}},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.want, collect(All(tc.list)))
-		})
-	}
+	})
 }
 
 func Test_TrimOWS(t *testing.T) {
@@ -286,11 +262,7 @@ func Benchmark_TrimOWS(b *testing.B) {
 
 func Test_AllQuotedPairs(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name string
-		list string
-		want []string
-	}{
+	requireYields(t, AllQuotedPairs, []yieldCase{
 		{"empty", "", nil},
 		{"comma inside quotes is kept", `ext="a,b", no-transform`, []string{`ext="a,b"`, "no-transform"}},
 		{"escaped quote does not close", `ext="a\"", no-transform`, []string{`ext="a\""`, "no-transform"}},
@@ -299,49 +271,27 @@ func Test_AllQuotedPairs(t *testing.T) {
 		{"backslash outside quotes is data", `a\b, c`, []string{`a\b`, "c"}},
 		{"trailing backslash inside quotes", `ext="a\`, []string{`ext="a\`}},
 		{"unterminated quote swallows rest", `ext="a, b`, []string{`ext="a, b`}},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.want, collect(AllQuotedPairs(tc.list)))
-		})
-	}
+	})
 }
 
 func Test_AllQuoted(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name string
-		list string
-		want []string
-	}{
+	requireYields(t, AllQuoted, []yieldCase{
 		{"empty", "", nil},
 		{"comma inside quotes is kept", `"v1,v2"`, []string{`"v1,v2"`}},
 		{"separates outside quotes", `"a", "b"`, []string{`"a"`, `"b"`}},
 		{"weak tags", `W/"a", W/"b,c"`, []string{`W/"a"`, `W/"b,c"`}},
 		{"unterminated quote swallows rest", `"a, b`, []string{`"a, b`}},
 		{"skips empty elements", `"a", , "b"`, []string{`"a"`, `"b"`}},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.want, collect(AllQuoted(tc.list)))
-		})
-	}
+	})
 }
 
 func Test_AllLines(t *testing.T) {
 	t.Parallel()
 	require.Nil(t, collect(AllLines(nil)))
-	require.Equal(t,
-		[]string{"gzip", "br", "zstd"},
-		collect(AllLines([][]byte{[]byte("gzip, br"), []byte(" zstd ")})),
-	)
+	require.Equal(t, []string{"gzip", "br", "zstd"}, collect(AllLines([][]byte{[]byte("gzip, br"), []byte(" zstd ")})))
 	// A header split across lines reads the same as one line (RFC 9110 5.3).
-	require.Equal(t,
-		collect(All("gzip,br")),
-		collect(AllLines([][]byte{[]byte("gzip"), []byte("br")})),
-	)
+	require.Equal(t, collect(All("gzip,br")), collect(AllLines([][]byte{[]byte("gzip"), []byte("br")})))
 }
 
 func Test_All_EarlyExit(t *testing.T) {
@@ -361,88 +311,35 @@ func Test_All_EarlyExit(t *testing.T) {
 	}
 }
 
-func Test_ContainsFold(t *testing.T) {
-	t.Parallel()
-	require.True(t, ContainsFold("gzip, BR", "br"))
-	require.True(t, ContainsFold("GZIP", "gzip"))
-	require.True(t, ContainsFold(" close ", "CLOSE"))
-	require.False(t, ContainsFold("gzip2", "gzip"))
-	require.False(t, ContainsFold("gzip", ""))
-	require.False(t, ContainsFold("", "gzip"))
-}
-
-func Test_Contains_MatchesElementsNotRawList(t *testing.T) {
-	t.Parallel()
-	// Contains compares against what All yields, so OWS around the element is
-	// not part of it. A value carrying its own OWS is not an element, and that
-	// holds whether or not it happens to span the whole list.
-	require.True(t, Contains(" gzip ", "gzip"))
-	require.False(t, Contains(" gzip ", " gzip "))
-	require.False(t, Contains("br, gzip", " gzip "))
-	require.Equal(t, []string{"gzip"}, collect(All(" gzip ")))
-}
-
-func Test_Contains_IsCaseSensitive(t *testing.T) {
-	t.Parallel()
-	// The documented split from ContainsFold: Contains compares byte for byte.
-	require.False(t, Contains("Accept-Encoding", "accept-encoding"))
-	require.True(t, ContainsFold("Accept-Encoding", "accept-encoding"))
-}
-
+// Test_AppendUnique runs every case through AppendUnique, for which another
+// case is another value, and through AppendUniqueFold, for which it is the
+// same field and the first spelling is kept.
 func Test_AppendUnique(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name   string
 		list   string
-		want   string
+		want   string // from AppendUnique
+		fold   string // from AppendUniqueFold
 		values []string
 	}{
-		{"into empty", "", "Accept", []string{"Accept"}},
-		{"appends new", "Accept", "Accept, Origin", []string{"Origin"}},
-		{"skips present", "Accept, Origin", "", []string{"Accept"}},
-		{"skips empty values", "Accept", "", []string{""}},
-		{"nothing to add", "Accept", "", nil},
-		{"partial add", "Accept", "Accept, Origin", []string{"Accept", "Origin"}},
-		{"case counts as different", "Accept", "Accept, accept", []string{"accept"}},
+		{"into empty", "", "Accept", "Accept", []string{"Accept"}},
+		{"appends new", "Accept", "Accept, Origin", "Accept, Origin", []string{"Origin"}},
+		{"skips present", "Accept, Origin", "", "", []string{"Accept"}},
+		{"skips empty values", "Accept", "", "", []string{""}},
+		{"nothing to add", "Accept", "", "", nil},
+		{"partial add", "Accept", "Accept, Origin", "Accept, Origin", []string{"Accept", "Origin"}},
+		{"other case", "Accept", "Accept, accept", "", []string{"accept"}},
+		{"keeps first spelling", "accept", "accept, Accept", "", []string{"Accept"}},
+		{"first spelling in one call", "", "accept, Accept", "accept", []string{"accept", "Accept"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tc.want, AppendUnique(tc.list, tc.values))
+			require.Equal(t, tc.fold, AppendUniqueFold(tc.list, tc.values))
 		})
 	}
-}
-
-func Test_AppendUniqueFold(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name   string
-		list   string
-		want   string
-		values []string
-	}{
-		{"into empty", "", "Accept", []string{"Accept"}},
-		{"appends new", "Accept", "Accept, Origin", []string{"Origin"}},
-		{"skips present", "Accept, Origin", "", []string{"Accept"}},
-		{"skips empty values", "Accept", "", []string{""}},
-		{"nothing to add", "Accept", "", nil},
-		{"partial add", "Accept", "Accept, Origin", []string{"Accept", "Origin"}},
-		{"case is the same field", "Accept", "", []string{"accept"}},
-		{"keeps first spelling", "accept", "", []string{"Accept"}},
-		{"first spelling in one call", "", "accept", []string{"accept", "Accept"}},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.want, AppendUniqueFold(tc.list, tc.values))
-		})
-	}
-}
-
-func Test_Join_AliasesSingleLine(t *testing.T) {
-	t.Parallel()
-	line := []byte("gzip")
-	require.Same(t, &line[0], &Join([][]byte{line})[0], "a lone line must be returned as it stands")
 }
 
 func Test_Append_ReusesStorage(t *testing.T) {

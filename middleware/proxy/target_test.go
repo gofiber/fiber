@@ -1,11 +1,6 @@
 package proxy
 
 import (
-	"bufio"
-	"io"
-	"net"
-	"net/http"
-	"net/http/httptest"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -23,7 +19,6 @@ import (
 func rawRequest(t *testing.T, app *fiber.App, target, host string) *fasthttp.Response {
 	t.Helper()
 
-	var req fasthttp.Request
 	method := fiber.MethodGet
 	if target == "*" {
 		method = fiber.MethodOptions // the only method asterisk-form is for
@@ -33,15 +28,7 @@ func rawRequest(t *testing.T, app *fiber.App, target, host string) *fasthttp.Res
 		// HTTP/1.0 needs no Host header.
 		raw = method + " " + target + " HTTP/1.0\r\n\r\n"
 	}
-	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
-
-	var fctx fasthttp.RequestCtx
-	fctx.Init(&req, nil, nil)
-	app.Handler()(&fctx)
-
-	resp := fasthttp.AcquireResponse()
-	fctx.Response.CopyTo(resp)
-	return resp
+	return serveParsed(t, app, proxyTestRequest(t), raw)
 }
 
 // listenUpstream serves upstream on a loopback port until the test ends and
@@ -49,8 +36,7 @@ func rawRequest(t *testing.T, app *fiber.App, target, host string) *fasthttp.Res
 func listenUpstream(t *testing.T, upstream *fiber.App) string {
 	t.Helper()
 
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	ln := proxyTestListen(t)
 	t.Cleanup(func() {
 		ln.Close() //nolint:errcheck // It is fine to ignore the error here
 	})
@@ -65,9 +51,7 @@ func echoTarget(t *testing.T) string {
 	t.Helper()
 
 	target := fiber.New()
-	target.Use(func(c fiber.Ctx) error {
-		return c.SendString(c.OriginalURL())
-	})
+	target.Use(func(c fiber.Ctx) error { return c.SendString(c.OriginalURL()) })
 	return listenUpstream(t, target)
 }
 
@@ -77,76 +61,143 @@ func forwardingHandlers() []realIPHandler {
 	return slices.DeleteFunc(realIPHandlers(), func(h realIPHandler) bool { return h.name == "Forward" })
 }
 
-func readBody(t *testing.T, resp *http.Response) string {
-	t.Helper()
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	return string(b)
-}
-
 func forbid(c fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusForbidden)
 }
 
-// go test -run Test_Proxy_Balancer_ForwardsRoutedPath
-func Test_Proxy_Balancer_ForwardsRoutedPath(t *testing.T) {
-	t.Parallel()
-	addr := echoTarget(t)
+// proxyTestExpectForwarded sends every target of wants to app and requires the
+// answer 200 with the target its upstream read, which wants maps the target to.
+func proxyTestExpectForwarded(t *testing.T, app *fiber.App, wants map[string]string) {
+	t.Helper()
 
-	// Every mount and every expectation is the same for both apps: what
-	// differs is which spellings the router resolves before matching.
-	t.Run("default", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use("/admin", forbid)
-		app.Use(Balancer(Config{Servers: []string{addr}}))
-
-		for target, want := range map[string]string{
-			"/public/%41?x=%2F&y=1": "/public/A?x=%2F&y=1",
-			"/public/%zz":           "/public/%25zz",
-			"/public/a%3Ab%20c":     "/public/a%3Ab%20c",
-		} {
-			resp := rawRequest(t, app, target, "example.com")
-			require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
-			require.Equal(t, want, string(resp.Body()), "upstream target for %q", target)
-		}
-		for _, target := range []string{"/admin/secret", "/public/../admin/secret", "/%2e%2e/admin/secret", "/public/%2E./admin/secret"} {
-			resp := rawRequest(t, app, target, "example.com")
-			require.Equal(t, fiber.StatusForbidden, resp.StatusCode(), target)
-		}
-		// Kept as routed, an escaped slash or an empty segment would be read
-		// as another path by an upstream that decodes or merges: refused.
-		for _, target := range []string{"/public/..%2Fadmin/secret", "/public%2F..%2Fadmin", "//admin/secret", "/public//x"} {
-			resp := rawRequest(t, app, target, "example.com")
-			require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), target)
-		}
-	})
-
-	t.Run("unescape path", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New(fiber.Config{UnescapePath: true})
-		app.Use("/admin", forbid)
-		app.Use(Balancer(Config{Servers: []string{addr}}))
-
-		for target, want := range map[string]string{
-			"/public/a%2Fb":         "/public/a/b",
-			"/public/%41%20b?x=%2F": "/public/A%20b?x=%2F",
-		} {
-			resp := rawRequest(t, app, target, "example.com")
-			require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
-			require.Equal(t, want, string(resp.Body()), "upstream target for %q", target)
-		}
-		for _, target := range []string{"/public/..%2Fadmin/secret", "/public%2F..%2Fadmin/secret", "/%2e%2e/admin/secret"} {
-			resp := rawRequest(t, app, target, "example.com")
-			require.Equal(t, fiber.StatusForbidden, resp.StatusCode(), target)
-		}
-		// The decoded path keeps an empty segment, which is refused.
-		require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, "//admin/secret", "example.com").StatusCode())
-	})
+	for target, want := range wants {
+		resp := rawRequest(t, app, target, "example.com")
+		require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
+		require.Equal(t, want, string(resp.Body()), "upstream target for %q", target)
+	}
 }
 
-// go test -run Test_Proxy_Balancer_ModifyRequestCanRetarget
+// proxyTestExpectStatus sends every target to app and requires the answer to
+// have the given status.
+func proxyTestExpectStatus(t *testing.T, app *fiber.App, status int, targets ...string) {
+	t.Helper()
+
+	for _, target := range targets {
+		resp := rawRequest(t, app, target, "example.com")
+		require.Equal(t, status, resp.StatusCode(), "%s: %s", target, resp.Body())
+	}
+}
+
+// Every forwarding handler is mounted behind a guard on "/admin" and sends what
+// the router resolved to its upstream: a target that stays within its own path
+// is forwarded as routed, one that resolves into the guarded path is answered by
+// the guard, and one the upstream could read as another path is refused.
+func Test_Proxy_ForwardsRoutedPath(t *testing.T) {
+	t.Parallel()
+	addr := echoTarget(t)
+	escapedPrefixForwarded := map[string]string{
+		"/public/x":                  "/my%20app/public/x",
+		"/public/..%3B/admin/secret": "/my%20app/public/..%3B/admin/secret",
+		"/..%3B/other/a%40b?q=%3B":   "/my%20app/..%3B/other/a%40b?q=%3B",
+	}
+
+	for _, tc := range []struct {
+		build     func(addr string) fiber.Handler
+		forwarded map[string]string // target -> what the upstream reads
+		name      string
+		forbidden []string // targets the guard on "/admin" answers
+		refused   []string // targets answered 400 Bad Request
+		appCfg    []fiber.Config
+	}{
+		// Every mount and every expectation is the same for both Balancer apps:
+		// what differs is which spellings the router resolves before matching.
+		{
+			name:  "Balancer",
+			build: func(addr string) fiber.Handler { return Balancer(Config{Servers: []string{addr}}) },
+			forwarded: map[string]string{
+				"/public/%41?x=%2F&y=1": "/public/A?x=%2F&y=1",
+				"/public/%zz":           "/public/%25zz",
+				"/public/a%3Ab%20c":     "/public/a%3Ab%20c",
+			},
+			forbidden: []string{"/admin/secret", "/public/../admin/secret", "/%2e%2e/admin/secret", "/public/%2E./admin/secret"},
+			// Kept as routed, an escaped slash or an empty segment would be read
+			// as another path by an upstream that decodes or merges: refused.
+			refused: []string{"/public/..%2Fadmin/secret", "/public%2F..%2Fadmin", "//admin/secret", "/public//x"},
+		},
+		{
+			name:   "Balancer with UnescapePath",
+			appCfg: []fiber.Config{{UnescapePath: true}},
+			build:  func(addr string) fiber.Handler { return Balancer(Config{Servers: []string{addr}}) },
+			forwarded: map[string]string{
+				"/public/a%2Fb":         "/public/a/b",
+				"/public/%41%20b?x=%2F": "/public/A%20b?x=%2F",
+			},
+			forbidden: []string{"/public/..%2Fadmin/secret", "/public%2F..%2Fadmin/secret", "/%2e%2e/admin/secret"},
+			// The decoded path keeps an empty segment, which is refused.
+			refused: []string{"//admin/secret"},
+		},
+		{
+			name:  "DomainForward with a path prefix",
+			build: func(addr string) fiber.Handler { return DomainForward("example.com", "http://"+addr+"/api/") },
+			forwarded: map[string]string{
+				"/../internal":     "/api/internal",
+				"/%2e%2e/internal": "/api/internal",
+				"/x/%41?q=%2F&y=1": "/api/x/A?q=%2F&y=1",
+			},
+			forbidden: []string{"/%2e%2e/admin/secret"},
+			refused:   []string{"//internal", "/..%2Finternal", "/public/..%2Fadmin/secret"},
+		},
+		{
+			name:      "DomainForward",
+			build:     func(addr string) fiber.Handler { return DomainForward("example.com", "http://"+addr) },
+			forwarded: map[string]string{"/a/../public/%zz?x=1": "/public/%25zz?x=1", "/public/a%3Ab": "/public/a%3Ab"},
+			forbidden: []string{"/public/../admin/secret"},
+			refused:   []string{"//admin/secret", "/public/..%2Fadmin/secret"},
+		},
+		{
+			name:  "BalancerForward",
+			build: func(addr string) fiber.Handler { return BalancerForward([]string{"http://" + addr + "/api/"}) },
+			forwarded: map[string]string{
+				"/../internal":  "/api/internal",
+				"/x/%41?q=%2F":  "/api/x/A?q=%2F",
+				"/public/a%3Ab": "/api/public/a%3Ab",
+			},
+			forbidden: []string{"/%2e%2e/admin/secret"},
+			refused:   []string{"//internal", "/public/..%2Fadmin/secret"},
+		},
+		// An escape in the upstream URL's path does not cost the routed target its escapes: with "%3B" sent as ";",
+		// a servlet container serves "/admin/secret" for "/public/..%3B/admin/secret" although no middleware on
+		// "/admin" ran.
+		{
+			name: "DomainForward with an escaped path prefix",
+			build: func(addr string) fiber.Handler {
+				return DomainForward("example.com", "http://"+addr+"/my%20app")
+			},
+			forwarded: escapedPrefixForwarded,
+			refused:   []string{"/public/..;/admin/secret"},
+		},
+		{
+			name: "BalancerForward with an escaped path prefix",
+			build: func(addr string) fiber.Handler {
+				return BalancerForward([]string{"http://" + addr + "/my%20app"})
+			},
+			forwarded: escapedPrefixForwarded,
+			refused:   []string{"/public/..;/admin/secret"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New(tc.appCfg...)
+			app.Use("/admin", forbid)
+			app.Use(tc.build(addr))
+
+			proxyTestExpectForwarded(t, app, tc.forwarded)
+			proxyTestExpectStatus(t, app, fiber.StatusForbidden, tc.forbidden...)
+			proxyTestExpectStatus(t, app, fiber.StatusBadRequest, tc.refused...)
+		})
+	}
+}
+
 func Test_Proxy_Balancer_ModifyRequestCanRetarget(t *testing.T) {
 	t.Parallel()
 	addr := echoTarget(t)
@@ -167,16 +218,13 @@ func Test_Proxy_Balancer_ModifyRequestCanRetarget(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/set-path?x=1", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, "/other?x=1", readBody(t, resp))
+	resp := apptest.Do(t, app, "/set-path?x=1")
+	require.Equal(t, "/other?x=1", apptest.Body(t, resp))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/set-uri?x=1", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, "/other?y=2", readBody(t, resp))
+	resp = apptest.Do(t, app, "/set-uri?x=1")
+	require.Equal(t, "/other?y=2", apptest.Body(t, resp))
 }
 
-// go test -run Test_Proxy_Balancer_RestoresRequestLine
 func Test_Proxy_Balancer_RestoresRequestLine(t *testing.T) {
 	t.Parallel()
 	addr := echoTarget(t)
@@ -194,10 +242,8 @@ func Test_Proxy_Balancer_RestoresRequestLine(t *testing.T) {
 	require.Equal(t, "/public/A?x=%2F", string(resp.Body()))
 }
 
-// go test -run Test_Proxy_Balancer_RejectsHostUserinfo
 func Test_Proxy_Balancer_RejectsHostUserinfo(t *testing.T) {
 	t.Parallel()
-
 	var hits atomic.Int32
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		hits.Add(1)
@@ -291,10 +337,8 @@ func Test_Proxy_Balancer_AbsoluteFormHost(t *testing.T) {
 	require.Equal(t, "/x|backend.internal|Bearer pinned", string(rawRequest(t, late, "http://public.example/x", "public.example").Body()))
 }
 
-// go test -run Test_Proxy_Balancer_RejectsNonOriginServer
 func Test_Proxy_Balancer_RejectsNonOriginServer(t *testing.T) {
 	t.Parallel()
-
 	for _, server := range []string{
 		"http://127.0.0.1:1/api",
 		"http://127.0.0.1:1/api/",
@@ -312,109 +356,6 @@ func Test_Proxy_Balancer_RejectsNonOriginServer(t *testing.T) {
 	require.NotPanics(t, func() {
 		Balancer(Config{Servers: []string{"http://127.0.0.1:1", "http://127.0.0.1:1/", "127.0.0.1:1", "https://[::1]:1"}})
 	})
-}
-
-// go test -run Test_Proxy_DomainForward_ForwardsRoutedPath
-func Test_Proxy_DomainForward_ForwardsRoutedPath(t *testing.T) {
-	t.Parallel()
-	addr := echoTarget(t)
-
-	t.Run("upstream with a path prefix", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use("/admin", forbid)
-		app.Use(DomainForward("example.com", "http://"+addr+"/api/"))
-
-		for target, want := range map[string]string{
-			"/../internal":     "/api/internal",
-			"/%2e%2e/internal": "/api/internal",
-			"/x/%41?q=%2F&y=1": "/api/x/A?q=%2F&y=1",
-		} {
-			resp := rawRequest(t, app, target, "example.com")
-			require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
-			require.Equal(t, want, string(resp.Body()), "upstream target for %q", target)
-		}
-		resp := rawRequest(t, app, "/%2e%2e/admin/secret", "example.com")
-		require.Equal(t, fiber.StatusForbidden, resp.StatusCode())
-		for _, target := range []string{"//internal", "/..%2Finternal", "/public/..%2Fadmin/secret"} {
-			require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), target)
-		}
-	})
-
-	t.Run("plain upstream", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use("/admin", forbid)
-		app.Use(DomainForward("example.com", "http://"+addr))
-
-		for target, want := range map[string]string{
-			"/a/../public/%zz?x=1": "/public/%25zz?x=1",
-			"/public/a%3Ab":        "/public/a%3Ab",
-		} {
-			resp := rawRequest(t, app, target, "example.com")
-			require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
-			require.Equal(t, want, string(resp.Body()), "upstream target for %q", target)
-		}
-		resp := rawRequest(t, app, "/public/../admin/secret", "example.com")
-		require.Equal(t, fiber.StatusForbidden, resp.StatusCode())
-		for _, target := range []string{"//admin/secret", "/public/..%2Fadmin/secret"} {
-			require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), target)
-		}
-	})
-}
-
-// go test -run Test_Proxy_BalancerForward_ForwardsRoutedPath
-func Test_Proxy_BalancerForward_ForwardsRoutedPath(t *testing.T) {
-	t.Parallel()
-	addr := echoTarget(t)
-
-	app := fiber.New()
-	app.Use("/admin", forbid)
-	app.Use(BalancerForward([]string{"http://" + addr + "/api/"}))
-
-	for target, want := range map[string]string{
-		"/../internal":  "/api/internal",
-		"/x/%41?q=%2F":  "/api/x/A?q=%2F",
-		"/public/a%3Ab": "/api/public/a%3Ab",
-	} {
-		resp := rawRequest(t, app, target, "example.com")
-		require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
-		require.Equal(t, want, string(resp.Body()), "upstream target for %q", target)
-	}
-	resp := rawRequest(t, app, "/%2e%2e/admin/secret", "example.com")
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode())
-	for _, target := range []string{"//internal", "/public/..%2Fadmin/secret"} {
-		require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), target)
-	}
-}
-
-// Test_Proxy_Forward_EscapedUpstreamPathKeepsTarget pins that an escape in the
-// upstream URL's path does not cost the routed target its escapes: with "%3B"
-// sent as ";", a servlet container serves "/admin/secret" for
-// "/public/..%3B/admin/secret" although no middleware on "/admin" ran.
-func Test_Proxy_Forward_EscapedUpstreamPathKeepsTarget(t *testing.T) {
-	t.Parallel()
-	addr := echoTarget(t)
-
-	for name, handler := range map[string]fiber.Handler{
-		"DomainForward":   DomainForward("example.com", "http://"+addr+"/my%20app"),
-		"BalancerForward": BalancerForward([]string{"http://" + addr + "/my%20app"}),
-	} {
-		app := fiber.New()
-		app.Use("/admin", forbid)
-		app.Use(handler)
-
-		for target, want := range map[string]string{
-			"/public/x":                  "/my%20app/public/x",
-			"/public/..%3B/admin/secret": "/my%20app/public/..%3B/admin/secret",
-			"/..%3B/other/a%40b?q=%3B":   "/my%20app/..%3B/other/a%40b?q=%3B",
-		} {
-			resp := rawRequest(t, app, target, "example.com")
-			require.Equal(t, fiber.StatusOK, resp.StatusCode(), "%s %s", name, target)
-			require.Equal(t, want, string(resp.Body()), "%s upstream target for %q", name, target)
-		}
-		require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, "/public/..;/admin/secret", "example.com").StatusCode(), name)
-	}
 }
 
 // Test_Proxy_RejectsEncodedSeparator pins that a routed path an upstream could
@@ -435,7 +376,7 @@ func Test_Proxy_RejectsEncodedSeparator(t *testing.T) {
 			app.Use("/admin", forbid)
 			app.Use(h.build(addr))
 
-			for _, target := range []string{
+			proxyTestExpectStatus(t, app, fiber.StatusBadRequest,
 				"/public/..%2Fadmin/secret.txt",
 				"/public/..%2fadmin/secret.txt",
 				"/admin%2Fsecret.txt",
@@ -448,9 +389,7 @@ func Test_Proxy_RejectsEncodedSeparator(t *testing.T) {
 				// a dot segment once a servlet container strips its parameters
 				"/public/..;/admin/secret.txt",
 				"/public/.;x/../..;jsessionid=1/admin/secret.txt",
-			} {
-				require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), target)
-			}
+			)
 
 			// A separator forged by a stray "%": routed as "..%2fadmin" when
 			// the router keeps the stray "%" as sent, and refused; routed as
@@ -465,9 +404,7 @@ func Test_Proxy_RejectsEncodedSeparator(t *testing.T) {
 				t.Fatalf("unexpected status %d", resp.StatusCode())
 			}
 
-			resp = rawRequest(t, app, "/files/a%20b%3Fc?x=%2F", "example.com")
-			require.Equal(t, fiber.StatusOK, resp.StatusCode())
-			require.Equal(t, "/files/a%20b%3Fc?x=%2F", string(resp.Body()))
+			proxyTestExpectForwarded(t, app, map[string]string{"/files/a%20b%3Fc?x=%2F": "/files/a%20b%3Fc?x=%2F"})
 		})
 	}
 }
@@ -479,7 +416,6 @@ func Test_Proxy_RejectsEncodedSeparator(t *testing.T) {
 // "/admin/secret" there, although no middleware on "/admin" ran for them.
 func Test_Proxy_RejectsPathParameters(t *testing.T) {
 	t.Parallel()
-
 	for _, h := range forwardingHandlers() {
 		t.Run(h.name, func(t *testing.T) {
 			t.Parallel()
@@ -496,13 +432,11 @@ func Test_Proxy_RejectsPathParameters(t *testing.T) {
 			app.Use(h.build(addr))
 
 			// the guard still answers for the path it is mounted on
-			require.Equal(t, fiber.StatusForbidden, rawRequest(t, app, "/admin/secret", "example.com").StatusCode())
-			resp := rawRequest(t, app, "/public/page?x=1", "example.com")
-			require.Equal(t, fiber.StatusOK, resp.StatusCode())
-			require.Equal(t, "/public/page?x=1", string(resp.Body()))
+			proxyTestExpectStatus(t, app, fiber.StatusForbidden, "/admin/secret")
+			proxyTestExpectForwarded(t, app, map[string]string{"/public/page?x=1": "/public/page?x=1"})
 			require.Equal(t, int32(1), hits.Load())
 
-			for _, target := range []string{
+			proxyTestExpectStatus(t, app, fiber.StatusBadRequest,
 				"/admin;x/secret",
 				"/admin;/secret",
 				"/;/admin/secret",
@@ -514,16 +448,11 @@ func Test_Proxy_RejectsPathParameters(t *testing.T) {
 				"/public;x/page",
 				"/public/page;jsessionid=1",
 				"/public/page;jsessionid=1?x=1",
-			} {
-				refused := rawRequest(t, app, target, "example.com")
-				require.Equal(t, fiber.StatusBadRequest, refused.StatusCode(), "%s: %s", target, refused.Body())
-			}
+			)
 			require.Equal(t, int32(1), hits.Load(), "the upstream must not see a path parameter")
 
 			// A ";" in the query is no path parameter.
-			resp = rawRequest(t, app, "/public/page?a=1;b=2", "example.com")
-			require.Equal(t, fiber.StatusOK, resp.StatusCode())
-			require.Equal(t, "/public/page?a=1;b=2", string(resp.Body()))
+			proxyTestExpectForwarded(t, app, map[string]string{"/public/page?a=1;b=2": "/public/page?a=1;b=2"})
 
 			// With UnescapePath the router takes a ";" for part of the name
 			// it matches, "admin;x", which is no path under "/admin". It is
@@ -531,16 +460,12 @@ func Test_Proxy_RejectsPathParameters(t *testing.T) {
 			unescaping := fiber.New(fiber.Config{UnescapePath: true})
 			unescaping.Use("/admin", forbid)
 			unescaping.Use(h.build(addr))
-			for target, want := range map[string]string{
+			proxyTestExpectForwarded(t, unescaping, map[string]string{
 				"/admin;x/secret":   "/admin%3Bx/secret",
 				"/admin%3Bx/secret": "/admin%3Bx/secret",
 				"/admin;/secret":    "/admin%3B/secret",
 				"/;/admin/secret":   "/%3B/admin/secret",
-			} {
-				resp := rawRequest(t, unescaping, target, "example.com")
-				require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
-				require.Equal(t, want, string(resp.Body()), "path read by the upstream for %q", target)
-			}
+			})
 		})
 	}
 }
@@ -560,21 +485,16 @@ func Test_Proxy_EscapesRawBytes(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
 			app.Use(h.build(addr))
-			for target, want := range map[string]string{
+			proxyTestExpectForwarded(t, app, map[string]string{
 				"/a|b{c}d":              "/a%7Cb%7Bc%7Dd",
 				"/q\"^<>`":              "/q%22%5E%3C%3E%60",
 				"/\xc3\xbcber?x=1":      "/%C3%BCber?x=1",
 				"/keep!$&'()*+,=:@/end": "/keep!$&'()*+,=:@/end",
-			} {
-				resp := rawRequest(t, app, target, "example.com")
-				require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
-				require.Equal(t, want, string(resp.Body()), "upstream target for %q", target)
-			}
+			})
 		})
 	}
 }
 
-// go test -run Test_Proxy_Do_UserClientForwardsTargetAsGiven
 func Test_Proxy_Do_UserClientForwardsTargetAsGiven(t *testing.T) {
 	t.Parallel()
 	addr := echoTarget(t)
@@ -584,14 +504,10 @@ func Test_Proxy_Do_UserClientForwardsTargetAsGiven(t *testing.T) {
 	// "/a/b/d?q=%2F" for a target the handler never wrote.
 	target := "http://" + addr + "/a%2Fb//c/..%2Fd?q=%2F"
 	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		return Do(c, target, &fasthttp.Client{})
-	})
+	app.Get("/", func(c fiber.Ctx) error { return Do(c, target, &fasthttp.Client{}) })
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "/a%2Fb//c/..%2Fd?q=%2F", readBody(t, resp))
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
+	require.Equal(t, "/a%2Fb//c/..%2Fd?q=%2F", apptest.Body(t, resp))
 }
 
 // Test_Proxy_Balancer_RejectsAuthorityTarget pins that a routed target
@@ -603,7 +519,6 @@ func Test_Proxy_Do_UserClientForwardsTargetAsGiven(t *testing.T) {
 // application pinned.
 func Test_Proxy_Balancer_RejectsAuthorityTarget(t *testing.T) {
 	t.Parallel()
-
 	var hits atomic.Int32
 	target := fiber.New()
 	target.Use(func(c fiber.Ctx) error {
@@ -614,22 +529,12 @@ func Test_Proxy_Balancer_RejectsAuthorityTarget(t *testing.T) {
 
 	for _, unescape := range []bool{false, true} {
 		app := fiber.New(fiber.Config{UnescapePath: unescape})
-		app.Use(Balancer(Config{
-			Servers: []string{addr},
-			ModifyRequest: func(c fiber.Ctx) error {
-				c.Request().Header.SetHost("backend.internal")
-				c.Request().Header.Set(fiber.HeaderAuthorization, "Bearer pinned")
-				return nil
-			},
-		}))
+		app.Use(Balancer(Config{Servers: []string{addr}, ModifyRequest: pinIdentity}))
 
 		before := hits.Load()
 		// Neither raw line holds "://": fasthttp's server would read one that
 		// did as the absolute form and split the host off before routing.
-		rejected := []string{
-			"//u:pw@evil.example/a:/x/..//b",
-			"//u:pw@evil.example/a:/x/%2E%2E//b",
-		}
+		rejected := []string{"//u:pw@evil.example/a:/x/..//b", "//u:pw@evil.example/a:/x/%2E%2E//b"}
 		if unescape {
 			rejected = append(rejected, "//u:pw@evil.example/a%3A%2F%2Fb")
 		}
@@ -682,7 +587,6 @@ func pinIdentity(c fiber.Ctx) error {
 // segment, as "/http://u:pw@evil.example/x" does.
 func Test_Proxy_Balancer_RootsUnrootedPath(t *testing.T) {
 	t.Parallel()
-
 	addr := echoIdentity(t)
 	balancer := Balancer(Config{Servers: []string{addr}, ModifyRequest: pinIdentity})
 	app := fiber.New()
@@ -704,7 +608,6 @@ func Test_Proxy_Balancer_RootsUnrootedPath(t *testing.T) {
 // upstream would see a path no middleware had matched.
 func Test_Proxy_Balancer_CustomClientKeepsTarget(t *testing.T) {
 	t.Parallel()
-
 	addr := echoTarget(t)
 	hc := &fasthttp.HostClient{Addr: addr, NoDefaultUserAgentHeader: true}
 	app := fiber.New()
@@ -712,14 +615,11 @@ func Test_Proxy_Balancer_CustomClientKeepsTarget(t *testing.T) {
 	app.Use(Balancer(Config{Client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hc}, Timeout: time.Second}}))
 
 	require.True(t, hc.DisablePathNormalizing)
-	for _, target := range []string{"/public/a%3Ab", "/a%20b?q=%2F"} {
-		resp := rawRequest(t, app, target, "example.com")
-		require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
-		require.Equal(t, target, string(resp.Body()), target)
-	}
-	for _, target := range []string{"/public/..%2Fadmin/secret", "//admin/secret"} {
-		require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), target)
-	}
+	proxyTestExpectForwarded(t, app, map[string]string{
+		"/public/a%3Ab": "/public/a%3Ab",
+		"/a%20b?q=%2F":  "/a%20b?q=%2F",
+	})
+	proxyTestExpectStatus(t, app, fiber.StatusBadRequest, "/public/..%2Fadmin/secret", "//admin/secret")
 }
 
 // opaqueClient is a BalancingClient the proxy cannot configure. It forwards
@@ -744,7 +644,6 @@ func (o *opaqueClient) PendingRequests() int {
 // bytes, is forwarded.
 func Test_Proxy_Balancer_OpaqueClientFailsClosed(t *testing.T) {
 	t.Parallel()
-
 	addr := echoTarget(t)
 	app := fiber.New()
 	app.Use(Balancer(Config{Client: &fasthttp.LBClient{
@@ -754,20 +653,13 @@ func Test_Proxy_Balancer_OpaqueClientFailsClosed(t *testing.T) {
 
 	// Normalization would decode "%2F", "%3B" and "%40" into the bytes they
 	// name and merge "//".
-	for _, target := range []string{"/public/..%2Fadmin/secret", "//admin/secret", "/public/..%3B/admin", "/a%40b"} {
-		resp := rawRequest(t, app, target, "example.com")
-		require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), target)
-	}
-	for target, want := range map[string]string{
+	proxyTestExpectStatus(t, app, fiber.StatusBadRequest, "/public/..%2Fadmin/secret", "//admin/secret", "/public/..%3B/admin", "/a%40b")
+	proxyTestExpectForwarded(t, app, map[string]string{
 		"/plain/path?q=%2F": "/plain/path?q=%2F",
 		"/a%20b":            "/a%20b",
 		"/caf\xc3\xa9":      "/caf%C3%A9",
 		"/a|b%25":           "/a%7Cb%25",
-	} {
-		resp := rawRequest(t, app, target, "example.com")
-		require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
-		require.Equal(t, want, string(resp.Body()), target)
-	}
+	})
 }
 
 // requireForgedEscapeRefused checks a response to
@@ -789,37 +681,31 @@ func requireForgedEscapeRefused(t *testing.T, resp *fasthttp.Response, prefix st
 	}
 }
 
-func Test_Proxy_Balancer_RejectsForgedEscape(t *testing.T) {
+// Test_Proxy_RejectsForgedEscape pins that a forged escape never reaches the
+// upstream as something it would decode into the guarded name, whichever
+// forwarding handler is in front of it (see requireForgedEscapeRefused).
+func Test_Proxy_RejectsForgedEscape(t *testing.T) {
 	t.Parallel()
-
 	addr := echoTarget(t)
-	app := fiber.New()
-	app.Use("/static/private", forbid)
-	app.Use(Balancer(Config{Servers: []string{addr}}))
 
-	requireForgedEscapeRefused(t, rawRequest(t, app, "/static/%%370rivate/secret.txt", "example.com"), "")
-}
+	for _, tc := range []struct {
+		build  func(addr string) fiber.Handler
+		name   string
+		prefix string // the path prefix of the upstream the handler forwards to
+	}{
+		{name: "Balancer", build: func(addr string) fiber.Handler { return Balancer(Config{Servers: []string{addr}}) }},
+		{name: "DomainForward", build: func(addr string) fiber.Handler { return DomainForward("example.com", "http://"+addr+"/api/") }, prefix: "/api"},
+		{name: "BalancerForward", build: func(addr string) fiber.Handler { return BalancerForward([]string{"http://" + addr}) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use("/static/private", forbid)
+			app.Use(tc.build(addr))
 
-func Test_Proxy_DomainForward_RejectsForgedEscape(t *testing.T) {
-	t.Parallel()
-
-	addr := echoTarget(t)
-	app := fiber.New()
-	app.Use("/static/private", forbid)
-	app.Use(DomainForward("example.com", "http://"+addr+"/api/"))
-
-	requireForgedEscapeRefused(t, rawRequest(t, app, "/static/%%370rivate/secret.txt", "example.com"), "/api")
-}
-
-func Test_Proxy_BalancerForward_RejectsForgedEscape(t *testing.T) {
-	t.Parallel()
-
-	addr := echoTarget(t)
-	app := fiber.New()
-	app.Use("/static/private", forbid)
-	app.Use(BalancerForward([]string{"http://" + addr}))
-
-	requireForgedEscapeRefused(t, rawRequest(t, app, "/static/%%370rivate/secret.txt", "example.com"), "")
+			requireForgedEscapeRefused(t, rawRequest(t, app, "/static/%%370rivate/secret.txt", "example.com"), tc.prefix)
+		})
+	}
 }
 
 // allowanceCase is one opt-in of SecurityPolicy and what the forwarding
@@ -915,8 +801,7 @@ func Test_Proxy_Balancer_Allowances(t *testing.T) {
 	for _, tc := range allowanceCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			policy := DefaultSecurityPolicy()
-			policy.AllowPrivateIPs = true
+			policy := proxyTestAllowPrivatePolicy()
 			tc.allow(&policy)
 			app := fiber.New()
 			app.Use(Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy}))
@@ -934,8 +819,7 @@ func Test_Proxy_Forward_Allowances(t *testing.T) {
 
 	for _, tc := range allowanceCases() {
 		t.Run(tc.name, func(t *testing.T) {
-			policy := DefaultSecurityPolicy()
-			policy.AllowPrivateIPs = true
+			policy := proxyTestAllowPrivatePolicy()
 			tc.allow(&policy)
 			withSecurityPolicyForTest(t, policy)
 			for _, h := range forwardingHandlers() {

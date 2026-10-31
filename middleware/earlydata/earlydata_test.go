@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 const (
@@ -36,7 +36,7 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 
 	app.Use(New())
 
-	// Middleware to test IsEarly func
+	// Fail the request unless IsEarly agrees with the header and the method.
 	const localsKeyTestValid = "earlydata_testvalid"
 	app.Use(func(c fiber.Ctx) error {
 		isEarly := IsEarly(c)
@@ -68,11 +68,7 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 		return c.Next()
 	})
 
-	app.Add([]string{
-		fiber.MethodGet,
-		fiber.MethodPost,
-		fiber.MethodQuery,
-	}, "/", func(c fiber.Ctx) error {
+	app.Add([]string{fiber.MethodGet, fiber.MethodPost, fiber.MethodQuery}, "/", func(c fiber.Ctx) error {
 		valid, ok := c.Locals(localsKeyTestValid).(bool)
 		if !ok {
 			panic(errors.New("failed to type-assert to bool"))
@@ -97,84 +93,67 @@ func executeExpectations(t *testing.T, app *fiber.App, remoteAddr string, expect
 	t.Helper()
 
 	for _, expectation := range expectations {
-		req := httptest.NewRequest(expectation.method, "/", http.NoBody)
+		req := apptest.Req(expectation.method, "/", apptest.WithHeaderIf(headerName, expectation.header))
 		req.RemoteAddr = remoteAddr
-		if expectation.header != "" {
-			req.Header.Set(headerName, expectation.header)
-		}
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, expectation.status, resp.StatusCode)
+		apptest.Expect(t, app, req, expectation.status)
 	}
 }
 
-// go test -run Test_EarlyData
 func Test_EarlyData(t *testing.T) {
 	t.Parallel()
+	// Early data on a safe method is only allowed from a trusted proxy, and on
+	// any other method it never is. QUERY is safe (RFC 10008), so it behaves
+	// like GET.
+	expectations := func(trusted bool) []requestExpectation {
+		safeEarly := fiber.StatusTooEarly
+		if trusted {
+			safeEarly = fiber.StatusOK
+		}
 
-	untrustedExpectations := []requestExpectation{
-		{method: fiber.MethodGet, status: fiber.StatusOK},
-		{method: fiber.MethodGet, header: headerValOff, status: fiber.StatusOK},
-		{method: fiber.MethodGet, header: headerValOn, status: fiber.StatusTooEarly},
-		{method: fiber.MethodPost, status: fiber.StatusOK},
-		{method: fiber.MethodPost, header: headerValOff, status: fiber.StatusOK},
-		{method: fiber.MethodPost, header: headerValOn, status: fiber.StatusTooEarly},
-		// QUERY is safe (RFC 10008), so it behaves like GET.
-		{method: fiber.MethodQuery, header: headerValOn, status: fiber.StatusTooEarly},
+		return []requestExpectation{
+			{method: fiber.MethodGet, status: fiber.StatusOK},
+			{method: fiber.MethodGet, header: headerValOff, status: fiber.StatusOK},
+			{method: fiber.MethodGet, header: headerValOn, status: safeEarly},
+			{method: fiber.MethodPost, status: fiber.StatusOK},
+			{method: fiber.MethodPost, header: headerValOff, status: fiber.StatusOK},
+			{method: fiber.MethodPost, header: headerValOn, status: fiber.StatusTooEarly},
+			{method: fiber.MethodQuery, header: headerValOn, status: safeEarly},
+		}
 	}
 
-	trustedExpectations := []requestExpectation{
-		{method: fiber.MethodGet, status: fiber.StatusOK},
-		{method: fiber.MethodGet, header: headerValOff, status: fiber.StatusOK},
-		{method: fiber.MethodGet, header: headerValOn, status: fiber.StatusOK},
-		{method: fiber.MethodPost, status: fiber.StatusOK},
-		{method: fiber.MethodPost, header: headerValOff, status: fiber.StatusOK},
-		{method: fiber.MethodPost, header: headerValOn, status: fiber.StatusTooEarly},
-		// QUERY is safe, so a trusted early-data QUERY is allowed like GET.
-		{method: fiber.MethodQuery, header: headerValOn, status: fiber.StatusOK},
-	}
-
-	t.Run("empty config", func(t *testing.T) {
-		t.Parallel()
-		app := appWithConfig(t, nil)
-		executeExpectations(t, app, untrustedRemoteAddr, untrustedExpectations)
-	})
-	t.Run("default config", func(t *testing.T) {
-		t.Parallel()
-		app := appWithConfig(t, &fiber.Config{})
-		executeExpectations(t, app, untrustedRemoteAddr, untrustedExpectations)
-	})
-
-	t.Run("config with TrustProxy and untrusted remote", func(t *testing.T) {
-		t.Parallel()
-		app := appWithConfig(t, &fiber.Config{
-			TrustProxy: true,
-		})
-		executeExpectations(t, app, untrustedRemoteAddr, untrustedExpectations)
-	})
-	t.Run("config with TrustProxy and trusted TrustProxyConfig.Proxies", func(t *testing.T) {
-		t.Parallel()
-		app := appWithConfig(t, &fiber.Config{
-			TrustProxy: true,
-			TrustProxyConfig: fiber.TrustProxyConfig{
-				Proxies: []string{
-					"0.0.0.0",
-				},
+	for _, tc := range []struct {
+		config     *fiber.Config
+		name       string
+		remoteAddr string
+		trusted    bool
+	}{
+		{name: "empty config", remoteAddr: untrustedRemoteAddr},
+		{name: "default config", config: &fiber.Config{}, remoteAddr: untrustedRemoteAddr},
+		{
+			name: "config with TrustProxy and untrusted remote", remoteAddr: untrustedRemoteAddr,
+			config: &fiber.Config{TrustProxy: true},
+		},
+		{
+			name:       "config with TrustProxy and trusted TrustProxyConfig.Proxies",
+			remoteAddr: trustedRemoteAddr, trusted: true,
+			config: &fiber.Config{
+				TrustProxy: true, TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
 			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := appWithConfig(t, tc.config)
+			executeExpectations(t, app, tc.remoteAddr, expectations(tc.trusted))
 		})
-		executeExpectations(t, app, trustedRemoteAddr, trustedExpectations)
-	})
+	}
 }
 
-// Test_EarlyDataNext verifies that the middleware skips its logic when Next returns true.
 func Test_EarlyDataNext(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-
-	app.Use(New(Config{
-		Next: func(fiber.Ctx) bool { return true },
-	}))
+	app.Use(New(Config{Next: func(fiber.Ctx) bool { return true }}))
 
 	called := false
 	app.Get("/", func(c fiber.Ctx) error {
@@ -187,9 +166,7 @@ func Test_EarlyDataNext(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(headerName, headerValOn)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 	require.True(t, called)
 }
 
@@ -209,28 +186,20 @@ func Test_configDefault_WithConfig(t *testing.T) {
 	t.Parallel()
 	expectedErr := errors.New("boom")
 	called := false
-	custom := Config{
-		Next:  func(_ fiber.Ctx) bool { called = true; return false },
-		Error: expectedErr,
-	}
+	custom := Config{Next: func(_ fiber.Ctx) bool { called = true; return false }, Error: expectedErr}
 
 	cfg := configDefault(custom)
 
-	// Next should be preserved and not invoked by configDefault.
+	// Next is preserved and not invoked by configDefault, as is the custom error.
 	require.False(t, called)
 	require.Equal(t, reflect.ValueOf(custom.Next).Pointer(), reflect.ValueOf(cfg.Next).Pointer())
-	// Custom error must be preserved.
 	require.Equal(t, expectedErr, cfg.Error)
-	// Missing fields should be set to defaults.
+	// Missing fields are set to the defaults, which behave as documented.
 	require.NotNil(t, cfg.IsEarlyData)
 	require.NotNil(t, cfg.AllowEarlyData)
-
-	// Verify default functions behave as expected.
-	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c := apptest.Ctx(t, fiber.New())
 	c.Request().Header.Set(DefaultHeaderName, DefaultHeaderTrueValue)
 	c.Request().Header.SetMethod(fiber.MethodGet)
 	require.True(t, cfg.IsEarlyData(c))
 	require.True(t, cfg.AllowEarlyData(c))
-	app.ReleaseCtx(c)
 }

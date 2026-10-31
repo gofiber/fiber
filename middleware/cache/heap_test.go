@@ -10,7 +10,6 @@ import (
 
 func TestIndexedHeapGenerationSurvivesIndexReuse(t *testing.T) {
 	t.Parallel()
-
 	h := &indexedHeap{}
 	firstIdx := h.put("same-key", 1, 10, "")
 	firstGen := h.generation(firstIdx)
@@ -36,7 +35,6 @@ func TestIndexedHeapGenerationSurvivesIndexReuse(t *testing.T) {
 
 func TestIndexedHeapOrphansAManifestWithItsLastEntry(t *testing.T) {
 	t.Parallel()
-
 	h := &indexedHeap{}
 	a := h.put("m|a", 1, 1, "m")
 	b := h.put("m|b", 2, 1, "m")
@@ -58,7 +56,6 @@ func TestIndexedHeapOrphansAManifestWithItsLastEntry(t *testing.T) {
 
 func TestIndexedHeapRemoveKeepsOrder(t *testing.T) {
 	t.Parallel()
-
 	rng := rand.New(rand.NewPCG(1, 2))
 	h := &indexedHeap{}
 	idx := make([]int, 200)

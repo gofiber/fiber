@@ -1,9 +1,6 @@
 package logger
 
 import (
-	"bytes"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -18,7 +15,6 @@ import (
 // the nil-colors short circuit and the default case.
 func Test_methodColor_AllMethods(t *testing.T) {
 	t.Parallel()
-
 	colors := &fiber.DefaultColors
 
 	require.Empty(t, methodColor(fiber.MethodGet, nil))
@@ -43,7 +39,6 @@ func Test_methodColor_AllMethods(t *testing.T) {
 // the nil-colors short circuit and each status range.
 func Test_statusColor_AllRanges(t *testing.T) {
 	t.Parallel()
-
 	colors := &fiber.DefaultColors
 
 	require.Empty(t, statusColor(fiber.StatusOK, nil))
@@ -60,91 +55,43 @@ func Test_statusColor_AllRanges(t *testing.T) {
 // instance is safe and we avoid mutating any shared/global logger state.
 func Test_customLoggerWriter_InvalidLevel(t *testing.T) {
 	t.Parallel()
-
-	cl := &customLoggerWriter[any]{
-		level: fiberlog.LevelFatal,
-	}
+	cl := &customLoggerWriter[any]{level: fiberlog.LevelFatal}
 
 	n, err := cl.Write([]byte("ignored"))
 	require.NoError(t, err)
 	require.Zero(t, n)
 }
 
-// Test_loadTimestamp_Empty verifies loadTimestamp returns an empty string when
-// the atomic value has never been stored.
 func Test_loadTimestamp_Empty(t *testing.T) {
 	t.Parallel()
-
 	var v atomic.Value
 	require.Empty(t, loadTimestamp(&v))
 }
 
-// Test_UnknownTagError_WithHint covers the Hint branch of Error().
 func Test_UnknownTagError_WithHint(t *testing.T) {
 	t.Parallel()
-
 	err := &UnknownTagError{Tag: "method", Hint: "did you mean ${method}?"}
 	require.Contains(t, err.Error(), "did you mean ${method}?")
 	require.Contains(t, err.Error(), `"method"`)
 }
 
-// Test_RegisterContextTag verifies that a context tag registered through the
-// public helper renders in a logger format and panics on invalid input.
 func Test_RegisterContextTag(t *testing.T) {
 	t.Parallel()
-
 	const tagName = "cov-ctx-tag"
-	RegisterContextTag(tagName, func(_ any) string {
-		return "rendered-value"
-	})
+	RegisterContextTag(tagName, func(_ any) string { return "rendered-value" })
 
-	buf := bytes.NewBuffer(nil)
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: "${" + tagName + "}\n",
-		Stream: buf,
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+	require.Contains(t, loggerTestLog(t, &Config{Format: "${" + tagName + "}\n"}), "rendered-value")
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Contains(t, buf.String(), "rendered-value")
-
-	require.Panics(t, func() {
-		RegisterContextTag("", func(_ any) string { return "" })
-	})
-	require.Panics(t, func() {
-		RegisterContextTag("name", nil)
-	})
+	require.Panics(t, func() { RegisterContextTag("", func(_ any) string { return "" }) })
+	require.Panics(t, func() { RegisterContextTag("name", nil) })
 }
 
-// Test_RegisterContextTag_EmptyValue ensures the empty-return path of the
-// registered renderer writes nothing.
 func Test_RegisterContextTag_EmptyValue(t *testing.T) {
 	t.Parallel()
-
 	const tagName = "cov-ctx-empty"
-	RegisterContextTag(tagName, func(_ any) string {
-		return ""
-	})
+	RegisterContextTag(tagName, func(_ any) string { return "" })
 
-	buf := bytes.NewBuffer(nil)
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: "[${" + tagName + "}]\n",
-		Stream: buf,
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Contains(t, buf.String(), "[]")
+	require.Contains(t, loggerTestLog(t, &Config{Format: "[${" + tagName + "}]\n"}), "[]")
 }
 
 // Test_Logger_PreRegisteredMiddlewareTag exercises emptyLogTag: a format that
@@ -152,52 +99,27 @@ func Test_RegisterContextTag_EmptyValue(t *testing.T) {
 // when the producing middleware has not registered a value.
 func Test_Logger_PreRegisteredMiddlewareTag(t *testing.T) {
 	t.Parallel()
-
-	buf := bytes.NewBuffer(nil)
-	app := fiber.New()
-	app.Use(New(Config{
-		Format: "[${" + fiberlog.TagAPIKey + "}]\n",
-		Stream: buf,
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Contains(t, buf.String(), "[]")
+	require.Contains(t, loggerTestLog(t, &Config{Format: "[${" + fiberlog.TagAPIKey + "}]\n"}), "[]")
 }
 
 // Test_Logger_New_TimeDoneUpdater verifies the New path that starts a dedicated
 // timestamp updater when TimeDone is configured (covers startTimestampUpdater).
 func Test_Logger_New_TimeDoneUpdater(t *testing.T) {
 	t.Parallel()
-
 	done := make(chan struct{})
 	defer close(done)
 
-	buf := bytes.NewBuffer(nil)
-	app := fiber.New()
-	app.Use(New(Config{
+	logged := loggerTestLog(t, &Config{
 		Format:       "${time}\n",
 		TimeFormat:   time.RFC3339Nano,
 		TimeInterval: 5 * time.Millisecond,
 		TimeDone:     done,
-		Stream:       buf,
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
 	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	// The format always emits a trailing newline, so a non-empty buffer alone
 	// would pass even if ${time} rendered empty. Trim it and assert the rendered
 	// timestamp is present and well-formed, proving the updater path ran.
-	rendered := strings.TrimRight(buf.String(), "\n")
+	rendered := strings.TrimRight(logged, "\n")
 	require.NotEmpty(t, rendered)
 	_, parseErr := time.Parse(time.RFC3339Nano, rendered)
 	require.NoError(t, parseErr)

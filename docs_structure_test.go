@@ -15,11 +15,7 @@ const middlewareDocsDir = "docs/middleware"
 
 // Sections every middleware page carries, so a reader can jump to the
 // signature or the config of any middleware without first reading the page.
-var middlewareDocSections = []string{
-	"## Signatures",
-	"## Config",
-	"## Examples",
-}
+var middlewareDocSections = []string{"## Signatures", "## Config", "## Examples"}
 
 type middlewareDocException struct {
 	file   string
@@ -57,7 +53,6 @@ var middlewareDocExceptions = []middlewareDocException{
 // own section names is only noticed once it is published.
 func Test_Docs_MiddlewarePageSections(t *testing.T) {
 	t.Parallel()
-
 	skips := make(map[string]map[string]bool, len(middlewareDocExceptions))
 	for _, exception := range middlewareDocExceptions {
 		set := make(map[string]bool, len(exception.skip))

@@ -1,7 +1,6 @@
 package binder
 
 import (
-	"bytes"
 	"fmt"
 	"maps"
 	"mime/multipart"
@@ -14,12 +13,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 func Test_EqualFieldType(t *testing.T) {
 	t.Parallel()
-
 	var out int
 	require.False(t, equalFieldType(&out, reflect.Int, "key", "query"))
 
@@ -80,63 +77,25 @@ func Test_EqualFieldType(t *testing.T) {
 
 func Test_ParseParamSquareBrackets(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		err      error
 		input    string
 		expected string
 	}{
-		{
-			err:      nil,
-			input:    "foo[bar]",
-			expected: "foo.bar",
-		},
-		{
-			err:      nil,
-			input:    "foo[bar][baz]",
-			expected: "foo.bar.baz",
-		},
-		{
-			err:      ErrUnmatchedBrackets,
-			input:    "foo[bar",
-			expected: "",
-		},
-		{
-			err:      ErrUnmatchedBrackets,
-			input:    "foo[bar][baz",
-			expected: "",
-		},
-		{
-			err:      ErrUnmatchedBrackets,
-			input:    "foo]bar[",
-			expected: "",
-		},
-		{
-			err:      nil,
-			input:    "foo[bar[baz]]",
-			expected: "foo.bar.baz",
-		},
-		{
-			err:      nil,
-			input:    "",
-			expected: "",
-		},
-		{
-			err:      nil,
-			input:    "[]",
-			expected: "",
-		},
-		{
-			err:      nil,
-			input:    "foo[]",
-			expected: "foo",
-		},
+		{err: nil, input: "foo[bar]", expected: "foo.bar"},
+		{err: nil, input: "foo[bar][baz]", expected: "foo.bar.baz"},
+		{err: ErrUnmatchedBrackets, input: "foo[bar", expected: ""},
+		{err: ErrUnmatchedBrackets, input: "foo[bar][baz", expected: ""},
+		{err: ErrUnmatchedBrackets, input: "foo]bar[", expected: ""},
+		{err: nil, input: "foo[bar[baz]]", expected: "foo.bar.baz"},
+		{err: nil, input: "", expected: ""},
+		{err: nil, input: "[]", expected: ""},
+		{err: nil, input: "foo[]", expected: "foo"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			t.Parallel()
-
 			result, err := parseParamSquareBrackets(tt.input)
 			if tt.err != nil {
 				require.ErrorIs(t, err, tt.err)
@@ -150,83 +109,69 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 
 func Test_parseToMap(t *testing.T) {
 	t.Parallel()
+	input := map[string][]string{"key1": {"value1", "value2"}, "key2": {"value3"}, "key3": {"value4"}}
+	withEmpty := map[string][]string{"empty": {}, "key1": {"value1"}}
 
-	inputMap := map[string][]string{
-		"key1": {"value1", "value2"},
-		"key2": {"value3"},
-		"key3": {"value4"},
+	for _, tc := range []struct {
+		dst  any // a map, or a pointer to a nil one
+		data map[string][]string
+		want any
+		err  error
+		name string
+	}{
+		{
+			name: "string map keeps the last value",
+			dst:  map[string]string{}, data: input,
+			want: map[string]string{"key1": "value2", "key2": "value3", "key3": "value4"},
+		},
+		{name: "slice map keeps every value", dst: map[string][]string{}, data: input, want: input},
+		{name: "any map is left alone", dst: map[string]any{}, data: input, want: map[string]any{}},
+		{
+			name: "nil string map is made",
+			dst:  new(map[string]string), data: input,
+			want: map[string]string{"key1": "value2", "key2": "value3", "key3": "value4"},
+		},
+		{name: "nil slice map is made", dst: new(map[string][]string), data: input, want: input},
+		{name: "nil map by value", dst: map[string]string(nil), data: input, err: ErrMapNilDestination},
+		{name: "int map is left alone", dst: map[string]int{}, data: input, want: map[string]int{}},
+		{name: "int slice map is not convertible", dst: map[string][]int{}, data: withEmpty, err: ErrMapNotConvertible},
+		{
+			name: "string map holds a key without values as empty",
+			dst:  map[string]string{}, data: withEmpty, want: map[string]string{"empty": "", "key1": "value1"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dst := reflect.ValueOf(tc.dst)
+			if dst.Kind() == reflect.Pointer {
+				dst = dst.Elem()
+			}
+			if tc.err != nil {
+				require.ErrorIs(t, parseToMap(dst, tc.data), tc.err)
+				return
+			}
+			require.NoError(t, parseToMap(dst, tc.data))
+			require.Equal(t, tc.want, dst.Interface())
+		})
 	}
-
-	// Test map[string]string
-	m := make(map[string]string)
-	err := parseToMap(reflect.ValueOf(m), inputMap)
-	require.NoError(t, err)
-
-	require.Equal(t, "value2", m["key1"])
-	require.Equal(t, "value3", m["key2"])
-	require.Equal(t, "value4", m["key3"])
-
-	// Test map[string][]string
-	m2 := make(map[string][]string)
-	err = parseToMap(reflect.ValueOf(m2), inputMap)
-	require.NoError(t, err)
-
-	require.Len(t, m2["key1"], 2)
-	require.Contains(t, m2["key1"], "value1")
-	require.Contains(t, m2["key1"], "value2")
-	require.Len(t, m2["key2"], 1)
-	require.Len(t, m2["key3"], 1)
-
-	// Test map[string]any
-	m3 := make(map[string]any)
-	err = parseToMap(reflect.ValueOf(m3), inputMap)
-	require.NoError(t, err)
-	require.Empty(t, m3)
-
-	var zeroStringMap map[string]string
-	err = parseToMap(reflect.ValueOf(&zeroStringMap).Elem(), inputMap)
-	require.NoError(t, err)
-	require.Equal(t, "value2", zeroStringMap["key1"])
-
-	var zeroSliceMap map[string][]string
-	err = parseToMap(reflect.ValueOf(&zeroSliceMap).Elem(), inputMap)
-	require.NoError(t, err)
-	require.Len(t, zeroSliceMap["key1"], 2)
-
-	err = parseToMap(reflect.ValueOf(map[string]string(nil)), inputMap)
-	require.ErrorIs(t, err, ErrMapNilDestination)
 }
 
 func Test_FilterFlags(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		input    string
 		expected string
 	}{
-		{
-			input:    "text/javascript; charset=utf-8",
-			expected: "text/javascript",
-		},
-		{
-			input:    "text/javascript",
-			expected: "text/javascript",
-		},
+		{input: "text/javascript; charset=utf-8", expected: "text/javascript"},
+		{input: "text/javascript", expected: "text/javascript"},
 
-		{
-			input:    "text/javascript; charset=utf-8; foo=bar",
-			expected: "text/javascript",
-		},
-		{
-			input:    "text/javascript charset=utf-8",
-			expected: "text/javascript",
-		},
+		{input: "text/javascript; charset=utf-8; foo=bar", expected: "text/javascript"},
+		{input: "text/javascript charset=utf-8", expected: "text/javascript"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			t.Parallel()
-
 			result := FilterFlags(tt.input)
 			require.Equal(t, tt.expected, result)
 		})
@@ -237,10 +182,8 @@ func Benchmark_FilterFlags(b *testing.B) {
 	b.ReportAllocs()
 
 	cases := []string{
-		"text/javascript; charset=utf-8",
-		"application/json",
-		"text/plain; charset=utf-8; foo=bar",
-		"text/javascript charset=utf-8",
+		"text/javascript; charset=utf-8", "application/json",
+		"text/plain; charset=utf-8; foo=bar", "text/javascript charset=utf-8",
 	}
 
 	for i := 0; i < b.N; i++ {
@@ -253,10 +196,8 @@ func Benchmark_FilterFlags(b *testing.B) {
 // of the destination's.
 func Test_BindData_Bind(t *testing.T) {
 	t.Parallel()
-
 	t.Run("value", func(t *testing.T) {
 		t.Parallel()
-
 		data := &bindData{values: make(map[string][]string), mode: bindMap}
 		require.NoError(t, data.bind("query", &map[string][]string{}, "name", "John", false, false))
 		require.Equal(t, map[string][]string{"name": {"John"}}, data.values)
@@ -264,7 +205,6 @@ func Test_BindData_Bind(t *testing.T) {
 
 	t.Run("splitting enabled with comma", func(t *testing.T) {
 		t.Parallel()
-
 		out := struct {
 			Color  string   `query:"color"`
 			Colors []string `query:"colors"`
@@ -278,7 +218,6 @@ func Test_BindData_Bind(t *testing.T) {
 
 	t.Run("splitting disabled", func(t *testing.T) {
 		t.Parallel()
-
 		out := struct {
 			Colors []string `query:"colors"`
 		}{}
@@ -293,7 +232,6 @@ func Test_BindData_Bind(t *testing.T) {
 // malformed key is an error.
 func Test_BindData_BracketNotation(t *testing.T) {
 	t.Parallel()
-
 	out := &map[string][]string{}
 	data := &bindData{values: make(map[string][]string), mode: bindMap}
 	require.NoError(t, data.bind("query", out, "user[name]", "john", false, true))
@@ -315,20 +253,13 @@ func Test_BindData_BracketNotation(t *testing.T) {
 
 func Test_parseToStruct_MismatchedData(t *testing.T) {
 	t.Parallel()
-
 	type User struct {
 		Name string `query:"name"`
 		Age  int    `query:"age"`
 	}
 
-	data := map[string][]string{
-		"name": {"John"},
-		"age":  {"invalidAge"},
-	}
-
-	err := parseToStruct("query", &User{}, data)
-	require.Error(t, err)
-	require.EqualError(t, err, "schema: error converting value for \"age\"")
+	data := map[string][]string{"name": {"John"}, "age": {"invalidAge"}}
+	require.EqualError(t, parseToStruct("query", &User{}, data), "schema: error converting value for \"age\"")
 }
 
 func Test_decoderBuilder(t *testing.T) {
@@ -342,11 +273,8 @@ func Test_decoderBuilder(t *testing.T) {
 		return reflect.ValueOf(customInt(i))
 	}
 	parserConfig := ParserConfig{
-		SetAliasTag: "custom",
-		ParserType: []ParserType{{
-			CustomType: customInt(0),
-			Converter:  conv,
-		}},
+		SetAliasTag:       "custom",
+		ParserType:        []ParserType{{CustomType: customInt(0), Converter: conv}},
 		IgnoreUnknownKeys: false,
 		ZeroEmpty:         false,
 	}
@@ -356,35 +284,12 @@ func Test_decoderBuilder(t *testing.T) {
 	var out struct {
 		X customInt `custom:"x"`
 	}
-	err := dec.Decode(&out, map[string][]string{"x": {"7"}})
-	require.NoError(t, err)
+	require.NoError(t, dec.Decode(&out, map[string][]string{"x": {"7"}}))
 	require.Equal(t, customInt(7), out.X)
-}
-
-func Test_parseToMap_Extended(t *testing.T) {
-	t.Parallel()
-	data := map[string][]string{
-		"empty": {},
-		"key1":  {"value1"},
-	}
-
-	m := make(map[string]string)
-	err := parseToMap(reflect.ValueOf(m), data)
-	require.NoError(t, err)
-	require.Empty(t, m["empty"])
-
-	m2 := make(map[string][]int)
-	err = parseToMap(reflect.ValueOf(m2), data)
-	require.ErrorIs(t, err, ErrMapNotConvertible)
-
-	m3 := make(map[string]int)
-	err = parseToMap(reflect.ValueOf(m3), data)
-	require.NoError(t, err)
 }
 
 func Test_decoderPoolMapInit(t *testing.T) {
 	t.Parallel()
-
 	for _, tag := range tags {
 		decAny := getDecoderPool(tag).Get()
 		dec, ok := decAny.(*pooledDecoder)
@@ -396,25 +301,14 @@ func Test_decoderPoolMapInit(t *testing.T) {
 
 func TestSetParserDecoderConcurrentAccess(t *testing.T) {
 	t.Parallel()
-
-	t.Cleanup(func() {
-		SetParserDecoder(ParserConfig{
-			IgnoreUnknownKeys: true,
-			ZeroEmpty:         true,
-		})
-	})
+	t.Cleanup(func() { SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true}) })
 
 	type queryUser struct {
 		Name string `query:"name"`
 	}
 
-	data := map[string][]string{
-		"name": {"fiber"},
-	}
-	parserConfig := ParserConfig{
-		IgnoreUnknownKeys: true,
-		ZeroEmpty:         true,
-	}
+	data := map[string][]string{"name": {"fiber"}}
+	parserConfig := ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true}
 
 	start := make(chan struct{})
 	const workers = 25
@@ -468,18 +362,14 @@ func TestSetParserDecoderConcurrentAccess(t *testing.T) {
 
 func Test_getFieldCache(t *testing.T) {
 	t.Parallel()
-	require.NotNil(t, getFieldCache("header"))
-	require.NotNil(t, getFieldCache("respHeader"))
-	require.NotNil(t, getFieldCache("cookie"))
-	require.NotNil(t, getFieldCache("form"))
-	require.NotNil(t, getFieldCache("uri"))
-	require.NotNil(t, getFieldCache("query"))
+	for _, tag := range []string{"header", "respHeader", "cookie", "form", "uri", "query"} {
+		require.NotNil(t, getFieldCache(tag), tag)
+	}
 	require.Panics(t, func() { getFieldCache("unknown") })
 }
 
 func Test_EqualFieldType_Map(t *testing.T) {
 	t.Parallel()
-
 	sliceMap := map[string][]string{}
 	require.True(t, equalFieldType(&sliceMap, reflect.Slice, "any", "query"))
 	require.True(t, equalFieldType(sliceMap, reflect.Slice, "any", "query"))
@@ -495,7 +385,6 @@ func Test_EqualFieldType_Map(t *testing.T) {
 
 func Test_EqualFieldType_ScalarNotSplit(t *testing.T) {
 	t.Parallel()
-
 	type Filter struct {
 		IDs []int `query:"ids"`
 	}
@@ -517,7 +406,6 @@ func Test_EqualFieldType_ScalarNotSplit(t *testing.T) {
 
 func Test_EqualFieldType_NestedDepth(t *testing.T) {
 	t.Parallel()
-
 	type Inner struct {
 		Name string   `query:"name"`
 		Tags []string `query:"tags"`
@@ -554,7 +442,6 @@ func Test_EqualFieldType_NestedDepth(t *testing.T) {
 
 func Test_EqualFieldType_EmbeddedStruct(t *testing.T) {
 	t.Parallel()
-
 	type Embedded struct {
 		Title string   `query:"title"`
 		Name  string   `query:"name"`
@@ -588,7 +475,6 @@ func Test_EqualFieldType_EmbeddedStruct(t *testing.T) {
 
 func Test_EqualFieldType_RecursiveType(t *testing.T) {
 	t.Parallel()
-
 	type Node struct {
 		Next   *Node    `query:"next"`
 		Values []string `query:"values"`
@@ -616,7 +502,6 @@ type DiamondMid struct {
 
 func Test_EqualFieldType_DiamondEmbedding(t *testing.T) {
 	t.Parallel()
-
 	type Outer struct {
 		DiamondMid
 	}
@@ -629,7 +514,6 @@ func Test_EqualFieldType_DiamondEmbedding(t *testing.T) {
 
 func Test_EqualFieldType_InvalidDestination(t *testing.T) {
 	t.Parallel()
-
 	type User struct {
 		Names []string `query:"names"`
 	}
@@ -674,7 +558,6 @@ func Test_buildFieldInfo_Unexported(t *testing.T) {
 
 func Test_fieldName(t *testing.T) {
 	t.Parallel()
-
 	type Tagged struct {
 		Plain    string   `query:"plain"`
 		Ignored  string   `query:"-"`
@@ -721,7 +604,6 @@ func Benchmark_equalFieldType(b *testing.B) {
 
 func Test_FieldInfo_ResolveKindsAgreesWithResolve(t *testing.T) {
 	t.Parallel()
-
 	type Inner struct {
 		Name string `query:"name"`
 	}
@@ -774,7 +656,6 @@ type walkTarget struct {
 
 func Test_StructKeyKind_NestedPaths(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		key  string
 		kind reflect.Kind
@@ -798,14 +679,12 @@ func Test_StructKeyKind_NestedPaths(t *testing.T) {
 
 	var out walkTarget
 	for _, tc := range tests {
-		require.Equal(t, tc.want, equalFieldType(&out, tc.kind, tc.key, "query"),
-			"key=%q kind=%s", tc.key, tc.kind)
+		require.Equal(t, tc.want, equalFieldType(&out, tc.kind, tc.key, "query"), "key=%q kind=%s", tc.key, tc.kind)
 	}
 }
 
 func Test_IsDigits(t *testing.T) {
 	t.Parallel()
-
 	require.False(t, isDigits(""))
 	require.False(t, isDigits("12a"))
 	require.False(t, isDigits("-1"))
@@ -825,7 +704,6 @@ type mismatchOuter struct {
 
 func Test_StructKeyKind_NestedCacheTypeMismatch(t *testing.T) {
 	t.Parallel()
-
 	cache := getFieldCache("query")
 	typ := reflect.TypeFor[mismatchInner]()
 	cache.types.Store(typ, 1)
@@ -849,7 +727,6 @@ type MutualInner struct {
 
 func Test_CollectPromoted_MutualEmbedding(t *testing.T) {
 	t.Parallel()
-
 	var out MutualOuter
 	require.True(t, equalFieldType(&out, reflect.Slice, "names", "query"))
 	require.False(t, equalFieldType(&out, reflect.Bool, "names", "query"))
@@ -861,7 +738,6 @@ func Test_CollectPromoted_MutualEmbedding(t *testing.T) {
 // 5,000-pair body of two alternating keys to over four million slots.
 func Test_BindData_AlternatingKeys(t *testing.T) {
 	t.Parallel()
-
 	const pairs = 5000
 	data := &bindData{values: make(map[string][]string), mode: bindMap}
 	want := make(map[string][]string)
@@ -883,7 +759,6 @@ func Test_BindData_AlternatingKeys(t *testing.T) {
 // bind reusing the pool must leave its values as they were bound.
 func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
 	t.Parallel()
-
 	require.Equal(t, bindMap, bindModeFor(&map[string][]string{}))
 	require.Equal(t, bindMap, bindModeFor(map[string][]string{}))
 	type named map[string][]string
@@ -897,9 +772,7 @@ func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
 	require.Equal(t, bindPairs, bindModeFor(&map[int]string{}), "parse decodes a map without string keys as a struct")
 	require.Equal(t, bindPairs, bindModeFor(nil))
 
-	req := fasthttp.AcquireRequest()
-	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-	req.URI().SetQueryString("a=1&b=3&a=2")
+	req := newQueryRequest(t, "a=1&b=3&a=2")
 
 	dst := make(map[string][]string)
 	require.NoError(t, (&QueryBinding{}).Bind(req, &dst))
@@ -907,9 +780,7 @@ func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
 
 	// Bind again through the same pools, from another request: the values
 	// are views of their request's buffer, so reusing req would rewrite them.
-	other := fasthttp.AcquireRequest()
-	t.Cleanup(func() { fasthttp.ReleaseRequest(other) })
-	other.URI().SetQueryString("a=overwritten&b=overwritten&a=overwritten")
+	other := newQueryRequest(t, "a=overwritten&b=overwritten&a=overwritten")
 	var into struct {
 		B string   `query:"b"`
 		A []string `query:"a"`
@@ -927,114 +798,25 @@ func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
 // that the entries it already held stay unless overwritten.
 func Test_Bind_StringMap_KeepsLastValue(t *testing.T) {
 	t.Parallel()
+	const input = "a=1&b=2&a=3&c=&b=4,5&a=6"
 
-	pairs := [][2]string{{"a", "1"}, {"b", "2"}, {"a", "3"}, {"c", ""}, {"b", "4,5"}, {"a", "6"}}
-	encoded := make([]string, 0, len(pairs))
-	for _, p := range pairs {
-		encoded = append(encoded, p[0]+"="+p[1])
-	}
-	query := strings.Join(encoded, "&")
-
-	var multipartBody bytes.Buffer
-	mw := multipart.NewWriter(&multipartBody)
-	for _, p := range pairs {
-		require.NoError(t, mw.WriteField(p[0], p[1]))
-	}
-	require.NoError(t, mw.Close())
-
-	// Not pooled: the bound strings alias the request and are compared after bind returns.
-	binders := []struct {
-		bind func(split bool, out any) error
-		name string
-	}{
-		{name: "query", bind: func(split bool, out any) error {
-			req := &fasthttp.Request{}
-			req.URI().SetQueryString(query)
-			return (&QueryBinding{EnableSplitting: split}).Bind(req, out)
-		}},
-		{name: "form", bind: func(split bool, out any) error {
-			req := &fasthttp.Request{}
-			req.Header.SetContentType("application/x-www-form-urlencoded")
-			req.SetBodyString(query)
-			return (&FormBinding{EnableSplitting: split}).Bind(req, out)
-		}},
-		{name: "multipart", bind: func(split bool, out any) error {
-			req := &fasthttp.Request{}
-			req.Header.SetContentType(mw.FormDataContentType())
-			req.SetBody(multipartBody.Bytes())
-			return (&FormBinding{EnableSplitting: split}).Bind(req, out)
-		}},
-		{name: "header", bind: func(split bool, out any) error {
-			req := &fasthttp.Request{}
-			for _, p := range pairs {
-				req.Header.Add(p[0], p[1])
+	for _, src := range pairSources {
+		t.Run(src.name, func(t *testing.T) {
+			t.Parallel()
+			all := make(map[string][]string)
+			require.NoError(t, src.bind(t, input, false, &all))
+			want := map[string]string{"kept": "yes"}
+			for key, values := range all {
+				want[key] = values[len(values)-1]
 			}
-			return (&HeaderBinding{EnableSplitting: split}).Bind(req, out)
-		}},
-		{name: "resp_header", bind: func(split bool, out any) error {
-			resp := &fasthttp.Response{}
-			for _, p := range pairs {
-				resp.Header.Add(p[0], p[1])
+			require.Contains(t, slices.Collect(maps.Values(want)), "4,5")
+
+			for _, split := range []bool{false, true} {
+				got := map[string]string{"kept": "yes"}
+				require.NoError(t, src.bind(t, input, split, &got), "split=%v", split)
+				require.Equal(t, want, got, "split=%v", split)
 			}
-			return (&RespHeaderBinding{EnableSplitting: split}).Bind(resp, out)
-		}},
-		{name: "cookie", bind: func(split bool, out any) error {
-			req := &fasthttp.Request{}
-			req.Header.Set(fasthttp.HeaderCookie, strings.ReplaceAll(query, "&", "; "))
-			return (&CookieBinding{EnableSplitting: split}).Bind(req, out)
-		}},
-	}
-	for _, b := range binders {
-		all := make(map[string][]string)
-		require.NoError(t, b.bind(false, &all), b.name)
-		want := map[string]string{"kept": "yes"}
-		for key, values := range all {
-			want[key] = values[len(values)-1]
-		}
-		require.Contains(t, slices.Collect(maps.Values(want)), "4,5", b.name)
-
-		for _, split := range []bool{false, true} {
-			got := map[string]string{"kept": "yes"}
-			require.NoError(t, b.bind(split, &got), "%s split=%v", b.name, split)
-			require.Equal(t, want, got, "%s split=%v", b.name, split)
-		}
-	}
-}
-
-func Test_Bind_Splitting_KeepsElementWhitespace(t *testing.T) {
-	t.Parallel()
-
-	// Only the header binders read a value as an HTTP list and trim its
-	// elements; these keep each element as written.
-	type Data struct {
-		IDs []string `query:"ids" form:"ids" cookie:"ids"`
-	}
-
-	binders := []struct {
-		bind func(out any) error
-		name string
-	}{
-		{name: "query", bind: func(out any) error {
-			req := &fasthttp.Request{}
-			req.URI().SetQueryString("ids=a,%20b")
-			return (&QueryBinding{EnableSplitting: true}).Bind(req, out)
-		}},
-		{name: "form", bind: func(out any) error {
-			req := &fasthttp.Request{}
-			req.Header.SetContentType("application/x-www-form-urlencoded")
-			req.SetBodyString("ids=a,%20b")
-			return (&FormBinding{EnableSplitting: true}).Bind(req, out)
-		}},
-		{name: "cookie", bind: func(out any) error {
-			req := &fasthttp.Request{}
-			req.Header.Set(fasthttp.HeaderCookie, "ids=a, b")
-			return (&CookieBinding{EnableSplitting: true}).Bind(req, out)
-		}},
-	}
-	for _, b := range binders {
-		var data Data
-		require.NoError(t, b.bind(&data), b.name)
-		require.Equal(t, []string{"a", " b"}, data.IDs, b.name)
+		})
 	}
 }
 
@@ -1044,10 +826,7 @@ func Test_Bind_Splitting_KeepsElementWhitespace(t *testing.T) {
 // one, and a nil pointer fails as a nil pointer to a map of slices does.
 func Test_Bind_StringMap_Destinations(t *testing.T) {
 	t.Parallel()
-
-	req := fasthttp.AcquireRequest()
-	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-	req.URI().SetQueryString("a=1&a=2&b=3")
+	req := newQueryRequest(t, "a=1&a=2&b=3")
 	b := &QueryBinding{}
 	want := map[string]string{"a": "2", "b": "3"}
 
@@ -1073,7 +852,6 @@ func Test_Bind_StringMap_Destinations(t *testing.T) {
 // is how getDecoderPool finds a tag's pool in a decoderPoolSet.
 func Test_tagIndex_MatchesTags(t *testing.T) {
 	t.Parallel()
-
 	for i, tag := range tags {
 		require.Equal(t, i, tagIndex(tag), tag)
 		require.NotNil(t, getDecoderPool(tag), tag)
@@ -1084,7 +862,6 @@ func Test_tagIndex_MatchesTags(t *testing.T) {
 
 func Test_CheckKeyDepth(t *testing.T) {
 	t.Parallel()
-
 	atLimit := strings.Repeat("a.", maxKeySegments-1) + "a"
 	require.NoError(t, checkKeyDepth(atLimit))
 	require.ErrorIs(t, checkKeyDepth(atLimit+".a"), ErrKeyTooDeep)
@@ -1138,13 +915,11 @@ type depthRequired struct {
 	I string `form:"i,required"`
 }
 
+// bindFormBody binds a urlencoded body into out with a default form binder.
 func bindFormBody(t *testing.T, body string, out any) error {
 	t.Helper()
-	req := fasthttp.AcquireRequest()
-	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-	req.Header.SetContentType("application/x-www-form-urlencoded")
-	req.SetBodyString(body)
-	return (&FormBinding{}).Bind(req, out)
+
+	return (&FormBinding{}).Bind(newFormRequest(t, body), out)
 }
 
 func Test_FormBinder_KeyDepthLimit(t *testing.T) {
@@ -1195,83 +970,57 @@ func Test_FormBinder_KeyDepthLimit(t *testing.T) {
 
 func Test_Binders_KeyDepthLimit(t *testing.T) {
 	t.Parallel()
-
 	const levels = (maxKeySegments - 1) / 2
 	dotted := func(n int) string { return strings.Repeat("children.0.", n) + "name" }
-
-	multipartReq := func(t *testing.T, key string, file bool) *fasthttp.Request {
+	// The query string takes the key in brackets, which are rewritten to dots before its depth is checked.
+	bracketed := func(n int) string { return "children" + strings.Repeat("[0][children]", n-1) + "[0][name]" }
+	// A file part carries its content as a file instead of as a value.
+	file := source{name: "multipart file", bind: func(t *testing.T, urlEncoded string, _ bool, out any) error {
 		t.Helper()
-		body := new(bytes.Buffer)
-		mw := multipart.NewWriter(body)
-		if file {
-			w, err := mw.CreateFormFile(key, "x.txt")
-			require.NoError(t, err)
-			_, err = w.Write([]byte("x"))
-			require.NoError(t, err)
-		} else {
-			require.NoError(t, mw.WriteField(key, "x"))
-		}
-		require.NoError(t, mw.Close())
-		req := fasthttp.AcquireRequest()
-		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-		req.Header.SetContentType(mw.FormDataContentType())
-		req.SetBody(body.Bytes())
-		return req
-	}
-	newReq := func(t *testing.T) *fasthttp.Request {
-		t.Helper()
-		req := fasthttp.AcquireRequest()
-		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-		return req
-	}
 
-	sources := map[string]func(t *testing.T, n int, out any) error{
-		"multipart value": func(t *testing.T, n int, out any) error {
-			t.Helper()
-			return (&FormBinding{}).Bind(multipartReq(t, dotted(n), false), out)
-		},
-		"multipart file": func(t *testing.T, n int, out any) error {
-			t.Helper()
-			return (&FormBinding{}).Bind(multipartReq(t, dotted(n), true), out)
-		},
-		"query": func(t *testing.T, n int, out any) error {
-			t.Helper()
-			req := newReq(t)
-			req.URI().SetQueryString("children" + strings.Repeat("[0][children]", n-1) + "[0][name]=x")
-			return (&QueryBinding{}).Bind(req, out)
-		},
-		"header": func(t *testing.T, n int, out any) error {
-			t.Helper()
-			req := newReq(t)
-			req.Header.Set(dotted(n), "x")
-			return (&HeaderBinding{}).Bind(req, out)
-		},
-		"cookie": func(t *testing.T, n int, out any) error {
-			t.Helper()
-			req := newReq(t)
-			req.Header.SetCookie(dotted(n), "x")
-			return (&CookieBinding{}).Bind(req, out)
-		},
-	}
-	for name, bind := range sources {
-		t.Run(name, func(t *testing.T) {
+		key, _, _ := strings.Cut(urlEncoded, "=")
+		req := newMultipartRequestWith(t, func(mw *multipart.Writer) { writeFormFile(t, mw, key, "x.txt", "x") })
+		return (&FormBinding{}).Bind(req, out)
+	}}
+
+	for _, tc := range []struct {
+		key func(n int) string
+		src source
+	}{
+		{src: pairSources[2], key: dotted}, // multipart
+		{src: file, key: dotted},
+		{src: pairSources[0], key: bracketed}, // query
+		{src: pairSources[3], key: dotted},    // header
+		{src: pairSources[5], key: dotted},    // cookie
+	} {
+		t.Run(tc.src.name, func(t *testing.T) {
 			t.Parallel()
-			require.NoError(t, bind(t, levels, new(depthTree)))
-			require.ErrorIs(t, bind(t, levels+1, new(depthTree)), ErrKeyTooDeep)
+			bind := func(n int, out any) error { return tc.src.bind(t, tc.key(n)+"=x", false, out) }
+
+			require.NoError(t, bind(levels, new(depthTree)))
+			require.ErrorIs(t, bind(levels+1, new(depthTree)), ErrKeyTooDeep)
 
 			// A map destination is filled without the decoder, so its keys are not limited.
 			m := make(map[string][]string)
-			require.NoError(t, bind(t, levels+1, &m))
-			if name != "multipart file" {
+			require.NoError(t, bind(levels+1, &m))
+			if tc.src.name != file.name {
 				require.Len(t, m, 1)
 			}
 		})
 	}
 }
 
+// newFormDecoder returns a form decoder as the binders pool it, to admit keys to directly.
+func newFormDecoder(t *testing.T, cfg ParserConfig) *pooledDecoder {
+	t.Helper()
+
+	d, ok := decoderBuilder(bindingForm, cfg).(*pooledDecoder)
+	require.True(t, ok)
+	return d
+}
+
 func Test_PooledDecoder_KeyBudget(t *testing.T) {
 	t.Parallel()
-
 	type item struct {
 		SKU string `form:"sku"`
 	}
@@ -1284,8 +1033,7 @@ func Test_PooledDecoder_KeyBudget(t *testing.T) {
 
 	t.Run("repeated keys", func(t *testing.T) {
 		t.Parallel()
-		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
-		require.True(t, ok)
+		d := newFormDecoder(t, ParserConfig{})
 		for range 10_000 {
 			require.NoError(t, d.admit(new(order), "items.0.sku"))
 			require.NoError(t, d.admit(new(order), "name"))
@@ -1295,8 +1043,7 @@ func Test_PooledDecoder_KeyBudget(t *testing.T) {
 
 	t.Run("per destination type", func(t *testing.T) {
 		t.Parallel()
-		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
-		require.True(t, ok)
+		d := newFormDecoder(t, ParserConfig{})
 		for _, out := range []any{new(order), new(cart), new(order)} {
 			require.NoError(t, d.admit(out, "items.0.sku"))
 			putDecoder(&sync.Pool{}, d)
@@ -1306,8 +1053,7 @@ func Test_PooledDecoder_KeyBudget(t *testing.T) {
 
 	t.Run("table form stays pooled", func(t *testing.T) {
 		t.Parallel()
-		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
-		require.True(t, ok)
+		d := newFormDecoder(t, ParserConfig{})
 		out := new(order)
 		for row := range 400 {
 			for field := range 10 {
@@ -1401,8 +1147,7 @@ func Test_CachedKeyBytes_CoversSchemaCache(t *testing.T) {
 			key: func(n int) string { return respell(strings.Repeat("parent.", maxKeySegments-1)+"text", n) },
 		},
 	} {
-		d, ok := decoderBuilder(bindingForm, ParserConfig{IgnoreUnknownKeys: true}).(*pooledDecoder)
-		require.True(t, ok)
+		d := newFormDecoder(t, ParserConfig{IgnoreUnknownKeys: true})
 		decode := func(key string) {
 			require.NoError(t, d.admit(tc.out(), key))
 			require.NoError(t, d.DecodeValues(tc.out(), []string{key}, []string{"x"}))
@@ -1420,7 +1165,6 @@ func Test_CachedKeyBytes_CoversSchemaCache(t *testing.T) {
 
 func Test_BindShape_Elements(t *testing.T) {
 	t.Parallel()
-
 	acyclic := bindShape{elemSize: 1}
 	cyclic := bindShape{elemSize: 1, cyclic: true}
 	for key, want := range map[string][2]int{
@@ -1454,7 +1198,6 @@ func Test_BindShape_Elements(t *testing.T) {
 
 func Test_ShapeOf(t *testing.T) {
 	t.Parallel()
-
 	type item struct{ SKU string }
 	type group struct{ Items []item }
 	itemSize := reflect.TypeFor[item]().Size()
@@ -1479,18 +1222,22 @@ func Test_ShapeOf(t *testing.T) {
 	}
 }
 
+// keysThatFit returns how many keys fit in maxNestedBytes when each grows perKey slices of maxSliceIndex+1 Ts.
+func keysThatFit[T any](perKey int) int {
+	return maxNestedBytes / (perKey * (maxSliceIndex + 1) * int(reflect.TypeFor[T]().Size()))
+}
+
 func Test_PooledDecoder_ElementBudget(t *testing.T) {
 	t.Parallel()
 
 	// Each key grows a depthTree slice of 1001 elements below its first index.
-	fit := maxNestedBytes / ((maxSliceIndex + 1) * int(reflect.TypeFor[depthTree]().Size()))
+	fit := keysThatFit[depthTree](1)
 	keys := make([]string, 0, fit+1)
 	for i := range fit + 1 {
 		keys = append(keys, "children."+strconv.Itoa(i)+".children.1000.name")
 	}
 	out := new(depthTree)
-	d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
-	require.True(t, ok)
+	d := newFormDecoder(t, ParserConfig{})
 	for _, key := range keys[:fit] {
 		require.NoError(t, d.admit(out, key))
 	}
@@ -1543,7 +1290,6 @@ type catalog struct {
 
 func Test_FormBinder_NestedElementLimit(t *testing.T) {
 	t.Parallel()
-
 	root := new(depthTree)
 	require.NoError(t, bindFormBody(t, "children.1.children.2.name=x", root))
 	require.Len(t, root.Children, 2)
@@ -1551,7 +1297,7 @@ func Test_FormBinder_NestedElementLimit(t *testing.T) {
 	require.Equal(t, "x", root.Children[1].Children[2].Name)
 
 	// Each key grows 30 slices of 1001 elements below its first index.
-	keys := maxNestedBytes/(30*(maxSliceIndex+1)*int(reflect.TypeFor[depthTree]().Size())) + 1
+	keys := keysThatFit[depthTree](30) + 1
 	pairs := make([]string, 0, keys)
 	for k := range keys {
 		pairs = append(pairs, "children."+strconv.Itoa(k)+strings.Repeat(".children.1000", 30)+".name=x")
@@ -1559,17 +1305,14 @@ func Test_FormBinder_NestedElementLimit(t *testing.T) {
 	body := strings.Join(pairs, "&")
 	require.ErrorIs(t, bindFormBody(t, body, new(depthTree)), ErrTooManyElements)
 
-	req := fasthttp.AcquireRequest()
-	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-	req.URI().SetQueryString(body)
-	require.ErrorIs(t, (&QueryBinding{}).Bind(req, new(depthTree)), ErrTooManyElements)
+	require.ErrorIs(t, (&QueryBinding{}).Bind(newQueryRequest(t, body), new(depthTree)), ErrTooManyElements)
 
 	person := new(fanOutPerson)
 	require.NoError(t, bindFormBody(t, "mother.father.phones.1.number=x", person))
 	require.Len(t, person.Mother.Father.Phones, 2)
 	require.Equal(t, "x", person.Mother.Father.Phones[1].Number)
 
-	chains := make([]string, 0, maxNestedBytes/((maxSliceIndex+1)*int(reflect.TypeFor[fanOutPhone]().Size()))+1)
+	chains := make([]string, 0, keysThatFit[fanOutPhone](1)+1)
 	for i := 2; len(chains) < cap(chains); i++ {
 		var hops []string
 		for j := i; j > 1; j >>= 1 {
@@ -1594,14 +1337,13 @@ func Test_FormBinder_NestedElementLimit(t *testing.T) {
 
 func Test_FormBinder_NestedElementBytes(t *testing.T) {
 	t.Parallel()
-
 	variant := func(line, v int, field string) string {
 		return "lines[" + strconv.Itoa(line) + "][variants][" + strconv.Itoa(v) + "][" + field + "]=x"
 	}
 
 	t.Run("large elements", func(t *testing.T) {
 		t.Parallel()
-		fit := maxNestedBytes / ((maxSliceIndex + 1) * int(reflect.TypeFor[catalogVariant]().Size()))
+		fit := keysThatFit[catalogVariant](1)
 		pairs := make([]string, 0, fit+1)
 		for l := range fit + 1 {
 			pairs = append(pairs, variant(l, maxSliceIndex, "sku"))

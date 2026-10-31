@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -14,25 +13,63 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
-// rawCtx hands app a request line exactly as written, which net/http's request
-// builders would reject or rewrite, and returns the served context.
-func rawCtx(t *testing.T, app *fiber.App, target string) *fasthttp.RequestCtx {
+// rawLine hands app a whole raw request, request line and headers, and returns
+// the served context.
+func rawLine(t *testing.T, app *fiber.App, raw string) *fasthttp.RequestCtx {
 	t.Helper()
 
 	var req fasthttp.Request
-	raw := fiber.MethodGet + " " + target + " HTTP/1.1\r\nHost: example.com\r\n\r\n"
 	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
 
 	fctx := new(fasthttp.RequestCtx)
 	fctx.Init(&req, nil, nil)
 	app.Handler()(fctx)
 	return fctx
+}
+
+// rawCtx hands app a request line exactly as written, which net/http's request
+// builders would reject or rewrite, and returns the served context.
+func rawCtx(t *testing.T, app *fiber.App, target string) *fasthttp.RequestCtx {
+	t.Helper()
+
+	return rawLine(t, app, fiber.MethodGet+" "+target+" HTTP/1.1\r\nHost: example.com\r\n\r\n")
+}
+
+// adaptorTestRequireRawOK serves target through app as written and requires it
+// to be answered 200 with exactly body.
+func adaptorTestRequireRawOK(t *testing.T, app *fiber.App, target, body string) {
+	t.Helper()
+
+	fctx := rawCtx(t, app, target)
+	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode(), target)
+	require.Equal(t, body, string(fctx.Response.Body()), target)
+}
+
+// adaptorTestRequireRawStatus serves target through app as written and requires
+// the status it is answered with.
+func adaptorTestRequireRawStatus(t *testing.T, app *fiber.App, target string, status int) {
+	t.Helper()
+
+	require.Equal(t, status, rawCtx(t, app, target).Response.StatusCode(), target)
+}
+
+// adaptorTestRecordURL makes app record, in the variable it returns, the URL
+// c.OriginalURL() reports once everything behind this middleware has run.
+func adaptorTestRecordURL(app *fiber.App) *string {
+	var after string
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		after = c.OriginalURL()
+		return err
+	})
+	return &after
 }
 
 func denyAll(c fiber.Ctx) error {
@@ -46,7 +83,6 @@ func describeURL(w http.ResponseWriter, r *http.Request) {
 
 func Test_HTTPHandler_RoutedPath(t *testing.T) {
 	t.Parallel()
-
 	t.Run("default", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
@@ -60,18 +96,16 @@ func Test_HTTPHandler_RoutedPath(t *testing.T) {
 			"/a%3Fb%23c":        "/a?b#c||/a%3Fb%23c",
 			"/sp%20ace/":        "/sp ace/||/sp%20ace/",
 		} {
-			fctx := rawCtx(t, app, target)
-			require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode(), target)
-			require.Equal(t, want, string(fctx.Response.Body()), target)
+			adaptorTestRequireRawOK(t, app, target, want)
 		}
 		// Routed under "/admin", the guard answers before the handler.
 		for _, target := range []string{"/admin/x", "/a/../admin/x", "/%2e%2e/admin/x", "/public/%2E./admin/x"} {
-			require.Equal(t, fiber.StatusForbidden, rawCtx(t, app, target).Response.StatusCode(), target)
+			adaptorTestRequireRawStatus(t, app, target, fiber.StatusForbidden)
 		}
 		// An empty segment or an escaped slash would be cleaned or decoded
 		// into a path the router never matched, so the handler never sees it.
 		for _, target := range []string{"//admin/x", "/public//x", "/x//", "/public/..%2Fadmin/x", "/public%2F..%2Fadmin", "/a%2fb"} {
-			require.Equal(t, fiber.StatusNotFound, rawCtx(t, app, target).Response.StatusCode(), target)
+			adaptorTestRequireRawStatus(t, app, target, fiber.StatusNotFound)
 		}
 	})
 
@@ -81,16 +115,14 @@ func Test_HTTPHandler_RoutedPath(t *testing.T) {
 		app.Use("/admin", denyAll)
 		app.Use(HTTPHandler(http.HandlerFunc(describeURL)))
 
-		fctx := rawCtx(t, app, "/public/a%2Fb/%41%20c?x=%2F")
-		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
-		require.Equal(t, "/public/a/b/A c||/public/a/b/A%20c?x=%2F", string(fctx.Response.Body()))
+		adaptorTestRequireRawOK(t, app, "/public/a%2Fb/%41%20c?x=%2F", "/public/a/b/A c||/public/a/b/A%20c?x=%2F")
 
 		// Decoded before matching, the escaped slash completed a dot segment
 		// the router resolved: the request was routed under "/admin".
 		for _, target := range []string{"/public/..%2Fadmin/x", "/public%2F..%2Fadmin/x"} {
-			require.Equal(t, fiber.StatusForbidden, rawCtx(t, app, target).Response.StatusCode(), target)
+			adaptorTestRequireRawStatus(t, app, target, fiber.StatusForbidden)
 		}
-		require.Equal(t, fiber.StatusNotFound, rawCtx(t, app, "/a%2F%2Fb").Response.StatusCode())
+		adaptorTestRequireRawStatus(t, app, "/a%2F%2Fb", fiber.StatusNotFound)
 	})
 }
 
@@ -99,7 +131,6 @@ func Test_HTTPHandler_RoutedPath(t *testing.T) {
 // spelling of the admin file's path reaches the file server unguarded.
 func Test_HTTPHandler_FileServerStaysInPlace(t *testing.T) {
 	t.Parallel()
-
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "public"), 0o750))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "admin"), 0o750))
@@ -110,9 +141,7 @@ func Test_HTTPHandler_FileServerStaysInPlace(t *testing.T) {
 	app.Use("/admin", denyAll)
 	app.Use(HTTPHandler(http.FileServer(http.Dir(root))))
 
-	fctx := rawCtx(t, app, "/public/ok.txt")
-	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
-	require.Equal(t, "ok", string(fctx.Response.Body()))
+	adaptorTestRequireRawOK(t, app, "/public/ok.txt", "ok")
 
 	for target, want := range map[string]int{
 		"/admin/secret.txt":               fiber.StatusForbidden,
@@ -147,7 +176,6 @@ func Test_HTTPHandler_FileServerStaysInPlace(t *testing.T) {
 // character to net/http and is handed on.
 func Test_HTTPHandler_RefusesBackslashAndDotParams(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, r.URL.EscapedPath())
@@ -163,28 +191,18 @@ func Test_HTTPHandler_RefusesBackslashAndDotParams(t *testing.T) {
 		require.NotContains(t, string(fctx.Response.Body()), "admin", target)
 	}
 	for _, target := range []string{"/a;b/c", "/m;x=1;y=2", "/..x;y/a", "/app/;jsessionid=1"} {
-		fctx := rawCtx(t, app, target)
-		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode(), target)
-		require.Equal(t, target, string(fctx.Response.Body()), target)
+		adaptorTestRequireRawOK(t, app, target, target)
 	}
 }
 
 func Test_HTTPHandler_RestoresRequestLine(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
-	var after string
-	app.Use(func(c fiber.Ctx) error {
-		err := c.Next()
-		after = c.OriginalURL()
-		return err
-	})
+	after := adaptorTestRecordURL(app)
 	app.Use(HTTPHandler(http.HandlerFunc(describeURL)))
 
-	fctx := rawCtx(t, app, "/a/../public/%41?x=1")
-	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
-	require.Equal(t, "/public/A||/public/A?x=1", string(fctx.Response.Body()))
-	require.Equal(t, "/a/../public/%41?x=1", after)
+	adaptorTestRequireRawOK(t, app, "/a/../public/%41?x=1", "/public/A||/public/A?x=1")
+	require.Equal(t, "/a/../public/%41?x=1", *after)
 }
 
 // Test_HTTPHandler_FlushedHandlerKeepsRequestLine pins that a handler still
@@ -192,14 +210,8 @@ func Test_HTTPHandler_RestoresRequestLine(t *testing.T) {
 // put back under it. Run with -race, the restore would be reported.
 func Test_HTTPHandler_FlushedHandlerKeepsRequestLine(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
-	var after string
-	app.Use(func(c fiber.Ctx) error {
-		err := c.Next()
-		after = c.OriginalURL()
-		return err
-	})
+	after := adaptorTestRecordURL(app)
 	app.Use(HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !assert.True(t, ok, "w does not implement http.Flusher") {
@@ -210,24 +222,19 @@ func Test_HTTPHandler_FlushedHandlerKeepsRequestLine(t *testing.T) {
 		fmt.Fprint(w, r.URL.Path, "|", r.RequestURI)
 	})))
 
-	fctx := rawCtx(t, app, "/a/../public/%41?x=1")
-	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
-	require.Equal(t, "/public/A|/public/A?x=1", string(fctx.Response.Body()))
-	require.Equal(t, "/public/A?x=1", after)
+	adaptorTestRequireRawOK(t, app, "/a/../public/%41?x=1", "/public/A|/public/A?x=1")
+	require.Equal(t, "/public/A?x=1", *after)
 }
 
 func Test_HTTPHandlerWithContext_RoutedPath(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use("/admin", denyAll)
 	app.Use(HTTPHandlerWithContext(http.HandlerFunc(describeURL)))
 
-	fctx := rawCtx(t, app, "/a/../public/%41?x=1")
-	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
-	require.Equal(t, "/public/A||/public/A?x=1", string(fctx.Response.Body()))
-	require.Equal(t, fiber.StatusForbidden, rawCtx(t, app, "/%2e%2e/admin/x").Response.StatusCode())
-	require.Equal(t, fiber.StatusNotFound, rawCtx(t, app, "/public/..%2Fadmin/x").Response.StatusCode())
+	adaptorTestRequireRawOK(t, app, "/a/../public/%41?x=1", "/public/A||/public/A?x=1")
+	adaptorTestRequireRawStatus(t, app, "/%2e%2e/admin/x", fiber.StatusForbidden)
+	adaptorTestRequireRawStatus(t, app, "/public/..%2Fadmin/x", fiber.StatusNotFound)
 }
 
 // Test_HTTPMiddleware_SeesRoutedPath pins that a net/http guard on r.URL.Path
@@ -235,7 +242,6 @@ func Test_HTTPHandlerWithContext_RoutedPath(t *testing.T) {
 // rather than decoded, so a Fiber route behind the middleware still gets it.
 func Test_HTTPMiddleware_SeesRoutedPath(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -257,18 +263,15 @@ func Test_HTTPMiddleware_SeesRoutedPath(t *testing.T) {
 		"/public/%41":      "/public/A|/public/A|/public/A|/public/A",
 		"//admin/x":        "//admin/x|//admin/x|//admin/x|//admin/x",
 	} {
-		fctx := rawCtx(t, app, target)
-		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode(), target)
-		require.Equal(t, want, string(fctx.Response.Body()), target)
+		adaptorTestRequireRawOK(t, app, target, want)
 	}
 	for _, target := range []string{"/admin/x", "/a/../admin/x", "/%2e%2e/admin/x"} {
-		require.Equal(t, fiber.StatusForbidden, rawCtx(t, app, target).Response.StatusCode(), target)
+		adaptorTestRequireRawStatus(t, app, target, fiber.StatusForbidden)
 	}
 }
 
 func Test_ConvertRequest_RoutedPath(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Get("/*", func(c fiber.Ctx) error {
 		r, err := ConvertRequest(c, true)
@@ -278,9 +281,8 @@ func Test_ConvertRequest_RoutedPath(t *testing.T) {
 		return c.SendString(r.URL.Path + "|" + r.URL.RawPath + "|" + r.RequestURI + "|" + c.OriginalURL())
 	})
 
-	fctx := rawCtx(t, app, "/a/../public/%41%2Fb?x=1")
-	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
-	require.Equal(t, "/public/A/b|/public/A%2Fb|/public/A%2Fb?x=1|/public/A%2Fb?x=1", string(fctx.Response.Body()))
+	adaptorTestRequireRawOK(t, app, "/a/../public/%41%2Fb?x=1",
+		"/public/A/b|/public/A%2Fb|/public/A%2Fb?x=1|/public/A%2Fb?x=1")
 }
 
 // Test_FiberHandler_RoutesTheURL pins that a Fiber handler served from
@@ -289,27 +291,22 @@ func Test_ConvertRequest_RoutedPath(t *testing.T) {
 // has no RequestURI at all.
 func Test_FiberHandler_RoutesTheURL(t *testing.T) {
 	t.Parallel()
+	h := func(c fiber.Ctx) error { return c.SendString(c.Path() + "|" + c.OriginalURL()) }
 
-	h := func(c fiber.Ctx) error {
-		return c.SendString(c.Path() + "|" + c.OriginalURL())
-	}
-
-	rec := httptest.NewRecorder()
-	http.StripPrefix("/app", FiberHandler(h)).ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/app/users/%41?x=1", http.NoBody))
+	stripped := http.StripPrefix("/app", FiberHandler(h))
+	rec := adaptorTestServe(stripped, apptest.Req(fiber.MethodGet, "/app/users/%41?x=1"))
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "/users/A|/users/%41?x=1", rec.Body.String())
 
 	built, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://example.com/built/%41?x=1", http.NoBody)
 	require.NoError(t, err)
 	require.Empty(t, built.RequestURI)
-	rec = httptest.NewRecorder()
-	FiberHandler(h).ServeHTTP(rec, built)
+	rec = adaptorTestServe(FiberHandler(h), built)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "/built/A|/built/%41?x=1", rec.Body.String())
 
 	// As served by net/http, the two agree and the request line is used as is.
-	rec = httptest.NewRecorder()
-	FiberHandler(h).ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/served/%41?x=1", http.NoBody))
+	rec = adaptorTestServe(FiberHandler(h), apptest.Req(fiber.MethodGet, "/served/%41?x=1"))
 	require.Equal(t, "/served/A|/served/%41?x=1", rec.Body.String())
 }
 
@@ -320,25 +317,7 @@ func Test_FiberHandler_RoutesTheURL(t *testing.T) {
 // authority, so both spellings of c.Path() are accepted.
 func Test_FiberHandler_ConnectAuthorityForm(t *testing.T) {
 	t.Parallel()
-
-	h := func(c fiber.Ctx) error {
-		return c.SendString(c.Path() + "|" + c.Host())
-	}
-	routed := func(t *testing.T, rec *httptest.ResponseRecorder) (string, string) {
-		t.Helper()
-		require.Equal(t, http.StatusOK, rec.Code)
-		path, host, ok := strings.Cut(rec.Body.String(), "|")
-		require.True(t, ok, rec.Body.String())
-		return strings.TrimPrefix(path, "/"), host
-	}
-
-	rec := httptest.NewRecorder()
-	FiberHandler(h).ServeHTTP(rec, httptest.NewRequest(fiber.MethodConnect, "backend.internal:443", http.NoBody))
-	path, host := routed(t, rec)
-	require.Equal(t, "backend.internal:443", path)
-	require.Equal(t, "backend.internal:443", host)
-
-	// A rewrite of the authority is routed like one of the path.
+	h := func(c fiber.Ctx) error { return c.SendString(c.Path() + "|" + c.Host()) }
 	retarget := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			r.URL.Host = "other.internal:8443"
@@ -346,18 +325,36 @@ func Test_FiberHandler_ConnectAuthorityForm(t *testing.T) {
 			next.ServeHTTP(w, r)
 		})
 	}
-	rec = httptest.NewRecorder()
-	retarget(FiberHandler(h)).ServeHTTP(rec, httptest.NewRequest(fiber.MethodConnect, "backend.internal:443", http.NoBody))
-	path, host = routed(t, rec)
-	require.Equal(t, "other.internal:8443", path)
-	require.Equal(t, "other.internal:8443", host)
 
-	// The net/rpc form, a CONNECT with a path, is routed by that path.
-	rec = httptest.NewRecorder()
-	FiberHandler(h).ServeHTTP(rec, httptest.NewRequest(fiber.MethodConnect, "/rpc", http.NoBody))
-	path, host = routed(t, rec)
-	require.Equal(t, "rpc", path)
-	require.Equal(t, "example.com", host)
+	for _, tc := range []struct {
+		handler  http.Handler
+		name     string
+		target   string
+		wantPath string
+		wantHost string
+	}{
+		{
+			name: "authority form", handler: FiberHandler(h), target: "backend.internal:443",
+			wantPath: "backend.internal:443", wantHost: "backend.internal:443",
+		},
+		{
+			// A rewrite of the authority is routed like one of the path.
+			name: "rewritten authority", handler: retarget(FiberHandler(h)), target: "backend.internal:443",
+			wantPath: "other.internal:8443", wantHost: "other.internal:8443",
+		},
+		// The net/rpc form, a CONNECT with a path, is routed by that path.
+		{name: "net/rpc form", handler: FiberHandler(h), target: "/rpc", wantPath: "rpc", wantHost: "example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			rec := adaptorTestServe(tc.handler, apptest.Req(fiber.MethodConnect, tc.target))
+			require.Equal(t, http.StatusOK, rec.Code)
+			path, host, ok := strings.Cut(rec.Body.String(), "|")
+			require.True(t, ok, rec.Body.String())
+			require.Equal(t, tc.wantPath, strings.TrimPrefix(path, "/"))
+			require.Equal(t, tc.wantHost, host)
+		})
+	}
 }
 
 // Test_requestTarget pins the request line requestTarget reads for each
@@ -366,7 +363,6 @@ func Test_FiberHandler_ConnectAuthorityForm(t *testing.T) {
 // header, else the URL's host, as net/http writes such a request.
 func Test_requestTarget(t *testing.T) {
 	t.Parallel()
-
 	connect := func(u *url.URL, host string) *http.Request {
 		return &http.Request{Method: http.MethodConnect, URL: u, Host: host}
 	}
@@ -386,23 +382,17 @@ func Test_requestTarget(t *testing.T) {
 // would take the host and credentials from it.
 func Test_HTTPMiddleware_RejectsAuthorityTarget(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler { return next }))
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendString(c.Hostname() + "|" + c.Path())
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendString(c.Hostname() + "|" + c.Path()) })
 
-	require.Equal(t, fiber.StatusBadRequest, rawCtx(t, app, "//u:pw@evil.example/a:/x/..//b").Response.StatusCode())
+	adaptorTestRequireRawStatus(t, app, "//u:pw@evil.example/a:/x/..//b", fiber.StatusBadRequest)
 
-	fctx := rawCtx(t, app, "//evil.example/a:/b")
-	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
-	require.Equal(t, "example.com|//evil.example/a:/b", string(fctx.Response.Body()))
+	adaptorTestRequireRawOK(t, app, "//evil.example/a:/b", "example.com|//evil.example/a:/b")
 }
 
 func Test_ConvertRequest_RejectsAuthorityTarget(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Get("/*", func(c fiber.Ctx) error {
 		r, err := ConvertRequest(c, true)
@@ -412,11 +402,9 @@ func Test_ConvertRequest_RejectsAuthorityTarget(t *testing.T) {
 		return c.SendString(r.URL.Path + "|" + c.Hostname())
 	})
 
-	require.Equal(t, fiber.StatusBadRequest, rawCtx(t, app, "//u:pw@evil.example/a:/x/..//b").Response.StatusCode())
+	adaptorTestRequireRawStatus(t, app, "//u:pw@evil.example/a:/x/..//b", fiber.StatusBadRequest)
 
-	fctx := rawCtx(t, app, "//evil.example/a:/b")
-	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
-	require.Equal(t, "//evil.example/a:/b|example.com", string(fctx.Response.Body()))
+	adaptorTestRequireRawOK(t, app, "//evil.example/a:/b", "//evil.example/a:/b|example.com")
 }
 
 // Test_HTTPHandler_PanicRestoresRequestLine pins that the original request
@@ -424,22 +412,13 @@ func Test_ConvertRequest_RejectsAuthorityTarget(t *testing.T) {
 // recovers, and anything logging afterwards, sees the request as it arrived.
 func Test_HTTPHandler_PanicRestoresRequestLine(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
-	var after string
-	app.Use(func(c fiber.Ctx) error {
-		err := c.Next()
-		after = c.OriginalURL()
-		return err
-	})
+	after := adaptorTestRecordURL(app)
 	app.Use(recoverer.New())
-	app.Use(HTTPHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		panic("boom")
-	})))
+	app.Use(HTTPHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") })))
 
-	fctx := rawCtx(t, app, "/a/../public/%41")
-	require.Equal(t, fiber.StatusInternalServerError, fctx.Response.StatusCode())
-	require.Equal(t, "/a/../public/%41", after)
+	adaptorTestRequireRawStatus(t, app, "/a/../public/%41", fiber.StatusInternalServerError)
+	require.Equal(t, "/a/../public/%41", *after)
 }
 
 // forgedEscapeOutcome checks a response to "/public/%%32e%%32e/admin/x", a
@@ -463,18 +442,14 @@ func forgedEscapeOutcome(t *testing.T, fctx *fasthttp.RequestCtx, want string) {
 
 func Test_HTTPMiddleware_RejectsForgedEscape(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler { return next }))
-	app.Use(func(c fiber.Ctx) error {
-		return c.SendString(c.Path())
-	})
+	app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
 	forgedEscapeOutcome(t, rawCtx(t, app, "/public/%%32e%%32e/admin/x"), "/public/%252e%252e/admin/x")
 }
 
 func Test_ConvertRequest_RejectsForgedEscape(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Get("/*", func(c fiber.Ctx) error {
 		r, err := ConvertRequest(c, true)
@@ -488,20 +463,6 @@ func Test_ConvertRequest_RejectsForgedEscape(t *testing.T) {
 	forgedEscapeOutcome(t, rawCtx(t, app, "/public/%%32e%%32e/admin/x"), "|/public/%2e%2e/admin/x")
 }
 
-// rawLine hands app a whole raw request, request line and headers, and returns
-// the served context.
-func rawLine(t *testing.T, app *fiber.App, raw string) *fasthttp.RequestCtx {
-	t.Helper()
-
-	var req fasthttp.Request
-	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
-
-	fctx := new(fasthttp.RequestCtx)
-	fctx.Init(&req, nil, nil)
-	app.Handler()(fctx)
-	return fctx
-}
-
 // Test_Adaptor_KeepsAbsoluteFormHost pins that an adapted net/http handler sees
 // the host Fiber saw. An absolute-form request line names its own host, which
 // RFC 9112 Section 3.2.2 has the server use over the Host header, and
@@ -509,7 +470,6 @@ func rawLine(t *testing.T, app *fiber.App, raw string) *fasthttp.RequestCtx {
 // make fasthttp take the host from the Host header again.
 func Test_Adaptor_KeepsAbsoluteFormHost(t *testing.T) {
 	t.Parallel()
-
 	const raw = "GET http://public.example/x?q=1 HTTP/1.1\r\nHost: admin.internal\r\n\r\n"
 	echoHost := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, r.Host, "|", r.URL.Path)
@@ -553,9 +513,7 @@ func Test_Adaptor_KeepsAbsoluteFormHost(t *testing.T) {
 				next.ServeHTTP(w, r)
 			})
 		}))
-		app.Get("/x", func(c fiber.Ctx) error {
-			return c.SendString(c.Hostname())
-		})
+		app.Get("/x", func(c fiber.Ctx) error { return c.SendString(c.Hostname()) })
 		fctx := rawLine(t, app, raw)
 		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
 		require.Equal(t, "public.example", seen)
@@ -569,7 +527,6 @@ func Test_Adaptor_KeepsAbsoluteFormHost(t *testing.T) {
 // ";" as "%3B") and so break a signed URL.
 func Test_HTTPMiddleware_ForwardsQueryAsSent(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(func(c fiber.Ctx) error {
 		_ = c.Query("a")
@@ -582,12 +539,9 @@ func Test_HTTPMiddleware_ForwardsQueryAsSent(t *testing.T) {
 			next.ServeHTTP(w, r)
 		})
 	}))
-	app.Get("/x", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusNoContent)
-	})
+	app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 
-	fctx := rawCtx(t, app, "/x?a=%20b&c=;d&sig=AbC%2F")
-	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
+	adaptorTestRequireRawStatus(t, app, "/x?a=%20b&c=;d&sig=AbC%2F", fiber.StatusNoContent)
 	require.Equal(t, "a=%20b&c=;d&sig=AbC%2F", rawQuery)
 }
 
@@ -597,14 +551,9 @@ func Test_HTTPMiddleware_ForwardsQueryAsSent(t *testing.T) {
 // answered 404 for "/über" and handed parameters back escaped.
 func Test_FiberHandler_RoutesRawBytes(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
-	app.Get("/über", func(c fiber.Ctx) error {
-		return c.SendString("static|" + c.Path())
-	})
-	app.Get("/p/:name", func(c fiber.Ctx) error {
-		return c.SendString(c.Params("name"))
-	})
+	app.Get("/über", func(c fiber.Ctx) error { return c.SendString("static|" + c.Path()) })
+	app.Get("/p/:name", func(c fiber.Ctx) error { return c.SendString(c.Params("name")) })
 	h := FiberApp(app)
 
 	for target, want := range map[string]string{
@@ -613,8 +562,7 @@ func Test_FiberHandler_RoutesRawBytes(t *testing.T) {
 		"/p/café": "café",
 		"/p/%41":  "A",
 	} {
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+		rec := adaptorTestServe(h, apptest.Req(fiber.MethodGet, target))
 		require.Equal(t, http.StatusOK, rec.Code, target)
 		require.Equal(t, want, rec.Body.String(), target)
 	}
@@ -626,17 +574,12 @@ func Test_FiberHandler_RoutesRawBytes(t *testing.T) {
 // included, from URL.EscapedPath().
 func Test_HTTPMiddleware_ServesEscapedSlash(t *testing.T) {
 	t.Parallel()
-
-	repos := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, r.URL.EscapedPath())
-	})
+	repos := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, r.URL.EscapedPath()) })
 	app := fiber.New()
 	app.Use("/repos", HTTPMiddleware(func(http.Handler) http.Handler { return repos }))
 	app.Get("/handler/*", HTTPHandler(repos))
 
-	fctx := rawCtx(t, app, "/repos/group%2Fproject")
-	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
-	require.Equal(t, "/repos/group%2Fproject", string(fctx.Response.Body()))
+	adaptorTestRequireRawOK(t, app, "/repos/group%2Fproject", "/repos/group%2Fproject")
 
-	require.Equal(t, fiber.StatusNotFound, rawCtx(t, app, "/handler/group%2Fproject").Response.StatusCode())
+	adaptorTestRequireRawStatus(t, app, "/handler/group%2Fproject", fiber.StatusNotFound)
 }

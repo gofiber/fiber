@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/middleware/sse"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
@@ -39,240 +40,152 @@ const (
 	expectedRemoteAddr = "1.2.3.4:6789"
 )
 
-func Test_HTTPHandler(t *testing.T) {
-	t.Parallel()
-
-	expectedMethod := fiber.MethodPost
-	expectedProto := "HTTP/1.1"
-	expectedProtoMajor := 1
-	expectedProtoMinor := 1
-	expectedContentLength := len(expectedBody)
-	expectedHeader := map[string]string{
-		"Foo-Bar":         "baz",
-		"Abc":             "defg",
-		"XXX-Remote-Addr": "123.43.4543.345",
-	}
-	expectedURL, err := url.ParseRequestURI(expectedRequestURI)
-	require.NoError(t, err)
-
-	type contextKeyType string
-	expectedContextKey := contextKeyType("contextKey")
-	expectedContextValue := "contextValue"
-
-	callsCount := 0
-	nethttpH := func(w http.ResponseWriter, r *http.Request) {
-		callsCount++
-		assert.Equal(t, expectedMethod, r.Method, "Method")
-		assert.Equal(t, expectedProto, r.Proto, "Proto")
-		assert.Equal(t, expectedProtoMajor, r.ProtoMajor, "ProtoMajor")
-		assert.Equal(t, expectedProtoMinor, r.ProtoMinor, "ProtoMinor")
-		assert.Equal(t, expectedRequestURI, r.RequestURI, "RequestURI")
-		assert.Equal(t, expectedContentLength, int(r.ContentLength), "ContentLength")
-		assert.Empty(t, r.TransferEncoding, "TransferEncoding")
-		assert.Equal(t, expectedHost, r.Host, "Host")
-		assert.Equal(t, expectedRemoteAddr, r.RemoteAddr, "RemoteAddr")
-
-		body, readErr := io.ReadAll(r.Body)
-		assert.NoError(t, readErr)
-		assert.Equal(t, expectedBody, string(body), "Body")
-		assert.Equal(t, expectedURL, r.URL, "URL")
-		assert.Equal(t, expectedContextValue, r.Context().Value(expectedContextKey), "Context")
-
-		for k, expectedV := range expectedHeader {
-			v := r.Header.Get(k)
-			assert.Equal(t, expectedV, v, "Header")
-		}
-
-		w.Header().Set("Header1", "value1")
-		w.Header().Set("Header2", "value2")
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "request body is %q", body)
-	}
-	fiberH := HTTPHandlerFunc(http.HandlerFunc(nethttpH))
-	fiberH = setFiberContextValueMiddleware(fiberH, expectedContextKey, expectedContextValue)
-
-	var fctx fasthttp.RequestCtx
-	var req fasthttp.Request
-
-	req.Header.SetMethod(expectedMethod)
-	req.SetRequestURI(expectedRequestURI)
-	req.Header.SetHost(expectedHost)
-	req.BodyWriter().Write([]byte(expectedBody)) //nolint:errcheck // not needed
-	for k, v := range expectedHeader {
-		req.Header.Set(k, v)
-	}
-
-	remoteAddr, err := net.ResolveTCPAddr("tcp", expectedRemoteAddr)
-	require.NoError(t, err)
-
-	fctx.Init(&req, remoteAddr, &disableLogger{})
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fctx)
-	defer app.ReleaseCtx(ctx)
-
-	err = fiberH(ctx)
-	require.NoError(t, err)
-	require.Equal(t, 1, callsCount, "callsCount")
-
-	resp := &fctx.Response
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode(), "StatusCode")
-	require.Equal(t, "value1", string(resp.Header.Peek("Header1")), "Header1")
-	require.Equal(t, "value2", string(resp.Header.Peek("Header2")), "Header2")
-
-	expectedResponseBody := fmt.Sprintf("request body is %q", expectedBody)
-	require.Equal(t, expectedResponseBody, string(resp.Body()), "Body")
+// adaptorTestServe sends req through h and returns what the handler recorded.
+func adaptorTestServe(h http.Handler, req *http.Request) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
 }
 
-func Test_HTTPHandler_Flush(t *testing.T) {
+func Test_HTTPHandler(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		flush bool // flush the response after its first chunk
+	}{
+		{name: "plain"},
+		{name: "flush", flush: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			expectedMethod := fiber.MethodPost
+			expectedProto := "HTTP/1.1"
+			expectedProtoMajor := 1
+			expectedProtoMinor := 1
+			expectedContentLength := len(expectedBody)
+			expectedHeader := map[string]string{"Foo-Bar": "baz", "Abc": "defg", "XXX-Remote-Addr": "123.43.4543.345"}
+			expectedURL, err := url.ParseRequestURI(expectedRequestURI)
+			require.NoError(t, err)
 
-	expectedMethod := fiber.MethodPost
-	expectedProto := "HTTP/1.1"
-	expectedProtoMajor := 1
-	expectedProtoMinor := 1
-	expectedContentLength := len(expectedBody)
-	expectedHeader := map[string]string{
-		"Foo-Bar":         "baz",
-		"Abc":             "defg",
-		"XXX-Remote-Addr": "123.43.4543.345",
+			type contextKeyType string
+			expectedContextKey := contextKeyType("contextKey")
+			expectedContextValue := "contextValue"
+
+			callsCount := 0
+			nethttpH := func(w http.ResponseWriter, r *http.Request) {
+				callsCount++
+				assert.Equal(t, expectedMethod, r.Method, "Method")
+				assert.Equal(t, expectedProto, r.Proto, "Proto")
+				assert.Equal(t, expectedProtoMajor, r.ProtoMajor, "ProtoMajor")
+				assert.Equal(t, expectedProtoMinor, r.ProtoMinor, "ProtoMinor")
+				assert.Equal(t, expectedRequestURI, r.RequestURI, "RequestURI")
+				assert.Equal(t, expectedContentLength, int(r.ContentLength), "ContentLength")
+				assert.Empty(t, r.TransferEncoding, "TransferEncoding")
+				assert.Equal(t, expectedHost, r.Host, "Host")
+				assert.Equal(t, expectedRemoteAddr, r.RemoteAddr, "RemoteAddr")
+
+				body, readErr := io.ReadAll(r.Body)
+				assert.NoError(t, readErr)
+				assert.Equal(t, expectedBody, string(body), "Body")
+				assert.Equal(t, expectedURL, r.URL, "URL")
+				assert.Equal(t, expectedContextValue, r.Context().Value(expectedContextKey), "Context")
+
+				for k, expectedV := range expectedHeader {
+					v := r.Header.Get(k)
+					assert.Equal(t, expectedV, v, "Header")
+				}
+
+				w.Header().Set("Header1", "value1")
+				w.Header().Set("Header2", "value2")
+				w.WriteHeader(http.StatusBadRequest)
+				if !tc.flush {
+					fmt.Fprintf(w, "request body is %q", body)
+					return
+				}
+				fmt.Fprintf(w, "request body is ")
+				flusher, ok := w.(http.Flusher)
+				if !ok {
+					t.Fatal("w does not implement http.Flusher")
+				}
+				flusher.Flush()
+				fmt.Fprintf(w, "%q", body)
+			}
+			fiberH := HTTPHandlerFunc(http.HandlerFunc(nethttpH))
+			fiberH = setFiberContextValueMiddleware(fiberH, expectedContextKey, expectedContextValue)
+
+			var fctx fasthttp.RequestCtx
+			var req fasthttp.Request
+
+			req.Header.SetMethod(expectedMethod)
+			req.SetRequestURI(expectedRequestURI)
+			req.Header.SetHost(expectedHost)
+			req.BodyWriter().Write([]byte(expectedBody)) //nolint:errcheck // not needed
+			for k, v := range expectedHeader {
+				req.Header.Set(k, v)
+			}
+
+			remoteAddr, err := net.ResolveTCPAddr("tcp", expectedRemoteAddr)
+			require.NoError(t, err)
+
+			fctx.Init(&req, remoteAddr, &disableLogger{})
+			ctx := apptest.CtxFor(t, fiber.New(), &fctx)
+
+			err = fiberH(ctx)
+			require.NoError(t, err)
+			require.Equal(t, 1, callsCount, "callsCount")
+
+			resp := &fctx.Response
+			require.Equal(t, http.StatusBadRequest, resp.StatusCode(), "StatusCode")
+			require.Equal(t, "value1", string(resp.Header.Peek("Header1")), "Header1")
+			require.Equal(t, "value2", string(resp.Header.Peek("Header2")), "Header2")
+
+			expectedResponseBody := fmt.Sprintf("request body is %q", expectedBody)
+			require.Equal(t, expectedResponseBody, string(resp.Body()), "Body")
+		})
 	}
-	expectedURL, err := url.ParseRequestURI(expectedRequestURI)
-	require.NoError(t, err)
-
-	type contextKeyType string
-	expectedContextKey := contextKeyType("contextKey")
-	expectedContextValue := "contextValue"
-
-	callsCount := 0
-	nethttpH := func(w http.ResponseWriter, r *http.Request) {
-		callsCount++
-		assert.Equal(t, expectedMethod, r.Method, "Method")
-		assert.Equal(t, expectedProto, r.Proto, "Proto")
-		assert.Equal(t, expectedProtoMajor, r.ProtoMajor, "ProtoMajor")
-		assert.Equal(t, expectedProtoMinor, r.ProtoMinor, "ProtoMinor")
-		assert.Equal(t, expectedRequestURI, r.RequestURI, "RequestURI")
-		assert.Equal(t, expectedContentLength, int(r.ContentLength), "ContentLength")
-		assert.Empty(t, r.TransferEncoding, "TransferEncoding")
-		assert.Equal(t, expectedHost, r.Host, "Host")
-		assert.Equal(t, expectedRemoteAddr, r.RemoteAddr, "RemoteAddr")
-
-		body, readErr := io.ReadAll(r.Body)
-		assert.NoError(t, readErr)
-		assert.Equal(t, expectedBody, string(body), "Body")
-		assert.Equal(t, expectedURL, r.URL, "URL")
-		assert.Equal(t, expectedContextValue, r.Context().Value(expectedContextKey), "Context")
-
-		for k, expectedV := range expectedHeader {
-			v := r.Header.Get(k)
-			assert.Equal(t, expectedV, v, "Header")
-		}
-
-		w.Header().Set("Header1", "value1")
-		w.Header().Set("Header2", "value2")
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "request body is ")
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			t.Fatal("w does not implement http.Flusher")
-		}
-		flusher.Flush()
-		fmt.Fprintf(w, "%q", body)
-	}
-	fiberH := HTTPHandlerFunc(http.HandlerFunc(nethttpH))
-	fiberH = setFiberContextValueMiddleware(fiberH, expectedContextKey, expectedContextValue)
-
-	var fctx fasthttp.RequestCtx
-	var req fasthttp.Request
-
-	req.Header.SetMethod(expectedMethod)
-	req.SetRequestURI(expectedRequestURI)
-	req.Header.SetHost(expectedHost)
-	req.BodyWriter().Write([]byte(expectedBody)) //nolint:errcheck // not needed
-	for k, v := range expectedHeader {
-		req.Header.Set(k, v)
-	}
-
-	remoteAddr, err := net.ResolveTCPAddr("tcp", expectedRemoteAddr)
-	require.NoError(t, err)
-
-	fctx.Init(&req, remoteAddr, &disableLogger{})
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fctx)
-	defer app.ReleaseCtx(ctx)
-
-	err = fiberH(ctx)
-	require.NoError(t, err)
-	require.Equal(t, 1, callsCount, "callsCount")
-
-	resp := &fctx.Response
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode(), "StatusCode")
-	require.Equal(t, "value1", string(resp.Header.Peek("Header1")), "Header1")
-	require.Equal(t, "value2", string(resp.Header.Peek("Header2")), "Header2")
-
-	expectedResponseBody := fmt.Sprintf("request body is %q", expectedBody)
-	require.Equal(t, expectedResponseBody, string(resp.Body()), "Body")
 }
 
 func Test_HTTPHandler_Flush_App_Test(t *testing.T) {
 	t.Parallel()
+	newApp := func(t *testing.T) *fiber.App {
+		t.Helper()
 
-	app := fiber.New()
+		app := fiber.New()
+		app.Get("/", HTTPHandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				t.Fatal("w does not implement http.Flusher")
+			}
+			w.WriteHeader(fiber.StatusOK)
+			fmt.Fprintf(w, "Hello ")
+			flusher.Flush()
+			time.Sleep(500 * time.Millisecond)
+			fmt.Fprintf(w, "World!")
+		}))
+		return app
+	}
 
-	app.Get("/", HTTPHandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			t.Fatal("w does not implement http.Flusher")
-		}
-		w.WriteHeader(fiber.StatusOK)
-		fmt.Fprintf(w, "Hello ")
-		flusher.Flush()
-		time.Sleep(500 * time.Millisecond)
-		fmt.Fprintf(w, "World!")
-	}))
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	defer resp.Body.Close() //nolint:errcheck // not needed
-
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "Hello World!", string(body))
-}
-
-func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-
-	app.Get("/", HTTPHandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			t.Fatal("w does not implement http.Flusher")
-		}
-		w.WriteHeader(fiber.StatusOK)
-		fmt.Fprintf(w, "Hello ")
-		flusher.Flush()
-		time.Sleep(500 * time.Millisecond)
-		fmt.Fprintf(w, "World!")
-	}))
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
-		Timeout:       200 * time.Millisecond,
-		FailOnTimeout: true, // Changed to true to test interrupted behavior
+	t.Run("complete", func(t *testing.T) {
+		t.Parallel()
+		apptest.ExpectBody(t, newApp(t), "/", fiber.StatusOK, "Hello World!")
 	})
-	// With FailOnTimeout: true, we should get a timeout error
-	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
-	require.Nil(t, resp)
+
+	t.Run("interrupted", func(t *testing.T) {
+		t.Parallel()
+		resp, err := newApp(t).Test(apptest.Req(fiber.MethodGet, "/"), fiber.TestConfig{
+			Timeout:       200 * time.Millisecond,
+			FailOnTimeout: true, // Changed to true to test interrupted behavior
+		})
+		// With FailOnTimeout: true, we should get a timeout error
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+		require.Nil(t, resp)
+	})
 }
 
 func Test_LocalContextFromHTTPRequest(t *testing.T) {
 	t.Parallel()
-
 	t.Run("nil request", func(t *testing.T) {
 		t.Parallel()
-
 		ctx, ok := LocalContextFromHTTPRequest(nil)
 		require.False(t, ok)
 		require.Nil(t, ctx)
@@ -280,8 +193,7 @@ func Test_LocalContextFromHTTPRequest(t *testing.T) {
 
 	t.Run("request without stored context key", func(t *testing.T) {
 		t.Parallel()
-
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req := apptest.Req(fiber.MethodGet, "/")
 
 		ctx, ok := LocalContextFromHTTPRequest(req)
 		require.False(t, ok)
@@ -290,9 +202,8 @@ func Test_LocalContextFromHTTPRequest(t *testing.T) {
 
 	t.Run("request with stored context key", func(t *testing.T) {
 		t.Parallel()
-
 		expectedCtx := context.WithValue(context.Background(), contextKey("k"), "v")
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody).WithContext(
+		req := apptest.Req(fiber.MethodGet, "/").WithContext(
 			context.WithValue(context.Background(), localContextKey, expectedCtx),
 		)
 
@@ -304,7 +215,6 @@ func Test_LocalContextFromHTTPRequest(t *testing.T) {
 
 func Test_HTTPHandlerWithContext_local_context(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	// unique type for avoiding collisions in context
@@ -313,14 +223,12 @@ func Test_HTTPHandlerWithContext_local_context(t *testing.T) {
 
 	const testVal string = "test-value"
 
-	// a middleware to add a value to the local context
 	app.Use(func(c fiber.Ctx) error {
 		ctx := context.WithValue(c.Context(), testKey, testVal)
 		c.SetContext(ctx)
 		return c.Next()
 	})
 
-	// a handler that checks if the value has been appended to the local context
 	app.Get("/", HTTPHandlerWithContext(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, ok := LocalContextFromHTTPRequest(r)
 		if !ok {
@@ -339,18 +247,11 @@ func Test_HTTPHandlerWithContext_local_context(t *testing.T) {
 		}
 	})))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
-		Timeout:       200 * time.Millisecond,
-		FailOnTimeout: false,
-	})
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/", fiber.TestConfig{Timeout: 200 * time.Millisecond, FailOnTimeout: false})
 
 	defer resp.Body.Close() //nolint:errcheck // no need
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	require.Equal(t, testVal, string(body))
+	require.Equal(t, testVal, apptest.Body(t, resp))
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
@@ -367,31 +268,15 @@ var (
 
 func Test_HTTPMiddleware(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name       string
 		url        string
 		method     string
 		statusCode int
 	}{
-		{
-			name:       "Should return 200",
-			url:        "/",
-			method:     "POST",
-			statusCode: 200,
-		},
-		{
-			name:       "Should return 405",
-			url:        "/",
-			method:     "GET",
-			statusCode: 405,
-		},
-		{
-			name:       "Should return 400",
-			url:        "/unknown",
-			method:     "POST",
-			statusCode: 404,
-		},
+		{name: "Should return 200", url: "/", method: "POST", statusCode: 200},
+		{name: "Should return 405", url: "/", method: "GET", statusCode: 405},
+		{name: "Should return 400", url: "/unknown", method: "POST", statusCode: 404},
 	}
 
 	nethttpMW := func(next http.Handler) http.Handler {
@@ -432,28 +317,16 @@ func Test_HTTPMiddleware(t *testing.T) {
 	})
 
 	for _, tt := range tests {
-		req, err := http.NewRequestWithContext(context.Background(), tt.method, tt.url, http.NoBody)
-		req.Host = expectedHost
-		require.NoError(t, err)
-
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, tt.statusCode, resp.StatusCode, "StatusCode")
+		apptest.Expect(t, app, apptest.Req(tt.method, tt.url, apptest.WithHost(expectedHost)), tt.statusCode)
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", http.NoBody)
-	req.Host = expectedHost
-	require.NoError(t, err)
-
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, apptest.Req(fiber.MethodPost, "/", apptest.WithHost(expectedHost)))
 	require.Equal(t, "okay", resp.Header.Get("context_okay"))
 	require.Equal(t, "okay", resp.Header.Get("context_second_okay"))
 }
 
 func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 	t.Parallel()
-
 	const (
 		cookieHeader    = "Cookie"
 		setCookieHeader = "Set-Cookie"
@@ -475,7 +348,6 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 	app := fiber.New()
 	app.Use(HTTPMiddleware(nethttpMW))
 	app.Post("/", func(c fiber.Ctx) error {
-		// RETURNING CURRENT COOKIES TO RESPONSE
 		cookies := strings.SplitSeq(c.Get(cookieHeader), "; ")
 		for cookie := range cookies {
 			c.Set(setCookieHeader, cookie)
@@ -483,16 +355,13 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	// Test case for POST request with cookies
 	t.Run("POST request with cookies", func(t *testing.T) {
 		t.Parallel()
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", http.NoBody)
-		require.NoError(t, err)
+		req := apptest.Req(fiber.MethodPost, "/")
 		req.AddCookie(&http.Cookie{Name: cookieOneName, Value: cookieOneValue})
 		req.AddCookie(&http.Cookie{Name: cookieTwoName, Value: cookieTwoValue})
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, req)
 		cookies := resp.Cookies()
 		require.Len(t, cookies, 2)
 		for _, cookie := range cookies {
@@ -507,37 +376,97 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 		}
 	})
 
-	// New test case for GET request
 	t.Run("GET request", func(t *testing.T) {
 		t.Parallel()
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/", http.NoBody)
-		require.NoError(t, err)
-
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
+		apptest.Expect(t, app, "/", http.StatusMethodNotAllowed)
 	})
 
-	// New test case for request without cookies
 	t.Run("POST request without cookies", func(t *testing.T) {
 		t.Parallel()
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", http.NoBody)
-		require.NoError(t, err)
-
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, apptest.Req(fiber.MethodPost, "/"), http.StatusOK)
 		require.Empty(t, resp.Cookies())
 	})
 }
 
+// Test_FiberHandler serves one request through FiberHandlerFunc, or through FiberApp, and checks what
+// the Fiber handler reads from it and what the net/http side gets back. A remote address without a port
+// gets port 80.
 func Test_FiberHandler(t *testing.T) {
 	t.Parallel()
+	expectedHeader := map[string]string{"Foo-Bar": "baz", "Abc": "defg", "XXX-Remote-Addr": "123.43.4543.345"}
+	expectedURL, err := url.ParseRequestURI(expectedRequestURI)
+	require.NoError(t, err)
 
-	testFiberToHandlerFunc(t, fiberToHandlerFuncConfig{
-		requestRemoteAddr:  "1.2.3.4:6789",
-		expectedRemoteAddr: "1.2.3.4:6789",
-	})
+	for _, tc := range []struct {
+		name           string
+		remoteAddr     string
+		wantRemoteAddr string
+		app            bool // served by FiberApp rather than FiberHandlerFunc
+	}{
+		{name: "handler", remoteAddr: "1.2.3.4:6789", wantRemoteAddr: "1.2.3.4:6789"},
+		{name: "app", remoteAddr: "1.2.3.4:6789", wantRemoteAddr: "1.2.3.4:6789", app: true},
+		{name: "handler default port", remoteAddr: "1.2.3.4", wantRemoteAddr: "1.2.3.4:80"},
+		{name: "app default port", remoteAddr: "1.2.3.4", wantRemoteAddr: "1.2.3.4:80", app: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fiberH := func(c fiber.Ctx) error {
+				require.Equal(t, fiber.MethodPost, c.Method(), "Method")
+				require.Equal(t, expectedRequestURI, string(c.RequestCtx().RequestURI()), "RequestURI")
+				require.Equal(t, len(expectedBody), c.RequestCtx().Request.Header.ContentLength(), "ContentLength")
+				require.Equal(t, expectedHost, c.Hostname(), "Host")
+				require.Equal(t, expectedHost, string(c.Request().Header.Host()), "Host")
+				require.Equal(t, "http://"+expectedHost, c.BaseURL(), "BaseURL")
+				require.Equal(t, tc.wantRemoteAddr, c.RequestCtx().RemoteAddr().String(), "RemoteAddr")
+
+				body := string(c.Body())
+				require.Equal(t, expectedBody, body, "Body")
+				require.Equal(t, expectedURL.String(), c.OriginalURL(), "URL")
+
+				for k, expectedV := range expectedHeader {
+					v := c.Get(k)
+					require.Equal(t, expectedV, v, "Header")
+				}
+
+				c.Set("Header1", "value1")
+				c.Set("Header2", "value2")
+				c.Status(fiber.StatusBadRequest)
+				_, err := c.Write(fmt.Appendf(nil, "request body is %q", body))
+				return err
+			}
+
+			var handlerFunc http.HandlerFunc
+			if tc.app {
+				app := fiber.New()
+				app.Post("/foo/bar", fiberH)
+				handlerFunc = FiberApp(app)
+			} else {
+				handlerFunc = FiberHandlerFunc(fiberH)
+			}
+
+			hdr := make(http.Header)
+			for k, v := range expectedHeader {
+				hdr.Set(k, v)
+			}
+			r := http.Request{
+				Method:        fiber.MethodPost,
+				Body:          &netHTTPBody{b: []byte(expectedBody)},
+				RequestURI:    expectedRequestURI,
+				ContentLength: int64(len(expectedBody)),
+				Host:          expectedHost,
+				RemoteAddr:    tc.remoteAddr,
+				Header:        hdr,
+			}
+
+			var w netHTTPResponseWriter
+			handlerFunc.ServeHTTP(&w, &r)
+
+			require.Equal(t, http.StatusBadRequest, w.StatusCode(), "StatusCode")
+			require.Equal(t, "value1", w.Header().Get("Header1"), "Header1")
+			require.Equal(t, "value2", w.Header().Get("Header2"), "Header2")
+			require.Equal(t, fmt.Sprintf("request body is %q", expectedBody), string(w.body), "Body")
+		})
+	}
 }
 
 // Test_FiberHandler_ProtocolPropagation verifies that the request's protocol
@@ -546,51 +475,34 @@ func Test_FiberHandler(t *testing.T) {
 // real version instead of fasthttp's HTTP/1.1 default.
 func Test_FiberHandler_ProtocolPropagation(t *testing.T) {
 	t.Parallel()
+	handler := FiberHandlerFunc(func(c fiber.Ctx) error { return c.SendString(c.Protocol()) })
 
-	handler := FiberHandlerFunc(func(c fiber.Ctx) error {
-		return c.SendString(c.Protocol())
-	})
+	// The requests are served one after another by one handler, so a later one
+	// may be served by a context an earlier one has used: no subtests, which
+	// would run side by side.
+	for _, tc := range []struct {
+		name         string
+		proto        string
+		want         string
+		major, minor int
+	}{
+		{name: "HTTP/1.0", proto: "HTTP/1.0", major: 1, minor: 0, want: "HTTP/1.0"},
+		// net/http reports HTTP/2 as "HTTP/2.0"; Fiber's convention is "HTTP/2",
+		// so the adaptor normalizes it to keep c.Protocol() comparisons working.
+		{name: "HTTP/2", proto: "HTTP/2.0", major: 2, minor: 0, want: "HTTP/2"},
+		// Same normalization for HTTP/3.
+		{name: "HTTP/3", proto: "HTTP/3.0", major: 3, minor: 0, want: "HTTP/3"},
+		// A hand-built request with an empty Proto falls back to HTTP/1.1
+		// instead of leaving fasthttp in an inconsistent protocol state.
+		{name: "empty Proto", proto: "", major: 0, minor: 0, want: "HTTP/1.1"},
+	} {
+		req := apptest.Req(http.MethodGet, "http://example.com/")
+		req.Proto = tc.proto
+		req.ProtoMajor = tc.major
+		req.ProtoMinor = tc.minor
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
-	req.Proto = "HTTP/1.0"
-	req.ProtoMajor = 1
-	req.ProtoMinor = 0
-
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	require.Equal(t, "HTTP/1.0", rec.Body.String())
-
-	// net/http reports HTTP/2 as "HTTP/2.0"; Fiber's convention is "HTTP/2",
-	// so the adaptor normalizes it to keep c.Protocol() comparisons working.
-	req = httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
-	req.Proto = "HTTP/2.0"
-	req.ProtoMajor = 2
-	req.ProtoMinor = 0
-
-	rec = httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	require.Equal(t, "HTTP/2", rec.Body.String())
-
-	// Same normalization for HTTP/3.
-	req = httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
-	req.Proto = "HTTP/3.0"
-	req.ProtoMajor = 3
-	req.ProtoMinor = 0
-
-	rec = httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	require.Equal(t, "HTTP/3", rec.Body.String())
-
-	// A hand-built request with an empty Proto falls back to HTTP/1.1
-	// instead of leaving fasthttp in an inconsistent protocol state.
-	req = httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
-	req.Proto = ""
-	req.ProtoMajor = 0
-	req.ProtoMinor = 0
-
-	rec = httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	require.Equal(t, "HTTP/1.1", rec.Body.String())
+		require.Equal(t, tc.want, adaptorTestServe(handler, req).Body.String(), tc.name)
+	}
 }
 
 // Test_FiberHandler_SendEarlyHints verifies that SendEarlyHints through the
@@ -599,7 +511,6 @@ func Test_FiberHandler_ProtocolPropagation(t *testing.T) {
 // reach the final response.
 func Test_FiberHandler_SendEarlyHints(t *testing.T) {
 	t.Parallel()
-
 	handler := FiberHandlerFunc(func(c fiber.Ctx) error {
 		if err := c.SendEarlyHints([]string{"<https://cdn.com/style.css>; rel=preload; as=style"}); err != nil {
 			return err
@@ -607,7 +518,7 @@ func Test_FiberHandler_SendEarlyHints(t *testing.T) {
 		return c.SendString("done")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
+	req := apptest.Req(http.MethodGet, "http://example.com/")
 	rec := httptest.NewRecorder()
 	require.NotPanics(t, func() { handler.ServeHTTP(rec, req) })
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -617,179 +528,43 @@ func Test_FiberHandler_SendEarlyHints(t *testing.T) {
 
 func Test_FiberHandler_BodyLimit(t *testing.T) {
 	t.Parallel()
-
+	const mib = 1024 * 1024
+	tooLarge := fiber.StatusRequestEntityTooLarge
 	tests := []struct {
-		name           string
-		bodyLimit      int
-		bodySize       int
-		unknownLength  bool
-		expectedStatus int
+		name          string
+		limit         int // the BodyLimit of the app
+		size          int // of the request body
+		status        int
+		unknownLength bool
 	}{
+		{name: "DefaultLimitExceededReturns413", size: fiber.DefaultBodyLimit + 1024, status: tooLarge},
+		{name: "CustomLimitExceededReturns413", limit: mib, size: mib + 1, status: tooLarge},
 		{
-			name:           "DefaultLimitExceededReturns413",
-			bodySize:       fiber.DefaultBodyLimit + 1024,
-			expectedStatus: fiber.StatusRequestEntityTooLarge,
+			name: "CustomLimitAllowsLargerPayload", limit: 2 * fiber.DefaultBodyLimit, size: fiber.DefaultBodyLimit + 512,
+			status: fiber.StatusOK,
 		},
-		{
-			name:           "CustomLimitExceededReturns413",
-			bodyLimit:      1 * 1024 * 1024,
-			bodySize:       (1 * 1024 * 1024) + 1,
-			expectedStatus: fiber.StatusRequestEntityTooLarge,
-		},
-		{
-			name:           "CustomLimitAllowsLargerPayload",
-			bodyLimit:      2 * fiber.DefaultBodyLimit,
-			bodySize:       fiber.DefaultBodyLimit + 512,
-			expectedStatus: fiber.StatusOK,
-		},
-		{
-			name:           "ZeroLimitConfigFallsBackToDefault",
-			bodyLimit:      0,
-			bodySize:       fiber.DefaultBodyLimit - 256,
-			expectedStatus: fiber.StatusOK,
-		},
-		{
-			name:           "UnknownLengthExceededReturns413",
-			bodyLimit:      1 * 1024 * 1024,
-			bodySize:       (1 * 1024 * 1024) + 1,
-			unknownLength:  true,
-			expectedStatus: fiber.StatusRequestEntityTooLarge,
-		},
+		{name: "ZeroLimitConfigFallsBackToDefault", limit: 0, size: fiber.DefaultBodyLimit - 256, status: fiber.StatusOK},
+		{name: "UnknownLengthExceededReturns413", limit: mib, size: mib + 1, unknownLength: true, status: tooLarge},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
-			app := fiber.New(fiber.Config{
-				BodyLimit: tt.bodyLimit,
-			})
-
-			app.Post("/", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusOK)
-			})
+			app := fiber.New(fiber.Config{BodyLimit: tt.limit})
+			app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 			handlerFunc := FiberApp(app)
-			body := bytes.Repeat([]byte("a"), tt.bodySize)
+			body := bytes.Repeat([]byte("a"), tt.size)
 			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
 			if tt.unknownLength {
 				req.ContentLength = -1
 			} else {
 				req.ContentLength = int64(len(body))
 			}
-			resp := httptest.NewRecorder()
 
-			handlerFunc.ServeHTTP(resp, req)
-
-			require.Equal(t, tt.expectedStatus, resp.Code)
+			require.Equal(t, tt.status, adaptorTestServe(handlerFunc, req).Code)
 		})
 	}
-}
-
-func Test_FiberApp(t *testing.T) {
-	t.Parallel()
-
-	testFiberToHandlerFunc(t, fiberToHandlerFuncConfig{
-		requestRemoteAddr:  "1.2.3.4:6789",
-		expectedRemoteAddr: "1.2.3.4:6789",
-	}, fiber.New())
-}
-
-func Test_FiberHandlerDefaultPort(t *testing.T) {
-	t.Parallel()
-
-	testFiberToHandlerFunc(t, fiberToHandlerFuncConfig{
-		requestRemoteAddr:  "1.2.3.4",
-		expectedRemoteAddr: "1.2.3.4:80",
-	})
-}
-
-func Test_FiberAppDefaultPort(t *testing.T) {
-	t.Parallel()
-
-	testFiberToHandlerFunc(t, fiberToHandlerFuncConfig{
-		requestRemoteAddr:  "1.2.3.4",
-		expectedRemoteAddr: "1.2.3.4:80",
-	}, fiber.New())
-}
-
-type fiberToHandlerFuncConfig struct {
-	requestRemoteAddr  string
-	expectedRemoteAddr string
-}
-
-func testFiberToHandlerFunc(t *testing.T, cfg fiberToHandlerFuncConfig, app ...*fiber.App) {
-	t.Helper()
-
-	expectedMethod := fiber.MethodPost
-	expectedContentLength := len(expectedBody)
-	expectedHeader := map[string]string{
-		"Foo-Bar":         "baz",
-		"Abc":             "defg",
-		"XXX-Remote-Addr": "123.43.4543.345",
-	}
-	expectedURL, err := url.ParseRequestURI(expectedRequestURI)
-	require.NoError(t, err)
-
-	callsCount := 0
-	fiberH := func(c fiber.Ctx) error {
-		callsCount++
-		require.Equal(t, expectedMethod, c.Method(), "Method")
-		require.Equal(t, expectedRequestURI, string(c.RequestCtx().RequestURI()), "RequestURI")
-		require.Equal(t, expectedContentLength, c.RequestCtx().Request.Header.ContentLength(), "ContentLength")
-		require.Equal(t, expectedHost, c.Hostname(), "Host")
-		require.Equal(t, expectedHost, string(c.Request().Header.Host()), "Host")
-		require.Equal(t, "http://"+expectedHost, c.BaseURL(), "BaseURL")
-		require.Equal(t, cfg.expectedRemoteAddr, c.RequestCtx().RemoteAddr().String(), "RemoteAddr")
-
-		body := string(c.Body())
-		require.Equal(t, expectedBody, body, "Body")
-		require.Equal(t, expectedURL.String(), c.OriginalURL(), "URL")
-
-		for k, expectedV := range expectedHeader {
-			v := c.Get(k)
-			require.Equal(t, expectedV, v, "Header")
-		}
-
-		c.Set("Header1", "value1")
-		c.Set("Header2", "value2")
-		c.Status(fiber.StatusBadRequest)
-		_, err := c.Write(fmt.Appendf(nil, "request body is %q", body))
-		return err
-	}
-
-	var handlerFunc http.HandlerFunc
-	if len(app) > 0 {
-		app[0].Post("/foo/bar", fiberH)
-		handlerFunc = FiberApp(app[0])
-	} else {
-		handlerFunc = FiberHandlerFunc(fiberH)
-	}
-
-	var r http.Request
-
-	r.Method = expectedMethod
-	r.Body = &netHTTPBody{b: []byte(expectedBody)}
-	r.RequestURI = expectedRequestURI
-	r.ContentLength = int64(expectedContentLength)
-	r.Host = expectedHost
-	r.RemoteAddr = cfg.requestRemoteAddr
-
-	hdr := make(http.Header)
-	for k, v := range expectedHeader {
-		hdr.Set(k, v)
-	}
-	r.Header = hdr
-
-	var w netHTTPResponseWriter
-	handlerFunc.ServeHTTP(&w, &r)
-
-	require.Equal(t, http.StatusBadRequest, w.StatusCode(), "StatusCode")
-	require.Equal(t, "value1", w.Header().Get("Header1"), "Header1")
-	require.Equal(t, "value2", w.Header().Get("Header2"), "Header2")
-
-	expectedResponseBody := fmt.Sprintf("request body is %q", expectedBody)
-	require.Equal(t, expectedResponseBody, string(w.body), "Body")
 }
 
 func setFiberContextValueMiddleware(next fiber.Handler, key, value any) fiber.Handler {
@@ -801,33 +576,19 @@ func setFiberContextValueMiddleware(next fiber.Handler, key, value any) fiber.Ha
 
 func Test_FiberHandler_RequestNilBody(t *testing.T) {
 	t.Parallel()
-
-	expectedMethod := fiber.MethodGet
-	expectedRequestURI := "/foo/bar"
-	expectedContentLength := 0
-
-	callsCount := 0
-	fiberH := func(c fiber.Ctx) error {
-		callsCount++
-		require.Equal(t, expectedMethod, c.Method(), "Method")
-		require.Equal(t, expectedRequestURI, string(c.RequestCtx().RequestURI()), "RequestURI")
-		require.Equal(t, expectedContentLength, c.RequestCtx().Request.Header.ContentLength(), "ContentLength")
+	nethttpH := FiberHandler(func(c fiber.Ctx) error {
+		require.Equal(t, fiber.MethodGet, c.Method(), "Method")
+		require.Equal(t, "/foo/bar", string(c.RequestCtx().RequestURI()), "RequestURI")
+		require.Equal(t, 0, c.RequestCtx().Request.Header.ContentLength(), "ContentLength")
 
 		_, err := c.WriteString("request body is nil")
 		return err
-	}
-	nethttpH := FiberHandler(fiberH)
-
-	var r http.Request
-
-	r.Method = expectedMethod
-	r.RequestURI = expectedRequestURI
+	})
 
 	var w netHTTPResponseWriter
-	nethttpH.ServeHTTP(&w, &r)
+	nethttpH.ServeHTTP(&w, &http.Request{Method: fiber.MethodGet, RequestURI: "/foo/bar"})
 
-	expectedResponseBody := "request body is nil"
-	require.Equal(t, expectedResponseBody, string(w.body), "Body")
+	require.Equal(t, "request body is nil", string(w.body), "Body")
 }
 
 type netHTTPBody struct {
@@ -848,10 +609,10 @@ func (r *netHTTPBody) Close() error {
 	return nil
 }
 
-func createTestRequest(method, uri, remoteAddr string, body io.Reader) *http.Request {
+func createTestRequest(method, remoteAddr string, body io.Reader) *http.Request {
 	r := &http.Request{
 		Method:     method,
-		RequestURI: uri,
+		RequestURI: "/test",
 		RemoteAddr: remoteAddr,
 		Header:     make(http.Header),
 		Body:       http.NoBody,
@@ -906,7 +667,6 @@ func (*netHTTPResponseWriter) Flush() {}
 // fasthttpadaptor buffers the body for the http.Request, and with StreamRequestBody the server passes on a body of any size.
 func Test_StreamedBodyLimit(t *testing.T) {
 	t.Parallel()
-
 	const limit = 1024
 	echoLen := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n, err := io.Copy(io.Discard, r.Body)
@@ -936,20 +696,17 @@ func Test_StreamedBodyLimit(t *testing.T) {
 				if chunked {
 					req.TransferEncoding = []string{"chunked"}
 				}
-				resp, err := app.Test(req)
-				require.NoError(t, err)
+				resp := apptest.Do(t, app, req)
 				require.Equal(t, status, resp.StatusCode, "%s chunked=%v size=%d", target, chunked, size)
 				if status == fiber.StatusOK {
-					body, err := io.ReadAll(resp.Body)
-					require.NoError(t, err)
-					require.Equal(t, strconv.Itoa(size), string(body), "%s chunked=%v", target, chunked)
+					body := apptest.Body(t, resp)
+					require.Equal(t, strconv.Itoa(size), body, "%s chunked=%v", target, chunked)
 				}
 			}
 		}
 	}
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := apptest.Ctx(t, app)
 	c.Request().SetBodyStream(iotest.ErrReader(errors.New("broken chunk")), -1)
 	_, err := ConvertRequest(c, true)
 	require.ErrorIs(t, err, fiber.ErrBadRequest)
@@ -960,7 +717,6 @@ func Test_StreamedBodyLimit(t *testing.T) {
 
 func Test_StreamedTrailerCap(t *testing.T) {
 	t.Parallel()
-
 	echo := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := io.Copy(w, r.Body)
 		assert.NoError(t, err)
@@ -975,9 +731,7 @@ func Test_StreamedTrailerCap(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 	errCh := make(chan error, 1)
-	go func() {
-		errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
-	}()
+	go func() { errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}) }()
 	t.Cleanup(func() {
 		require.NoError(t, app.Shutdown())
 		if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
@@ -1005,7 +759,6 @@ func Test_StreamedTrailerCap(t *testing.T) {
 
 func Test_ConvertRequest(t *testing.T) {
 	t.Parallel()
-
 	t.Run("successful conversion", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
@@ -1018,21 +771,13 @@ func Test_ConvertRequest(t *testing.T) {
 			return c.SendString("Request URL: " + httpReq.URL.String())
 		})
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test?hello=world&another=test", http.NoBody))
-		require.NoError(t, err, "app.Test(req)")
-		require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "Request URL: /test?hello=world&another=test", string(body))
+		apptest.ExpectBody(t, app, "/test?hello=world&another=test", http.StatusOK, "Request URL: /test?hello=world&another=test")
 	})
 
 	t.Run("conversion error handling", func(t *testing.T) {
 		t.Parallel()
 		// Test error case by creating a context with an invalid URL that will cause fasthttpadaptor.ConvertRequest to fail
-		app := fiber.New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := apptest.Ctx(t, fiber.New())
 
 		// Create a malformed request URI that should cause conversion to fail
 		ctx.Request().SetRequestURI("http://[::1:bad:url") // Invalid URL format
@@ -1055,254 +800,171 @@ func Test_ConvertRequest(t *testing.T) {
 func Test_CopyContextToFiberContext(t *testing.T) {
 	t.Parallel()
 
-	t.Run("unsupported context type", func(t *testing.T) {
-		t.Parallel()
-		// Test with non-struct context (should return early)
-		var fctx fasthttp.RequestCtx
-		stringContext := "not a struct"
+	// Test the default case (continue statement coverage)
+	type customContext struct {
+		UnknownField string
+	}
+	// Test that unexported fields are handled safely
+	type testContext struct {
+		exportedField string
+		unexported    string // unexported
+	}
+	type testStruct struct {
+		Field string
+	}
+	notAStruct := "not a struct"
+	var nilPtr *context.Context // Nil pointer to a context
+	background := context.Background()
+	backgroundPtr := &background
 
-		// This should not panic and should handle the non-struct gracefully
-		CopyContextToFiberContext(&stringContext, &fctx)
-		// No assertions needed - just ensuring it doesn't panic
-	})
-
-	t.Run("context with unknown field", func(t *testing.T) {
-		t.Parallel()
-		// Test the default case (continue statement coverage)
-		type customContext struct {
-			UnknownField string
-		}
-
-		var fctx fasthttp.RequestCtx
-		ctx := customContext{UnknownField: "test"}
-
+	// None of these sources holds anything to copy: each is a shape the copy
+	// has to tolerate, which no panic proves.
+	for _, tc := range []struct {
+		src  any
+		name string
+	}{
+		// Non-struct context (should return early)
+		{name: "unsupported context type", src: &notAStruct},
 		// This should hit the default case and continue
-		CopyContextToFiberContext(&ctx, &fctx)
-		// No assertions needed - just ensuring it doesn't panic and continues
-	})
-
-	t.Run("invalid src", func(t *testing.T) {
-		t.Parallel()
-		var fctx fasthttp.RequestCtx
-		CopyContextToFiberContext(nil, &fctx)
-		// Add assertion to ensure no panic and coverage is detected
-		assert.NotNil(t, &fctx)
-	})
+		{name: "context with unknown field", src: &customContext{UnknownField: "test"}},
+		{name: "invalid src", src: nil},
+		{name: "nil pointer", src: nilPtr},
+		// Test deref pointer chains
+		{name: "multi-level pointer", src: &backgroundPtr},
+		// Pass struct value directly to test addressability check
+		{name: "non-addressable struct", src: testStruct{Field: "test"}},
+		{name: "safe handling of unexported fields", src: &testContext{exportedField: "exported", unexported: "unexported"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var fctx fasthttp.RequestCtx
+			require.NotPanics(t, func() { CopyContextToFiberContext(tc.src, &fctx) })
+		})
+	}
 
 	t.Run("nil request context", func(t *testing.T) {
 		t.Parallel()
 		ctx := context.WithValue(context.Background(), contextKey("nil-request-context"), "value")
-		require.NotPanics(t, func() {
-			CopyContextToFiberContext(ctx, nil)
-		})
-	})
-
-	t.Run("nil pointer", func(t *testing.T) {
-		t.Parallel()
-		var nilPtr *context.Context // Nil pointer to a context
-		var fctx fasthttp.RequestCtx
-		CopyContextToFiberContext(nilPtr, &fctx)
-		// Add assertion to ensure no panic and coverage is detected
-		assert.NotNil(t, &fctx)
-	})
-
-	t.Run("copies key value pairs", func(t *testing.T) {
-		t.Parallel()
-		var fctx fasthttp.RequestCtx
-		key := contextKey("copy-key")
-		expectedValue := "copy-value"
-		ctx := context.WithValue(context.Background(), key, expectedValue)
-
-		CopyContextToFiberContext(ctx, &fctx)
-
-		require.Equal(t, expectedValue, fctx.UserValue(key))
-	})
-
-	t.Run("nested context wrappers", func(t *testing.T) {
-		t.Parallel()
-		var fctx fasthttp.RequestCtx
-		keyA := contextKey("nested-a")
-		keyB := contextKey("nested-b")
-		baseCtx := context.WithValue(context.Background(), keyA, "value-a")
-		cancelCtx, cancel := context.WithCancel(baseCtx)
-		t.Cleanup(cancel)
-		wrappedCtx := context.WithValue(cancelCtx, keyB, "value-b")
-
-		CopyContextToFiberContext(wrappedCtx, &fctx)
-
-		require.Equal(t, "value-a", fctx.UserValue(keyA))
-		require.Equal(t, "value-b", fctx.UserValue(keyB))
-	})
-
-	t.Run("multi-level pointer", func(t *testing.T) {
-		t.Parallel()
-		var fctx fasthttp.RequestCtx
-		ctx := context.Background()
-		ptr := &ctx
-		doublePtr := &ptr
-		// Test deref pointer chains
-		CopyContextToFiberContext(doublePtr, &fctx)
-		// No assertions needed - just ensuring it doesn't panic
-	})
-
-	t.Run("non-addressable struct", func(t *testing.T) {
-		t.Parallel()
-		var fctx fasthttp.RequestCtx
-		type testStruct struct {
-			Field string
-		}
-		// Pass struct value directly to test addressability check
-		CopyContextToFiberContext(testStruct{Field: "test"}, &fctx)
-		// No assertions needed - just ensuring it doesn't panic and creates temporary
+		require.NotPanics(t, func() { CopyContextToFiberContext(ctx, nil) })
 	})
 }
 
+// Test_HTTPMiddleware_ErrorHandling covers a downstream Fiber error behind a net/http middleware that
+// already wrote a status of its own: the app's error handler answers.
 func Test_HTTPMiddleware_ErrorHandling(t *testing.T) {
 	t.Parallel()
-
-	// Test middleware that returns an error from HTTPHandler
-	errorMiddleware := func(next http.Handler) http.Handler {
+	app := fiber.New()
+	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// This will cause an error in the underlying handler
 			w.WriteHeader(http.StatusInternalServerError)
 			next.ServeHTTP(w, r)
 		})
-	}
+	}))
+	app.Get("/error", func(_ fiber.Ctx) error { return fiber.NewError(fiber.StatusBadRequest, "test error") })
 
-	fiberHandler := func(_ fiber.Ctx) error {
-		return fiber.NewError(fiber.StatusBadRequest, "test error")
-	}
-
-	app := fiber.New()
-	app.Use(HTTPMiddleware(errorMiddleware))
-	app.Get("/error", fiberHandler)
-
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/error", http.NoBody))
-	require.NoError(t, err)
-	// The error should be handled by the error handler
-	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+	apptest.Expect(t, app, "/error", fiber.StatusBadRequest)
 }
 
-func Test_FiberHandler_IOError(t *testing.T) {
+// Test_FiberHandlerFunc_Responses serves one request through FiberHandlerFunc and checks the status, and
+// the body when a row names one, that the net/http side gets back.
+func Test_FiberHandlerFunc_Responses(t *testing.T) {
 	t.Parallel()
+	sendString := func(body string) fiber.Handler { return func(c fiber.Ctx) error { return c.SendString(body) } }
+	largeBody := make([]byte, 15*1024*1024) // 15MB > 10MB limit
 
-	// Test io.Copy error by using a failing reader
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendString("should not reach here")
-	}
-	handlerFunc := FiberHandlerFunc(fiberH)
+	for _, tc := range []struct {
+		handler       fiber.Handler
+		body          io.Reader
+		localAddr     net.Addr // the address the request arrived on, when it names a unix socket
+		name          string
+		method        string
+		remoteAddr    string
+		wantBody      string
+		contentLength int64
+		wantStatus    int
+	}{
+		// The body is read through a reader that fails.
+		{
+			name: "body reader that fails", handler: sendString("should not reach here"), method: http.MethodPost,
+			body: &failingReader{}, contentLength: 100, wantStatus: http.StatusInternalServerError,
+		},
+		{
+			name: "error in the handler", method: http.MethodGet, wantStatus: fiber.StatusTeapot,
+			handler: func(_ fiber.Ctx) error { return fiber.NewError(fiber.StatusTeapot, "I'm a teapot") },
+		},
+		{
+			name: "streamed response", method: http.MethodGet,
+			handler:    adaptorTestHelloWorldStream(200 * time.Millisecond),
+			wantStatus: fiber.StatusTeapot, wantBody: "Hello World!",
+		},
+		// The request is still served, with no remote address.
+		{
+			name: "remote address that does not resolve", handler: sendString("success"), method: http.MethodGet,
+			remoteAddr: "[invalid:address:format", wantStatus: http.StatusOK, wantBody: "success",
+		},
+		// The remote address of a request that arrived on a unix socket is ignored.
+		{
+			name: "unix socket", handler: sendString("unix socket success"), method: http.MethodGet,
+			remoteAddr: "someremoteaddr", localAddr: &net.UnixAddr{Name: "/tmp/test.sock", Net: "unix"},
+			wantStatus: http.StatusOK, wantBody: "unix socket success",
+		},
+		{
+			name: "body over the limit", handler: sendString("processed"), method: http.MethodPost,
+			remoteAddr: "127.0.0.1:8080", body: bytes.NewReader(largeBody), contentLength: int64(len(largeBody)),
+			wantStatus: http.StatusRequestEntityTooLarge,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req := createTestRequest(tc.method, tc.remoteAddr, tc.body)
+			req.ContentLength = tc.contentLength
+			if tc.localAddr != nil {
+				req = req.WithContext(context.WithValue(context.Background(), http.LocalAddrContextKey, tc.localAddr))
+			}
 
-	// Create a reader that fails
-	failingReader := &failingReader{}
-
-	r := &http.Request{
-		Method:        http.MethodPost,
-		RequestURI:    "/test",
-		Body:          failingReader,
-		ContentLength: 100, // Set content length so it tries to read
-		Header:        make(http.Header),
-	}
-
-	w := &netHTTPResponseWriter{}
-	handlerFunc.ServeHTTP(w, r)
-
-	// Should return 500 due to io.Copy error
-	require.Equal(t, http.StatusInternalServerError, w.StatusCode())
-}
-
-func Test_FiberHandler_WithErrorInHandler(t *testing.T) {
-	t.Parallel()
-
-	// Test error handling in fiber handler
-	fiberH := func(_ fiber.Ctx) error {
-		return fiber.NewError(fiber.StatusTeapot, "I'm a teapot")
-	}
-	handlerFunc := FiberHandlerFunc(fiberH)
-
-	r := &http.Request{
-		Method:     http.MethodGet,
-		RequestURI: "/test",
-		Header:     make(http.Header),
-		Body:       http.NoBody,
-	}
-
-	w := &netHTTPResponseWriter{}
-	handlerFunc.ServeHTTP(w, r)
-
-	// Should return the error status
-	require.Equal(t, fiber.StatusTeapot, w.StatusCode())
-}
-
-func Test_FiberHandler_WithSendStreamWriter(t *testing.T) {
-	t.Parallel()
-
-	// Test streaming functionality in FiberHandler using SendStreamWriter.
-	fiberH := func(c fiber.Ctx) error {
-		c.Status(fiber.StatusTeapot)
-		return c.SendStreamWriter(func(w *bufio.Writer) {
-			w.WriteString("Hello ")            //nolint:errcheck // not needed
-			w.Flush()                          //nolint:errcheck // not needed
-			time.Sleep(200 * time.Millisecond) // Simulate a long operation
-			w.WriteString("World!")            //nolint:errcheck // not needed
+			w := executeHandlerTest(t, FiberHandlerFunc(tc.handler), req)
+			require.Equal(t, tc.wantStatus, w.StatusCode())
+			if tc.wantBody != "" {
+				require.Equal(t, tc.wantBody, string(w.body))
+			}
 		})
 	}
-	handlerFunc := FiberHandlerFunc(fiberH)
+}
 
-	r := &http.Request{
-		Method:     http.MethodGet,
-		RequestURI: "/test",
-		Header:     make(http.Header),
-		Body:       http.NoBody,
+// adaptorTestHelloWorldStream answers 418 and streams "Hello ", flushes, then
+// waits for delay, a long operation, before streaming "World!".
+func adaptorTestHelloWorldStream(delay time.Duration) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		c.Status(fiber.StatusTeapot)
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			w.WriteString("Hello ") //nolint:errcheck // not needed
+			w.Flush()               //nolint:errcheck // not needed
+			time.Sleep(delay)       // Simulate a long operation
+			w.WriteString("World!") //nolint:errcheck // not needed
+		})
 	}
-
-	w := &netHTTPResponseWriter{}
-	handlerFunc.ServeHTTP(w, r)
-
-	// Should return the error status
-	require.Equal(t, fiber.StatusTeapot, w.StatusCode())
-	require.Equal(t, "Hello World!", string(w.body))
 }
 
 func Test_FiberHandler_ClosesBodyStream(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		w    http.ResponseWriter
+		name string
+	}{
+		{name: "response written", w: httptest.NewRecorder()},
+		{name: "write error", w: &failingStreamWriter{header: make(http.Header)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			closed := &atomic.Bool{}
+			body := &closeTrackingReader{ReadCloser: io.NopCloser(strings.NewReader("streamed body")), closed: closed}
 
-	closed := &atomic.Bool{}
-	body := &closeTrackingReader{
-		ReadCloser: io.NopCloser(strings.NewReader("streamed body")),
-		closed:     closed,
+			handlerFunc := FiberHandlerFunc(func(c fiber.Ctx) error { return c.SendStream(body) })
+
+			handlerFunc.ServeHTTP(tc.w, apptest.Req(http.MethodGet, "/test"))
+			require.True(t, closed.Load())
+		})
 	}
-
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendStream(body)
-	}
-	handlerFunc := FiberHandlerFunc(fiberH)
-
-	r := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
-	w := httptest.NewRecorder()
-
-	handlerFunc.ServeHTTP(w, r)
-	require.True(t, closed.Load())
-}
-
-func Test_FiberHandler_ClosesBodyStreamOnWriteError(t *testing.T) {
-	t.Parallel()
-
-	closed := &atomic.Bool{}
-	body := &closeTrackingReader{
-		ReadCloser: io.NopCloser(strings.NewReader("streamed body")),
-		closed:     closed,
-	}
-
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendStream(body)
-	}
-	handlerFunc := FiberHandlerFunc(fiberH)
-
-	r := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
-	w := &failingStreamWriter{header: make(http.Header)}
-
-	handlerFunc.ServeHTTP(w, r)
-	require.True(t, closed.Load())
 }
 
 type closeTrackingReader struct {
@@ -1336,23 +998,9 @@ func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 	t.Parallel()
 
 	// Test streaming functionality to ensure data is sent even during a timeout.
-	fiberH := func(c fiber.Ctx) error {
-		c.Status(fiber.StatusTeapot)
-		return c.SendStreamWriter(func(w *bufio.Writer) {
-			w.WriteString("Hello ")            //nolint:errcheck // not needed
-			w.Flush()                          //nolint:errcheck // not needed
-			time.Sleep(500 * time.Millisecond) // Simulate a long operation
-			w.WriteString("World!")            //nolint:errcheck // not needed
-		})
-	}
-	handlerFunc := FiberHandlerFunc(fiberH)
+	handlerFunc := FiberHandlerFunc(adaptorTestHelloWorldStream(500 * time.Millisecond))
 
-	// Start a mock HTTP server using the handlerFunc
-	server := &http.Server{
-		Handler:      handlerFunc,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-	}
+	server := &http.Server{Handler: handlerFunc, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second}
 	listener, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := fmt.Sprintf("http://%s", listener.Addr())
@@ -1360,13 +1008,9 @@ func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 	go func() {
 		server.Serve(listener) //nolint:errcheck // not needed
 	}()
-	defer func() {
-		require.NoError(t, server.Close())
-	}()
+	defer func() { require.NoError(t, server.Close()) }()
 
-	cc := &http.Client{
-		Timeout: 200 * time.Millisecond,
-	}
+	cc := &http.Client{Timeout: 200 * time.Millisecond}
 	resp, err := cc.Get(addr) //nolint:noctx // ctx is not needed
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -1388,70 +1032,34 @@ func (*failingReader) Close() error {
 	return nil
 }
 
-// Benchmark for FiberHandlerFunc
-func Benchmark_FiberHandlerFunc(b *testing.B) {
-	benchmarks := []struct {
-		name        string
-		bodyContent []byte
-	}{
-		{
-			name:        "No Content",
-			bodyContent: nil, // No body content case
-		},
-		{
-			name:        "100KB",
-			bodyContent: make([]byte, 100*1024),
-		},
-		{
-			name:        "500KB",
-			bodyContent: make([]byte, 500*1024),
-		},
-		{
-			name:        "1MB",
-			bodyContent: make([]byte, 1*1024*1024),
-		},
-		{
-			name:        "5MB",
-			bodyContent: make([]byte, 5*1024*1024),
-		},
-		{
-			name:        "10MB",
-			bodyContent: make([]byte, 10*1024*1024),
-		},
-		{
-			name:        "25MB",
-			bodyContent: make([]byte, 25*1024*1024),
-		},
-		{
-			name:        "50MB",
-			bodyContent: make([]byte, 50*1024*1024),
-		},
-	}
+// adaptorBenchBody is a request body of the named size for the FiberHandlerFunc benchmarks.
+type adaptorBenchBody struct {
+	name        string
+	bodyContent []byte
+}
 
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
+// adaptorBenchBodies returns the request bodies those benchmarks send, from none to 50MB.
+func adaptorBenchBodies() []adaptorBenchBody {
+	return []adaptorBenchBody{
+		{name: "No Content"},
+		{name: "100KB", bodyContent: make([]byte, 100*1024)},
+		{name: "500KB", bodyContent: make([]byte, 500*1024)},
+		{name: "1MB", bodyContent: make([]byte, 1*1024*1024)},
+		{name: "5MB", bodyContent: make([]byte, 5*1024*1024)},
+		{name: "10MB", bodyContent: make([]byte, 10*1024*1024)},
+		{name: "25MB", bodyContent: make([]byte, 25*1024*1024)},
+		{name: "50MB", bodyContent: make([]byte, 50*1024*1024)},
 	}
+}
+
+func Benchmark_FiberHandlerFunc(b *testing.B) {
+	fiberH := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }
 	handlerFunc := FiberHandlerFunc(fiberH)
 
-	for _, bm := range benchmarks {
+	for _, bm := range adaptorBenchBodies() {
 		b.Run(bm.name, func(b *testing.B) {
 			w := httptest.NewRecorder()
-			var bodyBuffer *bytes.Buffer
-
-			// Handle the "No Content" case where bodyContent is nil
-			if bm.bodyContent != nil {
-				bodyBuffer = bytes.NewBuffer(bm.bodyContent)
-			} else {
-				bodyBuffer = bytes.NewBuffer([]byte{}) // Empty buffer for no content
-			}
-
-			r := http.Request{
-				Method: http.MethodPost,
-				Body:   nil,
-			}
-
-			// Replace the empty Body with our buffer
-			r.Body = io.NopCloser(bodyBuffer)
+			r := http.Request{Method: http.MethodPost, Body: io.NopCloser(bytes.NewBuffer(bm.bodyContent))}
 			defer r.Body.Close() //nolint:errcheck // not needed
 
 			b.ReportAllocs()
@@ -1464,72 +1072,19 @@ func Benchmark_FiberHandlerFunc(b *testing.B) {
 }
 
 func Benchmark_FiberHandlerFunc_Parallel(b *testing.B) {
-	benchmarks := []struct {
-		name        string
-		bodyContent []byte
-	}{
-		{
-			name:        "No Content",
-			bodyContent: nil, // No body content case
-		},
-		{
-			name:        "100KB",
-			bodyContent: make([]byte, 100*1024),
-		},
-		{
-			name:        "500KB",
-			bodyContent: make([]byte, 500*1024),
-		},
-		{
-			name:        "1MB",
-			bodyContent: make([]byte, 1*1024*1024),
-		},
-		{
-			name:        "5MB",
-			bodyContent: make([]byte, 5*1024*1024),
-		},
-		{
-			name:        "10MB",
-			bodyContent: make([]byte, 10*1024*1024),
-		},
-		{
-			name:        "25MB",
-			bodyContent: make([]byte, 25*1024*1024),
-		},
-		{
-			name:        "50MB",
-			bodyContent: make([]byte, 50*1024*1024),
-		},
-	}
-
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	}
+	fiberH := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }
 	handlerFunc := FiberHandlerFunc(fiberH)
 
-	for _, bm := range benchmarks {
+	for _, bm := range adaptorBenchBodies() {
 		b.Run(bm.name, func(b *testing.B) {
-			var bodyBuffer *bytes.Buffer
-
-			// Handle the "No Content" case where bodyContent is nil
-			if bm.bodyContent != nil {
-				bodyBuffer = bytes.NewBuffer(bm.bodyContent)
-			} else {
-				bodyBuffer = bytes.NewBuffer([]byte{}) // Empty buffer for no content
-			}
+			bodyBuffer := bytes.NewBuffer(bm.bodyContent)
 
 			b.ReportAllocs()
 			b.ResetTimer()
 
 			b.RunParallel(func(pb *testing.PB) {
 				w := httptest.NewRecorder()
-				r := http.Request{
-					Method: http.MethodPost,
-					Body:   nil,
-				}
-
-				// Replace the empty Body with our buffer
-				r.Body = io.NopCloser(bodyBuffer)
+				r := http.Request{Method: http.MethodPost, Body: io.NopCloser(bodyBuffer)}
 				defer r.Body.Close() //nolint:errcheck // not needed
 
 				for pb.Next() {
@@ -1540,24 +1095,20 @@ func Benchmark_FiberHandlerFunc_Parallel(b *testing.B) {
 	}
 }
 
+// adaptorBenchOK is the net/http handler the HTTPHandler benchmarks adapt; it answers 200 "ok".
+func adaptorBenchOK(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("ok")) //nolint:errcheck // not needed
+}
+
 func Benchmark_HTTPHandler(b *testing.B) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok")) //nolint:errcheck // not needed
-	})
-
 	var err error
-	app := fiber.New()
-
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer func() {
-		app.ReleaseCtx(ctx)
-	}()
+	ctx := apptest.Ctx(b, fiber.New())
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	fiberHandler := HTTPHandler(handler)
+	fiberHandler := HTTPHandler(http.HandlerFunc(adaptorBenchOK))
 
 	for b.Loop() {
 		ctx.Request().Reset()
@@ -1572,19 +1123,8 @@ func Benchmark_HTTPHandler(b *testing.B) {
 }
 
 func Benchmark_HTTPHandlerWithContext(b *testing.B) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok")) //nolint:errcheck // not needed
-	})
-
 	var err error
-	app := fiber.New()
-
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	defer func() {
-		app.ReleaseCtx(ctx)
-	}()
+	ctx := apptest.Ctx(b, fiber.New())
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -1593,7 +1133,7 @@ func Benchmark_HTTPHandlerWithContext(b *testing.B) {
 	var testKey key
 	ctx.SetContext(context.WithValue(ctx.Context(), testKey, "gofiber"))
 
-	fiberHandler := HTTPHandlerWithContext(handler)
+	fiberHandler := HTTPHandlerWithContext(http.HandlerFunc(adaptorBenchOK))
 
 	for b.Loop() {
 		ctx.Request().Reset()
@@ -1608,61 +1148,30 @@ func Benchmark_HTTPHandlerWithContext(b *testing.B) {
 
 func Test_resolveRemoteAddr(t *testing.T) {
 	t.Parallel()
-
+	// A row expects an error when it names one in expectedErr or errorContains.
 	tests := []struct {
 		expectedErr   error
 		localAddr     any
 		name          string
 		remoteAddr    string
 		errorContains string
-		expectError   bool
 	}{
+		{name: "valid TCP address with port", remoteAddr: "192.168.1.1:8080"},
+		{name: "valid TCP address without port - should add default port 80", remoteAddr: "192.168.1.1"},
 		{
-			name:        "valid TCP address with port",
-			remoteAddr:  "192.168.1.1:8080",
-			localAddr:   nil,
-			expectError: false,
+			name: "unix socket - should return local addr", remoteAddr: "irrelevant",
+			localAddr: &net.UnixAddr{Name: "/tmp/test.sock", Net: "unix"},
 		},
 		{
-			name:        "valid TCP address without port - should add default port 80",
-			remoteAddr:  "192.168.1.1",
-			localAddr:   nil,
-			expectError: false,
-		},
-		{
-			name:        "unix socket - should return local addr",
-			remoteAddr:  "irrelevant",
-			localAddr:   &net.UnixAddr{Name: "/tmp/test.sock", Net: "unix"},
-			expectError: false,
-		},
-		{
-			name:          "invalid address - should fail",
-			remoteAddr:    "[invalid:address:format",
-			localAddr:     nil,
-			expectError:   true,
+			name: "invalid address - should fail", remoteAddr: "[invalid:address:format",
 			errorContains: "failed to resolve TCP address:",
 		},
 		{
-			name:          "invalid address after adding port - should fail",
-			remoteAddr:    "[invalid",
-			localAddr:     nil,
-			expectError:   true,
+			name: "invalid address after adding port - should fail", remoteAddr: "[invalid",
 			errorContains: "failed to resolve TCP address after adding port:",
 		},
-		{
-			name:        "empty address - should fail",
-			remoteAddr:  "",
-			localAddr:   nil,
-			expectError: true,
-			expectedErr: ErrRemoteAddrEmpty,
-		},
-		{
-			name:        "too long address - should fail",
-			remoteAddr:  strings.Repeat("a", 254),
-			localAddr:   nil,
-			expectError: true,
-			expectedErr: ErrRemoteAddrTooLong,
-		},
+		{name: "empty address - should fail", remoteAddr: "", expectedErr: ErrRemoteAddrEmpty},
+		{name: "too long address - should fail", remoteAddr: strings.Repeat("a", 254), expectedErr: ErrRemoteAddrTooLong},
 	}
 
 	for _, tt := range tests {
@@ -1690,7 +1199,6 @@ func Test_resolveRemoteAddr(t *testing.T) {
 
 func Test_isUnixNetwork(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name     string
 		network  string
@@ -1715,93 +1223,6 @@ func Test_isUnixNetwork(t *testing.T) {
 	}
 }
 
-func Test_FiberHandler_ErrorFallback(t *testing.T) {
-	t.Parallel()
-
-	// Test case where resolveRemoteAddr fails and falls back to nil
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendString("success")
-	}
-	handlerFunc := FiberHandlerFunc(fiberH)
-
-	// Use helper function for cleaner test setup
-	req := createTestRequest(http.MethodGet, "/test", "[invalid:address:format", nil)
-	w := executeHandlerTest(t, handlerFunc, req)
-
-	// Should still work despite the invalid remote address
-	require.Equal(t, http.StatusOK, w.StatusCode())
-	require.Equal(t, "success", string(w.body))
-}
-
-func Test_FiberHandler_WithUnixSocket(t *testing.T) {
-	t.Parallel()
-
-	// Test case where request has unix socket context
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendString("unix socket success")
-	}
-	handlerFunc := FiberHandlerFunc(fiberH)
-
-	// Create a context with unix socket local address
-	unixAddr := &net.UnixAddr{Name: "/tmp/test.sock", Net: "unix"}
-	ctx := context.WithValue(context.Background(), http.LocalAddrContextKey, unixAddr)
-
-	r := &http.Request{
-		Method:     http.MethodGet,
-		RequestURI: "/test",
-		RemoteAddr: "someremoteaddr", // This will be ignored due to unix socket
-		Header:     make(http.Header),
-		Body:       http.NoBody,
-	}
-	r = r.WithContext(ctx)
-
-	w := &netHTTPResponseWriter{}
-	handlerFunc.ServeHTTP(w, r)
-
-	require.Equal(t, http.StatusOK, w.StatusCode())
-	require.Equal(t, "unix socket success", string(w.body))
-}
-
-func Test_FiberHandler_BodySizeLimit(t *testing.T) {
-	t.Parallel()
-
-	// Test body size limit enforcement
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendString("processed")
-	}
-	handlerFunc := FiberHandlerFunc(fiberH)
-
-	// Create a large body exceeding limit
-	largeBody := make([]byte, 15*1024*1024) // 15MB > 10MB limit
-	req := createTestRequest(http.MethodPost, "/test", "127.0.0.1:8080", bytes.NewReader(largeBody))
-	req.ContentLength = int64(len(largeBody))
-
-	w := executeHandlerTest(t, handlerFunc, req)
-
-	// Should return 413 due to size limit
-	require.Equal(t, http.StatusRequestEntityTooLarge, w.StatusCode())
-}
-
-func Test_CopyContextToFiberContext_Safe(t *testing.T) {
-	t.Parallel()
-
-	t.Run("safe handling of unexported fields", func(t *testing.T) {
-		t.Parallel()
-		// Test that unexported fields are handled safely
-		type testContext struct {
-			exportedField string
-			unexported    string // unexported
-		}
-
-		var fctx fasthttp.RequestCtx
-		ctx := testContext{exportedField: "exported", unexported: "unexported"}
-
-		// Should not panic and handle safely
-		CopyContextToFiberContext(&ctx, &fctx)
-		// No specific assertion, just ensure no panic
-	})
-}
-
 func TestUnixSocketAdaptor(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "test.sock")
@@ -1812,9 +1233,7 @@ func TestUnixSocketAdaptor(t *testing.T) {
 	}()
 
 	app := fiber.New()
-	app.Get("/hello", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+	app.Get("/hello", func(c fiber.Ctx) error { return c.SendString("ok") })
 	handler := FiberApp(app)
 
 	listener, err := net.Listen("unix", socketPath)
@@ -1832,12 +1251,7 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		}
 	}()
 
-	// start server with timeouts
-	srv := &http.Server{
-		Handler:      handler,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-	}
+	srv := &http.Server{Handler: handler, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second}
 	done := make(chan struct{})
 	go func() {
 		if serveErr := srv.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
@@ -1857,11 +1271,9 @@ func TestUnixSocketAdaptor(t *testing.T) {
 	// set deadline for both write + read (2s)
 	require.NoError(t, conn.SetDeadline(time.Now().Add(2*time.Second)))
 
-	// write request
 	_, err = conn.Write([]byte("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"))
 	require.NoError(t, err)
 
-	// read response
 	buf := make([]byte, 1024)
 	n, err := conn.Read(buf)
 	require.NoError(t, err)
@@ -1879,11 +1291,7 @@ func TestUnixSocketAdaptor(t *testing.T) {
 	defer cancel()
 	require.NoError(t, srv.Shutdown(ctx))
 
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("server shutdown timed out")
-	}
+	apptest.Recv(t, done, 5*time.Second, "server shutdown timed out")
 }
 
 // Test_ResolveRemoteAddr_FastPathEquivalence pins the ip:port fast path to
@@ -1892,7 +1300,6 @@ func TestUnixSocketAdaptor(t *testing.T) {
 // still resolve identically through the fallback.
 func Test_ResolveRemoteAddr_FastPathEquivalence(t *testing.T) {
 	t.Parallel()
-
 	addrs := []string{
 		"1.2.3.4:6789",
 		"127.0.0.1:80",
@@ -1945,35 +1352,10 @@ func Test_ResolveRemoteAddr_FastPathEquivalence(t *testing.T) {
 	}
 }
 
-// Test_FiberHandlerFunc_MultiValueHeaders verifies repeated header lines on
-// the net/http request all reach the fiber handler instead of collapsing to
-// the last value.
-func Test_FiberHandlerFunc_MultiValueHeaders(t *testing.T) {
-	t.Parallel()
-
-	var got []string
-	h := FiberHandlerFunc(func(c fiber.Ctx) error {
-		for _, v := range c.Request().Header.PeekAll("X-Multi") {
-			got = append(got, string(v))
-		}
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-	r.Header.Add("X-Multi", "one")
-	r.Header.Add("X-Multi", "two")
-	r.Header.Add("X-Multi", "three")
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
-
-	require.Equal(t, []string{"one", "two", "three"}, got)
-}
-
 // Test_FiberApp_ProxyHeaderLinesKeepReceivedOrder checks that a removed header line cannot move the line a
 // front proxy appended in front of the client's: fasthttp moves the store's last line into the removed slot.
 func Test_FiberApp_ProxyHeaderLinesKeepReceivedOrder(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New(fiber.Config{
 		ProxyHeader:        fiber.HeaderXForwardedFor,
 		TrustProxy:         true,
@@ -1984,48 +1366,69 @@ func Test_FiberApp_ProxyHeaderLinesKeepReceivedOrder(t *testing.T) {
 		c.Request().Header.Del(fiber.HeaderAuthorization)
 		return c.Next()
 	})
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.IP() + " " + c.Scheme())
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.IP() + " " + c.Scheme()) })
 	h := FiberApp(app)
 
 	// r.Header's map order decides which line is stored last, so several rounds. HTTP/2 keeps a value's edge
 	// whitespace, which a received line drops.
 	for _, client := range []string{"6.6.6.6", "6.6.6.6 ", "\t6.6.6.6"} {
 		for range 32 {
-			r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+			r := apptest.Req(http.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, "Bearer t"))
 			r.RemoteAddr = "127.0.0.1:40000"
-			r.Header.Set(fiber.HeaderAuthorization, "Bearer t")
 			r.Header.Add(fiber.HeaderXForwardedFor, client)
 			r.Header.Add(fiber.HeaderXForwardedFor, "203.0.113.7")
 			r.Header.Add(fiber.HeaderXForwardedProto, "http")
 			r.Header.Add(fiber.HeaderXForwardedProto, "https")
-			w := httptest.NewRecorder()
-			h.ServeHTTP(w, r)
-			require.Equal(t, "203.0.113.7 https", w.Body.String(), "%q", client)
+			require.Equal(t, "203.0.113.7 https", adaptorTestServe(h, r).Body.String(), "%q", client)
 		}
 	}
 }
 
-// Test_FiberHandlerFunc_EmptyHeaderValues verifies a header key mapped to an
-// empty value slice is skipped instead of panicking or producing an empty
-// header.
-func Test_FiberHandlerFunc_EmptyHeaderValues(t *testing.T) {
+// Test_FiberHandlerFunc_HeaderValues verifies that repeated header lines on the net/http request all
+// reach the fiber handler instead of collapsing to the last value, and that a header key mapped to an
+// empty value slice is skipped instead of panicking or producing an empty header.
+func Test_FiberHandlerFunc_HeaderValues(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		key    string
+		values []string // what r.Header holds for key
+		want   []string // the values the fiber handler reads
+	}{
+		{
+			name: "MultiValueHeaders", key: "X-Multi",
+			values: []string{"one", "two", "three"}, want: []string{"one", "two", "three"},
+		},
+		{name: "EmptyHeaderValues", key: "X-Empty", values: []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var got []string
+			h := FiberHandlerFunc(func(c fiber.Ctx) error {
+				for _, v := range c.Request().Header.PeekAll(tc.key) {
+					got = append(got, string(v))
+				}
+				return c.SendStatus(fiber.StatusOK)
+			})
 
-	var seen bool
-	h := FiberHandlerFunc(func(c fiber.Ctx) error {
-		seen = len(c.Request().Header.PeekAll("X-Empty")) > 0
-		return c.SendStatus(fiber.StatusOK)
-	})
+			r := apptest.Req(http.MethodGet, "/")
+			r.Header[tc.key] = tc.values
 
-	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-	r.Header["X-Empty"] = []string{}
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
+			require.Equal(t, http.StatusOK, adaptorTestServe(h, r).Code)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
 
-	require.Equal(t, http.StatusOK, w.Code)
-	require.False(t, seen)
+// adaptorTestRewriteRequest returns a net/http middleware that applies edit to
+// the request before it passes the request on.
+func adaptorTestRewriteRequest(edit func(r *http.Request)) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			edit(r)
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // Test_HTTPMiddleware_MultiValueHeaders verifies multi-value headers added
@@ -2033,18 +1436,12 @@ func Test_FiberHandlerFunc_EmptyHeaderValues(t *testing.T) {
 // request.
 func Test_HTTPMiddleware_MultiValueHeaders(t *testing.T) {
 	t.Parallel()
-
-	mw := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			r.Header.Add("X-Multi", "one")
-			r.Header.Add("X-Multi", "two")
-			r.Header["X-Empty"] = nil // empty value slices must be skipped
-			next.ServeHTTP(w, r)
-		})
-	}
-
 	app := fiber.New()
-	app.Use(HTTPMiddleware(mw))
+	app.Use(HTTPMiddleware(adaptorTestRewriteRequest(func(r *http.Request) {
+		r.Header.Add("X-Multi", "one")
+		r.Header.Add("X-Multi", "two")
+		r.Header["X-Empty"] = nil // empty value slices must be skipped
+	})))
 	var got []string
 	var emptyHeaderValues int
 	app.Get("/", func(c fiber.Ctx) error {
@@ -2055,9 +1452,7 @@ func Test_HTTPMiddleware_MultiValueHeaders(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusOK)
 	require.Equal(t, []string{"one", "two"}, got)
 	require.Zero(t, emptyHeaderValues, "empty header value slices must not be copied")
 }
@@ -2074,9 +1469,7 @@ func Benchmark_HTTPMiddleware(b *testing.B) {
 
 	app := fiber.New()
 	app.Use(HTTPMiddleware(nethttpMW))
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	handler := app.Handler()
 
@@ -2140,10 +1533,9 @@ func Benchmark_FiberApp(b *testing.B) {
 
 	handler := FiberApp(app)
 
-	r := httptest.NewRequest(http.MethodGet, "/foo/bar", http.NoBody)
+	r := apptest.Req(http.MethodGet, "/foo/bar",
+		apptest.WithHeader("Accept-Encoding", "gzip"), apptest.WithHeader("User-Agent", "fiber-bench"))
 	r.RemoteAddr = expectedRemoteAddr
-	r.Header.Set("Accept-Encoding", "gzip")
-	r.Header.Set("User-Agent", "fiber-bench")
 
 	b.ReportAllocs()
 
@@ -2157,9 +1549,7 @@ func Benchmark_FiberApp(b *testing.B) {
 // net/http body into the fasthttp request before the handler runs.
 func Benchmark_FiberApp_Body(b *testing.B) {
 	app := fiber.New()
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	handler := FiberApp(app)
 
@@ -2194,7 +1584,7 @@ func Benchmark_FiberApp_Parallel(b *testing.B) {
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
-		r := httptest.NewRequest(http.MethodGet, "/foo/bar", http.NoBody)
+		r := apptest.Req(http.MethodGet, "/foo/bar")
 		r.RemoteAddr = expectedRemoteAddr
 
 		for pb.Next() {
@@ -2208,10 +1598,8 @@ func Benchmark_FiberApp_Parallel(b *testing.B) {
 
 func Test_copyResponseHeaders(t *testing.T) {
 	t.Parallel()
-
 	t.Run("packs keys and values without losing any", func(t *testing.T) {
 		t.Parallel()
-
 		var src fasthttp.ResponseHeader
 		src.SetContentType("text/plain")
 		src.Set("X-One", "1")
@@ -2229,7 +1617,6 @@ func Test_copyResponseHeaders(t *testing.T) {
 
 	t.Run("keys are canonicalized like Header.Add", func(t *testing.T) {
 		t.Parallel()
-
 		var src fasthttp.ResponseHeader
 		src.DisableNormalizing()
 		src.Set("x-lower-case", "value")
@@ -2242,7 +1629,6 @@ func Test_copyResponseHeaders(t *testing.T) {
 
 	t.Run("appends to values already present on the destination", func(t *testing.T) {
 		t.Parallel()
-
 		var src fasthttp.ResponseHeader
 		src.Set("X-One", "from-fasthttp")
 
@@ -2255,7 +1641,6 @@ func Test_copyResponseHeaders(t *testing.T) {
 
 	t.Run("entries sharing a backing array stay independent", func(t *testing.T) {
 		t.Parallel()
-
 		var src fasthttp.ResponseHeader
 		src.Set("X-One", "1")
 		src.Set("X-Two", "2")
@@ -2275,7 +1660,6 @@ func Test_copyResponseHeaders(t *testing.T) {
 
 	t.Run("empty header set leaves the destination untouched", func(t *testing.T) {
 		t.Parallel()
-
 		var src fasthttp.ResponseHeader
 		src.SetNoDefaultContentType(true)
 
@@ -2287,7 +1671,6 @@ func Test_copyResponseHeaders(t *testing.T) {
 
 	t.Run("values do not alias the pooled scratch buffer", func(t *testing.T) {
 		t.Parallel()
-
 		var first fasthttp.ResponseHeader
 		first.SetNoDefaultContentType(true)
 		first.Set("X-Value", strings.Repeat("a", 64))
@@ -2306,20 +1689,12 @@ func Test_copyResponseHeaders(t *testing.T) {
 	})
 }
 
+// Test_resolveRemoteAddr_FastPath covers what the ip:port fast path builds beyond the address itself,
+// which Test_ResolveRemoteAddr_FastPathEquivalence pins.
 func Test_resolveRemoteAddr_FastPath(t *testing.T) {
 	t.Parallel()
-
-	t.Run("ipv4", func(t *testing.T) {
-		t.Parallel()
-
-		addr, err := resolveRemoteAddr("1.2.3.4:6789", nil)
-		require.NoError(t, err)
-		require.Equal(t, "1.2.3.4:6789", addr.String())
-	})
-
 	t.Run("ipv6 keeps the zone", func(t *testing.T) {
 		t.Parallel()
-
 		addr, err := resolveRemoteAddr("[fe80::1%eth0]:6789", nil)
 		require.NoError(t, err)
 
@@ -2332,7 +1707,6 @@ func Test_resolveRemoteAddr_FastPath(t *testing.T) {
 
 	t.Run("each call returns an independent address", func(t *testing.T) {
 		t.Parallel()
-
 		first, err := resolveRemoteAddr("1.2.3.4:1111", nil)
 		require.NoError(t, err)
 		second, err := resolveRemoteAddr("5.6.7.8:2222", nil)
@@ -2347,7 +1721,6 @@ func Test_resolveRemoteAddr_FastPath(t *testing.T) {
 
 	t.Run("the IP slice cannot be appended into its backing buffer", func(t *testing.T) {
 		t.Parallel()
-
 		addr, err := resolveRemoteAddr("1.2.3.4:6789", nil)
 		require.NoError(t, err)
 
@@ -2363,16 +1736,13 @@ func Test_resolveRemoteAddr_FastPath(t *testing.T) {
 
 func Test_FiberApp_NoBody(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Post("/", func(c fiber.Ctx) error {
 		require.Empty(t, c.Body())
 		return c.SendString(strconv.Itoa(c.Request().Header.ContentLength()))
 	})
 
-	r := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
-	w := httptest.NewRecorder()
-	FiberApp(app)(w, r)
+	w := adaptorTestServe(FiberApp(app), apptest.Req(http.MethodPost, "/"))
 
 	require.Equal(t, fiber.StatusOK, w.Code)
 	require.Equal(t, "0", w.Body.String())
@@ -2380,7 +1750,6 @@ func Test_FiberApp_NoBody(t *testing.T) {
 
 func Test_FiberApp_RemoteAddrSurvivesPooling(t *testing.T) {
 	t.Parallel()
-
 	addrs := []string{"1.1.1.1:1111", "2.2.2.2:2222", "3.3.3.3:3333"}
 
 	var retained []net.Addr
@@ -2393,14 +1762,12 @@ func Test_FiberApp_RemoteAddrSurvivesPooling(t *testing.T) {
 	handler := FiberApp(app)
 
 	for _, addr := range addrs {
-		r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		r := apptest.Req(http.MethodGet, "/")
 		r.RemoteAddr = addr
-		w := httptest.NewRecorder()
-		handler(w, r)
 
 		host, _, err := net.SplitHostPort(addr)
 		require.NoError(t, err)
-		require.Equal(t, host, w.Body.String())
+		require.Equal(t, host, adaptorTestServe(handler, r).Body.String())
 	}
 
 	// The ctx pool recycles entries between requests; a remote address kept
@@ -2417,7 +1784,6 @@ func Test_FiberApp_RemoteAddrSurvivesPooling(t *testing.T) {
 // defeating middleware whose purpose is to strip a header.
 func Test_HTTPMiddleware_PropagatesHeaderRemoval(t *testing.T) {
 	t.Parallel()
-
 	type seen struct {
 		forwardedFor  string
 		authorization string
@@ -2429,13 +1795,10 @@ func Test_HTTPMiddleware_PropagatesHeaderRemoval(t *testing.T) {
 	var got seen
 
 	app := fiber.New()
-	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			r.Header.Del("X-Forwarded-For")
-			r.Header.Del(fiber.HeaderAuthorization)
-			next.ServeHTTP(w, r)
-		})
-	}))
+	app.Use(HTTPMiddleware(adaptorTestRewriteRequest(func(r *http.Request) {
+		r.Header.Del("X-Forwarded-For")
+		r.Header.Del(fiber.HeaderAuthorization)
+	})))
 	app.Post("/", func(c fiber.Ctx) error {
 		got = seen{
 			forwardedFor:  c.Get("X-Forwarded-For"),
@@ -2453,9 +1816,7 @@ func Test_HTTPMiddleware_PropagatesHeaderRemoval(t *testing.T) {
 	req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
 	req.Header.Set("X-Kept", "still here")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, req, fiber.StatusOK)
 
 	require.Empty(t, got.forwardedFor)
 	require.Empty(t, got.authorization)
@@ -2471,7 +1832,6 @@ func Test_HTTPMiddleware_PropagatesHeaderRemoval(t *testing.T) {
 // middleware removed or replaced.
 func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
 	t.Parallel()
-
 	const owned = "X-Authenticated-User"
 
 	// Fiber drops the trailer section before r.Trailer is built: as the request arrives or, streamed, once the body is read.
@@ -2490,7 +1850,6 @@ func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			var (
 				trailer     []string
 				body        string
@@ -2522,9 +1881,7 @@ func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
 
 			ln := fasthttputil.NewInmemoryListener()
 			errCh := make(chan error, 1)
-			go func() {
-				errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
-			}()
+			go func() { errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}) }()
 			t.Cleanup(func() {
 				require.NoError(t, app.Shutdown())
 				if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
@@ -2561,7 +1918,6 @@ func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
 // rewritten Host came back spliced with the bytes of the old one.
 func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
 	t.Parallel()
-
 	forwardedFor := func(t *testing.T, mw func(http.Handler) http.Handler) ([]string, string, string) {
 		t.Helper()
 
@@ -2580,33 +1936,25 @@ func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
 			return c.SendString("ok")
 		})
 
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-		req.Host = "original.example"
+		req := apptest.Req(fiber.MethodGet, "/", apptest.WithHost("original.example"))
 		req.Header.Add("X-Forwarded-For", "1.1.1.1")
 		req.Header.Add("X-Forwarded-For", "2.2.2.2")
 
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, req, fiber.StatusOK)
 		return values, uriHost, hdrHost
 	}
 
 	t.Run("pass-through preserves every value exactly once", func(t *testing.T) {
 		t.Parallel()
-
 		got, _, _ := forwardedFor(t, func(next http.Handler) http.Handler { return next })
 		require.Equal(t, []string{"1.1.1.1", "2.2.2.2"}, got)
 	})
 
 	t.Run("collapsing a multi-valued header drops the originals", func(t *testing.T) {
 		t.Parallel()
-
-		got, _, _ := forwardedFor(t, func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				r.Header.Set("X-Forwarded-For", "9.9.9.9")
-				next.ServeHTTP(w, r)
-			})
-		})
+		got, _, _ := forwardedFor(t, adaptorTestRewriteRequest(func(r *http.Request) {
+			r.Header.Set("X-Forwarded-For", "9.9.9.9")
+		}))
 		// Leaving "2.2.2.2" behind would hand the spoofed value straight to
 		// c.IPs() and the TrustProxy chain walk.
 		require.Equal(t, []string{"9.9.9.9"}, got)
@@ -2614,25 +1962,17 @@ func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
 
 	t.Run("assigning nil removes the header", func(t *testing.T) {
 		t.Parallel()
-
-		got, _, _ := forwardedFor(t, func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				r.Header["X-Forwarded-For"] = nil
-				next.ServeHTTP(w, r)
-			})
-		})
+		got, _, _ := forwardedFor(t, adaptorTestRewriteRequest(func(r *http.Request) {
+			r.Header["X-Forwarded-For"] = nil
+		}))
 		require.Empty(t, got)
 	})
 
 	t.Run("rewritten host is not spliced with the old one", func(t *testing.T) {
 		t.Parallel()
-
-		_, uriHost, hdrHost := forwardedFor(t, func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				r.Host = "internal.svc"
-				next.ServeHTTP(w, r)
-			})
-		})
+		_, uriHost, hdrHost := forwardedFor(t, adaptorTestRewriteRequest(func(r *http.Request) {
+			r.Host = "internal.svc"
+		}))
 		require.Equal(t, "internal.svc", uriHost)
 		require.Equal(t, "internal.svc", hdrHost)
 	})
@@ -2646,7 +1986,6 @@ func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
 // also drives fasthttp's close flag, which has to survive the round trip.
 func Test_HTTPMiddleware_PropagatesConnectionRewrite(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name  string
 		sent  string
@@ -2659,31 +1998,24 @@ func Test_HTTPMiddleware_PropagatesConnectionRewrite(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var got string
 			var gotClose bool
 
 			app := fiber.New()
-			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
-				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if tc.write != "" {
-						r.Header.Set(fiber.HeaderConnection, tc.write)
-					}
-					next.ServeHTTP(w, r)
-				})
-			}))
+			app.Use(HTTPMiddleware(adaptorTestRewriteRequest(func(r *http.Request) {
+				if tc.write != "" {
+					r.Header.Set(fiber.HeaderConnection, tc.write)
+				}
+			})))
 			app.Get("/", func(c fiber.Ctx) error {
 				got = c.Get(fiber.HeaderConnection)
 				gotClose = c.Request().Header.ConnectionClose()
 				return c.SendString("ok")
 			})
 
-			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-			req.Header.Set(fiber.HeaderConnection, tc.sent)
+			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderConnection, tc.sent))
 
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, req, fiber.StatusOK)
 			require.Equal(t, tc.want, got)
 			require.Equal(t, tc.want == "close", gotClose, "the close flag follows the value")
 		})
@@ -2699,17 +2031,12 @@ func Test_HTTPMiddleware_PropagatesConnectionRewrite(t *testing.T) {
 // it to close, so it is applied on the way out instead.
 func Test_HTTPMiddleware_ConnectionCloseSurvivesDownstream(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		handler func(fiber.Ctx) error
 		name    string
 		status  int
 	}{
-		{
-			name:    "plain handler",
-			handler: func(c fiber.Ctx) error { return c.SendString("ok") },
-			status:  fiber.StatusOK,
-		},
+		{name: "plain handler", handler: func(c fiber.Ctx) error { return c.SendString("ok") }, status: fiber.StatusOK},
 		{
 			name: "handler resetting the response",
 			handler: func(c fiber.Ctx) error {
@@ -2736,19 +2063,13 @@ func Test_HTTPMiddleware_ConnectionCloseSurvivesDownstream(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
-			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
-				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					r.Header[http.CanonicalHeaderKey(fiber.HeaderConnection)] = []string{"close", "X-Internal"}
-					next.ServeHTTP(w, r)
-				})
-			}))
+			app.Use(HTTPMiddleware(adaptorTestRewriteRequest(func(r *http.Request) {
+				r.Header[http.CanonicalHeaderKey(fiber.HeaderConnection)] = []string{"close", "X-Internal"}
+			})))
 			app.Get("/", tc.handler)
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, tc.status, resp.StatusCode)
+			resp := apptest.Expect(t, app, "/", tc.status)
 			require.True(t, resp.Close, "the connection the middleware asked to close has to close")
 		})
 	}
@@ -2762,7 +2083,6 @@ func Test_HTTPMiddleware_ConnectionCloseSurvivesDownstream(t *testing.T) {
 // stopped closing the connection.
 func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name      string
 		want      string
@@ -2783,7 +2103,6 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var got, afterNext string
 			var gotClose, finalClose bool
 
@@ -2797,21 +2116,16 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 				finalClose = c.Response().Header.ConnectionClose()
 				return err
 			})
-			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
-				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					r.Header[http.CanonicalHeaderKey(fiber.HeaderConnection)] = tc.write
-					next.ServeHTTP(w, r)
-				})
-			}))
+			app.Use(HTTPMiddleware(adaptorTestRewriteRequest(func(r *http.Request) {
+				r.Header[http.CanonicalHeaderKey(fiber.HeaderConnection)] = tc.write
+			})))
 			app.Get("/", func(c fiber.Ctx) error {
 				got = c.Get(fiber.HeaderConnection)
 				gotClose = c.Request().Header.ConnectionClose()
 				return c.SendString("ok")
 			})
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 			require.Equal(t, tc.want, got)
 			require.Equal(t, tc.wantClose, resp.Close, "close has to reach the wire, not just the fiber context")
 			require.Equal(t, tc.want, afterNext, "the complete Connection field must outlive the downstream chain")
@@ -2821,31 +2135,47 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 	}
 }
 
-func Test_CopyContextToFiberContext_DerivedContexts(t *testing.T) {
+// Test_CopyContextToFiberContext_Values copies the values of contexts a request reaches the handler with:
+// a plain one, wrapped ones, and ones derived with a cancel, a timeout or a deadline.
+func Test_CopyContextToFiberContext_Values(t *testing.T) {
 	t.Parallel()
-
 	type key string
 	base := context.WithValue(context.Background(), key("a"), "1")
+	wantAB := map[any]any{key("a"): "1", key("b"): "2"}
 
 	withCancel, cancel := context.WithCancel(base)
 	t.Cleanup(cancel)
 	withTimeout, cancelTimeout := context.WithTimeout(base, time.Hour)
 	t.Cleanup(cancelTimeout)
+	withoutCancel := context.WithoutCancel(withTimeout)
 	withDeadline, cancelDeadline := context.WithDeadline(base, time.Now().Add(time.Hour))
 	t.Cleanup(cancelDeadline)
 	afterFunc, stop := context.WithCancel(base)
 	t.Cleanup(stop)
 	context.AfterFunc(afterFunc, func() {})
+	nestedBase := context.WithValue(context.Background(), contextKey("nested-a"), "value-a")
+	nestedCancel, cancelNested := context.WithCancel(nestedBase)
+	t.Cleanup(cancelNested)
 
 	testCases := []struct {
 		ctx  context.Context //nolint:containedctx // test table
+		want map[any]any
 		name string
 	}{
-		{name: "WithCancel", ctx: context.WithValue(withCancel, key("b"), "2")},
-		{name: "WithTimeout", ctx: context.WithValue(withTimeout, key("b"), "2")},
-		{name: "WithDeadline", ctx: context.WithValue(withDeadline, key("b"), "2")},
-		{name: "WithoutCancel", ctx: context.WithValue(context.WithoutCancel(withTimeout), key("b"), "2")},
-		{name: "value below timeout", ctx: func() context.Context {
+		{
+			name: "copies key value pairs",
+			ctx:  context.WithValue(context.Background(), contextKey("copy-key"), "copy-value"),
+			want: map[any]any{contextKey("copy-key"): "copy-value"},
+		},
+		{
+			name: "nested context wrappers", ctx: context.WithValue(nestedCancel, contextKey("nested-b"), "value-b"),
+			want: map[any]any{contextKey("nested-a"): "value-a", contextKey("nested-b"): "value-b"},
+		},
+		{name: "WithCancel", ctx: context.WithValue(withCancel, key("b"), "2"), want: wantAB},
+		{name: "WithTimeout", ctx: context.WithValue(withTimeout, key("b"), "2"), want: wantAB},
+		{name: "WithDeadline", ctx: context.WithValue(withDeadline, key("b"), "2"), want: wantAB},
+		{name: "WithoutCancel", ctx: context.WithValue(withoutCancel, key("b"), "2"), want: wantAB},
+		{name: "value below timeout", want: wantAB, ctx: func() context.Context {
 			ctx, cancelInner := context.WithTimeout(context.WithValue(base, key("b"), "2"), time.Hour)
 			t.Cleanup(cancelInner)
 			return ctx
@@ -2854,118 +2184,92 @@ func Test_CopyContextToFiberContext_DerivedContexts(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var fctx fasthttp.RequestCtx
 			CopyContextToFiberContext(tc.ctx, &fctx)
-			require.Equal(t, "1", fctx.UserValue(key("a")))
-			require.Equal(t, "2", fctx.UserValue(key("b")))
+			for k, v := range tc.want {
+				require.Equal(t, v, fctx.UserValue(k), "%v", k)
+			}
 		})
 	}
 }
 
-func Test_HTTPHandler_TLSPropagated(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Scheme() + " " + strconv.FormatBool(c.Secure()))
-	})
-
-	handler := FiberApp(app)
-
-	req := httptest.NewRequest(http.MethodGet, "https://example.com/", http.NoBody)
-	req.TLS = &tls.ConnectionState{Version: tls.VersionTLS13, ServerName: "example.com"}
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "https true", rec.Body.String())
-
-	plain := httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
-	rec = httptest.NewRecorder()
-	handler.ServeHTTP(rec, plain)
-	require.Equal(t, "http false", rec.Body.String())
-}
-
 func Test_HTTPMiddleware_URLRewrite(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
-	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
-		return http.StripPrefix("/api", next)
-	}))
-	app.Get("/users", func(c fiber.Ctx) error {
-		return c.SendString("users at " + c.Path())
-	})
+	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler { return http.StripPrefix("/api", next) }))
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendString("users at " + c.Path()) })
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/api/users?x=1", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "users at /users", string(body))
+	apptest.ExpectBody(t, app, "/api/users?x=1", fiber.StatusOK, "users at /users")
 }
 
 // Test_HTTPMiddleware_URLRewrite_OnPrefix pins that routes registered after a
 // StripPrefix mounted on its own prefix see the stripped path.
 func Test_HTTPMiddleware_URLRewrite_OnPrefix(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
-	app.Use("/api", HTTPMiddleware(func(next http.Handler) http.Handler {
-		return http.StripPrefix("/api", next)
-	}))
-	app.Use("/admin", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusForbidden)
-	})
-	app.Get("/admin/report", func(c fiber.Ctx) error {
-		return c.SendString("report")
-	})
-	app.Get("/users", func(c fiber.Ctx) error {
-		return c.SendString("users at " + c.Path())
-	})
+	app.Use("/api", HTTPMiddleware(func(next http.Handler) http.Handler { return http.StripPrefix("/api", next) }))
+	app.Use("/admin", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) })
+	app.Get("/admin/report", func(c fiber.Ctx) error { return c.SendString("report") })
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendString("users at " + c.Path()) })
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/api/admin/report", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/api/admin/report", fiber.StatusForbidden)
 	require.NoError(t, resp.Body.Close())
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/api/users", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "users at /users", string(body))
+	apptest.ExpectBody(t, app, "/api/users", fiber.StatusOK, "users at /users")
 }
 
-func Test_HTTPHandler_TLSConnectionStateCarried(t *testing.T) {
+// Test_FiberApp_TLS serves a request with a TLS connection state and one without through FiberApp, and
+// checks what the Fiber handler reads of it.
+func Test_FiberApp_TLS(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		handler   fiber.Handler
+		state     *tls.ConnectionState
+		name      string
+		wantTLS   string
+		wantPlain string
+	}{
+		{
+			name:      "scheme propagated",
+			handler:   func(c fiber.Ctx) error { return c.SendString(c.Scheme() + " " + strconv.FormatBool(c.Secure())) },
+			state:     &tls.ConnectionState{Version: tls.VersionTLS13, ServerName: "example.com"},
+			wantTLS:   "https true",
+			wantPlain: "http false",
+		},
+		{
+			name: "connection state carried",
+			handler: func(c fiber.Ctx) error {
+				state := c.RequestCtx().TLSConnectionState()
+				if state == nil {
+					return c.SendString("none")
+				}
+				return c.SendString(state.ServerName + " " + state.NegotiatedProtocol)
+			},
+			state:     &tls.ConnectionState{Version: tls.VersionTLS13, ServerName: "example.com", NegotiatedProtocol: "h2"},
+			wantTLS:   "example.com h2",
+			wantPlain: "none",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Get("/", tc.handler)
+			handler := FiberApp(app)
 
-	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		state := c.RequestCtx().TLSConnectionState()
-		if state == nil {
-			return c.SendString("none")
-		}
-		return c.SendString(state.ServerName + " " + state.NegotiatedProtocol)
-	})
+			req := apptest.Req(http.MethodGet, "https://example.com/")
+			req.TLS = tc.state
+			rec := adaptorTestServe(handler, req)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, tc.wantTLS, rec.Body.String())
 
-	handler := FiberApp(app)
-
-	req := httptest.NewRequest(http.MethodGet, "https://example.com/", http.NoBody)
-	req.TLS = &tls.ConnectionState{Version: tls.VersionTLS13, ServerName: "example.com", NegotiatedProtocol: "h2"}
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	require.Equal(t, "example.com h2", rec.Body.String())
-
-	plain := httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
-	rec = httptest.NewRecorder()
-	handler.ServeHTTP(rec, plain)
-	require.Equal(t, "none", rec.Body.String())
+			rec = adaptorTestServe(handler, apptest.Req(http.MethodGet, "http://example.com/"))
+			require.Equal(t, tc.wantPlain, rec.Body.String())
+		})
+	}
 }
 
 func Test_TLSNoopConn_HandshakeIsNoop(t *testing.T) {
 	t.Parallel()
-
 	conn := &tlsNoopConn{state: tls.ConnectionState{ServerName: "example.com"}}
 	require.NoError(t, conn.Handshake())
 	require.Equal(t, "example.com", conn.ConnectionState().ServerName)
@@ -2973,7 +2277,6 @@ func Test_TLSNoopConn_HandshakeIsNoop(t *testing.T) {
 
 func Test_HTTPMiddleware_NextCalledAfterReturn(t *testing.T) {
 	t.Parallel()
-
 	saved := make(chan http.Handler, 1)
 	mw := func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -2986,23 +2289,17 @@ func Test_HTTPMiddleware_NextCalledAfterReturn(t *testing.T) {
 	app.Use(HTTPMiddleware(mw))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("downstream") })
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, http.StatusAccepted, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Empty(t, string(body))
+	resp := apptest.Expect(t, app, "/", http.StatusAccepted)
+	body := apptest.Body(t, resp)
+	require.Empty(t, body)
 
 	// The Fiber context is released by now, so a late next must be a no-op.
 	next := <-saved
-	require.NotPanics(t, func() {
-		next.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/late", http.NoBody))
-	})
+	require.NotPanics(t, func() { adaptorTestServe(next, apptest.Req(http.MethodPost, "/late")) })
 }
 
 func Test_CopyContextToFiberContext_DeepChain(t *testing.T) {
 	t.Parallel()
-
 	type key string
 	const depth = 200
 
@@ -3027,7 +2324,6 @@ type cyclicContext struct {
 
 func Test_CopyContextToFiberContext_Cycle(t *testing.T) {
 	t.Parallel()
-
 	type key string
 	loop := &cyclicContext{Context: context.Background()}
 	loop.Context = context.WithValue(loop, key("a"), "1")
@@ -3052,25 +2348,18 @@ func Test_HTTPMiddleware_NoRewriteKeepsChainPosition(t *testing.T) {
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()
-
 			var authRan atomic.Bool
 			app := fiber.New()
 			app.Use("/api/admin", func(_ fiber.Ctx) error {
 				authRan.Store(true)
 				return fiber.ErrForbidden
 			})
-			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
-				return next
-			}))
-			app.Get("/api/admin/secret", func(c fiber.Ctx) error {
-				return c.SendString("SECRET")
-			})
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler { return next }))
+			app.Get("/api/admin/secret", func(c fiber.Ctx) error { return c.SendString("SECRET") })
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
-			require.NoError(t, err)
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.NotEqual(t, "SECRET", string(body), "the adaptor resumed past the guard that already ran")
+			resp := apptest.Do(t, app, path)
+			body := apptest.Body(t, resp)
+			require.NotEqual(t, "SECRET", body, "the adaptor resumed past the guard that already ran")
 			require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 			require.False(t, authRan.Load())
 		})
@@ -3079,7 +2368,6 @@ func Test_HTTPMiddleware_NoRewriteKeepsChainPosition(t *testing.T) {
 
 func Test_FiberAdaptors_TimedOutRequest(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		build func(h fiber.Handler) http.Handler
 		name  string
@@ -3093,7 +2381,6 @@ func Test_FiberAdaptors_TimedOutRequest(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			held := make(chan *fasthttp.RequestCtx, 1)
 			seen := make(chan *fasthttp.RequestCtx, 1)
 			release := make(chan struct{})
@@ -3114,16 +2401,14 @@ func Test_FiberAdaptors_TimedOutRequest(t *testing.T) {
 				Next:    func(c fiber.Ctx) bool { return c.Path() != "/slow" },
 			}))
 
-			rec := httptest.NewRecorder()
-			handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+			rec := adaptorTestServe(handler, apptest.Req(fiber.MethodGet, "/slow"))
 			require.Equal(t, fiber.StatusServiceUnavailable, rec.Code)
 			require.Equal(t, fiber.ErrServiceUnavailable.Message, rec.Body.String())
 			require.Empty(t, rec.Header().Values(fiber.HeaderSetCookie))
 			timedOut := <-held
 
 			for range 20 {
-				rec := httptest.NewRecorder()
-				handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/private", http.NoBody))
+				rec := adaptorTestServe(handler, apptest.Req(fiber.MethodGet, "/private"))
 				require.Equal(t, fiber.StatusUnauthorized, rec.Code)
 				require.Empty(t, rec.Header().Values(fiber.HeaderSetCookie))
 				require.NotSame(t, timedOut, <-seen, "the timed-out handler's RequestCtx was handed to another request")
@@ -3138,7 +2423,6 @@ func Test_FiberAdaptors_TimedOutRequest(t *testing.T) {
 // net/http discards a HEAD body, so a stream read for one would run with every write succeeding.
 func Test_FiberAdaptors_HeadLeavesStreamUnread(t *testing.T) {
 	t.Parallel()
-
 	var handlers atomic.Int32
 	events := sse.New(sse.Config{
 		DisableHeartbeat: true,
@@ -3151,16 +2435,14 @@ func Test_FiberAdaptors_HeadLeavesStreamUnread(t *testing.T) {
 	app.Get("/events", events)
 
 	for _, handler := range []http.Handler{FiberApp(app), FiberHandler(events)} {
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodHead, "/events", http.NoBody))
+		rec := adaptorTestServe(handler, apptest.Req(fiber.MethodHead, "/events"))
 		require.Equal(t, fiber.StatusOK, rec.Code)
 		require.Equal(t, fiber.MIMETextEventStream, rec.Header().Get(fiber.HeaderContentType))
 		require.Empty(t, rec.Body.String())
 	}
 	require.Zero(t, handlers.Load())
 
-	rec := httptest.NewRecorder()
-	FiberApp(app).ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
+	rec := adaptorTestServe(FiberApp(app), apptest.Req(fiber.MethodGet, "/events"))
 	require.Equal(t, ": open\n\n", rec.Body.String())
 	require.Equal(t, int32(1), handlers.Load())
 }

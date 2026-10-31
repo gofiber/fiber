@@ -9,13 +9,13 @@ import (
 	"compress/gzip"
 	"io"
 	"net"
-	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -32,24 +32,28 @@ var (
 	_ Res = Ctx(nil)
 )
 
+// ctxReqFor returns a context of a default app for the request that prepare builds.
+func ctxReqFor(t *testing.T, prepare func(req *fasthttp.Request)) Ctx {
+	t.Helper()
+	fctx := &fasthttp.RequestCtx{}
+	prepare(&fctx.Request)
+	return apptest.CtxFor(t, New(), fctx)
+}
+
 func Test_Req_RequestHelpersOnReq(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.SetRequestURI("/path/here?q=1")
-	fctx.Request.Header.SetMethod(MethodPost)
-	fctx.Request.Header.SetHost("example.com")
-	fctx.Request.Header.SetUserAgent("fiber-test")
-	fctx.Request.Header.SetReferer("https://referer.example")
-	fctx.Request.Header.Set(HeaderAcceptLanguage, "en-US, de")
-	fctx.Request.Header.Set(HeaderAcceptEncoding, "gzip, br")
-	fctx.Request.Header.Set(HeaderAccept, MIMEApplicationJSON)
-	fctx.Request.Header.SetContentType(MIMEApplicationJSON + "; charset=utf-8")
-	fctx.Request.SetBody([]byte(`{"a":1}`))
-
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.SetRequestURI("/path/here?q=1")
+		req.Header.SetMethod(MethodPost)
+		req.Header.SetHost("example.com")
+		req.Header.SetUserAgent("fiber-test")
+		req.Header.SetReferer("https://referer.example")
+		req.Header.Set(HeaderAcceptLanguage, "en-US, de")
+		req.Header.Set(HeaderAcceptEncoding, "gzip, br")
+		req.Header.Set(HeaderAccept, MIMEApplicationJSON)
+		req.Header.SetContentType(MIMEApplicationJSON + "; charset=utf-8")
+		req.SetBody([]byte(`{"a":1}`))
+	})
 
 	r := c.Req()
 
@@ -87,12 +91,7 @@ func Test_Req_RequestHelpersOnReq(t *testing.T) {
 
 func Test_Req_PathOverride(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.SetRequestURI("/original")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := ctxReqFor(t, func(req *fasthttp.Request) { req.SetRequestURI("/original") })
 
 	require.Equal(t, "/original", c.Req().Path())
 	require.Equal(t, "/rewritten", c.Req().Path("/rewritten"))
@@ -102,13 +101,10 @@ func Test_Req_PathOverride(t *testing.T) {
 
 func Test_Req_GetAll(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.Add("X-Test", "first")
-	fctx.Request.Header.Add("X-Test", "second")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.Header.Add("X-Test", "first")
+		req.Header.Add("X-Test", "second")
+	})
 
 	require.Equal(t, []string{"first", "second"}, c.Req().GetAll("X-Test"))
 	require.Equal(t, []string{"first", "second"}, c.Req().GetAll("x-test"))
@@ -126,14 +122,10 @@ func Test_Req_ContentLength(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodPost, "/", strings.NewReader("0123456789")))
-	require.NoError(t, err)
+	apptest.Do(t, app, httptest.NewRequest(MethodPost, "/", strings.NewReader("0123456789")))
 	require.Equal(t, 10, length)
 
-	chunked := &fasthttp.RequestCtx{}
-	chunked.Request.Header.SetContentLength(-1)
-	cc := app.AcquireCtx(chunked)
-	t.Cleanup(func() { app.ReleaseCtx(cc) })
+	cc := ctxReqFor(t, func(req *fasthttp.Request) { req.Header.SetContentLength(-1) })
 
 	require.Equal(t, -1, cc.Req().ContentLength(), "chunked bodies report an unknown length")
 	require.True(t, cc.Req().HasBody(), "an unknown length still means there is a body")
@@ -143,8 +135,7 @@ func Test_Req_ContentLength(t *testing.T) {
 		bodyless = c.Req().ContentLength()
 		return nil
 	})
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/")
 	require.Equal(t, -2, bodyless)
 }
 
@@ -164,8 +155,7 @@ func Test_Req_GetAll_AbsentSlottedHeaders(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/")
 
 	for key, lines := range got {
 		require.Nil(t, lines, key)
@@ -176,12 +166,7 @@ func Test_Req_GetAll_AbsentSlottedHeaders(t *testing.T) {
 
 func Test_Req_ContentType(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetContentType(MIMEApplicationJSON + "; charset=utf-8")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := ctxReqFor(t, func(req *fasthttp.Request) { req.Header.SetContentType(MIMEApplicationJSON + "; charset=utf-8") })
 
 	require.Equal(t, MIMEApplicationJSONCharsetUTF8, c.Req().ContentType())                      //nolint:testifylint // this is comparing content-type headers, not JSON content
 	require.Equal(t, MIMEApplicationJSON, c.Req().MediaType(), "MediaType drops the parameters") //nolint:testifylint // same
@@ -195,18 +180,10 @@ func Test_Req_ContentType(t *testing.T) {
 
 func Test_Req_BodyStream(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	buffered := &fasthttp.RequestCtx{}
-	buffered.Request.SetBody([]byte("buffered"))
-	bc := app.AcquireCtx(buffered)
-	t.Cleanup(func() { app.ReleaseCtx(bc) })
+	bc := ctxReqFor(t, func(req *fasthttp.Request) { req.SetBody([]byte("buffered")) })
 	require.Nil(t, bc.Req().BodyStream(), "a buffered body is not a stream")
 
-	streamed := &fasthttp.RequestCtx{}
-	streamed.Request.SetBodyStream(strings.NewReader("streamed"), 8)
-	sc := app.AcquireCtx(streamed)
-	t.Cleanup(func() { app.ReleaseCtx(sc) })
+	sc := ctxReqFor(t, func(req *fasthttp.Request) { req.SetBodyStream(strings.NewReader("streamed"), 8) })
 
 	stream := sc.Req().BodyStream()
 	require.NotNil(t, stream)
@@ -217,13 +194,10 @@ func Test_Req_BodyStream(t *testing.T) {
 
 func Test_Req_URI(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.SetRequestURI("/search?q=fiber#frag")
-	fctx.Request.Header.SetHost("example.com")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.SetRequestURI("/search?q=fiber#frag")
+		req.Header.SetHost("example.com")
+	})
 
 	uri := c.Req().URI()
 	require.NotNil(t, uri)
@@ -235,23 +209,15 @@ func Test_Req_URI(t *testing.T) {
 
 func Test_Req_Origin(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.Set(HeaderOrigin, "https://example.com")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := ctxReqFor(t, func(req *fasthttp.Request) { req.Header.Set(HeaderOrigin, "https://example.com") })
 	require.Equal(t, "https://example.com", c.Req().Origin())
 
-	bare := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(bare) })
+	bare := apptest.Ctx(t, New())
 	require.Empty(t, bare.Req().Origin())
 }
 
 func Test_Req_Authorization(t *testing.T) {
 	t.Parallel()
-	app := New()
-
 	tests := []struct {
 		name        string
 		header      string
@@ -272,13 +238,11 @@ func Test_Req_Authorization(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			fctx := &fasthttp.RequestCtx{}
-			if tc.header != "" {
-				fctx.Request.Header.Set(HeaderAuthorization, tc.header)
-			}
-			c := app.AcquireCtx(fctx)
-			t.Cleanup(func() { app.ReleaseCtx(c) })
+			c := ctxReqFor(t, func(req *fasthttp.Request) {
+				if tc.header != "" {
+					req.Header.Set(HeaderAuthorization, tc.header)
+				}
+			})
 
 			scheme, credentials := c.Req().Authorization()
 			require.Equal(t, tc.scheme, scheme)
@@ -290,8 +254,6 @@ func Test_Req_Authorization(t *testing.T) {
 
 func Test_Req_IsSafe_IsIdempotent(t *testing.T) {
 	t.Parallel()
-	app := New()
-
 	tests := []struct {
 		method     string
 		safe       bool
@@ -310,11 +272,7 @@ func Test_Req_IsSafe_IsIdempotent(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.method, func(t *testing.T) {
 			t.Parallel()
-
-			fctx := &fasthttp.RequestCtx{}
-			fctx.Request.Header.SetMethod(tc.method)
-			c := app.AcquireCtx(fctx)
-			t.Cleanup(func() { app.ReleaseCtx(c) })
+			c := ctxReqFor(t, func(req *fasthttp.Request) { req.Header.SetMethod(tc.method) })
 
 			require.Equal(t, tc.safe, c.Req().IsSafe())
 			require.Equal(t, tc.idempotent, c.Req().IsIdempotent())
@@ -324,99 +282,69 @@ func Test_Req_IsSafe_IsIdempotent(t *testing.T) {
 
 func Test_Req_CookieNames_AllCookies(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetCookie("session", "abc")
-	fctx.Request.Header.SetCookie("theme", "dark")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.Header.SetCookie("session", "abc")
+		req.Header.SetCookie("theme", "dark")
+	})
 
 	require.ElementsMatch(t, []string{"session", "theme"}, c.Req().CookieNames())
 	require.Equal(t, map[string]string{"session": "abc", "theme": "dark"}, c.Req().AllCookies())
 
-	shadowed := &fasthttp.RequestCtx{}
-	shadowed.Request.Header.Set(HeaderCookie, "a=first; a=second")
-	sc := app.AcquireCtx(shadowed)
-	t.Cleanup(func() { app.ReleaseCtx(sc) })
+	sc := ctxReqFor(t, func(req *fasthttp.Request) { req.Header.Set(HeaderCookie, "a=first; a=second") })
 
 	require.Equal(t, "first", sc.Req().Cookies("a"))
 	require.Equal(t, "first", sc.Req().AllCookies()["a"])
 	require.Equal(t, []string{"a", "a"}, sc.Req().CookieNames(), "the repetition itself stays visible")
 
-	bare := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(bare) })
+	bare := apptest.Ctx(t, New())
 	require.Empty(t, bare.Req().CookieNames())
 	require.Empty(t, bare.Req().AllCookies())
 }
 
 func Test_Req_IfNoneMatch(t *testing.T) {
 	t.Parallel()
-	app := New()
-
 	tests := []struct {
-		name   string
-		header string
-		want   []string
+		name  string
+		lines []string // the If-None-Match field lines
+		want  []string
 	}{
 		{name: "absent"},
-		{name: "single", header: `"abc"`, want: []string{`"abc"`}},
-		{name: "list", header: `"a", W/"b"`, want: []string{`"a"`, `W/"b"`}},
-		{name: "wildcard", header: "*", want: []string{"*"}},
-		{name: "comma inside tag", header: `"v1,v2"`, want: []string{`"v1,v2"`}},
+		{name: "single", lines: []string{`"abc"`}, want: []string{`"abc"`}},
+		{name: "list", lines: []string{`"a", W/"b"`}, want: []string{`"a"`, `W/"b"`}},
+		{name: "wildcard", lines: []string{"*"}, want: []string{"*"}},
+		{name: "comma inside tag", lines: []string{`"v1,v2"`}, want: []string{`"v1,v2"`}},
+		{name: "multiple field lines", lines: []string{`"a"`, `"b"`}, want: []string{`"a"`, `"b"`}},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			fctx := &fasthttp.RequestCtx{}
-			if tc.header != "" {
-				fctx.Request.Header.Set(HeaderIfNoneMatch, tc.header)
-			}
-			c := app.AcquireCtx(fctx)
-			t.Cleanup(func() { app.ReleaseCtx(c) })
+			c := ctxReqFor(t, func(req *fasthttp.Request) {
+				for _, line := range tc.lines {
+					req.Header.Add(HeaderIfNoneMatch, line)
+				}
+			})
 
 			require.Equal(t, tc.want, c.Req().IfNoneMatch())
 		})
 	}
 }
 
-func Test_Req_IfNoneMatch_MultipleFieldLines(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.Add(HeaderIfNoneMatch, `"a"`)
-	fctx.Request.Header.Add(HeaderIfNoneMatch, `"b"`)
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
-
-	require.Equal(t, []string{`"a"`, `"b"`}, c.Req().IfNoneMatch())
-}
-
 func Test_Req_IfModifiedSince(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	bare := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(bare) })
+	bare := apptest.Ctx(t, New())
 	_, err := bare.Req().IfModifiedSince()
 	require.ErrorIs(t, err, ErrHeaderNotFound)
 
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
+	})
 
 	got, err := c.Req().IfModifiedSince()
 	require.NoError(t, err)
 	require.True(t, got.Equal(time.Date(2015, time.October, 21, 7, 28, 0, 0, time.UTC)))
 
-	malformed := &fasthttp.RequestCtx{}
-	malformed.Request.Header.Set(HeaderIfModifiedSince, "not a date")
-	mc := app.AcquireCtx(malformed)
-	t.Cleanup(func() { app.ReleaseCtx(mc) })
+	mc := ctxReqFor(t, func(req *fasthttp.Request) { req.Header.Set(HeaderIfModifiedSince, "not a date") })
 
 	_, err = mc.Req().IfModifiedSince()
 	require.Error(t, err)
@@ -425,10 +353,7 @@ func Test_Req_IfModifiedSince(t *testing.T) {
 
 func Test_Res_StatusCode(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	require.Equal(t, StatusOK, c.Res().StatusCode(), "an untouched response reports 200")
 	c.Status(StatusTeapot)
@@ -438,10 +363,7 @@ func Test_Res_StatusCode(t *testing.T) {
 
 func Test_Res_Body_ResetBody_Written(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	require.Empty(t, c.Res().Body())
 	require.False(t, c.Res().Written())
@@ -459,24 +381,9 @@ func Test_Res_Body_ResetBody_Written(t *testing.T) {
 	require.Equal(t, StatusCreated, c.Res().StatusCode(), "ResetBody keeps the status")
 }
 
-func Test_Res_Written_BodyStream(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
-
-	require.NoError(t, c.SendStream(strings.NewReader("streamed"), 8))
-	require.True(t, c.Res().Written())
-	require.True(t, c.Response().IsBodyStream())
-}
-
 func Test_Res_Del(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	c.Set("X-Custom", "value")
 	require.Equal(t, "value", c.Res().Get("X-Custom"))
@@ -499,10 +406,7 @@ func Test_Res_Del(t *testing.T) {
 
 func Test_Res_Add(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	c.Res().Add(HeaderWWWAuthenticate, `Basic realm="one"`)
 	c.Res().Add(HeaderWWWAuthenticate, `Bearer realm="two"`)
@@ -520,10 +424,7 @@ func Test_Res_Add(t *testing.T) {
 
 func Test_Res_ContentType_ContentLength(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	require.Equal(t, MIMETextPlainCharsetUTF8, c.Res().ContentType(), "an untouched response reports fasthttp's default")
 
@@ -542,10 +443,7 @@ func Test_Res_ContentType_ContentLength(t *testing.T) {
 
 func Test_Res_GetCookie_Cookies(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	_, ok := c.Res().GetCookie("absent")
 	require.False(t, ok)
@@ -599,10 +497,7 @@ func Test_Res_GetCookie_Cookies(t *testing.T) {
 
 func Test_Res_Cookies_RepeatedNames(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	c.Cookie(&Cookie{Name: "sid", Value: "app", Path: "/app"})
 	c.Res().Add(HeaderSetCookie, "sid=admin; path=/admin")
@@ -629,17 +524,13 @@ func Test_Res_Cookies_RepeatedNames(t *testing.T) {
 		c.Cookie(&Cookie{Name: "other", Value: "z"})
 		return nil
 	})
-	resp, err := over.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, over, "/")
 	require.Len(t, resp.Header.Values(HeaderSetCookie), 3)
 }
 
 func Test_Res_GetCookie_Deletion(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	c.Cookie(&Cookie{Name: "session", Value: "v", MaxAge: -1})
 	require.Contains(t, string(c.Response().Header.Peek(HeaderSetCookie)), "max-age=0")
@@ -661,10 +552,7 @@ func Test_Res_GetCookie_Deletion(t *testing.T) {
 
 func Test_Res_Body_DoesNotDrainStream(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	require.NoError(t, c.SendStream(strings.NewReader("streamed"), 8))
 	require.True(t, c.Res().Written())
@@ -674,10 +562,7 @@ func Test_Res_Body_DoesNotDrainStream(t *testing.T) {
 
 func Test_Res_Add_SpecialHeaders(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	c.Set(HeaderContentType, MIMEApplicationJSON)
 	c.Res().Add(HeaderContentType, MIMETextPlain)
@@ -691,10 +576,7 @@ func Test_Res_Add_SpecialHeaders(t *testing.T) {
 
 func Test_Res_GetCookie_RoundTrip(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	c.Cookie(&Cookie{Name: "session", Value: "plain", Path: "/app", HTTPOnly: true, SameSite: CookieSameSiteLaxMode})
 
@@ -714,10 +596,7 @@ func Test_Res_GetCookie_RoundTrip(t *testing.T) {
 
 func Test_Res_NoContent(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	require.NoError(t, c.JSON(Map{"a": 1}))
 	require.NotEmpty(t, c.Res().Body())
@@ -733,23 +612,7 @@ func Test_Res_NoContent(t *testing.T) {
 func Test_Res_NoContent_OverHTTP(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Delete("/item", func(c Ctx) error {
-		return c.Res().NoContent()
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodDelete, "/item", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNoContent, resp.StatusCode)
-	require.Empty(t, resp.Header.Get(HeaderContentType))
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Empty(t, body)
-}
-
-func Test_Res_NoContent_DiffersFromSendStatus(t *testing.T) {
-	t.Parallel()
-	app := New()
+	app.Delete("/item", func(c Ctx) error { return c.Res().NoContent() })
 	app.Get("/sendstatus", func(c Ctx) error {
 		c.Type("json")
 		return c.SendStatus(StatusNoContent)
@@ -759,27 +622,35 @@ func Test_Res_NoContent_DiffersFromSendStatus(t *testing.T) {
 		return c.Res().NoContent()
 	})
 
-	sent, err := app.Test(httptest.NewRequest(MethodGet, "/sendstatus", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNoContent, sent.StatusCode)
-	require.NotEmpty(t, sent.Header.Get(HeaderContentType))
-
-	none, err := app.Test(httptest.NewRequest(MethodGet, "/nocontent", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNoContent, none.StatusCode)
-	require.Empty(t, none.Header.Get(HeaderContentType))
+	for _, tc := range []struct {
+		name            string
+		method          string
+		path            string
+		wantContentType bool // SendStatus keeps the Content-Type the handler set, NoContent drops it
+	}{
+		{name: "NoContent", method: MethodDelete, path: "/item"},
+		{name: "NoContent after Type", method: MethodGet, path: "/nocontent"},
+		{name: "SendStatus after Type", method: MethodGet, path: "/sendstatus", wantContentType: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resp := apptest.ExpectBody(t, app, apptest.Req(tc.method, tc.path), StatusNoContent, "")
+			if tc.wantContentType {
+				require.NotEmpty(t, resp.Header.Get(HeaderContentType))
+			} else {
+				require.Empty(t, resp.Header.Get(HeaderContentType))
+			}
+		})
+	}
 }
 
 func Test_Ctx_BodyContentLengthCookiesPreferRequest(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.SetBody([]byte("request body"))
-	fctx.Request.Header.SetContentLength(len("request body"))
-	fctx.Request.Header.SetCookie("who", "client")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.SetBody([]byte("request body"))
+		req.Header.SetContentLength(len("request body"))
+		req.Header.SetCookie("who", "client")
+	})
 
 	require.NoError(t, c.SendString("response body"))
 	c.Cookie(&Cookie{Name: "who", Value: "server"})
@@ -820,8 +691,7 @@ func Test_Ctx_ID_StartTime_Elapsed(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/")
 
 	require.NotZero(t, id)
 	require.True(t, stable, "ID is stable within a request")
@@ -841,8 +711,7 @@ func Test_Ctx_LocalAddr_RemoteAddr(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/")
 
 	require.NotNil(t, local)
 	require.NotNil(t, remote)
@@ -851,10 +720,7 @@ func Test_Ctx_LocalAddr_RemoteAddr(t *testing.T) {
 
 func Test_Ctx_Hijack(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	require.False(t, c.Hijacked())
 	c.Hijack(func(net.Conn) {})
@@ -875,8 +741,7 @@ func Test_Ctx_RouteName(t *testing.T) {
 		return nil
 	}).Name("home")
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/home", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/home")
 
 	require.Equal(t, "home", handlerName)
 	require.Empty(t, mwName, "middleware reports its own unnamed route, not the endpoint's")
@@ -884,10 +749,7 @@ func Test_Ctx_RouteName(t *testing.T) {
 
 func Test_Ctx_RouteName_Unmatched(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	require.NotPanics(t, func() { require.Empty(t, c.RouteName()) })
 }
@@ -913,30 +775,26 @@ func Test_Ctx_IsFinal(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/chain", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/chain")
 
 	require.False(t, inGlobalMW)
 	require.False(t, inRouteMW, "a route handler with another after it is not final")
 	require.True(t, inHandler)
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, app)
 	require.False(t, c.IsFinal())
 	require.False(t, c.IsMiddleware())
 }
 
 func Test_Ctx_IsFinal_ScopedToTheRoute(t *testing.T) {
 	t.Parallel()
-
 	terminal := New()
 	var inUse bool
 	terminal.Use(func(c Ctx) error {
 		inUse = c.IsFinal()
 		return c.SendString("done")
 	})
-	_, err := terminal.Test(httptest.NewRequest(MethodGet, "/anything", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, terminal, "/anything")
 	require.False(t, inUse, "a Use route is middleware by registration, whatever its position")
 
 	overlapping := New()
@@ -949,15 +807,13 @@ func Test_Ctx_IsFinal_ScopedToTheRoute(t *testing.T) {
 		inCatchAll = true
 		return nil
 	})
-	_, err = overlapping.Test(httptest.NewRequest(MethodGet, "/specific", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, overlapping, "/specific")
 	require.True(t, inSpecific, "it is the last handler of its own route")
 	require.True(t, inCatchAll, "but another route still matched after it")
 }
 
 func Test_Ctx_MountPath(t *testing.T) {
 	t.Parallel()
-
 	micro := New()
 	var mounted, mountedPath string
 	micro.Get("/doe", func(c Ctx) error {
@@ -974,18 +830,15 @@ func Test_Ctx_MountPath(t *testing.T) {
 	})
 	app.Use("/john", micro)
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", http.NoBody))
-	require.NoError(t, err)
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/top", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/john/doe")
+	apptest.Do(t, app, "/top")
 
 	var standalone string
 	micro.Get("/solo", func(c Ctx) error {
 		standalone = c.MountPath()
 		return nil
 	})
-	_, err = micro.Test(httptest.NewRequest(MethodGet, "/solo", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, micro, "/solo")
 	require.Empty(t, standalone)
 	require.Equal(t, "/john", micro.MountPath(), "App.MountPath still reports the mount")
 
@@ -998,10 +851,7 @@ func Test_Ctx_MountPath(t *testing.T) {
 
 func Test_Ctx_Error(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	err := c.Error(StatusTeapot)
 	var fiberErr *Error
@@ -1021,29 +871,30 @@ func Test_Ctx_Error(t *testing.T) {
 func Test_Ctx_Error_ReachesErrorHandler(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.Error(StatusBadRequest, "id must be numeric")
-	})
+	app.Get("/", func(c Ctx) error { return c.Error(StatusBadRequest, "id must be numeric") })
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusBadRequest, resp.StatusCode)
+	apptest.ExpectBody(t, app, "/", StatusBadRequest, "id must be numeric")
+}
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "id must be numeric", string(body))
+// rootMiscARawHeaderCtx returns a context for a request that keeps the header
+// names exactly as prepare sets them, on an app with DisableHeaderNormalizing.
+// That is the setup in which a lookup has to match a name whatever its case.
+func rootMiscARawHeaderCtx(t *testing.T, prepare func(req *fasthttp.Request)) Ctx {
+	t.Helper()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.DisableNormalizing()
+	prepare(&fctx.Request)
+
+	return apptest.CtxFor(t, New(Config{DisableHeaderNormalizing: true}), fctx)
 }
 
 func Test_Req_HeaderFieldWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-	app := New(Config{DisableHeaderNormalizing: true})
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.DisableNormalizing()
-	fctx.Request.Header.Set("origin", "https://example.com")
-	fctx.Request.Header.Set("authorization", "Bearer abc123")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
+		req.Header.Set("origin", "https://example.com")
+		req.Header.Set("authorization", "Bearer abc123")
+	})
 
 	require.Equal(t, "https://example.com", c.Get(HeaderOrigin))
 	require.Equal(t, "https://example.com", c.Req().Origin())
@@ -1056,14 +907,10 @@ func Test_Req_HeaderFieldWithoutNormalizing(t *testing.T) {
 
 func Test_Req_ConditionalHeadersWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-	app := New(Config{DisableHeaderNormalizing: true})
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.DisableNormalizing()
-	fctx.Request.Header.Set("if-none-match", `"a", W/"b"`)
-	fctx.Request.Header.Set("if-modified-since", "Wed, 21 Oct 2015 07:28:00 GMT")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
+		req.Header.Set("if-none-match", `"a", W/"b"`)
+		req.Header.Set("if-modified-since", "Wed, 21 Oct 2015 07:28:00 GMT")
+	})
 
 	require.Equal(t, []string{`"a"`, `W/"b"`}, c.Req().IfNoneMatch())
 
@@ -1074,15 +921,11 @@ func Test_Req_ConditionalHeadersWithoutNormalizing(t *testing.T) {
 
 func Test_Req_IsPreflightWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-	app := New(Config{DisableHeaderNormalizing: true})
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.DisableNormalizing()
-	fctx.Request.Header.SetMethod(MethodOptions)
-	fctx.Request.Header.Set("origin", "https://example.com")
-	fctx.Request.Header.Set("access-control-request-method", MethodGet)
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
+		req.Header.SetMethod(MethodOptions)
+		req.Header.Set("origin", "https://example.com")
+		req.Header.Set("access-control-request-method", MethodGet)
+	})
 
 	require.True(t, c.Req().IsPreflight())
 }
@@ -1093,8 +936,7 @@ func Test_Res_Del_CaseInsensitive(t *testing.T) {
 
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Response.Header.DisableNormalizing()
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.CtxFor(t, app, fctx)
 
 	c.Response().Header.Set("x-token", "secret")
 	require.Equal(t, "secret", string(c.Response().Header.Peek("x-token")))
@@ -1106,10 +948,7 @@ func Test_Res_Del_CaseInsensitive(t *testing.T) {
 
 func Test_Res_Cookies_UnparsableEntry(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	c.Cookie(&Cookie{Name: "good", Value: "1"})
 	c.Res().Add(HeaderSetCookie, "")
@@ -1128,10 +967,7 @@ func Test_Res_Cookies_UnparsableEntry(t *testing.T) {
 
 func Test_Res_GetCookie_NoAttributes(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.Ctx(t, New())
 
 	c.Res().Add(HeaderSetCookie, "plain=value")
 
@@ -1145,20 +981,13 @@ func Test_Res_GetCookie_NoAttributes(t *testing.T) {
 
 func Test_Ctx_MountPath_NoApp(t *testing.T) {
 	t.Parallel()
-
 	var c DefaultCtx
 	require.NotPanics(t, func() { require.Empty(t, c.MountPath()) })
 }
 
 func Test_Req_HasHeaderWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-	app := New(Config{DisableHeaderNormalizing: true})
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.DisableNormalizing()
-	fctx.Request.Header.Set("x-test", "yes")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) { req.Header.Set("x-test", "yes") })
 
 	require.True(t, c.Req().HasHeader("X-Test"))
 	require.Equal(t, []string{"yes"}, c.Req().GetAll("X-Test"))
@@ -1174,9 +1003,7 @@ func Test_Res_SendStatus_DropsDeclaredContentLength(t *testing.T) {
 			c.Set(HeaderContentLength, "42")
 			return c.SendStatus(status)
 		})
-		app.Get("/bare"+strconv.Itoa(status), func(c Ctx) error {
-			return c.SendStatus(status)
-		})
+		app.Get("/bare"+strconv.Itoa(status), func(c Ctx) error { return c.SendStatus(status) })
 	}
 	app.Get("/nocontent", func(c Ctx) error {
 		c.Set(HeaderContentLength, "42")
@@ -1184,12 +1011,8 @@ func Test_Res_SendStatus_DropsDeclaredContentLength(t *testing.T) {
 	})
 
 	get := func(path string) []string {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-		require.NoError(t, err)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Empty(t, body, path)
+		resp := apptest.Do(t, app, path)
+		require.Empty(t, apptest.BodyBytes(t, resp), path)
 		require.NotContains(t, resp.Header.Values(HeaderContentLength), "42", path)
 		return resp.Header.Values(HeaderContentLength)
 	}
@@ -1204,16 +1027,12 @@ func Test_Res_SendStatus_DropsDeclaredContentLength(t *testing.T) {
 
 func Test_Req_AcceptsWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-	app := New(Config{DisableHeaderNormalizing: true})
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.DisableNormalizing()
-	fctx.Request.Header.Set("accept", "application/json")
-	fctx.Request.Header.Set("accept-charset", "utf-8")
-	fctx.Request.Header.Set("accept-encoding", "gzip")
-	fctx.Request.Header.Set("accept-language", "en-GB")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
+		req.Header.Set("accept", "application/json")
+		req.Header.Set("accept-charset", "utf-8")
+		req.Header.Set("accept-encoding", "gzip")
+		req.Header.Set("accept-language", "en-GB")
+	})
 
 	r := c.Req()
 	require.Equal(t, "gzip", r.AcceptEncoding())
@@ -1231,35 +1050,25 @@ func Test_Req_AcceptsWithoutNormalizing(t *testing.T) {
 
 func Test_Req_FreshWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-	app := New(Config{DisableHeaderNormalizing: true})
-
-	newCtx := func(t *testing.T, set func(h *fasthttp.RequestHeader)) Ctx {
-		t.Helper()
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.Header.DisableNormalizing()
-		fctx.Request.Header.SetMethod(MethodGet)
-		set(&fctx.Request.Header)
-		c := app.AcquireCtx(fctx)
-		t.Cleanup(func() { app.ReleaseCtx(c) })
-		return c
-	}
-
-	c := newCtx(t, func(h *fasthttp.RequestHeader) {
-		h.Set("if-none-match", `"abc"`)
+	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
+		req.Header.SetMethod(MethodGet)
+		req.Header.Set("if-none-match", `"abc"`)
 	})
 	c.Res().Set(HeaderETag, `"abc"`)
 	require.True(t, c.Req().Fresh())
 	require.Equal(t, []string{`"abc"`}, c.Req().IfNoneMatch())
 
-	noCache := newCtx(t, func(h *fasthttp.RequestHeader) {
-		h.Set("if-none-match", `"abc"`)
-		h.Set("cache-control", "no-cache")
+	noCache := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
+		req.Header.SetMethod(MethodGet)
+		req.Header.Set("if-none-match", `"abc"`)
+		req.Header.Set("cache-control", "no-cache")
 	})
 	noCache.Res().Set(HeaderETag, `"abc"`)
 	require.False(t, noCache.Req().Fresh())
 
-	since := newCtx(t, func(h *fasthttp.RequestHeader) {
-		h.Set("if-modified-since", "Wed, 21 Oct 2015 07:28:00 GMT")
+	since := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
+		req.Header.SetMethod(MethodGet)
+		req.Header.Set("if-modified-since", "Wed, 21 Oct 2015 07:28:00 GMT")
 	})
 	since.Res().Set(HeaderLastModified, "Tue, 20 Oct 2015 07:28:00 GMT")
 	require.True(t, since.Req().Fresh())
@@ -1267,15 +1076,12 @@ func Test_Req_FreshWithoutNormalizing(t *testing.T) {
 
 func Test_Req_HeaderFieldSkipsEmptyFirstLine(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.Add("X-Thing", "")
-	fctx.Request.Header.Add("X-Thing", "v2")
-	fctx.Request.Header.Add(HeaderAuthorization, "")
-	fctx.Request.Header.Add(HeaderAuthorization, "Bearer tok")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := ctxReqFor(t, func(req *fasthttp.Request) {
+		req.Header.Add("X-Thing", "")
+		req.Header.Add("X-Thing", "v2")
+		req.Header.Add(HeaderAuthorization, "")
+		req.Header.Add(HeaderAuthorization, "Bearer tok")
+	})
 
 	require.True(t, c.Req().HasHeader("X-Thing"))
 	require.Equal(t, []string{"v2"}, c.Req().GetAll("X-Thing"))
@@ -1285,13 +1091,7 @@ func Test_Req_HeaderFieldSkipsEmptyFirstLine(t *testing.T) {
 
 func Test_Req_GetWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-	app := New(Config{DisableHeaderNormalizing: true})
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.DisableNormalizing()
-	fctx.Request.Header.Set("x-api-key", "k1")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) { req.Header.Set("x-api-key", "k1") })
 
 	require.True(t, c.Req().HasHeader("X-Api-Key"))
 	require.Equal(t, "k1", c.Req().Get("X-Api-Key"))
@@ -1300,37 +1100,29 @@ func Test_Req_GetWithoutNormalizing(t *testing.T) {
 
 func Test_Req_BodyContentEncodingWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-	app := New(Config{DisableHeaderNormalizing: true})
-
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
 	_, err := zw.Write([]byte("hello world"))
 	require.NoError(t, err)
 	require.NoError(t, zw.Close())
 
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.DisableNormalizing()
-	fctx.Request.Header.SetMethod(MethodPost)
-	fctx.Request.Header.Set("content-encoding", "gzip")
-	fctx.Request.SetBody(buf.Bytes())
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
+		req.Header.SetMethod(MethodPost)
+		req.Header.Set("content-encoding", "gzip")
+		req.SetBody(buf.Bytes())
+	})
 
 	require.Equal(t, []byte("hello world"), c.Req().Body())
 }
 
 func Test_Req_UpgradePredicatesWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-	app := New(Config{DisableHeaderNormalizing: true})
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.DisableNormalizing()
-	fctx.Request.Header.Set("connection", "Upgrade")
-	fctx.Request.Header.Set("upgrade", "websocket")
-	fctx.Request.Header.Set("x-requested-with", "XMLHttpRequest")
-	fctx.Request.Header.Set("range", "bytes=0-5")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) {
+		req.Header.Set("connection", "Upgrade")
+		req.Header.Set("upgrade", "websocket")
+		req.Header.Set("x-requested-with", "XMLHttpRequest")
+		req.Header.Set("range", "bytes=0-5")
+	})
 
 	require.True(t, c.Req().IsWebSocket())
 	require.True(t, c.Req().XHR())
@@ -1343,19 +1135,12 @@ func Test_Req_UpgradePredicatesWithoutNormalizing(t *testing.T) {
 
 func Test_Res_FormatWithoutNormalizing(t *testing.T) {
 	t.Parallel()
-	app := New(Config{DisableHeaderNormalizing: true})
+	c := rootMiscARawHeaderCtx(t, func(req *fasthttp.Request) { req.Header.Set("accept", "text/html") })
 
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.DisableNormalizing()
-	fctx.Request.Header.Set("accept", "text/html")
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
-
-	err := c.Res().Format(
+	require.NoError(t, c.Res().Format(
 		ResFmt{MediaType: "application/json", Handler: func(cc Ctx) error { return cc.SendString("json") }},
 		ResFmt{MediaType: "text/html", Handler: func(cc Ctx) error { return cc.SendString("html") }},
-	)
-	require.NoError(t, err)
+	))
 	require.Equal(t, "html", string(c.Response().Body()))
 }
 
@@ -1365,8 +1150,7 @@ func Test_Res_DelKeyCaseWithoutNormalizing(t *testing.T) {
 
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Response.Header.DisableNormalizing()
-	c := app.AcquireCtx(fctx)
-	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c := apptest.CtxFor(t, app, fctx)
 
 	c.Res().Set("X-Token", "secret")
 	c.Res().Del("x-token")
@@ -1375,147 +1159,101 @@ func Test_Res_DelKeyCaseWithoutNormalizing(t *testing.T) {
 
 func Test_Req_Res_AccessorsImmutable(t *testing.T) {
 	t.Parallel()
-
-	scrubHeader := func(field string) func(c Ctx) {
-		return func(c Ctx) {
-			raw := c.Request().Header.Peek(field)
-			for i := range raw {
-				raw[i] = 'X'
-			}
-		}
-	}
-
 	tests := []struct {
-		setup func(c Ctx)
-		read  func(c Ctx) string
-		scrub func(c Ctx)
-		name  string
-		want  string
+		read   func(c Ctx) string
+		name   string
+		header string // the header that holds value
+		value  string // what the accessor reads from header
+		want   string
+		// response selects the response header instead of the request header.
+		response bool
 		// alwaysCopies marks an accessor that builds its own string whatever
 		// Immutable says, so the buffer it was read from cannot be observed.
 		alwaysCopies bool
 	}{
+		{name: "UserAgent", header: HeaderUserAgent, value: "agent-one", want: "agent-one", read: Ctx.UserAgent},
 		{
-			name:  "UserAgent",
-			setup: func(c Ctx) { c.Request().Header.Set(HeaderUserAgent, "agent-one") },
-			read:  func(c Ctx) string { return c.UserAgent() },
-			scrub: scrubHeader(HeaderUserAgent),
-			want:  "agent-one",
+			name: "Referer", header: HeaderReferer, value: "https://ref.example/a", want: "https://ref.example/a",
+			read: Ctx.Referer,
 		},
 		{
-			name:  "Referer",
-			setup: func(c Ctx) { c.Request().Header.Set(HeaderReferer, "https://ref.example/a") },
-			read:  func(c Ctx) string { return c.Referer() },
-			scrub: scrubHeader(HeaderReferer),
-			want:  "https://ref.example/a",
+			name: "Origin", header: HeaderOrigin, value: "https://origin.example", want: "https://origin.example",
+			read: Ctx.Origin,
 		},
 		{
-			name:  "Origin",
-			setup: func(c Ctx) { c.Request().Header.Set(HeaderOrigin, "https://origin.example") },
-			read:  func(c Ctx) string { return c.Origin() },
-			scrub: scrubHeader(HeaderOrigin),
-			want:  "https://origin.example",
+			name: "AcceptLanguage", header: HeaderAcceptLanguage, value: "en-GB,en;q=0.8", want: "en-GB,en;q=0.8",
+			read: Ctx.AcceptLanguage,
 		},
 		{
-			name:  "AcceptLanguage",
-			setup: func(c Ctx) { c.Request().Header.Set(HeaderAcceptLanguage, "en-GB,en;q=0.8") },
-			read:  func(c Ctx) string { return c.AcceptLanguage() },
-			scrub: scrubHeader(HeaderAcceptLanguage),
-			want:  "en-GB,en;q=0.8",
+			name: "AcceptEncoding", header: HeaderAcceptEncoding, value: "gzip, br", want: "gzip, br",
+			read: Ctx.AcceptEncoding,
 		},
 		{
-			name:  "AcceptEncoding",
-			setup: func(c Ctx) { c.Request().Header.Set(HeaderAcceptEncoding, "gzip, br") },
-			read:  func(c Ctx) string { return c.AcceptEncoding() },
-			scrub: scrubHeader(HeaderAcceptEncoding),
-			want:  "gzip, br",
+			name: "ContentType", header: HeaderContentType, value: "text/plain; charset=iso-8859-1", want: "text/plain; charset=iso-8859-1",
+			read: Ctx.ContentType,
 		},
 		{
-			name:  "ContentType",
-			setup: func(c Ctx) { c.Request().Header.Set(HeaderContentType, "text/plain; charset=iso-8859-1") },
-			read:  func(c Ctx) string { return c.ContentType() },
-			scrub: scrubHeader(HeaderContentType),
-			want:  "text/plain; charset=iso-8859-1",
+			name: "MediaType", header: HeaderContentType, value: "text/plain; charset=iso-8859-1", want: "text/plain",
+			read: Ctx.MediaType,
 		},
 		{
-			name:  "MediaType",
-			setup: func(c Ctx) { c.Request().Header.Set(HeaderContentType, "text/plain; charset=iso-8859-1") },
-			read:  func(c Ctx) string { return c.MediaType() },
-			scrub: scrubHeader(HeaderContentType),
-			want:  "text/plain",
+			name: "Charset", header: HeaderContentType, value: "text/plain; charset=iso-8859-1", want: "iso-8859-1",
+			read: Ctx.Charset,
 		},
+		{name: "Bearer", header: HeaderAuthorization, value: "Bearer tok-123", want: "tok-123", read: Ctx.Bearer},
 		{
-			name:  "Charset",
-			setup: func(c Ctx) { c.Request().Header.Set(HeaderContentType, "text/plain; charset=iso-8859-1") },
-			read:  func(c Ctx) string { return c.Charset() },
-			scrub: scrubHeader(HeaderContentType),
-			want:  "iso-8859-1",
-		},
-		{
-			name:  "Bearer",
-			setup: func(c Ctx) { c.Request().Header.Set(HeaderAuthorization, "Bearer tok-123") },
-			read:  func(c Ctx) string { return c.Bearer() },
-			scrub: scrubHeader(HeaderAuthorization),
-			want:  "tok-123",
-		},
-		{
-			name:  "Authorization",
-			setup: func(c Ctx) { c.Request().Header.Set(HeaderAuthorization, "Basic Y3JlZA==") },
+			name: "Authorization", header: HeaderAuthorization, value: "Basic Y3JlZA==", want: "Y3JlZA==",
 			read: func(c Ctx) string {
 				_, credentials := c.Authorization()
 				return credentials
 			},
-			scrub: scrubHeader(HeaderAuthorization),
-			want:  "Y3JlZA==",
 		},
 		{
-			name:  "GetAll",
-			setup: func(c Ctx) { c.Request().Header.Set("X-Multi", "one") },
-			read:  func(c Ctx) string { return strings.Join(c.GetAll("X-Multi"), "|") },
-			scrub: scrubHeader("X-Multi"),
-			want:  "one",
+			name: "GetAll", header: "X-Multi", value: "one", want: "one",
+			read: func(c Ctx) string { return strings.Join(c.GetAll("X-Multi"), "|") },
 		},
 		{
-			name:  "IfNoneMatch",
-			setup: func(c Ctx) { c.Request().Header.Set(HeaderIfNoneMatch, `"v1", "v2"`) },
-			read:  func(c Ctx) string { return c.IfNoneMatch()[0] },
-			scrub: scrubHeader(HeaderIfNoneMatch),
-			want:  `"v1"`,
+			name: "IfNoneMatch", header: HeaderIfNoneMatch, value: `"v1", "v2"`, want: `"v1"`,
+			read: func(c Ctx) string { return c.IfNoneMatch()[0] },
 		},
 		{
-			name:         "AllCookies",
-			setup:        func(c Ctx) { c.Request().Header.Set(HeaderCookie, "sid=abc") },
-			read:         func(c Ctx) string { return c.AllCookies()["sid"] },
-			scrub:        scrubHeader(HeaderCookie),
-			want:         "abc",
-			alwaysCopies: true,
+			name: "AllCookies", header: HeaderCookie, value: "sid=abc", want: "abc", alwaysCopies: true,
+			read: func(c Ctx) string { return c.AllCookies()["sid"] },
 		},
 		{
-			name:  "Res.ContentType",
-			setup: func(c Ctx) { c.Response().Header.Set(HeaderContentType, "application/xml") },
-			read:  func(c Ctx) string { return c.Res().ContentType() },
-			scrub: func(c Ctx) {
-				raw := c.Response().Header.Peek(HeaderContentType)
-				for i := range raw {
-					raw[i] = 'X'
-				}
-			},
-			want: "application/xml",
+			name: "Res.ContentType", header: HeaderContentType, value: "application/xml", want: "application/xml", response: true,
+			read: func(c Ctx) string { return c.Res().ContentType() },
 		},
 	}
 
 	for _, tc := range tests {
+		// header returns the header block that holds the row's value.
+		header := func(c Ctx) interface {
+			Set(key, value string)
+			Peek(key string) []byte
+		} {
+			if tc.response {
+				return &c.Response().Header
+			}
+			return &c.Request().Header
+		}
+		// scrub overwrites the stored value in place.
+		scrub := func(c Ctx) {
+			raw := header(c).Peek(tc.header)
+			for i := range raw {
+				raw[i] = 'X'
+			}
+		}
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			app := New(Config{Immutable: true})
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			tc.setup(c)
+			c := apptest.Ctx(t, New(Config{Immutable: true}))
+			header(c).Set(tc.header, tc.value)
 
 			got := tc.read(c)
 			require.Equal(t, tc.want, got)
 
-			tc.scrub(c)
+			scrub(c)
 			require.Equal(t, tc.want, got, "Immutable must hand back a copy, not a view of the header buffer")
 		})
 
@@ -1525,15 +1263,13 @@ func Test_Req_Res_AccessorsImmutable(t *testing.T) {
 
 		t.Run(tc.name+"/scrubReachesTheBuffer", func(t *testing.T) {
 			t.Parallel()
-
-			app := New()
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			tc.setup(c)
+			c := apptest.Ctx(t, New())
+			header(c).Set(tc.header, tc.value)
 
 			got := tc.read(c)
 			require.Equal(t, tc.want, got)
 
-			tc.scrub(c)
+			scrub(c)
 			require.NotEqual(t, tc.want, got, "without Immutable the value views the header buffer, so this guards the test above against a scrub that reaches nothing")
 		})
 	}

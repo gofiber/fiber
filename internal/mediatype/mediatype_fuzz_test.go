@@ -79,7 +79,6 @@ func FuzzParams(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, ct []byte, stop uint8) {
 		t.Parallel()
-
 		collect := func(seq iter.Seq2[[]byte, []byte]) [][2][]byte {
 			var out [][2][]byte
 			for name, value := range seq {
@@ -121,7 +120,6 @@ func FuzzNormalizeRequestContentType(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, input string) {
 		t.Parallel()
-
 		var h fasthttp.RequestHeader
 		h.SetContentType(input)
 		want := bytes.Clone(h.ContentType())

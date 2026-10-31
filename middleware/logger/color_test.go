@@ -2,17 +2,15 @@ package logger
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
-	"fmt"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/mattn/go-colorable"
 	"github.com/stretchr/testify/require"
 )
@@ -20,73 +18,38 @@ import (
 // The colored default format needs ForceColors to be reachable from a test:
 // writing to anything but os.Stdout switches colors off. Without it the whole
 // fmt.Fprintf branch of defaultLoggerInstance is only touched by benchmarks.
-func Test_Logger_DefaultFormat_StatusColors(t *testing.T) {
+func Test_Logger_DefaultFormat_Colors(t *testing.T) {
 	t.Parallel()
-
 	colors := fiber.DefaultColors
+	// column is a column of the line: text in color, between the separators.
+	column := func(color, text string) string { return "|" + color + text + colors.Reset + "|" }
 
-	cases := []struct {
-		want   string
-		status int
+	for _, tc := range []struct {
+		name   string
+		method string // defaults to GET
+		want   string // the colored column that must appear in the line
+		status int    // defaults to 200
 	}{
-		{colors.Green, fiber.StatusOK},
-		{colors.Blue, fiber.StatusMovedPermanently},
-		{colors.Yellow, fiber.StatusNotFound},
-		{colors.Red, fiber.StatusInternalServerError},
-	}
-
-	for _, tc := range cases {
-		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
+		{name: "status 200", want: column(colors.Green, " 200 ")},
+		{name: "status 301", status: fiber.StatusMovedPermanently, want: column(colors.Blue, " 301 ")},
+		{name: "status 404", status: fiber.StatusNotFound, want: column(colors.Yellow, " 404 ")},
+		{name: "status 500", status: fiber.StatusInternalServerError, want: column(colors.Red, " 500 ")},
+		{name: "method GET", want: column(colors.Cyan, " GET     ")},
+		{name: "method POST", method: fiber.MethodPost, want: column(colors.Green, " POST    ")},
+		{name: "method PUT", method: fiber.MethodPut, want: column(colors.Yellow, " PUT     ")},
+		{name: "method DELETE", method: fiber.MethodDelete, want: column(colors.Red, " DELETE  ")},
+		{name: "method PATCH", method: fiber.MethodPatch, want: column(colors.White, " PATCH   ")},
+		{name: "method HEAD", method: fiber.MethodHead, want: column(colors.Magenta, " HEAD    ")},
+		{name: "method OPTIONS", method: fiber.MethodOptions, want: column(colors.Blue, " OPTIONS ")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			status := cmp.Or(tc.status, fiber.StatusOK)
+			app, buf := loggerTestApp(t, &Config{ForceColors: true})
+			app.All("/", func(c fiber.Ctx) error { return c.SendStatus(status) })
 
-			buf := bytes.NewBuffer(nil)
-			app := fiber.New()
-			app.Use(New(Config{Stream: buf, ForceColors: true}))
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendStatus(tc.status)
-			})
-
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, tc.status, resp.StatusCode)
-			require.Contains(t, buf.String(), "|"+tc.want+fmt.Sprintf(" %3d ", tc.status)+colors.Reset+"|")
-		})
-	}
-}
-
-func Test_Logger_DefaultFormat_MethodColors(t *testing.T) {
-	t.Parallel()
-
-	colors := fiber.DefaultColors
-
-	cases := []struct {
-		method string
-		want   string
-	}{
-		{fiber.MethodGet, colors.Cyan},
-		{fiber.MethodPost, colors.Green},
-		{fiber.MethodPut, colors.Yellow},
-		{fiber.MethodDelete, colors.Red},
-		{fiber.MethodPatch, colors.White},
-		{fiber.MethodHead, colors.Magenta},
-		{fiber.MethodOptions, colors.Blue},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.method, func(t *testing.T) {
-			t.Parallel()
-
-			buf := bytes.NewBuffer(nil)
-			app := fiber.New()
-			app.Use(New(Config{Stream: buf, ForceColors: true}))
-			app.All("/", func(c fiber.Ctx) error {
-				return c.SendString("ok")
-			})
-
-			resp, err := app.Test(httptest.NewRequest(tc.method, "/", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
-			require.Contains(t, buf.String(), "|"+tc.want+fmt.Sprintf(" %-7s ", tc.method)+colors.Reset+"|")
+			apptest.Expect(t, app, apptest.Req(cmp.Or(tc.method, fiber.MethodGet), "/"), status)
+			require.Contains(t, buf.String(), tc.want)
 		})
 	}
 }
@@ -96,19 +59,11 @@ func Test_Logger_DefaultFormat_MethodColors(t *testing.T) {
 // in the error would otherwise forge a second access-log line (#4341).
 func Test_Logger_DefaultFormat_ColoredError(t *testing.T) {
 	t.Parallel()
-
 	colors := fiber.DefaultColors
-	buf := bytes.NewBuffer(nil)
+	app, buf := loggerTestApp(t, &Config{ForceColors: true})
+	app.Get("/", func(fiber.Ctx) error { return errors.New("boom\r\n200 | forged") })
 
-	app := fiber.New()
-	app.Use(New(Config{Stream: buf, ForceColors: true}))
-	app.Get("/", func(fiber.Ctx) error {
-		return errors.New("boom\r\n200 | forged")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
 
 	out := buf.String()
 	require.Contains(t, out, colors.Red+" | boom  200 | forged"+colors.Reset)
@@ -122,41 +77,33 @@ func Test_Logger_DefaultFormat_ColoredError(t *testing.T) {
 // No t.Parallel() here or in the subtests: t.Setenv rejects both, and the env
 // is what is under test. Same as prefork_test.go and middleware/envvar.
 func Test_beforeHandlerFunc_StdoutColorSelection(t *testing.T) {
-	stdoutCfg := func() *Config {
-		return &Config{Stream: os.Stdout, areColorsEnabled: true}
-	}
+	stdoutCfg := func() *Config { return &Config{Stream: os.Stdout, areColorsEnabled: true} }
 	isPlain := func(w io.Writer) bool {
 		_, ok := w.(*colorable.NonColorable)
 		return ok
 	}
 
-	t.Run("NO_COLOR strips colors", func(t *testing.T) {
-		t.Setenv("TERM", "xterm")
-		t.Setenv("NO_COLOR", "1")
+	for _, tc := range []struct {
+		name        string
+		term        string
+		noColor     string
+		forceColors bool
+		wantPlain   bool
+	}{
+		{name: "NO_COLOR strips colors", term: "xterm", noColor: "1", wantPlain: true},
+		{name: "dumb terminal strips colors", term: "dumb", noColor: "", wantPlain: true},
+		{name: "ForceColors overrides both", term: "dumb", noColor: "1", forceColors: true, wantPlain: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TERM", tc.term)
+			t.Setenv("NO_COLOR", tc.noColor)
 
-		cfg := stdoutCfg()
-		beforeHandlerFunc(cfg)
-		require.True(t, isPlain(cfg.Stream))
-	})
-
-	t.Run("dumb terminal strips colors", func(t *testing.T) {
-		t.Setenv("TERM", "dumb")
-		t.Setenv("NO_COLOR", "")
-
-		cfg := stdoutCfg()
-		beforeHandlerFunc(cfg)
-		require.True(t, isPlain(cfg.Stream))
-	})
-
-	t.Run("ForceColors overrides both", func(t *testing.T) {
-		t.Setenv("TERM", "dumb")
-		t.Setenv("NO_COLOR", "1")
-
-		cfg := stdoutCfg()
-		cfg.ForceColors = true
-		beforeHandlerFunc(cfg)
-		require.False(t, isPlain(cfg.Stream))
-	})
+			cfg := stdoutCfg()
+			cfg.ForceColors = tc.forceColors
+			beforeHandlerFunc(cfg)
+			require.Equal(t, tc.wantPlain, isPlain(cfg.Stream))
+		})
+	}
 
 	t.Run("custom stream is left alone", func(t *testing.T) {
 		t.Setenv("NO_COLOR", "1")
@@ -174,7 +121,5 @@ func Test_beforeHandlerFunc_StdoutColorSelection(t *testing.T) {
 		require.Same(t, os.Stdout, cfg.Stream)
 	})
 
-	t.Run("nil config", func(t *testing.T) {
-		require.NotPanics(t, func() { beforeHandlerFunc(nil) })
-	})
+	t.Run("nil config", func(t *testing.T) { require.NotPanics(t, func() { beforeHandlerFunc(nil) }) })
 }

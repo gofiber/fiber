@@ -7,277 +7,196 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_ConstraintMatchConstraint_NilHandler(t *testing.T) {
+func Test_ConstraintMatchConstraint(t *testing.T) {
 	t.Parallel()
+	tests := []struct {
+		constraint *Constraint
+		name       string
+		valid      []string // parameters matchConstraint must accept
+		invalid    []string // parameters matchConstraint must reject
+	}{
+		{
+			name:       "nil handler resolves handler from Name",
+			constraint: &Constraint{Name: ConstraintMinLen, Data: []string{"3"}},
+			valid:      []string{"hello"},
+			invalid:    []string{"hi"},
+		},
+		{
+			name:       "nil handler returns true for unknown constraint name",
+			constraint: &Constraint{Name: "unknownConstraint", Data: []string{"5"}},
+			valid:      []string{"anything"},
+		},
+		{
+			name:       "nil handler resolves datetime handler",
+			constraint: &Constraint{Name: ConstraintDatetime, Data: []string{"2006-01-02"}},
+			valid:      []string{"2024-01-15"},
+			invalid:    []string{"not-a-date"},
+		},
+		{
+			name:       "nil handler with analyzer error",
+			constraint: &Constraint{Name: ConstraintMinLen, Data: []string{"notanumber"}},
+			invalid:    []string{"hello"},
+		},
+		{
+			name: "typed data", constraint: newConstraint(minLenConstraintType{}, ConstraintMinLen, []string{"3"}),
+			valid: []string{"hello"}, invalid: []string{"hi"},
+		},
+	}
 
-	t.Run("resolves handler from Name", func(t *testing.T) {
-		t.Parallel()
-		c := &Constraint{
-			Name: ConstraintMinLen,
-			Data: []string{"3"},
-		}
-		require.True(t, c.matchConstraint("hello"))
-		require.False(t, c.matchConstraint("hi"))
-	})
-
-	t.Run("returns true for unknown constraint name", func(t *testing.T) {
-		t.Parallel()
-		c := &Constraint{
-			Name: "unknownConstraint",
-			Data: []string{"5"},
-		}
-		require.True(t, c.matchConstraint("anything"))
-	})
-
-	t.Run("resolves datetime handler", func(t *testing.T) {
-		t.Parallel()
-		c := &Constraint{
-			Name: ConstraintDatetime,
-			Data: []string{"2006-01-02"},
-		}
-		require.True(t, c.matchConstraint("2024-01-15"))
-		require.False(t, c.matchConstraint("not-a-date"))
-	})
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			for _, param := range tc.valid {
+				require.True(t, tc.constraint.matchConstraint(param), "%q should match", param)
+			}
+			for _, param := range tc.invalid {
+				require.False(t, tc.constraint.matchConstraint(param), "%q should not match", param)
+			}
+		})
+	}
 }
 
-func Test_ConstraintAnalyze_MissingArgs(t *testing.T) {
+func Test_ConstraintAnalyze_Errors(t *testing.T) {
 	t.Parallel()
+	noArgs := []string{}
 
 	testCases := []struct {
 		handler ConstraintAnalyzer
 		name    string
+		args    []string
 	}{
-		{datetimeConstraintType{}, "datetime"},
-		{minLenConstraintType{}, "minLen"},
-		{maxLenConstraintType{}, "maxLen"},
-		{lenConstraintType{}, "len"},
-		{minConstraintType{}, "min"},
-		{maxConstraintType{}, "max"},
-		{regexConstraintType{}, "regex"},
+		{handler: datetimeConstraintType{}, name: "datetime", args: noArgs},
+		{handler: minLenConstraintType{}, name: "minLen", args: noArgs},
+		{handler: maxLenConstraintType{}, name: "maxLen", args: noArgs},
+		{handler: lenConstraintType{}, name: "len", args: noArgs},
+		{handler: minConstraintType{}, name: "min", args: noArgs},
+		{handler: maxConstraintType{}, name: "max", args: noArgs},
+		{handler: regexConstraintType{}, name: "regex", args: noArgs},
+		{handler: betweenLenConstraintType{}, name: "betweenLen missing second arg", args: []string{"1"}},
+		{handler: rangeConstraintType{}, name: "range missing second arg", args: []string{"1"}},
+		{handler: regexConstraintType{}, name: "regex invalid pattern", args: []string{"("}},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := tc.handler.Analyze([]string{})
+			_, err := tc.handler.Analyze(tc.args)
 			require.Error(t, err)
 		})
 	}
 }
 
-func Test_ConstraintAnalyze_BetweenLen(t *testing.T) {
+func Test_ConstraintExecute(t *testing.T) {
 	t.Parallel()
-
-	t.Run("missing second arg", func(t *testing.T) {
-		t.Parallel()
-		_, err := betweenLenConstraintType{}.Analyze([]string{"1"})
-		require.Error(t, err)
-	})
-}
-
-func Test_ConstraintAnalyze_Range(t *testing.T) {
-	t.Parallel()
-
-	t.Run("missing second arg", func(t *testing.T) {
-		t.Parallel()
-		_, err := rangeConstraintType{}.Analyze([]string{"1"})
-		require.Error(t, err)
-	})
-}
-
-func Test_ConstraintAnalyze_Regex(t *testing.T) {
-	t.Parallel()
-
-	t.Run("invalid pattern", func(t *testing.T) {
-		t.Parallel()
-		_, err := regexConstraintType{}.Analyze([]string{"("})
-		require.Error(t, err)
-	})
-}
-
-func Test_ConstraintExecute_IntConstraint(t *testing.T) {
-	t.Parallel()
-
-	handler := intConstraintType{}
-	require.True(t, handler.Execute("42", nil))
-	require.False(t, handler.Execute("abc", nil))
-}
-
-func Test_ConstraintExecute_BoolConstraint(t *testing.T) {
-	t.Parallel()
-
-	handler := boolConstraintType{}
-	require.True(t, handler.Execute("true", nil))
-	require.True(t, handler.Execute("false", nil))
-	require.True(t, handler.Execute("1", nil))
-	require.True(t, handler.Execute("0", nil))
-	require.False(t, handler.Execute("maybe", nil))
-}
-
-func Test_ConstraintExecute_FloatConstraint(t *testing.T) {
-	t.Parallel()
-
-	handler := floatConstraintType{}
-	require.True(t, handler.Execute("3.14", nil))
-	// Values within the float64 range but outside float32 must be accepted.
-	require.True(t, handler.Execute("1e308", nil))
-	require.True(t, handler.Execute("3.5e38", nil))
-	require.True(t, handler.Execute("-1.7976931348623157e308", nil))
-	require.False(t, handler.Execute("abc", nil))
-}
-
-func Test_ConstraintExecute_AlphaConstraint(t *testing.T) {
-	t.Parallel()
-
-	handler := alphaConstraintType{}
-	require.True(t, handler.Execute("hello", nil))
-	require.True(t, handler.Execute("", nil))
-	require.False(t, handler.Execute("hello123", nil))
-
-	// Word-at-a-time fast-path coverage: inputs of exactly one word, more
-	// than one word, and rejections at word and tail positions.
-	require.True(t, handler.Execute("abcdefgh", nil))
-	require.True(t, handler.Execute("AbCdEfGhIjKlMnOpQ", nil))
-	require.False(t, handler.Execute("abcdefg1", nil))
-	require.False(t, handler.Execute("abcdefghijklmnop9", nil))
-	require.False(t, handler.Execute("abcdefgh-jkl", nil))
-
-	// Unicode letters must still be accepted via the rune fallback,
-	// regardless of where the first non-ASCII byte sits.
-	require.True(t, handler.Execute("héllo", nil))
-	require.True(t, handler.Execute("abcdefghé", nil))
-	require.False(t, handler.Execute("héllo1", nil))
-	require.False(t, handler.Execute("abcdefghé1", nil))
-	require.False(t, handler.Execute(string([]byte{0xC3, 0x28}), nil)) // invalid UTF-8
-}
-
-func Test_ConstraintExecute_GuidConstraint(t *testing.T) {
-	t.Parallel()
-
-	handler := guidConstraintType{}
-	require.True(t, handler.Execute("12345678-1234-1234-1234-123456789abc", nil))
-	require.False(t, handler.Execute("not-a-guid", nil))
-}
-
-func Test_ConstraintExecute_DatetimeConstraint_NilData(t *testing.T) {
-	t.Parallel()
-
-	handler := datetimeConstraintType{}
-	require.False(t, handler.Execute("2024-01-15", nil))
-}
-
-func Test_ConstraintExecute_DatetimeConstraint_EmptyLayout(t *testing.T) {
-	t.Parallel()
-
-	handler := datetimeConstraintType{}
-	require.False(t, handler.Execute("2024-01-15", []any{""}))
-}
-
-func Test_ConstraintExecute_MinLenConstraint_NilData(t *testing.T) {
-	t.Parallel()
-
-	handler := minLenConstraintType{}
-	require.False(t, handler.Execute("hello", nil))
-}
-
-func Test_ConstraintExecute_MaxLenConstraint_NilData(t *testing.T) {
-	t.Parallel()
-
-	handler := maxLenConstraintType{}
-	require.False(t, handler.Execute("hello", nil))
-}
-
-func Test_ConstraintExecute_LenConstraint_NilData(t *testing.T) {
-	t.Parallel()
-
-	handler := lenConstraintType{}
-	require.False(t, handler.Execute("hello", nil))
-}
-
-func Test_ConstraintExecute_BetweenLenConstraint_NilData(t *testing.T) {
-	t.Parallel()
-
-	handler := betweenLenConstraintType{}
-	require.False(t, handler.Execute("hello", nil))
-}
-
-func Test_ConstraintExecute_MinConstraint_NilData(t *testing.T) {
-	t.Parallel()
-
-	handler := minConstraintType{}
-	require.False(t, handler.Execute("10", nil))
-}
-
-func Test_ConstraintExecute_MaxConstraint_NilData(t *testing.T) {
-	t.Parallel()
-
-	handler := maxConstraintType{}
-	require.False(t, handler.Execute("10", nil))
-}
-
-func Test_ConstraintExecute_RangeConstraint_NilData(t *testing.T) {
-	t.Parallel()
-
-	handler := rangeConstraintType{}
-	require.False(t, handler.Execute("5", nil))
-}
-
-func Test_ConstraintExecute_RegexConstraint_NilData(t *testing.T) {
-	t.Parallel()
-
-	handler := regexConstraintType{}
-	require.False(t, handler.Execute("hello", nil))
-}
-
-func Test_ConstraintExecute_RegexConstraint_Compiled(t *testing.T) {
-	t.Parallel()
-
 	re := regexp.MustCompile(`^\d+$`)
-	handler := regexConstraintType{}
-	require.True(t, handler.Execute("123", []any{re}))
-	require.False(t, handler.Execute("abc", []any{re}))
-}
 
-func Test_ConstraintMatchConstraint_WithTypedData(t *testing.T) {
-	t.Parallel()
-
-	handler := minLenConstraintType{}
-	c := newConstraint(handler, ConstraintMinLen, []string{"3"})
-	require.True(t, c.matchConstraint("hello"))
-	require.False(t, c.matchConstraint("hi"))
-}
-
-func Test_ConstraintMatchConstraint_NilHandlerWithAnalyzerError(t *testing.T) {
-	t.Parallel()
-
-	c := &Constraint{
-		Name: ConstraintMinLen,
-		Data: []string{"notanumber"},
+	testCases := []struct {
+		handler ConstraintHandler
+		name    string
+		data    []any
+		valid   []string // parameters the constraint must accept
+		invalid []string // parameters the constraint must reject
+	}{
+		{name: "int", handler: intConstraintType{}, valid: []string{"42"}, invalid: []string{"abc"}},
+		{
+			name: "bool", handler: boolConstraintType{}, valid: []string{"true", "false", "1", "0"},
+			invalid: []string{"maybe"},
+		},
+		{
+			name:    "float",
+			handler: floatConstraintType{},
+			// Values within the float64 range but outside float32 must be accepted.
+			valid:   []string{"3.14", "1e308", "3.5e38", "-1.7976931348623157e308"},
+			invalid: []string{"abc"},
+		},
+		{
+			name:    "alpha",
+			handler: alphaConstraintType{},
+			valid: []string{
+				"hello", "",
+				// Word-at-a-time fast-path coverage: inputs of exactly one word
+				// and more than one word.
+				"abcdefgh", "AbCdEfGhIjKlMnOpQ",
+				// Unicode letters must still be accepted via the rune fallback,
+				// regardless of where the first non-ASCII byte sits.
+				"héllo", "abcdefghé",
+			},
+			invalid: []string{
+				"hello123",
+				// Word-at-a-time fast-path coverage: rejections at word and tail
+				// positions.
+				"abcdefg1", "abcdefghijklmnop9", "abcdefgh-jkl",
+				// The rune fallback rejects too.
+				"héllo1", "abcdefghé1",
+				string([]byte{0xC3, 0x28}), // invalid UTF-8
+			},
+		},
+		{
+			name: "guid", handler: guidConstraintType{}, valid: []string{"12345678-1234-1234-1234-123456789abc"},
+			invalid: []string{"not-a-guid"},
+		},
+		{
+			name: "regex compiled", handler: regexConstraintType{}, data: []any{re}, valid: []string{"123"},
+			invalid: []string{"abc"},
+		},
+		// A constraint rejects every parameter when its data is missing or unusable instead of panicking.
+		{name: "datetime nil data", handler: datetimeConstraintType{}, invalid: []string{"2024-01-15"}},
+		{
+			name: "datetime empty layout", handler: datetimeConstraintType{}, data: []any{""},
+			invalid: []string{"2024-01-15"},
+		},
+		{name: "minLen nil data", handler: minLenConstraintType{}, invalid: []string{"hello"}},
+		{name: "maxLen nil data", handler: maxLenConstraintType{}, invalid: []string{"hello"}},
+		{name: "len nil data", handler: lenConstraintType{}, invalid: []string{"hello"}},
+		{name: "betweenLen nil data", handler: betweenLenConstraintType{}, invalid: []string{"hello"}},
+		{name: "min nil data", handler: minConstraintType{}, invalid: []string{"10"}},
+		{name: "max nil data", handler: maxConstraintType{}, invalid: []string{"10"}},
+		{name: "range nil data", handler: rangeConstraintType{}, invalid: []string{"5"}},
+		{name: "regex nil data", handler: regexConstraintType{}, invalid: []string{"hello"}},
 	}
-	require.False(t, c.matchConstraint("hello"))
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			for _, param := range tc.valid {
+				require.True(t, tc.handler.Execute(param, tc.data), "%q should be accepted", param)
+			}
+			for _, param := range tc.invalid {
+				require.False(t, tc.handler.Execute(param, tc.data), "%q should be rejected", param)
+			}
+		})
+	}
 }
 
-func Test_FindConstraintHandler_CustomPriority(t *testing.T) {
+func Test_FindConstraintHandler(t *testing.T) {
 	t.Parallel()
-
-	custom := &testCustomConstraintForCoverage{allowed: "x"}
-	handler := findConstraintHandler("customTest", nil, []CustomConstraint{custom})
-	require.NotNil(t, handler)
-}
-
-func Test_FindConstraintHandler_Builtin(t *testing.T) {
-	t.Parallel()
-
-	handler := findConstraintHandler("int", nil, nil)
-	require.NotNil(t, handler)
-	require.Equal(t, "int", handler.Name())
-}
-
-func Test_FindConstraintHandler_Unknown(t *testing.T) {
-	t.Parallel()
-
-	handler := findConstraintHandler("nonexistent", nil, nil)
-	require.Nil(t, handler)
+	for _, tc := range []struct {
+		name     string
+		lookup   string
+		wantName string // checked when set
+		custom   []CustomConstraint
+		found    bool
+	}{
+		{
+			name: "CustomPriority", lookup: "customTest", found: true,
+			custom: []CustomConstraint{&testCustomConstraintForCoverage{allowed: "x"}},
+		},
+		{name: "Builtin", lookup: "int", wantName: "int", found: true},
+		{name: "Unknown", lookup: "nonexistent"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			handler := findConstraintHandler(tc.lookup, nil, tc.custom)
+			if !tc.found {
+				require.Nil(t, handler)
+				return
+			}
+			require.NotNil(t, handler)
+			if tc.wantName != "" {
+				require.Equal(t, tc.wantName, handler.Name())
+			}
+		})
+	}
 }
 
 type testCustomConstraintForCoverage struct {
@@ -307,7 +226,6 @@ func (t *testCustomConstraintWithAnalyzer) Analyze(args []string) ([]any, error)
 
 func Test_CustomConstraintWrapper_DelegatesAnalyze(t *testing.T) {
 	t.Parallel()
-
 	custom := &testCustomConstraintWithAnalyzer{}
 	handler := findConstraintHandler("customDatetime", nil, []CustomConstraint{custom})
 	require.NotNil(t, handler)
@@ -334,7 +252,6 @@ func (*testCustomConstraintWithTypedAnalyzer) Analyze(args []string) ([]any, err
 
 func Test_CustomConstraintWrapper_ExecuteKeepsLegacyArgsWithAnalyzer(t *testing.T) {
 	t.Parallel()
-
 	custom := &testCustomConstraintWithTypedAnalyzer{}
 	handler := findConstraintHandler("customRole", nil, []CustomConstraint{custom})
 	require.NotNil(t, handler)
@@ -346,7 +263,6 @@ func Test_CustomConstraintWrapper_ExecuteKeepsLegacyArgsWithAnalyzer(t *testing.
 
 func Test_resolveConstraintName_UnicodeFolding(t *testing.T) {
 	t.Parallel()
-
 	// Aliases fold with full Unicode simple case mapping, so locale-style
 	// uppercase such as the Turkish dotted capital I still canonicalizes;
 	// switching to an ASCII-only fold silently drops these constraints.
