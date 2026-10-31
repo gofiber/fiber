@@ -1396,7 +1396,7 @@ func routerBenchRoute(pattern, path string) *Route {
 //
 //nolint:thelper // b.Helper() is the cost being avoided
 func acquireDefaultCtxForRouterBenchmark(b *testing.B, app *App, fctx *fasthttp.RequestCtx) *DefaultCtx {
-	ctx := apptest.CtxFor(b, app, fctx)
+	ctx := app.AcquireCtx(fctx)
 	defaultCtx, ok := ctx.(*DefaultCtx)
 	if !ok {
 		b.Fatal("AcquireCtx did not return *DefaultCtx")
