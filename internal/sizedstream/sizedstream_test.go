@@ -68,7 +68,6 @@ func Test_Read(t *testing.T) {
 
 func Test_Read_DoesNotDrainALongerStream(t *testing.T) {
 	t.Parallel()
-
 	// No WriteTo, so the stream is pulled through a copy buffer rather than written whole.
 	stream := strings.NewReader(strings.Repeat("x", 1<<20))
 	var resp fasthttp.Response

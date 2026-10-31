@@ -253,7 +253,6 @@ func Test_HasForgedEscape(t *testing.T) {
 
 func Test_SurvivesNormalization(t *testing.T) {
 	t.Parallel()
-
 	// An escape of a byte fasthttp escapes again when it writes the path
 	// comes out as it went in, whatever the case of its hex digits.
 	for _, target := range []string{

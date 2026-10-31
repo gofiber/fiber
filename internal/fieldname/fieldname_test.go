@@ -29,6 +29,29 @@ func readRequestHeader(tb testing.TB, raw string, canonical bool) *fasthttp.Requ
 	return h
 }
 
+// readRequest parses raw, trailer section included, into a request that normalizes header names if canonical.
+//
+//nolint:revive // flag-parameter: canonical is a property of the header store
+func readRequest(tb testing.TB, raw string, canonical bool) *fasthttp.Request {
+	tb.Helper()
+
+	req := &fasthttp.Request{}
+	if !canonical {
+		req.Header.DisableNormalizing()
+	}
+	require.NoError(tb, req.Read(bufio.NewReader(strings.NewReader(raw))))
+	return req
+}
+
+// lineValues converts header lines to strings, nil where there are none.
+func lineValues(lines [][]byte) []string {
+	var out []string
+	for _, line := range lines {
+		out = append(out, string(line))
+	}
+	return out
+}
+
 // Test_First_EmptyLineIsNotNil pins the fasthttp behavior First's fast path
 // rests on: Peek answers nil for a field that is absent and a non-nil empty
 // slice for one that is present and empty. First skips its second walk on the
@@ -118,18 +141,10 @@ func Test_First_Lines_SkipTrailerSection(t *testing.T) {
 		for _, canonical := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s canonical=%v", tc.name, canonical), func(t *testing.T) {
 				t.Parallel()
-				req := &fasthttp.Request{}
-				if !canonical {
-					req.Header.DisableNormalizing()
-				}
-				require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(tc.raw))))
+				req := readRequest(t, tc.raw, canonical)
 
 				require.Equal(t, tc.wantFirst, string(First(&req.Header, "X-User", canonical)))
-				var lines []string
-				for _, line := range Lines(&req.Header, "X-User", canonical) {
-					lines = append(lines, string(line))
-				}
-				require.Equal(t, tc.wantLines, lines)
+				require.Equal(t, tc.wantLines, lineValues(Lines(&req.Header, "X-User", canonical)))
 			})
 		}
 	}
@@ -193,22 +208,14 @@ func Test_DropTrailers(t *testing.T) {
 		for _, canonical := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s canonical=%v", tc.name, canonical), func(t *testing.T) {
 				t.Parallel()
-				req := &fasthttp.Request{}
-				if !canonical {
-					req.Header.DisableNormalizing()
-				}
-				require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(tc.raw))))
+				req := readRequest(t, tc.raw, canonical)
 
 				require.True(t, DropTrailers(&req.Header))
 
 				require.Empty(t, req.Header.PeekTrailerKeys())
 				require.Empty(t, req.Header.Peek(fasthttp.HeaderTrailer))
 				require.Equal(t, tc.wantUA, string(req.Header.UserAgent()))
-				var lines []string
-				for _, line := range req.Header.PeekAll("X-User") {
-					lines = append(lines, string(line))
-				}
-				require.Equal(t, tc.wantLines, lines)
+				require.Equal(t, tc.wantLines, lineValues(req.Header.PeekAll("X-User")))
 
 				req.Header.Set("X-User", "app")
 				require.Equal(t, "app", string(First(&req.Header, "X-User", canonical)))
@@ -222,9 +229,7 @@ func Test_DropTrailers(t *testing.T) {
 		for i := range MaxTrailers + 1 {
 			fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
 		}
-		req := &fasthttp.Request{}
-		raw := post + "X-0: header\r\n" + chunked + trailers.String() + "\r\n"
-		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+		req := readRequest(t, post+"X-0: header\r\n"+chunked+trailers.String()+"\r\n", true)
 		before := req.Header.String()
 
 		require.False(t, DropTrailers(&req.Header))
@@ -245,19 +250,12 @@ func Test_ClearTrailers(t *testing.T) {
 		for _, canonical := range []bool{true, false} {
 			t.Run(fmt.Sprintf("names=%d canonical=%v", names, canonical), func(t *testing.T) {
 				t.Parallel()
-				read := func(trailer string) *fasthttp.Request {
-					req := &fasthttp.Request{}
-					if !canonical {
-						req.Header.DisableNormalizing()
-					}
-					require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(head+trailer+"\r\n"))))
-					return req
-				}
 				var extra strings.Builder
 				for i := range names - 2 {
 					fmt.Fprintf(&extra, "X-T%d: v\r\n", i)
 				}
-				req, want := read("X-Role: x\r\nX-Evil: x\r\n"+extra.String()), read("")
+				req := readRequest(t, head+"X-Role: x\r\nX-Evil: x\r\n"+extra.String()+"\r\n", canonical)
+				want := readRequest(t, head+"\r\n", canonical)
 				require.Len(t, req.Header.PeekTrailerKeys(), names)
 				raw := string(req.Header.RawHeaders())
 
@@ -265,10 +263,7 @@ func Test_ClearTrailers(t *testing.T) {
 				for _, name := range []string{"X-Role", "X-Evil", "X-Forwarded-For", "X-After"} {
 					aliased = append(aliased, req.Header.PeekAll(name)...)
 				}
-				var held []string
-				for _, v := range aliased {
-					held = append(held, string(v))
-				}
+				held := lineValues(aliased)
 
 				require.Equal(t, names <= MaxTrailers, ClearTrailers(req))
 				require.Equal(t, -1, req.Header.ContentLength())
@@ -295,11 +290,7 @@ func Test_KeepReceivedOrder(t *testing.T) {
 	t.Parallel()
 	forwarding := func(name []byte) bool { return bytes.HasPrefix(bytes.ToLower(name), []byte("x-forwarded-")) }
 	lines := func(h *fasthttp.RequestHeader, name string, canonical bool) []string {
-		var values []string
-		for _, v := range Lines(h, name, canonical) {
-			values = append(values, string(v))
-		}
-		return values
+		return lineValues(Lines(h, name, canonical))
 	}
 
 	for _, canonical := range []bool{true, false} {

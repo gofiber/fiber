@@ -1,6 +1,7 @@
 package crosshost
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/gofiber/fiber/v3/internal/fieldname"
@@ -30,7 +31,6 @@ func Test_NewHeaderNames(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			// Equal tells nil from empty.
 			require.Equal(t, tt.want, NewHeaderNames(tt.in).List())
 		})
@@ -83,61 +83,49 @@ func Test_HeaderNames_Join(t *testing.T) {
 	})
 }
 
-func headerWithSensitiveAndOthers() *fasthttp.RequestHeader {
-	h := &fasthttp.RequestHeader{}
-	for _, name := range SensitiveHeaders {
-		h.Set(name, "k=v")
-	}
-	h.Set("X-Api-Key", "key")
-	h.Set("X-Auth-Token", "tok")
-	h.Set(fasthttp.HeaderAccept, "*/*")
-	return h
-}
-
 func Test_Strip(t *testing.T) {
 	t.Parallel()
-	t.Run("built-in set", func(t *testing.T) {
-		t.Parallel()
-		h := headerWithSensitiveAndOthers()
-		for _, name := range SensitiveHeaders {
-			require.NotEmpty(t, fieldname.Lines(h, name, false), name)
-		}
+	for _, tc := range []struct {
+		name  string
+		extra []string
+		gone  []string // of X-Api-Key and X-Auth-Token, the ones the extra names remove
+	}{
+		{name: "built-in set"},
+		{
+			// Repeated, and already built in.
+			name: "built-in set and extra names", extra: []string{"authorization", "X-Api-Key", "X-Api-Key"},
+			gone: []string{"X-Api-Key"},
+		},
+		{
+			name: "every extra name, whatever its case", extra: []string{"x-API-key", "X-AUTH-token"},
+			gone: []string{"X-Api-Key", "X-Auth-Token"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := &fasthttp.RequestHeader{}
+			for _, name := range SensitiveHeaders {
+				h.Set(name, "k=v")
+			}
+			h.Set("X-Api-Key", "key")
+			h.Set("X-Auth-Token", "tok")
+			h.Set(fasthttp.HeaderAccept, "*/*")
+			for _, name := range SensitiveHeaders {
+				require.NotEmpty(t, fieldname.Lines(h, name, false), name)
+			}
 
-		Strip(h, HeaderNames{})
+			Strip(h, NewHeaderNames(tc.extra))
 
-		for _, name := range SensitiveHeaders {
-			require.Empty(t, fieldname.Lines(h, name, false), name)
-		}
-		require.Len(t, fieldname.Lines(h, "X-Api-Key", false), 1)
-		require.Len(t, fieldname.Lines(h, "X-Auth-Token", false), 1)
-		require.Len(t, fieldname.Lines(h, fasthttp.HeaderAccept, false), 1)
-	})
-
-	t.Run("built-in set and extra names", func(t *testing.T) {
-		t.Parallel()
-		h := headerWithSensitiveAndOthers()
-
-		// Repeated, and already built in.
-		Strip(h, NewHeaderNames([]string{"authorization", "X-Api-Key", "X-Api-Key"}))
-
-		for _, name := range SensitiveHeaders {
-			require.Empty(t, fieldname.Lines(h, name, false), name)
-		}
-		require.Empty(t, fieldname.Lines(h, "X-Api-Key", false))
-		require.Len(t, fieldname.Lines(h, "X-Auth-Token", false), 1)
-		require.Len(t, fieldname.Lines(h, fasthttp.HeaderAccept, false), 1)
-	})
-
-	t.Run("every extra name, whatever its case", func(t *testing.T) {
-		t.Parallel()
-		h := headerWithSensitiveAndOthers()
-
-		Strip(h, NewHeaderNames([]string{"x-API-key", "X-AUTH-token"}))
-
-		require.Empty(t, fieldname.Lines(h, "X-Api-Key", false))
-		require.Empty(t, fieldname.Lines(h, "X-Auth-Token", false))
-		require.Len(t, fieldname.Lines(h, fasthttp.HeaderAccept, false), 1)
-	})
+			for _, name := range slices.Concat(SensitiveHeaders, tc.gone) {
+				require.Empty(t, fieldname.Lines(h, name, false), name)
+			}
+			for _, name := range []string{"X-Api-Key", "X-Auth-Token", fasthttp.HeaderAccept} {
+				if !slices.Contains(tc.gone, name) {
+					require.Len(t, fieldname.Lines(h, name, false), 1, name)
+				}
+			}
+		})
+	}
 
 	t.Run("whatever case they are stored under", func(t *testing.T) {
 		t.Parallel()

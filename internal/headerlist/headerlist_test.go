@@ -10,11 +10,7 @@ import (
 
 func Test_NextPrev(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name string
-		list string
-		want []string
-	}{
+	for _, tc := range []yieldCase{
 		{name: "empty", list: "", want: []string{""}},
 		{name: "single", list: "203.0.113.50", want: []string{"203.0.113.50"}},
 		{name: "empty elements", list: ",a,,,b,", want: []string{"", "a", "", "", "b", ""}},
@@ -187,7 +183,7 @@ func collect(seq func(func(string) bool)) []string {
 	return got
 }
 
-// yieldCase is a list value and the elements an iterator must yield for it.
+// yieldCase is a list value and the elements an iterator must yield for it, or Next and Prev step over.
 type yieldCase struct {
 	name string
 	list string

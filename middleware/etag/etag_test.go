@@ -26,6 +26,23 @@ func etagTestHello(c fiber.Ctx) error {
 	return c.SendString("Hello, World!")
 }
 
+// etagTestApp returns an app that serves handler at GET / behind New(cfg).
+func etagTestApp(handler fiber.Handler, cfg ...Config) *fiber.App {
+	app := fiber.New()
+	app.Use(New(cfg...))
+	app.Get("/", handler)
+	return app
+}
+
+// etagTestServe sends GET / through the fasthttp handler of app, which keeps a streamed response a stream.
+func etagTestServe(app *fiber.App) *fasthttp.RequestCtx {
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI("/")
+	app.Handler()(fctx)
+	return fctx
+}
+
 func Test_ETag_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -36,9 +53,7 @@ func Test_ETag_Next(t *testing.T) {
 
 func Test_ETag_SSE(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New())
-	app.Get("/", func(c fiber.Ctx) error {
+	app := etagTestApp(func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderContentType, fiber.MIMETextEventStream)
 		return c.SendString("data: hello\n\n")
 	})
@@ -58,67 +73,41 @@ func (s *failOnReadStream) Read(_ []byte) (int, error) {
 	return 0, errors.New("stream should not be read")
 }
 
-// A real SSE stream must pass through untouched: hashing the body would
-// materialize the stream and break real-time delivery. The middleware must add
-// no ETag and leave the response a stream. The content type carries a charset
-// param to exercise the media-type strip in isEventStream.
-func Test_ETag_SSE_Stream(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(New())
-
-	stream := &failOnReadStream{}
-	app.Get("/", func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderContentType, fiber.MIMETextEventStream+"; charset=utf-8")
-		c.Status(fiber.StatusOK)
-		c.Response().SetBodyStream(stream, -1)
-		return nil
-	})
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(fiber.MethodGet)
-	fctx.Request.SetRequestURI("/")
-	app.Handler()(fctx)
-
-	require.True(t, fctx.Response.IsBodyStream())
-	require.Zero(t, stream.readCalls)
-	require.Empty(t, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
-}
-
 // A stream of unknown length may never end, so hashing it would hold it; a sized one is still hashed.
 func Test_ETag_StreamOfUnknownLength(t *testing.T) {
 	t.Parallel()
-	for name, size := range map[string]int{"unknown length": -1, "declared length": 5} {
+	for name, contentType := range map[string]string{
+		"unknown length": "",
+		// A real SSE stream must pass through untouched too: hashing the body would materialize the stream and break
+		// real-time delivery. The charset exercises the media-type strip in isEventStream.
+		"event stream": fiber.MIMETextEventStream + "; charset=utf-8",
+	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			app := fiber.New()
-			app.Use(New())
-
 			stream := &failOnReadStream{}
-			app.Get("/", func(c fiber.Ctx) error {
-				if size < 0 {
-					c.Response().SetBodyStream(stream, size)
-				} else {
-					c.Response().SetBodyStream(bytes.NewReader([]byte("hello")), size)
+			fctx := etagTestServe(etagTestApp(func(c fiber.Ctx) error {
+				if contentType != "" {
+					c.Set(fiber.HeaderContentType, contentType)
 				}
+				c.Response().SetBodyStream(stream, -1)
 				return nil
-			})
+			}))
 
-			fctx := &fasthttp.RequestCtx{}
-			fctx.Request.Header.SetMethod(fiber.MethodGet)
-			fctx.Request.SetRequestURI("/")
-			app.Handler()(fctx)
-
-			etag := string(fctx.Response.Header.Peek(fiber.HeaderETag))
-			if size < 0 {
-				require.True(t, fctx.Response.IsBodyStream())
-				require.Zero(t, stream.readCalls)
-				require.Empty(t, etag)
-				return
-			}
-			require.Equal(t, string(Generate([]byte("hello"))), etag)
+			require.True(t, fctx.Response.IsBodyStream())
+			require.Zero(t, stream.readCalls)
+			require.Empty(t, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
 		})
 	}
+
+	t.Run("declared length", func(t *testing.T) {
+		t.Parallel()
+		fctx := etagTestServe(etagTestApp(func(c fiber.Ctx) error {
+			c.Response().SetBodyStream(bytes.NewReader([]byte("hello")), 5)
+			return nil
+		}))
+
+		require.Equal(t, string(Generate([]byte("hello"))), string(fctx.Response.Header.Peek(fiber.HeaderETag)))
+	})
 }
 
 // Body keeps a read error as the body, and an outer cache would store it under this ETag.
@@ -141,16 +130,9 @@ func Test_ETag_SizedStreamIsTaggedOnlyWhole(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			app := fiber.New()
-			app.Use(New())
-
 			var read strings.Builder
-			app.Get("/", func(c fiber.Ctx) error { return c.SendStream(io.TeeReader(tc.stream(), &read), 10) })
-
-			fctx := &fasthttp.RequestCtx{}
-			fctx.Request.Header.SetMethod(fiber.MethodGet)
-			fctx.Request.SetRequestURI("/")
-			app.Handler()(fctx)
+			app := etagTestApp(func(c fiber.Ctx) error { return c.SendStream(io.TeeReader(tc.stream(), &read), 10) })
+			fctx := etagTestServe(app)
 
 			require.Empty(t, fctx.Response.Header.Peek(fiber.HeaderETag))
 			require.True(t, fctx.Response.IsBodyStream())
@@ -175,11 +157,7 @@ func Test_ETag_PassThrough(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := fiber.New()
-			app.Use(New())
-			app.Get("/", tc.handler)
-
-			apptest.Expect(t, app, "/", tc.status)
+			apptest.Expect(t, etagTestApp(tc.handler), "/", tc.status)
 		})
 	}
 }
@@ -223,9 +201,7 @@ func Test_ETag_ConditionalGet(t *testing.T) {
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-					app := fiber.New()
-					app.Use(New(variant.cfg...))
-					app.Get("/", variant.handler)
+					app := etagTestApp(variant.handler, variant.cfg...)
 
 					ifNoneMatch := apptest.WithHeaderIf(fiber.HeaderIfNoneMatch, tc.ifNoneMatch)
 					req := apptest.Req(fiber.MethodGet, "/", ifNoneMatch)
@@ -260,10 +236,7 @@ func Test_ETag_CustomEtagPut(t *testing.T) {
 }
 
 func Benchmark_Etag(b *testing.B) {
-	app := fiber.New()
-	app.Use(New())
-	app.Get("/", etagTestHello)
-	h := app.Handler()
+	h := etagTestApp(etagTestHello).Handler()
 
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
@@ -299,9 +272,7 @@ func Test_ETag_WeakComparison(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := fiber.New()
-			app.Use(New(Config{Weak: tc.weak}))
-			app.Get("/", etagTestHello)
+			app := etagTestApp(etagTestHello, Config{Weak: tc.weak})
 
 			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderIfNoneMatch, tc.ifNoneMatch))
 			resp := apptest.Expect(t, app, req, tc.expectedStatus)
@@ -358,9 +329,7 @@ func Test_ETag_IfNoneMatchOnlyForGetHead(t *testing.T) {
 
 func Test_ETag_SplitIfNoneMatch(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New())
-	app.Get("/", etagTestHello)
+	app := etagTestApp(etagTestHello)
 
 	resp := apptest.Do(t, app, "/")
 	generated := resp.Header.Get(fiber.HeaderETag)

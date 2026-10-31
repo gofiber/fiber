@@ -187,13 +187,13 @@ func Test_CORS_ResponsesAreSafeToCache(t *testing.T) {
 	requests := []struct {
 		name    string
 		method  string
-		headers [][2]string // the stored request lacks the last one
+		headers []string // besides Origin, which the stored request lacks
 	}{
-		{name: "simple request", method: fiber.MethodGet, headers: [][2]string{{fiber.HeaderOrigin, origin}}},
-		{name: "preflight after OPTIONS without Origin", method: fiber.MethodOptions, headers: [][2]string{
-			{fiber.HeaderAccessControlRequestMethod, fiber.MethodPut},
-			{fiber.HeaderOrigin, origin},
-		}},
+		{name: "simple request", method: fiber.MethodGet},
+		{
+			name: "preflight after OPTIONS without Origin", method: fiber.MethodOptions,
+			headers: []string{fiber.HeaderAccessControlRequestMethod, fiber.MethodPut},
+		},
 	}
 
 	for _, cfg := range configs {
@@ -205,27 +205,15 @@ func Test_CORS_ResponsesAreSafeToCache(t *testing.T) {
 				app.All("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 				handler := app.Handler()
 
-				do := func(headers [][2]string) *fasthttp.RequestCtx {
-					ctx := &fasthttp.RequestCtx{}
-					ctx.Request.SetRequestURI("/")
-					ctx.Request.Header.SetMethod(req.method)
-					for _, h := range headers {
-						ctx.Request.Header.Set(h[0], h[1])
-					}
-					handler(ctx)
-					return ctx
-				}
+				stored := corsTestRequest(handler, req.method, "", req.headers...)
+				later := corsTestRequest(handler, req.method, origin, req.headers...)
 
-				last := len(req.headers) - 1
-				stored := do(req.headers[:last])
-				later := do(req.headers)
-
-				require.NotEmpty(t, string(later.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
-				if slices.Contains(strings.Split(string(stored.Response.Header.Peek(fiber.HeaderVary)), ", "), req.headers[last][0]) {
+				require.NotEmpty(t, corsTestAllowOrigin(later))
+				if slices.Contains(strings.Split(corsTestHeader(stored, fiber.HeaderVary), ", "), fiber.HeaderOrigin) {
 					return
 				}
 				for _, name := range corsHeaders {
-					require.Equal(t, string(later.Response.Header.Peek(name)), string(stored.Response.Header.Peek(name)), name)
+					require.Equal(t, corsTestHeader(later, name), corsTestHeader(stored, name), name)
 				}
 			})
 		}

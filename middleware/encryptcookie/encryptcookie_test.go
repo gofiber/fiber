@@ -636,73 +636,59 @@ func Test_Middleware_Encrypts_Every_SetCookie_Line(t *testing.T) {
 	testKey := GenerateKey(32)
 
 	type line struct{ value, attributes string }
-	testCases := []struct {
-		write func(c fiber.Ctx)
-		name  string
-		cname string
-		want  []line
+	for _, tc := range []struct {
+		cookie *fiber.Cookie // set first, as c.Cookie writes it
+		name   string
+		add    string // a Set-Cookie line added as it is
+		cname  string
+		want   []line
 	}{
 		{
-			name: "one name at two paths",
-			write: func(c fiber.Ctx) {
-				c.Cookie(&fiber.Cookie{Name: "token", Path: "/app", MaxAge: -1})
-				c.Add(fiber.HeaderSetCookie, "token=SomeThing; Path=/; HttpOnly")
-			},
-			cname: "token",
-			want:  []line{{"", "; max-age=0; path=/app; SameSite=Lax"}, {"SomeThing", "; Path=/; HttpOnly"}},
+			name:   "one name at two paths",
+			cookie: &fiber.Cookie{Name: "token", Path: "/app", MaxAge: -1},
+			add:    "token=SomeThing; Path=/; HttpOnly",
+			cname:  "token",
+			want:   []line{{"", "; max-age=0; path=/app; SameSite=Lax"}, {"SomeThing", "; Path=/; HttpOnly"}},
 		},
 		{
 			name:  "a quoted value with a backslash",
-			write: func(c fiber.Ctx) { c.Add(fiber.HeaderSetCookie, `token="Some\054Thing"; HttpOnly`) },
+			add:   `token="Some\054Thing"; HttpOnly`,
 			cname: "token",
 			want:  []line{{`Some\054Thing`, "; HttpOnly"}},
 		},
 		{
-			name: "a percent-encoded path",
-			write: func(c fiber.Ctx) {
-				c.Cookie(&fiber.Cookie{Name: "token", Value: "SomeThing", Path: "/caf%C3%A9", HTTPOnly: true, Secure: true})
-			},
-			cname: "token",
-			want:  []line{{"SomeThing", "; path=/café; HttpOnly; secure; SameSite=Lax"}},
+			name:   "a percent-encoded path",
+			cookie: &fiber.Cookie{Name: "token", Value: "SomeThing", Path: "/caf%C3%A9", HTTPOnly: true, Secure: true},
+			cname:  "token",
+			want:   []line{{"SomeThing", "; path=/café; HttpOnly; secure; SameSite=Lax"}},
 		},
 		{
 			name:  "an attribute fasthttp does not know",
-			write: func(c fiber.Ctx) { c.Add(fiber.HeaderSetCookie, "token=SomeThing; Path=/; Priority=High") },
+			add:   "token=SomeThing; Path=/; Priority=High",
 			cname: "token",
 			want:  []line{{"SomeThing", "; Path=/; Priority=High"}},
 		},
 		{
 			name:  "spaces around name and value",
-			write: func(c fiber.Ctx) { c.Add(fiber.HeaderSetCookie, "token = SomeThing ; Path=/") },
+			add:   "token = SomeThing ; Path=/",
 			cname: "token",
 			want:  []line{{"SomeThing", "; Path=/"}},
 		},
-		{
-			name:  "a value with no name",
-			write: func(c fiber.Ctx) { c.Add(fiber.HeaderSetCookie, "SomeThing; Path=/") },
-			cname: "",
-			want:  []line{{"SomeThing", "; Path=/"}},
-		},
-	}
-
-	for _, tc := range testCases {
+		{name: "a value with no name", add: "SomeThing; Path=/", want: []line{{"SomeThing", "; Path=/"}}},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := fiber.New()
-			app.Use(New(Config{Key: testKey}))
-			app.Get("/", func(c fiber.Ctx) error {
-				tc.write(c)
+			app := newApp(Config{Key: testKey}, func(c fiber.Ctx) error {
+				if tc.cookie != nil {
+					c.Cookie(tc.cookie)
+				}
+				if tc.add != "" {
+					c.Add(fiber.HeaderSetCookie, tc.add)
+				}
 				return nil
 			})
 
-			ctx := &fasthttp.RequestCtx{}
-			ctx.Request.Header.SetMethod(fiber.MethodGet)
-			app.Handler()(ctx)
-
-			var lines []string
-			for _, l := range ctx.Response.Header.Cookies() {
-				lines = append(lines, string(l))
-			}
+			lines := apptest.Expect(t, app, "/", fiber.StatusOK).Header.Values(fiber.HeaderSetCookie)
 			require.Len(t, lines, len(tc.want))
 
 			for i, l := range lines {
@@ -723,8 +709,7 @@ func Test_Middleware_EncryptionError_Removes_Every_SetCookie_Line(t *testing.T) 
 	t.Parallel()
 	expected := errors.New("encrypt failed")
 
-	app := fiber.New()
-	app.Use(New(Config{
+	app := newApp(Config{
 		Key:    GenerateKey(32),
 		Except: []string{"plain"},
 		Encryptor: func(_, value, _ string) (string, error) {
@@ -733,8 +718,7 @@ func Test_Middleware_EncryptionError_Removes_Every_SetCookie_Line(t *testing.T) 
 			}
 			return "encrypted", nil
 		},
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
+	}, func(c fiber.Ctx) error {
 		c.Add(fiber.HeaderSetCookie, "plain=one; Path=/a")
 		c.Add(fiber.HeaderSetCookie, "token=first; Path=/a")
 		c.Add(fiber.HeaderSetCookie, "token=second; Path=/b")
@@ -753,8 +737,7 @@ func Test_Middleware_Request_Cookies_Linear(t *testing.T) {
 	errRefused := errors.New("refused")
 
 	// A cheap Decryptor leaves the middleware's own bookkeeping as the cost
-	app := fiber.New()
-	app.Use(New(Config{
+	h := newApp(Config{
 		Key:    GenerateKey(32),
 		Except: []string{"plain"},
 		Decryptor: func(name, value, _ string) (string, error) {
@@ -763,9 +746,7 @@ func Test_Middleware_Request_Cookies_Linear(t *testing.T) {
 			}
 			return "", errRefused
 		},
-	}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Cookies("plain") + "|" + c.Cookies("token")) })
-	h := app.Handler()
+	}, func(c fiber.Ctx) error { return c.SendString(c.Cookies("plain") + "|" + c.Cookies("token")) }).Handler()
 
 	parts := make([]string, n)
 	for i := range parts {
@@ -806,10 +787,7 @@ func Test_Middleware_Request_Cookies_Linear(t *testing.T) {
 }
 
 func Benchmark_Middleware_Request_Cookies_Refused(b *testing.B) {
-	app := fiber.New()
-	app.Use(New(Config{Key: GenerateKey(32)}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + c.Cookies("test")) })
-	h := app.Handler()
+	h := roundTripApp(Config{Key: GenerateKey(32)}).Handler()
 
 	// 1000 distinct names that do not decrypt fit the default 8 KB ReadBufferSize
 	parts := make([]string, 1000)
@@ -830,12 +808,10 @@ func Benchmark_Middleware_Request_Cookies_Refused(b *testing.B) {
 
 func Test_Middleware_LeavesTimedOutResponse(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Key: GenerateKey(32)}))
 	ctxCh := make(chan fiber.Ctx, 1)
 	release := make(chan struct{})
 	defer close(release)
-	app.Get("/", timeout.New(func(c fiber.Ctx) error {
+	app := newApp(Config{Key: GenerateKey(32)}, timeout.New(func(c fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{Name: "late", Value: "plain"})
 		<-c.Context().Done()
 		ctxCh <- c

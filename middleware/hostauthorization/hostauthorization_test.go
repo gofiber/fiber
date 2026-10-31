@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
@@ -133,12 +134,11 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 // Not parallel: AllocsPerRun counts allocations process-wide and refuses to run
 // under a parallel test.
 func Test_ParseNormalizedAuthority_LongUnicodeHostNotConverted(t *testing.T) {
-	var label strings.Builder
-	for r := rune(0x4E00); label.Len() < 8000; r++ {
-		_, err := label.WriteRune(r)
-		require.NoError(t, err)
+	var label []byte
+	for r := rune(0x4E00); len(label) < 8000; r++ {
+		label = utf8.AppendRune(label, r)
 	}
-	host := label.String()
+	host := string(label)
 
 	require.Zero(t, testing.AllocsPerRun(10, func() {
 		_, ok := parseNormalizedAuthority(host)

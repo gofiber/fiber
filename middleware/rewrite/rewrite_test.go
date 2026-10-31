@@ -2,9 +2,7 @@ package rewrite
 
 import (
 	"bufio"
-	"context"
 	"fmt"
-	"net/http"
 	"strings"
 	"testing"
 
@@ -180,16 +178,20 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 	}
 }
 
+// rewriteTestEchoApp returns an app that runs the middleware over cfg and then answers the path it sees.
+func rewriteTestEchoApp(cfg Config, appCfg ...fiber.Config) *fiber.App {
+	app := fiber.New(appCfg...)
+	app.Use(New(cfg))
+	app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
+	return app
+}
+
 // rewritten runs one request through a rewrite config and reports the path the
 // handler saw.
 func rewritten(t *testing.T, cfg Config, path string) string {
 	t.Helper()
 
-	app := fiber.New()
-	app.Use(New(cfg))
-	app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
-
-	return apptest.Body(t, apptest.Do(t, app, path))
+	return apptest.Body(t, apptest.Do(t, rewriteTestEchoApp(cfg), path))
 }
 
 func Test_Rewrite_DeprecatedRulesOrderIsStable(t *testing.T) {
@@ -346,9 +348,8 @@ func Test_Rewrite_UnescapePathDecodesOnce(t *testing.T) {
 			for _, tc := range cases {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-					app := fiber.New(fiber.Config{UnescapePath: unescape})
-					app.Use(New(Config{RuleList: []Rule{{From: "/files/*", To: "/public/$1"}}}))
-					app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
+					cfg := Config{RuleList: []Rule{{From: "/files/*", To: "/public/$1"}}}
+					app := rewriteTestEchoApp(cfg, fiber.Config{UnescapePath: unescape})
 
 					want := tc.raw
 					if unescape {
@@ -365,35 +366,36 @@ func Test_Rewrite_UnescapePathDecodesOnce(t *testing.T) {
 // dot segment that resolves out of the prefix To names.
 func Test_Rewrite_CaptureStaysBelowTheTargetPath(t *testing.T) {
 	t.Parallel()
-	for _, unescape := range []bool{false, true} {
-		app := fiber.New(fiber.Config{UnescapePath: unescape})
-		app.Use(New(Config{
-			RuleList: []Rule{
-				{From: "/@*", To: "/users/$1"},
-				{From: "/f/*-*", To: "/users/$1$2/admin"},
-				{From: "/up/*", To: "/a/../b/$1"},
-			},
-		}))
-		app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
+	cfg := Config{RuleList: []Rule{
+		{From: "/@*", To: "/users/$1"},
+		{From: "/f/*-*", To: "/users/$1$2/admin"},
+		{From: "/up/*", To: "/a/../b/$1"},
+	}}
 
-		for target, want := range map[string]string{
-			"/@bob/x":    "/users/bob/x",
-			"/@.../x":    "/users/.../x",
-			"/f/a-b":     "/users/ab/admin",
-			"/up/x":      "/b/x", // the author's own dot segment still resolves
-			"/@../admin": "/@../admin",
-			"/@./admin":  "/@./admin",
-			"/f/.-.":     "/f/.-.",
-		} {
-			require.Equal(t, want, rewrittenRaw(t, app, target), "UnescapePath=%v %s", unescape, target)
-		}
+	for _, unescape := range []bool{false, true} {
+		t.Run(fmt.Sprintf("UnescapePath=%v", unescape), func(t *testing.T) {
+			t.Parallel()
+			app := rewriteTestEchoApp(cfg, fiber.Config{UnescapePath: unescape})
+			for target, want := range map[string]string{
+				"/@bob/x":    "/users/bob/x",
+				"/@.../x":    "/users/.../x",
+				"/f/a-b":     "/users/ab/admin",
+				"/up/x":      "/b/x", // the author's own dot segment still resolves
+				"/@../admin": "/@../admin",
+				"/@./admin":  "/@./admin",
+				"/f/.-.":     "/f/.-.",
+			} {
+				require.Equal(t, want, rewrittenRaw(t, app, target), target)
+			}
+		})
 	}
 
-	// Without UnescapePath a stray "%2" stays as sent, and an "e" completes it.
-	app := fiber.New()
-	app.Use(New(Config{RuleList: []Rule{{From: "/g/*/*", To: "/users/$1$2/admin"}}}))
-	app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
-	require.Equal(t, "/g/.%2/e", rewrittenRaw(t, app, "/g/.%2/e"))
+	t.Run("a stray escape completed by the next capture", func(t *testing.T) {
+		t.Parallel()
+		// Without UnescapePath a stray "%2" stays as sent, and an "e" completes it.
+		app := rewriteTestEchoApp(Config{RuleList: []Rule{{From: "/g/*/*", To: "/users/$1$2/admin"}}})
+		require.Equal(t, "/g/.%2/e", rewrittenRaw(t, app, "/g/.%2/e"))
+	})
 }
 
 // Test_Rewrite_MountedOnPrefix_RunsLaterGuards pins that routes registered after
@@ -401,20 +403,19 @@ func Test_Rewrite_CaptureStaysBelowTheTargetPath(t *testing.T) {
 func Test_Rewrite_MountedOnPrefix_RunsLaterGuards(t *testing.T) {
 	t.Parallel()
 	for _, global := range []bool{false, true} {
-		app := fiber.New()
-		app.Use("/v1", New(Config{RuleList: []Rule{{From: "/v1/*", To: "/$1"}}}))
-		deny := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusUnauthorized) }
-		if global {
-			app.Use(deny)
-		} else {
-			app.Use("/admin", deny)
-		}
-		app.Get("/admin/report", func(c fiber.Ctx) error { return c.SendString("report") })
+		t.Run(fmt.Sprintf("global guard=%v", global), func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use("/v1", New(Config{RuleList: []Rule{{From: "/v1/*", To: "/$1"}}}))
+			deny := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusUnauthorized) }
+			if global {
+				app.Use(deny)
+			} else {
+				app.Use("/admin", deny)
+			}
+			app.Get("/admin/report", func(c fiber.Ctx) error { return c.SendString("report") })
 
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/v1/admin/report", http.NoBody)
-		require.NoError(t, err)
-		resp := apptest.Do(t, app, req)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode, "global guard: %v", global)
+			apptest.Expect(t, app, "/v1/admin/report", fiber.StatusUnauthorized)
+		})
 	}
 }

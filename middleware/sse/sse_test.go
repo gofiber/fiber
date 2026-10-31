@@ -458,20 +458,18 @@ func Test_SSE_HandlerStartsAfterMiddlewareChain(t *testing.T) {
 
 	for _, coding := range []string{"", "gzip"} {
 		isUnwound.Store(false)
-		req := httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody)
-		req.Header.Set(fiber.HeaderCookie, "theme=dark")
-		req.Header.Set(fiber.HeaderAcceptEncoding, coding)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		cookie := apptest.WithHeader(fiber.HeaderCookie, "theme=dark")
+		req := apptest.Req(fiber.MethodGet, "/events", cookie, apptest.WithHeader(fiber.HeaderAcceptEncoding, coding))
+		resp := apptest.Do(t, app, req)
 
-		var body io.Reader = resp.Body
+		got := apptest.BodyBytes(t, resp)
 		if coding == "gzip" {
 			require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
-			body, err = gzip.NewReader(resp.Body)
+			zr, err := gzip.NewReader(bytes.NewReader(got))
+			require.NoError(t, err)
+			got, err = io.ReadAll(zr)
 			require.NoError(t, err)
 		}
-		got, err := io.ReadAll(body)
-		require.NoError(t, err)
 		require.Equal(t, "event: dark\ndata: true\n\n", string(got))
 	}
 }
@@ -496,8 +494,7 @@ func Test_SSE_UnreadBodyRunsNoHandler(t *testing.T) {
 		require.Equal(t, fiber.MIMETextEventStream, resp.Header.Get(fiber.HeaderContentType))
 	}
 
-	resp := apptest.Do(t, app, "/events")
-	require.Equal(t, ": open\n\n", apptest.Body(t, resp))
+	apptest.ExpectBody(t, app, "/events", fiber.StatusOK, ": open\n\n")
 	require.Equal(t, int32(1), handlers.Load())
 	require.Equal(t, int32(1), closes.Load(), "the body ends after OnClose")
 }
