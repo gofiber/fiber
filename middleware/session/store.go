@@ -114,8 +114,9 @@ func lockFor(key string) *idLock {
 
 // Store manages session data using the configured storage backend.
 type Store struct {
-	// codecName is the name of the Codec, asked once.
-	codecName string
+	// named is the Codec with its name, asked once. It is nil for a store without a
+	// Codec, and for one built without NewStore, which sessionCodec makes up.
+	named *namedCodec
 	// sinks are the cookies and headers a session ID can be written back to, in the
 	// order of the extractor. NewStore works them out once; a Store built without it
 	// has none (nil), and a Store whose Extractor was replaced since has stale ones:
@@ -409,10 +410,11 @@ func NewStore(config ...Config) *Store {
 	if isNilCodec(cfg.Codec) {
 		panic("[session] Codec must not be a typed nil")
 	}
-	codecName := ""
+	var named *namedCodec
 	if cfg.Codec != nil {
-		codecName = cfg.Codec.Name()
-		checkCodecName(codecName)
+		name := cfg.Codec.Name()
+		checkCodecName(name)
+		named = &namedCodec{Codec: cfg.Codec, name: name}
 	}
 	warnCookiePrefixes(&cfg)
 
@@ -430,7 +432,7 @@ func NewStore(config ...Config) *Store {
 		root:      rootOf(cfg.Extractor),
 		sinks:     sinks,
 		sources:   collectSources(cfg.Extractor),
-		codecName: codecName,
+		named:     named,
 	}
 
 	if cfg.AbsoluteTimeout > 0 {
@@ -453,40 +455,46 @@ func (*Store) RegisterType(i any) {
 	gob.Register(i)
 }
 
-// codecID returns the name of the codec of the store. NewStore asks for it once;
-// a Store built without NewStore asks every time.
-func (s *Store) codecID() string {
-	if s.codecName == "" && s.Codec != nil {
-		return s.Codec.Name()
+// sessionCodec returns the codec the sessions of the store hold, with its name, nil
+// for gob. NewStore asks for the name once; a Store built without NewStore asks
+// every time.
+func (s *Store) sessionCodec() *namedCodec {
+	if s.named != nil || s.Codec == nil {
+		return s.named
 	}
-	return s.codecName
+	return &namedCodec{Codec: s.Codec, name: s.Codec.Name()}
 }
 
-// readable reports whether the store can read raw, a record: a store reads the
-// records of the codec that wrote them, and no other. (Stored sessions that are not
-// records are gob, which every store reads, a store with a codec as a session that
-// stays gob.) Of a record that is damaged, readable says yes, and the decode says
+// refusesRecord reports whether raw, a stored session, is a record this store
+// cannot read, and says so, once per store. A store reads the records of the codec
+// that wrote them, and no other. (A stored session that is not a record is gob,
+// which every store reads, a store with a codec as a session that stays gob.) A
+// record that is damaged counts as one the store can read, and the decode says
 // what is wrong with it.
-func (s *Store) readable(raw []byte) bool {
-	if s.Codec == nil {
+func (s *Store) refusesRecord(raw []byte) bool {
+	if !isRecord(raw) {
 		return false
 	}
-	version, name, ok := recordCodecOf(raw)
-	if !ok {
-		return true
+	codec := s.sessionCodec()
+	if codec != nil {
+		version, name, ok := recordCodecOf(raw)
+		if !ok || (version == recordVersion && string(name) == codec.name) {
+			return false
+		}
 	}
-	return version == recordVersion && string(name) == s.codecID()
+	s.warnUnreadable(raw, codec)
+	return true
 }
 
-// warnUnreadable says, once per store, that a stored session is a record this store
-// cannot read, and is treated as a session that does not exist.
-func (s *Store) warnUnreadable(raw []byte) {
+// warnUnreadable says, once per store, that a stored session is a record this store,
+// whose codec is codec, cannot read, and is treated as a session that does not exist.
+func (s *Store) warnUnreadable(raw []byte, codec *namedCodec) {
 	if !s.unreadableWarned.CompareAndSwap(false, true) {
 		return
 	}
 	have := "has no codec"
-	if id := s.codecID(); id != "" {
-		have = fmt.Sprintf("uses the codec %q", id)
+	if codec != nil {
+		have = fmt.Sprintf("uses the codec %q", codec.name)
 	}
 	version, name, known := recordCodecOf(raw)
 	switch {
@@ -620,8 +628,7 @@ func (s *Store) getSessionBox(c fiber.Ctx) (*Session, *provenanceBox, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		if isRecord(rawData) && !s.readable(rawData) {
-			s.warnUnreadable(rawData)
+		if s.refusesRecord(rawData) {
 			rawData = nil
 		}
 		if rawData == nil {
@@ -646,14 +653,11 @@ func (s *Store) getSessionBox(c fiber.Ctx) (*Session, *provenanceBox, error) {
 	sess.mu.Lock()
 
 	sess.ctx = c
-	sess.config = s
+	sess.bind(s)
 	sess.id = id
 	sess.key = key
 	sess.isFresh = isFresh
 	sess.extractor = selectedExtractor
-	if s.Codec != nil {
-		sess.data.setCodec(s.Codec, s.codecID())
-	}
 
 	// Decode session data if found
 	if rawData != nil {
@@ -845,8 +849,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 	if rawData == nil {
 		return nil, ErrSessionIDNotFoundInStore
 	}
-	if isRecord(rawData) && !s.readable(rawData) {
-		s.warnUnreadable(rawData)
+	if s.refusesRecord(rawData) {
 		return nil, ErrSessionIDNotFoundInStore
 	}
 
@@ -854,13 +857,10 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 
 	sess.mu.Lock()
 
-	sess.config = s
+	sess.bind(s)
 	sess.id = s.ownedID(key, id) // the caller may pass a view of the request, such as c.Cookies
 	sess.key = key
 	sess.isFresh = false
-	if s.Codec != nil {
-		sess.data.setCodec(s.Codec, s.codecID())
-	}
 	sess.loaded = true
 	sess.loadGen = loadGen
 

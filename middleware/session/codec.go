@@ -44,6 +44,15 @@ type Codec interface {
 	Unmarshal(data []byte, v any) error
 }
 
+// namedCodec is a Codec with its name, which is written into every record and
+// compared with the name of the records that are read. A store asks for the name
+// once, when it is made, and the data of a session holds the pair, so that the two
+// cannot come apart. A nil *namedCodec stands for gob.
+type namedCodec struct {
+	Codec
+	name string
+}
+
 // JSONCodec is the Codec of encoding/json. A value is read back as the type it is
 // decoded into: GetInto and GetAs decode into your own types, while Get returns
 // what encoding/json makes of an interface{}: float64 for every number, string,
@@ -122,9 +131,12 @@ func isNilCodec(codec Codec) bool {
 
 // decodeAny decodes the encoded value v of a session under codec into an
 // interface{}. What is not an encoded value, a missing key or a nil, is returned
-// as it is. A value that does not decode is returned encoded, a copy of its bytes,
+// as it is, and so is every value of a session without a codec. A value that does not decode is returned encoded, a copy of its bytes,
 // so that it is never taken for a key that is not there.
-func decodeAny(codec Codec, v any) any {
+func decodeAny(v any, codec *namedCodec) any {
+	if codec == nil {
+		return v
+	}
 	encoded, ok := v.([]byte)
 	if !ok {
 		return v
@@ -139,7 +151,7 @@ func decodeAny(codec Codec, v any) any {
 // decodeAs reads v, the encoded value of a key under a codec, as a V. It is a
 // function of its own so that the V it hands to the codec, which then lives on
 // the heap, is made only when there is a codec.
-func decodeAs[V any](v any, codec Codec) (V, bool) {
+func decodeAs[V any](v any, codec *namedCodec) (V, bool) {
 	var out V
 	encoded, ok := v.([]byte)
 	if !ok || codec.Unmarshal(utils.CopyBytes(encoded), &out) != nil {
@@ -162,7 +174,7 @@ func intoTarget(target any) (reflect.Value, error) {
 // all or nothing. Without a codec v is the value itself and has to be assignable
 // to what the target points to. With one, v is the encoded value, and decodeInto
 // decodes it.
-func valueInto(key, v any, codec Codec, target reflect.Value) error {
+func valueInto(key, v any, codec *namedCodec, target reflect.Value) error {
 	if codec != nil {
 		encoded, ok := v.([]byte)
 		if !ok {
@@ -191,7 +203,7 @@ func valueInto(key, v any, codec Codec, target reflect.Value) error {
 // replaced by a new value instead, since a decoder merges into the map or the
 // struct it is given, and nothing of the old value may be left in the result. Either
 // way a failure leaves the target as it was.
-func decodeInto(key any, encoded []byte, codec Codec, target reflect.Value) error {
+func decodeInto(key any, encoded []byte, codec *namedCodec, target reflect.Value) error {
 	elem := target.Elem()
 	if elem.IsZero() {
 		if err := codec.Unmarshal(encoded, target.Interface()); err != nil {

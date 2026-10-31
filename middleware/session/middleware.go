@@ -771,15 +771,11 @@ func (m *Middleware) Set(key, value any) {
 //	value := m.Get("key")
 func (m *Middleware) Get(key any) any {
 	// The lock is held for the lookup only: a codec decodes without it.
-	v, codec := m.lookup(key)
-	if codec != nil {
-		return decodeAny(codec, v)
-	}
-	return v
+	return decodeAny(m.lookup(key))
 }
 
 // lookup is Session.lookup under the read lock of the middleware, as Get takes it.
-func (m *Middleware) lookup(key any) (any, Codec) {
+func (m *Middleware) lookup(key any) (any, *namedCodec) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -787,7 +783,7 @@ func (m *Middleware) lookup(key any) (any, Codec) {
 }
 
 // fetch is Session.fetch under the read lock of the middleware.
-func (m *Middleware) fetch(key any) (any, Codec, error) {
+func (m *Middleware) fetch(key any) (any, *namedCodec, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

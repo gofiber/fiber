@@ -228,9 +228,9 @@ func Benchmark_Codec_ReadForms(b *testing.B) {
 
 // benchLarge is a value of about 8 KB.
 type benchLarge struct {
+	Extra  map[string]bool `json:"extra"`
 	Name   string          `json:"name"`
 	Values [1024]int64     `json:"values"`
-	Extra  map[string]bool `json:"extra"`
 }
 
 // Benchmark_Codec_GetIntoLarge reads a value of about 8 KB from a store with a codec

@@ -19,21 +19,18 @@ import (
 //go:generate msgp -o=data_msgp.go -tests=true -unexported
 //msgp:ignore data
 type data struct {
-	// codec is the Codec of the store the session belongs to, nil for gob: the
-	// session of a store with a codec is gob as well, when it was stored before the
-	// codec was turned on. With a codec, Data holds the encoded values ([]byte) of
-	// the string keys, and the deadline under absExpirationKey. It is set when the
-	// session is acquired, and read under the lock.
-	codec Codec
+	// codec is the Codec of the store the session belongs to, with its name, nil for
+	// gob: the session of a store with a codec is gob as well, when it was stored
+	// before the codec was turned on. With a codec, Data holds the encoded values
+	// ([]byte) of the string keys, and the deadline under absExpirationKey. It is set
+	// when the session is acquired, and read under the lock.
+	codec *namedCodec
 
 	Data map[any]any // Session key counts are expected to be bounded.
 
 	// errs are the Sets under a codec that failed, by key. A save reports them, and a
 	// later Set or Delete of the key forgets its error. Allocated by the first failure.
 	errs map[any]error
-
-	// codecName is the name of codec, written into a record.
-	codecName string
 
 	sync.RWMutex `msg:"-"`
 
@@ -85,7 +82,7 @@ var dataPool = sync.Pool{
 func acquireData() *data {
 	obj := dataPool.Get()
 	if d, ok := obj.(*data); ok {
-		d.recycle()
+		d.resetAs(nil)
 		return d
 	}
 	// Handle unexpected type in the pool
@@ -99,7 +96,7 @@ func releaseData(d *data) {
 	if d == nil {
 		return
 	}
-	d.recycle()
+	d.resetAs(nil)
 	dataPool.Put(d)
 }
 
@@ -120,35 +117,15 @@ func (d *data) Reset() {
 // resetAs is Reset that also makes the data hold what codec says, in one step: a
 // session of a store with a codec starts over as a session of the store, whatever
 // it was stored as, and no value is set in between that the codec has not encoded.
-func (d *data) resetAs(codec Codec, name string) {
+// A nil codec makes the data hold the values themselves, for gob, which is how a
+// session that goes back to the pool lets go of the codec of the store it served.
+func (d *data) resetAs(codec *namedCodec) {
 	d.Lock()
 	defer d.Unlock()
 	d.dirty.Store(true)
 	d.errs = nil
 	d.codec = codec
-	d.codecName = name
 	clear(d.Data)
-}
-
-// recycle is Reset for a session that goes back to the pool: the data also lets
-// go of the codec of the store it served.
-func (d *data) recycle() {
-	d.Lock()
-	defer d.Unlock()
-	d.dirty.Store(true)
-	d.errs = nil
-	d.codec = nil
-	d.codecName = ""
-	clear(d.Data)
-}
-
-// setCodec makes the data hold encoded values, those of codec, which is called name.
-// A nil codec makes it hold the values themselves, for gob.
-func (d *data) setCodec(codec Codec, name string) {
-	d.Lock()
-	d.codec = codec
-	d.codecName = name
-	d.Unlock()
 }
 
 // Get retrieves a value from the data map by key.
@@ -163,40 +140,28 @@ func (d *data) setCodec(codec Codec, name string) {
 //
 //	value := d.Get("key")
 func (d *data) Get(key any) any {
-	v, codec := d.lookup(key)
-	if codec != nil {
-		return decodeAny(codec, v)
-	}
-	return v
+	return decodeAny(d.lookup(key))
 }
 
 // lookup returns what is stored under key and the codec of the session, nil for
 // gob. With a codec the value is in its encoded form, which the caller decodes
 // outside the lock.
-func (d *data) lookup(key any) (any, Codec) {
-	d.RLock()
-	defer d.RUnlock()
-	v := d.Data[key]
-	if d.codec != nil {
-		// What the caller gets is decoded from v, so nothing it holds aliases the session.
-		return v, d.codec
-	}
-	if valueMayAlias(v) {
-		// The caller can now mutate the session through v without calling Set.
-		d.dirty.Store(true)
-	}
-	return v, nil
+func (d *data) lookup(key any) (any, *namedCodec) {
+	v, codec, _ := d.fetch(key)
+	return v, codec
 }
 
 // fetch is lookup that also says whether there is a value under key.
-func (d *data) fetch(key any) (any, Codec, bool) {
+func (d *data) fetch(key any) (any, *namedCodec, bool) {
 	d.RLock()
 	defer d.RUnlock()
 	v, ok := d.Data[key]
 	if d.codec != nil {
+		// What the caller gets is decoded from v, so nothing it holds aliases the session.
 		return v, d.codec, ok
 	}
 	if valueMayAlias(v) {
+		// The caller can now mutate the session through v without calling Set.
 		d.dirty.Store(true)
 	}
 	return v, nil, ok
@@ -244,7 +209,7 @@ func (d *data) setRaw(key, value any) {
 // later change to what value refers to is not stored, and keeps the result. A key
 // that is not a string, or a value the codec cannot encode, is remembered and
 // fails the save, until the key is set again or deleted.
-func (d *data) setEncoded(codec Codec, key, value any) {
+func (d *data) setEncoded(codec *namedCodec, key, value any) {
 	name, ok := key.(string)
 	if !ok {
 		d.fail(key, fmt.Errorf("%w, got a key of type %T", errNonStringKey, key))
@@ -354,3 +319,78 @@ func (d *data) Len() int {
 	defer d.RUnlock()
 	return len(d.Data)
 }
+
+// isEmpty reports whether nothing a handler stored is in the data: no value, and no
+// Set that failed, which a save would report. The absolute-timeout deadline that
+// every new session of a store with an AbsoluteTimeout carries is not a value.
+func (d *data) isEmpty() bool {
+	d.RLock()
+	defer d.RUnlock()
+	if len(d.errs) > 0 {
+		return false
+	}
+	for key := range d.Data {
+		if key != absExpirationKey {
+			return false
+		}
+	}
+	return true
+}
+
+// loadRecord decodes raw, a record of the codec of the data, into it. The values
+// stay encoded: they are decoded when they are read. The caller holds the lock.
+func (d *data) loadRecord(raw []byte) error {
+	if d.codec == nil {
+		return errRecordNeedsCodec
+	}
+	header, err := parseRecord(raw, func(key, value []byte) {
+		// The values stay in the snapshot, which Save writes back while the data is unchanged.
+		d.Data[string(key)] = value
+	})
+	if err == nil && string(header.codec) != d.codec.name {
+		err = fmt.Errorf("%w: the record was written by the codec %q, the store has %q", errCodecMismatch, header.codec, d.codec.name)
+	}
+	if err != nil {
+		clear(d.Data)
+		return fmt.Errorf("failed to decode session data: %w", err)
+	}
+	if header.deadline.set {
+		d.Data[absExpirationKey] = time.Unix(header.deadline.sec, int64(header.deadline.nanos))
+	}
+	d.dirty.Store(false)
+	return nil
+}
+
+// record writes the data, whose values are encoded already, as a record. It is for
+// data that holds a codec, and the caller holds the lock.
+func (d *data) record() ([]byte, error) {
+	if err := d.pendingError(); err != nil {
+		return nil, err
+	}
+
+	entries := make([]recordEntry, 0, len(d.Data))
+	var deadline recordDeadline
+	for key, value := range d.Data {
+		if key == absExpirationKey {
+			if at, ok := value.(time.Time); ok && !at.IsZero() {
+				deadline = recordDeadline{sec: at.Unix(), nanos: uint32(at.Nanosecond()), set: true} //nolint:gosec // below a second
+			}
+			continue
+		}
+		name, okKey := key.(string)
+		encoded, okValue := value.([]byte)
+		if !okKey || !okValue {
+			// Set keeps nothing else under a codec.
+			return nil, fmt.Errorf("%w: unexpected entry %v of type %T", errInvalidRecord, key, value)
+		}
+		entries = append(entries, recordEntry{key: name, value: encoded})
+	}
+	slices.SortFunc(entries, func(a, b recordEntry) int { return strings.Compare(a.key, b.key) })
+
+	encoded, err := appendRecord(nil, d.codec.name, deadline, entries)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode session data: %w", err)
+	}
+	return encoded, nil
+}
+

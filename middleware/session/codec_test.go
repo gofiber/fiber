@@ -1003,8 +1003,7 @@ func Test_Codec_PooledSessionsForgetTheirCodec(t *testing.T) {
 
 	// The data of a session that goes back to the pool lets go of its codec and of the
 	// failed Sets. (It is a data of the test: a pooled one is not read after it was given back.)
-	own := &data{Data: map[any]any{}}
-	own.setCodec(JSONCodec{}, "json")
+	own := &data{Data: map[any]any{}, codec: &namedCodec{Codec: JSONCodec{}, name: "json"}}
 	own.Set("k", 1)
 	own.Set(2, "a key that is not a string")
 	require.NotNil(t, own.codec)
@@ -1013,13 +1012,12 @@ func Test_Codec_PooledSessionsForgetTheirCodec(t *testing.T) {
 	// A reset in the life of a session keeps the codec, and forgets the failed Sets.
 	own.Reset()
 	require.NotNil(t, own.codec)
-	require.Equal(t, "json", own.codecName)
+	require.Equal(t, "json", own.codec.name)
 	require.Nil(t, own.errs)
 
 	own.Set(2, "again")
-	own.recycle()
+	own.resetAs(nil)
 	require.Nil(t, own.codec)
-	require.Empty(t, own.codecName)
 	require.Nil(t, own.errs)
 	require.Empty(t, own.Data)
 
@@ -1277,8 +1275,8 @@ func Test_Codec_GetInto(t *testing.T) {
 type targetCodec struct {
 	JSONCodec
 	fail error
-	mu   sync.Mutex
 	last any
+	mu   sync.Mutex
 }
 
 func (c *targetCodec) Unmarshal(data []byte, v any) error {

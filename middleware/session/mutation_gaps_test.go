@@ -152,12 +152,12 @@ func Test_Codec_AbsoluteDeadlineKeepsItsNanoseconds(t *testing.T) {
 	sess, err := store.Get(ctx)
 	require.NoError(t, err)
 	sess.setAbsExpiration(deadline)
-	sess.Set("a", 1) // the record is encoded: the deadline goes through encodeRecord
+	sess.Set("a", 1) // the record is encoded: the deadline goes through data.record
 	require.NoError(t, sess.Save())
 	id := sess.ID()
 	sess.Release()
 
-	loaded, err := store.GetByID(context.Background(), id) // decodeRecord
+	loaded, err := store.GetByID(context.Background(), id) // data.loadRecord
 	require.NoError(t, err)
 	got, ok := loaded.AbsoluteExpiry()
 	require.True(t, ok)
@@ -332,7 +332,7 @@ func Test_Middleware_ReadsTakeTheReadLock(t *testing.T) {
 	}
 }
 
-// What decodeRecord cannot read it refuses, whatever the store did before it: a session without a
+// What loadRecord cannot read it refuses, whatever the store did before it: a session without a
 // codec, and a record of another codec. A failed decode leaves no entries behind.
 func Test_Session_DecodeRecordRefusesWhatItCannotRead(t *testing.T) {
 	t.Parallel()
@@ -352,7 +352,7 @@ func Test_Session_DecodeRecordRefusesWhatItCannotRead(t *testing.T) {
 		t.Parallel()
 		sess := acquireSession()
 		defer sess.Release()
-		sess.data.codec, sess.data.codecName = JSONCodec{}, "other"
+		sess.data.codec = &namedCodec{Codec: JSONCodec{}, name: "other"}
 		sess.data.Lock()
 		defer sess.data.Unlock()
 		err := sess.decodeSessionData(record)
@@ -364,7 +364,7 @@ func Test_Session_DecodeRecordRefusesWhatItCannotRead(t *testing.T) {
 		t.Parallel()
 		sess := acquireSession()
 		defer sess.Release()
-		sess.data.codec, sess.data.codecName = JSONCodec{}, "json"
+		sess.data.codec = &namedCodec{Codec: JSONCodec{}, name: "json"}
 		sess.data.Lock()
 		defer sess.data.Unlock()
 		damaged := append(bytes.Clone(record), 0) // a byte too many, found after the entries were added
@@ -378,7 +378,7 @@ func Test_Data_PoolForgetsTheCodec(t *testing.T) {
 	t.Parallel()
 
 	d := acquireData()
-	d.setCodec(JSONCodec{}, "json")
+	d.codec = &namedCodec{Codec: JSONCodec{}, name: "json"}
 	d.Set(7, "not a string key")
 	require.NotEmpty(t, d.errs)
 	releaseData(d)
@@ -387,7 +387,6 @@ func Test_Data_PoolForgetsTheCodec(t *testing.T) {
 	fresh := acquireData()
 	defer releaseData(fresh)
 	require.Nil(t, fresh.codec)
-	require.Empty(t, fresh.codecName)
 	require.Nil(t, fresh.errs)
 }
 
