@@ -64,11 +64,13 @@ func (ts *testServer) dial() func(addr string) (net.Conn, error) {
 	return func(_ string) (net.Conn, error) { return ts.ln.Dial() }
 }
 
-// startRedirectServer redirects /start off example.com and /same-host within it.
+// startRedirectServer redirects /start off example.com and /same-host within it,
+// to a /collect that collect answers. The server stops when the test ends, after
+// its parallel subtests.
 func startRedirectServer(tb testing.TB, collect fiber.Handler) *testServer {
 	tb.Helper()
 
-	return startTestServer(tb, func(app *fiber.App) {
+	server := startTestServer(tb, func(app *fiber.App) {
 		app.Get("/start", func(c fiber.Ctx) error {
 			return c.Redirect().Status(fiber.StatusFound).To("http://attacker.example/collect")
 		})
@@ -77,33 +79,42 @@ func startRedirectServer(tb testing.TB, collect fiber.Handler) *testServer {
 		})
 		app.Get("/collect", collect)
 	})
+	tb.Cleanup(server.stop)
+
+	return server
 }
 
-func requireNameList(t *testing.T, set func(names ...string), get func() []string) {
+// requireNameList requires the setter and the getter of a list of header names
+// on recv to keep it as the redirect settings promise: blanks and surrounding
+// whitespace are dropped, the list is copied on the way in and out, a call
+// replaces it, and the setter returns recv for chaining.
+func requireNameList[T any](t *testing.T, recv T, set func(T, ...string) T, get func(T) []string) {
 	t.Helper()
 
-	require.Nil(t, get(), "none by default")
+	require.Nil(t, get(recv), "none by default")
 
 	names := []string{" X-Api-Key", "", "X-Auth-Token\t"}
-	set(names...)
-	require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, get())
+	set(recv, names...)
+	require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, get(recv))
 
 	names[0] = "X-Changed"
-	require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, get(), "the caller's slice must not reach the list")
+	require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, get(recv), "the caller's slice must not reach the list")
 
-	got := get()
+	got := get(recv)
 	got[0] = "X-Changed"
-	require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, get(), "the getter returns a copy")
+	require.Equal(t, []string{"X-Api-Key", "X-Auth-Token"}, get(recv), "the getter returns a copy")
 
-	set("X-One")
-	set("X-Two")
-	require.Equal(t, []string{"X-Two"}, get(), "a second call replaces the list")
+	set(recv, "X-One")
+	set(recv, "X-Two")
+	require.Equal(t, []string{"X-Two"}, get(recv), "a second call replaces the list")
 
-	set()
-	require.Nil(t, get(), "no names clears it")
+	set(recv)
+	require.Nil(t, get(recv), "no names clears it")
 
-	set(" ", "")
-	require.Nil(t, get(), "only blanks leave nothing")
+	set(recv, " ", "")
+	require.Nil(t, get(recv), "only blanks leave nothing")
+
+	require.Same(t, recv, set(recv))
 }
 
 func createHelperServer(tb testing.TB) (app *fiber.App, dial func(addr string) (net.Conn, error), start func()) { //nolint:nonamedreturns // gocritic unnamedResult requires explicit result identifiers for helper components

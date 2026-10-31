@@ -476,10 +476,12 @@ func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {
 }
 
 // clientTestCStubTransport is an httpClientTransport that hands every send, by
-// whichever method, to do, and does nothing for the rest of the interface. The
-// stub transports below are built on it.
+// whichever method, to do, and does nothing for the rest of the interface. A test
+// that wants the options of a redirect chain sets redirects, which then answers
+// DoRedirects in place of do. The stub transports below are built on it.
 type clientTestCStubTransport struct {
-	do func(req *fasthttp.Request, resp *fasthttp.Response) error
+	do        func(req *fasthttp.Request, resp *fasthttp.Response) error
+	redirects func(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error
 }
 
 func (s *clientTestCStubTransport) Do(req *fasthttp.Request, resp *fasthttp.Response) error {
@@ -494,7 +496,12 @@ func (s *clientTestCStubTransport) DoDeadline(req *fasthttp.Request, resp *fasth
 	return s.do(req, resp)
 }
 
-func (s *clientTestCStubTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ *redirectOptions) error {
+func (s *clientTestCStubTransport) DoRedirects(
+	req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions,
+) error {
+	if s.redirects != nil {
+		return s.redirects(req, resp, opts)
+	}
 	return s.do(req, resp)
 }
 
@@ -555,33 +562,21 @@ func (b *blockingErrTransport) release() {
 	b.releaseOnce.Do(func() { close(b.unblock) })
 }
 
-type namesTransport struct {
-	*delayedTransport
-
-	entered chan struct{}
-	proceed chan struct{}
-	got     []string // written before finished closes
-}
-
-func newNamesTransport() *namesTransport {
-	return &namesTransport{delayedTransport: newDelayedTransport(0), entered: make(chan struct{}), proceed: make(chan struct{})}
-}
-
-func (n *namesTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
-	close(n.entered)
-	<-n.proceed
-	n.got = opts.sensitiveHeaders.List()
-	return n.delayedTransport.DoRedirects(req, resp, opts)
-}
-
 func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 	t.Parallel()
 	client := New().SetRedirectSensitiveHeaders("X-Client")
-	transport := newNamesTransport()
+	entered, proceed := make(chan struct{}), make(chan struct{})
+	var names []string // written before finished closes
+	transport := newDelayedTransport(0)
+	transport.redirects = func(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
+		close(entered)
+		<-proceed
+		names = opts.sensitiveHeaders.List()
+		return transport.do(req, resp)
+	}
 	client.transport = transport
 
-	req := AcquireRequest()
-	defer ReleaseRequest(req)
+	req := clientTestBRequest(t)
 	req.SetURL("http://example.com/redirect-names")
 	req.SetMaxRedirects(3)
 	req.SetRedirectSensitiveHeaders("X-Request")
@@ -590,7 +585,7 @@ func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 	// waiting on it and a late read still races the writes below.
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		<-transport.entered
+		<-entered
 		cancel()
 	}()
 
@@ -601,14 +596,10 @@ func Test_Core_RedirectSensitiveHeadersSurviveRequestReuse(t *testing.T) {
 	req.Reset()
 	req.SetRedirectSensitiveHeaders("X-Reused")
 	client.SetRedirectSensitiveHeaders("X-Reconfigured")
-	close(transport.proceed)
+	close(proceed)
 
-	select {
-	case <-transport.finished:
-	case <-time.After(time.Second):
-		t.Fatal("transport Do did not finish")
-	}
-	require.ElementsMatch(t, []string{"X-Client", "X-Request"}, transport.got)
+	apptest.Recv(t, transport.finished, time.Second, "transport Do did not finish")
+	require.ElementsMatch(t, []string{"X-Client", "X-Request"}, names)
 }
 
 // rewritingTransport rewrites the request as a cross-host redirect would, then fails its first attempt.
@@ -620,18 +611,24 @@ type rewritingTransport struct {
 	names   [][]string
 }
 
-func (r *rewritingTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
-	r.starts = append(r.starts, req.URI().String()+"|"+string(req.Header.Peek("X-Api-Key")))
-	r.streams = append(r.streams, req.IsBodyStream())
-	r.names = append(r.names, opts.sensitiveHeaders.List())
-	if len(r.starts) > 1 {
-		req.SetRequestURI("http://final.example/done")
-		resp.SetStatusCode(fasthttp.StatusOK)
-		return nil
+// newRewritingTransport returns a rewritingTransport that records every attempt of the chain.
+func newRewritingTransport() *rewritingTransport {
+	r := &rewritingTransport{delayedTransport: newDelayedTransport(0)}
+	r.redirects = func(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
+		r.starts = append(r.starts, req.URI().String()+"|"+string(req.Header.Peek("X-Api-Key")))
+		r.streams = append(r.streams, req.IsBodyStream())
+		r.names = append(r.names, opts.sensitiveHeaders.List())
+		if len(r.starts) > 1 {
+			req.SetRequestURI("http://final.example/done")
+			resp.SetStatusCode(fasthttp.StatusOK)
+			return nil
+		}
+		req.SetRequestURI("http://attacker.example/collect")
+		req.Header.Del("X-Api-Key")
+		return errors.New("connection reset")
 	}
-	req.SetRequestURI("http://attacker.example/collect")
-	req.Header.Del("X-Api-Key")
-	return errors.New("connection reset")
+
+	return r
 }
 
 func Test_Core_RetryRestartsRedirects(t *testing.T) {
@@ -641,10 +638,10 @@ func Test_Core_RetryRestartsRedirects(t *testing.T) {
 	run := func(t *testing.T, prepare func(req *Request)) (*rewritingTransport, string) {
 		t.Helper()
 
-		transport := &rewritingTransport{delayedTransport: newDelayedTransport(0)}
+		transport := newRewritingTransport()
 		client := New().
 			SetRetryConfig(&RetryConfig{InitialInterval: time.Millisecond, MaxBackoffTime: 2 * time.Millisecond, MaxRetryCount: 2}).
-			SetCookieJar(AcquireCookieJar()).
+			SetCookieJar(clientTestCJar(t)).
 			SetRedirectSensitiveHeaders("X-Client")
 		client.transport = transport
 
@@ -679,7 +676,7 @@ func Test_Core_RetryRestartsRedirects(t *testing.T) {
 
 	t.Run("a request that follows no redirects is sent as is", func(t *testing.T) {
 		t.Parallel()
-		transport := &rewritingTransport{delayedTransport: newDelayedTransport(0)}
+		transport := newRewritingTransport()
 		client := New().SetRetryConfig(&RetryConfig{MaxRetryCount: 2})
 		client.transport = transport
 
@@ -693,7 +690,6 @@ func Test_Core_RetryRestartsRedirects(t *testing.T) {
 func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
 	t.Parallel()
 	server := startRedirectServer(t, func(c fiber.Ctx) error { return c.SendString(c.Get("X-Api-Key")) })
-	defer server.stop()
 
 	client := New().SetDial(server.dial())
 
@@ -841,17 +837,18 @@ func Test_Execute_TimeoutEndsTheExchange(t *testing.T) {
 			_, err := client.Get(url)
 			require.ErrorIs(t, err, ErrTimeoutOrCancel)
 
-			select {
-			case <-hungUp:
-			case <-time.After(2 * time.Second):
-				require.Fail(t, "the connection is still open long after the call timed out")
-			}
+			apptest.Recv(t, hungUp, 2*time.Second, "the connection is still open long after the call timed out")
 		})
 	}
 
 	t.Run("redirects share the deadline", func(t *testing.T) {
 		t.Parallel()
-		transport := &deadlineTransport{delayedTransport: newDelayedTransport(0)}
+		var deadline time.Time
+		transport := newDelayedTransport(0)
+		transport.redirects = func(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
+			deadline = opts.deadline
+			return transport.do(req, resp)
+		}
 		client := New()
 		client.transport = transport
 
@@ -863,7 +860,7 @@ func Test_Execute_TimeoutEndsTheExchange(t *testing.T) {
 
 		want, ok := ctx.Deadline()
 		require.True(t, ok)
-		require.Equal(t, want, transport.deadline)
+		require.Equal(t, want, deadline)
 	})
 
 	for _, tc := range []struct {
@@ -921,11 +918,7 @@ func Test_Execute_TimeoutEndsTheExchange(t *testing.T) {
 			require.ErrorIs(t, err, ErrTimeoutOrCancel)
 
 			// The transport goroutine closes the body when it releases its request.
-			select {
-			case <-body.closed:
-			case <-time.After(time.Second):
-				require.Fail(t, "the call kept retrying after it was given up")
-			}
+			apptest.Recv(t, body.closed, time.Second, "the call kept retrying after it was given up")
 			if tc.attempts >= 0 {
 				require.Equal(t, tc.attempts, attempts.Load())
 			}
@@ -944,16 +937,4 @@ type closeSignal struct {
 func (c *closeSignal) Close() error {
 	c.once.Do(func() { close(c.closed) })
 	return nil
-}
-
-// deadlineTransport records the deadline a redirect chain was given.
-type deadlineTransport struct {
-	*delayedTransport
-
-	deadline time.Time
-}
-
-func (d *deadlineTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
-	d.deadline = opts.deadline
-	return d.delayedTransport.DoRedirects(req, resp, opts)
 }

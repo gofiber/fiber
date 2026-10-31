@@ -1,7 +1,6 @@
 package binder
 
 import (
-	"bytes"
 	"fmt"
 	"maps"
 	"mime/multipart"
@@ -14,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 func Test_EqualFieldType(t *testing.T) {
@@ -822,43 +820,6 @@ func Test_Bind_StringMap_KeepsLastValue(t *testing.T) {
 	}
 }
 
-func Test_Bind_Splitting_KeepsElementWhitespace(t *testing.T) {
-	t.Parallel()
-
-	// Only the header binders read a value as an HTTP list and trim its
-	// elements; these keep each element as written.
-	type Data struct {
-		IDs []string `query:"ids" form:"ids" cookie:"ids"`
-	}
-
-	binders := []struct {
-		bind func(out any) error
-		name string
-	}{
-		{name: "query", bind: func(out any) error {
-			req := &fasthttp.Request{}
-			req.URI().SetQueryString("ids=a,%20b")
-			return (&QueryBinding{EnableSplitting: true}).Bind(req, out)
-		}},
-		{name: "form", bind: func(out any) error {
-			req := &fasthttp.Request{}
-			req.Header.SetContentType("application/x-www-form-urlencoded")
-			req.SetBodyString("ids=a,%20b")
-			return (&FormBinding{EnableSplitting: true}).Bind(req, out)
-		}},
-		{name: "cookie", bind: func(out any) error {
-			req := &fasthttp.Request{}
-			req.Header.Set(fasthttp.HeaderCookie, "ids=a, b")
-			return (&CookieBinding{EnableSplitting: true}).Bind(req, out)
-		}},
-	}
-	for _, b := range binders {
-		var data Data
-		require.NoError(t, b.bind(&data), b.name)
-		require.Equal(t, []string{"a", " b"}, data.IDs, b.name)
-	}
-}
-
 // Test_Bind_StringMap_Destinations pins how a bind into a map[string]string
 // treats its destination, as parseToMap and parse do: a map given by value is
 // filled, a nil one given by value is an error, a pointer to a nil map gets
@@ -954,13 +915,11 @@ type depthRequired struct {
 	I string `form:"i,required"`
 }
 
+// bindFormBody binds a urlencoded body into out with a default form binder.
 func bindFormBody(t *testing.T, body string, out any) error {
 	t.Helper()
-	req := fasthttp.AcquireRequest()
-	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-	req.Header.SetContentType("application/x-www-form-urlencoded")
-	req.SetBodyString(body)
-	return (&FormBinding{}).Bind(req, out)
+
+	return (&FormBinding{}).Bind(newFormRequest(t, body), out)
 }
 
 func Test_FormBinder_KeyDepthLimit(t *testing.T) {
@@ -1013,75 +972,51 @@ func Test_Binders_KeyDepthLimit(t *testing.T) {
 	t.Parallel()
 	const levels = (maxKeySegments - 1) / 2
 	dotted := func(n int) string { return strings.Repeat("children.0.", n) + "name" }
-
-	multipartReq := func(t *testing.T, key string, file bool) *fasthttp.Request {
+	// The query string takes the key in brackets, which are rewritten to dots before its depth is checked.
+	bracketed := func(n int) string { return "children" + strings.Repeat("[0][children]", n-1) + "[0][name]" }
+	// A file part carries its content as a file instead of as a value.
+	file := source{name: "multipart file", bind: func(t *testing.T, urlEncoded string, _ bool, out any) error {
 		t.Helper()
-		body := new(bytes.Buffer)
-		mw := multipart.NewWriter(body)
-		if file {
-			w, err := mw.CreateFormFile(key, "x.txt")
-			require.NoError(t, err)
-			_, err = w.Write([]byte("x"))
-			require.NoError(t, err)
-		} else {
-			require.NoError(t, mw.WriteField(key, "x"))
-		}
-		require.NoError(t, mw.Close())
-		req := fasthttp.AcquireRequest()
-		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-		req.Header.SetContentType(mw.FormDataContentType())
-		req.SetBody(body.Bytes())
-		return req
-	}
-	newReq := func(t *testing.T) *fasthttp.Request {
-		t.Helper()
-		req := fasthttp.AcquireRequest()
-		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-		return req
-	}
 
-	sources := map[string]func(t *testing.T, n int, out any) error{
-		"multipart value": func(t *testing.T, n int, out any) error {
-			t.Helper()
-			return (&FormBinding{}).Bind(multipartReq(t, dotted(n), false), out)
-		},
-		"multipart file": func(t *testing.T, n int, out any) error {
-			t.Helper()
-			return (&FormBinding{}).Bind(multipartReq(t, dotted(n), true), out)
-		},
-		"query": func(t *testing.T, n int, out any) error {
-			t.Helper()
-			req := newReq(t)
-			req.URI().SetQueryString("children" + strings.Repeat("[0][children]", n-1) + "[0][name]=x")
-			return (&QueryBinding{}).Bind(req, out)
-		},
-		"header": func(t *testing.T, n int, out any) error {
-			t.Helper()
-			req := newReq(t)
-			req.Header.Set(dotted(n), "x")
-			return (&HeaderBinding{}).Bind(req, out)
-		},
-		"cookie": func(t *testing.T, n int, out any) error {
-			t.Helper()
-			req := newReq(t)
-			req.Header.SetCookie(dotted(n), "x")
-			return (&CookieBinding{}).Bind(req, out)
-		},
-	}
-	for name, bind := range sources {
-		t.Run(name, func(t *testing.T) {
+		key, _, _ := strings.Cut(urlEncoded, "=")
+		req := newMultipartRequestWith(t, func(mw *multipart.Writer) { writeFormFile(t, mw, key, "x.txt", "x") })
+		return (&FormBinding{}).Bind(req, out)
+	}}
+
+	for _, tc := range []struct {
+		key func(n int) string
+		src source
+	}{
+		{src: pairSources[2], key: dotted}, // multipart
+		{src: file, key: dotted},
+		{src: pairSources[0], key: bracketed}, // query
+		{src: pairSources[3], key: dotted},    // header
+		{src: pairSources[5], key: dotted},    // cookie
+	} {
+		t.Run(tc.src.name, func(t *testing.T) {
 			t.Parallel()
-			require.NoError(t, bind(t, levels, new(depthTree)))
-			require.ErrorIs(t, bind(t, levels+1, new(depthTree)), ErrKeyTooDeep)
+			bind := func(n int, out any) error { return tc.src.bind(t, tc.key(n)+"=x", false, out) }
+
+			require.NoError(t, bind(levels, new(depthTree)))
+			require.ErrorIs(t, bind(levels+1, new(depthTree)), ErrKeyTooDeep)
 
 			// A map destination is filled without the decoder, so its keys are not limited.
 			m := make(map[string][]string)
-			require.NoError(t, bind(t, levels+1, &m))
-			if name != "multipart file" {
+			require.NoError(t, bind(levels+1, &m))
+			if tc.src.name != file.name {
 				require.Len(t, m, 1)
 			}
 		})
 	}
+}
+
+// newFormDecoder returns a form decoder as the binders pool it, to admit keys to directly.
+func newFormDecoder(t *testing.T, cfg ParserConfig) *pooledDecoder {
+	t.Helper()
+
+	d, ok := decoderBuilder(bindingForm, cfg).(*pooledDecoder)
+	require.True(t, ok)
+	return d
 }
 
 func Test_PooledDecoder_KeyBudget(t *testing.T) {
@@ -1098,8 +1033,7 @@ func Test_PooledDecoder_KeyBudget(t *testing.T) {
 
 	t.Run("repeated keys", func(t *testing.T) {
 		t.Parallel()
-		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
-		require.True(t, ok)
+		d := newFormDecoder(t, ParserConfig{})
 		for range 10_000 {
 			require.NoError(t, d.admit(new(order), "items.0.sku"))
 			require.NoError(t, d.admit(new(order), "name"))
@@ -1109,8 +1043,7 @@ func Test_PooledDecoder_KeyBudget(t *testing.T) {
 
 	t.Run("per destination type", func(t *testing.T) {
 		t.Parallel()
-		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
-		require.True(t, ok)
+		d := newFormDecoder(t, ParserConfig{})
 		for _, out := range []any{new(order), new(cart), new(order)} {
 			require.NoError(t, d.admit(out, "items.0.sku"))
 			putDecoder(&sync.Pool{}, d)
@@ -1120,8 +1053,7 @@ func Test_PooledDecoder_KeyBudget(t *testing.T) {
 
 	t.Run("table form stays pooled", func(t *testing.T) {
 		t.Parallel()
-		d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
-		require.True(t, ok)
+		d := newFormDecoder(t, ParserConfig{})
 		out := new(order)
 		for row := range 400 {
 			for field := range 10 {
@@ -1215,8 +1147,7 @@ func Test_CachedKeyBytes_CoversSchemaCache(t *testing.T) {
 			key: func(n int) string { return respell(strings.Repeat("parent.", maxKeySegments-1)+"text", n) },
 		},
 	} {
-		d, ok := decoderBuilder(bindingForm, ParserConfig{IgnoreUnknownKeys: true}).(*pooledDecoder)
-		require.True(t, ok)
+		d := newFormDecoder(t, ParserConfig{IgnoreUnknownKeys: true})
 		decode := func(key string) {
 			require.NoError(t, d.admit(tc.out(), key))
 			require.NoError(t, d.DecodeValues(tc.out(), []string{key}, []string{"x"}))
@@ -1291,18 +1222,22 @@ func Test_ShapeOf(t *testing.T) {
 	}
 }
 
+// keysThatFit returns how many keys fit in maxNestedBytes when each grows perKey slices of maxSliceIndex+1 Ts.
+func keysThatFit[T any](perKey int) int {
+	return maxNestedBytes / (perKey * (maxSliceIndex + 1) * int(reflect.TypeFor[T]().Size()))
+}
+
 func Test_PooledDecoder_ElementBudget(t *testing.T) {
 	t.Parallel()
 
 	// Each key grows a depthTree slice of 1001 elements below its first index.
-	fit := maxNestedBytes / ((maxSliceIndex + 1) * int(reflect.TypeFor[depthTree]().Size()))
+	fit := keysThatFit[depthTree](1)
 	keys := make([]string, 0, fit+1)
 	for i := range fit + 1 {
 		keys = append(keys, "children."+strconv.Itoa(i)+".children.1000.name")
 	}
 	out := new(depthTree)
-	d, ok := decoderBuilder(bindingForm, ParserConfig{}).(*pooledDecoder)
-	require.True(t, ok)
+	d := newFormDecoder(t, ParserConfig{})
 	for _, key := range keys[:fit] {
 		require.NoError(t, d.admit(out, key))
 	}
@@ -1362,7 +1297,7 @@ func Test_FormBinder_NestedElementLimit(t *testing.T) {
 	require.Equal(t, "x", root.Children[1].Children[2].Name)
 
 	// Each key grows 30 slices of 1001 elements below its first index.
-	keys := maxNestedBytes/(30*(maxSliceIndex+1)*int(reflect.TypeFor[depthTree]().Size())) + 1
+	keys := keysThatFit[depthTree](30) + 1
 	pairs := make([]string, 0, keys)
 	for k := range keys {
 		pairs = append(pairs, "children."+strconv.Itoa(k)+strings.Repeat(".children.1000", 30)+".name=x")
@@ -1370,17 +1305,14 @@ func Test_FormBinder_NestedElementLimit(t *testing.T) {
 	body := strings.Join(pairs, "&")
 	require.ErrorIs(t, bindFormBody(t, body, new(depthTree)), ErrTooManyElements)
 
-	req := fasthttp.AcquireRequest()
-	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-	req.URI().SetQueryString(body)
-	require.ErrorIs(t, (&QueryBinding{}).Bind(req, new(depthTree)), ErrTooManyElements)
+	require.ErrorIs(t, (&QueryBinding{}).Bind(newQueryRequest(t, body), new(depthTree)), ErrTooManyElements)
 
 	person := new(fanOutPerson)
 	require.NoError(t, bindFormBody(t, "mother.father.phones.1.number=x", person))
 	require.Len(t, person.Mother.Father.Phones, 2)
 	require.Equal(t, "x", person.Mother.Father.Phones[1].Number)
 
-	chains := make([]string, 0, maxNestedBytes/((maxSliceIndex+1)*int(reflect.TypeFor[fanOutPhone]().Size()))+1)
+	chains := make([]string, 0, keysThatFit[fanOutPhone](1)+1)
 	for i := 2; len(chains) < cap(chains); i++ {
 		var hops []string
 		for j := i; j > 1; j >>= 1 {
@@ -1411,7 +1343,7 @@ func Test_FormBinder_NestedElementBytes(t *testing.T) {
 
 	t.Run("large elements", func(t *testing.T) {
 		t.Parallel()
-		fit := maxNestedBytes / ((maxSliceIndex + 1) * int(reflect.TypeFor[catalogVariant]().Size()))
+		fit := keysThatFit[catalogVariant](1)
 		pairs := make([]string, 0, fit+1)
 		for l := range fit + 1 {
 			pairs = append(pairs, variant(l, maxSliceIndex, "sku"))

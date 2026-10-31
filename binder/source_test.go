@@ -97,6 +97,9 @@ type source struct {
 	// splitting.
 	bind func(t *testing.T, urlEncoded string, splitting bool, out any) error
 	name string
+	// list is whether the source reads a value as an HTTP list (RFC 9110
+	// Section 5.6.1), whose elements carry no surrounding whitespace.
+	list bool
 }
 
 // pairSources are the binders that read name/value pairs, so that a scenario
@@ -124,7 +127,7 @@ var pairSources = []source{
 		})
 		return (&FormBinding{EnableSplitting: splitting}).Bind(req, out)
 	}},
-	{name: "header", bind: func(t *testing.T, urlEncoded string, splitting bool, out any) error {
+	{name: "header", list: true, bind: func(t *testing.T, urlEncoded string, splitting bool, out any) error {
 		t.Helper()
 
 		req := acquireRequest(t)
@@ -133,7 +136,7 @@ var pairSources = []source{
 		}
 		return (&HeaderBinding{EnableSplitting: splitting}).Bind(req, out)
 	}},
-	{name: "resp_header", bind: func(t *testing.T, urlEncoded string, splitting bool, out any) error {
+	{name: "resp_header", list: true, bind: func(t *testing.T, urlEncoded string, splitting bool, out any) error {
 		t.Helper()
 
 		resp := fasthttp.AcquireResponse()

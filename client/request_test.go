@@ -1018,17 +1018,13 @@ func Test_Request_RedirectSensitiveHeaders(t *testing.T) {
 	t.Parallel()
 	t.Run("the list", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireRequest()
-		defer ReleaseRequest(req)
-		requireNameList(t, func(names ...string) { req.SetRedirectSensitiveHeaders(names...) }, req.RedirectSensitiveHeaders)
-		require.Same(t, req, req.SetRedirectSensitiveHeaders())
+		req := clientTestBRequest(t)
+		requireNameList(t, req, (*Request).SetRedirectSensitiveHeaders, (*Request).RedirectSensitiveHeaders)
 	})
 
 	t.Run("Reset clears the list", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireRequest()
-		defer ReleaseRequest(req)
-		req.SetRedirectSensitiveHeaders("X-Api-Key")
+		req := clientTestBRequest(t).SetRedirectSensitiveHeaders("X-Api-Key")
 
 		req.Reset()
 		require.Nil(t, req.RedirectSensitiveHeaders())
@@ -1040,8 +1036,6 @@ func Test_Request_RedirectSensitiveHeaders_EndToEnd(t *testing.T) {
 	server := startRedirectServer(t, func(c fiber.Ctx) error {
 		return c.SendString(c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token") + "|" + c.Get("X-Trace-Id"))
 	})
-	// Not a defer: the parallel subtests outlive this function.
-	t.Cleanup(server.stop)
 
 	headers := map[string]string{"X-Api-Key": "key", "X-Auth-Token": "tok", "X-Trace-Id": "trace"}
 

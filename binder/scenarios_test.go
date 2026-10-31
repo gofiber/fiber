@@ -52,6 +52,109 @@ func Test_PairSources_ParseError(t *testing.T) {
 	}
 }
 
+// Test_PairSources_Splitting_ElementWhitespace pins that only the header binders
+// read a value as an HTTP list and trim its elements; the others keep each
+// element as written.
+func Test_PairSources_Splitting_ElementWhitespace(t *testing.T) {
+	t.Parallel()
+	type Data struct {
+		IDs []string `cookie:"ids" form:"ids" header:"Ids" query:"ids" respHeader:"ids"`
+	}
+
+	for _, src := range pairSources {
+		t.Run(src.name, func(t *testing.T) {
+			t.Parallel()
+			want := []string{"a", " b"}
+			if src.list {
+				want = []string{"a", "b"}
+			}
+
+			var data Data
+			require.NoError(t, src.bind(t, "ids=a,%20b", true, &data))
+			require.Equal(t, want, data.IDs)
+		})
+	}
+}
+
+// Test_HeaderSources_Splitting_Lists pins how the header binders split a list
+// (RFC 9110 Section 5.6.1) into a struct and into a map of slices.
+func Test_HeaderSources_Splitting_Lists(t *testing.T) {
+	t.Parallel()
+	type listTarget struct {
+		Roles  []string `header:"X-Roles" respHeader:"X-Roles"`
+		Tags   []string `header:"X-Tags" respHeader:"X-Tags"`
+		IDs    []int    `header:"X-Ids" respHeader:"X-Ids"`
+		Counts []int    `header:"X-Counts" respHeader:"X-Counts"`
+	}
+
+	for _, src := range pairSources {
+		if !src.list {
+			continue
+		}
+		t.Run(src.name, func(t *testing.T) {
+			t.Parallel()
+			for _, tc := range []struct {
+				wantMap map[string][]string
+				name    string
+				input   string
+				want    listTarget
+				stale   bool // the destination holds a roles value before the bind
+			}{
+				{
+					// Clients and proxies join repeated lines with ", " (RFC 9110 Section 5.3), and the
+					// space around a list element is not part of it.
+					name:    "SP and HTAB around an element are not part of it",
+					input:   "x-roles=admin,+editor&x-ids=1,+2,%093",
+					want:    listTarget{Roles: []string{"admin", "editor"}, IDs: []int{1, 2, 3}},
+					wantMap: map[string][]string{"X-Roles": {"admin", "editor"}, "X-Ids": {"1", "2", "3"}},
+				},
+				{
+					// Only SP and HTAB are OWS: another control byte stays in the element.
+					name: "another control byte stays in the element", input: "x-tags=a,%0Bb",
+					want:    listTarget{Tags: []string{"a", "\vb"}},
+					wantMap: map[string][]string{"X-Tags": {"a", "\vb"}},
+				},
+				{
+					name: "a tab right after the comma and a trailing comma", input: "x-ids=1,%092,",
+					want:    listTarget{IDs: []int{1, 2}},
+					wantMap: map[string][]string{"X-Ids": {"1", "2"}},
+				},
+				{
+					// Empty elements are ignored (RFC 9110 Section 5.6.1), so a trailing or doubled
+					// comma adds no zero value.
+					name: "empty elements add no zero value", input: "x-ids=1,+2,&x-counts=3,,+4",
+					want:    listTarget{IDs: []int{1, 2}, Counts: []int{3, 4}},
+					wantMap: map[string][]string{"X-Ids": {"1", "2"}, "X-Counts": {"3", "4"}},
+				},
+				{
+					// A present header still replaces what was bound: one made only of empty
+					// elements binds as an empty value.
+					name: "a list of empty elements replaces what was bound", input: "x-roles=+,+", stale: true,
+					want:    listTarget{Roles: []string{""}},
+					wantMap: map[string][]string{"X-Roles": {""}},
+				},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
+					var got listTarget
+					values := map[string][]string{}
+					if tc.stale {
+						got.Roles = []string{"stale"}
+						values["X-Roles"] = []string{"stale"}
+					}
+
+					require.NoError(t, src.bind(t, tc.input, true, &got))
+					require.Equal(t, tc.want, got)
+					require.NoError(t, src.bind(t, tc.input, true, &values))
+					for key, want := range tc.wantMap {
+						require.Equal(t, want, values[key], key)
+					}
+				})
+			}
+		})
+	}
+}
+
 func Test_FormSources_Bind(t *testing.T) {
 	t.Parallel()
 	type Post struct {

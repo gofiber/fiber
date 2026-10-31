@@ -279,15 +279,13 @@ func TestClient_RedirectSensitiveHeaders(t *testing.T) {
 	t.Parallel()
 	t.Run("the list", func(t *testing.T) {
 		t.Parallel()
-		client := New()
-		requireNameList(t, func(names ...string) { client.SetRedirectSensitiveHeaders(names...) }, client.RedirectSensitiveHeaders)
-		require.Same(t, client, client.SetRedirectSensitiveHeaders())
+		requireNameList(t, New(), (*Client).SetRedirectSensitiveHeaders, (*Client).RedirectSensitiveHeaders)
 	})
 
 	t.Run("the options for a request carry the client's and the request's names together", func(t *testing.T) {
 		t.Parallel()
 		client := New().SetRedirectSensitiveHeaders("X-One")
-		own := New().R().SetRedirectSensitiveHeaders("X-Two")
+		own := clientTestBRequest(t).SetRedirectSensitiveHeaders("X-Two")
 
 		opts := client.redirectOptionsFor(3, own.redirectSensitiveHeaders)
 		require.Equal(t, 3, opts.maxRedirects)
@@ -1432,12 +1430,8 @@ func Benchmark_Client_Request(b *testing.B) {
 
 // Benchmark_Client_Request_RetryRedirects is the request shape that takes a backup.
 func Benchmark_Client_Request_RetryRedirects(b *testing.B) {
-	app, dial, start := createHelperServer(b)
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("hello world") })
-
-	go start()
-
-	client := New().SetDial(dial).SetRetryConfig(&RetryConfig{MaxRetryCount: 2})
+	client := New().SetDial(clientTestCServeGet(b, func(c fiber.Ctx) error { return c.SendString("hello world") })).
+		SetRetryConfig(&RetryConfig{MaxRetryCount: 2})
 
 	b.ReportAllocs()
 
@@ -1591,20 +1585,24 @@ func Test_Client_MaxResponseBodySize(t *testing.T) {
 		return func(string) (net.Conn, error) { return ln.Dial() }
 	}
 
-	t.Run("a new client refuses a declared size over the limit", func(t *testing.T) {
-		t.Parallel()
-		over := defaultMaxResponseBodySize + 1
-		for _, response := range []string{
-			"HTTP/1.1 200 OK\r\nContent-Length: " + strconv.Itoa(over) + "\r\n\r\nok",
-			"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + strconv.FormatInt(int64(over), 16) + "\r\nok",
-		} {
-			client := New().SetDial(answerWith(t, response))
+	over := defaultMaxResponseBodySize + 1
+	for _, tc := range []struct{ name, response string }{
+		{name: "length", response: "HTTP/1.1 200 OK\r\nContent-Length: " + strconv.Itoa(over) + "\r\n\r\nok"},
+		{
+			name: "chunk size",
+			response: "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" +
+				strconv.FormatInt(int64(over), 16) + "\r\nok",
+		},
+	} {
+		t.Run("a new client refuses a declared "+tc.name+" over the limit", func(t *testing.T) {
+			t.Parallel()
+			client := New().SetDial(answerWith(t, tc.response))
 			require.Equal(t, defaultMaxResponseBodySize, client.MaxResponseBodySize())
 
 			_, err := client.Get("http://example.com/")
 			require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
-		}
-	})
+		})
+	}
 
 	t.Run("the limit can be set and Reset restores it", func(t *testing.T) {
 		t.Parallel()
@@ -2079,10 +2077,7 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 
 	t.Run("a jar cookie does not follow the request to another host", func(t *testing.T) {
 		t.Parallel()
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
-		req := AcquireRequest().SetClient(New().SetDial(server.dial()).SetCookieJar(jar))
-		defer ReleaseRequest(req)
+		req := clientTestBRequest(t).SetClient(New().SetDial(server.dial()).SetCookieJar(clientTestCJar(t)))
 
 		send(t, req, "http://a.example/login")
 		require.Equal(t, "sid=secret", send(t, req, "http://a.example/cookies"))
@@ -2091,10 +2086,7 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 
 	t.Run("a jar cookie the server expired is not sent again", func(t *testing.T) {
 		t.Parallel()
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
-		req := AcquireRequest().SetClient(New().SetDial(server.dial()).SetCookieJar(jar))
-		defer ReleaseRequest(req)
+		req := clientTestBRequest(t).SetClient(New().SetDial(server.dial()).SetCookieJar(clientTestCJar(t)))
 
 		send(t, req, "http://a.example/login")
 		send(t, req, "http://a.example/logout")
@@ -2104,8 +2096,7 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 	t.Run("a deleted cookie is not sent again", func(t *testing.T) {
 		t.Parallel()
 		client := New().SetDial(server.dial()).SetCookie("a", "1")
-		req := AcquireRequest().SetClient(client).SetCookie("b", "2")
-		defer ReleaseRequest(req)
+		req := clientTestBRequest(t).SetClient(client).SetCookie("b", "2")
 
 		require.Equal(t, "a=1; b=2", send(t, req, "http://a.example/cookies"))
 		require.Equal(t, "a=1", send(t, req.DelCookies("b"), "http://a.example/cookies"))
@@ -2115,8 +2106,7 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 
 	t.Run("a Cookie header set on the request is kept", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireRequest().SetClient(New().SetDial(server.dial())).SetHeader(fiber.HeaderCookie, "a=1")
-		defer ReleaseRequest(req)
+		req := clientTestBRequest(t).SetClient(New().SetDial(server.dial())).SetHeader(fiber.HeaderCookie, "a=1")
 
 		for range 2 {
 			require.Equal(t, "a=1", send(t, req, "http://a.example/cookies"))

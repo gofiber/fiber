@@ -66,9 +66,9 @@ func Test_Unimplemented_ReturnsError(t *testing.T) {
 func Test_Binders_ErrorPaths(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		src   source
 		name  string
 		input string
+		src   source
 	}{
 		{name: "query binder invalid key", src: pairSources[0], input: "invalid[%3Dval&name=john"},
 		{name: "form binder invalid key", src: pairSources[1], input: "invalid[=val"},

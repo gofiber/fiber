@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -94,6 +95,16 @@ func clientTestCRedirectStub(status int, location string) *stubRedirectClient {
 		{status: new(status), location: new(location)},
 		{status: new(fasthttp.StatusOK)},
 	}}
+}
+
+// clientTestCFound returns the calls that answer each of locations with a 302 to it.
+func clientTestCFound(locations ...string) []stubRedirectCall {
+	calls := make([]stubRedirectCall, 0, len(locations))
+	for _, location := range locations {
+		calls = append(calls, stubRedirectCall{status: new(fasthttp.StatusFound), location: new(location)})
+	}
+
+	return calls
 }
 
 func TestStandardClientTransportCoverage(t *testing.T) {
@@ -567,57 +578,38 @@ func TestDoRedirectsWithClient_StripsCredentialsCrossHost(t *testing.T) {
 func TestDoRedirectsWithClient_DropsBuiltInHeadersWhateverTheirCase(t *testing.T) {
 	t.Parallel()
 	names := []string{
-		"authorization",
-		"proxy-authorization",
-		"proxy-authenticate",
-		"www-authenticate",
-		"cookie",
-		"cookie2",
+		"authorization", "proxy-authorization", "proxy-authenticate", "www-authenticate", "cookie", "cookie2",
 	}
 
-	follow := func(t *testing.T, location string) *fasthttp.Request {
-		t.Helper()
+	for _, tc := range []struct {
+		name, location string
+		lines          int // of each built-in header that is left
+	}{
+		{name: "another host drops every one", location: "http://attacker.example/collect"},
+		{name: "same host keeps every one", location: "http://example.com/next", lines: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req, resp := clientTestCReqResp(t)
+			req.SetRequestURI("http://example.com/start")
+			// Header.Del is byte-exact and missed these under DisableNormalizing.
+			req.Header.DisableNormalizing()
+			for _, name := range names {
+				req.Header.Add(name, "k=secret")
+			}
+			req.Header.Add("x-api-key", "key")
+			for _, name := range names {
+				require.Len(t, fieldname.Lines(&req.Header, name, false), 1, name)
+			}
 
-		req := fasthttp.AcquireRequest()
-		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-		req.SetRequestURI("http://example.com/start")
-		// Header.Del is byte-exact and missed these under DisableNormalizing.
-		req.Header.DisableNormalizing()
-		for _, name := range names {
-			req.Header.Add(name, "k=secret")
-		}
-		req.Header.Add("x-api-key", "key")
-		for _, name := range names {
-			require.Len(t, fieldname.Lines(&req.Header, name, false), 1, name)
-		}
-
-		resp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(resp)
-		client := &stubRedirectClient{calls: []stubRedirectCall{
-			{status: new(fasthttp.StatusFound), location: &location},
-			{status: new(fasthttp.StatusOK)},
-		}}
-		require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 5}, client))
-		return req
+			client := clientTestCRedirectStub(fasthttp.StatusFound, tc.location)
+			require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 5}, client))
+			for _, name := range names {
+				require.Len(t, fieldname.Lines(&req.Header, name, false), tc.lines, name)
+			}
+			require.Len(t, fieldname.Lines(&req.Header, "x-api-key", false), 1)
+		})
 	}
-
-	t.Run("another host drops every one", func(t *testing.T) {
-		t.Parallel()
-		req := follow(t, "http://attacker.example/collect")
-		for _, name := range names {
-			require.Empty(t, fieldname.Lines(&req.Header, name, false), name)
-		}
-		require.Len(t, fieldname.Lines(&req.Header, "x-api-key", false), 1)
-	})
-
-	t.Run("same host keeps every one", func(t *testing.T) {
-		t.Parallel()
-		req := follow(t, "http://example.com/next")
-		for _, name := range names {
-			require.Len(t, fieldname.Lines(&req.Header, name, false), 1, name)
-		}
-		require.Len(t, fieldname.Lines(&req.Header, "x-api-key", false), 1)
-	})
 }
 
 func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
@@ -685,18 +677,11 @@ func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			req := fasthttp.AcquireRequest()
-			defer fasthttp.ReleaseRequest(req)
-			resp := fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseResponse(resp)
+			req, resp := clientTestCReqResp(t)
 			req.SetRequestURI("http://example.com/start")
 			tc.setup(req)
 
-			calls := make([]stubRedirectCall, 0, len(tc.locations)+1)
-			for _, location := range tc.locations {
-				calls = append(calls, stubRedirectCall{status: new(fasthttp.StatusFound), location: new(location)})
-			}
-			calls = append(calls, stubRedirectCall{status: new(fasthttp.StatusOK)})
+			calls := append(clientTestCFound(tc.locations...), stubRedirectCall{status: new(fasthttp.StatusOK)})
 
 			var got []carried
 			client := &stubRedirectClient{calls: calls, onRequest: func(req *fasthttp.Request) {
@@ -718,8 +703,6 @@ func TestClient_DoRedirects_DropsClientListedHeaders(t *testing.T) {
 	server := startRedirectServer(t, func(c fiber.Ctx) error {
 		return c.SendString(c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token"))
 	})
-	// Not a defer: the parallel subtests outlive this function.
-	t.Cleanup(server.stop)
 
 	do := func(t *testing.T, client *Client, path string) string {
 		t.Helper()
@@ -736,20 +719,10 @@ func TestClient_DoRedirects_DropsClientListedHeaders(t *testing.T) {
 		return string(resp.Body())
 	}
 
-	for name, newClient := range map[string]func() *Client{
-		"standard": func() *Client { return New().SetDial(server.dial()) },
-		"host": func() *Client {
-			return NewWithHostClient(&fasthttp.HostClient{Addr: "example.com:80", Dial: server.dial()})
-		},
-		"balanced": func() *Client {
-			return NewWithLBClient(&fasthttp.LBClient{Clients: []fasthttp.BalancingClient{
-				&fasthttp.HostClient{Addr: "example.com:80", Dial: server.dial()},
-			}})
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
+	for _, kind := range pathClientKinds {
+		t.Run(kind.name, func(t *testing.T) {
 			t.Parallel()
-			client := newClient()
+			client := kind.build(server.dial(), false)
 
 			require.Equal(t, "key|tok", do(t, client, "/start"))
 
@@ -847,7 +820,6 @@ func TestClient_DoRedirects_StripsCredentialsCrossHost(t *testing.T) {
 	server := startRedirectServer(t, func(c fiber.Ctx) error {
 		return c.SendString(c.Get(fiber.HeaderAuthorization) + "|" + c.Get(fiber.HeaderCookie))
 	})
-	t.Cleanup(server.stop)
 	client := New().SetDial(server.dial())
 	credentials := Config{
 		Header:       map[string]string{fiber.HeaderAuthorization: "Bearer secret"},
@@ -874,12 +846,7 @@ func TestDoRedirectsWithClientDefaultLimit(t *testing.T) {
 	req.SetRequestURI("http://example.com/start")
 	req.Header.SetMethod(fasthttp.MethodPost)
 
-	calls := make([]stubRedirectCall, 0, defaultRedirectLimit+1)
-	for range defaultRedirectLimit + 1 {
-		calls = append(calls, stubRedirectCall{status: new(fasthttp.StatusFound), location: new("/loop")})
-	}
-
-	client := &stubRedirectClient{calls: calls}
+	client := &stubRedirectClient{calls: clientTestCFound(slices.Repeat([]string{"/loop"}, defaultRedirectLimit+1)...)}
 	require.ErrorIs(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: -1}, client),
 		fasthttp.ErrTooManyRedirects)
 	require.Equal(t, defaultRedirectLimit+1, client.CallCount())
@@ -887,17 +854,11 @@ func TestDoRedirectsWithClientDefaultLimit(t *testing.T) {
 
 func TestDoRedirectsWithClientDeadlineCoversTheChain(t *testing.T) {
 	t.Parallel()
-	req := fasthttp.AcquireRequest()
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseRequest(req)
-	defer fasthttp.ReleaseResponse(resp)
+	req, resp := clientTestCReqResp(t)
 	req.SetRequestURI("http://example.com/start")
 
 	const budget, hop = 100 * time.Millisecond, 30 * time.Millisecond
-	calls := make([]stubRedirectCall, 0, 20)
-	for range 20 {
-		calls = append(calls, stubRedirectCall{status: new(fasthttp.StatusFound), location: new("/loop")})
-	}
+	calls := clientTestCFound(slices.Repeat([]string{"/loop"}, 20)...)
 	var timeouts []time.Duration
 	client := &stubRedirectClient{calls: calls, onRequest: func(req *fasthttp.Request) {
 		timeouts = append(timeouts, req.GetTimeOut())

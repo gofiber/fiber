@@ -660,34 +660,20 @@ func Test_CookieJar_DomainMatchBoundary(t *testing.T) {
 // A zone ending in a site's domain must neither receive nor set its cookies.
 func Test_CookieJar_IPv6ZoneIsNotASubdomain(t *testing.T) {
 	t.Parallel()
-	jar := &CookieJar{}
+	jar := clientTestCJar(t)
+	site := clientTestCURI(t, "http://example.com/")
+	zoned := clientTestCURI(t, "http://[::1%25.example.com]:8080/")
 
-	site := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(site)
-	require.NoError(t, site.Parse(nil, []byte("http://example.com/")))
-
-	zoned := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(zoned)
-	require.NoError(t, zoned.Parse(nil, []byte("http://[::1%25.example.com]:8080/")))
-
-	c := &fasthttp.Cookie{}
-	c.SetKey("sess")
-	c.SetValue("secret")
+	c := clientTestCCookie(t, "sess", "secret")
 	c.SetDomain("example.com")
 	c.SetPath("/")
 	jar.Set(site, c)
 
 	require.Empty(t, jar.Get(zoned))
 
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
-	c.SetValue("evil")
-	resp.Header.SetCookie(c)
-	jar.parseCookiesFromResp(zoned.Host(), zoned.Path(), resp)
+	clientTestCReceive(jar, string(zoned.Host()), string(zoned.Path()), "sess=evil; Domain=example.com; Path=/")
 
-	cookies := jar.Get(site)
-	require.Len(t, cookies, 1)
-	require.Equal(t, "secret", string(cookies[0].Value()))
+	require.Equal(t, []string{"sess=secret"}, clientTestCPairs(jar.Get(site)))
 }
 
 // Test_CookieJar_DistinctPathsCoexist covers RFC 6265 Section 5.3 step 11:
@@ -1290,15 +1276,10 @@ func Test_CookieJar_CookieName(t *testing.T) {
 		"session \t =evil; Domain=example.com; Path=/",
 		"evil; Domain=example.com; Path=/",
 	} {
-		t.Run("response "+setCookie, func(t *testing.T) {
+		t.Run(fmt.Sprintf("response %q", setCookie), func(t *testing.T) {
 			t.Parallel()
-			jar := AcquireCookieJar()
-			defer ReleaseCookieJar(jar)
-
-			resp := fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseResponse(resp)
-			resp.Header.Add(fasthttp.HeaderSetCookie, setCookie)
-			jar.parseCookiesFromResp([]byte("evil.example.com"), []byte("/"), resp)
+			jar := clientTestCJar(t)
+			clientTestCReceive(jar, "evil.example.com", "/", setCookie)
 
 			require.Equal(t, "session=real", cookieHeader(t, jar, "http://evil.example.com/"))
 			require.Equal(t, "session=real", cookieHeader(t, jar, "http://api.example.com/"))
@@ -1313,11 +1294,9 @@ func Test_CookieJar_CookieName(t *testing.T) {
 		{" session", "evil"},
 		{"session;", "evil"},
 	} {
-		t.Run("set "+kv[0], func(t *testing.T) {
+		t.Run(fmt.Sprintf("set %q", kv[0]), func(t *testing.T) {
 			t.Parallel()
-			jar := AcquireCookieJar()
-			defer ReleaseCookieJar(jar)
-
+			jar := clientTestCJar(t)
 			jar.SetKeyValue("example.com", kv[0], kv[1])
 
 			require.Equal(t, "session=real", cookieHeader(t, jar, "http://example.com/"))
@@ -1326,28 +1305,17 @@ func Test_CookieJar_CookieName(t *testing.T) {
 
 	t.Run("trimmed name replaces the stored cookie", func(t *testing.T) {
 		t.Parallel()
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
-
+		jar := clientTestCJar(t)
 		jar.SetKeyValue("example.com", "k", "old")
-
-		resp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(resp)
-		resp.Header.Add(fasthttp.HeaderSetCookie, "k\t=new; Path=/")
-		jar.parseCookiesFromResp([]byte("example.com"), []byte("/"), resp)
+		clientTestCReceive(jar, "example.com", "/", "k\t=new; Path=/")
 
 		require.Equal(t, "k=new; session=real", cookieHeader(t, jar, "http://example.com/"))
 	})
 
 	t.Run("caller's cookie is left alone", func(t *testing.T) {
 		t.Parallel()
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
-
-		c := fasthttp.AcquireCookie()
-		defer fasthttp.ReleaseCookie(c)
-		c.SetKey("k\t")
-		c.SetValue("v")
+		jar := clientTestCJar(t)
+		c := clientTestCCookie(t, "k\t", "v")
 		jar.SetByHost([]byte("example.com"), c)
 
 		require.Equal(t, "k\t", string(c.Key()))
