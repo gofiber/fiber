@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/gob"
 	"strconv"
 	"testing"
 	"time"
@@ -324,4 +325,98 @@ func Benchmark_GetAs(b *testing.B) {
 			}
 		}
 	})
+}
+
+func init() {
+	gob.Register(map[string]int{})
+}
+
+// Without a codec, GetAs gives up the saved snapshot for a value that could share memory with the
+// session, as Get does: a change made through it is saved.
+func Test_GetAs_GivesUpTheSnapshotLikeGet(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	store := NewStore(Config{Storage: memory.New()})
+	id := seedSession(t, app, store, func(s *Session) { s.Set("m", map[string]int{"a": 1}) })
+
+	sess := loadSession(t, app, store, id)
+	m, ok := GetAs[map[string]int](sess, "m")
+	require.True(t, ok)
+	m["b"] = 2 // a change in place, without Set
+	require.NoError(t, sess.Save())
+
+	again := loadSession(t, app, store, id)
+	got, ok := GetAs[map[string]int](again, "m")
+	require.True(t, ok)
+	require.Equal(t, map[string]int{"a": 1, "b": 2}, got)
+
+	// The same holds for GetInto, and for a scalar it does not: nothing is saved again.
+	var viaInto map[string]int
+	require.NoError(t, again.GetInto("m", &viaInto))
+	viaInto["c"] = 3
+	require.NoError(t, again.Save())
+	third := loadSession(t, app, store, id)
+	got, ok = GetAs[map[string]int](third, "m")
+	require.True(t, ok)
+	require.Equal(t, map[string]int{"a": 1, "b": 2, "c": 3}, got)
+}
+
+// A session without its data map answers like an empty one.
+func Test_Session_WithoutDataAnswersLikeAnEmptyOne(t *testing.T) {
+	t.Parallel()
+
+	var sess Session
+	require.NotPanics(t, func() {
+		expiry, ok := sess.AbsoluteExpiry()
+		require.False(t, ok)
+		require.True(t, expiry.IsZero())
+
+		value, found := GetAs[string](&sess, "k")
+		require.False(t, found)
+		require.Empty(t, value)
+
+		var target string
+		require.ErrorIs(t, sess.GetInto("k", &target), ErrKeyNotFound)
+	})
+}
+
+// The target of Middleware.GetInto is checked as that of Session.GetInto is.
+func Test_Middleware_GetInto_TargetHasToBeANonNilPointer(t *testing.T) {
+	t.Parallel()
+
+	for name, codec := range map[string]Codec{"gob": nil, "json": JSONCodec{}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Codec: codec}))
+			app.Get("/", func(c fiber.Ctx) error {
+				m := FromContext(c)
+				m.Set("k", 1)
+
+				var nilPointer *int
+				require.NotPanics(t, func() {
+					require.Error(t, m.GetInto("k", nil))
+					require.Error(t, m.GetInto("k", 5))
+					require.Error(t, m.GetInto("k", nilPointer))
+					require.Error(t, m.GetInto("missing", nil), "the target is checked before the key is looked up")
+				})
+				var n int
+				require.NoError(t, m.GetInto("k", &n))
+				require.Equal(t, 1, n)
+				return nil
+			})
+			require.Equal(t, fiber.StatusOK, serveGet(app, "/"))
+		})
+	}
+}
+
+// serveGet runs a GET request through the app and returns the status code.
+func serveGet(app *fiber.App, uri string) int {
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI(uri)
+	app.Handler()(fctx)
+	return fctx.Response.StatusCode()
 }

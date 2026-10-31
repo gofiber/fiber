@@ -377,3 +377,63 @@ func Test_Record_CodecOf(t *testing.T) {
 		require.False(t, ok, name)
 	}
 }
+
+// What loadRecord cannot read it refuses, whatever the store did before it: a session without a
+// codec, and a record of another codec. A failed decode leaves no entries behind.
+func Test_Session_DecodeRecordRefusesWhatItCannotRead(t *testing.T) {
+	t.Parallel()
+
+	record := mustAppendRecord(t, "json", recordDeadline{}, []recordEntry{{key: "a", value: []byte("1")}})
+
+	t.Run("a session without a codec", func(t *testing.T) {
+		t.Parallel()
+		sess := acquireSession()
+		defer sess.Release()
+		sess.data.Lock()
+		defer sess.data.Unlock()
+		require.ErrorIs(t, sess.decodeSessionData(record), errRecordNeedsCodec)
+	})
+
+	t.Run("a record of another codec", func(t *testing.T) {
+		t.Parallel()
+		sess := acquireSession()
+		defer sess.Release()
+		sess.data.codec = &namedCodec{Codec: JSONCodec{}, name: "other"}
+		sess.data.Lock()
+		defer sess.data.Unlock()
+		err := sess.decodeSessionData(record)
+		require.ErrorIs(t, err, errCodecMismatch)
+		require.Empty(t, sess.data.Data, "nothing of the record is left")
+	})
+
+	t.Run("a damaged record leaves no entries", func(t *testing.T) {
+		t.Parallel()
+		sess := acquireSession()
+		defer sess.Release()
+		sess.data.codec = &namedCodec{Codec: JSONCodec{}, name: "json"}
+		sess.data.Lock()
+		defer sess.data.Unlock()
+		damaged := append(bytes.Clone(record), 0) // a byte too many, found after the entries were added
+		require.ErrorIs(t, sess.decodeSessionData(damaged), errInvalidRecord)
+		require.Empty(t, sess.data.Data)
+	})
+}
+
+// A record is built into one buffer of the size it needs. AllocsPerRun cannot run in a parallel
+// test, so this one is sequential.
+func Test_Record_AppendAllocatesOnce(t *testing.T) { //nolint:paralleltest // testing.AllocsPerRun panics in a parallel test
+	entries := make([]recordEntry, 0, 100)
+	for i := range 100 {
+		entries = append(entries, recordEntry{key: fmt.Sprintf("key-%03d", i), value: bytes.Repeat([]byte("v"), 32)})
+	}
+	var sink []byte
+	allocs := testing.AllocsPerRun(50, func() {
+		var err error
+		sink, err = appendRecord(nil, "json", recordDeadline{sec: 1_700_000_000, nanos: 5, set: true}, entries)
+		if err != nil {
+			panic(err)
+		}
+	})
+	require.NotEmpty(t, sink)
+	require.InDelta(t, 1, allocs, 0, "one buffer, sized in advance")
+}
