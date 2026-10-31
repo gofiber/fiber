@@ -206,7 +206,8 @@ func sourceName(leaf extractors.Extractor) string {
 	case extractors.SourceHeader:
 		return "header:" + utilsstrings.ToLower(leaf.Key)
 	case extractors.SourceAuthHeader:
-		return "auth:" + utilsstrings.ToLower(leaf.Key)
+		// The header is always Authorization; the scheme is what tells one apart.
+		return "auth:" + utilsstrings.ToLower(leaf.AuthScheme)
 	case extractors.SourceForm:
 		return "form:" + leaf.Key
 	case extractors.SourceQuery:

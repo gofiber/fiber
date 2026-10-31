@@ -256,6 +256,7 @@ func Test_Session_Store_SourcesAreToldApartByKindAndName(t *testing.T) {
 	byOtherQuery := NewStore(Config{Extractor: extractors.FromQuery("token"), Storage: shared})
 	byAuth := NewStore(Config{Extractor: extractors.FromAuthHeader("Bearer"), Storage: shared})
 	byAuthLower := NewStore(Config{Extractor: extractors.FromAuthHeader("bearer"), Storage: shared})
+	byToken := NewStore(Config{Extractor: extractors.FromAuthHeader("Token"), Storage: shared})
 	byCookie := NewStore(Config{Extractor: extractors.FromCookie("c_sid"), Storage: shared})
 	byCustom := NewStore(Config{Extractor: extractors.FromCustom("legacy", custom), Storage: shared})
 	bySameCustom := NewStore(Config{Extractor: extractors.FromCustom("legacy", custom), Storage: shared})
@@ -280,6 +281,7 @@ func Test_Session_Store_SourcesAreToldApartByKindAndName(t *testing.T) {
 		{byQuery, byCookie},
 		{byCookie, byQuery},
 		{byAuth, byCookie},
+		{byAuth, byToken}, // the same header, another scheme
 		{byCustom, byOtherCustom},
 		{byCustom, byQuery},
 		{byForm, byQuery}, // the same name in another kind is another source
