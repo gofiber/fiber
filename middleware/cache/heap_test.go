@@ -10,7 +10,6 @@ import (
 
 func TestIndexedHeapGenerationSurvivesIndexReuse(t *testing.T) {
 	t.Parallel()
-
 	h := &indexedHeap{}
 	firstIdx := h.put("same-key", 1, 10, "")
 	firstGen := h.generation(firstIdx)

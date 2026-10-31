@@ -1,18 +1,17 @@
 package cache
 
 import (
-	"context"
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
-	"net/http"
-	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -72,20 +71,12 @@ func buildKeygenCtx(tc *keygenCase) (fiber.Ctx, *Config) {
 	// Method must be set before AcquireCtx (fiber caches it); URI/body/headers are
 	// read live from the request afterwards.
 	fctx := &fasthttp.RequestCtx{}
-	method := tc.method
-	if method == "" {
-		method = fiber.MethodGet
-	}
-	fctx.Request.Header.SetMethod(method)
+	fctx.Request.Header.SetMethod(cmp.Or(tc.method, fiber.MethodGet))
 	c := app.AcquireCtx(fctx)
 	c.Request().SetRequestURI(tc.uri)
 	// The authority is read live as well; a request without one is not what
 	// the key is built for, so the fixtures carry the host httptest would set.
-	host := tc.host
-	if host == "" {
-		host = "example.com"
-	}
-	c.Request().SetHost(host)
+	c.Request().SetHost(cmp.Or(tc.host, "example.com"))
 	if tc.body != "" {
 		c.Request().SetBody([]byte(tc.body))
 	}
@@ -157,7 +148,6 @@ func Test_defaultKeyGenerator_stableKeys(t *testing.T) {
 // equality with escapeKeyDelimiters.
 func Test_EscapeKeyDelimiters_AppendFormsMatch(t *testing.T) {
 	t.Parallel()
-
 	long := strings.Repeat("a", maxKeyDimensionSegmentLength+1)
 	corpus := []string{
 		"", "a", "|", ":", `\`, `\\`, "::", "||", `a|b:c\d`,
@@ -197,7 +187,6 @@ func Test_EscapeKeyDelimiters_AppendFormsMatch(t *testing.T) {
 // middleware actually used.
 func Test_Cache_KeyFormatIsStable(t *testing.T) {
 	t.Parallel()
-
 	authHash := authDigest("Bearer token")
 
 	tests := []struct {
@@ -206,27 +195,28 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 		want        []string
 		disableVary bool
 	}{
-		{
-			name: "anonymous",
-			want: []string{"v6|manifest|v6|GET|/demo", "v6|GET|/demo"},
-		},
+		{name: "anonymous", want: []string{"v6|manifest|v6|GET|/demo", "v6|GET|/demo"}},
 		{
 			name: "authenticated",
 			auth: "Bearer token",
 			want: []string{"v6|manifest|v6|GET|/demo|auth=" + authHash, "v6|GET|/demo|auth=" + authHash},
 		},
-		{
-			name:        "vary disabled",
-			disableVary: true,
-			want:        []string{"v6|GET|/demo"},
-		},
+		{name: "vary disabled", disableVary: true, want: []string{"v6|GET|/demo"}},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			store := newKeyRecordingStorage()
+			// Every key the middleware reads, in order and without duplicates.
+			var mu sync.Mutex
+			var lookedUp []string
+			store := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) {
+				mu.Lock()
+				defer mu.Unlock()
+				if !slices.Contains(lookedUp, key) {
+					lookedUp = append(lookedUp, key)
+				}
+			}}
 			app := fiber.New()
 			app.Use(New(Config{
 				Storage:            store,
@@ -238,83 +228,16 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 			}))
 			app.Get("/demo", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-			req := httptest.NewRequest(fiber.MethodGet, "/demo", http.NoBody)
-			if tc.auth != "" {
-				req.Header.Set(fiber.HeaderAuthorization, tc.auth)
-			}
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			req := apptest.Req(fiber.MethodGet, "/demo", apptest.WithHeaderIf(fiber.HeaderAuthorization, tc.auth))
+			apptest.Expect(t, app, req, fiber.StatusOK)
 
 			// The body is stored under its own key, which is the entry key plus
 			// the suffix the manager appends.
-			require.Equal(t, tc.want, store.lookedUp())
+			mu.Lock()
+			defer mu.Unlock()
+			require.Equal(t, tc.want, lookedUp)
 		})
 	}
-}
-
-// keyRecordingStorage reports every key it was asked to read, in order and
-// without duplicates, so a test can assert on the keys the middleware built.
-type keyRecordingStorage struct {
-	data map[string][]byte
-	seen []string
-	mu   sync.Mutex
-}
-
-func newKeyRecordingStorage() *keyRecordingStorage {
-	return &keyRecordingStorage{data: make(map[string][]byte)}
-}
-
-func (s *keyRecordingStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
-	return s.Get(key)
-}
-
-func (s *keyRecordingStorage) Get(key string) ([]byte, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !slices.Contains(s.seen, key) {
-		s.seen = append(s.seen, key)
-	}
-	return s.data[key], nil
-}
-
-func (s *keyRecordingStorage) SetWithContext(_ context.Context, key string, val []byte, exp time.Duration) error {
-	return s.Set(key, val, exp)
-}
-
-func (s *keyRecordingStorage) Set(key string, val []byte, _ time.Duration) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.data[key] = val
-	return nil
-}
-
-func (s *keyRecordingStorage) DeleteWithContext(_ context.Context, key string) error {
-	return s.Delete(key)
-}
-
-func (s *keyRecordingStorage) Delete(key string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.data, key)
-	return nil
-}
-
-func (s *keyRecordingStorage) ResetWithContext(context.Context) error { return s.Reset() }
-
-func (s *keyRecordingStorage) Reset() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.data = make(map[string][]byte)
-	return nil
-}
-
-func (*keyRecordingStorage) Close() error { return nil }
-
-func (s *keyRecordingStorage) lookedUp() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return slices.Clone(s.seen)
 }
 
 // The escaping and bounding below are the reference implementations the key
@@ -355,7 +278,6 @@ func boundKeySegment(segment string) string {
 // cannot borrow the partition it imitates.
 func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing.T) {
 	t.Parallel()
-
 	segment := func(credentials []string, lines ...string) string {
 		var h fasthttp.RequestHeader
 		for _, line := range lines {
@@ -367,7 +289,6 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 
 	t.Run("a credential is hashed and not spelled out", func(t *testing.T) {
 		t.Parallel()
-
 		got := segment(credential, "tok")
 		require.Equal(t, "x-api-key:1sha256:"+authDigest("tok"), got)
 		require.NotContains(t, got, "tok")
@@ -375,14 +296,12 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 
 	t.Run("an absent credential keeps the key of a client that sends none", func(t *testing.T) {
 		t.Parallel()
-
 		require.Equal(t, "x-api-key:0", segment(credential))
 		require.Equal(t, segment(nil), segment(credential))
 	})
 
 	t.Run("a value spelled like the digest is kept, not mistaken for the credential", func(t *testing.T) {
 		t.Parallel()
-
 		lookalike := "sha256:" + authDigest("tok")
 		got := segment(nil, lookalike)
 		require.NotEqual(t, segment(credential, "tok"), got)
@@ -393,7 +312,6 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 
 	t.Run("lines too long to keep hash like a credential of the same lines", func(t *testing.T) {
 		t.Parallel()
-
 		long := strings.Repeat("x", 300)
 		want := "x-api-key:1sha256:" + authDigest(long)
 		require.Equal(t, want, segment(nil, long))
@@ -402,7 +320,6 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 
 	t.Run("a value too long to keep and a value spelled like its digest key apart", func(t *testing.T) {
 		t.Parallel()
-
 		long := strings.Repeat("x", 300)
 		hashed := segment(nil, long)
 		lookalike := segment(nil, "sha256:"+authDigest(long))
@@ -415,7 +332,6 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 
 	t.Run("the split into lines is part of the digest", func(t *testing.T) {
 		t.Parallel()
-
 		require.NotEqual(t, segment(credential, "ab"), segment(credential, "a", "b"))
 		require.NotEqual(t, segment(credential, "a", "bc"), segment(credential, "ab", "c"))
 		require.NotEqual(t, segment(credential, ""), segment(credential), "present but empty differs from absent")
@@ -425,7 +341,6 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 // A cookie's value is most often a session identifier, so it is hashed in the key; a missing or empty one leaves its bare name.
 func Test_appendCanonicalCookieSubset(t *testing.T) {
 	t.Parallel()
-
 	segment := func(cookie string, names ...string) string {
 		c, _ := buildKeygenCtx(&keygenCase{uri: "/", cookie: cookie})
 		return string(appendCanonicalCookieSubset(nil, c, &Config{KeyCookies: names}))
@@ -433,7 +348,6 @@ func Test_appendCanonicalCookieSubset(t *testing.T) {
 
 	t.Run("a value is hashed and not spelled out", func(t *testing.T) {
 		t.Parallel()
-
 		got := segment("sid=tok", "sid")
 		require.Equal(t, "sid:sha256:"+authDigest("tok"), got)
 		require.NotContains(t, got, "tok")
@@ -441,7 +355,6 @@ func Test_appendCanonicalCookieSubset(t *testing.T) {
 
 	t.Run("a missing or empty cookie shares one key, a value does not", func(t *testing.T) {
 		t.Parallel()
-
 		require.Equal(t, "sid:", segment("", "sid"))
 		require.Equal(t, "sid:", segment("sid=", "sid"))
 		require.Equal(t, "sid:", segment("other=1", "sid"))
@@ -450,7 +363,6 @@ func Test_appendCanonicalCookieSubset(t *testing.T) {
 
 	t.Run("a value shaped like the key's structure is hashed like any other", func(t *testing.T) {
 		t.Parallel()
-
 		for _, value := range []string{"a|b:c", "x|c=other:1", "sha256:" + authDigest("tok"), strings.Repeat("x", 300)} {
 			got := segment("sid="+value, "sid")
 			require.Equal(t, "sid:sha256:"+authDigest(value), got)
@@ -462,7 +374,6 @@ func Test_appendCanonicalCookieSubset(t *testing.T) {
 
 	t.Run("each name keeps its own segment", func(t *testing.T) {
 		t.Parallel()
-
 		require.Equal(t, "a:sha256:"+authDigest("1")+"|b:sha256:"+authDigest("2")+"|c:", segment("a=1; b=2", "a", "b", "c"))
 		require.NotEqual(t, segment("a=1; b=2", "a", "b"), segment("a=2; b=1", "a", "b"))
 	})
@@ -470,7 +381,6 @@ func Test_appendCanonicalCookieSubset(t *testing.T) {
 
 func Test_Cache_KeyCookieValuesAreHashedInStorageKeys(t *testing.T) {
 	t.Parallel()
-
 	const (
 		session = "sess_0123456789abcdefghijklmnopqrstuvwxyz"
 		other   = "sess_other_other_other_other_other_other"
@@ -480,32 +390,27 @@ func Test_Cache_KeyCookieValuesAreHashedInStorageKeys(t *testing.T) {
 	for _, kind := range storageKinds {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
-
 			storage := storageOf(kind)
 			app := fiber.New()
 			app.Use(New(Config{Storage: storage, KeyCookies: []string{"session"}}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("for:" + c.Cookies("session")) })
 
-			first := getRoot(t, app, withCookie(session))
-			require.Equal(t, cacheMiss, first.cache)
-			require.Equal(t, "for:"+session, first.body)
+			cacheTestCRequireReply(t, getRoot(t, app, withCookie(session)), cacheMiss, "for:"+session)
 			require.Equal(t, cacheHit, getRoot(t, app, withCookie(session)).cache)
 
-			second := getRoot(t, app, withCookie(other))
-			require.Equal(t, cacheMiss, second.cache)
-			require.Equal(t, "for:"+other, second.body)
+			cacheTestCRequireReply(t, getRoot(t, app, withCookie(other)), cacheMiss, "for:"+other)
 
 			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
 			require.Equal(t, cacheHit, getRoot(t, app, withCookie("")).cache, "an empty cookie is the partition of none")
 
-			external, ok := storage.(*failingCacheStorage)
+			external, ok := storage.(*storagetest.Memory)
 			if !ok {
 				return
 			}
-			external.mu.RLock()
-			defer external.mu.RUnlock()
+			external.Mu.RLock()
+			defer external.Mu.RUnlock()
 			hashed := 0
-			for key := range external.data {
+			for key := range external.Data {
 				require.NotContains(t, key, session)
 				require.NotContains(t, key, other)
 				if strings.Contains(key, "session:sha256:"+authDigest(session)) {

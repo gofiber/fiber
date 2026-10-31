@@ -14,8 +14,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3/internal/redact"
-
-	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/stretchr/testify/require"
 	"github.com/tinylib/msgp/msgp"
 	"github.com/valyala/fasthttp"
@@ -49,12 +48,38 @@ func encodeMsgErrorSweep(t *testing.T, marshaledLen int, encode func(*msgp.Write
 	}
 }
 
+// cacheTestCDecoder is the pointer to a T that decodes itself from bytes and from
+// a reader, as the generated msgp code lets item and cachedHeader do.
+type cacheTestCDecoder[T any] interface {
+	*T
+	UnmarshalMsg(bts []byte) ([]byte, error)
+	DecodeMsg(dc *msgp.Reader) error
+}
+
+// cacheTestCRequireLimitExceeded requires both decoders of a T to refuse raw for
+// exceeding a limit of the generated code.
+func cacheTestCRequireLimitExceeded[T any, P cacheTestCDecoder[T]](t *testing.T, raw []byte, msgAndArgs ...any) {
+	t.Helper()
+
+	var out T
+	_, err := P(&out).UnmarshalMsg(raw)
+	require.ErrorIs(t, err, msgp.ErrLimitExceeded, msgAndArgs...)
+
+	var dec T
+	require.ErrorIs(t, P(&dec).DecodeMsg(msgp.NewReader(bytes.NewReader(raw))), msgp.ErrLimitExceeded, msgAndArgs...)
+}
+
+// cacheTestCBytesField returns a map of the one field, holding size zero bytes.
+func cacheTestCBytesField(field string, size int) []byte {
+	var raw []byte
+	raw = msgp.AppendMapHeader(raw, 1)
+	raw = msgp.AppendString(raw, field)
+	return msgp.AppendBytes(raw, make([]byte, size))
+}
+
 func populatedItem() item {
 	return item{
-		headers: []cachedHeader{
-			{key: []byte("X-A"), value: []byte("1")},
-			{key: []byte("X-B"), value: []byte("two")},
-		},
+		headers:         []cachedHeader{{key: []byte("X-A"), value: []byte("1")}, {key: []byte("X-B"), value: []byte("two")}},
 		body:            []byte("response body"),
 		ctype:           []byte("text/plain"),
 		cencoding:       []byte("gzip"),
@@ -77,7 +102,6 @@ func populatedItem() item {
 
 func Test_item_MarshalUnmarshal_Populated(t *testing.T) {
 	t.Parallel()
-
 	v := populatedItem()
 	bts, err := v.MarshalMsg(nil)
 	require.NoError(t, err)
@@ -91,7 +115,6 @@ func Test_item_MarshalUnmarshal_Populated(t *testing.T) {
 
 func Test_item_EncodeDecode_Populated(t *testing.T) {
 	t.Parallel()
-
 	v := populatedItem()
 	var buf bytes.Buffer
 	w := msgp.NewWriter(&buf)
@@ -105,7 +128,6 @@ func Test_item_EncodeDecode_Populated(t *testing.T) {
 
 func Test_item_Decode_Truncated(t *testing.T) {
 	t.Parallel()
-
 	v := populatedItem()
 	full, err := v.MarshalMsg(nil)
 	require.NoError(t, err)
@@ -124,7 +146,6 @@ func Test_item_Decode_Truncated(t *testing.T) {
 
 func Test_item_EncodeMsg_WriterErrors(t *testing.T) {
 	t.Parallel()
-
 	v := populatedItem()
 	full, err := v.MarshalMsg(nil)
 	require.NoError(t, err)
@@ -134,7 +155,6 @@ func Test_item_EncodeMsg_WriterErrors(t *testing.T) {
 
 func Test_item_Decode_UnknownField(t *testing.T) {
 	t.Parallel()
-
 	var raw []byte
 	raw = msgp.AppendMapHeader(raw, 2)
 	raw = msgp.AppendString(raw, "unknownField")
@@ -154,24 +174,17 @@ func Test_item_Decode_UnknownField(t *testing.T) {
 
 func Test_item_Decode_LimitExceeded(t *testing.T) {
 	t.Parallel()
-
 	// headers array exceeds the configured limit of 1024.
 	var raw []byte
 	raw = msgp.AppendMapHeader(raw, 1)
 	raw = msgp.AppendString(raw, "headers")
 	raw = msgp.AppendArrayHeader(raw, 1025)
 
-	var out item
-	_, err := out.UnmarshalMsg(raw)
-	require.ErrorIs(t, err, msgp.ErrLimitExceeded)
-
-	var dec item
-	require.ErrorIs(t, dec.DecodeMsg(msgp.NewReader(bytes.NewReader(raw))), msgp.ErrLimitExceeded)
+	cacheTestCRequireLimitExceeded[item](t, raw)
 }
 
 func Test_cachedHeader_Roundtrip_Populated(t *testing.T) {
 	t.Parallel()
-
 	v := cachedHeader{key: []byte("Content-Type"), value: []byte("text/html")}
 	bts, err := v.MarshalMsg(nil)
 	require.NoError(t, err)
@@ -193,7 +206,6 @@ func Test_cachedHeader_Roundtrip_Populated(t *testing.T) {
 
 func Test_cachedHeader_EncodeDecode(t *testing.T) {
 	t.Parallel()
-
 	v := cachedHeader{key: []byte("Content-Type"), value: []byte("text/html")}
 
 	var buf bytes.Buffer
@@ -212,53 +224,45 @@ func Test_cachedHeader_EncodeDecode(t *testing.T) {
 
 func Test_cachedHeader_Decode_UnknownAndLimits(t *testing.T) {
 	t.Parallel()
+	t.Run("unknown field is skipped", func(t *testing.T) {
+		t.Parallel()
+		var raw []byte
+		raw = msgp.AppendMapHeader(raw, 2)
+		raw = msgp.AppendString(raw, "zz")
+		raw = msgp.AppendString(raw, "ignored")
+		raw = msgp.AppendString(raw, "key")
+		raw = msgp.AppendBytes(raw, []byte("X-Test"))
 
-	// Unknown field is skipped.
-	var raw []byte
-	raw = msgp.AppendMapHeader(raw, 2)
-	raw = msgp.AppendString(raw, "zz")
-	raw = msgp.AppendString(raw, "ignored")
-	raw = msgp.AppendString(raw, "key")
-	raw = msgp.AppendBytes(raw, []byte("X-Test"))
+		var out cachedHeader
+		_, err := out.UnmarshalMsg(raw)
+		require.NoError(t, err)
+		require.Equal(t, []byte("X-Test"), out.key)
 
-	var out cachedHeader
-	_, err := out.UnmarshalMsg(raw)
-	require.NoError(t, err)
-	require.Equal(t, []byte("X-Test"), out.key)
+		var dec cachedHeader
+		require.NoError(t, dec.DecodeMsg(msgp.NewReader(bytes.NewReader(raw))))
+		require.Equal(t, []byte("X-Test"), dec.key)
+	})
 
-	var dec cachedHeader
-	require.NoError(t, dec.DecodeMsg(msgp.NewReader(bytes.NewReader(raw))))
-	require.Equal(t, []byte("X-Test"), dec.key)
-
-	// key over the 512-byte limit.
-	var bigKey []byte
-	bigKey = msgp.AppendMapHeader(bigKey, 1)
-	bigKey = msgp.AppendString(bigKey, "key")
-	bigKey = msgp.AppendBytes(bigKey, make([]byte, 513))
-	var k cachedHeader
-	_, err = k.UnmarshalMsg(bigKey)
-	require.ErrorIs(t, err, msgp.ErrLimitExceeded)
-	var kDec cachedHeader
-	require.ErrorIs(t, kDec.DecodeMsg(msgp.NewReader(bytes.NewReader(bigKey))), msgp.ErrLimitExceeded)
-
-	// value over the 16384-byte limit.
-	var bigVal []byte
-	bigVal = msgp.AppendMapHeader(bigVal, 1)
-	bigVal = msgp.AppendString(bigVal, "value")
-	bigVal = msgp.AppendBytes(bigVal, make([]byte, 16385))
-	var vv cachedHeader
-	_, err = vv.UnmarshalMsg(bigVal)
-	require.ErrorIs(t, err, msgp.ErrLimitExceeded)
-	var vvDec cachedHeader
-	require.ErrorIs(t, vvDec.DecodeMsg(msgp.NewReader(bytes.NewReader(bigVal))), msgp.ErrLimitExceeded)
+	for _, tc := range []struct {
+		name  string
+		field string
+		size  int
+	}{
+		{name: "key over the 512-byte limit", field: "key", size: 513},
+		{name: "value over the 16384-byte limit", field: "value", size: 16385},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cacheTestCRequireLimitExceeded[cachedHeader](t, cacheTestCBytesField(tc.field, tc.size))
+		})
+	}
 }
 
 // Test_item_Decode_FieldLimits covers the per-field ErrLimitExceeded branches
 // of the item byte fields.
 func Test_item_Decode_FieldLimits(t *testing.T) {
 	t.Parallel()
-
-	cases := []struct {
+	for _, tc := range []struct {
 		field string
 		size  int
 	}{
@@ -267,19 +271,11 @@ func Test_item_Decode_FieldLimits(t *testing.T) {
 		{"cacheControl", 2049},
 		{"expires", 129},
 		{"etag", 257},
-	}
-	for _, tc := range cases {
-		var raw []byte
-		raw = msgp.AppendMapHeader(raw, 1)
-		raw = msgp.AppendString(raw, tc.field)
-		raw = msgp.AppendBytes(raw, make([]byte, tc.size))
-
-		var out item
-		_, err := out.UnmarshalMsg(raw)
-		require.ErrorIs(t, err, msgp.ErrLimitExceeded, "field %s", tc.field)
-
-		var dec item
-		require.ErrorIs(t, dec.DecodeMsg(msgp.NewReader(bytes.NewReader(raw))), msgp.ErrLimitExceeded, "field %s", tc.field)
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			t.Parallel()
+			cacheTestCRequireLimitExceeded[item](t, cacheTestCBytesField(tc.field, tc.size), "field %s", tc.field)
+		})
 	}
 }
 
@@ -323,12 +319,10 @@ func Test_item_decodable_MatchesUnmarshal(t *testing.T) {
 
 func Test_indexedHeap_PushAndOps(t *testing.T) {
 	t.Parallel()
-
 	h := &indexedHeap{}
 
-	// put inserts entries and returns tracking indices.
-	idxA := h.put("a", 30, 1, "")
-	idxB := h.put("b", 10, 2, "")
+	h.put("a", 30, 1, "")
+	h.put("b", 10, 2, "")
 	idxC := h.put("c", 20, 3, "")
 	require.Equal(t, 3, h.Len())
 
@@ -336,11 +330,8 @@ func Test_indexedHeap_PushAndOps(t *testing.T) {
 	key, _ := h.removeFirst()
 	require.Equal(t, "b", key)
 
-	// Remove an arbitrary tracked entry.
 	key, _ = h.remove(idxC)
 	require.Equal(t, "c", key)
-	_ = idxA
-	_ = idxB
 
 	// Directly exercise the heap.Interface Push method (not used by put()).
 	h2 := &indexedHeap{indices: []int{0}}
@@ -351,7 +342,6 @@ func Test_indexedHeap_PushAndOps(t *testing.T) {
 
 func Test_parseUintDirective(t *testing.T) {
 	t.Parallel()
-
 	v, ok := parseUintDirective([]byte("60"))
 	require.True(t, ok)
 	require.Equal(t, uint64(60), v)
@@ -370,7 +360,6 @@ func Test_parseUintDirective(t *testing.T) {
 
 func Test_allowsSharedCacheDirectives(t *testing.T) {
 	t.Parallel()
-
 	require.False(t, allowsSharedCacheDirectives(responseCacheControl{hasPrivate: true}))
 	require.True(t, allowsSharedCacheDirectives(responseCacheControl{hasPublic: true}))
 	require.True(t, allowsSharedCacheDirectives(responseCacheControl{sMaxAgeSet: true}))
@@ -381,7 +370,6 @@ func Test_allowsSharedCacheDirectives(t *testing.T) {
 
 func Test_allowsSharedCacheStorage(t *testing.T) {
 	t.Parallel()
-
 	require.True(t, allowsSharedCacheStorage(responseCacheControl{hasPublic: true}))
 	require.True(t, allowsSharedCacheStorage(responseCacheControl{sMaxAgeSet: true}))
 	require.False(t, allowsSharedCacheStorage(responseCacheControl{}))
@@ -401,7 +389,6 @@ func Test_allowsSharedCacheStorage(t *testing.T) {
 
 func Test_secondsConversions_Overflow(t *testing.T) {
 	t.Parallel()
-
 	// secondsToTime clamps values beyond math.MaxInt64.
 	require.Equal(t, time.Unix(math.MaxInt64, 0).UTC(), secondsToTime(math.MaxUint64))
 	require.Equal(t, time.Unix(5, 0).UTC(), secondsToTime(5))
@@ -422,7 +409,6 @@ func authDigest(lines ...string) string {
 
 func Test_appendAuthHash(t *testing.T) {
 	t.Parallel()
-
 	got := authDigest("Bearer token")
 	require.Len(t, got, hexLen)
 	// Stable for the same input, and reuses the pooled framing buffer on the
@@ -449,7 +435,6 @@ func Test_appendAuthHash(t *testing.T) {
 // the digest is the same either way.
 func Test_appendAuthHash_FramingSizes(t *testing.T) {
 	t.Parallel()
-
 	reference := func(lines ...string) string {
 		var framed []byte
 		for _, line := range lines {
@@ -473,7 +458,6 @@ func Test_appendAuthHash_FramingSizes(t *testing.T) {
 
 func Test_framedLen(t *testing.T) {
 	t.Parallel()
-
 	// Each length is a uvarint: a byte more at 128, at 16384, and so on.
 	for _, n := range []int{0, 1, 126, 127, 128, 254, 255, 16383, 16384} {
 		line := make([]byte, n)
@@ -496,23 +480,21 @@ func Test_appendAuthHash_DoesNotAllocate(t *testing.T) {
 
 func Test_manager_get_StorageErrors(t *testing.T) {
 	t.Parallel()
-
 	// Storage GetWithContext returns an error.
-	storage := newFailingCacheStorage()
-	storage.errs["get|k"] = errors.New("boom")
+	storage := storagetest.New()
+	storage.SetErr(storagetest.OpGet, "k", errors.New("boom"))
 	m := newManager(storage, true)
 	_, err := m.get(context.Background(), "k")
 	require.ErrorContains(t, err, redact.Placeholder)
 
 	// Stored bytes fail to unmarshal.
-	storage2 := newFailingCacheStorage()
-	storage2.data["k"] = []byte{0xff, 0xff, 0xff}
+	storage2 := storagetest.New()
+	storage2.Data["k"] = []byte{0xff, 0xff, 0xff}
 	m2 := newManager(storage2, false)
 	_, err = m2.get(context.Background(), "k")
 	require.ErrorContains(t, err, "unmarshal")
 
-	// Cache miss.
-	m3 := newManager(newFailingCacheStorage(), false)
+	m3 := newManager(storagetest.New(), false)
 	_, err = m3.get(context.Background(), "missing")
 	require.ErrorIs(t, err, errCacheMiss)
 
@@ -525,23 +507,20 @@ func Test_manager_get_StorageErrors(t *testing.T) {
 
 func Test_manager_getRaw_Paths(t *testing.T) {
 	t.Parallel()
-
 	// Storage error.
-	storage := newFailingCacheStorage()
-	storage.errs["get|k"] = errors.New("boom")
+	storage := storagetest.New()
+	storage.SetErr(storagetest.OpGet, "k", errors.New("boom"))
 	m := newManager(storage, false)
 	_, err := m.getRaw(context.Background(), "k")
 	require.ErrorContains(t, err, "boom")
 
-	// Storage hit.
-	storage2 := newFailingCacheStorage()
-	storage2.data["k"] = []byte("raw-value")
+	storage2 := storagetest.New()
+	storage2.Data["k"] = []byte("raw-value")
 	m2 := newManager(storage2, false)
 	raw, err := m2.getRaw(context.Background(), "k")
 	require.NoError(t, err)
 	require.Equal(t, []byte("raw-value"), raw)
 
-	// Memory hit.
 	m3 := newManager(nil, false)
 	require.NoError(t, m3.setRaw(context.Background(), "k", []byte("mem"), time.Minute))
 	raw, err = m3.getRaw(context.Background(), "k")
@@ -554,32 +533,27 @@ func Test_manager_getRaw_Paths(t *testing.T) {
 	_, err = m4.getRaw(context.Background(), "k")
 	require.ErrorContains(t, err, "unexpected raw entry type")
 
-	// Miss.
-	m5 := newManager(newFailingCacheStorage(), false)
+	m5 := newManager(storagetest.New(), false)
 	_, err = m5.getRaw(context.Background(), "missing")
 	require.ErrorIs(t, err, errCacheMiss)
 }
 
 func Test_manager_set_StorageError(t *testing.T) {
 	t.Parallel()
-
-	storage := newFailingCacheStorage()
-	storage.errs["set|k"] = errors.New("boom")
+	storage := storagetest.New()
+	storage.SetErr(storagetest.OpSet, "k", errors.New("boom"))
 	m := newManager(storage, false)
 
 	it := m.acquire()
 	it.status = 200
-	err := m.set(context.Background(), "k", it, time.Minute)
-	require.ErrorContains(t, err, "boom")
+	require.ErrorContains(t, m.set(context.Background(), "k", it, time.Minute), "boom")
 
-	// setRaw storage error.
 	require.ErrorContains(t, m.setRaw(context.Background(), "k", []byte("v"), time.Minute), "boom")
 }
 
 func Test_manager_get_StorageRoundTrip(t *testing.T) {
 	t.Parallel()
-
-	storage := newFailingCacheStorage()
+	storage := storagetest.New()
 	m := newManager(storage, false)
 
 	it := m.acquire()
@@ -595,8 +569,7 @@ func Test_manager_get_StorageRoundTrip(t *testing.T) {
 
 func Test_varyManifest_StoreLoad(t *testing.T) {
 	t.Parallel()
-
-	m := newManager(newFailingCacheStorage(), false)
+	m := newManager(storagetest.New(), false)
 	ctx := context.Background()
 
 	// Empty names is a no-op store.
@@ -608,7 +581,6 @@ func Test_varyManifest_StoreLoad(t *testing.T) {
 	require.False(t, ok)
 	require.Nil(t, names)
 
-	// Store and load a real manifest.
 	require.NoError(t, storeVaryManifest(ctx, m, "mk", []string{"accept", "accept-encoding"}, time.Minute))
 	names, ok, err = loadVaryManifest(ctx, m, "mk")
 	require.NoError(t, err)
@@ -623,8 +595,8 @@ func Test_varyManifest_StoreLoad(t *testing.T) {
 	require.Nil(t, names)
 
 	// Storage error propagates.
-	storage := newFailingCacheStorage()
-	storage.errs["get|mk"] = errors.New("boom")
+	storage := storagetest.New()
+	storage.SetErr(storagetest.OpGet, "mk", errors.New("boom"))
 	mErr := newManager(storage, false)
 	_, _, err = loadVaryManifest(ctx, mErr, "mk")
 	require.ErrorContains(t, err, "boom")
@@ -632,7 +604,6 @@ func Test_varyManifest_StoreLoad(t *testing.T) {
 
 func Test_appendVaryKey(t *testing.T) {
 	t.Parallel()
-
 	fn := func(names []string, hdr *fasthttp.RequestHeader, normalized bool) string {
 		return string(appendVaryKey(nil, names, hdr, normalized))
 	}
@@ -659,17 +630,12 @@ func Test_appendVaryKey(t *testing.T) {
 // Vary exists to prevent.
 func Test_appendVaryKey_RepeatedFieldLines(t *testing.T) {
 	t.Parallel()
-
-	fn := func(names []string, hdr *fasthttp.RequestHeader, normalized bool) string {
-		return string(appendVaryKey(nil, names, hdr, normalized))
-	}
-
 	key := func(values ...string) string {
 		var hdr fasthttp.RequestHeader
 		for _, v := range values {
 			hdr.Add("X-Tenant", v)
 		}
-		return fn([]string{"x-tenant"}, &hdr, true)
+		return string(appendVaryKey(nil, []string{"x-tenant"}, &hdr, true))
 	}
 
 	both := key("public", "acme-private")
@@ -689,55 +655,4 @@ func Test_appendVaryKey_RepeatedFieldLines(t *testing.T) {
 	require.NotEqual(t, key("a", "bb", "c"), key("aa", "b", "c"))
 	// Same input, same key.
 	require.Equal(t, both, key("public", "acme-private"))
-}
-
-// Test_Cache_VaryRepeatedFieldLines is the end-to-end form: a request that
-// sends one field line must not be served the entry stored for a request that
-// sent two.
-func Test_Cache_VaryRepeatedFieldLines(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Use(New(Config{Expiration: time.Minute}))
-	app.Get("/", func(c fiber.Ctx) error {
-		c.Set("Vary", "X-Tenant")
-		values := c.Request().Header.PeekAll("X-Tenant")
-		parts := make([]string, 0, len(values))
-		for _, v := range values {
-			parts = append(parts, string(v)+";")
-		}
-		return c.SendString("tenant:" + strings.Join(parts, ""))
-	})
-
-	do := func(lines ...string) (body, cacheStatus string) { //nolint:nonamedreturns // names document the pair
-		req := fasthttp.AcquireRequest()
-		defer fasthttp.ReleaseRequest(req)
-		req.Header.SetMethod(fiber.MethodGet)
-		req.SetRequestURI("/")
-		req.SetHost("example.com")
-		for _, l := range lines {
-			req.Header.Add("X-Tenant", l)
-		}
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Init(req, nil, nil)
-		app.Handler()(fctx)
-		return string(fctx.Response.Body()), string(fctx.Response.Header.Peek("X-Cache"))
-	}
-
-	body, status := do("public", "acme-private")
-	require.Equal(t, cacheMiss, status)
-	require.Equal(t, "tenant:public;acme-private;", body)
-
-	body, status = do("public")
-	require.Equal(t, cacheMiss, status, "the single-line request must not hit the two-line entry")
-	require.Equal(t, "tenant:public;", body)
-
-	// Each variant still caches on its own key.
-	body, status = do("public", "acme-private")
-	require.Equal(t, cacheHit, status)
-	require.Equal(t, "tenant:public;acme-private;", body)
-
-	body, status = do("public")
-	require.Equal(t, cacheHit, status)
-	require.Equal(t, "tenant:public;", body)
 }

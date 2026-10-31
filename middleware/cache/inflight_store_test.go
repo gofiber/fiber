@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -19,7 +20,7 @@ import (
 // interleavedSetStorage runs duringFirstSet once, after the cache decided to
 // write and before the write reaches the backend.
 type interleavedSetStorage struct {
-	*failingCacheStorage
+	*storagetest.Memory
 	duringFirstSet func()
 	entered        atomic.Bool
 	failDeletes    atomic.Bool
@@ -29,7 +30,7 @@ func (s *interleavedSetStorage) SetWithContext(ctx context.Context, key string, 
 	if s.entered.CompareAndSwap(false, true) {
 		s.duringFirstSet()
 	}
-	return s.failingCacheStorage.SetWithContext(ctx, key, value, exp)
+	return s.Memory.SetWithContext(ctx, key, value, exp)
 }
 
 func (s *interleavedSetStorage) Set(key string, value []byte, exp time.Duration) error {
@@ -40,7 +41,7 @@ func (s *interleavedSetStorage) DeleteWithContext(ctx context.Context, key strin
 	if s.failDeletes.Load() {
 		return errors.New("delete failed")
 	}
-	return s.failingCacheStorage.DeleteWithContext(ctx, key)
+	return s.Memory.DeleteWithContext(ctx, key)
 }
 
 func (s *interleavedSetStorage) Delete(key string) error {
@@ -48,10 +49,10 @@ func (s *interleavedSetStorage) Delete(key string) error {
 }
 
 func (s *interleavedSetStorage) bodiesOfSize(size int) int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
 	held := 0
-	for _, value := range s.data {
+	for _, value := range s.Data {
 		if len(value) == size {
 			held++
 		}
@@ -65,7 +66,7 @@ func (s *interleavedSetStorage) bodiesOfSize(size int) int {
 func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsNotKept(t *testing.T) {
 	t.Parallel()
 
-	storage := &interleavedSetStorage{failingCacheStorage: newFailingCacheStorage()}
+	storage := &interleavedSetStorage{Memory: storagetest.New()}
 	probe := &accountingProbe{}
 
 	app := fiber.New()
@@ -122,7 +123,7 @@ func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsNotKept(t *testing.T) {
 func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsTrackedWhenDeleteFails(t *testing.T) {
 	t.Parallel()
 
-	storage := &interleavedSetStorage{failingCacheStorage: newFailingCacheStorage()}
+	storage := &interleavedSetStorage{Memory: storagetest.New()}
 	probe := &accountingProbe{}
 
 	app := fiber.New()
@@ -228,10 +229,10 @@ func Test_Cache_MaxBytes_NoSpaceKeepsPoppedEntriesTracked(t *testing.T) {
 	t.Parallel()
 
 	storage := &blockingDeleteStorage{
-		failingCacheStorage: newFailingCacheStorage(),
-		deleteStarted:       make(chan struct{}),
-		continueDelete:      make(chan struct{}),
-		key:                 cacheKeyVersion + "|GET|/first/200",
+		Memory:         storagetest.New(),
+		deleteStarted:  make(chan struct{}),
+		continueDelete: make(chan struct{}),
+		key:            cacheKeyVersion + "|GET|/first/200",
 	}
 	charge := func(target string, size int) uint {
 		return charged(cacheKeyVersion+"|GET|"+target, size, textPlain)
