@@ -2208,33 +2208,29 @@ func Test_Bind_StreamedBodyLimit(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		bind        func(c Ctx, out any) error
+		bind        func(b *Bind, out any) error
 		name        string
 		contentType string
 		format      string
 	}{
-		{name: "Body JSON", contentType: MIMEApplicationJSON, format: `{"name":%q}`, bind: func(c Ctx, out any) error { return c.Bind().Body(out) }},
-		{name: "Body form", contentType: MIMEApplicationForm, format: "name=%s", bind: func(c Ctx, out any) error { return c.Bind().Body(out) }},
-		{name: "Form", contentType: MIMEApplicationForm, format: "name=%s", bind: func(c Ctx, out any) error { return c.Bind().Form(out) }},
-		{name: "All JSON", contentType: MIMEApplicationJSON, format: `{"name":%q}`, bind: func(c Ctx, out any) error { return c.Bind().All(out) }},
-		{name: "All form", contentType: MIMEApplicationForm, format: "name=%s", bind: func(c Ctx, out any) error { return c.Bind().All(out) }},
+		{name: "Body JSON", contentType: MIMEApplicationJSON, format: `{"name":%q}`, bind: (*Bind).Body},
+		{name: "Body form", contentType: MIMEApplicationForm, format: "name=%s", bind: (*Bind).Body},
+		{name: "Form", contentType: MIMEApplicationForm, format: "name=%s", bind: (*Bind).Form},
+		{name: "All JSON", contentType: MIMEApplicationJSON, format: `{"name":%q}`, bind: (*Bind).All},
+		{name: "All form", contentType: MIMEApplicationForm, format: "name=%s", bind: (*Bind).All},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			c := apptest.Ctx(t, app)
-			c.Request().Header.SetContentType(tc.contentType)
-			c.Request().SetBodyStream(strings.NewReader(fmt.Sprintf(tc.format, "john")), -1)
+			c := ctxWithStreamedBody(t, app, tc.contentType, strings.NewReader(fmt.Sprintf(tc.format, "john")), -1)
 			out := new(Req)
-			require.NoError(t, tc.bind(c, out))
+			require.NoError(t, tc.bind(c.Bind(), out))
 			require.Equal(t, "john", out.Name)
 
-			tooLarge := apptest.Ctx(t, app)
 			stream := strings.NewReader(fmt.Sprintf(tc.format, strings.Repeat("a", 100*limit)))
 			size := stream.Len()
-			tooLarge.Request().Header.SetContentType(tc.contentType)
-			tooLarge.Request().SetBodyStream(stream, -1)
+			tooLarge := ctxWithStreamedBody(t, app, tc.contentType, stream, -1)
 			out = new(Req)
-			require.Error(t, tc.bind(tooLarge, out))
+			require.Error(t, tc.bind(tooLarge.Bind(), out))
 			require.Empty(t, out.Name)
 			require.Equal(t, size-limit-1, stream.Len(), "the rest of the stream is not read")
 		})
@@ -2244,15 +2240,13 @@ func Test_Bind_StreamedBodyLimit(t *testing.T) {
 // All binds the body only with a Content-Type, so without one a streamed body stays unread.
 func Test_Bind_All_StreamedBodyWithoutContentType(t *testing.T) {
 	t.Parallel()
-	c := apptest.Ctx(t, New(Config{StreamRequestBody: true, BodyLimit: 8}))
-
 	type Req struct {
 		ID string `query:"id"`
 	}
 
 	stream := strings.NewReader(strings.Repeat("a", 1024))
+	c := ctxWithStreamedBody(t, New(Config{StreamRequestBody: true, BodyLimit: 8}), "", stream, -1)
 	c.Request().URI().SetQueryString("id=1")
-	c.Request().SetBodyStream(stream, -1)
 
 	out := new(Req)
 	require.NoError(t, c.Bind().All(out))
@@ -2441,23 +2435,31 @@ func Test_Bind_Body_FormKeyTooDeep(t *testing.T) {
 	}
 
 	app := New()
-	ctxWithBody := func(levels int) Ctx {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(c) })
+	ctxWithBody := func(t *testing.T, levels int) Ctx {
+		t.Helper()
+
+		c := apptest.Ctx(t, app)
 		c.Request().Header.SetContentType(MIMEApplicationForm)
 		c.Request().SetBodyString(strings.Repeat("children.0.", levels) + "name=x")
 		return c
 	}
 
-	require.NoError(t, ctxWithBody(31).Bind().Body(new(category)))
+	t.Run("at the cap", func(t *testing.T) {
+		t.Parallel()
+		require.NoError(t, ctxWithBody(t, 31).Bind().Body(new(category)))
+	})
 
-	err := ctxWithBody(32).Bind().Body(new(category))
-	require.ErrorIs(t, err, binder.ErrKeyTooDeep)
-	var bindErr *BindError
-	require.ErrorAs(t, err, &bindErr)
-	require.Equal(t, BindSourceBody, bindErr.Source)
+	t.Run("past the cap", func(t *testing.T) {
+		t.Parallel()
+		err := ctxWithBody(t, 32).Bind().Body(new(category))
+		require.ErrorIs(t, err, binder.ErrKeyTooDeep)
+		bindTestRequireBindError(t, err, BindSourceBody)
+	})
 
-	c := ctxWithBody(32)
-	require.Error(t, c.Bind().WithAutoHandling().Body(new(category)))
-	require.Equal(t, StatusBadRequest, c.Response().StatusCode())
+	t.Run("past the cap, with auto handling", func(t *testing.T) {
+		t.Parallel()
+		c := ctxWithBody(t, 32)
+		require.Error(t, c.Bind().WithAutoHandling().Body(new(category)))
+		require.Equal(t, StatusBadRequest, c.Response().StatusCode())
+	})
 }

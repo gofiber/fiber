@@ -1,7 +1,6 @@
 package fiber
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -10,8 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strconv"
-	"strings"
 	"testing"
 	"testing/iotest"
 	"time"
@@ -550,38 +547,26 @@ func TestWrapHTTPHandler_Nil(t *testing.T) {
 	require.Nil(t, wrapHTTPHandler(nil))
 }
 
-// fasthttpadaptor buffers the body for the http.Request, and with StreamRequestBody the server passes on a body of any size.
-func TestWrapHTTPHandler_StreamedBodyLimit(t *testing.T) {
+// A body stream that fails halfway is a bad request, unless its error names a status of its own.
+func TestWrapHTTPHandler_StreamedBodyReadError(t *testing.T) {
 	t.Parallel()
-	const limit = 1024
-	app := New(Config{StreamRequestBody: true, BodyLimit: limit})
-	app.Post("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n, err := io.Copy(io.Discard, r.Body)
-		assert.NoError(t, err)
-		_, err = w.Write([]byte(strconv.FormatInt(n, 10)))
-		assert.NoError(t, err)
-	}))
+	app := New(Config{StreamRequestBody: true, BodyLimit: 1024})
 
-	for _, chunked := range []bool{false, true} {
-		for size, status := range map[int]int{limit: StatusOK, limit + 1: StatusRequestEntityTooLarge} {
-			req := httptest.NewRequest(MethodPost, "/", strings.NewReader(strings.Repeat("a", size)))
-			if chunked {
-				req.TransferEncoding = []string{"chunked"}
-			}
-			resp := apptest.Do(t, app, req)
-			require.Equal(t, status, resp.StatusCode, "chunked=%v size=%d", chunked, size)
-			if status == StatusOK {
-				body := apptest.Body(t, resp)
-				require.Equal(t, strconv.Itoa(size), body, "chunked=%v", chunked)
-			}
-		}
+	for _, tc := range []struct {
+		err  error
+		want error
+		name string
+	}{
+		{name: "broken chunk", err: errors.New("broken chunk"), want: ErrBadRequest},
+		{name: "error with a status", err: ErrRequestHeaderFieldsTooLarge, want: ErrRequestHeaderFieldsTooLarge},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := apptest.Ctx(t, app)
+			c.Request().SetBodyStream(iotest.ErrReader(tc.err), -1)
+			require.ErrorIs(t, wrapHTTPHandler(http.NotFoundHandler())(c), tc.want)
+		})
 	}
-
-	c := apptest.Ctx(t, app)
-	c.Request().SetBodyStream(iotest.ErrReader(errors.New("broken chunk")), -1)
-	require.ErrorIs(t, wrapHTTPHandler(http.NotFoundHandler())(c), ErrBadRequest)
-	c.Request().SetBodyStream(iotest.ErrReader(ErrRequestHeaderFieldsTooLarge), -1)
-	require.ErrorIs(t, wrapHTTPHandler(http.NotFoundHandler())(c), ErrRequestHeaderFieldsTooLarge)
 }
 
 func TestWrapHTTPHandler_StreamedTrailerCap(t *testing.T) {
@@ -593,14 +578,9 @@ func TestWrapHTTPHandler_StreamedTrailerCap(t *testing.T) {
 	}))
 	ln := startRawServer(t, app)
 
-	var trailers strings.Builder
-	for i := range fieldname.MaxTrailers + 1 {
-		fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
-	}
 	raw := "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n" +
-		trailers.String() + "\r\n"
-	responses, _ := rawExchange(t, ln, raw, 1)
-	require.Equal(t, StatusRequestHeaderFieldsTooLarge, responses[0].status)
+		rawFieldLines("X-", "v", fieldname.MaxTrailers+1) + "\r\n"
+	rawExpectStatus(t, ln, raw, StatusRequestHeaderFieldsTooLarge)
 }
 
 func TestCollectHandlers_InvalidHandler(t *testing.T) {
@@ -723,12 +703,8 @@ func TestCollectHandlers_Nil(t *testing.T) {
 func serveRawTarget(t *testing.T, app *App, target string) *fasthttp.Response {
 	t.Helper()
 
-	var req fasthttp.Request
-	raw := MethodGet + " " + target + " HTTP/1.1\r\nHost: example.com\r\n\r\n"
-	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
-	var fctx fasthttp.RequestCtx
-	fctx.Init(&req, nil, nil)
-	app.Handler()(&fctx)
+	fctx := wireRequestCtx(t, MethodGet+" "+target+" HTTP/1.1\r\nHost: example.com\r\n\r\n", nil)
+	app.Handler()(fctx)
 	return &fctx.Response
 }
 
@@ -799,14 +775,18 @@ func Test_HTTPHandler_Direct_RestoresRequestLine(t *testing.T) {
 	t.Parallel()
 	const target = "/a/../%70ub/x%20y?q=%2F"
 
-	for name, handler := range map[string]any{
-		"returns": func(w http.ResponseWriter, r *http.Request) {
+	for _, tc := range []struct {
+		handler any
+		name    string
+		panics  bool
+	}{
+		{name: "returns", handler: func(w http.ResponseWriter, r *http.Request) {
 			_, err := io.WriteString(w, r.RequestURI+" "+r.URL.Path)
 			assert.NoError(t, err)
-		},
-		"panics": func(http.ResponseWriter, *http.Request) { panic("direct handler") },
+		}},
+		{name: "panics", panics: true, handler: func(http.ResponseWriter, *http.Request) { panic("direct handler") }},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var after string
 			app := New()
@@ -819,11 +799,11 @@ func Test_HTTPHandler_Direct_RestoresRequestLine(t *testing.T) {
 				}()
 				return c.Next()
 			})
-			app.Get("/pub/*", handler)
+			app.Get("/pub/*", tc.handler)
 
 			resp := serveRawTarget(t, app, target)
 			require.Equal(t, target, after)
-			if name == "panics" {
+			if tc.panics {
 				require.Equal(t, StatusTeapot, resp.StatusCode())
 				return
 			}

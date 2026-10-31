@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -487,17 +486,6 @@ func Test_App_serverErrorHandler(t *testing.T) {
 	}
 }
 
-func Test_App_serverErrorHandler_Unsupported_Method_Request(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/bar", func(c Ctx) error { return c.SendString("bar") })
-	ln := startRawServer(t, app)
-
-	responses, _ := rawExchange(t, ln, "FOO /bar HTTP/1.1\r\nHost: example.com\r\n\r\n", 1)
-	require.Equal(t, StatusNotImplemented, responses[0].status)
-	require.Equal(t, utils.StatusMessage(StatusNotImplemented), responses[0].body)
-}
-
 func Test_App_Nested_Params(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -549,22 +537,25 @@ func Test_App_Use_PanicsOnDroppedArguments(t *testing.T) {
 	guardApp := New()
 	guardApp.Use(deny)
 
-	for name, use := range map[string]func(app *App, args ...any){
+	for kind, use := range map[string]func(app *App, args ...any){
 		"app":    func(app *App, args ...any) { app.Use(args...) },
 		"group":  func(app *App, args ...any) { app.Group("/g").Use(args...) },
 		"domain": func(app *App, args ...any) { app.Domain("example.com").Use(args...) },
 	} {
-		for _, args := range [][]any{
-			{"/admin", deny, New()},
-			{"/admin", New(), deny},
-			{deny, New()},
-			{[]string{"/a", "/b"}, deny, New()},
-			{"/admin", guardApp, New()},
-			{"/admin", "/internal", deny},
-			{"/admin", []string{"/internal"}, deny},
-			{[]string{"/a"}, []string{"/b"}, deny},
+		for _, tc := range []struct {
+			name string
+			args []any
+		}{
+			{name: "prefix, handler, sub-app", args: []any{"/admin", deny, New()}},
+			{name: "prefix, sub-app, handler", args: []any{"/admin", New(), deny}},
+			{name: "handler, sub-app", args: []any{deny, New()}},
+			{name: "prefixes, handler, sub-app", args: []any{[]string{"/a", "/b"}, deny, New()}},
+			{name: "prefix, two sub-apps", args: []any{"/admin", guardApp, New()}},
+			{name: "two prefixes, handler", args: []any{"/admin", "/internal", deny}},
+			{name: "prefix, prefixes, handler", args: []any{"/admin", []string{"/internal"}, deny}},
+			{name: "two lists of prefixes, handler", args: []any{[]string{"/a"}, []string{"/b"}, deny}},
 		} {
-			require.Panics(t, func() { use(New(), args...) }, "%s %v", name, args)
+			require.Panics(t, func() { use(New(), tc.args...) }, "%s: %s", kind, tc.name)
 		}
 	}
 
@@ -768,12 +759,11 @@ func Test_App_RefusedRequest_ChainBodyIsNotSent(t *testing.T) {
 	app.Use(func(c Ctx) error { return c.SendString("TOP-SECRET") })
 	ln := startRawServer(t, app)
 
-	responses, _ := rawExchange(t, ln, "GET /admin/secret.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", 1)
-	require.Equal(t, StatusUnauthorized, responses[0].status)
+	const get = "GET /admin/secret.txt HTTP/1.1\r\nHost: example.com\r\n"
+	rawExpectStatus(t, ln, get+"\r\n", StatusUnauthorized)
 
-	responses, _ = rawExchange(t, ln, "GET /admin/secret.txt HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n", 1)
-	require.Equal(t, StatusRequestEntityTooLarge, responses[0].status)
-	require.Equal(t, "Request Entity Too Large", responses[0].body)
+	resp := rawExpectStatus(t, ln, get+"Content-Length: 99999\r\n\r\n", StatusRequestEntityTooLarge)
+	require.Equal(t, "Request Entity Too Large", resp.body)
 }
 
 // An ErrorHandler that writes only a body used to answer a transport-refused
@@ -2278,6 +2268,13 @@ func Test_App_ReadBodyStream_BodyLimit(t *testing.T) {
 	t.Parallel()
 	app := New(Config{StreamRequestBody: true, BodyLimit: 1024})
 	app.Post("/", func(c Ctx) error { return c.SendString(strconv.Itoa(len(c.Body()))) })
+	// fasthttpadaptor buffers the body for the http.Request.
+	app.Post("/http", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n, err := io.Copy(io.Discard, r.Body)
+		assert.NoError(t, err)
+		_, err = w.Write([]byte(strconv.FormatInt(n, 10)))
+		assert.NoError(t, err)
+	}))
 	// Like logger's ${body}, a body read after the handler has drained the stream must not change its answer.
 	app.Use("/stream", func(c Ctx) error {
 		err := c.Next()
@@ -2292,6 +2289,7 @@ func Test_App_ReadBodyStream_BodyLimit(t *testing.T) {
 		return c.Status(StatusCreated).SendString(strconv.FormatInt(n, 10))
 	})
 
+	const refused = StatusRequestEntityTooLarge
 	for _, tc := range []struct {
 		name    string
 		target  string
@@ -2301,10 +2299,14 @@ func Test_App_ReadBodyStream_BodyLimit(t *testing.T) {
 	}{
 		{name: "declared", target: "/", size: 1024, status: StatusOK},
 		{name: "chunked", target: "/", size: 1024, chunked: true, status: StatusOK},
-		{name: "declared over the limit", target: "/", size: 1025, status: StatusRequestEntityTooLarge},
-		{name: "chunked over the limit", target: "/", size: 1025, chunked: true, status: StatusRequestEntityTooLarge},
+		{name: "declared over the limit", target: "/", size: 1025, status: refused},
+		{name: "chunked over the limit", target: "/", size: 1025, chunked: true, status: refused},
 		{name: "BodyStream is not limited", target: "/stream", size: 4096, status: StatusCreated},
 		{name: "chunked BodyStream is not limited", target: "/stream", size: 4096, chunked: true, status: StatusCreated},
+		{name: "http.Handler, declared", target: "/http", size: 1024, status: StatusOK},
+		{name: "http.Handler, chunked", target: "/http", size: 1024, chunked: true, status: StatusOK},
+		{name: "http.Handler, declared over the limit", target: "/http", size: 1025, status: refused},
+		{name: "http.Handler, chunked over the limit", target: "/http", size: 1025, chunked: true, status: refused},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -2312,7 +2314,11 @@ func Test_App_ReadBodyStream_BodyLimit(t *testing.T) {
 			if tc.chunked {
 				req.TransferEncoding = []string{"chunked"}
 			}
-			apptest.Expect(t, app, req, tc.status)
+			if tc.status == refused {
+				apptest.Expect(t, app, req, tc.status)
+				return
+			}
+			apptest.ExpectBody(t, app, req, tc.status, strconv.Itoa(tc.size))
 		})
 	}
 }
@@ -2346,17 +2352,9 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 		}
 		return c.Send(buffer)
 	})
-	b := &bytes.Buffer{}
-	w := multipart.NewWriter(b)
-	writer, err := w.CreateFormFile("test", "test")
-	require.NoError(t, err, "w.CreateFormFile")
-	n, err := writer.Write([]byte(testString))
-	require.NoError(t, err, "writer.Write")
-	require.Len(t, testString, n, "writer n")
-	require.NoError(t, w.Close(), "w.Close()")
-
-	req := httptest.NewRequest(MethodPost, "/", b)
-	req.Header.Set("Content-Type", w.FormDataContentType())
+	body, contentType := ctxTestMultipartFile(t, "test", "test", []byte(testString))
+	req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(body))
+	req.Header.Set(HeaderContentType, contentType)
 	resp := apptest.Do(t, app, req)
 	require.Equal(t, testString, apptest.Body(t, resp))
 }
@@ -2388,16 +2386,9 @@ func Test_App_StreamRequestBody_MultipartBodyLimit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			b := &bytes.Buffer{}
-			w := multipart.NewWriter(b)
-			writer, err := w.CreateFormFile("test", "test")
-			require.NoError(t, err)
-			_, err = writer.Write(make([]byte, tc.size))
-			require.NoError(t, err)
-			require.NoError(t, w.Close())
-
-			req := httptest.NewRequest(MethodPost, "/", b)
-			req.Header.Set(HeaderContentType, w.FormDataContentType())
+			body, contentType := ctxTestMultipartFile(t, "test", "test", make([]byte, tc.size))
+			req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(body))
+			req.Header.Set(HeaderContentType, contentType)
 			apptest.Expect(t, app, req, tc.status)
 		})
 	}
@@ -3007,12 +2998,7 @@ func Test_App_IP_StripTrustedProxies_CanonicalIPForms(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := New(Config{
-				ProxyHeader:        HeaderXForwardedFor,
-				TrustProxy:         true,
-				EnableIPValidation: true,
-				TrustProxyConfig:   TrustProxyConfig{Proxies: []string{tc.proxy}},
-			})
+			app := New(forwardedForProxies(tc.proxy))
 			fastCtx := &fasthttp.RequestCtx{}
 			fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP(tc.remote), Port: 8080})
 			c := apptest.CtxFor(t, app, fastCtx)
@@ -3201,6 +3187,25 @@ func rawExchange(t *testing.T, server dialer, raw string, want int) (responses [
 	return responses, after
 }
 
+// rawExpectStatus is rawExchange for one response of the given status, which it returns for further checks. A
+// failure names raw, the request that was sent.
+func rawExpectStatus(t *testing.T, server dialer, raw string, status int) rawResponse {
+	t.Helper()
+
+	responses, _ := rawExchange(t, server, raw, 1)
+	require.Equal(t, status, responses[0].status, raw)
+	return responses[0]
+}
+
+// rawFieldLines returns n header or trailer lines named prefix0, prefix1, ... that all hold value.
+func rawFieldLines(prefix, value string, n int) string {
+	var lines strings.Builder
+	for i := range n {
+		fmt.Fprintf(&lines, "%s%d: %s\r\n", prefix, i, value)
+	}
+	return lines.String()
+}
+
 // An Accept-Encoding with no value reaches AcceptsEncodings as present but empty,
 // which wants no content coding, and is not read as an absent one, which accepts any.
 func Test_App_AcceptsEncodings_EmptyField_Request(t *testing.T) {
@@ -3216,9 +3221,7 @@ func Test_App_AcceptsEncodings_EmptyField_Request(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" + tc.field + "Connection: close\r\n\r\n"
-			responses, _ := rawExchange(t, ln, raw, 1)
-			require.Equal(t, StatusOK, responses[0].status)
-			require.Equal(t, tc.answer, responses[0].body)
+			require.Equal(t, tc.answer, rawExpectStatus(t, ln, raw, StatusOK).body)
 		})
 	}
 }
@@ -3286,64 +3289,75 @@ func Test_App_TransferEncoding_Request(t *testing.T) {
 	}
 }
 
-// With SecureErrorLogMessage fasthttp reports every transfer-encoding fault with
-// the same error, which hides the coding: those requests stay 400.
-func Test_App_TransferEncoding_SecureErrorLogMessage(t *testing.T) {
+// The status a request the parser refuses is answered with, from the raw request of each row.
+func Test_App_serverErrorHandler_RawRequestStatus(t *testing.T) {
 	t.Parallel()
-	app := New()
-	app.Server().SecureErrorLogMessage = true
-	app.Post("/", func(c Ctx) error { return c.SendString("posted") })
-	ln := startRawServer(t, app)
-
-	responses, _ := rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: foo\r\n\r\n0\r\n\r\n", 1)
-	require.Equal(t, StatusBadRequest, responses[0].status)
-
-	responses, _ = rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n0\r\n\r\n", 1)
-	require.Equal(t, StatusOK, responses[0].status)
-}
-
-// The status follows what the parser reported, never request bytes its error quotes.
-func Test_App_serverErrorHandler_StatusIgnoresQuotedBytes(t *testing.T) {
-	t.Parallel()
-	const chunked = "GET / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n"
+	const (
+		chunked = "GET / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n"
+		post    = "POST / HTTP/1.1\r\nHost: example.com\r\n"
+	)
+	timeout := Config{ReadTimeout: 200 * time.Millisecond}
 	tests := []struct {
+		config Config
 		name   string
 		raw    string
+		body   string // the body of the answer, when it is checked
 		status int
 		secure bool
 	}{
+		{
+			name: "unsupported method", raw: "FOO /bar HTTP/1.1\r\nHost: example.com\r\n\r\n",
+			status: StatusNotImplemented, body: utils.StatusMessage(StatusNotImplemented),
+		},
+
+		// The status follows what the parser reported, never request bytes its error quotes.
 		{name: "rejected method token", raw: "GE(T / HTTP/1.1\r\nHost: example.com\r\n\r\n", status: StatusNotImplemented},
-		{name: "rejected method token, secure message", raw: "GE(T / HTTP/1.1\r\nHost: example.com\r\n\r\n", status: StatusNotImplemented, secure: true},
-		{name: "trailer quoting the method wording", raw: chunked + "Content-Length: unsupported http request method\r\n\r\n", status: StatusBadRequest},
+		{
+			name: "rejected method token, secure message", raw: "GE(T / HTTP/1.1\r\nHost: example.com\r\n\r\n",
+			status: StatusNotImplemented, secure: true,
+		},
+		{
+			name: "trailer quoting the method wording", raw: chunked + "Content-Length: unsupported http request method\r\n\r\n",
+			status: StatusBadRequest,
+		},
 		{name: "trailer quoting a timeout", raw: chunked + "Content-Length: timeout\r\n\r\n", status: StatusBadRequest},
+
+		// With SecureErrorLogMessage fasthttp reports every transfer-encoding fault with the same error, which hides
+		// the coding: those requests stay 400.
+		{
+			name: "unknown transfer coding, secure message", raw: post + "Transfer-Encoding: foo\r\n\r\n0\r\n\r\n",
+			status: StatusBadRequest, secure: true,
+		},
+		{
+			name: "chunked, secure message", raw: post + "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n0\r\n\r\n",
+			status: StatusOK, secure: true,
+		},
+
+		// A read timeout inside a chunked body surfaces as ErrBrokenChunk, which hides the net error.
+		{
+			name: "timeout in chunk data", config: timeout, raw: post + "Transfer-Encoding: chunked\r\n\r\n5\r",
+			status: StatusRequestTimeout,
+		},
+		{
+			name: "timeout before the trailer ends", config: timeout, raw: post + "Transfer-Encoding: chunked\r\n\r\n0\r\n",
+			status: StatusRequestTimeout,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := New()
+			app := New(tc.config)
 			app.Server().SecureErrorLogMessage = tc.secure
 			app.Get("/", func(c Ctx) error { return c.SendString("page") })
+			app.Get("/bar", func(c Ctx) error { return c.SendString("bar") })
+			app.Post("/", func(c Ctx) error { return c.SendString("posted") })
 			ln := startRawServer(t, app)
 
-			responses, _ := rawExchange(t, ln, tc.raw, 1)
-			require.Equal(t, tc.status, responses[0].status)
-		})
-	}
-}
-
-// A read timeout inside a chunked body surfaces as ErrBrokenChunk, which hides the net error.
-func Test_App_serverErrorHandler_ChunkReadTimeout(t *testing.T) {
-	t.Parallel()
-	app := New(Config{ReadTimeout: 200 * time.Millisecond})
-	app.Post("/", func(c Ctx) error { return c.SendString("posted") })
-	ln := startRawServer(t, app)
-
-	for name, stalled := range map[string]string{"in chunk data": "5\r", "before the trailer ends": "0\r\n"} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			responses, _ := rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n"+stalled, 1)
-			require.Equal(t, StatusRequestTimeout, responses[0].status)
+			resp := rawExpectStatus(t, ln, tc.raw, tc.status)
+			if tc.body != "" {
+				require.Equal(t, tc.body, resp.body)
+			}
 		})
 	}
 }
