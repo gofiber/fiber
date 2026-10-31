@@ -6,36 +6,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// uriKeys and uriVals are the route parameters the URI binder tests bind.
+var (
+	uriKeys = []string{"name", "age", "posts"}
+	uriVals = []string{"john", "42", "post1,post2,post3"}
+)
+
+// uriLookup answers for a route parameter of uriKeys the way a router does.
+func uriLookup(key string, _ ...string) string {
+	for i, k := range uriKeys {
+		if k == key {
+			return uriVals[i]
+		}
+	}
+
+	return ""
+}
+
+type uriUser struct {
+	Name  string   `uri:"name"`
+	Posts []string `uri:"posts"`
+	Age   int      `uri:"age"`
+}
+
 func Test_URIBinding_Bind(t *testing.T) {
 	t.Parallel()
-
 	b := &URIBinding{}
 	require.Equal(t, "uri", b.Name())
 
-	type User struct {
-		Name  string   `uri:"name"`
-		Posts []string `uri:"posts"`
-		Age   int      `uri:"age"`
-	}
-	var user User
+	var user uriUser
 
-	paramsKey := []string{"name", "age", "posts"}
-	paramsVals := []string{"john", "42", "post1,post2,post3"}
-	paramsFunc := func(key string, _ ...string) string {
-		for i, k := range paramsKey {
-			if k == key {
-				return paramsVals[i]
-			}
-		}
-
-		return ""
-	}
-
-	err := b.Bind(paramsKey, paramsFunc, &user)
-	require.NoError(t, err)
-	require.Equal(t, "john", user.Name)
-	require.Equal(t, 42, user.Age)
-	require.Equal(t, []string{"post1,post2,post3"}, user.Posts)
+	require.NoError(t, b.Bind(uriKeys, uriLookup, &user))
+	require.Equal(t, uriUser{Name: "john", Posts: []string{"post1,post2,post3"}, Age: 42}, user)
 
 	b.Reset()
 }
@@ -45,28 +47,11 @@ func Benchmark_URIBinding_Bind(b *testing.B) {
 
 	binder := &URIBinding{}
 
-	type User struct {
-		Name  string   `uri:"name"`
-		Posts []string `uri:"posts"`
-		Age   int      `uri:"age"`
-	}
-	var user User
-
-	paramsKey := []string{"name", "age", "posts"}
-	paramsVals := []string{"john", "42", "post1,post2,post3"}
-	paramsFunc := func(key string, _ ...string) string {
-		for i, k := range paramsKey {
-			if k == key {
-				return paramsVals[i]
-			}
-		}
-
-		return ""
-	}
+	var user uriUser
 
 	var err error
 	for b.Loop() {
-		err = binder.Bind(paramsKey, paramsFunc, &user)
+		err = binder.Bind(uriKeys, uriLookup, &user)
 	}
 
 	require.NoError(b, err)
