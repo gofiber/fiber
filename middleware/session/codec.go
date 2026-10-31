@@ -160,24 +160,18 @@ func intoTarget(target any) (reflect.Value, error) {
 
 // valueInto stores v, the stored value of a key, into target, a non-nil pointer,
 // all or nothing. Without a codec v is the value itself and has to be assignable
-// to what the target points to. With one, v is the encoded value, decoded into a
-// new value that replaces what the target points to, so that nothing of the old
-// value is left in it.
+// to what the target points to. With one, v is the encoded value, and decodeInto
+// decodes it.
 func valueInto(key, v any, codec Codec, target reflect.Value) error {
-	elem := target.Elem()
 	if codec != nil {
 		encoded, ok := v.([]byte)
 		if !ok {
 			return fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
 		}
-		fresh := reflect.New(elem.Type())
-		if err := codec.Unmarshal(utils.CopyBytes(encoded), fresh.Interface()); err != nil {
-			return fmt.Errorf("failed to decode session value %#v: %w", key, err)
-		}
-		elem.Set(fresh.Elem())
-		return nil
+		return decodeInto(key, utils.CopyBytes(encoded), codec, target)
 	}
 
+	elem := target.Elem()
 	if v == nil {
 		elem.SetZero()
 		return nil
@@ -187,5 +181,31 @@ func valueInto(key, v any, codec Codec, target reflect.Value) error {
 		return fmt.Errorf("session value %#v is a %s, not assignable to a %s", key, have.Type(), elem.Type())
 	}
 	elem.Set(have)
+	return nil
+}
+
+// decodeInto decodes encoded, the value of key, which the codec may keep, into
+// target, a non-nil pointer. A target that holds its zero value, which is what a
+// fresh variable holds, is decoded into directly: nothing is allocated for a second
+// value and nothing is copied over the target. A target that holds something is
+// replaced by a new value instead, since a decoder merges into the map or the
+// struct it is given, and nothing of the old value may be left in the result. Either
+// way a failure leaves the target as it was.
+func decodeInto(key any, encoded []byte, codec Codec, target reflect.Value) error {
+	elem := target.Elem()
+	if elem.IsZero() {
+		if err := codec.Unmarshal(encoded, target.Interface()); err != nil {
+			// Undo what a decode that failed halfway put into the target.
+			elem.SetZero()
+			return fmt.Errorf("failed to decode session value %#v: %w", key, err)
+		}
+		return nil
+	}
+
+	fresh := reflect.New(elem.Type())
+	if err := codec.Unmarshal(encoded, fresh.Interface()); err != nil {
+		return fmt.Errorf("failed to decode session value %#v: %w", key, err)
+	}
+	elem.Set(fresh.Elem())
 	return nil
 }

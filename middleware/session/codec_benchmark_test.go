@@ -225,3 +225,55 @@ func Benchmark_Codec_ReadForms(b *testing.B) {
 		}
 	})
 }
+
+// benchLarge is a value of about 8 KB.
+type benchLarge struct {
+	Name   string          `json:"name"`
+	Values [1024]int64     `json:"values"`
+	Extra  map[string]bool `json:"extra"`
+}
+
+// Benchmark_Codec_GetIntoLarge reads a value of about 8 KB from a store with a codec
+// into a variable that holds its zero value, which is decoded into directly, into
+// one that holds something, which is replaced by a new value, and with GetAs, which
+// returns the value for the caller to copy.
+//
+// go test -run '^$' -bench Benchmark_Codec_GetIntoLarge -benchmem
+func Benchmark_Codec_GetIntoLarge(b *testing.B) {
+	app := fiber.New()
+	store := NewStore(Config{Codec: JSONCodec{}})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	sess, err := store.Get(ctx)
+	require.NoError(b, err)
+	defer sess.Release()
+
+	large := benchLarge{Name: "large", Extra: map[string]bool{"a": true}}
+	for i := range large.Values {
+		large.Values[i] = int64(i) * 1000
+	}
+	sess.Set("large", large)
+
+	var out benchLarge
+	b.Run("zero target", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			out = benchLarge{}
+			errSink = sess.GetInto("large", &out)
+		}
+	})
+	b.Run("populated target", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			errSink = sess.GetInto("large", &out)
+		}
+	})
+	b.Run("GetAs", func(b *testing.B) {
+		b.ReportAllocs()
+		var got benchLarge
+		for b.Loop() {
+			got, sinkOK = GetAs[benchLarge](sess, "large")
+		}
+		out = got
+	})
+}

@@ -179,7 +179,7 @@ func Test_Codec_TypedAndGenericReads(t *testing.T) {
 	require.ElementsMatch(t, []any{"name", "nothing", "profile", "visits"}, sess.Keys())
 }
 
-func Test_Codec_ReadsDecodeIntoFreshValues(t *testing.T) {
+func Test_Codec_ReadsDoNotAliasTheSession(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -1269,6 +1269,82 @@ func Test_Codec_GetInto(t *testing.T) {
 		require.Error(t, sess.GetInto("name", name))
 		require.Error(t, sess.GetInto("name", nilPointer))
 		require.Error(t, sess.GetInto("name", nil))
+	})
+}
+
+// targetCodec is a JSONCodec that remembers what its last Unmarshal was given, and
+// can be made to fail after it has decoded.
+type targetCodec struct {
+	JSONCodec
+	fail error
+	mu   sync.Mutex
+	last any
+}
+
+func (c *targetCodec) Unmarshal(data []byte, v any) error {
+	c.mu.Lock()
+	c.last = v
+	c.mu.Unlock()
+	if err := c.JSONCodec.Unmarshal(data, v); err != nil {
+		return err
+	}
+	return c.fail
+}
+
+// target returns what the last Unmarshal was given.
+func (c *targetCodec) target() any {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.last
+}
+
+func Test_Codec_GetInto_DecodesIntoTheTarget(t *testing.T) {
+	t.Parallel()
+
+	// setup returns a session that holds a profile, and the codec its store uses.
+	setup := func(t *testing.T, fail error) (*targetCodec, *Session) {
+		t.Helper()
+		app := fiber.New()
+		codec := &targetCodec{fail: fail}
+		store := NewStore(Config{Codec: codec})
+		id := seedSession(t, app, store, func(s *Session) { s.Set("user", codecProfile{ID: 7, Name: "alice"}) })
+		return codec, loadSession(t, app, store, id)
+	}
+
+	t.Run("a target that holds its zero value is decoded into directly", func(t *testing.T) {
+		t.Parallel()
+		codec, sess := setup(t, nil)
+		var got codecProfile
+		require.NoError(t, sess.GetInto("user", &got))
+		require.Same(t, &got, codec.target(), "the codec decodes into the variable of the caller, not into a copy")
+		require.Equal(t, codecProfile{ID: 7, Name: "alice"}, got.withoutTime())
+	})
+
+	t.Run("a target that holds something is replaced by a new value", func(t *testing.T) {
+		t.Parallel()
+		codec, sess := setup(t, nil)
+		got := codecProfile{ID: 99, Roles: []string{"stale"}}
+		require.NoError(t, sess.GetInto("user", &got))
+		require.NotSame(t, &got, codec.target(), "a decoder merges into what it is given, so it is given a new value")
+		require.Equal(t, codecProfile{ID: 7, Name: "alice"}, got.withoutTime())
+	})
+
+	t.Run("a decode that fails after it wrote leaves a zero target as it was", func(t *testing.T) {
+		t.Parallel()
+		codec, sess := setup(t, errors.New("boom"))
+		var got codecProfile
+		err := sess.GetInto("user", &got)
+		require.ErrorContains(t, err, "boom")
+		require.Same(t, &got, codec.target(), "it was decoded into the variable, which the failure then cleared")
+		require.Zero(t, got)
+	})
+
+	t.Run("a decode that fails leaves a target that holds something as it was", func(t *testing.T) {
+		t.Parallel()
+		_, sess := setup(t, errors.New("boom"))
+		got := codecProfile{ID: 99}
+		require.Error(t, sess.GetInto("user", &got))
+		require.Equal(t, codecProfile{ID: 99}, got)
 	})
 }
 

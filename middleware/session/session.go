@@ -245,9 +245,12 @@ func GetAs[V any](src interface{ Get(key any) any }, key any) (V, bool) {
 // why it could not: ErrKeyNotFound when there is no such key, in which case target
 // is left as it is.
 //
-// With a Codec, only that value is decoded, straight into target: the other
-// values of the session are not touched, and nothing is shared with the session.
-// Without one, the stored value is assigned to target, which has to be able to
+// With a Codec, only that value is decoded, and nothing is shared with the
+// session: the other values are not touched. A target that holds its zero value,
+// as a fresh variable does, is decoded into directly, so nothing is copied. One
+// that holds something is replaced by a new value, so that nothing of the old value
+// is merged into the result. Either way a failure leaves target as it was.
+// Without a Codec, the stored value is assigned to target, which has to be able to
 // hold it, and like Get, GetInto gives up the saved snapshot when the value could
 // share memory with the session.
 //
