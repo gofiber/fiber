@@ -3,7 +3,9 @@ package cache
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -14,17 +16,59 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// cacheTestCGet sends GET target through app with the request headers given as
-// name and value pairs, leaving out any whose value is empty, and returns the
-// answer with its body read.
-func cacheTestCGet(t *testing.T, app *fiber.App, target string, headers ...string) reply {
-	t.Helper()
-
+// cacheTestCReq returns a GET request for target with the request headers given
+// as name and value pairs, leaving out any whose value is empty.
+func cacheTestCReq(target string, headers ...string) *http.Request {
 	var opts []apptest.Option
 	for name, value := range apptest.Pairs(headers) {
 		opts = append(opts, apptest.WithHeaderIf(name, value))
 	}
-	return doRequest(t, app, apptest.Req(fiber.MethodGet, target, opts...))
+	return apptest.Req(fiber.MethodGet, target, opts...)
+}
+
+// cacheTestCGet sends cacheTestCReq(target, headers...) through app and returns
+// the answer with its body read.
+func cacheTestCGet(t *testing.T, app *fiber.App, target string, headers ...string) reply {
+	t.Helper()
+
+	return doRequest(t, app, cacheTestCReq(target, headers...))
+}
+
+// cacheTestQuery returns a QUERY request for / that carries body, none when it is
+// empty, with opts applied.
+func cacheTestQuery(body string, opts ...apptest.Option) *http.Request {
+	var reader io.Reader = http.NoBody
+	if body != "" {
+		reader = strings.NewReader(body)
+	}
+	req := httptest.NewRequest(fiber.MethodQuery, "/", reader)
+	for _, opt := range opts {
+		opt(req)
+	}
+	return req
+}
+
+// cacheTestServe runs GET target for example.com through h, the handler of an
+// app, on a context of its own as a server would, with the request headers given
+// as name and value pairs, leaving out any whose value is empty. It returns the
+// context holding the answer. Unlike app.Test it leaves a streamed body unread.
+func cacheTestServe(h fasthttp.RequestHandler, target string, headers ...string) *fasthttp.RequestCtx {
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.Header.SetHost("example.com")
+	fctx.Request.SetRequestURI(target)
+	for name, value := range apptest.Pairs(headers) {
+		if value != "" {
+			fctx.Request.Header.Set(name, value)
+		}
+	}
+	h(fctx)
+	return fctx
+}
+
+// cacheTestXCache is the X-Cache status of the answer in fctx.
+func cacheTestXCache(fctx *fasthttp.RequestCtx) string {
+	return string(fctx.Response.Header.Peek("X-Cache"))
 }
 
 // cacheTestCRequireReply requires the X-Cache status and the body of got.

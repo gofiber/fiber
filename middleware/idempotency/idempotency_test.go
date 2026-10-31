@@ -765,41 +765,6 @@ func Test_Idempotency_Store_After_Handler_Cancel(t *testing.T) {
 	require.Equal(t, 1, calls, "second request was not served from the idempotency cache")
 }
 
-// countingStream counts the reads of a response body stream.
-type countingStream struct{ reads int }
-
-func (s *countingStream) Read(_ []byte) (int, error) {
-	s.reads++
-	return 0, io.EOF
-}
-
-// Recording a stream without a declared length read it to its end before the response was sent.
-func Test_Idempotency_StreamIsPassedOnUnrecorded(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(New())
-
-	var calls int
-	var stream *countingStream
-	app.Post("/", func(c fiber.Ctx) error {
-		calls++
-		stream = &countingStream{}
-		return c.SendStream(stream)
-	})
-
-	for range 2 {
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.Header.SetMethod(fiber.MethodPost)
-		fctx.Request.SetRequestURI("/")
-		fctx.Request.Header.Set(ConfigDefault.KeyHeader, validKey)
-		app.Handler()(fctx)
-
-		require.True(t, fctx.Response.IsBodyStream())
-		require.Zero(t, stream.reads)
-	}
-	require.Equal(t, 2, calls)
-}
-
 // A stream of known length, such as SendFile serves, is still stored and replayed.
 func Test_Idempotency_SizedStreamIsReplayed(t *testing.T) {
 	t.Parallel()
@@ -820,14 +785,17 @@ func Test_Idempotency_SizedStreamIsReplayed(t *testing.T) {
 	require.Equal(t, 1, calls)
 }
 
-// Body read a sized stream to its end and kept a read error as the body, which was stored and replayed.
-func Test_Idempotency_SizedStreamIsStoredOnlyWhole(t *testing.T) {
+// A stream the middleware cannot store whole goes out unrecorded, and is read no further than telling takes.
+// Recording one without a declared length read it to its end before the response was sent; Body read a sized
+// stream to its end and kept a read error as the body, which was stored and replayed.
+func Test_Idempotency_StreamIsPassedOnUnrecorded(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
 		stream   func() io.Reader
-		declared int
+		declared int // the length given to SendStream, none when negative
 		maxRead  int
 	}{
+		"undeclared length": {declared: -1, stream: func() io.Reader { return strings.NewReader("receipt") }},
 		"fails": {
 			declared: 10, maxRead: 4,
 			stream: func() io.Reader {
@@ -853,6 +821,9 @@ func Test_Idempotency_SizedStreamIsStoredOnlyWhole(t *testing.T) {
 			app.Post("/", func(c fiber.Ctx) error {
 				calls++
 				read.Reset()
+				if tc.declared < 0 {
+					return c.SendStream(io.TeeReader(tc.stream(), &read))
+				}
 				return c.SendStream(io.TeeReader(tc.stream(), &read), tc.declared)
 			})
 

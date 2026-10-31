@@ -107,7 +107,6 @@ func Test_Store_Get(t *testing.T) {
 // the same Storage, even one whose bytes decode as session data.
 func Test_Store_SharedStorage_ForeignRecord(t *testing.T) {
 	t.Parallel()
-
 	// where an earlier cache version kept a response body
 	const foreignKey = "v5|GET|scheme=http|host=example.com|/files/0|q=|h=accept:0|accept-encoding:0|accept-language:0_body"
 
@@ -117,19 +116,13 @@ func Test_Store_SharedStorage_ForeignRecord(t *testing.T) {
 	store := NewStore()
 	require.NoError(t, store.Storage.Set(foreignKey, forged.Bytes(), 0))
 
-	ctx := apptest.Ctx(t, fiber.New())
-	ctx.Request().Header.SetCookie(store.Extractor.Key, foreignKey)
-
-	sess, err := store.Get(ctx)
-	require.NoError(t, err)
-	defer sess.Release()
+	sess := loadSession(t, fiber.New(), store, foreignKey)
 	require.True(t, sess.Fresh())
 	require.NotEqual(t, foreignKey, sess.ID())
 	require.Nil(t, sess.Get("user"))
 	require.NoError(t, sess.Save())
 
-	_, err = store.GetByID(context.Background(), foreignKey)
-	require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
+	sessionTestRequireGone(t, store, foreignKey)
 
 	require.NoError(t, store.Delete(context.Background(), foreignKey))
 	kept, err := store.Storage.Get(foreignKey)

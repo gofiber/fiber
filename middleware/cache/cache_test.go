@@ -709,11 +709,7 @@ func Test_Cache_QueryMethod(t *testing.T) {
 			app, calls := cacheTestAOrigin(New(tc.cfg), "")
 			lastCall := 0
 			for _, s := range tc.steps {
-				req := apptest.Req(fiber.MethodQuery, "/") // an empty body is sent as none
-				if s.body != "" {
-					req = httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(s.body))
-				}
-				cacheTestAExpectBody(t, app, req, s.cache, strconv.Itoa(s.call))
+				cacheTestAExpectBody(t, app, cacheTestQuery(s.body), s.cache, strconv.Itoa(s.call))
 				lastCall = max(lastCall, s.call)
 			}
 			require.Equal(t, int32(lastCall), calls.Load(), "the origin answers every request the cache does not")
@@ -1494,9 +1490,16 @@ func charged(key string, bodyLen int, stored ...string) uint {
 	return uint(n)
 }
 
+// The default key of a request reads alike around the part under test: the scheme, the host, the path and the query,
+// then the three default key headers when the request sends none of them.
+const (
+	keyStart     = "scheme=http|host=example.com|/|q="
+	keyNoHeaders = "|h=accept:0|accept-encoding:0|accept-language:0"
+)
+
 // defaultKey is the key the default config stores a GET of path on example.com under.
 func defaultKey(path string) string {
-	return cacheKeyVersion + "|GET|scheme=http|host=example.com|" + path + "|q=|h=accept:0|accept-encoding:0|accept-language:0"
+	return cacheKeyVersion + "|GET|scheme=http|host=example.com|" + path + "|q=" + keyNoHeaders
 }
 
 // variantKey is the key an entry stored under the Vary names gets for a request that sends none
@@ -1505,6 +1508,7 @@ func variantKey(base string, names ...string) string {
 	return varyKey(base, names, &fasthttp.RequestHeader{}, true)
 }
 
+// textPlain is the Content-Type of a SendString answer, which an entry's charge counts.
 const textPlain = fiber.MIMETextPlainCharsetUTF8
 
 func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
@@ -1643,12 +1647,9 @@ func Test_Cache_SizedStreamIsStoredOnlyWhole(t *testing.T) {
 				})
 
 				for range 2 {
-					fctx := &fasthttp.RequestCtx{}
-					fctx.Request.Header.SetMethod(fiber.MethodGet)
-					fctx.Request.SetRequestURI("/")
-					app.Handler()(fctx)
+					fctx := cacheTestServe(app.Handler(), "/")
 
-					require.Equal(t, cacheUnreachable, string(fctx.Response.Header.Peek("X-Cache")))
+					require.Equal(t, cacheUnreachable, cacheTestXCache(fctx))
 					require.True(t, fctx.Response.IsBodyStream())
 					require.Equal(t, 10, fctx.Response.Header.ContentLength())
 					require.Empty(t, fctx.Response.Header.Peek(fiber.HeaderETag))
@@ -1688,12 +1689,8 @@ func Test_Cache_MaxBytes_CountsKeyAndHeaders(t *testing.T) {
 			h := app.Handler()
 
 			for i := range urls {
-				fctx := &fasthttp.RequestCtx{}
-				fctx.Request.Header.SetMethod(fiber.MethodGet)
-				fctx.Request.Header.SetHost("example.com")
-				fctx.Request.SetRequestURI(fmt.Sprintf("/%d/%s", i, strings.Repeat("a", urlLen)))
-				h(fctx)
-				require.Equal(t, cacheMiss, string(fctx.Response.Header.Peek("X-Cache")))
+				fctx := cacheTestServe(h, fmt.Sprintf("/%d/%s", i, strings.Repeat("a", urlLen)))
+				require.Equal(t, cacheMiss, cacheTestXCache(fctx))
 			}
 			require.LessOrEqual(t, probe.counted(), uint(maxBytes))
 			require.LessOrEqual(t, probe.nodes(), maxBytes/urlLen)
@@ -4618,7 +4615,7 @@ func Test_Cache_EntryStoredWithoutVaryIsNotRead(t *testing.T) {
 		Expiration: time.Minute,
 		// A generator of the caller's own, as an application preserving its
 		// key format across the upgrade would have.
-		KeyGenerator: func(c fiber.Ctx) string { return c.Path() },
+		KeyGenerator: pathKey,
 	}))
 	app.Get("/me", func(c fiber.Ctx) error { return c.SendString("handler ran") })
 
@@ -4684,23 +4681,13 @@ func Test_Cache_VaryKeyedByTheHeadersTheLookupSaw(t *testing.T) {
 	})
 	app.Get("/other", func(c fiber.Ctx) error { return c.SendString(strings.Repeat("x", 300)) })
 
-	get := func(path, cookie string) [2]string {
-		t.Helper()
-		req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
-		if cookie != "" {
-			req.Header.Set(fiber.HeaderCookie, cookie)
-		}
-		resp := apptest.Do(t, app, req)
-		body := apptest.Body(t, resp)
-		require.NoError(t, resp.Body.Close())
-		return [2]string{body, resp.Header.Get("X-Cache")}
-	}
+	get := func(path, cookie string) reply { return cacheTestCGet(t, app, path, fiber.HeaderCookie, cookie) }
 
 	// The second round starts after the URL's entries, and with them its Vary manifest, were evicted.
 	for _, round := range []string{"first store", "after eviction"} {
-		require.Equal(t, [2]string{"alice's recovery codes", cacheMiss}, get("/account", "user="+sealed), round)
-		require.Equal(t, [2]string{"please sign in", cacheMiss}, get("/account", "user=alice"), round)
-		require.Equal(t, [2]string{"alice's recovery codes", cacheHit}, get("/account", "user="+sealed), round)
+		cacheTestCRequireReply(t, get("/account", "user="+sealed), cacheMiss, "alice's recovery codes", round)
+		cacheTestCRequireReply(t, get("/account", "user=alice"), cacheMiss, "please sign in", round)
+		cacheTestCRequireReply(t, get("/account", "user="+sealed), cacheHit, "alice's recovery codes", round)
 		for i := range 8 {
 			get("/other?q="+strconv.Itoa(i), "")
 		}
@@ -4756,17 +4743,17 @@ func Test_Cache_VaryLongerThanEntryLimitIsUncacheable(t *testing.T) {
 // does for Vary: past one the response is not stored, at it the entry round-trips.
 func Test_Cache_EntryPastDecodeLimitIsNotStored(t *testing.T) {
 	t.Parallel()
+	// long sets the response header name to n bytes.
+	long := func(name string) func(c fiber.Ctx, n int) {
+		return func(c fiber.Ctx, n int) { c.Set(name, strings.Repeat("a", n)) }
+	}
 	tests := []struct {
 		set   func(c fiber.Ctx, n int)
 		name  string
 		limit int
 	}{
-		{name: "Content-Type", limit: maxStoredContentType, set: func(c fiber.Ctx, n int) {
-			c.Set(fiber.HeaderContentType, strings.Repeat("a", n))
-		}},
-		{name: "Content-Encoding", limit: maxStoredContentEncoding, set: func(c fiber.Ctx, n int) {
-			c.Set(fiber.HeaderContentEncoding, strings.Repeat("a", n))
-		}},
+		{name: "Content-Type", limit: maxStoredContentType, set: long(fiber.HeaderContentType)},
+		{name: "Content-Encoding", limit: maxStoredContentEncoding, set: long(fiber.HeaderContentEncoding)},
 		{name: "Cache-Control", limit: maxStoredCacheControl, set: func(c fiber.Ctx, n int) {
 			const prefix = "max-age=60, x="
 			c.Set(fiber.HeaderCacheControl, prefix+strings.Repeat("a", n-len(prefix)))
@@ -4776,15 +4763,11 @@ func Test_Cache_EntryPastDecodeLimitIsNotStored(t *testing.T) {
 			c.Set(fiber.HeaderCacheControl, "max-age=60")
 			c.Set(fiber.HeaderExpires, strings.Repeat("a", n))
 		}},
-		{name: "ETag", limit: maxStoredETag, set: func(c fiber.Ctx, n int) {
-			c.Set(fiber.HeaderETag, strings.Repeat("a", n))
-		}},
+		{name: "ETag", limit: maxStoredETag, set: long(fiber.HeaderETag)},
 		{name: "Location", limit: maxStoredHeaderValue, set: func(c fiber.Ctx, n int) {
 			c.Status(fiber.StatusMovedPermanently).Set(fiber.HeaderLocation, strings.Repeat("a", n))
 		}},
-		{name: "header value", limit: maxStoredHeaderValue, set: func(c fiber.Ctx, n int) {
-			c.Set("X-Long", strings.Repeat("a", n))
-		}},
+		{name: "header value", limit: maxStoredHeaderValue, set: long("X-Long")},
 		{name: "header name", limit: maxStoredHeaderKey, set: func(c fiber.Ctx, n int) {
 			c.Set(strings.Repeat("a", n), "v")
 		}},
@@ -4805,7 +4788,6 @@ func Test_Cache_EntryPastDecodeLimitIsNotStored(t *testing.T) {
 		for _, over := range []int{0, 1} {
 			t.Run(fmt.Sprintf("%s/%d", tt.name, tt.limit+over), func(t *testing.T) {
 				t.Parallel()
-
 				// Location is kept without StoreResponseHeaders, the rest of the list needs it.
 				app := fiber.New()
 				app.Use(New(Config{Storage: memory.New(), Expiration: time.Minute, StoreResponseHeaders: tt.name != "Location"}))
@@ -4837,25 +4819,18 @@ func Test_Cache_EntryPastDecodeLimitIsNotStored(t *testing.T) {
 			return c.SendString("body")
 		})
 
-		get := func(t *testing.T, headers map[string]string) string {
+		get := func(headers ...string) string {
 			t.Helper()
-			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-			for k, v := range headers {
-				req.Header.Set(k, v)
-			}
-			resp := apptest.ExpectBody(t, app, req, fiber.StatusOK, "body")
-			require.NoError(t, resp.Body.Close())
+			resp := apptest.ExpectBody(t, app, cacheTestCReq("/", headers...), fiber.StatusOK, "body")
 			return resp.Header.Get("X-Cache")
 		}
 
-		require.Equal(t, cacheMiss, get(t, nil))
-		require.Equal(t, cacheUnreachable, get(t, map[string]string{
-			fiber.HeaderCacheControl: "no-cache",
-			"X-Echo":                 strings.Repeat("x", maxStoredHeaderValue+1),
-		}))
-		require.Equal(t, cacheHit, get(t, nil))
-		require.Equal(t, cacheMiss, get(t, map[string]string{fiber.HeaderCacheControl: "no-cache"}))
-		require.Equal(t, cacheHit, get(t, nil))
+		require.Equal(t, cacheMiss, get())
+		oversized := strings.Repeat("x", maxStoredHeaderValue+1)
+		require.Equal(t, cacheUnreachable, get(fiber.HeaderCacheControl, "no-cache", "X-Echo", oversized))
+		require.Equal(t, cacheHit, get())
+		require.Equal(t, cacheMiss, get(fiber.HeaderCacheControl, "no-cache"))
+		require.Equal(t, cacheHit, get())
 	})
 
 	t.Run("in-memory store is not limited", func(t *testing.T) {
@@ -5045,10 +5020,7 @@ func Test_Cache_ResponseLinesUnderTrailerNames(t *testing.T) {
 	})
 
 	for _, user := range []string{"u0", "u1"} {
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-		req.Header.Set("X-User", user)
-		resp := apptest.Do(t, app, req)
-		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		resp := cacheTestAExpect(t, app, cacheTestCReq("/", "X-User", user), cacheUnreachable)
 		require.Equal(t, "private, no-store", resp.Header.Get(fiber.HeaderCacheControl))
 	}
 }
@@ -5057,87 +5029,67 @@ func Test_Cache_ResponseLinesUnderTrailerNames(t *testing.T) {
 // another entry's body slot, Vary manifest or Vary variant.
 func Test_Cache_EntryKeyNeverNamesDerivedSlot(t *testing.T) {
 	t.Parallel()
-	get := func(t *testing.T, app *fiber.App, header, value string) (int, string, string) {
-		t.Helper()
-		req := httptest.NewRequest(fiber.MethodGet, "/news", http.NoBody)
-		req.Header.Set(header, value)
-		resp := apptest.Do(t, app, req)
-		raw := apptest.Body(t, resp)
-		require.NoError(t, resp.Body.Close())
-		return resp.StatusCode, raw, resp.Header.Get("X-Cache")
-	}
+	byTenant := func(c fiber.Ctx) string { return c.Path() + "|" + c.Get("X-Tenant") }
+	var fr fasthttp.RequestHeader
+	fr.Set(fiber.HeaderAcceptLanguage, "fr")
+	// The tenant that spells the key of acme's French variant.
+	spelled := "acme" + string(appendVaryKey(nil, []string{"accept-language"}, &fr, true))
 
-	t.Run("body", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{Storage: memory.New()}))
-		app.Get("/news", func(c fiber.Ctx) error {
-			return c.SendString("news for " + c.Get(fiber.HeaderAcceptLanguage))
-		})
+	// A step is a request for /news that sends the tenant and the language, when not empty, and the answer it gets.
+	type step struct{ tenant, lang, cache, body string }
+	for _, tc := range []struct {
+		keyGenerator func(fiber.Ctx) string
+		handler      fiber.Handler
+		name         string
+		storage      string // a member of storageKinds
+		steps        []step
+	}{
+		{
+			name: "body", storage: "external",
+			handler: func(c fiber.Ctx) error { return c.SendString("news for " + c.Get(fiber.HeaderAcceptLanguage)) },
+			steps: []step{
+				{"", "en", cacheMiss, "news for en"},
+				{"", "en_body", cacheMiss, "news for en_body"},
+				{"", "en", cacheHit, "news for en"},
+				{"", "en_body", cacheHit, "news for en_body"},
+			},
+		},
+		{
+			name: "manifest", storage: "external", keyGenerator: byTenant,
+			handler: func(c fiber.Ctx) error { return c.SendString("news for " + c.Get("X-Tenant")) },
+			steps: []step{
+				{"acme", "", cacheMiss, "news for acme"},
+				{"acme|vary", "", cacheMiss, "news for acme|vary"},
+				{"acme", "", cacheHit, "news for acme"},
+			},
+		},
+		{
+			name: "variant", storage: "memory", keyGenerator: byTenant,
+			handler: func(c fiber.Ctx) error {
+				if c.Get("X-Tenant") != "acme" {
+					return c.SendString("news for " + c.Get("X-Tenant"))
+				}
+				c.Vary(fiber.HeaderAcceptLanguage)
+				return c.SendString("news for acme in " + c.Get(fiber.HeaderAcceptLanguage))
+			},
+			steps: []step{
+				{"acme", "de", cacheMiss, "news for acme in de"},
+				{spelled, "fr", cacheMiss, "news for " + spelled},
+				{"acme", "fr", cacheMiss, "news for acme in fr"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{Storage: storageOf(tc.storage), KeyGenerator: tc.keyGenerator}))
+			app.Get("/news", tc.handler)
 
-		for _, step := range []struct{ lang, state string }{
-			{"en", cacheMiss},
-			{"en_body", cacheMiss},
-			{"en", cacheHit},
-			{"en_body", cacheHit},
-		} {
-			status, body, state := get(t, app, fiber.HeaderAcceptLanguage, step.lang)
-			require.Equal(t, fiber.StatusOK, status, step.lang)
-			require.Equal(t, "news for "+step.lang, body)
-			require.Equal(t, step.state, state, step.lang)
-		}
-	})
-
-	t.Run("manifest", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{
-			Storage:      memory.New(),
-			KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|" + c.Get("X-Tenant") },
-		}))
-		app.Get("/news", func(c fiber.Ctx) error { return c.SendString("news for " + c.Get("X-Tenant")) })
-
-		for _, step := range []struct{ tenant, state string }{
-			{"acme", cacheMiss},
-			{"acme|vary", cacheMiss},
-			{"acme", cacheHit},
-		} {
-			status, body, state := get(t, app, "X-Tenant", step.tenant)
-			require.Equal(t, fiber.StatusOK, status, step.tenant)
-			require.Equal(t, "news for "+step.tenant, body)
-			require.Equal(t, step.state, state, step.tenant)
-		}
-	})
-
-	t.Run("variant", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{KeyGenerator: func(c fiber.Ctx) string { return c.Path() + "|" + c.Get("X-Tenant") }}))
-		app.Get("/news", func(c fiber.Ctx) error {
-			if c.Get("X-Tenant") != "acme" {
-				return c.SendString("news for " + c.Get("X-Tenant"))
+			for _, s := range tc.steps {
+				got := cacheTestCGet(t, app, "/news", "X-Tenant", s.tenant, fiber.HeaderAcceptLanguage, s.lang)
+				require.Equal(t, fiber.StatusOK, got.status, "%+v", s)
+				cacheTestCRequireReply(t, got, s.cache, s.body, "%+v", s)
 			}
-			c.Vary(fiber.HeaderAcceptLanguage)
-			return c.SendString("news for acme in " + c.Get(fiber.HeaderAcceptLanguage))
 		})
-
-		var fr fasthttp.RequestHeader
-		fr.Set(fiber.HeaderAcceptLanguage, "fr")
-		spelled := "acme" + string(appendVaryKey(nil, []string{"accept-language"}, &fr, true))
-
-		for _, step := range []struct{ tenant, lang, body string }{
-			{"acme", "de", "news for acme in de"},
-			{spelled, "fr", "news for " + spelled},
-			{"acme", "fr", "news for acme in fr"},
-		} {
-			req := httptest.NewRequest(fiber.MethodGet, "/news", http.NoBody)
-			req.Header.Set("X-Tenant", step.tenant)
-			req.Header.Set(fiber.HeaderAcceptLanguage, step.lang)
-			resp := apptest.Do(t, app, req)
-			raw := apptest.Body(t, resp)
-			require.NoError(t, resp.Body.Close())
-			require.Equal(t, step.body, raw)
-			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"), step.tenant)
-		}
-	})
+	}
 }

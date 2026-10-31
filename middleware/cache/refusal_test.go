@@ -428,27 +428,21 @@ func Test_Cache_RejectedCredentialFromOnTimeout(t *testing.T) {
 	}))
 
 	get := func(cacheControl string) *fasthttp.RequestCtx {
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.SetRequestURI("/")
-		fctx.Request.Header.SetCookie("session", "a")
-		if cacheControl != "" {
-			fctx.Request.Header.Set(fiber.HeaderCacheControl, cacheControl)
-		}
-		app.Handler()(fctx)
-		return fctx
+		headers := []string{fiber.HeaderCookie, "session=a", fiber.HeaderCacheControl, cacheControl}
+		return cacheTestServe(app.Handler(), "/", headers...)
 	}
 
-	require.Equal(t, cacheMiss, string(get("").Response.Header.Peek("X-Cache")))
+	require.Equal(t, cacheMiss, cacheTestXCache(get("")))
 
 	fctx := get("no-cache")
 	resp := fctx.LastTimeoutErrorResponse()
 	require.NotNil(t, resp)
 	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode())
-	<-finished
+	apptest.Recv(t, finished, 5*time.Second, "the timed-out handler did not finish")
 	require.Equal(t, "1", string(fctx.Response.Header.Peek("X-Handler")))
 	require.Empty(t, fctx.Response.Header.Peek("X-Cache"), "the cache wrote to the timed-out handler's response")
 
-	require.Equal(t, cacheMiss, string(get("").Response.Header.Peek("X-Cache")))
+	require.Equal(t, cacheMiss, cacheTestXCache(get("")))
 	require.Equal(t, int32(3), calls.Load())
 }
 

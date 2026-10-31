@@ -236,7 +236,8 @@ func Test_Limiter_DefaultConfigNoPanic(t *testing.T) {
 
 func Test_getEffectiveStatusCode_TimedOut(t *testing.T) {
 	t.Parallel()
-	c := apptest.Ctx(t, fiber.New())
+	// A test of Abandon and ForceRelease: apptest.Ctx would release the context a second time.
+	c := fiber.New().AcquireCtx(&fasthttp.RequestCtx{})
 	t.Cleanup(c.ForceRelease)
 
 	c.Response().SetStatusCode(fiber.StatusOK)
@@ -265,8 +266,7 @@ func Test_Limiter_TimedOutRequest(t *testing.T) {
 				return nil
 			}, timeout.Config{Timeout: 10 * time.Millisecond}))
 
-			fctx := &fasthttp.RequestCtx{}
-			fctx.Request.SetRequestURI("/")
+			fctx := limiterTestRequestCtx()
 			app.Handler()(fctx)
 
 			resp := fctx.LastTimeoutErrorResponse()
@@ -274,7 +274,7 @@ func Test_Limiter_TimedOutRequest(t *testing.T) {
 			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode())
 
 			close(release)
-			<-finished
+			apptest.Recv(t, finished, 5*time.Second, "the timed-out handler never finished")
 			require.Equal(t, "1", string(fctx.Response.Header.Peek("X-Handler")))
 			require.Empty(t, fctx.Response.Header.Peek(xRateLimitLimit), "the limiter wrote to the timed-out handler's response")
 		})
@@ -1958,9 +1958,7 @@ func Test_Limiter_HeadersExactWireFormat(t *testing.T) {
 					handler := app.Handler()
 
 					for i, want := range steps {
-						fctx := &fasthttp.RequestCtx{}
-						fctx.Request.Header.SetMethod(fiber.MethodGet)
-						fctx.Request.SetRequestURI("/")
+						fctx := limiterTestRequestCtx()
 						// Calling Handler directly bypasses fasthttp's setup of the header store.
 						if app.Server().DisableHeaderNamesNormalizing {
 							fctx.Response.Header.DisableNormalizing()
@@ -2031,9 +2029,7 @@ func Test_Limiter_HeadersCustomCtx(t *testing.T) {
 				app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 				handler := app.Handler()
 				for i := range 3 {
-					fctx := &fasthttp.RequestCtx{}
-					fctx.Request.Header.SetMethod(fiber.MethodGet)
-					fctx.Request.SetRequestURI("/")
+					fctx := limiterTestRequestCtx()
 					handler(fctx)
 					h := &fctx.Response.Header
 					require.Empty(t, h.Peek(xRateLimitLimit))

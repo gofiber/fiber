@@ -15,7 +15,6 @@ import (
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 // interleavedSetStorage runs duringFirstSet once, after the cache decided to
@@ -24,7 +23,6 @@ type interleavedSetStorage struct {
 	*storagetest.Memory
 	duringFirstSet func()
 	entered        atomic.Bool
-	failDeletes    atomic.Bool
 }
 
 func (s *interleavedSetStorage) SetWithContext(ctx context.Context, key string, value []byte, exp time.Duration) error {
@@ -32,21 +30,6 @@ func (s *interleavedSetStorage) SetWithContext(ctx context.Context, key string, 
 		s.duringFirstSet()
 	}
 	return s.Memory.SetWithContext(ctx, key, value, exp)
-}
-
-func (s *interleavedSetStorage) Set(key string, value []byte, exp time.Duration) error {
-	return s.SetWithContext(context.Background(), key, value, exp)
-}
-
-func (s *interleavedSetStorage) DeleteWithContext(ctx context.Context, key string) error {
-	if s.failDeletes.Load() {
-		return errors.New("delete failed")
-	}
-	return s.Memory.DeleteWithContext(ctx, key)
-}
-
-func (s *interleavedSetStorage) Delete(key string) error {
-	return s.DeleteWithContext(context.Background(), key)
 }
 
 func (s *interleavedSetStorage) bodiesOfSize(size int) int {
@@ -144,7 +127,7 @@ func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsTrackedWhenDeleteFails(t *test
 	)
 	storage.duringFirstSet = func() {
 		secondStatus, errSecond = get("/second")
-		storage.failDeletes.Store(true)
+		storage.SetErr(storagetest.OpDelete, "*", errors.New("delete failed"))
 	}
 	status, err := get("/first")
 	require.NoError(t, err)
@@ -154,7 +137,7 @@ func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsTrackedWhenDeleteFails(t *test
 	require.Equal(t, 2, probe.nodes())
 	require.Equal(t, charged(defaultKey("/first"), 100, textPlain)+charged(defaultKey("/second"), 100, textPlain), probe.counted())
 
-	storage.failDeletes.Store(false)
+	storage.ClearErrs()
 	status, err = get("/third")
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, status)
@@ -180,15 +163,7 @@ func Test_Cache_MaxBytes_ConcurrentStoresStayWithinLimit(t *testing.T) {
 	handler := app.Handler()
 
 	get := func(target, cacheControl string) int {
-		ctx := &fasthttp.RequestCtx{}
-		ctx.Request.Header.SetMethod(fiber.MethodGet)
-		ctx.Request.Header.SetHost("example.com")
-		ctx.Request.SetRequestURI(target)
-		if cacheControl != "" {
-			ctx.Request.Header.Set(fiber.HeaderCacheControl, cacheControl)
-		}
-		handler(ctx)
-		return ctx.Response.StatusCode()
+		return cacheTestServe(handler, target, fiber.HeaderCacheControl, cacheControl).Response.StatusCode()
 	}
 
 	var wg sync.WaitGroup
@@ -232,7 +207,7 @@ func Test_Cache_MaxBytes_NoSpaceKeepsPoppedEntriesTracked(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		ExpirationGenerator: stableAscendingExpiration(),
-		KeyGenerator:        func(c fiber.Ctx) string { return c.Path() },
+		KeyGenerator:        pathKey,
 		MaxBytes:            maxBytes,
 		Storage:             storage,
 		accounting:          probe.record,

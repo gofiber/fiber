@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -282,7 +283,7 @@ func Test_item_Decode_FieldLimits(t *testing.T) {
 // Pins each constant decodable compares against to its msgp tag.
 func Test_item_decodable_MatchesUnmarshal(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	for _, tc := range []struct {
 		set   func(e *item, n int)
 		field string
 		limit int
@@ -296,22 +297,24 @@ func Test_item_decodable_MatchesUnmarshal(t *testing.T) {
 		{field: "expires", limit: maxStoredExpires, set: func(e *item, n int) { e.expires = make([]byte, n) }},
 		{field: "etag", limit: maxStoredETag, set: func(e *item, n int) { e.etag = make([]byte, n) }},
 		{field: "vary", limit: maxVaryLen, set: func(e *item, n int) { e.vary = make([]byte, n) }},
-	}
-	for _, tc := range cases {
+	} {
 		for _, over := range []int{0, 1} {
-			var e, out item
-			tc.set(&e, tc.limit+over)
-			raw, err := e.MarshalMsg(nil)
-			require.NoError(t, err, "field %s", tc.field)
+			t.Run(fmt.Sprintf("%s/%d", tc.field, tc.limit+over), func(t *testing.T) {
+				t.Parallel()
+				var e, out item
+				tc.set(&e, tc.limit+over)
+				raw, err := e.MarshalMsg(nil)
+				require.NoError(t, err)
 
-			_, err = out.UnmarshalMsg(raw)
-			if over == 0 {
-				require.NoError(t, err, "field %s at the limit", tc.field)
-				require.True(t, e.decodable(), "field %s at the limit", tc.field)
-				continue
-			}
-			require.ErrorIs(t, err, msgp.ErrLimitExceeded, "field %s past the limit", tc.field)
-			require.False(t, e.decodable(), "field %s past the limit", tc.field)
+				_, err = out.UnmarshalMsg(raw)
+				if over == 0 {
+					require.NoError(t, err, "at the limit")
+					require.True(t, e.decodable(), "at the limit")
+					return
+				}
+				require.ErrorIs(t, err, msgp.ErrLimitExceeded, "past the limit")
+				require.False(t, e.decodable(), "past the limit")
+			})
 		}
 	}
 }

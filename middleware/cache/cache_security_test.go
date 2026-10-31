@@ -590,9 +590,7 @@ func Test_Cache_Security_QueryBody_RawHashDomain(t *testing.T) {
 	require.NotEqual(t, bodyA, bodyB)
 
 	doQuery := func(body string) string {
-		req := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(body))
-		resp := apptest.Expect(t, app, req, fiber.StatusOK)
-		return resp.Header.Get("X-Cache")
+		return apptest.Expect(t, app, cacheTestQuery(body), fiber.StatusOK).Header.Get("X-Cache")
 	}
 
 	require.Equal(t, cacheMiss, doQuery(bodyA))
@@ -618,29 +616,17 @@ func Test_Cache_Security_QueryBody_KeyedWithItsMetadata(t *testing.T) {
 		return c.SendString("category=" + filter.Category)
 	})
 
-	doQuery := func(header, value string) (cacheStatus, body string) { //nolint:nonamedreturns // names document the pair
-		req := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(`{"category":"shoes"}`))
-		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
-		req.Header.Set(header, value)
-		resp := apptest.Do(t, app, req)
-		got := apptest.Body(t, resp)
-		return resp.Header.Get("X-Cache"), got
+	doQuery := func(header, value string) reply {
+		return doRequest(t, app, cacheTestQuery(`{"category":"shoes"}`,
+			apptest.WithHeader(fiber.HeaderContentType, fiber.MIMEApplicationJSON), apptest.WithHeader(header, value)))
 	}
 
-	cacheStatus, got := doQuery(fiber.HeaderContentType, fiber.MIMEApplicationForm)
-	require.Equal(t, cacheMiss, cacheStatus)
-	require.Equal(t, "category=", got)
-
-	cacheStatus, got = doQuery(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
-	require.Equal(t, cacheMiss, cacheStatus, "the same bytes as JSON are a different query")
-	require.Equal(t, "category=shoes", got)
-
-	cacheStatus, _ = doQuery(fiber.HeaderContentEncoding, "gzip")
-	require.NotEqual(t, cacheHit, cacheStatus, "the same bytes declared compressed are a different query")
-
-	cacheStatus, got = doQuery(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
-	require.Equal(t, cacheHit, cacheStatus)
-	require.Equal(t, "category=shoes", got)
+	cacheTestCRequireReply(t, doQuery(fiber.HeaderContentType, fiber.MIMEApplicationForm), cacheMiss, "category=")
+	cacheTestCRequireReply(t, doQuery(fiber.HeaderContentType, fiber.MIMEApplicationJSON), cacheMiss, "category=shoes",
+		"the same bytes as JSON are a different query")
+	require.NotEqual(t, cacheHit, doQuery(fiber.HeaderContentEncoding, "gzip").cache,
+		"the same bytes declared compressed are a different query")
+	cacheTestCRequireReply(t, doQuery(fiber.HeaderContentType, fiber.MIMEApplicationJSON), cacheHit, "category=shoes")
 }
 
 func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T) {
@@ -661,15 +647,10 @@ func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T)
 	authHash := hex.EncodeToString(authSum[:])
 	craftedBody := baseBody + "|auth=" + authHash
 
-	authReq := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(baseBody))
-	authReq.Header.Set(fiber.HeaderAuthorization, authHeader)
-	authResp := apptest.Expect(t, app, authReq, fiber.StatusOK)
-	require.Equal(t, cacheMiss, authResp.Header.Get("X-Cache"))
+	cacheTestAExpectStatus(t, app, cacheTestQuery(baseBody, apptest.WithHeader(fiber.HeaderAuthorization, authHeader)),
+		cacheMiss, fiber.StatusOK)
 
-	unauthReq := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(craftedBody))
-	unauthResp := apptest.Expect(t, app, unauthReq, fiber.StatusOK)
-	require.Equal(t, cacheMiss, unauthResp.Header.Get("X-Cache"))
-
+	unauthResp := cacheTestAExpectStatus(t, app, cacheTestQuery(craftedBody), cacheMiss, fiber.StatusOK)
 	require.Equal(t, "handler auth=", apptest.Body(t, unauthResp))
 	require.Equal(t, int32(2), count.Load())
 }
@@ -694,35 +675,30 @@ func Test_Cache_Security_QueryBody_StreamedBodyLimit(t *testing.T) {
 		return c.SendString(fmt.Sprintf("%.1s%d streamed=%v", body, len(body), streamed))
 	})
 
-	doQuery := func(body string, chunked bool) (string, string) {
-		req := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(body))
+	doQuery := func(body string, chunked bool) reply {
+		t.Helper()
+		req := cacheTestQuery(body)
 		if chunked {
 			req.TransferEncoding = []string{"chunked"}
 		}
-		resp := apptest.Expect(t, app, req, fiber.StatusOK)
-		answer := apptest.Body(t, resp)
-		return resp.Header.Get("X-Cache"), answer
+		got := doRequest(t, app, req)
+		require.Equal(t, fiber.StatusOK, got.status)
+		return got
 	}
 
 	for _, chunked := range []bool{false, true} {
 		for _, fill := range []string{"A", "B"} {
-			xCache, answer := doQuery(strings.Repeat(fill, 4*limit), chunked)
-			require.Equal(t, cacheUnreachable, xCache, "chunked=%v", chunked)
-			require.Equal(t, fill+"4096 streamed=true", answer, "chunked=%v", chunked)
+			cacheTestCRequireReply(t, doQuery(strings.Repeat(fill, 4*limit), chunked), cacheUnreachable,
+				fill+"4096 streamed=true", "chunked=%v", chunked)
 		}
 	}
 
-	xCache, answer := doQuery("small", true)
-	require.Equal(t, cacheUnreachable, xCache, "a chunked body has no length to bound")
-	require.Equal(t, "s5 streamed=true", answer)
-
+	cacheTestCRequireReply(t, doQuery("small", true), cacheUnreachable, "s5 streamed=true",
+		"a chunked body has no length to bound")
 	for _, want := range []string{cacheMiss, cacheHit} {
-		xCache, answer = doQuery("small", false)
-		require.Equal(t, want, xCache)
-		require.Equal(t, "s5 streamed=false", answer)
+		cacheTestCRequireReply(t, doQuery("small", false), want, "s5 streamed=false")
 	}
-	xCache, _ = doQuery("other", false)
-	require.Equal(t, cacheMiss, xCache)
+	require.Equal(t, cacheMiss, doQuery("other", false).cache)
 }
 
 // countingReader yields zeros and counts how many were read.
@@ -770,19 +746,15 @@ func Test_Cache_Security_StreamIsNotBufferedToMeasureIt(t *testing.T) {
 				return c.SendStream(stream)
 			})
 
-			fctx := &fasthttp.RequestCtx{}
-			fctx.Request.Header.SetMethod(fiber.MethodGet)
-			fctx.Request.Header.SetHost("example.com")
-			fctx.Request.SetRequestURI("/")
-			app.Handler()(fctx)
+			fctx := cacheTestServe(app.Handler(), "/")
 
 			require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
 			if tc.stored {
-				require.Equal(t, cacheMiss, string(fctx.Response.Header.Peek("X-Cache")))
+				require.Equal(t, cacheMiss, cacheTestXCache(fctx))
 				require.Equal(t, tc.size, stream.read)
 				return
 			}
-			require.Equal(t, cacheUnreachable, string(fctx.Response.Header.Peek("X-Cache")))
+			require.Equal(t, cacheUnreachable, cacheTestXCache(fctx))
 			require.True(t, fctx.Response.IsBodyStream())
 			require.Zero(t, stream.read)
 		})
@@ -1668,11 +1640,9 @@ func Test_Cache_LegacyAnonymousEntryIsNotRead(t *testing.T) {
 	app.Use(New(Config{
 		Storage:    storage,
 		Expiration: time.Minute,
-		KeyGenerator: func(c fiber.Ctx) string {
-			// A custom generator, as an application preserving the old key format
-			// across the upgrade would have.
-			return c.Path()
-		},
+		// A custom generator, as an application preserving the old key format
+		// across the upgrade would have.
+		KeyGenerator: pathKey,
 	}))
 	app.Get("/me", func(c fiber.Ctx) error { return c.SendString("handler ran") })
 
@@ -1847,37 +1817,19 @@ func Test_Cache_Security_KeyAuthorityFollowsTrustedProxy(t *testing.T) {
 // makes them, and whose signed-in ones add Cookie.
 func Test_Cache_Security_StoredUnderTheResponsesOwnVary(t *testing.T) {
 	t.Parallel()
-	type varyReply struct {
-		body        string
-		cacheStatus string
-	}
-	get := func(t *testing.T, app *fiber.App, cookie, cacheControl string) varyReply {
+	get := func(t *testing.T, app *fiber.App, cookie, cacheControl string) reply {
 		t.Helper()
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-		req.Header.Set(fiber.HeaderCookie, cookie)
-		if cacheControl != "" {
-			req.Header.Set(fiber.HeaderCacheControl, cacheControl)
-		}
-		resp := apptest.Do(t, app, req)
-		raw := apptest.Body(t, resp)
-		require.NoError(t, resp.Body.Close())
-		return varyReply{body: raw, cacheStatus: resp.Header.Get("X-Cache")}
+		cookies := apptest.WithHeader(fiber.HeaderCookie, cookie)
+		reload := apptest.WithHeaderIf(fiber.HeaderCacheControl, cacheControl)
+		return doRequest(t, app, apptest.Req(fiber.MethodGet, "/", cookies, reload))
 	}
 
-	backends := []struct {
-		storage func() fiber.Storage
-		name    string
-	}{
-		{name: "memory", storage: func() fiber.Storage { return nil }},
-		{name: "storage", storage: func() fiber.Storage { return memory.New() }},
-	}
-
-	for _, backend := range backends {
-		t.Run(backend.name+"/response adds Cookie", func(t *testing.T) {
+	for _, kind := range storageKinds {
+		t.Run(kind+"/response adds Cookie", func(t *testing.T) {
 			t.Parallel()
 			probe := &accountingProbe{}
 			app := fiber.New()
-			app.Use(New(Config{Storage: backend.storage(), MaxBytes: 1024, accounting: probe.record}))
+			app.Use(New(Config{Storage: storageOf(kind), MaxBytes: 1024, accounting: probe.record}))
 			app.Get("/", func(c fiber.Ctx) error {
 				c.Vary(fiber.HeaderAcceptEncoding)
 				user := c.Cookies("session")
@@ -1889,14 +1841,12 @@ func Test_Cache_Security_StoredUnderTheResponsesOwnVary(t *testing.T) {
 			})
 
 			// alice reloads while the manifest names Accept-Encoding only.
-			require.Equal(t, varyReply{body: "private to alice", cacheStatus: cacheMiss}, get(t, app, "session=alice", ""))
-			require.Equal(t, varyReply{body: "sign in", cacheStatus: cacheMiss}, get(t, app, "x=1", ""))
-			require.Equal(t, varyReply{body: "private to alice", cacheStatus: cacheMiss}, get(t, app, "session=alice", "max-age=0"))
-			require.Equal(t, varyReply{body: "sign in", cacheStatus: cacheMiss}, get(t, app, "x=2", ""))
+			cacheTestCRequireReply(t, get(t, app, "session=alice", ""), cacheMiss, "private to alice")
+			cacheTestCRequireReply(t, get(t, app, "x=1", ""), cacheMiss, "sign in")
+			cacheTestCRequireReply(t, get(t, app, "session=alice", "max-age=0"), cacheMiss, "private to alice")
+			cacheTestCRequireReply(t, get(t, app, "x=2", ""), cacheMiss, "sign in")
 			for _, cookie := range []string{"x=3", "_ga=77", ""} {
-				reply := get(t, app, cookie, "")
-				require.Equal(t, "sign in", reply.body, "Cookie: %q", cookie)
-				require.Equal(t, cacheHit, reply.cacheStatus, "Cookie: %q", cookie)
+				cacheTestCRequireReply(t, get(t, app, cookie, ""), cacheHit, "sign in", "Cookie: %q", cookie)
 			}
 			// The sign-in entry alice's reload looked up stays beside hers.
 			require.Equal(t, 2, probe.nodes())
@@ -1904,15 +1854,15 @@ func Test_Cache_Security_StoredUnderTheResponsesOwnVary(t *testing.T) {
 			alice := charged(variantKey(defaultKey("/"), "accept-encoding", "cookie"), len("private to alice"), textPlain, "Accept-Encoding, Cookie")
 			require.Equal(t, signIn+alice, probe.counted())
 
-			require.Equal(t, varyReply{body: "private to bob", cacheStatus: cacheMiss}, get(t, app, "session=bob", "max-age=0"))
-			require.Equal(t, varyReply{body: "private to alice", cacheStatus: cacheHit}, get(t, app, "session=alice", ""))
-			require.Equal(t, varyReply{body: "sign in", cacheStatus: cacheMiss}, get(t, app, "x=4", ""))
+			cacheTestCRequireReply(t, get(t, app, "session=bob", "max-age=0"), cacheMiss, "private to bob")
+			cacheTestCRequireReply(t, get(t, app, "session=alice", ""), cacheHit, "private to alice")
+			cacheTestCRequireReply(t, get(t, app, "x=4", ""), cacheMiss, "sign in")
 		})
 
-		t.Run(backend.name+"/response drops Vary", func(t *testing.T) {
+		t.Run(kind+"/response drops Vary", func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
-			app.Use(New(Config{Storage: backend.storage()}))
+			app.Use(New(Config{Storage: storageOf(kind)}))
 			app.Get("/", func(c fiber.Ctx) error {
 				user := c.Cookies("session")
 				if user == "" {
@@ -1922,10 +1872,10 @@ func Test_Cache_Security_StoredUnderTheResponsesOwnVary(t *testing.T) {
 				return c.SendString("private to " + user)
 			})
 
-			require.Equal(t, varyReply{body: "private to alice", cacheStatus: cacheMiss}, get(t, app, "session=alice", ""))
+			cacheTestCRequireReply(t, get(t, app, "session=alice", ""), cacheMiss, "private to alice")
 			// Drops the manifest, so the entry belongs under the base key.
-			require.Equal(t, varyReply{body: "sign in", cacheStatus: cacheMiss}, get(t, app, "x=1", ""))
-			require.Equal(t, varyReply{body: "sign in", cacheStatus: cacheHit}, get(t, app, "x=2", ""))
+			cacheTestCRequireReply(t, get(t, app, "x=1", ""), cacheMiss, "sign in")
+			cacheTestCRequireReply(t, get(t, app, "x=2", ""), cacheHit, "sign in")
 		})
 	}
 }
@@ -1997,29 +1947,18 @@ func Test_Cache_Security_ShortBodiesAreBoundedByEntryCount(t *testing.T) {
 			app.Get("/", handler)
 			h := app.Handler()
 
-			get := func(i int, cacheControl string) (int, string) {
-				fctx := &fasthttp.RequestCtx{}
-				fctx.Request.Header.SetMethod(fiber.MethodGet)
-				fctx.Request.Header.SetHost("example.com")
-				fctx.Request.SetRequestURI(fmt.Sprintf("/?i=%d", i))
-				if cacheControl != "" {
-					fctx.Request.Header.Set(fiber.HeaderCacheControl, cacheControl)
-				}
-				h(fctx)
-				return fctx.Response.StatusCode(), string(fctx.Response.Header.Peek("X-Cache"))
+			get := func(i int, cacheControl string) *fasthttp.RequestCtx {
+				return cacheTestServe(h, fmt.Sprintf("/?i=%d", i), fiber.HeaderCacheControl, cacheControl)
 			}
 
 			for i := range urls {
-				_, xCache := get(i, "")
-				require.Equal(t, cacheMiss, xCache)
+				require.Equal(t, cacheMiss, cacheTestXCache(get(i, "")))
 			}
 			require.LessOrEqual(t, probe.counted(), uint(maxBytes))
 			require.Equal(t, minTrackedEntries, probe.nodes())
 
-			_, xCache := get(urls-1, "")
-			require.Equal(t, cacheHit, xCache)
-			status, _ := get(0, "only-if-cached")
-			require.Equal(t, fiber.StatusGatewayTimeout, status)
+			require.Equal(t, cacheHit, cacheTestXCache(get(urls-1, "")))
+			require.Equal(t, fiber.StatusGatewayTimeout, get(0, "only-if-cached").Response.StatusCode())
 		})
 	}
 }
@@ -2149,36 +2088,31 @@ func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 				require.NoError(t, <-errCh)
 			})
 
-			send := func(target, extra string) (status int, body, cacheStatus string) { //nolint:nonamedreturns // names document the triple
+			// send writes GET target and the header lines extra, ended by their blank line, and reads the answer.
+			send := func(target, extra string) reply {
 				conn, err := ln.Dial()
 				require.NoError(t, err)
 				defer conn.Close() //nolint:errcheck // usually closed by the server already
 				require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
-				raw := "GET " + target + " HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n"
-				if extra == "" {
-					extra = "\r\n"
-				}
-				_, err = conn.Write([]byte(raw + extra))
+				const lines = " HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n"
+				_, err = conn.Write([]byte("GET " + target + lines + extra))
 				require.NoError(t, err)
 				resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 				require.NoError(t, err)
-				got := apptest.Body(t, resp)
-				require.NoError(t, resp.Body.Close())
-				return resp.StatusCode, got, resp.Header.Get("X-Cache")
+				return reply{status: resp.StatusCode, cache: resp.Header.Get("X-Cache"), body: apptest.Body(t, resp)}
 			}
 
 			// "/" holds a fresh entry the refused request asks to replace, "/?page=2" none yet.
-			status, _, _ := send("/", "")
-			require.Equal(t, fiber.StatusOK, status)
+			require.Equal(t, fiber.StatusOK, send("/", "\r\n").status)
 
 			for _, target := range []string{"/", "/?page=2"} {
-				status, _, cacheStatus := send(target, "Cache-Control: no-cache\r\n"+tc.refused)
-				require.GreaterOrEqual(t, status, fiber.StatusBadRequest, target)
-				require.Equal(t, cacheUnreachable, cacheStatus, target)
+				refused := send(target, "Cache-Control: no-cache\r\n"+tc.refused)
+				require.GreaterOrEqual(t, refused.status, fiber.StatusBadRequest, target)
+				require.Equal(t, cacheUnreachable, refused.cache, target)
 
-				status, body, _ := send(target, "")
-				require.Equal(t, fiber.StatusOK, status, target)
-				require.Equal(t, "home page", body, target)
+				retry := send(target, "\r\n")
+				require.Equal(t, fiber.StatusOK, retry.status, target)
+				require.Equal(t, "home page", retry.body, target)
 			}
 		})
 	}

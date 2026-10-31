@@ -35,17 +35,20 @@ import (
 // sessionTestOption changes the request that sessionTestRequest sends.
 type sessionTestOption func(*fasthttp.RequestCtx)
 
-// sessionTestCookie makes the request carry the cookie name=value.
+// sessionTestCookie makes the request carry the cookie name=value, as a client
+// that has none does when value is empty.
 func sessionTestCookie(name, value string) sessionTestOption {
-	return func(ctx *fasthttp.RequestCtx) { ctx.Request.Header.SetCookie(name, value) }
+	return func(ctx *fasthttp.RequestCtx) {
+		if value != "" {
+			ctx.Request.Header.SetCookie(name, value)
+		}
+	}
 }
 
-// sessionTestRequest runs one request through h on a fresh fasthttp context,
-// requires the response to have the given status and returns the context to
-// inspect it. The request URI is left unset when uri is empty.
-func sessionTestRequest(t *testing.T, h fasthttp.RequestHandler, method, uri string, status int, opts ...sessionTestOption) *fasthttp.RequestCtx {
-	t.Helper()
-
+// sessionTestSend runs one request through h on a fresh fasthttp context and
+// returns the context to inspect the response. The request URI is left unset
+// when uri is empty. It asserts nothing, so a goroutine may call it.
+func sessionTestSend(h fasthttp.RequestHandler, method, uri string, opts ...sessionTestOption) *fasthttp.RequestCtx {
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(method)
 	if uri != "" {
@@ -55,6 +58,15 @@ func sessionTestRequest(t *testing.T, h fasthttp.RequestHandler, method, uri str
 		opt(ctx)
 	}
 	h(ctx)
+	return ctx
+}
+
+// sessionTestRequest is sessionTestSend that requires the response to have the
+// given status.
+func sessionTestRequest(t *testing.T, h fasthttp.RequestHandler, method, uri string, status int, opts ...sessionTestOption) *fasthttp.RequestCtx {
+	t.Helper()
+
+	ctx := sessionTestSend(h, method, uri, opts...)
 	require.Equal(t, status, ctx.Response.StatusCode())
 	return ctx
 }
@@ -558,16 +570,10 @@ func Test_Middleware_RegenerateWithContext(t *testing.T) {
 
 func Test_Middleware_WithContext_ErrorPropagation(t *testing.T) {
 	t.Parallel()
-	canceledCtx := func() context.Context {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		return ctx
-	}
-
 	t.Run("DestroyWithContext propagates canceled context and marks destroyed", func(t *testing.T) {
 		t.Parallel()
 		m := &Middleware{Session: newSessionWithStorage(t, &storagetest.Memory{HonorContext: true})}
-		require.ErrorIs(t, m.DestroyWithContext(canceledCtx()), context.Canceled)
+		require.ErrorIs(t, m.DestroyWithContext(sessionTestCanceled()), context.Canceled)
 		require.True(t, m.isDestroyed)
 	})
 
@@ -858,7 +864,7 @@ func Test_Session_Middleware_TimedOutHandler(t *testing.T) {
 
 	apptest.Expect(t, app, "/login", fiber.StatusServiceUnavailable)
 
-	m := <-held
+	m := apptest.Recv(t, held, 5*time.Second, "the login handler never started")
 	m.mu.RLock()
 	sess := m.Session
 	m.mu.RUnlock()
@@ -866,35 +872,31 @@ func Test_Session_Middleware_TimedOutHandler(t *testing.T) {
 	id := sess.ID()
 	require.NotEmpty(t, id, "the running handler's session was reset")
 
-	type result struct {
-		err  error
-		body string
-	}
-	results := make(chan result, others)
+	// What the requests to /me got, by request: a goroutine cannot assert.
+	bodies, errs := make([]string, others), make([]error, others)
 	var wg sync.WaitGroup
-	for range others {
+	for i := range others {
 		wg.Go(func() {
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/me", http.NoBody), fiber.TestConfig{Timeout: 0})
-			if err != nil {
-				results <- result{err: err}
-				return
+			if err == nil {
+				var body []byte
+				body, err = io.ReadAll(resp.Body)
+				bodies[i] = string(body)
 			}
-			body, err := io.ReadAll(resp.Body)
-			results <- result{err: err, body: string(body)}
+			errs[i] = err
 		})
 	}
 	for range others {
-		<-entered
+		apptest.Recv(t, entered, 5*time.Second, "a request never reached /me")
 	}
 
 	close(release)
-	<-finished
+	apptest.Recv(t, finished, 5*time.Second, "the login handler never finished")
 	close(proceed)
 	wg.Wait()
-	close(results)
-	for r := range results {
-		require.NoError(t, r.err)
-		require.Equal(t, "<nil>", r.body, "the timed-out handler wrote to another request's session")
+	for i := range others {
+		require.NoError(t, errs[i])
+		require.Equal(t, "<nil>", bodies[i], "the timed-out handler wrote to another request's session")
 	}
 
 	require.Equal(t, id, m.ID())
@@ -920,7 +922,7 @@ func Test_Session_Middleware_FinishesOnTimedOutGoroutine(t *testing.T) {
 	})
 
 	apptest.Expect(t, app, "/", fiber.StatusServiceUnavailable)
-	<-finished
+	apptest.Recv(t, finished, 5*time.Second, "the session middleware never returned on the timed-out goroutine")
 }
 
 // Benchmark_Middleware drives the whole handler, which the store benchmarks do
@@ -996,14 +998,7 @@ func Test_Session_Middleware_LogoutDuringRequest(t *testing.T) {
 			h := app.Handler()
 
 			send := func(method, path, id string) *fasthttp.RequestCtx {
-				ctx := &fasthttp.RequestCtx{}
-				ctx.Request.Header.SetMethod(method)
-				ctx.Request.SetRequestURI(path)
-				if id != "" {
-					ctx.Request.Header.SetCookie("session_id", id)
-				}
-				h(ctx)
-				return ctx
+				return sessionTestSend(h, method, path, sessionTestCookie("session_id", id))
 			}
 
 			cookie := fasthttp.AcquireCookie()
@@ -1015,11 +1010,11 @@ func Test_Session_Middleware_LogoutDuringRequest(t *testing.T) {
 
 			reported := make(chan *fasthttp.RequestCtx, 1)
 			go func() { reported <- send(fiber.MethodGet, "/report", id) }()
-			<-loaded
+			apptest.Recv(t, loaded, 5*time.Second, "the request never reached its handler")
 			require.Equal(t, fiber.StatusOK, send(fiber.MethodPost, logout, id).Response.StatusCode())
 			close(loggedOut)
 
-			report := <-reported
+			report := apptest.Recv(t, reported, 5*time.Second, "the request never finished")
 			require.Equal(t, fiber.StatusOK, report.Response.StatusCode())
 			require.Empty(t, report.Response.Header.Peek(fiber.HeaderSetCookie))
 			require.Equal(t, "<nil>", string(send(fiber.MethodGet, "/whoami", id).Response.Body()))

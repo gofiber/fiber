@@ -32,37 +32,37 @@ type keygenCase struct {
 
 func keygenCorpus() []keygenCase {
 	return []keygenCase{
-		{name: "noquery", uri: "/demo", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "single", uri: "/demo?foo=bar", want: "scheme=http|host=example.com|/|q=foo=bar|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "multi_dup", uri: "/demo?b=2&a=1&a=3", want: "scheme=http|host=example.com|/|q=a=1&a=3&b=2|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "dup_order", uri: "/demo?a=3&a=1", want: "scheme=http|host=example.com|/|q=a=3&a=1|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: "scheme=http|host=example.com|/|q=x=1|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "query_escape", uri: "/p?k=a b&z=%2F&k=z", want: "scheme=http|host=example.com|/|q=k=a+b&k=z&z=%2F|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "with_headers", uri: "/p?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: "scheme=http|host=example.com|/|q=foo=bar|h=accept:1|text/html|accept-encoding:1|gzip|accept-language:0"},
-		{name: "with_cookie", uri: "/p?foo=bar", cookie: "sid=abc123", keyCooks: []string{"sid"}, want: "scheme=http|host=example.com|/|q=foo=bar|h=accept:0|accept-encoding:0|accept-language:0|c=sid:sha256:ccfb62d77d32969b64f7920fe3bfb66c50cbf9e9faea6f69222c34c7e5f30627"},
+		{name: "noquery", uri: "/demo", want: keyStart + keyNoHeaders},
+		{name: "single", uri: "/demo?foo=bar", want: keyStart + "foo=bar" + keyNoHeaders},
+		{name: "multi_dup", uri: "/demo?b=2&a=1&a=3", want: keyStart + "a=1&a=3&b=2" + keyNoHeaders},
+		{name: "dup_order", uri: "/demo?a=3&a=1", want: keyStart + "a=3&a=1" + keyNoHeaders},
+		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: keyStart + "x=1" + keyNoHeaders},
+		{name: "query_escape", uri: "/p?k=a b&z=%2F&k=z", want: keyStart + "k=a+b&k=z&z=%2F" + keyNoHeaders},
+		{name: "with_headers", uri: "/p?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: keyStart + "foo=bar|h=accept:1|text/html|accept-encoding:1|gzip|accept-language:0"},
+		{name: "with_cookie", uri: "/p?foo=bar", cookie: "sid=abc123", keyCooks: []string{"sid"}, want: keyStart + "foo=bar" + keyNoHeaders + "|c=sid:sha256:ccfb62d77d32969b64f7920fe3bfb66c50cbf9e9faea6f69222c34c7e5f30627"},
 		// A missing and an empty cookie leave nothing after the name, and share a key.
-		{name: "cookie_empty", uri: "/p", cookie: "sid=", keyCooks: []string{"sid"}, want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|c=sid:"},
-		{name: "cookie_absent", uri: "/p", keyCooks: []string{"sid"}, want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|c=sid:"},
-		{name: "cookie_delims", uri: "/p", cookie: "sid=a|b:c", keyCooks: []string{"sid"}, want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|c=sid:sha256:166f86ddd38c71229af5fa7dfacf4c0bd335848667481d07c6cbd2aabc727955"},
-		{name: "cookie_long", uri: "/p", cookie: "sid=" + strings.Repeat("x", 300), keyCooks: []string{"sid"}, want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|c=sid:sha256:95e98730d96605ac7a50fb8dfcd3e46bea8b14b5450f5ecb4fea105fa8564ac0"},
-		{name: "cookie_several", uri: "/p", cookie: "a=1; b=2", keyCooks: []string{"a", "b", "c"}, want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|c=a:sha256:f16ba6fa61da3398815be2a6c0f7cb1351982dbcc6c64bbeb9b65f672a8b102a|b:sha256:7f774bb46e7e342a2d9d0514b27cee622012f7415645345054f8cd31e1dda661|c:"},
-		{name: "long_query", uri: "/p?q=" + strings.Repeat("x", 300), want: "scheme=http|host=example.com|/|q=sha256:4d86f7dbfc8b3bfe229da7e27f4ac8f6cf8114e24e5cb6b5af1d09cb4cc3d982|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "long_path", uri: "/" + strings.Repeat("p", 300) + "?a=1", want: "scheme=http|host=example.com|/|q=a=1|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "disable_query", uri: "/p?foo=bar", noQuery: true, want: "scheme=http|host=example.com|/|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "header_val_delims", uri: "/p", headers: map[string]string{"Accept": "a|b:c"}, want: "scheme=http|host=example.com|/|q=|h=accept:1|a\\pb\\cc|accept-encoding:0|accept-language:0"},
-		{name: "empty_query", uri: "/p?", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "many_params", uri: "/p?" + strings.Repeat("k=v&", 200) + "z=1", want: "scheme=http|host=example.com|/|q=sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "query_empty_body", uri: "/q", method: fiber.MethodQuery, want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|m=0|0|b="},
-		{name: "query_body", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|m=0|0|b=foo=bar"},
-		{name: "query_body_delims", uri: "/q", method: fiber.MethodQuery, body: "a|b:c", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|m=0|0|b=a\\pb\\cc"},
-		{name: "query_with_querystring", uri: "/q?x=1", method: fiber.MethodQuery, body: "foo=bar", want: "scheme=http|host=example.com|/|q=x=1|h=accept:0|accept-encoding:0|accept-language:0|m=0|0|b=foo=bar"},
-		{name: "query_body_metadata", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", headers: map[string]string{"Content-Type": "application/json", "Content-Encoding": "gzip"}, want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|m=1|gzip|1|application/json|b=foo=bar"},
+		{name: "cookie_empty", uri: "/p", cookie: "sid=", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:"},
+		{name: "cookie_absent", uri: "/p", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:"},
+		{name: "cookie_delims", uri: "/p", cookie: "sid=a|b:c", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:sha256:166f86ddd38c71229af5fa7dfacf4c0bd335848667481d07c6cbd2aabc727955"},
+		{name: "cookie_long", uri: "/p", cookie: "sid=" + strings.Repeat("x", 300), keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:sha256:95e98730d96605ac7a50fb8dfcd3e46bea8b14b5450f5ecb4fea105fa8564ac0"},
+		{name: "cookie_several", uri: "/p", cookie: "a=1; b=2", keyCooks: []string{"a", "b", "c"}, want: keyStart + keyNoHeaders + "|c=a:sha256:f16ba6fa61da3398815be2a6c0f7cb1351982dbcc6c64bbeb9b65f672a8b102a|b:sha256:7f774bb46e7e342a2d9d0514b27cee622012f7415645345054f8cd31e1dda661|c:"},
+		{name: "long_query", uri: "/p?q=" + strings.Repeat("x", 300), want: keyStart + "sha256:4d86f7dbfc8b3bfe229da7e27f4ac8f6cf8114e24e5cb6b5af1d09cb4cc3d982" + keyNoHeaders},
+		{name: "long_path", uri: "/" + strings.Repeat("p", 300) + "?a=1", want: keyStart + "a=1" + keyNoHeaders},
+		{name: "disable_query", uri: "/p?foo=bar", noQuery: true, want: "scheme=http|host=example.com|/" + keyNoHeaders},
+		{name: "header_val_delims", uri: "/p", headers: map[string]string{"Accept": "a|b:c"}, want: keyStart + "|h=accept:1|a\\pb\\cc|accept-encoding:0|accept-language:0"},
+		{name: "empty_query", uri: "/p?", want: keyStart + keyNoHeaders},
+		{name: "many_params", uri: "/p?" + strings.Repeat("k=v&", 200) + "z=1", want: keyStart + "sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829" + keyNoHeaders},
+		{name: "query_empty_body", uri: "/q", method: fiber.MethodQuery, want: keyStart + keyNoHeaders + "|m=0|0|b="},
+		{name: "query_body", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", want: keyStart + keyNoHeaders + "|m=0|0|b=foo=bar"},
+		{name: "query_body_delims", uri: "/q", method: fiber.MethodQuery, body: "a|b:c", want: keyStart + keyNoHeaders + "|m=0|0|b=a\\pb\\cc"},
+		{name: "query_with_querystring", uri: "/q?x=1", method: fiber.MethodQuery, body: "foo=bar", want: keyStart + "x=1" + keyNoHeaders + "|m=0|0|b=foo=bar"},
+		{name: "query_body_metadata", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", headers: map[string]string{"Content-Type": "application/json", "Content-Encoding": "gzip"}, want: keyStart + keyNoHeaders + "|m=1|gzip|1|application/json|b=foo=bar"},
 		// The authority: the port is part of it, its delimiters are escaped like
 		// every other segment's, and past the bound it is hashed rather than
 		// allowed to grow the key.
-		{name: "host_port", uri: "/p", host: "example.com:8443", want: "scheme=http|host=example.com\\c8443|/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "host_delims", uri: "/p", host: "a|b:c\\d", want: "scheme=http|host=a\\pb\\cc\\\\d|/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "long_host", uri: "/p", host: strings.Repeat("h", 300), want: "scheme=http|host=" + boundKeySegment(strings.Repeat("h", 300)) + "|/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "host_port", uri: "/p", host: "example.com:8443", want: "scheme=http|host=example.com\\c8443|/|q=" + keyNoHeaders},
+		{name: "host_delims", uri: "/p", host: "a|b:c\\d", want: "scheme=http|host=a\\pb\\cc\\\\d|/|q=" + keyNoHeaders},
+		{name: "long_host", uri: "/p", host: strings.Repeat("h", 300), want: "scheme=http|host=" + boundKeySegment(strings.Repeat("h", 300)) + "|/|q=" + keyNoHeaders},
 	}
 }
 
@@ -224,7 +224,7 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 				// A generator of the caller's own, to pin that its result lands
 				// verbatim between the version and method partitions and the
 				// suffixes this middleware adds.
-				KeyGenerator: func(c fiber.Ctx) string { return c.Path() },
+				KeyGenerator: pathKey,
 			}))
 			app.Get("/demo", func(c fiber.Ctx) error { return c.SendString("ok") })
 
