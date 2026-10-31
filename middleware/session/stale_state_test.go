@@ -76,63 +76,46 @@ func Test_Store_Get_TakesItsOwnFreshIDWhateverTheBoxSays(t *testing.T) {
 	require.Nil(t, cookies["b_sid"], "B's session was found and not saved, so B's cookie is not written")
 }
 
-// A store writes a session ID back only to its own cookies and headers. A store that
-// shares the ID another store cached, and reads no cookie or header itself, or not
-// the one the ID came from, must not write it, or the new one of a Regenerate, to
-// that store's cookie, with its own attributes.
+// A store writes a session ID back only to its own cookies and headers. A store
+// that shares the ID another store cached, but not the cookie it came from (a store
+// over the second cookie of a chain), must not write it, or the new one of a
+// Regenerate, to that cookie, with its own attributes.
 func Test_Session_MultipleStores_AdoptedIDIsNotWrittenToAnotherStoresCookie(t *testing.T) {
 	t.Parallel()
 
-	for name, tc := range map[string]struct {
-		innerCookie  string // the cookie the inner store writes its new ID to, if any
-		outer, inner extractors.Extractor
-	}{
-		"a store without cookies or headers": {
-			outer: extractors.FromCookie("sid"),
-			inner: extractors.FromQuery("qsid"),
-		},
-		"a store over the other cookie of a chain": {
-			outer:       extractors.Chain(extractors.FromCookie("sid"), extractors.FromCookie("shared")),
-			inner:       extractors.FromCookie("shared"),
-			innerCookie: "shared",
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+	storage := memory.New()
+	outerHandler, outerStore := NewWithStore(Config{
+		Storage:      storage,
+		Extractor:    extractors.Chain(extractors.FromCookie("sid"), extractors.FromCookie("shared")),
+		CookieSecure: true, CookieHTTPOnly: true,
+	})
+	innerHandler, innerStore := NewWithStore(Config{Storage: storage, Extractor: extractors.FromCookie("shared")})
 
-			storage := memory.New()
-			outerHandler, outerStore := NewWithStore(Config{Storage: storage, Extractor: tc.outer, CookieSecure: true, CookieHTTPOnly: true})
-			innerHandler, innerStore := NewWithStore(Config{Storage: storage, Extractor: tc.inner})
+	app := fiber.New()
+	app.Use(outerHandler, innerHandler)
+	app.Get("/seed", func(c fiber.Ctx) error {
+		outerStore.FromContext(c).Set("user", "alice")
+		return c.SendString(outerStore.FromContext(c).ID())
+	})
+	app.Get("/regen", func(c fiber.Ctx) error {
+		m := innerStore.FromContext(c)
+		if err := m.Regenerate(); err != nil {
+			return err
+		}
+		return c.SendString(m.ID())
+	})
 
-			app := fiber.New()
-			app.Use(outerHandler, innerHandler)
-			app.Get("/seed", func(c fiber.Ctx) error {
-				outerStore.FromContext(c).Set("user", "alice")
-				return c.SendString(outerStore.FromContext(c).ID())
-			})
-			app.Get("/regen", func(c fiber.Ctx) error {
-				m := innerStore.FromContext(c)
-				if err := m.Regenerate(); err != nil {
-					return err
-				}
-				return c.SendString(m.ID())
-			})
-
-			_, id := sendRequest(t, app, "/seed", nil)
-			resp, newID := sendRequest(t, app, "/regen", map[string]string{"sid": id})
-			require.NotEqual(t, id, newID, "the inner store shares the ID, and rotated it")
-			for _, cookie := range resp.Cookies() {
-				if cookie.Name != "sid" {
-					continue
-				}
-				require.NotEqual(t, newID, cookie.Value, "the inner store wrote its ID to the outer store's cookie")
-				require.True(t, cookie.Secure && cookie.HttpOnly, "the outer store's cookie was written with the inner store's attributes")
-			}
-			if tc.innerCookie != "" {
-				require.Equal(t, newID, cookiesByName(resp)[tc.innerCookie].Value, "the new ID goes to the inner store's own cookie")
-			}
-		})
+	_, id := sendRequest(t, app, "/seed", nil)
+	resp, newID := sendRequest(t, app, "/regen", map[string]string{"sid": id})
+	require.NotEqual(t, id, newID, "the inner store shares the ID, and rotated it")
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name != "sid" {
+			continue
+		}
+		require.NotEqual(t, newID, cookie.Value, "the inner store wrote its ID to the outer store's cookie")
+		require.True(t, cookie.Secure && cookie.HttpOnly, "the outer store's cookie was written with the inner store's attributes")
 	}
+	require.Equal(t, newID, cookiesByName(resp)["shared"].Value, "the new ID goes to the inner store's own cookie")
 }
 
 // A session stored with an absolute deadline keeps it on a store without an

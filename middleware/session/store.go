@@ -123,8 +123,8 @@ type Store struct {
 	// both walk the extractor when they need them. Read-only: every session of the
 	// store shares the slice.
 	sinks []extractors.Extractor
-	// sources names the cookies and headers the store reads the session ID from
-	// and writes it back to, such as "cookie:session_id".
+	// sources names every source the store reads the session ID from, by kind and
+	// name, such as "cookie:session_id" or "query:sid", as sharesSource compares them.
 	sources []string
 	// root identifies the extractor that sinks and sources were worked out from.
 	root extractorRoot
@@ -181,18 +181,43 @@ func collectSinks(ext extractors.Extractor) []extractors.Extractor {
 	return sinks
 }
 
-// sourceNames names sinks as sharesSource compares them, such as
-// "cookie:session_id". Header names are lower-cased.
-func sourceNames(sinks []extractors.Extractor) []string {
-	var names []string
-	for _, sink := range sinks {
-		if sink.Source == extractors.SourceCookie {
-			names = append(names, "cookie:"+sink.Key)
-		} else {
-			names = append(names, "header:"+utilsstrings.ToLower(sink.Key))
+// collectSources names every source an extractor reads a session ID from, as
+// sharesSource compares them: the leaves of the extractor, by kind and name, such
+// as "cookie:session_id", "header:x-session" or "query:sid". Header names and
+// authentication schemes are compared without regard to case. A leaf without a
+// name is named by its kind alone, so two custom extractors without a key count as
+// one source.
+func collectSources(ext extractors.Extractor) []string {
+	var sources []string
+	ext.Walk(func(candidate extractors.Extractor) bool {
+		if len(candidate.Chain) == 0 {
+			sources = append(sources, sourceName(candidate))
 		}
+		return true
+	})
+	return sources
+}
+
+// sourceName names a leaf extractor as collectSources does.
+func sourceName(leaf extractors.Extractor) string {
+	switch leaf.Source {
+	case extractors.SourceCookie:
+		return "cookie:" + leaf.Key
+	case extractors.SourceHeader:
+		return "header:" + utilsstrings.ToLower(leaf.Key)
+	case extractors.SourceAuthHeader:
+		return "auth:" + utilsstrings.ToLower(leaf.Key)
+	case extractors.SourceForm:
+		return "form:" + leaf.Key
+	case extractors.SourceQuery:
+		return "query:" + leaf.Key
+	case extractors.SourceParam:
+		return "param:" + leaf.Key
+	case extractors.SourceCustom:
+		return "custom:" + leaf.Key
+	default:
+		return "other:" + leaf.Key
 	}
-	return names
 }
 
 // worked reports whether sinks and sources are those of the extractor the store has
@@ -210,24 +235,27 @@ func (s *Store) writableSinks() []extractors.Extractor {
 	return collectSinks(s.Extractor)
 }
 
-// sourceList returns the names of the cookies and headers s reads its session ID
-// from. The slice is shared: do not modify it.
+// sourceList returns the names of the sources s reads its session ID from. The
+// slice is shared: do not modify it.
 func (s *Store) sourceList() []string {
 	if s.worked() {
 		return s.sources
 	}
-	return sourceNames(collectSinks(s.Extractor))
+	return collectSources(s.Extractor)
 }
 
 // sharesSource reports whether s and other read the session ID from a common
-// cookie or header, or cannot be told apart because one of them names none.
+// source, by kind and name, or cannot be told apart because one of them names
+// none.
 //
 // A request can hold the sessions of several stores. Stores over the same
 // cookie, such as a session middleware and the store the CSRF middleware was
 // given, resolve the same session and so share the ID cached on the request.
-// Stores over different cookies keep independent sessions: one adopting the
+// Stores over different sources keep independent sessions: one adopting the
 // other's cached ID would look up a foreign session, or write its own ID to a
-// cookie it does not own.
+// cookie it does not own. A source that cannot be written back to, such as the
+// query string, counts like any other: the ID a link carries reaches the stores
+// that read the query string, and no cookie store next to them.
 func (s *Store) sharesSource(other *Store) bool {
 	if s == other {
 		return true
@@ -401,7 +429,7 @@ func NewStore(config ...Config) *Store {
 		Config:    cfg,
 		root:      rootOf(cfg.Extractor),
 		sinks:     sinks,
-		sources:   sourceNames(sinks),
+		sources:   collectSources(cfg.Extractor),
 		codecName: codecName,
 	}
 
