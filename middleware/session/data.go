@@ -9,6 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/gofiber/utils/v2"
 )
 
 // msgp -file="data.go" -o="data_msgp.go" -tests=true -unexported
@@ -254,7 +256,7 @@ func (d *data) setEncoded(codec Codec, key, value any) {
 		return
 	}
 	// The session keeps its own copy: a codec may hand out a buffer that it reuses.
-	owned := append(make([]byte, 0, len(encoded)), encoded...)
+	owned := utils.CopyBytes(encoded)
 
 	d.Lock()
 	defer d.Unlock()

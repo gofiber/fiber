@@ -2,7 +2,6 @@ package session
 
 import (
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -10,7 +9,6 @@ import (
 	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
-	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
 // Config defines the configuration for the session middleware.
@@ -283,13 +281,12 @@ func warnCookiePrefixes(cfg *Config) {
 		if len(candidate.Chain) > 0 || candidate.Source != extractors.SourceCookie || candidate.Key == "" {
 			return true
 		}
-		name := utilsstrings.ToLower(candidate.Key)
 		switch {
-		case strings.HasPrefix(name, "__host-") && (!secure || path != "/" || cfg.CookieDomain != ""):
+		case utils.HasPrefixFold(candidate.Key, "__host-") && (!secure || path != "/" || cfg.CookieDomain != ""):
 			log.Warnf("[session] cookie %q has the __Host- prefix, which browsers accept only with Secure, Path=/ and no Domain; "+
 				"it is configured with Secure=%t, Path=%q and Domain=%q, so browsers will reject it",
 				candidate.Key, secure, path, cfg.CookieDomain)
-		case strings.HasPrefix(name, "__secure-") && !secure:
+		case utils.HasPrefixFold(candidate.Key, "__secure-") && !secure:
 			log.Warnf("[session] cookie %q has the __Secure- prefix, which browsers accept only with Secure; "+
 				"set CookieSecure, or browsers will reject it", candidate.Key)
 		default:

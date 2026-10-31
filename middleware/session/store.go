@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"hash/maphash"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -311,7 +310,7 @@ func (s *Store) derivedStorageKey(id string) string {
 // outlives the request that named it, and the buffer of the request is reused.
 func (s *Store) ownedID(key, id string) string {
 	if s.HashStorageKeys {
-		return strings.Clone(id)
+		return utils.CopyString(id)
 	}
 	return key[len(key)-len(id):]
 }
@@ -380,7 +379,7 @@ func (s *Store) ownsSink(res extractors.Result) bool {
 			continue
 		}
 		if sink.Source == extractors.SourceHeader {
-			if strings.EqualFold(sink.Key, res.Key) {
+			if utils.EqualFold(sink.Key, res.Key) {
 				return true
 			}
 		} else if sink.Key == res.Key {

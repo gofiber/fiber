@@ -1,11 +1,12 @@
 package session
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
+
+	"github.com/gofiber/utils/v2"
 )
 
 // ErrKeyNotFound is returned by GetInto when the session holds nothing under the key.
@@ -129,8 +130,8 @@ func decodeAny(codec Codec, v any) any {
 		return v
 	}
 	var out any
-	if err := codec.Unmarshal(bytes.Clone(encoded), &out); err != nil {
-		return bytes.Clone(encoded)
+	if err := codec.Unmarshal(utils.CopyBytes(encoded), &out); err != nil {
+		return utils.CopyBytes(encoded)
 	}
 	return out
 }
@@ -141,7 +142,7 @@ func decodeAny(codec Codec, v any) any {
 func decodeAs[V any](v any, codec Codec) (V, bool) {
 	var out V
 	encoded, ok := v.([]byte)
-	if !ok || codec.Unmarshal(bytes.Clone(encoded), &out) != nil {
+	if !ok || codec.Unmarshal(utils.CopyBytes(encoded), &out) != nil {
 		var zero V
 		return zero, false
 	}
@@ -170,7 +171,7 @@ func valueInto(key, v any, codec Codec, target reflect.Value) error {
 			return fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
 		}
 		fresh := reflect.New(elem.Type())
-		if err := codec.Unmarshal(bytes.Clone(encoded), fresh.Interface()); err != nil {
+		if err := codec.Unmarshal(utils.CopyBytes(encoded), fresh.Interface()); err != nil {
 			return fmt.Errorf("failed to decode session value %#v: %w", key, err)
 		}
 		elem.Set(fresh.Elem())
