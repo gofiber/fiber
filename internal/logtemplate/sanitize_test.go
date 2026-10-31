@@ -26,7 +26,6 @@ func referenceIndexControlByte(s string) int {
 
 func Test_IsControlByte(t *testing.T) {
 	t.Parallel()
-
 	for b := range 256 {
 		want := (b < 0x20 || b == 0x7f) && b != '\t'
 		require.Equal(t, want, IsControlByte(byte(b)), "byte 0x%02x", b)
@@ -38,7 +37,6 @@ func Test_IsControlByte(t *testing.T) {
 // byte-wise path for short inputs) with the control byte at every position.
 func Test_IndexControlByte_MatchesReference(t *testing.T) {
 	t.Parallel()
-
 	const clean = "abcdefghijklmnopqrstuvwxyz0123456789"
 	for n := range 25 {
 		base := clean[:n]
@@ -63,7 +61,6 @@ func Test_IndexControlByte_MatchesReference(t *testing.T) {
 // C1 range 0x80-0x9f looks like a control range to a naive comparison.
 func Test_IndexControlByte_HighBytesAreNotControls(t *testing.T) {
 	t.Parallel()
-
 	for n := 1; n <= 20; n++ {
 		for pos := range n {
 			for _, high := range []byte{0x80, 0x9f, 0xc3, 0xff} {
@@ -80,7 +77,6 @@ func Test_IndexControlByte_HighBytesAreNotControls(t *testing.T) {
 
 func Test_IndexControlByte_Randomized(t *testing.T) {
 	t.Parallel()
-
 	rng := rand.New(rand.NewSource(1))
 	for range 20000 {
 		b := make([]byte, rng.Intn(40))
@@ -94,7 +90,6 @@ func Test_IndexControlByte_Randomized(t *testing.T) {
 
 func Test_ScrubControls(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name string
 		in   string
@@ -114,7 +109,6 @@ func Test_ScrubControls(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			idx := IndexControlByte(tt.in)
 			require.Equal(t, referenceIndexControlByte(tt.in), idx)
 			if idx == -1 {
@@ -131,7 +125,6 @@ func Test_ScrubControls(t *testing.T) {
 // for log injection: whatever comes out must contain no control byte at all.
 func Test_ScrubControls_LeavesNoControlByte(t *testing.T) {
 	t.Parallel()
-
 	rng := rand.New(rand.NewSource(2))
 	for range 20000 {
 		b := make([]byte, rng.Intn(40))
@@ -151,7 +144,6 @@ func Test_ScrubControls_LeavesNoControlByte(t *testing.T) {
 
 func Test_WriteSanitized(t *testing.T) {
 	t.Parallel()
-
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
@@ -192,9 +184,7 @@ func Test_WriteSanitized(t *testing.T) {
 // must scan from the start rather than panicking.
 func Test_ScrubControls_NegativeIndex(t *testing.T) {
 	t.Parallel()
-
-	require.Equal(t, "a b", string(ScrubControls("a\nb", -1)),
-		"a negative index must be clamped to 0, not panic")
+	require.Equal(t, "a b", string(ScrubControls("a\nb", -1)), "a negative index must be clamped to 0, not panic")
 	require.Equal(t, "clean", string(ScrubControls("clean", IndexControlByte("clean"))),
 		"ScrubControls(s, IndexControlByte(s)) must be safe on clean input")
 }
