@@ -352,6 +352,7 @@ app.Use(session.New(session.Config{
   - `sess.AbsoluteExpiry()` reports when the session ends, for example to warn the user
   - The cookie's `Max-Age` counts whole seconds and is rounded down, so the cookie can expire up to a second before the deadline. With an `AbsoluteTimeout` equal to the `IdleTimeout`, the first cookie of a session says one second less than the idle timeout
   - A session that was stored before the option was set has no deadline: it ends with the idle timeout alone, until it is reset
+  - A session that was stored with a deadline keeps it after the option is turned off: once the deadline has passed, the session starts over, without one, and `store.GetByID` no longer finds it
 - No manual cleanup required - the storage layer handles this
 
 ## Session ID Extractors
@@ -909,7 +910,7 @@ var (
 
 - `store.Get(c)` returns `ErrSessionAlreadyLoadedByMiddleware` when the session middleware already loaded the session for the request. Use `session.FromContext(c)` there.
 - `store.GetByID` and `store.Delete` return `ErrEmptySessionID` for an empty session ID.
-- `store.GetByID` returns `ErrSessionIDNotFoundInStore` when the storage has no such session, or when the session has outlived its `AbsoluteTimeout` (it is deleted), or when it is a record that the store cannot read (see [Turning it on, and off](#turning-it-on-and-off)).
+- `store.GetByID` returns `ErrSessionIDNotFoundInStore` when the storage has no such session, or when the session has outlived the absolute deadline it was stored with, whatever the store's `AbsoluteTimeout` is now (it is deleted), or when it is a record that the store cannot read (see [Turning it on, and off](#turning-it-on-and-off)).
 - `sess.GetInto` returns `ErrKeyNotFound`, wrapped with the key, when the session holds nothing under it.
 
 ### Session Methods (Store Pattern)

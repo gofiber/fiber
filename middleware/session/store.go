@@ -646,10 +646,13 @@ func (s *Store) getSessionBox(c fiber.Ctx) (*Session, *provenanceBox, error) {
 	if isFresh && s.AbsoluteTimeout > 0 {
 		sess.setAbsExpiration(time.Now().Add(s.AbsoluteTimeout))
 	} else if sess.isAbsExpired() {
+		// Whatever AbsoluteTimeout the store has now: the session was stored with a
+		// deadline, and it has passed. Reset arms the session that takes its place
+		// when the store has an AbsoluteTimeout; a store without one gives it none,
+		// where a deadline of now would make the next load start it over again.
 		if err := sess.Reset(); err != nil {
 			return nil, nil, fmt.Errorf("failed to reset session: %w", err)
 		}
-		sess.setAbsExpiration(time.Now().Add(s.AbsoluteTimeout))
 	}
 
 	return sess, cached, nil
@@ -842,14 +845,14 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 		return nil, fmt.Errorf("failed to decode session data: %w", decodeErr)
 	}
 
-	if s.AbsoluteTimeout > 0 {
-		if sess.isAbsExpired() {
-			if err := sess.Destroy(); err != nil { //nolint:contextcheck // it is not right
-				sess.Release()
-				log.Errorf("failed to destroy session: %v", err)
-			}
-			return nil, ErrSessionIDNotFoundInStore
+	// Whatever AbsoluteTimeout the store has now, as on the request path: the
+	// session was stored with a deadline, and it has passed.
+	if sess.isAbsExpired() {
+		if err := sess.Destroy(); err != nil { //nolint:contextcheck // it is not right
+			sess.Release()
+			log.Errorf("failed to destroy session: %v", err)
 		}
+		return nil, ErrSessionIDNotFoundInStore
 	}
 
 	return sess, nil

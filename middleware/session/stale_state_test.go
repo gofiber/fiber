@@ -1,8 +1,12 @@
 package session
 
 import (
+	"bytes"
+	"context"
+	"encoding/gob"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
@@ -122,6 +126,74 @@ func Test_Session_MultipleStores_AdoptedIDIsNotWrittenToAnotherStoresCookie(t *t
 			if tc.innerCookie != "" {
 				require.Equal(t, newID, cookiesByName(resp)[tc.innerCookie].Value, "the new ID goes to the inner store's own cookie")
 			}
+		})
+	}
+}
+
+// A session stored with an absolute deadline keeps it on a store without an
+// AbsoluteTimeout, as after the option was turned off: once it has passed, the
+// request path starts the session over, once, and without a deadline, where a
+// deadline of now would start it over on every request; and GetByID no longer finds
+// it, as on a store with the option.
+func Test_Session_DeadlineHonouredWithoutAbsoluteTimeout(t *testing.T) {
+	t.Parallel()
+
+	past := time.Now().Add(-time.Minute)
+	for name, tc := range map[string]struct {
+		codec Codec
+		seed  func(t *testing.T, mem *memory.Storage, key string)
+	}{
+		"record": {
+			codec: JSONCodec{},
+			seed: func(t *testing.T, mem *memory.Storage, key string) {
+				t.Helper()
+				raw, err := appendRecord(nil, "json", recordDeadline{sec: past.Unix(), nanos: uint32(past.Nanosecond()), set: true},
+					[]recordEntry{{key: "k", value: []byte(`"v"`)}})
+				require.NoError(t, err)
+				require.NoError(t, mem.Set(key, raw, time.Hour))
+			},
+		},
+		"gob": {
+			seed: func(t *testing.T, mem *memory.Storage, key string) {
+				t.Helper()
+				gob.Register(absExpirationKey)
+				gob.Register(time.Time{})
+				var buf bytes.Buffer
+				require.NoError(t, gob.NewEncoder(&buf).Encode(map[any]any{absExpirationKey: past, "k": "v"}))
+				require.NoError(t, mem.Set(key, buf.Bytes(), time.Hour))
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			mem := memory.New()
+			store := NewStore(Config{Storage: mem, Codec: tc.codec})
+			tc.seed(t, mem, store.storageKey("by-id"))
+			tc.seed(t, mem, store.storageKey("by-request"))
+
+			_, err := store.GetByID(context.Background(), "by-id")
+			require.ErrorIs(t, err, ErrSessionIDNotFoundInStore, "GetByID handed out a session past its deadline")
+			stored, err := mem.Get(store.storageKey("by-id"))
+			require.NoError(t, err)
+			require.Nil(t, stored, "and left its record")
+
+			app := fiber.New()
+			app.Use(New(Config{Store: store}))
+			app.Get("/", func(c fiber.Ctx) error {
+				m := FromContext(c)
+				_, hasDeadline := m.AbsoluteExpiry()
+				m.Set("login", "done")
+				return c.SendString(fmt.Sprintf("%t|%t|%v", m.Fresh(), hasDeadline, m.Get("k")))
+			})
+			resp, body := sendRequest(t, app, "/", map[string]string{"session_id": "by-request"})
+			require.Equal(t, "true|false|<nil>", body, "the session past its deadline was not started over, or was given a deadline")
+			id := cookiesByName(resp)["session_id"].Value
+			require.NotEqual(t, "by-request", id)
+
+			time.Sleep(2 * time.Millisecond)
+			_, body = sendRequest(t, app, "/", map[string]string{"session_id": id})
+			require.Equal(t, "false|false|<nil>", body, "the session that took its place was started over again")
 		})
 	}
 }
