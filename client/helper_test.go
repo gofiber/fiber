@@ -2,13 +2,16 @@ package client
 
 import (
 	"net"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -19,14 +22,17 @@ type testServer struct {
 	tb  testing.TB
 }
 
-func startTestServer(tb testing.TB, beforeStarting func(app *fiber.App)) *testServer {
+// startTestServer serves the routes beforeStarting registers from an app on an
+// in-memory listener. The app is configured with cfg when it is given.
+func startTestServer(tb testing.TB, beforeStarting func(app *fiber.App), cfg ...fiber.Config) *testServer {
 	tb.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
-	app := fiber.New(fiber.Config{
-		CBOREncoder: cbor.Marshal,
-		CBORDecoder: cbor.Unmarshal,
-	})
+	config := fiber.Config{CBOREncoder: cbor.Marshal, CBORDecoder: cbor.Unmarshal}
+	if len(cfg) > 0 {
+		config = cfg[0]
+	}
+	app := fiber.New(config)
 
 	if beforeStarting != nil {
 		beforeStarting(app)
@@ -34,18 +40,12 @@ func startTestServer(tb testing.TB, beforeStarting func(app *fiber.App)) *testSe
 
 	ch := make(chan struct{})
 	go func() {
-		err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
-		assert.NoError(tb, err)
+		assert.NoError(tb, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 
 		close(ch)
 	}()
 
-	return &testServer{
-		app: app,
-		ch:  ch,
-		ln:  ln,
-		tb:  tb,
-	}
+	return &testServer{app: app, ch: ch, ln: ln, tb: tb}
 }
 
 func (ts *testServer) stop() {
@@ -55,19 +55,13 @@ func (ts *testServer) stop() {
 		ts.tb.Fatal(err)
 	}
 
-	select {
-	case <-ts.ch:
-	case <-time.After(time.Second):
-		ts.tb.Fatalf("timeout when waiting for server close")
-	}
+	apptest.Recv(ts.tb, ts.ch, time.Second, "timeout when waiting for server close")
 }
 
 func (ts *testServer) dial() func(addr string) (net.Conn, error) {
 	ts.tb.Helper()
 
-	return func(_ string) (net.Conn, error) {
-		return ts.ln.Dial()
-	}
+	return func(_ string) (net.Conn, error) { return ts.ln.Dial() }
 }
 
 // startRedirectServer redirects /start off example.com and /same-host within it.
@@ -119,39 +113,106 @@ func createHelperServer(tb testing.TB) (app *fiber.App, dial func(addr string) (
 
 	app = fiber.New()
 
-	dial = func(_ string) (net.Conn, error) {
-		return ln.Dial()
-	}
-	start = func() {
-		require.NoError(tb, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
-	}
+	dial = func(_ string) (net.Conn, error) { return ln.Dial() }
+	start = func() { require.NoError(tb, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }
 
 	return app, dial, start
+}
+
+// clientTestCServeGet serves handler for GET / from a fresh in-memory server and
+// returns the dial function that reaches it.
+func clientTestCServeGet(tb testing.TB, handler fiber.Handler) func(addr string) (net.Conn, error) {
+	tb.Helper()
+
+	app, dial, start := createHelperServer(tb)
+	app.Get("/", handler)
+	go start()
+
+	return dial
+}
+
+// acceptSignalListener closes accepting the first time it is asked to accept,
+// which is when the server has registered the listener.
+type acceptSignalListener struct {
+	net.Listener
+	accepting chan struct{}
+	once      sync.Once
+}
+
+func (l *acceptSignalListener) Accept() (net.Conn, error) {
+	l.once.Do(func() { close(l.accepting) })
+	return l.Listener.Accept() //nolint:wrapcheck // a transparent wrapper
+}
+
+// clientTestCServe serves handler from a fasthttp server on an in-memory
+// listener and returns the dial function that reaches it. The server is shut
+// down when the test ends, once Serve has returned.
+func clientTestCServe(t *testing.T, handler fasthttp.RequestHandler) fasthttp.DialFunc {
+	t.Helper()
+
+	mem := fasthttputil.NewInmemoryListener()
+	ln := &acceptSignalListener{Listener: mem, accepting: make(chan struct{})}
+	server := &fasthttp.Server{Handler: handler}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		assert.NoError(t, server.Serve(ln))
+	}()
+	// A test that expects the request to fail never reaches the server, so
+	// without this Shutdown can run before Serve has registered its listener,
+	// find nothing to close, and leave Serve blocked in Accept for good.
+	<-ln.accepting
+	t.Cleanup(func() {
+		require.NoError(t, server.Shutdown())
+		<-done
+	})
+
+	return func(string) (net.Conn, error) { return mem.Dial() }
+}
+
+// clientTestPooled returns a value from acquire that release returns to its pool
+// when the test ends.
+func clientTestPooled[T any](t *testing.T, acquire func() T, release func(T)) T {
+	t.Helper()
+
+	v := acquire()
+	t.Cleanup(func() { release(v) })
+	return v
+}
+
+// clientTestCReqResp returns a pooled fasthttp request and response that are
+// released when the test ends.
+func clientTestCReqResp(t *testing.T) (*fasthttp.Request, *fasthttp.Response) {
+	t.Helper()
+
+	return clientTestPooled(t, fasthttp.AcquireRequest, fasthttp.ReleaseRequest),
+		clientTestPooled(t, fasthttp.AcquireResponse, fasthttp.ReleaseResponse)
+}
+
+// clientTestCRepeat is how many times the testRequest helpers send their
+// request: the first of count, or once.
+func clientTestCRepeat(count []int) int {
+	if len(count) > 0 {
+		return count[0]
+	}
+
+	return 1
 }
 
 func testRequest(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted string, count ...int) {
 	t.Helper()
 
-	app, ln, start := createHelperServer(t)
-	app.Get("/", handler)
-	go start()
-
-	c := 1
-	if len(count) > 0 {
-		c = count[0]
-	}
-
+	ln := clientTestCServeGet(t, handler)
 	client := New().SetDial(ln)
 
-	for i := 0; i < c; i++ {
+	for range clientTestCRepeat(count) {
 		req := AcquireRequest().SetClient(client)
 		wrapAgent(req)
 
 		resp, err := req.Get("http://example.com")
 
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, excepted, resp.String())
+		clientTestARequireOK(t, resp, err, excepted)
 		resp.Close()
 	}
 }
@@ -159,18 +220,10 @@ func testRequest(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Requ
 func testRequestFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted error, count ...int) {
 	t.Helper()
 
-	app, ln, start := createHelperServer(t)
-	app.Get("/", handler)
-	go start()
-
-	c := 1
-	if len(count) > 0 {
-		c = count[0]
-	}
-
+	ln := clientTestCServeGet(t, handler)
 	client := New().SetDial(ln)
 
-	for i := 0; i < c; i++ {
+	for range clientTestCRepeat(count) {
 		req := AcquireRequest().SetClient(client)
 		wrapAgent(req)
 
@@ -183,24 +236,15 @@ func testRequestFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *
 func testClient(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Client), excepted string, count ...int) { //nolint:unparam // maybe needed
 	t.Helper()
 
-	app, ln, start := createHelperServer(t)
-	app.Get("/", handler)
-	go start()
+	ln := clientTestCServeGet(t, handler)
 
-	c := 1
-	if len(count) > 0 {
-		c = count[0]
-	}
-
-	for i := 0; i < c; i++ {
+	for range clientTestCRepeat(count) {
 		client := New().SetDial(ln)
 		wrapAgent(client)
 
 		resp, err := client.Get("http://example.com")
 
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, excepted, resp.String())
+		clientTestARequireOK(t, resp, err, excepted)
 		resp.Close()
 	}
 }

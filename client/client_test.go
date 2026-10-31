@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -48,9 +47,7 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 	go func(server *fiber.App) {
 		err := server.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
-			ListenerAddrFunc: func(addr net.Addr) {
-				addrChan <- addr.String()
-			},
+			ListenerAddrFunc:      func(addr net.Addr) { addrChan <- addr.String() },
 		})
 		if err != nil {
 			errChan <- err
@@ -67,84 +64,106 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 	return nil, ""
 }
 
+// clientTestARequireOK fails the test unless the request that produced resp and err
+// succeeded with a 200 and body as its (trimmed) body.
+func clientTestARequireOK(t *testing.T, resp *Response, err error, body string) {
+	t.Helper()
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, body, resp.String())
+}
+
+// clientAStartTLS serves handler for GET / over TLS on a loopback port. It returns the
+// app, the address it listens on and the client config that trusts its certificate.
+// Each tune function that is not nil may adjust the server and client configs before
+// the listener starts. Shutting the app down is left to the caller.
+func clientAStartTLS(t *testing.T, handler fiber.Handler, tune ...func(server, client *tls.Config)) (*fiber.App, string, *tls.Config) {
+	t.Helper()
+
+	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+	require.NoError(t, err)
+	for _, adjust := range tune {
+		if adjust != nil {
+			adjust(serverTLSConf, clientTLSConf)
+		}
+	}
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	ln = tls.NewListener(ln, serverTLSConf)
+
+	app := fiber.New()
+	app.Get("/", handler)
+
+	go func() { assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }()
+
+	return app, ln.Addr().String(), clientTLSConf
+}
+
+// clientTestAStartTLSServer is [clientAStartTLS] for a handler that answers with body.
+func clientTestAStartTLSServer(t *testing.T, body string, tune ...func(server, client *tls.Config)) (*fiber.App, string, *tls.Config) {
+	t.Helper()
+
+	return clientAStartTLS(t, func(c fiber.Ctx) error { return c.SendString(body) }, tune...)
+}
+
+// clientAServeTCP serves the routes from a fresh app on a loopback port and returns the
+// address it listens on. The app shuts down when the test ends.
+func clientAServeTCP(t *testing.T, routes func(app *fiber.App)) string {
+	t.Helper()
+
+	app, addr := startTestServerWithPort(t, routes)
+	t.Cleanup(func() { require.NoError(t, app.Shutdown()) })
+
+	return addr
+}
+
+// clientTestAClient starts a test server whose routes are registered by routes and
+// returns a client that dials it. The server stops when the test ends.
+func clientTestAClient(t *testing.T, routes func(app *fiber.App)) *Client {
+	t.Helper()
+
+	server := startTestServer(t, routes)
+	t.Cleanup(server.stop)
+
+	return New().SetDial(server.dial())
+}
+
+// clientAOKClient returns a client for a server whose GET / answers "ok".
+func clientAOKClient(t *testing.T) *Client {
+	t.Helper()
+
+	return clientTestAClient(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	})
+}
+
 func Test_New_With_Client(t *testing.T) {
 	t.Parallel()
-
 	t.Run("with valid client", func(t *testing.T) {
 		t.Parallel()
-
-		c := &fasthttp.Client{
-			MaxConnsPerHost: 5,
-		}
-		client := NewWithClient(c)
-
-		require.NotNil(t, client)
+		require.NotNil(t, NewWithClient(&fasthttp.Client{MaxConnsPerHost: 5}))
 	})
 
-	t.Run("with nil client", func(t *testing.T) {
-		t.Parallel()
-
-		require.PanicsWithValue(t, "fasthttp.Client must not be nil", func() {
-			NewWithClient(nil)
+	for _, tc := range []struct {
+		build func()
+		name  string
+		kind  string // the type the panic names
+	}{
+		{name: "with nil client", build: func() { NewWithClient(nil) }, kind: "fasthttp.Client"},
+		{name: "with nil host client", build: func() { NewWithHostClient(nil) }, kind: "fasthttp.HostClient"},
+		{name: "with nil lb client", build: func() { NewWithLBClient(nil) }, kind: "fasthttp.LBClient"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.PanicsWithValue(t, tc.kind+" must not be nil", tc.build)
 		})
-	})
-}
-
-func Test_New_With_HostClient(t *testing.T) {
-	t.Parallel()
-
-	t.Run("with valid host client", func(t *testing.T) {
-		t.Parallel()
-
-		hc := &fasthttp.HostClient{Addr: "example.com:80"}
-		client := NewWithHostClient(hc)
-
-		require.NotNil(t, client)
-		require.Equal(t, hc, client.HostClient())
-		require.Nil(t, client.FasthttpClient())
-	})
-
-	t.Run("with nil host client", func(t *testing.T) {
-		t.Parallel()
-
-		require.PanicsWithValue(t, "fasthttp.HostClient must not be nil", func() {
-			NewWithHostClient(nil)
-		})
-	})
-}
-
-func Test_New_With_LBClient(t *testing.T) {
-	t.Parallel()
-
-	t.Run("with valid lb client", func(t *testing.T) {
-		t.Parallel()
-
-		lb := &fasthttp.LBClient{
-			Clients: []fasthttp.BalancingClient{
-				&fasthttp.HostClient{Addr: "example.com:80"},
-			},
-		}
-
-		client := NewWithLBClient(lb)
-
-		require.NotNil(t, client)
-		require.Equal(t, lb, client.LBClient())
-		require.Nil(t, client.FasthttpClient())
-		require.Nil(t, client.HostClient())
-	})
-
-	t.Run("with nil lb client", func(t *testing.T) {
-		t.Parallel()
-
-		require.PanicsWithValue(t, "fasthttp.LBClient must not be nil", func() {
-			NewWithLBClient(nil)
-		})
-	})
+	}
 }
 
 func TestClientUnderlyingTransports(t *testing.T) {
 	t.Parallel()
-
 	std := New()
 	require.NotNil(t, std.FasthttpClient())
 	require.Nil(t, std.HostClient())
@@ -163,59 +182,8 @@ func TestClientUnderlyingTransports(t *testing.T) {
 	require.Same(t, lbClient, lb.LBClient())
 }
 
-func TestClientCBORUnmarshalOverride(t *testing.T) {
-	t.Parallel()
-
-	client := New()
-	initial := client.CBORUnmarshal()
-	require.NotNil(t, initial)
-
-	called := false
-	custom := func(b []byte, v any) error {
-		_ = b
-		_ = v
-		called = true
-		return nil
-	}
-
-	client.SetCBORUnmarshal(custom)
-	fn := client.CBORUnmarshal()
-	require.NotNil(t, fn)
-
-	var payload []byte
-	require.NoError(t, fn(payload, nil))
-	require.True(t, called)
-}
-
-func TestClientSetRootCertificateErrors(t *testing.T) {
-	t.Parallel()
-
-	client := New()
-	require.Panics(t, func() {
-		client.SetRootCertificate("does-not-exist.pem")
-	})
-
-	tmpDir := t.TempDir()
-	badPath := filepath.Join(tmpDir, "invalid.pem")
-	require.NoError(t, os.WriteFile(badPath, []byte("not a pem"), 0o600))
-
-	require.Panics(t, func() {
-		client.SetRootCertificate(badPath)
-	})
-}
-
-func TestClientSetRootCertificateFromStringError(t *testing.T) {
-	t.Parallel()
-
-	client := New()
-	require.Panics(t, func() {
-		client.SetRootCertificateFromString("invalid pem data")
-	})
-}
-
 func TestClientLoggerAccessors(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 	_ = client.Logger()
 	contextual := log.WithContext(context.Background())
@@ -230,7 +198,6 @@ func TestClientLoggerAccessors(t *testing.T) {
 // error paths of SetRootCertificate dereferenced it.
 func Test_Client_DefaultLogger(t *testing.T) {
 	t.Parallel()
-
 	clients := map[string]*Client{
 		"New":               New(),
 		"NewWithClient":     NewWithClient(&fasthttp.Client{}),
@@ -240,7 +207,6 @@ func Test_Client_DefaultLogger(t *testing.T) {
 	for name, c := range clients {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			require.NotNil(t, c.Logger())
 			require.Equal(t, log.DefaultLogger[*stdlog.Logger](), c.Logger())
 		})
@@ -262,28 +228,27 @@ func recoverValue(fn func()) any {
 // logger turned it into a nil pointer dereference that named nothing.
 func Test_Client_SetRootCertificate_InvalidInput(t *testing.T) {
 	t.Parallel()
-
 	noCertificate := filepath.Join(t.TempDir(), "invalid.pem")
 	require.NoError(t, os.WriteFile(noCertificate, []byte("not a pem"), 0o600))
 	missing := filepath.Join(t.TempDir(), "missing.pem")
+	fromString, fromFile := (*Client).SetRootCertificateFromString, (*Client).SetRootCertificate
+	noCert := ErrFailedToAppendCert.Error()
 
 	tests := []struct {
-		call func(c *Client)
+		set  func(c *Client, arg string) *Client
 		name string
+		arg  string
 		want string
 	}{
-		{name: "string without a certificate", want: ErrFailedToAppendCert.Error(), call: func(c *Client) {
-			c.SetRootCertificateFromString("not a pem")
-		}},
-		{name: "empty string", want: ErrFailedToAppendCert.Error(), call: func(c *Client) {
-			c.SetRootCertificateFromString("")
-		}},
-		{name: "file without a certificate", want: ErrFailedToAppendCert.Error(), call: func(c *Client) {
-			c.SetRootCertificate(noCertificate)
-		}},
-		{name: "missing file", want: "client: open " + missing, call: func(c *Client) {
-			c.SetRootCertificate(missing)
-		}},
+		{name: "string without a certificate", set: fromString, arg: "not a pem", want: noCert},
+		{name: "string of invalid pem data", set: fromString, arg: "invalid pem data", want: noCert},
+		{name: "empty string", set: fromString, arg: "", want: noCert},
+		{name: "file without a certificate", set: fromFile, arg: noCertificate, want: noCert},
+		{name: "missing file", set: fromFile, arg: missing, want: "client: open " + missing},
+		{
+			name: "missing relative file", set: fromFile, arg: "does-not-exist.pem",
+			want: "client: open does-not-exist.pem",
+		},
 	}
 
 	for _, tc := range tests {
@@ -293,11 +258,10 @@ func Test_Client_SetRootCertificate_InvalidInput(t *testing.T) {
 		} {
 			t.Run(tc.name+"/"+loggerName, func(t *testing.T) {
 				t.Parallel()
-
 				c := New()
 				setup(c)
 
-				recovered := recoverValue(func() { tc.call(c) })
+				recovered := recoverValue(func() { tc.set(c, tc.arg) })
 				require.NotNil(t, recovered, "an unusable certificate must not be ignored")
 
 				var runtimeErr runtime.Error
@@ -343,7 +307,6 @@ func TestClient_RedirectSensitiveHeaders(t *testing.T) {
 
 func TestClientResetClearsState(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 
 	jar := AcquireCookieJar()
@@ -386,109 +349,109 @@ func TestClientResetClearsState(t *testing.T) {
 
 func Test_Client_Add_Hook(t *testing.T) {
 	t.Parallel()
+	noop := func(_ *Client, _ *Request) error { return nil }
+	noopResponse := func(_ *Client, _ *Response, _ *Request) error { return nil }
 
 	t.Run("add request hooks", func(t *testing.T) {
 		t.Parallel()
-
-		buf := bytebufferpool.Get()
-		defer bytebufferpool.Put(buf)
-
-		client := New().AddRequestHook(func(_ *Client, _ *Request) error {
-			buf.WriteString("hook1")
-			return nil
-		})
-
+		client := New().AddRequestHook(noop)
 		require.Len(t, client.RequestHook(), 1)
 
-		client.AddRequestHook(func(_ *Client, _ *Request) error {
-			buf.WriteString("hook2")
-			return nil
-		}, func(_ *Client, _ *Request) error {
-			buf.WriteString("hook3")
-			return nil
-		})
-
+		client.AddRequestHook(noop, func(_ *Client, _ *Request) error { return nil })
 		require.Len(t, client.RequestHook(), 3)
 	})
 
 	t.Run("add final request hooks", func(t *testing.T) {
 		t.Parallel()
-
-		client := New().AddFinalRequestHook(func(_ *Client, _ *Request) error {
-			return nil
-		})
+		client := New().AddFinalRequestHook(noop)
 
 		require.Len(t, client.FinalRequestHook(), 1)
 	})
 
 	t.Run("add response hooks", func(t *testing.T) {
 		t.Parallel()
-		client := New().AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
-			return nil
-		})
-
+		client := New().AddResponseHook(noopResponse)
 		require.Len(t, client.ResponseHook(), 1)
 
-		hook1 := func(_ *Client, _ *Response, _ *Request) error {
-			return nil
-		}
-		hook2 := func(_ *Client, _ *Response, _ *Request) error {
-			return nil
-		}
-		client.AddResponseHook(hook1, hook2)
-
+		client.AddResponseHook(noopResponse, func(_ *Client, _ *Response, _ *Request) error { return nil })
 		require.Len(t, client.ResponseHook(), 3)
 	})
+
+	t.Run("request hooks run in the order they were added", func(t *testing.T) {
+		t.Parallel()
+		buf := bytebufferpool.Get()
+		defer bytebufferpool.Put(buf)
+		write := func(s string) RequestHook {
+			return func(_ *Client, _ *Request) error {
+				buf.WriteString(s)
+				return nil
+			}
+		}
+
+		client := New().AddRequestHook(write("hook1")).AddRequestHook(write("hook2")).AddRequestHook(write("hook3"))
+		for _, hook := range client.RequestHook() {
+			require.NoError(t, hook(client, &Request{}))
+		}
+
+		require.Equal(t, "hook1hook2hook3", buf.String())
+	})
 }
 
-func Test_Client_HostClient_Behavior(t *testing.T) {
-	t.Parallel()
+// clientTestATransport describes one kind of fasthttp transport a Client can be
+// built on, so the scenarios every kind has to pass are written once.
+type clientTestATransport struct {
+	// newClient returns a client of this kind that sends to addr, over TLS if isTLS.
+	newClient func(addr string, isTLS bool) *Client
+	// balancer returns the transport underneath c that its requests end up on.
+	balancer func(c *Client) fasthttp.BalancingClient
+	// offline returns a client of this kind that has not dialed yet, and the host
+	// clients it dials through.
+	offline func() (*Client, []*fasthttp.HostClient)
+	// name is "host" or "lb" and tells the replies of the TLS scenario apart.
+	name string
+	// retries is whether one send may dial more than once, as a balancer over
+	// several hosts does.
+	retries bool
+}
+
+// hostClient returns the fasthttp.HostClient that c's requests end up on.
+func (tr clientTestATransport) hostClient(t *testing.T, c *Client) *fasthttp.HostClient {
+	t.Helper()
+
+	hc, ok := tr.balancer(c).(*fasthttp.HostClient)
+	require.True(t, ok)
+	return hc
+}
+
+// run registers the scenarios that hold for every kind of transport. Each one starts
+// a server and builds a client of its own.
+func (tr clientTestATransport) run(t *testing.T) {
+	t.Helper()
 
 	t.Run("do and redirects", func(t *testing.T) {
 		t.Parallel()
-
-		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Get("/ok", func(c fiber.Ctx) error {
-				return c.SendString("ok")
-			})
-			app.Get("/redirect", func(c fiber.Ctx) error {
-				return c.Redirect().Status(fiber.StatusFound).To("/ok")
-			})
-		})
-		t.Cleanup(func() {
-			require.NoError(t, app.Shutdown())
+		addr := clientAServeTCP(t, func(app *fiber.App) {
+			app.Get("/ok", func(c fiber.Ctx) error { return c.SendString("ok") })
+			app.Get("/redirect", func(c fiber.Ctx) error { return c.Redirect().Status(fiber.StatusFound).To("/ok") })
 		})
 
-		client := NewWithHostClient(&fasthttp.HostClient{Addr: addr})
+		client := tr.newClient(addr, false)
 
 		resp, err := client.Get("http://" + addr + "/ok")
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "ok", resp.String())
+		clientTestARequireOK(t, resp, err, "ok")
 
 		resp, err = client.Get("http://"+addr+"/redirect", Config{MaxRedirects: 1})
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "ok", resp.String())
+		clientTestARequireOK(t, resp, err, "ok")
 	})
 
 	t.Run("retries respect dial overrides", func(t *testing.T) {
 		t.Parallel()
-
-		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("retry")
-			})
-		})
-		t.Cleanup(func() {
-			require.NoError(t, app.Shutdown())
+		addr := clientAServeTCP(t, func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("retry") })
 		})
 
-		client := NewWithHostClient(&fasthttp.HostClient{Addr: addr})
-		client.SetRetryConfig(&RetryConfig{
-			InitialInterval: time.Millisecond,
-			MaxRetryCount:   2,
-		})
+		client := tr.newClient(addr, false)
+		client.SetRetryConfig(&RetryConfig{InitialInterval: time.Millisecond, MaxRetryCount: 2})
 
 		var attempts atomic.Int32
 		client.SetDial(func(address string) (net.Conn, error) {
@@ -499,239 +462,38 @@ func Test_Client_HostClient_Behavior(t *testing.T) {
 		})
 
 		resp, err := client.Get("http://" + addr)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "retry", resp.String())
+		clientTestARequireOK(t, resp, err, "retry")
 		require.EqualValues(t, 2, attempts.Load())
 	})
 
 	t.Run("tls configuration propagates", func(t *testing.T) {
 		t.Parallel()
+		app, addr, clientTLSConf := clientTestAStartTLSServer(t, "tls-"+tr.name)
 
-		serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
-		require.NoError(t, err)
+		client := tr.newClient(addr, true)
 
-		ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-		require.NoError(t, err)
-		ln = tls.NewListener(ln, serverTLSConf)
-
-		app := fiber.New()
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("tls-host")
-		})
-
-		go func() {
-			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
-				DisableStartupMessage: true,
-			}))
-		}()
-		time.Sleep(1 * time.Second)
-
-		client := NewWithHostClient(&fasthttp.HostClient{Addr: ln.Addr().String(), IsTLS: true})
-
-		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
+		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + addr)
 		require.NoError(t, err)
 		cfg := client.TLSConfig()
 		require.Same(t, clientTLSConf, cfg)
 		require.NotNil(t, cfg.RootCAs)
-		require.Equal(t, clientTLSConf, client.HostClient().TLSConfig)
+		require.Equal(t, clientTLSConf, tr.hostClient(t, client).TLSConfig)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "tls-host", resp.String())
+		require.Equal(t, "tls-"+tr.name, resp.String())
 
 		require.NoError(t, app.Shutdown())
 	})
 
 	t.Run("proxy overrides and reset", func(t *testing.T) {
 		t.Parallel()
-
-		client := NewWithHostClient(&fasthttp.HostClient{Addr: "example.com:80"})
-
-		require.NoError(t, client.SetProxyURL("http://127.0.0.1:8080"))
-		require.NotNil(t, client.HostClient().Dial)
-
-		var called atomic.Int32
-		customDial := func(addr string) (net.Conn, error) {
-			_ = addr
-			called.Add(1)
-			return nil, errors.New("dial")
-		}
-		client.SetDial(customDial)
-
-		_, err := client.HostClient().Dial("example.com:80")
-		require.Error(t, err)
-		require.EqualValues(t, 1, called.Load())
-
-		client.Reset()
-		require.NotNil(t, client.FasthttpClient())
-		require.Nil(t, client.HostClient())
-		require.Nil(t, client.LBClient())
-	})
-
-	t.Run("timeouts and close idle", func(t *testing.T) {
-		t.Parallel()
-
-		client := NewWithHostClient(&fasthttp.HostClient{Addr: "example.com:80"})
-
-		var dialCalls atomic.Int32
-		dialErr := errors.New("dial failed")
-		client.HostClient().Dial = func(addr string) (net.Conn, error) {
-			_ = addr
-			dialCalls.Add(1)
-			return nil, dialErr
-		}
-
-		req := fasthttp.AcquireRequest()
-		resp := fasthttp.AcquireResponse()
-		req.SetRequestURI("http://example.com/")
-
-		err := client.DoTimeout(req, resp, 5*time.Millisecond)
-		require.ErrorIs(t, err, dialErr)
-
-		req.SetRequestURI("http://example.com/")
-		err = client.DoDeadline(req, resp, time.Now().Add(5*time.Millisecond))
-		require.ErrorIs(t, err, dialErr)
-
-		fasthttp.ReleaseRequest(req)
-		fasthttp.ReleaseResponse(resp)
-
-		require.EqualValues(t, 2, dialCalls.Load())
-		require.NotPanics(t, client.CloseIdleConnections)
-	})
-}
-
-func Test_Client_LBClient_Behavior(t *testing.T) {
-	t.Parallel()
-
-	newLBClient := func(addr string) *fasthttp.LBClient {
-		return &fasthttp.LBClient{
-			Clients: []fasthttp.BalancingClient{
-				&fasthttp.HostClient{Addr: addr},
-			},
-		}
-	}
-
-	t.Run("do and redirects", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Get("/ok", func(c fiber.Ctx) error {
-				return c.SendString("ok")
-			})
-			app.Get("/redirect", func(c fiber.Ctx) error {
-				return c.Redirect().Status(fiber.StatusFound).To("/ok")
-			})
-		})
-		t.Cleanup(func() {
-			require.NoError(t, app.Shutdown())
-		})
-
-		client := NewWithLBClient(newLBClient(addr))
-
-		resp, err := client.Get("http://" + addr + "/ok")
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "ok", resp.String())
-
-		resp, err = client.Get("http://"+addr+"/redirect", Config{MaxRedirects: 1})
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "ok", resp.String())
-	})
-
-	t.Run("retries respect dial overrides", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("retry")
-			})
-		})
-		t.Cleanup(func() {
-			require.NoError(t, app.Shutdown())
-		})
-
-		client := NewWithLBClient(newLBClient(addr))
-		client.SetRetryConfig(&RetryConfig{
-			InitialInterval: time.Millisecond,
-			MaxRetryCount:   2,
-		})
-
-		var attempts atomic.Int32
-		client.SetDial(func(address string) (net.Conn, error) {
-			if attempts.Add(1) == 1 {
-				return nil, errors.New("dial failure")
-			}
-			return fasthttp.Dial(address)
-		})
-
-		resp, err := client.Get("http://" + addr)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "retry", resp.String())
-		require.EqualValues(t, 2, attempts.Load())
-	})
-
-	t.Run("tls configuration propagates", func(t *testing.T) {
-		t.Parallel()
-
-		serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
-		require.NoError(t, err)
-
-		ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-		require.NoError(t, err)
-		ln = tls.NewListener(ln, serverTLSConf)
-
-		app := fiber.New()
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("tls-lb")
-		})
-
-		go func() {
-			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
-				DisableStartupMessage: true,
-			}))
-		}()
-		time.Sleep(1 * time.Second)
-
-		lb := newLBClient(ln.Addr().String())
-		host, ok := lb.Clients[0].(*fasthttp.HostClient)
-		require.True(t, ok)
-		host.IsTLS = true
-		client := NewWithLBClient(lb)
-
-		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
-		require.NoError(t, err)
-		cfg := client.TLSConfig()
-		require.Same(t, clientTLSConf, cfg)
-		require.NotNil(t, cfg.RootCAs)
-
-		hc, ok := client.LBClient().Clients[0].(*fasthttp.HostClient)
-		require.True(t, ok)
-		require.Equal(t, clientTLSConf, hc.TLSConfig)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "tls-lb", resp.String())
-
-		require.NoError(t, app.Shutdown())
-	})
-
-	t.Run("proxy overrides and reset", func(t *testing.T) {
-		t.Parallel()
-
-		client := NewWithLBClient(&fasthttp.LBClient{
-			Clients: []fasthttp.BalancingClient{
-				&fasthttp.HostClient{Addr: "example.com:80"},
-			},
-		})
+		client := tr.newClient("example.com:80", false)
 
 		require.NoError(t, client.SetProxyURL("http://127.0.0.1:8080"))
-
-		hc, ok := client.LBClient().Clients[0].(*fasthttp.HostClient)
-		require.True(t, ok)
+		hc := tr.hostClient(t, client)
 		require.NotNil(t, hc.Dial)
 
 		var called atomic.Int32
-		customDial := func(addr string) (net.Conn, error) {
-			_ = addr
+		customDial := func(string) (net.Conn, error) {
 			called.Add(1)
 			return nil, errors.New("dial")
 		}
@@ -743,246 +505,139 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 
 		client.Reset()
 		require.NotNil(t, client.FasthttpClient())
-		require.Nil(t, client.LBClient())
 		require.Nil(t, client.HostClient())
+		require.Nil(t, client.LBClient())
 	})
 
 	t.Run("timeouts and close idle", func(t *testing.T) {
 		t.Parallel()
-
-		client := NewWithLBClient(&fasthttp.LBClient{
-			Clients: []fasthttp.BalancingClient{
-				&fasthttp.HostClient{Addr: "example.com:80"},
-				&fasthttp.HostClient{Addr: "example.org:80"},
-			},
-		})
+		client, hosts := tr.offline()
 
 		var dialCalls atomic.Int32
 		dialErr := errors.New("dial failed")
-		for _, bc := range client.LBClient().Clients {
-			if hc, ok := bc.(*fasthttp.HostClient); ok {
-				hc.Dial = func(addr string) (net.Conn, error) {
-					_ = addr
-					dialCalls.Add(1)
-					return nil, dialErr
-				}
+		for _, hc := range hosts {
+			hc.Dial = func(string) (net.Conn, error) {
+				dialCalls.Add(1)
+				return nil, dialErr
 			}
 		}
 
 		req := fasthttp.AcquireRequest()
 		resp := fasthttp.AcquireResponse()
 		req.SetRequestURI("http://example.com/")
-
-		err := client.DoTimeout(req, resp, 5*time.Millisecond)
-		require.ErrorIs(t, err, dialErr)
+		require.ErrorIs(t, client.DoTimeout(req, resp, 5*time.Millisecond), dialErr)
 
 		req.SetRequestURI("http://example.com/")
-		err = client.DoDeadline(req, resp, time.Now().Add(5*time.Millisecond))
-		require.ErrorIs(t, err, dialErr)
+		require.ErrorIs(t, client.DoDeadline(req, resp, time.Now().Add(5*time.Millisecond)), dialErr)
 
 		fasthttp.ReleaseRequest(req)
 		fasthttp.ReleaseResponse(resp)
 
-		require.GreaterOrEqual(t, dialCalls.Load(), int32(2))
+		if tr.retries {
+			require.GreaterOrEqual(t, dialCalls.Load(), int32(2))
+		} else {
+			require.EqualValues(t, 2, dialCalls.Load())
+		}
 		require.NotPanics(t, client.CloseIdleConnections)
 	})
 }
 
-func Test_Client_Add_Hook_CheckOrder(t *testing.T) {
+func Test_Client_HostClient_Behavior(t *testing.T) {
 	t.Parallel()
+	clientTestATransport{
+		name: "host",
+		newClient: func(addr string, isTLS bool) *Client {
+			return NewWithHostClient(&fasthttp.HostClient{Addr: addr, IsTLS: isTLS})
+		},
+		balancer: func(c *Client) fasthttp.BalancingClient { return c.HostClient() },
+		offline: func() (*Client, []*fasthttp.HostClient) {
+			hc := &fasthttp.HostClient{Addr: "example.com:80"}
+			return NewWithHostClient(hc), []*fasthttp.HostClient{hc}
+		},
+	}.run(t)
+}
 
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
+func Test_Client_LBClient_Behavior(t *testing.T) {
+	t.Parallel()
+	clientTestATransport{
+		name: "lb",
+		newClient: func(addr string, isTLS bool) *Client {
+			return NewWithLBClient(&fasthttp.LBClient{
+				Clients: []fasthttp.BalancingClient{&fasthttp.HostClient{Addr: addr, IsTLS: isTLS}},
+			})
+		},
+		balancer: func(c *Client) fasthttp.BalancingClient { return c.LBClient().Clients[0] },
+		offline: func() (*Client, []*fasthttp.HostClient) {
+			hosts := []*fasthttp.HostClient{{Addr: "example.com:80"}, {Addr: "example.org:80"}}
+			return NewWithLBClient(&fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hosts[0], hosts[1]}}), hosts
+		},
+		retries: true,
+	}.run(t)
+}
 
-	client := New().
-		AddRequestHook(func(_ *Client, _ *Request) error {
-			buf.WriteString("hook1")
-			return nil
-		}).
-		AddRequestHook(func(_ *Client, _ *Request) error {
-			buf.WriteString("hook2")
-			return nil
-		}).
-		AddRequestHook(func(_ *Client, _ *Request) error {
-			buf.WriteString("hook3")
-			return nil
+// clientTestAMarshal runs the marshal scenarios of one format: the function handed
+// to set is the one get returns, and what it yields, a payload or an error, reaches
+// the caller untouched. The accessor pairs differ only in their named function
+// type, which F absorbs, so each pair is passed as method expressions.
+func clientTestAMarshal[F ~func(any) ([]byte, error)](t *testing.T, format string, set func(*Client, F) *Client, get func(*Client) F, payload []byte, failure error) {
+	t.Helper()
+
+	for _, tc := range []struct {
+		err     error
+		name    string
+		payload []byte
+	}{
+		{name: "set " + format + " marshal", payload: payload},
+		{name: "set " + format + " marshal error", err: failure},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := set(New(), func(_ any) ([]byte, error) { return tc.payload, tc.err })
+
+			val, err := get(client)(nil)
+			require.Equal(t, tc.payload, val)
+			require.Equal(t, tc.err, err)
 		})
-
-	for _, hook := range client.RequestHook() {
-		require.NoError(t, hook(client, &Request{}))
 	}
+}
 
-	require.Equal(t, "hook1hook2hook3", buf.String())
+// clientTestAUnmarshal is [clientTestAMarshal] for the unmarshal accessors of one
+// format: a new client has a function, and once a function that reports failure
+// is set, the function get returns must report it.
+func clientTestAUnmarshal[F ~func([]byte, any) error](t *testing.T, format string, set func(*Client, F) *Client, get func(*Client) F, failure error) {
+	t.Helper()
+
+	t.Run("set "+format+" unmarshal", func(t *testing.T) {
+		t.Parallel()
+		require.NotNil(t, get(New()))
+		client := set(New(), func(_ []byte, _ any) error { return failure })
+
+		require.Equal(t, failure, get(client)(nil, nil))
+	})
 }
 
 func Test_Client_Marshal(t *testing.T) {
 	t.Parallel()
+	clientTestAMarshal(t, "json", (*Client).SetJSONMarshal, (*Client).JSONMarshal, []byte("hello"), errors.New("empty json"))
+	clientTestAMarshal(t, "xml", (*Client).SetXMLMarshal, (*Client).XMLMarshal, []byte("hello"), errors.New("empty xml"))
+	clientTestAMarshal(t, "cbor", (*Client).SetCBORMarshal, (*Client).CBORMarshal, []byte{0xf6}, errors.New("invalid struct"))
 
-	t.Run("set json marshal", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetJSONMarshal(func(_ any) ([]byte, error) {
-				return []byte("hello"), nil
-			})
-		val, err := client.JSONMarshal()(nil)
-
-		require.NoError(t, err)
-		require.Equal(t, []byte("hello"), val)
-	})
-
-	t.Run("set json marshal error", func(t *testing.T) {
-		t.Parallel()
-
-		emptyErr := errors.New("empty json")
-		client := New().
-			SetJSONMarshal(func(_ any) ([]byte, error) {
-				return nil, emptyErr
-			})
-
-		val, err := client.JSONMarshal()(nil)
-		require.Nil(t, val)
-		require.ErrorIs(t, err, emptyErr)
-	})
-
-	t.Run("set json unmarshal", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetJSONUnmarshal(func(_ []byte, _ any) error {
-				return errors.New("empty json")
-			})
-
-		err := client.JSONUnmarshal()(nil, nil)
-		require.Equal(t, errors.New("empty json"), err)
-	})
-
-	t.Run("set json unmarshal error", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetJSONUnmarshal(func(_ []byte, _ any) error {
-				return errors.New("empty json")
-			})
-
-		err := client.JSONUnmarshal()(nil, nil)
-		require.Equal(t, errors.New("empty json"), err)
-	})
-
-	t.Run("set xml marshal", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetXMLMarshal(func(_ any) ([]byte, error) {
-				return []byte("hello"), nil
-			})
-		val, err := client.XMLMarshal()(nil)
-
-		require.NoError(t, err)
-		require.Equal(t, []byte("hello"), val)
-	})
-
-	t.Run("set xml marshal error", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetXMLMarshal(func(_ any) ([]byte, error) {
-				return nil, errors.New("empty xml")
-			})
-
-		val, err := client.XMLMarshal()(nil)
-		require.Nil(t, val)
-		require.Equal(t, errors.New("empty xml"), err)
-	})
-
-	t.Run("set cbor marshal", func(t *testing.T) {
-		t.Parallel()
-		bs, err := hex.DecodeString("f6")
-		if err != nil {
-			t.Error(err)
-		}
-		client := New().
-			SetCBORMarshal(func(_ any) ([]byte, error) {
-				return bs, nil
-			})
-		val, err := client.CBORMarshal()(nil)
-
-		require.NoError(t, err)
-		require.Equal(t, bs, val)
-	})
-
-	t.Run("set cbor marshal error", func(t *testing.T) {
-		t.Parallel()
-		client := New().SetCBORMarshal(func(_ any) ([]byte, error) {
-			return nil, errors.New("invalid struct")
-		})
-
-		val, err := client.CBORMarshal()(nil)
-		require.Nil(t, val)
-		require.Equal(t, errors.New("invalid struct"), err)
-	})
-
-	t.Run("set xml unmarshal", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetXMLUnmarshal(func(_ []byte, _ any) error {
-				return errors.New("empty xml")
-			})
-
-		err := client.XMLUnmarshal()(nil, nil)
-		require.Equal(t, errors.New("empty xml"), err)
-	})
-
-	t.Run("set xml unmarshal error", func(t *testing.T) {
-		t.Parallel()
-		client := New().
-			SetXMLUnmarshal(func(_ []byte, _ any) error {
-				return errors.New("empty xml")
-			})
-
-		err := client.XMLUnmarshal()(nil, nil)
-		require.Equal(t, errors.New("empty xml"), err)
-	})
+	clientTestAUnmarshal(t, "json", (*Client).SetJSONUnmarshal, (*Client).JSONUnmarshal, errors.New("empty json"))
+	clientTestAUnmarshal(t, "xml", (*Client).SetXMLUnmarshal, (*Client).XMLUnmarshal, errors.New("empty xml"))
+	clientTestAUnmarshal(t, "cbor", (*Client).SetCBORUnmarshal, (*Client).CBORUnmarshal, errors.New("invalid cbor"))
 }
 
 func Test_Client_SetBaseURL(t *testing.T) {
 	t.Parallel()
-
 	client := New().SetBaseURL("http://example.com")
 
 	require.Equal(t, "http://example.com", client.BaseURL())
 }
 
-func Test_Client_Invalid_URL(t *testing.T) {
-	t.Parallel()
-
-	app, dial, start := createHelperServer(t)
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Hostname())
-	})
-
-	go start()
-
-	_, err := New().SetDial(dial).
-		R().
-		Get("http//example")
-
-	require.ErrorIs(t, err, ErrURLFormat)
-}
-
-func Test_Client_Unsupported_Protocol(t *testing.T) {
-	t.Parallel()
-
-	_, err := New().
-		R().
-		Get("ftp://example.com")
-
-	require.ErrorIs(t, err, ErrURLFormat)
-}
-
 func Test_Client_ConcurrencyRequests(t *testing.T) {
 	t.Parallel()
-
 	app, dial, start := createHelperServer(t)
-	app.All("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Hostname() + " " + c.Method())
-	})
+	app.All("/", func(c fiber.Ctx) error { return c.SendString(c.Hostname() + " " + c.Method()) })
 	go start()
 
 	client := New().SetDial(dial)
@@ -1002,763 +657,381 @@ func Test_Client_ConcurrencyRequests(t *testing.T) {
 	wg.Wait()
 }
 
-func Test_Get(t *testing.T) {
-	t.Parallel()
-
-	setupApp := func() (*fiber.App, string) {
-		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString(c.Hostname())
-			})
-		})
-
-		return app, addr
-	}
-
-	t.Run("global get function", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		resp, err := Get("http://" + addr)
-		require.NoError(t, err)
-		require.Equal(t, "0.0.0.0", utils.UnsafeString(resp.RawResponse.Body()))
-	})
-
-	t.Run("client get", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		resp, err := New().Get("http://" + addr)
-		require.NoError(t, err)
-		require.Equal(t, "0.0.0.0", utils.UnsafeString(resp.RawResponse.Body()))
-	})
+// The handlers that the tests of the HTTP methods of the client and of the request route to.
+func clientAHostname(c fiber.Ctx) error { return c.SendString(c.Hostname()) }
+func clientAForm(c fiber.Ctx) error     { return c.SendString(c.FormValue("foo")) }
+func clientAEcho(c fiber.Ctx) error     { return c.Send(c.Body()) }
+func clientACreated(c fiber.Ctx) error {
+	return c.Status(fiber.StatusCreated).SendString(c.FormValue("foo"))
 }
 
-func Test_Head(t *testing.T) {
+// Test_Client_HTTPMethods sends a request with every HTTP method helper twice: through
+// the package-level function, which uses the default client, and through a client of
+// its own. Each of the two starts a server that only knows the method under test.
+func Test_Client_HTTPMethods(t *testing.T) {
 	t.Parallel()
-
-	setupApp := func() (*fiber.App, string) {
-		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Head("/", func(c fiber.Ctx) error {
-				return c.SendString(c.Hostname())
-			})
-		})
-
-		return app, addr
-	}
-
-	t.Run("global head function", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		resp, err := Head("http://" + addr)
-		require.NoError(t, err)
-		require.Equal(t, "7", resp.Header(fiber.HeaderContentLength))
-		require.Empty(t, utils.UnsafeString(resp.RawResponse.Body()))
-	})
-
-	t.Run("client head", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		resp, err := New().Head("http://" + addr)
-		require.NoError(t, err)
-		require.Equal(t, "7", resp.Header(fiber.HeaderContentLength))
-		require.Empty(t, utils.UnsafeString(resp.RawResponse.Body()))
-	})
-}
-
-func Test_Post(t *testing.T) {
-	t.Parallel()
-
-	setupApp := func() (*fiber.App, string) {
-		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Post("/", func(c fiber.Ctx) error {
-				return c.Status(fiber.StatusCreated).
-					SendString(c.FormValue("foo"))
-			})
-		})
-
-		return app, addr
-	}
-
-	t.Run("global post function", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		for range 5 {
-			resp, err := Post("http://"+addr, Config{
-				FormData: map[string]string{
-					"foo": "bar",
-				},
-			})
-
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusCreated, resp.StatusCode())
-			require.Equal(t, "bar", resp.String())
-		}
-	})
-
-	t.Run("client post", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		for range 5 {
-			resp, err := New().Post("http://"+addr, Config{
-				FormData: map[string]string{
-					"foo": "bar",
-				},
-			})
-
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusCreated, resp.StatusCode())
-			require.Equal(t, "bar", resp.String())
-		}
-	})
-}
-
-func Test_Put(t *testing.T) {
-	t.Parallel()
-
-	setupApp := func() (*fiber.App, string) {
-		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Put("/", func(c fiber.Ctx) error {
-				return c.SendString(c.FormValue("foo"))
-			})
-		})
-
-		return app, addr
-	}
-
-	t.Run("global put function", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		for range 5 {
-			resp, err := Put("http://"+addr, Config{
-				FormData: map[string]string{
-					"foo": "bar",
-				},
-			})
-
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode())
-			require.Equal(t, "bar", resp.String())
-		}
-	})
-
-	t.Run("client put", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		for range 5 {
-			resp, err := New().Put("http://"+addr, Config{
-				FormData: map[string]string{
-					"foo": "bar",
-				},
-			})
-
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode())
-			require.Equal(t, "bar", resp.String())
-		}
-	})
-}
-
-func Test_Delete(t *testing.T) {
-	t.Parallel()
-
-	setupApp := func() (*fiber.App, string) {
-		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Delete("/", func(c fiber.Ctx) error {
-				return c.Status(fiber.StatusNoContent).
-					SendString("deleted")
-			})
-		})
-
-		return app, addr
-	}
-
-	t.Run("global delete function", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		time.Sleep(1 * time.Second)
-
-		for range 5 {
-			resp, err := Delete("http://"+addr, Config{
-				FormData: map[string]string{
-					"foo": "bar",
-				},
-			})
-
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-			require.Empty(t, resp.String())
-		}
-	})
-
-	t.Run("client delete", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		for range 5 {
-			resp, err := New().Delete("http://"+addr, Config{
-				FormData: map[string]string{
-					"foo": "bar",
-				},
-			})
-
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-			require.Empty(t, resp.String())
-		}
-	})
-}
-
-func Test_Options(t *testing.T) {
-	t.Parallel()
-
-	setupApp := func() (*fiber.App, string) {
-		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Options("/", func(c fiber.Ctx) error {
+	tests := []struct {
+		global      func(url string, cfg ...Config) (*Response, error)
+		client      func(c *Client, url string, cfg ...Config) (*Response, error)
+		handler     fiber.Handler
+		name        string
+		method      string
+		body        string
+		headerName  string
+		headerValue string
+		cfg         []Config
+		status      int
+		calls       int
+		globalDelay time.Duration // pause before the package-level variant's first request, as these tests always had
+	}{
+		{
+			name:    "get",
+			method:  fiber.MethodGet,
+			global:  Get,
+			client:  (*Client).Get,
+			handler: clientAHostname,
+			status:  fiber.StatusOK,
+			body:    "0.0.0.0",
+			calls:   1,
+		},
+		{
+			name:        "head",
+			method:      fiber.MethodHead,
+			global:      Head,
+			client:      (*Client).Head,
+			handler:     clientAHostname,
+			status:      fiber.StatusOK,
+			headerName:  fiber.HeaderContentLength,
+			headerValue: "7",
+			calls:       1,
+		},
+		{
+			name:    "post",
+			method:  fiber.MethodPost,
+			global:  Post,
+			client:  (*Client).Post,
+			handler: clientACreated,
+			cfg:     []Config{{FormData: map[string]string{"foo": "bar"}}},
+			status:  fiber.StatusCreated,
+			body:    "bar",
+			calls:   5,
+		},
+		{
+			name:    "put",
+			method:  fiber.MethodPut,
+			global:  Put,
+			client:  (*Client).Put,
+			handler: clientAForm,
+			cfg:     []Config{{FormData: map[string]string{"foo": "bar"}}},
+			status:  fiber.StatusOK,
+			body:    "bar",
+			calls:   5,
+		},
+		{
+			name:        "delete",
+			method:      fiber.MethodDelete,
+			global:      Delete,
+			client:      (*Client).Delete,
+			handler:     func(c fiber.Ctx) error { return c.Status(fiber.StatusNoContent).SendString("deleted") },
+			cfg:         []Config{{FormData: map[string]string{"foo": "bar"}}},
+			status:      fiber.StatusNoContent,
+			calls:       5,
+			globalDelay: time.Second,
+		},
+		{
+			name:   "options",
+			method: fiber.MethodOptions,
+			global: Options,
+			client: (*Client).Options,
+			handler: func(c fiber.Ctx) error {
 				c.Set(fiber.HeaderAllow, "GET, POST, PUT, DELETE, PATCH")
 				return c.Status(fiber.StatusNoContent).SendString("")
-			})
-		})
-
-		return app, addr
+			},
+			status:      fiber.StatusNoContent,
+			headerName:  fiber.HeaderAllow,
+			headerValue: "GET, POST, PUT, DELETE, PATCH",
+			calls:       5,
+		},
+		{
+			name:        "patch",
+			method:      fiber.MethodPatch,
+			global:      Patch,
+			client:      (*Client).Patch,
+			handler:     clientAForm,
+			cfg:         []Config{{FormData: map[string]string{"foo": "bar"}}},
+			status:      fiber.StatusOK,
+			body:        "bar",
+			calls:       5,
+			globalDelay: time.Second,
+		},
+		{
+			name:        "query",
+			method:      fiber.MethodQuery,
+			global:      Query,
+			client:      (*Client).Query,
+			handler:     clientAEcho,
+			cfg:         []Config{{Body: "query body"}},
+			status:      fiber.StatusOK,
+			body:        "query body",
+			calls:       5,
+			globalDelay: time.Second,
+		},
 	}
 
-	t.Run("global options function", func(t *testing.T) {
-		t.Parallel()
+	for i := range tests {
+		tc := &tests[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
+			// Every variant starts a server of its own, so none of them shares one.
+			run := func(variant string, send func(url string, cfg ...Config) (*Response, error), delay time.Duration) {
+				t.Run(variant, func(t *testing.T) {
+					t.Parallel()
+					addr := clientAServeTCP(t, func(app *fiber.App) { app.Add([]string{tc.method}, "/", tc.handler) })
 
-		for range 5 {
-			resp, err := Options("http://" + addr)
+					if delay > 0 {
+						time.Sleep(delay)
+					}
 
-			require.NoError(t, err)
-			require.Equal(t, "GET, POST, PUT, DELETE, PATCH", resp.Header(fiber.HeaderAllow))
-			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-			require.Empty(t, resp.String())
-		}
-	})
+					for range tc.calls {
+						resp, err := send("http://"+addr, tc.cfg...)
+						require.NoError(t, err)
+						require.Equal(t, tc.status, resp.StatusCode())
+						require.Equal(t, tc.body, utils.UnsafeString(resp.RawResponse.Body()))
+						if tc.headerName != "" {
+							require.Equal(t, tc.headerValue, resp.Header(tc.headerName))
+						}
+					}
+				})
+			}
 
-	t.Run("client options", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		for range 5 {
-			resp, err := New().Options("http://" + addr)
-
-			require.NoError(t, err)
-			require.Equal(t, "GET, POST, PUT, DELETE, PATCH", resp.Header(fiber.HeaderAllow))
-			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-			require.Empty(t, resp.String())
-		}
-	})
-}
-
-func Test_Patch(t *testing.T) {
-	t.Parallel()
-
-	setupApp := func() (*fiber.App, string) {
-		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Patch("/", func(c fiber.Ctx) error {
-				return c.SendString(c.FormValue("foo"))
-			})
+			run("global function", tc.global, tc.globalDelay)
+			run("client", func(url string, cfg ...Config) (*Response, error) {
+				return tc.client(New(), url, cfg...)
+			}, 0)
 		})
-
-		return app, addr
 	}
-
-	t.Run("global patch function", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		time.Sleep(1 * time.Second)
-
-		for range 5 {
-			resp, err := Patch("http://"+addr, Config{
-				FormData: map[string]string{
-					"foo": "bar",
-				},
-			})
-
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode())
-			require.Equal(t, "bar", resp.String())
-		}
-	})
-
-	t.Run("client patch", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		for range 5 {
-			resp, err := New().Patch("http://"+addr, Config{
-				FormData: map[string]string{
-					"foo": "bar",
-				},
-			})
-
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode())
-			require.Equal(t, "bar", resp.String())
-		}
-	})
-}
-
-func Test_Query(t *testing.T) {
-	t.Parallel()
-
-	setupApp := func() (*fiber.App, string) {
-		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Query("/", func(c fiber.Ctx) error {
-				return c.Send(c.Body())
-			})
-		})
-
-		return app, addr
-	}
-
-	t.Run("global query function", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		time.Sleep(1 * time.Second)
-
-		for range 5 {
-			resp, err := Query("http://"+addr, Config{Body: "query body"})
-
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode())
-			require.Equal(t, "query body", resp.String())
-		}
-	})
-
-	t.Run("client query", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		for range 5 {
-			resp, err := New().Query("http://"+addr, Config{Body: "query body"})
-
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode())
-			require.Equal(t, "query body", resp.String())
-		}
-	})
 }
 
 func Test_Client_UserAgent(t *testing.T) {
 	t.Parallel()
-
-	setupApp := func() (*fiber.App, string) {
-		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.Send(c.Request().Header.UserAgent())
+	for _, tc := range []struct {
+		send func(url string) (*Response, error)
+		name string
+		want string
+	}{
+		{name: "default", want: defaultUserAgent, send: func(url string) (*Response, error) { return Get(url) }},
+		{
+			name: "custom",
+			want: "ua",
+			send: func(url string) (*Response, error) { return New().SetUserAgent("ua").Get(url) },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			addr := clientAServeTCP(t, func(app *fiber.App) {
+				app.Get("/", func(c fiber.Ctx) error { return c.Send(c.Request().Header.UserAgent()) })
 			})
+
+			for range 5 {
+				resp, err := tc.send("http://" + addr)
+				clientTestARequireOK(t, resp, err, tc.want)
+			}
 		})
-
-		return app, addr
 	}
-
-	t.Run("default", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		for range 5 {
-			resp, err := Get("http://" + addr)
-
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode())
-			require.Equal(t, defaultUserAgent, resp.String())
-		}
-	})
-
-	t.Run("custom", func(t *testing.T) {
-		t.Parallel()
-
-		app, addr := setupApp()
-		defer func() {
-			require.NoError(t, app.Shutdown())
-		}()
-
-		for range 5 {
-			c := New().
-				SetUserAgent("ua")
-
-			resp, err := c.Get("http://" + addr)
-
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode())
-			require.Equal(t, "ua", resp.String())
-		}
-	})
 }
+
+// clientTestAFresh returns the new client an entry scenario starts from.
+func clientTestAFresh(*testing.T) *Client { return New() }
 
 func Test_Client_Header(t *testing.T) {
 	t.Parallel()
-
-	t.Run("add header", func(t *testing.T) {
-		t.Parallel()
-		req := New()
-		req.AddHeader("foo", "bar").AddHeader("foo", "fiber")
-
-		res := req.Header("foo")
-		require.Len(t, res, 2)
-		require.Equal(t, "bar", res[0])
-		require.Equal(t, "fiber", res[1])
-	})
-
-	t.Run("set header", func(t *testing.T) {
-		t.Parallel()
-		req := New()
-		req.AddHeader("foo", "bar").SetHeader("foo", "fiber")
-
-		res := req.Header("foo")
-		require.Len(t, res, 1)
-		require.Equal(t, "fiber", res[0])
-	})
-
-	t.Run("set header overrides every value", func(t *testing.T) {
-		t.Parallel()
-		req := New()
-		req.AddHeaders(map[string][]string{"foo": {"bar", "buaa"}, "bar": {"foo"}}).SetHeader("foo", "fiber")
-
-		require.Equal(t, []string{"fiber"}, req.Header("foo"))
-		require.Equal(t, []string{"foo"}, req.Header("bar"))
-	})
-
-	t.Run("add headers", func(t *testing.T) {
-		t.Parallel()
-		req := New()
-		req.SetHeader("foo", "bar").
-			AddHeaders(map[string][]string{
-				"foo": {"fiber", "buaa"},
-				"bar": {"foo"},
-			})
-
-		res := req.Header("foo")
-		require.Len(t, res, 3)
-		require.Equal(t, "bar", res[0])
-		require.Equal(t, "fiber", res[1])
-		require.Equal(t, "buaa", res[2])
-
-		res = req.Header("bar")
-		require.Len(t, res, 1)
-		require.Equal(t, "foo", res[0])
-	})
-
-	t.Run("set headers", func(t *testing.T) {
-		t.Parallel()
-		req := New()
-		req.SetHeader("foo", "bar").
-			SetHeaders(map[string]string{
-				"foo": "fiber",
-				"bar": "foo",
-			})
-
-		res := req.Header("foo")
-		require.Len(t, res, 1)
-		require.Equal(t, "fiber", res[0])
-
-		res = req.Header("bar")
-		require.Len(t, res, 1)
-		require.Equal(t, "foo", res[0])
-	})
+	headers := clientTestBMultiValue[*Client]{
+		noun:    "header",
+		fresh:   clientTestAFresh,
+		add:     (*Client).AddHeader,
+		set:     (*Client).SetHeader,
+		addMany: (*Client).AddHeaders,
+		setMany: (*Client).SetHeaders,
+		get:     (*Client).Header,
+	}
+	headers.run(t)
+	headers.runOverride(t, "set header overrides every value", "set headers overrides every value")
 
 	t.Run("set header case-insensitive", func(t *testing.T) {
 		t.Parallel()
-		req := New()
-		req.SetHeader("foo", "bar").
-			AddHeader("FOO", "fiber")
+		client := New()
+		client.SetHeader("foo", "bar").AddHeader("FOO", "fiber")
 
-		res := req.Header("foo")
-		require.Len(t, res, 2)
-		require.Equal(t, "bar", res[0])
-		require.Equal(t, "fiber", res[1])
+		require.Equal(t, []string{"bar", "fiber"}, client.Header("foo"))
 	})
 }
 
-func Test_Client_Header_With_Server(t *testing.T) {
-	handler := func(c fiber.Ctx) error {
+// Test_Settings_With_Server sends a request configured through its client or
+// through the request itself, count times or once when count is zero, and
+// checks what the handler made of it.
+func Test_Settings_With_Server(t *testing.T) {
+	t.Parallel()
+	// headers answers with the K1 and K2 lines it was sent, in order. A failed
+	// write fails the request, which the 200 check catches.
+	headers := func(c fiber.Ctx) error {
 		for key, value := range c.Request().Header.All() {
 			if k := string(key); k == "K1" || k == "K2" {
-				_, _ = c.Write(key)   //nolint:errcheck // It is fine to ignore the error here
-				_, _ = c.Write(value) //nolint:errcheck // It is fine to ignore the error here
+				if _, err := c.Write(key); err != nil {
+					return err
+				}
+				if _, err := c.Write(value); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
 	}
-
-	wrapAgent := func(c *Client) {
-		c.SetHeader("k1", "v1").
-			AddHeader("k1", "v11").
-			AddHeaders(map[string][]string{
-				"k1": {"v22", "v33"},
-			}).
-			SetHeaders(map[string]string{
-				"k2": "v2",
-			}).
-			AddHeader("k2", "v22")
+	cookies := func(c fiber.Ctx) error {
+		return c.SendString(c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
 	}
+	referer := func(c fiber.Ctx) error { return c.Send(c.Request().Header.Referer()) }
+	userAgent := func(c fiber.Ctx) error { return c.Send(c.Request().Header.UserAgent()) }
 
-	testClient(t, handler, wrapAgent, "K1v1K1v11K1v22K1v33K2v2K2v22")
+	for _, tc := range []struct {
+		handler fiber.Handler
+		client  func(c *Client) // configures the client; nil to configure the request with request
+		request func(r *Request)
+		name    string
+		want    string
+		count   int
+	}{
+		{
+			name: "client headers", handler: headers, want: "K1v1K1v11K1v22K1v33K2v2K2v22",
+			client: func(c *Client) {
+				c.SetHeader("k1", "v1").AddHeader("k1", "v11").AddHeaders(map[string][]string{"k1": {"v22", "v33"}}).
+					SetHeaders(map[string]string{"k2": "v2"}).AddHeader("k2", "v22")
+			},
+		},
+		{
+			name: "request headers", handler: headers, want: "K1v1K1v11K1v22K1v33K2v2K2v22",
+			request: func(r *Request) {
+				r.SetHeader("k1", "v1").AddHeader("k1", "v11").AddHeaders(map[string][]string{"k1": {"v22", "v33"}}).
+					SetHeaders(map[string]string{"k2": "v2"}).AddHeader("k2", "v22")
+			},
+		},
+		{
+			name: "client cookies", handler: cookies, want: "v1v2v3",
+			client: func(c *Client) {
+				c.SetCookie("k1", "v1").
+					SetCookies(map[string]string{"k2": "v2", "k3": "v3", "k4": "v4"}).DelCookies("k4")
+			},
+		},
+		{
+			name: "request cookies", handler: cookies, want: "v1v2v3",
+			request: func(r *Request) {
+				r.SetCookie("k1", "v1").
+					SetCookies(map[string]string{"k2": "v2", "k3": "v3", "k4": "v4"}).DelCookies("k4")
+			},
+		},
+		{
+			name: "client referer", handler: referer, want: "http://referer.com",
+			client: func(c *Client) { c.SetReferer("http://referer.com") },
+		},
+		{
+			name: "request referer", handler: referer, want: "http://referer.com",
+			request: func(r *Request) { r.SetReferer("http://referer.com") },
+		},
+		{
+			name: "client query params", want: "v1v2",
+			handler: func(c fiber.Ctx) error { return c.SendString(c.Query("k1") + c.Query("k2")) },
+			client:  func(c *Client) { c.SetParam("k1", "v1").AddParam("k2", "v2") },
+		},
+		{
+			name: "request query string", want: "foo=bar&bar=baz",
+			handler: func(c fiber.Ctx) error { return c.Send(c.Request().URI().QueryString()) },
+			request: func(r *Request) { r.SetParam("foo", "bar").SetParams(map[string]string{"bar": "baz"}) },
+		},
+		{
+			name: "request default user agent", handler: userAgent, want: defaultUserAgent, count: 5,
+			request: func(*Request) {},
+		},
+		{
+			name: "request custom user agent", handler: userAgent, want: "ua", count: 5,
+			request: func(r *Request) { r.SetUserAgent("ua") },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if tc.client != nil {
+				testClient(t, tc.handler, tc.client, tc.want)
+				return
+			}
+			testRequest(t, tc.handler, tc.request, tc.want, max(tc.count, 1))
+		})
+	}
 }
 
 func Test_Client_Cookie(t *testing.T) {
 	t.Parallel()
-
-	t.Run("set cookie", func(t *testing.T) {
-		t.Parallel()
-		req := New().
-			SetCookie("foo", "bar")
-		require.Equal(t, "bar", req.Cookie("foo"))
-
-		req.SetCookie("foo", "bar1")
-		require.Equal(t, "bar1", req.Cookie("foo"))
-	})
-
-	t.Run("set cookies", func(t *testing.T) {
-		t.Parallel()
-		req := New().
-			SetCookies(map[string]string{
-				"foo": "bar",
-				"bar": "foo",
-			})
-		require.Equal(t, "bar", req.Cookie("foo"))
-		require.Equal(t, "foo", req.Cookie("bar"))
-
-		req.SetCookies(map[string]string{
-			"foo": "bar1",
-		})
-		require.Equal(t, "bar1", req.Cookie("foo"))
-		require.Equal(t, "foo", req.Cookie("bar"))
-	})
-
-	t.Run("set cookies with struct", func(t *testing.T) {
-		t.Parallel()
-		type args struct {
-			CookieString string `cookie:"string"`
-			CookieInt    int    `cookie:"int"`
-		}
-
-		req := New().SetCookiesWithStruct(&args{
-			CookieInt:    5,
-			CookieString: "foo",
-		})
-
-		require.Equal(t, "5", req.Cookie("int"))
-		require.Equal(t, "foo", req.Cookie("string"))
-	})
-
-	t.Run("del cookies", func(t *testing.T) {
-		t.Parallel()
-		req := New().
-			SetCookies(map[string]string{
-				"foo": "bar",
-				"bar": "foo",
-			})
-		require.Equal(t, "bar", req.Cookie("foo"))
-		require.Equal(t, "foo", req.Cookie("bar"))
-
-		req.DelCookies("foo")
-		require.Empty(t, req.Cookie("foo"))
-		require.Equal(t, "foo", req.Cookie("bar"))
-	})
-}
-
-func Test_Client_Cookie_With_Server(t *testing.T) {
-	t.Parallel()
-
-	handler := func(c fiber.Ctx) error {
-		return c.SendString(
-			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"),
-		)
-	}
-
-	wrapAgent := func(c *Client) {
-		c.SetCookie("k1", "v1").
-			SetCookies(map[string]string{
-				"k2": "v2",
-				"k3": "v3",
-				"k4": "v4",
-			}).DelCookies("k4")
-	}
-
-	testClient(t, handler, wrapAgent, "v1v2v3")
-}
-
-func Test_Client_CookieJar(t *testing.T) {
-	handler := func(c fiber.Ctx) error {
-		return c.SendString(
-			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"),
-		)
-	}
-
-	jar := AcquireCookieJar()
-	defer ReleaseCookieJar(jar)
-
-	jar.SetKeyValue("example.com", "k1", "v1")
-	jar.SetKeyValue("example.com", "k2", "v2")
-	jar.SetKeyValue("example", "k3", "v3")
-
-	wrapAgent := func(c *Client) {
-		c.SetCookieJar(jar)
-	}
-	testClient(t, handler, wrapAgent, "v1v2")
+	clientTestBSingleValue[*Client]{
+		noun:      "cookie",
+		fresh:     clientTestAFresh,
+		get:       (*Client).Cookie,
+		set:       (*Client).SetCookie,
+		setMany:   (*Client).SetCookies,
+		setStruct: (*Client).SetCookiesWithStruct,
+		del:       (*Client).DelCookies,
+	}.run(t)
 }
 
 func Test_Client_CookieJar_Response(t *testing.T) {
 	t.Parallel()
+	// The jar holds k1 and k2 for example.com and k3 for example, which a request
+	// to example.com does not carry. The response may set k4 before it answers.
+	for _, tc := range []struct {
+		set   func(c fiber.Ctx) // sets the response's cookies; nil for none
+		name  string
+		count int // the cookies the jar holds for example.com afterwards
+	}{
+		{name: "nothing set", count: 2},
+		{
+			name: "without expiration", count: 3,
+			set: func(c fiber.Ctx) { c.Cookie(&fiber.Cookie{Name: "k4", Value: "v4"}) },
+		},
+		{
+			name: "with expiration", count: 2,
+			set: func(c fiber.Ctx) {
+				c.Cookie(&fiber.Cookie{Name: "k4", Value: "v4", Expires: time.Now().Add(1 * time.Nanosecond)})
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			jar := clientTestCJar(t)
+			jar.SetKeyValue("example.com", "k1", "v1")
+			jar.SetKeyValue("example.com", "k2", "v2")
+			jar.SetKeyValue("example", "k3", "v3")
 
-	t.Run("without expiration", func(t *testing.T) {
-		t.Parallel()
-		handler := func(c fiber.Ctx) error {
-			c.Cookie(&fiber.Cookie{
-				Name:  "k4",
-				Value: "v4",
-			})
-			return c.SendString(
-				c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"),
-			)
-		}
+			handler := func(c fiber.Ctx) error {
+				if tc.set != nil {
+					tc.set(c)
+				}
+				return c.SendString(c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"))
+			}
+			testClient(t, handler, func(c *Client) { c.SetCookieJar(jar) }, "v1v2")
 
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
-
-		jar.SetKeyValue("example.com", "k1", "v1")
-		jar.SetKeyValue("example.com", "k2", "v2")
-		jar.SetKeyValue("example", "k3", "v3")
-
-		wrapAgent := func(c *Client) {
-			c.SetCookieJar(jar)
-		}
-		testClient(t, handler, wrapAgent, "v1v2")
-
-		require.Len(t, jar.getCookiesByHost("example.com"), 3)
-	})
-
-	t.Run("with expiration", func(t *testing.T) {
-		t.Parallel()
-		handler := func(c fiber.Ctx) error {
-			c.Cookie(&fiber.Cookie{
-				Name:    "k4",
-				Value:   "v4",
-				Expires: time.Now().Add(1 * time.Nanosecond),
-			})
-			return c.SendString(
-				c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"),
-			)
-		}
-
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
-
-		jar.SetKeyValue("example.com", "k1", "v1")
-		jar.SetKeyValue("example.com", "k2", "v2")
-		jar.SetKeyValue("example", "k3", "v3")
-
-		wrapAgent := func(c *Client) {
-			c.SetCookieJar(jar)
-		}
-		testClient(t, handler, wrapAgent, "v1v2")
-
-		require.Len(t, jar.getCookiesByHost("example.com"), 2)
-	})
+			require.Len(t, jar.getCookiesByHost("example.com"), tc.count)
+		})
+	}
 
 	t.Run("override cookie value", func(t *testing.T) {
 		t.Parallel()
 		handler := func(c fiber.Ctx) error {
-			c.Cookie(&fiber.Cookie{
-				Name:  "k1",
-				Value: "v2",
-			})
-			return c.SendString(
-				c.Cookies("k1") + c.Cookies("k2"),
-			)
+			c.Cookie(&fiber.Cookie{Name: "k1", Value: "v2"})
+			return c.SendString(c.Cookies("k1") + c.Cookies("k2"))
 		}
 
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
-
+		jar := clientTestCJar(t)
 		jar.SetKeyValue("example.com", "k1", "v1")
 		jar.SetKeyValue("example.com", "k2", "v2")
 
-		wrapAgent := func(c *Client) {
-			c.SetCookieJar(jar)
-		}
-		testClient(t, handler, wrapAgent, "v1v2")
+		testClient(t, handler, func(c *Client) { c.SetCookieJar(jar) }, "v1v2")
 
 		for _, cookie := range jar.getCookiesByHost("example.com") {
 			if string(cookie.Key()) == "k1" {
@@ -1769,378 +1042,107 @@ func Test_Client_CookieJar_Response(t *testing.T) {
 
 	t.Run("different domain", func(t *testing.T) {
 		t.Parallel()
-		handler := func(c fiber.Ctx) error {
-			return c.SendString(c.Cookies("k1"))
-		}
+		handler := func(c fiber.Ctx) error { return c.SendString(c.Cookies("k1")) }
 
-		jar := AcquireCookieJar()
-		defer ReleaseCookieJar(jar)
-
+		jar := clientTestCJar(t)
 		jar.SetKeyValue("example.com", "k1", "v1")
 
-		wrapAgent := func(c *Client) {
-			c.SetCookieJar(jar)
-		}
-		testClient(t, handler, wrapAgent, "v1")
+		testClient(t, handler, func(c *Client) { c.SetCookieJar(jar) }, "v1")
 
 		require.Len(t, jar.getCookiesByHost("example.com"), 1)
 		require.Empty(t, jar.getCookiesByHost("example"))
 	})
 }
 
-func Test_Client_Referer(t *testing.T) {
-	handler := func(c fiber.Ctx) error {
-		return c.Send(c.Request().Header.Referer())
-	}
-
-	wrapAgent := func(c *Client) {
-		c.SetReferer("http://referer.com")
-	}
-
-	testClient(t, handler, wrapAgent, "http://referer.com")
-}
-
 func Test_Client_QueryParam(t *testing.T) {
 	t.Parallel()
-
-	t.Run("add param", func(t *testing.T) {
-		t.Parallel()
-		req := New()
-		req.AddParam("foo", "bar").AddParam("foo", "fiber")
-
-		res := req.Param("foo")
-		require.Len(t, res, 2)
-		require.Equal(t, "bar", res[0])
-		require.Equal(t, "fiber", res[1])
-	})
-
-	t.Run("set param", func(t *testing.T) {
-		t.Parallel()
-		req := New()
-		req.AddParam("foo", "bar").SetParam("foo", "fiber")
-
-		res := req.Param("foo")
-		require.Len(t, res, 1)
-		require.Equal(t, "fiber", res[0])
-	})
-
-	t.Run("set param overrides every value", func(t *testing.T) {
-		t.Parallel()
-		req := New()
-		req.AddParams(map[string][]string{"foo": {"bar", "buaa"}, "bar": {"foo"}}).SetParam("foo", "fiber")
-
-		require.Equal(t, []string{"fiber"}, req.Param("foo"))
-		require.Equal(t, []string{"foo"}, req.Param("bar"))
-	})
-
-	t.Run("set params overrides every value", func(t *testing.T) {
-		t.Parallel()
-		req := New()
-		req.AddParams(map[string][]string{"foo": {"bar", "buaa"}, "bar": {"foo"}}).
-			SetParams(map[string]string{"foo": "fiber"})
-
-		require.Equal(t, []string{"fiber"}, req.Param("foo"))
-		require.Equal(t, []string{"foo"}, req.Param("bar"))
-	})
-
-	t.Run("add params", func(t *testing.T) {
-		t.Parallel()
-		req := New()
-		req.SetParam("foo", "bar").
-			AddParams(map[string][]string{
-				"foo": {"fiber", "buaa"},
-				"bar": {"foo"},
-			})
-
-		res := req.Param("foo")
-		require.Len(t, res, 3)
-		require.Equal(t, "bar", res[0])
-		require.Equal(t, "fiber", res[1])
-		require.Equal(t, "buaa", res[2])
-
-		res = req.Param("bar")
-		require.Len(t, res, 1)
-		require.Equal(t, "foo", res[0])
-	})
-
-	t.Run("set headers", func(t *testing.T) {
-		t.Parallel()
-		req := New()
-		req.SetParam("foo", "bar").
-			SetParams(map[string]string{
-				"foo": "fiber",
-				"bar": "foo",
-			})
-
-		res := req.Param("foo")
-		require.Len(t, res, 1)
-		require.Equal(t, "fiber", res[0])
-
-		res = req.Param("bar")
-		require.Len(t, res, 1)
-		require.Equal(t, "foo", res[0])
-	})
-
-	t.Run("set params with struct", func(t *testing.T) {
-		t.Parallel()
-
-		type args struct {
-			TString   string
-			TSlice    []string
-			TIntSlice []int `param:"int_slice"`
-			TInt      int
-			TFloat    float64
-			TBool     bool
-		}
-
-		p := New()
-		p.SetParamsWithStruct(&args{
-			TInt:      5,
-			TString:   "string",
-			TFloat:    3.1,
-			TBool:     true,
-			TSlice:    []string{"foo", "bar"},
-			TIntSlice: []int{1, 2},
-		})
-
-		require.Empty(t, p.Param("unexport"))
-
-		require.Len(t, p.Param("TInt"), 1)
-		require.Equal(t, "5", p.Param("TInt")[0])
-
-		require.Len(t, p.Param("TString"), 1)
-		require.Equal(t, "string", p.Param("TString")[0])
-
-		require.Len(t, p.Param("TFloat"), 1)
-		require.Equal(t, "3.1", p.Param("TFloat")[0])
-
-		require.Len(t, p.Param("TBool"), 1)
-
-		tslice := p.Param("TSlice")
-		require.Len(t, tslice, 2)
-		require.Equal(t, "foo", tslice[0])
-		require.Equal(t, "bar", tslice[1])
-
-		tint := p.Param("TSlice")
-		require.Len(t, tint, 2)
-		require.Equal(t, "foo", tint[0])
-		require.Equal(t, "bar", tint[1])
-	})
-
-	t.Run("del params", func(t *testing.T) {
-		t.Parallel()
-		req := New()
-		req.SetParam("foo", "bar").
-			SetParams(map[string]string{
-				"foo": "fiber",
-				"bar": "foo",
-			}).DelParams("foo", "bar")
-
-		res := req.Param("foo")
-		require.Empty(t, res)
-
-		res = req.Param("bar")
-		require.Empty(t, res)
-	})
-}
-
-func Test_Client_QueryParam_With_Server(t *testing.T) {
-	handler := func(c fiber.Ctx) error {
-		_, _ = c.WriteString(c.Query("k1")) //nolint:errcheck // It is fine to ignore the error here
-		_, _ = c.WriteString(c.Query("k2")) //nolint:errcheck // It is fine to ignore the error here
-
-		return nil
+	params := clientTestBMultiValue[*Client]{
+		noun:      "param",
+		fresh:     clientTestAFresh,
+		add:       (*Client).AddParam,
+		set:       (*Client).SetParam,
+		addMany:   (*Client).AddParams,
+		setMany:   (*Client).SetParams,
+		setStruct: (*Client).SetParamsWithStruct,
+		del:       (*Client).DelParams,
+		get:       (*Client).Param,
 	}
-
-	wrapAgent := func(c *Client) {
-		c.SetParam("k1", "v1").
-			AddParam("k2", "v2")
-	}
-
-	testClient(t, handler, wrapAgent, "v1v2")
+	params.run(t)
+	params.runStruct(t)
+	params.runDel(t)
+	params.runOverride(t, "set param overrides every value", "set params overrides every value")
 }
 
 func Test_Client_PathParam(t *testing.T) {
 	t.Parallel()
-
-	t.Run("set path param", func(t *testing.T) {
-		t.Parallel()
-		req := New().
-			SetPathParam("foo", "bar")
-		require.Equal(t, "bar", req.PathParam("foo"))
-
-		req.SetPathParam("foo", "bar1")
-		require.Equal(t, "bar1", req.PathParam("foo"))
-	})
-
-	t.Run("set path params", func(t *testing.T) {
-		t.Parallel()
-		req := New().
-			SetPathParams(map[string]string{
-				"foo": "bar",
-				"bar": "foo",
-			})
-		require.Equal(t, "bar", req.PathParam("foo"))
-		require.Equal(t, "foo", req.PathParam("bar"))
-
-		req.SetPathParams(map[string]string{
-			"foo": "bar1",
-		})
-		require.Equal(t, "bar1", req.PathParam("foo"))
-		require.Equal(t, "foo", req.PathParam("bar"))
-	})
-
-	t.Run("set path params with struct", func(t *testing.T) {
-		t.Parallel()
-		type args struct {
-			CookieString string `path:"string"`
-			CookieInt    int    `path:"int"`
-		}
-
-		req := New().SetPathParamsWithStruct(&args{
-			CookieInt:    5,
-			CookieString: "foo",
-		})
-
-		require.Equal(t, "5", req.PathParam("int"))
-		require.Equal(t, "foo", req.PathParam("string"))
-	})
-
-	t.Run("del path params", func(t *testing.T) {
-		t.Parallel()
-		req := New().
-			SetPathParams(map[string]string{
-				"foo": "bar",
-				"bar": "foo",
-			})
-		require.Equal(t, "bar", req.PathParam("foo"))
-		require.Equal(t, "foo", req.PathParam("bar"))
-
-		req.DelPathParams("foo")
-		require.Empty(t, req.PathParam("foo"))
-		require.Equal(t, "foo", req.PathParam("bar"))
-	})
+	clientTestBSingleValue[*Client]{
+		noun:      "path param",
+		fresh:     clientTestAFresh,
+		get:       (*Client).PathParam,
+		set:       (*Client).SetPathParam,
+		setMany:   (*Client).SetPathParams,
+		setStruct: (*Client).SetPathParamsWithStruct,
+		del:       (*Client).DelPathParams,
+	}.run(t)
 }
 
 func Test_Client_PathParam_With_Server(t *testing.T) {
 	app, dial, start := createHelperServer(t)
 
-	app.Get("/:test", func(c fiber.Ctx) error {
-		return c.SendString(c.Params("test"))
-	})
+	app.Get("/:test", func(c fiber.Ctx) error { return c.SendString(c.Params("test")) })
 
 	go start()
 
-	resp, err := New().SetDial(dial).
-		SetPathParam("path", "test").
-		Get("http://example.com/:path")
+	resp, err := New().SetDial(dial).SetPathParam("path", "test").Get("http://example.com/:path")
 
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Equal(t, "test", resp.String())
+	clientTestARequireOK(t, resp, err, "test")
 }
 
 func Test_Client_TLS(t *testing.T) {
 	t.Parallel()
+	// The server accepts TLS 1.3 only and the client offers TLS 1.2 at most.
+	versionMismatch := func(server, client *tls.Config) {
+		client.MaxVersion = tls.VersionTLS12
+		server.MinVersion = tls.VersionTLS13
+	}
 
-	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		tune    func(server, client *tls.Config)
+		name    string
+		trusted bool // whether the client is given the config that trusts the server
+		works   bool
+	}{
+		{name: "trusted config", trusted: true, works: true},
+		{name: "protocol version mismatch", tune: versionMismatch, trusted: true},
+		{name: "empty TLSConfig"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, addr, clientTLSConf := clientTestAStartTLSServer(t, "tls", tc.tune)
 
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+			client := New()
+			if tc.trusted {
+				client.SetTLSConfig(clientTLSConf)
+			}
+			resp, err := client.Get("https://" + addr)
 
-	ln = tls.NewListener(ln, serverTLSConf)
-
-	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("tls")
-	})
-
-	go func() {
-		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
-	time.Sleep(1 * time.Second)
-
-	client := New()
-	resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
-
-	require.NoError(t, err)
-	cfg := client.TLSConfig()
-	require.Same(t, clientTLSConf, cfg)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Equal(t, "tls", resp.String())
-}
-
-func Test_Client_TLS_Error(t *testing.T) {
-	t.Parallel()
-
-	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
-	clientTLSConf.MaxVersion = tls.VersionTLS12
-	serverTLSConf.MinVersion = tls.VersionTLS13
-	require.NoError(t, err)
-
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-
-	ln = tls.NewListener(ln, serverTLSConf)
-
-	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("tls")
-	})
-
-	go func() {
-		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
-	time.Sleep(1 * time.Second)
-
-	client := New()
-	resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
-
-	require.Error(t, err)
-	cfg := client.TLSConfig()
-	require.Same(t, clientTLSConf, cfg)
-	require.Nil(t, resp)
-}
-
-func Test_Client_TLS_Empty_TLSConfig(t *testing.T) {
-	t.Parallel()
-
-	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
-	require.NoError(t, err)
-
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-
-	ln = tls.NewListener(ln, serverTLSConf)
-
-	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("tls")
-	})
-
-	go func() {
-		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
-	time.Sleep(1 * time.Second)
-
-	client := New()
-	resp, err := client.Get("https://" + ln.Addr().String())
-
-	require.Error(t, err)
-	require.NotEqual(t, clientTLSConf, client.TLSConfig())
-	require.Nil(t, resp)
+			if tc.trusted {
+				require.Same(t, clientTLSConf, client.TLSConfig())
+			} else {
+				require.NotEqual(t, clientTLSConf, client.TLSConfig())
+			}
+			if tc.works {
+				clientTestARequireOK(t, resp, err, "tls")
+				return
+			}
+			require.Error(t, err)
+			require.Nil(t, resp)
+		})
+	}
 }
 
 func Test_Client_SetCertificates(t *testing.T) {
 	t.Parallel()
-
 	serverTLSConf, _, err := tlstest.GetTLSConfigs()
 	require.NoError(t, err)
 
@@ -2150,14 +1152,12 @@ func Test_Client_SetCertificates(t *testing.T) {
 
 func Test_Client_SetRootCertificate(t *testing.T) {
 	t.Parallel()
-
 	client := New().SetRootCertificate("../.github/testdata/ssl.pem")
 	require.NotNil(t, client.TLSConfig().RootCAs)
 }
 
 func Test_Client_SetRootCertificateFromString(t *testing.T) {
 	t.Parallel()
-
 	file, err := os.Open("../.github/testdata/ssl.pem")
 	defer func() { require.NoError(t, file.Close()) }()
 	require.NoError(t, err)
@@ -2171,7 +1171,6 @@ func Test_Client_SetRootCertificateFromString(t *testing.T) {
 
 func Test_Client_R(t *testing.T) {
 	t.Parallel()
-
 	client := New()
 	req := client.R()
 
@@ -2180,45 +1179,31 @@ func Test_Client_R(t *testing.T) {
 }
 
 func Test_Replace(t *testing.T) {
-	app, dial, start := createHelperServer(t)
-
-	app.Get("/", func(c fiber.Ctx) error {
+	dial := clientTestCServeGet(t, func(c fiber.Ctx) error {
 		return c.SendString(string(c.Request().Header.Peek("k1")))
 	})
 
-	go start()
-
 	C().SetDial(dial)
 	resp, err := Get("http://example.com")
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Empty(t, resp.String())
+	clientTestARequireOK(t, resp, err, "")
 
 	r := New().SetDial(dial).SetHeader("k1", "v1")
 	clean := Replace(r)
 	resp, err = Get("http://example.com")
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Equal(t, "v1", resp.String())
+	clientTestARequireOK(t, resp, err, "v1")
 
 	clean()
 
 	C().SetDial(dial)
 	resp, err = Get("http://example.com")
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Empty(t, resp.String())
+	clientTestARequireOK(t, resp, err, "")
 
 	C().SetDial(nil)
 }
 
 func Test_Replace_ConcurrentAccess(t *testing.T) {
 	original := C()
-	t.Cleanup(func() {
-		defaultClient.Store(original)
-	})
+	t.Cleanup(func() { defaultClient.Store(original) })
 
 	clients := []*Client{New(), New(), New()}
 
@@ -2254,115 +1239,105 @@ func Test_Replace_ConcurrentAccess(t *testing.T) {
 	require.NotNil(t, C())
 }
 
+// clientAAny adapts a getter of a request to the form the rows of the config test use.
+func clientAAny[T any](get func(req *Request) T) func(req *Request) any {
+	return func(req *Request) any { return get(req) }
+}
+
 func Test_Set_Config_To_Request(t *testing.T) {
 	t.Parallel()
+	type ctxKey struct{}
+	var key ctxKey = struct{}{}
 
-	t.Run("set ctx", func(t *testing.T) {
-		t.Parallel()
+	type payload struct {
+		Foo string `json:"foo"`
+	}
 
-		type ctxKey struct{}
-		var key ctxKey = struct{}{}
+	body := func(req *Request) any { return req.body }
 
-		ctx := context.Background()
-		ctx = context.WithValue(ctx, key, "v1")
-		req := AcquireRequest()
+	// Each row applies cfg to a fresh request and expects got to read want back from it.
+	tests := []struct {
+		got  func(req *Request) any
+		want any
+		name string
+		cfg  Config
+	}{
+		{
+			name: "set ctx",
+			cfg:  Config{Ctx: context.WithValue(context.Background(), key, "v1")},
+			got:  func(req *Request) any { return req.Context().Value(key) },
+			want: "v1",
+		},
+		{name: "set useragent", cfg: Config{UserAgent: "agent"}, got: clientAAny((*Request).UserAgent), want: "agent"},
+		{name: "set referer", cfg: Config{Referer: "referer"}, got: clientAAny((*Request).Referer), want: "referer"},
+		{
+			name: "set header",
+			cfg:  Config{Header: map[string]string{"k1": "v1"}},
+			got:  func(req *Request) any { return req.Header("k1")[0] },
+			want: "v1",
+		},
+		{
+			name: "set params",
+			cfg:  Config{Param: map[string]string{"k1": "v1"}},
+			got:  func(req *Request) any { return req.Param("k1")[0] },
+			want: "v1",
+		},
+		{
+			name: "set cookies",
+			cfg:  Config{Cookie: map[string]string{"k1": "v1"}},
+			got:  func(req *Request) any { return req.Cookie("k1") },
+			want: "v1",
+		},
+		{
+			name: "set pathparam",
+			cfg:  Config{PathParam: map[string]string{"k1": "v1"}},
+			got:  func(req *Request) any { return req.PathParam("k1") },
+			want: "v1",
+		},
+		{
+			name: "set timeout", cfg: Config{Timeout: 1 * time.Second},
+			got: clientAAny((*Request).Timeout), want: 1 * time.Second,
+		},
+		{name: "set maxredirects", cfg: Config{MaxRedirects: 1}, got: clientAAny((*Request).MaxRedirects), want: 1},
+		{
+			name: "set redirect sensitive headers", cfg: Config{RedirectSensitiveHeaders: []string{" X-Api-Key", ""}},
+			got: clientAAny((*Request).RedirectSensitiveHeaders), want: []string{"X-Api-Key"},
+		},
+		{
+			// a string body is stored as raw bytes
+			name: "set body string", cfg: Config{Body: "test"}, got: body, want: []byte("test"),
+		},
+		{name: "set body byte", cfg: Config{Body: []byte("test")}, got: body, want: []byte("test")},
+		{
+			// any other body is kept as given, to be JSON-encoded when the request is sent
+			name: "set body json", cfg: Config{Body: payload{Foo: "bar"}}, got: body, want: payload{Foo: "bar"},
+		},
+		{
+			name: "set body map", cfg: Config{Body: map[string]string{"foo": "bar"}},
+			got: body, want: map[string]string{"foo": "bar"},
+		},
+		{
+			name: "set file",
+			cfg:  Config{File: []*File{{name: "test", path: "path"}}},
+			got:  func(req *Request) any { return req.File("test").path },
+			want: "path",
+		},
+	}
 
-		setConfigToRequest(req, Config{Ctx: ctx})
+	for i := range tests {
+		tc := &tests[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req := AcquireRequest()
 
-		require.Equal(t, "v1", req.Context().Value(key))
-	})
+			setConfigToRequest(req, tc.cfg)
 
-	t.Run("set useragent", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-
-		setConfigToRequest(req, Config{UserAgent: "agent"})
-
-		require.Equal(t, "agent", req.UserAgent())
-	})
-
-	t.Run("set referer", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-
-		setConfigToRequest(req, Config{Referer: "referer"})
-
-		require.Equal(t, "referer", req.Referer())
-	})
-
-	t.Run("set header", func(t *testing.T) {
-		req := AcquireRequest()
-
-		setConfigToRequest(req, Config{Header: map[string]string{
-			"k1": "v1",
-		}})
-
-		require.Equal(t, "v1", req.Header("k1")[0])
-	})
-
-	t.Run("set params", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-
-		setConfigToRequest(req, Config{Param: map[string]string{
-			"k1": "v1",
-		}})
-
-		require.Equal(t, "v1", req.Param("k1")[0])
-	})
-
-	t.Run("set cookies", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-
-		setConfigToRequest(req, Config{Cookie: map[string]string{
-			"k1": "v1",
-		}})
-
-		require.Equal(t, "v1", req.Cookie("k1"))
-	})
-
-	t.Run("set pathparam", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-
-		setConfigToRequest(req, Config{PathParam: map[string]string{
-			"k1": "v1",
-		}})
-
-		require.Equal(t, "v1", req.PathParam("k1"))
-	})
-
-	t.Run("set timeout", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-
-		setConfigToRequest(req, Config{Timeout: 1 * time.Second})
-
-		require.Equal(t, 1*time.Second, req.Timeout())
-	})
-
-	t.Run("set maxredirects", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-
-		setConfigToRequest(req, Config{MaxRedirects: 1})
-
-		require.Equal(t, 1, req.MaxRedirects())
-	})
-
-	t.Run("set redirect sensitive headers", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-
-		setConfigToRequest(req, Config{RedirectSensitiveHeaders: []string{" X-Api-Key", ""}})
-
-		require.Equal(t, []string{"X-Api-Key"}, req.RedirectSensitiveHeaders())
-	})
+			require.Equal(t, tc.want, tc.got(req))
+		})
+	}
 
 	t.Run("a config without redirect sensitive headers leaves the request's", func(t *testing.T) {
 		t.Parallel()
-
 		for _, names := range [][]string{nil, {}} {
 			req := AcquireRequest().SetRedirectSensitiveHeaders("X-Api-Key")
 
@@ -2371,135 +1346,49 @@ func Test_Set_Config_To_Request(t *testing.T) {
 			require.Equal(t, []string{"X-Api-Key"}, req.RedirectSensitiveHeaders())
 		}
 	})
-
-	t.Run("set body string", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-
-		setConfigToRequest(req, Config{Body: "test"})
-
-		body, ok := req.body.([]byte)
-		require.True(t, ok)
-		require.Equal(t, "test", string(body))
-	})
-
-	t.Run("set body byte", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-
-		setConfigToRequest(req, Config{Body: []byte("test")})
-
-		require.Equal(t, []byte("test"), req.body)
-	})
-
-	t.Run("set body json", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-
-		type payload struct {
-			Foo string `json:"foo"`
-		}
-
-		setConfigToRequest(req, Config{Body: payload{Foo: "bar"}})
-
-		payloadBody, ok := req.body.(payload)
-		require.True(t, ok)
-		require.Equal(t, payload{Foo: "bar"}, payloadBody)
-	})
-
-	t.Run("set body map", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-
-		setConfigToRequest(req, Config{Body: map[string]string{
-			"foo": "bar",
-		}})
-
-		require.Equal(t, map[string]string{
-			"foo": "bar",
-		}, req.body)
-	})
-
-	t.Run("set file", func(t *testing.T) {
-		t.Parallel()
-		req := AcquireRequest()
-
-		setConfigToRequest(req, Config{File: []*File{
-			{
-				name: "test",
-				path: "path",
-			},
-		}})
-
-		require.Equal(t, "path", req.File("test").path)
-	})
 }
 
 func Test_Client_SetProxyURL(t *testing.T) {
 	t.Parallel()
-
 	app, dial, start := createHelperServer(t)
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Get("isProxy"))
-	})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Get("isProxy")) })
 
 	go start()
 
-	fasthttpClient := &fasthttp.Client{
-		Dial:                     dial,
-		NoDefaultUserAgentHeader: true,
-		DisablePathNormalizing:   true,
-	}
+	fasthttpClient := &fasthttp.Client{Dial: dial, NoDefaultUserAgentHeader: true, DisablePathNormalizing: true}
 
-	// Create a simple proxy server
-	proxyServer := fiber.New()
+	t.Cleanup(func() { require.NoError(t, app.Shutdown()) })
 
-	proxyServer.Use("*", func(c fiber.Ctx) error {
-		req := fasthttp.AcquireRequest()
-		resp := fasthttp.AcquireResponse()
+	proxyAddr := clientAServeTCP(t, func(proxy *fiber.App) {
+		proxy.Use("*", func(c fiber.Ctx) error {
+			req := fasthttp.AcquireRequest()
+			resp := fasthttp.AcquireResponse()
 
-		req.SetRequestURI(c.BaseURL())
-		req.Header.SetMethod(fasthttp.MethodGet)
+			req.SetRequestURI(c.BaseURL())
+			req.Header.SetMethod(fasthttp.MethodGet)
 
-		for key, value := range c.Request().Header.All() {
-			req.Header.AddBytesKV(key, value)
-		}
+			for key, value := range c.Request().Header.All() {
+				req.Header.AddBytesKV(key, value)
+			}
 
-		req.Header.Set("isProxy", "true")
+			req.Header.Set("isProxy", "true")
 
-		if err := fasthttpClient.Do(req, resp); err != nil {
-			return err
-		}
+			if err := fasthttpClient.Do(req, resp); err != nil {
+				return err
+			}
 
-		c.Status(resp.StatusCode())
-		c.RequestCtx().SetBody(resp.Body())
+			c.Status(resp.StatusCode())
+			c.RequestCtx().SetBody(resp.Body())
 
-		return nil
+			return nil
+		})
 	})
-
-	addrChan := make(chan string)
-	go func() {
-		assert.NoError(t, proxyServer.Listen(":0", fiber.ListenConfig{
-			DisableStartupMessage: true,
-			ListenerAddrFunc: func(addr net.Addr) {
-				addrChan <- addr.String()
-			},
-		}))
-	}()
-
-	t.Cleanup(func() {
-		require.NoError(t, app.Shutdown())
-	})
-
-	time.Sleep(1 * time.Second)
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-
 		client := New()
-		err := client.SetProxyURL(<-addrChan)
 
-		require.NoError(t, err)
+		require.NoError(t, client.SetProxyURL(proxyAddr))
 
 		resp, err := client.Get("http://localhost:3000")
 		require.NoError(t, err)
@@ -2512,17 +1401,13 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		t.Parallel()
 		client := New()
 
-		err := client.SetProxyURL("ftp://127.0.0.1:8080")
-		require.Error(t, err)
+		require.Error(t, client.SetProxyURL("ftp://127.0.0.1:8080"))
 	})
 }
 
 func Test_Client_SetRetryConfig(t *testing.T) {
 	t.Parallel()
-	retryConfig := &retry.Config{
-		InitialInterval: 1 * time.Second,
-		MaxRetryCount:   3,
-	}
+	retryConfig := &retry.Config{InitialInterval: 1 * time.Second, MaxRetryCount: 3}
 
 	core, client, req := newCore(), New(), AcquireRequest()
 	req.SetURL("http://exampleretry.com")
@@ -2535,14 +1420,7 @@ func Test_Client_SetRetryConfig(t *testing.T) {
 }
 
 func Benchmark_Client_Request(b *testing.B) {
-	app, dial, start := createHelperServer(b)
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("hello world")
-	})
-
-	go start()
-
-	client := New().SetDial(dial)
+	client := New().SetDial(clientTestCServeGet(b, func(c fiber.Ctx) error { return c.SendString("hello world") }))
 
 	b.ReportAllocs()
 
@@ -2578,14 +1456,7 @@ func Benchmark_Client_Request_RetryRedirects(b *testing.B) {
 }
 
 func Benchmark_Client_Request_Parallel(b *testing.B) {
-	app, dial, start := createHelperServer(b)
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("hello world")
-	})
-
-	go start()
-
-	client := New().SetDial(dial)
+	client := New().SetDial(clientTestCServeGet(b, func(c fiber.Ctx) error { return c.SendString("hello world") }))
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -2629,10 +1500,7 @@ func Benchmark_Client_Request_Send_ContextCancel(b *testing.B) {
 	for b.Loop() {
 		ctx, cancel := context.WithCancel(context.Background())
 
-		req := AcquireRequest().
-			SetClient(client).
-			SetURL("http://example.com").
-			SetMethod(fiber.MethodPost).
+		req := AcquireRequest().SetClient(client).SetURL("http://example.com").SetMethod(fiber.MethodPost).
 			SetContext(ctx)
 
 		go func(r *Request) {
@@ -2660,7 +1528,6 @@ func Benchmark_Client_Request_Send_ContextCancel(b *testing.B) {
 
 func Test_Client_StreamResponseBody(t *testing.T) {
 	t.Parallel()
-
 	t.Run("default value", func(t *testing.T) {
 		t.Parallel()
 		client := New()
@@ -2696,11 +1563,7 @@ func Test_Client_StreamResponseBody(t *testing.T) {
 	t.Run("with lb client", func(t *testing.T) {
 		t.Parallel()
 		hostClient := &fasthttp.HostClient{Addr: "example.com:80"}
-		lbClient := &fasthttp.LBClient{
-			Clients: []fasthttp.BalancingClient{
-				hostClient,
-			},
-		}
+		lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hostClient}}
 		client := NewWithLBClient(lbClient)
 		client.SetStreamResponseBody(true)
 		require.True(t, client.StreamResponseBody())
@@ -2789,8 +1652,7 @@ func Test_Client_MaxResponseBodySize(t *testing.T) {
 
 func Test_Client_UnparsableCookieAttributesIgnored(t *testing.T) {
 	t.Parallel()
-
-	server := startTestServer(t, func(app *fiber.App) {
+	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Response().Header.Add(fiber.HeaderSetCookie, "a=1; Max-Age=-1")
 			c.Response().Header.Add(fiber.HeaderSetCookie, "b=2; Expires=not-a-date")
@@ -2798,12 +1660,8 @@ func Test_Client_UnparsableCookieAttributesIgnored(t *testing.T) {
 			return c.SendString("ok")
 		})
 	})
-	defer server.stop()
 
-	client := New().SetDial(server.dial())
-	resp, err := client.Get("http://example.com/")
-	require.NoError(t, err)
-	defer resp.Close()
+	resp := clientTestBClientGet(t, client, "http://example.com/")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	require.Equal(t, "ok", resp.String())
 
@@ -2816,19 +1674,10 @@ func Test_Client_UnparsableCookieAttributesIgnored(t *testing.T) {
 
 func Test_Client_ResponseHookError_KeepsCallerRequest(t *testing.T) {
 	t.Parallel()
+	client := clientAOKClient(t)
+	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error { return errors.New("hook failed") })
 
-	server := startTestServer(t, func(app *fiber.App) {
-		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
-	})
-	defer server.stop()
-
-	client := New().SetDial(server.dial())
-	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
-		return errors.New("hook failed")
-	})
-
-	req := AcquireRequest()
-	defer ReleaseRequest(req)
+	req := clientTestBRequest(t)
 	req.SetClient(client).SetURL("http://example.com/")
 
 	_, err := req.Send()
@@ -2839,7 +1688,6 @@ func Test_Client_ResponseHookError_KeepsCallerRequest(t *testing.T) {
 
 func Test_Request_Reset_ClearsClient(t *testing.T) {
 	t.Parallel()
-
 	custom := New()
 	req := AcquireRequest()
 	req.SetClient(custom)
@@ -2850,8 +1698,7 @@ func Test_Request_Reset_ClearsClient(t *testing.T) {
 
 func Test_Client_Debug_DoesNotDrainStream(t *testing.T) {
 	t.Parallel()
-
-	server := startTestServer(t, func(app *fiber.App) {
+	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
 			return c.SendStreamWriter(func(w *bufio.Writer) {
@@ -2860,24 +1707,15 @@ func Test_Client_Debug_DoesNotDrainStream(t *testing.T) {
 			})
 		})
 	})
-	defer server.stop()
+	client.SetStreamResponseBody(true).Debug()
 
-	client := New().SetDial(server.dial()).SetStreamResponseBody(true).Debug()
-
-	resp, err := client.Get("http://example.com/")
-	require.NoError(t, err)
-	defer resp.Close()
-	stream := resp.BodyStream()
-	require.NotNil(t, stream, "the debug log must not consume the streamed body")
-	body, err := io.ReadAll(stream)
-	require.NoError(t, err)
-	require.Equal(t, "chunk", string(body))
+	resp := clientTestBClientGet(t, client, "http://example.com/")
+	clientTestBRequireStream(t, resp, "chunk", "the debug log must not consume the streamed body")
 }
 
 func Test_CookieJar_MaxAge(t *testing.T) {
 	t.Parallel()
-
-	server := startTestServer(t, func(app *fiber.App) {
+	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/set", func(c fiber.Ctx) error {
 			c.Response().Header.Add(fiber.HeaderSetCookie, "sid=abc; Max-Age=1")
 			return c.SendString("set")
@@ -2886,15 +1724,12 @@ func Test_CookieJar_MaxAge(t *testing.T) {
 			c.Response().Header.Add(fiber.HeaderSetCookie, "sid=abc; Max-Age=0")
 			return c.SendString("del")
 		})
-		app.Get("/echo", func(c fiber.Ctx) error {
-			return c.SendString(c.Cookies("sid"))
-		})
+		app.Get("/echo", func(c fiber.Ctx) error { return c.SendString(c.Cookies("sid")) })
 	})
-	defer server.stop()
 
 	jar := AcquireCookieJar()
 	defer ReleaseCookieJar(jar)
-	client := New().SetDial(server.dial()).SetCookieJar(jar)
+	client.SetCookieJar(jar)
 
 	get := func(path string) string {
 		resp, err := client.Get("http://example.com" + path)
@@ -2914,33 +1749,36 @@ func Test_CookieJar_MaxAge(t *testing.T) {
 	require.Empty(t, get("/echo"), "the cookie must expire after Max-Age seconds")
 }
 
-// requireOwnedRequestReleased sends until the client hands a pooled request out
-// twice. Only a release puts one back where Acquire can find it, so a repeat is
-// proof that a failing send releases; with the release gone no send returns one
-// to the pool, so no pointer can ever repeat however many follow.
+// requireOwnedRequestReleased sends GETs for url through client, each of which
+// must fail with "boom" after a hook of the test recorded its request in seen,
+// until the client hands a pooled request out twice. Only a release puts one
+// back where Acquire can find it, so a repeat is proof that a failing send
+// releases; with the release gone no send returns one to the pool, so no
+// pointer can ever repeat however many follow.
 //
 // Which pointer comes back is not assertable: sync.Pool promises no relation
 // between what is put and what a later Get returns, and under -race with these
 // tests in parallel a specific request does not come back to a specific caller.
-func requireOwnedRequestReleased(t *testing.T, send func() (*Request, error)) {
+func requireOwnedRequestReleased(t *testing.T, client *Client, url string, seen **Request) {
 	t.Helper()
 
-	seen := make(map[*Request]struct{}, 64)
+	handedOut := make(map[*Request]struct{}, 64)
 	for range 64 {
-		req, err := send()
+		*seen = nil
+		_, err := client.Get(url)
+		req := *seen
 		require.ErrorContains(t, err, "boom")
 		require.NotNil(t, req)
-		if _, repeat := seen[req]; repeat {
+		if _, repeat := handedOut[req]; repeat {
 			return
 		}
-		seen[req] = struct{}{}
+		handedOut[req] = struct{}{}
 	}
 	t.Fatal("the client never reused a pooled request: the failing send strands it")
 }
 
 func Test_Client_PreHookError_ReleasesOwnedRequest(t *testing.T) {
 	t.Parallel()
-
 	var seen *Request
 	client := New()
 	client.AddRequestHook(func(_ *Client, req *Request) error {
@@ -2951,20 +1789,13 @@ func Test_Client_PreHookError_ReleasesOwnedRequest(t *testing.T) {
 
 	// Nothing is dispatched, so no response will ever carry the helper's own
 	// request back to the pool.
-	requireOwnedRequestReleased(t, func() (*Request, error) {
-		seen = nil
-		_, err := client.Get("http://example.com")
-		return seen, err
-	})
+	requireOwnedRequestReleased(t, client, "http://example.com", &seen)
 }
 
 func Test_Client_DispatchError_ReleasesOwnedRequest(t *testing.T) {
 	t.Parallel()
-
 	var seen *Request
-	client := New().SetDial(func(_ string) (net.Conn, error) {
-		return nil, errors.New("boom")
-	})
+	client := New().SetDial(func(_ string) (net.Conn, error) { return nil, errors.New("boom") })
 	client.AddRequestHook(func(_ *Client, req *Request) error {
 		seen = req
 		return nil
@@ -2972,25 +1803,14 @@ func Test_Client_DispatchError_ReleasesOwnedRequest(t *testing.T) {
 
 	// The send never produces a response, so the helper's own request is
 	// stranded unless this path releases it too.
-	requireOwnedRequestReleased(t, func() (*Request, error) {
-		seen = nil
-		_, err := client.Get("http://example.com")
-		return seen, err
-	})
+	requireOwnedRequestReleased(t, client, "http://example.com", &seen)
 }
 
 func Test_Client_AfterHookError_ReleasesOwnedRequest(t *testing.T) {
 	t.Parallel()
-
-	server := startTestServer(t, func(app *fiber.App) {
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("ok")
-		})
-	})
-	defer server.stop()
+	client := clientAOKClient(t)
 
 	var seen *Request
-	client := New().SetDial(server.dial())
 	client.AddResponseHook(func(_ *Client, _ *Response, req *Request) error {
 		seen = req
 		require.True(t, req.clientOwned)
@@ -2998,16 +1818,11 @@ func Test_Client_AfterHookError_ReleasesOwnedRequest(t *testing.T) {
 	})
 
 	// No response reaches the caller, so the request has to go back here.
-	requireOwnedRequestReleased(t, func() (*Request, error) {
-		seen = nil
-		_, err := client.Get("http://example.com/")
-		return seen, err
-	})
+	requireOwnedRequestReleased(t, client, "http://example.com/", &seen)
 }
 
 func Test_CookieJar_MaxAgePrecedence(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name   string
 		maxAge string
@@ -3029,23 +1844,14 @@ func Test_CookieJar_MaxAgePrecedence(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			jar := AcquireCookieJar()
 			t.Cleanup(jar.Release)
 
-			uri := fasthttp.AcquireURI()
-			t.Cleanup(func() { fasthttp.ReleaseURI(uri) })
-			require.NoError(t, uri.Parse(nil, []byte("http://example.com/")))
-
-			resp := fasthttp.AcquireResponse()
-			t.Cleanup(func() { fasthttp.ReleaseResponse(resp) })
 			expires := time.Now().Add(time.Hour).UTC().Format(time.RFC1123)
-			resp.Header.Add("Set-Cookie", "sid=x; "+tc.maxAge+"; Expires="+expires)
-
-			jar.parseCookiesFromResp([]byte("example.com"), []byte("/"), resp)
+			clientTestCReceive(jar, "example.com", "/", "sid=x; "+tc.maxAge+"; Expires="+expires)
 
 			// RFC 6265 §5.2.2: Max-Age wins over Expires, but only when it is an integer.
-			cookies := jar.Get(uri)
+			cookies := jarGet(t, jar, "http://example.com/")
 			if !tc.kept {
 				require.Empty(t, cookies)
 				return
@@ -3064,7 +1870,6 @@ func Test_CookieJar_MaxAgePrecedence(t *testing.T) {
 // directory that set it.
 func Test_CookieJar_UnparsableAttributeKeepsTheOthers(t *testing.T) {
 	t.Parallel()
-
 	const (
 		receivedPath = "/dir/x" // the request that received the cookie: default path "/dir"
 		otherPath    = "/other" // outside the default path
@@ -3146,15 +1951,10 @@ func Test_CookieJar_UnparsableAttributeKeepsTheOthers(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			jar := AcquireCookieJar()
 			t.Cleanup(jar.Release)
 
-			resp := fasthttp.AcquireResponse()
-			t.Cleanup(func() { fasthttp.ReleaseResponse(resp) })
-			resp.Header.Add("Set-Cookie", tc.setCookie)
-
-			jar.parseCookiesFromResp([]byte("example.com"), []byte(receivedPath), resp)
+			clientTestCReceive(jar, "example.com", receivedPath, tc.setCookie)
 
 			tc.check(t, jar)
 		})
@@ -3165,26 +1965,18 @@ func Test_CookieJar_UnparsableAttributeKeepsTheOthers(t *testing.T) {
 func jarGet(t *testing.T, jar *CookieJar, rawURL string) []*fasthttp.Cookie {
 	t.Helper()
 
-	uri := fasthttp.AcquireURI()
-	t.Cleanup(func() { fasthttp.ReleaseURI(uri) })
-	require.NoError(t, uri.Parse(nil, []byte(rawURL)))
-
-	return jar.Get(uri)
+	return jar.Get(clientTestCURI(t, rawURL))
 }
 
 func Test_Request_CancelledContext_NoRace(t *testing.T) {
 	t.Parallel()
-
-	server := startTestServer(t, func(app *fiber.App) {
+	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			// Slow enough that the response never beats the canceled context.
 			time.Sleep(50 * time.Millisecond)
 			return c.SendString("ok")
 		})
 	})
-	defer server.stop()
-
-	client := New().SetDial(server.dial())
 
 	// A live request first, so the server is serving before it is shut down.
 	warm, err := client.Get("http://example.com/")
@@ -3204,23 +1996,17 @@ func Test_Request_CancelledContext_NoRace(t *testing.T) {
 
 func Test_Client_RequestHeaderOverridesClientHeader(t *testing.T) {
 	t.Parallel()
-
-	server := startTestServer(t, func(app *fiber.App) {
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString(strings.Join(c.GetReqHeaders()["X-Level"], "|"))
-		})
+	client := clientTestAClient(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString(strings.Join(c.GetReqHeaders()["X-Level"], "|")) })
 	})
-	defer server.stop()
-
-	client := New().SetDial(server.dial()).SetHeader("X-Level", "client")
+	client.SetHeader("X-Level", "client")
 
 	resp, err := client.Get("http://example.com/")
 	require.NoError(t, err)
 	require.Equal(t, "client", resp.String())
 	resp.Close()
 
-	req := AcquireRequest()
-	defer ReleaseRequest(req)
+	req := clientTestBRequest(t)
 	req.SetClient(client).SetURL("http://example.com/").SetHeader("X-Level", "request")
 	resp, err = req.Send()
 	require.NoError(t, err)
@@ -3230,9 +2016,7 @@ func Test_Client_RequestHeaderOverridesClientHeader(t *testing.T) {
 
 func Test_Request_Params_KeepInsertionOrder(t *testing.T) {
 	t.Parallel()
-
-	req := AcquireRequest()
-	defer ReleaseRequest(req)
+	req := clientTestBRequest(t)
 	want := make([]string, 0, 20)
 	for i := range 20 {
 		v := strconv.Itoa(i)
@@ -3247,19 +2031,14 @@ func Test_Request_Params_KeepInsertionOrder(t *testing.T) {
 
 func Test_Response_Header_CopiesValue(t *testing.T) {
 	t.Parallel()
-
-	server := startTestServer(t, func(app *fiber.App) {
+	client := clientTestAClient(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("X-Test", "value")
 			return c.SendString("ok")
 		})
 	})
-	defer server.stop()
 
-	client := New().SetDial(server.dial())
-	resp, err := client.Get("http://example.com/")
-	require.NoError(t, err)
-	defer resp.Close()
+	resp := clientTestBClientGet(t, client, "http://example.com/")
 
 	header := resp.Header("X-Test")
 	resp.RawResponse.Header.Set("X-Test", "other")
@@ -3268,17 +2047,11 @@ func Test_Response_Header_CopiesValue(t *testing.T) {
 
 func Test_Request_Resend_DoesNotAccumulateHeaders(t *testing.T) {
 	t.Parallel()
-
-	server := startTestServer(t, func(app *fiber.App) {
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString(strconv.Itoa(len(c.GetReqHeaders()["X-A"])))
-		})
+	client := clientTestAClient(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString(strconv.Itoa(len(c.GetReqHeaders()["X-A"]))) })
 	})
-	defer server.stop()
 
-	client := New().SetDial(server.dial())
-	req := AcquireRequest()
-	defer ReleaseRequest(req)
+	req := clientTestBRequest(t)
 	req.SetClient(client).SetURL("http://example.com/").SetHeader("X-A", "1")
 
 	for range 3 {
@@ -3368,16 +2141,9 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 
 func Test_Client_UppercaseScheme(t *testing.T) {
 	t.Parallel()
+	client := clientAOKClient(t)
 
-	server := startTestServer(t, func(app *fiber.App) {
-		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
-	})
-	defer server.stop()
-
-	client := New().SetDial(server.dial())
-	resp, err := client.Get("HTTP://example.com/")
-	require.NoError(t, err)
-	defer resp.Close()
+	resp := clientTestBClientGet(t, client, "HTTP://example.com/")
 	require.Equal(t, "ok", resp.String())
 }
 
