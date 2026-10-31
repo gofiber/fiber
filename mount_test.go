@@ -6,7 +6,9 @@ package fiber
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
+	"slices"
 	"testing"
 
 	"github.com/gofiber/fiber/v3/internal/apptest"
@@ -510,14 +512,18 @@ func Test_App_Mount_CarriesDomainMount(t *testing.T) {
 	apptest.Expect(t, app, apptest.Req(MethodGet, "/john/v1/doe", apptest.WithHost("www.example.com")), StatusNotFound)
 }
 
-// routerMountVariants are the two ways a test mounts an app: plainly under /john, and through a domain router under
-// /api on api.example.com. host is the Host that reaches the mount.
-var routerMountVariants = []struct {
+// routerMountVariant is a way to mount an app: mount puts micro into app, prefix is where micro's routes are served
+// and host is the Host that reaches them.
+type routerMountVariant struct {
 	mount  func(app, micro *App)
 	host   apptest.Option
 	name   string
 	prefix string
-}{
+}
+
+// routerMountVariants are the two ways a test mounts an app: plainly under /john, and through a domain router under
+// /api on api.example.com.
+var routerMountVariants = []routerMountVariant{
 	{
 		name: "plain", prefix: "/john", host: apptest.WithHost("example.com"),
 		mount: func(app, micro *App) { app.Use("/john", micro) },
@@ -534,7 +540,30 @@ var routerMountVariants = []struct {
 // the middleware it registered.
 func Test_App_Mount_AutoHeadKeepsMiddleware(t *testing.T) {
 	t.Parallel()
-	for _, tc := range routerMountVariants {
+	// The same behind another mount: once flattened, the app that left HEAD out is no longer walked, only its
+	// routes' marks are.
+	apiHost := apptest.WithHost("api.example.com")
+	flattened := []routerMountVariant{
+		{name: "inner domain mount", prefix: "/mid/sub", host: apiHost, mount: func(app, micro *App) {
+			mid := New()
+			mid.Domain("api.example.com").Use("/sub", micro)
+			app.Domain("api.example.com").Use("/mid", mid)
+		}},
+		{name: "plain mount over a domain mount", prefix: "/mid/sub", host: apiHost, mount: func(app, micro *App) {
+			inner := New()
+			inner.Domain("api.example.com").Use("/sub", micro)
+			mid := New()
+			mid.Use("/", inner)
+			app.Domain("api.example.com").Use("/mid", mid)
+		}},
+		{name: "started before mounting", prefix: "/mid/sub", host: apiHost, mount: func(app, micro *App) {
+			mid := New()
+			mid.Use("/sub", micro)
+			mid.Handler()
+			app.Domain("api.example.com").Use("/mid", mid)
+		}},
+	}
+	for _, tc := range slices.Concat(routerMountVariants, flattened) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			micro := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
@@ -668,22 +697,24 @@ func Test_App_Mount_ParametricPrefixConstraint(t *testing.T) {
 	apptest.Expect(t, app, "/bar/doe", StatusNotFound)
 }
 
+// routerPrefixSpellings are mount prefixes whose syntax the router has to take as written: an escaped colon or
+// asterisk, a custom constraint and regular expression constraints. covered is a path the prefix names and outside
+// are paths it does not.
+var routerPrefixSpellings = []struct {
+	prefix, covered string
+	outside         []string
+}{
+	{prefix: `/v1\:internal`, covered: "/v1:internal", outside: []string{"/v1foo", "/v1"}},
+	{prefix: `/a\*`, covered: "/a*", outside: []string{"/a", "/a/b"}},
+	{prefix: "/even/:n<isEven>", covered: "/even/4", outside: []string{"/even/3", "/even/abc"}},
+	{prefix: "/code/:code<regex(^[A-Z]{2}$)>", covered: "/code/US", outside: []string{"/code/us"}},
+	{prefix: `/num/:n<regex(^\d+$)>`, covered: "/num/12", outside: []string{"/num/dd"}},
+}
+
 // Test_App_Mount_PrefixAsWritten verifies that mounted routes are re-parsed with
 // the mount prefix as written, so they answer only where middleware on it runs.
 func Test_App_Mount_PrefixAsWritten(t *testing.T) {
 	t.Parallel()
-	testCases := []struct {
-		prefix   string
-		guarded  string
-		notFound []string
-	}{
-		{prefix: `/v1\:internal`, guarded: "/v1:internal/doe", notFound: []string{"/v1foo/doe", "/v1/doe"}},
-		{prefix: `/a\*`, guarded: "/a*/doe", notFound: []string{"/a/doe", "/a/b/doe"}},
-		{prefix: "/even/:n<isEven>", guarded: "/even/4/doe", notFound: []string{"/even/3/doe", "/even/abc/doe"}},
-		{prefix: "/code/:code<regex(^[A-Z]{2}$)>", guarded: "/code/US/doe", notFound: []string{"/code/us/doe"}},
-		{prefix: `/num/:n<regex(^\d+$)>`, guarded: "/num/12/doe", notFound: []string{"/num/dd/doe"}},
-	}
-
 	mounts := map[string]func(app *App, prefix string, guard Handler, micro *App){
 		"app": func(app *App, prefix string, guard Handler, micro *App) {
 			app.Use(prefix, guard)
@@ -708,7 +739,7 @@ func Test_App_Mount_PrefixAsWritten(t *testing.T) {
 	}
 
 	for name, mount := range mounts {
-		for _, tc := range testCases {
+		for _, tc := range routerPrefixSpellings {
 			t.Run(name+" "+tc.prefix, func(t *testing.T) {
 				t.Parallel()
 				micro := New()
@@ -718,12 +749,9 @@ func Test_App_Mount_PrefixAsWritten(t *testing.T) {
 				app.RegisterCustomConstraint(&evenConstraint{})
 				mount(app, tc.prefix, func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }, micro)
 
-				resp := apptest.Do(t, app, tc.guarded)
-				require.Equal(t, StatusUnauthorized, resp.StatusCode, "GET %s", tc.guarded)
-
-				for _, path := range tc.notFound {
-					resp = apptest.Do(t, app, path)
-					require.Equal(t, StatusNotFound, resp.StatusCode, "GET %s", path)
+				routerTestExpect(t, app, tc.covered+"/doe", StatusUnauthorized)
+				for _, outside := range tc.outside {
+					routerTestExpect(t, app, outside+"/doe", StatusNotFound)
 				}
 			})
 		}
@@ -744,7 +772,6 @@ func Test_App_Mount_NestedPrefixKeepsCase(t *testing.T) {
 	app.Use("/v1", mid)
 
 	apptest.Expect(t, app, "/v1/Admin/secret", StatusUnauthorized)
-
 	apptest.Expect(t, app, "/v1/admin/secret", StatusNotFound)
 }
 
@@ -787,19 +814,17 @@ func Test_App_Mount_StrictRouting_RootMiddleware(t *testing.T) {
 		// "/u/" is as long as a tree hash, which "/u" is too short to carry
 		for prefix, mounted := range map[string]string{"/users": "/users", "/u": "/u", "/t/:tenant": "/t/acme"} {
 			for _, pattern := range []string{"/:id?", "/*"} {
-				users := New()
-				users.Use(func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
-				users.Get(pattern, func(c Ctx) error { return c.SendString("users") })
-				app := New(Config{StrictRouting: strict})
-				app.Use(prefix, users)
+				t.Run(fmt.Sprintf("strict=%v/%s/%s", strict, prefix, pattern), func(t *testing.T) {
+					t.Parallel()
+					users := New()
+					users.Use(func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
+					users.Get(pattern, func(c Ctx) error { return c.SendString("users") })
+					app := New(Config{StrictRouting: strict})
+					app.Use(prefix, users)
 
-				for _, target := range []string{mounted, mounted + "/", mounted + "/7"} {
-					resp := apptest.Do(t, app, target)
-					require.Equal(t, StatusUnauthorized, resp.StatusCode, "strict=%v prefix=%q pattern=%q path=%q", strict, prefix, pattern, target)
-				}
-
-				resp := apptest.Do(t, app, "/other")
-				require.Equal(t, StatusNotFound, resp.StatusCode, "strict=%v prefix=%q pattern=%q", strict, prefix, pattern)
+					routerTestExpectStatus(t, app, MethodGet, StatusUnauthorized, mounted, mounted+"/", mounted+"/7")
+					routerTestExpect(t, app, "/other", StatusNotFound)
+				})
 			}
 		}
 	}
