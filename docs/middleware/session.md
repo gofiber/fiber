@@ -687,9 +687,9 @@ What a request pays for its session, for a signed-in user with five values, one 
 
 | Request                  | gob                           | `JSONCodec`                 |
 |--------------------------|-------------------------------|-----------------------------|
-| reads one value          | 279 allocations, 12.8 KB      | 23 allocations, 1.1 KB      |
-| reads all five values    | 318 allocations, 15.7 KB      | 51 allocations, 2.5 KB      |
-| changes one value        | 318 allocations, 15.7 KB      | 25 allocations, 1.5 KB      |
+| reads one value          | 280 allocations, 12.9 KB      | 24 allocations, 1.2 KB      |
+| reads all five values    | 319 allocations, 15.8 KB      | 52 allocations, 2.6 KB      |
+| changes one value        | 319 allocations, 15.8 KB      | 26 allocations, 1.5 KB      |
 
 The allocations are exact; the time follows them, about 30 µs against 2.4 µs for the first row on that machine. Most of what gob costs is building a decoder for the stream, which every request pays. With a codec, a request that only reads a session writes the record back as it was, whatever it read; without one, the save encodes the session again after a read of a struct, a map or a slice.
 
