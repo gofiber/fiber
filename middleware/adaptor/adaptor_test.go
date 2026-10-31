@@ -1373,16 +1373,13 @@ func Test_FiberApp_ProxyHeaderLinesKeepReceivedOrder(t *testing.T) {
 	// whitespace, which a received line drops.
 	for _, client := range []string{"6.6.6.6", "6.6.6.6 ", "\t6.6.6.6"} {
 		for range 32 {
-			r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+			r := apptest.Req(http.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, "Bearer t"))
 			r.RemoteAddr = "127.0.0.1:40000"
-			r.Header.Set(fiber.HeaderAuthorization, "Bearer t")
 			r.Header.Add(fiber.HeaderXForwardedFor, client)
 			r.Header.Add(fiber.HeaderXForwardedFor, "203.0.113.7")
 			r.Header.Add(fiber.HeaderXForwardedProto, "http")
 			r.Header.Add(fiber.HeaderXForwardedProto, "https")
-			w := httptest.NewRecorder()
-			h.ServeHTTP(w, r)
-			require.Equal(t, "203.0.113.7 https", w.Body.String(), "%q", client)
+			require.Equal(t, "203.0.113.7 https", adaptorTestServe(h, r).Body.String(), "%q", client)
 		}
 	}
 }
@@ -2404,16 +2401,14 @@ func Test_FiberAdaptors_TimedOutRequest(t *testing.T) {
 				Next:    func(c fiber.Ctx) bool { return c.Path() != "/slow" },
 			}))
 
-			rec := httptest.NewRecorder()
-			handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+			rec := adaptorTestServe(handler, apptest.Req(fiber.MethodGet, "/slow"))
 			require.Equal(t, fiber.StatusServiceUnavailable, rec.Code)
 			require.Equal(t, fiber.ErrServiceUnavailable.Message, rec.Body.String())
 			require.Empty(t, rec.Header().Values(fiber.HeaderSetCookie))
 			timedOut := <-held
 
 			for range 20 {
-				rec := httptest.NewRecorder()
-				handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/private", http.NoBody))
+				rec := adaptorTestServe(handler, apptest.Req(fiber.MethodGet, "/private"))
 				require.Equal(t, fiber.StatusUnauthorized, rec.Code)
 				require.Empty(t, rec.Header().Values(fiber.HeaderSetCookie))
 				require.NotSame(t, timedOut, <-seen, "the timed-out handler's RequestCtx was handed to another request")
@@ -2440,16 +2435,14 @@ func Test_FiberAdaptors_HeadLeavesStreamUnread(t *testing.T) {
 	app.Get("/events", events)
 
 	for _, handler := range []http.Handler{FiberApp(app), FiberHandler(events)} {
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, httptest.NewRequest(fiber.MethodHead, "/events", http.NoBody))
+		rec := adaptorTestServe(handler, apptest.Req(fiber.MethodHead, "/events"))
 		require.Equal(t, fiber.StatusOK, rec.Code)
 		require.Equal(t, fiber.MIMETextEventStream, rec.Header().Get(fiber.HeaderContentType))
 		require.Empty(t, rec.Body.String())
 	}
 	require.Zero(t, handlers.Load())
 
-	rec := httptest.NewRecorder()
-	FiberApp(app).ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
+	rec := adaptorTestServe(FiberApp(app), apptest.Req(fiber.MethodGet, "/events"))
 	require.Equal(t, ": open\n\n", rec.Body.String())
 	require.Equal(t, int32(1), handlers.Load())
 }

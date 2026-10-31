@@ -37,14 +37,14 @@ func (discardLogger) Printf(string, ...any) {}
 
 // staticTestRoot returns a temporary directory that holds files, given as slash-separated paths below it and their
 // contents.
-func staticTestRoot(t *testing.T, files map[string]string) string {
-	t.Helper()
+func staticTestRoot(tb testing.TB, files map[string]string) string {
+	tb.Helper()
 
-	root := t.TempDir()
+	root := tb.TempDir()
 	for name, data := range files {
 		path := filepath.Join(root, filepath.FromSlash(name))
-		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
-		require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
+		require.NoError(tb, os.MkdirAll(filepath.Dir(path), 0o750))
+		require.NoError(tb, os.WriteFile(path, []byte(data), 0o600))
 	}
 	return root
 }
@@ -334,13 +334,9 @@ func Test_Static_Next(t *testing.T) {
 // A refused request replays the Use chain without its routes, a guard registered as one included.
 func Test_Static_RefusedRequestServesNoFile(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	require.NoError(t, os.Mkdir(filepath.Join(dir, "admin"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "admin", "secret.txt"), []byte("TOP-SECRET"), 0o600))
-
 	app := fiber.New(fiber.Config{BodyLimit: 16})
 	app.All("/admin/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusUnauthorized) })
-	app.Use(New(dir))
+	app.Use(New(staticTestRoot(t, map[string]string{"admin/secret.txt": "TOP-SECRET"})))
 
 	ln := fasthttputil.NewInmemoryListener()
 	errCh := make(chan error, 1)
@@ -638,13 +634,11 @@ func Test_Static_Compress(t *testing.T) {
 
 func Test_Static_Compress_FileRoot(t *testing.T) {
 	t.Parallel()
-	root := filepath.Join(t.TempDir(), "index.html")
-	require.NoError(t, os.WriteFile(root, []byte(strings.Repeat("<p>hello</p>", 200)), 0o600))
+	root := staticTestRoot(t, map[string]string{"index.html": strings.Repeat("<p>hello</p>", 200)})
 	app := fiber.New()
-	app.Get("/", New(root, Config{Compress: true}))
+	app.Get("/", New(filepath.Join(root, "index.html"), Config{Compress: true}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Set(fiber.HeaderAcceptEncoding, "gzip")
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAcceptEncoding, "gzip"))
 	resp := apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 }
@@ -1016,6 +1010,17 @@ func serveRaw(handler fasthttp.RequestHandler, method, target string) *fasthttp.
 	fctx.Init(&req, nil, discardLogger{})
 	handler(fctx)
 	return &fctx.Response
+}
+
+// staticTestExpectRaw sends a GET for target to h as written, requires the status and that no SECRET of the root
+// reaches the body, and returns the response. msg says which request it was.
+func staticTestExpectRaw(t *testing.T, h fasthttp.RequestHandler, target string, status int, msg ...any) *fasthttp.Response {
+	t.Helper()
+
+	resp := serveRaw(h, fiber.MethodGet, target)
+	require.Equal(t, status, resp.StatusCode(), msg...)
+	require.NotContains(t, string(resp.Body()), "SECRET", msg...)
+	return resp
 }
 
 // Test_Static_RootMount_EmptyFirstSegment pins that a root mount serves what
@@ -1790,29 +1795,6 @@ func Test_Static_NonGetMethod_PassesThrough(t *testing.T) {
 	require.Contains(t, served, "Hello, World!")
 }
 
-// Test_Static_PartialWildcard_SegmentBoundary checks that a partial wildcard
-// route serves only what lies below its path segment, so middleware mounted on
-// /static/private cannot be skipped with /staticprivate/secret.txt.
-func Test_Static_PartialWildcard_SegmentBoundary(t *testing.T) {
-	t.Parallel()
-	root := staticTestRoot(t, map[string]string{"private/secret.txt": "SECRET", "x": "PUBLIC"})
-
-	app := staticTestApp(false, "/static/private")
-	app.Get("/static*", New(root, Config{CacheDuration: -1}))
-
-	for target, want := range map[string]int{
-		"/static/private/secret.txt": fiber.StatusForbidden,
-		"/staticprivate/secret.txt":  fiber.StatusNotFound,
-		"/staticx":                   fiber.StatusNotFound,
-		"/static/x":                  fiber.StatusOK,
-	} {
-		resp := apptest.Do(t, app, target)
-		body := apptest.Body(t, resp)
-		require.Equal(t, want, resp.StatusCode, "target=%s", target)
-		require.NotContains(t, body, "SECRET", "target=%s", target)
-	}
-}
-
 // Test_Static_NonMountRoutes_Served checks that routes with a plus, a parameter
 // or a slash before the wildcard serve what they matched.
 func Test_Static_NonMountRoutes_Served(t *testing.T) {
@@ -1822,9 +1804,16 @@ func Test_Static_NonMountRoutes_Served(t *testing.T) {
 	app := fiber.New()
 	app.Get("/static+", New(root, Config{CacheDuration: -1}))
 	app.Get("/users/:id", New(filepath.Join(root, "app.js"), Config{CacheDuration: -1}))
+	for _, route := range []string{"/@:user", "/user-:id", "/v:ver/docs"} {
+		app.Get(route, New(filepath.Join(root, "app.js"), Config{CacheDuration: -1}))
+	}
 	app.Get("/:lang/*", New(filepath.Join(root, "index.html"), Config{CacheDuration: -1}))
 
-	for target, want := range map[string]string{"/static/app.js": "JS", "/en/dashboard": "INDEX", "/users/1234": "JS"} {
+	for target, want := range map[string]string{
+		"/static/app.js": "JS", "/en/dashboard": "INDEX",
+		"/users/1": "JS", "/users/1234": "JS", "/users/1234567890": "JS",
+		"/@a": "JS", "/@alice": "JS", "/user-1": "JS", "/v1/docs": "JS",
+	} {
 		resp := apptest.Do(t, app, target)
 		body := apptest.Body(t, resp)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode, "target=%s", target)
@@ -1834,10 +1823,8 @@ func Test_Static_NonMountRoutes_Served(t *testing.T) {
 
 func Test_Static_Symlinks(t *testing.T) {
 	t.Parallel()
-	outside := t.TempDir()
-	root := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(outside, "shared.txt"), []byte("shared"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "local.txt"), []byte("local"), 0o600))
+	outside := staticTestRoot(t, map[string]string{"shared.txt": "shared"})
+	root := staticTestRoot(t, map[string]string{"local.txt": "local"})
 	for link, target := range map[string]string{
 		"outside.txt":  filepath.Join(outside, "shared.txt"),
 		"absolute.txt": filepath.Join(root, "local.txt"),
@@ -1868,10 +1855,7 @@ func Test_Static_Symlinks(t *testing.T) {
 // the text the router matched, not the pattern, which a plus, an escape or a doubled slash outgrows.
 func Test_Static_StripsRoutedPrefix(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "private"), 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "x"), []byte("PUBLIC"), 0o600))
+	root := staticTestRoot(t, map[string]string{"private/secret.txt": "SECRET", "x": "PUBLIC"})
 
 	get := func(app *fiber.App, pattern string, handler fiber.Handler) { app.Get(pattern, handler) }
 	use := func(app *fiber.App, pattern string, handler fiber.Handler) { app.Use(pattern, handler) }
@@ -1882,6 +1866,9 @@ func Test_Static_StripsRoutedPrefix(t *testing.T) {
 		prefix   string
 		strict   bool
 	}{
+		// A partial wildcard serves only what lies below its path segment, so middleware mounted on
+		// /static/private cannot be skipped with /staticprivate/secret.txt.
+		{pattern: "/static*", prefix: "/static", register: get},
 		{pattern: "/static+", prefix: "/static", register: get},
 		{pattern: "/static+", prefix: "/static", register: use},
 		{pattern: "/static/+", prefix: "/static", register: get},
@@ -1905,10 +1892,9 @@ func Test_Static_StripsRoutedPrefix(t *testing.T) {
 				tc.prefix + "//private/secret.txt": fiber.StatusNotFound,
 				tc.prefix + "private/secret.txt":   fiber.StatusNotFound,
 				tc.prefix + "Xprivate/secret.txt":  fiber.StatusNotFound,
+				tc.prefix + "x":                    fiber.StatusNotFound,
 			} {
-				resp := serveRaw(h, fiber.MethodGet, target)
-				require.Equal(t, want, resp.StatusCode(), "target=%s", target)
-				require.NotContains(t, string(resp.Body()), "SECRET", "target=%s", target)
+				staticTestExpectRaw(t, h, target, want, "target=%s", target)
 			}
 		})
 	}
@@ -1919,13 +1905,9 @@ func Test_Static_StripsRoutedPrefix(t *testing.T) {
 // route whose first parameter is a wildcard keeps the text before it as the prefix.
 func Test_Static_ParameterRoutes(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "private"), 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.js"), []byte("SECRET"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "app.js"), []byte("JS"), 0o600))
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "index.html"), []byte("DOCS"), 0o600))
+	root := staticTestRoot(t, map[string]string{
+		"private/secret.txt": "SECRET", "private/secret.js": "SECRET", "app.js": "JS", "docs/index.html": "DOCS",
+	})
 
 	deny := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) }
 
@@ -1958,9 +1940,7 @@ func Test_Static_ParameterRoutes(t *testing.T) {
 		"/w/acmeprivate/secret.txt":     fiber.StatusNotFound,
 		"/w/acme//private/secret.txt":   fiber.StatusNotFound,
 	} {
-		resp := serveRaw(h, fiber.MethodGet, target)
-		require.Equal(t, want, resp.StatusCode(), "target=%s", target)
-		require.NotContains(t, string(resp.Body()), "SECRET", "target=%s", target)
+		staticTestExpectRaw(t, h, target, want, "target=%s", target)
 	}
 
 	for _, tc := range []struct {
@@ -2006,9 +1986,7 @@ func Test_Static_ParameterRoutes(t *testing.T) {
 
 		for target, want := range tc.targets {
 			msg := []any{"route=%s strict=%t target=%s", tc.route, tc.strict, target}
-			resp := serveRaw(h, fiber.MethodGet, target)
-			require.Equal(t, want, resp.StatusCode(), msg...)
-			require.NotContains(t, string(resp.Body()), "SECRET", msg...)
+			resp := staticTestExpectRaw(t, h, target, want, msg...)
 			location := ""
 			if want == fiber.StatusFound {
 				location = target + "/"
@@ -2016,37 +1994,16 @@ func Test_Static_ParameterRoutes(t *testing.T) {
 			require.Equal(t, location, string(resp.Header.Peek(fiber.HeaderLocation)), msg...)
 		}
 	}
-
-	file := filepath.Join(root, "app.js")
-	app = fiber.New()
-	app.Get("/@:user", New(file))
-	app.Get("/user-:id", New(file))
-	app.Get("/v:ver/docs", New(file))
-	app.Get("/users/:id", New(file))
-	h = app.Handler()
-
-	for _, target := range []string{"/@a", "/@alice", "/user-1", "/v1/docs", "/users/1", "/users/1234567890"} {
-		resp := serveRaw(h, fiber.MethodGet, target)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode(), "target=%s", target)
-		require.Equal(t, "JS", string(resp.Body()), "target=%s", target)
-	}
 }
 
 // Test_Static_StrictRouting_TrailingSlash pins that under StrictRouting a directory
 // is served for dir/ only and a file for file only, as the router keeps them apart.
 func Test_Static_StrictRouting_TrailingSlash(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
-	for name, content := range map[string]string{
-		"admin/index.html": "ADMIN",
-		"pub/index.html":   "INDEX",
-		"a b/index.html":   "INDEX",
-		"secret.txt":       "SECRET",
-		"public.txt":       "PUBLIC",
-	} {
-		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(root, name)), 0o750))
-		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(content), 0o600))
-	}
+	root := staticTestRoot(t, map[string]string{
+		"admin/index.html": "ADMIN", "pub/index.html": "INDEX", "a b/index.html": "INDEX",
+		"secret.txt": "SECRET", "public.txt": "PUBLIC",
+	})
 
 	deny := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusUnauthorized) }
 
@@ -2141,9 +2098,7 @@ func Test_Static_StrictRouting_TrailingSlash(t *testing.T) {
 // for later clients, links below the routed path, not fasthttp's reading of the target.
 func Test_Static_Browse_LinksFollowRoutedPath(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
-	require.NoError(t, os.Mkdir(filepath.Join(root, "pub"), 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "pub", "a.txt"), []byte("A"), 0o600))
+	root := staticTestRoot(t, map[string]string{"pub/a.txt": "A"})
 
 	targets := []string{
 		"/files/pub/",
@@ -2228,9 +2183,7 @@ func Test_Static_Browse_LinksFollowRoutedPath(t *testing.T) {
 // parameter prefix with a control byte, which a browser drops from a link.
 func Test_Static_Browse_ParameterPrefixControlByte(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
-	require.NoError(t, os.Mkdir(filepath.Join(root, "pub"), 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "pub", "a.txt"), []byte("A"), 0o600))
+	root := staticTestRoot(t, map[string]string{"pub/a.txt": "A"})
 
 	for route, rest := range map[string]string{"/:lang/*": "/pub/", "/:a/:b/*": "/evil.example/"} {
 		app := fiber.New(fiber.Config{UnescapePath: true})
@@ -2247,9 +2200,7 @@ func Test_Static_Browse_ParameterPrefixControlByte(t *testing.T) {
 }
 
 func Benchmark_Static_Browse(b *testing.B) {
-	root := b.TempDir()
-	require.NoError(b, os.Mkdir(filepath.Join(root, "pub"), 0o750))
-	require.NoError(b, os.WriteFile(filepath.Join(root, "pub", "a.txt"), []byte("A"), 0o600))
+	root := staticTestRoot(b, map[string]string{"pub/a.txt": "A"})
 
 	for name, unescape := range map[string]bool{"default": false, "unescape": true} {
 		b.Run(name, func(b *testing.B) {

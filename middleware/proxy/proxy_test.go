@@ -194,6 +194,12 @@ func proxyTestFieldLinesUpstream(t *testing.T, body string, names ...string) (ad
 	return addr, lines
 }
 
+// rawGet starts the request of a client that GETs "/" from example.com, which the header lines of a test follow.
+const rawGet = "GET / HTTP/1.1\r\nHost: example.com\r\n"
+
+// connectionNames returns a Connection value of n names.
+func connectionNames(n int) string { return utils.TrimRight(strings.Repeat("a,", n), ',') }
+
 func Test_Proxy_DefaultClient_MaxConnsPerHost(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, defaultMaxConnsPerHost, sharedClient.Load().MaxConnsPerHost)
@@ -492,40 +498,26 @@ func Test_Proxy_Forward(t *testing.T) {
 // an empty body while the client was told 413.
 func Test_Proxy_RefusedRequestIsNotForwarded(t *testing.T) {
 	t.Parallel()
-	var hits sync.Map
-	upstream := fiber.New()
-	upstream.Use(func(c fiber.Ctx) error {
-		hits.Store(utils.CopyString(c.Get("X-Forwarder")), true)
-		return c.SendString("executed")
-	})
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	addr := "http://" + ln.Addr().String()
-	startServer(upstream, ln)
-
-	for name, forwarder := range map[string]fiber.Handler{
-		"Balancer":        Balancer(Config{Servers: []string{addr}}),
-		"Forward":         Forward(addr),
-		"DomainForward":   DomainForward("example.com", addr),
-		"BalancerForward": BalancerForward([]string{addr}),
-	} {
-		t.Run(name, func(t *testing.T) {
+	for _, tc := range realIPHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			var executed atomic.Int32
+			upstream := fiber.New()
+			upstream.Use(func(c fiber.Ctx) error {
+				executed.Add(1)
+				return c.SendString("executed")
+			})
 			app := fiber.New(fiber.Config{BodyLimit: 8})
-			app.Use(forwarder)
+			app.Use(tc.build(listenUpstream(t, upstream)))
 
 			refused := httptest.NewRequest(fiber.MethodPost, "http://example.com/transfer", strings.NewReader(strings.Repeat("x", 64)))
-			refused.Header.Set("X-Forwarder", name)
 			_, err := app.Test(refused)
 			require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
-			_, forwarded := hits.Load(name)
-			require.False(t, forwarded)
+			require.Zero(t, executed.Load())
 
 			accepted := httptest.NewRequest(fiber.MethodPost, "http://example.com/transfer", strings.NewReader("ok"))
-			accepted.Header.Set("X-Forwarder", name+" accepted")
 			apptest.Expect(t, app, accepted, fiber.StatusOK)
-			_, forwarded = hits.Load(name + " accepted")
-			require.True(t, forwarded)
+			require.Equal(t, int32(1), executed.Load())
 		})
 	}
 }
@@ -698,7 +690,6 @@ func Test_Proxy_ConnectionCannotRemoveForwardingHeaders(t *testing.T) {
 // Connection than the proxy removes one by one is refused, not forwarded.
 func Test_Proxy_ConnectionListLimit(t *testing.T) {
 	t.Parallel()
-	names := func(n int) string { return strings.TrimSuffix(strings.Repeat("a,", n), ",") }
 	for _, tc := range realIPHandlers() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -711,16 +702,16 @@ func Test_Proxy_ConnectionListLimit(t *testing.T) {
 			app := fiber.New()
 			app.Use(tc.build(addr))
 
+			const tooLarge = fiber.StatusRequestHeaderFieldsTooLarge
 			for _, tt := range []struct {
 				lines  []string
 				status int
 			}{
-				{lines: []string{names(maxConnectionOptions)}, status: fiber.StatusOK},
-				{lines: []string{names(maxConnectionOptions + 1)}, status: fiber.StatusRequestHeaderFieldsTooLarge},
-				{lines: []string{names(maxConnectionOptions), "a"}, status: fiber.StatusRequestHeaderFieldsTooLarge},
+				{lines: []string{connectionNames(maxConnectionOptions)}, status: fiber.StatusOK},
+				{lines: []string{connectionNames(maxConnectionOptions + 1)}, status: tooLarge},
+				{lines: []string{connectionNames(maxConnectionOptions), "a"}, status: tooLarge},
 			} {
-				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-				req.Host = "example.com"
+				req := apptest.Req(fiber.MethodGet, "/", apptest.WithHost("example.com"))
 				for _, line := range tt.lines {
 					req.Header.Add(fiber.HeaderConnection, line)
 				}
@@ -755,19 +746,12 @@ func caseSpellings(name string, n int) []string {
 // repeated in one spelling costs once.
 func Test_Proxy_ConnectionListLimitCountsSpellings(t *testing.T) {
 	t.Parallel()
-	seen := make(chan []string, 1)
-	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		seen <- matchingFieldLines(c, "X-Abcdef", fiber.HeaderUpgrade)
-		return c.SendStatus(fiber.StatusOK)
-	})
+	addr, seen := proxyTestFieldLinesUpstream(t, "", "X-Abcdef", fiber.HeaderUpgrade)
 
 	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 	app.Use(Forward("http://" + addr))
 
-	repeated := make([]string, 200)
-	for i := range repeated {
-		repeated[i] = "X-ABCDEF"
-	}
+	repeated := slices.Repeat([]string{"X-ABCDEF"}, 200)
 	for _, tt := range []struct {
 		name       string
 		connection string
@@ -780,7 +764,7 @@ func Test_Proxy_ConnectionListLimitCountsSpellings(t *testing.T) {
 		{name: "repeated", connection: "x-abcdef", lines: repeated, status: fiber.StatusOK},
 		{name: "hop-by-hop", lines: caseSpellings("upgrade", 2*maxConnectionOptions), status: fiber.StatusRequestHeaderFieldsTooLarge},
 	} {
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req := apptest.Req(fiber.MethodGet, "/")
 		if tt.connection != "" {
 			req.Header[fiber.HeaderConnection] = []string{tt.connection}
 		}
@@ -804,11 +788,7 @@ func Test_Proxy_RealIPSpellingLimit(t *testing.T) {
 	for _, tc := range realIPHandlers() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			seen := make(chan []string, 1)
-			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-				seen <- matchingFieldLines(c, realIPHeader)
-				return c.SendStatus(fiber.StatusOK)
-			})
+			addr, seen := proxyTestFieldLinesUpstream(t, "", realIPHeader)
 
 			app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 			app.Use(tc.build(addr))
@@ -819,8 +799,7 @@ func Test_Proxy_RealIPSpellingLimit(t *testing.T) {
 			} {
 				spellings := caseSpellings("x-real-ip", n)
 				require.NotContains(t, spellings, realIPHeader, "every spelling counts")
-				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-				req.Host = "example.com"
+				req := apptest.Req(fiber.MethodGet, "/", apptest.WithHost("example.com"))
 				for _, k := range spellings {
 					// Assigned rather than added, which would canonicalize the key.
 					req.Header[k] = []string{"6.6.6.6"}
@@ -839,7 +818,6 @@ func Test_Proxy_RealIPSpellingLimit(t *testing.T) {
 // of the upstream's fields go out with it.
 func Test_Proxy_ResponseConnectionListLimit(t *testing.T) {
 	t.Parallel()
-	names := func(n int) string { return strings.TrimSuffix(strings.Repeat("a,", n), ",") }
 	for _, tc := range realIPHandlers() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -848,7 +826,7 @@ func Test_Proxy_ResponseConnectionListLimit(t *testing.T) {
 				if err != nil {
 					return fiber.ErrBadRequest
 				}
-				c.Set(fiber.HeaderConnection, names(n))
+				c.Set(fiber.HeaderConnection, connectionNames(n))
 				c.Set("X-Upstream", "1")
 				return c.SendString("upstream")
 			})
@@ -860,9 +838,8 @@ func Test_Proxy_ResponseConnectionListLimit(t *testing.T) {
 				maxConnectionOptions:     fiber.StatusOK,
 				maxConnectionOptions + 1: fiber.StatusBadGateway,
 			} {
-				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-				req.Host = "example.com"
-				req.Header.Set("X-Count", strconv.Itoa(n))
+				req := apptest.Req(fiber.MethodGet, "/", apptest.WithHost("example.com"),
+					apptest.WithHeader("X-Count", strconv.Itoa(n)))
 				resp := apptest.Expect(t, app, req, status)
 				require.Equal(t, status == fiber.StatusOK, resp.Header.Get("X-Upstream") == "1")
 			}
@@ -889,17 +866,12 @@ func Test_Proxy_ResponseSpellingLimit(t *testing.T) {
 		}
 		return c.SendString("upstream")
 	})
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	addr := ln.Addr().String()
-	startServer(upstream, ln)
 
 	app := fiber.New()
-	app.Use(Forward("http://"+addr, &fasthttp.Client{DisableHeaderNamesNormalizing: true}))
+	app.Use(Forward("http://"+listenUpstream(t, upstream), &fasthttp.Client{DisableHeaderNamesNormalizing: true}))
 
 	for n, status := range map[int]int{3: fiber.StatusOK, 2*maxConnectionOptions + 1: fiber.StatusBadGateway} {
-		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-		req.Header.Set("X-Count", strconv.Itoa(n))
+		req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Count", strconv.Itoa(n)))
 		resp := apptest.Expect(t, app, req, status)
 		require.Empty(t, resp.Header.Values(fiber.HeaderUpgrade))
 		require.Empty(t, resp.Header.Values(fiber.HeaderKeepAlive))
@@ -989,7 +961,7 @@ func Test_Proxy_TrailerDoesNotBecomeHeader(t *testing.T) {
 				if send == nil {
 					send = sendRaw
 				}
-				body := send(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\nX-Kept: early\r\n"+tt.head+
+				body := send(t, app, rawGet+"X-Kept: early\r\n"+tt.head+
 					"Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"+tt.trailer+"\r\n\r\n")
 				require.Equal(t, "upstream", body, tt.name)
 				require.ElementsMatch(t, []string{"X-Kept=early", "hello"}, <-seen, tt.name)
@@ -1020,16 +992,17 @@ func Test_Proxy_TrailerDropKeepsHeaderLines(t *testing.T) {
 			app.Use(tc.build(addr))
 
 			const (
-				head    = "GET / HTTP/1.1\r\nHost: example.com\r\n"
 				chunked = "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"
 				written = "Forwarded=for=192.0.2.1"
 			)
 			for raw, want := range map[string]string{
-				head + "\r\n":                                       written,
-				head + "Trailer: Forwarded\r\n\r\n":                 written,
-				head + chunked + "Forwarded: for=127.0.0.1\r\n\r\n": written,
-				head + "X-Remote-User: alice\r\n" + chunked + "X-Remote-User: admin\r\n\r\n": written + ",X-Remote-User=alice",
-				head + "User-Agent: early\r\n" + chunked + "User-Agent: late\r\n\r\n":        written + ",User-Agent=early",
+				rawGet + "\r\n":                                       written,
+				rawGet + "Trailer: Forwarded\r\n\r\n":                 written,
+				rawGet + chunked + "Forwarded: for=127.0.0.1\r\n\r\n": written,
+				rawGet + "X-Remote-User: alice\r\n" + chunked +
+					"X-Remote-User: admin\r\n\r\n": written + ",X-Remote-User=alice",
+				rawGet + "User-Agent: early\r\n" + chunked +
+					"User-Agent: late\r\n\r\n": written + ",User-Agent=early",
 			} {
 				require.Equal(t, want, sendRaw(t, app, raw), raw)
 			}
@@ -1041,7 +1014,6 @@ func Test_Proxy_TrailerDropKeepsHeaderLines(t *testing.T) {
 // before it goes upstream, or refused above fieldname.MaxTrailers names, with the hop-by-hop fields kept too.
 func Test_Proxy_TrailerSectionWhateverThePolicy(t *testing.T) {
 	t.Parallel()
-
 	// Not a Fiber app, which would drop the section or refuse the request itself.
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "header=%q trailer=%d", r.Header.Values(fiber.HeaderTrailer), len(r.Trailer))
@@ -1057,8 +1029,7 @@ func Test_Proxy_TrailerSectionWhateverThePolicy(t *testing.T) {
 	for _, keep := range []bool{false, true} {
 		t.Run(fmt.Sprintf("keep=%v", keep), func(t *testing.T) {
 			t.Parallel()
-			policy := DefaultSecurityPolicy()
-			policy.AllowPrivateIPs = true
+			policy := proxyTestAllowPrivatePolicy()
 			policy.KeepHopByHopHeaders = keep
 			for name, handler := range map[string]fiber.Handler{
 				"Balancer": Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy}),
@@ -1077,8 +1048,7 @@ func Test_Proxy_TrailerSectionWhateverThePolicy(t *testing.T) {
 				app.Get("/", handler)
 
 				for announce, want := range map[string]int{"X-T": fiber.StatusOK, names: fiber.StatusRequestHeaderFieldsTooLarge} {
-					req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-					req.Header.Set("X-Announce", announce)
+					req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Announce", announce))
 					resp := apptest.Do(t, app, req)
 					body := apptest.Body(t, resp)
 					require.Equal(t, want, resp.StatusCode, name+" "+body)
@@ -1125,12 +1095,10 @@ func Test_Proxy_StreamedBodyTrailerSection(t *testing.T) {
 				c.Request().Header.Set("X-User", "alice")
 				return c.Next()
 			}, balancer)
-			ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-			require.NoError(t, err)
-			startServer(app, ln)
+			appAddr := listenUpstream(t, app)
 
 			exchange := func(path, head, trailers string) (int, string) {
-				conn, err := net.Dial(fiber.NetworkTCP4, ln.Addr().String())
+				conn, err := net.Dial(fiber.NetworkTCP4, appAddr)
 				require.NoError(t, err)
 				require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
 				_, err = conn.Write([]byte("POST " + path + " HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n" + head +
@@ -1171,29 +1139,71 @@ func Test_Proxy_StreamedBodyTrailerSection(t *testing.T) {
 }
 
 // Test_Proxy_ForwardingLinesKeepReceivedOrder checks that a client's forwarding line and the one a front
-// proxy appended reach the upstream in the order received, after fasthttp removed a line in front of them.
+// proxy appended reach the upstream in the order received: after fasthttp removed a line in front of them,
+// after the application added a forwarding line before the proxy, or removed a line in ModifyRequest
+// (fasthttp moves the last line into a removed one's slot). A request with more forwarding lines than the
+// order is kept for is refused rather than forwarded with them in whatever order fasthttp left.
 func Test_Proxy_ForwardingLinesKeepReceivedOrder(t *testing.T) {
 	t.Parallel()
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendString(forwardingLinesByName(c)) })
+	// The edits of the application are tried with the first two heads.
+	heads := []struct{ name, head string }{
+		{"empty chunked body", "Transfer-Encoding: chunked\r\n" + forwardingLines + "\r\n0\r\n\r\n"},
+		{"connection listed", "X-Junk: 1\r\nConnection: X-Junk\r\n" + forwardingLines + "\r\n"},
+		{"hop-by-hop", "Keep-Alive: timeout=5\r\n" + forwardingLines + "\r\n"},
+		{"real ip", "X-Real-IP: 192.0.2.1\r\n" + forwardingLines + "\r\n"},
+	}
+	const added = "X-Forwarded-For=6.6.6.6,X-Forwarded-For=203.0.113.7,X-Forwarded-For=127.0.0.1," +
+		"X-Forwarded-Proto=http,X-Forwarded-Proto=https,X-Url-Scheme=http,X-Url-Scheme=https"
+	var tooMany strings.Builder
+	for i := range fieldname.MaxOrderedLines + 1 {
+		fmt.Fprintf(&tooMany, "X-Forwarded-%d: v\r\n", i)
+	}
+
 	for _, tc := range trailerHandlers() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-				return c.SendString(forwardingLinesByName(c))
-			})
-
 			app := fiber.New()
 			app.Use(tc.build(addr))
-
-			for name, head := range map[string]string{
-				"empty chunked body": "Transfer-Encoding: chunked\r\n" + forwardingLines + "\r\n0\r\n\r\n",
-				"connection listed":  "X-Junk: 1\r\nConnection: X-Junk\r\n" + forwardingLines + "\r\n",
-				"hop-by-hop":         "Keep-Alive: timeout=5\r\n" + forwardingLines + "\r\n",
-				"real ip":            "X-Real-IP: 192.0.2.1\r\n" + forwardingLines + "\r\n",
-			} {
-				require.Equal(t, forwardingLinesWant, sendRaw(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\n"+head), name)
+			for _, h := range heads {
+				require.Equal(t, forwardingLinesWant, sendRaw(t, app, rawGet+h.head), h.name)
 			}
 		})
+
+		t.Run("added before "+tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				c.Request().Header.Add(fiber.HeaderXForwardedFor, "127.0.0.1")
+				return c.Next()
+			}, tc.build(addr))
+			for _, h := range heads[:2] {
+				require.Equal(t, added, sendRaw(t, app, rawGet+h.head), h.name)
+			}
+		})
+
+		t.Run("too many lines "+tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(tc.build(addr))
+			require.Equal(t, utils.StatusMessage(fiber.StatusRequestHeaderFieldsTooLarge),
+				sendRaw(t, app, rawGet+tooMany.String()+"\r\n"))
+		})
 	}
+
+	t.Run("removed in ModifyRequest", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(Balancer(Config{Servers: []string{addr}, ModifyRequest: func(c fiber.Ctx) error {
+			c.Request().Header.Del(fiber.HeaderAuthorization)
+			c.Request().Header.Del("X-Api-Key")
+			return nil
+		}}))
+		for _, h := range heads[:2] {
+			head := "Authorization: Bearer x\r\nX-Api-Key: k\r\n" + h.head
+			require.Equal(t, forwardingLinesWant, sendRaw(t, app, rawGet+head), h.name)
+		}
+	})
 }
 
 // A client's forwarding lines followed by the ones a front proxy appended.
@@ -1228,7 +1238,7 @@ func Test_Proxy_ForwardingLinesKeepReceivedOrderBehindAdaptor(t *testing.T) {
 	for _, client := range []string{"6.6.6.6", "6.6.6.6 "} {
 		for range 32 {
 			for name, value := range map[string]string{"X-Junk": "1", fiber.HeaderKeepAlive: "timeout=5"} {
-				r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+				r := apptest.Req(http.MethodGet, "/")
 				r.Header.Set(name, value)
 				r.Header.Set(fiber.HeaderConnection, "X-Junk")
 				r.Header.Add(fiber.HeaderXForwardedFor, client)
@@ -1239,47 +1249,6 @@ func Test_Proxy_ForwardingLinesKeepReceivedOrderBehindAdaptor(t *testing.T) {
 			}
 		}
 	}
-}
-
-// Test_Proxy_ForwardingLinesKeepReceivedOrderAfterEdits checks the order when the application added a forwarding
-// line before the proxy, or removed a line in ModifyRequest: fasthttp moves the last line into a removed one's slot.
-func Test_Proxy_ForwardingLinesKeepReceivedOrderAfterEdits(t *testing.T) {
-	t.Parallel()
-	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendString(forwardingLinesByName(c)) })
-	const added = "X-Forwarded-For=6.6.6.6,X-Forwarded-For=203.0.113.7,X-Forwarded-For=127.0.0.1,X-Forwarded-Proto=http," +
-		"X-Forwarded-Proto=https,X-Url-Scheme=http,X-Url-Scheme=https"
-	heads := map[string]string{
-		"empty chunked body": "Transfer-Encoding: chunked\r\n" + forwardingLines + "\r\n0\r\n\r\n",
-		"connection listed":  "X-Junk: 1\r\nConnection: X-Junk\r\n" + forwardingLines + "\r\n",
-	}
-
-	for _, tc := range trailerHandlers() {
-		t.Run("added before "+tc.name, func(t *testing.T) {
-			t.Parallel()
-			app := fiber.New()
-			app.Use(func(c fiber.Ctx) error {
-				c.Request().Header.Add(fiber.HeaderXForwardedFor, "127.0.0.1")
-				return c.Next()
-			}, tc.build(addr))
-			for name, head := range heads {
-				require.Equal(t, added, sendRaw(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\n"+head), name)
-			}
-		})
-	}
-
-	t.Run("removed in ModifyRequest", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(Balancer(Config{Servers: []string{addr}, ModifyRequest: func(c fiber.Ctx) error {
-			c.Request().Header.Del(fiber.HeaderAuthorization)
-			c.Request().Header.Del("X-Api-Key")
-			return nil
-		}}))
-		for name, head := range heads {
-			head = "Authorization: Bearer x\r\nX-Api-Key: k\r\n" + head
-			require.Equal(t, forwardingLinesWant, sendRaw(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\n"+head), name)
-		}
-	})
 }
 
 // Test_Proxy_DoRedirects_ForwardingLinesKeepReceivedOrder checks a redirect hop, from which fields are removed
@@ -1296,10 +1265,7 @@ func Test_Proxy_DoRedirects_ForwardingLinesKeepReceivedOrder(t *testing.T) {
 		return c.SendStatus(fiber.StatusTemporaryRedirect)
 	})
 	target.All("/final", func(c fiber.Ctx) error { return c.SendString(forwardingLinesByName(c)) })
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
-	addr := ln.Addr().String()
-	startServer(target, ln)
+	addr := listenUpstream(t, target)
 
 	for path, first := range map[string]string{
 		"/303": "Content-Language: de\r\n",
@@ -1312,26 +1278,6 @@ func Test_Proxy_DoRedirects_ForwardingLinesKeepReceivedOrder(t *testing.T) {
 	}
 }
 
-// Test_Proxy_TooManyForwardingLines checks that a request carrying more forwarding lines than the order is kept
-// for is refused rather than forwarded with them in whatever order fasthttp left.
-func Test_Proxy_TooManyForwardingLines(t *testing.T) {
-	t.Parallel()
-	var head strings.Builder
-	for i := range fieldname.MaxOrderedLines + 1 {
-		fmt.Fprintf(&head, "X-Forwarded-%d: v\r\n", i)
-	}
-	for _, tc := range trailerHandlers() {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendString("upstream") })
-			app := fiber.New()
-			app.Use(tc.build(addr))
-			require.Equal(t, utils.StatusMessage(fiber.StatusRequestHeaderFieldsTooLarge),
-				sendRaw(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\n"+head.String()+"\r\n"))
-		})
-	}
-}
-
 // Test_Proxy_ForwardingOrderInOrderDoesNotAllocate pins that the order check adds no allocation for the common
 // shape, a client's line and the one a front proxy appended, already in received order.
 // Not parallel: AllocsPerRun panics in a parallel test.
@@ -1340,7 +1286,7 @@ func Test_Proxy_ForwardingOrderInOrderDoesNotAllocate(t *testing.T) {
 		"X-Forwarded-For: 203.0.113.7\r\nX-Forwarded-Proto: https\r\n\r\n"
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
-	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+	proxyTestReadRequest(t, req, raw)
 
 	strip := testing.AllocsPerRun(100, func() { stripHopByHopRequestHeaders(req, true) })
 	both := testing.AllocsPerRun(100, func() {
@@ -1880,7 +1826,7 @@ func Test_Proxy_DomainForward_HostMatch(t *testing.T) {
 func sendRaw(t *testing.T, app *fiber.App, raw string) string {
 	t.Helper()
 
-	return sendParsed(t, app, proxyTestRequest(t), raw)
+	return string(serveParsed(t, app, proxyTestRequest(t), raw).Body())
 }
 
 // sendRawUnnormalized is sendRaw with the header names kept exactly as
@@ -1890,20 +1836,20 @@ func sendRawUnnormalized(t *testing.T, app *fiber.App, raw string) string {
 
 	req := proxyTestRequest(t)
 	req.Header.DisableNormalizing()
-	return sendParsed(t, app, req, raw)
+	return string(serveParsed(t, app, req, raw).Body())
 }
 
-// sendParsed reads raw into req and runs app's handler on the result.
-func sendParsed(t *testing.T, app *fiber.App, req *fasthttp.Request, raw string) string {
+// serveParsed reads raw into req and runs app's handler on the result, returning the response.
+func serveParsed(t *testing.T, app *fiber.App, req *fasthttp.Request, raw string) *fasthttp.Response {
 	t.Helper()
 
-	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+	proxyTestReadRequest(t, req, raw)
 
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Init(req, nil, nil)
 	app.Handler()(fctx)
 
-	return string(fctx.Response.Body())
+	return &fctx.Response
 }
 
 // loopbackAlias returns addr with its host rewritten to "localhost", naming the
@@ -2003,64 +1949,59 @@ func Test_Proxy_CrossHostCredentialsStrippedWhateverTheirCase(t *testing.T) {
 	require.Empty(t, <-seen, "credentials must not follow a redirect off the host they were sent to")
 }
 
-// Test_Proxy_CrossHostStripsEveryCredentialHeader checks that the set dropped
-// on a redirect off the addressed host is the one the client package drops:
-// Cookie2 carries a session exactly as Cookie does, and a list that covers one
-// but not the other leaks through the gap.
+// Test_Proxy_CrossHostStripsEveryCredentialHeader checks that the set dropped on a redirect off the addressed
+// host is the one the client package drops: Cookie2 carries a session exactly as Cookie does, and a list that
+// covers one but not the other leaks through the gap. A header outside the set goes on.
 func Test_Proxy_CrossHostStripsEveryCredentialHeader(t *testing.T) {
 	t.Parallel()
-	finalAddr, seen := proxyTestFieldLinesUpstream(t, "final",
-		fiber.HeaderAuthorization,
-		fiber.HeaderProxyAuthorization,
-		fiber.HeaderProxyAuthenticate,
-		fiber.HeaderWWWAuthenticate,
-		fiber.HeaderCookie,
-		"Cookie2",
-	)
+	for _, tc := range []struct {
+		headers map[string]string // what the caller sends
+		name    string
+		want    []string // what the target reports of them
+	}{
+		{
+			name: "every credential header",
+			headers: map[string]string{
+				fiber.HeaderAuthorization: "Bearer caller-token", fiber.HeaderProxyAuthorization: "Basic proxy",
+				fiber.HeaderProxyAuthenticate: "Basic realm=x", fiber.HeaderWWWAuthenticate: "Basic realm=y",
+				fiber.HeaderCookie: "session=caller", "Cookie2": `$Version="1"`,
+			},
+		},
+		{
+			name:    "a header outside the set",
+			headers: map[string]string{fiber.HeaderAuthorization: "Bearer caller-token", "X-Api-Key": "key"},
+			want:    []string{"X-Api-Key=key"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			finalAddr, seen := proxyTestFieldLinesUpstream(t, "final",
+				fiber.HeaderAuthorization, fiber.HeaderProxyAuthorization, fiber.HeaderProxyAuthenticate,
+				fiber.HeaderWWWAuthenticate, fiber.HeaderCookie, "Cookie2", "X-Api-Key")
+			redirectAddr := proxyTestRedirectUpstream(t, "http://"+loopbackAlias(t, finalAddr)+"/")
 
-	redirectAddr := proxyTestRedirectUpstream(t, "http://"+loopbackAlias(t, finalAddr)+"/")
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error { return DoRedirects(c, "http://"+redirectAddr, 3) })
 
-	app := fiber.New()
-	app.Use(func(c fiber.Ctx) error { return DoRedirects(c, "http://"+redirectAddr, 3) })
+			req := apptest.Req(fiber.MethodGet, "/")
+			for name, value := range tc.headers {
+				req.Header.Set(name, value)
+			}
+			apptest.Expect(t, app, req, fiber.StatusOK)
 
-	req := apptest.Req(fiber.MethodGet, "/",
-		apptest.WithHeader(fiber.HeaderAuthorization, "Bearer caller-token"),
-		apptest.WithHeader(fiber.HeaderProxyAuthorization, "Basic proxy"),
-		apptest.WithHeader(fiber.HeaderProxyAuthenticate, "Basic realm=x"),
-		apptest.WithHeader(fiber.HeaderWWWAuthenticate, "Basic realm=y"),
-		apptest.WithHeader(fiber.HeaderCookie, "session=caller"),
-		apptest.WithHeader("Cookie2", `$Version="1"`))
-
-	apptest.Expect(t, app, req, fiber.StatusOK)
-
-	require.Empty(t, <-seen, "no credential header may follow a redirect off the addressed host")
-}
-
-// serveOffOriginChain leaves the origin and returns; the last server reports on seen.
-func serveOffOriginChain(t *testing.T, seen chan<- []string) string {
-	t.Helper()
-
-	_, finalAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		seen <- matchingFieldLines(c, "X-Api-Key", "X-Auth-Token", fiber.HeaderAuthorization)
-		return c.SendString("final")
-	})
-
-	_, redirectAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		c.Location("http://" + loopbackAlias(t, finalAddr) + "/")
-		return c.SendStatus(fiber.StatusFound)
-	})
-	return redirectAddr
+			require.ElementsMatch(t, tc.want, <-seen, "only the headers outside the set follow the redirect")
+		})
+	}
 }
 
 func Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true // replaces TestMain's relaxed policy
+	policy := proxyTestAllowPrivatePolicy() // replaces TestMain's relaxed policy
 	policy.RedirectSensitiveHeaders = []string{"x-api-key"}
 	withSecurityPolicyForTest(t, policy)
 
-	seen := make(chan []string, 1)
-	redirectAddr := serveOffOriginChain(t, seen)
+	finalAddr, seen := proxyTestFieldLinesUpstream(t, "final", "X-Api-Key", "X-Auth-Token", fiber.HeaderAuthorization)
+	redirectAddr := proxyTestRedirectUpstream(t, "http://"+loopbackAlias(t, finalAddr)+"/")
 
 	var own string
 	app := fiber.New()
@@ -2070,32 +2011,12 @@ func Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin(t *testing.T) {
 		return err
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Set(fiber.HeaderAuthorization, "Bearer caller-token")
-	req.Header.Set("X-Api-Key", "key")
-	req.Header.Set("X-Auth-Token", "tok")
-
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, "Bearer caller-token"),
+		apptest.WithHeader("X-Api-Key", "key"), apptest.WithHeader("X-Auth-Token", "tok"))
 	apptest.Expect(t, app, req, fiber.StatusOK)
 
 	require.Equal(t, []string{"X-Auth-Token=tok"}, <-seen, "only the header nobody named reaches the target")
 	require.Equal(t, "key|tok|Bearer caller-token", own, "the handler's request is untouched")
-}
-
-func Test_Proxy_DoRedirects_ForwardsUnlistedHeadersOffTheOrigin(t *testing.T) {
-	t.Parallel()
-	seen := make(chan []string, 1)
-	redirectAddr := serveOffOriginChain(t, seen)
-
-	app := fiber.New()
-	app.Use(func(c fiber.Ctx) error { return DoRedirects(c, "http://"+redirectAddr, 3) })
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Header.Set(fiber.HeaderAuthorization, "Bearer caller-token")
-	req.Header.Set("X-Api-Key", "key")
-
-	apptest.Expect(t, app, req, fiber.StatusOK)
-
-	require.Equal(t, []string{"X-Api-Key=key"}, <-seen)
 }
 
 // Test_Proxy_ResponseStripIgnoresTheAppsNormalizationSetting checks the

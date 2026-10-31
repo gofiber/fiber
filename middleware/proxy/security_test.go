@@ -9,8 +9,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strconv"
@@ -418,8 +416,7 @@ func Test_Security_JoinUpstreamPath_KeepsEscapes(t *testing.T) {
 		{"/a%2Fb", "/%zz", "/a%2Fb/%25zz"},
 		{"/my%20app", "/%zz", "/my%20app/%25zz"},
 	} {
-		base, err := parseUpstream("http://upstream.example" + tc.base)
-		require.NoError(t, err)
+		base := proxyTestParseUpstream(t, "http://upstream.example"+tc.base)
 		require.Equal(t, "http://upstream.example"+tc.want, joinUpstreamPath(base, tc.target), "%s + %s", tc.base, tc.target)
 	}
 }
@@ -1162,6 +1159,13 @@ func proxyTestRequest(tb testing.TB) *fasthttp.Request {
 	return req
 }
 
+// proxyTestReadRequest parses raw into req, as the server does for a request it read off the wire.
+func proxyTestReadRequest(tb testing.TB, req *fasthttp.Request, raw string) {
+	tb.Helper()
+
+	require.NoError(tb, req.Read(bufio.NewReader(strings.NewReader(raw))))
+}
+
 // proxyTestResponse returns a blank fasthttp response that goes back to the pool when tb ends.
 func proxyTestResponse(tb testing.TB) *fasthttp.Response {
 	tb.Helper()
@@ -1343,7 +1347,7 @@ func Test_Security_RedirectRequest_DropsFraming(t *testing.T) {
 	const raw = "POST /start HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nTrailer: X-Sum\r\n\r\n" +
 		"3\r\nabc\r\n0\r\nX-Sum: 1\r\n\r\n"
 	req := proxyTestRequest(t)
-	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+	proxyTestReadRequest(t, req, raw)
 	require.Equal(t, -1, req.Header.ContentLength(), "the request is chunked")
 
 	redirectRequest(req)
@@ -1383,40 +1387,72 @@ func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {
 	}
 }
 
-// Test_Security_FollowRedirects_StripsCredentialsOnOriginChange pins that an origin is scheme, host and
-// port (RFC 6454): a change of any loses the credentials, a spelled-out default port does not.
+// Test_Security_FollowRedirects_StripsCredentialsOnOriginChange pins what the next hop of a redirect carries of the
+// request's headers: an origin is scheme, host and port (RFC 6454), and a change of any loses the credentials and the
+// names SecurityPolicy.RedirectSensitiveHeaders lists, a spelled-out default port does not. The application's other
+// headers go on.
 func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T) {
 	t.Parallel()
-	for name, tc := range map[string]struct {
-		start    string
-		location string
-		wantAuth string
+	const first = "http://first.example/start"
+	credentials := []string{fiber.HeaderAuthorization, fiber.HeaderCookie}
+	key, both := []string{"X-Api-Key"}, []string{"X-Api-Key", "X-Auth-Token"}
+	withKey := append(slices.Clone(credentials), key...)
+	for _, tc := range []struct {
+		name, from, to string
+		listed         []string // SecurityPolicy.RedirectSensitiveHeaders
+		lost           []string // the headers of the request the next hop does not carry
 	}{
-		"same scheme, host and port": {start: "http://same.example:8080/", location: "http://same.example:8080/next", wantAuth: "Bearer secret"},
-		"default http port spelled":  {start: "http://same.example/", location: "http://same.example:80/next", wantAuth: "Bearer secret"},
-		"default https port spelled": {start: "https://same.example/", location: "https://same.example:443/next", wantAuth: "Bearer secret"},
-		"other host":                 {start: "http://first.example/", location: "http://second.example/next"},
-		"other port":                 {start: "http://same.example:8080/", location: "http://same.example:9090/next"},
-		"http to https":              {start: "http://same.example/", location: "https://same.example/next"},
-		"https to http":              {start: "https://same.example/", location: "http://same.example/next"},
-		"https with the http port":   {start: "https://same.example/", location: "https://same.example:80/next"},
+		{name: "same scheme, host and port", from: "http://same.example:8080/", to: "http://same.example:8080/next"},
+		{name: "default http port spelled", from: "http://same.example/", to: "http://same.example:80/next"},
+		{name: "default https port spelled", from: "https://same.example/", to: "https://same.example:443/next"},
+		{name: "other host", from: "http://first.example/", to: "http://second.example/next", lost: credentials},
+		{name: "other port", from: "http://same.example:8080/", to: "http://same.example:9090/next", lost: credentials},
+		{name: "http to https", from: "http://same.example/", to: "https://same.example/next", lost: credentials},
+		{name: "https to http", from: "https://same.example/", to: "http://same.example/next", lost: credentials},
+		{
+			name: "https with the http port", from: "https://same.example/", to: "https://same.example:80/next",
+			lost: credentials,
+		},
+		{
+			name: "a listed name is dropped, an unlisted one is kept", from: first, to: "http://second.example/next",
+			listed: key, lost: withKey,
+		},
+		{name: "another scheme counts", from: first, to: "https://first.example/next", listed: key, lost: withKey},
+		{name: "another port counts", from: first, to: "http://first.example:8080/next", listed: key, lost: withKey},
+		{name: "the same origin keeps every header", from: first, to: "http://first.example/next", listed: both},
+		{
+			name: "nothing listed forwards the application's headers and drops the built-in set",
+			from: first, to: "http://second.example/next", lost: credentials,
+		},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			var sawAuth, sawCookie string
-			followRecording(t, tc.start, fasthttp.StatusFound, tc.location,
-				withCredentials, func(req *fasthttp.Request) {
-					if string(req.URI().Path()) == "/next" {
-						sawAuth = string(req.Header.Peek(fiber.HeaderAuthorization))
-						sawCookie = string(req.Header.Peek(fiber.HeaderCookie))
+			sent := map[string]string{
+				fiber.HeaderAuthorization: "Bearer secret", fiber.HeaderCookie: "session=abc",
+				"X-Api-Key": "key", "X-Auth-Token": "tok",
+			}
+			var next map[string]string // what the hop to /next carries, nil when it was not made
+			_, err := followRecordingPolicy(t, redirectTestPolicy(tc.listed...), tc.from, map[string]redirectStep{
+				tc.from: {status: fasthttp.StatusFound, location: tc.to},
+			}, func(req *fasthttp.Request) {
+				withCredentials(req)
+				withAppHeaders(req)
+			}, func(req *fasthttp.Request) {
+				if string(req.URI().Path()) == "/next" {
+					next = map[string]string{}
+					for name := range sent {
+						next[name] = string(req.Header.Peek(name))
 					}
-				})
+				}
+			})
+			require.NoError(t, err)
 
-			require.Equal(t, tc.wantAuth, sawAuth)
-			if tc.wantAuth == "" {
-				require.Empty(t, sawCookie)
-			} else {
-				require.Equal(t, "session=abc", sawCookie)
+			require.NotNil(t, next, "the redirect was not followed")
+			for name, value := range sent {
+				if slices.Contains(tc.lost, name) {
+					value = ""
+				}
+				require.Equal(t, value, next[name], name)
 			}
 		})
 	}
@@ -1425,60 +1461,6 @@ func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T)
 func withAppHeaders(req *fasthttp.Request) {
 	req.Header.Set("X-Api-Key", "key")
 	req.Header.Set("X-Auth-Token", "tok")
-}
-
-func Test_Security_FollowRedirects_StripsRedirectSensitiveHeaders(t *testing.T) {
-	t.Parallel()
-	const start = "http://first.example/start"
-	for name, tc := range map[string]struct {
-		location string
-		wantAuth string
-		wantKey  string
-		wantTok  string
-		listed   []string
-	}{
-		"a listed name is dropped, an unlisted one is kept": {
-			location: "http://second.example/next", listed: []string{"X-Api-Key"}, wantTok: "tok",
-		},
-		"another scheme counts": {
-			location: "https://first.example/next", listed: []string{"X-Api-Key"}, wantTok: "tok",
-		},
-		"another port counts": {
-			location: "http://first.example:8080/next", listed: []string{"X-Api-Key"}, wantTok: "tok",
-		},
-		"the same origin keeps every header": {
-			location: "http://first.example/next", listed: []string{"X-Api-Key", "X-Auth-Token"},
-			wantAuth: "Bearer secret", wantKey: "key", wantTok: "tok",
-		},
-		"nothing listed forwards the application's headers and drops the built-in set": {
-			location: "http://second.example/next", wantKey: "key", wantTok: "tok",
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			var reached bool
-			var sawAuth, sawKey, sawTok string
-			_, err := followRecordingPolicy(t, redirectTestPolicy(tc.listed...), start, map[string]redirectStep{
-				start: {status: fasthttp.StatusFound, location: tc.location},
-			}, func(req *fasthttp.Request) {
-				withCredentials(req)
-				withAppHeaders(req)
-			}, func(req *fasthttp.Request) {
-				if string(req.URI().Path()) == "/next" {
-					reached = true
-					sawAuth = string(req.Header.Peek(fiber.HeaderAuthorization))
-					sawKey = string(req.Header.Peek("X-Api-Key"))
-					sawTok = string(req.Header.Peek("X-Auth-Token"))
-				}
-			})
-			require.NoError(t, err)
-
-			require.True(t, reached, "the redirect was not followed")
-			require.Equal(t, tc.wantAuth, sawAuth)
-			require.Equal(t, tc.wantKey, sawKey)
-			require.Equal(t, tc.wantTok, sawTok)
-		})
-	}
 }
 
 func Test_Security_FollowRedirects_RedirectSensitiveHeadersStayGone(t *testing.T) {
@@ -1532,8 +1514,8 @@ func Test_Security_FollowRedirects_SpellingLimit(t *testing.T) {
 			status: fasthttp.StatusTemporaryRedirect, location: "http://second.example/next", field: "authorization", names: len(crosshost.SensitiveHeaders),
 		},
 	} {
-		for _, over := range []int{0, 1} {
-			t.Run(name+"/"+strconv.Itoa(over), func(t *testing.T) {
+		for over, label := range []string{"at the limit", "one over"} {
+			t.Run(name+"/"+label, func(t *testing.T) {
 				t.Parallel()
 				var reached bool
 				_, err := followRecordingPolicy(t, redirectTestPolicy(), start, map[string]redirectStep{
@@ -1580,7 +1562,7 @@ func Test_Security_DoRedirects_ErrorDropsUpstreamResponse(t *testing.T) {
 			t.Parallel()
 			app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 			app.Get("/", func(c fiber.Ctx) error { return DoRedirects(c, "http://"+addr, tc.redirects) })
-			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req := apptest.Req(fiber.MethodGet, "/")
 			for _, k := range caseSpellings("authorization", tc.spellings) {
 				req.Header[k] = []string{"v"}
 			}
@@ -1610,7 +1592,7 @@ func Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart(t *testing.T
 	var bodies []string
 	req := followRecording(t, "http://first.example/start", fasthttp.StatusTemporaryRedirect,
 		"http://second.example/next", func(req *fasthttp.Request) {
-			require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+			proxyTestReadRequest(t, req, raw)
 		}, func(req *fasthttp.Request) { bodies = append(bodies, string(req.Body())) })
 
 	require.Len(t, bodies, 2)

@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"net"
@@ -167,9 +166,7 @@ func BenchmarkKeepForwardingOrder_ManyRepeated(b *testing.B) {
 		fmt.Fprintf(&raw, "X-Forwarded-%d: v%d\r\n", i%(fieldname.MaxOrderedLines/2), i)
 	}
 	var src, req fasthttp.Request
-	if err := src.Read(bufio.NewReader(strings.NewReader(raw.String() + "\r\n"))); err != nil {
-		b.Fatal(err)
-	}
+	proxyTestReadRequest(b, &src, raw.String()+"\r\n")
 	src.Header.Del("X-Junk")
 	b.ReportAllocs()
 	for b.Loop() {
@@ -197,10 +194,7 @@ func BenchmarkJoinUpstreamPath_PrefixBase(b *testing.B) {
 }
 
 func BenchmarkJoinUpstreamPath_EscapedTarget(b *testing.B) {
-	base, err := url.Parse("http://upstream.example/service")
-	if err != nil {
-		b.Fatal(err)
-	}
+	base := mustParseTestURL(b, "http://upstream.example/service")
 	b.ReportAllocs()
 	for b.Loop() {
 		_ = joinUpstreamPath(base, "/api/a%3Bb/widgets")
@@ -208,10 +202,7 @@ func BenchmarkJoinUpstreamPath_EscapedTarget(b *testing.B) {
 }
 
 func BenchmarkJoinUpstreamPath_EscapedBase(b *testing.B) {
-	base, err := url.Parse("http://upstream.example/a%3Bb")
-	if err != nil {
-		b.Fatal(err)
-	}
+	base := mustParseTestURL(b, "http://upstream.example/a%3Bb")
 	b.ReportAllocs()
 	for b.Loop() {
 		_ = joinUpstreamPath(base, "/api/c%3Bd")
@@ -292,19 +283,24 @@ func benchNoopUpstream(b *testing.B) {
 	sharedClient.Store(&fasthttp.Client{Transport: noopRoundTripper{}})
 }
 
-// benchProxyPath sends a GET through app per iteration on a bare fasthttp context; the upstream must answer 204.
-func benchProxyPath(b *testing.B, app *fiber.App, host, target string) {
-	b.Helper()
-	var req fasthttp.Request
+// benchGet returns a GET for target addressed to host.
+func benchGet(host, target string) *fasthttp.Request {
+	req := new(fasthttp.Request)
 	req.SetRequestURI(target)
 	req.Header.SetHost(host)
+	return req
+}
+
+// benchProxyPath sends req through app per iteration on a bare fasthttp context; the upstream must answer 204.
+func benchProxyPath(b *testing.B, app *fiber.App, req *fasthttp.Request) {
+	b.Helper()
 	handler := app.Handler()
 	remote := &net.TCPAddr{IP: net.IPv4(203, 0, 113, 9), Port: 40000}
 
 	var fctx fasthttp.RequestCtx
 	b.ReportAllocs()
 	for b.Loop() {
-		fctx.Init(&req, remote, nil)
+		fctx.Init(req, remote, nil)
 		handler(&fctx)
 		if got := fctx.Response.StatusCode(); got != fasthttp.StatusNoContent {
 			b.Fatalf("status = %d, want %d", got, fasthttp.StatusNoContent)
@@ -312,68 +308,47 @@ func benchProxyPath(b *testing.B, app *fiber.App, host, target string) {
 	}
 }
 
-// BenchmarkBalancer_ProxyPath measures a request through Balancer to an upstream that never dials.
-func BenchmarkBalancer_ProxyPath(b *testing.B) {
-	lbc := &fasthttp.LBClient{
+// benchBalancer returns a Balancer to an upstream that never dials: its transport answers 204.
+func benchBalancer() fiber.Handler {
+	return Balancer(Config{Client: &fasthttp.LBClient{
 		Timeout: time.Second,
 		Clients: []fasthttp.BalancingClient{
 			&fasthttp.HostClient{Addr: "203.0.113.5:8080", Transport: noopRoundTripper{}},
 		},
-	}
+	}})
+}
+
+// BenchmarkBalancer_ProxyPath measures a request through Balancer to an upstream that never dials.
+func BenchmarkBalancer_ProxyPath(b *testing.B) {
 	app := fiber.New()
-	app.Use(Balancer(Config{Client: lbc}))
-	benchProxyPath(b, app, "api.example", "/v1/widgets?q=1")
+	app.Use(benchBalancer())
+	benchProxyPath(b, app, benchGet("api.example", "/v1/widgets?q=1"))
 }
 
 // BenchmarkBalancer_ProxyPath_ForwardingLines measures Balancer on a request off the wire whose strip moves a
 // forwarding line, so the order step rewrites the lines.
 func BenchmarkBalancer_ProxyPath_ForwardingLines(b *testing.B) {
-	lbc := &fasthttp.LBClient{
-		Timeout: time.Second,
-		Clients: []fasthttp.BalancingClient{
-			&fasthttp.HostClient{Addr: "203.0.113.5:8080", Transport: noopRoundTripper{}},
-		},
-	}
 	app := fiber.New(fiber.Config{
 		ProxyHeader:        fiber.HeaderXForwardedFor,
 		TrustProxy:         true,
 		EnableIPValidation: true,
 		TrustProxyConfig:   fiber.TrustProxyConfig{Proxies: []string{"203.0.113.9"}},
 	})
-	app.Use(Balancer(Config{Client: lbc}))
+	app.Use(benchBalancer())
 
 	var req fasthttp.Request
-	if err := req.Read(bufio.NewReader(strings.NewReader("GET /v1/widgets?q=1 HTTP/1.1\r\nHost: api.example\r\n" +
-		"Connection: X-Junk\r\nX-Junk: 1\r\nX-Forwarded-For: 198.51.100.7\r\nX-Forwarded-Proto: http\r\n" +
-		"X-Forwarded-For: 203.0.113.9\r\nX-Forwarded-Proto: https\r\n\r\n"))); err != nil {
-		b.Fatal(err)
-	}
-	handler := app.Handler()
-	remote := &net.TCPAddr{IP: net.IPv4(203, 0, 113, 9), Port: 40000}
-
-	var fctx fasthttp.RequestCtx
-	b.ReportAllocs()
-	for b.Loop() {
-		fctx.Init(&req, remote, nil)
-		handler(&fctx)
-		if got := fctx.Response.StatusCode(); got != fasthttp.StatusNoContent {
-			b.Fatalf("status = %d, want %d", got, fasthttp.StatusNoContent)
-		}
-	}
+	proxyTestReadRequest(b, &req, "GET /v1/widgets?q=1 HTTP/1.1\r\nHost: api.example\r\n"+
+		"Connection: X-Junk\r\nX-Junk: 1\r\nX-Forwarded-For: 198.51.100.7\r\nX-Forwarded-Proto: http\r\n"+
+		"X-Forwarded-For: 203.0.113.9\r\nX-Forwarded-Proto: https\r\n\r\n")
+	benchProxyPath(b, app, &req)
 }
 
 // BenchmarkBalancer_AbsoluteFormImmutable measures an absolute-form request, whose hosts Balancer compares,
 // under Immutable, where reading the request line through c.OriginalURL() would copy it.
 func BenchmarkBalancer_AbsoluteFormImmutable(b *testing.B) {
-	lbc := &fasthttp.LBClient{
-		Timeout: time.Second,
-		Clients: []fasthttp.BalancingClient{
-			&fasthttp.HostClient{Addr: "203.0.113.5:8080", Transport: noopRoundTripper{}},
-		},
-	}
 	app := fiber.New(fiber.Config{Immutable: true})
-	app.Use(Balancer(Config{Client: lbc}))
-	benchProxyPath(b, app, "API.example", "http://api.example:80/v1/widgets?q=1")
+	app.Use(benchBalancer())
+	benchProxyPath(b, app, benchGet("API.example", "http://api.example:80/v1/widgets?q=1"))
 }
 
 // BenchmarkForward_ProxyPath measures a request through Forward.
@@ -382,7 +357,7 @@ func BenchmarkForward_ProxyPath(b *testing.B) {
 
 	app := fiber.New()
 	app.Use(Forward("http://203.0.113.5:8080/v1/widgets"))
-	benchProxyPath(b, app, "api.example", "/anything")
+	benchProxyPath(b, app, benchGet("api.example", "/anything"))
 }
 
 // BenchmarkBalancerForward_ProxyPath measures a request through BalancerForward.
@@ -391,7 +366,7 @@ func BenchmarkBalancerForward_ProxyPath(b *testing.B) {
 
 	app := fiber.New()
 	app.Use(BalancerForward([]string{"http://203.0.113.5:8080", "http://203.0.113.6:8080"}))
-	benchProxyPath(b, app, "api.example", "/v1/widgets?q=1")
+	benchProxyPath(b, app, benchGet("api.example", "/v1/widgets?q=1"))
 }
 
 func BenchmarkURLRoundrobinGet(b *testing.B) {

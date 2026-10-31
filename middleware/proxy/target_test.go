@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"bufio"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,7 +19,6 @@ import (
 func rawRequest(t *testing.T, app *fiber.App, target, host string) *fasthttp.Response {
 	t.Helper()
 
-	var req fasthttp.Request
 	method := fiber.MethodGet
 	if target == "*" {
 		method = fiber.MethodOptions // the only method asterisk-form is for
@@ -30,15 +28,7 @@ func rawRequest(t *testing.T, app *fiber.App, target, host string) *fasthttp.Res
 		// HTTP/1.0 needs no Host header.
 		raw = method + " " + target + " HTTP/1.0\r\n\r\n"
 	}
-	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
-
-	var fctx fasthttp.RequestCtx
-	fctx.Init(&req, nil, nil)
-	app.Handler()(&fctx)
-
-	resp := fasthttp.AcquireResponse()
-	fctx.Response.CopyTo(resp)
-	return resp
+	return serveParsed(t, app, proxyTestRequest(t), raw)
 }
 
 // listenUpstream serves upstream on a loopback port until the test ends and
@@ -105,6 +95,11 @@ func proxyTestExpectStatus(t *testing.T, app *fiber.App, status int, targets ...
 func Test_Proxy_ForwardsRoutedPath(t *testing.T) {
 	t.Parallel()
 	addr := echoTarget(t)
+	escapedPrefixForwarded := map[string]string{
+		"/public/x":                  "/my%20app/public/x",
+		"/public/..%3B/admin/secret": "/my%20app/public/..%3B/admin/secret",
+		"/..%3B/other/a%40b?q=%3B":   "/my%20app/..%3B/other/a%40b?q=%3B",
+	}
 
 	for _, tc := range []struct {
 		build     func(addr string) fiber.Handler
@@ -169,6 +164,25 @@ func Test_Proxy_ForwardsRoutedPath(t *testing.T) {
 			},
 			forbidden: []string{"/%2e%2e/admin/secret"},
 			refused:   []string{"//internal", "/public/..%2Fadmin/secret"},
+		},
+		// An escape in the upstream URL's path does not cost the routed target its escapes: with "%3B" sent as ";",
+		// a servlet container serves "/admin/secret" for "/public/..%3B/admin/secret" although no middleware on
+		// "/admin" ran.
+		{
+			name: "DomainForward with an escaped path prefix",
+			build: func(addr string) fiber.Handler {
+				return DomainForward("example.com", "http://"+addr+"/my%20app")
+			},
+			forwarded: escapedPrefixForwarded,
+			refused:   []string{"/public/..;/admin/secret"},
+		},
+		{
+			name: "BalancerForward with an escaped path prefix",
+			build: func(addr string) fiber.Handler {
+				return BalancerForward([]string{"http://" + addr + "/my%20app"})
+			},
+			forwarded: escapedPrefixForwarded,
+			refused:   []string{"/public/..;/admin/secret"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -342,35 +356,6 @@ func Test_Proxy_Balancer_RejectsNonOriginServer(t *testing.T) {
 	require.NotPanics(t, func() {
 		Balancer(Config{Servers: []string{"http://127.0.0.1:1", "http://127.0.0.1:1/", "127.0.0.1:1", "https://[::1]:1"}})
 	})
-}
-
-// Test_Proxy_Forward_EscapedUpstreamPathKeepsTarget pins that an escape in the
-// upstream URL's path does not cost the routed target its escapes: with "%3B"
-// sent as ";", a servlet container serves "/admin/secret" for
-// "/public/..%3B/admin/secret" although no middleware on "/admin" ran.
-func Test_Proxy_Forward_EscapedUpstreamPathKeepsTarget(t *testing.T) {
-	t.Parallel()
-	addr := echoTarget(t)
-
-	for name, handler := range map[string]fiber.Handler{
-		"DomainForward":   DomainForward("example.com", "http://"+addr+"/my%20app"),
-		"BalancerForward": BalancerForward([]string{"http://" + addr + "/my%20app"}),
-	} {
-		app := fiber.New()
-		app.Use("/admin", forbid)
-		app.Use(handler)
-
-		for target, want := range map[string]string{
-			"/public/x":                  "/my%20app/public/x",
-			"/public/..%3B/admin/secret": "/my%20app/public/..%3B/admin/secret",
-			"/..%3B/other/a%40b?q=%3B":   "/my%20app/..%3B/other/a%40b?q=%3B",
-		} {
-			resp := rawRequest(t, app, target, "example.com")
-			require.Equal(t, fiber.StatusOK, resp.StatusCode(), "%s %s", name, target)
-			require.Equal(t, want, string(resp.Body()), "%s upstream target for %q", name, target)
-		}
-		require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, "/public/..;/admin/secret", "example.com").StatusCode(), name)
-	}
 }
 
 // Test_Proxy_RejectsEncodedSeparator pins that a routed path an upstream could

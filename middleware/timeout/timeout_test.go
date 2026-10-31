@@ -1,13 +1,12 @@
 package timeout
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -63,6 +62,14 @@ func timedGet(t *testing.T, app *fiber.App, path string) time.Duration {
 	elapsed := time.Since(start)
 	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode, "Expected 503 Service Unavailable")
 	return elapsed
+}
+
+// releaseAndAwaitReclaim closes release, which the handler that holds the abandoned ctx c waits on, and requires
+// the ctx to be reclaimed once the handler is done: IsAbandoned flips back, which only the reclaim does.
+func releaseAndAwaitReclaim(t *testing.T, c fiber.Ctx, release chan struct{}, msg string) {
+	t.Helper()
+	close(release)
+	require.Eventually(t, func() bool { return !c.IsAbandoned() }, time.Second, 5*time.Millisecond, msg)
 }
 
 // TestTimeout_Statuses tests the status a handler behind the middleware is
@@ -543,10 +550,7 @@ func TestTimeout_AbandonedCtxReclaimed(t *testing.T) {
 			require.True(t, c.IsAbandoned(), "context reclaimed while handler still running")
 
 			// Let the handler finish; the context must now be reclaimed (pooled).
-			close(release)
-			require.Eventually(t, func() bool {
-				return !c.IsAbandoned()
-			}, time.Second, 5*time.Millisecond, "abandoned context was not reclaimed after the handler finished")
+			releaseAndAwaitReclaim(t, c, release, "abandoned context was not reclaimed after the handler finished")
 		})
 	}
 }
@@ -625,8 +629,7 @@ func Test_Timeout_OnTimeoutLeavesHandlerResponseAlone(t *testing.T) {
 				return fiber.ErrGatewayTimeout
 			}}))
 
-			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-			req.Header.Set("Cookie", "session=s1")
+			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderCookie, "session=s1"))
 			resp := apptest.Do(t, app, req)
 			<-wrote
 			require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
@@ -660,8 +663,7 @@ func Test_Timeout_OnTimeoutSeesCtxAsHandlerGotIt(t *testing.T) {
 		}, " "))
 	}}))
 
-	req := httptest.NewRequest(fiber.MethodPost, "/items?q=1", http.NoBody)
-	req.Header.Set("X-Req", "r1")
+	req := apptest.Req(fiber.MethodPost, "/items?q=1", apptest.WithHeader("X-Req", "r1"))
 	resp := apptest.Expect(t, app, req, fiber.StatusGatewayTimeout)
 	require.Equal(t, "1", resp.Header.Get("X-Early"))
 	require.Equal(t, "POST /items 1 r1 42 true", apptest.Body(t, resp))
@@ -672,7 +674,7 @@ func Test_Timeout_OnTimeoutSeesCtxAsHandlerGotIt(t *testing.T) {
 func Test_Timeout_NestedOuterDeadlineFirst(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{Timeout: 20 * time.Millisecond}))
+	app.Use(outerTimeout(Config{Timeout: 20 * time.Millisecond}))
 
 	var innerOnTimeout atomic.Int32
 	ctxCh := make(chan fiber.Ctx, 1)
@@ -693,10 +695,7 @@ func Test_Timeout_NestedOuterDeadlineFirst(t *testing.T) {
 		return !c.IsAbandoned() || innerOnTimeout.Load() != 0
 	}, 50*time.Millisecond, 5*time.Millisecond, "ctx reclaimed or timed out twice while the handler still runs")
 
-	close(release)
-	require.Eventually(t, func() bool {
-		return !c.IsAbandoned()
-	}, time.Second, 5*time.Millisecond, "ctx was not reclaimed after the handler finished")
+	releaseAndAwaitReclaim(t, c, release, "ctx was not reclaimed after the handler finished")
 	require.Zero(t, innerOnTimeout.Load())
 }
 
@@ -705,7 +704,7 @@ func Test_Timeout_NestedOuterDeadlineFirst(t *testing.T) {
 func Test_Timeout_NestedInnerFirst(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{Timeout: 50 * time.Millisecond}))
+	app.Use(outerTimeout(Config{Timeout: 50 * time.Millisecond}))
 	unwind := make(chan struct{})
 	app.Use(func(c fiber.Ctx) error {
 		err := c.Next()
@@ -728,20 +727,14 @@ func Test_Timeout_NestedInnerFirst(t *testing.T) {
 		return !c.IsAbandoned()
 	}, 50*time.Millisecond, 5*time.Millisecond, "ctx reclaimed while the inner handler still runs")
 
-	close(release)
-	require.Eventually(t, func() bool {
-		return !c.IsAbandoned()
-	}, time.Second, 5*time.Millisecond, "ctx was not reclaimed after both goroutines finished")
+	releaseAndAwaitReclaim(t, c, release, "ctx was not reclaimed after both goroutines finished")
 }
 
 func Test_Timeout_EnclosingDeadlineRunsInline(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{Timeout: 20 * time.Millisecond}))
-	app.Get("/wait", New(func(c fiber.Ctx) error {
-		<-c.Context().Done()
-		return c.Context().Err()
-	}, Config{Timeout: time.Second}))
+	app.Use(outerTimeout(Config{Timeout: 20 * time.Millisecond}))
+	app.Get("/wait", New(untilDeadline, Config{Timeout: time.Second}))
 	app.Get("/panic", New(func(fiber.Ctx) error { panic("boom") }, Config{Timeout: time.Second}))
 
 	apptest.Expect(t, app, "/wait", fiber.StatusServiceUnavailable)
@@ -771,28 +764,15 @@ func Test_Timeout_ForeignDeadlineStillTimesOut(t *testing.T) {
 	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
 }
 
-// Middleware before timeout.New sees an error, so it skips its work on the response the handler still writes.
-func Test_Timeout_OnTimeoutNilStillReturnsError(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	chainErr := make(chan error, 1)
-	app.Use(func(c fiber.Ctx) error {
-		err := c.Next()
-		chainErr <- err
-		return err
-	})
-	release := make(chan struct{})
-	defer close(release)
-	app.Get("/", New(func(c fiber.Ctx) error {
-		<-c.Context().Done()
-		<-release
-		return nil
-	}, Config{Timeout: 20 * time.Millisecond, OnTimeout: func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusOK).SendString("fallback")
-	}}))
+// outerTimeout is a timeout.New around the rest of the chain, the middleware the timeout of a route nests in.
+func outerTimeout(cfg Config) fiber.Handler {
+	return New(func(c fiber.Ctx) error { return c.Next() }, cfg)
+}
 
-	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "fallback")
-	require.ErrorIs(t, <-chainErr, fiber.ErrServiceUnavailable)
+// untilDeadline blocks until the deadline of the request passes and returns the context error.
+func untilDeadline(c fiber.Ctx) error {
+	<-c.Context().Done()
+	return c.Context().Err() //nolint:wrapcheck // the handler gives up with the context error as it is
 }
 
 func nestedOnTimeout(header string, status int, calls *atomic.Int32) fiber.Handler {
@@ -803,60 +783,59 @@ func nestedOnTimeout(header string, status int, calls *atomic.Int32) fiber.Handl
 	}
 }
 
-func Test_Timeout_NestedInlineLeavesOnTimeoutToEnclosing(t *testing.T) {
+// Test_Timeout_NestedOnTimeoutAnswersOnce covers a route timeout under one on app.Use, each with an OnTimeout:
+// the request is answered once. An enclosing timeout that fires first answers it and the inner one runs inline,
+// but an inner one still answering when the enclosing deadline passes keeps the answer.
+func Test_Timeout_NestedOnTimeoutAnswersOnce(t *testing.T) {
 	t.Parallel()
-	var outerCalls, innerCalls atomic.Int32
-	app := fiber.New()
-	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{
-		Timeout:   20 * time.Millisecond,
-		OnTimeout: nestedOnTimeout("X-Outer", fiber.StatusServiceUnavailable, &outerCalls),
-	}))
-	app.Get("/", New(func(c fiber.Ctx) error {
-		<-c.Context().Done()
-		return c.Context().Err()
-	}, Config{Timeout: time.Second, OnTimeout: nestedOnTimeout("X-Inner", fiber.StatusGatewayTimeout, &innerCalls)}))
+	for _, tc := range []struct {
+		name          string
+		winner, loser string        // the header of the OnTimeout that answers, and of the one that never runs
+		outer, inner  time.Duration // the timeouts of the middleware on app.Use and of the route
+		answer        time.Duration // how long the OnTimeout of the route takes to answer
+		status        int
+		requests      int
+	}{
+		{
+			name: "enclosing deadline first", winner: "X-Outer", loser: "X-Inner", status: fiber.StatusServiceUnavailable,
+			outer: 20 * time.Millisecond, inner: time.Second, requests: 3,
+		},
+		{
+			name: "inner answer in progress", winner: "X-Inner", loser: "X-Outer", status: fiber.StatusGatewayTimeout,
+			outer: 30 * time.Millisecond, inner: 10 * time.Millisecond, answer: 50 * time.Millisecond, requests: 1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			calls := map[string]*atomic.Int32{"X-Outer": new(atomic.Int32), "X-Inner": new(atomic.Int32)}
+			inner := nestedOnTimeout("X-Inner", fiber.StatusGatewayTimeout, calls["X-Inner"])
+			app := fiber.New()
+			app.Use(outerTimeout(Config{
+				Timeout:   tc.outer,
+				OnTimeout: nestedOnTimeout("X-Outer", fiber.StatusServiceUnavailable, calls["X-Outer"]),
+			}))
+			app.Get("/", New(untilDeadline, Config{Timeout: tc.inner, OnTimeout: func(c fiber.Ctx) error {
+				time.Sleep(tc.answer)
+				return inner(c)
+			}}))
 
-	for range 3 {
-		resp := apptest.Do(t, app, "/")
-		body := apptest.Body(t, resp)
-		require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
-		require.Equal(t, "X-Outer", body)
-		require.Empty(t, resp.Header.Get("X-Inner"))
+			for range tc.requests {
+				resp := apptest.Do(t, app, "/")
+				body := apptest.Body(t, resp)
+				require.Equal(t, tc.status, resp.StatusCode)
+				require.Equal(t, tc.winner, body)
+				require.Empty(t, resp.Header.Get(tc.loser))
+			}
+			require.Zero(t, calls[tc.loser].Load())
+		})
 	}
-	require.Zero(t, innerCalls.Load())
-}
-
-func Test_Timeout_NestedOuterWaitsForInnerAnswer(t *testing.T) {
-	t.Parallel()
-	var outerCalls, innerCalls atomic.Int32
-	app := fiber.New()
-	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{
-		Timeout:   30 * time.Millisecond,
-		OnTimeout: nestedOnTimeout("X-Outer", fiber.StatusServiceUnavailable, &outerCalls),
-	}))
-	inner := nestedOnTimeout("X-Inner", fiber.StatusGatewayTimeout, &innerCalls)
-	app.Get("/", New(func(c fiber.Ctx) error {
-		<-c.Context().Done()
-		return c.Context().Err()
-	}, Config{Timeout: 10 * time.Millisecond, OnTimeout: func(c fiber.Ctx) error {
-		// Still answering when the outer deadline passes.
-		time.Sleep(50 * time.Millisecond)
-		return inner(c)
-	}}))
-
-	resp := apptest.Do(t, app, "/")
-	body := apptest.Body(t, resp)
-	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
-	require.Equal(t, "X-Inner", body)
-	require.Empty(t, resp.Header.Get("X-Outer"))
-	require.Zero(t, outerCalls.Load())
 }
 
 func Test_Timeout_NestedInnerFirstLeavesContextToHandler(t *testing.T) {
 	t.Parallel()
 	var outerCalls atomic.Int32
 	app := fiber.New()
-	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{
+	app.Use(outerTimeout(Config{
 		Timeout:   time.Second,
 		OnTimeout: nestedOnTimeout("X-Outer", fiber.StatusServiceUnavailable, &outerCalls),
 	}))
@@ -888,11 +867,8 @@ func Test_Timeout_NestedCustomCtxLeavesContextToHandler(t *testing.T) {
 	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
 		return &customCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
 	})
-	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{Timeout: 20 * time.Millisecond}))
-	app.Get("/", New(func(c fiber.Ctx) error {
-		<-c.Context().Done()
-		return c.Context().Err()
-	}, Config{Timeout: 19 * time.Millisecond}))
+	app.Use(outerTimeout(Config{Timeout: 20 * time.Millisecond}))
+	app.Get("/", New(untilDeadline, Config{Timeout: 19 * time.Millisecond}))
 
 	for range 20 {
 		apptest.Expect(t, app, "/", fiber.StatusServiceUnavailable)
@@ -958,16 +934,24 @@ func Test_Timeout_OnTimeoutPanicLeavesCtxToHandler(t *testing.T) {
 
 // Test_Timeout_ReturnsErrServiceUnavailable covers what the outer middleware and the app's
 // ErrorHandler see once a handler outlives its deadline: the response is already
-// written, the outer middleware gets fiber.ErrServiceUnavailable and the
-// ErrorHandler is not called.
+// written, the outer middleware gets fiber.ErrServiceUnavailable, also when OnTimeout answers
+// (it skips its work on the response the handler still writes), and the ErrorHandler is not called.
 func Test_Timeout_ReturnsErrServiceUnavailable(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name    string
-		partial bool // the handler buffers some output before it blocks
+		onTimeout fiber.Handler
+		name      string
+		body      string // what the client is answered with, the 503 message when empty
+		status    int    // what the client is answered with, 503 when zero
+		partial   bool   // the handler buffers some output before it blocks
 	}{
 		{name: "nothing written"},
 		{name: "partial output", partial: true},
+		{
+			name:      "OnTimeout answers",
+			onTimeout: func(c fiber.Ctx) error { return c.Status(fiber.StatusOK).SendString("fallback") },
+			status:    fiber.StatusOK, body: "fallback",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -1000,13 +984,13 @@ func Test_Timeout_ReturnsErrServiceUnavailable(t *testing.T) {
 					return c.Context().Err()
 				}
 				return nil
-			}, Config{Timeout: 20 * time.Millisecond}))
+			}, Config{Timeout: 20 * time.Millisecond, OnTimeout: tc.onTimeout}))
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+			resp, err := app.Test(apptest.Req(fiber.MethodGet, "/slow"))
 			close(release)
 			require.NoError(t, err)
-			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
-			require.Equal(t, fiber.ErrServiceUnavailable.Message, apptest.Body(t, resp))
+			require.Equal(t, cmp.Or(tc.status, fiber.StatusServiceUnavailable), resp.StatusCode)
+			require.Equal(t, cmp.Or(tc.body, fiber.ErrServiceUnavailable.Message), apptest.Body(t, resp))
 
 			observed := apptest.Recv(t, seen, time.Second, "outer middleware never observed the result")
 			require.ErrorIs(t, observed, fiber.ErrServiceUnavailable)
