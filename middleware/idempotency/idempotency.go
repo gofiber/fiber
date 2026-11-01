@@ -115,11 +115,29 @@ func New(config ...Config) fiber.Handler {
 
 			_ = c.Status(res.StatusCode)
 
+			// The names the current response already carries. Middleware
+			// ahead of this one in the chain ran for this request too and
+			// set them, so a stored header under one of those names is a
+			// copy of what that middleware wrote on the FIRST request:
+			// appending it would serve the header twice, and a header
+			// that identifies the request, like a request id, would name
+			// the wrong one. The stored values only fill in a name this
+			// request has not set.
+			current := make([]string, 0, len(res.Headers))
+			for k := range c.Response().Header.All() {
+				current = append(current, string(k))
+			}
+
 			for header, vals := range res.Headers {
 				// A stored entry goes through the same filter: one an earlier
 				// version wrote, or one written under another configuration,
 				// may hold more than this one keeps.
 				if !keepHeader(header) {
+					continue
+				}
+				if slices.ContainsFunc(current, func(name string) bool {
+					return utils.EqualFold(name, header)
+				}) {
 					continue
 				}
 				for _, val := range vals {
