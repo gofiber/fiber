@@ -26,12 +26,12 @@ func restoreMiddlewareContext(c fiber.Ctx, outer *Middleware) {
 	fiber.StoreInContext(c, middlewareContextKey, outer)
 }
 
-// adopt records that a middleware is about to run inside m, and reports whether
-// it may. It succeeds only while m still serves the request of c: m can have
+// link records that a middleware is about to run inside m, and reports whether it
+// may. It succeeds only while m still serves the request of c: m can have
 // finished, and even been handed to another request, while a handler that
-// outlives its request goes on running. The middleware that was adopted must call
-// unlink when it finishes.
-func (m *Middleware) adopt(c fiber.Ctx) bool {
+// outlives its request goes on running. The middleware that was linked must end
+// the link when it finishes, with unlinkFromOuter.
+func (m *Middleware) link(c fiber.Ctx) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -40,21 +40,22 @@ func (m *Middleware) adopt(c fiber.Ctx) bool {
 	if m.Session == nil || m.ctx == nil || m.ctx.RequestCtx() != c.RequestCtx() {
 		return false
 	}
-	m.children.Add(1)
+	m.links.Add(1)
 	return true
 }
 
-// unlink ends the link adopt made; m must not be used afterwards.
+// unlink ends a link that link made on m, which the caller must not use afterwards:
+// with its last link gone, m can be recycled.
 func (m *Middleware) unlink() {
-	m.children.Add(-1)
+	m.links.Add(-1)
 }
 
-// unpin gives back the count this middleware holds on the one it runs inside, once.
-// It takes no lock: it runs while a panic unwinds this goroutine, which may hold
-// the lock of this middleware.
-func (m *Middleware) unpin() {
-	if outer := m.pinned; outer != nil {
-		m.pinned = nil
+// unlinkFromOuter gives back the link this middleware holds on the one it runs
+// inside, once. It takes no lock: it runs while a panic unwinds this goroutine,
+// which may hold the lock of this middleware.
+func (m *Middleware) unlinkFromOuter() {
+	if outer := m.linked; outer != nil {
+		m.linked = nil
 		outer.unlink()
 	}
 }
@@ -134,7 +135,7 @@ func (m *Middleware) find(match func(*Middleware) bool) *Middleware {
 			m.mu.RUnlock()
 			return m
 		}
-		outer := m.parent
+		outer := m.outer
 		if outer == nil {
 			m.mu.RUnlock()
 			return nil

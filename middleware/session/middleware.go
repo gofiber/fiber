@@ -20,21 +20,21 @@ import (
 type Middleware struct {
 	ctx     fiber.Ctx
 	Session *Session
-	// parent is the session middleware this one runs inside when several are
+	// outer is the session middleware this one runs inside when several are
 	// registered, so a store can find its own among them. It is only ever set by
-	// adopt, which keeps parent from being recycled while this middleware runs,
+	// link, which keeps outer from being recycled while this middleware runs,
 	// and releaseMiddleware clears it. A panic that unwinds this middleware leaves
 	// it, for whatever recovers the panic. The chain is only walked from the
 	// middleware the request currently holds (find), never from one a goroutine
 	// kept past its request.
-	parent *Middleware
-	// pinned is the middleware this one holds a count on, in its children, while it
-	// runs inside it. It is cleared when that count is given back, once, by the end
+	outer *Middleware
+	// linked is the middleware this one holds a link on, counted in its links, while
+	// it runs inside it. It is cleared when that link is given back, once, by the end
 	// of its release or by the unwinding of a panic, whichever comes first. Unlike
-	// parent it is read and written by the goroutine that runs the middleware only,
+	// outer it is read and written by the goroutine that runs the middleware only,
 	// without the lock: a panic can unwind it from inside the locked part of the
-	// release, and it must still be able to give the count back.
-	pinned *Middleware
+	// release, and it must still be able to give the link back.
+	linked *Middleware
 	// store and errorHandler are the parts of the configuration a running middleware
 	// reads. Keeping them, rather than a copy of the whole Config, spares every
 	// request a copy and a reset of about 200 bytes, and the request context that
@@ -45,11 +45,11 @@ type Middleware struct {
 	// life says what has happened to the middleware, see lifecycle. One word, read
 	// with and without the lock alike.
 	life atomic.Uint32
-	// children counts the middleware that run inside this one and still refer to it
-	// as their parent. Ordinarily each finishes before this one does. A middleware
-	// that abandons the request around the inner one breaks that: this one can
-	// finish while the handlers it abandoned go on running.
-	children atomic.Int32
+	// links counts the middleware that run inside this one and still refer to it as
+	// their outer. Ordinarily each finishes before this one does. A middleware that
+	// abandons the request around the inner one breaks that: this one can finish
+	// while the handlers it abandoned go on running.
+	links atomic.Int32
 }
 
 // lifecycle is what has happened to a Middleware, as flags of one word. A
@@ -285,11 +285,11 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 		m.mark(lifeEscaped)
 	}
 
-	// Last, so that nothing after the count is taken can panic: the call that gives
-	// it back is only installed once initialize has returned.
-	if outer != nil && outer.adopt(c) {
-		m.parent = outer
-		m.pinned = outer
+	// Last, so that nothing after the link is made can panic: the call that gives it
+	// back is only installed once initialize has returned.
+	if outer != nil && outer.link(c) {
+		m.outer = outer
+		m.linked = outer
 	}
 	return nil
 }
@@ -339,7 +339,7 @@ func acquireMiddleware() *Middleware {
 // pointer pointing at a finished, empty middleware that nothing else uses.
 //
 // So is one that other middleware still run inside, since they hold it as their
-// parent, and one whose request context was abandoned: both happen when a
+// outer, and one whose request context was abandoned: both happen when a
 // middleware that abandons the request, such as sse, lets handlers outlive the
 // middleware around them, and such a handler finds a finished middleware instead
 // of another request's. The session of an abandoned request is not recycled
@@ -368,12 +368,12 @@ func releaseMiddleware(m *Middleware) {
 	func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		outer, c, session = m.parent, m.ctx, m.Session
+		outer, c, session = m.outer, m.ctx, m.Session
 		// A request whose context was abandoned, as the sse middleware does, can have
 		// handlers still running that hold its middleware and its session: neither goes
 		// back to the pool, or such a handler could find the next request's in its place.
 		abandoned = c != nil && c.IsAbandoned()
-		drop = m.is(lifeEscaped) || abandoned || m.children.Load() > 0
+		drop = m.is(lifeEscaped) || abandoned || m.links.Load() > 0
 		if drop {
 			// First, so a lookup that races the release finds a middleware that is
 			// visibly gone instead of one that is half reset.
@@ -394,7 +394,7 @@ func releaseMiddleware(m *Middleware) {
 		m.errorHandler = nil
 		m.Session = nil
 		m.ctx = nil
-		m.parent = nil
+		m.outer = nil
 		m.unmark(lifeDestroyed | lifeUnwound)
 	}()
 
@@ -418,8 +418,8 @@ func releaseMiddleware(m *Middleware) {
 			restoreMiddlewareContext(c, outer)
 		}
 		// Last: until here the outer middleware must not be recycled, and if anything
-		// above panics, the unwinding gives the count back.
-		m.unpin()
+		// above panics, the unwinding gives the link back.
+		m.unlinkFromOuter()
 	}
 	if !drop {
 		middlewarePool.Put(m)

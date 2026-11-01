@@ -93,8 +93,8 @@ func Test_Session_Middleware_NestedLinkIsBalanced(t *testing.T) {
 
 	p := startPair(t)
 	c, outer, inner := p.c, p.outer, p.inner
-	require.Same(t, outer, inner.parent)
-	require.Equal(t, int32(1), outer.children.Load())
+	require.Same(t, outer, inner.outer)
+	require.Equal(t, int32(1), outer.links.Load())
 	require.Same(t, inner, c.Locals(middlewareContextKey))
 
 	// Dropped instead of recycled, so that the test can look at it afterwards without a parallel
@@ -102,9 +102,9 @@ func Test_Session_Middleware_NestedLinkIsBalanced(t *testing.T) {
 	inner.mark(lifeEscaped)
 	releaseMiddleware(inner)
 	require.True(t, inner.is(lifeReleased))
-	require.Nil(t, inner.parent, "a finished middleware keeps no link, so one the request context still holds cannot lead to an object that went back to the pool")
+	require.Nil(t, inner.outer, "a finished middleware keeps no link, so one the request context still holds cannot lead to an object that went back to the pool")
 	require.Nil(t, inner.Session)
-	require.Zero(t, outer.children.Load(), "and the outer one is not counted as having it inside any more")
+	require.Zero(t, outer.links.Load(), "and the outer one is not counted as having it inside any more")
 	require.Same(t, outer, c.Locals(middlewareContextKey), "the outer middleware is current again")
 	require.False(t, outer.is(lifeReleased))
 
@@ -123,20 +123,20 @@ func Test_Session_Middleware_AdoptOnlyWithinItsRequest(t *testing.T) {
 
 	outer := startMiddleware(t, c1, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
 
-	require.False(t, outer.adopt(c2), "a middleware of another request is no parent")
-	require.Zero(t, outer.children.Load(), "and nothing was counted for the refusal")
+	require.False(t, outer.link(c2), "a middleware of another request is no outer one")
+	require.Zero(t, outer.links.Load(), "and nothing was counted for the refusal")
 
-	require.True(t, outer.adopt(c1))
-	require.Equal(t, int32(1), outer.children.Load())
+	require.True(t, outer.link(c1))
+	require.Equal(t, int32(1), outer.links.Load())
 	outer.unlink()
-	require.Zero(t, outer.children.Load())
+	require.Zero(t, outer.links.Load())
 
 	// Dropped instead of recycled, so that the test can look at it once it finished.
 	outer.mark(lifeEscaped)
 	releaseMiddleware(outer)
 	require.True(t, outer.is(lifeReleased))
-	require.False(t, outer.adopt(c1), "a middleware that finished is no parent either")
-	require.Zero(t, outer.children.Load())
+	require.False(t, outer.link(c1), "a middleware that finished is no outer one either")
+	require.Zero(t, outer.links.Load())
 }
 
 // The shape of a request that a middleware abandoned, as sse does: the outer middleware finishes
@@ -164,7 +164,7 @@ func Test_Session_Middleware_OuterFinishesBeforeInner(t *testing.T) {
 	require.True(t, outer.is(lifeReleased), "an outer middleware with one still inside it is not recycled")
 	require.Nil(t, c1.Locals(middlewareContextKey))
 	require.Nil(t, p.storeA.FromContext(c1))
-	require.Same(t, outer, inner.parent, "the inner middleware still holds what it was linked to")
+	require.Same(t, outer, inner.outer, "the inner middleware still holds what it was linked to")
 
 	// Another request starts. Nothing the pool hands out is the old outer middleware.
 	for range 100 {
@@ -180,7 +180,7 @@ func Test_Session_Middleware_OuterFinishesBeforeInner(t *testing.T) {
 	releaseMiddleware(inner)
 	require.Nil(t, c1.Locals(middlewareContextKey), "the request got a finished middleware back")
 	require.Empty(t, c1.Locals(sessionIDContextKey))
-	require.Zero(t, outer.children.Load())
+	require.Zero(t, outer.links.Load())
 
 	require.Same(t, other, c2.Locals(middlewareContextKey), "the other request kept its own")
 	require.Same(t, otherSession, other.Session)
@@ -324,7 +324,7 @@ func Test_Session_ReleaseMiddleware_RecyclesWhatNothingRefersTo(t *testing.T) {
 	require.Nil(t, inner.Session)
 	require.Empty(t, innerSession.ID(), "the inner session was reset and went back to the pool with its middleware")
 	require.NotEmpty(t, outerSession.ID(), "and the outer one is still the outer middleware's")
-	require.Zero(t, outer.children.Load())
+	require.Zero(t, outer.links.Load())
 
 	releaseMiddleware(outer)
 	require.False(t, outer.is(lifeReleased), "nothing refers to the outer one either, since the inner one let go of it")
@@ -501,7 +501,7 @@ func Test_Session_Save_RunsUnderTheRequestContext(t *testing.T) {
 	require.Equal(t, context.Background(), spy.sets[2], "a session without a request saves under the background context")
 }
 
-// adopt, the restore and the release of the outer middleware run on different goroutines when a
+// The link, the restore and the release of the outer middleware run on different goroutines when a
 // handler outlives its request. They must not race on the middleware: run with -race.
 func Test_Session_Middleware_LinkProtocolIsRaceFree(t *testing.T) {
 	t.Parallel()
@@ -528,7 +528,7 @@ func Test_Session_Middleware_LinkProtocolIsRaceFree(t *testing.T) {
 
 				var wg sync.WaitGroup
 				wg.Go(func() {
-					ok := outer.adopt(c1)
+					ok := outer.link(c1)
 					if linkFirst {
 						linked <- ok
 					}
@@ -543,7 +543,7 @@ func Test_Session_Middleware_LinkProtocolIsRaceFree(t *testing.T) {
 				releaseMiddleware(outer)
 				wg.Wait()
 
-				require.Zero(t, outer.children.Load(), "every link that was made was undone")
+				require.Zero(t, outer.links.Load(), "every link that was made was undone")
 				app.ReleaseCtx(c1)
 				app.ReleaseCtx(c2)
 			}
@@ -723,19 +723,19 @@ func Test_Session_Middleware_EndIfUnwoundUnpinsOnce(t *testing.T) {
 
 	p := startPair(t)
 	c, outer, inner := p.c, p.outer, p.inner
-	require.Equal(t, int32(1), outer.children.Load())
+	require.Equal(t, int32(1), outer.links.Load())
 
 	finished := true
 	inner.endIfUnwound(&finished, c)
-	require.Equal(t, int32(1), outer.children.Load(), "the count of a finished middleware was given back")
-	require.Same(t, outer, inner.pinned)
+	require.Equal(t, int32(1), outer.links.Load(), "the count of a finished middleware was given back")
+	require.Same(t, outer, inner.linked)
 	require.NotNil(t, inner.ctx, "a finished middleware was cut off")
 
 	finished = false
 	inner.endIfUnwound(&finished, c)
-	require.Nil(t, inner.pinned)
-	require.Zero(t, outer.children.Load(), "the count of one that was unwound was not")
-	require.Same(t, outer, inner.parent, "the way to the outer middleware stays")
+	require.Nil(t, inner.linked)
+	require.Zero(t, outer.links.Load(), "the count of one that was unwound was not")
+	require.Same(t, outer, inner.outer, "the way to the outer middleware stays")
 	require.Nil(t, inner.ctx, "the middleware that was unwound still refers to the fiber.Ctx")
 	require.NotNil(t, inner.Session, "its session was let go of")
 	require.Nil(t, inner.Session.requestCtx(), "its session still refers to the fiber.Ctx")
@@ -745,13 +745,13 @@ func Test_Session_Middleware_EndIfUnwoundUnpinsOnce(t *testing.T) {
 	c.RequestCtx().ResetUserValues() // what fasthttp does when it resets the request: it closes the middleware
 	require.Nil(t, inner.Session.rctx, "the end of the request did not cut the session off from it")
 
-	inner.unpin()
-	require.Zero(t, outer.children.Load(), "a second call finds nothing to undo")
+	inner.unlinkFromOuter()
+	require.Zero(t, outer.links.Load(), "a second call finds nothing to undo")
 
 	// A release after that does not undo the link again.
 	inner.mark(lifeEscaped)
 	releaseMiddleware(inner)
-	require.Zero(t, outer.children.Load())
+	require.Zero(t, outer.links.Load())
 
 	releaseMiddleware(outer)
 }
@@ -867,7 +867,7 @@ func Test_Session_MultipleStores_PanicInReleaseGoesOn(t *testing.T) {
 					}
 					if nested {
 						require.NotNil(t, outer.Load())
-						require.Zero(t, outer.Load().children.Load(), "the outer middleware still counts the one that panicked")
+						require.Zero(t, outer.Load().links.Load(), "the outer middleware still counts the one that panicked")
 					}
 				})
 			}
@@ -907,7 +907,7 @@ func Test_Session_Middleware_OuterStaysPinnedWhileItIsRestored(t *testing.T) {
 	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
 		return &observeRestoreCtx{DefaultCtx: *fiber.NewDefaultCtx(app), onRestore: func() {
 			if armed.Load() {
-				seen.Store(outer.Load().children.Load())
+				seen.Store(outer.Load().links.Load())
 			}
 		}}
 	})
@@ -916,7 +916,7 @@ func Test_Session_Middleware_OuterStaysPinnedWhileItIsRestored(t *testing.T) {
 	app.Use(handlerA, func(c fiber.Ctx) error {
 		err := c.Next() // the inner middleware starts and finishes in here
 		// The outer middleware still runs, so it is still the request's own.
-		after.Store(storeA.FromContext(c).children.Load())
+		after.Store(storeA.FromContext(c).links.Load())
 		return err
 	}, handlerB)
 	app.Get("/", func(c fiber.Ctx) error {

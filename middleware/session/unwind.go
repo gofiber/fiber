@@ -22,7 +22,7 @@ func (m *Middleware) endIfUnwound(finished *bool, c fiber.Ctx) {
 }
 
 // endUnwound ends a middleware that a panic unwound, whose release never runs. The
-// outer middleware gets its count back, so that it is recycled when it finishes
+// outer middleware gets its link back, so that it is recycled when it finishes
 // instead of counting this one as running inside for good. The middleware and its
 // session let go of the fiber.Ctx, which goes back to the pool as soon as the
 // handlers return, where the next request takes it; a goroutine of the handler
@@ -41,7 +41,7 @@ func (m *Middleware) endIfUnwound(finished *bool, c fiber.Ctx) {
 // Ctx is asked only for the request: a panic in the locked part of the release
 // leaves the lock held, and the Ctx may be what panicked.
 func (m *Middleware) endUnwound(c fiber.Ctx) {
-	m.unpin()
+	m.unlinkFromOuter()
 	m.mark(lifeUnwound)
 	rctx := c.RequestCtx()
 	if rctx != nil {
