@@ -812,3 +812,44 @@ func Benchmark_Middleware_TwoStores(b *testing.B) {
 		b.Fatalf("status %d", fctx.Response.StatusCode())
 	}
 }
+
+// A request caches one session ID, as on main, and the docs say to ask each store once
+// per request and keep the session. Asked again, a store issues a new session for a
+// visitor who has no cookie yet, whether another store was asked in between or not,
+// since the ID it issued before is not a session until it is saved. This is the
+// behavior of main, and the test pins it so that a change to it is a decision.
+func Test_Session_Store_Get_AskedAgainIssuesANewSession(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
+	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
+
+	get := func(c fiber.Ctx, store *Store) string {
+		sess, err := store.Get(c)
+		require.NoError(t, err)
+		defer sess.Release()
+		require.True(t, sess.Fresh())
+		return sess.ID()
+	}
+
+	t.Run("after another store was asked", func(t *testing.T) {
+		t.Parallel()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+
+		first, other, again := get(c, storeA), get(c, storeB), get(c, storeA)
+		require.NotEqual(t, first, other, "each store issues its own ID")
+		require.NotEqual(t, first, again, "A is asked again, and issues another")
+	})
+
+	t.Run("the same store asked twice", func(t *testing.T) {
+		t.Parallel()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+
+		first := get(c, storeA)
+		second := get(c, storeA)
+		require.NotEqual(t, first, second)
+	})
+}
