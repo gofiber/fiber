@@ -9,6 +9,7 @@ package fiber
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
@@ -1510,6 +1511,18 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 
 	// Add Content-Length if not provided with body
 	if req.Body != http.NoBody && req.Header.Get(HeaderContentLength) == "" {
+		// net/http reports a body it cannot size as -1, or as 0 with a body
+		if req.Body != nil && req.ContentLength <= 0 {
+			body, err := io.ReadAll(req.Body)
+			if closeErr := req.Body.Close(); err == nil {
+				err = closeErr
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to read request body: %w", err)
+			}
+			req.Body = io.NopCloser(bytes.NewReader(body))
+			req.ContentLength = int64(len(body))
+		}
 		req.Header.Add(HeaderContentLength, utils.FormatInt(req.ContentLength))
 	}
 

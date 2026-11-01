@@ -4898,6 +4898,53 @@ func Test_App_HeaderReceivedHook_RaceFreeWithTest(t *testing.T) {
 	wg.Wait()
 }
 
+// A body net/http cannot size, such as a file or a pipe, reaches the handler whole.
+func Test_App_Test_BodyOfUnknownLength(t *testing.T) {
+	t.Parallel()
+
+	newRequest := func(body io.Reader) *http.Request {
+		req, err := http.NewRequestWithContext(context.Background(), MethodPost, "/", body)
+		require.NoError(t, err)
+		return req
+	}
+	http10 := func(req *http.Request) *http.Request {
+		req.Proto, req.ProtoMajor, req.ProtoMinor = "HTTP/1.0", 1, 0
+		return req
+	}
+
+	for _, tc := range []struct {
+		req    *http.Request
+		name   string
+		body   string
+		stream bool
+	}{
+		// httptest.NewRequest gives such a body a ContentLength of -1, http.NewRequest one of 0.
+		{name: "httptest.NewRequest", req: httptest.NewRequest(MethodPost, "/", io.MultiReader(strings.NewReader("hello"))), body: "hello"},
+		{name: "http.NewRequest", req: newRequest(io.NopCloser(strings.NewReader("hello"))), body: "hello"},
+		{name: "HTTP/1.0", req: http10(httptest.NewRequest(MethodPost, "/", io.MultiReader(strings.NewReader("hello")))), body: "hello"},
+		{name: "empty", req: newRequest(io.NopCloser(strings.NewReader(""))), body: ""},
+		{name: "empty streamed", req: httptest.NewRequest(MethodPost, "/", strings.NewReader("")), body: "", stream: true},
+		{name: "known length", req: newRequest(strings.NewReader("hello")), body: "hello"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{StreamRequestBody: tc.stream})
+			app.Post("/", func(c Ctx) error {
+				c.Set("X-Content-Length", c.Get(HeaderContentLength))
+				return c.Send(c.Body())
+			})
+			resp, err := app.Test(tc.req)
+			require.NoError(t, err)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.Equal(t, StatusOK, resp.StatusCode)
+			require.Equal(t, tc.body, string(body))
+			require.Equal(t, strconv.Itoa(len(tc.body)), resp.Header.Get("X-Content-Length"))
+		})
+	}
+}
+
 // Test serves the connection itself, so it installs the close hook too.
 func Test_App_Test_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 	t.Parallel()
