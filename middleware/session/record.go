@@ -46,6 +46,12 @@ const (
 	maxDeadlineSec = 253_402_300_799 // 9999-12-31T23:59:59Z
 )
 
+// codecNameLenOK reports whether n bytes can be the name of a codec in a record: one to
+// maxCodecNameLen.
+func codecNameLenOK(n int) bool {
+	return n > 0 && n <= maxCodecNameLen
+}
+
 var (
 	errInvalidRecord = errors.New("invalid session record")
 
@@ -153,7 +159,7 @@ func recordCodecOf(b []byte) (version byte, codec []byte, ok bool) { //nolint:no
 		return version, nil, true
 	}
 	codec, size := readBytes(b[len(recordTag)+1:])
-	if size == 0 || len(codec) == 0 || len(codec) > maxCodecNameLen {
+	if size == 0 || !codecNameLenOK(len(codec)) {
 		return version, nil, false
 	}
 	return version, codec, true
@@ -177,7 +183,7 @@ func parseRecord(b []byte, add func(key, value []byte)) (recordHeader, error) {
 	b = b[len(recordTag)+1:]
 
 	name, n := readBytes(b)
-	if n == 0 || len(name) == 0 || len(name) > maxCodecNameLen {
+	if n == 0 || !codecNameLenOK(len(name)) {
 		return h, errInvalidRecord
 	}
 	h.codec = name
@@ -245,7 +251,7 @@ func parseRecord(b []byte, add func(key, value []byte)) (recordHeader, error) {
 // order, the codec name between 1 and maxCodecNameLen bytes, and the deadline valid,
 // or it returns errInvalidRecord and dst unchanged.
 func appendRecord(dst []byte, codec string, deadline recordDeadline, entries []recordEntry) ([]byte, error) {
-	if codec == "" || len(codec) > maxCodecNameLen || !deadline.valid() {
+	if !codecNameLenOK(len(codec)) || !deadline.valid() {
 		return dst, errInvalidRecord
 	}
 	for i := 1; i < len(entries); i++ {

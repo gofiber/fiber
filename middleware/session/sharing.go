@@ -39,24 +39,29 @@ func writesBack(kind extractors.Source) bool {
 	return kind == extractors.SourceCookie || kind == extractors.SourceHeader
 }
 
+// leaves calls visit for every extractor of ext that reads a source itself, in order.
+// The tree is walked rather than ranged over Chain: a nested chain reports the metadata
+// of its first child, so the direct children alone hide every leaf inside it, and a
+// cookie one level down would never be found.
+func leaves(ext extractors.Extractor, visit func(leaf extractors.Extractor)) {
+	ext.Walk(func(candidate extractors.Extractor) bool {
+		if len(candidate.Chain) == 0 {
+			visit(candidate)
+		}
+		return true
+	})
+}
+
 // collectSinks lists the cookies and headers an extractor reads a session ID from,
 // which are the ones a session ID can be written back to: the leaves of the
 // extractor that name a cookie or a header.
 func collectSinks(ext extractors.Extractor) []extractors.Extractor {
 	var sinks []extractors.Extractor
-	// Walked rather than ranged over Chain: a nested chain reports its first
-	// child's metadata, so direct children alone hide every sink inside it, and
-	// a cookie one level down would never be written.
-	ext.Walk(func(candidate extractors.Extractor) bool {
-		// Only a leaf names a place to write, and a keyless one would name a
-		// cookie or header with no name at all.
-		if len(candidate.Chain) > 0 || candidate.Key == "" {
-			return true
+	leaves(ext, func(leaf extractors.Extractor) {
+		// A keyless leaf would name a cookie or header with no name at all.
+		if leaf.Key != "" && writesBack(leaf.Source) {
+			sinks = append(sinks, leaf)
 		}
-		if writesBack(candidate.Source) {
-			sinks = append(sinks, candidate)
-		}
-		return true
 	})
 	return sinks
 }
@@ -97,11 +102,8 @@ func (a sourceID) same(b sourceID) bool {
 // sharesSource compares them: the leaves of the extractor.
 func collectSources(ext extractors.Extractor) []sourceID {
 	var sources []sourceID
-	ext.Walk(func(candidate extractors.Extractor) bool {
-		if len(candidate.Chain) == 0 {
-			sources = append(sources, sourceOf(candidate))
-		}
-		return true
+	leaves(ext, func(leaf extractors.Extractor) {
+		sources = append(sources, sourceOf(leaf))
 	})
 	return sources
 }
@@ -153,16 +155,6 @@ func (s *Store) sharesSource(other *Store) bool {
 	return slices.ContainsFunc(mine, func(a sourceID) bool {
 		return slices.ContainsFunc(theirs, a.same)
 	})
-}
-
-// requestIDs returns the head of the IDs that Store.Get cached on the request, newest
-// first, nil if it cached none.
-func requestIDs(c fiber.Ctx) *cachedID {
-	head, ok := c.Locals(cachedIDsContextKey).(*cachedID)
-	if !ok {
-		return nil
-	}
-	return head
 }
 
 // cachedSession reads the session that was saved under the newest ID which s, or a

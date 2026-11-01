@@ -277,21 +277,20 @@ func warnCookiePrefixes(cfg *Config) {
 		path = "/"
 	}
 
-	cfg.Extractor.Walk(func(candidate extractors.Extractor) bool {
-		if len(candidate.Chain) > 0 || candidate.Source != extractors.SourceCookie || candidate.Key == "" {
-			return true
+	leaves(cfg.Extractor, func(leaf extractors.Extractor) {
+		if leaf.Source != extractors.SourceCookie || leaf.Key == "" {
+			return
 		}
 		switch {
-		case utils.HasPrefixFold(candidate.Key, "__host-") && (!secure || path != "/" || cfg.CookieDomain != ""):
+		case utils.HasPrefixFold(leaf.Key, "__host-") && (!secure || path != "/" || cfg.CookieDomain != ""):
 			log.Warnf("[session] cookie %q has the __Host- prefix, which browsers accept only with Secure, Path=/ and no Domain; "+
 				"it is configured with Secure=%t, Path=%q and Domain=%q, so browsers will reject it",
-				candidate.Key, secure, path, cfg.CookieDomain)
-		case utils.HasPrefixFold(candidate.Key, "__secure-") && !secure:
+				leaf.Key, secure, path, cfg.CookieDomain)
+		case utils.HasPrefixFold(leaf.Key, "__secure-") && !secure:
 			log.Warnf("[session] cookie %q has the __Secure- prefix, which browsers accept only with Secure; "+
-				"set CookieSecure, or browsers will reject it", candidate.Key)
+				"set CookieSecure, or browsers will reject it", leaf.Key)
 		default:
 		}
-		return true
 	})
 }
 

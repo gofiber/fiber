@@ -72,6 +72,26 @@ func (head *cachedID) Close() error {
 	return nil
 }
 
+// of returns the entry of s in the list that starts at head, nil if s has none.
+func (head *cachedID) of(s *Store) *cachedID {
+	for entry := head; entry != nil; entry = entry.next {
+		if entry.store == s {
+			return entry
+		}
+	}
+	return nil
+}
+
+// requestIDs returns the head of the IDs that Store.Get cached on the request, newest
+// first, nil if it cached none.
+func requestIDs(c fiber.Ctx) *cachedID {
+	head, ok := c.Locals(cachedIDsContextKey).(*cachedID)
+	if !ok {
+		return nil
+	}
+	return head
+}
+
 // cacheID records that s issued id for the request, as the newest of its IDs, and
 // as the one the logger shows. head is the list of the request, res the provenance of
 // the ID the request named, if any; its value points into the buffer of the request,
@@ -104,13 +124,8 @@ func cacheID(c fiber.Ctx, head *cachedID, s *Store, id string, res extractors.Re
 // session of the store that was never saved must not hide one that was.
 func recacheID(c fiber.Ctx, s *Store, old, id string, res extractors.Result) {
 	head := requestIDs(c)
-	for entry := head; entry != nil; entry = entry.next {
-		if entry.store == s {
-			if entry.id != old {
-				return
-			}
-			break
-		}
+	if entry := head.of(s); entry != nil && entry.id != old {
+		return
 	}
 	cacheID(c, head, s, id, res)
 }
@@ -140,7 +155,9 @@ func lockFor(key string) *idLock {
 	return &idLocks[maphash.String(idSeed, key)&(idLockShards-1)]
 }
 
-// Store manages session data using the configured storage backend.
+// Store manages session data using the configured storage backend. It holds atomic
+// fields, so it is made by NewStore and used through the pointer it returns: copying
+// a Store is flagged by go vet.
 type Store struct {
 	// named is the Codec with its name, asked once. It is nil for a store without a
 	// Codec, and for one built without NewStore, which sessionFormat makes up. Changing
@@ -164,6 +181,26 @@ type Store struct {
 	// unreadableWarned is set once the store has said that it met a session it
 	// cannot read.
 	unreadableWarned atomic.Bool
+}
+
+// localsSetting is the PassLocalsToContext setting of an app.
+type localsSetting struct {
+	app    *fiber.App
+	passes bool
+}
+
+// passesLocalsToContext reports whether the app of c copies the request locals into the
+// request context. An app does not change the setting once it is made, and Config returns
+// the whole Config by value, which every request would pay for it, so the store reads it
+// once for each app it serves.
+func (s *Store) passesLocalsToContext(c fiber.Ctx) bool {
+	app := c.App()
+	if known := s.locals.Load(); known != nil && known.app == app {
+		return known.passes
+	}
+	fresh := &localsSetting{app: app, passes: app.Config().PassLocalsToContext}
+	s.locals.Store(fresh)
+	return fresh.passes
 }
 
 // hashedKeyLen is the length of a base64url-encoded SHA-256 digest without padding.
@@ -415,12 +452,8 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, *cachedID
 // and found none: the entry s cached holds the ID the request named when s issued its own,
 // or the one a Regenerate or Reset deleted, and neither names a session.
 func (s *Store) foundNoSession(cached *cachedID, id string) bool {
-	for entry := cached; entry != nil; entry = entry.next {
-		if entry.store == s {
-			return entry.res.Value == id
-		}
-	}
-	return false
+	entry := cached.of(s)
+	return entry != nil && entry.res.Value == id
 }
 
 // storedSession is the outcome of a lookup of a session: the record, if a session is
@@ -438,10 +471,10 @@ type storedSession struct {
 
 // readSession looks for the session with the given ID in the storage and, if one is
 // stored, fills found with it. A record the store cannot read counts as none.
-func (s *Store) readSession(c fiber.Ctx, id string, found *storedSession) error {
+func (s *Store) readSession(ctx context.Context, id string, found *storedSession) error {
 	key := s.storageKey(id)
 	gen := lockFor(key).gen.Load()
-	raw, err := s.Storage.GetWithContext(c, key)
+	raw, err := s.Storage.GetWithContext(ctx, key)
 	if err != nil || raw == nil || s.refusesRecord(raw) {
 		return err
 	}
@@ -600,16 +633,11 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 		return nil, ErrEmptySessionID
 	}
 
-	key := s.storageKey(id)
-	loadGen := lockFor(key).gen.Load()
-	rawData, err := s.Storage.GetWithContext(ctx, key)
-	if err != nil {
+	var found storedSession
+	if err := s.readSession(ctx, id, &found); err != nil {
 		return nil, err
 	}
-	if rawData == nil {
-		return nil, ErrSessionIDNotFoundInStore
-	}
-	if s.refusesRecord(rawData) {
+	if found.raw == nil {
 		return nil, ErrSessionIDNotFoundInStore
 	}
 
@@ -618,14 +646,14 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 	sess.mu.Lock()
 
 	sess.bind(s)
-	sess.id = s.ownedID(key, id) // the caller may pass a view of the request, such as c.Cookies
-	sess.key = key
+	sess.id = found.id // the caller may pass a view of the request, such as c.Cookies
+	sess.key = found.key
 	sess.isFresh = false
 	sess.loaded = true
-	sess.loadGen = loadGen
+	sess.loadGen = found.gen
 
 	sess.data.Lock()
-	decodeErr := sess.decodeSessionData(rawData)
+	decodeErr := sess.decodeSessionData(found.raw)
 	sess.data.Unlock()
 	sess.mu.Unlock()
 	if decodeErr != nil {

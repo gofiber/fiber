@@ -384,7 +384,7 @@ func Test_Codec_RecordsAStoreCannotRead(t *testing.T) {
 }
 
 // GetByID says so, once per store, when it meets a record its store cannot read.
-func Test_Codec_GetByIDWarnsAboutARecordItCannotRead(t *testing.T) { //nolint:paralleltest // the log is captured for the whole process
+func Test_Codec_GetByIDWarnsAboutARecordItCannotRead(t *testing.T) { // not parallel: the log is captured for the whole process
 	app := fiber.New()
 	mem := memory.New()
 	store := NewStore(Config{Storage: mem, Codec: JSONCodec{}})

@@ -394,7 +394,7 @@ func Test_Session_DecodeRecordRefusesWhatItCannotRead(t *testing.T) {
 
 // A record is built into one buffer of the size it needs. AllocsPerRun cannot run in a parallel
 // test, so this one is sequential.
-func Test_Record_AppendAllocatesOnce(t *testing.T) { //nolint:paralleltest // testing.AllocsPerRun panics in a parallel test
+func Test_Record_AppendAllocatesOnce(t *testing.T) { // not parallel: testing.AllocsPerRun panics in a parallel test
 	entries := make([]recordEntry, 0, 100)
 	for i := range 100 {
 		entries = append(entries, recordEntry{key: fmt.Sprintf("key-%03d", i), value: bytes.Repeat([]byte("v"), 32)})

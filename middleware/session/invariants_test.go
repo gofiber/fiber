@@ -46,10 +46,10 @@ type invariantLedger struct {
 	mu         sync.Mutex
 }
 
-func (l *invariantLedger) violatef(format string, args ...any) {
+func (l *invariantLedger) violatef(msg string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.violations = append(l.violations, fmt.Sprintf(format, args...))
+	l.violations = append(l.violations, fmt.Sprintf(msg, args...))
 }
 
 // requireClean fails the test if anything was found wrong so far.

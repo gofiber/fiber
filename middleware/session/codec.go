@@ -105,7 +105,7 @@ func NewCodec(name string, marshal func(v any) ([]byte, error), unmarshal func(d
 
 // checkCodecName panics if name cannot be written into a record.
 func checkCodecName(name string) {
-	if name == "" || len(name) > maxCodecNameLen {
+	if !codecNameLenOK(len(name)) {
 		panic(fmt.Sprintf("[session] the name of a Codec must be 1 to %d bytes long, got %d", maxCodecNameLen, len(name)))
 	}
 }

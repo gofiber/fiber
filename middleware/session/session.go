@@ -556,16 +556,11 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 		// answered without a child winning reports its first child's declared
 		// metadata, which says nothing about where the value came from.
 		// Key must name a sink for it to be writable at all.
-		if s.extractor.Resolved && s.extractor.Key != "" {
-			switch s.extractor.Source {
-			case extractors.SourceCookie, extractors.SourceHeader:
-				// The ID came from a writable sink; write it back to the same place.
-				s.sink[0] = extractors.Extractor{Key: s.extractor.Key, Source: s.extractor.Source}
-				return s.sink[:]
-			case extractors.SourceAuthHeader, extractors.SourceForm,
-				extractors.SourceQuery, extractors.SourceParam, extractors.SourceCustom:
-				// Read-only: fall through to the refusal below.
-			}
+		if s.extractor.Resolved && s.extractor.Key != "" && writesBack(s.extractor.Source) {
+			// The ID came from a writable sink; write it back to the same place. Any
+			// other source is read-only: fall through to the refusal below.
+			s.sink[0] = extractors.Extractor{Key: s.extractor.Key, Source: s.extractor.Source}
+			return s.sink[:]
 		}
 		// Read-only, or an origin we cannot attribute. For an existing session
 		// either would be an attacker-controlled ID, so it must not be promoted

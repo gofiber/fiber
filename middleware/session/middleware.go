@@ -252,26 +252,6 @@ func storeMiddlewareContext(c fiber.Ctx, session *Session, m *Middleware) bool {
 	return ok && held == m
 }
 
-// localsSetting is the PassLocalsToContext setting of an app.
-type localsSetting struct {
-	app    *fiber.App
-	passes bool
-}
-
-// passesLocalsToContext reports whether the app of c copies the request locals into the
-// request context. An app does not change the setting once it is made, and Config returns
-// the whole Config by value, which every request would pay for it, so the store reads it
-// once for each app it serves.
-func (s *Store) passesLocalsToContext(c fiber.Ctx) bool {
-	app := c.App()
-	if known := s.locals.Load(); known != nil && known.app == app {
-		return known.passes
-	}
-	fresh := &localsSetting{app: app, passes: app.Config().PassLocalsToContext}
-	s.locals.Store(fresh)
-	return fresh.passes
-}
-
 // clearMiddlewareLocals clears the session ID and the middleware from the Fiber
 // locals. A Store.Get after the middleware ended finds neither: it looks at the IDs
 // that Store.Get cached, and then reads the session ID from the request, as for a
@@ -317,11 +297,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 // saveSession handles session saving and error management after the response.
 func (m *Middleware) saveSession() {
 	if err := m.Session.saveSessionWithContext(m.resolveContext()); err != nil {
-		if m.errorHandler != nil {
-			m.errorHandler(m.ctx, err)
-		} else {
-			DefaultErrorHandler(m.ctx, err)
-		}
+		handleSessionError(m.ctx, m.errorHandler, err)
 	}
 }
 
