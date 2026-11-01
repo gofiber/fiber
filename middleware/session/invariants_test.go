@@ -21,6 +21,7 @@ import (
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 // The security properties of several stores serving one request, checked against random requests
@@ -118,9 +119,6 @@ type invariantWorld struct {
 	// storages are the memory storages by group: the one stores may share, and the one of the
 	// stores that keep to themselves.
 	storages map[string]*memory.Storage
-	// frozen stops check from adding the sessions it sees to saved, so that a test that sends the
-	// same fixed set of IDs again and again keeps them few.
-	frozen bool
 }
 
 // The stores a request is served with: asked through Store.Get, A twice over, or stacked as session
@@ -335,6 +333,38 @@ func (r invariantRequest) send(t *testing.T, app *fiber.App) (*http.Response, in
 	return resp, decodeRecord(t, resp.StatusCode, body)
 }
 
+// sendDirect is send without the network round trip app.Test makes: the request goes to the handler
+// of the app as a fasthttp request, which is several times cheaper and what a fuzzer needs. Every
+// Set-Cookie of the response has to be readable by fasthttp and by net/http, whose reading the
+// checks rely on.
+func (r invariantRequest) sendDirect(t *testing.T, handler fasthttp.RequestHandler) (*http.Response, invariantRecord) {
+	t.Helper()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI("/?ops=" + strings.Join(r.ops, ","))
+	for name, value := range r.cookies {
+		fctx.Request.Header.SetCookie(name, value)
+	}
+	if r.header != "" {
+		fctx.Request.Header.Set("X-C", r.header)
+	}
+	handler(fctx)
+
+	resp := &http.Response{StatusCode: fctx.Response.StatusCode(), Header: make(http.Header)}
+	for _, raw := range fctx.Response.Header.Cookies() {
+		cookie := fasthttp.AcquireCookie()
+		require.NoError(t, cookie.ParseBytes(raw), "unparsable Set-Cookie %q", raw)
+		fasthttp.ReleaseCookie(cookie)
+		resp.Header.Add("Set-Cookie", string(raw))
+	}
+	// The checks look at the cookies through net/http, which drops one it cannot read: it would escape them.
+	require.Len(t, resp.Cookies(), len(resp.Header.Values("Set-Cookie")), "net/http cannot read a Set-Cookie of the response")
+	resp.Header.Set("X-C", string(fctx.Response.Header.Peek("X-C")))
+
+	return resp, decodeRecord(t, resp.StatusCode, fctx.Response.Body())
+}
+
 // requireNoFixation holds the sessions of the request against the property that a new session never
 // takes an ID the client supplied.
 func (r invariantRequest) requireNoFixation(t *testing.T, where string, rec invariantRecord) {
@@ -441,9 +471,6 @@ func (w *invariantWorld) check(t *testing.T, step int, req invariantRequest, res
 	}
 
 	// What was saved can be sent back.
-	if w.frozen {
-		return
-	}
 	for _, sess := range rec.Sessions {
 		owner := strings.TrimSuffix(sess.Store, "2")
 		w.saved[owner] = append(w.saved[owner], sess.ID)

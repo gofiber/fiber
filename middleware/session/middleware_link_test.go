@@ -114,7 +114,7 @@ func Test_Session_Middleware_NestedLinkIsBalanced(t *testing.T) {
 
 // A middleware links only to one that serves its own request: a Middleware is recycled, and an
 // abandoned handler can come back to it after another request has taken it over.
-func Test_Session_Middleware_AdoptOnlyWithinItsRequest(t *testing.T) {
+func Test_Session_Middleware_LinkOnlyWithinItsRequest(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -718,7 +718,7 @@ func Test_Session_MultipleStores_PanicInsideRecyclesTheOuterMiddleware(t *testin
 // may already serve another request: the call leaves a finished one alone. One that was unwound
 // gives the outer middleware its count back, once, and lets go of the request, and keeps its
 // session; the way to the outer middleware stays, for whatever recovers the panic.
-func Test_Session_Middleware_EndIfUnwoundUnpinsOnce(t *testing.T) {
+func Test_Session_Middleware_EndIfUnwoundUnlinksOnce(t *testing.T) {
 	t.Parallel()
 
 	p := startPair(t)
@@ -892,7 +892,7 @@ func (c *observeRestoreCtx) Locals(key any, value ...any) any {
 // The outer middleware stays counted until the inner one is done with it, including the moment it
 // makes it current again: that is the moment a handler that a timeout middleware abandoned could
 // otherwise find it finished and recycled.
-func Test_Session_Middleware_OuterStaysPinnedWhileItIsRestored(t *testing.T) {
+func Test_Session_Middleware_OuterStaysLinkedWhileItIsRestored(t *testing.T) {
 	t.Parallel()
 
 	var (
