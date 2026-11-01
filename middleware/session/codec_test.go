@@ -1352,8 +1352,7 @@ func Test_Codec_AbsoluteDeadlineKeepsItsNanoseconds(t *testing.T) {
 	store := NewStore(Config{Storage: memory.New(), Codec: JSONCodec{}, AbsoluteTimeout: time.Hour})
 	deadline := time.Now().Add(30 * time.Minute).Truncate(time.Second).Add(123_456_789 * time.Nanosecond)
 
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	ctx := newRequest(t, app)
 	sess, err := store.Get(ctx)
 	require.NoError(t, err)
 	sess.setAbsExpiration(deadline)

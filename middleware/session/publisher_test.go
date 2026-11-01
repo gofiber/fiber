@@ -9,7 +9,6 @@ import (
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 // A store takes the ID that a store sharing a source with it cached, and never that
@@ -31,8 +30,7 @@ func Test_Session_Store_TakesNoIDOfAStoreItSharesNothingWith(t *testing.T) {
 	})
 	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("k", "v") })
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 	c.Request().Header.SetCookie("b_sid", idB)
 
 	a, err := storeA.Get(c)
@@ -70,18 +68,13 @@ func Test_Session_Store_PassesOverAnUnsavedIDOfAStoreItShares(t *testing.T) {
 	})
 	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("k", "v") })
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 	c.Request().Header.SetCookie("b_sid", idB)
 
-	a, err := storeA.Get(c)
-	require.NoError(t, err)
-	defer a.Release()
+	a := mustGet(t, storeA, c)
 	require.True(t, a.Fresh(), "A caches an ID, and does not save it")
 
-	g, err := storeG.Get(c)
-	require.NoError(t, err)
-	defer g.Release()
+	g := mustGet(t, storeG, c)
 	require.NotEqual(t, a.ID(), g.ID(), "G took the ID that A cached, which names no session")
 	require.False(t, g.Fresh(), "G found the session its b_sid cookie names")
 	require.Equal(t, idB, g.ID())
@@ -106,8 +99,7 @@ func Test_Session_Store_CachedIDsAreKeptNewestFirst(t *testing.T) {
 	})
 	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("k", "v") })
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 	c.Request().Header.SetCookie("b_sid", idB)
 
 	for _, store := range []*Store{storeB, storeW, storeX, storeY} {
@@ -122,9 +114,7 @@ func Test_Session_Store_CachedIDsAreKeptNewestFirst(t *testing.T) {
 	require.Same(t, storeW, newest.next.next.store)
 	require.Nil(t, newest.next.next.next, "B found its session and cached nothing")
 
-	r, err := storeR.Get(c)
-	require.NoError(t, err)
-	defer r.Release()
+	r := mustGet(t, storeR, c)
 	require.False(t, r.Fresh(), "R shares X's cookie but not Y's, and must find its own session")
 	require.Equal(t, idB, r.ID())
 }
@@ -150,8 +140,7 @@ func Test_Session_Store_FreshSessionOfAnUnknownCookieIsCached(t *testing.T) {
 	})
 	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("k", "v") })
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 	c.Request().Header.SetCookie("b_sid", idB)
 	c.Request().Header.SetCookie("y_sid", "names-no-session")
 
@@ -160,16 +149,12 @@ func Test_Session_Store_FreshSessionOfAnUnknownCookieIsCached(t *testing.T) {
 		require.NoError(t, err)
 		sess.Release()
 	}
-	y, err := storeY.Get(c)
-	require.NoError(t, err)
-	defer y.Release()
+	y := mustGet(t, storeY, c)
 	require.True(t, y.Fresh(), "Y's cookie names no stored session")
 	require.NoError(t, y.Save())
 	require.Same(t, storeY, requestIDs(c).store, "Y cached its ID after W and X")
 
-	r, err := storeR.Get(c)
-	require.NoError(t, err)
-	defer r.Release()
+	r := mustGet(t, storeR, c)
 	require.Equal(t, y.ID(), r.ID(), "R shares Y's cookie, and Y cached last")
 	require.NotEqual(t, idB, r.ID(), "R went to its own cookie instead of the ID that Y cached")
 	require.False(t, r.Fresh(), "R found the session that Y saved")
@@ -221,12 +206,9 @@ func Test_Session_Store_Get_CachesTheNewIDWithItsStore(t *testing.T) {
 	other := NewStore(Config{Extractor: extractors.FromCookie("other_sid")})
 	app := fiber.New()
 
-	withID := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(withID)
+	withID := newRequest(t, app)
 	withID.Request().Header.SetCookie("session_id", "names-no-session")
-	sess, err := store.Get(withID)
-	require.NoError(t, err)
-	defer sess.Release()
+	sess := mustGet(t, store, withID)
 	require.True(t, sess.Fresh())
 	cached := requestIDs(withID)
 	require.NotNil(t, cached)
@@ -237,19 +219,12 @@ func Test_Session_Store_Get_CachesTheNewIDWithItsStore(t *testing.T) {
 	require.Nil(t, cached.next)
 	require.Equal(t, sess.ID(), withID.Locals(sessionIDContextKey), "and it is the ID the logger shows")
 
-	without := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(without)
-	first, err := store.Get(without)
-	require.NoError(t, err)
-	defer first.Release()
+	without := newRequest(t, app)
+	first := mustGet(t, store, without)
 	require.True(t, first.Fresh())
 	require.Zero(t, requestIDs(without).res, "the client sent no ID")
-	between, err := other.Get(without)
-	require.NoError(t, err)
-	defer between.Release()
-	again, err := store.Get(without)
-	require.NoError(t, err)
-	defer again.Release()
+	mustGet(t, other, without)
+	again := mustGet(t, store, without)
 	require.True(t, again.Fresh(), "the first ID was never saved")
 	require.NotEqual(t, first.ID(), again.ID())
 
@@ -333,21 +308,14 @@ func Test_Session_Store_SourcesAreToldApartByKindAndName(t *testing.T) {
 
 	// A new visitor: a store over the same source takes the ID the first store
 	// saved, a store over another source starts a session of its own.
-	visitor := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(visitor)
-	first, err := byQuery.Get(visitor)
-	require.NoError(t, err)
-	defer first.Release()
+	visitor := newRequest(t, app)
+	first := mustGet(t, byQuery, visitor)
 	first.Set("k", "v")
 	require.NoError(t, first.Save())
-	second, err := bySameQuery.Get(visitor)
-	require.NoError(t, err)
-	defer second.Release()
+	second := mustGet(t, bySameQuery, visitor)
 	require.Equal(t, first.ID(), second.ID(), "a store over the same query parameter took the ID the first one saved")
 	require.False(t, second.Fresh())
-	third, err := byCookie.Get(visitor)
-	require.NoError(t, err)
-	defer third.Release()
+	third := mustGet(t, byCookie, visitor)
 	require.NotEqual(t, first.ID(), third.ID(), "a cookie store next to them took the ID too")
 	require.True(t, third.Fresh())
 
@@ -379,11 +347,8 @@ func Test_Store_ExtractorReplacedAfterNewStore(t *testing.T) {
 	store.Extractor = extractors.FromCookie("b_sid")
 
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	sess, err := store.Get(c)
-	require.NoError(t, err)
-	defer sess.Release()
+	c := newRequest(t, app)
+	sess := mustGet(t, store, c)
 	require.NoError(t, sess.Save())
 
 	var written []string
@@ -436,24 +401,17 @@ func Test_Session_Store_PassesOverAnIDThatIsNoSessionToAnOlderOneThatIs(t *testi
 	storeW := NewStore(Config{Extractor: extractors.FromCookie("sid")})
 	storeS := NewStore(Config{Extractor: extractors.FromCookie("sid"), Storage: storeA.Storage})
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 
-	a, err := storeA.Get(c)
-	require.NoError(t, err)
-	defer a.Release()
+	a := mustGet(t, storeA, c)
 	a.Set("k", "v")
 	require.NoError(t, a.Save())
 
-	w, err := storeW.Get(c)
-	require.NoError(t, err)
-	defer w.Release()
+	w := mustGet(t, storeW, c)
 	require.True(t, w.Fresh(), "A's ID is no session of the storage of W")
 	require.Same(t, storeW, requestIDs(c).store, "W cached the newest ID")
 
-	s, err := storeS.Get(c)
-	require.NoError(t, err)
-	defer s.Release()
+	s := mustGet(t, storeS, c)
 	require.False(t, s.Fresh(), "S stopped at the newest ID, which names no session, and lost the one A saved")
 	require.Equal(t, a.ID(), s.ID())
 	require.Equal(t, "v", s.Get("k"))
@@ -473,8 +431,7 @@ func Test_Session_Store_TakesTheNewestOfTheSavedIDsItShares(t *testing.T) {
 		Storage:   storage,
 	})
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 
 	saved := func(store *Store) *Session {
 		sess, err := store.Get(c)
@@ -487,9 +444,41 @@ func Test_Session_Store_TakesTheNewestOfTheSavedIDsItShares(t *testing.T) {
 	a1, a2 := saved(storeA1), saved(storeA2)
 	require.NotEqual(t, a1.ID(), a2.ID())
 
-	s, err := storeS.Get(c)
-	require.NoError(t, err)
-	defer s.Release()
+	s := mustGet(t, storeS, c)
 	require.False(t, s.Fresh())
 	require.Equal(t, a2.ID(), s.ID(), "S took the older of the two sessions that were saved")
+}
+
+// Regenerate and Reset give the session a new ID, and a store that is asked again looks
+// for the session under that one, not under the ID that was deleted: for a visitor who
+// has no cookie yet and for one who has.
+func Test_Session_Store_Get_AskedAgainFindsTheSessionUnderItsNewID(t *testing.T) {
+	t.Parallel()
+
+	for name, change := range map[string]func(*Session) error{"Regenerate": (*Session).Regenerate, "Reset": (*Session).Reset} {
+		for _, returning := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s, returning visitor %t", name, returning), func(t *testing.T) {
+				t.Parallel()
+
+				app := fiber.New()
+				store := NewStore()
+				c := newRequest(t, app)
+				if returning {
+					c.Request().Header.SetCookie("session_id", seedSession(t, app, store, func(s *Session) { s.Set("k", "v") }))
+				}
+
+				first := mustGet(t, store, c)
+				was := first.ID()
+				require.NoError(t, change(first))
+				require.NotEqual(t, was, first.ID())
+				first.Set("after", "change")
+				require.NoError(t, first.Save())
+
+				again := mustGet(t, store, c)
+				require.Equal(t, first.ID(), again.ID(), "the session was lost under its new ID")
+				require.False(t, again.Fresh())
+				require.Equal(t, "change", again.Get("after"))
+			})
+		}
+	}
 }

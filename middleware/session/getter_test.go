@@ -278,8 +278,7 @@ func Test_Session_AbsoluteExpiry(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_GetAs -benchmem -count=4
 func Benchmark_GetAs(b *testing.B) {
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(b, app)
 
 	sess, err := NewStore().Get(c)
 	if err != nil {

@@ -39,8 +39,7 @@ func Test_Session_Middleware_NestedLinkIsBalanced(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 
 	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
@@ -73,10 +72,8 @@ func Test_Session_Middleware_AdoptOnlyWithinItsRequest(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	c1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c1)
-	c2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c2)
+	c1 := newRequest(t, app)
+	c2 := newRequest(t, app)
 
 	store := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	outer := startMiddleware(t, c1, store)
@@ -108,10 +105,8 @@ func Test_Session_Middleware_OuterFinishesBeforeInner(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	c1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c1)
-	c2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c2)
+	c1 := newRequest(t, app)
+	c2 := newRequest(t, app)
 
 	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
@@ -249,8 +244,7 @@ func Test_Session_MultipleStores_AbandonedByTimeout(t *testing.T) {
 // testing.AllocsPerRun panics in a parallel test, so this one stays sequential.
 func Test_Session_Middleware_FindDoesNotAllocate(t *testing.T) {
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 
 	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
@@ -280,8 +274,7 @@ func Test_Session_Middleware_FindDoesNotAllocate(t *testing.T) {
 // after the sessions went back to it, and a parallel test could take one in between.
 func Test_Session_ReleaseMiddleware_ReleasesTheSession(t *testing.T) {
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 
 	outer := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
 	inner := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("b_sid")}))
@@ -367,8 +360,7 @@ func Test_Session_Middleware_AbandonedLookupDoesNotFindTheNextRequest(t *testing
 	app := fiber.New()
 	c1 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer c1.ForceRelease()
-	c2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c2)
+	c2 := newRequest(t, app)
 
 	store := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	first := startMiddleware(t, c1, store)
@@ -396,8 +388,7 @@ func Test_Session_Middleware_AbandonedLookupDoesNotFindTheNextRequest(t *testing
 // parallel test could take it and drop it in the meantime.
 func Test_Session_ReleaseMiddleware_RecyclesWhatNothingRefersTo(t *testing.T) {
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 
 	outer := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
 	inner := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("b_sid")}))
@@ -442,13 +433,10 @@ func Test_Session_Save_EntryPointsReadTheContextUnderItsLock(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 
 	store := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	sess, err := store.Get(c)
-	require.NoError(t, err)
-	defer sess.Release()
+	sess := mustGet(t, store, c)
 	sess.Set("k", "v")
 
 	stop := make(chan struct{})
@@ -502,14 +490,11 @@ func Test_Session_Save_RunsUnderTheRequestContext(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 
 	spy := &contextSpyStorage{Storage: memory.New()}
 	store := NewStore(Config{Storage: spy})
-	sess, err := store.Get(c)
-	require.NoError(t, err)
-	defer sess.Release()
+	sess := mustGet(t, store, c)
 	sess.Set("k", "v")
 
 	require.NoError(t, sess.Save())
@@ -536,8 +521,7 @@ func Test_Session_Middleware_FindStopsAtAFinishedOuter(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 
 	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
@@ -623,8 +607,7 @@ func Test_Session_Middleware_UnpinIsOnce(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 
 	outer := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
 	inner := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("b_sid")}))
@@ -826,8 +809,7 @@ func Test_Session_Middleware_EndIfUnwound(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 
 	outer := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
 	inner := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("b_sid")}))

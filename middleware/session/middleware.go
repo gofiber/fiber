@@ -245,11 +245,31 @@ func storeMiddlewareContext(c fiber.Ctx, session *Session, m *Middleware) bool {
 
 	// Without PassLocalsToContext the request context never holds the middleware,
 	// and asking it for one would only make Fiber create a context for the request.
-	if !c.App().Config().PassLocalsToContext {
+	if !m.store.passesLocalsToContext(c) {
 		return false
 	}
 	held, ok := c.Context().Value(middlewareContextKey).(*Middleware)
 	return ok && held == m
+}
+
+// localsSetting is the PassLocalsToContext setting of an app.
+type localsSetting struct {
+	app    *fiber.App
+	passes bool
+}
+
+// passesLocalsToContext reports whether the app of c copies the request locals into the
+// request context. An app does not change the setting once it is made, and Config returns
+// the whole Config by value, which every request would pay for it, so the store reads it
+// once for each app it serves.
+func (s *Store) passesLocalsToContext(c fiber.Ctx) bool {
+	app := c.App()
+	if known := s.locals.Load(); known != nil && known.app == app {
+		return known.passes
+	}
+	fresh := &localsSetting{app: app, passes: app.Config().PassLocalsToContext}
+	s.locals.Store(fresh)
+	return fresh.passes
 }
 
 // clearMiddlewareLocals clears the session ID and the middleware from the Fiber

@@ -145,8 +145,7 @@ func Test_Session_MultipleStores_FromContext(t *testing.T) {
 		t.Parallel()
 		require.Nil(t, storeA.FromContext(nil))
 
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := newRequest(t, app)
 		require.Nil(t, storeA.FromContext(ctx), "no middleware ran for this context")
 	})
 
@@ -334,19 +333,14 @@ func Test_Session_MultipleStores_SharingStoreAdoptsCachedProvenance(t *testing.T
 	require.NotSame(t, first, second)
 
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 	c.Request().Header.SetCookie("sid", "unknown")
 
-	p, err := first.Get(c)
-	require.NoError(t, err)
-	defer p.Release()
+	p := mustGet(t, first, c)
 	require.True(t, p.Fresh(), "the cookie names no session, so the first store starts one and caches its ID")
 	require.NoError(t, p.Save())
 
-	q, err := second.Get(c)
-	require.NoError(t, err)
-	defer q.Release()
+	q := mustGet(t, second, c)
 	require.Equal(t, p.ID(), q.ID(), "the second store takes the cached ID")
 	require.False(t, q.Fresh(), "and finds the session the first one saved")
 	require.Equal(t, p.extractor, q.extractor, "and the provenance cached with it")
@@ -376,20 +370,15 @@ func Test_Session_MultipleStores_SharingStoreTakesNoSinkItDoesNotRead(t *testing
 	narrow := NewStore(Config{Storage: shared, Extractor: extractors.FromCookie("sid")})
 
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 	c.Request().Header.Set("X-Sid", "unknown")
 
-	p, err := wide.Get(c)
-	require.NoError(t, err)
-	defer p.Release()
+	p := mustGet(t, wide, c)
 	require.True(t, p.Fresh(), "the header names no session")
 	require.Equal(t, "X-Sid", p.extractor.Key, "the new session goes back to the header the request named")
 	require.NoError(t, p.Save())
 
-	q, err := narrow.Get(c)
-	require.NoError(t, err)
-	defer q.Release()
+	q := mustGet(t, narrow, c)
 	require.Equal(t, p.ID(), q.ID(), "the narrow store takes the cached ID")
 	require.False(t, q.Fresh())
 	require.False(t, q.extractor.Resolved, "the header is a sink of the wide store, not of this one")
@@ -443,15 +432,12 @@ func Test_Session_MultipleStores_SaveOfASessionNoMiddlewareManages(t *testing.T)
 	t.Parallel()
 
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 
 	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
 
-	early, err := storeA.Get(c)
-	require.NoError(t, err)
-	defer early.Release()
+	early := mustGet(t, storeA, c)
 	early.Set("k", "v")
 
 	m := startMiddleware(t, c, storeB)
@@ -918,22 +904,9 @@ func Test_Session_Store_Get_AskedAgainFindsTheSessionItSaved(t *testing.T) {
 		require.Equal(t, want.Get("k"), sess.Get("k"))
 	}
 
-	t.Run("after a store over another cookie was asked", func(t *testing.T) {
+	t.Run("after other stores were asked, in any order", func(t *testing.T) {
 		t.Parallel()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
-
-		a := saved(t, c, storeA)
-		b := saved(t, c, storeB)
-		require.NotEqual(t, a.ID(), b.ID(), "each store issues its own ID")
-		found(t, c, storeA, a)
-		found(t, c, storeB, b)
-	})
-
-	t.Run("after several stores were asked, in any order", func(t *testing.T) {
-		t.Parallel()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
+		c := newRequest(t, app)
 
 		a, b, cc := saved(t, c, storeA), saved(t, c, storeB), saved(t, c, storeC)
 		found(t, c, storeA, a)
@@ -944,8 +917,7 @@ func Test_Session_Store_Get_AskedAgainFindsTheSessionItSaved(t *testing.T) {
 
 	t.Run("by a store over the same cookie", func(t *testing.T) {
 		t.Parallel()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
+		c := newRequest(t, app)
 
 		a := saved(t, c, storeA)
 		saved(t, c, storeB)
@@ -1077,17 +1049,14 @@ func Test_Session_Store_Get_AskedAgainIssuesANewSession(t *testing.T) {
 	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
 
 	get := func(c fiber.Ctx, store *Store) string {
-		sess, err := store.Get(c)
-		require.NoError(t, err)
-		defer sess.Release()
+		sess := mustGet(t, store, c)
 		require.True(t, sess.Fresh())
 		return sess.ID()
 	}
 
 	t.Run("after another store was asked", func(t *testing.T) {
 		t.Parallel()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
+		c := newRequest(t, app)
 
 		first, other, again := get(c, storeA), get(c, storeB), get(c, storeA)
 		require.NotEqual(t, first, other, "each store issues its own ID")
@@ -1096,8 +1065,7 @@ func Test_Session_Store_Get_AskedAgainIssuesANewSession(t *testing.T) {
 
 	t.Run("the same store asked twice", func(t *testing.T) {
 		t.Parallel()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
+		c := newRequest(t, app)
 
 		first := get(c, storeA)
 		second := get(c, storeA)

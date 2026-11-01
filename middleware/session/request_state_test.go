@@ -9,7 +9,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 // countingCtx counts how often the session middleware asks for the Go context of the
@@ -114,8 +113,7 @@ func Test_Session_Middleware_ReleaseForgetsTheStoreAndTheErrorHandler(t *testing
 	t.Parallel()
 
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 
 	store := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	cfg := store.Config

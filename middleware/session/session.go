@@ -353,6 +353,11 @@ func (s *Session) refresh() {
 	s.key = ""
 	s.isFresh = true
 	s.loaded = false
+	if s.ctx != nil {
+		// A store that is asked again in this request finds the session under its new
+		// ID, not under the one that was just deleted.
+		cacheID(s.ctx, requestIDs(s.ctx), s.config, s.id, s.extractor)
+	}
 }
 
 // storageKey returns the key the session is stored under; the caller holds s.mu.

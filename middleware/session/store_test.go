@@ -919,3 +919,62 @@ func Test_CachedID_PoolHoldsSomethingElse(t *testing.T) {
 	require.NotNil(t, cached, "a usable entry whatever the pool held")
 	require.Equal(t, "an-id", cached.res.Value)
 }
+
+// A store that is asked twice, for a visitor whose cookie names no session, looks that cookie
+// up once. A store over the same cookie with a storage of its own still looks it up: what one
+// storage does not hold, another may.
+func Test_Store_Get_AskedAgainDoesNotLookUpTheNamedIDTwice(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	storage := &keyLogStorage{Storage: memory.New()}
+	store := NewStore(Config{Storage: storage})
+	other := memory.New()
+	holder := NewStore(Config{Storage: other, KeyGenerator: func() string { return "stale" }})
+	require.Equal(t, "stale", seedSession(t, app, holder, func(s *Session) { s.Set("k", "v") }))
+	sharing := NewStore(Config{Storage: other})
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.SetCookie("session_id", "stale")
+
+	first, err := store.Get(c)
+	require.NoError(t, err)
+	defer first.Release()
+	second, err := store.Get(c)
+	require.NoError(t, err)
+	defer second.Release()
+	require.True(t, first.Fresh() && second.Fresh())
+	require.NotEqual(t, first.ID(), second.ID(), "an ID that was not saved is not a session")
+
+	lookups := 0
+	for _, op := range storage.seen() {
+		if op == "get:session:stale" {
+			lookups++
+		}
+	}
+	require.Equal(t, 1, lookups, "the cookie named no session the first time, and is not looked up again")
+
+	third, err := sharing.Get(c)
+	require.NoError(t, err)
+	defer third.Release()
+	require.False(t, third.Fresh(), "the storage of another store holds the session the cookie names")
+	require.Equal(t, "stale", third.ID())
+}
+
+// The PassLocalsToContext setting is read once for each app a store serves, and the store
+// goes by the app, not by the last answer.
+func Test_Store_PassesLocalsToContextByApp(t *testing.T) {
+	t.Parallel()
+
+	on, off := fiber.New(fiber.Config{PassLocalsToContext: true}), fiber.New()
+	onCtx, offCtx := on.AcquireCtx(&fasthttp.RequestCtx{}), off.AcquireCtx(&fasthttp.RequestCtx{})
+	defer on.ReleaseCtx(onCtx)
+	defer off.ReleaseCtx(offCtx)
+
+	store := NewStore()
+	for range 3 {
+		require.True(t, store.passesLocalsToContext(onCtx))
+		require.False(t, store.passesLocalsToContext(offCtx))
+	}
+}

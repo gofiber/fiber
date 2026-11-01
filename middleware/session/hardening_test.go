@@ -266,16 +266,7 @@ func Test_Config_CookiePrefixWarnings(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := loggertest.CaptureContextLog(t, "")
 			NewStore(tc.cfg)
-
-			out := buf.String()
-			if len(tc.want) == 0 {
-				require.Empty(t, out)
-				return
-			}
-			require.Equal(t, 1, strings.Count(out, "[Warn]"), "one warning per offending cookie: %q", out)
-			for _, fragment := range tc.want {
-				require.Contains(t, out, fragment)
-			}
+			requireOneWarning(t, buf.String(), tc.want)
 		})
 	}
 
@@ -326,16 +317,21 @@ func Test_Config_StoreOptionWarnings(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := loggertest.CaptureContextLog(t, "")
 			New(tc.cfg)
-
-			out := buf.String()
-			if len(tc.want) == 0 {
-				require.Empty(t, out)
-				return
-			}
-			require.Equal(t, 1, strings.Count(out, "[Warn]"), "one warning: %q", out)
-			for _, fragment := range tc.want {
-				require.Contains(t, out, fragment)
-			}
+			requireOneWarning(t, buf.String(), tc.want)
 		})
+	}
+}
+
+// requireOneWarning checks the log of building a store: nothing when want is empty, and
+// otherwise one warning with every fragment of want in it.
+func requireOneWarning(t *testing.T, out string, want []string) {
+	t.Helper()
+	if len(want) == 0 {
+		require.Empty(t, out)
+		return
+	}
+	require.Equal(t, 1, strings.Count(out, "[Warn]"), "one warning: %q", out)
+	for _, fragment := range want {
+		require.Contains(t, out, fragment)
 	}
 }

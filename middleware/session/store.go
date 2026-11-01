@@ -129,6 +129,9 @@ type Store struct {
 	// Codec, and for one built without NewStore, which sessionFormat makes up. Changing
 	// the Codec of a Store after NewStore has no effect.
 	named *namedCodec
+	// locals is the PassLocalsToContext setting of the app that served the store last,
+	// see passesLocalsToContext.
+	locals atomic.Pointer[localsSetting]
 	// sinks are the cookies and headers a session ID can be written back to, in the
 	// order of the extractor. NewStore works them out once; a Store built without it
 	// has none (nil), and a Store whose Extractor was replaced since has stale ones:
@@ -265,9 +268,9 @@ func (*Store) RegisterType(i any) {
 // For a visitor who has no cookie yet, the ID that Get issues is remembered for the
 // request by the store and by the stores that share a cookie or header with it, and by
 // no others: asked again after a Save, a store returns the session it saved, whatever
-// other stores were asked in between. An ID that was not saved is not a session, and
-// asking again issues another, as it does once Regenerate or Reset has replaced the
-// ID that was remembered.
+// other stores were asked in between, and under the new ID if Regenerate or Reset gave
+// the session one. An ID that was not saved is not a session, and asking again before
+// a Save issues another.
 //
 // Parameters:
 //   - c: The Fiber context.
@@ -334,7 +337,7 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, *cachedID
 			return nil, nil, err
 		}
 		found.res = res
-		if res.Value != "" {
+		if res.Value != "" && !s.foundNoSession(cached, res.Value) {
 			if readErr := s.readSession(c, res.Value, &found); readErr != nil {
 				return nil, nil, readErr
 			}
@@ -389,6 +392,18 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, *cachedID
 	}
 
 	return sess, cached, nil
+}
+
+// foundNoSession reports whether s looked for a session under id earlier in the request
+// and found none: the entry s cached holds the ID the request named when s issued its own,
+// or the one a Regenerate or Reset deleted, and neither names a session.
+func (s *Store) foundNoSession(cached *cachedID, id string) bool {
+	for entry := cached; entry != nil; entry = entry.next {
+		if entry.store == s {
+			return entry.res.Value == id
+		}
+	}
+	return false
 }
 
 // storedSession is the outcome of a lookup of a session: the record, if a session is
