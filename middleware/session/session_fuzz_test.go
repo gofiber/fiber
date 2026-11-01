@@ -58,8 +58,7 @@ func Fuzz_Session_ClientInput(f *testing.F) {
 		// one input to the next, so an input that fails fails alone, and neither the
 		// storage nor the goroutines of the storages grow for as long as the fuzzing
 		// runs.
-		w := newInvariantWorld(1)
-		t.Cleanup(func() { w.shutdown(t) })
+		w := newInvariantWorld(t, 1)
 		app := w.storeAPIApp()
 
 		req := invariantRequest{
@@ -72,6 +71,5 @@ func Fuzz_Session_ClientInput(f *testing.F) {
 			return
 		}
 		w.check(t, 0, req, resp, rec)
-		w.checkAskedAgain(t, "request", rec)
 	})
 }

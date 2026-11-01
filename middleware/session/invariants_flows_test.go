@@ -1,21 +1,16 @@
 package session
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
 	"math/rand/v2"
 	"net/http"
-	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
-	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,13 +32,132 @@ import (
 // flowRequests is the number of requests of one seed.
 const flowRequests = 300
 
-type flowSession struct {
-	ID    string `json:"id"`
-	Fresh bool   `json:"fresh"`
-}
-
 // flowOps are what a handler may do with the session of a store, picked at random.
 var flowOps = []string{"", "", "set", "set", "reset", "resetempty", "regenerate", "destroy"}
+
+// newFlowWorld has A, B and C as the middleware stack of the invariant world, with the
+// options that make for flows: A and C skip the sessions that stay empty, B hashes its
+// keys, and the deadlines of A are short enough for its sessions to expire while the test runs.
+func newFlowWorld(tb testing.TB, seed uint64) *invariantWorld {
+	tb.Helper()
+
+	w := newWorld(tb, seed)
+	w.rng = rand.New(rand.NewPCG(seed, seed*7919)) // the flows draw their requests from a stream of their own
+	w.add("A", "shared", &Config{
+		Extractor:         extractors.FromCookie("a_sid"),
+		StorageKeyPrefix:  "a:",
+		SkipEmptySessions: true,
+		IdleTimeout:       20 * time.Millisecond,
+		AbsoluteTimeout:   40 * time.Millisecond,
+	}, []string{"a_sid"}, nil)
+	w.add("B", "shared", &Config{
+		Extractor:        extractors.FromCookie("b_sid"),
+		StorageKeyPrefix: "b:",
+		HashStorageKeys:  true,
+	}, []string{"b_sid"}, nil)
+	w.add("C", "private", &Config{
+		Extractor:         extractors.Chain(extractors.FromCookie("c_sid"), extractors.FromHeader("X-C")),
+		HashStorageKeys:   true,
+		SkipEmptySessions: true,
+		Codec:             JSONCodec{},
+	}, []string{"c_sid"}, []string{"X-C"})
+	return w
+}
+
+// flowsApp is an app with a session middleware for each of A, B and C. Its handler does
+// to the session of each store the operation that the ops of the query name for it, in
+// the order of the stores, and reports the sessions. What it finds wrong it tells the ledger.
+func (w *invariantWorld) flowsApp() *fiber.App {
+	return w.newApp(middlewareNames, func(c fiber.Ctx) error {
+		ops := strings.Split(c.Query("ops"), ",")
+		var rec invariantRecord
+		for i, name := range middlewareNames {
+			m := w.stores[name].FromContext(c)
+			if m == nil {
+				w.ledger.violatef("the handler has no middleware of store %s", name)
+				continue
+			}
+			if owner := m.Get("owner"); owner != nil && owner != name {
+				w.ledger.violatef("store %s loaded a session that holds owner=%v, the data of another store", name, owner)
+			}
+			var err error
+			switch ops[i] {
+			case "set":
+				m.Set("owner", name)
+			case "reset":
+				if err = m.Reset(); err == nil {
+					m.Set("owner", name)
+				}
+			case "resetempty":
+				err = m.Reset()
+			case "regenerate":
+				err = m.Regenerate()
+			case "destroy":
+				err = m.Destroy()
+			}
+			if err != nil {
+				w.ledger.violatef("store %s: %s failed: %v", name, ops[i], err)
+			}
+			rec.Sessions = append(rec.Sessions, invariantSession{Store: name, ID: m.ID(), Fresh: m.Fresh()})
+		}
+		return c.JSON(rec)
+	})
+}
+
+// flowRequest is a request whose cookie of each store holds nothing, an ID or garbage,
+// and whose ops name what the handler does with the session of each of the stores.
+func (w *invariantWorld) flowRequest() invariantRequest {
+	pick := func(name string) string {
+		if ids := w.saved[name]; len(ids) > 0 {
+			return ids[w.rng.IntN(len(ids))]
+		}
+		return ""
+	}
+	req := invariantRequest{cookies: make(map[string]string)}
+	for _, name := range middlewareNames {
+		var value string
+		switch w.rng.IntN(9) {
+		case 3, 4, 5:
+			value = pick(name)
+		case 6:
+			value = pick(middlewareNames[w.rng.IntN(len(middlewareNames))]) // a session of some store, whoever's it is
+		case 7:
+			value = []string{"a:", "b:"}[w.rng.IntN(2)] + pick([]string{"A", "B"}[w.rng.IntN(2)]) // as another store's key would read
+		case 8:
+			value = strings.Repeat("g", 1+w.rng.IntN(100))
+		default: // nothing
+		}
+		if value != "" {
+			req.cookies[w.stores[name].cookies[0]] = value
+			if name == "C" && w.rng.IntN(2) == 0 {
+				req.header = value
+			}
+		}
+		req.ops = append(req.ops, flowOps[w.rng.IntN(len(flowOps))])
+	}
+	return req
+}
+
+// checkFlow holds the response and what the handler saw against the properties above.
+func (w *invariantWorld) checkFlow(t *testing.T, step int, req invariantRequest, resp *http.Response, rec invariantRecord) {
+	t.Helper()
+	where := req.where(step)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, where)
+
+	req.requireNoFixation(t, where, rec)
+
+	// What the response sets belongs to a session of a store that reads it. A cookie that
+	// expires sets nothing.
+	set := slices.DeleteFunc(resp.Cookies(), func(c *http.Cookie) bool { return c.MaxAge < 0 })
+	w.requireOwned(t, where, rec, set, resp.Header.Get("X-C"))
+	w.ledger.requireClean(t, where)
+
+	for i, sess := range rec.Sessions {
+		if sess.ID != "" && req.ops[i] != "destroy" {
+			w.saved[sess.Store] = append(w.saved[sess.Store], sess.ID)
+		}
+	}
+}
 
 func Test_Session_Invariants_Flows(t *testing.T) {
 	t.Parallel()
@@ -52,175 +166,17 @@ func Test_Session_Invariants_Flows(t *testing.T) {
 		t.Run("seed="+strconv.FormatUint(seed, 10), func(t *testing.T) {
 			t.Parallel()
 
-			rng := rand.New(rand.NewPCG(seed, seed*7919))
-			ledger := &invariantLedger{writers: make(map[string]string)}
-			shared, private := memory.New(), memory.New()
-			t.Cleanup(func() {
-				require.NoError(t, shared.Close())
-				require.NoError(t, private.Close())
-			})
-			ledgered := func(storage fiber.Storage, group, prefix string, hashed bool) fiber.Storage {
-				return &invariantStorage{Storage: storage, ledger: ledger, group: group, policy: fmt.Sprintf("%s|%s|%t", group, prefix, hashed)}
-			}
+			w := newFlowWorld(t, seed)
+			app := w.flowsApp()
 
-			// The deadlines are short enough for sessions to expire while the test runs.
-			handlerA, storeA := NewWithStore(Config{
-				Extractor:         extractors.FromCookie("a_sid"),
-				Storage:           ledgered(shared, "shared", "a:", false),
-				StorageKeyPrefix:  "a:",
-				SkipEmptySessions: true,
-				IdleTimeout:       20 * time.Millisecond,
-				AbsoluteTimeout:   40 * time.Millisecond,
-			})
-			handlerB, storeB := NewWithStore(Config{
-				Extractor:        extractors.FromCookie("b_sid"),
-				Storage:          ledgered(shared, "shared", "b:", true),
-				StorageKeyPrefix: "b:",
-				HashStorageKeys:  true,
-			})
-			handlerC, storeC := NewWithStore(Config{
-				Extractor:         extractors.Chain(extractors.FromCookie("c_sid"), extractors.FromHeader("X-C")),
-				Storage:           ledgered(private, "private", "", true),
-				HashStorageKeys:   true,
-				SkipEmptySessions: true,
-				Codec:             JSONCodec{},
-			})
-			names := []string{"A", "B", "C"}
-			stores := map[string]*Store{"A": storeA, "B": storeB, "C": storeC}
-			cookies := map[string]string{"A": "a_sid", "B": "b_sid", "C": "c_sid"}
-
-			var mu sync.Mutex
-			var violations []string
-			violate := func(format string, args ...any) {
-				mu.Lock()
-				defer mu.Unlock()
-				violations = append(violations, fmt.Sprintf(format, args...))
-			}
-
-			app := fiber.New()
-			app.Use(handlerA, handlerB, handlerC)
-			app.Get("/", func(c fiber.Ctx) error {
-				report := make(map[string]flowSession)
-				for _, name := range names {
-					m := stores[name].FromContext(c)
-					if m == nil {
-						violate("the handler has no middleware of store %s", name)
-						continue
-					}
-					if owner := m.Get("owner"); owner != nil && owner != name {
-						violate("store %s loaded a session that holds owner=%v, the data of another store", name, owner)
-					}
-					var err error
-					switch c.Query(name) {
-					case "set":
-						m.Set("owner", name)
-					case "reset":
-						if err = m.Reset(); err == nil {
-							m.Set("owner", name)
-						}
-					case "resetempty":
-						err = m.Reset()
-					case "regenerate":
-						err = m.Regenerate()
-					case "destroy":
-						err = m.Destroy()
-					}
-					if err != nil {
-						violate("store %s: %s failed: %v", name, c.Query(name), err)
-					}
-					report[name] = flowSession{ID: m.ID(), Fresh: m.Fresh()}
-				}
-				return c.JSON(report)
-			})
-
-			saved := make(map[string][]string) // store -> IDs its sessions had
-			pick := func(name string) string {
-				if ids := saved[name]; len(ids) > 0 {
-					return ids[rng.IntN(len(ids))]
-				}
-				return ""
-			}
 			for step := range flowRequests {
-				supplied := make(map[string]bool)
-				httpReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-				query := make([]string, 0, len(names))
-				for _, name := range names {
-					var value string
-					switch rng.IntN(9) {
-					case 3, 4, 5:
-						value = pick(name)
-					case 6:
-						value = pick(names[rng.IntN(len(names))]) // a session of some store, whoever's it is
-					case 7:
-						value = []string{"a:", "b:"}[rng.IntN(2)] + pick([]string{"A", "B"}[rng.IntN(2)]) // as another store's key would read
-					case 8:
-						value = strings.Repeat("g", 1+rng.IntN(100))
-					default: // nothing
-					}
-					if value != "" {
-						httpReq.AddCookie(&http.Cookie{Name: cookies[name], Value: value})
-						supplied[value] = true
-						if name == "C" && rng.IntN(2) == 0 {
-							httpReq.Header.Set("X-C", value)
-						}
-					}
-					query = append(query, name+"="+flowOps[rng.IntN(len(flowOps))])
-				}
-				httpReq.URL.RawQuery = strings.Join(query, "&")
-				if rng.IntN(40) == 0 {
+				req := w.flowRequest()
+				if w.rng.IntN(40) == 0 {
 					time.Sleep(45 * time.Millisecond) // lets the deadlines of A pass
 				}
-
-				resp, err := app.Test(httpReq)
-				require.NoError(t, err)
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
-				require.NoError(t, resp.Body.Close())
-				where := fmt.Sprintf("request %d (%s)", step, httpReq.URL.RawQuery)
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "%s: %s", where, body)
-
-				var report map[string]flowSession
-				require.NoError(t, json.Unmarshal(body, &report), where)
-				for name, session := range report {
-					if session.Fresh && supplied[session.ID] {
-						violate("%s: a new session of store %s took the ID the client supplied: %q", where, name, session.ID)
-					}
-					if session.ID != "" && !strings.Contains(httpReq.URL.RawQuery, name+"=destroy") {
-						saved[name] = append(saved[name], session.ID)
-					}
-				}
-
-				// What the response sets belongs to a session of a store that reads it.
-				owns := func(cookieOrHeader, value string) bool {
-					for name, session := range report {
-						if session.ID != value {
-							continue
-						}
-						if cookieOrHeader == cookies[name] || (name == "C" && cookieOrHeader == "X-C") {
-							return true
-						}
-					}
-					return false
-				}
-				for _, cookie := range resp.Cookies() {
-					if cookie.MaxAge < 0 { // expires the cookie
-						continue
-					}
-					if !owns(cookie.Name, cookie.Value) {
-						violate("%s: the cookie %s=%q is not the ID of a session of a store that reads it (report %v)", where, cookie.Name, cookie.Value, report)
-					}
-				}
-				if value := resp.Header.Get("X-C"); value != "" && !owns("X-C", value) {
-					violate("%s: the header X-C=%q is not the ID of a session of the store that reads it (report %v)", where, value, report)
-				}
+				resp, rec := req.send(t, app)
+				w.checkFlow(t, step, req, resp, rec)
 			}
-
-			ledger.mu.Lock()
-			defer ledger.mu.Unlock()
-			mu.Lock()
-			defer mu.Unlock()
-			violations = append(violations, ledger.violations...)
-			require.Empty(t, violations, "%d violations", len(violations))
 		})
 	}
 }

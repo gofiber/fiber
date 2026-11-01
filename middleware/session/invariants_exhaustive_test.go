@@ -1,8 +1,7 @@
 package session
 
 import (
-	"encoding/json"
-	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"slices"
@@ -34,10 +33,8 @@ const exhaustiveChunks = 8
 // exhaustiveOps is the longest sequence of Store.Get calls that is sent: three unless
 // SESSION_INVARIANT_EXHAUSTIVE says from one to four.
 func exhaustiveOps() int {
-	if raw := os.Getenv("SESSION_INVARIANT_EXHAUSTIVE"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 && n <= 4 {
-			return n
-		}
+	if n, err := strconv.Atoi(os.Getenv("SESSION_INVARIANT_EXHAUSTIVE")); err == nil && n > 0 && n <= 4 {
+		return n
 	}
 	return 3
 }
@@ -48,8 +45,7 @@ func (w *invariantWorld) seed(t *testing.T, app *fiber.App, ops []string) map[st
 	t.Helper()
 
 	req := invariantRequest{cookies: make(map[string]string), ops: ops}
-	resp, rec, err := req.send(app)
-	require.NoError(t, err)
+	resp, rec := req.send(t, app)
 	w.check(t, 0, req, resp, rec)
 	w.frozen = true
 
@@ -90,32 +86,19 @@ func (r invariantRequest) sendDirect(t *testing.T, handler fasthttp.RequestHandl
 	require.Len(t, resp.Cookies(), len(resp.Header.Values("Set-Cookie")), "net/http cannot read a Set-Cookie of the response")
 	resp.Header.Set("X-C", string(fctx.Response.Header.Peek("X-C")))
 
-	var rec invariantRecord
-	if resp.StatusCode == fiber.StatusOK {
-		require.NoError(t, json.Unmarshal(fctx.Response.Body(), &rec), "%s", fctx.Response.Body())
-	}
-	return resp, rec
+	return resp, decodeRecord(t, resp.StatusCode, fctx.Response.Body())
 }
 
 // exhaustiveClients returns every combination of what a client may send, given the IDs
 // of the sessions of stores A, B and C, in the order cookie a_sid, b_sid, c_sid, header.
 func exhaustiveClients(ids map[string]string) []invariantRequest {
-	aValues := []string{"", ids["A"], ids["B"], "b:" + ids["B"], "garbage"}
-	bValues := []string{"", ids["B"], ids["A"], "a:" + ids["A"], "garbage"}
-	cValues := []string{"", ids["C"], "garbage"}
-	headers := []string{"", ids["C"], "garbage"}
-
 	var out []invariantRequest
-	for _, a := range aValues {
-		for _, b := range bValues {
-			for _, c := range cValues {
-				for _, header := range headers {
-					req := invariantRequest{cookies: make(map[string]string), header: header}
-					for name, value := range map[string]string{"a_sid": a, "b_sid": b, "c_sid": c} {
-						if value != "" {
-							req.cookies[name] = value
-						}
-					}
+	for _, a := range []string{"", ids["A"], ids["B"], "b:" + ids["B"], "garbage"} {
+		for _, b := range []string{"", ids["B"], ids["A"], "a:" + ids["A"], "garbage"} {
+			for _, c := range []string{"", ids["C"], "garbage"} {
+				for _, header := range []string{"", ids["C"], "garbage"} {
+					req := invariantRequest{cookies: map[string]string{"a_sid": a, "b_sid": b, "c_sid": c}, header: header}
+					maps.DeleteFunc(req.cookies, func(_, value string) bool { return value == "" })
 					out = append(out, req)
 				}
 			}
@@ -158,77 +141,55 @@ func subsets(names []string) [][]string {
 	return out
 }
 
-func Test_Session_Invariants_Exhaustive_StoreAPI(t *testing.T) {
-	t.Parallel()
-
-	names := []string{"A", "A2", "B", "C"}
-	longest := exhaustiveOps()
-	sequences := opSequences(names, longest)
-	want := 0
-	for length, count := 1, len(names); length <= longest; length, count = length+1, count*len(names) {
-		want += count
-	}
-	require.Len(t, sequences, want)
+// exhaustiveRequests sends every combination of what a client may send with each of the
+// ops sequences, to an app that newApp makes over a world that was seeded with a session
+// for each of the names, and holds every response against the properties. The combinations
+// are shared out to chunks that run in parallel, each over a world of its own.
+func exhaustiveRequests(t *testing.T, newApp func(*invariantWorld) *fiber.App, names []string, sequences [][]string) {
+	t.Helper()
 
 	for chunk := range exhaustiveChunks {
 		t.Run("chunk="+strconv.Itoa(chunk), func(t *testing.T) {
 			t.Parallel()
 
-			w := newInvariantWorld(1)
-			t.Cleanup(func() { w.shutdown(t) })
-			app := w.storeAPIApp()
+			w := newInvariantWorld(t, 1)
+			app := newApp(w)
 			clients := exhaustiveClients(w.seed(t, app, names))
 			require.Len(t, clients, 5*5*3*3)
 			handler := app.Handler()
 
-			step := 0
-			for i, client := range clients {
-				if i%exhaustiveChunks != chunk {
-					continue
-				}
-				for _, ops := range sequences {
-					req := client
+			for i := chunk; i < len(clients); i += exhaustiveChunks {
+				for j, ops := range sequences {
+					req := clients[i]
 					req.ops = ops
 					resp, rec := req.sendDirect(t, handler)
-					w.check(t, step, req, resp, rec)
-					w.checkAskedAgain(t, fmt.Sprintf("request %d (ops %v, cookies %v, header %q)", step, req.ops, req.cookies, req.header), rec)
-					step++
+					w.check(t, i*len(sequences)+j, req, resp, rec)
 				}
 			}
 		})
 	}
 }
 
+func Test_Session_Invariants_Exhaustive_StoreAPI(t *testing.T) {
+	t.Parallel()
+
+	longest := exhaustiveOps()
+	sequences := opSequences(storeAPINames, longest)
+	want, count := 0, 1
+	for range longest {
+		count *= len(storeAPINames)
+		want += count
+	}
+	require.Len(t, sequences, want)
+
+	exhaustiveRequests(t, (*invariantWorld).storeAPIApp, storeAPINames, sequences)
+}
+
 func Test_Session_Invariants_Exhaustive_Middleware(t *testing.T) {
 	t.Parallel()
 
-	names := []string{"A", "B", "C"}
-	sets := subsets(names)
+	sets := subsets(middlewareNames)
 	require.Len(t, sets, 7)
 
-	for chunk := range exhaustiveChunks {
-		t.Run("chunk="+strconv.Itoa(chunk), func(t *testing.T) {
-			t.Parallel()
-
-			w := newInvariantWorld(1)
-			t.Cleanup(func() { w.shutdown(t) })
-			app := w.middlewareApp(names)
-			clients := exhaustiveClients(w.seed(t, app, names))
-			handler := app.Handler()
-
-			step := 0
-			for i, client := range clients {
-				if i%exhaustiveChunks != chunk {
-					continue
-				}
-				for _, ops := range sets {
-					req := client
-					req.ops = ops
-					resp, rec := req.sendDirect(t, handler)
-					w.check(t, step, req, resp, rec)
-					step++
-				}
-			}
-		})
-	}
+	exhaustiveRequests(t, (*invariantWorld).middlewareApp, middlewareNames, sets)
 }
