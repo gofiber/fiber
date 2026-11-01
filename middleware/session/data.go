@@ -77,6 +77,7 @@ func valueMayAlias(v any) bool {
 var dataPool = sync.Pool{
 	New: func() any {
 		d := new(data)
+		d.format = gobFormat{}
 		d.Data = make(map[any]any)
 		return d
 	},
@@ -171,8 +172,9 @@ func (d *data) fetch(key any) (any, bool) {
 	return v, ok
 }
 
-// getRaw returns what is stored under key as it is held, which under a codec is
-// the encoded form.
+// getRaw returns what is stored under key as it is held: for a session of a store with
+// a codec an *encodedValue, except for the deadline of the session, which is not encoded
+// and is the only thing it is asked for.
 func (d *data) getRaw(key any) any {
 	d.RLock()
 	defer d.RUnlock()
@@ -217,12 +219,12 @@ func (d *data) setRaw(key, value any) {
 func (d *data) setEncoded(codec *namedCodec, key, value any) {
 	name, ok := key.(string)
 	if !ok {
-		d.fail(key, fmt.Errorf("%w, got a key of type %T", errNonStringKey, key))
+		d.fail(codec, key, fmt.Errorf("%w, got a key of type %T", errNonStringKey, key))
 		return
 	}
 	encoded, err := codec.Marshal(value)
 	if err != nil {
-		d.fail(key, fmt.Errorf("failed to encode session value %q: %w", name, err))
+		d.fail(codec, key, fmt.Errorf("failed to encode session value %q: %w", name, err))
 		return
 	}
 	// The session keeps its own copy: a codec may hand out a buffer that it reuses.
@@ -230,15 +232,30 @@ func (d *data) setEncoded(codec *namedCodec, key, value any) {
 
 	d.Lock()
 	defer d.Unlock()
+	if !d.holds(codec) {
+		return
+	}
 	d.dirty.Store(true)
 	d.Data[name] = &encodedValue{codec: codec, bytes: owned}
 	delete(d.errs, name)
 }
 
-// fail remembers that the Set of key failed.
-func (d *data) fail(key any, err error) {
+// holds reports whether the data still is the one codec was asked for. The codec runs
+// without the lock, and the session can be released, and so handed to another request,
+// or reset into another format while it does: what it encoded is not for the data then.
+// The caller holds the lock.
+func (d *data) holds(codec *namedCodec) bool {
+	held, ok := d.format.(*namedCodec)
+	return ok && held == codec
+}
+
+// fail remembers that the Set of key under codec failed.
+func (d *data) fail(codec *namedCodec, key any, err error) {
 	d.Lock()
 	defer d.Unlock()
+	if !d.holds(codec) {
+		return
+	}
 	d.dirty.Store(true)
 	if d.errs == nil {
 		d.errs = make(map[any]error)

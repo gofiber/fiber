@@ -1525,3 +1525,43 @@ func Test_Codec_StoreWithoutNewStore(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "alice", name)
 }
+
+// A Set can be inside the codec when its session is released, or reset into another
+// format: the data goes back to the pool, to be handed to another request. What the codec
+// returns then belongs to no session of that request, and neither does the error.
+func Test_Codec_SetInsideTheCodecWhenTheDataIsReleasedStoresNothing(t *testing.T) {
+	t.Parallel()
+
+	for name, fail := range map[string]bool{"encoded": false, "failed": true} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			entered, leave := make(chan struct{}), make(chan struct{})
+			marshal := func(any) ([]byte, error) {
+				close(entered)
+				<-leave
+				if fail {
+					return nil, errors.New("the codec failed")
+				}
+				return []byte("x"), nil
+			}
+			codec := &namedCodec{Codec: NewCodec("blocking", marshal, func([]byte, any) error { return nil }), name: "blocking"}
+
+			d := acquireData()
+			d.resetAs(codec)
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				d.Set("late", "v")
+			}()
+			<-entered
+			d.resetAs(gobFormat{}) // the session is released while the codec runs
+			close(leave)
+			<-done
+
+			require.Empty(t, d.Data, "a value for a session that is gone")
+			require.NoError(t, d.pendingError(), "an error of a Set of a session that is gone")
+			releaseData(d)
+		})
+	}
+}
