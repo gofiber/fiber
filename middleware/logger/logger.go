@@ -143,9 +143,10 @@ func New(config ...Config) fiber.Handler {
 		// Manually call error handler
 		if chainErr != nil {
 			if err := errHandler(c, chainErr); err != nil {
-				// SendStatus failure is ignored because the custom error handler has already failed,
-				// and the client connection may already be closed or broken.
-				_ = c.SendStatus(fiber.StatusInternalServerError) //nolint:errcheck // best-effort error response when handler fails
+				// The error handler failed, so fall back to a bare 500. SendStatus only
+				// sets the status and body on the response and does no I/O; if it fails,
+				// there is no further fallback left.
+				_ = c.SendStatus(fiber.StatusInternalServerError) //nolint:errcheck // no further fallback if this fails
 			}
 		}
 
