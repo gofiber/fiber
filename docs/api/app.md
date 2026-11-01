@@ -998,6 +998,8 @@ func main() {
 }
 ```
 
+A request body of unknown length, such as an `*os.File` or an `io.Pipe` reader (`httptest.NewRequest` gives it a `ContentLength` of `-1`, `http.NewRequest` one of `0`), is read and sent with its measured `Content-Length`.
+
 If not provided, TestConfig is set to the following defaults:
 
 ```go title="Default TestConfig"
