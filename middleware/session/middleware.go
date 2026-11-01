@@ -253,9 +253,9 @@ func storeMiddlewareContext(c fiber.Ctx, session *Session, m *Middleware) bool {
 }
 
 // clearMiddlewareLocals clears the session ID and the middleware from the Fiber
-// locals. Cleared, not emptied: an empty ID would count as a cached one, and a
-// Store.Get after the middleware ended would start a new session instead of
-// reading the ID from the request again.
+// locals. A Store.Get after the middleware ended finds neither: it looks at the IDs
+// that Store.Get cached, and then reads the session ID from the request, as for a
+// request the middleware did not serve.
 func clearMiddlewareLocals(c fiber.Ctx) {
 	ctxlocal.Set(c, sessionIDContextKey, nil)
 	ctxlocal.Set(c, middlewareContextKey, nil)
@@ -268,7 +268,10 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	session, _, err := cfg.Store.loadSession(c)
+	// The middleware still current in this request, if any, is the one this runs
+	// inside; storeMiddlewareContext is about to replace it.
+	outer := currentMiddleware(c)
+	session, _, err := cfg.Store.loadSession(c, outer)
 	if err != nil {
 		return err
 	}
@@ -278,9 +281,6 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 	m.Session = session
 	m.ctx = c
 
-	// The middleware still current in this request, if any, is the one this runs
-	// inside; storeMiddlewareContext is about to replace it.
-	outer := currentMiddleware(c)
 	if storeMiddlewareContext(c, session, m) {
 		m.mark(lifeEscaped)
 	}

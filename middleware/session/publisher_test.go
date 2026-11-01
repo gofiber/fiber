@@ -12,13 +12,12 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// The newest publication of a cached session ID decides who may reuse it, whether
-// it went to the provenance box of the request or, while the request has none, to a
-// local of its own. A has no box to say so in, B's cookie then creates one, and E
-// publishes into it; G reads the cookies of A and of B, so it shares with the older
-// publisher and with the store that resolved its own ID, but not with E, and must
-// find its own session instead of taking the ID that E cached.
-func Test_Session_Store_NewestPublisherDecidesWhoMayReuseTheID(t *testing.T) {
+// A store takes the ID that a store sharing a source with it cached, and never that
+// of one it shares none with. A and E cache a new ID each, B finds a session through
+// its cookie; G reads the cookies of A and of B, so it shares with A, whose ID was
+// never saved and so names no session, and with the store that found its own, but not
+// with E, and must find its own session instead of taking the ID that E cached.
+func Test_Session_Store_TakesNoIDOfAStoreItSharesNothingWith(t *testing.T) {
 	t.Parallel()
 
 	shared := memory.New()
@@ -38,14 +37,14 @@ func Test_Session_Store_NewestPublisherDecidesWhoMayReuseTheID(t *testing.T) {
 
 	a, err := storeA.Get(c)
 	require.NoError(t, err)
-	require.True(t, a.Fresh(), "A publishes first, with no box in the request")
+	require.True(t, a.Fresh(), "A caches an ID first")
 	b, err := storeB.Get(c)
 	require.NoError(t, err)
 	require.False(t, b.Fresh())
-	require.Equal(t, idB, b.ID(), "B's cookie creates the box")
+	require.Equal(t, idB, b.ID(), "B finds its session, and caches nothing")
 	e, err := storeE.Get(c)
 	require.NoError(t, err)
-	require.True(t, e.Fresh(), "E publishes into the box")
+	require.True(t, e.Fresh(), "E caches an ID after A")
 
 	g, err := storeG.Get(c)
 	require.NoError(t, err)
@@ -54,11 +53,45 @@ func Test_Session_Store_NewestPublisherDecidesWhoMayReuseTheID(t *testing.T) {
 	require.Equal(t, idB, g.ID())
 }
 
-// Of two publications that go to the box, the later one counts. W caches the first
-// ID, which a request with a box but no cached ID leaves in the owner local; X and Y
-// then publish into the box, and R, which shares a cookie with X but none with Y,
-// must not take the ID that Y cached.
-func Test_Session_Store_LaterPublicationToTheBoxCounts(t *testing.T) {
+// An ID that a store sharing a source with it cached and never saved names no
+// session, and does not hide the one the request names: A caches an ID it does not
+// save, and G, which reads A's cookie and B's, finds the session that the cookie of B
+// names, where taking the ID of A, the newest, would start a session of its own.
+func Test_Session_Store_PassesOverAnUnsavedIDOfAStoreItShares(t *testing.T) {
+	t.Parallel()
+
+	shared := memory.New()
+	app := fiber.New()
+	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
+	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid"), Storage: shared})
+	storeG := NewStore(Config{
+		Extractor: extractors.Chain(extractors.FromCookie("a_sid"), extractors.FromCookie("b_sid")),
+		Storage:   shared,
+	})
+	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("k", "v") })
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.SetCookie("b_sid", idB)
+
+	a, err := storeA.Get(c)
+	require.NoError(t, err)
+	defer a.Release()
+	require.True(t, a.Fresh(), "A caches an ID, and does not save it")
+
+	g, err := storeG.Get(c)
+	require.NoError(t, err)
+	defer g.Release()
+	require.NotEqual(t, a.ID(), g.ID(), "G took the ID that A cached, which names no session")
+	require.False(t, g.Fresh(), "G found the session its b_sid cookie names")
+	require.Equal(t, idB, g.ID())
+	require.Equal(t, "v", g.Get("k"))
+}
+
+// The IDs of a request are kept newest first, and a store passes over the ones that
+// name no session. W, X and Y cache an ID each, none of them saved, and R, which shares
+// a cookie with X but none with Y, takes neither: it finds its own session.
+func Test_Session_Store_CachedIDsAreKeptNewestFirst(t *testing.T) {
 	t.Parallel()
 
 	shared := memory.New()
@@ -82,9 +115,12 @@ func Test_Session_Store_LaterPublicationToTheBoxCounts(t *testing.T) {
 		require.NoError(t, err)
 		sess.Release()
 	}
-	box, ok := c.Locals(sessionExtractorContextKey).(*provenanceBox)
-	require.True(t, ok)
-	require.Same(t, storeY, box.publisher, "the later publication is the one recorded")
+	newest := requestIDs(c)
+	require.NotNil(t, newest)
+	require.Same(t, storeY, newest.store, "the later one comes first")
+	require.Same(t, storeX, newest.next.store)
+	require.Same(t, storeW, newest.next.next.store)
+	require.Nil(t, newest.next.next.next, "B found its session and cached nothing")
 
 	r, err := storeR.Get(c)
 	require.NoError(t, err)
@@ -93,12 +129,13 @@ func Test_Session_Store_LaterPublicationToTheBoxCounts(t *testing.T) {
 	require.Equal(t, idB, r.ID())
 }
 
-// A new session whose cookie names an ID the storage does not know is published to
-// the box the request already has, as the session of a cookie that names a stored
-// one is. W and X publish into the box first; Y, whose cookie is unknown, publishes
-// after them; R shares Y's cookie but neither W's nor X's, so it must take the ID
-// that Y cached, and not find its own session as it would if the box still named X.
-func Test_Session_Store_FreshSessionOfAnUnknownCookiePublishesToTheBox(t *testing.T) {
+// A new session whose cookie names an ID the storage does not know is cached with the
+// others of the request, as the session of a cookie that names a stored one is not.
+// W and X cache an ID first, none of them saved; Y, whose cookie is unknown, caches
+// one after them and saves it; R shares Y's cookie but neither W's nor X's, so it must
+// take the ID that Y cached, and not find its own session as it would if Y had
+// cached nothing.
+func Test_Session_Store_FreshSessionOfAnUnknownCookieIsCached(t *testing.T) {
 	t.Parallel()
 
 	shared := memory.New()
@@ -128,21 +165,20 @@ func Test_Session_Store_FreshSessionOfAnUnknownCookiePublishesToTheBox(t *testin
 	defer y.Release()
 	require.True(t, y.Fresh(), "Y's cookie names no stored session")
 	require.NoError(t, y.Save())
-	box, ok := c.Locals(sessionExtractorContextKey).(*provenanceBox)
-	require.True(t, ok)
-	require.Same(t, storeY, box.publisher, "Y published into the box, after W and X")
+	require.Same(t, storeY, requestIDs(c).store, "Y cached its ID after W and X")
 
 	r, err := storeR.Get(c)
 	require.NoError(t, err)
 	defer r.Release()
-	require.Equal(t, y.ID(), r.ID(), "R shares Y's cookie, and Y published last")
+	require.Equal(t, y.ID(), r.ID(), "R shares Y's cookie, and Y cached last")
 	require.NotEqual(t, idB, r.ID(), "R went to its own cookie instead of the ID that Y cached")
 	require.False(t, r.Fresh(), "R found the session that Y saved")
 }
 
-// A middleware that starts after a Store.Get published without a box is the
-// publisher of the ID it caches, not the store of the earlier one.
-func Test_Session_Store_MiddlewareIsThePublisherOverTheOwnerLocal(t *testing.T) {
+// A middleware that starts after a Store.Get cached an ID that was never saved finds
+// the session its own cookie names, though the store of that ID shares a cookie with
+// it: the ID names no session.
+func Test_Session_Store_MiddlewarePassesOverAnIDThatNamesNoSession(t *testing.T) {
 	t.Parallel()
 
 	earlier := NewStore(Config{Extractor: extractors.FromCookie("s2a_sid")})
@@ -153,7 +189,7 @@ func Test_Session_Store_MiddlewareIsThePublisherOverTheOwnerLocal(t *testing.T) 
 
 	app := fiber.New()
 	app.Use(func(c fiber.Ctx) error {
-		sess, err := earlier.Get(c) // fresh, with no box: it leaves its store in the owner local
+		sess, err := earlier.Get(c) // fresh: it caches the new ID, which is never saved
 		if err != nil {
 			return err
 		}
@@ -175,13 +211,14 @@ func Test_Session_Store_MiddlewareIsThePublisherOverTheOwnerLocal(t *testing.T) 
 	require.Equal(t, id+"|false", body, "the second middleware found its own session instead of taking the ID that the first cached")
 }
 
-// Store.Get says which store cached a new ID in the provenance box of the request
-// when the request has one, as it has when the client sent an ID, and in a local of
-// its own when it has none.
-func Test_Session_Store_Get_RecordsThePublisherWhereTheRequestCanHoldIt(t *testing.T) {
+// Store.Get says which store cached a new ID, with the ID and where the request named
+// it, whether or not the client sent an ID, and a store that caches again replaces its
+// entry and comes first.
+func Test_Session_Store_Get_CachesTheNewIDWithItsStore(t *testing.T) {
 	t.Parallel()
 
 	store := NewStore()
+	other := NewStore(Config{Extractor: extractors.FromCookie("other_sid")})
 	app := fiber.New()
 
 	withID := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -191,38 +228,55 @@ func Test_Session_Store_Get_RecordsThePublisherWhereTheRequestCanHoldIt(t *testi
 	require.NoError(t, err)
 	defer sess.Release()
 	require.True(t, sess.Fresh())
-	box, ok := withID.Locals(sessionExtractorContextKey).(*provenanceBox)
-	require.True(t, ok)
-	require.Same(t, store, box.publisher)
-	require.Nil(t, withID.Locals(sessionOwnerContextKey), "the box says it already")
+	cached := requestIDs(withID)
+	require.NotNil(t, cached)
+	require.Same(t, store, cached.store)
+	require.Equal(t, sess.ID(), cached.id)
+	require.Equal(t, extractors.Result{Value: "names-no-session", Key: "session_id", Source: extractors.SourceCookie, Resolved: true}, cached.res,
+		"the provenance of the ID the client sent, which the new one is written back to")
+	require.Nil(t, cached.next)
+	require.Equal(t, sess.ID(), withID.Locals(sessionIDContextKey), "and it is the ID the logger shows")
 
 	without := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(without)
-	other, err := store.Get(without)
+	first, err := store.Get(without)
 	require.NoError(t, err)
-	defer other.Release()
-	require.True(t, other.Fresh())
-	_, hasBox := without.Locals(sessionExtractorContextKey).(*provenanceBox)
-	require.False(t, hasBox)
-	require.Same(t, store, without.Locals(sessionOwnerContextKey))
+	defer first.Release()
+	require.True(t, first.Fresh())
+	require.Zero(t, requestIDs(without).res, "the client sent no ID")
+	between, err := other.Get(without)
+	require.NoError(t, err)
+	defer between.Release()
+	again, err := store.Get(without)
+	require.NoError(t, err)
+	defer again.Release()
+	require.True(t, again.Fresh(), "the first ID was never saved")
+	require.NotEqual(t, first.ID(), again.ID())
+
+	newest := requestIDs(without)
+	require.Same(t, store, newest.store, "a store that caches again comes first")
+	require.Equal(t, again.ID(), newest.id)
+	require.Same(t, other, newest.next.store)
+	require.Nil(t, newest.next.next, "and has one entry")
 }
 
-// The box goes back to a pool shared by every request: it must hold nothing of the
-// request it served.
+// The list of IDs goes back to a pool shared by every request, whole: it must hold
+// nothing of the request it served.
 //
 // Not parallel: it swaps the shared pool for its own, to see what Close hands back.
-func Test_ProvenanceBox_CloseForgetsEverything(t *testing.T) {
-	shared := provenancePool
-	provenancePool = &sync.Pool{New: func() any { return new(provenanceBox) }}
-	t.Cleanup(func() { provenancePool = shared })
+func Test_CachedID_CloseForgetsEverything(t *testing.T) {
+	shared := cachedIDPool
+	cachedIDPool = &sync.Pool{New: func() any { return new(cachedID) }}
+	t.Cleanup(func() { cachedIDPool = shared })
 
-	box := &provenanceBox{
-		owner:     &Store{},
-		publisher: &Store{},
-		res:       extractors.Result{Value: "v", Key: "k", Source: extractors.SourceCookie, Resolved: true},
+	res := extractors.Result{Value: "v", Key: "k", Source: extractors.SourceCookie, Resolved: true}
+	oldest := &cachedID{store: &Store{}, id: "a", res: res}
+	middle := &cachedID{next: oldest, store: &Store{}, id: "b", res: res}
+	newest := &cachedID{next: middle, store: &Store{}, id: "c", res: res}
+	require.NoError(t, newest.Close())
+	for _, entry := range []*cachedID{oldest, middle, newest} {
+		require.Equal(t, cachedID{}, *entry)
 	}
-	require.NoError(t, box.Close())
-	require.Equal(t, provenanceBox{}, *box)
 }
 
 // Stores are told apart by every source they read, by kind and name, whether or

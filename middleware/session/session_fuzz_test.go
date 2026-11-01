@@ -72,5 +72,6 @@ func Fuzz_Session_ClientInput(f *testing.F) {
 			return
 		}
 		w.check(t, 0, req, resp, rec)
+		w.checkAskedAgain(t, "request", rec)
 	})
 }

@@ -31,7 +31,9 @@ import (
 //   - a new session never takes an ID the client supplied (no session fixation);
 //   - a store only loads records that a store with the same storage, key prefix
 //     and key hashing wrote (no session confusion between stores);
-//   - a hashed store keeps the session ID out of its storage key.
+//   - a hashed store keeps the session ID out of its storage key;
+//   - stores asked through Store.Get that read a cookie or header in common agree on
+//     one session, whatever other stores were asked in between.
 //
 // The number of seeds is 8, and SESSION_INVARIANT_SEEDS raises it.
 
@@ -350,17 +352,9 @@ func (w *invariantWorld) check(t *testing.T, step int, req invariantRequest, res
 	// Stores that read no cookie or header in common keep sessions of their own: they
 	// never come out with the same ID, which is what a store adopting the ID another one
 	// cached on the request would do.
-	shares := func(a, b *invariantStore) bool {
-		for _, x := range append(slices.Clone(a.cookies), a.headers...) {
-			if slices.Contains(b.cookies, x) || slices.Contains(b.headers, x) {
-				return true
-			}
-		}
-		return false
-	}
 	for first, firstIDs := range idsOf {
 		for second, secondIDs := range idsOf {
-			if first >= second || shares(w.stores[first], w.stores[second]) {
+			if first >= second || w.stores[first].shares(w.stores[second]) {
 				continue
 			}
 			for id := range firstIDs {
@@ -429,6 +423,36 @@ func (w *invariantWorld) check(t *testing.T, step int, req invariantRequest, res
 	}
 }
 
+// shares reports whether the two stores read a cookie or a header in common.
+func (a *invariantStore) shares(b *invariantStore) bool {
+	for _, x := range append(slices.Clone(a.cookies), a.headers...) {
+		if slices.Contains(b.cookies, x) || slices.Contains(b.headers, x) {
+			return true
+		}
+	}
+	return false
+}
+
+// checkAskedAgain holds the sessions of a request that asked its stores through
+// Store.Get, each of which gave its session data and saved it, against the property
+// the cached IDs of a request are for: stores that read a cookie or a header in common
+// are one visitor's session, whatever other stores were asked in between. A store
+// asked again, or a store that shares with one that was asked before, finds the
+// session that one saved, and does not start another.
+func (w *invariantWorld) checkAskedAgain(t *testing.T, where string, rec invariantRecord) {
+	t.Helper()
+
+	for i, later := range rec.Sessions {
+		for _, earlier := range rec.Sessions[:i] {
+			if !w.stores[earlier.Store].shares(w.stores[later.Store]) {
+				continue
+			}
+			require.Equal(t, earlier.ID, later.ID, "%s: store %s, asked after store %s which shares a cookie or header with it, did not find the session that one saved", where, later.Store, earlier.Store)
+			require.False(t, later.Fresh, "%s: store %s started a new session, though store %s had saved one", where, later.Store, earlier.Store)
+		}
+	}
+}
+
 func invariantSeeds() uint64 {
 	if raw := os.Getenv("SESSION_INVARIANT_SEEDS"); raw != "" {
 		if n, err := strconv.ParseUint(raw, 10, 64); err == nil && n > 0 {
@@ -456,6 +480,7 @@ func Test_Session_Invariants_StoreAPI(t *testing.T) {
 				resp, rec, err := req.send(app)
 				require.NoError(t, err)
 				w.check(t, step, req, resp, rec)
+				w.checkAskedAgain(t, fmt.Sprintf("request %d (ops %v, cookies %v, header %q)", step, req.ops, req.cookies, req.header), rec)
 			}
 		})
 	}

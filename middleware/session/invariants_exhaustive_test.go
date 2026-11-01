@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"slices"
@@ -190,6 +191,7 @@ func Test_Session_Invariants_Exhaustive_StoreAPI(t *testing.T) {
 					req.ops = ops
 					resp, rec := req.sendDirect(t, handler)
 					w.check(t, step, req, resp, rec)
+					w.checkAskedAgain(t, fmt.Sprintf("request %d (ops %v, cookies %v, header %q)", step, req.ops, req.cookies, req.header), rec)
 					step++
 				}
 			}

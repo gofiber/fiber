@@ -20,11 +20,10 @@ import (
 )
 
 // A store asked twice through Store.Get hands out one session: the second Get takes
-// the fresh ID the first one cached and finds the record the first one saved. The
-// provenance box of the request may still name a store over another cookie, which
-// found its session before: its box describes that ID, not the fresh one, and has no
-// say over it.
-func Test_Store_Get_TakesItsOwnFreshIDWhateverTheBoxSays(t *testing.T) {
+// the fresh ID the first one cached and finds the record the first one saved. A store
+// over another cookie found its session before, and what the request holds of that
+// one describes its ID, not the fresh one, and has no say over it.
+func Test_Store_Get_TakesItsOwnFreshIDWhateverOtherStoresDid(t *testing.T) {
 	t.Parallel()
 
 	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
@@ -43,7 +42,7 @@ func Test_Store_Get_TakesItsOwnFreshIDWhateverTheBoxSays(t *testing.T) {
 		return c.SendString(b.ID())
 	})
 	app.Get("/", func(c fiber.Ctx) error {
-		b, err := storeB.Get(c) // found: the box of the request names B
+		b, err := storeB.Get(c) // found: its ID is the one the request names
 		if err != nil {
 			return err
 		}

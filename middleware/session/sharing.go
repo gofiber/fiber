@@ -155,49 +155,61 @@ func (s *Store) sharesSource(other *Store) bool {
 	})
 }
 
-// requestIDPublisher returns the store that published the session ID cached on
-// the request, or nil if that is not known.
-//
-// The session middleware publishes the ID together with itself, so the middleware
-// still current in the request names the store, and costs the request nothing
-// extra. A session from Store.Get cannot be told apart that way, so it leaves its
-// store behind: in the provenance box of the request, box, when there is one, and
-// otherwise in sessionOwnerContextKey. The box is the one written last, since a
-// publication goes to the box as soon as the request has one.
-func requestIDPublisher(c fiber.Ctx, box *provenanceBox) *Store {
-	if m, ok := c.Locals(middlewareContextKey).(*Middleware); ok && m != nil {
-		// Under the lock: the middleware may be finishing on another goroutine,
-		// as it does when a handler outlives its request.
-		m.mu.RLock()
-		publisher := m.store
-		m.mu.RUnlock()
-		return publisher
+// requestIDs returns the head of the IDs that Store.Get cached on the request, newest
+// first, nil if it cached none.
+func requestIDs(c fiber.Ctx) *cachedID {
+	head, ok := c.Locals(cachedIDsContextKey).(*cachedID)
+	if !ok {
+		return nil
 	}
-	if box != nil && box.publisher != nil {
-		return box.publisher
+	return head
+}
+
+// cachedSession reads the session that was saved under the newest ID which s, or a
+// store sharing a source with it, cached on the request, into found: first that of
+// the nearest session middleware s runs inside that shares one, then those of
+// Store.Get, cached, newest first. An ID that names no stored session, because it was
+// never saved, is passed over, and the request is asked instead. Stores that share no
+// source with s keep sessions of their own: their IDs are not taken, and they do not
+// replace the ones of s.
+func (s *Store) cachedSession(c fiber.Ctx, outer *Middleware, cached *cachedID, found *storedSession) error {
+	if outer != nil {
+		if id, res, ok := outer.sharedID(s); ok {
+			if err := s.readSession(c, id, found); err != nil || found.raw != nil {
+				found.res = s.adoptProvenance(res)
+				return err
+			}
+		}
 	}
-	if owner, ok := c.Locals(sessionOwnerContextKey).(*Store); ok {
-		return owner
+	for ; cached != nil; cached = cached.next {
+		if !s.sharesSource(cached.store) {
+			continue
+		}
+		if err := s.readSession(c, cached.id, found); err != nil || found.raw != nil {
+			found.res = s.adoptProvenance(cached.res)
+			return err
+		}
 	}
 	return nil
 }
 
-// requestProvenance returns the provenance box cached on the request, nil if
-// there is none.
-func requestProvenance(c fiber.Ctx) *provenanceBox {
-	box, ok := c.Locals(sessionExtractorContextKey).(*provenanceBox)
-	if !ok {
-		return nil
-	}
-	return box
-}
-
-// publisherShares reports whether the store that published the session ID cached
-// on the request, if it is known, shares a cookie or header with s. box is the
-// provenance box of the request, nil if it has none.
-func (s *Store) publisherShares(c fiber.Ctx, box *provenanceBox) bool {
-	publisher := requestIDPublisher(c, box)
-	return publisher == nil || publisher == s || s.sharesSource(publisher)
+// sharedID returns the ID and the provenance of the session of the nearest session
+// middleware, m or one it runs inside, whose store shares a source with s. A
+// middleware does not cache its ID on the request: it holds the session, and what it
+// holds is gone with it, which is why a Store.Get after it reads the request again.
+func (m *Middleware) sharedID(s *Store) (string, extractors.Result, bool) {
+	var (
+		id  string
+		res extractors.Result
+	)
+	found := m.find(func(cur *Middleware) bool {
+		if cur.Session == nil || !s.sharesSource(cur.store) {
+			return false
+		}
+		id, res = cur.Session.identity()
+		return true
+	})
+	return id, res, found != nil
 }
 
 // adoptProvenance returns res, the provenance of a session ID that another store

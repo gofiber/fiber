@@ -140,6 +140,14 @@ func (s *Session) ID() string {
 	return s.id
 }
 
+// identity returns the ID of the session and the provenance of the ID the request
+// named when it was loaded.
+func (s *Session) identity() (string, extractors.Result) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.id, s.extractor
+}
+
 // Set updates or creates a new key-value pair in the session.
 //
 // Parameters:
