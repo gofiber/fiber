@@ -7,8 +7,10 @@ import (
 
 // unwoundKey is the request value under which a middleware a panic unwound is
 // kept, so that fasthttp closes it when it resets the request. A key of its own:
-// the Fiber locals of a custom Ctx need not be the request's values.
-type unwoundKey struct{}
+// the Fiber locals of a custom Ctx need not be the request's values. A key for each
+// middleware: one panic can unwind several that are nested in the request, and each
+// has to be closed.
+type unwoundKey struct{ m *Middleware }
 
 // unwoundUnlessFinished is the deferred call of serve: it ends the middleware when
 // a panic unwinds it. Once serve finished, the middleware was released or cut off,
@@ -42,7 +44,7 @@ func (m *Middleware) unwound(c fiber.Ctx) {
 	m.isUnwound.Store(true)
 	rctx := c.RequestCtx()
 	if rctx != nil {
-		rctx.SetUserValue(unwoundKey{}, unwoundCloser{m})
+		rctx.SetUserValue(unwoundKey{m}, unwoundCloser{m})
 	}
 	// The session keeps the request until it ends; a Ctx that has none lets go of it too.
 	m.cutSoon(rctx)

@@ -265,6 +265,43 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 		require.NotEmpty(t, stored, "writes the record")
 	})
 
+	t.Run("two middleware unwound by one panic", func(t *testing.T) {
+		t.Parallel()
+
+		var held [2]atomic.Pointer[Middleware]
+		handlerA, storeA := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
+		handlerB, storeB := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
+		app := fiber.New()
+		app.Use(recoverer.New())
+		app.Use(handlerA, handlerB)
+		app.Get("/", func(c fiber.Ctx) error {
+			held[0].Store(storeA.FromContext(c))
+			held[1].Store(storeB.FromContext(c))
+			panic("boom")
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+
+		// fasthttp resets the request once the response is written, and closes every
+		// middleware the panic unwound then, the outer one and the inner one.
+		for i := range held {
+			m := held[i].Load()
+			require.NotNil(t, m)
+			m.mu.RLock()
+			sess := m.Session
+			m.mu.RUnlock()
+			require.NotNil(t, sess)
+			require.Eventually(t, func() bool {
+				sess.mu.RLock()
+				defer sess.mu.RUnlock()
+				_, response := sess.requestResponse()
+				return response == nil
+			}, 5*time.Second, 5*time.Millisecond, "the session of middleware %d still writes to the request after it ended", i)
+		}
+	})
+
 	t.Run("timed out, then panics", func(t *testing.T) {
 		t.Parallel()
 
