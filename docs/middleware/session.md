@@ -723,7 +723,7 @@ A codec decodes a value every time it is read and encodes it every time it is se
 - **sets the same key again and again.** A request that sets the same struct 1000 times takes about 10 times as long as with gob, which encodes the last value once.
 - **handles large strings, `[]byte` or arrays of numbers.** `JSONCodec` takes about 5 times as long to read a string or `[]byte` of 100 KiB, 16 times when the string is full of characters that JSON escapes, and about 3 times for 1000 floats, whose record is also about 1.8 times as large. Keep such data out of the session, or use a store without a codec for it.
 
-These are the figures of `JSONCodec` on the machine of the benchmarks, and a codec of another library will differ. Measure with a session of the size of yours: `Benchmark_Codec_Request` in `codec_benchmark_test.go` is a start.
+These are rough figures of `JSONCodec`, measured on one machine with benchmarks that are not part of the repository, and a codec of another library will differ. Measure with a session of the size of yours: `Benchmark_Codec_Request` in `codec_benchmark_test.go` is a start.
 
 #### Turning it on, and off
 
