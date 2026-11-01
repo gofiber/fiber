@@ -437,7 +437,7 @@ func (w *invariantWorld) check(t *testing.T, step int, req invariantRequest, res
 	for _, sess := range rec.Sessions {
 		if sess.Store == "C" {
 			key := w.stores["C"].storageKey(sess.ID)
-			require.NotEqual(t, sess.ID, key, where)
+			require.NotContains(t, key, sess.ID, where)
 			require.Len(t, key, len(keyNamespace)+hashedKeyLen, where)
 		}
 	}
