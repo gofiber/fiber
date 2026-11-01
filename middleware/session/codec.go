@@ -45,7 +45,7 @@ type Codec interface {
 // namedCodec is a Codec with its name, which is written into every record and
 // compared with the name of the records that are read. A store asks for the name
 // once, when it is made, and the data of a session holds the pair, so that the two
-// cannot come apart. A nil *namedCodec stands for gob.
+// cannot come apart. It is the format of a session stored as a record, see format.
 type namedCodec struct {
 	Codec
 	name string
@@ -110,48 +110,42 @@ func checkCodecName(name string) {
 	}
 }
 
-// stored is what a session holds under a key, with the codec of the session, which
-// says what it is: the value itself without a codec, the value as the codec encoded
-// it (a []byte) with one. A read takes it out of the session under its lock and
-// decodes it after the lock is let go, since a codec is not called with a lock held.
-type stored struct {
-	value any
+// encodedValue is what a session of a store with a codec holds under a key: the value
+// as the codec encoded it, with the codec. What a session holds says what it is by its
+// type, so a read asks nothing of the session: an encodedValue is decoded after the lock
+// is let go, since a codec is not called with a lock held, and anything else, which is
+// every value of a session stored as gob, is the value itself.
+type encodedValue struct {
 	codec *namedCodec
+	bytes []byte
 }
 
-// decode returns the value as an interface{}. What is not an encoded value, a missing
-// key or a nil, is returned as it is, and so is every value of a session without a
-// codec. A value that does not decode is returned encoded, a copy of its bytes, so
-// that it is never taken for a key that is not there.
-func (s stored) decode() any {
-	if s.codec == nil {
-		return s.value
+// readValue returns what a session holds as an interface{}. What is not an encoded
+// value, a missing key or a nil, is returned as it is. A value that does not decode is
+// returned encoded, a copy of its bytes, so that it is never taken for a key that is not
+// there.
+func readValue(held any) any {
+	if e, ok := held.(*encodedValue); ok {
+		return e.decode()
 	}
-	return s.decodeEncoded()
+	return held
 }
 
-// decodeEncoded is decode for a session that has a codec. A function of its own, so
-// that decode is small enough to be inlined, and a read of a session without a codec
-// costs no call.
-func (s stored) decodeEncoded() any {
-	encoded, ok := s.value.([]byte)
-	if !ok {
-		return s.value
-	}
+// decode is readValue for an encoded value, a function of its own so that readValue is
+// small enough to be inlined, and a read of a value that is not encoded costs no call.
+func (e *encodedValue) decode() any {
 	var out any
-	if err := s.codec.Unmarshal(utils.CopyBytes(encoded), &out); err != nil {
-		return utils.CopyBytes(encoded)
+	if err := e.codec.Unmarshal(utils.CopyBytes(e.bytes), &out); err != nil {
+		return utils.CopyBytes(e.bytes)
 	}
 	return out
 }
 
-// decodeAs reads the encoded value of a key under a codec as a V. It is a function of
-// its own so that the V it hands to the codec, which then lives on the heap, is made
-// only when there is a codec.
-func decodeAs[V any](s stored) (V, bool) {
+// decodeAs reads an encoded value as a V. It is a function of its own so that the V it
+// hands to the codec, which then lives on the heap, is made only when there is a codec.
+func decodeAs[V any](e *encodedValue) (V, bool) {
 	var out V
-	encoded, ok := s.value.([]byte)
-	if !ok || s.codec.Unmarshal(utils.CopyBytes(encoded), &out) != nil {
+	if e.codec.Unmarshal(utils.CopyBytes(e.bytes), &out) != nil {
 		var zero V
 		return zero, false
 	}
@@ -167,24 +161,20 @@ func intoTarget(target any) (reflect.Value, error) {
 	return rv, nil
 }
 
-// into stores the value of key into target, a non-nil pointer, all or nothing.
-// Without a codec the value is the one stored and has to be assignable to what the
-// target points to. With one it is encoded, and decodeInto decodes it.
-func (s stored) into(key any, target reflect.Value) error {
-	if s.codec != nil {
-		encoded, ok := s.value.([]byte)
-		if !ok {
-			return fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
-		}
-		return decodeInto(key, utils.CopyBytes(encoded), s.codec, target)
+// readInto stores held, what a session holds under key, into target, a non-nil
+// pointer, all or nothing. A value that is not encoded is the one stored and has to be
+// assignable to what the target points to. An encoded one is decoded by decodeInto.
+func readInto(held, key any, target reflect.Value) error {
+	if e, ok := held.(*encodedValue); ok {
+		return decodeInto(key, utils.CopyBytes(e.bytes), e.codec, target)
 	}
 
 	elem := target.Elem()
-	if s.value == nil {
+	if held == nil {
 		elem.SetZero()
 		return nil
 	}
-	have := reflect.ValueOf(s.value)
+	have := reflect.ValueOf(held)
 	if !have.Type().AssignableTo(elem.Type()) {
 		return fmt.Errorf("session value %#v is a %s, not assignable to a %s", key, have.Type(), elem.Type())
 	}
@@ -224,20 +214,17 @@ func decodeInto(key any, encoded []byte, codec *namedCodec, target reflect.Value
 	return nil
 }
 
-// sessionCodec returns the codec the sessions of the store hold, with its name, nil
-// for gob. NewStore asks for the name once; a Store built without NewStore asks
-// every time.
-func (s *Store) sessionCodec() *namedCodec {
-	if s.named != nil || s.Codec == nil {
+// sessionFormat returns the format the sessions of the store hold. NewStore asks the
+// codec for its name once; a Store built without NewStore asks every time.
+func (s *Store) sessionFormat() format {
+	switch {
+	case s.named != nil:
 		return s.named
+	case s.Codec == nil:
+		return gobFormat{}
+	default:
+		return &namedCodec{Codec: s.Codec, name: s.Codec.Name()}
 	}
-	return s.unnamedCodec()
-}
-
-// unnamedCodec makes the codec of a Store that was built without NewStore, which
-// asks for the name every time.
-func (s *Store) unnamedCodec() *namedCodec {
-	return &namedCodec{Codec: s.Codec, name: s.Codec.Name()}
 }
 
 // refusesRecord reports whether raw, a stored session, is a record this store
@@ -252,27 +239,21 @@ func (s *Store) refusesRecord(raw []byte) bool {
 
 // cannotRead is refusesRecord for a stored session that is a record.
 func (s *Store) cannotRead(raw []byte) bool {
-	codec := s.sessionCodec()
-	if codec != nil {
-		version, name, ok := recordCodecOf(raw)
-		if !ok || (version == recordVersion && string(name) == codec.name) {
-			return false
-		}
+	f := s.sessionFormat()
+	if f.reads(raw) {
+		return false
 	}
-	s.warnUnreadable(raw, codec)
+	s.warnUnreadable(raw, f)
 	return true
 }
 
 // warnUnreadable says, once per store, that a stored session is a record this store,
-// whose codec is codec, cannot read, and is treated as a session that does not exist.
-func (s *Store) warnUnreadable(raw []byte, codec *namedCodec) {
+// whose format is f, cannot read, and is treated as a session that does not exist.
+func (s *Store) warnUnreadable(raw []byte, f format) {
 	if !s.unreadableWarned.CompareAndSwap(false, true) {
 		return
 	}
-	have := "has no codec"
-	if codec != nil {
-		have = fmt.Sprintf("uses the codec %q", codec.name)
-	}
+	have := f.describe()
 	version, name, known := recordCodecOf(raw)
 	switch {
 	case len(name) > 0:

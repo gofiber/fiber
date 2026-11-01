@@ -64,7 +64,7 @@ func Fuzz_Session_CodecStoredBytes(f *testing.F) {
 		}
 		defer sess.Release()
 
-		coded := sess.data.codec != nil
+		_, coded := sess.data.format.(*namedCodec)
 		for _, key := range sess.Keys() {
 			if coded {
 				_, ok := key.(string)

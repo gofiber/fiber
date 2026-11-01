@@ -218,7 +218,7 @@ func Test_Codec_GobSessionsStayGob(t *testing.T) {
 	sess := loadSession(t, app, codecStore, id)
 	require.False(t, sess.Fresh())
 	require.Equal(t, id, sess.ID())
-	require.Nil(t, sess.data.codec, "a session that was stored as gob is gob, whatever the store now does")
+	require.IsType(t, gobFormat{}, sess.data.format, "a session that was stored as gob is gob, whatever the store now does")
 
 	// It reads as it did: the typed readers work in either mode, and Get returns the values themselves.
 	var got codecProfile
@@ -253,7 +253,7 @@ func Test_Codec_GobSessionsStayGob(t *testing.T) {
 
 	// A session that starts over is a session of the store: it has a record.
 	require.NoError(t, sess.Reset())
-	require.NotNil(t, sess.data.codec)
+	require.IsType(t, &namedCodec{}, sess.data.format)
 	sess.Set("k", "v")
 	require.NoError(t, sess.Save())
 	header, entries := storedRecord(t, mem, sess.ID())
@@ -262,7 +262,7 @@ func Test_Codec_GobSessionsStayGob(t *testing.T) {
 
 	// So does one that is new.
 	fresh := loadSession(t, app, codecStore, "")
-	require.NotNil(t, fresh.data.codec)
+	require.IsType(t, &namedCodec{}, fresh.data.format)
 }
 
 // badUTF8 is a string that JSON cannot carry: its second byte is not UTF-8.
@@ -942,7 +942,7 @@ func Test_Codec_ResetIsOneStep(t *testing.T) {
 	for range 200 {
 		id := seedSession(t, app, gobStore, func(s *Session) { s.Set("k", 1) })
 		sess := loadSession(t, app, codecStore, id)
-		require.Nil(t, sess.data.codec, "it is a session that was stored as gob")
+		require.IsType(t, gobFormat{}, sess.data.format, "it is a session that was stored as gob")
 
 		var wg sync.WaitGroup
 		for i := range 4 {
@@ -956,7 +956,7 @@ func Test_Codec_ResetIsOneStep(t *testing.T) {
 		wg.Wait()
 
 		// Whatever the Sets did, what is in the session is of the store.
-		require.NotNil(t, sess.data.codec)
+		require.IsType(t, &namedCodec{}, sess.data.format)
 		require.NoError(t, sess.Save())
 	}
 }
@@ -1333,7 +1333,7 @@ func Test_Codec_DestroyStartsAGobSessionOverAsARecord(t *testing.T) {
 
 	store := NewStore(Config{Storage: mem, Codec: JSONCodec{}})
 	sess := loadSession(t, app, store, id)
-	require.Nil(t, sess.data.codec, "a session that was stored as gob stays gob")
+	require.IsType(t, gobFormat{}, sess.data.format, "a session that was stored as gob stays gob")
 
 	require.NoError(t, sess.Destroy())
 	sess.Set("b", 2)
@@ -1502,4 +1502,26 @@ func Test_Codec_GetByIDWarnsAboutARecordItCannotRead(t *testing.T) { //nolint:pa
 	}
 	require.Equal(t, 1, strings.Count(buf.String(), "[Warn]"), "%q", buf.String())
 	require.Contains(t, buf.String(), `"json"`)
+}
+
+// A Store built without NewStore asks its Codec for the name every time, and its sessions
+// are the sessions of a store with a codec all the same.
+func Test_Codec_StoreWithoutNewStore(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	mem := memory.New()
+	store := &Store{Config: configDefault(Config{Storage: mem, Codec: JSONCodec{}})}
+	require.Nil(t, store.named)
+	require.IsType(t, &namedCodec{}, store.sessionFormat())
+
+	id := seedSession(t, app, store, func(s *Session) { s.Set("name", "alice") })
+	header, entries := storedRecord(t, mem, id)
+	require.Equal(t, "json", string(header.codec))
+	require.Len(t, entries, 1)
+
+	sess := loadSession(t, app, store, id)
+	name, ok := GetAs[string](sess, "name")
+	require.True(t, ok)
+	require.Equal(t, "alice", name)
 }

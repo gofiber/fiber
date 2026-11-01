@@ -116,7 +116,7 @@ func lockFor(key string) *idLock {
 // Store manages session data using the configured storage backend.
 type Store struct {
 	// named is the Codec with its name, asked once. It is nil for a store without a
-	// Codec, and for one built without NewStore, which sessionCodec makes up. Changing
+	// Codec, and for one built without NewStore, which sessionFormat makes up. Changing
 	// the Codec of a Store after NewStore has no effect.
 	named *namedCodec
 	// sinks are the cookies and headers a session ID can be written back to, in the

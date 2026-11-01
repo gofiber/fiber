@@ -17,11 +17,11 @@ import (
 //	value := m.Get("key")
 func (m *Middleware) Get(key any) any {
 	// The lock is held for the lookup only: a codec decodes without it.
-	return m.lookup(key).decode()
+	return readValue(m.lookup(key))
 }
 
 // lookup is Session.lookup under the read lock of the middleware, as Get takes it.
-func (m *Middleware) lookup(key any) stored {
+func (m *Middleware) lookup(key any) any {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -29,7 +29,7 @@ func (m *Middleware) lookup(key any) stored {
 }
 
 // fetch is Session.fetch under the read lock of the middleware.
-func (m *Middleware) fetch(key any) (stored, error) {
+func (m *Middleware) fetch(key any) (any, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -60,7 +60,7 @@ func (m *Middleware) GetInto(key, target any) error {
 	if err != nil {
 		return err
 	}
-	return held.into(key, rv)
+	return readInto(held, key, rv)
 }
 
 // IdleTimeout returns the idle timeout of the session. See Session.IdleTimeout.

@@ -106,7 +106,7 @@ func releaseSession(s *Session) {
 	s.loaded = false
 	s.dropped = false
 	if s.data != nil {
-		s.data.resetAs(nil)
+		s.data.resetAs(gobFormat{})
 	}
 	s.mu.Unlock()
 	sessionPool.Put(s)
@@ -331,11 +331,11 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 // resetData empties the data. A session of a store with a codec starts over as a
 // session of the store, which one that was stored as gob did not belong to.
 func (s *Session) resetData() {
-	var codec *namedCodec
+	var f format = gobFormat{}
 	if s.config != nil {
-		codec = s.config.sessionCodec()
+		f = s.config.sessionFormat()
 	}
-	s.data.resetAs(codec)
+	s.data.resetAs(f)
 	s.rawData = nil
 }
 
@@ -678,12 +678,12 @@ func (s *Session) isEmptyFresh() bool {
 	return fresh && s.data != nil && s.data.isEmpty()
 }
 
-// bind makes the session one of store: its configuration, and the codec its data
+// bind makes the session one of store: its configuration, and the format its data
 // holds. It is for a session that was just acquired, which nothing else refers to
 // yet, so the data needs no lock.
 func (s *Session) bind(store *Store) {
 	s.config = store
-	s.data.bind(store.sessionCodec())
+	s.data.bind(store.sessionFormat())
 }
 
 // absExpiration returns the session absolute expiration time or a zero time if not set.

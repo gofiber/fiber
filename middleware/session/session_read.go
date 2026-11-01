@@ -27,9 +27,9 @@ func (s *Session) Get(key any) any {
 }
 
 // lookup returns what is stored under key. See data.fetch.
-func (s *Session) lookup(key any) stored {
+func (s *Session) lookup(key any) any {
 	if s.data == nil {
-		return stored{}
+		return nil
 	}
 	held, _ := s.data.fetch(key)
 	return held
@@ -61,7 +61,7 @@ func (s *Session) lookup(key any) stored {
 //
 //	name, ok := session.GetAs[string](session.FromContext(c), "name")
 func GetAs[V any, S *Session | *Middleware](src S, key any) (V, bool) {
-	var held stored
+	var held any
 	switch typed := any(src).(type) {
 	case *Middleware:
 		if typed != nil {
@@ -73,10 +73,10 @@ func GetAs[V any, S *Session | *Middleware](src S, key any) (V, bool) {
 		}
 	}
 
-	if held.codec != nil {
-		return decodeAs[V](held)
+	if e, ok := held.(*encodedValue); ok {
+		return decodeAs[V](e)
 	}
-	value, ok := held.value.(V)
+	value, ok := held.(V)
 	return value, ok
 }
 
@@ -113,17 +113,17 @@ func (s *Session) GetInto(key, target any) error {
 	if err != nil {
 		return err
 	}
-	return held.into(key, rv)
+	return readInto(held, key, rv)
 }
 
 // fetch returns what is stored under key, or ErrKeyNotFound.
-func (s *Session) fetch(key any) (stored, error) {
+func (s *Session) fetch(key any) (any, error) {
 	if s.data == nil {
-		return stored{}, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
+		return nil, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
 	}
 	held, ok := s.data.fetch(key)
 	if !ok {
-		return stored{}, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
+		return nil, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
 	}
 	return held, nil
 }

@@ -398,7 +398,7 @@ func Test_Session_DecodeRecordRefusesWhatItCannotRead(t *testing.T) {
 		t.Parallel()
 		sess := acquireSession()
 		defer sess.Release()
-		sess.data.codec = &namedCodec{Codec: JSONCodec{}, name: "other"}
+		sess.data.format = &namedCodec{Codec: JSONCodec{}, name: "other"}
 		sess.data.Lock()
 		defer sess.data.Unlock()
 		err := sess.decodeSessionData(record)
@@ -410,7 +410,7 @@ func Test_Session_DecodeRecordRefusesWhatItCannotRead(t *testing.T) {
 		t.Parallel()
 		sess := acquireSession()
 		defer sess.Release()
-		sess.data.codec = &namedCodec{Codec: JSONCodec{}, name: "json"}
+		sess.data.format = &namedCodec{Codec: JSONCodec{}, name: "json"}
 		sess.data.Lock()
 		defer sess.data.Unlock()
 		damaged := append(bytes.Clone(record), 0) // a byte too many, found after the entries were added
