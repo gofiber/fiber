@@ -16,6 +16,22 @@ type getterProfile struct{ Name string }
 
 type getterUserID int
 
+// requireGetAs checks that src holds a V under key, and that it is want.
+func requireGetAs[V any, S *Session | *Middleware](tb testing.TB, src S, key string, want V) {
+	tb.Helper()
+	got, ok := GetAs[V](src, key)
+	require.True(tb, ok, key)
+	require.Equal(tb, want, got, key)
+}
+
+// requireNoGetAs checks that src holds no V under key, and that the zero V comes back with it.
+func requireNoGetAs[V any, S *Session | *Middleware](tb testing.TB, src S, key string, msgAndArgs ...any) {
+	tb.Helper()
+	got, ok := GetAs[V](src, key)
+	require.False(tb, ok, msgAndArgs...)
+	require.Zero(tb, got, key)
+}
+
 func Test_GetAs(t *testing.T) {
 	t.Parallel()
 
@@ -30,81 +46,32 @@ func Test_GetAs(t *testing.T) {
 	sess.Set("list", []string{"x", "y"})
 	sess.Set("nothing", nil)
 
-	t.Run("a value of the asked type", func(t *testing.T) {
+	t.Run("a value of the asked type is found, a zero value too", func(t *testing.T) {
 		t.Parallel()
-		name, ok := GetAs[string](sess, "name")
-		require.True(t, ok)
-		require.Equal(t, "alice", name)
-
-		count, ok := GetAs[int](sess, "count")
-		require.True(t, ok)
-		require.Equal(t, 3, count)
-
-		profile, ok := GetAs[getterProfile](sess, "profile")
-		require.True(t, ok)
-		require.Equal(t, getterProfile{Name: "a"}, profile)
-
-		list, ok := GetAs[[]string](sess, "list")
-		require.True(t, ok)
-		require.Equal(t, []string{"x", "y"}, list)
+		requireGetAs(t, sess, "name", "alice")
+		requireGetAs(t, sess, "count", 3)
+		requireGetAs(t, sess, "id", getterUserID(7))
+		requireGetAs(t, sess, "profile", getterProfile{Name: "a"})
+		requireGetAs(t, sess, "list", []string{"x", "y"})
+		requireGetAs(t, sess, "zero", 0) // 0 is a value; absent is what ok is for
+		requireGetAs(t, sess, "nil pointer", (*getterProfile)(nil))
+		requireGetAs[any](t, sess, "name", "alice") // an interface type finds what the key holds
 	})
 
-	t.Run("a zero value that is stored is found", func(t *testing.T) {
+	t.Run("another type, a missing key and a stored nil are not found", func(t *testing.T) {
 		t.Parallel()
-		zero, ok := GetAs[int](sess, "zero")
-		require.True(t, ok, "0 is a value; absent is what ok is for")
-		require.Zero(t, zero)
-
-		pointer, ok := GetAs[*getterProfile](sess, "nil pointer")
-		require.True(t, ok)
-		require.Nil(t, pointer)
-	})
-
-	t.Run("another type is not found", func(t *testing.T) {
-		t.Parallel()
-		number, ok := GetAs[int](sess, "name")
-		require.False(t, ok)
-		require.Zero(t, number)
-
-		_, ok = GetAs[int](sess, "id")
-		require.False(t, ok, "a named type is not its underlying type")
-		id, ok := GetAs[getterUserID](sess, "id")
-		require.True(t, ok)
-		require.Equal(t, getterUserID(7), id)
-
-		_, ok = GetAs[getterProfile](sess, "pointer")
-		require.False(t, ok, "a pointer is not the struct it points to")
-	})
-
-	t.Run("a missing key is not found", func(t *testing.T) {
-		t.Parallel()
-		value, ok := GetAs[string](sess, "missing")
-		require.False(t, ok)
-		require.Empty(t, value)
-	})
-
-	t.Run("with an interface type", func(t *testing.T) {
-		t.Parallel()
-		value, ok := GetAs[any](sess, "name")
-		require.True(t, ok)
-		require.Equal(t, "alice", value)
-
-		_, ok = GetAs[any](sess, "missing")
-		require.False(t, ok)
-		_, ok = GetAs[any](sess, "nothing")
-		require.False(t, ok, "a stored nil reads as absent, as a nil does for any type assertion")
+		requireNoGetAs[int](t, sess, "name")
+		requireNoGetAs[int](t, sess, "id", "a named type is not its underlying type")
+		requireNoGetAs[getterProfile](t, sess, "pointer", "a pointer is not the struct it points to")
+		requireNoGetAs[string](t, sess, "missing")
+		requireNoGetAs[any](t, sess, "missing")
+		requireNoGetAs[any](t, sess, "nothing", "a stored nil reads as absent, as a nil does for any type assertion")
 	})
 
 	t.Run("a nil source finds nothing", func(t *testing.T) {
 		t.Parallel()
-
-		value, ok := GetAs[string]((*Session)(nil), "name")
-		require.False(t, ok, "nil session")
-		require.Empty(t, value)
-
-		value, ok = GetAs[string]((*Middleware)(nil), "name")
-		require.False(t, ok, "nil middleware")
-		require.Empty(t, value)
+		requireNoGetAs[string](t, (*Session)(nil), "name", "nil session")
+		requireNoGetAs[string](t, (*Middleware)(nil), "name", "nil middleware")
 	})
 }
 
@@ -194,25 +161,6 @@ func Test_Session_IdleTimeout(t *testing.T) {
 		})
 		require.Equal(t, time.Hour, loadSession(t, app, store, id).IdleTimeout())
 	})
-
-	t.Run("a session without a store", func(t *testing.T) {
-		t.Parallel()
-		require.Zero(t, (&Session{}).IdleTimeout())
-	})
-
-	t.Run("through the middleware", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{IdleTimeout: 10 * time.Minute}))
-		app.Get("/", func(c fiber.Ctx) error {
-			m := FromContext(c)
-			before := m.IdleTimeout()
-			m.Session.SetIdleTimeout(time.Minute)
-			return c.SendString(before.String() + "|" + m.IdleTimeout().String())
-		})
-		_, body := sendRequest(t, app, "/", nil)
-		require.Equal(t, "10m0s|1m0s", body)
-	})
 }
 
 func Test_Session_AbsoluteExpiry(t *testing.T) {
@@ -226,19 +174,7 @@ func Test_Session_AbsoluteExpiry(t *testing.T) {
 		require.True(t, expiry.IsZero())
 	})
 
-	t.Run("a new session ends one absolute timeout from now", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		store := NewStore(Config{AbsoluteTimeout: time.Hour})
-		id := seedSession(t, app, store, func(s *Session) { s.Set("k", "v") })
-
-		sess := loadSession(t, app, store, id)
-		expiry, ok := sess.AbsoluteExpiry()
-		require.True(t, ok)
-		require.WithinDuration(t, time.Now().Add(time.Hour), expiry, 10*time.Second)
-	})
-
-	t.Run("it survives storage and regeneration, and reset starts it over", func(t *testing.T) {
+	t.Run("a new session ends one absolute timeout from now; storage and regeneration keep that, reset starts it over", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
 		store := NewStore(Config{AbsoluteTimeout: time.Hour})
@@ -247,6 +183,7 @@ func Test_Session_AbsoluteExpiry(t *testing.T) {
 		sess := loadSession(t, app, store, id)
 		original, ok := sess.AbsoluteExpiry()
 		require.True(t, ok)
+		require.WithinDuration(t, time.Now().Add(time.Hour), original, 10*time.Second)
 
 		require.NoError(t, sess.Regenerate())
 		kept, ok := sess.AbsoluteExpiry()
@@ -259,32 +196,34 @@ func Test_Session_AbsoluteExpiry(t *testing.T) {
 		require.True(t, ok)
 		require.True(t, restarted.After(original), "a reset is a new session with a new deadline")
 	})
+}
 
-	t.Run("through the middleware", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{AbsoluteTimeout: time.Hour}))
-		app.Get("/", func(c fiber.Ctx) error {
-			expiry, ok := FromContext(c).AbsoluteExpiry()
-			return c.SendString(strconv.FormatBool(ok) + "|" + strconv.FormatBool(time.Until(expiry) > 59*time.Minute))
-		})
-		_, body := sendRequest(t, app, "/", nil)
-		require.Equal(t, "true|true", body)
+// The middleware answers for its session: the idle timeout, which a request can change, and the
+// absolute expiry.
+func Test_Middleware_IdleTimeoutAndAbsoluteExpiry(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{IdleTimeout: 10 * time.Minute, AbsoluteTimeout: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error {
+		m := FromContext(c)
+		require.Equal(t, 10*time.Minute, m.IdleTimeout())
+		m.Session.SetIdleTimeout(time.Minute)
+		require.Equal(t, time.Minute, m.IdleTimeout())
+
+		expiry, ok := m.AbsoluteExpiry()
+		require.True(t, ok)
+		require.Greater(t, time.Until(expiry), 59*time.Minute)
+		return nil
 	})
+	require.Equal(t, fiber.StatusOK, serveGet(app, "/"))
 }
 
 // Benchmark_GetAs compares the typed read with the type assertion it replaces.
 //
 // go test -v -run=^$ -bench=Benchmark_GetAs -benchmem -count=4
 func Benchmark_GetAs(b *testing.B) {
-	app := fiber.New()
-	c := newRequest(b, app)
-
-	sess, err := NewStore().Get(c)
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer sess.Release()
+	sess := mustGet(b, NewStore(), newRequest(b, fiber.New()))
 	sess.Set("name", "alice")
 
 	b.Run("GetAs", func(b *testing.B) {
@@ -306,9 +245,7 @@ func Benchmark_GetAs(b *testing.B) {
 	})
 }
 
-func init() {
-	gob.Register(map[string]int{})
-}
+func init() { gob.Register(map[string]int{}) }
 
 // Without a codec, GetAs gives up the saved snapshot for a value that could share memory with the
 // session, as Get does: a change made through it is saved.
@@ -326,22 +263,17 @@ func Test_GetAs_GivesUpTheSnapshotLikeGet(t *testing.T) {
 	require.NoError(t, sess.Save())
 
 	again := loadSession(t, app, store, id)
-	got, ok := GetAs[map[string]int](again, "m")
-	require.True(t, ok)
-	require.Equal(t, map[string]int{"a": 1, "b": 2}, got)
+	requireGetAs(t, again, "m", map[string]int{"a": 1, "b": 2})
 
 	// The same holds for GetInto, and for a scalar it does not: nothing is saved again.
 	var viaInto map[string]int
 	require.NoError(t, again.GetInto("m", &viaInto))
 	viaInto["c"] = 3
 	require.NoError(t, again.Save())
-	third := loadSession(t, app, store, id)
-	got, ok = GetAs[map[string]int](third, "m")
-	require.True(t, ok)
-	require.Equal(t, map[string]int{"a": 1, "b": 2, "c": 3}, got)
+	requireGetAs(t, loadSession(t, app, store, id), "m", map[string]int{"a": 1, "b": 2, "c": 3})
 }
 
-// A session without its data map answers like an empty one.
+// A session that is a zero value, with no data map and no store, answers like an empty one.
 func Test_Session_WithoutDataAnswersLikeAnEmptyOne(t *testing.T) {
 	t.Parallel()
 
@@ -350,10 +282,9 @@ func Test_Session_WithoutDataAnswersLikeAnEmptyOne(t *testing.T) {
 		expiry, ok := sess.AbsoluteExpiry()
 		require.False(t, ok)
 		require.True(t, expiry.IsZero())
+		require.Zero(t, sess.IdleTimeout())
 
-		value, found := GetAs[string](&sess, "k")
-		require.False(t, found)
-		require.Empty(t, value)
+		requireNoGetAs[string](t, &sess, "k")
 
 		var target string
 		require.ErrorIs(t, sess.GetInto("k", &target), ErrKeyNotFound)

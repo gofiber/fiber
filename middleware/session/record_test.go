@@ -41,9 +41,10 @@ const (
 )
 
 // A record of every shape is written into a buffer of exactly its size, follows the bytes it is
-// appended to, reads back as what it was made of and has one spelling. The shapes are the edges of
-// the varints (sizes, counts, lengths of names) and of the deadline (the years 1 and 9999).
-func Test_Record_RoundTrip(t *testing.T) {
+// appended to, reads back as what it was made of, has one spelling and hands out entries that
+// cannot be appended to in place. The shapes are the edges of the varints (sizes, counts, lengths
+// of names) and of the deadline (the years 1 and 9999).
+func Test_Record_OfEveryShape(t *testing.T) {
 	t.Parallel()
 
 	// Each key is a prefix of the next one, which puts them in ascending order.
@@ -64,6 +65,7 @@ func Test_Record_RoundTrip(t *testing.T) {
 	}{
 		{name: "empty", codec: "j"},
 		{name: "one entry", entries: []recordEntry{{key: "a", value: []byte("1")}}},
+		{name: "three entries", entries: []recordEntry{{key: "a", value: []byte("one")}, {key: "b", value: []byte("two")}, {key: "c", value: []byte("three")}}},
 		{name: "empty key and value", entries: []recordEntry{{key: "", value: []byte{}}, {key: "a", value: []byte{}}}},
 		{name: "binary", entries: []recordEntry{{key: "\x00\xff", value: []byte{0, 1, 2, 255}}, {key: "\xff", value: []byte{0}}}},
 		{name: "sizes at the edges of the varints", entries: sizes},
@@ -85,6 +87,7 @@ func Test_Record_RoundTrip(t *testing.T) {
 
 			codec := cmp.Or(tc.codec, "json")
 			encoded := mustAppendRecord(t, codec, tc.deadline, tc.entries)
+			original := slices.Clone(encoded)
 			require.True(t, isRecord(encoded))
 			require.Equal(t, len(encoded), cap(encoded), "no growth, and no spare room that a storage which keeps the slice would hold on to")
 
@@ -92,11 +95,21 @@ func Test_Record_RoundTrip(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, codec, string(h.codec))
 			require.Equal(t, tc.deadline, h.deadline)
-			require.Len(t, entries, len(tc.entries))
-			for i := range entries {
-				require.Equal(t, tc.entries[i].key, entries[i].key)
-				require.True(t, bytes.Equal(tc.entries[i].value, entries[i].value))
-			}
+			require.Equal(t, tc.entries, entries)
+
+			// An entry has no capacity beyond its length: a codec that keeps a slice of the record
+			// and appends to it cannot overwrite the entry that follows.
+			seen := 0
+			_, err = parseRecord(encoded, func(key, value []byte) {
+				seen++
+				require.Equal(t, len(key), cap(key))
+				require.Equal(t, len(value), cap(value))
+				_ = append(value, "overwrite"...) // an append has to copy, and leave the record alone
+				_ = append(key, "overwrite"...)
+			})
+			require.NoError(t, err)
+			require.Equal(t, len(tc.entries), seen)
+			require.Equal(t, original, encoded)
 
 			// One record has one spelling.
 			again := mustAppendRecord(t, codec, h.deadline, entries)
@@ -166,22 +179,6 @@ func Test_Record_AppendRefusesWhatItCannotParse(t *testing.T) {
 	}
 }
 
-// Every proper prefix of a record is refused, and so is the record with a byte
-// added: nothing may be accepted that is not exactly what was written.
-func Test_Record_TruncationAndTrailingBytes(t *testing.T) {
-	t.Parallel()
-
-	encoded := mustAppendRecord(t, "json", recordDeadline{sec: 123, nanos: 456, set: true},
-		[]recordEntry{{key: "a", value: []byte("one")}, {key: "b", value: []byte("two")}, {key: "c", value: nil}})
-
-	for n := range encoded {
-		_, _, err := collectRecord(encoded[:n])
-		require.ErrorIs(t, err, errInvalidRecord, "prefix of %d bytes", n)
-	}
-	_, _, err := collectRecord(append(slices.Clone(encoded), 0))
-	require.ErrorIs(t, err, errInvalidRecord)
-}
-
 func Test_Record_Malformed(t *testing.T) {
 	t.Parallel()
 
@@ -195,7 +192,7 @@ func Test_Record_Malformed(t *testing.T) {
 		return slices.Concat(uv(uint64(len(key))), []byte(key), uv(uint64(len(value))), []byte(value))
 	}
 
-	for label, b := range map[string][]byte{
+	cases := map[string][]byte{
 		"empty":                               nil,
 		"wrong first byte":                    append([]byte{1}, magic[1:]...),
 		"tag only":                            []byte(recordTag),
@@ -225,7 +222,18 @@ func Test_Record_Malformed(t *testing.T) {
 		"entry without value":                 build(name, []byte{0}, uv(1), uv(1), []byte("a")),
 		"trailing byte":                       build(name, []byte{0}, uv(1), entry("a", "1"), []byte{0}),
 		"trailing byte after empty":           build(name, []byte{0}, uv(0), []byte{0}),
-	} {
+	}
+
+	// Every proper prefix of a record is refused, and so is the record with a byte added: nothing
+	// may be accepted that is not exactly what was written.
+	whole := mustAppendRecord(t, "json", recordDeadline{sec: 123, nanos: 456, set: true},
+		[]recordEntry{{key: "a", value: []byte("one")}, {key: "b", value: []byte("two")}, {key: "c", value: nil}})
+	for n := range whole {
+		cases[fmt.Sprintf("prefix of %d bytes", n)] = whole[:n]
+	}
+	cases["a byte added"] = append(slices.Clone(whole), 0)
+
+	for label, b := range cases {
 		_, _, err := collectRecord(b)
 		require.ErrorIs(t, err, errInvalidRecord, label)
 	}
@@ -248,15 +256,14 @@ func Test_Record_GobStreamsDoNotLookLikeRecords(t *testing.T) {
 	gob.Register(struct{ A int }{})
 	gob.Register(map[string]any{})
 	gob.Register([]any{})
-	values := []map[any]any{
+	for _, v := range []map[any]any{
 		{},
 		{"a": 1},
 		{"a": "b", 1: 2.5, true: []byte("x")},
 		{"nested": map[string]any{"k": []any{1, "two", 3.0}}},
 		{"big": strings.Repeat("x", 200_000)},
 		{"s": struct{ A int }{A: 7}},
-	}
-	for _, v := range values {
+	} {
 		var buf bytes.Buffer
 		require.NoError(t, gob.NewEncoder(&buf).Encode(&v))
 		require.NotEmpty(t, buf.Bytes())
@@ -298,30 +305,6 @@ func Fuzz_Record_Parse(f *testing.F) {
 		}
 		require.LessOrEqual(t, total, len(b))
 	})
-}
-
-// An entry has no capacity beyond its length: a codec that keeps a slice of the
-// record and appends to it cannot overwrite the entry that follows.
-func Test_Record_EntriesHaveNoSpareCapacity(t *testing.T) {
-	t.Parallel()
-
-	encoded := mustAppendRecord(t, "json", recordDeadline{}, []recordEntry{
-		{key: "a", value: []byte("one")}, {key: "b", value: []byte("two")}, {key: "c", value: []byte("three")},
-	})
-	original := slices.Clone(encoded)
-
-	seen := 0
-	_, err := parseRecord(encoded, func(key, value []byte) {
-		seen++
-		require.Equal(t, len(key), cap(key))
-		require.Equal(t, len(value), cap(value))
-		// Appending is what is tested: it must copy, and leave the record alone.
-		_ = append(value, "overwrite"...)
-		_ = append(key, "overwrite"...)
-	})
-	require.NoError(t, err)
-	require.Equal(t, 3, seen)
-	require.Equal(t, original, encoded)
 }
 
 // Parsing a record takes no memory, whatever the record claims to hold.
@@ -384,39 +367,29 @@ func Test_Session_DecodeRecordRefusesWhatItCannotRead(t *testing.T) {
 	t.Parallel()
 
 	record := mustAppendRecord(t, "json", recordDeadline{}, []recordEntry{{key: "a", value: []byte("1")}})
+	damaged := append(bytes.Clone(record), 0) // a byte too many, found after the entries were added
 
-	t.Run("a session without a codec", func(t *testing.T) {
-		t.Parallel()
-		sess := acquireSession()
-		defer sess.Release()
-		sess.data.Lock()
-		defer sess.data.Unlock()
-		require.ErrorIs(t, sess.decodeSessionData(record), errRecordNeedsCodec)
-	})
-
-	t.Run("a record of another codec", func(t *testing.T) {
-		t.Parallel()
-		sess := acquireSession()
-		defer sess.Release()
-		sess.data.format = &namedCodec{Codec: JSONCodec{}, name: "other"}
-		sess.data.Lock()
-		defer sess.data.Unlock()
-		err := sess.decodeSessionData(record)
-		require.ErrorIs(t, err, errCodecMismatch)
-		require.Empty(t, sess.data.Data, "nothing of the record is left")
-	})
-
-	t.Run("a damaged record leaves no entries", func(t *testing.T) {
-		t.Parallel()
-		sess := acquireSession()
-		defer sess.Release()
-		sess.data.format = &namedCodec{Codec: JSONCodec{}, name: "json"}
-		sess.data.Lock()
-		defer sess.data.Unlock()
-		damaged := append(bytes.Clone(record), 0) // a byte too many, found after the entries were added
-		require.ErrorIs(t, sess.decodeSessionData(damaged), errInvalidRecord)
-		require.Empty(t, sess.data.Data)
-	})
+	for _, tc := range []struct {
+		format format
+		err    error
+		name   string
+		record []byte
+	}{
+		{name: "a session without a codec", format: gobFormat{}, record: record, err: errRecordNeedsCodec},
+		{name: "a record of another codec", format: &namedCodec{Codec: JSONCodec{}, name: "other"}, record: record, err: errCodecMismatch},
+		{name: "a damaged record leaves no entries", format: &namedCodec{Codec: JSONCodec{}, name: "json"}, record: damaged, err: errInvalidRecord},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			sess := acquireSession()
+			defer sess.Release()
+			sess.data.format = tc.format
+			sess.data.Lock()
+			defer sess.data.Unlock()
+			require.ErrorIs(t, sess.decodeSessionData(tc.record), tc.err)
+			require.Empty(t, sess.data.Data, "nothing of the record is left")
+		})
+	}
 }
 
 // A record is built into one buffer of the size it needs. AllocsPerRun cannot run in a parallel

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -57,20 +56,29 @@ func digestOf(id string) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
+// storageKeyPolicies are the ways a store can key its records.
+var storageKeyPolicies = []struct {
+	name   string
+	prefix string
+	hash   bool
+}{
+	{name: "default"},
+	{name: "prefix", prefix: "app:session:"},
+	{name: "hash", hash: true},
+	{name: "prefix and hash", prefix: "app:session:", hash: true},
+}
+
+// A key costs the one allocation of the key itself: without a prefix or hashing it is the
+// namespace and the ID in one string, and the digest is built on the stack.
+//
 // testing.AllocsPerRun panics in a parallel test, so this one stays sequential.
 func Test_Store_StorageKey_Allocations(t *testing.T) {
-	id := "wuyjDTdyBzOvL4mUnQ6qiM0nsSYUdyAxnXn0X2VgbX4"
+	const id = "wuyjDTdyBzOvL4mUnQ6qiM0nsSYUdyAxnXn0X2VgbX4"
 
-	plain := NewStore()
-	require.LessOrEqual(t, testing.AllocsPerRun(100, func() { _ = plain.storageKey(id) }), 1.0,
-		"without a prefix or hashing the key is the namespace and the ID, in one string")
-
-	prefixed := NewStore(Config{StorageKeyPrefix: "app:"})
-	require.LessOrEqual(t, testing.AllocsPerRun(100, func() { _ = prefixed.storageKey(id) }), 1.0)
-
-	hashed := NewStore(Config{StorageKeyPrefix: "app:", HashStorageKeys: true})
-	require.LessOrEqual(t, testing.AllocsPerRun(100, func() { _ = hashed.storageKey(id) }), 1.0,
-		"the digest is built on the stack; only the key itself is allocated")
+	for _, tc := range storageKeyPolicies {
+		store := NewStore(Config{StorageKeyPrefix: tc.prefix, HashStorageKeys: tc.hash})
+		require.LessOrEqual(t, testing.AllocsPerRun(100, func() { _ = store.storageKey(id) }), 1.0, tc.name)
+	}
 }
 
 // Every way a session reaches the storage must use the same key policy: a
@@ -79,37 +87,16 @@ func Test_Store_StorageKey_Allocations(t *testing.T) {
 func Test_Session_StorageKeyPolicy_EveryCallSite(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		name   string
-		prefix string
-		cfg    Config
-		hashed bool
-	}{
-		{name: "default"},
-		{name: "prefix", cfg: Config{StorageKeyPrefix: "app:"}, prefix: "app:"},
-		{name: "hash", cfg: Config{HashStorageKeys: true}, hashed: true},
-		{name: "prefix and hash", cfg: Config{StorageKeyPrefix: "app:", HashStorageKeys: true}, prefix: "app:", hashed: true},
-	} {
+	for _, tc := range storageKeyPolicies {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			log := &keyLogStorage{Storage: memory.New()}
-			cfg := tc.cfg
-			cfg.Storage = log
-			handler, store := NewWithStore(cfg)
+			handler, store := NewWithStore(Config{Storage: log, StorageKeyPrefix: tc.prefix, HashStorageKeys: tc.hash})
 
 			app := fiber.New()
 			app.Use(handler)
-			app.Get("/login", func(c fiber.Ctx) error {
-				FromContext(c).Set("user", "alice")
-				return c.SendString(FromContext(c).ID())
-			})
-			app.Get("/regenerate", func(c fiber.Ctx) error {
-				if err := FromContext(c).Regenerate(); err != nil {
-					return err
-				}
-				return c.SendString(FromContext(c).ID())
-			})
+			addSessionRoutes(app)
 			app.Get("/reset", func(c fiber.Ctx) error {
 				if err := FromContext(c).Reset(); err != nil {
 					return err
@@ -117,7 +104,6 @@ func Test_Session_StorageKeyPolicy_EveryCallSite(t *testing.T) {
 				FromContext(c).Set("again", true)
 				return c.SendString(FromContext(c).ID())
 			})
-			app.Get("/destroy", func(c fiber.Ctx) error { return FromContext(c).Destroy() })
 
 			ids := make([]string, 0, 8)
 			do := func(path, id string) string {
@@ -156,7 +142,7 @@ func Test_Session_StorageKeyPolicy_EveryCallSite(t *testing.T) {
 				rest := strings.TrimPrefix(key, tc.prefix)
 				require.True(t, strings.HasPrefix(rest, keyNamespace), "%s lacks the namespace %q", op, keyNamespace)
 				rest = strings.TrimPrefix(rest, keyNamespace)
-				if tc.hashed {
+				if tc.hash {
 					require.Len(t, rest, hashedKeyLen, "%s is not a digest", op)
 					require.NotContains(t, ids, rest, "%s used a session ID as the key", op)
 					require.True(t, slices.ContainsFunc(ids, func(id string) bool { return digestOf(id) == rest }),
@@ -179,16 +165,10 @@ func Test_Session_HashStorageKeys_StoredKeyIsNotAnID(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(handler)
-	app.Get("/login", func(c fiber.Ctx) error {
-		FromContext(c).Set("user", "alice")
-		return c.SendString(FromContext(c).ID())
-	})
-	app.Get("/me", func(c fiber.Ctx) error {
-		return c.SendString(fmt.Sprint(FromContext(c).Get("user")))
-	})
+	addSessionRoutes(app)
 
 	_, id := sendRequest(t, app, "/login", nil)
-	_, body := sendRequest(t, app, "/me", map[string]string{"session_id": id})
+	_, body := sendRequest(t, app, "/read", map[string]string{"session_id": id})
 	require.Equal(t, "alice", body, "the client's ID still finds its session")
 
 	keys, err := mem.Keys()
@@ -199,7 +179,7 @@ func Test_Session_HashStorageKeys_StoredKeyIsNotAnID(t *testing.T) {
 	require.NotEqual(t, id, stored)
 
 	// Whoever reads the storage and sends what they found gets nothing.
-	_, body = sendRequest(t, app, "/me", map[string]string{"session_id": stored})
+	_, body = sendRequest(t, app, "/read", map[string]string{"session_id": stored})
 	require.Equal(t, "<nil>", body)
 	_, err = store.GetByID(context.Background(), stored)
 	require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
@@ -221,18 +201,7 @@ func Test_Session_StorageKeyPrefix_SeparatesStores(t *testing.T) {
 	same := func() string { return "same-id" }
 	storeA := NewStore(Config{Storage: shared, StorageKeyPrefix: "a:", KeyGenerator: same})
 	storeB := NewStore(Config{Storage: shared, StorageKeyPrefix: "b:", KeyGenerator: same})
-
-	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		sess, err := storeA.Get(c)
-		if err != nil {
-			return err
-		}
-		defer sess.Release()
-		sess.Set("owner", "a")
-		return sess.Save()
-	})
-	_, _ = sendRequest(t, app, "/", nil)
+	require.Equal(t, "same-id", seedSession(t, fiber.New(), storeA, func(s *Session) { s.Set("owner", "a") }))
 
 	ctx := context.Background()
 	_, err := storeB.GetByID(ctx, "same-id")
@@ -264,10 +233,7 @@ func Test_Store_Reset_ClearsTheWholeStorageDespiteAPrefix(t *testing.T) {
 	require.NoError(t, shared.Set("app:session", []byte("x"), time.Minute))
 
 	require.NoError(t, store.Reset(context.Background()))
-
-	keys, err := shared.Keys()
-	require.NoError(t, err)
-	require.Empty(t, keys)
+	require.Zero(t, storedSessions(t, shared))
 }
 
 // Benchmark_Store_StorageKey measures the key every read, write and delete of a
@@ -277,16 +243,7 @@ func Test_Store_Reset_ClearsTheWholeStorageDespiteAPrefix(t *testing.T) {
 func Benchmark_Store_StorageKey(b *testing.B) {
 	const id = "wuyjDTdyBzOvL4mUnQ6qiM0nsSYUdyAxnXn0X2VgbX4"
 
-	for _, tc := range []struct {
-		name   string
-		prefix string
-		hash   bool
-	}{
-		{name: "default"},
-		{name: "prefix", prefix: "app:session:"},
-		{name: "hash", hash: true},
-		{name: "prefix and hash", prefix: "app:session:", hash: true},
-	} {
+	for _, tc := range storageKeyPolicies {
 		b.Run(tc.name, func(b *testing.B) {
 			store := NewStore(Config{StorageKeyPrefix: tc.prefix, HashStorageKeys: tc.hash})
 

@@ -51,66 +51,50 @@ func lastWrite(t *testing.T, rec *recordingStorage) storageWrite {
 	return writes[len(writes)-1]
 }
 
+// requireLifetime checks how long a record or a cookie lives: want, or, with a slack, anything up to
+// slack less than want, as the clock moves on between the request and the check.
+func requireLifetime(tb testing.TB, got, want, slack time.Duration) {
+	tb.Helper()
+	if slack == 0 {
+		require.Equal(tb, want, got)
+		return
+	}
+	require.LessOrEqual(tb, got, want)
+	require.Greater(tb, got, want-slack)
+}
+
 // The record and the cookie must not outlive the absolute deadline: a session
 // that is about to end is stored, and its cookie set, for the time it has left.
 func Test_Session_Lifetime_CappedByAbsoluteDeadline(t *testing.T) {
 	t.Parallel()
 
-	t.Run("without an absolute timeout it is the idle timeout, as before", func(t *testing.T) {
-		t.Parallel()
-		app, rec := lifetimeApp(&Config{IdleTimeout: 10 * time.Minute})
+	cut := Config{IdleTimeout: 30 * time.Minute, AbsoluteTimeout: time.Hour}
+	for _, tc := range []struct {
+		name  string
+		path  string // the request that stores the session
+		cfg   Config
+		want  time.Duration // how long the record and the cookie live
+		slack time.Duration // how much less than want they may live, as the clock moves on
+	}{
+		{name: "without an absolute timeout it is the idle timeout, as before", cfg: Config{IdleTimeout: 10 * time.Minute}, path: "/new", want: 10 * time.Minute},
+		{name: "a new session is cut to the time left", cfg: Config{IdleTimeout: time.Hour, AbsoluteTimeout: time.Hour}, path: "/new", want: time.Hour, slack: 10 * time.Second},
+		{name: "an idle timeout shorter than what is left wins", cfg: Config{IdleTimeout: 10 * time.Minute, AbsoluteTimeout: 2 * time.Hour}, path: "/new", want: 10 * time.Minute},
+		{name: "close to the deadline", cfg: cut, path: "/deadline?d=5m", want: 5 * time.Minute, slack: 10 * time.Second},
+		// A lifetime of zero or less would read as "never expires" in many storages.
+		{name: "a deadline within a second is one second, never none", cfg: cut, path: "/deadline?d=200ms", want: time.Second},
+		{name: "a deadline that is now is one second, never none", cfg: cut, path: "/deadline?d=0s", want: time.Second},
+		{name: "a deadline already behind is one second, never none", cfg: cut, path: "/deadline?d=-1m", want: time.Second},
+		{name: "a deadline far behind is one second, never none", cfg: cut, path: "/deadline?d=-720h", want: time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, rec := lifetimeApp(&tc.cfg)
 
-		resp, _ := sendRequest(t, app, "/new", nil)
-		require.Equal(t, 10*time.Minute, lastWrite(t, rec).exp)
-		require.Equal(t, 600, cookiesByName(resp)["session_id"].MaxAge)
-	})
-
-	t.Run("a new session is cut to the time left", func(t *testing.T) {
-		t.Parallel()
-		app, rec := lifetimeApp(&Config{IdleTimeout: time.Hour, AbsoluteTimeout: time.Hour})
-
-		resp, _ := sendRequest(t, app, "/new", nil)
-		exp := lastWrite(t, rec).exp
-		require.LessOrEqual(t, exp, time.Hour)
-		require.Greater(t, exp, time.Hour-10*time.Second)
-		maxAge := cookiesByName(resp)["session_id"].MaxAge
-		require.LessOrEqual(t, maxAge, 3600)
-		require.Greater(t, maxAge, 3590)
-	})
-
-	t.Run("an idle timeout shorter than what is left wins", func(t *testing.T) {
-		t.Parallel()
-		app, rec := lifetimeApp(&Config{IdleTimeout: 10 * time.Minute, AbsoluteTimeout: 2 * time.Hour})
-
-		resp, _ := sendRequest(t, app, "/new", nil)
-		require.Equal(t, 10*time.Minute, lastWrite(t, rec).exp)
-		require.Equal(t, 600, cookiesByName(resp)["session_id"].MaxAge)
-	})
-
-	t.Run("close to the deadline", func(t *testing.T) {
-		t.Parallel()
-		app, rec := lifetimeApp(&Config{IdleTimeout: 30 * time.Minute, AbsoluteTimeout: time.Hour})
-
-		resp, _ := sendRequest(t, app, "/deadline?d=5m", nil)
-		exp := lastWrite(t, rec).exp
-		require.LessOrEqual(t, exp, 5*time.Minute)
-		require.Greater(t, exp, 5*time.Minute-10*time.Second)
-		maxAge := cookiesByName(resp)["session_id"].MaxAge
-		require.LessOrEqual(t, maxAge, 300)
-		require.Greater(t, maxAge, 290)
-	})
-
-	t.Run("a deadline within a second or already behind is one second, never none", func(t *testing.T) {
-		t.Parallel()
-		for _, d := range []string{"200ms", "0s", "-1m", "-720h"} {
-			app, rec := lifetimeApp(&Config{IdleTimeout: 30 * time.Minute, AbsoluteTimeout: time.Hour})
-
-			resp, _ := sendRequest(t, app, "/deadline?d="+d, nil)
-			require.Equal(t, time.Second, lastWrite(t, rec).exp,
-				"a lifetime of zero or less would read as 'never expires' in many storages (deadline %s)", d)
-			require.Equal(t, 1, cookiesByName(resp)["session_id"].MaxAge)
-		}
-	})
+			resp, _ := sendRequest(t, app, tc.path, nil)
+			requireLifetime(t, lastWrite(t, rec).exp, tc.want, tc.slack)
+			requireLifetime(t, time.Duration(cookiesByName(resp)["session_id"].MaxAge)*time.Second, tc.want, tc.slack)
+		})
+	}
 
 	t.Run("a session-only cookie has no lifetime but the record is still cut", func(t *testing.T) {
 		t.Parallel()
@@ -200,46 +184,62 @@ func Test_Config_TypedNilStorage(t *testing.T) {
 	var nilPointer *memory.Storage
 	var nilMap mapStorage
 
-	t.Run("a nil pointer is refused at construction", func(t *testing.T) {
+	t.Run("a nil pointer or a nil map is refused at construction", func(t *testing.T) {
 		t.Parallel()
 		require.PanicsWithValue(t, message, func() { NewStore(Config{Storage: nilPointer}) })
 		require.PanicsWithValue(t, message, func() { New(Config{Storage: nilPointer}) })
 		require.PanicsWithValue(t, message, func() { NewWithStore(Config{Storage: nilPointer}) })
-	})
-
-	t.Run("so is a nil map", func(t *testing.T) {
-		t.Parallel()
 		require.PanicsWithValue(t, message, func() { NewStore(Config{Storage: nilMap}) })
 	})
 
-	t.Run("a plain nil stands for the default", func(t *testing.T) {
-		t.Parallel()
-		require.NotPanics(t, func() { NewStore(Config{Storage: nil}) })
-		require.NotPanics(t, func() { New() })
-	})
-
-	t.Run("a storage that is there is fine", func(t *testing.T) {
-		t.Parallel()
-		require.NotPanics(t, func() { NewStore(Config{Storage: memory.New()}) })
-		require.NotPanics(t, func() { NewStore(Config{Storage: mapStorage{}}) }, "an empty map is not nil")
-	})
-
-	t.Run("a storage the middleware does not use is not checked", func(t *testing.T) {
+	t.Run("a plain nil, a storage that is there and a storage nobody asks for are fine", func(t *testing.T) {
 		t.Parallel()
 		store := NewStore()
+		require.NotPanics(t, func() { NewStore(Config{Storage: nil}) }, "a plain nil stands for the default")
+		require.NotPanics(t, func() { New() })
+		require.NotPanics(t, func() { NewStore(Config{Storage: memory.New()}) })
+		require.NotPanics(t, func() { NewStore(Config{Storage: mapStorage{}}) }, "an empty map is not nil")
 		require.NotPanics(t, func() { New(Config{Store: store, Storage: nilPointer}) },
 			"the store was built before, so this Storage is never touched")
 		require.NotPanics(t, func() { NewWithStore(Config{Store: store, Storage: nilMap}) })
 	})
 }
 
+// warningCase is a Config to make a store or a middleware from, and the warning that logs.
+type warningCase struct {
+	name string
+	want []string // fragments the warning must contain; none means no warning at all
+	cfg  Config
+}
+
+// requireWarnings makes something from the Config of every case with the log captured, and checks
+// the log: nothing when want is empty, and otherwise one warning with every fragment of want in it.
+//
 // Not parallel: the log output is process-global, so these tests capture it.
+func requireWarnings(t *testing.T, build func(Config), cases []warningCase) {
+	t.Helper()
+
+	for i := range cases {
+		tc := &cases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			buf := loggertest.CaptureContextLog(t, "")
+			build(tc.cfg)
+			out := buf.String()
+			if len(tc.want) == 0 {
+				require.Empty(t, out)
+				return
+			}
+			require.Equal(t, 1, strings.Count(out, "[Warn]"), "one warning: %q", out)
+			for _, fragment := range tc.want {
+				require.Contains(t, out, fragment)
+			}
+		})
+	}
+}
+
+// Not parallel: the log output is process-global, so this test captures it.
 func Test_Config_CookiePrefixWarnings(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		want []string // fragments the warning must contain; none means no warning at all
-		cfg  Config
-	}{
+	requireWarnings(t, func(cfg Config) { NewStore(cfg) }, []warningCase{
 		{name: "__Host- over plain defaults", cfg: Config{Extractor: extractors.FromCookie("__Host-sid")}, want: []string{"__Host-", "Secure=false"}},
 		{name: "__Host- that meets its rules", cfg: Config{Extractor: extractors.FromCookie("__Host-sid"), CookieSecure: true, CookiePath: "/"}},
 		{name: "__Host- with a domain", cfg: Config{Extractor: extractors.FromCookie("__Host-sid"), CookieSecure: true, CookiePath: "/", CookieDomain: "example.com"}, want: []string{"__Host-", `Domain="example.com"`}},
@@ -253,22 +253,8 @@ func Test_Config_CookiePrefixWarnings(t *testing.T) {
 		{name: "a header is not a cookie", cfg: Config{Extractor: extractors.FromHeader("__Host-sid")}},
 		{name: "an ordinary cookie", cfg: Config{}},
 		{name: "a name that merely contains the prefix", cfg: Config{Extractor: extractors.FromCookie("my__Host-sid")}},
-		{
-			name: "one bad cookie in a chain",
-			cfg: Config{Extractor: extractors.Chain(
-				extractors.FromCookie("session_id"),
-				extractors.FromCookie("__Host-sid"),
-				extractors.FromHeader("X-Session"),
-			)},
-			want: []string{`"__Host-sid"`},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			buf := loggertest.CaptureContextLog(t, "")
-			NewStore(tc.cfg)
-			requireOneWarning(t, buf.String(), tc.want)
-		})
-	}
+		{name: "one bad cookie in a chain", cfg: Config{Extractor: extractors.Chain(extractors.FromCookie("session_id"), extractors.FromCookie("__Host-sid"), extractors.FromHeader("X-Session"))}, want: []string{`"__Host-sid"`}},
+	})
 
 	t.Run("one warning per store, however the store is built", func(t *testing.T) {
 		cfg := Config{Extractor: extractors.FromCookie("__Host-sid")}
@@ -287,18 +273,14 @@ func Test_Config_CookiePrefixWarnings(t *testing.T) {
 	})
 }
 
-// Not parallel: the log output is process-global, so these tests capture it.
+// Not parallel: the log output is process-global, so this test captures it.
 func Test_Config_StoreOptionWarnings(t *testing.T) {
 	hashed := NewStore(Config{HashStorageKeys: true, StorageKeyPrefix: "app:"})
 	skipping := NewStore(Config{SkipEmptySessions: true})
 	withCodec := NewStore(Config{Codec: JSONCodec{}})
 	plain := NewStore()
 
-	for _, tc := range []struct {
-		name string
-		want []string // fragments the warning must contain; none means no warning at all
-		cfg  Config
-	}{
+	requireWarnings(t, func(cfg Config) { New(cfg) }, []warningCase{
 		{name: "without a store, the options are the middleware's own", cfg: Config{HashStorageKeys: true, StorageKeyPrefix: "app:", SkipEmptySessions: true}},
 		{name: "options set on the store only", cfg: Config{Store: hashed}},
 		{name: "hashing asked of the middleware", cfg: Config{Store: plain, HashStorageKeys: true}, want: []string{"taken from Config.Store", "HashStorageKeys=false"}},
@@ -313,25 +295,5 @@ func Test_Config_StoreOptionWarnings(t *testing.T) {
 		{name: "a codec asked of the middleware only", cfg: Config{Store: plain, Codec: JSONCodec{}}, want: []string{"Codec is taken from Config.Store"}},
 		{name: "another codec on the middleware", cfg: Config{Store: withCodec, Codec: NewCodec("other", json.Marshal, json.Unmarshal)}, want: []string{"Codec is taken from Config.Store"}},
 		{name: "no store, the codec is the middleware's", cfg: Config{Codec: JSONCodec{}}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			buf := loggertest.CaptureContextLog(t, "")
-			New(tc.cfg)
-			requireOneWarning(t, buf.String(), tc.want)
-		})
-	}
-}
-
-// requireOneWarning checks the log of building a store: nothing when want is empty, and
-// otherwise one warning with every fragment of want in it.
-func requireOneWarning(t *testing.T, out string, want []string) {
-	t.Helper()
-	if len(want) == 0 {
-		require.Empty(t, out)
-		return
-	}
-	require.Equal(t, 1, strings.Count(out, "[Warn]"), "one warning: %q", out)
-	for _, fragment := range want {
-		require.Contains(t, out, fragment)
-	}
+	})
 }
