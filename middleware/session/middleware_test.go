@@ -21,6 +21,7 @@ import (
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
+	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
@@ -872,7 +873,7 @@ func Test_Middleware_WithContext_ErrorPropagation(t *testing.T) {
 		t.Parallel()
 		m := &Middleware{Session: newSessionWithStorage(t, &contextStorage{})}
 		require.ErrorIs(t, m.DestroyWithContext(canceledCtx()), context.Canceled)
-		require.True(t, m.isDestroyed)
+		require.True(t, m.is(lifeDestroyed))
 	})
 
 	t.Run("ResetWithContext propagates storage error", func(t *testing.T) {
@@ -1134,13 +1135,13 @@ func Test_Session_ReleaseMiddleware_DoesNotRecycleAPublishedOne(t *testing.T) {
 	t.Parallel()
 
 	published := acquireMiddleware()
-	published.escaped = true
+	published.mark(lifeEscaped)
 	releaseMiddleware(published)
-	require.True(t, published.released.Load())
+	require.True(t, published.is(lifeReleased))
 
 	local := acquireMiddleware()
 	releaseMiddleware(local)
-	require.False(t, local.released.Load(), "a middleware only the locals reach goes back to the pool unmarked")
+	require.False(t, local.is(lifeReleased), "a middleware only the locals reach goes back to the pool unmarked")
 
 	// sync.Pool gives no promise about what comes back, but it can only return
 	// what was put in, so the published one must never appear.
@@ -1253,6 +1254,149 @@ func Test_Session_Middleware_FinishesOnTimedOutGoroutine(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
 	<-finished
+}
+
+// Test_Session_Middleware_TimedOutRequestLetsGoOfItsContext checks that, once the timeout
+// middleware answered the request, neither the middleware nor the session of the handler it gave up
+// on refers to the request any more. The context of the request is reused for another one when the
+// handler is done, and whoever still holds the session then must not write into that request. Both
+// stay as they are for the handler itself.
+func Test_Session_Middleware_TimedOutRequestLetsGoOfItsContext(t *testing.T) {
+	t.Parallel()
+
+	var (
+		held    = make(chan *Middleware, 1)
+		release = make(chan struct{})
+		done    = make(chan struct{})
+	)
+	store := NewStore()
+	app := fiber.New()
+	app.Use(New(Config{Store: store}))
+	app.Get("/slow", timeout.New(func(c fiber.Ctx) error {
+		defer close(done)
+		held <- FromContext(c)
+		<-release
+		return nil
+	}, timeout.Config{Timeout: 10 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+
+	m := <-held
+	m.mu.RLock()
+	sess, ctx := m.Session, m.ctx
+	m.mu.RUnlock()
+	require.NotNil(t, sess, "the middleware of the running handler was reset")
+	require.Nil(t, ctx, "the middleware still refers to the request that was answered")
+	require.Nil(t, sess.requestCtx(), "and so does its session")
+
+	m.Set("late", "x")
+	require.Equal(t, "x", m.Get("late"), "the handler goes on with its own session")
+
+	// nothing saved it, since the response was fixed; a save of its own writes the record, and no cookie
+	require.Empty(t, storedFor(t, store, sess.ID()))
+	require.NoError(t, sess.Save())
+	require.NotEmpty(t, storedFor(t, store, sess.ID()))
+
+	close(release)
+	<-done
+}
+
+// slowStorage makes every write and delete take a while, as a storage under load does.
+type slowStorage struct {
+	fiber.Storage
+	delay time.Duration
+}
+
+func (s slowStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	time.Sleep(s.delay)
+	return s.Storage.SetWithContext(ctx, key, val, exp)
+}
+
+func (s slowStorage) DeleteWithContext(ctx context.Context, key string) error {
+	time.Sleep(s.delay)
+	return s.Storage.DeleteWithContext(ctx, key)
+}
+
+// Test_Session_Middleware_TimedOutAnswerDoesNotWaitForTheHandlerInTheStorage checks that the answer
+// of the timeout middleware does not wait for the handler it gave up on. The handler is inside a
+// call that holds a lock across the storage, the one of its middleware (Destroy) or the one of its
+// session (a save), and the cut from the request, which needs that lock, follows when the call is
+// done.
+func Test_Session_Middleware_TimedOutAnswerDoesNotWaitForTheHandlerInTheStorage(t *testing.T) {
+	t.Parallel()
+
+	const (
+		storageDelay = 600 * time.Millisecond
+		answerWithin = 400 * time.Millisecond
+	)
+	for name, call := range map[string]func(m *Middleware) error{
+		"Destroy holds the lock of the middleware": func(m *Middleware) error { return m.Destroy() },
+		"a save holds the lock of the session": func(m *Middleware) error {
+			m.Set("k", "v")
+			return m.Session.saveSessionWithContext(context.Background())
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var (
+				held = make(chan *Middleware, 1)
+				done = make(chan struct{})
+			)
+			app := fiber.New()
+			app.Use(New(Config{Storage: slowStorage{Storage: memory.New(), delay: storageDelay}}))
+			app.Get("/slow", timeout.New(func(c fiber.Ctx) error {
+				defer close(done)
+				m := FromContext(c)
+				held <- m
+				return call(m)
+			}, timeout.Config{Timeout: 20 * time.Millisecond}))
+
+			start := time.Now()
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody), fiber.TestConfig{Timeout: 5 * time.Second})
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+			require.Less(t, time.Since(start), answerWithin, "the answer waited for the handler in the storage")
+
+			m := <-held
+			<-done
+			requireDetached(t, m)
+		})
+	}
+}
+
+// Test_Session_Middleware_AbandonedWithoutTimeoutKeepsItsObjects abandons the request the way the
+// sse middleware does, with no timeout response. The session is saved as usual, and then neither
+// the middleware nor the session goes back to the pool, where the next request would take them
+// while the handler still holds them.
+func Test_Session_Middleware_AbandonedWithoutTimeoutKeepsItsObjects(t *testing.T) {
+	t.Parallel()
+
+	var (
+		m    *Middleware
+		sess *Session
+	)
+	store := NewStore()
+	app := fiber.New()
+	app.Use(New(Config{Store: store}))
+	app.Get("/stream", func(c fiber.Ctx) error {
+		m = FromContext(c)
+		sess = m.Session
+		m.Set("user", "alice")
+		c.Abandon()
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/stream", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.NotEmpty(t, resp.Header.Get(fiber.HeaderSetCookie), "an abandoned request is still answered with its cookie")
+	require.NotEmpty(t, storedFor(t, store, sess.ID()), "and its session is saved")
+
+	require.True(t, m.is(lifeReleased), "the middleware is finished, and not in the pool")
+	require.Equal(t, "alice", sess.Get("user"), "its session is left as it was, not reset for the pool")
 }
 
 // Benchmark_Middleware drives the whole handler, which the store benchmarks do
