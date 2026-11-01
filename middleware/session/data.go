@@ -29,8 +29,8 @@ type data struct {
 	// Only what runs once per request goes through it. A read does not ask for it, and
 	// Set asks with a type test, not a call: a session without a codec, nearly every
 	// session, pays a comparison. Every operation behind the interface was tried, and
-	// measured with callgrind: 47 more instructions per Session.Get (375 to 422), 64 per
-	// GetAs and 36 per Set, 6 to 16%.
+	// measured with callgrind: 47 more instructions per Session.Get, 64 per GetAs and 36
+	// per Set, 6 to 16%.
 	format format
 
 	Data map[any]any // Session key counts are expected to be bounded.
@@ -50,6 +50,9 @@ type data struct {
 // without calling Set. Scalars are copies; anything else may share memory with Data.
 func valueMayAlias(v any) bool {
 	switch v.(type) {
+	case string, int, int64, bool:
+		// What sessions mostly hold, told without reflection: this runs on every read.
+		return false
 	case time.Time:
 		// A copy, and its *Location is a shared immutable. Excluded because the
 		// absolute-timeout bookkeeping reads one on every session load.
@@ -77,7 +80,7 @@ func valueMayAlias(v any) bool {
 var dataPool = sync.Pool{
 	New: func() any {
 		d := new(data)
-		d.format = gobFormat{}
+		d.format = gobStream
 		d.Data = make(map[any]any)
 		return d
 	},
@@ -94,7 +97,7 @@ var dataPool = sync.Pool{
 func acquireData() *data {
 	obj := dataPool.Get()
 	if d, ok := obj.(*data); ok {
-		d.resetAs(gobFormat{})
+		d.reset(gobStream)
 		return d
 	}
 	// Handle unexpected type in the pool
@@ -108,28 +111,20 @@ func releaseData(d *data) {
 	if d == nil {
 		return
 	}
-	d.resetAs(gobFormat{})
+	d.reset(gobStream)
 	dataPool.Put(d)
 }
 
-// Reset clears the data map and resets the data object. The data keeps the format
-// of its session.
+// reset clears the data map and makes the data hold the format f, in one step: a
+// session of a store with a codec starts over as a session of the store, whatever it
+// was stored as, and no value is set in between that the codec has not encoded. Gob
+// makes the data hold the values themselves, which is how a session that goes back to
+// the pool lets go of the codec of the store it served.
 //
 // Usage:
 //
-//	d.Reset()
-func (d *data) Reset() {
-	d.Lock()
-	defer d.Unlock()
-	d.emptyLocked()
-}
-
-// resetAs is Reset that also makes the data hold what f says, in one step: a session
-// of a store with a codec starts over as a session of the store, whatever it was
-// stored as, and no value is set in between that the codec has not encoded. Gob makes
-// the data hold the values themselves, which is how a session that goes back to the
-// pool lets go of the codec of the store it served.
-func (d *data) resetAs(f format) {
+//	d.reset(gobStream)
+func (d *data) reset(f format) {
 	d.Lock()
 	defer d.Unlock()
 	d.format = f
@@ -143,7 +138,9 @@ func (d *data) emptyLocked() {
 	clear(d.Data)
 }
 
-// Get retrieves a value from the data map by key.
+// Get retrieves a value from the data map by key. The value of a session with a codec is
+// decoded once the lock is let go, since a codec is not called with a lock held: the
+// deferred call does it, which spares the read a call of its own.
 //
 // Parameters:
 //   - key: The key to retrieve.
@@ -154,9 +151,16 @@ func (d *data) emptyLocked() {
 // Usage:
 //
 //	value := d.Get("key")
-func (d *data) Get(key any) any {
-	held, _ := d.fetch(key)
-	return readValue(held)
+func (d *data) Get(key any) (value any) { //nolint:nonamedreturns // the deferred call decodes the value once the lock is let go
+	d.RLock()
+	defer func() {
+		d.RUnlock()
+		value = readValue(value)
+	}()
+
+	v := d.Data[key]
+	d.handOut(v)
+	return v
 }
 
 // fetch returns what is stored under key and whether there is a value under key. An
@@ -165,11 +169,17 @@ func (d *data) fetch(key any) (any, bool) {
 	d.RLock()
 	defer d.RUnlock()
 	v, ok := d.Data[key]
+	d.handOut(v)
+	return v, ok
+}
+
+// handOut notes that v, a value read from the data, is handed to the caller. One that
+// can alias the session lets the caller change the session without calling Set, so the
+// bytes it was loaded from are no longer its snapshot.
+func (d *data) handOut(v any) {
 	if valueMayAlias(v) {
-		// The caller can now mutate the session through v without calling Set.
 		d.dirty.Store(true)
 	}
-	return v, ok
 }
 
 // getRaw returns what is stored under key as it is held: for a session of a store with
@@ -219,12 +229,12 @@ func (d *data) setRaw(key, value any) {
 func (d *data) setEncoded(codec *namedCodec, key, value any) {
 	name, ok := key.(string)
 	if !ok {
-		d.fail(codec, key, fmt.Errorf("%w, got a key of type %T", errNonStringKey, key))
+		d.rememberFailedSet(codec, key, fmt.Errorf("%w, got a key of type %T", errNonStringKey, key))
 		return
 	}
 	encoded, err := codec.Marshal(value)
 	if err != nil {
-		d.fail(codec, key, fmt.Errorf("failed to encode session value %q: %w", name, err))
+		d.rememberFailedSet(codec, key, fmt.Errorf("failed to encode session value %q: %w", name, err))
 		return
 	}
 	// The session keeps its own copy: a codec may hand out a buffer that it reuses.
@@ -249,8 +259,8 @@ func (d *data) holds(codec *namedCodec) bool {
 	return ok && held == codec
 }
 
-// fail remembers that the Set of key under codec failed.
-func (d *data) fail(codec *namedCodec, key any, err error) {
+// rememberFailedSet remembers that the Set of key under codec failed with err.
+func (d *data) rememberFailedSet(codec *namedCodec, key any, err error) {
 	d.Lock()
 	defer d.Unlock()
 	if !d.holds(codec) {
@@ -308,7 +318,12 @@ func (d *data) Delete(key any) {
 func (d *data) Keys() []any {
 	d.RLock()
 	defer d.RUnlock()
-	return d.format.keys(d)
+	keys, aliased := d.format.keys(d.Data)
+	if aliased {
+		// The caller can now mutate the session through a key without calling Set.
+		d.dirty.Store(true)
+	}
+	return keys
 }
 
 // Len returns the number of key-value pairs in the data map.
@@ -366,10 +381,15 @@ func (d *data) decode(rawData []byte) ([]byte, error) {
 	// returns, so the decode and the snapshot Save writes back read the same bytes.
 	raw := utils.CopyBytes(rawData)
 	if isRecord(raw) {
-		// The caller has seen to it that the store can read the record.
-		if err := d.format.loadRecord(d, raw); err != nil {
+		// The caller has seen to it that the store can read the record, if it has a codec.
+		codec, ok := d.format.(*namedCodec)
+		if !ok {
+			return nil, errRecordNeedsCodec
+		}
+		if err := codec.loadRecord(raw, d.Data); err != nil {
 			return nil, err
 		}
+		d.dirty.Store(false)
 		return raw, nil
 	}
 	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
@@ -379,7 +399,7 @@ func (d *data) decode(rawData []byte) ([]byte, error) {
 	if err := gob.NewDecoder(byteBuffer).Decode(&d.Data); err != nil {
 		return nil, fmt.Errorf("failed to decode session data: %w", err)
 	}
-	d.format = gobFormat{}
+	d.format = gobStream
 	d.dirty.Store(false)
 	return raw, nil
 }
@@ -387,5 +407,9 @@ func (d *data) decode(rawData []byte) ([]byte, error) {
 // encode returns the data as the bytes to store: a record under a codec, a gob stream
 // otherwise. The caller holds the read lock.
 func (d *data) encode() ([]byte, error) {
-	return d.format.encode(d)
+	// A Set that failed fails the save, whatever the format: only a codec fails one.
+	if err := d.pendingError(); err != nil {
+		return nil, err
+	}
+	return d.format.encode(d.Data)
 }

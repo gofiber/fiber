@@ -106,7 +106,7 @@ func releaseSession(s *Session) {
 	s.loaded = false
 	s.dropped = false
 	if s.data != nil {
-		s.data.resetAs(gobFormat{})
+		s.data.reset(gobStream)
 	}
 	s.mu.Unlock()
 	sessionPool.Put(s)
@@ -345,11 +345,11 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 // resetData empties the data. A session of a store with a codec starts over as a
 // session of the store, which one that was stored as gob did not belong to.
 func (s *Session) resetData() {
-	var f format = gobFormat{}
+	var f format = gobStream
 	if s.config != nil {
 		f = s.config.sessionFormat()
 	}
-	s.data.resetAs(f)
+	s.data.reset(f)
 	s.rawData = nil
 }
 

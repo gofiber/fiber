@@ -214,17 +214,26 @@ func decodeInto(key any, encoded []byte, codec *namedCodec, target reflect.Value
 	return nil
 }
 
-// sessionFormat returns the format the sessions of the store hold. NewStore asks the
-// codec for its name once; a Store built without NewStore asks every time.
-func (s *Store) sessionFormat() format {
+// recordCodec returns the Codec of the store with its name, nil for a store without
+// one. NewStore asks the codec for its name once; a Store built without NewStore asks
+// every time.
+func (s *Store) recordCodec() *namedCodec {
 	switch {
 	case s.named != nil:
 		return s.named
 	case s.Codec == nil:
-		return gobFormat{}
+		return nil
 	default:
 		return &namedCodec{Codec: s.Codec, name: s.Codec.Name()}
 	}
+}
+
+// sessionFormat returns the format the sessions of the store hold.
+func (s *Store) sessionFormat() format {
+	if codec := s.recordCodec(); codec != nil {
+		return codec
+	}
+	return gobStream
 }
 
 // refusesRecord reports whether raw, a stored session, is a record this store
@@ -239,21 +248,25 @@ func (s *Store) refusesRecord(raw []byte) bool {
 
 // cannotRead is refusesRecord for a stored session that is a record.
 func (s *Store) cannotRead(raw []byte) bool {
-	f := s.sessionFormat()
-	if f.reads(raw) {
+	codec := s.recordCodec()
+	if codec != nil && codec.reads(raw) {
 		return false
 	}
-	s.warnUnreadable(raw, f)
+	s.warnUnreadable(raw, codec)
 	return true
 }
 
 // warnUnreadable says, once per store, that a stored session is a record this store,
-// whose format is f, cannot read, and is treated as a session that does not exist.
-func (s *Store) warnUnreadable(raw []byte, f format) {
+// whose codec is codec, nil if it has none, cannot read, and is treated as a session
+// that does not exist.
+func (s *Store) warnUnreadable(raw []byte, codec *namedCodec) {
 	if !s.unreadableWarned.CompareAndSwap(false, true) {
 		return
 	}
-	have := f.describe()
+	have := "has no codec"
+	if codec != nil {
+		have = fmt.Sprintf("uses the codec %q", codec.name)
+	}
 	version, name, known := recordCodecOf(raw)
 	switch {
 	case len(name) > 0:

@@ -266,7 +266,7 @@ func Test_Codec_GobSessionsStayGob(t *testing.T) {
 		sess := loadSession(t, app, codecStore, id)
 		require.False(t, sess.Fresh())
 		require.Equal(t, id, sess.ID())
-		require.IsType(t, gobFormat{}, sess.data.format, "a session that was stored as gob is gob, whatever the store now does")
+		require.IsType(t, gobStream, sess.data.format, "a session that was stored as gob is gob, whatever the store now does")
 
 		// The typed readers work in either mode, and Get returns the values themselves.
 		var got codecProfile
@@ -322,7 +322,7 @@ func Test_Codec_GobSessionsStayGob(t *testing.T) {
 
 		// Destroy starts a session over as Reset does, so that what is saved after it is a record.
 		destroyed := loadSession(t, app, codecStore, seed(t))
-		require.IsType(t, gobFormat{}, destroyed.data.format, "a session that was stored as gob stays gob")
+		require.IsType(t, gobStream, destroyed.data.format, "a session that was stored as gob stays gob")
 		require.NoError(t, destroyed.Destroy())
 		destroyed.Set("b", 2)
 		require.NoError(t, destroyed.Save())
@@ -1000,7 +1000,7 @@ func Test_Codec_ResetIsOneStep(t *testing.T) {
 	for range 200 {
 		id := seedSession(t, app, gobStore, func(s *Session) { s.Set("k", 1) })
 		sess := loadSession(t, app, codecStore, id)
-		require.IsType(t, gobFormat{}, sess.data.format, "it is a session that was stored as gob")
+		require.IsType(t, gobStream, sess.data.format, "it is a session that was stored as gob")
 
 		var wg sync.WaitGroup
 		for i := range 4 {
@@ -1307,8 +1307,7 @@ func Test_Middleware_ReadsTakeTheReadLock(t *testing.T) {
 			m.Set("k", "v")
 
 			reads := readsOf(m, "k")
-			reads["lookup"] = func() { _ = m.lookup("k") }
-			reads["fetch"] = func() { _, _ = m.fetch("k") } //nolint:errcheck // only the locking matters here
+			reads["fetch"] = func() { _, _ = m.fetch("k") }
 			for readName, read := range reads {
 				m.mu.Lock()
 				done := make(chan struct{})
@@ -1355,14 +1354,14 @@ func Test_Codec_SetInsideTheCodecWhenTheDataIsReleasedStoresNothing(t *testing.T
 			codec := &namedCodec{Codec: NewCodec("blocking", marshal, func([]byte, any) error { return nil }), name: "blocking"}
 
 			d := acquireData()
-			d.resetAs(codec)
+			d.reset(codec)
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
 				d.Set("late", "v")
 			}()
 			<-entered
-			d.resetAs(gobFormat{}) // the session is released while the codec runs
+			d.reset(gobStream) // the session is released while the codec runs
 			close(leave)
 			<-done
 

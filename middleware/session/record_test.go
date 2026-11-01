@@ -375,7 +375,7 @@ func Test_Session_DecodeRecordRefusesWhatItCannotRead(t *testing.T) {
 		name   string
 		record []byte
 	}{
-		{name: "a session without a codec", format: gobFormat{}, record: record, err: errRecordNeedsCodec},
+		{name: "a session without a codec", format: gobStream, record: record, err: errRecordNeedsCodec},
 		{name: "a record of another codec", format: &namedCodec{Codec: JSONCodec{}, name: "other"}, record: record, err: errCodecMismatch},
 		{name: "a damaged record leaves no entries", format: &namedCodec{Codec: JSONCodec{}, name: "json"}, record: damaged, err: errInvalidRecord},
 	} {

@@ -26,13 +26,13 @@ func (s *Session) Get(key any) any {
 	return s.data.Get(key)
 }
 
-// lookup returns what is stored under key. See data.fetch.
-func (s *Session) lookup(key any) any {
+// fetch returns what is stored under key, as it is held, and whether there is a value.
+// See data.fetch.
+func (s *Session) fetch(key any) (any, bool) {
 	if s.data == nil {
-		return nil
+		return nil, false
 	}
-	held, _ := s.data.fetch(key)
-	return held
+	return s.data.fetch(key)
 }
 
 // GetAs returns the value stored under key as a V, and whether it is one: ok is
@@ -65,11 +65,11 @@ func GetAs[V any, S *Session | *Middleware](src S, key any) (V, bool) {
 	switch typed := any(src).(type) {
 	case *Middleware:
 		if typed != nil {
-			held = typed.lookup(key)
+			held, _ = typed.fetch(key)
 		}
 	case *Session:
 		if typed != nil {
-			held = typed.lookup(key)
+			held, _ = typed.fetch(key)
 		}
 	}
 
@@ -109,21 +109,14 @@ func (s *Session) GetInto(key, target any) error {
 	if err != nil {
 		return err
 	}
-	held, err := s.fetch(key)
-	if err != nil {
-		return err
+	held, ok := s.fetch(key)
+	if !ok {
+		return keyNotFound(key)
 	}
 	return readInto(held, key, rv)
 }
 
-// fetch returns what is stored under key, or ErrKeyNotFound.
-func (s *Session) fetch(key any) (any, error) {
-	if s.data == nil {
-		return nil, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
-	}
-	held, ok := s.data.fetch(key)
-	if !ok {
-		return nil, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
-	}
-	return held, nil
+// keyNotFound is the error of GetInto for a key that the session holds no value under.
+func keyNotFound(key any) error {
+	return fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
 }

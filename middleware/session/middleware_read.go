@@ -15,21 +15,20 @@ import (
 // Usage:
 //
 //	value := m.Get("key")
-func (m *Middleware) Get(key any) any {
-	// The lock is held for the lookup only: a codec decodes without it.
-	return readValue(m.lookup(key))
-}
-
-// lookup is Session.lookup under the read lock of the middleware, as Get takes it.
-func (m *Middleware) lookup(key any) any {
+func (m *Middleware) Get(key any) (value any) { //nolint:nonamedreturns // the deferred call decodes the value once the lock is let go
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	defer func() {
+		m.mu.RUnlock()
+		// The lock is held for the lookup only: a codec decodes without it.
+		value = readValue(value)
+	}()
 
-	return m.Session.lookup(key)
+	value, _ = m.Session.fetch(key)
+	return value
 }
 
-// fetch is Session.fetch under the read lock of the middleware.
-func (m *Middleware) fetch(key any) (any, error) {
+// fetch is Session.fetch under the read lock of the middleware, as Get takes it.
+func (m *Middleware) fetch(key any) (any, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -56,9 +55,9 @@ func (m *Middleware) GetInto(key, target any) error {
 		return err
 	}
 	// Under the lock, only the lookup: a codec is not called with it held.
-	held, err := m.fetch(key)
-	if err != nil {
-		return err
+	held, ok := m.fetch(key)
+	if !ok {
+		return keyNotFound(key)
 	}
 	return readInto(held, key, rv)
 }
