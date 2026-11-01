@@ -1104,3 +1104,79 @@ func Test_Session_Store_Get_AskedAgainIssuesANewSession(t *testing.T) {
 		require.NotEqual(t, first, second)
 	})
 }
+
+// The ID of the session middleware a middleware runs inside names no session while that
+// one has not saved it, and does not hide the session the request names: the outer
+// middleware holds a new session, the inner one also reads the cookie b_sid and must
+// find the session that cookie names.
+func Test_Session_MultipleStores_UnsavedIDOfTheOuterMiddlewareDoesNotHideTheCookiesSession(t *testing.T) {
+	t.Parallel()
+
+	storage := memory.New()
+	outerHandler, _ := NewWithStore(Config{Storage: storage, Extractor: extractors.FromCookie("a_sid")})
+	innerHandler, innerStore := NewWithStore(Config{
+		Storage:   storage,
+		Extractor: extractors.Chain(extractors.FromCookie("a_sid"), extractors.FromCookie("b_sid")),
+	})
+
+	app := fiber.New()
+	idB := seedSession(t, app, innerStore, func(s *Session) { s.Set("who", "inner") })
+	app.Use(outerHandler, innerHandler)
+	app.Get("/", func(c fiber.Ctx) error {
+		inner := innerStore.FromContext(c)
+		return c.SendString(fmt.Sprintf("%v|%t|%s", inner.Get("who"), inner.Fresh(), inner.ID()))
+	})
+
+	_, body := sendRequest(t, app, "/", map[string]string{"b_sid": idB})
+	require.Equal(t, "inner|false|"+idB, body, "the new session of the outer middleware hid the one the b_sid cookie names")
+}
+
+// The nearest session middleware outside that shares a source decides, not the outermost
+// one. The outer one has no cookie of its own to find a session through and holds a new,
+// unsaved ID; the middle one finds its session through the cookie b; the inner one shares
+// the cookie a with both, and must take the session of the middle one.
+func Test_Session_MultipleStores_NearestSharingOuterMiddlewareDecides(t *testing.T) {
+	t.Parallel()
+
+	storage := memory.New()
+	outerHandler, outerStore := NewWithStore(Config{Storage: storage, Extractor: extractors.FromCookie("a")})
+	middleHandler, middleStore := NewWithStore(Config{Storage: storage, Extractor: extractors.Chain(extractors.FromCookie("a"), extractors.FromCookie("b"))})
+	innerHandler, innerStore := NewWithStore(Config{Storage: storage, Extractor: extractors.Chain(extractors.FromCookie("a"), extractors.FromCookie("d"))})
+
+	app := fiber.New()
+	app.Use(outerHandler, middleHandler, innerHandler)
+	app.Get("/seed", func(c fiber.Ctx) error {
+		middleStore.FromContext(c).Set("who", "middle")
+		return c.SendString(middleStore.FromContext(c).ID())
+	})
+	app.Get("/read", func(c fiber.Ctx) error {
+		outer, middle, inner := outerStore.FromContext(c), middleStore.FromContext(c), innerStore.FromContext(c)
+		return c.SendString(fmt.Sprintf("%t|%v|%t|%s|%v|%t", outer.Fresh(), middle.Get("who"), middle.Fresh(), inner.ID(), inner.Get("who"), inner.Fresh()))
+	})
+
+	_, id := sendRequest(t, app, "/seed", nil)
+	_, body := sendRequest(t, app, "/read", map[string]string{"b": id})
+	require.Equal(t, "true|middle|false|"+id+"|middle|false", body,
+		"the inner middleware took the session of the outermost one, which is new, instead of the one of the nearest")
+}
+
+// A storage that fails when a middleware looks for the session of the one it runs
+// inside is reported, as it is for the ID the request names and the ones Store.Get
+// cached. The visitor has no cookie, so nothing else is read that could fail too.
+func Test_Session_MultipleStores_OuterIDReadErrorReachesTheErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	storage := &armedFailureStorage{Storage: memory.New(), err: errors.New("storage down")}
+	outerHandler, _ := NewWithStore(Config{Storage: storage, Extractor: extractors.FromCookie("sid")})
+	innerHandler, _ := NewWithStore(Config{Storage: storage, Extractor: extractors.FromCookie("sid")})
+
+	app := fiber.New()
+	app.Use(outerHandler, func(c fiber.Ctx) error {
+		storage.armed.Store(true) // the outer middleware has loaded its session; the inner one looks for it next
+		return c.Next()
+	}, innerHandler)
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("reached") })
+
+	resp, body := sendRequest(t, app, "/", nil)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode, body)
+}

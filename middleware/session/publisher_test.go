@@ -423,3 +423,73 @@ func Test_Store_ExtractorReplacedAfterNewStore(t *testing.T) {
 	require.Equal(t, []string{"cookie:a", "header:X-A"}, sinkNames(grown.writableSinks()), "the chain has the header as well")
 	require.True(t, grown.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("x-a")})))
 }
+
+// An ID that names no session of the store is passed over to the next one, and not only
+// to the request: W, the newest to cache an ID, reads the cookie S reads but keeps its
+// sessions in a storage of its own, so its ID is no session of S's; A cached an ID
+// before and saved its session in the storage of S, and S must find that one.
+func Test_Session_Store_PassesOverAnIDThatIsNoSessionToAnOlderOneThatIs(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	storeA := NewStore(Config{Extractor: extractors.FromCookie("sid")})
+	storeW := NewStore(Config{Extractor: extractors.FromCookie("sid")})
+	storeS := NewStore(Config{Extractor: extractors.FromCookie("sid"), Storage: storeA.Storage})
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	a, err := storeA.Get(c)
+	require.NoError(t, err)
+	defer a.Release()
+	a.Set("k", "v")
+	require.NoError(t, a.Save())
+
+	w, err := storeW.Get(c)
+	require.NoError(t, err)
+	defer w.Release()
+	require.True(t, w.Fresh(), "A's ID is no session of the storage of W")
+	require.Same(t, storeW, requestIDs(c).store, "W cached the newest ID")
+
+	s, err := storeS.Get(c)
+	require.NoError(t, err)
+	defer s.Release()
+	require.False(t, s.Fresh(), "S stopped at the newest ID, which names no session, and lost the one A saved")
+	require.Equal(t, a.ID(), s.ID())
+	require.Equal(t, "v", s.Get("k"))
+}
+
+// Of the cached IDs that name a stored session the newest one is taken: A1 and A2 read
+// different cookies, so each starts a session of its own and saves it, and S reads both.
+func Test_Session_Store_TakesTheNewestOfTheSavedIDsItShares(t *testing.T) {
+	t.Parallel()
+
+	storage := memory.New()
+	app := fiber.New()
+	storeA1 := NewStore(Config{Extractor: extractors.FromCookie("a1_sid"), Storage: storage})
+	storeA2 := NewStore(Config{Extractor: extractors.FromCookie("a2_sid"), Storage: storage})
+	storeS := NewStore(Config{
+		Extractor: extractors.Chain(extractors.FromCookie("a1_sid"), extractors.FromCookie("a2_sid")),
+		Storage:   storage,
+	})
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	saved := func(store *Store) *Session {
+		sess, err := store.Get(c)
+		require.NoError(t, err)
+		t.Cleanup(sess.Release)
+		require.True(t, sess.Fresh())
+		require.NoError(t, sess.Save())
+		return sess
+	}
+	a1, a2 := saved(storeA1), saved(storeA2)
+	require.NotEqual(t, a1.ID(), a2.ID())
+
+	s, err := storeS.Get(c)
+	require.NoError(t, err)
+	defer s.Release()
+	require.False(t, s.Fresh())
+	require.Equal(t, a2.ID(), s.ID(), "S took the older of the two sessions that were saved")
+}
