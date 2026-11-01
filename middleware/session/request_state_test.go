@@ -50,8 +50,7 @@ func Test_Session_Middleware_ContextIsLeftAloneWithoutPassLocalsToContext(t *tes
 				return nil
 			})
 
-			resp, _, err := doRequest(app, "/", nil)
-			require.NoError(t, err)
+			resp, _ := sendRequest(t, app, "/", nil)
 			require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 			if pass {
@@ -91,8 +90,7 @@ func Test_Session_Middleware_FinishedMiddlewareIsHiddenInTheContext(t *testing.T
 		return nil
 	})
 
-	resp, _, err := doRequest(app, "/", nil)
-	require.NoError(t, err)
+	resp, _ := sendRequest(t, app, "/", nil)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	require.NotNil(t, after)
@@ -112,16 +110,10 @@ func Test_Session_Middleware_FinishedMiddlewareIsHiddenInTheContext(t *testing.T
 func Test_Session_Middleware_ReleaseForgetsTheStoreAndTheErrorHandler(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	c := newRequest(t, app)
+	c := newRequest(t, fiber.New())
+	store := NewStore(Config{Extractor: extractors.FromCookie("a_sid"), ErrorHandler: func(fiber.Ctx, error) {}})
 
-	store := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	cfg := store.Config
-	cfg.Store = store
-	cfg.ErrorHandler = func(fiber.Ctx, error) {}
-
-	m := acquireMiddleware()
-	require.NoError(t, m.initialize(c, &cfg))
+	m := startMiddleware(t, c, store)
 	require.Same(t, store, m.Store())
 	require.NotNil(t, m.errorHandler)
 

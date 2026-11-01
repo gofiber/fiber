@@ -701,7 +701,6 @@ func Test_Store_CachedIDsDoNotLeakAcrossRequests(t *testing.T) {
 	}
 
 	const workers, requests = 4, 300
-	failures := make(chan string, workers*requests)
 	var wg sync.WaitGroup
 	for worker := range workers {
 		wg.Go(func() {
@@ -717,7 +716,7 @@ func Test_Store_CachedIDsDoNotLeakAcrossRequests(t *testing.T) {
 					store := stores[rng.IntN(len(stores))]
 					sess, err := store.Get(c)
 					if err != nil {
-						failures <- err.Error()
+						t.Error(err)
 						return
 					}
 					if sess.Fresh() {
@@ -725,7 +724,7 @@ func Test_Store_CachedIDsDoNotLeakAcrossRequests(t *testing.T) {
 					}
 					if rng.IntN(2) == 0 {
 						if saveErr := sess.Save(); saveErr != nil {
-							failures <- saveErr.Error()
+							t.Error(saveErr)
 							return
 						}
 					}
@@ -736,9 +735,9 @@ func Test_Store_CachedIDsDoNotLeakAcrossRequests(t *testing.T) {
 				for entry := requestIDs(c); entry != nil; entry = entry.next {
 					switch {
 					case seen[entry.store]:
-						failures <- fmt.Sprintf("worker %d request %d: a store has two entries", worker, request)
+						t.Errorf("worker %d request %d: a store has two entries", worker, request)
 					case issued[entry.id] != entry.store:
-						failures <- fmt.Sprintf("worker %d request %d: entry %q was not issued by its store in this request", worker, request, entry.id)
+						t.Errorf("worker %d request %d: entry %q was not issued by its store in this request", worker, request, entry.id)
 					}
 					seen[entry.store] = true
 				}
@@ -746,10 +745,6 @@ func Test_Store_CachedIDsDoNotLeakAcrossRequests(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	close(failures)
-	for failure := range failures {
-		t.Error(failure)
-	}
 }
 
 // armedFailureStorage fails its reads once armed.
@@ -775,17 +770,12 @@ func Test_Store_CachedIDReadErrorReachesCaller(t *testing.T) {
 	errDown := errors.New("storage down")
 	storage := &armedFailureStorage{Storage: memory.New(), err: errDown}
 	store := NewStore(Config{Storage: storage})
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	c := newRequest(t, fiber.New())
 
-	first, err := store.Get(ctx)
-	require.NoError(t, err)
-	defer first.Release()
-	require.NoError(t, first.Save())
+	require.NoError(t, mustGet(t, store, c).Save())
 
 	storage.armed.Store(true)
-	_, err = store.Get(ctx)
+	_, err := store.Get(c)
 	require.ErrorIs(t, err, errDown)
 }
 
@@ -803,16 +793,10 @@ func Test_Store_Get_AskedAgainDoesNotLookUpTheNamedIDTwice(t *testing.T) {
 	require.Equal(t, "stale", seedSession(t, app, holder, func(s *Session) { s.Set("k", "v") }))
 	sharing := NewStore(Config{Storage: other})
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := newRequest(t, app)
 	c.Request().Header.SetCookie("session_id", "stale")
 
-	first, err := store.Get(c)
-	require.NoError(t, err)
-	defer first.Release()
-	second, err := store.Get(c)
-	require.NoError(t, err)
-	defer second.Release()
+	first, second := mustGet(t, store, c), mustGet(t, store, c)
 	require.True(t, first.Fresh() && second.Fresh())
 	require.NotEqual(t, first.ID(), second.ID(), "an ID that was not saved is not a session")
 
@@ -824,9 +808,7 @@ func Test_Store_Get_AskedAgainDoesNotLookUpTheNamedIDTwice(t *testing.T) {
 	}
 	require.Equal(t, 1, lookups, "the cookie named no session the first time, and is not looked up again")
 
-	third, err := sharing.Get(c)
-	require.NoError(t, err)
-	defer third.Release()
+	third := mustGet(t, sharing, c)
 	require.False(t, third.Fresh(), "the storage of another store holds the session the cookie names")
 	require.Equal(t, "stale", third.ID())
 }
@@ -836,10 +818,8 @@ func Test_Store_Get_AskedAgainDoesNotLookUpTheNamedIDTwice(t *testing.T) {
 func Test_Store_PassesLocalsToContextByApp(t *testing.T) {
 	t.Parallel()
 
-	on, off := fiber.New(fiber.Config{PassLocalsToContext: true}), fiber.New()
-	onCtx, offCtx := on.AcquireCtx(&fasthttp.RequestCtx{}), off.AcquireCtx(&fasthttp.RequestCtx{})
-	defer on.ReleaseCtx(onCtx)
-	defer off.ReleaseCtx(offCtx)
+	onCtx := newRequest(t, fiber.New(fiber.Config{PassLocalsToContext: true}))
+	offCtx := newRequest(t, fiber.New())
 
 	store := NewStore()
 	for range 3 {

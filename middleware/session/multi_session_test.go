@@ -61,10 +61,53 @@ func cookiesByName(resp *http.Response) map[string]*http.Cookie {
 	return out
 }
 
-// Two session middleware, each over its own cookie, keep two sessions apart in
-// one request. Before stores stopped adopting each other's cached ID, the second
-// one looked up the first one's ID: its session never survived a request, or,
-// over a shared backend, aliased the first session's record.
+// useCookieStore puts a session middleware over the cookie name on app, with the Config
+// given besides its Extractor, and returns its store.
+func useCookieStore(app *fiber.App, name string, config ...Config) *Store {
+	var cfg Config
+	if len(config) > 0 {
+		cfg = config[0]
+	}
+	cfg.Extractor = extractors.FromCookie(name)
+	handler, store := NewWithStore(cfg)
+	app.Use(handler)
+	return store
+}
+
+// responseCookie returns the value of the cookie that the response of c sets under name.
+func responseCookie(t *testing.T, c fiber.Ctx, name string) string {
+	t.Helper()
+	cookie := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(cookie)
+	cookie.SetKey(name)
+	require.True(t, c.Response().Header.Cookie(cookie), "the response sets no cookie %q", name)
+	return string(cookie.Value())
+}
+
+// saveNew asks store for its session in c, which must be a new one, and saves it
+// with some data.
+func saveNew(t *testing.T, c fiber.Ctx, store *Store) *Session {
+	t.Helper()
+	sess := mustGet(t, store, c)
+	require.True(t, sess.Fresh())
+	sess.Set("k", store.Extractor.Key)
+	require.NoError(t, sess.Save())
+	return sess
+}
+
+// setInSessions is a handler that sets key to value in the session of the middleware of each store.
+func setInSessions(key, value string, stores ...*Store) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		for _, store := range stores {
+			store.FromContext(c).Set(key, value)
+		}
+		return nil
+	}
+}
+
+// Two session middleware, each over its own cookie, keep two sessions apart in one request.
+// The second used to look up the first one's cached ID: its session never survived a request,
+// or, over a shared backend, aliased the first session's record.
 func Test_Session_MultipleStores_Middleware(t *testing.T) {
 	t.Parallel()
 
@@ -76,16 +119,13 @@ func Test_Session_MultipleStores_Middleware(t *testing.T) {
 			if shared {
 				storageB = storageA
 			}
-			handlerA, storeA := NewWithStore(Config{Storage: storageA, Extractor: extractors.FromCookie("a_sid")})
-			handlerB, storeB := NewWithStore(Config{Storage: storageB, Extractor: extractors.FromCookie("b_sid")})
-
 			app := fiber.New()
-			app.Use(handlerA, handlerB)
+			storeA := useCookieStore(app, "a_sid", Config{Storage: storageA})
+			storeB := useCookieStore(app, "b_sid", Config{Storage: storageB})
 			app.Get("/set", func(c fiber.Ctx) error {
-				a, b := storeA.FromContext(c), storeB.FromContext(c)
-				a.Set("who", "alice")
-				b.Set("lang", "en")
-				return c.SendString(a.ID() + "|" + b.ID())
+				storeA.FromContext(c).Set("who", "alice")
+				storeB.FromContext(c).Set("lang", "en")
+				return c.SendStatus(fiber.StatusOK)
 			})
 			app.Get("/get", func(c fiber.Ctx) error {
 				a, b := storeA.FromContext(c), storeB.FromContext(c)
@@ -120,33 +160,28 @@ func Test_Session_MultipleStores_Middleware(t *testing.T) {
 func Test_Session_MultipleStores_FromContext(t *testing.T) {
 	t.Parallel()
 
-	handlerA, storeA := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	handlerB, storeB := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
-	_, storeC := NewWithStore(Config{Extractor: extractors.FromCookie("c_sid")})
-
 	app := fiber.New()
-	app.Use(handlerA, handlerB)
+	storeA, storeB := useCookieStore(app, "a_sid"), useCookieStore(app, "b_sid")
+	storeC := NewStore(Config{Extractor: extractors.FromCookie("c_sid")})
 	app.Get("/", func(c fiber.Ctx) error {
 		innermost := FromContext(c)
 		a, b := storeA.FromContext(c), storeB.FromContext(c)
-		return c.SendString(strings.Join([]string{
-			strconv.FormatBool(innermost != nil && innermost.Store() == storeB),
-			strconv.FormatBool(a != nil && a.Store() == storeA),
-			strconv.FormatBool(b != nil && b == innermost),
-			strconv.FormatBool(storeC.FromContext(c) == nil),
-			strconv.FormatBool(storeA.FromContext(c.RequestCtx()) == a),
-		}, ","))
+		return c.SendString(fmt.Sprint(
+			innermost != nil && innermost.Store() == storeB,
+			a != nil && a.Store() == storeA,
+			b != nil && b == innermost,
+			storeC.FromContext(c) == nil,
+			storeA.FromContext(c.RequestCtx()) == a,
+		))
 	})
 
 	_, body := sendRequest(t, app, "/", nil)
-	require.Equal(t, "true,true,true,true,true", body)
+	require.Equal(t, "true true true true true", body)
 
 	t.Run("outside the request", func(t *testing.T) {
 		t.Parallel()
 		require.Nil(t, storeA.FromContext(nil))
-
-		ctx := newRequest(t, app)
-		require.Nil(t, storeA.FromContext(ctx), "no middleware ran for this context")
+		require.Nil(t, storeA.FromContext(newRequest(t, app)), "no middleware ran for this context")
 	})
 
 	t.Run("one middleware", func(t *testing.T) {
@@ -162,239 +197,250 @@ func Test_Session_MultipleStores_FromContext(t *testing.T) {
 	})
 }
 
-// Stores over the same cookie still agree on one ID for a visitor without a
-// cookie yet. The CSRF middleware's store and the session middleware's own are
-// two Store values like this, and a visitor's first request must end up with
-// one session, not two.
-func Test_Session_MultipleStores_SameCookieSharesRequestID(t *testing.T) {
+// A middleware takes the session that a store over its cookie saved through Store.Get before
+// it ran: the CSRF middleware's store and the session middleware's own are two Store values
+// like this, and a visitor's first request must end up with one session, not two. It does so
+// whatever ran in between: a store over another cookie, or a middleware over another cookie.
+func Test_Session_MultipleStores_MiddlewareFindsTheSessionStoreGetSaved(t *testing.T) {
 	t.Parallel()
 
-	storage := memory.New()
-	early := NewStore(Config{Storage: storage})
-	handler, late := NewWithStore(Config{Storage: storage})
-	require.NotSame(t, early, late)
+	for _, tc := range []struct {
+		name string
+		want string // what the handler sees of the session, and of the middleware over b_sid if there is one
+		// between asks a store over b_sid after the save, outer runs a middleware over b_sid in front of the one under test
+		between, outer bool
+	}{
+		{name: "the same cookie", want: "t1|false|-"},
+		{name: "another store asked in between", want: "t1|false|-", between: true},
+		{name: "behind a middleware over another cookie", want: "t1|false|<nil>", outer: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	var earlyID atomic.Value
-	app := fiber.New()
-	app.Use(func(c fiber.Ctx) error {
-		sess, err := early.Get(c)
-		if err != nil {
-			return err
-		}
-		defer sess.Release()
-		sess.Set("token", "t1")
-		if err := sess.Save(); err != nil {
-			return err
-		}
-		earlyID.Store(sess.ID())
-		return c.Next()
-	})
-	app.Use(handler)
-	app.Get("/", func(c fiber.Ctx) error {
-		m := late.FromContext(c)
-		return c.SendString(fmt.Sprintf("%v|%v", m.Get("token"), m.Fresh()))
-	})
+			storage := memory.New()
+			early := NewStore(Config{Extractor: extractors.FromCookie("a_sid"), Storage: storage})
+			handler, late := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid"), Storage: storage})
+			require.NotSame(t, early, late)
+			handlerB, storeB := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
 
-	resp, body := sendRequest(t, app, "/", nil)
-	require.Equal(t, "t1|false", body, "the later store adopted the ID the earlier one saved and loaded its record")
+			var earlyID atomic.Value
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				sess, err := early.Get(c)
+				if err != nil {
+					return err
+				}
+				defer sess.Release()
+				sess.Set("token", "t1")
+				if saveErr := sess.Save(); saveErr != nil {
+					return saveErr
+				}
+				earlyID.Store(sess.ID())
+				if tc.between {
+					between, getErr := storeB.Get(c)
+					if getErr != nil {
+						return getErr
+					}
+					between.Release()
+				}
+				return c.Next()
+			})
+			if tc.outer {
+				app.Use(handlerB)
+			}
+			app.Use(handler)
+			app.Get("/", func(c fiber.Ctx) error {
+				m, outer := late.FromContext(c), "-"
+				if o := storeB.FromContext(c); o != nil {
+					outer = fmt.Sprint(o.Get("token"))
+				}
+				return c.SendString(fmt.Sprintf("%v|%v|%s", m.Get("token"), m.Fresh(), outer))
+			})
 
-	cookies := cookiesByName(resp)
-	require.Contains(t, cookies, "session_id")
-	require.Equal(t, earlyID.Load(), cookies["session_id"].Value, "the cookie carries the one ID both stores used")
-
-	keys, err := storage.Keys()
-	require.NoError(t, err)
-	require.Len(t, keys, 1, "one visitor, one stored session")
+			resp, body := sendRequest(t, app, "/", nil)
+			require.Equal(t, tc.want, body, "the middleware did not find the session saved before it")
+			cookies := cookiesByName(resp)
+			require.Contains(t, cookies, "a_sid")
+			require.Equal(t, earlyID.Load(), cookies["a_sid"].Value, "the cookie carries the one ID both stores used")
+			keys, err := storage.Keys()
+			require.NoError(t, err)
+			require.Len(t, keys, 1, "one visitor, one stored session")
+		})
+	}
 }
 
-// A middleware finds the session its own cookie names, and takes neither the ID of a
-// store over another cookie nor one that names no session. A session from Store.Get
-// caches its ID; a middleware that runs after it caches its own, and the next
-// middleware must pass over both. Here the early store reads the cookie B reads, but
-// over a storage that has never seen it, so its session is new and its ID, which is
-// never saved, names nothing; A, over another cookie, is new as well. B has a
-// session, and must find it instead of adopting either ID.
-func Test_Session_MultipleStores_FindsItsOwnSessionNotACachedID(t *testing.T) {
+// A middleware finds the session its own cookie names. It takes neither the ID of a middleware over
+// another cookie in front of it, nor an ID that names no session: one that a Store.Get before it
+// cached and never saved, though that store shares a cookie with it (it keeps its sessions in a
+// storage of its own, which never saw the session), or the new one of the middleware it runs inside.
+func Test_Session_MultipleStores_MiddlewarePassesOverAnIDThatNamesNoSession(t *testing.T) {
 	t.Parallel()
 
-	early := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
-	handlerA, _ := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	handlerB, storeB := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
+	for _, tc := range []struct {
+		name   string
+		early  string               // the cookie of a store asked through Store.Get first, if any
+		front  string               // the cookie of the session middleware it runs inside
+		cookie string               // the cookie of the request that names its session
+		late   extractors.Extractor // what the middleware under test reads
+	}{
+		{
+			name: "the early store reads the cookie that names the session", early: "b_sid", front: "a_sid",
+			late: extractors.FromCookie("b_sid"), cookie: "b_sid",
+		},
+		{
+			name: "the early store reads the first cookie of a chain", early: "s2a_sid", front: "s1_sid",
+			late:   extractors.Chain(extractors.FromCookie("s2a_sid"), extractors.FromCookie("s2b_sid")),
+			cookie: "s2b_sid",
+		},
+		{
+			name: "the middleware around it reads the first cookie of a chain", front: "a_sid",
+			late:   extractors.Chain(extractors.FromCookie("a_sid"), extractors.FromCookie("b_sid")),
+			cookie: "b_sid",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	app := fiber.New()
-	app.Use(func(c fiber.Ctx) error {
-		sess, err := early.Get(c)
-		if err != nil {
-			return err
-		}
-		sess.Release()
-		return c.Next()
-	})
-	app.Use(handlerA, handlerB)
-	app.Get("/seed", func(c fiber.Ctx) error {
-		storeB.FromContext(c).Set("who", "b")
-		return c.SendString(storeB.FromContext(c).ID())
-	})
-	app.Get("/read", func(c fiber.Ctx) error {
-		b := storeB.FromContext(c)
-		return c.SendString(fmt.Sprintf("%v|%v|%s", b.Get("who"), b.Fresh(), b.ID()))
-	})
+			shared := memory.New()
+			frontHandler, _ := NewWithStore(Config{Storage: shared, Extractor: extractors.FromCookie(tc.front)})
+			lateHandler, late := NewWithStore(Config{Storage: shared, Extractor: tc.late})
 
-	_, idB := sendRequest(t, app, "/seed", nil)
+			app := fiber.New()
+			if tc.early != "" {
+				early := NewStore(Config{Extractor: extractors.FromCookie(tc.early)})
+				app.Use(func(c fiber.Ctx) error {
+					sess, err := early.Get(c) // new: it caches an ID, which is never saved
+					if err != nil {
+						return err
+					}
+					sess.Release()
+					return c.Next()
+				})
+			}
+			app.Use(frontHandler, lateHandler)
+			app.Get("/read", func(c fiber.Ctx) error {
+				m := late.FromContext(c)
+				return c.SendString(fmt.Sprintf("%v|%t|%s", m.Get("who"), m.Fresh(), m.ID()))
+			})
 
-	resp, body := sendRequest(t, app, "/read", map[string]string{"b_sid": idB})
-	require.Equal(t, "b|false|"+idB, body, "B loaded its own session; it did not adopt the ID A cached")
-	require.Equal(t, idB, cookiesByName(resp)["b_sid"].Value)
+			id := seedSession(t, app, late, func(s *Session) { s.Set("who", "late") })
+			resp, body := sendRequest(t, app, "/read", map[string]string{tc.cookie: id})
+			require.Equal(t, "late|false|"+id, body, "the middleware found its own session; it did not take the ID that names none")
+			cookies := cookiesByName(resp)
+			require.Contains(t, cookies, tc.cookie)
+			require.Equal(t, id, cookies[tc.cookie].Value)
+		})
+	}
 }
 
-// The provenance cached on the request belongs to the store that resolved it.
-// Store A saves a new session and so caches its ID; store B then finds its own
-// session through another cookie. A's next Get takes the ID it cached, but must not
-// take B's provenance with it: A's session would be written back to B's cookie,
-// replacing the ID of B's session in the response.
+// The provenance cached on the request belongs to the store that resolved it. Store A saves a
+// new session and so caches its ID; store B then finds its own session through another cookie,
+// or starts one. A's next Get takes the ID it cached, but must not take B's provenance with it:
+// A's session would be written back to B's cookie, replacing the ID of B's session.
 func Test_Session_MultipleStores_CachedProvenanceBelongsToItsStore(t *testing.T) {
 	t.Parallel()
 
+	app := fiber.New()
 	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
+	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("n", 1) })
 
-	app := fiber.New()
-	app.Get("/seed", func(c fiber.Ctx) error {
-		sess, err := storeB.Get(c)
-		if err != nil {
-			return err
-		}
-		defer sess.Release()
-		sess.Set("n", 1)
-		if err := sess.Save(); err != nil {
-			return err
-		}
-		return c.SendString(sess.ID())
-	})
-	app.Get("/touch", func(c fiber.Ctx) error {
-		first, err := storeA.Get(c)
-		if err != nil {
-			return err
-		}
-		defer first.Release()
-		first.Set("n", 1)
-		if saveErr := first.Save(); saveErr != nil {
-			return saveErr
-		}
+	for _, returning := range []bool{false, true} {
+		t.Run(fmt.Sprintf("B found its session=%t", returning), func(t *testing.T) {
+			t.Parallel()
 
-		b, err := storeB.Get(c)
-		if err != nil {
-			return err
-		}
-		defer b.Release()
+			c := newRequest(t, app)
+			if returning {
+				c.Request().Header.SetCookie("b_sid", idB)
+			}
+			first := mustGet(t, storeA, c)
+			first.Set("n", 1)
+			require.NoError(t, first.Save())
+			b := mustGet(t, storeB, c)
+			again := mustGet(t, storeA, c)
+			again.Set("n", 2)
 
-		again, err := storeA.Get(c)
-		if err != nil {
-			return err
-		}
-		defer again.Release()
-
-		// A last: were its session tied to B's cookie, the later header would win.
-		if saveErr := b.Save(); saveErr != nil {
-			return saveErr
-		}
-		if saveErr := again.Save(); saveErr != nil {
-			return saveErr
-		}
-		return c.SendString(fmt.Sprintf("%v|%s", b.Fresh(), b.ID()))
-	})
-
-	_, idB := sendRequest(t, app, "/seed", nil)
-
-	resp, body := sendRequest(t, app, "/touch", map[string]string{"b_sid": idB})
-	require.Equal(t, "false|"+idB, body, "B loaded its own session")
-	var written []string
-	for _, cookie := range resp.Cookies() {
-		if cookie.Name == "b_sid" {
-			written = append(written, cookie.Value)
-		}
+			// A last: were its session tied to B's cookie, the later header would win.
+			require.NoError(t, b.Save())
+			require.NoError(t, again.Save())
+			require.Equal(t, !returning, b.Fresh())
+			require.Equal(t, first.ID(), again.ID(), "A found the session it saved")
+			require.Equal(t, again.ID(), responseCookie(t, c, "a_sid"), "the cookie carries the one session of A")
+			require.Equal(t, b.ID(), responseCookie(t, c, "b_sid"), "B's cookie carries B's session and nothing else")
+			if returning {
+				require.Equal(t, idB, b.ID(), "B loaded its own session")
+			}
+		})
 	}
-	require.Equal(t, []string{idB}, written, "B's cookie carries B's session and nothing else")
-	require.Contains(t, cookiesByName(resp), "a_sid", "A's session goes to A's cookie")
 }
 
-// Stores over the same cookie agree on one ID, and the store that asks second
-// takes the provenance the first one cached together with it, so its session
-// goes back to the cookie the ID came from and not to every sink of the chain.
+// A store that takes the ID another store cached takes the provenance cached with it as well,
+// as it holds for the store: its session goes back to the cookie the ID came from, not to every
+// sink of the chain, and never to a header it does not read, nor is the ID promoted into its
+// cookie, since a visitor's session is not written to a place the visitor did not send it from.
 func Test_Session_MultipleStores_SharingStoreAdoptsCachedProvenance(t *testing.T) {
 	t.Parallel()
 
 	chain := func() extractors.Extractor {
 		return extractors.Chain(extractors.FromCookie("sid"), extractors.FromHeader("X-Sid"))
 	}
-	shared := memory.New()
-	first := NewStore(Config{Storage: shared, Extractor: chain()})
-	second := NewStore(Config{Storage: shared, Extractor: chain()})
-	require.NotSame(t, first, second)
+	for _, tc := range []struct {
+		request   func(*fasthttp.RequestHeader)
+		name      string
+		from      string               // where the first store's session goes back to
+		second    extractors.Extractor // what the store asked second reads; the first reads the chain
+		keepsSink bool                 // whether that is a sink of the second store too
+	}{
+		{
+			name: "the same sources", second: chain(), from: "sid", keepsSink: true,
+			request: func(h *fasthttp.RequestHeader) { h.SetCookie("sid", "unknown") },
+		},
+		{
+			name: "fewer sources", second: extractors.FromCookie("sid"), from: "X-Sid",
+			request: func(h *fasthttp.RequestHeader) { h.Set("X-Sid", "unknown") },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	app := fiber.New()
-	c := newRequest(t, app)
-	c.Request().Header.SetCookie("sid", "unknown")
+			shared := memory.New()
+			first := NewStore(Config{Storage: shared, Extractor: chain()})
+			second := NewStore(Config{Storage: shared, Extractor: tc.second})
+			require.NotSame(t, first, second)
 
-	p := mustGet(t, first, c)
-	require.True(t, p.Fresh(), "the cookie names no session, so the first store starts one and caches its ID")
-	require.NoError(t, p.Save())
+			c := newRequest(t, fiber.New())
+			tc.request(&c.Request().Header)
 
-	q := mustGet(t, second, c)
-	require.Equal(t, p.ID(), q.ID(), "the second store takes the cached ID")
-	require.False(t, q.Fresh(), "and finds the session the first one saved")
-	require.Equal(t, p.extractor, q.extractor, "and the provenance cached with it")
+			p := mustGet(t, first, c)
+			require.True(t, p.Fresh(), "the request names no session, so the first store starts one and caches its ID")
+			require.Equal(t, tc.from, p.extractor.Key, "the new session goes back to where the request named it")
+			require.NoError(t, p.Save())
 
-	// The first store's save wrote the cookie into this response as well: clear it,
-	// so that what is left is what the second store writes.
-	c.Response().Header.DelCookie("sid")
-	require.NoError(t, q.Save())
-	require.Empty(t, c.Response().Header.Peek("X-Sid"), "the ID goes back to the cookie it came from, not to the header too")
+			q := mustGet(t, second, c)
+			require.Equal(t, p.ID(), q.ID(), "the second store takes the cached ID")
+			require.False(t, q.Fresh(), "and finds the session the first one saved")
+			provenance := p.extractor
+			provenance.Resolved = tc.keepsSink
+			require.Equal(t, provenance, q.extractor, "and the provenance cached with it, as a sink of its own or not")
 
-	written := fasthttp.AcquireCookie()
-	defer fasthttp.ReleaseCookie(written)
-	written.SetKey("sid")
-	require.True(t, c.Response().Header.Cookie(written), "and to the cookie")
-	require.Equal(t, q.ID(), string(written.Value()))
+			// The first store's save wrote the ID into this response as well: clear it, so
+			// that what is left is what the second store writes.
+			c.Response().Header.DelCookie("sid")
+			c.Response().Header.Del("X-Sid")
+			require.NoError(t, q.Save())
+			require.Empty(t, c.Response().Header.Peek("X-Sid"), "a header the ID did not come from, or the store does not read, is not written")
+			if tc.keepsSink {
+				require.Equal(t, q.ID(), responseCookie(t, c, "sid"), "the ID goes back to the cookie it came from")
+			} else {
+				require.Empty(t, c.Response().Header.PeekCookie("sid"), "and the ID is not promoted into the cookie")
+			}
+		})
+	}
 }
 
-// A store that takes the cached ID of a store over more sources than it reads does not
-// take along the header the ID came from: the header is no sink of its own, and the ID is
-// not promoted into its cookie either, since a visitor's session is not written to a
-// place the visitor did not send it from.
-func Test_Session_MultipleStores_SharingStoreTakesNoSinkItDoesNotRead(t *testing.T) {
-	t.Parallel()
-
-	shared := memory.New()
-	wide := NewStore(Config{Storage: shared, Extractor: extractors.Chain(extractors.FromCookie("sid"), extractors.FromHeader("X-Sid"))})
-	narrow := NewStore(Config{Storage: shared, Extractor: extractors.FromCookie("sid")})
-
-	app := fiber.New()
-	c := newRequest(t, app)
-	c.Request().Header.Set("X-Sid", "unknown")
-
-	p := mustGet(t, wide, c)
-	require.True(t, p.Fresh(), "the header names no session")
-	require.Equal(t, "X-Sid", p.extractor.Key, "the new session goes back to the header the request named")
-	require.NoError(t, p.Save())
-
-	q := mustGet(t, narrow, c)
-	require.Equal(t, p.ID(), q.ID(), "the narrow store takes the cached ID")
-	require.False(t, q.Fresh())
-	require.False(t, q.extractor.Resolved, "the header is a sink of the wide store, not of this one")
-
-	// The wide store's save wrote the header into this response as well: clear it, so
-	// that what is left is what the narrow store writes.
-	c.Response().Header.Del("X-Sid")
-	require.NoError(t, q.Save())
-	require.Empty(t, c.Response().Header.Peek("X-Sid"), "a header the store does not read is not written")
-	require.Empty(t, c.Response().Header.PeekCookie("sid"), "and the ID is not promoted into its cookie")
-}
-
-// A middleware over another cookie between two that share a source does not come
-// between them: the inner one takes the session the outer one found through the
-// cookie that only the outer one reads, though the middleware that runs between the
-// two shares nothing with either, and writes its session ID to no cookie of the outer.
+// A middleware over another cookie between two that share a source does not come between them:
+// the inner one takes the session the outer one found through the cookie that only the outer one
+// reads, though the one between shares nothing with either, and writes it to no cookie of the outer.
 func Test_Session_MultipleStores_UnrelatedMiddlewareBetweenSharingOnesIsPassedOver(t *testing.T) {
 	t.Parallel()
 
@@ -408,16 +454,12 @@ func Test_Session_MultipleStores_UnrelatedMiddlewareBetweenSharingOnesIsPassedOv
 
 	app := fiber.New()
 	app.Use(outerHandler, betweenHandler, innerHandler)
-	app.Get("/seed", func(c fiber.Ctx) error {
-		outerStore.FromContext(c).Set("who", "outer")
-		return c.SendString(outerStore.FromContext(c).ID())
-	})
 	app.Get("/read", func(c fiber.Ctx) error {
 		inner, between := innerStore.FromContext(c), betweenStore.FromContext(c)
 		return c.SendString(fmt.Sprintf("%v|%t|%s|%t", inner.Get("who"), inner.Fresh(), inner.ID(), between.Fresh()))
 	})
 
-	_, id := sendRequest(t, app, "/seed", nil)
+	id := seedSession(t, app, outerStore, func(s *Session) { s.Set("who", "outer") })
 	resp, body := sendRequest(t, app, "/read", map[string]string{"sid": id})
 	require.Equal(t, "outer|false|"+id+"|true", body, "the middleware between them hid the session of the outer one from the inner one")
 	cookies := cookiesByName(resp)
@@ -431,9 +473,7 @@ func Test_Session_MultipleStores_UnrelatedMiddlewareBetweenSharingOnesIsPassedOv
 func Test_Session_MultipleStores_SaveOfASessionNoMiddlewareManages(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	c := newRequest(t, app)
-
+	c := newRequest(t, fiber.New())
 	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
 
@@ -475,8 +515,7 @@ func Test_Session_MultipleStores_ProvenanceStaysWithItsStore(t *testing.T) {
 	})
 
 	_, body := sendRequest(t, app, "/seed", nil)
-	ids := strings.Split(body, "|")
-	idA, idB := ids[0], ids[1]
+	idA, idB, _ := strings.Cut(body, "|")
 	require.NotEqual(t, idA, idB)
 
 	// A's ID arrives in the query, a read-only source; B's arrives in its cookie.
@@ -498,21 +537,16 @@ func Test_Session_MultipleStores_ExplicitSaveIsNoOpForOuterSession(t *testing.T)
 	t.Parallel()
 
 	recA, recB := newRecordingStorage(), newRecordingStorage()
-	handlerA, storeA := NewWithStore(Config{Storage: recA, Extractor: extractors.FromCookie("a_sid")})
-	handlerB, storeB := NewWithStore(Config{Storage: recB, Extractor: extractors.FromCookie("b_sid")})
+	app := fiber.New()
+	storeA, storeB := useCookieStore(app, "a_sid", Config{Storage: recA}), useCookieStore(app, "b_sid", Config{Storage: recB})
 
 	var duringA, duringB atomic.Int64
-	app := fiber.New()
-	app.Use(handlerA, handlerB)
 	app.Get("/", func(c fiber.Ctx) error {
-		a, b := storeA.FromContext(c), storeB.FromContext(c)
-		a.Set("k", "v")
-		b.Set("k", "v")
-		if err := a.Session.Save(); err != nil {
-			return err
-		}
-		if err := b.Session.Save(); err != nil {
-			return err
+		for _, m := range []*Middleware{storeA.FromContext(c), storeB.FromContext(c)} {
+			m.Set("k", "v")
+			if err := m.Session.Save(); err != nil {
+				return err
+			}
 		}
 		duringA.Store(int64(len(recA.writes())))
 		duringB.Store(int64(len(recB.writes())))
@@ -532,11 +566,8 @@ func Test_Session_MultipleStores_ExplicitSaveIsNoOpForOuterSession(t *testing.T)
 func Test_Session_MultipleStores_RetainedContext(t *testing.T) {
 	t.Parallel()
 
-	handlerA, storeA := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	handlerB, storeB := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
-
 	app := fiber.New(fiber.Config{PassLocalsToContext: true})
-	app.Use(handlerA, handlerB)
+	storeA, storeB := useCookieStore(app, "a_sid"), useCookieStore(app, "b_sid")
 
 	var kept atomic.Value
 	var duringRequest atomic.Bool
@@ -576,27 +607,16 @@ func Test_Session_MultipleStores_SaveErrorsGoToTheirOwnHandler(t *testing.T) {
 
 	var handledByA, handledByB atomic.Int64
 	storageA := newRecordingStorage()
-	handlerA, storeA := NewWithStore(Config{
-		Storage:      storageA,
-		Extractor:    extractors.FromCookie("a_sid"),
-		ErrorHandler: func(fiber.Ctx, error) { handledByA.Add(1) },
-	})
-	handlerB, storeB := NewWithStore(Config{
-		Storage:   unsavableStorage{Storage: memory.New()},
-		Extractor: extractors.FromCookie("b_sid"),
+	app := fiber.New()
+	storeA := useCookieStore(app, "a_sid", Config{Storage: storageA, ErrorHandler: func(fiber.Ctx, error) { handledByA.Add(1) }})
+	storeB := useCookieStore(app, "b_sid", Config{
+		Storage: unsavableStorage{Storage: memory.New()},
 		ErrorHandler: func(c fiber.Ctx, _ error) {
 			handledByB.Add(1)
 			_ = c.Status(fiber.StatusInternalServerError).SendString("b failed") //nolint:errcheck // the test inspects the response
 		},
 	})
-
-	app := fiber.New()
-	app.Use(handlerA, handlerB)
-	app.Get("/", func(c fiber.Ctx) error {
-		storeA.FromContext(c).Set("k", "v")
-		storeB.FromContext(c).Set("k", "v")
-		return c.SendString("ok")
-	})
+	app.Get("/", setInSessions("k", "v", storeA, storeB))
 
 	resp, body := sendRequest(t, app, "/", nil)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
@@ -610,28 +630,19 @@ func Test_Session_MultipleStores_SaveErrorsGoToTheirOwnHandler(t *testing.T) {
 func Test_Session_MultipleStores_NextSkipsOnlyItsOwn(t *testing.T) {
 	t.Parallel()
 
-	handlerA, storeA := NewWithStore(Config{
-		Extractor: extractors.FromCookie("a_sid"),
-		Next:      func(c fiber.Ctx) bool { return c.Query("skip-a") != "" },
-	})
-	handlerB, storeB := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
-
 	app := fiber.New()
-	app.Use(handlerA, handlerB)
+	storeA := useCookieStore(app, "a_sid", Config{Next: func(c fiber.Ctx) bool { return c.Query("skip-a") != "" }})
+	storeB := useCookieStore(app, "b_sid")
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(strings.Join([]string{
-			strconv.FormatBool(storeA.FromContext(c) != nil),
-			strconv.FormatBool(storeB.FromContext(c) != nil),
-			strconv.FormatBool(FromContext(c) != nil),
-		}, ","))
+		return c.SendString(fmt.Sprint(storeA.FromContext(c) != nil, storeB.FromContext(c) != nil, FromContext(c) != nil))
 	})
 
 	resp, body := sendRequest(t, app, "/", nil)
-	require.Equal(t, "true,true,true", body)
+	require.Equal(t, "true true true", body)
 	require.Contains(t, cookiesByName(resp), "a_sid")
 
 	resp, body = sendRequest(t, app, "/?skip-a=1", nil)
-	require.Equal(t, "false,true,true", body, "A did not run; B did, and is the innermost")
+	require.Equal(t, "false true true", body, "A did not run; B did, and is the innermost")
 	require.NotContains(t, cookiesByName(resp), "a_sid")
 	require.Contains(t, cookiesByName(resp), "b_sid")
 }
@@ -641,11 +652,8 @@ func Test_Session_MultipleStores_NextSkipsOnlyItsOwn(t *testing.T) {
 func Test_Session_MultipleStores_Concurrent(t *testing.T) {
 	t.Parallel()
 
-	handlerA, storeA := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	handlerB, storeB := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
-
 	app := fiber.New()
-	app.Use(handlerA, handlerB)
+	storeA, storeB := useCookieStore(app, "a_sid"), useCookieStore(app, "b_sid")
 	app.Get("/set", func(c fiber.Ctx) error {
 		storeA.FromContext(c).Set("n", c.Query("n"))
 		storeB.FromContext(c).Set("n", "b"+c.Query("n"))
@@ -656,44 +664,37 @@ func Test_Session_MultipleStores_Concurrent(t *testing.T) {
 	})
 
 	// The clients only record what they saw; the test goroutine judges it.
-	type outcome struct {
-		err    error
-		bodies []string
+	const clients, reads = 32, 5
+	client := func(n int) ([]string, error) {
+		resp, _, err := doRequest(app, fmt.Sprintf("/set?n=%d", n), nil)
+		if err != nil {
+			return nil, err
+		}
+		cookies := cookiesByName(resp)
+		if cookies["a_sid"] == nil || cookies["b_sid"] == nil {
+			return nil, errors.New("a session cookie is missing")
+		}
+		var bodies []string
+		for range reads {
+			_, body, getErr := doRequest(app, "/get", map[string]string{"a_sid": cookies["a_sid"].Value, "b_sid": cookies["b_sid"].Value})
+			if getErr != nil {
+				return nil, getErr
+			}
+			bodies = append(bodies, body)
+		}
+		return bodies, nil
 	}
-	const clients = 32
-	results := make([]outcome, clients)
+	bodies, errs := make([][]string, clients), make([]error, clients)
 	var wg sync.WaitGroup
 	for n := range clients {
-		wg.Go(func() {
-			resp, _, err := doRequest(app, fmt.Sprintf("/set?n=%d", n), nil)
-			if err != nil {
-				results[n].err = err
-				return
-			}
-			cookies := cookiesByName(resp)
-			if cookies["a_sid"] == nil || cookies["b_sid"] == nil {
-				results[n].err = errors.New("a session cookie is missing")
-				return
-			}
-			for range 5 {
-				_, body, err := doRequest(app, "/get", map[string]string{
-					"a_sid": cookies["a_sid"].Value,
-					"b_sid": cookies["b_sid"].Value,
-				})
-				if err != nil {
-					results[n].err = err
-					return
-				}
-				results[n].bodies = append(results[n].bodies, body)
-			}
-		})
+		wg.Go(func() { bodies[n], errs[n] = client(n) })
 	}
 	wg.Wait()
 
-	for n, result := range results {
-		require.NoError(t, result.err, "client %d", n)
-		require.Len(t, result.bodies, 5)
-		for _, body := range result.bodies {
+	for n := range clients {
+		require.NoError(t, errs[n], "client %d", n)
+		require.Len(t, bodies[n], reads)
+		for _, body := range bodies[n] {
 			require.Equal(t, fmt.Sprintf("%d|b%d", n, n), body, "client %d saw another request's data", n)
 		}
 	}
@@ -707,7 +708,7 @@ func Test_Session_MultipleStores_OuterCurrentAgainAfterInnerFinishes(t *testing.
 	t.Parallel()
 
 	for _, pass := range []bool{false, true} {
-		t.Run("PassLocalsToContext="+strconv.FormatBool(pass), func(t *testing.T) {
+		t.Run(fmt.Sprintf("PassLocalsToContext=%t", pass), func(t *testing.T) {
 			t.Parallel()
 
 			recA := newRecordingStorage()
@@ -726,12 +727,7 @@ func Test_Session_MultipleStores_OuterCurrentAgainAfterInnerFinishes(t *testing.
 				if pass {
 					fromContext = strconv.FormatBool(storeA.FromContext(c.Context()) == a)
 				}
-				after.Store(strings.Join([]string{
-					strconv.FormatBool(a != nil),
-					strconv.FormatBool(FromContext(c) == a),
-					strconv.FormatBool(storeB.FromContext(c) == nil),
-					fromContext,
-				}, ","))
+				after.Store(fmt.Sprintf("%t,%t,%t,%s", a != nil, FromContext(c) == a, storeB.FromContext(c) == nil, fromContext))
 				if a != nil {
 					if saveErr := a.Session.Save(); saveErr != nil {
 						return saveErr
@@ -741,11 +737,7 @@ func Test_Session_MultipleStores_OuterCurrentAgainAfterInnerFinishes(t *testing.
 				return err
 			})
 			app.Use(handlerB)
-			app.Get("/", func(c fiber.Ctx) error {
-				storeA.FromContext(c).Set("k", "v")
-				storeB.FromContext(c).Set("k", "v")
-				return nil
-			})
+			app.Get("/", setInSessions("k", "v", storeA, storeB))
 
 			_, _ = sendRequest(t, app, "/", nil)
 
@@ -832,22 +824,10 @@ func Test_Session_MultipleStores_LoginCallbackExample(t *testing.T) {
 //
 // go test -v -run=^$ -bench=Benchmark_Middleware_TwoStores -benchmem -count=4
 func Benchmark_Middleware_TwoStores(b *testing.B) {
-	handlerA, storeA := NewWithStore(Config{
-		Extractor:    extractors.FromCookie("a_sid"),
-		KeyGenerator: func() string { return "session-a" },
-	})
-	handlerB, storeB := NewWithStore(Config{
-		Extractor:    extractors.FromCookie("b_sid"),
-		KeyGenerator: func() string { return "session-b" },
-	})
-
 	app := fiber.New()
-	app.Use(handlerA, handlerB)
-	app.Get("/", func(c fiber.Ctx) error {
-		storeA.FromContext(c).Set("john", "doe")
-		storeB.FromContext(c).Set("john", "doe")
-		return nil
-	})
+	storeA := useCookieStore(app, "a_sid", Config{KeyGenerator: func() string { return "session-a" }})
+	storeB := useCookieStore(app, "b_sid", Config{KeyGenerator: func() string { return "session-b" }})
+	app.Get("/", setInSessions("john", "doe", storeA, storeB))
 	handler := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
@@ -882,23 +862,10 @@ func Test_Session_Store_Get_AskedAgainFindsTheSessionItSaved(t *testing.T) {
 	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
 	storeC := NewStore(Config{Extractor: extractors.FromCookie("c_sid")})
 
-	// saved asks store for its session and saves it with the data.
-	saved := func(t *testing.T, c fiber.Ctx, store *Store) *Session {
-		t.Helper()
-		sess, err := store.Get(c)
-		require.NoError(t, err)
-		t.Cleanup(sess.Release)
-		require.True(t, sess.Fresh())
-		sess.Set("k", store.Extractor.Key)
-		require.NoError(t, sess.Save())
-		return sess
-	}
 	// found asks store again, and expects the session saved before.
 	found := func(t *testing.T, c fiber.Ctx, store *Store, want *Session) {
 		t.Helper()
-		sess, err := store.Get(c)
-		require.NoError(t, err)
-		t.Cleanup(sess.Release)
+		sess := mustGet(t, store, c)
 		require.Equal(t, want.ID(), sess.ID(), "the session saved before was lost within the request")
 		require.False(t, sess.Fresh())
 		require.Equal(t, want.Get("k"), sess.Get("k"))
@@ -908,7 +875,7 @@ func Test_Session_Store_Get_AskedAgainFindsTheSessionItSaved(t *testing.T) {
 		t.Parallel()
 		c := newRequest(t, app)
 
-		a, b, cc := saved(t, c, storeA), saved(t, c, storeB), saved(t, c, storeC)
+		a, b, cc := saveNew(t, c, storeA), saveNew(t, c, storeB), saveNew(t, c, storeC)
 		found(t, c, storeA, a)
 		found(t, c, storeC, cc)
 		found(t, c, storeB, b)
@@ -919,128 +886,15 @@ func Test_Session_Store_Get_AskedAgainFindsTheSessionItSaved(t *testing.T) {
 		t.Parallel()
 		c := newRequest(t, app)
 
-		a := saved(t, c, storeA)
-		saved(t, c, storeB)
-		sharing := NewStore(Config{Extractor: extractors.FromCookie("a_sid"), Storage: storeA.Storage})
-		found(t, c, sharing, a)
-	})
-
-	t.Run("by a session middleware over the same cookie", func(t *testing.T) {
-		t.Parallel()
-
-		// The store that the CSRF middleware was given and the one of the session middleware: two Store values over one cookie.
-		storage := memory.New()
-		early := NewStore(Config{Extractor: extractors.FromCookie("a_sid"), Storage: storage})
-		other := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
-		handler, late := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid"), Storage: storage})
-		require.NotSame(t, early, late)
-
-		mw := fiber.New()
-		mw.Use(func(c fiber.Ctx) error {
-			sess, err := early.Get(c)
-			if err != nil {
-				return err
-			}
-			defer sess.Release()
-			sess.Set("token", "t1")
-			if saveErr := sess.Save(); saveErr != nil {
-				return saveErr
-			}
-			between, err := other.Get(c) // another cookie: it caches an ID of its own
-			if err != nil {
-				return err
-			}
-			between.Release()
-			return c.Next()
-		})
-		mw.Use(handler)
-		mw.Get("/", func(c fiber.Ctx) error {
-			m := late.FromContext(c)
-			return c.SendString(fmt.Sprintf("%v|%v", m.Get("token"), m.Fresh()))
-		})
-
-		resp, body := sendRequest(t, mw, "/", nil)
-		require.Equal(t, "t1|false", body, "the middleware did not find the session saved before it, because another store was asked in between")
-		cookies := cookiesByName(resp)
-		require.Contains(t, cookies, "a_sid")
-		keys, err := storage.Keys()
-		require.NoError(t, err)
-		require.Len(t, keys, 1, "one visitor, one stored session of that cookie")
-	})
-
-	t.Run("by a session middleware behind one over another cookie", func(t *testing.T) {
-		t.Parallel()
-
-		storage := memory.New()
-		early := NewStore(Config{Extractor: extractors.FromCookie("a_sid"), Storage: storage})
-		outerHandler, outerStore := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
-		handler, late := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid"), Storage: storage})
-
-		mw := fiber.New()
-		mw.Use(func(c fiber.Ctx) error {
-			sess, err := early.Get(c)
-			if err != nil {
-				return err
-			}
-			defer sess.Release()
-			sess.Set("token", "t1")
-			if saveErr := sess.Save(); saveErr != nil {
-				return saveErr
-			}
-			return c.Next()
-		})
-		mw.Use(outerHandler, handler)
-		mw.Get("/", func(c fiber.Ctx) error {
-			outer, inner := outerStore.FromContext(c), late.FromContext(c)
-			return c.SendString(fmt.Sprintf("%v|%v|%v", inner.Get("token"), inner.Fresh(), outer.Get("token")))
-		})
-
-		_, body := sendRequest(t, mw, "/", nil)
-		require.Equal(t, "t1|false|<nil>", body,
-			"the middleware did not find the session saved before it, or the one in front of it took that session")
-	})
-
-	t.Run("the session of the response", func(t *testing.T) {
-		t.Parallel()
-
-		both := fiber.New()
-		both.Get("/", func(c fiber.Ctx) error {
-			first, err := storeA.Get(c)
-			if err != nil {
-				return err
-			}
-			defer first.Release()
-			first.Set("n", 1)
-			if saveErr := first.Save(); saveErr != nil {
-				return saveErr
-			}
-			b, err := storeB.Get(c)
-			if err != nil {
-				return err
-			}
-			defer b.Release()
-			again, err := storeA.Get(c)
-			if err != nil {
-				return err
-			}
-			defer again.Release()
-			again.Set("n", 2)
-			if saveErr := again.Save(); saveErr != nil {
-				return saveErr
-			}
-			return c.SendString(first.ID() + "|" + again.ID())
-		})
-		resp, body := sendRequest(t, both, "/", nil)
-		ids := strings.Split(body, "|")
-		require.Equal(t, ids[0], ids[1])
-		require.Equal(t, ids[0], cookiesByName(resp)["a_sid"].Value, "the cookie carries the one session of A")
+		a := saveNew(t, c, storeA)
+		saveNew(t, c, storeB)
+		found(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid"), Storage: storeA.Storage}), a)
 	})
 }
 
-// A request keeps the IDs that the stores asked in it issued, for the stores that
-// share a source with them. An ID is only taken when it names a stored session: asked
-// again before a save, a store issues another ID, whether another store was asked
-// in between or not, since the ID it issued before is not a session until it is saved.
+// A request keeps the IDs that the stores asked in it issued, but one is only taken when it names
+// a stored session: asked again before a save, a store issues another ID, whether another store
+// was asked in between or not.
 func Test_Session_Store_Get_AskedAgainIssuesANewSession(t *testing.T) {
 	t.Parallel()
 
@@ -1048,55 +902,26 @@ func Test_Session_Store_Get_AskedAgainIssuesANewSession(t *testing.T) {
 	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
 
-	get := func(c fiber.Ctx, store *Store) string {
-		sess := mustGet(t, store, c)
-		require.True(t, sess.Fresh())
-		return sess.ID()
+	for _, tc := range []struct {
+		name  string
+		asked []*Store
+	}{
+		{"after another store was asked", []*Store{storeA, storeB, storeA}},
+		{"the same store asked twice", []*Store{storeA, storeA}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := newRequest(t, app)
+
+			issued := make(map[string]bool)
+			for _, store := range tc.asked {
+				sess := mustGet(t, store, c)
+				require.True(t, sess.Fresh())
+				require.False(t, issued[sess.ID()], "a store that is asked again issues another ID, and each store its own")
+				issued[sess.ID()] = true
+			}
+		})
 	}
-
-	t.Run("after another store was asked", func(t *testing.T) {
-		t.Parallel()
-		c := newRequest(t, app)
-
-		first, other, again := get(c, storeA), get(c, storeB), get(c, storeA)
-		require.NotEqual(t, first, other, "each store issues its own ID")
-		require.NotEqual(t, first, again, "A is asked again, and issues another")
-	})
-
-	t.Run("the same store asked twice", func(t *testing.T) {
-		t.Parallel()
-		c := newRequest(t, app)
-
-		first := get(c, storeA)
-		second := get(c, storeA)
-		require.NotEqual(t, first, second)
-	})
-}
-
-// The ID of the session middleware a middleware runs inside names no session while that
-// one has not saved it, and does not hide the session the request names: the outer
-// middleware holds a new session, the inner one also reads the cookie b_sid and must
-// find the session that cookie names.
-func Test_Session_MultipleStores_UnsavedIDOfTheOuterMiddlewareDoesNotHideTheCookiesSession(t *testing.T) {
-	t.Parallel()
-
-	storage := memory.New()
-	outerHandler, _ := NewWithStore(Config{Storage: storage, Extractor: extractors.FromCookie("a_sid")})
-	innerHandler, innerStore := NewWithStore(Config{
-		Storage:   storage,
-		Extractor: extractors.Chain(extractors.FromCookie("a_sid"), extractors.FromCookie("b_sid")),
-	})
-
-	app := fiber.New()
-	idB := seedSession(t, app, innerStore, func(s *Session) { s.Set("who", "inner") })
-	app.Use(outerHandler, innerHandler)
-	app.Get("/", func(c fiber.Ctx) error {
-		inner := innerStore.FromContext(c)
-		return c.SendString(fmt.Sprintf("%v|%t|%s", inner.Get("who"), inner.Fresh(), inner.ID()))
-	})
-
-	_, body := sendRequest(t, app, "/", map[string]string{"b_sid": idB})
-	require.Equal(t, "inner|false|"+idB, body, "the new session of the outer middleware hid the one the b_sid cookie names")
 }
 
 // The nearest session middleware outside that shares a source decides, not the outermost
@@ -1113,16 +938,12 @@ func Test_Session_MultipleStores_NearestSharingOuterMiddlewareDecides(t *testing
 
 	app := fiber.New()
 	app.Use(outerHandler, middleHandler, innerHandler)
-	app.Get("/seed", func(c fiber.Ctx) error {
-		middleStore.FromContext(c).Set("who", "middle")
-		return c.SendString(middleStore.FromContext(c).ID())
-	})
 	app.Get("/read", func(c fiber.Ctx) error {
 		outer, middle, inner := outerStore.FromContext(c), middleStore.FromContext(c), innerStore.FromContext(c)
 		return c.SendString(fmt.Sprintf("%t|%v|%t|%s|%v|%t", outer.Fresh(), middle.Get("who"), middle.Fresh(), inner.ID(), inner.Get("who"), inner.Fresh()))
 	})
 
-	_, id := sendRequest(t, app, "/seed", nil)
+	id := seedSession(t, app, middleStore, func(s *Session) { s.Set("who", "middle") })
 	_, body := sendRequest(t, app, "/read", map[string]string{"b": id})
 	require.Equal(t, "true|middle|false|"+id+"|middle|false", body,
 		"the inner middleware took the session of the outermost one, which is new, instead of the one of the nearest")

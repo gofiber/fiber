@@ -10,12 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A store takes the ID that a store sharing a source with it cached, and never that
-// of one it shares none with. A and E cache a new ID each, B finds a session through
-// its cookie; G reads the cookies of A and of B, so it shares with A, whose ID was
-// never saved and so names no session, and with the store that found its own, but not
-// with E, and must find its own session instead of taking the ID that E cached.
-func Test_Session_Store_TakesNoIDOfAStoreItSharesNothingWith(t *testing.T) {
+// A store takes the ID that a store sharing a source with it cached, if it names a stored
+// session, and never that of one it shares none with. G reads the cookies of A and of B: it
+// shares with A, whose ID was never saved, and with B, which found its own session, but not with
+// E, whose ID was never saved either. G must find the session its b_sid cookie names, whichever
+// of A and E cached an ID last.
+func Test_Session_Store_FindsTheSessionItsCookieNamesWhateverOtherStoresCached(t *testing.T) {
 	t.Parallel()
 
 	shared := memory.New()
@@ -23,69 +23,48 @@ func Test_Session_Store_TakesNoIDOfAStoreItSharesNothingWith(t *testing.T) {
 	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid"), Storage: shared})
 	storeE := NewStore(Config{Extractor: extractors.FromCookie("e_sid")})
-	storeG := NewStore(Config{
-		Extractor: extractors.Chain(extractors.FromCookie("a_sid"), extractors.FromCookie("b_sid")),
-		Storage:   shared,
-	})
+	storeG := NewStore(Config{Extractor: extractors.Chain(extractors.FromCookie("a_sid"), extractors.FromCookie("b_sid")), Storage: shared})
 	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("k", "v") })
 
-	c := newRequest(t, app)
-	c.Request().Header.SetCookie("b_sid", idB)
+	for _, tc := range []struct {
+		name  string
+		asked []*Store
+	}{
+		{"the newest ID is that of a store it shares a cookie with", []*Store{storeA}},
+		{"the newest ID is that of a store it shares none with", []*Store{storeA, storeB, storeE}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	a, err := storeA.Get(c)
-	require.NoError(t, err)
-	require.True(t, a.Fresh(), "A caches an ID first")
-	b, err := storeB.Get(c)
-	require.NoError(t, err)
-	require.False(t, b.Fresh())
-	require.Equal(t, idB, b.ID(), "B finds its session, and caches nothing")
-	e, err := storeE.Get(c)
-	require.NoError(t, err)
-	require.True(t, e.Fresh(), "E caches an ID after A")
+			c := newRequest(t, app)
+			c.Request().Header.SetCookie("b_sid", idB)
 
-	g, err := storeG.Get(c)
-	require.NoError(t, err)
-	require.NotEqual(t, e.ID(), g.ID(), "G took the ID that E cached, though it reads none of E's cookies")
-	require.False(t, g.Fresh(), "G found the session its b_sid cookie names")
-	require.Equal(t, idB, g.ID())
+			var issued []string
+			for _, store := range tc.asked {
+				sess := mustGet(t, store, c)
+				if store == storeB {
+					require.False(t, sess.Fresh())
+					require.Equal(t, idB, sess.ID(), "B finds its session, and caches nothing")
+				} else {
+					require.True(t, sess.Fresh(), "the store caches an ID that it does not save")
+					issued = append(issued, sess.ID())
+				}
+			}
+
+			g := mustGet(t, storeG, c)
+			require.NotContains(t, issued, g.ID(), "G took an ID that another store cached")
+			require.False(t, g.Fresh(), "G found the session its b_sid cookie names")
+			require.Equal(t, idB, g.ID())
+			require.Equal(t, "v", g.Get("k"))
+		})
+	}
 }
 
-// An ID that a store sharing a source with it cached and never saved names no
-// session, and does not hide the one the request names: A caches an ID it does not
-// save, and G, which reads A's cookie and B's, finds the session that the cookie of B
-// names, where taking the ID of A, the newest, would start a session of its own.
-func Test_Session_Store_PassesOverAnUnsavedIDOfAStoreItShares(t *testing.T) {
-	t.Parallel()
-
-	shared := memory.New()
-	app := fiber.New()
-	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid"), Storage: shared})
-	storeG := NewStore(Config{
-		Extractor: extractors.Chain(extractors.FromCookie("a_sid"), extractors.FromCookie("b_sid")),
-		Storage:   shared,
-	})
-	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("k", "v") })
-
-	c := newRequest(t, app)
-	c.Request().Header.SetCookie("b_sid", idB)
-
-	a := mustGet(t, storeA, c)
-	require.True(t, a.Fresh(), "A caches an ID, and does not save it")
-
-	g := mustGet(t, storeG, c)
-	require.NotEqual(t, a.ID(), g.ID(), "G took the ID that A cached, which names no session")
-	require.False(t, g.Fresh(), "G found the session its b_sid cookie names")
-	require.Equal(t, idB, g.ID())
-	require.Equal(t, "v", g.Get("k"))
-}
-
-// A new session whose cookie names an ID the storage does not know is cached with the
-// others of the request, as the session of a cookie that names a stored one is not.
-// W and X cache an ID first, none of them saved; Y, whose cookie is unknown, caches
-// one after them and saves it; R shares Y's cookie but neither W's nor X's, so it must
-// take the ID that Y cached, and not find its own session as it would if Y had
-// cached nothing.
+// A new session whose cookie names an ID the storage does not know is cached with the others
+// of the request, as the session of a cookie that names a stored one is not. W and X cache an
+// ID first, unsaved; Y, whose cookie is unknown, caches one after them and saves it. R shares
+// Y's cookie but not W's or X's, so it must take the ID Y cached, and not find its own session
+// as it would if Y had cached nothing.
 func Test_Session_Store_FreshSessionOfAnUnknownCookieIsCached(t *testing.T) {
 	t.Parallel()
 
@@ -95,10 +74,7 @@ func Test_Session_Store_FreshSessionOfAnUnknownCookieIsCached(t *testing.T) {
 	storeW := NewStore(Config{Extractor: extractors.FromCookie("w_sid")})
 	storeX := NewStore(Config{Extractor: extractors.FromCookie("x_sid")})
 	storeY := NewStore(Config{Extractor: extractors.FromCookie("y_sid"), Storage: shared})
-	storeR := NewStore(Config{
-		Extractor: extractors.Chain(extractors.FromCookie("b_sid"), extractors.FromCookie("y_sid")),
-		Storage:   shared,
-	})
+	storeR := NewStore(Config{Extractor: extractors.Chain(extractors.FromCookie("b_sid"), extractors.FromCookie("y_sid")), Storage: shared})
 	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("k", "v") })
 
 	c := newRequest(t, app)
@@ -106,9 +82,7 @@ func Test_Session_Store_FreshSessionOfAnUnknownCookieIsCached(t *testing.T) {
 	c.Request().Header.SetCookie("y_sid", "names-no-session")
 
 	for _, store := range []*Store{storeB, storeW, storeX} {
-		sess, err := store.Get(c)
-		require.NoError(t, err)
-		sess.Release()
+		mustGet(t, store, c)
 	}
 	y := mustGet(t, storeY, c)
 	require.True(t, y.Fresh(), "Y's cookie names no stored session")
@@ -122,104 +96,59 @@ func Test_Session_Store_FreshSessionOfAnUnknownCookieIsCached(t *testing.T) {
 	require.False(t, r.Fresh(), "R found the session that Y saved")
 }
 
-// A middleware that starts after a Store.Get cached an ID that was never saved finds
-// the session its own cookie names, though the store of that ID shares a cookie with
-// it: the ID names no session.
-func Test_Session_Store_MiddlewarePassesOverAnIDThatNamesNoSession(t *testing.T) {
-	t.Parallel()
-
-	earlier := NewStore(Config{Extractor: extractors.FromCookie("s2a_sid")})
-	handler1, _ := NewWithStore(Config{Extractor: extractors.FromCookie("s1_sid")})
-	handler2, store2 := NewWithStore(Config{
-		Extractor: extractors.Chain(extractors.FromCookie("s2a_sid"), extractors.FromCookie("s2b_sid")),
-	})
-
-	app := fiber.New()
-	app.Use(func(c fiber.Ctx) error {
-		sess, err := earlier.Get(c) // fresh: it caches the new ID, which is never saved
-		if err != nil {
-			return err
-		}
-		sess.Release()
-		return c.Next()
-	})
-	app.Use(handler1, handler2)
-	app.Get("/seed", func(c fiber.Ctx) error {
-		store2.FromContext(c).Set("who", "s2")
-		return c.SendString(store2.FromContext(c).ID())
-	})
-	app.Get("/read", func(c fiber.Ctx) error {
-		m := store2.FromContext(c)
-		return c.SendString(fmt.Sprintf("%s|%t", m.ID(), m.Fresh()))
-	})
-
-	_, id := sendRequest(t, app, "/seed", nil)
-	_, body := sendRequest(t, app, "/read", map[string]string{"s2b_sid": id})
-	require.Equal(t, id+"|false", body, "the second middleware found its own session instead of taking the ID that the first cached")
-}
-
-// Stores are told apart by every source they read, by kind and name, whether or
-// not it can be written back to. Stores over the same query parameter, the same
-// authentication scheme or custom extractors with the same key share the ID cached
-// on the request; a store over the query string and a store over a cookie do not,
-// so the ID a link carries reaches the stores that read the query string and no
-// cookie store next to them.
+// Stores are told apart by every source they read, by kind and name, whether or not it can be
+// written back to. Stores over the same query parameter, authentication scheme or custom
+// extractor key share the ID cached on the request; a store over the query string and one over
+// a cookie do not, so the ID a link carries reaches the stores that read the query string only.
 func Test_Session_Store_SourcesAreToldApartByKindAndName(t *testing.T) {
 	t.Parallel()
 
-	shared := memory.New()
-	app := fiber.New()
 	custom := func(fiber.Ctx) (string, error) { return "", extractors.ErrNotFound }
-	byQuery := NewStore(Config{Extractor: extractors.FromQuery("sid"), Storage: shared})
-	bySameQuery := NewStore(Config{Extractor: extractors.FromQuery("sid"), Storage: shared})
-	byOtherQuery := NewStore(Config{Extractor: extractors.FromQuery("token"), Storage: shared})
-	byAuth := NewStore(Config{Extractor: extractors.FromAuthHeader("Bearer"), Storage: shared})
-	byAuthLower := NewStore(Config{Extractor: extractors.FromAuthHeader("bearer"), Storage: shared})
-	byToken := NewStore(Config{Extractor: extractors.FromAuthHeader("Token"), Storage: shared})
-	byCookie := NewStore(Config{Extractor: extractors.FromCookie("c_sid"), Storage: shared})
-	byCustom := NewStore(Config{Extractor: extractors.FromCustom("legacy", custom), Storage: shared})
-	bySameCustom := NewStore(Config{Extractor: extractors.FromCustom("legacy", custom), Storage: shared})
-	byOtherCustom := NewStore(Config{Extractor: extractors.FromCustom("other", custom), Storage: shared})
-	byForm := NewStore(Config{Extractor: extractors.FromForm("sid"), Storage: shared})
-	bySameForm := NewStore(Config{Extractor: extractors.FromForm("sid"), Storage: shared})
-	byParam := NewStore(Config{Extractor: extractors.FromParam("sid"), Storage: shared})
-	bySameParam := NewStore(Config{Extractor: extractors.FromParam("sid"), Storage: shared})
-
-	for _, pair := range [][2]*Store{
-		{byQuery, bySameQuery},
-		{byAuth, byAuthLower},
-		{byCustom, bySameCustom},
-		{byForm, bySameForm},
-		{byParam, bySameParam},
-	} {
-		require.True(t, pair[0].sharesSource(pair[1]), "stores over the same source share")
+	query, cookie := extractors.FromQuery("sid"), extractors.FromCookie("c_sid")
+	bearer, legacy := extractors.FromAuthHeader("Bearer"), extractors.FromCustom("legacy", custom)
+	form, param := extractors.FromForm("sid"), extractors.FromParam("sid")
+	shares := func(a, b extractors.Extractor) bool {
+		return NewStore(Config{Extractor: a}).sharesSource(NewStore(Config{Extractor: b}))
 	}
-	for _, pair := range [][2]*Store{
-		{byQuery, byOtherQuery},
-		{byQuery, byAuth},
-		{byQuery, byCookie},
-		{byCookie, byQuery},
-		{byAuth, byCookie},
-		{byAuth, byToken}, // the same header, another scheme
-		{byCustom, byOtherCustom},
-		{byCustom, byQuery},
-		{byForm, byQuery}, // the same name in another kind is another source
-		{byParam, byForm},
-		{byParam, byCookie},
+
+	for _, pair := range [][2]extractors.Extractor{
+		{query, extractors.FromQuery("sid")},
+		{bearer, extractors.FromAuthHeader("bearer")},
+		{legacy, extractors.FromCustom("legacy", custom)},
+		{form, extractors.FromForm("sid")},
+		{param, extractors.FromParam("sid")},
 	} {
-		require.False(t, pair[0].sharesSource(pair[1]), "stores over different sources are told apart")
+		require.True(t, shares(pair[0], pair[1]), "stores over the same source share")
+	}
+	for _, pair := range [][2]extractors.Extractor{
+		{query, extractors.FromQuery("token")},
+		{query, bearer},
+		{query, cookie},
+		{cookie, query},
+		{bearer, cookie},
+		{bearer, extractors.FromAuthHeader("Token")}, // the same header, another scheme
+		{legacy, extractors.FromCustom("other", custom)},
+		{legacy, query},
+		{form, query}, // the same name in another kind is another source
+		{param, form},
+		{param, cookie},
+	} {
+		require.False(t, shares(pair[0], pair[1]), "stores over different sources are told apart")
 	}
 
 	// A new visitor: a store over the same source takes the ID the first store
 	// saved, a store over another source starts a session of its own.
+	shared := memory.New()
+	app := fiber.New()
+	byQuery := NewStore(Config{Extractor: query, Storage: shared})
 	visitor := newRequest(t, app)
 	first := mustGet(t, byQuery, visitor)
 	first.Set("k", "v")
 	require.NoError(t, first.Save())
-	second := mustGet(t, bySameQuery, visitor)
+	second := mustGet(t, NewStore(Config{Extractor: query, Storage: shared}), visitor)
 	require.Equal(t, first.ID(), second.ID(), "a store over the same query parameter took the ID the first one saved")
 	require.False(t, second.Fresh())
-	third := mustGet(t, byCookie, visitor)
+	third := mustGet(t, NewStore(Config{Extractor: cookie, Storage: shared}), visitor)
 	require.NotEqual(t, first.ID(), third.ID(), "a cookie store next to them took the ID too")
 	require.True(t, third.Fresh())
 
@@ -227,8 +156,8 @@ func Test_Session_Store_SourcesAreToldApartByKindAndName(t *testing.T) {
 	// string; the cookie store behind it keeps to its own cookie, and starts a
 	// session of its own for a visitor who has none.
 	id := seedSession(t, app, byQuery, func(s *Session) { s.Set("k", "v") })
-	queryHandler, queryStore := NewWithStore(Config{Extractor: extractors.FromQuery("sid"), Storage: shared})
-	cookieHandler, cookieStore := NewWithStore(Config{Extractor: extractors.FromCookie("c_sid"), Storage: shared})
+	queryHandler, queryStore := NewWithStore(Config{Extractor: query, Storage: shared})
+	cookieHandler, cookieStore := NewWithStore(Config{Extractor: cookie, Storage: shared})
 	stacked := fiber.New()
 	stacked.Use(queryHandler, cookieHandler)
 	stacked.Get("/", func(c fiber.Ctx) error {
@@ -250,10 +179,8 @@ func Test_Store_ExtractorReplacedAfterNewStore(t *testing.T) {
 	store := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	store.Extractor = extractors.FromCookie("b_sid")
 
-	app := fiber.New()
-	c := newRequest(t, app)
-	sess := mustGet(t, store, c)
-	require.NoError(t, sess.Save())
+	c := newRequest(t, fiber.New())
+	require.NoError(t, mustGet(t, store, c).Save())
 
 	var written []string
 	for key := range c.Response().Header.Cookies() {
@@ -327,7 +254,6 @@ func Test_Session_Store_TakesTheNewestOfTheSavedIDsItShares(t *testing.T) {
 	t.Parallel()
 
 	storage := memory.New()
-	app := fiber.New()
 	storeA1 := NewStore(Config{Extractor: extractors.FromCookie("a1_sid"), Storage: storage})
 	storeA2 := NewStore(Config{Extractor: extractors.FromCookie("a2_sid"), Storage: storage})
 	storeS := NewStore(Config{
@@ -335,17 +261,8 @@ func Test_Session_Store_TakesTheNewestOfTheSavedIDsItShares(t *testing.T) {
 		Storage:   storage,
 	})
 
-	c := newRequest(t, app)
-
-	saved := func(store *Store) *Session {
-		sess, err := store.Get(c)
-		require.NoError(t, err)
-		t.Cleanup(sess.Release)
-		require.True(t, sess.Fresh())
-		require.NoError(t, sess.Save())
-		return sess
-	}
-	a1, a2 := saved(storeA1), saved(storeA2)
+	c := newRequest(t, fiber.New())
+	a1, a2 := saveNew(t, c, storeA1), saveNew(t, c, storeA2)
 	require.NotEqual(t, a1.ID(), a2.ID())
 
 	s := mustGet(t, storeS, c)
