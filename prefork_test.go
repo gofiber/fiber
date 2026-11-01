@@ -7,14 +7,12 @@ package fiber
 import (
 	"context"
 	"crypto/tls"
-	"io"
 	"net"
 	"os"
 	"os/exec"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/prefork"
 )
@@ -23,6 +21,7 @@ import (
 // Test_Prefork_Child_GracefulContext_WatchedOnce starts. In an ordinary test run the helper does nothing.
 const preforkChildHelperEnv = "FIBER_TEST_PREFORK_CHILD_HELPER"
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_App_Prefork_Child_Process(t *testing.T) {
 	skipIfNoIPv6(t)
 
@@ -33,28 +32,16 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	app := New()
 
 	cfg := listenConfigDefault()
-	err := app.prefork("invalid", nil, &cfg)
-	require.Error(t, err)
+	require.Error(t, app.prefork("invalid", nil, &cfg))
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
+	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
 
 	ipv6Cfg := ListenConfig{ListenerNetwork: NetworkTCP6}
 	require.NoError(t, app.prefork("[::1]:", nil, &ipv6Cfg))
 
-	// Create tls certificate
-	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	if err != nil {
-		require.NoError(t, err)
-	}
-	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+	config := &tls.Config{Certificates: []tls.Certificate{rootMiscBTestCert(t)}}
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
+	rootMiscBShutdownAfter(t, app, 1000*time.Millisecond)
 
 	cfg = listenConfigDefault()
 	require.NoError(t, app.prefork("127.0.0.1:", config, &cfg))
@@ -63,6 +50,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	require.NotNil(t, app.Server().HeaderReceived)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_App_Prefork_Master_Process(t *testing.T) {
 	enableTestPreforkMaster(t)
 
@@ -90,42 +78,29 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 	dummyChildCmd.Store("go")
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	setupIsChild(t)
 
-	rescueStdout := os.Stdout
-	defer func() { os.Stdout = rescueStdout }()
-
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-
-	os.Stdout = w
-
-	cfg := listenConfigDefault()
-	app := New()
-	app.startupProcess()
-	listenData := app.prepareListenData(":0", false, &cfg, nil)
-	app.startupMessage(listenData, &cfg)
-
-	require.NoError(t, w.Close())
-
-	out, err := io.ReadAll(r)
-	require.NoError(t, err)
+	out := captureOutput(func() {
+		cfg := listenConfigDefault()
+		app := New()
+		app.startupProcess()
+		listenData := app.prepareListenData(":0", false, &cfg, nil)
+		app.startupMessage(listenData, &cfg)
+	})
 	require.Empty(t, out)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_IsChild(t *testing.T) {
-	// Without env var, should be false
 	require.False(t, IsChild())
-
-	// With env var, should be true
 	setupIsChild(t)
 	require.True(t, IsChild())
 }
 
 func Test_Prefork_Logger(t *testing.T) {
 	t.Parallel()
-
 	l := preforkLogger{}
 	// Should not panic
 	l.Printf("test %s", "message")
@@ -137,11 +112,9 @@ func Test_Prefork_Logger(t *testing.T) {
 // the table come from listen_test.go.
 func Test_preforkServe_GracefulContext_DoneBeforeServe(t *testing.T) {
 	t.Parallel()
-
 	for _, state := range gracefulContextStates {
 		t.Run(state.name, func(t *testing.T) {
 			t.Parallel()
-
 			f := newGracefulFixture(t)
 			// The child calls this right before it serves.
 			f.cfg.ListenerAddrFunc = func(net.Addr) { f.cancelAndAwait() }
@@ -159,7 +132,6 @@ func Test_preforkServe_GracefulContext_DoneBeforeServe(t *testing.T) {
 // subprocess of this test binary that reports how often its shutdown hooks ran.
 func Test_Prefork_Child_GracefulContext_WatchedOnce(t *testing.T) {
 	t.Parallel()
-
 	exe, err := os.Executable()
 	require.NoError(t, err)
 
@@ -179,7 +151,6 @@ func Test_Prefork_Child_GracefulContext_WatchedOnce(t *testing.T) {
 // context right before it serves, as the table of Test_preforkServe_GracefulContext_DoneBeforeServe does.
 func Test_Prefork_Child_GracefulContext_Helper(t *testing.T) {
 	t.Parallel()
-
 	if os.Getenv(preforkChildHelperEnv) != "1" {
 		return
 	}
@@ -216,7 +187,5 @@ func enableTestOnPrefork(t *testing.T) {
 
 	previous := testOnPrefork
 	testOnPrefork = true
-	t.Cleanup(func() {
-		testOnPrefork = previous
-	})
+	t.Cleanup(func() { testOnPrefork = previous })
 }

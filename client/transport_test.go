@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -42,6 +43,12 @@ func (l *lbBalancingClient) DoDeadline(req *fasthttp.Request, resp *fasthttp.Res
 func (*lbBalancingClient) PendingRequests() int { return 0 }
 
 func (l *lbBalancingClient) LBClient() *fasthttp.LBClient { return l.client }
+
+// clientTestCWrapLB returns an lbBalancingClient around a balancer over clients:
+// a nested balancer that only shows itself through LBClient.
+func clientTestCWrapLB(clients ...fasthttp.BalancingClient) *lbBalancingClient {
+	return &lbBalancingClient{client: &fasthttp.LBClient{Clients: clients}}
+}
 
 type stubRedirectCall struct {
 	err      error
@@ -81,23 +88,37 @@ func (s *stubRedirectClient) Do(req *fasthttp.Request, resp *fasthttp.Response) 
 
 func (s *stubRedirectClient) CallCount() int { return s.callCount }
 
+// clientTestCRedirectStub returns a stub that redirects once, with status to
+// location, and then answers 200.
+func clientTestCRedirectStub(status int, location string) *stubRedirectClient {
+	return &stubRedirectClient{calls: []stubRedirectCall{
+		{status: new(status), location: new(location)},
+		{status: new(fasthttp.StatusOK)},
+	}}
+}
+
+// clientTestCFound returns the calls that answer each of locations with a 302 to it.
+func clientTestCFound(locations ...string) []stubRedirectCall {
+	calls := make([]stubRedirectCall, 0, len(locations))
+	for _, location := range locations {
+		calls = append(calls, stubRedirectCall{status: new(fasthttp.StatusFound), location: new(location)})
+	}
+
+	return calls
+}
+
 func TestStandardClientTransportCoverage(t *testing.T) {
 	t.Parallel()
-
 	var dialCount atomic.Int32
 	client := &fasthttp.Client{}
-	client.Dial = func(addr string) (net.Conn, error) {
-		_ = addr
+	client.Dial = func(string) (net.Conn, error) {
 		dialCount.Add(1)
 		return nil, errors.New("dial error")
 	}
 
 	transport := newStandardClientTransport(client)
 
-	req := fasthttp.AcquireRequest()
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseRequest(req)
-	defer fasthttp.ReleaseResponse(resp)
+	req, resp := clientTestCReqResp(t)
 
 	req.SetRequestURI("http://example.com/")
 	require.Error(t, transport.Do(req, resp))
@@ -129,7 +150,6 @@ func TestStandardClientTransportCoverage(t *testing.T) {
 
 func TestHostClientTransportClientAccessor(t *testing.T) {
 	t.Parallel()
-
 	host := &fasthttp.HostClient{Addr: "example.com:80"}
 	transport := newHostClientTransport(host)
 
@@ -150,26 +170,19 @@ func TestHostClientTransportClientAccessor(t *testing.T) {
 
 func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	t.Parallel()
-
 	hostWithoutOverrides := &fasthttp.HostClient{Addr: "example.com:80"}
 	nestedDialHost := &fasthttp.HostClient{Addr: "example.org:80"}
 	nestedTLSHost := &fasthttp.HostClient{Addr: "example.net:80", TLSConfig: &tls.Config{ServerName: "example", MinVersion: tls.VersionTLS12}}
 	multiLevelHost := &fasthttp.HostClient{Addr: "example.edu:80"}
 
-	nestedDialHost.Dial = func(addr string) (net.Conn, error) {
-		_ = addr
-		return nil, errors.New("original dial")
-	}
+	nestedDialHost.Dial = func(string) (net.Conn, error) { return nil, errors.New("original dial") }
 
-	multiLevelHost.Dial = func(addr string) (net.Conn, error) {
-		_ = addr
-		return nil, errors.New("multi-level dial")
-	}
+	multiLevelHost.Dial = func(string) (net.Conn, error) { return nil, errors.New("multi-level dial") }
 
-	nestedDialLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nestedDialHost}}}
-	nestedTLSLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nestedTLSHost}}}
-	multiLevelLeaf := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{multiLevelHost}}}
-	multiLevelWrapper := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{multiLevelLeaf}}}
+	nestedDialLB := clientTestCWrapLB(nestedDialHost)
+	nestedTLSLB := clientTestCWrapLB(nestedTLSHost)
+	multiLevelLeaf := clientTestCWrapLB(multiLevelHost)
+	multiLevelWrapper := clientTestCWrapLB(multiLevelLeaf)
 
 	lb := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{
 		stubBalancingClient{},
@@ -196,31 +209,21 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	require.Equal(t, "mutated", transport.TLSConfig().ServerName)
 
 	overrideDialCalled := atomic.Bool{}
-	overrideDial := func(addr string) (net.Conn, error) {
-		_ = addr
+	overrideDial := func(string) (net.Conn, error) {
 		overrideDialCalled.Store(true)
 		return nil, errors.New("override dial")
 	}
 	transport.SetDial(overrideDial)
-	overrideDialCalled.Store(false)
-	_, err := hostWithoutOverrides.Dial("example.com:80")
-	require.Error(t, err)
-	require.True(t, overrideDialCalled.Load())
-
-	overrideDialCalled.Store(false)
-	_, err = nestedDialHost.Dial("example.org:80")
-	require.Error(t, err)
-	require.True(t, overrideDialCalled.Load())
-
-	overrideDialCalled.Store(false)
-	_, err = multiLevelHost.Dial("example.edu:80")
-	require.Error(t, err)
-	require.True(t, overrideDialCalled.Load())
+	for _, host := range []*fasthttp.HostClient{hostWithoutOverrides, nestedDialHost, multiLevelHost} {
+		overrideDialCalled.Store(false)
+		_, err := host.Dial(host.Addr)
+		require.Error(t, err, host.Addr)
+		require.True(t, overrideDialCalled.Load(), host.Addr)
+	}
 }
 
 func TestExtractTLSConfigVariations(t *testing.T) {
 	t.Parallel()
-
 	require.Nil(t, extractTLSConfig(nil))
 	require.Nil(t, extractTLSConfig([]fasthttp.BalancingClient{stubBalancingClient{}}))
 
@@ -228,16 +231,15 @@ func TestExtractTLSConfigVariations(t *testing.T) {
 	require.Equal(t, host.TLSConfig, extractTLSConfig([]fasthttp.BalancingClient{host}))
 
 	nested := &fasthttp.HostClient{TLSConfig: &tls.Config{ServerName: "nested", MinVersion: tls.VersionTLS12}}
-	nestedLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nested}}}
+	nestedLB := clientTestCWrapLB(nested)
 	require.Equal(t, nested.TLSConfig, extractTLSConfig([]fasthttp.BalancingClient{nestedLB}))
 
-	multiLayerLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nestedLB}}}
+	multiLayerLB := clientTestCWrapLB(nestedLB)
 	require.Equal(t, nested.TLSConfig, extractTLSConfig([]fasthttp.BalancingClient{multiLayerLB}))
 }
 
 func TestWalkBalancingClientWithBreak(t *testing.T) {
 	t.Parallel()
-
 	host := &fasthttp.HostClient{}
 	require.True(t, walkBalancingClientWithBreak(host, func(*fasthttp.HostClient) bool { return true }))
 
@@ -247,7 +249,7 @@ func TestWalkBalancingClientWithBreak(t *testing.T) {
 	}))
 
 	nested := &fasthttp.HostClient{}
-	nestedLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nested}}}
+	nestedLB := clientTestCWrapLB(nested)
 	require.True(t, walkBalancingClientWithBreak(nestedLB, func(*fasthttp.HostClient) bool { return true }))
 
 	directNestedHost := &fasthttp.HostClient{}
@@ -269,126 +271,106 @@ func TestWalkBalancingClientWithBreak(t *testing.T) {
 // which may be a different host than the caller addressed.
 func TestDoRedirectsWithClient_DropsBodyForAnyMethod(t *testing.T) {
 	t.Parallel()
+	type dropCase struct {
+		name       string
+		method     string
+		wantMethod string
+		status     int
+	}
 
-	for _, status := range []int{fasthttp.StatusMovedPermanently, fasthttp.StatusFound, fasthttp.StatusSeeOther} {
-		for _, method := range []string{fasthttp.MethodPost, fasthttp.MethodPut, fasthttp.MethodPatch, fasthttp.MethodDelete, "QUERY"} {
-			t.Run(strconv.Itoa(status)+"/"+method, func(t *testing.T) {
-				t.Parallel()
-
-				req := fasthttp.AcquireRequest()
-				resp := fasthttp.AcquireResponse()
-				defer fasthttp.ReleaseRequest(req)
-				defer fasthttp.ReleaseResponse(resp)
-
-				req.SetRequestURI("http://example.com/start")
-				req.Header.SetMethod(method)
-				req.Header.SetContentType("application/json")
-				req.Header.Set(fasthttp.HeaderContentEncoding, "gzip")
-				req.Header.Set(fasthttp.HeaderTrailer, "X-Checksum")
-				req.SetBodyString(`{"q":"secret"}`)
-
-				client := &stubRedirectClient{calls: []stubRedirectCall{
-					{status: new(status), location: new("http://other.example/next")},
-					{status: new(fasthttp.StatusOK)},
-				}}
-				require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: -1}, client))
-
-				require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
-				require.Empty(t, req.Body(), "the body must not reach the redirect target")
-				require.Empty(t, req.Header.ContentType())
-				require.Empty(t, req.Header.Peek(fasthttp.HeaderContentEncoding), "a coding without a body to decode")
-				require.Empty(t, req.Header.Peek(fasthttp.HeaderTrailer), "a Trailer only frames a body that is gone")
-				require.Empty(t, req.Header.Peek(fasthttp.HeaderTransferEncoding))
+	statuses := []int{fasthttp.StatusMovedPermanently, fasthttp.StatusFound, fasthttp.StatusSeeOther}
+	methods := []string{fasthttp.MethodPost, fasthttp.MethodPut, fasthttp.MethodPatch, fasthttp.MethodDelete, "QUERY"}
+	var cases []dropCase
+	for _, status := range statuses {
+		for _, method := range methods {
+			cases = append(cases, dropCase{
+				name:   strconv.Itoa(status) + "/" + method,
+				method: method, status: status, wantMethod: fasthttp.MethodGet,
 			})
 		}
+	}
+	// GET and HEAD keep their method: RFC 9110 Section 15.4.4 says GET *or* HEAD.
+	// The body still goes, or a GET carrying one replays it to the target.
+	for _, method := range []string{fasthttp.MethodGet, fasthttp.MethodHead} {
+		cases = append(cases, dropCase{
+			name: method + " keeps its method but not its body", method: method, wantMethod: method,
+			status: fasthttp.StatusSeeOther,
+		})
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req, resp := clientTestCReqResp(t)
+
+			req.SetRequestURI("http://example.com/start")
+			req.Header.SetMethod(tc.method)
+			req.Header.SetContentType("application/json")
+			req.Header.Set(fasthttp.HeaderContentEncoding, "gzip")
+			req.Header.Set(fasthttp.HeaderTrailer, "X-Checksum")
+			req.SetBodyString(`{"q":"secret"}`)
+
+			client := clientTestCRedirectStub(tc.status, "http://other.example/next")
+			require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: -1}, client))
+
+			require.Equal(t, tc.wantMethod, string(req.Header.Method()))
+			require.Empty(t, req.Body(), "the body must not reach the redirect target")
+			require.Empty(t, req.Header.ContentType())
+			require.Empty(t, req.Header.Peek(fasthttp.HeaderContentEncoding), "a coding without a body to decode")
+			require.Empty(t, req.Header.Peek(fasthttp.HeaderTrailer), "a Trailer only frames a body that is gone")
+			require.Empty(t, req.Header.Peek(fasthttp.HeaderTransferEncoding))
+		})
 	}
 
 	// 307 and 308 exist to preserve the method and body, so they are untouched.
 	for _, status := range []int{fasthttp.StatusTemporaryRedirect, fasthttp.StatusPermanentRedirect} {
 		t.Run(strconv.Itoa(status)+"/preserved", func(t *testing.T) {
 			t.Parallel()
-
-			req := fasthttp.AcquireRequest()
-			resp := fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseRequest(req)
-			defer fasthttp.ReleaseResponse(resp)
+			req, resp := clientTestCReqResp(t)
 
 			req.SetRequestURI("http://example.com/start")
 			req.Header.SetMethod(fasthttp.MethodPost)
 			req.Header.SetContentType("application/json")
 			req.SetBodyString("body-must-survive")
 
-			client := &stubRedirectClient{calls: []stubRedirectCall{
-				{status: new(status), location: new("/next")},
-				{status: new(fasthttp.StatusOK)},
-			}}
+			client := clientTestCRedirectStub(status, "/next")
 			require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: -1}, client))
 
 			require.Equal(t, fasthttp.MethodPost, string(req.Header.Method()))
 			require.Equal(t, "body-must-survive", string(req.Body()))
 		})
 	}
-
-	// GET and HEAD keep their method: RFC 9110 Section 15.4.4 says GET *or* HEAD.
-	// The body still goes, or a GET carrying one replays it to the target.
-	for _, method := range []string{fasthttp.MethodGet, fasthttp.MethodHead} {
-		t.Run(method+" keeps its method but not its body", func(t *testing.T) {
-			t.Parallel()
-
-			req := fasthttp.AcquireRequest()
-			resp := fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseRequest(req)
-			defer fasthttp.ReleaseResponse(resp)
-
-			req.SetRequestURI("http://example.com/start")
-			req.Header.SetMethod(method)
-			req.Header.SetContentType("application/json")
-			req.SetBodyString(`{"q":"secret"}`)
-
-			client := &stubRedirectClient{calls: []stubRedirectCall{
-				{status: new(fasthttp.StatusSeeOther), location: new("http://other.example/next")},
-				{status: new(fasthttp.StatusOK)},
-			}}
-			require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: -1}, client))
-
-			require.Equal(t, method, string(req.Header.Method()))
-			require.Empty(t, req.Body(), "the body must not reach the redirect target")
-			require.Empty(t, req.Header.ContentType())
-		})
-	}
 }
 
 func TestDoRedirectsWithClientBranches(t *testing.T) {
 	t.Parallel()
-
-	req := fasthttp.AcquireRequest()
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseRequest(req)
-	defer fasthttp.ReleaseResponse(resp)
+	req, resp := clientTestCReqResp(t)
 
 	req.SetRequestURI("http://example.com/start")
-	req.Header.SetMethod(fasthttp.MethodPost)
-	req.Header.SetContentType("application/json")
-	req.SetBodyString("payload")
 
-	client := &stubRedirectClient{calls: []stubRedirectCall{{status: new(fasthttp.StatusMovedPermanently), location: new("/redirect")}, {status: new(fasthttp.StatusOK)}}}
-	require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: -1}, client))
-	require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
-	require.Equal(t, "http://example.com/redirect", req.URI().String())
-	require.Empty(t, req.Body())
-	require.Empty(t, req.Header.ContentType())
+	// The steps run in order on one request: each pass sends it as a POST again
+	// from wherever the previous redirect left it.
+	for _, tc := range []struct {
+		location string
+		wantURL  string
+		status   int
+	}{
+		{status: fasthttp.StatusMovedPermanently, location: "/redirect", wantURL: "http://example.com/redirect"},
+		{status: fasthttp.StatusSeeOther, location: "/see-other", wantURL: "http://example.com/see-other"},
+	} {
+		resp.Reset()
+		req.Header.SetMethod(fasthttp.MethodPost)
+		req.Header.SetContentType("application/json")
+		req.SetBodyString("payload")
 
-	resp.Reset()
-	req.Header.SetMethod(fasthttp.MethodPost)
-	req.Header.SetContentType("application/json")
-	req.SetBodyString("payload")
-
-	seeOtherClient := &stubRedirectClient{calls: []stubRedirectCall{{status: new(fasthttp.StatusSeeOther), location: new("/see-other")}, {status: new(fasthttp.StatusOK)}}}
-	require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: -1}, seeOtherClient))
-	require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
-	require.Equal(t, "http://example.com/see-other", req.URI().String())
-	require.Empty(t, req.Body())
-	require.Empty(t, req.Header.ContentType())
+		client := clientTestCRedirectStub(tc.status, tc.location)
+		require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: -1}, client),
+			"status %d", tc.status)
+		require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()), "status %d", tc.status)
+		require.Equal(t, tc.wantURL, req.URI().String(), "status %d", tc.status)
+		require.Empty(t, req.Body(), "status %d", tc.status)
+		require.Empty(t, req.Header.ContentType(), "status %d", tc.status)
+	}
 
 	resp.Reset()
 	req.Header.SetMethod(fasthttp.MethodPost)
@@ -400,7 +382,8 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 	// finished indistinguishable from one that stopped at a hop, and the request
 	// is left as it was sent, since the error comes before any rewrite.
 	singleCall := &stubRedirectClient{calls: []stubRedirectCall{{status: new(fasthttp.StatusFound), location: new("/ignored")}}}
-	require.ErrorIs(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 0}, singleCall), fasthttp.ErrTooManyRedirects)
+	require.ErrorIs(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 0}, singleCall),
+		fasthttp.ErrTooManyRedirects)
 	require.Equal(t, fasthttp.StatusFound, resp.StatusCode())
 	require.Equal(t, fasthttp.MethodPost, string(req.Header.Method()))
 	require.Equal(t, "http://example.com/again", req.URI().String())
@@ -408,33 +391,45 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 	require.Equal(t, 1, singleCall.CallCount())
 	require.Equal(t, fasthttp.StatusFound, resp.Header.StatusCode())
 
-	resp.Reset()
-	req.Header.SetMethod(fasthttp.MethodPost)
-	req.SetRequestURI("http://example.com/start")
+	// A redirect that cannot be followed, with a limit of one.
+	for _, tc := range []struct {
+		wantErr error
+		name    string
+		calls   []stubRedirectCall
+	}{
+		{
+			name:    "a redirect with no Location",
+			calls:   []stubRedirectCall{{status: new(fasthttp.StatusFound)}},
+			wantErr: fasthttp.ErrMissingLocation,
+		},
+		{
+			name:    "a Location with a foreign scheme",
+			calls:   []stubRedirectCall{{status: new(fasthttp.StatusMovedPermanently), location: new("ftp://example.com")}},
+			wantErr: fasthttp.ErrorInvalidURI,
+		},
+		{
+			name:    "a Location with a control character",
+			calls:   []stubRedirectCall{{status: new(fasthttp.StatusFound), location: new("/bad\x00path")}},
+			wantErr: fasthttp.ErrorInvalidURI,
+		},
+		{
+			name: "more redirects than the limit",
+			calls: []stubRedirectCall{
+				{status: new(fasthttp.StatusMovedPermanently), location: new("/loop")},
+				{status: new(fasthttp.StatusFound), location: new("/final")},
+				{status: new(fasthttp.StatusOK)},
+			},
+			wantErr: fasthttp.ErrTooManyRedirects,
+		},
+	} {
+		resp.Reset()
+		req.Header.SetMethod(fasthttp.MethodPost)
+		req.SetRequestURI("http://example.com/start")
 
-	client = &stubRedirectClient{calls: []stubRedirectCall{{status: new(fasthttp.StatusFound)}}}
-	require.ErrorIs(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 1}, client), fasthttp.ErrMissingLocation)
-
-	resp.Reset()
-	req.Header.SetMethod(fasthttp.MethodPost)
-	req.SetRequestURI("http://example.com/start")
-
-	client = &stubRedirectClient{calls: []stubRedirectCall{{status: new(fasthttp.StatusMovedPermanently), location: new("ftp://example.com")}}}
-	require.ErrorIs(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 1}, client), fasthttp.ErrorInvalidURI)
-
-	resp.Reset()
-	req.Header.SetMethod(fasthttp.MethodPost)
-	req.SetRequestURI("http://example.com/start")
-
-	client = &stubRedirectClient{calls: []stubRedirectCall{{status: new(fasthttp.StatusFound), location: new("/bad\x00path")}}}
-	require.ErrorIs(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 1}, client), fasthttp.ErrorInvalidURI)
-
-	resp.Reset()
-	req.Header.SetMethod(fasthttp.MethodPost)
-	req.SetRequestURI("http://example.com/start")
-
-	client = &stubRedirectClient{calls: []stubRedirectCall{{status: new(fasthttp.StatusMovedPermanently), location: new("/loop")}, {status: new(fasthttp.StatusFound), location: new("/final")}, {status: new(fasthttp.StatusOK)}}}
-	require.ErrorIs(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 1}, client), fasthttp.ErrTooManyRedirects)
+		client := &stubRedirectClient{calls: tc.calls}
+		require.ErrorIs(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 1}, client),
+			tc.wantErr, tc.name)
+	}
 }
 
 // TestComposeRedirectURL_RejectsHTTPSDowngrade verifies that redirects
@@ -442,33 +437,49 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 // and credentials never leave the TLS boundary.
 func TestComposeRedirectURL_RejectsHTTPSDowngrade(t *testing.T) {
 	t.Parallel()
-	_, _, err := composeRedirectURL("https://example.com/login", []byte("http://example.com/after"), false)
-	require.ErrorIs(t, err, ErrRedirectDowngrade)
-
-	// Same-origin HTTP→HTTP is fine.
-	out, host, err := composeRedirectURL("http://example.com/a", []byte("http://example.com/b"), false)
-	require.NoError(t, err)
-	require.Equal(t, "http://example.com/b", out)
-	require.Equal(t, "example.com", host)
-
-	// HTTPS→HTTPS is fine.
-	out, host, err = composeRedirectURL("https://example.com/a", []byte("https://example.com/b"), false)
-	require.NoError(t, err)
-	require.Equal(t, "https://example.com/b", out)
-	require.Equal(t, "example.com", host)
-
-	// HTTP→HTTPS upgrade is fine.
-	out, host, err = composeRedirectURL("http://example.com/a", []byte("https://example.com/b"), false)
-	require.NoError(t, err)
-	require.Equal(t, "https://example.com/b", out)
-	require.Equal(t, "example.com", host)
-
-	// A cross-host redirect reports the new host so the caller can drop
-	// origin-scoped credentials.
-	out, host, err = composeRedirectURL("http://example.com/a", []byte("http://other.example/b"), false)
-	require.NoError(t, err)
-	require.Equal(t, "http://other.example/b", out)
-	require.Equal(t, "other.example", host)
+	for _, tc := range []struct {
+		wantErr                                 error
+		name, from, location, wantURL, wantHost string
+	}{
+		{
+			name: "HTTPS to HTTP is refused", from: "https://example.com/login", location: "http://example.com/after",
+			wantErr: ErrRedirectDowngrade,
+		},
+		{
+			name: "same-origin HTTP to HTTP is fine",
+			from: "http://example.com/a", location: "http://example.com/b",
+			wantURL: "http://example.com/b", wantHost: "example.com",
+		},
+		{
+			name: "HTTPS to HTTPS is fine",
+			from: "https://example.com/a", location: "https://example.com/b",
+			wantURL: "https://example.com/b", wantHost: "example.com",
+		},
+		{
+			name: "HTTP to HTTPS upgrade is fine",
+			from: "http://example.com/a", location: "https://example.com/b",
+			wantURL: "https://example.com/b", wantHost: "example.com",
+		},
+		{
+			// The new host is reported so the caller can drop origin-scoped
+			// credentials.
+			name: "a cross-host redirect reports the new host",
+			from: "http://example.com/a", location: "http://other.example/b",
+			wantURL: "http://other.example/b", wantHost: "other.example",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			out, host, err := composeRedirectURL(tc.from, []byte(tc.location), false)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.wantURL, out)
+			require.Equal(t, tc.wantHost, host)
+		})
+	}
 }
 
 // TestTrustedRedirectTarget_NoInitialHostname pins the degenerate case: with no
@@ -477,7 +488,6 @@ func TestComposeRedirectURL_RejectsHTTPSDowngrade(t *testing.T) {
 // to be skipped entirely rather than letting a trailing dot pass for one.
 func TestTrustedRedirectTarget_NoInitialHostname(t *testing.T) {
 	t.Parallel()
-
 	require.False(t, trustedRedirectTarget("evil.com.", ""))
 	require.False(t, trustedRedirectTarget("evil.com", ""))
 	require.False(t, trustedRedirectTarget(".", ""))
@@ -492,7 +502,6 @@ func TestTrustedRedirectTarget_NoInitialHostname(t *testing.T) {
 // every bracket off both ends.
 func TestHostnameWithoutPort(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct{ in, want string }{
 		{"example.com", "example.com"},
 		{"example.com:8080", "example.com"},
@@ -522,78 +531,41 @@ func TestHostnameWithoutPort(t *testing.T) {
 // they were issued for, and survive redirects that stay on it.
 func TestDoRedirectsWithClient_StripsCredentialsCrossHost(t *testing.T) {
 	t.Parallel()
+	// newReq returns a request for http://example.com/start that carries every
+	// credential, and the response to fill.
+	newReq := func(t *testing.T) (*fasthttp.Request, *fasthttp.Response) {
+		t.Helper()
 
-	newReq := func() *fasthttp.Request {
-		req := fasthttp.AcquireRequest()
+		req, resp := clientTestCReqResp(t)
 		req.SetRequestURI("http://example.com/start")
 		req.Header.Set(fasthttp.HeaderAuthorization, "Bearer secret")
 		req.Header.Set(fasthttp.HeaderProxyAuthorization, "Basic secret")
 		req.Header.Set(fasthttp.HeaderCookie, "session=secret")
-		return req
+		return req, resp
 	}
 
-	t.Run("subdomain of the initial host keeps credentials", func(t *testing.T) {
-		t.Parallel()
+	for _, tc := range []struct{ name, location string }{
+		{name: "subdomain of the initial host keeps credentials", location: "http://www.example.com/next"},
+		{name: "explicit default port keeps credentials", location: "http://example.com:80/next"},
+		{name: "same host keeps credentials", location: "http://example.com/next"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req, resp := newReq(t)
 
-		req := newReq()
-		defer fasthttp.ReleaseRequest(req)
-		resp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(resp)
-
-		client := &stubRedirectClient{calls: []stubRedirectCall{
-			{status: new(fasthttp.StatusFound), location: new("http://www.example.com/next")},
-			{status: new(fasthttp.StatusOK)},
-		}}
-		require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 5}, client))
-		require.Equal(t, "Bearer secret", string(req.Header.Peek(fasthttp.HeaderAuthorization)))
-	})
-
-	t.Run("explicit default port keeps credentials", func(t *testing.T) {
-		t.Parallel()
-
-		req := newReq()
-		defer fasthttp.ReleaseRequest(req)
-		resp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(resp)
-
-		client := &stubRedirectClient{calls: []stubRedirectCall{
-			{status: new(fasthttp.StatusFound), location: new("http://example.com:80/next")},
-			{status: new(fasthttp.StatusOK)},
-		}}
-		require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 5}, client))
-		require.Equal(t, "Bearer secret", string(req.Header.Peek(fasthttp.HeaderAuthorization)))
-	})
-
-	t.Run("same host keeps credentials", func(t *testing.T) {
-		t.Parallel()
-
-		req := newReq()
-		defer fasthttp.ReleaseRequest(req)
-		resp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(resp)
-
-		client := &stubRedirectClient{calls: []stubRedirectCall{
-			{status: new(fasthttp.StatusFound), location: new("http://example.com/next")},
-			{status: new(fasthttp.StatusOK)},
-		}}
-		require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 5}, client))
-		require.Equal(t, "Bearer secret", string(req.Header.Peek(fasthttp.HeaderAuthorization)))
-		require.Equal(t, "Basic secret", string(req.Header.Peek(fasthttp.HeaderProxyAuthorization)))
-		require.Equal(t, "session=secret", string(req.Header.Peek(fasthttp.HeaderCookie)))
-	})
+			client := clientTestCRedirectStub(fasthttp.StatusFound, tc.location)
+			require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 5}, client))
+			require.Equal(t, "Bearer secret", string(req.Header.Peek(fasthttp.HeaderAuthorization)))
+			require.Equal(t, "Basic secret", string(req.Header.Peek(fasthttp.HeaderProxyAuthorization)))
+			require.Equal(t, "session=secret", string(req.Header.Peek(fasthttp.HeaderCookie)))
+		})
+	}
 
 	t.Run("cross host drops credentials", func(t *testing.T) {
 		t.Parallel()
+		req, resp := newReq(t)
 
-		req := newReq()
-		defer fasthttp.ReleaseRequest(req)
-		resp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(resp)
-
-		client := &stubRedirectClient{calls: []stubRedirectCall{
-			{status: new(fasthttp.StatusFound), location: new("http://attacker.example/collect")},
-			{status: new(fasthttp.StatusOK)},
-		}}
+		client := clientTestCRedirectStub(fasthttp.StatusFound, "http://attacker.example/collect")
 		require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 5}, client))
 		require.Equal(t, "http://attacker.example/collect", req.URI().String())
 		require.Empty(t, req.Header.Peek(fasthttp.HeaderAuthorization))
@@ -604,66 +576,43 @@ func TestDoRedirectsWithClient_StripsCredentialsCrossHost(t *testing.T) {
 
 func TestDoRedirectsWithClient_DropsBuiltInHeadersWhateverTheirCase(t *testing.T) {
 	t.Parallel()
-
 	names := []string{
-		"authorization",
-		"proxy-authorization",
-		"proxy-authenticate",
-		"www-authenticate",
-		"cookie",
-		"cookie2",
+		"authorization", "proxy-authorization", "proxy-authenticate", "www-authenticate", "cookie", "cookie2",
 	}
 
-	follow := func(t *testing.T, location string) *fasthttp.Request {
-		t.Helper()
+	for _, tc := range []struct {
+		name, location string
+		lines          int // of each built-in header that is left
+	}{
+		{name: "another host drops every one", location: "http://attacker.example/collect"},
+		{name: "same host keeps every one", location: "http://example.com/next", lines: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req, resp := clientTestCReqResp(t)
+			req.SetRequestURI("http://example.com/start")
+			// Header.Del is byte-exact and missed these under DisableNormalizing.
+			req.Header.DisableNormalizing()
+			for _, name := range names {
+				req.Header.Add(name, "k=secret")
+			}
+			req.Header.Add("x-api-key", "key")
+			for _, name := range names {
+				require.Len(t, fieldname.Lines(&req.Header, name, false), 1, name)
+			}
 
-		req := fasthttp.AcquireRequest()
-		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
-		req.SetRequestURI("http://example.com/start")
-		// Header.Del is byte-exact and missed these under DisableNormalizing.
-		req.Header.DisableNormalizing()
-		for _, name := range names {
-			req.Header.Add(name, "k=secret")
-		}
-		req.Header.Add("x-api-key", "key")
-		for _, name := range names {
-			require.Len(t, fieldname.Lines(&req.Header, name, false), 1, name)
-		}
-
-		resp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(resp)
-		client := &stubRedirectClient{calls: []stubRedirectCall{
-			{status: new(fasthttp.StatusFound), location: &location},
-			{status: new(fasthttp.StatusOK)},
-		}}
-		require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 5}, client))
-		return req
+			client := clientTestCRedirectStub(fasthttp.StatusFound, tc.location)
+			require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 5}, client))
+			for _, name := range names {
+				require.Len(t, fieldname.Lines(&req.Header, name, false), tc.lines, name)
+			}
+			require.Len(t, fieldname.Lines(&req.Header, "x-api-key", false), 1)
+		})
 	}
-
-	t.Run("another host drops every one", func(t *testing.T) {
-		t.Parallel()
-
-		req := follow(t, "http://attacker.example/collect")
-		for _, name := range names {
-			require.Empty(t, fieldname.Lines(&req.Header, name, false), name)
-		}
-		require.Len(t, fieldname.Lines(&req.Header, "x-api-key", false), 1)
-	})
-
-	t.Run("same host keeps every one", func(t *testing.T) {
-		t.Parallel()
-
-		req := follow(t, "http://example.com/next")
-		for _, name := range names {
-			require.Len(t, fieldname.Lines(&req.Header, name, false), 1, name)
-		}
-		require.Len(t, fieldname.Lines(&req.Header, "x-api-key", false), 1)
-	})
 }
 
 func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 	t.Parallel()
-
 	plain := func(req *fasthttp.Request) {
 		req.Header.Set(fasthttp.HeaderAuthorization, "Bearer secret")
 		req.Header.Set("X-Api-Key", "key")
@@ -727,19 +676,11 @@ func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			req := fasthttp.AcquireRequest()
-			defer fasthttp.ReleaseRequest(req)
-			resp := fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseResponse(resp)
+			req, resp := clientTestCReqResp(t)
 			req.SetRequestURI("http://example.com/start")
 			tc.setup(req)
 
-			calls := make([]stubRedirectCall, 0, len(tc.locations)+1)
-			for _, location := range tc.locations {
-				calls = append(calls, stubRedirectCall{status: new(fasthttp.StatusFound), location: new(location)})
-			}
-			calls = append(calls, stubRedirectCall{status: new(fasthttp.StatusOK)})
+			calls := append(clientTestCFound(tc.locations...), stubRedirectCall{status: new(fasthttp.StatusOK)})
 
 			var got []carried
 			client := &stubRedirectClient{calls: calls, onRequest: func(req *fasthttp.Request) {
@@ -758,12 +699,9 @@ func TestDoRedirectsWithClient_DropsListedHeadersCrossHost(t *testing.T) {
 
 func TestClient_DoRedirects_DropsClientListedHeaders(t *testing.T) {
 	t.Parallel()
-
 	server := startRedirectServer(t, func(c fiber.Ctx) error {
 		return c.SendString(c.Get("X-Api-Key") + "|" + c.Get("X-Auth-Token"))
 	})
-	// Not a defer: the parallel subtests outlive this function.
-	t.Cleanup(server.stop)
 
 	do := func(t *testing.T, client *Client, path string) string {
 		t.Helper()
@@ -780,21 +718,10 @@ func TestClient_DoRedirects_DropsClientListedHeaders(t *testing.T) {
 		return string(resp.Body())
 	}
 
-	for name, newClient := range map[string]func() *Client{
-		"standard": func() *Client { return New().SetDial(server.dial()) },
-		"host": func() *Client {
-			return NewWithHostClient(&fasthttp.HostClient{Addr: "example.com:80", Dial: server.dial()})
-		},
-		"balanced": func() *Client {
-			return NewWithLBClient(&fasthttp.LBClient{Clients: []fasthttp.BalancingClient{
-				&fasthttp.HostClient{Addr: "example.com:80", Dial: server.dial()},
-			}})
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
+	for _, kind := range pathClientKinds {
+		t.Run(kind.name, func(t *testing.T) {
 			t.Parallel()
-
-			client := newClient()
+			client := kind.build(server.dial(), false)
 
 			require.Equal(t, "key|tok", do(t, client, "/start"))
 
@@ -812,7 +739,6 @@ func TestClient_DoRedirects_DropsClientListedHeaders(t *testing.T) {
 // every transport now shares through doRedirectsWithClient.
 func TestDoRedirectsWithClient_ValidatesTargets(t *testing.T) {
 	t.Parallel()
-
 	cases := []struct {
 		wantErr  error
 		name     string
@@ -827,11 +753,7 @@ func TestDoRedirectsWithClient_ValidatesTargets(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			req := fasthttp.AcquireRequest()
-			defer fasthttp.ReleaseRequest(req)
-			resp := fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseResponse(resp)
+			req, resp := clientTestCReqResp(t)
 
 			req.SetRequestURI(tc.base)
 			client := &stubRedirectClient{calls: []stubRedirectCall{
@@ -851,7 +773,6 @@ func TestDoRedirectsWithClient_ValidatesTargets(t *testing.T) {
 // rather than ErrRedirectDowngrade, so the assertion cannot pass vacuously.
 func TestClient_DoRedirects_RejectsHTTPSDowngrade(t *testing.T) {
 	t.Parallel()
-
 	cert, err := tls.LoadX509KeyPair("../.github/testdata/ssl.pem", "../.github/testdata/ssl.key")
 	require.NoError(t, err)
 
@@ -895,20 +816,9 @@ func TestClient_DoRedirects_RejectsHTTPSDowngrade(t *testing.T) {
 // callers actually get from New(), not only to the load-balanced transport.
 func TestClient_DoRedirects_StripsCredentialsCrossHost(t *testing.T) {
 	t.Parallel()
-
-	server := startTestServer(t, func(app *fiber.App) {
-		app.Get("/start", func(c fiber.Ctx) error {
-			return c.Redirect().Status(fiber.StatusFound).To("http://attacker.example/collect")
-		})
-		app.Get("/same-host", func(c fiber.Ctx) error {
-			return c.Redirect().Status(fiber.StatusFound).To("http://example.com/collect")
-		})
-		app.Get("/collect", func(c fiber.Ctx) error {
-			return c.SendString(c.Get(fiber.HeaderAuthorization) + "|" + c.Get(fiber.HeaderCookie))
-		})
+	server := startRedirectServer(t, func(c fiber.Ctx) error {
+		return c.SendString(c.Get(fiber.HeaderAuthorization) + "|" + c.Get(fiber.HeaderCookie))
 	})
-	defer server.stop()
-
 	client := New().SetDial(server.dial())
 	credentials := Config{
 		Header:       map[string]string{fiber.HeaderAuthorization: "Bearer secret"},
@@ -918,15 +828,11 @@ func TestClient_DoRedirects_StripsCredentialsCrossHost(t *testing.T) {
 
 	// Control: a redirect that stays on the issuing host carries them through,
 	// so the cross-host assertion below cannot pass vacuously.
-	sameHost, err := client.Get("http://example.com/same-host", credentials)
-	require.NoError(t, err)
-	defer sameHost.Close()
+	sameHost := clientTestBClientGet(t, client, "http://example.com/same-host", credentials)
 	require.Equal(t, fiber.StatusOK, sameHost.StatusCode())
 	require.Equal(t, "Bearer secret|session=secret", sameHost.String())
 
-	resp, err := client.Get("http://example.com/start", credentials)
-	require.NoError(t, err)
-	defer resp.Close()
+	resp := clientTestBClientGet(t, client, "http://example.com/start", credentials)
 
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	require.Equal(t, "|", resp.String())
@@ -934,40 +840,24 @@ func TestClient_DoRedirects_StripsCredentialsCrossHost(t *testing.T) {
 
 func TestDoRedirectsWithClientDefaultLimit(t *testing.T) {
 	t.Parallel()
-
-	req := fasthttp.AcquireRequest()
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseRequest(req)
-	defer fasthttp.ReleaseResponse(resp)
+	req, resp := clientTestCReqResp(t)
 
 	req.SetRequestURI("http://example.com/start")
 	req.Header.SetMethod(fasthttp.MethodPost)
 
-	calls := make([]stubRedirectCall, 0, defaultRedirectLimit+1)
-	for range defaultRedirectLimit + 1 {
-		calls = append(calls, stubRedirectCall{status: new(fasthttp.StatusFound), location: new("/loop")})
-	}
-
-	client := &stubRedirectClient{calls: calls}
-	err := doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: -1}, client)
-	require.ErrorIs(t, err, fasthttp.ErrTooManyRedirects)
+	client := &stubRedirectClient{calls: clientTestCFound(slices.Repeat([]string{"/loop"}, defaultRedirectLimit+1)...)}
+	require.ErrorIs(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: -1}, client),
+		fasthttp.ErrTooManyRedirects)
 	require.Equal(t, defaultRedirectLimit+1, client.CallCount())
 }
 
 func TestDoRedirectsWithClientDeadlineCoversTheChain(t *testing.T) {
 	t.Parallel()
-
-	req := fasthttp.AcquireRequest()
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseRequest(req)
-	defer fasthttp.ReleaseResponse(resp)
+	req, resp := clientTestCReqResp(t)
 	req.SetRequestURI("http://example.com/start")
 
 	const budget, hop = 100 * time.Millisecond, 30 * time.Millisecond
-	calls := make([]stubRedirectCall, 0, 20)
-	for range 20 {
-		calls = append(calls, stubRedirectCall{status: new(fasthttp.StatusFound), location: new("/loop")})
-	}
+	calls := clientTestCFound(slices.Repeat([]string{"/loop"}, 20)...)
 	var timeouts []time.Duration
 	client := &stubRedirectClient{calls: calls, onRequest: func(req *fasthttp.Request) {
 		timeouts = append(timeouts, req.GetTimeOut())
@@ -986,117 +876,84 @@ func TestDoRedirectsWithClientDeadlineCoversTheChain(t *testing.T) {
 	}
 }
 
-func Test_StandardClientTransport_StreamResponseBody(t *testing.T) {
-	t.Parallel()
+// clientTestCRunStreamResponseBody registers the scenarios of the streaming
+// setting for a transport that wraps one fasthttp client. build returns a
+// transport over a fresh client together with a reader of that client's
+// StreamResponseBody field.
+func clientTestCRunStreamResponseBody(t *testing.T, build func() (httpClientTransport, func() bool)) {
+	t.Helper()
 
 	t.Run("default value", func(t *testing.T) {
 		t.Parallel()
-		transport := newStandardClientTransport(&fasthttp.Client{})
+		transport, _ := build()
 		require.False(t, transport.StreamResponseBody())
 	})
 
 	t.Run("enable streaming", func(t *testing.T) {
 		t.Parallel()
-		client := &fasthttp.Client{}
-		transport := newStandardClientTransport(client)
+		transport, field := build()
 		transport.SetStreamResponseBody(true)
 		require.True(t, transport.StreamResponseBody())
-		require.True(t, client.StreamResponseBody)
+		require.True(t, field())
 	})
 
 	t.Run("disable streaming", func(t *testing.T) {
 		t.Parallel()
-		client := &fasthttp.Client{}
-		transport := newStandardClientTransport(client)
+		transport, field := build()
 		transport.SetStreamResponseBody(true)
 		require.True(t, transport.StreamResponseBody())
 		transport.SetStreamResponseBody(false)
 		require.False(t, transport.StreamResponseBody())
-		require.False(t, client.StreamResponseBody)
+		require.False(t, field())
+	})
+}
+
+func Test_StandardClientTransport_StreamResponseBody(t *testing.T) {
+	t.Parallel()
+	clientTestCRunStreamResponseBody(t, func() (httpClientTransport, func() bool) {
+		client := &fasthttp.Client{}
+		return newStandardClientTransport(client), func() bool { return client.StreamResponseBody }
 	})
 }
 
 func Test_HostClientTransport_StreamResponseBody(t *testing.T) {
 	t.Parallel()
-
-	t.Run("default value", func(t *testing.T) {
-		t.Parallel()
+	clientTestCRunStreamResponseBody(t, func() (httpClientTransport, func() bool) {
 		hostClient := &fasthttp.HostClient{}
-		transport := newHostClientTransport(hostClient)
-		require.False(t, transport.StreamResponseBody())
-	})
-
-	t.Run("enable streaming", func(t *testing.T) {
-		t.Parallel()
-		hostClient := &fasthttp.HostClient{}
-		transport := newHostClientTransport(hostClient)
-		transport.SetStreamResponseBody(true)
-		require.True(t, transport.StreamResponseBody())
-		require.True(t, hostClient.StreamResponseBody)
-	})
-
-	t.Run("disable streaming", func(t *testing.T) {
-		t.Parallel()
-		hostClient := &fasthttp.HostClient{}
-		transport := newHostClientTransport(hostClient)
-		transport.SetStreamResponseBody(true)
-		require.True(t, transport.StreamResponseBody())
-		transport.SetStreamResponseBody(false)
-		require.False(t, transport.StreamResponseBody())
-		require.False(t, hostClient.StreamResponseBody)
+		return newHostClientTransport(hostClient), func() bool { return hostClient.StreamResponseBody }
 	})
 }
 
 func Test_LBClientTransport_StreamResponseBody(t *testing.T) {
 	t.Parallel()
-
 	t.Run("empty clients", func(t *testing.T) {
 		t.Parallel()
-		lbClient := &fasthttp.LBClient{
-			Clients: []fasthttp.BalancingClient{},
-		}
+		lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{}}
 		transport := newLBClientTransport(lbClient)
 		require.False(t, transport.StreamResponseBody())
 	})
 
 	t.Run("single host client", func(t *testing.T) {
 		t.Parallel()
-		hostClient := &fasthttp.HostClient{Addr: "example.com:80"}
-		lbClient := &fasthttp.LBClient{
-			Clients: []fasthttp.BalancingClient{hostClient},
-		}
-		transport := newLBClientTransport(lbClient)
-
-		// Test default
-		require.False(t, transport.StreamResponseBody())
-
-		// Enable streaming
-		transport.SetStreamResponseBody(true)
-		require.True(t, transport.StreamResponseBody())
-		require.True(t, hostClient.StreamResponseBody)
-
-		// Disable streaming
-		transport.SetStreamResponseBody(false)
-		require.False(t, transport.StreamResponseBody())
-		require.False(t, hostClient.StreamResponseBody)
+		clientTestCRunStreamResponseBody(t, func() (httpClientTransport, func() bool) {
+			hostClient := &fasthttp.HostClient{Addr: "example.com:80"}
+			lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hostClient}}
+			return newLBClientTransport(lbClient), func() bool { return hostClient.StreamResponseBody }
+		})
 	})
 
 	t.Run("multiple host clients", func(t *testing.T) {
 		t.Parallel()
 		hostClient1 := &fasthttp.HostClient{Addr: "example1.com:80"}
 		hostClient2 := &fasthttp.HostClient{Addr: "example2.com:80"}
-		lbClient := &fasthttp.LBClient{
-			Clients: []fasthttp.BalancingClient{hostClient1, hostClient2},
-		}
+		lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hostClient1, hostClient2}}
 		transport := newLBClientTransport(lbClient)
 
-		// Enable streaming on all clients
 		transport.SetStreamResponseBody(true)
 		require.True(t, transport.StreamResponseBody())
 		require.True(t, hostClient1.StreamResponseBody)
 		require.True(t, hostClient2.StreamResponseBody)
 
-		// Disable streaming on all clients
 		transport.SetStreamResponseBody(false)
 		require.False(t, transport.StreamResponseBody())
 		require.False(t, hostClient1.StreamResponseBody)
@@ -1106,25 +963,16 @@ func Test_LBClientTransport_StreamResponseBody(t *testing.T) {
 
 func Test_httpClientTransport_Interface(t *testing.T) {
 	t.Parallel()
-
 	transports := []struct {
 		transport httpClientTransport
 		name      string
 	}{
-		{
-			name:      "standardClientTransport",
-			transport: newStandardClientTransport(&fasthttp.Client{}),
-		},
-		{
-			name:      "hostClientTransport",
-			transport: newHostClientTransport(&fasthttp.HostClient{}),
-		},
+		{name: "standardClientTransport", transport: newStandardClientTransport(&fasthttp.Client{})},
+		{name: "hostClientTransport", transport: newHostClientTransport(&fasthttp.HostClient{})},
 		{
 			name: "lbClientTransport",
 			transport: newLBClientTransport(&fasthttp.LBClient{
-				Clients: []fasthttp.BalancingClient{
-					&fasthttp.HostClient{Addr: "example.com:80"},
-				},
+				Clients: []fasthttp.BalancingClient{&fasthttp.HostClient{Addr: "example.com:80"}},
 			}),
 		},
 	}
@@ -1132,7 +980,6 @@ func Test_httpClientTransport_Interface(t *testing.T) {
 	for _, tt := range transports {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			transport := tt.transport
 			require.NotNil(t, transport.Client())
 			initialStream := transport.StreamResponseBody()
@@ -1149,10 +996,8 @@ func Test_httpClientTransport_Interface(t *testing.T) {
 // transport.
 func Test_Transport_PathNormalizing(t *testing.T) {
 	t.Parallel()
-
 	t.Run("fasthttp.Client the Fiber client made", func(t *testing.T) {
 		t.Parallel()
-
 		tr := newOwnedStandardClientTransport()
 		fc := tr.client
 		require.False(t, tr.DisablePathNormalizing())
@@ -1168,7 +1013,6 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 
 	t.Run("fasthttp.Client handed over normalizing", func(t *testing.T) {
 		t.Parallel()
-
 		fc := &fasthttp.Client{}
 		tr := newStandardClientTransport(fc)
 		require.False(t, tr.DisablePathNormalizing())
@@ -1186,7 +1030,6 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 
 	t.Run("fasthttp.Client handed over with the setting on", func(t *testing.T) {
 		t.Parallel()
-
 		fc := &fasthttp.Client{DisablePathNormalizing: true}
 		tr := newStandardClientTransport(fc)
 		require.True(t, tr.DisablePathNormalizing())
@@ -1202,7 +1045,6 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 
 	t.Run("fasthttp.HostClient", func(t *testing.T) {
 		t.Parallel()
-
 		hc := &fasthttp.HostClient{}
 		tr := newHostClientTransport(hc)
 		require.False(t, tr.DisablePathNormalizing())
@@ -1217,16 +1059,12 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 
 	t.Run("fasthttp.LBClient writes every host client, nested ones included", func(t *testing.T) {
 		t.Parallel()
-
 		direct := &fasthttp.HostClient{Addr: "a.example:80"}
 		inner := &fasthttp.HostClient{Addr: "b.example:80"}
 		deeper := &fasthttp.HostClient{Addr: "c.example:80"}
 		tr := newLBClientTransport(&fasthttp.LBClient{Clients: []fasthttp.BalancingClient{
 			direct,
-			&lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{
-				inner,
-				&lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{deeper}}},
-			}}},
+			clientTestCWrapLB(inner, clientTestCWrapLB(deeper)),
 		}})
 		require.False(t, tr.DisablePathNormalizing())
 
@@ -1244,7 +1082,6 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 
 	t.Run("fasthttp.LBClient reports false while any client normalizes", func(t *testing.T) {
 		t.Parallel()
-
 		quiet := &fasthttp.HostClient{Addr: "a.example:80", DisablePathNormalizing: true}
 		normalizing := &fasthttp.HostClient{Addr: "b.example:80"}
 
@@ -1255,15 +1092,16 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 		}{
 			{name: "all leave the path alone", clients: []fasthttp.BalancingClient{quiet, quiet}, want: true},
 			{name: "one normalizes", clients: []fasthttp.BalancingClient{quiet, normalizing}},
-			{name: "a nested balancer holds one that normalizes", clients: []fasthttp.BalancingClient{
-				quiet, &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{quiet, normalizing}}},
-			}},
-			{name: "a nested balancer where all leave it alone", clients: []fasthttp.BalancingClient{
-				quiet, &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{quiet}}},
-			}, want: true},
-			{name: "a nested balancer with no clients", clients: []fasthttp.BalancingClient{
-				quiet, &lbBalancingClient{client: &fasthttp.LBClient{}},
-			}},
+			{
+				name:    "a nested balancer holds one that normalizes",
+				clients: []fasthttp.BalancingClient{quiet, clientTestCWrapLB(quiet, normalizing)},
+			},
+			{
+				name:    "a nested balancer where all leave it alone",
+				clients: []fasthttp.BalancingClient{quiet, clientTestCWrapLB(quiet)},
+				want:    true,
+			},
+			{name: "a nested balancer with no clients", clients: []fasthttp.BalancingClient{quiet, clientTestCWrapLB()}},
 			{name: "a client that cannot be inspected", clients: []fasthttp.BalancingClient{quiet, stubBalancingClient{}}},
 			{name: "a wrapper exposing no balancer", clients: []fasthttp.BalancingClient{quiet, &lbBalancingClient{}}},
 			{name: "no clients", clients: nil},
@@ -1279,7 +1117,6 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 
 	t.Run("setting an empty balancer is harmless", func(t *testing.T) {
 		t.Parallel()
-
 		tr := newLBClientTransport(&fasthttp.LBClient{})
 		tr.SetDisablePathNormalizing(true)
 		require.False(t, tr.DisablePathNormalizing(), "nothing behind it can be told")
@@ -1291,7 +1128,6 @@ func Test_Transport_PathNormalizing(t *testing.T) {
 // returns to a default client that normalizes.
 func Test_Client_SetDisablePathNormalizing_AppliesToTheWrappedClient(t *testing.T) {
 	t.Parallel()
-
 	host := &fasthttp.HostClient{Addr: "example.com:80"}
 	lbHost := &fasthttp.HostClient{Addr: "example.com:80"}
 	std := &fasthttp.Client{}
@@ -1319,7 +1155,6 @@ func Test_Client_SetDisablePathNormalizing_AppliesToTheWrappedClient(t *testing.
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			c := tc.client
 			field := tc.field
 			if field == nil { // New: the client creates its own fasthttp client
@@ -1341,7 +1176,6 @@ func Test_Client_SetDisablePathNormalizing_AppliesToTheWrappedClient(t *testing.
 
 	t.Run("NewWithClient created with the setting on", func(t *testing.T) {
 		t.Parallel()
-
 		std := &fasthttp.Client{DisablePathNormalizing: true}
 		c := NewWithClient(std)
 		require.True(t, c.writesPathAsBuilt())
@@ -1354,7 +1188,6 @@ func Test_Client_SetDisablePathNormalizing_AppliesToTheWrappedClient(t *testing.
 
 	t.Run("Reset", func(t *testing.T) {
 		t.Parallel()
-
 		c := New().SetDisablePathNormalizing(true)
 		require.True(t, c.writesPathAsBuilt())
 
@@ -1370,15 +1203,12 @@ func Test_Client_SetDisablePathNormalizing_AppliesToTheWrappedClient(t *testing.
 // the flag does nothing to it and the path parameter check stays on.
 func Test_Client_PathNormalizing_UnknownTransport(t *testing.T) {
 	t.Parallel()
-
 	c := newClient(newBlockingErrTransport(nil))
 	require.NotPanics(t, func() { c.SetDisablePathNormalizing(true) })
 	require.True(t, c.DisablePathNormalizing())
 	require.False(t, c.writesPathAsBuilt())
 
-	req := AcquireRequest().
-		SetURL("http://example.com/api/:id").
-		SetPathParam("id", "x/../../admin").
+	req := AcquireRequest().SetURL("http://example.com/api/:id").SetPathParam("id", "x/../../admin").
 		SetDisablePathNormalizing(true)
 	t.Cleanup(func() { ReleaseRequest(req) })
 
@@ -1394,7 +1224,6 @@ func Test_Client_PathNormalizing_UnknownTransport(t *testing.T) {
 // path the caller asked for.
 func Test_Transport_DoRedirects_KeepsPathNormalizingDisabled(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name     string
 		wantPath string
@@ -1405,31 +1234,15 @@ func Test_Transport_DoRedirects_KeepsPathNormalizingDisabled(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			ln := fasthttputil.NewInmemoryListener()
 			seen := make(chan string, 4)
-			server := &fasthttp.Server{Handler: func(ctx *fasthttp.RequestCtx) {
+			dial := clientTestCServe(t, func(ctx *fasthttp.RequestCtx) {
 				seen <- string(ctx.Request.URI().PathOriginal())
 				ctx.SetStatusCode(fasthttp.StatusOK)
-			}}
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-				assert.NoError(t, server.Serve(ln))
-			}()
-			defer func() {
-				require.NoError(t, server.Shutdown())
-				<-done
-			}()
-
-			transport := newStandardClientTransport(&fasthttp.Client{
-				DisablePathNormalizing: tc.disable,
-				Dial:                   func(string) (net.Conn, error) { return ln.Dial() },
 			})
 
-			req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseRequest(req)
-			defer fasthttp.ReleaseResponse(resp)
+			transport := newStandardClientTransport(&fasthttp.Client{DisablePathNormalizing: tc.disable, Dial: dial})
+
+			req, resp := clientTestCReqResp(t)
 			req.SetRequestURI("http://example.com/a//b")
 
 			require.NoError(t, transport.DoRedirects(req, resp, &redirectOptions{maxRedirects: 3}))
@@ -1444,9 +1257,7 @@ func Test_Transport_DoRedirects_KeepsPathNormalizingDisabled(t *testing.T) {
 // bodyless follow-up, a strict target answers 417 instead of serving it.
 func Test_DropRequestBody_RemovesExpect(t *testing.T) {
 	t.Parallel()
-
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
+	req := clientTestPooled(t, fasthttp.AcquireRequest, fasthttp.ReleaseRequest)
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.Header.Set(fasthttp.HeaderExpect, "100-continue")
 	req.Header.SetContentType("application/x-www-form-urlencoded")
@@ -1464,9 +1275,7 @@ func Test_DropRequestBody_RemovesExpect(t *testing.T) {
 // the redirected GET.
 func Test_DropRequestBody_ClearsTheParsedForm(t *testing.T) {
 	t.Parallel()
-
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
+	req := clientTestPooled(t, fasthttp.AcquireRequest, fasthttp.ReleaseRequest)
 	req.SetRequestURI("http://example.com/y")
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.Header.SetContentType("application/x-www-form-urlencoded")
@@ -1495,9 +1304,7 @@ func Test_DropRequestBody_ClearsTheParsedForm(t *testing.T) {
 // answers a reused PostArgs with the previous body's values.
 func Test_DropRequestBody_ReusedRequestSendsTheNewBody(t *testing.T) {
 	t.Parallel()
-
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
+	req := clientTestPooled(t, fasthttp.AcquireRequest, fasthttp.ReleaseRequest)
 	req.SetRequestURI("http://example.com/y")
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.Header.SetContentType("application/x-www-form-urlencoded")
@@ -1527,7 +1334,6 @@ func Test_DropRequestBody_ReusedRequestSendsTheNewBody(t *testing.T) {
 // is kept out of the pool rather than carried by every later response.
 func Test_Response_ResetDropsOversizedOriginBuffers(t *testing.T) {
 	t.Parallel()
-
 	resp := &Response{RawResponse: fasthttp.AcquireResponse()}
 	defer fasthttp.ReleaseResponse(resp.RawResponse)
 
@@ -1554,10 +1360,8 @@ func Test_Response_ResetDropsOversizedOriginBuffers(t *testing.T) {
 // resp.Header regardless and panics on it; this one acquires its own instead.
 func Test_DoRedirects_NilResponse(t *testing.T) {
 	t.Parallel()
-
-	ln := fasthttputil.NewInmemoryListener()
 	hops := 0
-	server := &fasthttp.Server{Handler: func(ctx *fasthttp.RequestCtx) {
+	dial := clientTestCServe(t, func(ctx *fasthttp.RequestCtx) {
 		hops++
 		if string(ctx.Path()) == "/start" {
 			ctx.Response.Header.Set(fiber.HeaderLocation, "/end")
@@ -1565,23 +1369,11 @@ func Test_DoRedirects_NilResponse(t *testing.T) {
 			return
 		}
 		ctx.SetStatusCode(fasthttp.StatusOK)
-	}}
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		assert.NoError(t, server.Serve(ln))
-	}()
-	defer func() {
-		require.NoError(t, server.Shutdown())
-		<-done
-	}()
-
-	transport := newStandardClientTransport(&fasthttp.Client{
-		Dial: func(string) (net.Conn, error) { return ln.Dial() },
 	})
 
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
+	transport := newStandardClientTransport(&fasthttp.Client{Dial: dial})
+
+	req := clientTestPooled(t, fasthttp.AcquireRequest, fasthttp.ReleaseRequest)
 	req.SetRequestURI("http://example.com/start")
 
 	require.NotPanics(t, func() {
@@ -1601,7 +1393,6 @@ func Test_DoRedirects_NilResponse(t *testing.T) {
 // error-returning parser after every SetRequestURI; this one now does too.
 func Test_Transport_DoRedirects_RefusesUnparsableInitialURI(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name    string
 		uri     string
@@ -1613,19 +1404,14 @@ func Test_Transport_DoRedirects_RefusesUnparsableInitialURI(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			stub := &stubRedirectClient{}
-			req := fasthttp.AcquireRequest()
-			resp := fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseRequest(req)
-			defer fasthttp.ReleaseResponse(resp)
+			req, resp := clientTestCReqResp(t)
 			req.SetRequestURI(tc.uri)
 
 			err := doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 3}, stub)
 			if tc.wantErr {
 				require.ErrorIs(t, err, fasthttp.ErrorInvalidURI)
-				require.Equal(t, 0, stub.CallCount(),
-					"a malformed URI must be refused before anything is sent")
+				require.Equal(t, 0, stub.CallCount(), "a malformed URI must be refused before anything is sent")
 				return
 			}
 			require.NoError(t, err)
@@ -1642,7 +1428,6 @@ func Test_Transport_DoRedirects_RefusesUnparsableInitialURI(t *testing.T) {
 // returns the error instead, so this one does too.
 func Test_Transport_DoRedirects_RefusesUnparsableTarget(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name     string
 		location string
@@ -1655,34 +1440,19 @@ func Test_Transport_DoRedirects_RefusesUnparsableTarget(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			ln := fasthttputil.NewInmemoryListener()
 			var hops atomic.Int64
-			server := &fasthttp.Server{Handler: func(ctx *fasthttp.RequestCtx) {
+			dial := clientTestCServe(t, func(ctx *fasthttp.RequestCtx) {
 				if hops.Add(1) == 1 {
 					ctx.Response.Header.Set(fiber.HeaderLocation, tc.location)
 					ctx.SetStatusCode(fasthttp.StatusFound)
 					return
 				}
 				ctx.SetStatusCode(fasthttp.StatusOK)
-			}}
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-				assert.NoError(t, server.Serve(ln))
-			}()
-			defer func() {
-				require.NoError(t, server.Shutdown())
-				<-done
-			}()
-
-			transport := newStandardClientTransport(&fasthttp.Client{
-				Dial: func(string) (net.Conn, error) { return ln.Dial() },
 			})
 
-			req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseRequest(req)
-			defer fasthttp.ReleaseResponse(resp)
+			transport := newStandardClientTransport(&fasthttp.Client{Dial: dial})
+
+			req, resp := clientTestCReqResp(t)
 			req.SetRequestURI("http://example.com/start")
 
 			err := transport.DoRedirects(req, resp, &redirectOptions{maxRedirects: 3})

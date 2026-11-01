@@ -4,54 +4,29 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
-// go test -run Test_Recover
 func Test_Recover(t *testing.T) {
 	t.Parallel()
-
+	recovered := func(c fiber.Ctx, r any) error { return fmt.Errorf("[RECOVERED]: %w", DefaultPanicHandler(c, r)) }
+	errPanic := errors.New("hi, I'm an error object")
 	tests := []struct {
 		name         string
 		panicVal     any
 		panicHandler func(c fiber.Ctx, r any) error
 		errorMsg     string
 	}{
-		{
-			name:         "non-error panic will be handled by default",
-			panicVal:     "Hi, I'm an error!",
-			panicHandler: nil,
-			errorMsg:     "Hi, I'm an error!",
-		},
-		{
-			name:         "error panic will be handled by default",
-			panicVal:     errors.New("hi, I'm an error object"),
-			panicHandler: nil,
-			errorMsg:     "hi, I'm an error object",
-		},
-		{
-			name:     "non-error panic will be handled",
-			panicVal: "Hi, I'm an error!",
-			panicHandler: func(c fiber.Ctx, r any) error {
-				return fmt.Errorf("[RECOVERED]: %w", DefaultPanicHandler(c, r))
-			},
-			errorMsg: "[RECOVERED]: Hi, I'm an error!",
-		},
-		{
-			name:     "error panic will be handled",
-			panicVal: errors.New("hi, I'm an error object"),
-			panicHandler: func(c fiber.Ctx, r any) error {
-				return fmt.Errorf("[RECOVERED]: %w", DefaultPanicHandler(c, r))
-			},
-			errorMsg: "[RECOVERED]: hi, I'm an error object",
-		},
+		{"non-error panic will be handled by default", "Hi, I'm an error!", nil, "Hi, I'm an error!"},
+		{"error panic will be handled by default", errPanic, nil, "hi, I'm an error object"},
+		{"non-error panic will be handled", "Hi, I'm an error!", recovered, "[RECOVERED]: Hi, I'm an error!"},
+		{"error panic will be handled", errPanic, recovered, "[RECOVERED]: hi, I'm an error object"},
 	}
 
 	for _, tc := range tests {
@@ -65,50 +40,31 @@ func Test_Recover(t *testing.T) {
 			})
 
 			app.Use(New(Config{PanicHandler: tc.panicHandler}))
-
-			app.Get("/panic", func(_ fiber.Ctx) error {
-				panic(tc.panicVal)
-			})
-
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+			app.Get("/panic", func(_ fiber.Ctx) error { panic(tc.panicVal) })
+			apptest.Expect(t, app, "/panic", fiber.StatusTeapot)
 		})
 	}
 }
 
-// go test -run Test_Recover_Next
 func Test_Recover_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
-	}))
+	app.Use(New(Config{Next: func(_ fiber.Ctx) bool { return true }}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
 func Test_Recover_EnableStackTrace(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{
-		EnableStackTrace: true,
-	}))
+	app.Use(New(Config{EnableStackTrace: true}))
+	app.Get("/panic", func(_ fiber.Ctx) error { panic("Hi, I'm an error!") })
 
-	app.Get("/panic", func(_ fiber.Ctx) error {
-		panic("Hi, I'm an error!")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, "/panic", fiber.StatusInternalServerError)
 }
 
 // Not parallel: swaps os.Stderr to capture what the default handler writes.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Recover_DefaultStackTraceHandlerOutput(t *testing.T) {
 	r, w, err := os.Pipe()
 	require.NoError(t, err)

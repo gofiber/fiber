@@ -15,7 +15,6 @@ import (
 // boundary, which is case-sensitive and has to keep matching the body.
 func Test_NormalizeRequestContentType(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name string
 		in   string
@@ -48,10 +47,41 @@ func Test_NormalizeRequestContentType(t *testing.T) {
 		// is what would promote it over the boundary the author wrote.
 		{"unterminated quote", `Multipart/Form-Data; X="abc`, `multipart/form-data; x="abc`},
 		{"quoted-pair keeps the value open", `Multipart/Form-Data; X="\"; BOUNDARY=abc`, `multipart/form-data; x="\"; BOUNDARY=abc`},
+
+		// Ending the quoted-string at an escaped quote folds the rest of it as
+		// though those were parameters. fasthttp matches "boundary"
+		// case-sensitively and takes the first one, so lowercasing a decoy it
+		// would otherwise walk past is what makes it the boundary it picks — and
+		// the real one is never reached.
+		{
+			name: "escaped quote does not end the value",
+			in:   `Multipart/Form-Data; X="\"; BOUNDARY=bogus"; BOUNDARY=Real`,
+			want: `multipart/form-data; x="\"; BOUNDARY=bogus"; boundary=Real`,
+		},
+		{"trailing backslash cannot escape past the end", `Multipart/Form-Data; X="ab\`, `multipart/form-data; x="ab\`},
+		{
+			name: "space before quoted decoy",
+			in:   `Multipart/Form-Data; X= "; BOUNDARY=bogus"; BOUNDARY=Real`,
+			want: `multipart/form-data; x= "; BOUNDARY=bogus"; boundary=Real`,
+		},
+		{
+			name: "whitespace before escaped quote",
+			in:   "Multipart/Form-Data; X= \t\"\\\"; BOUNDARY=bogus\"; BOUNDARY=Real",
+			want: "multipart/form-data; x= \t\"\\\"; BOUNDARY=bogus\"; boundary=Real",
+		},
+		{
+			name: "whitespace before unterminated quote",
+			in:   "Multipart/Form-Data; X=\t\"ab; BOUNDARY=bogus",
+			want: "multipart/form-data; x=\t\"ab; BOUNDARY=bogus",
+		},
+		{
+			name: "escaped backslash still closes the value",
+			in:   `Multipart/Form-Data; X="a\\"; BOUNDARY=Real`,
+			want: `multipart/form-data; x="a\\"; boundary=Real`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var h fasthttp.RequestHeader
 			h.SetContentType(tc.in)
 
@@ -69,7 +99,6 @@ func Test_NormalizeRequestContentType(t *testing.T) {
 
 func Test_IsForm(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		in   string
 		want bool
@@ -96,7 +125,6 @@ func Test_IsForm(t *testing.T) {
 
 func Test_ParsesPostArgs(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		in   string
 		want bool
@@ -125,7 +153,6 @@ func Test_ParsesPostArgs(t *testing.T) {
 // survive unfolded so it keeps matching the body.
 func Test_NormalizeRequestContentType_KeepsBoundaryUsable(t *testing.T) {
 	t.Parallel()
-
 	var req fasthttp.Request
 	req.Header.SetContentType(`Multipart/Form-Data; BOUNDARY=AbCdEf`)
 	req.SetBody([]byte("--AbCdEf\r\nContent-Disposition: form-data; name=\"who\"\r\n\r\nworld\r\n--AbCdEf--\r\n"))
@@ -138,68 +165,12 @@ func Test_NormalizeRequestContentType_KeepsBoundaryUsable(t *testing.T) {
 	require.Equal(t, []string{"world"}, form.Value["who"])
 }
 
-// Test_NormalizeRequestContentType_QuotedPair covers a quoted-pair inside a
-// parameter value.
-//
-// Ending the quoted-string at an escaped quote folds the rest of it as though
-// those were parameters. fasthttp matches "boundary" case-sensitively and takes
-// the first one, so lowercasing a decoy it would otherwise walk past is what
-// makes it the boundary it picks — and the real one is never reached.
-func Test_NormalizeRequestContentType_QuotedPair(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name string
-		in   string
-		want string
-	}{
-		{
-			name: "escaped quote does not end the value",
-			in:   `Multipart/Form-Data; X="\"; BOUNDARY=bogus"; BOUNDARY=Real`,
-			want: `multipart/form-data; x="\"; BOUNDARY=bogus"; boundary=Real`,
-		},
-		{
-			name: "trailing backslash cannot escape past the end",
-			in:   `Multipart/Form-Data; X="ab\`,
-			want: `multipart/form-data; x="ab\`,
-		},
-		{
-			name: "space before quoted decoy",
-			in:   `Multipart/Form-Data; X= "; BOUNDARY=bogus"; BOUNDARY=Real`,
-			want: `multipart/form-data; x= "; BOUNDARY=bogus"; boundary=Real`,
-		},
-		{
-			name: "whitespace before escaped quote",
-			in:   "Multipart/Form-Data; X= \t\"\\\"; BOUNDARY=bogus\"; BOUNDARY=Real",
-			want: "multipart/form-data; x= \t\"\\\"; BOUNDARY=bogus\"; boundary=Real",
-		},
-		{
-			name: "whitespace before unterminated quote",
-			in:   "Multipart/Form-Data; X=\t\"ab; BOUNDARY=bogus",
-			want: "multipart/form-data; x=\t\"ab; BOUNDARY=bogus",
-		},
-		{
-			name: "escaped backslash still closes the value",
-			in:   `Multipart/Form-Data; X="a\\"; BOUNDARY=Real`,
-			want: `multipart/form-data; x="a\\"; boundary=Real`,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			var h fasthttp.RequestHeader
-			h.SetContentType(tc.in)
-			require.Equal(t, tc.want, string(NormalizeRequestContentType(&h)))
-		})
-	}
-}
-
-// Test_NormalizeRequestContentType_DecoyBoundaryLosesToReal is the same input
-// read the way fasthttp reads it: the boundary it selects has to be the one the
-// author wrote, not the one hidden in an earlier parameter's value.
+// Test_NormalizeRequestContentType_DecoyBoundaryLosesToReal reads the input of
+// the "escaped quote does not end the value" case the way fasthttp reads it:
+// the boundary it selects has to be the one the author wrote, not the one
+// hidden in an earlier parameter's value.
 func Test_NormalizeRequestContentType_DecoyBoundaryLosesToReal(t *testing.T) {
 	t.Parallel()
-
 	var h fasthttp.RequestHeader
 	h.SetContentType(`Multipart/Form-Data; X="\"; BOUNDARY=bogus"; BOUNDARY=Real`)
 	NormalizeRequestContentType(&h)
@@ -208,7 +179,6 @@ func Test_NormalizeRequestContentType_DecoyBoundaryLosesToReal(t *testing.T) {
 
 func Test_StripParams(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		in   string
 		want string
@@ -228,7 +198,6 @@ func Test_StripParams(t *testing.T) {
 
 func Test_Params(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name string
 		in   string
@@ -265,7 +234,6 @@ func Test_Params(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			var got []string
 			for name, value := range Params([]byte(tc.in)) {
 				got = append(got, string(name), string(value))
@@ -277,7 +245,6 @@ func Test_Params(t *testing.T) {
 
 func Test_Params_Break(t *testing.T) {
 	t.Parallel()
-
 	var names []string
 	for name := range Params([]byte("text/plain; a=1; b=2")) {
 		names = append(names, string(name))
@@ -288,7 +255,6 @@ func Test_Params_Break(t *testing.T) {
 
 func Test_Unescape(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		in   string
 		want string
@@ -315,7 +281,6 @@ func Test_Unescape(t *testing.T) {
 
 func Test_Unescape_AliasesWithoutEscapes(t *testing.T) {
 	t.Parallel()
-
 	for _, in := range []string{"abc", `ab\`} {
 		v := []byte(in)
 		got, _ := Unescape(v)
@@ -323,7 +288,6 @@ func Test_Unescape_AliasesWithoutEscapes(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_StripParams -benchmem -count=4
 func Benchmark_StripParams(b *testing.B) {
 	json := []byte("application/json")
 	html := []byte("text/html ; charset=utf-8")
@@ -336,7 +300,6 @@ func Benchmark_StripParams(b *testing.B) {
 	require.Equal(b, []byte("text/html"), got)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Params -benchmem -count=4
 func Benchmark_Params(b *testing.B) {
 	ct := []byte(`multipart/form-data; boundary="a;b"; charset=utf-8`)
 	var n int
@@ -349,7 +312,6 @@ func Benchmark_Params(b *testing.B) {
 	require.Equal(b, 25*b.N, n)
 }
 
-// go test -v -run=^$ -bench=Benchmark_ParamsInputs -benchmem -count=4
 func Benchmark_ParamsInputs(b *testing.B) {
 	for _, bench := range []struct {
 		name string
@@ -403,7 +365,6 @@ func Benchmark_NormalizeRequestContentType(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Unescape -benchmem -count=4
 func Benchmark_Unescape(b *testing.B) {
 	for _, bench := range []struct {
 		name string
@@ -425,7 +386,6 @@ func Benchmark_Unescape(b *testing.B) {
 
 func Test_IsToken(t *testing.T) {
 	t.Parallel()
-
 	const tchar = "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	for c := range 256 {
 		require.Equal(t, strings.IndexByte(tchar, byte(c)) >= 0, IsToken([]byte{byte(c)}), "%q", byte(c))

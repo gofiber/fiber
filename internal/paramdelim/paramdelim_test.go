@@ -10,7 +10,6 @@ import (
 // that end a ":name", and not '#', which only the client treats as a terminator.
 func Test_PathEndChars(t *testing.T) {
 	t.Parallel()
-
 	set := PathEndChars()
 	for _, c := range []byte{'/', '-', '.', ':', '\\', '?'} {
 		require.True(t, set[c], "%q must end a path parameter", c)

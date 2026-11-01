@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/valyala/fasthttp"
 )
 
@@ -20,12 +21,39 @@ var benchSink struct {
 
 func newBenchCtx(b *testing.B, cfg ...fiber.Config) fiber.Ctx {
 	b.Helper()
-	app := fiber.New(cfg...)
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	b.Cleanup(func() { app.ReleaseCtx(c) })
+	return apptest.Ctx(b, fiber.New(cfg...))
+}
+
+// newBenchHeaderCtx returns a context whose request carries the header name: value.
+func newBenchHeaderCtx(b *testing.B, name, value string) fiber.Ctx {
+	b.Helper()
+	c := newBenchCtx(b)
+	c.Request().Header.Set(name, value)
 	return c
 }
 
+// newBenchURICtx returns a context whose request is for uri.
+func newBenchURICtx(b *testing.B, uri string) fiber.Ctx {
+	b.Helper()
+	c := newBenchCtx(b)
+	c.Request().SetRequestURI(uri)
+	return c
+}
+
+// newBenchKeyCtx returns a context whose request carries benchToken in X-API-Key.
+func newBenchKeyCtx(b *testing.B) fiber.Ctx {
+	b.Helper()
+	return newBenchHeaderCtx(b, "X-API-Key", benchToken)
+}
+
+// newBenchQueryCtx returns a context whose request carries api_key=abc123 in its
+// query string.
+func newBenchQueryCtx(b *testing.B) fiber.Ctx {
+	b.Helper()
+	return newBenchURICtx(b, "/api?api_key=abc123")
+}
+
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchExtract(b *testing.B, e Extractor, c fiber.Ctx) {
 	b.Helper()
 	b.ReportAllocs()
@@ -34,6 +62,7 @@ func benchExtract(b *testing.B, e Extractor, c fiber.Ctx) {
 	}
 }
 
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchResolve(b *testing.B, e Extractor, c fiber.Ctx) {
 	b.Helper()
 	b.ReportAllocs()
@@ -45,6 +74,7 @@ func benchResolve(b *testing.B, e Extractor, c fiber.Ctx) {
 // benchExtractFresh resets the request's user values after every extraction,
 // as fasthttp does between requests, so what an extractor keeps in Locals is
 // paid for per request rather than amortized over a reused context.
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchExtractFresh(b *testing.B, e Extractor, c fiber.Ctx) {
 	b.Helper()
 	b.ReportAllocs()
@@ -55,6 +85,7 @@ func benchExtractFresh(b *testing.B, e Extractor, c fiber.Ctx) {
 }
 
 // benchResolveFresh is benchExtractFresh for the source-aware entry point.
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchResolveFresh(b *testing.B, e Extractor, c fiber.Ctx) {
 	b.Helper()
 	b.ReportAllocs()
@@ -71,15 +102,11 @@ func benchChain3() Extractor {
 // --- leaves -----------------------------------------------------------------
 
 func Benchmark_Extractor_FromHeader_Hit(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set("X-API-Key", benchToken)
-	benchExtract(b, FromHeader("X-API-Key"), c)
+	benchExtract(b, FromHeader("X-API-Key"), newBenchKeyCtx(b))
 }
 
 func Benchmark_Extractor_FromHeader_Miss(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set("X-Other", "x")
-	benchExtract(b, FromHeader("X-API-Key"), c)
+	benchExtract(b, FromHeader("X-API-Key"), newBenchHeaderCtx(b, "X-Other", "x"))
 }
 
 func Benchmark_Extractor_FromHeader_Hit_ManyHeaders(b *testing.B) {
@@ -108,32 +135,25 @@ func Benchmark_Extractor_FromHeader_Hit_Immutable(b *testing.B) {
 }
 
 func Benchmark_Extractor_FromAuthHeader_Bearer_Hit(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set(fiber.HeaderAuthorization, "Bearer "+benchToken)
-	benchExtract(b, FromAuthHeader("Bearer"), c)
+	benchExtract(b, FromAuthHeader("Bearer"), newBenchHeaderCtx(b, fiber.HeaderAuthorization, "Bearer "+benchToken))
 }
 
 func Benchmark_Extractor_FromAuthHeader_Basic_Hit(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set(fiber.HeaderAuthorization, "Basic dXNlcjpwYXNzd29yZA==")
-	benchExtract(b, FromAuthHeader("Basic"), c)
+	benchExtract(b, FromAuthHeader("Basic"),
+		newBenchHeaderCtx(b, fiber.HeaderAuthorization, "Basic dXNlcjpwYXNzd29yZA=="))
 }
 
 func Benchmark_Extractor_FromAuthHeader_Miss(b *testing.B) {
-	c := newBenchCtx(b)
-	benchExtract(b, FromAuthHeader("Bearer"), c)
+	benchExtract(b, FromAuthHeader("Bearer"), newBenchCtx(b))
 }
 
 func Benchmark_Extractor_FromAuthHeader_WrongScheme(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set(fiber.HeaderAuthorization, "Basic dXNlcjpwYXNzd29yZA==")
-	benchExtract(b, FromAuthHeader("Bearer"), c)
+	benchExtract(b, FromAuthHeader("Bearer"),
+		newBenchHeaderCtx(b, fiber.HeaderAuthorization, "Basic dXNlcjpwYXNzd29yZA=="))
 }
 
 func Benchmark_Extractor_FromAuthHeader_NoScheme(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set(fiber.HeaderAuthorization, "Bearer "+benchToken)
-	benchExtract(b, FromAuthHeader(""), c)
+	benchExtract(b, FromAuthHeader(""), newBenchHeaderCtx(b, fiber.HeaderAuthorization, "Bearer "+benchToken))
 }
 
 func Benchmark_Extractor_FromCookie_Hit(b *testing.B) {
@@ -150,15 +170,11 @@ func Benchmark_Extractor_FromCookie_Miss(b *testing.B) {
 }
 
 func Benchmark_Extractor_FromQuery_Hit(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().SetRequestURI("/api?format=json&token=abc123")
-	benchExtract(b, FromQuery("token"), c)
+	benchExtract(b, FromQuery("token"), newBenchURICtx(b, "/api?format=json&token=abc123"))
 }
 
 func Benchmark_Extractor_FromQuery_Miss(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().SetRequestURI("/api?format=json")
-	benchExtract(b, FromQuery("token"), c)
+	benchExtract(b, FromQuery("token"), newBenchURICtx(b, "/api?format=json"))
 }
 
 func Benchmark_Extractor_FromForm_Hit(b *testing.B) {
@@ -179,6 +195,7 @@ func Benchmark_Extractor_FromForm_Miss(b *testing.B) {
 
 // benchParam runs the loop inside a matched route, where route parameters are
 // the only place they exist.
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchParam(b *testing.B, uri string) {
 	b.Helper()
 	app := fiber.New()
@@ -210,47 +227,36 @@ func Benchmark_Extractor_FromParam_Hit_Escaped(b *testing.B) {
 }
 
 func Benchmark_Extractor_FromCustom_Hit(b *testing.B) {
-	c := newBenchCtx(b)
-	benchExtract(b, FromCustom("k", func(fiber.Ctx) (string, error) { return "v", nil }), c)
+	benchExtract(b, FromCustom("k", func(fiber.Ctx) (string, error) { return "v", nil }), newBenchCtx(b))
 }
 
 // --- chains -----------------------------------------------------------------
 
 func Benchmark_Extractor_Chain1_Hit(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set("X-API-Key", benchToken)
-	benchExtract(b, Chain(FromHeader("X-API-Key")), c)
+	benchExtract(b, Chain(FromHeader("X-API-Key")), newBenchKeyCtx(b))
 }
 
 func Benchmark_Extractor_Chain3_HitFirst(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set("X-API-Key", benchToken)
-	benchExtract(b, benchChain3(), c)
+	benchExtract(b, benchChain3(), newBenchKeyCtx(b))
 }
 
 func Benchmark_Extractor_Chain3_HitLast(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().SetRequestURI("/api?api_key=abc123")
-	benchExtract(b, benchChain3(), c)
+	benchExtract(b, benchChain3(), newBenchQueryCtx(b))
 }
 
 func Benchmark_Extractor_Chain3_Miss(b *testing.B) {
-	c := newBenchCtx(b)
-	benchExtract(b, benchChain3(), c)
+	benchExtract(b, benchChain3(), newBenchCtx(b))
 }
 
 func Benchmark_Extractor_ChainNested_HitInner(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().SetRequestURI("/api?api_key=abc123")
 	outer := Chain(FromHeader("X-API-Key"), Chain(FromCookie("api_key"), FromQuery("api_key")))
-	benchExtract(b, outer, c)
+	benchExtract(b, outer, newBenchQueryCtx(b))
 }
 
 // The locals a real request accumulates before the extractor runs; every
 // request-local lookup scans past them.
 func Benchmark_Extractor_Chain3_HitFirst_WithLocals(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set("X-API-Key", benchToken)
+	c := newBenchKeyCtx(b)
 	for i := range 5 {
 		c.Locals(i, "value")
 	}
@@ -260,69 +266,50 @@ func Benchmark_Extractor_Chain3_HitFirst_WithLocals(b *testing.B) {
 // --- source-aware -------------------------------------------------------------
 
 func Benchmark_Extractor_Resolve_Leaf(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set("X-API-Key", benchToken)
-	benchResolve(b, FromHeader("X-API-Key"), c)
+	benchResolve(b, FromHeader("X-API-Key"), newBenchKeyCtx(b))
 }
 
 func Benchmark_Extractor_Resolve_Chain3_HitFirst(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set("X-API-Key", benchToken)
-	benchResolve(b, benchChain3(), c)
+	benchResolve(b, benchChain3(), newBenchKeyCtx(b))
 }
 
 func Benchmark_Extractor_Resolve_Chain3_HitLast(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().SetRequestURI("/api?api_key=abc123")
-	benchResolve(b, benchChain3(), c)
+	benchResolve(b, benchChain3(), newBenchQueryCtx(b))
 }
 
 func Benchmark_Extractor_Resolve_Chain3_Miss(b *testing.B) {
-	c := newBenchCtx(b)
-	benchResolve(b, benchChain3(), c)
+	benchResolve(b, benchChain3(), newBenchCtx(b))
 }
 
 func Benchmark_Extractor_Resolve_Nested_HitInner(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().SetRequestURI("/api?api_key=abc123")
 	outer := Chain(FromHeader("X-API-Key"), Chain(FromCookie("api_key"), FromQuery("api_key")))
-	benchResolve(b, outer, c)
+	benchResolve(b, outer, newBenchQueryCtx(b))
 }
 
 func Benchmark_Extractor_Resolve_BareChain_HitLast(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().SetRequestURI("/api?api_key=abc123")
 	bare := Extractor{
 		Chain:  []Extractor{FromHeader("X-API-Key"), FromCookie("api_key"), FromQuery("api_key")},
 		Source: SourceHeader,
 	}
-	benchResolve(b, bare, c)
+	benchResolve(b, bare, newBenchQueryCtx(b))
 }
 
 // --- fresh request -----------------------------------------------------------
 
 func Benchmark_Extractor_FromHeader_Hit_FreshRequest(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set("X-API-Key", benchToken)
-	benchExtractFresh(b, FromHeader("X-API-Key"), c)
+	benchExtractFresh(b, FromHeader("X-API-Key"), newBenchKeyCtx(b))
 }
 
 func Benchmark_Extractor_Chain1_Hit_FreshRequest(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set("X-API-Key", benchToken)
-	benchExtractFresh(b, Chain(FromHeader("X-API-Key")), c)
+	benchExtractFresh(b, Chain(FromHeader("X-API-Key")), newBenchKeyCtx(b))
 }
 
 func Benchmark_Extractor_Chain3_HitLast_FreshRequest(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().SetRequestURI("/api?api_key=abc123")
-	benchExtractFresh(b, benchChain3(), c)
+	benchExtractFresh(b, benchChain3(), newBenchQueryCtx(b))
 }
 
 func Benchmark_Extractor_Resolve_Chain3_HitFirst_FreshRequest(b *testing.B) {
-	c := newBenchCtx(b)
-	c.Request().Header.Set("X-API-Key", benchToken)
-	benchResolveFresh(b, benchChain3(), c)
+	benchResolveFresh(b, benchChain3(), newBenchKeyCtx(b))
 }
 
 // --- token68 ------------------------------------------------------------------

@@ -1,23 +1,29 @@
 package envvar
 
 import (
-	"context"
 	"encoding/json"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
+
+// envvarTestVars sends a GET for target through app and decodes the JSON it is answered with.
+func envvarTestVars(t *testing.T, app *fiber.App, target string) EnvVar {
+	t.Helper()
+
+	resp := apptest.Do(t, app, apptest.Req(fiber.MethodGet, target))
+
+	var envVars EnvVar
+	require.NoError(t, json.Unmarshal(apptest.BodyBytes(t, resp), &envVars))
+	return envVars
+}
 
 func Test_EnvVarStructWithExportVars(t *testing.T) {
 	t.Setenv("testKey", "testEnvValue")
 	t.Setenv("anotherEnvKey", "anotherEnvVal")
-	vars := newEnvVar(Config{
-		ExportVars: map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
-	})
+	vars := newEnvVar(Config{ExportVars: map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"}})
 
 	require.Equal(t, "testEnvValue", vars.Vars["testKey"])
 	require.Equal(t, "testDefaultVal", vars.Vars["testDefaultKey"])
@@ -27,51 +33,24 @@ func Test_EnvVarStructWithExportVars(t *testing.T) {
 func Test_EnvVarHandler(t *testing.T) {
 	t.Setenv("testKey", "testVal")
 
-	expectedEnvVarResponse, err := json.Marshal(
-		struct {
-			Vars map[string]string `json:"vars"`
-		}{
-			Vars: map[string]string{"testKey": "testVal"},
-		},
-	)
-	require.NoError(t, err)
-
 	app := fiber.New()
-	app.Use("/envvars", New(Config{
-		ExportVars: map[string]string{"testKey": ""},
-	}))
+	app.Use("/envvars", New(Config{ExportVars: map[string]string{"testKey": ""}}))
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-
-	respBody, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	require.Equal(t, expectedEnvVarResponse, respBody)
+	req := apptest.Req(fiber.MethodGet, "http://localhost/envvars")
+	apptest.ExpectBody(t, app, req, fiber.StatusOK, `{"vars":{"testKey":"testVal"}}`)
 }
 
 func Test_EnvVarHandlerNotMatched(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
-	app.Use("/envvars", New(Config{
-		ExportVars: map[string]string{"testKey": ""},
-	}))
+	app.Use("/envvars", New(Config{ExportVars: map[string]string{"testKey": ""}}))
 
 	app.Get("/another-path", func(ctx fiber.Ctx) error {
 		require.NoError(t, ctx.SendString("OK"))
 		return nil
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/another-path", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-
-	respBody, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	require.Equal(t, []byte("OK"), respBody)
+	apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "http://localhost/another-path"), fiber.StatusOK, "OK")
 }
 
 func Test_EnvVarHandlerDefaultConfig(t *testing.T) {
@@ -80,44 +59,26 @@ func Test_EnvVarHandlerDefaultConfig(t *testing.T) {
 	app := fiber.New()
 	app.Use("/envvars", New())
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-
-	respBody, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	var envVars EnvVar
-	require.NoError(t, json.Unmarshal(respBody, &envVars))
-	_, exists := envVars.Vars["testEnvKey"]
+	_, exists := envvarTestVars(t, app, "http://localhost/envvars").Vars["testEnvKey"]
 	require.False(t, exists)
 }
 
 func Test_EnvVarHandlerMethod(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use("/envvars", New())
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "http://localhost/envvars", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusMethodNotAllowed, resp.StatusCode)
+	resp := apptest.Expect(t, app, apptest.Req(fiber.MethodPost, "http://localhost/envvars"), fiber.StatusMethodNotAllowed)
 	require.Equal(t, hAllow, resp.Header.Get(fiber.HeaderAllow))
 }
 
 func Test_EnvVarHandlerHead(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use("/envvars", New())
 
-	req := httptest.NewRequest(fiber.MethodHead, "http://localhost/envvars", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Empty(t, string(body))
+	resp := apptest.Expect(t, app, apptest.Req(fiber.MethodHead, "http://localhost/envvars"), fiber.StatusOK)
+	require.Empty(t, apptest.Body(t, resp))
 }
 
 func Test_EnvVarHandlerSpecialValue(t *testing.T) {
@@ -129,29 +90,7 @@ func Test_EnvVarHandlerSpecialValue(t *testing.T) {
 	app.Use("/envvars/export", New(Config{ExportVars: map[string]string{testEnvKey: ""}}))
 	app.Use("/envvars", New())
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-
-	respBody, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	var envVars EnvVar
-	require.NoError(t, json.Unmarshal(respBody, &envVars))
-	_, exists := envVars.Vars[testEnvKey]
+	_, exists := envvarTestVars(t, app, "http://localhost/envvars").Vars[testEnvKey]
 	require.False(t, exists)
-
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars/export", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-
-	respBody, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	var envVarsExport EnvVar
-	require.NoError(t, json.Unmarshal(respBody, &envVarsExport))
-	val := envVarsExport.Vars[testEnvKey]
-	require.Equal(t, fakeBase64, val)
+	require.Equal(t, fakeBase64, envvarTestVars(t, app, "http://localhost/envvars/export").Vars[testEnvKey])
 }
