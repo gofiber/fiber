@@ -33,19 +33,67 @@ func startMiddleware(t *testing.T, c fiber.Ctx, store *Store) *Middleware {
 	return m
 }
 
+// middlewarePair is a session middleware over b_sid started inside one over a_sid
+// on one request.
+type middlewarePair struct {
+	app            *fiber.App
+	c              fiber.Ctx
+	storeA, storeB *Store
+	outer, inner   *Middleware
+}
+
+func startPair(t *testing.T) middlewarePair {
+	t.Helper()
+
+	p := middlewarePair{
+		app:    fiber.New(),
+		storeA: NewStore(Config{Extractor: extractors.FromCookie("a_sid")}),
+		storeB: NewStore(Config{Extractor: extractors.FromCookie("b_sid")}),
+	}
+	p.c = newRequest(t, p.app)
+	p.outer = startMiddleware(t, p.c, p.storeA)
+	p.inner = startMiddleware(t, p.c, p.storeB)
+	return p
+}
+
+// requireDetached waits until m and its session let go of the fiber.Ctx of the
+// request, which goes back to the pool while a handler that outlives the request
+// (one the timeout middleware gave up on, or a panic unwound) still holds them.
+func requireDetached(t *testing.T, m *Middleware) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		m.mu.RLock()
+		sess, ctx := m.Session, m.ctx
+		m.mu.RUnlock()
+		return sess != nil && ctx == nil && sess.requestCtx() == nil
+	}, 5*time.Second, 5*time.Millisecond, "the middleware and its session still refer to the request")
+}
+
+// holdsNoRequest reports whether the session writes to no request any more.
+func (s *Session) holdsNoRequest() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, response := s.requestResponse()
+	return response == nil
+}
+
+// storedFor returns what the storage of store holds for the session id.
+func storedFor(t *testing.T, store *Store, id string) []byte {
+	t.Helper()
+
+	stored, err := store.Storage.GetWithContext(context.Background(), store.storageKey(id))
+	require.NoError(t, err)
+	return stored
+}
+
 // A middleware that runs inside another links to it and lets go when it finishes,
 // and the outer one is the current middleware of the request again.
 func Test_Session_Middleware_NestedLinkIsBalanced(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	c := newRequest(t, app)
-
-	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
-
-	outer := startMiddleware(t, c, storeA)
-	inner := startMiddleware(t, c, storeB)
+	p := startPair(t)
+	c, outer, inner := p.c, p.outer, p.inner
 	require.Same(t, outer, inner.parent)
 	require.Equal(t, int32(1), outer.children.Load())
 	require.Same(t, inner, c.Locals(middlewareContextKey))
@@ -75,8 +123,7 @@ func Test_Session_Middleware_AdoptOnlyWithinItsRequest(t *testing.T) {
 	c1 := newRequest(t, app)
 	c2 := newRequest(t, app)
 
-	store := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	outer := startMiddleware(t, c1, store)
+	outer := startMiddleware(t, c1, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
 
 	require.False(t, outer.adopt(c2), "a middleware of another request is no parent")
 	require.Zero(t, outer.children.Load(), "and nothing was counted for the refusal")
@@ -86,8 +133,7 @@ func Test_Session_Middleware_AdoptOnlyWithinItsRequest(t *testing.T) {
 	outer.unlink()
 	require.Zero(t, outer.children.Load())
 
-	// A finished middleware that was dropped instead of recycled, so that the test
-	// can look at it after it let go.
+	// Dropped instead of recycled, so that the test can look at it once it finished.
 	outer.mark(lifeEscaped)
 	releaseMiddleware(outer)
 	require.True(t, outer.is(lifeReleased))
@@ -97,28 +143,30 @@ func Test_Session_Middleware_AdoptOnlyWithinItsRequest(t *testing.T) {
 
 // The shape of a request that a middleware abandoned, as sse does: the outer
 // middleware finishes and its request is answered while the middleware inside it
-// still runs. The
-// outer one must not be recycled then, for the inner one holds it, and when the
-// inner one finishes it must not hand the request an outer middleware that now
-// belongs to somebody else.
+// still runs. A walk from the inner middleware stops at the finished one, even if
+// nothing but its flag says so. The outer one must not be recycled then, for the
+// inner one holds it, and when the inner one finishes it must not hand the request
+// an outer middleware that now belongs to somebody else.
 func Test_Session_Middleware_OuterFinishesBeforeInner(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	c1 := newRequest(t, app)
-	c2 := newRequest(t, app)
+	p := startPair(t)
+	c1, outer, inner := p.c, p.outer, p.inner
+	c2 := newRequest(t, p.app)
 
-	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
-
-	outer := startMiddleware(t, c1, storeA)
-	inner := startMiddleware(t, c1, storeB)
+	// Nothing but its flag says that the outer middleware finished, and a walk stops there.
+	require.Same(t, outer, p.storeA.FromContext(c1))
+	outer.mark(lifeReleased)
+	require.Nil(t, p.storeA.FromContext(c1), "the walk went on to a middleware that finished")
+	require.Same(t, inner, p.storeB.FromContext(c1), "the middleware in front of it is still found")
+	require.Nil(t, inner.find(func(m *Middleware) bool { return m == outer }), "even one a caller asks for by name")
+	outer.unmark(lifeReleased)
 
 	// The outer middleware finishes first.
 	releaseMiddleware(outer)
 	require.True(t, outer.is(lifeReleased), "an outer middleware with one still inside it is not recycled")
 	require.Nil(t, c1.Locals(middlewareContextKey))
-	require.Nil(t, storeA.FromContext(c1))
+	require.Nil(t, p.storeA.FromContext(c1))
 	require.Same(t, outer, inner.parent, "the inner middleware still holds what it was linked to")
 
 	// Another request starts. Nothing the pool hands out is the old outer middleware.
@@ -127,7 +175,7 @@ func Test_Session_Middleware_OuterFinishesBeforeInner(t *testing.T) {
 		require.NotSame(t, outer, got, "the outer middleware went back to the pool with a middleware inside it")
 		releaseMiddleware(got)
 	}
-	other := startMiddleware(t, c2, storeA)
+	other := startMiddleware(t, c2, p.storeA)
 	require.NotSame(t, outer, other)
 	otherSession := other.Session
 
@@ -147,13 +195,13 @@ func Test_Session_Middleware_OuterFinishesBeforeInner(t *testing.T) {
 // handlers inside the timeout outlive the answer. The outer middleware is not
 // recycled while they may still use it, so the next request is served by another
 // one before they finish. What the abandoned handler finds in the request
-// afterwards may be the middleware of its own request, which stays alive for it,
-// but must not be the session of the request that came after.
+// afterwards may be the middleware of its own request, but must not be the
+// session of the request that came after.
 //
 // The answer waits until the inner middleware has started, so that what the
-// timeout leaves running is ordered after what it left behind, and the test
-// does not trip over the race detector on the shared request locals, which the
-// timeout middleware leaves to the application.
+// timeout leaves running is ordered after what it left behind: the race detector
+// would otherwise trip over the shared request locals, which the timeout
+// middleware leaves to the application.
 func Test_Session_MultipleStores_AbandonedByTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -243,18 +291,12 @@ func Test_Session_MultipleStores_AbandonedByTimeout(t *testing.T) {
 //
 // testing.AllocsPerRun panics in a parallel test, so this one stays sequential.
 func Test_Session_Middleware_FindDoesNotAllocate(t *testing.T) {
-	app := fiber.New()
-	c := newRequest(t, app)
+	p := startPair(t)
+	defer releaseMiddleware(p.outer)
+	defer releaseMiddleware(p.inner)
 
-	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
-	outer := startMiddleware(t, c, storeA)
-	inner := startMiddleware(t, c, storeB)
-	defer releaseMiddleware(outer)
-	defer releaseMiddleware(inner)
-
-	require.Same(t, inner, storeB.FromContext(c))
-	require.Same(t, outer, storeA.FromContext(c))
+	require.Same(t, p.inner, p.storeB.FromContext(p.c))
+	require.Same(t, p.outer, p.storeA.FromContext(p.c))
 
 	save := func(s *Session) func() {
 		return func() {
@@ -264,37 +306,47 @@ func Test_Session_Middleware_FindDoesNotAllocate(t *testing.T) {
 		}
 	}
 
-	require.Zero(t, testing.AllocsPerRun(100, func() { _ = storeB.FromContext(c) }), "the innermost middleware")
-	require.Zero(t, testing.AllocsPerRun(100, func() { _ = storeA.FromContext(c) }), "the one it runs inside")
-	require.Zero(t, testing.AllocsPerRun(100, save(inner.Session)), "the session of the innermost middleware")
-	require.Zero(t, testing.AllocsPerRun(100, save(outer.Session)), "the session of the one it runs inside")
+	require.Zero(t, testing.AllocsPerRun(100, func() { _ = p.storeB.FromContext(p.c) }), "the innermost middleware")
+	require.Zero(t, testing.AllocsPerRun(100, func() { _ = p.storeA.FromContext(p.c) }), "the one it runs inside")
+	require.Zero(t, testing.AllocsPerRun(100, save(p.inner.Session)), "the session of the innermost middleware")
+	require.Zero(t, testing.AllocsPerRun(100, save(p.outer.Session)), "the session of the one it runs inside")
 }
 
-// Not parallel: it reads the shared session pool, which every other test uses,
-// after the sessions went back to it, and a parallel test could take one in between.
-func Test_Session_ReleaseMiddleware_ReleasesTheSession(t *testing.T) {
-	app := fiber.New()
-	c := newRequest(t, app)
-
-	outer := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
-	inner := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("b_sid")}))
+// A middleware that nothing refers to is recycled when it finishes, with its
+// session reset, and the outer middleware is not held by the one that ran inside
+// it any more.
+//
+// Not parallel: it reads the middleware and the sessions after they went back to the
+// shared pools, where a parallel test could take them in the meantime.
+func Test_Session_ReleaseMiddleware_RecyclesWhatNothingRefersTo(t *testing.T) {
+	p := startPair(t)
+	outer, inner := p.outer, p.inner
 	outerSession, innerSession := outer.Session, inner.Session
 	require.NotEmpty(t, outerSession.ID())
 	require.NotEmpty(t, innerSession.ID())
 
 	releaseMiddleware(inner)
+	require.False(t, inner.is(lifeReleased), "nothing refers to the inner middleware, so it is recycled")
 	require.Nil(t, inner.Session)
 	require.Empty(t, innerSession.ID(), "the inner session was reset and went back to the pool with its middleware")
 	require.NotEmpty(t, outerSession.ID(), "and the outer one is still the outer middleware's")
+	require.Zero(t, outer.children.Load())
 
 	releaseMiddleware(outer)
+	require.False(t, outer.is(lifeReleased), "nothing refers to the outer one either, since the inner one let go of it")
 	require.Nil(t, outer.Session)
 	require.Empty(t, outerSession.ID())
 }
 
 // A handler that a middleware abandoned, as sse does, can hold the middleware and
-// the session of its request after the request is answered. Neither is recycled
-// then, or the next request would find itself in the abandoned handler's hands.
+// the session of its request after the request is answered, the middleware in
+// front of it finished and the next request started. Neither is recycled then, or
+// the next request would find itself in the handler's hands. The context of the
+// request is reused once the handlers that outlive it are done, so the session lets
+// go of it: a goroutine that still holds the session neither writes to the response
+// of that request nor runs its storage calls under its context, but can still save
+// what it holds. And a lookup the handler began before the middleware finished must
+// not find the middleware of the next request.
 func Test_Session_ReleaseMiddleware_AbandonedRequestKeepsItsObjects(t *testing.T) {
 	t.Parallel()
 
@@ -302,18 +354,21 @@ func Test_Session_ReleaseMiddleware_AbandonedRequestKeepsItsObjects(t *testing.T
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer c.ForceRelease()
 
-	m := startMiddleware(t, c, NewStore())
-	sess := m.Session
+	store := NewStore()
+	first := startMiddleware(t, c, store)
+	sess := first.Session
 	sess.Set("k", "v")
+	held := FromContext(c) // the abandoned handler begins a lookup
+	require.Same(t, first, held)
 
 	c.Abandon()
-	releaseMiddleware(m)
-	require.True(t, m.is(lifeReleased), "the middleware is marked finished, so lookups stop returning it")
-	require.Nil(t, m.Session)
+	releaseMiddleware(first)
+	require.True(t, first.is(lifeReleased), "the middleware is marked finished, so lookups stop returning it")
+	require.Nil(t, first.Session)
 
 	for range 100 {
 		got := acquireMiddleware()
-		require.NotSame(t, m, got, "the middleware of an abandoned request went back to the pool")
+		require.NotSame(t, first, got, "the middleware of an abandoned request went back to the pool")
 		releaseMiddleware(got)
 
 		next := acquireSession()
@@ -321,84 +376,22 @@ func Test_Session_ReleaseMiddleware_AbandonedRequestKeepsItsObjects(t *testing.T
 		releaseSession(next)
 	}
 	require.Equal(t, "v", sess.Get("k"), "and what the abandoned handler holds is left as it was")
-}
 
-// The context of an abandoned request is reused for another request once the
-// handlers that outlive it are done. A goroutine that still holds the session then
-// must not write to the response of that request, or run its storage calls under
-// its context; it can still save what it holds.
-func Test_Session_ReleaseMiddleware_AbandonedSessionLetsGoOfItsContext(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer c.ForceRelease()
-
-	store := NewStore()
-	m := startMiddleware(t, c, store)
-	sess := m.Session
-	sess.Set("k", "v")
-
-	c.Abandon()
-	releaseMiddleware(m)
 	require.Nil(t, sess.requestCtx(), "the session still points at the context of its request")
-
 	require.NoError(t, sess.Save())
 	require.Empty(t, c.Response().Header.Peek(fiber.HeaderSetCookie), "a save by a goroutine that still holds the session wrote to the response")
-	stored, err := store.Storage.GetWithContext(context.Background(), store.storageKey(sess.ID()))
-	require.NoError(t, err)
-	require.NotEmpty(t, stored, "but the session was saved")
-}
+	require.NotEmpty(t, storedFor(t, store, sess.ID()), "but the session was saved")
 
-// The interleaving behind a middleware that abandons the request: the abandoned
-// handler reads the request local, the request is answered and the middleware in
-// front of it finishes, the next request starts, and then the handler goes on with
-// its lookup. It must not find the next request's middleware.
-func Test_Session_Middleware_AbandonedLookupDoesNotFindTheNextRequest(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	c1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer c1.ForceRelease()
-	c2 := newRequest(t, app)
-
-	store := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	first := startMiddleware(t, c1, store)
-	first.Set("req", "first")
-
-	held := FromContext(c1) // the abandoned handler begins its lookup
-	require.Same(t, first, held)
-
-	c1.Abandon() // a middleware abandons the request and answers it
-	releaseMiddleware(first)
-
-	second := startMiddleware(t, c2, store) // the next request starts
+	second := startMiddleware(t, newRequest(t, app), store) // the next request starts
 	second.Set("req", "secret-of-the-second-request")
 	require.NotSame(t, first, second)
 
 	found := held.find(func(m *Middleware) bool { return m.store == store })
 	require.Nil(t, found, "the abandoned handler found a middleware after its request ended")
-	require.Nil(t, store.FromContext(c1))
+	require.Nil(t, store.FromContext(c))
 	require.Equal(t, "secret-of-the-second-request", second.Get("req"))
 
 	releaseMiddleware(second)
-}
-
-// Not parallel: it reads a middleware after it went back to the shared pool, where a
-// parallel test could take it and drop it in the meantime.
-func Test_Session_ReleaseMiddleware_RecyclesWhatNothingRefersTo(t *testing.T) {
-	app := fiber.New()
-	c := newRequest(t, app)
-
-	outer := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
-	inner := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("b_sid")}))
-
-	releaseMiddleware(inner)
-	require.False(t, inner.is(lifeReleased), "nothing refers to the inner middleware, so it is recycled")
-	require.Zero(t, outer.children.Load())
-
-	releaseMiddleware(outer)
-	require.False(t, outer.is(lifeReleased), "nothing refers to the outer one either, since the inner one let go of it")
 }
 
 // The session of an abandoned request is cut off from its context while a goroutine
@@ -516,30 +509,6 @@ func Test_Session_Save_RunsUnderTheRequestContext(t *testing.T) {
 	require.Equal(t, context.Background(), spy.sets[2], "a session without a request saves under the background context")
 }
 
-// A walk stops at a middleware that finished, even if nothing but its flag says so.
-func Test_Session_Middleware_FindStopsAtAFinishedOuter(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	c := newRequest(t, app)
-
-	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
-	outer := startMiddleware(t, c, storeA)
-	inner := startMiddleware(t, c, storeB)
-
-	require.Same(t, outer, storeA.FromContext(c))
-
-	outer.mark(lifeReleased)
-	require.Nil(t, storeA.FromContext(c), "the walk went on to a middleware that finished")
-	require.Same(t, inner, storeB.FromContext(c), "the middleware in front of it is still found")
-	require.Nil(t, inner.find(func(m *Middleware) bool { return m == outer }), "even one a caller asks for by name")
-	outer.unmark(lifeReleased)
-
-	releaseMiddleware(inner)
-	releaseMiddleware(outer)
-}
-
 // adopt, the restore and the release of the outer middleware run on different
 // goroutines when a handler outlives its request. They must not race on the
 // middleware: run with -race.
@@ -549,85 +518,46 @@ func Test_Session_Middleware_LinkProtocolIsRaceFree(t *testing.T) {
 	app := fiber.New()
 	store := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 
-	// outer is a running middleware of the request on c1, which a goroutine is
-	// about to link to or restore. It is dropped instead of recycled when it
-	// finishes, so that the test can look at it afterwards.
-	run := func(t *testing.T, inner func(outer *Middleware, c1, c2 fiber.Ctx), beforeRelease func(outer *Middleware)) {
-		t.Helper()
-
-		for range 200 {
-			c1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-			c2 := app.AcquireCtx(&fasthttp.RequestCtx{}) // restore writes the locals of the request it is given
-			outer := startMiddleware(t, c1, store)
-			outer.mark(lifeEscaped)
-
-			var wg sync.WaitGroup
-			wg.Go(func() { inner(outer, c1, c2) })
-			beforeRelease(outer)
-			releaseMiddleware(outer)
-			wg.Wait()
-
-			require.Zero(t, outer.children.Load(), "every link that was made was undone")
-			app.ReleaseCtx(c1)
-			app.ReleaseCtx(c2)
-		}
-	}
-
-	t.Run("linking while the outer middleware finishes", func(t *testing.T) {
-		t.Parallel()
-		run(t, func(outer *Middleware, c1, c2 fiber.Ctx) {
-			if outer.adopt(c1) {
-				restoreMiddlewareContext(c2, outer)
-				outer.unlink()
-			}
-		}, func(*Middleware) {})
-	})
-
-	t.Run("restoring while the outer middleware finishes", func(t *testing.T) {
-		t.Parallel()
-
+	for name, linkFirst := range map[string]bool{
+		"linking while the outer middleware finishes": false,
 		// The link is made first; from then on the goroutine and the release run on their own.
-		linked := make(chan bool, 1)
-		run(t, func(outer *Middleware, c1, c2 fiber.Ctx) {
-			ok := outer.adopt(c1)
-			linked <- ok
-			if ok {
-				restoreMiddlewareContext(c2, outer)
-				outer.unlink()
+		"restoring while the outer middleware finishes": true,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			linked := make(chan bool, 1)
+			for range 200 {
+				c1 := app.AcquireCtx(&fasthttp.RequestCtx{})
+				c2 := app.AcquireCtx(&fasthttp.RequestCtx{}) // restore writes the locals of the request it is given
+				// outer runs on c1 and the goroutine is about to link to or restore it; it is
+				// dropped instead of recycled, so that the test can look at it afterwards.
+				outer := startMiddleware(t, c1, store)
+				outer.mark(lifeEscaped)
+
+				var wg sync.WaitGroup
+				wg.Go(func() {
+					ok := outer.adopt(c1)
+					if linkFirst {
+						linked <- ok
+					}
+					if ok {
+						restoreMiddlewareContext(c2, outer)
+						outer.unlink()
+					}
+				})
+				if linkFirst {
+					require.True(t, <-linked, "the outer middleware was still running")
+				}
+				releaseMiddleware(outer)
+				wg.Wait()
+
+				require.Zero(t, outer.children.Load(), "every link that was made was undone")
+				app.ReleaseCtx(c1)
+				app.ReleaseCtx(c2)
 			}
-		}, func(*Middleware) {
-			require.True(t, <-linked, "the outer middleware was still running")
 		})
-	})
-}
-
-// A panic that unwinds a middleware inside another skips its release, so the link
-// to the outer middleware has to be ended some other way, once.
-func Test_Session_Middleware_UnpinIsOnce(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	c := newRequest(t, app)
-
-	outer := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
-	inner := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("b_sid")}))
-	require.Same(t, outer, inner.pinned)
-	require.Equal(t, int32(1), outer.children.Load())
-
-	inner.unpin()
-	require.Nil(t, inner.pinned)
-	require.Zero(t, outer.children.Load(), "the outer middleware no longer counts the one that was unwound")
-	require.Same(t, outer, inner.parent, "the way to it stays, for whatever recovers the panic")
-
-	inner.unpin()
-	require.Zero(t, outer.children.Load(), "and a second call finds nothing to undo")
-
-	// A release after that does not undo the link again.
-	inner.mark(lifeEscaped)
-	releaseMiddleware(inner)
-	require.Zero(t, outer.children.Load())
-
-	releaseMiddleware(outer)
+	}
 }
 
 // recoverBetween is a middleware that recovers the panic of whatever runs behind it and
@@ -669,9 +599,7 @@ func Test_Session_MultipleStores_PanicInsideKeepsWhatItShould(t *testing.T) {
 			var seen atomic.Value
 			var inner atomic.Pointer[Middleware]
 			app := fiber.New(fiber.Config{PassLocalsToContext: pass})
-			app.Use(handlerA)
-			app.Use(recoverBetween(storeA, &seen))
-			app.Use(handlerB)
+			app.Use(handlerA, recoverBetween(storeA, &seen), handlerB)
 			app.Get("/", func(c fiber.Ctx) error {
 				storeA.FromContext(c).Set("k", "v")
 				inner.Store(FromContext(c))
@@ -690,10 +618,7 @@ func Test_Session_MultipleStores_PanicInsideKeepsWhatItShould(t *testing.T) {
 			sess := m.Session
 			m.mu.RUnlock()
 			require.NotNil(t, sess)
-			sess.mu.RLock()
-			_, response := sess.requestResponse()
-			sess.mu.RUnlock()
-			require.Nil(t, response, "the session of the inner middleware still writes to the request")
+			require.True(t, sess.holdsNoRequest(), "the session of the inner middleware still writes to the request")
 		})
 	}
 }
@@ -715,11 +640,11 @@ func (panickingStorage) Set(string, []byte, time.Duration) error {
 // pool creates, and keeps the process on one P without garbage collection so that
 // the pool hands back what it was given.
 //
-// The inner middleware is unwound by a panic and never comes back, with or
-// without an outer one, so each request creates one. The outer middleware must not
-// cost another: it is recycled, because nothing runs inside it any more. The panic
-// can come from the rest of the stack, from the save of the inner middleware, or
-// from its error handler.
+// The inner middleware is unwound by a panic and never comes back, with or without
+// an outer one, so each request creates one. The outer middleware must not cost
+// another: it is recycled, because nothing runs inside it any more. The panic can
+// come from the rest of the stack, from the save of the inner middleware, or from
+// its error handler.
 func Test_Session_MultipleStores_PanicInsideRecyclesTheOuterMiddleware(t *testing.T) {
 	prevGC := debug.SetGCPercent(-1)
 	prevProcs := runtime.GOMAXPROCS(1)
@@ -771,9 +696,7 @@ func Test_Session_MultipleStores_PanicInsideRecyclesTheOuterMiddleware(t *testin
 
 			var seen atomic.Value
 			app := fiber.New()
-			app.Use(handlerA)
-			app.Use(recoverBetween(storeA, &seen))
-			app.Use(handlerB)
+			app.Use(handlerA, recoverBetween(storeA, &seen), handlerB)
 			app.Get("/", tc.handler)
 			handler := app.Handler()
 
@@ -801,18 +724,17 @@ func Test_Session_MultipleStores_PanicInsideRecyclesTheOuterMiddleware(t *testin
 	}
 }
 
-// Once a middleware finished it was released, and may already serve another
-// request: the deferred call that ends a middleware that was unwound must leave a
-// finished one alone. One that was unwound gives the outer middleware its count
-// back and lets go of the request, and keeps its session.
-func Test_Session_Middleware_EndIfUnwound(t *testing.T) {
+// A panic that unwinds a middleware inside another skips its release, so the
+// deferred call that ends the middleware does what the release would. Once a
+// middleware finished it was released, and may already serve another request: the
+// call leaves a finished one alone. One that was unwound gives the outer middleware
+// its count back, once, and lets go of the request, and keeps its session; the way
+// to the outer middleware stays, for whatever recovers the panic.
+func Test_Session_Middleware_EndIfUnwoundUnpinsOnce(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	c := newRequest(t, app)
-
-	outer := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("a_sid")}))
-	inner := startMiddleware(t, c, NewStore(Config{Extractor: extractors.FromCookie("b_sid")}))
+	p := startPair(t)
+	c, outer, inner := p.c, p.outer, p.inner
 	require.Equal(t, int32(1), outer.children.Load())
 
 	finished := true
@@ -823,7 +745,9 @@ func Test_Session_Middleware_EndIfUnwound(t *testing.T) {
 
 	finished = false
 	inner.endIfUnwound(&finished, c)
+	require.Nil(t, inner.pinned)
 	require.Zero(t, outer.children.Load(), "the count of one that was unwound was not")
+	require.Same(t, outer, inner.parent, "the way to the outer middleware stays")
 	require.Nil(t, inner.ctx, "the middleware that was unwound still refers to the fiber.Ctx")
 	require.NotNil(t, inner.Session, "its session was let go of")
 	require.Nil(t, inner.Session.requestCtx(), "its session still refers to the fiber.Ctx")
@@ -833,37 +757,41 @@ func Test_Session_Middleware_EndIfUnwound(t *testing.T) {
 	c.RequestCtx().ResetUserValues() // what fasthttp does when it resets the request: it closes the middleware
 	require.Nil(t, inner.Session.rctx, "the end of the request did not cut the session off from it")
 
+	inner.unpin()
+	require.Zero(t, outer.children.Load(), "a second call finds nothing to undo")
+
+	// A release after that does not undo the link again.
 	inner.mark(lifeEscaped)
 	releaseMiddleware(inner)
+	require.Zero(t, outer.children.Load())
+
 	releaseMiddleware(outer)
 }
 
 // panicAtCtx is a custom context that panics at one chosen point of the life of a
-// session middleware, as a Ctx of an application could: where the middleware is
-// published to the request as it starts, and, as it ends, where the request locals
-// are cleared, which happens while the middleware holds its lock, where the Go
-// context is replaced, where it asks whether the request was abandoned, and where
-// the outer middleware is made current again.
+// session middleware, as a Ctx of an application could: as the middleware starts
+// (publishing it to the request) and as it ends (clearing the request locals, which
+// it does holding its lock; replacing the Go context; asking whether the request
+// was abandoned; making the outer middleware current again).
 type panicAtCtx struct {
-	point *atomic.Value // string; empty: nowhere
+	point *atomic.Value // string; unset: nowhere
 	fiber.DefaultCtx
 }
 
 func (c *panicAtCtx) Locals(key any, value ...any) any {
-	switch c.point.Load() {
-	case "publishing the inner middleware":
-		if key == middlewareContextKey && len(value) == 1 && value[0] != nil {
-			panic("custom context: Locals panicked while publishing")
+	if key == middlewareContextKey && len(value) == 1 {
+		storing := value[0] != nil
+		switch c.point.Load() {
+		case "publishing the inner middleware", "restoring the outer middleware":
+			if storing {
+				panic("custom context: Locals panicked while storing the middleware")
+			}
+		case "clearing the locals":
+			if !storing {
+				panic("custom context: Locals panicked while clearing")
+			}
+		default:
 		}
-	case "clearing the locals":
-		if key == middlewareContextKey && len(value) == 1 && value[0] == nil {
-			panic("custom context: Locals panicked while clearing")
-		}
-	case "restoring the outer middleware":
-		if key == middlewareContextKey && len(value) == 1 && value[0] != nil {
-			panic("custom context: Locals panicked while restoring")
-		}
-	default:
 	}
 	return c.DefaultCtx.Locals(key, value...)
 }
@@ -889,12 +817,6 @@ func (c *panicAtCtx) IsAbandoned() bool {
 func Test_Session_MultipleStores_PanicInReleaseGoesOn(t *testing.T) {
 	t.Parallel()
 
-	type panicCase struct {
-		point  string
-		nested bool
-		pass   bool
-	}
-	var cases []panicCase
 	for _, point := range []string{
 		"publishing the inner middleware",
 		"clearing the locals",
@@ -903,71 +825,65 @@ func Test_Session_MultipleStores_PanicInReleaseGoesOn(t *testing.T) {
 		"restoring the outer middleware",
 	} {
 		for _, nested := range []bool{false, true} {
-			if (point == "restoring the outer middleware" || point == "publishing the inner middleware") && !nested {
-				continue // there is no outer middleware to restore or to run inside
-			}
 			for _, pass := range []bool{false, true} {
-				if point == "replacing the Go context" && !pass {
-					continue // without PassLocalsToContext the release leaves the Go context alone
+				// Without an outer middleware there is none to restore or to run inside, and
+				// without PassLocalsToContext the release leaves the Go context alone.
+				if (!nested && (point == "restoring the outer middleware" || point == "publishing the inner middleware")) ||
+					(!pass && point == "replacing the Go context") {
+					continue
 				}
-				cases = append(cases, panicCase{point: point, nested: nested, pass: pass})
+				t.Run(fmt.Sprintf("%s nested=%t pass=%t", point, nested, pass), func(t *testing.T) {
+					t.Parallel()
+
+					armed := &atomic.Value{}
+					app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+						return &panicAtCtx{DefaultCtx: *fiber.NewDefaultCtx(app), point: armed}
+					}, fiber.Config{PassLocalsToContext: pass})
+					handlerA, storeA := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
+					handlerB, _ := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
+					if nested {
+						app.Use(handlerA)
+					}
+					var outer atomic.Pointer[Middleware]
+					app.Use(func(c fiber.Ctx) error { // between the two session middleware
+						if nested {
+							outer.Store(storeA.FromContext(c))
+						}
+						if point == "publishing the inner middleware" {
+							armed.Store(point) // the start of the middleware that runs last panics
+						}
+						return c.Next()
+					}, handlerB)
+					app.Get("/", func(fiber.Ctx) error {
+						if point != "publishing the inner middleware" {
+							armed.Store(point) // the release of the middleware that runs last panics
+						}
+						return nil
+					})
+					handler := app.Handler()
+
+					recovered := make(chan any, 1)
+					go func() {
+						defer func() { recovered <- recover() }()
+						fctx := &fasthttp.RequestCtx{}
+						fctx.Request.Header.SetMethod(fiber.MethodGet)
+						fctx.Request.SetRequestURI("/")
+						handler(fctx)
+					}()
+
+					select {
+					case got := <-recovered:
+						require.NotNil(t, got, "the panic did not come out of the handler")
+					case <-time.After(5 * time.Second):
+						t.Fatal("the request hung: the panic in the release was swallowed by a deadlock")
+					}
+					if nested {
+						require.NotNil(t, outer.Load())
+						require.Zero(t, outer.Load().children.Load(), "the outer middleware still counts the one that panicked")
+					}
+				})
 			}
 		}
-	}
-
-	for _, tc := range cases {
-		t.Run(fmt.Sprintf("%s nested=%t pass=%t", tc.point, tc.nested, tc.pass), func(t *testing.T) {
-			t.Parallel()
-
-			armed := &atomic.Value{}
-			armed.Store("")
-			app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
-				return &panicAtCtx{DefaultCtx: *fiber.NewDefaultCtx(app), point: armed}
-			}, fiber.Config{PassLocalsToContext: tc.pass})
-			handlerA, storeA := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
-			handlerB, _ := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
-			if tc.nested {
-				app.Use(handlerA)
-			}
-			var outer atomic.Pointer[Middleware]
-			app.Use(func(c fiber.Ctx) error { // between the two session middleware
-				if tc.nested {
-					outer.Store(storeA.FromContext(c))
-				}
-				if tc.point == "publishing the inner middleware" {
-					armed.Store(tc.point) // the start of the middleware that runs last panics
-				}
-				return c.Next()
-			})
-			app.Use(handlerB)
-			app.Get("/", func(fiber.Ctx) error {
-				if tc.point != "publishing the inner middleware" {
-					armed.Store(tc.point) // the release of the middleware that runs last panics
-				}
-				return nil
-			})
-			handler := app.Handler()
-
-			recovered := make(chan any, 1)
-			go func() {
-				defer func() { recovered <- recover() }()
-				fctx := &fasthttp.RequestCtx{}
-				fctx.Request.Header.SetMethod(fiber.MethodGet)
-				fctx.Request.SetRequestURI("/")
-				handler(fctx)
-			}()
-
-			select {
-			case got := <-recovered:
-				require.NotNil(t, got, "the panic did not come out of the handler")
-			case <-time.After(5 * time.Second):
-				t.Fatal("the request hung: the panic in the release was swallowed by a deadlock")
-			}
-			if tc.nested {
-				require.NotNil(t, outer.Load())
-				require.Zero(t, outer.Load().children.Load(), "the outer middleware still counts the one that panicked")
-			}
-		})
 	}
 }
 
@@ -991,10 +907,14 @@ func (c *observeRestoreCtx) Locals(key any, value ...any) any {
 func Test_Session_Middleware_OuterStaysPinnedWhileItIsRestored(t *testing.T) {
 	t.Parallel()
 
-	var outer atomic.Pointer[Middleware]
-	var armed atomic.Bool
-	var seen atomic.Int32
+	var (
+		outer atomic.Pointer[Middleware]
+		armed atomic.Bool
+		seen  atomic.Int32
+		after atomic.Int32
+	)
 	seen.Store(-1)
+	after.Store(-1)
 
 	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
 		return &observeRestoreCtx{DefaultCtx: *fiber.NewDefaultCtx(app), onRestore: func() {
@@ -1003,19 +923,14 @@ func Test_Session_Middleware_OuterStaysPinnedWhileItIsRestored(t *testing.T) {
 			}
 		}}
 	})
-	var after atomic.Int32
-	after.Store(-1)
-
 	handlerA, storeA := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
 	handlerB, _ := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
-	app.Use(handlerA)
-	app.Use(func(c fiber.Ctx) error {
+	app.Use(handlerA, func(c fiber.Ctx) error {
 		err := c.Next() // the inner middleware starts and finishes in here
 		// The outer middleware still runs, so it is still the request's own.
 		after.Store(storeA.FromContext(c).children.Load())
 		return err
-	})
-	app.Use(handlerB)
+	}, handlerB)
 	app.Get("/", func(c fiber.Ctx) error {
 		outer.Store(storeA.FromContext(c))
 		armed.Store(true)

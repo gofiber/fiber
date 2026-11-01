@@ -1295,14 +1295,9 @@ func Test_Session_Middleware_TimedOutRequestLetsGoOfItsContext(t *testing.T) {
 	require.Equal(t, "x", m.Get("late"), "the handler goes on with its own session")
 
 	// nothing saved it, since the response was fixed; a save of its own writes the record, and no cookie
-	key := store.storageKey(sess.ID())
-	stored, err := store.Storage.GetWithContext(context.Background(), key)
-	require.NoError(t, err)
-	require.Empty(t, stored)
+	require.Empty(t, storedFor(t, store, sess.ID()))
 	require.NoError(t, sess.Save())
-	stored, err = store.Storage.GetWithContext(context.Background(), key)
-	require.NoError(t, err)
-	require.NotEmpty(t, stored)
+	require.NotEmpty(t, storedFor(t, store, sess.ID()))
 
 	close(release)
 	<-done
@@ -1350,9 +1345,8 @@ func Test_Session_Middleware_TimedOutAnswerDoesNotWaitForTheHandlerInTheStorage(
 				held = make(chan *Middleware, 1)
 				done = make(chan struct{})
 			)
-			store := NewStore(Config{Storage: slowStorage{Storage: memory.New(), delay: storageDelay}})
 			app := fiber.New()
-			app.Use(New(Config{Store: store}))
+			app.Use(New(Config{Storage: slowStorage{Storage: memory.New(), delay: storageDelay}}))
 			app.Get("/slow", timeout.New(func(c fiber.Ctx) error {
 				defer close(done)
 				m := FromContext(c)
@@ -1368,12 +1362,7 @@ func Test_Session_Middleware_TimedOutAnswerDoesNotWaitForTheHandlerInTheStorage(
 
 			m := <-held
 			<-done
-			require.Eventually(t, func() bool {
-				m.mu.RLock()
-				sess, ctx := m.Session, m.ctx
-				m.mu.RUnlock()
-				return sess != nil && ctx == nil && sess.requestCtx() == nil
-			}, 5*time.Second, 5*time.Millisecond, "the middleware and its session still refer to the request")
+			requireDetached(t, m)
 		})
 	}
 }
@@ -1404,9 +1393,7 @@ func Test_Session_Middleware_AbandonedWithoutTimeoutKeepsItsObjects(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderSetCookie), "an abandoned request is still answered with its cookie")
-	stored, err := store.Storage.GetWithContext(context.Background(), store.storageKey(sess.ID()))
-	require.NoError(t, err)
-	require.NotEmpty(t, stored, "and its session is saved")
+	require.NotEmpty(t, storedFor(t, store, sess.ID()), "and its session is saved")
 
 	require.True(t, m.is(lifeReleased), "the middleware is finished, and not in the pool")
 	require.Equal(t, "alice", sess.Get("user"), "its session is left as it was, not reset for the pool")

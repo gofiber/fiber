@@ -30,17 +30,6 @@ func Test_Store_Get_TakesItsOwnFreshIDWhateverOtherStoresDid(t *testing.T) {
 	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
 
 	app := fiber.New()
-	app.Get("/seed", func(c fiber.Ctx) error {
-		b, err := storeB.Get(c)
-		if err != nil {
-			return err
-		}
-		defer b.Release()
-		if err := b.Save(); err != nil {
-			return err
-		}
-		return c.SendString(b.ID())
-	})
 	app.Get("/", func(c fiber.Ctx) error {
 		b, err := storeB.Get(c) // found: its ID is the one the request names
 		if err != nil {
@@ -64,7 +53,7 @@ func Test_Store_Get_TakesItsOwnFreshIDWhateverOtherStoresDid(t *testing.T) {
 		return c.SendString(fmt.Sprintf("%t|%t|%v|%s", b.Fresh(), again.ID() == first.ID(), again.Get("flash"), again.ID()))
 	})
 
-	_, idB := sendRequest(t, app, "/seed", nil)
+	idB := seedSession(t, app, storeB, func(*Session) {})
 	resp, body := sendRequest(t, app, "/", map[string]string{"b_sid": idB})
 	require.Greater(t, len(body), len("false|true|hello|"), body)
 	idA := body[len("false|true|hello|"):]
@@ -210,16 +199,12 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 			// The panic was recovered behind this point: the middleware is still the
 			// request's to reach, and a Destroy from here deletes the record and
 			// expires the cookie, as before the panic.
-			m := FromContext(c)
-			if m == nil {
-				after.Store("unreachable")
-				return err
+			after.Store("unreachable")
+			if m := FromContext(c); m != nil {
+				after.Store(fmt.Sprintf("reached|destroy=%v", m.Destroy()))
 			}
-			after.Store(fmt.Sprintf("reached|destroy=%v", m.Destroy()))
 			return err
-		})
-		app.Use(recoverer.New())
-		app.Use(New(Config{Store: store}))
+		}, recoverer.New(), New(Config{Store: store}))
 		app.Get("/", func(c fiber.Ctx) error {
 			m := FromContext(c)
 			m.Set("k", "v")
@@ -228,8 +213,7 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 			panic("boom")
 		})
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
+		resp, _ := sendRequest(t, app, "/", nil)
 		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 		require.Equal(t, "reached|destroy=<nil>", after.Load(), "the recovering side could not reach the middleware")
 		cookies := cookiesByName(resp)
@@ -247,21 +231,11 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 		require.Nil(t, sess.requestCtx(), "the session still refers to the fiber.Ctx")
 		// fasthttp resets the request once the response is written, and closes the
 		// middleware then: the session has nothing to write to from then on.
-		require.Eventually(t, func() bool {
-			sess.mu.RLock()
-			defer sess.mu.RUnlock()
-			_, response := sess.requestResponse()
-			return response == nil
-		}, 5*time.Second, 5*time.Millisecond, "the session still writes to the request after it ended")
+		require.Eventually(t, sess.holdsNoRequest, 5*time.Second, 5*time.Millisecond, "the session still writes to the request after it ended")
 
-		key := store.storageKey(sess.ID())
-		stored, err := store.Storage.GetWithContext(context.Background(), key)
-		require.NoError(t, err)
-		require.Nil(t, stored, "the middleware saved the session of a request that panicked")
+		require.Nil(t, storedFor(t, store, sess.ID()), "the middleware saved the session of a request that panicked")
 		require.NoError(t, sess.Save(), "a save by the handler's own goroutine")
-		stored, err = store.Storage.GetWithContext(context.Background(), key)
-		require.NoError(t, err)
-		require.NotEmpty(t, stored, "writes the record")
+		require.NotEmpty(t, storedFor(t, store, sess.ID()), "writes the record")
 	})
 
 	t.Run("a save from the recovering side saves the session and sets its cookie", func(t *testing.T) {
@@ -284,9 +258,7 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 				saved.Store(&saveErr)
 			}
 			return err
-		})
-		app.Use(recoverer.New())
-		app.Use(New(Config{Store: store}))
+		}, recoverer.New(), New(Config{Store: store}))
 		app.Get("/", func(c fiber.Ctx) error {
 			m := FromContext(c)
 			m.Set("k", "v")
@@ -294,21 +266,16 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 			panic("boom")
 		})
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
+		resp, _ := sendRequest(t, app, "/", nil)
 		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 		result := saved.Load()
 		require.NotNil(t, result, "the recovering side could not reach the middleware")
 		require.NoError(t, *result)
 
-		sessionID, ok := id.Load().(string)
-		require.True(t, ok)
 		cookie := cookiesByName(resp)["session_id"]
 		require.NotNil(t, cookie, "the save of the recovering side set no cookie")
-		require.Equal(t, sessionID, cookie.Value)
-		stored, err := store.Storage.GetWithContext(context.Background(), store.storageKey(sessionID))
-		require.NoError(t, err)
-		require.NotEmpty(t, stored, "the save of the recovering side wrote no record")
+		require.Equal(t, id.Load(), cookie.Value)
+		require.NotEmpty(t, storedFor(t, store, cookie.Value), "the save of the recovering side wrote no record")
 	})
 
 	t.Run("two middleware unwound by one panic", func(t *testing.T) {
@@ -318,16 +285,14 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 		handlerA, storeA := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
 		handlerB, storeB := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
 		app := fiber.New()
-		app.Use(recoverer.New())
-		app.Use(handlerA, handlerB)
+		app.Use(recoverer.New(), handlerA, handlerB)
 		app.Get("/", func(c fiber.Ctx) error {
 			held[0].Store(storeA.FromContext(c))
 			held[1].Store(storeB.FromContext(c))
 			panic("boom")
 		})
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
+		resp, _ := sendRequest(t, app, "/", nil)
 		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 
 		// fasthttp resets the request once the response is written, and closes every
@@ -339,12 +304,7 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 			sess := m.Session
 			m.mu.RUnlock()
 			require.NotNil(t, sess)
-			require.Eventually(t, func() bool {
-				sess.mu.RLock()
-				defer sess.mu.RUnlock()
-				_, response := sess.requestResponse()
-				return response == nil
-			}, 5*time.Second, 5*time.Millisecond, "the session of middleware %d still writes to the request after it ended", i)
+			require.Eventually(t, sess.holdsNoRequest, 5*time.Second, 5*time.Millisecond, "the session of middleware %d still writes to the request after it ended", i)
 		}
 	})
 
@@ -356,10 +316,8 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 			release = make(chan struct{})
 			done    = make(chan struct{})
 		)
-		store := NewStore()
 		app := fiber.New()
-		app.Use(timeout.New(func(c fiber.Ctx) error { return c.Next() }, timeout.Config{Timeout: 10 * time.Millisecond}))
-		app.Use(New(Config{Store: store}))
+		app.Use(timeout.New(func(c fiber.Ctx) error { return c.Next() }, timeout.Config{Timeout: 10 * time.Millisecond}), New())
 		app.Get("/slow", func(c fiber.Ctx) error {
 			defer close(done)
 			held <- FromContext(c)
@@ -374,12 +332,7 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 		m := <-held
 		close(release)
 		<-done
-		require.Eventually(t, func() bool {
-			m.mu.RLock()
-			sess, ctx := m.Session, m.ctx
-			m.mu.RUnlock()
-			return sess != nil && ctx == nil && sess.requestCtx() == nil
-		}, 5*time.Second, 5*time.Millisecond, "the middleware and its session still refer to the request")
+		requireDetached(t, m)
 	})
 }
 
@@ -390,7 +343,6 @@ func Test_Session_Middleware_ReleasePanicLeavesTheLockFree(t *testing.T) {
 	t.Parallel()
 
 	armed := &atomic.Value{}
-	armed.Store("")
 	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
 		return &panicAtCtx{DefaultCtx: *fiber.NewDefaultCtx(app), point: armed}
 	})
@@ -400,32 +352,25 @@ func Test_Session_Middleware_ReleasePanicLeavesTheLockFree(t *testing.T) {
 			if recover() == nil {
 				return
 			}
-			m := FromContext(c)
-			if m == nil {
-				keys <- nil
-				return
-			}
-			got := make(chan []any, 1)
-			go func() { got <- m.Keys() }()
-			select {
-			case k := <-got:
-				keys <- k
-			case <-time.After(2 * time.Second):
-				keys <- []any{"hung"}
+			if m := FromContext(c); m != nil {
+				go func() { keys <- m.Keys() }()
 			}
 		}()
 		return c.Next()
-	})
-	app.Use(New())
+	}, New())
 	app.Get("/", func(c fiber.Ctx) error {
 		FromContext(c).Set("k", "v")
 		armed.Store("clearing the locals")
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, []any{"k"}, <-keys, "the recovering middleware could not read the session: the release left the lock held")
+	sendRequest(t, app, "/", nil)
+	var got []any
+	select {
+	case got = <-keys:
+	case <-time.After(2 * time.Second): // the lock of the middleware is held
+	}
+	require.Equal(t, []any{"k"}, got, "the recovering middleware could not read the session: the release left the lock held")
 }
 
 // Once the session middleware has finished with the request, a Store.Get reads the
