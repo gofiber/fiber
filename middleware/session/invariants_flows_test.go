@@ -14,11 +14,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The security properties of the invariant world hold for the flows it leaves out as
-// well: SkipEmptySessions, a session that outlives its AbsoluteTimeout, and handlers
-// that Reset, Regenerate or Destroy a session. Three session middleware are nested in
-// one app, over a storage they share and one of their own, and random requests carry
-// valid, foreign, crafted and garbage IDs. Whatever the client sends:
+// The security properties of the invariant world hold for the flows it leaves out as well:
+// SkipEmptySessions, a session that outlives its AbsoluteTimeout, and handlers that Reset,
+// Regenerate or Destroy a session. Three session middleware are nested in one app, over a storage
+// they share and one of their own, and random requests carry valid, foreign, crafted and garbage
+// IDs. Whatever the client sends:
 //
 //   - no store loads a session that another store wrote: a session holds the name of
 //     its store, when it holds anything;
@@ -35,9 +35,9 @@ const flowRequests = 300
 // flowOps are what a handler may do with the session of a store, picked at random.
 var flowOps = []string{"", "", "set", "set", "reset", "resetempty", "regenerate", "destroy"}
 
-// newFlowWorld has A, B and C as the middleware stack of the invariant world, with the
-// options that make for flows: A and C skip the sessions that stay empty, B hashes its
-// keys, and the deadlines of A are short enough for its sessions to expire while the test runs.
+// newFlowWorld has A, B and C as the middleware stack of the invariant world, with the options that
+// make for flows: A and C skip the sessions that stay empty, B hashes its keys, and the deadlines
+// of A are short enough for its sessions to expire while the test runs.
 func newFlowWorld(tb testing.TB, seed uint64) *invariantWorld {
 	tb.Helper()
 
@@ -64,9 +64,9 @@ func newFlowWorld(tb testing.TB, seed uint64) *invariantWorld {
 	return w
 }
 
-// flowsApp is an app with a session middleware for each of A, B and C. Its handler does
-// to the session of each store the operation that the ops of the query name for it, in
-// the order of the stores, and reports the sessions. What it finds wrong it tells the ledger.
+// flowsApp is an app with a session middleware for each of A, B and C. Its handler does to the
+// session of each store the operation that the ops of the query name for it, in the order of the
+// stores, and reports the sessions. What it finds wrong it tells the ledger.
 func (w *invariantWorld) flowsApp() *fiber.App {
 	return w.newApp(middlewareNames, func(c fiber.Ctx) error {
 		ops := strings.Split(c.Query("ops"), ",")
@@ -104,8 +104,8 @@ func (w *invariantWorld) flowsApp() *fiber.App {
 	})
 }
 
-// flowRequest is a request whose cookie of each store holds nothing, an ID or garbage,
-// and whose ops name what the handler does with the session of each of the stores.
+// flowRequest is a request whose cookie of each store holds nothing, an ID or garbage, and whose
+// ops name what the handler does with the session of each of the stores.
 func (w *invariantWorld) flowRequest() invariantRequest {
 	pick := func(name string) string {
 		if ids := w.saved[name]; len(ids) > 0 {
@@ -146,8 +146,8 @@ func (w *invariantWorld) checkFlow(t *testing.T, step int, req invariantRequest,
 
 	req.requireNoFixation(t, where, rec)
 
-	// What the response sets belongs to a session of a store that reads it. A cookie that
-	// expires sets nothing.
+	// What the response sets belongs to a session of a store that reads it. A cookie that expires
+	// sets nothing.
 	set := slices.DeleteFunc(resp.Cookies(), func(c *http.Cookie) bool { return c.MaxAge < 0 })
 	w.requireOwned(t, where, rec, set, resp.Header.Get("X-C"))
 	w.ledger.requireClean(t, where)

@@ -125,8 +125,8 @@ func Test_Record_OfEveryShape(t *testing.T) {
 	}
 }
 
-// uvarintLen and zigzag size the buffer of appendRecord, so they have to agree with
-// what encoding/binary writes at the edges of every length.
+// uvarintLen and zigzag size the buffer of appendRecord, so they have to agree with what
+// encoding/binary writes at the edges of every length.
 func Test_Record_VarintSizes(t *testing.T) {
 	t.Parallel()
 

@@ -1257,10 +1257,10 @@ func Test_Session_Middleware_FinishesOnTimedOutGoroutine(t *testing.T) {
 }
 
 // Test_Session_Middleware_TimedOutRequestLetsGoOfItsContext checks that, once the timeout
-// middleware answered the request, neither the middleware nor the session of the handler
-// it gave up on refers to the request any more. The context of the request is reused for
-// another one when the handler is done, and whoever still holds the session then must not
-// write into that request. Both stay as they are for the handler itself.
+// middleware answered the request, neither the middleware nor the session of the handler it gave up
+// on refers to the request any more. The context of the request is reused for another one when the
+// handler is done, and whoever still holds the session then must not write into that request. Both
+// stay as they are for the handler itself.
 func Test_Session_Middleware_TimedOutRequestLetsGoOfItsContext(t *testing.T) {
 	t.Parallel()
 
@@ -1319,11 +1319,11 @@ func (s slowStorage) DeleteWithContext(ctx context.Context, key string) error {
 	return s.Storage.DeleteWithContext(ctx, key)
 }
 
-// Test_Session_Middleware_TimedOutAnswerDoesNotWaitForTheHandlerInTheStorage checks that
-// the answer of the timeout middleware does not wait for the handler it gave up on. The
-// handler is inside a call that holds a lock across the storage, the one of its
-// middleware (Destroy) or the one of its session (a save), and the cut from the request,
-// which needs that lock, follows when the call is done.
+// Test_Session_Middleware_TimedOutAnswerDoesNotWaitForTheHandlerInTheStorage checks that the answer
+// of the timeout middleware does not wait for the handler it gave up on. The handler is inside a
+// call that holds a lock across the storage, the one of its middleware (Destroy) or the one of its
+// session (a save), and the cut from the request, which needs that lock, follows when the call is
+// done.
 func Test_Session_Middleware_TimedOutAnswerDoesNotWaitForTheHandlerInTheStorage(t *testing.T) {
 	t.Parallel()
 
@@ -1367,10 +1367,10 @@ func Test_Session_Middleware_TimedOutAnswerDoesNotWaitForTheHandlerInTheStorage(
 	}
 }
 
-// Test_Session_Middleware_AbandonedWithoutTimeoutKeepsItsObjects abandons the request
-// the way the sse middleware does, with no timeout response. The session is saved
-// as usual, and then neither the middleware nor the session goes back to the pool,
-// where the next request would take them while the handler still holds them.
+// Test_Session_Middleware_AbandonedWithoutTimeoutKeepsItsObjects abandons the request the way the
+// sse middleware does, with no timeout response. The session is saved as usual, and then neither
+// the middleware nor the session goes back to the pool, where the next request would take them
+// while the handler still holds them.
 func Test_Session_Middleware_AbandonedWithoutTimeoutKeepsItsObjects(t *testing.T) {
 	t.Parallel()
 

@@ -21,8 +21,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// doRequest issues a GET with the given cookies and returns the response and
-// its body. It reports failures as an error so goroutines can use it.
+// doRequest issues a GET with the given cookies and returns the response and its body. It reports
+// failures as an error so goroutines can use it.
 func doRequest(app *fiber.App, target string, cookies map[string]string) (*http.Response, string, error) {
 	req := httptest.NewRequest(fiber.MethodGet, target, http.NoBody)
 	for name, value := range cookies {
@@ -61,8 +61,8 @@ func cookiesByName(resp *http.Response) map[string]*http.Cookie {
 	return out
 }
 
-// useCookieStore puts a session middleware over the cookie name on app, with the Config
-// given besides its Extractor, and returns its store.
+// useCookieStore puts a session middleware over the cookie name on app, with the Config given
+// besides its Extractor, and returns its store.
 func useCookieStore(app *fiber.App, name string, config ...Config) *Store {
 	var cfg Config
 	if len(config) > 0 {
@@ -84,8 +84,7 @@ func responseCookie(t *testing.T, c fiber.Ctx, name string) string {
 	return string(cookie.Value())
 }
 
-// saveNew asks store for its session in c, which must be a new one, and saves it
-// with some data.
+// saveNew asks store for its session in c, which must be a new one, and saves it with some data.
 func saveNew(t *testing.T, c fiber.Ctx, store *Store) *Session {
 	t.Helper()
 	sess := mustGet(t, store, c)
@@ -105,9 +104,9 @@ func setInSessions(key, value string, stores ...*Store) fiber.Handler {
 	}
 }
 
-// Two session middleware, each over its own cookie, keep two sessions apart in one request.
-// The second used to look up the first one's cached ID: its session never survived a request,
-// or, over a shared backend, aliased the first session's record.
+// Two session middleware, each over its own cookie, keep two sessions apart in one request. The
+// second used to look up the first one's cached ID: its session never survived a request, or, over
+// a shared backend, aliased the first session's record.
 func Test_Session_MultipleStores_Middleware(t *testing.T) {
 	t.Parallel()
 
@@ -155,8 +154,8 @@ func Test_Session_MultipleStores_Middleware(t *testing.T) {
 	}
 }
 
-// The package-level FromContext keeps meaning "the innermost middleware"; the
-// store's own FromContext finds a particular one however deep it is nested.
+// The package-level FromContext keeps meaning "the innermost middleware"; the store's own
+// FromContext finds a particular one however deep it is nested.
 func Test_Session_MultipleStores_FromContext(t *testing.T) {
 	t.Parallel()
 
@@ -197,10 +196,10 @@ func Test_Session_MultipleStores_FromContext(t *testing.T) {
 	})
 }
 
-// A middleware takes the session that a store over its cookie saved through Store.Get before
-// it ran: the CSRF middleware's store and the session middleware's own are two Store values
-// like this, and a visitor's first request must end up with one session, not two. It does so
-// whatever ran in between: a store over another cookie, or a middleware over another cookie.
+// A middleware takes the session that a store over its cookie saved through Store.Get before it
+// ran: the CSRF middleware's store and the session middleware's own are two Store values like this,
+// and a visitor's first request must end up with one session, not two. It does so whatever ran in
+// between: a store over another cookie, or a middleware over another cookie.
 func Test_Session_MultipleStores_MiddlewareFindsTheSessionStoreGetSaved(t *testing.T) {
 	t.Parallel()
 
@@ -272,7 +271,8 @@ func Test_Session_MultipleStores_MiddlewareFindsTheSessionStoreGetSaved(t *testi
 // A middleware finds the session its own cookie names. It takes neither the ID of a middleware over
 // another cookie in front of it, nor an ID that names no session: one that a Store.Get before it
 // cached and never saved, though that store shares a cookie with it (it keeps its sessions in a
-// storage of its own, which never saw the session), or the new one of the middleware it runs inside.
+// storage of its own, which never saw the session), or the new one of the middleware it runs
+// inside.
 func Test_Session_MultipleStores_MiddlewarePassesOverAnIDThatNamesNoSession(t *testing.T) {
 	t.Parallel()
 
@@ -333,11 +333,11 @@ func Test_Session_MultipleStores_MiddlewarePassesOverAnIDThatNamesNoSession(t *t
 	}
 }
 
-// The provenance cached on the request belongs to the store that resolved it. Store A saves a
-// new session and so caches its ID; store B then finds its own session through another cookie,
-// or starts one. A's next Get takes the ID it cached and finds the record it saved, but must
-// not take B's provenance with it: A's session would be written back to B's cookie, replacing
-// the ID of B's session. A session of B that was found and not saved writes no cookie at all.
+// The provenance cached on the request belongs to the store that resolved it. Store A saves a new
+// session and so caches its ID; store B then finds its own session through another cookie, or
+// starts one. A's next Get takes the ID it cached and finds the record it saved, but must not take
+// B's provenance with it: A's session would be written back to B's cookie, replacing the ID of B's
+// session. A session of B that was found and not saved writes no cookie at all.
 func Test_Session_MultipleStores_CachedProvenanceBelongsToItsStore(t *testing.T) {
 	t.Parallel()
 
@@ -391,10 +391,10 @@ func Test_Session_MultipleStores_CachedProvenanceBelongsToItsStore(t *testing.T)
 	}
 }
 
-// A store that takes the ID another store cached takes the provenance cached with it as well,
-// as it holds for the store: its session goes back to the cookie the ID came from, not to every
-// sink of the chain, and never to a header it does not read, nor is the ID promoted into its
-// cookie, since a visitor's session is not written to a place the visitor did not send it from.
+// A store that takes the ID another store cached takes the provenance cached with it as well, as it
+// holds for the store: its session goes back to the cookie the ID came from, not to every sink of
+// the chain, and never to a header it does not read, nor is the ID promoted into its cookie, since
+// a visitor's session is not written to a place the visitor did not send it from.
 func Test_Session_MultipleStores_SharingStoreAdoptsCachedProvenance(t *testing.T) {
 	t.Parallel()
 
@@ -440,8 +440,8 @@ func Test_Session_MultipleStores_SharingStoreAdoptsCachedProvenance(t *testing.T
 			provenance.Resolved = tc.keepsSink
 			require.Equal(t, provenance, q.extractor, "and the provenance cached with it, as a sink of its own or not")
 
-			// The first store's save wrote the ID into this response as well: clear it, so
-			// that what is left is what the second store writes.
+			// The first store's save wrote the ID into this response as well: clear it, so that
+			// what is left is what the second store writes.
 			c.Response().Header.DelCookie("sid")
 			c.Response().Header.Del("X-Sid")
 			require.NoError(t, q.Save())
@@ -455,9 +455,9 @@ func Test_Session_MultipleStores_SharingStoreAdoptsCachedProvenance(t *testing.T
 	}
 }
 
-// A middleware over another cookie between two that share a source does not come between them:
-// the inner one takes the session the outer one found through the cookie that only the outer one
-// reads, though the one between shares nothing with either, and writes it to no cookie of the outer.
+// A middleware over another cookie between two that share a source does not come between them: the
+// inner one takes the session the outer one found through the cookie that only the outer one reads,
+// though the one between shares nothing with either, and writes it to no cookie of the outer.
 func Test_Session_MultipleStores_UnrelatedMiddlewareBetweenSharingOnesIsPassedOver(t *testing.T) {
 	t.Parallel()
 
@@ -484,9 +484,9 @@ func Test_Session_MultipleStores_UnrelatedMiddlewareBetweenSharingOnesIsPassedOv
 	require.Equal(t, id, cookies["sid"].Value)
 }
 
-// Save leaves a session to the middleware that manages it, and only that one: a
-// session no middleware of the request manages is saved, even while the middleware
-// of another store is the current one.
+// Save leaves a session to the middleware that manages it, and only that one: a session no
+// middleware of the request manages is saved, even while the middleware of another store is the
+// current one.
 func Test_Session_MultipleStores_SaveOfASessionNoMiddlewareManages(t *testing.T) {
 	t.Parallel()
 
@@ -506,9 +506,9 @@ func Test_Session_MultipleStores_SaveOfASessionNoMiddlewareManages(t *testing.T)
 	require.NotEmpty(t, stored, "the session was saved")
 }
 
-// The provenance of one store's ID must never reach another store: an ID read
-// from a read-only source is not written to a cookie, and a store never writes
-// its ID to a cookie it does not own. Both are what session fixation relies on.
+// The provenance of one store's ID must never reach another store: an ID read from a read-only
+// source is not written to a cookie, and a store never writes its ID to a cookie it does not own.
+// Both are what session fixation relies on.
 func Test_Session_MultipleStores_ProvenanceStaysWithItsStore(t *testing.T) {
 	t.Parallel()
 
@@ -548,8 +548,8 @@ func Test_Session_MultipleStores_ProvenanceStaysWithItsStore(t *testing.T) {
 	require.Equal(t, idB, cookies["b_sid"].Value)
 }
 
-// An explicit Save of the session an outer middleware manages does nothing, as
-// it does for the innermost one: the middleware saves it once, at the end.
+// An explicit Save of the session an outer middleware manages does nothing, as it does for the
+// innermost one: the middleware saves it once, at the end.
 func Test_Session_MultipleStores_ExplicitSaveIsNoOpForOuterSession(t *testing.T) {
 	t.Parallel()
 
@@ -577,9 +577,9 @@ func Test_Session_MultipleStores_ExplicitSaveIsNoOpForOuterSession(t *testing.T)
 	require.Len(t, recB.writes(), 1)
 }
 
-// With PassLocalsToContext a goroutine can keep the request context. Neither
-// middleware may resolve through it once the request is over, and the outer one
-// must not stay reachable through the inner one after it went back to the pool.
+// With PassLocalsToContext a goroutine can keep the request context. Neither middleware may resolve
+// through it once the request is over, and the outer one must not stay reachable through the inner
+// one after it went back to the pool.
 func Test_Session_MultipleStores_RetainedContext(t *testing.T) {
 	t.Parallel()
 
@@ -617,8 +617,8 @@ func (unsavableStorage) Set(string, []byte, time.Duration) error {
 	return errors.New("storage unavailable")
 }
 
-// Each middleware saves its own session and reports a failed save to its own
-// ErrorHandler; the failure of one does not stop the other from saving.
+// Each middleware saves its own session and reports a failed save to its own ErrorHandler; the
+// failure of one does not stop the other from saving.
 func Test_Session_MultipleStores_SaveErrorsGoToTheirOwnHandler(t *testing.T) {
 	t.Parallel()
 
@@ -664,8 +664,8 @@ func Test_Session_MultipleStores_NextSkipsOnlyItsOwn(t *testing.T) {
 	require.Contains(t, cookiesByName(resp), "b_sid")
 }
 
-// Many requests at once through two nested middleware: nothing leaks from one
-// request's sessions into another's. Run with -race.
+// Many requests at once through two nested middleware: nothing leaks from one request's sessions
+// into another's. Run with -race.
 func Test_Session_MultipleStores_Concurrent(t *testing.T) {
 	t.Parallel()
 
@@ -717,10 +717,9 @@ func Test_Session_MultipleStores_Concurrent(t *testing.T) {
 	}
 }
 
-// Once the middleware that ran inside another has finished, the outer one is the
-// current middleware of the request again: code that runs between the two after
-// c.Next() returns still finds it, and an explicit Save of its session is still
-// recognized as the middleware's to make.
+// Once the middleware that ran inside another has finished, the outer one is the current middleware
+// of the request again: code that runs between the two after c.Next() returns still finds it, and
+// an explicit Save of its session is still recognized as the middleware's to make.
 func Test_Session_MultipleStores_OuterCurrentAgainAfterInnerFinishes(t *testing.T) {
 	t.Parallel()
 
@@ -769,8 +768,8 @@ func Test_Session_MultipleStores_OuterCurrentAgainAfterInnerFinishes(t *testing.
 	}
 }
 
-// The login-callback example of the documentation, step by step: the login
-// session ends with the flow, the application session starts under a new ID.
+// The login-callback example of the documentation, step by step: the login session ends with the
+// flow, the application session starts under a new ID.
 func Test_Session_MultipleStores_LoginCallbackExample(t *testing.T) {
 	t.Parallel()
 
@@ -836,8 +835,8 @@ func Test_Session_MultipleStores_LoginCallbackExample(t *testing.T) {
 	require.Equal(t, "123/true/false", body, "the login session cannot be revived with its old cookie")
 }
 
-// Benchmark_Middleware_TwoStores is a request through two session middleware,
-// each over its own cookie, that reaches both sessions through their stores.
+// Benchmark_Middleware_TwoStores is a request through two session middleware, each over its own
+// cookie, that reaches both sessions through their stores.
 func Benchmark_Middleware_TwoStores(b *testing.B) {
 	app := fiber.New()
 	storeA := useCookieStore(app, "a_sid", Config{KeyGenerator: func() string { return "session-a" }})
@@ -848,8 +847,8 @@ func Benchmark_Middleware_TwoStores(b *testing.B) {
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
-	// The first request creates both sessions, the rest load them, so the
-	// storages do not grow while the benchmark runs.
+	// The first request creates both sessions, the rest load them, so the storages do not grow
+	// while the benchmark runs.
 	handler(fctx)
 
 	b.ReportAllocs()
@@ -865,10 +864,10 @@ func Benchmark_Middleware_TwoStores(b *testing.B) {
 	}
 }
 
-// A store that is asked again finds the session it saved, whatever other stores were
-// asked in between, for a visitor who has no cookie yet: the ID that a store issues is
-// cached for that store, and for the stores that share a cookie or header with it,
-// and one that another store issues takes neither's place.
+// A store that is asked again finds the session it saved, whatever other stores were asked in
+// between, for a visitor who has no cookie yet: the ID that a store issues is cached for that
+// store, and for the stores that share a cookie or header with it, and one that another store
+// issues takes neither's place.
 func Test_Session_Store_Get_AskedAgainFindsTheSessionItSaved(t *testing.T) {
 	t.Parallel()
 
@@ -907,9 +906,9 @@ func Test_Session_Store_Get_AskedAgainFindsTheSessionItSaved(t *testing.T) {
 	})
 }
 
-// A request keeps the IDs that the stores asked in it issued, but one is only taken when it names
-// a stored session: asked again before a save, a store issues another ID, whether another store
-// was asked in between or not.
+// A request keeps the IDs that the stores asked in it issued, but one is only taken when it names a
+// stored session: asked again before a save, a store issues another ID, whether another store was
+// asked in between or not.
 func Test_Session_Store_Get_AskedAgainIssuesANewSession(t *testing.T) {
 	t.Parallel()
 
@@ -939,10 +938,10 @@ func Test_Session_Store_Get_AskedAgainIssuesANewSession(t *testing.T) {
 	}
 }
 
-// The nearest session middleware outside that shares a source decides, not the outermost
-// one. The outer one has no cookie of its own to find a session through and holds a new,
-// unsaved ID; the middle one finds its session through the cookie b; the inner one shares
-// the cookie a with both, and must take the session of the middle one.
+// The nearest session middleware outside that shares a source decides, not the outermost one. The
+// outer one has no cookie of its own to find a session through and holds a new, unsaved ID; the
+// middle one finds its session through the cookie b; the inner one shares the cookie a with both,
+// and must take the session of the middle one.
 func Test_Session_MultipleStores_NearestSharingOuterMiddlewareDecides(t *testing.T) {
 	t.Parallel()
 
@@ -964,9 +963,9 @@ func Test_Session_MultipleStores_NearestSharingOuterMiddlewareDecides(t *testing
 		"the inner middleware took the session of the outermost one, which is new, instead of the one of the nearest")
 }
 
-// A storage that fails when a middleware looks for the session of the one it runs
-// inside is reported, as it is for the ID the request names and the ones Store.Get
-// cached. The visitor has no cookie, so nothing else is read that could fail too.
+// A storage that fails when a middleware looks for the session of the one it runs inside is
+// reported, as it is for the ID the request names and the ones Store.Get cached. The visitor has no
+// cookie, so nothing else is read that could fail too.
 func Test_Session_MultipleStores_OuterIDReadErrorReachesTheErrorHandler(t *testing.T) {
 	t.Parallel()
 

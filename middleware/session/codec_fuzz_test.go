@@ -10,10 +10,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Fuzz_Session_CodecStoredBytes loads whatever bytes a storage holds under a
-// session ID, as a store with a codec and as one without. Neither may panic, a
-// session that loads must be readable and savable, an unchanged one must be
-// written back as it was, and a change must keep the other values as they were.
+// Fuzz_Session_CodecStoredBytes loads whatever bytes a storage holds under a session ID, as a store
+// with a codec and as one without. Neither may panic, a session that loads must be readable and
+// savable, an unchanged one must be written back as it was, and a change must keep the other values
+// as they were.
 func Fuzz_Session_CodecStoredBytes(f *testing.F) {
 	mem := memory.New()
 	f.Cleanup(func() { require.NoError(f, mem.Close()) })
@@ -80,8 +80,8 @@ func Fuzz_Session_CodecStoredBytes(f *testing.F) {
 			}
 		}
 
-		// Saving what was only read gives the bytes back, whatever they were. (A session
-		// that is new, or whose deadline has passed, has another ID, and keeps nothing.)
+		// Saving what was only read gives the bytes back, whatever they were. (A session that is
+		// new, or whose deadline has passed, has another ID, and keeps nothing.)
 		id := sess.ID()
 		require.NoError(t, sess.Save())
 		if id == "stored" {

@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// keyLogStorage logs the operation and the key of every read, write and delete
-// a store makes, then delegates to an in-memory backend.
+// keyLogStorage logs the operation and the key of every read, write and delete a store makes, then
+// delegates to an in-memory backend.
 type keyLogStorage struct {
 	fiber.Storage
 	ops []string
@@ -68,8 +68,8 @@ var storageKeyPolicies = []struct {
 	{name: "prefix and hash", prefix: "app:session:", hash: true},
 }
 
-// A key costs the one allocation of the key itself: without a prefix or hashing it is the
-// namespace and the ID in one string, and the digest is built on the stack.
+// A key costs the one allocation of the key itself: without a prefix or hashing it is the namespace
+// and the ID in one string, and the digest is built on the stack.
 //
 // testing.AllocsPerRun panics in a parallel test, so this one stays sequential.
 func Test_Store_StorageKey_Allocations(t *testing.T) {
@@ -81,9 +81,8 @@ func Test_Store_StorageKey_Allocations(t *testing.T) {
 	}
 }
 
-// Every way a session reaches the storage must use the same key policy: a
-// single call site left on the raw ID would read, write or delete a record the
-// others never find.
+// Every way a session reaches the storage must use the same key policy: a single call site left on
+// the raw ID would read, write or delete a record the others never find.
 func Test_Session_StorageKeyPolicy_EveryCallSite(t *testing.T) {
 	t.Parallel()
 
@@ -155,8 +154,8 @@ func Test_Session_StorageKeyPolicy_EveryCallSite(t *testing.T) {
 	}
 }
 
-// The point of hashing: what is in the storage is not something a client can
-// send back as its cookie.
+// The point of hashing: what is in the storage is not something a client can send back as its
+// cookie.
 func Test_Session_HashStorageKeys_StoredKeyIsNotAnID(t *testing.T) {
 	t.Parallel()
 
@@ -192,8 +191,7 @@ func Test_Session_HashStorageKeys_StoredKeyIsNotAnID(t *testing.T) {
 	sess.Release()
 }
 
-// Two stores over one storage and the same session ID stay apart when their
-// prefixes differ.
+// Two stores over one storage and the same session ID stay apart when their prefixes differ.
 func Test_Session_StorageKeyPrefix_SeparatesStores(t *testing.T) {
 	t.Parallel()
 
@@ -222,8 +220,8 @@ func Test_Session_StorageKeyPrefix_SeparatesStores(t *testing.T) {
 	require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
 }
 
-// A prefix does not scope Reset: the storage interface cannot list keys, so
-// Reset clears the whole storage, as the option documents.
+// A prefix does not scope Reset: the storage interface cannot list keys, so Reset clears the whole
+// storage, as the option documents.
 func Test_Store_Reset_ClearsTheWholeStorageDespiteAPrefix(t *testing.T) {
 	t.Parallel()
 
@@ -236,8 +234,8 @@ func Test_Store_Reset_ClearsTheWholeStorageDespiteAPrefix(t *testing.T) {
 	require.Zero(t, storedSessions(t, shared))
 }
 
-// Benchmark_Store_StorageKey measures the key every read, write and delete of a
-// session goes through. Without a prefix or hashing it costs one allocation, the key itself.
+// Benchmark_Store_StorageKey measures the key every read, write and delete of a session goes
+// through. Without a prefix or hashing it costs one allocation, the key itself.
 func Benchmark_Store_StorageKey(b *testing.B) {
 	const id = "wuyjDTdyBzOvL4mUnQ6qiM0nsSYUdyAxnXn0X2VgbX4"
 

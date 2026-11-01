@@ -19,9 +19,9 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// startMiddleware runs the beginning of the session handler for store on c: the
-// middleware is acquired, loads its session and becomes the current middleware of
-// the request. releaseMiddleware is its end.
+// startMiddleware runs the beginning of the session handler for store on c: the middleware is
+// acquired, loads its session and becomes the current middleware of the request. releaseMiddleware
+// is its end.
 func startMiddleware(t *testing.T, c fiber.Ctx, store *Store) *Middleware {
 	t.Helper()
 
@@ -33,8 +33,7 @@ func startMiddleware(t *testing.T, c fiber.Ctx, store *Store) *Middleware {
 	return m
 }
 
-// middlewarePair is a session middleware over b_sid started inside one over a_sid
-// on one request.
+// middlewarePair is a session middleware over b_sid started inside one over a_sid on one request.
 type middlewarePair struct {
 	app            *fiber.App
 	c              fiber.Ctx
@@ -56,9 +55,9 @@ func startPair(t *testing.T) middlewarePair {
 	return p
 }
 
-// requireDetached waits until m and its session let go of the fiber.Ctx of the
-// request, which goes back to the pool while a handler that outlives the request
-// (one the timeout middleware gave up on, or a panic unwound) still holds them.
+// requireDetached waits until m and its session let go of the fiber.Ctx of the request, which goes
+// back to the pool while a handler that outlives the request (one the timeout middleware gave up
+// on, or a panic unwound) still holds them.
 func requireDetached(t *testing.T, m *Middleware) {
 	t.Helper()
 
@@ -87,8 +86,8 @@ func storedFor(t *testing.T, store *Store, id string) []byte {
 	return stored
 }
 
-// A middleware that runs inside another links to it and lets go when it finishes,
-// and the outer one is the current middleware of the request again.
+// A middleware that runs inside another links to it and lets go when it finishes, and the outer one
+// is the current middleware of the request again.
 func Test_Session_Middleware_NestedLinkIsBalanced(t *testing.T) {
 	t.Parallel()
 
@@ -98,8 +97,8 @@ func Test_Session_Middleware_NestedLinkIsBalanced(t *testing.T) {
 	require.Equal(t, int32(1), outer.children.Load())
 	require.Same(t, inner, c.Locals(middlewareContextKey))
 
-	// Dropped instead of recycled, so that the test can look at it afterwards
-	// without a parallel test having taken it from the pool in the meantime.
+	// Dropped instead of recycled, so that the test can look at it afterwards without a parallel
+	// test having taken it from the pool in the meantime.
 	inner.mark(lifeEscaped)
 	releaseMiddleware(inner)
 	require.True(t, inner.is(lifeReleased))
@@ -113,9 +112,8 @@ func Test_Session_Middleware_NestedLinkIsBalanced(t *testing.T) {
 	require.Nil(t, c.Locals(middlewareContextKey))
 }
 
-// A middleware links only to one that serves its own request: a Middleware is
-// recycled, and an abandoned handler can come back to it after another request
-// has taken it over.
+// A middleware links only to one that serves its own request: a Middleware is recycled, and an
+// abandoned handler can come back to it after another request has taken it over.
 func Test_Session_Middleware_AdoptOnlyWithinItsRequest(t *testing.T) {
 	t.Parallel()
 
@@ -141,12 +139,11 @@ func Test_Session_Middleware_AdoptOnlyWithinItsRequest(t *testing.T) {
 	require.Zero(t, outer.children.Load())
 }
 
-// The shape of a request that a middleware abandoned, as sse does: the outer
-// middleware finishes and its request is answered while the middleware inside it
-// still runs. A walk from the inner middleware stops at the finished one, even if
-// nothing but its flag says so. The outer one must not be recycled then, for the
-// inner one holds it, and when the inner one finishes it must not hand the request
-// an outer middleware that now belongs to somebody else.
+// The shape of a request that a middleware abandoned, as sse does: the outer middleware finishes
+// and its request is answered while the middleware inside it still runs. A walk from the inner
+// middleware stops at the finished one, even if nothing but its flag says so. The outer one must
+// not be recycled then, for the inner one holds it, and when the inner one finishes it must not
+// hand the request an outer middleware that now belongs to somebody else.
 func Test_Session_Middleware_OuterFinishesBeforeInner(t *testing.T) {
 	t.Parallel()
 
@@ -191,17 +188,15 @@ func Test_Session_Middleware_OuterFinishesBeforeInner(t *testing.T) {
 	releaseMiddleware(other)
 }
 
-// A timeout middleware around a session middleware, behind another one. The
-// handlers inside the timeout outlive the answer. The outer middleware is not
-// recycled while they may still use it, so the next request is served by another
-// one before they finish. What the abandoned handler finds in the request
-// afterwards may be the middleware of its own request, but must not be the
-// session of the request that came after.
+// A timeout middleware around a session middleware, behind another one. The handlers inside the
+// timeout outlive the answer. The outer middleware is not recycled while they may still use it, so
+// the next request is served by another one before they finish. What the abandoned handler finds in
+// the request afterwards may be the middleware of its own request, but must not be the session of
+// the request that came after.
 //
-// The answer waits until the inner middleware has started, so that what the
-// timeout leaves running is ordered after what it left behind: the race detector
-// would otherwise trip over the shared request locals, which the timeout
-// middleware leaves to the application.
+// The answer waits until the inner middleware has started, so that what the timeout leaves running
+// is ordered after what it left behind: the race detector would otherwise trip over the shared
+// request locals, which the timeout middleware leaves to the application.
 func Test_Session_MultipleStores_AbandonedByTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -286,8 +281,8 @@ func Test_Session_MultipleStores_AbandonedByTimeout(t *testing.T) {
 	}
 }
 
-// Finding a store's middleware, and telling that a session belongs to one, cost a
-// request nothing: they walk the middleware without allocating.
+// Finding a store's middleware, and telling that a session belongs to one, cost a request nothing:
+// they walk the middleware without allocating.
 //
 // testing.AllocsPerRun panics in a parallel test, so this one stays sequential.
 func Test_Session_Middleware_FindDoesNotAllocate(t *testing.T) {
@@ -312,12 +307,11 @@ func Test_Session_Middleware_FindDoesNotAllocate(t *testing.T) {
 	require.Zero(t, testing.AllocsPerRun(100, save(p.outer.Session)), "the session of the one it runs inside")
 }
 
-// A middleware that nothing refers to is recycled when it finishes, with its
-// session reset, and the outer middleware is not held by the one that ran inside
-// it any more.
+// A middleware that nothing refers to is recycled when it finishes, with its session reset, and the
+// outer middleware is not held by the one that ran inside it any more.
 //
-// Not parallel: it reads the middleware and the sessions after they went back to the
-// shared pools, where a parallel test could take them in the meantime.
+// Not parallel: it reads the middleware and the sessions after they went back to the shared pools,
+// where a parallel test could take them in the meantime.
 func Test_Session_ReleaseMiddleware_RecyclesWhatNothingRefersTo(t *testing.T) {
 	p := startPair(t)
 	outer, inner := p.outer, p.inner
@@ -338,15 +332,14 @@ func Test_Session_ReleaseMiddleware_RecyclesWhatNothingRefersTo(t *testing.T) {
 	require.Empty(t, outerSession.ID())
 }
 
-// A handler that a middleware abandoned, as sse does, can hold the middleware and
-// the session of its request after the request is answered, the middleware in
-// front of it finished and the next request started. Neither is recycled then, or
-// the next request would find itself in the handler's hands. The context of the
-// request is reused once the handlers that outlive it are done, so the session lets
-// go of it: a goroutine that still holds the session neither writes to the response
-// of that request nor runs its storage calls under its context, but can still save
-// what it holds. And a lookup the handler began before the middleware finished must
-// not find the middleware of the next request.
+// A handler that a middleware abandoned, as sse does, can hold the middleware and the session of
+// its request after the request is answered, the middleware in front of it finished and the next
+// request started. Neither is recycled then, or the next request would find itself in the handler's
+// hands. The context of the request is reused once the handlers that outlive it are done, so the
+// session lets go of it: a goroutine that still holds the session neither writes to the response of
+// that request nor runs its storage calls under its context, but can still save what it holds. And
+// a lookup the handler began before the middleware finished must not find the middleware of the
+// next request.
 func Test_Session_ReleaseMiddleware_AbandonedRequestKeepsItsObjects(t *testing.T) {
 	t.Parallel()
 
@@ -394,8 +387,8 @@ func Test_Session_ReleaseMiddleware_AbandonedRequestKeepsItsObjects(t *testing.T
 	releaseMiddleware(second)
 }
 
-// The session of an abandoned request is cut off from its context while a goroutine
-// that outlives the request may be reading it. Run with -race.
+// The session of an abandoned request is cut off from its context while a goroutine that outlives
+// the request may be reading it. Run with -race.
 func Test_Session_ReleaseMiddleware_AbandonedSessionIsRaceFree(t *testing.T) {
 	t.Parallel()
 
@@ -418,10 +411,10 @@ func Test_Session_ReleaseMiddleware_AbandonedSessionIsRaceFree(t *testing.T) {
 	}
 }
 
-// Save and SaveWithContext read the context of the session under its lock, while
-// the end of a request forgets it. Run with -race: it fails if either reads it bare.
-// Whether the detector sees the bare read depends on how the goroutines interleave:
-// on several CPUs it always does, on a single one it does in most runs, not in all.
+// Save and SaveWithContext read the context of the session under its lock, while the end of a
+// request forgets it. Run with -race: it fails if either reads it bare. Whether the detector sees
+// the bare read depends on how the goroutines interleave: on several CPUs it always does, on a
+// single one it does in most runs, not in all.
 func Test_Session_Save_EntryPointsReadTheContextUnderItsLock(t *testing.T) {
 	t.Parallel()
 
@@ -476,9 +469,8 @@ func (s *contextSpyStorage) SetWithContext(ctx context.Context, key string, val 
 	return s.Storage.SetWithContext(ctx, key, val, exp)
 }
 
-// Save runs its storage call under the context of the request, SaveWithContext
-// under the one it is given, and a session that belongs to no request falls back
-// to the background context.
+// Save runs its storage call under the context of the request, SaveWithContext under the one it is
+// given, and a session that belongs to no request falls back to the background context.
 func Test_Session_Save_RunsUnderTheRequestContext(t *testing.T) {
 	t.Parallel()
 
@@ -509,9 +501,8 @@ func Test_Session_Save_RunsUnderTheRequestContext(t *testing.T) {
 	require.Equal(t, context.Background(), spy.sets[2], "a session without a request saves under the background context")
 }
 
-// adopt, the restore and the release of the outer middleware run on different
-// goroutines when a handler outlives its request. They must not race on the
-// middleware: run with -race.
+// adopt, the restore and the release of the outer middleware run on different goroutines when a
+// handler outlives its request. They must not race on the middleware: run with -race.
 func Test_Session_Middleware_LinkProtocolIsRaceFree(t *testing.T) {
 	t.Parallel()
 
@@ -560,8 +551,8 @@ func Test_Session_Middleware_LinkProtocolIsRaceFree(t *testing.T) {
 	}
 }
 
-// recoverBetween is a middleware that recovers the panic of whatever runs behind it and
-// reports what it can still reach of the session middleware at that point.
+// recoverBetween is a middleware that recovers the panic of whatever runs behind it and reports
+// what it can still reach of the session middleware at that point.
 func recoverBetween(storeA *Store, seen *atomic.Value) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var err error
@@ -578,16 +569,15 @@ func recoverBetween(storeA *Store, seen *atomic.Value) fiber.Handler {
 	}
 }
 
-// A handler panics behind an inner session middleware and a middleware that
-// recovers it, in front of an outer session middleware. As it does without an outer
-// one, the inner middleware stays the current one for the recovering middleware, which
-// can still reach the outer one; the outer one then saves its session as usual and the
-// inner one, unwound by the panic, does not save.
+// A handler panics behind an inner session middleware and a middleware that recovers it, in front
+// of an outer session middleware. As it does without an outer one, the inner middleware stays the
+// current one for the recovering middleware, which can still reach the outer one; the outer one
+// then saves its session as usual and the inner one, unwound by the panic, does not save.
 func Test_Session_MultipleStores_PanicInsideKeepsWhatItShould(t *testing.T) {
 	t.Parallel()
 
-	// With PassLocalsToContext the request context holds the inner middleware too;
-	// it is still the recovering middleware's to reach through the request.
+	// With PassLocalsToContext the request context holds the inner middleware too; it is still the
+	// recovering middleware's to reach through the request.
 	for _, pass := range []bool{false, true} {
 		t.Run(fmt.Sprintf("PassLocalsToContext=%t", pass), func(t *testing.T) {
 			t.Parallel()
@@ -636,15 +626,14 @@ func (panickingStorage) Set(string, []byte, time.Duration) error {
 	panic("storage panic")
 }
 
-// Not parallel: it replaces the New of the shared middleware pool to count what the
-// pool creates, and keeps the process on one P without garbage collection so that
-// the pool hands back what it was given.
+// Not parallel: it replaces the New of the shared middleware pool to count what the pool creates,
+// and keeps the process on one P without garbage collection so that the pool hands back what it was
+// given.
 //
-// The inner middleware is unwound by a panic and never comes back, with or without
-// an outer one, so each request creates one. The outer middleware must not cost
-// another: it is recycled, because nothing runs inside it any more. The panic can
-// come from the rest of the stack, from the save of the inner middleware, or from
-// its error handler.
+// The inner middleware is unwound by a panic and never comes back, with or without an outer one, so
+// each request creates one. The outer middleware must not cost another: it is recycled, because
+// nothing runs inside it any more. The panic can come from the rest of the stack, from the save of
+// the inner middleware, or from its error handler.
 func Test_Session_MultipleStores_PanicInsideRecyclesTheOuterMiddleware(t *testing.T) {
 	prevGC := debug.SetGCPercent(-1)
 	prevProcs := runtime.GOMAXPROCS(1)
@@ -715,21 +704,20 @@ func Test_Session_MultipleStores_PanicInsideRecyclesTheOuterMiddleware(t *testin
 			for range requests {
 				require.Equal(t, fiber.StatusInternalServerError, do())
 			}
-			// One per request for the inner middleware. The race detector makes a pool
-			// drop some of what it is given, so the outer one is allowed a quarter more,
-			// but not one more per request.
+			// One per request for the inner middleware. The race detector makes a pool drop some of
+			// what it is given, so the outer one is allowed a quarter more, but not one more per
+			// request.
 			require.Less(t, created.Load(), int64(requests)*8/5,
 				"the outer middleware was dropped instead of recycled: %d created for %d requests", created.Load(), requests)
 		})
 	}
 }
 
-// A panic that unwinds a middleware inside another skips its release, so the
-// deferred call that ends the middleware does what the release would. Once a
-// middleware finished it was released, and may already serve another request: the
-// call leaves a finished one alone. One that was unwound gives the outer middleware
-// its count back, once, and lets go of the request, and keeps its session; the way
-// to the outer middleware stays, for whatever recovers the panic.
+// A panic that unwinds a middleware inside another skips its release, so the deferred call that
+// ends the middleware does what the release would. Once a middleware finished it was released, and
+// may already serve another request: the call leaves a finished one alone. One that was unwound
+// gives the outer middleware its count back, once, and lets go of the request, and keeps its
+// session; the way to the outer middleware stays, for whatever recovers the panic.
 func Test_Session_Middleware_EndIfUnwoundUnpinsOnce(t *testing.T) {
 	t.Parallel()
 
@@ -768,11 +756,11 @@ func Test_Session_Middleware_EndIfUnwoundUnpinsOnce(t *testing.T) {
 	releaseMiddleware(outer)
 }
 
-// panicAtCtx is a custom context that panics at one chosen point of the life of a
-// session middleware, as a Ctx of an application could: as the middleware starts
-// (publishing it to the request) and as it ends (clearing the request locals, which
-// it does holding its lock; replacing the Go context; asking whether the request
-// was abandoned; making the outer middleware current again).
+// panicAtCtx is a custom context that panics at one chosen point of the life of a session
+// middleware, as a Ctx of an application could: as the middleware starts (publishing it to the
+// request) and as it ends (clearing the request locals, which it does holding its lock; replacing
+// the Go context; asking whether the request was abandoned; making the outer middleware current
+// again).
 type panicAtCtx struct {
 	point *atomic.Value // string; unset: nowhere
 	fiber.DefaultCtx
@@ -810,10 +798,10 @@ func (c *panicAtCtx) IsAbandoned() bool {
 	return c.DefaultCtx.IsAbandoned()
 }
 
-// A panic in the start or in the release of a nested middleware, wherever it comes
-// from, goes on as it does for a middleware without an outer one: nothing waits for
-// the lock the release holds, and the outer middleware's count is given back, or was
-// never taken, so that it is recycled when it finishes.
+// A panic in the start or in the release of a nested middleware, wherever it comes from, goes on as
+// it does for a middleware without an outer one: nothing waits for the lock the release holds, and
+// the outer middleware's count is given back, or was never taken, so that it is recycled when it
+// finishes.
 func Test_Session_MultipleStores_PanicInReleaseGoesOn(t *testing.T) {
 	t.Parallel()
 
@@ -887,8 +875,8 @@ func Test_Session_MultipleStores_PanicInReleaseGoesOn(t *testing.T) {
 	}
 }
 
-// observeRestoreCtx is a custom context that tells when a session middleware makes
-// the one it ran inside the current middleware of the request again.
+// observeRestoreCtx is a custom context that tells when a session middleware makes the one it ran
+// inside the current middleware of the request again.
 type observeRestoreCtx struct {
 	onRestore func()
 	fiber.DefaultCtx
@@ -901,9 +889,9 @@ func (c *observeRestoreCtx) Locals(key any, value ...any) any {
 	return c.DefaultCtx.Locals(key, value...)
 }
 
-// The outer middleware stays counted until the inner one is done with it, including
-// the moment it makes it current again: that is the moment a handler that a timeout
-// middleware abandoned could otherwise find it finished and recycled.
+// The outer middleware stays counted until the inner one is done with it, including the moment it
+// makes it current again: that is the moment a handler that a timeout middleware abandoned could
+// otherwise find it finished and recycled.
 func Test_Session_Middleware_OuterStaysPinnedWhileItIsRestored(t *testing.T) {
 	t.Parallel()
 
@@ -943,9 +931,9 @@ func Test_Session_Middleware_OuterStaysPinnedWhileItIsRestored(t *testing.T) {
 	require.Zero(t, after.Load(), "and it was given back by the time the inner middleware was done")
 }
 
-// A handler that outlives its request calls Destroy, Reset or Regenerate while the
-// request ends: the read of the middleware's context in those methods must not
-// race with the release. Run with -race.
+// A handler that outlives its request calls Destroy, Reset or Regenerate while the request ends:
+// the read of the middleware's context in those methods must not race with the release. Run with
+// -race.
 func Test_Session_Middleware_DestroyResetRegenerateRaceTheRelease(t *testing.T) {
 	t.Parallel()
 

@@ -23,9 +23,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The security properties of several stores serving one request, checked against
-// random requests instead of hand-picked ones. Whatever cookies, headers and
-// session IDs the client sends, valid, foreign, crafted or garbage:
+// The security properties of several stores serving one request, checked against random requests
+// instead of hand-picked ones. Whatever cookies, headers and session IDs the client sends, valid,
+// foreign, crafted or garbage:
 //
 //   - a session ID is only ever written to a cookie or header that a store which
 //     owns that session reads;
@@ -38,8 +38,8 @@ import (
 //
 // The number of seeds is 8, and SESSION_INVARIANT_SEEDS raises it.
 
-// invariantLedger remembers which key policy wrote each storage key, and what the
-// checks found wrong where they cannot fail the test themselves, in a handler.
+// invariantLedger remembers which key policy wrote each storage key, and what the checks found
+// wrong where they cannot fail the test themselves, in a handler.
 type invariantLedger struct {
 	writers    map[string]string
 	violations []string
@@ -61,8 +61,8 @@ func (l *invariantLedger) requireClean(t *testing.T, where string) {
 	require.Empty(t, l.violations, where)
 }
 
-// invariantStorage is the storage of one store: it passes everything to a storage
-// that stores may share, and tells the ledger what it writes and reads.
+// invariantStorage is the storage of one store: it passes everything to a storage that stores may
+// share, and tells the ledger what it writes and reads.
 type invariantStorage struct {
 	fiber.Storage
 	ledger *invariantLedger
@@ -108,33 +108,32 @@ func (a *invariantStore) shares(b *invariantStore) bool {
 	})
 }
 
-// invariantWorld is the stores of one run and the IDs of the sessions saved so far,
-// which a client can send back.
+// invariantWorld is the stores of one run and the IDs of the sessions saved so far, which a client
+// can send back.
 type invariantWorld struct {
 	stores map[string]*invariantStore
 	saved  map[string][]string
 	ledger *invariantLedger
 	rng    *rand.Rand
-	// storages are the memory storages by group: the one stores may share, and the one of
-	// the stores that keep to themselves.
+	// storages are the memory storages by group: the one stores may share, and the one of the
+	// stores that keep to themselves.
 	storages map[string]*memory.Storage
-	// frozen stops check from adding the sessions it sees to saved, so that a test
-	// that sends the same fixed set of IDs again and again keeps them few.
+	// frozen stops check from adding the sessions it sees to saved, so that a test that sends the
+	// same fixed set of IDs again and again keeps them few.
 	frozen bool
 }
 
-// The stores a request is served with: asked through Store.Get, A twice over, or stacked
-// as session middleware.
+// The stores a request is served with: asked through Store.Get, A twice over, or stacked as session
+// middleware.
 var (
 	storeAPINames   = []string{"A", "A2", "B", "C"}
 	middlewareNames = []string{"A", "B", "C"}
 )
 
-// newWorld returns a world without stores, which stops the garbage collection of its
-// storages when the test ends. A memory storage runs a goroutine of its own until it is
-// closed, so a world that is not closed costs two goroutines and what they hold for as
-// long as the process runs, which a fuzz target that builds a world for every input adds
-// up to megabytes per second.
+// newWorld returns a world without stores, which stops the garbage collection of its storages when
+// the test ends. A memory storage runs a goroutine of its own until it is closed, so a world that
+// is not closed costs two goroutines and what they hold for as long as the process runs, which a
+// fuzz target that builds a world for every input adds up to megabytes per second.
 func newWorld(tb testing.TB, seed uint64) *invariantWorld {
 	tb.Helper()
 
@@ -153,9 +152,9 @@ func newWorld(tb testing.TB, seed uint64) *invariantWorld {
 	return w
 }
 
-// add makes the store name from cfg, over the storage of the group, and notes the
-// cookies and headers it reads. The key policy it tells the ledger it writes under is the
-// group, the prefix and the hashing.
+// add makes the store name from cfg, over the storage of the group, and notes the cookies and
+// headers it reads. The key policy it tells the ledger it writes under is the group, the prefix and
+// the hashing.
 func (w *invariantWorld) add(name, group string, cfg *Config, cookies, headers []string) {
 	cfg.Storage = &invariantStorage{
 		Storage: w.storages[group], ledger: w.ledger, group: group,
@@ -164,9 +163,9 @@ func (w *invariantWorld) add(name, group string, cfg *Config, cookies, headers [
 	w.stores[name] = &invariantStore{Store: NewStore(*cfg), cookies: cookies, headers: headers}
 }
 
-// newInvariantWorld has A and A2, which read the same cookie and share everything, B,
-// which shares a storage with them but neither their cookie nor their key prefix, and C,
-// with two places to read and a storage of its own.
+// newInvariantWorld has A and A2, which read the same cookie and share everything, B, which shares
+// a storage with them but neither their cookie nor their key prefix, and C, with two places to read
+// and a storage of its own.
 func newInvariantWorld(tb testing.TB, seed uint64) *invariantWorld {
 	tb.Helper()
 
@@ -184,8 +183,8 @@ func newInvariantWorld(tb testing.TB, seed uint64) *invariantWorld {
 	return w
 }
 
-// newApp returns an app with a session middleware for each of the named stores, over the
-// config the store was built with, in that order, and the handler for GET /.
+// newApp returns an app with a session middleware for each of the named stores, over the config the
+// store was built with, in that order, and the handler for GET /.
 func (w *invariantWorld) newApp(names []string, handler fiber.Handler) *fiber.App {
 	app := fiber.New()
 	for _, name := range names {
@@ -198,8 +197,8 @@ func (w *invariantWorld) newApp(names []string, handler fiber.Handler) *fiber.Ap
 	return app
 }
 
-// storeAPIApp is an app whose handler gets the session of each store named in the ops
-// of the query through Store.Get, gives it data, saves it and reports it.
+// storeAPIApp is an app whose handler gets the session of each store named in the ops of the query
+// through Store.Get, gives it data, saves it and reports it.
 func (w *invariantWorld) storeAPIApp() *fiber.App {
 	var visits atomic.Int32
 	return w.newApp(nil, func(c fiber.Ctx) error {
@@ -221,14 +220,13 @@ func (w *invariantWorld) storeAPIApp() *fiber.App {
 	})
 }
 
-// middlewareApp is an app with a session middleware for each of A, B and C. Its handler
-// reports the session of every one of them through Store.FromContext, and gives the ones
-// named in the ops of the query some data.
+// middlewareApp is an app with a session middleware for each of A, B and C. Its handler reports the
+// session of every one of them through Store.FromContext, and gives the ones named in the ops of
+// the query some data.
 func (w *invariantWorld) middlewareApp() *fiber.App {
 	return w.newApp(middlewareNames, func(c fiber.Ctx) error {
-		// Every middleware of the stack runs and saves its session, whichever the
-		// handler touches: all of them are reported, and the ops pick the ones that
-		// get data.
+		// Every middleware of the stack runs and saves its session, whichever the handler touches:
+		// all of them are reported, and the ops pick the ones that get data.
 		touched := strings.Split(c.Query("ops"), ",")
 		var rec invariantRecord
 		for _, name := range middlewareNames {
@@ -245,8 +243,8 @@ func (w *invariantWorld) middlewareApp() *fiber.App {
 	})
 }
 
-// clientValue is what the client sends for one cookie, header or query value: nothing,
-// the ID of a session that store `own` saved, a crafted variation of it, or garbage.
+// clientValue is what the client sends for one cookie, header or query value: nothing, the ID of a
+// session that store `own` saved, a crafted variation of it, or garbage.
 func (w *invariantWorld) clientValue(own string) string {
 	pick := func(store string) string {
 		ids := w.saved[store]
@@ -337,8 +335,8 @@ func (r invariantRequest) send(t *testing.T, app *fiber.App) (*http.Response, in
 	return resp, decodeRecord(t, resp.StatusCode, body)
 }
 
-// requireNoFixation holds the sessions of the request against the property that a new
-// session never takes an ID the client supplied.
+// requireNoFixation holds the sessions of the request against the property that a new session never
+// takes an ID the client supplied.
 func (r invariantRequest) requireNoFixation(t *testing.T, where string, rec invariantRecord) {
 	t.Helper()
 
@@ -356,9 +354,9 @@ func (r invariantRequest) requireNoFixation(t *testing.T, where string, rec inva
 	}
 }
 
-// requireOwned holds the cookies and the header X-C that a response sets against the
-// sessions of the request: a session ID is only written to a cookie or header that a
-// store which owns that session reads.
+// requireOwned holds the cookies and the header X-C that a response sets against the sessions of
+// the request: a session ID is only written to a cookie or header that a store which owns that
+// session reads.
 func (w *invariantWorld) requireOwned(t *testing.T, where string, rec invariantRecord, cookies []*http.Cookie, header string) {
 	t.Helper()
 
@@ -383,8 +381,8 @@ func (w *invariantWorld) check(t *testing.T, step int, req invariantRequest, res
 	where := req.where(step)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, where)
 
-	// A session the client names with a valid ID in the cookie its store reads is found,
-	// whatever else the request carries: another store's cached ID does not take its place.
+	// A session the client names with a valid ID in the cookie its store reads is found, whatever
+	// else the request carries: another store's cached ID does not take its place.
 	for _, sess := range rec.Sessions {
 		store := w.stores[sess.Store]
 		expected := req.cookies[store.cookies[0]]
@@ -400,11 +398,11 @@ func (w *invariantWorld) check(t *testing.T, step int, req invariantRequest, res
 
 	req.requireNoFixation(t, where, rec)
 
-	// Stores that read a cookie or a header in common are one visitor's session, whatever
-	// other stores were asked in between: a store asked again, or after one that shares
-	// with it, finds the session that one saved, and does not start another. Stores that
-	// read none in common keep sessions of their own: they never come out with the same
-	// ID, which is what a store adopting the ID another one cached on the request would do.
+	// Stores that read a cookie or a header in common are one visitor's session, whatever other
+	// stores were asked in between: a store asked again, or after one that shares with it, finds
+	// the session that one saved, and does not start another. Stores that read none in common keep
+	// sessions of their own: they never come out with the same ID, which is what a store adopting
+	// the ID another one cached on the request would do.
 	for i, later := range rec.Sessions {
 		for _, earlier := range rec.Sessions[:i] {
 			if !w.stores[earlier.Store].shares(w.stores[later.Store]) {
@@ -421,8 +419,8 @@ func (w *invariantWorld) check(t *testing.T, step int, req invariantRequest, res
 	// A store only loads what a store with its key policy wrote.
 	w.ledger.requireClean(t, where)
 
-	// What was saved reaches the client: the last session saved for a cookie has its ID
-	// in that cookie, or in the header of the store, since every save writes it.
+	// What was saved reaches the client: the last session saved for a cookie has its ID in that
+	// cookie, or in the header of the store, since every save writes it.
 	last := make(map[string]invariantSession)
 	for _, sess := range rec.Sessions {
 		last[w.stores[sess.Store].cookies[0]] = sess
@@ -459,9 +457,9 @@ func invariantSeeds() uint64 {
 	return 8
 }
 
-// randomRequests sends 150 random requests for each of the seeds, to an app of its own that
-// newApp makes over a world of its own, and holds every response against the properties.
-// The ops of a request are drawn from the names.
+// randomRequests sends 150 random requests for each of the seeds, to an app of its own that newApp
+// makes over a world of its own, and holds every response against the properties. The ops of a
+// request are drawn from the names.
 func randomRequests(t *testing.T, newApp func(*invariantWorld) *fiber.App, names []string) {
 	t.Helper()
 
@@ -481,8 +479,7 @@ func randomRequests(t *testing.T, newApp func(*invariantWorld) *fiber.App, names
 	}
 }
 
-// Several stores used through Store.Get, in random order and repeatedly, within
-// one request.
+// Several stores used through Store.Get, in random order and repeatedly, within one request.
 func Test_Session_Invariants_StoreAPI(t *testing.T) {
 	t.Parallel()
 

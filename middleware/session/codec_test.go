@@ -65,8 +65,8 @@ func (c *countingCodec) Unmarshal(data []byte, v any) error {
 	return c.Codec.Unmarshal(data, v)
 }
 
-// reusingCodec hands out the same buffer for every value it encodes, as a codec
-// built on a pooled buffer may.
+// reusingCodec hands out the same buffer for every value it encodes, as a codec built on a pooled
+// buffer may.
 type reusingCodec struct {
 	buf []byte
 }
@@ -120,8 +120,8 @@ func mustGetAs[V any](t *testing.T, sess *Session, key string) V {
 	return value
 }
 
-// finishes runs f on a goroutine of its own, and fails the test with failure if f takes more
-// than ten seconds, as a call that waits for a lock that was never given back does.
+// finishes runs f on a goroutine of its own, and fails the test with failure if f takes more than
+// ten seconds, as a call that waits for a lock that was never given back does.
 func finishes(t *testing.T, f func(), failure string) {
 	t.Helper()
 	done := make(chan struct{})
@@ -896,8 +896,8 @@ func Test_Codec_ErrorsNamePortableCauses(t *testing.T) {
 	require.NotErrorIs(t, fmt.Errorf("x: %w", errCodecMismatch), errRecordNeedsCodec)
 }
 
-// zeroCopyCodec stores bytes as they are and decodes them without a copy, as a
-// codec that keeps a slice of its input does.
+// zeroCopyCodec stores bytes as they are and decodes them without a copy, as a codec that keeps a
+// slice of its input does.
 type zeroCopyCodec struct{}
 
 func (zeroCopyCodec) Name() string { return "zero-copy" }
@@ -919,8 +919,8 @@ func (zeroCopyCodec) Unmarshal(data []byte, v any) error {
 	return nil
 }
 
-// A decoded value may keep the bytes it is given, and a program may change it: that
-// must not reach the record the session writes back.
+// A decoded value may keep the bytes it is given, and a program may change it: that must not reach
+// the record the session writes back.
 func Test_Codec_DecodedValuesDoNotAliasTheSnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -957,8 +957,8 @@ func Test_Codec_DecodedValuesDoNotAliasTheSnapshot(t *testing.T) {
 	require.Equal(t, "second", string(mustGetAs[[]byte](t, again, "b")))
 }
 
-// A key that cannot be hashed makes a read panic. The lock the read took must go with it,
-// or the deferred Release of the store pattern waits for it for ever.
+// A key that cannot be hashed makes a read panic. The lock the read took must go with it, or the
+// deferred Release of the store pattern waits for it for ever.
 func Test_Reads_ReleaseTheirLocksWhenTheyPanic(t *testing.T) {
 	t.Parallel()
 
@@ -987,8 +987,8 @@ func Test_Reads_ReleaseTheirLocksWhenTheyPanic(t *testing.T) {
 	}
 }
 
-// A reset puts the session in the state of its store in one step: a Set that races
-// with it is encoded or gone, never kept raw in a session that is read as encoded.
+// A reset puts the session in the state of its store in one step: a Set that races with it is
+// encoded or gone, never kept raw in a session that is read as encoded.
 func Test_Codec_ResetIsOneStep(t *testing.T) {
 	t.Parallel()
 
@@ -1019,8 +1019,8 @@ func Test_Codec_ResetIsOneStep(t *testing.T) {
 	}
 }
 
-// With a codec GetAs and GetInto decode what was stored into the type they are asked
-// for; they do not check that this type is the one it was stored as, which gob does.
+// With a codec GetAs and GetInto decode what was stored into the type they are asked for; they do
+// not check that this type is the one it was stored as, which gob does.
 func Test_Codec_GetAsDecodesItDoesNotCheckTheType(t *testing.T) {
 	t.Parallel()
 
@@ -1054,8 +1054,8 @@ func Test_Codec_GetAsDecodesItDoesNotCheckTheType(t *testing.T) {
 	}
 }
 
-// targetCodec is a JSONCodec that remembers what its last Unmarshal was given, and
-// can be made to fail or to panic after it has decoded.
+// targetCodec is a JSONCodec that remembers what its last Unmarshal was given, and can be made to
+// fail or to panic after it has decoded.
 type targetCodec struct {
 	JSONCodec
 	fail   error
@@ -1253,8 +1253,8 @@ func (c scribblingCodec) Unmarshal(data []byte, v any) error {
 	return err
 }
 
-// Get, like GetAs and GetInto, hands the codec a copy: what the codec does to it does not reach
-// the session.
+// Get, like GetAs and GetInto, hands the codec a copy: what the codec does to it does not reach the
+// session.
 func Test_Codec_GetHandsTheCodecACopy(t *testing.T) {
 	t.Parallel()
 
@@ -1275,8 +1275,8 @@ func Test_Codec_GetHandsTheCodecACopy(t *testing.T) {
 	require.Equal(t, before, storedBytes(t, mem, id))
 }
 
-// A Store built without NewStore asks its Codec for the name every time, and its sessions
-// are the sessions of a store with a codec all the same.
+// A Store built without NewStore asks its Codec for the name every time, and its sessions are the
+// sessions of a store with a codec all the same.
 func Test_Codec_StoreWithoutNewStore(t *testing.T) {
 	t.Parallel()
 
@@ -1333,9 +1333,9 @@ func Test_Middleware_ReadsTakeTheReadLock(t *testing.T) {
 	}
 }
 
-// A Set can be inside the codec when its session is released, or reset into another
-// format: the data goes back to the pool, to be handed to another request. What the codec
-// returns then belongs to no session of that request, and neither does the error.
+// A Set can be inside the codec when its session is released, or reset into another format: the
+// data goes back to the pool, to be handed to another request. What the codec returns then belongs
+// to no session of that request, and neither does the error.
 func Test_Codec_SetInsideTheCodecWhenTheDataIsReleasedStoresNothing(t *testing.T) {
 	t.Parallel()
 

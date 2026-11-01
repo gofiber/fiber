@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A store takes the ID that a store sharing a source with it cached, if it names a stored
-// session, and never that of one it shares none with. G reads the cookies of A and of B: it
-// shares with A, whose ID was never saved, and with B, which found its own session, but not with
-// E, whose ID was never saved either. G must find the session its b_sid cookie names, whichever
-// of A and E cached an ID last.
+// A store takes the ID that a store sharing a source with it cached, if it names a stored session,
+// and never that of one it shares none with. G reads the cookies of A and of B: it shares with A,
+// whose ID was never saved, and with B, which found its own session, but not with E, whose ID was
+// never saved either. G must find the session its b_sid cookie names, whichever of A and E cached
+// an ID last.
 func Test_Session_Store_FindsTheSessionItsCookieNamesWhateverOtherStoresCached(t *testing.T) {
 	t.Parallel()
 
@@ -60,11 +60,11 @@ func Test_Session_Store_FindsTheSessionItsCookieNamesWhateverOtherStoresCached(t
 	}
 }
 
-// A new session whose cookie names an ID the storage does not know is cached with the others
-// of the request, as the session of a cookie that names a stored one is not. W and X cache an
-// ID first, unsaved; Y, whose cookie is unknown, caches one after them and saves it. R shares
-// Y's cookie but not W's or X's, so it must take the ID Y cached, and not find its own session
-// as it would if Y had cached nothing.
+// A new session whose cookie names an ID the storage does not know is cached with the others of the
+// request, as the session of a cookie that names a stored one is not. W and X cache an ID first,
+// unsaved; Y, whose cookie is unknown, caches one after them and saves it. R shares Y's cookie but
+// not W's or X's, so it must take the ID Y cached, and not find its own session as it would if Y
+// had cached nothing.
 func Test_Session_Store_FreshSessionOfAnUnknownCookieIsCached(t *testing.T) {
 	t.Parallel()
 
@@ -97,9 +97,9 @@ func Test_Session_Store_FreshSessionOfAnUnknownCookieIsCached(t *testing.T) {
 }
 
 // Stores are told apart by every source they read, by kind and name, whether or not it can be
-// written back to. Stores over the same query parameter, authentication scheme or custom
-// extractor key share the ID cached on the request; a store over the query string and one over
-// a cookie do not, so the ID a link carries reaches the stores that read the query string only.
+// written back to. Stores over the same query parameter, authentication scheme or custom extractor
+// key share the ID cached on the request; a store over the query string and one over a cookie do
+// not, so the ID a link carries reaches the stores that read the query string only.
 func Test_Session_Store_SourcesAreToldApartByKindAndName(t *testing.T) {
 	t.Parallel()
 
@@ -136,8 +136,8 @@ func Test_Session_Store_SourcesAreToldApartByKindAndName(t *testing.T) {
 		require.False(t, shares(pair[0], pair[1]), "stores over different sources are told apart")
 	}
 
-	// A new visitor: a store over the same source takes the ID the first store
-	// saved, a store over another source starts a session of its own.
+	// A new visitor: a store over the same source takes the ID the first store saved, a store over
+	// another source starts a session of its own.
 	shared := memory.New()
 	app := fiber.New()
 	byQuery := NewStore(Config{Extractor: query, Storage: shared})
@@ -152,9 +152,9 @@ func Test_Session_Store_SourcesAreToldApartByKindAndName(t *testing.T) {
 	require.NotEqual(t, first.ID(), third.ID(), "a cookie store next to them took the ID too")
 	require.True(t, third.Fresh())
 
-	// A session that a link names is served by the store that reads the query
-	// string; the cookie store behind it keeps to its own cookie, and starts a
-	// session of its own for a visitor who has none.
+	// A session that a link names is served by the store that reads the query string; the cookie
+	// store behind it keeps to its own cookie, and starts a session of its own for a visitor who
+	// has none.
 	id := seedSession(t, app, byQuery, func(s *Session) { s.Set("k", "v") })
 	queryHandler, queryStore := NewWithStore(Config{Extractor: query, Storage: shared})
 	cookieHandler, cookieStore := NewWithStore(Config{Extractor: cookie, Storage: shared})
@@ -171,8 +171,8 @@ func Test_Session_Store_SourcesAreToldApartByKindAndName(t *testing.T) {
 	require.NotEqual(t, id, cookies["c_sid"].Value, "the cookie carries the ID the link named")
 }
 
-// Config is embedded, so its fields can be assigned after NewStore. A store whose
-// Extractor was replaced writes the ID to, and shares with, what it reads now.
+// Config is embedded, so its fields can be assigned after NewStore. A store whose Extractor was
+// replaced writes the ID to, and shares with, what it reads now.
 func Test_Store_ExtractorReplacedAfterNewStore(t *testing.T) {
 	t.Parallel()
 
@@ -205,9 +205,9 @@ func Test_Store_ExtractorReplacedAfterNewStore(t *testing.T) {
 	require.True(t, chained.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("x-d")})))
 	require.False(t, chained.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("x-c")})))
 
-	// A chain reports the key and the source of its first child, so a cookie replaced
-	// by a header of the same name, and a leaf replaced by a chain that starts with it,
-	// differ in one thing each, and each is another extractor.
+	// A chain reports the key and the source of its first child, so a cookie replaced by a header
+	// of the same name, and a leaf replaced by a chain that starts with it, differ in one thing
+	// each, and each is another extractor.
 	swapped := NewStore(Config{Extractor: extractors.FromCookie("sid")})
 	swapped.Extractor = extractors.FromHeader("sid")
 	require.Equal(t, []string{"header:sid"}, sinkNames(swapped.writableSinks()), "a header, not the cookie of that name")
@@ -220,10 +220,10 @@ func Test_Store_ExtractorReplacedAfterNewStore(t *testing.T) {
 	require.True(t, grown.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("x-a")})))
 }
 
-// An ID that names no session of the store is passed over to the next one, and not only
-// to the request: W, the newest to cache an ID, reads the cookie S reads but keeps its
-// sessions in a storage of its own, so its ID is no session of S's; A cached an ID
-// before and saved its session in the storage of S, and S must find that one.
+// An ID that names no session of the store is passed over to the next one, and not only to the
+// request: W, the newest to cache an ID, reads the cookie S reads but keeps its sessions in a
+// storage of its own, so its ID is no session of S's; A cached an ID before and saved its session
+// in the storage of S, and S must find that one.
 func Test_Session_Store_PassesOverAnIDThatIsNoSessionToAnOlderOneThatIs(t *testing.T) {
 	t.Parallel()
 
@@ -248,8 +248,8 @@ func Test_Session_Store_PassesOverAnIDThatIsNoSessionToAnOlderOneThatIs(t *testi
 	require.Equal(t, "v", s.Get("k"))
 }
 
-// Of the cached IDs that name a stored session the newest one is taken: A1 and A2 read
-// different cookies, so each starts a session of its own and saves it, and S reads both.
+// Of the cached IDs that name a stored session the newest one is taken: A1 and A2 read different
+// cookies, so each starts a session of its own and saves it, and S reads both.
 func Test_Session_Store_TakesTheNewestOfTheSavedIDsItShares(t *testing.T) {
 	t.Parallel()
 
@@ -270,9 +270,9 @@ func Test_Session_Store_TakesTheNewestOfTheSavedIDsItShares(t *testing.T) {
 	require.Equal(t, a2.ID(), s.ID(), "S took the older of the two sessions that were saved")
 }
 
-// Regenerate and Reset give the session a new ID, and a store that is asked again looks
-// for the session under that one, not under the ID that was deleted: for a visitor who
-// has no cookie yet and for one who has.
+// Regenerate and Reset give the session a new ID, and a store that is asked again looks for the
+// session under that one, not under the ID that was deleted: for a visitor who has no cookie yet
+// and for one who has.
 func Test_Session_Store_Get_AskedAgainFindsTheSessionUnderItsNewID(t *testing.T) {
 	t.Parallel()
 
@@ -304,9 +304,9 @@ func Test_Session_Store_Get_AskedAgainFindsTheSessionUnderItsNewID(t *testing.T)
 	}
 }
 
-// Regenerate of a session the store gave out first does not hide the session it gave out
-// and saved since: the entry of the store names the newer one, and the older session is
-// not the one that entry is about.
+// Regenerate of a session the store gave out first does not hide the session it gave out and saved
+// since: the entry of the store names the newer one, and the older session is not the one that
+// entry is about.
 func Test_Session_Store_Get_RegenerateOfAnOlderSessionKeepsTheSavedOne(t *testing.T) {
 	t.Parallel()
 

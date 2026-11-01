@@ -23,9 +23,9 @@ func sinkNames(sinks []extractors.Extractor) []string {
 	return names
 }
 
-// A store works out once where a session ID can be written back to: the cookies
-// and headers of its extractor, in order, and nothing a request only reads from.
-// A store built without NewStore finds the same by walking the extractor.
+// A store works out once where a session ID can be written back to: the cookies and headers of its
+// extractor, in order, and nothing a request only reads from. A store built without NewStore finds
+// the same by walking the extractor.
 func Test_Store_WritableSinks(t *testing.T) {
 	t.Parallel()
 
@@ -71,8 +71,8 @@ func Test_Store_WritableSinks(t *testing.T) {
 	}
 }
 
-// Finding the sinks of a session costs a save nothing: with the store's own
-// slice, or the session's, there is nothing to allocate.
+// Finding the sinks of a session costs a save nothing: with the store's own slice, or the
+// session's, there is nothing to allocate.
 //
 // testing.AllocsPerRun panics in a parallel test, so this one stays sequential.
 func Test_Session_getExtractorInfo_DoesNotAllocate(t *testing.T) {

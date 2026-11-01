@@ -16,11 +16,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// A session behaves the same whatever it is stored with. The same random requests,
-// each setting, deleting, resetting, regenerating or destroying, are played against
-// a store that keeps gob, one with a JSON codec and one with a codec made by
-// NewCodec, and every one of them is checked against a model that is a plain Go
-// map: whatever was set last is what a later request reads back, typed.
+// A session behaves the same whatever it is stored with. The same random requests, each setting,
+// deleting, resetting, regenerating or destroying, are played against a store that keeps gob, one
+// with a JSON codec and one with a codec made by NewCodec, and every one of them is checked against
+// a model that is a plain Go map: whatever was set last is what a later request reads back, typed.
 //
 // Each key has one type, so that the same GetAs reads it in all modes.
 

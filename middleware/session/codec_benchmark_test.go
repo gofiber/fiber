@@ -18,9 +18,8 @@ func benchSession(s *Session) {
 	s.Set("profile", newCodecProfile())
 }
 
-// Benchmark_Codec_Request compares what a request pays for its session: a read of
-// one value, a read of every value, and a change of one value, with a store that
-// keeps gob and one with a codec.
+// Benchmark_Codec_Request compares what a request pays for its session: a read of one value, a read
+// of every value, and a change of one value, with a store that keeps gob and one with a codec.
 func Benchmark_Codec_Request(b *testing.B) {
 	app := fiber.New()
 	gob := NewStore(Config{Storage: memory.New()})
@@ -68,8 +67,8 @@ func Benchmark_Codec_Request(b *testing.B) {
 
 		for _, request := range requests {
 			b.Run(request.name+"/"+tc.name, func(b *testing.B) {
-				// Every benchmark has a request of its own: a context caches the session ID of
-				// the last store that read it.
+				// Every benchmark has a request of its own: a context caches the session ID of the
+				// last store that read it.
 				ctx := newRequest(b, app)
 				ctx.Request().Header.SetCookie("session_id", id)
 				b.ReportAllocs()
@@ -97,8 +96,7 @@ type benchBig struct {
 	Bytes [1024]byte
 }
 
-// The benchmarks below keep what they read, so that a copy that is not needed
-// is not left out.
+// The benchmarks below keep what they read, so that a copy that is not needed is not left out.
 var (
 	sinkInt    int
 	sinkBig    benchBig
@@ -107,10 +105,10 @@ var (
 	errSink    error
 )
 
-// Benchmark_Codec_ReadForms compares the ways to read a value of a store without a
-// codec, where the value is already decoded: the type assertion, GetAs and GetInto.
-// The assertion copies a value once, GetAs hands it out as a result and the caller
-// copies it again, and GetInto copies it into the variable the caller provides.
+// Benchmark_Codec_ReadForms compares the ways to read a value of a store without a codec, where the
+// value is already decoded: the type assertion, GetAs and GetInto. The assertion copies a value
+// once, GetAs hands it out as a result and the caller copies it again, and GetInto copies it into
+// the variable the caller provides.
 func Benchmark_Codec_ReadForms(b *testing.B) {
 	sess := mustGet(b, NewStore(), newRequest(b, fiber.New()))
 	sess.Set("n", 7)
@@ -174,10 +172,10 @@ type benchLarge struct {
 	Values [1024]int64     `json:"values"`
 }
 
-// Benchmark_Codec_GetIntoLarge reads a value of about 8 KB from a store with a codec
-// into a variable that holds its zero value, which is decoded into directly, into
-// one that holds something, which is replaced by a new value, and with GetAs, which
-// returns the value for the caller to copy.
+// Benchmark_Codec_GetIntoLarge reads a value of about 8 KB from a store with a codec into a
+// variable that holds its zero value, which is decoded into directly, into one that holds
+// something, which is replaced by a new value, and with GetAs, which returns the value for the
+// caller to copy.
 func Benchmark_Codec_GetIntoLarge(b *testing.B) {
 	sess := mustGet(b, NewStore(Config{Codec: JSONCodec{}}), newRequest(b, fiber.New()))
 

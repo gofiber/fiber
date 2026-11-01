@@ -12,9 +12,9 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// addSessionRoutes registers the routes that take a session through its life: /login stores a
-// user and answers with the ID, /read answers with the user, /regenerate answers with the new
-// ID and /destroy ends the session.
+// addSessionRoutes registers the routes that take a session through its life: /login stores a user
+// and answers with the ID, /read answers with the user, /regenerate answers with the new ID and
+// /destroy ends the session.
 func addSessionRoutes(app *fiber.App) {
 	app.Get("/login", func(c fiber.Ctx) error {
 		FromContext(c).Set("user", "alice")
@@ -32,8 +32,7 @@ func addSessionRoutes(app *fiber.App) {
 	app.Get("/destroy", func(c fiber.Ctx) error { return FromContext(c).Destroy() })
 }
 
-// skipEmptyApp builds an app whose routes exercise every way a request can
-// leave a session behind.
+// skipEmptyApp builds an app whose routes exercise every way a request can leave a session behind.
 func skipEmptyApp(t *testing.T, cfg *Config) (*fiber.App, *memory.Storage, *recordingStorage) {
 	t.Helper()
 
@@ -237,9 +236,8 @@ func Test_Session_IsEmptyFresh(t *testing.T) {
 	})
 }
 
-// Benchmark_Middleware_NewVisitor is a request from a client that sends no
-// cookie and never uses the session, such as a health check. With
-// SkipEmptySessions it stores nothing and sets no cookie.
+// Benchmark_Middleware_NewVisitor is a request from a client that sends no cookie and never uses
+// the session, such as a health check. With SkipEmptySessions it stores nothing and sets no cookie.
 func Benchmark_Middleware_NewVisitor(b *testing.B) {
 	for _, skip := range []bool{false, true} {
 		b.Run("SkipEmptySessions="+strconv.FormatBool(skip), func(b *testing.B) {

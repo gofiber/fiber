@@ -684,12 +684,11 @@ func Test_Store_KeylessExtractorStillGuarded(t *testing.T) {
 		"a read-only ID must not be pinned into a cookie just because its extractor has no Key")
 }
 
-// Test_Store_CachedIDsDoNotLeakAcrossRequests runs requests of random Store.Get
-// calls over four stores back to back on request contexts that are reset between
-// them, as fasthttp does, on several goroutines at once, and checks what each
-// request holds at its end: one entry for each store that issued an ID, and nothing
-// from another request. An entry that went back to the pool twice, or stayed in the
-// list of a request after it was reclaimed, shows up as an ID this request never
+// Test_Store_CachedIDsDoNotLeakAcrossRequests runs requests of random Store.Get calls over four
+// stores back to back on request contexts that are reset between them, as fasthttp does, on several
+// goroutines at once, and checks what each request holds at its end: one entry for each store that
+// issued an ID, and nothing from another request. An entry that went back to the pool twice, or
+// stayed in the list of a request after it was reclaimed, shows up as an ID this request never
 // issued, or a store twice.
 func Test_Store_CachedIDsDoNotLeakAcrossRequests(t *testing.T) {
 	t.Parallel()
@@ -761,9 +760,9 @@ func (s *armedFailureStorage) GetWithContext(ctx context.Context, key string) ([
 	return s.Storage.GetWithContext(ctx, key)
 }
 
-// Test_Store_CachedIDReadErrorReachesCaller pins that a storage that fails when the
-// store looks for the session under an ID it cached is reported, as it is for the ID
-// the request names, and not taken for a session that is not there.
+// Test_Store_CachedIDReadErrorReachesCaller pins that a storage that fails when the store looks for
+// the session under an ID it cached is reported, as it is for the ID the request names, and not
+// taken for a session that is not there.
 func Test_Store_CachedIDReadErrorReachesCaller(t *testing.T) {
 	t.Parallel()
 
@@ -779,9 +778,9 @@ func Test_Store_CachedIDReadErrorReachesCaller(t *testing.T) {
 	require.ErrorIs(t, err, errDown)
 }
 
-// A store that is asked twice, for a visitor whose cookie names no session, looks that cookie
-// up once. A store over the same cookie with a storage of its own still looks it up: what one
-// storage does not hold, another may.
+// A store that is asked twice, for a visitor whose cookie names no session, looks that cookie up
+// once. A store over the same cookie with a storage of its own still looks it up: what one storage
+// does not hold, another may.
 func Test_Store_Get_AskedAgainDoesNotLookUpTheNamedIDTwice(t *testing.T) {
 	t.Parallel()
 
@@ -813,8 +812,8 @@ func Test_Store_Get_AskedAgainDoesNotLookUpTheNamedIDTwice(t *testing.T) {
 	require.Equal(t, "stale", third.ID())
 }
 
-// The PassLocalsToContext setting is read once for each app a store serves, and the store
-// goes by the app, not by the last answer.
+// The PassLocalsToContext setting is read once for each app a store serves, and the store goes by
+// the app, not by the last answer.
 func Test_Store_PassesLocalsToContextByApp(t *testing.T) {
 	t.Parallel()
 
@@ -828,9 +827,9 @@ func Test_Store_PassesLocalsToContextByApp(t *testing.T) {
 	}
 }
 
-// The ID the request named is kept as a copy: the application can rewrite the bytes of the
-// cookie in place, and a store that is asked again must not take the new value for the one
-// it has already looked up.
+// The ID the request named is kept as a copy: the application can rewrite the bytes of the cookie
+// in place, and a store that is asked again must not take the new value for the one it has already
+// looked up.
 func Test_Store_Get_AskedAgainAfterTheCookieWasRewritten(t *testing.T) {
 	t.Parallel()
 

@@ -14,20 +14,18 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// The properties of the invariant world, checked for every request of a small space
-// instead of random ones. The client sends, in each of the cookies a_sid and b_sid,
-// nothing, the ID of a session of the store itself, the ID of a session of the other
-// one, the other's ID as its key would read it, or garbage; in the cookie c_sid and
-// the header X-C of the store with two places, nothing, its own ID or garbage: 225
-// combinations. Each one is sent with every sequence of up to three Store.Get calls
-// over the four stores (84 sequences; SESSION_INVARIANT_EXHAUSTIVE=2 makes it 20
-// and 4 makes it 340), and once with every subset of three stacked middleware (7).
-// So a failure does not depend on what a seed happened to pick, and a combination of
-// the cookies and the order of the stores that breaks a property is found, not hoped
-// for.
+// The properties of the invariant world, checked for every request of a small space instead of
+// random ones. The client sends, in each of the cookies a_sid and b_sid, nothing, the ID of a
+// session of the store itself, the ID of a session of the other one, the other's ID as its key
+// would read it, or garbage; in the cookie c_sid and the header X-C of the store with two places,
+// nothing, its own ID or garbage: 225 combinations. Each one is sent with every sequence of up to
+// three Store.Get calls over the four stores (84 sequences; SESSION_INVARIANT_EXHAUSTIVE=2 makes it
+// 20 and 4 makes it 340), and once with every subset of three stacked middleware (7). So a failure
+// does not depend on what a seed happened to pick, and a combination of the cookies and the order
+// of the stores that breaks a property is found, not hoped for.
 
-// exhaustiveChunks is the number of subtests the combinations are shared out to, which
-// run in parallel, each over a world of its own.
+// exhaustiveChunks is the number of subtests the combinations are shared out to, which run in
+// parallel, each over a world of its own.
 const exhaustiveChunks = 8
 
 // exhaustiveOps is the longest sequence of Store.Get calls that is sent: three unless
@@ -39,8 +37,8 @@ func exhaustiveOps() int {
 	return 3
 }
 
-// seed saves a session for each store named in ops with a request that carries nothing,
-// freezes the IDs the world sends back from then on, and returns the ID of each store.
+// seed saves a session for each store named in ops with a request that carries nothing, freezes the
+// IDs the world sends back from then on, and returns the ID of each store.
 func (w *invariantWorld) seed(t *testing.T, app *fiber.App, ops []string) map[string]string {
 	t.Helper()
 
@@ -57,10 +55,10 @@ func (w *invariantWorld) seed(t *testing.T, app *fiber.App, ops []string) map[st
 	return ids
 }
 
-// sendDirect is send without the network round trip app.Test makes: the request goes to
-// the handler of the app as a fasthttp request, which is several times cheaper and what
-// tens of thousands of requests need. Every Set-Cookie of the response has to be readable by
-// fasthttp and by net/http, whose reading the checks rely on.
+// sendDirect is send without the network round trip app.Test makes: the request goes to the handler
+// of the app as a fasthttp request, which is several times cheaper and what tens of thousands of
+// requests need. Every Set-Cookie of the response has to be readable by fasthttp and by net/http,
+// whose reading the checks rely on.
 func (r invariantRequest) sendDirect(t *testing.T, handler fasthttp.RequestHandler) (*http.Response, invariantRecord) {
 	t.Helper()
 
@@ -89,8 +87,8 @@ func (r invariantRequest) sendDirect(t *testing.T, handler fasthttp.RequestHandl
 	return resp, decodeRecord(t, resp.StatusCode, fctx.Response.Body())
 }
 
-// exhaustiveClients returns every combination of what a client may send, given the IDs
-// of the sessions of stores A, B and C, in the order cookie a_sid, b_sid, c_sid, header.
+// exhaustiveClients returns every combination of what a client may send, given the IDs of the
+// sessions of stores A, B and C, in the order cookie a_sid, b_sid, c_sid, header.
 func exhaustiveClients(ids map[string]string) []invariantRequest {
 	var out []invariantRequest
 	for _, a := range []string{"", ids["A"], ids["B"], "b:" + ids["B"], "garbage"} {
@@ -141,10 +139,10 @@ func subsets(names []string) [][]string {
 	return out
 }
 
-// exhaustiveRequests sends every combination of what a client may send with each of the
-// ops sequences, to an app that newApp makes over a world that was seeded with a session
-// for each of the names, and holds every response against the properties. The combinations
-// are shared out to chunks that run in parallel, each over a world of its own.
+// exhaustiveRequests sends every combination of what a client may send with each of the ops
+// sequences, to an app that newApp makes over a world that was seeded with a session for each of
+// the names, and holds every response against the properties. The combinations are shared out to
+// chunks that run in parallel, each over a world of its own.
 func exhaustiveRequests(t *testing.T, newApp func(*invariantWorld) *fiber.App, names []string, sequences [][]string) {
 	t.Helper()
 

@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// lifetimeApp builds an app over a recording storage. /new stores a value;
-// /deadline moves the session's absolute deadline d from now, which is how a
-// test gets a session that is close to, or past, its end; /read only reads.
+// lifetimeApp builds an app over a recording storage. /new stores a value; /deadline moves the
+// session's absolute deadline d from now, which is how a test gets a session that is close to, or
+// past, its end; /read only reads.
 func lifetimeApp(cfg *Config) (*fiber.App, *recordingStorage) {
 	rec := newRecordingStorage()
 	cfg.Storage = rec
@@ -51,8 +51,8 @@ func lastWrite(t *testing.T, rec *recordingStorage) storageWrite {
 	return writes[len(writes)-1]
 }
 
-// requireLifetime checks how long a record or a cookie lives: want, or, with a slack, anything up to
-// slack less than want, as the clock moves on between the request and the check.
+// requireLifetime checks how long a record or a cookie lives: want, or, with a slack, anything up
+// to slack less than want, as the clock moves on between the request and the check.
 func requireLifetime(tb testing.TB, got, want, slack time.Duration) {
 	tb.Helper()
 	if slack == 0 {
@@ -63,8 +63,8 @@ func requireLifetime(tb testing.TB, got, want, slack time.Duration) {
 	require.Greater(tb, got, want-slack)
 }
 
-// The record and the cookie must not outlive the absolute deadline: a session
-// that is about to end is stored, and its cookie set, for the time it has left.
+// The record and the cookie must not outlive the absolute deadline: a session that is about to end
+// is stored, and its cookie set, for the time it has left.
 func Test_Session_Lifetime_CappedByAbsoluteDeadline(t *testing.T) {
 	t.Parallel()
 

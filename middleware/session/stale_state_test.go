@@ -19,10 +19,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A store writes a session ID back only to its own cookies and headers. A store
-// that shares the ID another store cached, but not the cookie it came from (a store
-// over the second cookie of a chain), must not write it, or the new one of a
-// Regenerate, to that cookie, with its own attributes.
+// A store writes a session ID back only to its own cookies and headers. A store that shares the ID
+// another store cached, but not the cookie it came from (a store over the second cookie of a
+// chain), must not write it, or the new one of a Regenerate, to that cookie, with its own
+// attributes.
 func Test_Session_MultipleStores_AdoptedIDIsNotWrittenToAnotherStoresCookie(t *testing.T) {
 	t.Parallel()
 
@@ -61,11 +61,10 @@ func Test_Session_MultipleStores_AdoptedIDIsNotWrittenToAnotherStoresCookie(t *t
 	require.Equal(t, newID, cookiesByName(resp)["shared"].Value, "the new ID goes to the inner store's own cookie")
 }
 
-// A session stored with an absolute deadline keeps it on a store without an
-// AbsoluteTimeout, as after the option was turned off: once it has passed, the
-// request path starts the session over, once, and without a deadline, where a
-// deadline of now would start it over on every request; and GetByID no longer finds
-// it, as on a store with the option.
+// A session stored with an absolute deadline keeps it on a store without an AbsoluteTimeout, as
+// after the option was turned off: once it has passed, the request path starts the session over,
+// once, and without a deadline, where a deadline of now would start it over on every request; and
+// GetByID no longer finds it, as on a store with the option.
 func Test_Session_DeadlineHonouredWithoutAbsoluteTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -129,13 +128,12 @@ func Test_Session_DeadlineHonouredWithoutAbsoluteTimeout(t *testing.T) {
 	}
 }
 
-// A panic that unwinds the session middleware skips its release. The middleware
-// and its session let go of the fiber.Ctx, which whatever recovers the panic
-// answers and hands back to the pool, and keep the request itself until fasthttp
-// resets it: the recovering middleware still sets cookies through them, and a save
-// by a goroutine of the handler that still holds the session afterwards writes its
-// record, and no cookie, into no request. A context kept past the request does not
-// find the middleware. The middleware does not save the session.
+// A panic that unwinds the session middleware skips its release. The middleware and its session let
+// go of the fiber.Ctx, which whatever recovers the panic answers and hands back to the pool, and
+// keep the request itself until fasthttp resets it: the recovering middleware still sets cookies
+// through them, and a save by a goroutine of the handler that still holds the session afterwards
+// writes its record, and no cookie, into no request. A context kept past the request does not find
+// the middleware. The middleware does not save the session.
 func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 	t.Parallel()
 
@@ -151,9 +149,9 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 		app := fiber.New(fiber.Config{PassLocalsToContext: true})
 		app.Use(func(c fiber.Ctx) error {
 			err := c.Next()
-			// The panic was recovered behind this point: the middleware is still the
-			// request's to reach, and a Destroy from here deletes the record and
-			// expires the cookie, as before the panic.
+			// The panic was recovered behind this point: the middleware is still the request's to
+			// reach, and a Destroy from here deletes the record and expires the cookie, as before
+			// the panic.
 			after.Store("unreachable")
 			if m := FromContext(c); m != nil {
 				after.Store(fmt.Sprintf("reached|destroy=%v", m.Destroy()))
@@ -184,8 +182,8 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 		require.Nil(t, ctx, "the middleware still refers to the fiber.Ctx")
 		require.NotNil(t, sess, "its session was recycled")
 		require.Nil(t, sess.requestCtx(), "the session still refers to the fiber.Ctx")
-		// fasthttp resets the request once the response is written, and closes the
-		// middleware then: the session has nothing to write to from then on.
+		// fasthttp resets the request once the response is written, and closes the middleware then:
+		// the session has nothing to write to from then on.
 		require.Eventually(t, sess.holdsNoRequest, 5*time.Second, 5*time.Millisecond, "the session still writes to the request after it ended")
 
 		require.Nil(t, storedFor(t, store, sess.ID()), "the middleware saved the session of a request that panicked")
@@ -204,10 +202,9 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 		app := fiber.New()
 		app.Use(func(c fiber.Ctx) error {
 			err := c.Next()
-			// The middleware does not save the session of a request that panicked, and
-			// is not in charge of it any more: a Save from here does what a Save does
-			// for a session that no middleware manages, where it would do nothing
-			// while the middleware was.
+			// The middleware does not save the session of a request that panicked, and is not in
+			// charge of it any more: a Save from here does what a Save does for a session that no
+			// middleware manages, where it would do nothing while the middleware was.
 			if m := FromContext(c); m != nil {
 				saveErr := m.Session.Save()
 				saved.Store(&saveErr)
@@ -250,8 +247,8 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 		resp, _ := sendRequest(t, app, "/", nil)
 		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 
-		// fasthttp resets the request once the response is written, and closes every
-		// middleware the panic unwound then, the outer one and the inner one.
+		// fasthttp resets the request once the response is written, and closes every middleware the
+		// panic unwound then, the outer one and the inner one.
 		for i := range held {
 			m := held[i].Load()
 			require.NotNil(t, m)
@@ -291,9 +288,9 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 	})
 }
 
-// A custom Ctx that panics while the release clears the locals leaves the
-// middleware in the request for whatever recovers the panic, and the lock of the
-// middleware free: the recovering middleware can still ask it for the session.
+// A custom Ctx that panics while the release clears the locals leaves the middleware in the request
+// for whatever recovers the panic, and the lock of the middleware free: the recovering middleware
+// can still ask it for the session.
 func Test_Session_Middleware_ReleasePanicLeavesTheLockFree(t *testing.T) {
 	t.Parallel()
 
@@ -328,8 +325,8 @@ func Test_Session_Middleware_ReleasePanicLeavesTheLockFree(t *testing.T) {
 	require.Equal(t, []any{"k"}, got, "the recovering middleware could not read the session: the release left the lock held")
 }
 
-// Once the session middleware has finished with the request, a Store.Get reads the
-// session ID from the request again, and finds the session of the cookie.
+// Once the session middleware has finished with the request, a Store.Get reads the session ID from
+// the request again, and finds the session of the cookie.
 func Test_Store_Get_AfterTheMiddlewareEndedReadsTheRequest(t *testing.T) {
 	t.Parallel()
 

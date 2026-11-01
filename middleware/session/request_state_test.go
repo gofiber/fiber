@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// countingCtx counts how often the session middleware asks for the Go context of the
-// request and replaces it.
+// countingCtx counts how often the session middleware asks for the Go context of the request and
+// replaces it.
 type countingCtx struct {
 	contexts *atomic.Int64
 	sets     *atomic.Int64
@@ -29,10 +29,10 @@ func (c *countingCtx) SetContext(ctx context.Context) {
 	c.DefaultCtx.SetContext(ctx)
 }
 
-// Without PassLocalsToContext the request context never holds the session, so the
-// middleware has nothing to store in it, ask it for, or hide in it at the end: it
-// leaves the context alone, which spares Fiber the context it would create for the
-// request and the wrapping of it, and with PassLocalsToContext it does all of that.
+// Without PassLocalsToContext the request context never holds the session, so the middleware has
+// nothing to store in it, ask it for, or hide in it at the end: it leaves the context alone, which
+// spares Fiber the context it would create for the request and the wrapping of it, and with
+// PassLocalsToContext it does all of that.
 func Test_Session_Middleware_ContextIsLeftAloneWithoutPassLocalsToContext(t *testing.T) {
 	t.Parallel()
 
@@ -64,10 +64,9 @@ func Test_Session_Middleware_ContextIsLeftAloneWithoutPassLocalsToContext(t *tes
 	}
 }
 
-// With PassLocalsToContext a middleware that finished hides the session ID and
-// itself behind empty values in the context of the request, for whoever asks for
-// the context afterwards: an outer middleware that logs the session of the request,
-// say. Both values are hidden, and nothing else.
+// With PassLocalsToContext a middleware that finished hides the session ID and itself behind empty
+// values in the context of the request, for whoever asks for the context afterwards: an outer
+// middleware that logs the session of the request, say. Both values are hidden, and nothing else.
 func Test_Session_Middleware_FinishedMiddlewareIsHiddenInTheContext(t *testing.T) {
 	t.Parallel()
 
@@ -104,9 +103,9 @@ func Test_Session_Middleware_FinishedMiddlewareIsHiddenInTheContext(t *testing.T
 	require.Nil(t, FromContext(after))
 }
 
-// A middleware that finished holds neither the store nor the error handler it ran
-// with: a handler that outlives the request finds none, and a recycled one does not
-// keep a closure of the application alive until its next request.
+// A middleware that finished holds neither the store nor the error handler it ran with: a handler
+// that outlives the request finds none, and a recycled one does not keep a closure of the
+// application alive until its next request.
 func Test_Session_Middleware_ReleaseForgetsTheStoreAndTheErrorHandler(t *testing.T) {
 	t.Parallel()
 

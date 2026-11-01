@@ -11,10 +11,9 @@ import (
 // base64URLAlphabet is what a hashed storage key is made of after its prefix.
 const base64URLAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 
-// Whatever ID a client sends, the key a session is stored under follows the policy
-// of the store and nothing else: the prefix and then the ID itself, or the prefix
-// and then a fixed-length digest from which the ID cannot be read back and in which
-// it cannot inject anything.
+// Whatever ID a client sends, the key a session is stored under follows the policy of the store and
+// nothing else: the prefix and then the ID itself, or the prefix and then a fixed-length digest
+// from which the ID cannot be read back and in which it cannot inject anything.
 func Fuzz_Store_StorageKey(f *testing.F) {
 	f.Add("abc", "", false)
 	f.Add("abc", "app:", false)
@@ -43,10 +42,10 @@ func Fuzz_Store_StorageKey(f *testing.F) {
 	})
 }
 
-// Arbitrary bytes in the cookies and the header of a request, for stores over several
-// cookies and a header, never panic the middleware and never break a property of the
-// invariant world: a new session never takes what the client sent, an ID is only written
-// to a cookie or header that a store which owns it reads, and the rest of what check holds.
+// Arbitrary bytes in the cookies and the header of a request, for stores over several cookies and a
+// header, never panic the middleware and never break a property of the invariant world: a new
+// session never takes what the client sent, an ID is only written to a cookie or header that a
+// store which owns it reads, and the rest of what check holds.
 func Fuzz_Session_ClientInput(f *testing.F) {
 	f.Add("", "", "", "")
 	f.Add("a", "b", "c", "d")
@@ -54,10 +53,9 @@ func Fuzz_Session_ClientInput(f *testing.F) {
 	f.Add(strings.Repeat("g", 512), "\x00\x01\x02", "\"quoted\"", "x y")
 
 	f.Fuzz(func(t *testing.T, a, b, c, header string) {
-		// A world of its own for every input, closed with it: nothing carries over from
-		// one input to the next, so an input that fails fails alone, and neither the
-		// storage nor the goroutines of the storages grow for as long as the fuzzing
-		// runs.
+		// A world of its own for every input, closed with it: nothing carries over from one input
+		// to the next, so an input that fails fails alone, and neither the storage nor the
+		// goroutines of the storages grow for as long as the fuzzing runs.
 		w := newInvariantWorld(t, 1)
 		app := w.storeAPIApp()
 

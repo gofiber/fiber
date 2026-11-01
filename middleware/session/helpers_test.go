@@ -8,15 +8,15 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// getSession is loadSession for the tests that only want the session, as they did
-// before the store learned to say whose session ID a request caches.
+// getSession is loadSession for the tests that only want the session, as they did before the store
+// learned to say whose session ID a request caches.
 func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	sess, _, err := s.loadSession(c, currentMiddleware(c))
 	return sess, err
 }
 
-// newRequest returns the context of a request of app, which goes back to the app when
-// the test ends.
+// newRequest returns the context of a request of app, which goes back to the app when the test
+// ends.
 func newRequest(tb testing.TB, app *fiber.App) fiber.Ctx {
 	tb.Helper()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})

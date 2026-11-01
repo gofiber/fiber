@@ -118,8 +118,8 @@ func Test_GetAs_Allocations(t *testing.T) {
 	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[string](sess, "missing") }))
 	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[string]((*Session)(nil), "name") }))
 
-	// A value that is costly to copy is no reason to allocate: the variable that a codec
-	// would decode into is made only when there is one.
+	// A value that is costly to copy is no reason to allocate: the variable that a codec would
+	// decode into is made only when there is one.
 	type big struct {
 		Name  string
 		Bytes [1024]byte
