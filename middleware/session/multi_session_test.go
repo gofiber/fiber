@@ -335,8 +335,9 @@ func Test_Session_MultipleStores_MiddlewarePassesOverAnIDThatNamesNoSession(t *t
 
 // The provenance cached on the request belongs to the store that resolved it. Store A saves a
 // new session and so caches its ID; store B then finds its own session through another cookie,
-// or starts one. A's next Get takes the ID it cached, but must not take B's provenance with it:
-// A's session would be written back to B's cookie, replacing the ID of B's session.
+// or starts one. A's next Get takes the ID it cached and finds the record it saved, but must
+// not take B's provenance with it: A's session would be written back to B's cookie, replacing
+// the ID of B's session. A session of B that was found and not saved writes no cookie at all.
 func Test_Session_MultipleStores_CachedProvenanceBelongsToItsStore(t *testing.T) {
 	t.Parallel()
 
@@ -345,12 +346,20 @@ func Test_Session_MultipleStores_CachedProvenanceBelongsToItsStore(t *testing.T)
 	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
 	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("n", 1) })
 
-	for _, returning := range []bool{false, true} {
-		t.Run(fmt.Sprintf("B found its session=%t", returning), func(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		returning bool // B finds its own session through its cookie
+		saveB     bool
+	}{
+		{name: "B starts a session", saveB: true},
+		{name: "B finds its session", returning: true, saveB: true},
+		{name: "B finds its session and does not save it", returning: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			c := newRequest(t, app)
-			if returning {
+			if tc.returning {
 				c.Request().Header.SetCookie("b_sid", idB)
 			}
 			first := mustGet(t, storeA, c)
@@ -358,16 +367,24 @@ func Test_Session_MultipleStores_CachedProvenanceBelongsToItsStore(t *testing.T)
 			require.NoError(t, first.Save())
 			b := mustGet(t, storeB, c)
 			again := mustGet(t, storeA, c)
+			require.False(t, again.Fresh(), "A found the record it saved")
+			require.Equal(t, 1, again.Get("n"))
 			again.Set("n", 2)
 
 			// A last: were its session tied to B's cookie, the later header would win.
-			require.NoError(t, b.Save())
+			if tc.saveB {
+				require.NoError(t, b.Save())
+			}
 			require.NoError(t, again.Save())
-			require.Equal(t, !returning, b.Fresh())
+			require.Equal(t, !tc.returning, b.Fresh())
 			require.Equal(t, first.ID(), again.ID(), "A found the session it saved")
 			require.Equal(t, again.ID(), responseCookie(t, c, "a_sid"), "the cookie carries the one session of A")
-			require.Equal(t, b.ID(), responseCookie(t, c, "b_sid"), "B's cookie carries B's session and nothing else")
-			if returning {
+			if tc.saveB {
+				require.Equal(t, b.ID(), responseCookie(t, c, "b_sid"), "B's cookie carries B's session and nothing else")
+			} else {
+				require.Empty(t, c.Response().Header.PeekCookie("b_sid"), "B's session was found and not saved, so B's cookie is not written")
+			}
+			if tc.returning {
 				require.Equal(t, idB, b.ID(), "B loaded its own session")
 			}
 		})
@@ -821,8 +838,6 @@ func Test_Session_MultipleStores_LoginCallbackExample(t *testing.T) {
 
 // Benchmark_Middleware_TwoStores is a request through two session middleware,
 // each over its own cookie, that reaches both sessions through their stores.
-//
-// go test -v -run=^$ -bench=Benchmark_Middleware_TwoStores -benchmem -count=4
 func Benchmark_Middleware_TwoStores(b *testing.B) {
 	app := fiber.New()
 	storeA := useCookieStore(app, "a_sid", Config{KeyGenerator: func() string { return "session-a" }})

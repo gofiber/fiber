@@ -240,8 +240,6 @@ func Test_Session_IsEmptyFresh(t *testing.T) {
 // Benchmark_Middleware_NewVisitor is a request from a client that sends no
 // cookie and never uses the session, such as a health check. With
 // SkipEmptySessions it stores nothing and sets no cookie.
-//
-// go test -v -run=^$ -bench=Benchmark_Middleware_NewVisitor -benchmem -count=4
 func Benchmark_Middleware_NewVisitor(b *testing.B) {
 	for _, skip := range []bool{false, true} {
 		b.Run("SkipEmptySessions="+strconv.FormatBool(skip), func(b *testing.B) {

@@ -219,32 +219,6 @@ func Test_Middleware_IdleTimeoutAndAbsoluteExpiry(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, serveGet(app, "/"))
 }
 
-// Benchmark_GetAs compares the typed read with the type assertion it replaces.
-//
-// go test -v -run=^$ -bench=Benchmark_GetAs -benchmem -count=4
-func Benchmark_GetAs(b *testing.B) {
-	sess := mustGet(b, NewStore(), newRequest(b, fiber.New()))
-	sess.Set("name", "alice")
-
-	b.Run("GetAs", func(b *testing.B) {
-		b.ReportAllocs()
-		for b.Loop() {
-			if _, ok := GetAs[string](sess, "name"); !ok {
-				b.Fatal("not found")
-			}
-		}
-	})
-
-	b.Run("Get and assert", func(b *testing.B) {
-		b.ReportAllocs()
-		for b.Loop() {
-			if _, ok := sess.Get("name").(string); !ok {
-				b.Fatal("not found")
-			}
-		}
-	})
-}
-
 func init() { gob.Register(map[string]int{}) }
 
 // Without a codec, GetAs gives up the saved snapshot for a value that could share memory with the

@@ -238,8 +238,6 @@ func Test_Store_Reset_ClearsTheWholeStorageDespiteAPrefix(t *testing.T) {
 
 // Benchmark_Store_StorageKey measures the key every read, write and delete of a
 // session goes through. Without a prefix or hashing it costs one allocation, the key itself.
-//
-// go test -v -run=^$ -bench=Benchmark_Store_StorageKey -benchmem -count=4
 func Benchmark_Store_StorageKey(b *testing.B) {
 	const id = "wuyjDTdyBzOvL4mUnQ6qiM0nsSYUdyAxnXn0X2VgbX4"
 

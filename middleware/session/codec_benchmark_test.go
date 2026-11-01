@@ -21,8 +21,6 @@ func benchSession(s *Session) {
 // Benchmark_Codec_Request compares what a request pays for its session: a read of
 // one value, a read of every value, and a change of one value, with a store that
 // keeps gob and one with a codec.
-//
-// go test -run '^$' -bench Benchmark_Codec_Request -benchmem
 func Benchmark_Codec_Request(b *testing.B) {
 	app := fiber.New()
 	gob := NewStore(Config{Storage: memory.New()})
@@ -113,8 +111,6 @@ var (
 // codec, where the value is already decoded: the type assertion, GetAs and GetInto.
 // The assertion copies a value once, GetAs hands it out as a result and the caller
 // copies it again, and GetInto copies it into the variable the caller provides.
-//
-// go test -run '^$' -bench Benchmark_Codec_ReadForms -benchmem
 func Benchmark_Codec_ReadForms(b *testing.B) {
 	sess := mustGet(b, NewStore(), newRequest(b, fiber.New()))
 	sess.Set("n", 7)
@@ -182,8 +178,6 @@ type benchLarge struct {
 // into a variable that holds its zero value, which is decoded into directly, into
 // one that holds something, which is replaced by a new value, and with GetAs, which
 // returns the value for the caller to copy.
-//
-// go test -run '^$' -bench Benchmark_Codec_GetIntoLarge -benchmem
 func Benchmark_Codec_GetIntoLarge(b *testing.B) {
 	sess := mustGet(b, NewStore(Config{Codec: JSONCodec{}}), newRequest(b, fiber.New()))
 

@@ -19,51 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A store asked twice through Store.Get hands out one session: the second Get takes
-// the fresh ID the first one cached and finds the record the first one saved. A store
-// over another cookie found its session before, and what the request holds of that
-// one describes its ID, not the fresh one, and has no say over it.
-func Test_Store_Get_TakesItsOwnFreshIDWhateverOtherStoresDid(t *testing.T) {
-	t.Parallel()
-
-	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
-	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
-
-	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
-		b, err := storeB.Get(c) // found: its ID is the one the request names
-		if err != nil {
-			return err
-		}
-		defer b.Release()
-		first, err := storeA.Get(c)
-		if err != nil {
-			return err
-		}
-		defer first.Release()
-		first.Set("flash", "hello")
-		if saveErr := first.Save(); saveErr != nil {
-			return saveErr
-		}
-		again, err := storeA.Get(c)
-		if err != nil {
-			return err
-		}
-		defer again.Release()
-		return c.SendString(fmt.Sprintf("%t|%t|%v|%s", b.Fresh(), again.ID() == first.ID(), again.Get("flash"), again.ID()))
-	})
-
-	idB := seedSession(t, app, storeB, func(*Session) {})
-	resp, body := sendRequest(t, app, "/", map[string]string{"b_sid": idB})
-	require.Greater(t, len(body), len("false|true|hello|"), body)
-	idA := body[len("false|true|hello|"):]
-	require.Equal(t, "false|true|hello|"+idA, body, "the second Get of A did not find the session the first one saved")
-	cookies := cookiesByName(resp)
-	require.NotNil(t, cookies["a_sid"], "A's session goes to A's cookie")
-	require.Equal(t, idA, cookies["a_sid"].Value, "A's cookie carries the one session of A")
-	require.Nil(t, cookies["b_sid"], "B's session was found and not saved, so B's cookie is not written")
-}
-
 // A store writes a session ID back only to its own cookies and headers. A store
 // that shares the ID another store cached, but not the cookie it came from (a store
 // over the second cookie of a chain), must not write it, or the new one of a
