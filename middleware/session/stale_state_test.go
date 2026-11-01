@@ -265,6 +265,53 @@ func Test_Session_Middleware_UnwoundByAPanicLetsGoOfTheRequest(t *testing.T) {
 		require.NotEmpty(t, stored, "writes the record")
 	})
 
+	t.Run("a save from the recovering side saves the session and sets its cookie", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			id    atomic.Value          // string
+			saved atomic.Pointer[error] // the result of the save
+		)
+		store := NewStore()
+		app := fiber.New()
+		app.Use(func(c fiber.Ctx) error {
+			err := c.Next()
+			// The middleware does not save the session of a request that panicked, and
+			// is not in charge of it any more: a Save from here does what a Save does
+			// for a session that no middleware manages, where it would do nothing
+			// while the middleware was.
+			if m := FromContext(c); m != nil {
+				saveErr := m.Session.Save()
+				saved.Store(&saveErr)
+			}
+			return err
+		})
+		app.Use(recoverer.New())
+		app.Use(New(Config{Store: store}))
+		app.Get("/", func(c fiber.Ctx) error {
+			m := FromContext(c)
+			m.Set("k", "v")
+			id.Store(m.ID())
+			panic("boom")
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+		result := saved.Load()
+		require.NotNil(t, result, "the recovering side could not reach the middleware")
+		require.NoError(t, *result)
+
+		sessionID, ok := id.Load().(string)
+		require.True(t, ok)
+		cookie := cookiesByName(resp)["session_id"]
+		require.NotNil(t, cookie, "the save of the recovering side set no cookie")
+		require.Equal(t, sessionID, cookie.Value)
+		stored, err := store.Storage.GetWithContext(context.Background(), store.storageKey(sessionID))
+		require.NoError(t, err)
+		require.NotEmpty(t, stored, "the save of the recovering side wrote no record")
+	})
+
 	t.Run("two middleware unwound by one panic", func(t *testing.T) {
 		t.Parallel()
 
