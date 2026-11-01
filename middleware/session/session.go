@@ -243,6 +243,9 @@ func (s *Session) Regenerate() error {
 // RegenerateWithContext generates a new session id and deletes the old one from storage,
 // using the provided context for cancellation and timeout control.
 //
+// Like Save, it tells the request of the session about the new ID, so a store that is
+// asked again finds the session under it: call it from the goroutine that serves the request.
+//
 // Parameters:
 //   - ctx: The context to use for the storage operation.
 //
@@ -295,6 +298,9 @@ func (s *Session) Reset() error {
 
 // ResetWithContext generates a new session id, deletes the old one from storage, and resets the associated data,
 // using the provided context for cancellation and timeout control.
+//
+// Like Save, it tells the request of the session about the new ID, so a store that is
+// asked again finds the session under it: call it from the goroutine that serves the request.
 //
 // Parameters:
 //   - ctx: The context to use for the storage operation.
@@ -349,14 +355,16 @@ func (s *Session) resetData() {
 
 // refresh generates a new session, and sets session.isFresh to be true.
 func (s *Session) refresh() {
+	old := s.id
 	s.id = s.config.KeyGenerator()
 	s.key = ""
 	s.isFresh = true
 	s.loaded = false
 	if s.ctx != nil {
 		// A store that is asked again in this request finds the session under its new
-		// ID, not under the one that was just deleted.
-		cacheID(s.ctx, requestIDs(s.ctx), s.config, s.id, s.extractor)
+		// ID, not under the one that was just deleted. Like a Save, this uses the request
+		// of the session, so Regenerate and Reset belong to the goroutine that serves it.
+		recacheID(s.ctx, s.config, old, s.id, s.extractor)
 	}
 }
 

@@ -176,22 +176,54 @@ func Benchmark_Codec_ReadForms(b *testing.B) {
 	sess.Set("big", benchBig{Name: "big"})
 	sess.Set("bigPointer", &benchBig{Name: "big"})
 
-	run := func(name string, read func()) {
-		b.Run(name, func(b *testing.B) {
-			b.ReportAllocs()
-			for b.Loop() {
-				read()
-			}
-		})
-	}
-	run("int/assertion", func() { sinkInt, sinkOK = sess.Get("n").(int) })
-	run("int/GetAs", func() { sinkInt, sinkOK = GetAs[int](sess, "n") })
-	run("int/GetInto", func() { errSink = sess.GetInto("n", &sinkInt) })
-	run("1KB struct/assertion", func() { sinkBig, sinkOK = sess.Get("big").(benchBig) })
-	run("1KB struct/GetAs", func() { sinkBig, sinkOK = GetAs[benchBig](sess, "big") })
-	run("1KB struct/GetInto", func() { errSink = sess.GetInto("big", &sinkBig) })
-	run("1KB struct pointer/assertion", func() { sinkBigPtr, sinkOK = sess.Get("bigPointer").(*benchBig) })
-	run("1KB struct pointer/GetAs", func() { sinkBigPtr, sinkOK = GetAs[*benchBig](sess, "bigPointer") })
+	b.Run("int/assertion", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			sinkInt, sinkOK = sess.Get("n").(int)
+		}
+	})
+	b.Run("int/GetAs", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			sinkInt, sinkOK = GetAs[int](sess, "n")
+		}
+	})
+	b.Run("int/GetInto", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			errSink = sess.GetInto("n", &sinkInt)
+		}
+	})
+	b.Run("1KB struct/assertion", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			sinkBig, sinkOK = sess.Get("big").(benchBig)
+		}
+	})
+	b.Run("1KB struct/GetAs", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			sinkBig, sinkOK = GetAs[benchBig](sess, "big")
+		}
+	})
+	b.Run("1KB struct/GetInto", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			errSink = sess.GetInto("big", &sinkBig)
+		}
+	})
+	b.Run("1KB struct pointer/assertion", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			sinkBigPtr, sinkOK = sess.Get("bigPointer").(*benchBig)
+		}
+	})
+	b.Run("1KB struct pointer/GetAs", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			sinkBigPtr, sinkOK = GetAs[*benchBig](sess, "bigPointer")
+		}
+	})
 }
 
 // benchLarge is a value of about 8 KB.

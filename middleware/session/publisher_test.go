@@ -482,3 +482,23 @@ func Test_Session_Store_Get_AskedAgainFindsTheSessionUnderItsNewID(t *testing.T)
 		}
 	}
 }
+
+// Regenerate of a session the store gave out first does not hide the session it gave out
+// and saved since: the entry of the store names the newer one, and the older session is
+// not the one that entry is about.
+func Test_Session_Store_Get_RegenerateOfAnOlderSessionKeepsTheSavedOne(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	store := NewStore()
+	c := newRequest(t, app)
+
+	older := mustGet(t, store, c)
+	newer := mustGet(t, store, c)
+	require.NoError(t, newer.Save())
+	require.NoError(t, older.Regenerate())
+
+	again := mustGet(t, store, c)
+	require.Equal(t, newer.ID(), again.ID(), "the saved session was hidden by the regenerated older one")
+	require.False(t, again.Fresh())
+}

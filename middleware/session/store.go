@@ -75,11 +75,13 @@ func (head *cachedID) Close() error {
 
 // cacheID records that s issued id for the request, as the newest of its IDs, and
 // as the one the logger shows. head is the list of the request, res the provenance of
-// the ID the request named, if any. The entry s had is reused as the new head, so that
-// the list, which fasthttp reclaims from its head, stays in one piece: overwriting the
-// local with an entry that does not lead to the old ones would strand them outside the
-// pool.
+// the ID the request named, if any; its value points into the buffer of the request,
+// which the application can rewrite, so the entry keeps a copy. The entry s had is
+// reused as the new head, so that the list, which fasthttp reclaims from its head,
+// stays in one piece: overwriting the local with an entry that does not lead to the old
+// ones would strand them outside the pool.
 func cacheID(c fiber.Ctx, head *cachedID, s *Store, id string, res extractors.Result) {
+	res.Value = utils.CopyString(res.Value)
 	var entry *cachedID
 	for link := &head; *link != nil; link = &(*link).next {
 		if (*link).store == s {
@@ -96,6 +98,22 @@ func cacheID(c fiber.Ctx, head *cachedID, s *Store, id string, res extractors.Re
 	entry.next, entry.store, entry.id, entry.res = head, s, id, res
 	ctxlocal.Set(c, cachedIDsContextKey, entry)
 	ctxlocal.Set(c, sessionIDContextKey, id)
+}
+
+// recacheID records that the session of s that had the ID old has the ID id now, which
+// Regenerate and Reset give it, unless s has cached the ID of another session since: a
+// session of the store that was never saved must not hide one that was.
+func recacheID(c fiber.Ctx, s *Store, old, id string, res extractors.Result) {
+	head := requestIDs(c)
+	for entry := head; entry != nil; entry = entry.next {
+		if entry.store == s {
+			if entry.id != old {
+				return
+			}
+			break
+		}
+	}
+	cacheID(c, head, s, id, res)
 }
 
 // keyNamespace keeps sessions apart from other middleware sharing the Storage:

@@ -978,3 +978,25 @@ func Test_Store_PassesLocalsToContextByApp(t *testing.T) {
 		require.False(t, store.passesLocalsToContext(offCtx))
 	}
 }
+
+// The ID the request named is kept as a copy: the application can rewrite the bytes of the
+// cookie in place, and a store that is asked again must not take the new value for the one
+// it has already looked up.
+func Test_Store_Get_AskedAgainAfterTheCookieWasRewritten(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	store := NewStore()
+	live := seedSession(t, app, store, func(s *Session) { s.Set("k", "v") })
+	stale := strings.Repeat("s", len(live)) // as long as the other, so that it is rewritten in place
+
+	c := newRequest(t, app)
+	c.Request().Header.SetCookie("session_id", stale)
+	first := mustGet(t, store, c)
+	require.True(t, first.Fresh(), "the cookie names no session")
+
+	c.Request().Header.SetCookie("session_id", live)
+	again := mustGet(t, store, c)
+	require.False(t, again.Fresh(), "the store took the rewritten cookie for the ID it had looked up")
+	require.Equal(t, live, again.ID())
+}
