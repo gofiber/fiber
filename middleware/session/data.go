@@ -25,7 +25,9 @@ type data struct {
 	// gob: the session of a store with a codec is gob as well, when it was stored
 	// before the codec was turned on. With a codec, Data holds the encoded values
 	// ([]byte) of the string keys, and the deadline under absExpirationKey. It is set
-	// when the session is acquired, and read under the lock.
+	// when the session is acquired, and read under the lock. Reads and writes ask
+	// whether there is one with an if, not through an interface: a session without a
+	// codec, which is nearly every session, pays one comparison per read and no call.
 	codec *namedCodec
 
 	Data map[any]any // Session key counts are expected to be bounded.
