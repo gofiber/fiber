@@ -18,126 +18,78 @@ func benchSession(s *Session) {
 	s.Set("profile", newCodecProfile())
 }
 
-// benchEnv holds the stores of the benchmarks and the ID of the session each of them holds.
-type benchEnv struct {
-	stores map[string]*Store
-	ids    map[string]string
-}
-
-// newBenchEnv makes a store per way to keep a session, each holding the session of benchSession.
-func newBenchEnv(b *testing.B) benchEnv {
-	b.Helper()
-
-	env := benchEnv{
-		stores: map[string]*Store{
-			"gob":  NewStore(Config{Storage: memory.New()}),
-			"json": NewStore(Config{Storage: memory.New(), Codec: JSONCodec{}}),
-		},
-		ids: make(map[string]string),
-	}
-	env.stores["gob"].RegisterType(codecProfile{})
-
-	app := fiber.New()
-	for name, store := range env.stores {
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		sess, err := store.Get(ctx)
-		require.NoError(b, err)
-		benchSession(sess)
-		require.NoError(b, sess.Save(), name)
-		env.ids[name] = sess.ID()
-		sess.Release()
-		app.ReleaseCtx(ctx)
-	}
-	return env
-}
-
-// benchRequest returns a request context that carries the session cookie. Every
-// benchmark has one of its own: a context caches the session ID of the last store
-// that read it.
-func benchRequest(b *testing.B, app *fiber.App, id string) fiber.Ctx {
-	b.Helper()
-
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	ctx.Request().Header.SetCookie("session_id", id)
-	b.Cleanup(func() { app.ReleaseCtx(ctx) })
-	return ctx
-}
-
 // Benchmark_Codec_Request compares what a request pays for its session: a read of
 // one value, a read of every value, and a change of one value, with a store that
 // keeps gob and one with a codec.
 //
 // go test -run '^$' -bench Benchmark_Codec_Request -benchmem
 func Benchmark_Codec_Request(b *testing.B) {
-	env := newBenchEnv(b)
 	app := fiber.New()
+	gob := NewStore(Config{Storage: memory.New()})
+	gob.RegisterType(codecProfile{})
 
-	for _, name := range []string{"gob", "json"} {
-		store := env.stores[name]
+	// requests is what a request does with its session, between loading it and saving it. A request
+	// that reads reports whether it found the values.
+	requests := []struct {
+		do   func(sess *Session) bool
+		name string
+	}{
+		{name: "read one", do: func(sess *Session) bool {
+			_, ok := GetAs[string](sess, "name")
+			return ok
+		}},
+		{name: "read all", do: func(sess *Session) bool {
+			_, userID := GetAs[int](sess, "user_id")
+			_, name := GetAs[string](sess, "name")
+			_, admin := GetAs[bool](sess, "admin")
+			_, csrf := GetAs[string](sess, "csrf")
+			_, profile := GetAs[codecProfile](sess, "profile")
+			return userID && name && admin && csrf && profile
+		}},
+		{name: "change one", do: func(sess *Session) bool {
+			sess.Set("user_id", 43)
+			return true
+		}},
+	}
 
-		b.Run("read one/"+name, func(b *testing.B) {
-			ctx := benchRequest(b, app, env.ids[name])
-			b.ReportAllocs()
-			for b.Loop() {
-				sess, err := store.Get(ctx)
-				if err != nil {
-					b.Fatal(err)
-				}
-				if _, ok := GetAs[string](sess, "name"); !ok {
-					b.Fatal("name not found")
-				}
-				if err := sess.Save(); err != nil {
-					b.Fatal(err)
-				}
-				sess.Release()
-			}
-		})
+	for _, tc := range []struct {
+		store *Store
+		name  string
+	}{
+		{store: gob, name: "gob"},
+		{store: NewStore(Config{Storage: memory.New(), Codec: JSONCodec{}}), name: "json"},
+	} {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		seeded, err := tc.store.Get(ctx)
+		require.NoError(b, err)
+		benchSession(seeded)
+		require.NoError(b, seeded.Save(), tc.name)
+		id := seeded.ID()
+		seeded.Release()
+		app.ReleaseCtx(ctx)
 
-		b.Run("read all/"+name, func(b *testing.B) {
-			ctx := benchRequest(b, app, env.ids[name])
-			b.ReportAllocs()
-			for b.Loop() {
-				sess, err := store.Get(ctx)
-				if err != nil {
-					b.Fatal(err)
+		for _, request := range requests {
+			b.Run(request.name+"/"+tc.name, func(b *testing.B) {
+				// Every benchmark has a request of its own: a context caches the session ID of
+				// the last store that read it.
+				ctx := newRequest(b, app)
+				ctx.Request().Header.SetCookie("session_id", id)
+				b.ReportAllocs()
+				for b.Loop() {
+					sess, err := tc.store.Get(ctx)
+					if err != nil {
+						b.Fatal(err)
+					}
+					if !request.do(sess) {
+						b.Fatal("a value of the session is not found")
+					}
+					if err := sess.Save(); err != nil {
+						b.Fatal(err)
+					}
+					sess.Release()
 				}
-				if _, ok := GetAs[int](sess, "user_id"); !ok {
-					b.Fatal("user_id not found")
-				}
-				if _, ok := GetAs[string](sess, "name"); !ok {
-					b.Fatal("name not found")
-				}
-				if _, ok := GetAs[bool](sess, "admin"); !ok {
-					b.Fatal("admin not found")
-				}
-				if _, ok := GetAs[string](sess, "csrf"); !ok {
-					b.Fatal("csrf not found")
-				}
-				if _, ok := GetAs[codecProfile](sess, "profile"); !ok {
-					b.Fatal("profile not found")
-				}
-				if err := sess.Save(); err != nil {
-					b.Fatal(err)
-				}
-				sess.Release()
-			}
-		})
-
-		b.Run("change one/"+name, func(b *testing.B) {
-			ctx := benchRequest(b, app, env.ids[name])
-			b.ReportAllocs()
-			for b.Loop() {
-				sess, err := store.Get(ctx)
-				if err != nil {
-					b.Fatal(err)
-				}
-				sess.Set("user_id", 43)
-				if err := sess.Save(); err != nil {
-					b.Fatal(err)
-				}
-				sess.Release()
-			}
-		})
+			})
+		}
 	}
 }
 
@@ -164,14 +116,7 @@ var (
 //
 // go test -run '^$' -bench Benchmark_Codec_ReadForms -benchmem
 func Benchmark_Codec_ReadForms(b *testing.B) {
-	app := fiber.New()
-	store := NewStore()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-	sess, err := store.Get(ctx)
-	require.NoError(b, err)
-	defer sess.Release()
-
+	sess := mustGet(b, NewStore(), newRequest(b, fiber.New()))
 	sess.Set("n", 7)
 	sess.Set("big", benchBig{Name: "big"})
 	sess.Set("bigPointer", &benchBig{Name: "big"})
@@ -240,13 +185,7 @@ type benchLarge struct {
 //
 // go test -run '^$' -bench Benchmark_Codec_GetIntoLarge -benchmem
 func Benchmark_Codec_GetIntoLarge(b *testing.B) {
-	app := fiber.New()
-	store := NewStore(Config{Codec: JSONCodec{}})
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-	sess, err := store.Get(ctx)
-	require.NoError(b, err)
-	defer sess.Release()
+	sess := mustGet(b, NewStore(Config{Codec: JSONCodec{}}), newRequest(b, fiber.New()))
 
 	large := benchLarge{Name: "large", Extra: map[string]bool{"a": true}}
 	for i := range large.Values {

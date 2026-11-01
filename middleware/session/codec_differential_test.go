@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -74,17 +75,17 @@ var modelKeys = []modelKey{
 func Test_Codec_MatchesGobAndAModel(t *testing.T) {
 	t.Parallel()
 
-	modes := map[string]func() Codec{
-		"gob":    func() Codec { return nil },
-		"json":   func() Codec { return JSONCodec{} },
-		"custom": func() Codec { return NewCodec("custom", json.Marshal, json.Unmarshal) },
+	modes := map[string]Codec{
+		"gob":    nil,
+		"json":   JSONCodec{},
+		"custom": NewCodec("custom", json.Marshal, json.Unmarshal),
 	}
 	for mode, codec := range modes {
 		for _, absolute := range []time.Duration{0, time.Hour} {
 			t.Run(mode+"/absolute="+absolute.String(), func(t *testing.T) {
 				t.Parallel()
 				for seed := range invariantSeeds() * 25 {
-					playModel(t, seed, codec(), absolute)
+					playModel(t, seed, codec, absolute)
 				}
 			})
 		}
@@ -105,30 +106,29 @@ func playModel(t *testing.T, seed uint64, codec Codec, absolute time.Duration) {
 	model := make(map[string]any)
 	clientID := ""
 
+	// checkKey checks that the session reads the key as the model says.
+	checkKey := func(s *Session, mk modelKey, when string) {
+		t.Helper()
+		got, ok := mk.read(s, mk.name)
+		expected, present := model[mk.name]
+		require.Equal(t, present, ok, "seed %d, %s: key %s present", seed, when, mk.name)
+		if present {
+			require.Equal(t, expected, got, "seed %d, %s: key %s", seed, when, mk.name)
+		}
+	}
 	check := func(s *Session, when string) {
 		t.Helper()
-		keys := make([]string, 0)
+		var keys []string
 		for _, k := range s.Keys() {
 			if name, ok := k.(string); ok {
 				keys = append(keys, name)
 			}
 		}
 		slices.Sort(keys)
-		want := make([]string, 0, len(model))
-		for name := range model {
-			want = append(want, name)
-		}
-		slices.Sort(want)
-		require.Equal(t, want, keys, "seed %d, %s: keys", seed, when)
+		require.Equal(t, slices.Sorted(maps.Keys(model)), keys, "seed %d, %s: keys", seed, when)
 
-		for i := range modelKeys {
-			mk := modelKeys[i]
-			got, ok := mk.read(s, mk.name)
-			expected, present := model[mk.name]
-			require.Equal(t, present, ok, "seed %d, %s: key %s present", seed, when, mk.name)
-			if present {
-				require.Equal(t, expected, got, "seed %d, %s: key %s", seed, when, mk.name)
-			}
+		for _, mk := range modelKeys {
+			checkKey(s, mk, when)
 		}
 	}
 
@@ -165,12 +165,7 @@ func playModel(t *testing.T, seed uint64, codec Codec, absolute time.Duration) {
 					destroyed = true
 				}
 			default:
-				got, ok := mk.read(sess, mk.name)
-				expected, present := model[mk.name]
-				require.Equal(t, present, ok)
-				if present {
-					require.Equal(t, expected, got)
-				}
+				checkKey(sess, mk, fmt.Sprintf("step %d, a read", step))
 			}
 			if destroyed {
 				break

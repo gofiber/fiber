@@ -85,8 +85,7 @@ func Fuzz_Session_CodecStoredBytes(f *testing.F) {
 		id := sess.ID()
 		require.NoError(t, sess.Save())
 		if id == "stored" {
-			stored, err := mem.Get(sessionKey(id))
-			require.NoError(t, err)
+			stored := storedBytes(t, mem, id)
 			if isRecord(raw) {
 				require.Equal(t, raw, stored)
 			}
@@ -120,8 +119,7 @@ func Fuzz_Session_CodecStoredBytes(f *testing.F) {
 // collectRecordOf parses the record stored under id, if it is one.
 func collectRecordOf(t *testing.T, mem *memory.Storage, id string) ([]recordEntry, bool) {
 	t.Helper()
-	raw, err := mem.Get(sessionKey(id))
-	require.NoError(t, err)
+	raw := storedBytes(t, mem, id)
 	if !isRecord(raw) {
 		return nil, false
 	}
