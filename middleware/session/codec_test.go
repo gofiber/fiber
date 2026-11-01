@@ -1357,7 +1357,10 @@ func Test_Codec_GetInto_DecodesIntoTheTarget(t *testing.T) {
 		codec, sess := setup(t, nil)
 		codec.panics = true
 		var got codecProfile
-		require.PanicsWithValue(t, "boom", func() { _ = sess.GetInto("user", &got) })
+		require.PanicsWithValue(t, "boom", func() {
+			err := sess.GetInto("user", &got)
+			t.Errorf("GetInto returned %v instead of panicking", err)
+		})
 		require.Zero(t, got)
 	})
 
