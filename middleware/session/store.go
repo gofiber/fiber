@@ -14,7 +14,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
-	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
@@ -28,107 +27,6 @@ var (
 	// ErrKeyNotFound is returned by GetInto when the session holds nothing under the key.
 	ErrKeyNotFound = errors.New("session key not found")
 )
-
-// sessionIDKey is the local key type used to store and retrieve the session ID in context.
-type sessionIDKey int
-
-const (
-	// sessionIDContextKey is the key used to store the session ID in the context locals:
-	// the ID of the store or middleware that cached one last, which the logger shows.
-	// Nothing reads it to find a session.
-	sessionIDContextKey sessionIDKey = iota
-	// cachedIDsContextKey stores the IDs that Store.Get cached on the request, see cachedID.
-	cachedIDsContextKey
-)
-
-// cachedID is a session ID that a store cached on the request, because it issued it
-// for a visitor the request names no session of, with the provenance of the ID the
-// request did name, if any, which says where the new one is written back to. A store
-// that is asked again takes its ID, and finds the session it saved under it.
-//
-// The IDs of a request are a list, newest first, with one for each store: a store that
-// caches another replaces its first. The request holds the head behind a pointer,
-// since storing a Result by value would box it onto the heap, and fasthttp hands the
-// list back through Close on request reset, as it does the extractors package's chain
-// state.
-type cachedID struct {
-	next  *cachedID
-	store *Store
-	id    string
-	res   extractors.Result
-}
-
-var cachedIDPool = sync.Pool{New: func() any { return new(cachedID) }}
-
-// Close returns the list that starts at head to the pool. fasthttp calls it on every
-// request-local io.Closer when it resets the request; callers should not.
-func (head *cachedID) Close() error {
-	for entry := head; entry != nil; {
-		next := entry.next
-		*entry = cachedID{}
-		cachedIDPool.Put(entry)
-		entry = next
-	}
-	return nil
-}
-
-// of returns the entry of s in the list that starts at head, nil if s has none.
-func (head *cachedID) of(s *Store) *cachedID {
-	for entry := head; entry != nil; entry = entry.next {
-		if entry.store == s {
-			return entry
-		}
-	}
-	return nil
-}
-
-// requestIDs returns the head of the IDs that Store.Get cached on the request, newest
-// first, nil if it cached none.
-func requestIDs(c fiber.Ctx) *cachedID {
-	head, ok := c.Locals(cachedIDsContextKey).(*cachedID)
-	if !ok {
-		return nil
-	}
-	return head
-}
-
-// cacheID records that s issued id for the request, as the newest of its IDs, and
-// as the one the logger shows. head is the list of the request, res the provenance of
-// the ID the request named, if any; its value points into the buffer of the request,
-// which the application can rewrite, so the entry keeps a copy. The entry s had is
-// reused as the new head, so that the list, which fasthttp reclaims from its head,
-// stays in one piece: overwriting the local with an entry that does not lead to the old
-// ones would strand them outside the pool.
-func cacheID(c fiber.Ctx, head *cachedID, s *Store, id string, res extractors.Result) {
-	res.Value = utils.CopyString(res.Value)
-	var entry *cachedID
-	for link := &head; *link != nil; link = &(*link).next {
-		if (*link).store == s {
-			entry, *link = *link, (*link).next
-			break
-		}
-	}
-	if entry == nil {
-		var ok bool
-		if entry, ok = cachedIDPool.Get().(*cachedID); !ok || entry == nil {
-			entry = new(cachedID)
-		}
-	}
-	entry.next, entry.store, entry.id, entry.res = head, s, id, res
-	ctxlocal.Set(c, cachedIDsContextKey, entry)
-	ctxlocal.Set(c, sessionIDContextKey, id)
-}
-
-// recacheID records that the session of s that had the ID old has the ID id now, which
-// Regenerate and Reset give it, unless s has cached the ID of another session since: a
-// session of the store that was never saved must not hide one that was.
-func recacheID(c fiber.Ctx, s *Store, old, id string, res extractors.Result) {
-	head := requestIDs(c)
-	if entry := head.of(s); entry != nil && entry.id != old {
-		return
-	}
-	cacheID(c, head, s, id, res)
-}
 
 // keyNamespace keeps sessions apart from other middleware sharing the Storage:
 // the ID comes from the request, so a bare one could name any of their entries.
@@ -166,17 +64,10 @@ type Store struct {
 	// locals is the PassLocalsToContext setting of the app that served the store last,
 	// see passesLocalsToContext.
 	locals atomic.Pointer[localsSetting]
-	// sinks are the cookies and headers a session ID can be written back to, in the
-	// order of the extractor. NewStore works them out once; a Store built without it
-	// has none (nil), and a Store whose Extractor was replaced since has stale ones:
-	// both walk the extractor when they need them. Read-only: every session of the
-	// store shares the slice.
-	sinks []extractors.Extractor
-	// sources names every source the store reads the session ID from, as
-	// sharesSource compares them.
-	sources []sourceID
-	// root identifies the extractor that sinks and sources were worked out from.
-	root extractorRoot
+	// profile is what NewStore worked out from the Extractor. A Store built without
+	// NewStore has none, and a Store whose Extractor was replaced since has a stale
+	// one: both walk the extractor when they need an answer, see extractorProfile.
+	profile extractorProfile
 	Config
 	// unreadableWarned is set once the store has said that it met a session it
 	// cannot read.
@@ -281,16 +172,9 @@ func NewStore(config ...Config) *Store {
 		cfg.Storage = memory.New()
 	}
 
-	sinks := collectSinks(cfg.Extractor)
-	if sinks == nil {
-		// Worked out, and none: not the nil that marks a Store built without NewStore.
-		sinks = []extractors.Extractor{}
-	}
 	store := &Store{
 		Config:  cfg,
-		root:    rootOf(cfg.Extractor),
-		sinks:   sinks,
-		sources: collectSources(cfg.Extractor),
+		profile: profileOf(cfg.Extractor),
 		named:   named,
 	}
 
@@ -391,7 +275,7 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, *cachedID
 			return nil, nil, err
 		}
 		found.res = res
-		if res.Value != "" && !s.foundNoSession(cached, res.Value) {
+		if s.mayBeStored(cached, res.Value) {
 			if readErr := s.readSession(c, res.Value, &found); readErr != nil {
 				return nil, nil, readErr
 			}
@@ -446,14 +330,6 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, *cachedID
 	}
 
 	return sess, cached, nil
-}
-
-// foundNoSession reports whether s looked for a session under id earlier in the request
-// and found none: the entry s cached holds the ID the request named when s issued its own,
-// or the one a Regenerate or Reset deleted, and neither names a session.
-func (s *Store) foundNoSession(cached *cachedID, id string) bool {
-	entry := cached.of(s)
-	return entry != nil && entry.res.Value == id
 }
 
 // storedSession is the outcome of a lookup of a session: the record, if a session is

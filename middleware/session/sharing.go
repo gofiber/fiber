@@ -3,7 +3,6 @@ package session
 import (
 	"slices"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/utils/v2"
 )
@@ -108,17 +107,45 @@ func collectSources(ext extractors.Extractor) []sourceID {
 	return sources
 }
 
-// extractorCached reports whether sinks and sources are those of the extractor the
-// store has now: NewStore worked them out, and the Extractor was not replaced since.
-func (s *Store) extractorCached() bool {
-	return s.sinks != nil && s.root.matches(s.Extractor)
+// extractorProfile is what a store works out from its Extractor once, so that no request
+// has to walk it: where a session ID can be written back to, and every source it is
+// read from. Config is embedded in the Store, so the Extractor can be replaced after
+// NewStore; root tells that, and the store then walks the extractor it has now.
+type extractorProfile struct {
+	// sinks are the cookies and headers a session ID can be written back to, in the
+	// order of the extractor. Read-only: every session of the store shares the slice.
+	sinks []extractors.Extractor
+	// sources names every source the store reads the session ID from, as
+	// sharesSource compares them.
+	sources []sourceID
+	// root identifies the extractor that sinks and sources were worked out from.
+	root extractorRoot
+	// ready is set by profileOf: the zero value of a Store built without NewStore is
+	// not a profile of an extractor that has no sinks.
+	ready bool
+}
+
+// profileOf works out the profile of ext.
+func profileOf(ext extractors.Extractor) extractorProfile {
+	return extractorProfile{
+		root:    rootOf(ext),
+		sinks:   collectSinks(ext),
+		sources: collectSources(ext),
+		ready:   true,
+	}
+}
+
+// current reports whether the profile is that of ext: it was worked out, and ext is
+// the extractor it was worked out from.
+func (p *extractorProfile) current(ext extractors.Extractor) bool {
+	return p.ready && p.root.matches(ext)
 }
 
 // writableSinks returns the cookies and headers a session ID of s can be written
 // back to. The slice is shared: do not modify it.
 func (s *Store) writableSinks() []extractors.Extractor {
-	if s.extractorCached() {
-		return s.sinks
+	if s.profile.current(s.Extractor) {
+		return s.profile.sinks
 	}
 	return collectSinks(s.Extractor)
 }
@@ -126,8 +153,8 @@ func (s *Store) writableSinks() []extractors.Extractor {
 // sourceList returns the sources s reads its session ID from. The slice is shared:
 // do not modify it.
 func (s *Store) sourceList() []sourceID {
-	if s.extractorCached() {
-		return s.sources
+	if s.profile.current(s.Extractor) {
+		return s.profile.sources
 	}
 	return collectSources(s.Extractor)
 }
@@ -155,34 +182,6 @@ func (s *Store) sharesSource(other *Store) bool {
 	return slices.ContainsFunc(mine, func(a sourceID) bool {
 		return slices.ContainsFunc(theirs, a.same)
 	})
-}
-
-// cachedSession reads the session that was saved under the newest ID which s, or a
-// store sharing a source with it, cached on the request, into found: first that of
-// the nearest session middleware s runs inside that shares one, then those of
-// Store.Get, cached, newest first. An ID that names no stored session, because it was
-// never saved, is passed over, and the request is asked instead. Stores that share no
-// source with s keep sessions of their own: their IDs are not taken, and they do not
-// replace the ones of s.
-func (s *Store) cachedSession(c fiber.Ctx, outer *Middleware, cached *cachedID, found *storedSession) error {
-	if outer != nil {
-		if id, res, ok := outer.sharedID(s); ok {
-			if err := s.readSession(c, id, found); err != nil || found.raw != nil {
-				found.res = s.adoptProvenance(res)
-				return err
-			}
-		}
-	}
-	for ; cached != nil; cached = cached.next {
-		if !s.sharesSource(cached.store) {
-			continue
-		}
-		if err := s.readSession(c, cached.id, found); err != nil || found.raw != nil {
-			found.res = s.adoptProvenance(cached.res)
-			return err
-		}
-	}
-	return nil
 }
 
 // sharedID returns the ID and the provenance of the session of the nearest session

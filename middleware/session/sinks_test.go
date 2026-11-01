@@ -61,11 +61,11 @@ func Test_Store_WritableSinks(t *testing.T) {
 			t.Parallel()
 
 			store := NewStore(Config{Extractor: tc.extractor})
-			require.NotNil(t, store.sinks, "NewStore works the sinks out, even when there are none")
+			require.True(t, store.profile.current(store.Extractor), "NewStore works the profile out, even when there are no sinks")
 			require.Equal(t, tc.want, sinkNames(store.writableSinks()))
 
 			literal := &Store{Config: store.Config}
-			require.Nil(t, literal.sinks)
+			require.False(t, literal.profile.current(literal.Extractor))
 			require.Equal(t, tc.want, sinkNames(literal.writableSinks()), "a store built without NewStore walks the extractor")
 		})
 	}
