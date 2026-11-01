@@ -10562,6 +10562,25 @@ func Test_Ctx_Links_KeepsEarlierLinks(t *testing.T) {
 		require.Len(t, links, 1)
 		require.Equal(t, `</style.css>; rel=preload; as=style,</app.js>; rel=preload; as=script,<http://api.example.com/users?page=2>; rel="next"`, string(links[0]))
 	})
+
+	t.Run("lower-case name", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{DisableHeaderNormalizing: true})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Response().Header.DisableNormalizing()
+
+		c.Response().Header.Set("link", "</style.css>; rel=preload; as=style")
+		c.Links("http://api.example.com/users?page=2", "next")
+
+		// The lower-case line is folded in and removed, not repeated beside the new one.
+		var links []string
+		for k, v := range c.Response().Header.All() {
+			if utils.EqualFold(string(k), HeaderLink) {
+				links = append(links, string(v))
+			}
+		}
+		require.Equal(t, []string{`</style.css>; rel=preload; as=style,<http://api.example.com/users?page=2>; rel="next"`}, links)
+	})
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Links -benchmem -count=4

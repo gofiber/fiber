@@ -985,14 +985,13 @@ func (r *DefaultRes) Links(link ...string) {
 		return
 	}
 	bb := bytebufferpool.Get()
-	existing, multiLine := peekJoinedResponseHeader(&r.c.fasthttp.Response.Header, HeaderLink)
+	existing, _ := peekJoinedResponseHeader(&r.c.fasthttp.Response.Header, HeaderLink)
 	if len(existing) > 0 {
 		bb.Write(existing)
 		bb.WriteByte(',')
-	}
-	if multiLine {
-		// Set only rewrites the first field line; drop the rest, now copied into bb.
-		r.c.fasthttp.Response.Header.Del(HeaderLink)
+		// The lines are copied into bb; remove them in every spelling so the
+		// folded value is not sent beside them.
+		r.Del(HeaderLink)
 	}
 	for i := range link {
 		if i%2 == 0 {
