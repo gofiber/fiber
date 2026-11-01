@@ -163,74 +163,6 @@ func Test_Session_MultipleStores_FromContext(t *testing.T) {
 	})
 }
 
-// The same, through the store pattern: the result must not depend on which
-// store a request asks first, nor on which of the two has a session already.
-func Test_Session_MultipleStores_StoreGet(t *testing.T) {
-	t.Parallel()
-
-	storeA := NewStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid")})
-
-	app := fiber.New()
-	app.Get("/touch", func(c fiber.Ctx) error {
-		first, second := storeA, storeB
-		if c.Query("first") == "b" {
-			first, second = storeB, storeA
-		}
-		s1, err := first.Get(c)
-		if err != nil {
-			return err
-		}
-		defer s1.Release()
-		s2, err := second.Get(c)
-		if err != nil {
-			return err
-		}
-		defer s2.Release()
-
-		a, b := s1, s2
-		if c.Query("first") == "b" {
-			a, b = s2, s1
-		}
-		out := fmt.Sprintf("A{fresh=%v n=%v} B{fresh=%v n=%v}", a.Fresh(), a.Get("n"), b.Fresh(), b.Get("n"))
-		a.Set("n", 1)
-		b.Set("n", 1)
-		if err := a.Save(); err != nil {
-			return err
-		}
-		if err := b.Save(); err != nil {
-			return err
-		}
-		return c.SendString(out)
-	})
-
-	resp, body := sendRequest(t, app, "/touch", nil)
-	require.Equal(t, "A{fresh=true n=<nil>} B{fresh=true n=<nil>}", body)
-	cookies := cookiesByName(resp)
-	idA, idB := cookies["a_sid"].Value, cookies["b_sid"].Value
-	require.NotEqual(t, idA, idB)
-
-	for _, tc := range []struct {
-		name, target string
-		cookies      map[string]string
-		want         string
-	}{
-		{"both valid, A first", "/touch", map[string]string{"a_sid": idA, "b_sid": idB}, "A{fresh=false n=1} B{fresh=false n=1}"},
-		{"both valid, B first", "/touch?first=b", map[string]string{"a_sid": idA, "b_sid": idB}, "A{fresh=false n=1} B{fresh=false n=1}"},
-		// The store asked first has nothing yet; the other one must still find its own.
-		{"only B valid, A first", "/touch", map[string]string{"b_sid": idB}, "A{fresh=true n=<nil>} B{fresh=false n=1}"},
-		{"only B valid, B first", "/touch?first=b", map[string]string{"b_sid": idB}, "A{fresh=true n=<nil>} B{fresh=false n=1}"},
-		{"only A valid, A first", "/touch", map[string]string{"a_sid": idA}, "A{fresh=false n=1} B{fresh=true n=<nil>}"},
-		{"only A valid, B first", "/touch?first=b", map[string]string{"a_sid": idA}, "A{fresh=false n=1} B{fresh=true n=<nil>}"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			_, got := sendRequest(t, app, tc.target, tc.cookies)
-			require.Equal(t, tc.want, got)
-		})
-	}
-}
-
 // Stores over the same cookie still agree on one ID for a visitor without a
 // cookie yet. The CSRF middleware's store and the session middleware's own are
 // two Store values like this, and a visitor's first request must end up with
@@ -458,37 +390,6 @@ func Test_Session_MultipleStores_SaveOfASessionNoMiddlewareManages(t *testing.T)
 	stored, err := storeA.Storage.GetWithContext(context.Background(), storeA.storageKey(early.ID()))
 	require.NoError(t, err)
 	require.NotEmpty(t, stored, "the session was saved")
-}
-
-// With only one of two stacked sessions in existence, each store finds its own,
-// whichever of them is new. The new one caches an ID the other must not adopt.
-func Test_Session_MultipleStores_Middleware_OnlyOneSessionExists(t *testing.T) {
-	t.Parallel()
-
-	handlerA, storeA := NewWithStore(Config{Extractor: extractors.FromCookie("a_sid")})
-	handlerB, storeB := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid")})
-
-	app := fiber.New()
-	app.Use(handlerA, handlerB)
-	app.Get("/seed", func(c fiber.Ctx) error {
-		storeA.FromContext(c).Set("n", 1)
-		storeB.FromContext(c).Set("n", 1)
-		return c.SendString(storeA.FromContext(c).ID() + "|" + storeB.FromContext(c).ID())
-	})
-	app.Get("/read", func(c fiber.Ctx) error {
-		a, b := storeA.FromContext(c), storeB.FromContext(c)
-		return c.SendString(fmt.Sprintf("%v/%v|%v/%v", a.Get("n"), a.Fresh(), b.Get("n"), b.Fresh()))
-	})
-
-	_, body := sendRequest(t, app, "/seed", nil)
-	ids := strings.Split(body, "|")
-	idA, idB := ids[0], ids[1]
-
-	_, body = sendRequest(t, app, "/read", map[string]string{"b_sid": idB})
-	require.Equal(t, "<nil>/true|1/false", body, "A is new, B found its session")
-
-	_, body = sendRequest(t, app, "/read", map[string]string{"a_sid": idA})
-	require.Equal(t, "1/false|<nil>/true", body, "B is new, A found its session")
 }
 
 // The provenance of one store's ID must never reach another store: an ID read

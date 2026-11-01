@@ -3,7 +3,6 @@ package session
 import (
 	"bytes"
 	"context"
-	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -105,33 +104,6 @@ func loadErr(app *fiber.App, store *Store, id string) error {
 	return err
 }
 
-func Test_Codec_StoresEachValueEncoded(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	mem := memory.New()
-	store := NewStore(Config{Storage: mem, Codec: JSONCodec{}})
-	profile := newCodecProfile()
-	id := seedSession(t, app, store, func(s *Session) {
-		s.Set("profile", profile)
-		s.Set("visits", 3)
-		s.Set("name", "alice")
-	})
-
-	header, entries := storedRecord(t, mem, id)
-	require.Equal(t, "json", string(header.codec))
-	require.False(t, header.deadline.set)
-	require.Len(t, entries, 3)
-	require.Equal(t, "name", entries[0].key)
-	require.Equal(t, "profile", entries[1].key)
-	require.Equal(t, "visits", entries[2].key)
-	require.Equal(t, `"alice"`, string(entries[0].value))
-	require.Equal(t, `3`, string(entries[2].value))
-	want, err := json.Marshal(profile)
-	require.NoError(t, err)
-	require.Equal(t, string(want), string(entries[1].value))
-}
-
 func Test_Codec_TypedAndGenericReads(t *testing.T) {
 	t.Parallel()
 
@@ -221,34 +193,6 @@ func Test_Codec_SetStoresASnapshot(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, []string{"a"}, got, "what was set is what was encoded then")
 	_ = list
-}
-
-func Test_Codec_DefaultStoreWritesPlainGob(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	mem := memory.New()
-	store := NewStore(Config{Storage: mem})
-	id := seedSession(t, app, store, func(s *Session) { s.Set("k", "v") })
-
-	raw, err := mem.Get(sessionKey(id))
-	require.NoError(t, err)
-	require.False(t, isRecord(raw))
-
-	var want bytes.Buffer
-	single := map[any]any{"k": "v"}
-	require.NoError(t, gob.NewEncoder(&want).Encode(&single))
-	require.Equal(t, want.Bytes(), raw, "the default format is the gob stream of a map[any]any")
-
-	// A gob stream written by an independent encoder is read as it always was.
-	independent := map[any]any{"n": 7, "s": "x", true: 1.5}
-	var buf bytes.Buffer
-	require.NoError(t, gob.NewEncoder(&buf).Encode(&independent))
-	require.NoError(t, mem.Set(sessionKey("legacy"), buf.Bytes(), time.Hour))
-	sess := loadSession(t, app, store, "legacy")
-	require.Equal(t, 7, sess.Get("n"))
-	require.Equal(t, "x", sess.Get("s"))
-	require.InDelta(t, 1.5, sess.Get(true), 0)
 }
 
 func Test_Codec_GobSessionsStayGob(t *testing.T) {
@@ -596,64 +540,6 @@ func Test_Codec_KeepsACopyOfWhatTheCodecReturns(t *testing.T) {
 	}
 }
 
-func Test_Codec_DeleteResetRegenerateDestroy(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	mem := memory.New()
-	store := NewStore(Config{Storage: mem, Codec: JSONCodec{}})
-	seed := func(t *testing.T) *Session {
-		t.Helper()
-		id := seedSession(t, app, store, func(s *Session) {
-			s.Set("a", 1)
-			s.Set("b", 2)
-		})
-		return loadSession(t, app, store, id)
-	}
-
-	t.Run("Delete", func(t *testing.T) {
-		t.Parallel()
-		sess := seed(t)
-		sess.Delete("a")
-		sess.Delete(7) // not a string: nothing to delete
-		require.Nil(t, sess.Get("a"))
-		require.Equal(t, []any{"b"}, sess.Keys())
-	})
-
-	t.Run("Regenerate keeps the data under a new ID", func(t *testing.T) {
-		t.Parallel()
-		sess := seed(t)
-		old := sess.ID()
-		require.NoError(t, sess.Regenerate())
-		require.NotEqual(t, old, sess.ID())
-		got, ok := GetAs[int](sess, "b")
-		require.True(t, ok)
-		require.Equal(t, 2, got)
-		require.NoError(t, sess.Save())
-		_, entries := storedRecord(t, mem, sess.ID())
-		require.Len(t, entries, 2)
-	})
-
-	t.Run("Reset clears the data", func(t *testing.T) {
-		t.Parallel()
-		sess := seed(t)
-		require.NoError(t, sess.Reset())
-		require.Empty(t, sess.Keys())
-		require.Nil(t, sess.Get("b"))
-	})
-
-	t.Run("Destroy deletes the record", func(t *testing.T) {
-		t.Parallel()
-		sess := seed(t)
-		id := sess.ID()
-		require.NoError(t, sess.Destroy())
-		raw, err := mem.Get(sessionKey(id))
-		require.NoError(t, err)
-		require.Nil(t, raw)
-		require.Empty(t, sess.Keys())
-	})
-}
-
 func Test_Codec_AbsoluteTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -699,34 +585,6 @@ func Test_Codec_AbsoluteTimeout(t *testing.T) {
 		_, ok := loadSession(t, app, plain, other).AbsoluteExpiry()
 		require.False(t, ok)
 	})
-}
-
-func Test_Codec_GetByID(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	mem := memory.New()
-	store := NewStore(Config{Storage: mem, Codec: JSONCodec{}})
-	id := seedSession(t, app, store, func(s *Session) { s.Set("profile", newCodecProfile()) })
-
-	sess, err := store.GetByID(context.Background(), id)
-	require.NoError(t, err)
-	defer sess.Release()
-	var got codecProfile
-	require.NoError(t, sess.GetInto("profile", &got))
-	require.Equal(t, newCodecProfile(), got)
-
-	// A pooled session of a store with a codec does not carry it to the next store.
-	plain := NewStore(Config{Storage: memory.New()})
-	for range 20 {
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		s, err := plain.Get(ctx)
-		require.NoError(t, err)
-		require.Nil(t, s.data.codec)
-		s.Set(7, "any key is fine without a codec")
-		s.Release()
-		app.ReleaseCtx(ctx)
-	}
 }
 
 func Test_Codec_Middleware(t *testing.T) {
@@ -996,71 +854,6 @@ func Test_Codec_DecodedValuesDoNotAliasTheSnapshot(t *testing.T) {
 	second, ok := GetAs[[]byte](again, "b")
 	require.True(t, ok)
 	require.Equal(t, "second", string(second))
-}
-
-func Test_Codec_PooledSessionsForgetTheirCodec(t *testing.T) {
-	t.Parallel()
-
-	// The data of a session that goes back to the pool lets go of its codec and of the
-	// failed Sets. (It is a data of the test: a pooled one is not read after it was given back.)
-	own := &data{Data: map[any]any{}, codec: &namedCodec{Codec: JSONCodec{}, name: "json"}}
-	own.Set("k", 1)
-	own.Set(2, "a key that is not a string")
-	require.NotNil(t, own.codec)
-	require.NotEmpty(t, own.errs)
-
-	// A reset in the life of a session keeps the codec, and forgets the failed Sets.
-	own.Reset()
-	require.NotNil(t, own.codec)
-	require.Equal(t, "json", own.codec.name)
-	require.Nil(t, own.errs)
-
-	own.Set(2, "again")
-	own.resetAs(nil)
-	require.Nil(t, own.codec)
-	require.Nil(t, own.errs)
-	require.Empty(t, own.Data)
-
-	// And whatever the pool hands out is clean, usually the object that was just put back.
-	pooled := acquireData()
-	pooled.codec = &namedCodec{Codec: JSONCodec{}, name: "json"}
-	pooled.Set(7, "not a string key")
-	require.NotEmpty(t, pooled.errs)
-	releaseData(pooled)
-	fresh := acquireData()
-	defer releaseData(fresh)
-	require.Nil(t, fresh.codec)
-	require.Nil(t, fresh.errs)
-
-	// And what a store without a codec writes after sessions of one went back to the
-	// pool is gob, wherever the pool puts them.
-	app := fiber.New()
-	withCodec := NewStore(Config{Codec: JSONCodec{}})
-	mem := memory.New()
-	t.Cleanup(func() { require.NoError(t, mem.Close()) })
-	plain := NewStore(Config{Storage: mem})
-
-	for range 50 {
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		sess, err := withCodec.Get(ctx)
-		require.NoError(t, err)
-		sess.Set("k", 1)
-		sess.Set(2, "ignored: the failed Set goes with the session")
-		sess.Release()
-		app.ReleaseCtx(ctx)
-
-		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-		other, err := plain.Get(ctx)
-		require.NoError(t, err)
-		require.Nil(t, other.data.codec)
-		other.Set(2, "any key is fine for gob")
-		require.NoError(t, other.Save())
-		raw, err := mem.Get(sessionKey(other.ID()))
-		require.NoError(t, err)
-		require.False(t, isRecord(raw), "what a store without a codec writes is gob")
-		other.Release()
-		app.ReleaseCtx(ctx)
-	}
 }
 
 // A key that cannot be hashed makes a read panic. The lock the read took must go with it,

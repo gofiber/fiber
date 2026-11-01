@@ -822,7 +822,7 @@ func Test_Session_MultipleStores_PanicInsideRecyclesTheOuterMiddleware(t *testin
 // request: the deferred call that ends a middleware that was unwound must leave a
 // finished one alone. One that was unwound gives the outer middleware its count
 // back and lets go of the request, and keeps its session.
-func Test_Session_Middleware_UnwoundUnlessFinished(t *testing.T) {
+func Test_Session_Middleware_EndIfUnwound(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()

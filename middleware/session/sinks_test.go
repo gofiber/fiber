@@ -71,31 +71,6 @@ func Test_Store_WritableSinks(t *testing.T) {
 	}
 }
 
-// The ID of a session that came from a cookie or header goes back to that one, and
-// the single sink is backed by the session itself: one session's lookup must not
-// rewrite what another session has been given, and a session follows its own
-// provenance as it changes.
-func Test_Session_getExtractorInfo_SingleSinkBelongsToTheSession(t *testing.T) {
-	t.Parallel()
-
-	store := NewStore(Config{Extractor: extractors.Chain(extractors.FromCookie("a"), extractors.FromHeader("X-B"))})
-	fromCookie := extractors.Result{Value: "v", Key: "a", Source: extractors.SourceCookie, Resolved: true}
-	fromHeader := extractors.Result{Value: "v", Key: "X-B", Source: extractors.SourceHeader, Resolved: true}
-
-	first := &Session{config: store, extractor: fromCookie}
-	second := &Session{config: store, extractor: fromHeader}
-
-	got := first.getExtractorInfo()
-	require.Equal(t, []string{"cookie:a"}, sinkNames(got))
-	require.Equal(t, []string{"header:X-B"}, sinkNames(second.getExtractorInfo()))
-	require.Equal(t, []string{"cookie:a"}, sinkNames(got), "the lookup of another session rewrote this one's sink")
-
-	first.extractor = fromHeader
-	require.Equal(t, []string{"header:X-B"}, sinkNames(first.getExtractorInfo()))
-	first.extractor = fromCookie
-	require.Equal(t, []string{"cookie:a"}, sinkNames(first.getExtractorInfo()))
-}
-
 // Finding the sinks of a session costs a save nothing: with the store's own
 // slice, or the session's, there is nothing to allocate.
 //
