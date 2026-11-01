@@ -1797,7 +1797,7 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 	sessionID := uuid.New().String()
 
 	// Store invalid session data to simulate decode error
-	err := store.Storage.Set(storageKeyPrefix+sessionID, []byte("invalid data"), 0)
+	err := store.Storage.Set(keyNamespace+sessionID, []byte("invalid data"), 0)
 	require.NoError(t, err, "Failed to set invalid session data")
 
 	// Create a new request context
@@ -2458,7 +2458,7 @@ func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 
 	written := rec.writes()
 	require.Len(t, written, 1, "a clean save must still write to storage")
-	require.Equal(t, storageKeyPrefix+id, written[0].key)
+	require.Equal(t, keyNamespace+id, written[0].key)
 	require.Equal(t, seeded[0].value, written[0].value, "the retained snapshot must be written back verbatim")
 	require.Equal(t, idleTimeout, written[0].exp, "a clean save must slide the idle timeout")
 
@@ -2701,7 +2701,7 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 
 		written := rec.writes()
 		require.Len(t, written, 1)
-		require.Equal(t, storageKeyPrefix+id, written[0].key)
+		require.Equal(t, keyNamespace+id, written[0].key)
 		require.NotContains(t, string(written[0].value), "bypassed")
 	})
 }
@@ -2861,7 +2861,7 @@ func Test_Session_SaveAfterUnrelatedDelete(t *testing.T) {
 		sess.Set("user", "alice")
 	})
 	sibling := store.KeyGenerator()
-	for lockFor(storageKeyPrefix+sibling) != lockFor(storageKeyPrefix+id) {
+	for lockFor(keyNamespace+sibling) != lockFor(keyNamespace+id) {
 		sibling = store.KeyGenerator()
 	}
 
@@ -2924,7 +2924,7 @@ func Test_Session_WriteBackAfterUnrelatedChange(t *testing.T) {
 	sibling := seedSession(t, app, store, func(sess *Session) {
 		sess.Set("user", "bob")
 	})
-	for lockFor(storageKeyPrefix+sibling) != lockFor(storageKeyPrefix+id) {
+	for lockFor(keyNamespace+sibling) != lockFor(keyNamespace+id) {
 		sibling = seedSession(t, app, store, func(sess *Session) {
 			sess.Set("user", "bob")
 		})
@@ -2939,7 +2939,7 @@ func Test_Session_WriteBackAfterUnrelatedChange(t *testing.T) {
 	require.NoError(t, sess.Save())
 	writes := storage.writes()
 	require.Len(t, writes, 1)
-	require.Equal(t, storageKeyPrefix+id, writes[0].key)
+	require.Equal(t, keyNamespace+id, writes[0].key)
 }
 
 // gateStorage parks the first Set after arming until release is closed.
@@ -3038,7 +3038,7 @@ func Test_Session_RegenerateAfterConcurrentEnd(t *testing.T) {
 		{name: "unrelated delete", end: func(t *testing.T, _ *fiber.App, store *Store, id string) string {
 			t.Helper()
 			sibling := store.KeyGenerator()
-			for lockFor(storageKeyPrefix+sibling) != lockFor(storageKeyPrefix+id) {
+			for lockFor(keyNamespace+sibling) != lockFor(keyNamespace+id) {
 				sibling = store.KeyGenerator()
 			}
 			require.NoError(t, store.Delete(t.Context(), sibling))
@@ -3096,13 +3096,13 @@ func Test_Session_RegenerateAfterConcurrentEnd_OldIDWrittenBack(t *testing.T) {
 	id := seedSession(t, app, store, func(sess *Session) {
 		sess.Set("visitor", true)
 	})
-	raw, err := storage.Get(storageKeyPrefix + id)
+	raw, err := storage.Get(keyNamespace + id)
 	require.NoError(t, err)
 
 	inFlight := loadSession(t, app, store, id)
 	require.NoError(t, store.Delete(t.Context(), id))
 	require.NoError(t, inFlight.Regenerate())
-	require.NoError(t, storage.Set(storageKeyPrefix+id, raw, 0))
+	require.NoError(t, storage.Set(keyNamespace+id, raw, 0))
 	inFlight.Set("user", "victim")
 	require.NoError(t, inFlight.Save())
 

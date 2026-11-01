@@ -33,6 +33,12 @@ func (r extractorRoot) matches(ext extractors.Extractor) bool {
 	return len(r.chain) == 0 || &r.chain[0] == &ext.Chain[0]
 }
 
+// writesBack reports whether a session ID can be written back to a source of this
+// kind: only a cookie or a header names a place the response can carry it to.
+func writesBack(kind extractors.Source) bool {
+	return kind == extractors.SourceCookie || kind == extractors.SourceHeader
+}
+
 // collectSinks lists the cookies and headers an extractor reads a session ID from,
 // which are the ones a session ID can be written back to: the leaves of the
 // extractor that name a cookie or a header.
@@ -47,7 +53,7 @@ func collectSinks(ext extractors.Extractor) []extractors.Extractor {
 		if len(candidate.Chain) > 0 || candidate.Key == "" {
 			return true
 		}
-		if candidate.Source == extractors.SourceCookie || candidate.Source == extractors.SourceHeader {
+		if writesBack(candidate.Source) {
 			sinks = append(sinks, candidate)
 		}
 		return true
@@ -200,7 +206,7 @@ func (s *Store) publisherShares(c fiber.Ctx, box *provenanceBox) bool {
 // from a source that cannot be written back to, which is what Resolved false means
 // to getExtractorInfo. A read-only source, and a sink of s, stay as they are.
 func (s *Store) adoptProvenance(res extractors.Result) extractors.Result {
-	if res.Resolved && (res.Source == extractors.SourceCookie || res.Source == extractors.SourceHeader) && !s.ownsSink(res) {
+	if res.Resolved && writesBack(res.Source) && !s.ownsSink(res) {
 		res.Resolved = false
 	}
 	return res

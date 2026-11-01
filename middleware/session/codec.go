@@ -112,8 +112,9 @@ func checkCodecName(name string) {
 
 // decodeAny decodes the encoded value v of a session under codec into an
 // interface{}. What is not an encoded value, a missing key or a nil, is returned
-// as it is, and so is every value of a session without a codec. A value that does not decode is returned encoded, a copy of its bytes,
-// so that it is never taken for a key that is not there.
+// as it is, and so is every value of a session without a codec. A value that does
+// not decode is returned encoded, a copy of its bytes, so that it is never taken
+// for a key that is not there.
 func decodeAny(v any, codec *namedCodec) any {
 	if codec == nil {
 		return v

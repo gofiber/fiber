@@ -12,20 +12,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// seedStoredSession saves a session with data in store and returns its ID.
-func seedStoredSession(t *testing.T, app *fiber.App, store *Store) string {
-	t.Helper()
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	sess, err := store.Get(c)
-	require.NoError(t, err)
-	defer sess.Release()
-	sess.Set("k", "v")
-	require.NoError(t, sess.Save())
-	return sess.ID()
-}
-
 // The newest publication of a cached session ID decides who may reuse it, whether
 // it went to the provenance box of the request or, while the request has none, to a
 // local of its own. A has no box to say so in, B's cookie then creates one, and E
@@ -44,7 +30,7 @@ func Test_Session_Store_NewestPublisherDecidesWhoMayReuseTheID(t *testing.T) {
 		Extractor: extractors.Chain(extractors.FromCookie("a_sid"), extractors.FromCookie("b_sid")),
 		Storage:   shared,
 	})
-	idB := seedStoredSession(t, app, storeB)
+	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("k", "v") })
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -85,7 +71,7 @@ func Test_Session_Store_LaterPublicationToTheBoxCounts(t *testing.T) {
 		Extractor: extractors.Chain(extractors.FromCookie("b_sid"), extractors.FromCookie("x_sid")),
 		Storage:   shared,
 	})
-	idB := seedStoredSession(t, app, storeB)
+	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("k", "v") })
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -125,7 +111,7 @@ func Test_Session_Store_FreshSessionOfAnUnknownCookiePublishesToTheBox(t *testin
 		Extractor: extractors.Chain(extractors.FromCookie("b_sid"), extractors.FromCookie("y_sid")),
 		Storage:   shared,
 	})
-	idB := seedStoredSession(t, app, storeB)
+	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("k", "v") })
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -314,7 +300,7 @@ func Test_Session_Store_SourcesAreToldApartByKindAndName(t *testing.T) {
 	// A session that a link names is served by the store that reads the query
 	// string; the cookie store behind it keeps to its own cookie, and starts a
 	// session of its own for a visitor who has none.
-	id := seedStoredSession(t, app, byQuery)
+	id := seedSession(t, app, byQuery, func(s *Session) { s.Set("k", "v") })
 	queryHandler, queryStore := NewWithStore(Config{Extractor: extractors.FromQuery("sid"), Storage: shared})
 	cookieHandler, cookieStore := NewWithStore(Config{Extractor: extractors.FromCookie("c_sid"), Storage: shared})
 	stacked := fiber.New()

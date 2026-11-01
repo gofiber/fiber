@@ -154,8 +154,8 @@ func Test_Session_StorageKeyPolicy_EveryCallSite(t *testing.T) {
 				_, key, _ := strings.Cut(op, ":")
 				require.True(t, strings.HasPrefix(key, tc.prefix), "%s lacks the prefix %q", op, tc.prefix)
 				rest := strings.TrimPrefix(key, tc.prefix)
-				require.True(t, strings.HasPrefix(rest, storageKeyPrefix), "%s lacks the namespace %q", op, storageKeyPrefix)
-				rest = strings.TrimPrefix(rest, storageKeyPrefix)
+				require.True(t, strings.HasPrefix(rest, keyNamespace), "%s lacks the namespace %q", op, keyNamespace)
+				rest = strings.TrimPrefix(rest, keyNamespace)
 				if tc.hashed {
 					require.Len(t, rest, hashedKeyLen, "%s is not a digest", op)
 					require.NotContains(t, ids, rest, "%s used a session ID as the key", op)
@@ -195,7 +195,7 @@ func Test_Session_HashStorageKeys_StoredKeyIsNotAnID(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, keys, 1)
 	stored := string(keys[0])
-	require.Equal(t, storageKeyPrefix+digestOf(id), stored)
+	require.Equal(t, keyNamespace+digestOf(id), stored)
 	require.NotEqual(t, id, stored)
 
 	// Whoever reads the storage and sends what they found gets nothing.

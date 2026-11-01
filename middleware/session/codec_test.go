@@ -79,7 +79,7 @@ func (c *reusingCodec) Marshal(v any) ([]byte, error) {
 func (*reusingCodec) Unmarshal(data []byte, v any) error { return json.Unmarshal(data, v) } //nolint:wrapcheck // the error is encoding/json's own
 
 // sessionKey is the key under which a store without a prefix keeps the session with this ID.
-func sessionKey(id string) string { return storageKeyPrefix + id }
+func sessionKey(id string) string { return keyNamespace + id }
 
 // storedRecord returns the record stored under id.
 func storedRecord(t *testing.T, mem *memory.Storage, id string) (recordHeader, []recordEntry) {

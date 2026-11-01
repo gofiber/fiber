@@ -417,7 +417,7 @@ func (w *invariantWorld) check(t *testing.T, step int, req invariantRequest, res
 	for id := range idsOf["C"] {
 		key := w.stores["C"].storageKey(id)
 		require.NotEqual(t, id, key, where)
-		require.Len(t, key, len(storageKeyPrefix)+hashedKeyLen, where)
+		require.Len(t, key, len(keyNamespace)+hashedKeyLen, where)
 	}
 
 	// What was saved can be sent back.

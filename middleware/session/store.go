@@ -88,9 +88,10 @@ func (b *provenanceBox) Close() error {
 	return nil
 }
 
-// storageKeyPrefix keeps sessions apart from other middleware sharing the Storage:
+// keyNamespace keeps sessions apart from other middleware sharing the Storage:
 // the ID comes from the request, so a bare one could name any of their entries.
-const storageKeyPrefix = "session:"
+// Config.StorageKeyPrefix goes in front of it.
+const keyNamespace = "session:"
 
 // idLockShards is a power of two so the shard index is a mask. Shared by every
 // Store, since two stores on one Storage address the same entries.
@@ -151,7 +152,7 @@ const hashedKeyLen = 43
 func (s *Store) storageKey(id string) string {
 	// The default is the common case, and kept small enough to inline.
 	if s.StorageKeyPrefix == "" && !s.HashStorageKeys {
-		return storageKeyPrefix + id
+		return keyNamespace + id
 	}
 	return s.derivedStorageKey(id)
 }
@@ -159,14 +160,14 @@ func (s *Store) storageKey(id string) string {
 // derivedStorageKey is storageKey for a store with a prefix or hashing.
 func (s *Store) derivedStorageKey(id string) string {
 	if !s.HashStorageKeys {
-		return s.StorageKeyPrefix + storageKeyPrefix + id
+		return s.StorageKeyPrefix + keyNamespace + id
 	}
 	sum := sha256.Sum256(utils.UnsafeBytes(id))
 	// One buffer of the exact size, handed over as the key: nothing writes to it
 	// afterwards, and it spares the second allocation a string conversion costs.
-	key := make([]byte, 0, len(s.StorageKeyPrefix)+len(storageKeyPrefix)+hashedKeyLen)
+	key := make([]byte, 0, len(s.StorageKeyPrefix)+len(keyNamespace)+hashedKeyLen)
 	key = append(key, s.StorageKeyPrefix...)
-	key = append(key, storageKeyPrefix...)
+	key = append(key, keyNamespace...)
 	key = base64.RawURLEncoding.AppendEncode(key, sum[:])
 	return utils.UnsafeString(key)
 }

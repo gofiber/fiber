@@ -43,9 +43,9 @@ func shadowMiddlewareContext(c fiber.Ctx) {
 //
 // outer may have finished in the meantime, as it does when a middleware that
 // abandons the request, such as sse, lets the handlers inside it outlive it. It is
-// then left out of the request, whose locals were cleared when it finished. The check and the publication happen
-// under outer's lock, which its own release takes before it clears them, so one
-// cannot overtake the other.
+// then left out of the request, whose locals were cleared when it finished. The
+// check and the publication happen under outer's lock, which its own release takes
+// before it clears them, so one cannot overtake the other.
 func restoreMiddlewareContext(c fiber.Ctx, outer *Middleware) {
 	outer.mu.RLock()
 	defer outer.mu.RUnlock()

@@ -30,11 +30,11 @@ func Fuzz_Store_StorageKey(f *testing.F) {
 		require.Equal(t, key, store.storageKey(id), "the key of an ID is stable")
 
 		if !hashed {
-			require.Equal(t, prefix+storageKeyPrefix+id, key)
+			require.Equal(t, prefix+keyNamespace+id, key)
 			return
 		}
-		require.True(t, strings.HasPrefix(key, prefix+storageKeyPrefix))
-		digest := key[len(prefix)+len(storageKeyPrefix):]
+		require.True(t, strings.HasPrefix(key, prefix+keyNamespace))
+		digest := key[len(prefix)+len(keyNamespace):]
 		require.Len(t, digest, hashedKeyLen)
 		for _, r := range digest {
 			require.Contains(t, base64URLAlphabet, string(r), "a digest is made of the URL-safe alphabet only")
