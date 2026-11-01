@@ -353,3 +353,25 @@ func Test_Store_Get_AfterTheMiddlewareEndedReadsTheRequest(t *testing.T) {
 	sendRequest(t, app, "/", map[string]string{"session_id": id})
 	require.Equal(t, "false|"+id, after.Load(), "Store.Get after the middleware ended started a new session instead of reading the cookie")
 }
+
+// A save reads the storage again only when its shard changed since the load. A shard that was
+// changed before the load costs the request nothing: the load records the generation it found.
+//
+// Not parallel: every test bumps the generations of the shards, which are shared, and a bump
+// between the load and the save would make the read legitimate.
+func Test_Session_Save_ReadsTheStorageOnlyIfTheShardChangedSinceTheLoad(t *testing.T) {
+	app := fiber.New()
+	logged := &keyLogStorage{Storage: memory.New()}
+	store := NewStore(Config{Storage: logged})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
+	sibling := store.KeyGenerator()
+	for lockFor(keyNamespace+sibling) != lockFor(keyNamespace+id) {
+		sibling = store.KeyGenerator()
+	}
+	require.NoError(t, store.Delete(t.Context(), sibling))
+
+	sess := loadSession(t, app, store, id)
+	loaded := len(logged.seen())
+	require.NoError(t, sess.Save())
+	require.Equal(t, []string{"set:" + keyNamespace + id}, logged.seen()[loaded:], "the save only writes")
+}

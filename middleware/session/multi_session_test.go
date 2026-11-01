@@ -333,6 +333,98 @@ func Test_Session_MultipleStores_MiddlewarePassesOverAnIDThatNamesNoSession(t *t
 	}
 }
 
+// Stores that share only some of their sources: the inner middleware reads a_sid and b_sid, the one
+// it runs inside b_sid, and a store over a_sid saved a session for the request before either ran.
+// The inner middleware takes the session of the middleware it runs inside when that ID names one,
+// and passes it over for the session the store saved when it does not.
+func Test_Session_MultipleStores_NearestMiddlewareFirst(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		want   string
+		seeded bool // the visitor holds a b_sid that names a session
+	}{
+		{name: "the ID of the outer middleware names no session", want: "t1"},
+		{name: "the ID of the outer middleware names a session", want: "tB", seeded: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			storage := memory.New()
+			early := NewStore(Config{Extractor: extractors.FromCookie("a_sid"), Storage: storage})
+			outerHandler, outerStore := NewWithStore(Config{Extractor: extractors.FromCookie("b_sid"), Storage: storage})
+			innerHandler, inner := NewWithStore(Config{
+				Extractor: extractors.Chain(extractors.FromCookie("a_sid"), extractors.FromCookie("b_sid")),
+				Storage:   storage,
+			})
+
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				sess, err := early.Get(c)
+				if err != nil {
+					return err
+				}
+				defer sess.Release()
+				sess.Set("token", "t1")
+				if saveErr := sess.Save(); saveErr != nil {
+					return saveErr
+				}
+				return c.Next()
+			})
+			app.Use(outerHandler, innerHandler)
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString(fmt.Sprint(inner.FromContext(c).Get("token")))
+			})
+
+			var cookies map[string]string
+			if tc.seeded {
+				id := seedSession(t, app, outerStore, func(sess *Session) { sess.Set("token", "tB") })
+				cookies = map[string]string{"b_sid": id}
+			}
+			_, body := sendRequest(t, app, "/", cookies)
+			require.Equal(t, tc.want, body)
+		})
+	}
+}
+
+// The IDs a request keeps are a list that fasthttp closes from its head: caching again for a store
+// keeps its entry in the list, and closing the list gives every entry back to the pool, cleared, so
+// that a pooled entry holds no store and no ID of a finished request.
+//
+// Not parallel: a parallel test could take the entries from the shared pool between the close and
+// the checks.
+func Test_Session_CachedIDs_StayWholeAndGoBackToThePoolCleared(t *testing.T) {
+	c := newRequest(t, fiber.New())
+	a, b := NewStore(), NewStore()
+
+	cacheID(c, nil, a, "1", extractors.Result{})
+	first := requestIDs(c)
+	cacheID(c, first, b, "2", extractors.Result{})
+	cacheID(c, requestIDs(c), a, "3", extractors.Result{})
+
+	require.Same(t, first, requestIDs(c), "the entry a store had is its entry again")
+	second := first.next
+	require.Equal(t, "3", first.id)
+	require.Same(t, b, second.store)
+	require.Nil(t, second.next)
+
+	require.NoError(t, first.Close())
+	require.Equal(t, cachedID{}, *first)
+	require.Equal(t, cachedID{}, *second)
+
+	// A pool decides for itself whether Get returns what Put was given, and under -race drops one
+	// Put in four: closing gives an entry back if one of many tries gets it again.
+	for range 64 {
+		entry := &cachedID{id: "x"}
+		require.NoError(t, entry.Close())
+		if cachedIDPool.Get() == any(entry) {
+			return
+		}
+	}
+	t.Fatal("closing the list did not give its entries back to the pool")
+}
+
 // The provenance cached on the request belongs to the store that resolved it. Store A saves a new
 // session and so caches its ID; store B then finds its own session through another cookie, or
 // starts one. A's next Get takes the ID it cached and finds the record it saved, but must not take

@@ -2421,6 +2421,10 @@ func loadSession(t *testing.T, app *fiber.App, store *Store, id string) *Session
 
 	sess, err := store.Get(ctx)
 	require.NoError(t, err)
+	if !sess.Fresh() {
+		// The request names the ID of a session that exists: only an ID the store issued is cached.
+		require.Nil(t, requestIDs(ctx))
+	}
 	t.Cleanup(func() {
 		sess.Release()
 		app.ReleaseCtx(ctx)
