@@ -145,6 +145,7 @@ func Test_parse_function_maps(t *testing.T) {
 	require.Equal(t, []string{"bar", "baz"}, zeroSliceMap["foo"])
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_SetParserDecoder_UnknownKeys(t *testing.T) {
 	SetParserDecoder(ParserConfig{IgnoreUnknownKeys: false})
 	defer SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true})
@@ -166,6 +167,7 @@ func Test_SetParserDecoder_UnknownKeys(t *testing.T) {
 	require.Equal(t, "john", u.Name)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_SetParserDecoder_CustomConverter(t *testing.T) {
 	type myInt int
 	conv := func(s string) reflect.Value {
@@ -187,6 +189,7 @@ func Test_SetParserDecoder_CustomConverter(t *testing.T) {
 
 // Test_SetParserDecoder_AliasTagIgnored: ParserConfig.SetAliasTag must not
 // override the per-source binding tag (one global tag breaks multi-source binding).
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_SetParserDecoder_AliasTagIgnored(t *testing.T) {
 	SetParserDecoder(ParserConfig{SetAliasTag: "ignored", IgnoreUnknownKeys: true, ZeroEmpty: true})
 	defer SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true})

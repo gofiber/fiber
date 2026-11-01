@@ -657,6 +657,7 @@ func Test_ReleaseRedirect_DropsOversizedMessages(t *testing.T) {
 
 // Not parallel: r is read after the pool took it, and Go pauses the parallel
 // tests, which could be handed it meanwhile, while a sequential one runs.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_ReleaseRedirect_PoolsUpToTheLimit(t *testing.T) {
 	r := AcquireRedirect()
 	for i := range maxPoolableMessages {

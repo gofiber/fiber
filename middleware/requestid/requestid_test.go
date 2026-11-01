@@ -142,6 +142,7 @@ func Test_RequestID_LoggerMiddlewareTag(t *testing.T) {
 
 // Test_RequestID_LogWithContextFormat runs serially because it mutates the
 // package-global logger output and context format.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_RequestID_LogWithContextFormat(t *testing.T) {
 	buf := loggertest.CaptureContextLog(t, fiberlog.RequestIDFormat)
 

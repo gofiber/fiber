@@ -6458,6 +6458,7 @@ func Test_SendFile_withRoutes(t *testing.T) {
 	apptest.Expect(t, app, "/file/fs", StatusOK)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_SendFile_ByteRange(t *testing.T) {
 	if runtime.GOOS == windowsOS {
 		t.Skip("SendFile byte-range tests are flaky on Windows")
@@ -7995,6 +7996,7 @@ func Test_Ctx_Status_ThreeDigits(t *testing.T) {
 }
 
 // Codes that do not fit a status line are logged and sent as 500.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Ctx_Status_Invalid(t *testing.T) {
 	// Not parallel: redirects the process-wide logger output.
 	var logged bytes.Buffer
@@ -8978,6 +8980,7 @@ func Test_Ctx_DropWithMiddleware(t *testing.T) {
 	ctxTestCNoResponse(t, app, "/block-me", ErrTestGotEmptyResponse)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Ctx_End(t *testing.T) {
 	app := New()
 
@@ -8992,6 +8995,7 @@ func Test_Ctx_End(t *testing.T) {
 	require.Equal(t, "Hello, World!", apptest.Body(t, resp))
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Ctx_End_after_timeout(t *testing.T) {
 	app := New()
 
@@ -9004,6 +9008,7 @@ func Test_Ctx_End_after_timeout(t *testing.T) {
 	ctxTestCNoResponse(t, app, "/", os.ErrDeadlineExceeded)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Ctx_End_with_drop_middleware(t *testing.T) {
 	app := New()
 
@@ -9024,6 +9029,7 @@ func Test_Ctx_End_with_drop_middleware(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Ctx_End_after_drop(t *testing.T) {
 	app := New()
 

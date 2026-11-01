@@ -1080,6 +1080,7 @@ func Test_Client_PathParam(t *testing.T) {
 	}.run(t)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Client_PathParam_With_Server(t *testing.T) {
 	app, dial, start := createHelperServer(t)
 
@@ -1172,6 +1173,7 @@ func Test_Client_R(t *testing.T) {
 	require.Equal(t, client, req.Client())
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Replace(t *testing.T) {
 	dial := clientTestCServeGet(t, func(c fiber.Ctx) error {
 		return c.SendString(string(c.Request().Header.Peek("k1")))
@@ -1195,6 +1197,7 @@ func Test_Replace(t *testing.T) {
 	C().SetDial(nil)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Replace_ConcurrentAccess(t *testing.T) {
 	original := C()
 	t.Cleanup(func() { defaultClient.Store(original) })

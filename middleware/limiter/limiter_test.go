@@ -1028,6 +1028,7 @@ func Test_Limiter_RawConfigUsesDefaults(t *testing.T) {
 //
 // Intentionally not parallel: it replaces ConfigDefault, and Go pauses parallel
 // tests while a sequential one runs.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Limiter_NilConfigKeepsCustomizedDefault(t *testing.T) {
 	prev := ConfigDefault
 	t.Cleanup(func() { ConfigDefault = prev })
@@ -1471,6 +1472,7 @@ func limiterTestFewestAllocs(h fasthttp.RequestHandler, fctx *fasthttp.RequestCt
 // A rejected request never reaches the handler, so it skips the key copy made for the read after it.
 //
 // Intentionally not parallel: testing.AllocsPerRun panics when called from a parallel test.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Limiter_RejectDoesNotCopyKey(t *testing.T) {
 	rejectAllocs := func(t *testing.T, cfg Config) float64 {
 		t.Helper()
@@ -1519,6 +1521,7 @@ func admittedHandler(tb testing.TB, cfg *Config) (fasthttp.RequestHandler, *fast
 // The built-in store copies the keys it keeps, so an admitted request copies the key only for the re-read.
 //
 // Intentionally not parallel: testing.AllocsPerRun panics when called from a parallel test.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Limiter_AdmitCopiesKeyOnlyForReread(t *testing.T) {
 	admitAllocs := func(t *testing.T, cfg Config) float64 {
 		t.Helper()
@@ -1541,6 +1544,7 @@ func Test_Limiter_AdmitCopiesKeyOnlyForReread(t *testing.T) {
 // keep the key needs, would be one more on every request.
 //
 // Intentionally not parallel: it counts the allocations of the whole process.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Limiter_AdmitKeyCopiesWithBuiltInStore(t *testing.T) {
 	const shortLen, longLen = 8, 160 // a longer key than 192 bytes is hashed before it reaches the store
 

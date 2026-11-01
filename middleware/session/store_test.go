@@ -178,6 +178,7 @@ func Test_Store_DeleteSession(t *testing.T) {
 	require.NotEqual(t, sessionID, session.ID())
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
 	app := fiber.New()
 	ctx := apptest.Ctx(t, app)
@@ -192,6 +193,7 @@ func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
 	require.Equal(t, ErrSessionAlreadyLoadedByMiddleware, err)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func TestStore_Delete(t *testing.T) {
 	store := NewStore()
 
@@ -626,6 +628,7 @@ func Test_Store_CachedIDKeepsProvenance(t *testing.T) {
 // GC, so a collection between the Put and the Get leaves the assertions below
 // passing with the branch never reached. Not parallel, because swapping a
 // package-level var is only safe while nothing else runs.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_ProvenanceBox_PoolHoldsSomethingElse(t *testing.T) {
 	shared := provenancePool
 	// Pointer-like, so handing one out does not allocate.

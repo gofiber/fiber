@@ -526,6 +526,7 @@ func Test_EqualFieldType_InvalidDestination(t *testing.T) {
 	})
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_equalFieldType_CacheTypeMismatch(t *testing.T) {
 	type Sample struct {
 		Field string `query:"field"`
@@ -1121,6 +1122,7 @@ func liveHeap() uint64 {
 }
 
 // Sequential: it reads the live heap, which parallel tests would disturb.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_CachedKeyBytes_CoversSchemaCache(t *testing.T) {
 	type chain struct {
 		Parent *chain `form:"parent"`

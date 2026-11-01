@@ -336,6 +336,7 @@ func Test_LogTagsRedactToken(t *testing.T) {
 
 // Test_LogContextTagRedactsToken runs serially because it mutates package-global
 // default logger output and context format.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_LogContextTagRedactsToken(t *testing.T) {
 	buf := loggertest.CaptureContextLog(t, "api-key=${api-key} ")
 

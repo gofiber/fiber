@@ -74,6 +74,7 @@ func testStatus200(t *testing.T, app *App, url, method string) {
 	apptest.Expect(t, app, apptest.Req(method, url), 200)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 	// Not parallel: this test relies on runtime.NumGoroutine() deltas,
 	// which are unreliable when hundreds of other tests spawn goroutines
@@ -2234,6 +2235,7 @@ func Test_App_Server(t *testing.T) {
 	require.NotNil(t, app.Server())
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
 	app := New()
 	app.config.ErrorHandler = func(_ Ctx, _ error) error { return errors.New("fake error") }
@@ -2485,6 +2487,7 @@ func rootMiscBStubReadResponse(t *testing.T, stub func(*bufio.Reader, *http.Requ
 	httpReadResponse = stub
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_App_Test_response_error(t *testing.T) {
 	// Note: Test cannot run in parallel due to
 	// overriding the httpReadResponse global variable.
@@ -2512,6 +2515,7 @@ func (errorReadCloser) Close() error {
 	return nil
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_App_Test_ReadFail(t *testing.T) {
 	// Note: Test cannot run in parallel due to
 	// overriding the httpReadResponse global variable.
@@ -2562,6 +2566,7 @@ func (b *doubleCloseBody) Close() error {
 	return nil
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_App_Test_CloseFail(t *testing.T) {
 	// Note: Test cannot run in parallel due to
 	// overriding the httpReadResponse global variable.

@@ -9,6 +9,7 @@ import (
 	"github.com/tinylib/msgp/msgp"
 )
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func TestMarshalUnmarshalitem(t *testing.T) {
 	v := item{}
 	bts, err := v.MarshalMsg(nil)
@@ -64,6 +65,7 @@ func BenchmarkUnmarshalitem(b *testing.B) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func TestEncodeDecodeitem(t *testing.T) {
 	v := item{}
 	var buf bytes.Buffer

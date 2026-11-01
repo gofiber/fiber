@@ -252,6 +252,7 @@ func Test_CORS_Wildcard_AllowCredentials_Panic(t *testing.T) {
 
 // Test that a warning is logged when AllowOrigins allows all origins and
 // AllowOriginsFunc is also provided.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_CORS_Warn_AllowAllOrigins_WithFunc(t *testing.T) {
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
@@ -831,6 +832,7 @@ func Test_CORS_setSimpleHeaders_NilConfig(t *testing.T) {
 // AllowCredentials is true and the resolved origin is "*", the middleware logs
 // a warning and still reflects the value (the configuration is considered
 // invalid, but the header is set to surface the misconfiguration).
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_CORS_setSimpleHeaders_WildcardWithCredentials(t *testing.T) {
 	var buf bytes.Buffer
 	log.SetOutput(&buf)

@@ -593,6 +593,7 @@ func Test_Integration_App_ServerErrorHandler_CustomMultipartBodyLimit(t *testing
 	require.JSONEq(t, `{"code":413,"message":"Request Entity Too Large"}`, string(resp.Body()))
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Integration_App_ServerErrorHandler_WithCustomCtx(t *testing.T) {
 	app := fiber.NewWithCustomCtx(newIntegrationCustomCtx, fiber.Config{BodyLimit: 16})
 	app.Use(func(c fiber.Ctx) error {

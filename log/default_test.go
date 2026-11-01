@@ -69,6 +69,7 @@ func logThroughTag(t *testing.T, name string, tag ContextTagFunc, ctx any, msg s
 
 // Test_WithContextCaller runs serially because it mutates the package-global
 // logger and output to verify caller attribution.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_WithContextCaller(t *testing.T) {
 	tests := []struct {
 		ctx  any
@@ -102,6 +103,7 @@ func Test_WithContextCaller(t *testing.T) {
 // the log line so operators notice. The error message is also sanitized for
 // control bytes so a tag that wraps attacker-controlled data in its error
 // cannot inject CR/LF into the log stream.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_WithContextRenderError(t *testing.T) {
 	// Embed CR/LF in the error to exercise the sanitiser.
 	templateErr := errors.New("tag\r\nboom")
@@ -147,6 +149,7 @@ func Test_NewRetainedContext_TypedNil(t *testing.T) {
 
 // Test_DefaultLogger runs serially because initDefaultLogger and SetOutput
 // mutate the package-global logger shared with other log tests.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_DefaultLogger(t *testing.T) {
 	const upToWarn = "[Trace] trace work\n[Debug] received work order\n[Info] starting work\n[Warn] work may fail\n"
 	ctx := context.Background()
@@ -206,6 +209,7 @@ func Test_DefaultLogger(t *testing.T) {
 // Test_WithContextTemplate runs serially because initDefaultLogger,
 // SetContextTemplate, MustSetContextTemplate, and SetOutput mutate package
 // globals shared with other log tests.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_WithContextTemplate(t *testing.T) {
 	type requestIDKey struct{}
 	ctx := context.WithValue(context.Background(), requestIDKey{}, "req-42")
@@ -228,6 +232,7 @@ func Test_WithContextTemplate(t *testing.T) {
 // guarantee from M8: a tag that writes some bytes before erroring must not
 // leak its prefix into the real log line. Instead, the render-error marker
 // stands in for the entire context block.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_WithContextTemplateFailureOmitsPartialContext(t *testing.T) {
 	templateErr := errors.New("template failure")
 	broken := func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
@@ -316,6 +321,7 @@ func Test_SetLevel(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Logger(t *testing.T) {
 	underlyingLogger := log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds)
 	setLogger := &defaultLogger{stdlog: underlyingLogger, depth: 4}
@@ -329,6 +335,7 @@ func Test_Logger(t *testing.T) {
 
 // Test_Logw runs serially because initDefaultLogger and SetOutput mutate the
 // package-global logger shared with other log tests.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Logw(t *testing.T) {
 	keysAndValues := []any{"key1", "value1", "key2", "value2"}
 

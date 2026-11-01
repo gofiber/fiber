@@ -1319,6 +1319,7 @@ func Test_Proxy_Do_ConnectionCannotRemoveRealIP(t *testing.T) {
 	require.Equal(t, []string{"X-Real-Ip=0.0.0.0"}, <-seen)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 	// Intentionally not parallel: WithClient replaces the process-wide shared client.
 	restoreGlobalProxyClient(t)
@@ -1538,6 +1539,7 @@ func Test_Proxy_DoRedirects_AliasedAddr(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 	// Intentionally not parallel: it measures a timeout, so it must not compete for CPU.
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
@@ -1554,6 +1556,7 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 	require.Equal(t, "/test", resp.Request.URL.String())
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 	// Intentionally not parallel: it measures a deadline, so it must not compete for CPU.
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
@@ -1589,6 +1592,7 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 	apptest.ExpectBody(t, app, "/http://"+addr, fiber.StatusOK, "hello world")
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Proxy_Forward_Global_Client(t *testing.T) {
 	// Intentionally not parallel: WithClient replaces the process-wide shared client.
 	restoreGlobalProxyClient(t)
@@ -1993,6 +1997,7 @@ func Test_Proxy_CrossHostStripsEveryCredentialHeader(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
 	policy := proxyTestAllowPrivatePolicy() // replaces TestMain's relaxed policy

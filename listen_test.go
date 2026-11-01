@@ -251,6 +251,7 @@ func rootMiscBRequireNotContains(t *testing.T, out string, unwanted ...string) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen(t *testing.T) {
 	app := New()
 
@@ -259,6 +260,7 @@ func Test_Listen(t *testing.T) {
 	rootrestListenFor(t, app, 1000*time.Millisecond, ListenConfig{DisableStartupMessage: true})
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_ClosesListenerOnBeforeServeError(t *testing.T) {
 	addr := fmt.Sprintf("127.0.0.1:%d", rootMiscBFreePort(t))
 
@@ -276,6 +278,7 @@ func Test_Listen_ClosesListenerOnBeforeServeError(t *testing.T) {
 	require.NoError(t, ln.Close())
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	t.Run("Basic Graceful Shutdown", func(t *testing.T) { testGracefulShutdown(t, 0) })
 
@@ -284,6 +287,7 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	t.Run("Shutdown With Timeout Error", func(t *testing.T) { testGracefulShutdown(t, 1*time.Nanosecond) })
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_ShutdownWithContext_PostShutdownHookReceivesError(t *testing.T) {
 	app := New()
 	app.Get("/", func(c Ctx) error {
@@ -332,6 +336,7 @@ func Test_GracefulShutdown_PostShutdownFiresOnce(t *testing.T) {
 	require.Equal(t, int32(1), f.probe.post.Load(), "OnPostShutdown fired more than once")
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 	t.Helper()
 
@@ -447,12 +452,14 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 	mu.Unlock()
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_Prefork(t *testing.T) {
 	enableTestPreforkMaster(t)
 
 	rootrestRequireOverRecovery(t, New(), &ListenConfig{})
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_TLSMinVersion(t *testing.T) {
 	enableTestPreforkMaster(t)
 
@@ -475,6 +482,7 @@ func Test_Listen_TLSMinVersion(t *testing.T) {
 	rootrestRequireOverRecovery(t, app, &ListenConfig{TLSMinVersion: tls.VersionTLS13})
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_TLS(t *testing.T) {
 	// Sequential, as the two tests behind these cases were: each case runs a server for a second.
 	tests := []struct {
@@ -501,6 +509,7 @@ func Test_Listen_TLS(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_TLS_Prefork(t *testing.T) {
 	// Not parallel: enableTestPreforkMaster sets a package-level flag that the other tests read.
 	tests := []struct {
@@ -536,6 +545,7 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listener(t *testing.T) {
 	app := New()
 
@@ -545,6 +555,7 @@ func Test_Listener(t *testing.T) {
 	require.NoError(t, app.Listener(ln))
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_App_Listener_TLS_Listener(t *testing.T) {
 	config := &tls.Config{Certificates: []tls.Certificate{rootMiscBTestCert(t)}}
 
@@ -558,6 +569,7 @@ func Test_App_Listener_TLS_Listener(t *testing.T) {
 	require.NoError(t, app.Listener(ln))
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_TLSConfigFunc(t *testing.T) {
 	var callTLSConfig bool
 
@@ -626,6 +638,7 @@ func Test_Listen_TLSConfig(t *testing.T) {
 	})
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
 	// Not parallel: it captures the package-level log output, and Go keeps no
 	// parallel test in flight while a serial one runs. Test_Listen_TLSConfig/TLSConfig_with_TLSConfigFunc
@@ -658,6 +671,7 @@ func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
 	)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_TLSConfig_NoWarningWhenAlone(t *testing.T) {
 	// Not parallel: captures the package-level log output.
 	cert := rootMiscBTestCert(t)
@@ -673,6 +687,7 @@ func Test_Listen_TLSConfig_NoWarningWhenAlone(t *testing.T) {
 	require.NotContains(t, buf.String(), "supersedes")
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listener_WarnsIgnoredTLSFields(t *testing.T) {
 	// Not parallel: captures the package-level log output.
 	var buf bytes.Buffer
@@ -773,6 +788,7 @@ func Test_Listen_ClientCertErrorDoesNotSetTLSHandler(t *testing.T) {
 	require.Nil(t, c.ClientHelloInfo())
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_ListenerAddrFunc(t *testing.T) {
 	var network string
 
@@ -786,6 +802,7 @@ func Test_Listen_ListenerAddrFunc(t *testing.T) {
 	require.Equal(t, "tcp", network)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_BeforeServeFunc(t *testing.T) {
 	var handlers uint32
 	app := New()
@@ -844,6 +861,7 @@ func skipIfNoIPv6(t *testing.T) {
 	require.NoError(t, probe.Close())
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_ListenerNetwork(t *testing.T) {
 	skipIfNoIPv6(t)
 
@@ -861,6 +879,7 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
 	app := New()
 
@@ -915,6 +934,7 @@ func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
 
 // Test_Listen_Master_Process_Show_Startup_Message renders the startup message of a master process for a host, an
 // app name and child PIDs, and checks the lines that depend on them.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 	// Not parallel: captureOutput redirects the process-wide stdout.
 	childPIDs := slices.Repeat([]int{11111, 22222, 33333, 44444, 55555, 60000}, 10)
@@ -970,6 +990,7 @@ func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 
 // Test_Listen_StartupMessage_Hooks prints the startup message with an OnPreStartupMessage hook that customizes or
 // prevents it, or with the message disabled, and checks what the OnPostStartupMessage hook is told.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_StartupMessage_Hooks(t *testing.T) {
 	// Not parallel: captureOutput redirects the process-wide stdout.
 	for _, tc := range []struct {
@@ -1036,6 +1057,7 @@ func Test_Listen_StartupMessage_Hooks(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_Print_Route(t *testing.T) {
 	app := New()
 	app.Get("/", emptyHandler).Name("routeName")
@@ -1043,6 +1065,7 @@ func Test_Listen_Print_Route(t *testing.T) {
 	rootMiscBRequireContains(t, printRoutesMessage, MethodGet, "/", "emptyHandler", "routeName")
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_Print_Route_With_Group(t *testing.T) {
 	app := New()
 	app.Get("/", emptyHandler)
@@ -1103,6 +1126,7 @@ func emptyHandler(_ Ctx) error {
 // before the rest; this drives the remaining fields, the singular/plural
 // wording, and the two suffixes — a plain listener is not serving TLS at all,
 // which is worth saying, and a TLS one already is.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
 	// Not parallel: captures the package-level log output.
 	cert := rootMiscBTestCert(t)
@@ -1185,6 +1209,7 @@ func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
 // TLSConfig replaces the other TLS settings rather than seeding them, so each
 // one it displaces is named. The end-to-end test above covers the pair a real
 // deployment hits; this drives the two that are otherwise unreached.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_WarnSupersededTLSFields_Branches(t *testing.T) {
 	// Not parallel: captures the package-level log output.
 	tests := []struct {
@@ -1249,6 +1274,8 @@ func Test_WarnSupersededTLSFields_Branches(t *testing.T) {
 // warning could run, so the caller learned nothing about the field being
 // ignored — the one thing worth telling them. Where the version is read, it is
 // still rejected.
+//
+// conventions:ignore parallel: the warning subtests capture the package-level log output
 //
 //nolint:tparallel // the warning subtests capture the package-level log output
 func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
@@ -1798,6 +1825,7 @@ func Test_gracefulListener(t *testing.T) {
 
 // A failed close of a draining listener is logged once, by the Accept that made it. When Shutdown
 // closed the listener first, the error is already on its way to OnPostShutdown and Accept logs nothing.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_gracefulListener_LogsAFailedCloseOnce(t *testing.T) {
 	// Not parallel: redirects the process-wide logger output.
 	closeErr := errors.New("close failed")

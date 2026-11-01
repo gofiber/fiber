@@ -49,6 +49,7 @@ func Test_LookupCache(t *testing.T) {
 
 // Test_Security_ValidateHostForSSRF_RemembersTheLookup pins what the cache is for and where it stops:
 // the up-front check looks a name up once, the dial guard every time, and a refused answer stays refused.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_ValidateHostForSSRF_RemembersTheLookup(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver.
 	public := net.IPv4(198, 51, 100, 1)
@@ -115,6 +116,7 @@ func Test_Security_LookupHost_EndsAtTheDeadline(t *testing.T) {
 
 // Test_Security_LookupsFor pins which clients the up-front check may serve from the cache: only the
 // shared client, whose dials are checked again where they are made.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_LookupsFor(t *testing.T) {
 	// Intentionally not parallel: it reads and replaces the process-wide client.
 	restoreGlobalProxyClient(t)
@@ -131,6 +133,7 @@ func Test_Security_LookupsFor(t *testing.T) {
 
 // Test_Security_Do_UnguardedClientIsJudgedByAFreshLookup pins that a client the dial guard cannot
 // cover never sees the cache: a name rebound within the cache's lifetime is judged by its new answer.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_Do_UnguardedClientIsJudgedByAFreshLookup(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver and security policy.
 	policy := DefaultSecurityPolicy() // AllowPrivateIPs == false
@@ -169,6 +172,7 @@ func Test_Security_Do_UnguardedClientIsJudgedByAFreshLookup(t *testing.T) {
 
 // Test_Security_FollowRedirects_UnguardedClientHopsAreJudgedByFreshLookups pins that the hops of a
 // redirect an unguarded client follows never see the cache: a name rebound between hops is caught.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_FollowRedirects_UnguardedClientHopsAreJudgedByFreshLookups(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver.
 	// The first A answer for a name is public; every one after is internal.

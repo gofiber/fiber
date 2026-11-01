@@ -14,6 +14,7 @@ func Test_DefaultSystemLogger(t *testing.T) {
 	require.Equal(t, logger, defaultL)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_SetLogger(t *testing.T) {
 	setLog := &defaultLogger{stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds), depth: 6}
 
@@ -35,6 +36,7 @@ var logLevelCases = []struct {
 }
 
 // Test_Fiberlog_SetLevel runs serially because SetLogger swaps the package-global logger.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Fiberlog_SetLevel(t *testing.T) {
 	mockLogger := &defaultLogger{}
 	SetLogger(mockLogger)

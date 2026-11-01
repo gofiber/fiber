@@ -118,6 +118,7 @@ func Test_Read_ChunkedStreamDoesNotAllocate(t *testing.T) {
 // Sequential, as above, and it counts the whole process's bytes. Once fasthttp's body pool has settled on
 // 1000-byte bodies, as on a server of small files, a body of exactly a size class must stay pooled, and a
 // larger one may cost no more than Response.Body, which Read replaces.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Read_CostsNoMoreThanBodyOnceThePoolSettled(t *testing.T) {
 	var resp fasthttp.Response
 	src := bytes.NewReader(nil)

@@ -106,6 +106,7 @@ func Test_BasicAuthLoggerTagWritesUsername(t *testing.T) {
 
 // Test_BasicAuthLogContextTagWritesUsername runs serially because it mutates
 // package-global default logger output and context format.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_BasicAuthLogContextTagWritesUsername(t *testing.T) {
 	buf := loggertest.CaptureContextLog(t, "username=${username} ")
 
@@ -591,6 +592,7 @@ func Test_buildVerifiers(t *testing.T) {
 
 // Not parallel: other bcrypt tests would skew the timing, and Go pauses
 // parallel tests while a sequential one runs.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_buildVerifiers_SameCostAcrossTiers(t *testing.T) {
 	adminHash, err := bcrypt.GenerateFromPassword([]byte("admin-pass"), bcrypt.MinCost+3)
 	require.NoError(t, err)

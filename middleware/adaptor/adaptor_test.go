@@ -1222,6 +1222,7 @@ func Test_isUnixNetwork(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func TestUnixSocketAdaptor(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "test.sock")

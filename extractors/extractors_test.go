@@ -1640,6 +1640,7 @@ func Test_FromParam_RefusesUndecodableValue(t *testing.T) {
 //
 // Not parallel: it borrows the shared pool, and it takes back out everything
 // it puts in.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_ChainState_PoolHoldsSomethingElse(t *testing.T) {
 	app := fiber.New()
 

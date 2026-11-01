@@ -221,6 +221,7 @@ func withRecordedDialers(t *testing.T) *[]recordedDial {
 // loopback address, and blocks the connection before the "internal" server
 // is reached. Covered for both the shared default client and a per-call
 // custom client (proving auto-guarding covers user-supplied clients).
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 	// Not parallel: mutates the global resolver and security policy.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
@@ -287,6 +288,7 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 // Test_Security_ClientDialer_BlocksWhenPrivateDisallowed verifies
 // the composable client guard rejects loopback targets — literal and
 // hostname — when the active policy forbids private IPs.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_ClientDialer_BlocksWhenPrivateDisallowed(t *testing.T) {
 	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
@@ -303,6 +305,7 @@ func Test_Security_ClientDialer_BlocksWhenPrivateDisallowed(t *testing.T) {
 // Test_Security_ClientDialer_DialsThroughOrig verifies that, for an allowed
 // (public) target, the guard dials the validated address through the
 // caller-supplied dialer instead of establishing its own connection.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_ClientDialer_DialsThroughOrig(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide policy and DNS resolver.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
@@ -353,6 +356,7 @@ func Test_Security_ClientDialer_DialsThroughOrig(t *testing.T) {
 // composition order is existing-then-guard. A guard-then-existing order would
 // let the user's dialer overwrite the guard and reopen the SSRF hole, so this
 // test is the regression guard for that ordering.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent(t *testing.T) {
 	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
@@ -430,6 +434,7 @@ func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
 // entry points are guarded: a HostClient that carries DialTimeout has it
 // wrapped (fasthttp prefers DialTimeout over Dial), and the wrapped func
 // blocks a loopback target under the strict policy.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_InstallHostClientGuard_GuardsDialTimeout(t *testing.T) {
 	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
@@ -449,6 +454,7 @@ func Test_Security_InstallHostClientGuard_GuardsDialTimeout(t *testing.T) {
 // Test_Security_ClientDialer_DelegatesWhenPrivateAllowed verifies
 // that when the operator opts into private targets the guard delegates to a
 // normal dial, so loopback connections still succeed.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_ClientDialer_DelegatesWhenPrivateAllowed(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
 	withSecurityPolicyForTest(t, proxyTestAllowPrivatePolicy())
@@ -511,6 +517,7 @@ func Test_Security_DefaultDialTimeout_ConnectsThroughFasthttp(t *testing.T) {
 }
 
 // Test_Security_DefaultDialTimeout_ChoosesTheDialer pins which of fasthttp's four dialers connects.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_DefaultDialTimeout_ChoosesTheDialer(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide fasthttp dialers.
 	dials := withRecordedDialers(t)
@@ -534,6 +541,7 @@ func Test_Security_DefaultDialTimeout_ChoosesTheDialer(t *testing.T) {
 
 // Test_Security_GuardedDialTimeouts_HandTheTimeoutOn pins that every guarded DialTimeout checks the
 // address, then connects with the time the request left, or through the bounded net.Dialer when it left none.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_GuardedDialTimeouts_HandTheTimeoutOn(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide security policy and fasthttp dialers.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
@@ -580,6 +588,7 @@ func Test_Security_GuardedDialTimeouts_HandTheTimeoutOn(t *testing.T) {
 
 // Test_Security_DialWithin_SharesTheTimeout pins that the lookup and all the connects share the time
 // the request leaves: a connect gets what the earlier ones left, and none is made once it is spent.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_DialWithin_SharesTheTimeout(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver.
 	withRebindingResolver(t, startManyAnswersDNS(t, 2)) // 198.51.100.1 and 198.51.100.2
@@ -634,6 +643,7 @@ func Test_Security_DialWithin_NoTimeout(t *testing.T) {
 
 // Test_Security_DialWithin_BoundsTheLookup pins that the request's time ends the lookup too: a resolver
 // that never answers costs the request what it allowed, not the five seconds of the lookup limit.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_DialWithin_BoundsTheLookup(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver.
 	withRebindingResolver(t, startSilentDNS(t))
@@ -652,6 +662,7 @@ func Test_Security_DialWithin_BoundsTheLookup(t *testing.T) {
 
 // Test_Security_RequestTimeout_ReachesTheConnect pins that the time a request leaves reaches the
 // dialer that connects, through DoTimeout on the shared client and through a Balancer with a Timeout.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_RequestTimeout_ReachesTheConnect(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide security policy, client and fasthttp dialers.
 	restoreGlobalProxyClient(t)
@@ -684,6 +695,7 @@ func Test_Security_RequestTimeout_ReachesTheConnect(t *testing.T) {
 // Test_Security_ClientDialerWithTimeout_Delegates covers the
 // DialFuncWithTimeout guard's delegate branch: when private IPs are allowed
 // it forwards the raw addr and timeout to the caller's dialer.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_ClientDialerWithTimeout_Delegates(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
 	withSecurityPolicyForTest(t, proxyTestAllowPrivatePolicy())
@@ -703,6 +715,7 @@ func Test_Security_ClientDialerWithTimeout_Delegates(t *testing.T) {
 
 // Test_Security_ClientDialerWithTimeout_DefaultDelegatesThroughFasthttp pins that a client with no
 // dialer of its own delegates to fasthttp's timed or plain dialer when private IPs are allowed.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_ClientDialerWithTimeout_DefaultDelegatesThroughFasthttp(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide security policy and fasthttp dialers.
 	withSecurityPolicyForTest(t, proxyTestAllowPrivatePolicy())
@@ -723,6 +736,7 @@ func Test_Security_ClientDialerWithTimeout_DefaultDelegatesThroughFasthttp(t *te
 // the strict-policy path of the DialFuncWithTimeout guard: a hostname that
 // resolves to a public IP is validated and dialed through the caller's
 // timeout dialer at the exact resolved IP.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_ClientDialerWithTimeout_ValidatedDialsThrough(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide policy and DNS resolver.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
@@ -758,6 +772,7 @@ func Test_Security_EnsureClientGuarded_ComposePropagatesError(t *testing.T) {
 
 // Test_Security_ClientDialer_DialsValidatedIPWithGuardDialer covers the strict-policy path for a
 // client with no dialer of its own: the validated IP is dialed through the guard's dialer.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_ClientDialer_DialsValidatedIPWithGuardDialer(t *testing.T) {
 	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false

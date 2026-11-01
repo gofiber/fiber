@@ -234,6 +234,7 @@ func Test_returnErr(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_AcquireReleaseBind(t *testing.T) {
 	b := AcquireBind()
 	b.shouldSkipErrHandling = false
@@ -943,6 +944,7 @@ func Test_Bind_Sources_Schema(t *testing.T) {
 //
 // Neither this test nor its subtests are parallel: binder.SetParserDecoder replaces the decoders every bind in the
 // process uses, so no other test may bind while one of them is installed.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Bind_WithSetParserDecoder(t *testing.T) {
 	type NonRFCTime time.Time
 
@@ -1163,6 +1165,7 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 	require.NoError(b, err)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Bind_Body(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -1576,6 +1579,7 @@ func (b *customBinderReturningError) Parse(_ Ctx, _ any) error {
 	return b.err
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Bind_CustomBinder(t *testing.T) {
 	app := New()
 	c := apptest.Ctx(t, app)
@@ -1653,6 +1657,7 @@ func Test_Bind_CustomBinder_Validation(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Bind_WithAutoHandling(t *testing.T) {
 	c := apptest.Ctx(t, New())
 
@@ -1796,6 +1801,7 @@ func Test_Bind_ValidateStruct_NilTarget(t *testing.T) {
 	require.Equal(t, 0, validator.calls)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Bind_StructValidator(t *testing.T) {
 	c := apptest.Ctx(t, New(Config{StructValidator: &structValidator{}}))
 

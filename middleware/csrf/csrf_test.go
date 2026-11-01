@@ -541,6 +541,7 @@ func Test_CSRFLoggerTagRedactsToken(t *testing.T) {
 
 // Test_CSRFLogContextTagRedactsToken runs serially because it mutates
 // package-global default logger output and context format.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_CSRFLogContextTagRedactsToken(t *testing.T) {
 	buf := loggertest.CaptureContextLog(t, "csrf-token=${csrf-token} ")
 
@@ -1764,6 +1765,7 @@ func Test_SessionManager_StoreError(t *testing.T) {
 // and delRaw, where the store loads successfully but persisting it fails. It and
 // its subtests run serially because they replace the output of the package-global
 // logger.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_SessionManager_SaveError(t *testing.T) {
 	for _, tc := range []struct {
 		op   func(m *sessionManager, c fiber.Ctx)

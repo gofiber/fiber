@@ -164,6 +164,7 @@ func Test_ContextTemplate_CustomTag(t *testing.T) {
 // Test_SetContextTemplateRejectsReservedValueTag locks in M9 — overriding the
 // reserved TagContextValue via CustomTags must surface as an error, matching
 // RegisterContextTag's behavior.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_SetContextTemplateRejectsReservedValueTag(t *testing.T) {
 	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
 
@@ -175,6 +176,7 @@ func Test_SetContextTemplateRejectsReservedValueTag(t *testing.T) {
 
 // Test_SetContextTemplate_RegistersCustomTag runs serially because it mutates
 // the package-global context template registry.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_SetContextTemplate_RegistersCustomTag(t *testing.T) {
 	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
 
@@ -191,6 +193,7 @@ func Test_SetContextTemplate_RegistersCustomTag(t *testing.T) {
 
 // Test_RegisterContextTagThenSetFormat runs serially because it mutates the
 // package-global context tag registry.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_RegisterContextTagThenSetFormat(t *testing.T) {
 	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
 
@@ -207,6 +210,7 @@ func Test_RegisterContextTagThenSetFormat(t *testing.T) {
 
 // Test_DefaultFormatDisablesContextTemplate runs serially because it mutates
 // the package-global context template registry.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_DefaultFormatDisablesContextTemplate(t *testing.T) {
 	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
 
@@ -276,6 +280,7 @@ func Test_ContextValue(t *testing.T) {
 // The test is order-independent: it registers its own "tenant" tag rather
 // than relying on a sibling test having already done so, which matters when
 // the test runner is invoked with -shuffle=on.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_ContextTemplate_ConcurrentRegistration(t *testing.T) {
 	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
 

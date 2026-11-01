@@ -59,6 +59,7 @@ func Test_Pprof_Index(t *testing.T) {
 // Test_Pprof_Subs is not parallel, and neither are its subtests: the profile
 // and trace handlers take the process-wide CPU profiler and execution tracer,
 // which a second request cannot hold at the same time.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Pprof_Subs(t *testing.T) {
 	subs := []string{
 		"cmdline", "profile", "symbol", "trace", "allocs", "block",

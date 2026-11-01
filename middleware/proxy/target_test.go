@@ -812,6 +812,7 @@ func Test_Proxy_Balancer_Allowances(t *testing.T) {
 
 // Test_Proxy_Forward_Allowances pins the same opt-ins on DomainForward and
 // BalancerForward, which read the policy installed with WithSecurityPolicy.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Proxy_Forward_Allowances(t *testing.T) {
 	// Not parallel: installs the global policy, which every other test in
 	// the package reads.

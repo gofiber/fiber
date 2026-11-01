@@ -295,6 +295,7 @@ func Test_SessionLoggerTagWithOuterLoggerDoesNotPanic(t *testing.T) {
 
 // Test_SessionLogContextTagRedactsSessionID runs serially because it mutates
 // package-global default logger output and context format.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_SessionLogContextTagRedactsSessionID(t *testing.T) {
 	buf := loggertest.CaptureContextLog(t, "session-id=${session-id} ")
 

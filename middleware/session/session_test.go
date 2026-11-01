@@ -150,6 +150,7 @@ func Test_Session_Store_Reset(t *testing.T) {
 	require.Nil(t, sess.Get("hello"))
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Session_KeyTypes(t *testing.T) {
 	// Note: This test cannot run in parallel because it registers types
 	// in the global gob registry via store.RegisterType(), which would
@@ -605,6 +606,7 @@ func Test_Session_Cookie_SameSite(t *testing.T) {
 }
 
 // Regression: https://github.com/gofiber/fiber/pull/1191
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Session_Cookie_In_Middleware_Chain(t *testing.T) {
 	store := NewStore()
 	ctx := apptest.Ctx(t, fiber.New())
@@ -872,6 +874,7 @@ func Benchmark_Session_Asserted_Parallel(b *testing.B) {
 	})
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Session_Concurrency(t *testing.T) {
 	app := fiber.New()
 	store := NewStore()
@@ -948,6 +951,7 @@ func Test_Session_Concurrency(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 	store := NewStore()
 	app := fiber.New()

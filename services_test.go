@@ -164,6 +164,7 @@ func Test_HasConfiguredServices(t *testing.T) {
 	})
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_InitServices(t *testing.T) {
 	t.Parallel()
 	t.Run("no-services", func(t *testing.T) {
@@ -256,6 +257,7 @@ func Test_InitServices(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_StartServices(t *testing.T) {
 	t.Run("no-services", func(t *testing.T) {
 		app := rootMiscAServicesApp()
@@ -307,6 +309,7 @@ func Test_StartServices(t *testing.T) {
 	})
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_ShutdownServices(t *testing.T) {
 	t.Run("no-services", func(t *testing.T) {
 		app := rootMiscAServicesApp()
@@ -390,6 +393,7 @@ func Test_NewConfiguredServicesNil(t *testing.T) {
 	require.PanicsWithError(t, "fiber: service at index 0 is nil", func() { New(Config{Services: []Service{nil}}) })
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_ServiceContextProviders(t *testing.T) {
 	t.Run("no-provider", func(t *testing.T) {
 		app := &App{configured: Config{}, state: newState()}

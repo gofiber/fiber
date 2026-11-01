@@ -35,10 +35,9 @@ const (
 
 // finding is one violation of a rule.
 type finding struct {
-	rule  string
-	scope string // the function the finding is in, for the rules that keep a baseline
-	msg   string
-	pos   token.Position
+	rule string
+	msg  string
+	pos  token.Position
 }
 
 func (f finding) String() string {
@@ -52,17 +51,42 @@ type source struct {
 	path     string // slash-separated, relative to the module root
 	lines    []string
 	ignores  map[string]map[int]bool // rule -> lines on which it is silenced
-	scope    string                  // set by the rules that report per function
+	used     map[string]map[int]bool // the ignores that silenced something
 	findings []finding
+	fnLine   int // line of the function being checked, whose marker covers its subtests too
 }
 
 func (s *source) reportf(rule string, pos token.Pos, format string, args ...any) {
 	p := s.fset.Position(pos)
-	if s.ignores[rule][p.Line] || s.ignores[rule][p.Line-1] {
-		return
+	lines := []int{p.Line, p.Line - 1}
+	if s.fnLine > 0 && rule == ruleParallel {
+		lines = append(lines, s.fnLine-1)
+	}
+	for _, line := range lines {
+		if s.ignores[rule][line] {
+			if s.used[rule] == nil {
+				s.used[rule] = map[int]bool{}
+			}
+			s.used[rule][line] = true
+			return
+		}
 	}
 	p.Filename = s.path
-	s.findings = append(s.findings, finding{rule: rule, scope: s.scope, pos: p, msg: fmt.Sprintf(format, args...)})
+	s.findings = append(s.findings, finding{rule: rule, pos: p, msg: fmt.Sprintf(format, args...)})
+}
+
+// staleIgnores reports the markers that silenced nothing, so an exception does
+// not outlive the code it excused.
+func (s *source) staleIgnores() []finding {
+	var stale []finding
+	for rule, lines := range s.ignores {
+		for line := range lines {
+			if !s.used[rule][line] {
+				stale = append(stale, finding{rule: rule, pos: token.Position{Filename: s.path, Line: line}, msg: "this conventions:ignore marker silences nothing; delete it"})
+			}
+		}
+	}
+	return stale
 }
 
 // moduleRoot returns the directory holding go.mod, searching upwards from the
@@ -137,7 +161,7 @@ func newSource(t *testing.T, path string, src []byte) (*source, error) {
 	if ast.IsGenerated(file) {
 		return nil, errGenerated
 	}
-	s := &source{file: file, fset: fset, path: path, lines: strings.Split(string(src), "\n"), ignores: map[string]map[int]bool{}}
+	s := &source{file: file, fset: fset, path: path, lines: strings.Split(string(src), "\n"), ignores: map[string]map[int]bool{}, used: map[string]map[int]bool{}}
 	s.collectIgnores(t)
 	return s, nil
 }
@@ -158,7 +182,7 @@ func (s *source) collectIgnores(t *testing.T) {
 	t.Helper()
 	for _, group := range s.file.Comments {
 		for _, c := range group.List {
-			_, rest, ok := strings.Cut(c.Text, ignoreMarker)
+			rest, ok := strings.CutPrefix(strings.TrimSpace(strings.TrimPrefix(c.Text, "//")), ignoreMarker)
 			if !ok {
 				continue
 			}
@@ -231,7 +255,7 @@ func cannotBeParallel(body *ast.BlockStmt) bool {
 }
 
 // checkParallel requires every test and subtest to start with t.Parallel().
-// Tests that were sequential before the rule are listed in the baseline.
+// A marker above a test excuses the test and its subtests.
 func (s *source) checkParallel() {
 	check := func(name string, ft *ast.FuncType, body *ast.BlockStmt, pos token.Pos) {
 		param := paramName(ft, "T")
@@ -265,7 +289,7 @@ func (s *source) checkParallel() {
 		if !ok || fn.Body == nil {
 			continue
 		}
-		s.scope = fn.Name.Name
+		s.fnLine = s.fset.Position(fn.Pos()).Line
 		if strings.HasPrefix(fn.Name.Name, "Test") && fn.Recv == nil {
 			check(fn.Name.Name, fn.Type, fn.Body, fn.Pos())
 		}
@@ -278,7 +302,7 @@ func (s *source) checkParallel() {
 			return true
 		})
 	}
-	s.scope = ""
+	s.fnLine = 0
 }
 
 // checkBlankLine forbids a blank line right after t.Parallel().
@@ -399,83 +423,15 @@ func (s *source) checkBenchLoop() {
 	}
 }
 
-// baselinePath lists the tests that were sequential before the parallel rule,
-// as "<file> <function> <count>" lines, one per function with violations. The
-// list may only shrink: a new violation fails the test, and so does an entry
-// that is out of date. UPDATE_CONVENTIONS_BASELINE=1 rewrites it.
-const baselinePath = "testdata/parallel_baseline.txt"
-
-func readBaseline(t *testing.T) map[string]int {
-	t.Helper()
-	data, err := os.ReadFile(baselinePath)
-	require.NoError(t, err)
-	base := map[string]int{}
-	for line := range strings.SplitSeq(string(data), "\n") {
-		if line = strings.TrimSpace(line); line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Fields(line)
-		require.Len(t, fields, 3, "baseline line %q", line)
-		var n int
-		_, err := fmt.Sscan(fields[2], &n)
-		require.NoError(t, err)
-		base[fields[0]+" "+fields[1]] = n
-	}
-	return base
-}
-
-func writeBaseline(t *testing.T, counts map[string]int) {
-	t.Helper()
-	keys := make([]string, 0, len(counts))
-	for k := range counts {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	var b strings.Builder
-	fmt.Fprintln(&b, "# Tests that were sequential before the parallel rule: <file> <function> <violations>.")
-	fmt.Fprintln(&b, "# Make them parallel and delete the line; never add one. See conventions_test.go.")
-	for _, k := range keys {
-		fmt.Fprintf(&b, "%s %d\n", k, counts[k])
-	}
-	require.NoError(t, os.MkdirAll(filepath.Dir(baselinePath), 0o750))
-	require.NoError(t, os.WriteFile(baselinePath, []byte(b.String()), 0o600))
-}
-
 func Test_TestConventions(t *testing.T) {
 	t.Parallel()
 	var problems []string
-	counts := map[string]int{}
-	parallel := map[string][]finding{}
 	for _, s := range testFiles(t) {
 		s.runRules()
-		for _, f := range s.findings {
-			if f.rule != ruleParallel {
-				problems = append(problems, f.String())
-				continue
-			}
-			key := f.pos.Filename + " " + f.scope
-			counts[key]++
-			parallel[key] = append(parallel[key], f)
+		for _, f := range append(s.findings, s.staleIgnores()...) {
+			problems = append(problems, f.String())
 		}
 	}
-
-	if os.Getenv("UPDATE_CONVENTIONS_BASELINE") != "" {
-		writeBaseline(t, counts)
-	}
-	base := readBaseline(t)
-	for key, n := range counts {
-		if n > base[key] {
-			for _, f := range parallel[key] {
-				problems = append(problems, f.String())
-			}
-		}
-	}
-	for key, n := range base {
-		if counts[key] < n {
-			problems = append(problems, fmt.Sprintf("%s: the baseline lists %d sequential test(s) there, found %d; lower or delete the line in %s", key, n, counts[key], baselinePath))
-		}
-	}
-
 	slices.Sort(problems)
 	require.Empty(t, problems, "test convention violations (see AGENTS.md); a justified exception takes a // %s<rule>: <reason> comment", ignoreMarker)
 }
@@ -496,6 +452,9 @@ func Test_TestConventions_Rules(t *testing.T) {
 		{"Setenv cannot be parallel", "func TestA(t *testing.T) {\n\tt.Setenv(\"A\", \"b\")\n}", nil},
 		{"AllocsPerRun cannot be parallel", "func TestA(t *testing.T) {\n\ttesting.AllocsPerRun(1, func() {})\n}", nil},
 		{"marked exception", "// conventions:ignore parallel: global state\nfunc TestA(t *testing.T) {\n}", nil},
+		{"marker covers the subtests", "// conventions:ignore parallel: global state\nfunc TestA(t *testing.T) {\n\tt.Run(\"a\", func(t *testing.T) {})\n}", nil},
+		{"marker on another test does not cover this one", "// conventions:ignore parallel: global state\nfunc TestA(t *testing.T) {\n}\n\nfunc TestB(t *testing.T) {\n}", []string{ruleParallel}},
+		{"marker that silences nothing", "// conventions:ignore parallel: global state\nfunc TestA(t *testing.T) {\n\tt.Parallel()\n}", []string{ruleParallel}},
 		{"benchmark needs no parallel", "func BenchmarkA(b *testing.B) {\n}", nil},
 		{"blank line after parallel", "func TestA(t *testing.T) {\n\tt.Parallel()\n\n\t_ = 1\n}", []string{ruleBlankLine}},
 		{"run hint", "// go test -run TestA\nfunc TestA(t *testing.T) {\n\tt.Parallel()\n}", []string{ruleHint}},
@@ -513,7 +472,7 @@ func Test_TestConventions_Rules(t *testing.T) {
 			require.NoError(t, err)
 			s.runRules()
 			var got []string
-			for _, f := range s.findings {
+			for _, f := range append(s.findings, s.staleIgnores()...) {
 				got = append(got, f.rule)
 			}
 			require.Equal(t, tc.want, got)

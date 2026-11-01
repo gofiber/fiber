@@ -195,6 +195,7 @@ func Test_Security_ValidateUpstream_Accepts(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_Forward_BlocksPrivateByDefault(t *testing.T) {
 	// Intentionally not parallel: it sets the strict default policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy())
@@ -347,6 +348,7 @@ func Test_Security_Do_BlocksFileScheme(t *testing.T) {
 	apptest.Expect(t, app, "/test", fiber.StatusInternalServerError)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_DoRedirects_BlocksDowngrade(t *testing.T) {
 	// No t.Parallel: this test mutates the global SecurityPolicy and would
 	// otherwise race with other proxy tests that read it at runtime.
@@ -563,6 +565,7 @@ func Test_Security_SecureTLSConfig_DefaultMinVersion(t *testing.T) {
 	require.Equal(t, uint16(0), in.MinVersion)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_WithSecurityPolicy_RestoresDefaults(t *testing.T) {
 	// No t.Parallel: mutates the global SecurityPolicy.
 	custom := proxyTestAllowPrivatePolicy()
@@ -680,6 +683,7 @@ func Test_Security_JoinUpstreamPath_NilBase(t *testing.T) {
 	require.Empty(t, joinUpstreamPath(nil, "/foo"))
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_WithSecurityPolicy_EmptyAllowedSchemesGetsDefault(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy and reads it back.
 	prev := WithSecurityPolicy(SecurityPolicy{})
@@ -760,6 +764,7 @@ func Test_Security_NormalizePolicy_RedirectSensitiveHeaders(t *testing.T) {
 	require.Equal(t, []string{"X-Changed", "", "X-Auth-Token\t"}, in, "the policy's slice must not reach the caller")
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_WithSecurityPolicy_CopiesRedirectSensitiveHeaders(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy and reads it back.
 	names := []string{" X-Api-Key", "X-Auth-Token"}
@@ -1959,6 +1964,7 @@ func Test_Security_KeepHopByHopHeaders_Balancer(t *testing.T) {
 }
 
 // Test_Security_KeepHopByHopHeaders_Do is the same opt-out for the helpers, via the process-wide policy.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_KeepHopByHopHeaders_Do(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
 	policy := proxyTestAllowPrivatePolicy()

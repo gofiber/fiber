@@ -64,6 +64,7 @@ func Test_Recover_EnableStackTrace(t *testing.T) {
 }
 
 // Not parallel: swaps os.Stderr to capture what the default handler writes.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Recover_DefaultStackTraceHandlerOutput(t *testing.T) {
 	r, w, err := os.Pipe()
 	require.NoError(t, err)

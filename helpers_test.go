@@ -438,6 +438,7 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Utils_ParamsMatch(t *testing.T) {
 	testCases := []struct {
 		description string

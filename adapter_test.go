@@ -306,6 +306,7 @@ func TestToFiberHandler_Express(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func TestAdapter_MixedHandlerIntegration(t *testing.T) {
 	app := New()
 

@@ -21,6 +21,7 @@ import (
 // Test_Prefork_Child_GracefulContext_WatchedOnce starts. In an ordinary test run the helper does nothing.
 const preforkChildHelperEnv = "FIBER_TEST_PREFORK_CHILD_HELPER"
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_App_Prefork_Child_Process(t *testing.T) {
 	skipIfNoIPv6(t)
 
@@ -49,6 +50,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	require.NotNil(t, app.Server().HeaderReceived)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_App_Prefork_Master_Process(t *testing.T) {
 	enableTestPreforkMaster(t)
 
@@ -76,6 +78,7 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 	dummyChildCmd.Store("go")
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	setupIsChild(t)
 
@@ -89,6 +92,7 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	require.Empty(t, out)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_IsChild(t *testing.T) {
 	require.False(t, IsChild())
 	setupIsChild(t)

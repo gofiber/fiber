@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func TestConfigDefault(t *testing.T) {
 	cfg := configDefault()
 	require.Equal(t, 30*time.Minute, cfg.IdleTimeout)
@@ -19,6 +20,7 @@ func TestConfigDefault(t *testing.T) {
 	require.Equal(t, "Lax", cfg.CookieSameSite)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func TestConfigDefaultWithCustomConfig(t *testing.T) {
 	customConfig := Config{
 		IdleTimeout:  48 * time.Hour,
@@ -32,12 +34,14 @@ func TestConfigDefaultWithCustomConfig(t *testing.T) {
 	require.Equal(t, "X-Custom-Session", cfg.Extractor.Key)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func TestDefaultErrorHandler(t *testing.T) {
 	ctx := apptest.Ctx(t, fiber.New())
 	DefaultErrorHandler(ctx, fiber.ErrInternalServerError)
 	require.Equal(t, fiber.StatusInternalServerError, ctx.Response().StatusCode())
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func TestAbsoluteTimeoutValidation(t *testing.T) {
 	require.PanicsWithValue(t, "[session] AbsoluteTimeout must be greater than or equal to IdleTimeout", func() {
 		configDefault(Config{

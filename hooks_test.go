@@ -22,6 +22,7 @@ func testSimpleHandler(c Ctx) error {
 	return c.SendString("simple")
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Hook_OnRoute(t *testing.T) {
 	// Not parallel: redirects the process-wide logger output.
 	app := New()
@@ -155,6 +156,7 @@ func Test_Hook_OnPreShutdown(t *testing.T) {
 	require.Equal(t, "pre-shutdown", calls)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Hook_OnPostShutdown(t *testing.T) {
 	t.Run("should execute post shutdown hook with error", func(t *testing.T) {
 		app := New()
@@ -378,6 +380,7 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 	})
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Hook_OnListenPrefork(t *testing.T) {
 	enableTestPreforkMaster(t)
 
@@ -395,6 +398,7 @@ func Test_Hook_OnListenPrefork(t *testing.T) {
 	require.Equal(t, "ready", calls)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Hook_OnHook(t *testing.T) {
 	app := New()
 
@@ -551,6 +555,7 @@ func Test_executeOnPreShutdownHooks_Error(t *testing.T) {
 	require.NotZero(t, buf.Len())
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_executeOnForkHooks_Error(t *testing.T) {
 	// Not parallel: redirects the process-wide logger output.
 	app := New()

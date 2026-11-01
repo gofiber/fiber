@@ -76,6 +76,7 @@ func Test_Logger_DefaultFormat_ColoredError(t *testing.T) {
 //
 // No t.Parallel() here or in the subtests: t.Setenv rejects both, and the env
 // is what is under test. Same as prefork_test.go and middleware/envvar.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_beforeHandlerFunc_StdoutColorSelection(t *testing.T) {
 	stdoutCfg := func() *Config { return &Config{Stream: os.Stdout, areColorsEnabled: true} }
 	isPlain := func(w io.Writer) bool {

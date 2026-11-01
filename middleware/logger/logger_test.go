@@ -426,6 +426,7 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 	apptest.Expect(t, app, "/", fiber.StatusNotFound)
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Logger_LoggerToWriter(t *testing.T) {
 	app := fiber.New()
 
@@ -665,6 +666,7 @@ func getLatencyTimeUnits() []struct {
 // Test_Logger_WithLatency checks that the latency is rendered in the unit that
 // fits its magnitude, both through the ${latency} tag and in the default format.
 // The latency is injected through LoggerFunc, so no request has to be slow.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Logger_WithLatency(t *testing.T) {
 	for _, tc := range []struct {
 		// latency extracts the rendered latency from what was logged.

@@ -231,6 +231,7 @@ func Test_ExponentialBackoff_Next(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_ExponentialBackoff_NextRandFailure(t *testing.T) {
 	// Not parallel: it swaps crypto/rand.Reader, which the parallel tests read.
 	original := rand.Reader
