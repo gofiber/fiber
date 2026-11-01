@@ -542,6 +542,8 @@ func Test_Redirect_Back_BrowserNormalizedReferer(t *testing.T) {
 		{referer: `/search?q=a\b`, expected: `/search?q=a\b`},
 		{referer: `/p?path=C:\Users\me`, expected: `/p?path=C:\Users\me`},
 		{referer: `/docs#a\b`, expected: `/docs#a\b`},
+		{referer: "/a\\b?next=\\c\t#part\\d", expected: `/a/b?next=\c#part\d`},
+		{referer: `/%5C?q=%09#%0A`, expected: `/%5C?q=%09#%0A`},
 		// Invalid UTF-8 must survive byte-for-byte rather than becoming U+FFFD.
 		{referer: "/back?x=caf\xe9\\y", expected: "/back?x=caf\xe9\\y"},
 	}
@@ -550,6 +552,28 @@ func Test_Redirect_Back_BrowserNormalizedReferer(t *testing.T) {
 		t.Run(tc.referer, func(t *testing.T) {
 			t.Parallel()
 			rootMiscBExpectBackTo(t, tc.referer, "/fallback", tc.expected)
+		})
+	}
+}
+
+func Benchmark_Redirect_Back_Normalization(b *testing.B) {
+	for _, tc := range []struct{ name, referer, want string }{
+		{"path", "/dashboard/settings", "/dashboard/settings"},
+		{"absolute", "http://example.com/account?from=profile#details", "http://example.com/account?from=profile#details"},
+		{"mixed", "/a\\b?next=\\c\t#part\\d", `/a/b?next=\c#part\d`},
+		{"cross-origin", `/\other.test/path`, "/fallback"},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			c := apptest.Ctx(b, New())
+			c.Request().Header.Set(HeaderReferer, tc.referer)
+			c.Request().URI().SetHost("example.com")
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				err = c.Redirect().Back("/fallback")
+			}
+			require.NoError(b, err)
+			require.Equal(b, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
 		})
 	}
 }
