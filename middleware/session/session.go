@@ -171,12 +171,13 @@ func (s *Session) Get(key any) any {
 }
 
 // lookup returns what is stored under key and the codec of the session, nil for
-// gob. See data.lookup.
+// gob. See data.fetch.
 func (s *Session) lookup(key any) (any, *namedCodec) {
 	if s.data == nil {
 		return nil, nil
 	}
-	return s.data.lookup(key)
+	v, codec, _ := s.data.fetch(key)
+	return v, codec
 }
 
 // GetAs returns the value stored under key as a V, and whether it is one: ok is

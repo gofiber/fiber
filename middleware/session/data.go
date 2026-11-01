@@ -143,18 +143,13 @@ func (d *data) emptyLocked() {
 //
 //	value := d.Get("key")
 func (d *data) Get(key any) any {
-	return decodeAny(d.lookup(key))
-}
-
-// lookup returns what is stored under key and the codec of the session, nil for
-// gob. With a codec the value is in its encoded form, which the caller decodes
-// outside the lock.
-func (d *data) lookup(key any) (any, *namedCodec) {
 	v, codec, _ := d.fetch(key)
-	return v, codec
+	return decodeAny(v, codec)
 }
 
-// fetch is lookup that also says whether there is a value under key.
+// fetch returns what is stored under key, the codec of the session, nil for gob, and
+// whether there is a value under key. With a codec the value is in its encoded form,
+// which the caller decodes outside the lock.
 func (d *data) fetch(key any) (any, *namedCodec, bool) {
 	d.RLock()
 	defer d.RUnlock()

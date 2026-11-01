@@ -118,6 +118,13 @@ func decodeAny(v any, codec *namedCodec) any {
 	if codec == nil {
 		return v
 	}
+	return decodeEncoded(v, codec)
+}
+
+// decodeEncoded is decodeAny for a session that has a codec. A function of its own,
+// so that decodeAny is small enough to be inlined, and a read of a session without
+// a codec costs no call.
+func decodeEncoded(v any, codec *namedCodec) any {
 	encoded, ok := v.([]byte)
 	if !ok {
 		return v
@@ -187,11 +194,17 @@ func valueInto(key, v any, codec *namedCodec, target reflect.Value) error {
 func decodeInto(key any, encoded []byte, codec *namedCodec, target reflect.Value) error {
 	elem := target.Elem()
 	if elem.IsZero() {
+		decoded := false
+		defer func() {
+			if !decoded {
+				// Undo what a decode that failed halfway, or panicked, put into the target.
+				elem.SetZero()
+			}
+		}()
 		if err := codec.Unmarshal(encoded, target.Interface()); err != nil {
-			// Undo what a decode that failed halfway put into the target.
-			elem.SetZero()
 			return fmt.Errorf("failed to decode session value %#v: %w", key, err)
 		}
+		decoded = true
 		return nil
 	}
 
@@ -210,6 +223,12 @@ func (s *Store) sessionCodec() *namedCodec {
 	if s.named != nil || s.Codec == nil {
 		return s.named
 	}
+	return s.unnamedCodec()
+}
+
+// unnamedCodec makes the codec of a Store that was built without NewStore, which
+// asks for the name every time.
+func (s *Store) unnamedCodec() *namedCodec {
 	return &namedCodec{Codec: s.Codec, name: s.Codec.Name()}
 }
 
@@ -220,9 +239,11 @@ func (s *Store) sessionCodec() *namedCodec {
 // record that is damaged counts as one the store can read, and the decode says
 // what is wrong with it.
 func (s *Store) refusesRecord(raw []byte) bool {
-	if !isRecord(raw) {
-		return false
-	}
+	return isRecord(raw) && s.cannotRead(raw)
+}
+
+// cannotRead is refusesRecord for a stored session that is a record.
+func (s *Store) cannotRead(raw []byte) bool {
 	codec := s.sessionCodec()
 	if codec != nil {
 		version, name, ok := recordCodecOf(raw)
