@@ -28,6 +28,11 @@ type data struct {
 	// when the session is acquired, and read under the lock. Reads and writes ask
 	// whether there is one with an if, not through an interface: a session without a
 	// codec, which is nearly every session, pays one comparison per read and no call.
+	// A valueFormat interface with a gob and a record implementation was tried, and
+	// measured with callgrind: 47 more instructions per Session.Get (375 to 422), 64
+	// per GetAs and 36 per Set, 6 to 16%. It would also have to be swapped while a
+	// session lives (a gob session stays gob in a store with a codec, and Reset turns
+	// it into the store's format), under the lock that every reader and writer takes.
 	codec *namedCodec
 
 	Data map[any]any // Session key counts are expected to be bounded.
