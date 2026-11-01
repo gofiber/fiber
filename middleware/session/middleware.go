@@ -42,24 +42,53 @@ type Middleware struct {
 	store        *Store
 	errorHandler func(fiber.Ctx, error)
 	mu           sync.RWMutex
-	// released is set when the request is over and the middleware was not recycled,
-	// because the request context holds it or another middleware still refers to it,
-	// so FromContext stops returning it.
-	released atomic.Bool
-	// isUnwound is set when a panic unwound the middleware. It then belongs to its
-	// request until the end of it, where nothing of this package runs any more, so
-	// FromContext returns it for the request itself, for whatever recovers the
-	// panic, and not for a Go context kept past the request.
-	isUnwound atomic.Bool
+	// life says what has happened to the middleware, see lifecycle. One word, read
+	// with and without the lock alike.
+	life atomic.Uint32
 	// children counts the middleware that run inside this one and still refer to it
 	// as their parent. Ordinarily each finishes before this one does. A middleware
 	// that abandons the request around the inner one breaks that: this one can
 	// finish while the handlers it abandoned go on running.
-	children    atomic.Int32
-	isDestroyed bool
-	// escaped marks a middleware the request context holds, which releaseMiddleware
-	// must not recycle.
-	escaped bool
+	children atomic.Int32
+}
+
+// lifecycle is what has happened to a Middleware, as flags of one word. A
+// middleware goes back to the pool with none of them set (one that has the released
+// or the escaped flag does not go back), and the readers that take no lock
+// (FromContext, the walk from an inner middleware) see the same value as the ones
+// that do.
+type lifecycle uint32
+
+const (
+	// lifeReleased is set when the request is over and the middleware was not
+	// recycled, because the request context holds it or another middleware still
+	// refers to it, so FromContext stops returning it.
+	lifeReleased lifecycle = 1 << iota
+	// lifeUnwound is set when a panic unwound the middleware. It then belongs to its
+	// request until the end of it, where nothing of this package runs any more, so
+	// FromContext returns it for the request itself, for whatever recovers the
+	// panic, and not for a Go context kept past the request.
+	lifeUnwound
+	// lifeDestroyed is set when the session was destroyed: it is not saved.
+	lifeDestroyed
+	// lifeEscaped marks a middleware the request context holds, which
+	// releaseMiddleware must not recycle.
+	lifeEscaped
+)
+
+// is reports whether the middleware has every flag of flag.
+func (m *Middleware) is(flag lifecycle) bool {
+	return lifecycle(m.life.Load())&flag == flag
+}
+
+// mark sets the flags of flag.
+func (m *Middleware) mark(flag lifecycle) {
+	m.life.Or(uint32(flag))
+}
+
+// unmark clears the flags of flag.
+func (m *Middleware) unmark(flag lifecycle) {
+	m.life.And(^uint32(flag))
 }
 
 // Context key for session middleware lookup.
@@ -169,7 +198,7 @@ func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
 	}
 
 	m.mu.RLock()
-	isDestroyed := m.isDestroyed
+	isDestroyed := m.is(lifeDestroyed)
 	m.mu.RUnlock()
 
 	// A destroyed session is not saved, and neither is a new one that holds
@@ -252,7 +281,9 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 	// The middleware still current in this request, if any, is the one this runs
 	// inside; storeMiddlewareContext is about to replace it.
 	outer := currentMiddleware(c)
-	m.escaped = storeMiddlewareContext(c, session, m)
+	if storeMiddlewareContext(c, session, m) {
+		m.mark(lifeEscaped)
+	}
 
 	// Last, so that nothing after the count is taken can panic: the call that gives
 	// it back is only installed once initialize has returned.
@@ -346,11 +377,11 @@ func releaseMiddleware(m *Middleware) {
 		// handlers still running that hold its middleware and its session: neither goes
 		// back to the pool, or such a handler could find the next request's in its place.
 		abandoned = c != nil && c.IsAbandoned()
-		drop = m.escaped || abandoned || m.children.Load() > 0
+		drop = m.is(lifeEscaped) || abandoned || m.children.Load() > 0
 		if drop {
 			// First, so a lookup that races the release finds a middleware that is
 			// visibly gone instead of one that is half reset.
-			m.released.Store(true)
+			m.mark(lifeReleased)
 		}
 		if c != nil {
 			// The current middleware of the request is m, unless a panic unwound one
@@ -359,7 +390,7 @@ func releaseMiddleware(m *Middleware) {
 				inner = current
 			}
 			clearMiddlewareLocals(c)
-			if m.escaped {
+			if m.is(lifeEscaped) {
 				shadowMiddlewareContext(c)
 			}
 		}
@@ -368,8 +399,7 @@ func releaseMiddleware(m *Middleware) {
 		m.Session = nil
 		m.ctx = nil
 		m.parent = nil
-		m.isDestroyed = false
-		m.isUnwound.Store(false)
+		m.unmark(lifeDestroyed | lifeUnwound)
 	}()
 
 	// Outside the lock of m: the walk from an inner middleware takes the locks the
@@ -444,10 +474,10 @@ func releaseMiddleware(m *Middleware) {
 //	m := session.FromContext(c)
 func FromContext(ctx any) *Middleware {
 	m, ok := fiber.ValueFromContext[*Middleware](ctx, middlewareContextKey)
-	if !ok || m == nil || m.released.Load() {
+	if !ok || m == nil || m.is(lifeReleased) {
 		return nil
 	}
-	if m.isUnwound.Load() && !isRequest(ctx) {
+	if m.is(lifeUnwound) && !isRequest(ctx) {
 		// A panic unwound it: it belongs to its request until the end of it, and a
 		// Go context kept past the request must not find it.
 		return nil
@@ -530,7 +560,7 @@ func (m *Middleware) DestroyWithContext(ctx context.Context) error {
 	defer m.mu.Unlock()
 
 	err := m.Session.DestroyWithContext(ctx)
-	m.isDestroyed = true
+	m.mark(lifeDestroyed)
 	return err
 }
 

@@ -42,7 +42,7 @@ func (m *Middleware) endIfUnwound(finished *bool, c fiber.Ctx) {
 // leaves the lock held, and the Ctx may be what panicked.
 func (m *Middleware) endUnwound(c fiber.Ctx) {
 	m.unpin()
-	m.isUnwound.Store(true)
+	m.mark(lifeUnwound)
 	rctx := c.RequestCtx()
 	if rctx != nil {
 		rctx.SetUserValue(unwoundKey{m}, unwoundCloser{m})
@@ -106,7 +106,7 @@ func (m *Middleware) detachSoon(rctx *fasthttp.RequestCtx) {
 // detachIfUnwound ends the request of a middleware a panic unwound, and is also what the
 // release of an outer middleware that finishes first does to the inner one.
 func (m *Middleware) detachIfUnwound() {
-	if m.isUnwound.Load() {
+	if m.is(lifeUnwound) {
 		m.detachSoon(nil)
 	}
 }

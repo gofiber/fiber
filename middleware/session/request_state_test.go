@@ -128,7 +128,7 @@ func Test_Session_Middleware_ReleaseForgetsTheStoreAndTheErrorHandler(t *testing
 	require.NotNil(t, m.errorHandler)
 
 	// Dropped, not recycled, so that the test can look at it afterwards.
-	m.escaped = true
+	m.mark(lifeEscaped)
 	releaseMiddleware(m)
 
 	require.Nil(t, m.Store())

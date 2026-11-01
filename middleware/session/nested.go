@@ -126,7 +126,7 @@ func (m *Middleware) find(match func(*Middleware) bool) *Middleware {
 
 	m.mu.RLock()
 	for {
-		if m.released.Load() {
+		if m.is(lifeReleased) {
 			m.mu.RUnlock()
 			return nil
 		}

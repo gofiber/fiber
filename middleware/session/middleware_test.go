@@ -873,7 +873,7 @@ func Test_Middleware_WithContext_ErrorPropagation(t *testing.T) {
 		t.Parallel()
 		m := &Middleware{Session: newSessionWithStorage(t, &contextStorage{})}
 		require.ErrorIs(t, m.DestroyWithContext(canceledCtx()), context.Canceled)
-		require.True(t, m.isDestroyed)
+		require.True(t, m.is(lifeDestroyed))
 	})
 
 	t.Run("ResetWithContext propagates storage error", func(t *testing.T) {
@@ -1135,13 +1135,13 @@ func Test_Session_ReleaseMiddleware_DoesNotRecycleAPublishedOne(t *testing.T) {
 	t.Parallel()
 
 	published := acquireMiddleware()
-	published.escaped = true
+	published.mark(lifeEscaped)
 	releaseMiddleware(published)
-	require.True(t, published.released.Load())
+	require.True(t, published.is(lifeReleased))
 
 	local := acquireMiddleware()
 	releaseMiddleware(local)
-	require.False(t, local.released.Load(), "a middleware only the locals reach goes back to the pool unmarked")
+	require.False(t, local.is(lifeReleased), "a middleware only the locals reach goes back to the pool unmarked")
 
 	// sync.Pool gives no promise about what comes back, but it can only return
 	// what was put in, so the published one must never appear.
@@ -1408,7 +1408,7 @@ func Test_Session_Middleware_AbandonedWithoutTimeoutKeepsItsObjects(t *testing.T
 	require.NoError(t, err)
 	require.NotEmpty(t, stored, "and its session is saved")
 
-	require.True(t, m.released.Load(), "the middleware is finished, and not in the pool")
+	require.True(t, m.is(lifeReleased), "the middleware is finished, and not in the pool")
 	require.Equal(t, "alice", sess.Get("user"), "its session is left as it was, not reset for the pool")
 }
 
