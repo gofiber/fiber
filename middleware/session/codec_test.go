@@ -1282,12 +1282,13 @@ func Test_Codec_GetInto(t *testing.T) {
 }
 
 // targetCodec is a JSONCodec that remembers what its last Unmarshal was given, and
-// can be made to fail after it has decoded.
+// can be made to fail or to panic after it has decoded.
 type targetCodec struct {
 	JSONCodec
-	fail error
-	last any
-	mu   sync.Mutex
+	fail   error
+	last   any
+	mu     sync.Mutex
+	panics bool
 }
 
 func (c *targetCodec) Unmarshal(data []byte, v any) error {
@@ -1296,6 +1297,9 @@ func (c *targetCodec) Unmarshal(data []byte, v any) error {
 	c.mu.Unlock()
 	if err := c.JSONCodec.Unmarshal(data, v); err != nil {
 		return err
+	}
+	if c.panics {
+		panic("boom")
 	}
 	return c.fail
 }
@@ -1345,6 +1349,15 @@ func Test_Codec_GetInto_DecodesIntoTheTarget(t *testing.T) {
 		err := sess.GetInto("user", &got)
 		require.ErrorContains(t, err, "boom")
 		require.Same(t, &got, codec.target(), "it was decoded into the variable, which the failure then cleared")
+		require.Zero(t, got)
+	})
+
+	t.Run("a decode that panics leaves a zero target as it was", func(t *testing.T) {
+		t.Parallel()
+		codec, sess := setup(t, nil)
+		codec.panics = true
+		var got codecProfile
+		require.PanicsWithValue(t, "boom", func() { _ = sess.GetInto("user", &got) })
 		require.Zero(t, got)
 	})
 
