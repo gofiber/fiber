@@ -423,9 +423,11 @@ func releaseMiddleware(m *Middleware) {
 // for another request, but its session is gone, so the methods that use it panic.
 // A middleware that a panic unwound is not saved or recycled either, and stays the
 // current one for whatever recovers the panic, with its session and the one it
-// runs inside, until the request ends: a Destroy, Reset, Regenerate or Save from
-// there changes the storage and sets the cookies as before the panic. It has let
-// go of the fiber.Ctx, and lets go of the request when fasthttp resets it, so a
+// runs inside, until the request ends: a Destroy, Reset or Regenerate from there
+// changes the storage and sets the cookies as before the panic, and a Save saves
+// the session and sets its cookie, which it does not do while the middleware is
+// in charge of the session. It has let go of the fiber.Ctx, and lets go of the
+// request when fasthttp resets it, so a
 // goroutine of the handler that still holds the session reaches no other request;
 // a Go context kept past the request does not find the middleware. A goroutine of
 // your own that outlives the handler has no such guarantee: give it the session

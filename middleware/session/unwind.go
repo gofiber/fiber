@@ -30,7 +30,8 @@ func (m *Middleware) unwoundUnlessFinished(finished *bool, c fiber.Ctx) {
 // or run its storage calls under it. The session keeps the request itself, which
 // lives on until fasthttp resets it: whatever recovers the panic can still reach
 // the middleware, its session and the one it runs inside, change the storage
-// through them and set the cookies, as before the panic; the middleware is kept in
+// through them and set the cookies (a Destroy, Reset or Regenerate as before the
+// panic, a Save now that the middleware is not going to save); the middleware is kept in
 // the request's values, so that fasthttp closes it when it resets the request, and
 // the session lets go of the request then, before fasthttp reuses it (Close). An
 // outer middleware that finishes first closes it itself. Neither is saved or
