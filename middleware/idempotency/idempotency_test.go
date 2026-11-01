@@ -1040,3 +1040,46 @@ func Test_Idempotency_RefusedRequestIsNotStored(t *testing.T) {
 	require.Equal(t, "ok", body)
 	require.Equal(t, 1, calls)
 }
+
+// go test -run Test_New_ReplayDoesNotDuplicateHeadersSetByEarlierMiddleware
+func Test_New_ReplayDoesNotDuplicateHeadersSetByEarlierMiddleware(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	// Middleware ahead of idempotency in the chain runs for every request,
+	// including a replay, and stamps its headers on the current response.
+	requests := 0
+	app.Use(func(c fiber.Ctx) error {
+		requests++
+		c.Set("Access-Control-Allow-Origin", "*")
+		c.Set("X-Request-ID", fmt.Sprintf("request-%d", requests))
+		return c.Next()
+	})
+	app.Use(New())
+
+	count := 0
+	app.Post("/", func(c fiber.Ctx) error {
+		count++
+		c.Set("X-Order", "order-created")
+		return c.SendString("resp")
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req.Header.Set(ConfigDefault.KeyHeader, validKey)
+	resp1, _ := do(app, req)
+	require.Equal(t, []string{"*"}, resp1.Header["Access-Control-Allow-Origin"])
+	require.Equal(t, []string{"request-1"}, resp1.Header["X-Request-Id"])
+
+	req2 := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req2.Header.Set(ConfigDefault.KeyHeader, validKey)
+	resp2, body2 := do(app, req2)
+	require.Equal(t, "resp", body2)
+	require.Equal(t, 1, count, "the handler must not run again on a replay")
+	// The stored copies must not stack onto the headers this request's own
+	// middleware already set: one value each, and it is this request's.
+	require.Equal(t, []string{"*"}, resp2.Header["Access-Control-Allow-Origin"])
+	require.Equal(t, []string{"request-2"}, resp2.Header["X-Request-Id"])
+	// A header only the handler set is replayed from the stored response.
+	require.Equal(t, []string{"order-created"}, resp2.Header["X-Order"])
+}
