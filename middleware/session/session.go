@@ -18,11 +18,11 @@ import (
 // Session serializes access to its internal state with mutexes, but it is
 // request-scoped and must not be used after the request lifecycle ends.
 type Session struct {
-	ctx fiber.Ctx // fiber context of the request; read it with requestCtx, cut clears it
+	ctx fiber.Ctx // fiber context of the request; read it with requestCtx, detach clears it
 	// rctx is the request itself, for a session a panic unwound the middleware of: the
 	// fiber.Ctx goes back to the pool as soon as the handlers return, while the request
 	// lives on until fasthttp resets it, and until then the session still writes its
-	// cookies to it. Set and cleared by cut.
+	// cookies to it. Set and cleared by detach.
 	rctx        *fasthttp.RequestCtx
 	config      *Store                  // store configuration
 	data        *data                   // key value data
@@ -970,7 +970,7 @@ func (s *Session) requestCtx() fiber.Ctx {
 	return c
 }
 
-// cut points the session at rctx, the request itself, instead of at the fiber.Ctx
+// detach points the session at rctx, the request itself, instead of at the fiber.Ctx
 // of its request, or at nothing when rctx is nil. The session of an abandoned or
 // unwound request is not recycled, since a handler that outlives the request may
 // still be using it, but the fiber.Ctx is: it is reused for another request once
@@ -978,20 +978,20 @@ func (s *Session) requestCtx() fiber.Ctx {
 // that request's response, or run its storage calls under its context. The request
 // itself lives on until fasthttp resets it, and a session a panic unwound the
 // middleware of still writes its cookies there, for whatever recovers the panic.
-func (s *Session) cut(rctx *fasthttp.RequestCtx) {
+func (s *Session) detach(rctx *fasthttp.RequestCtx) {
 	s.mu.Lock()
 	s.ctx, s.rctx = nil, rctx
 	s.mu.Unlock()
 }
 
-// cutSoon is cut for a caller that must not wait: when the session is locked, by a
-// save that is writing to the storage for instance, the cut follows from a
+// detachSoon is detach for a caller that must not wait: when the session is locked, by a
+// save that is writing to the storage for instance, the detaching follows from a
 // goroutine of its own.
-func (s *Session) cutSoon(rctx *fasthttp.RequestCtx) {
+func (s *Session) detachSoon(rctx *fasthttp.RequestCtx) {
 	if s.mu.TryLock() {
 		s.ctx, s.rctx = nil, rctx
 		s.mu.Unlock()
 		return
 	}
-	go s.cut(rctx)
+	go s.detach(rctx)
 }

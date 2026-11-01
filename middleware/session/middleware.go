@@ -152,19 +152,19 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 // serve runs the rest of the stack, then saves the session and releases the
 // middleware. A panic that unwinds it, in the rest of the stack, in the save or in
 // the release, skips all of that: the deferred call ends the middleware instead,
-// see unwound. The panic itself goes on as before. The defer is open-coded, and
+// see endUnwound. The panic itself goes on as before. The defer is open-coded, and
 // costs the request a few instructions; the closure does not escape.
 func (m *Middleware) serve(c fiber.Ctx, cfg *Config) error {
 	finished := false
-	defer m.unwoundUnlessFinished(&finished, c)
+	defer m.endIfUnwound(&finished, c)
 
 	stackErr := c.Next()
 
 	// A handler timeout.New gave up on may still use m: neither save nor pool it or its session,
-	// but cut both off from the request, whose context is reused once such handlers are done.
+	// but detach both from the request, whose context is reused once such handlers are done.
 	// IsAbandoned goes first: its atomic load orders the read after the timeout middleware's write.
 	if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
-		m.cutSoon(nil)
+		m.detachSoon(nil)
 		finished = true
 		return stackErr
 	}
@@ -376,14 +376,14 @@ func releaseMiddleware(m *Middleware) {
 	// Outside the lock of m: the walk from an inner middleware takes the locks the
 	// other way round.
 	if inner != nil {
-		inner.endRequest()
+		inner.detachIfUnwound()
 	}
 
 	// After m let go of it: until then a goroutine that holds m could still reach
 	// the session through m.Session once it was handed to another request.
 	if session != nil {
 		if abandoned {
-			session.cut(nil)
+			session.detach(nil)
 		} else {
 			releaseSession(session)
 		}

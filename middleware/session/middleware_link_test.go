@@ -460,7 +460,7 @@ func Test_Session_Save_EntryPointsReadTheContextUnderItsLock(t *testing.T) {
 				return
 			default:
 			}
-			sess.cut(nil)
+			sess.detach(nil)
 			sess.mu.Lock()
 			sess.ctx = c
 			sess.mu.Unlock()
@@ -834,13 +834,13 @@ func Test_Session_Middleware_UnwoundUnlessFinished(t *testing.T) {
 	require.Equal(t, int32(1), outer.children.Load())
 
 	finished := true
-	inner.unwoundUnlessFinished(&finished, c)
+	inner.endIfUnwound(&finished, c)
 	require.Equal(t, int32(1), outer.children.Load(), "the count of a finished middleware was given back")
 	require.Same(t, outer, inner.pinned)
 	require.NotNil(t, inner.ctx, "a finished middleware was cut off")
 
 	finished = false
-	inner.unwoundUnlessFinished(&finished, c)
+	inner.endIfUnwound(&finished, c)
 	require.Zero(t, outer.children.Load(), "the count of one that was unwound was not")
 	require.Nil(t, inner.ctx, "the middleware that was unwound still refers to the fiber.Ctx")
 	require.NotNil(t, inner.Session, "its session was let go of")
