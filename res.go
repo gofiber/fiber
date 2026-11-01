@@ -978,11 +978,22 @@ func (r *DefaultRes) XML(data any) error {
 }
 
 // Links joins the links followed by the property to populate the response's Link HTTP header field.
+// Like Express, it adds to a Link header that is already set, such as the preload links
+// SendEarlyHints writes, instead of replacing it.
 func (r *DefaultRes) Links(link ...string) {
 	if len(link) == 0 {
 		return
 	}
 	bb := bytebufferpool.Get()
+	existing, multiLine := peekJoinedResponseHeader(&r.c.fasthttp.Response.Header, HeaderLink)
+	if len(existing) > 0 {
+		bb.Write(existing)
+		bb.WriteByte(',')
+	}
+	if multiLine {
+		// Set only rewrites the first field line; drop the rest, now copied into bb.
+		r.c.fasthttp.Response.Header.Del(HeaderLink)
+	}
 	for i := range link {
 		if i%2 == 0 {
 			bb.WriteByte('<')

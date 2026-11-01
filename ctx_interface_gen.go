@@ -700,6 +700,8 @@ type Ctx interface {
 	// This method also sets the content header to application/xml; charset=utf-8.
 	XML(data any) error
 	// Links joins the links followed by the property to populate the response's Link HTTP header field.
+	// Like Express, it adds to a Link header that is already set, such as the preload links
+	// SendEarlyHints writes, instead of replacing it.
 	Links(link ...string)
 	// Location sets the response Location HTTP header to the specified path parameter.
 	Location(path string)
