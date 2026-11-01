@@ -251,10 +251,15 @@ func Test_ExpectBody(t *testing.T) {
 	})
 }
 
-type failingBody struct{}
+// failingBody fails every read and counts its closes.
+type failingBody struct{ closed int }
 
-func (failingBody) Read([]byte) (int, error) { return 0, errors.New("read failed") }
-func (failingBody) Close() error             { return nil }
+func (*failingBody) Read([]byte) (int, error) { return 0, errors.New("read failed") }
+
+func (b *failingBody) Close() error {
+	b.closed++
+	return nil
+}
 
 func Test_Body(t *testing.T) {
 	t.Parallel()
@@ -274,10 +279,12 @@ func Test_Body(t *testing.T) {
 		require.Equal(t, 1, body.closed, "the original body is closed once")
 	})
 
-	t.Run("read error fails the test", func(t *testing.T) {
+	t.Run("read error fails the test and still closes the body", func(t *testing.T) {
 		t.Parallel()
-		out := failure(t, func(tb *fakeTB) { apptest.Body(tb, &http.Response{Body: failingBody{}}) })
+		body := &failingBody{}
+		out := failure(t, func(tb *fakeTB) { apptest.Body(tb, &http.Response{Body: body}) })
 		require.Contains(t, out, "read failed")
+		require.Equal(t, 1, body.closed, "the body is closed although the read failed")
 	})
 }
 

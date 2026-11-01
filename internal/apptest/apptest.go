@@ -121,14 +121,16 @@ func ExpectBody[C any, T Target](tb testing.TB, app Tester[C], target T, status 
 }
 
 // BodyBytes reads and closes the response body, failing the test on a read
-// error. The body is replaced by an in-memory copy, so calling BodyBytes or
-// [Body] again, or reading resp.Body afterwards, yields the same bytes.
+// error; the body is closed even then. The body is replaced by an in-memory
+// copy, so calling BodyBytes or [Body] again, or reading resp.Body afterwards,
+// yields the same bytes.
 func BodyBytes(tb testing.TB, resp *http.Response) []byte {
 	tb.Helper()
 
 	b, err := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
 	require.NoError(tb, err, "read response body")
-	require.NoError(tb, resp.Body.Close(), "close response body")
+	require.NoError(tb, closeErr, "close response body")
 	resp.Body = io.NopCloser(bytes.NewReader(b))
 	return b
 }
