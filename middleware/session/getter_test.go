@@ -16,11 +16,6 @@ type getterProfile struct{ Name string }
 
 type getterUserID int
 
-// mapReader is a reader that is neither a *Session nor a *Middleware.
-type mapReader map[any]any
-
-func (m mapReader) Get(key any) any { return m[key] }
-
 func Test_GetAs(t *testing.T) {
 	t.Parallel()
 
@@ -102,29 +97,14 @@ func Test_GetAs(t *testing.T) {
 
 	t.Run("a nil source finds nothing", func(t *testing.T) {
 		t.Parallel()
-		var nilSession *Session
-		var nilMiddleware *Middleware
 
-		for name, src := range map[string]interface{ Get(key any) any }{
-			"untyped nil":    nil,
-			"nil session":    nilSession,
-			"nil middleware": nilMiddleware,
-		} {
-			value, ok := GetAs[string](src, "name")
-			require.False(t, ok, name)
-			require.Empty(t, value, name)
-		}
-	})
+		value, ok := GetAs[string]((*Session)(nil), "name")
+		require.False(t, ok, "nil session")
+		require.Empty(t, value)
 
-	t.Run("any other reader", func(t *testing.T) {
-		t.Parallel()
-		value, ok := GetAs[int](mapReader{"k": 5}, "k")
-		require.True(t, ok)
-		require.Equal(t, 5, value)
-		_, ok = GetAs[int](mapReader{}, "k")
-		require.False(t, ok)
-		_, ok = GetAs[int](mapReader{"k": "five"}, "k")
-		require.False(t, ok, "a value of another type is not found either")
+		value, ok = GetAs[string]((*Middleware)(nil), "name")
+		require.False(t, ok, "nil middleware")
+		require.Empty(t, value)
 	})
 }
 
@@ -169,7 +149,7 @@ func Test_GetAs_Allocations(t *testing.T) {
 	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[string](sess, "name") }))
 	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[int](sess, "count") }))
 	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[string](sess, "missing") }))
-	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[string](nil, "name") }))
+	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[string]((*Session)(nil), "name") }))
 
 	// A value that is costly to copy is no reason to allocate: the variable that a codec
 	// would decode into is made only when there is one.

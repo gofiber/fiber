@@ -3,7 +3,6 @@ package session
 import (
 	"bytes"
 	"context"
-	"encoding/gob"
 	"fmt"
 	"sync"
 	"time"
@@ -46,13 +45,6 @@ const (
 	// sessionIDContextKey is the key used to store the session ID in the context locals.
 	absExpirationKey absExpirationKeyType = iota
 )
-
-// Session pool for reusing byte buffers.
-var byteBufferPool = sync.Pool{
-	New: func() any {
-		return new(bytes.Buffer)
-	},
-}
 
 var sessionPool = sync.Pool{
 	New: func() any {
@@ -170,14 +162,13 @@ func (s *Session) Get(key any) any {
 	return s.data.Get(key)
 }
 
-// lookup returns what is stored under key and the codec of the session, nil for
-// gob. See data.fetch.
-func (s *Session) lookup(key any) (any, *namedCodec) {
+// lookup returns what is stored under key. See data.fetch.
+func (s *Session) lookup(key any) stored {
 	if s.data == nil {
-		return nil, nil
+		return stored{}
 	}
-	v, codec, _ := s.data.fetch(key)
-	return v, codec
+	held, _ := s.data.fetch(key)
+	return held
 }
 
 // GetAs returns the value stored under key as a V, and whether it is one: ok is
@@ -192,8 +183,7 @@ func (s *Session) lookup(key any) (any, *namedCodec) {
 // up the saved snapshot when it could share memory with the session (a map,
 // slice, array, pointer or struct). With a Codec the value is decoded into a new
 // V, ok is false when that fails, and nothing is shared: V is what the stored
-// value decodes into, not a check that this is what it was stored as, and src has
-// to be the *Session or *Middleware itself, not a type that embeds one.
+// value decodes into, not a check that this is what it was stored as.
 //
 // Parameters:
 //   - src: The session or middleware to read from.
@@ -206,34 +196,23 @@ func (s *Session) lookup(key any) (any, *namedCodec) {
 // Usage:
 //
 //	name, ok := session.GetAs[string](session.FromContext(c), "name")
-func GetAs[V any](src interface{ Get(key any) any }, key any) (V, bool) {
-	var v any
-	var codec *namedCodec
-	switch typed := src.(type) {
-	case nil:
-		var zero V
-		return zero, false
+func GetAs[V any, S *Session | *Middleware](src S, key any) (V, bool) {
+	var held stored
+	switch typed := any(src).(type) {
 	case *Middleware:
-		if typed == nil {
-			var zero V
-			return zero, false
+		if typed != nil {
+			held = typed.lookup(key)
 		}
-		v, codec = typed.lookup(key)
 	case *Session:
-		if typed == nil {
-			var zero V
-			return zero, false
+		if typed != nil {
+			held = typed.lookup(key)
 		}
-		v, codec = typed.lookup(key)
-	default:
-		// Any other reader is trusted to cope with a missing key.
-		v = src.Get(key)
 	}
 
-	if codec != nil {
-		return decodeAs[V](v, codec)
+	if held.codec != nil {
+		return decodeAs[V](held)
 	}
-	value, ok := v.(V)
+	value, ok := held.value.(V)
 	return value, ok
 }
 
@@ -266,24 +245,23 @@ func (s *Session) GetInto(key, target any) error {
 	if err != nil {
 		return err
 	}
-	v, codec, err := s.fetch(key)
+	held, err := s.fetch(key)
 	if err != nil {
 		return err
 	}
-	return valueInto(key, v, codec, rv)
+	return held.into(key, rv)
 }
 
-// fetch returns what is stored under key and the codec of the session, nil for
-// gob, or ErrKeyNotFound.
-func (s *Session) fetch(key any) (any, *namedCodec, error) {
+// fetch returns what is stored under key, or ErrKeyNotFound.
+func (s *Session) fetch(key any) (stored, error) {
 	if s.data == nil {
-		return nil, nil, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
+		return stored{}, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
 	}
-	v, codec, ok := s.data.fetch(key)
+	held, ok := s.data.fetch(key)
 	if !ok {
-		return nil, nil, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
+		return stored{}, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
 	}
-	return v, codec, nil
+	return held, nil
 }
 
 // Set updates or creates a new key-value pair in the session.
@@ -589,7 +567,7 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	changed := data == nil || s.data.dirty.Load()
 	if changed {
 		s.data.RLock()
-		encoded, err := s.encodeSessionData()
+		encoded, err := s.data.encode()
 		s.data.RUnlock()
 		if err != nil {
 			return fmt.Errorf("failed to encode data: %w", err)
@@ -871,7 +849,9 @@ func (s *Session) setCookieAttributes(fcookie *fasthttp.Cookie) {
 	fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
 }
 
-// decodeSessionData decodes session data from raw bytes
+// decodeSessionData loads the stored session rawData into the data of the session and
+// keeps the snapshot it was decoded from, which a save writes back while the data is
+// unchanged. The caller holds the lock of the data.
 //
 // Parameters:
 //   - rawData: The raw byte data to decode.
@@ -883,60 +863,12 @@ func (s *Session) setCookieAttributes(fcookie *fasthttp.Cookie) {
 //
 //	err := s.decodeSessionData(rawData)
 func (s *Session) decodeSessionData(rawData []byte) error {
-	// Copied before decoding: the storage owns rawData and may reuse it after Get
-	// returns, so the decode and the snapshot Save writes back read the same bytes.
-	raw := utils.CopyBytes(rawData)
-	if isRecord(raw) {
-		// The caller has seen to it that the store can read the record.
-		if err := s.data.loadRecord(raw); err != nil {
-			return err
-		}
-		s.rawData = raw
-		return nil
+	snapshot, err := s.data.decode(rawData)
+	if err != nil {
+		return err
 	}
-	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
-	defer byteBufferPool.Put(byteBuffer)
-	defer byteBuffer.Reset()
-	_, _ = byteBuffer.Write(raw)
-	decCache := gob.NewDecoder(byteBuffer)
-	if err := decCache.Decode(&s.data.Data); err != nil {
-		return fmt.Errorf("failed to decode session data: %w", err)
-	}
-	// A session that a store without a codec stored stays gob, with all that goes with
-	// it, until it ends or is reset: its values are not converted, which could not
-	// be done without loss for every type.
-	s.data.codec = nil
-	s.rawData = raw
-	s.data.dirty.Store(false)
+	s.rawData = snapshot
 	return nil
-}
-
-// encodeSessionData encodes session data to raw bytes
-//
-// Returns:
-//   - []byte: The encoded session data.
-//   - error: An error if the encoding fails.
-//
-// Usage:
-//
-//	encoded, err := s.encodeSessionData()
-func (s *Session) encodeSessionData() ([]byte, error) {
-	if s.data.codec != nil {
-		return s.data.record()
-	}
-	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
-	defer byteBufferPool.Put(byteBuffer)
-	defer byteBuffer.Reset()
-	encCache := gob.NewEncoder(byteBuffer)
-	if err := encCache.Encode(&s.data.Data); err != nil {
-		return nil, fmt.Errorf("failed to encode session data: %w", err)
-	}
-	// Copy the bytes
-	// Copy the data in buffer
-	encodedBytes := make([]byte, byteBuffer.Len())
-	copy(encodedBytes, byteBuffer.Bytes())
-
-	return encodedBytes, nil
 }
 
 // isEmptyFresh reports whether the session is new and holds nothing a handler
@@ -957,7 +889,7 @@ func (s *Session) isEmptyFresh() bool {
 // yet, so the data needs no lock.
 func (s *Session) bind(store *Store) {
 	s.config = store
-	s.data.codec = store.sessionCodec()
+	s.data.bind(store.sessionCodec())
 }
 
 // absExpiration returns the session absolute expiration time or a zero time if not set.

@@ -1,6 +1,8 @@
 package session
 
 import (
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"reflect"
@@ -143,26 +145,25 @@ func (d *data) emptyLocked() {
 //
 //	value := d.Get("key")
 func (d *data) Get(key any) any {
-	v, codec, _ := d.fetch(key)
-	return decodeAny(v, codec)
+	held, _ := d.fetch(key)
+	return held.decode()
 }
 
-// fetch returns what is stored under key, the codec of the session, nil for gob, and
-// whether there is a value under key. With a codec the value is in its encoded form,
-// which the caller decodes outside the lock.
-func (d *data) fetch(key any) (any, *namedCodec, bool) {
+// fetch returns what is stored under key and whether there is a value under key. With
+// a codec the value is in its encoded form, which the caller decodes outside the lock.
+func (d *data) fetch(key any) (stored, bool) {
 	d.RLock()
 	defer d.RUnlock()
 	v, ok := d.Data[key]
 	if d.codec != nil {
 		// What the caller gets is decoded from v, so nothing it holds aliases the session.
-		return v, d.codec, ok
+		return stored{value: v, codec: d.codec}, ok
 	}
 	if valueMayAlias(v) {
 		// The caller can now mutate the session through v without calling Set.
 		d.dirty.Store(true)
 	}
-	return v, nil, ok
+	return stored{value: v}, ok
 }
 
 // getRaw returns what is stored under key as it is held, which under a codec is
@@ -333,6 +334,65 @@ func (d *data) isEmpty() bool {
 		}
 	}
 	return true
+}
+
+// byteBufferPool reuses the buffers that gob reads from and writes to.
+var byteBufferPool = sync.Pool{
+	New: func() any {
+		return new(bytes.Buffer)
+	},
+}
+
+// bind makes the data hold what codec says, nil for gob. It is for data that was just
+// acquired, which nothing else refers to yet, so it needs no lock.
+func (d *data) bind(codec *namedCodec) {
+	d.codec = codec
+}
+
+// decode loads rawData, a stored session, into the data and returns the bytes it was
+// decoded from, a copy the data owns, which a save writes back while the data is
+// unchanged. A record is read with the codec of the data, and its values stay encoded
+// until they are read. Anything else is gob, and so stays the session of a store with
+// a codec until it ends or is reset: its values are not converted, which could not be
+// done without loss for every type. The caller holds the lock.
+func (d *data) decode(rawData []byte) ([]byte, error) {
+	// Copied before decoding: the storage owns rawData and may reuse it after Get
+	// returns, so the decode and the snapshot Save writes back read the same bytes.
+	raw := utils.CopyBytes(rawData)
+	if isRecord(raw) {
+		// The caller has seen to it that the store can read the record.
+		if err := d.loadRecord(raw); err != nil {
+			return nil, err
+		}
+		return raw, nil
+	}
+	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
+	defer byteBufferPool.Put(byteBuffer)
+	defer byteBuffer.Reset()
+	_, _ = byteBuffer.Write(raw)
+	if err := gob.NewDecoder(byteBuffer).Decode(&d.Data); err != nil {
+		return nil, fmt.Errorf("failed to decode session data: %w", err)
+	}
+	d.codec = nil
+	d.dirty.Store(false)
+	return raw, nil
+}
+
+// encode returns the data as the bytes to store: a record under a codec, a gob stream
+// otherwise. The caller holds the read lock.
+func (d *data) encode() ([]byte, error) {
+	if d.codec != nil {
+		return d.record()
+	}
+	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
+	defer byteBufferPool.Put(byteBuffer)
+	defer byteBuffer.Reset()
+	if err := gob.NewEncoder(byteBuffer).Encode(&d.Data); err != nil {
+		return nil, fmt.Errorf("failed to encode session data: %w", err)
+	}
+	encodedBytes := make([]byte, byteBuffer.Len())
+	copy(encodedBytes, byteBuffer.Bytes())
+	return encodedBytes, nil
 }
 
 // loadRecord decodes raw, a record of the codec of the data, into it. The values

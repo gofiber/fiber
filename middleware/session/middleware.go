@@ -486,12 +486,11 @@ func (m *Middleware) Set(key, value any) {
 //	value := m.Get("key")
 func (m *Middleware) Get(key any) any {
 	// The lock is held for the lookup only: a codec decodes without it.
-	v, codec := m.lookup(key)
-	return decodeAny(v, codec)
+	return m.lookup(key).decode()
 }
 
 // lookup is Session.lookup under the read lock of the middleware, as Get takes it.
-func (m *Middleware) lookup(key any) (any, *namedCodec) {
+func (m *Middleware) lookup(key any) stored {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -499,7 +498,7 @@ func (m *Middleware) lookup(key any) (any, *namedCodec) {
 }
 
 // fetch is Session.fetch under the read lock of the middleware.
-func (m *Middleware) fetch(key any) (any, *namedCodec, error) {
+func (m *Middleware) fetch(key any) (stored, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -526,11 +525,11 @@ func (m *Middleware) GetInto(key, target any) error {
 		return err
 	}
 	// Under the lock, only the lookup: a codec is not called with it held.
-	v, codec, err := m.fetch(key)
+	held, err := m.fetch(key)
 	if err != nil {
 		return err
 	}
-	return valueInto(key, v, codec, rv)
+	return held.into(key, rv)
 }
 
 // Delete removes a key-value pair from the session.

@@ -817,14 +817,14 @@ func New(config ...Config) fiber.Handler
 func NewWithStore(config ...Config) (fiber.Handler, *Store)
 func NewStore(config ...Config) *Store
 func FromContext(ctx any) *Middleware
-func GetAs[V any](src interface{ Get(key any) any }, key any) (V, bool)
+func GetAs[V any, S *Session | *Middleware](src S, key any) (V, bool)
 func NewCodec(name string, marshal func(v any) ([]byte, error), unmarshal func(data []byte, v any) error) Codec
 func DefaultErrorHandler(c fiber.Ctx, err error)
 ```
 
 `NewWithStore` returns the middleware together with the `Store` it uses, for example to call `RegisterType`. `FromContext` returns `nil` when the request has no session middleware. With several session middleware it returns the innermost one, the last to run; see [Multiple Sessions per Request](#multiple-sessions-per-request).
 
-`GetAs` reads a value as a given type without a type assertion: `ok` is `false` when the key is absent or holds a value of another type, and the zero value is returned with it. `src` is a `*session.Middleware` or a `*session.Session`. A `nil` one finds nothing, so `session.GetAs[int](session.FromContext(c), "visits")` is safe even for a request without the session middleware. With a [codec](#codecs-and-typed-reads) the value is decoded into a `V`. `GetAs` returns its value, so a struct of a kilobyte or more is copied more than once on the way out; `GetInto` fills a variable of yours and copies it once. A pointer in the session, without a codec, copies nothing but the pointer.
+`GetAs` reads a value as a given type without a type assertion: `ok` is `false` when the key is absent or holds a value of another type, and the zero value is returned with it. `src` is a `*session.Middleware` or a `*session.Session`, and nothing else compiles. A `nil` one finds nothing, so `session.GetAs[int](session.FromContext(c), "visits")` is safe even for a request without the session middleware. With a [codec](#codecs-and-typed-reads) the value is decoded into a `V`. `GetAs` returns its value, so a struct of a kilobyte or more is copied more than once on the way out; `GetInto` fills a variable of yours and copies it once. A pointer in the session, without a codec, copies nothing but the pointer.
 
 `Codec` is the interface of a format for session values, `JSONCodec` is the one of `encoding/json`, and `NewCodec` makes one of a name and the two functions of a library. See [Codecs and Typed Reads](#codecs-and-typed-reads).
 

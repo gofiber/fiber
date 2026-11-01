@@ -110,40 +110,48 @@ func checkCodecName(name string) {
 	}
 }
 
-// decodeAny decodes the encoded value v of a session under codec into an
-// interface{}. What is not an encoded value, a missing key or a nil, is returned
-// as it is, and so is every value of a session without a codec. A value that does
-// not decode is returned encoded, a copy of its bytes, so that it is never taken
-// for a key that is not there.
-func decodeAny(v any, codec *namedCodec) any {
-	if codec == nil {
-		return v
-	}
-	return decodeEncoded(v, codec)
+// stored is what a session holds under a key, with the codec of the session, which
+// says what it is: the value itself without a codec, the value as the codec encoded
+// it (a []byte) with one. A read takes it out of the session under its lock and
+// decodes it after the lock is let go, since a codec is not called with a lock held.
+type stored struct {
+	value any
+	codec *namedCodec
 }
 
-// decodeEncoded is decodeAny for a session that has a codec. A function of its own,
-// so that decodeAny is small enough to be inlined, and a read of a session without
-// a codec costs no call.
-func decodeEncoded(v any, codec *namedCodec) any {
-	encoded, ok := v.([]byte)
+// decode returns the value as an interface{}. What is not an encoded value, a missing
+// key or a nil, is returned as it is, and so is every value of a session without a
+// codec. A value that does not decode is returned encoded, a copy of its bytes, so
+// that it is never taken for a key that is not there.
+func (s stored) decode() any {
+	if s.codec == nil {
+		return s.value
+	}
+	return s.decodeEncoded()
+}
+
+// decodeEncoded is decode for a session that has a codec. A function of its own, so
+// that decode is small enough to be inlined, and a read of a session without a codec
+// costs no call.
+func (s stored) decodeEncoded() any {
+	encoded, ok := s.value.([]byte)
 	if !ok {
-		return v
+		return s.value
 	}
 	var out any
-	if err := codec.Unmarshal(utils.CopyBytes(encoded), &out); err != nil {
+	if err := s.codec.Unmarshal(utils.CopyBytes(encoded), &out); err != nil {
 		return utils.CopyBytes(encoded)
 	}
 	return out
 }
 
-// decodeAs reads v, the encoded value of a key under a codec, as a V. It is a
-// function of its own so that the V it hands to the codec, which then lives on
-// the heap, is made only when there is a codec.
-func decodeAs[V any](v any, codec *namedCodec) (V, bool) {
+// decodeAs reads the encoded value of a key under a codec as a V. It is a function of
+// its own so that the V it hands to the codec, which then lives on the heap, is made
+// only when there is a codec.
+func decodeAs[V any](s stored) (V, bool) {
 	var out V
-	encoded, ok := v.([]byte)
-	if !ok || codec.Unmarshal(utils.CopyBytes(encoded), &out) != nil {
+	encoded, ok := s.value.([]byte)
+	if !ok || s.codec.Unmarshal(utils.CopyBytes(encoded), &out) != nil {
 		var zero V
 		return zero, false
 	}
@@ -159,25 +167,24 @@ func intoTarget(target any) (reflect.Value, error) {
 	return rv, nil
 }
 
-// valueInto stores v, the stored value of a key, into target, a non-nil pointer,
-// all or nothing. Without a codec v is the value itself and has to be assignable
-// to what the target points to. With one, v is the encoded value, and decodeInto
-// decodes it.
-func valueInto(key, v any, codec *namedCodec, target reflect.Value) error {
-	if codec != nil {
-		encoded, ok := v.([]byte)
+// into stores the value of key into target, a non-nil pointer, all or nothing.
+// Without a codec the value is the one stored and has to be assignable to what the
+// target points to. With one it is encoded, and decodeInto decodes it.
+func (s stored) into(key any, target reflect.Value) error {
+	if s.codec != nil {
+		encoded, ok := s.value.([]byte)
 		if !ok {
 			return fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
 		}
-		return decodeInto(key, utils.CopyBytes(encoded), codec, target)
+		return decodeInto(key, utils.CopyBytes(encoded), s.codec, target)
 	}
 
 	elem := target.Elem()
-	if v == nil {
+	if s.value == nil {
 		elem.SetZero()
 		return nil
 	}
-	have := reflect.ValueOf(v)
+	have := reflect.ValueOf(s.value)
 	if !have.Type().AssignableTo(elem.Type()) {
 		return fmt.Errorf("session value %#v is a %s, not assignable to a %s", key, have.Type(), elem.Type())
 	}

@@ -1662,8 +1662,8 @@ func Test_Middleware_ReadsTakeTheReadLock(t *testing.T) {
 					"Get":     func() { _ = m.Get("k") },
 					"GetAs":   func() { _, _ = GetAs[string](m, "k") },
 					"GetInto": func() { var s string; _ = m.GetInto("k", &s) }, //nolint:errcheck // only the locking matters here
-					"lookup":  func() { _, _ = m.lookup("k") },
-					"fetch":   func() { _, _, _ = m.fetch("k") }, //nolint:errcheck // only the locking matters here
+					"lookup":  func() { _ = m.lookup("k") },
+					"fetch":   func() { _, _ = m.fetch("k") }, //nolint:errcheck // only the locking matters here
 				}
 				for readName, read := range reads {
 					m.mu.Lock()
