@@ -58,8 +58,7 @@ type cachedID struct {
 	res   extractors.Result
 }
 
-// A pointer so a test can swap in a pool of its own; nothing else reassigns it.
-var cachedIDPool = &sync.Pool{New: func() any { return new(cachedID) }}
+var cachedIDPool = sync.Pool{New: func() any { return new(cachedID) }}
 
 // Close returns the list that starts at head to the pool. fasthttp calls it on every
 // request-local io.Closer when it resets the request; callers should not.

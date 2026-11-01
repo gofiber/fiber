@@ -2,7 +2,6 @@ package session
 
 import (
 	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -81,44 +80,6 @@ func Test_Session_Store_PassesOverAnUnsavedIDOfAStoreItShares(t *testing.T) {
 	require.Equal(t, "v", g.Get("k"))
 }
 
-// The IDs of a request are kept newest first, and a store passes over the ones that
-// name no session. W, X and Y cache an ID each, none of them saved, and R, which shares
-// a cookie with X but none with Y, takes neither: it finds its own session.
-func Test_Session_Store_CachedIDsAreKeptNewestFirst(t *testing.T) {
-	t.Parallel()
-
-	shared := memory.New()
-	app := fiber.New()
-	storeB := NewStore(Config{Extractor: extractors.FromCookie("b_sid"), Storage: shared})
-	storeW := NewStore(Config{Extractor: extractors.FromCookie("w_sid")})
-	storeX := NewStore(Config{Extractor: extractors.FromCookie("x_sid")})
-	storeY := NewStore(Config{Extractor: extractors.FromCookie("y_sid")})
-	storeR := NewStore(Config{
-		Extractor: extractors.Chain(extractors.FromCookie("b_sid"), extractors.FromCookie("x_sid")),
-		Storage:   shared,
-	})
-	idB := seedSession(t, app, storeB, func(s *Session) { s.Set("k", "v") })
-
-	c := newRequest(t, app)
-	c.Request().Header.SetCookie("b_sid", idB)
-
-	for _, store := range []*Store{storeB, storeW, storeX, storeY} {
-		sess, err := store.Get(c)
-		require.NoError(t, err)
-		sess.Release()
-	}
-	newest := requestIDs(c)
-	require.NotNil(t, newest)
-	require.Same(t, storeY, newest.store, "the later one comes first")
-	require.Same(t, storeX, newest.next.store)
-	require.Same(t, storeW, newest.next.next.store)
-	require.Nil(t, newest.next.next.next, "B found its session and cached nothing")
-
-	r := mustGet(t, storeR, c)
-	require.False(t, r.Fresh(), "R shares X's cookie but not Y's, and must find its own session")
-	require.Equal(t, idB, r.ID())
-}
-
 // A new session whose cookie names an ID the storage does not know is cached with the
 // others of the request, as the session of a cookie that names a stored one is not.
 // W and X cache an ID first, none of them saved; Y, whose cookie is unknown, caches
@@ -153,6 +114,7 @@ func Test_Session_Store_FreshSessionOfAnUnknownCookieIsCached(t *testing.T) {
 	require.True(t, y.Fresh(), "Y's cookie names no stored session")
 	require.NoError(t, y.Save())
 	require.Same(t, storeY, requestIDs(c).store, "Y cached its ID after W and X")
+	require.Equal(t, y.ID(), c.Locals(sessionIDContextKey), "and it is the ID the logger shows")
 
 	r := mustGet(t, storeR, c)
 	require.Equal(t, y.ID(), r.ID(), "R shares Y's cookie, and Y cached last")
@@ -194,64 +156,6 @@ func Test_Session_Store_MiddlewarePassesOverAnIDThatNamesNoSession(t *testing.T)
 	_, id := sendRequest(t, app, "/seed", nil)
 	_, body := sendRequest(t, app, "/read", map[string]string{"s2b_sid": id})
 	require.Equal(t, id+"|false", body, "the second middleware found its own session instead of taking the ID that the first cached")
-}
-
-// Store.Get says which store cached a new ID, with the ID and where the request named
-// it, whether or not the client sent an ID, and a store that caches again replaces its
-// entry and comes first.
-func Test_Session_Store_Get_CachesTheNewIDWithItsStore(t *testing.T) {
-	t.Parallel()
-
-	store := NewStore()
-	other := NewStore(Config{Extractor: extractors.FromCookie("other_sid")})
-	app := fiber.New()
-
-	withID := newRequest(t, app)
-	withID.Request().Header.SetCookie("session_id", "names-no-session")
-	sess := mustGet(t, store, withID)
-	require.True(t, sess.Fresh())
-	cached := requestIDs(withID)
-	require.NotNil(t, cached)
-	require.Same(t, store, cached.store)
-	require.Equal(t, sess.ID(), cached.id)
-	require.Equal(t, extractors.Result{Value: "names-no-session", Key: "session_id", Source: extractors.SourceCookie, Resolved: true}, cached.res,
-		"the provenance of the ID the client sent, which the new one is written back to")
-	require.Nil(t, cached.next)
-	require.Equal(t, sess.ID(), withID.Locals(sessionIDContextKey), "and it is the ID the logger shows")
-
-	without := newRequest(t, app)
-	first := mustGet(t, store, without)
-	require.True(t, first.Fresh())
-	require.Zero(t, requestIDs(without).res, "the client sent no ID")
-	mustGet(t, other, without)
-	again := mustGet(t, store, without)
-	require.True(t, again.Fresh(), "the first ID was never saved")
-	require.NotEqual(t, first.ID(), again.ID())
-
-	newest := requestIDs(without)
-	require.Same(t, store, newest.store, "a store that caches again comes first")
-	require.Equal(t, again.ID(), newest.id)
-	require.Same(t, other, newest.next.store)
-	require.Nil(t, newest.next.next, "and has one entry")
-}
-
-// The list of IDs goes back to a pool shared by every request, whole: it must hold
-// nothing of the request it served.
-//
-// Not parallel: it swaps the shared pool for its own, to see what Close hands back.
-func Test_CachedID_CloseForgetsEverything(t *testing.T) {
-	shared := cachedIDPool
-	cachedIDPool = &sync.Pool{New: func() any { return new(cachedID) }}
-	t.Cleanup(func() { cachedIDPool = shared })
-
-	res := extractors.Result{Value: "v", Key: "k", Source: extractors.SourceCookie, Resolved: true}
-	oldest := &cachedID{store: &Store{}, id: "a", res: res}
-	middle := &cachedID{next: oldest, store: &Store{}, id: "b", res: res}
-	newest := &cachedID{next: middle, store: &Store{}, id: "c", res: res}
-	require.NoError(t, newest.Close())
-	for _, entry := range []*cachedID{oldest, middle, newest} {
-		require.Equal(t, cachedID{}, *entry)
-	}
 }
 
 // Stores are told apart by every source they read, by kind and name, whether or

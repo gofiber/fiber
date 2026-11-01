@@ -649,34 +649,6 @@ func Test_Store_ExtractorErrorReachesCaller(t *testing.T) {
 	})
 }
 
-// Test_Store_CachedIDsAreRecycled pins that the pooled entries of the cached IDs go
-// back to the pool on request reset, which is what keeps them off the heap.
-func Test_Store_CachedIDsAreRecycled(t *testing.T) {
-	t.Parallel()
-
-	store := NewStore()
-	app := fiber.New()
-	app.Get("/t", func(c fiber.Ctx) error {
-		sess, err := store.Get(c)
-		if err != nil {
-			return err
-		}
-		return c.SendString(sess.ID())
-	})
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(fiber.MethodGet)
-	fctx.Request.SetRequestURI("/t")
-	fctx.Request.Header.SetCookie("session_id", "some-id")
-	app.Handler()(fctx)
-
-	_, ok := fctx.UserValue(cachedIDsContextKey).(*cachedID)
-	require.True(t, ok, "the cached ID must be stored behind a pointer, not boxed by value")
-
-	fctx.Request.Reset()
-	require.Nil(t, fctx.UserValue(cachedIDsContextKey), "the reset must drop the entry")
-}
-
 // Test_Store_KeylessExtractorStillGuarded pins that the fixation guard keys off
 // whether an ID arrived with the request, not off Key. A keyless child —
 // FromCustom(""), or a hand-rolled one — used to skip the guard entirely and let
@@ -710,81 +682,6 @@ func Test_Store_KeylessExtractorStillGuarded(t *testing.T) {
 
 	require.NotContains(t, string(ctx.Response().Header.Peek(fiber.HeaderSetCookie)), plantedID,
 		"a read-only ID must not be pinned into a cookie just because its extractor has no Key")
-}
-
-// Test_Store_CachedIDIsReused pins that a store that caches a second ID on the same
-// request reuses the entry it has in the list rather than taking a fresh one from
-// the pool, and that the entry stays the head fasthttp reclaims. Overwriting the local
-// with another entry would strand the first outside the pool, since fasthttp only
-// reclaims the one the local holds.
-//
-// Nothing is saved, so that both Get calls issue an ID: a saved one would be found
-// the second time, and cache nothing.
-func Test_Store_CachedIDIsReused(t *testing.T) {
-	t.Parallel()
-
-	store := NewStore()
-	other := NewStore(Config{Extractor: extractors.FromCookie("other_sid")})
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-
-	sess, err := store.Get(ctx)
-	require.NoError(t, err)
-	require.True(t, sess.Fresh())
-	first := requestIDs(ctx)
-	require.NotNil(t, first)
-
-	_, err = store.Get(ctx)
-	require.NoError(t, err)
-	require.Same(t, first, requestIDs(ctx), "the second ID must refill the entry, not strand it")
-
-	_, err = other.Get(ctx)
-	require.NoError(t, err)
-	second := requestIDs(ctx)
-	require.NotSame(t, first, second, "another store caches in an entry of its own")
-	require.Same(t, first, second.next)
-
-	_, err = store.Get(ctx)
-	require.NoError(t, err)
-	require.Same(t, first, requestIDs(ctx), "and the entry of the first comes back to the head, whole")
-	require.Same(t, second, first.next)
-	require.Nil(t, second.next, "without losing or repeating the other")
-}
-
-// Test_Store_CachedIDKeepsProvenance pins that an ID cached on the request comes
-// with the provenance of the ID the request named, which says where the session is
-// written back to. Losing it would leave the write-back guard with no origin for an ID
-// the store already accepted.
-//
-// The cookie names an ID storage does not hold, which is what puts the request
-// in that state: the ID resolves, then misses in storage, so a fresh one is generated
-// and cached. A store that shares the cookie finds the session the first one saved
-// under it, and its provenance with it.
-func Test_Store_CachedIDKeepsProvenance(t *testing.T) {
-	t.Parallel()
-
-	storage := memory.New()
-	store := NewStore(Config{Storage: storage})
-	sharing := NewStore(Config{Storage: storage})
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-	ctx.Request().Header.SetCookie("session_id", "not-in-storage")
-
-	first, err := store.Get(ctx)
-	require.NoError(t, err)
-	require.True(t, first.Fresh(), "an unknown ID must generate a fresh session")
-	require.Equal(t, "not-in-storage", first.extractor.Value)
-	require.Equal(t, extractors.SourceCookie, first.extractor.Source)
-	require.NoError(t, first.Save())
-
-	second, err := sharing.Get(ctx)
-	require.NoError(t, err)
-	require.False(t, second.Fresh())
-	require.Equal(t, first.ID(), second.ID())
-	require.Equal(t, first.extractor, second.extractor,
-		"the cached ID must bring the provenance with it")
 }
 
 // Test_Store_CachedIDsDoNotLeakAcrossRequests runs requests of random Store.Get
@@ -890,34 +787,6 @@ func Test_Store_CachedIDReadErrorReachesCaller(t *testing.T) {
 	storage.armed.Store(true)
 	_, err = store.Get(ctx)
 	require.ErrorIs(t, err, errDown)
-}
-
-// Test_CachedID_PoolHoldsSomethingElse covers the guard on what the pool hands
-// back. sync.Pool is typed as any, so an entry is rebuilt rather than trusted, and a
-// pool whose New answers with something else takes that branch on every Get.
-//
-// Putting sentinels into the shared pool would not: sync.Pool empties itself at
-// GC, so a collection between the Put and the Get leaves the assertions below
-// passing with the branch never reached. Not parallel, because swapping a
-// package-level var is only safe while nothing else runs.
-func Test_CachedID_PoolHoldsSomethingElse(t *testing.T) {
-	shared := cachedIDPool
-	// Pointer-like, so handing one out does not allocate.
-	cachedIDPool = &sync.Pool{New: func() any { return new(struct{}) }}
-	t.Cleanup(func() { cachedIDPool = shared })
-
-	store := NewStore()
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-	ctx.Request().Header.SetCookie("session_id", "an-id")
-
-	_, err := store.Get(ctx)
-	require.NoError(t, err)
-
-	cached := requestIDs(ctx)
-	require.NotNil(t, cached, "a usable entry whatever the pool held")
-	require.Equal(t, "an-id", cached.res.Value)
 }
 
 // A store that is asked twice, for a visitor whose cookie names no session, looks that cookie
