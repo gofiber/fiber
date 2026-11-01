@@ -304,3 +304,42 @@ func serveGet(app *fiber.App, uri string) int {
 	app.Handler()(fctx)
 	return fctx.Response.StatusCode()
 }
+
+var (
+	readAnySink    any
+	readStringSink string
+)
+
+// Benchmark_Session_Read reads one string, which is what a session mostly holds, each way there
+// is. It is the cost an application pays on every read.
+//
+// go test -run=^$ -bench=Benchmark_Session_Read -benchmem
+func Benchmark_Session_Read(b *testing.B) {
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	sess, err := NewStore().Get(c)
+	require.NoError(b, err)
+	defer sess.Release()
+	sess.Set("name", "alice")
+	m := &Middleware{Session: sess}
+
+	b.Run("Session.Get", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			readAnySink = sess.Get("name")
+		}
+	})
+	b.Run("Middleware.Get", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			readAnySink = m.Get("name")
+		}
+	})
+	b.Run("GetAs", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			readStringSink, _ = GetAs[string](sess, "name")
+		}
+	})
+}
