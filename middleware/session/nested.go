@@ -1,40 +1,9 @@
 package session
 
 import (
-	"context"
-
 	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/fasthttp"
 )
-
-// shadowedContext is a request context in which the session ID and the middleware
-// that a middleware stored in it are hidden behind empty values, as newer values
-// would hide them: a context cannot lose a value. It takes one allocation where
-// hiding the two values behind context.WithValue takes two.
-type shadowedContext struct {
-	context.Context //nolint:containedctx // it wraps a context to answer for two keys, as context.WithValue does
-}
-
-// Value answers for the two keys of the session middleware, and asks the context
-// it wraps for any other.
-func (s shadowedContext) Value(key any) any {
-	switch key {
-	case sessionIDContextKey:
-		return ""
-	case middlewareContextKey:
-		return (*Middleware)(nil)
-	default:
-		return s.Context.Value(key)
-	}
-}
-
-// shadowMiddlewareContext hides the session ID and the middleware that the request
-// context holds, which only a middleware that stored them there needs. Without
-// PassLocalsToContext nothing was stored there, and wrapping the context would
-// only allocate.
-func shadowMiddlewareContext(c fiber.Ctx) {
-	c.SetContext(shadowedContext{Context: c.Context()})
-}
 
 // restoreMiddlewareContext makes outer the current middleware of the request
 // again, once the middleware that ran inside it has finished and cleared its

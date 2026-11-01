@@ -140,130 +140,6 @@ func (s *Session) ID() string {
 	return s.id
 }
 
-// Get returns the value associated with the given key.
-//
-// Parameters:
-//   - key: The key to retrieve.
-//
-// Returns:
-//   - any: The value associated with the key.
-//
-// Note: returning a value that can alias the session (map, slice, array,
-// pointer, struct) makes every later Save re-encode, since the caller may
-// mutate it in place without calling Set.
-//
-// Usage:
-//
-//	value := s.Get("key")
-func (s *Session) Get(key any) any {
-	if s.data == nil {
-		return nil
-	}
-	return s.data.Get(key)
-}
-
-// lookup returns what is stored under key. See data.fetch.
-func (s *Session) lookup(key any) stored {
-	if s.data == nil {
-		return stored{}
-	}
-	held, _ := s.data.fetch(key)
-	return held
-}
-
-// GetAs returns the value stored under key as a V, and whether it is one: ok is
-// false when the key is absent or holds a value of another type, and the zero
-// value is returned with it. It spares the type assertion, and with it the
-// panic of an unchecked one.
-//
-// src is a *Session or a *Middleware. A nil one finds nothing, so the result of
-// FromContext can be passed as it is.
-//
-// Without a Codec the value is the one that was stored, and like Get, GetAs gives
-// up the saved snapshot when it could share memory with the session (a map,
-// slice, array, pointer or struct). With a Codec the value is decoded into a new
-// V, ok is false when that fails, and nothing is shared: V is what the stored
-// value decodes into, not a check that this is what it was stored as.
-//
-// Parameters:
-//   - src: The session or middleware to read from.
-//   - key: The key to retrieve.
-//
-// Returns:
-//   - V: The value, or the zero value of V.
-//   - bool: True if the key holds a V; otherwise, false.
-//
-// Usage:
-//
-//	name, ok := session.GetAs[string](session.FromContext(c), "name")
-func GetAs[V any, S *Session | *Middleware](src S, key any) (V, bool) {
-	var held stored
-	switch typed := any(src).(type) {
-	case *Middleware:
-		if typed != nil {
-			held = typed.lookup(key)
-		}
-	case *Session:
-		if typed != nil {
-			held = typed.lookup(key)
-		}
-	}
-
-	if held.codec != nil {
-		return decodeAs[V](held)
-	}
-	value, ok := held.value.(V)
-	return value, ok
-}
-
-// GetInto stores the value under key into target, a non-nil pointer, and reports
-// why it could not: ErrKeyNotFound when there is no such key, in which case target
-// is left as it is.
-//
-// With a Codec, only that value is decoded, and nothing is shared with the
-// session: the other values are not touched. A target that holds its zero value,
-// as a fresh variable does, is decoded into directly, so nothing is copied. One
-// that holds something is replaced by a new value, so that nothing of the old value
-// is merged into the result. Either way a failure leaves target as it was.
-// Without a Codec, the stored value is assigned to target, which has to be able to
-// hold it, and like Get, GetInto gives up the saved snapshot when the value could
-// share memory with the session.
-//
-// Parameters:
-//   - key: The key to retrieve.
-//   - target: A pointer to the variable to fill.
-//
-// Returns:
-//   - error: ErrKeyNotFound, or why the value could not be decoded or assigned.
-//
-// Usage:
-//
-//	var user User
-//	err := s.GetInto("user", &user)
-func (s *Session) GetInto(key, target any) error {
-	rv, err := intoTarget(target)
-	if err != nil {
-		return err
-	}
-	held, err := s.fetch(key)
-	if err != nil {
-		return err
-	}
-	return held.into(key, rv)
-}
-
-// fetch returns what is stored under key, or ErrKeyNotFound.
-func (s *Session) fetch(key any) (stored, error) {
-	if s.data == nil {
-		return stored{}, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
-	}
-	held, ok := s.data.fetch(key)
-	if !ok {
-		return stored{}, fmt.Errorf("%w: %#v", ErrKeyNotFound, key)
-	}
-	return held, nil
-}
-
 // Set updates or creates a new key-value pair in the session.
 //
 // Parameters:
@@ -610,36 +486,6 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	return s.config.Storage.SetWithContext(ctx, key, data, ttl)
 }
 
-// minLifetime is the shortest lifetime the absolute deadline cuts a save down
-// to. Storages count whole seconds, and a shorter one could round down to zero,
-// which many of them read as "never expires".
-const minLifetime = time.Second
-
-// lifetime returns how long a save keeps the record and the cookie: the idle
-// timeout, cut down to the time left until the absolute deadline, but never
-// below minLifetime. A save in the last second before the deadline, or after it,
-// therefore keeps the record for minLifetime, not for less, and never leaves one
-// that does not expire.
-//
-// Returns:
-//   - time.Duration: The time to live for the storage and the cookie.
-func (s *Session) lifetime() time.Duration {
-	if s.config.AbsoluteTimeout <= 0 {
-		return s.idleTimeout
-	}
-	return s.cappedLifetime()
-}
-
-// cappedLifetime is lifetime for a store with an absolute timeout.
-func (s *Session) cappedLifetime() time.Duration {
-	ttl := s.idleTimeout
-	deadline := s.absExpiration()
-	if deadline.IsZero() {
-		return ttl
-	}
-	return min(ttl, max(time.Until(deadline), minLifetime))
-}
-
 // Keys retrieves all keys in the current session.
 //
 // Returns:
@@ -669,45 +515,6 @@ func (s *Session) SetIdleTimeout(idleTimeout time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.idleTimeout = idleTimeout
-}
-
-// IdleTimeout returns the idle timeout of the session: the one set with
-// SetIdleTimeout, or else the store's. A save applies it, cut down to the time
-// left until the absolute deadline. A timeout set with SetIdleTimeout holds for
-// every later save of this session in the request, unless the session is reset,
-// but is not kept between requests, so the next request has to set it again.
-//
-// Returns:
-//   - time.Duration: The idle timeout of this session.
-//
-// Usage:
-//
-//	timeout := s.IdleTimeout()
-func (s *Session) IdleTimeout() time.Duration {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.idleTimeout > 0 || s.config == nil {
-		return s.idleTimeout
-	}
-	return s.config.IdleTimeout
-}
-
-// AbsoluteExpiry returns the time at which the session ends however active it
-// is, and whether it has such a time at all: a store without an AbsoluteTimeout
-// hands out sessions that only the idle timeout ends.
-//
-// Returns:
-//   - time.Time: The absolute expiration time, or the zero time.
-//   - bool: True if the session has an absolute expiration time; otherwise, false.
-//
-// Usage:
-//
-//	if expiry, ok := s.AbsoluteExpiry(); ok {
-//	    // warn the user when time.Until(expiry) is short
-//	}
-func (s *Session) AbsoluteExpiry() (time.Time, bool) {
-	expiry := s.absExpiration()
-	return expiry, !expiry.IsZero()
 }
 
 // getExtractorInfo returns the cookie and header extractors the session ID is
@@ -749,19 +556,6 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 	}
 
 	return s.config.writableSinks()
-}
-
-// requestResponse returns the request and the response the session writes its ID
-// to: those of its fiber.Ctx, or of the request itself once the middleware was
-// unwound, or nil when the session has let go of the request. The caller holds s.mu.
-func (s *Session) requestResponse() (*fasthttp.Request, *fasthttp.Response) {
-	if s.ctx != nil {
-		return s.ctx.Request(), s.ctx.Response()
-	}
-	if s.rctx != nil {
-		return &s.rctx.Request, &s.rctx.Response
-	}
-	return nil, nil
 }
 
 // setSession writes the session ID to the response, with a lifetime of ttl.
@@ -959,39 +753,4 @@ func (s *Session) resolveContext() context.Context {
 		return c
 	}
 	return context.Background()
-}
-
-// requestCtx returns the context of the request the session belongs to, or nil
-// if it has none, or none any more.
-func (s *Session) requestCtx() fiber.Ctx {
-	s.mu.RLock()
-	c := s.ctx
-	s.mu.RUnlock()
-	return c
-}
-
-// detach points the session at rctx, the request itself, instead of at the fiber.Ctx
-// of its request, or at nothing when rctx is nil. The session of an abandoned or
-// unwound request is not recycled, since a handler that outlives the request may
-// still be using it, but the fiber.Ctx is: it is reused for another request once
-// those handlers are done, and whoever still holds the session must not write to
-// that request's response, or run its storage calls under its context. The request
-// itself lives on until fasthttp resets it, and a session a panic unwound the
-// middleware of still writes its cookies there, for whatever recovers the panic.
-func (s *Session) detach(rctx *fasthttp.RequestCtx) {
-	s.mu.Lock()
-	s.ctx, s.rctx = nil, rctx
-	s.mu.Unlock()
-}
-
-// detachSoon is detach for a caller that must not wait: when the session is locked, by a
-// save that is writing to the storage for instance, the detaching follows from a
-// goroutine of its own.
-func (s *Session) detachSoon(rctx *fasthttp.RequestCtx) {
-	if s.mu.TryLock() {
-		s.ctx, s.rctx = nil, rctx
-		s.mu.Unlock()
-		return
-	}
-	go s.detach(rctx)
 }

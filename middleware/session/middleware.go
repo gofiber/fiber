@@ -7,7 +7,6 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
@@ -473,65 +472,6 @@ func (m *Middleware) Set(key, value any) {
 	m.Session.Set(key, value)
 }
 
-// Get retrieves a value from the session by key.
-//
-// Parameters:
-//   - key: The key to retrieve.
-//
-// Returns:
-//   - any: The value associated with the key.
-//
-// Usage:
-//
-//	value := m.Get("key")
-func (m *Middleware) Get(key any) any {
-	// The lock is held for the lookup only: a codec decodes without it.
-	return m.lookup(key).decode()
-}
-
-// lookup is Session.lookup under the read lock of the middleware, as Get takes it.
-func (m *Middleware) lookup(key any) stored {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	return m.Session.lookup(key)
-}
-
-// fetch is Session.fetch under the read lock of the middleware.
-func (m *Middleware) fetch(key any) (stored, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	return m.Session.fetch(key)
-}
-
-// GetInto stores the value under key into target, a non-nil pointer. See
-// Session.GetInto.
-//
-// Parameters:
-//   - key: The key to retrieve.
-//   - target: A pointer to the variable to fill.
-//
-// Returns:
-//   - error: ErrKeyNotFound, or why the value could not be decoded or assigned.
-//
-// Usage:
-//
-//	var user User
-//	err := m.GetInto("user", &user)
-func (m *Middleware) GetInto(key, target any) error {
-	rv, err := intoTarget(target)
-	if err != nil {
-		return err
-	}
-	// Under the lock, only the lookup: a codec is not called with it held.
-	held, err := m.fetch(key)
-	if err != nil {
-		return err
-	}
-	return held.into(key, rv)
-}
-
 // Delete removes a key-value pair from the session.
 //
 // Parameters:
@@ -560,41 +500,6 @@ func (m *Middleware) Keys() []any {
 	defer m.mu.RUnlock()
 
 	return m.Session.Keys()
-}
-
-// IdleTimeout returns the idle timeout of the session. See Session.IdleTimeout.
-//
-// Like the other methods of the middleware it takes a lock of the session, which
-// a save holds while it calls the storage: do not call it from a Storage.
-//
-// Returns:
-//   - time.Duration: The idle timeout of the session.
-//
-// Usage:
-//
-//	timeout := m.IdleTimeout()
-func (m *Middleware) IdleTimeout() time.Duration {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	return m.Session.IdleTimeout()
-}
-
-// AbsoluteExpiry returns the time at which the session ends however active it
-// is, and whether it has one. See Session.AbsoluteExpiry.
-//
-// Returns:
-//   - time.Time: The absolute expiration time, or the zero time.
-//   - bool: True if the session has an absolute expiration time; otherwise, false.
-//
-// Usage:
-//
-//	expiry, ok := m.AbsoluteExpiry()
-func (m *Middleware) AbsoluteExpiry() (time.Time, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	return m.Session.AbsoluteExpiry()
 }
 
 // Destroy destroys the session.
@@ -730,4 +635,33 @@ func (m *Middleware) RegenerateWithContext(ctx context.Context) error {
 //	store := m.Store()
 func (m *Middleware) Store() *Store {
 	return m.store
+}
+
+// shadowedContext is a request context in which the session ID and the middleware
+// that a middleware stored in it are hidden behind empty values, as newer values
+// would hide them: a context cannot lose a value. It takes one allocation where
+// hiding the two values behind context.WithValue takes two.
+type shadowedContext struct {
+	context.Context //nolint:containedctx // it wraps a context to answer for two keys, as context.WithValue does
+}
+
+// Value answers for the two keys of the session middleware, and asks the context
+// it wraps for any other.
+func (s shadowedContext) Value(key any) any {
+	switch key {
+	case sessionIDContextKey:
+		return ""
+	case middlewareContextKey:
+		return (*Middleware)(nil)
+	default:
+		return s.Context.Value(key)
+	}
+}
+
+// shadowMiddlewareContext hides the session ID and the middleware that the request
+// context holds, which only a middleware that stored them there needs. Without
+// PassLocalsToContext nothing was stored there, and wrapping the context would
+// only allocate.
+func shadowMiddlewareContext(c fiber.Ctx) {
+	c.SetContext(shadowedContext{Context: c.Context()})
 }
