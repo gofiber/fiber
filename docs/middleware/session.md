@@ -278,6 +278,8 @@ app.Post("/login", func(c fiber.Ctx) error {
 
 These methods, `store.Delete` and `store.Reset` also hold against other requests of the same session that are still running: a request that loaded the session before its ID was deleted neither stores it again nor sends its cookie when it finishes, and its changes to the session are dropped. This holds when that request calls `Regenerate()` as well: the ID still changes, so the old one is never written again, but the new one is neither stored nor sent. Of two requests that rotate one session at the same time, only the first stores and sends a new ID, and a login that rotates a session a parallel logout just ended is dropped too. A request that left the session unchanged does not write it back over a change another request stored meanwhile, so a role taken away while it ran stays taken away; of two requests that both change the session, the one that saves last stores its whole session. This is guaranteed within one process. Processes that share an external `Storage` are not coordinated, because `fiber.Storage` has no conditional write, so a request still running on another instance can store a session it loaded before the delete. Where a logout must hold across instances, also keep a server-side revocation marker (for example, a per-user "sessions valid after" timestamp) that every request checks.
 
+`Regenerate()` and `Reset()` also tell the request about the new ID, so a store that is asked again with `store.Get(c)` finds the session under it once it is saved. Like `Save()`, they use the request of the session: call them from the goroutine that serves the request, not from one of your own.
+
 ### Common Security Mistakes
 
 ❌ **Session Fixation Vulnerability:**
