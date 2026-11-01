@@ -571,7 +571,7 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 		}
 	}
 
-	return s.config.writableSinks()
+	return s.config.places().sinks
 }
 
 // setSession writes the session ID to the response, with a lifetime of ttl.

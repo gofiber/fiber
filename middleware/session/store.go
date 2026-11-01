@@ -240,6 +240,41 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 	return sess, err
 }
 
+// FromContext returns the Middleware that this store's session middleware
+// installed for the request, or nil when the store has none there. It accepts
+// the same contexts as the package-level FromContext and ends the same way: a
+// context kept past the request returns nil.
+//
+// Register one session middleware per store, each over its own cookie or
+// header, and a handler reaches every session of the request:
+//
+//	loginHandler, loginStore := session.NewWithStore(session.Config{
+//	    Extractor: extractors.FromCookie("login_sid"),
+//	})
+//	appHandler, appStore := session.NewWithStore(session.Config{
+//	    Extractor: extractors.FromCookie("app_sid"),
+//	})
+//	app.Use(loginHandler, appHandler)
+//
+//	login := loginStore.FromContext(c)
+//	appSession := appStore.FromContext(c)
+//
+// Like the methods of Middleware it takes the read lock of the middleware it
+// visits, so call it from handlers, not from a Storage while that middleware is
+// destroying, resetting or regenerating its session, which hold the lock.
+//
+// Parameters:
+//   - ctx: The Fiber context, a *fasthttp.RequestCtx, or a context.Context.
+//
+// Returns:
+//   - *Middleware: The store's middleware if it is running for the request;
+//     otherwise, nil.
+func (s *Store) FromContext(ctx any) *Middleware {
+	return FromContext(ctx).find(func(m *Middleware) bool {
+		return m.store == s
+	})
+}
+
 // loadSession retrieves a session based on the context. The session is the one saved
 // under an ID that a store sharing a source with s cached on the request, the newest
 // first, or else the one the request names; a new one if there is neither. It returns
@@ -332,6 +367,74 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, *cachedID
 	return sess, cached, nil
 }
 
+// mayBeStored reports whether a session may be stored under id, the ID the request names:
+// not when it names none, and not when s looked for a session under it earlier in the
+// request and found none. The entry s cached then holds the ID the request named when s
+// issued its own, or the one a Regenerate or Reset deleted, and neither names a session.
+func (s *Store) mayBeStored(cached *cachedID, id string) bool {
+	if id == "" {
+		return false
+	}
+	entry := cached.of(s)
+	return entry == nil || entry.res.Value != id
+}
+
+// cachedSession reads the session that was saved under the newest ID which s, or a
+// store sharing a source with it, cached on the request, into found: first that of
+// the nearest session middleware s runs inside that shares one, then those of
+// Store.Get, cached, newest first. An ID that names no stored session, because it was
+// never saved, is passed over, and the request is asked instead. Stores that share no
+// source with s keep sessions of their own: their IDs are not taken, and they do not
+// replace the ones of s.
+func (s *Store) cachedSession(c fiber.Ctx, outer *Middleware, cached *cachedID, found *storedSession) error {
+	if outer != nil {
+		if id, res, ok := outer.sharedID(s); ok {
+			if err := s.readSession(c, id, found); err != nil || found.raw != nil {
+				found.res = s.places().adopt(res)
+				return err
+			}
+		}
+	}
+	for ; cached != nil; cached = cached.next {
+		if !s.sharesSource(cached.store) {
+			continue
+		}
+		if err := s.readSession(c, cached.id, found); err != nil || found.raw != nil {
+			found.res = s.places().adopt(cached.res)
+			return err
+		}
+	}
+	return nil
+}
+
+// places returns where s reads its session ID from and writes it back to: what NewStore
+// worked out, or, when the Extractor was replaced since or the Store was built without
+// NewStore, what a walk of the extractor it has now finds. Do not modify the slices:
+// every session of the store shares them.
+func (s *Store) places() *idPlaces {
+	if s.profile.current(s.Extractor) {
+		return &s.profile.places
+	}
+	fresh := placesOf(s.Extractor)
+	return &fresh
+}
+
+// sharesSource reports whether s and other read the session ID from a common
+// source, by kind and name, or cannot be told apart because one of them names
+// none.
+//
+// A request can hold the sessions of several stores. Stores over the same
+// cookie, such as a session middleware and the store the CSRF middleware was
+// given, resolve the same session and so share the ID cached on the request.
+// Stores over different sources keep independent sessions: one adopting the
+// other's cached ID would look up a foreign session, or write its own ID to a
+// cookie it does not own. A source that cannot be written back to, such as the
+// query string, counts like any other: the ID a link carries reaches the stores
+// that read the query string, and no cookie store next to them.
+func (s *Store) sharesSource(other *Store) bool {
+	return s == other || s.places().shares(other.places())
+}
+
 // storedSession is the outcome of a lookup of a session: the record, if a session is
 // stored under the ID that was looked up, and where that ID came from.
 type storedSession struct {
@@ -357,6 +460,76 @@ func (s *Store) readSession(ctx context.Context, id string, found *storedSession
 	// Not the ID as given: it may point into the request buffer the next request reuses.
 	found.raw, found.key, found.id, found.gen = raw, key, s.ownedID(key, id), gen
 	return nil
+}
+
+// recordCodec returns the Codec of the store with its name, nil for a store without
+// one. NewStore asks the codec for its name once; a Store built without NewStore asks
+// every time.
+func (s *Store) recordCodec() *namedCodec {
+	switch {
+	case s.named != nil:
+		return s.named
+	case s.Codec == nil:
+		return nil
+	default:
+		return &namedCodec{Codec: s.Codec, name: s.Codec.Name()}
+	}
+}
+
+// sessionFormat returns the format the sessions of the store hold.
+func (s *Store) sessionFormat() format {
+	if codec := s.recordCodec(); codec != nil {
+		return codec
+	}
+	return gobStream
+}
+
+// refusesRecord reports whether raw, a stored session, is a record this store
+// cannot read, and says so, once per store. A store reads the records of the codec
+// that wrote them, and no other. (A stored session that is not a record is gob,
+// which every store reads, a store with a codec as a session that stays gob.) A
+// record that is damaged counts as one the store can read, and the decode says
+// what is wrong with it.
+func (s *Store) refusesRecord(raw []byte) bool {
+	return isRecord(raw) && s.cannotRead(raw)
+}
+
+// cannotRead is refusesRecord for a stored session that is a record.
+func (s *Store) cannotRead(raw []byte) bool {
+	codec := s.recordCodec()
+	if codec != nil && codec.reads(raw) {
+		return false
+	}
+	s.warnUnreadable(raw, codec)
+	return true
+}
+
+// warnUnreadable says, once per store, that a stored session is a record this store,
+// whose codec is codec, nil if it has none, cannot read, and is treated as a session
+// that does not exist.
+func (s *Store) warnUnreadable(raw []byte, codec *namedCodec) {
+	if !s.unreadableWarned.CompareAndSwap(false, true) {
+		return
+	}
+	have := "has no codec"
+	if codec != nil {
+		have = fmt.Sprintf("uses the codec %q", codec.name)
+	}
+	version, name, known := recordCodecOf(raw)
+	switch {
+	case len(name) > 0:
+		log.Warnf("[session] a stored session is a record of the codec %q (format version %d), which this store, which %s, cannot read; "+
+			"it is treated as a new session, and the record is left alone. This is expected once after Config.Codec was changed or turned off; "+
+			"if it goes on, applications with different codecs share a storage and a session cookie",
+			name, version, have)
+	case known:
+		log.Warnf("[session] a stored session is a record of format version %d, which this store, which %s, does not know; "+
+			"it was probably written by a newer release of the application. It is treated as a new session, and the record is left alone",
+			version, have)
+	default:
+		log.Warn("[session] a stored session starts like a record, but its header is damaged; " +
+			"it is treated as a new session, and the record is left alone")
+	}
 }
 
 // getSessionID returns the session ID using the configured extractor, together

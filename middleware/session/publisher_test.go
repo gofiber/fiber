@@ -193,15 +193,15 @@ func Test_Store_ExtractorReplacedAfterNewStore(t *testing.T) {
 	require.False(t, store.sharesSource(NewStore(Config{Extractor: extractors.FromCookie("B_SID")})), "cookie names are case-sensitive")
 
 	store.Extractor = extractors.Chain(extractors.FromCookie("c_sid"), extractors.FromHeader("X-C"))
-	require.Equal(t, []string{"cookie:c_sid", "header:X-C"}, sinkNames(store.writableSinks()))
+	require.Equal(t, []string{"cookie:c_sid", "header:X-C"}, sinkNames(store.places().sinks))
 	require.True(t, store.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("x-c")})))
 	require.False(t, store.sharesSource(NewStore(Config{Extractor: extractors.FromCookie("b_sid")})))
 
 	// A chain of the same length and with the same first extractor is another chain.
 	chained := NewStore(Config{Extractor: extractors.Chain(extractors.FromCookie("c_sid"), extractors.FromHeader("X-C"))})
-	require.Equal(t, []string{"cookie:c_sid", "header:X-C"}, sinkNames(chained.writableSinks()))
+	require.Equal(t, []string{"cookie:c_sid", "header:X-C"}, sinkNames(chained.places().sinks))
 	chained.Extractor = extractors.Chain(extractors.FromCookie("c_sid"), extractors.FromHeader("X-D"))
-	require.Equal(t, []string{"cookie:c_sid", "header:X-D"}, sinkNames(chained.writableSinks()))
+	require.Equal(t, []string{"cookie:c_sid", "header:X-D"}, sinkNames(chained.places().sinks))
 	require.True(t, chained.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("x-d")})))
 	require.False(t, chained.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("x-c")})))
 
@@ -210,13 +210,13 @@ func Test_Store_ExtractorReplacedAfterNewStore(t *testing.T) {
 	// each, and each is another extractor.
 	swapped := NewStore(Config{Extractor: extractors.FromCookie("sid")})
 	swapped.Extractor = extractors.FromHeader("sid")
-	require.Equal(t, []string{"header:sid"}, sinkNames(swapped.writableSinks()), "a header, not the cookie of that name")
+	require.Equal(t, []string{"header:sid"}, sinkNames(swapped.places().sinks), "a header, not the cookie of that name")
 	require.True(t, swapped.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("SID")})))
 	require.False(t, swapped.sharesSource(NewStore(Config{Extractor: extractors.FromCookie("sid")})))
 
 	grown := NewStore(Config{Extractor: extractors.FromCookie("a")})
 	grown.Extractor = extractors.Chain(extractors.FromCookie("a"), extractors.FromHeader("X-A"))
-	require.Equal(t, []string{"cookie:a", "header:X-A"}, sinkNames(grown.writableSinks()), "the chain has the header as well")
+	require.Equal(t, []string{"cookie:a", "header:X-A"}, sinkNames(grown.places().sinks), "the chain has the header as well")
 	require.True(t, grown.sharesSource(NewStore(Config{Extractor: extractors.FromHeader("x-a")})))
 }
 

@@ -2,6 +2,7 @@ package session
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/valyala/fasthttp"
 )
 
@@ -81,41 +82,6 @@ func isRequest(ctx any) bool {
 	}
 }
 
-// FromContext returns the Middleware that this store's session middleware
-// installed for the request, or nil when the store has none there. It accepts
-// the same contexts as the package-level FromContext and ends the same way: a
-// context kept past the request returns nil.
-//
-// Register one session middleware per store, each over its own cookie or
-// header, and a handler reaches every session of the request:
-//
-//	loginHandler, loginStore := session.NewWithStore(session.Config{
-//	    Extractor: extractors.FromCookie("login_sid"),
-//	})
-//	appHandler, appStore := session.NewWithStore(session.Config{
-//	    Extractor: extractors.FromCookie("app_sid"),
-//	})
-//	app.Use(loginHandler, appHandler)
-//
-//	login := loginStore.FromContext(c)
-//	appSession := appStore.FromContext(c)
-//
-// Like the methods of Middleware it takes the read lock of the middleware it
-// visits, so call it from handlers, not from a Storage while that middleware is
-// destroying, resetting or regenerating its session, which hold the lock.
-//
-// Parameters:
-//   - ctx: The Fiber context, a *fasthttp.RequestCtx, or a context.Context.
-//
-// Returns:
-//   - *Middleware: The store's middleware if it is running for the request;
-//     otherwise, nil.
-func (s *Store) FromContext(ctx any) *Middleware {
-	return FromContext(ctx).find(func(m *Middleware) bool {
-		return m.store == s
-	})
-}
-
 // find returns the first middleware for which match reports true, looking at m
 // and then at the ones it runs inside, from the inside out. It returns nil when
 // none matches, or when it reaches one that has finished. match runs with the
@@ -146,4 +112,23 @@ func (m *Middleware) find(match func(*Middleware) bool) *Middleware {
 		m.mu.RUnlock()
 		m = outer
 	}
+}
+
+// sharedID returns the ID and the provenance of the session of the nearest session
+// middleware, m or one it runs inside, whose store shares a source with s. A
+// middleware does not cache its ID on the request: it holds the session, and what it
+// holds is gone with it, which is why a Store.Get after it reads the request again.
+func (m *Middleware) sharedID(s *Store) (string, extractors.Result, bool) {
+	var (
+		id  string
+		res extractors.Result
+	)
+	found := m.find(func(cur *Middleware) bool {
+		if cur.Session == nil || !s.sharesSource(cur.store) {
+			return false
+		}
+		id, res = cur.Session.identity()
+		return true
+	})
+	return id, res, found != nil
 }
