@@ -703,7 +703,6 @@ func Test_Ctx_AcceptsLanguages(t *testing.T) {
 
 func Test_Ctx_AcceptsLanguagesExtended(t *testing.T) {
 	t.Parallel()
-
 	// RFC 4647 Extended Filtering
 	ctxTestAAccepts(t, Ctx.AcceptsLanguagesExtended, HeaderAcceptLanguage, []ctxTestAAcceptsCase{
 		{name: "wildcard subtag", lines: []string{"en-*"}, offers: []string{"en-US"}, want: "en-US"},
@@ -1883,7 +1882,6 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 
 func Test_Ctx_AutoFormat_XSS_Prevention(t *testing.T) {
 	t.Parallel()
-
 	// autoFormatHTML renders body for a client that accepts HTML.
 	autoFormatHTML := func(t *testing.T, body any) string {
 		t.Helper()
@@ -2313,7 +2311,6 @@ func Test_Ctx_Fresh_PreservesNotFoundResponse(t *testing.T) {
 
 func Test_Ctx_Fresh_NoCache(t *testing.T) {
 	t.Parallel()
-
 	// A no-cache directive makes a wildcard If-None-Match stale, wherever it sits in the list.
 	for _, tc := range []struct {
 		name         string
@@ -2848,7 +2845,6 @@ func Test_Ctx_Host(t *testing.T) {
 // request comes from a trusted proxy.
 func Test_Ctx_Host_ForwardedHost(t *testing.T) {
 	t.Parallel()
-
 	// The requests come from 0.0.0.0 and are for http://google.com/test.
 	trusted := []string{"0.0.0.0", "0.8.0.1"}
 	tests := []struct {
@@ -2912,7 +2908,6 @@ func Benchmark_Ctx_Host(b *testing.B) {
 
 func Test_Ctx_IsProxyTrusted(t *testing.T) {
 	t.Parallel()
-
 	// The requests come from 0.0.0.0.
 	trust := func(config TrustProxyConfig) Config { return Config{TrustProxy: true, TrustProxyConfig: config} }
 
@@ -3030,7 +3025,6 @@ func forwardedForProxies(proxies ...string) Config {
 
 func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 	t.Parallel()
-
 	// Without IP validation the header comes back as it is, whatever it holds, even
 	// the full list or an invalid IP. With it, the rightmost non-trusted IP of the
 	// list is returned, and a header that is empty or holds no IP is ignored: the IP
@@ -3077,7 +3071,6 @@ func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 
 func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	t.Parallel()
-
 	// The requests come from 0.0.0.0.
 	for _, tc := range []struct {
 		name  string
@@ -3795,7 +3788,6 @@ func Benchmark_Ctx_Is(b *testing.B) {
 
 func Test_Ctx_Locals(t *testing.T) {
 	t.Parallel()
-
 	// Value reads the very store Locals writes, through the context.Context interface.
 	for _, tc := range []struct {
 		get  func(c Ctx) any
@@ -4581,7 +4573,6 @@ func Benchmark_Ctx_Protocol(b *testing.B) {
 
 func Test_Ctx_Scheme(t *testing.T) {
 	t.Parallel()
-
 	// Every way a proxy can announce HTTPS. Header names are case-insensitive
 	// and the values are trimmed, which the padded and mixed-case rows pin.
 	announcements := []struct {
@@ -5626,6 +5617,7 @@ func Test_Ctx_SaveFileToStorage_LimitExceeded(t *testing.T) {
 
 // ctxStrictStorage is a Storage that fails the test on every call a
 // SaveFileToStorage test does not expect; the fakes below embed it.
+// conventions:ignore storage-fake: it fails the test on every call, which storagetest.Memory cannot do
 type ctxStrictStorage struct {
 	t *testing.T
 }
@@ -5851,7 +5843,6 @@ func Test_Ctx_SaveFileToStorage_ContextPropagation(t *testing.T) {
 
 func Test_Ctx_Secure(t *testing.T) {
 	t.Parallel()
-
 	// the peer 0.0.0.0 announces HTTPS through X-Forwarded-Proto
 	announcesHTTPS := func(freq *fasthttp.RequestCtx) {
 		freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
@@ -6940,7 +6931,6 @@ func Test_Ctx_JSONP(t *testing.T) {
 
 func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
 	t.Parallel()
-
 	// The callback name is emitted verbatim into a same-origin
 	// text/javascript body, and JSONP callers take it from the query string by
 	// design, so anything that could open a statement, a string, or a comment

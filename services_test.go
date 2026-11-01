@@ -673,7 +673,6 @@ func Test_ShutdownServices_UncomparableService(t *testing.T) {
 
 func Test_ShutdownServices_StartedTwiceTerminatesOnce(t *testing.T) {
 	t.Parallel()
-
 	// App.init already starts configured services, so a second startServices
 	// call registers each of them again, as the shutdown benchmarks do.
 	var terminated []string

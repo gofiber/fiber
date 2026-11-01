@@ -210,7 +210,6 @@ func Test_FormSources_PointerScalars(t *testing.T) {
 
 func Test_FormSources_OptionalIDParam(t *testing.T) {
 	t.Parallel()
-
 	// Use case from original issue
 	type OptionalIDParam struct {
 		IDPtr *int64 `form:"id" query:"id"`

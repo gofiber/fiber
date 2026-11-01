@@ -41,6 +41,7 @@ const (
 	httpProto  = "HTTP/1.1"
 )
 
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchmarkSetup(b *testing.B, app *fiber.App, uri string) {
 	b.Helper()
 
@@ -57,6 +58,7 @@ func benchmarkSetup(b *testing.B, app *fiber.App, uri string) {
 	}
 }
 
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchmarkSetupParallel(b *testing.B, app *fiber.App, path string) {
 	b.Helper()
 
@@ -1408,7 +1410,6 @@ func Test_Logger_IPs(t *testing.T) {
 // real one.
 func Test_Logger_RegisterContextTag_Sanitizes(t *testing.T) {
 	t.Parallel()
-
 	// Both registries are mutex-guarded and re-registering replaces rather
 	// than fails, so this runs in parallel like every other registry test in
 	// the package. The name has to be its own, though: registration is global
@@ -1427,7 +1428,6 @@ func Test_Logger_RegisterContextTag_Sanitizes(t *testing.T) {
 // carrying on, and the count returned must reflect only what reached the sink.
 func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 	t.Parallel()
-
 	// A trusted proxy, so c.IPs() returns the forwarded chain rather than
 	// nothing at all — the tag needs more than one entry to reach the
 	// separator between them.

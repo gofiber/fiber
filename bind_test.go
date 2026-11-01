@@ -2427,7 +2427,6 @@ func Test_Bind_CustomBinder_CustomCtx(t *testing.T) {
 
 func Test_Bind_Body_FormKeyTooDeep(t *testing.T) {
 	t.Parallel()
-
 	// A JSON type is decoded from a form body too, by its field names.
 	type category struct {
 		Name     string     `json:"name"`

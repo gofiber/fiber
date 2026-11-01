@@ -799,7 +799,6 @@ func Test_ConvertRequest(t *testing.T) {
 
 func Test_CopyContextToFiberContext(t *testing.T) {
 	t.Parallel()
-
 	// Test the default case (continue statement coverage)
 	type customContext struct {
 		UnknownField string
@@ -996,7 +995,6 @@ func (*failingStreamWriter) Flush() {}
 
 func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 	t.Parallel()
-
 	// Test streaming functionality to ensure data is sent even during a timeout.
 	handlerFunc := FiberHandlerFunc(adaptorTestHelloWorldStream(500 * time.Millisecond))
 
@@ -1016,6 +1014,7 @@ func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 	require.NotNil(t, resp)
 
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	// conventions:ignore body-read: the test asserts the read error
 	body, readErr := io.ReadAll(resp.Body)
 	require.ErrorIs(t, readErr, context.DeadlineExceeded)
 	require.Equal(t, "Hello ", string(body))
@@ -2335,7 +2334,6 @@ func Test_CopyContextToFiberContext_Cycle(t *testing.T) {
 
 func Test_HTTPMiddleware_NoRewriteKeepsChainPosition(t *testing.T) {
 	t.Parallel()
-
 	// Spellings whose decoded path differs from the raw one the router matched.
 	paths := []string{
 		"/api%2Fadmin/secret",

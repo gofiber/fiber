@@ -486,7 +486,6 @@ func Test_Security_InstallHostClientGuard_DialTimeout(t *testing.T) {
 
 	t.Run("a Dial of its own is kept alone", func(t *testing.T) {
 		t.Parallel()
-
 		// A DialTimeout would take precedence over it, and the dialer it stands for cannot take a timeout.
 		hc := &fasthttp.HostClient{Dial: func(string) (net.Conn, error) { return nil, errors.New("unused") }}
 		installHostClientGuard(hc)

@@ -74,7 +74,6 @@ func Test_Value(t *testing.T) {
 
 	t.Run("matches the name case-insensitively", func(t *testing.T) {
 		t.Parallel()
-
 		// The spelling HTTP/2 and 3 put on the wire, kept as sent.
 		c := newCtx(t, fiber.Config{DisableHeaderNormalizing: true})
 		readRequest(t, c, "GET / HTTP/1.1\r\nHost: e.com\r\nauthorization: Bearer abc\r\n\r\n")

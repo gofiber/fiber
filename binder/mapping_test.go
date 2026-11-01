@@ -924,7 +924,6 @@ func bindFormBody(t *testing.T, body string, out any) error {
 
 func Test_FormBinder_KeyDepthLimit(t *testing.T) {
 	t.Parallel()
-
 	// "children.0." is two segments, so these keys have 63 and 65.
 	const levels = (maxKeySegments - 1) / 2
 
@@ -1229,7 +1228,6 @@ func keysThatFit[T any](perKey int) int {
 
 func Test_PooledDecoder_ElementBudget(t *testing.T) {
 	t.Parallel()
-
 	// Each key grows a depthTree slice of 1001 elements below its first index.
 	fit := keysThatFit[depthTree](1)
 	keys := make([]string, 0, fit+1)

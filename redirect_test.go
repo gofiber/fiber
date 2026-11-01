@@ -416,7 +416,6 @@ func rootMiscBExpectBackTo(t *testing.T, referer, fallback, want string) {
 
 func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 	t.Parallel()
-
 	// The request is to example.com over plain HTTP, and the fallback is "/".
 	tests := []struct {
 		name    string
@@ -996,7 +995,6 @@ func Benchmark_Redirect_OldInput(b *testing.B) {
 
 func Test_Redirect_FlashCookie_Attributes(t *testing.T) {
 	t.Parallel()
-
 	// The flash payload is hex-encoded, not encrypted, and WithInput copies the
 	// whole submitted form into it — including whatever the user typed into a
 	// password field. It is only ever read back on the server, so it must not be
@@ -1047,7 +1045,6 @@ func Test_Redirect_FlashCookie_Attributes(t *testing.T) {
 
 func Test_Redirect_FlashMessages_NoCrossRequestLeak(t *testing.T) {
 	t.Parallel()
-
 	// The two requests below are sequential regardless, which is what makes the
 	// second reuse the first's pooled ctx. Running the test alongside others
 	// does not weaken that: mutation-verified with both clears reverted, this
@@ -1167,7 +1164,6 @@ func Test_Redirect_Back_RejectsAnUnusableReferer(t *testing.T) {
 
 	t.Run("no referer at all, with names left as sent", func(t *testing.T) {
 		t.Parallel()
-
 		// The walk that matches the name case-insensitively finds nothing here,
 		// which is the same answer as the byte-for-byte lookup.
 		c := apptest.Ctx(t, New(Config{DisableHeaderNormalizing: true}))

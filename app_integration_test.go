@@ -130,7 +130,6 @@ func Test_Integration_RequestID_ContextPropagationFlag(t *testing.T) {
 
 func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *testing.T) {
 	t.Parallel()
-
 	// This integration suite exercises representative middleware stacks to ensure their
 	// response headers survive after Fiber's default error handler emits a failure.
 

@@ -1373,6 +1373,7 @@ func Test_CacheInvalidation_RunsWithoutTheLock(t *testing.T) {
 				if err != nil {
 					return err
 				}
+				// conventions:ignore body-read: the close error is handled together with the read error
 				body, err := io.ReadAll(resp.Body)
 				if closeErr := resp.Body.Close(); err == nil {
 					err = closeErr

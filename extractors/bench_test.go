@@ -53,6 +53,7 @@ func newBenchQueryCtx(b *testing.B) fiber.Ctx {
 	return newBenchURICtx(b, "/api?api_key=abc123")
 }
 
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchExtract(b *testing.B, e Extractor, c fiber.Ctx) {
 	b.Helper()
 	b.ReportAllocs()
@@ -61,6 +62,7 @@ func benchExtract(b *testing.B, e Extractor, c fiber.Ctx) {
 	}
 }
 
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchResolve(b *testing.B, e Extractor, c fiber.Ctx) {
 	b.Helper()
 	b.ReportAllocs()
@@ -72,6 +74,7 @@ func benchResolve(b *testing.B, e Extractor, c fiber.Ctx) {
 // benchExtractFresh resets the request's user values after every extraction,
 // as fasthttp does between requests, so what an extractor keeps in Locals is
 // paid for per request rather than amortized over a reused context.
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchExtractFresh(b *testing.B, e Extractor, c fiber.Ctx) {
 	b.Helper()
 	b.ReportAllocs()
@@ -82,6 +85,7 @@ func benchExtractFresh(b *testing.B, e Extractor, c fiber.Ctx) {
 }
 
 // benchResolveFresh is benchExtractFresh for the source-aware entry point.
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchResolveFresh(b *testing.B, e Extractor, c fiber.Ctx) {
 	b.Helper()
 	b.ReportAllocs()
@@ -191,6 +195,7 @@ func Benchmark_Extractor_FromForm_Miss(b *testing.B) {
 
 // benchParam runs the loop inside a matched route, where route parameters are
 // the only place they exist.
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchParam(b *testing.B, uri string) {
 	b.Helper()
 	app := fiber.New()

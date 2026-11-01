@@ -693,7 +693,6 @@ func Test_Limiter_ExpirationFunc_PositiveStillWins(t *testing.T) {
 
 func Test_Limiter_SubSecondExpirationIsOneSecondWindow(t *testing.T) {
 	t.Parallel()
-
 	// A positive Expiration below one second is a one-second window.
 	require.Equal(t, 500*time.Millisecond, configDefault(Config{Expiration: 500 * time.Millisecond}).Expiration)
 
@@ -1399,7 +1398,6 @@ func Test_Limiter_KeyOverwrittenByHandler_NothingRereads(t *testing.T) {
 		for _, store := range limiterStores {
 			t.Run(strategy.name+"/"+store.name, func(t *testing.T) {
 				t.Parallel()
-
 				// The key aliases request memory, as c.Get does; the handler rewrites it, as the next request would.
 				first, second := []byte("AAAA"), []byte("AAAA")
 				current := first

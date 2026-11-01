@@ -12,7 +12,6 @@ import (
 
 func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 	t.Parallel()
-
 	// An extractor that reads from the cookie "csrf_" (simulating dangerous behavior)
 	insecureCookieExtractor := extractors.Extractor{
 		Extract: func(c fiber.Ctx) (string, error) { return c.Cookies("csrf_"), nil },

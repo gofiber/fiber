@@ -143,12 +143,11 @@ func Test_Static_Custom_CacheControl(t *testing.T) {
 }
 
 func Test_Static_Disable_Cache(t *testing.T) {
+	t.Parallel()
 	// Skip on Windows. It's not possible to delete a file that is in use.
 	if runtime.GOOS == winOS {
 		t.SkipNow()
 	}
-
-	t.Parallel()
 	app := fiber.New()
 
 	require.NoError(t, os.WriteFile("../../.github/test.txt", []byte("Hello, World!"), 0o600))
@@ -196,12 +195,11 @@ func Test_Static_Download(t *testing.T) {
 }
 
 func Test_Static_Download_NonASCII(t *testing.T) {
+	t.Parallel()
 	// Skip on Windows. It's not possible to delete a file that is in use.
 	if runtime.GOOS == "windows" {
 		t.SkipNow()
 	}
-
-	t.Parallel()
 	dir := t.TempDir()
 	fname := "файл.txt"
 	path := filepath.Join(dir, fname)

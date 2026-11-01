@@ -988,7 +988,6 @@ func Test_Security_RoundRobin_WrapsAround(t *testing.T) {
 
 	t.Run("counter limit", func(t *testing.T) {
 		t.Parallel()
-
 		// The wrap repeats one upstream, then the cycle resumes.
 		r := &urlRoundrobin{pool: []*url.URL{a, b, c}}
 		r.next.Store(^uint64(0) - 1)

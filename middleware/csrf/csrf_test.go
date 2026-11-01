@@ -763,11 +763,10 @@ func Test_CSRF_TrustedOrigins_InvalidOrigins(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			origin := tt.origin
 			t.Parallel()
 			require.Panics(t, func() {
 				app := fiber.New()
-				app.Use(New(Config{CookieSecure: true, TrustedOrigins: []string{origin}}))
+				app.Use(New(Config{CookieSecure: true, TrustedOrigins: []string{tt.origin}}))
 			}, "Expected panic")
 		})
 	}
@@ -1194,7 +1193,6 @@ func Test_storageManager_logKey(t *testing.T) {
 
 func Test_CSRF_All_Extractors(t *testing.T) {
 	t.Parallel()
-
 	// bodyExtractor reads the token from a body of the form "_csrf=<token>".
 	bodyExtractor := extractors.Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
@@ -2051,7 +2049,6 @@ func Test_CSRF_RepeatedOriginIsRefused(t *testing.T) {
 // Referer check exists to refuse.
 func Test_CSRF_RepeatedSecFetchSiteAndRefererAreRefused(t *testing.T) {
 	t.Parallel()
-
 	// Trusted-proxy app: Ctx.Scheme reads X-Forwarded-Proto only from a trusted
 	// peer, and the Referer check runs only on HTTPS.
 	h := csrfTestAccept(newTrustedApp(), &Config{})

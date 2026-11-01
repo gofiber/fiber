@@ -401,7 +401,6 @@ func Test_Proxy_Balancer_MixedSchemes(t *testing.T) {
 
 func Test_Proxy_Balancer_EmptyClientPanicsAtStartup(t *testing.T) {
 	t.Parallel()
-
 	// fasthttp would panic on the first request, and nothing above the handler recovers it.
 	require.PanicsWithValue(t, "Client.Clients cannot be empty", func() {
 		Balancer(Config{Client: &fasthttp.LBClient{}})
@@ -2029,7 +2028,6 @@ func Test_Proxy_DoRedirects_DropsListedHeadersOffTheOrigin(t *testing.T) {
 // connection-scoped headers reached the client unchanged.
 func Test_Proxy_ResponseStripIgnoresTheAppsNormalizationSetting(t *testing.T) {
 	t.Parallel()
-
 	// The upstream preserves the casing it writes, and writes its hop-by-hop
 	// headers in lower case.
 	upstream := fiber.New(fiber.Config{DisableHeaderNormalizing: true})

@@ -280,7 +280,6 @@ func Test_CookieJar_HostPort(t *testing.T) {
 
 func Test_CookieJar_isIPLiteral(t *testing.T) {
 	t.Parallel()
-
 	// Pinned to net.ParseIP semantics: zoned addresses are rejected.
 	tests := []struct {
 		host string
@@ -744,7 +743,6 @@ func Test_CookieJar_SetByHost_DoesNotMutateArgument(t *testing.T) {
 // legitimate cookie.
 func Test_CookieJar_SetByHost_ReplacesOnNormalizedPath(t *testing.T) {
 	t.Parallel()
-
 	// Each raw path is one fasthttp's normalizePath rewrites: collapsed slashes,
 	// a percent escape, a dot segment, and a ';' that gets stripped.
 	for _, raw := range []string{"/x//y", "/x/%41", "/x/./y", "/x;y"} {
@@ -1253,7 +1251,6 @@ func Test_CookieJar_AttributesCookiesToRespondingHost(t *testing.T) {
 
 func Test_CookieJar_CookieName(t *testing.T) {
 	t.Parallel()
-
 	// cookieHeader is what a request to url carries once the application has set
 	// its own "session" cookie on top of the jar's, as parserRequestHeader does.
 	cookieHeader := func(t *testing.T, jar *CookieJar, url string) string {

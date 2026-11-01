@@ -353,7 +353,6 @@ func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
 
 	t.Run("client nil returns exported error without panic", func(t *testing.T) {
 		t.Parallel()
-
 		// The body is not valid CBOR, so ErrClientNil also shows that a nil client is
 		// reported before the body is decoded.
 		cborDecoder := decoder{name: "cbor", decode: (*Response).CBOR, body: "not-cbor"}

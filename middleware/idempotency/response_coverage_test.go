@@ -82,7 +82,6 @@ func Test_response_EncodeDecode_Populated(t *testing.T) {
 // both UnmarshalMsg and DecodeMsg when an unrecognized map key is present.
 func Test_response_UnmarshalMsg_UnknownField(t *testing.T) {
 	t.Parallel()
-
 	// Build a map with one known field ("sc") and one unknown field ("zz").
 	var raw []byte
 	raw = msgp.AppendMapHeader(raw, 2)
@@ -130,7 +129,6 @@ func Test_response_Decode_Truncated(t *testing.T) {
 // both the outer headers map and the per-header value array.
 func Test_response_Decode_LimitExceeded(t *testing.T) {
 	t.Parallel()
-
 	// Outer headers map header exceeds the 1024 limit.
 	var bigMap []byte
 	bigMap = msgp.AppendMapHeader(bigMap, 1)

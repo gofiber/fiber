@@ -633,7 +633,6 @@ func newRewritingTransport() *rewritingTransport {
 
 func Test_Core_RetryRestartsRedirects(t *testing.T) {
 	t.Parallel()
-
 	// run returns the transport and the last hop's host, which a cookie jar reads after the chain.
 	run := func(t *testing.T, prepare func(req *Request)) (*rewritingTransport, string) {
 		t.Helper()
@@ -735,7 +734,6 @@ func Test_Core_RedirectSensitiveHeadersConcurrentSet(t *testing.T) {
 
 func Test_Core_RequestBodyStream(t *testing.T) {
 	t.Parallel()
-
 	// received is what the server saw of a request body.
 	type received struct {
 		body   string

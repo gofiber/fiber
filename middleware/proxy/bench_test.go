@@ -292,6 +292,7 @@ func benchGet(host, target string) *fasthttp.Request {
 }
 
 // benchProxyPath sends req through app per iteration on a bare fasthttp context; the upstream must answer 204.
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchProxyPath(b *testing.B, app *fiber.App, req *fasthttp.Request) {
 	b.Helper()
 	handler := app.Handler()

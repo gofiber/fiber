@@ -72,7 +72,6 @@ func Test_ExponentialBackoff_Retry_ZeroValue(t *testing.T) {
 
 	t.Run("the zero value reports a failure instead of success", func(t *testing.T) {
 		t.Parallel()
-
 		// Fast intervals so the default ten attempts do not wait out the default
 		// one to thirty-two seconds; MaxRetryCount stays unset.
 		backoff := &ExponentialBackoff{InitialInterval: time.Microsecond, MaxBackoffTime: time.Millisecond}

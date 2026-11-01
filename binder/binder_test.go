@@ -11,7 +11,6 @@ import (
 
 func Test_GetAndPutToThePool(t *testing.T) {
 	t.Parallel()
-
 	// Panics in case we get from another pool
 	require.Panics(t, func() { _ = GetFromThePool[*HeaderBinding](&CookieBinderPool) })
 

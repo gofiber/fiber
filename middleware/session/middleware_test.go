@@ -880,6 +880,7 @@ func Test_Session_Middleware_TimedOutHandler(t *testing.T) {
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/me", http.NoBody), fiber.TestConfig{Timeout: 0})
 			if err == nil {
 				var body []byte
+				// conventions:ignore body-read: the read runs in a goroutine, where FailNow is not allowed
 				body, err = io.ReadAll(resp.Body)
 				bodies[i] = string(body)
 			}

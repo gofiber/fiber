@@ -376,7 +376,6 @@ func Test_Store_getSessionID_ReportsWinnerForWriteBack(t *testing.T) {
 // extractor hides where the ID came from.
 func Test_Store_FixationGuard(t *testing.T) {
 	t.Parallel()
-
 	// A chain-level Extract answering on its own records no child, so Resolve
 	// reports the chain's declared metadata — its first child. Reading that as
 	// provenance would classify a query-supplied ID as "came from a writable

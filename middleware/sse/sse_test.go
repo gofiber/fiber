@@ -358,6 +358,7 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	resp := apptest.Do(t, app, "/events", fiber.TestConfig{FailOnTimeout: false, Timeout: testTimeout})
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
+	// conventions:ignore body-read: a stream cut by the timeout ends with io.ErrUnexpectedEOF, which is expected
 	body, err := io.ReadAll(resp.Body)
 	require.True(t, err == nil || errors.Is(err, io.ErrUnexpectedEOF))
 	require.Contains(t, string(body), "data: ready\n\n")

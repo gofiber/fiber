@@ -531,7 +531,6 @@ func TestHostnameWithoutPort(t *testing.T) {
 // they were issued for, and survive redirects that stay on it.
 func TestDoRedirectsWithClient_StripsCredentialsCrossHost(t *testing.T) {
 	t.Parallel()
-
 	// newReq returns a request for http://example.com/start that carries every
 	// credential, and the response to fill.
 	newReq := func(t *testing.T) (*fasthttp.Request, *fasthttp.Response) {

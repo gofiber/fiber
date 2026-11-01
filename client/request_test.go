@@ -752,7 +752,6 @@ func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
 
 func Test_Request_Body_With_Server(t *testing.T) {
 	t.Parallel()
-
 	// The tags of both encodings: each reads only its own.
 	type args struct {
 		Content string `xml:"content" cbor:"content"`

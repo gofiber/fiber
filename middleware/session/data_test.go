@@ -247,7 +247,6 @@ func Test_ValueMayAlias(t *testing.T) {
 
 func Test_Data_DirtyTracking(t *testing.T) {
 	t.Parallel()
-
 	// cleanData returns pooled data holding key/value with the dirty flag cleared,
 	// standing in for the state a successful decode leaves behind.
 	cleanData := func(t *testing.T, key, value any) *data {

@@ -312,7 +312,6 @@ func newLocalListener(t *testing.T) net.Listener {
 // q=0 ranges up front and returned an offer the client had explicitly refused.
 func Test_Utils_GetOffer_QualityZeroRejection(t *testing.T) {
 	t.Parallel()
-
 	// A more specific q=0 range rejects the offer even though a broader
 	// range (text/*, */*) with quality > 0 also matches it.
 	require.Empty(t, getOffer([]byte("text/*, text/html;q=0"), acceptsOfferType, "text/html"))
@@ -1026,6 +1025,7 @@ func Benchmark_GenericParseTypeInts(b *testing.B) {
 	}
 }
 
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, test miscParseIntCase[int64]) {
 	b.Helper()
 	b.Run(name, func(t *testing.B) {
@@ -1058,6 +1058,7 @@ func Benchmark_GenericParseTypeUints(b *testing.B) {
 	}
 }
 
+// conventions:ignore bench-loop: helper inherited from main; new benchmarks keep their loop
 func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, test miscParseIntCase[uint64]) {
 	b.Helper()
 	b.Run(name, func(t *testing.B) {
@@ -1250,7 +1251,6 @@ func TestStoreInContext(t *testing.T) {
 
 func TestValueFromContext(t *testing.T) {
 	t.Parallel()
-
 	// The lookups behave the same for the default and for a custom context.
 	for _, tc := range []struct {
 		newApp func() *App

@@ -777,7 +777,6 @@ func Test_Client_HTTPMethods(t *testing.T) {
 		tc := &tests[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			// Every variant starts a server of its own, so none of them shares one.
 			run := func(variant string, send func(url string, cfg ...Config) (*Response, error), delay time.Duration) {
 				t.Run(variant, func(t *testing.T) {
@@ -1562,7 +1561,6 @@ func Test_Client_StreamResponseBody(t *testing.T) {
 
 func Test_Client_MaxResponseBodySize(t *testing.T) {
 	t.Parallel()
-
 	// answerWith serves response on every connection after reading the request.
 	answerWith := func(t *testing.T, response string) fasthttp.DialFunc {
 		t.Helper()
@@ -2124,7 +2122,6 @@ func Test_Client_UppercaseScheme(t *testing.T) {
 
 func Test_CookieJar_MaxAgeBeyond32Bit(t *testing.T) {
 	t.Parallel()
-
 	// int is 32 bits on 386 and arm, where this used to fail to parse and leave
 	// a session cookie behind.
 	seconds, ok := lastMaxAge([]byte("sid=x; Max-Age=3000000000"))

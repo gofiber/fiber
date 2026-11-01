@@ -136,7 +136,6 @@ func Test_ContextTemplate_ValueTagWrapsWriteError(t *testing.T) {
 
 func Test_ContextTemplate_DefaultTagsRenderEmpty(t *testing.T) {
 	t.Parallel()
-
 	// Build the format from the same names that defaultContextTagMap stubs so a
 	// new default tag automatically extends coverage instead of silently
 	// drifting from the assertion.

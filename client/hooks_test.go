@@ -72,7 +72,6 @@ type clientTestCXMLBody struct {
 
 func Test_Parser_Request_URL(t *testing.T) {
 	t.Parallel()
-
 	// Every case builds its own client and request, so the cases run in parallel.
 	for _, tc := range []struct {
 		client  *Client
