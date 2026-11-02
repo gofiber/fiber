@@ -3548,7 +3548,6 @@ func Test_App_HeaderReceivedHook_RaceFreeWithTest(t *testing.T) {
 // A body net/http cannot size, such as a file or a pipe, reaches the handler whole.
 func Test_App_Test_BodyOfUnknownLength(t *testing.T) {
 	t.Parallel()
-
 	newRequest := func(body io.Reader) *http.Request {
 		req, err := http.NewRequestWithContext(context.Background(), MethodPost, "/", body)
 		require.NoError(t, err)
@@ -3580,13 +3579,7 @@ func Test_App_Test_BodyOfUnknownLength(t *testing.T) {
 				c.Set("X-Content-Length", c.Get(HeaderContentLength))
 				return c.Send(c.Body())
 			})
-			resp, err := app.Test(tc.req)
-			require.NoError(t, err)
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.NoError(t, resp.Body.Close())
-			require.Equal(t, StatusOK, resp.StatusCode)
-			require.Equal(t, tc.body, string(body))
+			resp := apptest.ExpectBody(t, app, tc.req, StatusOK, tc.body)
 			require.Equal(t, strconv.Itoa(len(tc.body)), resp.Header.Get("X-Content-Length"))
 		})
 	}
