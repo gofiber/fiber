@@ -695,6 +695,8 @@ testConfig := fiber.TestConfig{
 }
 ```
 
+A request body of unknown length, such as an `*os.File` or an `io.Pipe` reader, is read and sent with its measured `Content-Length`, so it reaches the handler instead of failing with `cannot parse content-length` or being dropped.
+
 ### Constraint System
 
 The internal constraint system has been unified into a single `ConstraintHandler` interface. Built-in and custom constraints are now treated uniformly through this interface, with an optional `ConstraintAnalyzer` phase for precomputation at route registration time.
@@ -1715,6 +1717,8 @@ The CSRF middleware now validates the [`Sec-Fetch-Site`](https://developer.mozil
 `csrf.NewCrossOriginProtection` adds a tokenless alternative that follows Go's [`net/http.CrossOriginProtection`](https://pkg.go.dev/net/http#CrossOriginProtection). It rejects unsafe cross-origin browser requests by their `Sec-Fetch-Site` and `Origin` headers and needs no cookie, token, or storage. See [Cross-Origin Protection Without Tokens](./middleware/csrf.md#cross-origin-protection-without-tokens) for the rules and the differences from `net/http`.
 
 ### Idempotency
+
+Unchanged response header lines from middleware registered before idempotency are no longer stored. CORS and request ID middleware registered there produce fresh values on each request without cached copies being appended. Headers added or changed downstream still replay, including those from route-level CORS. Existing cache entries keep their previously stored headers until expiration; this change does not invalidate idempotency keys. See [Behavior](./middleware/idempotency.md#behavior) for middleware ordering.
 
 Idempotency middleware now redacts keys by default and offers a `DisableValueRedaction` configuration flag (default `false`) to expose them when debugging.
 
