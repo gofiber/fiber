@@ -12,23 +12,19 @@ import (
 // and no way to replace it.
 func Test_AppConfigReader(t *testing.T) {
 	t.Parallel()
-
 	t.Run("reports the configured bits", func(t *testing.T) {
 		t.Parallel()
-
 		app := New(Config{Immutable: true, DisableHeaderNormalizing: true, UnescapePath: true})
 		require.Equal(t, appconfig.Hot{Immutable: true, DisableHeaderNormalizing: true, UnescapePath: true}, appconfig.Of(app))
 	})
 
 	t.Run("reports the defaults", func(t *testing.T) {
 		t.Parallel()
-
 		require.Equal(t, appconfig.Hot{}, appconfig.Of(New()))
 	})
 
 	t.Run("agrees with Config", func(t *testing.T) {
 		t.Parallel()
-
 		app := New(Config{DisableHeaderNormalizing: true})
 		h := appconfig.Of(app)
 		cfg := app.Config()
@@ -39,7 +35,6 @@ func Test_AppConfigReader(t *testing.T) {
 
 	t.Run("answers nothing for what is not an app", func(t *testing.T) {
 		t.Parallel()
-
 		for _, arg := range []any{nil, "app", 0, App{}} {
 			require.Equal(t, appconfig.Hot{}, appconfig.Of(arg), "%T must not answer", arg)
 		}
@@ -47,13 +42,11 @@ func Test_AppConfigReader(t *testing.T) {
 
 	t.Run("a nil app faults, as reading its Config would", func(t *testing.T) {
 		t.Parallel()
-
 		require.Panics(t, func() { appconfig.Of((*App)(nil)) })
 	})
 
 	t.Run("the reader cannot be replaced", func(t *testing.T) {
 		t.Parallel()
-
 		// init installed the reader, so no later caller can change what
 		// Immutable means for the rest of the process.
 		appconfig.SetReader(func(any) appconfig.Hot {

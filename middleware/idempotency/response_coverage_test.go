@@ -33,10 +33,7 @@ func (w *errBudgetWriter) Write(p []byte) (int, error) {
 
 func populatedResponse() response {
 	return response{
-		Headers: map[string][]string{
-			"Content-Type": {"application/json"},
-			"X-Multi":      {"a", "b", "c"},
-		},
+		Headers:    map[string][]string{"Content-Type": {"application/json"}, "X-Multi": {"a", "b", "c"}},
 		Body:       []byte("hello world"),
 		StatusCode: 200,
 	}
@@ -47,17 +44,13 @@ func populatedResponse() response {
 // the clear()/reuse branch when unmarshaling into an already-populated value.
 func Test_response_MarshalUnmarshal_Populated(t *testing.T) {
 	t.Parallel()
-
 	v := populatedResponse()
 	bts, err := v.MarshalMsg(nil)
 	require.NoError(t, err)
 
 	// Unmarshal into a value that already has a populated Headers map and Body
 	// to exercise the clear()/capacity-reuse branches.
-	out := response{
-		Headers: map[string][]string{"stale": {"value"}},
-		Body:    make([]byte, 0, 64),
-	}
+	out := response{Headers: map[string][]string{"stale": {"value"}}, Body: make([]byte, 0, 64)}
 	left, err := out.UnmarshalMsg(bts)
 	require.NoError(t, err)
 	require.Empty(t, left)
@@ -66,11 +59,8 @@ func Test_response_MarshalUnmarshal_Populated(t *testing.T) {
 	require.Equal(t, v.StatusCode, out.StatusCode)
 }
 
-// Test_response_EncodeDecode_Populated exercises the streaming EncodeMsg /
-// DecodeMsg paths with non-empty data.
 func Test_response_EncodeDecode_Populated(t *testing.T) {
 	t.Parallel()
-
 	v := populatedResponse()
 
 	var buf bytes.Buffer
@@ -92,7 +82,6 @@ func Test_response_EncodeDecode_Populated(t *testing.T) {
 // both UnmarshalMsg and DecodeMsg when an unrecognized map key is present.
 func Test_response_UnmarshalMsg_UnknownField(t *testing.T) {
 	t.Parallel()
-
 	// Build a map with one known field ("sc") and one unknown field ("zz").
 	var raw []byte
 	raw = msgp.AppendMapHeader(raw, 2)
@@ -119,7 +108,6 @@ func Test_response_UnmarshalMsg_UnknownField(t *testing.T) {
 // each individual read in the generated code.
 func Test_response_Decode_Truncated(t *testing.T) {
 	t.Parallel()
-
 	v0 := populatedResponse()
 	full, err := v0.MarshalMsg(nil)
 	require.NoError(t, err)
@@ -141,19 +129,11 @@ func Test_response_Decode_Truncated(t *testing.T) {
 // both the outer headers map and the per-header value array.
 func Test_response_Decode_LimitExceeded(t *testing.T) {
 	t.Parallel()
-
 	// Outer headers map header exceeds the 1024 limit.
 	var bigMap []byte
 	bigMap = msgp.AppendMapHeader(bigMap, 1)
 	bigMap = msgp.AppendString(bigMap, "hs")
 	bigMap = msgp.AppendMapHeader(bigMap, 1025)
-
-	var out response
-	_, err := out.UnmarshalMsg(bigMap)
-	require.ErrorIs(t, err, msgp.ErrLimitExceeded)
-
-	var dec response
-	require.ErrorIs(t, dec.DecodeMsg(msgp.NewReader(bytes.NewReader(bigMap))), msgp.ErrLimitExceeded)
 
 	// Per-header value array header exceeds the 1024 limit.
 	var bigArr []byte
@@ -163,19 +143,20 @@ func Test_response_Decode_LimitExceeded(t *testing.T) {
 	bigArr = msgp.AppendString(bigArr, "key")
 	bigArr = msgp.AppendArrayHeader(bigArr, 1025)
 
-	var out2 response
-	_, err = out2.UnmarshalMsg(bigArr)
-	require.ErrorIs(t, err, msgp.ErrLimitExceeded)
+	for name, raw := range map[string][]byte{"headers map": bigMap, "value array": bigArr} {
+		var out response
+		_, err := out.UnmarshalMsg(raw)
+		require.ErrorIs(t, err, msgp.ErrLimitExceeded, name)
 
-	var dec2 response
-	require.ErrorIs(t, dec2.DecodeMsg(msgp.NewReader(bytes.NewReader(bigArr))), msgp.ErrLimitExceeded)
+		var dec response
+		require.ErrorIs(t, dec.DecodeMsg(msgp.NewReader(bytes.NewReader(raw))), msgp.ErrLimitExceeded, name)
+	}
 }
 
 // Test_response_EncodeMsg_WriterErrors drives the error-return branches of
 // EncodeMsg by failing the underlying writer at every byte offset.
 func Test_response_EncodeMsg_WriterErrors(t *testing.T) {
 	t.Parallel()
-
 	v0 := populatedResponse()
 	full, err := v0.MarshalMsg(nil)
 	require.NoError(t, err)

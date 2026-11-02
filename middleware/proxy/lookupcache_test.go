@@ -2,13 +2,12 @@ package proxy
 
 import (
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -17,7 +16,6 @@ import (
 // the same resolver until the TTL ends, and until another host takes its slot.
 func Test_LookupCache(t *testing.T) {
 	t.Parallel()
-
 	now := time.Unix(1000, 0)
 	cache := newLookupCache(1, time.Second, func() time.Time { return now }) // one slot: every host collides
 	first, second := &net.Resolver{}, &net.Resolver{}
@@ -51,6 +49,7 @@ func Test_LookupCache(t *testing.T) {
 
 // Test_Security_ValidateHostForSSRF_RemembersTheLookup pins what the cache is for and where it stops:
 // the up-front check looks a name up once, the dial guard every time, and a refused answer stays refused.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_ValidateHostForSSRF_RemembersTheLookup(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver.
 	public := net.IPv4(198, 51, 100, 1)
@@ -82,7 +81,6 @@ func Test_Security_ValidateHostForSSRF_RemembersTheLookup(t *testing.T) {
 // lookupCacheMaxAddrs is judged and forgotten, so a name's owner cannot make every slot large.
 func Test_Security_LookupHost_RemembersASmallAnswerOnly(t *testing.T) {
 	t.Parallel()
-
 	for name, tc := range map[string]struct {
 		addrs      int
 		remembered bool
@@ -92,7 +90,6 @@ func Test_Security_LookupHost_RemembersASmallAnswerOnly(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			resolver := resolverFor(startManyAnswersDNS(t, tc.addrs))
 			cache := newLookupCache(16, time.Minute, time.Now)
 
@@ -110,7 +107,6 @@ func Test_Security_LookupHost_RemembersASmallAnswerOnly(t *testing.T) {
 // request left it, not at the lookup limit.
 func Test_Security_LookupHost_EndsAtTheDeadline(t *testing.T) {
 	t.Parallel()
-
 	_, err := lookupHost(net.DefaultResolver, "deadline.test", nil, time.Now().Add(-time.Second))
 	require.ErrorIs(t, err, ErrUpstreamHostUnresolvable)
 	var dnsErr *net.DNSError
@@ -120,6 +116,7 @@ func Test_Security_LookupHost_EndsAtTheDeadline(t *testing.T) {
 
 // Test_Security_LookupsFor pins which clients the up-front check may serve from the cache: only the
 // shared client, whose dials are checked again where they are made.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_LookupsFor(t *testing.T) {
 	// Intentionally not parallel: it reads and replaces the process-wide client.
 	restoreGlobalProxyClient(t)
@@ -136,6 +133,7 @@ func Test_Security_LookupsFor(t *testing.T) {
 
 // Test_Security_Do_UnguardedClientIsJudgedByAFreshLookup pins that a client the dial guard cannot
 // cover never sees the cache: a name rebound within the cache's lifetime is judged by its new answer.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_Do_UnguardedClientIsJudgedByAFreshLookup(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver and security policy.
 	policy := DefaultSecurityPolicy() // AllowPrivateIPs == false
@@ -163,13 +161,10 @@ func Test_Security_Do_UnguardedClientIsJudgedByAFreshLookup(t *testing.T) {
 	app := fiber.New()
 	app.Get("/", func(c fiber.Ctx) error { return Do(c, "http://fresh.test/", client) })
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/", fiber.StatusNoContent)
 	require.NoError(t, resp.Body.Close())
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	resp = apptest.Do(t, app, "/")
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode, "the rebound answer is judged")
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, int32(1), served.Load(), "and the second request never reaches the transport")
@@ -177,6 +172,7 @@ func Test_Security_Do_UnguardedClientIsJudgedByAFreshLookup(t *testing.T) {
 
 // Test_Security_FollowRedirects_UnguardedClientHopsAreJudgedByFreshLookups pins that the hops of a
 // redirect an unguarded client follows never see the cache: a name rebound between hops is caught.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_FollowRedirects_UnguardedClientHopsAreJudgedByFreshLookups(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver.
 	// The first A answer for a name is public; every one after is internal.
@@ -190,15 +186,6 @@ func Test_Security_FollowRedirects_UnguardedClientHopsAreJudgedByFreshLookups(t 
 	})
 	client.onRequest = func(req *fasthttp.Request) { hops = append(hops, req.URI().String()) }
 
-	req := fasthttp.AcquireRequest()
-	resp := fasthttp.AcquireResponse()
-	t.Cleanup(func() {
-		fasthttp.ReleaseRequest(req)
-		fasthttp.ReleaseResponse(resp)
-	})
-	req.SetRequestURI("http://start.example/")
-
-	err := followRedirects(client.client, req, resp, 5, mustParseTestURL(t, "http://start.example/"), DefaultSecurityPolicy())
-	require.ErrorIs(t, err, ErrUpstreamHostBlocked, "the second hop to the rebound name is judged by its new answer")
+	require.ErrorIs(t, proxyTestFollow(t, client.client, "http://start.example/", 5, DefaultSecurityPolicy()), ErrUpstreamHostBlocked, "the second hop to the rebound name is judged by its new answer")
 	require.Equal(t, []string{"http://start.example/", "http://rebind.test/a"}, hops, "and never sent")
 }

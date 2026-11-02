@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -16,10 +17,16 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/clocktest"
+	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+// cacheTestCClock returns a clock fixed at an instant of the past, which only the test moves.
+func cacheTestCClock() *clocktest.Clock { return clocktest.NewClock(time.Unix(1_700_000_000, 0)) }
 
 // credentialPartition is a way the cache tells sessions apart, and how the fixture sends one.
 type credentialPartition struct {
@@ -113,7 +120,7 @@ type credentialOptions struct {
 	custom fiber.Storage         // used instead of storage when set
 	refuse func(fiber.Ctx) error // the answer to a session that is not valid, a bare 401 when nil
 	// clock and expiration push an entry past its lifetime while storage still holds it.
-	clock *testClock
+	clock *clocktest.Clock
 	// beforeRefusal runs in the origin before it refuses a session, as a concurrent request would.
 	beforeRefusal func(*credentialFixture)
 	partition     string // a key of credentialPartitions
@@ -150,9 +157,8 @@ func newCredentialFixture(t *testing.T, opts *credentialOptions) *credentialFixt
 		refuse = refusal(fiber.StatusUnauthorized, "bare")
 	}
 
-	f := &credentialFixture{t: t, probe: &accountingProbe{}, partition: partition, variantHeader: opts.variantHeader}
-	if f.variantHeader == "" {
-		f.variantHeader = "X-Variant"
+	f := &credentialFixture{
+		t: t, probe: &accountingProbe{}, partition: partition, variantHeader: cmp.Or(opts.variantHeader, "X-Variant"),
 	}
 	// A byte limit turns on the heap accounting a purge has to keep honest.
 	cfg := Config{MaxBytes: 1 << 20, accounting: f.probe.record, Expiration: opts.expiration, AllowStaleCredentialResponses: opts.allowStale, refusalRecordLimit: opts.recordCap}
@@ -211,15 +217,10 @@ func (f *credentialFixture) get(session, variant, cacheControl string) reply {
 func (f *credentialFixture) send(method, session, variant, cacheControl string) reply {
 	f.t.Helper()
 
-	req := httptest.NewRequest(method, fixturePath, http.NoBody)
+	req := apptest.Req(method, fixturePath,
+		apptest.WithHeaderIf(f.variantHeader, variant), apptest.WithHeaderIf(fiber.HeaderCacheControl, cacheControl))
 	if session != "" {
 		f.partition.send(req, session)
-	}
-	if variant != "" {
-		req.Header.Set(f.variantHeader, variant)
-	}
-	if cacheControl != "" {
-		req.Header.Set(fiber.HeaderCacheControl, cacheControl)
 	}
 	return doRequest(f.t, f.app, req)
 }
@@ -298,7 +299,6 @@ func refusingAfter(strip func(*fasthttp.RequestHeader)) func(fiber.Ctx) error {
 // A reload answered 401, 403 or 407 ends its own credential's entry only, whatever directive it carries.
 func Test_Cache_RejectedCredentialDropsEntry(t *testing.T) {
 	t.Parallel()
-
 	for _, partition := range []string{"keyCookies", "varyCookie", "varyApiKey", "authorization"} {
 		for _, storage := range storageKinds {
 			for _, reload := range reloadForms {
@@ -306,7 +306,6 @@ func Test_Cache_RejectedCredentialDropsEntry(t *testing.T) {
 					for _, directive := range []string{"bare", "private", "no-store", "no-cache", "VaryStar"} {
 						t.Run(fmt.Sprintf("%s/%s/%s/%d/%s", partition, storage, reload, status, directive), func(t *testing.T) {
 							t.Parallel()
-
 							f := newCredentialFixture(t, &credentialOptions{
 								partition: partition,
 								storage:   storage,
@@ -356,7 +355,6 @@ func Test_Cache_RejectedCredentialDropsEntry(t *testing.T) {
 // A refusal returned as fiber.ErrUnauthorized ends the entry; an error that says nothing about the credential does not.
 func Test_Cache_RejectedCredentialReturnedAsError(t *testing.T) {
 	t.Parallel()
-
 	answers := []struct {
 		err    error
 		name   string
@@ -378,7 +376,6 @@ func Test_Cache_RejectedCredentialReturnedAsError(t *testing.T) {
 				for _, answer := range answers {
 					t.Run(fmt.Sprintf("%s/%s/%s/%s", partition, storage, reload, answer.name), func(t *testing.T) {
 						t.Parallel()
-
 						f := newCredentialFixture(t, &credentialOptions{
 							partition: partition,
 							storage:   storage,
@@ -408,7 +405,6 @@ func Test_Cache_RejectedCredentialReturnedAsError(t *testing.T) {
 // A refusal OnTimeout returns ends the entry, but the response stays the timed-out handler's.
 func Test_Cache_RejectedCredentialFromOnTimeout(t *testing.T) {
 	t.Parallel()
-
 	var calls atomic.Int32
 	answered := make(chan struct{})
 	finished := make(chan struct{})
@@ -432,34 +428,27 @@ func Test_Cache_RejectedCredentialFromOnTimeout(t *testing.T) {
 	}))
 
 	get := func(cacheControl string) *fasthttp.RequestCtx {
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.SetRequestURI("/")
-		fctx.Request.Header.SetCookie("session", "a")
-		if cacheControl != "" {
-			fctx.Request.Header.Set(fiber.HeaderCacheControl, cacheControl)
-		}
-		app.Handler()(fctx)
-		return fctx
+		headers := []string{fiber.HeaderCookie, "session=a", fiber.HeaderCacheControl, cacheControl}
+		return cacheTestServe(app.Handler(), "/", headers...)
 	}
 
-	require.Equal(t, cacheMiss, string(get("").Response.Header.Peek("X-Cache")))
+	require.Equal(t, cacheMiss, cacheTestXCache(get("")))
 
 	fctx := get("no-cache")
 	resp := fctx.LastTimeoutErrorResponse()
 	require.NotNil(t, resp)
 	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode())
-	<-finished
+	apptest.Recv(t, finished, 5*time.Second, "the timed-out handler did not finish")
 	require.Equal(t, "1", string(fctx.Response.Header.Peek("X-Handler")))
 	require.Empty(t, fctx.Response.Header.Peek("X-Cache"), "the cache wrote to the timed-out handler's response")
 
-	require.Equal(t, cacheMiss, string(get("").Response.Header.Peek("X-Cache")))
+	require.Equal(t, cacheMiss, cacheTestXCache(get("")))
 	require.Equal(t, int32(3), calls.Load())
 }
 
 // A refusal ends the credential's entry and its other variants, through the manifest when that is its own, else a record.
 func Test_Cache_RejectedCredentialDropsItsVariants(t *testing.T) {
 	t.Parallel()
-
 	noStore := refusal(fiber.StatusUnauthorized, "no-store")
 	private := refusal(fiber.StatusUnauthorized, "private")
 	// Returned as an error, with the directive set before: the headers stand, the status is the error's.
@@ -512,7 +501,6 @@ func Test_Cache_RejectedCredentialDropsItsVariants(t *testing.T) {
 		for _, scenario := range scenarios {
 			t.Run(storage+"/"+scenario.name, func(t *testing.T) {
 				t.Parallel()
-
 				refused, other := "a", "b"
 				var valid []string
 				if scenario.anonymous {
@@ -558,13 +546,11 @@ func Test_Cache_RejectedCredentialDropsItsVariants(t *testing.T) {
 // The documented recipe: a CacheInvalidator reporting ended sessions cuts one off at once, even with max-stale.
 func Test_Cache_InvalidatorCutsOffEndedSession(t *testing.T) {
 	t.Parallel()
-
 	for _, partition := range []string{"keyCookies", "varyCookie"} {
 		for _, storage := range storageKinds {
 			for _, request := range []struct{ name, cacheControl string }{{"plain", ""}, {"max-stale", "max-stale"}} {
 				t.Run(partition+"/"+storage+"/"+request.name, func(t *testing.T) {
 					t.Parallel()
-
 					f := newCredentialFixture(t, &credentialOptions{
 						partition:       partition,
 						storage:         storage,
@@ -603,7 +589,7 @@ func isRefusalRecord(key string) bool {
 // refusalStorage counts refusal record reads and writes and marker reads, and can fail record reads
 // and writes.
 type refusalStorage struct {
-	*failingCacheStorage
+	*storagetest.Memory
 	reads       atomic.Int32
 	writes      atomic.Int32
 	markerReads atomic.Int32 // of the marker for all URLs
@@ -613,7 +599,7 @@ type refusalStorage struct {
 }
 
 func newRefusalStorage() *refusalStorage {
-	return &refusalStorage{failingCacheStorage: newFailingCacheStorage()}
+	return &refusalStorage{Memory: storagetest.New()}
 }
 
 func (s *refusalStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
@@ -623,14 +609,14 @@ func (s *refusalStorage) SetWithContext(ctx context.Context, key string, val []b
 			return errors.New("storage unavailable")
 		}
 	}
-	return s.failingCacheStorage.SetWithContext(ctx, key, val, exp)
+	return s.Memory.SetWithContext(ctx, key, val, exp)
 }
 
 func (s *refusalStorage) records() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
 	n := 0
-	for key := range s.data {
+	for key := range s.Data {
 		if isRefusalRecord(key) {
 			n++
 		}
@@ -651,38 +637,29 @@ func (s *refusalStorage) GetWithContext(ctx context.Context, key string) ([]byte
 			return nil, errors.New("storage unavailable")
 		}
 	}
-	return s.failingCacheStorage.GetWithContext(ctx, key)
+	return s.Memory.GetWithContext(ctx, key)
 }
 
 func Test_Cache_RefusedCredentialStaysOutWhileOthersMiss(t *testing.T) {
 	t.Parallel()
-
 	for _, partition := range []string{"varyCookie", "varyApiKey"} {
 		for _, storage := range storageKinds {
-			for _, directive := range []string{"bare"} {
-				t.Run(partition+"/"+storage+"/"+directive, func(t *testing.T) {
-					t.Parallel()
-
-					f := newCredentialFixture(t, &credentialOptions{
-						partition: partition,
-						storage:   storage,
-						vary:      "X-Variant",
-						refuse:    refusal(fiber.StatusUnauthorized, directive),
-					})
-					f.warm([]string{"a", "b"}, "one", "two")
-
-					f.ended.Store("a", true)
-					require.Equal(t, fiber.StatusUnauthorized, f.get("a", "one", "no-cache").status)
-
-					require.Equal(t, cacheMiss, f.get("b", "three", "").cache)
-
-					f.requireRefused(fiber.StatusUnauthorized, "two", "")
-
-					for _, variant := range []string{"one", "two", "three"} {
-						f.requireHit("b", variant)
-					}
+			// The refusal is the fixture's own, a bare 401.
+			t.Run(partition+"/"+storage+"/bare", func(t *testing.T) {
+				t.Parallel()
+				f := newCredentialFixture(t, &credentialOptions{
+					partition: partition, storage: storage, vary: "X-Variant",
 				})
-			}
+				f.warm([]string{"a", "b"}, "one", "two")
+
+				f.ended.Store("a", true)
+				require.Equal(t, fiber.StatusUnauthorized, f.get("a", "one", "no-cache").status)
+				require.Equal(t, cacheMiss, f.get("b", "three", "").cache)
+				f.requireRefused(fiber.StatusUnauthorized, "two", "")
+				for _, variant := range []string{"one", "two", "three"} {
+					f.requireHit("b", variant)
+				}
+			})
 		}
 	}
 }
@@ -690,7 +667,6 @@ func Test_Cache_RefusedCredentialStaysOutWhileOthersMiss(t *testing.T) {
 // A hit looks for a record only once one is announced for its URL group, and only if a credential selected the entry.
 func Test_Cache_RefusalRecordIsReadOnlyWhereOneCanApply(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name      string
 		partition string
@@ -713,7 +689,6 @@ func Test_Cache_RefusalRecordIsReadOnlyWhereOneCanApply(t *testing.T) {
 		for _, announced := range []string{"nowhere", "another group", "the group"} {
 			t.Run(fmt.Sprintf("%s/announced=%s", tc.name, announced), func(t *testing.T) {
 				t.Parallel()
-
 				session := "a"
 				if tc.anonymous {
 					session = ""
@@ -724,8 +699,8 @@ func Test_Cache_RefusalRecordIsReadOnlyWhereOneCanApply(t *testing.T) {
 					if announced == "another group" {
 						group = (group + 1) % refusalGroups
 					}
-					storage.data[refusalMarker] = []byte{1}
-					storage.data[groupMarkers[group]] = []byte{1}
+					storage.Data[refusalMarker] = []byte{1}
+					storage.Data[groupMarkers[group]] = []byte{1}
 				}
 				f := newCredentialFixture(t, &credentialOptions{
 					partition: tc.partition,
@@ -757,15 +732,10 @@ func Test_Cache_RefusalRecordIsReadOnlyWhereOneCanApply(t *testing.T) {
 
 func Test_Cache_UnreadableRefusalRecordRevalidates(t *testing.T) {
 	t.Parallel()
-
 	storage := newRefusalStorage()
-	storage.data[refusalMarker] = []byte{1}
-	storage.data[groupMarkers[groupOf(fixturePath)]] = []byte{1}
-	f := newCredentialFixture(t, &credentialOptions{
-		partition: "varyCookie",
-		custom:    storage,
-		valid:     []string{"a"},
-	})
+	storage.Data[refusalMarker] = []byte{1}
+	storage.Data[groupMarkers[groupOf(fixturePath)]] = []byte{1}
+	f := newCredentialFixture(t, &credentialOptions{partition: "varyCookie", custom: storage, valid: []string{"a"}})
 	require.Equal(t, cacheMiss, f.get("a", "", "").cache)
 	require.Equal(t, cacheHit, f.get("a", "", "").cache)
 
@@ -779,7 +749,6 @@ func Test_Cache_UnreadableRefusalRecordRevalidates(t *testing.T) {
 // A refused client that sends no credential leaves the shared entry alone, and no record is made or read.
 func Test_Cache_RefusedAnonymousClientLeavesTheSharedEntry(t *testing.T) {
 	t.Parallel()
-
 	for _, partition := range []string{"varyCookie", "varyApiKey", "tenant", "customHeader", "customVary"} {
 		for _, storage := range storageKinds {
 			for _, reload := range reloadForms {
@@ -787,7 +756,6 @@ func Test_Cache_RefusedAnonymousClientLeavesTheSharedEntry(t *testing.T) {
 					for _, directive := range []string{"bare", "no-store"} {
 						t.Run(fmt.Sprintf("%s/%s/%s/%d/%s", partition, storage, reload, status, directive), func(t *testing.T) {
 							t.Parallel()
-
 							backing := newRefusalStorage()
 							opts := &credentialOptions{partition: partition, valid: []string{"", "a"}, refuse: refusal(status, directive)}
 							if storage == "external" {
@@ -817,17 +785,11 @@ func Test_Cache_RefusedAnonymousClientLeavesTheSharedEntry(t *testing.T) {
 
 func Test_Cache_RefusedCredentialRecoversWhenAccepted(t *testing.T) {
 	t.Parallel()
-
 	for _, partition := range []string{"varyCookie", "varyApiKey"} {
 		t.Run(partition, func(t *testing.T) {
 			t.Parallel()
-
 			storage := newRefusalStorage()
-			f := newCredentialFixture(t, &credentialOptions{
-				partition: partition,
-				custom:    storage,
-				vary:      "X-Variant",
-			})
+			f := newCredentialFixture(t, &credentialOptions{partition: partition, custom: storage, vary: "X-Variant"})
 			f.warm([]string{"a", "b"}, "one", "two")
 
 			f.ended.Store("a", true)
@@ -852,7 +814,6 @@ func Test_Cache_RefusedCredentialRecoversWhenAccepted(t *testing.T) {
 // A redirect answering a refused credential, as a login page's does, is no acceptance: the record stays.
 func Test_Cache_RedirectDoesNotForgetTheRefusal(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name          string
 		partition     string
@@ -867,7 +828,6 @@ func Test_Cache_RedirectDoesNotForgetTheRefusal(t *testing.T) {
 		for _, storage := range storageKinds {
 			t.Run(tc.name+"/"+storage, func(t *testing.T) {
 				t.Parallel()
-
 				var redirect atomic.Bool
 				f := newCredentialFixture(t, &credentialOptions{
 					partition:     tc.partition,
@@ -902,12 +862,10 @@ func Test_Cache_RedirectDoesNotForgetTheRefusal(t *testing.T) {
 
 func Test_Cache_RefusalOutlivesAConcurrentReplacement(t *testing.T) {
 	t.Parallel()
-
 	for _, partition := range []string{"keyCookies", "authorization", "varyCookie", "varyApiKey"} {
 		for _, storage := range storageKinds {
 			t.Run(partition+"/"+storage, func(t *testing.T) {
 				t.Parallel()
-
 				var armed atomic.Bool
 				f := newCredentialFixture(t, &credentialOptions{
 					partition: partition,
@@ -953,13 +911,8 @@ func Test_Cache_RefusalOutlivesAConcurrentReplacement(t *testing.T) {
 // Only a credential that has an entry gets a record, so records cannot outnumber the entries.
 func Test_Cache_RefusalsOfUnknownCredentialsWriteNoRecords(t *testing.T) {
 	t.Parallel()
-
 	storage := newRefusalStorage()
-	f := newCredentialFixture(t, &credentialOptions{
-		partition: "varyCookie",
-		custom:    storage,
-		valid:     []string{"a"},
-	})
+	f := newCredentialFixture(t, &credentialOptions{partition: "varyCookie", custom: storage, valid: []string{"a"}})
 	require.Equal(t, cacheMiss, f.get("a", "", "").cache)
 
 	for i := range 50 {
@@ -980,11 +933,9 @@ func Test_Cache_RefusalsOfUnknownCredentialsWriteNoRecords(t *testing.T) {
 
 func Test_Cache_HandlerErrorKeepsTheEntry(t *testing.T) {
 	t.Parallel()
-
 	for _, storage := range storageKinds {
 		t.Run(storage, func(t *testing.T) {
 			t.Parallel()
-
 			app := fiber.New()
 			app.Use(New(Config{Storage: storageOf(storage)}))
 			app.Get("/", func(c fiber.Ctx) error {
@@ -999,9 +950,7 @@ func Test_Cache_HandlerErrorKeepsTheEntry(t *testing.T) {
 				got := getRoot(t, app, map[string]string{"X-Fail": "1", fiber.HeaderCacheControl: reload})
 				require.Equal(t, fiber.StatusServiceUnavailable, got.status)
 			}
-			got := getRoot(t, app, nil)
-			require.Equal(t, cacheHit, got.cache)
-			require.Equal(t, "PUBLIC", got.body)
+			cacheTestCRequireReply(t, getRoot(t, app, nil), cacheHit, "PUBLIC")
 		})
 	}
 }
@@ -1009,7 +958,6 @@ func Test_Cache_HandlerErrorKeepsTheEntry(t *testing.T) {
 // An entry holding a credential's response is not served stale, unless AllowStaleCredentialResponses says it may be.
 func Test_Cache_CredentialKeyedEntryIgnoresMaxStale(t *testing.T) {
 	t.Parallel()
-
 	scenarios := []struct {
 		name      string
 		partition string
@@ -1030,8 +978,7 @@ func Test_Cache_CredentialKeyedEntryIgnoresMaxStale(t *testing.T) {
 				for _, scenario := range scenarios {
 					t.Run(fmt.Sprintf("%s/%s/allowed=%t/%s", storage, maxStale, allowed, scenario.name), func(t *testing.T) {
 						t.Parallel()
-
-						clock := newTestClock(time.Unix(1_700_000_000, 0))
+						clock := cacheTestCClock()
 						f := newCredentialFixture(t, &credentialOptions{
 							partition:  scenario.partition,
 							storage:    storage,
@@ -1064,13 +1011,11 @@ func Test_Cache_CredentialKeyedEntryIgnoresMaxStale(t *testing.T) {
 
 func Test_Cache_AllowStaleCredentialResponsesKeepsInvalidatedEntriesOut(t *testing.T) {
 	t.Parallel()
-
 	for _, partition := range []string{"keyCookies", "varyCookie", "authorization"} {
 		for _, storage := range storageKinds {
 			t.Run(partition+"/"+storage, func(t *testing.T) {
 				t.Parallel()
-
-				clock := newTestClock(time.Unix(1_700_000_000, 0))
+				clock := cacheTestCClock()
 				f := newCredentialFixture(t, &credentialOptions{
 					partition:       partition,
 					storage:         storage,
@@ -1095,7 +1040,6 @@ func Test_Cache_AllowStaleCredentialResponsesKeepsInvalidatedEntriesOut(t *testi
 // A refusal ends the shared entry only as a verdict on a credential: an IP or geo rule must not end what others share.
 func Test_Cache_RefusalEndsTheSharedEntryOnlyForACredential(t *testing.T) {
 	t.Parallel()
-
 	custom := Config{KeyGenerator: pathKey}
 	tests := []struct {
 		blocked   map[string]string // what the client the app refuses sends besides X-Blocked
@@ -1152,7 +1096,6 @@ func Test_Cache_RefusalEndsTheSharedEntryOnlyForACredential(t *testing.T) {
 					for _, tc := range tests {
 						t.Run(fmt.Sprintf("%s/%s/%s/%d/%s", storage, delivery, reload, status, tc.name), func(t *testing.T) {
 							t.Parallel()
-
 							cfg := tc.cfg
 							cfg.Storage = storageOf(storage)
 							app := fiber.New()
@@ -1192,12 +1135,10 @@ func Test_Cache_RefusalEndsTheSharedEntryOnlyForACredential(t *testing.T) {
 
 func Test_Cache_RefusalReachesTheVariantsTheKeyTellsApart(t *testing.T) {
 	t.Parallel()
-
 	for _, partition := range []string{"keyCookies", "credentialHeader", "authorization", "varyCookie", "varyApiKey"} {
 		for _, storage := range storageKinds {
 			t.Run(partition+"/"+storage, func(t *testing.T) {
 				t.Parallel()
-
 				f := newCredentialFixture(t, &credentialOptions{
 					partition:     partition,
 					storage:       storage,
@@ -1221,14 +1162,12 @@ func Test_Cache_RefusalReachesTheVariantsTheKeyTellsApart(t *testing.T) {
 // GET and HEAD answer for the same resource and credential, so a refusal answering either reaches both.
 func Test_Cache_RefusalOfGetOrHeadReachesTheOther(t *testing.T) {
 	t.Parallel()
-
 	methods := []string{fiber.MethodGet, fiber.MethodHead}
 	for _, partition := range []string{"keyCookies", "credentialHeader", "authorization", "varyCookie", "varyApiKey", "customKey", "customAuthorization"} {
 		for _, storage := range storageKinds {
 			for _, refusedBy := range methods {
 				t.Run(partition+"/"+storage+"/"+refusedBy, func(t *testing.T) {
 					t.Parallel()
-
 					other := methods[0]
 					if refusedBy == other {
 						other = methods[1]
@@ -1258,12 +1197,10 @@ func Test_Cache_RefusalOfGetOrHeadReachesTheOther(t *testing.T) {
 
 func Test_Cache_RefusalReachesTheVariantsWhateverEachVariesOn(t *testing.T) {
 	t.Parallel()
-
 	for _, storage := range storageKinds {
 		for _, refused := range []string{"text/html", "application/json"} {
 			t.Run(storage+"/"+refused, func(t *testing.T) {
 				t.Parallel()
-
 				var ended atomic.Bool
 				app := fiber.New()
 				app.Use(New(Config{Storage: storageOf(storage), KeyCookies: []string{"session"}}))
@@ -1278,13 +1215,7 @@ func Test_Cache_RefusalReachesTheVariantsWhateverEachVariesOn(t *testing.T) {
 					return c.SendString("page as " + c.Get(fiber.HeaderAccept))
 				})
 				get := func(accept, cacheControl string) reply {
-					req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-					req.Header.Set(fiber.HeaderCookie, "session=a")
-					req.Header.Set(fiber.HeaderAccept, accept)
-					if cacheControl != "" {
-						req.Header.Set(fiber.HeaderCacheControl, cacheControl)
-					}
-					return doRequest(t, app, req)
+					return cacheTestCGet(t, app, "/", fiber.HeaderCookie, "session=a", fiber.HeaderAccept, accept, fiber.HeaderCacheControl, cacheControl)
 				}
 				other := "application/json"
 				if refused == other {
@@ -1305,13 +1236,8 @@ func Test_Cache_RefusalReachesTheVariantsWhateverEachVariesOn(t *testing.T) {
 
 func Test_Cache_RefusalIsForgottenWhenTheAnswerIsNotStored(t *testing.T) {
 	t.Parallel()
-
 	storage := newRefusalStorage()
-	f := newCredentialFixture(t, &credentialOptions{
-		partition: "varyCookie",
-		custom:    storage,
-		vary:      "X-Variant",
-	})
+	f := newCredentialFixture(t, &credentialOptions{partition: "varyCookie", custom: storage, vary: "X-Variant"})
 	f.warm([]string{"a", "b"}, "one", "two")
 
 	f.ended.Store("a", true)
@@ -1330,12 +1256,10 @@ func Test_Cache_RefusalIsForgottenWhenTheAnswerIsNotStored(t *testing.T) {
 
 func Test_Cache_ExpiredDeleteKeepsAConcurrentReplacement(t *testing.T) {
 	t.Parallel()
-
 	for _, storage := range storageKinds {
 		t.Run(storage, func(t *testing.T) {
 			t.Parallel()
-
-			clock := newTestClock(time.Unix(1_700_000_000, 0))
+			clock := cacheTestCClock()
 			gate := make(chan struct{})
 			entered := make(chan struct{}, 1)
 			inHandler := make(chan struct{}, 1)
@@ -1398,15 +1322,11 @@ func Test_Cache_ExpiredDeleteKeepsAConcurrentReplacement(t *testing.T) {
 // Freshness is judged after CacheInvalidator returns: an entry a slow call ages past max-age is revalidated.
 func Test_Cache_InvalidatorRunsBeforeFreshnessIsJudged(t *testing.T) {
 	t.Parallel()
-
 	for _, storage := range storageKinds {
 		t.Run(storage, func(t *testing.T) {
 			t.Parallel()
-
-			clock := newTestClock(time.Unix(1_700_000_000, 0))
-			var calls atomic.Int32
-			app := fiber.New()
-			app.Use(New(Config{
+			clock := cacheTestCClock()
+			app, _ := cacheTestAOrigin(New(Config{
 				Storage:    storageOf(storage),
 				Expiration: time.Hour,
 				clock:      clock.Now,
@@ -1416,10 +1336,7 @@ func Test_Cache_InvalidatorRunsBeforeFreshnessIsJudged(t *testing.T) {
 					}
 					return false
 				},
-			}))
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("response-" + strconv.Itoa(int(calls.Add(1))))
-			})
+			}), "response-")
 
 			require.Equal(t, "response-1", getRoot(t, app, nil).body)
 			clock.Add(30 * time.Second)
@@ -1435,7 +1352,6 @@ func Test_Cache_InvalidatorRunsBeforeFreshnessIsJudged(t *testing.T) {
 // its variants are served until they expire. No other session's hits are revalidated.
 func Test_Cache_RefusalRecordOverflow(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name      string
 		records   int // the records the cache keeps
@@ -1447,7 +1363,6 @@ func Test_Cache_RefusalRecordOverflow(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			sessions := make([]string, tc.refused)
 			for i := range sessions {
 				sessions[i] = "s" + strconv.Itoa(i)
@@ -1469,9 +1384,7 @@ func Test_Cache_RefusalRecordOverflow(t *testing.T) {
 			// A remembered record keeps its session's other variant out; a forgotten one does not, until it expires.
 			for i, session := range sessions {
 				if i < tc.forgotten {
-					got := f.get(session, "two", "")
-					require.Equal(t, cacheHit, got.cache)
-					require.Equal(t, accountBody(session, "two"), got.body)
+					cacheTestCRequireReply(t, f.get(session, "two", ""), cacheHit, accountBody(session, "two"))
 					continue
 				}
 				f.requireRefusedAs(fiber.StatusUnauthorized, session, "two", "")
@@ -1487,7 +1400,6 @@ func Test_Cache_RefusalRecordOverflow(t *testing.T) {
 
 func Test_Cache_RefusalRecordCostsOnlyItsGroupOfURLs(t *testing.T) {
 	t.Parallel()
-
 	require.NotEqual(t, groupOf("/refused"), groupOf("/elsewhere"))
 	storage := newRefusalStorage()
 	var ended atomic.Bool
@@ -1501,14 +1413,7 @@ func Test_Cache_RefusalRecordCostsOnlyItsGroupOfURLs(t *testing.T) {
 	})
 	app.Get("/elsewhere", func(c fiber.Ctx) error { return c.SendString("data") })
 	get := func(uri, accept, cacheControl string) reply {
-		t.Helper()
-		req := httptest.NewRequest(fiber.MethodGet, uri, http.NoBody)
-		req.Header.Set("Cookie", "session=abc")
-		req.Header.Set(fiber.HeaderAccept, accept)
-		if cacheControl != "" {
-			req.Header.Set(fiber.HeaderCacheControl, cacheControl)
-		}
-		return doRequest(t, app, req)
+		return cacheTestCGet(t, app, uri, "Cookie", "session=abc", fiber.HeaderAccept, accept, fiber.HeaderCacheControl, cacheControl)
 	}
 
 	for _, uri := range []string{"/refused", "/elsewhere"} {
@@ -1535,8 +1440,7 @@ func Test_Cache_RefusalRecordCostsOnlyItsGroupOfURLs(t *testing.T) {
 // An instance sharing the Storage notices a record another wrote within markerPoll.
 func Test_Cache_RefusalReachesAnotherInstanceSharingTheStorage(t *testing.T) {
 	t.Parallel()
-
-	storage := newFailingCacheStorage()
+	storage := storagetest.New()
 	var ended atomic.Bool
 	instance := func() *fiber.App {
 		app := fiber.New()
@@ -1551,14 +1455,7 @@ func Test_Cache_RefusalReachesAnotherInstanceSharingTheStorage(t *testing.T) {
 	}
 	first, second := instance(), instance()
 	get := func(app *fiber.App, accept, cacheControl string) reply {
-		t.Helper()
-		req := httptest.NewRequest(fiber.MethodGet, "/page", http.NoBody)
-		req.Header.Set("Cookie", "session=abc")
-		req.Header.Set(fiber.HeaderAccept, accept)
-		if cacheControl != "" {
-			req.Header.Set(fiber.HeaderCacheControl, cacheControl)
-		}
-		return doRequest(t, app, req)
+		return cacheTestCGet(t, app, "/page", "Cookie", "session=abc", fiber.HeaderAccept, accept, fiber.HeaderCacheControl, cacheControl)
 	}
 
 	for _, accept := range []string{"text/html", "application/json"} {
@@ -1576,25 +1473,21 @@ func Test_Cache_RefusalReachesAnotherInstanceSharingTheStorage(t *testing.T) {
 
 func Test_Cache_ExpiredDeleteChecksTheEntry(t *testing.T) {
 	t.Parallel()
-
 	for _, withInvalidator := range []bool{false, true} {
 		t.Run(fmt.Sprintf("invalidator=%t", withInvalidator), func(t *testing.T) {
 			t.Parallel()
-
 			var reads atomic.Int32
-			storage := &hookedStorage{failingCacheStorage: newFailingCacheStorage(), onGet: func(key string) {
+			storage := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) {
 				if strings.HasPrefix(key, cacheKeyVersion+"|GET|") && !strings.HasPrefix(key, bodyKeyPrefix) {
 					reads.Add(1)
 				}
 			}}
-			clock := newTestClock(time.Unix(1_700_000_000, 0))
+			clock := cacheTestCClock()
 			cfg := Config{Storage: storage, Expiration: time.Minute, clock: clock.Now, DisableVaryHeaders: true}
 			if withInvalidator {
 				cfg.CacheInvalidator = func(fiber.Ctx) bool { return false }
 			}
-			app := fiber.New()
-			app.Use(New(cfg))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
+			app, _ := cacheTestAOrigin(New(cfg), "")
 
 			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
 			clock.Add(2 * time.Minute)
@@ -1610,7 +1503,6 @@ func Test_Cache_ExpiredDeleteChecksTheEntry(t *testing.T) {
 // or the read that checks it, fails the request rather than leave the entry to be found again.
 func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) {
 	t.Parallel()
-
 	const key = cacheKeyVersion + "|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"
 	future := uint64(time.Now().Unix()) + 3600
 
@@ -1627,38 +1519,32 @@ func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) 
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			base := newFailingCacheStorage()
+			base := storagetest.New()
 			raw, err := tc.entry.MarshalMsg(nil)
 			require.NoError(t, err)
-			base.data[key] = raw
+			base.Data[key] = raw
 
 			cfg := Config{Storage: base, Expiration: time.Hour}
 			if tc.invalidator {
 				// The entry is read to find it, and again to check that it is still the one found.
 				var reads atomic.Int32
-				cfg.Storage = &hookedStorage{failingCacheStorage: base, onGet: func(read string) {
+				cfg.Storage = &hookedStorage{Memory: base, onGet: func(read string) {
 					if read == key && reads.Add(1) == 2 {
-						base.mu.Lock()
-						base.errs["get|"+key] = errors.New("storage unavailable")
-						base.mu.Unlock()
+						base.SetErr(storagetest.OpGet, key, errors.New("storage unavailable"))
 					}
 				}}
 				cfg.CacheInvalidator = func(fiber.Ctx) bool { return false }
 			} else {
-				base.errs["del|"+key] = errors.New("storage unavailable")
+				base.SetErr(storagetest.OpDelete, key, errors.New("storage unavailable"))
 			}
 
-			var captured error
-			app := fiber.New(fiber.Config{ErrorHandler: func(c fiber.Ctx, err error) error {
-				captured = err
-				return c.SendStatus(fiber.StatusInternalServerError)
-			}})
+			var failures cacheTestAFailures
+			app := failures.app()
 			app.Use(New(cfg))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 			require.Equal(t, fiber.StatusInternalServerError, getRoot(t, app, nil).status)
-			require.ErrorContains(t, captured, tc.want)
+			require.ErrorContains(t, failures.err, tc.want)
 		})
 	}
 }
@@ -1667,28 +1553,24 @@ func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) 
 // logged, and the credential stays refused through its record.
 func Test_Cache_RefusalToleratesAStorageThatFailsWhileDroppingTheReplacement(t *testing.T) {
 	t.Parallel()
-
 	for _, failing := range []string{"read", "delete"} {
 		t.Run(failing, func(t *testing.T) {
 			t.Parallel()
-
-			base := newFailingCacheStorage()
+			base := storagetest.New()
 			failure := errors.New("storage unavailable")
 			var armed atomic.Bool
 			var watched atomic.Pointer[string]
 			var reads atomic.Int32
-			storage := &hookedStorage{failingCacheStorage: base, onGet: func(key string) {
+			storage := &hookedStorage{Memory: base, onGet: func(key string) {
 				// The first read of the key after the replacement is stored finds it, and the next removes it.
 				if w := watched.Load(); w != nil && key == *w && reads.Add(1) == 2 && failing == "read" {
-					base.mu.Lock()
-					base.errs["get|"+key] = failure
-					base.mu.Unlock()
+					base.SetErr(storagetest.OpGet, key, failure)
 				}
 			}}
 			entryOf := func(session string) string {
-				base.mu.RLock()
-				defer base.mu.RUnlock()
-				for key := range base.data {
+				base.Mu.RLock()
+				defer base.Mu.RUnlock()
+				for key := range base.Data {
 					if strings.Contains(key, "session:sha256:"+authDigest(session)) && !strings.HasPrefix(key, bodyKeyPrefix) && !isRefusalRecord(key) {
 						return key
 					}
@@ -1710,9 +1592,7 @@ func Test_Cache_RefusalToleratesAStorageThatFailsWhileDroppingTheReplacement(t *
 					key := entryOf("a")
 					require.NotEmpty(f.t, key)
 					if failing == "delete" {
-						base.mu.Lock()
-						base.errs["del|"+key] = failure
-						base.mu.Unlock()
+						base.SetErr(storagetest.OpDelete, key, failure)
 					}
 					reads.Store(0)
 					watched.Store(&key)
@@ -1727,10 +1607,8 @@ func Test_Cache_RefusalToleratesAStorageThatFailsWhileDroppingTheReplacement(t *
 			require.Equal(t, fiber.StatusUnauthorized, f.get("a", "", "no-cache").status)
 			require.False(t, armed.Load(), "the replacement was never stored")
 
-			base.mu.Lock()
-			_, held := base.data[*watched.Load()]
-			clear(base.errs)
-			base.mu.Unlock()
+			held := base.Holds(*watched.Load())
+			base.ClearErrs()
 			require.True(t, held, "the replacement could not be removed")
 
 			// Still stored, so still tracked and counted, beside the other session's entry.
@@ -1745,14 +1623,12 @@ func Test_Cache_RefusalToleratesAStorageThatFailsWhileDroppingTheReplacement(t *
 
 func Test_Cache_RefusalAfterAnEntryFoundExpiredOrInvalidatedReachesTheOtherVariants(t *testing.T) {
 	t.Parallel()
-
 	for _, kind := range []string{"expired", "invalidated"} {
 		for _, partition := range []string{"varyCookie", "varyApiKey"} {
 			for _, storage := range storageKinds {
 				t.Run(kind+"/"+partition+"/"+storage, func(t *testing.T) {
 					t.Parallel()
-
-					clock := newTestClock(time.Unix(1_700_000_000, 0))
+					clock := cacheTestCClock()
 					f := newCredentialFixture(t, &credentialOptions{
 						partition:       partition,
 						storage:         storage,
@@ -1784,11 +1660,9 @@ func Test_Cache_RefusalAfterAnEntryFoundExpiredOrInvalidatedReachesTheOtherVaria
 // are still revalidated here, while the other sessions keep their hits.
 func Test_Cache_RefusalIsRememberedWhenTheRecordCannotBeWritten(t *testing.T) {
 	t.Parallel()
-
 	for _, partition := range []string{"varyCookie", "varyApiKey"} {
 		t.Run(partition, func(t *testing.T) {
 			t.Parallel()
-
 			storage := newRefusalStorage()
 			f := newCredentialFixture(t, &credentialOptions{partition: partition, custom: storage, vary: "X-Variant"})
 			f.warm([]string{"a", "b"}, "one", "two")
@@ -1808,16 +1682,15 @@ func Test_Cache_RefusalIsRememberedWhenTheRecordCannotBeWritten(t *testing.T) {
 // already on its way can bring it back. The record keeps the credential's variants revalidated.
 func Test_Cache_RefusalOfCustomKeyAuthorizationOutlivesTheManifestComingBack(t *testing.T) {
 	t.Parallel()
-
-	storage := newFailingCacheStorage()
+	storage := storagetest.New()
 	f := newCredentialFixture(t, &credentialOptions{partition: "customAuthorization", custom: storage, vary: "X-Variant"})
 	f.warm([]string{"a", "b"}, "one", "two", "three")
 
 	manifests := func() map[string][]byte {
-		storage.mu.RLock()
-		defer storage.mu.RUnlock()
+		storage.Mu.RLock()
+		defer storage.Mu.RUnlock()
 		found := map[string][]byte{}
-		for key, value := range storage.data {
+		for key, value := range storage.Data {
 			if strings.HasPrefix(key, manifestKeyPrefix) && strings.Contains(key, "|auth="+authDigest("Bearer a")) {
 				found[key] = slices.Clone(value)
 			}
@@ -1831,9 +1704,9 @@ func Test_Cache_RefusalOfCustomKeyAuthorizationOutlivesTheManifestComingBack(t *
 	require.Equal(t, fiber.StatusUnauthorized, f.get("a", "one", "no-cache").status)
 	require.Empty(t, manifests(), "the refusal drops the manifest")
 
-	storage.mu.Lock()
-	maps.Copy(storage.data, saved)
-	storage.mu.Unlock()
+	storage.Mu.Lock()
+	maps.Copy(storage.Data, saved)
+	storage.Mu.Unlock()
 
 	f.requireRefused(fiber.StatusUnauthorized, "two", "")
 	f.requireRefused(fiber.StatusUnauthorized, "three", "")
@@ -1842,13 +1715,11 @@ func Test_Cache_RefusalOfCustomKeyAuthorizationOutlivesTheManifestComingBack(t *
 
 func Test_Cache_RefusalRecordKeepsTheGroupOfTheLookupWhenThePathIsRewritten(t *testing.T) {
 	t.Parallel()
-
 	require.NotEqual(t, groupOf("/account"), groupOf("/elsewhere"))
 
 	for _, storage := range storageKinds {
 		t.Run(storage, func(t *testing.T) {
 			t.Parallel()
-
 			var ended atomic.Bool
 			app := fiber.New()
 			app.Use(New(Config{Storage: storageOf(storage), KeyCookies: []string{"session"}}))
@@ -1865,24 +1736,18 @@ func Test_Cache_RefusalRecordKeepsTheGroupOfTheLookupWhenThePathIsRewritten(t *t
 				}
 				return c.SendString("account for " + c.Get(fiber.HeaderAccept))
 			})
-			get := func(accept string, headers map[string]string) reply {
-				req := httptest.NewRequest(fiber.MethodGet, "/account", http.NoBody)
-				req.Header.Set(fiber.HeaderCookie, "session=a")
-				req.Header.Set(fiber.HeaderAccept, accept)
-				for name, value := range headers {
-					req.Header.Set(name, value)
-				}
-				return doRequest(t, app, req)
+			// get sends the request of the session to /account, besides the extra headers given as name and value pairs.
+			get := func(accept string, extra ...string) reply {
+				return cacheTestCGet(t, app, "/account", append([]string{fiber.HeaderCookie, "session=a", fiber.HeaderAccept, accept}, extra...)...)
 			}
 
-			require.Equal(t, cacheMiss, get("text/html", nil).cache)
-			require.Equal(t, cacheMiss, get("text/plain", nil).cache)
+			require.Equal(t, cacheMiss, get("text/html").cache)
+			require.Equal(t, cacheMiss, get("text/plain").cache)
 
 			ended.Store(true)
-			reload := map[string]string{"X-Rewrite": "1", fiber.HeaderCacheControl: "no-cache"}
-			require.Equal(t, fiber.StatusUnauthorized, get("text/html", reload).status)
+			require.Equal(t, fiber.StatusUnauthorized, get("text/html", "X-Rewrite", "1", fiber.HeaderCacheControl, "no-cache").status)
 
-			require.Equal(t, fiber.StatusUnauthorized, get("text/plain", nil).status, "the other variant was served from the cache")
+			require.Equal(t, fiber.StatusUnauthorized, get("text/plain").status, "the other variant was served from the cache")
 		})
 	}
 }
@@ -1890,10 +1755,9 @@ func Test_Cache_RefusalRecordKeepsTheGroupOfTheLookupWhenThePathIsRewritten(t *t
 // The entry lifetime noted for the record counts for the group the lookup saw, even if a middleware rewrites the path.
 func Test_Cache_RefusalRecordOutlivesTheGroupsEntriesWhenThePathIsRewritten(t *testing.T) {
 	t.Parallel()
-
 	require.NotEqual(t, groupOf("/account"), groupOf("/elsewhere"))
 
-	storage := newFailingCacheStorage()
+	storage := storagetest.New()
 	var ended atomic.Bool
 	app := fiber.New()
 	app.Use(New(Config{Storage: storage, KeyCookies: []string{"session"}}))
@@ -1912,12 +1776,7 @@ func Test_Cache_RefusalRecordOutlivesTheGroupsEntriesWhenThePathIsRewritten(t *t
 		return c.SendString("account")
 	})
 	get := func(uri, cacheControl string) reply {
-		req := httptest.NewRequest(fiber.MethodGet, uri, http.NoBody)
-		req.Header.Set(fiber.HeaderCookie, "session=a")
-		if cacheControl != "" {
-			req.Header.Set(fiber.HeaderCacheControl, cacheControl)
-		}
-		return doRequest(t, app, req)
+		return cacheTestCGet(t, app, uri, fiber.HeaderCookie, "session=a", fiber.HeaderCacheControl, cacheControl)
 	}
 
 	stored := uint64(time.Now().Unix())
@@ -1928,10 +1787,10 @@ func Test_Cache_RefusalRecordOutlivesTheGroupsEntriesWhenThePathIsRewritten(t *t
 	require.Equal(t, fiber.StatusUnauthorized, get("/account?v=short", "no-cache").status)
 
 	// The record lasts as long as the hour-long entry of the group, not the minute the refused one had left.
-	storage.mu.RLock()
-	defer storage.mu.RUnlock()
+	storage.Mu.RLock()
+	defer storage.Mu.RUnlock()
 	records := 0
-	for key, value := range storage.data {
+	for key, value := range storage.Data {
 		if isRefusalRecord(key) {
 			records++
 			require.GreaterOrEqual(t, lapseOf(value), stored+3598, key)
@@ -1943,7 +1802,6 @@ func Test_Cache_RefusalRecordOutlivesTheGroupsEntriesWhenThePathIsRewritten(t *t
 // The app is not asked about an entry the request already rules out: that stays so a moment later.
 func Test_Cache_InvalidatorIsNotAskedAboutAnEntryRuledOut(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name         string
 		cacheControl string
@@ -1960,11 +1818,9 @@ func Test_Cache_InvalidatorIsNotAskedAboutAnEntryRuledOut(t *testing.T) {
 		for _, storage := range storageKinds {
 			t.Run(tc.name+"/"+storage, func(t *testing.T) {
 				t.Parallel()
-
 				var asked atomic.Int32
-				clock := newTestClock(time.Unix(1_700_000_000, 0))
-				app := fiber.New()
-				app.Use(New(Config{
+				clock := cacheTestCClock()
+				app, _ := cacheTestAOrigin(New(Config{
 					Storage:    storageOf(storage),
 					Expiration: time.Minute,
 					clock:      clock.Now,
@@ -1972,8 +1828,7 @@ func Test_Cache_InvalidatorIsNotAskedAboutAnEntryRuledOut(t *testing.T) {
 						asked.Add(1)
 						return false
 					},
-				}))
-				app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
+				}), "")
 
 				require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
 				require.Zero(t, asked.Load(), "a miss has no entry to ask about")
@@ -1997,22 +1852,18 @@ func Test_Cache_InvalidatorIsNotAskedAboutAnEntryRuledOut(t *testing.T) {
 // Nor is it asked about an entry that lasted under a second, which is found expired whenever it is found.
 func Test_Cache_InvalidatorIsNotAskedAboutAnEntryThatHasExpired(t *testing.T) {
 	t.Parallel()
-
 	for _, storage := range storageKinds {
 		t.Run(storage, func(t *testing.T) {
 			t.Parallel()
-
 			var asked atomic.Int32
-			app := fiber.New()
-			app.Use(New(Config{
+			app, _ := cacheTestAOrigin(New(Config{
 				Storage:             storageOf(storage),
 				ExpirationGenerator: func(fiber.Ctx, *Config) time.Duration { return 500 * time.Millisecond },
 				CacheInvalidator: func(fiber.Ctx) bool {
 					asked.Add(1)
 					return false
 				},
-			}))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
+			}), "")
 
 			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
 			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache, "the entry was found expired")
@@ -2023,7 +1874,7 @@ func Test_Cache_InvalidatorIsNotAskedAboutAnEntryThatHasExpired(t *testing.T) {
 
 // hookedStorage runs onGet, onSet and onDelete before it reads, writes and deletes a key, when set.
 type hookedStorage struct {
-	*failingCacheStorage
+	*storagetest.Memory
 	onGet    func(key string)
 	onSet    func(key string, exp time.Duration)
 	onDelete func(key string)
@@ -2033,19 +1884,19 @@ func (s *hookedStorage) SetWithContext(ctx context.Context, key string, val []by
 	if s.onSet != nil {
 		s.onSet(key, exp)
 	}
-	return s.failingCacheStorage.SetWithContext(ctx, key, val, exp)
+	return s.Memory.SetWithContext(ctx, key, val, exp)
 }
 
 func (s *hookedStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
 	if s.onGet != nil {
 		s.onGet(key)
 	}
-	return s.failingCacheStorage.GetWithContext(ctx, key)
+	return s.Memory.GetWithContext(ctx, key)
 }
 
 func (s *hookedStorage) DeleteWithContext(ctx context.Context, key string) error {
 	if s.onDelete != nil {
 		s.onDelete(key)
 	}
-	return s.failingCacheStorage.DeleteWithContext(ctx, key)
+	return s.Memory.DeleteWithContext(ctx, key)
 }

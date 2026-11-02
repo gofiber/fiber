@@ -17,7 +17,6 @@ import (
 
 func Test_Read(t *testing.T) {
 	t.Parallel()
-
 	reset := errors.New("connection reset")
 	for name, tc := range map[string]struct {
 		stream   func() io.Reader
@@ -46,7 +45,6 @@ func Test_Read(t *testing.T) {
 		} {
 			t.Run(name+"/"+kind, func(t *testing.T) {
 				t.Parallel()
-
 				var resp fasthttp.Response
 				resp.SetBodyStream(stream(), tc.declared)
 				require.Equal(t, tc.complete, Read(&resp, tc.declared))
@@ -70,7 +68,6 @@ func Test_Read(t *testing.T) {
 
 func Test_Read_DoesNotDrainALongerStream(t *testing.T) {
 	t.Parallel()
-
 	// No WriteTo, so the stream is pulled through a copy buffer rather than written whole.
 	stream := strings.NewReader(strings.Repeat("x", 1<<20))
 	var resp fasthttp.Response
@@ -121,6 +118,7 @@ func Test_Read_ChunkedStreamDoesNotAllocate(t *testing.T) {
 // Sequential, as above, and it counts the whole process's bytes. Once fasthttp's body pool has settled on
 // 1000-byte bodies, as on a server of small files, a body of exactly a size class must stay pooled, and a
 // larger one may cost no more than Response.Body, which Read replaces.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Read_CostsNoMoreThanBodyOnceThePoolSettled(t *testing.T) {
 	var resp fasthttp.Response
 	src := bytes.NewReader(nil)
