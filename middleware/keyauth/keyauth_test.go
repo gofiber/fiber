@@ -501,6 +501,21 @@ func Test_Challenge(t *testing.T) {
 			www:    bearer + `, error="insufficient_scope", scope="read"`,
 		},
 		{
+			// RFC 6750 section 3: no error parameters when the request
+			// carried no credentials.
+			name: "bearer error fields without credentials", status: http.StatusUnauthorized,
+			config: Config{
+				Validator: invalid, Error: ErrorInvalidToken,
+				ErrorDescription: "token expired", ErrorURI: "https://example.com",
+			},
+			www: bearer,
+		},
+		{
+			name: "bearer insufficient scope without credentials", status: http.StatusUnauthorized,
+			config: Config{Validator: invalid, Error: ErrorInsufficientScope, Scope: "read"},
+			www:    bearer,
+		},
+		{
 			name: "no challenge unless the answer is a 401", authorization: "Bearer bad", status: http.StatusForbidden,
 			config: Config{Validator: invalid, ErrorHandler: answerStatus(fiber.StatusForbidden, "forbidden")},
 		},
