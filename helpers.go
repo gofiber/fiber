@@ -1273,7 +1273,9 @@ func genericParseType[V GenericType](str string) (V, error) {
 	switch any(v).(type) {
 	case int:
 		result, err := utils.ParseInt(str)
-		if err != nil {
+		// int is 32 bits on 386 and arm: reject a value that does not fit
+		// instead of wrapping it.
+		if err != nil || int64(int(result)) != result {
 			return v, errParseValue
 		}
 		return any(int(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
@@ -1303,7 +1305,8 @@ func genericParseType[V GenericType](str string) (V, error) {
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint:
 		result, err := utils.ParseUint(str)
-		if err != nil {
+		// uint is 32 bits on 386 and arm, as int is above.
+		if err != nil || uint64(uint(result)) != result {
 			return v, errParseValue
 		}
 		return any(uint(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
