@@ -139,10 +139,6 @@ func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie {
 
 // getByHostAndPath returns cookies stored for a specific host and path.
 func (cj *CookieJar) getByHostAndPath(host, path []byte, secure bool) []*fasthttp.Cookie {
-	if cj.hostCookies == nil {
-		return nil
-	}
-
 	hostStr := utils.UnsafeString(host)
 
 	// port must not be included.
