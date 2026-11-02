@@ -3616,6 +3616,18 @@ func Test_App_Test_TLS(t *testing.T) {
 	}
 }
 
+func Test_App_Test_TLS_NegotiatedProtocol(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Server().NextProto("h2", func(net.Conn) error { return errors.New("served by NextProto") })
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.Scheme() + " " + c.RequestCtx().TLSConnectionState().NegotiatedProtocol)
+	})
+	req := apptest.Req(MethodGet, "https://example.com/")
+	req.TLS.NegotiatedProtocol = "h2"
+	apptest.ExpectBody(t, app, req, StatusOK, "https h2")
+}
+
 // Test serves the connection itself, so it installs the close hook too.
 func Test_App_Test_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 	t.Parallel()

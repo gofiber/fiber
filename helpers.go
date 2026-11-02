@@ -1129,17 +1129,21 @@ func (*testConn) SetReadDeadline(_ time.Time) error { return nil }
 func (*testConn) SetWriteDeadline(_ time.Time) error { return nil }
 
 // testTLSConn is the testConn Test serves a request with a TLS state on;
-// fasthttp detects TLS by a ConnectionState method.
+// fasthttp detects TLS by its Handshake and ConnectionState methods.
 type testTLSConn struct {
 	*testConn
 	state tls.ConnectionState
 }
 
+// errTestTLSHandshake keeps fasthttp from passing the connection to a NextProto handler.
+var errTestTLSHandshake = errors.New("testTLSConn has no TLS handshake")
+
 // ConnectionState returns the TLS state of the request being served.
 func (c *testTLSConn) ConnectionState() tls.ConnectionState { return c.state }
 
-// Handshake is a no-op for the in-memory connection.
-func (*testTLSConn) Handshake() error { return nil }
+// Handshake fails, so fasthttp serves the dumped request even when the state names a
+// negotiated protocol such as h2.
+func (*testTLSConn) Handshake() error { return errTestTLSHandshake }
 
 func toStringImmutable(b []byte) string {
 	return string(b)
