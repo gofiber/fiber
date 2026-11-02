@@ -27,6 +27,8 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	// If set, the middleware will use the session store instead of the storage.
+	// The store must not have a Codec: the token is kept under a key that is not a
+	// string, which a store with a Codec does not hold, and New panics for one that has.
 	Session *session.Store
 
 	// KeyGenerator creates a new CSRF token.
