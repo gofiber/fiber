@@ -198,6 +198,17 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		// Earlier middleware runs again on a replay. Count its header lines now,
+		// before downstream handlers can overwrite their backing buffers. Only
+		// new or changed lines belong in the stored response; counts preserve
+		// identical lines that downstream handlers deliberately add again.
+		upstream := make(map[string]int)
+		for k, v := range c.Response().Header.All() {
+			if keepHeader(utils.UnsafeString(k)) {
+				upstream[string(k)+"\x00"+string(v)]++
+			}
+		}
+
 		// Execute the request handler
 		if err := c.Next(); err != nil {
 			// If the request handler returned an error, return it and skip idempotency
@@ -227,6 +238,10 @@ func New(config ...Config) fiber.Handler {
 				// Judged before the name is copied, so a line that is not
 				// kept costs nothing.
 				if !keepHeader(utils.UnsafeString(k)) {
+					continue
+				}
+				if line := string(k) + "\x00" + string(v); upstream[line] > 0 {
+					upstream[line]--
 					continue
 				}
 				name := string(k)
