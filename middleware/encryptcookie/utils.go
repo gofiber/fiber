@@ -33,12 +33,6 @@ func decodeKey(key string) ([]byte, error) {
 	return keyDecoded, nil
 }
 
-// validateKey checks if the provided base64-encoded key is of valid length.
-func validateKey(key string) error {
-	_, err := decodeKey(key)
-	return err
-}
-
 // EncryptCookie Encrypts a cookie value with specific encryption key
 func EncryptCookie(name, value, key string) (string, error) {
 	keyDecoded, err := decodeKey(key)
@@ -92,6 +86,82 @@ func DecryptCookie(name, value, key string) (string, error) {
 	}
 
 	return string(plaintext), nil
+}
+
+// newAEAD builds the AES-GCM AEAD (random nonce) for the base64 key.
+func newAEAD(key string) (cipher.AEAD, error) {
+	keyDecoded, err := decodeKey(key)
+	if err != nil {
+		return nil, err
+	}
+
+	block, err := aes.NewCipher(keyDecoded)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AES cipher: %w", err)
+	}
+
+	gcm, err := cipher.NewGCMWithRandomNonce(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM mode: %w", err)
+	}
+
+	return gcm, nil
+}
+
+func sealCookie(gcm cipher.AEAD, name, value string) string {
+	ciphertext := gcm.Seal(nil, nil, []byte(value), []byte(name)) //nolint:gosec // G407: the nil nonce is mandated by NewGCMWithRandomNonce, which picks a random nonce itself
+	return base64.StdEncoding.EncodeToString(ciphertext)
+}
+
+func openCookie(gcm cipher.AEAD, name, value string) (string, error) {
+	enc, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return "", fmt.Errorf("failed to base64-decode value: %w", err)
+	}
+
+	if len(enc) < gcm.NonceSize()+gcm.Overhead() {
+		return "", ErrInvalidEncryptedValue
+	}
+
+	plaintext, err := gcm.Open(nil, nil, enc, []byte(name))
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt ciphertext: %w", err)
+	}
+
+	return string(plaintext), nil
+}
+
+// keyedAEAD holds the AEAD built once for a middleware's key. A cipher.AEAD
+// from crypto/cipher holds no per-call state, so it is safe for concurrent use.
+type keyedAEAD struct {
+	gcm cipher.AEAD
+	key string
+}
+
+func newKeyedAEAD(key string) (*keyedAEAD, error) {
+	gcm, err := newAEAD(key)
+	if err != nil {
+		return nil, err
+	}
+	return &keyedAEAD{gcm: gcm, key: key}, nil
+}
+
+// encrypt is EncryptCookie with the AEAD already built. A call with another
+// key falls back to EncryptCookie.
+func (k *keyedAEAD) encrypt(name, value, key string) (string, error) {
+	if key != k.key {
+		return EncryptCookie(name, value, key)
+	}
+	return sealCookie(k.gcm, name, value), nil
+}
+
+// decrypt is DecryptCookie with the AEAD already built. A call with another
+// key falls back to DecryptCookie.
+func (k *keyedAEAD) decrypt(name, value, key string) (string, error) {
+	if key != k.key {
+		return DecryptCookie(name, value, key)
+	}
+	return openCookie(k.gcm, name, value)
 }
 
 // GenerateKey returns a random string of 16, 24, or 32 bytes.

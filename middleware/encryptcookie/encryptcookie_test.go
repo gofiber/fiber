@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -278,6 +279,66 @@ func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
 
 	ctx := serve(t, h, fiber.MethodGet, "test", string(encryptedCookie.Value()))
 	require.Equal(t, "value=SomeThing", string(ctx.Response.Body()))
+}
+
+// conventions:ignore parallel: mutates ConfigDefault, which other tests read.
+func Test_Middleware_ConfigDefaultCallbacks(t *testing.T) {
+	saved := ConfigDefault
+	t.Cleanup(func() { ConfigDefault = saved })
+	key := GenerateKey(32)
+	encrypted, err := EncryptCookie("test", "SomeThing", key)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name                             string
+		customEncryptor, customDecryptor bool
+		noConfig, explicitCallbacks      bool
+	}{
+		{name: "both defaults customized", customEncryptor: true, customDecryptor: true},
+		{name: "encryptor default customized", customEncryptor: true},
+		{name: "decryptor default customized", customDecryptor: true},
+		{name: "no config", customEncryptor: true, customDecryptor: true, noConfig: true},
+		{name: "explicit callbacks win", customEncryptor: true, customDecryptor: true, explicitCallbacks: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ConfigDefault = saved
+			ConfigDefault.Key = key
+			if tc.customEncryptor {
+				ConfigDefault.Encryptor = func(_, _, _ string) (string, error) { return "default-encrypted", nil }
+			}
+			if tc.customDecryptor {
+				ConfigDefault.Decryptor = func(_, _, _ string) (string, error) { return "default-decrypted", nil }
+			}
+
+			configs := []Config{{Key: key}}
+			if tc.noConfig {
+				configs = nil
+			} else if tc.explicitCallbacks {
+				configs[0].Encryptor, configs[0].Decryptor = EncryptCookie, DecryptCookie
+			}
+			app := fiber.New()
+			app.Use(New(configs...))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("value=" + c.Cookies("test")) })
+			app.Post("/", setTestCookie)
+
+			resp := apptest.Expect(t, app, apptest.Req(fiber.MethodPost, "/"), fiber.StatusOK)
+			require.Len(t, resp.Cookies(), 1)
+			got := resp.Cookies()[0].Value
+			if tc.customEncryptor && !tc.explicitCallbacks {
+				require.Equal(t, "default-encrypted", got)
+			} else {
+				value, decErr := DecryptCookie("test", got, key)
+				require.NoError(t, decErr)
+				require.Equal(t, "SomeThing", value)
+			}
+			want := "value=SomeThing"
+			if tc.customDecryptor && !tc.explicitCallbacks {
+				want = "value=default-decrypted"
+			}
+			apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderCookie, "test="+encrypted)),
+				fiber.StatusOK, want)
+		})
+	}
 }
 
 // generateKeyLengths are the key lengths GenerateKey accepts.
@@ -825,4 +886,101 @@ func Test_Middleware_LeavesTimedOutResponse(t *testing.T) {
 	cookie.SetKey("late")
 	require.True(t, c.Response().Header.Cookie(&cookie))
 	require.Equal(t, "plain", string(cookie.Value()), "the timed-out handler still owns the response")
+}
+
+// Test_KeyedAEAD covers the AEAD the middleware builds once for its key: its
+// output must interoperate with EncryptCookie and DecryptCookie, and a call with
+// another key must behave exactly like the package functions.
+func Test_KeyedAEAD(t *testing.T) {
+	t.Parallel()
+	key, other := GenerateKey(32), GenerateKey(16)
+	codec, err := newKeyedAEAD(key)
+	require.NoError(t, err)
+	encrypt, decrypt := codec.encrypt, codec.decrypt
+
+	enc, err := encrypt("session", "alpha", key)
+	require.NoError(t, err)
+	got, err := DecryptCookie("session", enc, key)
+	require.NoError(t, err)
+	require.Equal(t, "alpha", got)
+
+	enc, err = EncryptCookie("session", "beta", key)
+	require.NoError(t, err)
+	got, err = decrypt("session", enc, key)
+	require.NoError(t, err)
+	require.Equal(t, "beta", got)
+
+	_, err = decrypt("other", enc, key)
+	require.Error(t, err)
+	_, err = decrypt("session", "@@", key)
+	require.ErrorContains(t, err, "failed to base64-decode value")
+	_, err = decrypt("session", "AAAA", key)
+	require.ErrorIs(t, err, ErrInvalidEncryptedValue)
+
+	encOther, err := encrypt("session", "gamma", other)
+	require.NoError(t, err)
+	got, err = DecryptCookie("session", encOther, other)
+	require.NoError(t, err)
+	require.Equal(t, "gamma", got)
+	_, err = decrypt("session", encOther, key)
+	require.Error(t, err)
+	got, err = decrypt("session", encOther, other)
+	require.NoError(t, err)
+	require.Equal(t, "gamma", got)
+
+	_, err = encrypt("session", "x", "not base64!")
+	require.ErrorContains(t, err, "failed to base64-decode key")
+	_, err = decrypt("session", "x", "c2hvcnQ=") // "short"
+	require.ErrorIs(t, err, ErrInvalidKeyLength)
+
+	_, err = newKeyedAEAD("c2hvcnQ=")
+	require.ErrorIs(t, err, ErrInvalidKeyLength)
+}
+
+func Test_KeyedAEAD_Concurrent(t *testing.T) {
+	t.Parallel()
+	key := GenerateKey(32)
+	codec, err := newKeyedAEAD(key)
+	require.NoError(t, err)
+	encrypt, decrypt := codec.encrypt, codec.decrypt
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for range 200 {
+				enc, err := encrypt("n", "v", key)
+				if err != nil {
+					t.Errorf("encrypt: %v", err)
+					return
+				}
+				dec, err := decrypt("n", enc, key)
+				if err != nil || dec != "v" {
+					t.Errorf("decrypt: %q, %v", dec, err)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+}
+
+func Benchmark_EncryptDecryptCookie(b *testing.B) {
+	key := GenerateKey(32)
+	enc, err := EncryptCookie("session", "SomeThing", key)
+	require.NoError(b, err)
+
+	b.Run("Encrypt", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			_, err = EncryptCookie("session", "SomeThing", key)
+		}
+		require.NoError(b, err)
+	})
+	b.Run("Decrypt", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			_, err = DecryptCookie("session", enc, key)
+		}
+		require.NoError(b, err)
+	})
 }
