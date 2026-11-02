@@ -38,6 +38,17 @@ const storagePrefix = "idempotency:"
 
 // isCookieHeader reports whether name is a header that sets a cookie: Set-Cookie
 // or its obsolete RFC 2965 spelling.
+// isAccessControlHeader reports whether name is a CORS response header
+// (Access-Control-Allow-Origin and its kin). Such a header is the CORS
+// middleware's decision for this request's origin, so a copy stored with an
+// earlier request must never fill it in on a replay: an origin the current
+// request's CORS check turned away would otherwise inherit the earlier
+// request's allowance.
+func isAccessControlHeader(name string) bool {
+	const prefix = "Access-Control-"
+	return len(name) > len(prefix) && utils.EqualFold(name[:len(prefix)], prefix)
+}
+
 func isCookieHeader(name string) bool {
 	return utils.EqualFold(name, fiber.HeaderSetCookie) || utils.EqualFold(name, fiber.HeaderSetCookie2)
 }
@@ -133,6 +144,13 @@ func New(config ...Config) fiber.Handler {
 				// version wrote, or one written under another configuration,
 				// may hold more than this one keeps.
 				if !keepHeader(header) {
+					continue
+				}
+				// A CORS header is never filled from the stored response: the
+				// current response either carries this request's own CORS
+				// decision or, for an origin that was turned away, correctly
+				// carries none.
+				if isAccessControlHeader(header) {
 					continue
 				}
 				if slices.ContainsFunc(current, func(name string) bool {

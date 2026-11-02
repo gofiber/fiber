@@ -911,3 +911,43 @@ func Test_New_ReplayDoesNotDuplicateHeadersSetByEarlierMiddleware(t *testing.T) 
 	// A header only the handler set is replayed from the stored response.
 	require.Equal(t, []string{"order-created"}, resp2.Header["X-Order"])
 }
+
+// go test -run Test_New_ReplayDoesNotFillCORSHeadersFromCache
+func Test_New_ReplayDoesNotFillCORSHeadersFromCache(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	// Stand-in for the CORS middleware ahead of idempotency in the chain:
+	// it stamps Access-Control-Allow-Origin only for the allowed origin,
+	// so a turned-away origin's response carries no CORS header at all.
+	app.Use(func(c fiber.Ctx) error {
+		if c.Get("Origin") == "https://allowed.example" {
+			c.Set("Access-Control-Allow-Origin", "https://allowed.example")
+		}
+		return c.Next()
+	})
+	app.Use(New())
+
+	count := 0
+	app.Post("/", func(c fiber.Ctx) error {
+		count++
+		return c.SendString("resp")
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req.Header.Set(ConfigDefault.KeyHeader, validKey)
+	req.Header.Set("Origin", "https://allowed.example")
+	resp1, _ := do(app, req)
+	require.Equal(t, []string{"https://allowed.example"}, resp1.Header["Access-Control-Allow-Origin"])
+
+	req2 := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req2.Header.Set(ConfigDefault.KeyHeader, validKey)
+	req2.Header.Set("Origin", "https://denied.example")
+	resp2, body2 := do(app, req2)
+	require.Equal(t, "resp", body2)
+	require.Equal(t, 1, count, "the handler must not run again on a replay")
+	// The denied origin must not inherit the stored response's CORS
+	// allowance: the replayed response carries no such header.
+	require.Empty(t, resp2.Header["Access-Control-Allow-Origin"])
+}
