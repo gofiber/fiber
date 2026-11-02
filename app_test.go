@@ -3585,6 +3585,37 @@ func Test_App_Test_BodyOfUnknownLength(t *testing.T) {
 	}
 }
 
+// A request with a TLS state, which httptest.NewRequest builds for an https target, is served over TLS.
+func Test_App_Test_TLS(t *testing.T) {
+	t.Parallel()
+	withState := apptest.Req(MethodGet, "/")
+	withState.TLS = &tls.ConnectionState{ServerName: "fiber.test"}
+
+	for _, tc := range []struct {
+		req  *http.Request
+		name string
+		body string
+	}{
+		{name: "https target", req: apptest.Req(MethodGet, "https://example.com/"), body: "https true example.com"},
+		{name: "TLS state", req: withState, body: "https true fiber.test"},
+		{name: "http target", req: apptest.Req(MethodGet, "http://example.com/"), body: "http false "},
+		{name: "path only", req: apptest.Req(MethodGet, "/"), body: "http false "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.Get("/", func(c Ctx) error {
+				serverName := ""
+				if state := c.RequestCtx().TLSConnectionState(); state != nil {
+					serverName = state.ServerName
+				}
+				return c.SendString(c.Scheme() + " " + strconv.FormatBool(c.Secure()) + " " + serverName)
+			})
+			apptest.ExpectBody(t, app, tc.req, StatusOK, tc.body)
+		})
+	}
+}
+
 // Test serves the connection itself, so it installs the close hook too.
 func Test_App_Test_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 	t.Parallel()

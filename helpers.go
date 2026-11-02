@@ -1128,6 +1128,19 @@ func (*testConn) SetReadDeadline(_ time.Time) error { return nil }
 // SetWriteDeadline implements net.Conn but is a no-op for the in-memory connection.
 func (*testConn) SetWriteDeadline(_ time.Time) error { return nil }
 
+// testTLSConn is the testConn Test serves a request with a TLS state on;
+// fasthttp detects TLS by a ConnectionState method.
+type testTLSConn struct {
+	*testConn
+	state tls.ConnectionState
+}
+
+// ConnectionState returns the TLS state of the request being served.
+func (c *testTLSConn) ConnectionState() tls.ConnectionState { return c.state }
+
+// Handshake is a no-op for the in-memory connection.
+func (*testTLSConn) Handshake() error { return nil }
+
 func toStringImmutable(b []byte) string {
 	return string(b)
 }
