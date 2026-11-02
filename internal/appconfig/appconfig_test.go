@@ -20,7 +20,6 @@ var uninstalled = Of("no reader installed yet")
 // out of order.
 func Test_Reader(t *testing.T) {
 	t.Parallel()
-
 	require.Equal(t, Hot{}, uninstalled)
 
 	// A nil reader must not spend the single installation, which the real one

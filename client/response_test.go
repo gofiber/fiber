@@ -2,79 +2,119 @@ package client
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/xml"
 	"errors"
 	"io"
 	"maps"
-	"net"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/gofiber/fiber/v3/internal/tlstest"
-
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/valyala/fasthttp"
 )
 
+// clientTestBResponse returns a pooled response that is released when the test ends.
+func clientTestBResponse(t *testing.T) *Response {
+	t.Helper()
+	return clientTestPooled(t, AcquireResponse, ReleaseResponse)
+}
+
+// clientTestBGet serves routes from a fresh test server and returns the response to
+// a GET for url, sent through a client that dials that server. The response is
+// closed, and then the server stopped, when the test ends.
+func clientTestBGet(t *testing.T, routes func(app *fiber.App), url string) *Response {
+	t.Helper()
+
+	resp, err := AcquireRequest().SetClient(clientTestAClient(t, routes)).Get(url)
+	require.NoError(t, err)
+	t.Cleanup(resp.Close)
+
+	return resp
+}
+
+// clientTestBClientGet returns the response to client.Get(url, cfg...), unlike
+// [clientTestBGet] sent as a request the client owns. The response is closed when
+// the test ends.
+func clientTestBClientGet(t *testing.T, client *Client, url string, cfg ...Config) *Response {
+	t.Helper()
+
+	resp, err := client.Get(url, cfg...)
+	require.NoError(t, err)
+	t.Cleanup(resp.Close)
+
+	return resp
+}
+
+// clientTestBServe returns the response to a GET for a route that answers with
+// body, sent and received as a stream when stream is set. The response is closed
+// when the test ends.
+//
+//nolint:revive // flag-parameter: stream picks how both ends exchange the body, the property under test
+func clientTestBServe(t *testing.T, body string, stream bool) *Response {
+	t.Helper()
+
+	client := clientTestAClient(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			if stream {
+				return c.SendStream(bytes.NewReader([]byte(body)))
+			}
+			return c.SendString(body)
+		})
+	})
+	return clientTestBClientGet(t, client.SetStreamResponseBody(stream), "http://example.com/")
+}
+
+// clientTestBRequireStream requires resp to have a body stream that reads want.
+// msgAndArgs describe the stream check.
+func clientTestBRequireStream(t *testing.T, resp *Response, want string, msgAndArgs ...any) {
+	t.Helper()
+
+	stream := resp.BodyStream()
+	require.NotNil(t, stream, msgAndArgs...)
+	data, err := io.ReadAll(stream)
+	require.NoError(t, err)
+	require.Equal(t, want, string(data))
+}
+
+// Test_Response_Status checks the status text and the status code of a successful
+// and of a failing response. Every check has its own server.
 func Test_Response_Status(t *testing.T) {
 	t.Parallel()
-
-	setupApp := func() *testServer {
-		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("foo")
-			})
-			app.Get("/fail", func(c fiber.Ctx) error {
-				return c.SendStatus(407)
-			})
-		})
-
-		return server
+	routes := func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("foo") })
+		app.Get("/fail", func(c fiber.Ctx) error { return c.SendStatus(407) })
 	}
 
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		url    string
+		status string
+		code   int
+	}{
+		{name: "success", url: "http://example", status: "OK", code: 200},
+		{name: "fail", url: "http://example/fail", status: "Proxy Authentication Required", code: 407},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			t.Run("status", func(t *testing.T) {
+				t.Parallel()
+				resp := clientTestBGet(t, routes, tc.url)
+				require.Equal(t, tc.status, resp.Status())
+			})
 
-		server := setupApp()
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Get("http://example")
-
-		require.NoError(t, err)
-		require.Equal(t, "OK", resp.Status())
-		resp.Close()
-	})
-
-	t.Run("fail", func(t *testing.T) {
-		t.Parallel()
-
-		server := setupApp()
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Get("http://example/fail")
-
-		require.NoError(t, err)
-		require.Equal(t, "Proxy Authentication Required", resp.Status())
-		resp.Close()
-	})
+			t.Run("status code", func(t *testing.T) {
+				t.Parallel()
+				resp := clientTestBGet(t, routes, tc.url)
+				require.Equal(t, tc.code, resp.StatusCode())
+			})
+		})
+	}
 }
 
 func Test_Response_CloseUsesSnapshottedRequestOwnership(t *testing.T) {
 	t.Parallel()
-
 	req := AcquireRequest()
 	resp := AcquireResponse()
 	resp.setRequest(req, false)
@@ -88,105 +128,23 @@ func Test_Response_CloseUsesSnapshottedRequestOwnership(t *testing.T) {
 	ReleaseRequest(req)
 }
 
-func Test_Response_Status_Code(t *testing.T) {
-	t.Parallel()
-
-	setupApp := func() *testServer {
-		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("foo")
-			})
-			app.Get("/fail", func(c fiber.Ctx) error {
-				return c.SendStatus(407)
-			})
-		})
-
-		return server
-	}
-
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
-
-		server := setupApp()
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Get("http://example")
-
-		require.NoError(t, err)
-		require.Equal(t, 200, resp.StatusCode())
-		resp.Close()
-	})
-
-	t.Run("fail", func(t *testing.T) {
-		t.Parallel()
-
-		server := setupApp()
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Get("http://example/fail")
-
-		require.NoError(t, err)
-		require.Equal(t, 407, resp.StatusCode())
-		resp.Close()
-	})
-}
-
 func Test_Response_Protocol(t *testing.T) {
 	t.Parallel()
-
 	t.Run("http", func(t *testing.T) {
 		t.Parallel()
+		resp := clientTestBGet(t, func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("foo") })
+		}, "http://example")
 
-		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("foo")
-			})
-		})
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Get("http://example")
-
-		require.NoError(t, err)
 		require.Equal(t, "HTTP/1.1", resp.Protocol())
-		resp.Close()
 	})
 
 	t.Run("https", func(t *testing.T) {
 		t.Parallel()
-
-		serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
-		require.NoError(t, err)
-
-		ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-		require.NoError(t, err)
-
-		ln = tls.NewListener(ln, serverTLSConf)
-
-		app := fiber.New()
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString(c.Scheme())
-		})
-
-		go func() {
-			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
-				DisableStartupMessage: true,
-			}))
-		}()
+		_, addr, clientTLSConf := clientAStartTLS(t, func(c fiber.Ctx) error { return c.SendString(c.Scheme()) })
 
 		client := New()
-		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
+		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + addr)
 
 		require.NoError(t, err)
 		require.Equal(t, clientTLSConf, client.TLSConfig())
@@ -200,30 +158,19 @@ func Test_Response_Protocol(t *testing.T) {
 
 func Test_Response_Header(t *testing.T) {
 	t.Parallel()
-
-	server := startTestServer(t, func(app *fiber.App) {
+	resp := clientTestBGet(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Response().Header.Add("foo", "bar")
 			return c.SendString("helo world")
 		})
-	})
-	defer server.stop()
+	}, "http://example.com")
 
-	client := New().SetDial(server.dial())
-
-	resp, err := AcquireRequest().
-		SetClient(client).
-		Get("http://example.com")
-
-	require.NoError(t, err)
 	require.Equal(t, "bar", resp.Header("foo"))
-	resp.Close()
 }
 
 func Test_Response_Headers(t *testing.T) {
 	t.Parallel()
-
-	server := startTestServer(t, func(app *fiber.App) {
+	resp := clientTestBGet(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Response().Header.Add("foo", "bar")
 			c.Response().Header.Add("foo", "bar2")
@@ -231,16 +178,7 @@ func Test_Response_Headers(t *testing.T) {
 
 			return c.SendString("hello world")
 		})
-	})
-	defer server.stop()
-
-	client := New().SetDial(server.dial())
-
-	resp, err := AcquireRequest().
-		SetClient(client).
-		Get("http://example.com")
-
-	require.NoError(t, err)
+	}, "http://example.com")
 
 	headers := make(map[string][]string)
 	for k, v := range resp.Headers() {
@@ -253,31 +191,19 @@ func Test_Response_Headers(t *testing.T) {
 	require.Equal(t, []string{"bar"}, headers["Foo2"])
 
 	require.Len(t, headers, 5) // Foo + Foo2 + Date + Content-Length + Content-Type
-
-	resp.Close()
 }
 
 func Test_Response_Headers_RepeatedKey(t *testing.T) {
 	t.Parallel()
-
 	values := []string{"1", "2", "3", "4", "5", "6", "7", "8"}
-	server := startTestServer(t, func(app *fiber.App) {
+	resp := clientTestBGet(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
 			for _, v := range values {
 				c.Response().Header.Add("X-Multi", v)
 			}
 			return c.SendString("hello world")
 		})
-	})
-	defer server.stop()
-
-	client := New().SetDial(server.dial())
-
-	resp, err := AcquireRequest().
-		SetClient(client).
-		Get("http://example.com")
-	require.NoError(t, err)
-	defer resp.Close()
+	}, "http://example.com")
 
 	headers := maps.Collect(resp.Headers())
 
@@ -314,9 +240,7 @@ func Benchmark_Headers(b *testing.B) {
 
 	client := New().SetDial(server.dial())
 
-	resp, err := AcquireRequest().
-		SetClient(client).
-		Get("http://example.com")
+	resp, err := AcquireRequest().SetClient(client).Get("http://example.com")
 	require.NoError(b, err)
 
 	b.Cleanup(func() {
@@ -336,94 +260,43 @@ func Benchmark_Headers(b *testing.B) {
 
 func Test_Response_Cookie(t *testing.T) {
 	t.Parallel()
-
-	server := startTestServer(t, func(app *fiber.App) {
+	resp := clientTestBGet(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
-			c.Cookie(&fiber.Cookie{
-				Name:  "foo",
-				Value: "bar",
-			})
+			c.Cookie(&fiber.Cookie{Name: "foo", Value: "bar"})
 			return c.SendString("helo world")
 		})
-	})
-	defer server.stop()
+	}, "http://example.com")
 
-	client := New().SetDial(server.dial())
-
-	resp, err := AcquireRequest().
-		SetClient(client).
-		Get("http://example.com")
-
-	require.NoError(t, err)
 	require.Equal(t, "bar", string(resp.Cookies()[0].Value()))
-	resp.Close()
 }
 
 func Test_Response_Body(t *testing.T) {
 	t.Parallel()
+	type cborData struct {
+		Name string `cbor:"name"`
+		Age  int    `cbor:"age"`
+	}
+	data := cborData{Name: "foo", Age: 12}
 
-	setupApp := func() *testServer {
-		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendString("hello world")
-			})
-
-			app.Get("/json", func(c fiber.Ctx) error {
-				return c.SendString("{\"status\":\"success\"}")
-			})
-
-			app.Get("/xml", func(c fiber.Ctx) error {
-				return c.SendString("<status><name>success</name></status>")
-			})
-
-			app.Get("/cbor", func(c fiber.Ctx) error {
-				type cborData struct {
-					Name string `cbor:"name"`
-					Age  int    `cbor:"age"`
-				}
-
-				return c.CBOR(cborData{
-					Name: "foo",
-					Age:  12,
-				})
-			})
-		})
-
-		return server
+	routes := func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("hello world") })
+		app.Get("/json", func(c fiber.Ctx) error { return c.SendString("{\"status\":\"success\"}") })
+		app.Get("/xml", func(c fiber.Ctx) error { return c.SendString("<status><name>success</name></status>") })
+		app.Get("/cbor", func(c fiber.Ctx) error { return c.CBOR(data) })
 	}
 
 	t.Run("raw body", func(t *testing.T) {
 		t.Parallel()
+		resp := clientTestBGet(t, routes, "http://example.com")
 
-		server := setupApp()
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Get("http://example.com")
-
-		require.NoError(t, err)
 		require.Equal(t, []byte("hello world"), resp.Body())
-		resp.Close()
 	})
 
 	t.Run("string body", func(t *testing.T) {
 		t.Parallel()
+		resp := clientTestBGet(t, routes, "http://example.com")
 
-		server := setupApp()
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Get("http://example.com")
-
-		require.NoError(t, err)
 		require.Equal(t, "hello world", resp.String())
-		resp.Close()
 	})
 
 	t.Run("json body", func(t *testing.T) {
@@ -432,22 +305,11 @@ func Test_Response_Body(t *testing.T) {
 			Status string `json:"status"`
 		}
 
-		server := setupApp()
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Get("http://example.com/json")
-
-		require.NoError(t, err)
+		resp := clientTestBGet(t, routes, "http://example.com/json")
 
 		tmp := &body{}
-		err = resp.JSON(tmp)
-		require.NoError(t, err)
+		require.NoError(t, resp.JSON(tmp))
 		require.Equal(t, "success", tmp.Status)
-		resp.Close()
 	})
 
 	t.Run("xml body", func(t *testing.T) {
@@ -457,218 +319,97 @@ func Test_Response_Body(t *testing.T) {
 			Status string   `xml:"name"`
 		}
 
-		server := setupApp()
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Get("http://example.com/xml")
-
-		require.NoError(t, err)
+		resp := clientTestBGet(t, routes, "http://example.com/xml")
 
 		tmp := &body{}
-		err = resp.XML(tmp)
-		require.NoError(t, err)
+		require.NoError(t, resp.XML(tmp))
 		require.Equal(t, "success", tmp.Status)
-		resp.Close()
 	})
 
 	t.Run("cbor body", func(t *testing.T) {
 		t.Parallel()
-		type cborData struct {
-			Name string `cbor:"name"`
-			Age  int    `cbor:"age"`
-		}
-
-		data := cborData{
-			Name: "foo",
-			Age:  12,
-		}
-
-		server := setupApp()
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Get("http://example.com/cbor")
-
-		require.NoError(t, err)
+		resp := clientTestBGet(t, routes, "http://example.com/cbor")
 
 		tmp := &cborData{}
-		err = resp.CBOR(tmp)
-		require.NoError(t, err)
+		require.NoError(t, resp.CBOR(tmp))
 		require.Equal(t, data, *tmp)
-		resp.Close()
 	})
 }
 
 func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
 	t.Parallel()
+	type payload struct {
+		Status string `json:"status" xml:"status" cbor:"status"`
+	}
+
+	type decoder struct {
+		decode func(resp *Response, v any) error
+		name   string
+		body   string
+	}
+
+	jsonDecoder := decoder{name: "json", decode: (*Response).JSON, body: `{"status":"success"}`}
+	xmlDecoder := decoder{name: "xml", decode: (*Response).XML, body: `<payload><status>success</status></payload>`}
 
 	t.Run("client nil returns exported error without panic", func(t *testing.T) {
 		t.Parallel()
+		// The body is not valid CBOR, so ErrClientNil also shows that a nil client is
+		// reported before the body is decoded.
+		cborDecoder := decoder{name: "cbor", decode: (*Response).CBOR, body: "not-cbor"}
 
-		type payload struct {
-			Status string `json:"status" xml:"status" cbor:"status"`
+		for _, tc := range []decoder{jsonDecoder, xmlDecoder, cborDecoder} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				resp := clientTestBResponse(t)
+				resp.RawResponse.SetBodyString(tc.body)
+
+				decoded := payload{}
+				require.NotPanics(t, func() { require.ErrorIs(t, tc.decode(resp, &decoded), ErrClientNil) })
+			})
 		}
-
-		t.Run("json", func(t *testing.T) {
-			t.Parallel()
-
-			resp := AcquireResponse()
-			t.Cleanup(func() {
-				ReleaseResponse(resp)
-			})
-			resp.RawResponse.SetBodyString(`{"status":"success"}`)
-
-			decoded := payload{}
-			require.NotPanics(t, func() {
-				err := resp.JSON(&decoded)
-				require.ErrorIs(t, err, ErrClientNil)
-			})
-		})
-
-		t.Run("xml", func(t *testing.T) {
-			t.Parallel()
-
-			resp := AcquireResponse()
-			t.Cleanup(func() {
-				ReleaseResponse(resp)
-			})
-			resp.RawResponse.SetBodyString(`<payload><status>success</status></payload>`)
-
-			decoded := payload{}
-			require.NotPanics(t, func() {
-				err := resp.XML(&decoded)
-				require.ErrorIs(t, err, ErrClientNil)
-			})
-		})
-
-		t.Run("cbor", func(t *testing.T) {
-			t.Parallel()
-
-			resp := AcquireResponse()
-			t.Cleanup(func() {
-				ReleaseResponse(resp)
-			})
-			resp.RawResponse.SetBodyString("not-cbor")
-
-			decoded := payload{}
-			require.NotPanics(t, func() {
-				err := resp.CBOR(&decoded)
-				require.ErrorIs(t, err, ErrClientNil)
-			})
-		})
 	})
 
 	t.Run("decode helpers still work with client", func(t *testing.T) {
 		t.Parallel()
+		cborBody, err := New().CBORMarshal()(payload{Status: "success"})
+		require.NoError(t, err)
+		cborDecoder := decoder{name: "cbor", decode: (*Response).CBOR, body: string(cborBody)}
 
-		type payload struct {
-			Status string `json:"status" xml:"status" cbor:"status"`
+		for _, tc := range []decoder{jsonDecoder, xmlDecoder, cborDecoder} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				resp := clientTestBResponse(t)
+				resp.setClient(New())
+				resp.RawResponse.SetBodyString(tc.body)
+
+				decoded := payload{}
+				require.NoError(t, tc.decode(resp, &decoded))
+				require.Equal(t, "success", decoded.Status)
+			})
 		}
-
-		t.Run("json", func(t *testing.T) {
-			t.Parallel()
-
-			resp := AcquireResponse()
-			t.Cleanup(func() {
-				ReleaseResponse(resp)
-			})
-			resp.setClient(New())
-			resp.RawResponse.SetBodyString(`{"status":"success"}`)
-
-			decoded := payload{}
-			err := resp.JSON(&decoded)
-			require.NoError(t, err)
-			require.Equal(t, "success", decoded.Status)
-		})
-
-		t.Run("xml", func(t *testing.T) {
-			t.Parallel()
-
-			resp := AcquireResponse()
-			t.Cleanup(func() {
-				ReleaseResponse(resp)
-			})
-			resp.setClient(New())
-			resp.RawResponse.SetBodyString(`<payload><status>success</status></payload>`)
-
-			decoded := payload{}
-			err := resp.XML(&decoded)
-			require.NoError(t, err)
-			require.Equal(t, "success", decoded.Status)
-		})
-
-		t.Run("cbor", func(t *testing.T) {
-			t.Parallel()
-
-			client := New()
-			resp := AcquireResponse()
-			t.Cleanup(func() {
-				ReleaseResponse(resp)
-			})
-			resp.setClient(client)
-
-			body, err := client.cborMarshal(payload{Status: "success"})
-			require.NoError(t, err)
-			resp.RawResponse.SetBody(body)
-
-			decoded := payload{}
-			err = resp.CBOR(&decoded)
-			require.NoError(t, err)
-			require.Equal(t, "success", decoded.Status)
-		})
 	})
 }
 
 func Test_Response_Save(t *testing.T) {
 	t.Parallel()
-
-	setupApp := func() *testServer {
-		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/json", func(c fiber.Ctx) error {
-				return c.SendString("{\"status\":\"success\"}")
-			})
-		})
-
-		return server
+	routes := func(app *fiber.App) {
+		app.Get("/json", func(c fiber.Ctx) error { return c.SendString("{\"status\":\"success\"}") })
 	}
 
 	t.Run("file path", func(t *testing.T) {
 		t.Parallel()
+		resp := clientTestBGet(t, routes, "http://example.com/json")
 
-		server := setupApp()
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Get("http://example.com/json")
-
-		require.NoError(t, err)
-
-		err = resp.Save("./test/tmp.json")
-		require.NoError(t, err)
+		require.NoError(t, resp.Save("./test/tmp.json"))
 		defer func() {
 			_, statErr := os.Stat("./test/tmp.json")
 			require.NoError(t, statErr)
-
-			statErr = os.RemoveAll("./test")
-			require.NoError(t, statErr)
+			require.NoError(t, os.RemoveAll("./test"))
 		}()
 
 		file, err := os.Open("./test/tmp.json")
 		require.NoError(t, err)
-		defer func(file *os.File) {
-			closeErr := file.Close()
-			require.NoError(t, closeErr)
-		}(file)
+		defer func() { require.NoError(t, file.Close()) }()
 
 		data, err := io.ReadAll(file)
 		require.NoError(t, err)
@@ -677,98 +418,51 @@ func Test_Response_Save(t *testing.T) {
 
 	t.Run("io.Writer", func(t *testing.T) {
 		t.Parallel()
-
-		server := setupApp()
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Get("http://example.com/json")
-
-		require.NoError(t, err)
+		resp := clientTestBGet(t, routes, "http://example.com/json")
 
 		buf := &bytes.Buffer{}
 
-		err = resp.Save(buf)
-		require.NoError(t, err)
+		require.NoError(t, resp.Save(buf))
 		require.JSONEq(t, "{\"status\":\"success\"}", buf.String())
 	})
 
 	t.Run("io.Copy error when saving to file is surfaced", func(t *testing.T) {
 		t.Parallel()
-
-		resp := AcquireResponse()
-		defer ReleaseResponse(resp)
+		resp := clientTestBResponse(t)
 
 		resp.RawResponse.SetBodyStream(&errorReader{err: errors.New("copy failure")}, -1)
 
 		target := filepath.Join(t.TempDir(), "out.txt")
-		err := resp.Save(target)
-		require.ErrorContains(t, err, "failed to write response body to file: copy failure")
+		require.ErrorContains(t, resp.Save(target), "failed to write response body to file: copy failure")
 	})
 
 	t.Run("io.Copy error when saving to writer is surfaced", func(t *testing.T) {
 		t.Parallel()
-
-		resp := AcquireResponse()
-		defer ReleaseResponse(resp)
+		resp := clientTestBResponse(t)
 
 		resp.RawResponse.SetBodyStream(bytes.NewBufferString("data"), len("data"))
 
-		err := resp.Save(&errorWriter{err: errors.New("sink closed")})
-		require.ErrorContains(t, err, "failed to write response body to writer: sink closed")
+		require.ErrorContains(t, resp.Save(&errorWriter{err: errors.New("sink closed")}), "failed to write response body to writer: sink closed")
 	})
 
 	t.Run("error type", func(t *testing.T) {
 		t.Parallel()
+		resp := clientTestBGet(t, routes, "http://example.com/json")
 
-		server := setupApp()
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := AcquireRequest().
-			SetClient(client).
-			Get("http://example.com/json")
-
-		require.NoError(t, err)
-
-		err = resp.Save(nil)
-		require.Error(t, err)
+		require.Error(t, resp.Save(nil))
 	})
 }
 
 func Test_Response_BodyStream(t *testing.T) {
 	t.Parallel()
-
 	t.Run("basic streaming", func(t *testing.T) {
 		t.Parallel()
-
-		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/stream", func(c fiber.Ctx) error {
-				return c.SendStream(bytes.NewReader([]byte("streaming data")))
-			})
-		})
-		defer server.stop()
-
-		client := New().SetDial(server.dial()).SetStreamResponseBody(true)
-
-		resp, err := client.Get("http://example.com/stream")
-		require.NoError(t, err)
-		defer resp.Close()
-		bodyStream := resp.BodyStream()
-		require.NotNil(t, bodyStream)
-		data, err := io.ReadAll(bodyStream)
-		require.NoError(t, err)
-		require.Equal(t, "streaming data", string(data))
+		clientTestBRequireStream(t, clientTestBServe(t, "streaming data", true), "streaming data")
 	})
 
 	t.Run("large response streaming", func(t *testing.T) {
 		t.Parallel()
-
-		server := startTestServer(t, func(app *fiber.App) {
+		client := clientTestAClient(t, func(app *fiber.App) {
 			app.Get("/large", func(c fiber.Ctx) error {
 				data := make([]byte, 1024)
 				for i := range data {
@@ -776,13 +470,9 @@ func Test_Response_BodyStream(t *testing.T) {
 				}
 				return c.SendStream(bytes.NewReader(data))
 			})
-		})
-		defer server.stop()
+		}).SetStreamResponseBody(true)
 
-		client := New().SetDial(server.dial()).SetStreamResponseBody(true)
-		resp, err := client.Get("http://example.com/large")
-		require.NoError(t, err)
-		defer resp.Close()
+		resp := clientTestBClientGet(t, client, "http://example.com/large")
 		bodyStream := resp.BodyStream()
 		require.NotNil(t, bodyStream)
 		buffer := make([]byte, 256)
@@ -799,180 +489,83 @@ func Test_Response_BodyStream(t *testing.T) {
 		}
 		require.Len(t, totalRead, 1024)
 	})
-}
 
-func Test_Response_BodyStream_Fallback(t *testing.T) {
-	t.Parallel()
 	t.Run("non-streaming response fallback to bytes.Reader", func(t *testing.T) {
 		t.Parallel()
-		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/regular", func(c fiber.Ctx) error {
-				return c.SendString("regular response body")
-			})
-		})
-		defer server.stop()
-		client := New().SetDial(server.dial())
-		resp, err := client.Get("http://example.com/regular")
-		require.NoError(t, err)
-		defer resp.Close()
+		resp := clientTestBServe(t, "regular response body", false)
 		require.False(t, resp.IsStreaming())
-		bodyStream := resp.BodyStream()
-		require.NotNil(t, bodyStream)
-		data, err := io.ReadAll(bodyStream)
-		require.NoError(t, err)
-		require.Equal(t, "regular response body", string(data))
+		clientTestBRequireStream(t, resp, "regular response body")
 	})
 }
 
 func Test_Response_IsStreaming(t *testing.T) {
 	t.Parallel()
-
 	t.Run("streaming disabled", func(t *testing.T) {
 		t.Parallel()
-
-		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/regular", func(c fiber.Ctx) error {
-				return c.SendString("regular content")
-			})
-		})
-		defer server.stop()
-		client := New().SetDial(server.dial())
-		resp, err := client.Get("http://example.com/regular")
-		require.NoError(t, err)
-		defer resp.Close()
-		require.False(t, resp.IsStreaming())
+		require.False(t, clientTestBServe(t, "regular content", false).IsStreaming())
 	})
 
 	t.Run("bodystream always works regardless of streaming state", func(t *testing.T) {
 		t.Parallel()
-
 		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/test", func(c fiber.Ctx) error {
-				return c.SendString("test content")
-			})
+			app.Get("/test", func(c fiber.Ctx) error { return c.SendString("test content") })
 		})
 		defer server.stop()
 
-		// Test with streaming enabled
 		client1 := New().SetDial(server.dial()).SetStreamResponseBody(true)
 		resp1, err := client1.Get("http://example.com/test")
 		require.NoError(t, err)
 		defer resp1.Close()
-		bodyStream1 := resp1.BodyStream()
-		require.NotNil(t, bodyStream1)
-		data1, err := io.ReadAll(bodyStream1)
-		require.NoError(t, err)
-		require.Equal(t, "test content", string(data1))
+		clientTestBRequireStream(t, resp1, "test content")
 
-		// Test with streaming disabled
 		client2 := New().SetDial(server.dial()).SetStreamResponseBody(false)
 		resp2, err := client2.Get("http://example.com/test")
 		require.NoError(t, err)
 		defer resp2.Close()
 		require.False(t, resp2.IsStreaming())
-		bodyStream2 := resp2.BodyStream()
-		require.NotNil(t, bodyStream2)
-		data2, err := io.ReadAll(bodyStream2)
-		require.NoError(t, err)
-		require.Equal(t, "test content", string(data2))
+		clientTestBRequireStream(t, resp2, "test content")
 	})
 }
 
 func Test_Response_Save_Streaming(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		body   string
+		stream bool
+		toFile bool // save to a file in the test's directory instead of an io.Writer
+	}{
+		{name: "save streaming response to file", body: "streaming file content", stream: true, toFile: true},
+		{name: "save streaming response to io.Writer", body: "streaming writer content", stream: true},
+		{name: "save non-streaming response to file using BodyStream", body: "regular file content", toFile: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resp := clientTestBServe(t, tc.body, tc.stream)
 
-	t.Run("save streaming response to file", func(t *testing.T) {
-		t.Parallel()
+			var saved string
+			if tc.toFile {
+				target := filepath.Join(t.TempDir(), "saved.txt")
+				require.NoError(t, resp.Save(target))
+				data, err := os.ReadFile(target)
+				require.NoError(t, err)
+				saved = string(data)
+			} else {
+				var buf bytes.Buffer
+				require.NoError(t, resp.Save(&buf))
+				saved = buf.String()
+			}
 
-		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/stream", func(c fiber.Ctx) error {
-				return c.SendStream(bytes.NewReader([]byte("streaming file content")))
-			})
+			require.Equal(t, tc.body, saved)
 		})
-		defer server.stop()
-
-		client := New().SetDial(server.dial()).SetStreamResponseBody(true)
-
-		resp, err := client.Get("http://example.com/stream")
-		require.NoError(t, err)
-		defer resp.Close()
-
-		testFile := filepath.Join(t.TempDir(), "stream_test.txt")
-		err = resp.Save(testFile)
-		require.NoError(t, err)
-
-		data, err := os.ReadFile(testFile)
-		require.NoError(t, err)
-		require.Equal(t, "streaming file content", string(data))
-	})
-
-	t.Run("save streaming response to io.Writer", func(t *testing.T) {
-		t.Parallel()
-
-		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/stream", func(c fiber.Ctx) error {
-				return c.SendStream(bytes.NewReader([]byte("streaming writer content")))
-			})
-		})
-		defer server.stop()
-
-		client := New().SetDial(server.dial()).SetStreamResponseBody(true)
-
-		resp, err := client.Get("http://example.com/stream")
-		require.NoError(t, err)
-		defer resp.Close()
-
-		var buf bytes.Buffer
-		err = resp.Save(&buf)
-		require.NoError(t, err)
-		require.Equal(t, "streaming writer content", buf.String())
-	})
-
-	t.Run("save non-streaming response to file using BodyStream", func(t *testing.T) {
-		t.Parallel()
-
-		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/regular", func(c fiber.Ctx) error {
-				return c.SendString("regular file content")
-			})
-		})
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := client.Get("http://example.com/regular")
-		require.NoError(t, err)
-		defer resp.Close()
-
-		testFile := filepath.Join(t.TempDir(), "regular_test.txt")
-		err = resp.Save(testFile)
-		require.NoError(t, err)
-
-		data, err := os.ReadFile(testFile)
-		require.NoError(t, err)
-		require.Equal(t, "regular file content", string(data))
-	})
+	}
 
 	t.Run("save to io.WriteCloser closes writer", func(t *testing.T) {
 		t.Parallel()
+		resp := clientTestBServe(t, "test content", false)
 
-		server := startTestServer(t, func(app *fiber.App) {
-			app.Get("/test", func(c fiber.Ctx) error {
-				return c.SendString("test content")
-			})
-		})
-		defer server.stop()
-
-		client := New().SetDial(server.dial())
-
-		resp, err := client.Get("http://example.com/test")
-		require.NoError(t, err)
-		defer resp.Close()
-
-		// Create a mock WriteCloser to verify Close is called
 		mockWriter := &mockWriteCloser{}
-		err = resp.Save(mockWriter)
-		require.NoError(t, err)
+		require.NoError(t, resp.Save(mockWriter))
 		require.True(t, mockWriter.closed, "Save() should close io.WriteCloser")
 		require.Equal(t, "test content", mockWriter.buf.String())
 	})
@@ -1017,52 +610,34 @@ func (m *mockWriteCloser) Close() error {
 // to the request's own URI rather than attributing the cookie to nothing.
 func Test_Response_RespondedOrigin(t *testing.T) {
 	t.Parallel()
-
-	// Built per subtest: these run in parallel, so a URI released when the
-	// parent returns would be reset out from under them.
-	askedURI := func(t *testing.T) *fasthttp.URI {
-		t.Helper()
-		u := fasthttp.AcquireURI()
-		t.Cleanup(func() { fasthttp.ReleaseURI(u) })
-		require.NoError(t, u.Parse(nil, []byte("http://asked.example/asked")))
-		return u
-	}
+	const asked = "http://asked.example/asked"
 
 	t.Run("nothing recorded falls back", func(t *testing.T) {
 		t.Parallel()
+		resp := clientTestBResponse(t)
 
-		resp := AcquireResponse()
-		defer ReleaseResponse(resp)
-
-		host, path := resp.respondedOrigin(askedURI(t))
+		host, path := resp.respondedOrigin(clientTestCURI(t, asked))
 		require.Equal(t, "asked.example", string(host))
 		require.Equal(t, "/asked", string(path))
 	})
 
 	t.Run("a nil URI records nothing", func(t *testing.T) {
 		t.Parallel()
-
-		resp := AcquireResponse()
-		defer ReleaseResponse(resp)
+		resp := clientTestBResponse(t)
 
 		resp.setRespondedURI(nil)
 
-		host, path := resp.respondedOrigin(askedURI(t))
+		host, path := resp.respondedOrigin(clientTestCURI(t, asked))
 		require.Equal(t, "asked.example", string(host), "a nil URI must leave the fallback in place")
 		require.Equal(t, "/asked", string(path))
 	})
 
 	t.Run("what was recorded wins", func(t *testing.T) {
 		t.Parallel()
+		served := clientTestCURI(t, "http://served.example/served")
+		fallback := clientTestCURI(t, asked)
 
-		served := fasthttp.AcquireURI()
-		t.Cleanup(func() { fasthttp.ReleaseURI(served) })
-		require.NoError(t, served.Parse(nil, []byte("http://served.example/served")))
-
-		fallback := askedURI(t)
-
-		resp := AcquireResponse()
-		defer ReleaseResponse(resp)
+		resp := clientTestBResponse(t)
 
 		resp.setRespondedURI(served)
 
@@ -1084,7 +659,6 @@ func Test_Response_RespondedOrigin(t *testing.T) {
 // pays nothing to record it, and the fallback answers with the requested URI.
 func Test_Response_RespondedOriginOnlyRecordedForAJar(t *testing.T) {
 	t.Parallel()
-
 	server := startTestServer(t, func(app *fiber.App) {
 		app.Get("/x", func(c fiber.Ctx) error {
 			c.Cookie(&fiber.Cookie{Name: "a", Value: "1"})
@@ -1095,7 +669,6 @@ func Test_Response_RespondedOriginOnlyRecordedForAJar(t *testing.T) {
 
 	t.Run("no jar records nothing", func(t *testing.T) {
 		t.Parallel()
-
 		resp, err := New().SetDial(server.dial()).Get("http://example.com/x")
 		require.NoError(t, err)
 		defer resp.Close()
@@ -1105,7 +678,6 @@ func Test_Response_RespondedOriginOnlyRecordedForAJar(t *testing.T) {
 
 	t.Run("a jar gets the origin", func(t *testing.T) {
 		t.Parallel()
-
 		jar := AcquireCookieJar()
 		defer jar.Release()
 		resp, err := New().SetDial(server.dial()).SetCookieJar(jar).Get("http://example.com/x")

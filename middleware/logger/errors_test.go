@@ -10,7 +10,6 @@ import (
 
 func Test_UnknownTagErrorIsAndAs(t *testing.T) {
 	t.Parallel()
-
 	err := &UnknownTagError{Tag: "method"}
 	require.ErrorIs(t, err, ErrUnknownTag)
 
@@ -22,7 +21,6 @@ func Test_UnknownTagErrorIsAndAs(t *testing.T) {
 
 func Test_TranslateBuildError(t *testing.T) {
 	t.Parallel()
-
 	got := translateBuildError(&logtemplate.UnknownTagError{Tag: "missing:value", Param: "value"})
 	var typed *UnknownTagError
 	require.ErrorAs(t, got, &typed)

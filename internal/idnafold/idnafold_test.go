@@ -22,6 +22,11 @@ func Test_ToASCII(t *testing.T) {
 		{"colon: host:port is left alone", "münchen.example.com:8080", "münchen.example.com:8080"},
 		{"colon: bracketed IPv6 is left alone", "[::1]", "[::1]"},
 		{"a lone colon is left alone", ":", ":"},
+		// The documented security default: input idna.Lookup refuses, such as a
+		// label starting with a combining mark (invalid under UTS46), is returned
+		// unchanged rather than surfacing an error or a converted-but-wrong value,
+		// so it simply will not match any Punycode-encoded value it is compared to.
+		{"rejects by non-match", "́invalid.example.com", "́invalid.example.com"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -29,18 +34,6 @@ func Test_ToASCII(t *testing.T) {
 			assert.Equal(t, tc.want, ToASCII(tc.host))
 		})
 	}
-}
-
-// Test_ToASCII_RejectsByNonMatch pins the documented security default: input
-// idna.Lookup refuses is returned as-is rather than surfacing an error, so it
-// simply will not match any Punycode-encoded value a caller compares it to.
-func Test_ToASCII_RejectsByNonMatch(t *testing.T) {
-	t.Parallel()
-	// A label starting with a combining mark is invalid under idna.Lookup's
-	// validation (UTS46), so ToASCII must return it unchanged rather than a
-	// converted-but-wrong value.
-	const invalid = "́invalid.example.com"
-	assert.Equal(t, invalid, ToASCII(invalid))
 }
 
 func Benchmark_ToASCII_ASCIIFastPath(b *testing.B) {

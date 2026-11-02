@@ -8,7 +8,6 @@ import (
 
 func Test_Parse(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name  string
 		tag   string
@@ -41,7 +40,6 @@ func Test_Parse(t *testing.T) {
 
 func Test_Match(t *testing.T) {
 	t.Parallel()
-
 	require.True(t, Match(`"a"`, `"a"`))
 	require.True(t, Match(`W/"a"`, `"a"`))
 	require.True(t, Match(`"a"`, `W/"a"`))
@@ -56,7 +54,6 @@ func Test_Match(t *testing.T) {
 
 func Test_MatchStrong(t *testing.T) {
 	t.Parallel()
-
 	require.True(t, MatchStrong(`"a"`, `"a"`))
 	require.False(t, MatchStrong(`W/"a"`, `"a"`))
 	require.False(t, MatchStrong(`"a"`, `W/"a"`))
@@ -68,7 +65,6 @@ func Test_MatchStrong(t *testing.T) {
 
 func Test_AnyMatch(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name   string
 		header string
@@ -100,6 +96,12 @@ func Test_AnyMatch(t *testing.T) {
 		{name: "unbalanced quote, no match on remainder", header: `"a, "b`, etag: `"b"`},
 		{name: "only a comma", header: `,`, etag: `"a"`},
 		{name: "empty list element", header: `"a", , "b"`, etag: `"b"`, want: true},
+		{name: "trailing comma", header: `"a",`, etag: `"a"`, want: true},
+		{name: "leading comma", header: `,"a"`, etag: `"a"`, want: true},
+		{name: "doubled comma", header: `"a",,"b"`, etag: `"b"`, want: true},
+		{name: "only commas", header: `,,`, etag: `"a"`},
+		{name: "trailing comma, empty response tag", header: `"a",`, etag: ""},
+		{name: "only a comma, empty response tag", header: `,`, etag: ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -110,7 +112,6 @@ func Test_AnyMatch(t *testing.T) {
 
 func Test_Split(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name   string
 		header string
@@ -140,17 +141,6 @@ func Test_Split(t *testing.T) {
 			require.Equal(t, tc.want, Split(tc.header))
 		})
 	}
-}
-
-func Test_AnyMatch_IgnoresEmptyElements(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, AnyMatch(`"a",`, `"a"`))
-	require.True(t, AnyMatch(`,"a"`, `"a"`))
-	require.True(t, AnyMatch(`"a",,"b"`, `"b"`))
-	require.False(t, AnyMatch(`,,`, `"a"`))
-	require.False(t, AnyMatch(`"a",`, ""))
-	require.False(t, AnyMatch(`,`, ""))
 }
 
 func Benchmark_AnyMatch(b *testing.B) {

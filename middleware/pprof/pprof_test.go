@@ -1,229 +1,120 @@
 package pprof
 
 import (
-	"bytes"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
-var testConfig = fiber.TestConfig{
-	Timeout:       5 * time.Second,
-	FailOnTimeout: true,
+var testConfig = fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true}
+
+// pprofTestMount is where the middleware is mounted: at its default location,
+// or under a Prefix.
+type pprofTestMount struct {
+	name   string
+	prefix string
+}
+
+var pprofTestMounts = []pprofTestMount{{name: "default"}, {name: "with prefix", prefix: "/federated-fiber"}}
+
+// app returns an app running the middleware at m, configured by cfg, with a
+// route "/" that answers "escaped": what a request the middleware passes on is
+// answered with.
+func (m pprofTestMount) app(cfg Config) *fiber.App {
+	cfg.Prefix = m.prefix
+
+	app := fiber.New()
+	app.Use(New(cfg))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("escaped") })
+	return app
 }
 
 func Test_Non_Pprof_Path(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New())
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "escaped", string(b))
-}
-
-func Test_Non_Pprof_Path_WithPrefix(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New(Config{Prefix: "/federated-fiber"}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "escaped", string(b))
-}
-
-func Test_Pprof_Index(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New())
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.True(t, bytes.Contains(b, []byte("<title>/debug/pprof/</title>")))
-}
-
-func Test_Pprof_Index_WithPrefix(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New(Config{Prefix: "/federated-fiber"}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(b), "<title>/debug/pprof/</title>")
-}
-
-func Test_Pprof_Subs(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New())
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
-
-	subs := []string{
-		"cmdline", "profile", "symbol", "trace", "allocs", "block",
-		"goroutine", "heap", "mutex", "threadcreate",
-	}
-
-	for _, sub := range subs {
-		t.Run(sub, func(t *testing.T) {
-			target := "/debug/pprof/" + sub
-			if sub == "profile" {
-				target += "?seconds=1"
-			}
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody), testConfig)
-			require.NoError(t, err)
-			require.Equal(t, 200, resp.StatusCode)
+	t.Parallel()
+	for _, m := range pprofTestMounts {
+		t.Run(m.name, func(t *testing.T) {
+			t.Parallel()
+			apptest.ExpectBody(t, m.app(Config{}), "/", 200, "escaped")
 		})
 	}
 }
 
-func Test_Pprof_Subs_WithPrefix(t *testing.T) {
-	app := fiber.New()
+func Test_Pprof_Index(t *testing.T) {
+	t.Parallel()
+	for _, m := range pprofTestMounts {
+		t.Run(m.name, func(t *testing.T) {
+			t.Parallel()
+			resp := apptest.Expect(t, m.app(Config{}), m.prefix+"/debug/pprof/", 200)
+			require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	app.Use(New(Config{Prefix: "/federated-fiber"}))
+			b := apptest.Body(t, resp)
+			require.Contains(t, b, "<title>/debug/pprof/</title>")
+		})
+	}
+}
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
-
+// Test_Pprof_Subs is not parallel, and neither are its subtests: the profile
+// and trace handlers take the process-wide CPU profiler and execution tracer,
+// which a second request cannot hold at the same time.
+// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
+func Test_Pprof_Subs(t *testing.T) {
 	subs := []string{
 		"cmdline", "profile", "symbol", "trace", "allocs", "block",
 		"goroutine", "heap", "mutex", "threadcreate",
 	}
 
-	for _, sub := range subs {
-		t.Run(sub, func(t *testing.T) {
-			target := "/federated-fiber/debug/pprof/" + sub
-			if sub == "profile" {
-				target += "?seconds=1"
+	for _, m := range pprofTestMounts {
+		t.Run(m.name, func(t *testing.T) {
+			app := m.app(Config{})
+
+			for _, sub := range subs {
+				t.Run(sub, func(t *testing.T) {
+					target := m.prefix + "/debug/pprof/" + sub
+					if sub == "profile" {
+						target += "?seconds=1"
+					}
+					resp := apptest.Do(t, app, target, testConfig)
+					require.Equal(t, 200, resp.StatusCode)
+				})
 			}
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody), testConfig)
-			require.NoError(t, err)
-			require.Equal(t, 200, resp.StatusCode)
 		})
 	}
 }
 
 func Test_Pprof_Other(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New())
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/303", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusSeeOther, resp.StatusCode)
-}
-
-func Test_Pprof_Other_WithPrefix(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New(Config{Prefix: "/federated-fiber"}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("escaped")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/303", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusSeeOther, resp.StatusCode)
+	t.Parallel()
+	for _, m := range pprofTestMounts {
+		t.Run(m.name, func(t *testing.T) {
+			t.Parallel()
+			apptest.Expect(t, m.app(Config{}), m.prefix+"/debug/pprof/303", fiber.StatusSeeOther)
+		})
+	}
 }
 
 func Test_Pprof_TrailingSlash_RedirectsWithinPrefix(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New())
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/heap/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusSeeOther, resp.StatusCode)
-	require.Equal(t, "/debug/pprof/heap", resp.Header.Get(fiber.HeaderLocation))
+	t.Parallel()
+	for _, m := range pprofTestMounts {
+		t.Run(m.name, func(t *testing.T) {
+			t.Parallel()
+			resp := apptest.Expect(t, m.app(Config{}), m.prefix+"/debug/pprof/heap/", fiber.StatusSeeOther)
+			require.Equal(t, m.prefix+"/debug/pprof/heap", resp.Header.Get(fiber.HeaderLocation))
+		})
+	}
 }
 
-func Test_Pprof_TrailingSlash_RedirectsWithinPrefix_WithPrefix(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New(Config{Prefix: "/federated-fiber"}))
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/heap/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusSeeOther, resp.StatusCode)
-	require.Equal(t, "/federated-fiber/debug/pprof/heap", resp.Header.Get(fiber.HeaderLocation))
-}
-
-// go test -run Test_Pprof_Next
 func Test_Pprof_Next(t *testing.T) {
-	app := fiber.New()
+	t.Parallel()
+	for _, m := range pprofTestMounts {
+		t.Run(m.name, func(t *testing.T) {
+			t.Parallel()
+			app := m.app(Config{Next: func(_ fiber.Ctx) bool { return true }})
 
-	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
-	}))
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 404, resp.StatusCode)
-}
-
-// go test -run Test_Pprof_Next_WithPrefix
-func Test_Pprof_Next_WithPrefix(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
-			return true
-		},
-		Prefix: "/federated-fiber",
-	}))
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 404, resp.StatusCode)
+			apptest.Expect(t, app, m.prefix+"/debug/pprof/", 404)
+		})
+	}
 }
 
 // Test_Pprof_Sibling_Prefix_Path ensures a route that merely starts with the
@@ -231,18 +122,8 @@ func Test_Pprof_Next_WithPrefix(t *testing.T) {
 func Test_Pprof_Sibling_Prefix_Path(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-
 	app.Use(New())
+	app.Get("/debug/pprofiler", func(c fiber.Ctx) error { return c.SendString("app route") })
 
-	app.Get("/debug/pprofiler", func(c fiber.Ctx) error {
-		return c.SendString("app route")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprofiler", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "app route", string(body))
+	apptest.ExpectBody(t, app, "/debug/pprofiler", fiber.StatusOK, "app route")
 }

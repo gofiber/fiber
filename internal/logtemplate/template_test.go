@@ -15,7 +15,6 @@ type testData struct {
 
 func Test_Template_Execute(t *testing.T) {
 	t.Parallel()
-
 	tmpl, err := Build[string, testData]("a ${tag} ${param:name} z", map[string]Func[string, testData]{
 		"tag": func(output Buffer, ctx string, data *testData, _ string) (int, error) {
 			return output.WriteString(ctx + data.value)
@@ -29,14 +28,12 @@ func Test_Template_Execute(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	err = tmpl.Execute(buf, "ctx-", &testData{value: "data"})
-	require.NoError(t, err)
+	require.NoError(t, tmpl.Execute(buf, "ctx-", &testData{value: "data"}))
 	require.Equal(t, "a ctx-data name z", buf.String())
 }
 
 func Test_Template_NilTemplateExecuteIsNoop(t *testing.T) {
 	t.Parallel()
-
 	var tmpl *Template[string, testData]
 
 	buf := bytebufferpool.Get()
@@ -52,7 +49,6 @@ func Test_Template_NilTemplateExecuteIsNoop(t *testing.T) {
 
 func Test_Template_UnterminatedTagPreserved(t *testing.T) {
 	t.Parallel()
-
 	// An unterminated ${ runs to end-of-format. Build emits the literal "${"
 	// from the unterminated branch and preserves the trailing text as the
 	// final fixed part, so Execute round-trips the original input verbatim.
@@ -68,7 +64,6 @@ func Test_Template_UnterminatedTagPreserved(t *testing.T) {
 
 func Test_Template_BuildCopiesFormat(t *testing.T) {
 	t.Parallel()
-
 	mutable := []byte("prefix ${tag} suffix")
 	format := unsafe.String(&mutable[0], len(mutable))
 
@@ -90,7 +85,6 @@ func Test_Template_BuildCopiesFormat(t *testing.T) {
 
 func Test_Template_UnknownParametricTag(t *testing.T) {
 	t.Parallel()
-
 	_, err := Build[string, testData]("${missing:name}", nil)
 	require.ErrorIs(t, err, ErrUnknownTag)
 
@@ -103,7 +97,6 @@ func Test_Template_UnknownParametricTag(t *testing.T) {
 
 func Test_Template_UnknownBareTag(t *testing.T) {
 	t.Parallel()
-
 	_, err := Build[string, testData]("${missing}", nil)
 	require.ErrorIs(t, err, ErrUnknownTag)
 
@@ -115,11 +108,8 @@ func Test_Template_UnknownBareTag(t *testing.T) {
 
 func Test_Template_UnknownBareTagHintsParametric(t *testing.T) {
 	t.Parallel()
-
 	_, err := Build[string, testData]("${reqHeader}", map[string]Func[string, testData]{
-		"reqHeader:": func(_ Buffer, _ string, _ *testData, _ string) (int, error) {
-			return 0, nil
-		},
+		"reqHeader:": func(_ Buffer, _ string, _ *testData, _ string) (int, error) { return 0, nil },
 	})
 	require.ErrorIs(t, err, ErrUnknownTag)
 
@@ -132,12 +122,9 @@ func Test_Template_UnknownBareTagHintsParametric(t *testing.T) {
 
 func Test_Template_FuncReturnsError(t *testing.T) {
 	t.Parallel()
-
 	tagErr := errors.New("tag failure")
 	tmpl, err := Build[string, testData]("${fail}", map[string]Func[string, testData]{
-		"fail": func(_ Buffer, _ string, _ *testData, _ string) (int, error) {
-			return 0, tagErr
-		},
+		"fail": func(_ Buffer, _ string, _ *testData, _ string) (int, error) { return 0, tagErr },
 	})
 	require.NoError(t, err)
 
@@ -149,20 +136,16 @@ func Test_Template_FuncReturnsError(t *testing.T) {
 
 func Test_ExecuteChainsRejectsMismatchedLengths(t *testing.T) {
 	t.Parallel()
-
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	err := ExecuteChains[string, testData](buf, "ctx", &testData{}, nil, []Func[string, testData]{nil})
-	require.EqualError(t, err, "logtemplate: invalid chain lengths: fixedParts=0 funcChain=1")
+	require.EqualError(t, ExecuteChains[string, testData](buf, "ctx", &testData{}, nil, []Func[string, testData]{nil}), "logtemplate: invalid chain lengths: fixedParts=0 funcChain=1")
 	require.Empty(t, buf.String())
 }
 
 func Benchmark_Template_Build(b *testing.B) {
 	tagFns := map[string]Func[string, testData]{
-		"tag": func(output Buffer, _ string, _ *testData, _ string) (int, error) {
-			return output.WriteString("v")
-		},
+		"tag": func(output Buffer, _ string, _ *testData, _ string) (int, error) { return output.WriteString("v") },
 		"param:": func(output Buffer, _ string, _ *testData, extraParam string) (int, error) {
 			return output.WriteString(extraParam)
 		},

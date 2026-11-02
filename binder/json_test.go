@@ -9,10 +9,7 @@ import (
 
 func Test_JSON_Binding_Bind(t *testing.T) {
 	t.Parallel()
-
-	b := &JSONBinding{
-		JSONDecoder: json.Unmarshal,
-	}
+	b := &JSONBinding{JSONDecoder: json.Unmarshal}
 	require.Equal(t, "json", b.Name())
 
 	type Post struct {
@@ -26,14 +23,9 @@ func Test_JSON_Binding_Bind(t *testing.T) {
 	}
 	var user User
 
-	err := b.Bind([]byte(`{"name":"john","age":42,"posts":[{"title":"post1"},{"title":"post2"},{"title":"post3"}]}`), &user)
-	require.NoError(t, err)
-	require.Equal(t, "john", user.Name)
-	require.Equal(t, 42, user.Age)
-	require.Len(t, user.Posts, 3)
-	require.Equal(t, "post1", user.Posts[0].Title)
-	require.Equal(t, "post2", user.Posts[1].Title)
-	require.Equal(t, "post3", user.Posts[2].Title)
+	require.NoError(t, b.Bind([]byte(`{"name":"john","age":42,"posts":[{"title":"post1"},{"title":"post2"},{"title":"post3"}]}`), &user))
+	posts := []Post{{Title: "post1"}, {Title: "post2"}, {Title: "post3"}}
+	require.Equal(t, User{Name: "john", Age: 42, Posts: posts}, user)
 
 	b.Reset()
 	require.Nil(t, b.JSONDecoder)
@@ -41,65 +33,38 @@ func Test_JSON_Binding_Bind(t *testing.T) {
 
 func Test_JSON_Binding_Bind_OptionalIDParam(t *testing.T) {
 	t.Parallel()
-
-	b := &JSONBinding{
-		JSONDecoder: json.Unmarshal,
-	}
+	b := &JSONBinding{JSONDecoder: json.Unmarshal}
 
 	// Use case from original issue
 	type OptionalIDParam struct {
 		IDPtr *int64 `json:"id"`
 	}
 
-	t.Run("id provided", func(t *testing.T) {
-		t.Parallel()
+	tests := []struct {
+		want *int64
+		name string
+		body string
+	}{
+		{name: "id provided", body: `{"id":123}`, want: new(int64(123))},
+		{name: "id not provided", body: `{}`, want: nil},
+		{name: "id zero", body: `{"id":0}`, want: new(int64(0))},
+		{name: "id null", body: `{"id":null}`, want: nil},
+	}
 
-		var param OptionalIDParam
-		err := b.Bind([]byte(`{"id":123}`), &param)
-		require.NoError(t, err)
-
-		require.NotNil(t, param.IDPtr)
-		require.Equal(t, int64(123), *param.IDPtr)
-	})
-
-	t.Run("id not provided", func(t *testing.T) {
-		t.Parallel()
-
-		var param OptionalIDParam
-		err := b.Bind([]byte(`{}`), &param)
-		require.NoError(t, err)
-
-		require.Nil(t, param.IDPtr)
-	})
-
-	t.Run("id zero", func(t *testing.T) {
-		t.Parallel()
-
-		var param OptionalIDParam
-		err := b.Bind([]byte(`{"id":0}`), &param)
-		require.NoError(t, err)
-
-		require.NotNil(t, param.IDPtr)
-		require.Equal(t, int64(0), *param.IDPtr)
-	})
-
-	t.Run("id null", func(t *testing.T) {
-		t.Parallel()
-
-		var param OptionalIDParam
-		err := b.Bind([]byte(`{"id":null}`), &param)
-		require.NoError(t, err)
-
-		require.Nil(t, param.IDPtr)
-	})
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var param OptionalIDParam
+			require.NoError(t, b.Bind([]byte(tc.body), &param))
+			require.Equal(t, tc.want, param.IDPtr)
+		})
+	}
 }
 
 func Benchmark_JSON_Binding_Bind(b *testing.B) {
 	b.ReportAllocs()
 
-	binder := &JSONBinding{
-		JSONDecoder: json.Unmarshal,
-	}
+	binder := &JSONBinding{JSONDecoder: json.Unmarshal}
 
 	type User struct {
 		Name  string   `json:"name"`
@@ -113,11 +78,5 @@ func Benchmark_JSON_Binding_Bind(b *testing.B) {
 		err = binder.Bind([]byte(`{"name":"john","age":42,"posts":["post1","post2","post3"]}`), &user)
 	}
 
-	require.NoError(b, err)
-	require.Equal(b, "john", user.Name)
-	require.Equal(b, 42, user.Age)
-	require.Len(b, user.Posts, 3)
-	require.Equal(b, "post1", user.Posts[0])
-	require.Equal(b, "post2", user.Posts[1])
-	require.Equal(b, "post3", user.Posts[2])
+	requireJohn42(b, err, user.Name, user.Age, user.Posts)
 }

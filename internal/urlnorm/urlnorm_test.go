@@ -12,7 +12,6 @@ import (
 // "https://evil.com" — a value spliced at the front must never reach that.
 func Test_RootedPath(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name     string
 		location string
@@ -36,7 +35,6 @@ func Test_RootedPath(t *testing.T) {
 
 func Test_LeadingSlashes(t *testing.T) {
 	t.Parallel()
-
 	require.Equal(t, 0, LeadingSlashes("internal"))
 	require.Equal(t, 1, LeadingSlashes("/internal"))
 	require.Equal(t, 2, LeadingSlashes("//internal"))

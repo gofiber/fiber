@@ -6,11 +6,10 @@ package fiber
 
 import (
 	"bufio"
-	"context"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -28,6 +27,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,48 +50,106 @@ func init() {
 	}
 }
 
+// routerTestRequestCtx returns a fasthttp request context holding a request for
+// method and uri, ready to be handed to app.Handler() or app.AcquireCtx.
+func routerTestRequestCtx(method, uri string) *fasthttp.RequestCtx {
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(method)
+	fctx.Request.SetRequestURI(uri)
+	return fctx
+}
+
+// routerTestExpect is [apptest.Expect] for requests whose body is not under
+// test. It still drains and closes the response body like a client would, so a
+// failing read or close fails the test, and returns the response for header checks.
+func routerTestExpect[T apptest.Target](tb testing.TB, app *App, target T, status int) *http.Response {
+	tb.Helper()
+
+	resp := apptest.Expect(tb, app, target, status)
+	apptest.BodyBytes(tb, resp)
+	return resp
+}
+
+// routerReq is a request and the answer it must get. An empty method is GET, an empty host is the one httptest
+// gives, a zero status is 200, and an empty body is not checked. A named header must have value, which is empty for
+// a header that must be absent.
+type routerReq struct {
+	method string
+	host   string
+	path   string
+	body   string
+	header string
+	value  string
+	allow  []string // methods the Allow header must list
+	status int
+}
+
+// routerTestExpectAll sends each request through app, in order, and checks the answer.
+func routerTestExpectAll(tb testing.TB, app *App, reqs ...routerReq) {
+	tb.Helper()
+
+	for i := range reqs {
+		r := &reqs[i]
+		var opts []apptest.Option
+		if r.host != "" {
+			opts = append(opts, apptest.WithHost(r.host))
+		}
+		method := cmp.Or(r.method, MethodGet)
+		resp := routerTestExpect(tb, app, apptest.Req(method, r.path, opts...), cmp.Or(r.status, StatusOK))
+		where := method + " " + r.host + r.path
+		if r.body != "" {
+			require.Equal(tb, r.body, apptest.Body(tb, resp), where)
+		}
+		if r.header != "" {
+			require.Equal(tb, r.value, resp.Header.Get(r.header), where)
+		}
+		for _, method := range r.allow {
+			require.Contains(tb, resp.Header.Get(HeaderAllow), method, where)
+		}
+	}
+}
+
+// routerTestExpectPath is [routerTestExpectAll] for one GET and a table row that names the body it expects only
+// sometimes.
+func routerTestExpectPath(tb testing.TB, app *App, path string, status int, want string) {
+	tb.Helper()
+
+	routerTestExpectAll(tb, app, routerReq{path: path, status: status, body: want})
+}
+
+// routerTestExpectStatus requests each path from app with method and requires the status of every answer.
+func routerTestExpectStatus(tb testing.TB, app *App, method string, status int, paths ...string) {
+	tb.Helper()
+
+	for _, path := range paths {
+		routerTestExpect(tb, app, apptest.Req(method, path), status)
+	}
+}
+
 func Test_Route_Handler_Order(t *testing.T) {
 	t.Parallel()
-
 	app := New()
-
 	var order []int
-
-	handler1 := func(c Ctx) error {
-		order = append(order, 1)
-		return c.Next()
+	handler := func(n int) Handler {
+		return func(c Ctx) error {
+			order = append(order, n)
+			return c.Next()
+		}
 	}
-	handler2 := func(c Ctx) error {
-		order = append(order, 2)
-		return c.Next()
-	}
-	handler3 := func(c Ctx) error {
-		order = append(order, 3)
-		return c.Next()
-	}
-
-	app.Get("/test", handler1, handler2, handler3, func(c Ctx) error {
+	app.Get("/test", handler(1), handler(2), handler(3), func(c Ctx) error {
 		order = append(order, 4)
 		return c.SendStatus(200)
 	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	expectedOrder := []int{1, 2, 3, 4}
-	require.Equal(t, expectedOrder, order, "Handler order")
+	apptest.Expect(t, app, "/test", 200)
+	require.Equal(t, []int{1, 2, 3, 4}, order, "Handler order")
 }
 
 func Test_hasFlashCookieExactMatch(t *testing.T) {
 	t.Parallel()
-
 	buildRequestWithCookie := func(t *testing.T, cookie string) *fasthttp.Request {
 		t.Helper()
 
-		rawRequest := strings.NewReader(
-			"GET / HTTP/1.1\r\nHost: localhost\r\nCookie: " + cookie + "\r\n\r\n",
-		)
+		rawRequest := strings.NewReader("GET / HTTP/1.1\r\nHost: localhost\r\nCookie: " + cookie + "\r\n\r\n")
 		req := new(fasthttp.Request)
 		require.NoError(t, req.Read(bufio.NewReader(rawRequest)))
 		return req
@@ -115,7 +173,6 @@ func Test_hasFlashCookieExactMatch(t *testing.T) {
 
 func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	var order []string
@@ -140,16 +197,7 @@ func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {
 
 	app.Get("/mixed", fiberBefore, httpHandler, fiberAfter)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/mixed", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-	t.Cleanup(func() {
-		require.NoError(t, resp.Body.Close())
-	})
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "http", string(body))
+	resp := apptest.ExpectBody(t, app, "/mixed", 200, "http")
 	require.Equal(t, "true", resp.Header.Get("X-HTTP"))
 	require.Equal(t, "1", resp.Header.Get("X-Fiber"))
 
@@ -158,7 +206,6 @@ func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {
 
 func Test_Route_Group_WithHTTPHandlers(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	var order []string
@@ -179,23 +226,13 @@ func Test_Route_Group_WithHTTPHandlers(t *testing.T) {
 		assert.NoError(t, err)
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/users", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-	t.Cleanup(func() {
-		require.NoError(t, resp.Body.Close())
-	})
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "users", string(body))
+	apptest.ExpectBody(t, app, "/api/users", 200, "users")
 
 	require.Equal(t, []string{"app-use", "group-middleware", "http-handler"}, order)
 }
 
 func Test_RouteChain_WithHTTPHandlers(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	chain := app.RouteChain("/combo")
@@ -213,56 +250,52 @@ func Test_RouteChain_WithHTTPHandlers(t *testing.T) {
 		assert.NoError(t, err)
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/combo", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
+	resp := apptest.ExpectBody(t, app, "/combo", 200, "combo")
 	require.Equal(t, "fiber", resp.Header.Get("X-Chain"))
-	t.Cleanup(func() {
-		require.NoError(t, resp.Body.Close())
-	})
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "combo", string(body))
-
-	nestedResp, err := app.Test(httptest.NewRequest(MethodGet, "/combo/nested", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, nestedResp.StatusCode)
+	nestedResp := apptest.ExpectBody(t, app, "/combo/nested", 200, "nested")
 	require.Equal(t, "true", nestedResp.Header.Get("X-Nested"))
-	t.Cleanup(func() {
-		require.NoError(t, nestedResp.Body.Close())
-	})
-
-	nestedBody, err := io.ReadAll(nestedResp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "nested", string(nestedBody))
 }
 
-func Test_Route_Match_SameLength(t *testing.T) {
+// Test_Route_Match_Param checks that a route whose handler answers with its one
+// parameter binds the text of the path, including a path spelled exactly like
+// the pattern.
+func Test_Route_Match_Param(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		pattern  string
+		param    string
+		requests []routerReq
+		use      bool
+	}{
+		{
+			name: "same length", pattern: "/:param", param: "param",
+			requests: []routerReq{{path: "/:param", body: ":param"}, {path: "/test", body: "test"}},
+		},
+		{
+			name: "star", pattern: "/*", param: "*",
+			requests: []routerReq{{path: "/*", body: "*"}, {path: "/test", body: "test"}},
+		},
+		{
+			name: "middleware", use: true, pattern: "/foo/*", param: "*",
+			requests: []routerReq{{path: "/foo/*", body: "*"}, {path: "/foo/bar/fasel", body: "bar/fasel"}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
 
-	app := New()
+			handler := func(c Ctx) error { return c.SendString(c.Params(tc.param)) }
+			if tc.use {
+				app.Use(tc.pattern, handler)
+			} else {
+				app.Get(tc.pattern, handler)
+			}
 
-	app.Get("/:param", func(c Ctx) error {
-		return c.SendString(c.Params("param"))
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/:param", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, ":param", app.toString(body))
-
-	// with param
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "test", app.toString(body))
+			routerTestExpectAll(t, app, tc.requests...)
+		})
+	}
 }
 
 // Test_Route_Match_SlashInParams locks in the matching quirks where a
@@ -270,44 +303,27 @@ func Test_Route_Match_SameLength(t *testing.T) {
 // must not filter these routes out end-to-end.
 func Test_Route_Match_SlashInParams(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/api/v1/:param-:param2", func(c Ctx) error {
 		return c.SendString(c.Params("param") + "|" + c.Params("param2"))
 	})
-	app.Get("/test:sign:param", func(c Ctx) error {
-		return c.SendString(c.Params("sign") + "|" + c.Params("param"))
-	})
+	app.Get("/test:sign:param", func(c Ctx) error { return c.SendString(c.Params("sign") + "|" + c.Params("param")) })
 	app.Get("/date/:day/:month?/:year?", func(c Ctx) error {
 		return c.SendString(c.Params("day") + "|" + c.Params("month") + "|" + c.Params("year"))
 	})
-	app.Use("/mw/:version", func(c Ctx) error {
-		return c.SendString(c.Params("version"))
-	})
+	app.Use("/mw/:version", func(c Ctx) error { return c.SendString(c.Params("version")) })
 
-	testCases := []struct {
-		url  string
-		body string
-	}{
+	routerTestExpectAll(t, app, []routerReq{
 		// param swallows '/' via the unguarded single-byte compare part
-		{url: "/api/v1/enti/ty-x", body: "enti/ty|x"},
+		{path: "/api/v1/enti/ty-x", body: "enti/ty|x"},
 		// adjacent params consume one byte each, possibly '/'
-		{url: "/test/x", body: "/|x"},
+		{path: "/test/x", body: "/|x"},
 		// optional segments drop their leading slashes
-		{url: "/date/1", body: "1||"},
-		{url: "/date/1/2/3", body: "1|2|3"},
+		{path: "/date/1", body: "1||"},
+		{path: "/date/1/2/3", body: "1|2|3"},
 		// param middleware matches deeper paths
-		{url: "/mw/v1/users/list", body: "v1"},
-	}
-	for _, tc := range testCases {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.url, http.NoBody))
-		require.NoError(t, err, "app.Test(req)")
-		require.Equal(t, 200, resp.StatusCode, "Status code for %s", tc.url)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err, "io.ReadAll(resp.Body)")
-		require.Equal(t, tc.body, app.toString(body), "Body for %s", tc.url)
-	}
+		{path: "/mw/v1/users/list", body: "v1"},
+	}...)
 }
 
 // Test_App_HasParamRoutes verifies the slash-count gate: apps whose routes
@@ -316,69 +332,30 @@ func Test_Route_Match_SlashInParams(t *testing.T) {
 // it so param routes still match.
 func Test_App_HasParamRoutes(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/static/route", testEmptyHandler)
-	app.Get("/*", func(c Ctx) error {
-		return c.SendString(c.Params("*"))
-	})
+	app.Get("/*", func(c Ctx) error { return c.SendString(c.Params("*")) })
 	app.startupProcess()
 	require.False(t, app.hasParamRoutes)
 
 	// static and star routing work without the per-request count
-	verifyRequest(t, app, "/static/route", StatusOK)
-	resp := verifyRequest(t, app, "/anything/else", StatusOK)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "anything/else", app.toString(body))
+	apptest.Expect(t, app, "/static/route", StatusOK)
+	apptest.ExpectBody(t, app, "/anything/else", StatusOK, "anything/else")
 
 	// the GET star route would shadow a GET param route, so use POST
-	app.Post("/users/:id", func(c Ctx) error {
-		return c.SendString(c.Params("id"))
-	})
+	app.Post("/users/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
 	app.RebuildTree()
 	require.True(t, app.hasParamRoutes)
 
-	resp, err = app.Test(httptest.NewRequest(MethodPost, "/users/42", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "42", app.toString(body))
+	apptest.ExpectBody(t, app, apptest.Req(MethodPost, "/users/42"), StatusOK, "42")
 }
 
+// Test_Route_Match_Star calls Route.match directly on a star route; the routing
+// of a star pattern through an app is the "star" case of Test_Route_Match_Param.
 func Test_Route_Match_Star(t *testing.T) {
 	t.Parallel()
-
-	app := New()
-
-	app.Get("/*", func(c Ctx) error {
-		return c.SendString(c.Params("*"))
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/*", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "*", app.toString(body))
-
-	// with param
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "test", app.toString(body))
-
 	// without parameter
-	route := Route{
-		star:        true,
-		path:        "/*",
-		routeParser: routeParser{},
-	}
+	route := Route{star: true, path: "/*", routeParser: routeParser{}}
 	params := [maxParams]string{}
 	match := route.match("", "", &params, 0)
 	require.True(t, match)
@@ -397,365 +374,193 @@ func Test_Route_Match_Star(t *testing.T) {
 
 func Test_Route_Match_Root(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
-	app.Get("/", func(c Ctx) error {
-		return c.SendString("root")
-	})
+	app.Get("/", func(c Ctx) error { return c.SendString("root") })
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "root", app.toString(body))
+	apptest.ExpectBody(t, app, "/", 200, "root")
 }
 
 func Test_Route_Match_Parser(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
-	app.Get("/foo/:ParamName", func(c Ctx) error {
-		return c.SendString(c.Params("ParamName"))
-	})
-	app.Get("/Foobar/*", func(c Ctx) error {
-		return c.SendString(c.Params("*"))
-	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "bar", app.toString(body))
+	app.Get("/foo/:ParamName", func(c Ctx) error { return c.SendString(c.Params("ParamName")) })
+	app.Get("/Foobar/*", func(c Ctx) error { return c.SendString(c.Params("*")) })
+	apptest.ExpectBody(t, app, "/foo/bar", 200, "bar")
 
 	// with star
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/Foobar/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "test", app.toString(body))
+	apptest.ExpectBody(t, app, "/Foobar/test", 200, "test")
 }
 
 func TestAutoRegisterHeadRoutes(t *testing.T) {
 	t.Parallel()
+	// expectHead sends HEAD for path, asserts the status and that no body comes
+	// back, and returns the response for header checks.
+	expectHead := func(t *testing.T, app *App, path string, status int) *http.Response {
+		t.Helper()
 
-	cases := []struct {
-		name string
-	}{
-		{name: "auto registers head for get"},
-		{name: "disable auto register config"},
-		{name: "explicit head overrides auto head route"},
-		{name: "auto head for grouped routes"},
-		{name: "static handler auto head"},
-		{name: "head without matching route returns 404"},
-		{name: "late explicit get keeps explicit head"},
-		{name: "route listing includes auto head"},
-		{name: "head mirrors status without body"},
+		resp := apptest.Expect(t, app, apptest.Req(MethodHead, path), status)
+		require.Empty(t, apptest.BodyBytes(t, resp))
+		return resp
 	}
 
-	requireClose := func(tb testing.TB, closer io.Closer) {
-		tb.Helper()
-		require.NoError(tb, closer.Close())
-	}
-
-	registerCleanup := func(tb testing.TB, body io.ReadCloser) {
-		tb.Helper()
-		tb.Cleanup(func() {
-			requireClose(tb, body)
+	t.Run("auto registers head for get", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/", func(c Ctx) error {
+			c.Set("X-Test", "auto")
+			return c.SendString("Hello")
 		})
-	}
 
-	runners := []func(t *testing.T){
-		func(t *testing.T) {
-			t.Helper()
-			app := New()
-			app.Get("/", func(c Ctx) error {
-				c.Set("X-Test", "auto")
-				return c.SendString("Hello")
-			})
+		respHead := expectHead(t, app, "/", StatusOK)
+		require.Equal(t, int64(len("Hello")), respHead.ContentLength)
+		require.Equal(t, "auto", respHead.Header.Get("X-Test"))
 
-			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/", http.NoBody))
-			require.NoError(t, err)
-			registerCleanup(t, respHead.Body)
-			require.Equal(t, StatusOK, respHead.StatusCode)
-			require.Equal(t, int64(len("Hello")), respHead.ContentLength)
-			require.Equal(t, "auto", respHead.Header.Get("X-Test"))
-
-			body, err := io.ReadAll(respHead.Body)
-			require.NoError(t, err)
-			require.Empty(t, body)
-
-			respGet, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
-			registerCleanup(t, respGet.Body)
-			require.Equal(t, StatusOK, respGet.StatusCode)
-			require.Equal(t, int64(len("Hello")), respGet.ContentLength)
-			data, err := io.ReadAll(respGet.Body)
-			require.NoError(t, err)
-			require.Equal(t, "Hello", string(data))
-		},
-		func(t *testing.T) {
-			t.Helper()
-			app := New(Config{DisableHeadAutoRegister: true})
-			app.Get("/", func(c Ctx) error {
-				return c.SendString("Hello")
-			})
-
-			resp, err := app.Test(httptest.NewRequest(MethodHead, "/", http.NoBody))
-			require.NoError(t, err)
-			registerCleanup(t, resp.Body)
-			require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
-		},
-		func(t *testing.T) {
-			t.Helper()
-			app := New()
-			var getCalls int
-			app.Get("/override", func(c Ctx) error {
-				getCalls++
-				return c.SendString("GET")
-			})
-
-			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/override", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, StatusOK, respHead.StatusCode)
-			require.Equal(t, 1, getCalls)
-			requireClose(t, respHead.Body)
-
-			var headCalls int
-			app.Head("/override", func(c Ctx) error {
-				headCalls++
-				c.Set("X-Explicit", "true")
-				return c.SendStatus(StatusNoContent)
-			})
-
-			respHead, err = app.Test(httptest.NewRequest(MethodHead, "/override", http.NoBody))
-			require.NoError(t, err)
-			registerCleanup(t, respHead.Body)
-			require.Equal(t, StatusNoContent, respHead.StatusCode)
-			require.Equal(t, "true", respHead.Header.Get("X-Explicit"))
-			body, err := io.ReadAll(respHead.Body)
-			require.NoError(t, err)
-			require.Empty(t, body)
-			require.Equal(t, 1, getCalls)
-			require.Equal(t, 1, headCalls)
-		},
-		func(t *testing.T) {
-			t.Helper()
-			app := New()
-			group := app.Group("/api")
-			group.Get("/users/:id", func(c Ctx) error {
-				c.Set("X-User", c.Params("id"))
-				return c.SendString("grouped")
-			})
-
-			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/api/users/42", http.NoBody))
-			require.NoError(t, err)
-			registerCleanup(t, respHead.Body)
-			require.Equal(t, StatusOK, respHead.StatusCode)
-			require.Equal(t, "42", respHead.Header.Get("X-User"))
-			body, err := io.ReadAll(respHead.Body)
-			require.NoError(t, err)
-			require.Empty(t, body)
-		},
-		func(t *testing.T) {
-			t.Helper()
-			const file = "./.github/testdata/testRoutes.json"
-			content, err := os.ReadFile(file)
-			require.NoError(t, err)
-
-			app := New()
-			app.Get("/file", func(c Ctx) error {
-				return c.SendFile(file)
-			})
-
-			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/file", http.NoBody))
-			require.NoError(t, err)
-			registerCleanup(t, respHead.Body)
-			require.Equal(t, StatusOK, respHead.StatusCode)
-			require.Equal(t, int64(len(content)), respHead.ContentLength)
-			body, err := io.ReadAll(respHead.Body)
-			require.NoError(t, err)
-			require.Empty(t, body)
-
-			respGet, err := app.Test(httptest.NewRequest(MethodGet, "/file", http.NoBody))
-			require.NoError(t, err)
-			registerCleanup(t, respGet.Body)
-			data, err := io.ReadAll(respGet.Body)
-			require.NoError(t, err)
-			require.Equal(t, content, data)
-		},
-		func(t *testing.T) {
-			t.Helper()
-			app := New()
-			resp, err := app.Test(httptest.NewRequest(MethodHead, "/missing", http.NoBody))
-			require.NoError(t, err)
-			registerCleanup(t, resp.Body)
-			require.Equal(t, StatusNotFound, resp.StatusCode)
-		},
-		func(t *testing.T) {
-			t.Helper()
-			app := New()
-			var headCalls int
-			app.Head("/late", func(c Ctx) error {
-				headCalls++
-				c.Set("X-Late", "head")
-				return c.SendStatus(StatusAccepted)
-			})
-
-			var getCalls int
-			app.Get("/late", func(c Ctx) error {
-				getCalls++
-				return c.SendString("ok")
-			})
-
-			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/late", http.NoBody))
-			require.NoError(t, err)
-			registerCleanup(t, respHead.Body)
-			require.Equal(t, StatusAccepted, respHead.StatusCode)
-			require.Equal(t, "head", respHead.Header.Get("X-Late"))
-			require.Equal(t, 1, headCalls)
-			require.Equal(t, 0, getCalls)
-
-			respGet, err := app.Test(httptest.NewRequest(MethodGet, "/late", http.NoBody))
-			require.NoError(t, err)
-			registerCleanup(t, respGet.Body)
-			require.Equal(t, StatusOK, respGet.StatusCode)
-			require.Equal(t, 1, getCalls)
-		},
-		func(t *testing.T) {
-			t.Helper()
-			app := New()
-			app.Get("/list", func(c Ctx) error {
-				return c.SendString("list")
-			})
-
-			app.startupProcess()
-
-			routes := app.GetRoutes()
-			var hasGet, hasHead bool
-			for _, route := range routes {
-				if route.Path == "/list" {
-					if route.Method == MethodGet {
-						hasGet = true
-					}
-					if route.Method == MethodHead {
-						hasHead = true
-					}
-				}
-			}
-			require.True(t, hasGet)
-			require.True(t, hasHead)
-		},
-		func(t *testing.T) {
-			t.Helper()
-			app := New()
-			app.Get("/nocontent", func(c Ctx) error {
-				return c.SendStatus(StatusNoContent)
-			})
-
-			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/nocontent", http.NoBody))
-			require.NoError(t, err)
-			registerCleanup(t, respHead.Body)
-			require.Equal(t, StatusNoContent, respHead.StatusCode)
-			body, err := io.ReadAll(respHead.Body)
-			require.NoError(t, err)
-			require.Empty(t, body)
-
-			respGet, err := app.Test(httptest.NewRequest(MethodGet, "/nocontent", http.NoBody))
-			require.NoError(t, err)
-			registerCleanup(t, respGet.Body)
-			require.Equal(t, StatusNoContent, respGet.StatusCode)
-		},
-	}
-
-	require.Len(t, runners, len(cases))
-
-	for i, tc := range cases {
-		runner := runners[i]
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			runner(t)
-		})
-	}
-}
-
-func Test_Route_Match_Middleware(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-
-	app.Use("/foo/*", func(c Ctx) error {
-		return c.SendString(c.Params("*"))
+		respGet := apptest.ExpectBody(t, app, "/", StatusOK, "Hello")
+		require.Equal(t, int64(len("Hello")), respGet.ContentLength)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/*", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	t.Run("disable auto register config", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{DisableHeadAutoRegister: true})
+		app.Get("/", func(c Ctx) error { return c.SendString("Hello") })
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "*", app.toString(body))
+		routerTestExpect(t, app, apptest.Req(MethodHead, "/"), StatusMethodNotAllowed)
+	})
 
-	// with param
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/bar/fasel", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	t.Run("explicit head overrides auto head route", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		var getCalls int
+		app.Get("/override", func(c Ctx) error {
+			getCalls++
+			return c.SendString("GET")
+		})
 
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "bar/fasel", app.toString(body))
+		routerTestExpect(t, app, apptest.Req(MethodHead, "/override"), StatusOK)
+		require.Equal(t, 1, getCalls)
+
+		var headCalls int
+		app.Head("/override", func(c Ctx) error {
+			headCalls++
+			c.Set("X-Explicit", "true")
+			return c.SendStatus(StatusNoContent)
+		})
+
+		respHead := expectHead(t, app, "/override", StatusNoContent)
+		require.Equal(t, "true", respHead.Header.Get("X-Explicit"))
+		require.Equal(t, 1, getCalls)
+		require.Equal(t, 1, headCalls)
+	})
+
+	t.Run("auto head for grouped routes", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		group := app.Group("/api")
+		group.Get("/users/:id", func(c Ctx) error {
+			c.Set("X-User", c.Params("id"))
+			return c.SendString("grouped")
+		})
+
+		respHead := expectHead(t, app, "/api/users/42", StatusOK)
+		require.Equal(t, "42", respHead.Header.Get("X-User"))
+	})
+
+	t.Run("static handler auto head", func(t *testing.T) {
+		t.Parallel()
+		const file = "./.github/testdata/testRoutes.json"
+		content, err := os.ReadFile(file)
+		require.NoError(t, err)
+
+		app := New()
+		app.Get("/file", func(c Ctx) error { return c.SendFile(file) })
+
+		respHead := expectHead(t, app, "/file", StatusOK)
+		require.Equal(t, int64(len(content)), respHead.ContentLength)
+
+		data := apptest.BodyBytes(t, apptest.Do(t, app, "/file"))
+		require.Equal(t, content, data)
+	})
+
+	t.Run("head without matching route returns 404", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+
+		routerTestExpect(t, app, apptest.Req(MethodHead, "/missing"), StatusNotFound)
+	})
+
+	t.Run("late explicit get keeps explicit head", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		var headCalls int
+		app.Head("/late", func(c Ctx) error {
+			headCalls++
+			c.Set("X-Late", "head")
+			return c.SendStatus(StatusAccepted)
+		})
+
+		var getCalls int
+		app.Get("/late", func(c Ctx) error {
+			getCalls++
+			return c.SendString("ok")
+		})
+
+		respHead := routerTestExpect(t, app, apptest.Req(MethodHead, "/late"), StatusAccepted)
+		require.Equal(t, "head", respHead.Header.Get("X-Late"))
+		require.Equal(t, 1, headCalls)
+		require.Equal(t, 0, getCalls)
+
+		routerTestExpect(t, app, "/late", StatusOK)
+		require.Equal(t, 1, getCalls)
+	})
+
+	t.Run("route listing includes auto head", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/list", func(c Ctx) error { return c.SendString("list") })
+		app.startupProcess()
+		var methods []string
+		for _, route := range app.GetRoutes() {
+			if route.Path == "/list" {
+				methods = append(methods, route.Method)
+			}
+		}
+		require.Contains(t, methods, MethodGet)
+		require.Contains(t, methods, MethodHead)
+	})
+
+	t.Run("head mirrors status without body", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/nocontent", func(c Ctx) error { return c.SendStatus(StatusNoContent) })
+
+		expectHead(t, app, "/nocontent", StatusNoContent)
+
+		routerTestExpect(t, app, "/nocontent", StatusNoContent)
+	})
 }
 
 func Test_Route_Match_UnescapedPath(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{UnescapePath: true})
 
-	app.Use("/créer", func(c Ctx) error {
-		return c.SendString("test")
-	})
+	app.Use("/créer", func(c Ctx) error { return c.SendString("test") })
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "test", app.toString(body))
+	apptest.ExpectBody(t, app, "/cr%C3%A9er", StatusOK, "test")
 	// without special chars
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/créer", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/créer", StatusOK)
 
-	// check deactivated behavior
 	app.config.UnescapePath = false
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/cr%C3%A9er", StatusNotFound)
 
 	// an encoded slash splits the segment only with the flag on
 	app.config.UnescapePath = true
-	app.Use("/cr/éer", func(c Ctx) error {
-		return c.SendString("split")
-	})
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%2F%C3%A9er", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "split", app.toString(body))
+	app.Use("/cr/éer", func(c Ctx) error { return c.SendString("split") })
+	apptest.ExpectBody(t, app, "/cr%2F%C3%A9er", StatusOK, "split")
 
 	app.config.UnescapePath = false
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%2F%C3%A9er", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+	apptest.Expect(t, app, "/cr%2F%C3%A9er", StatusNotFound)
 }
 
 // Test_Route_Match_NormalizedPath pins the RFC 3986 normalization the router
@@ -763,22 +568,13 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 // under it that name the same resource, and only those.
 func Test_Route_Match_NormalizedPath(t *testing.T) {
 	t.Parallel()
-
 	newApp := func(cfg Config) *App {
 		app := New(cfg)
-		app.Use("/static/private", func(c Ctx) error {
-			return c.SendStatus(StatusForbidden)
-		})
-		app.Get("/static/*", func(c Ctx) error {
-			return c.SendString(c.Path() + "|" + c.Params("*"))
-		})
-		app.Get("/users/:id", func(c Ctx) error {
-			return c.SendString(c.Params("id"))
-		})
+		app.Use("/static/private", func(c Ctx) error { return c.SendStatus(StatusForbidden) })
+		app.Get("/static/*", func(c Ctx) error { return c.SendString(c.Path() + "|" + c.Params("*")) })
+		app.Get("/users/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
 		// a name outside the unreserved set is routed in its encoded spelling
-		app.Get("/enc/a%7Bb%7D", func(c Ctx) error {
-			return c.SendString(c.Path())
-		})
+		app.Get("/enc/a%7Bb%7D", func(c Ctx) error { return c.SendString(c.Path()) })
 		return app
 	}
 
@@ -818,17 +614,8 @@ func Test_Route_Match_NormalizedPath(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := newApp(Config{UnescapePath: tc.unescape})
-			resp, err := app.Test(httptest.NewRequest(MethodGet, tc.target, http.NoBody))
-			require.NoError(t, err, "app.Test(req)")
-			require.Equal(t, tc.wantStatus, resp.StatusCode, "Status code")
-
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			if tc.wantBody != "" {
-				require.Equal(t, tc.wantBody, string(body))
-			}
+			routerTestExpectPath(t, app, tc.target, tc.wantStatus, tc.wantBody)
 		})
 	}
 }
@@ -844,7 +631,6 @@ func Test_Route_Match_NormalizedPath(t *testing.T) {
 // "/a" where Fiber keeps the empty segment RFC 3986 leaves in place.
 func Test_Route_Match_AgreesWithNetHTTP(t *testing.T) {
 	t.Parallel()
-
 	routes := []struct {
 		mux, fiber string
 		params     []string // wildcard names; "rest" reads Fiber's "*"
@@ -904,11 +690,9 @@ func Test_Route_Match_AgreesWithNetHTTP(t *testing.T) {
 		return rec.Code, rec.Body.String()
 	}
 	viaFiber := func(app *App, target string) (int, string) {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
-		require.NoError(t, err, "app.Test(req)")
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		return resp.StatusCode, string(body)
+		resp := apptest.Do(t, app, target)
+		body := apptest.Body(t, resp)
+		return resp.StatusCode, body
 	}
 
 	requests := []struct {
@@ -948,7 +732,6 @@ func Test_Route_Match_AgreesWithNetHTTP(t *testing.T) {
 			}
 			t.Run(fmt.Sprintf("unescape=%v/%s", unescape, tc.target), func(t *testing.T) {
 				t.Parallel()
-
 				wantStatus, wantBody := viaMux(mux, tc.target)
 				gotStatus, gotBody := viaFiber(app, tc.target)
 				require.Equal(t, wantStatus, gotStatus, "status for %s", tc.target)
@@ -962,86 +745,23 @@ func Test_Route_Match_AgreesWithNetHTTP(t *testing.T) {
 
 func Test_Route_Match_WithEscapeChar(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	// static route and escaped part
-	app.Get("/v1/some/resource/name\\:customVerb", func(c Ctx) error {
-		return c.SendString("static")
-	})
+	app.Get("/v1/some/resource/name\\:customVerb", func(c Ctx) error { return c.SendString("static") })
 	// group route
 	group := app.Group("/v2/\\:firstVerb")
-	group.Get("/\\:customVerb", func(c Ctx) error {
-		return c.SendString("group")
-	})
+	group.Get("/\\:customVerb", func(c Ctx) error { return c.SendString("group") })
 	// route with resource param and escaped part
-	app.Get("/v3/:resource/name\\:customVerb", func(c Ctx) error {
-		return c.SendString(c.Params("resource"))
-	})
-
-	// check static route
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/some/resource/name:customVerb", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "static", app.toString(body))
-
-	// check group route
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v2/:firstVerb/:customVerb", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "group", app.toString(body))
-
-	// check param route
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v3/awesome/name:customVerb", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "awesome", app.toString(body))
-}
-
-func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-
-	app.Use("/foo", func(c Ctx) error {
-		return c.SendString("middleware")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "middleware", app.toString(body))
-}
-
-func Test_Route_Match_Middleware_NoBoundary(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-
-	app.Use("/foo", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foobar", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+	app.Get("/v3/:resource/name\\:customVerb", func(c Ctx) error { return c.SendString(c.Params("resource")) })
+	apptest.ExpectBody(t, app, "/v1/some/resource/name:customVerb", StatusOK, "static")
+	apptest.ExpectBody(t, app, "/v2/:firstVerb/:customVerb", StatusOK, "group")
+	apptest.ExpectBody(t, app, "/v3/awesome/name:customVerb", StatusOK, "awesome")
 }
 
 func Test_Route_Match_Middleware_WildcardBeforeConst(t *testing.T) {
 	t.Parallel()
-
 	deny := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
+	ok := func(c Ctx) error { return c.SendStatus(StatusOK) }
 	guards := map[string]func(app *App){
 		"use":       func(app *App) { app.Use("/api/*/admin", deny) },
 		"use slash": func(app *App) { app.Use("/api/*/admin/", deny) },
@@ -1053,73 +773,52 @@ func Test_Route_Match_Middleware_WildcardBeforeConst(t *testing.T) {
 			app.Use("/api/*/admin", sub)
 		},
 	}
+	guarded := []string{
+		"/api/acme/admin", "/api/acme/admin/admins", "/api/acme/admin/admin-settings",
+		"/api/acme/admin/users/admin.json", "/api/a/admin/b/admin/c", "/api/ACME/Admin/Admins",
+	}
+	open := []string{"/api/acme/admins", "/api/acme/admin.json", "/api/acme/status"}
 	for name, guard := range guards {
 		for _, strict := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/strict=%v", name, strict), func(t *testing.T) {
 				t.Parallel()
-
 				app := New(Config{StrictRouting: strict})
 				guard(app)
-				app.Get("/api/:tenant/admin/:page", func(c Ctx) error { return c.SendStatus(StatusOK) })
-				app.Get("/api/*", func(c Ctx) error { return c.SendStatus(StatusOK) })
+				app.Get("/api/:tenant/admin/:page", ok)
+				app.Get("/api/*", ok)
 
-				for _, target := range []string{
-					"/api/acme/admin",
-					"/api/acme/admin/admins",
-					"/api/acme/admin/admin-settings",
-					"/api/acme/admin/users/admin.json",
-					"/api/a/admin/b/admin/c",
-					"/api/ACME/Admin/Admins",
-				} {
-					resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
-					require.NoError(t, err)
-					require.Equal(t, StatusUnauthorized, resp.StatusCode, target)
-				}
-				for _, target := range []string{"/api/acme/admins", "/api/acme/admin.json", "/api/acme/status"} {
-					resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
-					require.NoError(t, err)
-					require.Equal(t, StatusOK, resp.StatusCode, target)
-				}
+				routerTestExpectStatus(t, app, MethodGet, StatusUnauthorized, guarded...)
+				routerTestExpectStatus(t, app, MethodGet, StatusOK, open...)
 			})
 		}
 	}
 
 	t.Run("case sensitive", func(t *testing.T) {
 		t.Parallel()
-
 		app := New(Config{CaseSensitive: true})
 		app.Use("/api/*/Admin", deny)
-		app.Get("/api/*", func(c Ctx) error { return c.SendStatus(StatusOK) })
+		app.Get("/api/*", ok)
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/acme/Admin/admins", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusUnauthorized, resp.StatusCode)
-
-		resp, err = app.Test(httptest.NewRequest(MethodGet, "/api/acme/admin/Admins", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, "/api/acme/Admin/admins", StatusUnauthorized)
+		apptest.Expect(t, app, "/api/acme/admin/Admins", StatusOK)
 	})
 }
 
 func Test_Route_Match_Middleware_ParamBeforeConst(t *testing.T) {
 	t.Parallel()
-
 	deny := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
 	ok := func(c Ctx) error { return c.SendStatus(StatusOK) }
+	denyingSub := func(app *App) *App {
+		sub := New(Config{StrictRouting: app.config.StrictRouting})
+		sub.Use("/", deny)
+		return sub
+	}
 	guards := map[string]func(app *App, prefix string){
-		"use":       func(app *App, prefix string) { app.Use(prefix, deny) },
-		"use slash": func(app *App, prefix string) { app.Use(prefix+"/", deny) },
-		"group":     func(app *App, prefix string) { app.Group(prefix).Use("/", deny) },
-		"mount": func(app *App, prefix string) {
-			sub := New(Config{StrictRouting: app.config.StrictRouting})
-			sub.Use("/", deny)
-			app.Use(prefix, sub)
-		},
-		"domain mount": func(app *App, prefix string) {
-			sub := New(Config{StrictRouting: app.config.StrictRouting})
-			sub.Use("/", deny)
-			app.Domain("example.com").Use(prefix, sub)
-		},
+		"use":          func(app *App, prefix string) { app.Use(prefix, deny) },
+		"use slash":    func(app *App, prefix string) { app.Use(prefix+"/", deny) },
+		"group":        func(app *App, prefix string) { app.Group(prefix).Use("/", deny) },
+		"mount":        func(app *App, prefix string) { app.Use(prefix, denyingSub(app)) },
+		"domain mount": func(app *App, prefix string) { app.Domain("example.com").Use(prefix, denyingSub(app)) },
 	}
 	shapes := []struct {
 		prefix, below string
@@ -1142,7 +841,6 @@ func Test_Route_Match_Middleware_ParamBeforeConst(t *testing.T) {
 		for _, strict := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/strict=%v", name, strict), func(t *testing.T) {
 				t.Parallel()
-
 				for _, shape := range shapes {
 					app := New(Config{StrictRouting: strict})
 					guard(app, shape.prefix)
@@ -1150,16 +848,8 @@ func Test_Route_Match_Middleware_ParamBeforeConst(t *testing.T) {
 					app.Get("/*", ok)
 
 					for _, method := range []string{MethodGet, MethodHead} {
-						for _, target := range shape.guarded {
-							resp, err := app.Test(httptest.NewRequest(method, target, http.NoBody))
-							require.NoError(t, err)
-							require.Equal(t, StatusUnauthorized, resp.StatusCode, "%s %s", method, target)
-						}
-						for _, target := range shape.open {
-							resp, err := app.Test(httptest.NewRequest(method, target, http.NoBody))
-							require.NoError(t, err)
-							require.Equal(t, StatusOK, resp.StatusCode, "%s %s", method, target)
-						}
+						routerTestExpectStatus(t, app, method, StatusUnauthorized, shape.guarded...)
+						routerTestExpectStatus(t, app, method, StatusOK, shape.open...)
 					}
 				}
 			})
@@ -1168,47 +858,47 @@ func Test_Route_Match_Middleware_ParamBeforeConst(t *testing.T) {
 
 	t.Run("case sensitive", func(t *testing.T) {
 		t.Parallel()
-
 		app := New(Config{CaseSensitive: true})
 		app.Use("/files/:name.JSON", deny)
 		app.Get("/*", ok)
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/files/a.JSON.JSON/raw", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusUnauthorized, resp.StatusCode)
-
-		resp, err = app.Test(httptest.NewRequest(MethodGet, "/files/a.JSON.json/raw", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, "/files/a.JSON.JSON/raw", StatusUnauthorized)
+		apptest.Expect(t, app, "/files/a.JSON.json/raw", StatusOK)
 	})
 }
 
-func Test_Route_Match_Middleware_Root(t *testing.T) {
+// Test_Route_Match_Middleware_Prefix pins which paths a Use prefix covers:
+// everything below it, but not a sibling that only starts with the same characters.
+func Test_Route_Match_Middleware_Prefix(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		prefix string
+		path   string
+		body   string
+		status int
+	}{
+		{name: "has prefix", prefix: "/foo", path: "/foo/bar", status: StatusOK, body: "middleware"},
+		{name: "no boundary", prefix: "/foo", path: "/foobar", status: StatusNotFound},
+		{name: "root", prefix: "/", path: "/everything", status: StatusOK, body: "middleware"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
 
-	app := New()
+			app.Use(tc.prefix, func(c Ctx) error { return c.SendString("middleware") })
 
-	app.Use("/", func(c Ctx) error {
-		return c.SendString("middleware")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/everything", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "middleware", app.toString(body))
+			routerTestExpectPath(t, app, tc.path, tc.status, tc.body)
+		})
+	}
 }
 
 func Test_Router_Register_Missing_Handler(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	t.Run("No Handler", func(t *testing.T) {
 		t.Parallel()
-
 		require.PanicsWithValue(t, "missing handler/middleware in route: /doe\n", func() {
 			app.register([]string{"USE"}, "/doe", nil)
 		})
@@ -1216,7 +906,6 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 
 	t.Run("Nil Handler", func(t *testing.T) {
 		t.Parallel()
-
 		require.PanicsWithValue(t, "nil handler in route: /doe\n", func() {
 			app.register([]string{"USE"}, "/doe", nil, nil)
 		})
@@ -1225,7 +914,6 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 	t.Parallel()
-
 	var app any = (*App)(nil)
 	_, ok := app.(Router)
 	require.True(t, ok)
@@ -1237,15 +925,10 @@ func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 
 func Test_Router_Handler_Catch_Error(t *testing.T) {
 	t.Parallel()
-
 	app := New()
-	app.config.ErrorHandler = func(_ Ctx, _ error) error {
-		return errors.New("fake error")
-	}
+	app.config.ErrorHandler = func(_ Ctx, _ error) error { return errors.New("fake error") }
 
-	app.Get("/", func(_ Ctx) error {
-		return ErrForbidden
-	})
+	app.Get("/", func(_ Ctx) error { return ErrForbidden })
 
 	c := &fasthttp.RequestCtx{}
 
@@ -1256,38 +939,30 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 
 func Test_Router_NotFound(t *testing.T) {
 	t.Parallel()
-	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
-	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
+	for _, tc := range []struct {
+		name string
+		path string
+	}{
+		{name: "unknown route", path: "/this/route/does/not/exist"},
+		// the body is a fixed message, so markup in the path is never echoed back
+		{name: "HTML_Inject", path: "/does/not/exist<script>alert('foo');</script>"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.Use(func(c Ctx) error { return c.Next() })
+			appHandler := app.Handler()
+			c := &fasthttp.RequestCtx{}
 
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/this/route/does/not/exist")
+			c.Request.Header.SetMethod("DELETE")
+			c.URI().SetPath(tc.path)
 
-	appHandler(c)
+			appHandler(c)
 
-	require.Equal(t, 404, c.Response.StatusCode())
-	require.Equal(t, "Not Found", string(c.Response.Body()))
-}
-
-func Test_Router_NotFound_HTML_Inject(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
-	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
-
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/does/not/exist<script>alert('foo');</script>")
-
-	appHandler(c)
-
-	require.Equal(t, 404, c.Response.StatusCode())
-	require.Equal(t, "Not Found", string(c.Response.Body()))
+			require.Equal(t, 404, c.Response.StatusCode())
+			require.Equal(t, "Not Found", string(c.Response.Body()))
+		})
+	}
 }
 
 func registerTreeManipulationRoutes(app *App, middleware ...func(Ctx) error) {
@@ -1297,24 +972,12 @@ func registerTreeManipulationRoutes(app *App, middleware ...func(Ctx) error) {
 	}
 
 	app.Get("/test", func(c Ctx) error {
-		app.Get("/dynamically-defined", func(c Ctx) error {
-			return c.SendStatus(StatusOK)
-		})
+		app.Get("/dynamically-defined", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 		app.RebuildTree()
 
 		return c.SendStatus(StatusOK)
 	}, converted...)
-}
-
-func verifyRequest(tb testing.TB, app *App, path string, expectedStatus int) *http.Response {
-	tb.Helper()
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-	require.NoError(tb, err, "app.Test(req)")
-	require.Equal(tb, expectedStatus, resp.StatusCode, "Status code")
-
-	return resp
 }
 
 func verifyRouteHandlerCounts(tb testing.TB, app *App, expectedRoutesCount int) {
@@ -1324,11 +987,7 @@ func verifyRouteHandlerCounts(tb testing.TB, app *App, expectedRoutesCount int) 
 	var routes []RouteMessage
 	for _, routeStack := range app.stack {
 		for _, route := range routeStack {
-			routeMsg := RouteMessage{
-				name:   route.Name,
-				method: route.Method,
-				path:   route.Path,
-			}
+			routeMsg := RouteMessage{name: route.Name, method: route.Method, path: route.Path}
 
 			for _, handler := range route.Handlers {
 				routeMsg.handlers += runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name() + " "
@@ -1356,384 +1015,228 @@ func Test_App_Rebuild_Tree(t *testing.T) {
 
 	registerTreeManipulationRoutes(app)
 
-	verifyRequest(t, app, "/dynamically-defined", StatusNotFound)
-	verifyRequest(t, app, "/test", StatusOK)
-	verifyRequest(t, app, "/dynamically-defined", StatusOK)
+	apptest.Expect(t, app, "/dynamically-defined", StatusNotFound)
+	apptest.Expect(t, app, "/test", StatusOK)
+	apptest.Expect(t, app, "/dynamically-defined", StatusOK)
 }
 
 func Test_App_Remove_Route_A_B_Feature_Testing(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Get("/api/feature-a", func(c Ctx) error {
-		app.RemoveRoute("/api/feature", MethodGet)
-		app.RebuildTree()
-		// Redefine route
-		app.Get("/api/feature", func(c Ctx) error {
-			return c.SendString("Testing feature-a")
+	features := []string{"a", "b"}
+	for _, feature := range features {
+		app.Get("/api/feature-"+feature, func(c Ctx) error {
+			app.RemoveRoute("/api/feature", MethodGet)
+			app.RebuildTree()
+			app.Get("/api/feature", func(c Ctx) error { return c.SendString("Testing feature-" + feature) })
+
+			app.RebuildTree()
+			return c.SendStatus(StatusOK)
 		})
+	}
 
-		app.RebuildTree()
-		return c.SendStatus(StatusOK)
-	})
-	app.Get("/api/feature-b", func(c Ctx) error {
-		app.RemoveRoute("/api/feature", MethodGet)
-		app.RebuildTree()
-		// Redefine route
-		app.Get("/api/feature", func(c Ctx) error {
-			return c.SendString("Testing feature-b")
-		})
+	// Each request swaps /api/feature for its own version, so the order matters.
+	for _, feature := range features {
+		apptest.Expect(t, app, "/api/feature-"+feature, StatusOK)
 
-		app.RebuildTree()
-		return c.SendStatus(StatusOK)
-	})
-
-	verifyRequest(t, app, "/api/feature-a", StatusOK)
-
-	resp := verifyRequest(t, app, "/api/feature", StatusOK)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-
-	require.Equal(t, "Testing feature-a", string(body), "Response Message")
-
-	verifyRequest(t, app, "/api/feature-b", StatusOK)
-
-	resp = verifyRequest(t, app, "/api/feature", StatusOK)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "Testing feature-b", string(body), "Response Message")
+		apptest.ExpectBody(t, app, "/api/feature", StatusOK, "Testing feature-"+feature)
+	}
 }
 
-func Test_App_Remove_Route_By_Name(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Get("/api/test", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	}).Name("test")
-
-	app.RemoveRouteByName("test", MethodGet)
-	app.RebuildTree()
-
-	verifyRequest(t, app, "/test", StatusNotFound)
-	verifyThereAreNoRoutes(t, app)
-}
-
-func Test_App_Remove_Route_By_Name_Non_Existing_Route(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.RemoveRouteByName("test", MethodGet)
-	app.RebuildTree()
-
-	verifyThereAreNoRoutes(t, app)
-}
-
-func Test_App_Remove_Route_Nested(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	api := app.Group("/api")
-
-	v1 := api.Group("/v1")
-	v1.Get("/test", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
-
-	verifyRequest(t, app, "/api/v1/test", StatusOK)
-	app.RemoveRoute("/api/v1/test", MethodGet)
-
-	verifyThereAreNoRoutes(t, app)
-}
-
-func Test_App_Remove_Route_Parameterized(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Get("/test/:id", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
-	verifyRequest(t, app, "/test/:id", StatusOK)
-	app.RemoveRoute("/test/:id", MethodGet)
-
-	verifyThereAreNoRoutes(t, app)
-}
-
+// Test_App_Remove_Route removes a route by path or by name, existing or not,
+// and checks what the app still serves and holds afterwards.
 func Test_App_Remove_Route(t *testing.T) {
 	t.Parallel()
-	app := New()
-
-	app.Get("/test", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
-
-	app.RemoveRoute("/test", MethodGet)
-	app.RebuildTree()
-
-	verifyRequest(t, app, "/test", StatusNotFound)
+	ok := func(c Ctx) error { return c.SendStatus(StatusOK) }
+	for _, tc := range []struct {
+		register func(app *App)
+		remove   func(app *App)
+		name     string
+		served   string // a path served before the removal
+		gone     string // a path that is a 404 after the removal
+		rebuild  bool   // RebuildTree after the removal
+		empty    bool   // no route or handler is left
+	}{
+		{
+			name: "Remove_Route", register: func(app *App) { app.Get("/test", ok) }, rebuild: true, gone: "/test",
+			remove: func(app *App) { app.RemoveRoute("/test", MethodGet) },
+		},
+		{
+			name: "Non_Existing_Route", rebuild: true, empty: true,
+			remove: func(app *App) { app.RemoveRoute("/test", MethodGet, MethodHead) },
+		},
+		{
+			name: "Nested", served: "/api/v1/test", empty: true,
+			register: func(app *App) { app.Group("/api").Group("/v1").Get("/test", ok) },
+			remove:   func(app *App) { app.RemoveRoute("/api/v1/test", MethodGet) },
+		},
+		{
+			name: "Parameterized", served: "/test/:id", empty: true,
+			register: func(app *App) { app.Get("/test/:id", ok) },
+			remove:   func(app *App) { app.RemoveRoute("/test/:id", MethodGet) },
+		},
+		{
+			name: "By_Name", rebuild: true, gone: "/test", empty: true,
+			register: func(app *App) { app.Get("/api/test", ok).Name("test") },
+			remove:   func(app *App) { app.RemoveRouteByName("test", MethodGet) },
+		},
+		{
+			name: "By_Name_Non_Existing_Route", rebuild: true, empty: true,
+			remove: func(app *App) { app.RemoveRouteByName("test", MethodGet) },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			if tc.register != nil {
+				tc.register(app)
+			}
+			if tc.served != "" {
+				apptest.Expect(t, app, tc.served, StatusOK)
+			}
+			tc.remove(app)
+			if tc.rebuild {
+				app.RebuildTree()
+			}
+			if tc.gone != "" {
+				apptest.Expect(t, app, tc.gone, StatusNotFound)
+			}
+			if tc.empty {
+				verifyThereAreNoRoutes(t, app)
+			}
+		})
+	}
 }
 
 func Test_App_Remove_Route_StrictRouting_UsePrefix(t *testing.T) {
 	t.Parallel()
 	app := New(Config{StrictRouting: true})
 
-	app.Use("/test/", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	app.Use("/test/", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
-	verifyRequest(t, app, "/test", StatusOK)
+	apptest.Expect(t, app, "/test", StatusOK)
 	app.RemoveRoute("/test/")
 	app.RebuildTree()
 
 	verifyThereAreNoRoutes(t, app)
-	verifyRequest(t, app, "/test", StatusNotFound)
+	apptest.Expect(t, app, "/test", StatusNotFound)
 }
 
-func Test_App_Remove_Route_Non_Existing_Route(t *testing.T) {
+// Test_Use_StrictRoutingBoundary pins where a Use prefix stops matching, for a
+// middleware on the app and on a group: the prefix itself, a trailing slash and
+// anything below it match, but a sibling that only starts with the same
+// characters never does, with StrictRouting on or off.
+func Test_Use_StrictRoutingBoundary(t *testing.T) {
 	t.Parallel()
-	app := New()
+	for _, scope := range []struct {
+		register func(app *App, matched *bool)
+		name     string
+		prefix   string // the path the middleware covers
+		sibling  string // shares the prefix's characters without being below it
+	}{
+		{
+			name:    "app",
+			prefix:  "/api",
+			sibling: "/apiv1",
+			register: func(app *App, matched *bool) {
+				app.Use("/api", func(c Ctx) error {
+					*matched = true
+					return c.SendStatus(StatusOK)
+				})
+			},
+		},
+		{
+			name:    "group",
+			prefix:  "/api/v1",
+			sibling: "/api/v1beta",
+			register: func(app *App, matched *bool) {
+				grp := app.Group("/api")
+				grp.Use("/v1", func(c Ctx) error {
+					*matched = true
+					return c.Next()
+				})
+				grp.Get("/v1", func(c Ctx) error { return c.SendStatus(StatusOK) })
+				grp.Get("/v1/*", func(c Ctx) error { return c.SendStatus(StatusOK) })
+			},
+		},
+	} {
+		cases := []struct {
+			name    string
+			path    string
+			status  int
+			matched bool
+		}{
+			{name: "exact match", path: scope.prefix, status: StatusOK, matched: true},
+			{name: "trailing slash partial", path: scope.prefix + "/", status: StatusOK, matched: true},
+			{name: "nested partial", path: scope.prefix + "/users", status: StatusOK, matched: true},
+			{name: "disallows sibling prefix", path: scope.sibling, status: StatusNotFound, matched: false},
+		}
 
-	app.RemoveRoute("/test", MethodGet, MethodHead)
-	app.RebuildTree()
+		for _, strict := range []bool{true, false} {
+			for _, tc := range cases {
+				t.Run(fmt.Sprintf("%s/strict=%v/%s", scope.name, strict, tc.name), func(t *testing.T) {
+					t.Parallel()
+					app := New(Config{StrictRouting: strict})
 
-	verifyThereAreNoRoutes(t, app)
-}
+					matched := false
+					scope.register(app, &matched)
 
-func Test_App_Use_StrictRoutingBoundary(t *testing.T) {
-	type testCase struct {
-		name           string
-		path           string
-		expectedStatus int
-		strictRouting  bool
-		expectMatched  bool
-	}
-
-	testCases := []testCase{
-		{
-			name:           "Strict exact match",
-			strictRouting:  true,
-			path:           "/api",
-			expectMatched:  true,
-			expectedStatus: StatusOK,
-		},
-		{
-			name:           "Strict trailing slash partial",
-			strictRouting:  true,
-			path:           "/api/",
-			expectMatched:  true,
-			expectedStatus: StatusOK,
-		},
-		{
-			name:           "Strict nested partial",
-			strictRouting:  true,
-			path:           "/api/users",
-			expectMatched:  true,
-			expectedStatus: StatusOK,
-		},
-		{
-			name:           "Strict disallows sibling prefix",
-			strictRouting:  true,
-			path:           "/apiv1",
-			expectMatched:  false,
-			expectedStatus: StatusNotFound,
-		},
-		{
-			name:           "Non-strict exact match",
-			strictRouting:  false,
-			path:           "/api",
-			expectMatched:  true,
-			expectedStatus: StatusOK,
-		},
-		{
-			name:           "Non-strict trailing slash partial",
-			strictRouting:  false,
-			path:           "/api/",
-			expectMatched:  true,
-			expectedStatus: StatusOK,
-		},
-		{
-			name:           "Non-strict nested partial",
-			strictRouting:  false,
-			path:           "/api/users",
-			expectMatched:  true,
-			expectedStatus: StatusOK,
-		},
-		{
-			name:           "Non-strict disallows sibling prefix",
-			strictRouting:  false,
-			path:           "/apiv1",
-			expectMatched:  false,
-			expectedStatus: StatusNotFound,
-		},
-	}
-
-	for _, tt := range testCases {
-		t.Run(tt.name, func(t *testing.T) {
-			app := New(Config{StrictRouting: tt.strictRouting})
-
-			matched := false
-			app.Use("/api", func(c Ctx) error {
-				matched = true
-				return c.SendStatus(StatusOK)
-			})
-
-			resp, err := app.Test(httptest.NewRequest(MethodGet, tt.path, http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, tt.expectedStatus, resp.StatusCode)
-			require.Equal(t, tt.expectMatched, matched)
-		})
-	}
-}
-
-func Test_Group_Use_StrictRoutingBoundary(t *testing.T) {
-	type testCase struct {
-		name           string
-		path           string
-		expectedStatus int
-		strictRouting  bool
-		expectMatched  bool
-	}
-
-	testCases := []testCase{
-		{
-			name:           "Strict group exact match",
-			strictRouting:  true,
-			path:           "/api/v1",
-			expectMatched:  true,
-			expectedStatus: StatusOK,
-		},
-		{
-			name:           "Strict group trailing slash partial",
-			strictRouting:  true,
-			path:           "/api/v1/",
-			expectMatched:  true,
-			expectedStatus: StatusOK,
-		},
-		{
-			name:           "Strict group nested partial",
-			strictRouting:  true,
-			path:           "/api/v1/users",
-			expectMatched:  true,
-			expectedStatus: StatusOK,
-		},
-		{
-			name:           "Strict group disallows sibling prefix",
-			strictRouting:  true,
-			path:           "/api/v1beta",
-			expectMatched:  false,
-			expectedStatus: StatusNotFound,
-		},
-		{
-			name:           "Non-strict group exact match",
-			strictRouting:  false,
-			path:           "/api/v1",
-			expectMatched:  true,
-			expectedStatus: StatusOK,
-		},
-		{
-			name:           "Non-strict group trailing slash partial",
-			strictRouting:  false,
-			path:           "/api/v1/",
-			expectMatched:  true,
-			expectedStatus: StatusOK,
-		},
-		{
-			name:           "Non-strict group nested partial",
-			strictRouting:  false,
-			path:           "/api/v1/users",
-			expectMatched:  true,
-			expectedStatus: StatusOK,
-		},
-		{
-			name:           "Non-strict group disallows sibling prefix",
-			strictRouting:  false,
-			path:           "/api/v1beta",
-			expectMatched:  false,
-			expectedStatus: StatusNotFound,
-		},
-	}
-
-	for _, tt := range testCases {
-		t.Run(tt.name, func(t *testing.T) {
-			app := New(Config{StrictRouting: tt.strictRouting})
-
-			grp := app.Group("/api")
-			matched := false
-			grp.Use("/v1", func(c Ctx) error {
-				matched = true
-				return c.Next()
-			})
-			grp.Get("/v1", func(c Ctx) error {
-				return c.SendStatus(StatusOK)
-			})
-			grp.Get("/v1/*", func(c Ctx) error {
-				return c.SendStatus(StatusOK)
-			})
-
-			resp, err := app.Test(httptest.NewRequest(MethodGet, tt.path, http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, tt.expectedStatus, resp.StatusCode)
-			require.Equal(t, tt.expectMatched, matched)
-		})
+					apptest.Expect(t, app, tc.path, tc.status)
+					require.Equal(t, tc.matched, matched)
+				})
+			}
+		}
 	}
 }
 
 func Test_App_Remove_Route_Concurrent(t *testing.T) {
 	t.Parallel()
 	app := New()
-
-	// Add test route
-	app.Get("/test", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	app.Get("/test", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
 	// Concurrently remove and add routes
 	var wg sync.WaitGroup
 	for range 10 {
 		wg.Go(func() {
 			app.RemoveRoute("/test", MethodGet)
-			app.Get("/test", func(c Ctx) error {
-				return c.SendStatus(StatusOK)
-			})
+			app.Get("/test", func(c Ctx) error { return c.SendStatus(StatusOK) })
 		})
 	}
 	wg.Wait()
-
-	// Verify final state
 	app.RebuildTree()
-	verifyRequest(t, app, "/test", StatusOK)
+	apptest.Expect(t, app, "/test", StatusOK)
 }
 
 func Test_Route_Registration_Prevent_Duplicate_With_Middleware(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	middleware := func(c Ctx) error {
-		return c.Next()
-	}
+	middleware := func(c Ctx) error { return c.Next() }
 
 	registerTreeManipulationRoutes(app, middleware)
 	registerTreeManipulationRoutes(app)
 
-	verifyRequest(t, app, "/dynamically-defined", StatusNotFound)
+	apptest.Expect(t, app, "/dynamically-defined", StatusNotFound)
 	require.Equal(t, uint32(6), app.handlersCount)
 
 	// RebuildTree registers the automatic HEAD companion right away, hence two.
-	verifyRequest(t, app, "/test", StatusOK)
+	apptest.Expect(t, app, "/test", StatusOK)
 	require.Equal(t, uint32(8), app.handlersCount)
 
-	verifyRequest(t, app, "/dynamically-defined", StatusOK)
+	apptest.Expect(t, app, "/dynamically-defined", StatusOK)
 	require.Equal(t, uint32(8), app.handlersCount)
 
 	// The merged handler reaches the HEAD companion as well.
-	verifyRequest(t, app, "/test", StatusOK)
+	apptest.Expect(t, app, "/test", StatusOK)
 	require.Equal(t, uint32(10), app.handlersCount)
 
-	verifyRequest(t, app, "/dynamically-defined", StatusOK)
+	apptest.Expect(t, app, "/dynamically-defined", StatusOK)
 	require.Equal(t, uint32(10), app.handlersCount)
 }
 
 func TestNormalizePath(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		path          string
@@ -1741,65 +1244,25 @@ func TestNormalizePath(t *testing.T) {
 		caseSensitive bool
 		strictRouting bool
 	}{
+		{name: "Empty path", path: "", caseSensitive: true, strictRouting: true, expected: "/"},
+		{name: "No leading slash", path: "users", caseSensitive: true, strictRouting: true, expected: "/users"},
 		{
-			name:          "Empty path",
-			path:          "",
-			caseSensitive: true,
-			strictRouting: true,
-			expected:      "/",
+			name: "With trailing slash and strict routing", path: "/users/", caseSensitive: true, strictRouting: true, expected: "/users/",
 		},
 		{
-			name:          "No leading slash",
-			path:          "users",
-			caseSensitive: true,
-			strictRouting: true,
-			expected:      "/users",
+			name: "With trailing slash and non-strict routing", path: "/users/", caseSensitive: true, strictRouting: false, expected: "/users",
 		},
+		{name: "Case sensitive", path: "/Users", caseSensitive: true, strictRouting: true, expected: "/Users"},
+		{name: "Case insensitive", path: "/Users", caseSensitive: false, strictRouting: true, expected: "/users"},
 		{
-			name:          "With trailing slash and strict routing",
-			path:          "/users/",
-			caseSensitive: true,
-			strictRouting: true,
-			expected:      "/users/",
-		},
-		{
-			name:          "With trailing slash and non-strict routing",
-			path:          "/users/",
-			caseSensitive: true,
-			strictRouting: false,
-			expected:      "/users",
-		},
-		{
-			name:          "Case sensitive",
-			path:          "/Users",
-			caseSensitive: true,
-			strictRouting: true,
-			expected:      "/Users",
-		},
-		{
-			name:          "Case insensitive",
-			path:          "/Users",
-			caseSensitive: false,
-			strictRouting: true,
-			expected:      "/users",
-		},
-		{
-			name:          "With escape characters",
-			path:          "/users\\/profile",
-			caseSensitive: true,
-			strictRouting: true,
-			expected:      "/users/profile",
+			name: "With escape characters", path: "/users\\/profile", caseSensitive: true, strictRouting: true, expected: "/users/profile",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := &App{
-				config: Config{
-					CaseSensitive: tt.caseSensitive,
-					StrictRouting: tt.strictRouting,
-				},
-			}
+			t.Parallel()
+			app := &App{config: Config{CaseSensitive: tt.caseSensitive, StrictRouting: tt.strictRouting}}
 			result := app.normalizePath(tt.path)
 			require.Equal(t, tt.expected, result)
 		})
@@ -1807,159 +1270,124 @@ func TestNormalizePath(t *testing.T) {
 }
 
 func TestRemoveRoute(t *testing.T) {
+	t.Parallel()
 	app := New()
-
 	var buf strings.Builder
-
-	app.Use(func(c Ctx) error {
-		buf.WriteString("1") //nolint:errcheck // not needed
-		return c.Next()
-	})
-
-	app.Post("/", func(c Ctx) error {
-		buf.WriteString("2") //nolint:errcheck // not needed
-		return c.SendStatus(StatusOK)
-	})
-
-	app.Use("/test", func(c Ctx) error {
-		buf.WriteString("3") //nolint:errcheck // not needed
-		return c.Next()
-	})
-
-	app.Get("/test", func(c Ctx) error {
-		buf.WriteString("4") //nolint:errcheck // not needed
-		return c.SendStatus(StatusOK)
-	})
-
-	app.Post("/test", func(c Ctx) error {
-		buf.WriteString("5") //nolint:errcheck // not needed
-		return c.SendStatus(StatusOK)
-	})
-
+	// record returns a handler that writes id to buf before handing over to next.
+	record := func(id string, next Handler) Handler {
+		return func(c Ctx) error {
+			buf.WriteString(id) //nolint:errcheck // not needed
+			return next(c)
+		}
+	}
+	ok := func(c Ctx) error { return c.SendStatus(StatusOK) }
+	app.Use(record("1", Ctx.Next))
+	app.Post("/", record("2", ok))
+	app.Use("/test", record("3", Ctx.Next))
+	app.Get("/test", record("4", ok))
+	app.Post("/test", record("5", ok))
 	app.startupProcess()
-
 	require.Equal(t, uint32(6), app.handlersCount)
 
-	req, err := http.NewRequestWithContext(context.Background(), MethodPost, "/", http.NoBody)
-	require.NoError(t, err)
-
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-
-	require.Equal(t, 200, resp.StatusCode)
+	apptest.Expect(t, app, apptest.Req(MethodPost, "/"), 200)
 	require.Equal(t, "12", buf.String())
-
 	buf.Reset()
-
-	req, err = http.NewRequestWithContext(context.Background(), MethodGet, "/test", http.NoBody)
-	require.NoError(t, err)
-
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-
-	require.Equal(t, 200, resp.StatusCode)
+	apptest.Expect(t, app, apptest.Req(MethodGet, "/test"), 200)
 	require.Equal(t, "134", buf.String())
-
 	buf.Reset()
-
 	require.Equal(t, uint32(6), app.handlersCount)
 
 	app.RemoveRoute("/test", MethodGet)
 	app.RebuildTree()
-
 	app.RemoveRoute("/test", "TEST")
 	app.RebuildTree()
-
-	app.RemoveRouteFunc(func(_ *Route) bool {
-		return false
-	}, MethodGet)
-
-	req, err = http.NewRequestWithContext(context.Background(), MethodGet, "/test", http.NoBody)
-	require.NoError(t, err)
-
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-
+	app.RemoveRouteFunc(func(_ *Route) bool { return false }, MethodGet)
+	apptest.Expect(t, app, apptest.Req(MethodGet, "/test"), StatusMethodNotAllowed)
 	buf.Reset()
-
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
-
 	require.Equal(t, uint32(4), app.handlersCount)
 
 	app.RemoveRoute("/test", MethodPost)
 	app.RebuildTree()
-
 	require.Equal(t, uint32(3), app.handlersCount)
-
-	req, err = http.NewRequestWithContext(context.Background(), MethodPost, "/test", http.NoBody)
-	require.NoError(t, err)
-
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-
-	require.Equal(t, 404, resp.StatusCode)
+	apptest.Expect(t, app, apptest.Req(MethodPost, "/test"), 404)
 	require.Equal(t, "1", buf.String())
-
 	buf.Reset()
-
-	req, err = http.NewRequestWithContext(context.Background(), MethodGet, "/test", http.NoBody)
-	require.NoError(t, err)
-
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-
-	require.Equal(t, 404, resp.StatusCode)
+	apptest.Expect(t, app, apptest.Req(MethodGet, "/test"), 404)
 	require.Equal(t, "1", buf.String())
-
 	buf.Reset()
 
 	app.RemoveRoute("/", MethodGet, MethodPost)
-
 	require.Equal(t, uint32(2), app.handlersCount)
-
-	req, err = http.NewRequestWithContext(context.Background(), MethodGet, "/", http.NoBody)
-	require.NoError(t, err)
-
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-
-	require.Equal(t, 404, resp.StatusCode)
+	apptest.Expect(t, app, apptest.Req(MethodGet, "/"), 404)
 	require.Empty(t, buf.String())
-
 	buf.Reset()
 
 	app.RemoveRoute("/test", MethodGet, MethodPost)
-
 	require.Equal(t, uint32(2), app.handlersCount)
-
 	app.RemoveRoute("/test", app.config.RequestMethods...)
-
 	require.Equal(t, uint32(1), app.handlersCount)
-
-	app.Patch("/test", func(c Ctx) error {
-		buf.WriteString("6") //nolint:errcheck // not needed
-		return c.SendStatus(StatusOK)
-	})
-
+	app.Patch("/test", record("6", ok))
 	require.Equal(t, uint32(2), app.handlersCount)
-
 	app.RemoveRoute("/test")
 	app.RemoveRoute("/")
 	app.RebuildTree()
-
 	require.Equal(t, uint32(0), app.handlersCount)
 }
 
-//////////////////////////////////////////////
-///////////////// BENCHMARKS /////////////////
-//////////////////////////////////////////////
-
 func registerDummyRoutes(app *App) {
-	h := func(_ Ctx) error {
-		return nil
-	}
+	h := func(_ Ctx) error { return nil }
 	for _, r := range routesFixture.GitHubAPI {
 		app.Add([]string{r.Method}, r.Path, h)
+	}
+}
+
+// routerBenchCtx returns a request context for method and path, set on the parsed URI.
+func routerBenchCtx(method, path string) *fasthttp.RequestCtx {
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod(method)
+	c.URI().SetPath(path)
+	return c
+}
+
+// routerBenchHandler returns app's request handler and a routerBenchCtx for method and path.
+func routerBenchHandler(app *App, method, path string) (fasthttp.RequestHandler, *fasthttp.RequestCtx) {
+	return app.Handler(), routerBenchCtx(method, path)
+}
+
+// routerBenchApp returns a new app, configured with cfg, that has the GitHub API routes.
+func routerBenchApp(cfg ...Config) *App {
+	app := New(cfg...)
+	registerDummyRoutes(app)
+	return app
+}
+
+// routerBenchStarted returns an app with the GitHub API routes that has been through its startup process.
+func routerBenchStarted() *App {
+	app := routerBenchApp()
+	app.startupProcess()
+	return app
+}
+
+// routerBenchKeys returns the request handler of an app configured with cfg that has the GitHub API routes, and a
+// context for DELETE /user/keys/1337.
+func routerBenchKeys(cfg ...Config) (fasthttp.RequestHandler, *fasthttp.RequestCtx) {
+	return routerBenchHandler(routerBenchApp(cfg...), MethodDelete, "/user/keys/1337")
+}
+
+// routerBenchRootHandler returns the request handler of an app with cfg whose
+// only route answers GET / with nothing.
+func routerBenchRootHandler(cfg ...Config) fasthttp.RequestHandler {
+	app := New(cfg...)
+	app.Get("/", func(_ Ctx) error { return nil })
+	return app.Handler()
+}
+
+// routerBenchRoute returns a DELETE route parsed from pattern and named path, for the Route.match benchmarks.
+func routerBenchRoute(pattern, path string) *Route {
+	parsed := parseRoute(pattern, regexp.MustCompile)
+	return &Route{
+		star: pattern == "/*", root: pattern == "/", routeParser: parsed, Params: parsed.params,
+		path: path, Path: path, Method: MethodDelete, Handlers: []Handler{func(_ Ctx) error { return nil }},
 	}
 }
 
@@ -1976,34 +1404,22 @@ func acquireDefaultCtxForRouterBenchmark(b *testing.B, app *App, fctx *fasthttp.
 	return defaultCtx
 }
 
-// go test -v -run=^$ -bench=Benchmark_App_RebuildTree -benchmem -count=4
 func Benchmark_App_RebuildTree(b *testing.B) {
-	app := New()
-	registerDummyRoutes(app)
-
+	app := routerBenchApp()
 	b.ReportAllocs()
 	b.ResetTimer()
-
 	for b.Loop() {
 		app.hasRoutesRefreshed = true
 		app.RebuildTree()
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_App_MethodNotAllowed -benchmem -count=4
 func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	app := New()
-	h := func(c Ctx) error {
-		return c.SendString("Hello World!")
-	}
+	h := func(c Ctx) error { return c.SendString("Hello World!") }
 	app.All("/this/is/a/", h)
 	app.Get("/this/is/a/dummy/route/oke", h)
-	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
-
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/this/is/a/dummy/route/oke")
-
+	appHandler, c := routerBenchHandler(app, MethodDelete, "/this/is/a/dummy/route/oke")
 	for b.Loop() {
 		appHandler(c)
 	}
@@ -2012,20 +1428,12 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	require.Equal(b, utils.StatusMessage(StatusMethodNotAllowed), string(c.Response.Body()))
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_NotFound -benchmem -count=4
 func Benchmark_Router_NotFound(b *testing.B) {
 	b.ReportAllocs()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
+	app.Use(func(c Ctx) error { return c.Next() })
 	registerDummyRoutes(app)
-	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
-
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/this/route/does/not/exist")
-
+	appHandler, c := routerBenchHandler(app, MethodDelete, "/this/route/does/not/exist")
 	for b.Loop() {
 		appHandler(c)
 	}
@@ -2033,7 +1441,6 @@ func Benchmark_Router_NotFound(b *testing.B) {
 	require.Equal(b, "Not Found", string(c.Response.Body()))
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=4
 func Benchmark_Router_OptionalMiss(b *testing.B) {
 	for _, tc := range []struct {
 		name     string
@@ -2051,10 +1458,7 @@ func Benchmark_Router_OptionalMiss(b *testing.B) {
 				app.Get(tc.prefix+pattern, handler)
 			}
 			app.Get(tc.path, handler)
-			appHandler := app.Handler()
-			ctx := &fasthttp.RequestCtx{}
-			ctx.Request.Header.SetMethod(MethodGet)
-			ctx.URI().SetPath(tc.path)
+			appHandler, ctx := routerBenchHandler(app, MethodGet, tc.path)
 			appHandler(ctx)
 			require.Equal(b, StatusNoContent, ctx.Response.StatusCode())
 			b.ReportAllocs()
@@ -2067,52 +1471,24 @@ func Benchmark_Router_OptionalMiss(b *testing.B) {
 }
 
 func Benchmark_Router_Handler(b *testing.B) {
-	app := New()
-	registerDummyRoutes(app)
-	appHandler := app.Handler()
-
-	c := &fasthttp.RequestCtx{}
-
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/user/keys/1337")
-
+	appHandler, c := routerBenchKeys()
 	for b.Loop() {
 		appHandler(c)
 	}
 }
 
 func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
-	app := New(Config{
-		StrictRouting: true,
-		CaseSensitive: true,
-	})
-	registerDummyRoutes(app)
-	appHandler := app.Handler()
-
-	c := &fasthttp.RequestCtx{}
-
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/user/keys/1337")
-
+	appHandler, c := routerBenchKeys(Config{StrictRouting: true, CaseSensitive: true})
 	for b.Loop() {
 		appHandler(c)
 	}
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Chain -benchmem -count=4
 func Benchmark_Router_Chain(b *testing.B) {
 	app := New()
-	handler := func(c Ctx) error {
-		return c.Next()
-	}
+	handler := func(c Ctx) error { return c.Next() }
 	app.Get("/", handler, handler, handler, handler, handler, handler)
-
-	appHandler := app.Handler()
-
-	c := &fasthttp.RequestCtx{}
-
-	c.Request.Header.SetMethod(MethodGet)
-	c.URI().SetPath("/")
+	appHandler, c := routerBenchHandler(app, MethodGet, "/")
 	for b.Loop() {
 		appHandler(c)
 	}
@@ -2127,29 +1503,24 @@ func Benchmark_Router_Chain(b *testing.B) {
 //   - use_interleaved: the same with the routes in the middlewares' bucket,
 //     so that each hop steps over one
 //   - group: a global middleware, then two nested groups' middlewares
-//
-// go test -run=^$ -bench=Benchmark_Router_Chain_FilteredBucket -benchmem -count=4
 func Benchmark_Router_Chain_FilteredBucket(b *testing.B) {
 	handler := func(Ctx) error { return nil }
 	mw := func(c Ctx) error { return c.Next() }
+	use := func(route string) func(app *App) {
+		return func(app *App) {
+			for i := range 8 {
+				app.Use("/api", mw)
+				app.Get(route+strconv.Itoa(i), handler)
+			}
+			app.Get("/api/v1/users", handler)
+		}
+	}
 	for _, bench := range []struct {
 		register func(app *App)
 		name     string
 	}{
-		{name: "use", register: func(app *App) {
-			for i := range 8 {
-				app.Use("/api", mw)
-				app.Get("/web/r"+strconv.Itoa(i), handler)
-			}
-			app.Get("/api/v1/users", handler)
-		}},
-		{name: "use_interleaved", register: func(app *App) {
-			for i := range 8 {
-				app.Use("/api", mw)
-				app.Get("/api/v1/r"+strconv.Itoa(i), handler)
-			}
-			app.Get("/api/v1/users", handler)
-		}},
+		{name: "use", register: use("/web/r")},
+		{name: "use_interleaved", register: use("/api/v1/r")},
 		{name: "group", register: func(app *App) {
 			app.Use(mw)
 			v1 := app.Group("/api", mw).Group("/v1", mw)
@@ -2162,10 +1533,7 @@ func Benchmark_Router_Chain_FilteredBucket(b *testing.B) {
 		b.Run(bench.name, func(b *testing.B) {
 			app := New()
 			bench.register(app)
-			appHandler := app.Handler()
-			c := &fasthttp.RequestCtx{}
-			c.Request.Header.SetMethod(MethodGet)
-			c.URI().SetPath("/api/v1/users")
+			appHandler, c := routerBenchHandler(app, MethodGet, "/api/v1/users")
 			appHandler(c)
 			require.Equal(b, StatusOK, c.Response.StatusCode())
 			for b.Loop() {
@@ -2175,30 +1543,18 @@ func Benchmark_Router_Chain_FilteredBucket(b *testing.B) {
 	}
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_WithCompression -benchmem -count=4
 func Benchmark_Router_WithCompression(b *testing.B) {
 	app := New()
-	handler := func(c Ctx) error {
-		return c.Next()
+	handler := func(c Ctx) error { return c.Next() }
+	for range 6 {
+		app.Get("/", handler)
 	}
-	app.Get("/", handler)
-	app.Get("/", handler)
-	app.Get("/", handler)
-	app.Get("/", handler)
-	app.Get("/", handler)
-	app.Get("/", handler)
-
-	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
-
-	c.Request.Header.SetMethod(MethodGet)
-	c.URI().SetPath("/")
+	appHandler, c := routerBenchHandler(app, MethodGet, "/")
 	for b.Loop() {
 		appHandler(c)
 	}
 }
 
-// go test -run=^$ -bench=Benchmark_Startup_Process -benchmem -count=9
 func Benchmark_Startup_Process(b *testing.B) {
 	for b.Loop() {
 		app := New()
@@ -2207,21 +1563,11 @@ func Benchmark_Startup_Process(b *testing.B) {
 	}
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Next -benchmem -count=4
 func Benchmark_Router_Next(b *testing.B) {
-	app := New()
-	registerDummyRoutes(app)
-	app.startupProcess()
-
-	request := &fasthttp.RequestCtx{}
-
-	request.Request.Header.SetMethod("DELETE")
-	request.URI().SetPath("/user/keys/1337")
+	app := routerBenchStarted()
 	var res bool
 	var err error
-
-	c := app.AcquireCtx(request).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
-
+	c := acquireDefaultCtxForRouterBenchmark(b, app, routerBenchCtx(MethodDelete, "/user/keys/1337"))
 	for b.Loop() {
 		c.indexRoute = -1
 		res, err = app.next(c)
@@ -2252,9 +1598,7 @@ func Benchmark_Router_PathOverride(b *testing.B) {
 				app.Use("/v1", rewrite)
 				app.Get("/user/keys/:id", func(c Ctx) error { return c.SendStatus(StatusOK) })
 			}
-			h := app.Handler()
-			fctx := &fasthttp.RequestCtx{}
-			fctx.Request.Header.SetMethod(MethodGet)
+			h, fctx := routerBenchHandler(app, MethodGet, "/v1/user/keys/1337")
 
 			b.ReportAllocs()
 			for b.Loop() {
@@ -2266,244 +1610,110 @@ func Benchmark_Router_PathOverride(b *testing.B) {
 	}
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Next_Default -benchmem -count=4
 func Benchmark_Router_Next_Default(b *testing.B) {
-	app := New()
-	app.Get("/", func(_ Ctx) error {
-		return nil
-	})
-
-	h := app.Handler()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(MethodGet)
-	fctx.Request.SetRequestURI("/")
-
+	h := routerBenchRootHandler()
+	fctx := routerTestRequestCtx(MethodGet, "/")
 	b.ReportAllocs()
-
 	for b.Loop() {
 		h(fctx)
 	}
 }
 
-// go test -benchmem -run=^$ -bench ^Benchmark_Router_Next_Default_Parallel$ github.com/gofiber/fiber/v3 -count=1
 func Benchmark_Router_Next_Default_Parallel(b *testing.B) {
-	app := New()
-	app.Get("/", func(_ Ctx) error {
-		return nil
-	})
-
-	h := app.Handler()
-
+	h := routerBenchRootHandler()
 	b.ReportAllocs()
 	b.ResetTimer()
-
 	b.RunParallel(func(pb *testing.PB) {
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.Header.SetMethod(MethodGet)
-		fctx.Request.SetRequestURI("/")
-
+		fctx := routerTestRequestCtx(MethodGet, "/")
 		for pb.Next() {
 			h(fctx)
 		}
 	})
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Next_Default_Immutable -benchmem -count=4
 func Benchmark_Router_Next_Default_Immutable(b *testing.B) {
-	app := New(Config{Immutable: true})
-	app.Get("/", func(_ Ctx) error {
-		return nil
-	})
-
-	h := app.Handler()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(MethodGet)
-	fctx.Request.SetRequestURI("/")
-
+	h := routerBenchRootHandler(Config{Immutable: true})
+	fctx := routerTestRequestCtx(MethodGet, "/")
 	b.ReportAllocs()
-
 	for b.Loop() {
 		h(fctx)
 	}
 }
 
-// go test -benchmem -run=^$ -bench ^Benchmark_Router_Next_Default_Parallel_Immutable$ github.com/gofiber/fiber/v3 -count=1
 func Benchmark_Router_Next_Default_Parallel_Immutable(b *testing.B) {
-	app := New(Config{Immutable: true})
-	app.Get("/", func(_ Ctx) error {
-		return nil
-	})
-
-	h := app.Handler()
-
+	h := routerBenchRootHandler(Config{Immutable: true})
 	b.ReportAllocs()
 	b.ResetTimer()
-
 	b.RunParallel(func(pb *testing.PB) {
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.Header.SetMethod(MethodGet)
-		fctx.Request.SetRequestURI("/")
-
+		fctx := routerTestRequestCtx(MethodGet, "/")
 		for pb.Next() {
 			h(fctx)
 		}
 	})
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
 func Benchmark_Route_Match(b *testing.B) {
 	var match bool
 	var params [maxParams]string
-
-	parsed := parseRoute("/user/keys/:id", regexp.MustCompile)
-	route := &Route{
-		use:         false,
-		root:        false,
-		star:        false,
-		routeParser: parsed,
-		Params:      parsed.params,
-		path:        "/user/keys/:id",
-
-		Path:   "/user/keys/:id",
-		Method: "DELETE",
-	}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error {
-		return nil
-	})
+	route := routerBenchRoute("/user/keys/:id", "/user/keys/:id")
 	for b.Loop() {
 		match = route.match("/user/keys/1337", "/user/keys/1337", &params, 3)
 	}
-
 	require.True(b, match)
-	require.Equal(b, []string{"1337"}, params[0:len(parsed.params)])
+	require.Equal(b, []string{"1337"}, params[0:len(route.Params)])
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Star -benchmem -count=4
 func Benchmark_Route_Match_Star(b *testing.B) {
 	var match bool
 	var params [maxParams]string
-
-	parsed := parseRoute("/*", regexp.MustCompile)
-	route := &Route{
-		use:         false,
-		root:        false,
-		star:        true,
-		routeParser: parsed,
-		Params:      parsed.params,
-		path:        "/user/keys/bla",
-
-		Path:   "/user/keys/bla",
-		Method: "DELETE",
-	}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error {
-		return nil
-	})
-
+	route := routerBenchRoute("/*", "/user/keys/bla")
 	for b.Loop() {
 		match = route.match("/user/keys/bla", "/user/keys/bla", &params, 3)
 	}
-
 	require.True(b, match)
-	require.Equal(b, []string{"user/keys/bla"}, params[0:len(parsed.params)])
+	require.Equal(b, []string{"user/keys/bla"}, params[0:len(route.Params)])
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Root -benchmem -count=4
 func Benchmark_Route_Match_Root(b *testing.B) {
 	var match bool
 	var params [maxParams]string
-
-	parsed := parseRoute("/", regexp.MustCompile)
-	route := &Route{
-		use:         false,
-		root:        true,
-		star:        false,
-		path:        "/",
-		routeParser: parsed,
-		Params:      parsed.params,
-
-		Path:   "/",
-		Method: "DELETE",
-	}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error {
-		return nil
-	})
-
+	route := routerBenchRoute("/", "/")
 	for b.Loop() {
 		match = route.match("/", "/", &params, 1)
 	}
-
 	require.True(b, match)
-	require.Equal(b, []string{}, params[0:len(parsed.params)])
+	require.Equal(b, []string{}, params[0:len(route.Params)])
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_CaseSensitive -benchmem -count=4
 func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
-	app := New()
-	app.config.CaseSensitive = true
-	registerDummyRoutes(app)
-	appHandler := app.Handler()
-
-	c := &fasthttp.RequestCtx{}
-
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/user/keys/1337")
-
+	appHandler, c := routerBenchKeys(Config{CaseSensitive: true})
 	for b.Loop() {
 		appHandler(c)
 	}
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_Unescape -benchmem -count=4
 func Benchmark_Router_Handler_Unescape(b *testing.B) {
-	app := New()
-	app.config.UnescapePath = true
-	registerDummyRoutes(app)
-	app.Delete("/créer", func(_ Ctx) error {
-		return nil
-	})
-
-	appHandler := app.Handler()
-
-	c := &fasthttp.RequestCtx{}
-
-	c.Request.Header.SetMethod(MethodDelete)
-	c.URI().SetPath("/cr%C3%A9er")
-
+	app := routerBenchApp(Config{UnescapePath: true})
+	app.Delete("/créer", func(_ Ctx) error { return nil })
+	appHandler, c := routerBenchHandler(app, MethodDelete, "/cr%C3%A9er")
 	for b.Loop() {
 		c.URI().SetPath("/cr%C3%A9er")
 		appHandler(c)
 	}
 }
 
-// go test -run=^$ -bench=Benchmark_Router_Handler_StrictRouting -benchmem -count=4
 func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
-	app := New()
-	app.config.CaseSensitive = true
-	registerDummyRoutes(app)
-	appHandler := app.Handler()
-
-	c := &fasthttp.RequestCtx{}
-
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/user/keys/1337")
-
+	appHandler, c := routerBenchKeys(Config{CaseSensitive: true})
 	for b.Loop() {
 		appHandler(c)
 	}
 }
 
-// go test -run=^$ -bench=Benchmark_Router_GitHub_API -benchmem -count=16
 func Benchmark_Router_GitHub_API(b *testing.B) {
-	app := New()
-	registerDummyRoutes(app)
-	app.startupProcess()
-
+	app := routerBenchStarted()
 	c := &fasthttp.RequestCtx{}
 	var match bool
 	var err error
-
 	b.ResetTimer()
 	for i := range routesFixture.TestRoutes {
 		b.RunParallel(func(pb *testing.PB) {
@@ -2517,7 +1727,6 @@ func Benchmark_Router_GitHub_API(b *testing.B) {
 				app.ReleaseCtx(ctx)
 			}
 		})
-
 		require.NoError(b, err)
 		require.True(b, match)
 	}
@@ -2533,22 +1742,18 @@ type routeJSON struct {
 	GitHubAPI  []testRoute `json:"github_api"`
 }
 
-func newCustomApp() *App {
-	return NewWithCustomCtx(func(app *App) CustomCtx {
-		return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
-	})
+// newCustomApp returns an app that serves every request with a customCtx.
+func newCustomApp(cfg ...Config) *App {
+	return NewWithCustomCtx(func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }, cfg...)
 }
 
 func Test_Next_SkipNonUseRoutesSkipsFallback(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/foo", func(c Ctx) error { return c.SendStatus(StatusOK) })
 	app.startupProcess()
 
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(MethodPost)
-	fctx.Request.SetRequestURI("/foo")
+	fctx := routerTestRequestCtx(MethodPost, "/foo")
 
 	ctx := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck,forcetypeassert // default app returns DefaultCtx
 	ctx.setSkipNonUseRoutes(true)
@@ -2571,12 +1776,7 @@ func Test_NextCustom_MethodNotAllowed(t *testing.T) {
 	app.ensureAutoHeadRoutes()
 	app.RebuildTree()
 
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(MethodPost)
-	fctx.Request.SetRequestURI("/foo")
-
-	ctx := app.AcquireCtx(fctx)
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.CtxFor(t, app, routerTestRequestCtx(MethodPost, "/foo"))
 
 	matched, err := app.nextCustom(ctx)
 	require.False(t, matched)
@@ -2587,18 +1787,12 @@ func Test_NextCustom_MethodNotAllowed(t *testing.T) {
 
 func Test_NextCustom_SkipNonUseRoutesSkipsFallback(t *testing.T) {
 	t.Parallel()
-
 	app := newCustomApp()
 	app.Get("/foo", func(c Ctx) error { return c.SendStatus(StatusOK) })
 	app.startupProcess()
 
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(MethodPost)
-	fctx.Request.SetRequestURI("/foo")
-
-	ctx := app.AcquireCtx(fctx)
+	ctx := apptest.CtxFor(t, app, routerTestRequestCtx(MethodPost, "/foo"))
 	ctx.setSkipNonUseRoutes(true)
-	defer app.ReleaseCtx(ctx)
 
 	matched, err := app.nextCustom(ctx)
 	require.False(t, matched)
@@ -2608,21 +1802,31 @@ func Test_NextCustom_SkipNonUseRoutesSkipsFallback(t *testing.T) {
 
 func Test_NextCustom_NotFound(t *testing.T) {
 	t.Parallel()
-	app := newCustomApp()
-	app.RebuildTree()
+	for _, tc := range []struct {
+		name    string
+		uri     string
+		matched bool
+	}{
+		{name: "no route", uri: "/not-exist"},
+		{name: "matched earlier", uri: "/none", matched: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := newCustomApp()
+			app.RebuildTree()
 
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(MethodGet)
-	fctx.Request.SetRequestURI("/not-exist")
+			ctx := apptest.CtxFor(t, app, routerTestRequestCtx(MethodGet, tc.uri))
+			if tc.matched {
+				ctx.setMatched(true)
+			}
 
-	ctx := app.AcquireCtx(fctx)
-	defer app.ReleaseCtx(ctx)
-
-	matched, err := app.nextCustom(ctx)
-	require.False(t, matched)
-	var e *Error
-	require.ErrorAs(t, err, &e)
-	require.Equal(t, StatusNotFound, e.Code)
+			matched, err := app.nextCustom(ctx)
+			require.False(t, matched)
+			var e *Error
+			require.ErrorAs(t, err, &e)
+			require.Equal(t, StatusNotFound, e.Code)
+		})
+	}
 }
 
 func Test_RequestHandler_CustomCtx_NotImplemented(t *testing.T) {
@@ -2630,32 +1834,10 @@ func Test_RequestHandler_CustomCtx_NotImplemented(t *testing.T) {
 	app := newCustomApp()
 
 	h := app.Handler()
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod("UNKNOWN")
-	fctx.Request.SetRequestURI("/")
+	fctx := routerTestRequestCtx("UNKNOWN", "/")
 
 	h(fctx)
 	require.Equal(t, StatusNotImplemented, fctx.Response.StatusCode())
-}
-
-func Test_NextCustom_Matched404(t *testing.T) {
-	t.Parallel()
-	app := newCustomApp()
-	app.RebuildTree()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(MethodGet)
-	fctx.Request.SetRequestURI("/none")
-
-	ctx := app.AcquireCtx(fctx)
-	ctx.setMatched(true)
-	defer app.ReleaseCtx(ctx)
-
-	matched, err := app.nextCustom(ctx)
-	require.False(t, matched)
-	var e *Error
-	require.ErrorAs(t, err, &e)
-	require.Equal(t, StatusNotFound, e.Code)
 }
 
 func Test_NextCustom_SkipMountAndNoHandlers(t *testing.T) {
@@ -2668,12 +1850,7 @@ func Test_NextCustom_SkipMountAndNoHandlers(t *testing.T) {
 	app.hasRoutesRefreshed = true
 	app.RebuildTree()
 
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(MethodGet)
-	fctx.Request.SetRequestURI("/foo")
-
-	ctx := app.AcquireCtx(fctx)
-	defer app.ReleaseCtx(ctx)
+	ctx := apptest.CtxFor(t, app, routerTestRequestCtx(MethodGet, "/foo"))
 
 	matched, err := app.nextCustom(ctx)
 	require.True(t, matched)
@@ -2684,9 +1861,8 @@ func Test_NextCustom_SkipMountAndNoHandlers(t *testing.T) {
 func Test_AddRoute_MergeHandlers(t *testing.T) {
 	t.Parallel()
 	app := New()
-	count := func(_ Ctx) error { return nil }
-	app.Get("/merge", count)
-	app.Get("/merge", count)
+	app.Get("/merge", testEmptyHandler)
+	app.Get("/merge", testEmptyHandler)
 
 	require.Len(t, app.stack[app.methodInt(MethodGet)], 1)
 	require.Len(t, app.stack[app.methodInt(MethodGet)][0].Handlers, 2)
@@ -2697,8 +1873,7 @@ func Benchmark_App_RebuildTree_Parallel(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		// Each worker gets its own App instance to avoid data races on shared state
-		localApp := New()
-		registerDummyRoutes(localApp)
+		localApp := routerBenchApp()
 		for pb.Next() {
 			localApp.hasRoutesRefreshed = true
 			localApp.RebuildTree()
@@ -2708,26 +1883,20 @@ func Benchmark_App_RebuildTree_Parallel(b *testing.B) {
 
 func Benchmark_App_MethodNotAllowed_Parallel(b *testing.B) {
 	app := New()
-	h := func(c Ctx) error {
-		return c.SendString("Hello World!")
-	}
+	h := func(c Ctx) error { return c.SendString("Hello World!") }
 	app.All("/this/is/a/", h)
 	app.Get("/this/is/a/dummy/route/oke", h)
 	appHandler := app.Handler()
 	b.RunParallel(func(pb *testing.PB) {
 		// Each worker gets its own RequestCtx to avoid data races
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("DELETE")
-		c.URI().SetPath("/this/is/a/dummy/route/oke")
+		c := routerBenchCtx(MethodDelete, "/this/is/a/dummy/route/oke")
 		for pb.Next() {
 			appHandler(c)
 		}
 	})
 
 	// Single-threaded verification on a fresh context to preserve correctness checks
-	verifyCtx := &fasthttp.RequestCtx{}
-	verifyCtx.Request.Header.SetMethod("DELETE")
-	verifyCtx.URI().SetPath("/this/is/a/dummy/route/oke")
+	verifyCtx := routerBenchCtx(MethodDelete, "/this/is/a/dummy/route/oke")
 	appHandler(verifyCtx)
 	require.Equal(b, 405, verifyCtx.Response.StatusCode())
 	require.Equal(b, MethodGet+", "+MethodHead, string(verifyCtx.Response.Header.Peek("Allow")))
@@ -2737,14 +1906,9 @@ func Benchmark_App_MethodNotAllowed_Parallel(b *testing.B) {
 func Benchmark_Router_NotFound_Parallel(b *testing.B) {
 	b.ReportAllocs()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
+	app.Use(func(c Ctx) error { return c.Next() })
 	registerDummyRoutes(app)
-	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/this/route/does/not/exist")
+	appHandler, c := routerBenchHandler(app, MethodDelete, "/this/route/does/not/exist")
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			appHandler(c)
@@ -2755,12 +1919,7 @@ func Benchmark_Router_NotFound_Parallel(b *testing.B) {
 }
 
 func Benchmark_Router_Handler_Parallel(b *testing.B) {
-	app := New()
-	registerDummyRoutes(app)
-	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/user/keys/1337")
+	appHandler, c := routerBenchKeys()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			appHandler(c)
@@ -2769,12 +1928,7 @@ func Benchmark_Router_Handler_Parallel(b *testing.B) {
 }
 
 func Benchmark_Router_Handler_Strict_Case_Parallel(b *testing.B) {
-	app := New(Config{StrictRouting: true, CaseSensitive: true})
-	registerDummyRoutes(app)
-	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/user/keys/1337")
+	appHandler, c := routerBenchKeys(Config{StrictRouting: true, CaseSensitive: true})
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			appHandler(c)
@@ -2784,14 +1938,9 @@ func Benchmark_Router_Handler_Strict_Case_Parallel(b *testing.B) {
 
 func Benchmark_Router_Chain_Parallel(b *testing.B) {
 	app := New()
-	handler := func(c Ctx) error {
-		return c.Next()
-	}
+	handler := func(c Ctx) error { return c.Next() }
 	app.Get("/", handler, handler, handler, handler, handler, handler)
-	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
-	c.Request.Header.SetMethod(MethodGet)
-	c.URI().SetPath("/")
+	appHandler, c := routerBenchHandler(app, MethodGet, "/")
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			appHandler(c)
@@ -2801,19 +1950,11 @@ func Benchmark_Router_Chain_Parallel(b *testing.B) {
 
 func Benchmark_Router_WithCompression_Parallel(b *testing.B) {
 	app := New()
-	handler := func(c Ctx) error {
-		return c.Next()
+	handler := func(c Ctx) error { return c.Next() }
+	for range 6 {
+		app.Get("/", handler)
 	}
-	app.Get("/", handler)
-	app.Get("/", handler)
-	app.Get("/", handler)
-	app.Get("/", handler)
-	app.Get("/", handler)
-	app.Get("/", handler)
-	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
-	c.Request.Header.SetMethod(MethodGet)
-	c.URI().SetPath("/")
+	appHandler, c := routerBenchHandler(app, MethodGet, "/")
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			appHandler(c)
@@ -2832,15 +1973,10 @@ func Benchmark_Startup_Process_Parallel(b *testing.B) {
 }
 
 func Benchmark_Router_Next_Parallel(b *testing.B) {
-	app := New()
-	registerDummyRoutes(app)
-	app.startupProcess()
+	app := routerBenchStarted()
 	b.RunParallel(func(pb *testing.PB) {
 		// Each worker gets its own request and context to avoid data races.
-		request := &fasthttp.RequestCtx{}
-		request.Request.Header.SetMethod("DELETE")
-		request.URI().SetPath("/user/keys/1337")
-		c := acquireDefaultCtxForRouterBenchmark(b, app, request)
+		c := acquireDefaultCtxForRouterBenchmark(b, app, routerBenchCtx(MethodDelete, "/user/keys/1337"))
 		for pb.Next() {
 			c.indexRoute = -1
 			//nolint:errcheck // Benchmark hot path - error checked in verification
@@ -2849,10 +1985,7 @@ func Benchmark_Router_Next_Parallel(b *testing.B) {
 	})
 
 	// Single-threaded verification on a fresh context to preserve correctness checks.
-	verifyRequest := &fasthttp.RequestCtx{}
-	verifyRequest.Request.Header.SetMethod("DELETE")
-	verifyRequest.URI().SetPath("/user/keys/1337")
-	verifyCtx := acquireDefaultCtxForRouterBenchmark(b, app, verifyRequest)
+	verifyCtx := acquireDefaultCtxForRouterBenchmark(b, app, routerBenchCtx(MethodDelete, "/user/keys/1337"))
 	verifyCtx.indexRoute = -1
 	res, err := app.next(verifyCtx)
 	require.NoError(b, err)
@@ -2861,14 +1994,8 @@ func Benchmark_Router_Next_Parallel(b *testing.B) {
 }
 
 func Benchmark_Router_Next_Default_Immutable_Parallel(b *testing.B) {
-	app := New(Config{Immutable: true})
-	app.Get("/", func(_ Ctx) error {
-		return nil
-	})
-	h := app.Handler()
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(MethodGet)
-	fctx.Request.SetRequestURI("/")
+	h := routerBenchRootHandler(Config{Immutable: true})
+	fctx := routerTestRequestCtx(MethodGet, "/")
 	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
@@ -2878,11 +2005,7 @@ func Benchmark_Router_Next_Default_Immutable_Parallel(b *testing.B) {
 }
 
 func Benchmark_Route_Match_Parallel(b *testing.B) {
-	parsed := parseRoute("/user/keys/:id", regexp.MustCompile)
-	route := &Route{use: false, root: false, star: false, routeParser: parsed, Params: parsed.params, path: "/user/keys/:id", Path: "/user/keys/:id", Method: "DELETE"}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error {
-		return nil
-	})
+	route := routerBenchRoute("/user/keys/:id", "/user/keys/:id")
 	b.RunParallel(func(pb *testing.PB) {
 		// Each worker gets its own local variables to avoid data races
 		var params [maxParams]string
@@ -2895,51 +2018,37 @@ func Benchmark_Route_Match_Parallel(b *testing.B) {
 	var verifyParams [maxParams]string
 	match := route.match("/user/keys/1337", "/user/keys/1337", &verifyParams, 3)
 	require.True(b, match)
-	require.Equal(b, []string{"1337"}, verifyParams[0:len(parsed.params)])
+	require.Equal(b, []string{"1337"}, verifyParams[0:len(route.Params)])
 }
 
 func Benchmark_Route_Match_Star_Parallel(b *testing.B) {
 	var match bool
 	var params [maxParams]string
-	parsed := parseRoute("/*", regexp.MustCompile)
-	route := &Route{use: false, root: false, star: true, routeParser: parsed, Params: parsed.params, path: "/user/keys/bla", Path: "/user/keys/bla", Method: "DELETE"}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error {
-		return nil
-	})
+	route := routerBenchRoute("/*", "/user/keys/bla")
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			match = route.match("/user/keys/bla", "/user/keys/bla", &params, 3)
 		}
 	})
 	require.True(b, match)
-	require.Equal(b, []string{"user/keys/bla"}, params[0:len(parsed.params)])
+	require.Equal(b, []string{"user/keys/bla"}, params[0:len(route.Params)])
 }
 
 func Benchmark_Route_Match_Root_Parallel(b *testing.B) {
 	var match bool
 	var params [maxParams]string
-	parsed := parseRoute("/", regexp.MustCompile)
-	route := &Route{use: false, root: true, star: false, path: "/", routeParser: parsed, Params: parsed.params, Path: "/", Method: "DELETE"}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error {
-		return nil
-	})
+	route := routerBenchRoute("/", "/")
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			match = route.match("/", "/", &params, 1)
 		}
 	})
 	require.True(b, match)
-	require.Equal(b, []string{}, params[0:len(parsed.params)])
+	require.Equal(b, []string{}, params[0:len(route.Params)])
 }
 
 func Benchmark_Router_Handler_CaseSensitive_Parallel(b *testing.B) {
-	app := New()
-	app.config.CaseSensitive = true
-	registerDummyRoutes(app)
-	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/user/keys/1337")
+	appHandler, c := routerBenchKeys(Config{CaseSensitive: true})
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			appHandler(c)
@@ -2948,16 +2057,9 @@ func Benchmark_Router_Handler_CaseSensitive_Parallel(b *testing.B) {
 }
 
 func Benchmark_Router_Handler_Unescape_Parallel(b *testing.B) {
-	app := New()
-	app.config.UnescapePath = true
-	registerDummyRoutes(app)
-	app.Delete("/créer", func(_ Ctx) error {
-		return nil
-	})
-	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
-	c.Request.Header.SetMethod(MethodDelete)
-	c.URI().SetPath("/cr%C3%A9er")
+	app := routerBenchApp(Config{UnescapePath: true})
+	app.Delete("/créer", func(_ Ctx) error { return nil })
+	appHandler, c := routerBenchHandler(app, MethodDelete, "/cr%C3%A9er")
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			c.URI().SetPath("/cr%C3%A9er")
@@ -2967,13 +2069,7 @@ func Benchmark_Router_Handler_Unescape_Parallel(b *testing.B) {
 }
 
 func Benchmark_Router_Handler_StrictRouting_Parallel(b *testing.B) {
-	app := New()
-	app.config.CaseSensitive = true
-	registerDummyRoutes(app)
-	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/user/keys/1337")
+	appHandler, c := routerBenchKeys(Config{CaseSensitive: true})
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			appHandler(c)
@@ -2982,9 +2078,7 @@ func Benchmark_Router_Handler_StrictRouting_Parallel(b *testing.B) {
 }
 
 func Benchmark_Router_GitHub_API_Parallel(b *testing.B) {
-	app := New()
-	registerDummyRoutes(app)
-	app.startupProcess()
+	app := routerBenchStarted()
 	b.ResetTimer()
 	for i := range routesFixture.TestRoutes {
 		b.RunParallel(func(pb *testing.PB) {
@@ -3001,10 +2095,8 @@ func Benchmark_Router_GitHub_API_Parallel(b *testing.B) {
 		})
 
 		// Single-threaded verification on a fresh context to preserve correctness checks
-		verifyC := &fasthttp.RequestCtx{}
-		verifyC.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
-		verifyC.URI().SetPath(routesFixture.TestRoutes[i].Path)
-		verifyCtx := acquireDefaultCtxForRouterBenchmark(b, app, verifyC)
+		route := routesFixture.TestRoutes[i]
+		verifyCtx := acquireDefaultCtxForRouterBenchmark(b, app, routerBenchCtx(route.Method, route.Path))
 		match, err := app.next(verifyCtx)
 		app.ReleaseCtx(verifyCtx)
 		require.NoError(b, err)
@@ -3012,97 +2104,62 @@ func Benchmark_Router_GitHub_API_Parallel(b *testing.B) {
 	}
 }
 
-// go test -run Test_Route_URL
 func Test_Route_URL(t *testing.T) {
 	t.Parallel()
+	// requireURL asserts the URL composed from params for the route called name.
+	requireURL := func(t *testing.T, app *App, name string, params Map, want string) {
+		t.Helper()
 
-	t.Run("simple parameter", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/user/:name", emptyHandler).Name("User")
-
-		route := app.GetRoute("User")
-		url, err := route.URL(Map{"name": "fiber"})
+		route := app.GetRoute(name)
+		url, err := route.URL(params)
 		require.NoError(t, err)
-		require.Equal(t, "/user/fiber", url)
-	})
+		require.Equal(t, want, url)
+	}
 
-	t.Run("multiple parameters", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/user/:name/:id", emptyHandler).Name("UserID")
+	for _, tc := range []struct {
+		params  Map
+		name    string
+		pattern string
+		want    string
+	}{
+		{name: "simple parameter", pattern: "/user/:name", params: Map{"name": "fiber"}, want: "/user/fiber"},
+		{name: "multiple parameters", pattern: "/user/:name/:id", params: Map{"name": "john", "id": "123"}, want: "/user/john/123"},
+		{
+			name: "wildcard parameters", pattern: "/:phone/*/send/*",
+			params: Map{"phone": "23456789", "*1": "sms", "*2": "test-msg"}, want: "/23456789/sms/send/test-msg",
+		},
+		{
+			name: "single wildcard parameter", pattern: "/:phone/*/send", params: Map{"phone": "23456789", "*": "sms"},
+			want: "/23456789/sms/send",
+		},
+		{name: "plus parameters prefer plus fallback", pattern: "/user/+", params: Map{"*": "wildcard", "+": "plus"}, want: "/user/plus"},
+		{name: "no parameters", pattern: "/static/path", params: Map{}, want: "/static/path"},
+		// a parameter without a value leaves an empty placeholder
+		{name: "missing parameter value", pattern: "/user/:name/:id", params: Map{"name": "john"}, want: "/user/john/"},
+		{name: "extra parameters ignored", pattern: "/user/:name", params: Map{"name": "fiber", "extra": "ignored"}, want: "/user/fiber"},
+		{name: "numeric parameter values", pattern: "/item/:id", params: Map{"id": 42}, want: "/item/42"},
+		{
+			name: "complex path with mixed content", pattern: "/api/v1/users/:userId/posts/:postId/comments",
+			params: Map{"userId": "user123", "postId": "post456"}, want: "/api/v1/users/user123/posts/post456/comments",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.Get(tc.pattern, emptyHandler).Name("route")
 
-		route := app.GetRoute("UserID")
-		url, err := route.URL(Map{"name": "john", "id": "123"})
-		require.NoError(t, err)
-		require.Equal(t, "/user/john/123", url)
-	})
-
-	t.Run("wildcard parameters", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/:phone/*/send/*", emptyHandler).Name("SendSms")
-
-		route := app.GetRoute("SendSms")
-		url, err := route.URL(Map{
-			"phone": "23456789",
-			"*1":    "sms",
-			"*2":    "test-msg",
+			requireURL(t, app, "route", tc.params, tc.want)
 		})
-		require.NoError(t, err)
-		require.Equal(t, "/23456789/sms/send/test-msg", url)
-	})
-
-	t.Run("single wildcard parameter", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/:phone/*/send", emptyHandler).Name("SendSms")
-
-		route := app.GetRoute("SendSms")
-		url, err := route.URL(Map{
-			"phone": "23456789",
-			"*":     "sms",
-		})
-		require.NoError(t, err)
-		require.Equal(t, "/23456789/sms/send", url)
-	})
+	}
 
 	t.Run("wildcard parameters preserve slashes", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Get("/files/*", func(c Ctx) error {
-			return c.SendString(c.Params("*"))
-		}).Name("Files")
+		app.Get("/files/*", func(c Ctx) error { return c.SendString(c.Params("*")) }).Name("Files")
 
-		route := app.GetRoute("Files")
-		url, err := route.URL(Map{"*": "docs/index.html"})
-		require.NoError(t, err)
-		require.Equal(t, "/files/docs/index.html", url)
+		requireURL(t, app, "Files", Map{"*": "docs/index.html"}, "/files/docs/index.html")
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, url, http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		defer func() {
-			require.NoError(t, resp.Body.Close())
-		}()
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "docs/index.html", string(body))
-	})
-
-	t.Run("plus parameters prefer plus fallback", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/user/+", emptyHandler).Name("UserGreedy")
-
-		route := app.GetRoute("UserGreedy")
-		url, err := route.URL(Map{
-			"*": "wildcard",
-			"+": "plus",
-		})
-		require.NoError(t, err)
-		require.Equal(t, "/user/plus", url)
+		apptest.ExpectBody(t, app, "/files/docs/index.html", StatusOK, "docs/index.html")
 	})
 
 	t.Run("preferred greedy parameters default fallback", func(t *testing.T) {
@@ -3118,24 +2175,17 @@ func Test_Route_URL(t *testing.T) {
 		app := New()
 		app.Get("/user/:name", emptyHandler).Name("User")
 
-		route := app.GetRoute("User")
 		// Case-insensitive by default (matching Fiber's default behavior)
-		url, err := route.URL(Map{"Name": "fiber"})
-		require.NoError(t, err)
-		require.Equal(t, "/user/fiber", url)
+		requireURL(t, app, "User", Map{"Name": "fiber"}, "/user/fiber")
 
 		// When multiple keys case-fold to the same param name and no exact key
 		// exists, the lexicographically-smallest key wins deterministically.
 		for range 50 {
-			url, err = route.URL(Map{"nAme": "second", "Name": "first"})
-			require.NoError(t, err)
-			require.Equal(t, "/user/first", url)
+			requireURL(t, app, "User", Map{"nAme": "second", "Name": "first"}, "/user/first")
 		}
 
 		// When multiple keys case-fold to the same param name, prefer the exact match.
-		url, err = route.URL(Map{"name": "exact", "Name": "fallback"})
-		require.NoError(t, err)
-		require.Equal(t, "/user/exact", url)
+		requireURL(t, app, "User", Map{"name": "exact", "Name": "fallback"}, "/user/exact")
 	})
 
 	t.Run("case sensitive", func(t *testing.T) {
@@ -3143,15 +2193,10 @@ func Test_Route_URL(t *testing.T) {
 		app := New(Config{CaseSensitive: true})
 		app.Get("/user/:name", emptyHandler).Name("User")
 
-		route := app.GetRoute("User")
 		// Exact case match succeeds
-		url, err := route.URL(Map{"name": "fiber"})
-		require.NoError(t, err)
-		require.Equal(t, "/user/fiber", url)
+		requireURL(t, app, "User", Map{"name": "fiber"}, "/user/fiber")
 		// Different case does not match when CaseSensitive is true
-		url, err = route.URL(Map{"Name": "fiber"})
-		require.NoError(t, err)
-		require.Equal(t, "/user/", url)
+		requireURL(t, app, "User", Map{"Name": "fiber"}, "/user/")
 	})
 
 	t.Run("empty route", func(t *testing.T) {
@@ -3178,66 +2223,7 @@ func Test_Route_URL(t *testing.T) {
 		t.Parallel()
 		app := New()
 		app.Get("/user/:name", emptyHandler).Name("User")
-
-		url, err := app.GetRoute("User").URL(Map{"name": "fiber"})
-		require.NoError(t, err)
-		require.Equal(t, "/user/fiber", url)
-	})
-
-	t.Run("no parameters", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/static/path", emptyHandler).Name("Static")
-
-		route := app.GetRoute("Static")
-		url, err := route.URL(Map{})
-		require.NoError(t, err)
-		require.Equal(t, "/static/path", url)
-	})
-
-	t.Run("missing parameter value", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/user/:name/:id", emptyHandler).Name("UserID")
-
-		route := app.GetRoute("UserID")
-		url, err := route.URL(Map{"name": "john"})
-		require.NoError(t, err)
-		// Missing id parameter results in empty placeholder
-		require.Equal(t, "/user/john/", url)
-	})
-
-	t.Run("extra parameters ignored", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/user/:name", emptyHandler).Name("User")
-
-		route := app.GetRoute("User")
-		url, err := route.URL(Map{"name": "fiber", "extra": "ignored"})
-		require.NoError(t, err)
-		require.Equal(t, "/user/fiber", url)
-	})
-
-	t.Run("numeric parameter values", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/item/:id", emptyHandler).Name("Item")
-
-		route := app.GetRoute("Item")
-		url, err := route.URL(Map{"id": 42})
-		require.NoError(t, err)
-		require.Equal(t, "/item/42", url)
-	})
-
-	t.Run("complex path with mixed content", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/api/v1/users/:userId/posts/:postId/comments", emptyHandler).Name("Comments")
-
-		route := app.GetRoute("Comments")
-		url, err := route.URL(Map{"userId": "user123", "postId": "post456"})
-		require.NoError(t, err)
-		require.Equal(t, "/api/v1/users/user123/posts/post456/comments", url)
+		requireURL(t, app, "User", Map{"name": "fiber"}, "/user/fiber")
 	})
 
 	t.Run("parameter values are path escaped", func(t *testing.T) {
@@ -3270,47 +2256,8 @@ func newSkipApp(cfg ...Config) *App {
 	return app
 }
 
-func Test_App_SkipUnmatchedRoutes_Static(t *testing.T) {
-	t.Parallel()
-
-	app := newSkipApp()
-	app.Get("/users", func(c Ctx) error { return c.SendString("users") })
-	app.Post("/users", func(c Ctx) error { return c.SendString("created") })
-
-	t.Run("match", func(t *testing.T) {
-		t.Parallel()
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/users", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, "users", string(body))
-	})
-
-	t.Run("not_found", func(t *testing.T) {
-		t.Parallel()
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/does/not/exist", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusNotFound, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
-
-	t.Run("method_not_allowed", func(t *testing.T) {
-		t.Parallel()
-		resp, err := app.Test(httptest.NewRequest(MethodDelete, "/users", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
-		allow := resp.Header.Get(HeaderAllow)
-		require.Contains(t, allow, MethodGet)
-		require.Contains(t, allow, MethodPost)
-		require.NoError(t, resp.Body.Close())
-	})
-}
-
 func Test_App_SkipUnmatchedRoutes_CORSPreflight(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SkipUnmatchedRoutes: true})
 	// Minimal CORS-style middleware: answer preflight, pass everything else through.
 	app.Use(func(c Ctx) error {
@@ -3324,61 +2271,17 @@ func Test_App_SkipUnmatchedRoutes_CORSPreflight(t *testing.T) {
 
 	t.Run("preflight_runs_middleware", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest(MethodOptions, "/users", http.NoBody)
-		req.Header.Set(HeaderOrigin, "https://example.com")
-		req.Header.Set(HeaderAccessControlRequestMethod, MethodGet)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusNoContent, resp.StatusCode)
+		req := apptest.Req(MethodOptions, "/users",
+			apptest.WithHeader(HeaderOrigin, "https://example.com"),
+			apptest.WithHeader(HeaderAccessControlRequestMethod, MethodGet))
+		resp := routerTestExpect(t, app, req, StatusNoContent)
 		require.Equal(t, "*", resp.Header.Get(HeaderAccessControlAllowOrigin))
-		require.NoError(t, resp.Body.Close())
 	})
 
 	t.Run("non_preflight_options_still_405", func(t *testing.T) {
 		t.Parallel()
 		// Bare OPTIONS (no CORS headers) is not a preflight, so the fast path still answers 405.
-		resp, err := app.Test(httptest.NewRequest(MethodOptions, "/users", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
-}
-
-func Test_App_SkipUnmatchedRoutes_Parametric(t *testing.T) {
-	t.Parallel()
-
-	app := newSkipApp()
-	app.Get("/user/keys/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
-	app.Post("/user/keys/:id", func(c Ctx) error { return c.SendString("post") })
-
-	t.Run("match", func(t *testing.T) {
-		t.Parallel()
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/user/keys/1337", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, "1337", string(body))
-	})
-
-	t.Run("not_found", func(t *testing.T) {
-		t.Parallel()
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/user/secrets/1337", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusNotFound, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
-
-	t.Run("method_not_allowed", func(t *testing.T) {
-		t.Parallel()
-		resp, err := app.Test(httptest.NewRequest(MethodDelete, "/user/keys/1337", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
-		allow := resp.Header.Get(HeaderAllow)
-		require.Contains(t, allow, MethodGet)
-		require.Contains(t, allow, MethodPost)
-		require.NoError(t, resp.Body.Close())
+		routerTestExpect(t, app, apptest.Req(MethodOptions, "/users"), StatusMethodNotAllowed)
 	})
 }
 
@@ -3386,236 +2289,312 @@ func Test_App_SkipUnmatchedRoutes_Parametric(t *testing.T) {
 // NOT run for unmatched requests but DOES run for matched ones.
 func Test_App_SkipUnmatchedRoutes_MiddlewareSkipped(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		path    string
+		message string
+		status  int
+		skip    bool
+		called  bool
+	}{
+		{
+			name: "skipped_on_404", skip: true, path: "/nope", status: StatusNotFound,
+			called: false, message: "middleware must NOT run for an unmatched route",
+		},
+		{
+			name: "runs_on_match", skip: true, path: "/ok", status: StatusOK,
+			called: true, message: "middleware must run for a matched route",
+		},
+		{
+			// SkipUnmatchedRoutes is false by default
+			name: "disabled_runs_middleware", skip: false, path: "/nope", status: StatusNotFound,
+			called: true, message: "middleware should still run when the feature is disabled",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{SkipUnmatchedRoutes: tc.skip})
+			called := false
+			app.Use(func(c Ctx) error { called = true; return c.Next() })
+			app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
 
-	t.Run("skipped_on_404", func(t *testing.T) {
-		t.Parallel()
-		app := New(Config{SkipUnmatchedRoutes: true})
-		called := false
-		app.Use(func(c Ctx) error { called = true; return c.Next() })
-		app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
-
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusNotFound, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-		require.False(t, called, "middleware must NOT run for an unmatched route")
-	})
-
-	t.Run("runs_on_match", func(t *testing.T) {
-		t.Parallel()
-		app := New(Config{SkipUnmatchedRoutes: true})
-		called := false
-		app.Use(func(c Ctx) error { called = true; return c.Next() })
-		app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
-
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/ok", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-		require.True(t, called, "middleware must run for a matched route")
-	})
-
-	t.Run("disabled_runs_middleware", func(t *testing.T) {
-		t.Parallel()
-		app := New() // SkipUnmatchedRoutes is false by default
-		called := false
-		app.Use(func(c Ctx) error { called = true; return c.Next() })
-		app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
-
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusNotFound, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-		require.True(t, called, "middleware should still run when the feature is disabled")
-	})
-}
-
-// Test_App_SkipUnmatchedRoutes_NoMiddlewareGate verifies correct results when the
-// feature is enabled but no middleware is registered (the lookahead is gated off).
-func Test_App_SkipUnmatchedRoutes_NoMiddlewareGate(t *testing.T) {
-	t.Parallel()
-
-	app := New(Config{SkipUnmatchedRoutes: true}) // no Use
-	app.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ping", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/missing", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-
-	resp, err = app.Test(httptest.NewRequest(MethodPost, "/ping", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-}
-
-// Test_App_SkipUnmatchedRoutes_CustomErrorHandler covers the emitSkip path where
-// the configured error handler itself returns an error (-> 500).
-func Test_App_SkipUnmatchedRoutes_CustomErrorHandler(t *testing.T) {
-	t.Parallel()
-
-	app := New(Config{
-		SkipUnmatchedRoutes: true,
-		ErrorHandler:        func(_ Ctx, _ error) error { return errors.New("boom") },
-	})
-	app.Use(func(c Ctx) error { return c.Next() })
-	app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusInternalServerError, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-}
-
-// Test_App_SkipUnmatchedRoutes_CrossMethodMixed exercises the 405 path where the
-// path matches a static endpoint of one method and a parametric endpoint of
-// another, so both Allow entries must be reported.
-func Test_App_SkipUnmatchedRoutes_CrossMethodMixed(t *testing.T) {
-	t.Parallel()
-
-	app := newSkipApp()
-	app.Get("/thing/:id", func(c Ctx) error { return c.SendString("get") })  // parametric
-	app.Post("/thing/fixed", func(c Ctx) error { return c.SendString("p") }) // static
-
-	resp, err := app.Test(httptest.NewRequest(MethodDelete, "/thing/fixed", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
-	allow := resp.Header.Get(HeaderAllow)
-	require.Contains(t, allow, MethodGet)
-	require.Contains(t, allow, MethodPost)
-	require.NoError(t, resp.Body.Close())
-}
-
-// Test_App_SkipUnmatchedRoutes_Bucket0Fallback exercises the tier-2 fallback to
-// the global (bucket 0) candidate list when the request's prefix bucket is absent.
-func Test_App_SkipUnmatchedRoutes_Bucket0Fallback(t *testing.T) {
-	t.Parallel()
-
-	app := newSkipApp()
-	app.Get("/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "abc", string(body))
-}
-
-// Test_App_SkipUnmatchedRoutes_SkipBefore exercises next()'s skip-before guard:
-// a static endpoint sits before the parametric endpoint in the same bucket, so
-// firstMatchIndex > 0 and the endpoints before it are skipped.
-func Test_App_SkipUnmatchedRoutes_SkipBefore(t *testing.T) {
-	t.Parallel()
-
-	app := newSkipApp()
-	app.Get("/key/aaa", func(c Ctx) error { return c.SendString("static") })
-	app.Get("/key/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/key/123", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "123", string(body))
-}
-
-func Test_App_SkipUnmatchedRoutes_OptionalParam(t *testing.T) {
-	t.Parallel()
-
-	app := newSkipApp()
-	app.Get("/opt/:v?", func(c Ctx) error { return c.SendString("opt:" + c.Params("v")) })
-
-	for _, path := range []string{"/opt", "/opt/x"} {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode, path)
-		require.NoError(t, resp.Body.Close())
+			routerTestExpect(t, app, tc.path, tc.status)
+			require.Equal(t, tc.called, called, tc.message)
+		})
 	}
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/other", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
 }
 
-func Test_App_SkipUnmatchedRoutes_Constraint(t *testing.T) {
+// Test_App_SkipUnmatchedRoutes_Requests sends requests through apps with
+// SkipUnmatchedRoutes on: each row is a route shape or config the lookahead has
+// to resolve exactly as the router does. Rows run on newSkipApp's pass-through
+// middleware, which is what turns the lookahead on, unless they are bare.
+func Test_App_SkipUnmatchedRoutes_Requests(t *testing.T) {
 	t.Parallel()
-
-	app := newSkipApp()
-	app.Get("/num/:id<int>", func(c Ctx) error { return c.SendString(c.Params("id")) })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/num/5", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/num/abc", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-}
-
-func Test_App_SkipUnmatchedRoutes_RootAndStar(t *testing.T) {
-	t.Parallel()
-
-	t.Run("root", func(t *testing.T) {
-		t.Parallel()
-		app := newSkipApp()
-		app.Get("/", func(c Ctx) error { return c.SendString("root") })
-
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
-
-	t.Run("star", func(t *testing.T) {
-		t.Parallel()
-		app := newSkipApp()
-		app.Get("/*", func(c Ctx) error { return c.SendString("star") })
-
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/anything/here", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, "star", string(body))
-	})
-}
-
-func Test_App_SkipUnmatchedRoutes_AutoHead(t *testing.T) {
-	t.Parallel()
-
-	t.Run("static", func(t *testing.T) {
-		t.Parallel()
-		app := newSkipApp()
-		app.Get("/page", func(c Ctx) error { return c.SendString("page") })
-
-		resp, err := app.Test(httptest.NewRequest(MethodHead, "/page", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
-
-	t.Run("param", func(t *testing.T) {
-		t.Parallel()
-		app := newSkipApp()
-		app.Get("/h/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
-
-		resp, err := app.Test(httptest.NewRequest(MethodHead, "/h/1", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
+	ok := func(c Ctx) error { return c.SendString("ok") }
+	param := func(name string) Handler { return func(c Ctx) error { return c.SendString(c.Params(name)) } }
+	mountProfile := func(app *App) {
+		sub := New()
+		sub.Get("/profile", func(c Ctx) error { return c.SendString("profile") })
+		app.Use("/account", sub)
+	}
+	// The same three requests go to a static and to a parametric endpoint: a match,
+	// a miss (404) and a method the matched path has no endpoint for (405 listing
+	// the methods it does have).
+	static := func(app *App) {
+		app.Get("/users", func(c Ctx) error { return c.SendString("users") })
+		app.Post("/users", func(c Ctx) error { return c.SendString("created") })
+	}
+	parametric := func(app *App) {
+		app.Get("/user/keys/:id", param("id"))
+		app.Post("/user/keys/:id", func(c Ctx) error { return c.SendString("post") })
+	}
+	manyMethods := append([]string{}, DefaultMethods...)
+	for i := 0; len(manyMethods) <= 64; i++ {
+		manyMethods = append(manyMethods, "X"+string(rune('A'+i%26))+string(rune('A'+i/26)))
+	}
+	for _, tc := range []struct {
+		register func(app *App)
+		cfg      Config // SkipUnmatchedRoutes is always set
+		name     string
+		requests []routerReq
+		custom   bool // served with a custom context
+		bare     bool // without the pass-through middleware
+	}{
+		{name: "static_match", register: static, requests: []routerReq{{path: "/users", status: StatusOK, body: "users"}}},
+		{name: "static_not_found", register: static, requests: []routerReq{{path: "/does/not/exist", status: StatusNotFound}}},
+		{
+			name: "static_method_not_allowed", register: static,
+			requests: []routerReq{{method: MethodDelete, path: "/users", status: StatusMethodNotAllowed, allow: []string{MethodGet, MethodPost}}},
+		},
+		{
+			name: "parametric_match", register: parametric,
+			requests: []routerReq{{path: "/user/keys/1337", status: StatusOK, body: "1337"}},
+		},
+		{
+			name: "parametric_not_found", register: parametric,
+			requests: []routerReq{{path: "/user/secrets/1337", status: StatusNotFound}},
+		},
+		{
+			name: "parametric_method_not_allowed", register: parametric,
+			requests: []routerReq{
+				{method: MethodDelete, path: "/user/keys/1337", status: StatusMethodNotAllowed, allow: []string{MethodGet, MethodPost}},
+			},
+		},
+		{
+			// enabled without middleware, so the lookahead is gated off
+			name: "NoMiddlewareGate", bare: true,
+			register: func(app *App) { app.Get("/ping", func(c Ctx) error { return c.SendString("pong") }) },
+			requests: []routerReq{
+				{path: "/ping", status: StatusOK},
+				{path: "/missing", status: StatusNotFound},
+				{method: MethodPost, path: "/ping", status: StatusMethodNotAllowed},
+			},
+		},
+		{
+			// the emitSkip path where the configured error handler itself returns an error (-> 500)
+			name: "CustomErrorHandler", cfg: Config{ErrorHandler: func(_ Ctx, _ error) error { return errors.New("boom") }},
+			register: func(app *App) { app.Get("/ok", ok) },
+			requests: []routerReq{{path: "/nope", status: StatusInternalServerError}},
+		},
+		{
+			// the 500 fallback in emitSkipCustom
+			name: "CustomCtxFailingErrorHandler", custom: true,
+			cfg:      Config{ErrorHandler: func(Ctx, error) error { return errors.New("fail") }},
+			register: func(app *App) { app.Get("/users", func(c Ctx) error { return c.SendString("users") }) },
+			requests: []routerReq{{path: "/nope", status: StatusInternalServerError}},
+		},
+		{
+			// the 405 path where the path matches a static endpoint of one method and a
+			// parametric endpoint of another, so both Allow entries must be reported
+			name: "CrossMethodMixed",
+			register: func(app *App) {
+				app.Get("/thing/:id", func(c Ctx) error { return c.SendString("get") })  // parametric
+				app.Post("/thing/fixed", func(c Ctx) error { return c.SendString("p") }) // static
+			},
+			requests: []routerReq{
+				{method: MethodDelete, path: "/thing/fixed", status: StatusMethodNotAllowed, allow: []string{MethodGet, MethodPost}},
+			},
+		},
+		{
+			// the tier-2 fallback to the global (bucket 0) candidate list when the request's prefix bucket is absent
+			name: "Bucket0Fallback", register: func(app *App) { app.Get("/:id", param("id")) },
+			requests: []routerReq{{path: "/abc", status: StatusOK, body: "abc"}},
+		},
+		{
+			// next()'s skip-before guard: a static endpoint sits before the parametric endpoint
+			// in the same bucket, so firstMatchIndex > 0 and the endpoints before it are skipped
+			name: "SkipBefore",
+			register: func(app *App) {
+				app.Get("/key/aaa", func(c Ctx) error { return c.SendString("static") })
+				app.Get("/key/:id", param("id"))
+			},
+			requests: []routerReq{{path: "/key/123", status: StatusOK, body: "123"}},
+		},
+		{
+			name:     "OptionalParam",
+			register: func(app *App) { app.Get("/opt/:v?", func(c Ctx) error { return c.SendString("opt:" + c.Params("v")) }) },
+			requests: []routerReq{{path: "/opt", status: StatusOK}, {path: "/opt/x", status: StatusOK}, {path: "/other", status: StatusNotFound}},
+		},
+		{
+			name: "Constraint", register: func(app *App) { app.Get("/num/:id<int>", param("id")) },
+			requests: []routerReq{{path: "/num/5", status: StatusOK}, {path: "/num/abc", status: StatusNotFound}},
+		},
+		{
+			name:     "Root",
+			register: func(app *App) { app.Get("/", func(c Ctx) error { return c.SendString("root") }) },
+			requests: []routerReq{{path: "/", status: StatusOK}},
+		},
+		{
+			name:     "Star",
+			register: func(app *App) { app.Get("/*", func(c Ctx) error { return c.SendString("star") }) },
+			requests: []routerReq{{path: "/anything/here", status: StatusOK, body: "star"}},
+		},
+		{
+			name:     "AutoHead_static",
+			register: func(app *App) { app.Get("/page", func(c Ctx) error { return c.SendString("page") }) },
+			requests: []routerReq{{method: MethodHead, path: "/page", status: StatusOK}},
+		},
+		{
+			name: "AutoHead_param", register: func(app *App) { app.Get("/h/:id", param("id")) },
+			requests: []routerReq{{method: MethodHead, path: "/h/1", status: StatusOK}},
+		},
+		{
+			name: "Mount_match", register: mountProfile,
+			requests: []routerReq{{path: "/account/profile", status: StatusOK, body: "profile"}},
+		},
+		{name: "Mount_miss", register: mountProfile, requests: []routerReq{{path: "/account/missing", status: StatusNotFound}}},
+		{
+			name: "case_sensitive", cfg: Config{CaseSensitive: true}, register: func(app *App) { app.Get("/Foo", ok) },
+			requests: []routerReq{{path: "/Foo", status: StatusOK}, {path: "/foo", status: StatusNotFound}},
+		},
+		{
+			name: "strict_routing", cfg: Config{StrictRouting: true}, register: func(app *App) { app.Get("/bar", ok) },
+			requests: []routerReq{{path: "/bar", status: StatusOK}, {path: "/bar/", status: StatusNotFound}},
+		},
+		{
+			name: "non_strict_trailing_slash", register: func(app *App) { app.Get("/baz", ok) },
+			requests: []routerReq{{path: "/baz/", status: StatusOK}},
+		},
+		{
+			// a handler that rewrites the path and restarts routing re-resolves correctly (no stale lookahead index)
+			name: "RestartRouting",
+			register: func(app *App) {
+				app.Get("/old", func(c Ctx) error {
+					c.Path("/new")
+					return c.RestartRouting()
+				})
+				app.Get("/new", func(c Ctx) error { return c.SendString("new") })
+			},
+			requests: []routerReq{{path: "/old", status: StatusOK, body: "new"}},
+		},
+		{
+			// Path(override) invalidates the lookahead index even without RestartRouting
+			name: "PathOverrideMidChain",
+			register: func(app *App) {
+				app.Use(func(c Ctx) error {
+					if c.Path() == "/aaa/zzz" {
+						c.Path("/bbb")
+					}
+					return c.Next()
+				})
+				app.Get("/bbb", func(c Ctx) error { return c.SendString("bbb") })
+				app.Get("/aaa/static", func(c Ctx) error { return c.SendString("static") })
+				app.Get("/aaa/:id", param("id"))
+			},
+			requests: []routerReq{{path: "/aaa/zzz", status: StatusOK, body: "bbb"}},
+		},
+		{
+			// a skipped 404 under a mount prefix still resolves the sub-app's custom error handler
+			name: "MountedErrorHandler",
+			register: func(app *App) {
+				sub := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+					return c.Status(StatusNotFound).SendString("sub-404")
+				}})
+				sub.Get("/ok", ok)
+				app.Use("/sub", sub)
+			},
+			requests: []routerReq{{path: "/sub/missing", status: StatusNotFound, body: "sub-404"}},
+		},
+		{
+			// the route.star half of hasParamUse: wildcard middleware writes c.values, so the endpoint re-matches
+			name: "StarMiddlewareNoClobber",
+			register: func(app *App) {
+				app.Use("/*", func(c Ctx) error { return c.Next() })
+				app.Get("/user/:id", param("id"))
+			},
+			requests: []routerReq{{path: "/user/42", status: StatusOK, body: "42"}},
+		},
+		{
+			// the static index lookup by the decoded detection path
+			name: "UnescapePath", cfg: Config{UnescapePath: true}, register: func(app *App) { app.Get("/some/path", ok) },
+			requests: []routerReq{{path: "/some/p%61th", status: StatusOK}},
+		},
+		{
+			// Method(...) clears the lookahead index: a middleware switches GET->POST mid-chain,
+			// and the POST endpoint sits at a lower bucket index than the GET match, so a stale
+			// firstMatchIndex would wrongly skip it
+			name: "MethodOverride", bare: true,
+			register: func(app *App) {
+				app.Use(func(c Ctx) error {
+					if c.Method() == MethodGet {
+						c.Method(MethodPost)
+					}
+					return c.Next()
+				})
+				app.Get("/zzz/aaa", func(c Ctx) error { return c.SendString("get-static") })
+				app.Get("/zzz/:id", func(c Ctx) error { return c.SendString("get-param") })
+				app.Post("/zzz/:id", func(c Ctx) error { return c.SendString("post-param") })
+			},
+			requests: []routerReq{{path: "/zzz/123", status: StatusOK, body: "post-param"}},
+		},
+		{
+			// a matched parametric endpoint returns correct multi-param values when next() reuses
+			// the lookahead's params (no parametric middleware, so the fast path is taken)
+			name: "ParamReuse",
+			register: func(app *App) {
+				app.Use("/api", func(c Ctx) error { return c.Next() }) // static-prefix middleware
+				app.Get("/api/users/:uid/books/:bid", func(c Ctx) error {
+					return c.SendString(c.Params("uid") + "," + c.Params("bid"))
+				})
+			},
+			requests: []routerReq{{path: "/api/users/u7/books/b9", status: StatusOK, body: "u7,b9"}},
+		},
+		{
+			// guards the param-reuse fast path: a parametric middleware runs before the endpoint
+			// and writes into the shared param slot, so the fast path must be disabled and the
+			// endpoint re-matched; if reuse fired incorrectly the endpoint would observe the
+			// middleware's value
+			name: "ParamMiddlewareNoClobber", bare: true,
+			register: func(app *App) {
+				// parametric middleware whose match writes param slot 0 as the first segment
+				app.Use("/:seg", func(c Ctx) error { return c.Next() })
+				app.Get("/foo/:name", param("name"))
+			},
+			requests: []routerReq{{path: "/foo/bar", status: StatusOK, body: "bar"}},
+		},
+		{
+			// with more than 64 RequestMethods the fast path is disabled and routing still
+			// returns correct results via the normal router
+			name: "ManyMethods", cfg: Config{RequestMethods: manyMethods}, register: func(app *App) { app.Get("/ok", ok) },
+			requests: []routerReq{{path: "/ok", status: StatusOK}, {path: "/nope", status: StatusNotFound}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := tc.cfg
+			cfg.SkipUnmatchedRoutes = true
+			newApp := New
+			if tc.custom {
+				newApp = newCustomApp
+			}
+			app := newApp(cfg)
+			if !tc.bare {
+				app.Use(func(c Ctx) error { return c.Next() })
+			}
+			tc.register(app)
+			routerTestExpectAll(t, app, tc.requests...)
+		})
+	}
 }
 
 // Test_App_SkipUnmatchedRoutes_GroupMiddleware checks that group middleware is
@@ -3623,148 +2602,36 @@ func Test_App_SkipUnmatchedRoutes_AutoHead(t *testing.T) {
 // the called flag and must run in order, so they are not split into subtests.
 func Test_App_SkipUnmatchedRoutes_GroupMiddleware(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SkipUnmatchedRoutes: true})
 	called := false
 	g := app.Group("/g")
 	g.Use(func(c Ctx) error { called = true; return c.Next() })
 	g.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/g/nope", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
+	routerTestExpect(t, app, "/g/nope", StatusNotFound)
 	require.False(t, called, "group middleware must not run for an unmatched route")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/g/ok", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
+	routerTestExpect(t, app, "/g/ok", StatusOK)
 	require.True(t, called, "group middleware must run for a matched route")
-}
-
-func Test_App_SkipUnmatchedRoutes_Mount(t *testing.T) {
-	t.Parallel()
-
-	sub := New()
-	sub.Get("/profile", func(c Ctx) error { return c.SendString("profile") })
-
-	app := newSkipApp()
-	app.Use("/account", sub)
-
-	t.Run("mounted_match", func(t *testing.T) {
-		t.Parallel()
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/account/profile", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, "profile", string(body))
-	})
-
-	t.Run("mounted_miss", func(t *testing.T) {
-		t.Parallel()
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/account/missing", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusNotFound, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
-}
-
-func Test_App_SkipUnmatchedRoutes_CaseSensitiveAndStrict(t *testing.T) {
-	t.Parallel()
-
-	t.Run("case_sensitive", func(t *testing.T) {
-		t.Parallel()
-		app := newSkipApp(Config{CaseSensitive: true})
-		app.Get("/Foo", func(c Ctx) error { return c.SendString("foo") })
-
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/Foo", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-
-		resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusNotFound, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
-
-	t.Run("strict_routing", func(t *testing.T) {
-		t.Parallel()
-		app := newSkipApp(Config{StrictRouting: true})
-		app.Get("/bar", func(c Ctx) error { return c.SendString("bar") })
-
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/bar", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-
-		resp, err = app.Test(httptest.NewRequest(MethodGet, "/bar/", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusNotFound, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
-
-	t.Run("non_strict_trailing_slash", func(t *testing.T) {
-		t.Parallel()
-		app := newSkipApp()
-		app.Get("/baz", func(c Ctx) error { return c.SendString("baz") })
-
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/baz/", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
 }
 
 func Test_App_SkipUnmatchedRoutes_RebuildTree(t *testing.T) {
 	t.Parallel()
-
 	app := newSkipApp()
 	app.Get("/first", func(c Ctx) error { return c.SendString("first") })
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/second", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
+	routerTestExpect(t, app, "/second", StatusNotFound)
 
 	app.Get("/second", func(c Ctx) error { return c.SendString("second") })
 	app.RebuildTree()
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/second", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-}
-
-// Test_App_SkipUnmatchedRoutes_RestartRouting ensures a handler that rewrites
-// the path and restarts routing re-resolves correctly (no stale lookahead index).
-func Test_App_SkipUnmatchedRoutes_RestartRouting(t *testing.T) {
-	t.Parallel()
-
-	app := newSkipApp()
-	app.Get("/old", func(c Ctx) error {
-		c.Path("/new")
-		return c.RestartRouting()
-	})
-	app.Get("/new", func(c Ctx) error { return c.SendString("new") })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/old", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "new", string(body))
+	routerTestExpect(t, app, "/second", StatusOK)
 }
 
 // Test_App_SkipUnmatchedRoutes_Parity asserts that enabling SkipUnmatchedRoutes
 // produces the same status codes and Allow headers as the default behavior.
 func Test_App_SkipUnmatchedRoutes_Parity(t *testing.T) {
 	t.Parallel()
-
 	build := func(skip bool) *App {
 		app := New(Config{SkipUnmatchedRoutes: skip})
 		app.Use(func(c Ctx) error { return c.Next() })
@@ -3792,29 +2659,21 @@ func Test_App_SkipUnmatchedRoutes_Parity(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		respOff, err := off.Test(httptest.NewRequest(tc.method, tc.path, http.NoBody))
-		require.NoError(t, err)
-		respOn, err := on.Test(httptest.NewRequest(tc.method, tc.path, http.NoBody))
-		require.NoError(t, err)
+		respOff := apptest.Do(t, off, apptest.Req(tc.method, tc.path))
+		respOn := apptest.Do(t, on, apptest.Req(tc.method, tc.path))
 		require.Equal(t, respOff.StatusCode, respOn.StatusCode, "%s %s", tc.method, tc.path)
 		require.Equal(t, respOff.Header.Get(HeaderAllow), respOn.Header.Get(HeaderAllow), "%s %s allow", tc.method, tc.path)
 		require.Equal(t, respOff.Header.Get(HeaderContentType), respOn.Header.Get(HeaderContentType), "%s %s content-type", tc.method, tc.path)
-		bodyOff, err := io.ReadAll(respOff.Body)
-		require.NoError(t, err)
-		bodyOn, err := io.ReadAll(respOn.Body)
-		require.NoError(t, err)
-		require.Equal(t, string(bodyOff), string(bodyOn), "%s %s body", tc.method, tc.path)
-		require.NoError(t, respOff.Body.Close())
-		require.NoError(t, respOn.Body.Close())
+		bodyOff := apptest.Body(t, respOff)
+		bodyOn := apptest.Body(t, respOn)
+		require.Equal(t, bodyOff, bodyOn, "%s %s body", tc.method, tc.path)
 	}
 }
 
 // Test_App_SkipUnmatchedRoutes_CustomCtx exercises the customRequestHandler path.
 func Test_App_SkipUnmatchedRoutes_CustomCtx(t *testing.T) {
 	t.Parallel()
-
-	newCtx := func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }
-	app := NewWithCustomCtx(newCtx, Config{SkipUnmatchedRoutes: true})
+	app := newCustomApp(Config{SkipUnmatchedRoutes: true})
 	app.Use(func(c Ctx) error {
 		if c.IsPreflight() {
 			return c.SendStatus(StatusNoContent)
@@ -3824,128 +2683,54 @@ func Test_App_SkipUnmatchedRoutes_CustomCtx(t *testing.T) {
 	app.Get("/users", func(c Ctx) error { return c.SendString("users") })
 	app.Get("/user/keys/:id", func(c Ctx) error { return c.SendString("key") })
 
-	t.Run("static_match", func(t *testing.T) {
-		t.Parallel()
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/users", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
-
-	t.Run("param_match", func(t *testing.T) {
-		t.Parallel()
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/user/keys/1", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
-
-	t.Run("not_found", func(t *testing.T) {
-		t.Parallel()
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusNotFound, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
-
-	t.Run("method_not_allowed", func(t *testing.T) {
-		t.Parallel()
-		resp, err := app.Test(httptest.NewRequest(MethodDelete, "/users", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
-
-	t.Run("cors_preflight", func(t *testing.T) {
-		t.Parallel()
-		// Preflight is exempt from the skip, so the middleware answers it instead of a 405.
-		req := httptest.NewRequest(MethodOptions, "/users", http.NoBody)
-		req.Header.Set(HeaderOrigin, "https://example.com")
-		req.Header.Set(HeaderAccessControlRequestMethod, MethodGet)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, StatusNoContent, resp.StatusCode)
-		require.NoError(t, resp.Body.Close())
-	})
+	for _, tc := range []struct {
+		req    *http.Request
+		name   string
+		status int
+	}{
+		{name: "static_match", req: apptest.Req(MethodGet, "/users"), status: StatusOK},
+		{name: "param_match", req: apptest.Req(MethodGet, "/user/keys/1"), status: StatusOK},
+		{name: "not_found", req: apptest.Req(MethodGet, "/nope"), status: StatusNotFound},
+		{name: "method_not_allowed", req: apptest.Req(MethodDelete, "/users"), status: StatusMethodNotAllowed},
+		{
+			// Preflight is exempt from the skip, so the middleware answers it instead of a 405.
+			name: "cors_preflight",
+			req: apptest.Req(MethodOptions, "/users",
+				apptest.WithHeader(HeaderOrigin, "https://example.com"),
+				apptest.WithHeader(HeaderAccessControlRequestMethod, MethodGet)),
+			status: StatusNoContent,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			routerTestExpect(t, app, tc.req, tc.status)
+		})
+	}
 }
 
 // Test_App_SkipUnmatchedRoutes_FlashCookieCleared pins the flash check running
 // before the short-circuit: a skipped 404 must still clear the flash cookie.
 func Test_App_SkipUnmatchedRoutes_FlashCookieCleared(t *testing.T) {
 	t.Parallel()
-
 	app := newSkipApp()
 	app.Get("/set", func(c Ctx) error { return c.Redirect().With("k", "v").To("/target") })
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/set", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/set")
 	flash := resp.Header.Get(HeaderSetCookie)
 	require.Contains(t, flash, FlashCookieName+"=")
 	require.NoError(t, resp.Body.Close())
 
-	req := httptest.NewRequest(MethodGet, "/missing", http.NoBody)
-	req.Header.Set(HeaderCookie, strings.Split(flash, ";")[0])
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	req := apptest.Req(MethodGet, "/missing", apptest.WithHeader(HeaderCookie, strings.Split(flash, ";")[0]))
+	resp = routerTestExpect(t, app, req, StatusNotFound)
 	cleared := resp.Header.Get(HeaderSetCookie)
 	require.Contains(t, cleared, FlashCookieName+"=")
 	require.Contains(t, strings.ToLower(cleared), "max-age=0")
-	require.NoError(t, resp.Body.Close())
-}
-
-// Test_App_SkipUnmatchedRoutes_PathOverrideMidChain ensures Path(override)
-// invalidates the lookahead index even without RestartRouting.
-func Test_App_SkipUnmatchedRoutes_PathOverrideMidChain(t *testing.T) {
-	t.Parallel()
-
-	app := newSkipApp()
-	app.Use(func(c Ctx) error {
-		if c.Path() == "/aaa/zzz" {
-			c.Path("/bbb")
-		}
-		return c.Next()
-	})
-	app.Get("/bbb", func(c Ctx) error { return c.SendString("bbb") })
-	app.Get("/aaa/static", func(c Ctx) error { return c.SendString("static") })
-	app.Get("/aaa/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/aaa/zzz", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "bbb", string(body))
-}
-
-// Test_App_SkipUnmatchedRoutes_MountedErrorHandler ensures a skipped 404 under a
-// mount prefix still resolves the sub-app's custom error handler.
-func Test_App_SkipUnmatchedRoutes_MountedErrorHandler(t *testing.T) {
-	t.Parallel()
-
-	sub := New(Config{ErrorHandler: func(c Ctx, _ error) error {
-		return c.Status(StatusNotFound).SendString("sub-404")
-	}})
-	sub.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
-
-	app := newSkipApp()
-	app.Use("/sub", sub)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/sub/missing", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "sub-404", string(body))
 }
 
 // Test_App_SkipUnmatchedRoutes_ErrorSentinels pins the errors handed to the
 // error handler on the fast path (users match on them with errors.Is).
 func Test_App_SkipUnmatchedRoutes_ErrorSentinels(t *testing.T) {
 	t.Parallel()
-
 	var got error
 	app := New(Config{
 		SkipUnmatchedRoutes: true,
@@ -3957,71 +2742,13 @@ func Test_App_SkipUnmatchedRoutes_ErrorSentinels(t *testing.T) {
 	app.Use(func(c Ctx) error { return c.Next() })
 	app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
+	routerTestExpect(t, app, "/nope", StatusNotFound)
 	require.ErrorIs(t, got, ErrNotFound)
 
-	resp, err = app.Test(httptest.NewRequest(MethodPost, "/ok", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
+	routerTestExpect(t, app, apptest.Req(MethodPost, "/ok"), StatusMethodNotAllowed)
 	require.ErrorIs(t, got, ErrMethodNotAllowed)
 }
 
-// Test_App_SkipUnmatchedRoutes_StarMiddlewareNoClobber covers the route.star half
-// of hasParamUse: wildcard middleware writes c.values, so the endpoint re-matches.
-func Test_App_SkipUnmatchedRoutes_StarMiddlewareNoClobber(t *testing.T) {
-	t.Parallel()
-
-	app := newSkipApp()
-	app.Use("/*", func(c Ctx) error { return c.Next() })
-	app.Get("/user/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/user/42", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "42", string(body))
-}
-
-// Test_App_SkipUnmatchedRoutes_UnescapePath pins the static index lookup by the
-// decoded detection path.
-func Test_App_SkipUnmatchedRoutes_UnescapePath(t *testing.T) {
-	t.Parallel()
-
-	app := newSkipApp(Config{UnescapePath: true})
-	app.Get("/some/path", func(c Ctx) error { return c.SendString("ok") })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/some/p%61th", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-}
-
-// Test_App_SkipUnmatchedRoutes_CustomCtxFailingErrorHandler covers the 500
-// fallback in emitSkipCustom.
-func Test_App_SkipUnmatchedRoutes_CustomCtxFailingErrorHandler(t *testing.T) {
-	t.Parallel()
-
-	newCtx := func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }
-	app := NewWithCustomCtx(newCtx, Config{
-		SkipUnmatchedRoutes: true,
-		ErrorHandler:        func(Ctx, error) error { return errors.New("fail") },
-	})
-	app.Use(func(c Ctx) error { return c.Next() })
-	app.Get("/users", func(c Ctx) error { return c.SendString("users") })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusInternalServerError, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-}
-
-// go test -v -run=^$ -bench=Benchmark_SkipUnmatchedRoutes -benchmem -count=4
 func Benchmark_SkipUnmatchedRoutes(b *testing.B) {
 	scenarios := []struct {
 		name        string
@@ -4036,22 +2763,14 @@ func Benchmark_SkipUnmatchedRoutes(b *testing.B) {
 	}
 	for _, s := range scenarios {
 		for _, skip := range []bool{false, true} {
-			variant := "without_skip"
-			if skip {
-				variant = "with_skip"
-			}
+			variant := map[bool]string{false: "without_skip", true: "with_skip"}[skip]
 			b.Run(s.name+"/"+variant, func(b *testing.B) {
 				app := New(Config{SkipUnmatchedRoutes: skip})
 				for range s.middlewares {
 					app.Use(func(c Ctx) error { return c.Next() })
 				}
 				registerDummyRoutes(app)
-				appHandler := app.Handler()
-
-				c := &fasthttp.RequestCtx{}
-				c.Request.Header.SetMethod(s.method)
-				c.URI().SetPath(s.path)
-
+				appHandler, c := routerBenchHandler(app, s.method, s.path)
 				b.ReportAllocs()
 				b.ResetTimer()
 				for b.Loop() {
@@ -4083,35 +2802,22 @@ func Benchmark_SkipUnmatchedRoutes_Deep(b *testing.B) {
 	}
 	for _, s := range deepScenarios {
 		for _, skip := range []bool{false, true} {
-			variant := "without_skip"
-			if skip {
-				variant = "with_skip"
-			}
+			variant := map[bool]string{false: "without_skip", true: "with_skip"}[skip]
 			b.Run(s.name+"/"+variant, func(b *testing.B) {
 				app := New(Config{SkipUnmatchedRoutes: skip})
 				h := func(_ Ctx) error { return nil }
 				mw := func(c Ctx) error { return c.Next() }
-
 				app.Get("/health", h)
-
 				api := app.Group("/api/v1", mw)
 				matters := api.Group("/matters", mw)
-
 				matters.Get("/:id", h)
 				matters.Put("/:matterId/staff/:staffId/primary", h)
 				api.Put("/emails/threads/:threadID/pin/:matterID", h)
 				api.Post("/conflicts/:entityType/:entityID/refresh", h)
-
 				matters.Get("/:matterId/staff/:staffId/docs/:docId", h)
 				matters.Get("/:matterId/staff/:staffId/docs/:docId/versions/:versionId", h)
 				matters.Get("/:matterId/staff/:staffId/docs/:docId/versions/:versionId/notes/:noteId", h)
-
-				appHandler := app.Handler()
-
-				c := &fasthttp.RequestCtx{}
-				c.Request.Header.SetMethod(s.method)
-				c.URI().SetPath(s.path)
-
+				appHandler, c := routerBenchHandler(app, s.method, s.path)
 				b.ReportAllocs()
 				b.ResetTimer()
 				for b.Loop() {
@@ -4122,115 +2828,13 @@ func Benchmark_SkipUnmatchedRoutes_Deep(b *testing.B) {
 	}
 }
 
-// Test_App_SkipUnmatchedRoutes_MethodOverride ensures Method(...) clears the
-// lookahead index: a middleware switches GET->POST mid-chain, and the POST
-// endpoint sits at a lower bucket index than the GET match, so a stale
-// firstMatchIndex would wrongly skip it.
-func Test_App_SkipUnmatchedRoutes_MethodOverride(t *testing.T) {
-	t.Parallel()
-
-	app := New(Config{SkipUnmatchedRoutes: true})
-	app.Use(func(c Ctx) error {
-		if c.Method() == MethodGet {
-			c.Method(MethodPost)
-		}
-		return c.Next()
-	})
-	app.Get("/zzz/aaa", func(c Ctx) error { return c.SendString("get-static") })
-	app.Get("/zzz/:id", func(c Ctx) error { return c.SendString("get-param") })
-	app.Post("/zzz/:id", func(c Ctx) error { return c.SendString("post-param") })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/zzz/123", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "post-param", string(body))
-}
-
-// Test_App_SkipUnmatchedRoutes_ParamReuse checks that a matched parametric
-// endpoint returns correct multi-param values when next() reuses the lookahead's
-// params (no parametric middleware, so the fast path is taken).
-func Test_App_SkipUnmatchedRoutes_ParamReuse(t *testing.T) {
-	t.Parallel()
-
-	app := New(Config{SkipUnmatchedRoutes: true})
-	app.Use(func(c Ctx) error { return c.Next() })         // non-param middleware
-	app.Use("/api", func(c Ctx) error { return c.Next() }) // static-prefix middleware
-	app.Get("/api/users/:uid/books/:bid", func(c Ctx) error {
-		return c.SendString(c.Params("uid") + "," + c.Params("bid"))
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/users/u7/books/b9", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "u7,b9", string(body))
-}
-
-// Test_App_SkipUnmatchedRoutes_ParamMiddlewareNoClobber guards the param-reuse
-// fast path: a parametric middleware runs before the endpoint and writes into the
-// shared param slot, so the fast path must be disabled and the endpoint re-matched.
-// If reuse fired incorrectly the endpoint would observe the middleware's value.
-func Test_App_SkipUnmatchedRoutes_ParamMiddlewareNoClobber(t *testing.T) {
-	t.Parallel()
-
-	app := New(Config{SkipUnmatchedRoutes: true})
-	// Parametric middleware whose match writes param slot 0 as the first segment.
-	app.Use("/:seg", func(c Ctx) error { return c.Next() })
-	app.Get("/foo/:name", func(c Ctx) error { return c.SendString(c.Params("name")) })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "bar", string(body), "endpoint param must not be clobbered by parametric middleware")
-}
-
-// Test_App_SkipUnmatchedRoutes_ManyMethods verifies that with more than 64
-// RequestMethods the fast path is disabled and routing still returns correct
-// results via the normal router.
-func Test_App_SkipUnmatchedRoutes_ManyMethods(t *testing.T) {
-	t.Parallel()
-
-	methods := append([]string{}, DefaultMethods...)
-	for i := 0; len(methods) <= 64; i++ {
-		methods = append(methods, "X"+string(rune('A'+i%26))+string(rune('A'+i/26)))
-	}
-
-	app := New(Config{SkipUnmatchedRoutes: true, RequestMethods: methods})
-	app.Use(func(c Ctx) error { return c.Next() })
-	app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ok", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-}
-
 // Benchmark_Router_HandlerCustom exercises the custom-context request path
 // (nextCustom) over a deep bucket, where the per-iteration accessor hoisting
 // matters most.
 func Benchmark_Router_HandlerCustom(b *testing.B) {
-	newCtx := func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }
-	app := NewWithCustomCtx(newCtx)
+	app := newCustomApp()
 	registerDummyRoutes(app)
-	appHandler := app.Handler()
-
-	c := &fasthttp.RequestCtx{}
-	c.Request.Header.SetMethod(MethodGet)
-	c.URI().SetPath("/user/keys/1337")
-
+	appHandler, c := routerBenchHandler(app, MethodGet, "/user/keys/1337")
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
@@ -4241,15 +2845,9 @@ func Benchmark_Router_HandlerCustom(b *testing.B) {
 // Benchmark_Router_HandlerCustom_NotFound exercises the custom-context 404/405
 // cross-method fallback scan (nextCustom), where accessor hoisting matters.
 func Benchmark_Router_HandlerCustom_NotFound(b *testing.B) {
-	newCtx := func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }
-	app := NewWithCustomCtx(newCtx)
+	app := newCustomApp()
 	registerDummyRoutes(app)
-	appHandler := app.Handler()
-
-	c := &fasthttp.RequestCtx{}
-	c.Request.Header.SetMethod(MethodGet)
-	c.URI().SetPath("/this/route/does/not/exist")
-
+	appHandler, c := routerBenchHandler(app, MethodGet, "/this/route/does/not/exist")
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
@@ -4262,10 +2860,8 @@ func Benchmark_Router_HandlerCustom_NotFound(b *testing.B) {
 // path, a route they reject must be a route Route.match, with its own filters
 // stood down, would have rejected anyway. The filters only ever get to skip
 // work, never to change an outcome, so a false reject here is a routing bug.
-// go test -race -run Test_Route_PrefixFilter_Differential
 func Test_Route_PrefixFilter_Differential(t *testing.T) {
 	t.Parallel()
-
 	segments := []string{
 		"/api", "/foo/", "/:a", "/:b?", "/*", "/+", "/:a-:b", "/:f.:e?",
 		":tail", "/::c", "/:x:y", "/name\\:verb", "/:p/fixed", "/",
@@ -4376,7 +2972,6 @@ func registerFilterRoutes(t *testing.T, patterns []string, use bool) []*Route {
 // Test_Route_PrefixFilter_Fixture proves the leading-byte filter agrees with
 // Route.match across the exhaustive path-matching fixture, which covers far
 // more pattern shapes than the generated set above.
-// go test -race -run Test_Route_PrefixFilter_Fixture
 func Test_Route_PrefixFilter_Fixture(t *testing.T) {
 	t.Parallel()
 	patterns := make([]string, 0, len(routeTestCases))
@@ -4417,71 +3012,58 @@ func Test_Route_PrefixFilter_Fixture(t *testing.T) {
 // Test_Route_PrefixFilter_Rejects proves the filter is actually doing work:
 // routes whose leading constant bytes differ from the request must be skipped
 // without Route.match ever being consulted.
-// go test -race -run Test_Route_PrefixFilter_Rejects
 func Test_Route_PrefixFilter_Rejects(t *testing.T) {
 	t.Parallel()
-
 	route := func(pattern string) *Route {
 		routes := registerFilterRoutes(t, []string{pattern}, false)
 		require.Len(t, routes, 1)
 		return routes[0]
 	}
-	rejects := func(pattern, path string) bool {
-		return routeFilterRejects(route(pattern), path)
+	for _, tc := range []struct {
+		pattern, path string
+		rejects       bool // routeFilterRejects, which also holds the scan head's two words
+		prefixRejects bool // the prefix filter alone, which an unfiltered bucket relies on
+	}{
+		{pattern: "/user/subscriptions/:owner", path: "/user/keys/1337", rejects: true, prefixRejects: true},
+		{pattern: "/user/keys/:id", path: "/user/emails", rejects: true, prefixRejects: true},
+		{pattern: "/repos/:owner", path: "/user/keys", rejects: true, prefixRejects: true},
+		{pattern: "/user/keys/:id", path: "/user/keys/1337"},
+		// Past the first word only the scan head's second word tells these apart.
+		{pattern: "/api/v1/users/:id", path: "/api/v1/teams/7", rejects: true},
+		// wildcards and leading parameters constrain nothing, so they must not filter
+		{pattern: "/*", path: "/anything/at/all"},
+		{pattern: "/:name", path: "/anything"},
+	} {
+		r, msg := route(tc.pattern), tc.pattern+" vs "+tc.path
+		require.Equal(t, tc.rejects, routeFilterRejects(r, tc.path), msg)
+		// on its own, which routeFilterRejects would hide behind the scan head's first word
+		require.Equal(t, tc.prefixRejects, r.prefixRejects(pathHeadWord(tc.path)), msg+" (prefix)")
 	}
-	// prefixRejects on its own, which routeFilterRejects would hide behind the
-	// scan head's first word: an unfiltered bucket relies on it alone.
-	prefixRejects := func(pattern, path string) bool {
-		return route(pattern).prefixRejects(pathHeadWord(path))
-	}
-
-	require.True(t, rejects("/user/subscriptions/:owner", "/user/keys/1337"))
-	require.True(t, prefixRejects("/user/subscriptions/:owner", "/user/keys/1337"))
-	require.True(t, rejects("/user/keys/:id", "/user/emails"))
-	require.True(t, prefixRejects("/user/keys/:id", "/user/emails"))
-	require.True(t, rejects("/repos/:owner", "/user/keys"))
-	require.True(t, prefixRejects("/repos/:owner", "/user/keys"))
-	require.False(t, rejects("/user/keys/:id", "/user/keys/1337"))
-	require.False(t, prefixRejects("/user/keys/:id", "/user/keys/1337"))
-	// Past the first word only the scan head's second word tells these apart.
-	require.True(t, rejects("/api/v1/users/:id", "/api/v1/teams/7"))
-	require.False(t, prefixRejects("/api/v1/users/:id", "/api/v1/teams/7"))
-	// wildcards and leading parameters constrain nothing, so they must not filter
-	require.False(t, rejects("/*", "/anything/at/all"))
-	require.False(t, prefixRejects("/*", "/anything/at/all"))
-	require.False(t, rejects("/:name", "/anything"))
-	require.False(t, prefixRejects("/:name", "/anything"))
 }
 
-// Test_Route_PrefixFilter_EscapedStar guards a routing regression the
-// leading-byte filter introduced: register derives star from the
-// escape-stripped path (isStar := pathClean == "/*") but Params from parsing
-// the escaped path, so `/\*` produces star=true with no params. Route.match
-// returns true unconditionally for a star route, so the filter must not
-// constrain it -- an earlier version only checked star inside the parametric
-// branch and 404'd every path that did not literally begin with "/*".
-// go test -race -run Test_Route_PrefixFilter_EscapedStar
 func Test_Route_PrefixFilter_EscapedStar(t *testing.T) {
 	t.Parallel()
+	require.True(t, RoutePatternMatch("/*", `/\*`))
+	require.False(t, RoutePatternMatch("/anything", `/\*`))
+	require.True(t, RoutePatternMatch("/anything", "/*"))
 
 	// An escaped star is a literal "*", for a plain route and a Use prefix alike.
 	for _, caseSensitive := range []bool{false, true} {
 		for _, use := range []bool{false, true} {
-			app := New(Config{CaseSensitive: caseSensitive})
-			handler := func(c Ctx) error { return c.SendString("ok") }
-			if use {
-				app.Use(`/\*`, handler)
-			} else {
-				app.Get(`/\*`, handler)
-			}
-
-			for path, status := range map[string]int{"/*": StatusOK, "/foo": StatusNotFound, "/bar/baz": StatusNotFound, "/": StatusNotFound} {
-				resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-				require.NoError(t, err)
-				require.Equal(t, status, resp.StatusCode,
-					"escaped star route is a literal path: %q (caseSensitive=%v, use=%v)",
-					path, caseSensitive, use)
-			}
+			t.Run(fmt.Sprintf("caseSensitive=%v/use=%v", caseSensitive, use), func(t *testing.T) {
+				t.Parallel()
+				app := New(Config{CaseSensitive: caseSensitive})
+				handler := func(c Ctx) error { return c.SendString("ok") }
+				if use {
+					app.Use(`/\*`, handler)
+				} else {
+					app.Get(`/\*`, handler)
+				}
+				apptest.Expect(t, app, "/*", StatusOK)
+				for _, path := range []string{"/foo", "/bar/baz", "/", "/anything", "/a/b/c"} {
+					apptest.Expect(t, app, path, StatusNotFound)
+				}
+			})
 		}
 	}
 }
@@ -4495,11 +3077,8 @@ func Test_Route_PrefixFilter_EscapedStar(t *testing.T) {
 // changes produce. This one is deterministic, so it is the benchmark to use
 // when comparing scan-side changes across builds, and it exercises the case
 // those changes target: a large route set where most candidates are rejected.
-// go test -run=^$ -bench=Benchmark_Router_GitHub_API_Serial -benchmem -count=6
 func Benchmark_Router_GitHub_API_Serial(b *testing.B) {
-	app := New()
-	registerDummyRoutes(app)
-	app.startupProcess()
+	app := routerBenchStarted()
 
 	// Fail loudly if the corpus stops matching, rather than silently
 	// benchmarking a router that answers 404 for everything.
@@ -4578,10 +3157,8 @@ func referenceEndpoint(app *App, method int, detectionPath, path string) (*Route
 // leading-byte filter, the slash-count bounds and the "/const/:param"
 // specialization all have to agree with the obvious implementation. It replaces
 // a golden-file comparison, so it needs no regeneration when routes are added.
-// go test -race -run Test_Router_ScanMatchesReference
 func Test_Router_ScanMatchesReference(t *testing.T) {
 	t.Parallel()
-
 	patterns := []string{
 		"/", "/health", "/health/live", "/api", "/api/v1/status",
 		"/user/keys/:id", "/user/emails", "/user/following/:user",
@@ -4727,15 +3304,13 @@ func assertScanMatchesReference(t *testing.T, cfg *Config, withMiddleware, filte
 		wantRoute, wantParams := referenceEndpoint(app, method, detectionPath, routePath)
 
 		hitRoute, hitParams, hitLookahead = nil, [maxParams]string{}, -1
-		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, path)
 
 		if wantRoute == nil {
 			require.Nil(t, hitRoute,
 				"router matched %q via %q but the reference scan found nothing",
 				path, routeLabel(hitRoute))
-			require.NotEqual(t, StatusOK, resp.StatusCode,
-				"unmatched path %q should not answer 200", path)
+			require.NotEqual(t, StatusOK, resp.StatusCode, "unmatched path %q should not answer 200", path)
 			continue
 		}
 
@@ -4774,16 +3349,9 @@ func routeLabel(r *Route) string {
 //
 // The routes here deliberately include no wildcard or root fallback: with one
 // present, tier 2 would rescue a botched tier 1 and hide the bug.
-// go test -race -run Test_ResolveSkip_StaticSlashGate
 func Test_ResolveSkip_StaticSlashGate(t *testing.T) {
 	t.Parallel()
-
-	statics := []string{
-		"/health",
-		"/api/status",
-		"/a/b/c/d",
-		"/one/two/three/four/five/six",
-	}
+	statics := []string{"/health", "/api/status", "/a/b/c/d", "/one/two/three/four/five/six"}
 
 	app := New(Config{SkipUnmatchedRoutes: true})
 	app.Use(func(c Ctx) error { return c.Next() })
@@ -4795,21 +3363,15 @@ func Test_ResolveSkip_StaticSlashGate(t *testing.T) {
 	app.Get("/params/:a/:b/:c/:d/:e/:f/:g", func(c Ctx) error { return c.SendString("param") })
 
 	for _, path := range statics {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode, "static route %q must still match", path)
+		apptest.Expect(t, app, path, StatusOK)
 	}
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/params/1/2/3/4/5/6/7", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode, "parametric route must still match")
+	apptest.Expect(t, app, "/params/1/2/3/4/5/6/7", StatusOK)
 
 	// Paths that share a '/' count with a registered static but nothing else,
 	// so a gate that is too permissive is not mistaken for a correct one.
 	for _, path := range []string{"/missing", "/api/missing", "/a/b/c/x", "/nope/nope"} {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusNotFound, resp.StatusCode, "unmatched path %q must 404", path)
+		apptest.Expect(t, app, path, StatusNotFound)
 	}
 }
 
@@ -4823,10 +3385,8 @@ func Test_ResolveSkip_StaticSlashGate(t *testing.T) {
 // second one: it recomputes the filter for every registered route and requires
 // it to equal what is stored. A future in-place rewrite of a route's path that
 // forgets to refresh the filter fails here.
-// go test -race -run Test_Route_PrefixFilter_NotStale
 func Test_Route_PrefixFilter_NotStale(t *testing.T) {
 	t.Parallel()
-
 	assertFresh := func(t *testing.T, app *App, stage string) {
 		t.Helper()
 		checked := 0
@@ -4892,10 +3452,8 @@ func Test_Route_PrefixFilter_NotStale(t *testing.T) {
 // a fixed >>16 every probe started below slot 65536, so a table sized past that
 // had an unreachable upper half and the lower half degraded into a linear scan
 // -- in exactly the large-route-set case the index exists to speed up.
-// go test -race -run Test_RouteTree_SlotSpreadsAcrossLargeTables
 func Test_RouteTree_SlotSpreadsAcrossLargeTables(t *testing.T) {
 	t.Parallel()
-
 	// Detection paths always begin with '/', so the first hash byte is fixed
 	// and the other two vary: 65536 distinct prefixes, sizing the table to
 	// 131072 slots -- just past where a 16-bit index runs out.
@@ -4914,11 +3472,9 @@ func Test_RouteTree_SlotSpreadsAcrossLargeTables(t *testing.T) {
 		if s := tree.slot(hash); s > maxSlot {
 			maxSlot = s
 		}
-		require.Less(t, tree.slot(hash), uint32(len(tree.hashes)),
-			"slot out of range for hash %#x", hash)
+		require.Less(t, tree.slot(hash), uint32(len(tree.hashes)), "slot out of range for hash %#x", hash)
 	}
-	require.Greater(t, maxSlot, uint32(len(tree.hashes)/2),
-		"probe starts never reach the upper half of the table")
+	require.Greater(t, maxSlot, uint32(len(tree.hashes)/2), "probe starts never reach the upper half of the table")
 
 	// The table still resolves every key to its own bucket.
 	for hash, want := range buckets {
@@ -4933,16 +3489,13 @@ func Test_RouteTree_SlotSpreadsAcrossLargeTables(t *testing.T) {
 // the backing arrays that an in-flight request may still be scanning.
 func Test_RebuildTree_PreservesPublishedBuckets(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/aa/first", testEmptyHandler)
 	app.Get("/aa/removed", testEmptyHandler)
 	app.Get("/aa/last", testEmptyHandler)
 	app.startupProcess()
 
-	method := app.methodInt(MethodGet)
-	treeHash := int('/')<<16 | int('a')<<8 | int('a')
-	published, _ := app.treeIndex[method].lookup(treeHash)
+	published, _ := routerTestBucket(app, MethodGet, "/aa")
 	require.Equal(t, []string{"/aa/first", "/aa/removed", "/aa/last"}, routeTreePaths(published))
 	want := append([]*Route(nil), published...)
 
@@ -4954,7 +3507,7 @@ func Test_RebuildTree_PreservesPublishedBuckets(t *testing.T) {
 	require.Equal(t, want, published)
 
 	// The rebuild must still take effect: the new bucket drops the route.
-	rebuilt, _ := app.treeIndex[method].lookup(treeHash)
+	rebuilt, _ := routerTestBucket(app, MethodGet, "/aa")
 	require.Equal(t, []string{"/aa/first", "/aa/last"}, routeTreePaths(rebuilt))
 }
 
@@ -4964,7 +3517,6 @@ func Test_RebuildTree_PreservesPublishedBuckets(t *testing.T) {
 // is the cross-bucket write the fresh-arena rule exists to prevent.
 func Test_BuildTree_BucketsAreExactlyFull(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Use("/", testEmptyHandler)
 	app.Get("/aa/first", testEmptyHandler)
@@ -4993,6 +3545,13 @@ func routeTreePaths(routes []*Route) []string {
 	return paths
 }
 
+// routerTestBucket returns the routes and the filter the method's route tree
+// holds for the bucket keyed by the first three bytes of prefix, e.g. "/ro".
+func routerTestBucket(app *App, method, prefix string) ([]*Route, *bucketFilter) {
+	treeHash := int(prefix[0])<<16 | int(prefix[1])<<8 | int(prefix[2])
+	return app.treeIndex[app.methodInt(method)].lookup(treeHash)
+}
+
 // Test_Route_PrefixFilter_UnconstrainedShapes covers the guards in
 // computePrefixFilter that disable the filter when a route's first segment
 // constrains nothing.
@@ -5002,10 +3561,8 @@ func routeTreePaths(routes []*Route) []string {
 // is never empty -- but the guards are what make that an assumption rather than
 // a dependency, and a filter that stayed enabled for either would reject paths
 // the route matches.
-// go test -race -run Test_Route_PrefixFilter_UnconstrainedShapes
 func Test_Route_PrefixFilter_UnconstrainedShapes(t *testing.T) {
 	t.Parallel()
-
 	// A pattern whose very first segment is a parameter, which only parses
 	// this way without the leading slash register would add.
 	parser := parseRoute(":name", regexp.MustCompile)
@@ -5045,7 +3602,6 @@ func Test_Route_PrefixFilter_UnconstrainedShapes(t *testing.T) {
 // "/ab/..." routes matched.
 func Test_Route_OptionalSlash_SingleCharSegment(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		pattern string
 		path    string
@@ -5066,9 +3622,7 @@ func Test_Route_OptionalSlash_SingleCharSegment(t *testing.T) {
 			app := New()
 			app.Get(tt.pattern, func(c Ctx) error { return c.SendString("ok") })
 
-			resp, err := app.Test(httptest.NewRequest(MethodGet, tt.path, http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, StatusOK, resp.StatusCode)
+			apptest.Expect(t, app, tt.path, StatusOK)
 		})
 	}
 }
@@ -5080,7 +3634,6 @@ func Test_Route_OptionalSlash_SingleCharSegment(t *testing.T) {
 // composed the wrong thing, one of them an open redirect, so it errors instead.
 func Test_Route_URL_RefusesUnrepresentableRoute(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("//internal", func(c Ctx) error { return c.SendString("internal") }).Name("dbl")
 	app.Get("//*", func(c Ctx) error { return c.SendString("wild") }).Name("dblwild")
@@ -5114,11 +3667,9 @@ func Test_Route_URL_RefusesUnrepresentableRoute(t *testing.T) {
 // Constraints must not be lowercased along with the pattern.
 func Test_Router_Constraints_CaseInsensitiveRouting(t *testing.T) {
 	t.Parallel()
-
 	for _, caseSensitive := range []bool{false, true} {
 		t.Run(fmt.Sprintf("CaseSensitive=%v", caseSensitive), func(t *testing.T) {
 			t.Parallel()
-
 			app := New(Config{CaseSensitive: caseSensitive})
 			app.RegisterCustomConstraint(&evenConstraint{})
 			sub := New(Config{CaseSensitive: caseSensitive})
@@ -5130,10 +3681,7 @@ func Test_Router_Constraints_CaseInsensitiveRouting(t *testing.T) {
 			app.Get("/when/:d<datetime(2006-01-02T15\\:04\\:05Z07\\:00)>", func(c Ctx) error { return c.SendString(c.Params("d")) })
 			app.Get("/even/:n<isEven>", func(c Ctx) error { return c.SendString(c.Params("n")) })
 
-			testCases := []struct {
-				path   string
-				status int
-			}{
+			routerTestExpectAll(t, app, []routerReq{
 				{path: "/code/US", status: StatusOK},
 				{path: "/code/us", status: StatusNotFound},
 				{path: "/api/US", status: StatusOK},
@@ -5145,12 +3693,7 @@ func Test_Router_Constraints_CaseInsensitiveRouting(t *testing.T) {
 				{path: "/even/4", status: StatusOK},
 				{path: "/even/3", status: StatusNotFound},
 				{path: "/even/abc", status: StatusNotFound},
-			}
-			for _, tc := range testCases {
-				resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
-				require.NoError(t, err)
-				require.Equal(t, tc.status, resp.StatusCode, "GET %s", tc.path)
-			}
+			}...)
 
 			cfg := Config{CaseSensitive: caseSensitive}
 			require.True(t, RoutePatternMatch("/US", "/:code<regex([A-Z]{2})>", cfg))
@@ -5173,7 +3716,6 @@ func (*evenConstraint) Execute(param string, _ ...string) bool {
 
 func Test_Router_MethodOverride_ContinuesInNewMethodTree(t *testing.T) {
 	t.Parallel()
-
 	build := func(app *App) {
 		app.Get("/a", func(c Ctx) error { return c.SendString("a") })
 		app.Use(func(c Ctx) error {
@@ -5188,33 +3730,22 @@ func Test_Router_MethodOverride_ContinuesInNewMethodTree(t *testing.T) {
 		name string
 	}{
 		{name: "default ctx", app: New()},
-		{name: "custom ctx", app: NewWithCustomCtx(func(app *App) CustomCtx {
-			return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
-		})},
+		{name: "custom ctx", app: newCustomApp()},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			build(tc.app)
-			resp, err := tc.app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, StatusOK, resp.StatusCode)
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, "post x", string(body))
+			apptest.ExpectBody(t, tc.app, "/x", StatusOK, "post x")
 		})
 	}
 
 	// SkipUnmatchedRoutes answers 405 before middleware runs, so no override happens.
 	t.Run("skip unmatched routes", func(t *testing.T) {
 		t.Parallel()
-
 		app := New(Config{SkipUnmatchedRoutes: true})
 		build(app)
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		apptest.Expect(t, app, "/x", StatusMethodNotAllowed)
 	})
 }
 
@@ -5222,7 +3753,6 @@ func Test_Router_MethodOverride_ContinuesInNewMethodTree(t *testing.T) {
 // between two Use registrations keeps them apart in every method's stack.
 func Test_Router_MethodOverride_UseAfterMethodRoute(t *testing.T) {
 	t.Parallel()
-
 	override := func(c Ctx) error {
 		if m := c.Get("X-HTTP-Method-Override"); m != "" {
 			c.Method(m)
@@ -5266,9 +3796,7 @@ func Test_Router_MethodOverride_UseAfterMethodRoute(t *testing.T) {
 			return app, ""
 		}},
 		{name: "custom ctx", newApp: func(build func(Router)) (*App, string) {
-			app := NewWithCustomCtx(func(app *App) CustomCtx {
-				return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
-			})
+			app := newCustomApp()
 			build(app)
 			return app, ""
 		}},
@@ -5290,59 +3818,24 @@ func Test_Router_MethodOverride_UseAfterMethodRoute(t *testing.T) {
 		for _, tc := range apps {
 			t.Run(layout.name+"/"+tc.name, func(t *testing.T) {
 				t.Parallel()
-
 				app, prefix := tc.newApp(layout.build)
 				target := prefix + "/admin/secret"
+				toGet := apptest.WithHeader("X-HTTP-Method-Override", MethodGet)
+				credentials := apptest.WithHeader(HeaderAuthorization, "Bearer letmein")
 
-				resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
-				require.NoError(t, err)
-				require.Equal(t, StatusUnauthorized, resp.StatusCode, "GET")
-
-				req := httptest.NewRequest(MethodPost, target, http.NoBody)
-				req.Header.Set("X-HTTP-Method-Override", MethodGet)
-				resp, err = app.Test(req)
-				require.NoError(t, err)
-				require.Equal(t, StatusUnauthorized, resp.StatusCode, "POST overridden to GET")
-
-				req = httptest.NewRequest(MethodPost, target, http.NoBody)
-				req.Header.Set("X-HTTP-Method-Override", MethodGet)
-				req.Header.Set(HeaderAuthorization, "Bearer letmein")
-				resp, err = app.Test(req)
-				require.NoError(t, err)
-				require.Equal(t, StatusOK, resp.StatusCode, "POST overridden to GET with credentials")
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
-				require.NoError(t, resp.Body.Close())
-				require.Equal(t, "secret", string(body))
+				// GET
+				routerTestExpect(t, app, target, StatusUnauthorized)
+				// POST overridden to GET
+				routerTestExpect(t, app, apptest.Req(MethodPost, target, toGet), StatusUnauthorized)
+				// POST overridden to GET with credentials
+				apptest.ExpectBody(t, app, apptest.Req(MethodPost, target, toGet, credentials), StatusOK, "secret")
 			})
 		}
 	}
 }
 
-func Test_Router_EscapedStar_IsLiteral(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	app.Get(`/\*`, func(c Ctx) error { return c.SendString("star") })
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/*", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-
-	for _, path := range []string{"/anything", "/a/b/c", "/"} {
-		resp, err = app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusNotFound, resp.StatusCode, "GET %s", path)
-	}
-
-	require.True(t, RoutePatternMatch("/*", `/\*`))
-	require.False(t, RoutePatternMatch("/anything", `/\*`))
-	require.True(t, RoutePatternMatch("/anything", "/*"))
-}
-
 func Test_Router_StrictRouting_ParamTrailingSlash(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name   string
 		path   string
@@ -5359,14 +3852,11 @@ func Test_Router_StrictRouting_ParamTrailingSlash(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New(Config{StrictRouting: tc.strict})
 			app.Get("/a/:id/", func(c Ctx) error { return c.SendString(c.Params("id")) })
 			app.Get("/b/c/", func(c Ctx) error { return c.SendString("c") })
 
-			resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, tc.status, resp.StatusCode)
+			apptest.Expect(t, app, tc.path, tc.status)
 
 			cfg := Config{StrictRouting: tc.strict}
 			pattern := "/a/:id/"
@@ -5382,7 +3872,6 @@ func Test_Router_StrictRouting_ParamTrailingSlash(t *testing.T) {
 // slash stays optional under StrictRouting, as "/admin/:id?" matches "/admin".
 func Test_Router_StrictRouting_PrefixTrailingSlash(t *testing.T) {
 	t.Parallel()
-
 	guard := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
 	handler := func(c Ctx) error { return c.SendString("endpoint") }
 
@@ -5449,7 +3938,6 @@ func Test_Router_StrictRouting_PrefixTrailingSlash(t *testing.T) {
 		for _, fill := range []int{0, 64} {
 			t.Run(fmt.Sprintf("%s/fill=%d", tc.name, fill), func(t *testing.T) {
 				t.Parallel()
-
 				app := New(Config{StrictRouting: true})
 				for i := range fill {
 					app.Get(fmt.Sprintf("/admin/fill/%d", i), handler)
@@ -5459,28 +3947,45 @@ func Test_Router_StrictRouting_PrefixTrailingSlash(t *testing.T) {
 				tc.register(app)
 				app.Get(tc.endpoint, handler)
 
-				for _, path := range tc.guarded {
-					resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-					require.NoError(t, err)
-					require.Equal(t, StatusUnauthorized, resp.StatusCode, path)
-				}
-				for _, path := range tc.missed {
-					resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-					require.NoError(t, err)
-					require.Equal(t, StatusNotFound, resp.StatusCode, path)
-				}
+				routerTestExpectStatus(t, app, MethodGet, StatusUnauthorized, tc.guarded...)
+				routerTestExpectStatus(t, app, MethodGet, StatusNotFound, tc.missed...)
 			})
 		}
 	}
 }
 
+// routerTestExpectRawBody serves fctx through handler and asserts a 200 response
+// whose body is want. It is for request targets httptest rejects, which have to
+// reach the router as raw fasthttp requests; msgAndArgs name the case in a failure.
+func routerTestExpectRawBody(tb testing.TB, handler fasthttp.RequestHandler, fctx *fasthttp.RequestCtx, want string, msgAndArgs ...any) {
+	tb.Helper()
+
+	handler(fctx)
+	require.Equal(tb, StatusOK, fctx.Response.StatusCode(), msgAndArgs...)
+	require.Equal(tb, want, string(fctx.Response.Body()), msgAndArgs...)
+}
+
+// routerTestRawStatus serves a request for target through app's raw handler and returns the status it answers
+// with. It is for targets that have to reach the router as written, such as "//", an absolute URI or "*", which
+// httptest and net/http may reject or rewrite.
+func routerTestRawStatus(app *App, method, target string, disablePathNormalizing bool) int { //nolint:revive // flag-parameter: a property of the request, not a mode of operation
+	var req fasthttp.Request
+	req.Header.SetMethod(method)
+	req.SetRequestURI(target)
+	req.Header.SetHost("example.com")
+	var fctx fasthttp.RequestCtx
+	fctx.Init(&req, nil, nil)
+	if disablePathNormalizing {
+		fctx.Request.URI().DisablePathNormalizing = true
+	}
+	app.Handler()(&fctx)
+	return fctx.Response.StatusCode()
+}
+
 func Test_Router_UnescapePath_PlusIsLiteral(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{UnescapePath: true})
-	app.Get("/u/:name", func(c Ctx) error {
-		return c.SendString(c.Params("name") + "|" + c.Path())
-	})
+	app.Get("/u/:name", func(c Ctx) error { return c.SendString(c.Params("name") + "|" + c.Path()) })
 
 	testCases := []struct {
 		path string
@@ -5495,12 +4000,7 @@ func Test_Router_UnescapePath_PlusIsLiteral(t *testing.T) {
 	// Through the raw handler: net/http rejects malformed escapes.
 	handler := app.Handler()
 	for _, tc := range testCases {
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.Header.SetMethod(MethodGet)
-		fctx.Request.SetRequestURI(tc.path)
-		handler(fctx)
-		require.Equal(t, StatusOK, fctx.Response.StatusCode(), "GET %s", tc.path)
-		require.Equal(t, tc.body, string(fctx.Response.Body()), "GET %s", tc.path)
+		routerTestExpectRawBody(t, handler, routerTestRequestCtx(MethodGet, tc.path), tc.body, "GET %s", tc.path)
 	}
 
 	require.True(t, RoutePatternMatch("/u/john+doe", "/u/john+doe", Config{UnescapePath: true}))
@@ -5518,7 +4018,6 @@ func Test_Router_UnescapePath_PlusIsLiteral(t *testing.T) {
 // raw handler.
 func Test_Router_StrayPercent(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		path string
 		body string
@@ -5539,17 +4038,10 @@ func Test_Router_StrayPercent(t *testing.T) {
 	}
 	for _, caseSensitive := range []bool{false, true} {
 		app := New(Config{CaseSensitive: caseSensitive})
-		app.Use(func(c Ctx) error {
-			return c.SendString(c.Path())
-		})
+		app.Use(func(c Ctx) error { return c.SendString(c.Path()) })
 		handler := app.Handler()
 		for _, tc := range testCases {
-			fctx := &fasthttp.RequestCtx{}
-			fctx.Request.Header.SetMethod(MethodGet)
-			fctx.Request.SetRequestURI(tc.path)
-			handler(fctx)
-			require.Equal(t, StatusOK, fctx.Response.StatusCode(), "CaseSensitive=%v GET %s", caseSensitive, tc.path)
-			require.Equal(t, tc.body, string(fctx.Response.Body()), "CaseSensitive=%v GET %s", caseSensitive, tc.path)
+			routerTestExpectRawBody(t, handler, routerTestRequestCtx(MethodGet, tc.path), tc.body, "CaseSensitive=%v GET %s", caseSensitive, tc.path)
 		}
 	}
 }
@@ -5561,21 +4053,14 @@ func Test_Router_StrayPercent(t *testing.T) {
 // normalization. All of them give the parameter "100%".
 func Test_Router_StrayPercentParamIsStable(t *testing.T) {
 	t.Parallel()
-
 	app := New()
-	app.Get("/files/:name", func(c Ctx) error {
-		return c.SendString(c.Params("name"))
-	})
+	app.Get("/files/:name", func(c Ctx) error { return c.SendString(c.Params("name")) })
 	handler := app.Handler()
 	for _, disable := range []bool{false, true} {
 		for _, target := range []string{"/files/100%", "/files/./100%", "/files/x/../100%", "/files/%2e/100%"} {
-			fctx := &fasthttp.RequestCtx{}
-			fctx.Request.Header.SetMethod(MethodGet)
-			fctx.Request.SetRequestURI(target)
+			fctx := routerTestRequestCtx(MethodGet, target)
 			fctx.Request.URI().DisablePathNormalizing = disable
-			handler(fctx)
-			require.Equal(t, StatusOK, fctx.Response.StatusCode(), "DisablePathNormalizing=%v GET %s", disable, target)
-			require.Equal(t, "100%", string(fctx.Response.Body()), "DisablePathNormalizing=%v GET %s", disable, target)
+			routerTestExpectRawBody(t, handler, fctx, "100%", "DisablePathNormalizing=%v GET %s", disable, target)
 		}
 	}
 }
@@ -5587,7 +4072,6 @@ func Test_Router_StrayPercentParamIsStable(t *testing.T) {
 // httptest rejects these targets, so the requests go through the raw handler.
 func Test_Router_UnrootedTargetIsRooted(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		method, target, path string
 	}{
@@ -5618,18 +4102,8 @@ func Test_Router_UnrootedTargetIsRooted(t *testing.T) {
 				return c.SendString("catch-all")
 			})
 
-			var req fasthttp.Request
-			req.Header.SetMethod(tc.method)
-			req.SetRequestURI(tc.target)
-			req.Header.SetHost("example.com")
-			var fctx fasthttp.RequestCtx
-			fctx.Init(&req, nil, nil)
-			if disable {
-				fctx.Request.URI().DisablePathNormalizing = true
-			}
-			app.Handler()(&fctx)
-
-			require.Equal(t, StatusOK, fctx.Response.StatusCode(), "disable=%v %s %s", disable, tc.method, tc.target)
+			status := routerTestRawStatus(app, tc.method, tc.target, disable)
+			require.Equal(t, StatusOK, status, "disable=%v %s %s", disable, tc.method, tc.target)
 			require.True(t, guardRan, "disable=%v %s %s: root middleware skipped", disable, tc.method, tc.target)
 			require.Equal(t, tc.path, seen, "disable=%v %s %s", disable, tc.method, tc.target)
 		}
@@ -5641,33 +4115,14 @@ func Test_Router_UnrootedTargetIsRooted(t *testing.T) {
 		c.Path("rewritten")
 		return c.Next()
 	})
-	app.Get("/rewritten", func(c Ctx) error {
-		return c.SendString(c.Path())
-	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/original", http.NoBody))
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	require.Equal(t, "/rewritten", string(body))
+	app.Get("/rewritten", func(c Ctx) error { return c.SendString(c.Path()) })
+	apptest.ExpectBody(t, app, "/original", StatusOK, "/rewritten")
 }
 
 // Test_Router_SlashesOnlyTargetIsRoot pins that a target of slashes alone is
 // routed as the root without StrictRouting, as "/a//" is routed as "/a".
 func Test_Router_SlashesOnlyTargetIsRoot(t *testing.T) {
 	t.Parallel()
-
-	serve := func(app *App, target string) int {
-		var req fasthttp.Request
-		req.Header.SetMethod(MethodGet)
-		req.SetRequestURI(target)
-		req.Header.SetHost("example.com")
-		var fctx fasthttp.RequestCtx
-		fctx.Init(&req, nil, nil)
-		app.Handler()(&fctx)
-		return fctx.Response.StatusCode()
-	}
-
 	testCases := []struct {
 		target, path string
 		unescape     bool
@@ -5692,22 +4147,19 @@ func Test_Router_SlashesOnlyTargetIsRoot(t *testing.T) {
 				return c.SendString("catch-all")
 			})
 
-			require.Equal(t, StatusOK, serve(app, tc.target), "%s %s", pattern, tc.target)
+			status := routerTestRawStatus(app, MethodGet, tc.target, false)
+			require.Equal(t, StatusOK, status, "%s %s", pattern, tc.target)
 			require.True(t, guardRan, "%s %s: root middleware skipped", pattern, tc.target)
 			require.Equal(t, tc.path, seen, "%s %s", pattern, tc.target)
 		}
 	}
 
 	// StrictRouting keeps "//" apart from "/"
-	for _, strict := range []bool{false, true} {
+	for strict, want := range map[bool]int{false: StatusOK, true: StatusNotFound} {
 		app := New(Config{StrictRouting: strict})
 		app.Get("/", func(c Ctx) error { return c.SendString("root") })
 
-		want := StatusOK
-		if strict {
-			want = StatusNotFound
-		}
-		require.Equal(t, want, serve(app, "//"), "strict=%v", strict)
+		require.Equal(t, want, routerTestRawStatus(app, MethodGet, "//", false), "strict=%v", strict)
 	}
 
 	// a pattern of slashes alone is the root too
@@ -5715,7 +4167,7 @@ func Test_Router_SlashesOnlyTargetIsRoot(t *testing.T) {
 	app.Use("//", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
 	app.Get("//", func(c Ctx) error { return c.SendString("root") })
 	for _, target := range []string{"/", "//", "///"} {
-		require.Equal(t, StatusUnauthorized, serve(app, target), target)
+		require.Equal(t, StatusUnauthorized, routerTestRawStatus(app, MethodGet, target, false), target)
 	}
 
 	require.True(t, RoutePatternMatch("//", "/"))
@@ -5724,40 +4176,101 @@ func Test_Router_SlashesOnlyTargetIsRoot(t *testing.T) {
 	require.False(t, RoutePatternMatch("//", "/", Config{StrictRouting: true}))
 }
 
-func Test_App_Add_MultipleMethods_Name(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	app.Add([]string{MethodGet, MethodPost}, "/x", func(c Ctx) error { return c.SendString("x") }).Name("x")
-
-	named := map[string]bool{}
-	for _, route := range app.GetRoutes() {
-		if route.Path == "/x" && route.Name == "x" {
-			named[route.Method] = true
+// routerTestRouteNames returns "METHOD:name" for every route registered on app
+// under path, sorted.
+func routerTestRouteNames(app *App, path string) []string {
+	var names []string
+	routes := app.GetRoutes()
+	for i := range routes {
+		if routes[i].Path == path {
+			names = append(names, routes[i].Method+":"+routes[i].Name)
 		}
 	}
-	require.True(t, named[MethodGet], "GET /x must carry the name")
-	require.True(t, named[MethodPost], "POST /x must carry the name")
+	slices.Sort(names)
+	return names
 }
 
-func Test_App_Add_MultipleMethods_NameMergedRoutes(t *testing.T) {
+// Test_App_Name_MultipleMethods checks the names the routes of a registration
+// for several methods end up with, alone and next to earlier registrations of
+// the same path that it merges into or leaves alone.
+func Test_App_Name_MultipleMethods(t *testing.T) {
 	t.Parallel()
-
-	app := New()
 	h := func(c Ctx) error { return c.SendString("ok") }
-
-	app.Get("/x", h).Name("first")
-	app.Post("/x", h).Name("first")
-	app.Add([]string{MethodGet, MethodPost}, "/x", h).Name("second")
-
-	names := map[string]string{}
-	for _, route := range app.GetRoutes() {
-		if route.Path == "/x" {
-			names[route.Method] = route.Name
-		}
+	for _, tc := range []struct {
+		register func(app *App)
+		paths    map[string]string // route name -> the path GetRoute finds for it
+		name     string
+		path     string
+		want     []string // "METHOD:name" of every route under path
+	}{
+		{
+			// GET /x and POST /x must carry the name
+			name: "Add_MultipleMethods_Name", path: "/x", want: []string{"GET:x", "POST:x"},
+			register: func(app *App) {
+				app.Add([]string{MethodGet, MethodPost}, "/x", func(c Ctx) error { return c.SendString("x") }).Name("x")
+			},
+		},
+		{
+			name: "Add_MultipleMethods_NameMergedRoutes", path: "/x",
+			want: []string{"GET:first", "GET:second", "POST:first", "POST:second"},
+			register: func(app *App) {
+				app.Get("/x", h).Name("first")
+				app.Post("/x", h).Name("first")
+				app.Add([]string{MethodGet, MethodPost}, "/x", h).Name("second")
+			},
+		},
+		{
+			// Two groups share a path, so the second registration merges into the first
+			// group's route, and the name it is given belongs to the group it was
+			// registered through.
+			name: "MergedRouteUsesLatestGroup", path: "/api/x", want: []string{"GET:two.second", "POST:two.second"},
+			paths: map[string]string{"two.second": "/api/x", "one.second": ""},
+			register: func(app *App) {
+				one := app.Group("/api")
+				one.Name("one.")
+				two := app.Group("/api")
+				two.Name("two.")
+				one.Add([]string{MethodGet, MethodPost}, "/x", h).Name("first")
+				two.Add([]string{MethodGet, MethodPost}, "/x", h).Name("second")
+			},
+		},
+		{
+			// Registering another path moves /x off the tail of the GET stack, so the
+			// routes above survive rather than being merged into the ones below: they
+			// keep their own name, and only the routes the latest Add created are renamed.
+			name: "OnlyLatestRegistration", path: "/x",
+			want: []string{"GET:first", "GET:second", "POST:first", "POST:second"},
+			register: func(app *App) {
+				app.Get("/x", h).Name("first")
+				app.Post("/x", h).Name("first")
+				app.Get("/y", h)
+				app.Add([]string{MethodGet, MethodPost}, "/x", h).Name("second")
+			},
+		},
+		{
+			// The row above with the methods of the last Add swapped: which method it
+			// finishes on is not allowed to decide whether the older GET route is
+			// renamed too, so looking either name up lands on the registration that
+			// carries it.
+			name: "OnlyLatestRegistration_ReverseMethodOrder", path: "/x",
+			want: []string{"GET:first", "GET:second", "POST:second"}, paths: map[string]string{"first": "/x"},
+			register: func(app *App) {
+				app.Get("/x", h).Name("first")
+				app.Get("/y", h)
+				app.Add([]string{MethodPost, MethodGet}, "/x", h).Name("second")
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			tc.register(app)
+			require.Equal(t, tc.want, routerTestRouteNames(app, tc.path))
+			for name, path := range tc.paths {
+				require.Equal(t, path, app.GetRoute(name).Path, name)
+			}
+		})
 	}
-	require.Equal(t, "second", names[MethodGet])
-	require.Equal(t, "second", names[MethodPost])
 }
 
 // Test_App_Add_MergedRoute_KeepsRegistrationID covers what a merge must not
@@ -5766,7 +4279,6 @@ func Test_App_Add_MultipleMethods_NameMergedRoutes(t *testing.T) {
 // resumes the scan when a handler switches method mid-request.
 func Test_App_Add_MergedRoute_KeepsRegistrationID(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	// Sits ahead of /x in the GET bucket only, so the index the GET match
 	// leaves behind is past the one POST /x holds in its own bucket: carrying
@@ -5781,124 +4293,51 @@ func Test_App_Add_MergedRoute_KeepsRegistrationID(t *testing.T) {
 	})
 	app.Post("/*", func(c Ctx) error { return c.SendString("wildcard") })
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "wildcard", string(body))
+	apptest.ExpectBody(t, app, "/x", StatusOK, "wildcard")
 }
 
-// Test_App_Name_MergedRouteUsesLatestGroup checks the name a merged route ends
-// up with: two groups share a path, so the second registration merges into the
-// first group's route, and the name it is given belongs to the group it was
-// registered through.
-func Test_App_Name_MergedRouteUsesLatestGroup(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	h := func(c Ctx) error { return c.SendString("ok") }
-
-	one := app.Group("/api")
-	one.Name("one.")
-	two := app.Group("/api")
-	two.Name("two.")
-
-	one.Add([]string{MethodGet, MethodPost}, "/x", h).Name("first")
-	two.Add([]string{MethodGet, MethodPost}, "/x", h).Name("second")
-
-	names := map[string]string{}
-	for _, route := range app.GetRoutes() {
-		if route.Path == "/api/x" {
-			require.NotContains(t, names, route.Method, "merged")
-			names[route.Method] = route.Name
-		}
-	}
-	require.Equal(t, "two.second", names[MethodGet])
-	require.Equal(t, "two.second", names[MethodPost])
-	require.Equal(t, "/api/x", app.GetRoute("two.second").Path)
-	require.Empty(t, app.GetRoute("one.second").Path)
-}
-
-func Test_App_Name_OnlyLatestRegistration(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	h := func(c Ctx) error { return c.SendString("ok") }
-
-	app.Get("/x", h).Name("first")
-	app.Post("/x", h).Name("first")
-	// Registering another path moves /x off the tail of the GET stack, so the
-	// routes above survive rather than being merged into the ones below.
-	app.Get("/y", h)
-	app.Add([]string{MethodGet, MethodPost}, "/x", h).Name("second")
-
-	var names []string
-	for _, route := range app.GetRoutes() {
-		if route.Path == "/x" {
-			names = append(names, route.Method+":"+route.Name)
-		}
-	}
-	slices.Sort(names)
-
-	// The earlier registrations keep their own name; only the routes the latest
-	// Add created are renamed.
-	require.Equal(t, []string{"GET:first", "GET:second", "POST:first", "POST:second"}, names)
-}
-
-// Test_App_Name_OnlyLatestRegistration_ReverseMethodOrder is the test above
-// with the methods of the last Add swapped: which method it finishes on is not
-// allowed to decide whether the older GET route is renamed too.
-func Test_App_Name_OnlyLatestRegistration_ReverseMethodOrder(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	h := func(c Ctx) error { return c.SendString("ok") }
-
-	app.Get("/x", h).Name("first")
-	app.Get("/y", h)
-	app.Add([]string{MethodPost, MethodGet}, "/x", h).Name("second")
-
-	var names []string
-	for _, route := range app.GetRoutes() {
-		if route.Path == "/x" {
-			names = append(names, route.Method+":"+route.Name)
-		}
-	}
-	slices.Sort(names)
-
-	require.Equal(t, []string{"GET:first", "GET:second", "POST:second"}, names)
-	// The older route keeps its own name, so looking either name up lands on
-	// the registration that carries it.
-	require.Equal(t, "/x", app.GetRoute("first").Path)
-}
-
+// Test_App_Use_MultiplePrefixes_MountsEachPrefix mounts a sub-app under every
+// prefix of a list, through the app, a group and a domain.
 func Test_App_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
 	t.Parallel()
-
-	app := New()
-	sub := New()
-	sub.Get("/x", func(c Ctx) error { return c.SendString("x") })
-	app.Use([]string{"/a", "/b"}, sub)
-
-	for _, path := range []string{"/a/x", "/b/x"} {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode, "GET %s", path)
+	for _, tc := range []struct {
+		mount func(app, sub *App)
+		name  string
+		route string // the sub-app's route
+		paths []string
+	}{
+		{name: "app", route: "/x", paths: []string{"/a/x", "/b/x"}, mount: func(app, sub *App) { app.Use([]string{"/a", "/b"}, sub) }},
+		{
+			name: "group", route: "/ping", paths: []string{"/g/one/ping", "/g/two/ping"},
+			mount: func(app, sub *App) { app.Group("/g").Use([]string{"/one", "/two"}, sub) },
+		},
+		{
+			// httptest requests carry the host example.com
+			name: "domain", route: "/ping", paths: []string{"/one/ping", "/two/ping"},
+			mount: func(app, sub *App) { app.Domain("example.com").Use([]string{"/one", "/two"}, sub) },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			sub := New()
+			sub.Get(tc.route, func(c Ctx) error { return c.SendString("ok") })
+			app := New()
+			tc.mount(app, sub)
+			for _, path := range tc.paths {
+				apptest.Expect(t, app, path, StatusOK)
+			}
+		})
 	}
 }
 
 func Test_App_Mount_Self_Panics(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	require.Panics(t, func() { app.Use("/x", app) })
 }
 
 func Test_App_RebuildTree_RegistersAutoHead(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/early", func(c Ctx) error { return c.SendString("early") })
 	handler := app.Handler()
@@ -5907,9 +4346,7 @@ func Test_App_RebuildTree_RegistersAutoHead(t *testing.T) {
 	app.RebuildTree()
 
 	for _, path := range []string{"/early", "/late"} {
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.Header.SetMethod(MethodHead)
-		fctx.Request.SetRequestURI(path)
+		fctx := routerTestRequestCtx(MethodHead, path)
 		handler(fctx)
 		require.Equal(t, StatusOK, fctx.Response.StatusCode(), "HEAD %s", path)
 	}
@@ -5917,7 +4354,6 @@ func Test_App_RebuildTree_RegistersAutoHead(t *testing.T) {
 
 func Test_Mount_Nested_AutoHead_SingleStartup(t *testing.T) {
 	t.Parallel()
-
 	nested := New()
 	nested.Get("/x", func(c Ctx) error { return c.SendString("x") })
 	sub := New()
@@ -5929,9 +4365,7 @@ func Test_Mount_Nested_AutoHead_SingleStartup(t *testing.T) {
 	// One startup, then the very first request.
 	handler := app.Handler()
 	for _, method := range []string{MethodHead, MethodGet} {
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.Header.SetMethod(method)
-		fctx.Request.SetRequestURI("/a/b/x")
+		fctx := routerTestRequestCtx(method, "/a/b/x")
 		handler(fctx)
 		require.Equal(t, StatusOK, fctx.Response.StatusCode(), "%s /a/b/x", method)
 	}
@@ -5941,17 +4375,21 @@ func Test_Mount_Nested_AutoHead_SingleStartup(t *testing.T) {
 // runs where its GET route does, so a Get guard covers HEAD too.
 func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 	t.Parallel()
-
 	guard := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
 	next := func(c Ctx) error { return c.Next() }
 	endpoint := func(c Ctx) error {
 		c.Set("X-Secret", "1")
 		return c.SendString("secret")
 	}
+	// the guard answers GET and HEAD alike, and the endpoint behind it never runs
+	guardedGet := routerReq{path: "/admin/secret", status: StatusUnauthorized, header: "X-Secret"}
+	guardedHead := routerReq{method: MethodHead, path: "/admin/secret", status: StatusUnauthorized, header: "X-Secret"}
+	guarded := []routerReq{guardedGet, guardedHead}
 
 	for _, tc := range []struct {
 		register func(app *App)
 		name     string
+		want     []routerReq // the answers; guarded when left out
 	}{
 		{name: "mounted app", register: func(app *App) {
 			app.Get("/admin/*", guard)
@@ -6019,94 +4457,53 @@ func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 			app.Get("/admin/*", guard)
 			app.Get("/admin/secret", endpoint)
 		}},
+		{name: "catch-all after Get", register: func(app *App) {
+			app.Get("/hello", endpoint)
+			app.Use(func(c Ctx) error { return c.SendStatus(StatusNotFound) })
+		}, want: []routerReq{{method: MethodHead, path: "/hello"}}},
+		{name: "earlier Head on another path stays first", register: func(app *App) {
+			app.Head("/:name", func(c Ctx) error { return c.SendStatus(StatusTeapot) })
+			app.Get("/hello", endpoint)
+		}, want: []routerReq{{method: MethodHead, path: "/hello", status: StatusTeapot}}},
+		{name: "late Head replaces every copy", register: func(app *App) {
+			app.Get("/a", endpoint)
+			app.Use(next)
+			app.Get("/a", endpoint)
+			app.Handler()
+
+			app.Head("/a", func(c Ctx) error { return c.SendStatus(StatusTeapot) })
+			app.RebuildTree()
+		}, want: []routerReq{{method: MethodHead, path: "/a", status: StatusTeapot}}},
+		{name: "Get merged after startup", register: func(app *App) {
+			app.Get("/admin/*", next)
+			app.Handler()
+
+			app.Get("/admin/*", guard)
+			app.Get("/admin/secret", endpoint)
+			app.RebuildTree()
+		}, want: []routerReq{guardedHead}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			tc.register(app)
+			want := tc.want
+			if want == nil {
+				want = guarded
+			}
 
 			// Twice: the second startup sees any mount already expanded.
 			for range 2 {
-				for _, method := range []string{MethodGet, MethodHead} {
-					resp, err := app.Test(httptest.NewRequest(method, "/admin/secret", http.NoBody))
-					require.NoError(t, err)
-					require.NoError(t, resp.Body.Close())
-					require.Equal(t, StatusUnauthorized, resp.StatusCode, method)
-					require.Empty(t, resp.Header.Get("X-Secret"), method)
-				}
+				routerTestExpectAll(t, app, want...)
 			}
 		})
 	}
-
-	t.Run("catch-all after Get", func(t *testing.T) {
-		t.Parallel()
-
-		app := New()
-		app.Get("/hello", endpoint)
-		app.Use(func(c Ctx) error { return c.SendStatus(StatusNotFound) })
-
-		resp, err := app.Test(httptest.NewRequest(MethodHead, "/hello", http.NoBody))
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, StatusOK, resp.StatusCode)
-	})
-
-	t.Run("earlier Head on another path stays first", func(t *testing.T) {
-		t.Parallel()
-
-		app := New()
-		app.Head("/:name", func(c Ctx) error { return c.SendStatus(StatusTeapot) })
-		app.Get("/hello", endpoint)
-
-		resp, err := app.Test(httptest.NewRequest(MethodHead, "/hello", http.NoBody))
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, StatusTeapot, resp.StatusCode)
-	})
-
-	t.Run("late Head replaces every copy", func(t *testing.T) {
-		t.Parallel()
-
-		app := New()
-		app.Get("/a", endpoint)
-		app.Use(next)
-		app.Get("/a", endpoint)
-		app.Handler()
-
-		app.Head("/a", func(c Ctx) error { return c.SendStatus(StatusTeapot) })
-		app.RebuildTree()
-
-		resp, err := app.Test(httptest.NewRequest(MethodHead, "/a", http.NoBody))
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, StatusTeapot, resp.StatusCode)
-	})
-
-	t.Run("Get merged after startup", func(t *testing.T) {
-		t.Parallel()
-
-		app := New()
-		app.Get("/admin/*", next)
-		app.Handler()
-
-		app.Get("/admin/*", guard)
-		app.Get("/admin/secret", endpoint)
-		app.RebuildTree()
-
-		resp, err := app.Test(httptest.NewRequest(MethodHead, "/admin/secret", http.NoBody))
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, StatusUnauthorized, resp.StatusCode)
-		require.Empty(t, resp.Header.Get("X-Secret"))
-	})
 }
 
 // Test_App_Mount_SamePrefixKeepsAutoHead pins that a second mount on one prefix
 // does not cost the first one its automatic HEAD routes.
 func Test_App_Mount_SamePrefixKeepsAutoHead(t *testing.T) {
 	t.Parallel()
-
 	guards := New()
 	guards.Get("/admin/*", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
 	api := New()
@@ -6122,9 +4519,7 @@ func Test_App_Mount_SamePrefixKeepsAutoHead(t *testing.T) {
 	// One startup: a second one would fill the gap in the expanded stack.
 	handler := app.Handler()
 	for _, method := range []string{MethodGet, MethodHead} {
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.Header.SetMethod(method)
-		fctx.Request.SetRequestURI("/api/admin/flush")
+		fctx := routerTestRequestCtx(method, "/api/admin/flush")
 		handler(fctx)
 		require.Equal(t, StatusUnauthorized, fctx.Response.StatusCode(), method)
 		require.Empty(t, fctx.Response.Header.Peek("X-Secret"), method)
@@ -6135,7 +4530,6 @@ func Test_App_Mount_SamePrefixKeepsAutoHead(t *testing.T) {
 // by a nested mount on the same prefix still has its own mounts expanded.
 func Test_App_Mount_NestedRootMounts(t *testing.T) {
 	t.Parallel()
-
 	// Which of the two apps the app list keeps depends on map iteration order.
 	for range 20 {
 		inner := New()
@@ -6146,10 +4540,7 @@ func Test_App_Mount_NestedRootMounts(t *testing.T) {
 		app.Use(site)
 
 		for _, method := range []string{MethodGet, MethodHead} {
-			resp, err := app.Test(httptest.NewRequest(method, "/x", http.NoBody))
-			require.NoError(t, err)
-			require.NoError(t, resp.Body.Close())
-			require.Equal(t, StatusOK, resp.StatusCode, method)
+			routerTestExpect(t, app, apptest.Req(method, "/x"), StatusOK)
 		}
 	}
 }
@@ -6158,7 +4549,6 @@ func Test_App_Mount_NestedRootMounts(t *testing.T) {
 // the guard's path does not replace the guard's own HEAD route in a displaced app.
 func Test_App_Mount_DisplacedAppKeepsHeadGuard(t *testing.T) {
 	t.Parallel()
-
 	// Which app the app list keeps at "/admin" depends on map iteration order.
 	for range 100 {
 		logger := New()
@@ -6177,17 +4567,13 @@ func Test_App_Mount_DisplacedAppKeepsHeadGuard(t *testing.T) {
 		app.Use("/", pages)
 
 		for _, method := range []string{MethodGet, MethodHead} {
-			resp, err := app.Test(httptest.NewRequest(method, "/admin/flush", http.NoBody))
-			require.NoError(t, err)
-			require.NoError(t, resp.Body.Close())
-			require.Equal(t, StatusUnauthorized, resp.StatusCode, method)
+			routerTestExpect(t, app, apptest.Req(method, "/admin/flush"), StatusUnauthorized)
 		}
 	}
 }
 
 func Test_Router_PathOverride_ContinuesInNewBucket(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/zzz/other", func(c Ctx) error { return c.SendString("other") })
 	app.Use(func(c Ctx) error {
@@ -6198,38 +4584,33 @@ func Test_Router_PathOverride_ContinuesInNewBucket(t *testing.T) {
 	})
 	app.Get("/aaa/x", func(c Ctx) error { return c.SendString("aaa x") })
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/zzz/y", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "aaa x", string(body))
+	apptest.ExpectBody(t, app, "/zzz/y", StatusOK, "aaa x")
+}
+
+// routerTestNote returns a middleware that counts its runs under name in ran and passes the request on.
+func routerTestNote(ran map[string]int, name string) Handler {
+	return func(c Ctx) error {
+		ran[name]++
+		return c.Next()
+	}
 }
 
 // Test_Router_PathOverride_FromPrefixedRoute pins that a path change made by a
 // route filed under its own prefix bucket resumes with the routes registered after it.
 func Test_Router_PathOverride_FromPrefixedRoute(t *testing.T) {
 	t.Parallel()
-
 	for _, ahead := range []int{0, 1, 3, 6, 13} {
 		for _, global := range []bool{false, true} {
 			t.Run(fmt.Sprintf("ahead=%d/global=%v", ahead, global), func(t *testing.T) {
 				t.Parallel()
-
 				app := New()
-				var ran []string
-				note := func(name string) Handler {
-					return func(c Ctx) error {
-						ran = append(ran, name)
-						return c.Next()
-					}
-				}
+				ran := map[string]int{}
 				deny := func(c Ctx) error { return c.SendStatus(StatusForbidden) }
 
-				app.Use("/admin", note("early"))
+				app.Use("/admin", routerTestNote(ran, "early"))
 				for range ahead {
-					app.Use(note("global"))
-					app.Use("/v1", note("v1"))
+					app.Use(routerTestNote(ran, "global"))
+					app.Use("/v1", routerTestNote(ran, "v1"))
 				}
 				app.Use("/v1", func(c Ctx) error {
 					c.Path(strings.TrimPrefix(c.Path(), "/v1"))
@@ -6243,25 +4624,16 @@ func Test_Router_PathOverride_FromPrefixedRoute(t *testing.T) {
 				app.Get("/admin/report", func(c Ctx) error { return c.SendString("report") })
 				app.Get("/public/page", func(c Ctx) error { return c.SendString("page") })
 
-				resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/admin/report", http.NoBody))
-				require.NoError(t, err)
-				require.Equal(t, StatusForbidden, resp.StatusCode)
-				require.NoError(t, resp.Body.Close())
+				routerTestExpect(t, app, "/v1/admin/report", StatusForbidden)
 				require.NotContains(t, ran, "early")
-				require.Equal(t, ahead, countOf(ran, "global"))
+				require.Equal(t, ahead, ran["global"])
 
 				// The handler heading its bucket is not skipped either.
-				resp, err = app.Test(httptest.NewRequest(MethodGet, "/v1/public/page", http.NoBody))
-				require.NoError(t, err)
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
-				require.NoError(t, resp.Body.Close())
 				if global {
-					require.Equal(t, StatusForbidden, resp.StatusCode)
-					return
+					routerTestExpect(t, app, "/v1/public/page", StatusForbidden)
+				} else {
+					apptest.ExpectBody(t, app, "/v1/public/page", StatusOK, "page")
 				}
-				require.Equal(t, StatusOK, resp.StatusCode)
-				require.Equal(t, "page", string(body))
 			})
 		}
 	}
@@ -6271,7 +4643,6 @@ func Test_Router_PathOverride_FromPrefixedRoute(t *testing.T) {
 // by itself, not by its copy under another mount prefix.
 func Test_Router_PathOverride_AppMountedTwice(t *testing.T) {
 	t.Parallel()
-
 	// No HEAD copies, so a miss is a 404 rather than a 405.
 	sub := New(Config{DisableHeadAutoRegister: true})
 	sub.Use(func(c Ctx) error {
@@ -6291,23 +4662,13 @@ func Test_Router_PathOverride_AppMountedTwice(t *testing.T) {
 	app.Use("/ccc", sub)
 
 	// Registered after the /aaa mount, so the guard runs.
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/aaa/x", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusForbidden, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-
+	routerTestExpect(t, app, "/aaa/x", StatusForbidden)
 	// Registered before the /ccc mount, so neither the guard nor /bbb runs.
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ccc/x", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
+	routerTestExpect(t, app, "/ccc/x", StatusNotFound)
 }
 
-// Test_Router_MethodOverride_FromRouteOfOneMethod covers a method change made by
-// a route the new method holds no copy of.
 func Test_Router_MethodOverride_GetAfterRouteOfSeveralMethods(t *testing.T) {
 	t.Parallel()
-
 	override := func(c Ctx) error {
 		c.Method(c.Get("X-HTTP-Method-Override"))
 		return c.Next()
@@ -6318,38 +4679,28 @@ func Test_Router_MethodOverride_GetAfterRouteOfSeveralMethods(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			register(app)
 			app.Get("/admin/*", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
 			app.Get("/admin/flush", func(c Ctx) error { return c.SendString("flushed") })
 
-			req := httptest.NewRequest(MethodPost, "/admin/flush", http.NoBody)
-			req.Header.Set("X-HTTP-Method-Override", MethodGet)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.NoError(t, resp.Body.Close())
-			require.Equal(t, StatusUnauthorized, resp.StatusCode)
+			req := apptest.Req(MethodPost, "/admin/flush", apptest.WithHeader("X-HTTP-Method-Override", MethodGet))
+			routerTestExpect(t, app, req, StatusUnauthorized)
 		})
 	}
 }
 
+// Test_Router_MethodOverride_FromRouteOfOneMethod covers a method change made by
+// a route the new method holds no copy of.
 func Test_Router_MethodOverride_FromRouteOfOneMethod(t *testing.T) {
 	t.Parallel()
-
-	build := func(guarded bool, override Handler) (*App, *[]string) {
+	build := func(guarded bool, override Handler) (*App, map[string]int) {
 		app := New()
-		ran := new([]string)
-		note := func(name string) Handler {
-			return func(c Ctx) error {
-				*ran = append(*ran, name)
-				return c.Next()
-			}
-		}
+		ran := map[string]int{}
 
-		app.Use(note("global"))
-		app.All("/admin/*", note("all"))
-		app.Get("/other", note("other"))
+		app.Use(routerTestNote(ran, "global"))
+		app.All("/admin/*", routerTestNote(ran, "all"))
+		app.Get("/other", routerTestNote(ran, "other"))
 		app.Post("/*", override)
 		if guarded {
 			app.Use("/admin", func(c Ctx) error { return c.SendStatus(StatusForbidden) })
@@ -6381,21 +4732,14 @@ func Test_Router_MethodOverride_FromRouteOfOneMethod(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			app, _ := build(true, tc.override)
-			resp, err := app.Test(httptest.NewRequest(MethodPost, tc.target, http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, StatusForbidden, resp.StatusCode)
-			require.NoError(t, resp.Body.Close())
+			routerTestExpect(t, app, apptest.Req(MethodPost, tc.target), StatusForbidden)
 
 			app, ran := build(false, tc.override)
-			resp, err = app.Test(httptest.NewRequest(MethodPost, tc.target, http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, StatusOK, resp.StatusCode)
-			require.NoError(t, resp.Body.Close())
+			routerTestExpect(t, app, apptest.Req(MethodPost, tc.target), StatusOK)
 			// Shared routes ahead of the override do not run twice.
-			require.Equal(t, 1, countOf(*ran, "global"))
-			require.LessOrEqual(t, countOf(*ran, "all"), 1)
+			require.Equal(t, 1, ran["global"])
+			require.LessOrEqual(t, ran["all"], 1)
 		})
 	}
 }
@@ -6404,7 +4748,6 @@ func Test_Router_MethodOverride_FromRouteOfOneMethod(t *testing.T) {
 // copy of a GET route does not mark where that route stands.
 func Test_Router_MethodOverride_IgnoresAutoHeadRoute(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/admin/*", func(c Ctx) error {
 		c.Method(MethodHead)
@@ -6413,25 +4756,11 @@ func Test_Router_MethodOverride_IgnoresAutoHeadRoute(t *testing.T) {
 	app.Use("/admin", func(c Ctx) error { return c.SendStatus(StatusForbidden) })
 	app.Get("/admin/x", func(c Ctx) error { return c.SendString("x") })
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/admin/x", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusForbidden, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-}
-
-func countOf(values []string, value string) int {
-	n := 0
-	for _, v := range values {
-		if v == value {
-			n++
-		}
-	}
-	return n
+	routerTestExpect(t, app, "/admin/x", StatusForbidden)
 }
 
 func Test_Router_Constraints_MixedCaseNames(t *testing.T) {
 	t.Parallel()
-
 	// Built-in constraint names are matched case-insensitively, whatever the
 	// pattern spells them, and through every entry point that parses one.
 	//nolint:usestdlibvars // route constraint names, not go/constant kinds
@@ -6446,7 +4775,6 @@ func Test_Router_Constraints_MixedCaseNames(t *testing.T) {
 	for _, name := range names {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
 			app := New()
 			pattern := "/:id<" + name + ">"
 			app.Get(pattern, func(c Ctx) error { return c.SendString(c.Params("id")) })
@@ -6456,13 +4784,8 @@ func Test_Router_Constraints_MixedCaseNames(t *testing.T) {
 			app.Use("/api", sub)
 
 			bad := "/" + reject[name]
-			resp, err := app.Test(httptest.NewRequest(MethodGet, bad, http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, StatusNotFound, resp.StatusCode, "%s did not enforce %q", pattern, bad)
-
-			resp, err = app.Test(httptest.NewRequest(MethodGet, "/api"+bad, http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, StatusNotFound, resp.StatusCode, "mounted %s did not enforce %q", pattern, bad)
+			apptest.Expect(t, app, bad, StatusNotFound)
+			apptest.Expect(t, app, "/api"+bad, StatusNotFound)
 
 			require.False(t, RoutePatternMatch(bad, pattern), "RoutePatternMatch accepted %q for %s", bad, pattern)
 		})
@@ -6471,7 +4794,6 @@ func Test_Router_Constraints_MixedCaseNames(t *testing.T) {
 
 func Test_App_AutoHead_PanickingHookLeavesScanIncomplete(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	fail := true
 	// Only the synthesized companion fails, so registration itself succeeds.
@@ -6489,9 +4811,7 @@ func Test_App_AutoHead_PanickingHookLeavesScanIncomplete(t *testing.T) {
 	fail = false
 	app.RebuildTree()
 
-	resp, err := app.Test(httptest.NewRequest(MethodHead, "/ping", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, apptest.Req(MethodHead, "/ping"), StatusOK)
 }
 
 // Test_Route_Fingerprint_MatchesMatch is the safety contract of the static-path
@@ -6505,21 +4825,15 @@ func Test_App_AutoHead_PanickingHookLeavesScanIncomplete(t *testing.T) {
 // the matcher it stands in for.
 func Test_Route_Fingerprint_MatchesMatch(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Use("/mw", func(c Ctx) error { return c.Next() })
 	app.Use(func(c Ctx) error { return c.Next() })
-	app.Get("/", func(Ctx) error { return nil })
-	app.Get("/users", func(Ctx) error { return nil })
-	app.Get("/users/list", func(Ctx) error { return nil })
-	app.Get("/users/:id", func(Ctx) error { return nil })
-	app.Get("/users/:id/posts", func(Ctx) error { return nil })
-	app.Get("/files/*", func(Ctx) error { return nil })
-	app.Get("/opt/:name?", func(Ctx) error { return nil })
-	app.Get("/long/static/path/segment", func(Ctx) error { return nil })
-	app.Get("/a", func(Ctx) error { return nil })
-	app.Get("/ab", func(Ctx) error { return nil })
-	app.Get("/abc", func(Ctx) error { return nil })
+	for _, pattern := range []string{
+		"/", "/users", "/users/list", "/users/:id", "/users/:id/posts", "/files/*",
+		"/opt/:name?", "/long/static/path/segment", "/a", "/ab", "/abc",
+	} {
+		app.Get(pattern, testEmptyHandler)
+	}
 
 	paths := []string{
 		"/", "/users", "/users/", "/users/list", "/users/42", "/users/42/posts",
@@ -6548,7 +4862,6 @@ func Test_Route_Fingerprint_MatchesMatch(t *testing.T) {
 // hash equal whatever their type, and 0 is reserved for "no fingerprint".
 func Test_PathFingerprint_Contract(t *testing.T) {
 	t.Parallel()
-
 	for _, path := range []string{
 		"", "/", "/a", "/ab", "/abcdefg", "/abcdefgh", "/abcdefghi",
 		"/users/list", "/long/static/path/segment/that/exceeds/one/word",
@@ -6564,6 +4877,18 @@ func Test_PathFingerprint_Contract(t *testing.T) {
 	require.NotEqual(t, pathFingerprint("/routes/998"), pathFingerprint("/routes/999"))
 }
 
+// routerTestStatics registers n static GET routes, prefix+"0" through
+// prefix+"<n-1>", answered by handler: enough of them put one tree bucket past
+// the thresholds at which it carries a filter.
+func routerTestStatics(app *App, prefix string, n int, handler func(Ctx) error) {
+	for i := range n {
+		app.Get(prefix+strconv.Itoa(i), handler)
+	}
+}
+
+// routerTestPathHandler answers with the path it was asked for.
+func routerTestPathHandler(c Ctx) error { return c.SendString(c.Path()) }
+
 // Test_RouteTree_Fingerprints_LineUp pins that a bucket's filter is the one
 // built from that same bucket. next() indexes both with the same counter, so a
 // slice that drifted by one entry would reject live routes; maxLen must come
@@ -6571,17 +4896,13 @@ func Test_PathFingerprint_Contract(t *testing.T) {
 // The heads are held to the same line-up.
 func Test_RouteTree_Fingerprints_LineUp(t *testing.T) {
 	t.Parallel()
-
 	app := New()
-	for i := range fingerprintMinBucket * 2 {
-		app.Get("/routes/"+strconv.Itoa(i), func(Ctx) error { return nil })
-	}
+	routerTestStatics(app, "/routes/", fingerprintMinBucket*2, testEmptyHandler)
 	app.Use("/routes", func(c Ctx) error { return c.Next() })
-	app.Get("/routes/:id/edit", func(Ctx) error { return nil })
+	app.Get("/routes/:id/edit", testEmptyHandler)
 	app.RebuildTree()
 
-	treeHash := int('/')<<16 | int('r')<<8 | int('o')
-	routes, filter := app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
+	routes, filter := routerTestBucket(app, MethodGet, "/ro")
 	require.NotNil(t, filter, "a bucket this size must carry a filter")
 	require.Len(t, filter.prints, len(routes))
 	require.Len(t, filter.heads, len(routes))
@@ -6598,13 +4919,11 @@ func Test_RouteTree_Fingerprints_LineUp(t *testing.T) {
 // nor hashes its detection paths, and scans its routes directly.
 func Test_RouteTree_Fingerprints_SmallBucketNil(t *testing.T) {
 	t.Parallel()
-
 	app := New()
-	app.Get("/hello", func(Ctx) error { return nil })
+	app.Get("/hello", testEmptyHandler)
 	app.RebuildTree()
 
-	treeHash := int('/')<<16 | int('h')<<8 | int('e')
-	routes, filter := app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
+	routes, filter := routerTestBucket(app, MethodGet, "/he")
 	require.Equal(t, []string{"/hello"}, routeTreePaths(routes))
 	require.Nil(t, filter, "a bucket below fingerprintMinBucket must not carry a filter")
 }
@@ -6615,26 +4934,22 @@ func Test_RouteTree_Fingerprints_SmallBucketNil(t *testing.T) {
 // hash its path. Its filter still carries heads, which do reject param routes.
 func Test_RouteTree_Fingerprints_CountsStaticRoutes(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	for i := range fingerprintMinBucket * 2 {
-		app.Get("/routes/:id/v"+strconv.Itoa(i), func(Ctx) error { return nil })
+		app.Get("/routes/:id/v"+strconv.Itoa(i), testEmptyHandler)
 	}
-	for i := range fingerprintMinBucket - 1 {
-		app.Get("/routes/"+strconv.Itoa(i), func(Ctx) error { return nil })
-	}
+	routerTestStatics(app, "/routes/", fingerprintMinBucket-1, testEmptyHandler)
 	app.RebuildTree()
 
-	treeHash := int('/')<<16 | int('r')<<8 | int('o')
-	routes, filter := app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
+	routes, filter := routerTestBucket(app, MethodGet, "/ro")
 	require.Len(t, routes, fingerprintMinBucket*3-1)
 	require.NotNil(t, filter, "a bucket of filterMinBucket routes must carry a filter")
 	require.Len(t, filter.heads, len(routes))
 	require.Nil(t, filter.prints, "fewer static routes than fingerprintMinBucket must not carry fingerprints")
 
-	app.Get("/routes/"+strconv.Itoa(fingerprintMinBucket-1), func(Ctx) error { return nil })
+	app.Get("/routes/"+strconv.Itoa(fingerprintMinBucket-1), testEmptyHandler)
 	app.RebuildTree()
-	_, filter = app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
+	_, filter = routerTestBucket(app, MethodGet, "/ro")
 	require.NotNil(t, filter, "a bucket of filterMinBucket routes must carry a filter")
 	require.NotNil(t, filter.prints, "fingerprintMinBucket static routes must carry fingerprints")
 }
@@ -6644,11 +4959,8 @@ func Test_RouteTree_Fingerprints_CountsStaticRoutes(t *testing.T) {
 // static route in the bucket, and once for anything that scans past a route.
 func Test_Router_Fingerprint_HashedOnDemand(t *testing.T) {
 	t.Parallel()
-
 	app := New()
-	for i := range fingerprintMinBucket * 2 {
-		app.Get("/routes/"+strconv.Itoa(i), func(Ctx) error { return nil })
-	}
+	routerTestStatics(app, "/routes/", fingerprintMinBucket*2, testEmptyHandler)
 	app.startupProcess()
 
 	last := "/routes/" + strconv.Itoa(fingerprintMinBucket*2-1)
@@ -6664,9 +4976,7 @@ func Test_Router_Fingerprint_HashedOnDemand(t *testing.T) {
 		{path: miss, wantPrint: pathFingerprint(miss), matched: false},
 		{path: long, wantPrint: 0, matched: false},
 	} {
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.Header.SetMethod(MethodGet)
-		fctx.Request.SetRequestURI(tc.path)
+		fctx := routerTestRequestCtx(MethodGet, tc.path)
 		ctx := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck,forcetypeassert // default app returns DefaultCtx
 
 		matched, err := app.next(ctx)
@@ -6682,45 +4992,126 @@ func Test_Router_Fingerprint_HashedOnDemand(t *testing.T) {
 }
 
 // Test_Router_LargeBucket_RoutesCorrectly drives the filter through the real
-// request path, with every route shape sharing one oversized bucket so the
-// fingerprint scan is the thing deciding what runs.
+// request path: in every row the routes share one oversized bucket, so the
+// fingerprint scan is the thing deciding what runs. Rows with mw put a /routes
+// middleware in front that must still run for every request.
 func Test_Router_LargeBucket_RoutesCorrectly(t *testing.T) {
 	t.Parallel()
-
-	app := New()
-	var seen []string
-	app.Use("/routes", func(c Ctx) error {
-		seen = append(seen, "mw")
-		return c.Next()
-	})
-	for i := range fingerprintMinBucket * 4 {
-		app.Get("/routes/"+strconv.Itoa(i), func(c Ctx) error { return c.SendString(c.Path()) })
+	n := fingerprintMinBucket * 4
+	last, past := "/routes/"+strconv.Itoa(n-1), "/routes/"+strconv.Itoa(n)
+	longest, name, long := "/routes/"+strings.Repeat("s", 40), strings.Repeat("n", 64), strings.Repeat("e", 64)
+	edit := func(c Ctx) error { return c.SendString("edit:" + c.Params("id")) }
+	newCustom := func() *App {
+		return NewWithCustomCtx(func(app *App) CustomCtx {
+			return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
+		})
 	}
-	app.Get("/routes/:id/edit", func(c Ctx) error { return c.SendString("edit:" + c.Params("id")) })
-	app.Get("/routes/files/*", func(c Ctx) error { return c.SendString("star:" + c.Params("*")) })
-
-	last := "/routes/" + strconv.Itoa(fingerprintMinBucket*4-1)
 	for _, tc := range []struct {
-		path, want string
-		status     int
+		register func(app *App)
+		newApp   func() *App // New when nil
+		name     string
+		requests []routerReq
+		mw       bool
 	}{
-		{path: "/routes/0", want: "/routes/0", status: StatusOK},
-		{path: last, want: last, status: StatusOK},
-		{path: "/routes/7/edit", want: "edit:7", status: StatusOK},
-		{path: "/routes/files/a/b", want: "star:a/b", status: StatusOK},
-		{path: "/routes/missing", status: StatusNotFound},
-		{path: "/routes/" + strconv.Itoa(fingerprintMinBucket*4), status: StatusNotFound},
+		{
+			// every route shape in the one bucket
+			name: "AllShapes", mw: true,
+			register: func(app *App) {
+				routerTestStatics(app, "/routes/", n, routerTestPathHandler)
+				app.Get("/routes/:id/edit", edit)
+				app.Get("/routes/files/*", func(c Ctx) error { return c.SendString("star:" + c.Params("*")) })
+			},
+			requests: []routerReq{
+				{path: "/routes/0", body: "/routes/0", status: StatusOK},
+				{path: last, body: last, status: StatusOK},
+				{path: "/routes/7/edit", body: "edit:7", status: StatusOK},
+				{path: "/routes/files/a/b", body: "star:a/b", status: StatusOK},
+				{path: "/routes/missing", status: StatusNotFound},
+				{path: past, status: StatusNotFound},
+			},
+		},
+		{
+			// the default case-insensitive matching: the detection path is folded before it is
+			// hashed, and routes are registered folded, so the two fingerprints have to agree
+			name: "CaseInsensitive",
+			register: func(app *App) {
+				routerTestStatics(app, "/Routes/Item", fingerprintMinBucket*2, func(c Ctx) error { return c.SendString("hit") })
+			},
+			requests: []routerReq{{path: "/Routes/Item3", status: StatusOK}, {path: "/routes/item3", status: StatusOK}, {path: "/ROUTES/ITEM3", status: StatusOK}},
+		},
+		{
+			// requests longer than every static route in the bucket, which the scan rejects
+			// without hashing: they must still reach the param route behind the statics, a
+			// static route as long as the bound must still match, and a miss is a 404
+			name: "LongPath",
+			register: func(app *App) {
+				routerTestStatics(app, "/routes/", fingerprintMinBucket*2, routerTestPathHandler)
+				app.Get(longest, routerTestPathHandler)
+				app.Get("/routes/:name", func(c Ctx) error { return c.SendString("name:" + c.Params("name")) })
+			},
+			requests: []routerReq{
+				{path: longest, body: longest, status: StatusOK},
+				{path: "/routes/" + name, body: "name:" + name, status: StatusOK},
+				{path: "/routes/" + name + "/deeper", status: StatusNotFound},
+			},
+		},
+		{
+			// the scan running off the end of a bucket made entirely of static routes: the
+			// fingerprint loop rejects every entry, the scan stops without loading a Route,
+			// and the request is a 404 rather than a match against the last route in the bucket
+			name:     "StaticOnlyMiss",
+			register: func(app *App) { routerTestStatics(app, "/routes/", n, routerTestPathHandler) },
+			requests: []routerReq{{path: "/routes/missing", status: StatusNotFound}, {path: last, status: StatusOK}},
+		},
+		{
+			// nextCustom, the scan a custom context takes, where the fingerprint is hashed per
+			// call rather than kept on the context: same bucket shapes and outcomes as the
+			// default context, including the long paths the scan rejects without hashing
+			name: "CustomCtx", newApp: newCustom, mw: true,
+			register: func(app *App) {
+				routerTestStatics(app, "/routes/", n, routerTestPathHandler)
+				app.Get("/routes/:id/edit", edit)
+			},
+			requests: []routerReq{
+				{path: "/routes/0", body: "/routes/0", status: StatusOK},
+				{path: last, body: last, status: StatusOK},
+				{path: "/routes/9/edit", body: "edit:9", status: StatusOK},
+				{path: "/routes/" + long + "/edit", body: "edit:" + long, status: StatusOK},
+				{path: "/routes/missing", status: StatusNotFound},
+				{path: "/routes/" + strings.Repeat("m", 64), status: StatusNotFound},
+			},
+		},
+		{
+			// the custom-context miss with no non-static route after the statics runs the scan off the end
+			name: "CustomCtx_StaticOnlyMiss", newApp: newCustom,
+			register: func(app *App) {
+				routerTestStatics(app, "/routes/", fingerprintMinBucket*2, func(c Ctx) error { return c.SendString("ok") })
+			},
+			requests: []routerReq{{path: "/routes/missing", status: StatusNotFound}},
+		},
 	} {
-		seen = nil
-		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
-		require.NoError(t, err, tc.path)
-		require.Equal(t, tc.status, resp.StatusCode, tc.path)
-		require.Equal(t, []string{"mw"}, seen, "middleware must still run for %s", tc.path)
-		if tc.want != "" {
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, string(body), tc.path)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			if tc.newApp != nil {
+				app = tc.newApp()
+			}
+			var seen []string
+			if tc.mw {
+				app.Use("/routes", func(c Ctx) error {
+					seen = append(seen, "mw")
+					return c.Next()
+				})
+			}
+			tc.register(app)
+			for _, r := range tc.requests {
+				seen = nil
+				routerTestExpectAll(t, app, r)
+				if tc.mw {
+					require.Equal(t, []string{"mw"}, seen, "middleware must still run for %s", r.path)
+				}
+			}
+		})
 	}
 }
 
@@ -6730,168 +5121,23 @@ func Test_Router_LargeBucket_RoutesCorrectly(t *testing.T) {
 // endpoint would turn a match into a 404 only when that config is on.
 func Test_Router_LargeBucket_SkipUnmatchedRoutes(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{SkipUnmatchedRoutes: true})
 	ran := 0
 	app.Use("/routes", func(c Ctx) error {
 		ran++
 		return c.Next()
 	})
-	for i := range fingerprintMinBucket * 4 {
-		app.Get("/routes/"+strconv.Itoa(i), func(c Ctx) error { return c.SendString(c.Path()) })
-	}
+	routerTestStatics(app, "/routes/", fingerprintMinBucket*4, routerTestPathHandler)
 	app.Get("/routes/:id/edit", func(c Ctx) error { return c.SendString("edit:" + c.Params("id")) })
 
 	last := "/routes/" + strconv.Itoa(fingerprintMinBucket*4-1)
-	for _, tc := range []struct {
-		path, want string
-		status     int
-	}{
-		{path: "/routes/0", want: "/routes/0", status: StatusOK},
-		{path: last, want: last, status: StatusOK},
-		{path: "/routes/5/edit", want: "edit:5", status: StatusOK},
+	routerTestExpectAll(t, app, []routerReq{
+		{path: "/routes/0", body: "/routes/0"},
+		{path: last, body: last},
+		{path: "/routes/5/edit", body: "edit:5"},
 		{path: "/routes/missing", status: StatusNotFound},
-	} {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
-		require.NoError(t, err, tc.path)
-		require.Equal(t, tc.status, resp.StatusCode, tc.path)
-		if tc.want != "" {
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, string(body), tc.path)
-		}
-	}
+	}...)
 	require.Positive(t, ran, "the middleware must still have run")
-}
-
-// Test_Router_LargeBucket_CaseInsensitive pins the filter against the default
-// case-insensitive matching: the detection path is folded before it is hashed,
-// and routes are registered folded, so the two fingerprints have to agree.
-func Test_Router_LargeBucket_CaseInsensitive(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	for i := range fingerprintMinBucket * 2 {
-		app.Get("/Routes/Item"+strconv.Itoa(i), func(c Ctx) error { return c.SendString("hit") })
-	}
-
-	for _, path := range []string{"/Routes/Item3", "/routes/item3", "/ROUTES/ITEM3"} {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-		require.NoError(t, err, path)
-		require.Equal(t, StatusOK, resp.StatusCode, path)
-	}
-}
-
-// Test_Router_LargeBucket_LongPath covers requests longer than every static
-// route in the bucket, which the scan rejects without hashing: they must still
-// reach the param route behind the statics, a static route as long as the
-// bound must still match, and a miss is a 404.
-func Test_Router_LargeBucket_LongPath(t *testing.T) {
-	t.Parallel()
-
-	longest := "/routes/" + strings.Repeat("s", 40)
-	app := New()
-	for i := range fingerprintMinBucket * 2 {
-		app.Get("/routes/"+strconv.Itoa(i), func(c Ctx) error { return c.SendString(c.Path()) })
-	}
-	app.Get(longest, func(c Ctx) error { return c.SendString(c.Path()) })
-	app.Get("/routes/:name", func(c Ctx) error { return c.SendString("name:" + c.Params("name")) })
-
-	name := strings.Repeat("n", 64)
-	for _, tc := range []struct {
-		path, want string
-		status     int
-	}{
-		{path: longest, want: longest, status: StatusOK},
-		{path: "/routes/" + name, want: "name:" + name, status: StatusOK},
-		{path: "/routes/" + name + "/deeper", status: StatusNotFound},
-	} {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
-		require.NoError(t, err, tc.path)
-		require.Equal(t, tc.status, resp.StatusCode, tc.path)
-		if tc.want != "" {
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, string(body), tc.path)
-		}
-	}
-}
-
-// Test_Router_LargeBucket_StaticOnlyMiss covers the scan running off the end
-// of a bucket made entirely of static routes: the fingerprint loop rejects
-// every entry, the scan stops without loading a Route, and the request is a
-// 404 rather than a match against the last route in the bucket.
-func Test_Router_LargeBucket_StaticOnlyMiss(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	for i := range fingerprintMinBucket * 4 {
-		app.Get("/routes/"+strconv.Itoa(i), func(c Ctx) error { return c.SendString(c.Path()) })
-	}
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/routes/missing", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/routes/"+strconv.Itoa(fingerprintMinBucket*4-1), http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-}
-
-// Test_Router_LargeBucket_CustomCtx drives the filter through nextCustom, the
-// scan a custom context takes, where the fingerprint is hashed per call rather
-// than kept on the context. Same bucket shapes and outcomes as the default
-// context, including the long paths the scan rejects without hashing and the
-// miss that runs the scan off the end of the bucket.
-func Test_Router_LargeBucket_CustomCtx(t *testing.T) {
-	t.Parallel()
-
-	app := NewWithCustomCtx(func(app *App) CustomCtx {
-		return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
-	})
-	var seen []string
-	app.Use("/routes", func(c Ctx) error {
-		seen = append(seen, "mw")
-		return c.Next()
-	})
-	for i := range fingerprintMinBucket * 4 {
-		app.Get("/routes/"+strconv.Itoa(i), func(c Ctx) error { return c.SendString(c.Path()) })
-	}
-	app.Get("/routes/:id/edit", func(c Ctx) error { return c.SendString("edit:" + c.Params("id")) })
-
-	for _, tc := range []struct {
-		path, want string
-		status     int
-	}{
-		{path: "/routes/0", want: "/routes/0", status: StatusOK},
-		{path: "/routes/" + strconv.Itoa(fingerprintMinBucket*4-1), want: "/routes/" + strconv.Itoa(fingerprintMinBucket*4-1), status: StatusOK},
-		{path: "/routes/9/edit", want: "edit:9", status: StatusOK},
-		{path: "/routes/" + strings.Repeat("e", 64) + "/edit", want: "edit:" + strings.Repeat("e", 64), status: StatusOK},
-		{path: "/routes/missing", status: StatusNotFound},
-		{path: "/routes/" + strings.Repeat("m", 64), status: StatusNotFound},
-	} {
-		seen = nil
-		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
-		require.NoError(t, err, tc.path)
-		require.Equal(t, tc.status, resp.StatusCode, tc.path)
-		require.Equal(t, []string{"mw"}, seen, "middleware must still run for %s", tc.path)
-		if tc.want != "" {
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, string(body), tc.path)
-		}
-	}
-
-	// the custom-context miss with no non-static route after the statics runs the scan off the end
-	only := NewWithCustomCtx(func(app *App) CustomCtx {
-		return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
-	})
-	for i := range fingerprintMinBucket * 2 {
-		only.Get("/routes/"+strconv.Itoa(i), func(c Ctx) error { return c.SendString("ok") })
-	}
-	resp, err := only.Test(httptest.NewRequest(MethodGet, "/routes/missing", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
 // Test_ScanHead_SlashMask pins the slash counts newScanHead lets through for
@@ -6900,10 +5146,8 @@ func Test_Router_LargeBucket_CustomCtx(t *testing.T) {
 // parametric route, only the lower one when it is a prefix route, and every
 // count for star and root routes. Bit 0, which stands for a count the scan did
 // not compute, is always set, and bit 31 stands for 31 or more.
-// go test -race -run Test_ScanHead_SlashMask
 func Test_ScanHead_SlashMask(t *testing.T) {
 	t.Parallel()
-
 	// bits returns a mask with bits lo through hi set, plus bit 0.
 	bits := func(lo, hi int) uint32 {
 		var mask uint32 = 1
@@ -6961,10 +5205,8 @@ func Test_ScanHead_SlashMask(t *testing.T) {
 // narrow fields: a probe that fits comes back as it went in, and one they
 // cannot hold, an offset past them or a mask that does not cover leading
 // lanes, leaves the head without a probe, for match to check.
-// go test -race -run Test_ScanHead_Probe
 func Test_ScanHead_Probe(t *testing.T) {
 	t.Parallel()
-
 	word, mask := packConst("/issues")
 	fits := constProbe{word: word, mask: mask, from: 13, skip: 2}
 	// A filtered bucket holds a head per route: what a rebuild allocates
@@ -7016,10 +5258,8 @@ func Test_ScanHead_Probe(t *testing.T) {
 // the first is the route's own leading-byte filter, and the second continues
 // knownPrefix past it, which is what tells apart the routes of an API that all
 // begin "/api/v1/".
-// go test -race -run Test_ScanHead_PrefixWords
 func Test_ScanHead_PrefixWords(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	handler := func(c Ctx) error { return c.Next() }
 	patterns := []string{
@@ -7067,36 +5307,21 @@ func Test_ScanHead_PrefixWords(t *testing.T) {
 	}
 }
 
-// Test_Router_FilteredBucket_MethodNotAllowed drives the 404/405 decision
-// through filtered buckets, which routeScan.endpoint walks for the methods the
-// request did not use. The Allow header must name exactly the methods with a
-// matching endpoint, through a default and a custom context alike.
-// go test -race -run Test_Router_FilteredBucket_MethodNotAllowed
 // Test_Router_FilteredBucket_SharedProbeFrom routes through a filtered bucket
 // whose probes share their from but read different slashes: "/foo/" follows
 // the first parameter's slash, "/bar" the second's. A scan that reused the
 // word one of them located for the other would reject the route it tests.
-// go test -race -run Test_Router_FilteredBucket_SharedProbeFrom
 func Test_Router_FilteredBucket_SharedProbeFrom(t *testing.T) {
 	t.Parallel()
-
-	apps := map[string]*App{
-		"default": New(),
-		"custom": NewWithCustomCtx(func(app *App) CustomCtx {
-			return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
-		}),
-	}
+	apps := map[string]*App{"default": New(), "custom": newCustomApp()}
 	for name, app := range apps {
 		handler := func(c Ctx) error { return c.SendString(c.Route().Path) }
-		for i := range filterMinBucket {
-			app.Get("/api/static"+strconv.Itoa(i), handler)
-		}
+		routerTestStatics(app, "/api/static", filterMinBucket, handler)
 		app.Get("/api/:x/foo/*", handler)
 		app.Get("/api/:x/:y/bar", handler)
 		app.startupProcess()
 
-		treeHash := int('/')<<16 | int('a')<<8 | int('p')
-		routes, filter := app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
+		routes, filter := routerTestBucket(app, MethodGet, "/ap")
 		require.NotNil(t, filter, "%s: the bucket must be filtered for this test to mean anything", name)
 		foo, bar := filter.heads[len(routes)-2], filter.heads[len(routes)-1]
 		require.NotZero(t, foo.probeLen, name)
@@ -7110,22 +5335,22 @@ func Test_Router_FilteredBucket_SharedProbeFrom(t *testing.T) {
 			"/api/1/foo/bar": "/api/:x/foo/*",
 			"/api/static3":   "/api/static3",
 		} {
-			resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-			require.NoError(t, err)
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, path)
+			body := apptest.Body(t, resp)
 			require.Equal(t, StatusOK, resp.StatusCode, "%s: %s", name, path)
-			require.Equal(t, want, string(body), "%s: %s", name, path)
+			require.Equal(t, want, body, "%s: %s", name, path)
 		}
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/1/2/baz", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, "/api/1/2/baz")
 		require.Equal(t, StatusNotFound, resp.StatusCode, name)
 	}
 }
 
+// Test_Router_FilteredBucket_MethodNotAllowed drives the 404/405 decision
+// through filtered buckets, which routeScan.endpoint walks for the methods the
+// request did not use. The Allow header must name exactly the methods with a
+// matching endpoint, through a default and a custom context alike.
 func Test_Router_FilteredBucket_MethodNotAllowed(t *testing.T) {
 	t.Parallel()
-
 	register := func(app *App) {
 		handler := func(c Ctx) error { return c.SendString(c.Route().Path) }
 		for i := range filterMinBucket * 2 {
@@ -7135,20 +5360,14 @@ func Test_Router_FilteredBucket_MethodNotAllowed(t *testing.T) {
 		app.Put("/api/v1/res3/:id", handler)
 		app.Delete("/api/v1/static/path", handler)
 	}
-	apps := map[string]*App{
-		"default": New(),
-		"custom": NewWithCustomCtx(func(app *App) CustomCtx {
-			return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
-		}),
-	}
+	apps := map[string]*App{"default": New(), "custom": newCustomApp()}
 
 	for name, app := range apps {
 		register(app)
 		app.startupProcess()
 
-		treeHash := int('/')<<16 | int('a')<<8 | int('p')
 		for _, method := range []string{MethodGet, MethodPost} {
-			_, filter := app.treeIndex[app.methodInt(method)].lookup(treeHash)
+			_, filter := routerTestBucket(app, method, "/ap")
 			require.NotNil(t, filter, "%s: the %s bucket must be filtered for this test to mean anything", name, method)
 		}
 
@@ -7166,8 +5385,7 @@ func Test_Router_FilteredBucket_MethodNotAllowed(t *testing.T) {
 			{method: MethodGet, path: "/api/v1/nope/7", status: StatusNotFound},
 			{method: MethodGet, path: "/api/v1/res5", status: StatusNotFound},
 		} {
-			resp, err := app.Test(httptest.NewRequest(tc.method, tc.path, http.NoBody))
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, apptest.Req(tc.method, tc.path))
 			require.Equal(t, tc.status, resp.StatusCode, "%s: %s %s", name, tc.method, tc.path)
 			require.Equal(t, tc.allow, resp.Header.Get(HeaderAllow), "%s: %s %s", name, tc.method, tc.path)
 		}
@@ -7177,16 +5395,12 @@ func Test_Router_FilteredBucket_MethodNotAllowed(t *testing.T) {
 // Test_Router_FilteredBucket_CustomCtx runs the GitHub API corpus, whose
 // larger buckets are filtered, through nextCustom, the scan a custom context
 // takes, and requires the route and parameters App.next picks for each request.
-// go test -race -run Test_Router_FilteredBucket_CustomCtx
 func Test_Router_FilteredBucket_CustomCtx(t *testing.T) {
 	t.Parallel()
-
 	defaultApp := New()
 	registerDummyRoutes(defaultApp)
 	defaultApp.startupProcess()
-	customApp := NewWithCustomCtx(func(app *App) CustomCtx {
-		return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
-	})
+	customApp := newCustomApp()
 	registerDummyRoutes(customApp)
 	customApp.startupProcess()
 
@@ -7229,10 +5443,8 @@ func Test_Router_FilteredBucket_CustomCtx(t *testing.T) {
 // routes. The heads are derived when the tree is built, from routes that are
 // final by then, so this guards that no path reaches a published tree without
 // a build.
-// go test -race -run Test_RouteTree_Heads_NotStale
 func Test_RouteTree_Heads_NotStale(t *testing.T) {
 	t.Parallel()
-
 	assertFresh := func(t *testing.T, app *App, stage string) {
 		t.Helper()
 		checked := 0
@@ -7284,28 +5496,15 @@ func Test_RouteTree_Heads_NotStale(t *testing.T) {
 
 func Test_OptionalParam_ConstraintFailureDoesNotBypassAsEmpty(t *testing.T) {
 	t.Parallel()
-
 	app := New()
-	app.Use("/api/:id<int>?", func(c Ctx) error {
-		return c.SendString("matched")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/abc", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-
-	respValid, err := app.Test(httptest.NewRequest(MethodGet, "/api/123", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, respValid.StatusCode)
-
-	respEmpty, err := app.Test(httptest.NewRequest(MethodGet, "/api", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, respEmpty.StatusCode)
+	app.Use("/api/:id<int>?", func(c Ctx) error { return c.SendString("matched") })
+	for path, status := range map[string]int{"/api/abc": StatusNotFound, "/api/123": StatusOK, "/api": StatusOK} {
+		apptest.Expect(t, app, path, status)
+	}
 }
 
 func Test_RouteParser_BacktrackMaxRetriesBound(t *testing.T) {
 	t.Parallel()
-
 	for _, tc := range []struct {
 		name    string
 		pattern string
@@ -7324,24 +5523,16 @@ func Test_RouteParser_BacktrackMaxRetriesBound(t *testing.T) {
 				return c.SendStatus(StatusOK)
 			})
 
-			resp, err := app.Test(httptest.NewRequest(MethodGet, "/pre-end", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, tc.status, resp.StatusCode)
-			require.NoError(t, resp.Body.Close())
+			routerTestExpect(t, app, "/pre-end", tc.status)
 		})
 	}
 }
 
 func Test_RouteParser_GreedyWildcardDoesNotYield(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	// Greedy wildcard * must not yield to plus param +
-	app.Get("/*+:x?", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+	app.Get("/*+:x?", func(c Ctx) error { return c.SendStatus(StatusOK) })
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/-", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/-", StatusNotFound)
 }

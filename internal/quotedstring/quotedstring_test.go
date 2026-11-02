@@ -9,7 +9,6 @@ import (
 // Test_Escape covers each output dialect and the no-allocation fast path.
 func Test_Escape(t *testing.T) {
 	t.Parallel()
-
 	cases := []struct {
 		name string
 		in   string
@@ -41,7 +40,6 @@ func Test_Escape(t *testing.T) {
 // mutate an earlier result.
 func Test_Escape_DetachesFromPooledBuffer(t *testing.T) {
 	t.Parallel()
-
 	first := Escape(`A\B`)
 	second := Escape(`C"D`)
 
