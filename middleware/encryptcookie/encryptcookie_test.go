@@ -984,3 +984,11 @@ func Benchmark_EncryptDecryptCookie(b *testing.B) {
 		require.NoError(b, err)
 	})
 }
+
+func Test_Middleware_ExplicitCallbacks_InvalidKey_Panics(t *testing.T) {
+	t.Parallel()
+	key := base64.StdEncoding.EncodeToString(make([]byte, 11))
+	require.Panics(t, func() {
+		New(Config{Key: key, Encryptor: EncryptCookie, Decryptor: DecryptCookie})
+	})
+}
