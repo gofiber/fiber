@@ -11,6 +11,7 @@
 package storagetest
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"maps"
@@ -191,7 +192,7 @@ func (m *Memory) GetWithContext(ctx context.Context, key string) ([]byte, error)
 	if err := m.begin(ctx, &Call{Op: OpGet, Key: key}); err != nil {
 		return nil, err
 	}
-	return append([]byte(nil), m.Data[key]...), nil
+	return bytes.Clone(m.Data[key]), nil
 }
 
 // Get is GetWithContext with a background context.
@@ -201,13 +202,13 @@ func (m *Memory) Get(key string) ([]byte, error) { return m.GetWithContext(conte
 func (m *Memory) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
-	if err := m.begin(ctx, &Call{Op: OpSet, Key: key, Value: append([]byte(nil), val...), TTL: exp}); err != nil {
+	if err := m.begin(ctx, &Call{Op: OpSet, Key: key, Value: bytes.Clone(val), TTL: exp}); err != nil {
 		return err
 	}
 	if m.Data == nil {
 		m.Data = make(map[string][]byte)
 	}
-	m.Data[key] = append([]byte(nil), val...)
+	m.Data[key] = bytes.Clone(val)
 	return nil
 }
 

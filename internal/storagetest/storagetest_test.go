@@ -27,6 +27,12 @@ func Test_Memory_StoresCopies(t *testing.T) {
 	require.Nil(t, missing)
 	require.True(t, m.Holds("k"))
 	require.False(t, m.Holds("missing"))
+
+	require.NoError(t, m.Set("empty", []byte{}, 0))
+	empty, err := m.Get("empty")
+	require.NoError(t, err)
+	require.NotNil(t, empty, "a stored empty value is not a miss")
+	require.Empty(t, empty)
 }
 
 func Test_Memory_DeleteResetAndKeys(t *testing.T) {
