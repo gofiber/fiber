@@ -1718,6 +1718,8 @@ The CSRF middleware now validates the [`Sec-Fetch-Site`](https://developer.mozil
 
 ### Idempotency
 
+Unchanged response header lines from middleware registered before idempotency are no longer stored. CORS and request ID middleware registered there produce fresh values on each request without cached copies being appended. Headers added or changed downstream still replay, including those from route-level CORS. Existing cache entries keep their previously stored headers until expiration; this change does not invalidate idempotency keys. See [Behavior](./middleware/idempotency.md#behavior) for middleware ordering.
+
 Idempotency middleware now redacts keys by default and offers a `DisableValueRedaction` configuration flag (default `false`) to expose them when debugging.
 
 A streamed response that declares no length (`SendStreamWriter`, or `SendStream` without a size) is sent as it is produced and no longer read to its end to store it, so a retry with its key runs the handler again. A stream of known length is stored only when it is no longer than 1 MiB and delivers that length without an error; a failed read used to be stored as its body. A request the server refused while reading it, such as one over `BodyLimit`, is not stored either, so the retry with its key reaches the handler instead of an empty `413`.
