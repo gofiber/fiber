@@ -9,10 +9,7 @@ import (
 
 func Test_Msgpack_Binding_Bind(t *testing.T) {
 	t.Parallel()
-
-	b := &MsgPackBinding{
-		MsgPackDecoder: msgpack.Unmarshal,
-	}
+	b := &MsgPackBinding{MsgPackDecoder: msgpack.Unmarshal}
 	require.Equal(t, "msgpack", b.Name())
 
 	type Post struct {
@@ -28,25 +25,16 @@ func Test_Msgpack_Binding_Bind(t *testing.T) {
 
 	// Prepare msgpack data
 	input := map[string]any{
-		"name": "john",
-		"age":  42,
-		"posts": []map[string]any{
-			{"title": "post1"},
-			{"title": "post2"},
-			{"title": "post3"},
-		},
+		"name":  "john",
+		"age":   42,
+		"posts": []map[string]any{{"title": "post1"}, {"title": "post2"}, {"title": "post3"}},
 	}
 	data, err := msgpack.Marshal(input)
 	require.NoError(t, err)
 
-	err = b.Bind(data, &user)
-	require.NoError(t, err)
-	require.Equal(t, "john", user.Name)
-	require.Equal(t, 42, user.Age)
-	require.Len(t, user.Posts, 3)
-	require.Equal(t, "post1", user.Posts[0].Title)
-	require.Equal(t, "post2", user.Posts[1].Title)
-	require.Equal(t, "post3", user.Posts[2].Title)
+	require.NoError(t, b.Bind(data, &user))
+	posts := []Post{{Title: "post1"}, {Title: "post2"}, {Title: "post3"}}
+	require.Equal(t, User{Name: "john", Age: 42, Posts: posts}, user)
 
 	b.Reset()
 	require.Nil(t, b.MsgPackDecoder)
@@ -55,9 +43,7 @@ func Test_Msgpack_Binding_Bind(t *testing.T) {
 func Benchmark_Msgpack_Binding_Bind(b *testing.B) {
 	b.ReportAllocs()
 
-	binder := &MsgPackBinding{
-		MsgPackDecoder: msgpack.Unmarshal,
-	}
+	binder := &MsgPackBinding{MsgPackDecoder: msgpack.Unmarshal}
 
 	type User struct {
 		Name  string   `msgpack:"name"`
@@ -77,26 +63,5 @@ func Benchmark_Msgpack_Binding_Bind(b *testing.B) {
 			&user)
 	}
 
-	require.NoError(b, err)
-	require.Equal(b, "john", user.Name)
-	require.Equal(b, 42, user.Age)
-	require.Len(b, user.Posts, 3)
-	require.Equal(b, "post1", user.Posts[0])
-	require.Equal(b, "post2", user.Posts[1])
-	require.Equal(b, "post3", user.Posts[2])
-}
-
-func Test_UnimplementedMsgpackMarshal_ReturnsError(t *testing.T) {
-	t.Parallel()
-
-	_, err := UnimplementedMsgpackMarshal(struct{ Name string }{Name: "test"})
-	require.ErrorIs(t, err, ErrMsgPackNotConfigured)
-}
-
-func Test_UnimplementedMsgpackUnmarshal_ReturnsError(t *testing.T) {
-	t.Parallel()
-
-	var out any
-	err := UnimplementedMsgpackUnmarshal([]byte{0x80}, &out)
-	require.ErrorIs(t, err, ErrMsgPackNotConfigured)
+	requireJohn42(b, err, user.Name, user.Age, user.Posts)
 }

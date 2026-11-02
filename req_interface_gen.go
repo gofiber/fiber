@@ -227,13 +227,14 @@ type Req interface {
 	// header spoofing if your app is behind a proxy.
 	IP() string
 	// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
+	// Empty elements are ignored after trimming optional whitespace.
 	// When IP validation is enabled, any invalid IPs will be omitted.
 	extractIPsFromHeader(header string) []string
 	// extractIPFromHeader returns the client IP from the given proxy header by walking the
 	// X-Forwarded-For chain from right to left and stripping trusted proxy IPs. When trusted
-	// proxies are configured, the rightmost non-trusted IP is returned; otherwise the first
-	// valid IP (left-to-right) is returned. When IP validation is disabled, the raw header
-	// value is returned as-is.
+	// proxies are configured, the rightmost non-trusted IP is returned, and an entry that is not
+	// an IP ends the walk; otherwise the first valid IP (left-to-right) is returned. When IP
+	// validation is disabled, the raw header value is returned as-is.
 	extractIPFromHeader(header string) string
 	// hasTrustedProxyConfig returns true if any trusted proxy configuration is set.
 	hasTrustedProxyConfig() bool

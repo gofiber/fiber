@@ -21,7 +21,9 @@ handler to finish. This is achieved through Fiber's **Abandon mechanism**:
 Handlers can detect the timeout by listening on `c.Context().Done()` and return early.
 This is the recommended pattern for cooperative cancellation.
 
-If a handler panics, the middleware catches it and returns `500 Internal Server Error`.
+If a handler panics, the middleware catches it and returns `500 Internal Server Error`. So does a panic in `OnTimeout` once the deadline has passed.
+
+When an enclosing timeout middleware already guards the request with a deadline that comes no later than the configured one, such as a shorter timeout registered with `app.Use`, the middleware runs the handler on the calling goroutine and leaves the timeout to the enclosing one. Its `OnTimeout` then runs only for a timeout error the handler returns before the enclosing deadline passes; after that, the enclosing middleware answers the request. When nested timeouts fire at the same time, only the first to answer writes the timeout response. A shorter deadline set any other way, such as with `c.SetContext`, does not count: the middleware times the request out when it passes.
 
 ## Why 503
 
@@ -38,7 +40,11 @@ timeout.Config{
 
 ## Known limitations
 
-- The timed-out handler keeps running in its own goroutine while the middleware returns `fiber.ErrServiceUnavailable` (or runs `OnTimeout`). A handler must stop using the context once `c.Context()` is done: one that keeps writing the response races with `OnTimeout`.
+- The timed-out handler keeps running in its own goroutine while the middleware returns `fiber.ErrServiceUnavailable` (or runs `OnTimeout`). A handler must stop using the context once `c.Context()` is done: the client never receives what it writes after that, and middleware registered before the timeout that uses the request or the response after `c.Next()` races with it, since even fasthttp's reads change state the two share. `c.IsAbandoned()` reports such a request.
+
+- When the deadline passes while the handler still runs, `OnTimeout` runs on a context of its own, so the timed-out handler cannot change the response it writes. That context carries the request, its locals, `c.Context()` and the response headers as they were when the handler started, but neither the request body nor the matched route: `c.Body()` is empty, `c.Params` returns the default value, and `c.Next()` is not available there (calling it answers `500`).
+
+- When `OnTimeout` writes the response and returns `nil` while the handler still runs, the middleware returns `fiber.ErrServiceUnavailable` instead, so middleware registered before it that skips its work on an error, such as `compress`, `etag` or `cache`, leaves the response to the timed-out handler. The client receives the response `OnTimeout` wrote.
 
 - The error is returned to the outer middleware, but the app's `ErrorHandler` is not run for a timed-out request: fasthttp already holds the response it will send, so the handler could not change it, and the timed-out handler may still be writing to the context.
 
@@ -125,7 +131,7 @@ curl -i http://localhost:3000/sleep/3000   # returns 503 Service Unavailable
 |:------------|:-------------------|:---------------------------------------------------------------------|:-------|
 | Next        | `func(fiber.Ctx) bool` | Function to skip this middleware when it returns `true`.            | `nil`  |
 | Timeout     | `time.Duration`    | Timeout duration for requests. `0` or a negative value disables the timeout. | `0`    |
-| OnTimeout   | `fiber.Handler`    | Handler executed when a timeout occurs. It may write the response itself or return a `*fiber.Error`, whose status and message then form the response; otherwise the default 503 is sent. Defaults to returning `fiber.ErrServiceUnavailable`. | `nil`  |
+| OnTimeout   | `fiber.Handler`    | Handler executed when a timeout occurs. It may write the response itself or return a `*fiber.Error`, whose status and message then form the response; otherwise the default 503 is sent. After the deadline it runs on a context of its own, see [Known limitations](#known-limitations). Defaults to returning `fiber.ErrServiceUnavailable`. | `nil`  |
 | Errors      | `[]error`          | Custom errors treated as timeout errors, in addition to `context.DeadlineExceeded`. A handler that returns one of them (checked with `errors.Is`) gets the timeout response. | `nil`  |
 
 ### Use with a custom error

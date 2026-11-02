@@ -171,6 +171,23 @@ func setRealIP(c fiber.Ctx, ip []byte) bool {
 	return true
 }
 
+// keepForwardingOrder puts the forwarding fields sent on several lines back in the order they were received,
+// as the last header step before a request goes out: fasthttp moves the last line into the slot of each one
+// it removes. It reports false for more forwarding lines than fieldname.MaxOrderedLines.
+func keepForwardingOrder(req *fasthttp.Request) bool {
+	return fieldname.KeepReceivedOrder(&req.Header, fieldname.Received(req), isOrderedForwardingHeader)
+}
+
+// isOrderedForwardingHeader reports whether name is a forwarding field, or X-Url-Scheme, which Ctx.Scheme reads too.
+func isOrderedForwardingHeader(name []byte) bool {
+	// Each of them starts with X or F, which settles most lines at the first byte.
+	if len(name) == 0 || (name[0]|0x20 != 'x' && name[0]|0x20 != 'f') {
+		return false
+	}
+	s := utils.UnsafeString(name)
+	return isForwardingHeader(s) || utils.EqualFold(s, fiber.HeaderXUrlScheme)
+}
+
 // realIPScratch is the stack room for an address copied out of the request:
 // the longest IPv6 text form is 45 bytes, and a zone may follow it. A longer
 // value, such as a whole forwarding chain read without validation, spills to
@@ -179,10 +196,8 @@ const realIPScratch = 64
 
 // realIP copies the peer address Fiber derived into buf, which the caller
 // keeps for as long as the address is needed. A copy rather than the string
-// itself: with ProxyHeader set, c.IP() aliases that header's own buffer, and
-// removing Trailer afterwards returns the received trailer fields to the
-// header section, where fasthttp reuses the buffers of the lines deleted
-// before them in place.
+// itself: with ProxyHeader set, c.IP() aliases that header's own buffer, which
+// fasthttp reuses in place for a line added once that header is deleted.
 func realIP(c fiber.Ctx, buf []byte) []byte {
 	return append(buf[:0], c.IP()...)
 }

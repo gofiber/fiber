@@ -2,6 +2,8 @@ package logger
 
 import (
 	"time"
+
+	"github.com/valyala/fasthttp"
 )
 
 // Data is a struct to define some variables to use in custom logger function.
@@ -12,6 +14,7 @@ type Data struct {
 	Start         time.Time
 	Stop          time.Time
 	ChainErr      error
+	timeoutResp   *fasthttp.Response // what fasthttp sends for a request timeout.New gave up on, or nil
 	Timestamp     string
 	Pid           string
 	ErrPaddingStr string

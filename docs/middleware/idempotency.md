@@ -142,7 +142,7 @@ Idempotency keys are hidden in logs and error messages by default. Set `DisableV
 | KeepResponseHeaders | `[]string`             | List of headers to preserve from original response, matched case-insensitively. An empty list keeps all headers, like `nil`, but for `Set-Cookie` and `Set-Cookie2`, which are kept only when named. | `nil` (keep all headers but the cookies)                           |
 | DisableValueRedaction | `bool`                | Disables idempotency key redaction in logs and error messages. | `false`                                              |
 | Lock                | `Locker`               | Locks an idempotency key to prevent race conditions. The default only locks within this process. | `NewMemoryLock()` (in-memory locker)                               |
-| Storage             | `fiber.Storage`        | Stores response data by idempotency key. The default store is private to this process.                                                  | In-memory storage                                                  |
+| Storage             | `fiber.Storage`        | Stores response data by idempotency key. An entry is stored under `idempotency:` followed by the key, or by its digest with `KeyScope`, so the storage can be shared with other middleware. Responses stored by an earlier version are not replayed after the upgrade, so a retry with such a key runs the handler again, and the old entries expire on their own. The default store is private to this process. | In-memory storage                                                  |
 
 ## Default Config Values
 

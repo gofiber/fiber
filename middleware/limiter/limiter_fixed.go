@@ -34,15 +34,10 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		// Generate expiration from generator
 		windowSec := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
 
-		// Get key from request
-		key := cfg.KeyGenerator(c)
-
-		// The key may point into request memory the handler can rewrite: copy it before a Storage that
-		// may keep it sees it. The built-in store copies the keys it keeps, so only the re-read needs one.
+		// The key may point into request memory the handler can rewrite: entryKey copies it for a Storage
+		// that may keep it. The built-in store copies the keys it keeps, so only the re-read needs one.
+		key := manager.entryKey(cfg.KeyGenerator(c))
 		rereads := cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests
-		if !manager.copiesKeys() {
-			key = utils.CopyString(key)
-		}
 
 		// Lock entry
 		mu := locks.lock(key)

@@ -24,10 +24,14 @@ type Session struct {
 	data        *data             // key value data
 	rawData     []byte            // snapshot from the last decode, reused by Save while the data is unchanged
 	id          string            // session id
+	key         string            // storage key of id, built on first use
 	extractor   extractors.Result // provenance of the extractor that supplied the session ID
 	idleTimeout time.Duration     // idleTimeout of this session
+	loadGen     uint64            // idLock generation when the data was read from storage
 	mu          sync.RWMutex      // Mutex to protect non-data fields
 	isFresh     bool              // if new session
+	loaded      bool              // the data was read from storage under the current id
+	dropped     bool              // another request ended or rotated it: never stored or sent again
 }
 
 type absExpirationKeyType int
@@ -94,11 +98,14 @@ func (s *Session) Release() {
 func releaseSession(s *Session) {
 	s.mu.Lock()
 	s.id = ""
+	s.key = ""
 	s.idleTimeout = 0
 	s.ctx = nil
 	s.config = nil
 	s.extractor = extractors.Result{}
 	s.rawData = nil
+	s.loaded = false
+	s.dropped = false
 	if s.data != nil {
 		s.data.Reset()
 	}
@@ -222,7 +229,7 @@ func (s *Session) DestroyWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	// Use external Storage if exist
-	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
+	if err := s.config.deleteKey(ctx, s.storageKey()); err != nil {
 		return err
 	}
 
@@ -230,6 +237,7 @@ func (s *Session) DestroyWithContext(ctx context.Context) error {
 	// canceled/failed delete leaves the session data intact.
 	s.data.Reset()
 	s.rawData = nil
+	s.loaded = false
 
 	// Expire session
 	s.delSession()
@@ -267,8 +275,20 @@ func (s *Session) RegenerateWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	// Delete old id from storage
-	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
+	var ended bool
+	var err error
+	if s.loaded {
+		ended, err = s.config.deleteLoadedKey(ctx, s.storageKey(), s.loadGen)
+	} else {
+		err = s.config.deleteKey(ctx, s.storageKey())
+	}
+	if err != nil {
 		return err
+	}
+	// Another request ended or rotated it: still rotate, as another instance may write
+	// the old ID back, but store and send nothing.
+	if ended {
+		s.dropped = true
 	}
 
 	// Generate a new session, and set session.isFresh to true
@@ -308,7 +328,7 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	// Delete old id from storage
-	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
+	if err := s.config.deleteKey(ctx, s.storageKey()); err != nil {
 		return err
 	}
 
@@ -336,7 +356,17 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 // refresh generates a new session, and sets session.isFresh to be true.
 func (s *Session) refresh() {
 	s.id = s.config.KeyGenerator()
+	s.key = ""
 	s.isFresh = true
+	s.loaded = false
+}
+
+// storageKey returns the key the session is stored under; the caller holds s.mu.
+func (s *Session) storageKey() string {
+	if s.key == "" {
+		s.key = storageKeyPrefix + s.id
+	}
+	return s.key
 }
 
 // Save saves the session data and updates the cookie
@@ -396,30 +426,62 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.dropped {
+		return nil
+	}
+
 	// Set idleTimeout if not already set
 	if s.idleTimeout <= 0 {
 		s.idleTimeout = s.config.IdleTimeout
 	}
 
-	// Update client cookie
-	s.setSession()
-
 	// Unchanged since the decode: write the snapshot back so the idle timeout still
 	// slides. Lock-free is enough; dirty is set before the mutation it reports.
-	if s.rawData != nil && !s.data.dirty.Load() {
-		return s.config.Storage.SetWithContext(ctx, s.id, s.rawData, s.idleTimeout)
+	data := s.rawData
+	changed := data == nil || s.data.dirty.Load()
+	if changed {
+		s.data.RLock()
+		encoded, err := s.encodeSessionData()
+		s.data.RUnlock()
+		if err != nil {
+			return fmt.Errorf("failed to encode data: %w", err)
+		}
+		data = encoded
 	}
 
-	// Encode session data
-	s.data.RLock()
-	encodedBytes, err := s.encodeSessionData()
-	s.data.RUnlock()
-	if err != nil {
-		return fmt.Errorf("failed to encode data: %w", err)
+	key := s.storageKey()
+	if s.loaded {
+		l := lockFor(key)
+		if changed {
+			// Held alone, so no write-back of an older snapshot lands after this change.
+			l.mu.Lock()
+			defer func() {
+				l.gen.Add(1)
+				l.mu.Unlock()
+			}()
+		} else {
+			l.mu.RLock()
+			defer l.mu.RUnlock()
+		}
+		// An ID of this shard was deleted or changed since the load; look at this one.
+		if l.gen.Load() != s.loadGen {
+			raw, err := s.config.Storage.GetWithContext(ctx, key)
+			if err != nil {
+				return err
+			}
+			if raw == nil {
+				return nil // ended by another request: neither store it nor send its cookie again
+			}
+			if !changed && !bytes.Equal(raw, data) {
+				s.setSession()
+				return nil // changed by another request: the older snapshot must not undo that
+			}
+		}
 	}
 
-	// Pass copied bytes with session id to provider
-	return s.config.Storage.SetWithContext(ctx, s.id, encodedBytes, s.idleTimeout)
+	// Update client cookie
+	s.setSession()
+	return s.config.Storage.SetWithContext(ctx, key, data, s.idleTimeout)
 }
 
 // Keys retrieves all keys in the current session.

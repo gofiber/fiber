@@ -10,18 +10,28 @@
 package fieldname
 
 import (
+	"bytes"
 	"iter"
 	"math"
 	"slices"
 
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
+
+// MaxTrailers is the most trailer names DropTrailers takes on, since it walks the whole header for each.
+const MaxTrailers = 16
+
+// MaxOrderedLines is the most lines KeepReceivedOrder and ReceivedOrder rank, since they match each received line
+// against them.
+const MaxOrderedLines = 64
 
 // Peeker is the part of fasthttp's headers needed to read field lines by name.
 type Peeker interface {
 	Peek(key string) []byte
 	PeekAll(key string) [][]byte
+	PeekTrailerKeys() [][]byte
 	All() iter.Seq2[[]byte, []byte]
 	// VisitAll is deprecated in fasthttp in favor of All, but All builds an
 	// iterator per call while this walks the store directly. Kept for the reads
@@ -36,15 +46,377 @@ type Deleter interface {
 	All() iter.Seq2[[]byte, []byte]
 }
 
+type receivedKey struct{}
+
+// orderedLine is a stored line KeepReceivedOrder may move. rank is its place among the received lines, or
+// MaxOrderedLines plus its stored place for one that was not received, which so stays behind them in stored order.
+type orderedLine struct {
+	name, value []byte
+	group, rank int
+}
+
+// HasTrailers reports whether h holds a trailer section, received or announced.
+// Peek and PeekAll fall through to it, so the keyed reads are taken only without one.
+func HasTrailers(h Peeker) bool {
+	return len(h.PeekTrailerKeys()) > 0
+}
+
+// DropTrailers discards a request's trailer section and the names announced for it (RFC 9112 §7.1.2):
+// fasthttp files a later Set or Add under such a name with that section, out of the header readers' reach.
+// It reports false, leaving h as it is, for more than MaxTrailers names.
+func DropTrailers(h *fasthttp.RequestHeader) bool {
+	keys := h.PeekTrailerKeys()
+	if len(keys) == 0 {
+		return true
+	}
+	if len(keys) > MaxTrailers {
+		return false
+	}
+	names := make([]string, len(keys))
+	for i, key := range keys {
+		names[i] = string(key)
+	}
+	// Del takes a name's header lines along with its trailer fields, so they are put back after.
+	var kept []string
+	for k, v := range h.All() {
+		if slices.Contains(names, utils.UnsafeString(k)) {
+			kept = append(kept, string(k), string(v))
+		}
+	}
+	for _, name := range names {
+		h.Del(name)
+	}
+	// With the trailer section empty, this has nothing to move into the header section.
+	h.Del(fasthttp.HeaderTrailer)
+	for i := 0; i < len(kept); i += 2 {
+		h.Add(kept[i], kept[i+1])
+	}
+	return true
+}
+
+// ClearTrailers is DropTrailers in one pass for any number of names, putting each line back in the buffer a value
+// read earlier aliases. It reports false, having dropped the section all the same, for more than MaxTrailers names.
+func ClearTrailers(req *fasthttp.Request) bool {
+	h := &req.Header
+	keys := len(h.PeekTrailerKeys())
+	if keys == 0 {
+		return true
+	}
+	// Collected first, as the walk below collects them, so each line keeps its slot.
+	h.Cookie("")
+	tmp := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(tmp)
+	saved := &tmp.Header
+	h.CopyTo(saved)
+	// Reset empties the received block, which the forwarding order is read from.
+	if raw := h.RawHeaders(); len(raw) > 0 {
+		block := slices.Clone(raw)
+		SetReceived(req, &block)
+	}
+
+	// It returns the previous setting, which Reset clears.
+	disabled := h.DisableNormalizing()
+	h.Reset()
+	if disabled {
+		h.DisableNormalizing()
+	}
+	h.SetMethodBytes(saved.Method())
+	h.SetRequestURIBytes(saved.RequestURI())
+	h.SetProtocolBytes(saved.Protocol())
+	for k, v := range saved.All() {
+		switch name := utils.UnsafeString(k); {
+		case utils.EqualFold(name, fasthttp.HeaderTrailer),
+			utils.EqualFold(name, fasthttp.HeaderConnection) && utils.EqualFold(utils.UnsafeString(v), "close"):
+			// The announced names, and the close flag, which holds no line of the store.
+		case utils.EqualFold(name, fasthttp.HeaderConnection), utils.EqualFold(name, fasthttp.HeaderTransferEncoding):
+			// As stored: Add drops the framing field and folds a second Connection line into the first.
+			h.DisableSpecialHeader()
+			h.AddBytesKV(k, v)
+			h.EnableSpecialHeader()
+		default:
+			h.AddBytesKV(k, v)
+		}
+	}
+	if saved.ConnectionClose() {
+		h.SetConnectionClose()
+	}
+	if saved.ContentLength() == -1 {
+		h.SetContentLength(-1)
+	}
+	return keys <= MaxTrailers
+}
+
+// InTrailer reports whether name is a field of a request's trailer section. A header line under such a name is not
+// read: it may be the client's, with the Set meant to replace it filed with the section. A response's line still is.
+func InTrailer(h *fasthttp.RequestHeader, name string) bool {
+	for _, key := range h.PeekTrailerKeys() {
+		if utils.EqualFold(utils.UnsafeString(key), name) {
+			return true
+		}
+	}
+	return false
+}
+
+// SetReceived records block, field lines in the order they were received, for a request built in code from one
+// received elsewhere, such as the net/http adaptor's: fasthttp keeps no received block for it.
+func SetReceived(req *fasthttp.Request, block *[]byte) {
+	req.SetUserValue(receivedKey{}, block)
+}
+
+// Received returns the field lines req was received with: those fasthttp read off the wire, or SetReceived's.
+func Received(req *fasthttp.Request) []byte {
+	if raw := req.Header.RawHeaders(); len(raw) > 0 {
+		return raw
+	}
+	if block, ok := req.UserValue(receivedKey{}).(*[]byte); ok {
+		return *block
+	}
+	return nil
+}
+
+// ReceivedOrder calls f with name's lines in the order raw received them, which a Del can lose in the store; a line
+// raw lacks, such as one added in code, follows in stored order. Above MaxOrderedLines lines f gets raw's alone.
+func ReceivedOrder(h *fasthttp.RequestHeader, raw []byte, name string, f func(value []byte)) {
+	named := func(k []byte) bool { return utils.EqualFold(utils.UnsafeString(k), name) }
+	var buf [8]orderedLine
+	lines := buf[:0]
+	over := false
+	h.VisitAll(func(k, v []byte) {
+		if over || !named(k) {
+			return
+		}
+		if over = len(lines) == MaxOrderedLines; !over {
+			lines = append(lines, orderedLine{name: k, value: v, rank: MaxOrderedLines + len(lines)})
+		}
+	})
+	if over {
+		visitReceived(h, raw, func(k, v []byte) {
+			if named(k) {
+				f(v)
+			}
+		})
+		return
+	}
+	rankReceived(h, raw, lines, named)
+	slices.SortStableFunc(lines, func(a, b orderedLine) int { return a.rank - b.rank })
+	for _, l := range lines {
+		f(l.value)
+	}
+}
+
+// rawLine returns the first field line of the received header block raw, or nil at the end of the block, and the
+// length it takes up. folded reports a line the next one continues (obs-fold), which only a copy can join.
+func rawLine(raw []byte) (line []byte, n int, folded bool) { //nolint:nonamedreturns // gocritic unnamedResult asks for names
+	for n < len(raw) {
+		line = raw[n:]
+		if i := bytes.IndexByte(line, '\n'); i >= 0 {
+			line = line[:i]
+			n += i + 1
+		} else {
+			n = len(raw)
+		}
+		if l := len(line); l > 0 && line[l-1] == '\r' {
+			line = line[:l-1]
+		}
+		if len(line) == 0 {
+			break
+		}
+		if line[0] != ' ' && line[0] != '\t' {
+			return line, n, n < len(raw) && (raw[n] == ' ' || raw[n] == '\t')
+		}
+	}
+	return nil, len(raw), false
+}
+
+// rawValue returns the value of line, trimmed as fasthttp stores it, if line is a field line named name. A request
+// with whitespace before the colon never gets this far (RFC 9112 Section 5.1).
+func rawValue(line []byte, name string) ([]byte, bool) {
+	// The colon settles most lines before the name is compared.
+	if len(line) <= len(name) || line[len(name)] != ':' || !utils.EqualFold(utils.UnsafeString(line[:len(name)]), name) {
+		return nil, false
+	}
+	return headerlist.TrimOWS(line[len(name)+1:]), true
+}
+
+// JoinedInReceivedOrder reports whether combined joins name's lines in the received header block raw, in order.
+// raw is read in place, so a folded line reports false.
+func JoinedInReceivedOrder(raw []byte, name string, combined []byte) bool {
+	found := false
+	for {
+		line, n, folded := rawLine(raw)
+		if line == nil {
+			return found && len(combined) == 0
+		}
+		raw = raw[n:]
+		v, named := rawValue(line, name)
+		if !named {
+			continue
+		}
+		if folded {
+			return false
+		}
+		if found {
+			if len(combined) == 0 || combined[0] != ',' {
+				return false
+			}
+			combined = combined[1:]
+		}
+		if !bytes.HasPrefix(combined, v) {
+			return false
+		}
+		combined = combined[len(v):]
+		found = true
+	}
+}
+
+// KeepReceivedOrder puts the lines of each name match accepts that is stored on several lines back in the order
+// they were received, which the store loses whenever fasthttp moves its last line into a removed one's slot, as
+// it does for Transfer-Encoding after an empty chunked body. A line added or changed in code follows them.
+// It reports false, leaving h as it is, for more than MaxOrderedLines such lines. raw is the block from Received.
+func KeepReceivedOrder(h *fasthttp.RequestHeader, raw []byte, match func(name []byte) bool) bool {
+	var buf [8]orderedLine
+	lines := buf[:0]
+	over := false
+	h.VisitAll(func(k, v []byte) {
+		if !match(k) || over {
+			return
+		}
+		if over = len(lines) == MaxOrderedLines; !over {
+			lines = append(lines, orderedLine{name: k, value: v, group: len(lines), rank: MaxOrderedLines + len(lines)})
+		}
+	})
+	if over {
+		return false
+	}
+	repeated := false
+	for i := range lines {
+		for j := range i {
+			if utils.EqualFold(utils.UnsafeString(lines[j].name), utils.UnsafeString(lines[i].name)) {
+				lines[i].group, repeated = lines[j].group, true
+				break
+			}
+		}
+	}
+	if !repeated || len(raw) == 0 {
+		return true
+	}
+
+	rankReceived(h, raw, lines, match)
+	for g := range lines {
+		if lines[g].group == g && !rankedInOrder(lines, g) {
+			rewriteInRankOrder(h, lines)
+			break
+		}
+	}
+	return true
+}
+
+// rankReceived ranks the stored lines by the received lines they equal, walking the received block once.
+func rankReceived(h *fasthttp.RequestHeader, raw []byte, lines []orderedLine, match func(name []byte) bool) {
+	rank := 0
+	visitReceived(h, raw, func(k, v []byte) {
+		if !match(k) {
+			return
+		}
+		for i := range lines {
+			l := &lines[i]
+			// Trimmed: a value net/http read off HTTP/2 keeps the edge whitespace its received line drops.
+			if l.rank >= MaxOrderedLines && bytes.Equal(headerlist.TrimOWS(l.value), v) &&
+				utils.EqualFold(utils.UnsafeString(l.name), utils.UnsafeString(k)) {
+				l.rank = rank
+				rank++
+				return
+			}
+		}
+	})
+}
+
+// visitReceived calls visit with each field line of the received block raw, in order.
+func visitReceived(h *fasthttp.RequestHeader, raw []byte, visit func(k, v []byte)) {
+	// A folded line (obs-fold) only AllInOrder joins, and it does so in place, so on a copy.
+	if bytes.Contains(raw, []byte("\n ")) || bytes.Contains(raw, []byte("\n\t")) {
+		scratch := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(scratch)
+		h.CopyTo(&scratch.Header)
+		for k, v := range scratch.Header.AllInOrder() {
+			visit(k, v)
+		}
+		return
+	}
+	for {
+		line, n, _ := rawLine(raw)
+		if line == nil {
+			return
+		}
+		raw = raw[n:]
+		if colon := bytes.IndexByte(line, ':'); colon > 0 {
+			visit(line[:colon], headerlist.TrimOWS(line[colon+1:]))
+		}
+	}
+}
+
+func rankedInOrder(lines []orderedLine, group int) bool {
+	last := -1
+	for _, l := range lines[group:] {
+		if l.group == group {
+			if l.rank < last {
+				return false
+			}
+			last = l.rank
+		}
+	}
+	return true
+}
+
+// rewriteInRankOrder writes every name of lines anew, in rank order: each Del can move another name's lines.
+func rewriteInRankOrder(h *fasthttp.RequestHeader, lines []orderedLine) {
+	// Copied into one buffer, since the Adds below reuse the buffers Del frees.
+	type copied struct{ rank, name, value, end int }
+	var (
+		space [512]byte
+		buf   [8]copied
+	)
+	arena, ordered := space[:0], buf[:0]
+	for _, l := range lines {
+		c := copied{rank: l.rank, name: len(arena)}
+		arena = append(arena, lines[l.group].name...)
+		c.value = len(arena)
+		arena = append(arena, l.value...)
+		c.end = len(arena)
+		ordered = append(ordered, c)
+	}
+	slices.SortStableFunc(ordered, func(a, b copied) int { return a.rank - b.rank })
+
+	for g, l := range lines {
+		if l.group != g {
+			continue
+		}
+		// One canonical spelling lets the byte-exact Del find every line, in either store.
+		canonical := IsCanonical(utils.UnsafeString(l.name))
+		for _, m := range lines[g+1:] {
+			canonical = canonical && (m.group != g || bytes.Equal(m.name, l.name))
+		}
+		Del(h, utils.UnsafeString(l.name), canonical)
+	}
+	for _, c := range ordered {
+		h.AddBytesKV(arena[c.name:c.value], arena[c.value:c.end])
+	}
+}
+
 // Lines returns every field line stored under name. The walk replaces the
 // byte-exact lookup rather than backing it up: a message can carry both
 // spellings, and an empty canonical line would hide the value beside it.
+// A name a request holds in its trailer section has no lines (see InTrailer);
+// a response's header lines are read.
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store, not a mode of operation
 func Lines(h Peeker, name string, canonical bool) [][]byte {
-	if canonical {
+	if canonical && !HasTrailers(h) {
 		// PeekAll hands back the header's own slice without allocating.
 		return h.PeekAll(name)
+	}
+	if req, ok := h.(*fasthttp.RequestHeader); ok && InTrailer(req, name) {
+		return nil
 	}
 
 	// Walked rather than ranged: this runs per key header on every cacheable
@@ -75,9 +447,12 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 // resolved by picking one. headerlookup.Value refuses that case for the request
 // fields where it arises.
 //
+// A name a request holds in its trailer section reads as absent (see
+// InTrailer); a response's header line is read.
+//
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
-	if canonical {
+	if canonical && !HasTrailers(h) {
 		v := Peek(h, name)
 		if len(v) > 0 {
 			return v
@@ -109,9 +484,12 @@ func First(h Peeker, name string, canonical bool) []byte {
 	return firstFold(h, name)
 }
 
-// firstFold answers First for a store whose field names are spelled however the
-// peer sent them.
+// firstFold answers First for field names spelled as the peer sent them, or for a
+// request holding a trailer section, a check kept here since it slowed First's canonical path.
 func firstFold(h Peeker, name string) []byte {
+	if req, ok := h.(*fasthttp.RequestHeader); ok && InTrailer(req, name) {
+		return nil
+	}
 	// Walked rather than ranged, for the reason Lines gives: All builds a
 	// heap-allocated iterator per call. Scanning past the match costs less than
 	// the early exit ranging would buy.

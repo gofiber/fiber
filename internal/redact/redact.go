@@ -17,6 +17,26 @@ const (
 	Mask = "****"
 )
 
+// Placeholder replaces a whole value (a storage key, a configured origin)
+// in log and error output when value redaction is enabled.
+const Placeholder = "[redacted]"
+
+// Value returns Placeholder when enabled is true and value unchanged
+// otherwise.
+func Value(value string, enabled bool) string { //nolint:revive // flag-parameter: enabled is the middleware's inverted DisableValueRedaction setting
+	if enabled {
+		return Placeholder
+	}
+	return value
+}
+
+// Masker returns a function that applies Value with the given enabled flag.
+func Masker(enabled bool) func(string) string {
+	return func(value string) string {
+		return Value(value, enabled)
+	}
+}
+
 // Prefix returns a redacted form of value. Empty input is returned unchanged.
 // Inputs shorter than MinLength are fully masked. Inputs at least MinLength
 // long return the leading PrefixLength bytes followed by Mask. Operations are

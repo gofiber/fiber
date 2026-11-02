@@ -55,34 +55,34 @@ const (
 //
 //go:generate ifacemaker --file ctx.go --file req.go --file res.go --struct DefaultCtx --iface Ctx --pkg fiber --promoted --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
-	handlerCtx             CustomCtx            // Active custom context implementation, if any
-	DefaultReq                                  // Default request api
-	DefaultRes                                  // Default response api
-	app                    *App                 // Reference to *App
-	route                  *Route               // Reference to *Route
-	fasthttp               *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	bind                   *Bind                // Default bind reference
-	redirect               *Redirect            // Default redirect reference
-	reclaim                *reclaimLatch        // Coordinates safe pool reclamation of an abandoned ctx; nil on the hot path
-	viewBindMap            Map                  // Default view map to bind template engine
-	values                 [maxParams]string    // Route parameter values
-	baseURI                string               // HTTP base uri
-	pathOriginal           string               // Original HTTP path
-	flashMessages          redirectionMsgs      // Flash messages
-	path                   []byte               // HTTP path with the modifications by the configuration
-	detectionPath          []byte               // Route detection path
-	treePathHash           int                  // Hash of the path for the search in the tree
-	pathSlashes            int                  // Number of '/' in the detection path, used to quick-reject routes
-	pathPrint              uint64               // Fingerprint of the detection path; 0 until the route scan hashes it
-	indexRoute             int                  // Index of the current route
-	indexHandler           int                  // Index of the current handler
-	firstMatchIndex        int                  // Pre-resolved endpoint index from the SkipUnmatchedRoutes lookahead; -1 when unused
-	methodInt              int                  // HTTP method INT equivalent
-	isAbandoned            atomic.Bool          // If true, ctx won't be pooled until ForceRelease is called
-	isMatched              bool                 // Non use route matched
-	shouldSkipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
-	isUserContextSet       bool                 // User context was stored in fasthttp user values
-	pathNeedsNorm          bool                 // pathOriginal holds an escape or a dot segment; set wherever pathOriginal is
+	handlerCtx             CustomCtx                    // Active custom context implementation, if any
+	DefaultReq                                          // Default request api
+	DefaultRes                                          // Default response api
+	app                    *App                         // Reference to *App
+	route                  *Route                       // Reference to *Route
+	fasthttp               *fasthttp.RequestCtx         // Reference to *fasthttp.RequestCtx
+	bind                   *Bind                        // Default bind reference
+	redirect               *Redirect                    // Default redirect reference
+	reclaim                atomic.Pointer[reclaimLatch] // Coordinates safe pool reclamation of an abandoned ctx; nil on the hot path
+	viewBindMap            Map                          // Default view map to bind template engine
+	values                 [maxParams]string            // Route parameter values
+	baseURI                string                       // HTTP base uri
+	pathOriginal           string                       // Original HTTP path
+	flashMessages          redirectionMsgs              // Flash messages
+	path                   []byte                       // HTTP path with the modifications by the configuration
+	detectionPath          []byte                       // Route detection path
+	treePathHash           int                          // Hash of the path for the search in the tree
+	pathSlashes            int                          // Number of '/' in the detection path, used to quick-reject routes
+	pathPrint              uint64                       // Fingerprint of the detection path; 0 until the route scan hashes it
+	indexRoute             int                          // Index of the current route
+	indexHandler           int                          // Index of the current handler
+	firstMatchIndex        int                          // Pre-resolved endpoint index from the SkipUnmatchedRoutes lookahead; -1 when unused
+	methodInt              int                          // HTTP method INT equivalent
+	isAbandoned            atomic.Bool                  // If true, ctx won't be pooled until ForceRelease is called
+	isMatched              bool                         // Non use route matched
+	shouldSkipNonUseRoutes bool                         // Skip non-use routes while iterating middleware
+	isUserContextSet       bool                         // User context was stored in fasthttp user values
+	pathNeedsNorm          bool                         // pathOriginal holds an escape or a dot segment; set wherever pathOriginal is
 }
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
@@ -965,7 +965,10 @@ func (c *DefaultCtx) release() {
 	}
 	c.shouldSkipNonUseRoutes = false
 	// performance: no need for using c.isAbandoned.Store(false) here, as it is always set to false when it was true in ForceRelease
-	c.reclaim = nil
+	// performance: only a timed-out request arms the latch, so skip the atomic store otherwise
+	if c.reclaim.Load() != nil {
+		c.reclaim.Store(nil)
+	}
 	c.handlerCtx = nil
 }
 
@@ -976,6 +979,7 @@ func (c *DefaultCtx) release() {
 type reclaimLatch struct {
 	releasedCh chan struct{} // closed once the request handler has released the ctx (event b)
 	once       sync.Once     // guards the close-exactly-once of releasedCh
+	owners     atomic.Int32  // reclaimers still waiting; the last one releases the ctx
 }
 
 // Abandon marks this context as abandoned. An abandoned context will not be
@@ -1021,13 +1025,25 @@ func (c *DefaultCtx) ForceRelease() {
 // that never returns — the context is intentionally never reclaimed, because the
 // handler still owns it.
 //
+// It may be called more than once per request, also concurrently, as nested
+// timeout middlewares do: the context is then reclaimed once every handlerDone is
+// closed. Each call must come from a goroutine that still owns the context.
+//
 // This method calls Abandon internally, so callers do not need to call Abandon
 // separately. Calling Abandon before ScheduleReclaim is still safe (idempotent).
 func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context.CancelFunc) {
 	c.Abandon()
 
-	latch := &reclaimLatch{releasedCh: make(chan struct{})}
-	c.reclaim = latch
+	// Calls for one request share the latch, so the release signal reaches every
+	// reclaimer and only the last one to finish pools the ctx.
+	latch := c.reclaim.Load()
+	if latch == nil {
+		latch = &reclaimLatch{releasedCh: make(chan struct{})}
+		if !c.reclaim.CompareAndSwap(nil, latch) {
+			latch = c.reclaim.Load()
+		}
+	}
+	latch.owners.Add(1)
 
 	go func() {
 		<-handlerDone
@@ -1035,7 +1051,9 @@ func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context
 			cancel()
 		}
 		<-latch.releasedCh
-		c.ForceRelease()
+		if latch.owners.Add(-1) == 0 {
+			c.ForceRelease()
+		}
 	}()
 }
 
@@ -1043,9 +1061,9 @@ func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context
 // reclaim-armed context (event b). It is a no-op when reclamation was not armed
 // and is safe to call multiple times.
 func (c *DefaultCtx) signalReleased() {
-	if c.reclaim != nil {
-		c.reclaim.once.Do(func() {
-			close(c.reclaim.releasedCh)
+	if latch := c.reclaim.Load(); latch != nil {
+		latch.once.Do(func() {
+			close(latch.releasedCh)
 		})
 	}
 }

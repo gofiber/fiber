@@ -6,164 +6,145 @@ package fiber
 
 import (
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
-// go test -race -run Test_Path_parseRoute
 func Test_Path_parseRoute(t *testing.T) {
 	t.Parallel()
-	var rp routeParser
-
-	rp = parseRoute("/shop/product/::filter/color::color/size::size", regexp.MustCompile)
-	require.Equal(t, routeParser{
-		segs: []*routeSegment{
-			{Const: "/shop/product/:", Length: 15},
-			{IsParam: true, ParamName: "filter", ComparePart: "/color:", PartCount: 1},
-			{Const: "/color:", Length: 7},
-			{IsParam: true, ParamName: "color", ComparePart: "/size:", PartCount: 1},
-			{Const: "/size:", Length: 6},
-			{IsParam: true, ParamName: "size", IsLast: true},
-		},
-		params:     []string{"filter", "color", "size"},
-		minSlashes: 5,
-		maxSlashes: 5,
-		maxBounded: true,
-		probe:      newConstProbe("/color:", 15, 0),
-	}, rp)
-
-	rp = parseRoute("/api/v1/:param/abc/*", regexp.MustCompile)
-	require.Equal(t, routeParser{
-		segs: []*routeSegment{
-			{Const: "/api/v1/", Length: 8},
-			{IsParam: true, ParamName: "param", ComparePart: "/abc", PartCount: 1},
-			{Const: "/abc/", Length: 5, HasOptionalSlash: true},
-			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, IsLast: true},
-		},
-		params:        []string{"param", "*1"},
-		wildCardCount: 1,
-		minSlashes:    4,
-		probe:         newConstProbe("/abc", 8, 0),
-	}, rp)
-
-	rp = parseRoute("/v1/some/resource/name\\:customVerb", regexp.MustCompile)
-	require.Equal(t, routeParser{
-		segs: []*routeSegment{
-			{Const: "/v1/some/resource/name:customVerb", Length: 33, IsLast: true},
-		},
-		params:     nil,
-		minSlashes: 4,
-		maxSlashes: 4,
-		maxBounded: true,
-	}, rp)
-
-	rp = parseRoute("/v1/some/resource/:name\\:customVerb", regexp.MustCompile)
-	require.Equal(t, routeParser{
-		segs: []*routeSegment{
-			{Const: "/v1/some/resource/", Length: 18},
-			{IsParam: true, ParamName: "name", ComparePart: ":customVerb", PartCount: 1},
-			{Const: ":customVerb", Length: 11, IsLast: true},
-		},
-		params:     []string{"name"},
-		minSlashes: 4,
-		maxSlashes: 4,
-		maxBounded: true,
-	}, rp)
-
-	// heavy test with escaped characters
-	rp = parseRoute("/v1/some/resource/name\\\\:customVerb?\\?/:param/*", regexp.MustCompile)
-	require.Equal(t, routeParser{
-		segs: []*routeSegment{
-			{Const: "/v1/some/resource/name:customVerb??/", Length: 36},
-			{IsParam: true, ParamName: "param", ComparePart: "/", PartCount: 1},
-			{Const: "/", Length: 1, HasOptionalSlash: true},
-			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, IsLast: true},
-		},
-		params:        []string{"param", "*1"},
-		wildCardCount: 1,
-		minSlashes:    5,
-	}, rp)
-
-	rp = parseRoute("/api/*/:param/:param2", regexp.MustCompile)
-	require.Equal(t, routeParser{
-		segs: []*routeSegment{
-			{Const: "/api/", Length: 5, HasOptionalSlash: true},
-			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "/", PartCount: 2},
-			{Const: "/", Length: 1},
-			{IsParam: true, ParamName: "param", ComparePart: "/", PartCount: 1},
-			{Const: "/", Length: 1},
-			{IsParam: true, ParamName: "param2", IsLast: true},
-		},
-		params:        []string{"*1", "param", "param2"},
-		wildCardCount: 1,
-		minSlashes:    3,
-	}, rp)
-
-	rp = parseRoute("/test:optional?:optional2?", regexp.MustCompile)
-	require.Equal(t, routeParser{
-		segs: []*routeSegment{
-			{Const: "/test", Length: 5},
-			{IsParam: true, ParamName: "optional", IsOptional: true, CanYield: true, Length: 1},
-			{IsParam: true, ParamName: "optional2", IsOptional: true, IsLast: true},
-		},
-		params:     []string{"optional", "optional2"},
-		minSlashes: 1,
-		yields:     true,
-	}, rp)
-
-	rp = parseRoute("/config/+.json", regexp.MustCompile)
-	require.Equal(t, routeParser{
-		segs: []*routeSegment{
-			{Const: "/config/", Length: 8},
-			{IsParam: true, ParamName: "+1", IsGreedy: true, IsOptional: false, ComparePart: ".json", PartCount: 1},
-			{Const: ".json", Length: 5, IsLast: true},
-		},
-		params:     []string{"+1"},
-		plusCount:  1,
-		minSlashes: 2,
-	}, rp)
-
-	rp = parseRoute("/api/:day.:month?.:year?", regexp.MustCompile)
-	require.Equal(t, routeParser{
-		segs: []*routeSegment{
-			{Const: "/api/", Length: 5},
-			{IsParam: true, ParamName: "day", IsOptional: false, ComparePart: ".", PartCount: 2},
-			{Const: ".", Length: 1},
-			{IsParam: true, ParamName: "month", IsOptional: true, ComparePart: ".", PartCount: 1},
-			{Const: ".", Length: 1},
-			{IsParam: true, ParamName: "year", IsOptional: true, IsLast: true},
-		},
-		params:     []string{"day", "month", "year"},
-		minSlashes: 2,
-	}, rp)
-
-	rp = parseRoute("/*v1*/proxy", regexp.MustCompile)
-	require.Equal(t, routeParser{
-		segs: []*routeSegment{
-			{Const: "/", Length: 1, HasOptionalSlash: true},
-			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "v1", PartCount: 1},
-			{Const: "v1", Length: 2},
-			{IsParam: true, ParamName: "*2", IsGreedy: true, IsOptional: true, ComparePart: "/proxy", PartCount: 1},
-			{Const: "/proxy", Length: 6, IsLast: true},
-		},
-		params:        []string{"*1", "*2"},
-		wildCardCount: 2,
-		minSlashes:    1,
-	}, rp)
+	for _, tc := range []struct {
+		pattern string
+		want    routeParser
+	}{
+		{pattern: "/shop/product/::filter/color::color/size::size", want: routeParser{
+			segs: []*routeSegment{
+				{Const: "/shop/product/:", Length: 15},
+				{IsParam: true, ParamName: "filter", ComparePart: "/color:", PartCount: 1},
+				{Const: "/color:", Length: 7},
+				{IsParam: true, ParamName: "color", ComparePart: "/size:", PartCount: 1},
+				{Const: "/size:", Length: 6},
+				{IsParam: true, ParamName: "size", IsLast: true},
+			},
+			params:     []string{"filter", "color", "size"},
+			minSlashes: 5,
+			maxSlashes: 5,
+			maxBounded: true,
+			probe:      newConstProbe("/color:", 15, 0),
+		}},
+		{pattern: "/api/v1/:param/abc/*", want: routeParser{
+			segs: []*routeSegment{
+				{Const: "/api/v1/", Length: 8},
+				{IsParam: true, ParamName: "param", ComparePart: "/abc", PartCount: 1},
+				{Const: "/abc/", Length: 5, HasOptionalSlash: true},
+				{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, IsLast: true},
+			},
+			params:        []string{"param", "*1"},
+			wildCardCount: 1,
+			minSlashes:    4,
+			probe:         newConstProbe("/abc", 8, 0),
+		}},
+		{pattern: "/v1/some/resource/name\\:customVerb", want: routeParser{
+			segs:       []*routeSegment{{Const: "/v1/some/resource/name:customVerb", Length: 33, IsLast: true}},
+			params:     nil,
+			minSlashes: 4,
+			maxSlashes: 4,
+			maxBounded: true,
+		}},
+		{pattern: "/v1/some/resource/:name\\:customVerb", want: routeParser{
+			segs: []*routeSegment{
+				{Const: "/v1/some/resource/", Length: 18},
+				{IsParam: true, ParamName: "name", ComparePart: ":customVerb", PartCount: 1},
+				{Const: ":customVerb", Length: 11, IsLast: true},
+			},
+			params:     []string{"name"},
+			minSlashes: 4,
+			maxSlashes: 4,
+			maxBounded: true,
+		}},
+		// heavy test with escaped characters
+		{pattern: "/v1/some/resource/name\\\\:customVerb?\\?/:param/*", want: routeParser{
+			segs: []*routeSegment{
+				{Const: "/v1/some/resource/name:customVerb??/", Length: 36},
+				{IsParam: true, ParamName: "param", ComparePart: "/", PartCount: 1},
+				{Const: "/", Length: 1, HasOptionalSlash: true},
+				{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, IsLast: true},
+			},
+			params:        []string{"param", "*1"},
+			wildCardCount: 1,
+			minSlashes:    5,
+		}},
+		{pattern: "/api/*/:param/:param2", want: routeParser{
+			segs: []*routeSegment{
+				{Const: "/api/", Length: 5, HasOptionalSlash: true},
+				{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "/", PartCount: 2},
+				{Const: "/", Length: 1},
+				{IsParam: true, ParamName: "param", ComparePart: "/", PartCount: 1},
+				{Const: "/", Length: 1},
+				{IsParam: true, ParamName: "param2", IsLast: true},
+			},
+			params:        []string{"*1", "param", "param2"},
+			wildCardCount: 1,
+			minSlashes:    3,
+		}},
+		{pattern: "/test:optional?:optional2?", want: routeParser{
+			segs: []*routeSegment{
+				{Const: "/test", Length: 5},
+				{IsParam: true, ParamName: "optional", IsOptional: true, CanYield: true, Length: 1},
+				{IsParam: true, ParamName: "optional2", IsOptional: true, IsLast: true},
+			},
+			params:     []string{"optional", "optional2"},
+			minSlashes: 1,
+			yields:     true,
+		}},
+		{pattern: "/config/+.json", want: routeParser{
+			segs: []*routeSegment{
+				{Const: "/config/", Length: 8},
+				{IsParam: true, ParamName: "+1", IsGreedy: true, IsOptional: false, ComparePart: ".json", PartCount: 1},
+				{Const: ".json", Length: 5, IsLast: true},
+			},
+			params:     []string{"+1"},
+			plusCount:  1,
+			minSlashes: 2,
+		}},
+		{pattern: "/api/:day.:month?.:year?", want: routeParser{
+			segs: []*routeSegment{
+				{Const: "/api/", Length: 5},
+				{IsParam: true, ParamName: "day", IsOptional: false, ComparePart: ".", PartCount: 2},
+				{Const: ".", Length: 1},
+				{IsParam: true, ParamName: "month", IsOptional: true, ComparePart: ".", PartCount: 1},
+				{Const: ".", Length: 1},
+				{IsParam: true, ParamName: "year", IsOptional: true, IsLast: true},
+			},
+			params:     []string{"day", "month", "year"},
+			minSlashes: 2,
+		}},
+		{pattern: "/*v1*/proxy", want: routeParser{
+			segs: []*routeSegment{
+				{Const: "/", Length: 1, HasOptionalSlash: true},
+				{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "v1", PartCount: 1},
+				{Const: "v1", Length: 2},
+				{IsParam: true, ParamName: "*2", IsGreedy: true, IsOptional: true, ComparePart: "/proxy", PartCount: 1},
+				{Const: "/proxy", Length: 6, IsLast: true},
+			},
+			params:        []string{"*1", "*2"},
+			wildCardCount: 2,
+			minSlashes:    1,
+		}},
+	} {
+		require.Equal(t, tc.want, parseRoute(tc.pattern, regexp.MustCompile), "route: '%s'", tc.pattern)
+	}
 }
 
-// go test -race -run Test_Path_matchParams
 func Test_Path_matchParams(t *testing.T) {
 	t.Parallel()
 	var ctxParams [maxParams]string
-	testCaseFn := func(testCollection routeCaseCollection) {
+	for _, testCollection := range routeTestCases {
 		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
 		prefix := parseRoute(testCollection.pattern, regexp.MustCompile)
 		prefix.markTail() // as register does for a Use prefix
@@ -179,25 +160,16 @@ func Test_Path_matchParams(t *testing.T) {
 			}
 		}
 	}
-	for _, testCaseCollection := range routeTestCases {
-		testCaseFn(testCaseCollection)
-	}
 }
 
-// go test -run Test_Route_OptionalParamDoesNotSwallowSlash
 func Test_Route_OptionalParamDoesNotSwallowSlash(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/api/:day-:month?-:year?", func(c Ctx) error {
 		return c.SendString("day=" + c.Params("day") + " month=" + c.Params("month"))
 	})
 
-	req, err := http.NewRequest(MethodGet, "/api/1-/-", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/api/1-/-", StatusNotFound)
 }
 
 // Test_Path_ParameterEndChars_MatchesRouteGrammar pins the shared set against
@@ -205,7 +177,6 @@ func Test_Route_OptionalParamDoesNotSwallowSlash(t *testing.T) {
 // route grammar has to reach the client's copy too (#4635).
 func Test_Path_ParameterEndChars_MatchesRouteGrammar(t *testing.T) {
 	t.Parallel()
-
 	var want [256]bool
 	want[optionalParam] = true
 	want[paramStarterChar] = true
@@ -217,7 +188,6 @@ func Test_Path_ParameterEndChars_MatchesRouteGrammar(t *testing.T) {
 	require.Equal(t, want, parameterEndChars)
 }
 
-// go test -race -run Test_RouteParser_SlashBounds
 func Test_RouteParser_SlashBounds(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {
@@ -254,15 +224,25 @@ func Test_RouteParser_SlashBounds(t *testing.T) {
 	}
 }
 
+// pathTestPairs returns the concatenation of every ordered pair of items, an
+// item paired with itself included.
+func pathTestPairs(items []string) []string {
+	pairs := make([]string, 0, len(items)*len(items))
+	for _, first := range items {
+		for _, second := range items {
+			pairs = append(pairs, first+second)
+		}
+	}
+	return pairs
+}
+
 // Test_Route_Match_SlashBoundsDifferential generatively proves the slash-count
 // quick-reject and the probe compare in Route.match are transparent: for every
 // generated pattern and path, the filtered Route.match must agree with a raw
 // getMatch. It needs no hand-authored expectations, so it also binds pattern
 // shapes nobody thought to add to the fixture.
-// go test -race -run Test_Route_Match_SlashBoundsDifferential
 func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 	t.Parallel()
-
 	segments := []string{
 		"/api", "/foo/", "/:a", "/:b?", "/*", "/+", "/:a-:b", "/:f.:e?",
 		":tail", "/::c", "/:x:y", "/name\\:verb", "/:p/fixed",
@@ -271,13 +251,7 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 		"/:a?/fixed", "/:x:y/fixed", "/*/fixed", "/:s<int>/x",
 	}
 	// patterns: every single segment and every ordered pair
-	patterns := make([]string, 0, len(segments)*(len(segments)+1))
-	for _, s1 := range segments {
-		patterns = append(patterns, s1)
-		for _, s2 := range segments {
-			patterns = append(patterns, s1+s2)
-		}
-	}
+	patterns := append(slices.Clone(segments), pathTestPairs(segments)...)
 
 	pieces := []string{
 		"", "/a", "/a/b", "/a-b", "/a.b", "/x/y-z", "/enti/ty-x", "/a/",
@@ -286,15 +260,7 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 		"/verylongconstantsegmentx", "/x/1/z", "/x/1/z/", "/1/a/b/c", "//fixed",
 	}
 	// paths: every ordered pair of pieces (skipping the empty result)
-	paths := make([]string, 0, len(pieces)*len(pieces))
-	for _, p1 := range pieces {
-		for _, p2 := range pieces {
-			if p1+p2 == "" {
-				continue
-			}
-			paths = append(paths, p1+p2)
-		}
-	}
+	paths := slices.DeleteFunc(pathTestPairs(pieces), func(path string) bool { return path == "" })
 
 	for _, pattern := range patterns {
 		parser := parseRoute(pattern, regexp.MustCompile)
@@ -302,12 +268,7 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 			// non-parametric routes never take the filtered getMatch path
 			continue
 		}
-		route := &Route{
-			routeParser: parser,
-			Params:      parser.params,
-			path:        pattern,
-			Path:        pattern,
-		}
+		route := &Route{routeParser: parser, Params: parser.params, path: pattern, Path: pattern}
 		for _, use := range []bool{false, true} {
 			route.use = use
 			for _, path := range paths {
@@ -333,7 +294,6 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 // Test_Route_Match_SlashBoundsConsistency proves the slash-count quick-reject in
 // Route.match never flips the outcome of the exhaustive matching fixture. Only
 // parametric patterns are checked, since only they take the filtered path.
-// go test -race -run Test_Route_Match_SlashBoundsConsistency
 func Test_Route_Match_SlashBoundsConsistency(t *testing.T) {
 	t.Parallel()
 	for _, testCollection := range routeTestCases {
@@ -365,75 +325,35 @@ func Test_Route_Match_SlashBoundsConsistency(t *testing.T) {
 	}
 }
 
-// go test -race -run Test_RoutePatternMatch
 func Test_RoutePatternMatch(t *testing.T) {
 	t.Parallel()
-	testCaseFn := func(pattern string, cases []routeTestCase) {
-		for _, c := range cases {
+	for _, testCase := range routeTestCases {
+		for _, c := range testCase.testCases {
 			// skip all cases for partial checks
 			if c.partialCheck {
 				continue
 			}
-			match := RoutePatternMatch(c.url, pattern)
-			require.Equal(t, c.match, match, "route: '%s', url: '%s'", pattern, c.url)
+			match := RoutePatternMatch(c.url, testCase.pattern)
+			require.Equal(t, c.match, match, "route: '%s', url: '%s'", testCase.pattern, c.url)
 		}
-	}
-	for _, testCase := range routeTestCases {
-		testCaseFn(testCase.pattern, testCase.testCases)
 	}
 }
 
 func TestHasPartialMatchBoundary(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name          string
 		path          string
 		matchedLength int
 		expected      bool
 	}{
-		{
-			name:          "negative length",
-			path:          "/demo",
-			matchedLength: -1,
-			expected:      false,
-		},
-		{
-			name:          "greater than length",
-			path:          "/demo",
-			matchedLength: 6,
-			expected:      false,
-		},
-		{
-			name:          "exact match",
-			path:          "/demo",
-			matchedLength: len("/demo"),
-			expected:      true,
-		},
-		{
-			name:          "zero length",
-			path:          "/demo",
-			matchedLength: 0,
-			expected:      false,
-		},
-		{
-			name:          "previous rune slash",
-			path:          "/demo/child",
-			matchedLength: len("/demo/"),
-			expected:      true,
-		},
-		{
-			name:          "next rune slash",
-			path:          "/demo/child",
-			matchedLength: len("/demo"),
-			expected:      true,
-		},
-		{
-			name:          "no boundary",
-			path:          "/demo/child",
-			matchedLength: len("/dem"),
-			expected:      false,
-		},
+		{name: "negative length", path: "/demo", matchedLength: -1, expected: false},
+		{name: "greater than length", path: "/demo", matchedLength: 6, expected: false},
+		{name: "exact match", path: "/demo", matchedLength: len("/demo"), expected: true},
+		{name: "zero length", path: "/demo", matchedLength: 0, expected: false},
+		{name: "previous rune slash", path: "/demo/child", matchedLength: len("/demo/"), expected: true},
+		{name: "next rune slash", path: "/demo/child", matchedLength: len("/demo"), expected: true},
+		{name: "no boundary", path: "/demo/child", matchedLength: len("/dem"), expected: false},
 	}
 
 	for _, testCase := range testCases {
@@ -446,80 +366,64 @@ func TestHasPartialMatchBoundary(t *testing.T) {
 
 func Test_Utils_GetTrimmedParam(t *testing.T) {
 	t.Parallel()
-	res := GetTrimmedParam("")
-	require.Empty(t, res)
-	res = GetTrimmedParam("*")
-	require.Equal(t, "*", res)
-	res = GetTrimmedParam(":param")
-	require.Equal(t, "param", res)
-	res = GetTrimmedParam(":param1?")
-	require.Equal(t, "param1", res)
-	res = GetTrimmedParam("noParam")
-	require.Equal(t, "noParam", res)
+	for param, want := range map[string]string{
+		"":         "",
+		"*":        "*",
+		":param":   "param",
+		":param1?": "param1",
+		"noParam":  "noParam",
+	} {
+		require.Equal(t, want, GetTrimmedParam(param), "param %q", param)
+	}
 }
 
 func Test_Utils_RemoveEscapeChar(t *testing.T) {
 	t.Parallel()
-	res := RemoveEscapeChar(":test\\:bla")
-	require.Equal(t, ":test:bla", res)
-	res = RemoveEscapeChar("\\abc")
-	require.Equal(t, "abc", res)
-	res = RemoveEscapeChar("noEscapeChar")
-	require.Equal(t, "noEscapeChar", res)
+	for in, want := range map[string]string{
+		":test\\:bla":  ":test:bla",
+		"\\abc":        "abc",
+		"noEscapeChar": "noEscapeChar",
+	} {
+		require.Equal(t, want, RemoveEscapeChar(in), "in %q", in)
+	}
 }
 
 func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
 	t.Parallel()
-
+	bad := func(handler ConstraintHandler, name string, data ...string) Constraint {
+		return *newConstraint(handler, name, data)
+	}
 	testCases := []struct {
 		name       string
 		param      string
 		constraint Constraint
 	}{
 		{
-			name:       "minLen invalid metadata",
-			constraint: *newConstraint(minLenConstraintType{}, ConstraintMinLen, []string{"abc"}),
-			param:      "abcd",
+			name: "minLen invalid metadata", param: "abcd",
+			constraint: bad(minLenConstraintType{}, ConstraintMinLen, "abc"),
 		},
 		{
-			name:       "maxLen invalid metadata",
-			constraint: *newConstraint(maxLenConstraintType{}, ConstraintMaxLen, []string{"abc"}),
-			param:      "abcd",
+			name: "maxLen invalid metadata", param: "abcd",
+			constraint: bad(maxLenConstraintType{}, ConstraintMaxLen, "abc"),
+		},
+		{name: "len invalid metadata", param: "abcd", constraint: bad(lenConstraintType{}, ConstraintLen, "abc")},
+		{
+			name: "betweenLen invalid first metadata", param: "abcd",
+			constraint: bad(betweenLenConstraintType{}, ConstraintBetweenLen, "abc", "5"),
 		},
 		{
-			name:       "len invalid metadata",
-			constraint: *newConstraint(lenConstraintType{}, ConstraintLen, []string{"abc"}),
-			param:      "abcd",
+			name: "betweenLen invalid second metadata", param: "abcd",
+			constraint: bad(betweenLenConstraintType{}, ConstraintBetweenLen, "1", "abc"),
+		},
+		{name: "min invalid metadata", param: "10", constraint: bad(minConstraintType{}, ConstraintMin, "abc")},
+		{name: "max invalid metadata", param: "10", constraint: bad(maxConstraintType{}, ConstraintMax, "abc")},
+		{
+			name: "range invalid first metadata", param: "7",
+			constraint: bad(rangeConstraintType{}, ConstraintRange, "abc", "10"),
 		},
 		{
-			name:       "betweenLen invalid first metadata",
-			constraint: *newConstraint(betweenLenConstraintType{}, ConstraintBetweenLen, []string{"abc", "5"}),
-			param:      "abcd",
-		},
-		{
-			name:       "betweenLen invalid second metadata",
-			constraint: *newConstraint(betweenLenConstraintType{}, ConstraintBetweenLen, []string{"1", "abc"}),
-			param:      "abcd",
-		},
-		{
-			name:       "min invalid metadata",
-			constraint: *newConstraint(minConstraintType{}, ConstraintMin, []string{"abc"}),
-			param:      "10",
-		},
-		{
-			name:       "max invalid metadata",
-			constraint: *newConstraint(maxConstraintType{}, ConstraintMax, []string{"abc"}),
-			param:      "10",
-		},
-		{
-			name:       "range invalid first metadata",
-			constraint: *newConstraint(rangeConstraintType{}, ConstraintRange, []string{"abc", "10"}),
-			param:      "7",
-		},
-		{
-			name:       "range invalid second metadata",
-			constraint: *newConstraint(rangeConstraintType{}, ConstraintRange, []string{"1", "abc"}),
-			param:      "7",
+			name: "range invalid second metadata", param: "7",
+			constraint: bad(rangeConstraintType{}, ConstraintRange, "1", "abc"),
 		},
 	}
 
@@ -533,12 +437,9 @@ func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
 
 func Test_ConstraintCheckConstraint_NilRegexMatcher(t *testing.T) {
 	t.Parallel()
-
 	constraint := *newConstraint(regexConstraintType{}, ConstraintRegex, []string{"("})
 
-	require.NotPanics(t, func() {
-		require.False(t, constraint.CheckConstraint("123"))
-	})
+	require.NotPanics(t, func() { require.False(t, constraint.CheckConstraint("123")) })
 }
 
 func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
@@ -551,10 +452,9 @@ func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
 	require.Equal(b, ":test:bla", res)
 }
 
-// go test -race -run Test_Path_matchParams
 func Benchmark_Path_matchParams(t *testing.B) {
 	var ctxParams [maxParams]string
-	benchCaseFn := func(testCollection routeCaseCollection) {
+	for _, testCollection := range benchmarkCases {
 		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
 		for _, c := range testCollection.testCases {
 			var matchRes bool
@@ -565,7 +465,6 @@ func Benchmark_Path_matchParams(t *testing.B) {
 			t.Run(testCollection.pattern+"_"+state+"_"+c.url, func(b *testing.B) {
 				for b.Loop() {
 					if match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck); match {
-						// Get testCases from the original path
 						matchRes = true
 					}
 				}
@@ -575,10 +474,6 @@ func Benchmark_Path_matchParams(t *testing.B) {
 				}
 			})
 		}
-	}
-
-	for _, testCollection := range benchmarkCases {
-		benchCaseFn(testCollection)
 	}
 }
 
@@ -609,7 +504,6 @@ func Benchmark_Path_OptionalMiss(b *testing.B) {
 	}
 }
 
-// go test -race -run Test_RoutePatternMatch
 func Benchmark_ConstraintExecution(b *testing.B) {
 	var ctxParams [maxParams]string
 	var match bool
@@ -647,7 +541,7 @@ func Benchmark_ConstraintExecution(b *testing.B) {
 }
 
 func Benchmark_RoutePatternMatch(t *testing.B) {
-	benchCaseFn := func(testCollection routeCaseCollection) {
+	for _, testCollection := range benchmarkCases {
 		for _, c := range testCollection.testCases {
 			// skip all cases for partial checks
 			if c.partialCheck {
@@ -661,7 +555,6 @@ func Benchmark_RoutePatternMatch(t *testing.B) {
 			t.Run(testCollection.pattern+"_"+state+"_"+c.url, func(b *testing.B) {
 				for b.Loop() {
 					if match := RoutePatternMatch(c.url, testCollection.pattern); match {
-						// Get testCases from the original path
 						matchRes = true
 					}
 				}
@@ -669,71 +562,34 @@ func Benchmark_RoutePatternMatch(t *testing.B) {
 			})
 		}
 	}
-
-	for _, testCollection := range benchmarkCases {
-		benchCaseFn(testCollection)
-	}
 }
 
 func Test_Route_TooManyParams_Panic(t *testing.T) {
 	t.Parallel()
-
-	// Test with exactly maxParams (30) - should work
-	t.Run("exactly_maxParams", func(t *testing.T) {
-		t.Parallel()
-		route := paramsRoute(t, maxParams)
-		require.NotPanics(t, func() {
-			parseRoute(route, regexp.MustCompile)
+	parse := func(route string) { parseRoute(route, regexp.MustCompile) }
+	register := func(route string) { New().Get(route, func(c Ctx) error { return c.SendString("test") }) }
+	for _, tc := range []struct {
+		add  func(route string) // parses or registers the route
+		name string
+		n    int // parameters in the route
+	}{
+		{name: "exactly_maxParams", add: parse, n: maxParams},
+		{name: "maxParams_plus_one", add: parse, n: maxParams + 1},
+		{name: "35_params", add: parse, n: maxParams + 5},
+		{name: "register_via_Get", add: register, n: maxParams + 1},
+		{name: "register_maxParams_works", add: register, n: maxParams},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			route := paramsRoute(t, tc.n)
+			if tc.n <= maxParams {
+				require.NotPanics(t, func() { tc.add(route) })
+				return
+			}
+			want := fmt.Sprintf("Route '%s' has %d parameters, which exceeds the maximum of 30", route, tc.n)
+			require.PanicsWithValue(t, want, func() { tc.add(route) })
 		})
-	})
-
-	// Test with maxParams + 1 (31) - should panic
-	t.Run("maxParams_plus_one", func(t *testing.T) {
-		t.Parallel()
-		route := paramsRoute(t, maxParams+1)
-		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
-			parseRoute(route, regexp.MustCompile)
-		})
-	})
-
-	// Test with 35 params - should panic
-	t.Run("35_params", func(t *testing.T) {
-		t.Parallel()
-		route := paramsRoute(t, maxParams+5)
-		require.PanicsWithValue(t, "Route '"+route+"' has 35 parameters, which exceeds the maximum of 30", func() {
-			parseRoute(route, regexp.MustCompile)
-		})
-	})
-}
-
-func Test_App_Register_TooManyParams_Panic(t *testing.T) {
-	t.Parallel()
-
-	// Test registering a route with too many params via app
-	t.Run("register_via_Get", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		route := paramsRoute(t, maxParams+1)
-
-		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
-			app.Get(route, func(c Ctx) error {
-				return c.SendString("test")
-			})
-		})
-	})
-
-	// Test registering a route with maxParams works
-	t.Run("register_maxParams_works", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		route := paramsRoute(t, maxParams)
-
-		require.NotPanics(t, func() {
-			app.Get(route, func(c Ctx) error {
-				return c.SendString("test")
-			})
-		})
-	})
+	}
 }
 
 // paramsRoute generates a route with n parameters for testing parseRoute maxParams condition.
@@ -750,19 +606,14 @@ func paramsRoute(t *testing.T, n int) string {
 // Test_RegexHandler_Default verifies Fiber defaults RegexHandler to regexp.MustCompile.
 func Test_RegexHandler_Default(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	require.NotNil(t, app.config.RegexHandler)
 	require.Equal(t, reflect.ValueOf(regexp.MustCompile).Pointer(), reflect.ValueOf(app.config.RegexHandler).Pointer())
 
-	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
-		return c.SendString("matched")
-	})
+	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error { return c.SendString("matched") })
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/api/123", StatusOK)
 }
 
 // mockRegexCompiler is a mock implementation of regex matching for testing
@@ -791,48 +642,26 @@ func mockRegexHandler(lastPattern *string, compileCalled *bool) any {
 	return func(pattern string) regexMatcher {
 		*compileCalled = true
 		*lastPattern = pattern
-		return &mockRegexCompiler{
-			Regexp: regexp.MustCompile(pattern),
-		}
+		return &mockRegexCompiler{Regexp: regexp.MustCompile(pattern)}
 	}
 }
 
-// Test_RegexHandler_Custom verifies that a custom regex handler can be used
 func Test_RegexHandler_Custom(t *testing.T) {
 	t.Parallel()
-
 	var lastPattern string
 	var compileCalled bool
+	app := New(Config{RegexHandler: mockRegexHandler(&lastPattern, &compileCalled)})
+	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error { return c.SendString("matched") })
 
-	// Create app with custom regex handler
-	app := New(Config{
-		RegexHandler: mockRegexHandler(&lastPattern, &compileCalled),
-	})
-
-	// Register a route with regex constraint
-	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
-		return c.SendString("matched")
-	})
-
-	// Verify the mock handler was used during route registration
 	require.True(t, compileCalled, "RegexHandler should have been called")
 	require.Equal(t, `\d+`, lastPattern, "Pattern should match")
-
-	// Test the route
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-
-	// Test with non-matching pattern
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/api/abc", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/api/123", StatusOK)
+	apptest.Expect(t, app, "/api/abc", StatusNotFound)
 }
 
 // Test_RegexHandler_MatchOnlyCompiler verifies Fiber accepts compilers that only implement MatchString.
 func Test_RegexHandler_MatchOnlyCompiler(t *testing.T) {
 	t.Parallel()
-
 	var compileCalled bool
 
 	app := New(Config{
@@ -842,21 +671,16 @@ func Test_RegexHandler_MatchOnlyCompiler(t *testing.T) {
 		},
 	})
 
-	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
-		return c.SendString("matched")
-	})
+	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error { return c.SendString("matched") })
 
 	require.True(t, compileCalled)
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/api/123", StatusOK)
 }
 
 // Test_RegexHandler_DefaultCompilerPreservesConstraintField verifies stdlib handlers still populate the exported regexp field.
 func Test_RegexHandler_DefaultCompilerPreservesConstraintField(t *testing.T) {
 	t.Parallel()
-
 	parser := parseRoute("/api/:id<regex(\\d+)>", regexp.MustCompile)
 	require.Len(t, parser.segs, 2)
 	require.Len(t, parser.segs[1].Constraints, 1)
@@ -867,7 +691,6 @@ func Test_RegexHandler_DefaultCompilerPreservesConstraintField(t *testing.T) {
 
 func Test_RegexHandler_CustomCompilerUsesSegmentMatcher(t *testing.T) {
 	t.Parallel()
-
 	parser := parseRoute("/api/:id<regex(\\d+)>", func(pattern string) *matchOnlyRegexCompiler {
 		return &matchOnlyRegexCompiler{re: regexp.MustCompile(pattern)}
 	})
@@ -877,14 +700,12 @@ func Test_RegexHandler_CustomCompilerUsesSegmentMatcher(t *testing.T) {
 	require.False(t, parser.segs[1].Constraints[0].matchConstraint("abc"))
 }
 
-// Test_RoutePatternMatch_WithRegex verifies RoutePatternMatch works with regex constraints
 // Test_RoutePatternMatch_UnrootedPath pins the boundary of the path contract:
 // the empty string is read as "/", and any other string without a leading
 // slash matches no pattern, the root wildcard included, even though the router
 // roots such a request target before matching it.
 func Test_RoutePatternMatch_UnrootedPath(t *testing.T) {
 	t.Parallel()
-
 	require.True(t, RoutePatternMatch("", "/"))
 	require.True(t, RoutePatternMatch("", "/*"))
 	require.True(t, RoutePatternMatch("/", "/"))
@@ -900,12 +721,9 @@ func Test_RoutePatternMatch_UnrootedPath(t *testing.T) {
 
 func Test_RoutePatternMatch_WithRegex(t *testing.T) {
 	t.Parallel()
-
-	// Test with default handler
 	require.True(t, RoutePatternMatch("/api/123", "/api/:id<regex(\\d+)>"))
 	require.False(t, RoutePatternMatch("/api/abc", "/api/:id<regex(\\d+)>"))
 
-	// Test with custom config
 	var lastPattern string
 	var compileCalled bool
 	require.True(t, RoutePatternMatch("/api/123", "/api/:id<regex(\\d+)>", Config{
@@ -914,115 +732,58 @@ func Test_RoutePatternMatch_WithRegex(t *testing.T) {
 	require.True(t, compileCalled, "RegexHandler should have been called")
 }
 
-// Test_RegexHandler_NilDefaultsToStdlib verifies that nil RegexHandler defaults to stdlib
-func Test_RegexHandler_NilDefaultsToStdlib(t *testing.T) {
-	t.Parallel()
-
-	// Create app without specifying RegexHandler (should default)
-	app := New()
-
-	// Verify it's set to the default
-	require.NotNil(t, app.config.RegexHandler)
-
-	// Register a route with regex constraint
-	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
-		return c.SendString("matched")
-	})
-
-	// Test the route works
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-}
-
-// Test_RegexHandler_ComplexPattern tests complex regex patterns
 func Test_RegexHandler_ComplexPattern(t *testing.T) {
 	t.Parallel()
-
 	app := New()
-
-	// Test date pattern
 	app.Get("/date/:date<regex(\\d{4}-\\d{2}-\\d{2})>", func(c Ctx) error {
 		return c.SendString("date: " + c.Params("date"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/date/2024-01-15", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/date/2024-1-5", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 404, resp.StatusCode)
+	apptest.Expect(t, app, "/date/2024-01-15", 200)
+	apptest.Expect(t, app, "/date/2024-1-5", 404)
 }
 
 // Test_RegexHandler_InvalidConfigurationPanics verifies invalid handlers fail fast.
 func Test_RegexHandler_InvalidConfigurationPanics(t *testing.T) {
 	t.Parallel()
-
-	t.Run("typed_nil_function", func(t *testing.T) {
-		t.Parallel()
-
-		var handler func(string) *regexp.Regexp
-		require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
-			New(Config{RegexHandler: handler})
+	var typedNil func(string) *regexp.Regexp
+	const notFunction = "fiber: Config.RegexHandler must be a non-nil function"
+	const badSignature = "fiber: Config.RegexHandler must have signature func(string) T"
+	for _, tc := range []struct {
+		handler any
+		name    string
+		want    string
+	}{
+		{name: "typed_nil_function", handler: typedNil, want: notFunction},
+		{name: "non_function", handler: "invalid", want: notFunction},
+		{name: "invalid_signature", handler: func(int) *regexp.Regexp { return nil }, want: badSignature},
+		{name: "named_string_parameter", handler: func(regexPattern) *regexp.Regexp { return nil }, want: badSignature},
+		{
+			name: "invalid_return_type", handler: func(string) string { return "" },
+			want: "fiber: Config.RegexHandler return type must support MatchString(string) bool",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.PanicsWithValue(t, tc.want, func() { New(Config{RegexHandler: tc.handler}) })
 		})
-	})
-
-	t.Run("non_function", func(t *testing.T) {
-		t.Parallel()
-
-		require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
-			New(Config{RegexHandler: "invalid"})
-		})
-	})
-
-	t.Run("invalid_signature", func(t *testing.T) {
-		t.Parallel()
-
-		require.PanicsWithValue(t, "fiber: Config.RegexHandler must have signature func(string) T", func() {
-			New(Config{RegexHandler: func(int) *regexp.Regexp { return nil }})
-		})
-	})
-
-	t.Run("named_string_parameter", func(t *testing.T) {
-		t.Parallel()
-
-		require.PanicsWithValue(t, "fiber: Config.RegexHandler must have signature func(string) T", func() {
-			New(Config{RegexHandler: func(regexPattern) *regexp.Regexp { return nil }})
-		})
-	})
-
-	t.Run("invalid_return_type", func(t *testing.T) {
-		t.Parallel()
-
-		require.PanicsWithValue(t, "fiber: Config.RegexHandler return type must support MatchString(string) bool", func() {
-			New(Config{RegexHandler: func(string) string { return "" }})
-		})
-	})
+	}
 }
 
-// Test_RegexHandler_NilReturnPanics verifies a nil compiled matcher is rejected.
 func Test_RegexHandler_NilReturnPanics(t *testing.T) {
 	t.Parallel()
-
-	app := New(Config{
-		RegexHandler: func(string) *regexp.Regexp { return nil },
-	})
+	app := New(Config{RegexHandler: func(string) *regexp.Regexp { return nil }})
 
 	require.PanicsWithValue(t, "fiber: Config.RegexHandler must not return nil", func() {
-		app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
-			return c.SendString("matched")
-		})
+		app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error { return c.SendString("matched") })
 	})
 }
 
-// Test_RoutePatternMatch_InvalidRegexHandlerPanics verifies RoutePatternMatch also validates RegexHandler configuration.
 // Test_RoutePatternMatch_NormalizesInputs covers the guards that run before any
 // parsing: an empty path and an empty or slash-less pattern are all coerced to
 // the forms the router itself registers, so callers do not have to pre-normalize.
 func Test_RoutePatternMatch_NormalizesInputs(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name    string
 		path    string
@@ -1041,15 +802,13 @@ func Test_RoutePatternMatch_NormalizesInputs(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, RoutePatternMatch(tc.path, tc.pattern),
-				"path=%q pattern=%q", tc.path, tc.pattern)
+			require.Equal(t, tc.want, RoutePatternMatch(tc.path, tc.pattern), "path=%q pattern=%q", tc.path, tc.pattern)
 		})
 	}
 }
 
 func Test_RoutePatternMatch_InvalidRegexHandlerPanics(t *testing.T) {
 	t.Parallel()
-
 	require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
 		RoutePatternMatch("/api/123", "/api/:id<regex(\\d+)>", Config{RegexHandler: "invalid"})
 	})
@@ -1059,14 +818,9 @@ func Test_RoutePatternMatch_InvalidRegexHandlerPanics(t *testing.T) {
 // specialization claims. A gate that silently stops firing turns the
 // specialization into dead code, and one that fires too widely is a
 // correctness bug, so both directions are asserted.
-// go test -race -run Test_RouteParser_ConstParamShape
 func Test_RouteParser_ConstParamShape(t *testing.T) {
 	t.Parallel()
-
-	specialized := []string{
-		"/user/keys/:key_id", "/api/v1/:param", "/:param", "/a/:b",
-		"/repos/:owner", "/x/:y",
-	}
+	specialized := []string{"/user/keys/:key_id", "/api/v1/:param", "/:param", "/a/:b", "/repos/:owner", "/x/:y"}
 	generic := []string{
 		"/", "/const", "/*", "/+", "/api/*", "/api/+",
 		"/api/:a/:b",           // two params
@@ -1090,7 +844,6 @@ func Test_RouteParser_ConstParamShape(t *testing.T) {
 }
 
 // Test_RouteParser_Probe pins which patterns get a probe and what it holds.
-// go test -race -run Test_RouteParser_Probe
 func Test_RouteParser_Probe(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {
@@ -1139,45 +892,40 @@ func Test_RouteParser_Probe(t *testing.T) {
 	require.Equal(t, constProbe{}, parser.probe)
 }
 
+// pathTestRejects asserts that probe rejects every one of paths outright when
+// want is set, and rejects none of them otherwise.
+func pathTestRejects(t *testing.T, probe constProbe, want bool, paths ...string) {
+	t.Helper()
+
+	for _, path := range paths {
+		require.Equal(t, want, probe.rejects(path), "path %q", path)
+	}
+}
+
 // Test_ConstProbe_Rejects pins the probe compare and the paths it rejects outright.
-// go test -race -run Test_ConstProbe_Rejects
 func Test_ConstProbe_Rejects(t *testing.T) {
 	t.Parallel()
 	probe := newConstProbe("/issues/", 7, 1)
 
-	require.False(t, probe.rejects("/repos/a/b/issues/1"))
-	require.False(t, probe.rejects("/repos/a/b/issues/"))
-	require.True(t, probe.rejects("/repos/a/b/pulls/1"))
+	pathTestRejects(t, probe, false, "/repos/a/b/issues/1", "/repos/a/b/issues/")
+	pathTestRejects(t, probe, true, "/repos/a/b/pulls/1")
 	// compared in full
-	require.True(t, probe.rejects("/repos/a/b/issues"))
-	require.True(t, probe.rejects("/repos/a/b/issue"))
+	pathTestRejects(t, probe, true, "/repos/a/b/issues", "/repos/a/b/issue")
 	// too few slashes, or too short for the leading constant
-	require.True(t, probe.rejects("/repos/a/b"))
-	require.True(t, probe.rejects("/repos/a"))
-	require.True(t, probe.rejects("/repos/"))
-	require.True(t, probe.rejects("/repos"))
-	require.True(t, probe.rejects(""))
+	pathTestRejects(t, probe, true, "/repos/a/b", "/repos/a", "/repos/", "/repos", "")
 	// the leading constant's own bytes are not compared here
-	require.False(t, probe.rejects("/xxxxx/a/b/issues/1"))
+	pathTestRejects(t, probe, false, "/xxxxx/a/b/issues/1")
 	// slashes in a later word, in the overlapping tail, and at the end
-	require.False(t, probe.rejects("/repos/abcdefghijklmnop/b/issues/1"))
-	require.False(t, probe.rejects("/repos/abcdefghijklmnop/qrstuvwxyz/issues/"))
-	require.True(t, probe.rejects("/repos/abcdefghijklmnop/qrstuvwxyz"))
-	require.True(t, probe.rejects("/repos/abcdefghijklmnop/qrstuvwxyz/"))
-	require.True(t, probe.rejects("/repos/abcdefghijklmnop/"))
-	require.True(t, probe.rejects("/repos/abcdefghi/"))
-	require.True(t, probe.rejects("/repos/abcdefghi"))
+	pathTestRejects(t, probe, false, "/repos/abcdefghijklmnop/b/issues/1", "/repos/abcdefghijklmnop/qrstuvwxyz/issues/")
+	pathTestRejects(t, probe, true,
+		"/repos/abcdefghijklmnop/qrstuvwxyz", "/repos/abcdefghijklmnop/qrstuvwxyz/", "/repos/abcdefghijklmnop/",
+		"/repos/abcdefghi/", "/repos/abcdefghi")
 
 	// a short probe masks the lanes past it; skip 0 follows the first parameter
 	short := newConstProbe("/x", 3, 0)
-	require.False(t, short.rejects("/a/b/x"))
-	require.False(t, short.rejects("/a/b/xyz/q"))
-	require.True(t, short.rejects("/a/b/y"))
-	require.True(t, short.rejects("/a/b/"))
-	require.True(t, short.rejects("/a/b"))
-	require.True(t, short.rejects("/a/"))
-	require.True(t, short.rejects("/a/bcdefghijklmnop"))
-	require.False(t, short.rejects("/a/bcdefghijklmnop/x"))
+	pathTestRejects(t, short, false, "/a/b/x", "/a/b/xyz/q")
+	pathTestRejects(t, short, true, "/a/b/y", "/a/b/", "/a/b", "/a/", "/a/bcdefghijklmnop")
+	pathTestRejects(t, short, false, "/a/bcdefghijklmnop/x")
 
 	// every parameter and tail length around the word boundaries
 	deep := newConstProbe("/k", 3, 1)
@@ -1198,10 +946,8 @@ func Test_ConstProbe_Rejects(t *testing.T) {
 // each probe rejects on its own. Probes that share their from but not their
 // skip, as "/:a/x" and "/:a/:b/x" do, read different slashes, so the memo
 // must tell them apart.
-// go test -race -run Test_ProbeMemo_MatchesProbe
 func Test_ProbeMemo_MatchesProbe(t *testing.T) {
 	t.Parallel()
-
 	var probes []constProbe
 	var heads []scanHead
 	for _, pattern := range []string{
@@ -1248,7 +994,6 @@ func Test_ProbeMemo_MatchesProbe(t *testing.T) {
 }
 
 // Test_wordAt checks every offset of a few strings against a byte loop.
-// go test -race -run Test_wordAt
 func Test_wordAt(t *testing.T) {
 	t.Parallel()
 	pack := func(s string) uint64 {
@@ -1266,7 +1011,6 @@ func Test_wordAt(t *testing.T) {
 }
 
 // Test_packConst pins the word and mask the prefix filter and probes are built from.
-// go test -race -run Test_packConst
 func Test_packConst(t *testing.T) {
 	t.Parallel()
 	word, mask := packConst("")
@@ -1287,10 +1031,8 @@ func Test_packConst(t *testing.T) {
 // path, the specialized and generic matchers must agree on both the outcome
 // and the captured parameter. Running the two against each other is the whole
 // safety argument for the specialization.
-// go test -race -run Test_RouteParser_ConstParamDifferential
 func Test_RouteParser_ConstParamDifferential(t *testing.T) {
 	t.Parallel()
-
 	prefixes := []string{"/", "/a/", "/user/keys/", "/api/v1/", "/verylongprefix/"}
 	patterns := make([]string, 0, len(prefixes))
 	for _, p := range prefixes {
@@ -1303,12 +1045,7 @@ func Test_RouteParser_ConstParamDifferential(t *testing.T) {
 		"/api", "/api/v1", "/api/v1/", "/api/v1/x", "/api/v1/x/y",
 		"/verylongprefix", "/verylongprefix/z", "/VERYLONGPREFIX/z",
 	}
-	paths := make([]string, 0, len(pieces)*len(pieces))
-	for _, p1 := range pieces {
-		for _, p2 := range pieces {
-			paths = append(paths, p1+p2)
-		}
-	}
+	paths := pathTestPairs(pieces)
 
 	for _, pattern := range patterns {
 		parser := parseRoute(pattern, regexp.MustCompile)
@@ -1338,10 +1075,8 @@ func Test_RouteParser_ConstParamDifferential(t *testing.T) {
 // Test_RouteParser_ConstParamFixture runs the specialization against the
 // exhaustive path-matching fixture, which covers pattern and URL shapes the
 // generated set above does not reach.
-// go test -race -run Test_RouteParser_ConstParamFixture
 func Test_RouteParser_ConstParamFixture(t *testing.T) {
 	t.Parallel()
-
 	checked := 0
 	for _, testCollection := range routeTestCases {
 		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
@@ -1372,7 +1107,6 @@ func Test_RouteParser_ConstParamFixture(t *testing.T) {
 // pattern but not from the path.
 func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 	t.Parallel()
-
 	patterns := []string{
 		"/", "/a", "/a/b", "/:id", "/a/:id", "/a/:id?", "/a/*", "/*", "/+",
 		"/a/+", "/:a/:b", "/a-:b", "/a.:b", "/:a?/b", "/api/v1/:id/x",
@@ -1417,8 +1151,7 @@ func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 						return nil
 					})
 
-					_, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody), sweepTestConfig)
-					require.NoError(t, err)
+					apptest.Do(t, app, path, sweepTestConfig)
 
 					require.Equal(t, matched, RoutePatternMatch(path, pattern, cfg),
 						"pattern=%q path=%q", pattern, path)
@@ -1432,7 +1165,6 @@ func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 // patterns while preserving the case of parameter names and regex arguments.
 func Test_RoutePatternNormalization_RegistrationMountAndRemoval(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		pattern string
 		path    string
@@ -1444,12 +1176,7 @@ func Test_RoutePatternNormalization_RegistrationMountAndRemoval(t *testing.T) {
 		{pattern: `/Literal/\:id/`, path: "/Literal/:id/"},
 		{pattern: "/File%20Name/", path: "/File%20Name/"},
 	}
-	configs := []Config{
-		{},
-		{CaseSensitive: true},
-		{StrictRouting: true},
-		{CaseSensitive: true, StrictRouting: true},
-	}
+	configs := []Config{{}, {CaseSensitive: true}, {StrictRouting: true}, {CaseSensitive: true, StrictRouting: true}}
 	for _, cfg := range configs {
 		t.Run(fmt.Sprintf("case=%v/strict=%v", cfg.CaseSensitive, cfg.StrictRouting), func(t *testing.T) {
 			t.Parallel()
@@ -1475,23 +1202,17 @@ func Test_RoutePatternNormalization_RegistrationMountAndRemoval(t *testing.T) {
 							}
 							path := prefix + tc.path
 							require.True(t, RoutePatternMatch(path, pattern, cfg))
-							resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-							require.NoError(t, err)
-							require.Equal(t, StatusOK, resp.StatusCode)
-							body, err := io.ReadAll(resp.Body)
-							require.NoError(t, err)
-							require.NoError(t, resp.Body.Close())
+							resp := apptest.Expect(t, app, path, StatusOK)
+							body := apptest.Body(t, resp)
 							want := tc.param
 							if want == "" {
 								want = "literal"
 							}
-							require.Equal(t, want, string(body))
+							require.Equal(t, want, body)
 
 							app.RemoveRoute(pattern, MethodGet)
 							app.RebuildTree()
-							resp, err = app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
-							require.NoError(t, err)
-							require.Equal(t, StatusNotFound, resp.StatusCode)
+							resp = apptest.Expect(t, app, path, StatusNotFound)
 							require.NoError(t, resp.Body.Close())
 						})
 					}
@@ -1503,7 +1224,6 @@ func Test_RoutePatternNormalization_RegistrationMountAndRemoval(t *testing.T) {
 
 func Test_UnescapePath_MalformedEscape(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		in, out string
 	}{
@@ -1525,7 +1245,6 @@ func Test_UnescapePath_MalformedEscape(t *testing.T) {
 
 func Test_UnescapeSafePath(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		in, out string
 	}{
@@ -1586,7 +1305,6 @@ func Test_UnescapeSafePath(t *testing.T) {
 // hex digits do not follow.
 func Test_UnescapeSafePath_NoForgedEscape(t *testing.T) {
 	t.Parallel()
-
 	alphabet := []string{"%", "a", "3", "7", "%37", "%41", "%2F", "%2f", "/"}
 	var walk func(prefix string, depth int)
 	walk = func(prefix string, depth int) {
@@ -1634,7 +1352,6 @@ func Test_UnescapeSafePath_OneCopy(t *testing.T) { //nolint:paralleltest // Allo
 
 func Test_CleanPathSegments(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		in, out string
 	}{
@@ -1674,7 +1391,6 @@ func Test_CleanPathSegments(t *testing.T) {
 
 func Test_NormalizeRequestPath(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		in, out  string
 		unescape bool
@@ -1733,7 +1449,6 @@ func forEachPathSample(fn func(string)) {
 // against a byte-at-a-time definition of what it must find.
 func Test_NeedsPathNormalization_MatchesReference(t *testing.T) {
 	t.Parallel()
-
 	ref := func(s string) bool {
 		if s == "" || s[0] != '/' {
 			return true
@@ -1752,16 +1467,13 @@ func Test_NeedsPathNormalization_MatchesReference(t *testing.T) {
 // cleanPathSegments.
 func Test_HasDotSegment_MatchesReference(t *testing.T) {
 	t.Parallel()
-
 	ref := func(s string) bool {
 		if s != "" && s[0] == '.' {
 			return true
 		}
 		return strings.Contains(s, "/.")
 	}
-	forEachPathSample(func(s string) {
-		require.Equal(t, ref(s), hasDotSegment([]byte(s)), "path=%q", s)
-	})
+	forEachPathSample(func(s string) { require.Equal(t, ref(s), hasDotSegment([]byte(s)), "path=%q", s) })
 }
 
 func Benchmark_NeedsPathNormalization(b *testing.B) {
@@ -1781,7 +1493,6 @@ func Benchmark_NeedsPathNormalization(b *testing.B) {
 
 func Test_NeedsPathNormalization(t *testing.T) {
 	t.Parallel()
-
 	// an unrooted path needs rooting, so it counts as needing normalization
 	for _, s := range []string{"/a/./b", "/a/../b", "/%41", "/%2F", "/.", "/..", "./x", "../x", "/.well-known/x", "", "*", "a/b"} {
 		require.True(t, needsPathNormalization(s), "path=%q", s)
@@ -1793,7 +1504,6 @@ func Test_NeedsPathNormalization(t *testing.T) {
 
 func Test_RouteParser_AdoptConstraints_Mismatch(t *testing.T) {
 	t.Parallel()
-
 	var pretty, raw routeParser
 	pretty.parseRoute("/:id<int>/:name", nil)
 	raw.parseRoute("/:id<int>", nil)
@@ -1812,7 +1522,6 @@ func Test_RouteParser_AdoptConstraints_Mismatch(t *testing.T) {
 
 func Test_RouteParser_AdoptConstraints_FewerRawSegments(t *testing.T) {
 	t.Parallel()
-
 	var pretty, raw routeParser
 	pretty.parseRoute("/a/:id<int>/b/:name<int>", nil)
 	raw.parseRoute("/:id<int>", nil)
@@ -1827,6 +1536,5 @@ func Test_RouteParser_AdoptConstraints_FewerRawSegments(t *testing.T) {
 // addParameterMetaInfo must not index into that empty Const.
 func Test_RouteParser_TrailingBackslash(t *testing.T) {
 	t.Parallel()
-
 	require.NotPanics(t, func() { parseRoute(`/:id\`, nil) })
 }

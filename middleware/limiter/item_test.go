@@ -9,7 +9,6 @@ import (
 
 func Test_item_hitBucket(t *testing.T) {
 	t.Parallel()
-
 	e := &item{currHits: 3, prevHits: 7}
 
 	// Current window.
@@ -24,7 +23,6 @@ func Test_item_hitBucket(t *testing.T) {
 
 func Test_item_rotateSliding(t *testing.T) {
 	t.Parallel()
-
 	// Fresh entry.
 	e := &item{}
 	require.Equal(t, uint64(10), e.rotateSliding(100, 10))
@@ -47,7 +45,6 @@ func Test_item_rotateSliding(t *testing.T) {
 
 func Test_item_rotateFixed(t *testing.T) {
 	t.Parallel()
-
 	// Fresh entry.
 	e := &item{}
 	e.rotateFixed(100, 10)
@@ -69,7 +66,6 @@ func Test_item_rotateFixed(t *testing.T) {
 
 func Test_item_rate(t *testing.T) {
 	t.Parallel()
-
 	e := &item{prevHits: 4, currHits: 2}
 
 	// Weights 1, 1/2, 1/10 (rounded up) and 0.
@@ -84,7 +80,6 @@ func Test_item_rate(t *testing.T) {
 
 func Test_item_ttl(t *testing.T) {
 	t.Parallel()
-
 	// Until the window ends.
 	require.Equal(t, 59*time.Second, (&item{exp: 60}).ttl(1))
 

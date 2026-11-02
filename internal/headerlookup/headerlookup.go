@@ -64,7 +64,11 @@ func Value(c fiber.Ctx, name string) (string, bool) {
 		found []byte
 		ok    bool
 	)
-	if cfg.DisableHeaderNormalizing {
+	// The walk reads the header section alone; PeekAll would fall through to trailers.
+	if cfg.DisableHeaderNormalizing || fieldname.HasTrailers(h) {
+		if fieldname.InTrailer(h, name) {
+			return "", false
+		}
 		found, ok = foldValue(h, name)
 	} else {
 		found, ok = canonicalValue(h, name)
@@ -102,7 +106,10 @@ func Combined(c fiber.Ctx, name string) string {
 		h.Cookie("")
 	}
 
-	if cfg.DisableHeaderNormalizing {
+	if cfg.DisableHeaderNormalizing || fieldname.HasTrailers(h) {
+		if fieldname.InTrailer(h, name) {
+			return ""
+		}
 		return foldCombined(h, name, cfg.Immutable)
 	}
 

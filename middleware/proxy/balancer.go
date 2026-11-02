@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
@@ -91,6 +92,10 @@ func Balancer(config ...Config) fiber.Handler {
 		var scratch [realIPScratch]byte
 		ip := realIP(c, scratch[:0])
 
+		// Whatever the policy, as in doActionWithPolicy.
+		if !fieldname.DropTrailers(&req.Header) {
+			return fiber.ErrRequestHeaderFieldsTooLarge
+		}
 		if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized, keepHeaders...) {
 			return fiber.ErrRequestHeaderFieldsTooLarge
 		}
@@ -145,6 +150,10 @@ func Balancer(config ...Config) fiber.Handler {
 			if err := cfg.ModifyRequest(c); err != nil {
 				return err
 			}
+		}
+		// Last: a Del in ModifyRequest can move a forwarding line as the strip's can.
+		if !keepForwardingOrder(req) {
+			return fiber.ErrRequestHeaderFieldsTooLarge
 		}
 
 		// The upstream connection speaks HTTP/1.1: reset a protocol token

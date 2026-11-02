@@ -225,6 +225,8 @@ app.Post("/login", func(c fiber.Ctx) error {
 | `Reset()` | ✅ Changes | ❌ Cleared | Logout, security breach |
 | `Destroy()` | ⚪ Unchanged, cookie expired | ❌ Cleared | End the session without issuing a new ID |
 
+These methods, `store.Delete` and `store.Reset` also hold against other requests of the same session that are still running: a request that loaded the session before its ID was deleted neither stores it again nor sends its cookie when it finishes, and its changes to the session are dropped. This holds when that request calls `Regenerate()` as well: the ID still changes, so the old one is never written again, but the new one is neither stored nor sent. Of two requests that rotate one session at the same time, only the first stores and sends a new ID, and a login that rotates a session a parallel logout just ended is dropped too. A request that left the session unchanged does not write it back over a change another request stored meanwhile, so a role taken away while it ran stays taken away; of two requests that both change the session, the one that saves last stores its whole session. This is guaranteed within one process. Processes that share an external `Storage` are not coordinated, because `fiber.Storage` has no conditional write, so a request still running on another instance can store a session it loaded before the delete. Where a logout must hold across instances, also keep a server-side revocation marker (for example, a per-user "sessions valid after" timestamp) that every request checks.
+
 ### Common Security Mistakes
 
 ❌ **Session Fixation Vulnerability:**
@@ -429,6 +431,8 @@ app.Use(session.New(session.Config{
     Storage: redisStorage,
 }))
 ```
+
+A session is stored under `session:<session ID>`, so a session ID sent by a client cannot name an entry another middleware keeps in the same `Storage`. `store.GetByID` and `store.Delete` take the bare session ID. `store.Reset` clears the whole `Storage`, the entries of other middleware included. Sessions stored by an earlier version under the bare ID are not found after the upgrade, so users sign in again; those entries expire on their own in an external `Storage`.
 
 ### Production Security Settings
 
@@ -670,6 +674,8 @@ sess.Store() *session.Store
 `FromContext` accepts a `fiber.CustomCtx`, `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
 
 The returned `*session.Middleware` is only valid while the request is being handled. A context you kept from `c.Context()` (with `PassLocalsToContext` enabled) stops resolving it when the request ends: `FromContext` returns `nil` for that context from then on, so a goroutine that outlives the handler cannot reach the session, and never another request's. Do not hand the pointer itself to such a goroutine. Pass it the session ID and use the [Store Pattern](#store-pattern-advanced) instead.
+
+A handler the [Timeout](./timeout.md) middleware gave up on keeps its `*session.Middleware` and its session until it returns, and no other request is handed them. The session of such a request is not saved: the timeout response is already fixed and cannot carry a cookie, and the handler may still be changing the data.
 
 A session that was only read is written back to storage without being re-encoded. `Get` and `Keys` give that up when the value or key they return could share memory with the session (a map, slice, array, pointer or struct; scalars and `time.Time` are safe), because the caller could then change it in place without calling `Set`.
 
