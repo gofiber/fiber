@@ -2,19 +2,17 @@ package responsetime
 
 import (
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/stretchr/testify/require"
 )
 
 func TestResponseTimeMiddleware(t *testing.T) {
 	t.Parallel()
-
 	boom := errors.New("boom")
 
 	tests := []struct {
@@ -25,37 +23,20 @@ func TestResponseTimeMiddleware(t *testing.T) {
 		expectHeader          bool
 		skipWithNext          bool
 	}{
+		{name: "sets duration header", expectedStatus: fiber.StatusOK, expectHeader: true},
+		{name: "skips when Next returns true", expectedStatus: fiber.StatusOK, expectHeader: false, skipWithNext: true},
 		{
-			name:           "sets duration header",
-			expectedStatus: fiber.StatusOK,
-			expectHeader:   true,
-		},
-		{
-			name:           "skips when Next returns true",
-			expectedStatus: fiber.StatusOK,
-			expectHeader:   false,
-			skipWithNext:   true,
-		},
-		{
-			name:                  "propagates errors",
-			expectedStatus:        fiber.StatusTeapot,
-			useCustomErrorHandler: true,
-			returnError:           true,
-			expectHeader:          true,
+			name: "propagates errors", expectedStatus: fiber.StatusTeapot,
+			useCustomErrorHandler: true, returnError: true, expectHeader: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			configs := []Config(nil)
 			if tt.skipWithNext {
-				configs = []Config{{
-					Next: func(fiber.Ctx) bool {
-						return true
-					},
-				}}
+				configs = []Config{{Next: func(fiber.Ctx) bool { return true }}}
 			}
 
 			appConfig := fiber.Config{}
@@ -79,10 +60,7 @@ func TestResponseTimeMiddleware(t *testing.T) {
 				return c.SendStatus(fiber.StatusOK)
 			})
 
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-
-			require.NoError(t, err)
-			require.Equal(t, tt.expectedStatus, resp.StatusCode)
+			resp := apptest.Expect(t, app, "/", tt.expectedStatus)
 
 			header := resp.Header.Get(fiber.HeaderXResponseTime)
 			if tt.expectHeader {
@@ -101,7 +79,6 @@ func TestResponseTimeMiddleware(t *testing.T) {
 
 func TestResponseTimeLeavesTimedOutResponse(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New())
 	ctxCh := make(chan fiber.Ctx, 1)
@@ -115,9 +92,7 @@ func TestResponseTimeLeavesTimedOutResponse(t *testing.T) {
 		return nil
 	}, timeout.Config{Timeout: 10 * time.Millisecond}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	apptest.Expect(t, app, "/", fiber.StatusServiceUnavailable)
 	c := <-ctxCh
 	require.Empty(t, c.GetRespHeader(fiber.HeaderXResponseTime), "the timed-out handler still owns the response")
 }

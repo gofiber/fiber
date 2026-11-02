@@ -10,10 +10,7 @@ import (
 // BenchmarkRequestHeapScan measures how much heap memory the GC needs to scan
 // when a batch of requests is created and released.
 func BenchmarkRequestHeapScan(b *testing.B) {
-	samples := []metrics.Sample{
-		{Name: "/gc/scan/heap:bytes"},
-		{Name: "/gc/scan/total:bytes"},
-	}
+	samples := []metrics.Sample{{Name: "/gc/scan/heap:bytes"}, {Name: "/gc/scan/total:bytes"}}
 
 	b.ReportAllocs()
 	b.StopTimer()

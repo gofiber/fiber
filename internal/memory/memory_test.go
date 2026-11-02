@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// go test -run Test_Memory -v -race
 func Test_Memory(t *testing.T) {
 	t.Parallel()
 	store := New()
@@ -19,41 +18,25 @@ func Test_Memory(t *testing.T) {
 		exp     = 1 * time.Second
 	)
 
-	// Set key with value
 	store.Set(key, val, 0)
-	result := store.Get(key)
-	require.Equal(t, val, result)
+	require.Equal(t, val, store.Get(key))
+	require.Nil(t, store.Get("empty"))
 
-	// Get non-existing key
-	result = store.Get("empty")
-	require.Nil(t, result)
-
-	// Set key with value and ttl
 	store.Set(key, val, exp)
-	require.Eventually(t, func() bool {
-		return store.Get(key) == nil
-	}, 3*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return store.Get(key) == nil }, 3*time.Second, 10*time.Millisecond)
 
-	// Set key with value and no expiration
+	// Set again with no expiration
 	store.Set(key, val, 0)
-	result = store.Get(key)
-	require.Equal(t, val, result)
+	require.Equal(t, val, store.Get(key))
 
-	// Delete key
 	store.Delete(key)
-	result = store.Get(key)
-	require.Nil(t, result)
+	require.Nil(t, store.Get(key))
 
-	// Reset all keys
 	store.Set("john-reset", val, 0)
 	store.Set("doe-reset", val, 0)
 	store.Reset()
-
-	// Check if all keys are deleted
-	result = store.Get("john-reset")
-	require.Nil(t, result)
-	result = store.Get("doe-reset")
-	require.Nil(t, result)
+	require.Nil(t, store.Get("john-reset"))
+	require.Nil(t, store.Get("doe-reset"))
 }
 
 // setWithinSecond stores key while the cached clock holds still.
@@ -79,7 +62,6 @@ func expiryOf(store *Storage, key string) uint32 {
 
 func Test_Memory_TTLRoundsUp(t *testing.T) {
 	t.Parallel()
-
 	testCases := []struct {
 		name string
 		ttl  time.Duration
@@ -96,7 +78,6 @@ func Test_Memory_TTLRoundsUp(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			store := New()
 			now := setWithinSecond(t, store, "key", "value", tc.ttl)
 
@@ -112,16 +93,12 @@ func Test_Memory_TTLRoundsUp(t *testing.T) {
 
 func Test_Memory_SubSecondTTLExpires(t *testing.T) {
 	t.Parallel()
-
 	store := New()
 	store.Set("key", "value", 500*time.Millisecond)
 	require.Equal(t, "value", store.Get("key"))
-	require.Eventually(t, func() bool {
-		return store.Get("key") == nil
-	}, 3*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return store.Get("key") == nil }, 3*time.Second, 10*time.Millisecond)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Memory -benchmem -count=4
 func Benchmark_Memory(b *testing.B) {
 	keyLength := 1000
 	keys := make([]string, keyLength)
@@ -150,7 +127,6 @@ func Benchmark_Memory(b *testing.B) {
 
 func Test_Memory_CeilSecondsSaturates(t *testing.T) {
 	t.Parallel()
-
 	// Rounding must not overflow into a wrapped, tiny TTL.
 	require.Equal(t, uint32(math.MaxUint32), ceilSeconds(time.Duration(math.MaxInt64)))
 	require.Equal(t, uint32(math.MaxUint32), ceilSeconds(time.Duration(math.MaxInt64)-1))
@@ -160,7 +136,6 @@ func Test_Memory_CeilSecondsSaturates(t *testing.T) {
 
 func Test_Memory_MaxTTLDoesNotWrap(t *testing.T) {
 	t.Parallel()
-
 	store := New()
 	store.Set("max", "v", time.Duration(math.MaxInt64))
 
@@ -172,7 +147,6 @@ func Test_Memory_MaxTTLDoesNotWrap(t *testing.T) {
 
 func Test_Memory_DeleteIf(t *testing.T) {
 	t.Parallel()
-
 	for _, scenario := range []string{"match", "mismatch", "missing"} {
 		t.Run(scenario, func(t *testing.T) {
 			t.Parallel()

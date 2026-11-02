@@ -9,7 +9,6 @@ import (
 
 func Test_MarkUnmark(t *testing.T) {
 	t.Parallel()
-
 	ctx := &fasthttp.RequestCtx{}
 	ctx.SetUserValue("other", true)
 	require.False(t, Active(ctx))
