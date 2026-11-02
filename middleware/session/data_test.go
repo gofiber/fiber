@@ -98,7 +98,7 @@ func TestData_Reset(t *testing.T) {
 	t.Run("Reset data", func(t *testing.T) {
 		t.Parallel()
 		d := sessionTestData(t, "key1", "value1", "key2", "value2")
-		d.Reset()
+		d.reset(gobStream)
 		requireDataEmpty(t, d, "Expected data map to be empty after reset")
 	})
 }
@@ -130,7 +130,7 @@ func TestData_ResetPreservesAllocation(t *testing.T) {
 	d.Set("key2", "value2")
 	require.Equal(t, originalPtr, lockedMapPointer(d), "Expected map pointer to stay constant after writes")
 
-	d.Reset()
+	d.reset(gobStream)
 	requireDataEmpty(t, d, "Expected data map to be empty after reset")
 	require.Equal(t, originalPtr, lockedMapPointer(d), "Expected reset to preserve underlying map")
 
@@ -159,7 +159,7 @@ func TestData_PoolReuseDoesNotLeakEntries(t *testing.T) {
 	first := acquireData()
 	first.Set("key1", "value1")
 	first.Set("key2", "value2")
-	first.Reset()
+	first.reset(gobStream)
 
 	originalPtr := lockedMapPointer(first)
 	releaseData(first)
@@ -222,6 +222,7 @@ func Test_ValueMayAlias(t *testing.T) {
 		{name: "string", value: "fenny", alias: false},
 		{name: "named string", value: name("fenny"), alias: false},
 		{name: "int", value: 42, alias: false},
+		{name: "int64", value: int64(42), alias: false},
 		{name: "named int", value: userID(42), alias: false},
 		{name: "bool", value: true, alias: false},
 		{name: "float", value: 1.5, alias: false},
@@ -275,7 +276,7 @@ func Test_Data_DirtyTracking(t *testing.T) {
 	t.Run("Reset marks mutated", func(t *testing.T) {
 		t.Parallel()
 		d := cleanData(t, "user", "fenny")
-		d.Reset()
+		d.reset(gobStream)
 		require.True(t, d.mutated.Load())
 	})
 

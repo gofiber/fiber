@@ -32,9 +32,19 @@ func newSessionManager(s *session.Store) *sessionManager {
 	return sessionManager
 }
 
+// middleware returns the session middleware the token is kept in: the one of the store csrf
+// was given and, when that store has none in the request, the innermost one, which is what
+// csrf used before it could tell them apart. It is nil when no session middleware runs.
+func (m *sessionManager) middleware(c fiber.Ctx) *session.Middleware {
+	if sess := m.session.FromContext(c); sess != nil {
+		return sess
+	}
+	return session.FromContext(c)
+}
+
 // get token from session
 func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) []byte {
-	sess := session.FromContext(c)
+	sess := m.middleware(c)
 	var token Token
 	var ok bool
 
@@ -66,7 +76,7 @@ func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) []byte {
 // setRaw stores the token in the session, or renews it, and returns when it expires.
 func (m *sessionManager) setRaw(c fiber.Ctx, key string, raw []byte, exp time.Duration) time.Time {
 	expires := time.Now().Add(exp)
-	sess := session.FromContext(c)
+	sess := m.middleware(c)
 	if sess != nil {
 		// A token still stored with more than half its lifetime left is left as it is: a Set
 		// would make this request a writer of the session, whose save then stands in for a
@@ -96,7 +106,7 @@ func (m *sessionManager) setRaw(c fiber.Ctx, key string, raw []byte, exp time.Du
 
 // delete token from session
 func (m *sessionManager) delRaw(c fiber.Ctx) {
-	sess := session.FromContext(c)
+	sess := m.middleware(c)
 	if sess != nil {
 		sess.Delete(sessionKey)
 	} else {
