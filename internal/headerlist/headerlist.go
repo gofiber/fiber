@@ -129,37 +129,74 @@ func AllQuoted(list string) iter.Seq[string] {
 // elements. Entity tags have no quoted-pair and keep using [AllQuoted].
 func AllQuotedPairs(list string) iter.Seq[string] {
 	return func(yield func(string) bool) {
-		start, pos := 0, 0
-		inQuotes := false
-		for {
-			i := utils.IndexAny3(list[pos:], '"', ',', '\\')
-			if i == -1 {
-				break
+		for raw := range ScanQuoted(utils.UnsafeBytes(list)) {
+			if element := utils.TrimSpace(utils.UnsafeString(raw)); element != "" && !yield(element) {
+				return
 			}
-			i += pos
-			pos = i + 1
+		}
+	}
+}
 
-			switch {
-			case list[i] == '\\':
-				if inQuotes && pos < len(list) {
-					pos++ // the escaped byte ends neither the string nor the element
-				}
-				continue
-			case list[i] == '"':
-				inQuotes = !inQuotes
-				continue
-			case inQuotes:
-				continue
-			}
-			if element := utils.TrimSpace(list[start:i]); element != "" {
-				if !yield(element) {
+// NextQuoted is [Next] for byte lists whose elements may carry a quoted-string with
+// quoted-pairs (RFC 9110 Section 5.6.4), the walk under [AllQuotedPairs]: a
+// comma inside quotes does not separate, and inside quotes a backslash escapes
+// the next byte. A quoted string left open swallows the rest of the list.
+//
+// Like [Next], the element is raw and aliases list, whitespace and empty
+// elements are preserved, start must be between zero and len(list), inclusive,
+// and the returned position exceeds len(list) after the final element.
+func NextQuoted(list []byte, start int) (element []byte, next int) { //nolint:nonamedreturns // names distinguish the element from the next position
+	for element := range ScanQuoted(list[start:]) {
+		return element, start + len(element) + 1
+	}
+	return list[start:], len(list) + 1
+}
+
+// ScanQuoted yields raw elements of a list with the quoting rules of
+// [NextQuoted]. Whitespace and empty elements are preserved, except for the
+// empty element after a trailing comma. An empty list yields no elements.
+// Each element aliases list.
+func ScanQuoted(list []byte) iter.Seq[[]byte] {
+	return func(yield func([]byte) bool) {
+		remaining := list
+		for len(remaining) > 0 {
+			var end int
+			for end < len(remaining) {
+				// Outside quotes, backslashes are ordinary bytes.
+				i := utils.IndexAny2(remaining[end:], '"', ',')
+				if i == -1 {
+					yield(remaining)
 					return
 				}
+				end += i
+				if remaining[end] == ',' {
+					break
+				}
+				end++ // opening quote
+				for end < len(remaining) {
+					// Inside quotes, commas are ordinary bytes, and a
+					// backslash escapes exactly the next byte.
+					i = utils.IndexAny2(remaining[end:], '"', '\\')
+					if i == -1 {
+						yield(remaining)
+						return
+					}
+					end += i + 1
+					if remaining[end-1] == '"' {
+						break
+					}
+					if end < len(remaining) {
+						end++
+					}
+				}
 			}
-			start = i + 1
-		}
-		if element := utils.TrimSpace(list[start:]); element != "" {
-			yield(element)
+			if !yield(remaining[:end]) {
+				return
+			}
+			if end >= len(remaining) {
+				return
+			}
+			remaining = remaining[end+1:]
 		}
 	}
 }
