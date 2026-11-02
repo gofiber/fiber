@@ -1361,7 +1361,7 @@ func (app *App) Config() Config {
 }
 
 // Handler returns the server handler.
-func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
+func (app *App) Handler() fasthttp.RequestHandler { //nolint:revive // Having both a Handler() (uppercase) and a handler() (lowercase) is fine.
 	// prepare the server for the start
 	app.startupProcess()
 	return app.selectRequestHandler()
