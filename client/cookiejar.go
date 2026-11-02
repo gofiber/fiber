@@ -144,12 +144,14 @@ func (cj *CookieJar) getByHostAndPath(host, path []byte, secure bool) []*fasthtt
 	}
 
 	hostStr := utils.UnsafeString(host)
+	return cj.cookiesForRequest(normalizeCookieHost(hostStr), path, secure)
+}
 
-	// port must not be included.
-	if h, _, ok := utils.SplitHostPort(hostStr); ok {
-		hostStr = h
+func normalizeCookieHost(host string) string {
+	if h, _, ok := utils.SplitHostPort(host); ok {
+		host = h
 	}
-	return cj.cookiesForRequest(hostStr, path, secure)
+	return utilsstrings.ToLower(host)
 }
 
 // getCookiesByHost returns cookies stored for a specific host, removing any that have expired.
@@ -189,7 +191,6 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 	cj.mu.Lock()
 	defer cj.mu.Unlock()
 
-	host = utilsstrings.ToLower(host)
 	now := time.Now()
 	var matched []matchedCookie
 
@@ -301,11 +302,7 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 // the cookies were set against, used to derive the default-path for cookies
 // that carry no usable Path attribute; a nil requestPath yields "/".
 func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fasthttp.Cookie) {
-	hostStr := utils.UnsafeString(host)
-	if h, _, ok := utils.SplitHostPort(hostStr); ok {
-		hostStr = h
-	}
-	hostStr = utilsstrings.ToLower(hostStr)
+	hostStr := normalizeCookieHost(utils.UnsafeString(host))
 	hostKey := utils.CopyString(hostStr)
 
 	cj.mu.Lock()
@@ -528,11 +525,7 @@ func escapePercent(p []byte) []byte {
 
 // parseCookiesFromResp parses the cookies from the response and stores them for the specified host and path.
 func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Response) {
-	hostStr := utils.UnsafeString(host)
-	if h, _, ok := utils.SplitHostPort(hostStr); ok {
-		hostStr = h
-	}
-	hostStr = utilsstrings.ToLower(hostStr)
+	hostStr := normalizeCookieHost(utils.UnsafeString(host))
 	hostKey := utils.CopyString(hostStr)
 
 	cj.mu.Lock()
