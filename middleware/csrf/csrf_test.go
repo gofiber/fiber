@@ -2279,3 +2279,48 @@ func Test_CSRF_SessionModeKeepsConcurrentSessionChange(t *testing.T) {
 	require.NoError(t, apptest.Recv(t, done, 10*time.Second))
 	apptest.ExpectBody(t, app, withCookies("/role"), fiber.StatusOK, "user")
 }
+
+// Test_CSRF_SessionStoreWithCodec: the token is kept under a key that is not a
+// string, which a session store with a Codec does not hold, so the middleware refuses
+// the combination when it is made, not on the first request.
+func Test_CSRF_SessionStoreWithCodec(t *testing.T) {
+	t.Parallel()
+	require.PanicsWithValue(t,
+		"CSRF: Session is a store with a Codec, which keeps its values under string keys; use a session store without a Codec, or Storage",
+		func() { New(Config{Session: session.NewStore(session.Config{Codec: session.JSONCodec{}})}) })
+	require.NotPanics(t, func() { New(Config{Session: session.NewStore()}) })
+}
+
+// Test_CSRF_SessionModeKeepsTheTokenInTheSessionOfItsStore: with several session middleware in the
+// request, the token goes to the session of the store csrf was given, not to that of the one that
+// runs last.
+func Test_CSRF_SessionModeKeepsTheTokenInTheSessionOfItsStore(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	outer, outerStore := session.NewWithStore(session.Config{Extractor: extractors.FromCookie("outer_sid")})
+	inner, innerStore := session.NewWithStore(session.Config{Extractor: extractors.FromCookie("inner_sid")})
+	app.Use(outer, inner, New(Config{Session: outerStore}))
+	app.Get("/", func(c fiber.Ctx) error {
+		_, inOuter := outerStore.FromContext(c).Get(sessionKey).(Token)
+		_, inInner := innerStore.FromContext(c).Get(sessionKey).(Token)
+		return c.SendString(fmt.Sprint(inOuter, " ", inInner))
+	})
+
+	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "true false")
+}
+
+// Test_CSRF_SessionModeFallsBackToTheInnermostMiddleware: when the session middleware of the request
+// belongs to another store than the one csrf was given, the token stays in the session of that
+// middleware, as it did before csrf could tell the stores apart.
+func Test_CSRF_SessionModeFallsBackToTheInnermostMiddleware(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	handler, handlerStore := session.NewWithStore()
+	app.Use(handler, New(Config{Session: session.NewStore()}))
+	app.Get("/", func(c fiber.Ctx) error {
+		_, ok := handlerStore.FromContext(c).Get(sessionKey).(Token)
+		return c.SendString(strconv.FormatBool(ok))
+	})
+
+	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "true")
+}
