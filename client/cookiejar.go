@@ -185,6 +185,10 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 	cj.mu.Lock()
 	defer cj.mu.Unlock()
 
+	if len(cj.hostCookies) == 0 {
+		return nil
+	}
+
 	host = utilsstrings.ToLower(host)
 	now := time.Now()
 	var matched []matchedCookie
