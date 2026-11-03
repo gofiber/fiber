@@ -2144,6 +2144,15 @@ func Test_Cache_VaryOnHeaderAddedBehindTheCache(t *testing.T) {
 				{headers: []string{fiber.HeaderCookie, "theme=dark", "X-Login", "bob"}, body: "Cookie=theme=dark; session=bob", cache: cacheUnreachable},
 			},
 		},
+		// Added with Add rather than set: the client's cookie of the same name stays beside it.
+		"cookie added beside one of the same name": {
+			rewrite: func(c fiber.Ctx) { c.Request().Header.Add(fiber.HeaderCookie, "user="+c.Get("X-Login")) },
+			vary:    fiber.HeaderCookie,
+			steps: []step{
+				{headers: []string{fiber.HeaderCookie, "user=0", "X-Login", "alice"}, body: "Cookie=user=0; user=alice", cache: cacheUnreachable},
+				{headers: []string{fiber.HeaderCookie, "user=0", "X-Login", "bob"}, body: "Cookie=user=0; user=bob", cache: cacheUnreachable},
+			},
+		},
 		"overwritten": {
 			rewrite: fromSession,
 			vary:    "X-User-Id",
