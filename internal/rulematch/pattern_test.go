@@ -1,6 +1,7 @@
 package rulematch
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,40 +11,40 @@ func Test_MustCompile(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name, from, input string
+		compile           func(string) *regexp.Regexp
 		want              []string
-		syntax            Syntax
 	}{
-		{name: "literal dot", from: "/a.b", input: "/a.b", syntax: Literal, want: []string{"/a.b"}},
-		{name: "literal dot rejects other byte", from: "/a.b", input: "/aXb", syntax: Literal},
-		{name: "regexp dot", from: "/a.b", input: "/aXb", syntax: Regexp, want: []string{"/aXb"}},
+		{name: "literal dot", from: "/a.b", input: "/a.b", compile: MustCompilePath, want: []string{"/a.b"}},
+		{name: "literal dot rejects other byte", from: "/a.b", input: "/aXb", compile: MustCompilePath},
+		{name: "regexp dot", from: "/a.b", input: "/aXb", compile: MustCompileRegexp, want: []string{"/aXb"}},
 		{
 			name: "literal metacharacters", from: `/a+([b]){2}?^$|\`, input: `/a+([b]){2}?^$|\`,
-			syntax: Literal, want: []string{`/a+([b]){2}?^$|\`},
+			compile: MustCompilePath, want: []string{`/a+([b]){2}?^$|\`},
 		},
-		{name: "literal parentheses reject group match", from: "/a(b)", input: "/ab", syntax: Literal},
-		{name: "regexp group", from: "/a(b)", input: "/ab", syntax: Regexp, want: []string{"/ab", "b"}},
-		{name: "literal alternation", from: "/a|/b", input: "/a|/b", syntax: Literal, want: []string{"/a|/b"}},
-		{name: "literal alternation rejects branch", from: "/a|/b", input: "/a", syntax: Literal},
-		{name: "regexp first branch", from: "/a|/b", input: "/a", syntax: Regexp, want: []string{"/a"}},
-		{name: "regexp second branch", from: "/a|/b", input: "/b", syntax: Regexp, want: []string{"/b"}},
-		{name: "regexp rejects branch suffix", from: "/a|/b", input: "/a/extra", syntax: Regexp},
-		{name: "regexp rejects branch prefix", from: "/a|/b", input: "/extra/b", syntax: Regexp},
+		{name: "literal parentheses reject group match", from: "/a(b)", input: "/ab", compile: MustCompilePath},
+		{name: "regexp group", from: "/a(b)", input: "/ab", compile: MustCompileRegexp, want: []string{"/ab", "b"}},
+		{name: "literal alternation", from: "/a|/b", input: "/a|/b", compile: MustCompilePath, want: []string{"/a|/b"}},
+		{name: "literal alternation rejects branch", from: "/a|/b", input: "/a", compile: MustCompilePath},
+		{name: "regexp first branch", from: "/a|/b", input: "/a", compile: MustCompileRegexp, want: []string{"/a"}},
+		{name: "regexp second branch", from: "/a|/b", input: "/b", compile: MustCompileRegexp, want: []string{"/b"}},
+		{name: "regexp rejects branch suffix", from: "/a|/b", input: "/a/extra", compile: MustCompileRegexp},
+		{name: "regexp rejects branch prefix", from: "/a|/b", input: "/extra/b", compile: MustCompileRegexp},
 		{
 			name: "regexp group before wildcard", from: "/(old)/*", input: "/old/a/b/",
-			syntax: Regexp, want: []string{"/old/a/b/", "old", "a/b/"},
+			compile: MustCompileRegexp, want: []string{"/old/a/b/", "old", "a/b/"},
 		},
 		{
 			name: "literal group before wildcard", from: "/(old)/*", input: "/(old)/a/b/",
-			syntax: Literal, want: []string{"/(old)/a/b/", "a/b/"},
+			compile: MustCompilePath, want: []string{"/(old)/a/b/", "a/b/"},
 		},
 		{
 			name: "literal backslash before wildcard", from: `/a\*`, input: `/a\b/c`,
-			syntax: Literal, want: []string{`/a\b/c`, "b/c"},
+			compile: MustCompilePath, want: []string{`/a\b/c`, "b/c"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, MustCompile(tc.from, tc.syntax).FindStringSubmatch(tc.input))
+			require.Equal(t, tc.want, tc.compile(tc.from).FindStringSubmatch(tc.input))
 		})
 	}
 }
@@ -51,9 +52,9 @@ func Test_MustCompile(t *testing.T) {
 func Test_MustCompile_SharedMatching(t *testing.T) {
 	t.Parallel()
 	for _, syntax := range []struct {
-		name  string
-		value Syntax
-	}{{"literal", Literal}, {"regexp", Regexp}} {
+		compile func(string) *regexp.Regexp
+		name    string
+	}{{MustCompilePath, "path"}, {MustCompileRegexp, "regexp"}} {
 		t.Run(syntax.name, func(t *testing.T) {
 			t.Parallel()
 			for _, tc := range []struct {
@@ -75,7 +76,7 @@ func Test_MustCompile_SharedMatching(t *testing.T) {
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
-					require.Equal(t, tc.want, MustCompile(tc.from, syntax.value).FindStringSubmatch(tc.input))
+					require.Equal(t, tc.want, syntax.compile(tc.from).FindStringSubmatch(tc.input))
 				})
 			}
 		})
@@ -87,8 +88,8 @@ func Test_MustCompile_InvalidRegexp(t *testing.T) {
 	for _, from := range []string{"/old(", "/[", `/old\`, `/a\*`} {
 		t.Run(from, func(t *testing.T) {
 			t.Parallel()
-			require.Panics(t, func() { MustCompile(from, Regexp) })
-			require.NotPanics(t, func() { MustCompile(from, Literal) })
+			require.Panics(t, func() { MustCompileRegexp(from) })
+			require.NotPanics(t, func() { MustCompilePath(from) })
 		})
 	}
 }

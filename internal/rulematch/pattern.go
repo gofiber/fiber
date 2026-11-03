@@ -5,27 +5,21 @@ import (
 	"strings"
 )
 
-// Syntax controls whether non-wildcard pattern text is literal or regexp syntax.
-type Syntax uint8
+// MustCompileRegexp compiles a redirect pattern: regexp syntax with its groups
+// and flags, each "*" a "(.*)" capture. An invalid pattern panics.
+func MustCompileRegexp(from string) *regexp.Regexp {
+	return mustCompileWhole(strings.ReplaceAll(from, "*", "(.*)"))
+}
 
-const (
-	// Literal quotes everything except the "*" wildcard, as rewrite requires.
-	Literal Syntax = iota
-	// Regexp preserves regexp syntax and capture groups, as redirect requires.
-	Regexp
-)
+// MustCompilePath compiles a rewrite pattern: path text matched as written,
+// each "*" a "(.*)" capture.
+func MustCompilePath(from string) *regexp.Regexp {
+	return mustCompileWhole(strings.ReplaceAll(regexp.QuoteMeta(from), `\*`, "(.*)"))
+}
 
-// MustCompile compiles a whole-path pattern, replacing each "*" with "(.*)".
-// Regexp syntax preserves existing groups and flags; Literal syntax treats all
-// other characters as path text. Invalid patterns panic.
-func MustCompile(from string, syntax Syntax) *regexp.Regexp {
-	wildcard := "*"
-	if syntax == Literal {
-		from = regexp.QuoteMeta(from)
-		wildcard = `\*`
-	}
-	pattern := strings.ReplaceAll(from, wildcard, "(.*)")
-	// Group before anchoring so alternatives cannot escape either anchor, without
-	// adding a capture that would shift the caller's "$N" substitutions (#4476).
+// mustCompileWhole anchors pattern to the whole path. Grouped before anchoring so
+// alternatives cannot escape either anchor, without adding a capture that would
+// shift the caller's "$N" substitutions (#4476).
+func mustCompileWhole(pattern string) *regexp.Regexp {
 	return regexp.MustCompile("^(?:" + pattern + ")$")
 }

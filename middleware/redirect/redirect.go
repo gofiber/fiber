@@ -199,7 +199,7 @@ func New(config ...Config) fiber.Handler {
 
 		cfg.rulesRegex = append(cfg.rulesRegex, compiledRule{
 			from:        k,
-			pattern:     rulematch.MustCompile(k, rulematch.Regexp),
+			pattern:     rulematch.MustCompileRegexp(k),
 			target:      v,
 			dotSegments: rulematch.DotSegments(v),
 			opaquePath:  spanStart == spanEnd && schemeEnd(v) > 0,

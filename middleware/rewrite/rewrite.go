@@ -27,7 +27,7 @@ func New(config ...Config) fiber.Handler {
 	compiled := make([]compiledRule, 0, len(rules))
 	for _, rule := range rules {
 		compiled = append(compiled, compiledRule{
-			pattern:     rulematch.MustCompile(rule.From, rulematch.Literal),
+			pattern:     rulematch.MustCompilePath(rule.From),
 			to:          rule.To,
 			dotSegments: rulematch.DotSegments(rule.To),
 		})
