@@ -27,3 +27,11 @@ If you want to say **thank you** and/or support the active development of `Fiber
 2. Tweet about the project [on your 𝕏 (Twitter)](https://x.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
 4. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
+
+## Generated API documentation
+
+Some Markdown sections are generated from Go declarations and executable examples.
+Edit the Go source and run `make generate` to update them. Blocks start with
+`<!-- go:doc Config -->` (one or more exported names or example function names)
+and end with `<!-- /go:doc -->`; prose outside the blocks is preserved.
+The retry addon demonstrates this workflow in `docs/addon/retry.md`.
