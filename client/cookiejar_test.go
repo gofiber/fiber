@@ -1320,6 +1320,8 @@ func Test_CookieJar_CookieName(t *testing.T) {
 	})
 }
 
+// Test_CookieJar_NormalizedHostPaths checks that explicit and response cookies
+// share a scope across host case and port changes.
 func Test_CookieJar_NormalizedHostPaths(t *testing.T) {
 	t.Parallel()
 	for _, host := range []string{"EXAMPLE.com:443", "Example.COM"} {

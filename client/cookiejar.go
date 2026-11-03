@@ -147,6 +147,8 @@ func (cj *CookieJar) getByHostAndPath(host, path []byte, secure bool) []*fasthtt
 	return cj.cookiesForRequest(normalizeCookieHost(hostStr), path, secure)
 }
 
+// normalizeCookieHost removes an optional port and folds ASCII case for
+// cookie storage and lookup.
 func normalizeCookieHost(host string) string {
 	if h, _, ok := utils.SplitHostPort(host); ok {
 		host = h
