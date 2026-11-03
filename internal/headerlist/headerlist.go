@@ -320,6 +320,9 @@ func appendJoinedLine(dst, line []byte) []byte {
 //nolint:revive // multiple tracks ownership of combined, not a caller-selected mode.
 func JoinNext(combined, line []byte, multiple bool) ([]byte, bool) {
 	if combined == nil {
+		if line == nil {
+			return []byte{}, false
+		}
 		return line, false
 	}
 	if !multiple {
