@@ -88,8 +88,8 @@ func normalizeHost(host string) string {
 	return host
 }
 
-// normalizeHostKind is normalizeHost that also reports whether the result is a
-// valid IPv6 address, so callers do not have to parse it a second time.
+// normalizeHostKind is normalizeHost that also reports whether host was a valid
+// IPv6 address, so callers do not have to parse it a second time.
 func normalizeHostKind(host string) (string, bool) {
 	// Fast path for plain hostnames — skips the split and the bracket trims.
 	if host != "" && host[0] != '[' && strings.IndexByte(host, ':') < 0 {
@@ -116,7 +116,9 @@ func normalizeHostKind(host string) (string, bool) {
 // "[::1]" refuse a Host of "[0:0:0:0:0:0:0:1]", and an allowed
 // "[2001:db8:0:0:0:0:0:1]" refuse the "[2001:db8::1]" every browser sends.
 // Both the configured hosts and the request host pass through here, so each
-// spelling of one address compares equal.
+// spelling of one address compares equal. An IPv4-mapped address is the IPv4
+// host it maps, as in isTrustedProxyIP, so what is left in IPv6 form never
+// holds a dot and cannot match a "*." suffix.
 //
 // Anything else, including a zoned address, is returned unchanged with false
 // so that isValidHostSyntax can refuse it. A zone is checked before parsing
@@ -134,6 +136,7 @@ func canonicalIPv6(host string) (string, bool) {
 	if !ok {
 		return host, false
 	}
+	addr = addr.Unmap()
 	var buf [len("ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255")]byte
 	canonical := addr.AppendTo(buf[:0])
 	if string(canonical) == host {
@@ -157,7 +160,8 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 	}
 
 	host := authority
-	if authority[0] == '[' {
+	bracketed := authority[0] == '['
+	if bracketed {
 		idx := -1
 		for i := 1; i < len(authority); i++ {
 			switch authority[i] {
@@ -213,6 +217,10 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 
 	host, isIPv6 := normalizeHostKind(host)
 	if host == "" {
+		return "", false
+	}
+	// Brackets hold an IPv6 address only; "[allowed.com:443]" must not pass as allowed.com.
+	if bracketed && !isIPv6 {
 		return "", false
 	}
 
@@ -306,14 +314,10 @@ func matchHost(host string, parsed parsedHosts, allowedHostsFunc func(string) bo
 		return true
 	}
 
-	// Subdomain wildcards apply to DNS names only. An IP literal, which is the
-	// only kind of host that contains a colon, never matches one: the dotted
-	// tail of an IPv4-mapped address such as ::ffff:127.0.0.1 is not a label.
-	if strings.IndexByte(host, ':') < 0 {
-		for _, suffix := range parsed.wildcardSuffixes {
-			if strings.HasSuffix(host, suffix) {
-				return true
-			}
+	// A canonical IPv6 host holds no dot, so it never matches a suffix here.
+	for _, suffix := range parsed.wildcardSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			return true
 		}
 	}
 

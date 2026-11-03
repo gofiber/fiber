@@ -20,8 +20,8 @@ type Config struct {
 	// AllowedHostsFunc is a dynamic validator called only when no static
 	// AllowedHosts rule matches. Receives the normalized hostname: port stripped,
 	// trailing dot removed, IPv6 brackets removed, lowercased, IDN converted to
-	// Punycode. An IPv6 address is passed in its RFC 5952 canonical form
-	// ("::1", "::ffff:127.0.0.1"), whatever spelling the client sent.
+	// Punycode. An IPv6 address is passed in its RFC 5952 canonical form ("::1")
+	// whatever spelling the client sent, an IPv4-mapped one as IPv4 ("127.0.0.1").
 	// Return true to allow.
 	//
 	// Optional. Default: nil

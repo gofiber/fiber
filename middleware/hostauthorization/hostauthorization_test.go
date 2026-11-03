@@ -76,7 +76,7 @@ func Test_NormalizeHost(t *testing.T) {
 		{"ipv6 zero padded", "[2001:0db8:0000:0000:0000:0000:0000:0001]", "2001:db8::1"},
 		{"ipv6 zero padded with port", "[2001:0db8:0000:0000:0000:0000:0000:0001]:8080", "2001:db8::1"},
 		{"ipv6 uppercase hex", "[2001:DB8::1]", "2001:db8::1"},
-		{"ipv6 ipv4-mapped hex form", "[::ffff:7f00:1]", "::ffff:127.0.0.1"},
+		{"ipv6 ipv4-mapped hex form", "[::ffff:7f00:1]", "127.0.0.1"},
 		{"empty", "", ""},
 		{"idn unicode → punycode", "münchen.example.com", "xn--mnchen-3ya.example.com"},
 		{"idn already punycode", "xn--mnchen-3ya.example.com", "xn--mnchen-3ya.example.com"},
@@ -105,7 +105,7 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 		{name: "ipv6 without port", input: "[::1]", expected: "::1", expectOK: true},
 		{name: "ipv6 uncompressed", input: "[0:0:0:0:0:0:0:1]:443", expected: "::1", expectOK: true},
 		{name: "ipv6 zero padded", input: "[2001:0db8:0000:0000:0000:0000:0000:0001]", expected: "2001:db8::1", expectOK: true},
-		{name: "ipv6 ipv4-mapped hex form", input: "[::ffff:7f00:1]:8080", expected: "::ffff:127.0.0.1", expectOK: true},
+		{name: "ipv6 ipv4-mapped hex form", input: "[::ffff:7f00:1]:8080", expected: "127.0.0.1", expectOK: true},
 		{name: "empty port", input: "example.com:", expectOK: false},
 		{name: "signed port", input: "example.com:+80", expectOK: false},
 		{name: "port out of range", input: "example.com:65536", expectOK: false},
@@ -464,7 +464,7 @@ func Test_HostAuthorization_AllowedHostsFuncReceivesCanonicalIPv6(t *testing.T) 
 	}{
 		{host: "[0:0:0:0:0:0:0:1]:3000", want: "::1"},
 		{host: "[2001:0DB8::0001]", want: "2001:db8::1"},
-		{host: "[::ffff:7f00:1]", want: "::ffff:127.0.0.1"},
+		{host: "[::ffff:7f00:1]", want: "127.0.0.1"},
 		{host: "[2001:db8::1]:8080", want: "2001:db8::1"},
 	} {
 		t.Run(tc.host, func(t *testing.T) {
@@ -480,14 +480,22 @@ func Test_HostAuthorization_AllowedHostsFuncReceivesCanonicalIPv6(t *testing.T) 
 	}
 }
 
-func Test_MatchHost_WildcardSkipsIPLiterals(t *testing.T) {
+func Test_MatchHost_WildcardSkipsIPv6Literals(t *testing.T) {
 	t.Parallel()
-	// The canonical form of an IPv4-mapped address ends in a dotted IPv4
-	// tail, which must not satisfy a DNS subdomain rule.
-	parsed := parseAllowedHosts([]string{"*.0.0.1", "*.example.com"})
-	require.False(t, matchHost("::ffff:127.0.0.1", parsed, nil))
-	require.True(t, matchHost("10.0.0.1", parsed, nil))
+	// An embedded IPv4 spelling must not leave a dotted tail for a subdomain rule.
+	parsed := parseAllowedHosts([]string{"*.2.3.4", "*.example.com"})
+	require.False(t, matchHost(normalizeHost("[64:ff9b::1.2.3.4]"), parsed, nil))
+	require.False(t, matchHost(normalizeHost("[::1.2.3.4]"), parsed, nil))
 	require.True(t, matchHost("api.example.com", parsed, nil))
+}
+
+func Test_HostAuthorization_IPv4MappedIsTheIPv4Host(t *testing.T) {
+	t.Parallel()
+	app := hostAuthApp(Config{AllowedHosts: []string{"127.0.0.1"}})
+	for _, host := range []string{"[::ffff:127.0.0.1]", "[::ffff:7f00:1]:8080", "127.0.0.1"} {
+		apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHost(host)), fiber.StatusOK)
+	}
+	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHost("[::ffff:127.0.0.2]")), fiber.StatusForbidden)
 }
 
 func Test_ParseNormalizedAuthority_IPv6KindAndAllocs(t *testing.T) {
@@ -502,6 +510,9 @@ func Test_ParseNormalizedAuthority_IPv6KindAndAllocs(t *testing.T) {
 		{authority: "[fe80::1%25eth0]", ok: false},
 		{authority: "[::1%eth0]", ok: false},
 		{authority: "[2001:db8::g]", ok: false},
+		{authority: "[allowed.com:443]", ok: false},
+		{authority: "[allowed.com]", ok: false},
+		{authority: "[1:80]", ok: false},
 	} {
 		got, ok := parseNormalizedAuthority(tc.authority)
 		require.Equal(t, tc.ok, ok, tc.authority)
