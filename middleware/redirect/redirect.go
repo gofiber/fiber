@@ -182,11 +182,6 @@ func New(config ...Config) fiber.Handler {
 		// as author-written host text, so "https://\t$1" passed as naming its own
 		// host while a captured "/evil.com" composed "https:///evil.com".
 		v := urlnorm.AsBrowserReads(rule.To)
-		pattern := strings.ReplaceAll(k, "*", "(.*)")
-		// Anchor both ends so a rule matches the whole path rather than any suffix
-		// (see issue #4476). Grouped first because concatenation binds looser than
-		// "|", and non-capturing so the "$N" tokens still number the author's groups.
-		pattern = "^(?:" + pattern + ")$"
 
 		spanStart, spanEnd := authoritySpan(v)
 		if captureInAuthority(v, spanStart, spanEnd) {
@@ -204,7 +199,7 @@ func New(config ...Config) fiber.Handler {
 
 		cfg.rulesRegex = append(cfg.rulesRegex, compiledRule{
 			from:        k,
-			pattern:     regexp.MustCompile(pattern),
+			pattern:     rulematch.MustCompile(k, rulematch.Regexp),
 			target:      v,
 			dotSegments: rulematch.DotSegments(v),
 			opaquePath:  spanStart == spanEnd && schemeEnd(v) > 0,

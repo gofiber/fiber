@@ -27,7 +27,7 @@ func New(config ...Config) fiber.Handler {
 	compiled := make([]compiledRule, 0, len(rules))
 	for _, rule := range rules {
 		compiled = append(compiled, compiledRule{
-			pattern:     compilePattern(rule.From),
+			pattern:     rulematch.MustCompile(rule.From, rulematch.Literal),
 			to:          rule.To,
 			dotSegments: rulematch.DotSegments(rule.To),
 		})
@@ -58,18 +58,6 @@ func New(config ...Config) fiber.Handler {
 		}
 		return c.Next()
 	}
-}
-
-// compilePattern turns a rule into the regexp that matches it. Everything but
-// "*" is quoted, so a rule is the path text it spells: "/preis-1.000" matches
-// that path and not "/preis-1X000". "*" stands for any run of bytes except a
-// newline, which is what "." excludes and no ordinary path carries.
-func compilePattern(from string) *regexp.Regexp {
-	pattern := strings.ReplaceAll(regexp.QuoteMeta(from), `\*`, "(.*)")
-	// Anchor both ends so a rule matches the whole path rather than any suffix
-	// (see issue #4476). The group is belt and braces: quoting already rules out
-	// the "|" that made "^/a|/b$" parse as "(^/a)|(/b$)".
-	return regexp.MustCompile("^(?:" + pattern + ")$")
 }
 
 // orderedRules returns the rules to try, in the order to try them. RuleList is
