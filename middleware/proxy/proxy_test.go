@@ -1134,6 +1134,12 @@ func Test_Proxy_UpstreamTrailerSectionDropped(t *testing.T) {
 			fmt.Fprint(w, "ok")
 			return
 		}
+		if r.Header.Get("X-No-Type") != "" {
+			// No Content-Type, which the app is set not to add one for.
+			w.Header()["Content-Type"] = nil
+			fmt.Fprint(w, "ok")
+			return
+		}
 		w.Header().Set(fiber.HeaderTrailer, "X-Trail")
 		// X-Many asks for fieldname.MaxTrailers more fields, announced in Trailer or not.
 		many := r.Header.Get("X-Many")
@@ -1172,7 +1178,7 @@ func Test_Proxy_UpstreamTrailerSectionDropped(t *testing.T) {
 			maps.Copy(handlers, proxyTestHandlersUnder(addr, policy, hookSaw))
 			maps.Copy(handlers, streaming)
 			for name, handler := range handlers {
-				app := fiber.New()
+				app := fiber.New(fiber.Config{DisableDefaultContentType: true})
 				app.Get("/", handler)
 
 				resp := apptest.ExpectBody(t, app, "/", fiber.StatusOK, "ok")
@@ -1204,6 +1210,10 @@ func Test_Proxy_UpstreamTrailerSectionDropped(t *testing.T) {
 				resp = apptest.ExpectBody(t, app, apptest.Req(fiber.MethodHead, "/"), fiber.StatusOK, "")
 				require.Equal(t, "header", resp.Header.Get("X-Kept"), name)
 				require.Equal(t, "0:", resp.Header.Get("X-Hook"), name)
+
+				// The app's choice of no default Content-Type holds for a response read into one of the proxy's own.
+				resp = apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-No-Type", "1")), fiber.StatusOK, "ok")
+				require.Empty(t, resp.Header.Values(fiber.HeaderContentType), name)
 			}
 		})
 	}

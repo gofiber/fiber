@@ -6,17 +6,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// streamsResponses reports whether one of lbc's host clients reads response bodies as streams. A
-// client of another type cannot be asked; Balancer treats it as one that may.
-func streamsResponses(lbc *fasthttp.LBClient) bool {
-	for _, client := range lbc.Clients {
-		if hc, ok := client.(*fasthttp.HostClient); ok && hc.StreamResponseBody {
-			return true
-		}
-	}
-	return false
-}
-
 // upstreamResponse returns the response the client fills with the upstream's: res, the client's own, or one
 // of the proxy's when the body is read as a stream, by a client that streams or into a response whose
 // StreamBody is set. Such a body ends with the upstream's trailer section, which fasthttp parses into the
@@ -27,6 +16,9 @@ func upstreamResponse(streams bool, res *fasthttp.Response) *fasthttp.Response {
 		return res
 	}
 	upstream := fasthttp.AcquireResponse()
+	// The options the server set on res go along, as the client keeps them across its own reset:
+	// whether a default Content-Type is added, which has no getter to carry alone.
+	res.Header.CopyTo(&upstream.Header)
 	upstream.StreamBody, upstream.SkipBody = res.StreamBody, res.SkipBody
 	return upstream
 }
