@@ -697,7 +697,7 @@ testConfig := fiber.TestConfig{
 
 A request body of unknown length, such as an `*os.File` or an `io.Pipe` reader, is read and sent with its measured `Content-Length`, so it reaches the handler instead of failing with `cannot parse content-length` or being dropped.
 
-A request with a `TLS` state, such as `httptest.NewRequest` builds for an `https://` target, is served as a TLS connection, so `c.Scheme()` is `https` and `c.Secure()` is `true` in the handler.
+A request with a `TLS` state, such as `httptest.NewRequest` builds for an `https://` target, is served as a TLS connection, so `c.Scheme()` is `https` and `c.Secure()` is `true` in the handler. A test that sent an `https://` target and relied on plain HTTP behavior, such as a redirect to HTTPS or a missing `Strict-Transport-Security` header, now sees `https` and has to be adjusted.
 
 ### Constraint System
 
