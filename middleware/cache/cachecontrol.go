@@ -58,15 +58,15 @@ func parseUintDirective(val []byte) (uint64, bool) {
 }
 
 func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
-	for i := 0; i < len(cc); {
-		// skip leading separators and OWS (space/tab per RFC 9110 §5.6.3)
-		for i < len(cc) && (cc[i] == ' ' || cc[i] == '\t' || cc[i] == ',') {
-			i++
+	for start := 0; start < len(cc); {
+		// Skip empty elements and leading OWS without invoking the scanner for
+		// every separator. Only SP and HTAB are OWS (RFC 9110 Section 5.6.3).
+		for start < len(cc) && (cc[start] == ' ' || cc[start] == '\t' || cc[start] == ',') {
+			start++
 		}
-		if i >= len(cc) {
+		if start >= len(cc) {
 			break
 		}
-
 		// A directive value may be a quoted-string (RFC 9111 §5.2), and a comma
 		// inside one is data rather than the end of the directive. Scanning past
 		// it read the tokens in an extension value as directives of their own,
@@ -74,25 +74,9 @@ func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 		// Unterminated quotes swallow the rest of the field, which is the safe
 		// way round: what follows is read as one value rather than as directives
 		// a sender never separated.
-		start := i
-		inQuotes := false
-		for i < len(cc) {
-			if inQuotes && cc[i] == '\\' && i+1 < len(cc) {
-				// A quoted-pair: the byte after the backslash is data, a quote
-				// among it, so the string does not end there.
-				i += 2
-				continue
-			}
-			if cc[i] == '"' {
-				inQuotes = !inQuotes
-			} else if cc[i] == ',' && !inQuotes {
-				break
-			}
-			i++
-		}
-		// The skip above left cc[start] as neither OWS nor a comma, and the scan
-		// stepped over it, so part keeps at least that byte.
-		part := headerlist.TrimOWS(cc[start:i])
+		var part []byte
+		part, start = headerlist.NextQuoted(cc, start)
+		part = headerlist.TrimOWS(part)
 
 		// A directive without "=" reports a nil value, one with an empty
 		// argument an empty value.
@@ -106,7 +90,6 @@ func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 		}
 
 		fn(headerlist.TrimOWS(key), value)
-		i++ // skip comma
 	}
 }
 

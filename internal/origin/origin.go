@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
@@ -77,7 +78,20 @@ func Normalize(raw string, policy SchemePolicy) (string, bool) {
 		return "", false
 	}
 
-	return utilsstrings.ToLower(parsed.Scheme) + schemeSep + utilsstrings.ToLower(parsed.Host), true
+	return FromURL(parsed), true
+}
+
+// FromURL serializes the origin of an already parsed URL as lowercase
+// "scheme://host", dropping userinfo, path, query and fragment. It is the one
+// place that spells an origin string, shared by [Normalize] and by callers that
+// derive an origin from a full URL, such as the Referer check in CSRF.
+//
+// Unlike Normalize it validates nothing: a URL with an empty host or a scheme
+// outside the caller's policy still yields a string. That string is only safe
+// to compare against an [AllowList], whose entries are all valid origins, so an
+// invalid one can match nothing there.
+func FromURL(u *url.URL) string {
+	return utilsstrings.ToLower(u.Scheme) + schemeSep + utilsstrings.ToLower(u.Host)
 }
 
 // Subdomain is a configured wildcard pattern such as "https://*.example.com",
@@ -124,6 +138,50 @@ func ParsePattern(pattern string, policy SchemePolicy) (Pattern, bool) {
 		return Pattern{Wildcard: true}, false
 	}
 	return Pattern{Subdomain: Subdomain{Prefix: scheme + schemeSep, Suffix: host}, Wildcard: true}, true
+}
+
+// AllowList is a parsed allow list, such as CORS AllowOrigins or CSRF
+// TrustedOrigins: the exact origins, the subdomain wildcards, and the scheme
+// policy both were parsed under. The zero value is an empty list.
+type AllowList struct {
+	exact      map[string]struct{}
+	subdomains []Subdomain
+	policy     SchemePolicy
+}
+
+// ParseAllowList parses every entry of a configured allow list with [ParsePattern],
+// after trimming the whitespace around it.
+//
+// It stops at the first entry that does not parse and returns that entry as
+// written, untrimmed, with ok false, so each middleware can name it in its own
+// configuration error. The list is only built here, never per request.
+func ParseAllowList(entries []string, policy SchemePolicy) (allowList AllowList, invalid string, ok bool) { //nolint:nonamedreturns // names tell the offending entry apart from the allow list
+	allowList = AllowList{exact: make(map[string]struct{}, len(entries)), policy: policy}
+	for _, entry := range entries {
+		pattern, valid := ParsePattern(utils.TrimSpace(entry), policy)
+		if !valid {
+			return AllowList{}, entry, false
+		}
+		if pattern.Wildcard {
+			allowList.subdomains = append(allowList.subdomains, pattern.Subdomain)
+		} else {
+			allowList.exact[pattern.Origin] = struct{}{}
+		}
+	}
+	return allowList, "", true
+}
+
+// Contains reports whether o is on the list, either as an exact entry or under
+// one of its wildcards.
+//
+// o must be in normalized form, as [Normalize] or [FromURL] produce it; it is
+// compared, not normalized. A value that is not normalized fails the exact
+// lookup, and [MatchAny] rejects it for the wildcards.
+func (l AllowList) Contains(o string) bool {
+	if _, ok := l.exact[o]; ok {
+		return true
+	}
+	return MatchAny(l.subdomains, o, l.policy)
 }
 
 // MatchNormalized reports whether an already normalized origin sits under this

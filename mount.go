@@ -809,14 +809,21 @@ func (app *App) processSubAppsRoutes() {
 			// A sub-app that registers no automatic HEAD routes of its own
 			// must not be given them here either: its middleware is
 			// registered for the methods it serves, and a HEAD route
-			// synthesized from the GET one would run without it.
-			skipsAutoHead := route.group.app.config.DisableHeadAutoRegister || route.group.app.methodInt(MethodHead) < 0
+			// synthesized from the GET one would run without it. An app that
+			// turned them off takes none from the apps mounted into it either:
+			// a guard it registered with Get has no HEAD companion to run in front.
+			skipsAutoHead := app.config.DisableHeadAutoRegister ||
+				route.group.app.config.DisableHeadAutoRegister || route.group.app.methodInt(MethodHead) < 0
 
 			// Create a slice to hold the sub-app's routes
-			subRoutes := make([]*Route, len(subAppRoutes))
+			subRoutes := make([]*Route, 0, len(subAppRoutes))
 
 			// Iterate over the sub-app's routes
-			for j, subAppRoute := range subAppRoutes {
+			for _, subAppRoute := range subAppRoutes {
+				// A sub-app started before it was mounted carries its automatic HEAD routes already.
+				if skipsAutoHead && subAppRoute.autoHead {
+					continue
+				}
 				// Clone the sub-app's route
 				subAppRouteClone := app.copyRoute(subAppRoute)
 
@@ -853,7 +860,7 @@ func (app *App) processSubAppsRoutes() {
 				app.markRouteOwner(subAppRouteClone, owner)
 
 				// Add the cloned sub-app's route to the slice of sub-app routes
-				subRoutes[j] = subAppRouteClone
+				subRoutes = append(subRoutes, subAppRouteClone)
 			}
 
 			// Insert the sub-app's routes into the parent app's stack

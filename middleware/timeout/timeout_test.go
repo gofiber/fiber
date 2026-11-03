@@ -1,12 +1,14 @@
 package timeout
 
 import (
+	"bufio"
 	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -733,9 +735,11 @@ func Test_Timeout_NestedInnerFirst(t *testing.T) {
 func Test_Timeout_EnclosingDeadlineRunsInline(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(outerTimeout(Config{Timeout: 20 * time.Millisecond}))
-	app.Get("/wait", New(untilDeadline, Config{Timeout: time.Second}))
-	app.Get("/panic", New(func(fiber.Ctx) error { panic("boom") }, Config{Timeout: time.Second}))
+	app.Get("/wait", outerTimeout(Config{Timeout: 20 * time.Millisecond}), New(untilDeadline, Config{Timeout: time.Second}))
+	// The enclosing deadline of the route that must answer before it is a second off, as a slow run has
+	// blown a 20 ms one: inline all the same, as the deadline comes before the route's own.
+	boom := func(fiber.Ctx) error { panic("boom") }
+	app.Get("/panic", outerTimeout(Config{Timeout: time.Second}), New(boom, Config{Timeout: 2 * time.Second}))
 
 	apptest.Expect(t, app, "/wait", fiber.StatusServiceUnavailable)
 
@@ -995,6 +999,50 @@ func Test_Timeout_ReturnsErrServiceUnavailable(t *testing.T) {
 			observed := apptest.Recv(t, seen, time.Second, "outer middleware never observed the result")
 			require.ErrorIs(t, observed, fiber.ErrServiceUnavailable)
 			require.Equal(t, int32(0), errorHandlerCalls.Load())
+		})
+	}
+}
+
+// A HEAD response carries no body (RFC 9110 §9.3.2); one sent by the timeout path would be read as the start of
+// the next response on the connection.
+func Test_Timeout_HEADResponseHasNoBody(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		body   string
+		cfg    Config
+		status int
+	}{
+		"default": {cfg: Config{Timeout: 20 * time.Millisecond}, status: fiber.StatusServiceUnavailable, body: fiber.ErrServiceUnavailable.Message},
+		"OnTimeout": {
+			cfg: Config{Timeout: 20 * time.Millisecond, OnTimeout: func(c fiber.Ctx) error {
+				return c.Status(fiber.StatusGatewayTimeout).SendString("custom timeout")
+			}},
+			status: fiber.StatusGatewayTimeout, body: "custom timeout",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			// Held until the timeout response has been read: released by the deadline, the handler could
+			// answer first.
+			release := make(chan struct{})
+			defer close(release)
+			app.Get("/slow", New(func(fiber.Ctx) error { <-release; return nil }, tc.cfg))
+			app.Get("/fast", func(c fiber.Ctx) error { return c.SendString("fast") })
+
+			conn := apptest.Dial(t, apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true}))
+			_, err := conn.Write([]byte("HEAD /slow HTTP/1.1\r\nHost: example.com\r\n\r\nGET /fast HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+			require.NoError(t, err)
+
+			br := bufio.NewReader(conn)
+			head, err := http.ReadResponse(br, &http.Request{Method: fiber.MethodHead})
+			require.NoError(t, err)
+			require.NoError(t, head.Body.Close())
+			require.Equal(t, tc.status, head.StatusCode)
+			require.Equal(t, strconv.Itoa(len(tc.body)), head.Header.Get(fiber.HeaderContentLength))
+			next, err := br.ReadString('\n')
+			require.NoError(t, err)
+			require.Equal(t, "HTTP/1.1 200 OK\r\n", next)
 		})
 	}
 }

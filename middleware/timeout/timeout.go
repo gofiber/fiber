@@ -102,6 +102,10 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		// when the goroutine has stopped touching the context, which is what makes
 		// reclaiming the abandoned context race-free.
 		handlerDone := make(chan struct{})
+		// Read before the handler can change the method. A HEAD response carries no body
+		// (RFC 9110 §9.3.2), and fasthttp sends the timeout response from a fresh RequestCtx
+		// that never saw the request, so it cannot tell a HEAD apart there.
+		isHead := ctx.RequestCtx().IsHead()
 
 		// Run handler in goroutine so we can race against the timeout
 		go func() {
@@ -140,7 +144,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			// Timeout occurred - abandon context and return immediately.
 			// Reclamation is scheduled so the abandoned fiber.Ctx is returned to
 			// the pool once the handler goroutine finishes, instead of leaking.
-			return handleTimeout(ctx, cancel, handlerDone, req, snap, cfg)
+			return handleTimeout(ctx, cancel, handlerDone, req, snap, cfg, isHead)
 		}
 	}
 }
@@ -179,6 +183,16 @@ func handleResult(err error, ctx fiber.Ctx, cfg Config) error {
 	return err
 }
 
+// sendTimeoutResponse hands fasthttp the response it sends once the handler returns.
+// TimeoutErrorWithResponse copies resp, so the active RequestCtx response is never
+// read, and sends the copy from a fresh RequestCtx whose request is empty, so the
+// body of a response to a HEAD request is skipped here rather than there.
+func sendTimeoutResponse(ctx fiber.Ctx, resp *fasthttp.Response, isHead bool) {
+	// Or kept as OnTimeout set it: a response it meant to send without a body goes without one.
+	resp.SkipBody = resp.SkipBody || isHead
+	ctx.RequestCtx().TimeoutErrorWithResponse(resp)
+}
+
 // handleTimeout handles the timeout case using the Abandon mechanism
 func handleTimeout(
 	ctx fiber.Ctx,
@@ -187,6 +201,7 @@ func handleTimeout(
 	req *request,
 	snap *snapshot,
 	cfg Config,
+	isHead bool,
 ) error {
 	req.mu.Lock()
 	defer req.mu.Unlock()
@@ -201,9 +216,10 @@ func handleTimeout(
 		// Build the default timeout response separately from the RequestCtx response.
 		// The timed-out handler can keep running and may have already buffered
 		// application data there, so reusing it could disclose partial output.
-		// TimeoutErrorWithCode constructs a fresh fasthttp.Response internally, so
-		// the active RequestCtx response is never read.
-		ctx.RequestCtx().TimeoutErrorWithCode(fiber.ErrServiceUnavailable.Message, fiber.StatusServiceUnavailable)
+		var resp fasthttp.Response
+		resp.SetStatusCode(fiber.StatusServiceUnavailable)
+		resp.SetBodyString(fiber.ErrServiceUnavailable.Message)
+		sendTimeoutResponse(ctx, &resp, isHead)
 		timeoutErr = fiber.ErrServiceUnavailable
 	default:
 		var resp *fasthttp.Response
@@ -228,7 +244,7 @@ func handleTimeout(
 		// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one
 		// for the response and send the captured payload from OnTimeout. All ctx
 		// mutations after this call are ignored by fasthttp.
-		ctx.RequestCtx().TimeoutErrorWithResponse(resp)
+		sendTimeoutResponse(ctx, resp, isHead)
 		if timeoutErr == nil {
 			// An error keeps the middleware before us off the response the handler still writes.
 			timeoutErr = fiber.ErrServiceUnavailable

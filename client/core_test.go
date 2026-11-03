@@ -824,21 +824,102 @@ func silentServer(t *testing.T) (dial fasthttp.DialFunc, hungUp <-chan struct{})
 	return func(string) (net.Conn, error) { return ln.Dial() }, closed
 }
 
+// Test_Execute_CancelEndsTheExchange checks that an exchange with a server that never answers ends
+// at the transport of a client made by New, the connection closed instead of waiting on the
+// server, over a plain and over a TLS connection alike: when the context is canceled, with and
+// without a deadline, also with a ConfigureClient hook of the caller's own in place of the
+// client's, and when the client's timeout passes.
+func Test_Execute_CancelEndsTheExchange(t *testing.T) {
+	t.Parallel()
+	// cancelOnceConnected cancels ctx once a connection is open, so the cancellation reaches an exchange in flight.
+	cancelOnceConnected := func(dial fasthttp.DialFunc, cancel context.CancelFunc) fasthttp.DialFunc {
+		return func(addr string) (net.Conn, error) {
+			conn, err := dial(addr)
+			if err == nil {
+				cancel()
+			}
+			return conn, err
+		}
+	}
+	for _, tc := range []struct {
+		// setup returns the client and the context of the request, set up so the exchange ends.
+		setup func(t *testing.T, dial fasthttp.DialFunc) (*Client, context.Context)
+		name  string
+	}{
+		{name: "cancel-only", setup: func(t *testing.T, dial fasthttp.DialFunc) (*Client, context.Context) {
+			t.Helper()
+			ctx, cancel := context.WithCancel(t.Context())
+			t.Cleanup(cancel)
+			return New().SetDial(cancelOnceConnected(dial, cancel)), ctx
+		}},
+		{name: "deadline", setup: func(t *testing.T, dial fasthttp.DialFunc) (*Client, context.Context) {
+			t.Helper()
+			ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+			t.Cleanup(cancel)
+			return New().SetDial(cancelOnceConnected(dial, cancel)), ctx
+		}},
+		{name: "cancel-only with a replaced hook", setup: func(t *testing.T, dial fasthttp.DialFunc) (*Client, context.Context) {
+			t.Helper()
+			ctx, cancel := context.WithCancel(t.Context())
+			t.Cleanup(cancel)
+			client := New().SetDial(cancelOnceConnected(dial, cancel))
+			client.FasthttpClient().ConfigureClient = func(hc *fasthttp.HostClient) error { hc.MaxConns = 8; return nil }
+			return client, ctx
+		}},
+		{name: "client timeout", setup: func(t *testing.T, dial fasthttp.DialFunc) (*Client, context.Context) {
+			t.Helper()
+			return New().SetDial(dial).SetTimeout(50 * time.Millisecond), context.Background()
+		}},
+		{name: "client timeout under a cancel-only context", setup: func(t *testing.T, dial fasthttp.DialFunc) (*Client, context.Context) {
+			t.Helper()
+			ctx, cancel := context.WithCancel(t.Context())
+			t.Cleanup(cancel)
+			return New().SetDial(dial).SetTimeout(50 * time.Millisecond), ctx
+		}},
+	} {
+		for _, url := range []string{"http://example.com/", "https://example.com/"} {
+			t.Run(tc.name+" "+url, func(t *testing.T) {
+				t.Parallel()
+				dial, hungUp := silentServer(t)
+				client, ctx := tc.setup(t, dial)
+
+				_, err := client.R().SetContext(ctx).Get(url)
+				require.ErrorIs(t, err, ErrTimeoutOrCancel)
+				apptest.Recv(t, hungUp, 2*time.Second, "the connection is still open after the call ended")
+			})
+		}
+	}
+}
+
+// Test_Execute_CancelOnlyContextKeepsConnectionsUsable checks that requests under a context that can
+// be canceled, but is not, share their connections and answer as usual, a HEAD included.
+func Test_Execute_CancelOnlyContextKeepsConnectionsUsable(t *testing.T) {
+	t.Parallel()
+	ts := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	})
+	t.Cleanup(ts.stop)
+	client := New().SetDial(ts.dial())
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	for range 2 {
+		resp, err := client.R().SetContext(ctx).Get("http://example.com/")
+		require.NoError(t, err)
+		require.Equal(t, "ok", resp.String())
+		resp.Close()
+	}
+	resp, err := client.R().SetContext(ctx).Head("http://example.com/")
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Empty(t, resp.Body())
+	resp.Close()
+}
+
+// Test_Execute_TimeoutEndsTheExchange checks what of the client's timeout reaches the redirect hops
+// and the retries; Test_Execute_CancelEndsTheExchange covers the exchange itself.
 func Test_Execute_TimeoutEndsTheExchange(t *testing.T) {
 	t.Parallel()
-	for _, url := range []string{"http://example.com/", "https://example.com/"} {
-		t.Run(url, func(t *testing.T) {
-			t.Parallel()
-			dial, hungUp := silentServer(t)
-			client := New().SetDial(dial).SetTimeout(50 * time.Millisecond)
-
-			_, err := client.Get(url)
-			require.ErrorIs(t, err, ErrTimeoutOrCancel)
-
-			apptest.Recv(t, hungUp, 2*time.Second, "the connection is still open long after the call timed out")
-		})
-	}
-
 	t.Run("redirects share the deadline", func(t *testing.T) {
 		t.Parallel()
 		var deadline time.Time

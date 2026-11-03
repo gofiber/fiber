@@ -3089,28 +3089,7 @@ func startRawServer(t *testing.T, app *App) *fasthttputil.InmemoryListener {
 func startRawServerWith(t *testing.T, app *App, beforeServe func(*App) error) *fasthttputil.InmemoryListener {
 	t.Helper()
 
-	ln := fasthttputil.NewInmemoryListener()
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- app.Listener(ln, ListenConfig{DisableStartupMessage: true, BeforeServeFunc: beforeServe})
-	}()
-
-	t.Cleanup(func() {
-		require.NoError(t, app.Shutdown())
-		if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
-			require.NoError(t, err)
-		}
-	})
-
-	require.Eventually(t, func() bool {
-		conn, err := ln.Dial()
-		if err != nil {
-			return false
-		}
-		return conn.Close() == nil
-	}, time.Second, 5*time.Millisecond)
-
-	return ln
+	return apptest.Serve(t, app, ListenConfig{DisableStartupMessage: true, BeforeServeFunc: beforeServe})
 }
 
 // dialer opens connections to the server under test.
@@ -3200,15 +3179,6 @@ func rawExpectStatus(t *testing.T, server dialer, raw string, status int) rawRes
 	responses, _ := rawExchange(t, server, raw, 1)
 	require.Equal(t, status, responses[0].status, raw)
 	return responses[0]
-}
-
-// rawFieldLines returns n header or trailer lines named prefix0, prefix1, ... that all hold value.
-func rawFieldLines(prefix, value string, n int) string {
-	var lines strings.Builder
-	for i := range n {
-		fmt.Fprintf(&lines, "%s%d: %s\r\n", prefix, i, value)
-	}
-	return lines.String()
 }
 
 // An Accept-Encoding with no value reaches AcceptsEncodings as present but empty,
@@ -3583,6 +3553,49 @@ func Test_App_Test_BodyOfUnknownLength(t *testing.T) {
 			require.Equal(t, strconv.Itoa(len(tc.body)), resp.Header.Get("X-Content-Length"))
 		})
 	}
+}
+
+// A request with a TLS state, which httptest.NewRequest builds for an https target, is served over TLS.
+func Test_App_Test_TLS(t *testing.T) {
+	t.Parallel()
+	withState := apptest.Req(MethodGet, "/")
+	withState.TLS = &tls.ConnectionState{ServerName: "fiber.test"}
+
+	for _, tc := range []struct {
+		req  *http.Request
+		name string
+		body string
+	}{
+		{name: "https target", req: apptest.Req(MethodGet, "https://example.com/"), body: "https true example.com"},
+		{name: "TLS state", req: withState, body: "https true fiber.test"},
+		{name: "http target", req: apptest.Req(MethodGet, "http://example.com/"), body: "http false "},
+		{name: "path only", req: apptest.Req(MethodGet, "/"), body: "http false "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.Get("/", func(c Ctx) error {
+				serverName := ""
+				if state := c.RequestCtx().TLSConnectionState(); state != nil {
+					serverName = state.ServerName
+				}
+				return c.SendString(c.Scheme() + " " + strconv.FormatBool(c.Secure()) + " " + serverName)
+			})
+			apptest.ExpectBody(t, app, tc.req, StatusOK, tc.body)
+		})
+	}
+}
+
+func Test_App_Test_TLS_NegotiatedProtocol(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Server().NextProto("h2", func(net.Conn) error { return errors.New("served by NextProto") })
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.Scheme() + " " + c.RequestCtx().TLSConnectionState().NegotiatedProtocol)
+	})
+	req := apptest.Req(MethodGet, "https://example.com/")
+	req.TLS.NegotiatedProtocol = "h2"
+	apptest.ExpectBody(t, app, req, StatusOK, "https h2")
 }
 
 // Test serves the connection itself, so it installs the close hook too.
