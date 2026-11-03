@@ -795,9 +795,7 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 func (r *DefaultReq) Host() string {
 	if r.IsProxyTrusted() {
 		if host := r.Get(HeaderXForwardedHost); host != "" {
-			if before, _, found := utils.CutByte(host, ','); found {
-				return utils.TrimSpace(before)
-			}
+			host, _ = headerlist.Next(host, 0)
 			return utils.TrimSpace(host)
 		}
 	}
@@ -1480,9 +1478,7 @@ func announcedScheme(rank int, val []byte) (string, bool) {
 	case schemeRankXForwardedSsl:
 		return schemeHTTPS, utils.EqualFold(v, "on")
 	case schemeRankXForwardedProto, schemeRankXForwardedProtocol:
-		if before, _, found := utils.CutByte(v, ','); found {
-			v = before
-		}
+		v, _ = headerlist.Next(v, 0)
 	}
 	return forwardedScheme(v)
 }
