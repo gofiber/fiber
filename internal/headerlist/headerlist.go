@@ -129,39 +129,55 @@ func AllQuoted(list string) iter.Seq[string] {
 // elements. Entity tags have no quoted-pair and keep using [AllQuoted].
 func AllQuotedPairs(list string) iter.Seq[string] {
 	return func(yield func(string) bool) {
-		start, pos := 0, 0
-		inQuotes := false
-		for {
-			i := utils.IndexAny3(list[pos:], '"', ',', '\\')
-			if i == -1 {
-				break
+		data := utils.UnsafeBytes(list)
+		for start := 0; start <= len(data); {
+			raw, next := NextQuoted(data, start)
+			start = next
+			if element := utils.TrimSpace(utils.UnsafeString(raw)); element != "" && !yield(element) {
+				return
 			}
-			i += pos
-			pos = i + 1
-
-			switch {
-			case list[i] == '\\':
-				if inQuotes && pos < len(list) {
-					pos++ // the escaped byte ends neither the string nor the element
-				}
-				continue
-			case list[i] == '"':
-				inQuotes = !inQuotes
-				continue
-			case inQuotes:
-				continue
-			}
-			if element := utils.TrimSpace(list[start:i]); element != "" {
-				if !yield(element) {
-					return
-				}
-			}
-			start = i + 1
-		}
-		if element := utils.TrimSpace(list[start:]); element != "" {
-			yield(element)
 		}
 	}
+}
+
+// NextQuoted is [Next] for byte lists whose elements may carry a quoted-string with
+// quoted-pairs (RFC 9110 Section 5.6.4), the walk under [AllQuotedPairs]: a
+// comma inside quotes does not separate, and inside quotes a backslash escapes
+// the next byte. A quoted string left open swallows the rest of the list.
+//
+// Like [Next], the element is raw and aliases list, whitespace and empty
+// elements are preserved, start must be between zero and len(list), inclusive,
+// and the returned position exceeds len(list) after the final element.
+func NextQuoted(list []byte, start int) (element []byte, next int) { //nolint:nonamedreturns // names distinguish the element from the next position
+	end := start
+	for end < len(list) {
+		// Outside quotes, backslashes are ordinary bytes.
+		i := utils.IndexAny2(list[end:], '"', ',')
+		if i == -1 {
+			return list[start:], len(list) + 1
+		}
+		end += i
+		if list[end] == ',' {
+			break
+		}
+		end++ // opening quote
+		for end < len(list) {
+			// Inside quotes, commas are ordinary bytes, and a
+			// backslash escapes exactly the next byte.
+			i = utils.IndexAny2(list[end:], '"', '\\')
+			if i == -1 {
+				return list[start:], len(list) + 1
+			}
+			end += i + 1
+			if list[end-1] == '"' {
+				break
+			}
+			if end < len(list) {
+				end++
+			}
+		}
+	}
+	return list[start:end], end + 1
 }
 
 // AllLines yields the elements of every field line in order, so that a header
@@ -307,6 +323,9 @@ func appendJoinedLine(dst, line []byte) []byte {
 //nolint:revive // multiple tracks ownership of combined, not a caller-selected mode.
 func JoinNext(combined, line []byte, multiple bool) ([]byte, bool) {
 	if combined == nil {
+		if line == nil {
+			return []byte{}, false
+		}
 		return line, false
 	}
 	if !multiple {

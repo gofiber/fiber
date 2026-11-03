@@ -737,6 +737,10 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 		{name: "Trusted Referer deeply nested subdomain", scheme: "https", host: "a.b.c.domain-1.com", referer: "https://a.b.c.domain-1.com", headers: viaHTTPS, status: fiber.StatusOK},
 		// The fallback lowering must keep matching the pre-lowered TrustedOrigins config (wildcard entry).
 		{name: "Trusted Referer with mixed-case header", scheme: "https", host: "domain-1.com", referer: "https://SAFE.Domain-1.com/Account/Login?Id=3", headers: viaHTTPS, status: fiber.StatusOK},
+		// The origin is built from the parsed Referer, which lowers the scheme and host, so the exact entry matches.
+		{name: "Trusted Referer with mixed-case scheme and host (exact entry)", scheme: "https", host: "example.com", referer: "HTTPS://Safe.Example.COM/a", headers: viaHTTPS, status: fiber.StatusOK},
+		// A default port is not folded on the trusted-origin fallback: the entry has none.
+		{name: "Trusted Referer with default port is not folded", scheme: "https", host: "example.com", referer: "https://safe.example.com:443/a", headers: viaHTTPS, status: fiber.StatusForbidden},
 		{name: "Trusted Referer Invalid", scheme: "https", host: "api.domain-1.com", referer: "https://evildomain-1.com", headers: viaHTTPS, status: fiber.StatusForbidden},
 		// The referer URL includes a path component, which must not prevent
 		// matching against the trusted origin.
