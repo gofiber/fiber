@@ -245,8 +245,7 @@ func New(config ...Config) fiber.Handler {
 	mux := &sync.Mutex{}
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, redactKeys)
-	// The refusal gates read utils.Timestamp, which is zero until the updater runs; only the
-	// in-memory store starts it.
+	// Keeps the refusal gates' utils.Timestamp reads an atomic load instead of a clock read.
 	utils.StartTimeStampUpdater()
 	refusals := newRefusalRecords(&cfg, manager)
 	// Create indexed heap for tracking expirations ( see heap.go )
