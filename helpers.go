@@ -1287,6 +1287,17 @@ var (
 // sentinel is enough and avoids a per-call fmt.Errorf alloc on the hot default path.
 func genericParseType[V GenericType](str string) (V, error) {
 	var v V
+	// Empty numeric/bool inputs allocate parser errors that are discarded below.
+	if str == "" {
+		switch any(v).(type) {
+		case string:
+			return v, errParsedEmptyString
+		case []byte:
+			return v, errParsedEmptyBytes
+		default:
+			return v, errParseValue
+		}
+	}
 	switch any(v).(type) {
 	case int:
 		result, err := utils.ParseInt(str)
