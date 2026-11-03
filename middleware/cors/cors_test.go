@@ -250,6 +250,27 @@ func Test_CORS_Wildcard_AllowCredentials_Panic(t *testing.T) {
 	}, "Expected a panic when AllowOrigins is '*' and AllowCredentials is true")
 }
 
+// A bare "*" allows every origin and ends AllowOrigins: an invalid entry before
+// it still fails the configuration, one after it is never parsed.
+func Test_CORS_AllowOrigins_WildcardEndsList(t *testing.T) {
+	t.Parallel()
+	t.Run("invalid entry after the wildcard is ignored", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		require.NotPanics(t, func() {
+			app.Use(New(Config{AllowOrigins: []string{"http://localhost", "*", "http://"}}))
+		})
+		require.Equal(t, "*", corsTestAllowOrigin(corsTestRequest(app.Handler(), fiber.MethodGet, "http://example.com")))
+	})
+
+	t.Run("invalid entry before the wildcard panics", func(t *testing.T) {
+		t.Parallel()
+		require.PanicsWithValue(t, "[CORS] Invalid origin format in configuration: http://", func() {
+			New(Config{AllowOrigins: []string{" http:// ", "*"}, DisableValueRedaction: true})
+		})
+	})
+}
+
 // Test that a warning is logged when AllowOrigins allows all origins and
 // AllowOriginsFunc is also provided.
 // conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
