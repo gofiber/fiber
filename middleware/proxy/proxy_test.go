@@ -1822,6 +1822,16 @@ func Test_Proxy_DomainForward_HostMatch(t *testing.T) {
 	}
 }
 
+// DomainForward's comment relies on fasthttp lowercasing Request.Host: an
+// uppercase Host header arrives lowercase, port included.
+func Test_Proxy_RequestHostIsLowercased(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(string(c.Request().Host())) })
+	apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHost("API.Example.COM:8080")), fiber.StatusOK,
+		"api.example.com:8080")
+}
+
 // sendRaw parses raw as the request a client put on the wire and runs app's
 // handler on it, returning the response body. Reading from the wire is what
 // lets a test send a chunked body with a trailer section, which the request
@@ -2073,24 +2083,6 @@ func Test_Proxy_Forward_RestoresHost(t *testing.T) {
 
 	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHost("public.example.com")), fiber.StatusOK)
 	require.Equal(t, "public.example.com", <-seen)
-}
-
-func Test_Proxy_HostWithoutPort(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		in, out string
-	}{
-		{in: "example.com", out: "example.com"},
-		{in: "example.com:8080", out: "example.com"},
-		{in: "[::1]:8080", out: "[::1]"},
-		{in: "[::1]", out: "[::1]"},
-		{in: "[::1", out: "[::1"},
-		{in: "::1", out: "::1"},
-	}
-
-	for _, tc := range tests {
-		require.Equal(t, tc.out, hostWithoutPort(tc.in), "in=%q", tc.in)
-	}
 }
 
 func Test_Proxy_NewHostClient(t *testing.T) {

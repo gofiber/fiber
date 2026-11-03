@@ -2895,6 +2895,33 @@ func Test_Ctx_Host_ForwardedHost(t *testing.T) {
 	}
 }
 
+// Without a trusted proxy, Host is fasthttp's URI().Host, which URI.parse
+// lowercases; the X-Forwarded-Host branch is the raw header. Subdomains and
+// Domain matching fold case themselves because of the second branch.
+func Test_Ctx_Host_CaseFolding(t *testing.T) {
+	t.Parallel()
+	trusted := TrustProxyConfig{Proxies: []string{"0.0.0.0"}}
+	for _, tc := range []struct {
+		name, forwardedHost, want string
+		proxy                     TrustProxyConfig
+	}{
+		{name: "Host header is lowercased by fasthttp", want: "api.example.com:8080"},
+		{name: "untrusted X-Forwarded-Host is ignored", forwardedHost: "Other.Example", want: "api.example.com:8080"},
+		{name: "trusted X-Forwarded-Host is returned raw", proxy: trusted, forwardedHost: "Other.Example", want: "Other.Example"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := apptest.Ctx(t, New(Config{TrustProxy: true, TrustProxyConfig: tc.proxy}))
+			c.Request().Header.SetHost("API.Example.COM:8080")
+			c.Request().SetRequestURI("/test")
+			if tc.forwardedHost != "" {
+				c.Request().Header.Set(HeaderXForwardedHost, tc.forwardedHost)
+			}
+			require.Equal(t, tc.want, c.Host())
+		})
+	}
+}
+
 func Benchmark_Ctx_Host(b *testing.B) {
 	c := apptest.Ctx(b, New())
 	c.Request().SetRequestURI("http://google.com/test")

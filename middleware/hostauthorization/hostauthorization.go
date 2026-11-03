@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/idnafold"
+	"github.com/gofiber/fiber/v3/internal/hostname"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
@@ -87,7 +87,7 @@ func normalizeHost(host string) string {
 	if host != "" && host[0] != '[' && strings.IndexByte(host, ':') < 0 {
 		host = trimOneTrailingDot(host)
 		host = utilsstrings.ToLower(host)
-		return idnafold.ToASCII(host)
+		return hostname.ToASCII(host)
 	}
 
 	if h, _, ok := utils.SplitHostPort(host); ok {
@@ -99,7 +99,7 @@ func normalizeHost(host string) string {
 
 	host = trimOneTrailingDot(host)
 	host = utilsstrings.ToLower(host)
-	return idnafold.ToASCII(host)
+	return hostname.ToASCII(host)
 }
 
 func trimOneTrailingDot(host string) string {

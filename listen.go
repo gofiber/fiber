@@ -28,6 +28,7 @@ import (
 	"github.com/mattn/go-isatty"
 	"golang.org/x/crypto/acme/autocert"
 
+	"github.com/gofiber/fiber/v3/internal/hostname"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -526,7 +527,7 @@ func (app *App) printMessages(cfg *ListenConfig, listenData *ListenData) {
 
 // prepareListenData creates a ListenData instance populated with the application metadata.
 func (app *App) prepareListenData(addr string, isTLS bool, cfg *ListenConfig, childPIDs []int) *ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS is fine here
-	host, port := parseAddr(addr)
+	host, port := hostname.SplitPort(addr)
 	if host == "" {
 		if cfg.ListenerNetwork == NetworkTCP6 {
 			host = "[::1]"

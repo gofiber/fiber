@@ -16,12 +16,12 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
-	"golang.org/x/net/idna"
 
 	"github.com/gofiber/fiber/v3/internal/bodystream"
 	etagpkg "github.com/gofiber/fiber/v3/internal/etag"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
+	"github.com/gofiber/fiber/v3/internal/hostname"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 )
 
@@ -793,6 +793,12 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 // Make copies or use the Immutable setting instead.
 // Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 func (r *DefaultReq) Host() string {
+	// The two branches differ in what they guarantee. The X-Forwarded-Host
+	// branch is the raw header value: neither validated nor lowercased. The
+	// other is URI().Host, which fasthttp's URI.parse runs through parseHost
+	// and then ASCII-lowercases; the server answers 400 when that parse fails.
+	// The raw branch is why Hostname splits leniently and why Subdomains and
+	// Domain matching fold case themselves instead of relying on fasthttp.
 	if r.IsProxyTrusted() {
 		if host := r.Get(HeaderXForwardedHost); host != "" {
 			if before, _, found := utils.CutByte(host, ','); found {
@@ -810,7 +816,7 @@ func (r *DefaultReq) Host() string {
 // Make copies or use the Immutable setting instead.
 // Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 func (r *DefaultReq) Hostname() string {
-	addr, _ := parseAddr(r.Host())
+	addr, _ := hostname.SplitPort(r.Host())
 
 	return addr
 }
@@ -1757,14 +1763,9 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 	if strings.HasSuffix(host, ".") {
 		host = utils.TrimRight(host, '.')
 	}
-	host = utilsstrings.ToLower(host)
-
-	// Decode punycode labels only when necessary
-	if strings.Contains(host, "xn--") {
-		if u, err := idna.Lookup.ToUnicode(host); err == nil {
-			host = utilsstrings.ToLower(u)
-		}
-	}
+	// Fold before decoding: ToUnicode keeps the ASCII of a lowercase input
+	// lowercase, so the decoded host needs no second fold.
+	host = hostname.ToUnicode(utilsstrings.ToLower(host))
 
 	// Return nothing for IP addresses
 	ip := host
