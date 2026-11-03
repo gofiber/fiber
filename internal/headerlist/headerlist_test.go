@@ -37,26 +37,16 @@ func Test_NextQuoted(t *testing.T) {
 			got = append(got, string(element))
 		}
 		require.Equal(t, tt.want, got, tt.list)
-
-		gotScan := make([]string, 0)
-		for element := range ScanQuoted(list) {
-			gotScan = append(gotScan, string(element))
-		}
-		wantScan := tt.want
-		if wantScan[len(wantScan)-1] == "" {
-			wantScan = wantScan[:len(wantScan)-1]
-		}
-		require.Equal(t, wantScan, gotScan, tt.list)
 	}
 }
 
-func Test_ScanQuoted_EarlyExit(t *testing.T) {
+func Test_AllQuotedPairs_EarlyExit(t *testing.T) {
 	t.Parallel()
 	for _, list := range []string{"a,b,c", `"a,b",c,d`} {
-		seq := ScanQuoted([]byte(list))
+		seq := AllQuotedPairs(list)
 		for range 2 {
 			calls := 0
-			seq(func([]byte) bool {
+			seq(func(string) bool {
 				calls++
 				return false
 			})
@@ -70,7 +60,8 @@ func Test_Quoted_NoAllocations(t *testing.T) {
 	for _, list := range []string{"a, b", `ext="a\"b,c", public`, ",,", `ext="open, b\`} {
 		raw := []byte(list)
 		allocs := testing.AllocsPerRun(100, func() {
-			for range ScanQuoted(raw) {
+			for start := 0; start <= len(raw); {
+				_, start = NextQuoted(raw, start)
 			}
 			for range AllQuotedPairs(list) {
 			}

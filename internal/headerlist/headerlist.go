@@ -129,7 +129,10 @@ func AllQuoted(list string) iter.Seq[string] {
 // elements. Entity tags have no quoted-pair and keep using [AllQuoted].
 func AllQuotedPairs(list string) iter.Seq[string] {
 	return func(yield func(string) bool) {
-		for raw := range ScanQuoted(utils.UnsafeBytes(list)) {
+		data := utils.UnsafeBytes(list)
+		for start := 0; start <= len(data); {
+			raw, next := NextQuoted(data, start)
+			start = next
 			if element := utils.TrimSpace(utils.UnsafeString(raw)); element != "" && !yield(element) {
 				return
 			}
@@ -146,59 +149,35 @@ func AllQuotedPairs(list string) iter.Seq[string] {
 // elements are preserved, start must be between zero and len(list), inclusive,
 // and the returned position exceeds len(list) after the final element.
 func NextQuoted(list []byte, start int) (element []byte, next int) { //nolint:nonamedreturns // names distinguish the element from the next position
-	for element := range ScanQuoted(list[start:]) {
-		return element, start + len(element) + 1
-	}
-	return list[start:], len(list) + 1
-}
-
-// ScanQuoted yields raw elements of a list with the quoting rules of
-// [NextQuoted]. Whitespace and empty elements are preserved, except for the
-// empty element after a trailing comma. An empty list yields no elements.
-// Each element aliases list.
-func ScanQuoted(list []byte) iter.Seq[[]byte] {
-	return func(yield func([]byte) bool) {
-		remaining := list
-		for len(remaining) > 0 {
-			var end int
-			for end < len(remaining) {
-				// Outside quotes, backslashes are ordinary bytes.
-				i := utils.IndexAny2(remaining[end:], '"', ',')
-				if i == -1 {
-					yield(remaining)
-					return
-				}
-				end += i
-				if remaining[end] == ',' {
-					break
-				}
-				end++ // opening quote
-				for end < len(remaining) {
-					// Inside quotes, commas are ordinary bytes, and a
-					// backslash escapes exactly the next byte.
-					i = utils.IndexAny2(remaining[end:], '"', '\\')
-					if i == -1 {
-						yield(remaining)
-						return
-					}
-					end += i + 1
-					if remaining[end-1] == '"' {
-						break
-					}
-					if end < len(remaining) {
-						end++
-					}
-				}
+	end := start
+	for end < len(list) {
+		// Outside quotes, backslashes are ordinary bytes.
+		i := utils.IndexAny2(list[end:], '"', ',')
+		if i == -1 {
+			return list[start:], len(list) + 1
+		}
+		end += i
+		if list[end] == ',' {
+			break
+		}
+		end++ // opening quote
+		for end < len(list) {
+			// Inside quotes, commas are ordinary bytes, and a
+			// backslash escapes exactly the next byte.
+			i = utils.IndexAny2(list[end:], '"', '\\')
+			if i == -1 {
+				return list[start:], len(list) + 1
 			}
-			if !yield(remaining[:end]) {
-				return
+			end += i + 1
+			if list[end-1] == '"' {
+				break
 			}
-			if end >= len(remaining) {
-				return
+			if end < len(list) {
+				end++
 			}
-			remaining = remaining[end+1:]
 		}
 	}
+	return list[start:end], end + 1
 }
 
 // AllLines yields the elements of every field line in order, so that a header
