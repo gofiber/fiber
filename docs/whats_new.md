@@ -697,6 +697,8 @@ testConfig := fiber.TestConfig{
 
 A request body of unknown length, such as an `*os.File` or an `io.Pipe` reader, is read and sent with its measured `Content-Length`, so it reaches the handler instead of failing with `cannot parse content-length` or being dropped.
 
+A request with a `TLS` state, such as `httptest.NewRequest` builds for an `https://` target, is served as a TLS connection, so `c.Scheme()` is `https` and `c.Secure()` is `true` in the handler.
+
 ### Constraint System
 
 The internal constraint system has been unified into a single `ConstraintHandler` interface. Built-in and custom constraints are now treated uniformly through this interface, with an optional `ConstraintAnalyzer` phase for precomputation at route registration time.

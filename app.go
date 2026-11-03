@@ -1547,6 +1547,11 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 
 	// Create test connection
 	conn := new(testConn)
+	var served net.Conn = conn
+	if req.TLS != nil {
+		// httptest.NewRequest sets TLS for an https target; serve such a request over TLS.
+		served = &testTLSConn{testConn: conn, state: *req.TLS}
+	}
 
 	// Write raw http request
 	if _, err = conn.r.Write(dump); err != nil {
@@ -1566,7 +1571,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 			}
 		}()
 
-		channel <- app.server.ServeConn(conn)
+		channel <- app.server.ServeConn(served)
 		returned = true
 	}()
 
