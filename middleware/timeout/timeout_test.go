@@ -735,9 +735,11 @@ func Test_Timeout_NestedInnerFirst(t *testing.T) {
 func Test_Timeout_EnclosingDeadlineRunsInline(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(outerTimeout(Config{Timeout: 20 * time.Millisecond}))
-	app.Get("/wait", New(untilDeadline, Config{Timeout: time.Second}))
-	app.Get("/panic", New(func(fiber.Ctx) error { panic("boom") }, Config{Timeout: time.Second}))
+	app.Get("/wait", outerTimeout(Config{Timeout: 20 * time.Millisecond}), New(untilDeadline, Config{Timeout: time.Second}))
+	// The enclosing deadline of the route that must answer before it is a second off, as a slow run has
+	// blown a 20 ms one: inline all the same, as the deadline comes before the route's own.
+	boom := func(fiber.Ctx) error { panic("boom") }
+	app.Get("/panic", outerTimeout(Config{Timeout: time.Second}), New(boom, Config{Timeout: 2 * time.Second}))
 
 	apptest.Expect(t, app, "/wait", fiber.StatusServiceUnavailable)
 
