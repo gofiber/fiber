@@ -1342,3 +1342,19 @@ func Test_CookieJar_CookieName(t *testing.T) {
 		require.Equal(t, "k=v; session=real", cookieHeader(t, jar, "http://example.com/"))
 	})
 }
+
+// Test_CookieJar_NormalizedHostPaths checks that explicit and response cookies
+// share a scope across host case and port changes.
+func Test_CookieJar_NormalizedHostPaths(t *testing.T) {
+	t.Parallel()
+	for _, host := range []string{"EXAMPLE.com:443", "Example.COM"} {
+		t.Run(host, func(t *testing.T) {
+			t.Parallel()
+			jar := clientTestCJar(t)
+			jar.SetByHost([]byte(host), clientTestCCookie(t, "manual", "one"))
+			clientTestCReceive(jar, host, "/", "response=two; Path=/")
+			got := jar.getByHostAndPath([]byte("eXAMPLE.COM:8080"), []byte("/"), false)
+			require.ElementsMatch(t, []string{"manual=one", "response=two"}, clientTestCPairs(got))
+		})
+	}
+}
