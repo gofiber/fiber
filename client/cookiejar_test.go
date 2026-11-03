@@ -261,6 +261,29 @@ func Test_CookieJarGetFromResponse(t *testing.T) {
 	require.Empty(t, values)
 }
 
+// Test_CookieJar_ConcurrentInitialization checks that reads and a jar's first
+// write synchronize access to the cookie map.
+func Test_CookieJar_ConcurrentInitialization(t *testing.T) {
+	t.Parallel()
+	host := []byte("example.com")
+	uri := clientTestCURI(t, "http://example.com/")
+	cookie := clientTestCCookie(t, "k", "v")
+	for range 100 {
+		jar := &CookieJar{}
+		start, done := make(chan struct{}), make(chan struct{})
+		go func() {
+			<-start
+			jar.SetByHost(host, cookie)
+			close(done)
+		}()
+		close(start)
+		clientTestCPairs(jar.Get(uri))
+		<-done
+		require.Equal(t, []string{"k=v"}, clientTestCPairs(jar.Get(uri)))
+		jar.Release()
+	}
+}
+
 func Test_CookieJar_HostPort(t *testing.T) {
 	t.Parallel()
 	jar := &CookieJar{}

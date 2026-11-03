@@ -1,9 +1,11 @@
 package origin
 
 import (
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_Normalize_AnyScheme(t *testing.T) {
@@ -242,4 +244,138 @@ func Test_MatchAny_PolicyIsApplied(t *testing.T) {
 	subs := []Subdomain{{Prefix: "app://", Suffix: "example.com"}}
 	assert.True(t, MatchAny(subs, "app://api.example.com", AnyScheme))
 	assert.False(t, MatchAny(subs, "app://api.example.com", WebSchemesOnly))
+}
+
+func Test_FromURL(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		raw  string
+		want string
+	}{
+		{raw: "https://example.com", want: "https://example.com"},
+		{raw: "HTTPS://Example.COM:8443/Path?q=1#frag", want: "https://example.com:8443"},
+		{raw: "https://user:pass@example.com/", want: "https://example.com"},
+		{raw: "http://[::1]:8080/x", want: "http://[::1]:8080"},
+		// No validation: an empty host still serializes, and can match no AllowList entry.
+		{raw: "https:///path", want: "https://"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.raw, func(t *testing.T) {
+			t.Parallel()
+			u, err := url.Parse(tt.raw)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, FromURL(u))
+		})
+	}
+}
+
+// Test_FromURL_AgreesWithNormalize pins that the two spell an origin the same
+// way, so a Referer-derived origin compares equal to a configured one.
+func Test_FromURL_AgreesWithNormalize(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{"https://example.com", "HTTP://EXAMPLE.COM/", "app://Example.com:3000"} {
+		u, err := url.Parse(raw)
+		require.NoError(t, err)
+		normalized, ok := Normalize(raw, AnyScheme)
+		require.True(t, ok)
+		assert.Equal(t, normalized, FromURL(u), raw)
+	}
+}
+
+func Test_ParseAllowList(t *testing.T) {
+	t.Parallel()
+	t.Run("sorts entries into exact and wildcard", func(t *testing.T) {
+		t.Parallel()
+		list, invalid, ok := ParseAllowList([]string{" https://Example.com/ ", "https://*.example.org", "\thttp://localhost:3000"}, WebSchemesOnly)
+		require.True(t, ok)
+		assert.Empty(t, invalid)
+		assert.Equal(t, map[string]struct{}{"https://example.com": {}, "http://localhost:3000": {}}, list.exact)
+		assert.Equal(t, []Subdomain{{Prefix: "https://", Suffix: "example.org"}}, list.subdomains)
+		assert.Equal(t, WebSchemesOnly, list.policy)
+	})
+
+	t.Run("returns the first invalid entry as written", func(t *testing.T) {
+		t.Parallel()
+		list, invalid, ok := ParseAllowList([]string{"https://example.com", " http:// ", "also bad"}, AnyScheme)
+		require.False(t, ok)
+		assert.Equal(t, " http:// ", invalid)
+		assert.False(t, list.Contains("https://example.com"), "a failed parse returns an empty list")
+	})
+
+	t.Run("applies the scheme policy", func(t *testing.T) {
+		t.Parallel()
+		_, invalid, ok := ParseAllowList([]string{"chrome-extension://abc"}, WebSchemesOnly)
+		require.False(t, ok)
+		assert.Equal(t, "chrome-extension://abc", invalid)
+
+		list, _, ok := ParseAllowList([]string{"chrome-extension://abc"}, AnyScheme)
+		require.True(t, ok)
+		assert.True(t, list.Contains("chrome-extension://abc"))
+	})
+
+	t.Run("empty and nil lists", func(t *testing.T) {
+		t.Parallel()
+		for _, entries := range [][]string{nil, {}} {
+			list, invalid, ok := ParseAllowList(entries, AnyScheme)
+			require.True(t, ok)
+			assert.Empty(t, invalid)
+			assert.False(t, list.Contains("https://example.com"))
+		}
+	})
+}
+
+func Test_AllowList_Contains(t *testing.T) {
+	t.Parallel()
+	list, _, ok := ParseAllowList([]string{"https://example.com", "https://*.example.org"}, WebSchemesOnly)
+	require.True(t, ok)
+
+	tests := []struct {
+		origin string
+		want   bool
+	}{
+		{origin: "https://example.com", want: true},
+		{origin: "https://api.example.org", want: true},
+		{origin: "https://a.b.example.org", want: true},
+		{origin: "https://example.org"},     // a wildcard does not cover its apex
+		{origin: "https://evilexample.org"}, // a wildcard needs a label boundary
+		{origin: "http://example.com"},      // the scheme is part of the origin
+		{origin: "https://example.com:443"}, // default ports are not folded
+		{origin: "https://Example.com"},     // compared, not normalized
+		{origin: "https://API.example.org"}, // compared, not normalized
+		{origin: "https://example.com/"},    // compared, not normalized
+		{origin: "https://user@api.example.org"},
+		{origin: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.origin, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, list.Contains(tt.origin))
+		})
+	}
+
+	t.Run("zero value is empty", func(t *testing.T) {
+		t.Parallel()
+		var empty AllowList
+		assert.False(t, empty.Contains("https://example.com"))
+	})
+}
+
+func Benchmark_AllowList_Contains(b *testing.B) {
+	list, _, ok := ParseAllowList([]string{"https://a.com", "https://b.com", "https://c.com", "https://*.example.org"}, AnyScheme)
+	require.True(b, ok)
+
+	b.Run("exact", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = list.Contains("https://c.com")
+		}
+	})
+	b.Run("wildcard", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = list.Contains("https://api.example.org")
+		}
+	})
 }

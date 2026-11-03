@@ -87,7 +87,15 @@ func (cfg *Config) skipsHit(statusCode int) bool {
 // reject sets Retry-After (RFC 9110 section 10.2.3, RFC 6585 section 4), then calls LimitReached.
 func (cfg *Config) reject(c fiber.Ctx, resetInSec uint64) error {
 	if !cfg.DisableHeaders {
-		c.Set(fiber.HeaderRetryAfter, utils.FormatUint(resetInSec))
+		if _, ok := c.(*fiber.DefaultCtx); ok {
+			// Retry-After is already canonical, so SetCanonical stores the line
+			// c.Set would, copying the value out of the stack buffer.
+			var buf [20]byte
+			c.Response().Header.SetCanonical(utils.UnsafeBytes(fiber.HeaderRetryAfter), utils.AppendUint(buf[:0], resetInSec))
+		} else {
+			// Custom Set implementations may rewrite, suppress or retain the value.
+			c.Set(fiber.HeaderRetryAfter, utils.FormatUint(resetInSec))
+		}
 	}
 	return cfg.LimitReached(c)
 }

@@ -47,6 +47,16 @@ If `TrustProxyConfig` names no proxy IPs or ranges (`Proxies`, `Loopback`, `Priv
 Without `EnableIPValidation`, `c.IP()` returns the raw header value (a comma-separated string), which is rarely what middleware like rate limiters or allowlists expect. Enable validation when you rely on `c.IP()` as a single client identifier.
 :::
 
+### Storage keys derived from client values
+
+Treat forwarded headers and other request values as untrusted when building keys for a custom store. With IP validation disabled, `c.IP()` can be the entire forwarded chain, not a bounded address. Configure proxy trust and validation as described above before using it as a client identifier.
+
+Bound each client-controlled key component before it reaches storage. Use a deterministic digest for oversized values rather than truncating them, which can make distinct clients share a key. If short values are stored verbatim, reserve the digest prefix so a supplied value cannot impersonate a hashed key. When combining components, escape separators or use an unambiguous encoding so different combinations cannot produce the same key.
+
+Fiber's [limiter](../middleware/limiter.md#config) already bounds its generated key, including a custom `KeyGenerator` result, to 192 bytes by hashing oversized values and values beginning with its reserved `sha256:` prefix. The [cache](../middleware/cache.md) bounds and escapes components of its default key; a custom cache `KeyGenerator` result is escaped but is not length-bounded by that default-key logic. A custom store used directly through `fiber.Storage` must apply its own key policy; the interface does not normalize keys for you.
+
+A length bound limits the size of one key, not the number of keys. Use expiration and capacity limits for storage that accepts client-selected identifiers. Hashing also does not establish that a forwarded address is trustworthy.
+
 ### Configuration
 
 To enable reading the client IP from proxy headers, you must configure **three settings**:

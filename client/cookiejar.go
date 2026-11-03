@@ -139,10 +139,6 @@ func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie {
 
 // getByHostAndPath returns cookies stored for a specific host and path.
 func (cj *CookieJar) getByHostAndPath(host, path []byte, secure bool) []*fasthttp.Cookie {
-	if cj.hostCookies == nil {
-		return nil
-	}
-
 	hostStr := utils.UnsafeString(host)
 	return cj.cookiesForRequest(normalizeCookieHost(hostStr), path, secure)
 }
@@ -192,6 +188,10 @@ func (cj *CookieJar) getCookiesByHost(host string) []*fasthttp.Cookie {
 func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []*fasthttp.Cookie { //nolint:revive // secure is a deliberate scheme filter, not a control-flow flag
 	cj.mu.Lock()
 	defer cj.mu.Unlock()
+
+	if len(cj.hostCookies) == 0 {
+		return nil
+	}
 
 	now := time.Now()
 	var matched []matchedCookie
