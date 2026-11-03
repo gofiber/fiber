@@ -1501,6 +1501,33 @@ func Test_Limiter_RejectDoesNotCopyKey(t *testing.T) {
 	}
 }
 
+// Retry-After is written without a string per value, so a reset of 100 seconds or more costs a
+// rejected request no more than one under 100, which utils.FormatUint serves from a table.
+//
+// Intentionally not parallel: testing.AllocsPerRun panics when called from a parallel test.
+func Test_Limiter_RejectRetryAfterDoesNotAllocate(t *testing.T) {
+	rejectAllocs := func(t *testing.T, expiration time.Duration) float64 {
+		t.Helper()
+
+		clock := clocktest.NewClock(time.Unix(1_700_000_000, 0))
+		cfg := Config{clock: clock.Now}
+		h, fctx := rejectingHandler(t, &cfg, expiration)
+		h(fctx)
+		require.Equal(t, fiber.StatusTooManyRequests, fctx.Response.StatusCode())
+		require.Equal(t, strconv.Itoa(int(expiration/time.Second)), string(fctx.Response.Header.Peek(fiber.HeaderRetryAfter)))
+
+		fewest := math.MaxFloat64
+		for range 200 {
+			fewest = min(fewest, testing.AllocsPerRun(1, func() { h(fctx) }))
+		}
+		return fewest
+	}
+
+	short := rejectAllocs(t, time.Minute)
+	long := rejectAllocs(t, time.Hour)
+	require.InDelta(t, short, long, 0)
+}
+
 // admittedHandler returns a handler and context for a limiter that admits every request, with the
 // headers off and, unless cfg has its own, the key testLimiterClientKey.
 func admittedHandler(tb testing.TB, cfg *Config) (fasthttp.RequestHandler, *fasthttp.RequestCtx) {

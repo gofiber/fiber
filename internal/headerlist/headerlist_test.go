@@ -8,6 +8,68 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func Test_NextQuoted(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		list string
+		want []string
+	}{
+		{list: "", want: []string{""}},
+		{list: ",", want: []string{"", ""}},
+		{list: " a ,, b", want: []string{" a ", "", " b"}},
+		{list: `a;p="x,y", b`, want: []string{`a;p="x,y"`, " b"}},
+		{list: `a="x\"y,z", b`, want: []string{`a="x\"y,z"`, " b"}},
+		{list: `a="x\\", b`, want: []string{`a="x\\"`, " b"}},
+		{list: `\, a`, want: []string{`\`, " a"}},
+		{list: `a\"x,y", b`, want: []string{`a\"x,y"`, " b"}},
+		{list: `"a"\,"b,c",d\`, want: []string{`"a"\`, `"b,c"`, `d\`}},
+		{list: " \t\r\n\v\f,,Aa,aA,", want: []string{" \t\r\n\v\f", "", "Aa", "aA", ""}},
+		{list: `a="open, b, c`, want: []string{`a="open, b, c`}},
+		{list: `a="x\`, want: []string{`a="x\`}},
+		{list: `"a,b","c,d"`, want: []string{`"a,b"`, `"c,d"`}},
+	}
+	for _, tt := range tests {
+		list := []byte(tt.list)
+		var got []string
+		for start := 0; start <= len(list); {
+			var element []byte
+			element, start = NextQuoted(list, start)
+			got = append(got, string(element))
+		}
+		require.Equal(t, tt.want, got, tt.list)
+	}
+}
+
+func Test_AllQuotedPairs_EarlyExit(t *testing.T) {
+	t.Parallel()
+	for _, list := range []string{"a,b,c", `"a,b",c,d`} {
+		seq := AllQuotedPairs(list)
+		for range 2 {
+			calls := 0
+			seq(func(string) bool {
+				calls++
+				return false
+			})
+			require.Equal(t, 1, calls)
+		}
+	}
+}
+
+func Test_Quoted_NoAllocations(t *testing.T) {
+	// AllocsPerRun cannot run in a parallel test.
+	for _, list := range []string{"a, b", `ext="a\"b,c", public`, ",,", `ext="open, b\`} {
+		raw := []byte(list)
+		allocs := testing.AllocsPerRun(100, func() {
+			for start := 0; start <= len(raw); {
+				_, start = NextQuoted(raw, start)
+			}
+			for range AllQuotedPairs(list) {
+			}
+		})
+		require.Zero(t, allocs, list)
+	}
+}
+
 func Test_NextPrev(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []yieldCase{
