@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -156,26 +155,21 @@ func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]
 // cookieAdded reports whether live carries more cookies by some name than lookup, the copy taken
 // before the handler ran: the cookies make one field line once collected, so the line count that
 // tells an added header from a rewritten one cannot tell an added cookie. Counted by name, since a
-// cookie added with Add keeps one the client sent by the same name beside it.
+// cookie added with Add keeps one the client sent by the same name beside it, in one pass over
+// each: a request may carry thousands, which a scan per cookie would square.
 func cookieAdded(lookup, live *fasthttp.RequestHeader) bool {
 	lookup.Cookie("") // collectCookies, as collectKeyField did for live
+	left := make(map[string]int)
+	for name := range lookup.Cookies() {
+		left[string(name)]++
+	}
 	for name := range live.Cookies() {
-		if countCookies(live, name) > countCookies(lookup, name) {
+		if left[string(name)] == 0 {
 			return true
 		}
+		left[string(name)]--
 	}
 	return false
-}
-
-// countCookies returns how many cookies named name h carries.
-func countCookies(h *fasthttp.RequestHeader, name []byte) int {
-	n := 0
-	for k := range h.Cookies() {
-		if bytes.Equal(k, name) {
-			n++
-		}
-	}
-	return n
 }
 
 // setFieldLine writes value as the field line for name, replacing whichever
