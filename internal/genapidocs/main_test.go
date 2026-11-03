@@ -1,6 +1,7 @@
 package main
 
 import (
+	"go/build"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -151,4 +152,22 @@ func TestRetryDocumentationCurrent(t *testing.T) {
 	rendered, err := render(markdown, docs)
 	require.NoError(t, err)
 	require.Equal(t, string(markdown), string(rendered), "run make generate to update the retry documentation")
+}
+
+// TestGenerateCgo includes declarations from cgo files selected by the Go build context.
+func TestGenerateCgo(t *testing.T) {
+	t.Parallel()
+	if !build.Default.CgoEnabled {
+		t.Skip("cgo files are excluded in this build context")
+	}
+	dir := fixture(t)
+	source := "package sample\n\nimport \"C\"\n\n// CgoConfig configures a cgo-backed API.\ntype CgoConfig struct { Enabled bool }\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cgo.go"), []byte(source), 0o600))
+	path := filepath.Join(dir, "docs.md")
+	require.NoError(t, os.WriteFile(path, []byte("<!-- go:doc CgoConfig -->\nstale\n<!-- /go:doc -->\n"), 0o600))
+	require.NoError(t, generate(dir, path))
+	result, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Contains(t, string(result), "type CgoConfig struct")
+	require.NotContains(t, string(result), "stale")
 }

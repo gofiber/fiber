@@ -92,7 +92,7 @@ func loadPackage(dir string) (packageDocs, error) {
 		return packageDocs{}, fmt.Errorf("decode go list: %w", err)
 	}
 	fset := token.NewFileSet()
-	names := slices.Concat(info.GoFiles, info.TestGoFiles, info.XTestGoFiles)
+	names := slices.Concat(info.GoFiles, info.CgoFiles, info.TestGoFiles, info.XTestGoFiles)
 	files := make([]*ast.File, 0, len(names))
 	var tests []*ast.File
 	for _, name := range names {
