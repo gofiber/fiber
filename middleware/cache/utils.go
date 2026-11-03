@@ -126,24 +126,50 @@ func responseSetsCookie(h *fasthttp.ResponseHeader, normalized bool) bool { //no
 	return false
 }
 
-// keyFieldLines returns the field lines of name to key a cache entry on.
+// collectKeyField readies h for reading the lines of name the way the key does, and
+// reports whether name is Cookie, whose lines are then the collected cookies.
 //
 // Cookie is answered from fasthttp's store, which reports raw lines before
-// collection and one merged entry after — so force the collection, the only
+// collection and one merged entry after, so the collection is forced, the only
 // representation both states agree on. Collecting is idempotent.
-func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]byte {
+func collectKeyField(h *fasthttp.RequestHeader, name string) bool {
 	switch {
 	case utils.EqualFold(name, fiber.HeaderCookie):
 		h.Cookie("") // collectCookies; the lookup itself is expected to miss
-
+		return true
 	case utils.EqualFold(name, fiber.HeaderContentType) && mediatype.IsForm(h.ContentType()):
 		// Fold here rather than read whatever arrived: the key is built once before
 		// the handler and once after, and the form accessors lowercase this header
 		// in between, so the entry landed under a key no lookup would produce.
 		mediatype.NormalizeRequestContentType(h)
 	}
+	return false
+}
 
+// keyFieldLines returns the field lines of name to key a cache entry on.
+func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]byte { //nolint:revive // flag-parameter: normalized is a property of the header store
+	collectKeyField(h, name)
 	return fieldname.Lines(h, name, normalized)
+}
+
+// cookieAdded reports whether live carries more cookies by some name than lookup, the copy taken
+// before the handler ran: the cookies make one field line once collected, so the line count that
+// tells an added header from a rewritten one cannot tell an added cookie. Counted by name, since a
+// cookie added with Add keeps one the client sent by the same name beside it, in one pass over
+// each: a request may carry thousands, which a scan per cookie would square.
+func cookieAdded(lookup, live *fasthttp.RequestHeader) bool {
+	lookup.Cookie("") // collectCookies, as collectKeyField did for live
+	left := make(map[string]int)
+	for name := range lookup.Cookies() {
+		left[string(name)]++
+	}
+	for name := range live.Cookies() {
+		if left[string(name)] == 0 {
+			return true
+		}
+		left[string(name)]--
+	}
+	return false
 }
 
 // setFieldLine writes value as the field line for name, replacing whichever

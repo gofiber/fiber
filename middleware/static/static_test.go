@@ -16,7 +16,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/fasthttputil"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
@@ -87,7 +86,7 @@ func Test_Static_Index_Default(t *testing.T) {
 
 	app.Get("", New("../../.github/"))
 
-	app.Get("test", New("", Config{IndexNames: []string{"index.html"}}))
+	app.Get("test", New(".", Config{IndexNames: []string{"index.html"}}))
 
 	resp := staticTestExpect(t, app, "/", 200, fiber.MIMETextHTMLCharsetUTF8)
 	require.Contains(t, apptest.Body(t, resp), "Hello, World!")
@@ -336,19 +335,8 @@ func Test_Static_RefusedRequestServesNoFile(t *testing.T) {
 	app.All("/admin/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusUnauthorized) })
 	app.Use(New(staticTestRoot(t, map[string]string{"admin/secret.txt": "TOP-SECRET"})))
 
-	ln := fasthttputil.NewInmemoryListener()
-	errCh := make(chan error, 1)
-	go func() { errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}) }()
-	t.Cleanup(func() {
-		require.NoError(t, app.Shutdown())
-		require.NoError(t, <-errCh)
-	})
-
-	conn, err := ln.Dial()
-	require.NoError(t, err)
-	defer conn.Close() //nolint:errcheck // closed by the server already
-	require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
-	_, err = conn.Write([]byte("GET /admin/secret.txt HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n"))
+	conn := apptest.Dial(t, apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true}))
+	_, err := conn.Write([]byte("GET /admin/secret.txt HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n"))
 	require.NoError(t, err)
 
 	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
@@ -2224,4 +2212,14 @@ func Benchmark_Static_Browse(b *testing.B) {
 			}
 		})
 	}
+}
+
+func Test_Static_EmptyRoot(t *testing.T) {
+	t.Parallel()
+	require.PanicsWithValue(t, errEmptyRoot, func() { New("") })
+	require.NotPanics(t, func() { New("", Config{FS: os.DirFS(testCSSDir)}) })
+
+	app := fiber.New()
+	app.Get("/*", New("", Config{FS: os.DirFS(testCSSDir)}))
+	staticTestExpect(t, app, "/style.css", fiber.StatusOK, fiber.MIMETextCSSCharsetUTF8)
 }

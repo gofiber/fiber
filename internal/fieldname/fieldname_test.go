@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/valyala/fasthttp"
 )
 
@@ -41,6 +43,20 @@ func readRequest(tb testing.TB, raw string, canonical bool) *fasthttp.Request {
 	}
 	require.NoError(tb, req.Read(bufio.NewReader(strings.NewReader(raw))))
 	return req
+}
+
+// readResponse parses raw, trailer section included, into a response that normalizes header names if canonical.
+//
+//nolint:revive // flag-parameter: canonical is a property of the header store
+func readResponse(tb testing.TB, raw string, canonical bool) *fasthttp.Response {
+	tb.Helper()
+
+	resp := &fasthttp.Response{}
+	if !canonical {
+		resp.Header.DisableNormalizing()
+	}
+	require.NoError(tb, resp.Read(bufio.NewReader(strings.NewReader(raw))))
+	return resp
 }
 
 // lineValues converts header lines to strings, nil where there are none.
@@ -160,11 +176,7 @@ func Test_First_Lines_ResponseLineUnderTrailerName(t *testing.T) {
 	for _, canonical := range []bool{true, false} {
 		t.Run(fmt.Sprintf("canonical=%v", canonical), func(t *testing.T) {
 			t.Parallel()
-			resp := &fasthttp.Response{}
-			if !canonical {
-				resp.Header.DisableNormalizing()
-			}
-			require.NoError(t, resp.Read(bufio.NewReader(strings.NewReader(raw))))
+			resp := readResponse(t, raw, canonical)
 			require.NotEmpty(t, resp.Header.PeekTrailerKeys())
 
 			require.Equal(t, "private, no-store", string(First(&resp.Header, fasthttp.HeaderCacheControl, canonical)))
@@ -225,16 +237,78 @@ func Test_DropTrailers(t *testing.T) {
 
 	t.Run("too many names", func(t *testing.T) {
 		t.Parallel()
-		var trailers strings.Builder
-		for i := range MaxTrailers + 1 {
-			fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
-		}
-		req := readRequest(t, post+"X-0: header\r\n"+chunked+trailers.String()+"\r\n", true)
+		req := readRequest(t, post+"X-0: header\r\n"+chunked+apptest.FieldLines("X-", "v", MaxTrailers+1)+"\r\n", true)
 		before := req.Header.String()
 
 		require.False(t, DropTrailers(&req.Header))
 		require.Equal(t, before, req.Header.String())
 		require.Len(t, req.Header.PeekTrailerKeys(), MaxTrailers+1)
+	})
+}
+
+// Test_DropResponseTrailers pins that an upstream's trailer section is discarded, announced or not, and never
+// returned to the header section, while the header lines sharing its names stay.
+func Test_DropResponseTrailers(t *testing.T) {
+	t.Parallel()
+	const (
+		status  = "HTTP/1.1 200 OK\r\n"
+		chunked = "Transfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n"
+	)
+
+	tests := []struct {
+		kept      map[string]string // header lines a trailer field shares a name with, read back after the drop
+		name      string
+		raw       string
+		wantLines []string
+	}{
+		{name: "unannounced", raw: status + chunked + "X-Trail: promoted\r\n\r\n"},
+		{name: "announced", raw: status + "Trailer: X-Trail\r\n" + chunked + "X-Trail: promoted\r\n\r\n"},
+		{name: "announced only", raw: status + "Trailer: X-Trail\r\nContent-Length: 2\r\n\r\nok"},
+		{
+			name: "header line beside a trailer", raw: status + "X-Trail: header\r\nTrailer: X-Trail\r\n" + chunked + "X-Trail: promoted\r\n\r\n",
+			wantLines: []string{"header"},
+		},
+		{
+			// fasthttp manages Date itself and ignores one added as a header: the line is put back another way.
+			name: "date line beside a date trailer", raw: status + "Date: Mon, 01 Jan 2024 00:00:00 GMT\r\nTrailer: Date\r\n" +
+				chunked + "Date: Tue, 02 Jan 2024 00:00:00 GMT\r\n\r\n",
+			kept: map[string]string{fasthttp.HeaderDate: "Mon, 01 Jan 2024 00:00:00 GMT"},
+		},
+		{
+			name: "server line beside a server trailer", raw: status + "Server: upstream\r\nTrailer: Server\r\n" + chunked +
+				"Server: other\r\n\r\n",
+			kept: map[string]string{fasthttp.HeaderServer: "upstream"},
+		},
+	}
+
+	for _, tc := range tests {
+		for _, canonical := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s canonical=%v", tc.name, canonical), func(t *testing.T) {
+				t.Parallel()
+				resp := readResponse(t, tc.raw, canonical)
+
+				require.True(t, DropResponseTrailers(&resp.Header))
+
+				require.Empty(t, resp.Header.PeekTrailerKeys())
+				require.Empty(t, resp.Header.Peek(fasthttp.HeaderTrailer))
+				require.Equal(t, tc.wantLines, lineValues(Lines(&resp.Header, "X-Trail", canonical)))
+				for name, value := range tc.kept {
+					require.Equal(t, value, string(resp.Header.Peek(name)), name)
+					require.Len(t, Lines(&resp.Header, name, canonical), 1, name)
+				}
+				require.Equal(t, "ok", string(resp.Body()))
+			})
+		}
+	}
+
+	t.Run("too many names", func(t *testing.T) {
+		t.Parallel()
+		resp := readResponse(t, status+chunked+apptest.FieldLines("X-", "v", MaxTrailers+1)+"\r\n", true)
+		before := resp.Header.String()
+
+		require.False(t, DropResponseTrailers(&resp.Header))
+		require.Equal(t, before, resp.Header.String())
+		require.Len(t, resp.Header.PeekTrailerKeys(), MaxTrailers+1)
 	})
 }
 
@@ -250,11 +324,8 @@ func Test_ClearTrailers(t *testing.T) {
 		for _, canonical := range []bool{true, false} {
 			t.Run(fmt.Sprintf("names=%d canonical=%v", names, canonical), func(t *testing.T) {
 				t.Parallel()
-				var extra strings.Builder
-				for i := range names - 2 {
-					fmt.Fprintf(&extra, "X-T%d: v\r\n", i)
-				}
-				req := readRequest(t, head+"X-Role: x\r\nX-Evil: x\r\n"+extra.String()+"\r\n", canonical)
+				extra := apptest.FieldLines("X-T", "v", names-2)
+				req := readRequest(t, head+"X-Role: x\r\nX-Evil: x\r\n"+extra+"\r\n", canonical)
 				want := readRequest(t, head+"\r\n", canonical)
 				require.Len(t, req.Header.PeekTrailerKeys(), names)
 				raw := string(req.Header.RawHeaders())

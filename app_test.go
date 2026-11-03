@@ -3089,28 +3089,7 @@ func startRawServer(t *testing.T, app *App) *fasthttputil.InmemoryListener {
 func startRawServerWith(t *testing.T, app *App, beforeServe func(*App) error) *fasthttputil.InmemoryListener {
 	t.Helper()
 
-	ln := fasthttputil.NewInmemoryListener()
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- app.Listener(ln, ListenConfig{DisableStartupMessage: true, BeforeServeFunc: beforeServe})
-	}()
-
-	t.Cleanup(func() {
-		require.NoError(t, app.Shutdown())
-		if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
-			require.NoError(t, err)
-		}
-	})
-
-	require.Eventually(t, func() bool {
-		conn, err := ln.Dial()
-		if err != nil {
-			return false
-		}
-		return conn.Close() == nil
-	}, time.Second, 5*time.Millisecond)
-
-	return ln
+	return apptest.Serve(t, app, ListenConfig{DisableStartupMessage: true, BeforeServeFunc: beforeServe})
 }
 
 // dialer opens connections to the server under test.
@@ -3200,15 +3179,6 @@ func rawExpectStatus(t *testing.T, server dialer, raw string, status int) rawRes
 	responses, _ := rawExchange(t, server, raw, 1)
 	require.Equal(t, status, responses[0].status, raw)
 	return responses[0]
-}
-
-// rawFieldLines returns n header or trailer lines named prefix0, prefix1, ... that all hold value.
-func rawFieldLines(prefix, value string, n int) string {
-	var lines strings.Builder
-	for i := range n {
-		fmt.Fprintf(&lines, "%s%d: %s\r\n", prefix, i, value)
-	}
-	return lines.String()
 }
 
 // An Accept-Encoding with no value reaches AcceptsEncodings as present but empty,

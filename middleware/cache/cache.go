@@ -1066,6 +1066,19 @@ func New(config ...Config) fiber.Handler {
 		shouldStoreVaryManifest := !cfg.DisableVaryHeaders && len(respVaryNames) > 0
 		entryManifest := "" // the manifest the entry is stored under, dropped with the last such entry
 		if !cfg.DisableVaryHeaders && len(respVaryNames) > 0 {
+			// The key is built from the request header as the lookup saw it, which is
+			// what a later lookup reproduces. A line an inner middleware added since, as
+			// one deriving X-User-Id from the session cookie does, is a dimension no
+			// client's key selects by, so the first client's page would be served to
+			// every other: stored nowhere instead. A line rewritten in place or removed,
+			// as encryptcookie does with Cookie, keeps the lookup's view; a line the
+			// client sent and such middleware overwrote keeps the client's value too,
+			// which is right only when the response varies on the input it was derived
+			// from as well (cache.md says so).
+			if varyLinesAdded(respVaryNames, lookupHeader, &c.Request().Header, canonical) {
+				markUnreachable()
+				return nil
+			}
 			entryManifest = manifestKey
 			// Keyed by the response's own Vary, not the manifest the lookup used, or a
 			// Vary: Cookie page lands under a key no cookie is part of.

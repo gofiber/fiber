@@ -20,7 +20,9 @@ type Config struct {
 	// Optional. Default: nil
 	ModifyRequest fiber.Handler
 
-	// ModifyResponse allows you to alter the response
+	// ModifyResponse allows you to alter the response. It runs on the upstream's
+	// response with its trailer section already dropped and, unless the policy
+	// keeps them, its hop-by-hop fields stripped.
 	//
 	// Optional. Default: nil
 	ModifyResponse fiber.Handler
@@ -73,10 +75,11 @@ type Config struct {
 
 	// MaxResponseBodySize bounds the size (in bytes) of upstream
 	// responses accepted by the proxy. Responses larger than this are
-	// rejected to protect the proxy from memory exhaustion. Zero
-	// preserves fasthttp's default unlimited behavior, so set it for untrusted upstreams.
+	// rejected to protect the proxy from memory exhaustion. Zero takes
+	// the default; a negative value removes the bound, as fasthttp's
+	// unlimited default does.
 	//
-	// Optional. Default: 0
+	// Optional. Default: 100 MiB
 	MaxResponseBodySize int
 
 	// KeepConnectionHeader keeps the "Connection" header when set to true.
@@ -107,6 +110,7 @@ var ConfigDefault = Config{
 	ModifyRequest:        nil,
 	ModifyResponse:       nil,
 	MaxConnsPerHost:      defaultMaxConnsPerHost,
+	MaxResponseBodySize:  defaultMaxResponseBodySize,
 	Timeout:              fasthttp.DefaultLBClientTimeout,
 	KeepConnectionHeader: false,
 }
@@ -126,6 +130,10 @@ func configDefault(config ...Config) Config {
 
 	if cfg.MaxConnsPerHost <= 0 {
 		cfg.MaxConnsPerHost = ConfigDefault.MaxConnsPerHost
+	}
+
+	if cfg.MaxResponseBodySize == 0 {
+		cfg.MaxResponseBodySize = ConfigDefault.MaxResponseBodySize
 	}
 
 	// Servers (or a Client) is required even when no Config was passed

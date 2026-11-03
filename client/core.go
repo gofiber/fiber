@@ -39,6 +39,11 @@ type core struct {
 	client *Client
 	req    *Request
 	ctx    context.Context //nolint:containedctx // Context is needed here.
+	// cancel is the watch the transport ends the exchange through, carried on the
+	// request while cancelable: the caller's own context can end before its
+	// deadline, which is all a deadline reaches fasthttp as (applyDeadline).
+	cancel     cancelContext
+	cancelable bool
 }
 
 // getRetryConfig returns a copy of the client's retry configuration.
@@ -177,6 +182,8 @@ func (c *core) execFunc() (*Response, error) {
 	case resp := <-respChan:
 		return resp, nil
 	case <-c.ctx.Done():
+		// The exchange in flight ends with the call: its connection is closed.
+		c.cancel.end()
 		go func() { // drain the channels and release the response
 			select {
 			case resp := <-respChan:
@@ -190,9 +197,14 @@ func (c *core) execFunc() (*Response, error) {
 
 // applyDeadline gives an attempt what is left of the caller's deadline, which fasthttp
 // turns into connection deadlines, so a call that timed out does not wait on the server.
+// A cancellation has no such path, so the watch rides on the request for the transport
+// to end the exchange through; per attempt, as a retried chain copies over req.
 func (c *core) applyDeadline(req *fasthttp.Request, redirects *redirectOptions) error {
 	if c.ctx.Err() != nil {
 		return ErrTimeoutOrCancel
+	}
+	if c.cancelable {
+		req.SetUserValue(cancelKey{}, &c.cancel)
 	}
 	deadline, ok := c.ctx.Deadline()
 	if !ok {
@@ -307,6 +319,9 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 	c.ctx = ctx
 	c.client = client
 	c.req = req
+	// Decided before timeout() derives a deadline from it: only the caller's own
+	// context can end before its deadline would.
+	c.cancelable = ctx.Done() != nil
 
 	// Execute pre request hooks (user-defined and built-in).
 	if err := c.preHooks(); err != nil {

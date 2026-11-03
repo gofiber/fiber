@@ -92,8 +92,26 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 	return true
 }
 
+// sanitizeUpstreamResponse readies an upstream response for the client, before a
+// ModifyResponse hook or a Do caller sees it: its trailer section is discarded
+// whatever the hop-by-hop policy, since the proxy answers with a sized body, which
+// has no trailer section, and deleting Trailer alone would have fasthttp return the
+// received fields to the header section, where a recipient must not merge them
+// (RFC 9110 §6.5.1); then the hop-by-hop fields are stripped unless the policy keeps
+// them, except naming the ones to keep. On either failure, more trailer names than
+// fieldname.MaxTrailers (each costs a scan of the header) or the strip's budget running
+// out, res is reset so none of the upstream's fields go out with the 502 Bad Gateway
+// returned.
+func sanitizeUpstreamResponse(res *fasthttp.Response, policy SecurityPolicy, except ...string) error {
+	if !fieldname.DropResponseTrailers(&res.Header) || !policy.KeepHopByHopHeaders && !stripHopByHopResponseHeaders(res, except...) {
+		res.Reset()
+		return fiber.ErrBadGateway
+	}
+	return nil
+}
+
 // stripHopByHopResponseHeaders applies the same filtering on the way back.
-// It reports false, having reset res, when the same budget runs out.
+// It reports false when the same budget runs out.
 //
 // It takes no normalized argument: a proxied response is parsed by the outbound
 // fasthttp.Client, whose own setting is independent of the app's, so ask the
@@ -112,12 +130,7 @@ func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) bool
 			}
 		}
 	}
-	if budget < 0 || !fieldname.DelSetWithin(&res.Header, names, budget) {
-		// Partly stripped, so none of the upstream's fields go out with the 502.
-		res.Reset()
-		return false
-	}
-	return true
+	return budget >= 0 && fieldname.DelSetWithin(&res.Header, names, budget)
 }
 
 // delConnectionListedHeaders deletes every comma-separated header name

@@ -986,14 +986,7 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 
 	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 
-	var token string
-	for _, c := range resp.Cookies() {
-		if c.Name != ConfigDefault.CookieName {
-			continue
-		}
-		token = c.Value
-		break
-	}
+	token := responseCookie(t, resp, ConfigDefault.CookieName).Value
 
 	t.Log("token", token)
 
@@ -1915,14 +1908,7 @@ func Test_CSRF_Security_CookieAttributes(t *testing.T) {
 
 	resp := apptest.Do(t, app, "/")
 
-	var cookie *http.Cookie
-	for _, ck := range resp.Cookies() {
-		if ck.Name == "__Host-csrf" {
-			cookie = ck
-			break
-		}
-	}
-	require.NotNil(t, cookie, "CSRF cookie should be set")
+	cookie := responseCookie(t, resp, "__Host-csrf")
 	require.True(t, cookie.HttpOnly, "cookie must be HttpOnly")
 	require.True(t, cookie.Secure, "cookie must be Secure")
 	require.Equal(t, http.SameSiteStrictMode, cookie.SameSite, "cookie must be SameSite=Strict")
@@ -2191,4 +2177,100 @@ func Test_CSRF_VaryDoesNotShareFieldsWithCustomCtx(t *testing.T) {
 	require.Contains(t, string(ctx.Response.Header.Peek(fiber.HeaderVary)), "X-Mutated",
 		"the custom Vary must still be the one that ran")
 	require.Equal(t, []string{fiber.HeaderCookie}, varyCookie)
+}
+
+// responseCookie returns the cookie named name that resp set.
+func responseCookie(t *testing.T, resp *http.Response, name string) *http.Cookie {
+	t.Helper()
+
+	for _, ck := range resp.Cookies() {
+		if ck.Name == name {
+			return ck
+		}
+	}
+	require.FailNow(t, "cookie not set", name)
+	return nil
+}
+
+// cookieHeaderOf returns the cookies resp set as one Cookie header value.
+func cookieHeaderOf(resp *http.Response) string {
+	var pairs []string
+	for _, ck := range resp.Cookies() {
+		pairs = append(pairs, ck.Name+"="+ck.Value)
+	}
+	return strings.Join(pairs, "; ")
+}
+
+// Test_CSRF_SessionModeCookieExpiresWithTheToken pins that in session mode the cookie expires when the stored
+// token does: a token left as it is, with more than half its lifetime left, keeps its expiration, and one
+// renewed gets the full IdleTimeout again.
+func Test_CSRF_SessionModeCookieExpiresWithTheToken(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	sessHandler, store := session.NewWithStore()
+	app.Use(sessHandler)
+	app.Use(New(Config{Session: store}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
+	cookieHeader := cookieHeaderOf(resp)
+	sessionID := responseCookie(t, resp, "session_id").Value
+	token := responseCookie(t, resp, "csrf_").Value
+
+	// In order: the rows plant the one session's token.
+	for _, tc := range []struct {
+		name       string
+		left, want time.Duration
+	}{
+		{name: "left as it is", left: 16 * time.Minute, want: 16 * time.Minute},
+		{name: "renewed", left: 14 * time.Minute, want: 30 * time.Minute},
+	} {
+		sess, err := store.GetByID(context.Background(), sessionID)
+		require.NoError(t, err, tc.name)
+		sess.Set(sessionKey, Token{Key: token, Raw: dummyValue, Expiration: time.Now().Add(tc.left)})
+		require.NoError(t, sess.Save(), tc.name)
+		sess.Release()
+
+		resp = apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderCookie, cookieHeader)), fiber.StatusOK)
+		require.WithinDuration(t, time.Now().Add(tc.want), responseCookie(t, resp, "csrf_").Expires, 5*time.Second, tc.name)
+	}
+}
+
+// Test_CSRF_SessionModeKeepsConcurrentSessionChange pins that a request the middleware runs for in session mode
+// does not count as a writer of the session: the token it finds fresh is left as it is, so a change another
+// request stored while this one ran, such as a role taken away, is not undone when it finishes.
+func Test_CSRF_SessionModeKeepsConcurrentSessionChange(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	sessHandler, store := session.NewWithStore()
+	app.Use(sessHandler)
+	app.Use(New(Config{Session: store}))
+	entered, proceed := make(chan struct{}), make(chan struct{})
+	app.Get("/login", func(c fiber.Ctx) error { session.FromContext(c).Set("role", "admin"); return c.SendString("ok") })
+	app.Get("/slow", func(c fiber.Ctx) error { close(entered); <-proceed; return c.SendString("slow done") })
+	app.Get("/demote", func(c fiber.Ctx) error { session.FromContext(c).Set("role", "user"); return c.SendString("ok") })
+	app.Get("/role", func(c fiber.Ctx) error {
+		role, ok := session.FromContext(c).Get("role").(string)
+		if !ok {
+			role = "" // a missing role reads as empty
+		}
+		return c.SendString(role)
+	})
+
+	resp := apptest.Expect(t, app, "http://app.example.com/login", fiber.StatusOK)
+	cookieHeader := cookieHeaderOf(resp)
+	withCookies := func(path string) *http.Request {
+		return apptest.Req(fiber.MethodGet, "http://app.example.com"+path, apptest.WithHeader(fiber.HeaderCookie, cookieHeader))
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := app.Test(withCookies("/slow"), fiber.TestConfig{Timeout: 10 * time.Second})
+		done <- err
+	}()
+	apptest.Recv(t, entered, 5*time.Second)
+	apptest.Expect(t, app, withCookies("/demote"), fiber.StatusOK)
+	close(proceed)
+	require.NoError(t, apptest.Recv(t, done, 10*time.Second))
+	apptest.ExpectBody(t, app, withCookies("/role"), fiber.StatusOK, "user")
 }

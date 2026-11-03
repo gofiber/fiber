@@ -249,10 +249,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 
 	// Decode session data if found
 	if rawData != nil {
-		sess.data.Lock()
-		err := sess.decodeSessionData(rawData)
-		sess.data.Unlock()
-		if err != nil {
+		if err := sess.decodeSessionData(rawData); err != nil {
 			sess.mu.Unlock()
 			sess.Release()
 			return nil, fmt.Errorf("failed to decode session data: %w", err)
@@ -368,23 +365,37 @@ func (s *Store) deleteKey(ctx context.Context, key string) error {
 	return err
 }
 
-// deleteLoadedKey is deleteKey for a session read at loadGen; it reports whether
-// another request had deleted the key since.
-func (s *Store) deleteLoadedKey(ctx context.Context, key string, loadGen uint64) (bool, error) {
+// deleteLoadedKey is deleteKey for a session read at loadGen. It returns what the key held
+// when another request had written the shard since, nil when none had, and reports whether
+// one had deleted the key.
+//
+//nolint:gocritic // returning explicit values keeps the signature concise while avoiding unnecessary named results
+func (s *Store) deleteLoadedKey(ctx context.Context, key string, loadGen uint64) ([]byte, bool, error) {
 	l := lockFor(key)
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	ended := false
-	if l.gen.Load() != loadGen {
-		raw, err := s.Storage.GetWithContext(ctx, key)
-		if err != nil {
-			return false, err
-		}
-		ended = raw == nil
+	stored, moved, err := s.storedSince(ctx, key, loadGen)
+	if err != nil {
+		return nil, false, err
 	}
-	err := s.Storage.DeleteWithContext(ctx, key)
+	err = s.Storage.DeleteWithContext(ctx, key)
 	l.gen.Add(1)
-	return ended, err
+	return stored, moved && stored == nil, err
+}
+
+// storedSince returns what key holds when another request wrote its shard since loadGen and
+// reports that one did; nil and false when none did. The caller holds the shard's lock.
+//
+//nolint:gocritic // returning explicit values keeps the signature concise while avoiding unnecessary named results
+func (s *Store) storedSince(ctx context.Context, key string, loadGen uint64) ([]byte, bool, error) {
+	if lockFor(key).gen.Load() == loadGen {
+		return nil, false, nil
+	}
+	raw, err := s.Storage.GetWithContext(ctx, key)
+	if err != nil {
+		return nil, false, err
+	}
+	return raw, true, nil
 }
 
 // GetByID retrieves a session by its ID from the storage.
@@ -446,9 +457,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 	sess.loaded = true
 	sess.loadGen = loadGen
 
-	sess.data.Lock()
 	decodeErr := sess.decodeSessionData(rawData)
-	sess.data.Unlock()
 	sess.mu.Unlock()
 	if decodeErr != nil {
 		sess.Release()
