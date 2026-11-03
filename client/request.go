@@ -122,8 +122,13 @@ func (r *Request) Context() context.Context {
 	return r.ctx
 }
 
-// SetContext sets the context for the Request, allowing request cancellation if ctx is done.
-// See https://blog.golang.org/context article and the "context" package documentation.
+// SetContext sets the context for the Request. Its deadline bounds the exchange at the
+// transport, and its cancellation ends the exchange of a client made by New as well, which
+// closes the connection it was using once the connection is open; a dial still in progress
+// runs to its end first, and a response read with SetStreamResponseBody is not reached. A
+// wrapped fasthttp client returns the caller at once while its exchange ends on its own, when
+// the server answers or its timeouts pass. See https://blog.golang.org/context article and
+// the "context" package documentation.
 func (r *Request) SetContext(ctx context.Context) *Request {
 	r.ctx = ctx
 	return r

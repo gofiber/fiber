@@ -171,12 +171,23 @@ func (s *fileServer) namesFile(p []byte) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
+// errEmptyRoot is the panic for a root on disk left empty: it would name the
+// filesystem root, and guessing the working directory instead would serve
+// whatever the process runs from.
+const errEmptyRoot = "static: root must name a directory or file on disk; use \".\" for the working directory"
+
 // New creates a new middleware handler.
 // The root argument specifies the root directory from which to serve static assets.
 //
 // Note: Root has to be string or fs.FS; otherwise, it will panic.
 func New(root string, cfg ...Config) fiber.Handler {
 	config := configDefault(cfg...)
+
+	// An empty root on disk is the filesystem root, which fasthttp serves without
+	// confinement, so an unset variable would expose every file the process can read.
+	if config.FS == nil && root == "" {
+		panic(errEmptyRoot)
+	}
 
 	var (
 		rootCheck    sync.Once
@@ -253,9 +264,10 @@ func New(root string, cfg ...Config) fiber.Handler {
 		skipCache := config.CacheDuration < 0 || (config.Browse && wildcard != "")
 
 		files := &fasthttp.FS{
-			Root:           fsRoot,
-			FS:             config.FS,
-			AllowEmptyRoot: true,
+			Root: fsRoot,
+			FS:   config.FS,
+			// An io/fs root is served at "" (see fsRoot above); a root on disk is never empty.
+			AllowEmptyRoot: config.FS != nil,
 			// A file root serves only itself, and its compressed copy lies beside it, outside the root.
 			AllowSymlinksOutsideRoot: config.AllowSymlinksOutsideRoot || (rootIsFile && config.FS == nil),
 			GenerateIndexPages:       config.Browse,

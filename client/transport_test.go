@@ -1,8 +1,6 @@
 package client
 
 import (
-	"bufio"
-	"bytes"
 	"crypto/tls"
 	"errors"
 	"net"
@@ -1252,81 +1250,48 @@ func Test_Transport_DoRedirects_KeepsPathNormalizingDisabled(t *testing.T) {
 	}
 }
 
-// Test_DropRequestBody_RemovesExpect covers the 100-continue expectation, which
-// may not be generated without content (RFC 9110 Section 10.1.1). Left on the
-// bodyless follow-up, a strict target answers 417 instead of serving it.
-func Test_DropRequestBody_RemovesExpect(t *testing.T) {
+// TestDoRedirectsWithClient_DropsTrailerSection pins that a 302 drops the trailer section with the
+// body: fasthttp files a value set under an announced name with that section and returns it to the
+// header section when Trailer alone is deleted, so the value would reach the target, possibly another
+// host, as a header line. A section naming more fields than fieldname.MaxTrailers fails the redirect.
+func TestDoRedirectsWithClient_DropsTrailerSection(t *testing.T) {
 	t.Parallel()
-	req := clientTestPooled(t, fasthttp.AcquireRequest, fasthttp.ReleaseRequest)
-	req.Header.SetMethod(fasthttp.MethodPost)
-	req.Header.Set(fasthttp.HeaderExpect, "100-continue")
-	req.Header.SetContentType("application/x-www-form-urlencoded")
-	req.SetBodyString("a=1")
+	newReq := func(t *testing.T, names int) (*fasthttp.Request, *fasthttp.Response) {
+		t.Helper()
 
-	dropRequestBody(req)
+		req, resp := clientTestCReqResp(t)
+		req.SetRequestURI("http://example.com/start")
+		req.Header.SetMethod(fasthttp.MethodPost)
+		req.SetBodyStream(strings.NewReader("hello"), -1)
+		for i := range names {
+			name := "X-Body-Signature-" + strconv.Itoa(i)
+			require.NoError(t, req.Header.AddTrailer(name))
+			req.Header.Set(name, "sig-of-the-body")
+		}
+		return req, resp
+	}
 
-	require.Empty(t, req.Header.Peek(fasthttp.HeaderExpect))
-	require.Empty(t, req.Body())
-}
+	t.Run("dropped with the body", func(t *testing.T) {
+		t.Parallel()
+		req, resp := newReq(t, 1)
+		require.Contains(t, req.String(), "sig-of-the-body", "sent as a trailer field")
 
-// Test_DropRequestBody_ClearsTheParsedForm pins why the PostArgs reset is there:
-// Request.Write falls back to the parsed form when the body is empty, so a
-// caller that had read PostArgs would otherwise have sent the dropped body on
-// the redirected GET.
-func Test_DropRequestBody_ClearsTheParsedForm(t *testing.T) {
-	t.Parallel()
-	req := clientTestPooled(t, fasthttp.AcquireRequest, fasthttp.ReleaseRequest)
-	req.SetRequestURI("http://example.com/y")
-	req.Header.SetMethod(fasthttp.MethodPost)
-	req.Header.SetContentType("application/x-www-form-urlencoded")
-	req.SetBodyString("a=1")
-	require.Equal(t, "a=1", req.PostArgs().String(), "the caller reads the form first")
+		client := clientTestCRedirectStub(fasthttp.StatusFound, "http://attacker.example/collect")
+		require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 5}, client))
+		require.Equal(t, "http://attacker.example/collect", req.URI().String())
+		require.Empty(t, req.Header.PeekTrailerKeys())
+		require.Empty(t, req.Header.Peek("X-Body-Signature-0"))
+		require.NotContains(t, req.String(), "sig-of-the-body")
+	})
 
-	req.Header.SetMethod(fasthttp.MethodGet)
-	dropRequestBody(req)
+	t.Run("too many names", func(t *testing.T) {
+		t.Parallel()
+		req, resp := newReq(t, fieldname.MaxTrailers+1)
 
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-	require.NoError(t, req.Write(w))
-	require.NoError(t, w.Flush())
-	require.NotContains(t, buf.String(), "a=1", "the dropped form must not come back as the body")
-}
-
-// Test_DropRequestBody_ReusedRequestSendsTheNewBody covers the request a caller
-// gets back and then reuses without resetting it.
-//
-// fasthttp clears its parsed-form flag beside the values here, which this cannot
-// reach: the field is unexported and only Request.Reset clears it, which would
-// take the URI and headers the redirect loop is still using. What survives that
-// gap has to be the part that matters — the body actually sent, and the earlier
-// form not reappearing in it or in a later read. An untouched fasthttp request
-// is no better here: SetBody does not invalidate the parsed form either, so it
-// answers a reused PostArgs with the previous body's values.
-func Test_DropRequestBody_ReusedRequestSendsTheNewBody(t *testing.T) {
-	t.Parallel()
-	req := clientTestPooled(t, fasthttp.AcquireRequest, fasthttp.ReleaseRequest)
-	req.SetRequestURI("http://example.com/y")
-	req.Header.SetMethod(fasthttp.MethodPost)
-	req.Header.SetContentType("application/x-www-form-urlencoded")
-	req.SetBodyString("a=1")
-	require.Equal(t, "a=1", req.PostArgs().String(), "the caller reads the form first")
-
-	dropRequestBody(req)
-
-	// The caller reuses the request for a second POST.
-	req.Header.SetMethod(fasthttp.MethodPost)
-	req.Header.SetContentType("application/x-www-form-urlencoded")
-	req.SetBodyString("b=2")
-
-	require.NotContains(t, req.PostArgs().String(), "a=1",
-		"a reused request must not report the previous body's form values")
-
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-	require.NoError(t, req.Write(w))
-	require.NoError(t, w.Flush())
-	require.Contains(t, buf.String(), "b=2", "the reused request sends the body it was given")
-	require.NotContains(t, buf.String(), "a=1")
+		client := clientTestCRedirectStub(fasthttp.StatusFound, "http://attacker.example/collect")
+		require.ErrorIs(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 5}, client), ErrRedirectTrailers)
+		require.Equal(t, 1, client.CallCount(), "the target is not contacted")
+	})
 }
 
 // Test_Response_ResetDropsOversizedOriginBuffers covers the recorded origin on a

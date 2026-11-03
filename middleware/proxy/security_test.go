@@ -1354,13 +1354,14 @@ func Test_Security_RedirectRequest_DropsFraming(t *testing.T) {
 	proxyTestReadRequest(t, req, raw)
 	require.Equal(t, -1, req.Header.ContentLength(), "the request is chunked")
 
-	redirectRequest(req)
+	require.True(t, redirectRequest(req))
 
 	wire := req.String()
 	requestLine, _, _ := strings.Cut(wire, "\r\n")
 	require.Equal(t, "GET /start HTTP/1.1", requestLine)
 	require.NotContains(t, wire, "Transfer-Encoding")
 	require.NotContains(t, wire, "Trailer")
+	require.NotContains(t, wire, "X-Sum", "the trailer section goes with the body, not into the header section")
 	require.NotContains(t, wire, "abc")
 }
 
