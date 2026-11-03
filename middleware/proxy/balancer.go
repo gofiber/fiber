@@ -71,8 +71,9 @@ func Balancer(config ...Config) fiber.Handler {
 	}
 
 	// Return new handler
-	// Decided once: the clients are fixed when the handler is built.
-	streams := streamsResponses(lbc)
+	// Decided once: the clients are fixed when the handler is built. A client of a type the proxy
+	// cannot ask may stream too, so it gets a response of the proxy's own either way.
+	streams := opaqueClient || streamsResponses(lbc)
 
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true

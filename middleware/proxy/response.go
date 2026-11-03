@@ -6,18 +6,12 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// streamsResponses reports whether one of lbc's clients reads response bodies as streams.
+// streamsResponses reports whether one of lbc's host clients reads response bodies as streams. A
+// client of another type cannot be asked; Balancer treats it as one that may.
 func streamsResponses(lbc *fasthttp.LBClient) bool {
 	for _, client := range lbc.Clients {
-		switch c := client.(type) {
-		case *fasthttp.HostClient:
-			if c.StreamResponseBody {
-				return true
-			}
-		case schemeClient:
-			if c.StreamResponseBody {
-				return true
-			}
+		if hc, ok := client.(*fasthttp.HostClient); ok && hc.StreamResponseBody {
+			return true
 		}
 	}
 	return false

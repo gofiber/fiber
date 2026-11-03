@@ -1072,8 +1072,14 @@ func proxyTestHandlersUnder(addr string, policy SecurityPolicy, after fiber.Hand
 	}
 }
 
+// proxyTestBalancingClient is a BalancingClient of the caller's own type, which Balancer cannot ask whether it
+// streams response bodies.
+type proxyTestBalancingClient struct {
+	*fasthttp.HostClient
+}
+
 // proxyTestStreamingHandlersUnder is proxyTestHandlersUnder for clients that stream response bodies: Balancer
-// with a HostClient of its own, wrapped as its own clients are or not, Forward and Do with a Client, and Do with
+// with a HostClient of its own, bare or behind a type of the caller's, Forward and Do with a Client, and Do with
 // the response set to stream.
 func proxyTestStreamingHandlersUnder(addr string, policy SecurityPolicy, after fiber.Handler) map[string]fiber.Handler {
 	streaming := &fasthttp.Client{StreamResponseBody: true}
@@ -1092,8 +1098,10 @@ func proxyTestStreamingHandlersUnder(addr string, policy SecurityPolicy, after f
 			SecurityPolicy: &policy,
 			ModifyResponse: after,
 		}),
-		"Balancer streaming per scheme": Balancer(Config{
-			Client:         &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{schemeClient{&fasthttp.HostClient{Addr: addr, StreamResponseBody: true}}}},
+		"Balancer streaming behind a custom client": Balancer(Config{
+			Client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{
+				proxyTestBalancingClient{&fasthttp.HostClient{Addr: addr, StreamResponseBody: true}},
+			}},
 			SecurityPolicy: &policy,
 			ModifyResponse: after,
 		}),
