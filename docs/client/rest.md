@@ -917,7 +917,7 @@ func (c *Client) DelCookies(key ...string) *Client
 
 Sets a default timeout for all requests, which can be overridden per request. A new client has no timeout. When the timeout elapses, or the request's context is canceled, the request fails with `ErrTimeoutOrCancel`.
 
-The timeout, like a deadline on the request's context, bounds the whole call: every retry and redirect hop gets what is left of it, and the transport closes the connection when it passes, so a server that never answers keeps no connection or goroutine after the call has failed. On a client from `New` it also bounds the TLS handshake; a `fasthttp` client passed to `NewWithClient`, `NewWithHostClient` or `NewWithLBClient` bounds the handshake only with its own `WriteTimeout`. A client from `NewWithLBClient` gives the transport `LBClient.Timeout` in place of this timeout, see [NewWithLBClient](#newwithlbclient). With [response streaming](#response-streaming) the deadline stays on the connection after the call returns and ends reads from `Response.BodyStream()`, as `Client.Timeout` does in `net/http`, so leave the timeout unset for a long-lived stream such as server-sent events. A context canceled without a deadline stops further retries but cannot interrupt a request already on the wire.
+The timeout, like a deadline on the request's context, bounds the whole call: every retry and redirect hop gets what is left of it, and the transport closes the connection when it passes, so a server that never answers leaves the client no open connection or goroutine once the call has failed. On a client from `New` it also bounds the TLS handshake, through the `ConfigureClient` hook of its `fasthttp` client (see [FasthttpClient](#fasthttpclient)); a `fasthttp` client passed to `NewWithClient`, `NewWithHostClient` or `NewWithLBClient` bounds the handshake only with its own `WriteTimeout`. A client from `NewWithLBClient` gives the transport `LBClient.Timeout` in place of this timeout, see [NewWithLBClient](#newwithlbclient). With [response streaming](#response-streaming) the deadline stays on the connection after the call returns and ends reads from `Response.BodyStream()`, as `Client.Timeout` does in `net/http`, so leave the timeout unset for a long-lived stream such as server-sent events. A context canceled without a deadline stops further retries and, on a client from `New`, closes the connection of a request already on the wire unless the response is streamed; see [SetContext](./request.md#setcontext).
 
 ```go title="Signature"
 func (c *Client) SetTimeout(t time.Duration) *Client
@@ -1050,6 +1050,17 @@ A client wraps one fasthttp client: the `fasthttp.Client` that `New` creates, or
 ### FasthttpClient
 
 Returns the underlying `*fasthttp.Client`, or `nil` if the client was created from a `HostClient` or an `LBClient`.
+
+A client created by `New` bounds TLS handshakes through this client's `ConfigureClient` hook, which has one slot. A hook of your own, set before the first request, applies its settings first and then calls the hook that was there:
+
+```go
+fc := client.FasthttpClient()
+installed := fc.ConfigureClient
+fc.ConfigureClient = func(hc *fasthttp.HostClient) error {
+    hc.MaxConns = 8
+    return installed(hc)
+}
+```
 
 ```go title="Signature"
 func (c *Client) FasthttpClient() *fasthttp.Client

@@ -121,6 +121,10 @@ func (c *Client) applyDial(dial fasthttp.DialFunc) {
 }
 
 // FasthttpClient returns the underlying *fasthttp.Client if the client was created with one.
+//
+// A client created by New bounds TLS handshakes through this client's ConfigureClient
+// hook, which has one slot: a hook of your own, set before the first request, applies
+// its settings and then calls the hook that was there.
 func (c *Client) FasthttpClient() *fasthttp.Client {
 	if client, ok := c.transport.(*standardClientTransport); ok {
 		return client.client

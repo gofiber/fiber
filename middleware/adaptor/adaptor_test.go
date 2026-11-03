@@ -30,7 +30,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 const (
@@ -729,25 +728,13 @@ func Test_StreamedTrailerCap(t *testing.T) {
 		return err
 	})
 
-	ln := fasthttputil.NewInmemoryListener()
-	errCh := make(chan error, 1)
-	go func() { errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}) }()
-	t.Cleanup(func() {
-		require.NoError(t, app.Shutdown())
-		if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
-			require.NoError(t, err)
-		}
-	})
+	ln := apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true})
 
-	var trailers strings.Builder
-	for i := range fieldname.MaxTrailers + 1 {
-		fmt.Fprintf(&trailers, "X-%d: v\r\n", i)
-	}
+	trailers := apptest.FieldLines("X-", "v", fieldname.MaxTrailers+1)
 	for _, path := range []string{"/handler", "/middleware", "/convert"} {
-		conn, err := ln.Dial()
-		require.NoError(t, err)
-		_, err = conn.Write([]byte("POST " + path + " HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\n" +
-			"Connection: close\r\n\r\n5\r\nhello\r\n0\r\n" + trailers.String() + "\r\n"))
+		conn := apptest.Dial(t, ln)
+		_, err := conn.Write([]byte("POST " + path + " HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\n" +
+			"Connection: close\r\n\r\n5\r\nhello\r\n0\r\n" + trailers + "\r\n"))
 		require.NoError(t, err)
 		resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 		require.NoError(t, err)
@@ -1879,20 +1866,8 @@ func Test_HTTPMiddleware_TrailerDoesNotBecomeHeader(t *testing.T) {
 				return c.SendString("ok")
 			})
 
-			ln := fasthttputil.NewInmemoryListener()
-			errCh := make(chan error, 1)
-			go func() { errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}) }()
-			t.Cleanup(func() {
-				require.NoError(t, app.Shutdown())
-				if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
-					require.NoError(t, err)
-				}
-			})
-
-			conn, err := ln.Dial()
-			require.NoError(t, err)
-			defer conn.Close() //nolint:errcheck // closed by the server already
-			_, err = conn.Write([]byte("POST / HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" +
+			conn := apptest.Dial(t, apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true}))
+			_, err := conn.Write([]byte("POST / HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" +
 				"3\r\na=1\r\n0\r\n" + owned + ": admin\r\n\r\n"))
 			require.NoError(t, err)
 			resp, err := http.ReadResponse(bufio.NewReader(conn), nil)

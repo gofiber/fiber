@@ -30,7 +30,6 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 type integrationCustomCtx struct {
@@ -44,22 +43,7 @@ func newIntegrationCustomCtx(app *fiber.App) fiber.CustomCtx {
 func performOversizedRequest(t *testing.T, app *fiber.App, configure func(req *fasthttp.Request)) *fasthttp.Response {
 	t.Helper()
 
-	ln := fasthttputil.NewInmemoryListener()
-	errCh := make(chan error, 1)
-
-	go func() { errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}) }()
-
-	t.Cleanup(func() {
-		require.NoError(t, app.Shutdown())
-		if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
-			require.NoError(t, err)
-		}
-	})
-
-	require.Eventually(t, func() bool {
-		conn, err := ln.Dial()
-		return err == nil && conn.Close() == nil
-	}, time.Second, 10*time.Millisecond)
+	ln := apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true})
 
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)

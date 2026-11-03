@@ -205,7 +205,7 @@ When **Download** is enabled, the response of a served file includes a `Content-
 
 **MaxAge** only applies to successful responses; an error such as `416 Range Not Satisfiable` carries no `Cache-Control`. A handler registered on several routes serves each under that route's own prefix.
 
-A root on disk is confined: a relative symbolic link that stays inside it is followed, while one that leaves it, and an absolute link even when it points inside, is handled like a missing file. Set **AllowSymlinksOutsideRoot** when such links are intended, for example a shared asset directory or a build tool that writes absolute links. With `Compress`, the compressed copy of a file reached through a linked directory is written into that directory. A file root, and a root given through `FS`, are not confined this way.
+A root on disk must be named: `New` panics on an empty root, which would be the filesystem root, so an unset variable cannot expose every file the process can read; use `"."` for the working directory. With `FS`, an empty root is the root of that file system. A root on disk is confined: a relative symbolic link that stays inside it is followed, while one that leaves it, and an absolute link even when it points inside, is handled like a missing file. Set **AllowSymlinksOutsideRoot** when such links are intended, for example a shared asset directory or a build tool that writes absolute links. With `Compress`, the compressed copy of a file reached through a linked directory is written into that directory. A file root, and a root given through `FS`, are not confined this way.
 
 :::info
 You can set `CacheDuration` config property to `-1` to disable caching.

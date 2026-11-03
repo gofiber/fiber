@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -1030,12 +1032,7 @@ func Test_Proxy_TrailerSectionWhateverThePolicy(t *testing.T) {
 			t.Parallel()
 			policy := proxyTestAllowPrivatePolicy()
 			policy.KeepHopByHopHeaders = keep
-			for name, handler := range map[string]fiber.Handler{
-				"Balancer": Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy}),
-				"Forward": func(c fiber.Ctx) error {
-					return forwardWithRealIP(c, "http://"+addr, normalizePolicy(policy))
-				},
-			} {
+			for name, handler := range proxyTestHandlersUnder(addr, policy, nil) {
 				app := fiber.New()
 				app.Use(func(c fiber.Ctx) error {
 					// Announced after the router dropped the client's, as only the application can.
@@ -1055,6 +1052,219 @@ func Test_Proxy_TrailerSectionWhateverThePolicy(t *testing.T) {
 						require.Equal(t, "header=[] trailer=0", body, name)
 					}
 				}
+			}
+		})
+	}
+}
+
+// proxyTestHandlersUnder returns the Balancer and the Forward handler proxying to addr under
+// policy, each running after, when given, once the upstream answered: as Balancer's
+// ModifyResponse, and after Forward returns.
+func proxyTestHandlersUnder(addr string, policy SecurityPolicy, after fiber.Handler) map[string]fiber.Handler {
+	return map[string]fiber.Handler{
+		"Balancer": Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy, ModifyResponse: after}),
+		"Forward": func(c fiber.Ctx) error {
+			if err := forwardWithRealIP(c, "http://"+addr, normalizePolicy(policy)); err != nil || after == nil {
+				return err
+			}
+			return after(c)
+		},
+	}
+}
+
+// proxyTestBalancingClient is a BalancingClient of the caller's own type, which Balancer cannot ask whether it
+// streams response bodies.
+type proxyTestBalancingClient struct {
+	*fasthttp.HostClient
+}
+
+// proxyTestMemoryClient is a BalancingClient of the caller's own type that answers from memory, through the
+// response's buffer or with a raw body, and sends the body as the response holds it.
+type proxyTestMemoryClient struct {
+	sent chan<- []byte
+	body []byte
+	raw  bool
+}
+
+func (c proxyTestMemoryClient) DoDeadline(_ *fasthttp.Request, resp *fasthttp.Response, _ time.Time) error {
+	resp.SetStatusCode(fiber.StatusOK)
+	if c.raw {
+		resp.SetBodyRaw(c.body)
+	} else {
+		resp.SetBody(c.body)
+	}
+	c.sent <- resp.Body()
+	return nil
+}
+
+func (proxyTestMemoryClient) PendingRequests() int { return 0 }
+
+// Test_Proxy_Balancer_CustomClientBodyMoved checks that a body a client of the caller's own type buffers reaches
+// the response whole and in place: the buffer, or the raw body, moves over rather than being copied.
+func Test_Proxy_Balancer_CustomClientBodyMoved(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		raw  bool
+	}{{name: "buffered"}, {name: "raw", raw: true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			body := []byte(strings.Repeat("upstream ", 1024))
+			sent, adopted := make(chan []byte, 1), make(chan []byte, 1)
+			app := fiber.New()
+			app.Use(Balancer(Config{
+				Client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{
+					proxyTestMemoryClient{sent: sent, body: body, raw: tc.raw},
+				}},
+				ModifyResponse: func(c fiber.Ctx) error { adopted <- c.Response().Body(); return nil },
+			}))
+
+			apptest.ExpectBody(t, app, "/", fiber.StatusOK, string(body))
+			set, got := apptest.Recv(t, sent, time.Second), apptest.Recv(t, adopted, time.Second)
+			require.Same(t, &set[0], &got[0], "the body was copied")
+			if tc.raw {
+				require.Same(t, &body[0], &got[0], "the raw body was copied")
+			}
+		})
+	}
+}
+
+// proxyTestStreamingHandlersUnder is proxyTestHandlersUnder for clients that stream response bodies: Balancer
+// with a HostClient of its own, bare or behind a type of the caller's, Forward and Do with a Client, and Do with
+// the response set to stream.
+func proxyTestStreamingHandlersUnder(addr string, policy SecurityPolicy, after fiber.Handler) map[string]fiber.Handler {
+	streaming := &fasthttp.Client{StreamResponseBody: true}
+	do := func(c fiber.Ctx, cli *fasthttp.Client) error {
+		send := func(cli *fasthttp.Client, req *fasthttp.Request, res *fasthttp.Response, _ *url.URL) error {
+			return cli.Do(req, res)
+		}
+		if err := doActionWithPolicy(c, "http://"+addr, normalizePolicy(policy), nil, send, cli); err != nil || after == nil {
+			return err
+		}
+		return after(c)
+	}
+	return map[string]fiber.Handler{
+		"Balancer streaming": Balancer(Config{
+			Client:         &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{&fasthttp.HostClient{Addr: addr, StreamResponseBody: true}}},
+			SecurityPolicy: &policy,
+			ModifyResponse: after,
+		}),
+		"Balancer streaming behind a custom client": Balancer(Config{
+			Client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{
+				proxyTestBalancingClient{&fasthttp.HostClient{Addr: addr, StreamResponseBody: true}},
+			}},
+			SecurityPolicy: &policy,
+			ModifyResponse: after,
+		}),
+		"Forward streaming": func(c fiber.Ctx) error {
+			if err := forwardWithRealIP(c, "http://"+addr, normalizePolicy(policy), streaming); err != nil || after == nil {
+				return err
+			}
+			return after(c)
+		},
+		"Do streaming": func(c fiber.Ctx) error { return do(c, streaming) },
+		"Do with a streamed response": func(c fiber.Ctx) error {
+			c.Response().StreamBody = true
+			return do(c, &fasthttp.Client{})
+		},
+	}
+}
+
+// Test_Proxy_UpstreamTrailerSectionDropped checks that the trailer section of an upstream response reaches the
+// client neither as trailers nor as header lines, announced or not, whatever the hop-by-hop policy and whether
+// the client buffers the response or streams it, and that a section naming more than fieldname.MaxTrailers
+// fields is a 502 carrying none of the upstream's fields.
+func Test_Proxy_UpstreamTrailerSectionDropped(t *testing.T) {
+	t.Parallel()
+	// Not a Fiber app: net/http writes the trailer section of a chunked response.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Kept", "header")
+		if r.Header.Get("X-Sized") != "" {
+			// A body of known size, which a client that streams response bodies buffers all the same.
+			w.Header().Set("Content-Length", "2")
+			fmt.Fprint(w, "ok")
+			return
+		}
+		if r.Header.Get("X-No-Type") != "" {
+			// No Content-Type, which the app is set not to add one for.
+			w.Header()["Content-Type"] = nil
+			fmt.Fprint(w, "ok")
+			return
+		}
+		w.Header().Set(fiber.HeaderTrailer, "X-Trail")
+		// X-Many asks for fieldname.MaxTrailers more fields, announced in Trailer or not.
+		many := r.Header.Get("X-Many")
+		if many == "announced" {
+			for i := range fieldname.MaxTrailers {
+				w.Header().Add(fiber.HeaderTrailer, "X-"+strconv.Itoa(i))
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
+		w.Header().Set("X-Trail", "promoted")
+		w.Header().Set(http.TrailerPrefix+"X-Unannounced", "u2")
+		for i := 0; many != "" && i < fieldname.MaxTrailers; i++ {
+			name := "X-" + strconv.Itoa(i)
+			if many == "unannounced" {
+				name = http.TrailerPrefix + name
+			}
+			w.Header().Set(name, "v")
+		}
+	}))
+	t.Cleanup(upstream.Close)
+	addr := upstream.Listener.Addr().String()
+
+	for _, keep := range []bool{false, true} {
+		t.Run(fmt.Sprintf("keep=%v", keep), func(t *testing.T) {
+			t.Parallel()
+			policy := proxyTestAllowPrivatePolicy()
+			policy.KeepHopByHopHeaders = keep
+			// A hook, like a Do caller, sees the response without its trailer section.
+			hookSaw := func(c fiber.Ctx) error {
+				c.Set("X-Hook", fmt.Sprintf("%d:%s", len(c.Response().Header.PeekTrailerKeys()), c.Response().Header.Peek("X-Trail")))
+				return nil
+			}
+			handlers := map[string]fiber.Handler{}
+			streaming := proxyTestStreamingHandlersUnder(addr, policy, hookSaw)
+			maps.Copy(handlers, proxyTestHandlersUnder(addr, policy, hookSaw))
+			maps.Copy(handlers, streaming)
+			for name, handler := range handlers {
+				app := fiber.New(fiber.Config{DisableDefaultContentType: true})
+				app.Get("/", handler)
+
+				resp := apptest.ExpectBody(t, app, "/", fiber.StatusOK, "ok")
+				require.Equal(t, "header", resp.Header.Get("X-Kept"), name)
+				require.Equal(t, "0:", resp.Header.Get("X-Hook"), name)
+				for _, dropped := range []string{"X-Trail", "X-Unannounced", fiber.HeaderTrailer} {
+					require.Empty(t, resp.Header.Values(dropped), name+" "+dropped)
+				}
+				require.Empty(t, resp.Trailer, name)
+
+				for _, many := range []string{"announced", "unannounced"} {
+					req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Many", many))
+					if _, streams := streaming[name]; streams && many == "unannounced" {
+						// Received once the body has been read, with the response of the proxy's own.
+						resp = apptest.ExpectBody(t, app, req, fiber.StatusOK, "ok")
+						require.Equal(t, "0:", resp.Header.Get("X-Hook"), name+" "+many)
+						require.Empty(t, resp.Trailer, name+" "+many)
+						continue
+					}
+					resp = apptest.Expect(t, app, req, fiber.StatusBadGateway)
+					require.Empty(t, resp.Header.Values("X-Kept"), name+" "+many)
+				}
+
+				resp = apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Sized", "1")), fiber.StatusOK, "ok")
+				require.Equal(t, "header", resp.Header.Get("X-Kept"), name)
+				require.Equal(t, "0:", resp.Header.Get("X-Hook"), name)
+
+				// No body to stream: the response is buffered, by a client that streams as well.
+				resp = apptest.ExpectBody(t, app, apptest.Req(fiber.MethodHead, "/"), fiber.StatusOK, "")
+				require.Equal(t, "header", resp.Header.Get("X-Kept"), name)
+				require.Equal(t, "0:", resp.Header.Get("X-Hook"), name)
+
+				// The app's choice of no default Content-Type holds for a response read into one of the proxy's own.
+				resp = apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-No-Type", "1")), fiber.StatusOK, "ok")
+				require.Empty(t, resp.Header.Values(fiber.HeaderContentType), name)
 			}
 		})
 	}
@@ -1579,10 +1789,10 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 	app := fiber.New()
 	app.Get("/*", func(c fiber.Ctx) error {
 		path := c.OriginalURL()
-		url := strings.TrimPrefix(path, "/")
+		target := strings.TrimPrefix(path, "/")
 
-		require.Equal(t, "http://"+addr, url)
-		if err := Do(c, url); err != nil {
+		require.Equal(t, "http://"+addr, target)
+		if err := Do(c, target); err != nil {
 			return err
 		}
 		c.Response().Header.Del(fiber.HeaderServer)
@@ -2178,7 +2388,8 @@ func Test_Proxy_Balancer_MaxResponseBodySize(t *testing.T) {
 	}{
 		"over the limit":   {limit: 16, wantErr: true},
 		"within the limit": {limit: 128},
-		"unbounded":        {limit: 0},
+		"default":          {limit: 0},
+		"unbounded":        {limit: -1},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -2199,6 +2410,50 @@ func Test_Proxy_Balancer_MaxResponseBodySize(t *testing.T) {
 			require.Equal(t, fiber.StatusOK, resp.StatusCode)
 		})
 	}
+}
+
+// withDefaultRequestTimeoutForTest shortens the default client's request bound until tb ends.
+func withDefaultRequestTimeoutForTest(tb testing.TB, timeout time.Duration) {
+	tb.Helper()
+	prev := defaultRequestTimeout.Swap(int64(timeout))
+	tb.Cleanup(func() { defaultRequestTimeout.Store(prev) })
+}
+
+// Test_Proxy_DefaultBounds pins the bounds of the default client: a request has defaultRequestTimeout for
+// the whole exchange, in one attempt, unless DoTimeout or DoDeadline set the request's own bound, longer
+// included, and a response body of at most defaultMaxResponseBodySize.
+//
+// conventions:ignore parallel: it shortens the package-level bound every default-client request reads, and measures it
+func Test_Proxy_DefaultBounds(t *testing.T) {
+	withDefaultRequestTimeoutForTest(t, 150*time.Millisecond)
+	var hits atomic.Int32
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		hits.Add(1)
+		time.Sleep(400 * time.Millisecond)
+		return c.SendString("proxied")
+	})
+
+	app := fiber.New()
+	app.Get("/do", func(c fiber.Ctx) error { return Do(c, "http://"+addr) })
+	app.Get("/timeout", func(c fiber.Ctx) error { return DoTimeout(c, "http://"+addr, time.Second) })
+	app.Get("/deadline", func(c fiber.Ctx) error { return DoDeadline(c, "http://"+addr, time.Now().Add(time.Second)) })
+
+	resp := apptest.Expect(t, app, "/do", fiber.StatusInternalServerError)
+	require.Equal(t, fasthttp.ErrTimeout.Error(), apptest.Body(t, resp))
+	require.Equal(t, int32(1), hits.Load(), "the bound is the request's: no second attempt at the upstream")
+	for _, path := range []string{"/timeout", "/deadline"} {
+		apptest.ExpectBody(t, app, path, fiber.StatusOK, "proxied")
+	}
+	require.Equal(t, int32(3), hits.Load())
+
+	require.Zero(t, defaultClient.ReadTimeout, "a client timeout would cap DoTimeout and be set again per attempt")
+	require.Zero(t, defaultClient.WriteTimeout)
+	require.Equal(t, defaultMaxResponseBodySize, defaultClient.MaxResponseBodySize)
+	require.Equal(t, defaultMaxResponseBodySize, configDefault(Config{Servers: []string{"http://upstream.example"}}).MaxResponseBodySize)
+	cfg := configDefault(Config{Servers: []string{"http://upstream.example"}, MaxResponseBodySize: -1})
+	require.Equal(t, -1, cfg.MaxResponseBodySize)
+	hc := newHostClient(mustParseTestURL(t, "http://upstream.example:8080"), &cfg, DefaultSecurityPolicy())
+	require.Equal(t, 0, hc.MaxResponseBodySize)
 }
 
 // Headers larger than WriteBufferSize must still arrive whole.
