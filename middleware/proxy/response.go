@@ -25,8 +25,8 @@ func upstreamResponse(streams bool, res *fasthttp.Response) *fasthttp.Response {
 
 // adoptUpstreamResponse readies upstream, the response the client filled with err as the outcome, as res, the
 // client's: sanitized and, when upstream is the proxy's own, its header section copied over and its body read
-// from it through an upstreamBody, which releases it once the body has been sent, or copied along when the
-// client buffered the body after all. upstream is released on an error.
+// from it through an upstreamBody, which releases it once the body has been sent, or moved over without a copy
+// when the client buffered the body after all. upstream is released on an error.
 func adoptUpstreamResponse(res, upstream *fasthttp.Response, err error, policy SecurityPolicy, except ...string) error {
 	if err == nil {
 		err = sanitizeUpstreamResponse(upstream, policy, except...)
@@ -38,17 +38,30 @@ func adoptUpstreamResponse(res, upstream *fasthttp.Response, err error, policy S
 		fasthttp.ReleaseResponse(upstream)
 		return err
 	}
+	upstream.Header.CopyTo(&res.Header)
 	if !upstream.IsBodyStream() {
-		// Nothing to stream: a response without a body, as a HEAD's or a 204, is buffered.
-		streamBody := res.StreamBody
-		upstream.CopyTo(res)
-		res.StreamBody = streamBody
+		// Buffered: a response without a body, as a HEAD's or a 204, or any by a client that does not stream.
+		res.SkipBody = upstream.SkipBody
+		moveBody(res, upstream)
 		fasthttp.ReleaseResponse(upstream)
 		return nil
 	}
-	upstream.Header.CopyTo(&res.Header)
 	res.SetBodyStream(&upstreamBody{Reader: upstream.BodyStream(), upstream: upstream}, upstream.Header.ContentLength())
 	return nil
+}
+
+// moveBody gives res the buffered body of upstream without copying it: res takes upstream's buffer and
+// upstream the one res had, to be released with it. A raw body, which a client of the caller's may have set
+// in place of the buffer, res refers to as upstream did.
+func moveBody(res, upstream *fasthttp.Response) {
+	body := upstream.Body()
+	buffer := upstream.SwapBody(nil) // drops a raw body, which Body returned above
+	if len(buffer) != len(body) {
+		res.SetBodyRaw(body)
+		return
+	}
+	res.ResetBody()
+	upstream.SwapBody(res.SwapBody(buffer))
 }
 
 // upstreamBody is the body of a streamed upstream response, read from the response the client streams into

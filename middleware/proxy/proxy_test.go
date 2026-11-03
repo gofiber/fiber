@@ -1078,6 +1078,57 @@ type proxyTestBalancingClient struct {
 	*fasthttp.HostClient
 }
 
+// proxyTestMemoryClient is a BalancingClient of the caller's own type that answers from memory, through the
+// response's buffer or with a raw body, and sends the body as the response holds it.
+type proxyTestMemoryClient struct {
+	sent chan<- []byte
+	body []byte
+	raw  bool
+}
+
+func (c proxyTestMemoryClient) DoDeadline(_ *fasthttp.Request, resp *fasthttp.Response, _ time.Time) error {
+	resp.SetStatusCode(fiber.StatusOK)
+	if c.raw {
+		resp.SetBodyRaw(c.body)
+	} else {
+		resp.SetBody(c.body)
+	}
+	c.sent <- resp.Body()
+	return nil
+}
+
+func (proxyTestMemoryClient) PendingRequests() int { return 0 }
+
+// Test_Proxy_Balancer_CustomClientBodyMoved checks that a body a client of the caller's own type buffers reaches
+// the response whole and in place: the buffer, or the raw body, moves over rather than being copied.
+func Test_Proxy_Balancer_CustomClientBodyMoved(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		raw  bool
+	}{{name: "buffered"}, {name: "raw", raw: true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			body := []byte(strings.Repeat("upstream ", 1024))
+			sent, adopted := make(chan []byte, 1), make(chan []byte, 1)
+			app := fiber.New()
+			app.Use(Balancer(Config{
+				Client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{
+					proxyTestMemoryClient{sent: sent, body: body, raw: tc.raw},
+				}},
+				ModifyResponse: func(c fiber.Ctx) error { adopted <- c.Response().Body(); return nil },
+			}))
+
+			apptest.ExpectBody(t, app, "/", fiber.StatusOK, string(body))
+			set, got := apptest.Recv(t, sent, time.Second), apptest.Recv(t, adopted, time.Second)
+			require.Same(t, &set[0], &got[0], "the body was copied")
+			if tc.raw {
+				require.Same(t, &body[0], &got[0], "the raw body was copied")
+			}
+		})
+	}
+}
+
 // proxyTestStreamingHandlersUnder is proxyTestHandlersUnder for clients that stream response bodies: Balancer
 // with a HostClient of its own, bare or behind a type of the caller's, Forward and Do with a Client, and Do with
 // the response set to stream.
