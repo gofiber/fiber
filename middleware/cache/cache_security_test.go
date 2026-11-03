@@ -2135,6 +2135,15 @@ func Test_Cache_VaryOnHeaderAddedBehindTheCache(t *testing.T) {
 		},
 		// The client's value stays in the key, as a rewrite's does: the response has to vary on
 		// the input it was derived from as well (the next case), as cache.md says.
+		// The cookies make one field line, so an added cookie is told by its name.
+		"cookie added": {
+			rewrite: func(c fiber.Ctx) { c.Request().Header.SetCookie("session", c.Get("X-Login")) },
+			vary:    fiber.HeaderCookie,
+			steps: []step{
+				{headers: []string{fiber.HeaderCookie, "theme=dark", "X-Login", "alice"}, body: "Cookie=theme=dark; session=alice", cache: cacheUnreachable},
+				{headers: []string{fiber.HeaderCookie, "theme=dark", "X-Login", "bob"}, body: "Cookie=theme=dark; session=bob", cache: cacheUnreachable},
+			},
+		},
 		"overwritten": {
 			rewrite: fromSession,
 			vary:    "X-User-Id",

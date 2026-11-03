@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -152,16 +153,27 @@ func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]
 	return fieldname.Lines(h, name, normalized)
 }
 
-// countFieldLines is len(keyFieldLines(h, name, normalized)) without the lines. The cookies,
-// once collected, make one line or none, which their walk reports without joining them.
-func countFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) int { //nolint:revive // flag-parameter: normalized is a property of the header store
-	if collectKeyField(h, name) {
-		for range h.Cookies() {
-			return 1
+// cookieAdded reports whether live carries a cookie by a name lookup, the copy taken before the
+// handler ran, has none by: the cookies make one field line once collected, so the line count
+// that tells an added header from a rewritten one cannot tell an added cookie.
+func cookieAdded(lookup, live *fasthttp.RequestHeader) bool {
+	lookup.Cookie("") // collectCookies, as collectKeyField did for live
+	for name := range live.Cookies() {
+		if !hasCookie(lookup, name) {
+			return true
 		}
-		return 0
 	}
-	return fieldname.CountLines(h, name, normalized)
+	return false
+}
+
+// hasCookie reports whether h carries a cookie named name, whatever its value.
+func hasCookie(h *fasthttp.RequestHeader, name []byte) bool {
+	for n := range h.Cookies() {
+		if bytes.Equal(n, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // setFieldLine writes value as the field line for name, replacing whichever

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -128,14 +129,22 @@ func varyKey(base string, names []string, hdr *fasthttp.RequestHeader, normalize
 }
 
 // varyLinesAdded reports whether the request carries, for a name the response varies on, more
-// field lines than lookup, the copy taken before the handler ran: a line an inner middleware
-// added, which no client's key selects by. One it removed, as encryptcookie removes a cookie
-// it cannot decrypt, leaves the key the client's and the response the one for its absence, and
-// one it rewrote, as encryptcookie decrypts a cookie, keeps the client's value in the key: the
-// count tells an added line from a rewritten one, which values could not (see cache.md).
+// field lines than lookup, the copy taken before the handler ran, or a cookie by a name it has
+// none by: a line or cookie an inner middleware added, which no client's key selects by. One it
+// removed, as encryptcookie removes a cookie it cannot decrypt, leaves the key the client's and
+// the response the one for its absence, and one it rewrote, as encryptcookie decrypts a cookie,
+// keeps the client's value in the key: the count tells an added line from a rewritten one, which
+// values could not (see cache.md).
 func varyLinesAdded(names []string, lookup, live *fasthttp.RequestHeader, normalized bool) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
 	for _, name := range names {
-		if n := countFieldLines(live, name, normalized); n > 0 && n > countFieldLines(lookup, name, normalized) {
+		if collectKeyField(live, name) {
+			if cookieAdded(lookup, live) {
+				return true
+			}
+			continue
+		}
+		collectKeyField(lookup, name)
+		if n := fieldname.CountLines(live, name, normalized); n > 0 && n > fieldname.CountLines(lookup, name, normalized) {
 			return true
 		}
 	}
