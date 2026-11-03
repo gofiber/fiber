@@ -1021,7 +1021,11 @@ func Test_Timeout_HEADResponseHasNoBody(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
-			app.Get("/slow", New(func(c fiber.Ctx) error { <-c.Context().Done(); return nil }, tc.cfg))
+			// Held until the timeout response has been read: released by the deadline, the handler could
+			// answer first.
+			release := make(chan struct{})
+			defer close(release)
+			app.Get("/slow", New(func(fiber.Ctx) error { <-release; return nil }, tc.cfg))
 			app.Get("/fast", func(c fiber.Ctx) error { return c.SendString("fast") })
 
 			conn := apptest.Dial(t, apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true}))

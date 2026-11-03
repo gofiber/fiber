@@ -188,7 +188,8 @@ func handleResult(err error, ctx fiber.Ctx, cfg Config) error {
 // read, and sends the copy from a fresh RequestCtx whose request is empty, so the
 // body of a response to a HEAD request is skipped here rather than there.
 func sendTimeoutResponse(ctx fiber.Ctx, resp *fasthttp.Response, isHead bool) {
-	resp.SkipBody = isHead
+	// Or kept as OnTimeout set it: a response it meant to send without a body goes without one.
+	resp.SkipBody = resp.SkipBody || isHead
 	ctx.RequestCtx().TimeoutErrorWithResponse(resp)
 }
 

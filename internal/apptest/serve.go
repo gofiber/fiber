@@ -19,24 +19,47 @@ type Server[C any] interface {
 }
 
 // Serve serves app on an in-memory listener until tb ends, when the app is shut down and the
-// error Listener returned is checked, and returns the listener, ready to dial: a dial that the
-// server never accepts fails the test instead of hanging.
+// error Listener returned is checked, and returns the listener, ready to dial: a server that
+// stops before it serves, as one whose BeforeServeFunc fails does, fails the test with its error
+// instead of leaving a dial waiting for an accept that never comes.
 func Serve[C any](tb testing.TB, app Server[C], config ...C) *fasthttputil.InmemoryListener {
 	tb.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
-	errCh := make(chan error, 1)
-	go func() { errCh <- app.Listener(ln, config...) }()
+	var listenErr error
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		listenErr = app.Listener(ln, config...)
+		// A dial the server will never accept fails at once; a server that served closed ln already.
+		_ = ln.Close() //nolint:errcheck // closed already when the server served
+	}()
 	tb.Cleanup(func() {
-		require.NoError(tb, app.Shutdown())
-		if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
-			require.NoError(tb, err)
+		select {
+		case <-stopped: // nothing left to shut down
+		default:
+			require.NoError(tb, app.Shutdown())
+			<-stopped
+		}
+		if listenErr != nil && !errors.Is(listenErr, net.ErrClosed) {
+			require.NoError(tb, listenErr)
 		}
 	})
 	require.Eventually(tb, func() bool {
-		conn, err := ln.Dial()
-		return err == nil && conn.Close() == nil
-	}, time.Second, 5*time.Millisecond)
+		select {
+		case <-stopped:
+			return true // reported below
+		default:
+			conn, err := ln.Dial()
+			return err == nil && conn.Close() == nil
+		}
+	}, time.Second, 5*time.Millisecond, "the server did not start serving")
+	select {
+	case <-stopped:
+		require.NoError(tb, listenErr, "the server stopped before it served")
+		require.FailNow(tb, "the server stopped before it served")
+	default:
+	}
 	return ln
 }
 
