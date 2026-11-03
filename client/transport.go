@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3/internal/crosshost"
+	"github.com/gofiber/fiber/v3/internal/redirectbody"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -109,12 +110,16 @@ func newStandardClientTransport(client *fasthttp.Client) *standardClientTranspor
 }
 
 // newOwnedStandardClientTransport wraps a new fasthttp.Client that nothing else
-// holds yet.
+// holds yet: its exchanges end when a cancel-only context is canceled, and its TLS
+// handshakes are bounded.
 func newOwnedStandardClientTransport() *standardClientTransport {
 	return &standardClientTransport{
 		client: &fasthttp.Client{
 			MaxResponseBodySize: defaultMaxResponseBodySize,
-			ConfigureClient:     boundTLSHandshake,
+			// On the client, which fasthttp gives every host client before the hook
+			// runs, so a hook of the caller's own in place of this one does not lose it.
+			Transport:       cancelTransport{},
+			ConfigureClient: boundTLSHandshake,
 		},
 		settingKnown: true,
 	}
@@ -611,7 +616,9 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, opts 
 			if !req.Header.IsGet() && !req.Header.IsHead() {
 				req.Header.SetMethod(fasthttp.MethodGet)
 			}
-			dropRequestBody(req)
+			if !redirectbody.Drop(req) {
+				return ErrRedirectTrailers
+			}
 		}
 
 		// Credentials are scoped to the origin that issued them, so drop them once
@@ -622,36 +629,6 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, opts 
 			crosshost.Strip(&req.Header, opts.sensitiveHeaders)
 		}
 	}
-}
-
-// dropRequestBody removes a request's body and everything framing or describing
-// it: Content-Length, Transfer-Encoding and Trailer signal one (RFC 9112),
-// Content-Type and Content-Encoding describe one no longer there.
-func dropRequestBody(req *fasthttp.Request) {
-	req.Header.Del(fasthttp.HeaderContentLength)
-	req.Header.Del(fasthttp.HeaderContentType)
-	req.Header.Del(fasthttp.HeaderContentEncoding)
-	req.Header.Del(fasthttp.HeaderTransferEncoding)
-	req.Header.Del(fasthttp.HeaderTrailer)
-	// A 100-continue expectation may not be generated without content
-	// (RFC 9110 Section 10.1.1), and a strict target answers the bodyless
-	// follow-up with 417 rather than the redirect the caller was following.
-	req.Header.Del(fasthttp.HeaderExpect)
-	req.ResetBody()
-	// Load-bearing, not bookkeeping: Request.Write falls back to the parsed form
-	// when the body is empty, so a caller that had read PostArgs would have sent
-	// the old "a=1" as the body of the redirected GET.
-	//
-	// fasthttp's own loop clears the parsed flag beside this, which leaves a
-	// reused request re-parsing whatever body it is given next. That half is not
-	// reachable from here: parsedPostArgs is unexported and only Request.Reset
-	// and ReadLimitBody clear it, and Reset would take the URI, headers and TLS
-	// flag this loop is still using. What differs is confined to a caller that
-	// reuses the request without resetting it: its PostArgs reads empty rather
-	// than re-parsing. The body it sends is the new one either way, and an
-	// untouched fasthttp request is worse off there — it hands back the previous
-	// body's values, since SetBody does not invalidate the form either.
-	req.PostArgs().Reset()
 }
 
 // hostnameWithoutPort strips the port from a host[:port] value, leaving a

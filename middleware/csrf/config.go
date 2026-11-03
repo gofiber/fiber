@@ -90,7 +90,11 @@ type Config struct {
 	// CookieName as this defeats CSRF protection entirely.
 	Extractor extractors.Extractor
 
-	// IdleTimeout is the duration of time the CSRF token is valid.
+	// IdleTimeout is the duration of time the CSRF token is valid, counted from its
+	// last use. In session mode behind the session middleware, a token is renewed only
+	// when less than half of it is left, so there it stays valid for at least half of
+	// IdleTimeout and at most IdleTimeout after its last use; the cookie expires with
+	// it. Set twice the idle window you want.
 	//
 	// Optional. Default: 30 * time.Minute
 	IdleTimeout time.Duration

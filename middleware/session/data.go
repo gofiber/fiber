@@ -16,9 +16,13 @@ type data struct {
 	Data         map[any]any // Session key counts are expected to be bounded.
 	sync.RWMutex `msg:"-"`
 
-	// Stored before each mutation, so false means Data is unchanged since the decode.
-	// Only a decode clears it; clearing after an encode would drop later in-place edits.
+	// dirty is set by a Get or Keys returning a value the caller may change in place, so
+	// the snapshot may be stale and the save encodes the data again. Only a decode clears
+	// it; clearing after an encode would drop later in-place edits.
 	dirty atomic.Bool
+	// mutated is set by Set, Delete and Reset: the request changed the session, so its save
+	// stands over a change another request stored meanwhile. Only a decode clears it.
+	mutated atomic.Bool
 }
 
 // valueMayAlias reports whether the caller could mutate the session through v
@@ -90,7 +94,7 @@ func releaseData(d *data) {
 func (d *data) Reset() {
 	d.Lock()
 	defer d.Unlock()
-	d.dirty.Store(true)
+	d.mutated.Store(true)
 	clear(d.Data)
 }
 
@@ -128,7 +132,7 @@ func (d *data) Get(key any) any {
 func (d *data) Set(key, value any) {
 	d.Lock()
 	defer d.Unlock()
-	d.dirty.Store(true)
+	d.mutated.Store(true)
 	d.Data[key] = value
 }
 
@@ -143,7 +147,7 @@ func (d *data) Set(key, value any) {
 func (d *data) Delete(key any) {
 	d.Lock()
 	defer d.Unlock()
-	d.dirty.Store(true)
+	d.mutated.Store(true)
 	delete(d.Data, key)
 }
 
