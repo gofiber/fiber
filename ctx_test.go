@@ -2746,7 +2746,7 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 			ln := startRawServer(t, app)
 
 			const chunked = "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n"
-			many := rawFieldLines("X-", "v", fieldname.MaxTrailers-2)
+			many := apptest.FieldLines("X-", "v", fieldname.MaxTrailers-2)
 			heads := []string{"", "X-User: admin\r\nX-Role: admin\r\n", "X-User: admin\r\nTrailer: X-User, X-Role\r\n"}
 			post := func(path, head, trailers string) string {
 				return "POST " + path + " HTTP/1.1\r\nHost: example.com\r\n" + head + chunked + trailers +
@@ -8969,8 +8969,8 @@ func Benchmark_Ctx_GetReqHeaders_TrailerSection(b *testing.B) {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			c := apptest.Ctx(b, New())
 
-			raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + rawFieldLines("H", "1", n) +
-				"Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n" + rawFieldLines("T", "1", n) + "\r\n"
+			raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + apptest.FieldLines("H", "1", n) +
+				"Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n" + apptest.FieldLines("T", "1", n) + "\r\n"
 			require.NoError(b, c.Request().Read(bufio.NewReaderSize(strings.NewReader(raw), len(raw))))
 			require.Len(b, c.Request().Header.PeekTrailerKeys(), n)
 

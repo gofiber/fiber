@@ -247,34 +247,36 @@ func Test_ValueMayAlias(t *testing.T) {
 
 func Test_Data_DirtyTracking(t *testing.T) {
 	t.Parallel()
-	// cleanData returns pooled data holding key/value with the dirty flag cleared,
+	// cleanData returns pooled data holding key/value with both flags cleared,
 	// standing in for the state a successful decode leaves behind.
 	cleanData := func(t *testing.T, key, value any) *data {
 		t.Helper()
 		d := sessionTestData(t, key, value)
 		d.dirty.Store(false)
+		d.mutated.Store(false)
 		return d
 	}
 
-	t.Run("Set marks dirty", func(t *testing.T) {
+	t.Run("Set marks mutated", func(t *testing.T) {
 		t.Parallel()
 		d := cleanData(t, "user", "fenny")
 		d.Set("role", "admin")
-		require.True(t, d.dirty.Load())
+		require.True(t, d.mutated.Load())
+		require.False(t, d.dirty.Load(), "a change is not a stale snapshot")
 	})
 
-	t.Run("Delete marks dirty", func(t *testing.T) {
+	t.Run("Delete marks mutated", func(t *testing.T) {
 		t.Parallel()
 		d := cleanData(t, "user", "fenny")
 		d.Delete("user")
-		require.True(t, d.dirty.Load())
+		require.True(t, d.mutated.Load())
 	})
 
-	t.Run("Reset marks dirty", func(t *testing.T) {
+	t.Run("Reset marks mutated", func(t *testing.T) {
 		t.Parallel()
 		d := cleanData(t, "user", "fenny")
 		d.Reset()
-		require.True(t, d.dirty.Load())
+		require.True(t, d.mutated.Load())
 	})
 
 	t.Run("Get of a scalar stays clean", func(t *testing.T) {
