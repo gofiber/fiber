@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -1070,23 +1072,72 @@ func proxyTestHandlersUnder(addr string, policy SecurityPolicy, after fiber.Hand
 	}
 }
 
+// proxyTestStreamingHandlersUnder is proxyTestHandlersUnder for clients that stream response bodies: Balancer
+// with a HostClient of its own, Forward and Do with a Client, and Do with the response set to stream.
+func proxyTestStreamingHandlersUnder(addr string, policy SecurityPolicy, after fiber.Handler) map[string]fiber.Handler {
+	streaming := &fasthttp.Client{StreamResponseBody: true}
+	do := func(c fiber.Ctx, cli *fasthttp.Client) error {
+		send := func(cli *fasthttp.Client, req *fasthttp.Request, res *fasthttp.Response, _ *url.URL) error {
+			return cli.Do(req, res)
+		}
+		if err := doActionWithPolicy(c, "http://"+addr, normalizePolicy(policy), nil, send, cli); err != nil || after == nil {
+			return err
+		}
+		return after(c)
+	}
+	return map[string]fiber.Handler{
+		"Balancer streaming": Balancer(Config{
+			Client:         &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{&fasthttp.HostClient{Addr: addr, StreamResponseBody: true}}},
+			SecurityPolicy: &policy,
+			ModifyResponse: after,
+		}),
+		"Forward streaming": func(c fiber.Ctx) error {
+			if err := forwardWithRealIP(c, "http://"+addr, normalizePolicy(policy), streaming); err != nil || after == nil {
+				return err
+			}
+			return after(c)
+		},
+		"Do streaming": func(c fiber.Ctx) error { return do(c, streaming) },
+		"Do with a streamed response": func(c fiber.Ctx) error {
+			c.Response().StreamBody = true
+			return do(c, &fasthttp.Client{})
+		},
+	}
+}
+
 // Test_Proxy_UpstreamTrailerSectionDropped checks that the trailer section of an upstream response reaches the
-// client neither as trailers nor as header lines, announced or not and whatever the hop-by-hop policy, and that a
-// section naming more than fieldname.MaxTrailers fields is a 502 carrying none of the upstream's fields.
+// client neither as trailers nor as header lines, announced or not, whatever the hop-by-hop policy and whether
+// the client buffers the response or streams it, and that a section naming more than fieldname.MaxTrailers
+// fields is a 502 carrying none of the upstream's fields.
 func Test_Proxy_UpstreamTrailerSectionDropped(t *testing.T) {
 	t.Parallel()
 	// Not a Fiber app: net/http writes the trailer section of a chunked response.
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Kept", "header")
+		if r.Header.Get("X-Sized") != "" {
+			// A body of known size, which a client that streams response bodies buffers all the same.
+			w.Header().Set("Content-Length", "2")
+			fmt.Fprint(w, "ok")
+			return
+		}
 		w.Header().Set(fiber.HeaderTrailer, "X-Trail")
+		// X-Many asks for fieldname.MaxTrailers more fields, announced in Trailer or not.
+		many := r.Header.Get("X-Many")
+		if many == "announced" {
+			for i := range fieldname.MaxTrailers {
+				w.Header().Add(fiber.HeaderTrailer, "X-"+strconv.Itoa(i))
+			}
+		}
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "ok")
 		w.Header().Set("X-Trail", "promoted")
 		w.Header().Set(http.TrailerPrefix+"X-Unannounced", "u2")
-		if r.Header.Get("X-Many") != "" {
-			for i := range fieldname.MaxTrailers {
-				w.Header().Set(http.TrailerPrefix+"X-"+strconv.Itoa(i), "v")
+		for i := 0; many != "" && i < fieldname.MaxTrailers; i++ {
+			name := "X-" + strconv.Itoa(i)
+			if many == "unannounced" {
+				name = http.TrailerPrefix + name
 			}
+			w.Header().Set(name, "v")
 		}
 	}))
 	t.Cleanup(upstream.Close)
@@ -1102,7 +1153,11 @@ func Test_Proxy_UpstreamTrailerSectionDropped(t *testing.T) {
 				c.Set("X-Hook", fmt.Sprintf("%d:%s", len(c.Response().Header.PeekTrailerKeys()), c.Response().Header.Peek("X-Trail")))
 				return nil
 			}
-			for name, handler := range proxyTestHandlersUnder(addr, policy, hookSaw) {
+			handlers := map[string]fiber.Handler{}
+			streaming := proxyTestStreamingHandlersUnder(addr, policy, hookSaw)
+			maps.Copy(handlers, proxyTestHandlersUnder(addr, policy, hookSaw))
+			maps.Copy(handlers, streaming)
+			for name, handler := range handlers {
 				app := fiber.New()
 				app.Get("/", handler)
 
@@ -1114,8 +1169,22 @@ func Test_Proxy_UpstreamTrailerSectionDropped(t *testing.T) {
 				}
 				require.Empty(t, resp.Trailer, name)
 
-				resp = apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Many", "1")), fiber.StatusBadGateway)
-				require.Empty(t, resp.Header.Values("X-Kept"), name)
+				for _, many := range []string{"announced", "unannounced"} {
+					req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Many", many))
+					if _, streams := streaming[name]; streams && many == "unannounced" {
+						// Received once the body has been read, with the response of the proxy's own.
+						resp = apptest.ExpectBody(t, app, req, fiber.StatusOK, "ok")
+						require.Equal(t, "0:", resp.Header.Get("X-Hook"), name+" "+many)
+						require.Empty(t, resp.Trailer, name+" "+many)
+						continue
+					}
+					resp = apptest.Expect(t, app, req, fiber.StatusBadGateway)
+					require.Empty(t, resp.Header.Values("X-Kept"), name+" "+many)
+				}
+
+				resp = apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Sized", "1")), fiber.StatusOK, "ok")
+				require.Equal(t, "header", resp.Header.Get("X-Kept"), name)
+				require.Equal(t, "0:", resp.Header.Get("X-Hook"), name)
 			}
 		})
 	}
@@ -1640,10 +1709,10 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 	app := fiber.New()
 	app.Get("/*", func(c fiber.Ctx) error {
 		path := c.OriginalURL()
-		url := strings.TrimPrefix(path, "/")
+		target := strings.TrimPrefix(path, "/")
 
-		require.Equal(t, "http://"+addr, url)
-		if err := Do(c, url); err != nil {
+		require.Equal(t, "http://"+addr, target)
+		if err := Do(c, target); err != nil {
 			return err
 		}
 		c.Response().Header.Del(fiber.HeaderServer)

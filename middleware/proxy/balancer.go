@@ -71,6 +71,9 @@ func Balancer(config ...Config) fiber.Handler {
 	}
 
 	// Return new handler
+	// Decided once: the clients are fixed when the handler is built.
+	streams := streamsResponses(lbc)
+
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
@@ -161,12 +164,11 @@ func Balancer(config ...Config) fiber.Handler {
 		// the net/http adaptor) so the serialized request line stays valid.
 		req.Header.SetProtocol("HTTP/1.1")
 
-		// Forward request
-		if err := lbc.Do(req, res); err != nil {
-			return err
-		}
-
-		if err := sanitizeUpstreamResponse(res, policy, keepHeaders...); err != nil {
+		// Forward request. A client that streams response bodies hands the upstream's trailer section
+		// to the response after Do returned: such a response is read into one of the proxy's own, see
+		// upstreamResponse.
+		upstream := upstreamResponse(streams, res)
+		if err := adoptUpstreamResponse(res, upstream, lbc.Do(req, upstream), policy, keepHeaders...); err != nil {
 			return err
 		}
 

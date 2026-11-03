@@ -242,10 +242,10 @@ func doActionWithPolicy(
 		req.SetTimeout(defaultRequestTimeout)
 		defer req.SetTimeout(0)
 	}
-	if err := action(cli, req, res, u); err != nil {
-		return err
-	}
-	return sanitizeUpstreamResponse(res, policy)
+	// A client that streams response bodies hands the upstream's trailer section to the response after
+	// the action returned: such a response is read into one of the proxy's own, see upstreamResponse.
+	upstream := upstreamResponse(cli.StreamResponseBody, res)
+	return adoptUpstreamResponse(res, upstream, action(cli, req, upstream, u), policy)
 }
 
 // forwardRouted forwards the routed path to base for DomainForward and BalancerForward. A path
