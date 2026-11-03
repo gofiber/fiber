@@ -175,6 +175,8 @@ func Test_JoinNext(t *testing.T) {
 	require.Equal(t, []byte("a,,b"), combined, "empty field lines keep their position")
 }
 
+// Test_JoinNext_EmptyFirstLine checks that empty leading field lines retain
+// their separators and multiple-line state.
 func Test_JoinNext_EmptyFirstLine(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
