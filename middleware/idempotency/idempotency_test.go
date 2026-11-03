@@ -17,7 +17,10 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
+	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/valyala/fasthttp"
 
 	"github.com/stretchr/testify/assert"
@@ -25,6 +28,201 @@ import (
 )
 
 const validKey = "00000000-0000-0000-0000-000000000000"
+
+func Test_New_ReplayUpstreamHeaders(t *testing.T) {
+	t.Parallel()
+	for _, origin := range []string{"https://first.example", "https://second.example", "https://denied.example", ""} {
+		t.Run("origin="+origin, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(cors.New(cors.Config{AllowOrigins: []string{"https://first.example", "https://second.example"}}))
+			app.Use(requestid.New())
+			app.Use(New())
+			calls := 0
+			app.Post("/", func(c fiber.Ctx) error {
+				calls++
+				c.Set("X-Order", "created")
+				return c.JSON(fiber.Map{"ok": true})
+			})
+
+			for i, currentOrigin := range []string{"https://first.example", origin} {
+				id := fmt.Sprintf("request-%d", i)
+				req := apptest.Req(http.MethodPost, "/",
+					apptest.WithHeader(ConfigDefault.KeyHeader, validKey),
+					apptest.WithHeaderIf(fiber.HeaderOrigin, currentOrigin),
+					apptest.WithHeader(fiber.HeaderXRequestID, id))
+				resp := apptest.ExpectBody(t, app, req, fiber.StatusOK, `{"ok":true}`)
+				require.Equal(t, []string{id}, resp.Header.Values(fiber.HeaderXRequestID))
+				require.Equal(t, "application/json; charset=utf-8", resp.Header.Get(fiber.HeaderContentType))
+				require.Equal(t, []string{"created"}, resp.Header.Values("X-Order"))
+				if currentOrigin == "https://first.example" || currentOrigin == "https://second.example" {
+					require.Equal(t, []string{currentOrigin}, resp.Header.Values(fiber.HeaderAccessControlAllowOrigin))
+				} else {
+					require.Empty(t, resp.Header.Values(fiber.HeaderAccessControlAllowOrigin))
+				}
+			}
+			require.Equal(t, 1, calls)
+		})
+	}
+}
+
+func Test_New_ReplayDownstreamHeaders(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		upstream   fiber.Handler
+		downstream fiber.Handler
+		header     string
+		want       []string
+	}{
+		{
+			name: "json without upstream headers", header: fiber.HeaderContentType,
+			want: []string{"application/json; charset=utf-8"},
+		},
+		{
+			name: "explicit content type overwritten by json", header: fiber.HeaderContentType,
+			upstream: func(c fiber.Ctx) error { c.Set(fiber.HeaderContentType, "text/plain"); return c.Next() },
+			want:     []string{"application/json; charset=utf-8"},
+		},
+		{
+			name: "route cors", header: fiber.HeaderAccessControlAllowOrigin,
+			downstream: cors.New(cors.Config{AllowOrigins: []string{"https://first.example"}}),
+			want:       []string{"https://first.example"},
+		},
+		{
+			name: "repeated identical lines", header: "X-Tag", want: []string{"same", "same", "same"},
+			upstream: func(c fiber.Ctx) error {
+				c.Response().Header.Add("X-Tag", "same")
+				c.Response().Header.Add("X-Tag", "same")
+				return c.Next()
+			},
+			downstream: func(c fiber.Ctx) error { c.Response().Header.Add("X-Tag", "same"); return c.Next() },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			if tc.upstream != nil {
+				app.Use(tc.upstream)
+			}
+			app.Use(New())
+			if tc.downstream != nil {
+				app.Post("/", tc.downstream)
+			}
+			calls := 0
+			app.Post("/", func(c fiber.Ctx) error { calls++; return c.JSON(fiber.Map{"ok": true}) })
+			for range 2 {
+				req := apptest.Req(http.MethodPost, "/", apptest.WithHeader(ConfigDefault.KeyHeader, validKey),
+					apptest.WithHeader(fiber.HeaderOrigin, "https://first.example"))
+				resp := apptest.ExpectBody(t, app, req, fiber.StatusOK, `{"ok":true}`)
+				require.Equal(t, tc.want, resp.Header.Values(tc.header))
+			}
+			require.Equal(t, 1, calls)
+		})
+	}
+}
+
+func Test_New_ReplayVary(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(cors.New(cors.Config{AllowOrigins: []string{"https://first.example"}}))
+	app.Use(New())
+	calls := 0
+	app.Post("/", func(c fiber.Ctx) error {
+		calls++
+		c.Vary(fiber.HeaderAcceptLanguage)
+		return c.SendString("hello")
+	})
+	for range 2 {
+		req := apptest.Req(http.MethodPost, "/", apptest.WithHeader(ConfigDefault.KeyHeader, validKey),
+			apptest.WithHeader(fiber.HeaderOrigin, "https://first.example"))
+		resp := apptest.ExpectBody(t, app, req, fiber.StatusOK, "hello")
+		// Multiple Vary lines are valid; neither cache-selection field may be lost.
+		var fields []string
+		for _, line := range resp.Header.Values(fiber.HeaderVary) {
+			for field := range strings.SplitSeq(line, ",") {
+				fields = append(fields, strings.TrimSpace(field))
+			}
+		}
+		require.Contains(t, fields, fiber.HeaderOrigin)
+		require.Contains(t, fields, fiber.HeaderAcceptLanguage)
+	}
+	require.Equal(t, 1, calls)
+}
+
+func Test_New_ReplayUpstreamAndHandlerCookies(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		c.Cookie(&fiber.Cookie{Name: "request", Value: c.Get(fiber.HeaderXRequestID)})
+		return c.Next()
+	})
+	app.Use(New(Config{
+		KeepResponseHeaders: []string{fiber.HeaderSetCookie, fiber.HeaderContentType},
+		KeyScope:            func(fiber.Ctx) string { return "same-user" },
+	}))
+	calls := 0
+	app.Post("/", func(c fiber.Ctx) error {
+		calls++
+		c.Cookie(&fiber.Cookie{Name: "order", Value: "created"})
+		return c.SendString("ok")
+	})
+	for i := range 2 {
+		id := fmt.Sprintf("request-%d", i)
+		req := apptest.Req(http.MethodPost, "/", apptest.WithHeader(ConfigDefault.KeyHeader, validKey),
+			apptest.WithHeader(fiber.HeaderXRequestID, id))
+		resp := apptest.ExpectBody(t, app, req, fiber.StatusOK, "ok")
+		cookies := resp.Cookies()
+		require.Len(t, cookies, 2)
+		require.Equal(t, "request", cookies[0].Name)
+		require.Equal(t, id, cookies[0].Value)
+		require.Equal(t, "order", cookies[1].Name)
+		require.Equal(t, "created", cookies[1].Value)
+	}
+	require.Equal(t, 1, calls)
+}
+
+func Benchmark_Idempotency_UpstreamHeaders(b *testing.B) {
+	for _, count := range []int{0, 4, 16} {
+		b.Run(fmt.Sprintf("headers=%d", count), func(b *testing.B) {
+			for _, hit := range []bool{true, false} {
+				b.Run(fmt.Sprintf("hit=%t", hit), func(b *testing.B) {
+					store := memory.New()
+					b.Cleanup(func() { require.NoError(b, store.Close()) })
+					app := fiber.New()
+					names := make([]string, count)
+					for i := range names {
+						names[i] = fmt.Sprintf("X-Upstream-%d", i)
+					}
+					app.Use(func(c fiber.Ctx) error {
+						for _, name := range names {
+							c.Set(name, "value")
+						}
+						return c.Next()
+					})
+					app.Use(New(Config{Storage: store}))
+					app.Post("/", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"ok": true}) })
+					handler := app.Handler()
+					ctx := &fasthttp.RequestCtx{}
+					ctx.Request.Header.SetMethod(fiber.MethodPost)
+					ctx.Request.SetRequestURI("/")
+					ctx.Request.Header.Set(ConfigDefault.KeyHeader, validKey)
+					handler(ctx)
+					b.ReportAllocs()
+					for b.Loop() {
+						if !hit {
+							if err := store.Delete(storagePrefix + validKey); err != nil {
+								b.Fatal(err)
+							}
+						}
+						ctx.Response.Reset()
+						handler(ctx)
+					}
+				})
+			}
+		})
+	}
+}
 
 func Test_Idempotency(t *testing.T) {
 	t.Parallel()

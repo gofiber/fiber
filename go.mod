@@ -18,7 +18,7 @@ require (
 
 require (
 	github.com/molecule-man/go-brrr v1.3.1 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	go.yaml.in/yaml/v3 v3.0.6 // indirect
 )
 
 require (
