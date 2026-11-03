@@ -1,5 +1,6 @@
-// Package rulematch provides capture substitution shared by redirect and rewrite
-// rules. Callers own pattern compilation and destination normalization.
+// Package rulematch provides pattern compilation and capture substitution shared
+// by redirect and rewrite rules. Callers choose the pattern syntax and own
+// destination normalization.
 package rulematch
 
 import (
