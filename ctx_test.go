@@ -2870,6 +2870,11 @@ func Test_Ctx_Host_ForwardedHost(t *testing.T) {
 		{name: "no whitespace with comma", proxies: trusted, forwardedHost: "example.com, proxy1", want: "example.com"},
 		{name: "single value with whitespace", proxies: trusted, forwardedHost: "  example.com  ", want: "example.com"},
 		{name: "leading comma", proxies: trusted, forwardedHost: ",example.com", want: ""},
+		{name: "empty header", proxies: trusted, forwardedHost: "", want: "google.com"},
+		{name: "whitespace only", proxies: trusted, forwardedHost: " \t ", want: ""},
+		{name: "whitespace first element", proxies: trusted, forwardedHost: " \t ,example.com", want: ""},
+		{name: "consecutive commas", proxies: trusted, forwardedHost: "example.com,,proxy1", want: "example.com"},
+		{name: "trailing comma", proxies: trusted, forwardedHost: "example.com,", want: "example.com"},
 	}
 
 	// No host carries a port, so every case answers alike through c.Host and c.Hostname.
@@ -4584,6 +4589,10 @@ func Test_Ctx_Scheme(t *testing.T) {
 		{name: "X-Forwarded-Protocol", header: HeaderXForwardedProtocol, value: schemeHTTPS},
 		{name: "X-Forwarded-Proto list", header: HeaderXForwardedProto, value: "https, http"},
 		{name: "X-Forwarded-Protocol list", header: HeaderXForwardedProtocol, value: "https, http"},
+		{name: "X-Forwarded-Proto empty tail", header: HeaderXForwardedProto, value: "https,,"},
+		{name: "X-Forwarded-Protocol empty tail", header: HeaderXForwardedProtocol, value: "https,,"},
+		{name: "X-Forwarded-Proto tab padding", header: HeaderXForwardedProto, value: "\tHTTPS\t, invalid"},
+		{name: "X-Forwarded-Protocol tab padding", header: HeaderXForwardedProtocol, value: "\tHTTPS\t, invalid"},
 		{name: "X-Forwarded-Ssl", header: HeaderXForwardedSsl, value: "on"},
 		{name: "X-Url-Scheme", header: HeaderXUrlScheme, value: schemeHTTPS},
 		{name: "lowercase X-Forwarded-Proto, padded list", header: "x-forwarded-proto", value: " HTTPS , http"},
@@ -4634,7 +4643,7 @@ func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
 	// A scheme Fiber does not serve must never reach BaseURL or the
 	// same-origin comparisons that consume Scheme.
 	for _, header := range []string{HeaderXForwardedProto, HeaderXForwardedProtocol, HeaderXUrlScheme} {
-		for _, value := range []string{"javascript", "ftp", "data", "HTTPS evil", ""} {
+		for _, value := range []string{"javascript", "ftp", "data", "HTTPS evil", "", ",https", " \t,https", ",,https", "javascript,https"} {
 			c.Request().Header.Set(header, value)
 			require.Equal(t, schemeHTTP, c.Scheme(), "%s: %q", header, value)
 			c.Request().Header.Reset()
@@ -4708,6 +4717,16 @@ func Test_Ctx_Scheme_HeaderPrecedence(t *testing.T) {
 				HeaderXForwardedProto, "javascript", HeaderXForwardedSsl, "off", HeaderXUrlScheme, schemeHTTPS,
 			},
 			want: schemeHTTPS,
+		},
+		{
+			name:    "empty first proto element retains the lower priority scheme",
+			headers: []string{HeaderXUrlScheme, schemeHTTP, HeaderXForwardedProto, ",https"},
+			want:    schemeHTTP,
+		},
+		{
+			name:    "empty first protocol element retains the lower priority scheme",
+			headers: []string{HeaderXUrlScheme, schemeHTTP, HeaderXForwardedProtocol, " \t,https"},
+			want:    schemeHTTP,
 		},
 	} {
 		t.Run("Ranking, "+tc.name, func(t *testing.T) {
