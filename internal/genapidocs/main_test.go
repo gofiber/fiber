@@ -1,11 +1,11 @@
 package main
 
 import (
-	"go/build"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -157,10 +157,14 @@ func TestRetryDocumentationCurrent(t *testing.T) {
 // TestGenerateCgo includes declarations from cgo files selected by the Go build context.
 func TestGenerateCgo(t *testing.T) {
 	t.Parallel()
-	if !build.Default.CgoEnabled {
+	dir := fixture(t)
+	cmd := exec.Command("go", "env", "CGO_ENABLED")
+	cmd.Dir = dir
+	enabled, err := cmd.Output()
+	require.NoError(t, err)
+	if strings.TrimSpace(string(enabled)) != "1" {
 		t.Skip("cgo files are excluded in this build context")
 	}
-	dir := fixture(t)
 	source := "package sample\n\nimport \"C\"\n\n// CgoConfig configures a cgo-backed API.\ntype CgoConfig struct { Enabled bool }\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "cgo.go"), []byte(source), 0o600))
 	path := filepath.Join(dir, "docs.md")
