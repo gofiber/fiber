@@ -54,7 +54,8 @@ func forwardWithRealIP(c fiber.Ctx, addr string, policy SecurityPolicy, clients 
 // a private one between validation and connection. The policy is read on
 // every request, so keep it installed while the handler serves.
 //
-// The default client sets no timeout and no response size cap.
+// The default client gives each request 30 seconds for the whole exchange and
+// buffers at most 100 MiB of a response; WithClient replaces both bounds.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		// See Balancer: a refused request is not forwarded.
@@ -83,8 +84,9 @@ func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 // with a custom client, register it via WithClient (or pass a dedicated,
 // unused client) before first use.
 //
-// The request reaches the upstream as HTTP/1.1. As with Forward, there is no
-// timeout or size cap; see DoTimeout and DoDeadline.
+// The request reaches the upstream as HTTP/1.1. As with Forward, the default
+// client bounds the exchange at 30 seconds and the response at 100 MiB; DoTimeout
+// and DoDeadline set the bound of their own request.
 func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.Do(req, resp)
@@ -233,13 +235,17 @@ func doActionWithPolicy(
 	// inherited from the inbound request (e.g. "HTTP/2" propagated by the
 	// net/http adaptor) so the serialized request line stays valid.
 	req.Header.SetProtocol("HTTP/1.1")
+	// The default client bounds the request as a whole, connect and body included,
+	// unless the request has a bound of its own: DoTimeout and DoDeadline set theirs
+	// over this one, and a redirect hop takes the request's along.
+	if cli == defaultClient && req.GetTimeOut() == 0 {
+		req.SetTimeout(defaultRequestTimeout)
+		defer req.SetTimeout(0)
+	}
 	if err := action(cli, req, res, u); err != nil {
 		return err
 	}
-	if !policy.KeepHopByHopHeaders && !stripHopByHopResponseHeaders(res) {
-		return fiber.ErrBadGateway
-	}
-	return nil
+	return sanitizeUpstreamResponse(res, policy)
 }
 
 // forwardRouted forwards the routed path to base for DomainForward and BalancerForward. A path

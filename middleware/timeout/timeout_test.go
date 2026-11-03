@@ -1,12 +1,14 @@
 package timeout
 
 import (
+	"bufio"
 	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -995,6 +997,46 @@ func Test_Timeout_ReturnsErrServiceUnavailable(t *testing.T) {
 			observed := apptest.Recv(t, seen, time.Second, "outer middleware never observed the result")
 			require.ErrorIs(t, observed, fiber.ErrServiceUnavailable)
 			require.Equal(t, int32(0), errorHandlerCalls.Load())
+		})
+	}
+}
+
+// A HEAD response carries no body (RFC 9110 §9.3.2); one sent by the timeout path would be read as the start of
+// the next response on the connection.
+func Test_Timeout_HEADResponseHasNoBody(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		body   string
+		cfg    Config
+		status int
+	}{
+		"default": {cfg: Config{Timeout: 20 * time.Millisecond}, status: fiber.StatusServiceUnavailable, body: fiber.ErrServiceUnavailable.Message},
+		"OnTimeout": {
+			cfg: Config{Timeout: 20 * time.Millisecond, OnTimeout: func(c fiber.Ctx) error {
+				return c.Status(fiber.StatusGatewayTimeout).SendString("custom timeout")
+			}},
+			status: fiber.StatusGatewayTimeout, body: "custom timeout",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Get("/slow", New(func(c fiber.Ctx) error { <-c.Context().Done(); return nil }, tc.cfg))
+			app.Get("/fast", func(c fiber.Ctx) error { return c.SendString("fast") })
+
+			conn := apptest.Dial(t, apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true}))
+			_, err := conn.Write([]byte("HEAD /slow HTTP/1.1\r\nHost: example.com\r\n\r\nGET /fast HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+			require.NoError(t, err)
+
+			br := bufio.NewReader(conn)
+			head, err := http.ReadResponse(br, &http.Request{Method: fiber.MethodHead})
+			require.NoError(t, err)
+			require.NoError(t, head.Body.Close())
+			require.Equal(t, tc.status, head.StatusCode)
+			require.Equal(t, strconv.Itoa(len(tc.body)), head.Header.Get(fiber.HeaderContentLength))
+			next, err := br.ReadString('\n')
+			require.NoError(t, err)
+			require.Equal(t, "HTTP/1.1 200 OK\r\n", next)
 		})
 	}
 }

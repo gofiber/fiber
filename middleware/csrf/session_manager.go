@@ -63,25 +63,35 @@ func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) []byte {
 	return nil
 }
 
-// set token in session
-func (m *sessionManager) setRaw(c fiber.Ctx, key string, raw []byte, exp time.Duration) {
+// setRaw stores the token in the session, or renews it, and returns when it expires.
+func (m *sessionManager) setRaw(c fiber.Ctx, key string, raw []byte, exp time.Duration) time.Time {
+	expires := time.Now().Add(exp)
 	sess := session.FromContext(c)
 	if sess != nil {
+		// A token still stored with more than half its lifetime left is left as it is: a Set
+		// would make this request a writer of the session, whose save then stands in for a
+		// change another request stored while it ran, such as a role taken away. The cookie
+		// expires with the token, so the browser does not keep sending one that is gone.
+		if token, ok := sess.Get(sessionKey).(Token); ok && token.Key == key && compareTokens(raw, token.Raw) &&
+			time.Until(token.Expiration) > exp/2 {
+			return token.Expiration
+		}
 		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
-		sess.Set(sessionKey, Token{Key: key, Raw: raw, Expiration: time.Now().Add(exp)})
+		sess.Set(sessionKey, Token{Key: key, Raw: raw, Expiration: expires})
 	} else {
 		// Try to get the session from the store
 		storeSess, err := m.session.Get(c)
 		if err != nil {
 			// Handle error
-			return
+			return expires
 		}
 		defer storeSess.Release()
-		storeSess.Set(sessionKey, Token{Key: key, Raw: raw, Expiration: time.Now().Add(exp)})
+		storeSess.Set(sessionKey, Token{Key: key, Raw: raw, Expiration: expires})
 		if err := storeSess.Save(); err != nil {
 			log.Warn("csrf: failed to save session: ", err)
 		}
 	}
+	return expires
 }
 
 // delete token from session

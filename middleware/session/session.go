@@ -151,7 +151,8 @@ func (s *Session) ID() string {
 //
 // Note: returning a value that can alias the session (map, slice, array,
 // pointer, struct) makes every later Save re-encode, since the caller may
-// mutate it in place without calling Set.
+// mutate it in place without calling Set. Such an edit is stored only while no
+// other request changed the session meanwhile; Set makes the request a writer.
 //
 // Usage:
 //
@@ -275,10 +276,13 @@ func (s *Session) RegenerateWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	// Delete old id from storage
-	var ended bool
-	var err error
+	var (
+		stored []byte
+		ended  bool
+		err    error
+	)
 	if s.loaded {
-		ended, err = s.config.deleteLoadedKey(ctx, s.storageKey(), s.loadGen)
+		stored, ended, err = s.config.deleteLoadedKey(ctx, s.storageKey(), s.loadGen)
 	} else {
 		err = s.config.deleteKey(ctx, s.storageKey())
 	}
@@ -290,11 +294,20 @@ func (s *Session) RegenerateWithContext(ctx context.Context) error {
 	if ended {
 		s.dropped = true
 	}
+	// Another request changed it since the load and this one changed nothing: the rotated
+	// session carries that change, not the snapshot this request loaded. A value read and
+	// changed in place is lost with it, which is the safe side.
+	if stored != nil && s.overtakenBy(stored) {
+		// Rotated even when the decode fails: the old key is already gone, so the save
+		// stores this request's snapshot, which a failed decode leaves as it was, under
+		// the new ID rather than nothing.
+		err = s.decodeSessionData(stored)
+	}
 
 	// Generate a new session, and set session.isFresh to true
 	s.refresh()
 
-	return nil
+	return err
 }
 
 // Reset generates a new session id, deletes the old one from storage, and resets the associated data.
@@ -436,9 +449,13 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	}
 
 	// Unchanged since the decode: write the snapshot back so the idle timeout still
-	// slides. Lock-free is enough; dirty is set before the mutation it reports.
+	// slides. Lock-free is enough; the flags are set before what they report.
 	data := s.rawData
-	changed := data == nil || s.data.dirty.Load()
+	// Set, Delete or Reset changed the session. A read of a value the caller may change
+	// in place only makes the snapshot stale: the data is encoded again, but the request
+	// wrote nothing another request's change has to yield to.
+	mutated := s.data.mutated.Load()
+	changed := data == nil || mutated || s.data.dirty.Load()
 	if changed {
 		s.data.RLock()
 		encoded, err := s.encodeSessionData()
@@ -455,33 +472,38 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 		if changed {
 			// Held alone, so no write-back of an older snapshot lands after this change.
 			l.mu.Lock()
-			defer func() {
-				l.gen.Add(1)
-				l.mu.Unlock()
-			}()
+			defer l.mu.Unlock()
 		} else {
 			l.mu.RLock()
 			defer l.mu.RUnlock()
 		}
-		// An ID of this shard was deleted or changed since the load; look at this one.
-		if l.gen.Load() != s.loadGen {
-			raw, err := s.config.Storage.GetWithContext(ctx, key)
-			if err != nil {
-				return err
-			}
+		raw, moved, err := s.config.storedSince(ctx, key, s.loadGen)
+		if err != nil {
+			return err
+		}
+		if moved {
 			if raw == nil {
 				return nil // ended by another request: neither store it nor send its cookie again
 			}
-			if !changed && !bytes.Equal(raw, data) {
+			if s.overtakenBy(raw) {
 				s.setSession()
-				return nil // changed by another request: the older snapshot must not undo that
+				return nil // changed by another request: a snapshot this one did not change must not undo that
 			}
+		}
+		if changed {
+			defer l.gen.Add(1) // before the unlock: the shard changed, which a save that stored nothing leaves as it was
 		}
 	}
 
 	// Update client cookie
 	s.setSession()
 	return s.config.Storage.SetWithContext(ctx, key, data, s.idleTimeout)
+}
+
+// overtakenBy reports whether raw, what the storage holds now, is a change another request
+// stored since the load that this one, having changed nothing itself, must not undo.
+func (s *Session) overtakenBy(raw []byte) bool {
+	return !s.data.mutated.Load() && !bytes.Equal(raw, s.rawData)
 }
 
 // Keys retrieves all keys in the current session.
@@ -671,11 +693,22 @@ func (s *Session) decodeSessionData(rawData []byte) error {
 	defer byteBuffer.Reset()
 	_, _ = byteBuffer.Write(raw)
 	decCache := gob.NewDecoder(byteBuffer)
-	if err := decCache.Decode(&s.data.Data); err != nil {
+	s.data.Lock()
+	defer s.data.Unlock()
+	// A decode replaces the data. gob merges into a map that holds keys, so one that does
+	// is decoded beside, which also leaves it as it was when the decode fails; the empty
+	// map of a session being loaded is decoded into in place.
+	decoded := s.data.Data
+	if len(decoded) > 0 {
+		decoded = make(map[any]any, len(decoded))
+	}
+	if err := decCache.Decode(&decoded); err != nil {
 		return fmt.Errorf("failed to decode session data: %w", err)
 	}
+	s.data.Data = decoded
 	s.rawData = raw
 	s.data.dirty.Store(false)
+	s.data.mutated.Store(false)
 	return nil
 }
 

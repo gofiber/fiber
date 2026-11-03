@@ -3,15 +3,33 @@ package proxy
 import (
 	"errors"
 	"sync/atomic"
+	"time"
 
 	"github.com/valyala/fasthttp"
 )
 
-// defaultClient sets no timeouts or size cap; bound them with WithClient or DoTimeout/DoDeadline.
+// defaultMaxResponseBodySize bounds the body the proxy buffers from an
+// upstream response, so one that streams without end does not take the
+// memory; it is the bound the client package applies too.
+const defaultMaxResponseBodySize = 100 << 20
+
+// defaultRequestTimeout bounds a request the default client makes to an upstream,
+// connect, write and read of the whole response included, so one that stalls does
+// not hold the handler and its connection. It is the request's bound, which
+// DoTimeout and DoDeadline set themselves, rather than the client's read and
+// write timeouts: those cap the time a request may be given and, being set per
+// attempt, had fasthttp re-send an idempotent request to a stalled upstream until
+// its attempts ran out. A variable for the test that shortens it.
+var defaultRequestTimeout = 30 * time.Second
+
+// defaultClient buffers at most defaultMaxResponseBodySize of a response and gives
+// each request defaultRequestTimeout, see doActionWithPolicy; set other bounds with
+// WithClient, or on one request with DoTimeout or DoDeadline.
 var defaultClient = &fasthttp.Client{
 	NoDefaultUserAgentHeader: true,
 	DisablePathNormalizing:   true,
 	MaxConnsPerHost:          defaultMaxConnsPerHost,
+	MaxResponseBodySize:      defaultMaxResponseBodySize,
 }
 
 // sharedClient is the client used when none is passed per call.

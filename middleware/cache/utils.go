@@ -126,24 +126,42 @@ func responseSetsCookie(h *fasthttp.ResponseHeader, normalized bool) bool { //no
 	return false
 }
 
-// keyFieldLines returns the field lines of name to key a cache entry on.
+// collectKeyField readies h for reading the lines of name the way the key does, and
+// reports whether name is Cookie, whose lines are then the collected cookies.
 //
 // Cookie is answered from fasthttp's store, which reports raw lines before
-// collection and one merged entry after — so force the collection, the only
+// collection and one merged entry after, so the collection is forced, the only
 // representation both states agree on. Collecting is idempotent.
-func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]byte {
+func collectKeyField(h *fasthttp.RequestHeader, name string) bool {
 	switch {
 	case utils.EqualFold(name, fiber.HeaderCookie):
 		h.Cookie("") // collectCookies; the lookup itself is expected to miss
-
+		return true
 	case utils.EqualFold(name, fiber.HeaderContentType) && mediatype.IsForm(h.ContentType()):
 		// Fold here rather than read whatever arrived: the key is built once before
 		// the handler and once after, and the form accessors lowercase this header
 		// in between, so the entry landed under a key no lookup would produce.
 		mediatype.NormalizeRequestContentType(h)
 	}
+	return false
+}
 
+// keyFieldLines returns the field lines of name to key a cache entry on.
+func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]byte { //nolint:revive // flag-parameter: normalized is a property of the header store
+	collectKeyField(h, name)
 	return fieldname.Lines(h, name, normalized)
+}
+
+// countFieldLines is len(keyFieldLines(h, name, normalized)) without the lines. The cookies,
+// once collected, make one line or none, which their walk reports without joining them.
+func countFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) int { //nolint:revive // flag-parameter: normalized is a property of the header store
+	if collectKeyField(h, name) {
+		for range h.Cookies() {
+			return 1
+		}
+		return 0
+	}
+	return fieldname.CountLines(h, name, normalized)
 }
 
 // setFieldLine writes value as the field line for name, replacing whichever

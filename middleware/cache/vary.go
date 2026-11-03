@@ -127,6 +127,21 @@ func varyKey(base string, names []string, hdr *fasthttp.RequestHeader, normalize
 	return key
 }
 
+// varyLinesAdded reports whether the request carries, for a name the response varies on, more
+// field lines than lookup, the copy taken before the handler ran: a line an inner middleware
+// added, which no client's key selects by. One it removed, as encryptcookie removes a cookie
+// it cannot decrypt, leaves the key the client's and the response the one for its absence, and
+// one it rewrote, as encryptcookie decrypts a cookie, keeps the client's value in the key: the
+// count tells an added line from a rewritten one, which values could not (see cache.md).
+func varyLinesAdded(names []string, lookup, live *fasthttp.RequestHeader, normalized bool) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
+	for _, name := range names {
+		if n := countFieldLines(live, name, normalized); n > 0 && n > countFieldLines(lookup, name, normalized) {
+			return true
+		}
+	}
+	return false
+}
+
 // lookupHeaders pools the copies of the request headers a miss keeps while the handler runs.
 var lookupHeaders = sync.Pool{New: func() any { return new(fasthttp.RequestHeader) }}
 

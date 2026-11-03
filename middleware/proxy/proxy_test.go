@@ -1030,12 +1030,7 @@ func Test_Proxy_TrailerSectionWhateverThePolicy(t *testing.T) {
 			t.Parallel()
 			policy := proxyTestAllowPrivatePolicy()
 			policy.KeepHopByHopHeaders = keep
-			for name, handler := range map[string]fiber.Handler{
-				"Balancer": Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy}),
-				"Forward": func(c fiber.Ctx) error {
-					return forwardWithRealIP(c, "http://"+addr, normalizePolicy(policy))
-				},
-			} {
+			for name, handler := range proxyTestHandlersUnder(addr, policy, nil) {
 				app := fiber.New()
 				app.Use(func(c fiber.Ctx) error {
 					// Announced after the router dropped the client's, as only the application can.
@@ -1055,6 +1050,72 @@ func Test_Proxy_TrailerSectionWhateverThePolicy(t *testing.T) {
 						require.Equal(t, "header=[] trailer=0", body, name)
 					}
 				}
+			}
+		})
+	}
+}
+
+// proxyTestHandlersUnder returns the Balancer and the Forward handler proxying to addr under
+// policy, each running after, when given, once the upstream answered: as Balancer's
+// ModifyResponse, and after Forward returns.
+func proxyTestHandlersUnder(addr string, policy SecurityPolicy, after fiber.Handler) map[string]fiber.Handler {
+	return map[string]fiber.Handler{
+		"Balancer": Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy, ModifyResponse: after}),
+		"Forward": func(c fiber.Ctx) error {
+			if err := forwardWithRealIP(c, "http://"+addr, normalizePolicy(policy)); err != nil || after == nil {
+				return err
+			}
+			return after(c)
+		},
+	}
+}
+
+// Test_Proxy_UpstreamTrailerSectionDropped checks that the trailer section of an upstream response reaches the
+// client neither as trailers nor as header lines, announced or not and whatever the hop-by-hop policy, and that a
+// section naming more than fieldname.MaxTrailers fields is a 502 carrying none of the upstream's fields.
+func Test_Proxy_UpstreamTrailerSectionDropped(t *testing.T) {
+	t.Parallel()
+	// Not a Fiber app: net/http writes the trailer section of a chunked response.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Kept", "header")
+		w.Header().Set(fiber.HeaderTrailer, "X-Trail")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
+		w.Header().Set("X-Trail", "promoted")
+		w.Header().Set(http.TrailerPrefix+"X-Unannounced", "u2")
+		if r.Header.Get("X-Many") != "" {
+			for i := range fieldname.MaxTrailers {
+				w.Header().Set(http.TrailerPrefix+"X-"+strconv.Itoa(i), "v")
+			}
+		}
+	}))
+	t.Cleanup(upstream.Close)
+	addr := upstream.Listener.Addr().String()
+
+	for _, keep := range []bool{false, true} {
+		t.Run(fmt.Sprintf("keep=%v", keep), func(t *testing.T) {
+			t.Parallel()
+			policy := proxyTestAllowPrivatePolicy()
+			policy.KeepHopByHopHeaders = keep
+			// A hook, like a Do caller, sees the response without its trailer section.
+			hookSaw := func(c fiber.Ctx) error {
+				c.Set("X-Hook", fmt.Sprintf("%d:%s", len(c.Response().Header.PeekTrailerKeys()), c.Response().Header.Peek("X-Trail")))
+				return nil
+			}
+			for name, handler := range proxyTestHandlersUnder(addr, policy, hookSaw) {
+				app := fiber.New()
+				app.Get("/", handler)
+
+				resp := apptest.ExpectBody(t, app, "/", fiber.StatusOK, "ok")
+				require.Equal(t, "header", resp.Header.Get("X-Kept"), name)
+				require.Equal(t, "0:", resp.Header.Get("X-Hook"), name)
+				for _, dropped := range []string{"X-Trail", "X-Unannounced", fiber.HeaderTrailer} {
+					require.Empty(t, resp.Header.Values(dropped), name+" "+dropped)
+				}
+				require.Empty(t, resp.Trailer, name)
+
+				resp = apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Many", "1")), fiber.StatusBadGateway)
+				require.Empty(t, resp.Header.Values("X-Kept"), name)
 			}
 		})
 	}
@@ -2186,7 +2247,8 @@ func Test_Proxy_Balancer_MaxResponseBodySize(t *testing.T) {
 	}{
 		"over the limit":   {limit: 16, wantErr: true},
 		"within the limit": {limit: 128},
-		"unbounded":        {limit: 0},
+		"default":          {limit: 0},
+		"unbounded":        {limit: -1},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -2207,6 +2269,51 @@ func Test_Proxy_Balancer_MaxResponseBodySize(t *testing.T) {
 			require.Equal(t, fiber.StatusOK, resp.StatusCode)
 		})
 	}
+}
+
+// withDefaultRequestTimeoutForTest shortens the default client's request bound until tb ends.
+func withDefaultRequestTimeoutForTest(tb testing.TB, timeout time.Duration) {
+	tb.Helper()
+	prev := defaultRequestTimeout
+	defaultRequestTimeout = timeout
+	tb.Cleanup(func() { defaultRequestTimeout = prev })
+}
+
+// Test_Proxy_DefaultBounds pins the bounds of the default client: a request has defaultRequestTimeout for
+// the whole exchange, in one attempt, unless DoTimeout or DoDeadline set the request's own bound, longer
+// included, and a response body of at most defaultMaxResponseBodySize.
+//
+// conventions:ignore parallel: it shortens the package-level bound every default-client request reads, and measures it
+func Test_Proxy_DefaultBounds(t *testing.T) {
+	withDefaultRequestTimeoutForTest(t, 150*time.Millisecond)
+	var hits atomic.Int32
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		hits.Add(1)
+		time.Sleep(400 * time.Millisecond)
+		return c.SendString("proxied")
+	})
+
+	app := fiber.New()
+	app.Get("/do", func(c fiber.Ctx) error { return Do(c, "http://"+addr) })
+	app.Get("/timeout", func(c fiber.Ctx) error { return DoTimeout(c, "http://"+addr, time.Second) })
+	app.Get("/deadline", func(c fiber.Ctx) error { return DoDeadline(c, "http://"+addr, time.Now().Add(time.Second)) })
+
+	resp := apptest.Expect(t, app, "/do", fiber.StatusInternalServerError)
+	require.Equal(t, fasthttp.ErrTimeout.Error(), apptest.Body(t, resp))
+	require.Equal(t, int32(1), hits.Load(), "the bound is the request's: no second attempt at the upstream")
+	for _, path := range []string{"/timeout", "/deadline"} {
+		apptest.ExpectBody(t, app, path, fiber.StatusOK, "proxied")
+	}
+	require.Equal(t, int32(3), hits.Load())
+
+	require.Zero(t, defaultClient.ReadTimeout, "a client timeout would cap DoTimeout and be set again per attempt")
+	require.Zero(t, defaultClient.WriteTimeout)
+	require.Equal(t, defaultMaxResponseBodySize, defaultClient.MaxResponseBodySize)
+	require.Equal(t, defaultMaxResponseBodySize, configDefault(Config{Servers: []string{"http://upstream.example"}}).MaxResponseBodySize)
+	cfg := configDefault(Config{Servers: []string{"http://upstream.example"}, MaxResponseBodySize: -1})
+	require.Equal(t, -1, cfg.MaxResponseBodySize)
+	hc := newHostClient(mustParseTestURL(t, "http://upstream.example:8080"), &cfg, DefaultSecurityPolicy())
+	require.Equal(t, 0, hc.MaxResponseBodySize)
 }
 
 // Headers larger than WriteBufferSize must still arrive whole.

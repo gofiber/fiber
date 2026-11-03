@@ -528,7 +528,9 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 // as such on the wrapper, so synthesizing them stays off for those and stays on
 // for the rest.
 func (d *domainRouter) cloneRoutesForDomain(dst, src *App) {
-	for m, routes := range d.domainRoutes(dst, src, domainClone{}) {
+	// The app the routes are mounted on has the last word, as in processSubAppsRoutes:
+	// its opt-out covers everything flattened into it, so it seeds the whole walk.
+	for m, routes := range d.domainRoutes(dst, src, domainClone{skipAutoHead: d.app.config.DisableHeadAutoRegister}) {
 		dst.stack[m] = routes
 	}
 }
@@ -563,8 +565,8 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 	// HEAD route synthesized from one of its GET routes would run the handler
 	// with nothing in front of it. That holds for the apps it has mounted too,
 	// whose routes it stands in front of, and for no one else: the mount is a
-	// tree, and an app opting out says nothing about its siblings or the apps
-	// it is mounted inside.
+	// tree, and an app opting out says nothing about its siblings. The walk is
+	// seeded with the opt-out of the app the routes are mounted on.
 	skipAutoHead := walk.skipAutoHead || src.config.DisableHeadAutoRegister || src.methodInt(MethodHead) < 0
 
 	// Take a snapshot rather than holding the lock for the whole walk: it keeps
@@ -646,6 +648,11 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 				}
 
 				routes[m] = append(routes[m], mounted[group][m]...)
+				continue
+			}
+
+			// An app started before the walk carries its automatic HEAD routes already.
+			if skipAutoHead && source.route.autoHead {
 				continue
 			}
 

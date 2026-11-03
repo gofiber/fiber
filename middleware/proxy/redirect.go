@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/redirectbody"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -143,7 +144,8 @@ func carryFormBody(hop, req *fasthttp.Request) {
 }
 
 // contentFields describe or expect content, which a request without any must not carry (RFC 9110
-// §10.1.1); redirectRequest drops the fields that frame a body one by one.
+// §10.1.1); redirectRequest drops them in every spelling, once redirectbody.Drop took the body and
+// the fields framing it.
 var contentFields = []string{
 	fasthttp.HeaderContentEncoding,
 	fasthttp.HeaderContentLanguage,
@@ -156,18 +158,11 @@ var contentFields = []string{
 
 // redirectRequest rewrites req, a hop's private copy, as a GET without the body and the fields that
 // framed or described it. It reports false when those are spelled in more than maxConnectionOptions
-// further ways, as fieldname.DelSetWithin counts them.
+// further ways, as fieldname.DelSetWithin counts them, or when the trailer section announces more
+// names than fieldname.MaxTrailers.
 func redirectRequest(req *fasthttp.Request) bool {
 	req.Header.SetMethod(fasthttp.MethodGet)
-	req.ResetBody()
-	// A form the handler already read lives on in the post args, which fasthttp
-	// writes as the body when the body is empty.
-	req.PostArgs().Reset()
-	req.Header.Del(fasthttp.HeaderContentType)
-	req.Header.Del(fasthttp.HeaderContentLength)
-	req.Header.Del(fasthttp.HeaderTransferEncoding)
-	req.Header.Del(fasthttp.HeaderTrailer)
-	return fieldname.DelSetWithin(&req.Header, contentFields, maxConnectionOptions)
+	return redirectbody.Drop(req) && fieldname.DelSetWithin(&req.Header, contentFields, maxConnectionOptions)
 }
 
 // resolveRedirect parses a redirect target relative to the current URL

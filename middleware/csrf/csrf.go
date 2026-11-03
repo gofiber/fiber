@@ -210,12 +210,13 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Create or extend the token in the storage
-		if err := createOrExtendTokenInStorage(c, token, &cfg, sessionManager, storageManager); err != nil {
+		expires, err := createOrExtendTokenInStorage(c, token, &cfg, sessionManager, storageManager)
+		if err != nil {
 			return cfg.ErrorHandler(c, err)
 		}
 
 		// Update the CSRF cookie
-		updateCSRFCookie(c, &cfg, token)
+		setCSRFCookie(c, &cfg, token, expires)
 
 		// Tell the browser that a new header value is generated
 		vary(c, varyCookie)
@@ -272,16 +273,15 @@ func getRawFromStorage(c fiber.Ctx, token string, cfg *Config, sessionManager *s
 	return raw, nil
 }
 
-// createOrExtendTokenInStorage creates or extends the token in the storage
-func createOrExtendTokenInStorage(c fiber.Ctx, token string, cfg *Config, sessionManager *sessionManager, storageManager *storageManager) error {
+// createOrExtendTokenInStorage creates or extends the token in the storage and returns when it expires.
+func createOrExtendTokenInStorage(c fiber.Ctx, token string, cfg *Config, sessionManager *sessionManager, storageManager *storageManager) (time.Time, error) {
 	if cfg.Session != nil {
-		sessionManager.setRaw(c, token, dummyValue, cfg.IdleTimeout)
-		return nil
+		return sessionManager.setRaw(c, token, dummyValue, cfg.IdleTimeout), nil
 	}
 	if err := storageManager.setRaw(c, token, dummyValue, cfg.IdleTimeout); err != nil {
-		return fmt.Errorf("csrf: failed to store token in storage: %w", err)
+		return time.Time{}, fmt.Errorf("csrf: failed to store token in storage: %w", err)
 	}
-	return nil
+	return time.Now().Add(cfg.IdleTimeout), nil
 }
 
 func deleteTokenFromStorage(c fiber.Ctx, token string, cfg *Config, sessionManager *sessionManager, storageManager *storageManager) error {
@@ -295,17 +295,13 @@ func deleteTokenFromStorage(c fiber.Ctx, token string, cfg *Config, sessionManag
 	return nil
 }
 
-// Update CSRF cookie
-// if expireCookie is true, the cookie will expire immediately
-func updateCSRFCookie(c fiber.Ctx, cfg *Config, token string) {
-	setCSRFCookie(c, cfg, token, cfg.IdleTimeout)
-}
-
+// expireCSRFCookie has the browser drop the cookie at once.
 func expireCSRFCookie(c fiber.Ctx, cfg *Config) {
-	setCSRFCookie(c, cfg, "", -time.Hour)
+	setCSRFCookie(c, cfg, "", time.Now().Add(-time.Hour))
 }
 
-func setCSRFCookie(c fiber.Ctx, cfg *Config, token string, expiry time.Duration) {
+// setCSRFCookie sends token in the cookie, which expires with the stored token.
+func setCSRFCookie(c fiber.Ctx, cfg *Config, token string, expires time.Time) {
 	cookie := &fiber.Cookie{
 		Name:        cfg.CookieName,
 		Value:       token,
@@ -315,7 +311,7 @@ func setCSRFCookie(c fiber.Ctx, cfg *Config, token string, expiry time.Duration)
 		HTTPOnly:    cfg.CookieHTTPOnly,
 		SameSite:    cfg.CookieSameSite,
 		SessionOnly: cfg.CookieSessionOnly,
-		Expires:     time.Now().Add(expiry),
+		Expires:     expires,
 	}
 
 	// Set the CSRF cookie to the response

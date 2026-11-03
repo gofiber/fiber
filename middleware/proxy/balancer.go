@@ -166,8 +166,8 @@ func Balancer(config ...Config) fiber.Handler {
 			return err
 		}
 
-		if !policy.KeepHopByHopHeaders && !stripHopByHopResponseHeaders(res, keepHeaders...) {
-			return fiber.ErrBadGateway
+		if err := sanitizeUpstreamResponse(res, policy, keepHeaders...); err != nil {
+			return err
 		}
 
 		// Modify response
@@ -216,7 +216,8 @@ func newHostClient(u *url.URL, cfg *Config, policy SecurityPolicy) *fasthttp.Hos
 
 		DialDualStack: cfg.DialDualStack,
 
-		MaxResponseBodySize: cfg.MaxResponseBodySize,
+		// A negative value is the caller's choice of no bound, which fasthttp reads as zero.
+		MaxResponseBodySize: max(cfg.MaxResponseBodySize, 0),
 	}
 	// Validate the resolved IP at dial time so DNS rebinding cannot swap in a private address.
 	// fasthttp dials through DialTimeout when it is set and Dial otherwise, so both are guarded.

@@ -580,7 +580,7 @@ func TestWrapHTTPHandler_StreamedTrailerCap(t *testing.T) {
 	ln := startRawServer(t, app)
 
 	raw := "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n" +
-		rawFieldLines("X-", "v", fieldname.MaxTrailers+1) + "\r\n"
+		apptest.FieldLines("X-", "v", fieldname.MaxTrailers+1) + "\r\n"
 	rawExpectStatus(t, ln, raw, StatusRequestHeaderFieldsTooLarge)
 }
 

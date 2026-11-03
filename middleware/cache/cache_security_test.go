@@ -23,7 +23,6 @@ import (
 	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 // Test_Cache_Security_UnusualInputs tests that requests and responses shaped to
@@ -2080,22 +2079,13 @@ func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 				app.Use(func(c fiber.Ctx) error { return c.Status(fiber.StatusNotFound).SendString("no such page") })
 			}
 
-			ln := fasthttputil.NewInmemoryListener()
-			errCh := make(chan error, 1)
-			go func() { errCh <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}) }()
-			t.Cleanup(func() {
-				require.NoError(t, app.Shutdown())
-				require.NoError(t, <-errCh)
-			})
+			ln := apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true})
 
 			// send writes GET target and the header lines extra, ended by their blank line, and reads the answer.
 			send := func(target, extra string) reply {
-				conn, err := ln.Dial()
-				require.NoError(t, err)
-				defer conn.Close() //nolint:errcheck // usually closed by the server already
-				require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+				conn := apptest.Dial(t, ln)
 				const lines = " HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n"
-				_, err = conn.Write([]byte("GET " + target + lines + extra))
+				_, err := conn.Write([]byte("GET " + target + lines + extra))
 				require.NoError(t, err)
 				resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 				require.NoError(t, err)
@@ -2113,6 +2103,92 @@ func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 				retry := send(target, "\r\n")
 				require.Equal(t, fiber.StatusOK, retry.status, target)
 				require.Equal(t, "home page", retry.body, target)
+			}
+		})
+	}
+}
+
+// Test_Cache_VaryOnHeaderAddedBehindTheCache checks that a response varying on a request header an inner
+// middleware added is not stored: its key, built from the header as the lookup saw it, would serve the first
+// client's page to every other client. A header rewritten in place or removed keeps the lookup's key and stays
+// cacheable, as the response is then the one for what the client sent.
+func Test_Cache_VaryOnHeaderAddedBehindTheCache(t *testing.T) {
+	t.Parallel()
+	type step struct {
+		body, cache string
+		headers     []string // name and value pairs the request sends
+	}
+	fromSession := func(c fiber.Ctx) { c.Request().Header.Set("X-User-Id", c.Cookies("session")) }
+	for name, tc := range map[string]struct {
+		rewrite func(c fiber.Ctx)
+		vary    string // the response's Vary
+		echo    string // the header the body echoes; vary when empty
+		steps   []step
+	}{
+		"added": {
+			rewrite: fromSession,
+			vary:    "X-User-Id",
+			steps: []step{
+				{headers: []string{fiber.HeaderCookie, "session=alice"}, body: "X-User-Id=alice", cache: cacheUnreachable},
+				{headers: []string{fiber.HeaderCookie, "session=bob"}, body: "X-User-Id=bob", cache: cacheUnreachable},
+			},
+		},
+		// The client's value stays in the key, as a rewrite's does: the response has to vary on
+		// the input it was derived from as well (the next case), as cache.md says.
+		"overwritten": {
+			rewrite: fromSession,
+			vary:    "X-User-Id",
+			steps: []step{
+				{headers: []string{fiber.HeaderCookie, "session=alice", "X-User-Id", "0"}, body: "X-User-Id=alice", cache: cacheMiss},
+				{headers: []string{fiber.HeaderCookie, "session=bob", "X-User-Id", "0"}, body: "X-User-Id=alice", cache: cacheHit},
+			},
+		},
+		"overwritten, varying on its input too": {
+			rewrite: fromSession,
+			vary:    "Cookie, X-User-Id",
+			echo:    "X-User-Id",
+			steps: []step{
+				{headers: []string{fiber.HeaderCookie, "session=alice", "X-User-Id", "0"}, body: "X-User-Id=alice", cache: cacheMiss},
+				{headers: []string{fiber.HeaderCookie, "session=bob", "X-User-Id", "0"}, body: "X-User-Id=bob", cache: cacheMiss},
+				{headers: []string{fiber.HeaderCookie, "session=alice", "X-User-Id", "0"}, body: "X-User-Id=alice", cache: cacheHit},
+			},
+		},
+		"removed": {
+			rewrite: func(c fiber.Ctx) { c.Request().Header.Del("X-Debug") },
+			vary:    "X-Debug",
+			steps: []step{
+				{headers: []string{"X-Debug", "1"}, body: "X-Debug=", cache: cacheMiss},
+				{headers: []string{"X-Debug", "2"}, body: "X-Debug=", cache: cacheMiss},
+				{headers: []string{"X-Debug", "1"}, body: "X-Debug=", cache: cacheHit},
+			},
+		},
+		"rewritten in place": {
+			rewrite: func(c fiber.Ctx) { c.Request().Header.Set("X-Tenant", strings.ToUpper(c.Get("X-Tenant"))) },
+			vary:    "X-Tenant",
+			steps: []step{
+				{headers: []string{"X-Tenant", "acme"}, body: "X-Tenant=ACME", cache: cacheMiss},
+				{headers: []string{"X-Tenant", "acme"}, body: "X-Tenant=ACME", cache: cacheHit},
+				{headers: []string{"X-Tenant", "other"}, body: "X-Tenant=OTHER", cache: cacheMiss},
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New())
+			app.Use(func(c fiber.Ctx) error { tc.rewrite(c); return c.Next() })
+			echo := tc.echo
+			if echo == "" {
+				echo = tc.vary
+			}
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderVary, tc.vary)
+				return c.SendString(echo + "=" + c.Get(echo))
+			})
+			for _, s := range tc.steps {
+				got := cacheTestCGet(t, app, "/", s.headers...)
+				require.Equal(t, fiber.StatusOK, got.status, s.headers)
+				cacheTestCRequireReply(t, got, s.cache, s.body, s.headers)
 			}
 		})
 	}
