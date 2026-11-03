@@ -3651,6 +3651,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 Joins the links followed by the property to populate the response’s [Link HTTP header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Link) field.
 Quotes and backslashes in the `rel` value are escaped so the emitted quoted-string stays grammar-valid per RFC 9110.
+As in Express, the links are added to a `Link` header that is already set, such as the preload links `SendEarlyHints` writes, instead of replacing it.
 
 ```go title="Signature"
 func (c fiber.Ctx) Links(link ...string)

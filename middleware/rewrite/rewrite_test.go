@@ -217,7 +217,7 @@ func Test_Rewrite_RewrittenPath(t *testing.T) {
 	// (issue #4476). Quoted, "|" is path text and the rule claims no path a
 	// client can send, since the byte arrives percent-encoded.
 	alternation := hit("/a|/b")
-	// Both entry points share compilePattern, so a future split cannot quietly
+	// Both entry points share the compiler, so a future split cannot quietly
 	// leave the map path compiling its keys as regular expressions.
 	deprecatedRules := Config{Rules: map[string]string{"/preis-1.000-euro": "/hit"}}
 

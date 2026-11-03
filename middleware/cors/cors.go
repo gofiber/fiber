@@ -107,29 +107,18 @@ func New(config ...Config) fiber.Handler {
 		log.Warn("[CORS] Both 'AllowOrigins' and 'AllowOriginsFunc' have been defined.")
 	}
 
-	// allowOrigins is a set of strings that contains the allowed origins
-	// defined in the 'AllowOrigins' configuration.
-	allowOrigins := make(map[string]struct{}, len(cfg.AllowOrigins))
-	allowSubOrigins := []originpkg.Subdomain{}
-
-	// Validate and normalize static AllowOrigins
+	// Validate and normalize static AllowOrigins. A bare "*" allows every
+	// origin and ends the list: entries after it are never parsed, so they
+	// cannot fail the configuration either.
 	allowAllOrigins := len(cfg.AllowOrigins) == 0 && cfg.AllowOriginsFunc == nil
-	for _, origin := range cfg.AllowOrigins {
-		if origin == "*" {
-			allowAllOrigins = true
-			break
-		}
-
-		trimmedOrigin := utils.TrimSpace(origin)
-		pattern, ok := originpkg.ParsePattern(trimmedOrigin, corsSchemes)
-		if !ok {
-			panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
-		}
-		if pattern.Wildcard {
-			allowSubOrigins = append(allowSubOrigins, pattern.Subdomain)
-		} else {
-			allowOrigins[pattern.Origin] = struct{}{}
-		}
+	configured := cfg.AllowOrigins
+	if i := slices.Index(configured, "*"); i >= 0 {
+		allowAllOrigins = true
+		configured = configured[:i]
+	}
+	allowOrigins, invalidOrigin, ok := originpkg.ParseAllowList(configured, corsSchemes)
+	if !ok {
+		panic("[CORS] Invalid origin format in configuration: " + maskValue(utils.TrimSpace(invalidOrigin)))
 	}
 
 	// Validate CORS credentials configuration
@@ -210,19 +199,12 @@ func New(config ...Config) fiber.Handler {
 		// Set default allowOrigin to empty string
 		allowOrigin := ""
 
-		// Check allowed origins
+		// Check allowed origins: all of them, or the exact AllowOrigins entries
+		// and then the subdomain wildcards
 		if allowAllOrigins {
 			allowOrigin = "*"
-		} else {
-			// Check if the origin is in the list of allowed origins
-			if _, ok := allowOrigins[originHeader]; ok {
-				allowOrigin = originHeaderRaw
-			}
-
-			// Check if the origin is in the list of allowed subdomains
-			if allowOrigin == "" && originpkg.MatchAny(allowSubOrigins, originHeader, corsSchemes) {
-				allowOrigin = originHeaderRaw
-			}
+		} else if allowOrigins.Contains(originHeader) {
+			allowOrigin = originHeaderRaw
 		}
 
 		// Run AllowOriginsFunc if the logic for

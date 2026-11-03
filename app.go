@@ -9,6 +9,7 @@ package fiber
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
@@ -1361,7 +1362,7 @@ func (app *App) Config() Config {
 }
 
 // Handler returns the server handler.
-func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
+func (app *App) Handler() fasthttp.RequestHandler { //nolint:revive // Having both a Handler() (uppercase) and a handler() (lowercase) is fine.
 	// prepare the server for the start
 	app.startupProcess()
 	return app.selectRequestHandler()
@@ -1510,6 +1511,18 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 
 	// Add Content-Length if not provided with body
 	if req.Body != http.NoBody && req.Header.Get(HeaderContentLength) == "" {
+		// net/http reports a body it cannot size as -1, or as 0 with a body
+		if req.Body != nil && req.ContentLength <= 0 {
+			body, err := io.ReadAll(req.Body)
+			if closeErr := req.Body.Close(); err == nil {
+				err = closeErr
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to read request body: %w", err)
+			}
+			req.Body = io.NopCloser(bytes.NewReader(body))
+			req.ContentLength = int64(len(body))
+		}
 		req.Header.Add(HeaderContentLength, utils.FormatInt(req.ContentLength))
 	}
 
@@ -1534,6 +1547,11 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 
 	// Create test connection
 	conn := new(testConn)
+	var served net.Conn = conn
+	if req.TLS != nil {
+		// httptest.NewRequest sets TLS for an https target; serve such a request over TLS.
+		served = &testTLSConn{testConn: conn, state: *req.TLS}
+	}
 
 	// Write raw http request
 	if _, err = conn.r.Write(dump); err != nil {
@@ -1553,7 +1571,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 			}
 		}()
 
-		channel <- app.server.ServeConn(conn)
+		channel <- app.server.ServeConn(served)
 		returned = true
 	}()
 

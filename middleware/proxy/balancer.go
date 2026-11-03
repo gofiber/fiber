@@ -71,6 +71,11 @@ func Balancer(config ...Config) fiber.Handler {
 	}
 
 	// Return new handler
+	// A client of the caller's may stream response bodies, now or once a client is added to it, and
+	// the proxy can ask neither: its responses are read into one of the proxy's own either way. The
+	// host clients the proxy builds for Servers never stream.
+	streams := cfg.Client != nil
+
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
@@ -161,13 +166,12 @@ func Balancer(config ...Config) fiber.Handler {
 		// the net/http adaptor) so the serialized request line stays valid.
 		req.Header.SetProtocol("HTTP/1.1")
 
-		// Forward request
-		if err := lbc.Do(req, res); err != nil {
+		// Forward request. A client that streams response bodies hands the upstream's trailer section
+		// to the response after Do returned: such a response is read into one of the proxy's own, see
+		// upstreamResponse.
+		upstream := upstreamResponse(streams, res)
+		if err := adoptUpstreamResponse(res, upstream, lbc.Do(req, upstream), policy, keepHeaders...); err != nil {
 			return err
-		}
-
-		if !policy.KeepHopByHopHeaders && !stripHopByHopResponseHeaders(res, keepHeaders...) {
-			return fiber.ErrBadGateway
 		}
 
 		// Modify response
@@ -216,7 +220,8 @@ func newHostClient(u *url.URL, cfg *Config, policy SecurityPolicy) *fasthttp.Hos
 
 		DialDualStack: cfg.DialDualStack,
 
-		MaxResponseBodySize: cfg.MaxResponseBodySize,
+		// A negative value is the caller's choice of no bound, which fasthttp reads as zero.
+		MaxResponseBodySize: max(cfg.MaxResponseBodySize, 0),
 	}
 	// Validate the resolved IP at dial time so DNS rebinding cannot swap in a private address.
 	// fasthttp dials through DialTimeout when it is set and Dial otherwise, so both are guarded.

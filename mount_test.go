@@ -589,6 +589,58 @@ func Test_App_Mount_AutoHeadKeepsMiddleware(t *testing.T) {
 	}
 }
 
+// Test_App_Mount_ParentDisableHeadAutoRegister verifies that an app that turned the automatic HEAD
+// routes off takes none from the apps mounted into it: a guard it registered with Get has no HEAD
+// companion, so a HEAD route flattened from a sub-app would run the handler without it.
+func Test_App_Mount_ParentDisableHeadAutoRegister(t *testing.T) {
+	t.Parallel()
+	// The shared variants, plus the shapes a parent's opt-out has to reach: a group, a nested
+	// mount, and apps started before they were mounted.
+	host := apptest.WithHost("example.com")
+	extra := []routerMountVariant{
+		{name: "group", prefix: "/admin", host: host, mount: func(app, sub *App) { app.Group("/admin").Use("/", sub) }},
+		{name: "nested", prefix: "/admin", host: host, mount: func(app, sub *App) {
+			mid := New()
+			mid.Use("/", sub)
+			app.Use("/admin", mid)
+		}},
+		{name: "started before mounting", prefix: "/admin", host: host, mount: func(app, sub *App) {
+			sub.Handler()
+			app.Use("/admin", sub)
+		}},
+		{name: "domain started before mounting", prefix: "/admin", host: apptest.WithHost("api.example.com"), mount: func(app, sub *App) {
+			sub.Handler()
+			app.Domain("api.example.com").Use("/admin", sub)
+		}},
+	}
+	for _, tc := range slices.Concat(routerMountVariants, extra) {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{DisableHeadAutoRegister: true})
+			app.Get(tc.prefix+"/*", func(c Ctx) error {
+				c.Set("X-Guard", "ran")
+				return c.Next()
+			})
+			sub := New()
+			sub.Get("/x", func(c Ctx) error {
+				c.Set("X-Secret", "leaked")
+				return c.SendString("admin")
+			})
+			tc.mount(app, sub)
+
+			target := tc.prefix + "/x"
+			resp := apptest.ExpectBody(t, app, apptest.Req(MethodGet, target, tc.host), StatusOK, "admin")
+			require.Equal(t, "ran", resp.Header.Get("X-Guard"))
+			// Twice: the second pass sees the mount already expanded into the parent's stack.
+			for range 2 {
+				resp = apptest.Expect(t, app, apptest.Req(MethodHead, target, tc.host), StatusMethodNotAllowed)
+				require.Empty(t, resp.Header.Get("X-Secret"))
+			}
+			require.Empty(t, app.Stack()[app.methodInt(MethodHead)])
+		})
+	}
+}
+
 // Test_App_Mount_RootMountKeepsParentAutoHead verifies that a mounted app which
 // does not serve HEAD only withholds automatic HEAD routes from its own routes.
 // A mount at "/" covers every path, and the app above keeps its own.

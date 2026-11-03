@@ -49,6 +49,8 @@ type Config struct {
 	KeyHeader string
 
 	// KeepResponseHeaders is a list of headers that should be kept from the original response.
+	// Unchanged header lines already present before the downstream handler runs are not
+	// stored, even when named here: earlier middleware sets them again for each request.
 	// A response is replayed to every request that carries its key, so Set-Cookie and the
 	// obsolete Set-Cookie2 are kept only when named here: a stored cookie would hand the
 	// session of the first client to the others. Every other header is kept by default, so

@@ -1,6 +1,8 @@
 package encryptcookie
 
 import (
+	"reflect"
+
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -47,6 +49,7 @@ var ConfigDefault = Config{
 func configDefault(config ...Config) Config {
 	// Set default config
 	cfg := ConfigDefault
+	defaultEncryptor, defaultDecryptor := len(config) == 0, len(config) == 0
 
 	// Override config if provided
 	if len(config) > 0 {
@@ -61,11 +64,12 @@ func configDefault(config ...Config) Config {
 			cfg.Except = ConfigDefault.Except
 		}
 
-		if cfg.Encryptor == nil {
+		defaultEncryptor = cfg.Encryptor == nil
+		defaultDecryptor = cfg.Decryptor == nil
+		if defaultEncryptor {
 			cfg.Encryptor = ConfigDefault.Encryptor
 		}
-
-		if cfg.Decryptor == nil {
+		if defaultDecryptor {
 			cfg.Decryptor = ConfigDefault.Decryptor
 		}
 	}
@@ -74,8 +78,30 @@ func configDefault(config ...Config) Config {
 		panic("fiber: encrypt cookie middleware requires key")
 	}
 
-	if err := validateKey(cfg.Key); err != nil {
+	// Only replace inherited built-in callbacks; ConfigDefault may be customized.
+	defaultEncryptor = defaultEncryptor && cfg.Encryptor != nil &&
+		reflect.ValueOf(cfg.Encryptor).Pointer() == reflect.ValueOf(EncryptCookie).Pointer()
+	defaultDecryptor = defaultDecryptor && cfg.Decryptor != nil &&
+		reflect.ValueOf(cfg.Decryptor).Pointer() == reflect.ValueOf(DecryptCookie).Pointer()
+	if !defaultEncryptor && !defaultDecryptor {
+		if _, err := decodeKey(cfg.Key); err != nil {
+			panic(err)
+		}
+		return cfg
+	}
+
+	// Build the AEAD once only when an inherited callback needs it.
+	codec, err := newKeyedAEAD(cfg.Key)
+	if err != nil {
 		panic(err)
+	}
+
+	if defaultEncryptor {
+		cfg.Encryptor = codec.encrypt
+	}
+
+	if defaultDecryptor {
+		cfg.Decryptor = codec.decrypt
 	}
 
 	return cfg

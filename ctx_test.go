@@ -2746,7 +2746,7 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 			ln := startRawServer(t, app)
 
 			const chunked = "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n"
-			many := rawFieldLines("X-", "v", fieldname.MaxTrailers-2)
+			many := apptest.FieldLines("X-", "v", fieldname.MaxTrailers-2)
 			heads := []string{"", "X-User: admin\r\nX-Role: admin\r\n", "X-User: admin\r\nTrailer: X-User, X-Role\r\n"}
 			post := func(path, head, trailers string) string {
 				return "POST " + path + " HTTP/1.1\r\nHost: example.com\r\n" + head + chunked + trailers +
@@ -7155,13 +7155,65 @@ func Test_Ctx_Links(t *testing.T) {
 
 	// A rel value containing quotes/backslashes must be escaped so the
 	// quoted-string stays grammar-valid (RFC 9110 §5.6.4).
+	c.Response().Header.Del(HeaderLink)
 	c.Links("http://example.com", `next" x`)
 	require.Equal(t, `<http://example.com>; rel="next\" x"`, string(c.Response().Header.Peek(HeaderLink)))
 
 	// Unlike Attachment filenames, rel values are not sanitized first, so the
 	// shared serializer must also encode controls here.
+	c.Response().Header.Del(HeaderLink)
 	c.Links("http://example.com", "next\t\x01\n\r\x7f")
 	require.Equal(t, `<http://example.com>; rel="next%09%01\n\r%7F"`, string(c.Response().Header.Peek(HeaderLink)))
+}
+
+func Test_Ctx_Links_KeepsEarlierLinks(t *testing.T) {
+	t.Parallel()
+	t.Run("second call", func(t *testing.T) {
+		t.Parallel()
+		c := apptest.Ctx(t, New())
+		c.Links("http://api.example.com/users?page=2", "next")
+		c.Links("http://api.example.com/users?page=5", "last")
+		require.Equal(t, `<http://api.example.com/users?page=2>; rel="next",<http://api.example.com/users?page=5>; rel="last"`, c.GetRespHeader(HeaderLink))
+	})
+
+	t.Run("header set earlier", func(t *testing.T) {
+		t.Parallel()
+		c := apptest.Ctx(t, New())
+		c.Set(HeaderLink, "</style.css>; rel=preload; as=style")
+		c.Links("http://api.example.com/users?page=2", "next")
+		require.Equal(t, `</style.css>; rel=preload; as=style,<http://api.example.com/users?page=2>; rel="next"`, c.GetRespHeader(HeaderLink))
+	})
+
+	t.Run("early hints", func(t *testing.T) {
+		t.Parallel()
+		c := apptest.Ctx(t, New())
+		// HTTP/1.0 keeps SendEarlyHints from writing the 103, which needs a connection.
+		c.Request().Header.SetProtocol("HTTP/1.0")
+		require.NoError(t, c.SendEarlyHints([]string{"</style.css>; rel=preload; as=style", "</app.js>; rel=preload; as=script"}))
+		c.Links("http://api.example.com/users?page=2", "next")
+
+		// SendEarlyHints adds a field line per hint; Links folds them into one.
+		links := c.Response().Header.PeekAll(HeaderLink)
+		require.Len(t, links, 1)
+		require.Equal(t, `</style.css>; rel=preload; as=style,</app.js>; rel=preload; as=script,<http://api.example.com/users?page=2>; rel="next"`, string(links[0]))
+	})
+
+	t.Run("lower-case name", func(t *testing.T) {
+		t.Parallel()
+		c := apptest.Ctx(t, New(Config{DisableHeaderNormalizing: true}))
+		c.Response().Header.DisableNormalizing()
+		c.Response().Header.Set("link", "</style.css>; rel=preload; as=style")
+		c.Links("http://api.example.com/users?page=2", "next")
+
+		// The lower-case line is folded in and removed, not repeated beside the new one.
+		var links []string
+		for k, v := range c.Response().Header.All() {
+			if utils.EqualFold(string(k), HeaderLink) {
+				links = append(links, string(v))
+			}
+		}
+		require.Equal(t, []string{`</style.css>; rel=preload; as=style,<http://api.example.com/users?page=2>; rel="next"`}, links)
+	})
 }
 
 func Benchmark_Ctx_Links(b *testing.B) {
@@ -7169,6 +7221,8 @@ func Benchmark_Ctx_Links(b *testing.B) {
 
 	b.ReportAllocs()
 	for b.Loop() {
+		// Links adds to the header, so clear it to measure one call.
+		c.Response().Header.Del(HeaderLink)
 		c.Links("http://api.example.com/users?page=2", "next", "http://api.example.com/users?page=5", "last")
 	}
 }
@@ -8896,8 +8950,8 @@ func Benchmark_Ctx_GetReqHeaders_TrailerSection(b *testing.B) {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			c := apptest.Ctx(b, New())
 
-			raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + rawFieldLines("H", "1", n) +
-				"Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n" + rawFieldLines("T", "1", n) + "\r\n"
+			raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + apptest.FieldLines("H", "1", n) +
+				"Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n" + apptest.FieldLines("T", "1", n) + "\r\n"
 			require.NoError(b, c.Request().Read(bufio.NewReaderSize(strings.NewReader(raw), len(raw))))
 			require.Len(b, c.Request().Header.PeekTrailerKeys(), n)
 

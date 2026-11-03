@@ -204,6 +204,8 @@ func (r *Request) Context() context.Context
 
 **SetContext** sets the `context.Context` for the request, allowing you to cancel or time out the request. See the [Go blog](https://blog.golang.org/context) and [context](https://pkg.go.dev/context) docs for more details.
 
+A deadline bounds the exchange at the transport. A cancellation ends it on a client from `client.New` as well: the connection the request was using is closed, so neither the goroutine nor the connection outlives the call once the connection is open. A cancellation while the client is still dialing, or waiting for a free connection, takes effect when the dial or the wait ends, and the connection it produced is then closed unused: the built-in dialer gives up after 3 seconds, a dialer set with `SetDial` or `SetProxyURL` bounds itself. With `SetStreamResponseBody(true)` a cancellation does not reach the transport: the caller returns at once, the exchange waits for the server or the client's timeouts, and a body already being streamed ends when it is closed. A wrapped `fasthttp` client (`NewWithClient`, `NewWithHostClient`, `NewWithLBClient`) returns the caller at once while its exchange ends on its own, when the server answers or the client's own timeouts pass, so give such a client `ReadTimeout` and `WriteTimeout`.
+
 ```go title="Signature"
 func (r *Request) SetContext(ctx context.Context) *Request
 ```
@@ -1093,11 +1095,17 @@ Redirects are followed only for `GET`, `HEAD` and `QUERY` requests. Other method
 
 While redirects are followed:
 
-- After a `301`, `302` or `303` the request is repeated as a `GET` without its body; a `HEAD` stays a `HEAD`. A `307` or `308` keeps the method and the body.
+- After a `301`, `302` or `303` the request is repeated as a `GET` without its body; a `HEAD` stays a `HEAD`. A `307` or `308` keeps the method and the body. The trailer section goes with the body, instead of reaching the target as header lines; a request whose section announces more than 16 names fails the redirect with `ErrRedirectTrailers`.
 - When the target is on another host, the `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and `Cookie2` headers are dropped. They are removed whatever case they are stored under. The names set with [SetRedirectSensitiveHeaders](#setredirectsensitiveheaders) on the request or the client are dropped with them. The same host on any port, and its subdomains, keep them.
 - A redirect from `https` to `http` fails with `ErrRedirectDowngrade`. Leave the limit at `0` to take such a hop yourself.
 - A redirect without a `Location` fails with `fasthttp.ErrMissingLocation`. A `Location` that cannot be parsed or names a `scheme://` other than `http` or `https` fails with `fasthttp.ErrorInvalidURI` without being requested, as does a request URL that cannot be parsed. A chain longer than the limit fails with `fasthttp.ErrTooManyRedirects`.
 - With a [retry configuration](./rest.md#setretryconfig), a chain that fails, on one of the errors above or on a hop that cannot be sent, is retried from the request as it was sent: the original URL, method, body and headers. A request with a streamed body cannot be copied, so its retry starts from the hop the failed attempt reached. A chain that succeeds is not repeated.
+
+### Control characters in redirect targets
+
+The client rejects a `Location` containing any C0 control byte (`0x00`–`0x1F`, including tab, CR and LF) or DEL (`0x7F`) with `fasthttp.ErrorInvalidURI`, before sending the next request. It does not strip those bytes and follow a changed target. Percent-encoded bytes are not decoded by this check.
+
+This differs from the server's [`Redirect().Back()`](../api/redirect.md#back), which normalizes the referer as a browser would before checking its origin and emitting that normalized value. The client consumes an upstream response and rejects an invalid target; `Back` must check the same target that the browser will use. These policies apply at different trust boundaries and are not interchangeable.
 
 ## RedirectSensitiveHeaders
 

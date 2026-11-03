@@ -261,6 +261,29 @@ func Test_CookieJarGetFromResponse(t *testing.T) {
 	require.Empty(t, values)
 }
 
+// Test_CookieJar_ConcurrentInitialization checks that reads and a jar's first
+// write synchronize access to the cookie map.
+func Test_CookieJar_ConcurrentInitialization(t *testing.T) {
+	t.Parallel()
+	host := []byte("example.com")
+	uri := clientTestCURI(t, "http://example.com/")
+	cookie := clientTestCCookie(t, "k", "v")
+	for range 100 {
+		jar := &CookieJar{}
+		start, done := make(chan struct{}), make(chan struct{})
+		go func() {
+			<-start
+			jar.SetByHost(host, cookie)
+			close(done)
+		}()
+		close(start)
+		clientTestCPairs(jar.Get(uri))
+		<-done
+		require.Equal(t, []string{"k=v"}, clientTestCPairs(jar.Get(uri)))
+		jar.Release()
+	}
+}
+
 func Test_CookieJar_HostPort(t *testing.T) {
 	t.Parallel()
 	jar := &CookieJar{}
@@ -1318,4 +1341,20 @@ func Test_CookieJar_CookieName(t *testing.T) {
 		require.Equal(t, "k\t", string(c.Key()))
 		require.Equal(t, "k=v; session=real", cookieHeader(t, jar, "http://example.com/"))
 	})
+}
+
+// Test_CookieJar_NormalizedHostPaths checks that explicit and response cookies
+// share a scope across host case and port changes.
+func Test_CookieJar_NormalizedHostPaths(t *testing.T) {
+	t.Parallel()
+	for _, host := range []string{"EXAMPLE.com:443", "Example.COM"} {
+		t.Run(host, func(t *testing.T) {
+			t.Parallel()
+			jar := clientTestCJar(t)
+			jar.SetByHost([]byte(host), clientTestCCookie(t, "manual", "one"))
+			clientTestCReceive(jar, host, "/", "response=two; Path=/")
+			got := jar.getByHostAndPath([]byte("eXAMPLE.COM:8080"), []byte("/"), false)
+			require.ElementsMatch(t, []string{"manual=one", "response=two"}, clientTestCPairs(got))
+		})
+	}
 }

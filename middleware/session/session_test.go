@@ -1922,3 +1922,131 @@ func Test_Session_RegenerateAfterConcurrentEnd_OldIDWrittenBack(t *testing.T) {
 	require.Nil(t, sessionTestStored(t, store, id).Get("user"))
 	sessionTestRequireGone(t, store, inFlight.ID())
 }
+
+// Test_Session_UnchangedRequestKeepsConcurrentChange pins that a request which changed nothing, a read of a value
+// it could change in place included, does not store its snapshot over a change another request stored meanwhile,
+// also when it rotates the ID, which then carries that change; a request that did change the session, with Set or
+// in place through a value Get returned, stores its snapshot over it.
+func Test_Session_UnchangedRequestKeepsConcurrentChange(t *testing.T) {
+	t.Parallel()
+	editTags := func(s *Session) {
+		tags, ok := s.Get("tags").([]string)
+		require.True(t, ok)
+		tags[0] = "y"
+	}
+	for name, tc := range map[string]struct {
+		touch      func(*Session)
+		want       string
+		tags       []string
+		regenerate bool
+	}{
+		"scalar read":                            {touch: func(s *Session) { _ = s.Get("role") }, want: "user", tags: []string{"x"}},
+		"slice read":                             {touch: func(s *Session) { _ = s.Get("tags") }, want: "user", tags: []string{"x"}},
+		"slice read and regenerate":              {touch: func(s *Session) { _ = s.Get("tags") }, regenerate: true, want: "user", tags: []string{"x"}},
+		"nothing and regenerate":                 {touch: func(*Session) {}, regenerate: true, want: "user", tags: []string{"x"}},
+		"changed":                                {touch: func(s *Session) { s.Set("role", "owner") }, want: "owner", tags: []string{"x"}},
+		"changed and regenerate":                 {touch: func(s *Session) { s.Set("role", "owner") }, regenerate: true, want: "owner", tags: []string{"x"}},
+		"changed through a slice":                {touch: editTags, want: "admin", tags: []string{"y"}},
+		"changed through a slice and regenerate": {touch: editTags, regenerate: true, want: "admin", tags: []string{"y"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			store := NewStore(Config{Storage: memory.New()})
+			store.RegisterType([]string{})
+			id := seedSession(t, app, store, func(s *Session) { s.Set("role", "admin"); s.Set("tags", []string{"x"}) })
+
+			inFlight := loadSession(t, app, store, id)
+			tc.touch(inFlight)
+			other := loadSession(t, app, store, id)
+			other.Set("role", "user")
+			require.NoError(t, other.Save())
+			if tc.regenerate {
+				require.NoError(t, inFlight.Regenerate())
+				require.NotEqual(t, id, inFlight.ID())
+			}
+			require.NoError(t, inFlight.Save())
+
+			stored := sessionTestStored(t, store, inFlight.ID())
+			require.Equal(t, tc.want, stored.Get("role"))
+			require.Equal(t, tc.tags, stored.Get("tags"), "a value changed in place is the request's own change; one only read is not")
+			if tc.regenerate {
+				sessionTestRequireGone(t, store, id)
+			}
+		})
+	}
+}
+
+// Test_Session_RegenerateKeepsSessionOnUndecodableChange pins that a Regenerate which cannot decode what
+// another request stored, bytes a newer instance wrote for instance, still rotates the ID and keeps this
+// request's snapshot: the old key is already deleted, so storing nothing would log the user out.
+func Test_Session_RegenerateKeepsSessionOnUndecodableChange(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	store := NewStore(Config{Storage: memory.New()})
+	id := seedSession(t, app, store, func(s *Session) { s.Set("role", "admin") })
+
+	inFlight := loadSession(t, app, store, id)
+	other := loadSession(t, app, store, id)
+	other.Set("role", "user")
+	require.NoError(t, other.Save())
+	require.NoError(t, store.Storage.Set(inFlight.storageKey(), []byte("not a session"), 0))
+
+	require.Error(t, inFlight.Regenerate())
+	require.NotEqual(t, id, inFlight.ID())
+	require.Equal(t, "admin", inFlight.Get("role"), "the snapshot is left as it was")
+	require.NoError(t, inFlight.Save())
+
+	stored := sessionTestStored(t, store, inFlight.ID())
+	require.Equal(t, "admin", stored.Get("role"))
+	sessionTestRequireGone(t, store, id)
+}
+
+// Test_Session_RegenerateDropsKeyAnotherRequestDeleted pins that the change a Regenerate carries over
+// replaces the snapshot: a key the other request deleted does not survive the rotation.
+func Test_Session_RegenerateDropsKeyAnotherRequestDeleted(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	store := NewStore(Config{Storage: memory.New()})
+	id := seedSession(t, app, store, func(s *Session) { s.Set("role", "admin"); s.Set("gone", "x") })
+
+	inFlight := loadSession(t, app, store, id)
+	other := loadSession(t, app, store, id)
+	other.Delete("gone")
+	other.Set("role", "user")
+	require.NoError(t, other.Save())
+
+	require.NoError(t, inFlight.Regenerate())
+	require.Nil(t, inFlight.Get("gone"))
+	inFlight.Set("note", "y")
+	require.NoError(t, inFlight.Save())
+
+	stored := sessionTestStored(t, store, inFlight.ID())
+	require.Nil(t, stored.Get("gone"))
+	require.Equal(t, "user", stored.Get("role"))
+	require.Equal(t, "y", stored.Get("note"))
+}
+
+// Test_Session_RegenerateReportsStorageError checks that Regenerate reports the storage failing to read
+// what another request stored since the load and leaves the session as it is: the old ID still holds
+// that request's change.
+func Test_Session_RegenerateReportsStorageError(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	storage := storagetest.New()
+	store := NewStore(Config{Storage: storage})
+	id := seedSession(t, app, store, func(s *Session) { s.Set("role", "admin") })
+
+	inFlight := loadSession(t, app, store, id)
+	other := loadSession(t, app, store, id)
+	other.Set("role", "user")
+	require.NoError(t, other.Save())
+
+	errRead := errors.New("storage read failed")
+	storage.SetErr(storagetest.OpGet, storageKeyPrefix+id, errRead)
+	require.ErrorIs(t, inFlight.Regenerate(), errRead)
+	require.Equal(t, id, inFlight.ID())
+
+	storage.ClearErrs()
+	require.Equal(t, "user", sessionTestStored(t, store, id).Get("role"))
+}

@@ -3,8 +3,8 @@ module github.com/gofiber/fiber/v3
 go 1.26.0
 
 require (
-	github.com/gofiber/schema v1.9.2
-	github.com/gofiber/utils/v2 v2.6.3
+	github.com/gofiber/schema v1.9.3
+	github.com/gofiber/utils/v2 v2.6.4
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-colorable v0.1.16
 	github.com/mattn/go-isatty v0.0.24
@@ -18,7 +18,7 @@ require (
 
 require (
 	github.com/molecule-man/go-brrr v1.3.1 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	go.yaml.in/yaml/v3 v3.0.6 // indirect
 )
 
 require (

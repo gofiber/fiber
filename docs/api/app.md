@@ -998,6 +998,10 @@ func main() {
 }
 ```
 
+A request body of unknown length, such as an `*os.File` or an `io.Pipe` reader (`httptest.NewRequest` gives it a `ContentLength` of `-1`, `http.NewRequest` one of `0`), is read and sent with its measured `Content-Length`.
+
+A request with a `TLS` state, which `httptest.NewRequest` sets for an `https://` target, is served as a TLS connection: `c.Scheme()` is `https`, `c.Secure()` is `true` and `c.RequestCtx().TLSConnectionState()` returns that state.
+
 If not provided, TestConfig is set to the following defaults:
 
 ```go title="Default TestConfig"

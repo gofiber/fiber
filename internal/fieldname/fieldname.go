@@ -72,26 +72,68 @@ func DropTrailers(h *fasthttp.RequestHeader) bool {
 	if len(keys) > MaxTrailers {
 		return false
 	}
-	names := make([]string, len(keys))
-	for i, key := range keys {
-		names[i] = string(key)
+	// Del takes a name's header lines along with its trailer fields, so they are put back after.
+	var kept []string
+	for k, v := range h.All() {
+		if hasKey(keys, k) {
+			kept = append(kept, string(k), string(v))
+		}
+	}
+	dropTrailerKeys(h, keys, kept)
+	return true
+}
+
+// DropResponseTrailers is DropTrailers for a response: an upstream's trailer section, announced names and received
+// fields alike, is discarded rather than merged into the header section (RFC 9110 §6.5.1), which is where fasthttp
+// returns it when Trailer alone is deleted. It reports false, leaving h as it is, for more than MaxTrailers names.
+func DropResponseTrailers(h *fasthttp.ResponseHeader) bool {
+	keys := h.PeekTrailerKeys()
+	if len(keys) == 0 {
+		return true
+	}
+	if len(keys) > MaxTrailers {
+		return false
 	}
 	// Del takes a name's header lines along with its trailer fields, so they are put back after.
 	var kept []string
 	for k, v := range h.All() {
-		if slices.Contains(names, utils.UnsafeString(k)) {
+		if hasKey(keys, k) {
 			kept = append(kept, string(k), string(v))
 		}
 	}
-	for _, name := range names {
-		h.Del(name)
+	dropTrailerKeys(h, keys, kept)
+	return true
+}
+
+// trailerDeleter is the part of a request or response header the tail of a trailer drop uses; the walk over the
+// header lines stays typed, since the iterator allocates when it is reached through an interface.
+type trailerDeleter interface {
+	DelBytes(key []byte)
+	Del(key string)
+	Add(key, value string)
+}
+
+// dropTrailerKeys deletes the announced names, puts the kept lines back and deletes Trailer, in that order: a line
+// added while its name is still announced is filed with the section, which unannouncing returns to the header
+// section whatever the name, where fasthttp would drop a Date added as a header once its name is not announced.
+func dropTrailerKeys(h trailerDeleter, keys [][]byte, kept []string) {
+	for _, key := range keys {
+		h.DelBytes(key)
 	}
-	// With the trailer section empty, this has nothing to move into the header section.
-	h.Del(fasthttp.HeaderTrailer)
 	for i := 0; i < len(kept); i += 2 {
 		h.Add(kept[i], kept[i+1])
 	}
-	return true
+	h.Del(fasthttp.HeaderTrailer)
+}
+
+// hasKey reports whether keys holds key.
+func hasKey(keys [][]byte, key []byte) bool {
+	for _, k := range keys {
+		if bytes.Equal(k, key) {
+			return true
+		}
+	}
+	return false
 }
 
 // ClearTrailers is DropTrailers in one pass for any number of names, putting each line back in the buffer a value
@@ -428,6 +470,25 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 		}
 	})
 	return values
+}
+
+// CountLines is len(Lines(h, name, canonical)) without the lines.
+//
+//nolint:revive // flag-parameter: canonical is a property of the header store, not a mode of operation
+func CountLines(h Peeker, name string, canonical bool) int {
+	if canonical && !HasTrailers(h) {
+		return len(h.PeekAll(name))
+	}
+	if req, ok := h.(*fasthttp.RequestHeader); ok && InTrailer(req, name) {
+		return 0
+	}
+	n := 0
+	h.VisitAll(func(k, _ []byte) {
+		if utils.EqualFold(utils.UnsafeString(k), name) {
+			n++
+		}
+	})
+	return n
 }
 
 // First returns the first field line stored under name that holds anything, or
