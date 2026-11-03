@@ -677,7 +677,7 @@ The returned `*session.Middleware` is only valid while the request is being hand
 
 A handler the [Timeout](./timeout.md) middleware gave up on keeps its `*session.Middleware` and its session until it returns, and no other request is handed them. The session of such a request is not saved: the timeout response is already fixed and cannot carry a cookie, and the handler may still be changing the data.
 
-A session that was only read is written back to storage without being re-encoded. `Get` and `Keys` give that up when the value or key they return could share memory with the session (a map, slice, array, pointer or struct; scalars and `time.Time` are safe), because the caller could then change it in place without calling `Set`. Such an edit is stored only while no other request changed the session meanwhile: call `Set` with the edited value to make the request a writer, whose whole session then wins as described under [Session Security](#session-security).
+A session that was only read is written back to storage without being re-encoded. `Get` and `Keys` give that up when the value or key they return could share memory with the session (a map, slice, array, pointer or struct; scalars and `time.Time` are safe), because the caller could then change it in place without calling `Set`. Such an edit counts as the request's own change, as a `Set` does: its whole session then wins as described under [Session Security](#session-security), while a request that only read yields to a change another request stored meanwhile. Calling `Set` with the edited value says so outright and spares the save a decode of the snapshot.
 
 ### Store Methods
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -151,8 +152,9 @@ func (s *Session) ID() string {
 //
 // Note: returning a value that can alias the session (map, slice, array,
 // pointer, struct) makes every later Save re-encode, since the caller may
-// mutate it in place without calling Set. Such an edit is stored only while no
-// other request changed the session meanwhile; Set makes the request a writer.
+// mutate it in place without calling Set. Such an edit counts as the request's
+// own change, as a Set does, so its save stands over a change another request
+// stored meanwhile; a read alone yields to it.
 //
 // Usage:
 //
@@ -294,9 +296,8 @@ func (s *Session) RegenerateWithContext(ctx context.Context) error {
 	if ended {
 		s.dropped = true
 	}
-	// Another request changed it since the load and this one changed nothing: the rotated
-	// session carries that change, not the snapshot this request loaded. A value read and
-	// changed in place is lost with it, which is the safe side.
+	// Another request changed it since the load and this one changed nothing, in place
+	// included: the rotated session carries that change, not the snapshot this request loaded.
 	if stored != nil && s.overtakenBy(stored) {
 		// Rotated even when the decode fails: the old key is already gone, so the save
 		// stores this request's snapshot, which a failed decode leaves as it was, under
@@ -452,8 +453,8 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	// slides. Lock-free is enough; the flags are set before what they report.
 	data := s.rawData
 	// Set, Delete or Reset changed the session. A read of a value the caller may change
-	// in place only makes the snapshot stale: the data is encoded again, but the request
-	// wrote nothing another request's change has to yield to.
+	// in place only makes the snapshot stale: the data is encoded again, and whether it
+	// changed is asked only once another request's change is there to yield to.
 	mutated := s.data.mutated.Load()
 	changed := data == nil || mutated || s.data.dirty.Load()
 	if changed {
@@ -501,9 +502,32 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 }
 
 // overtakenBy reports whether raw, what the storage holds now, is a change another request
-// stored since the load that this one, having changed nothing itself, must not undo.
+// stored since the load that this one must not undo: one that neither called Set, Delete or
+// Reset nor changed a value Get returned in place. Such an edit counts as the request's own
+// change, as a Set does; it is told from a read by decoding the snapshot again, which only the
+// rare save that a concurrent change reaches pays for.
 func (s *Session) overtakenBy(raw []byte) bool {
-	return !s.data.mutated.Load() && !bytes.Equal(raw, s.rawData)
+	if s.data.mutated.Load() || bytes.Equal(raw, s.rawData) {
+		return false
+	}
+	return !s.data.dirty.Load() || !s.editedInPlace()
+}
+
+// editedInPlace reports whether the data differs from the snapshot it was decoded from, as it
+// does once a value Get returned was changed in place. gob writes a map in no fixed order, so the
+// snapshot is decoded again and compared as data rather than as bytes; one that no longer decodes
+// counts as edited, which keeps the request's data.
+func (s *Session) editedInPlace() bool {
+	var snapshot map[any]any
+	if err := gob.NewDecoder(bytes.NewReader(s.rawData)).Decode(&snapshot); err != nil {
+		return true
+	}
+	s.data.RLock()
+	defer s.data.RUnlock()
+	if len(snapshot) == 0 && len(s.data.Data) == 0 {
+		return false
+	}
+	return !reflect.DeepEqual(snapshot, s.data.Data)
 }
 
 // Keys retrieves all keys in the current session.

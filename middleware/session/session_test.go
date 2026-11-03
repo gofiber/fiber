@@ -1925,25 +1925,29 @@ func Test_Session_RegenerateAfterConcurrentEnd_OldIDWrittenBack(t *testing.T) {
 
 // Test_Session_UnchangedRequestKeepsConcurrentChange pins that a request which changed nothing, a read of a value
 // it could change in place included, does not store its snapshot over a change another request stored meanwhile,
-// also when it rotates the ID, which then carries that change; a request that did change the session stores it.
+// also when it rotates the ID, which then carries that change; a request that did change the session, with Set or
+// in place through a value Get returned, stores its snapshot over it.
 func Test_Session_UnchangedRequestKeepsConcurrentChange(t *testing.T) {
 	t.Parallel()
+	editTags := func(s *Session) {
+		tags, ok := s.Get("tags").([]string)
+		require.True(t, ok)
+		tags[0] = "y"
+	}
 	for name, tc := range map[string]struct {
 		touch      func(*Session)
 		want       string
+		tags       []string
 		regenerate bool
 	}{
-		"scalar read":               {touch: func(s *Session) { _ = s.Get("role") }, want: "user"},
-		"slice read":                {touch: func(s *Session) { _ = s.Get("tags") }, want: "user"},
-		"slice read and regenerate": {touch: func(s *Session) { _ = s.Get("tags") }, regenerate: true, want: "user"},
-		"nothing and regenerate":    {touch: func(*Session) {}, regenerate: true, want: "user"},
-		"changed":                   {touch: func(s *Session) { s.Set("role", "owner") }, want: "owner"},
-		"changed and regenerate":    {touch: func(s *Session) { s.Set("role", "owner") }, regenerate: true, want: "owner"},
-		"changed through a slice": {touch: func(s *Session) {
-			tags, ok := s.Get("tags").([]string)
-			require.True(t, ok)
-			tags[0] = "y"
-		}, want: "user"},
+		"scalar read":                            {touch: func(s *Session) { _ = s.Get("role") }, want: "user", tags: []string{"x"}},
+		"slice read":                             {touch: func(s *Session) { _ = s.Get("tags") }, want: "user", tags: []string{"x"}},
+		"slice read and regenerate":              {touch: func(s *Session) { _ = s.Get("tags") }, regenerate: true, want: "user", tags: []string{"x"}},
+		"nothing and regenerate":                 {touch: func(*Session) {}, regenerate: true, want: "user", tags: []string{"x"}},
+		"changed":                                {touch: func(s *Session) { s.Set("role", "owner") }, want: "owner", tags: []string{"x"}},
+		"changed and regenerate":                 {touch: func(s *Session) { s.Set("role", "owner") }, regenerate: true, want: "owner", tags: []string{"x"}},
+		"changed through a slice":                {touch: editTags, want: "admin", tags: []string{"y"}},
+		"changed through a slice and regenerate": {touch: editTags, regenerate: true, want: "admin", tags: []string{"y"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -1965,7 +1969,7 @@ func Test_Session_UnchangedRequestKeepsConcurrentChange(t *testing.T) {
 
 			stored := sessionTestStored(t, store, inFlight.ID())
 			require.Equal(t, tc.want, stored.Get("role"))
-			require.Equal(t, []string{"x"}, stored.Get("tags"), "a value changed in place by a request that changed nothing else is not stored over another request's change")
+			require.Equal(t, tc.tags, stored.Get("tags"), "a value changed in place is the request's own change; one only read is not")
 			if tc.regenerate {
 				sessionTestRequireGone(t, store, id)
 			}
