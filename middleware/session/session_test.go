@@ -2022,3 +2022,27 @@ func Test_Session_RegenerateDropsKeyAnotherRequestDeleted(t *testing.T) {
 	require.Equal(t, "user", stored.Get("role"))
 	require.Equal(t, "y", stored.Get("note"))
 }
+
+// Test_Session_RegenerateReportsStorageError checks that Regenerate reports the storage failing to read
+// what another request stored since the load and leaves the session as it is: the old ID still holds
+// that request's change.
+func Test_Session_RegenerateReportsStorageError(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	storage := storagetest.New()
+	store := NewStore(Config{Storage: storage})
+	id := seedSession(t, app, store, func(s *Session) { s.Set("role", "admin") })
+
+	inFlight := loadSession(t, app, store, id)
+	other := loadSession(t, app, store, id)
+	other.Set("role", "user")
+	require.NoError(t, other.Save())
+
+	errRead := errors.New("storage read failed")
+	storage.SetErr(storagetest.OpGet, storageKeyPrefix+id, errRead)
+	require.ErrorIs(t, inFlight.Regenerate(), errRead)
+	require.Equal(t, id, inFlight.ID())
+
+	storage.ClearErrs()
+	require.Equal(t, "user", sessionTestStored(t, store, id).Get("role"))
+}
