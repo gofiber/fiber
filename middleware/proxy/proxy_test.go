@@ -2423,9 +2423,8 @@ func Test_Proxy_Balancer_MaxResponseBodySize(t *testing.T) {
 // withDefaultRequestTimeoutForTest shortens the default client's request bound until tb ends.
 func withDefaultRequestTimeoutForTest(tb testing.TB, timeout time.Duration) {
 	tb.Helper()
-	prev := defaultRequestTimeout
-	defaultRequestTimeout = timeout
-	tb.Cleanup(func() { defaultRequestTimeout = prev })
+	prev := defaultRequestTimeout.Swap(int64(timeout))
+	tb.Cleanup(func() { defaultRequestTimeout.Store(prev) })
 }
 
 // Test_Proxy_DefaultBounds pins the bounds of the default client: a request has defaultRequestTimeout for

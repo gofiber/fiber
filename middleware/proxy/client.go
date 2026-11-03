@@ -19,8 +19,10 @@ const defaultMaxResponseBodySize = 100 << 20
 // DoTimeout and DoDeadline set themselves, rather than the client's read and
 // write timeouts: those cap the time a request may be given and, being set per
 // attempt, had fasthttp re-send an idempotent request to a stalled upstream until
-// its attempts ran out. A variable for the test that shortens it.
-var defaultRequestTimeout = 30 * time.Second
+// its attempts ran out. 30 seconds, set in init and held atomically, as activePolicy and
+// sharedClient are, for the test that shortens it: a handler of a test that ended before,
+// one app.Test gave up on at its timeout, may still read the bound while the test sets it.
+var defaultRequestTimeout atomic.Int64
 
 // defaultClient buffers at most defaultMaxResponseBodySize of a response and gives
 // each request defaultRequestTimeout, see doActionWithPolicy; set other bounds with
@@ -41,6 +43,7 @@ var (
 )
 
 func init() {
+	defaultRequestTimeout.Store(int64(30 * time.Second))
 	ensureClientGuarded(defaultClient)
 	sharedClient.Store(defaultClient)
 }

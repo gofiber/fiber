@@ -239,7 +239,7 @@ func doActionWithPolicy(
 	// unless the request has a bound of its own: DoTimeout and DoDeadline set theirs
 	// over this one, and a redirect hop takes the request's along.
 	if cli == defaultClient && req.GetTimeOut() == 0 {
-		req.SetTimeout(defaultRequestTimeout)
+		req.SetTimeout(time.Duration(defaultRequestTimeout.Load()))
 		defer req.SetTimeout(0)
 	}
 	// A client that streams response bodies hands the upstream's trailer section to the response after
