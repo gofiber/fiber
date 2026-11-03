@@ -53,7 +53,7 @@ func adoptUpstreamResponse(res, upstream *fasthttp.Response, err error, policy S
 		return err
 	}
 	if !upstream.IsBodyStream() {
-		// A body of known size within the client's bound, or none, is buffered.
+		// Nothing to stream: a response without a body, as a HEAD's or a 204, is buffered.
 		streamBody := res.StreamBody
 		upstream.CopyTo(res)
 		res.StreamBody = streamBody

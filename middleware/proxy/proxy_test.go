@@ -1073,7 +1073,8 @@ func proxyTestHandlersUnder(addr string, policy SecurityPolicy, after fiber.Hand
 }
 
 // proxyTestStreamingHandlersUnder is proxyTestHandlersUnder for clients that stream response bodies: Balancer
-// with a HostClient of its own, Forward and Do with a Client, and Do with the response set to stream.
+// with a HostClient of its own, wrapped as its own clients are or not, Forward and Do with a Client, and Do with
+// the response set to stream.
 func proxyTestStreamingHandlersUnder(addr string, policy SecurityPolicy, after fiber.Handler) map[string]fiber.Handler {
 	streaming := &fasthttp.Client{StreamResponseBody: true}
 	do := func(c fiber.Ctx, cli *fasthttp.Client) error {
@@ -1088,6 +1089,11 @@ func proxyTestStreamingHandlersUnder(addr string, policy SecurityPolicy, after f
 	return map[string]fiber.Handler{
 		"Balancer streaming": Balancer(Config{
 			Client:         &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{&fasthttp.HostClient{Addr: addr, StreamResponseBody: true}}},
+			SecurityPolicy: &policy,
+			ModifyResponse: after,
+		}),
+		"Balancer streaming per scheme": Balancer(Config{
+			Client:         &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{schemeClient{&fasthttp.HostClient{Addr: addr, StreamResponseBody: true}}}},
 			SecurityPolicy: &policy,
 			ModifyResponse: after,
 		}),
@@ -1183,6 +1189,11 @@ func Test_Proxy_UpstreamTrailerSectionDropped(t *testing.T) {
 				}
 
 				resp = apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Sized", "1")), fiber.StatusOK, "ok")
+				require.Equal(t, "header", resp.Header.Get("X-Kept"), name)
+				require.Equal(t, "0:", resp.Header.Get("X-Hook"), name)
+
+				// No body to stream: the response is buffered, by a client that streams as well.
+				resp = apptest.ExpectBody(t, app, apptest.Req(fiber.MethodHead, "/"), fiber.StatusOK, "")
 				require.Equal(t, "header", resp.Header.Get("X-Kept"), name)
 				require.Equal(t, "0:", resp.Header.Get("X-Hook"), name)
 			}
