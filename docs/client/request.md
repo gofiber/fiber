@@ -1099,6 +1099,12 @@ While redirects are followed:
 - A redirect without a `Location` fails with `fasthttp.ErrMissingLocation`. A `Location` that cannot be parsed or names a `scheme://` other than `http` or `https` fails with `fasthttp.ErrorInvalidURI` without being requested, as does a request URL that cannot be parsed. A chain longer than the limit fails with `fasthttp.ErrTooManyRedirects`.
 - With a [retry configuration](./rest.md#setretryconfig), a chain that fails, on one of the errors above or on a hop that cannot be sent, is retried from the request as it was sent: the original URL, method, body and headers. A request with a streamed body cannot be copied, so its retry starts from the hop the failed attempt reached. A chain that succeeds is not repeated.
 
+### Control characters in redirect targets
+
+The client rejects a `Location` containing any C0 control byte (`0x00`–`0x1F`, including tab, CR and LF) or DEL (`0x7F`) with `fasthttp.ErrorInvalidURI`, before sending the next request. It does not strip those bytes and follow a changed target. Percent-encoded bytes are not decoded by this check.
+
+This differs from the server's [`Redirect().Back()`](../api/redirect.md#back), which normalizes the referer as a browser would before checking its origin and emitting that normalized value. The client consumes an upstream response and rejects an invalid target; `Back` must check the same target that the browser will use. These policies apply at different trust boundaries and are not interchangeable.
+
 ## RedirectSensitiveHeaders
 
 **RedirectSensitiveHeaders** returns a copy of the header names set on the request with [SetRedirectSensitiveHeaders](#setredirectsensitiveheaders). The client's own list is not included.
