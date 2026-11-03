@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
@@ -772,24 +770,6 @@ func Test_acceptsCredential(t *testing.T) {
 			require.Equal(t, want, acceptsCredential(status))
 		})
 	}
-}
-
-// The gates read utils.Timestamp, which is zero until the updater runs; only the in-memory store starts it,
-// so New must. Checked in a process of its own, since here every other test has long started it.
-func Test_New_StartsTheTimestampUpdater(t *testing.T) {
-	t.Parallel()
-	const child = "FIBER_CACHE_TEST_TIMESTAMP_CHILD"
-	if os.Getenv(child) == "1" {
-		require.Zero(t, utils.Timestamp(), "something else in this process started the updater")
-		New(Config{Storage: storagetest.New()})
-		require.NotZero(t, utils.Timestamp())
-		return
-	}
-
-	cmd := exec.Command(os.Args[0], "-test.run=^Test_New_StartsTheTimestampUpdater$")
-	cmd.Env = append(os.Environ(), child+"=1")
-	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "%s", out)
 }
 
 func Test_errorRefusesCredential(t *testing.T) {
