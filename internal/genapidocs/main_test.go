@@ -86,6 +86,11 @@ func ExampleKind() {
 	// 0
 	// 1
 }
+
+func ExampleNewConfig_silent() {
+	sample.NewConfig(1)
+	// Output:
+}
 `,
 		"support_test.go": "package sample_test\n\nvar value = 4\n",
 		// One example plus another declaration makes go/doc publish the whole file.
@@ -132,7 +137,8 @@ func TestGenerate(t *testing.T) {
 	path := filepath.Join(dir, "docs.md")
 	input := "Before.\n\n<!-- go:doc Config DefaultConfig NewConfig Box.Value -->\nstale API\n<!-- /go:doc -->\n\n" +
 		"Example.\n\n<!-- go:doc ExampleDouble -->\nstale example\n<!-- /go:doc -->\n\n" +
-		"<!-- go:doc Double KindA KindB -->\n<!-- /go:doc -->\n\n<!-- go:doc ExampleKind ExampleBox -->\n<!-- /go:doc -->\n\nAfter.\n"
+		"<!-- go:doc Double KindA KindB -->\n<!-- /go:doc -->\n\n<!-- go:doc ExampleKind ExampleBox -->\n<!-- /go:doc -->\n\n" +
+		"<!-- go:doc ExampleNewConfig_silent -->\n<!-- /go:doc -->\n\nAfter.\n"
 	require.NoError(t, os.WriteFile(path, []byte(input), 0o600))
 	require.NoError(t, generate(dir, path))
 	result, err := os.ReadFile(path)
@@ -147,6 +153,7 @@ func TestGenerate(t *testing.T) {
 	require.Contains(t, string(result), "// Double doubles a number:\n//\n//     Double(2)\nfunc Double(n int) int")
 	require.Equal(t, 1, strings.Count(string(result), "KindA Kind = iota"))
 	require.Contains(t, string(result), "Unordered output:\n\n```text\n0\n1\n```")
+	require.Contains(t, string(result), "sample.NewConfig(1)\n}\n```\n\nOutput:\n\n```text\n```")
 	require.Contains(t, string(result), "func show(b sample.Box[int])")
 	require.NotContains(t, string(result), "func Example")
 	require.NotContains(t, string(result), "import ()")

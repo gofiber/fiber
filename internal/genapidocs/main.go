@@ -42,12 +42,13 @@ type packageDocs struct {
 }
 
 type symbolDoc struct {
-	node      ast.Node
-	text      string
-	output    string
-	comments  []*ast.CommentGroup
-	unordered bool
-	fragment  bool
+	node        ast.Node
+	text        string
+	output      string
+	comments    []*ast.CommentGroup
+	unordered   bool
+	emptyOutput bool
+	fragment    bool
 }
 
 // main regenerates the current package's marked documentation blocks.
@@ -220,7 +221,7 @@ func loadPackage(dir string) (packageDocs, error) {
 		}
 		exampleNames[name] = true
 		// The example's doc comment names a test function the program does not contain, so it is not published.
-		symbol := symbolDoc{output: example.Output, unordered: example.Unordered}
+		symbol := symbolDoc{output: example.Output, unordered: example.Unordered, emptyOutput: example.EmptyOutput}
 		if play != nil {
 			symbol.node = play
 		}
@@ -407,7 +408,7 @@ func renderSymbols(names []string, docs packageDocs, selected map[ast.Node]bool)
 		}
 		code.Write(printed)
 		fmt.Fprint(&code, "\n```\n")
-		if symbol.output != "" {
+		if symbol.output != "" || symbol.emptyOutput {
 			label := "Output:"
 			if symbol.unordered {
 				label = "Unordered output:"

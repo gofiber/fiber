@@ -41,6 +41,17 @@ func TestMain(m *testing.M) {
 // TestCLI exercises generation and failures through the actual command entry point.
 func TestCLI(t *testing.T) {
 	t.Parallel()
+	executable, err := os.Executable()
+	require.NoError(t, err)
+	// One fake go shared by every failing row: the test binary answers as `go` when invoked under that name.
+	bin := t.TempDir()
+	name := "go"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	binary, err := os.ReadFile(executable)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(bin, name), binary, 0o700))
 	for _, tc := range []struct {
 		name   string
 		source string
@@ -62,21 +73,11 @@ func TestCLI(t *testing.T) {
 			dir := fixture(t)
 			path := filepath.Join(dir, "docs.md")
 			require.NoError(t, os.WriteFile(path, []byte("<!-- go:doc Config -->\nstale\n<!-- /go:doc -->\n"), 0o600))
-			executable, err := os.Executable()
-			require.NoError(t, err)
 			cmd := exec.Command(executable, "-out", path)
 			cmd.Dir = dir
 			cmd.Env = append(os.Environ(), "GENAPIDOCS_CLI_TEST=1")
 			// A fake go keeps failures independent of any go.mod or go.work above the temp dir.
 			if tc.json != "" || tc.file != "" || tc.fail {
-				bin := t.TempDir()
-				name := "go"
-				if runtime.GOOS == "windows" {
-					name += ".exe"
-				}
-				binary, readErr := os.ReadFile(executable)
-				require.NoError(t, readErr)
-				require.NoError(t, os.WriteFile(filepath.Join(bin, name), binary, 0o700))
 				output := tc.json
 				if tc.file != "" {
 					require.NoError(t, os.WriteFile(filepath.Join(dir, tc.file), []byte(tc.source), 0o600))
