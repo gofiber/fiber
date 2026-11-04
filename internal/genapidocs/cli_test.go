@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag" //nolint:depguard // Subprocess tests run the real CLI with its own flag set and coverage directory.
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -26,6 +25,10 @@ func TestMain(m *testing.M) {
 					panic(err)
 				}
 			}
+			if os.Getenv("GENAPIDOCS_GO_FAIL") == "1" {
+				fmt.Fprint(os.Stderr, "fake go list failure")
+				os.Exit(1)
+			}
 			fmt.Fprint(os.Stdout, os.Getenv("GENAPIDOCS_GO_OUTPUT"))
 			os.Exit(0)
 		}
@@ -45,9 +48,10 @@ func TestCLI(t *testing.T) {
 		json   string
 		want   string
 		block  bool
+		fail   bool
 	}{
 		{name: "success"},
-		{name: "go list", want: "go list:"},
+		{name: "go list", fail: true, want: "go list: fake go list failure"},
 		{name: "decode", json: "not JSON", want: "decode go list:"},
 		{name: "parse", file: "broken.go", source: "package sample\nvar invalid = )", want: "parse broken.go:"},
 		{name: "extract", file: "source.txt", source: "package sample", want: "extract package documentation:"},
@@ -63,13 +67,8 @@ func TestCLI(t *testing.T) {
 			cmd := exec.Command(executable, "-out", path)
 			cmd.Dir = dir
 			cmd.Env = append(os.Environ(), "GENAPIDOCS_CLI_TEST=1")
-			if cover := flag.Lookup("test.gocoverdir"); cover != nil && cover.Value.String() != "" {
-				cmd.Env = append(cmd.Env, "GOCOVERDIR="+cover.Value.String())
-			}
-			if tc.name == "go list" {
-				require.NoError(t, os.Remove(filepath.Join(dir, "go.mod")))
-			}
-			if tc.json != "" || tc.file != "" {
+			// A fake go keeps failures independent of any go.mod or go.work above the temp dir.
+			if tc.json != "" || tc.file != "" || tc.fail {
 				bin := t.TempDir()
 				name := "go"
 				if runtime.GOOS == "windows" {
@@ -84,6 +83,9 @@ func TestCLI(t *testing.T) {
 					output = fmt.Sprintf(`{"Dir":%q,"ImportPath":"example.test/sample","GoFiles":[%q]}`, filepath.ToSlash(dir), tc.file)
 				}
 				cmd.Env = append(cmd.Env, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GENAPIDOCS_GO_OUTPUT="+output)
+				if tc.fail {
+					cmd.Env = append(cmd.Env, "GENAPIDOCS_GO_FAIL=1")
+				}
 				if tc.block {
 					cmd.Env = append(cmd.Env, "GENAPIDOCS_BLOCK_WRITE="+path)
 				}

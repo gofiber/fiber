@@ -61,7 +61,7 @@ tidy:
 betteralign:
 	GOTOOLCHAIN=$(GOVERSION) go run github.com/dkorunic/betteralign/cmd/betteralign@v0.8.0 -test_files -generated_files -apply ./...
 
-## generate: ⚡️ Generate msgp && interface implementations
+## generate: ⚡️ Generate msgp, interface implementations and API docs
 .PHONY: generate
 generate:
 	go install github.com/tinylib/msgp@latest

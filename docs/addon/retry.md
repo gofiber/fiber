@@ -20,11 +20,30 @@ addon returns an error.
 
 ## Signatures
 
-<!-- go:doc NewExponentialBackoff ExponentialBackoff.Retry -->
+<!-- go:doc NewExponentialBackoff ExponentialBackoff ExponentialBackoff.Retry -->
 
 ```go
 // NewExponentialBackoff creates a ExponentialBackoff with default values.
 func NewExponentialBackoff(config ...Config) *ExponentialBackoff
+```
+
+```go
+// ExponentialBackoff is a retry mechanism for retrying some calls.
+type ExponentialBackoff struct {
+    // InitialInterval is the initial time interval for backoff algorithm.
+    InitialInterval time.Duration
+
+    // MaxBackoffTime is the maximum time duration for backoff algorithm. It limits
+    // the maximum sleep time.
+    MaxBackoffTime time.Duration
+
+    // Multiplier is a multiplier number of the backoff algorithm.
+    Multiplier float64
+
+    // MaxRetryCount is the maximum number of retry count.
+    MaxRetryCount int
+    // contains filtered or unexported fields
+}
 ```
 
 ```go
@@ -41,16 +60,13 @@ func (e *ExponentialBackoff) Retry(f func() error) error
 
 <!-- /go:doc -->
 
-`Retry` calls `f` up to `MaxRetryCount` times in total and returns `nil` as soon as `f` returns `nil`. If every attempt fails, it returns the error of the last attempt. Each call to `Retry` starts from `InitialInterval` with its own state, so one `ExponentialBackoff` can be shared.
-
-A field left at zero or below takes its default from the [Default Config](#default-config-example), also on a `retry.ExponentialBackoff` you build as a struct literal instead of with `NewExponentialBackoff`. Even `retry.ExponentialBackoff{}` therefore calls `f` at least once, and up to 10 times when it keeps failing, waiting between the attempts as the default does: about 160 seconds in all. A literal that sets only some fields waits as well, so `retry.ExponentialBackoff{MaxRetryCount: 2}` no longer retries at once. To retry without waiting, set `MaxBackoffTime` to a short duration such as `time.Nanosecond`.
+A field left at zero or below takes its default from the [Default Config](#default-config-example), also on a `retry.ExponentialBackoff` you build as a struct literal instead of with `NewExponentialBackoff`. Even `retry.ExponentialBackoff{}` therefore calls `f` at least once, and up to `DefaultConfig.MaxRetryCount` times when it keeps failing, waiting between the attempts as the default does. A literal that sets only some fields waits as well, so `retry.ExponentialBackoff{MaxRetryCount: 2}` no longer retries at once. To retry without waiting, set `MaxBackoffTime` to a short duration such as `time.Nanosecond`.
 
 ## Examples
 
 <!-- go:doc ExampleExponentialBackoff_Retry -->
 
 ```go
-// ExampleExponentialBackoff_Retry demonstrates retrying a transient failure.
 package main
 
 import (
@@ -90,7 +106,6 @@ error: <nil>
 <!-- go:doc ExampleNewExponentialBackoff_defaults -->
 
 ```go
-// ExampleNewExponentialBackoff_defaults shows the default retry settings.
 package main
 
 import (
@@ -119,7 +134,6 @@ Output:
 <!-- go:doc ExampleNewExponentialBackoff -->
 
 ```go
-// ExampleNewExponentialBackoff shows a custom backoff configuration.
 package main
 
 import (
@@ -194,7 +208,6 @@ var DefaultConfig = Config{
     MaxBackoffTime:  32 * time.Second,
     Multiplier:      2.0,
     MaxRetryCount:   10,
-    // contains filtered or unexported fields
 }
 ```
 

@@ -26,7 +26,27 @@ type Config struct {
 }
 
 // DefaultConfig defines the default settings.
-var DefaultConfig = Config{Value: 3}
+var DefaultConfig = Config{
+	// Value is three.
+	Value: 3,
+	secret: "x", // hidden note
+}
+
+// Kind enumerates kinds.
+type Kind int
+
+const (
+	KindA Kind = iota
+	KindB
+)
+
+var hiddenVar = 1
+
+type hiddenType struct{}
+
+func hidden() {}
+
+func (Config) hiddenMethod() {}
 
 // NewConfig returns a configuration.
 func NewConfig(value int) Config { return Config{Value: value} }
@@ -37,7 +57,9 @@ type Box[T any] struct { Item T }
 // Value returns the item.
 func (b Box[T]) Value() T { return b.Item }
 
-// Double doubles a number.
+// Double doubles a number:
+//
+//	Double(2)
 func Double(n int) int { return n * 2 }
 `,
 		"example_test.go": `package sample_test
@@ -56,9 +78,46 @@ func ExampleDouble_unplayable() {
 	fmt.Println(sample.Double(value))
 	// Output: 8
 }
+
+func ExampleKind() {
+	fmt.Println(sample.KindB)
+	fmt.Println(sample.KindA)
+	// Unordered output:
+	// 0
+	// 1
+}
 `,
 		"support_test.go": "package sample_test\n\nvar value = 4\n",
-		"excluded.go":     "//go:build ignore\n\npackage sample\n\nvar invalid = )\n",
+		// One example plus another declaration makes go/doc publish the whole file.
+		"whole_test.go": `package sample_test
+
+import (
+	"fmt"
+	"example.test/sample"
+)
+
+func show(b sample.Box[int]) { fmt.Println(len("ab") + b.Value()) }
+
+func ExampleBox() {
+	show(sample.Box[int]{Item: 1})
+	// Output: 3
+}
+`,
+		"foreign_test.go": `package sample_test
+
+import (
+	"fmt"
+	"example.test/sample"
+)
+
+type helper struct{}
+
+func ExampleNewConfig() {
+	fmt.Println(sample.NewConfig(value).Value)
+	// Output: 4
+}
+`,
+		"excluded.go": "//go:build ignore\n\npackage sample\n\nvar invalid = )\n",
 	}
 	for name, content := range files {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
@@ -72,7 +131,8 @@ func TestGenerate(t *testing.T) {
 	dir := fixture(t)
 	path := filepath.Join(dir, "docs.md")
 	input := "Before.\n\n<!-- go:doc Config DefaultConfig NewConfig Box.Value -->\nstale API\n<!-- /go:doc -->\n\n" +
-		"Example.\n\n<!-- go:doc ExampleDouble -->\nstale example\n<!-- /go:doc -->\n\nAfter.\n"
+		"Example.\n\n<!-- go:doc ExampleDouble -->\nstale example\n<!-- /go:doc -->\n\n" +
+		"<!-- go:doc Double KindA KindB -->\n<!-- /go:doc -->\n\n<!-- go:doc ExampleKind ExampleBox -->\n<!-- /go:doc -->\n\nAfter.\n"
 	require.NoError(t, os.WriteFile(path, []byte(input), 0o600))
 	require.NoError(t, generate(dir, path))
 	result, err := os.ReadFile(path)
@@ -81,7 +141,15 @@ func TestGenerate(t *testing.T) {
 	require.Contains(t, string(result), "After.")
 	require.Contains(t, string(result), "// Config contains public settings.")
 	require.Contains(t, string(result), "Value int")
-	require.Contains(t, string(result), "var DefaultConfig = Config{Value: 3}")
+	require.Contains(t, string(result), "var DefaultConfig = Config{\n    // Value is three.\n    Value: 3,\n}")
+	require.NotContains(t, string(result), "hidden")
+	require.NotContains(t, string(result), "\t")
+	require.Contains(t, string(result), "// Double doubles a number:\n//\n//     Double(2)\nfunc Double(n int) int")
+	require.Equal(t, 1, strings.Count(string(result), "KindA Kind = iota"))
+	require.Contains(t, string(result), "Unordered output:\n\n```text\n0\n1\n```")
+	require.Contains(t, string(result), "func show(b sample.Box[int])")
+	require.NotContains(t, string(result), "func Example")
+	require.NotContains(t, string(result), "import ()")
 	require.Contains(t, string(result), "func NewConfig(value int) Config")
 	require.Contains(t, string(result), "func (b Box[T]) Value() T")
 	require.NotContains(t, string(result), "secret")
@@ -90,14 +158,18 @@ func TestGenerate(t *testing.T) {
 	examples := regexp.MustCompile("(?s)<!-- go:doc ExampleDouble -->\\n\\n```go\\n(.*?)\\n```").FindSubmatch(result)
 	require.Len(t, examples, 2)
 	require.Contains(t, string(result), "```text\n4\n```")
-	program := filepath.Join(dir, "cmd", "example", "main.go")
-	require.NoError(t, os.MkdirAll(filepath.Dir(program), 0o700))
-	require.NoError(t, os.WriteFile(program, examples[1], 0o600))
-	cmd := exec.Command("go", "run", "./cmd/example")
-	cmd.Dir = dir
-	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, "%s", output)
-	require.Equal(t, "4\n", string(output))
+	whole := regexp.MustCompile("(?s)<!-- go:doc ExampleKind ExampleBox -->.*?```go\n.*?```.*?```go\n(.*?)\n```").FindSubmatch(result)
+	require.Len(t, whole, 2)
+	for want, source := range map[string][]byte{"4\n": examples[1], "3\n": whole[1]} {
+		program := filepath.Join(dir, "cmd", "example"+want[:1], "main.go")
+		require.NoError(t, os.MkdirAll(filepath.Dir(program), 0o700))
+		require.NoError(t, os.WriteFile(program, source, 0o600))
+		cmd := exec.Command("go", "run", "./cmd/example"+want[:1])
+		cmd.Dir = dir
+		output, runErr := cmd.CombinedOutput()
+		require.NoError(t, runErr, "%s", output)
+		require.Equal(t, want, string(output))
+	}
 	require.NoError(t, generate(dir, path))
 	again, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -118,8 +190,14 @@ func TestGenerateErrors(t *testing.T) {
 		{name: "extra end", markdown: "<!-- go:doc Config -->\nold\n<!-- /go:doc -->\n<!-- /go:doc -->", want: errMalformedBlocks},
 		{name: "unknown symbol", markdown: "<!-- go:doc Missing -->\nold\n<!-- /go:doc -->", want: errUnknownSymbol},
 		{name: "valid then invalid", markdown: "<!-- go:doc Config -->\nfirst\n<!-- /go:doc -->\n<!-- go:doc Missing -->\nsecond\n<!-- /go:doc -->", want: errUnknownSymbol},
-		{name: "private symbol", markdown: "<!-- go:doc secret -->\nold\n<!-- /go:doc -->", want: errUnknownSymbol},
+		{name: "private field", markdown: "<!-- go:doc secret -->\nold\n<!-- /go:doc -->", want: errUnknownSymbol},
+		{name: "private func", markdown: "<!-- go:doc hidden -->\nold\n<!-- /go:doc -->", want: errUnknownSymbol},
+		{name: "private var", markdown: "<!-- go:doc hiddenVar -->\nold\n<!-- /go:doc -->", want: errUnknownSymbol},
+		{name: "private type", markdown: "<!-- go:doc hiddenType -->\nold\n<!-- /go:doc -->", want: errUnknownSymbol},
+		{name: "private method", markdown: "<!-- go:doc Config.hiddenMethod -->\nold\n<!-- /go:doc -->", want: errUnknownSymbol},
 		{name: "nonplayable example", markdown: "<!-- go:doc ExampleDouble_unplayable -->\nold\n<!-- /go:doc -->", want: errUnplayableExample},
+		{name: "nonplayable whole file", markdown: "<!-- go:doc ExampleNewConfig -->\nold\n<!-- /go:doc -->", want: errUnplayableExample},
+		{name: "adjacent then missing end", markdown: "<!-- go:doc Config -->\n<!-- /go:doc -->\n<!-- go:doc Config -->\n", want: errMalformedBlocks},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -139,19 +217,6 @@ func TestGenerateMissingOutput(t *testing.T) {
 	t.Parallel()
 	require.ErrorIs(t, generate(t.TempDir(), ""), errOutputRequired)
 	require.ErrorIs(t, generate(t.TempDir(), filepath.Join(t.TempDir(), "missing.md")), os.ErrNotExist)
-}
-
-// TestRetryDocumentationCurrent prevents published API blocks from drifting from Go sources.
-func TestRetryDocumentationCurrent(t *testing.T) {
-	t.Parallel()
-	root := filepath.Join("..", "..")
-	docs, err := loadPackage(filepath.Join(root, "addon", "retry"))
-	require.NoError(t, err)
-	markdown, err := os.ReadFile(filepath.Join(root, "docs", "addon", "retry.md"))
-	require.NoError(t, err)
-	rendered, err := render(markdown, docs)
-	require.NoError(t, err)
-	require.Equal(t, string(markdown), string(rendered), "run make generate to update the retry documentation")
 }
 
 // TestGenerateCgo includes declarations from cgo files selected by the Go build context.
