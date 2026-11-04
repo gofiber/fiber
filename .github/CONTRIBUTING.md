@@ -38,7 +38,9 @@ The Go source is canonical: edit it and run `make generate` to update the page.
 - Each block is a `<!-- go:doc Config -->` line and a `<!-- /go:doc -->` line, both on
   lines of their own; the body between them may be empty. Names are exported
   declarations (`Type`, `Func`, `Type.Method`, `Type.Field`, a const or var name) or example
-  functions (`ExampleType_Method`); examples must be standalone programs.
+  functions, for example `Example`, `ExampleType`, or `ExampleType_Method`.
+  An optional `_suffix` is supported, as in `ExampleNewExponentialBackoff_defaults`;
+  examples must be standalone programs.
 - Prose outside the blocks is preserved, so do not restate generated facts there.
 - The `Generated API docs` workflow fails when a page drifts from its source.
 
