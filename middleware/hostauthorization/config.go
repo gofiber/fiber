@@ -43,8 +43,10 @@ type Config struct {
 	// lowercased, IDN labels converted to Punycode, IPv6 addresses written in
 	// their RFC 5952 Section 4 form, RFC 1035 length limits enforced
 	// (≤253 total / ≤63 per-label). An IPv4-mapped entry is stored as its IPv4
-	// address ("[::ffff:10.0.0.5]" admits "10.0.0.5"). An entry with a colon that is
-	// not an IPv6 address, or a "*." entry holding an IP address, panics.
+	// address ("[::ffff:10.0.0.5]" admits "10.0.0.5"). An entry no request could
+	// match panics: a URL, a "%", a port that is not numeric, brackets around
+	// anything but an IPv6 address, another colon that is not part of an IPv6
+	// address, or a "*." entry holding an IP address.
 	//
 	// Required if AllowedHostsFunc is nil.
 	AllowedHosts []string

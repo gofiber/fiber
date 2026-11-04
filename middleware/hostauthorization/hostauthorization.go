@@ -46,20 +46,17 @@ func parseAllowedHosts(hosts []string) parsedHosts {
 			h = h[2:]
 		}
 
-		var isIPv6 bool
-		h, isIPv6 = normalizeHostKind(h)
+		var isIP bool
+		h, isIP = normalizeEntry(entry, h)
 		if h == "" {
 			continue
 		}
-		// Unmapping would turn "*.[::ffff:1.2.3.4]" into a live ".1.2.3.4" suffix.
-		if isWildcard && isIPv6 {
-			panic("hostauthorization: invalid host " + entry + ": subdomain wildcards take a domain name, not an IP address")
+		if isWildcard && isIP {
+			panic(invalidEntry(entry, "subdomain wildcards take a domain name, not an IP address"))
 		}
-		if !isIPv6 && strings.IndexByte(h, ':') >= 0 {
-			panic("hostauthorization: invalid host " + entry + ": not a valid IPv6 address")
+		if !isIP {
+			validateHostLength(h)
 		}
-
-		validateHostLength(h)
 
 		if isWildcard {
 			// Stored with leading dot so the hot-path HasSuffix check stays alloc-free.
@@ -77,10 +74,6 @@ func validateHostLength(host string) {
 		panic(fmt.Sprintf("hostauthorization: host %q exceeds RFC 1035 maximum of %d characters (%d chars)",
 			host, maxDomainLength, len(host)))
 	}
-	// IPv6 hosts contain colons and aren't dotted labels.
-	if strings.IndexByte(host, ':') >= 0 {
-		return
-	}
 	for label := range strings.SplitSeq(host, ".") {
 		if len(label) > maxLabelLength {
 			panic(fmt.Sprintf("hostauthorization: host %q has label %q exceeding RFC 1035 limit of %d characters (%d chars)",
@@ -89,45 +82,53 @@ func validateHostLength(host string) {
 	}
 }
 
-// normalizeHost strips port, trailing dot, and IPv6 brackets, lowercases,
-// converts IDN labels to Punycode (matching what browsers send), and writes
-// IPv6 addresses in canonical form (see canonicalIPv6).
-func normalizeHost(host string) string {
-	host, _ = normalizeHostKind(host)
-	return host
+// normalizeEntry normalizes an AllowedHosts entry without its "*." prefix and
+// reports whether it is an IP address. An entry no request could match panics.
+func normalizeEntry(entry, host string) (string, bool) {
+	switch {
+	case strings.Contains(host, "://"):
+		panic(invalidEntry(entry, "write host[:port], not a URL"))
+	case strings.IndexByte(host, '%') >= 0:
+		panic(invalidEntry(entry, "IPv6 zones and percent-encoding are not supported"))
+	case strings.ContainsAny(host, "[]"):
+		// Same rule as for a request: brackets hold an IPv6 address only.
+		if h, ok := parseNormalizedAuthority(host); ok {
+			return h, true
+		}
+		panic(invalidEntry(entry, "brackets must hold an IPv6 address, optionally followed by a valid port"))
+	}
+
+	if h, ok := canonicalIPv6(host); ok {
+		return h, true
+	}
+	name, port, hasPort := utils.SplitHostPort(host)
+	switch {
+	case !hasPort && strings.IndexByte(host, ':') >= 0:
+		panic(invalidEntry(entry, "not a valid IPv6 address"))
+	case !hasPort:
+		name = host
+	case !isValidPort(port):
+		panic(invalidEntry(entry, fmt.Sprintf("invalid port %q", port)))
+	}
+	name = normalizeName(name)
+	return name, utils.IsIPv4(name)
 }
 
-// normalizeHostKind is normalizeHost that also reports whether host was an IPv6
-// literal; an IPv4-mapped one comes back as its IPv4 address.
-func normalizeHostKind(host string) (string, bool) {
-	// Fast path for plain hostnames — skips the split and the bracket trims.
-	if host != "" && host[0] != '[' && strings.IndexByte(host, ':') < 0 {
-		host = trimOneTrailingDot(host)
-		host = utilsstrings.ToLower(host)
-		return idnafold.ToASCII(host), false
-	}
+func invalidEntry(entry, reason string) string {
+	return "hostauthorization: invalid host " + entry + ": " + reason
+}
 
-	if h, _, ok := utils.SplitHostPort(host); ok {
-		host = h
-	} else {
-		host = utils.TrimLeft(host, '[')
-		host = utils.TrimRight(host, ']')
-	}
-
-	host = trimOneTrailingDot(host)
-	host = utilsstrings.ToLower(host)
-	host = idnafold.ToASCII(host)
-	if canonical, ok := canonicalIPv6(host); ok {
-		return canonical, true
-	}
-	return host, false
+// normalizeName drops one trailing dot, lowercases, and converts IDN labels to
+// Punycode, matching what browsers send.
+func normalizeName(host string) string {
+	return idnafold.ToASCII(utilsstrings.ToLower(trimOneTrailingDot(host)))
 }
 
 // canonicalIPv6 writes an IPv6 address in the RFC 5952 Section 4 form so every
 // spelling of it (RFC 4291 Section 2.2) matches; an IPv4-mapped one becomes the
 // IPv4 host, as in isTrustedProxyIP. Zones are refused first: parsing copies them.
 func canonicalIPv6(host string) (string, bool) {
-	if strings.IndexByte(host, ':') < 0 || strings.IndexByte(host, '%') >= 0 {
+	if strings.IndexByte(host, '%') >= 0 {
 		return "", false
 	}
 	addr, ok := utils.ParseIPv6(host)
@@ -136,7 +137,7 @@ func canonicalIPv6(host string) (string, bool) {
 	}
 	addr = addr.Unmap()
 	// A host that is already canonical, as browsers send it, is returned without allocating.
-	var buf [len("ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255")]byte
+	var buf [len("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")]byte
 	canonical := addr.AppendTo(buf[:0])
 	if string(canonical) == host {
 		return host, true
@@ -215,7 +216,7 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 		return "", false
 	}
 
-	host = normalizeHost(host)
+	host = normalizeName(host)
 	if host == "" {
 		return "", false
 	}

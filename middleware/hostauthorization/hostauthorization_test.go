@@ -38,9 +38,11 @@ func Test_ConfigDefault(t *testing.T) {
 func Test_ConfigPanics(t *testing.T) {
 	t.Parallel()
 	longHost, longLabel := strings.Repeat("a", 254), strings.Repeat("a", 64)+".example.com"
+	entry := func(h string) func() { return func() { New(Config{AllowedHosts: []string{h}}) } }
 	for _, tc := range []struct {
 		fn   func()
 		name string
+		msg  string
 	}{
 		{name: "no hosts or func", fn: func() { configDefault(Config{}) }},
 		{name: "empty slice", fn: func() { configDefault(Config{AllowedHosts: []string{}}) }},
@@ -48,20 +50,43 @@ func Test_ConfigPanics(t *testing.T) {
 		{name: "host exceeds RFC 1035 total length", fn: func() { New(Config{AllowedHosts: []string{longHost}}) }},
 		{name: "leading dot form", fn: func() { New(Config{AllowedHosts: []string{".myapp.com"}}) }},
 		{name: "label exceeds RFC 1035 length", fn: func() { New(Config{AllowedHosts: []string{longLabel}}) }},
-		{name: "wildcard of an ipv6 address", fn: func() { New(Config{AllowedHosts: []string{"*.[::1]"}}) }},
-		{name: "wildcard of an ipv4-mapped address", fn: func() { New(Config{AllowedHosts: []string{"*.[::ffff:1.2.3.4]"}}) }},
-		{name: "invalid ipv6", fn: func() { New(Config{AllowedHosts: []string{"[2001:db8::g]"}}) }},
-		{name: "zoned ipv6", fn: func() { New(Config{AllowedHosts: []string{"[fe80::1%25eth0]"}}) }},
-		{name: "bracketed name with port", fn: func() { New(Config{AllowedHosts: []string{"[allowed.com:443]"}}) }},
+		{name: "wildcard of an ipv6 address", fn: entry("*.[::1]")},
+		{name: "wildcard of an ipv4-mapped address", fn: entry("*.[::ffff:1.2.3.4]")},
+		{name: "invalid ipv6", fn: entry("[2001:db8::g]")},
+		{
+			name: "zoned ipv6", fn: entry("[fe80::1%25eth0]"),
+			msg: "hostauthorization: invalid host [fe80::1%25eth0]: IPv6 zones and percent-encoding are not supported",
+		},
+		{name: "bracketed name with port", fn: entry("[allowed.com:443]")},
+		{name: "wildcard of an ipv4 address", fn: entry("*.127.0.0.1")},
+		{name: "wildcard of an ipv4 address with trailing dot", fn: entry("*.127.0.0.1.")},
+		{name: "wildcard of a bracketed ipv4 address", fn: entry("*.[1.2.3.4]")},
+		{name: "wildcard of a bracketed name", fn: entry("*.[allowed.com]")},
+		{name: "wildcard with a non-numeric port", fn: entry("*.a:b")},
+		{name: "bracketed name", fn: entry("[allowed.com]")},
+		{name: "bracketed name and port", fn: entry("[allowed.com]:443")},
+		{name: "bracketed ipv4", fn: entry("[127.0.0.1]")},
+		{name: "double brackets", fn: entry("[[::1]]")},
+		{name: "unbalanced bracket", fn: entry("[::1")},
+		{name: "ipv6 with port out of range", fn: entry("[::1]:65536")},
+		{name: "colons that are not ipv6", fn: entry("a:b:c")},
+		{name: "empty port", fn: entry("example.com:")},
+		{name: "non-numeric port", fn: entry("allowed.com:http"), msg: `hostauthorization: invalid host allowed.com:http: invalid port "http"`},
+		{name: "url", fn: entry("https://myapp.com"), msg: "hostauthorization: invalid host https://myapp.com: write host[:port], not a URL"},
+		{name: "url with port", fn: entry("http://localhost:3000")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			if tc.msg != "" {
+				require.PanicsWithValue(t, tc.msg, tc.fn)
+				return
+			}
 			require.Panics(t, tc.fn)
 		})
 	}
 }
 
-func Test_NormalizeHost(t *testing.T) {
+func Test_NormalizeEntry(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -93,7 +118,8 @@ func Test_NormalizeHost(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.expected, normalizeHost(tt.input))
+			host, _ := normalizeEntry(tt.input, tt.input)
+			require.Equal(t, tt.expected, host)
 		})
 	}
 }
@@ -115,6 +141,8 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 		{name: "ipv6 zero padded", input: "[2001:0db8:0000:0000:0000:0000:0000:0001]", expected: "2001:db8::1", expectOK: true},
 		{name: "ipv6 ipv4-mapped hex form", input: "[::ffff:7f00:1]:8080", expected: "127.0.0.1", expectOK: true},
 		{name: "ipv6 uppercase hex", input: "[2001:DB8::1]", expected: "2001:db8::1", expectOK: true},
+		{name: "ipv6 nat64 dotted", input: "[64:ff9b::1.2.3.4]:443", expected: "64:ff9b::102:304", expectOK: true},
+		{name: "ipv6 ipv4-compatible dotted", input: "[::1.2.3.4]", expected: "::102:304", expectOK: true},
 		{name: "invalid ipv6", input: "[2001:db8::g]", expectOK: false},
 		{name: "zoned ipv6", input: "[::1%eth0]", expectOK: false},
 		{name: "zoned ipv6 percent-encoded", input: "[fe80::1%25eth0]", expectOK: false},
@@ -144,7 +172,6 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 		{name: "253 bytes", input: strings.Repeat("a.", 125) + "com", expected: strings.Repeat("a.", 125) + "com", expectOK: true},
 		{name: "253 bytes with trailing dot and port", input: strings.Repeat("a.", 125) + "com.:443", expected: strings.Repeat("a.", 125) + "com", expectOK: true},
 		{name: "254 bytes", input: strings.Repeat("a.", 125) + "coms", expectOK: false},
-		{name: "254 bytes in brackets", input: "[" + strings.Repeat("a.", 125) + "coms]", expectOK: false},
 	}
 
 	for _, tt := range tests {
@@ -155,21 +182,6 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 			require.Equal(t, tt.expected, host)
 		})
 	}
-}
-
-// Not parallel: AllocsPerRun counts allocations process-wide and refuses to run
-// under a parallel test.
-func Test_ParseNormalizedAuthority_LongUnicodeHostNotConverted(t *testing.T) {
-	var label []byte
-	for r := rune(0x4E00); len(label) < 8000; r++ {
-		label = utf8.AppendRune(label, r)
-	}
-	host := string(label)
-
-	require.Zero(t, testing.AllocsPerRun(10, func() {
-		_, ok := parseNormalizedAuthority(host)
-		require.False(t, ok)
-	}))
 }
 
 func Test_IsValidHostSyntax(t *testing.T) {
@@ -218,7 +230,6 @@ func Test_MatchHost(t *testing.T) {
 		idnWildcard = []string{"*.münchen.example.com"}
 		mixed       = []string{"example.com", "*.myapp.com", "127.0.0.1"}
 		ipv6Port    = []string{"[::1]:8080"}
-		ipWildcard  = []string{"*.2.3.4"}
 		dynamic     = func(host string) bool { return host == "dynamic.com" }
 	)
 
@@ -244,7 +255,7 @@ func Test_MatchHost(t *testing.T) {
 		{name: "wildcard does not match bare domain", allowed: wildcard, host: "myapp.com", want: false},
 		{name: "wildcard does not match unrelated host", allowed: wildcard, host: "evil.com", want: false},
 
-		{name: "idn wildcard matches normalized unicode subdomain", allowed: idnWildcard, host: normalizeHost("api.münchen.example.com"), want: true},
+		{name: "idn wildcard matches normalized unicode subdomain", allowed: idnWildcard, host: normalizeName("api.münchen.example.com"), want: true},
 		{name: "idn wildcard matches punycode subdomain", allowed: idnWildcard, host: "api.xn--mnchen-3ya.example.com", want: true},
 		// The bare domain must NOT match a subdomain wildcard.
 		{name: "idn wildcard does not match bare domain", allowed: idnWildcard, host: "xn--mnchen-3ya.example.com", want: false},
@@ -263,11 +274,6 @@ func Test_MatchHost(t *testing.T) {
 
 		{name: "ipv6 entry with port matches bare address", allowed: ipv6Port, host: "::1", want: true},
 		{name: "ipv6 entry with port rejects other address", allowed: ipv6Port, host: "::2", want: false},
-
-		// An embedded IPv4 spelling must not leave a dotted tail for a subdomain rule.
-		{name: "ipv4 wildcard skips nat64 literal", allowed: ipWildcard, host: normalizeHost("[64:ff9b::1.2.3.4]"), want: false},
-		{name: "ipv4 wildcard skips ipv4-compatible literal", allowed: ipWildcard, host: normalizeHost("[::1.2.3.4]"), want: false},
-		{name: "ipv4 wildcard matches ipv4-mapped literal", allowed: ipWildcard, host: normalizeHost("[::ffff:1.2.3.4]"), want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -298,6 +304,7 @@ func Test_HostAuthorization_Hosts(t *testing.T) {
 		loopback6   = []string{"[::1]"}
 		docIPv6     = []string{"[2001:db8::1]"}
 		linkLocal   = []string{"[fe80::1]"}
+		ipWildcard  = []string{"*.2.3.4"}
 		dynamic     = func(host string) bool { return host == "dynamic.com" }
 	)
 
@@ -332,6 +339,10 @@ func Test_HostAuthorization_Hosts(t *testing.T) {
 		{name: "ipv4-mapped dotted", allowed: loopback4, host: "[::ffff:127.0.0.1]", status: fiber.StatusOK},
 		{name: "ipv4-mapped hex", allowed: loopback4, host: "[::ffff:7f00:1]:8080", status: fiber.StatusOK},
 		{name: "ipv4-mapped other address", allowed: loopback4, host: "[::ffff:127.0.0.2]", status: fiber.StatusForbidden},
+		// An embedded IPv4 spelling must not leave a dotted tail for a subdomain rule.
+		{name: "ipv4 wildcard skips nat64 literal", allowed: ipWildcard, host: "[64:ff9b::1.2.3.4]", status: fiber.StatusForbidden},
+		{name: "ipv4 wildcard skips ipv4-compatible literal", allowed: ipWildcard, host: "[::1.2.3.4]:443", status: fiber.StatusForbidden},
+		{name: "ipv4 wildcard matches ipv4-mapped literal", allowed: ipWildcard, host: "[::ffff:1.2.3.4]", status: fiber.StatusOK},
 
 		// Canonicalization must not drop a zone, and Unmap does for a mapped one.
 		{name: "ipv6 zoned", allowed: linkLocal, host: "[fe80::1%25eth0]", status: fiber.StatusForbidden},
@@ -426,6 +437,7 @@ func Test_HostAuthorization_XForwardedHost(t *testing.T) {
 		{"trust proxy, bracketed name with port rejected", "allowed.com", "proxy.internal", "[allowed.com:443]", fiber.StatusForbidden, true},
 		{"trust proxy, bracketed name rejected", "allowed.com", "proxy.internal", "[allowed.com]", fiber.StatusForbidden, true},
 		{"trust proxy, bracketed ipv4 rejected", "127.0.0.1", "proxy.internal", "[127.0.0.1]", fiber.StatusForbidden, true},
+		{"trust proxy, ipv4-compatible literal skips ipv4 wildcard", "*.2.3.4", "proxy.internal", "[::1.2.3.4]:443", fiber.StatusForbidden, true},
 		// X-Forwarded-Host should be ignored without TrustProxy.
 		{"no trust proxy, forwarded host ignored", "example.com", "example.com", "evil.com", fiber.StatusOK, false},
 	} {
@@ -494,8 +506,12 @@ func Test_HostAuthorization_AllowedHostsFuncReceivesCanonicalIPv6(t *testing.T) 
 }
 
 // AllocsPerRun panics under t.Parallel, so this test stays sequential.
-func Test_ParseNormalizedAuthority_IPv6Allocations(t *testing.T) {
+func Test_ParseNormalizedAuthority_Allocations(t *testing.T) {
 	const fullLength = "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+	var longUnicode []byte
+	for r := rune(0x4E00); len(longUnicode) < 8000; r++ {
+		longUnicode = utf8.AppendRune(longUnicode, r)
+	}
 	// netip interns a zone, so each run needs a fresh one to show a copy.
 	zoned := make([]string, 101)
 	for i := range zoned {
@@ -513,6 +529,7 @@ func Test_ParseNormalizedAuthority_IPv6Allocations(t *testing.T) {
 		{name: "non-canonical", authorities: []string{"[0:0:0:0:0:0:0:1]:8080"}, want: "::1", ok: true, maxAllocs: 1},
 		{name: "ipv4-mapped", authorities: []string{"[::ffff:127.0.0.1]:8080"}, want: "127.0.0.1", ok: true, maxAllocs: 1},
 		{name: "zoned and refused", authorities: zoned},
+		{name: "long unicode host not converted", authorities: []string{string(longUnicode)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var (
@@ -637,23 +654,31 @@ func Benchmark_parseNormalizedAuthority_IPv6(b *testing.B) {
 	}
 }
 
-func FuzzNormalizeHost(f *testing.F) {
-	f.Add("example.com")
-	f.Add("example.com.")
-	f.Add("[::1]:8080")
-	f.Add("[::1]")
-	f.Add("*.myapp.com")
-	f.Add("192.168.1.1:443")
-	f.Add("münchen.example.com")
-	f.Add("")
-	f.Fuzz(func(_ *testing.T, input string) { _ = normalizeHost(input) })
+// An entry is accepted or refused with a hostauthorization panic, never a runtime one.
+func FuzzParseAllowedHosts(f *testing.F) {
+	for _, seed := range []string{
+		"example.com", "example.com.", "[::1]:8080", "::1", "*.myapp.com", "192.168.1.1:443", "münchen.example.com", "",
+		"*.127.0.0.1", "[allowed.com]:443", "https://myapp.com", "[fe80::1%25eth0]", "a:b:c",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, entry string) {
+		t.Parallel()
+		defer func() {
+			if r := recover(); r != nil {
+				msg, ok := r.(string)
+				require.True(t, ok && strings.HasPrefix(msg, "hostauthorization: "), "unexpected panic: %v", r)
+			}
+		}()
+		parseAllowedHosts([]string{entry})
+	})
 }
 
 // A bracketed authority passes only as the canonical form of a zone-free IPv6 address.
 func FuzzParseNormalizedAuthority(f *testing.F) {
 	for _, seed := range []string{
 		"example.com:8080", "[::1]:8080", "[0:0:0:0:0:0:0:1]", "[2001:DB8:0:0:0:0:0:1]:443", "[::ffff:127.0.0.1]",
-		"[::ffff:7f00:1]:80", "[fe80::1%25eth0]", "[::ffff:127.0.0.1%25eth0]", "[allowed.com:443]",
+		"[::ffff:7f00:1]:80", "[fe80::1%25eth0]", "[::ffff:127.0.0.1%25eth0]", "[allowed.com:443]", "[127.0.0.1]",
 	} {
 		f.Add(seed)
 	}
@@ -667,6 +692,7 @@ func FuzzParseNormalizedAuthority(f *testing.F) {
 		}
 		addr, err := netip.ParseAddr(authority[1:end])
 		require.NoError(t, err)
+		require.True(t, addr.Is6(), "brackets must hold an IPv6 address")
 		require.Empty(t, addr.Zone())
 		require.Equal(t, addr.Unmap().String(), host)
 	})
