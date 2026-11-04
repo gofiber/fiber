@@ -130,7 +130,7 @@ func Test_SameData_AgreesWithDeepEqual(t *testing.T) {
 	for i, a := range values {
 		for j, b := range values {
 			want := reflect.DeepEqual(sameTestDataOf(a), sameTestDataOf(b))
-			require.Equal(t, want, sameValue(reflect.ValueOf(sameTestDataOf(a)), reflect.ValueOf(sameTestDataOf(b))), "%d (%#v) and %d (%#v)", i, a, j, b)
+			require.Equal(t, want, sameValue(reflect.ValueOf(sameTestDataOf(a)), reflect.ValueOf(sameTestDataOf(b)), make(map[visit]struct{})), "%d (%#v) and %d (%#v)", i, a, j, b)
 			require.Equal(t, want, sameData(sameTestDataOf(a), sameTestDataOf(b)), "%d (%#v) and %d (%#v)", i, a, j, b)
 		}
 	}
@@ -196,4 +196,98 @@ func Test_SameData_SelfReference(t *testing.T) {
 	snapshot := sameTestDataOf(&sameTestNode{Score: nan, next: &sameTestNode{Score: nan}})
 	require.False(t, sameData(snapshot, sameTestDataOf(loop)))
 	require.False(t, sameData(sameTestDataOf(loop), snapshot))
+}
+
+// Test_SameData_Cycles checks that the walk ends on data that refers to itself, however it does so, and still
+// tells a NaN from a difference. A cycle can be in the snapshot too: a type's decoder may rebuild one.
+func Test_SameData_Cycles(t *testing.T) {
+	t.Parallel()
+	nan := math.NaN()
+	// The cycle comes first in a node, before the fields that differ: the walk follows it before it finds one.
+	ring := func(name string, score float64) *sameTestNode {
+		n := &sameTestNode{Name: name, Score: score}
+		n.next = n
+		return n
+	}
+	pair := func(first, second string, score float64) *sameTestNode {
+		a, b := &sameTestNode{Name: first, Score: score}, &sameTestNode{Name: second, Score: score}
+		a.next, b.next = b, a
+		return a
+	}
+	mapRing := func(v float64) map[string]any {
+		m := map[string]any{"v": v}
+		m["self"] = m
+		return m
+	}
+	sliceRing := func(v float64) []any {
+		s := make([]any, 2)
+		s[0], s[1] = s, v
+		return s
+	}
+	for name, tc := range map[string]struct {
+		a, b any
+		want bool
+	}{
+		"node that refers to itself, with a NaN":       {a: ring("a", nan), b: ring("a", nan), want: true},
+		"node that refers to itself, another name":     {a: ring("a", nan), b: ring("b", nan)},
+		"node that refers to itself, another number":   {a: ring("a", 1), b: ring("a", 2)},
+		"two nodes that refer to each other, a NaN":    {a: pair("a", "b", nan), b: pair("a", "b", nan), want: true},
+		"two nodes that refer to each other, another":  {a: pair("a", "b", nan), b: pair("a", "c", nan)},
+		"map that holds itself, with a NaN":            {a: mapRing(nan), b: mapRing(nan), want: true},
+		"map that holds itself, another number":        {a: mapRing(1), b: mapRing(2)},
+		"slice that holds itself, with a NaN":          {a: sliceRing(nan), b: sliceRing(nan), want: true},
+		"slice that holds itself, another number":      {a: sliceRing(1), b: sliceRing(2)},
+		"node that refers to itself and a plain node":  {a: ring("a", nan), b: &sameTestNode{Name: "a", Score: nan}},
+		"node that refers to itself and the other way": {a: &sameTestNode{Name: "a", Score: nan}, b: ring("a", nan)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, sameData(sameTestDataOf(tc.a), sameTestDataOf(tc.b)))
+			require.Equal(t, tc.want, sameData(sameTestDataOf(tc.b), sameTestDataOf(tc.a)), "the other way round")
+		})
+	}
+}
+
+// sameTestRing is a value whose decoder links it to itself, as a type that rebuilds a cyclic structure from its
+// encoding does. The link comes first, before the label an edit changes.
+type sameTestRing struct {
+	Next  *sameTestRing
+	Label string
+}
+
+func (r *sameTestRing) GobEncode() ([]byte, error) { return []byte(r.Label), nil }
+
+func (r *sameTestRing) GobDecode(data []byte) error {
+	r.Label, r.Next = string(data), r
+	return nil
+}
+
+// Test_Session_InPlaceEditOfSelfReferencingValue checks that a request that edited such a value in place keeps its
+// own change over the one another request stored meanwhile. Telling the edit from a read walks the value in step
+// with the snapshot, whose decoder rebuilt the cycle, so the walk has to end on it.
+func Test_Session_InPlaceEditOfSelfReferencingValue(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	store := NewStore(Config{Storage: memory.New()})
+	store.RegisterType(&sameTestRing{})
+	id := seedSession(t, app, store, func(s *Session) {
+		s.Set("role", "admin")
+		s.Set("ring", &sameTestRing{Label: "before"})
+	})
+
+	inFlight := loadSession(t, app, store, id)
+	ring, ok := inFlight.Get("ring").(*sameTestRing)
+	require.True(t, ok)
+	require.Same(t, ring, ring.Next, "the decoder linked the value to itself")
+	ring.Label = "after"
+	other := loadSession(t, app, store, id)
+	other.Set("role", "user")
+	require.NoError(t, other.Save())
+	require.NoError(t, inFlight.Save())
+
+	stored := sessionTestStored(t, store, id)
+	require.Equal(t, "admin", stored.Get("role"), "an edit in place is the request's own change, as a Set is")
+	got, ok := stored.Get("ring").(*sameTestRing)
+	require.True(t, ok)
+	require.Equal(t, "after", got.Label)
 }
