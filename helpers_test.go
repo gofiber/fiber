@@ -79,11 +79,12 @@ func Test_JoinedInReceivedOrder(t *testing.T) {
 
 func Test_Utils_ForEachMediaRange(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+	type mediaRangeCase struct {
 		name   string
 		header string
 		want   []string
-	}{
+	}
+	tests := []mediaRangeCase{
 		{name: "empty"},
 		{name: "spaces", header: "   ", want: []string{""}},
 		{name: "single", header: "text/plain", want: []string{"text/plain"}},
@@ -92,8 +93,10 @@ func Test_Utils_ForEachMediaRange(t *testing.T) {
 		{name: "trailing comma", header: "text/plain,", want: []string{"text/plain"}},
 		{name: "trailing spaces", header: "text/plain,   ", want: []string{"text/plain", ""}},
 		{name: "whitespace", header: " \ttext/plain\t , \v\f", want: []string{"\ttext/plain\t ", "\v\f"}},
+		{name: "quoted whitespace", header: "\t\"a\"\t , \v\f", want: []string{"\t\"a\"\t ", "\v\f"}},
 		{name: "raw bytes", header: "\x00\xff,é", want: []string{"\x00\xff", "é"}},
 		{name: "quoted comma", header: `text/plain;p="a,b", text/html`, want: []string{`text/plain;p="a,b"`, "text/html"}},
+		{name: "late quote", header: `text/html, text/*;p="a,b"`, want: []string{"text/html", `text/*;p="a,b"`}},
 		{name: "quoted empties", header: `,"",,`, want: []string{"", `""`, ""}},
 		{name: "quoted trailing spaces", header: `"a",   `, want: []string{`"a"`, ""}},
 		{name: "escaped quote", header: `a="x\"y,z", b`, want: []string{`a="x\"y,z"`, "b"}},
@@ -105,13 +108,53 @@ func Test_Utils_ForEachMediaRange(t *testing.T) {
 		{name: "unterminated escape", header: `a="x\`, want: []string{`a="x\`}},
 		{name: "adjacent quotes", header: `"a,b""c,d",e`, want: []string{`"a,b""c,d"`, "e"}},
 	}
+	for _, padding := range []int{31, 32, 63, 64, 127, 128} {
+		mediaRange := `text/plain;p="` + strings.Repeat("a", padding) + `\",b"` + strings.Repeat(" ", padding)
+		tests = append(tests, mediaRangeCase{
+			name: fmt.Sprintf("long quoted range/%d", padding), header: mediaRange + ", text/html",
+			want: []string{mediaRange, "text/html"},
+		})
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			header := []byte(tt.header)
 			var got []string
-			forEachMediaRange([]byte(tt.header), func(mediaRange []byte) { got = append(got, string(mediaRange)) })
+			forEachMediaRange(header, func(mediaRange []byte) {
+				if len(mediaRange) > 0 {
+					aliased := false
+					for i := range header {
+						if &mediaRange[0] == &header[i] {
+							require.LessOrEqual(t, len(mediaRange), len(header)-i)
+							aliased = true
+							break
+						}
+					}
+					require.True(t, aliased, "media range must alias the input header")
+				}
+				got = append(got, string(mediaRange))
+			})
 			require.Equal(t, tt.want, got)
 		})
+	}
+}
+
+func Test_Utils_ForEachMediaRange_NoAllocations(t *testing.T) {
+	// AllocsPerRun cannot run in a parallel test.
+	for _, input := range []string{
+		"", "   ", ",,text/plain,,", "application/json",
+		"text/plain, application/json, text/html",
+		"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+		`text/plain;p="a,b", text/html`, `text/plain;p="a\"b,c", text/html`,
+		`text/plain;p="a\\", text/html`, `text/plain;p="a,b, text/html`,
+	} {
+		header := []byte(input)
+		totalLen := 0
+		allocs := testing.AllocsPerRun(100, func() {
+			forEachMediaRange(header, func(mediaRange []byte) { totalLen += len(mediaRange) })
+		})
+		runtime.KeepAlive(totalLen)
+		require.Zero(t, allocs, input)
 	}
 }
 
@@ -170,6 +213,7 @@ func Test_Utils_GetOffer(t *testing.T) {
 	// A quoted-pair escapes exactly one byte, so the string ends at the genuine
 	// closing quote and the later comma splits the ranges (RFC 9110 Section 5.6.4).
 	require.Equal(t, "text/plain", getOffer([]byte(`text/html;p="a\"b", text/plain`), acceptsOfferType, "text/plain"))
+	require.Equal(t, "text/html", getOffer([]byte(`text/html;q=0.5, text/plain;p="a,b";q=0`), acceptsOfferType, `text/plain;p="a,b"`, "text/html"))
 	require.Equal(t, "text/plain;A=CAPS", getOffer([]byte(`text/plain;a="caPs"`), acceptsOfferType, "text/plain;A=CAPS"))
 
 	// The media type and subtype tokens are case-insensitive (RFC 9110 8.3.1)

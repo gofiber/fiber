@@ -613,8 +613,10 @@ func peekJoinedResponseHeader(h *fasthttp.ResponseHeader, key string) ([]byte, b
 	return j.combined, j.multi
 }
 
-// forEachMediaRange parses an Accept or Content-Type header, calling functor
-// on each media range.
+// forEachMediaRange walks an Accept-family list, passing slices that alias header.
+// Only leading SP is trimmed; empty elements and trailing whitespace are preserved.
+// A bare trailing comma adds no element, but spaces after it yield an empty one.
+// Quoted commas and quoted-pairs do not split; an unterminated quote consumes the rest.
 // See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
 func forEachMediaRange(header []byte, functor func([]byte)) {
 	if len(header) == 0 {
