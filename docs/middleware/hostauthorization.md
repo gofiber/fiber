@@ -160,7 +160,7 @@ app.Get("/healthz", healthCheck)
 |:-----------------|:------------------------------|:--------------------------------------------------------------------------------------------------|:--------|
 | Next             | `func(fiber.Ctx) bool`        | Defines a function to skip this middleware when returned true.                                     | `nil`   |
 | AllowedHosts     | `[]string`                    | List of permitted hosts. Supports exact match and subdomain wildcard (`*.example.com`).            | `nil`   |
-| AllowedHostsFunc | `func(string) bool`           | Dynamic validator called only when no static AllowedHosts rule matches. Receives the normalized hostname: port stripped, trailing dot removed, IPv6 brackets removed, lowercased, IDN converted to Punycode, IPv6 written in its canonical form.  | `nil`   |
+| AllowedHostsFunc | `func(string) bool`           | Dynamic validator called only when no static AllowedHosts rule matches. Receives the normalized hostname: port stripped, trailing dot removed, IPv6 brackets removed, lowercased, IDN converted to Punycode, IPv6 written in its canonical form, an IPv4-mapped address as IPv4. The string is only valid during the call; copy it to keep it.  | `nil`   |
 | ErrorHandler     | `fiber.ErrorHandler`          | Called when a request is rejected. Receives `ErrForbiddenHost` as the error.                      | 403     |
 
 Either `AllowedHosts` or `AllowedHostsFunc` (or both) must be provided. The middleware panics at startup if neither is set.
@@ -190,14 +190,14 @@ Before matching, the host of each request is normalized, and the `AllowedHosts` 
 - Port is stripped (`example.com:8080` → `example.com`)
 - Trailing dot removed (`example.com.` → `example.com`)
 - IPv6 brackets removed (`[::1]` → `::1`)
-- IPv6 addresses written in their RFC 5952 canonical form (`[0:0:0:0:0:0:0:1]` → `::1`, `[2001:0db8::0001]` → `2001:db8::1`), so every spelling of one IPv6 address matches. `AllowedHostsFunc` receives this canonical form
-- An IPv4-mapped address is the IPv4 address it maps (`[::ffff:7f00:1]` → `127.0.0.1`), so it matches an IPv4 entry such as `127.0.0.1` and follows the same rules as that IPv4 host
-- IPv6 literals never match a `*.` subdomain rule
+- IPv6 addresses written in their RFC 5952 Section 4 form (`[0:0:0:0:0:0:0:1]` → `::1`, `[2001:0db8::0001]` → `2001:db8::1`), so every spelling of one IPv6 address matches. `AllowedHostsFunc` receives this canonical form. An embedded IPv4 part is written in hex (`[64:ff9b::192.0.2.33]` → `64:ff9b::c000:221`), not in the mixed notation RFC 5952 Section 5 recommends
+- An IPv4-mapped address is the IPv4 address it maps (`[::ffff:7f00:1]` → `127.0.0.1`), so it matches an IPv4 entry such as `127.0.0.1` and follows the same rules as that IPv4 host. This applies to entries too: `[::ffff:10.0.0.5]` in `AllowedHosts` admits `10.0.0.5`
+- An IPv6 literal that is not IPv4-mapped never matches a `*.` subdomain rule (an IPv4-mapped one is the IPv4 host and is matched like it)
 - Lowercased
 - IDN labels converted to ASCII/Punycode (`münchen.example.com` → `xn--mnchen-3ya.example.com`)
 - RFC 1035 length limits enforced at startup: ≤253 chars total, ≤63 chars per label (panic on violation)
 
-An entry in the leading-dot form some other tools use (`.myapp.com`) also panics at startup; write `*.myapp.com` instead.
+An entry in the leading-dot form some other tools use (`.myapp.com`) also panics at startup; write `*.myapp.com` instead. So do an entry with a colon that is not an IPv6 address (`[2001:db8::g]`, `[allowed.com:443]`, a zoned `[fe80::1%25eth0]`) and a `*.` entry holding an IP address (`*.[::1]`, `*.[::ffff:1.2.3.4]`).
 
 A request host that is not a well-formed authority is rejected with `ErrorHandler` before matching, so `AllowedHostsFunc` never sees it. That covers an empty or missing `Host`, userinfo in `X-Forwarded-Host` (`allowed.com:443@attacker.example`), a port that is empty, not numeric or above 65535, malformed IPv6 brackets, brackets around anything but an IPv6 address (`[allowed.com:443]`) or an IPv6 literal without brackets, a zoned IPv6 address (`fe80::1%eth0`), and a hostname with an empty label (`a..b`), a label that starts or ends with a hyphen or is longer than 63 characters, a name longer than 253 bytes (measured before an IDN is converted to Punycode), or any character besides letters, digits, hyphens and dots (underscores included).
 
