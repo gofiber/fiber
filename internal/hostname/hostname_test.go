@@ -9,29 +9,30 @@ import (
 func Test_SplitPort(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		in, host, port string
+		name, in, host, port string
 	}{
-		{in: "[::1]:3000", host: "[::1]", port: "3000"},
-		{in: "127.0.0.1:3000", host: "127.0.0.1", port: "3000"},
-		{in: "[::1]", host: "[::1]", port: ""},
-		{in: "2001:db8::1", host: "2001:db8::1", port: ""},
-		{in: "::1", host: "::1", port: ""},
-		{in: "/path/to/unix/socket", host: "/path/to/unix/socket", port: ""},
-		{in: "127.0.0.1", host: "127.0.0.1", port: ""},
-		{in: "localhost:8080", host: "localhost", port: "8080"},
-		{in: "example.com", host: "example.com", port: ""},
-		{in: "example.com:8080", host: "example.com", port: "8080"},
-		{in: "[fe80::1%lo0]:1234", host: "[fe80::1%lo0]", port: "1234"},
-		{in: "[fe80::1%lo0]", host: "[fe80::1%lo0]", port: ""},
-		{in: ":9090", host: "", port: "9090"},
-		{in: " 127.0.0.1:8080 ", host: " 127.0.0.1", port: "8080 "},
-		{in: "", host: "", port: ""},
-		{in: "[::1", host: "[::1", port: ""},
-		{in: "[a:80", host: "[a", port: "80"},
-		{in: "[::1]]:80", host: "[::1]", port: ""},
+		{"empty", "", "", ""},
+		{"IPv4", "127.0.0.1", "127.0.0.1", ""},
+		{"IPv4 with port", "127.0.0.1:3000", "127.0.0.1", "3000"},
+		{"name", "example.com", "example.com", ""},
+		{"name with port", "example.com:8080", "example.com", "8080"},
+		{"localhost with port", "localhost:8080", "localhost", "8080"},
+		{"port only", ":9090", "", "9090"},
+		{"unix socket path", "/path/to/unix/socket", "/path/to/unix/socket", ""},
+		{"no trim", " 127.0.0.1:8080 ", " 127.0.0.1", "8080 "},
+		{"bare IPv6", "2001:db8::1", "2001:db8::1", ""},
+		{"bare IPv6 loopback", "::1", "::1", ""},
+		{"bracketed IPv6", "[::1]", "[::1]", ""},
+		{"bracketed IPv6 with port", "[::1]:3000", "[::1]", "3000"},
+		{"bracketed IPv6 zone", "[fe80::1%lo0]", "[fe80::1%lo0]", ""},
+		{"bracketed IPv6 zone with port", "[fe80::1%lo0]:1234", "[fe80::1%lo0]", "1234"},
+		{"literal ends at the first ]", "[::1]]:80", "[::1]", ""},
+		{"text after ] is dropped", "[::1]x:80", "[::1]", ""},
+		{"unclosed [ with two colons is whole", "[::1", "[::1", ""},
+		{"unclosed [ with one colon splits", "[a:80", "[a", "80"},
 	}
 	for _, tc := range tests {
-		t.Run(tc.in, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			host, port := SplitPort(tc.in)
 			assert.Equal(t, tc.host, host)
@@ -81,7 +82,15 @@ func Test_ToUnicode(t *testing.T) {
 		{"CJK label decodes", "xn--wgv71a119e.jp", "日本語.jp"},
 		{"invalid Punycode label, unchanged", "xn--a.example.com", "xn--a.example.com"},
 		{"upper-case XN-- is not decoded", "XN--BCHER-KVA.EXAMPLE.COM", "XN--BCHER-KVA.EXAMPLE.COM"},
-		{"bare xn-- prefix decodes to an empty label", "xn--.example.com", ".example.com"},
+		// x/net quirk, not a contract: UTS #46 calls an empty decoded label an error. Update this row when x/net does.
+		{"bare xn-- prefix, empty label from x/net", "xn--.example.com", ".example.com"},
+		// "xn--" anywhere sends the whole host through idna.Lookup; without it nothing is mapped.
+		{"xn-- substring maps the other labels", "\uff41pp.axn--b.example.com", "app.axn--b.example.com"},
+		{"xn-- substring maps soft hyphens and dots", "s\u00adoft\uff0exn--bcher-kva.com", "soft.bücher.com"},
+		{"no xn-- substring, nothing is mapped", "\uff41pp.example.com", "\uff41pp.example.com"},
+		// One rejected label keeps the whole host, including the labels that would decode.
+		{"every label accepted, decodes", "myapp.xn--bcher-kva.example.com", "myapp.bücher.example.com"},
+		{"one label rejected, unchanged", "my_app.xn--bcher-kva.example.com", "my_app.xn--bcher-kva.example.com"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -116,6 +125,13 @@ func Benchmark_SplitPort(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		_, _ = SplitPort("api.example.com:8080")
+	}
+}
+
+func Benchmark_SplitPort_NoPort(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = SplitPort("api.example.com")
 	}
 }
 

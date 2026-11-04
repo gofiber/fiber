@@ -5962,7 +5962,10 @@ func Test_Ctx_Subdomains(t *testing.T) {
 		{name: "punycode domain is decoded", host: "xn--bcher-kva.example.com", want: []string{"bücher"}},
 		{name: "punycode fqdn is decoded", host: "xn--bcher-kva.example.com.", want: []string{"bücher"}},
 		{name: "punycode decode failure uses fallback", host: "xn--bcher--.example.com", want: []string{"xn--bcher--"}},
-		{name: "upper-case forwarded punycode is decoded", forwarded: "XN--BCHER-KVA.EXAMPLE.COM", want: []string{"bücher"}},
+		{
+			name: "upper-case forwarded punycode is decoded", forwarded: "XN--BCHER-KVA.EXAMPLE.COM",
+			want: []string{"bücher"},
+		},
 		{name: "invalid host keeps original lowercased", host: "Foo Bar", offset: []int{0}, want: []string{"foo bar"}},
 		{name: "IPv4 host returns empty", host: "192.168.0.1", want: []string{}},
 		{name: "IPv6 host returns empty", host: "[2001:db8::1]", want: []string{}},

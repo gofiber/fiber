@@ -50,6 +50,10 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 		// Match the host with or without its port; another host is passed on to the next handler.
 		host := utils.UnsafeString(c.Request().Host())
 		if !utils.EqualFold(host, hostname) {
+			// SplitPort returns a prefix of host, so only a longer host can still match.
+			if len(host) <= len(hostname) {
+				return c.Next()
+			}
 			if bare, _ := hostnamepkg.SplitPort(host); !utils.EqualFold(bare, hostname) {
 				return c.Next()
 			}

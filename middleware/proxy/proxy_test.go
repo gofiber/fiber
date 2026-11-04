@@ -2037,6 +2037,28 @@ func Test_Proxy_DomainForward_HostMatch(t *testing.T) {
 	}
 }
 
+// A Host that does not parse reaches the gate as sent, so these rows pin the
+// gate's own case fold and its split of an unclosed '['.
+func Test_Proxy_DomainForward_UnparsedHost(t *testing.T) {
+	t.Parallel()
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendString("proxied") })
+
+	for _, tc := range []struct{ name, domain, host, want string }{
+		{"case folds on the host without its port", "api.example.com", "API.Example.com:abc", "proxied"},
+		{"case folds on the host with its port", "api.example.com:abc", "API.Example.com:abc", "proxied"},
+		{"another host still continues", "api.example.com", "WWW.Example.com:abc", "local"},
+		{"an unclosed [ splits at its colon", "[a", "[a:80", "proxied"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(DomainForward(tc.domain, "http://"+addr))
+			app.Use(func(c fiber.Ctx) error { return c.SendString("local") })
+			require.Equal(t, tc.want, sendRaw(t, app, "GET / HTTP/1.1\r\nHost: "+tc.host+"\r\n\r\n"))
+		})
+	}
+}
+
 // sendRaw parses raw as the request a client put on the wire and runs app's
 // handler on it, returning the response body. Reading from the wire is what
 // lets a test send a chunked body with a trailer section, which the request
