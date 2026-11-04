@@ -19,10 +19,13 @@ import (
 func Test_Session_UnchangedRequestKeepsConcurrentChange_NaN(t *testing.T) {
 	t.Parallel()
 	nan := math.NaN()
+	// It asserts nothing: a failed assertion through the t of this test would end it from the goroutine of a
+	// subtest. Were the seeded value of another type, the edit would not happen and the subtest's own checks fail.
 	samples := func(s *Session) []float64 {
-		v, ok := s.Get("samples").([]float64)
-		require.True(t, ok)
-		return v
+		if v, ok := s.Get("samples").([]float64); ok {
+			return v
+		}
+		return make([]float64, 2)
 	}
 	for name, tc := range map[string]struct {
 		touch   func(*Session)
@@ -36,9 +39,9 @@ func Test_Session_UnchangedRequestKeepsConcurrentChange_NaN(t *testing.T) {
 		"the NaN replaced in place":      {touch: func(s *Session) { samples(s)[1] = 3 }, want: "admin", samples: "[1 3]"},
 		"a value replaced by a NaN":      {touch: func(s *Session) { samples(s)[0] = nan }, want: "admin", samples: "[NaN NaN]"},
 		"a map entry changed in place": {touch: func(s *Session) {
-			scores, ok := s.Get("scores").(map[string]float64)
-			require.True(t, ok)
-			scores["b"] = 3
+			if scores, ok := s.Get("scores").(map[string]float64); ok {
+				scores["b"] = 3
+			}
 		}, want: "admin", samples: "[1 NaN]"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -126,6 +129,7 @@ func Test_SameData_AgreesWithDeepEqual(t *testing.T) {
 		time.Unix(100, 0).UTC(), time.Unix(100, 0).In(zone), time.Unix(101, 0).UTC(),
 		struct{ A int }{1},
 		struct{ B int }{1},
+		(func())(nil), func() {}, // a func is the same as another only when both are nil
 	}
 	for i, a := range values {
 		for j, b := range values {
@@ -290,4 +294,14 @@ func Test_Session_InPlaceEditOfSelfReferencingValue(t *testing.T) {
 	got, ok := stored.Get("ring").(*sameTestRing)
 	require.True(t, ok)
 	require.Equal(t, "after", got.Label)
+}
+
+// Test_SameValue_InvalidValues pins the guard for values that hold nothing, which the walk never meets in a
+// session's data: two are the same, and one is not the same as a value that holds something.
+func Test_SameValue_InvalidValues(t *testing.T) {
+	t.Parallel()
+	seen := make(map[visit]struct{})
+	require.True(t, sameValue(reflect.Value{}, reflect.Value{}, seen))
+	require.False(t, sameValue(reflect.ValueOf(1), reflect.Value{}, seen))
+	require.False(t, sameValue(reflect.Value{}, reflect.ValueOf(1), seen))
 }
