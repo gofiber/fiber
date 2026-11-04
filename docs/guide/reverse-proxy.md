@@ -187,7 +187,7 @@ func main() {
 The same trust check guards the other values a proxy forwards. When the connecting peer is trusted:
 
 - `c.Scheme()` follows `X-Forwarded-Proto`, `X-Forwarded-Protocol`, `X-Forwarded-Ssl: on` or `X-Url-Scheme`, in that order of precedence whatever order they arrive in, and accepts only `http` or `https`. A proxy that sets `X-Forwarded-Proto` therefore decides the scheme even when it passes the other three through from the client. Have the proxy set `X-Forwarded-Proto` and drop the other three; a proxy that sets one of the others instead must drop every header ranked above it.
-- `c.Host()` and `c.Hostname()` use the first value of `X-Forwarded-Host`, and the `Host` header when it is absent.
+- `c.Host()` and `c.Hostname()` use the first non-empty value of `X-Forwarded-Host`, and the `Host` header when it has none.
 - `c.BaseURL()` is built from those two.
 
 For an untrusted peer Fiber ignores these headers and uses the connection itself, and a TLS connection always reports `https`. `c.Protocol()` never comes from a header: it reports the HTTP version spoken between the proxy and Fiber, usually `HTTP/1.1`, not the one the client used.

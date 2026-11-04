@@ -208,7 +208,7 @@ This middleware filters by the `Host` *header*, not by the client's source IP. [
 
 ## Proxy Support
 
-The middleware reads the host with `c.Host()`, which uses the first value of `X-Forwarded-Host` when [`TrustProxy`](https://docs.gofiber.io/api/fiber#trustproxy) is enabled and the request comes from a proxy listed in `TrustProxyConfig`. When `TrustProxy` is disabled (the default), `X-Forwarded-Host` is ignored and the raw `Host` header is used. Either value goes through the same validation, so a malformed `X-Forwarded-Host` is rejected too.
+The middleware reads the host with `c.Host()`, which uses the first non-empty value of `X-Forwarded-Host` when [`TrustProxy`](https://docs.gofiber.io/api/fiber#trustproxy) is enabled and the request comes from a proxy listed in `TrustProxyConfig`. When `TrustProxy` is disabled (the default), `X-Forwarded-Host` is ignored and the raw `Host` header is used. Either value goes through the same validation, so a malformed `X-Forwarded-Host` is rejected too.
 
 fasthttp itself is HTTP/1.x only. HTTP/2 support requires an external library (e.g. `fasthttp2`) plugged in via `Server.NextProto`. Those libraries are responsible for mapping the HTTP/2 `:authority` pseudo-header to a Host value before the request reaches Fiber handlers, so the middleware should work transparently once H2 is wired up — but this is the H2 library's responsibility, not fasthttp's or this middleware's.
 
