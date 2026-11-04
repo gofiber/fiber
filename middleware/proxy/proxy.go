@@ -55,7 +55,9 @@ func forwardWithRealIP(c fiber.Ctx, addr string, policy SecurityPolicy, clients 
 // every request, so keep it installed while the handler serves.
 //
 // The default client gives each request 30 seconds for the whole exchange and
-// buffers at most 100 MiB of a response; WithClient replaces both bounds.
+// takes at most 100 MiB of a response; WithClient replaces both bounds. A client
+// of your own that streams response bodies is held to its MaxResponseBodySize as
+// well, which fasthttp does not do for a stream.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		// See Balancer: a refused request is not forwarded.
@@ -85,8 +87,8 @@ func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 // unused client) before first use.
 //
 // The request reaches the upstream as HTTP/1.1. As with Forward, the default
-// client bounds the exchange at 30 seconds and the response at 100 MiB; DoTimeout
-// and DoDeadline set the bound of their own request.
+// client bounds the exchange at 30 seconds and the response at 100 MiB, buffered
+// or streamed; DoTimeout and DoDeadline set the bound of their own request.
 func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.Do(req, resp)
@@ -245,7 +247,7 @@ func doActionWithPolicy(
 	// A client that streams response bodies hands the upstream's trailer section to the response after
 	// the action returned: such a response is read into one of the proxy's own, see upstreamResponse.
 	upstream := upstreamResponse(cli.StreamResponseBody, res)
-	return adoptUpstreamResponse(res, upstream, action(cli, req, upstream, u), policy)
+	return adoptUpstreamResponse(res, upstream, action(cli, req, upstream, u), policy, cli.MaxResponseBodySize)
 }
 
 // forwardRouted forwards the routed path to base for DomainForward and BalancerForward. A path

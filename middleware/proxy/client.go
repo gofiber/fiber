@@ -8,9 +8,9 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// defaultMaxResponseBodySize bounds the body the proxy buffers from an
-// upstream response, so one that streams without end does not take the
-// memory; it is the bound the client package applies too.
+// defaultMaxResponseBodySize bounds the body the proxy takes from an
+// upstream response, buffered or streamed, so one that streams without end
+// does not take the memory; it is the bound the client package applies too.
 const defaultMaxResponseBodySize = 100 << 20
 
 // defaultRequestTimeout bounds a request the default client makes to an upstream,
@@ -24,9 +24,10 @@ const defaultMaxResponseBodySize = 100 << 20
 // one app.Test gave up on at its timeout, may still read the bound while the test sets it.
 var defaultRequestTimeout atomic.Int64
 
-// defaultClient buffers at most defaultMaxResponseBodySize of a response and gives
-// each request defaultRequestTimeout, see doActionWithPolicy; set other bounds with
-// WithClient, or on one request with DoTimeout or DoDeadline.
+// defaultClient takes at most defaultMaxResponseBodySize of a response, also one the
+// caller set to stream, and gives each request defaultRequestTimeout, see
+// doActionWithPolicy; set other bounds with WithClient, or on one request with
+// DoTimeout or DoDeadline.
 var defaultClient = &fasthttp.Client{
 	NoDefaultUserAgentHeader: true,
 	DisablePathNormalizing:   true,

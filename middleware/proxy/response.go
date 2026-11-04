@@ -27,12 +27,20 @@ func upstreamResponse(streams bool, res *fasthttp.Response) *fasthttp.Response {
 // client's: sanitized and, when upstream is the proxy's own, its header section copied over and its body read
 // from it through an upstreamBody, which releases it once the body has been sent, or moved over without a copy
 // when the client buffered the body after all. upstream is released on an error.
-func adoptUpstreamResponse(res, upstream *fasthttp.Response, err error, policy SecurityPolicy, except ...string) error {
+//
+// A body the client streams is held to limit bytes when that is positive, which fasthttp does not do for one:
+// it ignores a client's MaxResponseBodySize for a body it hands over as a stream. A length the response declares
+// above it is refused before anything is sent, as a body read into memory would be, and a body that passes it
+// without declaring one ends with fasthttp.ErrBodyTooLarge, which aborts the response.
+func adoptUpstreamResponse(res, upstream *fasthttp.Response, err error, policy SecurityPolicy, limit int, except ...string) error { //nolint:revive // argument-limit: the bound is as much the caller's as the policy
 	if err == nil {
 		err = sanitizeUpstreamResponse(upstream, policy, except...)
 	}
 	if upstream == res {
 		return err
+	}
+	if err == nil && limit > 0 && upstream.IsBodyStream() && upstream.Header.ContentLength() > limit {
+		err = fasthttp.ErrBodyTooLarge
 	}
 	if err != nil {
 		fasthttp.ReleaseResponse(upstream)
@@ -46,7 +54,7 @@ func adoptUpstreamResponse(res, upstream *fasthttp.Response, err error, policy S
 		fasthttp.ReleaseResponse(upstream)
 		return nil
 	}
-	res.SetBodyStream(&upstreamBody{Reader: upstream.BodyStream(), upstream: upstream}, upstream.Header.ContentLength())
+	res.SetBodyStream(&upstreamBody{Reader: upstream.BodyStream(), upstream: upstream, limit: int64(limit)}, upstream.Header.ContentLength())
 	return nil
 }
 
@@ -65,10 +73,37 @@ func moveBody(res, upstream *fasthttp.Response) {
 }
 
 // upstreamBody is the body of a streamed upstream response, read from the response the client streams into
-// and released with it once it has been sent, which closes the stream and so releases its connection.
+// and released with it once it has been sent, which closes the stream and so releases its connection. It
+// delivers at most limit bytes when that is positive, and then fails with fasthttp.ErrBodyTooLarge instead of
+// the byte past it.
 type upstreamBody struct {
 	io.Reader
 	upstream *fasthttp.Response
+	err      error // the failure a body past its limit keeps returning
+	limit    int64
+	read     int64
+}
+
+func (b *upstreamBody) Read(p []byte) (int, error) {
+	if b.limit <= 0 {
+		return b.Reader.Read(p) //nolint:wrapcheck // fasthttp expects the reader's own io.EOF
+	}
+	if b.err != nil {
+		return 0, b.err
+	}
+	// When p holds more than is left, one byte past it is asked for, to tell a body that ends at the
+	// limit from one that goes on. Written as room < len(p), which cannot overflow, for a limit near
+	// the largest int.
+	if room := b.limit - b.read; room < int64(len(p)) {
+		p = p[:room+1]
+	}
+	n, err := b.Reader.Read(p)
+	b.read += int64(n)
+	if b.read > b.limit {
+		b.err = fasthttp.ErrBodyTooLarge
+		return n - 1, b.err
+	}
+	return n, err //nolint:wrapcheck // fasthttp expects the reader's own io.EOF
 }
 
 func (b *upstreamBody) Close() error {
