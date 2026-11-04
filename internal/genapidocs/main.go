@@ -29,13 +29,16 @@ var (
 	errMalformedBlocks   = errors.New("unbalanced or malformed go:doc blocks")
 	errUnknownSymbol     = errors.New("unknown exported declaration or example")
 	errUnplayableExample = errors.New("example cannot be rendered as a standalone program")
-	// The lazy optional body lets the closing marker follow the opening line directly.
-	blockPattern = regexp.MustCompile(`(?s)(<!-- go:doc ([^>\r\n]+) -->\r?\n)(?:.*?\r?\n)??(<!-- /go:doc -->)`)
+	errAmbiguousSymbol   = errors.New("ambiguous declaration or example name")
+	errGeneratedMarker   = errors.New("generated text contains a go:doc marker")
+	errUndocumentedAPI   = errors.New("exported declarations are not documented")
+	fencePattern         = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")
 )
 
 type packageDocs struct {
-	symbols map[string]symbolDoc
-	fset    *token.FileSet
+	symbols  map[string]symbolDoc
+	fset     *token.FileSet
+	required []string
 }
 
 type symbolDoc struct {
@@ -44,6 +47,7 @@ type symbolDoc struct {
 	output    string
 	comments  []*ast.CommentGroup
 	unordered bool
+	fragment  bool
 }
 
 // main regenerates the current package's marked documentation blocks.
@@ -84,7 +88,7 @@ func generate(dir, output string) error {
 
 // writeAtomic replaces path via a sibling temp file so an interrupted write never truncates the page.
 func writeAtomic(path string, data []byte) error {
-	info, err := os.Stat(path)
+	info, err := os.Stat(path) //nolint:gosec // The maintainer explicitly selects this existing output path.
 	if err != nil {
 		return fmt.Errorf("stat: %w", err)
 	}
@@ -98,12 +102,12 @@ func writeAtomic(path string, data []byte) error {
 		err = closeErr
 	}
 	if err == nil {
-		err = os.Chmod(tmp.Name(), info.Mode().Perm())
+		err = os.Chmod(tmp.Name(), info.Mode().Perm()) //nolint:gosec // This command creates the sibling temp file.
 	}
 	if err != nil {
 		return fmt.Errorf("prepare temp file: %w", err)
 	}
-	if err = os.Rename(tmp.Name(), path); err != nil {
+	if err = os.Rename(tmp.Name(), path); err != nil { //nolint:gosec // This CLI intentionally replaces the selected output path.
 		return fmt.Errorf("replace: %w", err)
 	}
 	return nil
@@ -160,7 +164,7 @@ func loadPackage(dir string) (packageDocs, error) {
 		}
 	}
 	for _, value := range values {
-		// Value literals are shown as copyable code, so drop go/doc's "filtered fields" placeholder.
+		// Value literals retain source expressions without go/doc's "filtered fields" placeholder.
 		ast.Inspect(value.Decl, func(n ast.Node) bool {
 			if lit, ok := n.(*ast.CompositeLit); ok {
 				lit.Incomplete = false
@@ -176,12 +180,45 @@ func loadPackage(dir string) (packageDocs, error) {
 	for _, function := range functions {
 		symbols[function.Name] = symbolDoc{node: function.Decl, text: function.Doc}
 	}
+	required := slices.Sorted(maps.Keys(symbols))
+	for _, typ := range pkg.Types {
+		ast.Inspect(typ.Decl, func(node ast.Node) bool {
+			var fields []*ast.Field
+			switch node := node.(type) {
+			case *ast.StructType:
+				fields = node.Fields.List
+			case *ast.InterfaceType:
+				fields = node.Methods.List
+			}
+			for _, field := range fields {
+				list := &ast.FieldList{List: []*ast.Field{field}}
+				var member ast.Expr = &ast.StructType{Fields: list}
+				if _, isInterface := node.(*ast.InterfaceType); isInterface {
+					member = &ast.InterfaceType{Methods: list}
+				}
+				for _, name := range field.Names {
+					if ast.IsExported(name.Name) {
+						symbols[typ.Name+"."+name.Name] = symbolDoc{node: member, fragment: true}
+					}
+				}
+			}
+
+			return fields == nil
+		})
+	}
+	exampleNames := make(map[string]bool)
 	for _, example := range examples {
 		name := "Example" + example.Name
 		play := playable(example)
-		if _, exists := symbols[name]; exists && play == nil {
-			continue // An internal and an external example share the name; keep the playable one.
+		if previous, exists := symbols[name]; exists {
+			if !exampleNames[name] || previous.node != nil && play != nil {
+				return packageDocs{}, fmt.Errorf("%w: %s", errAmbiguousSymbol, name)
+			}
+			if play == nil {
+				continue // Keep a playable example over an unplayable one with the same name.
+			}
 		}
+		exampleNames[name] = true
 		// The example's doc comment names a test function the program does not contain, so it is not published.
 		symbol := symbolDoc{output: example.Output, unordered: example.Unordered}
 		if play != nil {
@@ -189,7 +226,7 @@ func loadPackage(dir string) (packageDocs, error) {
 		}
 		symbols[name] = symbol
 	}
-	return packageDocs{symbols: symbols, fset: fset}, nil
+	return packageDocs{symbols: symbols, fset: fset, required: required}, nil
 }
 
 // innerComments returns the comments go/doc's filtered declaration still reaches, minus its doc comment.
@@ -252,76 +289,134 @@ func selfContained(file *ast.File) bool {
 	return true
 }
 
-// render preserves handwritten prose and fails on stale or incomplete block markers.
+// render replaces whole-line markers outside code fences and preserves the file's line endings.
 func render(markdown []byte, docs packageDocs) ([]byte, error) {
-	matches := blockPattern.FindAllSubmatch(markdown, -1)
-	openCount := bytes.Count(markdown, []byte("<!-- go:doc "))
-	if openCount == 0 {
+	newline := "\n"
+	if first := bytes.IndexByte(markdown, '\n'); first > 0 && markdown[first-1] == '\r' {
+		newline = "\r\n"
+	}
+	var result bytes.Buffer
+	var names []string
+	var fence string
+	blocks := 0
+	checkAll := false
+	selected := map[ast.Node]bool{}
+	for index, line := range strings.SplitAfter(string(markdown), "\n") {
+		content := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+		match := fencePattern.FindStringSubmatch(content)
+		if match != nil {
+			if fence == "" {
+				fence = match[1]
+			} else if match[1][0] == fence[0] && len(match[1]) >= len(fence) && strings.TrimSpace(match[2]) == "" {
+				fence = ""
+			}
+		}
+		if fence != "" || match != nil || strings.HasPrefix(content, "    ") || strings.HasPrefix(content, "\t") {
+			if names == nil {
+				fmt.Fprint(&result, line)
+			}
+			continue
+		}
+		content = strings.TrimSpace(content)
+		if rest, opener := strings.CutPrefix(content, "<!-- go:doc "); opener && strings.HasSuffix(rest, " -->") {
+			if names != nil {
+				return nil, fmt.Errorf("%w at line %d", errMalformedBlocks, index+1)
+			}
+			names = strings.Fields(strings.TrimSuffix(rest, " -->"))
+			if len(names) == 0 {
+				return nil, fmt.Errorf("%w at line %d", errMalformedBlocks, index+1)
+			}
+			fmt.Fprint(&result, line)
+			continue
+		}
+		if content == "<!-- /go:doc -->" {
+			if names == nil {
+				return nil, fmt.Errorf("%w at line %d", errMalformedBlocks, index+1)
+			}
+			body, err := renderSymbols(names, docs, selected)
+			if err != nil {
+				return nil, err
+			}
+			result.Write(bytes.ReplaceAll(body, []byte("\n"), []byte(newline)))
+			fmt.Fprint(&result, newline, line)
+			names = nil
+			blocks++
+			continue
+		}
+		if names == nil {
+			checkAll = checkAll || content == "<!-- go:doc-all -->"
+			fmt.Fprint(&result, line)
+		}
+	}
+	if names != nil {
+		return nil, fmt.Errorf("%w: missing closing marker", errMalformedBlocks)
+	}
+	if blocks == 0 {
 		return nil, errNoBlocks
 	}
-	if closeCount := bytes.Count(markdown, []byte("<!-- /go:doc -->")); len(matches) != openCount || closeCount != openCount {
-		return nil, fmt.Errorf("%w: %d openers, %d closers, %d complete blocks", errMalformedBlocks, openCount, closeCount, len(matches))
+	if checkAll {
+		var missing []string
+		for _, name := range docs.required {
+			if !selected[docs.symbols[name].node] {
+				missing = append(missing, name)
+			}
+		}
+		if len(missing) > 0 {
+			return nil, fmt.Errorf("%w: %s", errUndocumentedAPI, strings.Join(missing, ", "))
+		}
 	}
-	var renderErr error
-	result := blockPattern.ReplaceAllFunc(markdown, func(block []byte) []byte {
-		if renderErr != nil {
-			return block
+	return result.Bytes(), nil
+}
+
+// renderSymbols prints declarations once per block and rejects marker text in generated content.
+func renderSymbols(names []string, docs packageDocs, selected map[ast.Node]bool) ([]byte, error) {
+	var code bytes.Buffer
+	seen := map[ast.Node]bool{}
+	for _, name := range names {
+		symbol, ok := docs.symbols[name]
+		if !ok {
+			return nil, fmt.Errorf("%w: %s", errUnknownSymbol, name)
 		}
-		parts := blockPattern.FindSubmatch(block)
-		names := strings.Fields(string(parts[2]))
-		if len(names) == 0 {
-			renderErr = errMalformedBlocks
-			return block
+		if symbol.node == nil {
+			return nil, fmt.Errorf("%w: %s", errUnplayableExample, name)
 		}
-		var code bytes.Buffer
-		seen := map[ast.Node]bool{}
-		for _, name := range names {
-			symbol, ok := docs.symbols[name]
-			if !ok {
-				renderErr = fmt.Errorf("%w: %s", errUnknownSymbol, name)
-				return block
-			}
-			if symbol.node == nil {
-				renderErr = fmt.Errorf("%w: %s", errUnplayableExample, name)
-				return block
-			}
-			if seen[symbol.node] {
-				continue // Names of one const or var group share a declaration.
-			}
-			seen[symbol.node] = true
-			fmt.Fprintln(&code)
-			fmt.Fprint(&code, "```go\n")
-			if text := strings.TrimSpace(symbol.text); text != "" {
-				for line := range strings.SplitSeq(text, "\n") {
-					fmt.Fprint(&code, strings.TrimRight("// "+line, " \t")+"\n")
-				}
-			}
-			var node any = symbol.node
-			if symbol.comments != nil {
-				node = &printer.CommentedNode{Node: symbol.node, Comments: symbol.comments}
-			}
-			var formatted bytes.Buffer
-			config := printer.Config{Mode: printer.UseSpaces | printer.TabIndent, Tabwidth: 8} // gofmt's settings
-			if err := config.Fprint(&formatted, docs.fset, node); err != nil {
-				renderErr = fmt.Errorf("format %s: %w", name, err)
-				return block
-			}
-			code.Write(bytes.TrimRight(formatted.Bytes(), "\n"))
-			fmt.Fprint(&code, "\n```\n")
-			if symbol.output != "" {
-				label := "Output:"
-				if symbol.unordered {
-					label = "Unordered output:"
-				}
-				fmt.Fprint(&code, "\n", label, "\n\n```text\n", symbol.output, "```\n")
+		if seen[symbol.node] {
+			continue
+		}
+		seen[symbol.node] = true
+		selected[symbol.node] = true
+		fmt.Fprintln(&code)
+		fmt.Fprint(&code, "```go\n")
+		if text := strings.TrimSpace(symbol.text); text != "" {
+			for line := range strings.SplitSeq(text, "\n") {
+				fmt.Fprint(&code, strings.TrimRight("// "+line, " \t")+"\n")
 			}
 		}
-		// markdownlint MD010 rejects hard tabs, which gofmt indentation and doc code blocks carry.
-		expanded := bytes.ReplaceAll(code.Bytes(), []byte("\t"), []byte("    "))
-		return slices.Concat(parts[1], expanded, []byte("\n"), parts[3])
-	})
-	if renderErr != nil {
-		return nil, renderErr
+		var node any = symbol.node
+		if symbol.comments != nil {
+			node = &printer.CommentedNode{Node: symbol.node, Comments: symbol.comments}
+		}
+		var formatted bytes.Buffer
+		config := printer.Config{Mode: printer.UseSpaces | printer.TabIndent, Tabwidth: 8}
+		if err := config.Fprint(&formatted, docs.fset, node); err != nil {
+			return nil, fmt.Errorf("format %s: %w", name, err)
+		}
+		printed := bytes.TrimRight(formatted.Bytes(), "\n")
+		if symbol.fragment {
+			printed = bytes.TrimSpace(printed[bytes.IndexByte(printed, '{')+1 : bytes.LastIndexByte(printed, '}')])
+		}
+		code.Write(printed)
+		fmt.Fprint(&code, "\n```\n")
+		if symbol.output != "" {
+			label := "Output:"
+			if symbol.unordered {
+				label = "Unordered output:"
+			}
+			fmt.Fprint(&code, "\n", label, "\n\n```text\n", symbol.output, "```\n")
+		}
 	}
-	return result, nil
+	if bytes.Contains(code.Bytes(), []byte("<!-- go:doc")) || bytes.Contains(code.Bytes(), []byte("<!-- /go:doc")) {
+		return nil, errGeneratedMarker
+	}
+	return bytes.ReplaceAll(code.Bytes(), []byte("\t"), []byte("    ")), nil
 }

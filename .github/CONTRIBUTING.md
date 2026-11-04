@@ -37,7 +37,15 @@ The Go source is canonical: edit it and run `make generate` to update the page.
   `//go:generate go run ../../internal/genapidocs -out <page>` (see `addon/retry/doc.go`).
 - Each block is a `<!-- go:doc Config -->` line and a `<!-- /go:doc -->` line, both on
   lines of their own; the body between them may be empty. Names are exported
-  declarations (`Type`, `Func`, `Type.Method`, a const or var name) or example
+  declarations (`Type`, `Func`, `Type.Method`, `Type.Field`, a const or var name) or example
   functions (`ExampleType_Method`); examples must be standalone programs.
 - Prose outside the blocks is preserved, so do not restate generated facts there.
 - The `Generated API docs` workflow fails when a page drifts from its source.
+
+Markers inside fenced or indented code blocks and inline examples are ignored.
+Generated text must not contain marker strings; the page's LF or CRLF line ending is preserved.
+A page with `<!-- go:doc-all -->` must reference every exported declaration and method;
+fields and interface methods are included by their containing type, and const/var groups count once.
+The retry page enables this check, so new exported API requires a documentation update.
+Its README and the release notes link to `docs/addon/retry.md` rather than maintaining copies.
+Declarations retain source expressions, including references to private constants; only examples are standalone programs.

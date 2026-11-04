@@ -46,6 +46,16 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Require full generator coverage
+        run: |
+          go test -covermode=atomic -coverprofile="$RUNNER_TEMP/genapidocs.cover" ./internal/genapidocs
+          go tool cover -func="$RUNNER_TEMP/genapidocs.cover" | tee "$RUNNER_TEMP/genapidocs-coverage.txt"
+          generator_coverage=$(awk '/^total:/ { print $NF }' "$RUNNER_TEMP/genapidocs-coverage.txt")
+          if [ "$generator_coverage" != "100.0%" ]; then
+            echo "::error::Generator coverage must be 100.0%, got $generator_coverage"
+            exit 1
+          fi
+
       - name: Regenerate API docs
         run: go generate -run genapidocs ./...
 

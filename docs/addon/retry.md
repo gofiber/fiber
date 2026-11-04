@@ -2,6 +2,8 @@
 id: retry
 ---
 
+<!-- go:doc-all -->
+
 # Retry Addon
 
 The Retry addon for [Fiber](https://github.com/gofiber/fiber) retries failed network operations using exponential
