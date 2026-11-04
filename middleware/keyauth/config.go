@@ -56,8 +56,8 @@ type Config struct {
 	// `WWW-Authenticate` challenges when validation fails. Allowed values
 	// are `invalid_request`, `invalid_token`, or `insufficient_scope`.
 	// It is omitted, together with ErrorDescription, ErrorURI and Scope,
-	// when the request carried no credentials at all, as RFC 6750
-	// section 3 asks.
+	// when the request carried no credentials or used another auth
+	// method, as RFC 6750 section 3 asks.
 	//
 	// Optional. Default: "".
 	Error string

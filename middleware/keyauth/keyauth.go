@@ -57,6 +57,9 @@ func New(config ...Config) fiber.Handler {
 		if missingCredentials {
 			// Replace shared extractor not found error with a keyauth specific error
 			err = ErrMissingOrMalformedAPIKey
+			// The extractor reports a malformed credential the same way, but that
+			// is an attempt to authenticate, so the error parameters still apply.
+			missingCredentials = !usesAuthScheme(c.Get(fiber.HeaderAuthorization), authSchemes)
 		}
 		// If there was no error extracting the key, validate it
 		if err == nil {
@@ -93,6 +96,20 @@ func New(config ...Config) fiber.Handler {
 
 		return handlerErr
 	}
+}
+
+// usesAuthScheme reports whether an Authorization header value names one of the
+// given auth schemes, whether or not the credential after it is well formed.
+func usesAuthScheme(header string, authSchemes []string) bool {
+	for _, scheme := range authSchemes {
+		if len(header) < len(scheme) || !utils.EqualFold(header[:len(scheme)], scheme) {
+			continue
+		}
+		if len(header) == len(scheme) || header[len(scheme)] == ' ' {
+			return true
+		}
+	}
+	return false
 }
 
 // bearerErrorParams formats the RFC 6750 error parameters configured for

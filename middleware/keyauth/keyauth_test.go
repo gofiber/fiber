@@ -516,6 +516,19 @@ func Test_Challenge(t *testing.T) {
 			www:    bearer,
 		},
 		{
+			// A malformed credential in the expected scheme is an attempt to
+			// authenticate, so the error parameters stay.
+			name: "bearer error fields with a malformed token", authorization: "Bearer a b", status: http.StatusUnauthorized,
+			config: Config{Validator: invalid, Error: ErrorInvalidRequest},
+			www:    bearer + `, error="invalid_request"`,
+		},
+		{
+			// RFC 6750 section 3 treats an unsupported method like no credentials.
+			name: "bearer error fields with another auth method", authorization: "Basic dXNlcjpwYXNz", status: http.StatusUnauthorized,
+			config: Config{Validator: invalid, Error: ErrorInvalidRequest},
+			www:    bearer,
+		},
+		{
 			name: "no challenge unless the answer is a 401", authorization: "Bearer bad", status: http.StatusForbidden,
 			config: Config{Validator: invalid, ErrorHandler: answerStatus(fiber.StatusForbidden, "forbidden")},
 		},
