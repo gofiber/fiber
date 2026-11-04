@@ -793,12 +793,7 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 // Make copies or use the Immutable setting instead.
 // Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 func (r *DefaultReq) Host() string {
-	// The two branches differ in what they guarantee. The X-Forwarded-Host
-	// branch is the raw header value: neither validated nor lowercased. The
-	// other is URI().Host, which fasthttp's URI.parse runs through parseHost
-	// and then ASCII-lowercases; the server answers 400 when that parse fails.
-	// The raw branch is why Hostname splits leniently and why Subdomains and
-	// Domain matching fold case themselves instead of relying on fasthttp.
+	// The trusted X-Forwarded-Host branch returns its first element as sent: no validation, no case folding.
 	if r.IsProxyTrusted() {
 		if host := r.Get(HeaderXForwardedHost); host != "" {
 			if before, _, found := utils.CutByte(host, ','); found {
@@ -816,7 +811,7 @@ func (r *DefaultReq) Host() string {
 // Make copies or use the Immutable setting instead.
 // Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 func (r *DefaultReq) Hostname() string {
-	addr, _ := hostname.SplitPort(r.Host())
+	addr, _ := hostname.SplitPort(utils.TrimSpace(r.Host()))
 
 	return addr
 }
@@ -1763,8 +1758,6 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 	if strings.HasSuffix(host, ".") {
 		host = utils.TrimRight(host, '.')
 	}
-	// Fold before decoding: ToUnicode keeps the ASCII of a lowercase input
-	// lowercase, so the decoded host needs no second fold.
 	host = hostname.ToUnicode(utilsstrings.ToLower(host))
 
 	// Return nothing for IP addresses

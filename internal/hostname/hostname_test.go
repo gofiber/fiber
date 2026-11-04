@@ -24,11 +24,11 @@ func Test_SplitPort(t *testing.T) {
 		{in: "[fe80::1%lo0]:1234", host: "[fe80::1%lo0]", port: "1234"},
 		{in: "[fe80::1%lo0]", host: "[fe80::1%lo0]", port: ""},
 		{in: ":9090", host: "", port: "9090"},
-		{in: " 127.0.0.1:8080 ", host: "127.0.0.1", port: "8080"},
+		{in: " 127.0.0.1:8080 ", host: " 127.0.0.1", port: "8080 "},
 		{in: "", host: "", port: ""},
-		// No closing bracket: not a bracketed literal, and with two colons
-		// the value is returned whole like any bare IPv6 literal.
 		{in: "[::1", host: "[::1", port: ""},
+		{in: "[a:80", host: "[a", port: "80"},
+		{in: "[::1]]:80", host: "[::1]", port: ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.in, func(t *testing.T) {
@@ -56,10 +56,7 @@ func Test_ToASCII(t *testing.T) {
 		{"colon: host:port is left alone", "münchen.example.com:8080", "münchen.example.com:8080"},
 		{"colon: bracketed IPv6 is left alone", "[::1]", "[::1]"},
 		{"a lone colon is left alone", ":", ":"},
-		// The documented security default: input idna.Lookup refuses, such as a
-		// label starting with a combining mark (invalid under UTS46), is returned
-		// unchanged rather than surfacing an error or a converted-but-wrong value,
-		// so it simply will not match any Punycode-encoded value it is compared to.
+		// A label starting with a combining mark is invalid under UTS46.
 		{"rejects by non-match", "́invalid.example.com", "́invalid.example.com"},
 	}
 	for _, tc := range tests {
@@ -82,11 +79,8 @@ func Test_ToUnicode(t *testing.T) {
 		{"no Punycode label, case preserved", "API.Example.com", "API.Example.com"},
 		{"Punycode label decodes", "xn--mnchen-3ya.example.com", "münchen.example.com"},
 		{"CJK label decodes", "xn--wgv71a119e.jp", "日本語.jp"},
-		{"round trip with ToASCII", ToASCII("bücher.münchen.de"), "bücher.münchen.de"},
-		// Punycode idna.Lookup rejects is returned unchanged, mirroring ToASCII.
 		{"invalid Punycode label, unchanged", "xn--a.example.com", "xn--a.example.com"},
-		// idna.Lookup accepts a bare "xn--" prefix and decodes it to an empty
-		// label; pinned as x/net's behavior, which Subdomains has always had.
+		{"upper-case XN-- is not decoded", "XN--BCHER-KVA.EXAMPLE.COM", "XN--BCHER-KVA.EXAMPLE.COM"},
 		{"bare xn-- prefix decodes to an empty label", "xn--.example.com", ".example.com"},
 	}
 	for _, tc := range tests {
@@ -95,6 +89,13 @@ func Test_ToUnicode(t *testing.T) {
 			assert.Equal(t, tc.want, ToUnicode(tc.host))
 		})
 	}
+}
+
+func Test_ToASCII_ToUnicode_RoundTrip(t *testing.T) {
+	t.Parallel()
+	ascii := ToASCII("bücher.münchen.de")
+	assert.Equal(t, "xn--bcher-kva.xn--mnchen-3ya.de", ascii)
+	assert.Equal(t, "bücher.münchen.de", ToUnicode(ascii))
 }
 
 func Benchmark_ToASCII_ASCIIFastPath(b *testing.B) {

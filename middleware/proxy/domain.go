@@ -13,10 +13,7 @@ import (
 
 // foldHostnameLabel returns hostname with its host label folded to lowercase
 // Punycode, preserving an explicit port unchanged. It is the construction-time
-// counterpart to the per-request hostnamepkg.SplitPort in DomainForward: that
-// strips a port from the wire value, this normalizes the configured value once
-// so the two sides compare correctly regardless of how the operator spelled
-// the domain.
+// counterpart to the SplitPort in DomainForward.
 func foldHostnameLabel(hostname string) string {
 	if host, port, ok := utils.SplitHostPort(hostname); ok {
 		return net.JoinHostPort(hostnamepkg.ToASCII(utilsstrings.ToLower(host)), port)
@@ -49,13 +46,7 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 	// every request, is what makes the two sides comparable at all.
 	hostname = foldHostnameLabel(hostname)
 	return func(c fiber.Ctx) error {
-		// Request.Host is URI().Host, which fasthttp's URI.parse validates
-		// (parseHost) and then ASCII-lowercases; the server answers 400 when
-		// that parse fails, so a served request always reaches here with a
-		// lowercase, well-formed host and SplitPort's lenient fallbacks are
-		// never taken. Host names are case-insensitive (RFC 9110 §4.2.3);
-		// EqualFold stays so the gate does not depend on that guarantee for
-		// a request built by hand rather than read off the wire.
+		// Host names are case-insensitive (RFC 9110 §4.2.3), so compare with EqualFold.
 		// Match the host with or without its port; another host is passed on to the next handler.
 		host := utils.UnsafeString(c.Request().Host())
 		if !utils.EqualFold(host, hostname) {

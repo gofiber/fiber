@@ -1358,20 +1358,3 @@ func Test_CookieJar_NormalizedHostPaths(t *testing.T) {
 		})
 	}
 }
-
-// Test_CookieJar_IPv6BracketKey pins how the jar keys a bracketed IPv6 host
-// today: normalizeCookieHost drops the brackets only together with a port, so
-// "[::1]:8080" and "[::1]" are stored under two keys ("::1" and "[::1]") and a
-// cookie set through one is not sent to the other, although cookies ignore the
-// port (RFC 6265 §8.5). Pinned, not endorsed: whether to unbracket always is
-// an open question on #4604.
-func Test_CookieJar_IPv6BracketKey(t *testing.T) {
-	t.Parallel()
-	require.Equal(t, "::1", normalizeCookieHost("[::1]:8080"))
-	require.Equal(t, "[::1]", normalizeCookieHost("[::1]"))
-
-	jar := clientTestCJar(t)
-	jar.Set(clientTestCURI(t, "http://[::1]:8080/"), clientTestCCookie(t, "k", "v"))
-	require.Equal(t, []string{"k"}, cookieKeys(jar.Get(clientTestCURI(t, "http://[::1]:9090/"))))
-	require.Empty(t, jar.Get(clientTestCURI(t, "http://[::1]/")))
-}

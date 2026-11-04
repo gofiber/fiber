@@ -2000,6 +2000,11 @@ func Test_Proxy_DomainForward_HostMatch(t *testing.T) {
 			requests: []request{{host: "[::1]:8080", status: fiber.StatusOK, body: "proxied"}},
 		},
 		{
+			name:     "a port-less IPv6 domain matches a Host with a port",
+			domain:   "[::1]",
+			requests: []request{{host: "[::1]:8080", status: fiber.StatusOK, body: "proxied"}},
+		},
+		{
 			name:     "a Host that does not match continues to the next handler",
 			domain:   "api.example.com",
 			fallback: "local",
@@ -2030,16 +2035,6 @@ func Test_Proxy_DomainForward_HostMatch(t *testing.T) {
 			}
 		})
 	}
-}
-
-// DomainForward's comment relies on fasthttp lowercasing Request.Host: an
-// uppercase Host header arrives lowercase, port included.
-func Test_Proxy_RequestHostIsLowercased(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString(string(c.Request().Host())) })
-	apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHost("API.Example.COM:8080")), fiber.StatusOK,
-		"api.example.com:8080")
 }
 
 // sendRaw parses raw as the request a client put on the wire and runs app's

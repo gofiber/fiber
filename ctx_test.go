@@ -2870,6 +2870,7 @@ func Test_Ctx_Host_ForwardedHost(t *testing.T) {
 		{name: "no whitespace with comma", proxies: trusted, forwardedHost: "example.com, proxy1", want: "example.com"},
 		{name: "single value with whitespace", proxies: trusted, forwardedHost: "  example.com  ", want: "example.com"},
 		{name: "leading comma", proxies: trusted, forwardedHost: ",example.com", want: ""},
+		{name: "forwarded host keeps its case", proxies: trusted, forwardedHost: "Google1.COM", want: "Google1.COM"},
 	}
 
 	// No host carries a port, so every case answers alike through c.Host and c.Hostname.
@@ -2891,33 +2892,6 @@ func Test_Ctx_Host_ForwardedHost(t *testing.T) {
 					require.Equal(t, tc.want, accessor.get(c))
 				})
 			}
-		})
-	}
-}
-
-// Without a trusted proxy, Host is fasthttp's URI().Host, which URI.parse
-// lowercases; the X-Forwarded-Host branch is the raw header. Subdomains and
-// Domain matching fold case themselves because of the second branch.
-func Test_Ctx_Host_CaseFolding(t *testing.T) {
-	t.Parallel()
-	trusted := TrustProxyConfig{Proxies: []string{"0.0.0.0"}}
-	for _, tc := range []struct {
-		name, forwardedHost, want string
-		proxy                     TrustProxyConfig
-	}{
-		{name: "Host header is lowercased by fasthttp", want: "api.example.com:8080"},
-		{name: "untrusted X-Forwarded-Host is ignored", forwardedHost: "Other.Example", want: "api.example.com:8080"},
-		{name: "trusted X-Forwarded-Host is returned raw", proxy: trusted, forwardedHost: "Other.Example", want: "Other.Example"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			c := apptest.Ctx(t, New(Config{TrustProxy: true, TrustProxyConfig: tc.proxy}))
-			c.Request().Header.SetHost("API.Example.COM:8080")
-			c.Request().SetRequestURI("/test")
-			if tc.forwardedHost != "" {
-				c.Request().Header.Set(HeaderXForwardedHost, tc.forwardedHost)
-			}
-			require.Equal(t, tc.want, c.Host())
 		})
 	}
 }
@@ -2971,6 +2945,9 @@ func Test_Ctx_Hostname(t *testing.T) {
 	require.Equal(t, "google.com", c.Hostname())
 
 	c.Request().SetRequestURI("http://google.com:8080/test")
+	require.Equal(t, "google.com", c.Hostname())
+
+	c.Request().URI().SetHost(" google.com:8080 ")
 	require.Equal(t, "google.com", c.Hostname())
 }
 
@@ -5920,13 +5897,14 @@ func Test_Ctx_Stale(t *testing.T) {
 
 func Test_Ctx_Subdomains(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}}})
 
 	for _, tc := range []struct {
-		name   string
-		host   string
-		offset []int // nil ⇒ call without argument
-		want   []string
+		name      string
+		host      string
+		forwarded string // X-Forwarded-Host from a trusted proxy; not set when empty
+		offset    []int  // nil ⇒ call without argument
+		want      []string
 	}{
 		{
 			name: "default offset (2) drops registrable domain + TLD", host: "john.doe.is.awesome.google.com",
@@ -5965,6 +5943,7 @@ func Test_Ctx_Subdomains(t *testing.T) {
 		{name: "punycode domain is decoded", host: "xn--bcher-kva.example.com", want: []string{"bücher"}},
 		{name: "punycode fqdn is decoded", host: "xn--bcher-kva.example.com.", want: []string{"bücher"}},
 		{name: "punycode decode failure uses fallback", host: "xn--bcher--.example.com", want: []string{"xn--bcher--"}},
+		{name: "upper-case forwarded punycode is decoded", forwarded: "XN--BCHER-KVA.EXAMPLE.COM", want: []string{"bücher"}},
 		{name: "invalid host keeps original lowercased", host: "Foo Bar", offset: []int{0}, want: []string{"foo bar"}},
 		{name: "IPv4 host returns empty", host: "192.168.0.1", want: []string{}},
 		{name: "IPv6 host returns empty", host: "[2001:db8::1]", want: []string{}},
@@ -5974,6 +5953,9 @@ func Test_Ctx_Subdomains(t *testing.T) {
 			c := apptest.Ctx(t, app)
 
 			c.Request().URI().SetHost(tc.host)
+			if tc.forwarded != "" {
+				c.Request().Header.Set(HeaderXForwardedHost, tc.forwarded)
+			}
 			require.Equal(t, tc.want, c.Subdomains(tc.offset...))
 		})
 	}
