@@ -4,9 +4,11 @@
 package schemehost
 
 import (
+	"net/netip"
 	"net/url"
 	"strings"
 
+	"github.com/gofiber/fiber/v3/internal/ipv6host"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
@@ -75,7 +77,14 @@ func Match(schemeA, hostA, schemeB, hostB string) bool {
 		}
 	}
 
-	// Anything unusual (userinfo, percent-encoding, bracketed IPv6, control
+	// Two bracketed IPv6 hosts compare by address, so every spelling matches.
+	if addrA, portA, okA := splitIPv6HostPort(hostA, defaultPort); okA {
+		if addrB, portB, okB := splitIPv6HostPort(hostB, defaultPort); okB {
+			return addrA == addrB && portA == portB
+		}
+	}
+
+	// Anything unusual (userinfo, percent-encoding, an IPv6 zone, control
 	// chars, invalid port, ...) takes the legacy normalize-and-compare path.
 	return normalizeHostPort(scheme, hostA, defaultPort) == normalizeHostPort(scheme, hostB, defaultPort)
 }
@@ -116,6 +125,27 @@ func splitStrictHostPort(s, defaultPort string) (host, port string, ok bool) { /
 	}
 }
 
+// splitIPv6HostPort splits "[ipv6]" or "[ipv6]:port" into the address and the
+// port, defaultPort when absent. A zone or anything else makes it not ok.
+func splitIPv6HostPort(s, defaultPort string) (netip.Addr, string, bool) {
+	inner, bracketed := strings.CutPrefix(s, "[")
+	end := strings.IndexByte(inner, ']')
+	if !bracketed || end < 0 {
+		return netip.Addr{}, "", false
+	}
+	addr, ok := ipv6host.Parse(inner[:end])
+	switch rest := inner[end+1:]; {
+	case !ok:
+		return netip.Addr{}, "", false
+	case rest == "":
+		return addr, defaultPort, true
+	case rest[0] == ':' && allDigits(rest[1:]):
+		return addr, rest[1:], true
+	default:
+		return netip.Addr{}, "", false
+	}
+}
+
 var (
 	regNameBytes     = byteSet("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
 	ipv6LiteralBytes = byteSet("0123456789abcdefABCDEF:.")
@@ -141,7 +171,7 @@ func onlyBytes(s string, set *[256]bool) bool {
 // normalizeHostPort lowercases host and appends defaultPort when no explicit
 // port is present. scheme is only used by the url.Parse fallback.
 func normalizeHostPort(scheme, host, defaultPort string) string {
-	host = utilsstrings.ToLower(host)
+	host = ipv6host.Canonical(utilsstrings.ToLower(host))
 
 	// Clean "host" or "host:port" values (e.g. the clean side of a mixed
 	// clean/unclean pair; Match handles the clean/clean case itself) avoid the
