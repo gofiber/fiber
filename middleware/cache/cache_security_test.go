@@ -1625,6 +1625,50 @@ func Test_Cache_ProxiedResponseCasingIsRead(t *testing.T) {
 	}
 }
 
+// Test_Cache_EntryStoredUnderTheEarlierVaryRuleIsNotRead covers the entries the key version before the stricter Vary
+// rule wrote. A response that varied on a header an inner middleware overwrote was stored under the value the client
+// sent, and a hit never looks at what the handler saw, so on a store that survived the upgrade every client sending
+// that value would still be served the page. The key namespace moves with the rule, so such an entry is never read.
+func Test_Cache_EntryStoredUnderTheEarlierVaryRuleIsNotRead(t *testing.T) {
+	t.Parallel()
+	const earlier = "v6" // the key version that stored them
+	storage := memory.New()
+	config := Config{Storage: storage, Expiration: time.Minute}
+
+	// What the earlier version left in the store: a page stored under the placeholder "0", moved to that version's keys.
+	seed := fiber.New()
+	seed.Use(New(config))
+	seed.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderVary, "X-User-Id")
+		return c.SendString("alice's page")
+	})
+	cacheTestCRequireReply(t, cacheTestCGet(t, seed, "/", "X-User-Id", "0"), cacheMiss, "alice's page")
+	cacheTestCRequireReply(t, cacheTestCGet(t, seed, "/", "X-User-Id", "0"), cacheHit, "alice's page")
+	keys, err := storage.Keys()
+	require.NoError(t, err)
+	require.NotEmpty(t, keys)
+	for _, key := range keys {
+		raw, err := storage.Get(string(key))
+		require.NoError(t, err)
+		moved := strings.ReplaceAll(string(key), cacheKeyVersion+"|", earlier+"|")
+		require.NoError(t, storage.Set(moved, raw, time.Minute))
+		if moved != string(key) {
+			require.NoError(t, storage.Delete(string(key)))
+		}
+	}
+
+	// The upgraded app: the header is overwritten with the session's, which is what made the page the client's.
+	app := fiber.New()
+	app.Use(New(config))
+	app.Use(func(c fiber.Ctx) error { c.Request().Header.Set("X-User-Id", c.Cookies("session")); return c.Next() })
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderVary, "X-User-Id")
+		return c.SendString("bob's page")
+	})
+	got := cacheTestCGet(t, app, "/", "X-User-Id", "0", fiber.HeaderCookie, "session=bob")
+	cacheTestCRequireReply(t, got, cacheUnreachable, "bob's page", "an entry of the earlier version must not be served")
+}
+
 // Test_Cache_LegacyAnonymousEntryIsNotRead covers an entry a previous version
 // stored. It detected Authorization byte-exactly, so under DisableHeaderNormalizing
 // a request bearing a lower-case "authorization" was taken for anonymous and its

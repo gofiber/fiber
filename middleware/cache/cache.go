@@ -81,12 +81,16 @@ const (
 // also retires v4 entries stored under the lookup's Vary list instead of their own. v6:
 // the body slot and the Vary manifest moved from a suffix of the entry key, which
 // a request can spell, to a namespace of their own (see bodyKeyPrefix), and a
-// custom KeyGenerator's key is escaped so it cannot spell a variant's suffix. Bump
+// custom KeyGenerator's key is escaped so it cannot spell a variant's suffix. v7: a
+// response that varies on a request header an inner middleware added, rewrote or
+// removed is no longer stored, as its key held the value the client sent while the
+// page was built from another. One the earlier rule stored would still be served,
+// on a store that survived the upgrade, to every client sending that value. Bump
 // this whenever what a key stands for, or what its entry carries, changes; the
 // cost is one cold cache after a deploy. Additive bookkeeping fields such as
 // heapgen need no bump: old entries decode with generation zero, and older
 // readers skip the new field without changing the response or key semantics.
-const cacheKeyVersion = "v6"
+const cacheKeyVersion = "v7"
 
 // The keys derived from an entry key sit right after the version, where no entry
 // key goes: those continue with their method.
