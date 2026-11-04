@@ -617,55 +617,32 @@ func peekJoinedResponseHeader(h *fasthttp.ResponseHeader, key string) ([]byte, b
 // on each media range.
 // See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
 func forEachMediaRange(header []byte, functor func([]byte)) {
-	hasDQuote := bytes.IndexByte(header, '"') != -1
+	if len(header) == 0 {
+		return
+	}
+	// Select the scanner once; most headers need only a comma search.
+	if bytes.IndexByte(header, '"') == -1 {
+		for len(header) > 0 {
+			header = utils.TrimLeft(header, ' ')
+			n := bytes.IndexByte(header, ',')
+			if n == -1 {
+				functor(header)
+				return
+			}
+			functor(header[:n])
+			header = header[n+1:]
+		}
+		return
+	}
 
 	for len(header) > 0 {
-		n := 0
 		header = utils.TrimLeft(header, ' ')
-		quotes := 0
-
-		if hasDQuote {
-			// Complex case. We need to keep track of quotes and quoted-pairs (i.e.,  characters escaped with \ )
-			// Only ',', '"' and '\\' can change state, so jump between them
-			// instead of visiting every byte.
-		loop:
-			for n < len(header) {
-				i := utils.IndexAny3(header[n:], ',', '"', '\\')
-				if i == -1 {
-					n = len(header)
-					break
-				}
-				n += i
-				switch header[n] {
-				case ',':
-					if quotes%2 == 0 {
-						break loop
-					}
-				case '"':
-					quotes++
-				default: // '\\'
-					if quotes%2 == 1 && n+1 < len(header) {
-						// A quoted-pair escapes exactly the next byte
-						// (RFC 9110 §5.6.4); consume it so an escaped
-						// quote is not mistaken for a closing quote.
-						n++
-					}
-				}
-				n++
-			}
-		} else {
-			// Simple case. Just look for the next comma.
-			if n = bytes.IndexByte(header, ','); n == -1 {
-				n = len(header)
-			}
-		}
-
-		functor(header[:n])
-
-		if n >= len(header) {
+		mediaRange, next := headerlist.NextQuoted(header, 0)
+		functor(mediaRange)
+		if next >= len(header) {
 			return
 		}
-		header = header[n+1:]
+		header = header[next:]
 	}
 }
 

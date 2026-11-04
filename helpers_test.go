@@ -77,6 +77,70 @@ func Test_JoinedInReceivedOrder(t *testing.T) {
 	}
 }
 
+func Test_Utils_ForEachMediaRange(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		header string
+		want   []string
+	}{
+		{name: "empty"},
+		{name: "spaces", header: "   ", want: []string{""}},
+		{name: "single", header: "text/plain", want: []string{"text/plain"}},
+		{name: "list", header: "text/plain, application/json", want: []string{"text/plain", "application/json"}},
+		{name: "empty elements", header: ",,text/plain,,", want: []string{"", "", "text/plain", ""}},
+		{name: "trailing comma", header: "text/plain,", want: []string{"text/plain"}},
+		{name: "trailing spaces", header: "text/plain,   ", want: []string{"text/plain", ""}},
+		{name: "whitespace", header: " \ttext/plain\t , \v\f", want: []string{"\ttext/plain\t ", "\v\f"}},
+		{name: "raw bytes", header: "\x00\xff,é", want: []string{"\x00\xff", "é"}},
+		{name: "quoted comma", header: `text/plain;p="a,b", text/html`, want: []string{`text/plain;p="a,b"`, "text/html"}},
+		{name: "quoted empties", header: `,"",,`, want: []string{"", `""`, ""}},
+		{name: "quoted trailing spaces", header: `"a",   `, want: []string{`"a"`, ""}},
+		{name: "escaped quote", header: `a="x\"y,z", b`, want: []string{`a="x\"y,z"`, "b"}},
+		{name: "escaped backslash", header: `a="x\\", b`, want: []string{`a="x\\"`, "b"}},
+		{name: "bare backslash", header: `\, a`, want: []string{`\`, "a"}},
+		{name: "quote after backslash", header: `a\"x,y", b`, want: []string{`a\"x,y"`, "b"}},
+		{name: "backslash after quote", header: `"a"\,"b,c",d\`, want: []string{`"a"\`, `"b,c"`, `d\`}},
+		{name: "unterminated quote", header: `a="open, b, c`, want: []string{`a="open, b, c`}},
+		{name: "unterminated escape", header: `a="x\`, want: []string{`a="x\`}},
+		{name: "adjacent quotes", header: `"a,b""c,d",e`, want: []string{`"a,b""c,d"`, "e"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var got []string
+			forEachMediaRange([]byte(tt.header), func(mediaRange []byte) { got = append(got, string(mediaRange)) })
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Benchmark_Utils_ForEachMediaRange(b *testing.B) {
+	for _, tc := range []struct {
+		name   string
+		header string
+	}{
+		{name: "empty"},
+		{name: "single", header: "application/json"},
+		{name: "list", header: "text/plain, application/json, text/html"},
+		{name: "browser", header: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+		{name: "quoted comma", header: `text/plain;p="a,b", text/html`},
+		{name: "escaped quote", header: `text/plain;p="a\"b,c", text/html`},
+		{name: "escaped backslash", header: `text/plain;p="a\\", text/html`},
+		{name: "unterminated quote", header: `text/plain;p="a,b, text/html`},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			header := []byte(tc.header)
+			totalLen := 0
+			b.ReportAllocs()
+			for b.Loop() {
+				forEachMediaRange(header, func(mediaRange []byte) { totalLen += len(mediaRange) })
+			}
+			runtime.KeepAlive(totalLen)
+		})
+	}
+}
+
 func Test_Utils_GetOffer(t *testing.T) {
 	t.Parallel()
 	require.Empty(t, getOffer([]byte("hello"), acceptsOffer))
@@ -381,6 +445,16 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 		offers      []string
 	}{
 		{description: "simple", accept: "application/json", offers: []string{"application/json"}},
+		{
+			description: "quoted comma",
+			accept:      `text/plain;p="a,b", text/html;q=0.5`,
+			offers:      []string{`text/plain;p="a,b"`, "text/html"},
+		},
+		{
+			description: "quoted pair",
+			accept:      `text/plain;p="a\"b,c", text/html;q=0.5`,
+			offers:      []string{`text/plain;p="a\"b,c"`, "text/html"},
+		},
 		{
 			description: "6 offers",
 			accept:      "text/plain",
