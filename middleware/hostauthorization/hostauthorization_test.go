@@ -548,6 +548,29 @@ func Test_ParseNormalizedAuthority_Allocations(t *testing.T) {
 	}
 }
 
+// AllocsPerRun panics under t.Parallel, so this test stays sequential.
+func Test_IsAllowed_Allocations(t *testing.T) {
+	parsed := parseAllowedHosts([]string{"[2001:db8::1]", "127.0.0.1"})
+	for _, tc := range []struct {
+		host string
+		want bool
+	}{
+		{host: "[2001:db8::1]:8080", want: true},
+		{host: "[2001:0db8:0:0:0:0:0:1]", want: true},
+		{host: "[::ffff:7f00:1]", want: true},
+		{host: "[::ffff:127.0.0.1]:80", want: true},
+		{host: "[::ffff:7f00:2]", want: false},
+		{host: "[0:0:0:0:0:0:0:2]", want: false},
+	} {
+		t.Run(tc.host, func(t *testing.T) {
+			var got bool
+			allocs := testing.AllocsPerRun(100, func() { got = isAllowed(tc.host, parsed, nil) })
+			require.Equal(t, tc.want, got)
+			require.Zero(t, allocs)
+		})
+	}
+}
+
 // --- Benchmarks ---
 
 func Benchmark_matchHost_ExactMatch(b *testing.B) {
@@ -655,6 +678,23 @@ func Benchmark_parseNormalizedAuthority_IPv6(b *testing.B) {
 }
 
 // An entry is accepted or refused with a hostauthorization panic, never a runtime one.
+func Benchmark_isAllowed_IPv6(b *testing.B) {
+	parsed := parseAllowedHosts([]string{"[::1]", "[2001:db8::1]", "127.0.0.1"})
+	for _, bc := range []struct{ name, authority string }{
+		{name: "canonical", authority: "[2001:db8::1]:8080"},
+		{name: "non-canonical", authority: "[2001:0db8:0:0:0:0:0:1]:8080"},
+		{name: "ipv4-mapped", authority: "[::ffff:7f00:1]:8080"},
+		{name: "refused", authority: "[2001:db8::2]:8080"},
+	} {
+		b.Run(bc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				isAllowed(bc.authority, parsed, nil)
+			}
+		})
+	}
+}
+
 func FuzzParseAllowedHosts(f *testing.F) {
 	for _, seed := range []string{
 		"example.com", "example.com.", "[::1]:8080", "::1", "*.myapp.com", "192.168.1.1:443", "münchen.example.com", "",

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gofiber/fiber/v3/internal/ipv6host"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/stretchr/testify/assert"
 )
@@ -24,7 +25,8 @@ func normalizeSchemeHost(scheme, host string) string {
 
 // refNormalizeSchemeHost is the original url.Parse-based implementation, kept as
 // a behavioral reference. The fast-path normalizeSchemeHost must produce
-// identical output for every input.
+// identical output for every input. The one addition is the IPv6 rewrite for
+// http and https, so every spelling of an address compares equal.
 func refNormalizeSchemeHost(scheme, host string) string {
 	host = utilsstrings.ToLower(host)
 
@@ -37,6 +39,7 @@ func refNormalizeSchemeHost(scheme, host string) string {
 	default:
 		return host
 	}
+	host = ipv6host.Canonical(host)
 
 	parsedHost, err := url.Parse(scheme + "://" + host)
 	if err != nil {
@@ -74,6 +77,7 @@ var corpus = []string{
 	"[fe80::1%eth0]", "[fe80::1%25eth0]:8080",
 	"example.com:99999", "example.com:0", "host:00080",
 	"\\example.com", "example.com\\", "[::1]extra", "[::1]x:80", "\x01",
+	"[0:0:0:0:0:0:0:1]", "[0:0:0:0:0:0:0:1]:8080", "[2001:DB8:0::1]:443", "[::ffff:127.0.0.1]", "[::ffff:7f00:1]:80",
 }
 
 // Test_normalizeSchemeHost_matchesReference verifies the fast path produces the
@@ -154,6 +158,11 @@ func Test_Match(t *testing.T) {
 		{"https", "example.com:8080", "https", "example.com", false},
 		{"https", "[::1]", "https", "[::1]:443", true},
 		{"https", "[::1]:8080", "https", "[::1]", false},
+		{"http", "[::1]:3000", "http", "[0:0:0:0:0:0:0:1]:3000", true},
+		{"https", "[2001:db8::1]", "https", "[2001:0DB8:0:0:0:0:0:1]:443", true},
+		{"http", "[::ffff:127.0.0.1]", "http", "[::ffff:7f00:1]:80", true},
+		{"http", "[::1]:3000", "http", "[0:0:0:0:0:0:0:2]:3000", false},
+		{"http", "[fe80::1%25eth0]", "http", "[fe80:0::1%25eth0]", false},
 	}
 	for _, tc := range tests {
 		got := Match(tc.schemeA, tc.hostA, tc.schemeB, tc.hostB)

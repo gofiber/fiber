@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/gofiber/fiber/v3/internal/ipv6host"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
@@ -90,8 +91,11 @@ func Normalize(raw string, policy SchemePolicy) (string, bool) {
 // outside the caller's policy still yields a string. That string is only safe
 // to compare against an [AllowList], whose entries are all valid origins, so an
 // invalid one can match nothing there.
+//
+// An IPv6 host is written as a browser serializes it, so "[0:0:0:0:0:0:0:1]"
+// matches the "[::1]" an Origin header carries.
 func FromURL(u *url.URL) string {
-	return utilsstrings.ToLower(u.Scheme) + schemeSep + utilsstrings.ToLower(u.Host)
+	return utilsstrings.ToLower(u.Scheme) + schemeSep + ipv6host.Canonical(utilsstrings.ToLower(u.Host))
 }
 
 // Subdomain is a configured wildcard pattern such as "https://*.example.com",

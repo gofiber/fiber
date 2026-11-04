@@ -1698,6 +1698,8 @@ Additionally, the panic for an invalid `AllowOrigins` entry redacts the origin b
 
 When all origins are allowed (the default), `Access-Control-Allow-Origin: *` is also sent on responses to requests without `Origin`, `OPTIONS` excepted, so a cache in front of the middleware cannot hand a response without it to a cross-origin request.
 
+An IPv6 host in `AllowOrigins` is written in the form browsers send in `Origin`, so `http://[0:0:0:0:0:0:0:1]:3000` matches `Origin: http://[::1]:3000`.
+
 ### Compression
 
 - Added support for `zstd` compression alongside `gzip`, `deflate`, and `brotli`.
@@ -1719,6 +1721,8 @@ With a `Storage`, a token is stored under `csrf:<token>`, so a token sent by a c
 The CSRF middleware now validates the [`Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site) header for unsafe HTTP methods. When present, requests with invalid `Sec-Fetch-Site` values (not one of "same-origin", "none", "same-site", or "cross-site") are rejected with `ErrFetchSiteInvalid`. Valid or absent headers proceed to standard origin and token validation checks, providing an early gate to catch malformed requests while maintaining compatibility with legitimate cross-site traffic.
 
 `csrf.NewCrossOriginProtection` adds a tokenless alternative that follows Go's [`net/http.CrossOriginProtection`](https://pkg.go.dev/net/http#CrossOriginProtection). It rejects unsafe cross-origin browser requests by their `Sec-Fetch-Site` and `Origin` headers and needs no cookie, token, or storage. See [Cross-Origin Protection Without Tokens](./middleware/csrf.md#cross-origin-protection-without-tokens) for the rules and the differences from `net/http`.
+
+An IPv6 host matches in any spelling, in `TrustedOrigins`, in the `Origin` and `Referer` comparison with the request, and in `Redirect().Back()`: `http://[::1]:3000` matches `Host: [0:0:0:0:0:0:0:1]:3000`.
 
 ### Idempotency
 

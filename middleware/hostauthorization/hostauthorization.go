@@ -2,10 +2,12 @@ package hostauthorization
 
 import (
 	"fmt"
+	"net/netip"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/idnafold"
+	"github.com/gofiber/fiber/v3/internal/ipv6host"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
@@ -17,7 +19,9 @@ const (
 )
 
 type parsedHosts struct {
-	exact            map[string]struct{}
+	exact map[string]struct{}
+	// ips holds the exact IP entries again, so a bracketed host matches without being formatted.
+	ips              map[netip.Addr]struct{}
 	wildcardSuffixes []string
 }
 
@@ -27,6 +31,7 @@ type parsedHosts struct {
 func parseAllowedHosts(hosts []string) parsedHosts {
 	parsed := parsedHosts{
 		exact: make(map[string]struct{}, len(hosts)),
+		ips:   make(map[netip.Addr]struct{}),
 	}
 
 	for _, h := range hosts {
@@ -63,6 +68,9 @@ func parseAllowedHosts(hosts []string) parsedHosts {
 			parsed.wildcardSuffixes = append(parsed.wildcardSuffixes, "."+h)
 		} else {
 			parsed.exact[h] = struct{}{}
+			if isIP {
+				parsed.ips[netip.MustParseAddr(h)] = struct{}{}
+			}
 		}
 	}
 
@@ -124,25 +132,14 @@ func normalizeName(host string) string {
 	return idnafold.ToASCII(utilsstrings.ToLower(trimOneTrailingDot(host)))
 }
 
-// canonicalIPv6 writes an IPv6 address in the RFC 5952 Section 4 form so every
-// spelling of it (RFC 4291 Section 2.2) matches; an IPv4-mapped one becomes the
-// IPv4 host, as in isTrustedProxyIP. Zones are refused first: parsing copies them.
+// canonicalIPv6 writes an IPv6 address in the form browsers send (see ipv6host),
+// and an IPv4-mapped one as the IPv4 host, as in isTrustedProxyIP.
 func canonicalIPv6(host string) (string, bool) {
-	if strings.IndexByte(host, '%') >= 0 {
-		return "", false
-	}
-	addr, ok := utils.ParseIPv6(host)
+	addr, ok := ipv6host.Parse(host)
 	if !ok {
 		return "", false
 	}
-	addr = addr.Unmap()
-	// A host that is already canonical, as browsers send it, is returned without allocating.
-	var buf [len("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")]byte
-	canonical := addr.AppendTo(buf[:0])
-	if string(canonical) == host {
-		return host, true
-	}
-	return string(canonical), true
+	return ipv6host.String(addr.Unmap(), host), true
 }
 
 func trimOneTrailingDot(host string) string {
@@ -160,33 +157,11 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 	}
 
 	if authority[0] == '[' {
-		idx := -1
-		for i := 1; i < len(authority); i++ {
-			switch authority[i] {
-			case '@', '[':
-				return "", false
-			case ']':
-				idx = i
-				i = len(authority)
-			default:
-			}
-		}
-		if idx <= 1 {
+		addr, interior, ok := parseBracketed(authority)
+		if !ok {
 			return "", false
 		}
-
-		rest := authority[idx+1:]
-		if rest != "" {
-			if rest[0] != ':' {
-				return "", false
-			}
-			if !isValidPort(rest[1:]) {
-				return "", false
-			}
-		}
-
-		// Brackets hold an IPv6 address only; "[allowed.com:443]" must not pass as allowed.com.
-		return canonicalIPv6(authority[1:idx])
+		return ipv6host.String(addr, interior), true
 	}
 
 	host := authority
@@ -226,6 +201,37 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 	}
 
 	return host, true
+}
+
+// parseBracketed parses an authority that starts with "[" and returns its address,
+// unmapped, and the text between the brackets.
+func parseBracketed(authority string) (netip.Addr, string, bool) {
+	idx := -1
+	for i := 1; i < len(authority); i++ {
+		switch authority[i] {
+		case '@', '[':
+			return netip.Addr{}, "", false
+		case ']':
+			idx = i
+			i = len(authority)
+		default:
+		}
+	}
+	if idx <= 1 {
+		return netip.Addr{}, "", false
+	}
+
+	rest := authority[idx+1:]
+	if rest != "" && (rest[0] != ':' || !isValidPort(rest[1:])) {
+		return netip.Addr{}, "", false
+	}
+
+	// Brackets hold an IPv6 address only; "[allowed.com:443]" must not pass as allowed.com.
+	addr, ok := ipv6host.Parse(authority[1:idx])
+	if !ok {
+		return netip.Addr{}, "", false
+	}
+	return addr.Unmap(), authority[1:idx], true
 }
 
 func isValidHostSyntax(host string) bool {
@@ -312,6 +318,28 @@ func matchHost(host string, parsed parsedHosts, allowedHostsFunc func(string) bo
 	return false
 }
 
+// isAllowed reports whether authority is a well-formed host that matches a rule.
+func isAllowed(authority string, parsed parsedHosts, allowedHostsFunc func(string) bool) bool {
+	authority = utils.TrimSpace(authority)
+	if authority == "" || authority[0] != '[' {
+		host, ok := parseNormalizedAuthority(authority)
+		return ok && matchHost(host, parsed, allowedHostsFunc)
+	}
+
+	addr, interior, ok := parseBracketed(authority)
+	if !ok {
+		return false
+	}
+	if _, ok := parsed.ips[addr]; ok {
+		return true
+	}
+	// Nothing else can match, so skip formatting the host.
+	if len(parsed.wildcardSuffixes) == 0 && allowedHostsFunc == nil {
+		return false
+	}
+	return matchHost(ipv6host.String(addr, interior), parsed, allowedHostsFunc)
+}
+
 // New creates a new host authorization middleware handler.
 func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
@@ -322,12 +350,7 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		host, ok := parseNormalizedAuthority(c.Host())
-		if !ok {
-			return cfg.ErrorHandler(c, ErrForbiddenHost)
-		}
-
-		if matchHost(host, parsed, cfg.AllowedHostsFunc) {
+		if isAllowed(c.Host(), parsed, cfg.AllowedHostsFunc) {
 			return c.Next()
 		}
 
