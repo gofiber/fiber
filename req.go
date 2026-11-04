@@ -796,9 +796,7 @@ func (r *DefaultReq) Host() string {
 	// The trusted X-Forwarded-Host branch returns its first element as sent: no validation, no case folding.
 	if r.IsProxyTrusted() {
 		if host := r.Get(HeaderXForwardedHost); host != "" {
-			if before, _, found := utils.CutByte(host, ','); found {
-				return utils.TrimSpace(before)
-			}
+			host, _ = headerlist.Next(host, 0)
 			return utils.TrimSpace(host)
 		}
 	}
@@ -1481,9 +1479,7 @@ func announcedScheme(rank int, val []byte) (string, bool) {
 	case schemeRankXForwardedSsl:
 		return schemeHTTPS, utils.EqualFold(v, "on")
 	case schemeRankXForwardedProto, schemeRankXForwardedProtocol:
-		if before, _, found := utils.CutByte(v, ','); found {
-			v = before
-		}
+		v, _ = headerlist.Next(v, 0)
 	}
 	return forwardedScheme(v)
 }

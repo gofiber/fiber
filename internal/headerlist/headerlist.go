@@ -40,11 +40,8 @@ import (
 // exceeds len(list) after the final element, allowing callers to stop early
 // without allocating a slice of all elements.
 func Next(list string, start int) (element string, next int) { //nolint:nonamedreturns // names distinguish the element from the next position
-	end := start
-	for end < len(list) && list[end] != ',' {
-		end++
-	}
-	return list[start:end], end + 1
+	element, _, _ = utils.CutByte(list[start:], ',')
+	return element, start + len(element) + 1
 }
 
 // Prev is the reverse of Next. It returns the raw element ending just before

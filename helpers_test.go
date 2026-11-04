@@ -9,10 +9,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"math"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -988,6 +990,53 @@ func testGenericParseError[V GenericType](t *testing.T) {
 	require.Equal(t, expected, v)
 }
 
+func Test_GenericParseType_Empty(t *testing.T) {
+	t.Parallel()
+	testGenericParseEmpty[int](t, int(7), errParseValue)
+	testGenericParseEmpty[int8](t, int8(7), errParseValue)
+	testGenericParseEmpty[int16](t, int16(7), errParseValue)
+	testGenericParseEmpty[int32](t, int32(7), errParseValue)
+	testGenericParseEmpty[int64](t, int64(7), errParseValue)
+	testGenericParseEmpty[uint](t, uint(7), errParseValue)
+	testGenericParseEmpty[uint8](t, uint8(7), errParseValue)
+	testGenericParseEmpty[uint16](t, uint16(7), errParseValue)
+	testGenericParseEmpty[uint32](t, uint32(7), errParseValue)
+	testGenericParseEmpty[uint64](t, uint64(7), errParseValue)
+	testGenericParseEmpty[float32](t, float32(7), errParseValue)
+	testGenericParseEmpty[float64](t, float64(7), errParseValue)
+	testGenericParseEmpty[bool](t, true, errParseValue)
+	testGenericParseEmpty[string](t, "fallback", errParsedEmptyString)
+	testGenericParseEmpty[[]byte](t, []byte("fallback"), errParsedEmptyBytes)
+}
+
+// testGenericParseEmpty checks the exact error, zero value and caller fallbacks for V.
+func testGenericParseEmpty[V GenericType](t *testing.T, fallback V, wantErr error) {
+	t.Helper()
+	var zero V
+	t.Run(fmt.Sprintf("%T", zero), func(t *testing.T) {
+		t.Parallel()
+		v, err := genericParseType[V]("")
+		require.Same(t, wantErr, err)
+		require.Equal(t, zero, v)
+
+		c := apptest.CtxAs[*DefaultCtx](t, New())
+		c.Request().URI().SetQueryString("empty=")
+		c.Request().Header.Set("Empty", "")
+		c.route = &Route{Params: []string{"empty"}}
+		for _, key := range []string{"empty", "missing"} {
+			require.Equal(t, zero, Query[V](c, key))
+			require.Equal(t, fallback, Query(c, key, fallback))
+			require.Equal(t, fallback, Query(c, key, fallback, zero))
+			require.Equal(t, zero, Params[V](c, key))
+			require.Equal(t, fallback, Params(c, key, fallback))
+			require.Equal(t, fallback, Params(c, key, fallback, zero))
+			require.Equal(t, zero, GetReqHeader[V](c, key))
+			require.Equal(t, fallback, GetReqHeader(c, key, fallback))
+			require.Equal(t, fallback, GetReqHeader(c, key, fallback, zero))
+		}
+	})
+}
+
 func Benchmark_GenericParseTypeInts(b *testing.B) {
 	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	for _, test := range miscParseInts {
@@ -1152,6 +1201,249 @@ func Benchmark_GenericParseTypeBoolean(b *testing.B) {
 			} else {
 				require.False(b, v)
 			}
+		})
+	}
+}
+
+type genericParseInput struct {
+	wantErr error
+	name    string
+	input   string
+}
+
+// genericParseInputs supplies empty, valid and, for numeric/bool types, invalid inputs.
+func genericParseInputs(valid string, emptyErr error) []genericParseInput {
+	inputs := []genericParseInput{
+		{name: "empty", input: "", wantErr: emptyErr},
+		{name: "valid", input: valid},
+	}
+	if errors.Is(emptyErr, errParseValue) {
+		inputs = append(inputs, genericParseInput{name: "invalid", input: "invalid", wantErr: errParseValue})
+	}
+	return inputs
+}
+
+func Benchmark_GenericParseTypeInputInt(b *testing.B) {
+	for _, tc := range genericParseInputs("42", errParseValue) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v int
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[int](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputInt8(b *testing.B) {
+	for _, tc := range genericParseInputs("42", errParseValue) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v int8
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[int8](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputInt16(b *testing.B) {
+	for _, tc := range genericParseInputs("42", errParseValue) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v int16
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[int16](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputInt32(b *testing.B) {
+	for _, tc := range genericParseInputs("42", errParseValue) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v int32
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[int32](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputInt64(b *testing.B) {
+	for _, tc := range genericParseInputs("42", errParseValue) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v int64
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[int64](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputUint(b *testing.B) {
+	for _, tc := range genericParseInputs("42", errParseValue) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v uint
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[uint](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputUint8(b *testing.B) {
+	for _, tc := range genericParseInputs("42", errParseValue) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v uint8
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[uint8](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputUint16(b *testing.B) {
+	for _, tc := range genericParseInputs("42", errParseValue) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v uint16
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[uint16](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputUint32(b *testing.B) {
+	for _, tc := range genericParseInputs("42", errParseValue) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v uint32
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[uint32](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputUint64(b *testing.B) {
+	for _, tc := range genericParseInputs("42", errParseValue) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v uint64
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[uint64](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputFloat32(b *testing.B) {
+	for _, tc := range genericParseInputs("3.25", errParseValue) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v float32
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[float32](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputFloat64(b *testing.B) {
+	for _, tc := range genericParseInputs("3.25", errParseValue) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v float64
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[float64](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputBool(b *testing.B) {
+	for _, tc := range genericParseInputs("true", errParseValue) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v bool
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[bool](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputString(b *testing.B) {
+	for _, tc := range genericParseInputs("john", errParsedEmptyString) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v string
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[string](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
+		})
+	}
+}
+
+func Benchmark_GenericParseTypeInputBytes(b *testing.B) {
+	for _, tc := range genericParseInputs("john", errParsedEmptyBytes) {
+		b.Run(tc.name, func(b *testing.B) {
+			var v []byte
+			var err error
+			b.ReportAllocs()
+			for b.Loop() {
+				v, err = genericParseType[[]byte](tc.input)
+			}
+			require.Equal(b, tc.wantErr, err)
+			runtime.KeepAlive(v)
 		})
 	}
 }

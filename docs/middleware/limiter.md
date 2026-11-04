@@ -75,6 +75,8 @@ app.Use(limiter.New(limiter.Config{
 
 :::caution
 The default `KeyGenerator` keys requests by `c.IP()`. Behind a reverse proxy, `c.IP()` only identifies a client if you configure `TrustProxy`, `TrustProxyConfig` and `ProxyHeader`, plus `EnableIPValidation` when the header is a chain your proxy appends to, such as `X-Forwarded-For`. Without them it is either the proxy's address, so every client shares one bucket, or the raw forwarded header, which a client can vary on every request to get a fresh bucket unless your proxy overwrites it with a single address. See the [reverse proxy guide](../guide/reverse-proxy.md#getting-the-real-client-ip-address).
+
+Limiter bounds both default and custom client-derived keys to 192 bytes before using them in memory or adding the `limiter:` prefix for external storage. Keys longer than 192 bytes, or starting with the reserved `sha256:` prefix, are replaced with a SHA-256 digest under that prefix. The complete external storage key includes the `limiter:` prefix and can therefore be up to 200 bytes. When building storage keys from client-controlled values elsewhere, bound their length too. A length bound limits the size of each key; it does not limit how many distinct keys a client can generate or make an untrusted forwarded header a reliable client identity.
 :::
 
 ## Sliding window
