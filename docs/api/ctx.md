@@ -1730,7 +1730,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### Host
 
-Returns the host derived from the [Host](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Host) HTTP header. When the request comes from a trusted proxy (see [`TrustProxy`](fiber.md#trustproxy)), the first value of the `X-Forwarded-Host` header is used instead.
+Returns the host derived from the [Host](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Host) HTTP header. When the request comes from a trusted proxy (see [`TrustProxy`](fiber.md#trustproxy)), the first non-empty value of the `X-Forwarded-Host` header is used instead, reading repeated lines in the order received; when it has none, the `Host` header is used.
 
 In a network context, [`Host`](#host) refers to the combination of a hostname and potentially a port number used for connecting, while [`Hostname`](#hostname) refers specifically to the name assigned to a device on a network, excluding any port information.
 
@@ -2723,8 +2723,8 @@ part of a URL. The headers are ranked in the order listed rather than read in
 the order they arrive: `X-Forwarded-Proto`, the one a reverse proxy sets, wins
 over the other three, which a proxy usually passes through from the client. When
 one header is sent on several lines, the last line received wins. The first
-value of a comma-separated `X-Forwarded-Proto` or `X-Forwarded-Protocol` list is
-the one used. A proxy that terminates a different protocol should send the
+non-empty value of a comma-separated `X-Forwarded-Proto` or `X-Forwarded-Protocol`
+list is the one used. A proxy that terminates a different protocol should send the
 scheme the client used to reach it.
 
 :::

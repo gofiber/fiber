@@ -103,6 +103,22 @@ func Test_NextPrev(t *testing.T) {
 	}
 }
 
+func Test_First(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, list, want string }{
+		{name: "empty", list: "", want: ""},
+		{name: "single", list: "a", want: "a"},
+		{name: "trimmed", list: " a , b", want: "a"},
+		{name: "empty elements skipped", list: ", \t,b", want: "b"},
+		{name: "only empty elements", list: " , ,", want: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, First(tc.list))
+		})
+	}
+}
+
 func Test_Append(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {
