@@ -181,8 +181,14 @@ func Balancer(config ...Config) fiber.Handler {
 
 		// Modify response
 		if cfg.ModifyResponse != nil {
+			body, streamed := res.BodyStream().(*upstreamBody)
 			if err := cfg.ModifyResponse(c); err != nil {
 				return err
+			}
+			// fasthttp's Body replaces a body whose read failed with the error's text, which would go out
+			// as the upstream's response: a hook that read one past its bound fails the request instead.
+			if streamed && body.err != nil {
+				return body.err
 			}
 		}
 

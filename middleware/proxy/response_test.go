@@ -228,7 +228,8 @@ func Test_Proxy_StreamedBodyBound_ModifyResponse(t *testing.T) {
 	}))
 
 	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Size", strconv.Itoa(8*bound)), apptest.WithHeader("X-Chunked", "1"))
-	apptest.Do(t, app, req)
+	// Not a 200 carrying fasthttp's error text in place of the body the hook could not read.
+	apptest.Expect(t, app, req, fiber.StatusInternalServerError)
 	require.LessOrEqual(t, apptest.Recv(t, taken, time.Second), bound)
 }
 
