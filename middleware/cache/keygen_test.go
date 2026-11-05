@@ -195,13 +195,13 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 		want        []string
 		disableVary bool
 	}{
-		{name: "anonymous", want: []string{"v6|manifest|v6|GET|/demo", "v6|GET|/demo"}},
+		{name: "anonymous", want: []string{"v7|manifest|v7|GET|/demo", "v7|GET|/demo"}},
 		{
 			name: "authenticated",
 			auth: "Bearer token",
-			want: []string{"v6|manifest|v6|GET|/demo|auth=" + authHash, "v6|GET|/demo|auth=" + authHash},
+			want: []string{"v7|manifest|v7|GET|/demo|auth=" + authHash, "v7|GET|/demo|auth=" + authHash},
 		},
-		{name: "vary disabled", disableVary: true, want: []string{"v6|GET|/demo"}},
+		{name: "vary disabled", disableVary: true, want: []string{"v7|GET|/demo"}},
 	}
 
 	for _, tc := range tests {

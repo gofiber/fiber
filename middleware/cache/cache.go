@@ -81,12 +81,16 @@ const (
 // also retires v4 entries stored under the lookup's Vary list instead of their own. v6:
 // the body slot and the Vary manifest moved from a suffix of the entry key, which
 // a request can spell, to a namespace of their own (see bodyKeyPrefix), and a
-// custom KeyGenerator's key is escaped so it cannot spell a variant's suffix. Bump
+// custom KeyGenerator's key is escaped so it cannot spell a variant's suffix. v7: a
+// response that varies on a request header an inner middleware added, rewrote or
+// removed is no longer stored, as its key held the value the client sent while the
+// page was built from another. One the earlier rule stored would still be served,
+// on a store that survived the upgrade, to every client sending that value. Bump
 // this whenever what a key stands for, or what its entry carries, changes; the
 // cost is one cold cache after a deploy. Additive bookkeeping fields such as
 // heapgen need no bump: old entries decode with generation zero, and older
 // readers skip the new field without changing the response or key semantics.
-const cacheKeyVersion = "v6"
+const cacheKeyVersion = "v7"
 
 // The keys derived from an entry key sit right after the version, where no entry
 // key goes: those continue with their method.
@@ -1066,16 +1070,14 @@ func New(config ...Config) fiber.Handler {
 		shouldStoreVaryManifest := !cfg.DisableVaryHeaders && len(respVaryNames) > 0
 		entryManifest := "" // the manifest the entry is stored under, dropped with the last such entry
 		if !cfg.DisableVaryHeaders && len(respVaryNames) > 0 {
-			// The key is built from the request header as the lookup saw it, which is
-			// what a later lookup reproduces. A line an inner middleware added since, as
-			// one deriving X-User-Id from the session cookie does, is a dimension no
-			// client's key selects by, so the first client's page would be served to
-			// every other: stored nowhere instead. A line rewritten in place or removed,
-			// as encryptcookie does with Cookie, keeps the lookup's view; a line the
-			// client sent and such middleware overwrote keeps the client's value too,
-			// which is right only when the response varies on the input it was derived
-			// from as well (cache.md says so).
-			if varyLinesAdded(respVaryNames, lookupHeader, &c.Request().Header, canonical) {
+			// The key is built from the request headers as the lookup saw them, which is
+			// what a later lookup reproduces. A header an inner middleware added,
+			// rewrote or removed since, as one deriving X-User-Id from the session
+			// cookie does, gave the handler a value no client's key selects by, so the
+			// first client's page would be served to every other sending the same
+			// placeholder: stored nowhere instead (cache.md says to register the cache
+			// behind such middleware).
+			if varyHeadersChanged(respVaryNames, lookupHeader, &c.Request().Header, canonical) {
 				markUnreachable()
 				return nil
 			}

@@ -75,6 +75,11 @@ func Balancer(config ...Config) fiber.Handler {
 	// the proxy can ask neither: its responses are read into one of the proxy's own either way. The
 	// host clients the proxy builds for Servers never stream.
 	streams := cfg.Client != nil
+	set := 0 // the size the caller put in the config, before the default took the place of none
+	if len(config) > 0 {
+		set = config[0].MaxResponseBodySize
+	}
+	streamLimit := streamedBodyLimit(&cfg, set)
 
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
@@ -170,14 +175,21 @@ func Balancer(config ...Config) fiber.Handler {
 		// to the response after Do returned: such a response is read into one of the proxy's own, see
 		// upstreamResponse.
 		upstream := upstreamResponse(streams, res)
-		if err := adoptUpstreamResponse(res, upstream, lbc.Do(req, upstream), policy, keepHeaders...); err != nil {
+		if err := adoptUpstreamResponse(res, upstream, lbc.Do(req, upstream), policy, streamLimit, keepHeaders...); err != nil {
 			return err
 		}
 
 		// Modify response
 		if cfg.ModifyResponse != nil {
+			body, streamed := res.BodyStream().(*upstreamBody)
 			if err := cfg.ModifyResponse(c); err != nil {
 				return err
+			}
+			// A hook that read one past the bound fails the request, unless it set a response of its own
+			// since: the stream would end the response early, and fasthttp's Body replaces a body whose
+			// read failed with the error's text, which would go out as the upstream's response.
+			if streamed && body.failureStands(res) {
+				return body.err
 			}
 		}
 
@@ -199,6 +211,18 @@ func (c schemeClient) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response,
 		req.URI().SetScheme(schemeHTTP)
 	}
 	return c.HostClient.DoDeadline(req, resp, deadline)
+}
+
+// streamedBodyLimit is the size a body that Balancer streams is held to, which fasthttp does not do for
+// one: the configured size, 100 MiB by default, behind the host clients Balancer builds, and behind a Client
+// of the caller's only a size that was set: its clients keep their own bounds for the bodies they buffer, but
+// fasthttp applies none to a body they stream, whatever their MaxResponseBodySize. set is the size as the
+// caller configured it, cfg's being the default where it was left out. Zero is no bound.
+func streamedBodyLimit(cfg *Config, set int) int {
+	if cfg.Client != nil && set <= 0 {
+		return 0
+	}
+	return max(cfg.MaxResponseBodySize, 0)
 }
 
 // newHostClient builds the client Balancer dials one validated upstream with.

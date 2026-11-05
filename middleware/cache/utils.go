@@ -152,26 +152,6 @@ func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]
 	return fieldname.Lines(h, name, normalized)
 }
 
-// cookieAdded reports whether live carries more cookies by some name than lookup, the copy taken
-// before the handler ran: the cookies make one field line once collected, so the line count that
-// tells an added header from a rewritten one cannot tell an added cookie. Counted by name, since a
-// cookie added with Add keeps one the client sent by the same name beside it, in one pass over
-// each: a request may carry thousands, which a scan per cookie would square.
-func cookieAdded(lookup, live *fasthttp.RequestHeader) bool {
-	lookup.Cookie("") // collectCookies, as collectKeyField did for live
-	left := make(map[string]int)
-	for name := range lookup.Cookies() {
-		left[string(name)]++
-	}
-	for name := range live.Cookies() {
-		if left[string(name)] == 0 {
-			return true
-		}
-		left[string(name)]--
-	}
-	return false
-}
-
 // setFieldLine writes value as the field line for name, replacing whichever
 // spelling the response carries. Set is byte-exact, so it otherwise left a
 // differently-spelled line and nothing reconciles two Age or two Date lines.

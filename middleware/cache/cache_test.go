@@ -4660,38 +4660,60 @@ func Test_Cache_VaryReplayedWithCompress(t *testing.T) {
 	}
 }
 
-// Test_Cache_VaryKeyedByTheHeadersTheLookupSaw stores a response that varies on a header an inner
-// middleware rewrites under the value the lookup hashed. encryptcookie decrypts the cookie in place, and
-// keyed by the decrypted value the page went to anyone sending that value as a plain cookie.
-func Test_Cache_VaryKeyedByTheHeadersTheLookupSaw(t *testing.T) {
+// Test_Cache_VaryOnCookieEncryptcookieDecrypts stores a response that varies on a cookie encryptcookie
+// decrypts. Registered outside it, the cache keys the page by the sealed cookie the client sent while the
+// handler builds it from the decrypted one, which the cache cannot tell from a placeholder replaced with another
+// client's value, so nothing is stored. Registered behind it, the cache sees the cookie the handler does: the
+// page is keyed by the decrypted value, which a plain cookie cannot spell, as encryptcookie drops one it cannot
+// decrypt before the lookup.
+func Test_Cache_VaryOnCookieEncryptcookieDecrypts(t *testing.T) {
 	t.Parallel()
 	secret := encryptcookie.GenerateKey(32)
 	sealed, err := encryptcookie.EncryptCookie("user", "alice", secret)
 	require.NoError(t, err)
 
-	app := fiber.New()
-	app.Use(New(Config{MaxBytes: 1024}))
-	app.Use(encryptcookie.New(encryptcookie.Config{Key: secret}))
-	app.Get("/account", func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderCacheControl, "max-age=30")
-		c.Vary(fiber.HeaderCookie)
-		if c.Cookies("user") == "alice" {
-			return c.SendString("alice's recovery codes")
-		}
-		return c.SendString("please sign in")
-	})
-	app.Get("/other", func(c fiber.Ctx) error { return c.SendString(strings.Repeat("x", 300)) })
+	for _, tc := range []struct {
+		name        string
+		sealed      string // X-Cache for the sealed cookie
+		plain       string // X-Cache for the same value as a plain cookie
+		sealedAgain string // X-Cache for the sealed cookie, sent a second time
+		// cacheOutside registers the cache before encryptcookie, which then decrypts behind it.
+		cacheOutside bool
+	}{
+		{name: "cache outside", cacheOutside: true, sealed: cacheUnreachable, plain: cacheUnreachable, sealedAgain: cacheUnreachable},
+		{name: "cache behind", sealed: cacheMiss, plain: cacheMiss, sealedAgain: cacheHit},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			store, decrypt := New(Config{MaxBytes: 1024}), encryptcookie.New(encryptcookie.Config{Key: secret})
+			if tc.cacheOutside {
+				app.Use(store, decrypt)
+			} else {
+				app.Use(decrypt, store)
+			}
+			app.Get("/account", func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderCacheControl, "max-age=30")
+				c.Vary(fiber.HeaderCookie)
+				if c.Cookies("user") == "alice" {
+					return c.SendString("alice's recovery codes")
+				}
+				return c.SendString("please sign in")
+			})
+			app.Get("/other", func(c fiber.Ctx) error { return c.SendString(strings.Repeat("x", 300)) })
 
-	get := func(path, cookie string) reply { return cacheTestCGet(t, app, path, fiber.HeaderCookie, cookie) }
+			get := func(path, cookie string) reply { return cacheTestCGet(t, app, path, fiber.HeaderCookie, cookie) }
 
-	// The second round starts after the URL's entries, and with them its Vary manifest, were evicted.
-	for _, round := range []string{"first store", "after eviction"} {
-		cacheTestCRequireReply(t, get("/account", "user="+sealed), cacheMiss, "alice's recovery codes", round)
-		cacheTestCRequireReply(t, get("/account", "user=alice"), cacheMiss, "please sign in", round)
-		cacheTestCRequireReply(t, get("/account", "user="+sealed), cacheHit, "alice's recovery codes", round)
-		for i := range 8 {
-			get("/other?q="+strconv.Itoa(i), "")
-		}
+			// The second round starts after the URL's entries, and with them its Vary manifest, were evicted.
+			for _, round := range []string{"first store", "after eviction"} {
+				cacheTestCRequireReply(t, get("/account", "user="+sealed), tc.sealed, "alice's recovery codes", round)
+				cacheTestCRequireReply(t, get("/account", "user=alice"), tc.plain, "please sign in", round)
+				cacheTestCRequireReply(t, get("/account", "user="+sealed), tc.sealedAgain, "alice's recovery codes", round)
+				for i := range 8 {
+					get("/other?q="+strconv.Itoa(i), "")
+				}
+			}
+		})
 	}
 }
 
