@@ -715,6 +715,7 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 			"https://safe.example.com",
 			"http://*.domain-1.com",
 			"https://*.domain-1.com",
+			"http://[2001:db8:0:0:0:0:0:1]:3000",
 		},
 	}, "https")
 
@@ -729,6 +730,10 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 		{name: "Trusted Origin with mixed-case header", scheme: "http", host: "example.com", origin: "http://SAFE.Example.com", status: fiber.StatusOK},
 		{name: "Trusted Origin with mixed-case header (wildcard subdomain entry)", scheme: "http", host: "domain-1.com", origin: "http://SAFE.Domain-1.com", status: fiber.StatusOK},
 		{name: "Trusted Origin Invalid", scheme: "http", host: "domain-1.com", origin: "http://evildomain-1.com", status: fiber.StatusForbidden},
+		// A browser sends the IPv6 host in its compressed form, whatever the entry spells.
+		{name: "Trusted Origin ipv6 entry spelled out", scheme: "http", host: "example.com", origin: "http://[2001:db8::1]:3000", status: fiber.StatusOK},
+		{name: "Trusted Referer ipv6 entry spelled out", scheme: "https", host: "example.com", referer: "http://[2001:db8::1]:3000/a", headers: viaHTTPS, status: fiber.StatusOK},
+		{name: "same-origin ipv6 Host spelled out", scheme: "http", host: "[0:0:0:0:0:0:0:1]:3000", origin: "http://[::1]:3000", status: fiber.StatusOK},
 		{name: "Trusted Origin malformed subdomain", scheme: "http", host: "domain-1.com", origin: "http://evil.comdomain-1.com", status: fiber.StatusForbidden},
 		{name: "Trusted Referer", scheme: "https", host: "example.com", referer: "https://safe.example.com", headers: viaHTTPS, status: fiber.StatusOK},
 		// Accepted on the fold-based Match fast path, no trusted-origin fallback involved.

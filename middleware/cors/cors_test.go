@@ -525,6 +525,8 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 		AllowOriginsFunc: func(origin string) bool { return strings.Contains(origin, "example-2") },
 	}
 
+	ipv6 := Config{AllowOrigins: []string{"http://[2001:db8:0:0:0:0:0:1]:3000", "http://[::ffff:127.0.0.1]"}}
+
 	testCases := []struct {
 		Name           string
 		RequestOrigin  string
@@ -552,6 +554,9 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 		{Name: "OriginsAndFunc/disallowed origin", Config: originsAndFunc, RequestOrigin: "http://google.com", ResponseOrigin: ""},
 		{Name: "OriginsAndFunc/allowed origin", Config: originsAndFunc, RequestOrigin: "http://example-1.com", ResponseOrigin: "http://example-1.com"},
 		{Name: "OriginsAndFunc/allowed origin by the func", Config: originsAndFunc, RequestOrigin: "http://example-2.com", ResponseOrigin: "http://example-2.com"},
+		{Name: "IPv6/entry spelled out", Config: ipv6, RequestOrigin: "http://[2001:db8::1]:3000", ResponseOrigin: "http://[2001:db8::1]:3000"},
+		{Name: "IPv6/ipv4-mapped entry", Config: ipv6, RequestOrigin: "http://[::ffff:7f00:1]", ResponseOrigin: "http://[::ffff:7f00:1]"},
+		{Name: "IPv6/other address", Config: ipv6, RequestOrigin: "http://[2001:db8::2]:3000", ResponseOrigin: ""},
 	}
 
 	for i := range testCases {

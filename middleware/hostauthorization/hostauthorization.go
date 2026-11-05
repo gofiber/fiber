@@ -2,10 +2,12 @@ package hostauthorization
 
 import (
 	"fmt"
+	"net/netip"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/idnafold"
+	"github.com/gofiber/fiber/v3/internal/ipv6host"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
@@ -17,7 +19,9 @@ const (
 )
 
 type parsedHosts struct {
-	exact            map[string]struct{}
+	exact map[string]struct{}
+	// ips holds the exact IP entries again, so a bracketed host matches without being formatted.
+	ips              map[netip.Addr]struct{}
 	wildcardSuffixes []string
 }
 
@@ -27,6 +31,7 @@ type parsedHosts struct {
 func parseAllowedHosts(hosts []string) parsedHosts {
 	parsed := parsedHosts{
 		exact: make(map[string]struct{}, len(hosts)),
+		ips:   make(map[netip.Addr]struct{}),
 	}
 
 	for _, h := range hosts {
@@ -40,23 +45,32 @@ func parseAllowedHosts(hosts []string) parsedHosts {
 			panic("hostauthorization: invalid host " + h + " — subdomain wildcards use the \"*.example.com\" form")
 		}
 
+		entry := h
 		isWildcard := strings.HasPrefix(h, "*.")
 		if isWildcard {
 			h = h[2:]
 		}
 
-		h = normalizeHost(h)
+		var isIP bool
+		h, isIP = normalizeEntry(entry, h)
 		if h == "" {
 			continue
 		}
-
-		validateHostLength(h)
+		if isWildcard && isIP {
+			panic(invalidEntry(entry, "subdomain wildcards take a domain name, not an IP address"))
+		}
+		if !isIP {
+			validateHostLength(h)
+		}
 
 		if isWildcard {
 			// Stored with leading dot so the hot-path HasSuffix check stays alloc-free.
 			parsed.wildcardSuffixes = append(parsed.wildcardSuffixes, "."+h)
 		} else {
 			parsed.exact[h] = struct{}{}
+			if isIP {
+				parsed.ips[netip.MustParseAddr(h)] = struct{}{}
+			}
 		}
 	}
 
@@ -68,10 +82,6 @@ func validateHostLength(host string) {
 		panic(fmt.Sprintf("hostauthorization: host %q exceeds RFC 1035 maximum of %d characters (%d chars)",
 			host, maxDomainLength, len(host)))
 	}
-	// IPv6 hosts contain colons and aren't dotted labels.
-	if strings.IndexByte(host, ':') >= 0 {
-		return
-	}
 	for label := range strings.SplitSeq(host, ".") {
 		if len(label) > maxLabelLength {
 			panic(fmt.Sprintf("hostauthorization: host %q has label %q exceeding RFC 1035 limit of %d characters (%d chars)",
@@ -80,26 +90,56 @@ func validateHostLength(host string) {
 	}
 }
 
-// normalizeHost strips port, trailing dot, and IPv6 brackets, lowercases,
-// and converts IDN labels to Punycode (matching what browsers send).
-func normalizeHost(host string) string {
-	// Fast path for plain hostnames — skips the split and the bracket trims.
-	if host != "" && host[0] != '[' && strings.IndexByte(host, ':') < 0 {
-		host = trimOneTrailingDot(host)
-		host = utilsstrings.ToLower(host)
-		return idnafold.ToASCII(host)
+// normalizeEntry normalizes an AllowedHosts entry without its "*." prefix and
+// reports whether it is an IP address. An entry no request could match panics.
+func normalizeEntry(entry, host string) (string, bool) {
+	switch {
+	case strings.Contains(host, "://"):
+		panic(invalidEntry(entry, "write host[:port], not a URL"))
+	case strings.IndexByte(host, '%') >= 0:
+		panic(invalidEntry(entry, "IPv6 zones and percent-encoding are not supported"))
+	case strings.ContainsAny(host, "[]"):
+		// Same rule as for a request: brackets hold an IPv6 address only.
+		if h, ok := parseNormalizedAuthority(host); ok {
+			return h, true
+		}
+		panic(invalidEntry(entry, "brackets must hold an IPv6 address, optionally followed by a valid port"))
 	}
 
-	if h, _, ok := utils.SplitHostPort(host); ok {
-		host = h
-	} else {
-		host = utils.TrimLeft(host, '[')
-		host = utils.TrimRight(host, ']')
+	if h, ok := canonicalIPv6(host); ok {
+		return h, true
 	}
+	name, port, hasPort := utils.SplitHostPort(host)
+	switch {
+	case !hasPort && strings.IndexByte(host, ':') >= 0:
+		panic(invalidEntry(entry, "not a valid IPv6 address"))
+	case !hasPort:
+		name = host
+	case !isValidPort(port):
+		panic(invalidEntry(entry, fmt.Sprintf("invalid port %q", port)))
+	}
+	name = normalizeName(name)
+	return name, utils.IsIPv4(name)
+}
 
-	host = trimOneTrailingDot(host)
-	host = utilsstrings.ToLower(host)
-	return idnafold.ToASCII(host)
+func invalidEntry(entry, reason string) string {
+	return "hostauthorization: invalid host " + entry + ": " + reason
+}
+
+// normalizeName drops one trailing dot, lowercases, and converts IDN labels to
+// Punycode, matching what browsers send.
+func normalizeName(host string) string {
+	return idnafold.ToASCII(utilsstrings.ToLower(trimOneTrailingDot(host)))
+}
+
+// canonicalIPv6 writes an IPv6 address in the form browsers send (see ipv6host),
+// and an IPv4-mapped one as the IPv4 host, as in isTrustedProxyIP.
+func canonicalIPv6(host string) (string, bool) {
+	addr, ok := ipv6host.Parse(host)
+	if !ok {
+		return "", false
+	}
+	return ipv6host.String(addr.Unmap(), host), true
 }
 
 func trimOneTrailingDot(host string) string {
@@ -116,53 +156,33 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 		return "", false
 	}
 
-	host := authority
 	if authority[0] == '[' {
-		idx := -1
-		for i := 1; i < len(authority); i++ {
-			switch authority[i] {
-			case '@', '[':
-				return "", false
-			case ']':
-				idx = i
-				i = len(authority)
-			default:
-			}
-		}
-		if idx <= 1 {
+		addr, interior, ok := parseBracketed(authority)
+		if !ok {
 			return "", false
 		}
+		return ipv6host.String(addr, interior), true
+	}
 
-		host = authority[1:idx]
-		rest := authority[idx+1:]
-		if rest != "" {
-			if rest[0] != ':' {
+	host := authority
+	colonIdx := -1
+	for i := 0; i < len(authority); i++ {
+		switch authority[i] {
+		case '@', '[', ']':
+			return "", false
+		case ':':
+			if colonIdx != -1 {
 				return "", false
 			}
-			if !isValidPort(rest[1:]) {
-				return "", false
-			}
+			colonIdx = i
+		default:
 		}
-	} else {
-		colonIdx := -1
-		for i := 0; i < len(authority); i++ {
-			switch authority[i] {
-			case '@', '[', ']':
-				return "", false
-			case ':':
-				if colonIdx != -1 {
-					return "", false
-				}
-				colonIdx = i
-			default:
-			}
-		}
+	}
 
-		if colonIdx != -1 {
-			host = authority[:colonIdx]
-			if !isValidPort(authority[colonIdx+1:]) {
-				return "", false
-			}
+	if colonIdx != -1 {
+		host = authority[:colonIdx]
+		if !isValidPort(authority[colonIdx+1:]) {
+			return "", false
 		}
 	}
 
@@ -171,7 +191,7 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 		return "", false
 	}
 
-	host = normalizeHost(host)
+	host = normalizeName(host)
 	if host == "" {
 		return "", false
 	}
@@ -183,21 +203,40 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 	return host, true
 }
 
+// parseBracketed parses an authority that starts with "[" and returns its address,
+// unmapped, and the text between the brackets.
+func parseBracketed(authority string) (netip.Addr, string, bool) {
+	idx := -1
+	for i := 1; i < len(authority); i++ {
+		switch authority[i] {
+		case '@', '[':
+			return netip.Addr{}, "", false
+		case ']':
+			idx = i
+			i = len(authority)
+		default:
+		}
+	}
+	if idx <= 1 {
+		return netip.Addr{}, "", false
+	}
+
+	rest := authority[idx+1:]
+	if rest != "" && (rest[0] != ':' || !isValidPort(rest[1:])) {
+		return netip.Addr{}, "", false
+	}
+
+	// Brackets hold an IPv6 address only; "[allowed.com:443]" must not pass as allowed.com.
+	addr, ok := ipv6host.Parse(authority[1:idx])
+	if !ok {
+		return netip.Addr{}, "", false
+	}
+	return addr.Unmap(), authority[1:idx], true
+}
+
 func isValidHostSyntax(host string) bool {
 	if host == "" {
 		return false
-	}
-
-	// A colon only appears in IPv6 literals; validate those with
-	// utils.ParseIPv6. Screening out zoned addresses first makes the
-	// acceptance identical to net.ParseIP (netip.ParseAddr minus zones)
-	// without its net.IP slice allocation on this per-request path.
-	if strings.IndexByte(host, ':') >= 0 {
-		if strings.IndexByte(host, '%') >= 0 {
-			return false
-		}
-		_, ok := utils.ParseIPv6(host)
-		return ok
 	}
 
 	// Validate dotted DNS labels in a single pass without allocating.
@@ -265,6 +304,7 @@ func matchHost(host string, parsed parsedHosts, allowedHostsFunc func(string) bo
 		return true
 	}
 
+	// A canonical IPv6 host holds no dot, so it never matches a suffix here.
 	for _, suffix := range parsed.wildcardSuffixes {
 		if strings.HasSuffix(host, suffix) {
 			return true
@@ -278,6 +318,28 @@ func matchHost(host string, parsed parsedHosts, allowedHostsFunc func(string) bo
 	return false
 }
 
+// isAllowed reports whether authority is a well-formed host that matches a rule.
+func isAllowed(authority string, parsed parsedHosts, allowedHostsFunc func(string) bool) bool {
+	authority = utils.TrimSpace(authority)
+	if authority == "" || authority[0] != '[' {
+		host, ok := parseNormalizedAuthority(authority)
+		return ok && matchHost(host, parsed, allowedHostsFunc)
+	}
+
+	addr, interior, ok := parseBracketed(authority)
+	if !ok {
+		return false
+	}
+	if _, ok := parsed.ips[addr]; ok {
+		return true
+	}
+	// Nothing else can match, so skip formatting the host.
+	if len(parsed.wildcardSuffixes) == 0 && allowedHostsFunc == nil {
+		return false
+	}
+	return matchHost(ipv6host.String(addr, interior), parsed, allowedHostsFunc)
+}
+
 // New creates a new host authorization middleware handler.
 func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
@@ -288,12 +350,7 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		host, ok := parseNormalizedAuthority(c.Host())
-		if !ok {
-			return cfg.ErrorHandler(c, ErrForbiddenHost)
-		}
-
-		if matchHost(host, parsed, cfg.AllowedHostsFunc) {
+		if isAllowed(c.Host(), parsed, cfg.AllowedHostsFunc) {
 			return c.Next()
 		}
 
