@@ -215,8 +215,9 @@ func (c schemeClient) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response,
 
 // streamedBodyLimit is the size a body that Balancer streams is held to, which fasthttp does not do for
 // one: the configured size, 100 MiB by default, behind the host clients Balancer builds, and behind a Client
-// of the caller's only a size that was set, whose clients keep their own bounds otherwise. set is the size
-// as the caller configured it, cfg's being the default where it was left out. Zero is no bound.
+// of the caller's only a size that was set: its clients keep their own bounds for the bodies they buffer, but
+// fasthttp applies none to a body they stream, whatever their MaxResponseBodySize. set is the size as the
+// caller configured it, cfg's being the default where it was left out. Zero is no bound.
 func streamedBodyLimit(cfg *Config, set int) int {
 	if cfg.Client != nil && set <= 0 {
 		return 0

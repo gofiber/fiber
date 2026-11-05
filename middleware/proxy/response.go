@@ -115,7 +115,8 @@ func (b *upstreamBody) Close() error {
 // response the caller set after it: the stream itself, which would end the response early once it started, or
 // what fasthttp's Body leaves in its place, the error's text as the body, which would go out as the upstream's
 // response. A stream or a body set since is the caller's own and stays, as when one reads the stream and sends
-// a fallback for the failure it was handed.
+// a fallback for the failure it was handed. A body that is exactly the error's text cannot be told from what
+// Body left, so it counts as the failure: a caller that wants a status of its own returns an error.
 func (b *upstreamBody) failureStands(res *fasthttp.Response) bool {
 	if b.err == nil {
 		return false

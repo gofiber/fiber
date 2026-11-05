@@ -251,8 +251,13 @@ func Test_Proxy_StreamedBodyBound_ModifyResponse(t *testing.T) {
 			hook: answering(func(fiber.Ctx) error { return nil }),
 		},
 		{
-			name: "stream read, error returned", size: 8 * bound, status: fiber.StatusBadGateway, body: "Bad Gateway",
-			hook: answering(func(fiber.Ctx) error { return fiber.ErrBadGateway }),
+			name: "stream read, error returned", size: 8 * bound, status: fiber.StatusRequestEntityTooLarge, body: "Request Entity Too Large",
+			hook: answering(func(fiber.Ctx) error { return fiber.ErrRequestEntityTooLarge }),
+		},
+		{
+			// Not told from the failure Body leaves, so the request fails; a status of the hook's own takes an error.
+			name: "stream read, the error's text set", size: 8 * bound, status: fiber.StatusInternalServerError, body: failure,
+			hook: answering(func(c fiber.Ctx) error { return c.Status(fiber.StatusRequestEntityTooLarge).SendString(failure) }),
 		},
 		{
 			name: "stream read, status and body set", size: 8 * bound, status: fiber.StatusRequestEntityTooLarge, body: "too large",
