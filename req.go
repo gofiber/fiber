@@ -794,11 +794,9 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 // Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 func (r *DefaultReq) Host() string {
 	if r.IsProxyTrusted() {
-		if host := r.Get(HeaderXForwardedHost); host != "" {
-			if before, _, found := utils.CutByte(host, ','); found {
-				return utils.TrimSpace(before)
-			}
-			return utils.TrimSpace(host)
+		// Received order, as for X-Forwarded-For: fasthttp reorders repeated lines when it deletes a header.
+		if host := headerlist.First(proxyHeaderValue(r, HeaderXForwardedHost)); host != "" {
+			return host
 		}
 	}
 	return r.c.app.toString(r.c.fasthttp.Request.URI().Host())
@@ -1480,9 +1478,7 @@ func announcedScheme(rank int, val []byte) (string, bool) {
 	case schemeRankXForwardedSsl:
 		return schemeHTTPS, utils.EqualFold(v, "on")
 	case schemeRankXForwardedProto, schemeRankXForwardedProtocol:
-		if before, _, found := utils.CutByte(v, ','); found {
-			v = before
-		}
+		v = headerlist.First(v)
 	}
 	return forwardedScheme(v)
 }

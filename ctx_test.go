@@ -2869,7 +2869,14 @@ func Test_Ctx_Host_ForwardedHost(t *testing.T) {
 		{name: "leading and trailing whitespace with comma", proxies: trusted, forwardedHost: "  example.com  , proxy1", want: "example.com"},
 		{name: "no whitespace with comma", proxies: trusted, forwardedHost: "example.com, proxy1", want: "example.com"},
 		{name: "single value with whitespace", proxies: trusted, forwardedHost: "  example.com  ", want: "example.com"},
-		{name: "leading comma", proxies: trusted, forwardedHost: ",example.com", want: ""},
+		// Empty elements are skipped (RFC 9110 Section 5.6.1.2); with none left, the Host header answers
+		{name: "leading comma", proxies: trusted, forwardedHost: ",example.com", want: "example.com"},
+		{name: "empty header", proxies: trusted, forwardedHost: "", want: "google.com"},
+		{name: "whitespace only", proxies: trusted, forwardedHost: " \t ", want: "google.com"},
+		{name: "whitespace first element", proxies: trusted, forwardedHost: " \t ,example.com", want: "example.com"},
+		{name: "only empty elements", proxies: trusted, forwardedHost: " , ,", want: "google.com"},
+		{name: "consecutive commas", proxies: trusted, forwardedHost: "example.com,,proxy1", want: "example.com"},
+		{name: "trailing comma", proxies: trusted, forwardedHost: "example.com,", want: "example.com"},
 	}
 
 	// No host carries a port, so every case answers alike through c.Host and c.Hostname.
@@ -2895,6 +2902,17 @@ func Test_Ctx_Host_ForwardedHost(t *testing.T) {
 	}
 }
 
+// The first line received answers, which an empty chunked body used to swap with the last.
+func Test_Ctx_Host_RepeatedFieldLines_ReceivedOrder(t *testing.T) {
+	t.Parallel()
+	app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"127.0.0.1"}}})
+	app.Post("/", func(c Ctx) error { return c.SendString(c.Host()) })
+
+	raw := "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n" +
+		"X-Forwarded-Host: a.example\r\nX-Forwarded-Host: b.example\r\n\r\n0\r\n\r\n"
+	require.Equal(t, "a.example", serveRawFromLoopback(t, app.Handler(), raw))
+}
+
 func Benchmark_Ctx_Host(b *testing.B) {
 	c := apptest.Ctx(b, New())
 	c.Request().SetRequestURI("http://google.com/test")
@@ -2904,6 +2922,18 @@ func Benchmark_Ctx_Host(b *testing.B) {
 		host = c.Host()
 	}
 	require.Equal(b, "google.com", host)
+}
+
+func Benchmark_Ctx_Host_TrustedProxy(b *testing.B) {
+	c := apptest.Ctx(b, New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}}}))
+	c.Request().SetRequestURI("http://google.com/test")
+	c.Request().Header.Set(HeaderXForwardedHost, "example.com, proxy1")
+	var host string
+	b.ReportAllocs()
+	for b.Loop() {
+		host = c.Host()
+	}
+	require.Equal(b, "example.com", host)
 }
 
 func Test_Ctx_IsProxyTrusted(t *testing.T) {
@@ -3621,6 +3651,17 @@ func Benchmark_Ctx_IPs(b *testing.B) {
 		res = c.IPs()
 	}
 	require.Equal(b, []string{"127.0.0.1", "invalid", "127.0.0.1"}, res)
+}
+
+// Every element costs a step of the walk, so a client padding the header with commas sets the cost.
+func Benchmark_Ctx_IPs_EmptyElements(b *testing.B) {
+	c := ctxBenchForwardedFor(b, strings.Repeat(",", 1024)+"127.0.0.1")
+	var res []string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.IPs()
+	}
+	require.Equal(b, []string{"127.0.0.1"}, res)
 }
 
 func Benchmark_Ctx_IPs_v6(b *testing.B) {
@@ -4584,6 +4625,12 @@ func Test_Ctx_Scheme(t *testing.T) {
 		{name: "X-Forwarded-Protocol", header: HeaderXForwardedProtocol, value: schemeHTTPS},
 		{name: "X-Forwarded-Proto list", header: HeaderXForwardedProto, value: "https, http"},
 		{name: "X-Forwarded-Protocol list", header: HeaderXForwardedProtocol, value: "https, http"},
+		{name: "X-Forwarded-Proto empty tail", header: HeaderXForwardedProto, value: "https,,"},
+		{name: "X-Forwarded-Protocol empty tail", header: HeaderXForwardedProtocol, value: "https,,"},
+		{name: "X-Forwarded-Proto tab padding", header: HeaderXForwardedProto, value: "\tHTTPS\t, invalid"},
+		{name: "X-Forwarded-Protocol tab padding", header: HeaderXForwardedProtocol, value: "\tHTTPS\t, invalid"},
+		{name: "X-Forwarded-Proto empty first element", header: HeaderXForwardedProto, value: ",https"},
+		{name: "X-Forwarded-Protocol empty first element", header: HeaderXForwardedProtocol, value: " \t, https"},
 		{name: "X-Forwarded-Ssl", header: HeaderXForwardedSsl, value: "on"},
 		{name: "X-Url-Scheme", header: HeaderXUrlScheme, value: schemeHTTPS},
 		{name: "lowercase X-Forwarded-Proto, padded list", header: "x-forwarded-proto", value: " HTTPS , http"},
@@ -4634,12 +4681,17 @@ func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
 	// A scheme Fiber does not serve must never reach BaseURL or the
 	// same-origin comparisons that consume Scheme.
 	for _, header := range []string{HeaderXForwardedProto, HeaderXForwardedProtocol, HeaderXUrlScheme} {
-		for _, value := range []string{"javascript", "ftp", "data", "HTTPS evil", ""} {
+		for _, value := range []string{"javascript", "ftp", "data", "HTTPS evil", "", " , ", "javascript,https", ",javascript,https"} {
 			c.Request().Header.Set(header, value)
 			require.Equal(t, schemeHTTP, c.Scheme(), "%s: %q", header, value)
 			c.Request().Header.Reset()
 		}
 	}
+
+	// X-Url-Scheme is no list, so a comma leaves no scheme to read.
+	c.Request().Header.Set(HeaderXUrlScheme, "https, http")
+	require.Equal(t, schemeHTTP, c.Scheme())
+	c.Request().Header.Reset()
 
 	// A rejected value must not clobber a valid one supplied by another header.
 	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
@@ -4709,6 +4761,16 @@ func Test_Ctx_Scheme_HeaderPrecedence(t *testing.T) {
 			},
 			want: schemeHTTPS,
 		},
+		{
+			name:    "an empty first proto element is skipped",
+			headers: []string{HeaderXUrlScheme, schemeHTTPS, HeaderXForwardedProto, ",http"},
+			want:    schemeHTTP,
+		},
+		{
+			name:    "a protocol list of empty elements keeps the lower priority scheme",
+			headers: []string{HeaderXUrlScheme, schemeHTTPS, HeaderXForwardedProtocol, " \t, "},
+			want:    schemeHTTPS,
+		},
 	} {
 		t.Run("Ranking, "+tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -4741,6 +4803,17 @@ func Benchmark_Ctx_Scheme(b *testing.B) {
 		res = c.Scheme()
 	}
 	require.Equal(b, "http", res)
+}
+
+func Benchmark_Ctx_Scheme_TrustedProxy(b *testing.B) {
+	c := apptest.Ctx(b, New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}}}))
+	c.Request().Header.Set(HeaderXForwardedProto, "https, http")
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.Scheme()
+	}
+	require.Equal(b, schemeHTTPS, res)
 }
 
 func Test_Ctx_Query(t *testing.T) {

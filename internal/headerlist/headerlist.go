@@ -20,7 +20,7 @@
 //     takes CR, LF, VT and FF. [TrimOWS] takes only SP and HTAB, the OWS of
 //     RFC 9110 Section 5.6.3, for a caller that validates what is left.
 //
-// The iterators skip empty elements: "a,,b" yields "a" and "b". A list is
+// The iterators and [First] skip empty elements: "a,,b" yields "a" and "b". A list is
 // permitted to carry them (RFC 9110 Section 5.6.1 allows the empty element for
 // legacy reasons). [Next] and [Prev] expose raw elements, including empty ones,
 // for callers with their own whitespace, validation and traversal policies.
@@ -40,11 +40,25 @@ import (
 // exceeds len(list) after the final element, allowing callers to stop early
 // without allocating a slice of all elements.
 func Next(list string, start int) (element string, next int) { //nolint:nonamedreturns // names distinguish the element from the next position
+	// A loop, not utils.CutByte: its generic body does not inline, and a call per element made comma-padded lists 4x slower.
 	end := start
 	for end < len(list) && list[end] != ',' {
 		end++
 	}
 	return list[start:end], end + 1
+}
+
+// First returns the first non-empty element of list, trimmed as [All] trims it,
+// or "" when list has none.
+func First(list string) string {
+	for start := 0; start <= len(list); {
+		var element string
+		element, start = Next(list, start)
+		if element = utils.TrimSpace(element); element != "" {
+			return element
+		}
+	}
+	return ""
 }
 
 // Prev is the reverse of Next. It returns the raw element ending just before

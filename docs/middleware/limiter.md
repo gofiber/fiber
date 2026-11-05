@@ -75,6 +75,8 @@ app.Use(limiter.New(limiter.Config{
 
 :::caution
 The default `KeyGenerator` keys requests by `c.IP()`. Behind a reverse proxy, `c.IP()` only identifies a client if you configure `TrustProxy`, `TrustProxyConfig` and `ProxyHeader`, plus `EnableIPValidation` when the header is a chain your proxy appends to, such as `X-Forwarded-For`. Without them it is either the proxy's address, so every client shares one bucket, or the raw forwarded header, which a client can vary on every request to get a fresh bucket unless your proxy overwrites it with a single address. See the [reverse proxy guide](../guide/reverse-proxy.md#getting-the-real-client-ip-address).
+
+Limiter bounds its keys itself (see `KeyGenerator` below). For keys you build from client values for another store, see [Storage keys derived from client values](../guide/reverse-proxy.md#storage-keys-derived-from-client-values).
 :::
 
 ## Sliding window
@@ -168,7 +170,7 @@ A request the [timeout middleware](./timeout.md) gave up on is answered with the
 | SkipSuccessfulRequests | `bool`                    | When set to `true`, requests with status code < 400 aren't counted. A handler that returns an error other than a `*fiber.Error` counts as a 500 unless it already set an error status. | false                                    |
 | DisableHeaders         | `bool`                    | When set to `true`, the middleware omits rate limit headers (`X-RateLimit-*` and `Retry-After`). Otherwise a request that passes carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (seconds until the window ends), and a rejected one carries `Retry-After` (seconds). | false                                    |
 | DisableValueRedaction  | `bool`                    | Disables redaction of limiter keys in error messages and logs. A key longer than 192 bytes is shown as its SHA-256 digest. | false                                    |
-| Storage                | `fiber.Storage`           | Persists middleware state. An entry is stored under `limiter:<key>`, so the storage can be shared with other middleware. Counters stored by an earlier version are not read after the upgrade, so every window starts over once, and the old entries expire on their own. | An in-memory store for this process only |
+| Storage                | `fiber.Storage`           | Persists middleware state. A custom storage keeps an entry under `limiter:<key>`, at most 200 bytes, so it can be shared with other middleware; the in-memory default keeps the bounded key alone, at most 192 bytes. Counters stored by an earlier version are not read after the upgrade, so every window starts over once, and the old entries expire on their own. | An in-memory store for this process only |
 | LimiterMiddleware      | `limiter.Handler`         | Selects the algorithm implementation. Implementations now receive a pointer to the active config when their `New` method is invoked. `FixedWindow` and `SlidingWindow` give a field that config leaves unset its default, so calling their `New` directly with a partial config works. `New` works on a copy, which leaves the config you pass as it is. | A new Fixed Window Rate Limiter          |
 
 :::note
