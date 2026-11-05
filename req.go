@@ -793,7 +793,7 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 // Make copies or use the Immutable setting instead.
 // Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 func (r *DefaultReq) Host() string {
-	// The trusted X-Forwarded-Host branch returns its first element as sent: no validation, no case folding.
+	// The trusted X-Forwarded-Host branch returns its first non-empty element as sent: no validation, no case folding.
 	if r.IsProxyTrusted() {
 		// Received order, as for X-Forwarded-For: fasthttp reorders repeated lines when it deletes a header.
 		if host := headerlist.First(proxyHeaderValue(r, HeaderXForwardedHost)); host != "" {
