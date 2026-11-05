@@ -504,25 +504,6 @@ func linesPeeker(h Peeker, name string) [][]byte {
 	return values
 }
 
-// CountLines is len(Lines(h, name, canonical)) without the lines.
-//
-//nolint:revive // flag-parameter: canonical is a property of the header store, not a mode of operation
-func CountLines(h Peeker, name string, canonical bool) int {
-	if canonical && !HasTrailers(h) {
-		return len(h.PeekAll(name))
-	}
-	if req, ok := h.(*fasthttp.RequestHeader); ok && InTrailer(req, name) {
-		return 0
-	}
-	n := 0
-	h.VisitAll(func(k, _ []byte) {
-		if utils.EqualFold(utils.UnsafeString(k), name) {
-			n++
-		}
-	})
-	return n
-}
-
 // First returns the first field line stored under name that holds anything, or
 // nil if there is none. The names fasthttp keeps in a slot of their own are
 // unaffected either way: every spelling is routed into the slot on the way in.
