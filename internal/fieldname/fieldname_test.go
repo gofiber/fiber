@@ -123,6 +123,91 @@ func Test_First_EmptyLineDoesNotHideTheValue(t *testing.T) {
 	}
 }
 
+func Test_First_Lines_ReadModes(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		lines  string
+		want   string
+		values []string
+	}{
+		{name: "absent", lines: "X-Other: other\r\n"},
+		{name: "empty", lines: "x-test:\r\nX-TEST:\r\n", values: []string{"", ""}},
+		{name: "mixed case", lines: "X-Other: other\r\nx-TeSt: first\r\n", want: "first", values: []string{"first"}},
+		{
+			name: "first non-empty", lines: "x-test:\r\nX-TEST: first\r\nx-test: second\r\n", want: "first",
+			values: []string{"", "first", "second"},
+		},
+	} {
+		for _, canonical := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s canonical=%t", tc.name, canonical), func(t *testing.T) {
+				t.Parallel()
+				req := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\n"+tc.lines+"\r\n", canonical)
+				resp := readResponse(t, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n"+tc.lines+"\r\n", canonical)
+				for _, h := range []Peeker{req, &resp.Header} {
+					lines := Lines(h, "X-Test", canonical)
+					wrappedLines := Lines(struct{ Peeker }{h}, "X-Test", canonical)
+					require.Equal(t, tc.values, lineValues(lines), "%T", h)
+					require.Equal(t, lines, wrappedLines, "%T", h)
+					for i, line := range lines {
+						if len(line) > 0 {
+							require.Same(t, &wrappedLines[i][0], &line[0], "%T", h)
+						}
+					}
+					got := First(h, "X-Test", canonical)
+					wrapped := First(struct{ Peeker }{h}, "X-Test", canonical)
+					require.Equal(t, tc.want, string(got), "%T", h)
+					require.Equal(t, got, wrapped, "%T", h)
+					if len(got) > 0 {
+						require.Same(t, &wrapped[0], &got[0], "%T", h)
+					} else {
+						require.Nil(t, got, "%T", h)
+					}
+				}
+			})
+		}
+	}
+}
+
+func Test_Lines_NonCanonical_Allocations(t *testing.T) {
+	// AllocsPerRun cannot run in a parallel test.
+	const lines = "x-test: first\r\n"
+	req := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\n"+lines+"\r\n", false)
+	resp := readResponse(t, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n"+lines+"\r\n", false)
+	for _, h := range []Peeker{req, &resp.Header} {
+		for _, name := range []string{"X-Test", "X-Absent"} {
+			var got [][]byte
+			allocs := testing.AllocsPerRun(100, func() { got = Lines(h, name, false) })
+			if name == "X-Test" {
+				require.Equal(t, []string{"first"}, lineValues(got))
+				require.LessOrEqual(t, allocs, float64(1), "%T %s", h, name)
+			} else {
+				require.Nil(t, got)
+				require.Zero(t, allocs, "%T %s", h, name)
+			}
+		}
+	}
+}
+
+func Test_First_NonCanonical_NoAllocations(t *testing.T) {
+	// AllocsPerRun cannot run in a parallel test.
+	const lines = "x-test:\r\nX-TEST: first\r\nx-test: second\r\n"
+	req := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\n"+lines+"\r\n", false)
+	resp := readResponse(t, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n"+lines+"\r\n", false)
+	for _, h := range []Peeker{req, &resp.Header} {
+		for _, name := range []string{"X-Test", "X-Absent"} {
+			var got []byte
+			allocs := testing.AllocsPerRun(100, func() { got = First(h, name, false) })
+			if name == "X-Test" {
+				require.Equal(t, "first", string(got))
+			} else {
+				require.Nil(t, got)
+			}
+			require.Zero(t, allocs, "%T %s", h, name)
+		}
+	}
+}
+
 // Test_First_Lines_SkipTrailerSection pins that a field sent after the last
 // chunk is not read as a header: fasthttp's Peek and PeekAll fall through to it.
 // Nor is a header line of its name, which a Set may not have replaced.

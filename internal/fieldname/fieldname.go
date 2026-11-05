@@ -61,6 +61,14 @@ func HasTrailers(h Peeker) bool {
 	return len(h.PeekTrailerKeys()) > 0
 }
 
+// trailerCount returns an int to keep the concrete-request branch within the inlining budget.
+func trailerCount(h Peeker) int {
+	if req, ok := h.(*fasthttp.RequestHeader); ok {
+		return len(req.PeekTrailerKeys())
+	}
+	return len(h.PeekTrailerKeys())
+}
+
 // DropTrailers discards a request's trailer section and the names announced for it (RFC 9112 §7.1.2):
 // fasthttp files a later Set or Add under such a name with that section, out of the header readers' reach.
 // It reports false, leaving h as it is, for more than MaxTrailers names.
@@ -453,16 +461,40 @@ func rewriteInRankOrder(h *fasthttp.RequestHeader, lines []orderedLine) {
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store, not a mode of operation
 func Lines(h Peeker, name string, canonical bool) [][]byte {
-	if canonical && !HasTrailers(h) {
+	if canonical && trailerCount(h) == 0 {
 		// PeekAll hands back the header's own slice without allocating.
 		return h.PeekAll(name)
 	}
+	return linesFold(h, name)
+}
+
+// linesFold keeps visitor state off Lines' canonical stack frame.
+func linesFold(h Peeker, name string) [][]byte {
 	if req, ok := h.(*fasthttp.RequestHeader); ok && InTrailer(req, name) {
 		return nil
 	}
 
 	// Walked rather than ranged: this runs per key header on every cacheable
 	// request, and All's iterator costs more than the match itself does.
+	var values [][]byte
+	visit := func(k, v []byte) {
+		if utils.EqualFold(utils.UnsafeString(k), name) {
+			values = append(values, v)
+		}
+	}
+	switch h := h.(type) {
+	case *fasthttp.RequestHeader:
+		h.VisitAll(visit)
+	case *fasthttp.ResponseHeader:
+		h.VisitAll(visit)
+	default:
+		return linesPeeker(h, name)
+	}
+	return values
+}
+
+// linesPeeker keeps the interface visitor's escaping capture off the concrete paths.
+func linesPeeker(h Peeker, name string) [][]byte {
 	var values [][]byte
 	h.VisitAll(func(k, v []byte) {
 		if utils.EqualFold(utils.UnsafeString(k), name) {
@@ -513,7 +545,7 @@ func CountLines(h Peeker, name string, canonical bool) int {
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
-	if canonical && !HasTrailers(h) {
+	if canonical && trailerCount(h) == 0 {
 		v := Peek(h, name)
 		if len(v) > 0 {
 			return v
@@ -551,6 +583,26 @@ func firstFold(h Peeker, name string) []byte {
 	if req, ok := h.(*fasthttp.RequestHeader); ok && InTrailer(req, name) {
 		return nil
 	}
+	var found []byte
+	visit := func(k, v []byte) {
+		if found == nil && len(v) > 0 && utils.EqualFold(utils.UnsafeString(k), name) {
+			found = v
+		}
+	}
+	// Concrete calls keep the visitor and its captured result on the stack.
+	switch h := h.(type) {
+	case *fasthttp.RequestHeader:
+		h.VisitAll(visit)
+	case *fasthttp.ResponseHeader:
+		h.VisitAll(visit)
+	default:
+		return firstFoldPeeker(h, name)
+	}
+	return found
+}
+
+// firstFoldPeeker isolates the interface call's escaping closure from the concrete paths.
+func firstFoldPeeker(h Peeker, name string) []byte {
 	// Walked rather than ranged, for the reason Lines gives: All builds a
 	// heap-allocated iterator per call. Scanning past the match costs less than
 	// the early exit ranging would buy.
