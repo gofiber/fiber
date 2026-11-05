@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -11,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -128,27 +128,20 @@ func varyKey(base string, names []string, hdr *fasthttp.RequestHeader, normalize
 	return key
 }
 
-// varyLinesAdded reports whether the request carries, for a name the response varies on, more
-// field lines than lookup, the copy taken before the handler ran, or a cookie by a name it has
-// none by: a line or cookie an inner middleware added, which no client's key selects by. One it
-// removed, as encryptcookie removes a cookie it cannot decrypt, leaves the key the client's and
-// the response the one for its absence, and one it rewrote, as encryptcookie decrypts a cookie,
-// keeps the client's value in the key: the count tells an added line from a rewritten one, which
-// values could not (see cache.md).
-func varyLinesAdded(names []string, lookup, live *fasthttp.RequestHeader, normalized bool) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
-	for _, name := range names {
-		if collectKeyField(live, name) {
-			if cookieAdded(lookup, live) {
-				return true
-			}
-			continue
-		}
-		collectKeyField(lookup, name)
-		if n := fieldname.CountLines(live, name, normalized); n > 0 && n > fieldname.CountLines(lookup, name, normalized) {
-			return true
-		}
-	}
-	return false
+// varyHeadersChanged reports whether a request header the response varies on reads differently now
+// than it did at lookup, the copy taken before the handler ran: a line or cookie an inner middleware
+// added, as one deriving X-User-Id from the session cookie does, a value it rewrote, as encryptcookie
+// does with the cookies it decrypts, or a header it removed.
+//
+// The entry is keyed by the header as the client sent it, which is all a later lookup has to select
+// it by. A response built from anything else would be served to every client sending the same value,
+// the first client's page to whoever sends the placeholder a middleware overwrote with its session's,
+// and the cache cannot tell such a derivation from a rewrite that is a function of the value alone.
+// What counts as a change is what would give the request another key, so the two are compared as the
+// key is built (see cache.md).
+func varyHeadersChanged(names []string, lookup, live *fasthttp.RequestHeader, normalized bool) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
+	var atLookup, now [len("|vary|") + 2*sha256.Size]byte
+	return !bytes.Equal(appendVaryKey(atLookup[:0], names, lookup, normalized), appendVaryKey(now[:0], names, live, normalized))
 }
 
 // lookupHeaders pools the copies of the request headers a miss keeps while the handler runs.

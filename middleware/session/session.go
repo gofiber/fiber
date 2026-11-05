@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
-	"reflect"
 	"sync"
 	"time"
 
@@ -515,8 +514,8 @@ func (s *Session) overtakenBy(raw []byte) bool {
 
 // editedInPlace reports whether the data differs from the snapshot it was decoded from, as it
 // does once a value Get returned was changed in place. gob writes a map in no fixed order, so the
-// snapshot is decoded again and compared as data rather than as bytes; one that no longer decodes
-// counts as edited, which keeps the request's data.
+// snapshot is decoded again and compared as data rather than as bytes, a NaN being the same as a
+// NaN (see sameData); one that no longer decodes counts as edited, which keeps the request's data.
 func (s *Session) editedInPlace() bool {
 	var snapshot map[any]any
 	if err := gob.NewDecoder(bytes.NewReader(s.rawData)).Decode(&snapshot); err != nil {
@@ -527,7 +526,7 @@ func (s *Session) editedInPlace() bool {
 	if len(snapshot) == 0 && len(s.data.Data) == 0 {
 		return false
 	}
-	return !reflect.DeepEqual(snapshot, s.data.Data)
+	return !sameData(snapshot, s.data.Data)
 }
 
 // Keys retrieves all keys in the current session.
