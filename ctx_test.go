@@ -284,6 +284,8 @@ func Test_Ctx_HeaderHelpers(t *testing.T) {
 	require.False(t, c.HasHeader("X-Trace-Id"))
 }
 
+// Test_Ctx_HasHeaderValue checks quoted and repeated list members while preserving
+// the distinction between empty field lines and Connection's nil lookup result.
 func Test_Ctx_HasHeaderValue(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -8648,6 +8650,7 @@ func Benchmark_Ctx_HasHeaderValue(b *testing.B) {
 	})
 }
 
+// Benchmark_Ctx_HasHeaderValueAbsent measures the missing-field fast path in both normalization modes.
 func Benchmark_Ctx_HasHeaderValueAbsent(b *testing.B) {
 	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
 		b.Helper()
@@ -8659,6 +8662,7 @@ func Benchmark_Ctx_HasHeaderValueAbsent(b *testing.B) {
 	})
 }
 
+// Benchmark_Ctx_HasHeaderValueEmpty measures a present, non-nil empty field in both normalization modes.
 func Benchmark_Ctx_HasHeaderValueEmpty(b *testing.B) {
 	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
 		b.Helper()

@@ -123,6 +123,8 @@ func Test_First_EmptyLineDoesNotHideTheValue(t *testing.T) {
 	}
 }
 
+// Test_First_Lines_ReadModes checks that concrete and wrapped headers agree on
+// empty values, field ordering and buffer aliases in both normalization modes.
 func Test_First_Lines_ReadModes(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -169,6 +171,8 @@ func Test_First_Lines_ReadModes(t *testing.T) {
 	}
 }
 
+// Test_Lines_NonCanonical_Allocations guards against visitor allocations beyond
+// the returned list's storage, including when no matching field exists.
 func Test_Lines_NonCanonical_Allocations(t *testing.T) {
 	// AllocsPerRun cannot run in a parallel test.
 	const lines = "x-test: first\r\n"
@@ -189,6 +193,8 @@ func Test_Lines_NonCanonical_Allocations(t *testing.T) {
 	}
 }
 
+// Test_First_NonCanonical_NoAllocations guards allocation-free request and
+// response lookups for absent fields and fields with an empty leading line.
 func Test_First_NonCanonical_NoAllocations(t *testing.T) {
 	// AllocsPerRun cannot run in a parallel test.
 	const lines = "x-test:\r\nX-TEST: first\r\nx-test: second\r\n"
