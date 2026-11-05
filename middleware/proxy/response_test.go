@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -212,25 +213,83 @@ func Test_Proxy_StreamedBodyBound(t *testing.T) {
 }
 
 // Test_Proxy_StreamedBodyBound_ModifyResponse checks that a hook that reads the body of a streamed response,
-// as ModifyResponse may, never takes in more than the bound: the stream fails there instead of filling memory.
+// as ModifyResponse may, never takes in more than the bound, and that a read that goes past it fails the request
+// unless the hook sets a response of its own after it: the stream left as it is would end the response early,
+// and fasthttp's Body puts the error's text in the body in place of one it could not read, which would go out as
+// the upstream's response.
 func Test_Proxy_StreamedBodyBound_ModifyResponse(t *testing.T) {
 	t.Parallel()
 	const bound = 4096
 	addr := proxyTestSizedUpstream(t)
 	policy := proxyTestAllowPrivatePolicy()
+	failure := fasthttp.ErrBodyTooLarge.Error()
 
-	taken := make(chan int, 1)
-	app := fiber.New()
-	app.Get("/", Balancer(Config{
-		Servers: []string{addr}, SecurityPolicy: &policy, MaxResponseBodySize: bound,
-		ModifyRequest:  func(c fiber.Ctx) error { c.Response().StreamBody = true; return nil },
-		ModifyResponse: func(c fiber.Ctx) error { taken <- len(c.Response().Body()); return nil },
-	}))
+	// read takes the body in through Body, which leaves the error's text in its place when the read fails.
+	read := func(c fiber.Ctx) (int, error) { return len(c.Response().Body()), nil }
+	// answering reads the stream itself, as a hook does that tells the failure from a body, and ends the hook
+	// with answer when the read went past the bound.
+	answering := func(answer func(c fiber.Ctx) error) func(c fiber.Ctx) (int, error) {
+		return func(c fiber.Ctx) (int, error) {
+			got, err := io.ReadAll(c.Response().BodyStream())
+			if !errors.Is(err, fasthttp.ErrBodyTooLarge) {
+				return len(got), err
+			}
+			return len(got), answer(c)
+		}
+	}
+	for _, tc := range []struct {
+		hook   func(c fiber.Ctx) (int, error) // how much of the body it took in, and what it returns
+		name   string
+		body   string
+		size   int
+		status int
+	}{
+		{name: "within the bound", size: bound, hook: read, status: fiber.StatusOK, body: strings.Repeat("x", bound)},
+		{name: "Body read", size: 8 * bound, hook: read, status: fiber.StatusInternalServerError, body: failure},
+		{
+			name: "stream read, failure not answered", size: 8 * bound, status: fiber.StatusInternalServerError, body: failure,
+			hook: answering(func(fiber.Ctx) error { return nil }),
+		},
+		{
+			name: "stream read, error returned", size: 8 * bound, status: fiber.StatusBadGateway, body: "Bad Gateway",
+			hook: answering(func(fiber.Ctx) error { return fiber.ErrBadGateway }),
+		},
+		{
+			name: "stream read, status and body set", size: 8 * bound, status: fiber.StatusRequestEntityTooLarge, body: "too large",
+			hook: answering(func(c fiber.Ctx) error { return c.Status(fiber.StatusRequestEntityTooLarge).SendString("too large") }),
+		},
+		{
+			name: "stream read, stream set", size: 8 * bound, status: fiber.StatusOK, body: "replaced",
+			hook: answering(func(c fiber.Ctx) error { c.Response().SetBodyStream(strings.NewReader("replaced"), -1); return nil }),
+		},
+		{
+			name: "Body read, body set", size: 8 * bound, status: fiber.StatusOK, body: "replaced",
+			hook: func(c fiber.Ctx) (int, error) {
+				n := len(c.Response().Body())
+				c.Response().SetBodyString("replaced")
+				return n, nil
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			taken := make(chan int, 1)
+			app := fiber.New()
+			app.Get("/", Balancer(Config{
+				Servers: []string{addr}, SecurityPolicy: &policy, MaxResponseBodySize: bound,
+				ModifyRequest: func(c fiber.Ctx) error { c.Response().StreamBody = true; return nil },
+				ModifyResponse: func(c fiber.Ctx) error {
+					n, err := tc.hook(c)
+					taken <- n
+					return err
+				},
+			}))
 
-	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Size", strconv.Itoa(8*bound)), apptest.WithHeader("X-Chunked", "1"))
-	// Not a 200 carrying fasthttp's error text in place of the body the hook could not read.
-	apptest.Expect(t, app, req, fiber.StatusInternalServerError)
-	require.LessOrEqual(t, apptest.Recv(t, taken, time.Second), bound)
+			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Size", strconv.Itoa(tc.size)), apptest.WithHeader("X-Chunked", "1"))
+			apptest.ExpectBody(t, app, req, tc.status, tc.body)
+			require.LessOrEqual(t, apptest.Recv(t, taken, time.Second), bound)
+		})
+	}
 }
 
 // Test_Proxy_Do_StreamedResponseDefaultBound checks that the default client holds a response set to stream to its

@@ -185,9 +185,10 @@ func Balancer(config ...Config) fiber.Handler {
 			if err := cfg.ModifyResponse(c); err != nil {
 				return err
 			}
-			// fasthttp's Body replaces a body whose read failed with the error's text, which would go out
-			// as the upstream's response: a hook that read one past its bound fails the request instead.
-			if streamed && body.err != nil {
+			// A hook that read one past the bound fails the request, unless it set a response of its own
+			// since: the stream would end the response early, and fasthttp's Body replaces a body whose
+			// read failed with the error's text, which would go out as the upstream's response.
+			if streamed && body.failureStands(res) {
 				return body.err
 			}
 		}

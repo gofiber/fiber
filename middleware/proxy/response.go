@@ -110,3 +110,18 @@ func (b *upstreamBody) Close() error {
 	fasthttp.ReleaseResponse(b.upstream)
 	return nil
 }
+
+// failureStands reports whether res still carries the failure of a read of b past its limit instead of a
+// response the caller set after it: the stream itself, which would end the response early once it started, or
+// what fasthttp's Body leaves in its place, the error's text as the body, which would go out as the upstream's
+// response. A stream or a body set since is the caller's own and stays, as when one reads the stream and sends
+// a fallback for the failure it was handed.
+func (b *upstreamBody) failureStands(res *fasthttp.Response) bool {
+	if b.err == nil {
+		return false
+	}
+	if res.IsBodyStream() {
+		return res.BodyStream() == io.Reader(b)
+	}
+	return string(res.Body()) == b.err.Error()
+}
