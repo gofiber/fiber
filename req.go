@@ -795,9 +795,9 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 func (r *DefaultReq) Host() string {
 	// The trusted X-Forwarded-Host branch returns its first element as sent: no validation, no case folding.
 	if r.IsProxyTrusted() {
-		if host := r.Get(HeaderXForwardedHost); host != "" {
-			host, _ = headerlist.Next(host, 0)
-			return utils.TrimSpace(host)
+		// Received order, as for X-Forwarded-For: fasthttp reorders repeated lines when it deletes a header.
+		if host := headerlist.First(proxyHeaderValue(r, HeaderXForwardedHost)); host != "" {
+			return host
 		}
 	}
 	return r.c.app.toString(r.c.fasthttp.Request.URI().Host())
@@ -1479,7 +1479,7 @@ func announcedScheme(rank int, val []byte) (string, bool) {
 	case schemeRankXForwardedSsl:
 		return schemeHTTPS, utils.EqualFold(v, "on")
 	case schemeRankXForwardedProto, schemeRankXForwardedProtocol:
-		v, _ = headerlist.Next(v, 0)
+		v = headerlist.First(v)
 	}
 	return forwardedScheme(v)
 }
