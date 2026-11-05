@@ -9,16 +9,14 @@ on:
     branches:
       - main
     paths:
+      - "**.go"
       - "docs/**"
-      - "addon/**"
-      - "internal/genapidocs/**"
       - "go.mod"
       - ".github/workflows/api-docs.yml"
   pull_request:
     paths:
+      - "**.go"
       - "docs/**"
-      - "addon/**"
-      - "internal/genapidocs/**"
       - "go.mod"
       - ".github/workflows/api-docs.yml"
 
