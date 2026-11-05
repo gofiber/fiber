@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"maps"
 	"mime/multipart"
+	"os"
+	"os/exec"
 	"reflect"
 	"runtime"
 	"slices"
@@ -1121,9 +1123,23 @@ func liveHeap() uint64 {
 	return m.HeapAlloc
 }
 
-// Sequential: it reads the live heap, which parallel tests would disturb.
-// conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_CachedKeyBytes_CoversSchemaCache(t *testing.T) {
+	t.Parallel()
+	if os.Getenv("FIBER_SCHEMA_CACHE_HEAP_TEST") != "1" {
+		// Isolate the live-heap measurement from other tests and their background goroutines.
+		executable, err := os.Executable()
+		require.NoError(t, err)
+		cmd := exec.Command(executable, "-test.run=^Test_CachedKeyBytes_CoversSchemaCache$")
+		for _, arg := range os.Args[1:] {
+			if strings.HasPrefix(arg, "-test.gocoverdir=") {
+				cmd.Args = append(cmd.Args, arg)
+			}
+		}
+		cmd.Env = append(os.Environ(), "FIBER_SCHEMA_CACHE_HEAP_TEST=1")
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "%s", output)
+		return
+	}
 	type chain struct {
 		Parent *chain `form:"parent"`
 		Text   string `form:"text"`
