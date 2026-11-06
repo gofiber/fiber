@@ -37,12 +37,9 @@ func New(config ...Config) fiber.Handler {
 	// Determine the auth schemes from the extractor chain.
 	authSchemes := getAuthSchemes(cfg.Extractor)
 
-	// The challenge values only depend on config, so build them once instead
-	// of re-formatting them on every 401/407 response. RFC 6750 section 3
-	// says a challenge for a request that carried no credentials should not
-	// include the error parameters, so that case gets a challenge without them.
+	// Built once from config; bareChallenge leaves out the error parameters (RFC 6750 section 3).
 	challengeValue := buildChallenge(&cfg, authSchemes, bearerErrorParams(&cfg))
-	missingCredentialsChallenge := buildChallenge(&cfg, authSchemes, "")
+	bareChallenge := buildChallenge(&cfg, authSchemes, "")
 
 	// Return middleware handler
 	return func(c fiber.Ctx) error {
@@ -52,14 +49,11 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Extract and verify key
-		key, err := cfg.Extractor.Extract(c)
-		missingCredentials := errors.Is(err, extractors.ErrNotFound)
-		if missingCredentials {
+		key, extractErr := cfg.Extractor.Extract(c)
+		err := extractErr
+		if errors.Is(err, extractors.ErrNotFound) {
 			// Replace shared extractor not found error with a keyauth specific error
 			err = ErrMissingOrMalformedAPIKey
-			// The extractor reports a malformed credential the same way. A Bearer one is
-			// still an attempt, and only the Bearer challenge carries the error parameters.
-			missingCredentials = !usesBearerScheme(c.Get(fiber.HeaderAuthorization))
 		}
 		// If there was no error extracting the key, validate it
 		if err == nil {
@@ -86,8 +80,8 @@ func New(config ...Config) fiber.Handler {
 				header = fiber.HeaderProxyAuthenticate
 			}
 			challenge := challengeValue
-			if missingCredentials {
-				challenge = missingCredentialsChallenge
+			if omitsBearerErrors(c.Get(fiber.HeaderAuthorization), extractErr) {
+				challenge = bareChallenge
 			}
 			if challenge != "" {
 				c.Set(header, challenge)
@@ -96,6 +90,15 @@ func New(config ...Config) fiber.Handler {
 
 		return handlerErr
 	}
+}
+
+// omitsBearerErrors reports whether a refused request made no Bearer attempt: it sent
+// no credentials, or ones in another Authorization scheme, well formed or not.
+func omitsBearerErrors(auth string, extractErr error) bool {
+	if usesBearerScheme(auth) {
+		return false
+	}
+	return errors.Is(extractErr, extractors.ErrNotFound) || (extractErr == nil && auth != "")
 }
 
 // usesBearerScheme reports whether an Authorization header value names the
