@@ -340,12 +340,29 @@ func (r *DefaultReq) HasHeader(key string) bool {
 // (RFC 9111 permits quoted directive arguments, escaped quotes included). An
 // empty value is never present. Only valid within the handler.
 func (r *DefaultReq) HasHeaderValue(key, value string) bool {
-	// One lookup settles the common case of a header that is not there at all.
-	if value == "" || len(r.headerField(key)) == 0 {
+	if value == "" {
 		return false
 	}
 	app := r.c.app
-	for _, line := range fieldname.Lines(&r.c.fasthttp.Request.Header, key, !app.config.DisableHeaderNormalizing) {
+	h := &r.c.fasthttp.Request.Header
+	var lines [][]byte
+	if !app.config.DisableHeaderNormalizing && !fieldname.HasTrailers(h) {
+		// Connection can report nil ahead of a later non-empty line; preserve that gate.
+		if fieldname.Peek(h, key) == nil {
+			return false
+		}
+		lines = h.PeekAll(key)
+	} else {
+		// Avoid collecting folded lines when no non-empty value exists.
+		if len(r.headerField(key)) == 0 {
+			return false
+		}
+		lines = fieldname.Lines(h, key, false)
+	}
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
 		for member := range headerlist.AllQuotedPairs(app.toString(line)) {
 			if utils.EqualFold(member, value) {
 				return true

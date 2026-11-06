@@ -284,6 +284,8 @@ func Test_Ctx_HeaderHelpers(t *testing.T) {
 	require.False(t, c.HasHeader("X-Trace-Id"))
 }
 
+// Test_Ctx_HasHeaderValue checks quoted and repeated list members while preserving
+// the distinction between empty field lines and Connection's nil lookup result.
 func Test_Ctx_HasHeaderValue(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -328,6 +330,16 @@ func Test_Ctx_HasHeaderValue(t *testing.T) {
 	c.Request().Header.Add(HeaderCacheControl, "no-transform")
 	require.True(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
 	require.False(t, c.HasHeaderValue(HeaderCacheControl, "public"))
+	c.Request().Header.Del(HeaderCacheControl)
+	c.Request().Header.Add(HeaderCacheControl, "")
+	require.False(t, c.HasHeaderValue(HeaderCacheControl, "public"))
+
+	// Connection's slot reports nil for an empty leading line; retain that absence gate.
+	c.Request().Header.DisableSpecialHeader()
+	c.Request().Header.Add(HeaderConnection, "")
+	c.Request().Header.Add(HeaderConnection, "upgrade")
+	require.Nil(t, c.Request().Header.Peek(HeaderConnection))
+	require.False(t, c.HasHeaderValue(HeaderConnection, "upgrade"))
 }
 
 func Test_Ctx_FullURL_DoesNotAliasPooledBuffer(t *testing.T) {
@@ -8647,6 +8659,34 @@ func Benchmark_Ctx_HasHeaderValue(b *testing.B) {
 			ok = c.HasHeaderValue(HeaderConnection, "keep-alive")
 		}
 		require.True(b, ok)
+	})
+}
+
+// Benchmark_Ctx_HasHeaderValueAbsent measures the missing-field fast path in both normalization modes.
+func Benchmark_Ctx_HasHeaderValueAbsent(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var ok bool
+		for b.Loop() {
+			ok = c.HasHeaderValue("X-Not-Sent", "ignored")
+		}
+		require.False(b, ok)
+	})
+}
+
+// Benchmark_Ctx_HasHeaderValueEmpty measures a present, non-nil empty field in both normalization modes.
+func Benchmark_Ctx_HasHeaderValueEmpty(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		// Retain a value buffer so the empty line is non-nil, as it is on the wire.
+		c.Request().Header.Set("x-empty", "seed")
+		c.Request().Header.Set("x-empty", "")
+		require.NotNil(b, c.Request().Header.Peek("x-empty"))
+		var ok bool
+		for b.Loop() {
+			ok = c.HasHeaderValue("X-Empty", "ignored")
+		}
+		require.False(b, ok)
 	})
 }
 
