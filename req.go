@@ -792,8 +792,8 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 // Example: URL: https://example.com:8080 -> Host: example.com:8080
 // Make copies or use the Immutable setting instead.
 // Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
+// Behind a trusted proxy it is the first non-empty X-Forwarded-Host element, trimmed but not validated or case-folded.
 func (r *DefaultReq) Host() string {
-	// The trusted X-Forwarded-Host branch returns its first non-empty element as sent: no validation, no case folding.
 	if r.IsProxyTrusted() {
 		// Received order, as for X-Forwarded-For: fasthttp reorders repeated lines when it deletes a header.
 		if host := headerlist.First(proxyHeaderValue(r, HeaderXForwardedHost)); host != "" {

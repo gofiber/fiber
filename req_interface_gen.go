@@ -204,6 +204,7 @@ type Req interface {
 	// Example: URL: https://example.com:8080 -> Host: example.com:8080
 	// Make copies or use the Immutable setting instead.
 	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
+	// Behind a trusted proxy it is the first non-empty X-Forwarded-Host element, trimmed but not validated or case-folded.
 	Host() string
 	// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
 	// Returned value is only valid within the handler. Do not store any references.
