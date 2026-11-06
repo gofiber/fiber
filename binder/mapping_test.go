@@ -1149,10 +1149,12 @@ func Test_CachedKeyBytes_CoversSchemaCache(t *testing.T) {
 		},
 	} {
 		d := newFormDecoder(t, ParserConfig{IgnoreUnknownKeys: true})
+		// One pool: a fresh one per Put leaves a per-P array behind for each, heap the decoder never charged.
+		pool := &sync.Pool{}
 		decode := func(key string) {
 			require.NoError(t, d.admit(tc.out(), key))
 			require.NoError(t, d.DecodeValues(tc.out(), []string{key}, []string{"x"}))
-			putDecoder(&sync.Pool{}, d)
+			putDecoder(pool, d)
 		}
 		decode(tc.key(0))
 		charged, before := d.keyBytes, liveHeap()

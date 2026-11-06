@@ -162,6 +162,24 @@ func withRebindingResolver(t *testing.T, dnsAddr string) {
 	t.Cleanup(func() { dnsResolver.Store(prev) })
 }
 
+// slowLookup is the least a lookup through withSlowRebindingResolver takes. A test asserts half of it
+// as used up, which a tick of Windows' coarse clock cannot swallow.
+const slowLookup = 20 * time.Millisecond
+
+// withSlowRebindingResolver is withRebindingResolver with lookups that take at least slowLookup, for a
+// test that checks the lookup used up time: a loopback answer can read as none on Windows' coarse clock.
+func withSlowRebindingResolver(t *testing.T, dnsAddr string) {
+	t.Helper()
+	r := resolverFor(dnsAddr)
+	dial := r.Dial
+	r.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		time.Sleep(slowLookup)
+		return dial(ctx, network, address)
+	}
+	prev := dnsResolver.Swap(r)
+	t.Cleanup(func() { dnsResolver.Store(prev) })
+}
+
 // resolverFor returns a resolver that sends every query to the fake DNS server at dnsAddr, leaving
 // the process-wide seam alone.
 func resolverFor(dnsAddr string) *net.Resolver {
@@ -591,7 +609,7 @@ func Test_Security_GuardedDialTimeouts_HandTheTimeoutOn(t *testing.T) {
 // conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Security_DialWithin_SharesTheTimeout(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide DNS resolver.
-	withRebindingResolver(t, startManyAnswersDNS(t, 2)) // 198.51.100.1 and 198.51.100.2
+	withSlowRebindingResolver(t, startManyAnswersDNS(t, 2)) // 198.51.100.1 and 198.51.100.2
 
 	guard := newDialGuard(false)
 
@@ -610,7 +628,7 @@ func Test_Security_DialWithin_SharesTheTimeout(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, timeouts, 2)
 		require.Positive(t, timeouts[0])
-		require.Less(t, timeouts[0], 3*time.Second, "the lookup took some of it")
+		require.LessOrEqual(t, timeouts[0], 3*time.Second-slowLookup/2, "the lookup took some of it")
 		require.Positive(t, timeouts[1])
 		require.LessOrEqual(t, timeouts[1], timeouts[0]-250*time.Millisecond, "the first connect took 300 ms of it")
 	})
@@ -742,7 +760,7 @@ func Test_Security_ClientDialerWithTimeout_ValidatedDialsThrough(t *testing.T) {
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	dnsAddr, _ := startRebindingDNS(t, net.IPv4(198, 51, 100, 7), net.IPv4(198, 51, 100, 7))
-	withRebindingResolver(t, dnsAddr)
+	withSlowRebindingResolver(t, dnsAddr)
 
 	var got string
 	var gotTimeout time.Duration
@@ -756,7 +774,7 @@ func Test_Security_ClientDialerWithTimeout_ValidatedDialsThrough(t *testing.T) {
 	require.Equal(t, "198.51.100.7:80", got, "must dial the validated resolved IP")
 	// What the lookup left of the second, not the second again.
 	require.Positive(t, gotTimeout)
-	require.Less(t, gotTimeout, time.Second)
+	require.LessOrEqual(t, gotTimeout, time.Second-slowLookup/2)
 }
 
 // Test_Security_EnsureClientGuarded_ComposePropagatesError verifies the
