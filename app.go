@@ -23,10 +23,12 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
@@ -37,6 +39,32 @@ import (
 
 // Version of current fiber package
 const Version = "3.6.1"
+
+const (
+	openapiRefKey     = "$ref"
+	openapiTypeString = "string"
+)
+
+// Parameter locations accepted by the documentation helpers.
+const (
+	ParamInPath        ParamLocation = "path"
+	ParamInQuery       ParamLocation = "query"
+	ParamInHeader      ParamLocation = "header"
+	ParamInCookie      ParamLocation = "cookie"
+	ParamInQuerystring ParamLocation = "querystring"
+)
+
+// ParamLocation is where a documented parameter is read from. Use the ParamIn constants.
+type ParamLocation string
+
+// Normalize trims and lower-cases a location, so "Query " reads as "query".
+func (l ParamLocation) Normalize() ParamLocation {
+	return ParamLocation(utilsstrings.ToLower(utils.TrimSpace(string(l))))
+}
+
+const defaultResponseKey = "default"
+
+const smallIndexMax = 8
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(Ctx) error
@@ -81,14 +109,17 @@ type App struct {
 	configured Config
 	// Ctx pool
 	pool sync.Pool
+
+	docTarget[Router]
 	// Fasthttp server
 	server *fasthttp.Server
 	// Converts byte slice to a string
 	toString func(b []byte) string
 	// Hooks
-	hooks *Hooks
-	// Latest route & group
-	latestRoute *Route
+	hooks      *Hooks
+	regEntries map[uint64][]*Route
+	// entryRegs is the reverse of regEntries. Guarded by mutex.
+	entryRegs map[*Route][]uint64
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
 	// TLS handler
@@ -101,7 +132,8 @@ type App struct {
 	sharedState *SharedState
 	// headerHook is the HeaderReceived callback hookHeaderReceived installed, kept
 	// to tell it from one set since
-	headerHook func(*fasthttp.RequestHeader) fasthttp.RequestConfig
+	headerHook  func(*fasthttp.RequestHeader) fasthttp.RequestConfig
+	namedRoutes atomic.Pointer[namedRouteIndex]
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// customConstraints is a list of external constraints
@@ -124,6 +156,8 @@ type App struct {
 	skip             skipRouteIndex
 	autoHeadRouteID  uint64
 	autoHeadStackLen int
+	latestRegID      uint64
+	routesRevision   atomic.Uint64
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -743,10 +777,10 @@ func New(config ...Config) *App {
 		// Create config
 		config:        Config{},
 		toString:      utils.UnsafeString,
-		latestRoute:   &Route{},
 		customBinders: []CustomBinder{},
 		sendfiles:     []*sendFileStore{},
 	}
+	app.docTarget = docTarget[Router]{app: app, self: app}
 
 	// Create Ctx pool
 	app.pool = sync.Pool{
@@ -936,7 +970,9 @@ func (app *App) setCtxFunc(function func(app *App) CustomCtx) {
 
 // RegisterCustomConstraint allows to register custom constraint.
 func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
+	app.mutex.Lock()
 	app.customConstraints = append(app.customConstraints, constraint)
+	app.mutex.Unlock()
 }
 
 // RegisterCustomBinder Allows to register custom binders to use as Bind().Custom("name").
@@ -1016,70 +1052,48 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 // Name Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
-	defer app.mutex.Unlock()
+	named := app.nameRegistrationLocked(app.latestRegID, name)
+	app.mutex.Unlock()
 
-	hosts := matchersKey(app.latestRoute.hosts)
-
-	for _, routes := range app.stack {
-		for _, route := range routes {
-			// The shared registration id covers every method of a multi-method
-			// Add, and only those: matching on the method as well would rename
-			// an older route that merely shares the path, and would do it only
-			// when the registration happened to finish on that method. It is
-			// latestID rather than id because a method whose route the
-			// registration merged into keeps the id of the registration that
-			// created it.
-			isMethodValid := route.latestID == app.latestRoute.latestID ||
-				app.latestRoute.use ||
-				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
-
-			// The path alone does not make it the same route: another Domain
-			// pattern can serve it too, under a name of its own.
-			if route.Path == app.latestRoute.Path && isMethodValid && matchersKey(route.hosts) == hosts {
-				route.Name = name
-				if route.group != nil {
-					route.Name = route.group.name + route.Name
-				}
-			}
-		}
-	}
-
-	if err := app.hooks.executeOnNameHooks(app.latestRoute); err != nil {
-		panic(err)
-	}
-
+	app.fireOnNameHooks(named)
 	return app
 }
 
-// GetRoute Get route by name
-func (app *App) GetRoute(name string) Route {
-	for _, routes := range app.stack {
-		for _, route := range routes {
-			if route.Name == name {
-				return *route
-			}
-		}
-	}
-
-	return Route{}
-}
-
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
+// The returned routes are copies; Handlers and Params are shared and must not be modified.
 func (app *App) GetRoutes(filterUseOption ...bool) []Route {
-	var rs []Route
 	var filterUse bool
 	if len(filterUseOption) != 0 {
 		filterUse = filterUseOption[0]
 	}
+
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	n := 0
+	for _, routes := range app.stack {
+		n += len(routes)
+	}
+	rs := make([]Route, 0, n)
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if filterUse && route.use {
 				continue
 			}
-			rs = append(rs, *route)
+			rs = append(rs, Route{})
+			app.copyRouteInto(&rs[len(rs)-1], route)
 		}
 	}
 	return rs
+}
+
+// RoutesRevision returns a counter bumped on every route change, for lock-free staleness checks.
+func (app *App) RoutesRevision() uint64 {
+	return app.routesRevision.Load()
+}
+
+func (app *App) bumpRoutesRevision() {
+	app.routesRevision.Add(1)
 }
 
 // Use registers a middleware route that will match requests
@@ -1235,10 +1249,10 @@ func (app *App) All(path string, handler any, handlers ...any) Router {
 //	api := app.Group("/api")
 //	api.Get("/users", handler)
 func (app *App) Group(prefix string, handlers ...any) Router {
-	grp := &Group{Prefix: prefix, app: app}
+	grp := newGroup(app, prefix, nil)
 	if len(handlers) > 0 {
 		converted := collectHandlers("group", handlers...)
-		app.register([]string{methodUse}, prefix, grp, converted...)
+		grp.cursor.Store(app.register([]string{methodUse}, prefix, grp, converted...))
 	}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
 		panic(err)
@@ -1270,10 +1284,7 @@ func (app *App) Group(prefix string, handlers ...any) Router {
 //	    return c.SendString("Hello, " + user)
 //	})
 func (app *App) Domain(host string) Router {
-	return &domainRouter{
-		app:     app,
-		matcher: parseDomainPattern(host),
-	}
+	return newDomainRouter(app, nil, parseDomainPattern(host), 0)
 }
 
 // RouteChain creates a Registering instance that lets you declare a stack of
@@ -1281,7 +1292,7 @@ func (app *App) Domain(host string) Router {
 // scoped to the provided path.
 func (app *App) RouteChain(path string) Register {
 	// Create new route
-	route := &Registering{app: app, path: path}
+	route := newRegistering(app, nil, nil, path)
 
 	return route
 }
@@ -1430,6 +1441,7 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 // the server is told to stop. A Serve that has not registered its listener by then closes
 // nothing in that shutdown, and the listener of the run finds the news instead.
 func (app *App) runShutdown(ctx context.Context, afterPreHooks func()) error {
+	// Do not hold app.mutex across the shutdown wait: in-flight handlers may take it and deadlock.
 	app.mutex.Lock()
 	server := app.server
 	app.mutex.Unlock()
@@ -1438,12 +1450,9 @@ func (app *App) runShutdown(ctx context.Context, afterPreHooks func()) error {
 		return ErrNotRunning
 	}
 
-	// The drain waits for in-flight handlers, so the mutex must not be held
-	// meanwhile: a handler taking it (RebuildTree, Name, ...) would never finish.
-	var err error
-
-	// Execute the Shutdown hook
 	app.hooks.executeOnPreShutdownHooks()
+
+	var err error
 	// Use a closure so the hooks receive the final error; a plain
 	// `defer ...(err)` would capture the nil value at registration time.
 	defer func() { app.hooks.executeOnPostShutdownHooks(err) }()
@@ -1895,23 +1904,47 @@ func innermostMessage(err error) string {
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() {
+	twins, subTwins := app.prepareStartup()
+
+	// Hooks fire after the lock is released so they may call locking app methods, sub-apps' included.
+	app.fireOnRouteHooks(twins)
+	for _, sub := range subTwins {
+		sub.app.fireOnRouteHooks(sub.twins)
+	}
+}
+
+// prepareStartup does the work of startupProcess under the router lock, released even if that
+// panics, and returns the automatic HEAD routes created for the app and for each mounted app.
+func (app *App) prepareStartup() ([]*Route, []subAppTwins) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
 	app.hookConnState()
 	// Collect every mounted app first, nested ones included, so all get their automatic HEAD routes.
 	app.collectSubApps()
-	app.ensureAutoHeadRoutesLocked()
+	twins := app.ensureAutoHeadRoutesLocked()
+	var subTwins []subAppTwins
 	for prefix, subApp := range app.mountFields.appList {
 		if prefix == "" {
 			continue
 		}
-		subApp.ensureAutoHeadRoutes()
+		if created := subApp.ensureAutoHeadRoutes(); len(created) > 0 {
+			subTwins = append(subTwins, subAppTwins{app: subApp, twins: created})
+		}
 	}
 	app.mountStartupProcess()
+	subTwins = append(subTwins, app.takeCreatedTwinsLocked()...)
 
 	// build route tree stack
 	app.buildTree()
+
+	return twins, subTwins
+}
+
+// subAppTwins pairs a mounted app with the HEAD routes created for it at startup.
+type subAppTwins struct {
+	app   *App
+	twins []*Route
 }
 
 // hookConnState makes the server report new and closed connections to the TLS
