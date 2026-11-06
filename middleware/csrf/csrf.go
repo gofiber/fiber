@@ -91,6 +91,12 @@ func New(config ...Config) fiber.Handler {
 	var sessionManager *sessionManager
 	var storageManager *storageManager
 	if cfg.Session != nil {
+		if cfg.Session.Codec != nil {
+			// The token is kept under a key that is not a string, which a store with a
+			// Codec cannot hold: every request that sets one would fail.
+			panic("CSRF: Session is a store with a Codec, which keeps its values under string keys; " +
+				"use a session store without a Codec, or Storage")
+		}
 		sessionManager = newSessionManager(cfg.Session)
 	} else {
 		storageManager = newStorageManager(cfg.Storage, redactKeys)
