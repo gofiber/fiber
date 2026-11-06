@@ -2,11 +2,10 @@ package proxy
 
 import (
 	"net"
-	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
-	"github.com/gofiber/fiber/v3/internal/idnafold"
+	hostnamepkg "github.com/gofiber/fiber/v3/internal/hostname"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
@@ -14,28 +13,12 @@ import (
 
 // foldHostnameLabel returns hostname with its host label folded to lowercase
 // Punycode, preserving an explicit port unchanged. It is the construction-time
-// counterpart to hostWithoutPort: that strips a port from the per-request wire
-// value, this normalizes the configured value once so the two sides compare
-// correctly regardless of how the operator spelled the domain.
+// counterpart to the SplitPort in DomainForward.
 func foldHostnameLabel(hostname string) string {
 	if host, port, ok := utils.SplitHostPort(hostname); ok {
-		return net.JoinHostPort(idnafold.ToASCII(utilsstrings.ToLower(host)), port)
+		return net.JoinHostPort(hostnamepkg.ToASCII(utilsstrings.ToLower(host)), port)
 	}
-	return idnafold.ToASCII(utilsstrings.ToLower(hostname))
-}
-
-// hostWithoutPort strips the port from a Host header value, keeping a bracketed IPv6 literal.
-func hostWithoutPort(host string) string {
-	if strings.HasPrefix(host, "[") {
-		if end := strings.IndexByte(host, ']'); end != -1 {
-			return host[:end+1]
-		}
-		return host
-	}
-	if i := strings.LastIndexByte(host, ':'); i != -1 && strings.IndexByte(host[:i], ':') == -1 {
-		return host[:i]
-	}
-	return host
+	return hostnamepkg.ToASCII(utilsstrings.ToLower(hostname))
 }
 
 // DomainForward performs an http request based on the given domain and populates the given http response.
@@ -63,15 +46,17 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 	// every request, is what makes the two sides comparable at all.
 	hostname = foldHostnameLabel(hostname)
 	return func(c fiber.Ctx) error {
-		// Host names are case-insensitive (RFC 9110 §4.2.3) and fasthttp
-		// does not case-fold the raw Host header, so compare with
-		// EqualFold — otherwise "API.Example.com" would slip past a
-		// DomainForward("api.example.com", ...) gate and be passed
-		// through unproxied.
+		// Host names are case-insensitive (RFC 9110 §4.2.3), so compare with EqualFold.
 		// Match the host with or without its port; another host is passed on to the next handler.
 		host := utils.UnsafeString(c.Request().Host())
-		if !utils.EqualFold(host, hostname) && !utils.EqualFold(hostWithoutPort(host), hostname) {
-			return c.Next()
+		if !utils.EqualFold(host, hostname) {
+			// SplitPort returns a prefix of host, so only a longer host can still match.
+			if len(host) <= len(hostname) {
+				return c.Next()
+			}
+			if bare, _ := hostnamepkg.SplitPort(host); !utils.EqualFold(bare, hostname) {
+				return c.Next()
+			}
 		}
 		// See Balancer: a refused request is not forwarded.
 		if errorreplay.Active(c.RequestCtx()) {

@@ -55,6 +55,9 @@ type Config struct {
 	// Error is the RFC 6750 `error` parameter appended to Bearer
 	// `WWW-Authenticate` challenges when validation fails. Allowed values
 	// are `invalid_request`, `invalid_token`, or `insufficient_scope`.
+	// It is omitted, together with ErrorDescription, ErrorURI and Scope,
+	// when the request carried no credentials or used an Authorization
+	// scheme other than Bearer, as RFC 6750 section 3 asks.
 	//
 	// Optional. Default: "".
 	Error string

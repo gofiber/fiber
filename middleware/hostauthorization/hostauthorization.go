@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/idnafold"
+	"github.com/gofiber/fiber/v3/internal/hostname"
 	"github.com/gofiber/fiber/v3/internal/ipv6host"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -129,7 +129,7 @@ func invalidEntry(entry, reason string) string {
 // normalizeName drops one trailing dot, lowercases, and converts IDN labels to
 // Punycode, matching what browsers send.
 func normalizeName(host string) string {
-	return idnafold.ToASCII(utilsstrings.ToLower(trimOneTrailingDot(host)))
+	return hostname.ToASCII(utilsstrings.ToLower(trimOneTrailingDot(host)))
 }
 
 // canonicalIPv6 writes an IPv6 address in the form browsers send (see ipv6host),
