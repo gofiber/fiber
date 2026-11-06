@@ -260,6 +260,13 @@ func Test_Listen(t *testing.T) {
 	rootrestListenFor(t, app, 1000*time.Millisecond, ListenConfig{DisableStartupMessage: true})
 }
 
+func Test_PrepareListenData_TrimsAddr(t *testing.T) {
+	t.Parallel()
+	data := New().prepareListenData(" 127.0.0.1:8080 ", false, &ListenConfig{}, nil)
+	require.Equal(t, "127.0.0.1", data.Host)
+	require.Equal(t, "8080", data.Port)
+}
+
 // conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Listen_ClosesListenerOnBeforeServeError(t *testing.T) {
 	addr := fmt.Sprintf("127.0.0.1:%d", rootMiscBFreePort(t))
