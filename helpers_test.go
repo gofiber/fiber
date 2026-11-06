@@ -1212,6 +1212,7 @@ type genericParseInput struct {
 }
 
 // genericParseInputs supplies empty, valid and, for numeric/bool types, invalid inputs.
+// invalid allocates the parser error and swings ~2x between CI runs, hence the threshold markers.
 func genericParseInputs(valid string, emptyErr error) []genericParseInput {
 	inputs := []genericParseInput{
 		{name: "empty", input: "", wantErr: emptyErr},
@@ -1223,6 +1224,7 @@ func genericParseInputs(valid string, emptyErr error) []genericParseInput {
 	return inputs
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputInt(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1238,6 +1240,7 @@ func Benchmark_GenericParseTypeInputInt(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputInt8(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1253,6 +1256,7 @@ func Benchmark_GenericParseTypeInputInt8(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputInt16(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1268,6 +1272,7 @@ func Benchmark_GenericParseTypeInputInt16(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputInt32(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1283,6 +1288,7 @@ func Benchmark_GenericParseTypeInputInt32(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputInt64(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1298,6 +1304,7 @@ func Benchmark_GenericParseTypeInputInt64(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputUint(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1313,6 +1320,7 @@ func Benchmark_GenericParseTypeInputUint(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputUint8(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1328,6 +1336,7 @@ func Benchmark_GenericParseTypeInputUint8(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputUint16(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1343,6 +1352,7 @@ func Benchmark_GenericParseTypeInputUint16(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputUint32(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1358,6 +1368,7 @@ func Benchmark_GenericParseTypeInputUint32(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputUint64(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1373,6 +1384,7 @@ func Benchmark_GenericParseTypeInputUint64(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputFloat32(b *testing.B) {
 	for _, tc := range genericParseInputs("3.25", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1388,6 +1400,7 @@ func Benchmark_GenericParseTypeInputFloat32(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputFloat64(b *testing.B) {
 	for _, tc := range genericParseInputs("3.25", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1403,6 +1416,7 @@ func Benchmark_GenericParseTypeInputFloat64(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputBool(b *testing.B) {
 	for _, tc := range genericParseInputs("true", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
