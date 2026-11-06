@@ -1,5 +1,4 @@
-// Package hostname holds the host helpers shared by Hostname, Subdomains, the
-// listener banner, DomainForward and hostauthorization.
+// Package hostname splits host:port values and converts IDN host names.
 package hostname
 
 import (
