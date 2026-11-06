@@ -529,6 +529,13 @@ func Test_Challenge(t *testing.T) {
 			www:    bearer,
 		},
 		{
+			// Only the Bearer challenge carries the error parameters, so a malformed ApiKey is no Bearer attempt.
+			name: "bearer error fields with a malformed token in another chained scheme", authorization: "ApiKey a b",
+			status: http.StatusUnauthorized,
+			config: Config{Validator: invalid, Extractor: twoSchemes, Error: ErrorInvalidRequest},
+			www:    bearer + ", " + apiKey,
+		},
+		{
 			name: "no challenge unless the answer is a 401", authorization: "Bearer bad", status: http.StatusForbidden,
 			config: Config{Validator: invalid, ErrorHandler: answerStatus(fiber.StatusForbidden, "forbidden")},
 		},
