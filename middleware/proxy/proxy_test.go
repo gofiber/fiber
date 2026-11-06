@@ -2000,6 +2000,11 @@ func Test_Proxy_DomainForward_HostMatch(t *testing.T) {
 			requests: []request{{host: "[::1]:8080", status: fiber.StatusOK, body: "proxied"}},
 		},
 		{
+			name:     "a port-less IPv6 domain matches a Host with a port",
+			domain:   "[::1]",
+			requests: []request{{host: "[::1]:8080", status: fiber.StatusOK, body: "proxied"}},
+		},
+		{
 			name:     "a Host that does not match continues to the next handler",
 			domain:   "api.example.com",
 			fallback: "local",
@@ -2028,6 +2033,28 @@ func Test_Proxy_DomainForward_HostMatch(t *testing.T) {
 					require.Equal(t, r.body, apptest.Body(t, resp), "Host %s", r.host)
 				}
 			}
+		})
+	}
+}
+
+// A Host that does not parse reaches the gate as sent, so these rows pin the
+// gate's own case fold and its split of an unclosed '['.
+func Test_Proxy_DomainForward_UnparsedHost(t *testing.T) {
+	t.Parallel()
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendString("proxied") })
+
+	for _, tc := range []struct{ name, domain, host, want string }{
+		{"case folds on the host without its port", "api.example.com", "API.Example.com:abc", "proxied"},
+		{"case folds on the host with its port", "api.example.com:abc", "API.Example.com:abc", "proxied"},
+		{"another host still continues", "api.example.com", "WWW.Example.com:abc", "local"},
+		{"an unclosed [ splits at its colon", "[a", "[a:80", "proxied"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(DomainForward(tc.domain, "http://"+addr))
+			app.Use(func(c fiber.Ctx) error { return c.SendString("local") })
+			require.Equal(t, tc.want, sendRaw(t, app, "GET / HTTP/1.1\r\nHost: "+tc.host+"\r\n\r\n"))
 		})
 	}
 }
@@ -2283,24 +2310,6 @@ func Test_Proxy_Forward_RestoresHost(t *testing.T) {
 
 	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHost("public.example.com")), fiber.StatusOK)
 	require.Equal(t, "public.example.com", <-seen)
-}
-
-func Test_Proxy_HostWithoutPort(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		in, out string
-	}{
-		{in: "example.com", out: "example.com"},
-		{in: "example.com:8080", out: "example.com"},
-		{in: "[::1]:8080", out: "[::1]"},
-		{in: "[::1]", out: "[::1]"},
-		{in: "[::1", out: "[::1"},
-		{in: "::1", out: "::1"},
-	}
-
-	for _, tc := range tests {
-		require.Equal(t, tc.out, hostWithoutPort(tc.in), "in=%q", tc.in)
-	}
 }
 
 func Test_Proxy_NewHostClient(t *testing.T) {

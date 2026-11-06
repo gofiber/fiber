@@ -37,43 +37,9 @@ func New(config ...Config) fiber.Handler {
 	// Determine the auth schemes from the extractor chain.
 	authSchemes := getAuthSchemes(cfg.Extractor)
 
-	// The challenge value only depends on config, so build it once instead of
-	// re-formatting it on every 401/407 response.
-	challengeValue := cfg.Challenge
-	if len(authSchemes) > 0 {
-		challenges := make([]string, 0, len(authSchemes))
-		for _, scheme := range authSchemes {
-			b := make([]byte, 0, len(scheme)+len(cfg.Realm)+16)
-			b = append(b, scheme...)
-			b = append(b, ` realm="`...)
-			b = append(b, quotedstring.Escape(cfg.Realm)...)
-			b = append(b, '"')
-			if utils.EqualFold(scheme, "Bearer") {
-				if cfg.Error != "" {
-					b = append(b, `, error="`...)
-					b = append(b, quotedstring.Escape(cfg.Error)...)
-					b = append(b, '"')
-					if cfg.ErrorDescription != "" {
-						b = append(b, `, error_description="`...)
-						b = append(b, quotedstring.Escape(cfg.ErrorDescription)...)
-						b = append(b, '"')
-					}
-					if cfg.ErrorURI != "" {
-						b = append(b, `, error_uri="`...)
-						b = append(b, quotedstring.Escape(cfg.ErrorURI)...)
-						b = append(b, '"')
-					}
-					if cfg.Error == ErrorInsufficientScope {
-						b = append(b, `, scope="`...)
-						b = append(b, quotedstring.Escape(cfg.Scope)...)
-						b = append(b, '"')
-					}
-				}
-			}
-			challenges = append(challenges, string(b))
-		}
-		challengeValue = strings.Join(challenges, ", ")
-	}
+	// Built once from config; bareChallenge leaves out the error parameters (RFC 6750 section 3).
+	challengeValue := buildChallenge(&cfg, authSchemes, bearerErrorParams(&cfg))
+	bareChallenge := buildChallenge(&cfg, authSchemes, "")
 
 	// Return middleware handler
 	return func(c fiber.Ctx) error {
@@ -83,7 +49,8 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Extract and verify key
-		key, err := cfg.Extractor.Extract(c)
+		key, extractErr := cfg.Extractor.Extract(c)
+		err := extractErr
 		if errors.Is(err, extractors.ErrNotFound) {
 			// Replace shared extractor not found error with a keyauth specific error
 			err = ErrMissingOrMalformedAPIKey
@@ -112,13 +79,83 @@ func New(config ...Config) fiber.Handler {
 			if status == fiber.StatusProxyAuthRequired {
 				header = fiber.HeaderProxyAuthenticate
 			}
-			if challengeValue != "" {
-				c.Set(header, challengeValue)
+			challenge := challengeValue
+			if omitsBearerErrors(c.Get(fiber.HeaderAuthorization), extractErr) {
+				challenge = bareChallenge
+			}
+			if challenge != "" {
+				c.Set(header, challenge)
 			}
 		}
 
 		return handlerErr
 	}
+}
+
+// omitsBearerErrors reports whether a refused request made no Bearer attempt: it sent
+// no credentials, or ones in another Authorization scheme, well formed or not.
+func omitsBearerErrors(auth string, extractErr error) bool {
+	if usesBearerScheme(auth) {
+		return false
+	}
+	return errors.Is(extractErr, extractors.ErrNotFound) || (extractErr == nil && auth != "")
+}
+
+// usesBearerScheme reports whether an Authorization header value names the
+// Bearer scheme, whether or not the credential after it is well formed.
+func usesBearerScheme(header string) bool {
+	const scheme = "Bearer"
+	return len(header) >= len(scheme) && utils.EqualFold(header[:len(scheme)], scheme) &&
+		(len(header) == len(scheme) || header[len(scheme)] == ' ')
+}
+
+// bearerErrorParams formats the RFC 6750 error parameters configured for
+// Bearer challenges, starting with a separator, or "" when none is set.
+func bearerErrorParams(cfg *Config) string {
+	if cfg.Error == "" {
+		return ""
+	}
+	b := make([]byte, 0, 64)
+	b = append(b, `, error="`...)
+	b = append(b, quotedstring.Escape(cfg.Error)...)
+	b = append(b, '"')
+	if cfg.ErrorDescription != "" {
+		b = append(b, `, error_description="`...)
+		b = append(b, quotedstring.Escape(cfg.ErrorDescription)...)
+		b = append(b, '"')
+	}
+	if cfg.ErrorURI != "" {
+		b = append(b, `, error_uri="`...)
+		b = append(b, quotedstring.Escape(cfg.ErrorURI)...)
+		b = append(b, '"')
+	}
+	if cfg.Error == ErrorInsufficientScope {
+		b = append(b, `, scope="`...)
+		b = append(b, quotedstring.Escape(cfg.Scope)...)
+		b = append(b, '"')
+	}
+	return string(b)
+}
+
+// buildChallenge formats the WWW-Authenticate value for the configured auth
+// schemes, appending errorParams to the Bearer challenge.
+func buildChallenge(cfg *Config, authSchemes []string, errorParams string) string {
+	if len(authSchemes) == 0 {
+		return cfg.Challenge
+	}
+	challenges := make([]string, 0, len(authSchemes))
+	for _, scheme := range authSchemes {
+		b := make([]byte, 0, len(scheme)+len(cfg.Realm)+len(errorParams)+16)
+		b = append(b, scheme...)
+		b = append(b, ` realm="`...)
+		b = append(b, quotedstring.Escape(cfg.Realm)...)
+		b = append(b, '"')
+		if utils.EqualFold(scheme, "Bearer") {
+			b = append(b, errorParams...)
+		}
+		challenges = append(challenges, string(b))
+	}
+	return strings.Join(challenges, ", ")
 }
 
 func registerLogContextTags() {

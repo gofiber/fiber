@@ -383,7 +383,8 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 					},
 				}))
 			},
-			expectedStatus: fiber.StatusUnauthorized,
+			configureRequest: func(req *fasthttp.Request) { req.Header.Set(fiber.HeaderAuthorization, "Bearer wrong") },
+			expectedStatus:   fiber.StatusUnauthorized,
 			assertions: func(t *testing.T, resp *fasthttp.Response) {
 				t.Helper()
 				require.Equal(t, "nosniff", string(resp.Header.Peek(fiber.HeaderXContentTypeOptions)))

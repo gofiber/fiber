@@ -925,41 +925,6 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	return !etagpkg.AnyMatch(app.toString(noneMatchBytes), etag)
 }
 
-func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocritic unnamedResult requires naming host and port parts for clarity
-	if raw == "" {
-		return "", ""
-	}
-
-	raw = utils.TrimSpace(raw)
-
-	// Handle IPv6 addresses enclosed in brackets as defined by RFC 3986
-	if strings.HasPrefix(raw, "[") {
-		if end := strings.IndexByte(raw, ']'); end != -1 {
-			host = raw[:end+1] // keep the closing ]
-			if len(raw) > end+1 && raw[end+1] == ':' {
-				return host, raw[end+2:]
-			}
-			return host, ""
-		}
-	}
-
-	// Everything else with a colon
-	if i := strings.LastIndexByte(raw, ':'); i != -1 {
-		host, port = raw[:i], raw[i+1:]
-
-		// If “host” still contains ':', we must have hit an un-bracketed IPv6
-		// literal. In that form a port is impossible, so treat the whole thing
-		// as host.
-		if strings.IndexByte(host, ':') >= 0 {
-			return raw, ""
-		}
-		return host, port
-	}
-
-	// No colon, nothing to split
-	return raw, ""
-}
-
 // isNoCache checks if the cacheControl header value contains a `no-cache` directive.
 // Per RFC 9111 §5.2.2.4, no-cache can appear as either:
 // - "no-cache" (applies to entire response)

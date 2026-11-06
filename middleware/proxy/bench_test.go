@@ -274,6 +274,38 @@ func BenchmarkDomainForward_HostMatchPath(b *testing.B) {
 	}
 }
 
+// BenchmarkDomainForward_HostMissPath measures a request DomainForward passes on to the next handler, which runs the
+// host check to its end. Each host misses a different way, relative to the length of the configured domain.
+func BenchmarkDomainForward_HostMissPath(b *testing.B) {
+	benchNoopUpstream(b)
+
+	app := fiber.New()
+	app.Use(DomainForward("api.example.com", "http://203.0.113.5:8080"))
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
+	handler := app.Handler()
+	remote := &net.TCPAddr{IP: net.IPv4(203, 0, 113, 9), Port: 40000}
+
+	for _, bm := range []struct{ name, host string }{
+		{"shorter", "example.com"},
+		{"equal_length", "www.example.com"},
+		{"longer", "www.api.example.com"},
+		{"with_port", "www.example.com:8080"},
+	} {
+		b.Run(bm.name, func(b *testing.B) {
+			req := benchGet(bm.host, "/v1/widgets?q=1")
+			var fctx fasthttp.RequestCtx
+			b.ReportAllocs()
+			for b.Loop() {
+				fctx.Init(req, remote, nil)
+				handler(&fctx)
+				if got := fctx.Response.StatusCode(); got != fasthttp.StatusNoContent {
+					b.Fatalf("status = %d, want %d", got, fasthttp.StatusNoContent)
+				}
+			}
+		})
+	}
+}
+
 // benchNoopUpstream points the runtime helpers at an upstream that answers 204 without dialing.
 func benchNoopUpstream(b *testing.B) {
 	b.Helper()
