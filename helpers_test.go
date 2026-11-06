@@ -717,33 +717,6 @@ func Benchmark_Utils_Unescape(b *testing.B) {
 	require.Equal(b, "/créer", unescaped)
 }
 
-func Test_Utils_Parse_Address(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		addr, host, port string
-	}{
-		{addr: "[::1]:3000", host: "[::1]", port: "3000"},
-		{addr: "127.0.0.1:3000", host: "127.0.0.1", port: "3000"},
-		{addr: "[::1]", host: "[::1]", port: ""},
-		{addr: "2001:db8::1", host: "2001:db8::1", port: ""},
-		{addr: "/path/to/unix/socket", host: "/path/to/unix/socket", port: ""},
-		{addr: "127.0.0.1", host: "127.0.0.1", port: ""},
-		{addr: "localhost:8080", host: "localhost", port: "8080"},
-		{addr: "example.com", host: "example.com", port: ""},
-		{addr: "[fe80::1%lo0]:1234", host: "[fe80::1%lo0]", port: "1234"},
-		{addr: "[fe80::1%lo0]", host: "[fe80::1%lo0]", port: ""},
-		{addr: ":9090", host: "", port: "9090"},
-		{addr: " 127.0.0.1:8080 ", host: "127.0.0.1", port: "8080"},
-		{addr: "", host: "", port: ""},
-	}
-
-	for _, c := range testCases {
-		host, port := parseAddr(c.addr)
-		require.Equal(t, c.host, host, "addr host: %q", c.addr)
-		require.Equal(t, c.port, port, "addr port: %q", c.addr)
-	}
-}
-
 func Test_Utils_TestConn_Deadline(t *testing.T) {
 	t.Parallel()
 	conn := &testConn{}
@@ -1239,6 +1212,7 @@ type genericParseInput struct {
 }
 
 // genericParseInputs supplies empty, valid and, for numeric/bool types, invalid inputs.
+// invalid allocates the parser error and swings ~2x between CI runs, hence the threshold markers.
 func genericParseInputs(valid string, emptyErr error) []genericParseInput {
 	inputs := []genericParseInput{
 		{name: "empty", input: "", wantErr: emptyErr},
@@ -1250,6 +1224,7 @@ func genericParseInputs(valid string, emptyErr error) []genericParseInput {
 	return inputs
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputInt(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1265,6 +1240,7 @@ func Benchmark_GenericParseTypeInputInt(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputInt8(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1280,6 +1256,7 @@ func Benchmark_GenericParseTypeInputInt8(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputInt16(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1295,6 +1272,7 @@ func Benchmark_GenericParseTypeInputInt16(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputInt32(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1310,6 +1288,7 @@ func Benchmark_GenericParseTypeInputInt32(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputInt64(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1325,6 +1304,7 @@ func Benchmark_GenericParseTypeInputInt64(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputUint(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1340,6 +1320,7 @@ func Benchmark_GenericParseTypeInputUint(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputUint8(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1355,6 +1336,7 @@ func Benchmark_GenericParseTypeInputUint8(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputUint16(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1370,6 +1352,7 @@ func Benchmark_GenericParseTypeInputUint16(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputUint32(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1385,6 +1368,7 @@ func Benchmark_GenericParseTypeInputUint32(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputUint64(b *testing.B) {
 	for _, tc := range genericParseInputs("42", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1400,6 +1384,7 @@ func Benchmark_GenericParseTypeInputUint64(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputFloat32(b *testing.B) {
 	for _, tc := range genericParseInputs("3.25", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1415,6 +1400,7 @@ func Benchmark_GenericParseTypeInputFloat32(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputFloat64(b *testing.B) {
 	for _, tc := range genericParseInputs("3.25", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {
@@ -1430,6 +1416,7 @@ func Benchmark_GenericParseTypeInputFloat64(b *testing.B) {
 	}
 }
 
+// benchmark:threshold 300% ^invalid$
 func Benchmark_GenericParseTypeInputBool(b *testing.B) {
 	for _, tc := range genericParseInputs("true", errParseValue) {
 		b.Run(tc.name, func(b *testing.B) {

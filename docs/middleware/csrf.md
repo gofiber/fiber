@@ -136,7 +136,7 @@ With `csrf.New`, a request from a trusted origin still needs a valid token. Here
 
 Differences from `net/http.CrossOriginProtection`:
 
-- `TrustedOrigins` takes the same values as in `csrf.Config`: entries are normalized (case, trailing slash) but a default port is kept as written and matched exactly, subdomain wildcards are supported, and only `http` and `https` origins are accepted. An entry such as `capacitor://localhost` panics at startup.
+- `TrustedOrigins` takes the same values as in `csrf.Config`: entries are normalized (case, trailing slash, IPv6 spelling) but a default port is kept as written and matched exactly, subdomain wildcards are supported, and only `http` and `https` origins are accepted. An entry such as `capacitor://localhost` panics at startup.
 - There is no `AddInsecureBypassPattern`. Use `Next` to exempt routes.
 - A request that repeats the `Sec-Fetch-Site` header, or the `Origin` header where the decision depends on it, is denied.
 - Rule 4 never applies to a request without a `Host`.
@@ -263,7 +263,7 @@ app.Use(csrf.New(csrf.Config{
 
 As a crucial second layer of defense, the middleware checks the origin of every unsafe request before it looks at the token.
 
-- If the request has an `Origin` header other than `null`, its scheme and host **must** match the scheme and host of the request or be explicitly allowed in the `TrustedOrigins` list. Default ports are treated as equal only in the comparison with the request (`example.com` and `example.com:443` match on HTTPS). A `TrustedOrigins` entry is matched as written: `https://a.example` does not match `Origin: https://a.example:443`, and `https://a.example:443` does not match an `Origin` without the port. Browsers send `Origin` without a default port, so write entries without one. This applies to HTTP and HTTPS requests alike.
+- If the request has an `Origin` header other than `null`, its scheme and host **must** match the scheme and host of the request or be explicitly allowed in the `TrustedOrigins` list. Default ports are treated as equal only in the comparison with the request (`example.com` and `example.com:443` match on HTTPS). An IPv6 host matches in any spelling, in the comparison with the request and in `TrustedOrigins` alike: `http://[::1]:3000` matches `Host: [0:0:0:0:0:0:0:1]:3000` and the entry `http://[0:0:0:0:0:0:0:1]:3000`. A `TrustedOrigins` entry is matched as written: `https://a.example` does not match `Origin: https://a.example:443`, and `https://a.example:443` does not match an `Origin` without the port. Browsers send `Origin` without a default port, so write entries without one. This applies to HTTP and HTTPS requests alike.
 - If `Origin` is absent or `null` and the connection is HTTPS, the `Referer` header takes its place: it **must** be present and match in the same way. Over plain HTTP, a request with no `Origin` (or `Origin: null`) has nothing to compare and goes on to token validation.
 - A repeated `Origin` or `Sec-Fetch-Site` header, and a repeated `Referer` header when it is consulted, is rejected instead of being resolved to one of its lines.
 - The scheme and host of the request come from `c.Scheme()` and `c.Host()`. Behind a reverse proxy, `X-Forwarded-Proto` and `X-Forwarded-Host` are used only for requests from a proxy that `TrustProxy` and `TrustProxyConfig` trust.

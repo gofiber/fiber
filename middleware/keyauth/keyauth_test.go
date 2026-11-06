@@ -501,6 +501,60 @@ func Test_Challenge(t *testing.T) {
 			www:    bearer + `, error="insufficient_scope", scope="read"`,
 		},
 		{
+			name: "bearer error fields without credentials", status: http.StatusUnauthorized,
+			config: Config{
+				Validator: invalid, Error: ErrorInvalidToken,
+				ErrorDescription: "token expired", ErrorURI: "https://example.com",
+			},
+			www: bearer,
+		},
+		{
+			name: "bearer insufficient scope without credentials", status: http.StatusUnauthorized,
+			config: Config{Validator: invalid, Error: ErrorInsufficientScope, Scope: "read"},
+			www:    bearer,
+		},
+		{
+			// A malformed credential in the expected scheme is an attempt to
+			// authenticate, so the error parameters stay.
+			name: "bearer error fields with a malformed token", authorization: "Bearer a b",
+			status: http.StatusUnauthorized,
+			config: Config{Validator: invalid, Error: ErrorInvalidRequest},
+			www:    bearer + `, error="invalid_request"`,
+		},
+		{
+			// RFC 6750 section 3 treats an unsupported method like no credentials.
+			name: "bearer error fields with another auth method", authorization: "Basic dXNlcjpwYXNz",
+			status: http.StatusUnauthorized,
+			config: Config{Validator: invalid, Error: ErrorInvalidRequest},
+			www:    bearer,
+		},
+		{
+			// Only the Bearer challenge carries the error parameters, and an ApiKey is no Bearer attempt.
+			name: "bearer error fields with a malformed token in another chained scheme", authorization: "ApiKey a b",
+			status: http.StatusUnauthorized,
+			config: Config{Validator: invalid, Extractor: twoSchemes, Error: ErrorInvalidRequest},
+			www:    bearer + ", " + apiKey,
+		},
+		{
+			name: "bearer error fields with a rejected key in another chained scheme", authorization: "ApiKey k",
+			status: http.StatusUnauthorized,
+			config: Config{Validator: invalid, Extractor: twoSchemes, Error: ErrorInvalidRequest},
+			www:    bearer + ", " + apiKey,
+		},
+		{
+			name: "bearer error fields with a rejected bearer token in a chain", authorization: "Bearer k",
+			status: http.StatusUnauthorized,
+			config: Config{Validator: invalid, Extractor: twoSchemes, Error: ErrorInvalidRequest},
+			www:    bearer + `, error="invalid_request", ` + apiKey,
+		},
+		{
+			name: "proxy challenge without credentials", status: http.StatusProxyAuthRequired, proxy: bearer,
+			config: Config{
+				Validator: invalid, Error: ErrorInvalidToken,
+				ErrorHandler: answerStatus(fiber.StatusProxyAuthRequired, "proxy auth"),
+			},
+		},
+		{
 			name: "no challenge unless the answer is a 401", authorization: "Bearer bad", status: http.StatusForbidden,
 			config: Config{Validator: invalid, ErrorHandler: answerStatus(fiber.StatusForbidden, "forbidden")},
 		},

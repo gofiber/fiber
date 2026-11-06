@@ -107,6 +107,8 @@ var ConfigDefault = Config{
 
 Place `encryptcookie` before middleware that reads or writes cookies. If you use the CSRF middleware, register `encryptcookie` first so it can read the token.
 
+Register it before the [cache](./cache.md) middleware as well. `encryptcookie` replaces the request's cookies with their decrypted values, so a response that varies on `Cookie` is stored only when the cache reads the cookies the handler does; behind the cache it is sent with `X-Cache: unreachable`.
+
 Exclude cookies from encryption by listing them in `Except`. If a frontend framework such as Angular reads the CSRF token from a cookie, add that name to the `Except` array:
 
 ```go

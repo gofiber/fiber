@@ -122,7 +122,7 @@ func TestStandardClientTransportCoverage(t *testing.T) {
 	require.Error(t, transport.Do(req, resp))
 
 	req.SetRequestURI("http://example.com/")
-	require.Error(t, transport.DoTimeout(req, resp, time.Millisecond))
+	require.Error(t, transport.DoTimeout(req, resp, time.Second))
 
 	req.SetRequestURI("http://example.com/")
 	require.Error(t, transport.DoDeadline(req, resp, time.Now().Add(time.Second)))

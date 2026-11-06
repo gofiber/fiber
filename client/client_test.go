@@ -520,6 +520,7 @@ func (tr clientTestATransport) run(t *testing.T) {
 		req := fasthttp.AcquireRequest()
 		resp := fasthttp.AcquireResponse()
 		req.SetRequestURI("http://example.com/")
+		// The dial fails at once; a tight bound would let a slow -race run report a timeout instead.
 		require.ErrorIs(t, client.DoTimeout(req, resp, time.Second), dialErr)
 
 		req.SetRequestURI("http://example.com/")

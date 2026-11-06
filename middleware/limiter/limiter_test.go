@@ -857,12 +857,18 @@ func Test_Limiter_Concurrency_UnrelatedKeys(t *testing.T) {
 
 func Test_Limiter_Sliding_Window_RecalculatesAfterHandlerDelay(t *testing.T) {
 	t.Parallel()
+	clock := clocktest.NewClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
 
-	app.Use(New(Config{Max: 2, Expiration: time.Second, LimiterMiddleware: SlidingWindow{}}))
+	app.Use(New(Config{Max: 2, Expiration: time.Second, LimiterMiddleware: SlidingWindow{}, clock: clock.Now}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		time.Sleep(600 * time.Millisecond)
+		clock.Add(600 * time.Millisecond)
+		return c.SendStatus(fiber.StatusOK)
+	})
+	// The hit /slow makes ages out while its handler runs, so its headers no longer count it.
+	app.Get("/slow", func(c fiber.Ctx) error {
+		clock.Add(2 * time.Second)
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -870,11 +876,11 @@ func Test_Limiter_Sliding_Window_RecalculatesAfterHandlerDelay(t *testing.T) {
 		apptest.Expect(t, app, "/", fiber.StatusOK)
 	}
 
-	time.Sleep(2*time.Second + 100*time.Millisecond)
+	clock.Add(2*time.Second + 100*time.Millisecond)
 
-	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
+	resp := apptest.Expect(t, app, "/slow", fiber.StatusOK)
 	require.Equal(t, "2", resp.Header.Get(xRateLimitLimit))
-	require.Equal(t, "1", resp.Header.Get(xRateLimitRemaining))
+	require.Equal(t, "2", resp.Header.Get(xRateLimitRemaining))
 	require.NotEmpty(t, resp.Header.Get(xRateLimitReset))
 }
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 )
@@ -118,8 +119,7 @@ func Test_Storage_Memory_Set_Expiration(t *testing.T) {
 	testStore := New(Config{GCInterval: 300 * time.Millisecond})
 	require.NoError(t, testStore.Set("john", []byte("doe"), 1*time.Second))
 
-	// interval + expire + buffer
-	time.Sleep(1500 * time.Millisecond)
+	clocktest.SleepPast(t, time.Second)
 	requireMissing(t, testStore, "john")
 	requireKeys(t, testStore, 0)
 }
@@ -210,7 +210,7 @@ func Test_Storage_Memory_Set_Long_Expiration_with_Keys(t *testing.T) {
 	time.Sleep(1100 * time.Millisecond)
 	requireKeys(t, testStore, 1)
 
-	time.Sleep(4000 * time.Millisecond)
+	clocktest.SleepPast(t, 3*time.Second)
 	requireMissing(t, testStore, "john")
 	requireKeys(t, testStore, 0)
 }

@@ -35,7 +35,8 @@ type Config struct {
 	// first on a client already in use, which is then left alone.
 	// Note that Servers, Timeout, MaxConnsPerHost, ReadBufferSize, WriteBufferSize,
 	// MaxResponseBodySize, TLSConfig and DialDualStack will not be used if the client is
-	// set, and its dialers are yours to guard.
+	// set, and its dialers are yours to guard. The exception is a MaxResponseBodySize you
+	// set, which holds a body the client streams to that size: fasthttp does not bound one.
 	Client *fasthttp.LBClient
 
 	// SecurityPolicy overrides the default SSRF, redirect, and
@@ -78,6 +79,10 @@ type Config struct {
 	// rejected to protect the proxy from memory exhaustion. Zero takes
 	// the default; a negative value removes the bound, as fasthttp's
 	// unlimited default does.
+	//
+	// It bounds a body the proxy streams as well, which fasthttp does not: one
+	// that declares more is refused before any of it is sent, and one that goes
+	// past the bound without declaring its length ends the response early.
 	//
 	// Optional. Default: 100 MiB
 	MaxResponseBodySize int

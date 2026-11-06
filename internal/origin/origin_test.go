@@ -256,6 +256,10 @@ func Test_FromURL(t *testing.T) {
 		{raw: "HTTPS://Example.COM:8443/Path?q=1#frag", want: "https://example.com:8443"},
 		{raw: "https://user:pass@example.com/", want: "https://example.com"},
 		{raw: "http://[::1]:8080/x", want: "http://[::1]:8080"},
+		{raw: "http://[0:0:0:0:0:0:0:1]:8080/x", want: "http://[::1]:8080"},
+		{raw: "http://[2001:DB8:0:0:0:0:0:1]", want: "http://[2001:db8::1]"},
+		{raw: "http://[::ffff:127.0.0.1]", want: "http://[::ffff:7f00:1]"},
+		{raw: "http://[fe80:0::1%25eth0]", want: "http://[fe80:0::1%eth0]"},
 		// No validation: an empty host still serializes, and can match no AllowList entry.
 		{raw: "https:///path", want: "https://"},
 	}
@@ -274,7 +278,7 @@ func Test_FromURL(t *testing.T) {
 // way, so a Referer-derived origin compares equal to a configured one.
 func Test_FromURL_AgreesWithNormalize(t *testing.T) {
 	t.Parallel()
-	for _, raw := range []string{"https://example.com", "HTTP://EXAMPLE.COM/", "app://Example.com:3000"} {
+	for _, raw := range []string{"https://example.com", "HTTP://EXAMPLE.COM/", "app://Example.com:3000", "http://[0:0:0:0:0:0:0:1]:3000"} {
 		u, err := url.Parse(raw)
 		require.NoError(t, err)
 		normalized, ok := Normalize(raw, AnyScheme)

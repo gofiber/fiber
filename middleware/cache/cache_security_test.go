@@ -1625,6 +1625,50 @@ func Test_Cache_ProxiedResponseCasingIsRead(t *testing.T) {
 	}
 }
 
+// Test_Cache_EntryStoredUnderTheEarlierVaryRuleIsNotRead covers the entries the key version before the stricter Vary
+// rule wrote. A response that varied on a header an inner middleware overwrote was stored under the value the client
+// sent, and a hit never looks at what the handler saw, so on a store that survived the upgrade every client sending
+// that value would still be served the page. The key namespace moves with the rule, so such an entry is never read.
+func Test_Cache_EntryStoredUnderTheEarlierVaryRuleIsNotRead(t *testing.T) {
+	t.Parallel()
+	const earlier = "v6" // the key version that stored them
+	storage := memory.New()
+	config := Config{Storage: storage, Expiration: time.Minute}
+
+	// What the earlier version left in the store: a page stored under the placeholder "0", moved to that version's keys.
+	seed := fiber.New()
+	seed.Use(New(config))
+	seed.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderVary, "X-User-Id")
+		return c.SendString("alice's page")
+	})
+	cacheTestCRequireReply(t, cacheTestCGet(t, seed, "/", "X-User-Id", "0"), cacheMiss, "alice's page")
+	cacheTestCRequireReply(t, cacheTestCGet(t, seed, "/", "X-User-Id", "0"), cacheHit, "alice's page")
+	keys, err := storage.Keys()
+	require.NoError(t, err)
+	require.NotEmpty(t, keys)
+	for _, key := range keys {
+		raw, err := storage.Get(string(key))
+		require.NoError(t, err)
+		moved := strings.ReplaceAll(string(key), cacheKeyVersion+"|", earlier+"|")
+		require.NoError(t, storage.Set(moved, raw, time.Minute))
+		if moved != string(key) {
+			require.NoError(t, storage.Delete(string(key)))
+		}
+	}
+
+	// The upgraded app: the header is overwritten with the session's, which is what made the page the client's.
+	app := fiber.New()
+	app.Use(New(config))
+	app.Use(func(c fiber.Ctx) error { c.Request().Header.Set("X-User-Id", c.Cookies("session")); return c.Next() })
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderVary, "X-User-Id")
+		return c.SendString("bob's page")
+	})
+	got := cacheTestCGet(t, app, "/", "X-User-Id", "0", fiber.HeaderCookie, "session=bob")
+	cacheTestCRequireReply(t, got, cacheUnreachable, "bob's page", "an entry of the earlier version must not be served")
+}
+
 // Test_Cache_LegacyAnonymousEntryIsNotRead covers an entry a previous version
 // stored. It detected Authorization byte-exactly, so under DisableHeaderNormalizing
 // a request bearing a lower-case "authorization" was taken for anonymous and its
@@ -2108,17 +2152,20 @@ func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 	}
 }
 
-// Test_Cache_VaryOnHeaderAddedBehindTheCache checks that a response varying on a request header an inner
-// middleware added is not stored: its key, built from the header as the lookup saw it, would serve the first
-// client's page to every other client. A header rewritten in place or removed keeps the lookup's key and stays
-// cacheable, as the response is then the one for what the client sent.
-func Test_Cache_VaryOnHeaderAddedBehindTheCache(t *testing.T) {
+// Test_Cache_VaryOnHeaderChangedBehindTheCache checks that a response varying on a request header an inner
+// middleware added, overwrote, rewrote or removed is not stored: its key, built from the header as the lookup saw it,
+// would serve the first client's page to every other client sending the same value, a placeholder included. A
+// response is stored when the headers it varies on reach the handler as they came, whatever else the middleware does.
+func Test_Cache_VaryOnHeaderChangedBehindTheCache(t *testing.T) {
 	t.Parallel()
 	type step struct {
 		body, cache string
 		headers     []string // name and value pairs the request sends
 	}
+	alice := []string{fiber.HeaderCookie, "session=alice", "X-User-Id", "0"}
+	bob := []string{fiber.HeaderCookie, "session=bob", "X-User-Id", "0"}
 	fromSession := func(c fiber.Ctx) { c.Request().Header.Set("X-User-Id", c.Cookies("session")) }
+	upperTenant := func(c fiber.Ctx) { c.Request().Header.Set("X-Tenant", strings.ToUpper(c.Get("X-Tenant"))) }
 	for name, tc := range map[string]struct {
 		rewrite func(c fiber.Ctx)
 		vary    string // the response's Vary
@@ -2133,9 +2180,7 @@ func Test_Cache_VaryOnHeaderAddedBehindTheCache(t *testing.T) {
 				{headers: []string{fiber.HeaderCookie, "session=bob"}, body: "X-User-Id=bob", cache: cacheUnreachable},
 			},
 		},
-		// The client's value stays in the key, as a rewrite's does: the response has to vary on
-		// the input it was derived from as well (the next case), as cache.md says.
-		// The cookies make one field line, so an added cookie is told by its name.
+		// The cookies make one field line, so an added cookie is told by what the line holds.
 		"cookie added": {
 			rewrite: func(c fiber.Ctx) { c.Request().Header.SetCookie("session", c.Get("X-Login")) },
 			vary:    fiber.HeaderCookie,
@@ -2153,40 +2198,88 @@ func Test_Cache_VaryOnHeaderAddedBehindTheCache(t *testing.T) {
 				{headers: []string{fiber.HeaderCookie, "user=0", "X-Login", "bob"}, body: "Cookie=user=0; user=bob", cache: cacheUnreachable},
 			},
 		},
+		// The client's value stays in the key, which any client sending the placeholder would reach.
 		"overwritten": {
 			rewrite: fromSession,
 			vary:    "X-User-Id",
 			steps: []step{
-				{headers: []string{fiber.HeaderCookie, "session=alice", "X-User-Id", "0"}, body: "X-User-Id=alice", cache: cacheMiss},
-				{headers: []string{fiber.HeaderCookie, "session=bob", "X-User-Id", "0"}, body: "X-User-Id=alice", cache: cacheHit},
+				{headers: alice, body: "X-User-Id=alice", cache: cacheUnreachable},
+				{headers: bob, body: "X-User-Id=bob", cache: cacheUnreachable},
 			},
 		},
+		// Naming the input too does not make the derived value part of what a later lookup can select by.
 		"overwritten, varying on its input too": {
 			rewrite: fromSession,
 			vary:    "Cookie, X-User-Id",
 			echo:    "X-User-Id",
 			steps: []step{
-				{headers: []string{fiber.HeaderCookie, "session=alice", "X-User-Id", "0"}, body: "X-User-Id=alice", cache: cacheMiss},
-				{headers: []string{fiber.HeaderCookie, "session=bob", "X-User-Id", "0"}, body: "X-User-Id=bob", cache: cacheMiss},
-				{headers: []string{fiber.HeaderCookie, "session=alice", "X-User-Id", "0"}, body: "X-User-Id=alice", cache: cacheHit},
+				{headers: alice, body: "X-User-Id=alice", cache: cacheUnreachable},
+				{headers: bob, body: "X-User-Id=bob", cache: cacheUnreachable},
+				{headers: alice, body: "X-User-Id=alice", cache: cacheUnreachable},
+			},
+		},
+		// The input the value is derived from reaches the handler as it came, and is what the page varies on.
+		"overwritten, varying on its input only": {
+			rewrite: fromSession,
+			vary:    fiber.HeaderCookie,
+			echo:    "X-User-Id",
+			steps: []step{
+				{headers: alice, body: "X-User-Id=alice", cache: cacheMiss},
+				{headers: bob, body: "X-User-Id=bob", cache: cacheMiss},
+				{headers: alice, body: "X-User-Id=alice", cache: cacheHit},
 			},
 		},
 		"removed": {
 			rewrite: func(c fiber.Ctx) { c.Request().Header.Del("X-Debug") },
 			vary:    "X-Debug",
 			steps: []step{
-				{headers: []string{"X-Debug", "1"}, body: "X-Debug=", cache: cacheMiss},
-				{headers: []string{"X-Debug", "2"}, body: "X-Debug=", cache: cacheMiss},
-				{headers: []string{"X-Debug", "1"}, body: "X-Debug=", cache: cacheHit},
+				{headers: []string{"X-Debug", "1"}, body: "X-Debug=", cache: cacheUnreachable},
+				{headers: []string{"X-Debug", "2"}, body: "X-Debug=", cache: cacheUnreachable},
+				{headers: []string{"X-Debug", "1"}, body: "X-Debug=", cache: cacheUnreachable},
 			},
 		},
 		"rewritten in place": {
-			rewrite: func(c fiber.Ctx) { c.Request().Header.Set("X-Tenant", strings.ToUpper(c.Get("X-Tenant"))) },
+			rewrite: upperTenant,
 			vary:    "X-Tenant",
 			steps: []step{
-				{headers: []string{"X-Tenant", "acme"}, body: "X-Tenant=ACME", cache: cacheMiss},
-				{headers: []string{"X-Tenant", "acme"}, body: "X-Tenant=ACME", cache: cacheHit},
-				{headers: []string{"X-Tenant", "other"}, body: "X-Tenant=OTHER", cache: cacheMiss},
+				{headers: []string{"X-Tenant", "acme"}, body: "X-Tenant=ACME", cache: cacheUnreachable},
+				{headers: []string{"X-Tenant", "acme"}, body: "X-Tenant=ACME", cache: cacheUnreachable},
+				{headers: []string{"X-Tenant", "other"}, body: "X-Tenant=OTHER", cache: cacheUnreachable},
+			},
+		},
+		"cookie rewritten in place": {
+			rewrite: func(c fiber.Ctx) { c.Request().Header.SetCookie("user", strings.ToUpper(c.Cookies("user"))) },
+			vary:    fiber.HeaderCookie,
+			steps: []step{
+				{headers: []string{fiber.HeaderCookie, "user=bob; theme=dark"}, body: "Cookie=user=BOB; theme=dark", cache: cacheUnreachable},
+				{headers: []string{fiber.HeaderCookie, "user=bob; theme=dark"}, body: "Cookie=user=BOB; theme=dark", cache: cacheUnreachable},
+			},
+		},
+		"cookie removed": {
+			rewrite: func(c fiber.Ctx) { c.Request().Header.DelCookie("user") },
+			vary:    fiber.HeaderCookie,
+			steps: []step{
+				{headers: []string{fiber.HeaderCookie, "user=bob; theme=dark"}, body: "Cookie=theme=dark", cache: cacheUnreachable},
+				{headers: []string{fiber.HeaderCookie, "user=bob; theme=dark"}, body: "Cookie=theme=dark", cache: cacheUnreachable},
+			},
+		},
+		// What the middleware does to a header the response does not vary on is no concern of the key.
+		"rewritten outside the Vary list": {
+			rewrite: upperTenant,
+			vary:    fiber.HeaderAcceptLanguage,
+			steps: []step{
+				{headers: []string{"X-Tenant", "acme", fiber.HeaderAcceptLanguage, "en"}, body: "Accept-Language=en", cache: cacheMiss},
+				{headers: []string{"X-Tenant", "acme", fiber.HeaderAcceptLanguage, "en"}, body: "Accept-Language=en", cache: cacheHit},
+				{headers: []string{"X-Tenant", "acme", fiber.HeaderAcceptLanguage, "de"}, body: "Accept-Language=de", cache: cacheMiss},
+			},
+		},
+		"written back unchanged": {
+			rewrite: func(c fiber.Ctx) { c.Request().Header.Set("X-Tenant", c.Get("X-Tenant")) },
+			vary:    "X-Tenant",
+			steps: []step{
+				{headers: []string{"X-Tenant", "acme"}, body: "X-Tenant=acme", cache: cacheMiss},
+				{headers: []string{"X-Tenant", "acme"}, body: "X-Tenant=acme", cache: cacheHit},
+				{headers: []string{"X-Tenant", "other"}, body: "X-Tenant=other", cache: cacheMiss},
 			},
 		},
 	} {
