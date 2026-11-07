@@ -1,1 +1,8 @@
 blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions and help on Discord
+    url: https://gofiber.io/discord
+    about: Usage questions are answered fastest in the Fiber Discord server.
+  - name: 📖 Documentation
+    url: https://docs.gofiber.io/
+    about: Guides and API reference for Fiber, contrib, storage, template and recipes.
