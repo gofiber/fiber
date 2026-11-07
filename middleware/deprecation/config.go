@@ -2,6 +2,7 @@ package deprecation
 
 import (
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -28,7 +29,7 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// Link is an absolute URI that documents the deprecation, such as a
+	// Link is a URI reference that documents the deprecation, such as a
 	// migration guide or a deprecation policy. It is added to the Link header
 	// with rel="deprecation". It may be set without Deprecation to publish a
 	// policy before anything is deprecated (RFC 9745 Section 3.1).
@@ -36,7 +37,7 @@ type Config struct {
 	// Optional. Default: ""
 	Link string
 
-	// SunsetLink is an absolute URI that documents the sunset policy. It is
+	// SunsetLink is a URI reference that documents the sunset policy. It is
 	// added to the Link header with rel="sunset", and may be set without
 	// Sunset (RFC 8594 Section 6).
 	//
@@ -47,6 +48,14 @@ type Config struct {
 // ConfigDefault is the default config. It sets nothing, so New panics with it:
 // at least one date or link is required.
 var ConfigDefault = Config{}
+
+// maxSFInteger is the largest magnitude a Structured Field Integer, and so the
+// seconds of a Structured Field Date, can carry (RFC 9651 Section 3.3.1).
+const maxSFInteger = 999_999_999_999_999
+
+// uriPunctuation is every byte RFC 3986 allows in a URI reference besides
+// letters and digits: the unreserved and reserved characters and '%'.
+const uriPunctuation = "-._~:/?#[]@!$&'()*+,;=%"
 
 // Helper function to set default values and validate the config.
 func configDefault(config ...Config) Config {
@@ -59,32 +68,50 @@ func configDefault(config ...Config) Config {
 		panic("deprecation: Deprecation, Sunset, Link or SunsetLink is required")
 	}
 
+	if !cfg.Deprecation.IsZero() {
+		if sec := cfg.Deprecation.Unix(); sec < -maxSFInteger || sec > maxSFInteger {
+			panic("deprecation: Deprecation is out of the range of a Structured Field Date")
+		}
+	}
+	if !cfg.Sunset.IsZero() {
+		if y := cfg.Sunset.UTC().Year(); y < 0 || y > 9999 {
+			panic("deprecation: Sunset must fall within the years 0000 to 9999 of an HTTP-date")
+		}
+	}
+
 	// Both headers carry whole seconds, so compare what is sent.
 	if !cfg.Deprecation.IsZero() && !cfg.Sunset.IsZero() &&
 		cfg.Sunset.Truncate(time.Second).Before(cfg.Deprecation.Truncate(time.Second)) {
 		panic("deprecation: Sunset must not be earlier than Deprecation")
 	}
 
-	if cfg.Link != "" && !isLinkTarget(cfg.Link) {
-		panic("deprecation: Link must be an absolute URI")
+	if cfg.Link != "" && !isURIReference(cfg.Link) {
+		panic("deprecation: Link must be a URI reference")
 	}
-	if cfg.SunsetLink != "" && !isLinkTarget(cfg.SunsetLink) {
-		panic("deprecation: SunsetLink must be an absolute URI")
+	if cfg.SunsetLink != "" && !isURIReference(cfg.SunsetLink) {
+		panic("deprecation: SunsetLink must be a URI reference")
 	}
 
 	return cfg
 }
 
-// isLinkTarget reports whether s can be written between the angle brackets of
-// a Link header (RFC 8288 Section 3): an absolute URI with no '<', '>',
-// whitespace or control character, which would end the target early.
-func isLinkTarget(s string) bool {
+// isURIReference reports whether s is a URI reference that can be written
+// between the angle brackets of a Link header (RFC 8288 Section 3): only the
+// characters RFC 3986 allows, parsable, and with a host when it is an http or
+// https URI (RFC 9110 Section 4.2). A relative reference is allowed, and
+// recipients resolve it against the request URI.
+func isURIReference(s string) bool {
 	for i := range len(s) {
-		if c := s[i]; c <= ' ' || c == '<' || c == '>' || c == 0x7f {
+		c := s[i]
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') &&
+			strings.IndexByte(uriPunctuation, c) < 0 {
 			return false
 		}
 	}
 	u, err := url.Parse(s)
+	if err != nil {
+		return false
+	}
 
-	return err == nil && u.IsAbs()
+	return (u.Scheme != "http" && u.Scheme != "https") || u.Host != ""
 }
