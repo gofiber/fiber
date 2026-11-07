@@ -6,9 +6,11 @@ id: deprecation
 
 Deprecation middleware for [Fiber](https://github.com/gofiber/fiber) that tells clients a route is deprecated, or will stop working, with the `Deprecation` header ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)) and the `Sunset` header ([RFC 8594](https://www.rfc-editor.org/rfc/rfc8594)).
 
-Deprecation does not change how the route behaves. The headers are a hint: clients and API gateways can log them, warn developers, or plan a migration. The headers are set before the rest of the chain runs, so error responses carry them too.
+Deprecation does not change how the route behaves. The headers are a hint: clients and API gateways can log them, warn developers, or plan a migration. The headers are set before the rest of the chain runs, so a response whose headers are flushed inside the handler (`SendStreamWriter`, SSE, early hints) carries them too.
 
-`Deprecation` is sent as a Structured Field Date (`@` and Unix seconds), and `Sunset` as an HTTP-date. A date in the future announces an upcoming deprecation or sunset. RFC 9745 forbids a `Sunset` earlier than `Deprecation`, so `New` panics on that config, and on a config that sets neither date.
+`Deprecation` is sent as a Structured Field Date (`@` and Unix seconds), and `Sunset` as an HTTP-date. A date in the future announces an upcoming deprecation or sunset. Both carry whole seconds. RFC 9745 forbids a `Sunset` earlier than `Deprecation`, so `New` panics on that config, compared at that resolution.
+
+`Link` and `SunsetLink` may be set without their date, to publish a deprecation or sunset policy before anything is deprecated ([RFC 9745 Section 3.1](https://www.rfc-editor.org/rfc/rfc9745#section-3.1), [RFC 8594 Section 6](https://www.rfc-editor.org/rfc/rfc8594#section-6)). Each must be an absolute URI without `<`, `>`, whitespace or control characters, or `New` panics.
 
 ## Signatures
 
@@ -56,6 +58,14 @@ app.Get("/legacy", deprecation.New(deprecation.Config{
 }), handler)
 ```
 
+### Publish a deprecation policy only
+
+```go
+app.Use(deprecation.New(deprecation.Config{
+    Link: "https://example.com/deprecation-policy",
+}))
+```
+
 ### Skip logic
 
 ```go
@@ -77,12 +87,12 @@ app.Use(deprecation.New(deprecation.Config{
 | Link | `string` | URI that documents the deprecation, added to the `Link` header with `rel="deprecation"`. | `""` |
 | SunsetLink | `string` | URI that documents the sunset policy, added to the `Link` header with `rel="sunset"`. | `""` |
 
-At least one of `Deprecation` and `Sunset` is required. Links are appended to a `Link` header that is already set.
+At least one field other than `Next` is required. The links are appended to a `Link` header that is already set when the middleware runs. A later handler that calls `c.Set(fiber.HeaderLink, ...)` replaces them, so add links with `c.Links` instead.
 
 ## Default Config
 
 ```go
-var ConfigDefault = Config{
-    Next: nil,
-}
+var ConfigDefault = Config{}
 ```
+
+There is no useful default — you must provide at least `Deprecation`, `Sunset`, `Link` or `SunsetLink`.

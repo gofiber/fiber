@@ -1,6 +1,7 @@
 package deprecation
 
 import (
+	"net/url"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -27,23 +28,25 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// Link is a URI that documents the deprecation, such as a migration
-	// guide. It is added to the Link header with rel="deprecation".
+	// Link is an absolute URI that documents the deprecation, such as a
+	// migration guide or a deprecation policy. It is added to the Link header
+	// with rel="deprecation". It may be set without Deprecation to publish a
+	// policy before anything is deprecated (RFC 9745 Section 3.1).
 	//
 	// Optional. Default: ""
 	Link string
 
-	// SunsetLink is a URI that documents the sunset policy. It is added to
-	// the Link header with rel="sunset".
+	// SunsetLink is an absolute URI that documents the sunset policy. It is
+	// added to the Link header with rel="sunset", and may be set without
+	// Sunset (RFC 8594 Section 6).
 	//
 	// Optional. Default: ""
 	SunsetLink string
 }
 
-// ConfigDefault is the default config.
-var ConfigDefault = Config{
-	Next: nil,
-}
+// ConfigDefault is the default config. It sets nothing, so New panics with it:
+// at least one date or link is required.
+var ConfigDefault = Config{}
 
 // Helper function to set default values and validate the config.
 func configDefault(config ...Config) Config {
@@ -52,13 +55,36 @@ func configDefault(config ...Config) Config {
 		cfg = config[0]
 	}
 
-	if cfg.Deprecation.IsZero() && cfg.Sunset.IsZero() {
-		panic("deprecation: Deprecation or Sunset is required")
+	if cfg.Deprecation.IsZero() && cfg.Sunset.IsZero() && cfg.Link == "" && cfg.SunsetLink == "" {
+		panic("deprecation: Deprecation, Sunset, Link or SunsetLink is required")
 	}
 
-	if !cfg.Deprecation.IsZero() && !cfg.Sunset.IsZero() && cfg.Sunset.Before(cfg.Deprecation) {
+	// Both headers carry whole seconds, so compare what is sent.
+	if !cfg.Deprecation.IsZero() && !cfg.Sunset.IsZero() &&
+		cfg.Sunset.Truncate(time.Second).Before(cfg.Deprecation.Truncate(time.Second)) {
 		panic("deprecation: Sunset must not be earlier than Deprecation")
 	}
 
+	if cfg.Link != "" && !isLinkTarget(cfg.Link) {
+		panic("deprecation: Link must be an absolute URI")
+	}
+	if cfg.SunsetLink != "" && !isLinkTarget(cfg.SunsetLink) {
+		panic("deprecation: SunsetLink must be an absolute URI")
+	}
+
 	return cfg
+}
+
+// isLinkTarget reports whether s can be written between the angle brackets of
+// a Link header (RFC 8288 Section 3): an absolute URI with no '<', '>',
+// whitespace or control character, which would end the target early.
+func isLinkTarget(s string) bool {
+	for i := range len(s) {
+		if c := s[i]; c <= ' ' || c == '<' || c == '>' || c == 0x7f {
+			return false
+		}
+	}
+	u, err := url.Parse(s)
+
+	return err == nil && u.IsAbs()
 }

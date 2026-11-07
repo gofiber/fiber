@@ -1739,7 +1739,7 @@ A response is stored under `idempotency:` followed by the key (or its digest wit
 
 ### Deprecation
 
-A new deprecation middleware marks routes as deprecated. It sends the `Deprecation` header ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)), the `Sunset` header ([RFC 8594](https://www.rfc-editor.org/rfc/rfc8594)), or both, and can add `Link` relations to the deprecation and sunset documentation. See the [deprecation middleware](./middleware/deprecation.md) docs.
+A new deprecation middleware marks routes as deprecated. It sends the `Deprecation` header ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)), the `Sunset` header ([RFC 8594](https://www.rfc-editor.org/rfc/rfc8594)), or both, and can add `Link` relations to the deprecation and sunset documentation, also on their own to publish a policy. See the [deprecation middleware](./middleware/deprecation.md) docs.
 
 ### EncryptCookie
 

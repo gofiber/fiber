@@ -43,10 +43,30 @@ func Test_Deprecation_Headers(t *testing.T) {
 			deprecation: "@1688169599", link: `<https://example.com/deprecation>; rel="deprecation"`,
 		},
 		{
-			name:        "both links",
-			config:      Config{Deprecation: deprecatedAt, Sunset: sunsetAt, Link: "https://example.com/d", SunsetLink: "https://example.com/s"},
+			name: "both links",
+			config: Config{
+				Deprecation: deprecatedAt, Sunset: sunsetAt,
+				Link: "https://example.com/d", SunsetLink: "https://example.com/s",
+			},
 			deprecation: "@1688169599", sunset: "Sun, 30 Jun 2024 23:59:59 GMT",
 			link: `<https://example.com/d>; rel="deprecation",<https://example.com/s>; rel="sunset"`,
+		},
+		{
+			name:   "deprecation policy link only",
+			config: Config{Link: "https://example.com/policy"},
+			link:   `<https://example.com/policy>; rel="deprecation"`,
+		},
+		{
+			name:   "sunset policy link only",
+			config: Config{SunsetLink: "https://example.com/sunset"},
+			link:   `<https://example.com/sunset>; rel="sunset"`,
+		},
+		{
+			name: "sub-second dates in the same second",
+			config: Config{
+				Deprecation: sunsetAt.Add(900 * time.Millisecond), Sunset: sunsetAt.Add(100 * time.Millisecond),
+			},
+			deprecation: "@1719791999", sunset: "Sun, 30 Jun 2024 23:59:59 GMT",
 		},
 	}
 
@@ -114,11 +134,30 @@ func Test_Deprecation_InvalidConfig(t *testing.T) {
 		msg  string
 		cfg  []Config
 	}{
-		{name: "no config", msg: "deprecation: Deprecation or Sunset is required"},
-		{name: "no dates", msg: "deprecation: Deprecation or Sunset is required", cfg: []Config{{Link: "https://example.com"}}},
+		{name: "no config", msg: "deprecation: Deprecation, Sunset, Link or SunsetLink is required"},
+		{
+			name: "empty config", msg: "deprecation: Deprecation, Sunset, Link or SunsetLink is required",
+			cfg: []Config{{}},
+		},
 		{
 			name: "sunset before deprecation", msg: "deprecation: Sunset must not be earlier than Deprecation",
 			cfg: []Config{{Deprecation: sunsetAt, Sunset: deprecatedAt}},
+		},
+		{
+			name: "relative link", msg: "deprecation: Link must be an absolute URI",
+			cfg: []Config{{Link: "/docs/deprecation"}},
+		},
+		{
+			name: "link that ends the target early", msg: "deprecation: Link must be an absolute URI",
+			cfg: []Config{{Link: `https://x>; rel="preload"`}},
+		},
+		{
+			name: "link with a space", msg: "deprecation: Link must be an absolute URI",
+			cfg: []Config{{Link: "https://x/a b"}},
+		},
+		{
+			name: "relative sunset link", msg: "deprecation: SunsetLink must be an absolute URI",
+			cfg: []Config{{Sunset: sunsetAt, SunsetLink: "sunset"}},
 		},
 	}
 

@@ -13,7 +13,7 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	// The header values do not change between requests, so they are formatted once.
-	var deprecation, sunset string
+	var deprecation, sunset, link string
 	if !cfg.Deprecation.IsZero() {
 		deprecation = "@" + strconv.FormatInt(cfg.Deprecation.Unix(), 10)
 	}
@@ -24,9 +24,14 @@ func New(config ...Config) fiber.Handler {
 	var links []string
 	if cfg.Link != "" {
 		links = append(links, cfg.Link, "deprecation")
+		link = "<" + cfg.Link + `>; rel="deprecation"`
 	}
 	if cfg.SunsetLink != "" {
 		links = append(links, cfg.SunsetLink, "sunset")
+		if link != "" {
+			link += ","
+		}
+		link += "<" + cfg.SunsetLink + `>; rel="sunset"`
 	}
 
 	return func(c fiber.Ctx) error {
@@ -34,14 +39,21 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Set before the chain runs so error responses carry the headers too.
+		// Set before the chain runs so responses whose headers are flushed inside
+		// the handler (SendStreamWriter, SSE, early hints) carry them too.
 		if deprecation != "" {
 			c.Set(fiber.HeaderDeprecation, deprecation)
 		}
 		if sunset != "" {
 			c.Set(fiber.HeaderSunset, sunset)
 		}
-		c.Links(links...)
+		if link != "" {
+			if len(c.Response().Header.Peek(fiber.HeaderLink)) == 0 {
+				c.Set(fiber.HeaderLink, link)
+			} else {
+				c.Links(links...)
+			}
+		}
 
 		return c.Next()
 	}
