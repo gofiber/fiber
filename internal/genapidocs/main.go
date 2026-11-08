@@ -20,7 +20,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 )
 
@@ -272,10 +271,7 @@ func selfContained(file *ast.File) bool {
 	}
 	imports := map[string]bool{}
 	for _, spec := range file.Imports {
-		importPath, err := strconv.Unquote(spec.Path.Value)
-		if err != nil {
-			return false
-		}
+		importPath := strings.Trim(spec.Path.Value, "\"`") // The parser already rejected malformed paths.
 		// shortcut: like go/doc, assume an unrenamed import's name is its last non-version path element; validate by compiling if a package breaks that.
 		name := filepath.Base(importPath)
 		if dir := filepath.Dir(importPath); majorVersion.MatchString(name) && dir != "." {
