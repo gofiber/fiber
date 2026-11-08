@@ -616,7 +616,8 @@ func peekJoinedResponseHeader(h *fasthttp.ResponseHeader, key string) ([]byte, b
 // forEachMediaRange walks an Accept-family list, passing slices that alias header.
 // Only leading SP is trimmed; empty elements and trailing whitespace are preserved.
 // A bare trailing comma adds no element, but spaces after it yield an empty one.
-// Quoted commas and quoted-pairs do not split; an unterminated quote consumes the rest.
+// Inside quotes, commas do not split and backslashes escape the next byte.
+// Outside quotes, backslashes are ordinary bytes; an unterminated quote consumes the rest.
 // See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
 func forEachMediaRange(header []byte, functor func([]byte)) {
 	if len(header) == 0 {
@@ -637,7 +638,7 @@ func forEachMediaRange(header []byte, functor func([]byte)) {
 		return
 	}
 
-	for len(header) > 0 {
+	for {
 		header = utils.TrimLeft(header, ' ')
 		mediaRange, next := headerlist.NextQuoted(header, 0)
 		functor(mediaRange)

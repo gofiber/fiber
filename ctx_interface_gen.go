@@ -129,6 +129,7 @@ type Ctx interface {
 	// Its Method field is resolved like c.Method() (including the raw-header
 	// fallback for unregistered methods) so Route and Method always agree.
 	// Never inlined: inlining it would push Route over the inlining budget.
+	//
 	routeFallback() *Route
 	// Endpoint returns the route that will handle this request, without advancing the
 	// handler chain, so global middleware can read its Path or Name before calling
