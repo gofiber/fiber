@@ -143,12 +143,15 @@ func Test_Compress_Vary(t *testing.T) {
 		contentEncoding string
 		vary            string
 		wantVary        string
+		// varyLines are added as separate Vary field lines, an empty one
+		// included; the response then carries wantVaryLines.
+		varyLines     []string
+		wantVaryLines []string
 		// rangeRequest adds a Range header to the request, which makes the
 		// middleware skip it. noAcceptEncoding leaves Accept-Encoding out of it.
 		rangeRequest     bool
 		noAcceptEncoding bool
-		// compressed sends the README, large enough to be compressed with gzip.
-		compressed bool
+		compressed       bool
 	}{
 		{name: "adds_vary_header", wantVary: "Accept-Encoding"},
 		{name: "vary_star", vary: "*", wantVary: "*"},
@@ -166,6 +169,8 @@ func Test_Compress_Vary(t *testing.T) {
 		{name: "compressed_vary_list_star", compressed: true, vary: "User-Agent, *", wantVary: "User-Agent, *"},
 		{name: "compressed_vary_lowercase", compressed: true, vary: "accept-encoding", wantVary: "accept-encoding"},
 		{name: "compressed_vary_other", compressed: true, vary: "User-Agent", wantVary: "User-Agent, Accept-Encoding"},
+		{name: "vary_empty_line_then_origin", varyLines: []string{"", "Origin"}, wantVaryLines: []string{"Accept-Encoding", "Origin"}},
+		{name: "compressed_vary_empty_line_then_origin", compressed: true, varyLines: []string{"", "Origin"}, wantVaryLines: []string{"Accept-Encoding", "Origin"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -175,6 +180,9 @@ func Test_Compress_Vary(t *testing.T) {
 				}
 				if tc.vary != "" {
 					c.Set(fiber.HeaderVary, tc.vary)
+				}
+				for _, line := range tc.varyLines {
+					c.Response().Header.Add(fiber.HeaderVary, line)
 				}
 				if tc.compressed {
 					return c.Send(filedata)
@@ -197,7 +205,11 @@ func Test_Compress_Vary(t *testing.T) {
 			}
 			resp := compressTestGet(t, app, acceptEncoding, opts...)
 			require.Equal(t, wantEncoding, resp.Header.Get(fiber.HeaderContentEncoding))
-			require.Equal(t, tc.wantVary, resp.Header.Get(fiber.HeaderVary))
+			if tc.wantVaryLines != nil {
+				require.Equal(t, tc.wantVaryLines, resp.Header.Values(fiber.HeaderVary))
+			} else {
+				require.Equal(t, tc.wantVary, resp.Header.Get(fiber.HeaderVary))
+			}
 		})
 	}
 }
