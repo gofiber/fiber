@@ -75,6 +75,7 @@ func sseTestOnClose(t *testing.T, handler func(fiber.Ctx, *Stream) error) error 
 // Test_SSE_EventFrames covers the frame writeEvent writes for an event.
 func Test_SSE_EventFrames(t *testing.T) {
 	t.Parallel()
+	large := strings.Repeat("x", 8<<10)
 	for _, tc := range []struct {
 		name  string
 		want  string
@@ -93,6 +94,7 @@ func Test_SSE_EventFrames(t *testing.T) {
 		{name: "writes byte slice data", event: Event{Data: []byte("hello\nworld")}, want: "data: hello\ndata: world\n\n"},
 		{name: "preserves trailing data newline", event: Event{Data: "hello\n"}, want: "data: hello\ndata: \n\n"},
 		{name: "preserves intentional blank data line", event: Event{Data: "hello\n\n"}, want: "data: hello\ndata: \ndata: \n\n"},
+		{name: "writes data larger than the writer buffer", event: Event{Data: large}, want: "data: " + large + "\n\n"},
 		{
 			name:  "JSON encodes data",
 			event: Event{Name: "message", Data: map[string]string{"hello": "world"}},
@@ -112,10 +114,22 @@ func Test_SSE_EventFrames(t *testing.T) {
 
 func Test_SSE_EventRejectsFieldInjection(t *testing.T) {
 	t.Parallel()
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-
-	require.ErrorIs(t, writeEvent(w, Event{ID: "42\nretry: 1", Data: "ignored"}), errInvalidField)
+	for _, tc := range []struct {
+		name  string
+		event Event
+	}{
+		{name: "invalid id", event: Event{ID: "42\nretry: 1", Data: "ignored"}},
+		{name: "invalid name", event: Event{ID: "42", Name: "update\rretry: 1", Data: "ignored"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			w := bufio.NewWriter(&buf)
+			require.ErrorIs(t, writeEvent(w, tc.event), errInvalidField)
+			require.NoError(t, w.Flush())
+			require.Empty(t, buf.String())
+		})
+	}
 }
 
 func Test_SSE_NewUsesAppJSONEncoder(t *testing.T) {

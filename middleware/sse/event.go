@@ -2,10 +2,10 @@ package sse
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -36,34 +36,41 @@ func writeEvent(w *bufio.Writer, event Event, jsonMarshal ...utils.JSONMarshal) 
 		return err
 	}
 
-	var frame bytes.Buffer
-
-	if event.ID != "" {
-		id, err := sanitizeField(event.ID)
+	id, name := event.ID, event.Name
+	if id != "" {
+		id, err = sanitizeField(id)
 		if err != nil {
 			return fmt.Errorf("sse: invalid id: %w", err)
 		}
-		if id != "" {
-			appendField(&frame, "id", id)
-		}
 	}
-	if event.Name != "" {
-		name, err := sanitizeField(event.Name)
+	if name != "" {
+		name, err = sanitizeField(name)
 		if err != nil {
 			return fmt.Errorf("sse: invalid event: %w", err)
 		}
-		if name != "" {
-			appendField(&frame, "event", name)
-		}
+	}
+
+	// Reuse the writer's space for frames that fit. Append grows the slice
+	// for larger frames, and Write commits the complete frame either way.
+	frame := w.AvailableBuffer()
+	if id != "" {
+		frame = appendField(frame, "id: ", id)
+	}
+	if name != "" {
+		frame = appendField(frame, "event: ", name)
 	}
 	if event.Retry > 0 {
-		appendField(&frame, "retry", utils.FormatInt(retryMilliseconds(event.Retry)))
+		frame = append(frame, "retry: "...)
+		frame = utils.AppendInt(frame, retryMilliseconds(event.Retry))
+		frame = append(frame, '\n')
 	}
 	if data.hasData {
-		appendData(&frame, data.data)
+		for line := range strings.SplitSeq(normalizeNewlines(data.data), "\n") {
+			frame = appendField(frame, "data: ", line)
+		}
 	}
-	frame.WriteByte('\n') //nolint:errcheck // bytes.Buffer writes never fail.
-	if _, err := w.Write(frame.Bytes()); err != nil {
+	frame = append(frame, '\n')
+	if _, err := w.Write(frame); err != nil {
 		return fmt.Errorf("sse: write event: %w", err)
 	}
 	return nil
@@ -119,18 +126,14 @@ func jsonMarshalOrDefault(jsonMarshal []utils.JSONMarshal) utils.JSONMarshal {
 	return json.Marshal
 }
 
-func appendField(w *bytes.Buffer, field, value string) {
-	w.WriteString(field) //nolint:errcheck // bytes.Buffer writes never fail.
-	w.WriteString(": ")  //nolint:errcheck // bytes.Buffer writes never fail.
-	w.WriteString(value) //nolint:errcheck // bytes.Buffer writes never fail.
-	w.WriteByte('\n')    //nolint:errcheck // bytes.Buffer writes never fail.
-}
-
-func appendData(w *bytes.Buffer, data string) {
-	data = normalizeNewlines(data)
-	for line := range strings.SplitSeq(data, "\n") {
-		appendField(w, "data", line)
+func appendField(dst []byte, prefix, value string) []byte {
+	dst = append(dst, prefix...)
+	if len(value) > cap(dst)-len(dst) {
+		// Size the growth from the bytes already appended, not the full writer buffer.
+		dst = slices.Clip(dst)
 	}
+	dst = append(dst, value...)
+	return append(dst, '\n')
 }
 
 func sanitizeField(value string) (string, error) {
