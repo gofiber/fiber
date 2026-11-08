@@ -138,7 +138,16 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		// fasthttp's compressor adds Accept-Encoding to Vary itself, comparing
+		// bytes, so it extends a Vary of "*" or one that names accept-encoding in
+		// another case. Put the handler's Vary back and merge it below instead.
+		vary := strings.Clone(c.GetRespHeader(fiber.HeaderVary))
 		compressWith(c, compressor, encoding)
+		if vary == "" {
+			c.Response().Header.Del(fiber.HeaderVary)
+		} else {
+			c.Set(fiber.HeaderVary, vary)
+		}
 
 		if tag := c.GetRespHeader(fiber.HeaderETag); tag != "" && !strings.HasPrefix(tag, "W/") {
 			if c.GetRespHeader(fiber.HeaderContentEncoding) != "" {
