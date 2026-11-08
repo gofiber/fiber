@@ -15,9 +15,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// readRequestHeader parses raw as a request, which is the only way to build the
-// two-line shapes below: they are what a peer or an intermediary puts on the
-// wire, not something the setters express directly.
+// readRequestHeader parses raw as a request, including repeated field lines
+// received from a peer or an intermediary.
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func readRequestHeader(tb testing.TB, raw string, canonical bool) *fasthttp.RequestHeader {
@@ -68,21 +67,155 @@ func lineValues(lines [][]byte) []string {
 	return out
 }
 
-// Test_First_EmptyLineIsNotNil pins the fasthttp behavior First's fast path
-// rests on: Peek answers nil for a field that is absent and a non-nil empty
-// slice for one that is present and empty. First skips its second walk on the
-// nil answer, so were the two to become indistinguishable it would read only
-// the first line again — silently, and only for the messages this guards
-// against. This test is what makes that loud instead.
-func Test_First_EmptyLineIsNotNil(t *testing.T) {
+func Test_Has_NonEmptyLines(t *testing.T) {
 	t.Parallel()
-	h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\nOrigin:\r\n\r\n", true)
+	for _, canonical := range []bool{true, false} {
+		for _, response := range []bool{false, true} {
+			for _, tc := range []struct {
+				name, key, lines string
+				want             bool
+			}{
+				{"absent", "X-Test", "", false},
+				{"empty", "X-Test", "X-Test:\r\n", false},
+				{"present", "X-Test", "X-Test: value\r\n", true},
+				{"empty first", "x-test", "X-Test:\r\nX-Test: later\r\n", true},
+				{"connection", "connection", "Connection:\r\nConnection: upgrade\r\nConnection: close\r\n", true},
+			} {
+				t.Run(fmt.Sprintf("%s/canonical=%t/response=%t", tc.name, canonical, response), func(t *testing.T) {
+					t.Parallel()
+					var h Peeker
+					if response {
+						h = &readResponse(t, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n"+tc.lines+"\r\n", canonical).Header
+					} else {
+						h = readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\nX-Pad-A: a\r\nX-Pad-B: b\r\nX-Pad-C: c\r\n"+tc.lines+"\r\n", canonical)
+					}
+					require.Equal(t, tc.want, Has(h, tc.key, canonical))
+				})
+			}
+		}
+	}
+}
 
-	require.Nil(t, h.Peek("Absent"), "Peek must answer nil for a field that is not there")
+func Test_First_Connection_EmptyLeadingLine(t *testing.T) {
+	t.Parallel()
+	for _, closeLine := range []string{"", "Connection: close\r\n"} {
+		for _, canonical := range []bool{true, false} {
+			for _, response := range []bool{false, true} {
+				name := fmt.Sprintf("close=%t/canonical=%t/response=%t", closeLine != "", canonical, response)
+				t.Run(name, func(t *testing.T) {
+					t.Parallel()
+					lines := "Connection:\r\nConnection: upgrade\r\n" + closeLine + "\r\n"
+					var h Peeker
+					if response {
+						resp := readResponse(t, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n"+lines, canonical)
+						h = &resp.Header
+					} else {
+						h = readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\n"+lines, canonical)
+					}
+					for _, header := range []Peeker{h, struct{ Peeker }{h}} {
+						for _, key := range []string{fasthttp.HeaderConnection, "connection", "cOnNeCtIoN"} {
+							require.Equal(t, "upgrade", string(First(header, key, canonical)))
+						}
+					}
+				})
+			}
+		}
+	}
+}
 
-	present := h.Peek("Origin")
-	require.Empty(t, present)
-	require.NotNil(t, present, "Peek must answer a non-nil empty slice for a field line that is present and empty")
+func Test_First_OrdinaryEmptyLeadingLine(t *testing.T) {
+	t.Parallel()
+	for _, response := range []bool{false, true} {
+		t.Run(fmt.Sprintf("wire/response=%t", response), func(t *testing.T) {
+			t.Parallel()
+			const lines = "X-Pad-A: a\r\nX-Pad-B: b\r\nX-Pad-C: c\r\nX-Test:\r\nX-Test: later\r\n\r\n"
+			var h Peeker
+			if response {
+				resp := readResponse(t, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n"+lines, true)
+				h = &resp.Header
+			} else {
+				h = readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\n"+lines, true)
+			}
+			require.Equal(t, "later", string(First(h, "X-Test", true)))
+		})
+		for _, primed := range []int{0, 1, 8} {
+			for padding := range 10 {
+				t.Run(fmt.Sprintf("response=%t/primed=%d/padding=%d", response, primed, padding), func(t *testing.T) {
+					t.Parallel()
+					var h interface {
+						Peeker
+						Add(key, value string)
+						Reset()
+					} = &fasthttp.RequestHeader{}
+					if response {
+						h = &fasthttp.ResponseHeader{}
+					}
+					// Reset reuses header storage; padding also exercises zeroed spare capacity.
+					for i := range primed {
+						h.Add(fmt.Sprintf("X-Prime-%d", i), "seed")
+					}
+					h.Reset()
+					for i := range padding {
+						h.Add(fmt.Sprintf("X-Pad-%d", i), "pad")
+					}
+					h.Add("X-Test", "")
+					h.Add("X-Test", "later")
+					for _, key := range []string{"X-Test", "x-test", "x-TeSt"} {
+						require.Equal(t, "later", string(First(h, key, true)))
+					}
+				})
+			}
+		}
+	}
+}
+
+// nilPeeker models a wrapper that only exposes field lines through PeekAll.
+type nilPeeker struct{ Peeker }
+
+func (nilPeeker) Peek(string) []byte { return nil }
+
+func Test_First_NilPeek_DoesNotHideLines(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		want     string
+		wrapped  bool
+		response bool
+	}{
+		{name: fasthttp.HeaderUserAgent, want: "agent"},
+		{name: "user-agent", want: "agent"},
+		{name: "uSeR-aGeNt", want: "agent"},
+		{name: "X-Test", want: "first", wrapped: true},
+		{name: "x-test", want: "first", wrapped: true},
+		{name: fasthttp.HeaderServer, want: "server", response: true},
+		{name: "server", want: "server", response: true},
+		{name: "sErVeR", want: "server", response: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var header Peeker
+			if tc.response {
+				h := &fasthttp.ResponseHeader{}
+				require.NoError(t, h.SetTrailer(fasthttp.HeaderServer))
+				h.Add(fasthttp.HeaderServer, "")
+				h.Add(fasthttp.HeaderServer, "server")
+				h.Del(fasthttp.HeaderTrailer)
+				header = h
+			} else {
+				h := &fasthttp.RequestHeader{}
+				h.DisableSpecialHeader()
+				h.Add(fasthttp.HeaderUserAgent, "agent")
+				h.EnableSpecialHeader()
+				h.Add("X-Test", "first")
+				header = h
+			}
+			if tc.wrapped {
+				header = nilPeeker{header}
+			}
+			require.Nil(t, header.Peek(tc.name))
+			require.Equal(t, tc.want, string(First(header, tc.name, true)))
+		})
+	}
 }
 
 // Test_First_EmptyLineDoesNotHideTheValue covers the read First exists for: a

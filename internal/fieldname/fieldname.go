@@ -33,9 +33,8 @@ type Peeker interface {
 	PeekAll(key string) [][]byte
 	PeekTrailerKeys() [][]byte
 	All() iter.Seq2[[]byte, []byte]
-	// VisitAll is deprecated in fasthttp in favor of All, but All builds an
-	// iterator per call while this walks the store directly. Kept for the reads
-	// that run per request and do not need to stop early.
+	// VisitAll is deprecated in fasthttp in favor of All. Concrete header calls
+	// keep the visitor's captures on the stack; interface dispatch may allocate.
 	VisitAll(f func(key, value []byte))
 }
 
@@ -62,6 +61,7 @@ func HasTrailers(h Peeker) bool {
 }
 
 // trailerCount returns an int to keep the concrete-request branch within the inlining budget.
+// Go 1.26 gives it cost 80, exactly the budget; recheck inlining when changing it.
 func trailerCount(h Peeker) int {
 	if req, ok := h.(*fasthttp.RequestHeader); ok {
 		return len(req.PeekTrailerKeys())
@@ -474,8 +474,8 @@ func linesFold(h Peeker, name string) [][]byte {
 		return nil
 	}
 
-	// Walked rather than ranged: this runs per key header on every cacheable
-	// request, and All's iterator costs more than the match itself does.
+	// Concrete VisitAll calls keep the visitor and captured slice on the stack.
+	// VisitAll delegates to All too; interface dispatch makes the captures escape.
 	var values [][]byte
 	visit := func(k, v []byte) {
 		if utils.EqualFold(utils.UnsafeString(k), name) {
@@ -504,9 +504,25 @@ func linesPeeker(h Peeker, name string) [][]byte {
 	return values
 }
 
+// Has reports whether a non-empty field line is stored under name. It reads
+// canonical fields in one keyed walk, without parsing unrelated Cookie lines.
+//
+//nolint:revive // flag-parameter: canonical is a property of the header store
+func Has(h Peeker, name string, canonical bool) bool {
+	if canonical && trailerCount(h) == 0 {
+		for _, v := range h.PeekAll(name) {
+			if len(v) > 0 {
+				return true
+			}
+		}
+		return false
+	}
+	return len(firstFold(h, name)) > 0
+}
+
 // First returns the first field line stored under name that holds anything, or
-// nil if there is none. The names fasthttp keeps in a slot of their own are
-// unaffected either way: every spelling is routed into the slot on the way in.
+// nil if there is none. Connection uses PeekAll because Peek can synthesize
+// close ahead of an earlier non-empty line when the first stored line is empty.
 //
 // Empty lines are stepped over rather than answered with, because a message can
 // carry the name more than once and Peek reports the first line whether or not
@@ -527,23 +543,12 @@ func linesPeeker(h Peeker, name string) [][]byte {
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
 	if canonical && trailerCount(h) == 0 {
-		v := Peek(h, name)
-		if len(v) > 0 {
-			return v
+		if !utils.EqualFold(name, fasthttp.HeaderConnection) {
+			if v := Peek(h, name); len(v) > 0 {
+				return v
+			}
 		}
-		if v == nil {
-			// Nothing is stored under the name, so there is nothing beside it
-			// to find and the walk below is skipped: a nil answer means absent,
-			// a non-nil empty one means a line that is present and empty. That
-			// distinction is fasthttp's to keep, so Test_First_EmptyLineIsNotNil
-			// pins it — if it ever stops holding, that test says so rather than
-			// this quietly reverting to reading only the first line.
-			return nil
-		}
-
-		// Reached only for a field that is present and empty, which is the shape
-		// being guarded against rather than one anything sends by accident.
-		// PeekAll costs no allocation and resolves the slotted names.
+		// Empty stored values can be nil, so even a nil Peek must check later lines.
 		for _, v := range h.PeekAll(name) {
 			if len(v) > 0 {
 				return v
@@ -552,9 +557,7 @@ func First(h Peeker, name string, canonical bool) []byte {
 		return nil
 	}
 
-	// Split out rather than written below: All's iterator is heap-allocated
-	// where the compiler cannot see the branch is dead, so holding it in this
-	// function cost the canonical path an allocation it never used.
+	// Keep the folded visitor's state off the canonical path's stack frame.
 	return firstFold(h, name)
 }
 
@@ -584,9 +587,8 @@ func firstFold(h Peeker, name string) []byte {
 
 // firstFoldPeeker isolates the interface call's escaping closure from the concrete paths.
 func firstFoldPeeker(h Peeker, name string) []byte {
-	// Walked rather than ranged, for the reason Lines gives: All builds a
-	// heap-allocated iterator per call. Scanning past the match costs less than
-	// the early exit ranging would buy.
+	// Interface dispatch makes the visitor's captured result escape; keep it
+	// separate from firstFold's concrete header calls.
 	var found []byte
 	h.VisitAll(func(k, v []byte) {
 		if found == nil && len(v) > 0 && utils.EqualFold(utils.UnsafeString(k), name) {
@@ -605,8 +607,8 @@ func firstFoldPeeker(h Peeker, name string) []byte {
 // one walk, against one per field for the case-insensitive reads it saves.
 func Canonical(h *fasthttp.ResponseHeader) bool {
 	canonical := true
-	// Walked rather than ranged, for the reason Lines gives: All allocates an
-	// iterator per call, and this runs per response. The deprecation is excluded
+	// Concrete VisitAll keeps the captured result on the stack, even though
+	// VisitAll delegates to All. The deprecation is excluded
 	// in .golangci.yml rather than by an inline directive, which the lint cache
 	// leaves reported as unused on some runs.
 	h.VisitAll(func(k, _ []byte) {

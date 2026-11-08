@@ -328,7 +328,7 @@ func (r *DefaultReq) AcceptEncoding() string {
 // The field name matches case-insensitively (RFC 9110 Section 5.1), so this
 // agrees with GetAll on whether the field is there.
 func (r *DefaultReq) HasHeader(key string) bool {
-	return len(r.headerField(key)) > 0
+	return fieldname.Has(&r.c.fasthttp.Request.Header, key, !r.c.app.config.DisableHeaderNormalizing)
 }
 
 // HasHeaderValue reports whether the request header key lists value as one of
@@ -345,21 +345,12 @@ func (r *DefaultReq) HasHeaderValue(key, value string) bool {
 	}
 	app := r.c.app
 	h := &r.c.fasthttp.Request.Header
-	var lines [][]byte
-	if !app.config.DisableHeaderNormalizing && !fieldname.HasTrailers(h) {
-		// Connection can report nil ahead of a later non-empty line; preserve that gate.
-		if fieldname.Peek(h, key) == nil {
-			return false
-		}
-		lines = h.PeekAll(key)
-	} else {
+	canonical := !app.config.DisableHeaderNormalizing && !fieldname.HasTrailers(h)
+	if !canonical && len(r.headerField(key)) == 0 {
 		// Avoid collecting folded lines when no non-empty value exists.
-		if len(r.headerField(key)) == 0 {
-			return false
-		}
-		lines = fieldname.Lines(h, key, false)
+		return false
 	}
-	for _, line := range lines {
+	for _, line := range fieldname.Lines(h, key, canonical) {
 		if len(line) == 0 {
 			continue
 		}

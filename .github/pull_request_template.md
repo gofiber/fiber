@@ -20,7 +20,9 @@ List the new features or adjustments introduced in this pull request. Provide de
 
 Please delete options that are not relevant.
 
+- [ ] Bug fix (non-breaking change which fixes an issue)
 - [ ] New feature (non-breaking change which adds functionality)
+- [ ] Breaking change (fix or feature that changes existing behavior)
 - [ ] Enhancement (improvement to existing features and functionality)
 - [ ] Documentation update (changes to documentation)
 - [ ] Performance improvement (non-breaking change which improves efficiency)

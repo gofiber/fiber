@@ -284,8 +284,7 @@ func Test_Ctx_HeaderHelpers(t *testing.T) {
 	require.False(t, c.HasHeader("X-Trace-Id"))
 }
 
-// Test_Ctx_HasHeaderValue checks quoted and repeated list members while preserving
-// the distinction between empty field lines and Connection's nil lookup result.
+// Test_Ctx_HasHeaderValue checks quoted and repeated list members, including empty leading lines.
 func Test_Ctx_HasHeaderValue(t *testing.T) {
 	t.Parallel()
 	c := apptest.Ctx(t, New())
@@ -334,12 +333,70 @@ func Test_Ctx_HasHeaderValue(t *testing.T) {
 	c.Request().Header.Add(HeaderCacheControl, "")
 	require.False(t, c.HasHeaderValue(HeaderCacheControl, "public"))
 
-	// Connection's slot reports nil for an empty leading line; retain that absence gate.
+	// Connection's nil Peek result must not hide a later non-empty line.
 	c.Request().Header.DisableSpecialHeader()
 	c.Request().Header.Add(HeaderConnection, "")
 	c.Request().Header.Add(HeaderConnection, "upgrade")
 	require.Nil(t, c.Request().Header.Peek(HeaderConnection))
-	require.False(t, c.HasHeaderValue(HeaderConnection, "upgrade"))
+	require.True(t, c.HasHeaderValue(HeaderConnection, "upgrade"))
+}
+
+func Test_Ctx_HasHeader_EmptyLeadingLine(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		key, lines, want string
+		all              []string
+	}{
+		{HeaderConnection, "Connection:\r\nConnection: upgrade\r\n", "upgrade", []string{"upgrade"}},
+		{
+			HeaderConnection, "Connection:\r\nConnection: upgrade\r\nConnection: close\r\n", "upgrade",
+			[]string{"upgrade", "close"},
+		},
+		{
+			"X-Test", "X-Pad-A: a\r\nX-Pad-B: b\r\nX-Pad-C: c\r\nX-Test:\r\nX-Test: later\r\n", "later",
+			[]string{"later"},
+		},
+	} {
+		for _, disabled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/DisableHeaderNormalizing=%t", tc.key, disabled), func(t *testing.T) {
+				t.Parallel()
+				c := apptest.Ctx(t, New(Config{DisableHeaderNormalizing: disabled}))
+				if disabled {
+					c.Request().Header.DisableNormalizing()
+				}
+				raw := "GET / HTTP/1.1\r\nHost: app.example\r\n" + tc.lines + "\r\n"
+				require.NoError(t, c.Request().Read(bufio.NewReader(strings.NewReader(raw))))
+				require.Equal(t, tc.all, c.GetAll(tc.key))
+				require.Equal(t, tc.want, c.Get(tc.key))
+				require.True(t, c.HasHeader(tc.key))
+				require.True(t, c.HasHeaderValue(tc.key, tc.want))
+			})
+		}
+	}
+}
+
+func Test_Ctx_HeaderReads_PreserveCookieLines(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{"X-Test", "X-Missing", HeaderCookie} {
+		for _, has := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/has=%t", key, has), func(t *testing.T) {
+				t.Parallel()
+				c := apptest.Ctx(t, New())
+				raw := "GET / HTTP/1.1\r\nHost: app.example\r\nX-Test: value\r\nCookie: a=1;b=2\r\nCookie: c=3\r\n\r\n"
+				require.NoError(t, c.Request().Read(bufio.NewReader(strings.NewReader(raw))))
+				if has {
+					require.Equal(t, key != "X-Missing", c.HasHeader(key))
+				} else {
+					want := map[string]string{"X-Test": "value", "X-Missing": "", HeaderCookie: "a=1;b=2"}
+					require.Equal(t, want[key], c.Get(key))
+				}
+				lines := c.Request().Header.PeekAll(HeaderCookie)
+				require.Len(t, lines, 2)
+				require.Equal(t, "a=1;b=2", string(lines[0]))
+				require.Equal(t, "c=3", string(lines[1]))
+			})
+		}
+	}
 }
 
 func Test_Ctx_FullURL_DoesNotAliasPooledBuffer(t *testing.T) {
@@ -8678,7 +8735,7 @@ func Benchmark_Ctx_HasHeaderValueAbsent(b *testing.B) {
 func Benchmark_Ctx_HasHeaderValueEmpty(b *testing.B) {
 	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
 		b.Helper()
-		// Retain a value buffer so the empty line is non-nil, as it is on the wire.
+		// Retain this fixture's value buffer so its empty line is non-nil.
 		c.Request().Header.Set("x-empty", "seed")
 		c.Request().Header.Set("x-empty", "")
 		require.NotNil(b, c.Request().Header.Peek("x-empty"))
