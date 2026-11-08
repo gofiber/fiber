@@ -179,3 +179,36 @@ func TestWriteAtomicErrors(t *testing.T) {
 		require.Equal(t, "original", string(original))
 	})
 }
+
+// TestSelfContainedSelectors accepts selector bases only when they name an import.
+func TestSelfContainedSelectors(t *testing.T) {
+	t.Parallel()
+	for source, want := range map[string]bool{
+		"import \"fmt\"\nfunc Example() { fmt.Println(shared.Value) }":                                      false,
+		"import \"github.com/gofiber/fiber/v3\"\nfunc Example() { fiber.New() }":                            true,
+		"import f \"fmt\"\nfunc Example() { f.Println(1) }":                                                 true,
+		"import \"net/http\"\nfunc Example() { _ = http.MethodGet }\nvar helper = 1":                        true,
+		"import . \"fmt\"\nfunc Example() { Println(shared.Value) }":                                        true,
+		"import \"fmt\"\nfunc Example() { fmt.Println(Config{Value: 1}) }\ntype Config struct{ Value int }": true,
+	} {
+		file, err := parser.ParseFile(token.NewFileSet(), "example_test.go", "package sample_test\n"+source+"\n", 0)
+		require.NoError(t, err)
+		require.Equal(t, want, selfContained(file), source)
+	}
+}
+
+// TestRenderLiteralBytes keeps tabs inside literals and output while indenting with spaces, and fences survive backticks.
+func TestRenderLiteralBytes(t *testing.T) {
+	t.Parallel()
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "sample.go", "package sample\nfunc F() {\n\tprintln(`a\tb`)\n}\n", 0)
+	require.NoError(t, err)
+	docs := packageDocs{fset: fset, symbols: map[string]symbolDoc{"F": {node: file.Decls[0], output: "x\ty\n```\n"}}}
+	out, err := render([]byte("<!-- go:doc F -->\n<!-- /go:doc -->\n"), docs)
+	require.NoError(t, err)
+	require.Contains(t, string(out), "    println(`a\tb`)")
+	require.Contains(t, string(out), "````text\nx\ty\n```\n````\n")
+	again, err := render(out, docs)
+	require.NoError(t, err)
+	require.Equal(t, string(out), string(again))
+}

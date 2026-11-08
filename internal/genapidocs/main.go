@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -33,6 +34,7 @@ var (
 	errGeneratedMarker   = errors.New("generated text contains a go:doc marker")
 	errUndocumentedAPI   = errors.New("exported declarations are not documented")
 	fencePattern         = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")
+	majorVersion         = regexp.MustCompile(`^v\d+$`)
 )
 
 type packageDocs struct {
@@ -268,10 +270,28 @@ func selfContained(file *ast.File) bool {
 	for _, ident := range file.Unresolved {
 		unresolved[ident] = types.Universe.Lookup(ident.Name) == nil
 	}
-	// shortcut: any unresolved selector base is taken as a package name; compile the program if that ever lets a stray variable through.
+	imports := map[string]bool{}
+	for _, spec := range file.Imports {
+		importPath, err := strconv.Unquote(spec.Path.Value)
+		if err != nil {
+			return false
+		}
+		// shortcut: like go/doc, assume an unrenamed import's name is its last non-version path element; validate by compiling if a package breaks that.
+		name := filepath.Base(importPath)
+		if dir := filepath.Dir(importPath); majorVersion.MatchString(name) && dir != "." {
+			name = filepath.Base(dir)
+		}
+		if spec.Name != nil {
+			name = spec.Name.Name
+		}
+		if name == "." {
+			return true // Dot imports hide where names come from, so trust the passing example.
+		}
+		imports[name] = true
+	}
 	ast.Inspect(file, func(n ast.Node) bool {
 		if sel, ok := n.(*ast.SelectorExpr); ok {
-			if ident, ok := sel.X.(*ast.Ident); ok {
+			if ident, ok := sel.X.(*ast.Ident); ok && imports[ident.Name] {
 				delete(unresolved, ident)
 			}
 		}
@@ -386,19 +406,13 @@ func renderSymbols(names []string, docs packageDocs, selected map[ast.Node]bool)
 		}
 		seen[symbol.node] = true
 		selected[symbol.node] = true
-		fmt.Fprintln(&code)
-		fmt.Fprint(&code, "```go\n")
-		if text := strings.TrimSpace(symbol.text); text != "" {
-			for line := range strings.SplitSeq(text, "\n") {
-				fmt.Fprint(&code, strings.TrimRight("// "+line, " \t")+"\n")
-			}
-		}
+		var formatted bytes.Buffer
+		// Indent with spaces for markdownlint; the printer escapes literals, so their tabs survive.
+		config := printer.Config{Mode: printer.UseSpaces, Tabwidth: 4}
 		var node any = symbol.node
 		if symbol.comments != nil {
 			node = &printer.CommentedNode{Node: symbol.node, Comments: symbol.comments}
 		}
-		var formatted bytes.Buffer
-		config := printer.Config{Mode: printer.UseSpaces | printer.TabIndent, Tabwidth: 8}
 		if err := config.Fprint(&formatted, docs.fset, node); err != nil {
 			return nil, fmt.Errorf("format %s: %w", name, err)
 		}
@@ -406,18 +420,42 @@ func renderSymbols(names []string, docs packageDocs, selected map[ast.Node]bool)
 		if symbol.fragment {
 			printed = bytes.TrimSpace(printed[bytes.IndexByte(printed, '{')+1 : bytes.LastIndexByte(printed, '}')])
 		}
+		goFence := codeFence(append([]byte(symbol.text), printed...))
+		fmt.Fprintln(&code)
+		fmt.Fprint(&code, goFence, "go\n")
+		if text := strings.TrimSpace(symbol.text); text != "" {
+			for line := range strings.SplitSeq(text, "\n") {
+				// Doc text is prose, so its tabs are only gofmt code-block indentation.
+				fmt.Fprint(&code, strings.TrimRight("// "+strings.ReplaceAll(line, "\t", "    "), " ")+"\n")
+			}
+		}
 		code.Write(printed)
-		fmt.Fprint(&code, "\n```\n")
+		fmt.Fprint(&code, "\n", goFence, "\n")
 		if symbol.output != "" || symbol.emptyOutput {
 			label := "Output:"
 			if symbol.unordered {
 				label = "Unordered output:"
 			}
-			fmt.Fprint(&code, "\n", label, "\n\n```text\n", symbol.output, "```\n")
+			outFence := codeFence([]byte(symbol.output))
+			fmt.Fprint(&code, "\n", label, "\n\n", outFence, "text\n", symbol.output, outFence, "\n")
 		}
 	}
 	if bytes.Contains(code.Bytes(), []byte("<!-- go:doc")) || bytes.Contains(code.Bytes(), []byte("<!-- /go:doc")) {
 		return nil, errGeneratedMarker
 	}
-	return bytes.ReplaceAll(code.Bytes(), []byte("\t"), []byte("    ")), nil
+	return code.Bytes(), nil
+}
+
+// codeFence returns a backtick fence longer than any backtick run in content, so content cannot close it.
+func codeFence(content []byte) string {
+	longest, run := 2, 0
+	for _, c := range content {
+		if c == '`' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
+		}
+	}
+	return strings.Repeat("`", longest+1)
 }
