@@ -275,6 +275,34 @@ func Test_Store_GetByID(t *testing.T) {
 	})
 }
 
+// Test_Store_GetByID_StorageErrors: a storage that fails to read is reported, and one that fails to delete a
+// session past its deadline still has GetByID say that the session is gone.
+func Test_Store_GetByID_StorageErrors(t *testing.T) {
+	t.Parallel()
+	errBoom := errors.New("boom")
+	raw, err := encodeRecord("json", deadlineOf(time.Now().Add(-time.Minute)), []recordEntry{{key: "k", value: []byte(`"v"`)}})
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		want     error
+		name, op string
+	}{
+		{name: "read fails", op: storagetest.OpGet, want: errBoom},
+		{name: "delete of the expired session fails", op: storagetest.OpDelete, want: ErrSessionIDNotFoundInStore},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mem := storagetest.New()
+			store := NewStore(Config{Storage: mem, Codec: JSONCodec{}})
+			require.NoError(t, mem.Set(string(store.storageKey("id")), raw, time.Hour))
+			mem.SetErr(tc.op, "*", errBoom)
+
+			_, err := store.GetByID(context.Background(), "id")
+			require.ErrorIs(t, err, tc.want)
+		})
+	}
+}
+
 // Test_Store_getSessionID_HonorsChainLevelExtract pins that a chain-level
 // Extract runs. The store used to walk Extractor.Chain itself, calling the
 // children directly, so a decorator wrapping a chain was silently skipped.
