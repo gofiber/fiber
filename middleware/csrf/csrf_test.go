@@ -2324,3 +2324,38 @@ func Test_CSRF_SessionModeFallsBackToTheInnermostMiddleware(t *testing.T) {
 
 	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "true")
 }
+
+// Test_CSRF_SessionModeDoesNotFallBackToAMiddlewareWhoseStoreHasACodec: the token is kept under a key that is
+// not a string, which a session with a Codec cannot hold, so csrf does not fall back to the middleware of such
+// a store as it does for one without: no request is answered with a 500 because of it. The store csrf was given
+// has no middleware, and Store.Get refuses to load a session while one runs, so no token is kept and an unsafe
+// request is refused.
+func Test_CSRF_SessionModeDoesNotFallBackToAMiddlewareWhoseStoreHasACodec(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(session.New(session.Config{Codec: session.JSONCodec{}}), New(Config{Session: session.NewStore()}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
+	post := apptest.Req(fiber.MethodPost, "/", apptest.WithHeader(fiber.HeaderCookie, cookieHeaderOf(resp)), apptest.WithHeader(HeaderName, responseCookie(t, resp, "csrf_").Value))
+	apptest.Expect(t, app, post, fiber.StatusForbidden)
+}
+
+// Test_CSRF_SessionModeWarnsOnceAboutAMiddlewareWhoseStoreHasACodec: the reason is logged the first time csrf
+// meets such a middleware, and not again. It replaces the output of the package-global logger, so it is
+// sequential.
+// conventions:ignore parallel: it replaces the output of the package-global logger
+func Test_CSRF_SessionModeWarnsOnceAboutAMiddlewareWhoseStoreHasACodec(t *testing.T) {
+	var buf bytes.Buffer
+	fiberlog.SetOutput(&buf)
+	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+
+	app := fiber.New()
+	app.Use(session.New(session.Config{Codec: session.JSONCodec{}}), New(Config{Session: session.NewStore()}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	for range 3 {
+		apptest.Expect(t, app, "/", fiber.StatusOK)
+	}
+	require.Equal(t, 1, strings.Count(buf.String(), "has a Codec"), buf.String())
+}
