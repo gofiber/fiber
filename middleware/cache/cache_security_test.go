@@ -921,10 +921,10 @@ func Test_SetCookie2ResponseIsNotStored(t *testing.T) {
 // an entry each time.
 func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 	t.Parallel()
-	for _, spelling := range []string{
-		"Application/X-WWW-Form-Urlencoded",
-		"application/x-www-form-urlencoded",
-		"Multipart/Form-Data; BOUNDARY=AbC",
+	for spelling, body := range map[string]string{
+		"Application/X-WWW-Form-Urlencoded": "a=1",
+		"application/x-www-form-urlencoded": "a=1",
+		"Multipart/Form-Data; BOUNDARY=AbC": "--AbC\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n1\r\n--AbC--\r\n",
 	} {
 		t.Run(spelling, func(t *testing.T) {
 			t.Parallel()
@@ -939,7 +939,7 @@ func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 			})
 
 			do := func() string {
-				req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a=1"))
+				req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader(body))
 				req.Header.Set(fiber.HeaderContentType, spelling)
 				resp := apptest.Do(t, app, req)
 				return resp.Header.Get("X-Cache")
