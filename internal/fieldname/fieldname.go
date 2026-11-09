@@ -462,7 +462,7 @@ func rewriteInRankOrder(h *fasthttp.RequestHeader, lines []orderedLine) {
 //nolint:revive // flag-parameter: canonical is a property of the header store, not a mode of operation
 func Lines(h Peeker, name string, canonical bool) [][]byte {
 	if canonical && trailerCount(h) == 0 {
-		// PeekAll hands back the header's own slice without allocating.
+		// PeekAll reuses the header's result slice, growing it when needed.
 		return h.PeekAll(name)
 	}
 	return linesFold(h, name)
@@ -524,6 +524,12 @@ func Has(h Peeker, name string, canonical bool) bool {
 // nil if there is none. Connection uses PeekAll because Peek can synthesize
 // close ahead of an earlier non-empty line when the first stored line is empty.
 //
+// Concrete canonical headers read ordinary fields through one PeekAll walk.
+// Its header-owned result slice is reused, but may grow on a cold positive read.
+// Dedicated fields retain their positive PeekCanonical read to avoid building
+// that slice; every empty result still checks all lines. Generic readers keep
+// their Peek fast path because their storage and projection semantics are unknown.
+//
 // Empty lines are stepped over rather than answered with, because a message can
 // carry the name more than once and Peek reports the first line whether or not
 // it holds a value: an empty "Cache-Control:" ahead of "Cache-Control: private"
@@ -542,22 +548,58 @@ func Has(h Peeker, name string, canonical bool) bool {
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
-	if canonical && trailerCount(h) == 0 {
-		if !utils.EqualFold(name, fasthttp.HeaderConnection) {
-			if v := Peek(h, name); len(v) > 0 {
-				return v
+	if canonical {
+		switch h := h.(type) {
+		case *fasthttp.RequestHeader:
+			if len(h.PeekTrailerKeys()) == 0 {
+				// These fields have dedicated slots or Cookie projections. Keep the
+				// positive keyed read without building PeekAll's result slice.
+				switch name {
+				case fasthttp.HeaderHost, fasthttp.HeaderContentType, fasthttp.HeaderUserAgent,
+					fasthttp.HeaderContentLength, fasthttp.HeaderCookie:
+					if v := h.PeekCanonical(utils.UnsafeBytes(name)); len(v) > 0 {
+						return v
+					}
+				}
+				for _, v := range h.PeekAll(name) {
+					if len(v) > 0 {
+						return v
+					}
+				}
+				return nil
+			}
+		case *fasthttp.ResponseHeader:
+			if len(h.PeekTrailerKeys()) == 0 {
+				switch name {
+				case fasthttp.HeaderContentType, fasthttp.HeaderContentEncoding, fasthttp.HeaderServer,
+					fasthttp.HeaderContentLength, fasthttp.HeaderSetCookie:
+					if v := h.PeekCanonical(utils.UnsafeBytes(name)); len(v) > 0 {
+						return v
+					}
+				}
+				for _, v := range h.PeekAll(name) {
+					if len(v) > 0 {
+						return v
+					}
+				}
+				return nil
+			}
+		default:
+			if len(h.PeekTrailerKeys()) == 0 {
+				if !utils.EqualFold(name, fasthttp.HeaderConnection) {
+					if v := Peek(h, name); len(v) > 0 {
+						return v
+					}
+				}
+				for _, v := range h.PeekAll(name) {
+					if len(v) > 0 {
+						return v
+					}
+				}
+				return nil
 			}
 		}
-		// Empty stored values can be nil, so even a nil Peek must check later lines.
-		for _, v := range h.PeekAll(name) {
-			if len(v) > 0 {
-				return v
-			}
-		}
-		return nil
 	}
-
-	// Keep the folded visitor's state off the canonical path's stack frame.
 	return firstFold(h, name)
 }
 

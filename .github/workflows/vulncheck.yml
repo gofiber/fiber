@@ -5,11 +5,19 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**"
+      - "!**/*.md"
+      - "!.github/dependabot.yml"
+      - "!.github/workflows/**"
+      - ".github/workflows/vulncheck.yml"
   pull_request:
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**"
+      - "!**/*.md"
+      - "!.github/dependabot.yml"
+      - "!.github/workflows/**"
+      - ".github/workflows/vulncheck.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}

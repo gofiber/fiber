@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Add item to v3 project
-        uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
+        uses: actions/add-to-project@f2c1f1fa649a891be84948ea89b5dfba1526ef05 # v2.0.1
         with:
           project-url: https://github.com/orgs/gofiber/projects/1
           github-token: ${{ secrets.ISSUE_PR_TOKEN }}

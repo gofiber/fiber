@@ -7,7 +7,6 @@ package mediatype
 import (
 	"bytes"
 	"iter"
-	"strings"
 
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
@@ -98,9 +97,9 @@ func IsForm(ct []byte) bool {
 }
 
 // ParsesPostArgs reports whether fasthttp's PostArgs reads the body under ct: it
-// matches the urlencoded type as a case-sensitive prefix.
+// matches the urlencoded type as a case-insensitive prefix.
 func ParsesPostArgs(ct []byte) bool {
-	return strings.HasPrefix(utils.UnsafeString(ct), applicationForm)
+	return utils.HasPrefixFold(ct, applicationForm)
 }
 
 // hasUpper reports whether b holds an ASCII uppercase byte.

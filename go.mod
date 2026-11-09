@@ -8,11 +8,11 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-colorable v0.1.16
 	github.com/mattn/go-isatty v0.0.24
-	github.com/shamaton/msgpack/v3 v3.2.6
+	github.com/shamaton/msgpack/v3 v3.2.7
 	github.com/stretchr/testify v1.12.1
 	github.com/tinylib/msgp v1.6.5
 	github.com/valyala/bytebufferpool v1.0.0
-	github.com/valyala/fasthttp v1.77.0
+	github.com/valyala/fasthttp v1.78.0
 	golang.org/x/crypto v0.58.0
 )
 
@@ -27,6 +27,6 @@ require (
 	github.com/philhofer/fwd v1.2.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/net v0.62.0
-	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.43.0
 )

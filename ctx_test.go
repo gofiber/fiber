@@ -1194,6 +1194,7 @@ func Test_Ctx_Body_StreamedBodyLimit(t *testing.T) {
 		{name: "FormValue", contentType: MIMEApplicationForm, read: readForm, refused: "a=none"},
 		// fasthttp's PostArgs reads any media type with this prefix.
 		{name: "FormValue by prefix", contentType: MIMEApplicationForm + "-x", read: readForm, refused: "a=none"},
+		{name: "FormValue by folded prefix", contentType: "Application/X-WWW-Form-Urlencoded-x", read: readForm, refused: "a=none"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
