@@ -252,9 +252,9 @@ This is a more secure, stateful pattern that is **automatically enabled** when y
 
 - **Why it is more secure:** Tying the token to the server-side session provides the strongest CSRF protection, as the token is then guaranteed to have been generated for the specific user. While browsers automatically send the required cookie, custom API clients must remember to include the cookie with their requests for validation to succeed.
 
-- **Several session middleware:** the token is kept in the session of the middleware of the store you give as `Session`, whichever other session middleware runs. When that store has no middleware in the request, the token goes to the innermost session middleware, the last to run.
+- **Several session middleware:** the token is kept in the session of the middleware of the store you give as `Session`, whichever other session middleware runs. When that store has no middleware in the request, the token goes to the innermost session middleware, the last to run, unless that one has a `Codec`, whose sessions cannot hold it (see below).
 
-- **No session store with a codec:** the token is kept under a key that is not a string, which a store with a `Codec` does not hold, so `csrf.New` panics when `Session` is such a store. Give `Session` a store without a `Codec`, or use `Storage`.
+- **No session store with a codec:** the token is kept under a key that is not a string, which a store with a `Codec` does not hold, so `csrf.New` panics when `Session` is such a store. A session middleware with a `Codec` cannot hold it either: when the store you give as `Session` has no middleware in the request and the innermost one has a `Codec`, `csrf` keeps no token, refuses unsafe requests and logs a warning once. Give `Session` a store without a `Codec` and run its middleware in front of `csrf`, or use `Storage`.
 
 ```go
 // Enable the more secure Synchronizer Token pattern

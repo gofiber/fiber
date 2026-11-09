@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -10,6 +11,8 @@ import (
 
 type sessionManager struct {
 	session *session.Store
+	// codecWarning keeps the warning about a middleware with a Codec to one line.
+	codecWarning sync.Once
 }
 
 type sessionKeyType int
@@ -34,12 +37,25 @@ func newSessionManager(s *session.Store) *sessionManager {
 
 // middleware returns the session middleware the token is kept in: the one of the store csrf
 // was given and, when that store has none in the request, the innermost one, which is what
-// csrf used before it could tell them apart. It is nil when no session middleware runs.
+// csrf used before it could tell them apart. It is nil when no session middleware runs, and
+// when the innermost one belongs to a store with a Codec, whose sessions cannot hold the token
+// because its key is not a string. The store csrf was given is then asked for its own session,
+// which Store.Get refuses while a session middleware runs: no token is kept, and an unsafe
+// request is refused. That is logged, once.
 func (m *sessionManager) middleware(c fiber.Ctx) *session.Middleware {
 	if sess := m.session.FromContext(c); sess != nil {
 		return sess
 	}
-	return session.FromContext(c)
+	sess := session.FromContext(c)
+	if sess != nil && sess.Store().Codec != nil {
+		m.codecWarning.Do(func() {
+			log.Warn("csrf: the session middleware of the request has a Codec, which cannot hold the token, " +
+				"and the store given as Session has no middleware in it, so no token is kept and unsafe requests " +
+				"are refused; run the middleware of that store in front of csrf, or use Storage")
+		})
+		return nil
+	}
+	return sess
 }
 
 // get token from session
