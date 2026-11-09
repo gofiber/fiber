@@ -150,6 +150,8 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 		{name: "trailing dot in brackets", input: "[::1.]", expectOK: false},
 		{name: "bracketed name", input: "[allowed.com]", expectOK: false},
 		{name: "bracketed name with port inside", input: "[allowed.com:443]", expectOK: false},
+		// fasthttp 1.78 refuses this before the middleware; keep the middleware's own check pinned.
+		{name: "bracketed name with zone", input: "[allowed.com:443%25z]", expectOK: false},
 		{name: "bracketed ipv4", input: "[127.0.0.1]", expectOK: false},
 		{name: "bracketed label and port", input: "[1:80]", expectOK: false},
 		{name: "empty port", input: "example.com:", expectOK: false},
@@ -349,8 +351,6 @@ func Test_HostAuthorization_Hosts(t *testing.T) {
 		{name: "ipv6 zoned uncompressed", allowed: linkLocal, host: "[FE80:0:0:0:0:0:0:1%25eth0]:80", status: fiber.StatusForbidden},
 		{name: "ipv4-mapped zoned", allowed: loopback4, host: "[::ffff:127.0.0.1%25eth0]", status: fiber.StatusForbidden},
 		{name: "ipv4-mapped hex zoned", allowed: loopback4, host: "[::ffff:7f00:1%25eth0]:8080", status: fiber.StatusForbidden},
-		// fasthttp skips its IPv6 check for a "%25" literal, so this reaches the middleware.
-		{name: "bracketed name with zone", allowed: []string{"allowed.com"}, host: "[allowed.com:443%25z]", status: fiber.StatusForbidden},
 
 		{name: "subdomain wildcard allowed", allowed: wildcard, host: "api.myapp.com", status: fiber.StatusOK},
 		{name: "subdomain wildcard bare domain rejected", allowed: wildcard, host: "myapp.com", status: fiber.StatusForbidden},
