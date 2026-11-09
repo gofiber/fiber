@@ -1,6 +1,8 @@
 package session
 
 import (
+	"bytes"
+	"encoding/gob"
 	"reflect"
 	"slices"
 	"sync"
@@ -315,4 +317,17 @@ func Test_Data_DirtyTracking(t *testing.T) {
 		require.Equal(t, []any{any(key)}, d.Keys())
 		require.True(t, d.dirty.Load())
 	})
+}
+
+// Test_Data_EditedSince: a snapshot that does not decode counts as an edit, and the snapshot of no data is
+// not an edit of none.
+func Test_Data_EditedSince(t *testing.T) {
+	t.Parallel()
+	d := acquireData()
+	t.Cleanup(func() { releaseData(d) })
+	var empty bytes.Buffer
+	require.NoError(t, gob.NewEncoder(&empty).Encode(map[any]any{}))
+
+	require.True(t, d.editedSince([]byte("not a gob stream")))
+	require.False(t, d.editedSince(empty.Bytes()))
 }
