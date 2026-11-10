@@ -314,6 +314,11 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, error) {
 			return nil, err
 		}
 	}
+	// unreadable is the storage key of the record the request itself names, when the
+	// store cannot read it: the new session takes its place, and ends it when it is
+	// ended. A record under an ID that another store issued is that store's, and is
+	// not remembered.
+	var unreadable storageKey
 	if found.raw == nil {
 		// Nothing was cached for s that is saved: the request names the session, if any.
 		res, err := s.getSessionID(c)
@@ -322,8 +327,8 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, error) {
 		}
 		found.res = res
 		if s.mayBeStored(cached, res.Value) {
-			if readErr := s.readSession(c, res.Value, &found); readErr != nil {
-				return nil, readErr
+			if unreadable, err = s.readSession(c, res.Value, &found); err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -344,6 +349,7 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, error) {
 	sess.bind(s)
 	sess.id = id
 	sess.key = found.key
+	sess.unreadable = unreadable
 	sess.isFresh = isFresh
 	sess.extractor = found.res
 
@@ -399,7 +405,7 @@ func (s *Store) mayBeStored(cached *cachedID, id string) bool {
 func (s *Store) cachedSession(c fiber.Ctx, outer *Middleware, cached *cachedID, found *storedSession) error {
 	if outer != nil {
 		if ident, ok := outer.sharedID(s); ok {
-			if err := s.readSession(c, ident.id, found); err != nil || found.raw != nil {
+			if _, err := s.readSession(c, ident.id, found); err != nil || found.raw != nil {
 				found.res = s.places().adopt(ident.res)
 				return err
 			}
@@ -409,7 +415,7 @@ func (s *Store) cachedSession(c fiber.Ctx, outer *Middleware, cached *cachedID, 
 		if !s.sharesSource(cached.store) {
 			continue
 		}
-		if err := s.readSession(c, cached.id, found); err != nil || found.raw != nil {
+		if _, err := s.readSession(c, cached.id, found); err != nil || found.raw != nil {
 			found.res = s.places().adopt(cached.res)
 			return err
 		}
@@ -459,17 +465,21 @@ type storedSession struct {
 }
 
 // readSession looks for the session with the given ID in the storage and, if one is
-// stored, fills found with it. A record the store cannot read counts as none.
-func (s *Store) readSession(ctx context.Context, id string, found *storedSession) error {
+// stored, fills found with it. A record the store cannot read counts as none: its storage
+// key is returned, which is empty otherwise.
+func (s *Store) readSession(ctx context.Context, id string, found *storedSession) (storageKey, error) {
 	key := s.storageKey(id)
 	gen := key.lock().gen.Load()
 	raw, err := s.Storage.GetWithContext(ctx, string(key))
-	if err != nil || raw == nil || s.refusesRecord(raw) {
-		return err
+	if err != nil || raw == nil {
+		return "", err
+	}
+	if s.refusesRecord(raw) {
+		return key, nil
 	}
 	// Not the ID as given: it may point into the request buffer the next request reuses.
 	found.raw, found.key, found.id, found.gen = raw, key, s.ownedID(key, id), gen
-	return nil
+	return "", nil
 }
 
 // recordCodec returns the Codec of the store with its name, nil for a store without
@@ -529,16 +539,18 @@ func (s *Store) warnUnreadable(raw []byte, codec *namedCodec) {
 	switch {
 	case len(name) > 0:
 		log.Warnf("[session] a stored session is a record of the codec %q (format version %d), which this store, which %s, cannot read; "+
-			"it is treated as a new session, and the record is left alone. This is expected once after Config.Codec was changed or turned off; "+
+			"it is treated as a new session, and the record is left alone unless that session is destroyed or reset. "+
+			"This is expected once after Config.Codec was changed or turned off; "+
 			"if it goes on, applications with different codecs share a storage and a session cookie",
 			name, version, have)
 	case known:
 		log.Warnf("[session] a stored session is a record of format version %d, which this store, which %s, does not know; "+
-			"it was probably written by a newer release of the application. It is treated as a new session, and the record is left alone",
+			"it was probably written by a newer release of the application. It is treated as a new session, "+
+			"and the record is left alone unless that session is destroyed or reset",
 			version, have)
 	default:
 		log.Warn("[session] a stored session starts like a record, but its header is damaged; " +
-			"it is treated as a new session, and the record is left alone")
+			"it is treated as a new session, and the record is left alone unless that session is destroyed or reset")
 	}
 }
 
@@ -707,7 +719,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 	}
 
 	var found storedSession
-	if err := s.readSession(ctx, id, &found); err != nil {
+	if _, err := s.readSession(ctx, id, &found); err != nil {
 		return nil, err
 	}
 	if found.raw == nil {
