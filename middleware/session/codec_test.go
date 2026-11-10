@@ -460,6 +460,38 @@ func Test_Codec_EndingTheSessionLeavesOtherRecordsAlone(t *testing.T) {
 		require.NotNil(t, storedBytes(t, mem, id), "the inner store deleted the session of the outer one")
 	})
 
+	t.Run("the record another store of the request could not read", func(t *testing.T) {
+		t.Parallel()
+		mem := memory.New()
+		id := seedSession(t, fiber.New(), NewStore(Config{Storage: mem, Codec: JSONCodec{}}), func(s *Session) { s.Set("k", "v") })
+		store := NewStore(Config{Storage: mem, Extractor: extractors.FromCookie("mine")})
+		other := NewStore(Config{Storage: mem, Extractor: extractors.FromCookie("other")})
+
+		app := fiber.New()
+		app.Get("/", func(c fiber.Ctx) error {
+			use := func(s *Store, do func(sess *Session) error) error {
+				sess, err := s.Get(c)
+				if err != nil {
+					return err
+				}
+				defer sess.Release()
+				return do(sess)
+			}
+			// The store saves a session, the other store meets the record, and the store is asked again.
+			return errors.Join(
+				use(store, func(sess *Session) error {
+					sess.Set("k", "v")
+					return sess.Save()
+				}),
+				use(other, func(*Session) error { return nil }),
+				use(store, (*Session).Destroy),
+			)
+		})
+		apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withCookies(map[string]string{"other": id})), fiber.StatusOK)
+
+		require.NotNil(t, storedBytes(t, mem, id), "a store ended the record that another store of the request could not read")
+	})
+
 	for name, stored := range map[string]bool{"a store that found the session": true, "a store that found none": false} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -478,6 +510,114 @@ func Test_Codec_EndingTheSessionLeavesOtherRecordsAlone(t *testing.T) {
 			require.Len(t, mem.CallKeys(storagetest.OpDelete), 1, "ending a session that replaced no record deletes that session, once")
 		})
 	}
+}
+
+// A request can load the session of a store more than once: a middleware in front of the handler
+// asks the store, and the handler asks it again, or the middleware of the store runs behind it, or
+// another store that reads the same cookie finds the session. Once the first session is saved, a
+// store finds that one and no longer looks under the ID the request names, so the later session
+// learns from the request which record the first one took the place of, and ends it when it is
+// ended, whatever the first one did in between.
+func Test_Codec_EndingALaterSessionOfTheRequestDeletesTheRecordToo(t *testing.T) {
+	t.Parallel()
+	for name, first := range map[string]func(sess *Session) error{
+		"the first is left unsaved": func(*Session) error { return nil },
+		"the first was saved": func(sess *Session) error {
+			sess.Set("k", "v")
+			return sess.Save()
+		},
+		"the first was regenerated and saved": func(sess *Session) error { return errors.Join(sess.Regenerate(), sess.Save()) },
+	} {
+		for _, later := range []string{"a second store.Get", "the middleware of the store", "another store over the same cookie"} {
+			t.Run(name+"/"+later, func(t *testing.T) {
+				t.Parallel()
+				mem := storagetest.New()
+				id := seedSession(t, fiber.New(), NewStore(Config{Storage: mem, Codec: JSONCodec{}}), func(s *Session) { s.Set("k", "v") })
+				handler, store := NewWithStore(Config{Storage: mem})
+				asked := store
+				if later == "another store over the same cookie" {
+					asked = NewStore(Config{Storage: mem})
+				}
+
+				app := fiber.New()
+				app.Use(func(c fiber.Ctx) error {
+					sess, err := store.Get(c)
+					if err != nil {
+						return err
+					}
+					defer sess.Release()
+					if err := first(sess); err != nil {
+						return err
+					}
+					return c.Next()
+				})
+				if later == "the middleware of the store" {
+					app.Use(handler)
+					app.Get("/", func(c fiber.Ctx) error { return FromContext(c).Destroy() })
+				} else {
+					app.Get("/", func(c fiber.Ctx) error {
+						sess, err := asked.Get(c)
+						if err != nil {
+							return err
+						}
+						defer sess.Release()
+						return sess.Destroy()
+					})
+				}
+				apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withCookies(map[string]string{"session_id": id})), fiber.StatusOK)
+
+				require.Nil(t, storedBytes(t, mem, id), "the later session did not end the record the request named")
+			})
+		}
+	}
+}
+
+// A storage that fails to delete the record fails the Destroy or the Reset, which leaves the session
+// as it was, and the call that follows deletes the record: it is not forgotten.
+func Test_Codec_EndingTheSession_RecordThatCannotBeDeleted(t *testing.T) {
+	t.Parallel()
+	for name, end := range map[string]func(sess *Session) error{"Destroy": (*Session).Destroy, "Reset": (*Session).Reset} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			mem := storagetest.New()
+			id := seedSession(t, fiber.New(), NewStore(Config{Storage: mem, Codec: JSONCodec{}}), func(s *Session) { s.Set("k", "v") })
+			sess := loadSession(t, fiber.New(), NewStore(Config{Storage: mem}), id)
+			sess.Set("mine", "kept")
+			newID, errBoom := sess.ID(), errors.New("boom")
+
+			mem.SetErr(storagetest.OpDelete, sessionKey(id), errBoom)
+			require.ErrorIs(t, end(sess), errBoom)
+			require.Equal(t, "kept", sess.Get("mine"), "a call that failed emptied the session")
+			require.Equal(t, newID, sess.ID(), "a call that failed gave the session another ID")
+			require.NotNil(t, storedBytes(t, mem, id))
+
+			mem.SetErr(storagetest.OpDelete, sessionKey(id), nil)
+			require.NoError(t, end(sess))
+			require.Nil(t, storedBytes(t, mem, id), "the record was forgotten when the delete of it failed")
+		})
+	}
+}
+
+// A logout reaches the record only through the request that named it. Once a request to the store
+// that cannot read it has saved the session that took its place, the cookie of the visitor names
+// that session, and ending it leaves the record where it is, until its time to live runs out.
+func Test_Codec_ALaterRequestNoLongerNamesTheRecord(t *testing.T) {
+	t.Parallel()
+	mem := storagetest.New()
+	id := seedSession(t, fiber.New(), NewStore(Config{Storage: mem, Codec: JSONCodec{}}), func(s *Session) { s.Set("k", "v") })
+
+	app := fiber.New()
+	app.Use(New(Config{Storage: mem}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	app.Get("/logout", func(c fiber.Ctx) error { return FromContext(c).Destroy() })
+
+	resp := apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withCookies(map[string]string{"session_id": id})), fiber.StatusOK)
+	replaced := cookiesByName(resp)["session_id"].Value
+	require.NotEqual(t, id, replaced)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/logout", withCookies(map[string]string{"session_id": replaced})), fiber.StatusOK)
+
+	require.Nil(t, storedBytes(t, mem, replaced))
+	require.NotNil(t, storedBytes(t, mem, id))
 }
 
 func Test_Codec_CorruptRecordsAreErrors(t *testing.T) {
