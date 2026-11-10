@@ -572,8 +572,9 @@ func Test_Codec_EndingALaterSessionOfTheRequestDeletesTheRecordToo(t *testing.T)
 	}
 }
 
-// A storage that fails to delete the record fails the Destroy or the Reset, which leaves the session
-// as it was, and the call that follows deletes the record: it is not forgotten.
+// A storage that fails to delete the record fails the Destroy or the Reset before the record of the
+// session itself is touched, which leaves the session as it was, stored as it is. The call that
+// follows deletes both: the record is not forgotten.
 func Test_Codec_EndingTheSession_RecordThatCannotBeDeleted(t *testing.T) {
 	t.Parallel()
 	for name, end := range map[string]func(sess *Session) error{"Destroy": (*Session).Destroy, "Reset": (*Session).Reset} {
@@ -583,17 +584,52 @@ func Test_Codec_EndingTheSession_RecordThatCannotBeDeleted(t *testing.T) {
 			id := seedSession(t, fiber.New(), NewStore(Config{Storage: mem, Codec: JSONCodec{}}), func(s *Session) { s.Set("k", "v") })
 			sess := loadSession(t, fiber.New(), NewStore(Config{Storage: mem}), id)
 			sess.Set("mine", "kept")
+			require.NoError(t, sess.Save())
 			newID, errBoom := sess.ID(), errors.New("boom")
 
 			mem.SetErr(storagetest.OpDelete, sessionKey(id), errBoom)
 			require.ErrorIs(t, end(sess), errBoom)
 			require.Equal(t, "kept", sess.Get("mine"), "a call that failed emptied the session")
 			require.Equal(t, newID, sess.ID(), "a call that failed gave the session another ID")
+			require.NotNil(t, storedBytes(t, mem, newID), "a call that failed deleted the record of the session itself")
 			require.NotNil(t, storedBytes(t, mem, id))
 
 			mem.SetErr(storagetest.OpDelete, sessionKey(id), nil)
 			require.NoError(t, end(sess))
 			require.Nil(t, storedBytes(t, mem, id), "the record was forgotten when the delete of it failed")
+			require.Nil(t, storedBytes(t, mem, newID))
+		})
+	}
+}
+
+// Regenerate and Reset cache the new ID of a session on the request, for a store that is asked
+// later, and what they cache says which record the session took the place of. The session that
+// is loaded under the new ID, or started because nothing was saved under it, ends that record too.
+func Test_Codec_EndingTheSessionAfterARegenerateDeletesTheRecordToo(t *testing.T) {
+	t.Parallel()
+	for name, skipEmpty := range map[string]bool{"the regenerated session was saved": false, "it was empty and not saved": true} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			mem := storagetest.New()
+			id := seedSession(t, fiber.New(), NewStore(Config{Storage: mem, Codec: JSONCodec{}}), func(s *Session) { s.Set("k", "v") })
+			handler, store := NewWithStore(Config{Storage: mem, SkipEmptySessions: skipEmpty})
+
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				if err := c.Next(); err != nil {
+					return err
+				}
+				sess, err := store.Get(c) // the session middleware has finished with the request
+				if err != nil {
+					return err
+				}
+				defer sess.Release()
+				return sess.Destroy()
+			}, handler)
+			app.Get("/", func(c fiber.Ctx) error { return FromContext(c).Regenerate() })
+			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withCookies(map[string]string{"session_id": id})), fiber.StatusOK)
+
+			require.Nil(t, storedBytes(t, mem, id), "the session that followed the Regenerate did not end the record the request named")
 		})
 	}
 }

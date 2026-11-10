@@ -1745,10 +1745,10 @@ func Test_Session_CachedIDs_StayWholeAndGoBackToThePoolCleared(t *testing.T) {
 	c := apptest.Ctx(t, fiber.New())
 	a, b := NewStore(), NewStore()
 
-	cacheID(c, a, sessionIdentity{id: "1"})
+	cacheID(c, a, &sessionIdentity{id: "1"})
 	first := requestIDs(c)
-	cacheID(c, b, sessionIdentity{id: "2"})
-	cacheID(c, a, sessionIdentity{id: "3"})
+	cacheID(c, b, &sessionIdentity{id: "2"})
+	cacheID(c, a, &sessionIdentity{id: "3"})
 
 	require.Same(t, first, requestIDs(c), "the entry a store had is its entry again")
 	second := first.next
