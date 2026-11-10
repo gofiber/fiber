@@ -906,8 +906,11 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		// New fasthttp Ctx from pool
 		pctx := ctxPool.Get().(*pooledCtx) //nolint:forcetypeassert,errcheck // not needed
 		fctx := &pctx.fctx
-		fctx.Response.Reset()
+		// The request first, as fasthttp's server resets them: that closes the values the
+		// last request left on it, and what a value still writes to the response as it is
+		// closed must not be in the response of this request.
 		fctx.Request.Reset()
+		fctx.Response.Reset()
 		defer func() {
 			// As fasthttp's server does, leave a timed-out ctx to the handler that may still run on it. So for
 			// a net/http handler that flushed and outlived its response: the next Reset would wait for it.
