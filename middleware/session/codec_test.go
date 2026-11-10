@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
@@ -400,6 +401,83 @@ func Test_Codec_GetByIDWarnsAboutARecordItCannotRead(t *testing.T) {
 	}
 	require.Equal(t, 1, strings.Count(buf.String(), "[Warn]"), "%q", buf.String())
 	require.Contains(t, buf.String(), `"json"`)
+}
+
+// A store that cannot read the record a request names starts a new session in its place, so ending
+// that session ends the record too: Destroy and Reset delete it, once, on whichever instance the
+// logout lands. A request that only uses or rotates its session leaves the record alone, for the
+// instance that reads it.
+func Test_Codec_EndingTheSessionDeletesTheRecordItReplaced(t *testing.T) {
+	t.Parallel()
+	for name, codec := range map[string]Codec{"a store without a codec": nil, "a store of another codec": NewCodec("other", json.Marshal, json.Unmarshal)} {
+		for _, tc := range []struct {
+			do      func(m *Middleware) error
+			name    string
+			deletes int
+		}{
+			{name: "a request that ends nothing", do: func(*Middleware) error { return nil }},
+			{name: "Regenerate", do: (*Middleware).Regenerate},
+			{name: "Destroy", do: (*Middleware).Destroy, deletes: 1},
+			{name: "Reset", do: (*Middleware).Reset, deletes: 1},
+			{name: "Destroy and then Reset", do: func(m *Middleware) error { return errors.Join(m.Destroy(), m.Reset()) }, deletes: 1},
+		} {
+			t.Run(name+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+				mem := storagetest.New()
+				id := seedSession(t, fiber.New(), NewStore(Config{Storage: mem, Codec: JSONCodec{}}), func(s *Session) { s.Set("k", "v") })
+
+				app := fiber.New()
+				app.Use(New(Config{Storage: mem, Codec: codec}))
+				app.Get("/", func(c fiber.Ctx) error { return tc.do(FromContext(c)) })
+				apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withCookies(map[string]string{"session_id": id})), fiber.StatusOK)
+
+				deletes := slices.DeleteFunc(mem.CallKeys(storagetest.OpDelete), func(key string) bool { return key != sessionKey(id) })
+				require.Len(t, deletes, tc.deletes)
+				require.Equal(t, tc.deletes == 0, storedBytes(t, mem, id) != nil)
+			})
+		}
+	}
+}
+
+// Only the record the request itself names is the visitor's to end. A store that shares one source
+// of two with another store is handed that store's ID, and a record under it that it cannot read is
+// the other store's session: ending its own leaves that one alone. And a store that met no such
+// record deletes its own session, once, and nothing else, as before.
+func Test_Codec_EndingTheSessionLeavesOtherRecordsAlone(t *testing.T) {
+	t.Parallel()
+	t.Run("the session of a store that handed its ID over", func(t *testing.T) {
+		t.Parallel()
+		mem := memory.New()
+		outer, outerStore := NewWithStore(Config{Storage: mem, Codec: JSONCodec{}, Extractor: extractors.Chain(extractors.FromCookie("a"), extractors.FromCookie("shared"))})
+		inner, innerStore := NewWithStore(Config{Storage: mem, Extractor: extractors.FromCookie("shared")})
+		id := seedSession(t, fiber.New(), outerStore, func(s *Session) { s.Set("k", "v") })
+
+		app := fiber.New()
+		app.Use(outer, inner)
+		app.Get("/", func(c fiber.Ctx) error { return innerStore.FromContext(c).Destroy() })
+		apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withCookies(map[string]string{"a": id})), fiber.StatusOK)
+
+		require.NotNil(t, storedBytes(t, mem, id), "the inner store deleted the session of the outer one")
+	})
+
+	for name, stored := range map[string]bool{"a store that found the session": true, "a store that found none": false} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			mem := storagetest.New()
+			handler, store := NewWithStore(Config{Storage: mem})
+			id := "unknown"
+			if stored {
+				id = seedSession(t, fiber.New(), store, func(s *Session) { s.Set("k", "v") })
+			}
+
+			app := fiber.New()
+			app.Use(handler)
+			app.Get("/", func(c fiber.Ctx) error { return FromContext(c).Destroy() })
+			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withCookies(map[string]string{"session_id": id})), fiber.StatusOK)
+
+			require.Len(t, mem.CallKeys(storagetest.OpDelete), 1, "ending a session that replaced no record deletes that session, once")
+		})
+	}
 }
 
 func Test_Codec_CorruptRecordsAreErrors(t *testing.T) {

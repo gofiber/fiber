@@ -29,6 +29,7 @@ type Session struct {
 	rawData     []byte                  // snapshot from the last decode, reused by Save while the data is unchanged
 	id          string                  // session id
 	key         storageKey              // storage key of id, built on first use
+	unreadable  storageKey              // key of the record the request named and the store cannot read: Destroy and Reset delete it too
 	extractor   extractors.Result       // provenance of the extractor that supplied the session ID
 	sink        [1]extractors.Extractor // backs the one-element result of getExtractorInfo
 	idleTimeout time.Duration           // idleTimeout of this session
@@ -97,6 +98,7 @@ func releaseSession(s *Session) {
 	s.mu.Lock()
 	s.id = ""
 	s.key = ""
+	s.unreadable = ""
 	s.idleTimeout = 0
 	s.ctx = nil
 	s.rctx = nil
@@ -223,6 +225,9 @@ func (s *Session) DestroyWithContext(ctx context.Context) error {
 	if err := s.config.deleteKey(ctx, s.storageKey()); err != nil {
 		return err
 	}
+	if err := s.deleteUnreadable(ctx); err != nil {
+		return err
+	}
 
 	// Reset local data only after the storage delete succeeded, so a
 	// canceled/failed delete leaves the session data intact.
@@ -338,6 +343,9 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	if err := s.config.deleteKey(ctx, s.storageKey()); err != nil {
 		return err
 	}
+	if err := s.deleteUnreadable(ctx); err != nil {
+		return err
+	}
 
 	// Reset local state only after the storage delete succeeded, so a
 	// canceled/failed delete leaves the session data intact.
@@ -356,6 +364,22 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	// Generate a new session, and set session.isFresh to true
 	s.refresh()
 
+	return nil
+}
+
+// deleteUnreadable deletes the record the request named and the store cannot read, if
+// there is one. The session took its place, so ending the session ends that one too: a
+// logout holds on whichever instance it lands, and not only on one that reads the record.
+// A request that does not end its session leaves the record alone, for the instance that
+// reads it. The caller holds s.mu.
+func (s *Session) deleteUnreadable(ctx context.Context) error {
+	if s.unreadable == "" {
+		return nil
+	}
+	if err := s.config.deleteKey(ctx, s.unreadable); err != nil {
+		return err
+	}
+	s.unreadable = ""
 	return nil
 }
 
