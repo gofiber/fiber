@@ -28,5 +28,5 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.50.0 // indirect
-	golang.org/x/text v0.43.0
+	golang.org/x/text v0.44.0
 )
