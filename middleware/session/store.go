@@ -249,7 +249,8 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 		// Nothing the request carries names the ID that was just issued: say so, for
 		// the next store that is asked, which could not find it there, and which record
 		// the session took the place of, for the next session of this store.
-		cacheID(c, s, sess.identityLocked()).unreadable = sess.unreadable
+		ident := sess.identityLocked()
+		cacheID(c, s, &ident)
 	}
 	return sess, err
 }
@@ -315,13 +316,13 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, error) {
 			return nil, err
 		}
 	}
-	// unreadable is the storage key of the record the request itself names, when the
-	// store cannot read it: the session takes its place, and ends it when it is ended. A
-	// record under an ID that another store issued is that store's, and is not
-	// remembered. When the store looked under the ID the request names earlier in the
-	// request, it is not read again below, and what the store found then holds; so does
-	// what the store found whose session this one has taken from the request.
-	unreadable := cached.refusedBy(s, found.id)
+	// The record the request itself names, when the store cannot read it: the session
+	// takes its place, and ends it when it is ended. A record under an ID that another
+	// store issued is that store's, and is not remembered. When the store looked under
+	// the ID the request names earlier in the request, it is not read again below, and
+	// what the store found then holds; so does what the store found whose session this
+	// one has taken from the request.
+	found.unreadable = cached.refusedBy(s, found.id)
 	if found.raw == nil {
 		// Nothing was cached for s that is saved: the request names the session, if any.
 		res, err := s.getSessionID(c)
@@ -330,7 +331,7 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, error) {
 		}
 		found.res = res
 		if s.mayBeStored(cached, res.Value) {
-			if unreadable, err = s.readSession(c, res.Value, &found); err != nil {
+			if found.unreadable, err = s.readSession(c, res.Value, &found); err != nil {
 				return nil, err
 			}
 		}
@@ -352,7 +353,7 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, error) {
 	sess.bind(s)
 	sess.id = id
 	sess.key = found.key
-	sess.unreadable = unreadable
+	sess.unreadable = found.unreadable
 	sess.isFresh = isFresh
 	sess.extractor = found.res
 
@@ -774,10 +775,15 @@ const (
 
 // sessionIdentity is the ID of a session with the provenance of the ID the request
 // named when the session was loaded, if any, which says where the ID is written back
-// to. The two go together wherever an ID is taken from a request or handed to a store.
+// to, and with the record that ID named when the store could not read it. They go
+// together wherever an ID is taken from a request or handed to a store.
 type sessionIdentity struct {
-	id  string
-	res extractors.Result
+	id string
+	// unreadable is the storage key of the record the request named and the store of the
+	// session could not read: the session took its place, and so does a session that is
+	// loaded later in the request, of that store or under this ID.
+	unreadable storageKey
+	res        extractors.Result
 }
 
 // cachedID is the identity of a session that a store cached on the request, because it
@@ -792,10 +798,6 @@ type sessionIdentity struct {
 type cachedID struct {
 	next  *cachedID
 	store *Store
-	// unreadable is the storage key of the record the request named and store could not
-	// read, when it issued the ID in its place: a session that is loaded later in the
-	// request, of the store or under that ID, takes the place of that record too.
-	unreadable storageKey
 	sessionIdentity
 }
 
@@ -851,11 +853,9 @@ func requestIDs(c fiber.Ctx) *cachedID {
 // buffer of the request, which the application can rewrite, so the entry keeps a copy.
 // The entry s had is reused as the new head, so that the list, which fasthttp reclaims
 // from its head, stays in one piece: overwriting the local with an entry that does not
-// lead to the old ones would strand them outside the pool. It is returned, and keeps
-// what it says of a record the store could not read.
-func cacheID(c fiber.Ctx, s *Store, ident sessionIdentity) *cachedID {
+// lead to the old ones would strand them outside the pool.
+func cacheID(c fiber.Ctx, s *Store, ident *sessionIdentity) {
 	head := requestIDs(c)
-	ident.res.Value = utils.CopyString(ident.res.Value)
 	var entry *cachedID
 	for link := &head; *link != nil; link = &(*link).next {
 		if (*link).store == s {
@@ -869,16 +869,16 @@ func cacheID(c fiber.Ctx, s *Store, ident sessionIdentity) *cachedID {
 			entry = new(cachedID)
 		}
 	}
-	entry.next, entry.store, entry.sessionIdentity = head, s, ident
+	entry.next, entry.store, entry.sessionIdentity = head, s, *ident
+	entry.res.Value = utils.CopyString(entry.res.Value)
 	ctxlocal.Set(c, cachedIDsContextKey, entry)
 	ctxlocal.Set(c, sessionIDContextKey, ident.id)
-	return entry
 }
 
 // recacheID records that the session of s that had the ID old has the identity ident
 // now, which Regenerate and Reset give it, unless s has cached the ID of another session
 // since: a session of the store that was never saved must not hide one that was.
-func recacheID(c fiber.Ctx, s *Store, old string, ident sessionIdentity) {
+func recacheID(c fiber.Ctx, s *Store, old string, ident *sessionIdentity) {
 	if entry := requestIDs(c).of(s); entry != nil && entry.id != old {
 		return
 	}

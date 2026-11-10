@@ -149,8 +149,8 @@ func (s *Session) ID() string {
 	return s.id
 }
 
-// identity returns the ID of the session and the provenance of the ID the request
-// named when it was loaded.
+// identity returns the ID of the session, the provenance of the ID the request named
+// when it was loaded, and the record it took the place of.
 func (s *Session) identity() sessionIdentity {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -160,7 +160,7 @@ func (s *Session) identity() sessionIdentity {
 // identityLocked is identity for a caller that holds the lock of the session, or holds
 // the only reference to it.
 func (s *Session) identityLocked() sessionIdentity {
-	return sessionIdentity{id: s.id, res: s.extractor}
+	return sessionIdentity{id: s.id, res: s.extractor, unreadable: s.unreadable}
 }
 
 // Set updates or creates a new key-value pair in the session.
@@ -228,11 +228,13 @@ func (s *Session) DestroyWithContext(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Use external Storage if exist
-	if err := s.config.deleteKey(ctx, s.storageKey()); err != nil {
+	// The record the session took the place of goes first: a storage that fails there
+	// fails the call before the session's own record is touched.
+	if err := s.deleteUnreadable(ctx); err != nil {
 		return err
 	}
-	if err := s.deleteUnreadable(ctx); err != nil {
+	// Use external Storage if exist
+	if err := s.config.deleteKey(ctx, s.storageKey()); err != nil {
 		return err
 	}
 
@@ -346,11 +348,13 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Delete old id from storage
-	if err := s.config.deleteKey(ctx, s.storageKey()); err != nil {
+	// The record the session took the place of goes first: a storage that fails there
+	// fails the call before the session's own record is touched.
+	if err := s.deleteUnreadable(ctx); err != nil {
 		return err
 	}
-	if err := s.deleteUnreadable(ctx); err != nil {
+	// Delete old id from storage
+	if err := s.config.deleteKey(ctx, s.storageKey()); err != nil {
 		return err
 	}
 
@@ -419,7 +423,8 @@ func (s *Session) recache(old string) {
 	if s.ctx == nil || s.rctx != nil || s.requestOver {
 		return
 	}
-	recacheID(s.ctx, s.config, old, s.identityLocked())
+	ident := s.identityLocked()
+	recacheID(s.ctx, s.config, old, &ident)
 }
 
 // storageKey returns the key the session is stored under; the caller holds s.mu.
