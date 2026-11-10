@@ -457,9 +457,9 @@ func releaseMiddleware(m *Middleware) {
 // the session and sets its cookie, which it does not do while the middleware is
 // in charge of the session. From the unwinding on its session writes to its own
 // request only, while the handlers of that request still run, and to nothing once
-// the request has ended; it learns of both without waiting for a call that holds
-// the session across the storage, so a goroutine of the handler that still holds
-// the session writes to no other request;
+// the request has ended or was abandoned; it learns of the unwinding and of the
+// end without waiting for a call that holds the session across the storage, so a
+// goroutine of the handler that still holds the session writes to no other request;
 // a Go context kept past the request does not find the middleware. A goroutine of
 // your own that outlives a handler which returned has no such guarantee: give it
 // the session ID, not the Middleware.
@@ -937,6 +937,11 @@ func (m *Middleware) endIfUnwound(finished *bool, c fiber.Ctx) {
 // The session is told all the same, at once (see detachSoon), and before the
 // middleware is added to the values of the request: a Regenerate or a Reset that
 // another goroutine has under way writes to those values too, and is waited for.
+// A write that is not the session's own is not waited for, of another session of the
+// request or of the application, and of two writes to those values at once one can
+// be lost. A session that loses this one is never told that its request ended; it
+// writes to no later request all the same, since it tells its request from the ones
+// that follow on the same context (Session.handlersRun).
 func (m *Middleware) endUnwound(c fiber.Ctx) {
 	m.unlinkFromOuter()
 	m.mark(lifeUnwound)
