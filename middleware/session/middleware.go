@@ -457,9 +457,9 @@ func releaseMiddleware(m *Middleware) {
 // the session and sets its cookie, which it does not do while the middleware is
 // in charge of the session. From the unwinding on its session writes to its own
 // request only, while the handlers of that request still run, and to nothing once
-// the request has ended or was abandoned; it learns of the unwinding and of the
-// end without waiting for a call that holds the session across the storage, so a
-// goroutine of the handler that still holds the session writes to no other request;
+// the request has ended; it learns of both without waiting for a call that holds
+// the session across the storage, so a goroutine of the handler that still holds
+// the session writes to no other request;
 // a Go context kept past the request does not find the middleware. A goroutine of
 // your own that outlives a handler which returned has no such guarantee: give it
 // the session ID, not the Middleware.
@@ -937,11 +937,12 @@ func (m *Middleware) endIfUnwound(finished *bool, c fiber.Ctx) {
 // The session is told all the same, at once (see detachSoon), and before the
 // middleware is added to the values of the request: a Regenerate or a Reset that
 // another goroutine has under way writes to those values too, and is waited for.
-// A write that is not the session's own is not waited for, of another session of the
-// request or of the application, and of two writes to those values at once one can
-// be lost. A session that loses this one is never told that its request ended; it
-// writes to no later request all the same, since it tells its request from the ones
-// that follow on the same context (Session.handlersRun).
+// Another session of the request can be caching its ID there as well, so the two
+// writes share a lock (valuesMu): of two writes to those values at once one is lost,
+// and a session that loses this one is never told that its request ended. A write of
+// the application from a goroutine of its own can still do that. The session then
+// writes to no request that the server reads after its own all the same, since it
+// tells them apart on the same context (Session.handlersRun).
 func (m *Middleware) endUnwound(c fiber.Ctx) {
 	m.unlinkFromOuter()
 	m.mark(lifeUnwound)
@@ -949,8 +950,7 @@ func (m *Middleware) endUnwound(c fiber.Ctx) {
 	// The session keeps the request while its handlers run; a Ctx that has none lets go of it too.
 	m.detachSoon(rctx)
 	if rctx != nil {
-		closer := unwoundCloser{m}
-		rctx.SetUserValue(closer, closer)
+		unwoundCloser{m}.register(rctx)
 	}
 }
 
@@ -968,6 +968,14 @@ type unwoundCloser struct{ m *Middleware }
 func (u unwoundCloser) Close() error {
 	u.m.detachIfUnwound()
 	return nil
+}
+
+// register adds u to the values of the request, under the lock the writes of this package
+// to those values share, so that it is not lost to one of them.
+func (u unwoundCloser) register(rctx *fasthttp.RequestCtx) {
+	valuesMu.Lock()
+	defer valuesMu.Unlock()
+	rctx.SetUserValue(u, u)
 }
 
 // detach makes m forget the fiber.Ctx of the request, under which its storage calls

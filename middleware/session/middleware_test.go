@@ -2344,6 +2344,55 @@ func Test_Session_Middleware_EndUnwoundWaitsForAWriteToTheRequest(t *testing.T) 
 	require.NotNil(t, c.RequestCtx().UserValue(closer))
 }
 
+// fasthttp appends to the values of a request without a lock, so of two writes at once one is lost:
+// the new ID that a Regenerate caches there, or the entry that ends the request of an unwound
+// middleware, without which its session is never told. Whichever session of the request they belong
+// to, the writes of this package wait for each other.
+func Test_Session_WritesToTheValuesOfARequestWaitForEachOther(t *testing.T) {
+	t.Parallel()
+	// Each returns the write and reports whether it is in the values of the request.
+	for name, prepare := range map[string]func(t *testing.T, c fiber.Ctx) (func(), func() bool){
+		"the entry of an unwound middleware": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			m := startMiddleware(t, c, NewStore())
+			unwind := func() {
+				finished := false
+				m.endIfUnwound(&finished, c)
+			}
+			return unwind, func() bool { return c.RequestCtx().UserValue(unwoundCloser{m}) != nil }
+		},
+		"the ID a Regenerate caches": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			sess := mustGet(t, NewStore(), c)
+			old := requestIDs(c).id
+			return func() { assert.NoError(t, sess.Regenerate()) }, func() bool { return requestIDs(c).id != old }
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c := apptest.Ctx(t, fiber.New())
+			write, written := prepare(t, c)
+
+			valuesMu.Lock() // a write of another session to the values of a request is under way
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				write()
+			}()
+			select {
+			case <-done:
+				valuesMu.Unlock()
+				t.Fatal("it did not wait for the write that was under way")
+			case <-time.After(50 * time.Millisecond):
+			}
+			require.False(t, written(), "it wrote to the values of the request while another write was under way")
+			valuesMu.Unlock()
+			apptest.Recv(t, done, 5*time.Second, "the write never finished")
+			require.True(t, written())
+		})
+	}
+}
+
 // The session of a middleware that ends early is told without the lock of the middleware or its
 // own, which a call can hold across the storage: from the unwinding on it writes to the request
 // itself, and at the end of the request to nothing. Forgetting the fiber.Ctx, which needs the
@@ -2399,7 +2448,11 @@ func Test_Session_LeaveCtx(t *testing.T) {
 		"the fiber.Ctx serves the request that follows on the same fasthttp context, and the session was not told": {
 			after: func(_ *testing.T, _ *Session, c, _ fiber.Ctx) { c.RequestCtx().Init2(nil, nil, false) },
 		},
-		"the request was abandoned, so its fiber.Ctx is never given back": {after: func(_ *testing.T, _ *Session, c, _ fiber.Ctx) { c.Abandon() }},
+		// The session cannot tell that the handlers of an abandoned request have returned, and what
+		// recovers the panic still sets its cookie: it goes on writing until the request ends.
+		"the request was abandoned, so its fiber.Ctx is not given back when the handlers return": {
+			writes: true, after: func(_ *testing.T, _ *Session, c, _ fiber.Ctx) { c.Abandon() },
+		},
 		"the request is over, and the unwinding reaches the session again": {after: func(t *testing.T, sess *Session, c, _ fiber.Ctx) {
 			t.Helper()
 			sess.leaveCtx(nil)
