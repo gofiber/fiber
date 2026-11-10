@@ -1522,6 +1522,13 @@ func requireDetached(t *testing.T, m *Middleware) {
 func (s *Session) holdsNoRequest() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.holdsNoRequestLocked()
+}
+
+// holdsNoRequestLocked is holdsNoRequest for a caller that holds the lock of the session.
+func (s *Session) holdsNoRequestLocked() bool {
+	s.reqMu.Lock()
+	defer s.reqMu.Unlock()
 	_, response := s.requestResponse()
 	return response == nil
 }
@@ -1875,7 +1882,7 @@ func Test_Session_Save_EntryPointsReadTheContextUnderItsLock(t *testing.T) {
 				return
 			default:
 			}
-			sess.detach(nil)
+			sess.detach()
 			sess.mu.Lock()
 			sess.ctx = c
 			sess.mu.Unlock()
@@ -2182,6 +2189,219 @@ func Test_Session_Middleware_EndIfUnwoundUnlinksOnce(t *testing.T) {
 	require.Zero(t, outer.links.Load())
 
 	releaseMiddleware(outer)
+}
+
+// reach returns the request the session writes to in place of its fiber.Ctx, if any, and whether
+// its request is over for it.
+func (s *Session) reach() (*fasthttp.RequestCtx, bool) {
+	s.reqMu.Lock()
+	defer s.reqMu.Unlock()
+	return s.rctx, s.requestOver
+}
+
+// parkedStorage is a storage whose deletes wait until release is closed, as a storage under load
+// makes them, and says when the first one arrived.
+type parkedStorage struct {
+	fiber.Storage
+	entered, release chan struct{}
+	once             sync.Once
+}
+
+func (s *parkedStorage) DeleteWithContext(ctx context.Context, key string) error {
+	s.once.Do(func() { close(s.entered) })
+	<-s.release
+	return s.Storage.DeleteWithContext(ctx, key)
+}
+
+// A handler leaves a goroutine behind that ends the session, and panics. The call is inside the
+// storage, holding the lock of its middleware or of its session, when the request ends, so neither
+// can be cut off from the request under its lock; the session is told all the same. What the call
+// writes once the storage answers, the cookie that expires the session, goes to no request: the one
+// it was for is over, and fasthttp has reset it for the next one of the connection.
+func Test_Session_Middleware_CallThatOutlivesAnUnwoundRequestWritesToNoOtherRequest(t *testing.T) {
+	t.Parallel()
+	for name, call := range map[string]func(m *Middleware) error{
+		"Destroy, which holds the lock of the middleware":  (*Middleware).Destroy,
+		"Reset, which holds the lock of the middleware":    (*Middleware).Reset,
+		"Destroy of the session, which holds its own lock": func(m *Middleware) error { return m.Session.Destroy() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			storage := &parkedStorage{Storage: memory.New(), entered: make(chan struct{}), release: make(chan struct{})}
+			unwound, done := make(chan struct{}), make(chan error, 1)
+
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				defer func() {
+					if recover() == nil {
+						return
+					}
+					c.Status(fiber.StatusInternalServerError)
+					// The call starts now that the middleware was unwound, and is in the storage when the request ends.
+					close(unwound)
+					apptest.Recv(t, storage.entered, 5*time.Second, "the call never reached the storage")
+				}()
+				return c.Next()
+			})
+			app.Use(New(Config{Storage: storage}))
+			app.Get("/", func(c fiber.Ctx) error {
+				m := FromContext(c)
+				go func() {
+					<-unwound
+					done <- call(m)
+				}()
+				panic("boom")
+			})
+
+			rctx := sessionTestRequest(t, app.Handler(), fiber.MethodGet, "/", fiber.StatusInternalServerError)
+			// What fasthttp does once the response is sent: it resets the request, which ends it for
+			// the session, and the response, and reads the next request of the connection into both.
+			rctx.Request.Reset()
+			rctx.Response.Reset()
+
+			close(storage.release)
+			require.NoError(t, apptest.Recv(t, done, 5*time.Second, "the call never returned"))
+			require.Empty(t, rctx.Response.Header.Peek(fiber.HeaderSetCookie), "the call wrote its cookie into the response of the next request")
+		})
+	}
+}
+
+// The session of a middleware that ends early is told without the lock of the middleware or its
+// own, which a call can hold across the storage: from the unwinding on it writes to the request
+// itself, and at the end of the request to nothing. Forgetting the fiber.Ctx, which needs the
+// locks, follows when they are free.
+func Test_Session_Middleware_DetachSoonTellsTheSessionWithoutTheLocks(t *testing.T) {
+	t.Parallel()
+	for name, lockOf := range map[string]func(m *Middleware) sync.Locker{
+		"the lock of the middleware is held": func(m *Middleware) sync.Locker { return &m.mu },
+		"the lock of the session is held":    func(m *Middleware) sync.Locker { return &m.Session.mu },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c := apptest.Ctx(t, fiber.New())
+			m := startMiddleware(t, c, NewStore())
+			sess, held := m.Session, lockOf(m)
+
+			held.Lock()
+			m.detachSoon(c.RequestCtx())
+			rctx, over := sess.reach()
+			require.Same(t, c.RequestCtx(), rctx, "the session was not told to write to the request itself")
+			require.False(t, over)
+
+			m.detachSoon(nil)
+			rctx, over = sess.reach()
+			require.Nil(t, rctx)
+			require.True(t, over, "the session was not told that its request is over")
+			held.Unlock()
+
+			requireDetached(t, m)
+		})
+	}
+}
+
+// From the moment a panic unwinds its middleware, a session writes to the request itself and no
+// longer through the fiber.Ctx: that one goes back to the pool when the handlers return, and serves
+// another request while a call that holds the session across the storage still refers to it. Once
+// its request is over the session writes to nothing, and a request that reaches it after that, as
+// the unwinding does when the session was busy, is not taken up.
+func Test_Session_LeaveCtx(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	c, other := apptest.Ctx(t, app), apptest.Ctx(t, app)
+	sess := mustGet(t, NewStore(), c)
+	setCookie := func(c fiber.Ctx) []byte { return c.Response().Header.Peek(fiber.HeaderSetCookie) }
+	// write does what the calls that touch the request do, as a caller that holds the session.
+	write := func() {
+		sess.setSession(time.Minute)
+		sess.delSession()
+		sess.refresh()
+	}
+
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	sess.leaveCtx(c.RequestCtx())
+	sess.ctx = other // the fiber.Ctx of the session, once it serves another request
+	write()
+	require.NotEmpty(t, setCookie(c), "the session did not write to its own request")
+	require.Empty(t, setCookie(other), "the session wrote its cookie through a fiber.Ctx that is no longer its own")
+	require.Nil(t, requestIDs(other), "the session cached its new ID on another request")
+
+	c.Response().Header.Del(fiber.HeaderSetCookie)
+	sess.leaveCtx(nil)
+	sess.leaveCtx(c.RequestCtx())
+	rctx, over := sess.reach()
+	require.Nil(t, rctx, "a session that let go of its request took up one that reached it late")
+	require.True(t, over)
+	write()
+	require.Empty(t, setCookie(c), "the session wrote to a request that was over for it")
+	require.Empty(t, setCookie(other))
+	require.Nil(t, requestIDs(other))
+}
+
+// parkedCtx is a fiber.Ctx whose response and locals are handed out only once release is closed:
+// whatever writes to the request through it is under way until then, and says so.
+type parkedCtx struct {
+	fiber.Ctx
+	entered, release chan struct{}
+	once             *sync.Once
+}
+
+func (c parkedCtx) park() {
+	c.once.Do(func() { close(c.entered) })
+	<-c.release
+}
+
+func (c parkedCtx) Response() *fasthttp.Response {
+	c.park()
+	return c.Ctx.Response()
+}
+
+func (c parkedCtx) Locals(key any, value ...any) any {
+	c.park()
+	return c.Ctx.Locals(key, value...)
+}
+
+// The end of the request waits for a write of the session to it that is under way, and for nothing
+// else: when it returns none is, and none follows. The cookie, the cookie that expires it and the
+// ID a Regenerate caches on the request are such writes.
+func Test_Session_LeaveCtx_WaitsForAWriteUnderWay(t *testing.T) {
+	t.Parallel()
+	for name, write := range map[string]func(sess *Session){
+		"the cookie":              func(sess *Session) { sess.setSession(time.Minute) },
+		"the cookie that expires": (*Session).delSession,
+		"the ID cached for it":    (*Session).refresh,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c := apptest.Ctx(t, fiber.New())
+			sess := mustGet(t, NewStore(), c)
+			parked := parkedCtx{Ctx: c, entered: make(chan struct{}), release: make(chan struct{}), once: new(sync.Once)}
+
+			sess.mu.Lock()
+			defer sess.mu.Unlock()
+			sess.ctx = parked
+			written, left := make(chan struct{}), make(chan struct{})
+			go func() {
+				defer close(written)
+				write(sess)
+			}()
+			apptest.Recv(t, parked.entered, 5*time.Second, "the write never reached the request")
+			go func() {
+				defer close(left)
+				sess.leaveCtx(nil)
+			}()
+			select {
+			case <-left:
+				close(parked.release)
+				t.Fatal("the request was over for the session while it was still writing to it")
+			case <-time.After(50 * time.Millisecond):
+			}
+			close(parked.release)
+			apptest.Recv(t, written, 5*time.Second, "the write never finished")
+			apptest.Recv(t, left, 5*time.Second, "the end of the request never reached the session")
+			require.True(t, sess.holdsNoRequestLocked())
+		})
+	}
 }
 
 // panicAtCtx is a custom context that panics at one chosen point of the life of a session

@@ -22,7 +22,7 @@ type Session struct {
 	// rctx is the request itself, for a session a panic unwound the middleware of: the
 	// fiber.Ctx goes back to the pool as soon as the handlers return, while the request
 	// lives on until fasthttp resets it, and until then the session still writes its
-	// cookies to it. Set and cleared by detach.
+	// cookies to it. Set and cleared by leaveCtx, under reqMu.
 	rctx        *fasthttp.RequestCtx
 	config      *Store                  // store configuration
 	data        *data                   // key value data
@@ -35,9 +35,11 @@ type Session struct {
 	idleTimeout time.Duration           // idleTimeout of this session
 	loadGen     uint64                  // idLock generation when the data was read from storage
 	mu          sync.RWMutex            // Mutex to protect non-data fields
+	reqMu       sync.Mutex              // held while the session touches its request, and by what ends the request for it (leaveCtx); taken after mu
 	isFresh     bool                    // if new session
 	loaded      bool                    // the data was read from storage under the current id
 	dropped     bool                    // another request ended or rotated it: never stored or sent again
+	requestOver bool                    // the request is over for the session, which touches none any more; under reqMu
 }
 
 type absExpirationKeyType int
@@ -101,7 +103,9 @@ func releaseSession(s *Session) {
 	s.unreadable = ""
 	s.idleTimeout = 0
 	s.ctx = nil
-	s.rctx = nil
+	s.reqMu.Lock()
+	s.rctx, s.requestOver = nil, false
+	s.reqMu.Unlock()
 	s.config = nil
 	s.extractor = extractors.Result{}
 	s.rawData = nil
@@ -397,12 +401,22 @@ func (s *Session) refresh() {
 	s.key = ""
 	s.isFresh = true
 	s.loaded = false
-	if s.ctx != nil {
-		// A store that is asked again in this request finds the session under its new
-		// ID, not under the one that was just deleted. Like a Save, this uses the request
-		// of the session, so Regenerate and Reset belong to the goroutine that serves it.
-		recacheID(s.ctx, s.config, old, s.identityLocked())
+	s.recache(old)
+}
+
+// recache tells the request of the session that its ID is no longer old: a store that is
+// asked again in this request finds the session under its new ID, not under the one that
+// was just deleted. Like a Save, this uses the request of the session, so Regenerate and
+// Reset belong to the goroutine that serves it. It goes through the fiber.Ctx only: once
+// that is no longer the session's to use, no store asks the request for the session
+// again. The caller holds s.mu.
+func (s *Session) recache(old string) {
+	s.reqMu.Lock()
+	defer s.reqMu.Unlock()
+	if s.ctx == nil || s.rctx != nil || s.requestOver {
+		return
 	}
+	recacheID(s.ctx, s.config, old, s.identityLocked())
 }
 
 // storageKey returns the key the session is stored under; the caller holds s.mu.
@@ -623,6 +637,8 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 
 // setSession writes the session ID to the response, with a lifetime of ttl.
 func (s *Session) setSession(ttl time.Duration) {
+	s.reqMu.Lock()
+	defer s.reqMu.Unlock()
 	_, resp := s.requestResponse()
 	if resp == nil {
 		return
@@ -660,6 +676,8 @@ func (s *Session) setSession(ttl time.Duration) {
 }
 
 func (s *Session) delSession() {
+	s.reqMu.Lock()
+	defer s.reqMu.Unlock()
 	req, resp := s.requestResponse()
 	if resp == nil {
 		return
@@ -1019,40 +1037,70 @@ func (s *Session) requestCtx() fiber.Ctx {
 }
 
 // requestResponse returns the request and the response the session writes its ID
-// to: those of its fiber.Ctx, or of the request itself once the middleware was
-// unwound, or nil when the session has let go of the request. The caller holds s.mu.
+// to: those of the request itself once a panic unwound the middleware, those of its
+// fiber.Ctx before that, and nil when the request is over for the session or it never
+// had one. The caller holds s.mu and s.reqMu.
 func (s *Session) requestResponse() (*fasthttp.Request, *fasthttp.Response) {
-	if s.ctx != nil {
-		return s.ctx.Request(), s.ctx.Response()
-	}
-	if s.rctx != nil {
+	switch {
+	case s.requestOver:
+		return nil, nil
+	case s.rctx != nil:
 		return &s.rctx.Request, &s.rctx.Response
+	case s.ctx != nil:
+		return s.ctx.Request(), s.ctx.Response()
+	default:
+		return nil, nil
 	}
-	return nil, nil
 }
 
-// detach points the session at rctx, the request itself, instead of at the fiber.Ctx
-// of its request, or at nothing when rctx is nil. The session of an abandoned or
-// unwound request is not recycled, since a handler that outlives the request may
-// still be using it, but the fiber.Ctx is: it is reused for another request once
-// those handlers are done, and whoever still holds the session must not write to
-// that request's response, or run its storage calls under its context. The request
-// itself lives on until fasthttp resets it, and a session a panic unwound the
-// middleware of still writes its cookies there, for whatever recovers the panic.
-func (s *Session) detach(rctx *fasthttp.RequestCtx) {
+// leaveCtx tells the session that the fiber.Ctx of its request is no longer its to use:
+// from now on it writes to rctx, the request itself, or to nothing when rctx is nil. The
+// session of an abandoned or unwound request is not recycled, since a handler that
+// outlives the request may still be using it, but the fiber.Ctx is: it is reused for
+// another request as soon as the handlers have returned, and whoever still holds the
+// session must not write to that request's response. The request itself lives on until
+// fasthttp resets it, and a session a panic unwound the middleware of still writes its
+// cookies there, for whatever recovers the panic.
+//
+// It takes reqMu and no other lock. reqMu is held while the session touches its request,
+// to write the cookies and headers that carry its ID or to cache its ID there, and for
+// nothing else, so this does not wait for a call that holds the session across the
+// storage, as mu and the lock of the middleware are held: it waits for a write to the
+// request that is under way, and when it returns none is, and none follows that goes to
+// anything but rctx. Letting go of the request altogether is final: a rctx that comes
+// after it is not taken up, so the order in which the two reach a session that is busy
+// does not matter.
+func (s *Session) leaveCtx(rctx *fasthttp.RequestCtx) {
+	s.reqMu.Lock()
+	defer s.reqMu.Unlock()
+	if rctx == nil {
+		s.requestOver = true
+	}
+	if s.requestOver {
+		rctx = nil
+	}
+	s.rctx = rctx
+}
+
+// detach makes the session forget the fiber.Ctx of its request: it no longer writes
+// through it, a later Save no longer asks it which middleware manages the session, and
+// no storage call runs under it. It waits for the lock of the session, which a call can
+// hold across the storage, so a caller that must not wait tells the session with leaveCtx
+// first, and lets this follow.
+func (s *Session) detach() {
 	s.mu.Lock()
-	s.ctx, s.rctx = nil, rctx
+	s.ctx = nil
 	s.mu.Unlock()
 }
 
 // detachSoon is detach for a caller that must not wait: when the session is locked, by a
 // save that is writing to the storage for instance, the detaching follows from a
 // goroutine of its own.
-func (s *Session) detachSoon(rctx *fasthttp.RequestCtx) {
+func (s *Session) detachSoon() {
 	if s.mu.TryLock() {
-		s.ctx, s.rctx = nil, rctx
+		s.ctx = nil
 		s.mu.Unlock()
 		return
 	}
-	go s.detach(rctx)
+	go s.detach()
 }
