@@ -1092,9 +1092,12 @@ func (s *Session) requestResponse() (*fasthttp.Request, *fasthttp.Response) {
 // the context alone does not say, since it serves the next request of the connection as
 // well, and another connection after that. The caller holds s.reqMu.
 //
-// Nothing orders the question after the return of the handlers, which gives the fiber.Ctx
-// back without a lock: a goroutine that outlives them can be told that they still run
-// just as they return, and then writes to the response of its own request while it is
+// The question keeps the session out of other requests. It does not make its own safe to
+// share: while the handlers run they write to the response, and read the values of the
+// request, without a lock the session could take, so a call from a goroutine of its own
+// races with them whatever the answer is. Nothing orders the question after their return
+// either, which gives the fiber.Ctx back without a lock: such a goroutine can be told
+// that they still run just as they return, and then writes to the response while it is
 // sent. That write does not reach another request: the end of the request waits for it
 // (leaveCtx) and comes before the response is reset. A fiber.Ctx that was abandoned is
 // not given back when the handlers return, so for such a request the answer stays yes
