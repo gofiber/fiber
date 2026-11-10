@@ -1789,7 +1789,8 @@ func Test_Session_WriteBackAfterUnrelatedChange(t *testing.T) {
 	require.Equal(t, sessionKey(id), writes[0].Key)
 }
 
-// gateStorage parks the first Set after arming until release is closed.
+// gateStorage parks the first write after arming, a Set or a Delete, until release is closed, and
+// closes entered when that write arrives.
 type gateStorage struct {
 	fiber.Storage
 	entered chan struct{}
@@ -1797,12 +1798,28 @@ type gateStorage struct {
 	armed   atomic.Bool
 }
 
-func (s *gateStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+func (s *gateStorage) park() {
 	if s.armed.CompareAndSwap(true, false) {
 		close(s.entered)
 		<-s.release
 	}
+}
+
+func (s *gateStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	s.park()
 	return s.Storage.SetWithContext(ctx, key, val, exp)
+}
+
+func (s *gateStorage) DeleteWithContext(ctx context.Context, key string) error {
+	s.park()
+	return s.Storage.DeleteWithContext(ctx, key)
+}
+
+// newGateStorage returns a gateStorage over an empty storage that parks the next write.
+func newGateStorage() *gateStorage {
+	s := &gateStorage{Storage: memory.New(), entered: make(chan struct{}), release: make(chan struct{})}
+	s.armed.Store(true)
+	return s
 }
 
 // A save that passed its check is still writing; a delete of the same ID has to
