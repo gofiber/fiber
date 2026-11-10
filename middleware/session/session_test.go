@@ -2642,12 +2642,22 @@ func Test_Session_Save_ReadsTheStorageOnlyIfTheShardChangedSinceTheLoad(t *testi
 	require.Empty(t, logged.CallKeys(storagetest.OpGet), "the save only writes")
 }
 
-// A session that goes back to the pool forgets the record it replaced: the next request that gets
-// it must not delete that record when it ends its own session.
+// A session that goes back to the pool forgets the record it replaced, which the next request that
+// gets it must not delete when it ends its own session, and that a request was over for it, or the
+// next request would get no cookie.
 // conventions:ignore parallel: it looks at a session after it went back to the shared pool
-func Test_Session_ReleaseForgetsTheRecordItReplaced(t *testing.T) {
+func Test_Session_ReleaseForgetsItsRequest(t *testing.T) {
 	sess := acquireSession()
 	sess.unreadable = storageKey(sessionKey("left alone"))
+	sess.leaveCtx(&fasthttp.RequestCtx{})
 	releaseSession(sess)
+	rctx, _ := sess.reach()
 	require.Empty(t, sess.unreadable)
+	require.Nil(t, rctx)
+
+	sess = acquireSession()
+	sess.leaveCtx(nil)
+	releaseSession(sess)
+	_, over := sess.reach()
+	require.False(t, over)
 }

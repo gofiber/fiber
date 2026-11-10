@@ -412,7 +412,7 @@ func releaseMiddleware(m *Middleware) {
 	// the session through m.Session once it was handed to another request.
 	if session != nil {
 		if abandoned {
-			session.detach(nil)
+			session.detach()
 		} else {
 			releaseSession(session)
 		}
@@ -455,12 +455,13 @@ func releaseMiddleware(m *Middleware) {
 // runs inside, until the request ends: a Destroy, Reset or Regenerate from there
 // changes the storage and sets the cookies as before the panic, and a Save saves
 // the session and sets its cookie, which it does not do while the middleware is
-// in charge of the session. It has let go of the fiber.Ctx, and lets go of the
-// request when fasthttp resets it, so a
-// goroutine of the handler that still holds the session reaches no other request;
+// in charge of the session. Its session stops writing through the fiber.Ctx when
+// the panic unwinds the middleware, and to the request when fasthttp resets it,
+// without waiting for a call that holds the session across the storage, so a
+// goroutine of the handler that still holds the session writes to no other request;
 // a Go context kept past the request does not find the middleware. A goroutine of
-// your own that outlives the handler has no such guarantee: give it the session
-// ID, not the Middleware.
+// your own that outlives a handler which returned has no such guarantee: give it
+// the session ID, not the Middleware.
 //
 // Parameters:
 //   - c: The Fiber context.
@@ -929,9 +930,10 @@ func (m *Middleware) endIfUnwound(finished *bool, c fiber.Ctx) {
 // outer middleware that finishes first closes it itself. Neither is saved or
 // recycled, and the middleware stays the current one of the request, as one
 // without an outer middleware does; it is marked unwound, so that a Go context
-// kept past the request does not find it. Nothing here waits for a lock, and the
-// Ctx is asked only for the request: a panic in the locked part of the release
-// leaves the lock held, and the Ctx may be what panicked.
+// kept past the request does not find it. Nothing here waits for the lock of the
+// middleware or of the session, and the Ctx is asked only for the request: a panic
+// in the locked part of the release leaves the lock held, and the Ctx may be what
+// panicked. The session is told all the same, at once (see detachSoon).
 func (m *Middleware) endUnwound(c fiber.Ctx) {
 	m.unlinkFromOuter()
 	m.mark(lifeUnwound)
@@ -960,41 +962,49 @@ func (u unwoundCloser) Close() error {
 	return nil
 }
 
-// detach cuts m and its session off from the fiber.Ctx of the request, and has the
-// session keep rctx, the request itself, instead, when it is not nil (see
-// Session.detach). It waits for the locks.
-func (m *Middleware) detach(rctx *fasthttp.RequestCtx) {
+// detach makes m and its session forget the fiber.Ctx of the request, which detachSoon
+// has already told the session not to write to. It waits for the locks.
+func (m *Middleware) detach() {
 	m.mu.Lock()
 	session := m.Session
 	m.ctx = nil
 	m.mu.Unlock()
 	if session != nil {
-		session.detach(rctx)
+		session.detach()
 	}
 }
 
-// detachSoon is detach for the request that the timeout middleware answered, or one that a
-// panic unwound: m and its session stay as they are for the handlers that outlive
-// the request, and the response is fixed, so nothing those handlers write to it
-// counts. What they must not do is hold the session past their end and write into
-// whichever request gets the context next, or run storage calls under it.
+// detachSoon cuts m and its session off from the fiber.Ctx of the request, and has the
+// session write to rctx, the request itself, instead, or to nothing when rctx is nil (see
+// Session.leaveCtx). It is for the request that the timeout middleware answered, or one
+// that a panic unwound: m and its session stay as they are for the handlers that outlive
+// the request, and the response is fixed, so nothing those handlers write to it counts.
+// What they must not do is hold the session past their end and write into whichever
+// request gets the context next, or run storage calls under it.
 //
-// The answer does not wait for the detaching. A handler the timeout middleware gave up on
-// can be inside a call that holds the lock of m or of the session across the
-// storage, such as Destroy or Save, and the answer is what that middleware is there
-// to send on time. The detaching then follows from a goroutine of its own, as soon as the
-// call is done, and always before the handler is: a handler holding the lock is
-// still running, so its context has not been given back yet.
+// The session is told first, and without the lock of m or its own: a handler can be
+// inside a call that holds either across the storage, such as Destroy or Save, and what
+// that call still writes must not go to a request that has moved on by the time the
+// storage answers. m.Session is read without the lock for that, as serve reads it: only
+// the goroutine that runs the middleware sets it, which is the one that calls this, and
+// it is never set again once that goroutine was unwound.
+//
+// Forgetting the fiber.Ctx does not hold up the answer either, which is what the timeout
+// middleware is there to send on time: when a lock is held, it follows from a goroutine
+// of its own as soon as the call is done.
 func (m *Middleware) detachSoon(rctx *fasthttp.RequestCtx) {
+	if session := m.Session; session != nil {
+		session.leaveCtx(rctx)
+	}
 	if !m.mu.TryLock() {
-		go m.detach(rctx)
+		go m.detach()
 		return
 	}
 	session := m.Session
 	m.ctx = nil
 	m.mu.Unlock()
 	if session != nil {
-		session.detachSoon(rctx)
+		session.detachSoon()
 	}
 }
 
