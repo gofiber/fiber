@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -2217,11 +2218,13 @@ func Test_Session_Middleware_CallThatOutlivesAnUnwoundRequestWritesToNoRequest(t
 		"Reset, which holds the lock of the middleware":    (*Middleware).Reset,
 		"Destroy of the session, which holds its own lock": func(m *Middleware) error { return m.Session.Destroy() },
 	}
-	// What the server has done with the request, whose handlers have returned, when the storage answers.
+	// What the server has done with the request, whose handlers have returned, when the storage
+	// answers. The session writes in none of them, since its fiber.Ctx was given back; one that wrote
+	// to the request for as long as it was not told of its end would write in the first and the last.
 	const (
 		sending       = "it is sending the response"
-		resetRequest  = "it has reset the request and then the response, as fasthttp does"
-		resetResponse = "it has reset the response and not yet the request, as the adaptor does"
+		resetRequest  = "it has reset the request and then the response, as fasthttp and the adaptor do"
+		resetResponse = "it has reset the response and not yet the request"
 	)
 	for name, call := range calls {
 		for _, inFlight := range []bool{false, true} {
@@ -2374,61 +2377,105 @@ func Test_Session_Middleware_DetachSoonTellsTheSessionWithoutTheLocks(t *testing
 	}
 }
 
-// From the moment a panic unwinds its middleware, a session writes to the request itself, and only
-// while its fiber.Ctx still serves that request, which is as long as the handlers of the request
-// run: the fiber.Ctx goes back to the pool when they return, and serves another request while a
-// call that holds the session across the storage still refers to it. Once its request is over the
-// session writes to nothing, and a request that reaches it after that, as the unwinding does when
-// the session was busy, is not taken up. It no longer hands out its fiber.Ctx either.
+// From the moment a panic unwinds its middleware, a session writes its cookie to the request itself,
+// and only while its fiber.Ctx still serves that very request, which is as long as the handlers of
+// the request can be running. It caches its ID on no request any more, and no longer hands out its
+// fiber.Ctx.
 func Test_Session_LeaveCtx(t *testing.T) {
 	t.Parallel()
+	for name, tc := range map[string]struct {
+		after  func(t *testing.T, sess *Session, c, other fiber.Ctx) // what happens once the session was told
+		writes bool
+	}{
+		"the handlers of the request still run": {writes: true, after: func(*testing.T, *Session, fiber.Ctx, fiber.Ctx) {}},
+		"they have returned, and the fiber.Ctx serves another request": {after: func(_ *testing.T, sess *Session, _, other fiber.Ctx) {
+			sess.mu.Lock()
+			defer sess.mu.Unlock()
+			sess.ctx = other
+		}},
+		// The value that tells the session of the end of its request can be lost to a write of another
+		// goroutine to the values of the request. What serves the request that follows gives the
+		// context another connection ID or request number, as Init2 does here.
+		"the fiber.Ctx serves the request that follows on the same fasthttp context, and the session was not told": {
+			after: func(_ *testing.T, _ *Session, c, _ fiber.Ctx) { c.RequestCtx().Init2(nil, nil, false) },
+		},
+		"the request was abandoned, so its fiber.Ctx is never given back": {after: func(_ *testing.T, _ *Session, c, _ fiber.Ctx) { c.Abandon() }},
+		"the request is over, and the unwinding reaches the session again": {after: func(t *testing.T, sess *Session, c, _ fiber.Ctx) {
+			t.Helper()
+			sess.leaveCtx(nil)
+			sess.leaveCtx(c.RequestCtx())
+			rctx, over := sess.reach()
+			require.Nil(t, rctx, "a session that let go of its request took up one that reached it late")
+			require.True(t, over)
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			c, other := apptest.Ctx(t, app), apptest.Ctx(t, app)
+			sess := mustGet(t, NewStore(), c)
+			cached := requestIDs(c).id
+			require.Same(t, c, sess.requestCtx())
+
+			sess.leaveCtx(c.RequestCtx())
+			tc.after(t, sess, c, other)
+			require.Nil(t, sess.requestCtx(), "the session still hands out the fiber.Ctx it was told to leave")
+
+			// What the calls that touch the request do, as a caller that holds the session.
+			sess.mu.Lock()
+			sess.setSession(time.Minute)
+			sess.delSession()
+			sess.refresh()
+			sess.mu.Unlock()
+
+			setCookie := func(c fiber.Ctx) []byte { return c.Response().Header.Peek(fiber.HeaderSetCookie) }
+			require.Equal(t, tc.writes, len(setCookie(c)) > 0, "whether the session wrote to its request")
+			require.Empty(t, setCookie(other), "the session wrote its cookie through a fiber.Ctx that serves another request")
+			require.Equal(t, cached, requestIDs(c).id, "the session cached its new ID on a request that no store asks for it again")
+			require.Nil(t, requestIDs(other), "the session cached its new ID on another request")
+		})
+	}
+}
+
+// A connection serves one request after another on the same fasthttp context, and the fiber.Ctx
+// that served the first of them can serve the next. A session that was unwound in one request, and
+// was not told that it ended, tells the next request of the connection from its own by its number.
+func Test_Session_LeaveCtx_NextRequestOfTheConnection(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
-	c, other := apptest.Ctx(t, app), apptest.Ctx(t, app)
-	sess := mustGet(t, NewStore(), c)
-	setCookie := func(c fiber.Ctx) []byte { return c.Response().Header.Peek(fiber.HeaderSetCookie) }
-	// write does what the calls that touch the request do, as a caller that holds the session.
-	write := func() {
+	store := NewStore()
+	var (
+		held fiber.Ctx // serves both requests, as a fiber.Ctx that the pool hands out again does
+		sess *Session
+		same bool
+	)
+	app.Get("/", func(c fiber.Ctx) error {
+		if held == nil {
+			held = apptest.CtxFor(t, app, c.RequestCtx())
+			sess = mustGet(t, store, held)
+			sess.leaveCtx(held.RequestCtx())
+		}
+		same = held.RequestCtx() == c.RequestCtx()
 		sess.mu.Lock()
 		defer sess.mu.Unlock()
 		sess.setSession(time.Minute)
-		sess.delSession()
-		sess.refresh()
+		return c.SendString("ok")
+	})
+
+	conn := apptest.Dial(t, apptest.Serve(t, app))
+	answers := bufio.NewReader(conn)
+	var cookies [2][]string
+	for i := range cookies {
+		_, err := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+		require.NoError(t, err)
+		resp, err := http.ReadResponse(answers, nil)
+		require.NoError(t, err)
+		require.Equal(t, "ok", apptest.Body(t, resp))
+		cookies[i] = resp.Header.Values(fiber.HeaderSetCookie)
 	}
-	cached := requestIDs(c).id
-	require.Same(t, c, sess.requestCtx())
-
-	// The middleware was unwound, and the handlers of the request still run.
-	sess.leaveCtx(c.RequestCtx())
-	require.Nil(t, sess.requestCtx(), "the session still hands out the fiber.Ctx it was told to leave")
-	write()
-	require.NotEmpty(t, setCookie(c), "the session did not write to its own request")
-	require.Equal(t, cached, requestIDs(c).id, "the session cached its new ID on a request no store asks for it again")
-
-	// They have returned: the fiber.Ctx serves another request.
-	c.Response().Header.Del(fiber.HeaderSetCookie)
-	sess.mu.Lock()
-	sess.ctx = other
-	sess.mu.Unlock()
-	write()
-	require.Empty(t, setCookie(c), "the session wrote to its request after the handlers of it had returned")
-	require.Empty(t, setCookie(other), "the session wrote its cookie through a fiber.Ctx that serves another request")
-	require.Nil(t, requestIDs(other), "the session cached its new ID on another request")
-
-	// The request is over, and the unwinding reaches the session late. Its fiber.Ctx can serve the
-	// next request of the connection by then, which is the same request to it and names the same ID.
-	sess.mu.Lock()
-	sess.ctx = c
-	cached = cacheID(c, sess.config, sess.identityLocked()).id
-	sess.mu.Unlock()
-	sess.leaveCtx(nil)
-	sess.leaveCtx(c.RequestCtx())
-	rctx, over := sess.reach()
-	require.Nil(t, rctx, "a session that let go of its request took up one that reached it late")
-	require.True(t, over)
-	write()
-	require.Empty(t, setCookie(c), "the session wrote to a request that was over for it")
-	require.Equal(t, cached, requestIDs(c).id, "the session cached its new ID on a request that was over for it")
-	require.Nil(t, sess.requestCtx())
+	require.True(t, same, "the second request was not served on the fasthttp context of the first")
+	require.NotEmpty(t, cookies[0], "the session did not write to its own request")
+	require.Empty(t, cookies[1], "the session wrote its cookie into the next request of the connection")
 }
 
 // parkedCtx is a fiber.Ctx whose response and locals are handed out only once release is closed:
