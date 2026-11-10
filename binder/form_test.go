@@ -294,6 +294,31 @@ func Test_FormBinder_Bind_MapClearedBetweenRequests(t *testing.T) {
 	require.Equal(t, 42, second.Age)
 }
 
+func Test_FormBinder_BindMultipart_SameKeyTwice(t *testing.T) {
+	t.Parallel()
+	b := &FormBinding{EnableSplitting: true}
+
+	type payload struct {
+		Tags []string `form:"tags"`
+	}
+
+	req := newMultipartRequestWith(t, func(mw *multipart.Writer) {
+		require.NoError(t, mw.WriteField("tags", "a"))
+		require.NoError(t, mw.WriteField("tags", "b"))
+		require.NoError(t, mw.WriteField("tags", "c"))
+		require.NoError(t, mw.WriteField("tags[]", "d,e"))
+	})
+
+	var p payload
+	require.NoError(t, b.Bind(req, &p))
+	require.ElementsMatch(t, []string{"a", "b", "c", "d", "e"}, p.Tags)
+
+	form, err := req.MultipartForm()
+	require.NoError(t, err)
+	require.Equal(t, []string{"a", "b", "c"}, form.Value["tags"])
+	require.Equal(t, []string{"d,e"}, form.Value["tags[]"])
+}
+
 func Test_FormBinder_BindMultipart_MapsClearedBetweenRequests(t *testing.T) {
 	t.Parallel()
 	b := &FormBinding{}
