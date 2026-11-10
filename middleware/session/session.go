@@ -411,6 +411,16 @@ func (s *Session) refresh() {
 	s.recache(old)
 }
 
+// valuesMu serializes what this package writes to the values of a request from a
+// goroutine that need not be the one serving it: the new ID that Regenerate and Reset
+// cache there, and the entry that ends the request for the session of an unwound
+// middleware. fasthttp appends to those values without a lock, so of two such writes at
+// once one is lost, and a session whose entry is lost is never told that its request
+// ended. Two sessions of a request have a lock each for their own writes (reqMu), which
+// is why this one is shared; nothing but those writes is done under it. What the
+// application writes to the same values from a goroutine of its own is not covered.
+var valuesMu sync.Mutex
+
 // recache tells the request of the session that its ID is no longer old: a store that is
 // asked again in this request finds the session under its new ID, not under the one that
 // was just deleted. Like a Save, this uses the request of the session, so Regenerate and
@@ -424,6 +434,8 @@ func (s *Session) recache(old string) {
 		return
 	}
 	ident := s.identityLocked()
+	valuesMu.Lock()
+	defer valuesMu.Unlock()
 	recacheID(s.ctx, s.config, old, &ident)
 }
 
@@ -1078,21 +1090,24 @@ func (s *Session) requestResponse() (*fasthttp.Request, *fasthttp.Response) {
 // to the pool when they return, and serves another request then. It still serves this one
 // when it holds the same fasthttp context under the same connection and request number;
 // the context alone does not say, since it serves the next request of the connection as
-// well, and another connection after that. A fiber.Ctx that was abandoned is not given
-// back when they return, which leaves the session no way to tell, so it writes to nothing
-// then, as after a timeout. The caller holds s.reqMu.
+// well, and another connection after that. The caller holds s.reqMu.
 //
 // Nothing orders the question after the return of the handlers, which gives the fiber.Ctx
 // back without a lock: a goroutine that outlives them can be told that they still run
 // just as they return, and then writes to the response of its own request while it is
 // sent. That write does not reach another request: the end of the request waits for it
-// (leaveCtx) and comes before the response is reset. A session that never learns of that
-// end, because the value that tells it was lost to another write to the values of the
-// request, is not waited for, and still writes to no request that follows: it is not the
-// one it was unwound in.
+// (leaveCtx) and comes before the response is reset. A fiber.Ctx that was abandoned is
+// not given back when the handlers return, so for such a request the answer stays yes
+// until the request ends.
+//
+// The end of the request is what stops the session for good (Middleware.endUnwound), and
+// this question only stands in for it should the session never be told. It has a gap
+// then: the server numbers a request once it has read it, so what it answers to one it
+// could not read, an oversized body or a broken header, is written on the context under
+// the numbers of the request before, which is the session's own to this question.
 func (s *Session) handlersRun() bool {
 	rctx := s.ctx.RequestCtx()
-	return rctx == s.rctx && !s.ctx.IsAbandoned() && rctx.ConnID() == s.rconn && rctx.ConnRequestNum() == s.rnum
+	return rctx == s.rctx && rctx.ConnID() == s.rconn && rctx.ConnRequestNum() == s.rnum
 }
 
 // leaveCtx tells the session that the fiber.Ctx of its request is no longer its to use
