@@ -247,8 +247,9 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 	sess, err := s.loadSession(c, nil)
 	if err == nil && sess.isFresh {
 		// Nothing the request carries names the ID that was just issued: say so, for
-		// the next store that is asked, which could not find it there.
-		cacheID(c, s, sess.identityLocked())
+		// the next store that is asked, which could not find it there, and which record
+		// the session took the place of, for the next session of this store.
+		cacheID(c, s, sess.identityLocked()).unreadable = sess.unreadable
 	}
 	return sess, err
 }
@@ -315,10 +316,12 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, error) {
 		}
 	}
 	// unreadable is the storage key of the record the request itself names, when the
-	// store cannot read it: the new session takes its place, and ends it when it is
-	// ended. A record under an ID that another store issued is that store's, and is
-	// not remembered.
-	var unreadable storageKey
+	// store cannot read it: the session takes its place, and ends it when it is ended. A
+	// record under an ID that another store issued is that store's, and is not
+	// remembered. When the store looked under the ID the request names earlier in the
+	// request, it is not read again below, and what the store found then holds; so does
+	// what the store found whose session this one has taken from the request.
+	unreadable := cached.refusedBy(s, found.id)
 	if found.raw == nil {
 		// Nothing was cached for s that is saved: the request names the session, if any.
 		res, err := s.getSessionID(c)
@@ -539,18 +542,18 @@ func (s *Store) warnUnreadable(raw []byte, codec *namedCodec) {
 	switch {
 	case len(name) > 0:
 		log.Warnf("[session] a stored session is a record of the codec %q (format version %d), which this store, which %s, cannot read; "+
-			"it is treated as a new session, and the record is left alone unless that session is destroyed or reset. "+
+			"it is treated as a new session, and the record is left alone unless the request destroys or resets that session. "+
 			"This is expected once after Config.Codec was changed or turned off; "+
 			"if it goes on, applications with different codecs share a storage and a session cookie",
 			name, version, have)
 	case known:
 		log.Warnf("[session] a stored session is a record of format version %d, which this store, which %s, does not know; "+
 			"it was probably written by a newer release of the application. It is treated as a new session, "+
-			"and the record is left alone unless that session is destroyed or reset",
+			"and the record is left alone unless the request destroys or resets that session",
 			version, have)
 	default:
 		log.Warn("[session] a stored session starts like a record, but its header is damaged; " +
-			"it is treated as a new session, and the record is left alone unless that session is destroyed or reset")
+			"it is treated as a new session, and the record is left alone unless the request destroys or resets that session")
 	}
 }
 
@@ -789,6 +792,10 @@ type sessionIdentity struct {
 type cachedID struct {
 	next  *cachedID
 	store *Store
+	// unreadable is the storage key of the record the request named and store could not
+	// read, when it issued the ID in its place: a session that is loaded later in the
+	// request, of the store or under that ID, takes the place of that record too.
+	unreadable storageKey
 	sessionIdentity
 }
 
@@ -804,6 +811,19 @@ func (head *cachedID) Close() error {
 		entry = next
 	}
 	return nil
+}
+
+// refusedBy returns the storage key of the record the request named and a store could not
+// read, as the newest entry says that is of s or names id, the session s has found: s
+// itself could not read it, or the store that issued id in its place. It is empty when
+// there is no such entry, or no such record.
+func (head *cachedID) refusedBy(s *Store, id string) storageKey {
+	for entry := head; entry != nil; entry = entry.next {
+		if entry.store == s || entry.id == id {
+			return entry.unreadable
+		}
+	}
+	return ""
 }
 
 // of returns the entry of s in the list that starts at head, nil if s has none.
@@ -831,8 +851,9 @@ func requestIDs(c fiber.Ctx) *cachedID {
 // buffer of the request, which the application can rewrite, so the entry keeps a copy.
 // The entry s had is reused as the new head, so that the list, which fasthttp reclaims
 // from its head, stays in one piece: overwriting the local with an entry that does not
-// lead to the old ones would strand them outside the pool.
-func cacheID(c fiber.Ctx, s *Store, ident sessionIdentity) {
+// lead to the old ones would strand them outside the pool. It is returned, and keeps
+// what it says of a record the store could not read.
+func cacheID(c fiber.Ctx, s *Store, ident sessionIdentity) *cachedID {
 	head := requestIDs(c)
 	ident.res.Value = utils.CopyString(ident.res.Value)
 	var entry *cachedID
@@ -851,6 +872,7 @@ func cacheID(c fiber.Ctx, s *Store, ident sessionIdentity) {
 	entry.next, entry.store, entry.sessionIdentity = head, s, ident
 	ctxlocal.Set(c, cachedIDsContextKey, entry)
 	ctxlocal.Set(c, sessionIDContextKey, ident.id)
+	return entry
 }
 
 // recacheID records that the session of s that had the ID old has the identity ident
