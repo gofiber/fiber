@@ -166,7 +166,7 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 			fallback = "/" + fallback
 		}
 		joinURLPath(&out, base, &url.URL{Path: fallback})
-		out.RawQuery = ""
+		out.RawQuery = base.RawQuery
 		out.Fragment = ""
 		return out.String()
 	}
@@ -176,7 +176,11 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 		// rather than overwriting it with the request path alone.
 		joinURLPath(&out, base, parsed)
 	}
-	out.RawQuery = parsed.RawQuery
+	if base.RawQuery == "" || parsed.RawQuery == "" {
+		out.RawQuery = base.RawQuery + parsed.RawQuery
+	} else {
+		out.RawQuery = base.RawQuery + "&" + parsed.RawQuery
+	}
 	out.Fragment = parsed.Fragment
 	return out.String()
 }

@@ -513,6 +513,30 @@ func Test_Security_JoinUpstreamPath(t *testing.T) {
 			name: "percent-encoded base path", base: "http://upstream.example/space%20here", target: "/sub",
 			want: "http://upstream.example/space%20here/sub",
 		},
+		{
+			name:   "base query with path",
+			base:   "http://upstream.example/api?apiKey=secret",
+			target: "/foo",
+			want:   "http://upstream.example/api/foo?apiKey=secret",
+		},
+		{
+			name:   "base query merged with target query",
+			base:   "http://upstream.example/api?apiKey=secret",
+			target: "/foo?filter=active",
+			want:   "http://upstream.example/api/foo?apiKey=secret&filter=active",
+		},
+		{
+			name:   "base query with target query only",
+			base:   "http://upstream.example/api?apiKey=secret",
+			target: "?filter=active",
+			want:   "http://upstream.example/api?apiKey=secret&filter=active",
+		},
+		{
+			name:   "base query with malformed target path",
+			base:   "http://upstream.example/api?apiKey=secret",
+			target: "/%zz",
+			want:   "http://upstream.example/api/%25zz?apiKey=secret",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

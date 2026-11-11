@@ -148,6 +148,16 @@ func Test_Proxy_ForwardsRoutedPath(t *testing.T) {
 			refused:   []string{"//internal", "/..%2Finternal", "/public/..%2Fadmin/secret"},
 		},
 		{
+			name:  "DomainForward with a query",
+			build: func(addr string) fiber.Handler { return DomainForward("example.com", "http://"+addr+"/api?key=val") },
+			forwarded: map[string]string{
+				"/internal": "/api/internal?key=val",
+				"/x?q=1":    "/api/x?key=val&q=1",
+			},
+			forbidden: []string{"/%2e%2e/admin/secret"},
+			refused:   []string{"//internal", "/..%2Finternal", "/public/..%2Fadmin/secret"},
+		},
+		{
 			name:      "DomainForward",
 			build:     func(addr string) fiber.Handler { return DomainForward("example.com", "http://"+addr) },
 			forwarded: map[string]string{"/a/../public/%zz?x=1": "/public/%25zz?x=1", "/public/a%3Ab": "/public/a%3Ab"},
