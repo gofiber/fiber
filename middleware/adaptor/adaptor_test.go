@@ -2426,9 +2426,8 @@ func Test_FiberApp_RequestHeaders_Linear(t *testing.T) {
 	const n = 1 << 16
 	app := fiber.New()
 	type seen struct {
-		repeated, cookie, agent, ctype string
-		distinct                       int
-		last                           string
+		repeated, cookie, agent, ctype, last string
+		distinct                             int
 	}
 	got := make(chan seen, 1)
 	app.Get("/", func(c fiber.Ctx) error {
