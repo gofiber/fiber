@@ -176,24 +176,32 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy, 
 	if utils.IndexControl(location) != -1 {
 		return nil, fasthttp.ErrorInvalidURI
 	}
-	uri := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(uri)
-	uri.Update(currentURL)
-	// previousScheme is at most "https" (5 bytes). A stack-sized scratch
-	// buffer holds it without escaping to the heap, eliminating the
-	// per-hop allocation that the previous append([]byte(nil), ...)
-	// pattern produced.
-	var schemeBuf [8]byte
-	previousScheme := append(schemeBuf[:0], uri.Scheme()...)
-	uri.UpdateBytes(location)
-	if len(uri.Host()) == 0 {
+	// Resolved on the escaped path (RFC 3986 Section 5.2), not through fasthttp.URI, which decodes
+	// "%2F" and resolves the ".." it uncovers: a Location that repeats the request URI, as a
+	// canonical-host redirect does, would otherwise name another path than the one requested.
+	base, err := url.Parse(currentURL)
+	if err != nil {
 		return nil, fasthttp.ErrorInvalidURI
 	}
-	target, err := validateUpstream(uri.String(), policy, lookups)
+	ref, err := url.Parse(utils.UnsafeString(location))
+	if err != nil {
+		return nil, fasthttp.ErrorInvalidURI
+	}
+	if !rawPathValid(ref.RawPath) {
+		ref.RawPath = repairRawPath(ref.RawPath, ref.Path)
+	}
+	next := base.ResolveReference(ref)
+	// A hop has never carried the user info of a Location: it would write an Authorization the
+	// request did not have.
+	next.User = nil
+	if next.Host == "" {
+		return nil, fasthttp.ErrorInvalidURI
+	}
+	target, err := validateUpstream(next.String(), policy, lookups)
 	if err != nil {
 		return nil, err
 	}
-	if !policy.AllowHTTPSDowngrade && utils.EqualFold(previousScheme, httpsSchemeBytes) && target.Scheme == schemeHTTP {
+	if !policy.AllowHTTPSDowngrade && base.Scheme == schemeHTTPS && target.Scheme == schemeHTTP {
 		return nil, ErrRedirectDowngrade
 	}
 	return target, nil
