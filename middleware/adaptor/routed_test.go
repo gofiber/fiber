@@ -583,3 +583,65 @@ func Test_HTTPMiddleware_ServesEscapedSlash(t *testing.T) {
 
 	adaptorTestRequireRawStatus(t, app, "/handler/group%2Fproject", fiber.StatusNotFound)
 }
+
+// Test_HTTPHandler_FileServerOneSpelling pins that a path reaches a net/http handler under one spelling: the router
+// keeps "/R&D" and "/R%26D" apart and a middleware mounted on one does not run for the other, but http.FileServer
+// decodes both into the same directory.
+func Test_HTTPHandler_FileServerOneSpelling(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for _, dir := range []string{"R&D", "café", "user@corp", "my dir"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(root, dir), 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(root, dir, "data.txt"), []byte("data"), 0o600))
+	}
+
+	for _, tc := range []struct {
+		guarded     map[string]int // target -> status with the guard
+		name, guard string
+	}{
+		{name: "sub-delim", guard: "/R&D", guarded: map[string]int{"/R&D/data.txt": fiber.StatusForbidden, "/R%26D/data.txt": fiber.StatusNotFound, "/R%26d/data.txt": fiber.StatusNotFound}},
+		{name: "at sign", guard: "/user@corp", guarded: map[string]int{"/user@corp/data.txt": fiber.StatusForbidden, "/user%40corp/data.txt": fiber.StatusNotFound}},
+		{name: "non-ASCII", guard: "/caf%C3%A9", guarded: map[string]int{"/caf%C3%A9/data.txt": fiber.StatusForbidden, "/café/data.txt": fiber.StatusNotFound, "/caf%c3%a9/data.txt": fiber.StatusForbidden}},
+		{name: "raw non-ASCII", guard: "/café", guarded: map[string]int{"/café/data.txt": fiber.StatusForbidden}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			for _, register := range []func(*fiber.App){
+				func(app *fiber.App) { app.Use(HTTPHandler(http.FileServer(http.Dir(root)))) },
+				func(app *fiber.App) { app.Use(HTTPHandlerFunc(http.FileServer(http.Dir(root)).ServeHTTP)) },
+				func(app *fiber.App) { app.Use(http.FileServer(http.Dir(root))) }, // registered directly
+			} {
+				app := fiber.New()
+				app.Use(tc.guard, denyAll)
+				register(app)
+				for target, status := range tc.guarded {
+					adaptorTestRequireRawStatus(t, app, target, status)
+				}
+			}
+		})
+	}
+
+	t.Run("unguarded", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(HTTPHandler(http.FileServer(http.Dir(root))))
+		for _, target := range []string{"/caf%C3%A9/data.txt", "/my%20dir/data.txt", "/R&D/data.txt", "/user@corp/data.txt"} {
+			adaptorTestRequireRawOK(t, app, target, "data")
+		}
+		// the spellings the router keeps apart from those are refused
+		for _, target := range []string{"/R%26D/data.txt", "/user%40corp/data.txt", "/café/data.txt"} {
+			adaptorTestRequireRawStatus(t, app, target, fiber.StatusNotFound)
+		}
+	})
+
+	t.Run("unescape path", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New(fiber.Config{UnescapePath: true})
+		app.Use("/R&D", denyAll)
+		app.Use(HTTPHandler(http.FileServer(http.Dir(root))))
+		for _, target := range []string{"/R&D/data.txt", "/R%26D/data.txt"} {
+			adaptorTestRequireRawStatus(t, app, target, fiber.StatusForbidden)
+		}
+		adaptorTestRequireRawOK(t, app, "/caf%C3%A9/data.txt", "data")
+	})
+}
