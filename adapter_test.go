@@ -772,6 +772,74 @@ func Test_HTTPHandler_Direct_ServesRoutedPath(t *testing.T) {
 	}
 }
 
+func Test_Adapter_FastHTTP_RoutedPath(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "admin"), 0o750))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "pub"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "admin", "data.txt"), []byte("guarded"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pub", "ok.txt"), []byte("ok"), 0o600))
+
+	files := fasthttp.FSHandler(dir, 0)
+	shapes := map[string]any{
+		"fasthttp.RequestHandler":        files,
+		"func(*fasthttp.RequestCtx) err": func(ctx *fasthttp.RequestCtx) error { files(ctx); return nil },
+	}
+	mounts := map[string]func(app *App, h any){
+		"Use":    func(app *App, h any) { app.Use(h) },
+		"Get /*": func(app *App, h any) { app.Get("/*", h) },
+	}
+	respelled := []string{
+		"/admin%2Fdata.txt", "//admin/data.txt", "/pub/..%2Fadmin/data.txt", "/%2Fadmin/data.txt",
+		"/pub%2F..%2Fadmin%2Fdata.txt",
+	}
+
+	for shape, handler := range shapes {
+		for mount, register := range mounts {
+			t.Run(shape+"/"+mount, func(t *testing.T) {
+				t.Parallel()
+				app := New()
+				app.Use("/admin", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
+				register(app, handler)
+
+				for _, target := range []string{"/pub/ok.txt", "/pub/ok.txt?a=%2F", "/pub/./ok.txt", "/%70ub/ok.txt", "/x/../pub/ok.txt"} {
+					resp := serveRawTarget(t, app, target)
+					require.Equal(t, StatusOK, resp.StatusCode(), target)
+					require.Equal(t, "ok", string(resp.Body()), target)
+				}
+				for _, target := range []string{"/admin/data.txt", "/pub/../admin/data.txt", "/%61dmin/data.txt"} {
+					require.Equal(t, StatusUnauthorized, serveRawTarget(t, app, target).StatusCode(), target)
+				}
+				for _, target := range respelled {
+					resp := serveRawTarget(t, app, target)
+					require.Equal(t, StatusNotFound, resp.StatusCode(), target)
+					require.NotContains(t, string(resp.Body()), "guarded", target)
+				}
+			})
+		}
+	}
+}
+
+func Test_Adapter_FastHTTP_RestoresRequestLine(t *testing.T) {
+	t.Parallel()
+	const target = "/a/../%70ub/x%20y?q=%2F"
+	var read, after string
+	app := New()
+	app.Use(func(c Ctx) error {
+		err := c.Next()
+		after = c.OriginalURL()
+		return err
+	})
+	app.Use(func(ctx *fasthttp.RequestCtx) error {
+		read = string(ctx.Path()) + "?" + string(ctx.QueryArgs().QueryString())
+		return nil
+	})
+
+	serveRawTarget(t, app, target)
+	require.Equal(t, "/pub/x y?q=%2F", read, "the handler reads the routed path")
+	require.Equal(t, target, after)
+}
+
 func Test_HTTPHandler_Direct_RestoresRequestLine(t *testing.T) {
 	t.Parallel()
 	const target = "/a/../%70ub/x%20y?q=%2F"

@@ -237,7 +237,10 @@ func adaptFastHTTPHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			h(c.RequestCtx())
+			// Like a net/http handler, it reads the path the router matched, not the request line as it arrived.
+			if !wiretarget.Serve(c, h) {
+				return ErrNotFound
+			}
 			return nil
 		}, true
 	case func(*fasthttp.RequestCtx) error: // (17) fasthttp handler with error return
@@ -245,7 +248,11 @@ func adaptFastHTTPHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			return h(c.RequestCtx())
+			var err error
+			if !wiretarget.Serve(c, func(ctx *fasthttp.RequestCtx) { err = h(ctx) }) {
+				return ErrNotFound
+			}
+			return err
 		}, true
 	default:
 		return nil, false

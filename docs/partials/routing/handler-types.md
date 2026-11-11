@@ -48,6 +48,8 @@ These handlers get the same routed-path handling as `adaptor.HTTPHandler`: they 
 
 fasthttp handlers run with full access to the underlying `fasthttp.RequestCtx`. They are expected to manage the response directly. Fiber will propagate any error returned by the `func(*fasthttp.RequestCtx) error` variant but otherwise does not inspect the context state.
 
+They get the same routed-path handling as the `net/http` handlers: `ctx.Path()` is the path the router matched, `c.Path()`, not fasthttp's own reading of the request line, so `/admin%2Fx`, `//admin/x` and `/public/..%2Fadmin/x` do not reach them as `/admin/x`. A routed path that is not handed on in this way is answered with `404 Not Found`, as for the `net/http` types.
+
 ```go title="Examples"
 // Reuse an existing net/http handler without manual adaptation
 httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
