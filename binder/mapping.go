@@ -401,6 +401,11 @@ func checkKeyDepth(key string) error {
 
 // Parse data into the struct with gofiber/schema
 func parseToStruct(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
+	// Only a file part fills a *multipart.FileHeader, see fileHeaders.
+	if g := guardFileHeaders(out, files); g != nil {
+		defer g.restore(out)
+	}
+
 	// Get decoder from pool
 	pool := getDecoderPool(aliasTag)
 	schemaDecoder := pool.Get().(*pooledDecoder) //nolint:errcheck,forcetypeassert // not needed
@@ -445,6 +450,10 @@ func formKeys(data map[string][]string, files []map[string][]*multipart.FileHead
 // parseValuesToStruct is parseToStruct for key/value pairs: values[i] is a
 // value of keys[i].
 func parseValuesToStruct(aliasTag string, out any, keys, values []string) error {
+	if g := guardFileHeaders(out, nil); g != nil {
+		defer g.restore(out)
+	}
+
 	pool := getDecoderPool(aliasTag)
 	schemaDecoder := pool.Get().(*pooledDecoder) //nolint:errcheck,forcetypeassert // not needed
 	defer putDecoder(pool, schemaDecoder)
