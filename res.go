@@ -1690,6 +1690,13 @@ func (r *DefaultRes) End() error {
 		return nil
 	}
 
+	// fasthttp marks the answer to HEAD body-less only after the handler returns, and the
+	// connection is closed below, so both are announced here.
+	if ctx.Request.Header.IsHead() {
+		ctx.Response.SkipBody = true
+	}
+	ctx.Response.SetConnectionClose()
+
 	bw := bufio.NewWriter(conn)
 	if err := ctx.Response.Write(bw); err != nil {
 		return err

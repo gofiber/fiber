@@ -9135,6 +9135,43 @@ func Test_Ctx_End(t *testing.T) {
 	require.Equal(t, "Hello, World!", apptest.Body(t, resp))
 }
 
+func Test_Ctx_End_Head(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		require.NoError(t, c.SendString("Hello, World!"))
+		return c.End()
+	})
+	app.Get("/echo", func(c Ctx) error {
+		require.NoError(t, c.SendString(c.Query("msg")))
+		return c.End()
+	})
+	ln := apptest.Serve(t, app, ListenConfig{DisableStartupMessage: true})
+
+	for _, tc := range []struct {
+		name, request string
+		body          string
+	}{
+		{"head", "HEAD / HTTP/1.1\r\nHost: example.com\r\n\r\n", ""},
+		{"head_query", "HEAD /echo?msg=leftover HTTP/1.1\r\nHost: example.com\r\n\r\n", ""},
+		{"get", "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n", "Hello, World!"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			conn := apptest.Dial(t, ln)
+			_, err := conn.Write([]byte(tc.request))
+			require.NoError(t, err)
+			// the connection is closed after the answer, so reading to EOF returns all of it
+			raw, err := io.ReadAll(conn)
+			require.NoError(t, err)
+			head, body, found := strings.Cut(string(raw), "\r\n\r\n")
+			require.True(t, found)
+			require.Contains(t, head, "Connection: close")
+			require.Equal(t, tc.body, body)
+		})
+	}
+}
+
 // conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Ctx_End_after_timeout(t *testing.T) {
 	app := New()
