@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -31,6 +30,7 @@ type Event struct {
 }
 
 // writeEvent encodes the payload and validates the event ID and name before writing the frame.
+// A flushed writer, as used by Stream, makes its entire buffer available for the frame.
 func writeEvent(w *bufio.Writer, event Event, jsonMarshal ...utils.JSONMarshal) error {
 	data, err := eventData(event.Data, jsonMarshalOrDefault(jsonMarshal))
 	if err != nil {
@@ -51,23 +51,63 @@ func writeEvent(w *bufio.Writer, event Event, jsonMarshal ...utils.JSONMarshal) 
 		}
 	}
 
-	// Reuse the writer's space for frames that fit. Append grows the slice
-	// for larger frames, and Write commits the complete frame either way.
+	const (
+		idPrefix    = "id: "
+		eventPrefix = "event: "
+		retryPrefix = "retry: "
+		dataPrefix  = "data: "
+	)
+	var retryBuf [20]byte
+	var retry []byte
+	if event.Retry > 0 {
+		retry = utils.AppendInt(retryBuf[:0], retryMilliseconds(event.Retry))
+	}
 	frame := w.AvailableBuffer()
+	size := 1 // Blank line ending the frame.
 	if id != "" {
-		frame = appendField(frame, "id: ", id)
+		size += len(idPrefix) + len(id) + 1
 	}
 	if name != "" {
-		frame = appendField(frame, "event: ", name)
+		size += len(eventPrefix) + len(name) + 1
 	}
-	if event.Retry > 0 {
-		frame = append(frame, "retry: "...)
-		frame = utils.AppendInt(frame, retryMilliseconds(event.Retry))
+	if len(retry) != 0 {
+		size += len(retryPrefix) + len(retry) + 1
+	}
+	var firstLine, remainingLines string
+	var hasMoreLines bool
+	if data.hasData {
+		text := normalizeNewlines(data.data)
+		firstLine, remainingLines, hasMoreLines = strings.Cut(text, "\n")
+		size += len(dataPrefix) + len(text) + 1
+		if hasMoreLines {
+			size += len(dataPrefix) // The LF found by Cut.
+			// Each additional LF adds one prefix. Count only if that could overflow the buffer.
+			if len(remainingLines) > (cap(frame)-size)/len(dataPrefix) {
+				size += len(dataPrefix) * strings.Count(remainingLines, "\n")
+			}
+		}
+	}
+	if size > cap(frame) {
+		frame = make([]byte, 0, size)
+	}
+
+	if id != "" {
+		frame = appendField(frame, idPrefix, id)
+	}
+	if name != "" {
+		frame = appendField(frame, eventPrefix, name)
+	}
+	if len(retry) != 0 {
+		frame = append(frame, retryPrefix...)
+		frame = append(frame, retry...)
 		frame = append(frame, '\n')
 	}
 	if data.hasData {
-		for line := range strings.SplitSeq(normalizeNewlines(data.data), "\n") {
-			frame = appendField(frame, "data: ", line)
+		frame = appendField(frame, dataPrefix, firstLine)
+		if hasMoreLines {
+			for line := range strings.SplitSeq(remainingLines, "\n") {
+				frame = appendField(frame, dataPrefix, line)
+			}
 		}
 	}
 	frame = append(frame, '\n')
@@ -130,10 +170,6 @@ func jsonMarshalOrDefault(jsonMarshal []utils.JSONMarshal) utils.JSONMarshal {
 // appendField appends a field prefix, its value, and the line terminator to dst.
 func appendField(dst []byte, prefix, value string) []byte {
 	dst = append(dst, prefix...)
-	if len(value) > cap(dst)-len(dst) {
-		// Size the growth from the bytes already appended, not the full writer buffer.
-		dst = slices.Clip(dst)
-	}
 	dst = append(dst, value...)
 	return append(dst, '\n')
 }

@@ -77,6 +77,7 @@ func sseTestOnClose(t *testing.T, handler func(fiber.Ctx, *Stream) error) error 
 // Test_SSE_EventFrames covers the frame writeEvent writes for an event.
 func Test_SSE_EventFrames(t *testing.T) {
 	t.Parallel()
+	longLine := strings.Repeat("x", 5000)
 	for _, tc := range []struct {
 		name  string
 		want  string
@@ -104,6 +105,16 @@ func Test_SSE_EventFrames(t *testing.T) {
 			name: "sub-millisecond retry rounds up", event: Event{Data: "x", Retry: 500 * time.Microsecond},
 			want: "retry: 1\ndata: x\n\n",
 		},
+		{
+			name:  "large second data line preserves preceding fields",
+			event: Event{ID: "42", Name: "update", Retry: time.Second, Data: "first\r\n" + longLine + "\n"},
+			want:  "id: 42\nevent: update\nretry: 1000\ndata: first\ndata: " + longLine + "\ndata: \n\n",
+		},
+		{
+			name:  "large ID and name preserve all fields",
+			event: Event{ID: longLine, Name: longLine, Retry: time.Duration(math.MaxInt64), Data: ""},
+			want:  "id: " + longLine + "\nevent: " + longLine + "\nretry: 9223372036855\ndata: \n\n",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -115,13 +126,51 @@ func Test_SSE_EventFrames(t *testing.T) {
 // Test_SSE_EventFrameSizes checks frame output around the writer's buffer capacity.
 func Test_SSE_EventFrameSizes(t *testing.T) {
 	t.Parallel()
-	maxBufferedData := bufio.NewWriter(io.Discard).Size() - dataFrameOverhead
-	for _, size := range []int{1 << 10, maxBufferedData - 1, maxBufferedData, maxBufferedData + 1, 8 << 10, 64 << 10} {
-		t.Run(fmt.Sprintf("%d_bytes", size), func(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		size         int
+		fromCapacity bool
+	}{
+		{name: "1 KiB", size: 1 << 10},
+		{name: "below capacity", size: -1, fromCapacity: true},
+		{name: "at capacity", fromCapacity: true},
+		{name: "above capacity", size: 1, fromCapacity: true},
+		{name: "8 KiB", size: 8 << 10},
+		{name: "64 KiB", size: 64 << 10},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			var buf bytes.Buffer
+			w := bufio.NewWriter(&buf)
+			size := tc.size
+			if tc.fromCapacity {
+				size += w.Available() - dataFrameOverhead
+			}
 			data := strings.Repeat("x", size)
-			require.Equal(t, "data: "+data+"\n\n", sseTestFrame(t, Event{Data: data}))
+			require.NoError(t, writeEvent(w, Event{Data: data}))
+			require.NoError(t, w.Flush())
+			require.Equal(t, "data: "+data+"\n\n", buf.String())
 		})
+	}
+}
+
+// Test_SSE_EventAllocations stays sequential because AllocsPerRun cannot run in a parallel test.
+func Test_SSE_EventAllocations(t *testing.T) {
+	w := bufio.NewWriter(io.Discard)
+	stream := newStream(context.Background(), w, "")
+	t.Cleanup(stream.closeStream)
+	for _, tc := range []struct {
+		name  string
+		event Event
+		want  int
+	}{
+		{name: "data", event: Event{Data: "hello"}},
+		{name: "multiline", event: Event{ID: "42", Name: "update", Retry: time.Second, Data: "one\ntwo"}},
+		{name: "at capacity", event: Event{Data: strings.Repeat("x", w.Size()-dataFrameOverhead)}},
+		{name: "large multiline", event: Event{Data: strings.Repeat(strings.Repeat("x", 1023)+"\n", 64)}, want: 1},
+	} {
+		allocs := testing.AllocsPerRun(100, func() { require.NoError(t, stream.Event(tc.event)) })
+		require.Equal(t, tc.want, int(allocs), tc.name)
 	}
 }
 
@@ -440,7 +489,9 @@ func (w errWriter) Write([]byte) (int, error) {
 
 // Benchmark_SSE_StreamEvent measures frame encoding and flushing across event formats and sizes.
 func Benchmark_SSE_StreamEvent(b *testing.B) {
-	maxBufferedData := bufio.NewWriter(io.Discard).Size() - dataFrameOverhead
+	w := bufio.NewWriter(io.Discard)
+	maxBufferedData := w.Size() - dataFrameOverhead
+	line := strings.Repeat("x", 1023) + "\n"
 	for _, tc := range []struct {
 		name  string
 		event Event
@@ -451,16 +502,20 @@ func Benchmark_SSE_StreamEvent(b *testing.B) {
 			event: Event{ID: "42", Name: "update", Retry: 2500 * time.Millisecond, Data: "first line\nsecond line\n"},
 		},
 		{name: "json", event: Event{Data: struct{ Status string }{Status: "ready"}}},
+		{name: "bytes", event: Event{Data: []byte("hello")}},
+		{name: "raw_json", event: Event{Data: json.RawMessage(`{"status":"ready"}`)}},
 		{name: "payload_1k", event: Event{Data: strings.Repeat("x", 1<<10)}},
 		{name: "below_boundary", event: Event{Data: strings.Repeat("x", maxBufferedData-1)}},
 		{name: "at_boundary", event: Event{Data: strings.Repeat("x", maxBufferedData)}},
 		{name: "above_boundary", event: Event{Data: strings.Repeat("x", maxBufferedData+1)}},
-		{name: "buffer_boundary", event: Event{Data: strings.Repeat("x", 4<<10)}},
+		{name: "payload_4k", event: Event{Data: strings.Repeat("x", 4<<10)}},
 		{name: "large", event: Event{Data: strings.Repeat("x", 8<<10)}},
 		{name: "payload_64k", event: Event{Data: strings.Repeat("x", 64<<10)}},
+		{name: "multiline_64k", event: Event{Data: strings.Repeat(line, 64)}},
+		{name: "multiline_1m", event: Event{Data: strings.Repeat(line, 1024)}},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
-			stream := newStream(context.Background(), bufio.NewWriter(io.Discard), "")
+			stream := newStream(context.Background(), w, "")
 			b.Cleanup(stream.closeStream)
 			b.ReportAllocs()
 			for b.Loop() {
