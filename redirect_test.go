@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"bufio"
 	"bytes"
 	"cmp"
 	"encoding/hex"
@@ -881,12 +880,7 @@ func Benchmark_Redirect_FlashCookieCheck(b *testing.B) {
 
 	for _, disabled := range []bool{false, true} {
 		b.Run(fmt.Sprintf("disabled=%v", disabled), func(b *testing.B) {
-			app := New(Config{DisableFlashMessages: disabled})
-			app.Get("/user", func(_ Ctx) error { return nil })
-			handler := app.Handler()
-
-			ctx := &fasthttp.RequestCtx{}
-			require.NoError(b, ctx.Request.Read(bufio.NewReader(strings.NewReader(raw))))
+			handler, ctx := flashCookieCheckBench(b, raw, disabled)
 
 			b.ReportAllocs()
 			for b.Loop() {
@@ -895,6 +889,38 @@ func Benchmark_Redirect_FlashCookieCheck(b *testing.B) {
 			require.Equal(b, StatusOK, ctx.Response.StatusCode())
 		})
 	}
+}
+
+// An API client: a bearer token and no Cookie line, the request the check should cost nothing on.
+func Benchmark_Redirect_FlashCookieCheck_NoCookie(b *testing.B) {
+	const raw = "GET /user HTTP/1.1\r\n" +
+		"Host: api.example.com\r\n" +
+		"User-Agent: curl/8.7.1\r\n" +
+		"Accept: application/json\r\n" +
+		"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwiaWF0IjoxNTE2MjM5MDIyfQ." +
+		"SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c\r\n" +
+		"X-Request-Id: 0f9c2f3e-6f6b-4f0e-9d0c-5f1d6a1b2c3d\r\n\r\n"
+
+	for _, disabled := range []bool{false, true} {
+		b.Run(fmt.Sprintf("disabled=%v", disabled), func(b *testing.B) {
+			handler, ctx := flashCookieCheckBench(b, raw, disabled)
+
+			b.ReportAllocs()
+			for b.Loop() {
+				handler(ctx)
+			}
+			require.Equal(b, StatusOK, ctx.Response.StatusCode())
+		})
+	}
+}
+
+// flashCookieCheckBench returns an app's handler and the context of the request raw, read off the wire so that its
+// raw header block is kept, for the flash cookie check benchmarks.
+func flashCookieCheckBench(b *testing.B, raw string, disabled bool) (fasthttp.RequestHandler, *fasthttp.RequestCtx) {
+	b.Helper()
+	app := New(Config{DisableFlashMessages: disabled})
+	app.Get("/user", func(_ Ctx) error { return nil })
+	return app.Handler(), wireRequestCtx(b, raw, nil)
 }
 
 var testredirectionMsgs = redirectionMsgs{

@@ -144,31 +144,54 @@ func Test_Route_Handler_Order(t *testing.T) {
 	require.Equal(t, []int{1, 2, 3, 4}, order, "Handler order")
 }
 
-func Test_hasFlashCookieExactMatch(t *testing.T) {
+func Test_hasFlashCookie(t *testing.T) {
 	t.Parallel()
-	buildRequestWithCookie := func(t *testing.T, cookie string) *fasthttp.Request {
-		t.Helper()
-
-		rawRequest := strings.NewReader("GET / HTTP/1.1\r\nHost: localhost\r\nCookie: " + cookie + "\r\n\r\n")
-		req := new(fasthttp.Request)
-		require.NoError(t, req.Read(bufio.NewReader(rawRequest)))
-		return req
+	const flash = FlashCookieName + "=valid"
+	tests := []struct {
+		name   string
+		lines  []string
+		asSent bool // the header store keeps names as sent (DisableHeaderNormalizing)
+		built  bool // set on the header instead of read off the wire, so there are no raw headers
+		want   bool
+	}{
+		{name: "exact name", lines: []string{"Cookie: " + flash}, want: true},
+		{name: "name is a prefix of another", lines: []string{"Cookie: " + FlashCookieName + "X=1"}},
+		{name: "name is a suffix of another", lines: []string{"Cookie: x" + flash}},
+		{name: "inside a value", lines: []string{"Cookie: a=" + flash}},
+		{name: "later pair", lines: []string{"Cookie: a=b; theme=dark; " + flash}, want: true},
+		{name: "no space after the separator", lines: []string{"Cookie: a=b;" + flash}, want: true},
+		{name: "spaces and a tab before the name", lines: []string{"Cookie: a=b; \t " + flash}, want: true},
+		{name: "second Cookie line", lines: []string{"Cookie: a=b", "Cookie: " + flash}, want: true},
+		{name: "empty first Cookie line", lines: []string{"Cookie:", "Cookie: " + flash}, want: true},
+		{name: "no Cookie line", lines: []string{"Accept: */*"}},
+		{name: "only in another header", lines: []string{"Referer: /?" + flash}},
+		{name: "another header beside a cookie", lines: []string{"Referer: /?" + flash, "Cookie: a=b"}},
+		{name: "space before the equals sign", lines: []string{"Cookie: " + FlashCookieName + " =1"}},
+		{name: "lower-case name as sent", lines: []string{"cookie: a=b; " + flash}, asSent: true, want: true},
+		{name: "another cookie as sent", lines: []string{"cookie: " + FlashCookieName + "X=1"}, asSent: true},
+		{name: "built request", lines: []string{"Cookie: " + flash}, built: true, want: true},
+		{name: "built request, another cookie", lines: []string{"Cookie: " + FlashCookieName + "X=1"}, built: true},
+		{name: "built request as sent", lines: []string{"cookie: " + flash}, asSent: true, built: true, want: true},
 	}
-
-	req := buildRequestWithCookie(t, FlashCookieName+"X=not-the-flash-cookie")
-	require.False(t, hasFlashCookie(&req.Header))
-
-	req = buildRequestWithCookie(t, FlashCookieName+"=valid")
-	require.True(t, hasFlashCookie(&req.Header))
-
-	// A programmatic request carries no raw headers, so the cookie lookup decides.
-	var syntheticReq fasthttp.Request
-	syntheticReq.Header.Set(HeaderCookie, FlashCookieName+"=valid")
-	require.True(t, hasFlashCookie(&syntheticReq.Header))
-
-	var syntheticOther fasthttp.Request
-	syntheticOther.Header.Set(HeaderCookie, FlashCookieName+"X=not-the-flash-cookie")
-	require.False(t, hasFlashCookie(&syntheticOther.Header))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var req fasthttp.Request
+			if tc.asSent {
+				req.Header.DisableNormalizing()
+			}
+			if tc.built {
+				for _, line := range tc.lines {
+					name, value, _ := strings.Cut(line, ": ")
+					req.Header.Add(name, value)
+				}
+			} else {
+				raw := "GET / HTTP/1.1\r\nHost: localhost\r\n" + strings.Join(tc.lines, "\r\n") + "\r\n\r\n"
+				require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+			}
+			require.Equal(t, tc.want, hasFlashCookie(&req.Header, !tc.asSent))
+		})
+	}
 }
 
 func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {

@@ -47,19 +47,51 @@ const (
 	FlashCookieName = "fiber_flash"
 )
 
-var flashCookieNeedle = []byte(FlashCookieName + "=")
+var (
+	flashCookieNeedle = []byte(FlashCookieName + "=")
+	cookieFieldName   = []byte(HeaderCookie)
+)
 
 // hasFlashCookie is on the request hot path and runs on every request/response cycle.
 // Keep this cheap for users who don't use flash messages:
-// 1) a fast raw-header prefilter to avoid unnecessary cookie parsing,
+// 1) a fast prefilter to avoid unnecessary cookie parsing,
 // 2) an exact cookie lookup to avoid prefix false positives (e.g. fiber_flashX).
-func hasFlashCookie(header *fasthttp.RequestHeader) bool {
-	// A request built programmatically has no raw headers, so the prefilter cannot answer for it.
-	if rawHeaders := header.RawHeaders(); len(rawHeaders) > 0 && !bytes.Contains(rawHeaders, flashCookieNeedle) {
+// canonical is whether the header store normalizes field names.
+//
+//nolint:revive // flag-parameter: canonical is a property of the header store, not a mode of operation
+func hasFlashCookie(header *fasthttp.RequestHeader, canonical bool) bool {
+	if canonical {
+		// Only a Cookie line can carry it. PeekCanonical answers "none" without PeekAll's name normalization.
+		if header.PeekCanonical(cookieFieldName) == nil || !cookieLinesHaveFlash(header.PeekAll(HeaderCookie)) {
+			return false
+		}
+	} else if rawHeaders := header.RawHeaders(); len(rawHeaders) > 0 && !bytes.Contains(rawHeaders, flashCookieNeedle) {
+		// Names are stored as sent, so the block is searched instead; a request built programmatically has none.
 		return false
 	}
 
 	return header.Cookie(FlashCookieName) != nil
+}
+
+// cookieLinesHaveFlash reports whether a cookie pair in lines starts with the flash cookie's name,
+// stepping from pair to pair as fasthttp splits them.
+func cookieLinesHaveFlash(lines [][]byte) bool {
+	for _, line := range lines {
+		for len(line) > 0 {
+			for len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
+				line = line[1:]
+			}
+			if bytes.HasPrefix(line, flashCookieNeedle) {
+				return true
+			}
+			end := bytes.IndexByte(line, ';')
+			if end < 0 {
+				break
+			}
+			line = line[end+1:]
+		}
+	}
+	return false
 }
 
 // redirectionMsgs is a struct that used to store flash messages and old input data in cookie using MSGP.
