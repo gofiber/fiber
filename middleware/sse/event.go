@@ -30,6 +30,7 @@ type Event struct {
 	Retry time.Duration
 }
 
+// writeEvent encodes the payload and validates the event ID and name before writing the frame.
 func writeEvent(w *bufio.Writer, event Event, jsonMarshal ...utils.JSONMarshal) error {
 	data, err := eventData(event.Data, jsonMarshalOrDefault(jsonMarshal))
 	if err != nil {
@@ -126,6 +127,7 @@ func jsonMarshalOrDefault(jsonMarshal []utils.JSONMarshal) utils.JSONMarshal {
 	return json.Marshal
 }
 
+// appendField appends a field prefix, its value, and the line terminator to dst.
 func appendField(dst []byte, prefix, value string) []byte {
 	dst = append(dst, prefix...)
 	if len(value) > cap(dst)-len(dst) {

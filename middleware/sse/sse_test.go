@@ -26,6 +26,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const dataFrameOverhead = len("data: \n\n")
+
 type panicStringer struct{}
 
 func (*panicStringer) String() string {
@@ -75,7 +77,6 @@ func sseTestOnClose(t *testing.T, handler func(fiber.Ctx, *Stream) error) error 
 // Test_SSE_EventFrames covers the frame writeEvent writes for an event.
 func Test_SSE_EventFrames(t *testing.T) {
 	t.Parallel()
-	large := strings.Repeat("x", 8<<10)
 	for _, tc := range []struct {
 		name  string
 		want  string
@@ -94,7 +95,6 @@ func Test_SSE_EventFrames(t *testing.T) {
 		{name: "writes byte slice data", event: Event{Data: []byte("hello\nworld")}, want: "data: hello\ndata: world\n\n"},
 		{name: "preserves trailing data newline", event: Event{Data: "hello\n"}, want: "data: hello\ndata: \n\n"},
 		{name: "preserves intentional blank data line", event: Event{Data: "hello\n\n"}, want: "data: hello\ndata: \ndata: \n\n"},
-		{name: "writes data larger than the writer buffer", event: Event{Data: large}, want: "data: " + large + "\n\n"},
 		{
 			name:  "JSON encodes data",
 			event: Event{Name: "message", Data: map[string]string{"hello": "world"}},
@@ -112,6 +112,20 @@ func Test_SSE_EventFrames(t *testing.T) {
 	}
 }
 
+// Test_SSE_EventFrameSizes checks frame output around the writer's buffer capacity.
+func Test_SSE_EventFrameSizes(t *testing.T) {
+	t.Parallel()
+	maxBufferedData := bufio.NewWriter(io.Discard).Size() - dataFrameOverhead
+	for _, size := range []int{1 << 10, maxBufferedData - 1, maxBufferedData, maxBufferedData + 1, 8 << 10, 64 << 10} {
+		t.Run(fmt.Sprintf("%d_bytes", size), func(t *testing.T) {
+			t.Parallel()
+			data := strings.Repeat("x", size)
+			require.Equal(t, "data: "+data+"\n\n", sseTestFrame(t, Event{Data: data}))
+		})
+	}
+}
+
+// Test_SSE_EventRejectsFieldInjection verifies that an invalid ID or name leaves no frame behind.
 func Test_SSE_EventRejectsFieldInjection(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -422,6 +436,40 @@ type errWriter struct {
 
 func (w errWriter) Write([]byte) (int, error) {
 	return 0, fmt.Errorf("test writer: %w", w.err)
+}
+
+// Benchmark_SSE_StreamEvent measures frame encoding and flushing across event formats and sizes.
+func Benchmark_SSE_StreamEvent(b *testing.B) {
+	maxBufferedData := bufio.NewWriter(io.Discard).Size() - dataFrameOverhead
+	for _, tc := range []struct {
+		name  string
+		event Event
+	}{
+		{name: "data", event: Event{Data: "hello"}},
+		{
+			name:  "multiline",
+			event: Event{ID: "42", Name: "update", Retry: 2500 * time.Millisecond, Data: "first line\nsecond line\n"},
+		},
+		{name: "json", event: Event{Data: struct{ Status string }{Status: "ready"}}},
+		{name: "payload_1k", event: Event{Data: strings.Repeat("x", 1<<10)}},
+		{name: "below_boundary", event: Event{Data: strings.Repeat("x", maxBufferedData-1)}},
+		{name: "at_boundary", event: Event{Data: strings.Repeat("x", maxBufferedData)}},
+		{name: "above_boundary", event: Event{Data: strings.Repeat("x", maxBufferedData+1)}},
+		{name: "buffer_boundary", event: Event{Data: strings.Repeat("x", 4<<10)}},
+		{name: "large", event: Event{Data: strings.Repeat("x", 8<<10)}},
+		{name: "payload_64k", event: Event{Data: strings.Repeat("x", 64<<10)}},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			stream := newStream(context.Background(), bufio.NewWriter(io.Discard), "")
+			b.Cleanup(stream.closeStream)
+			b.ReportAllocs()
+			for b.Loop() {
+				if err := stream.Event(tc.event); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }
 
 func Benchmark_sanitizeField(b *testing.B) {
