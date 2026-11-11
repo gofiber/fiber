@@ -7,9 +7,9 @@ import (
 	"reflect"
 
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/fasthttpadaptor"
 
 	"github.com/gofiber/fiber/v3/internal/bodystream"
+	"github.com/gofiber/fiber/v3/internal/requesthold"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 )
 
@@ -265,7 +265,7 @@ func wrapHTTPHandler(handler http.Handler) Handler {
 		return nil
 	}
 
-	adapted := fasthttpadaptor.NewFastHTTPHandler(handler)
+	adapted := requesthold.NewFastHTTPHandler(handler)
 
 	// Same routed-path handling as adaptor.HTTPHandler: net/http decodes and cleans the raw line its own way.
 	return func(c Ctx) error {
