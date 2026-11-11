@@ -25,11 +25,34 @@ func parseUpstream(raw string) (*url.URL, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrUpstreamHostInvalid, err)
 	}
-	// net/url ignores a RawPath it would not write ("/café"); dropping it spares each join escaping Path again.
+	// net/url ignores a RawPath it would not write ("/café") and writes Path again, which turns a
+	// "%2F" into a separator. Escaping only the bytes a path cannot hold keeps every escape the
+	// address had, and gives EscapedPath, and so String, a RawPath it writes as it is.
 	if !rawPathValid(u.RawPath) {
-		u.RawPath = ""
+		u.RawPath = repairRawPath(u.RawPath, u.Path)
 	}
 	return u, nil
+}
+
+// repairRawPath escapes the bytes of raw that a path cannot hold raw, as "%XX", and leaves the
+// escapes it has alone. It returns "" when the result would not decode to path, which leaves
+// the default escaping of path to String.
+func repairRawPath(raw, path string) string {
+	const upperHex = "0123456789ABCDEF"
+	b := make([]byte, 0, len(raw)+8)
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if rawPathValid(raw[i : i+1]) {
+			b = append(b, c)
+			continue
+		}
+		b = append(b, '%', upperHex[c>>4], upperHex[c&15])
+	}
+	repaired := string(b)
+	if decoded, err := url.PathUnescape(repaired); err != nil || decoded != path || repaired == (&url.URL{Path: path}).EscapedPath() {
+		return ""
+	}
+	return repaired
 }
 
 // validateUpstream parses raw, enforces the scheme allowlist, and unless
