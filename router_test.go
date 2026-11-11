@@ -194,6 +194,14 @@ func Test_hasFlashCookie(t *testing.T) {
 	}
 }
 
+// A request built programmatically (the adaptor, tests) holds its cookies already parsed, which the Cookie line
+// peeks would re-encode on every request. Sequential: testing.AllocsPerRun panics during a parallel test.
+func Test_hasFlashCookie_BuiltRequestDoesNotAllocate(t *testing.T) {
+	var req fasthttp.Request
+	req.Header.Set(HeaderCookie, "session=abc; theme=dark")
+	require.Zero(t, testing.AllocsPerRun(100, func() { require.False(t, hasFlashCookie(&req.Header, true)) }))
+}
+
 func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {
 	t.Parallel()
 	app := New()

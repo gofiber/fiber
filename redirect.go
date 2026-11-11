@@ -60,14 +60,18 @@ var (
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store, not a mode of operation
 func hasFlashCookie(header *fasthttp.RequestHeader, canonical bool) bool {
-	if canonical {
-		// Only a Cookie line can carry it. PeekCanonical answers "none" without PeekAll's name normalization.
-		if header.PeekCanonical(cookieFieldName) == nil || !cookieLinesHaveFlash(header.PeekAll(HeaderCookie)) {
+	// A request built programmatically has no raw headers, so the prefilter cannot answer for it; its cookies may
+	// already be parsed, and then the Cookie lines are re-encoded on each peek, so the cookie lookup decides.
+	if rawHeaders := header.RawHeaders(); len(rawHeaders) > 0 {
+		if canonical {
+			// Only a Cookie line can carry it. PeekCanonical answers "none" without PeekAll's name normalization.
+			if header.PeekCanonical(cookieFieldName) == nil || !cookieLinesHaveFlash(header.PeekAll(HeaderCookie)) {
+				return false
+			}
+		} else if !bytes.Contains(rawHeaders, flashCookieNeedle) {
+			// Names are stored as sent, so the block is searched instead.
 			return false
 		}
-	} else if rawHeaders := header.RawHeaders(); len(rawHeaders) > 0 && !bytes.Contains(rawHeaders, flashCookieNeedle) {
-		// Names are stored as sent, so the block is searched instead; a request built programmatically has none.
-		return false
 	}
 
 	return header.Cookie(FlashCookieName) != nil
