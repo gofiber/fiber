@@ -2420,3 +2420,48 @@ func Test_FiberAdaptors_HeadLeavesStreamUnread(t *testing.T) {
 	require.Equal(t, ": open\n\n", rec.Body.String())
 	require.Equal(t, int32(1), handlers.Load())
 }
+
+func Test_FiberApp_RequestHeaders_Linear(t *testing.T) {
+	t.Parallel()
+	const n = 1 << 16
+	app := fiber.New()
+	type seen struct {
+		repeated, cookie, agent, ctype string
+		distinct                       int
+		last                           string
+	}
+	got := make(chan seen, 1)
+	app.Get("/", func(c fiber.Ctx) error {
+		s := seen{
+			repeated: strings.Join(c.GetReqHeaders()["X-Repeated"], ","),
+			cookie:   c.Get(fiber.HeaderCookie), agent: c.Get(fiber.HeaderUserAgent), ctype: c.Get(fiber.HeaderContentType),
+			last: c.Get("X-Name-" + strconv.Itoa(n-1)),
+		}
+		for name := range c.Request().Header.All() {
+			if strings.HasPrefix(string(name), "X-Name-") {
+				s.distinct++
+			}
+		}
+		got <- s
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+
+	r := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	for i := range n {
+		r.Header.Set("X-Name-"+strconv.Itoa(i), strconv.Itoa(i))
+	}
+	r.Header["X-Repeated"] = []string{"a", "b", "c"}
+	r.Header.Set(fiber.HeaderCookie, "k=v")
+	r.Header.Set(fiber.HeaderUserAgent, "agent/1")
+	r.Header.Set(fiber.HeaderContentType, "text/plain")
+
+	rec := httptest.NewRecorder()
+	start := time.Now()
+	FiberApp(app)(rec, r)
+	// A scan of the stored headers per header is n*n/2 steps, which takes many seconds
+	require.Less(t, time.Since(start), 5*time.Second)
+
+	require.Equal(t, fiber.StatusNoContent, rec.Code)
+	s := apptest.Recv(t, got, time.Second)
+	require.Equal(t, seen{repeated: "a,b,c", cookie: "k=v", agent: "agent/1", ctype: "text/plain", distinct: n, last: strconv.Itoa(n - 1)}, s)
+}

@@ -532,6 +532,35 @@ func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 	}
 }
 
+// derivedRequestHeader reports whether fasthttp fills name while the request is built, or stores it
+// outside its plain header lines, so a Set must replace what it holds.
+func derivedRequestHeader(name string) bool {
+	switch len(name) {
+	case 4:
+		return utils.EqualFold(name, fiber.HeaderHost)
+	case 6:
+		return utils.EqualFold(name, fiber.HeaderCookie)
+	case 7:
+		return utils.EqualFold(name, "Trailer")
+	case 10:
+		return utils.EqualFold(name, fiber.HeaderUserAgent) || utils.EqualFold(name, fiber.HeaderConnection)
+	case 12:
+		return utils.EqualFold(name, fiber.HeaderContentType)
+	case 14:
+		return utils.EqualFold(name, fiber.HeaderContentLength)
+	case 17:
+		return utils.EqualFold(name, fiber.HeaderTransferEncoding)
+	default:
+		return false
+	}
+}
+
+// isCanonicalHeaderKey reports whether name is spelled as fasthttp stores it, so that two keys of
+// a net/http header map can never name the same line. A hand-built map may hold both "x-a" and "X-A".
+func isCanonicalHeaderKey(name string) bool {
+	return http.CanonicalHeaderKey(name) == name
+}
+
 func isFramingHeader(name string) bool {
 	for _, h := range framingHeaders {
 		if utils.EqualFold(name, h) {
@@ -980,8 +1009,16 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			// of collapsing to the last value. fasthttp's Add keeps its own
 			// singleton semantics for Cookie/Content-Type/etc., which can
 			// only hold one value there by design.
-			req.Header.Set(key, vals[0])
-			for _, v := range vals[1:] {
+			//
+			// Only the names fasthttp derives or stores specially can hold a value
+			// already, and Set scans every stored line: any other canonical name is
+			// new to the request, so Add appends it without the scan.
+			rest := vals
+			if derivedRequestHeader(key) || !isCanonicalHeaderKey(key) {
+				req.Header.Set(key, vals[0])
+				rest = vals[1:]
+			}
+			for _, v := range rest {
 				req.Header.Add(key, v)
 			}
 			if len(vals) > 1 {
