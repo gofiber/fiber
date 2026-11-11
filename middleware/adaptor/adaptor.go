@@ -20,6 +20,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/bodystream"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
+	"github.com/gofiber/fiber/v3/internal/requesthold"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -253,7 +254,7 @@ func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 
 // HTTPHandler wraps net/http handler to fiber handler
 func HTTPHandler(h http.Handler) fiber.Handler {
-	handler := fasthttpadaptor.NewFastHTTPHandler(h)
+	handler := requesthold.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
 		return serveRouted(c, handler)
 	}
@@ -261,8 +262,11 @@ func HTTPHandler(h http.Handler) fiber.Handler {
 
 // HTTPHandlerWithContext is like HTTPHandler, but additionally stores Fiber’s user context in the request context
 func HTTPHandlerWithContext(h http.Handler) fiber.Handler {
-	handler := fasthttpadaptor.NewFastHTTPHandler(h)
+	handler := requesthold.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
+		// Hold the request context before the value below is stored on it, so that a handler
+		// that outlives the request still reads it (see requesthold).
+		requesthold.Register(c.RequestCtx())
 		// Store the Fiber user context (c.Context()) in the fasthttp request context
 		// so adapted net/http handlers can retrieve it via adaptor.LocalContextFromHTTPRequest(r)
 		c.RequestCtx().SetUserValue(localContextKey, c.Context())
