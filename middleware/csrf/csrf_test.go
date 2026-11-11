@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"bufio"
 	"bytes"
 	"cmp"
 	"context"
@@ -2278,4 +2279,50 @@ func Test_CSRF_SessionModeKeepsConcurrentSessionChange(t *testing.T) {
 	close(proceed)
 	require.NoError(t, apptest.Recv(t, done, 10*time.Second))
 	apptest.ExpectBody(t, app, withCookies("/role"), fiber.StatusOK, "user")
+}
+
+// csrfTestRaw runs h on the request raw, read as a server reads it, and returns the status of the answer.
+func csrfTestRaw(t *testing.T, h fasthttp.RequestHandler, raw string) int {
+	t.Helper()
+
+	req := &fasthttp.Request{}
+	require.NoError(t, req.ReadLimitBody(bufio.NewReader(strings.NewReader(raw)), 1<<20))
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Init(req, nil, nil)
+	h(ctx)
+	return ctx.Response.StatusCode()
+}
+
+// Test_CSRF_OriginCheckGoesByTheHostHeaderForAPathTarget pins that a request target beginning with "/" is a
+// path (RFC 9112 Section 3.2.1): the Origin is compared with the Host header, not with the first segment of the path.
+func Test_CSRF_OriginCheckGoesByTheHostHeaderForAPathTarget(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
+	app.Post("/*", func(c fiber.Ctx) error { return c.SendString("accepted") })
+	h := app.Handler()
+	token, cookie := csrfTestVisit(t, h)
+
+	post := func(target, host, origin string) int {
+		return csrfTestRaw(t, h, "POST "+target+" HTTP/1.1\r\nHost: "+host+"\r\nCookie: "+cookie+"\r\nX-Csrf-Token: "+token+
+			"\r\nOrigin: "+origin+"\r\nContent-Length: 0\r\n\r\n")
+	}
+
+	for _, tc := range []struct {
+		name, target, host, origin string
+		status                     int
+	}{
+		{"path begins with the origin's host", "//other.example/transfer?x=://", "victim.example", "http://other.example", fiber.StatusForbidden},
+		{"query with a URL", "//other.example/transfer?next=http://a", "victim.example", "http://other.example", fiber.StatusForbidden},
+		{"plain target", "/transfer?x=://", "victim.example", "http://other.example", fiber.StatusForbidden},
+		{"same origin", "//other.example/transfer?x=://", "victim.example", "http://victim.example", fiber.StatusOK},
+		{"plain same origin", "/transfer", "victim.example", "http://victim.example", fiber.StatusOK},
+		{"absolute-form names its own host", "http://other.example/transfer", "other.example", "http://other.example", fiber.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.status, post(tc.target, tc.host, tc.origin))
+		})
+	}
 }
