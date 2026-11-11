@@ -281,3 +281,28 @@ func Test_ParsesAsPath_Unrooted(t *testing.T) {
 	require.True(t, wiretarget.ParsesAsPath("/http://u:pw@evil.example/x", host))
 	require.True(t, wiretarget.ParsesAsPath("/http://u:pw@evil.example/x", nil))
 }
+
+func Test_SingleSpelling(t *testing.T) {
+	t.Parallel()
+	for path, want := range map[string]bool{
+		"/":                                    true,
+		"/R&D/x":                               true,
+		"/user@corp/x":                         true,
+		"/a:b/c;d=e,f+g!h*i'(j)":               true,
+		"/caf%C3%A9":                           true,
+		"/my%20dir/x":                          true,
+		"/a%3Fb%23c%25d":                       true,
+		"/%zz":                                 true, // begins no escape: let through as it always was
+		"/100%":                                true,
+		"/R%26D/x":                             false,
+		"/user%40corp/x":                       false,
+		"/a%3Ab":                               false,
+		"/a%21b%24c%27d%28e%29%2A%2B%2C%3B%3D": false,
+		"/café":                                false,
+		"/a b":                                 false,
+		"/a|b":                                 false,
+		"/caf%c3%a9":                           false, // lower-case digits: the router writes upper case
+	} {
+		require.Equal(t, want, wiretarget.SingleSpelling(path), path)
+	}
+}

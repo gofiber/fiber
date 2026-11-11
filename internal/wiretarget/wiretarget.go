@@ -114,7 +114,7 @@ func Routed[App any](c Ctx[App]) string {
 // it does not hand on.
 func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
 	target := Routed(c)
-	if !SegmentsAsRouted(target, AllowParameters) {
+	if !SegmentsAsRouted(target, AllowParameters) || (!appconfig.Of(c.App()).UnescapePath && !SingleSpelling(c.Path())) {
 		return false
 	}
 	if target == c.OriginalURL() {
@@ -231,6 +231,39 @@ func SegmentsAsRouted(target string, allow Allowance) bool {
 	}
 	return true
 }
+
+// SingleSpelling reports whether path, the path the router matched, is the one spelling of the
+// path net/http decodes it to that a middleware registration can name. The router keeps "/R&D"
+// and "/R%26D", "/user@corp" and "/user%40corp", "/caf%C3%A9" and a raw "/café" apart, so a
+// middleware mounted on one of them does not run for the others, but net/http decodes them all
+// into one URL.Path and serves the same directory for each. The spelling is the one a path
+// has on the wire when its sub-delimiters, ":" and "@" are raw, an unreserved character is
+// decoded (the router does that) and every other byte, a space or a byte of UTF-8 say,
+// is an escape with uppercase hex digits. A "%" that begins no escape is let through, as it
+// always was; the client cannot have meant an escape by it. Under UnescapePath the
+// router decodes every escape itself, so the middleware sees one path and the caller skips this.
+func SingleSpelling(path string) bool {
+	for i := 0; i < len(path); i++ {
+		c := path[i]
+		if c == '%' {
+			if i+2 >= len(path) || !isHexDigit(path[i+1]) || !isHexDigit(path[i+2]) {
+				continue
+			}
+			v := unhex(path[i+1])<<4 | unhex(path[i+2])
+			if isHexLower(path[i+1]) || isHexLower(path[i+2]) || (pathRaw[v] && v != '/') {
+				return false
+			}
+			i += 2
+			continue
+		}
+		if !pathRaw[c] {
+			return false
+		}
+	}
+	return true
+}
+
+func isHexLower(b byte) bool { return b >= 'a' && b <= 'f' }
 
 // HasForgedEscape reports whether target's path holds an escape of an
 // unreserved character (RFC 3986 Section 2.3: a letter, a digit, "-", ".",
