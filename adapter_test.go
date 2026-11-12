@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"testing/iotest"
 	"time"
@@ -718,10 +720,13 @@ func Test_HTTPHandler_Direct_ServesRoutedPath(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "pub", "ok.txt"), []byte("ok"), 0o600))
 
 	fileServer := http.FileServer(http.Dir(dir))
+	files := fasthttp.FSHandler(dir, 0)
 	shapes := map[string]any{
-		"http.Handler":     fileServer,
-		"http.HandlerFunc": http.HandlerFunc(fileServer.ServeHTTP),
-		"http func":        fileServer.ServeHTTP,
+		"http.Handler":                   fileServer,
+		"http.HandlerFunc":               http.HandlerFunc(fileServer.ServeHTTP),
+		"http func":                      fileServer.ServeHTTP,
+		"fasthttp.RequestHandler":        files,
+		"func(*fasthttp.RequestCtx) err": func(ctx *fasthttp.RequestCtx) error { files(ctx); return nil },
 	}
 	mounts := map[string]func(app *App, h any){
 		"Use":     func(app *App, h any) { app.Use(h) },
@@ -734,6 +739,7 @@ func Test_HTTPHandler_Direct_ServesRoutedPath(t *testing.T) {
 		"/admin%2F":                        {StatusNotFound, StatusUnauthorized},
 		"/pub/..%2Fadmin/secret.txt":       {StatusNotFound, StatusUnauthorized},
 		"/pub/..%2fadmin%2fsecret.txt":     {StatusNotFound, StatusUnauthorized},
+		"/pub%2F..%2Fadmin%2Fsecret.txt":   {StatusNotFound, StatusUnauthorized},
 		"//admin/secret.txt":               {StatusNotFound, StatusNotFound},
 		"/%2Fadmin/secret.txt":             {StatusNotFound, StatusNotFound},
 		"/pub//../admin/secret.txt":        {StatusNotFound, StatusNotFound},
@@ -772,72 +778,84 @@ func Test_HTTPHandler_Direct_ServesRoutedPath(t *testing.T) {
 	}
 }
 
-func Test_Adapter_FastHTTP_RoutedPath(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "admin"), 0o750))
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "pub"), 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "admin", "data.txt"), []byte("guarded"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "pub", "ok.txt"), []byte("ok"), 0o600))
-
-	files := fasthttp.FSHandler(dir, 0)
-	shapes := map[string]any{
-		"fasthttp.RequestHandler":        files,
-		"func(*fasthttp.RequestCtx) err": func(ctx *fasthttp.RequestCtx) error { files(ctx); return nil },
-	}
-	mounts := map[string]func(app *App, h any){
-		"Use":    func(app *App, h any) { app.Use(h) },
-		"Get /*": func(app *App, h any) { app.Get("/*", h) },
-	}
-	respelled := []string{
-		"/admin%2Fdata.txt", "//admin/data.txt", "/pub/..%2Fadmin/data.txt", "/%2Fadmin/data.txt",
-		"/pub%2F..%2Fadmin%2Fdata.txt",
-	}
-
-	for shape, handler := range shapes {
-		for mount, register := range mounts {
-			t.Run(shape+"/"+mount, func(t *testing.T) {
-				t.Parallel()
-				app := New()
-				app.Use("/admin", func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
-				register(app, handler)
-
-				for _, target := range []string{"/pub/ok.txt", "/pub/ok.txt?a=%2F", "/pub/./ok.txt", "/%70ub/ok.txt", "/x/../pub/ok.txt"} {
-					resp := serveRawTarget(t, app, target)
-					require.Equal(t, StatusOK, resp.StatusCode(), target)
-					require.Equal(t, "ok", string(resp.Body()), target)
-				}
-				for _, target := range []string{"/admin/data.txt", "/pub/../admin/data.txt", "/%61dmin/data.txt"} {
-					require.Equal(t, StatusUnauthorized, serveRawTarget(t, app, target).StatusCode(), target)
-				}
-				for _, target := range respelled {
-					resp := serveRawTarget(t, app, target)
-					require.Equal(t, StatusNotFound, resp.StatusCode(), target)
-					require.NotContains(t, string(resp.Body()), "guarded", target)
-				}
-			})
-		}
-	}
-}
-
 func Test_Adapter_FastHTTP_RestoresRequestLine(t *testing.T) {
 	t.Parallel()
 	const target = "/a/../%70ub/x%20y?q=%2F"
-	var read, after string
-	app := New()
-	app.Use(func(c Ctx) error {
-		err := c.Next()
-		after = c.OriginalURL()
-		return err
-	})
-	app.Use(func(ctx *fasthttp.RequestCtx) error {
-		read = string(ctx.Path()) + "?" + string(ctx.QueryArgs().QueryString())
-		return nil
-	})
+	// Nothing of a fasthttp handler reads the request line once it returned, whatever it answered with.
+	for name, respond := range map[string]func(ctx *fasthttp.RequestCtx){
+		"buffered":    func(ctx *fasthttp.RequestCtx) { ctx.SetBodyString("ok") },
+		"body stream": func(ctx *fasthttp.RequestCtx) { ctx.SetBodyStream(strings.NewReader("ok"), 2) },
+		"hijacked":    func(ctx *fasthttp.RequestCtx) { ctx.Hijack(func(net.Conn) {}) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var read, after string
+			app := New()
+			app.Use(func(c Ctx) error {
+				err := c.Next()
+				after = c.OriginalURL()
+				return err
+			})
+			app.Use(func(ctx *fasthttp.RequestCtx) error {
+				read = string(ctx.Path()) + "?" + string(ctx.QueryArgs().QueryString())
+				respond(ctx)
+				return nil
+			})
 
-	serveRawTarget(t, app, target)
-	require.Equal(t, "/pub/x y?q=%2F", read, "the handler reads the routed path")
-	require.Equal(t, target, after)
+			serveRawTarget(t, app, target)
+			require.Equal(t, "/pub/x y?q=%2F", read, "the handler reads the routed path")
+			require.Equal(t, target, after)
+		})
+	}
+}
+
+// Test_Adapter_FastHTTP_KeepsTargetsThatAreNoPath pins that the asterisk form of OPTIONS and the authority form of
+// CONNECT, which have no path to guard, reach a fasthttp handler as sent, while the ones that hide a path do not.
+func Test_Adapter_FastHTTP_KeepsTargetsThatAreNoPath(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) { ctx.SetBodyString(string(ctx.RequestURI())) }))
+
+	for _, tc := range []struct {
+		name, raw, body string
+		status          int
+	}{
+		{"asterisk-form", "OPTIONS * HTTP/1.1\r\nHost: example.com\r\n\r\n", "*", StatusOK},
+		{"authority-form", "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n", "example.com:443", StatusOK},
+		{"authority-form with an empty segment", "CONNECT //admin/data.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
+		{"authority-form with an escaped slash", "CONNECT admin%2Fdata.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			status, body := serveRaw(t, app, tc.raw)
+			require.Equal(t, tc.status, status)
+			if tc.status == StatusOK {
+				require.Equal(t, tc.body, body)
+			}
+		})
+	}
+}
+
+// Test_Adapter_FastHTTP_TimedOutHandlerKeepsTheRequest pins that a route handler fasthttp.TimeoutHandler gave up on, which
+// goes on reading the request, is not written to once it was answered for: under -race, the line put back is a race with it.
+func Test_Adapter_FastHTTP_TimedOutHandlerKeepsTheRequest(t *testing.T) {
+	t.Parallel()
+	read := make(chan string, 1)
+	app := New()
+	app.Use(fasthttp.TimeoutHandler(func(ctx *fasthttp.RequestCtx) {
+		// No channel to tell it when the request was answered: that would order its read after the write it must not see.
+		time.Sleep(150 * time.Millisecond)
+		read <- string(ctx.Path())
+	}, 20*time.Millisecond, "timeout"))
+	ln := apptest.Serve(t, app, ListenConfig{DisableStartupMessage: true})
+
+	conn := apptest.Dial(t, ln)
+	_, err := io.WriteString(conn, "GET /%70ub/x?q=1 HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+	require.NoError(t, err)
+	answer, err := io.ReadAll(conn)
+	require.NoError(t, err)
+	require.Contains(t, string(answer), "408 Request Timeout")
+	require.Equal(t, "/pub/x", apptest.Recv(t, read, 5*time.Second))
 }
 
 func Test_HTTPHandler_Direct_RestoresRequestLine(t *testing.T) {
