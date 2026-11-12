@@ -542,7 +542,7 @@ func derivedRequestHeader(name string) bool {
 	case 6:
 		return utils.EqualFold(name, fiber.HeaderCookie)
 	case 7:
-		return utils.EqualFold(name, "Trailer")
+		return utils.EqualFold(name, fiber.HeaderTrailer)
 	case 10:
 		return utils.EqualFold(name, fiber.HeaderUserAgent) || utils.EqualFold(name, fiber.HeaderConnection)
 	case 12:
@@ -554,12 +554,6 @@ func derivedRequestHeader(name string) bool {
 	default:
 		return false
 	}
-}
-
-// isCanonicalHeaderKey reports whether name is spelled as fasthttp stores it, so that two keys of
-// a net/http header map can never name the same line. A hand-built map may hold both "x-a" and "X-A".
-func isCanonicalHeaderKey(name string) bool {
-	return http.CanonicalHeaderKey(name) == name
 }
 
 func isFramingHeader(name string) bool {
@@ -1002,6 +996,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		if cap(received) > maxHeaderScratch {
 			received = nil
 		}
+		var aliased []string
 		for key, vals := range r.Header {
 			if len(vals) == 0 {
 				continue
@@ -1017,11 +1012,28 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			// already, and Set scans every stored line: any other canonical name is
 			// new to the request, so Add appends it without the scan.
 			rest := vals
-			if derivedRequestHeader(key) || !isCanonicalHeaderKey(key) {
+			switch {
+			case derivedRequestHeader(key):
 				req.Header.Set(key, vals[0])
 				rest = vals[1:]
+			case !fieldname.IsCanonical(key):
+				// fasthttp files it under another spelling than the map does, where a canonical key of the
+				// same name may sit: a hand-built map may hold both "x-a" and "X-A". Set replaces what that
+				// key added, so it goes after every Add, whatever the order of the map.
+				aliased = append(aliased, key)
+				continue
 			}
 			for _, v := range rest {
+				req.Header.Add(key, v)
+			}
+			if len(vals) > 1 {
+				received = appendReceived(received, key, vals)
+			}
+		}
+		for _, key := range aliased {
+			vals := r.Header[key]
+			req.Header.Set(key, vals[0])
+			for _, v := range vals[1:] {
 				req.Header.Add(key, v)
 			}
 			if len(vals) > 1 {
