@@ -2,8 +2,6 @@ package fiber
 
 import (
 	"regexp"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -168,38 +166,6 @@ func Test_ConstraintExecute(t *testing.T) {
 			}
 		})
 	}
-}
-
-// Test_ParamAtoi checks that paramAtoi accepts and parses what strconv.Atoi does.
-func Test_ParamAtoi(t *testing.T) {
-	t.Parallel()
-	for _, s := range []string{
-		"", "+", "-", "0", "-0", "+7", "42", "-42", "007", "1a", "a1", " 1", "1 ", "--1", "+-1", "0x1f", "1e3", "1_0", "١٢٣",
-		"999999999999999999", "9223372036854775807", "9223372036854775808", "-9223372036854775808", "-9223372036854775809",
-		"18446744073709551616", "2147483647", "2147483648", "-2147483648", "-2147483649",
-		strings.Repeat("0", 30) + "9223372036854775807", strings.Repeat("9", 40),
-	} {
-		want, err := strconv.Atoi(s)
-		got, ok := paramAtoi(s)
-		require.Equal(t, err == nil, ok, "param %q", s)
-		if ok {
-			require.Equal(t, want, got, "param %q", s)
-		}
-	}
-}
-
-// FuzzParamAtoi compares paramAtoi with strconv.Atoi.
-func FuzzParamAtoi(f *testing.F) {
-	for _, s := range []string{"0", "-42", "+7", "9223372036854775807", "-9223372036854775808", "9223372036854775808", "12a", ""} {
-		f.Add(s)
-	}
-	f.Fuzz(func(t *testing.T, s string) {
-		want, err := strconv.Atoi(s)
-		got, ok := paramAtoi(s)
-		if ok != (err == nil) || ok && got != want {
-			t.Fatalf("paramAtoi(%q) = %d, %v, strconv.Atoi = %d, %v", s, got, ok, want, err)
-		}
-	})
 }
 
 func Test_FindConstraintHandler(t *testing.T) {

@@ -256,62 +256,10 @@ type intConstraintType struct{}
 
 func (intConstraintType) Name() string { return ConstraintInt }
 
-// The int-family constraints (int, min, max, range) use paramAtoi, which
-// accepts what strconv.Atoi accepts. utils.ParseNativeInt benchmarked slower
-// for the short (1-14 digit) params routes actually see.
+// The int-family constraints (int, min, max, range) use utils.ParseInt.
 func (intConstraintType) Execute(param string, _ []any) bool {
-	_, ok := paramAtoi(param)
-	return ok
-}
-
-// paramAtoi is strconv.Atoi(s) with a bool in place of the error, so that a
-// param it rejects does not allocate a *strconv.NumError.
-func paramAtoi(s string) (int, bool) {
-	if n := len(s); 0 < n && (strconv.IntSize == 32 && n < 10 || strconv.IntSize == 64 && n < 19) {
-		// The fast path of strconv.Atoi: these params cannot overflow an int.
-		d := s
-		if d[0] == '-' || d[0] == '+' {
-			if d = d[1:]; d == "" {
-				return 0, false
-			}
-		}
-		v := 0
-		for _, c := range []byte(d) {
-			if c -= '0'; c > 9 {
-				return 0, false
-			}
-			v = v*10 + int(c)
-		}
-		if s[0] == '-' {
-			v = -v
-		}
-		return v, true
-	}
-	d := s
-	if d != "" && (d[0] == '-' || d[0] == '+') {
-		d = d[1:]
-	}
-	if d == "" {
-		return 0, false
-	}
-	// limit is the magnitude of the smallest int.
-	const limit = uint64(1) << (strconv.IntSize - 1)
-	var v uint64
-	for _, c := range []byte(d) {
-		if c -= '0'; c > 9 || v > limit/10 {
-			return 0, false
-		}
-		if v = v*10 + uint64(c); v > limit {
-			return 0, false
-		}
-	}
-	if s[0] == '-' {
-		return int(-v), true //nolint:gosec // -limit is the smallest int
-	}
-	if v == limit {
-		return 0, false
-	}
-	return int(v), true
+	_, err := utils.ParseInt(param)
+	return err == nil
 }
 
 type boolConstraintType struct{}
@@ -541,8 +489,8 @@ func (minConstraintType) Execute(param string, data []any) bool {
 	if !ok {
 		return false
 	}
-	num, ok := paramAtoi(param)
-	return ok && num >= limit
+	num, err := utils.ParseInt(param)
+	return err == nil && num >= int64(limit)
 }
 
 type maxConstraintType struct{}
@@ -568,8 +516,8 @@ func (maxConstraintType) Execute(param string, data []any) bool {
 	if !ok {
 		return false
 	}
-	num, ok := paramAtoi(param)
-	return ok && num <= limit
+	num, err := utils.ParseInt(param)
+	return err == nil && num <= int64(limit)
 }
 
 type rangeConstraintType struct{}
@@ -603,8 +551,8 @@ func (rangeConstraintType) Execute(param string, data []any) bool {
 	if !ok {
 		return false
 	}
-	num, ok := paramAtoi(param)
-	return ok && num >= lo && num <= hi
+	num, err := utils.ParseInt(param)
+	return err == nil && num >= int64(lo) && num <= int64(hi)
 }
 
 type regexConstraintType struct {
