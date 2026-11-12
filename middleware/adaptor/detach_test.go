@@ -165,14 +165,6 @@ func Test_HTTPHandler_FlushedHandlerKeepsItsRequest(t *testing.T) {
 	}
 }
 
-// goneWriter is the ResponseWriter of a client that has left: nothing written to it arrives.
-type goneWriter struct{ header http.Header }
-
-func (w *goneWriter) Header() http.Header     { return w.header }
-func (*goneWriter) WriteHeader(int)           {}
-func (*goneWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
-func (*goneWriter) Flush()                    {}
-
 // Test_FiberApp_FlushedHandlerKeepsItsCtxOutOfThePool pins that FiberApp does not hand the request context of a net/http
 // handler that flushed and keeps running to another request: resetting it for that request would wait for the handler.
 func Test_FiberApp_FlushedHandlerKeepsItsCtxOutOfThePool(t *testing.T) {
@@ -193,7 +185,7 @@ func Test_FiberApp_FlushedHandlerKeepsItsCtxOutOfThePool(t *testing.T) {
 	// Both in one goroutine: the pool hands back what this one put into it.
 	answered := make(chan string, 1)
 	go func() {
-		serve(&goneWriter{header: http.Header{}}, httptest.NewRequest(fiber.MethodGet, "/stream", http.NoBody))
+		serve(&failingStreamWriter{header: http.Header{}}, httptest.NewRequest(fiber.MethodGet, "/stream", http.NoBody))
 		rec := httptest.NewRecorder()
 		serve(rec, httptest.NewRequest(fiber.MethodGet, "/ping", http.NoBody))
 		answered <- rec.Body.String()
