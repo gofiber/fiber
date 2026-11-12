@@ -237,8 +237,12 @@ func doActionWithPolicy(
 	}
 	// The upstream connection speaks HTTP/1.1: reset a protocol token
 	// inherited from the inbound request (e.g. "HTTP/2" propagated by the
-	// net/http adaptor) so the serialized request line stays valid.
-	req.Header.SetProtocol("HTTP/1.1")
+	// net/http adaptor) so the serialized request line stays valid, and put it
+	// back for later middleware, as the URI and the Host.
+	if !req.Header.IsHTTP11() {
+		defer req.Header.SetProtocolBytes(utils.CopyBytes(req.Header.Protocol()))
+		req.Header.SetProtocol("HTTP/1.1")
+	}
 	// The default client bounds the request as a whole, connect and body included,
 	// unless the request has a bound of its own: DoTimeout and DoDeadline set theirs
 	// over this one, and a redirect hop takes the request's along.
@@ -259,6 +263,12 @@ func doActionWithPolicy(
 				}
 			}
 		}()
+	}
+	// fasthttp gives a request without a User-Agent the client's Name, or "fasthttp" unless the client turns that
+	// off: take it off again, so that a later hop and the middleware after this one see the request as received.
+	// Taken after the strip too, so a field it removed stays removed.
+	if (cli.Name != "" || !cli.NoDefaultUserAgentHeader) && len(req.Header.UserAgent()) == 0 {
+		defer req.Header.Del(fiber.HeaderUserAgent)
 	}
 	// A client that streams response bodies hands the upstream's trailer section to the response after
 	// the action returned: such a response is read into one of the proxy's own, see upstreamResponse.

@@ -168,8 +168,12 @@ func Balancer(config ...Config) fiber.Handler {
 
 		// The upstream connection speaks HTTP/1.1: reset a protocol token
 		// inherited from the inbound request (e.g. "HTTP/2" propagated by
-		// the net/http adaptor) so the serialized request line stays valid.
-		req.Header.SetProtocol("HTTP/1.1")
+		// the net/http adaptor) so the serialized request line stays valid, and put
+		// it back for later middleware, as the request line.
+		if !req.Header.IsHTTP11() {
+			defer req.Header.SetProtocolBytes(utils.CopyBytes(req.Header.Protocol()))
+			req.Header.SetProtocol("HTTP/1.1")
+		}
 
 		// Forward request. A client that streams response bodies hands the upstream's trailer section
 		// to the response after Do returned: such a response is read into one of the proxy's own, see
