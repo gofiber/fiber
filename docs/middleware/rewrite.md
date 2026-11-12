@@ -69,6 +69,10 @@ an exact one, so a long wildcard rule can still outrank a shorter exact one.
 `RuleList` is the exact control.
 :::
 
+## Escaped targets
+
+`c.Path()` holds the rewritten path as written. A `net/http` handler or a `fasthttp` handler registered as a route handler is answered with `404 Not Found` for a path that holds a byte a path may not carry raw, such as a space, a byte of UTF-8, `[`, `]` or `|`, so write such a target escaped: `/My%20Docs/$1`, not `/My Docs/$1`. See the [adaptor notes](./adaptor.md#notes-and-limitations).
+
 ## Middleware order
 
 After a rewrite, the request goes on to the routes registered after the
