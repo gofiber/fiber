@@ -139,17 +139,20 @@ func parseConstraintArgs(args []string) []string {
 	return parsed
 }
 
-// builtinConstraints is the registry of all built-in constraint handlers.
+// errConstraintIntArg is returned for a numeric constraint argument that is not an integer.
+var errConstraintIntArg = errors.New("parse constraint arg: not an integer")
+
 // parseConstraintInt reads a numeric constraint argument. Surrounding whitespace is
 // ignored, so `range(1, 10)` means the same as `range(1,10)`.
 func parseConstraintInt(arg string) (int, error) {
-	n, err := strconv.Atoi(utils.TrimSpace(arg))
+	n, err := utils.ParseNativeInt(utils.TrimSpace(arg))
 	if err != nil {
-		return 0, fmt.Errorf("parse constraint arg: %w", err)
+		return 0, errConstraintIntArg
 	}
 	return n, nil
 }
 
+// builtinConstraints is the registry of all built-in constraint handlers.
 var builtinConstraints = []ConstraintHandler{
 	intConstraintType{},
 	boolConstraintType{},
