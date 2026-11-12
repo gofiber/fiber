@@ -256,10 +256,12 @@ type intConstraintType struct{}
 
 func (intConstraintType) Name() string { return ConstraintInt }
 
-// The int-family constraints (int, min, max, range) use utils.ParseInt.
+// The int-family constraints (int, min, max, range) use utils.ParseInt. The
+// int64(int(n)) == n check rejects, like strconv.Atoi, a value that does not
+// fit in an int on 32-bit platforms.
 func (intConstraintType) Execute(param string, _ []any) bool {
-	_, err := utils.ParseInt(param)
-	return err == nil
+	n, err := utils.ParseInt(param)
+	return err == nil && int64(int(n)) == n
 }
 
 type boolConstraintType struct{}
@@ -489,8 +491,8 @@ func (minConstraintType) Execute(param string, data []any) bool {
 	if !ok {
 		return false
 	}
-	num, err := utils.ParseInt(param)
-	return err == nil && num >= int64(limit)
+	n, err := utils.ParseInt(param)
+	return err == nil && int64(int(n)) == n && int(n) >= limit
 }
 
 type maxConstraintType struct{}
@@ -516,8 +518,8 @@ func (maxConstraintType) Execute(param string, data []any) bool {
 	if !ok {
 		return false
 	}
-	num, err := utils.ParseInt(param)
-	return err == nil && num <= int64(limit)
+	n, err := utils.ParseInt(param)
+	return err == nil && int64(int(n)) == n && int(n) <= limit
 }
 
 type rangeConstraintType struct{}
@@ -551,8 +553,8 @@ func (rangeConstraintType) Execute(param string, data []any) bool {
 	if !ok {
 		return false
 	}
-	num, err := utils.ParseInt(param)
-	return err == nil && num >= int64(lo) && num <= int64(hi)
+	n, err := utils.ParseInt(param)
+	return err == nil && int64(int(n)) == n && int(n) >= lo && int(n) <= hi
 }
 
 type regexConstraintType struct {

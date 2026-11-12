@@ -1,7 +1,9 @@
 package fiber
 
 import (
+	"math"
 	"regexp"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -166,6 +168,20 @@ func Test_ConstraintExecute(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Test_ConstraintExecute_IntRange checks that the int-family constraints reject
+// a value outside the int range, as strconv.Atoi does on 32-bit platforms.
+func Test_ConstraintExecute_IntRange(t *testing.T) {
+	t.Parallel()
+	require.True(t, intConstraintType{}.Execute("2147483647", nil))
+	require.True(t, intConstraintType{}.Execute("-2147483648", nil))
+	fits := strconv.IntSize == 64
+	require.Equal(t, fits, intConstraintType{}.Execute("2147483648", nil))
+	require.Equal(t, fits, minConstraintType{}.Execute("2147483648", []any{0}))
+	require.Equal(t, fits, maxConstraintType{}.Execute("-2147483649", []any{0}))
+	require.Equal(t, fits, rangeConstraintType{}.Execute("2147483648", []any{0, math.MaxInt}))
+	require.False(t, intConstraintType{}.Execute("9223372036854775808", nil))
 }
 
 func Test_FindConstraintHandler(t *testing.T) {
