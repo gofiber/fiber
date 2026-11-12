@@ -191,13 +191,25 @@ func SetTarget[App any](c Ctx[App], target string) {
 // when the request has no Host header, and then c.Host() is the first path segment and c.Path()
 // lacks it. The cause is in that parser, which this module cannot change. DefaultCtx.Reset calls this for
 // the request line as it arrived, RestoreTarget for the one a handler put back.
+//
+// What fasthttp parsed is looked at, not predicted from the Host header (see ParsesAsPath): a request built
+// before its Host header was set, as adaptor.FiberApp builds one, was parsed without it, and the authority
+// was taken out of a "//" target that holds no "://" as well. Whenever it took one, the path it kept is
+// shorter than the path of the target.
 func ReadAsOriginForm(fctx *fasthttp.RequestCtx, target []byte) {
 	req := &fctx.Request
 	host := req.Header.Host()
-	if ParsesAsPath(utils.UnsafeString(target), host) {
+	uri := req.URI()
+	path, query, hash := target, []byte(nil), []byte(nil)
+	if i := bytes.IndexByte(path, '#'); i >= 0 {
+		path, hash = path[:i], path[i+1:]
+	}
+	if i := bytes.IndexByte(path, '?'); i >= 0 {
+		path, query = path[:i], path[i+1:]
+	}
+	if bytes.Equal(uri.PathOriginal(), path) {
 		return
 	}
-	uri := req.URI()
 	var buf [64]byte
 	host = append(buf[:0], host...)
 	// Origin-form with the Host header, as fasthttp reads any other path; the target follows. Parsed apart:
@@ -218,16 +230,9 @@ func ReadAsOriginForm(fctx *fasthttp.RequestCtx, target []byte) {
 	if fctx.IsTLS() {
 		uri.SetScheme("https")
 	}
-	rest := target
-	if i := bytes.IndexByte(rest, '#'); i >= 0 {
-		uri.SetHashBytes(rest[i+1:])
-		rest = rest[:i]
-	}
-	if i := bytes.IndexByte(rest, '?'); i >= 0 {
-		uri.SetQueryStringBytes(rest[i+1:])
-		rest = rest[:i]
-	}
-	uri.SetPathBytes(rest)
+	uri.SetHashBytes(hash)
+	uri.SetQueryStringBytes(query)
+	uri.SetPathBytes(path)
 }
 
 // RestoreTarget sets original, the request line as it arrived, back as fctx's request target. fasthttp parses it
