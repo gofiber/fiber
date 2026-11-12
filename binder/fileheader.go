@@ -3,6 +3,7 @@ package binder
 import (
 	"maps"
 	"mime/multipart"
+	"net/http"
 	"net/textproto"
 	"reflect"
 	"slices"
@@ -92,7 +93,7 @@ func (g *fileHeaders) save(fh *multipart.FileHeader) {
 		return
 	}
 	saved := *fh
-	saved.Header = cloneMIMEHeader(fh.Header)
+	saved.Header = textproto.MIMEHeader(http.Header(fh.Header).Clone())
 	g.saved[fh] = saved
 }
 
@@ -186,24 +187,23 @@ func (g *fileHeaders) known(fh *multipart.FileHeader) bool {
 	return ok
 }
 
-// take saves fh while recording and resets it to its record while restoring.
+// take saves fh while recording and resets it to its record while restoring, if schema changed it.
 func (g *fileHeaders) take(fh *multipart.FileHeader, phase guardPhase) {
 	if phase == recording {
 		g.save(fh)
 		return
 	}
-	if saved, ok := g.saved[fh]; ok {
+	// fh is the request's own header, which the application may be reading from another goroutine (it is
+	// what c.FormFile and c.MultipartForm return): write it only when schema changed it.
+	if saved, ok := g.saved[fh]; ok && !sameFileHeader(fh, &saved) {
 		*fh = saved // the record is private to g, which is dropped once restored: its header map is not shared
 	}
 }
 
-func cloneMIMEHeader(h textproto.MIMEHeader) textproto.MIMEHeader {
-	if h == nil {
-		return nil
-	}
-	out := make(textproto.MIMEHeader, len(h))
-	for k, v := range maps.All(h) {
-		out[k] = slices.Clone(v)
-	}
-	return out
+// sameFileHeader reports whether fh still holds what saved recorded. Schema sets exported fields only, so those
+// are all there is to compare.
+func sameFileHeader(fh, saved *multipart.FileHeader) bool {
+	return fh.Filename == saved.Filename && fh.Size == saved.Size &&
+		(fh.Header == nil) == (saved.Header == nil) &&
+		maps.EqualFunc(fh.Header, saved.Header, slices.Equal)
 }
