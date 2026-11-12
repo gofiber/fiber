@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -20,9 +21,13 @@ import (
 
 type localKey struct{}
 
+// earlierKey names a value that a middleware ahead of the handler stored with c.Locals.
+type earlierKey string
+
 // streamReading is what a streaming handler read of its request before it flushed and after the client left.
 type streamReading struct {
-	localAfter                                    any // what the context HTTPHandlerWithContext stores holds
+	localAfter                                    any    // what the context HTTPHandlerWithContext stores holds
+	earlierAfter                                  string // the values c.Locals stored before the handler was reached
 	authBefore, authAfter, pathBefore, pathAfter  string
 	hostBefore, hostAfter, methodAfter, bodyAfter string
 }
@@ -44,7 +49,6 @@ func (s *detachServer) releaseHandler() { s.once.Do(func() { close(s.release) })
 func newDetachServer(t *testing.T, register func(app *fiber.App, h http.Handler)) *detachServer {
 	t.Helper()
 	s := &detachServer{readings: make(chan streamReading, 1), gone: make(chan struct{}), release: make(chan struct{})}
-	t.Cleanup(s.releaseHandler)
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Stream") == "" {
 			_, err := io.WriteString(w, "plain "+r.URL.Path)
@@ -70,19 +74,28 @@ func newDetachServer(t *testing.T, register func(app *fiber.App, h http.Handler)
 		if local, ok := LocalContextFromHTTPRequest(r); ok {
 			got.localAfter = local.Value(localKey{})
 		}
+		got.earlierAfter = fmt.Sprint(r.Context().Value(earlierKey("a")), "|", r.Context().Value(earlierKey("b")))
 		s.readings <- got
 	})
 
 	app := fiber.New()
 	app.Use(func(c fiber.Ctx) error {
 		c.SetContext(context.WithValue(c.Context(), localKey{}, "mine-"+c.Path()))
+		// stored before the hold is: the hold has to keep them readable
+		c.Locals(earlierKey("a"), "v1")
+		c.Locals(earlierKey("b"), "v2")
 		return c.Next()
 	})
 	register(app, h)
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
 	go func() { _ = app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}) }() //nolint:errcheck // stopped by the cleanup
-	t.Cleanup(func() { require.NoError(t, app.Shutdown()) })
+	// Shutdown waits for the connection of a handler that is held back, so a test that fails before it releases
+	// the handler would hang there: release it first.
+	t.Cleanup(func() {
+		s.releaseHandler()
+		require.NoError(t, app.Shutdown())
+	})
 	s.addr = ln.Addr().String()
 	return s
 }
@@ -95,7 +108,10 @@ func Test_HTTPHandler_FlushedHandlerKeepsItsRequest(t *testing.T) {
 		"HTTPHandler":            func(app *fiber.App, h http.Handler) { app.All("/stream/*", HTTPHandler(h)) },
 		"HTTPHandlerFunc":        func(app *fiber.App, h http.Handler) { app.All("/stream/*", HTTPHandlerFunc(h.ServeHTTP)) },
 		"HTTPHandlerWithContext": func(app *fiber.App, h http.Handler) { app.All("/stream/*", HTTPHandlerWithContext(h)) },
-		"direct":                 func(app *fiber.App, h http.Handler) { app.All("/stream/*", h) },
+		"HTTPMiddleware": func(app *fiber.App, h http.Handler) {
+			app.All("/stream/*", HTTPMiddleware(func(http.Handler) http.Handler { return h }))
+		},
+		"direct": func(app *fiber.App, h http.Handler) { app.All("/stream/*", h) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -143,8 +159,44 @@ func Test_HTTPHandler_FlushedHandlerKeepsItsRequest(t *testing.T) {
 				authBefore: "Bearer token-a", authAfter: "Bearer token-a",
 				pathBefore: "/stream/path-a", pathAfter: "/stream/path-a",
 				hostBefore: "host-a.example", hostAfter: "host-a.example",
-				methodAfter: "POST", bodyAfter: payload, localAfter: local,
+				methodAfter: "POST", bodyAfter: payload, localAfter: local, earlierAfter: "v1|v2",
 			}, apptest.Recv(t, s.readings, 10*time.Second))
 		})
 	}
+}
+
+// goneWriter is the ResponseWriter of a client that has left: nothing written to it arrives.
+type goneWriter struct{ header http.Header }
+
+func (w *goneWriter) Header() http.Header     { return w.header }
+func (*goneWriter) WriteHeader(int)           {}
+func (*goneWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
+func (*goneWriter) Flush()                    {}
+
+// Test_FiberApp_FlushedHandlerKeepsItsCtxOutOfThePool pins that FiberApp does not hand the request context of a net/http
+// handler that flushed and keeps running to another request: resetting it for that request would wait for the handler.
+func Test_FiberApp_FlushedHandlerKeepsItsCtxOutOfThePool(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	var once sync.Once
+	t.Cleanup(func() { once.Do(func() { close(release) }) })
+	app := fiber.New()
+	app.Get("/stream", HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := io.WriteString(w, "first chunk\n")
+		assert.NoError(t, err)
+		assert.NoError(t, http.NewResponseController(w).Flush())
+		<-release
+	})))
+	app.Get("/ping", func(c fiber.Ctx) error { return c.SendString("pong") })
+	serve := FiberApp(app)
+
+	// Both in one goroutine: the pool hands back what this one put into it.
+	answered := make(chan string, 1)
+	go func() {
+		serve(&goneWriter{header: http.Header{}}, httptest.NewRequest(fiber.MethodGet, "/stream", http.NoBody))
+		rec := httptest.NewRecorder()
+		serve(rec, httptest.NewRequest(fiber.MethodGet, "/ping", http.NoBody))
+		answered <- rec.Body.String()
+	}()
+	require.Equal(t, "pong", apptest.Recv(t, answered, 5*time.Second, "the next request waits for the handler that outlived its response"))
 }

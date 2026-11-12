@@ -18,6 +18,7 @@ package requesthold
 import (
 	"net/http"
 	"sync"
+	"sync/atomic"
 
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
@@ -27,8 +28,9 @@ type holdKey struct{}
 
 // hold counts the net/http handler of one request that is still running.
 type hold struct {
-	resp *fasthttp.Response
-	wg   sync.WaitGroup
+	resp    *fasthttp.Response
+	wg      sync.WaitGroup
+	running atomic.Int32
 }
 
 func acquire() *hold {
@@ -38,7 +40,7 @@ func acquire() *hold {
 	return new(hold)
 }
 
-var holds = sync.Pool{New: func() any { return new(hold) }}
+var holds sync.Pool
 
 // Close ends the response stream, so that a handler blocked on a write returns, and waits for the handler.
 // fasthttp calls it when it resets the request, after it wrote the response.
@@ -52,7 +54,8 @@ func (h *hold) Close() error {
 
 // first stores hd on ctx as its first user value. fasthttp closes and clears the user values of a request in
 // order when it resets it, so the values stored ahead of the hold would be cleared while the handler
-// still reads them, and only those after it are kept until it returns.
+// still reads them, and only those after it are kept until it returns: the ones stored before, such as
+// the user context adaptor.HTTPHandlerWithContext stores for the handler to read, are moved behind it.
 func first(ctx *fasthttp.RequestCtx, hd *hold) {
 	hd.resp = &ctx.Response
 	ctx.SetUserValue(holdKey{}, hd)
@@ -69,15 +72,6 @@ func first(ctx *fasthttp.RequestCtx, hd *hold) {
 	}
 }
 
-// Register puts a hold on ctx now. A value stored on ctx afterwards is kept until the handler returns, so a
-// caller that stores one for the handler to read, as adaptor.HTTPHandlerWithContext does, registers first.
-// NewFastHTTPHandler takes a hold registered this way.
-func Register(ctx *fasthttp.RequestCtx) {
-	if _, ok := ctx.UserValue(holdKey{}).(*hold); !ok {
-		first(ctx, acquire())
-	}
-}
-
 // NewFastHTTPHandler is fasthttpadaptor.NewFastHTTPHandler(h) that does not let the RequestCtx be reused
 // while h still runs.
 func NewFastHTTPHandler(h http.Handler) fasthttp.RequestHandler {
@@ -85,7 +79,11 @@ func NewFastHTTPHandler(h http.Handler) fasthttp.RequestHandler {
 		// r.Context() is the RequestCtx, and Value its user values.
 		if hd, ok := r.Context().Value(holdKey{}).(*hold); ok {
 			hd.wg.Add(1)
-			defer hd.wg.Done()
+			hd.running.Add(1)
+			defer func() {
+				hd.running.Add(-1)
+				hd.wg.Done()
+			}()
 		}
 		h.ServeHTTP(w, r)
 	}))
@@ -107,4 +105,11 @@ func NewFastHTTPHandler(h http.Handler) fasthttp.RequestHandler {
 		}()
 		adapted(ctx)
 	}
+}
+
+// Pending reports whether the net/http handler of the request on ctx still runs. A caller that owns ctx
+// and would reuse it must leave it to the handler then: the next Reset waits for the handler.
+func Pending(ctx *fasthttp.RequestCtx) bool {
+	hd, ok := ctx.UserValue(holdKey{}).(*hold)
+	return ok && hd.running.Load() > 0
 }
