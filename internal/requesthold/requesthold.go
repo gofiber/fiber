@@ -96,7 +96,9 @@ func NewFastHTTPHandler(h http.Handler) fasthttp.RequestHandler {
 		defer func() {
 			// A streamed or hijacked response leaves the handler running: the hold stays until fasthttp
 			// closes it. Otherwise the handler returned before the adaptor did, or never started.
-			if ctx.Response.IsBodyStream() || ctx.Hijacked() {
+			// A hold this call found registered belongs to an earlier adaptation of the request, whose handler
+			// may still run whatever this one answered: only the call that took the hold gives it back.
+			if registered || ctx.Response.IsBodyStream() || ctx.Hijacked() {
 				return
 			}
 			ctx.RemoveUserValue(holdKey{})
