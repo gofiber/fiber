@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net/url"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/crosshost"
@@ -183,7 +184,7 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy, 
 	if err != nil {
 		return nil, fasthttp.ErrorInvalidURI
 	}
-	ref, err := url.Parse(utils.UnsafeString(location))
+	ref, err := url.Parse(escapeStrayPercents(utils.UnsafeString(location)))
 	if err != nil {
 		return nil, fasthttp.ErrorInvalidURI
 	}
@@ -205,4 +206,63 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy, 
 		return nil, ErrRedirectDowngrade
 	}
 	return target, nil
+}
+
+// escapeStrayPercents returns location with every "%" of its path that does not begin an escape written
+// as "%25", which is how browsers, curl and fasthttp.URI take "/discount/100%"; net/url refuses it. Only the
+// path is touched: the scheme and the authority are cut off as net/url does, so the host a Location names
+// does not depend on this. It returns location itself, without allocating, when there is nothing to write.
+func escapeStrayPercents(location string) string {
+	end := len(location)
+	if i := strings.IndexAny(location, "?#"); i >= 0 {
+		end = i
+	}
+	var b []byte
+	last := 0
+	for i := pathStart(location[:end]); i < end; i++ {
+		if location[i] != '%' || i+2 < end && isHexDigit(location[i+1]) && isHexDigit(location[i+2]) {
+			continue
+		}
+		if b == nil {
+			b = make([]byte, 0, len(location)+8)
+		}
+		b = append(b, location[last:i+1]...)
+		b = append(b, "25"...)
+		last = i + 1
+	}
+	if b == nil {
+		return location
+	}
+	return string(append(b, location[last:]...))
+}
+
+// pathStart returns where the path of ref, which ends where its query or fragment begins, starts, as net/url cuts
+// it: after the "scheme:" and the "//authority" it opens with.
+func pathStart(ref string) int {
+	start := schemeEnd(ref)
+	if rest := ref[start:]; strings.HasPrefix(rest, "//") && (start > 0 || !strings.HasPrefix(rest, "///")) {
+		if i := strings.IndexByte(rest[2:], '/'); i >= 0 {
+			return start + 2 + i
+		}
+		return len(ref)
+	}
+	return start
+}
+
+// schemeEnd returns the index after the "scheme:" ref opens with, or 0 when it opens with none, as net/url's getScheme does.
+func schemeEnd(ref string) int {
+	for i := 0; i < len(ref); i++ {
+		switch c := ref[i]; {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+		case c >= '0' && c <= '9', c == '+', c == '-', c == '.':
+			if i == 0 {
+				return 0
+			}
+		case c == ':' && i > 0:
+			return i + 1
+		default:
+			return 0
+		}
+	}
+	return 0
 }
