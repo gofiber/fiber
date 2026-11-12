@@ -126,19 +126,20 @@ func Test_Ctx_RequestTarget_OriginForm_AfterSendFile(t *testing.T) {
 	}
 }
 
-// Test_Ctx_RequestTarget_OriginForm_InvalidHost pins that a Host header fasthttp rejects does not blank the request:
-// fasthttp's own reading of the target stays, and the request is never routed as "/".
+// Test_Ctx_RequestTarget_OriginForm_InvalidHost pins that a Host header fasthttp cannot parse names no host: the
+// request has none, as without the header, and the first segment of its path is not taken for one (fasthttp answers
+// 400 to a plain target with such a header). The request is not blanked either: it is routed as the path it is.
 func Test_Ctx_RequestTarget_OriginForm_InvalidHost(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Use(func(c Ctx) error { return c.SendString(c.Path() + "|" + c.OriginalURL()) })
+	app.Use(func(c Ctx) error { return c.SendString(c.Host() + "|" + c.Path() + "|" + c.OriginalURL()) })
 
 	for _, host := range []string{"bad[host", "a:b:c", "example.com:abc"} {
 		t.Run(host, func(t *testing.T) {
 			t.Parallel()
 			status, body := serveRaw(t, app, "GET //admin/x?a=:// HTTP/1.1\r\nHost: "+host+"\r\n\r\n")
 			require.Equal(t, StatusOK, status)
-			require.Equal(t, "/x|//admin/x?a=://", body)
+			require.Equal(t, "|//admin/x|//admin/x?a=://", body)
 		})
 	}
 }
