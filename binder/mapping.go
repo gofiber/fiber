@@ -418,7 +418,7 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 	// Alias tag is baked in at build time (see decoderBuilder); setting it here
 	// would reset the decoder's type cache on every request.
 	if err := schemaDecoder.Decode(out, data, files...); err != nil {
-		return fmt.Errorf("%w", err)
+		return err //nolint:wrapcheck // a wrap adds no context and costs a formatted message per failed bind
 	}
 
 	return nil
@@ -459,7 +459,7 @@ func parseValuesToStruct(aliasTag string, out any, keys, values []string) error 
 	}
 
 	if err := schemaDecoder.DecodeValues(out, keys, values); err != nil {
-		return fmt.Errorf("%w", err)
+		return err //nolint:wrapcheck // a wrap adds no context and costs a formatted message per failed bind
 	}
 
 	return nil
@@ -1105,6 +1105,30 @@ func (d *bindData) bindAll(aliasTag string, out any, key string, values []string
 		d.split(aliasTag, out, key, value, enableSplitting)
 	}
 	return nil
+}
+
+// bindValues files values under key as bindAll does. The struct decoder only
+// reads them, so the slice is filed without a copy when key is new and no
+// value splits.
+func (d *bindData) bindValues(aliasTag string, out any, key string, values []string, enableSplitting bool) error { //nolint:revive // the flag is the binder's setting
+	key, err := bindKey(key, true)
+	if err != nil {
+		return err
+	}
+	if _, filed := d.values[key]; !filed && len(values) > 0 &&
+		(!enableSplitting || !slices.ContainsFunc(values, hasComma)) {
+		// Clipped, so that a later append for the same key copies the slice.
+		d.values[key] = slices.Clip(values)
+		return nil
+	}
+	for _, value := range values {
+		d.split(aliasTag, out, key, value, enableSplitting)
+	}
+	return nil
+}
+
+func hasComma(s string) bool {
+	return strings.IndexByte(s, ',') >= 0
 }
 
 // split files value under key, split at its commas when splitting is on and
