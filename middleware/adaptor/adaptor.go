@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -533,27 +534,16 @@ func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 	}
 }
 
-// derivedRequestHeader reports whether fasthttp fills name while the request is built, or stores it
-// outside its plain header lines, so a Set must replace what it holds.
-func derivedRequestHeader(name string) bool {
-	switch len(name) {
-	case 4:
-		return utils.EqualFold(name, fiber.HeaderHost)
-	case 6:
-		return utils.EqualFold(name, fiber.HeaderCookie)
-	case 7:
-		return utils.EqualFold(name, fiber.HeaderTrailer)
-	case 10:
-		return utils.EqualFold(name, fiber.HeaderUserAgent) || utils.EqualFold(name, fiber.HeaderConnection)
-	case 12:
-		return utils.EqualFold(name, fiber.HeaderContentType)
-	case 14:
-		return utils.EqualFold(name, fiber.HeaderContentLength)
-	case 17:
-		return utils.EqualFold(name, fiber.HeaderTransferEncoding)
-	default:
-		return false
+// announcesTooMany reports whether the values of a Trailer field name more than fieldname.MaxTrailers fields,
+// counted by their commas, which is never fewer than the names.
+func announcesTooMany(vals []string) bool {
+	n := 0
+	for _, v := range vals {
+		if n += strings.Count(v, ",") + 1; n > fieldname.MaxTrailers {
+			return true
+		}
 	}
+	return false
 }
 
 func isFramingHeader(name string) bool {
@@ -1001,35 +991,34 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			if len(vals) == 0 {
 				continue
 			}
-			// Set replaces any value fasthttp derived while building the
-			// request, then Add appends the remaining values so multi-value
-			// headers (e.g. repeated X-Forwarded-For lines) survive instead
-			// of collapsing to the last value. fasthttp's Add keeps its own
-			// singleton semantics for Cookie/Content-Type/etc., which can
-			// only hold one value there by design.
-			//
-			// Only the names fasthttp derives or stores specially can hold a value
-			// already, and Set scans every stored line: any other canonical name is
-			// new to the request, so Add appends it without the scan.
-			rest := vals
-			switch {
-			case derivedRequestHeader(key):
-				req.Header.Set(key, vals[0])
-				rest = vals[1:]
-			case !fieldname.IsCanonical(key):
-				// fasthttp files it under another spelling than the map does, where a canonical key of the
-				// same name may sit: a hand-built map may hold both "x-a" and "X-A". Set replaces what that
-				// key added, so it goes after every Add, whatever the order of the map.
+			// net/http keeps the Trailer field of a request that is not chunked, and fasthttp scans every name
+			// announced for each header it stores, so as the router does, refuse more than MaxTrailers.
+			if len(key) == len(fiber.HeaderTrailer) && utils.EqualFold(key, fiber.HeaderTrailer) && announcesTooMany(vals) {
+				http.Error(w, utils.StatusMessage(fiber.StatusRequestHeaderFieldsTooLarge), fiber.StatusRequestHeaderFieldsTooLarge)
+				return
+			}
+			// fasthttp files a key that is not in canonical spelling under another spelling than the
+			// map does, where a canonical key of the same name may sit: a hand-built map may hold both
+			// "x-a" and "X-A", or "content-type" and "Content-Type". Set replaces what that key added,
+			// so it goes after every Add, whatever the order of the map.
+			if !fieldname.IsCanonical(key) {
 				aliased = append(aliased, key)
 				continue
 			}
-			for _, v := range rest {
+			// A canonical name is new to the request, so Add appends it without Set's scan of the
+			// stored lines. The names fasthttp derives or stores specially (Host, Content-Type,
+			// Cookie, ...) reach the same special handling through Add as through Set, and fasthttp's
+			// Add keeps its own singleton semantics for them, which can only hold one value by design.
+			// Repeated values of the other names survive instead of collapsing to the last value.
+			for _, v := range vals {
 				req.Header.Add(key, v)
 			}
 			if len(vals) > 1 {
 				received = appendReceived(received, key, vals)
 			}
 		}
+		// Two non-canonical spellings of one name resolve alike whatever the order of the map.
+		slices.Sort(aliased)
 		for _, key := range aliased {
 			vals := r.Header[key]
 			req.Header.Set(key, vals[0])
