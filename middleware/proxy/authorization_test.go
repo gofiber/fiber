@@ -7,6 +7,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 // authEchoUpstream answers with the Authorization field of the request, "-" when it has none.
@@ -114,6 +115,37 @@ func Test_Proxy_Do_HopByHopAuthorizationStaysRemoved(t *testing.T) {
 			require.Equal(t, wantSeen, seen)
 			require.Empty(t, after, "the field stays removed")
 			require.Equal(t, "-", apptest.Body(t, resp), "the next hop does not get it either")
+		})
+	}
+}
+
+// Test_Proxy_Do_KeepsTheHostOfAnOriginFormTarget pins that the request line a call puts back is read as the path it
+// is: its host stays the Host header, not the first segment of a path that begins with "//".
+func Test_Proxy_Do_KeepsTheHostOfAnOriginFormTarget(t *testing.T) {
+	t.Parallel()
+	addr := authEchoUpstream(t)
+
+	for name, call := range map[string]func(c fiber.Ctx, addr string) error{
+		"Do":          func(c fiber.Ctx, a string) error { return Do(c, a) },
+		"DoTimeout":   func(c fiber.Ctx, a string) error { return DoTimeout(c, a, time.Second) },
+		"DoDeadline":  func(c fiber.Ctx, a string) error { return DoDeadline(c, a, time.Now().Add(time.Second)) },
+		"DoRedirects": func(c fiber.Ctx, a string) error { return DoRedirects(c, a, 3) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			var before, after string
+			app.Use(func(c fiber.Ctx) error {
+				before = c.Host() + "|" + c.Path() + "|" + c.OriginalURL()
+				if err := call(c, "http://"+addr+"/"); err != nil {
+					return err
+				}
+				after = c.Host() + "|" + c.Path() + "|" + c.OriginalURL()
+				return nil
+			})
+			serveParsed(t, app, &fasthttp.Request{}, "GET //internal.example.com/data?x=:// HTTP/1.1\r\nHost: other.example\r\n\r\n")
+			require.Equal(t, "other.example|//internal.example.com/data|//internal.example.com/data?x=://", before)
+			require.Equal(t, before, after)
 		})
 	}
 }

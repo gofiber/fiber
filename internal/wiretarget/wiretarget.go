@@ -122,7 +122,6 @@ func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
 		handler(c.RequestCtx())
 		return true
 	}
-	req := c.Request()
 	original := utils.CopyString(c.OriginalURL())
 	SetTarget(c, target)
 	// Buffered, the handler has returned, or panicked, in which case
@@ -133,7 +132,7 @@ func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
 	// handler read it.
 	defer func() {
 		if !c.Response().IsBodyStream() && !c.RequestCtx().Hijacked() {
-			req.SetRequestURI(original)
+			RestoreTarget(c.RequestCtx(), original)
 		}
 	}()
 	handler(c.RequestCtx())
@@ -156,6 +155,58 @@ func SetTarget[App any](c Ctx[App], target string) {
 	host := append(buf[:0], req.URI().Host()...)
 	req.SetRequestURI(target)
 	req.URI().SetHostBytes(host)
+}
+
+// ReadAsOriginForm reads target, the request target of fctx's request when it begins with "//", as the path it is:
+// RFC 9112 Section 3.2.1 makes a target that begins with "/" origin-form, whose host is the Host header, and
+// only an absolute-form target (it begins with a scheme) carries its own. fasthttp's parser takes
+// the authority out of such a target when it holds "://" anywhere, query and fragment included, or
+// when the request has no Host header, and then c.Host() is the first path segment and c.Path()
+// lacks it. The cause is in that parser, which this module cannot change. DefaultCtx.Reset calls this for
+// the request line as it arrived, RestoreTarget for the one a handler put back.
+func ReadAsOriginForm(fctx *fasthttp.RequestCtx, target []byte) {
+	req := &fctx.Request
+	host := req.Header.Host()
+	if ParsesAsPath(utils.UnsafeString(target), host) {
+		return
+	}
+	uri := req.URI()
+	var buf [64]byte
+	host = append(buf[:0], host...)
+	// Origin-form with the Host header, as fasthttp reads any other path; the target follows. Parsed apart:
+	// URI.Parse resets its receiver before it validates the host, so a Host header it rejects would leave uri
+	// empty and the request would be routed as "/". Then fasthttp's own reading of the target stays.
+	scratch := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(scratch)
+	if err := scratch.Parse(host, []byte{'/'}); err != nil {
+		return
+	}
+	disableNormalizing := uri.DisablePathNormalizing
+	scratch.CopyTo(uri)
+	uri.DisablePathNormalizing = disableNormalizing
+	if fctx.IsTLS() {
+		uri.SetScheme("https")
+	}
+	rest := target
+	if i := bytes.IndexByte(rest, '#'); i >= 0 {
+		uri.SetHashBytes(rest[i+1:])
+		rest = rest[:i]
+	}
+	if i := bytes.IndexByte(rest, '?'); i >= 0 {
+		uri.SetQueryStringBytes(rest[i+1:])
+		rest = rest[:i]
+	}
+	uri.SetPathBytes(rest)
+}
+
+// RestoreTarget sets original, the request line as it arrived, back as fctx's request target. fasthttp parses it
+// again, and takes the authority out of a "//" target again, so the origin-form reading Reset gave it is applied
+// again. The Host header has to be back in place by then.
+func RestoreTarget(fctx *fasthttp.RequestCtx, original string) {
+	fctx.Request.SetRequestURI(original)
+	if len(original) > 1 && original[0] == '/' && original[1] == '/' {
+		ReadAsOriginForm(fctx, utils.UnsafeBytes(original))
+	}
 }
 
 // appendQuery appends query to dst behind a "?", or nothing for an empty one.

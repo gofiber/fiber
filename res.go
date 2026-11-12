@@ -22,6 +22,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/quotedstring"
+	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -1379,7 +1380,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Restore the original requested URL
 	originalURL := utils.CopyString(r.c.OriginalURL())
-	defer request.SetRequestURI(originalURL)
+	defer wiretarget.RestoreTarget(r.c.fasthttp, originalURL)
 
 	// The file server reads the request URI, which fasthttp percent-decodes and
 	// splits at "?" and "#" as it parses it, so the name goes in escaped and

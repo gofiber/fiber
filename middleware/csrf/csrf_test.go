@@ -1,7 +1,6 @@
 package csrf
 
 import (
-	"bufio"
 	"bytes"
 	"cmp"
 	"context"
@@ -2281,18 +2280,6 @@ func Test_CSRF_SessionModeKeepsConcurrentSessionChange(t *testing.T) {
 	apptest.ExpectBody(t, app, withCookies("/role"), fiber.StatusOK, "user")
 }
 
-// csrfTestRaw runs h on the request raw, read as a server reads it, and returns the status of the answer.
-func csrfTestRaw(t *testing.T, h fasthttp.RequestHandler, raw string) int {
-	t.Helper()
-
-	req := &fasthttp.Request{}
-	require.NoError(t, req.ReadLimitBody(bufio.NewReader(strings.NewReader(raw)), 1<<20))
-	ctx := &fasthttp.RequestCtx{}
-	ctx.Init(req, nil, nil)
-	h(ctx)
-	return ctx.Response.StatusCode()
-}
-
 // Test_CSRF_OriginCheckGoesByTheHostHeaderForAPathTarget pins that a request target beginning with "/" is a
 // path (RFC 9112 Section 3.2.1): the Origin is compared with the Host header, not with the first segment of the path.
 func Test_CSRF_OriginCheckGoesByTheHostHeaderForAPathTarget(t *testing.T) {
@@ -2305,8 +2292,11 @@ func Test_CSRF_OriginCheckGoesByTheHostHeaderForAPathTarget(t *testing.T) {
 	token, cookie := csrfTestVisit(t, h)
 
 	post := func(target, host, origin string) int {
-		return csrfTestRaw(t, h, "POST "+target+" HTTP/1.1\r\nHost: "+host+"\r\nCookie: "+cookie+"\r\nX-Csrf-Token: "+token+
-			"\r\nOrigin: "+origin+"\r\nContent-Length: 0\r\n\r\n")
+		return csrfTestPostWith(h, false, cookie, token, func(r *fasthttp.Request) {
+			r.SetRequestURI(target)
+			r.Header.SetHost(host)
+			r.Header.Set(fiber.HeaderOrigin, origin)
+		})
 	}
 
 	for _, tc := range []struct {
