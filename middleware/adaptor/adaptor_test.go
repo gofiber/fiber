@@ -2464,3 +2464,20 @@ func Test_FiberApp_RequestHeaders_Linear(t *testing.T) {
 	s := apptest.Recv(t, got, time.Second)
 	require.Equal(t, seen{repeated: "a,b,c", cookie: "k=v", agent: "agent/1", ctype: "text/plain", distinct: n, last: strconv.Itoa(n - 1)}, s)
 }
+
+// Test_FiberApp_RequestHeaders_AliasKeys pins that two keys of a hand-built header map that name one header, "x-a" and
+// "X-A", are stored as one line whatever the order the map is read in.
+func Test_FiberApp_RequestHeaders_AliasKeys(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(strings.Join(c.GetReqHeaders()["X-A"], ",")) })
+
+	for range 100 {
+		r := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		r.Header["x-a"] = []string{"2", "3"}
+		r.Header["X-A"] = []string{"1"}
+		rec := httptest.NewRecorder()
+		FiberApp(app)(rec, r)
+		require.Equal(t, "2,3", rec.Body.String())
+	}
+}
