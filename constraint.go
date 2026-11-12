@@ -256,12 +256,12 @@ type intConstraintType struct{}
 
 func (intConstraintType) Name() string { return ConstraintInt }
 
-// The int-family constraints (int, min, max, range) deliberately stay on
-// strconv.Atoi: utils.ParseNativeInt benchmarked slower for the short
-// (1-14 digit) params routes actually see, winning only near 19 digits.
+// The int-family constraints (int, min, max, range) use utils.ParseInt. The
+// int64(int(n)) == n check rejects, like strconv.Atoi, a value that does not
+// fit in an int on 32-bit platforms.
 func (intConstraintType) Execute(param string, _ []any) bool {
-	_, err := strconv.Atoi(param)
-	return err == nil
+	n, err := utils.ParseInt(param)
+	return err == nil && int64(int(n)) == n
 }
 
 type boolConstraintType struct{}
@@ -491,8 +491,8 @@ func (minConstraintType) Execute(param string, data []any) bool {
 	if !ok {
 		return false
 	}
-	num, err := strconv.Atoi(param)
-	return err == nil && num >= limit
+	n, err := utils.ParseInt(param)
+	return err == nil && int64(int(n)) == n && int(n) >= limit
 }
 
 type maxConstraintType struct{}
@@ -518,8 +518,8 @@ func (maxConstraintType) Execute(param string, data []any) bool {
 	if !ok {
 		return false
 	}
-	num, err := strconv.Atoi(param)
-	return err == nil && num <= limit
+	n, err := utils.ParseInt(param)
+	return err == nil && int64(int(n)) == n && int(n) <= limit
 }
 
 type rangeConstraintType struct{}
@@ -553,8 +553,8 @@ func (rangeConstraintType) Execute(param string, data []any) bool {
 	if !ok {
 		return false
 	}
-	num, err := strconv.Atoi(param)
-	return err == nil && num >= lo && num <= hi
+	n, err := utils.ParseInt(param)
+	return err == nil && int64(int(n)) == n && int(n) >= lo && int(n) <= hi
 }
 
 type regexConstraintType struct {
