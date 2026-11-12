@@ -58,6 +58,7 @@ func Test_Proxy_DoRedirects_ResolvesRelativeLocations(t *testing.T) {
 			"/dir/sub/dot":   "./y",
 			"/dir/sub/net":   "//" + strings.TrimPrefix(server.URL, "http://") + "/net",
 			"/dir/sub/full":  server.URL + "/full?a=%2F",
+			"/dir/sub/pct":   "/discount/100%",
 		}[r.URL.Path]
 		if location == "" || r.URL.RawQuery != "" && r.URL.Path == "/dir/sub/query" {
 			_, err := io.WriteString(w, r.RequestURI)
@@ -79,6 +80,7 @@ func Test_Proxy_DoRedirects_ResolvesRelativeLocations(t *testing.T) {
 		"/dir/sub/dot":   "/dir/sub/y",
 		"/dir/sub/net":   "/net",
 		"/dir/sub/full":  "/full?a=%2F",
+		"/dir/sub/pct":   "/discount/100%25",
 	} {
 		t.Run(target, func(t *testing.T) {
 			t.Parallel()
