@@ -189,7 +189,7 @@ func Test_hasFlashCookie(t *testing.T) {
 				raw := "GET / HTTP/1.1\r\nHost: localhost\r\n" + strings.Join(tc.lines, "\r\n") + "\r\n\r\n"
 				require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
 			}
-			require.Equal(t, tc.want, hasFlashCookie(&req.Header, !tc.asSent))
+			require.Equal(t, tc.want, hasFlashCookie(&req.Header))
 		})
 	}
 }
@@ -199,7 +199,34 @@ func Test_hasFlashCookie(t *testing.T) {
 func Test_hasFlashCookie_BuiltRequestDoesNotAllocate(t *testing.T) {
 	var req fasthttp.Request
 	req.Header.Set(HeaderCookie, "session=abc; theme=dark")
-	require.Zero(t, testing.AllocsPerRun(100, func() { require.False(t, hasFlashCookie(&req.Header, true)) }))
+	require.Zero(t, testing.AllocsPerRun(100, func() { require.False(t, hasFlashCookie(&req.Header)) }))
+}
+
+// app.Handler() may run under a fasthttp.Server of its own whose DisableHeaderNamesNormalizing differs from the app
+// config, so the check follows the header store: a lower-case Cookie line is still found and the flash cookie expired.
+func Test_hasFlashCookie_HeaderStoreOverridesConfig(t *testing.T) {
+	t.Parallel()
+	for _, asSent := range []bool{false, true} {
+		t.Run(fmt.Sprintf("asSent=%v", asSent), func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{DisableHeaderNormalizing: !asSent})
+			app.Get("/", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+			req := &fasthttp.Request{}
+			if asSent {
+				req.Header.DisableNormalizing()
+			}
+			raw := "GET / HTTP/1.1\r\nHost: localhost\r\ncookie: " + FlashCookieName + "=00\r\n\r\n"
+			require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Init(req, nil, nil)
+
+			app.Handler()(fctx)
+			require.Equal(t, StatusOK, fctx.Response.StatusCode())
+			require.Contains(t, string(fctx.Response.Header.Peek(HeaderSetCookie)), FlashCookieName+"=;")
+			require.Equal(t, asSent, req.Header.DisableNormalizing(), "the header store's setting is kept")
+		})
+	}
 }
 
 func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {

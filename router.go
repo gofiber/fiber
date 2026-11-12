@@ -1027,7 +1027,7 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 
 	// Optional: check flash messages (hot path, see hasFlashCookie); before the
 	// short-circuit so a skipped 404/405 still clears them.
-	if !app.config.DisableFlashMessages && hasFlashCookie(&ctx.fasthttp.Request.Header, !app.config.DisableHeaderNormalizing) {
+	if !app.config.DisableFlashMessages && hasFlashCookie(&ctx.fasthttp.Request.Header) {
 		ctx.Redirect().parseAndClearFlashMessages()
 	}
 
@@ -1075,7 +1075,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 
 	// Optional: check flash messages (hot path, see hasFlashCookie); before the
 	// short-circuit so a skipped 404/405 still clears them.
-	if !app.config.DisableFlashMessages && hasFlashCookie(&ctx.Request().Header, !app.config.DisableHeaderNormalizing) {
+	if !app.config.DisableFlashMessages && hasFlashCookie(&ctx.Request().Header) {
 		ctx.Redirect().parseAndClearFlashMessages()
 	}
 

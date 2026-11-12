@@ -56,14 +56,11 @@ var (
 // Keep this cheap for users who don't use flash messages:
 // 1) a fast prefilter to avoid unnecessary cookie parsing,
 // 2) an exact cookie lookup to avoid prefix false positives (e.g. fiber_flashX).
-// canonical is whether the header store normalizes field names.
-//
-//nolint:revive // flag-parameter: canonical is a property of the header store, not a mode of operation
-func hasFlashCookie(header *fasthttp.RequestHeader, canonical bool) bool {
+func hasFlashCookie(header *fasthttp.RequestHeader) bool {
 	// A request built programmatically has no raw headers, so the prefilter cannot answer for it; its cookies may
 	// already be parsed, and then the Cookie lines are re-encoded on each peek, so the cookie lookup decides.
 	if rawHeaders := header.RawHeaders(); len(rawHeaders) > 0 {
-		if canonical {
+		if normalizesNames(header) {
 			// Only a Cookie line can carry it. PeekCanonical answers "none" without PeekAll's name normalization.
 			if header.PeekCanonical(cookieFieldName) == nil || !cookieLinesHaveFlash(header.PeekAll(HeaderCookie)) {
 				return false
@@ -75,6 +72,17 @@ func hasFlashCookie(header *fasthttp.RequestHeader, canonical bool) bool {
 	}
 
 	return header.Cookie(FlashCookieName) != nil
+}
+
+// normalizesNames reports whether header stores field names normalized. It asks the header rather than the app
+// config: app.Handler() may run under a fasthttp.Server of its own whose DisableHeaderNamesNormalizing differs.
+// fasthttp keeps the setting private; DisableNormalizing returns it, and EnableNormalizing restores it.
+func normalizesNames(header *fasthttp.RequestHeader) bool {
+	if header.DisableNormalizing() {
+		return false
+	}
+	header.EnableNormalizing()
+	return true
 }
 
 // cookieLinesHaveFlash reports whether a cookie pair in lines starts with the flash cookie's name,
