@@ -137,10 +137,10 @@ func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
 	})
 }
 
-// ServeNative is Serve for a fasthttp handler registered as a route handler. Nothing of it keeps reading
-// the request line once it returned: fasthttp forbids a stream writer and a hijack handler to access the
-// RequestCtx. The original line is therefore put back whatever the response is, unless the handler timed
-// out (fasthttp.TimeoutHandler, the timeout middleware), which leaves it running on the request.
+// ServeNative is Serve for a fasthttp handler registered as a route handler. The original line is put back
+// once it returned, unless the response is a body stream or hijacked, which can belong to a net/http handler
+// that fasthttpadaptor runs on a goroutine of its own and that goes on reading the line, or unless the handler
+// timed out (fasthttp.TimeoutHandler, the timeout middleware), which leaves it running on the request.
 func ServeNative[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
 	return serveWith(c, handler, func(original string) { restoreNative(c, original) })
 }
@@ -191,9 +191,17 @@ func restoreNative[App any](c Ctx[App], original string) {
 		defer mu.Unlock()
 	}
 	// fasthttp.TimeoutHandler answers on this goroutine, so there is nothing to order with.
-	if c.RequestCtx().LastTimeoutErrorResponse() == nil {
-		RestoreTarget(c.RequestCtx(), original)
+	rctx := c.RequestCtx()
+	if rctx.LastTimeoutErrorResponse() != nil {
+		return
 	}
+	// A streamed or hijacked response can belong to a net/http handler that fasthttpadaptor.NewFastHTTPHandler
+	// runs on a goroutine of its own, as it is common to register one: it goes on reading the request line, which
+	// its URL and RequestURI alias. The line is left as the handler read it, as Serve leaves it.
+	if c.Response().IsBodyStream() || rctx.Hijacked() {
+		return
+	}
+	RestoreTarget(rctx, original)
 }
 
 // SetTarget sets target, the routed request target, as c's request line.
