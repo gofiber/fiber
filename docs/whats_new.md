@@ -2337,10 +2337,12 @@ and are slower than native Fiber handlers because of the extra conversion layer.
 them to ease migrations, but prefer Fiber handlers in performance-critical paths.
 :::
 
-Like `adaptor.HTTPHandler`, a directly registered handler is given the path the router
+Like `adaptor.HTTPHandler`, a directly registered handler, a `fasthttp.RequestHandler`
+and a `func(*fasthttp.RequestCtx) error` included, is given the path the router
 matched rather than the request line as it arrived, and a routed path with an empty
-segment or an escaped slash, such as `//admin/x` or `/admin%2Fx`, is answered with
-`404 Not Found`, since `net/http` would decode and clean it into a path no Fiber
+segment or an escaped slash, such as `//admin/x` or `/admin%2Fx`, or spelled other
+than `net/http` would write it back, such as `/R%26D/x` for `/R&D/x`, is answered with
+`404 Not Found`, since the handler would decode and clean it into a path no Fiber
 middleware ran for.
 
 ```go

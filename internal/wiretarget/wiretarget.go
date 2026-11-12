@@ -1,6 +1,6 @@
 // Package wiretarget spells the path the router matched the way a request
 // line carries it, for middleware that hands the request on to something that
-// reads request lines: a proxy upstream, a net/http handler.
+// reads request lines: a proxy upstream, a net/http or fasthttp handler.
 package wiretarget
 
 import (
@@ -21,6 +21,7 @@ type Ctx[App any] interface {
 	Request() *fasthttp.Request
 	Response() *fasthttp.Response
 	RequestCtx() *fasthttp.RequestCtx
+	IsAbandoned() bool
 }
 
 // Allowance names what SegmentsAsRouted lets through that it refuses
@@ -72,7 +73,11 @@ const (
 // and so as a host and a credential; rooted, it is the path
 // "/http://u:pw@evil.example/x".
 func Routed[App any](c Ctx[App]) string {
-	path := c.Path()
+	return routedFor(c, c.Path())
+}
+
+// routedFor is Routed for path, which is c.Path(), for a caller that has read it already.
+func routedFor[App any](c Ctx[App], path string) string {
 	if path == "" || path[0] != '/' {
 		path = "/" + path
 	}
@@ -110,19 +115,41 @@ func Routed[App any](c Ctx[App]) string {
 // upstream that reads it as another path: a backslash, or a segment a servlet
 // container strips to a dot or an empty segment ("..;", "/;x/admin"). A path
 // parameter on a named segment is handed on, since net/http reads it as part
-// of the name. Serve reports false, without running handler, for a routed path
-// it does not hand on.
+// of the name. Unless UnescapePath makes the router decode every escape itself,
+// a routed path that is not in the one spelling SingleSpelling accepts is not
+// handed on either: the router keeps "/R&D" and "/R%26D", "/user@corp" and
+// "/user%40corp", "/caf%C3%A9" and a raw "/café" apart, but the handler decodes
+// each pair into one name. Serve reports false, without running handler, for a
+// routed path it does not hand on.
 func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
-	target := Routed(c)
-	if !SegmentsAsRouted(target, AllowParameters) || (!appconfig.Of(c.App()).UnescapePath && !SingleSpelling(c.Path())) {
+	return serveWith(c, handler, func() bool { return c.Response().IsBodyStream() || c.RequestCtx().Hijacked() })
+}
+
+// ServeNative is Serve for a fasthttp handler registered as a route handler. Nothing of it keeps reading
+// the request line once it returned: fasthttp forbids a stream writer and a hijack handler to access the
+// RequestCtx. The original line is therefore put back whatever the response is, unless the handler timed
+// out (fasthttp.TimeoutHandler, the timeout middleware), which leaves it running on the request.
+func ServeNative[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
+	// IsAbandoned goes first, as in the limiter: its atomic load orders the read of the timeout response
+	// after the write of a timeout.New that gave up on the request on another goroutine.
+	return serveWith(c, handler, func() bool { return c.IsAbandoned() || c.RequestCtx().LastTimeoutErrorResponse() != nil })
+}
+
+// serveWith runs handler on the routed request line and puts the original back afterwards, unless stillReading
+// reports that the handler goes on reading the request.
+func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, stillReading func() bool) bool {
+	// Read once: with Immutable every read of either copies the string.
+	path, line := c.Path(), c.OriginalURL()
+	target := routedFor(c, path)
+	if !SegmentsAsRouted(target, AllowParameters) || (!appconfig.Of(c.App()).UnescapePath && !SingleSpelling(path)) {
 		return false
 	}
-	if target == c.OriginalURL() {
+	if target == line {
 		// the request line already spells the routed path
 		handler(c.RequestCtx())
 		return true
 	}
-	original := utils.CopyString(c.OriginalURL())
+	original := utils.CopyString(line)
 	SetTarget(c, target)
 	// Buffered, the handler has returned, or panicked, in which case
 	// fasthttpadaptor re-panics here and the recover middleware or error
@@ -131,7 +158,7 @@ func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
 	// URL aliases the request line's storage, so the line is left as the
 	// handler read it.
 	defer func() {
-		if !c.Response().IsBodyStream() && !c.RequestCtx().Hijacked() {
+		if !stillReading() {
 			RestoreTarget(c.RequestCtx(), original)
 		}
 	}()
@@ -449,6 +476,10 @@ var pathRaw = func() [256]bool {
 // needsEscape reports whether appendPathEscaped would change path.
 func needsEscape(path string) bool {
 	for i := 0; i < len(path); i++ {
+		if path[i] == '%' && i+2 < len(path) && isHexDigit(path[i+1]) && isHexDigit(path[i+2]) {
+			i += 2 // kept as it is
+			continue
+		}
 		if !pathRaw[path[i]] {
 			return true
 		}

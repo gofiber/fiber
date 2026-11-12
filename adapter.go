@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"github.com/valyala/fasthttp"
 
@@ -238,7 +239,7 @@ func adaptFastHTTPHandler(handler any) (Handler, bool) {
 		}
 		return func(c Ctx) error {
 			// Like a net/http handler, it reads the path the router matched, not the request line as it arrived.
-			if !wiretarget.Serve(c, h) {
+			if !serveNative(c, h) {
 				return ErrNotFound
 			}
 			return nil
@@ -249,7 +250,7 @@ func adaptFastHTTPHandler(handler any) (Handler, bool) {
 		}
 		return func(c Ctx) error {
 			var err error
-			if !wiretarget.Serve(c, func(ctx *fasthttp.RequestCtx) { err = h(ctx) }) {
+			if !serveNative(c, func(ctx *fasthttp.RequestCtx) { err = h(ctx) }) {
 				return ErrNotFound
 			}
 			return err
@@ -257,6 +258,17 @@ func adaptFastHTTPHandler(handler any) (Handler, bool) {
 	default:
 		return nil, false
 	}
+}
+
+// serveNative runs a fasthttp route handler on the routed path, but leaves a request target that is not a path alone:
+// the asterisk form of OPTIONS and the authority form of CONNECT. fasthttp and the router read the same path for
+// them, so there is nothing to guard, and the handler needs the target as sent ("*", "example.com:443").
+func serveNative(c Ctx, h fasthttp.RequestHandler) bool {
+	if line := c.OriginalURL(); line == "*" || (c.Request().Header.IsConnect() && line != "" && !strings.ContainsAny(line, "/%?#\\;@")) {
+		h(c.RequestCtx())
+		return true
+	}
+	return wiretarget.ServeNative(c, h)
 }
 
 // wrapHTTPHandler adapts a net/http handler to a Fiber handler.
