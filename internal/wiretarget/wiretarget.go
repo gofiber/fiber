@@ -202,11 +202,15 @@ func ReadAsOriginForm(fctx *fasthttp.RequestCtx, target []byte) {
 	host = append(buf[:0], host...)
 	// Origin-form with the Host header, as fasthttp reads any other path; the target follows. Parsed apart:
 	// URI.Parse resets its receiver before it validates the host, so a Host header it rejects would leave uri
-	// empty and the request would be routed as "/". Then fasthttp's own reading of the target stays.
+	// empty and the request would be routed as "/". Such a header names no host: the request has none, as
+	// without the header, and the first segment of its path is not taken for one (fasthttp answers 400 to a
+	// plain target with that header, and cannot reject the request here, where it took the host from the path).
 	scratch := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(scratch)
 	if err := scratch.Parse(host, []byte{'/'}); err != nil {
-		return
+		if err = scratch.Parse(nil, []byte{'/'}); err != nil {
+			return
+		}
 	}
 	disableNormalizing := uri.DisablePathNormalizing
 	scratch.CopyTo(uri)

@@ -757,6 +757,9 @@ func Test_HostAuthorization_PathTargetUsesTheHostHeader(t *testing.T) {
 		{"query with a URL", "//internal.example.com/data?next=http://a", "other.example", fiber.StatusForbidden},
 		{"fragment with ://", "//internal.example.com/data#://", "other.example", fiber.StatusForbidden},
 		{"plain target", "/data", "other.example", fiber.StatusForbidden},
+		// a Host header that names no host leaves the request without one, not with the first segment of its path
+		{"invalid Host header", "//internal.example.com/data?x=://", "bad[host", fiber.StatusForbidden},
+		{"invalid port", "//internal.example.com/data?x=://", "internal.example.com:abc", fiber.StatusForbidden},
 		{"allowed host", "//internal.example.com/data?x=://", "internal.example.com", fiber.StatusOK},
 		{"plain allowed host", "/data", "internal.example.com", fiber.StatusOK},
 		{"absolute-form names its own host", "http://internal.example.com/data", "other.example", fiber.StatusOK},
