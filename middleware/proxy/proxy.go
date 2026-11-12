@@ -208,18 +208,9 @@ func doActionWithPolicy(
 	originalURL := utils.CopyString(c.OriginalURL())
 	// fasthttp rewrote the Host header to the upstream's; put the client's back for later middleware.
 	originalHost := utils.CopyBytes(req.Header.Host())
-	// fasthttp derives Authorization from the user info of the address when the request has none.
-	originalAuth := utils.CopyBytes(req.Header.Peek(fiber.HeaderAuthorization))
 	defer func() {
 		req.SetRequestURI(originalURL)
 		req.Header.SetHostBytes(originalHost)
-		if !bytes.Equal(req.Header.Peek(fiber.HeaderAuthorization), originalAuth) {
-			if len(originalAuth) > 0 {
-				req.Header.SetBytesV(fiber.HeaderAuthorization, originalAuth)
-			} else {
-				req.Header.Del(fiber.HeaderAuthorization)
-			}
-		}
 	}()
 
 	req.SetRequestURI(u.String())
@@ -253,6 +244,20 @@ func doActionWithPolicy(
 	if cli == defaultClient && req.GetTimeOut() == 0 {
 		req.SetTimeout(time.Duration(defaultRequestTimeout.Load()))
 		defer req.SetTimeout(0)
+	}
+	// fasthttp derives Authorization from the user info of the address when the request has none: undo
+	// that, and only that. Taken after the strip, so a field it removed stays removed.
+	if u.User != nil {
+		originalAuth := utils.CopyBytes(req.Header.Peek(fiber.HeaderAuthorization))
+		defer func() {
+			if !bytes.Equal(req.Header.Peek(fiber.HeaderAuthorization), originalAuth) {
+				if len(originalAuth) > 0 {
+					req.Header.SetBytesV(fiber.HeaderAuthorization, originalAuth)
+				} else {
+					req.Header.Del(fiber.HeaderAuthorization)
+				}
+			}
+		}()
 	}
 	// A client that streams response bodies hands the upstream's trailer section to the response after
 	// the action returned: such a response is read into one of the proxy's own, see upstreamResponse.
