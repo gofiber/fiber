@@ -15,21 +15,17 @@ import (
 
 func Test_Proxy_DoRedirects_KeepsTheEscapesOfTheTarget(t *testing.T) {
 	t.Parallel()
-	final := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := io.WriteString(w, r.RequestURI)
-		assert.NoError(t, err)
-	}))
-	t.Cleanup(final.Close)
+	final := echoTarget(t)
 	// a canonical-host redirect: the Location repeats the request URI
-	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Location", final.URL+r.RequestURI)
-		w.WriteHeader(http.StatusPermanentRedirect)
-	}))
-	t.Cleanup(first.Close)
+	first := fiber.New()
+	first.Use(func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderLocation, "http://"+final+c.OriginalURL())
+		return c.SendStatus(fiber.StatusPermanentRedirect)
+	})
+	firstAddr := listenUpstream(t, first)
 
 	app := fiber.New()
-	app.Use(func(c fiber.Ctx) error { return DoRedirects(c, first.URL+c.Path(), 3) })
-	ln := apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true})
+	app.Use(func(c fiber.Ctx) error { return DoRedirects(c, "http://"+firstAddr+c.Path(), 3) })
 
 	for target, want := range map[string]string{
 		"/public/..%2Fadmin/x":  "/public/..%2Fadmin/x",
@@ -40,9 +36,9 @@ func Test_Proxy_DoRedirects_KeepsTheEscapesOfTheTarget(t *testing.T) {
 	} {
 		t.Run(target, func(t *testing.T) {
 			t.Parallel()
-			head, body := getRawTarget(t, ln, target)
-			require.Contains(t, head, "200 OK")
-			require.Equal(t, want, body)
+			resp := rawRequest(t, app, target, "example.com")
+			require.Equal(t, fiber.StatusOK, resp.StatusCode())
+			require.Equal(t, want, string(resp.Body()))
 		})
 	}
 }

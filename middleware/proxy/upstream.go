@@ -35,8 +35,8 @@ func parseUpstream(raw string) (*url.URL, error) {
 }
 
 // repairRawPath escapes the bytes of raw that a path cannot hold raw, as "%XX", and leaves the
-// escapes it has alone. It returns "" when the result would not decode to path, which leaves
-// the default escaping of path to String.
+// escapes it has alone. url.Parse made sure raw decodes to path, and each byte is written as its own
+// escape, so the result does too. It returns "" when that is what String writes for path anyway.
 func repairRawPath(raw, path string) string {
 	const upperHex = "0123456789ABCDEF"
 	b := make([]byte, 0, len(raw)+8)
@@ -49,7 +49,7 @@ func repairRawPath(raw, path string) string {
 		b = append(b, '%', upperHex[c>>4], upperHex[c&15])
 	}
 	repaired := string(b)
-	if decoded, err := url.PathUnescape(repaired); err != nil || decoded != path || repaired == (&url.URL{Path: path}).EscapedPath() {
+	if repaired == (&url.URL{Path: path}).EscapedPath() {
 		return ""
 	}
 	return repaired
