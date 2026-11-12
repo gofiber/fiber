@@ -17,8 +17,9 @@ var fileHeaderTypes sync.Map // map[reflect.Type]bool
 // holdsFileHeader reports whether a value of type t can hold a *multipart.FileHeader.
 func holdsFileHeader(t reflect.Type) bool {
 	if cached, ok := fileHeaderTypes.Load(t); ok {
-		held, _ := cached.(bool) //nolint:errcheck // only bool is stored
-		return held
+		if held, isBool := cached.(bool); isBool {
+			return held
+		}
 	}
 	held := containsFileHeader(t, map[reflect.Type]struct{}{})
 	fileHeaderTypes.Store(t, held)
@@ -38,7 +39,7 @@ func containsFileHeader(t reflect.Type, seen map[reflect.Type]struct{}) bool {
 		return containsFileHeader(t.Elem(), seen)
 	case reflect.Struct:
 		for i := range t.NumField() {
-			if f := t.Field(i); f.IsExported() && containsFileHeader(f.Type, seen) {
+			if f := t.Field(i); reachable(&f) && containsFileHeader(f.Type, seen) {
 				return true
 			}
 		}
@@ -47,11 +48,19 @@ func containsFileHeader(t reflect.Type, seen map[reflect.Type]struct{}) bool {
 	return false
 }
 
+// reachable reports whether schema can fill something through the field f: an exported field, or an embedded
+// struct, whose exported fields are promoted even when the name of its type is not exported.
+func reachable(f *reflect.StructField) bool {
+	return f.IsExported() || f.Anonymous
+}
+
 // fileHeaders holds the *multipart.FileHeader values of a bind as the request carried them. A header comes
 // from a file part and from nothing else: schema decodes a form, query, header or cookie value whose key
 // continues the name of a file field, such as "avatar.filename" or "avatar[size]", into the exported fields of the header
 // the file part was bound to, or into one it creates for the value alone. The root cause is in
 // github.com/gofiber/schema, which treats the field as a pointer to a struct as well as a file slot.
+// The JSON, XML, CBOR and MsgPack decoders are not guarded: they fill the exported fields of a header from a
+// body like those of any struct, so bind a *multipart.FileHeader field from a form only.
 type fileHeaders struct {
 	saved map[*multipart.FileHeader]multipart.FileHeader
 }
@@ -102,16 +111,26 @@ const (
 // walk visits every *multipart.FileHeader reachable from v. Recording, it saves the ones it finds;
 // phase, it resets the recorded ones and sets the others to nil where it can.
 func (g *fileHeaders) walk(v reflect.Value, phase guardPhase) {
-	g.visit(v, phase, map[uintptr]struct{}{})
+	g.visit(v, phase, map[seenPointer]struct{}{})
 }
 
-func (g *fileHeaders) visit(v reflect.Value, phase guardPhase, seen map[uintptr]struct{}) {
+// seenPointer identifies a pointer already walked. The address alone would not: a pointer to a struct and a
+// pointer to its first field share one.
+type seenPointer struct {
+	typ reflect.Type
+	ptr uintptr
+}
+
+func (g *fileHeaders) visit(v reflect.Value, phase guardPhase, seen map[seenPointer]struct{}) {
 	switch v.Kind() {
 	case reflect.Pointer:
 		if v.IsNil() {
 			return
 		}
 		if v.Type() == reflect.PointerTo(fileHeaderType) {
+			if !v.CanInterface() {
+				return // an element of an unexported embedded slice or map, which schema cannot set either
+			}
 			fh, ok := reflect.TypeAssert[*multipart.FileHeader](v)
 			if !ok {
 				return
@@ -119,14 +138,15 @@ func (g *fileHeaders) visit(v reflect.Value, phase guardPhase, seen map[uintptr]
 			g.take(fh, phase)
 			return
 		}
-		if _, ok := seen[v.Pointer()]; ok {
+		key := seenPointer{typ: v.Type(), ptr: v.Pointer()}
+		if _, ok := seen[key]; ok {
 			return
 		}
-		seen[v.Pointer()] = struct{}{}
+		seen[key] = struct{}{}
 		g.visit(v.Elem(), phase, seen)
 	case reflect.Struct:
 		for i := range v.NumField() {
-			if !v.Type().Field(i).IsExported() || !holdsFileHeader(v.Type().Field(i).Type) {
+			if sf := v.Type().Field(i); !reachable(&sf) || !holdsFileHeader(sf.Type) {
 				continue
 			}
 			field := v.Field(i)
@@ -173,8 +193,7 @@ func (g *fileHeaders) take(fh *multipart.FileHeader, phase guardPhase) {
 		return
 	}
 	if saved, ok := g.saved[fh]; ok {
-		*fh = saved
-		fh.Header = cloneMIMEHeader(saved.Header)
+		*fh = saved // the record is private to g, which is dropped once restored: its header map is not shared
 	}
 }
 

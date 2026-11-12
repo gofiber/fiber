@@ -26,11 +26,22 @@ type bindUploadNested struct {
 	Docs []struct{ File *multipart.FileHeader } `form:"docs"`
 }
 
-// bindUploadCases returns n spellings in letter case of each value key that continues the name of the field "avatar".
-func bindUploadKeys(n int) []string {
+// bindUploadBase is embedded by bindUploadEmbedded: the name of its type is not exported, but schema fills
+// the exported fields it promotes.
+type bindUploadBase struct {
+	Avatar *multipart.FileHeader `form:"avatar"`
+}
+
+type bindUploadEmbedded struct {
+	bindUploadBase
+	Name string `form:"name"`
+}
+
+// bindUploadKeys returns 64 spellings in letter case of each value key that continues the name of the field "avatar".
+func bindUploadKeys() []string {
 	var keys []string
-	for i := range n {
-		for _, tail := range []string{".filename", "[filename]", ".Filename", ".size", ".header.X-Evil", "[size]", "[header][X-Evil]"} {
+	for i := range 64 {
+		for _, tail := range []string{".filename", "[filename]", ".Filename", ".size", ".header.X-Extra", "[size]", "[header][X-Extra]"} {
 			key := []byte("avatar" + tail)
 			for j := range key {
 				if (i>>(j%6))&1 == 1 && key[j] >= 'a' && key[j] <= 'z' {
@@ -96,7 +107,7 @@ func Test_Bind_FileHeader_IgnoresValueKeys(t *testing.T) {
 				require.Equal(t, "john", out.Name)
 				return c.SendString("ok")
 			})
-			apptest.ExpectBody(t, app, bindUploadRequest(t, "../../cat.png", bindUploadKeys(64)), StatusOK, "ok")
+			apptest.ExpectBody(t, app, bindUploadRequest(t, "../../cat.png", bindUploadKeys()), StatusOK, "ok")
 		})
 	}
 
@@ -109,7 +120,33 @@ func Test_Bind_FileHeader_IgnoresValueKeys(t *testing.T) {
 			require.Nil(t, out.Avatar)
 			return c.SendString("ok")
 		})
-		apptest.ExpectBody(t, app, bindUploadRequest(t, "", bindUploadKeys(64)), StatusOK, "ok")
+		apptest.ExpectBody(t, app, bindUploadRequest(t, "", bindUploadKeys()), StatusOK, "ok")
+	})
+
+	t.Run("embedded struct of an unexported type", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Post("/", func(c Ctx) error {
+			var out bindUploadEmbedded
+			require.NoError(t, c.Bind().Form(&out))
+			require.NotNil(t, out.Avatar)
+			require.Equal(t, "cat.png", out.Avatar.Filename)
+			require.Equal(t, int64(3), out.Avatar.Size)
+			return c.SendString("ok")
+		})
+		apptest.ExpectBody(t, app, bindUploadRequest(t, "../../cat.png", bindUploadKeys()), StatusOK, "ok")
+	})
+
+	t.Run("embedded struct of an unexported type, value keys alone", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Post("/", func(c Ctx) error {
+			var out bindUploadEmbedded
+			require.NoError(t, c.Bind().Form(&out))
+			require.Nil(t, out.Avatar)
+			return c.SendString("ok")
+		})
+		apptest.ExpectBody(t, app, bindUploadRequest(t, "", bindUploadKeys()), StatusOK, "ok")
 	})
 
 	t.Run("nested positions", func(t *testing.T) {
@@ -169,7 +206,7 @@ func Test_Bind_FileHeader_UploadHandlerWritesInside(t *testing.T) {
 		}
 		return c.SaveFile(p.Avatar, fmt.Sprintf("%s/%s", uploads, p.Avatar.Filename))
 	})
-	apptest.Expect(t, app, bindUploadRequest(t, "../../cat.png", bindUploadKeys(64)), StatusOK)
+	apptest.Expect(t, app, bindUploadRequest(t, "../../cat.png", bindUploadKeys()), StatusOK)
 
 	require.FileExists(t, filepath.Join(uploads, "cat.png"))
 	require.NoFileExists(t, filepath.Join(root, "escaped.txt"))
