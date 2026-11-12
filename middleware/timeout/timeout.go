@@ -12,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
+	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -84,6 +85,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		if !nested {
 			req = new(request)
 			_ = ctxlocal.Set(ctx, requestKey, req)
+			_ = ctxlocal.Set(ctx, wiretarget.TimeoutAnswerKey, &req.mu)
 		}
 		// The deadline enclosingFiresFirst judged, not a later time.Now().
 		tCtx, cancel := context.WithDeadline(parent, deadline)

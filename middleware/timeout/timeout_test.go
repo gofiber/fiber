@@ -1046,3 +1046,27 @@ func Test_Timeout_HEADResponseHasNoBody(t *testing.T) {
 		})
 	}
 }
+
+// Test_Timeout_FastHTTPRouteHandlerReturnsWhileTheAnswerIsWritten pins that a fasthttp route handler that returns
+// while timeout.New is answering for its request (OnTimeout still runs, the answer is not written yet) does not read
+// the timeout response unordered with that write, and leaves the request line alone, as for a handler timeout.New
+// gave up on: under -race either is a data race. The line has no reader here, since the timeout docs call a read
+// after Next racy.
+func Test_Timeout_FastHTTPRouteHandlerReturnsWhileTheAnswerIsWritten(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{
+		Timeout:   20 * time.Millisecond,
+		OnTimeout: func(fiber.Ctx) error { time.Sleep(150 * time.Millisecond); return nil },
+	}))
+	// a request line that differs from the routed path: it is put back once the handler returned, unless abandoned
+	app.Get("/*", fasthttp.RequestHandler(func(*fasthttp.RequestCtx) { time.Sleep(60 * time.Millisecond) }))
+	ln := apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true})
+
+	conn := apptest.Dial(t, ln)
+	_, err := io.WriteString(conn, "GET /%70ub/x?q=1 HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+	require.NoError(t, err)
+	answer, err := io.ReadAll(conn)
+	require.NoError(t, err)
+	require.Contains(t, string(answer), "503 Service Unavailable")
+}

@@ -6,6 +6,7 @@ package wiretarget
 import (
 	"bytes"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v3/internal/appconfig"
 	"github.com/gofiber/utils/v2"
@@ -22,7 +23,14 @@ type Ctx[App any] interface {
 	Response() *fasthttp.Response
 	RequestCtx() *fasthttp.RequestCtx
 	IsAbandoned() bool
+	Locals(key any, value ...any) any
 }
+
+type timeoutAnswerKey struct{}
+
+// TimeoutAnswerKey is the request local under which timeout.New leaves the *sync.Mutex it holds while it
+// answers a request that timed out.
+var TimeoutAnswerKey any = timeoutAnswerKey{}
 
 // Allowance names what SegmentsAsRouted lets through that it refuses
 // otherwise, for a caller that was told the reader keeps it as sent.
@@ -122,7 +130,11 @@ func routedFor[App any](c Ctx[App], path string) string {
 // each pair into one name. Serve reports false, without running handler, for a
 // routed path it does not hand on.
 func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
-	return serveWith(c, handler, func() bool { return c.Response().IsBodyStream() || c.RequestCtx().Hijacked() })
+	return serveWith(c, handler, func(original string) {
+		if !c.Response().IsBodyStream() && !c.RequestCtx().Hijacked() {
+			RestoreTarget(c.RequestCtx(), original)
+		}
+	})
 }
 
 // ServeNative is Serve for a fasthttp handler registered as a route handler. Nothing of it keeps reading
@@ -130,14 +142,13 @@ func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
 // RequestCtx. The original line is therefore put back whatever the response is, unless the handler timed
 // out (fasthttp.TimeoutHandler, the timeout middleware), which leaves it running on the request.
 func ServeNative[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
-	// IsAbandoned goes first, as in the limiter: its atomic load orders the read of the timeout response
-	// after the write of a timeout.New that gave up on the request on another goroutine.
-	return serveWith(c, handler, func() bool { return c.IsAbandoned() || c.RequestCtx().LastTimeoutErrorResponse() != nil })
+	return serveWith(c, handler, func(original string) { restoreNative(c, original) })
 }
 
-// serveWith runs handler on the routed request line and puts the original back afterwards, unless stillReading
-// reports that the handler goes on reading the request.
-func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, stillReading func() bool) bool {
+// serveWith runs handler on the routed request line and has putBack set the original back afterwards, which
+// does not when the handler goes on reading the request: a net/http handler that streamed or hijacked the
+// response, or, native, one that was given up on.
+func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack func(original string)) bool {
 	// Read once: with Immutable every read of either copies the string.
 	path, line := c.Path(), c.OriginalURL()
 	target := routedFor(c, path)
@@ -157,13 +168,32 @@ func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, stillReadin
 	// or hijacked, the handler is still running with an http.Request whose
 	// URL aliases the request line's storage, so the line is left as the
 	// handler read it.
-	defer func() {
-		if !stillReading() {
-			RestoreTarget(c.RequestCtx(), original)
-		}
-	}()
+	defer putBack(original)
 	handler(c.RequestCtx())
 	return true
+}
+
+// restoreNative puts original back as the request line of a request whose fasthttp handler returned, unless a
+// timeout answered for the request and left the handler running on it.
+func restoreNative[App any](c Ctx[App], original string) {
+	// IsAbandoned goes first, as in the limiter: its atomic load orders the read of the timeout response
+	// after the write of a timeout.New that gave up on the request on another goroutine.
+	if c.IsAbandoned() {
+		return
+	}
+	// timeout.New writes the timeout response on another goroutine while it holds this mutex, so the read and
+	// the write of the line below are ordered with its answer by the lock. A lock it holds means it is
+	// answering for the request now.
+	if mu, ok := c.Locals(TimeoutAnswerKey).(*sync.Mutex); ok {
+		if !mu.TryLock() {
+			return
+		}
+		defer mu.Unlock()
+	}
+	// fasthttp.TimeoutHandler answers on this goroutine, so there is nothing to order with.
+	if c.RequestCtx().LastTimeoutErrorResponse() == nil {
+		RestoreTarget(c.RequestCtx(), original)
+	}
 }
 
 // SetTarget sets target, the routed request target, as c's request line.
