@@ -1,6 +1,8 @@
 package fiber
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -87,6 +89,56 @@ func Test_Redirect_Back_RequestTargetWithAuthorityLookalike(t *testing.T) {
 			app.Handler()(fctx)
 			require.Equal(t, StatusSeeOther, fctx.Response.StatusCode())
 			require.Equal(t, tc.want, string(fctx.Response.Header.Peek(HeaderLocation)))
+		})
+	}
+}
+
+// Test_Ctx_RequestTarget_OriginForm_AfterSendFile pins that SendFile, which puts the request line back once it has
+// served the file, leaves it read as the path it is: the host stays the Host header.
+func Test_Ctx_RequestTarget_OriginForm_AfterSendFile(t *testing.T) {
+	t.Parallel()
+	file := filepath.Join(t.TempDir(), "f.txt")
+	require.NoError(t, os.WriteFile(file, []byte("f"), 0o600))
+
+	for _, tc := range []struct{ target, path string }{
+		{"//internal.example.com/data?x=://", "//internal.example.com/data"},
+		{"//internal.example.com/data#://", "//internal.example.com/data"},
+		{"//a/b://c", "//a/b://c"},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			var before, after string
+			app.Use(func(c Ctx) error {
+				before = c.Host() + "|" + c.Hostname() + "|" + c.Path() + "|" + c.OriginalURL()
+				if err := c.SendFile(file); err != nil {
+					return err
+				}
+				after = c.Host() + "|" + c.Hostname() + "|" + c.Path() + "|" + c.OriginalURL()
+				return nil
+			})
+			status, body := serveRaw(t, app, "GET "+tc.target+" HTTP/1.1\r\nHost: other.example\r\n\r\n")
+			require.Equal(t, StatusOK, status)
+			require.Equal(t, "f", body)
+			require.Equal(t, "other.example|other.example|"+tc.path+"|"+tc.target, before)
+			require.Equal(t, before, after)
+		})
+	}
+}
+
+// Test_Ctx_RequestTarget_OriginForm_InvalidHost pins that a Host header fasthttp rejects does not blank the request:
+// fasthttp's own reading of the target stays, and the request is never routed as "/".
+func Test_Ctx_RequestTarget_OriginForm_InvalidHost(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(c Ctx) error { return c.SendString(c.Path() + "|" + c.OriginalURL()) })
+
+	for _, host := range []string{"bad[host", "a:b:c", "example.com:abc"} {
+		t.Run(host, func(t *testing.T) {
+			t.Parallel()
+			status, body := serveRaw(t, app, "GET //admin/x?a=:// HTTP/1.1\r\nHost: "+host+"\r\n\r\n")
+			require.Equal(t, StatusOK, status)
+			require.Equal(t, "/x|//admin/x?a=://", body)
 		})
 	}
 }

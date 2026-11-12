@@ -906,42 +906,6 @@ func pathNeedsNormalization(normalizedLen int, path string) bool {
 	return normalizedLen != n || n == 0 || path[0] != '/' || (n >= 2 && path[n-2] == '/' && path[n-1] == '.')
 }
 
-// readAsOriginForm reads target, a request target that begins with "//", as the path it is: RFC 9112
-// Section 3.2.1 makes a target that begins with "/" origin-form, whose host is the Host header, and
-// only an absolute-form target (it begins with a scheme) carries its own. fasthttp's parser takes
-// the authority out of such a target when it holds "://" anywhere, query and fragment included, or
-// when the request has no Host header, and then c.Host() is the first path segment and c.Path()
-// lacks it. The cause is in that parser, which this module cannot change.
-func readAsOriginForm(fctx *fasthttp.RequestCtx, target []byte) {
-	req := &fctx.Request
-	host := req.Header.Host()
-	if wiretarget.ParsesAsPath(utils.UnsafeString(target), host) {
-		return
-	}
-	uri := req.URI()
-	var buf [64]byte
-	host = append(buf[:0], host...)
-	disableNormalizing := uri.DisablePathNormalizing
-	// Origin-form with the Host header, as fasthttp reads any other path; the target follows.
-	if err := uri.Parse(host, []byte{'/'}); err != nil {
-		return
-	}
-	uri.DisablePathNormalizing = disableNormalizing
-	if fctx.IsTLS() {
-		uri.SetScheme("https")
-	}
-	rest := target
-	if i := bytes.IndexByte(rest, '#'); i >= 0 {
-		uri.SetHashBytes(rest[i+1:])
-		rest = rest[:i]
-	}
-	if i := bytes.IndexByte(rest, '?'); i >= 0 {
-		uri.SetQueryStringBytes(rest[i+1:])
-		rest = rest[:i]
-	}
-	uri.SetPathBytes(rest)
-}
-
 // Reset is a method to reset context fields by given request when to use server handlers.
 func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	// Reset route and handler index
@@ -954,7 +918,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.route = nil
 	// Set paths
 	if target := fctx.Request.Header.RequestURI(); len(target) > 1 && target[0] == '/' && target[1] == '/' {
-		readAsOriginForm(fctx, target)
+		wiretarget.ReadAsOriginForm(fctx, target)
 	}
 	uri := fctx.URI()
 	c.pathOriginal = c.app.toString(uri.PathOriginal())

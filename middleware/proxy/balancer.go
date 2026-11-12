@@ -145,7 +145,7 @@ func Balancer(config ...Config) fiber.Handler {
 			return fiber.ErrBadRequest
 		}
 		originalURL := utils.CopyString(line)
-		defer req.SetRequestURI(originalURL)
+		defer wiretarget.RestoreTarget(c.RequestCtx(), originalURL)
 		req.SetRequestURI(target)
 
 		// After the Connection listing has been applied, so the line is this

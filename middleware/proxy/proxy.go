@@ -209,8 +209,9 @@ func doActionWithPolicy(
 	// fasthttp rewrote the Host header to the upstream's; put the client's back for later middleware.
 	originalHost := utils.CopyBytes(req.Header.Host())
 	defer func() {
-		req.SetRequestURI(originalURL)
+		// The Host header first: an origin-form target that begins with "//" is read by it again.
 		req.Header.SetHostBytes(originalHost)
+		wiretarget.RestoreTarget(c.RequestCtx(), originalURL)
 	}()
 
 	req.SetRequestURI(u.String())
