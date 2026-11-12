@@ -94,6 +94,15 @@ func Test_SSE_EventFrames(t *testing.T) {
 		{name: "omits data for untyped nil", event: Event{ID: "42"}, want: "id: 42\n\n"},
 		{name: "writes raw JSON data", event: Event{Data: json.RawMessage(`{"hello":"world"}`)}, want: "data: {\"hello\":\"world\"}\n\n"},
 		{name: "writes byte slice data", event: Event{Data: []byte("hello\nworld")}, want: "data: hello\ndata: world\n\n"},
+		{name: "writes typed nil byte slice", event: Event{Data: []byte(nil)}, want: "data: \n\n"},
+		{
+			name: "splits mixed line breaks in byte slices", event: Event{Data: []byte("one\r\ntwo\rthree\n\r\n")},
+			want: "data: one\ndata: two\ndata: three\ndata: \ndata: \n\n",
+		},
+		{
+			name: "splits raw JSON lines", event: Event{Data: json.RawMessage("{\r\n\"x\":1\r}")},
+			want: "data: {\ndata: \"x\":1\ndata: }\n\n",
+		},
 		{name: "preserves trailing data newline", event: Event{Data: "hello\n"}, want: "data: hello\ndata: \n\n"},
 		{name: "preserves intentional blank data line", event: Event{Data: "hello\n\n"}, want: "data: hello\ndata: \ndata: \n\n"},
 		{
@@ -162,15 +171,25 @@ func Test_SSE_EventAllocations(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		event Event
-		want  int
 	}{
 		{name: "data", event: Event{Data: "hello"}},
 		{name: "multiline", event: Event{ID: "42", Name: "update", Retry: time.Second, Data: "one\ntwo"}},
 		{name: "at capacity", event: Event{Data: strings.Repeat("x", w.Size()-dataFrameOverhead)}},
-		{name: "large multiline", event: Event{Data: strings.Repeat(strings.Repeat("x", 1023)+"\n", 64)}, want: 1},
+		{name: "large multiline", event: Event{Data: strings.Repeat(strings.Repeat("x", 1023)+"\n", 64)}},
+		{name: "large CRLF", event: Event{Data: strings.Repeat(strings.Repeat("x", 1022)+"\r\n", 64)}},
+		{name: "byte slice", event: Event{Data: []byte("one\r\ntwo")}},
+		{name: "raw JSON", event: Event{Data: json.RawMessage(`{"status":"ready"}`)}},
 	} {
-		allocs := testing.AllocsPerRun(100, func() { require.NoError(t, stream.Event(tc.event)) })
-		require.Equal(t, tc.want, int(allocs), tc.name)
+		t.Run(tc.name, func(t *testing.T) {
+			send := func() { require.NoError(t, stream.Event(tc.event)) }
+			// Other goroutines can raise this process-wide count. A per-event allocation
+			// will be present in every sample.
+			fewest := testing.AllocsPerRun(100, send)
+			for attempt := 0; attempt < 2 && fewest > 0; attempt++ {
+				fewest = min(fewest, testing.AllocsPerRun(100, send))
+			}
+			require.Zero(t, fewest)
+		})
 	}
 }
 
@@ -405,6 +424,26 @@ func Test_SSE_StreamWriteError(t *testing.T) {
 	apptest.Recv(t, stream.Done(), time.Second, "stream was not closed after write error")
 }
 
+// Test_SSE_OversizeFrameWriteFailure checks that a partial write closes the stream and latches the error.
+func Test_SSE_OversizeFrameWriteFailure(t *testing.T) {
+	t.Parallel()
+	writeErr := errors.New("write failed")
+	var output bytes.Buffer
+	w := bufio.NewWriterSize(sseWriteFunc(func(p []byte) (int, error) {
+		if output.Len() > 0 {
+			return 0, writeErr
+		}
+		return output.Write(p)
+	}), 16)
+	stream := newStream(context.Background(), w, "")
+	t.Cleanup(stream.closeStream)
+	require.ErrorIs(t, stream.Event(Event{ID: "42", Data: strings.Repeat("x", 100)}), writeErr)
+	require.Equal(t, "id: 42\ndata: xxx", output.String())
+	apptest.Recv(t, stream.Done(), time.Second, "stream was not closed after write error")
+	require.ErrorIs(t, stream.Event(Event{Data: "again"}), writeErr)
+	require.Equal(t, "id: 42\ndata: xxx", output.String())
+}
+
 func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	t.Parallel()
 	const (
@@ -483,6 +522,10 @@ type errWriter struct {
 	err error
 }
 
+type sseWriteFunc func([]byte) (int, error)
+
+func (fn sseWriteFunc) Write(p []byte) (int, error) { return fn(p) }
+
 func (w errWriter) Write([]byte) (int, error) {
 	return 0, fmt.Errorf("test writer: %w", w.err)
 }
@@ -513,6 +556,7 @@ func Benchmark_SSE_StreamEvent(b *testing.B) {
 		{name: "payload_64k", event: Event{Data: strings.Repeat("x", 64<<10)}},
 		{name: "multiline_64k", event: Event{Data: strings.Repeat(line, 64)}},
 		{name: "multiline_1m", event: Event{Data: strings.Repeat(line, 1024)}},
+		{name: "multiline_crlf_1m", event: Event{Data: strings.Repeat(strings.Repeat("x", 1022)+"\r\n", 1024)}},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			stream := newStream(context.Background(), w, "")

@@ -197,13 +197,11 @@ func (s *Stream) Retry(retry time.Duration) error {
 		return nil
 	}
 	return s.write(func(w *bufio.Writer) error {
-		// Assemble the whole field in a fixed-size scratch and issue one
-		// write: no fmt boxing, and a single error branch.
-		var scratch [32]byte
-		frame := append(scratch[:0], "retry: "...)
-		frame = utils.AppendInt(frame, retryMilliseconds(retry))
-		frame = append(frame, '\n', '\n')
-		if _, err := w.Write(frame); err != nil {
+		frame, err := appendEventRetry(w, w.AvailableBuffer(), retry)
+		if err == nil {
+			err = finishEventFrame(w, frame)
+		}
+		if err != nil {
 			return fmt.Errorf("sse: write retry: %w", err)
 		}
 		return nil
