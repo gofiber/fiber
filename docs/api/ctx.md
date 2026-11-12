@@ -3395,7 +3395,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### End
 
-End immediately flushes the current response and closes the underlying connection. The response carries `Connection: close`, and the answer to a `HEAD` request ends after its header block.
+End immediately flushes the current response and closes the underlying connection. The response carries `Connection: close`, and the answer to a `HEAD` request ends after its header block. `End` writes straight to the connection, so it is not for a client that pipelines requests: the responses the server still holds for the earlier requests on the connection are lost.
 
 ```go title="Signature"
 func (c fiber.Ctx) End() error

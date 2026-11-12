@@ -10096,3 +10096,49 @@ func Test_PathNeedsNormalization(t *testing.T) {
 		require.Equal(t, tc.want, pathNeedsNormalization(len(tc.norm), tc.path), "%q", tc.path)
 	}
 }
+
+// Test_Ctx_End_ArmsWriteDeadlineOnReusedConn pins that c.End arms the write deadline for its own write: fasthttp arms
+// the deadline of a request only after its handler returned, so on a keep-alive connection that was idle for longer than
+// WriteTimeout the deadline End meets is the expired one of the previous response. The in-memory pipe of apptest.Serve
+// does not enforce a deadline on a write that has room in its channel, so this goes over loopback TCP.
+func Test_Ctx_End_ArmsWriteDeadlineOnReusedConn(t *testing.T) {
+	t.Parallel()
+	app := New(Config{WriteTimeout: 100 * time.Millisecond})
+	app.Get("/one", func(c Ctx) error { return c.SendString("one") })
+	app.Get("/end", func(c Ctx) error {
+		require.NoError(t, c.SendString("end"))
+		return c.End()
+	})
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = app.Listener(ln, ListenConfig{DisableStartupMessage: true}) //nolint:errcheck // the result is Shutdown's
+	}()
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+		<-done
+	})
+
+	conn, err := net.Dial(NetworkTCP4, ln.Addr().String())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // usually closed by the server already
+	require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+	br := bufio.NewReader(conn)
+
+	_, err = io.WriteString(conn, "GET /one HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	require.NoError(t, err)
+	resp, err := http.ReadResponse(br, nil)
+	require.NoError(t, err)
+	require.Equal(t, "one", apptest.Body(t, resp))
+
+	time.Sleep(250 * time.Millisecond) // past the deadline fasthttp armed after /one
+
+	_, err = io.WriteString(conn, "GET /end HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	require.NoError(t, err)
+	resp, err = http.ReadResponse(br, nil)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "end", apptest.Body(t, resp))
+}

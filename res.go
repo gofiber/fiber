@@ -1698,6 +1698,15 @@ func (r *DefaultRes) End() error {
 	}
 	ctx.Response.SetConnectionClose()
 
+	// fasthttp arms the write deadline of a request only after its handler returns, so the one on
+	// the connection still belongs to the previous response on a keep-alive connection and may have
+	// expired: arm it for this write.
+	if wt := r.c.app.config.WriteTimeout; wt > 0 {
+		if err := conn.SetWriteDeadline(time.Now().Add(wt)); err != nil {
+			return err //nolint:wrapcheck // unnecessary to wrap it
+		}
+	}
+
 	bw := bufio.NewWriter(conn)
 	if err := ctx.Response.Write(bw); err != nil {
 		return err
