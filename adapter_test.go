@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"testing/iotest"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
 func TestToFiberHandler_Nil(t *testing.T) {
@@ -778,14 +780,21 @@ func Test_HTTPHandler_Direct_ServesRoutedPath(t *testing.T) {
 	}
 }
 
+// Test_Adapter_FastHTTP_RestoresRequestLine pins that the request line comes back once a fasthttp route handler returned,
+// unless the response is a body stream or hijacked: a net/http handler adapted by fasthttpadaptor goes on reading the line
+// then (see Test_Adapter_FastHTTP_AdaptedHandlerKeepsItsRequest), so it is left as the handler read it, as for the
+// net/http types.
 func Test_Adapter_FastHTTP_RestoresRequestLine(t *testing.T) {
 	t.Parallel()
 	const target = "/a/../%70ub/x%20y?q=%2F"
-	// Nothing of a fasthttp handler reads the request line once it returned, whatever it answered with.
-	for name, respond := range map[string]func(ctx *fasthttp.RequestCtx){
-		"buffered":    func(ctx *fasthttp.RequestCtx) { ctx.SetBodyString("ok") },
-		"body stream": func(ctx *fasthttp.RequestCtx) { ctx.SetBodyStream(strings.NewReader("ok"), 2) },
-		"hijacked":    func(ctx *fasthttp.RequestCtx) { ctx.Hijack(func(net.Conn) {}) },
+	const routed = "/pub/x%20y?q=%2F"
+	for name, tc := range map[string]struct {
+		respond func(ctx *fasthttp.RequestCtx)
+		want    string
+	}{
+		"buffered":    {respond: func(ctx *fasthttp.RequestCtx) { ctx.SetBodyString("ok") }, want: target},
+		"body stream": {respond: func(ctx *fasthttp.RequestCtx) { ctx.SetBodyStream(strings.NewReader("ok"), 2) }, want: routed},
+		"hijacked":    {respond: func(ctx *fasthttp.RequestCtx) { ctx.Hijack(func(net.Conn) {}) }, want: routed},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -798,15 +807,41 @@ func Test_Adapter_FastHTTP_RestoresRequestLine(t *testing.T) {
 			})
 			app.Use(func(ctx *fasthttp.RequestCtx) error {
 				read = string(ctx.Path()) + "?" + string(ctx.QueryArgs().QueryString())
-				respond(ctx)
+				tc.respond(ctx)
 				return nil
 			})
 
 			serveRawTarget(t, app, target)
 			require.Equal(t, "/pub/x y?q=%2F", read, "the handler reads the routed path")
-			require.Equal(t, target, after)
+			require.Equal(t, tc.want, after)
 		})
 	}
+}
+
+// Test_Adapter_FastHTTP_AdaptedHandlerKeepsItsRequest pins that a net/http handler adapted by fasthttpadaptor and registered
+// as a route handler, which flushes and goes on, reads the request line it was given until it returns: its URL and
+// RequestURI alias the line, so writing the original line over it once the route handler returned changed what it reads.
+func Test_Adapter_FastHTTP_AdaptedHandlerKeepsItsRequest(t *testing.T) {
+	t.Parallel()
+	proceed := make(chan struct{})
+	var once sync.Once
+	release := func() { once.Do(func() { close(proceed) }) }
+	t.Cleanup(release)
+	type reading struct{ before, after string }
+	got := make(chan reading, 1)
+	app := New()
+	app.Get("/events", fasthttpadaptor.NewFastHTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		before := r.URL.Path + "|" + r.RequestURI
+		_, err := io.WriteString(w, "first")
+		assert.NoError(t, err)
+		assert.NoError(t, http.NewResponseController(w).Flush())
+		<-proceed
+		got <- reading{before: before, after: r.URL.Path + "|" + r.RequestURI}
+	})))
+
+	serveRawTarget(t, app, "/a/../events?x=1")
+	release()
+	require.Equal(t, reading{before: "/events|/events?x=1", after: "/events|/events?x=1"}, apptest.Recv(t, got, 5*time.Second))
 }
 
 // Test_Adapter_FastHTTP_KeepsTargetsThatAreNoPath pins that the asterisk form of OPTIONS and the authority form of
