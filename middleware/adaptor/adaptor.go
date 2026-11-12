@@ -264,9 +264,6 @@ func HTTPHandler(h http.Handler) fiber.Handler {
 func HTTPHandlerWithContext(h http.Handler) fiber.Handler {
 	handler := requesthold.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
-		// Hold the request context before the value below is stored on it, so that a handler
-		// that outlives the request still reads it (see requesthold).
-		requesthold.Register(c.RequestCtx())
 		// Store the Fiber user context (c.Context()) in the fasthttp request context
 		// so adapted net/http handlers can retrieve it via adaptor.LocalContextFromHTTPRequest(r)
 		c.RequestCtx().SetUserValue(localContextKey, c.Context())
@@ -682,10 +679,11 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			return err
 		}
 		wiretarget.SetTarget(c, target)
-		// Call the fasthttp adaptor directly: HTTPHandler would wrap it in a
-		// second closure that has to be built on every request, and its
-		// error result is always nil.
-		fasthttpadaptor.NewFastHTTPHandler(mw(nextHandler))(c.RequestCtx())
+		// Call the adaptor directly: HTTPHandler would wrap it in a second closure that has to be
+		// built on every request, and its error result is always nil. A middleware that flushes
+		// keeps running after this handler returned, so it is held like the handlers are
+		// (see requesthold).
+		requesthold.NewFastHTTPHandler(mw(nextHandler))(c.RequestCtx())
 
 		mu.Lock()
 		returned = true
@@ -910,8 +908,9 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		fctx.Response.Reset()
 		fctx.Request.Reset()
 		defer func() {
-			// As fasthttp's server does, leave a timed-out ctx to the handler that may still run on it.
-			if fctx.LastTimeoutErrorResponse() == nil {
+			// As fasthttp's server does, leave a timed-out ctx to the handler that may still run on it. So for
+			// a net/http handler that flushed and outlived its response: the next Reset would wait for it.
+			if fctx.LastTimeoutErrorResponse() == nil && !requesthold.Pending(fctx) {
 				ctxPool.Put(pctx)
 			}
 		}()
