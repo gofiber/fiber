@@ -124,6 +124,11 @@ func Test_SSE_EventFrames(t *testing.T) {
 			event: Event{ID: longLine, Name: longLine, Retry: time.Duration(math.MaxInt64), Data: ""},
 			want:  "id: " + longLine + "\nevent: " + longLine + "\nretry: 9223372036855\ndata: \n\n",
 		},
+		{
+			name:  "writes oversized byte-backed data",
+			event: Event{Data: []byte(longLine + "\nlast")},
+			want:  "data: " + longLine + "\ndata: last\n\n",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -254,17 +259,37 @@ func Test_SSE_CommentSanitizesLines(t *testing.T) {
 // Test_SSE_FrameWritersReturnWriterError covers the frame writers on a writer that fails.
 func Test_SSE_FrameWritersReturnWriterError(t *testing.T) {
 	t.Parallel()
+	eventWriter := func(event Event) func(*bufio.Writer) error {
+		return func(w *bufio.Writer) error { return writeEvent(w, event) }
+	}
 	for _, tc := range []struct {
-		write func(*bufio.Writer) error
-		name  string
+		write         func(*bufio.Writer) error
+		name          string
+		size          int
+		alreadyFailed bool
 	}{
-		{name: "event", write: func(w *bufio.Writer) error { return writeEvent(w, Event{Data: "hello"}) }},
-		{name: "comment", write: func(w *bufio.Writer) error { return writeComment(w, "") }},
+		{name: "ID", size: 1, write: eventWriter(Event{ID: "42"})},
+		{name: "name", size: 1, write: eventWriter(Event{Name: "update"})},
+		{name: "retry", size: 1, write: eventWriter(Event{Retry: time.Second})},
+		{name: "data prefix", size: 1, write: eventWriter(Event{Data: "hello"})},
+		{name: "multiline data value", size: 6, write: eventWriter(Event{Data: "hello\nworld"})},
+		{name: "data line terminator", size: 11, write: eventWriter(Event{Data: "hello"})},
+		{name: "final blank line", size: 12, write: eventWriter(Event{Data: "hello"})},
+		{name: "failed writer before field", size: 1, alreadyFailed: true, write: eventWriter(Event{Data: "hello"})},
+		{name: "failed writer before retry", size: 1, alreadyFailed: true, write: eventWriter(Event{Retry: time.Second})},
+		{name: "failed writer at capacity", size: 12, alreadyFailed: true, write: eventWriter(Event{Data: "hello"})},
+		{name: "comment", size: 1, write: func(w *bufio.Writer) error { return writeComment(w, "") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			writeErr := errors.New("write failed")
-			require.ErrorIs(t, tc.write(bufio.NewWriterSize(errWriter{err: writeErr}, 1)), writeErr)
+			w := bufio.NewWriterSize(errWriter{err: writeErr}, tc.size)
+			if tc.alreadyFailed {
+				// An oversized write reaches the underlying writer and latches its error.
+				_, err := w.Write(make([]byte, tc.size+1))
+				require.ErrorIs(t, err, writeErr)
+			}
+			require.ErrorIs(t, tc.write(w), writeErr)
 		})
 	}
 }
@@ -335,6 +360,27 @@ func Test_SSE_StreamRetryIgnoresNonPositiveDuration(t *testing.T) {
 	require.NoError(t, stream.Retry(0))
 	require.NoError(t, stream.Retry(-time.Second))
 	require.Empty(t, buf.String())
+}
+
+// Test_SSE_StreamRetryWithSmallBuffer checks retry frames that fit or span writes after formatting.
+func Test_SSE_StreamRetryWithSmallBuffer(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		size int
+	}{
+		{name: "fits after formatting", size: 16},
+		{name: "spans writes", size: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			stream := newStream(context.Background(), bufio.NewWriterSize(&buf, tc.size), "")
+			t.Cleanup(stream.closeStream)
+			require.NoError(t, stream.Retry(1500*time.Microsecond))
+			require.Equal(t, "retry: 2\n\n", buf.String())
+		})
+	}
 }
 
 func Test_SSE_StreamReturnsWriterError(t *testing.T) {
