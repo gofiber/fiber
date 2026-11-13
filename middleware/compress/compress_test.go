@@ -143,10 +143,15 @@ func Test_Compress_Vary(t *testing.T) {
 		contentEncoding string
 		vary            string
 		wantVary        string
+		// varyLines are added as separate Vary field lines, an empty one
+		// included; the response then carries wantVaryLines.
+		varyLines     []string
+		wantVaryLines []string
 		// rangeRequest adds a Range header to the request, which makes the
 		// middleware skip it. noAcceptEncoding leaves Accept-Encoding out of it.
 		rangeRequest     bool
 		noAcceptEncoding bool
+		compressed       bool
 	}{
 		{name: "adds_vary_header", wantVary: "Accept-Encoding"},
 		{name: "vary_star", vary: "*", wantVary: "*"},
@@ -159,6 +164,13 @@ func Test_Compress_Vary(t *testing.T) {
 		{name: "range_no_accept_encoding", rangeRequest: true, noAcceptEncoding: true, wantVary: "Accept-Encoding"},
 		{name: "range_vary_star", rangeRequest: true, vary: "*", wantVary: "*"},
 		{name: "range_vary_similar_substring", rangeRequest: true, vary: "Accept-Encoding2", wantVary: "Accept-Encoding2, Accept-Encoding"},
+		{name: "compressed", compressed: true, wantVary: "Accept-Encoding"},
+		{name: "compressed_vary_star", compressed: true, vary: "*", wantVary: "*"},
+		{name: "compressed_vary_list_star", compressed: true, vary: "User-Agent, *", wantVary: "User-Agent, *"},
+		{name: "compressed_vary_lowercase", compressed: true, vary: "accept-encoding", wantVary: "accept-encoding"},
+		{name: "compressed_vary_other", compressed: true, vary: "User-Agent", wantVary: "User-Agent, Accept-Encoding"},
+		{name: "vary_empty_line_then_origin", varyLines: []string{"", "Origin"}, wantVaryLines: []string{"Accept-Encoding", "Origin"}},
+		{name: "compressed_vary_empty_line_then_origin", compressed: true, varyLines: []string{"", "Origin"}, wantVaryLines: []string{"Accept-Encoding", "Origin"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -168,6 +180,12 @@ func Test_Compress_Vary(t *testing.T) {
 				}
 				if tc.vary != "" {
 					c.Set(fiber.HeaderVary, tc.vary)
+				}
+				for _, line := range tc.varyLines {
+					c.Response().Header.Add(fiber.HeaderVary, line)
+				}
+				if tc.compressed {
+					return c.Send(filedata)
 				}
 				return c.SendString("hello")
 			})
@@ -181,9 +199,17 @@ func Test_Compress_Vary(t *testing.T) {
 				opts = append(opts, apptest.WithHeader(fiber.HeaderRange, "bytes=0-1"))
 			}
 
+			wantEncoding := tc.contentEncoding
+			if tc.compressed {
+				wantEncoding = "gzip"
+			}
 			resp := compressTestGet(t, app, acceptEncoding, opts...)
-			require.Equal(t, tc.contentEncoding, resp.Header.Get(fiber.HeaderContentEncoding))
-			require.Equal(t, tc.wantVary, resp.Header.Get(fiber.HeaderVary))
+			require.Equal(t, wantEncoding, resp.Header.Get(fiber.HeaderContentEncoding))
+			if tc.wantVaryLines != nil {
+				require.Equal(t, tc.wantVaryLines, resp.Header.Values(fiber.HeaderVary))
+			} else {
+				require.Equal(t, tc.wantVary, resp.Header.Get(fiber.HeaderVary))
+			}
 		})
 	}
 }

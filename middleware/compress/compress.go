@@ -210,20 +210,36 @@ func encodingQuality(accept, offer string) float64 {
 }
 
 // compressWith runs fasthttp's compressor for the negotiated encoding, handing
-// it the bare token, and restores the client's Accept-Encoding afterwards.
+// it the bare token, and restores the client's Accept-Encoding and the
+// handler's Vary afterwards.
+//
+// The compressor adds Accept-Encoding to the first Vary line itself, comparing
+// bytes, so it extends a Vary of "*" or one that names accept-encoding in
+// another case. Every Vary line is put back as the handler left it, an empty
+// first line included, and appendVaryAcceptEncoding merges the token instead.
 func compressWith(c fiber.Ctx, compressor fasthttp.RequestHandler, encoding string) {
-	header := &c.Request().Header
-	lines := header.PeekAll(fiber.HeaderAcceptEncoding)
+	reqHeader := &c.Request().Header
+	lines := reqHeader.PeekAll(fiber.HeaderAcceptEncoding)
 	saved := make([][]byte, len(lines))
 	for i, line := range lines {
 		saved[i] = utils.CopyBytes(line)
 	}
+	respHeader := &c.Response().Header
+	lines = respHeader.PeekAll(fiber.HeaderVary)
+	vary := make([][]byte, len(lines))
+	for i, line := range lines {
+		vary[i] = utils.CopyBytes(line)
+	}
 
-	header.Set(fiber.HeaderAcceptEncoding, encoding)
+	reqHeader.Set(fiber.HeaderAcceptEncoding, encoding)
 	compressor(c.RequestCtx())
 
-	header.Del(fiber.HeaderAcceptEncoding)
+	reqHeader.Del(fiber.HeaderAcceptEncoding)
 	for _, line := range saved {
-		header.AddBytesV(fiber.HeaderAcceptEncoding, line)
+		reqHeader.AddBytesV(fiber.HeaderAcceptEncoding, line)
+	}
+	respHeader.Del(fiber.HeaderVary)
+	for _, line := range vary {
+		respHeader.AddBytesV(fiber.HeaderVary, line)
 	}
 }
