@@ -2279,3 +2279,83 @@ func Test_CSRF_SessionModeKeepsConcurrentSessionChange(t *testing.T) {
 	require.NoError(t, apptest.Recv(t, done, 10*time.Second))
 	apptest.ExpectBody(t, app, withCookies("/role"), fiber.StatusOK, "user")
 }
+
+// Test_CSRF_SessionStoreWithCodec: the token is kept under a key that is not a
+// string, which a session store with a Codec does not hold, so the middleware refuses
+// the combination when it is made, not on the first request.
+func Test_CSRF_SessionStoreWithCodec(t *testing.T) {
+	t.Parallel()
+	require.PanicsWithValue(t,
+		"CSRF: Session is a store with a Codec, which keeps its values under string keys; use a session store without a Codec, or Storage",
+		func() { New(Config{Session: session.NewStore(session.Config{Codec: session.JSONCodec{}})}) })
+	require.NotPanics(t, func() { New(Config{Session: session.NewStore()}) })
+}
+
+// Test_CSRF_SessionModeKeepsTheTokenInTheSessionOfItsStore: with several session middleware in the
+// request, the token goes to the session of the store csrf was given, not to that of the one that
+// runs last.
+func Test_CSRF_SessionModeKeepsTheTokenInTheSessionOfItsStore(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	outer, outerStore := session.NewWithStore(session.Config{Extractor: extractors.FromCookie("outer_sid")})
+	inner, innerStore := session.NewWithStore(session.Config{Extractor: extractors.FromCookie("inner_sid")})
+	app.Use(outer, inner, New(Config{Session: outerStore}))
+	app.Get("/", func(c fiber.Ctx) error {
+		_, inOuter := outerStore.FromContext(c).Get(sessionKey).(Token)
+		_, inInner := innerStore.FromContext(c).Get(sessionKey).(Token)
+		return c.SendString(fmt.Sprint(inOuter, " ", inInner))
+	})
+
+	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "true false")
+}
+
+// Test_CSRF_SessionModeFallsBackToTheInnermostMiddleware: when the session middleware of the request
+// belongs to another store than the one csrf was given, the token stays in the session of that
+// middleware, as it did before csrf could tell the stores apart.
+func Test_CSRF_SessionModeFallsBackToTheInnermostMiddleware(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	handler, handlerStore := session.NewWithStore()
+	app.Use(handler, New(Config{Session: session.NewStore()}))
+	app.Get("/", func(c fiber.Ctx) error {
+		_, ok := handlerStore.FromContext(c).Get(sessionKey).(Token)
+		return c.SendString(strconv.FormatBool(ok))
+	})
+
+	apptest.ExpectBody(t, app, "/", fiber.StatusOK, "true")
+}
+
+// Test_CSRF_SessionModeDoesNotFallBackToAMiddlewareWhoseStoreHasACodec: the token is kept under a key that is
+// not a string, which a session with a Codec cannot hold, so csrf does not fall back to the middleware of such
+// a store as it does for one without: no request is answered with a 500 because of it. The store csrf was given
+// has no middleware, and Store.Get refuses to load a session while one runs, so no token is kept and an unsafe
+// request is refused.
+func Test_CSRF_SessionModeDoesNotFallBackToAMiddlewareWhoseStoreHasACodec(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(session.New(session.Config{Codec: session.JSONCodec{}}), New(Config{Session: session.NewStore()}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
+	post := apptest.Req(fiber.MethodPost, "/", apptest.WithHeader(fiber.HeaderCookie, cookieHeaderOf(resp)), apptest.WithHeader(HeaderName, responseCookie(t, resp, "csrf_").Value))
+	apptest.Expect(t, app, post, fiber.StatusForbidden)
+}
+
+// Test_CSRF_SessionModeWarnsOnceAboutAMiddlewareWhoseStoreHasACodec: the reason is logged the first time csrf
+// meets such a middleware, and not again. It replaces the output of the package-global logger, so it is
+// sequential.
+// conventions:ignore parallel: it replaces the output of the package-global logger
+func Test_CSRF_SessionModeWarnsOnceAboutAMiddlewareWhoseStoreHasACodec(t *testing.T) {
+	var buf bytes.Buffer
+	fiberlog.SetOutput(&buf)
+	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+
+	app := fiber.New()
+	app.Use(session.New(session.Config{Codec: session.JSONCodec{}}), New(Config{Session: session.NewStore()}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	for range 3 {
+		apptest.Expect(t, app, "/", fiber.StatusOK)
+	}
+	require.Equal(t, 1, strings.Count(buf.String(), "has a Codec"), buf.String())
+}

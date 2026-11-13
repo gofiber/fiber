@@ -2,7 +2,9 @@ package session
 
 import (
 	"context"
+	"encoding/gob"
 	"errors"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -958,7 +960,7 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 	sessionID := uuid.New().String()
 
 	// Store invalid session data to simulate decode error
-	require.NoError(t, store.Storage.Set(storageKeyPrefix+sessionID, []byte("invalid data"), 0),
+	require.NoError(t, store.Storage.Set(sessionKey(sessionID), []byte("invalid data"), 0),
 		"Failed to set invalid session data")
 
 	c := apptest.Ctx(t, app)
@@ -1325,16 +1327,16 @@ func Test_Session_WithContext(t *testing.T) {
 
 // seedSession stores a session through the given store and returns its ID.
 // fill may be nil to store a session without data.
-func seedSession(t *testing.T, app *fiber.App, store *Store, fill func(*Session)) string {
-	t.Helper()
-	ctx := apptest.Ctx(t, app)
+func seedSession(tb testing.TB, app *fiber.App, store *Store, fill func(*Session)) string {
+	tb.Helper()
+	ctx := apptest.Ctx(tb, app)
 
 	sess, err := store.Get(ctx)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	if fill != nil {
 		fill(sess)
 	}
-	require.NoError(t, sess.Save())
+	require.NoError(tb, sess.Save())
 	id := sess.ID()
 	sess.Release()
 	return id
@@ -1350,6 +1352,10 @@ func loadSession(t *testing.T, app *fiber.App, store *Store, id string) *Session
 
 	sess, err := store.Get(ctx)
 	require.NoError(t, err)
+	if !sess.Fresh() {
+		// The request names the ID of a session that exists: only an ID the store issued is cached.
+		require.Nil(t, requestIDs(ctx))
+	}
 	t.Cleanup(sess.Release)
 	return sess
 }
@@ -1376,7 +1382,7 @@ func sessionTestRequireGone(t *testing.T, store *Store, id string) {
 // sessionTestSibling returns the first ID next hands out that falls in the lock shard of id.
 func sessionTestSibling(id string, next func() string) string {
 	for {
-		if sibling := next(); lockFor(storageKeyPrefix+sibling) == lockFor(storageKeyPrefix+id) {
+		if sibling := next(); lockFor(sessionKey(sibling)) == lockFor(sessionKey(id)) {
 			return sibling
 		}
 	}
@@ -1416,7 +1422,7 @@ func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 
 	written := rec.Calls(storagetest.OpSet)
 	require.Len(t, written, 1, "a clean save must still write to storage")
-	require.Equal(t, storageKeyPrefix+id, written[0].Key)
+	require.Equal(t, sessionKey(id), written[0].Key)
 	require.Equal(t, seeded[0].Value, written[0].Value, "the retained snapshot must be written back verbatim")
 	require.Equal(t, idleTimeout, written[0].TTL, "a clean save must slide the idle timeout")
 
@@ -1604,7 +1610,7 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 
 		written := rec.Calls(storagetest.OpSet)
 		require.Len(t, written, 1)
-		require.Equal(t, storageKeyPrefix+id, written[0].Key)
+		require.Equal(t, sessionKey(id), written[0].Key)
 		require.NotContains(t, string(written[0].Value), "bypassed")
 	})
 }
@@ -1780,10 +1786,11 @@ func Test_Session_WriteBackAfterUnrelatedChange(t *testing.T) {
 	require.NoError(t, sess.Save())
 	writes := storage.Calls(storagetest.OpSet)
 	require.Len(t, writes, 1)
-	require.Equal(t, storageKeyPrefix+id, writes[0].Key)
+	require.Equal(t, sessionKey(id), writes[0].Key)
 }
 
-// gateStorage parks the first Set after arming until release is closed.
+// gateStorage parks the first write after arming, a Set or a Delete, until release is closed, and
+// closes entered when that write arrives.
 type gateStorage struct {
 	fiber.Storage
 	entered chan struct{}
@@ -1791,12 +1798,28 @@ type gateStorage struct {
 	armed   atomic.Bool
 }
 
-func (s *gateStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+func (s *gateStorage) park() {
 	if s.armed.CompareAndSwap(true, false) {
 		close(s.entered)
 		<-s.release
 	}
+}
+
+func (s *gateStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	s.park()
 	return s.Storage.SetWithContext(ctx, key, val, exp)
+}
+
+func (s *gateStorage) DeleteWithContext(ctx context.Context, key string) error {
+	s.park()
+	return s.Storage.DeleteWithContext(ctx, key)
+}
+
+// newGateStorage returns a gateStorage over an empty storage that parks the next write.
+func newGateStorage() *gateStorage {
+	s := &gateStorage{Storage: memory.New(), entered: make(chan struct{}), release: make(chan struct{})}
+	s.armed.Store(true)
+	return s
 }
 
 // A save that passed its check is still writing; a delete of the same ID has to
@@ -1907,13 +1930,13 @@ func Test_Session_RegenerateAfterConcurrentEnd_OldIDWrittenBack(t *testing.T) {
 	storage := memory.New()
 	store := NewStore(Config{Storage: storage})
 	id := seedSession(t, app, store, func(sess *Session) { sess.Set("visitor", true) })
-	raw, err := storage.Get(storageKeyPrefix + id)
+	raw, err := storage.Get(sessionKey(id))
 	require.NoError(t, err)
 
 	inFlight := loadSession(t, app, store, id)
 	require.NoError(t, store.Delete(t.Context(), id))
 	require.NoError(t, inFlight.Regenerate())
-	require.NoError(t, storage.Set(storageKeyPrefix+id, raw, 0))
+	require.NoError(t, storage.Set(sessionKey(id), raw, 0))
 	inFlight.Set("user", "victim")
 	require.NoError(t, inFlight.Save())
 
@@ -1990,7 +2013,7 @@ func Test_Session_RegenerateKeepsSessionOnUndecodableChange(t *testing.T) {
 	other := loadSession(t, app, store, id)
 	other.Set("role", "user")
 	require.NoError(t, other.Save())
-	require.NoError(t, store.Storage.Set(inFlight.storageKey(), []byte("not a session"), 0))
+	require.NoError(t, store.Storage.Set(string(inFlight.storageKey()), []byte("not a session"), 0))
 
 	require.Error(t, inFlight.Regenerate())
 	require.NotEqual(t, id, inFlight.ID())
@@ -2043,10 +2066,615 @@ func Test_Session_RegenerateReportsStorageError(t *testing.T) {
 	require.NoError(t, other.Save())
 
 	errRead := errors.New("storage read failed")
-	storage.SetErr(storagetest.OpGet, storageKeyPrefix+id, errRead)
+	storage.SetErr(storagetest.OpGet, sessionKey(id), errRead)
 	require.ErrorIs(t, inFlight.Regenerate(), errRead)
 	require.Equal(t, id, inFlight.ID())
 
 	storage.ClearErrs()
 	require.Equal(t, "user", sessionTestStored(t, store, id).Get("role"))
+}
+
+// getterProfile is a struct value for the getter tests to store and to ask for.
+type getterProfile struct{ Name string }
+
+type getterUserID int
+
+// requireGetAs checks that src holds a V under key, and that it is want.
+func requireGetAs[V any, S *Session | *Middleware](tb testing.TB, src S, key string, want V) {
+	tb.Helper()
+	got, ok := GetAs[V](src, key)
+	require.True(tb, ok, key)
+	require.Equal(tb, want, got, key)
+}
+
+// requireNoGetAs checks that src holds no V under key, and that the zero V comes back with it.
+func requireNoGetAs[V any, S *Session | *Middleware](tb testing.TB, src S, key string, msgAndArgs ...any) {
+	tb.Helper()
+	got, ok := GetAs[V](src, key)
+	require.False(tb, ok, msgAndArgs...)
+	require.Zero(tb, got, key)
+}
+
+func Test_GetAs(t *testing.T) {
+	t.Parallel()
+	sess := newSessionWithStorage(t, memory.New())
+	sess.Set("name", "alice")
+	sess.Set("count", 3)
+	sess.Set("zero", 0)
+	sess.Set("id", getterUserID(7))
+	sess.Set("profile", getterProfile{Name: "a"})
+	sess.Set("pointer", &getterProfile{Name: "p"})
+	sess.Set("nil pointer", (*getterProfile)(nil))
+	sess.Set("list", []string{"x", "y"})
+	sess.Set("nothing", nil)
+
+	t.Run("a value of the asked type is found, a zero value too", func(t *testing.T) {
+		t.Parallel()
+		requireGetAs(t, sess, "name", "alice")
+		requireGetAs(t, sess, "count", 3)
+		requireGetAs(t, sess, "id", getterUserID(7))
+		requireGetAs(t, sess, "profile", getterProfile{Name: "a"})
+		requireGetAs(t, sess, "list", []string{"x", "y"})
+		requireGetAs(t, sess, "zero", 0) // 0 is a value; absent is what ok is for
+		requireGetAs(t, sess, "nil pointer", (*getterProfile)(nil))
+		requireGetAs[any](t, sess, "name", "alice") // an interface type finds what the key holds
+	})
+
+	t.Run("another type, a missing key and a stored nil are not found", func(t *testing.T) {
+		t.Parallel()
+		requireNoGetAs[int](t, sess, "name")
+		requireNoGetAs[int](t, sess, "id", "a named type is not its underlying type")
+		requireNoGetAs[getterProfile](t, sess, "pointer", "a pointer is not the struct it points to")
+		requireNoGetAs[string](t, sess, "missing")
+		requireNoGetAs[any](t, sess, "missing")
+		requireNoGetAs[any](t, sess, "nothing", "a stored nil reads as absent, as a nil does for any type assertion")
+	})
+
+	t.Run("a nil source finds nothing", func(t *testing.T) {
+		t.Parallel()
+		requireNoGetAs[string](t, (*Session)(nil), "name", "nil session")
+		requireNoGetAs[string](t, (*Middleware)(nil), "name", "nil middleware")
+	})
+}
+
+func Test_GetAs_Middleware(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/set", func(c fiber.Ctx) error {
+		FromContext(c).Set("n", 42)
+		return nil
+	})
+	app.Get("/get", func(c fiber.Ctx) error {
+		n, ok := GetAs[int](FromContext(c), "n")
+		s, sok := GetAs[string](FromContext(c), "n")
+		return c.SendString(strconv.Itoa(n) + strconv.FormatBool(ok) + "|" + s + strconv.FormatBool(sok))
+	})
+
+	resp, _ := sendRequest(t, app, "/set", nil)
+	id := cookiesByName(resp)["session_id"].Value
+	_, body := sendRequest(t, app, "/get", map[string]string{"session_id": id})
+	require.Equal(t, "42true|false", body)
+
+	t.Run("without the middleware, FromContext is nil and GetAs says so", func(t *testing.T) {
+		t.Parallel()
+		bare := fiber.New()
+		bare.Get("/", func(c fiber.Ctx) error {
+			n, ok := GetAs[int](FromContext(c), "n")
+			return c.SendString(strconv.Itoa(n) + strconv.FormatBool(ok))
+		})
+		_, body := sendRequest(t, bare, "/", nil)
+		require.Equal(t, "0false", body)
+	})
+}
+
+// testing.AllocsPerRun panics in a parallel test, so this one stays sequential.
+func Test_GetAs_Allocations(t *testing.T) {
+	sess := newSessionWithStorage(t, memory.New())
+	sess.Set("name", "alice")
+	sess.Set("count", 3)
+
+	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[string](sess, "name") }))
+	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[int](sess, "count") }))
+	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[string](sess, "missing") }))
+	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[string]((*Session)(nil), "name") }))
+
+	// A value that is costly to copy is no reason to allocate: the variable that a codec would
+	// decode into is made only when there is one.
+	type big struct {
+		Name  string
+		Bytes [1024]byte
+	}
+	sess.Set("big", big{Name: "big"})
+	sess.Set("pointer", &big{Name: "pointer"})
+	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[big](sess, "big") }))
+	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[*big](sess, "pointer") }))
+	require.Zero(t, testing.AllocsPerRun(100, func() { _, _ = GetAs[big](sess, "missing") }))
+}
+
+func Test_Session_IdleTimeout(t *testing.T) {
+	t.Parallel()
+	t.Run("the store's until one is set", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, memory.New())
+		require.Equal(t, 30*time.Minute, sess.IdleTimeout())
+
+		sess.SetIdleTimeout(5 * time.Minute)
+		require.Equal(t, 5*time.Minute, sess.IdleTimeout())
+	})
+
+	t.Run("a store with another idle timeout", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		store := NewStore(Config{IdleTimeout: 2 * time.Hour})
+		id := seedSession(t, app, store, func(s *Session) { s.Set("k", "v") })
+		require.Equal(t, 2*time.Hour, loadSession(t, app, store, id).IdleTimeout())
+	})
+
+	t.Run("a timeout that was set is not kept for the next request", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		store := NewStore(Config{IdleTimeout: time.Hour})
+		id := seedSession(t, app, store, func(s *Session) {
+			s.Set("k", "v")
+			s.SetIdleTimeout(24 * time.Hour)
+		})
+		require.Equal(t, time.Hour, loadSession(t, app, store, id).IdleTimeout())
+	})
+}
+
+func Test_Session_AbsoluteExpiry(t *testing.T) {
+	t.Parallel()
+	t.Run("none without an absolute timeout", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, memory.New())
+		expiry, ok := sess.AbsoluteExpiry()
+		require.False(t, ok)
+		require.True(t, expiry.IsZero())
+	})
+
+	t.Run("a new session ends one absolute timeout from now; storage and regeneration keep that, reset starts it over", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		store := NewStore(Config{AbsoluteTimeout: time.Hour})
+		id := seedSession(t, app, store, func(s *Session) { s.Set("k", "v") })
+
+		sess := loadSession(t, app, store, id)
+		original, ok := sess.AbsoluteExpiry()
+		require.True(t, ok)
+		require.WithinDuration(t, time.Now().Add(time.Hour), original, 10*time.Second)
+
+		require.NoError(t, sess.Regenerate())
+		kept, ok := sess.AbsoluteExpiry()
+		require.True(t, ok)
+		require.True(t, original.Equal(kept), "a new ID does not buy a longer session")
+
+		time.Sleep(10 * time.Millisecond)
+		require.NoError(t, sess.Reset())
+		restarted, ok := sess.AbsoluteExpiry()
+		require.True(t, ok)
+		require.True(t, restarted.After(original), "a reset is a new session with a new deadline")
+	})
+}
+
+// The middleware answers for its session: the idle timeout, which a request can change, and the
+// absolute expiry.
+func Test_Middleware_IdleTimeoutAndAbsoluteExpiry(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{IdleTimeout: 10 * time.Minute, AbsoluteTimeout: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error {
+		m := FromContext(c)
+		require.Equal(t, 10*time.Minute, m.IdleTimeout())
+		m.Session.SetIdleTimeout(time.Minute)
+		require.Equal(t, time.Minute, m.IdleTimeout())
+
+		expiry, ok := m.AbsoluteExpiry()
+		require.True(t, ok)
+		require.Greater(t, time.Until(expiry), 59*time.Minute)
+		return nil
+	})
+	apptest.Expect(t, app, "/", fiber.StatusOK)
+}
+
+func init() { gob.Register(map[string]int{}) }
+
+// Without a codec, GetAs gives up the saved snapshot for a value that could share memory with the
+// session, as Get does: a change made through it is saved.
+func Test_GetAs_GivesUpTheSnapshotLikeGet(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	store := NewStore(Config{Storage: memory.New()})
+	id := seedSession(t, app, store, func(s *Session) { s.Set("m", map[string]int{"a": 1}) })
+
+	sess := loadSession(t, app, store, id)
+	m, ok := GetAs[map[string]int](sess, "m")
+	require.True(t, ok)
+	m["b"] = 2 // a change in place, without Set
+	require.NoError(t, sess.Save())
+
+	again := loadSession(t, app, store, id)
+	requireGetAs(t, again, "m", map[string]int{"a": 1, "b": 2})
+
+	// The same holds for GetInto, and for a scalar it does not: nothing is saved again.
+	var viaInto map[string]int
+	require.NoError(t, again.GetInto("m", &viaInto))
+	viaInto["c"] = 3
+	require.NoError(t, again.Save())
+	requireGetAs(t, loadSession(t, app, store, id), "m", map[string]int{"a": 1, "b": 2, "c": 3})
+}
+
+// A session that is a zero value, with no data map and no store, answers like an empty one.
+func Test_Session_WithoutDataAnswersLikeAnEmptyOne(t *testing.T) {
+	t.Parallel()
+	var sess Session
+	require.NotPanics(t, func() {
+		expiry, ok := sess.AbsoluteExpiry()
+		require.False(t, ok)
+		require.True(t, expiry.IsZero())
+		require.Zero(t, sess.IdleTimeout())
+
+		requireNoGetAs[string](t, &sess, "k")
+
+		var target string
+		require.ErrorIs(t, sess.GetInto("k", &target), ErrKeyNotFound)
+	})
+}
+
+// The target of Middleware.GetInto is checked as that of Session.GetInto is.
+func Test_Middleware_GetInto_TargetHasToBeANonNilPointer(t *testing.T) {
+	t.Parallel()
+	for name, codec := range map[string]Codec{"gob": nil, "json": JSONCodec{}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{Codec: codec}))
+			app.Get("/", func(c fiber.Ctx) error {
+				m := FromContext(c)
+				m.Set("k", 1)
+
+				var nilPointer *int
+				require.NotPanics(t, func() {
+					require.Error(t, m.GetInto("k", nil))
+					require.Error(t, m.GetInto("k", 5))
+					require.Error(t, m.GetInto("k", nilPointer))
+					require.Error(t, m.GetInto("missing", nil), "the target is checked before the key is looked up")
+				})
+				var n int
+				require.NoError(t, m.GetInto("k", &n))
+				require.Equal(t, 1, n)
+				return nil
+			})
+			apptest.Expect(t, app, "/", fiber.StatusOK)
+		})
+	}
+}
+
+var (
+	readAnySink    any
+	readStringSink string
+)
+
+// Benchmark_Session_Read reads one string, which is what a session mostly holds, each way there
+// is. It is the cost an application pays on every read.
+func Benchmark_Session_Read(b *testing.B) {
+	sess := mustGet(b, NewStore(), apptest.Ctx(b, fiber.New()))
+	sess.Set("name", "alice")
+	m := &Middleware{Session: sess}
+
+	b.Run("Session.Get", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			readAnySink = sess.Get("name")
+		}
+	})
+	b.Run("Middleware.Get", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			readAnySink = m.Get("name")
+		}
+	})
+	b.Run("GetAs", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			readStringSink, _ = GetAs[string](sess, "name")
+		}
+	})
+}
+
+// getSession is loadSession as the middleware calls it: with the session middleware the request holds.
+func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
+	return s.loadSession(c, currentMiddleware(c))
+}
+
+// mustGet asks store for its session in the request c, and releases it when the test ends.
+func mustGet(tb testing.TB, store *Store, c fiber.Ctx) *Session {
+	tb.Helper()
+	sess, err := store.Get(c)
+	require.NoError(tb, err)
+	tb.Cleanup(sess.Release)
+	return sess
+}
+
+// lifetimeApp builds an app over a recording storage. /new stores a value; /deadline moves the
+// session's absolute deadline d from now, which is how a test gets a session that is close to, or
+// past, its end; /read only reads.
+func lifetimeApp(cfg *Config) (*fiber.App, *storagetest.Memory) {
+	rec := storagetest.New()
+	cfg.Storage = rec
+
+	app := fiber.New()
+	app.Use(New(*cfg))
+	app.Get("/new", func(c fiber.Ctx) error {
+		FromContext(c).Set("k", "v")
+		return nil
+	})
+	app.Get("/deadline", func(c fiber.Ctx) error {
+		d, err := time.ParseDuration(c.Query("d"))
+		if err != nil {
+			return fiber.ErrBadRequest
+		}
+		m := FromContext(c)
+		m.Set("k", "v")
+		m.Session.setAbsExpiration(time.Now().Add(d))
+		return nil
+	})
+	app.Get("/read", func(c fiber.Ctx) error {
+		_ = FromContext(c).Get("k")
+		return nil
+	})
+	return app, rec
+}
+
+// lastWrite is the last write the storage saw.
+func lastWrite(t *testing.T, rec *storagetest.Memory) storagetest.Call {
+	t.Helper()
+	writes := rec.Calls(storagetest.OpSet)
+	require.NotEmpty(t, writes)
+	return writes[len(writes)-1]
+}
+
+// requireLifetime checks how long a record or a cookie lives: want, or, with a slack, anything up
+// to slack less than want, as the clock moves on between the request and the check.
+func requireLifetime(tb testing.TB, got, want, slack time.Duration) {
+	tb.Helper()
+	if slack == 0 {
+		require.Equal(tb, want, got)
+		return
+	}
+	require.LessOrEqual(tb, got, want)
+	require.Greater(tb, got, want-slack)
+}
+
+// The record and the cookie must not outlive the absolute deadline: a session that is about to end
+// is stored, and its cookie set, for the time it has left.
+func Test_Session_Lifetime_CappedByAbsoluteDeadline(t *testing.T) {
+	t.Parallel()
+	cut := Config{IdleTimeout: 30 * time.Minute, AbsoluteTimeout: time.Hour}
+	for _, tc := range []struct {
+		name  string
+		path  string // the request that stores the session
+		cfg   Config
+		want  time.Duration // how long the record and the cookie live
+		slack time.Duration // how much less than want they may live, as the clock moves on
+	}{
+		{
+			name: "without an absolute timeout it is the idle timeout, as before",
+			cfg:  Config{IdleTimeout: 10 * time.Minute},
+			path: "/new",
+			want: 10 * time.Minute,
+		},
+		{
+			name:  "a new session is cut to the time left",
+			cfg:   Config{IdleTimeout: time.Hour, AbsoluteTimeout: time.Hour},
+			path:  "/new",
+			want:  time.Hour,
+			slack: 10 * time.Second,
+		},
+		{
+			name: "an idle timeout shorter than what is left wins",
+			cfg:  Config{IdleTimeout: 10 * time.Minute, AbsoluteTimeout: 2 * time.Hour},
+			path: "/new",
+			want: 10 * time.Minute,
+		},
+		{
+			name:  "close to the deadline",
+			cfg:   cut,
+			path:  "/deadline?d=5m",
+			want:  5 * time.Minute,
+			slack: 10 * time.Second,
+		},
+		// A lifetime of zero or less would read as "never expires" in many storages.
+		{
+			name: "a deadline within a second is one second, never none",
+			cfg:  cut,
+			path: "/deadline?d=200ms",
+			want: time.Second,
+		},
+		{name: "a deadline that is now is one second, never none", cfg: cut, path: "/deadline?d=0s", want: time.Second},
+		{
+			name: "a deadline already behind is one second, never none",
+			cfg:  cut,
+			path: "/deadline?d=-1m",
+			want: time.Second,
+		},
+		{
+			name: "a deadline far behind is one second, never none",
+			cfg:  cut,
+			path: "/deadline?d=-720h",
+			want: time.Second,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, rec := lifetimeApp(&tc.cfg)
+
+			resp, _ := sendRequest(t, app, tc.path, nil)
+			requireLifetime(t, lastWrite(t, rec).TTL, tc.want, tc.slack)
+			requireLifetime(t, time.Duration(cookiesByName(resp)["session_id"].MaxAge)*time.Second, tc.want, tc.slack)
+		})
+	}
+
+	t.Run("a session-only cookie has no lifetime but the record is still cut", func(t *testing.T) {
+		t.Parallel()
+		app, rec := lifetimeApp(&Config{IdleTimeout: 30 * time.Minute, AbsoluteTimeout: time.Hour, CookieSessionOnly: true})
+
+		resp, _ := sendRequest(t, app, "/deadline?d=5m", nil)
+		require.LessOrEqual(t, lastWrite(t, rec).TTL, 5*time.Minute)
+		cookie := cookiesByName(resp)["session_id"]
+		require.Zero(t, cookie.MaxAge)
+		require.True(t, cookie.Expires.IsZero())
+	})
+
+	t.Run("a session that was only read is cut as well", func(t *testing.T) {
+		t.Parallel()
+		app, rec := lifetimeApp(&Config{IdleTimeout: 30 * time.Minute, AbsoluteTimeout: time.Hour})
+
+		resp, _ := sendRequest(t, app, "/deadline?d=5m", nil)
+		id := cookiesByName(resp)["session_id"].Value
+
+		resp, _ = sendRequest(t, app, "/read", map[string]string{"session_id": id})
+		exp := lastWrite(t, rec).TTL
+		require.LessOrEqual(t, exp, 5*time.Minute, "the snapshot is written back with the capped lifetime")
+		require.Greater(t, exp, 4*time.Minute)
+		require.LessOrEqual(t, cookiesByName(resp)["session_id"].MaxAge, 300)
+	})
+}
+
+func Test_Session_Lifetime_Unit(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		idle     time.Duration
+		absolute time.Duration
+		deadline time.Duration // from now; ignored when noMarker
+		noMarker bool
+		want     time.Duration
+		slack    time.Duration
+	}{
+		{name: "no absolute timeout", idle: 10 * time.Minute, want: 10 * time.Minute},
+		{
+			name:     "deadline far away",
+			idle:     10 * time.Minute,
+			absolute: time.Hour,
+			deadline: 2 * time.Hour,
+			want:     10 * time.Minute,
+		},
+		{
+			name:     "deadline nearer than idle",
+			idle:     10 * time.Minute,
+			absolute: time.Hour,
+			deadline: 3 * time.Minute,
+			want:     3 * time.Minute,
+			slack:    2 * time.Second,
+		},
+		{name: "deadline passed", idle: 10 * time.Minute, absolute: time.Hour, deadline: -time.Hour, want: time.Second},
+		{
+			name:     "deadline within the minimum",
+			idle:     10 * time.Minute,
+			absolute: time.Hour,
+			deadline: 500 * time.Millisecond,
+			want:     time.Second,
+		},
+		{
+			name:     "an idle timeout under the minimum is left alone",
+			idle:     500 * time.Millisecond,
+			absolute: time.Hour,
+			deadline: time.Hour,
+			want:     500 * time.Millisecond,
+		},
+		{name: "no marker stored", idle: 10 * time.Minute, absolute: time.Hour, noMarker: true, want: 10 * time.Minute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			sess := newSessionWithStorage(t, memory.New())
+			sess.config.AbsoluteTimeout = tc.absolute
+			sess.idleTimeout = tc.idle
+			if tc.absolute > 0 && !tc.noMarker {
+				sess.setAbsExpiration(time.Now().Add(tc.deadline))
+			}
+			requireLifetime(t, sess.lifetime(), tc.want, tc.slack)
+		})
+	}
+}
+
+func Test_Session_IsEmptyFresh(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		prepare func(*Session)
+		name    string
+		empty   bool
+	}{
+		{name: "new and empty", prepare: func(*Session) {}, empty: true},
+		{
+			name:    "only the absolute timeout marker",
+			prepare: func(s *Session) { s.setAbsExpiration(time.Now().Add(time.Hour)) },
+			empty:   true,
+		},
+		{name: "holds a value", prepare: func(s *Session) { s.Set("k", "v") }},
+		{name: "a value that was removed again leaves nothing", empty: true, prepare: func(s *Session) {
+			s.Set("k", "v")
+			s.Delete("k")
+		}},
+		{name: "not new", prepare: func(s *Session) {
+			s.mu.Lock()
+			s.isFresh = false
+			s.mu.Unlock()
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			sess := newSessionWithStorage(t, storagetest.New())
+			tc.prepare(sess)
+			require.Equal(t, tc.empty, sess.isEmptyFresh())
+		})
+	}
+
+	t.Run("a session without a data map is never skipped", func(t *testing.T) {
+		t.Parallel()
+		require.False(t, (&Session{isFresh: true}).isEmptyFresh())
+	})
+}
+
+// A save reads the storage again only when its shard changed since the load. A shard that was
+// changed before the load costs the request nothing: the load records the generation it found.
+//
+// conventions:ignore parallel: every test bumps the generations of the shards, which are shared,
+// and a bump between the load and the save would make the read legitimate.
+func Test_Session_Save_ReadsTheStorageOnlyIfTheShardChangedSinceTheLoad(t *testing.T) {
+	app := fiber.New()
+	logged := storagetest.New()
+	store := NewStore(Config{Storage: logged})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
+	sibling := store.KeyGenerator()
+	for lockFor(keyNamespace+sibling) != lockFor(keyNamespace+id) {
+		sibling = store.KeyGenerator()
+	}
+	require.NoError(t, store.Delete(t.Context(), sibling))
+
+	sess := loadSession(t, app, store, id)
+	logged.ClearCalls()
+	require.NoError(t, sess.Save())
+	require.Equal(t, []string{keyNamespace + id}, logged.CallKeys(storagetest.OpSet))
+	require.Empty(t, logged.CallKeys(storagetest.OpGet), "the save only writes")
+}
+
+// A session that goes back to the pool forgets the record it replaced, which the next request that
+// gets it must not delete when it ends its own session, and that a request was over for it, or the
+// next request would get no cookie.
+// conventions:ignore parallel: it looks at a session after it went back to the shared pool
+func Test_Session_ReleaseForgetsItsRequest(t *testing.T) {
+	sess := acquireSession()
+	sess.unreadable = storageKey(sessionKey("left alone"))
+	sess.leaveCtx(&fasthttp.RequestCtx{})
+	releaseSession(sess)
+	rctx, _ := sess.reach()
+	require.Empty(t, sess.unreadable)
+	require.Nil(t, rctx)
+
+	sess = acquireSession()
+	sess.leaveCtx(nil)
+	releaseSession(sess)
+	_, over := sess.reach()
+	require.False(t, over)
 }
