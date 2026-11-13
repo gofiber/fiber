@@ -26,6 +26,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const dataFrameOverhead = len("data: \n\n")
+
 type panicStringer struct{}
 
 func (*panicStringer) String() string {
@@ -75,6 +77,7 @@ func sseTestOnClose(t *testing.T, handler func(fiber.Ctx, *Stream) error) error 
 // Test_SSE_EventFrames covers the frame writeEvent writes for an event.
 func Test_SSE_EventFrames(t *testing.T) {
 	t.Parallel()
+	longLine := strings.Repeat("x", 5000)
 	for _, tc := range []struct {
 		name  string
 		want  string
@@ -91,6 +94,15 @@ func Test_SSE_EventFrames(t *testing.T) {
 		{name: "omits data for untyped nil", event: Event{ID: "42"}, want: "id: 42\n\n"},
 		{name: "writes raw JSON data", event: Event{Data: json.RawMessage(`{"hello":"world"}`)}, want: "data: {\"hello\":\"world\"}\n\n"},
 		{name: "writes byte slice data", event: Event{Data: []byte("hello\nworld")}, want: "data: hello\ndata: world\n\n"},
+		{name: "writes typed nil byte slice", event: Event{Data: []byte(nil)}, want: "data: \n\n"},
+		{
+			name: "splits mixed line breaks in byte slices", event: Event{Data: []byte("one\r\ntwo\rthree\n\r\n")},
+			want: "data: one\ndata: two\ndata: three\ndata: \ndata: \n\n",
+		},
+		{
+			name: "splits raw JSON lines", event: Event{Data: json.RawMessage("{\r\n\"x\":1\r}")},
+			want: "data: {\ndata: \"x\":1\ndata: }\n\n",
+		},
 		{name: "preserves trailing data newline", event: Event{Data: "hello\n"}, want: "data: hello\ndata: \n\n"},
 		{name: "preserves intentional blank data line", event: Event{Data: "hello\n\n"}, want: "data: hello\ndata: \ndata: \n\n"},
 		{
@@ -102,6 +114,21 @@ func Test_SSE_EventFrames(t *testing.T) {
 			name: "sub-millisecond retry rounds up", event: Event{Data: "x", Retry: 500 * time.Microsecond},
 			want: "retry: 1\ndata: x\n\n",
 		},
+		{
+			name:  "large second data line preserves preceding fields",
+			event: Event{ID: "42", Name: "update", Retry: time.Second, Data: "first\r\n" + longLine + "\n"},
+			want:  "id: 42\nevent: update\nretry: 1000\ndata: first\ndata: " + longLine + "\ndata: \n\n",
+		},
+		{
+			name:  "large ID and name preserve all fields",
+			event: Event{ID: longLine, Name: longLine, Retry: time.Duration(math.MaxInt64), Data: ""},
+			want:  "id: " + longLine + "\nevent: " + longLine + "\nretry: 9223372036855\ndata: \n\n",
+		},
+		{
+			name:  "writes oversized byte-backed data",
+			event: Event{Data: []byte(longLine + "\nlast")},
+			want:  "data: " + longLine + "\ndata: last\n\n",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -110,12 +137,86 @@ func Test_SSE_EventFrames(t *testing.T) {
 	}
 }
 
+// Test_SSE_EventFrameSizes checks frame output around the writer's buffer capacity.
+func Test_SSE_EventFrameSizes(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name         string
+		size         int
+		fromCapacity bool
+	}{
+		{name: "1 KiB", size: 1 << 10},
+		{name: "below capacity", size: -1, fromCapacity: true},
+		{name: "at capacity", fromCapacity: true},
+		{name: "above capacity", size: 1, fromCapacity: true},
+		{name: "8 KiB", size: 8 << 10},
+		{name: "64 KiB", size: 64 << 10},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			w := bufio.NewWriter(&buf)
+			size := tc.size
+			if tc.fromCapacity {
+				size += w.Available() - dataFrameOverhead
+			}
+			data := strings.Repeat("x", size)
+			require.NoError(t, writeEvent(w, Event{Data: data}))
+			require.NoError(t, w.Flush())
+			require.Equal(t, "data: "+data+"\n\n", buf.String())
+		})
+	}
+}
+
+// Test_SSE_EventAllocations stays sequential because AllocsPerRun cannot run in a parallel test.
+func Test_SSE_EventAllocations(t *testing.T) {
+	w := bufio.NewWriter(io.Discard)
+	stream := newStream(context.Background(), w, "")
+	t.Cleanup(stream.closeStream)
+	for _, tc := range []struct {
+		name  string
+		event Event
+	}{
+		{name: "data", event: Event{Data: "hello"}},
+		{name: "multiline", event: Event{ID: "42", Name: "update", Retry: time.Second, Data: "one\ntwo"}},
+		{name: "at capacity", event: Event{Data: strings.Repeat("x", w.Size()-dataFrameOverhead)}},
+		{name: "large multiline", event: Event{Data: strings.Repeat(strings.Repeat("x", 1023)+"\n", 64)}},
+		{name: "large CRLF", event: Event{Data: strings.Repeat(strings.Repeat("x", 1022)+"\r\n", 64)}},
+		{name: "byte slice", event: Event{Data: []byte("one\r\ntwo")}},
+		{name: "raw JSON", event: Event{Data: json.RawMessage(`{"status":"ready"}`)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			send := func() { require.NoError(t, stream.Event(tc.event)) }
+			// Other goroutines can raise this process-wide count. A per-event allocation
+			// will be present in every sample.
+			fewest := testing.AllocsPerRun(100, send)
+			for attempt := 0; attempt < 2 && fewest > 0; attempt++ {
+				fewest = min(fewest, testing.AllocsPerRun(100, send))
+			}
+			require.Zero(t, fewest)
+		})
+	}
+}
+
+// Test_SSE_EventRejectsFieldInjection verifies that an invalid ID or name leaves no frame behind.
 func Test_SSE_EventRejectsFieldInjection(t *testing.T) {
 	t.Parallel()
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-
-	require.ErrorIs(t, writeEvent(w, Event{ID: "42\nretry: 1", Data: "ignored"}), errInvalidField)
+	for _, tc := range []struct {
+		name  string
+		event Event
+	}{
+		{name: "invalid id", event: Event{ID: "42\nretry: 1", Data: "ignored"}},
+		{name: "invalid name", event: Event{ID: "42", Name: "update\rretry: 1", Data: "ignored"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			w := bufio.NewWriter(&buf)
+			require.ErrorIs(t, writeEvent(w, tc.event), errInvalidField)
+			require.NoError(t, w.Flush())
+			require.Empty(t, buf.String())
+		})
+	}
 }
 
 func Test_SSE_NewUsesAppJSONEncoder(t *testing.T) {
@@ -158,17 +259,37 @@ func Test_SSE_CommentSanitizesLines(t *testing.T) {
 // Test_SSE_FrameWritersReturnWriterError covers the frame writers on a writer that fails.
 func Test_SSE_FrameWritersReturnWriterError(t *testing.T) {
 	t.Parallel()
+	eventWriter := func(event Event) func(*bufio.Writer) error {
+		return func(w *bufio.Writer) error { return writeEvent(w, event) }
+	}
 	for _, tc := range []struct {
-		write func(*bufio.Writer) error
-		name  string
+		write         func(*bufio.Writer) error
+		name          string
+		size          int
+		alreadyFailed bool
 	}{
-		{name: "event", write: func(w *bufio.Writer) error { return writeEvent(w, Event{Data: "hello"}) }},
-		{name: "comment", write: func(w *bufio.Writer) error { return writeComment(w, "") }},
+		{name: "ID", size: 1, write: eventWriter(Event{ID: "42"})},
+		{name: "name", size: 1, write: eventWriter(Event{Name: "update"})},
+		{name: "retry", size: 1, write: eventWriter(Event{Retry: time.Second})},
+		{name: "data prefix", size: 1, write: eventWriter(Event{Data: "hello"})},
+		{name: "multiline data value", size: 6, write: eventWriter(Event{Data: "hello\nworld"})},
+		{name: "data line terminator", size: 11, write: eventWriter(Event{Data: "hello"})},
+		{name: "final blank line", size: 12, write: eventWriter(Event{Data: "hello"})},
+		{name: "failed writer before field", size: 1, alreadyFailed: true, write: eventWriter(Event{Data: "hello"})},
+		{name: "failed writer before retry", size: 1, alreadyFailed: true, write: eventWriter(Event{Retry: time.Second})},
+		{name: "failed writer at capacity", size: 12, alreadyFailed: true, write: eventWriter(Event{Data: "hello"})},
+		{name: "comment", size: 1, write: func(w *bufio.Writer) error { return writeComment(w, "") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			writeErr := errors.New("write failed")
-			require.ErrorIs(t, tc.write(bufio.NewWriterSize(errWriter{err: writeErr}, 1)), writeErr)
+			w := bufio.NewWriterSize(errWriter{err: writeErr}, tc.size)
+			if tc.alreadyFailed {
+				// An oversized write reaches the underlying writer and latches its error.
+				_, err := w.Write(make([]byte, tc.size+1))
+				require.ErrorIs(t, err, writeErr)
+			}
+			require.ErrorIs(t, tc.write(w), writeErr)
 		})
 	}
 }
@@ -239,6 +360,27 @@ func Test_SSE_StreamRetryIgnoresNonPositiveDuration(t *testing.T) {
 	require.NoError(t, stream.Retry(0))
 	require.NoError(t, stream.Retry(-time.Second))
 	require.Empty(t, buf.String())
+}
+
+// Test_SSE_StreamRetryWithSmallBuffer checks retry frames that fit or span writes after formatting.
+func Test_SSE_StreamRetryWithSmallBuffer(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		size int
+	}{
+		{name: "fits after formatting", size: 16},
+		{name: "spans writes", size: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			stream := newStream(context.Background(), bufio.NewWriterSize(&buf, tc.size), "")
+			t.Cleanup(stream.closeStream)
+			require.NoError(t, stream.Retry(1500*time.Microsecond))
+			require.Equal(t, "retry: 2\n\n", buf.String())
+		})
+	}
 }
 
 func Test_SSE_StreamReturnsWriterError(t *testing.T) {
@@ -328,6 +470,26 @@ func Test_SSE_StreamWriteError(t *testing.T) {
 	apptest.Recv(t, stream.Done(), time.Second, "stream was not closed after write error")
 }
 
+// Test_SSE_OversizeFrameWriteFailure checks that a partial write closes the stream and latches the error.
+func Test_SSE_OversizeFrameWriteFailure(t *testing.T) {
+	t.Parallel()
+	writeErr := errors.New("write failed")
+	var output bytes.Buffer
+	w := bufio.NewWriterSize(sseWriteFunc(func(p []byte) (int, error) {
+		if output.Len() > 0 {
+			return 0, writeErr
+		}
+		return output.Write(p)
+	}), 16)
+	stream := newStream(context.Background(), w, "")
+	t.Cleanup(stream.closeStream)
+	require.ErrorIs(t, stream.Event(Event{ID: "42", Data: strings.Repeat("x", 100)}), writeErr)
+	require.Equal(t, "id: 42\ndata: xxx", output.String())
+	apptest.Recv(t, stream.Done(), time.Second, "stream was not closed after write error")
+	require.ErrorIs(t, stream.Event(Event{Data: "again"}), writeErr)
+	require.Equal(t, "id: 42\ndata: xxx", output.String())
+}
+
 func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	t.Parallel()
 	const (
@@ -406,8 +568,53 @@ type errWriter struct {
 	err error
 }
 
+type sseWriteFunc func([]byte) (int, error)
+
+func (fn sseWriteFunc) Write(p []byte) (int, error) { return fn(p) }
+
 func (w errWriter) Write([]byte) (int, error) {
 	return 0, fmt.Errorf("test writer: %w", w.err)
+}
+
+// Benchmark_SSE_StreamEvent measures frame encoding and flushing across event formats and sizes.
+func Benchmark_SSE_StreamEvent(b *testing.B) {
+	w := bufio.NewWriter(io.Discard)
+	maxBufferedData := w.Size() - dataFrameOverhead
+	line := strings.Repeat("x", 1023) + "\n"
+	for _, tc := range []struct {
+		name  string
+		event Event
+	}{
+		{name: "data", event: Event{Data: "hello"}},
+		{
+			name:  "multiline",
+			event: Event{ID: "42", Name: "update", Retry: 2500 * time.Millisecond, Data: "first line\nsecond line\n"},
+		},
+		{name: "json", event: Event{Data: struct{ Status string }{Status: "ready"}}},
+		{name: "bytes", event: Event{Data: []byte("hello")}},
+		{name: "raw_json", event: Event{Data: json.RawMessage(`{"status":"ready"}`)}},
+		{name: "payload_1k", event: Event{Data: strings.Repeat("x", 1<<10)}},
+		{name: "below_boundary", event: Event{Data: strings.Repeat("x", maxBufferedData-1)}},
+		{name: "at_boundary", event: Event{Data: strings.Repeat("x", maxBufferedData)}},
+		{name: "above_boundary", event: Event{Data: strings.Repeat("x", maxBufferedData+1)}},
+		{name: "payload_4k", event: Event{Data: strings.Repeat("x", 4<<10)}},
+		{name: "large", event: Event{Data: strings.Repeat("x", 8<<10)}},
+		{name: "payload_64k", event: Event{Data: strings.Repeat("x", 64<<10)}},
+		{name: "multiline_64k", event: Event{Data: strings.Repeat(line, 64)}},
+		{name: "multiline_1m", event: Event{Data: strings.Repeat(line, 1024)}},
+		{name: "multiline_crlf_1m", event: Event{Data: strings.Repeat(strings.Repeat("x", 1022)+"\r\n", 1024)}},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			stream := newStream(context.Background(), w, "")
+			b.Cleanup(stream.closeStream)
+			b.ReportAllocs()
+			for b.Loop() {
+				if err := stream.Event(tc.event); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }
 
 func Benchmark_sanitizeField(b *testing.B) {
