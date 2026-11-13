@@ -1737,6 +1737,10 @@ The key alone identifies a request, so whoever sends a stored key receives the r
 
 A response is stored under `idempotency:` followed by the key (or its digest with `KeyScope`), so a key sent by a client cannot read or overwrite an entry another middleware keeps in the same `Storage`. Responses stored by an earlier version are not replayed after the upgrade: a retry with such a key runs the handler again.
 
+### Deprecation
+
+A new deprecation middleware marks routes as deprecated. It sends the `Deprecation` header ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)), the `Sunset` header ([RFC 8594](https://www.rfc-editor.org/rfc/rfc8594)), or both, and can add `Link` relations to the deprecation and sunset documentation, also on their own to publish a policy. See the [deprecation middleware](./middleware/deprecation.md) docs.
+
 ### EncryptCookie
 
 - Added support for specifying key length when using `encryptcookie.GenerateKey(length)`. Keys must be base64-encoded and may be 16, 24, or 32 bytes when decoded, supporting AES-128, AES-192, and AES-256 (default).
