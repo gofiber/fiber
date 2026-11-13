@@ -1344,7 +1344,7 @@ func Test_CookieJar_CookieName(t *testing.T) {
 }
 
 // Test_CookieJar_NormalizedHostPaths checks that explicit and response cookies
-// share a scope across host case and port changes.
+// share a scope across host case, port changes, and IPv6 brackets.
 func Test_CookieJar_NormalizedHostPaths(t *testing.T) {
 	t.Parallel()
 	for _, host := range []string{"EXAMPLE.com:443", "Example.COM"} {
@@ -1354,6 +1354,24 @@ func Test_CookieJar_NormalizedHostPaths(t *testing.T) {
 			jar.SetByHost([]byte(host), clientTestCCookie(t, "manual", "one"))
 			clientTestCReceive(jar, host, "/", "response=two; Path=/")
 			got := jar.getByHostAndPath([]byte("eXAMPLE.COM:8080"), []byte("/"), false)
+			require.ElementsMatch(t, []string{"manual=one", "response=two"}, clientTestCPairs(got))
+		})
+	}
+	for _, tc := range []struct {
+		setHost string
+		getHost string
+	}{
+		{setHost: "[::1]:8080", getHost: "[::1]"},
+		{setHost: "[::1]", getHost: "[::1]:8080"},
+		{setHost: "[::1]:8080", getHost: "::1"},
+		{setHost: "[2001:DB8::1]:443", getHost: "[2001:db8::1]"},
+	} {
+		t.Run(tc.setHost+"->"+tc.getHost, func(t *testing.T) {
+			t.Parallel()
+			jar := clientTestCJar(t)
+			jar.SetByHost([]byte(tc.setHost), clientTestCCookie(t, "manual", "one"))
+			clientTestCReceive(jar, tc.setHost, "/", "response=two; Path=/")
+			got := jar.getByHostAndPath([]byte(tc.getHost), []byte("/"), false)
 			require.ElementsMatch(t, []string{"manual=one", "response=two"}, clientTestCPairs(got))
 		})
 	}
