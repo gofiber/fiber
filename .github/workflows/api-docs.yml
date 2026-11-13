@@ -1,0 +1,61 @@
+name: Generated API docs
+
+# Fails when a go:doc block in docs/ no longer matches its Go source. Runs on
+# Markdown-only changes too (test.yml ignores them), on one pinned toolchain and
+# build context, because go/printer output and file selection vary across them.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "**.go"
+      - "docs/**"
+      - "go.mod"
+      - ".github/workflows/api-docs.yml"
+  pull_request:
+    paths:
+      - "**.go"
+      - "docs/**"
+      - "go.mod"
+      - ".github/workflows/api-docs.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api-docs:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    env:
+      GOOS: linux
+      GOARCH: amd64
+      CGO_ENABLED: "0"
+    steps:
+      - name: Fetch Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Require full generator coverage
+        run: |
+          go test -covermode=atomic -coverprofile="$RUNNER_TEMP/genapidocs.cover" ./internal/genapidocs
+          go tool cover -func="$RUNNER_TEMP/genapidocs.cover" | tee "$RUNNER_TEMP/genapidocs-coverage.txt"
+          generator_coverage=$(awk '/^total:/ { print $NF }' "$RUNNER_TEMP/genapidocs-coverage.txt")
+          if [ "$generator_coverage" != "100.0%" ]; then
+            echo "::error::Generator coverage must be 100.0%, got $generator_coverage"
+            exit 1
+          fi
+
+      - name: Regenerate API docs
+        run: go generate -run genapidocs ./...
+
+      - name: Check for drift
+        run: git diff --exit-code -- docs || (echo "::error::Run 'make generate' and commit the updated docs." && exit 1)

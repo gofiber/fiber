@@ -2115,54 +2115,8 @@ In v3, Fiber introduced Addons. Addons are additional useful packages that can b
 
 ### Retry
 
-The Retry addon is a new addon that implements a retry mechanism for unsuccessful network operations. It uses an exponential backoff algorithm with jitter.
-It calls the function multiple times and tries to make it successful. If all calls are failed, then, it returns an error.
-It adds a jitter at each retry step because adding a jitter is a way to break synchronization across the client and avoid collision.
-
-A field of `retry.ExponentialBackoff` left at zero takes its default, also on a struct literal, so even the zero value calls the function and waits between the attempts as the default config does. A literal that sets only `MaxRetryCount` used to retry at once; it now waits too.
-
-<details>
-<summary>Example</summary>
-
-```go
-package main
-
-import (
-    "fmt"
-
-    "github.com/gofiber/fiber/v3/addon/retry"
-    "github.com/gofiber/fiber/v3/client"
-)
-
-func main() {
-    expBackoff := retry.NewExponentialBackoff(retry.Config{})
-
-    // Local variables that will be used inside of Retry
-    var resp *client.Response
-    var err error
-
-    // Retry a network request and return an error to signify to try again
-    err = expBackoff.Retry(func() error {
-        client := client.New()
-        resp, err = client.Get("https://gofiber.io")
-        if err != nil {
-            return fmt.Errorf("GET gofiber.io failed: %w", err)
-        }
-        if resp.StatusCode() != 200 {
-            return fmt.Errorf("GET gofiber.io did not return OK 200")
-        }
-        return nil
-    })
-
-    // If all retries failed, panic
-    if err != nil {
-        panic(err)
-    }
-    fmt.Printf("GET gofiber.io succeeded with status code %d\n", resp.StatusCode())
-}
-```
-
-</details>
+The Retry addon retries failed operations with exponential backoff and jitter.
+See the [retry documentation](addon/retry.md) for the current API, configuration and executable examples.
 
 ## 📋 Migration guide
 

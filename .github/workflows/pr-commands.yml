@@ -1,7 +1,7 @@
 name: PR Commands
 
-# Comment "/generate" on a pull request to re-run the code generators (msgp and
-# ifacemaker, see `make generate`) and push the regenerated files onto the branch,
+# Comment "/generate" on a pull request to re-run the code generators (msgp,
+# ifacemaker and genapidocs, see `make generate`) and push the regenerated files onto the branch,
 # so a change to Ctx, Req or Res does not need a local toolchain. Maintainers only.
 
 on:
@@ -33,7 +33,7 @@ jobs:
     with:
       command: generate
       runs-on: blacksmith-4vcpu-ubuntu-2404
-      commit-message: 'chore: regenerate msgp and interface code'
+      commit-message: 'chore: regenerate msgp, interface code and API docs'
       timeout-minutes: 20
       run: make generate
     # Same PAT the dependabot workflows use. It never meets pull request code (the

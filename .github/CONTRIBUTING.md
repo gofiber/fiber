@@ -31,3 +31,27 @@ If you want to say **thank you** and/or support the active development of `Fiber
 2. Tweet about the project [on your 𝕏 (Twitter)](https://x.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
 4. Support the project by becoming a [GitHub Sponsor](https://github.com/sponsors/gofiber).
+
+## Generated API documentation
+
+Some Markdown sections are generated from Go declarations and executable examples.
+The Go source is canonical: edit it and run `make generate` to update the page.
+
+- A page is generated only when its package declares
+  `//go:generate go run ../../internal/genapidocs -out <page>` (see `addon/retry/doc.go`).
+- Each block is a `<!-- go:doc Config -->` line and a `<!-- /go:doc -->` line, both on
+  lines of their own; the body between them may be empty. Names are exported
+  declarations (`Type`, `Func`, `Type.Method`, `Type.Field`, a const or var name) or example
+  functions, for example `Example`, `ExampleType`, or `ExampleType_Method`.
+  An optional `_suffix` is supported, as in `ExampleNewExponentialBackoff_defaults`;
+  examples must be standalone programs.
+- Prose outside the blocks is preserved, so do not restate generated facts there.
+- The `Generated API docs` workflow fails when a page drifts from its source.
+
+Markers inside fenced or indented code blocks and inline examples are ignored.
+Generated text must not contain marker strings; the page's LF or CRLF line ending is preserved.
+A page with `<!-- go:doc-all -->` must reference every exported declaration and method;
+fields and interface methods are included by their containing type, and const/var groups count once.
+The retry page enables this check, so new exported API requires a documentation update.
+Its README and the release notes link to `docs/addon/retry.md` rather than maintaining copies.
+Declarations retain source expressions, including references to private constants; only examples are standalone programs.
