@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -9930,6 +9931,8 @@ func Test_Res_Set_MatchesHeaderSet(t *testing.T) {
 		"Bad Key", "X-Key\r\nInjected", "Or\u00edgin", "", "etag", "X-REQUEST-ID", "x-upstream-id", strings.Repeat("Ab-", 21) + "C", // cspell:disable-line
 	}
 	values := []string{"v", "", "a\r\nb", "with space", "42", "text/html; charset=utf-8", "k=v; Path=/"}
+	// String appends fasthttp's cached server date, which can tick between the two calls.
+	serverDate := regexp.MustCompile("\r\nDate: [^\r]*")
 	// storeNormalizes false with a normalizing app is the state a proxied
 	// response leaves behind when a caller-supplied client parsed it with
 	// header normalization off: the store keeps names as sent, so Set must
@@ -9948,7 +9951,8 @@ func Test_Res_Set_MatchesHeaderSet(t *testing.T) {
 					c.Response().Header.CopyTo(&want)
 					want.Set(key, val)
 					c.Set(key, val)
-					require.Equal(t, want.String(), c.Response().Header.String(),
+					require.Equal(t, serverDate.ReplaceAllString(want.String(), ""),
+						serverDate.ReplaceAllString(c.Response().Header.String(), ""),
 						"normalizing=%v storeNormalizes=%v key=%q val=%q", normalizing, storeNormalizes, key, val)
 					app.ReleaseCtx(c)
 				}
