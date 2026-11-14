@@ -593,7 +593,7 @@ Other changes to existing routing behavior, made so routes can be documented saf
 - The function passed to `RemoveRouteFunc` receives a copy of each route; writes to it are discarded.
 - Routes registered on different domains for the same method and path are never merged into one route entry and do not share an automatic `HEAD` twin.
 - `GetRoute` and `GetRoutes` return copies whose documentation metadata is cloned; `Handlers` and `Params` still share their backing arrays with the app.
-- `fiber.Register` gained `Name` and the documentation methods. A type of your own that implements `fiber.Register` must add them.
+- `fiber.Router` and `fiber.Register` gained the documentation methods, and `fiber.Register` also `Name`. A type of your own that implements either must add them, or embed one of Fiber's routers.
 
 :::
 
