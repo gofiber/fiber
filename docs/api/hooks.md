@@ -46,6 +46,10 @@ Runs after each route is registered. The callback receives the route so you can 
 
 A registration that covers several methods runs the hook once per method: `Add` runs it once for each method it lists, and `Use` and `All` once for each entry of `RequestMethods`. Fiber also runs it for every `HEAD` route it generates for a `GET` route, which happens when the app starts or when [`RebuildTree`](./app.md#rebuildtree) runs.
 
+:::note
+The callback runs after the router lock is released and receives a snapshot of the route, so it may call other `App` methods such as `GetRoute` or `Name`. Changes made to the snapshot are not applied to the route.
+:::
+
 ```go title="Signature"
 func (h *Hooks) OnRoute(handler ...OnRouteHandler)
 ```
@@ -53,6 +57,10 @@ func (h *Hooks) OnRoute(handler ...OnRouteHandler)
 ## OnName
 
 Runs when a route is named. The callback receives the route.
+
+:::note
+Like `OnRoute`, it runs after the router lock is released and receives a snapshot of the route.
+:::
 
 :::caution
 `OnName` only works with named routes, not groups.
