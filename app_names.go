@@ -127,17 +127,22 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 // namedRouteIndex is an immutable by-name snapshot of the routes at one revision.
 type namedRouteIndex struct {
 	routes   map[string]*Route
-	live     map[*Route]*Route // snapshot -> the route it was taken from, for GetRoute to clone the documentation of
+	live     map[*Route]*Route // snapshot of a documented route -> the route it was taken from, for GetRoute to clone from
 	small    []*Route          // the same snapshots in registration order when there are few, to scan instead of hash
 	revision uint64
 }
 
-// namedRoute returns the shared snapshot of the route called name, or nil; callers must not modify it.
-func (app *App) namedRoute(name string) *Route {
+// currentNamedIndex returns the by-name index for the current routes revision, rebuilding it when stale.
+func (app *App) currentNamedIndex() *namedRouteIndex {
 	index := app.namedRoutes.Load()
 	if index == nil || index.revision != app.routesRevision.Load() {
 		index = app.indexNamedRoutes()
 	}
+	return index
+}
+
+// lookup returns the snapshot of the first route called name, or nil.
+func (index *namedRouteIndex) lookup(name string) *Route {
 	if index.small != nil {
 		for _, route := range index.small {
 			if route.Name == name {
@@ -149,6 +154,11 @@ func (app *App) namedRoute(name string) *Route {
 	return index.routes[name]
 }
 
+// namedRoute returns the shared snapshot of the route called name, or nil; callers must not modify it.
+func (app *App) namedRoute(name string) *Route {
+	return app.currentNamedIndex().lookup(name)
+}
+
 // indexNamedRoutes rebuilds the index unless another goroutine already has.
 func (app *App) indexNamedRoutes() *namedRouteIndex {
 	app.mutex.Lock()
@@ -157,8 +167,8 @@ func (app *App) indexNamedRoutes() *namedRouteIndex {
 	return app.indexNamedRoutesLocked()
 }
 
-// indexNamedRoutesLocked is indexNamedRoutes for a caller holding app.mutex. The snapshots carry no
-// documentation, which only GetRoute reads and clones from the live route.
+// indexNamedRoutesLocked is indexNamedRoutes for a caller holding app.mutex. A snapshot of a documented
+// route carries no documentation, which only GetRoute reads and clones from the live route.
 func (app *App) indexNamedRoutesLocked() *namedRouteIndex {
 	revision := app.routesRevision.Load()
 	if index := app.namedRoutes.Load(); index != nil && index.revision == revision {
@@ -172,8 +182,13 @@ func (app *App) indexNamedRoutesLocked() *namedRouteIndex {
 			if _, taken := index.routes[route.Name]; taken {
 				continue
 			}
-			snapshot := app.copyRouteBase(route)
-			index.live[snapshot] = route
+			var snapshot *Route
+			if route.isDocumented() {
+				snapshot = app.copyRouteBase(route)
+				index.live[snapshot] = route
+			} else {
+				snapshot = app.copyRoute(route)
+			}
 			index.routes[route.Name] = snapshot
 			inOrder = append(inOrder, snapshot)
 		}
@@ -190,17 +205,18 @@ func (app *App) indexNamedRoutesLocked() *namedRouteIndex {
 
 // GetRoute returns a copy of the route with the given name; Handlers and Params are shared and must not be modified.
 func (app *App) GetRoute(name string) (found Route) { //nolint:nonamedreturns // the named result is what keeps this to a single struct move
-	app.mutex.Lock()
-	defer app.mutex.Unlock()
-
-	index := app.namedRoutes.Load()
-	if index == nil || index.revision != app.routesRevision.Load() {
-		index = app.indexNamedRoutesLocked()
-	}
-	snapshot := index.routes[name]
+	index := app.currentNamedIndex()
+	snapshot := index.lookup(name)
 	if snapshot == nil {
 		return found
 	}
-	app.copyRouteInto(&found, index.live[snapshot])
+	live := index.live[snapshot]
+	if live == nil {
+		return *snapshot
+	}
+
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+	app.copyRouteInto(&found, live)
 	return found
 }
