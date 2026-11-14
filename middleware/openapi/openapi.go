@@ -28,6 +28,10 @@ type appCache struct {
 	uiPages  map[string]cachedBody
 	specBody cachedBody
 	specRev  uint64
+	// specMu and uiMu serialize the builds of one app, so a slow spec build holds up neither another app's
+	// requests nor the same app's UI page.
+	specMu sync.Mutex
+	uiMu   sync.Mutex
 }
 
 type cachedBody struct {
@@ -60,8 +64,11 @@ func New(config ...Config) fiber.Handler {
 		caches  = make(map[weak.Pointer[fiber.App]]*appCache)
 	)
 
-	// cacheFor drops the caches of collected apps and, past the bound, an arbitrary entry. Caller holds cacheMu.
+	// cacheFor drops the caches of collected apps and, past the bound, an arbitrary entry.
 	cacheFor := func(app *fiber.App) *appCache {
+		cacheMu.Lock()
+		defer cacheMu.Unlock()
+
 		key := weak.Make(app)
 		cache, ok := caches[key]
 		if !ok {
@@ -85,10 +92,10 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	specBytes := func(app *fiber.App) (cachedBody, error) {
-		cacheMu.Lock()
-		defer cacheMu.Unlock()
-
 		cache := cacheFor(app)
+		cache.specMu.Lock()
+		defer cache.specMu.Unlock()
+
 		rev := app.RoutesRevision()
 		if cache.specBody.data == nil || cache.specRev != rev {
 			appCfg := app.Config()
@@ -103,10 +110,10 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	uiBytes := func(app *fiber.App, targetPath string) (cachedBody, error) {
-		cacheMu.Lock()
-		defer cacheMu.Unlock()
-
 		cache := cacheFor(app)
+		cache.uiMu.Lock()
+		defer cache.uiMu.Unlock()
+
 		if body, ok := cache.uiPages[targetPath]; ok {
 			return body, nil
 		}

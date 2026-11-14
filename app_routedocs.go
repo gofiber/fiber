@@ -167,23 +167,13 @@ func responseKey(status int) string {
 	return utils.FormatInt(int64(status))
 }
 
-func defaultResponseDescription(status int) string {
-	if status == 0 {
-		return "Default response"
-	}
-	if text := utils.StatusMessage(status); text != "" {
-		return text
-	}
-	return "Status " + utils.FormatInt(int64(status))
-}
-
-func getOrCreateResponse(route *Route, key string, status int) RouteResponse {
+func getOrCreateResponse(route *Route, key string) RouteResponse {
 	if route.Responses == nil {
 		route.Responses = make(map[string]RouteResponse)
 	}
 	resp, ok := route.Responses[key]
 	if !ok {
-		resp = RouteResponse{Description: defaultResponseDescription(status)}
+		resp = RouteResponse{Description: schemautil.ResponseDescription(key)}
 	}
 	return resp
 }
@@ -193,7 +183,7 @@ func docAddResponse(status int, description string, schema any, schemaRef string
 
 	explicitDescription := description != ""
 	if !explicitDescription {
-		description = defaultResponseDescription(status)
+		description = schemautil.ResponseDescription(responseKey(status))
 	}
 
 	key := responseKey(status)
@@ -389,7 +379,7 @@ func docResponseContent(status int, description string, content map[string]Route
 
 	key := responseKey(status)
 	return func(route *Route) {
-		resp := getOrCreateResponse(route, key, status)
+		resp := getOrCreateResponse(route, key)
 		if description != "" {
 			resp.Description = description
 		}
@@ -408,7 +398,7 @@ func docResponseLink(status int, name string, link map[string]any) func(route *R
 func docSetResponseEntry(status int, name string, entry map[string]any, pick func(*RouteResponse) *map[string]any) func(route *Route) {
 	key := responseKey(status)
 	return func(route *Route) {
-		resp := getOrCreateResponse(route, key, status)
+		resp := getOrCreateResponse(route, key)
 		entries := pick(&resp)
 		if *entries == nil {
 			*entries = make(map[string]any)
