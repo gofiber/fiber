@@ -1393,30 +1393,34 @@ func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string
 func (app *App) deleteRoutes(methods []string, inLock, user func(r *Route) bool) {
 	methods, indexes := app.removalScope(methods)
 
-	app.mutex.Lock()
-	var candidates []*Route
-	for _, m := range indexes {
-		for _, route := range app.stack[m] {
-			if inLock == nil || inLock(route) {
-				candidates = append(candidates, route)
+	candidates, snapshots := func() ([]*Route, []Route) {
+		app.mutex.Lock()
+		defer app.mutex.Unlock()
+
+		var candidates []*Route
+		for _, m := range indexes {
+			for _, route := range app.stack[m] {
+				if inLock == nil || inLock(route) {
+					candidates = append(candidates, route)
+				}
 			}
 		}
-	}
-	matched := make(map[*Route]struct{}, len(candidates))
-	if user == nil {
-		for _, route := range candidates {
-			matched[route] = struct{}{}
+		if user == nil {
+			matched := make(map[*Route]struct{}, len(candidates))
+			for _, route := range candidates {
+				matched[route] = struct{}{}
+			}
+			app.removeMatchedLocked(methods, indexes, matched)
+			return nil, nil
 		}
-		app.removeMatchedLocked(methods, indexes, matched)
-		app.mutex.Unlock()
-		return
-	}
-	snapshots := make([]Route, len(candidates))
-	for i, route := range candidates {
-		app.copyRouteInto(&snapshots[i], route)
-	}
-	app.mutex.Unlock()
+		snapshots := make([]Route, len(candidates))
+		for i, route := range candidates {
+			app.copyRouteInto(&snapshots[i], route)
+		}
+		return candidates, snapshots
+	}()
 
+	matched := make(map[*Route]struct{})
 	for i := range snapshots {
 		if user(&snapshots[i]) {
 			matched[candidates[i]] = struct{}{}

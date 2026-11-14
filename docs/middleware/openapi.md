@@ -333,8 +333,8 @@ routers, groups and `RouteChain` chains exactly as they do on the app.
 Several routes of one path and method on different hosts are one operation in
 the document, described from the first registration, with every host in its
 `servers`. A route registered for every host after a domain route makes that
-operation apply to every host, and one registered before it shadows the domain
-route, which Fiber never reaches. A sub-app with `Domain` routes of its own,
+operation apply to every host, and one registered before it answers on every
+host first, so the domain route is reached only if that handler calls `c.Next()`. A sub-app with `Domain` routes of its own,
 mounted on a `Domain` router, answers only on a host that matches both patterns.
 The document names the one pattern they reduce to, a literal label winning over a
 parameter, and leaves out a route no host can reach, such as two different
