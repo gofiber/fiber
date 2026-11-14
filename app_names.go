@@ -1,12 +1,27 @@
 package fiber
 
-func (app *App) applyToLatest(apply func(route *Route)) {
+import (
+	"sync/atomic"
+)
+
+// applyToCursor applies a documentation change to the registration cursor points at. A nil cursor is the
+// app's own and targets its latest registration; a cursor still at 0 belongs to a router that registered
+// nothing yet, and changes nothing rather than retargeting the app's latest route.
+func (app *App) applyToCursor(cursor *atomic.Uint64, apply func(route *Route)) {
 	if apply == nil {
 		return
 	}
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-	app.applyAndBumpLocked(app.latestRegID, apply)
+
+	regID := app.latestRegID
+	if cursor != nil {
+		regID = cursor.Load()
+	}
+	if regID == 0 {
+		return
+	}
+	app.applyAndBumpLocked(regID, apply)
 }
 
 // applyAndBumpLocked applies a mutation to the entries of regID and bumps the routes revision; the caller must hold app.mutex.
@@ -49,15 +64,6 @@ func (app *App) fireOnNameHooks(named *Route) {
 	if err := app.hooks.executeOnNameHooks(named); err != nil {
 		panic(err)
 	}
-}
-
-func (app *App) applyToRegistration(regID uint64, apply func(route *Route)) {
-	if regID == 0 || apply == nil {
-		return
-	}
-	app.mutex.Lock()
-	defer app.mutex.Unlock()
-	app.applyAndBumpLocked(regID, apply)
 }
 
 // applyToRegIDLocked applies a mutation to every entry of regID except mount placeholders.
@@ -121,7 +127,8 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 // namedRouteIndex is an immutable by-name snapshot of the routes at one revision.
 type namedRouteIndex struct {
 	routes   map[string]*Route
-	small    []*Route // the same snapshots in registration order when there are few, to scan instead of hash
+	live     map[*Route]*Route // snapshot -> the route it was taken from, for GetRoute to clone the documentation of
+	small    []*Route          // the same snapshots in registration order when there are few, to scan instead of hash
 	revision uint64
 }
 
@@ -147,20 +154,26 @@ func (app *App) indexNamedRoutes() *namedRouteIndex {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
+	return app.indexNamedRoutesLocked()
+}
+
+// indexNamedRoutesLocked is indexNamedRoutes for a caller holding app.mutex. The snapshots carry no
+// documentation, which only GetRoute reads and clones from the live route.
+func (app *App) indexNamedRoutesLocked() *namedRouteIndex {
 	revision := app.routesRevision.Load()
 	if index := app.namedRoutes.Load(); index != nil && index.revision == revision {
 		return index
 	}
 
-	index := &namedRouteIndex{revision: revision, routes: make(map[string]*Route)}
+	index := &namedRouteIndex{revision: revision, routes: make(map[string]*Route), live: make(map[*Route]*Route)}
 	var inOrder []*Route
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if _, taken := index.routes[route.Name]; taken {
 				continue
 			}
-			snapshot := new(Route)
-			app.copyRouteInto(snapshot, route)
+			snapshot := app.copyRouteBase(route)
+			index.live[snapshot] = route
 			index.routes[route.Name] = snapshot
 			inOrder = append(inOrder, snapshot)
 		}
@@ -177,10 +190,17 @@ func (app *App) indexNamedRoutes() *namedRouteIndex {
 
 // GetRoute returns a copy of the route with the given name; Handlers and Params are shared and must not be modified.
 func (app *App) GetRoute(name string) (found Route) { //nolint:nonamedreturns // the named result is what keeps this to a single struct move
-	snapshot := app.namedRoute(name)
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	index := app.namedRoutes.Load()
+	if index == nil || index.revision != app.routesRevision.Load() {
+		index = app.indexNamedRoutesLocked()
+	}
+	snapshot := index.routes[name]
 	if snapshot == nil {
 		return found
 	}
-	app.copyRouteInto(&found, snapshot)
+	app.copyRouteInto(&found, index.live[snapshot])
 	return found
 }

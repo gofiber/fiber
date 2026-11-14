@@ -1,6 +1,7 @@
 package fiber
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -2184,4 +2185,109 @@ func Test_AutoHeadTwin_IsNeverHiddenWhenTheGetWasHiddenFirst(t *testing.T) {
 			}
 		}
 	}
+}
+
+func Test_Route_Domains(t *testing.T) {
+	t.Parallel()
+	sub := New()
+	sub.Domain(":tenant.example.com").Get("/pets", testHandlerOK)
+	sub.Get("/plain", testHandlerOK)
+	app := New()
+	app.Domain("a.example.com").Get("/a", testHandlerOK)
+	app.Domain("api.example.com").Use("/v1", sub)
+	app.Get("/any", testHandlerOK)
+	app.Handler()
+
+	domains := map[string][]string{}
+	for _, route := range app.GetRoutes(true) {
+		if route.Method == MethodGet && !route.IsAutoHead() {
+			domains[route.Path] = route.Domains()
+			require.Equal(t, route.Domain(), firstOrEmpty(route.Domains()), route.Path)
+		}
+	}
+	require.Equal(t, []string{"a.example.com"}, domains["/a"])
+	require.Equal(t, []string{":tenant.example.com", "api.example.com"}, domains["/v1/pets"], "innermost first")
+	require.Equal(t, []string{"api.example.com"}, domains["/v1/plain"])
+	require.Nil(t, domains["/any"])
+}
+
+func firstOrEmpty(list []string) string {
+	if len(list) == 0 {
+		return ""
+	}
+	return list[0]
+}
+
+func Test_Route_MarshalsWithoutDocumentedModels(t *testing.T) {
+	t.Parallel()
+	type model struct {
+		Fn func() `json:"fn"`
+	}
+	app := New()
+	app.Get("/documented", testHandlerOK).
+		Accepts(model{}).
+		Returns(StatusOK, model{}).
+		Params(ParamInQuery, model{}).
+		Summary("documented").
+		Tags("a")
+	app.Get("/plain", testHandlerOK)
+
+	data, err := json.Marshal(app.GetRoutes(true))
+	require.NoError(t, err)
+	var routes []map[string]any
+	require.NoError(t, json.Unmarshal(data, &routes))
+	byPath := map[string]map[string]any{}
+	for _, route := range routes {
+		if route["method"] == MethodGet {
+			byPath[route["path"].(string)] = route //nolint:errcheck,forcetypeassert // the path is always a string
+		}
+	}
+	require.Equal(t, map[string]any{"method": MethodGet, "name": "", "params": nil, "path": "/plain"}, byPath["/plain"], "an undocumented route marshals as before")
+	require.Equal(t, "documented", byPath["/documented"]["summary"])
+	for _, key := range []string{"responses", "requestBody", "parameters", "parameterModels"} {
+		require.NotContains(t, byPath["/documented"], key)
+	}
+}
+
+func Test_DocHelpers_OnARouterWithoutRoutesChangeNothing(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/a", testHandlerOK)
+	app.Group("/g").Summary("group").Tags("g")
+	app.Domain("x.example.com").Summary("domain").Deprecated()
+	app.Group("/h").Domain("y.example.com").Description("both")
+
+	route := app.GetRoutes(true)[0]
+	require.Empty(t, route.Summary)
+	require.Empty(t, route.Description)
+	require.Empty(t, route.Tags)
+	require.False(t, route.Deprecated)
+}
+
+func Test_GetRoute_RacesWithDocHelpers(t *testing.T) {
+	t.Parallel()
+	app := New()
+	route := app.Get("/x", testHandlerOK).Name("x")
+	app.Get("/y", testHandlerOK)
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			route.Response(StatusOK, "ok", MIMEApplicationJSON).Tags("t" + strconv.Itoa(i%3))
+		}
+	}()
+	for range 200 {
+		got := app.GetRoute("x")
+		_ = len(got.Responses)
+		app.RemoveRouteFunc(func(r *Route) bool { return len(r.Responses) > 1000 })
+	}
+	close(stop)
+	apptest.Recv(t, done, 10*time.Second, "the documenting goroutine did not stop")
 }

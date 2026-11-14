@@ -735,7 +735,7 @@ app.Post("/users", createUser).
     Returns(fiber.StatusCreated, User{})
 ```
 
-A `Route` exposes what these helpers recorded, along with where it came from:
+A `Route` exposes what these helpers recorded, along with where it came from. Marshaling a `Route` with `encoding/json` leaves out `Responses`, `RequestBody`, `Parameters` and `ParameterModels`, which can hold Go models that need not be marshalable:
 
 | Method | Returns |
 |:-------|:--------|
@@ -743,7 +743,8 @@ A `Route` exposes what these helpers recorded, along with where it came from:
 | `IsAutoHead()` | `true` for a `HEAD` route Fiber derived from a `GET` route |
 | `IsHidden()` | `true` when `Hidden` excluded the route from generated documents |
 | `GroupPrefix()`, `GroupName()` | The prefix and name of the group the route was registered through, or `""` |
-| `Domain()` | The host pattern from [`Domain`](#domain), or `""` for a route that answers on every host |
+| `Domain()` | The host pattern from [`Domain`](#domain), or `""` for a route that answers on every host. A route behind several patterns reports the innermost |
+| `Domains()` | Every host pattern the route is behind, innermost first, or `nil` for every host. A request reaches the route only when its hostname matches all of them. A sub-app that has `Domain` routes of its own and is mounted on a `Domain` router has two |
 | `InnerHandlers()` | The handlers as registered. A domain router wraps each handler in a host check, which `Handlers` then holds; everywhere else both are the same chain |
 
 ### RoutesRevision

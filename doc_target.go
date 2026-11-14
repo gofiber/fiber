@@ -13,11 +13,7 @@ type docTarget[R any] struct {
 }
 
 func (t *docTarget[R]) document(apply func(route *Route)) R {
-	if t.cursor == nil {
-		t.app.applyToLatest(apply)
-	} else {
-		t.app.applyToRegistration(t.cursor.Load(), apply)
-	}
+	t.app.applyToCursor(t.cursor, apply)
 	return t.self
 }
 

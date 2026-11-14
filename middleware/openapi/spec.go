@@ -313,6 +313,10 @@ func (b *specBuilder) addRoutes(routes []fiber.Route) {
 	)
 	for i := range routes {
 		r := &routes[i]
+		host, reachable := effectiveHost(r.Domains())
+		if !reachable {
+			continue
+		}
 		if r.Method != coveredMethod {
 			coveredMethod = r.Method
 			covering = covering[:0]
@@ -320,7 +324,7 @@ func (b *specBuilder) addRoutes(routes []fiber.Route) {
 		if r.IsMiddleware() {
 			if b.policy.middlewareInference {
 				if set := handlerMiddleware(r.InnerHandlers()); set != 0 {
-					covering = append(covering, coveringMiddleware{prefix: r.Path, domain: r.Domain(), set: set})
+					covering = append(covering, coveringMiddleware{prefix: r.Path, domain: host, set: set})
 				}
 			}
 			continue
@@ -329,6 +333,7 @@ func (b *specBuilder) addRoutes(routes []fiber.Route) {
 			continue
 		}
 		facts := b.inferRoute(r, covering)
+		facts.host = host
 		for _, variant := range buildOpenAPIPathVariants(r.Path, r.Params, b.env.strict) {
 			b.addVariant(r, &facts, &variant)
 		}
@@ -371,7 +376,7 @@ func (b *specBuilder) declareParameters(r *fiber.Route, facts *routeFacts) {
 func (b *specBuilder) addVariant(r *fiber.Route, facts *routeFacts, variant *pathVariant) {
 	methodLower := utilsstrings.ToLower(r.Method)
 	if _, exists := b.paths[variant.Path][methodLower]; exists {
-		b.addHost(variant.Path, methodLower, r)
+		b.addHost(variant.Path, methodLower, facts.host)
 		return
 	}
 	// Templates identical up to parameter names must not coexist in OpenAPI; first wins.
@@ -380,7 +385,7 @@ func (b *specBuilder) addVariant(r *fiber.Route, facts *routeFacts, variant *pat
 		// Join the already published path item, or drop the operation if its method is taken.
 		if canonical.path != variant.Path {
 			if _, taken := b.paths[canonical.path][methodLower]; taken {
-				b.addHost(canonical.path, methodLower, r)
+				b.addHost(canonical.path, methodLower, facts.host)
 				return
 			}
 			adoptCanonicalParamNames(variant, canonical.params)
@@ -399,13 +404,20 @@ func (b *specBuilder) addVariant(r *fiber.Route, facts *routeFacts, variant *pat
 	b.paths[variant.Path][methodLower] = b.buildOperation(r, facts, variant)
 }
 
-// addHost lists a domain route's host on the operation that won its path and method.
-func (b *specBuilder) addHost(path, method string, r *fiber.Route) {
+// addHost lists the host of a route that lost its path and method to an earlier registration on the
+// operation that won. An operation for every host already covers it, and one for an any-host route that
+// follows becomes one for every host.
+func (b *specBuilder) addHost(path, method, host string) {
 	op := b.paths[path][method]
 	if len(op.Servers) == 0 {
 		return
 	}
-	for _, server := range domainServers(r.Domain()) {
+	if host == "" {
+		op.Servers = nil
+		b.paths[path][method] = op
+		return
+	}
+	for _, server := range domainServers(host) {
 		if !slices.ContainsFunc(op.Servers, func(known Server) bool { return known.URL == server.URL }) {
 			op.Servers = append(slices.Clone(op.Servers), server)
 		}
@@ -479,7 +491,7 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 		Responses:    responses,
 		Security:     facts.security,
 		ExternalDocs: r.ExternalDocs,
-		Servers:      domainServers(r.Domain()),
+		Servers:      domainServers(facts.host),
 		extensions:   r.OperationExtensions,
 	}
 }
