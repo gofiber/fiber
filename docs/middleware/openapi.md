@@ -330,6 +330,17 @@ recognized middleware (`keyauth` registered with `api.Use(...)` documents the
 security requirement of the routes under it) and `Hidden` work on domain
 routers, groups and `RouteChain` chains exactly as they do on the app.
 
+Several routes of one path and method on different hosts are one operation in
+the document, described from the first registration, with every host in its
+`servers`. A route registered for every host after a domain route makes that
+operation apply to every host, and one registered before it shadows the domain
+route, which Fiber never reaches. A sub-app with `Domain` routes of its own,
+mounted on a `Domain` router, answers only on a host that matches both patterns.
+The document names the one pattern they reduce to, a literal label winning over a
+parameter, and leaves out a route no host can reach, such as two different
+literals. A `Use` registered on a `Domain` router covers the routes of every host
+its pattern matches.
+
 ### Document a route
 
 The shortest way to document a route is to hand it the Go types it already

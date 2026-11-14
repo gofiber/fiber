@@ -176,12 +176,14 @@ type Route struct { // betteralign:ignore - see below
 	Consumes    string `json:"consumes,omitempty"`
 	Produces    string `json:"produces,omitempty"`
 
-	Responses   map[string]RouteResponse `json:"responses,omitempty"`
-	RequestBody *RouteRequestBody        `json:"requestBody,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	// Responses, RequestBody, Parameters and ParameterModels can hold the Go models a route is documented
+	// from, which need not be marshalable (a func field fails json.Marshal), so a Route marshals without them.
+	Responses   map[string]RouteResponse `json:"-"`
+	RequestBody *RouteRequestBody        `json:"-"`
 
-	Parameters []RouteParameter `json:"parameters,omitempty"`
+	Parameters []RouteParameter `json:"-"`
 	// ParameterModels are structs expanded into parameters when the spec is built.
-	ParameterModels []RouteParameterModel `json:"parameterModels,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	ParameterModels []RouteParameterModel `json:"-"`
 	Tags            []string              `json:"tags,omitempty"`
 	// Security holds the OpenAPI security requirements; a non-nil empty slice means none are needed.
 	Security     []map[string][]string `json:"security,omitempty"`
@@ -559,13 +561,26 @@ func (r *Route) InnerHandlers() []Handler {
 	return r.Handlers
 }
 
-// Domain returns the host pattern from app.Domain, or "" for any host. A route behind several
-// patterns, as a Domain-mounted app's route can be, reports the innermost.
+// Domain returns the host pattern from app.Domain, or "" for any host. A route behind several patterns,
+// as a Domain-mounted app's route can be, reports the innermost; see Domains.
 func (r *Route) Domain() string {
 	if len(r.hosts) == 0 {
 		return ""
 	}
 	return r.hosts[0].pattern
+}
+
+// Domains returns every host pattern the route is behind, innermost first, or nil for any host. A request
+// reaches the route only when its hostname matches all of them.
+func (r *Route) Domains() []string {
+	if len(r.hosts) == 0 {
+		return nil
+	}
+	patterns := make([]string, len(r.hosts))
+	for i := range r.hosts {
+		patterns[i] = r.hosts[i].pattern
+	}
+	return patterns
 }
 
 // RouteParameter describes an input captured by a route. Content wins over Schema/SchemaRef.
@@ -1352,7 +1367,7 @@ func (app *App) RemoveRoute(path string, methods ...string) {
 		}
 		return r.path == norm // compare private normalized path
 	}
-	app.deleteRoute(methods, pathMatchFunc)
+	app.deleteRoutes(methods, pathMatchFunc, nil)
 }
 
 // RemoveRouteByName is used to remove a route from the stack by name.
@@ -1360,7 +1375,7 @@ func (app *App) RemoveRoute(path string, methods ...string) {
 // You should call RebuildTree after using this to ensure consistency of the tree.
 func (app *App) RemoveRouteByName(name string, methods ...string) {
 	matchFunc := func(r *Route) bool { return r.Name == name }
-	app.deleteRoute(methods, matchFunc)
+	app.deleteRoutes(methods, matchFunc, nil)
 }
 
 // RemoveRouteFunc is used to remove a route from the stack by a custom match function.
@@ -1369,49 +1384,41 @@ func (app *App) RemoveRouteByName(name string, methods ...string) {
 // Note: The route.Path is original path, not the normalized path.
 // The matcher receives a copy of each route.
 func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string) {
-	app.deleteRouteSnapshot(methods, matchFunc)
+	app.deleteRoutes(methods, nil, matchFunc)
 }
 
-// deleteRoute removes the routes matchFunc selects; matchFunc runs under app.mutex on live entries.
-func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
+// deleteRoutes removes the routes both filters select. inLock, when set, runs under app.mutex on the live
+// entries and may only read what registration fixes; user, when set, runs unlocked on copies of the
+// routes inLock kept, so it may call locking app methods and never sees a route mid-update.
+func (app *App) deleteRoutes(methods []string, inLock, user func(r *Route) bool) {
 	methods, indexes := app.removalScope(methods)
 
 	app.mutex.Lock()
-	defer app.mutex.Unlock()
-
-	matched := make(map[*Route]struct{})
+	var candidates []*Route
 	for _, m := range indexes {
 		for _, route := range app.stack[m] {
-			if matchFunc(route) {
-				matched[route] = struct{}{}
+			if inLock == nil || inLock(route) {
+				candidates = append(candidates, route)
 			}
 		}
 	}
-	app.removeMatchedLocked(methods, indexes, matched)
-}
-
-// deleteRouteSnapshot is deleteRoute for user matchers, which run unlocked on snapshots.
-func (app *App) deleteRouteSnapshot(methods []string, matchFunc func(r *Route) bool) {
-	methods, indexes := app.removalScope(methods)
-
-	app.mutex.Lock()
-	n := 0
-	for _, m := range indexes {
-		n += len(app.stack[m])
-	}
-	candidates := make([]*Route, 0, n)
-	snapshots := make([]Route, n)
-	for _, m := range indexes {
-		for _, route := range app.stack[m] {
-			app.copyRouteInto(&snapshots[len(candidates)], route)
-			candidates = append(candidates, route)
+	matched := make(map[*Route]struct{}, len(candidates))
+	if user == nil {
+		for _, route := range candidates {
+			matched[route] = struct{}{}
 		}
+		app.removeMatchedLocked(methods, indexes, matched)
+		app.mutex.Unlock()
+		return
+	}
+	snapshots := make([]Route, len(candidates))
+	for i, route := range candidates {
+		app.copyRouteInto(&snapshots[i], route)
 	}
 	app.mutex.Unlock()
 
-	matched := make(map[*Route]struct{})
 	for i := range snapshots {
-		if matchFunc(&snapshots[i]) {
+		if user(&snapshots[i]) {
 			matched[candidates[i]] = struct{}{}
 		}
 	}

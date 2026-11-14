@@ -3,12 +3,9 @@ package openapi
 import (
 	"maps"
 	"slices"
-	"strconv"
-
-	"github.com/gofiber/fiber/v3/internal/schemautil"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/fiber/v3/internal/schemautil"
 )
 
 func contentEntry(mt fiber.RouteMediaType, reg *schemaRegistry) map[string]any {
@@ -83,16 +80,6 @@ func routeMediaTypeContent(content map[string]fiber.RouteMediaType, reg *schemaR
 	return out
 }
 
-// defaultResponseDescription names a response given no description: the status text, or a generic label.
-func defaultResponseDescription(code string) string {
-	if status, err := strconv.Atoi(code); err == nil {
-		if text := utils.StatusMessage(status); text != "" {
-			return text
-		}
-	}
-	return "Response"
-}
-
 // convertRouteResponses converts response metadata, falling back to the route's Produces for a media type.
 func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallbackMediaType string, reg *schemaRegistry) map[string]response {
 	if len(routeResponses) == 0 {
@@ -125,7 +112,7 @@ func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallba
 		}
 		description := resp.Description
 		if description == "" {
-			description = defaultResponseDescription(code)
+			description = schemautil.ResponseDescription(code)
 		}
 		merged[code] = response{
 			Description: description,

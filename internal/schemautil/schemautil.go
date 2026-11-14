@@ -4,6 +4,9 @@ package schemautil
 import (
 	"encoding/json"
 	"reflect"
+	"strconv"
+
+	"github.com/gofiber/utils/v2"
 )
 
 // DefaultType reports the type to add to a parameter schema that names none, or false if it already says what it is.
@@ -87,4 +90,19 @@ func AsMap(v any) (map[string]any, bool) {
 		out[iter.Key().String()] = iter.Value().Interface()
 	}
 	return out, true
+}
+
+// ResponseDescription names a response given no description, as the Response Object requires one: the
+// status text for a known status code, and a generic label for the "default" key, a range such as "4XX"
+// or a code without text.
+func ResponseDescription(code string) string {
+	if code == "default" {
+		return "Default response"
+	}
+	if status, err := strconv.Atoi(code); err == nil {
+		if text := utils.StatusMessage(status); text != "" {
+			return text
+		}
+	}
+	return "Response"
 }

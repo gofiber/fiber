@@ -69,3 +69,21 @@ func Test_AsMap(t *testing.T) {
 		require.False(t, ok, "%T", v)
 	}
 }
+
+func Test_ResponseDescription(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"200":     "OK",
+		"404":     "Not Found",
+		"299":     "Response",
+		"default": "Default response",
+		"4XX":     "Response",
+		"":        "Response",
+	}
+	for code, want := range cases {
+		t.Run(code, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, want, ResponseDescription(code))
+		})
+	}
+}

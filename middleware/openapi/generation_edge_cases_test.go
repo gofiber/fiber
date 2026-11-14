@@ -655,5 +655,5 @@ func Test_OpenAPI_SamePathOnSeveralDomainsListsEveryHost(t *testing.T) {
 	require.Equal(t, []string{"//a.example.com", "//b.example.com"}, urls("/pets"))
 	require.Equal(t, []string{"//a.example.com", "//{tenant}.example.org"}, urls("/pets/{id}"))
 	require.Empty(t, urls("/shared"))
-	require.Equal(t, []string{"//c.example.com"}, urls("/only"), "a route registered for every host later does not widen the first")
+	require.Empty(t, urls("/only"), "a route registered for every host later makes the operation one for every host")
 }

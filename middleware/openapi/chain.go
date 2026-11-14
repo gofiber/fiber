@@ -205,9 +205,10 @@ func literalSatisfies(constraint, literal string) bool {
 
 func middlewareOn(covering []coveringMiddleware, route *fiber.Route, equal segmentEqual) middlewareSet {
 	set := handlerMiddleware(route.InnerHandlers())
+	host, _ := effectiveHost(route.Domains())
 	for i := range covering {
 		cover := &covering[i]
-		if cover.domain != "" && cover.domain != route.Domain() {
+		if !hostCovers(cover.domain, host) {
 			continue
 		}
 		if coversRoute(cover.prefix, route.Path, equal) {

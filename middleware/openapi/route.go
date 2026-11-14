@@ -30,6 +30,7 @@ func newRoutePolicy(cfg *Config, env specEnv) routePolicy {
 // routeFacts is a route's metadata with inferences filled in, before its path is expanded.
 type routeFacts struct {
 	security           *[]map[string][]string
+	host               string // the effective host pattern of a domain route, or "" for any host
 	summary            string
 	respType           string
 	ownConsumes        string
