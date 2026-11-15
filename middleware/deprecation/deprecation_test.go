@@ -411,8 +411,8 @@ func Test_Deprecation_AfterChain(t *testing.T) {
 func Test_Deprecation_ReplacesOtherSpelling(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name      string
 		appConfig fiber.Config
+		name      string
 		disable   bool
 	}{
 		{name: "app without normalizing", appConfig: fiber.Config{DisableHeaderNormalizing: true}},
