@@ -97,21 +97,36 @@ func configDefault(config ...Config) Config {
 
 // isURIReference reports whether s is a URI reference that can be written
 // between the angle brackets of a Link header (RFC 8288 Section 3): only the
-// characters RFC 3986 allows, parsable, and with a host when it is an http or
-// https URI (RFC 9110 Section 4.2). A relative reference is allowed, and
-// recipients resolve it against the request URI.
+// characters RFC 3986 allows, '%' only to start a percent-encoding, parsable,
+// without userinfo, and with a host when it is an http or https URI or a
+// network-path reference (RFC 9110 Section 4.2). A relative reference is
+// allowed, and recipients resolve it against the request URI.
 func isURIReference(s string) bool {
 	for i := range len(s) {
 		c := s[i]
-		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') &&
-			strings.IndexByte(uriPunctuation, c) < 0 {
+		if c == '%' && (i+2 >= len(s) || !isHex(s[i+1]) || !isHex(s[i+2])) {
+			return false
+		}
+		if !isAlnum(c) && strings.IndexByte(uriPunctuation, c) < 0 {
 			return false
 		}
 	}
 	u, err := url.Parse(s)
-	if err != nil {
+	if err != nil || u.User != nil {
 		return false
 	}
+	if u.Scheme != "http" && u.Scheme != "https" && !strings.HasPrefix(s, "//") {
+		return true
+	}
 
-	return (u.Scheme != "http" && u.Scheme != "https") || u.Host != ""
+	// Hostname, not Host: url.Parse keeps a port-only authority such as ":443" in Host.
+	return u.Hostname() != ""
+}
+
+func isAlnum(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+func isHex(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }

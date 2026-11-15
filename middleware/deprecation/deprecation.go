@@ -2,6 +2,7 @@ package deprecation
 
 import (
 	"bytes"
+	"slices"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
@@ -23,18 +24,7 @@ func New(config ...Config) fiber.Handler {
 	if !cfg.Sunset.IsZero() {
 		sunset = utils.FormatHTTPDate(cfg.Sunset)
 	}
-	link, links := formatLinks(cfg.Link, cfg.SunsetLink)
-	linkBytes := []byte(link)
-
-	// Replacing the header block drops every header set below at once, so the
-	// first of them tells whether the response still carries them.
-	sentinel, sentinelValue := fiber.HeaderLink, linkBytes
-	switch {
-	case deprecation != "":
-		sentinel, sentinelValue = fiber.HeaderDeprecation, nil
-	case sunset != "":
-		sentinel, sentinelValue = fiber.HeaderSunset, nil
-	}
+	l := newLinks(cfg.Link, cfg.SunsetLink)
 
 	return func(c fiber.Ctx) error {
 		if cfg.Next != nil && cfg.Next(c) {
@@ -43,15 +33,15 @@ func New(config ...Config) fiber.Handler {
 
 		// Set before the chain runs, so a response the handler writes itself with
 		// c.End(), and the 500 an outer recover.New() sends for a panic, carry them.
+		h := &c.Response().Header
+		canonical := headerlookup.Canonical(c)
 		if deprecation != "" {
-			c.Set(fiber.HeaderDeprecation, deprecation)
+			replace(c, h, fiber.HeaderDeprecation, deprecation, canonical)
 		}
 		if sunset != "" {
-			c.Set(fiber.HeaderSunset, sunset)
+			replace(c, h, fiber.HeaderSunset, sunset, canonical)
 		}
-		if link != "" {
-			addLinks(c, link, links, headerlookup.Canonical(c))
-		}
+		l.add(c, h, canonical)
 
 		err := c.Next()
 
@@ -61,68 +51,168 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// A proxied response, c.Response().Reset() and the 304 or 416 of SendFile
-		// replace the header block. The byte-exact read answers for the common
-		// case, where the headers set above are still there.
-		h := &c.Response().Header
-		if v := h.Peek(sentinel); len(v) > 0 && (sentinelValue == nil || bytes.Contains(v, sentinelValue)) {
+		// replace the header block, and a later handler may remove or add a line,
+		// so each header is checked on its own. The keyed reads answer for the
+		// common case, where every line set above is still there and alone.
+		if canonical && intact(h, deprecation != "", sunset != "", l.parts) {
 			return err
 		}
 
 		// A proxied response may hold field names as the upstream spelled them.
-		canonical := fieldname.Canonical(h)
-		if deprecation != "" && len(fieldname.First(h, fiber.HeaderDeprecation, canonical)) == 0 {
-			c.Set(fiber.HeaderDeprecation, deprecation)
+		canonical = fieldname.Canonical(h)
+		if deprecation != "" {
+			keepOne(c, h, fiber.HeaderDeprecation, deprecation, canonical)
 		}
-		if sunset != "" && len(fieldname.First(h, fiber.HeaderSunset, canonical)) == 0 {
-			c.Set(fiber.HeaderSunset, sunset)
+		if sunset != "" {
+			keepOne(c, h, fiber.HeaderSunset, sunset, canonical)
 		}
-		if link != "" && !hasLink(h, linkBytes, canonical) {
-			addLinks(c, link, links, canonical)
-		}
+		l.add(c, h, canonical)
 
 		return err
 	}
 }
 
-// formatLinks returns the Link value the middleware adds when the response has
-// no Link header yet, and the pairs c.Links takes to fold them into one.
+// intact reports, in one walk over the canonical names, whether each configured
+// date has exactly one line and the Link lines hold every link.
 //
-//nolint:nonamedreturns // gocritic unnamedResult prefers naming the value and the pairs
-func formatLinks(deprecationLink, sunsetLink string) (link string, links []string) {
-	if deprecationLink != "" {
-		links = append(links, deprecationLink, "deprecation")
-		link = "<" + deprecationLink + `>; rel="deprecation"`
+//nolint:revive // flag-parameter: the flags say which headers are configured
+func intact(h *fasthttp.ResponseHeader, deprecation, sunset bool, parts [][]byte) bool {
+	if fieldname.HasTrailers(h) {
+		return false
 	}
-	if sunsetLink != "" {
-		links = append(links, sunsetLink, "sunset")
-		if link != "" {
-			link += ","
+	var dep, sun int
+	var held uint8
+	for k, v := range h.All() {
+		switch string(k) {
+		case fiber.HeaderDeprecation:
+			dep++
+		case fiber.HeaderSunset:
+			sun++
+		case fiber.HeaderLink:
+			for i, part := range parts {
+				if bytes.Contains(v, part) {
+					held |= 1 << i
+				}
+			}
 		}
-		link += "<" + sunsetLink + `>; rel="sunset"`
 	}
 
-	return link, links
+	return (!deprecation || dep == 1) && (!sunset || sun == 1) && held == 1<<len(parts)-1
 }
 
-// addLinks writes link as the Link header, or folds the links into the Link
-// header already set, under any spelling of its name.
+// replace sets name to value, removing the field under any other spelling.
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store
-func addLinks(c fiber.Ctx, link string, links []string, canonical bool) {
-	if len(fieldname.First(&c.Response().Header, fiber.HeaderLink, canonical)) == 0 {
-		c.Set(fiber.HeaderLink, link)
+func replace(c fiber.Ctx, h *fasthttp.ResponseHeader, name, value string, canonical bool) {
+	if !canonical {
+		fieldname.Del(h, name, false)
+	}
+	c.Set(name, value)
+}
+
+// keepOne leaves the single-valued field name with exactly one line (RFC 9110
+// Section 5.3): value when the line is gone, and a later writer's value over
+// ours when both are there.
+//
+//nolint:revive // flag-parameter: canonical is a property of the header store
+func keepOne(c fiber.Ctx, h *fasthttp.ResponseHeader, name, value string, canonical bool) {
+	lines := fieldname.Lines(h, name, canonical)
+	switch len(lines) {
+	case 1:
+		return
+	case 0:
+		c.Set(name, value)
 		return
 	}
-	c.Links(links...)
+	// fasthttp's Del moves the last line into the gap, so the order of the lines
+	// says nothing; ours is the one the middleware set before the chain.
+	keep := value
+	for _, v := range lines {
+		if string(v) != value {
+			keep = string(v)
+			break
+		}
+	}
+	fieldname.Del(h, name, canonical)
+	c.Set(name, keep)
 }
 
-// hasLink reports whether a Link field line of h, under any spelling of the
-// name, holds link.
+// links holds the Link values the middleware adds, formatted once.
+type links struct {
+	joined string   // every link, the Link value when the response has none
+	parts  [][]byte // each link on its own, to find the ones a Link line holds
+	pairs  []string // the URL and rel pairs c.Links takes, two per part
+}
+
+func newLinks(deprecationLink, sunsetLink string) links {
+	var l links
+	for _, p := range [][2]string{{deprecationLink, "deprecation"}, {sunsetLink, "sunset"}} {
+		if p[0] == "" {
+			continue
+		}
+		part := "<" + p[0] + `>; rel="` + p[1] + `"`
+		if l.joined != "" {
+			l.joined += ","
+		}
+		l.joined += part
+		l.parts = append(l.parts, []byte(part))
+		l.pairs = append(l.pairs, p[0], p[1])
+	}
+
+	return l
+}
+
+// add writes the links as the Link header, or folds the ones no Link line holds
+// yet into the Link header already set, under any spelling of its name.
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store
-func hasLink(h *fasthttp.ResponseHeader, link []byte, canonical bool) bool {
-	for _, v := range fieldname.Lines(h, fiber.HeaderLink, canonical) {
-		if bytes.Contains(v, link) {
+func (l *links) add(c fiber.Ctx, h *fasthttp.ResponseHeader, canonical bool) {
+	if l.joined == "" {
+		return
+	}
+	lines := fieldname.Lines(h, fiber.HeaderLink, canonical)
+	if len(lines) == 0 {
+		c.Set(fiber.HeaderLink, l.joined)
+		return
+	}
+
+	missing := l.pairs
+	if found := l.held(lines); found != 0 {
+		if found == len(l.parts) {
+			return
+		}
+		// Only one of two links is held, so the other pair is the one left.
+		missing = l.pairs[2:]
+		if !holds(lines, l.parts[0]) {
+			missing = l.pairs[:2]
+		}
+	}
+
+	// c.Links may rewrite its arguments in a custom Ctx, and pairs is shared by
+	// every request (see vary in middleware/cors).
+	if dc, ok := c.(*fiber.DefaultCtx); ok {
+		dc.Links(missing...)
+		return
+	}
+	c.Links(slices.Clone(missing)...)
+}
+
+// held counts the links some Link line already holds.
+func (l *links) held(lines [][]byte) int {
+	n := 0
+	for _, part := range l.parts {
+		if holds(lines, part) {
+			n++
+		}
+	}
+
+	return n
+}
+
+// holds reports whether one of lines holds part.
+func holds(lines [][]byte, part []byte) bool {
+	for _, v := range lines {
+		if bytes.Contains(v, part) {
 			return true
 		}
 	}

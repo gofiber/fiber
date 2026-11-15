@@ -10,15 +10,15 @@ Deprecation does not change how the route behaves. The headers are a hint: clien
 
 `Deprecation` is sent as a Structured Field Date (`@` and Unix seconds), and `Sunset` as an HTTP-date. A date in the future announces an upcoming deprecation or sunset. Both carry whole seconds. RFC 9745 forbids a `Sunset` earlier than `Deprecation`, so `New` panics on that config, compared at that resolution. It also panics on a `Sunset` outside the years 0000 to 9999 and on a `Deprecation` beyond the range of a Structured Field Date, which the headers cannot express.
 
-`Link` and `SunsetLink` may be set without their date, to publish a deprecation or sunset policy before anything is deprecated ([RFC 9745 Section 3.1](https://www.rfc-editor.org/rfc/rfc9745#section-3.1), [RFC 8594 Section 6](https://www.rfc-editor.org/rfc/rfc8594#section-6)). Each is a URI reference ([RFC 8288 Section 3](https://www.rfc-editor.org/rfc/rfc8288#section-3)): absolute, or relative to the request URI. It may hold only the characters [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) allows, so percent-encode anything else, and an `http` or `https` URI needs a host. `New` panics otherwise.
+`Link` and `SunsetLink` may be set without their date, to publish a deprecation or sunset policy before anything is deprecated ([RFC 9745 Section 3.1](https://www.rfc-editor.org/rfc/rfc9745#section-3.1), [RFC 8594 Section 6](https://www.rfc-editor.org/rfc/rfc8594#section-6)). Each is a URI reference ([RFC 8288 Section 3](https://www.rfc-editor.org/rfc/rfc8288#section-3)): absolute, or relative to the request URI. It may hold only the characters [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) allows, so percent-encode anything else, `%` only as the start of a percent-encoding, and no userinfo (`user:password@`), which every client would see. An `http` or `https` URI, and a network-path reference starting with `//`, needs a host. `New` panics otherwise.
 
 ## When the headers are written
 
 The headers are set before the rest of the chain runs, so a response the handler sends itself with `c.End()`, and the 500 an outer `recover.New()` sends for a panic, carry them. A `103 Early Hints` response carries only the `Link` lines, so it gets the deprecation and sunset links but not the two dates.
 
-After the chain returns, the headers are written again when the response no longer carries them, that is when its header block was replaced: proxied responses (`proxy.Do`, `proxy.Forward` and the other proxy helpers), a handler that calls `c.Response().Reset()`, and the `304` and `416` responses of `SendFile` and `static`. A handler that `timeout.New` gave up on is left alone.
+After the chain returns, each configured header and link is checked on its own and written again when the response no longer carries it. That covers a replaced header block (proxied responses from `proxy.Do`, `proxy.Forward` and the other proxy helpers, a handler that calls `c.Response().Reset()`, and the `304` and `416` responses of `SendFile` and `static`), a handler that deletes one of the headers, and a `c.Set(fiber.HeaderLink, ...)` that replaced the links. To leave a route's headers to its handler, skip it with `Next`. A handler that `timeout.New` gave up on is left alone.
 
-A later handler that calls `c.Set(fiber.HeaderLink, ...)` replaces the links, so add links with `c.Links` instead.
+A `Deprecation` or `Sunset` that a later handler or a proxied upstream sets itself is kept instead of the configured one. Both fields take a single value, so when a writer adds a second line (`Header.Add`, `adaptor.HTTPHandler` copying an upstream response, or another spelling of the name under `DisableHeaderNormalizing`), the middleware keeps one of them, the other writer's.
 
 ## Signatures
 
@@ -89,7 +89,7 @@ app.Use(deprecation.New(deprecation.Config{
 
 ## Ordering
 
-- Register it before `cache`. A cache hit returns before the middleware behind it runs, and with the default `StoreResponseHeaders: false` the cache replays only a fixed set of headers, so later responses would lose the headers. `StoreResponseHeaders: true` keeps them too.
+- Register it before `cache`. A cache hit returns before the middleware behind it runs, and with the default `StoreResponseHeaders: false` the cache replays only a fixed set of headers, so later responses would lose the headers. `StoreResponseHeaders: true` keeps them too, but a hit then replays the stored `Deprecation`, `Sunset` and `Link` over the ones the middleware just set: after you change a date or link, or skip the route with `Next`, entries stored earlier, including ones in an external `Storage` that outlives a deploy, serve the old values until they expire.
 - With `idempotency` registered after it, a handler that adds links with `c.Links` rewrites the `Link` line, and a replayed response repeats the deprecation link. Register `idempotency` first.
 - Each instance checks its own config. When it is registered at two levels, such as `app.Use` and a group, the inner instance replaces `Deprecation` and `Sunset` one by one, and both add their links. Set `Deprecation` and `Sunset` together at the level that overrides, so the pair stays in order.
 
