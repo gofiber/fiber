@@ -74,8 +74,6 @@ func New(config ...Config) fiber.Handler {
 
 // intact reports, in one walk over the canonical names, whether each configured
 // date has exactly one line and the Link lines hold every link.
-//
-//nolint:revive // flag-parameter: the flags say which headers are configured
 func intact(h *fasthttp.ResponseHeader, deprecation, sunset bool, parts [][]byte) bool {
 	if fieldname.HasTrailers(h) {
 		return false
@@ -113,8 +111,6 @@ func replace(c fiber.Ctx, h *fasthttp.ResponseHeader, name, value string, canoni
 // keepOne leaves the single-valued field name with exactly one line (RFC 9110
 // Section 5.3): value when the line is gone, and a later writer's value over
 // ours when both are there.
-//
-//nolint:revive // flag-parameter: canonical is a property of the header store
 func keepOne(c fiber.Ctx, h *fasthttp.ResponseHeader, name, value string, canonical bool) {
 	lines := fieldname.Lines(h, name, canonical)
 	switch len(lines) {
@@ -164,8 +160,6 @@ func newLinks(deprecationLink, sunsetLink string) links {
 
 // add writes the links as the Link header, or folds the ones no Link line holds
 // yet into the Link header already set, under any spelling of its name.
-//
-//nolint:revive // flag-parameter: canonical is a property of the header store
 func (l *links) add(c fiber.Ctx, h *fasthttp.ResponseHeader, canonical bool) {
 	if l.joined == "" {
 		return
