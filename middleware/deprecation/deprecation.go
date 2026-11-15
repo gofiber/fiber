@@ -6,7 +6,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
-	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -33,8 +32,10 @@ func New(config ...Config) fiber.Handler {
 
 		// Set before the chain runs, so a response the handler writes itself with
 		// c.End(), and the 500 an outer recover.New() sends for a panic, carry them.
+		// The spelling is read from the response: an earlier middleware may have
+		// stopped normalizing it, whatever the app config says.
 		h := &c.Response().Header
-		canonical := headerlookup.Canonical(c)
+		canonical := fieldname.Canonical(h)
 		if deprecation != "" {
 			replace(c, h, fiber.HeaderDeprecation, deprecation, canonical)
 		}
@@ -54,7 +55,7 @@ func New(config ...Config) fiber.Handler {
 		// replace the header block, and a later handler may remove or add a line,
 		// so each header is checked on its own. The keyed reads answer for the
 		// common case, where every line set above is still there and alone.
-		if canonical && intact(h, deprecation != "", sunset != "", l.parts) {
+		if intact(h, deprecation != "", sunset != "", l.parts) {
 			return err
 		}
 
@@ -72,8 +73,8 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-// intact reports, in one walk over the canonical names, whether each configured
-// date has exactly one line and the Link lines hold every link.
+// intact reports, in one walk, whether each configured date has exactly one
+// line under its canonical name and the Link lines hold every link.
 func intact(h *fasthttp.ResponseHeader, deprecation, sunset bool, parts [][]byte) bool {
 	if fieldname.HasTrailers(h) {
 		return false
@@ -91,6 +92,12 @@ func intact(h *fasthttp.ResponseHeader, deprecation, sunset bool, parts [][]byte
 				if bytes.Contains(v, part) {
 					held |= 1 << i
 				}
+			}
+		default:
+			// Another spelling of ours, from a handler that stopped normalizing.
+			if n := utils.UnsafeString(k); utils.EqualFold(n, fiber.HeaderDeprecation) ||
+				utils.EqualFold(n, fiber.HeaderSunset) || utils.EqualFold(n, fiber.HeaderLink) {
+				return false
 			}
 		}
 	}

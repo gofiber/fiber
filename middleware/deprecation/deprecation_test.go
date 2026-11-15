@@ -373,6 +373,15 @@ func Test_Deprecation_AfterChain(t *testing.T) {
 			},
 			deprecation: "@5",
 		},
+		{
+			name: "another spelling after the handler stops normalizing", config: Config{Deprecation: deprecatedAt},
+			handler: func(c fiber.Ctx) error {
+				c.Response().Header.DisableNormalizing()
+				c.Set("deprecation", "@5")
+				return nil
+			},
+			deprecation: "@5",
+		},
 	}
 
 	for _, tt := range tests {
@@ -397,18 +406,37 @@ func Test_Deprecation_AfterChain(t *testing.T) {
 
 // An earlier middleware's Deprecation under another spelling is replaced, not
 // kept beside ours.
+// The spelling is read from the response, which an earlier middleware may stop
+// normalizing in a default app.
 func Test_Deprecation_ReplacesOtherSpelling(t *testing.T) {
 	t.Parallel()
-	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
-	app.Use(func(c fiber.Ctx) error {
-		c.Set("deprecation", "@5")
-		return c.Next()
-	})
-	app.Use(New(Config{Deprecation: deprecatedAt}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	tests := []struct {
+		name      string
+		appConfig fiber.Config
+		disable   bool
+	}{
+		{name: "app without normalizing", appConfig: fiber.Config{DisableHeaderNormalizing: true}},
+		{name: "response without normalizing", disable: true},
+	}
 
-	resp := apptest.ExpectBody(t, app, "/", fiber.StatusOK, "ok")
-	requireHeader(t, resp, fiber.HeaderDeprecation, deprecatedValue)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New(tt.appConfig)
+			app.Use(func(c fiber.Ctx) error {
+				if tt.disable {
+					c.Response().Header.DisableNormalizing()
+				}
+				c.Set("deprecation", "@5")
+				return c.Next()
+			})
+			app.Use(New(Config{Deprecation: deprecatedAt}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+			resp := apptest.ExpectBody(t, app, "/", fiber.StatusOK, "ok")
+			requireHeader(t, resp, fiber.HeaderDeprecation, deprecatedValue)
+		})
+	}
 }
 
 // A middleware that restarts routing runs the instance again on one response.
