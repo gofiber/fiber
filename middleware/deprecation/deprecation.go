@@ -47,8 +47,12 @@ func New(config ...Config) fiber.Handler {
 		err := c.Next()
 
 		// A handler timeout.New gave up on may still write the response; IsAbandoned orders the read.
-		if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
-			return err
+		// fasthttp sends the timeout response instead, and the default one is built empty.
+		if c.IsAbandoned() {
+			if tr := c.RequestCtx().LastTimeoutErrorResponse(); tr != nil {
+				fillTimeoutResponse(&tr.Header, deprecation, sunset, l.joined)
+				return err
+			}
 		}
 
 		// A proxied response, c.Response().Reset() and the 304 or 416 of SendFile
@@ -109,10 +113,22 @@ func intact(h *fasthttp.ResponseHeader, deprecation, sunset bool, parts [][]byte
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func replace(c fiber.Ctx, h *fasthttp.ResponseHeader, name, value string, canonical bool) {
-	if !canonical {
-		fieldname.Del(h, name, false)
-	}
+	// Set overwrites only the first line, so every earlier one goes first.
+	fieldname.Del(h, name, canonical)
 	c.Set(name, value)
+}
+
+// fillTimeoutResponse sets each configured field the timeout response lacks. One
+// OnTimeout wrote starts from the headers set before the chain, so it keeps what OnTimeout left.
+func fillTimeoutResponse(h *fasthttp.ResponseHeader, deprecation, sunset, link string) {
+	canonical := fieldname.Canonical(h)
+	for _, f := range [...][2]string{
+		{fiber.HeaderDeprecation, deprecation}, {fiber.HeaderSunset, sunset}, {fiber.HeaderLink, link},
+	} {
+		if f[1] != "" && len(fieldname.Lines(h, f[0], canonical)) == 0 {
+			h.Set(f[0], f[1])
+		}
+	}
 }
 
 // keepOne leaves the single-valued field name with exactly one line (RFC 9110
