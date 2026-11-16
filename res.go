@@ -1255,6 +1255,18 @@ const sendFileIndexName = "index.html"
 // config; each holds a file cache and a goroutine for as long as it is kept.
 const maxSendFileHandlers = 64
 
+// sendFileDrivePath drops the slash fasthttp puts before a Windows drive ("/C:/x"), whose ':' it
+// refuses to open otherwise; fasthttp's own ServeFile does the same.
+func sendFileDrivePath(ctx *fasthttp.RequestCtx) []byte {
+	path := ctx.Path()
+	if len(path) >= 4 && path[0] == '/' && path[2] == ':' && path[3] == '/' {
+		if letter := path[1] | 0x20; letter >= 'a' && letter <= 'z' {
+			return path[1:]
+		}
+	}
+	return path
+}
+
 // SendFile transfers the file from the specified path.
 // By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
 // The Content-Type response HTTP header field is set based on the file's extension.
@@ -1321,6 +1333,9 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 			PathNotFound: func(ctx *fasthttp.RequestCtx) {
 				ctx.Response.SetStatusCode(StatusNotFound)
 			},
+		}
+		if filepath.Separator == '\\' {
+			fasthttpFS.PathRewrite = sendFileDrivePath
 		}
 
 		handler := fasthttpFS.NewRequestHandler()
