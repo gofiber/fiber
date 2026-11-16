@@ -292,7 +292,8 @@ func Test_Proxy_Balancer_AbsoluteFormHost(t *testing.T) {
 		{"http://public.example/x", "public.example/evil", ""},
 		{"http://PUBLIC.example:8080/x?q=1", "Public.Example:8080", "/x?q=1|public.example:8080|"},
 		{"https://u:pw@public.example/x", "public.example", "/x|public.example|"},
-		{"//public.example/a?x=://", "public.example", "/a?x=://|public.example|"},
+		// Since fasthttp 1.79 a path, refused for its empty segment.
+		{"//public.example/a?x=://", "public.example", ""},
 		{"/x", "internal.example", "/x|internal.example|"},
 	} {
 		resp := rawRequest(t, app, tc.target, tc.host)
