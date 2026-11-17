@@ -120,6 +120,7 @@ func Test_HTTPHandler_FlushedHandlerKeepsItsRequest(t *testing.T) {
 			// Client A starts a streaming response and leaves.
 			a, err := net.Dial("tcp", s.addr)
 			require.NoError(t, err)
+			t.Cleanup(func() { _ = a.Close() }) //nolint:errcheck // closed below on the way to the end of the test
 			require.NoError(t, a.SetDeadline(time.Now().Add(10*time.Second)))
 			const payload = "payload-a"
 			_, err = fmt.Fprintf(a, "POST /stream/path-a HTTP/1.1\r\nHost: host-a.example\r\nAuthorization: Bearer token-a\r\nX-Stream: 1\r\nContent-Length: %d\r\n\r\n%s", len(payload), payload)
