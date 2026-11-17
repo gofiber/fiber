@@ -1715,8 +1715,8 @@ func (r *DefaultRes) End() error {
 
 	// fasthttp arms the write deadline of a request only after its handler returns, so the one on
 	// the connection still belongs to the previous response on a keep-alive connection and may have
-	// expired: arm it for this write.
-	if wt := r.c.app.config.WriteTimeout; wt > 0 {
+	// expired: arm it for this write, with the timeout the server uses (app.Server() may have changed it).
+	if wt := r.c.app.server.WriteTimeout; wt > 0 {
 		if err := conn.SetWriteDeadline(time.Now().Add(wt)); err != nil {
 			return err //nolint:wrapcheck // unnecessary to wrap it
 		}

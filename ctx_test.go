@@ -10107,14 +10107,29 @@ func Test_PathNeedsNormalization(t *testing.T) {
 // does not enforce a deadline on a write that has room in its channel, so this goes over loopback TCP.
 func Test_Ctx_End_ArmsWriteDeadlineOnReusedConn(t *testing.T) {
 	t.Parallel()
-	app := New(Config{WriteTimeout: 100 * time.Millisecond})
+	for name, newApp := range map[string]func() *App{
+		"Config.WriteTimeout": func() *App { return New(Config{WriteTimeout: 100 * time.Millisecond}) },
+		"Server.WriteTimeout": func() *App {
+			app := New()
+			app.Server().WriteTimeout = 100 * time.Millisecond
+			return app
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			testCtxEndArmsWriteDeadlineOnReusedConn(t, newApp())
+		})
+	}
+}
+
+func testCtxEndArmsWriteDeadlineOnReusedConn(t *testing.T, app *App) {
+	t.Helper()
 	app.Get("/one", func(c Ctx) error { return c.SendString("one") })
 	app.Get("/end", func(c Ctx) error {
 		require.NoError(t, c.SendString("end"))
 		return c.End()
 	})
-	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	ln := newLocalListener(t)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
