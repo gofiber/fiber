@@ -71,7 +71,7 @@ an exact one, so a long wildcard rule can still outrank a shorter exact one.
 
 ## Escaped targets
 
-`c.Path()` holds the rewritten path as written. A `net/http` handler or a `fasthttp` handler registered as a route handler is answered with `404 Not Found` for a path that holds a byte a path may not carry raw, such as a space, a byte of UTF-8, `[`, `]` or `|`, so write such a target escaped: `/My%20Docs/$1`, not `/My Docs/$1`. See the [adaptor notes](./adaptor.md#notes-and-limitations).
+`c.Path()` holds the rewritten path as written. With `UnescapePath` off, which is the default, a `net/http` handler or a `fasthttp` handler registered as a route handler is answered with `404 Not Found` for a path that holds a byte a path may not carry raw, such as a space, a byte of UTF-8, `[`, `]` or `|`, so write such a target escaped: `/My%20Docs/$1`, not `/My Docs/$1`. With `UnescapePath` on, `c.Path()` is decoded and the handler is given the path escaped, so a byte of this kind does not refuse the request. See the [adaptor notes](./adaptor.md#notes-and-limitations).
 
 ## Middleware order
 
