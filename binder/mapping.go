@@ -626,6 +626,7 @@ type fieldInfo struct {
 	promoted    map[string]promotedField
 	kinds       map[string]reflect.Kind
 	nestedKinds map[reflect.Kind]struct{}
+	id          uintptr // typeID of the type it describes, which the slot of the cache is checked against
 }
 
 type promotedField struct {
@@ -646,15 +647,11 @@ func unwrapType(t reflect.Type) reflect.Type {
 // interface-keyed hash of a sync.Map lookup was most of what that cost, so a
 // small direct-mapped cache in front answers a type seen before in a few
 // loads. A collision only falls through to the map; nothing is ever wrong,
-// just slower.
+// just slower, and a slot is filled with the field information the map holds,
+// so it costs no allocation.
 type fieldCache struct {
-	slots [fieldCacheSlots]atomic.Pointer[fieldCacheEntry]
+	slots [fieldCacheSlots]atomic.Pointer[fieldInfo]
 	types sync.Map // reflect.Type -> *fieldInfo
-}
-
-type fieldCacheEntry struct {
-	info *fieldInfo
-	id   uintptr
 }
 
 // fieldCacheSlots is a power of two, so a slot is a mask rather than a division.
@@ -803,7 +800,7 @@ func typeID(t reflect.Type) uintptr {
 }
 
 // slot returns the direct-mapped slot a type hashes to.
-func (c *fieldCache) slot(t reflect.Type) *atomic.Pointer[fieldCacheEntry] {
+func (c *fieldCache) slot(t reflect.Type) *atomic.Pointer[fieldInfo] {
 	return &c.slots[(typeID(t)>>4)&(fieldCacheSlots-1)]
 }
 
@@ -811,19 +808,20 @@ func (c *fieldCache) slot(t reflect.Type) *atomic.Pointer[fieldCacheEntry] {
 func (c *fieldCache) get(t reflect.Type, aliasTag string) (*fieldInfo, bool) {
 	id := typeID(t)
 	slot := &c.slots[(id>>4)&(fieldCacheSlots-1)]
-	if e := slot.Load(); e != nil && e.id == id {
-		return e.info, true
+	if info := slot.Load(); info != nil && info.id == id {
+		return info, true
 	}
 
 	val, ok := c.types.Load(t)
 	if !ok {
 		info := buildFieldInfo(t, aliasTag)
+		info.id = id
 		val, _ = c.types.LoadOrStore(t, &info)
 	}
 
 	info, ok := val.(*fieldInfo)
 	if ok {
-		slot.Store(&fieldCacheEntry{id: id, info: info})
+		slot.Store(info)
 	}
 	return info, ok
 }
