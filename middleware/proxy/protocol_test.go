@@ -65,6 +65,13 @@ func Test_Proxy_Do_LeavesTheUserAgentAsReceived(t *testing.T) {
 		{name: "named client", client: &fasthttp.Client{Name: "svc"}, doSees: "ua=svc"},
 		{name: "client without a default", client: &fasthttp.Client{NoDefaultUserAgentHeader: true}, doSees: "ua="},
 		{name: "User-Agent of the client kept", client: &fasthttp.Client{}, inbound: "curl/8", doSees: "ua=curl/8"},
+		{
+			name: "name set by ConfigureClient", doSees: "ua=svc",
+			client: &fasthttp.Client{NoDefaultUserAgentHeader: true, ConfigureClient: func(hc *fasthttp.HostClient) error {
+				hc.Name = "svc"
+				return nil
+			}},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -255,9 +255,10 @@ func doActionWithPolicy(
 		defer req.Header.Del(fiber.HeaderAuthorization)
 	}
 	// fasthttp gives a request without a User-Agent the client's Name, or "fasthttp" unless the client turns that
-	// off: take it off again, so that a later hop and the middleware after this one see the request as received.
-	// Taken after the strip too, so a field it removed stays removed.
-	if (cli.Name != "" || !cli.NoDefaultUserAgentHeader) && len(req.Header.UserAgent()) == 0 {
+	// off, and ConfigureClient can name a host client the Client does not: take it off again, so that a later hop
+	// and the middleware after this one see the request as received. Taken after the strip too, so a field it
+	// removed stays removed.
+	if len(req.Header.UserAgent()) == 0 {
 		defer req.Header.Del(fiber.HeaderUserAgent)
 	}
 	// A client that streams response bodies hands the upstream's trailer section to the response after
