@@ -13,6 +13,10 @@
 // closes the user values of a request when it resets it for the next one, which happens after the
 // response was written and before the buffers are reused, and the hold's Close waits for the handler.
 // A handler that returns before the adaptor does, which is nearly all of them, leaves nothing to wait for.
+//
+// The hold covers the call of the handler. A goroutine the handler leaves running after it returned, such as the
+// one http.TimeoutHandler runs the wrapped handler in once it has answered 503, is not waited for: it reads a
+// RequestCtx that may already serve the next request, as it did before the hold.
 package requesthold
 
 import (

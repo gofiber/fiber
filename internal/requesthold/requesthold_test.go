@@ -33,6 +33,25 @@ func buffered(body string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(body)) }) //nolint:errcheck // see above
 }
 
+// requireResetWaits resets the user values of ctx as fasthttp does when it resets the request, which closes the hold
+// and waits for the handler, and pins that the reset returns only once release is closed.
+func requireResetWaits(t *testing.T, ctx *fasthttp.RequestCtx, release chan struct{}) {
+	t.Helper()
+
+	reset := make(chan struct{})
+	go func() {
+		ctx.ResetUserValues()
+		close(reset)
+	}()
+	select {
+	case <-reset:
+		t.Fatal("the reset did not wait for the running handler")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	apptest.Recv(t, reset, 10*time.Second, "the reset did not return once the handler had")
+}
+
 // Test_NewFastHTTPHandler_HoldsWhileTheHandlerRuns pins that the request stays pending while a flushed handler
 // runs, is released by the reset once it returned, and that a handler that answers at once leaves no hold.
 func Test_NewFastHTTPHandler_HoldsWhileTheHandlerRuns(t *testing.T) {
@@ -53,19 +72,7 @@ func Test_NewFastHTTPHandler_HoldsWhileTheHandlerRuns(t *testing.T) {
 		NewFastHTTPHandler(streaming(started, release))(ctx)
 		apptest.Recv(t, started, 10*time.Second, "the handler did not flush")
 		require.True(t, Pending(ctx))
-
-		reset := make(chan struct{})
-		go func() {
-			ctx.ResetUserValues() // what fasthttp does when it resets the request: closes the hold, which waits
-			close(reset)
-		}()
-		select {
-		case <-reset:
-			t.Fatal("the reset did not wait for the running handler")
-		case <-time.After(50 * time.Millisecond):
-		}
-		close(release)
-		apptest.Recv(t, reset, 10*time.Second, "the reset did not return once the handler had")
+		requireResetWaits(t, ctx, release)
 		require.False(t, Pending(ctx))
 	})
 }
@@ -87,18 +94,6 @@ func Test_NewFastHTTPHandler_SecondAdapterLeavesTheHold(t *testing.T) {
 	require.False(t, ctx.Response.IsBodyStream(), "the buffered answer should have ended the stream of the first handler")
 	require.True(t, Pending(ctx), "the second adapter let go of the hold of the handler that still runs")
 	require.Same(t, hold, ctx.UserValue(holdKey{}))
-
-	reset := make(chan struct{})
-	go func() {
-		ctx.ResetUserValues()
-		close(reset)
-	}()
-	select {
-	case <-reset:
-		t.Fatal("the reset did not wait for the running handler")
-	case <-time.After(50 * time.Millisecond):
-	}
-	close(release)
-	apptest.Recv(t, reset, 10*time.Second, "the reset did not return once the handler had")
+	requireResetWaits(t, ctx, release)
 	require.False(t, Pending(ctx))
 }
