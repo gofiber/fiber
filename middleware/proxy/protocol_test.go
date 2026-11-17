@@ -86,3 +86,41 @@ func Test_Proxy_Do_LeavesTheUserAgentAsReceived(t *testing.T) {
 		})
 	}
 }
+
+// Test_Proxy_Balancer_LeavesTheUserAgentAndHostAsReceived pins what Do's tests above pin, for Balancer behind a host client of
+// the caller's: such a client gives a request that has no User-Agent its name, or "fasthttp", and writes the host of the
+// URI it parsed, in lower case, into the Host field. Neither stays on the request for the middleware that runs after Next
+// or for a later hop.
+func Test_Proxy_Balancer_LeavesTheUserAgentAndHostAsReceived(t *testing.T) {
+	t.Parallel()
+	upstream := fiber.New()
+	upstream.All("/*", func(c fiber.Ctx) error { return c.SendString("ua=" + c.Get(fiber.HeaderUserAgent)) })
+	addr := listenUpstream(t, upstream)
+	for _, tc := range []struct {
+		client  *fasthttp.HostClient
+		name    string
+		inbound string
+		sees    string
+	}{
+		{name: "default host client", client: &fasthttp.HostClient{Addr: addr}, sees: "ua=fasthttp"},
+		{name: "named host client", client: &fasthttp.HostClient{Addr: addr, Name: "svc"}, sees: "ua=svc"},
+		{name: "host client without a default", client: &fasthttp.HostClient{Addr: addr, NoDefaultUserAgentHeader: true}, sees: "ua="},
+		{name: "User-Agent of the client kept", client: &fasthttp.HostClient{Addr: addr}, inbound: "curl/8", sees: "ua=curl/8"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			var userAgent, host string
+			app.Use(func(c fiber.Ctx) error {
+				err := c.Next()
+				userAgent, host = c.Get(fiber.HeaderUserAgent), string(c.Request().Header.Host())
+				return err
+			})
+			app.Use(Balancer(Config{Client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{tc.client}}}))
+			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeaderIf(fiber.HeaderUserAgent, tc.inbound), apptest.WithHost("Example.COM"))
+			require.Equal(t, tc.sees, apptest.Body(t, apptest.Expect(t, app, req, fiber.StatusOK)))
+			require.Equal(t, tc.inbound, userAgent)
+			require.Equal(t, "Example.COM", host)
+		})
+	}
+}

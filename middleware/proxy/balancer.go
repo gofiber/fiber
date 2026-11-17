@@ -146,6 +146,12 @@ func Balancer(config ...Config) fiber.Handler {
 		}
 		originalURL := utils.CopyString(line)
 		defer wiretarget.RestoreTarget(c.RequestCtx(), originalURL)
+		// fasthttp writes the host of the URI it parsed, in lower case, into the Host field when it sends the
+		// request: put the field back as received, as doActionWithPolicy does, before the line is (a target that
+		// begins with "//" is read with it).
+		var hostBuf [64]byte
+		originalHost := append(hostBuf[:0], req.Header.Host()...)
+		defer func() { req.Header.SetHostBytes(originalHost) }()
 		req.SetRequestURI(target)
 
 		// After the Connection listing has been applied, so the line is this
@@ -173,6 +179,13 @@ func Balancer(config ...Config) fiber.Handler {
 		if !req.Header.IsHTTP11() {
 			defer req.Header.SetProtocolBytes(utils.CopyBytes(req.Header.Protocol()))
 			req.Header.SetProtocol("HTTP/1.1")
+		}
+
+		// A client of the caller's gives a request without a User-Agent its Name, or "fasthttp" unless it turns
+		// that off, and does not take it off again: do that, so that a later hop and the middleware after this
+		// one see the request as received, as doActionWithPolicy does. After ModifyRequest, so one it set stays.
+		if streams && len(req.Header.UserAgent()) == 0 {
+			defer req.Header.Del(fiber.HeaderUserAgent)
 		}
 
 		// Forward request. A client that streams response bodies hands the upstream's trailer section
