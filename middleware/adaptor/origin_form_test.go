@@ -40,3 +40,28 @@ func Test_FiberApp_ReadsAnOriginFormTargetAsAPath(t *testing.T) {
 		})
 	}
 }
+
+// Test_HTTPMiddleware_KeepsAnOriginFormTargetAPath pins that a target that begins with "//" stays a path when the
+// wrapped middleware rewrites its query to one that holds "://": fasthttp takes the first segment of such a target
+// for the authority, and the request behind the middleware must read what a plain request for it reads.
+func Test_HTTPMiddleware_KeepsAnOriginFormTargetAPath(t *testing.T) {
+	t.Parallel()
+	describe := func(c fiber.Ctx) error {
+		uri := c.Request().URI()
+		return c.SendString(string(uri.PathOriginal()) + "|" + string(uri.Path()) + "|" + string(uri.Host()) + "|" + c.Host())
+	}
+	plain := fiber.New()
+	plain.Use(describe)
+	app := fiber.New()
+	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rewritten := r.Clone(r.Context())
+			rewritten.URL.RawQuery = "u=http://z"
+			next.ServeHTTP(w, rewritten)
+		})
+	}))
+	app.Use(describe)
+	want := string(rawCtx(t, plain, "//a/b?u=http://z").Response.Body())
+	require.Equal(t, "//a/b|/a/b|example.com|example.com", want)
+	adaptorTestRequireRawOK(t, app, "//a/b?x=1", want)
+}

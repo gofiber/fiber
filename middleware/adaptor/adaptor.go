@@ -599,9 +599,11 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 					newPath = strings.Clone(r.URL.EscapedPath())
 				}
 			}
-			freq.SetRequestURI(requestURI)
-			freq.URI().SetHostBytes(host)
+			// The Host header goes first: a target that begins with "//" is a path read with it, which the
+			// rewrite may have left holding "://" (wiretarget.RestoreTarget reads it as one, as Reset does).
 			fhdr.SetHostBytes(host)
+			wiretarget.RestoreTarget(c.RequestCtx(), requestURI)
+			freq.URI().SetHostBytes(host)
 			// Only a genuine rewrite re-routes. The decoded path differs from the raw
 			// one for every escaped or non-canonical request, and overriding it there
 			// re-buckets the tree, resuming the chain past middleware that already ran.

@@ -2,7 +2,9 @@ package wiretarget_test
 
 import (
 	"bufio"
+	"crypto/tls"
 	"encoding/hex"
+	"net"
 	"slices"
 	"strings"
 	"testing"
@@ -304,5 +306,42 @@ func Test_SingleSpelling(t *testing.T) {
 		"/caf%c3%a9":                           false, // lower-case digits: the router writes upper case
 	} {
 		require.Equal(t, want, wiretarget.SingleSpelling(path), path)
+	}
+}
+
+// tlsConn is a connection that fasthttp takes for a TLS one: it has the methods of a *tls.Conn it looks for.
+type tlsConn struct{ net.Conn }
+
+func (tlsConn) Handshake() error                     { return nil }
+func (tlsConn) ConnectionState() tls.ConnectionState { return tls.ConnectionState{} }
+
+// Test_ReadAsOriginForm_KeepsTheScheme pins that the URI that reads a target that begins with "//" as a path is the
+// one of the connection: https over TLS. fasthttp reads such a target as a path itself when the Host header holds a
+// host, and the scheme is then the one it took from the connection (a request made by hand has none to take); the
+// URI is rewritten for a request without a host.
+func Test_ReadAsOriginForm_KeepsTheScheme(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		conn                         net.Conn
+		name, host, scheme, wantHost string
+	}{
+		{name: "plain", host: "example.com", scheme: "http", wantHost: "example.com"},
+		{name: "plain, no Host header", scheme: "http"},
+		{name: "TLS, no Host header", scheme: "https", conn: tlsConn{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			const target = "//a/b?x=http://y"
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Init2(tc.conn, nil, true)
+			fctx.Request.Header.SetHost(tc.host)
+			fctx.Request.SetRequestURI(target)
+			wiretarget.ReadAsOriginForm(fctx, []byte(target))
+			uri := fctx.Request.URI()
+			require.Equal(t, tc.scheme, string(uri.Scheme()))
+			require.Equal(t, tc.wantHost, string(uri.Host()))
+			require.Equal(t, "//a/b", string(uri.PathOriginal()))
+			require.Equal(t, "x=http://y", string(uri.QueryString()))
+		})
 	}
 }

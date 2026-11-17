@@ -149,3 +149,25 @@ func Test_Proxy_Do_KeepsTheHostOfAnOriginFormTarget(t *testing.T) {
 		})
 	}
 }
+
+// Test_Proxy_Balancer_KeepsTheHostOfAnOriginFormTarget is the test above for Balancer, which forwards the routed path of a
+// request whose line an earlier middleware rewrote and puts the line back: a target that begins with "//" and holds "://"
+// has its first segment taken for the host by fasthttp when it is parsed again, unless the Host header is back in place.
+func Test_Proxy_Balancer_KeepsTheHostOfAnOriginFormTarget(t *testing.T) {
+	t.Parallel()
+	upstream := fiber.New()
+	upstream.All("/*", func(c fiber.Ctx) error { return c.SendString("ok") })
+	addr := listenUpstream(t, upstream)
+	app := fiber.New()
+	var after string
+	app.Use(func(c fiber.Ctx) error {
+		c.Path("/x") // the line that is forwarded differs from the one that arrived, and is put back
+		err := c.Next()
+		after = c.Host() + "|" + c.OriginalURL()
+		return err
+	})
+	app.Use(Balancer(Config{Servers: []string{"http://" + addr}}))
+	resp := serveParsed(t, app, &fasthttp.Request{}, "GET //internal.example.com/data?x=:// HTTP/1.1\r\nHost: other.example\r\n\r\n")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "other.example|//internal.example.com/data?x=://", after)
+}

@@ -844,6 +844,37 @@ func Test_Adapter_FastHTTP_AdaptedHandlerKeepsItsRequest(t *testing.T) {
 	require.Equal(t, reading{before: "/events|/events?x=1", after: "/events|/events?x=1"}, apptest.Recv(t, got, 5*time.Second))
 }
 
+// Test_Adapter_RestoresAnOriginFormTargetAsAPath pins that a route handler gives the request line back so that a
+// target that begins with "//" and holds "://" is still a path: fasthttp takes the first segment of such a target for
+// the host when it parses the line again, and the Host header is the host of the request once the handler returned.
+func Test_Adapter_RestoresAnOriginFormTargetAsAPath(t *testing.T) {
+	t.Parallel()
+	for name, handler := range map[string]any{
+		"net/http": http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, err := io.WriteString(w, "ok")
+			assert.NoError(t, err)
+		}),
+		"fasthttp": fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) { ctx.SetBodyString("ok") }),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			var after string
+			app.Use(func(c Ctx) error {
+				c.Path("/pub/x") // the routed path is not the line, so the line is set for the handler and put back
+				err := c.Next()
+				after = c.Host() + "|" + c.OriginalURL()
+				return err
+			})
+			app.Use(handler)
+			fctx := wireRequestCtx(t, "GET //internal.example.com/data?x=:// HTTP/1.1\r\nHost: other.example\r\n\r\n", nil)
+			app.Handler()(fctx)
+			require.Equal(t, StatusOK, fctx.Response.StatusCode())
+			require.Equal(t, "other.example|//internal.example.com/data?x=://", after)
+		})
+	}
+}
+
 // Test_Adapter_FastHTTP_KeepsTargetsThatAreNoPath pins that the asterisk form of OPTIONS and the authority form of
 // CONNECT, which have no path to guard, reach a fasthttp handler as sent, while the ones that hide a path do not.
 func Test_Adapter_FastHTTP_KeepsTargetsThatAreNoPath(t *testing.T) {
