@@ -55,6 +55,27 @@ func reachable(f *reflect.StructField) bool {
 	return f.IsExported() || f.Anonymous
 }
 
+// fileHeaderFields caches, per struct type, the indexes of the fields a walk has to visit.
+var fileHeaderFields sync.Map // map[reflect.Type][]int
+
+// headerFields returns the indexes of the fields of the struct type t that schema can fill and through which a
+// *multipart.FileHeader can be reached. A walk visits those and skips the rest, which is most of the fields.
+func headerFields(t reflect.Type) []int {
+	if cached, ok := fileHeaderFields.Load(t); ok {
+		if fields, isInts := cached.([]int); isInts {
+			return fields
+		}
+	}
+	var fields []int
+	for i := range t.NumField() {
+		if f := t.Field(i); reachable(&f) && holdsFileHeader(f.Type) {
+			fields = append(fields, i)
+		}
+	}
+	fileHeaderFields.Store(t, fields)
+	return fields
+}
+
 // fileHeaders holds the *multipart.FileHeader values of a bind as the request carried them. A header comes
 // from a file part and from nothing else: schema decodes a form, query, header or cookie value whose key
 // continues the name of a file field, such as "avatar.filename" or "avatar[size]", into the exported fields of the header
@@ -63,7 +84,7 @@ func reachable(f *reflect.StructField) bool {
 // The JSON, XML, CBOR and MsgPack decoders are not guarded: they fill the exported fields of a header from a
 // body like those of any struct, so bind a *multipart.FileHeader field from a form only.
 type fileHeaders struct {
-	saved map[*multipart.FileHeader]multipart.FileHeader
+	saved map[*multipart.FileHeader]multipart.FileHeader // nil until a header is saved
 }
 
 // guardFileHeaders records the headers out already holds and those of files, the file parts about to be bound.
@@ -73,7 +94,16 @@ func guardFileHeaders(out any, files []map[string][]*multipart.FileHeader) *file
 	if !v.IsValid() || v.Kind() != reflect.Pointer || v.IsNil() || !holdsFileHeader(v.Type()) {
 		return nil
 	}
-	g := &fileHeaders{saved: make(map[*multipart.FileHeader]multipart.FileHeader)}
+	g := &fileHeaders{}
+	n := 0
+	for _, byKey := range files {
+		for _, headers := range byKey {
+			n += len(headers)
+		}
+	}
+	if n > 0 {
+		g.saved = make(map[*multipart.FileHeader]multipart.FileHeader, n)
+	}
 	for _, byKey := range files {
 		for _, headers := range byKey {
 			for _, fh := range headers {
@@ -91,6 +121,9 @@ func (g *fileHeaders) save(fh *multipart.FileHeader) {
 	}
 	if _, ok := g.saved[fh]; ok {
 		return
+	}
+	if g.saved == nil {
+		g.saved = make(map[*multipart.FileHeader]multipart.FileHeader)
 	}
 	saved := *fh
 	saved.Header = textproto.MIMEHeader(http.Header(fh.Header).Clone())
@@ -110,7 +143,7 @@ const (
 )
 
 // walk visits every *multipart.FileHeader reachable from v. Recording, it saves the ones it finds;
-// phase, it resets the recorded ones and sets the others to nil where it can.
+// restoring, it resets the recorded ones that were changed and sets the others to nil where it can.
 func (g *fileHeaders) walk(v reflect.Value, phase guardPhase) {
 	g.visit(v, phase, map[seenPointer]struct{}{})
 }
@@ -146,10 +179,7 @@ func (g *fileHeaders) visit(v reflect.Value, phase guardPhase, seen map[seenPoin
 		seen[key] = struct{}{}
 		g.visit(v.Elem(), phase, seen)
 	case reflect.Struct:
-		for i := range v.NumField() {
-			if sf := v.Type().Field(i); !reachable(&sf) || !holdsFileHeader(sf.Type) {
-				continue
-			}
+		for _, i := range headerFields(v.Type()) {
 			field := v.Field(i)
 			g.visit(field, phase, seen)
 			if phase == restoring && field.Type() == reflect.PointerTo(fileHeaderType) && field.CanSet() && !field.IsNil() {
