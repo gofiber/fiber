@@ -1,7 +1,9 @@
 package pprof
 
 import (
+	"net/http"
 	"net/http/pprof"
+	"net/url"
 	runtimepprof "runtime/pprof"
 	"strings"
 
@@ -10,6 +12,9 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 )
+
+// profileNameKey carries the name of a registered profile to pprofCustom.
+type profileNameKey struct{}
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -29,6 +34,10 @@ func New(config ...Config) fiber.Handler {
 		pprofHeap         = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("heap").ServeHTTP)
 		pprofMutex        = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("mutex").ServeHTTP)
 		pprofThreadcreate = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("threadcreate").ServeHTTP)
+		pprofCustom       = fasthttpadaptor.NewFastHTTPHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			name, _ := r.Context().Value(profileNameKey{}).(string) //nolint:errcheck // set by the handler below
+			pprof.Handler(name).ServeHTTP(w, r)
+		})
 	)
 
 	// Construct actual prefix
@@ -81,8 +90,17 @@ func New(config ...Config) fiber.Handler {
 		default:
 			// The index also lists the profiles an application registers with
 			// runtime/pprof.NewProfile, so serve those as net/http/pprof does.
-			if name := strings.TrimPrefix(path, "/"); name != "" && runtimepprof.Lookup(name) != nil {
-				fasthttpadaptor.NewFastHTTPHandler(pprof.Handler(name))(c.RequestCtx())
+			// The index links each name escaped, which c.Path() keeps unless
+			// UnescapePath already decoded it.
+			name := strings.TrimPrefix(path, "/")
+			if !c.App().Config().UnescapePath {
+				if unescaped, err := url.PathUnescape(name); err == nil {
+					name = unescaped
+				}
+			}
+			if name != "" && runtimepprof.Lookup(name) != nil {
+				c.RequestCtx().SetUserValue(profileNameKey{}, name)
+				pprofCustom(c.RequestCtx())
 				return nil
 			}
 			// pprof index only works with trailing slash

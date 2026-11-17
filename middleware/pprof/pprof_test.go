@@ -1,7 +1,11 @@
 package pprof
 
 import (
+	"fmt"
+	"net/url"
+	"os"
 	runtimepprof "runtime/pprof"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,24 +89,67 @@ func Test_Pprof_Subs(t *testing.T) {
 	}
 }
 
-// customProfile is registered once for the process: NewProfile panics on a
-// name already in use.
-var customProfile = runtimepprof.NewProfile("fiber_pprof_test_custom")
+// The profiles below are registered once for the process: NewProfile panics
+// on a name already in use.
+var (
+	customProfile = runtimepprof.NewProfile("fiber_pprof_test_custom")
+	// escapedProfile has a name the index links escaped.
+	escapedProfile = runtimepprof.NewProfile("fiber pprof test/escaped#name")
+	// shadowedProfile has the name of a handler net/http/pprof routes on its own.
+	shadowedProfile = runtimepprof.NewProfile("cmdline")
+)
 
 // Test_Pprof_CustomProfile follows the index's link to a profile the
-// application registered with runtime/pprof.NewProfile.
+// application registered with runtime/pprof.NewProfile, whether or not the app
+// unescapes the path.
 func Test_Pprof_CustomProfile(t *testing.T) {
+	t.Parallel()
+	for _, p := range []*runtimepprof.Profile{customProfile, escapedProfile} {
+		link := (&url.URL{Path: p.Name(), RawQuery: "debug=1"}).String()
+		for _, m := range pprofTestMounts {
+			for _, unescape := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/UnescapePath=%t", p.Name(), m.name, unescape), func(t *testing.T) {
+					t.Parallel()
+					app := fiber.New(fiber.Config{UnescapePath: unescape})
+					app.Use(New(Config{Prefix: m.prefix}))
+
+					index := apptest.Body(t, apptest.Expect(t, app, m.prefix+"/debug/pprof/", 200))
+					require.Contains(t, index, "href='"+link+"'")
+
+					resp := apptest.Expect(t, app, m.prefix+"/debug/pprof/"+link, 200)
+					require.Contains(t, apptest.Body(t, resp), p.Name()+" profile: total ")
+				})
+			}
+		}
+	}
+}
+
+// Test_Pprof_CustomProfile_TrailingSlash drops the trailing slash after a
+// registered profile's name, as it does after a built-in one.
+func Test_Pprof_CustomProfile_TrailingSlash(t *testing.T) {
 	t.Parallel()
 	for _, m := range pprofTestMounts {
 		t.Run(m.name, func(t *testing.T) {
 			t.Parallel()
-			app := m.app(Config{})
+			resp := apptest.Expect(t, m.app(Config{}), m.prefix+"/debug/pprof/"+customProfile.Name()+"/", fiber.StatusSeeOther)
+			require.Equal(t, m.prefix+"/debug/pprof/"+customProfile.Name(), resp.Header.Get(fiber.HeaderLocation))
+		})
+	}
+}
 
-			index := apptest.Body(t, apptest.Expect(t, app, m.prefix+"/debug/pprof/", 200))
-			require.Contains(t, index, "href='"+customProfile.Name()+"?debug=1'")
-
-			resp := apptest.Expect(t, app, m.prefix+"/debug/pprof/"+customProfile.Name()+"?debug=1", 200)
-			require.Contains(t, apptest.Body(t, resp), customProfile.Name()+" profile: total 0")
+// Test_Pprof_CustomProfile_Shadowed keeps a built-in handler on its path when a
+// registered profile takes its name, as net/http/pprof does by routing cmdline,
+// profile, symbol and trace apart from the index. cmdline stands for all four:
+// profile and trace would take the process-wide profiler and tracer.
+func Test_Pprof_CustomProfile_Shadowed(t *testing.T) {
+	t.Parallel()
+	for _, m := range pprofTestMounts {
+		t.Run(m.name, func(t *testing.T) {
+			t.Parallel()
+			resp := apptest.Expect(t, m.app(Config{}), m.prefix+"/debug/pprof/"+shadowedProfile.Name()+"?debug=1", 200)
+			b := apptest.Body(t, resp)
+			require.Equal(t, strings.Join(os.Args, "\x00"), b)
+			require.NotContains(t, b, shadowedProfile.Name()+" profile: total ")
 		})
 	}
 }
