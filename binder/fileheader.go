@@ -10,7 +10,10 @@ import (
 	"sync"
 )
 
-var fileHeaderType = reflect.TypeFor[multipart.FileHeader]()
+var (
+	fileHeaderType    = reflect.TypeFor[multipart.FileHeader]()
+	fileHeaderPtrType = reflect.PointerTo(fileHeaderType)
+)
 
 // fileHeaderTypes caches, per destination type, whether it holds a *multipart.FileHeader anywhere.
 var fileHeaderTypes sync.Map // map[reflect.Type]bool
@@ -148,11 +151,21 @@ func (g *fileHeaders) walk(v reflect.Value, phase guardPhase) {
 	g.visit(v, phase, map[seenPointer]struct{}{})
 }
 
-// seenPointer identifies a pointer already walked. The address alone would not: a pointer to a struct and a
-// pointer to its first field share one.
+// seenPointer identifies a pointer, slice or map already walked. The address alone would not: a pointer to a struct
+// and a pointer to its first field share one, and two slices of one array differ in their length.
 type seenPointer struct {
 	typ reflect.Type
 	ptr uintptr
+	n   int // the length of a slice, zero for the rest
+}
+
+// first reports whether the walk meets the value identified by key for the first time, and remembers it.
+func first(seen map[seenPointer]struct{}, key seenPointer) bool {
+	if _, ok := seen[key]; ok {
+		return false
+	}
+	seen[key] = struct{}{}
+	return true
 }
 
 func (g *fileHeaders) visit(v reflect.Value, phase guardPhase, seen map[seenPointer]struct{}) {
@@ -161,7 +174,7 @@ func (g *fileHeaders) visit(v reflect.Value, phase guardPhase, seen map[seenPoin
 		if v.IsNil() {
 			return
 		}
-		if v.Type() == reflect.PointerTo(fileHeaderType) {
+		if v.Type() == fileHeaderPtrType {
 			// An element of an unexported embedded slice or map cannot be read as an interface, and schema cannot set it either.
 			if v.CanInterface() {
 				if fh, ok := reflect.TypeAssert[*multipart.FileHeader](v); ok {
@@ -170,33 +183,38 @@ func (g *fileHeaders) visit(v reflect.Value, phase guardPhase, seen map[seenPoin
 			}
 			return
 		}
-		key := seenPointer{typ: v.Type(), ptr: v.Pointer()}
-		if _, ok := seen[key]; ok {
-			return
+		if first(seen, seenPointer{typ: v.Type(), ptr: v.Pointer()}) {
+			g.visit(v.Elem(), phase, seen)
 		}
-		seen[key] = struct{}{}
-		g.visit(v.Elem(), phase, seen)
 	case reflect.Struct:
 		for _, i := range headerFields(v.Type()) {
 			field := v.Field(i)
 			g.visit(field, phase, seen)
-			if phase == restoring && field.Type() == reflect.PointerTo(fileHeaderType) && field.CanSet() && !field.IsNil() {
+			if phase == restoring && field.Type() == fileHeaderPtrType && field.CanSet() && !field.IsNil() {
 				if fh, ok := reflect.TypeAssert[*multipart.FileHeader](field); ok && !g.known(fh) {
 					field.SetZero()
 				}
 			}
 		}
 	case reflect.Slice, reflect.Array:
+		// A slice of headers cannot hold itself, and a slice of anything else may, through its element type.
+		if v.Kind() == reflect.Slice && v.Type().Elem() != fileHeaderPtrType &&
+			!first(seen, seenPointer{typ: v.Type(), ptr: v.Pointer(), n: v.Len()}) {
+			return
+		}
 		for i := range v.Len() {
 			elem := v.Index(i)
 			g.visit(elem, phase, seen)
-			if phase == restoring && elem.Type() == reflect.PointerTo(fileHeaderType) && elem.CanSet() && !elem.IsNil() {
+			if phase == restoring && elem.Type() == fileHeaderPtrType && elem.CanSet() && !elem.IsNil() {
 				if fh, ok := reflect.TypeAssert[*multipart.FileHeader](elem); ok && !g.known(fh) {
 					elem.SetZero()
 				}
 			}
 		}
 	case reflect.Map:
+		if v.Type().Elem() != fileHeaderPtrType && !first(seen, seenPointer{typ: v.Type(), ptr: v.Pointer()}) {
+			return
+		}
 		for _, key := range v.MapKeys() {
 			g.visit(v.MapIndex(key), phase, seen)
 		}

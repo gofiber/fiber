@@ -176,6 +176,30 @@ func Test_FileHeaders_UnexportedEmbedded(t *testing.T) {
 	require.Equal(t, "a.txt", fh.Filename)
 }
 
+// Test_FileHeaders_Cycles pins that the walk ends in a destination that holds itself through a slice or a map.
+func Test_FileHeaders_Cycles(t *testing.T) {
+	t.Parallel()
+	type node struct {
+		File     *multipart.FileHeader
+		ByName   map[string]node
+		Children []node
+	}
+	fh := &multipart.FileHeader{Filename: "a.txt"}
+	nodes := []node{{File: fh}}
+	nodes[0].Children = nodes
+	byName := map[string]node{}
+	byName["k"] = node{File: fh, ByName: byName}
+	for name, out := range map[string]any{"slice": &nodes, "map": &byName} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			g := guardFileHeaders(out, nil)
+			require.NotNil(t, g)
+			require.True(t, g.known(fh))
+			g.restore(out)
+		})
+	}
+}
+
 // benchUpload is benchUser with a file to bind, which makes a bind walk its fields.
 type benchUpload struct {
 	Avatar *multipart.FileHeader `form:"avatar" query:"avatar"`
