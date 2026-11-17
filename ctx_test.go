@@ -10161,3 +10161,22 @@ func testCtxEndArmsWriteDeadlineOnReusedConn(t *testing.T, app *App) {
 	require.Equal(t, StatusOK, resp.StatusCode)
 	require.Equal(t, "end", apptest.Body(t, resp))
 }
+
+// deadlineRefusingConn is a connection that refuses a write deadline.
+type deadlineRefusingConn struct {
+	net.Conn
+	err error
+}
+
+func (c deadlineRefusingConn) SetWriteDeadline(time.Time) error { return c.err }
+
+// Test_Ctx_End_WriteDeadlineError pins that c.End answers the error of arming its write deadline, and writes nothing.
+func Test_Ctx_End_WriteDeadlineError(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Server().WriteTimeout = time.Second
+	refused := errors.New("deadline refused")
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Init2(deadlineRefusingConn{err: refused}, nil, true)
+	require.ErrorIs(t, apptest.CtxFor(t, app, fctx).End(), refused)
+}

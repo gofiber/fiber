@@ -812,6 +812,9 @@ func Test_Security_ResolveRedirect(t *testing.T) {
 		{name: "stray percent in a network path", policy: allowPrivate, location: "//other.example/100%", wantURL: "https://other.example/100%25"},
 		{name: "valid escape kept", policy: allowPrivate, location: "/a%2Fb%zz", wantURL: "https://example.com/a%2Fb%25zz"},
 		{name: "stray percent in the host", policy: allowPrivate, location: "https://exa%mple.com/x", err: fasthttp.ErrorInvalidURI},
+		// A byte a path may not carry raw next to an escaped slash: the path is written with the byte escaped, and the
+		// slash stays escaped.
+		{name: "raw byte next to an escaped slash", policy: allowPrivate, location: "/a|b%2Fc", wantURL: "https://example.com/a%7Cb%2Fc"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -825,6 +828,14 @@ func Test_Security_ResolveRedirect(t *testing.T) {
 			require.Equal(t, tc.wantURL, out.String())
 		})
 	}
+}
+
+// Test_ResolveRedirect_InvalidBase pins that a current URL that does not parse is refused rather than
+// resolved against.
+func Test_ResolveRedirect_InvalidBase(t *testing.T) {
+	t.Parallel()
+	_, err := resolveRedirect("https://exa mple.com/", []byte("/x"), proxyTestAllowPrivatePolicy(), nil)
+	require.ErrorIs(t, err, fasthttp.ErrorInvalidURI)
 }
 
 // proxyTestFollow follows the redirects of a plain GET for start through client, at most
