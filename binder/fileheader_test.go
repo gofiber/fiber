@@ -86,6 +86,96 @@ func Test_GuardFileHeaders_NothingToRecord(t *testing.T) {
 	require.LessOrEqual(t, testing.AllocsPerRun(100, func() { guardFileHeaders(&out, nil).restore(&out) }), 1.0)
 }
 
+// Test_FileHeaders_Save pins that a header is recorded once, as it was first seen, and that a nil one is skipped.
+func Test_FileHeaders_Save(t *testing.T) {
+	t.Parallel()
+	g := &fileHeaders{}
+	g.save(nil)
+	require.Nil(t, g.saved, "a nil header records nothing")
+	fh := &multipart.FileHeader{Filename: "a.txt", Size: 1}
+	g.save(fh)
+	fh.Filename = "b.txt"
+	g.save(fh)
+	require.Len(t, g.saved, 1)
+	require.Equal(t, "a.txt", g.saved[fh].Filename, "a header already recorded keeps its first record")
+
+	// The same header twice among the file parts, and a nil one, make one record.
+	twice := &multipart.FileHeader{Filename: "c.txt"}
+	var out struct{ File *multipart.FileHeader }
+	g = guardFileHeaders(&out, []map[string][]*multipart.FileHeader{{"file": {nil, twice, twice}}})
+	require.NotNil(t, g)
+	require.Len(t, g.saved, 1)
+	require.True(t, g.known(twice))
+}
+
+// Test_FileHeaders_Shapes pins that the guard reaches a *multipart.FileHeader held in every shape schema can fill (a
+// field, an element of a slice or an array, a value of a map), puts back one that was changed, clears one that was
+// created, and ends at a pointer it has walked.
+func Test_FileHeaders_Shapes(t *testing.T) {
+	t.Parallel()
+	type shapes struct {
+		Next    *shapes
+		Single  *multipart.FileHeader
+		ByName  map[string]*multipart.FileHeader
+		Grouped map[string][]*multipart.FileHeader
+		Fixed   [2]*multipart.FileHeader
+		List    []*multipart.FileHeader
+	}
+	header := func(name string) *multipart.FileHeader { return &multipart.FileHeader{Filename: name} }
+	held := map[string]*multipart.FileHeader{
+		"single": header("single"), "listed": header("listed"), "fixed": header("fixed"),
+		"by name": header("by name"), "grouped": header("grouped"),
+	}
+	out := &shapes{
+		Single: held["single"], List: []*multipart.FileHeader{held["listed"]},
+		Fixed:   [2]*multipart.FileHeader{held["fixed"], nil},
+		ByName:  map[string]*multipart.FileHeader{"k": held["by name"]},
+		Grouped: map[string][]*multipart.FileHeader{"k": {held["grouped"]}},
+	}
+	out.Next = out // a pointer to the struct that holds it: the walk must end
+	g := guardFileHeaders(out, nil)
+	require.NotNil(t, g)
+	for name, fh := range held {
+		require.True(t, g.known(fh), name)
+		fh.Filename = "changed" // what a decode could do to it
+	}
+	out.Fixed[1] = header("created in an array")
+	out.List = append(out.List, header("created in a slice"))
+
+	g.restore(out)
+	for name, fh := range held {
+		require.Equal(t, name, fh.Filename)
+	}
+	require.Nil(t, out.Fixed[1], "a header created in an array is cleared")
+	require.Len(t, out.List, 2)
+	require.Nil(t, out.List[1], "a header created in a slice is cleared")
+
+	var created struct{ Avatar *multipart.FileHeader }
+	g = guardFileHeaders(&created, nil)
+	created.Avatar = header("created")
+	g.restore(&created)
+	require.Nil(t, created.Avatar, "a header created in a field is cleared")
+}
+
+// Test_FileHeaders_UnexportedEmbedded pins that the guard passes by an element of an unexported embedded slice or
+// map: reflect does not let it read one as an interface, and schema does not set one.
+func Test_FileHeaders_UnexportedEmbedded(t *testing.T) {
+	t.Parallel()
+	type hiddenList []*multipart.FileHeader
+	type hiddenMap map[string]*multipart.FileHeader
+	fh := &multipart.FileHeader{Filename: "a.txt"}
+	out := &struct {
+		hiddenMap
+		hiddenList
+	}{hiddenMap{"k": fh}, hiddenList{fh}}
+	var g *fileHeaders
+	require.NotPanics(t, func() { g = guardFileHeaders(out, nil) })
+	require.NotNil(t, g)
+	require.False(t, g.known(fh))
+	require.NotPanics(t, func() { g.restore(out) })
+	require.Equal(t, "a.txt", fh.Filename)
+}
+
 // benchUpload is benchUser with a file to bind, which makes a bind walk its fields.
 type benchUpload struct {
 	Avatar *multipart.FileHeader `form:"avatar" query:"avatar"`

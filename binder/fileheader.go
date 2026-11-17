@@ -162,14 +162,12 @@ func (g *fileHeaders) visit(v reflect.Value, phase guardPhase, seen map[seenPoin
 			return
 		}
 		if v.Type() == reflect.PointerTo(fileHeaderType) {
-			if !v.CanInterface() {
-				return // an element of an unexported embedded slice or map, which schema cannot set either
+			// An element of an unexported embedded slice or map cannot be read as an interface, and schema cannot set it either.
+			if v.CanInterface() {
+				if fh, ok := reflect.TypeAssert[*multipart.FileHeader](v); ok {
+					g.take(fh, phase)
+				}
 			}
-			fh, ok := reflect.TypeAssert[*multipart.FileHeader](v)
-			if !ok {
-				return
-			}
-			g.take(fh, phase)
 			return
 		}
 		key := seenPointer{typ: v.Type(), ptr: v.Pointer()}
@@ -189,9 +187,6 @@ func (g *fileHeaders) visit(v reflect.Value, phase guardPhase, seen map[seenPoin
 			}
 		}
 	case reflect.Slice, reflect.Array:
-		if !holdsFileHeader(v.Type().Elem()) {
-			return
-		}
 		for i := range v.Len() {
 			elem := v.Index(i)
 			g.visit(elem, phase, seen)
@@ -202,9 +197,6 @@ func (g *fileHeaders) visit(v reflect.Value, phase guardPhase, seen map[seenPoin
 			}
 		}
 	case reflect.Map:
-		if !holdsFileHeader(v.Type().Elem()) {
-			return
-		}
 		for _, key := range v.MapKeys() {
 			g.visit(v.MapIndex(key), phase, seen)
 		}
