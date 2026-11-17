@@ -2,6 +2,7 @@ package pprof
 
 import (
 	"net/http/pprof"
+	runtimepprof "runtime/pprof"
 	"strings"
 
 	"github.com/gofiber/utils/v2"
@@ -78,6 +79,12 @@ func New(config ...Config) fiber.Handler {
 		case "/threadcreate":
 			pprofThreadcreate(c.RequestCtx())
 		default:
+			// The index also lists the profiles an application registers with
+			// runtime/pprof.NewProfile, so serve those as net/http/pprof does.
+			if name := strings.TrimPrefix(path, "/"); name != "" && runtimepprof.Lookup(name) != nil {
+				fasthttpadaptor.NewFastHTTPHandler(pprof.Handler(name))(c.RequestCtx())
+				return nil
+			}
 			// pprof index only works with trailing slash
 			if strings.HasSuffix(path, "/") {
 				path = prefix + utils.TrimRight(path, '/')

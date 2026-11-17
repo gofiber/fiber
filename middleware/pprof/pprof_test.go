@@ -1,6 +1,7 @@
 package pprof
 
 import (
+	runtimepprof "runtime/pprof"
 	"testing"
 	"time"
 
@@ -80,6 +81,28 @@ func Test_Pprof_Subs(t *testing.T) {
 					require.Equal(t, 200, resp.StatusCode)
 				})
 			}
+		})
+	}
+}
+
+// customProfile is registered once for the process: NewProfile panics on a
+// name already in use.
+var customProfile = runtimepprof.NewProfile("fiber_pprof_test_custom")
+
+// Test_Pprof_CustomProfile follows the index's link to a profile the
+// application registered with runtime/pprof.NewProfile.
+func Test_Pprof_CustomProfile(t *testing.T) {
+	t.Parallel()
+	for _, m := range pprofTestMounts {
+		t.Run(m.name, func(t *testing.T) {
+			t.Parallel()
+			app := m.app(Config{})
+
+			index := apptest.Body(t, apptest.Expect(t, app, m.prefix+"/debug/pprof/", 200))
+			require.Contains(t, index, "href='"+customProfile.Name()+"?debug=1'")
+
+			resp := apptest.Expect(t, app, m.prefix+"/debug/pprof/"+customProfile.Name()+"?debug=1", 200)
+			require.Contains(t, apptest.Body(t, resp), customProfile.Name()+" profile: total 0")
 		})
 	}
 }
