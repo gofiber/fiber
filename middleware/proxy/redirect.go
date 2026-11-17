@@ -214,7 +214,7 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy, 
 // does not depend on this. It returns location itself, without allocating, when there is nothing to write.
 func escapeStrayPercents(location string) string {
 	end := len(location)
-	if i := strings.IndexAny(location, "?#"); i >= 0 {
+	if i := utils.IndexAny2(location, '?', '#'); i >= 0 {
 		end = i
 	}
 	var b []byte

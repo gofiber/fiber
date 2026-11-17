@@ -801,8 +801,8 @@ func Test_Security_ResolveRedirect(t *testing.T) {
 		{name: "HTTPS to HTTP when allowed", policy: allowDowngrade, location: "http://example.com/x", wantURL: "http://example.com/x"},
 		// The HTTPS to HTTP downgrade guard.
 		{name: "HTTPS to HTTP", policy: allowPrivate, location: "http://example.com/x", err: ErrRedirectDowngrade},
-		// The empty-host check after fasthttp's URI.Update merges in the Location. A
-		// Location of "http://" produces a URI with scheme but no host.
+		// The empty-host check after the Location is resolved against the current URL. A
+		// Location of "http://" resolves to a URL with a scheme but no host.
 		{name: "hostless target", policy: allowPrivate, location: "http://", err: fasthttp.ErrorInvalidURI},
 		// A "%" that begins no escape in the path is read as "%25", as browsers and curl read it. In the
 		// authority it names no host.
