@@ -134,7 +134,11 @@ func (g *fileHeaders) save(fh *multipart.FileHeader) {
 }
 
 // restore puts the recorded headers back as they were and clears the ones no file part or earlier bind produced.
+// Every record is put back, reachable from out or not: a decode that wrote into a header may have replaced it in out.
 func (g *fileHeaders) restore(out any) {
+	for fh := range g.saved {
+		g.take(fh, restoring)
+	}
 	g.walk(reflect.ValueOf(out), restoring)
 }
 
@@ -168,6 +172,20 @@ func first(seen map[seenPointer]struct{}, key seenPointer) bool {
 	return true
 }
 
+// walked reports whether the walk is done with the slice or map v: one that cannot be read as an interface belongs
+// to an unexported embedded field and holds no header the walk can reach, and one already met has been walked. Only
+// a value that can be read is remembered, since an exported field may hold the same slice or map as an unexported one.
+func walked(v reflect.Value, seen map[seenPointer]struct{}) bool {
+	if !v.CanInterface() {
+		return true
+	}
+	key := seenPointer{typ: v.Type(), ptr: v.Pointer()}
+	if v.Kind() == reflect.Slice {
+		key.n = v.Len()
+	}
+	return !first(seen, key)
+}
+
 func (g *fileHeaders) visit(v reflect.Value, phase guardPhase, seen map[seenPointer]struct{}) {
 	switch v.Kind() {
 	case reflect.Pointer:
@@ -198,8 +216,7 @@ func (g *fileHeaders) visit(v reflect.Value, phase guardPhase, seen map[seenPoin
 		}
 	case reflect.Slice, reflect.Array:
 		// A slice of headers cannot hold itself, and a slice of anything else may, through its element type.
-		if v.Kind() == reflect.Slice && v.Type().Elem() != fileHeaderPtrType &&
-			!first(seen, seenPointer{typ: v.Type(), ptr: v.Pointer(), n: v.Len()}) {
+		if v.Kind() == reflect.Slice && v.Type().Elem() != fileHeaderPtrType && walked(v, seen) {
 			return
 		}
 		for i := range v.Len() {
@@ -212,7 +229,7 @@ func (g *fileHeaders) visit(v reflect.Value, phase guardPhase, seen map[seenPoin
 			}
 		}
 	case reflect.Map:
-		if v.Type().Elem() != fileHeaderPtrType && !first(seen, seenPointer{typ: v.Type(), ptr: v.Pointer()}) {
+		if v.Type().Elem() != fileHeaderPtrType && walked(v, seen) {
 			return
 		}
 		for _, key := range v.MapKeys() {

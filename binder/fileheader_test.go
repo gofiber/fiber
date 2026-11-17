@@ -200,6 +200,46 @@ func Test_FileHeaders_Cycles(t *testing.T) {
 	}
 }
 
+// Test_FileHeaders_RestoresAReplacedHeader pins that a header the decode wrote to and then replaced in the destination
+// is put back too: schema fills a field from the file parts of keys that differ in case, in the order of a map.
+func Test_FileHeaders_RestoresAReplacedHeader(t *testing.T) {
+	t.Parallel()
+	first := &multipart.FileHeader{Filename: "first.txt", Size: 1}
+	second := &multipart.FileHeader{Filename: "second.txt", Size: 2}
+	var out struct{ Avatar *multipart.FileHeader }
+	g := guardFileHeaders(&out, []map[string][]*multipart.FileHeader{{"avatar": {first}, "AVATAR": {second}}})
+	require.NotNil(t, g)
+	out.Avatar = first
+	first.Filename = "changed.txt" // a form value written into the header the field holds
+	out.Avatar = second            // and the field is filled again from the other file part
+
+	g.restore(&out)
+	require.Equal(t, "first.txt", first.Filename)
+	require.Equal(t, "second.txt", second.Filename)
+	require.Same(t, second, out.Avatar)
+}
+
+// Test_FileHeaders_AliasOfAnUnexportedEmbedded pins that a slice or a map the walk meets through an unexported
+// embedded field, whose headers it cannot reach, does not hide the same one held by an exported field.
+func Test_FileHeaders_AliasOfAnUnexportedEmbedded(t *testing.T) {
+	t.Parallel()
+	type node struct{ File *multipart.FileHeader }
+	type hiddenNodes []node
+	type hiddenByName map[string]node
+	inSlice, inMap := &multipart.FileHeader{Filename: "slice.txt"}, &multipart.FileHeader{Filename: "map.txt"}
+	nodes, byName := hiddenNodes{{File: inSlice}}, hiddenByName{"k": {File: inMap}}
+	out := &struct {
+		hiddenByName
+		VisibleMap hiddenByName
+		hiddenNodes
+		Visible hiddenNodes
+	}{byName, byName, nodes, nodes}
+	g := guardFileHeaders(out, nil)
+	require.NotNil(t, g)
+	require.True(t, g.known(inSlice), "the header is reachable through the exported slice")
+	require.True(t, g.known(inMap), "the header is reachable through the exported map")
+}
+
 // benchUpload is benchUser with a file to bind, which makes a bind walk its fields.
 type benchUpload struct {
 	Avatar *multipart.FileHeader `form:"avatar" query:"avatar"`
