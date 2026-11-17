@@ -81,11 +81,12 @@ const (
 // and so as a host and a credential; rooted, it is the path
 // "/http://u:pw@evil.example/x".
 func Routed[App any](c Ctx[App]) string {
-	return routedFor(c, c.Path())
+	return routedFor(c, c.Path(), "")
 }
 
-// routedFor is Routed for path, which is c.Path(), for a caller that has read it already.
-func routedFor[App any](c Ctx[App], path string) string {
+// routedFor is Routed for path, which is c.Path(), for a caller that has read it already, and for line, the request
+// line, for one that has read that as well ("" for one that has not: the line is then read where it is needed).
+func routedFor[App any](c Ctx[App], path, line string) string {
 	if path == "" || path[0] != '/' {
 		path = "/" + path
 	}
@@ -101,7 +102,10 @@ func routedFor[App any](c Ctx[App], path string) string {
 		}
 		// Most often the target is the request line as it arrived, which
 		// is then handed back rather than built again.
-		if line := c.OriginalURL(); len(line) == len(path)+1+len(query) && line[len(path)] == '?' &&
+		if line == "" {
+			line = c.OriginalURL()
+		}
+		if len(line) == len(path)+1+len(query) && line[len(path)] == '?' &&
 			line[:len(path)] == path && line[len(path)+1:] == string(query) {
 			return line
 		}
@@ -151,10 +155,18 @@ func ServeNative[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
 // does not when the handler goes on reading the request: a net/http handler that streamed or hijacked the
 // response, or, native, one that was given up on.
 func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack func(original string)) bool {
-	// Read once: with Immutable every read of either copies the string.
-	path, line := c.Path(), c.OriginalURL()
-	target := routedFor(c, path)
-	if !SegmentsAsRouted(target, AllowParameters) || (!appconfig.Of(c.App()).UnescapePath && !SingleSpelling(path) && !NoPath(line, c.Request().Header.IsConnect())) {
+	// Read once: with Immutable every read of the path copies the string. The line is only a view of the request
+	// line, since it is compared below and copied where it has to outlive the request line.
+	req := c.Request()
+	path, line := c.Path(), utils.UnsafeString(req.Header.RequestURI())
+	unescape := appconfig.Of(c.App()).UnescapePath
+	if !unescape && lineIsTarget(req, path, line) {
+		// As most are, the line is the routed target and passes the checks below, which it is told without them.
+		handler(c.RequestCtx())
+		return true
+	}
+	target := routedFor(c, path, line)
+	if !SegmentsAsRouted(target, AllowParameters) || (!unescape && !SingleSpelling(path) && !NoPath(line, req.Header.IsConnect())) {
 		return false
 	}
 	if target == line {
@@ -502,6 +514,11 @@ func pathOf(target string) string {
 func queryOf(req *fasthttp.Request) []byte {
 	uri := req.URI()
 	sent := uri.QueryString()
+	// A URI that holds no query and no arguments has none in its request URI either, which the rest finds out by
+	// writing all of it. DisablePathNormalizing is left to it: the path is spelled as set then, a "?" in it included.
+	if len(sent) == 0 && !uri.DisablePathNormalizing && uri.QueryArgs().Len() == 0 {
+		return nil
+	}
 	var current []byte
 	requestURI := uri.RequestURI()
 	if _, query, ok := bytes.Cut(requestURI, []byte{'?'}); ok {
@@ -530,6 +547,46 @@ var pathRaw = func() [256]bool {
 	}
 	return t
 }()
+
+// pathPlain marks the bytes pathRaw lets through but ";", which begins a path parameter and so a check of its own,
+// and "/", which is judged with the byte that follows it.
+var pathPlain = func() [256]bool {
+	t := pathRaw
+	t[';'] = false
+	t['/'] = false
+	return t
+}()
+
+// plainPath reports whether path is rooted and made of bytes that need no escape, none of them "%", "\" or ";", with
+// no empty segment but a last one. For such a path needsEscape is false, and SegmentsAsRouted (with AllowParameters)
+// and SingleSpelling let it through, so the checks Serve makes of a routed path have nothing to find in it.
+func plainPath(path string) bool {
+	if path == "" || path[0] != '/' {
+		return false
+	}
+	for i := 1; i < len(path); i++ {
+		if c := path[i]; !pathPlain[c] && (c != '/' || path[i-1] == '/') {
+			return false
+		}
+	}
+	return true
+}
+
+// lineIsTarget reports whether line, the request line of req, is the target routedFor makes of path, which is c.Path(),
+// and the checks of Serve let through, found out in one scan of path rather than the several they make: path is
+// plain, and line is that path, or that path, a "?" and the query queryOf finds, which is not empty. It says nothing
+// under UnescapePath, which respells the path, and the caller does not ask then.
+func lineIsTarget(req *fasthttp.Request, path, line string) bool {
+	rest, ok := strings.CutPrefix(line, path)
+	if !ok || !plainPath(path) {
+		return false
+	}
+	query := queryOf(req)
+	if rest == "" {
+		return len(query) == 0
+	}
+	return len(query) != 0 && rest[0] == '?' && rest[1:] == string(query)
+}
 
 // needsEscape reports whether appendPathEscaped would change path.
 func needsEscape(path string) bool {

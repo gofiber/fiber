@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -933,6 +934,134 @@ func Test_HTTPHandler_Direct_TargetsThatAreNoPath(t *testing.T) {
 				require.Equal(t, tc.body, body)
 			}
 		})
+	}
+}
+
+// echoRequestURI is a fasthttp handler that answers with the request line it reads.
+func echoRequestURI(ctx *fasthttp.RequestCtx) { ctx.SetBodyString(string(ctx.RequestURI())) }
+
+// Test_Adapter_FastHTTP_ReadsTheRoutedTarget pins what a fasthttp and a net/http route handler read of the request line:
+// a line that already spells the routed path, with or without a query, as it is, and the ones next to it that differ
+// in a byte, or in what a handler did to the query or the path, respelled or answered 404.
+func Test_Adapter_FastHTTP_ReadsTheRoutedTarget(t *testing.T) {
+	t.Parallel()
+	shapes := map[string]any{
+		"fasthttp": fasthttp.RequestHandler(echoRequestURI),
+		"net/http": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := io.WriteString(w, r.RequestURI)
+			assert.NoError(t, err)
+		}),
+	}
+	changes := map[string]func(c Ctx){
+		"read":             func(c Ctx) { _ = c.Query("x") },
+		"add":              func(c Ctx) { c.Request().URI().QueryArgs().Add("k", "v") },
+		"set":              func(c Ctx) { c.Request().URI().QueryArgs().Set("x", "9") },
+		"reset":            func(c Ctx) { c.Request().URI().QueryArgs().Reset() },
+		"set query string": func(c Ctx) { c.Request().URI().SetQueryString("z=1") },
+		"rewrite path":     func(c Ctx) { c.Path("/c") },
+	}
+	for _, tc := range []struct {
+		name, target, change string
+		want                 string // what the handler read of the request line; "" for a request answered 404
+	}{
+		{name: "path", target: "/a/b-c_d.e~f", want: "/a/b-c_d.e~f"},
+		{name: "root", target: "/", want: "/"},
+		{name: "trailing slash", target: "/a/", want: "/a/"},
+		{name: "query", target: "/a?x=1&y=%20;z", want: "/a?x=1&y=%20;z"},
+		{name: "query read", target: "/a?x=a%20b&c=;d", want: "/a?x=a%20b&c=;d", change: "read"},
+		{name: "escape", target: "/a%20b?x=1", want: "/a%20b?x=1"},
+		{name: "path parameter", target: "/a;b", want: "/a;b"},
+		{name: "empty query", target: "/a?", want: "/a"},
+		{name: "fragment", target: "/a?x=1#frag", want: "/a?x=1"},
+		{name: "dot segment", target: "/a/./b", want: "/a/b"},
+		{name: "empty segment", target: "/a//b"},
+		{name: "escaped slash", target: "/a%2Fb"},
+		{name: "second spelling", target: "/R%26D"},
+		{name: "backslash", target: `/a\b`},
+		{name: "parameters alone", target: "/;x/admin"},
+		{name: "dot segment parameters", target: "/a/..;/b"},
+		{name: "arguments added", target: "/a", want: "/a?k=v", change: "add"},
+		{name: "arguments set", target: "/a?x=1", want: "/a?x=9", change: "set"},
+		{name: "arguments removed", target: "/a?x=1", want: "/a", change: "reset"},
+		{name: "query string set", target: "/a", want: "/a?z=1", change: "set query string"},
+		{name: "path rewritten", target: "/a/b?x=1", want: "/c?x=1", change: "rewrite path"},
+	} {
+		for shape, handler := range shapes {
+			for _, immutable := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/immutable=%v", tc.name, shape, immutable), func(t *testing.T) {
+					t.Parallel()
+					app := New(Config{Immutable: immutable})
+					app.Use(func(c Ctx) error {
+						if change := changes[tc.change]; change != nil {
+							change(c)
+						}
+						return c.Next()
+					})
+					app.Use(handler)
+
+					resp := serveRawTarget(t, app, tc.target)
+					if tc.want == "" {
+						require.Equal(t, StatusNotFound, resp.StatusCode())
+						return
+					}
+					require.Equal(t, StatusOK, resp.StatusCode())
+					require.Equal(t, tc.want, string(resp.Body()))
+				})
+			}
+		}
+	}
+}
+
+// Test_Adapter_FastHTTP_UnescapePathRespellsTheLine pins that under UnescapePath, which makes the router decode every
+// escape and the handler get the path escaped again by segment, a line that is made of plain bytes is respelled too
+// when a segment holds one of them that is escaped again, a comma.
+func Test_Adapter_FastHTTP_UnescapePathRespellsTheLine(t *testing.T) {
+	t.Parallel()
+	app := New(Config{UnescapePath: true})
+	app.Use(fasthttp.RequestHandler(echoRequestURI))
+
+	resp := serveRawTarget(t, app, "/a,b/c:d?x=1")
+	require.Equal(t, StatusOK, resp.StatusCode())
+	require.Equal(t, "/a%2Cb/c:d?x=1", string(resp.Body()))
+}
+
+// Test_Adapter_FastHTTP_DispatchAllocations pins that a fasthttp route handler costs the router no allocation more than
+// one that takes the Ctx for a request line that already spells the routed path, query or not, but for the copy
+// Immutable makes of the path it compares the line with.
+//
+// Not parallel: AllocsPerRun counts allocations process-wide, and Go pauses parallel tests while a sequential one runs.
+func Test_Adapter_FastHTTP_DispatchAllocations(t *testing.T) {
+	// The fewest allocations of many single runs, not an average: under -race sync.Pool drops a quarter of what it is
+	// handed at random, so an average varies from one run to the next.
+	allocs := func(immutable bool, target string, handler any) float64 {
+		app := New(Config{Immutable: immutable})
+		app.Get("/foo/:id", handler)
+		h := app.Handler()
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(MethodGet)
+		fctx.Request.SetRequestURI(target)
+		fewest := math.MaxFloat64
+		for range 200 {
+			fewest = min(fewest, testing.AllocsPerRun(1, func() { h(fctx) }))
+		}
+		return fewest
+	}
+	handlers := map[string]any{
+		"fasthttp.RequestHandler":          fasthttp.RequestHandler(func(*fasthttp.RequestCtx) {}),
+		"func(*fasthttp.RequestCtx) error": func(*fasthttp.RequestCtx) error { return nil },
+	}
+	for _, immutable := range []bool{false, true} {
+		extra := 0.0
+		if immutable {
+			extra = 1
+		}
+		for _, target := range []string{"/foo/bar", "/foo/bar?x=1&y=2"} {
+			base := allocs(immutable, target, func(Ctx) error { return nil })
+			for name, handler := range handlers {
+				got := allocs(immutable, target, handler)
+				require.LessOrEqual(t, got, base+extra, "%s %s immutable=%v", name, target, immutable)
+			}
+		}
 	}
 }
 
