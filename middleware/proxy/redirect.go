@@ -177,6 +177,27 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy, 
 	if utils.IndexControl(location) != -1 {
 		return nil, fasthttp.ErrorInvalidURI
 	}
+	var (
+		target *url.URL
+		err    error
+	)
+	if plainAbsoluteURL(location) {
+		// There is nothing to resolve: resolveLocation would write the Location back as it is.
+		target, err = validateUpstream(string(location), policy, lookups)
+	} else {
+		target, err = resolveLocation(currentURL, location, policy, lookups)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !policy.AllowHTTPSDowngrade && target.Scheme == schemeHTTP && strings.EqualFold(schemeOf(currentURL), schemeHTTPS) {
+		return nil, ErrRedirectDowngrade
+	}
+	return target, nil
+}
+
+// resolveLocation resolves location against currentURL and validates the URL it names under policy.
+func resolveLocation(currentURL string, location []byte, policy SecurityPolicy, lookups *lookupCache) (*url.URL, error) {
 	// Resolved on the escaped path (RFC 3986 Section 5.2), not through fasthttp.URI, which decodes
 	// "%2F" and resolves the ".." it uncovers: a Location that repeats the request URI, as a
 	// canonical-host redirect does, would otherwise name another path than the one requested.
@@ -198,14 +219,72 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy, 
 	if next.Host == "" {
 		return nil, fasthttp.ErrorInvalidURI
 	}
-	target, err := validateUpstream(next.String(), policy, lookups)
-	if err != nil {
-		return nil, err
+	return validateUpstream(next.String(), policy, lookups)
+}
+
+// plainAbsoluteURL reports whether location is an absolute http or https URL that resolveLocation writes back as it
+// is: a lowercase scheme, a host with at most a port and no user info, a path of unreserved bytes, sub-delimiters
+// and complete escapes with no dot segment, and a query, but no fragment. A Location that is anything else goes the
+// long way, through net/url, which costs about twice the allocations.
+func plainAbsoluteURL(location []byte) bool {
+	s := utils.UnsafeString(location)
+	rest, ok := strings.CutPrefix(s, "http://")
+	if !ok {
+		if rest, ok = strings.CutPrefix(s, "https://"); !ok {
+			return false
+		}
 	}
-	if !policy.AllowHTTPSDowngrade && base.Scheme == schemeHTTPS && target.Scheme == schemeHTTP {
-		return nil, ErrRedirectDowngrade
+	authority := rest
+	rest = ""
+	if i := utils.IndexAny2(authority, '/', '?'); i >= 0 {
+		authority, rest = authority[:i], authority[i:]
 	}
-	return target, nil
+	host, port, hasPort := strings.Cut(authority, ":")
+	if host == "" || hasPort && (port == "" || strings.Trim(port, "0123456789") != "") {
+		return false
+	}
+	for i := range len(host) {
+		if c := host[i]; !isAlnum(c) && c != '-' && c != '.' {
+			return false
+		}
+	}
+	path, query, _ := strings.Cut(rest, "?")
+	segment := 0
+	for i := 0; i <= len(path); i++ {
+		if i < len(path) && path[i] != '/' {
+			switch c := path[i]; {
+			case isAlnum(c), strings.IndexByte("-._~!$&'()*+,;=:@", c) >= 0:
+			case c == '%' && i+2 < len(path) && isHexDigit(path[i+1]) && isHexDigit(path[i+2]):
+				i += 2
+			default:
+				return false
+			}
+			continue
+		}
+		if seg := path[segment:i]; seg == "." || seg == ".." {
+			return false
+		}
+		segment = i + 1
+	}
+	for i := range len(query) {
+		if c := query[i]; c <= ' ' || c > '~' || c == '#' {
+			return false
+		}
+	}
+	return true
+}
+
+// isAlnum reports whether c is an ASCII letter or digit.
+func isAlnum(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
+// schemeOf returns the scheme ref opens with, as written, or "" when it opens with none.
+func schemeOf(ref string) string {
+	if end := schemeEnd(ref); end > 0 {
+		return ref[:end-1]
+	}
+	return ""
 }
 
 // escapeStrayPercents returns location with every "%" of its path that does not begin an escape written
