@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"strings"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/internal/bodystream"
@@ -264,7 +264,9 @@ func adaptFastHTTPHandler(handler any) (Handler, bool) {
 // the asterisk form of OPTIONS and the authority form of CONNECT. fasthttp and the router read the same path for
 // them, so there is nothing to guard, and the handler needs the target as sent ("*", "example.com:443").
 func serveNative(c Ctx, h fasthttp.RequestHandler) bool {
-	if line := c.OriginalURL(); line == "*" || (c.Request().Header.IsConnect() && line != "" && !strings.ContainsAny(line, "/%?#\\;@")) {
+	// A view of the line, as c.OriginalURL() copies it under Immutable and it is only read here.
+	req := c.Request()
+	if wiretarget.NoPath(utils.UnsafeString(req.Header.RequestURI()), req.Header.IsConnect()) {
 		h(c.RequestCtx())
 		return true
 	}

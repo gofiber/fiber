@@ -888,8 +888,42 @@ func Test_Adapter_FastHTTP_KeepsTargetsThatAreNoPath(t *testing.T) {
 	}{
 		{"asterisk-form", "OPTIONS * HTTP/1.1\r\nHost: example.com\r\n\r\n", "*", StatusOK},
 		{"authority-form", "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n", "example.com:443", StatusOK},
+		{"authority-form with an IPv6 literal", "CONNECT [::1]:443 HTTP/1.1\r\nHost: [::1]:443\r\n\r\n", "[::1]:443", StatusOK},
 		{"authority-form with an empty segment", "CONNECT //admin/data.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
 		{"authority-form with an escaped slash", "CONNECT admin%2Fdata.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			status, body := serveRaw(t, app, tc.raw)
+			require.Equal(t, tc.status, status)
+			if tc.status == StatusOK {
+				require.Equal(t, tc.body, body)
+			}
+		})
+	}
+}
+
+// Test_HTTPHandler_Direct_TargetsThatAreNoPath pins that the target of OPTIONS * and the authority form of CONNECT, which
+// hold no path, reach a net/http handler registered directly as the router read them (rooted, a byte a path may not carry
+// raw escaped) and are not refused for their spelling: an IPv6 literal holds "[" and "]", which a path sent with them is
+// answered 404 for (see Test_HTTPHandler_FileServerOneSpelling). A target that does hold a path is judged as one.
+func Test_HTTPHandler_Direct_TargetsThatAreNoPath(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.WriteString(w, r.RequestURI+"|"+r.Host)
+		assert.NoError(t, err)
+	})
+
+	for _, tc := range []struct {
+		name, raw, body string
+		status          int
+	}{
+		{"asterisk-form", "OPTIONS * HTTP/1.1\r\nHost: example.com\r\n\r\n", "/*|example.com", StatusOK},
+		{"authority-form", "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n", "/example.com:443|example.com:443", StatusOK},
+		{"authority-form with an IPv6 literal", "CONNECT [::1]:443 HTTP/1.1\r\nHost: [::1]:443\r\n\r\n", "/%5B::1%5D:443|[::1]:443", StatusOK},
+		{"authority-form with a path", "CONNECT [::1]:443/x HTTP/1.1\r\nHost: [::1]:443\r\n\r\n", "", StatusNotFound},
+		{"origin-form with brackets", "GET /a[1] HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

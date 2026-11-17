@@ -284,6 +284,34 @@ func Test_ParsesAsPath_Unrooted(t *testing.T) {
 	require.True(t, wiretarget.ParsesAsPath("/http://u:pw@evil.example/x", nil))
 }
 
+func Test_NoPath(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		line    string
+		connect bool
+		want    bool
+	}{
+		{"*", false, true},
+		{"*", true, true},
+		{"example.com:443", true, true},
+		{"[::1]:443", true, true},
+		{"[2001:db8::1]:8443", true, true},
+		{"example.com:443", false, false},
+		{"/a", true, false},
+		{"", true, false},
+		{"/*", false, false},
+		{"//admin/x", true, false},
+		{"admin%2Fx", true, false},
+		{"host:443?x=1", true, false},
+		{"host:443#x", true, false},
+		{"a\\b:443", true, false},
+		{"a;b:443", true, false},
+		{"user@host:443", true, false},
+	} {
+		require.Equal(t, tc.want, wiretarget.NoPath(tc.line, tc.connect), "%q connect=%t", tc.line, tc.connect)
+	}
+}
+
 func Test_SingleSpelling(t *testing.T) {
 	t.Parallel()
 	for path, want := range map[string]bool{

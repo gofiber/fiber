@@ -127,7 +127,9 @@ func routedFor[App any](c Ctx[App], path string) string {
 // a routed path that is not in the one spelling SingleSpelling accepts is not
 // handed on either: the router keeps "/R&D" and "/R%26D", "/user@corp" and
 // "/user%40corp", "/caf%C3%A9" and a raw "/café" apart, but the handler decodes
-// each pair into one name. Serve reports false, without running handler, for a
+// each pair into one name. A target that holds no path (NoPath) has no spelling
+// to refuse: "CONNECT [::1]:443" is routed as "/[::1]:443", whose raw brackets
+// a path may not carry. Serve reports false, without running handler, for a
 // routed path it does not hand on.
 func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
 	return serveWith(c, handler, func(original string) {
@@ -152,7 +154,7 @@ func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack fun
 	// Read once: with Immutable every read of either copies the string.
 	path, line := c.Path(), c.OriginalURL()
 	target := routedFor(c, path)
-	if !SegmentsAsRouted(target, AllowParameters) || (!appconfig.Of(c.App()).UnescapePath && !SingleSpelling(path)) {
+	if !SegmentsAsRouted(target, AllowParameters) || (!appconfig.Of(c.App()).UnescapePath && !SingleSpelling(path) && !NoPath(line, c.Request().Header.IsConnect())) {
 		return false
 	}
 	if target == line {
@@ -171,6 +173,15 @@ func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack fun
 	defer putBack(original)
 	handler(c.RequestCtx())
 	return true
+}
+
+// NoPath reports whether line, the request target as it arrived, holds no path: the asterisk form of OPTIONS ("*")
+// and, when connect is set, the authority form of CONNECT ("example.com:443", "[::1]:443"). fasthttp and the router
+// read the same path for such a target, so there is nothing to guard and no spelling to refuse: a fasthttp route
+// handler is given the target as sent, a net/http handler the path the router rooted it as. A CONNECT target that
+// holds a "/", "%", "?", "#", "\", ";" or "@" is a path like any other.
+func NoPath(line string, connect bool) bool {
+	return line == "*" || (connect && line != "" && !strings.ContainsAny(line, "/%?#\\;@"))
 }
 
 // restoreNative puts original back as the request line of a request whose fasthttp handler returned, unless a

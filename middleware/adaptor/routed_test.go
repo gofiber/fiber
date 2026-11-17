@@ -645,3 +645,30 @@ func Test_HTTPHandler_FileServerOneSpelling(t *testing.T) {
 		adaptorTestRequireRawOK(t, app, "/caf%C3%A9/data.txt", "data")
 	})
 }
+
+// Test_HTTPHandler_ConnectAuthorityForm pins that the authority form of CONNECT, which holds no path, is not refused for its
+// spelling: an IPv6 literal holds "[" and "]", which a path sent with them is answered 404 for (see
+// Test_HTTPHandler_FileServerOneSpelling). A target that does hold a path is judged as one.
+func Test_HTTPHandler_ConnectAuthorityForm(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(HTTPHandler(http.HandlerFunc(describeURL)))
+
+	for _, tc := range []struct {
+		name, target, want string
+		status             int
+	}{
+		{"host and port", "example.com:443", "/example.com:443||/example.com:443", fiber.StatusOK},
+		{"IPv6 literal", "[::1]:443", "/[::1]:443||/%5B::1%5D:443", fiber.StatusOK},
+		{"with a path", "[::1]:443/x", "", fiber.StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fctx := rawLine(t, app, fiber.MethodConnect+" "+tc.target+" HTTP/1.1\r\nHost: example.com\r\n\r\n")
+			require.Equal(t, tc.status, fctx.Response.StatusCode())
+			if tc.status == fiber.StatusOK {
+				require.Equal(t, tc.want, string(fctx.Response.Body()))
+			}
+		})
+	}
+}
