@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	htemplate "html/template"
+	"maps"
 	"strings"
 
 	"github.com/gofiber/utils/v2"
@@ -158,7 +159,14 @@ func buildSwaggerUIPage(openAPIURL, oauth2RedirectURL string, cfg *Config, encod
 	if encode == nil {
 		encode = json.Marshal
 	}
-	swaggerOptionsJSON, err := encode(cfg.SwaggerOptions)
+	// Swagger UI otherwise shows a validator badge, which sends the document's URL to validator.swagger.io and
+	// has that service fetch it. It stays off unless the options ask for a validator.
+	options := make(map[string]any, len(cfg.SwaggerOptions)+1)
+	maps.Copy(options, cfg.SwaggerOptions)
+	if _, set := options["validatorUrl"]; !set {
+		options["validatorUrl"] = nil
+	}
+	swaggerOptionsJSON, err := encode(options)
 	if err != nil {
 		return nil, fmt.Errorf("marshal swagger options: %w", err)
 	}

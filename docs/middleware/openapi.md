@@ -144,7 +144,9 @@ app.Use(openapi.New(openapi.Config{
 ```
 
 `SwaggerOptions` is merged into the `SwaggerUIBundle` call, so anything Swagger
-UI itself supports works here. With `"filter": true` and `"docExpansion":
+UI itself supports works here. The middleware sets `validatorUrl` to `null`
+unless you set it: Swagger UI's validator badge would otherwise send the
+document's URL to `validator.swagger.io`, which then fetches it. With `"filter": true` and `"docExpansion":
 "full"`, for example, the page gains a tag filter box and opens every operation
 on load:
 
@@ -699,8 +701,13 @@ openapi.Typed(app, fiber.MethodPost, "/users/:id", func(c fiber.Ctx, req *GetUse
 }, openapi.WithStatus(fiber.StatusCreated)).Summary("Update a user")
 ```
 
-The request is bound with `c.Bind().All` and the result is written as JSON
-with the status you set (`200` by default). The route documents the fields tagged
+The request is bound the way it is documented: a field is filled from the
+query, the path, a header or a cookie only when it carries that tag, and a
+field tagged only for a parameter is not filled from the body. This is stricter
+than `c.Bind().All`, which also matches a field by its Go name in every source,
+so a client cannot set a body field such as `IsAdmin` with a header, a cookie
+or a query parameter. A request that does not bind or validate gets a `400`.
+The result is written as JSON with the status you set (`200` by default). The route documents the fields tagged
 `uri`, `query`, `header` and `cookie` as parameters, the others as the request body
 (not for `GET`, `HEAD`, `TRACE` and `OPTIONS`), and `*User` as the success response.
 `Empty` as the response type answers with no body (`204` by default).

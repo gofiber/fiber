@@ -144,3 +144,58 @@ func Test_OpenAPI_TypedDeclaresParametersInAFixedOrder(t *testing.T) {
 		require.Equal(t, []fiber.ParamLocation{fiber.ParamInPath, fiber.ParamInQuery, fiber.ParamInHeader}, in)
 	}
 }
+
+type strictRequest struct {
+	Name    string `json:"name"`
+	Plain   string
+	Token   string `header:"X-Token"`
+	Page    int    `query:"page"`
+	ID      int    `uri:"id"`
+	IsAdmin bool   `json:"is_admin"`
+}
+
+type strictEcho struct {
+	Name    string `json:"name"`
+	Plain   string `json:"plain"`
+	Token   string `json:"token"`
+	Page    int    `json:"page"`
+	ID      int    `json:"id"`
+	IsAdmin bool   `json:"is_admin"`
+}
+
+func echoStrict(_ fiber.Ctx, req *strictRequest) (*strictEcho, error) {
+	return &strictEcho{Name: req.Name, Plain: req.Plain, Token: req.Token, Page: req.Page, ID: req.ID, IsAdmin: req.IsAdmin}, nil
+}
+
+func Test_OpenAPI_TypedBindsEachFieldOnlyFromItsSource(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	Typed(app, fiber.MethodPost, "/u/:id", echoStrict)
+
+	send := func(target, body string) *strictEcho {
+		req := httptest.NewRequest(fiber.MethodPost, target, strings.NewReader(body))
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+		req.Header.Set("X-Token", "tok")
+		req.Header.Set("IsAdmin", "true")
+		req.Header.Set("Is_admin", "true")
+		req.Header.Set(fiber.HeaderCookie, "IsAdmin=true; is_admin=true; Plain=cookie; Name=cookie")
+		var got strictEcho
+		require.NoError(t, json.Unmarshal(apptest.BodyBytes(t, apptest.Expect(t, app, req, fiber.StatusOK)), &got))
+		return &got
+	}
+
+	got := send("/u/7?page=3&IsAdmin=true&is_admin=true&Plain=query&Name=query", `{"name":"ann"}`)
+	require.Equal(t, &strictEcho{Name: "ann", Token: "tok", Page: 3, ID: 7}, got, "a body field is not filled from the query, a header or a cookie")
+
+	got = send("/u/7", `{"name":"ann","is_admin":true,"Plain":"body","Token":"forged","Page":9,"ID":99}`)
+	require.Equal(t, &strictEcho{Name: "ann", Plain: "body", Token: "tok", ID: 7, IsAdmin: true}, got, "a parameter is not filled from the body")
+}
+
+func Test_OpenAPI_TypedAnswersBadRequestForABodyThatDoesNotBind(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	Typed(app, fiber.MethodPost, "/u/:id", echoStrict)
+	req := httptest.NewRequest(fiber.MethodPost, "/u/1", strings.NewReader(`{"name":`))
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	apptest.Expect(t, app, req, fiber.StatusBadRequest)
+}
