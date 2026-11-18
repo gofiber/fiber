@@ -117,7 +117,7 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 		return named
 	}
 	for _, get := range gets {
-		if _, twin := app.autoHeadTwinLocked(headIndex, app.autoHeadKey(get)); twin != nil {
+		if twin := app.autoHeadTwinLocked(headIndex, get); twin != nil {
 			twin.Name = get.Name
 		}
 	}

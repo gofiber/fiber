@@ -7,8 +7,6 @@ package fiber
 import (
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"regexp"
 	"slices"
 	"testing"
@@ -56,9 +54,7 @@ func Test_App_Mount_ExpansionLockOrder(t *testing.T) {
 	sub.mutex.Unlock()
 	<-expanded
 
-	resp, err := parent.Test(httptest.NewRequest(MethodGet, "/sub/leaf/x", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, parent, "/sub/leaf/x", StatusOK)
 }
 
 func Test_App_Mount_PreservesSubAppRegexHandler(t *testing.T) {

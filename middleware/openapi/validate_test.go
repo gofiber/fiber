@@ -2,8 +2,6 @@ package openapi
 
 import (
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"regexp"
 	"strconv"
 	"strings"
@@ -287,10 +285,7 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 			Security: []map[string][]string{{"bearerAuth": {}}},
 		}))
 
-		req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, "/openapi.json", fiber.StatusOK)
 
 		body := apptest.BodyBytes(t, resp)
 		return body

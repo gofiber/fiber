@@ -2,8 +2,6 @@ package openapi
 
 import (
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/gofiber/fiber/v3/internal/apptest"
@@ -17,10 +15,7 @@ import (
 //nolint:gocritic // unnamedResult: named results conflict with nonamedreturns
 func hostGet(t *testing.T, app *fiber.App, host, path string) (int, string) {
 	t.Helper()
-	req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
-	req.Host = host
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, apptest.Req(fiber.MethodGet, path, apptest.WithHost(host)))
 	body := apptest.BodyBytes(t, resp)
 	return resp.StatusCode, string(body)
 }

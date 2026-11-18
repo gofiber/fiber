@@ -1459,7 +1459,8 @@ func (app *App) removeMatchedLocked(methods []string, indexes []int, matched map
 	}
 
 	all := slices.Equal(methods, app.config.RequestMethods)
-	removedUseRoutes := make(map[autoHeadKey]struct{})
+	// Keyed by registration: two Use registrations of one path each added their handlers to the count.
+	removedUseRoutes := make(map[routeCopyKey]struct{})
 
 	for _, m := range indexes {
 		method := app.config.RequestMethods[m]
@@ -1475,7 +1476,7 @@ func (app *App) removeMatchedLocked(methods []string, indexes []int, matched map
 			app.bumpRoutesRevision()
 			app.unindexRouteLocked(route)
 
-			useKey := app.autoHeadKey(route)
+			useKey := routeCopyKey{path: route.Path, id: route.id}
 			if _, ok := removedUseRoutes[useKey]; (route.use && all && !ok) || !route.use {
 				if route.use {
 					removedUseRoutes[useKey] = struct{}{}
@@ -1504,9 +1505,13 @@ func (app *App) unindexRouteLocked(route *Route) {
 	delete(app.entryRegs, route)
 }
 
-// pruneAutoHeadRouteLocked removes the automatic HEAD routes of route's pattern behind the same
-// Domain patterns, so a later explicit registration can take their place without duplicating
-// handler chains. The caller must already hold app.mutex.
+// pruneAutoHeadRouteLocked removes every automatically generated HEAD route of
+// route's path, hosts and owner, so a later explicit registration can take their
+// place without duplicating handler chains. A path registered twice without
+// merging has a twin per GET route, and all of them go: a twin left behind would
+// keep serving a removed route's handlers, or run after the explicit HEAD route
+// that replaced it. RebuildTree gives a GET route that stays its twin back. The
+// caller must already hold app.mutex.
 func (app *App) pruneAutoHeadRouteLocked(route *Route) {
 	headIndex := app.methodInt(MethodHead)
 	if headIndex == -1 {
@@ -1515,10 +1520,9 @@ func (app *App) pruneAutoHeadRouteLocked(route *Route) {
 
 	key := app.autoHeadKey(route)
 	owner := app.routeOwner(route)
-
 	app.stack[headIndex] = slices.DeleteFunc(app.stack[headIndex], func(head *Route) bool {
 		// Only one of route's own app: another app's GET route keeps its generated route, as before startup.
-		if head.mount || head.use || !app.isAutoHeadTwinFor(head, key) || app.routeOwner(head) != owner {
+		if head.mount || head.use || !app.isAutoHeadForLocked(head, key) || app.routeOwner(head) != owner {
 			return false
 		}
 
@@ -1529,8 +1533,8 @@ func (app *App) pruneAutoHeadRouteLocked(route *Route) {
 	})
 }
 
-// isAutoHeadTwinFor reports whether head is the automatic HEAD route built for key.
-func (app *App) isAutoHeadTwinFor(head *Route, key autoHeadKey) bool {
+// isAutoHeadForLocked reports whether head is an auto-HEAD route built for key; the caller must hold app.mutex.
+func (app *App) isAutoHeadForLocked(head *Route, key autoHeadKey) bool {
 	if !head.autoHead || head.path != key.path || matchersKey(head.hosts) != key.hosts ||
 		head.routeParser.patternKey() != key.pattern {
 		return false
@@ -1538,14 +1542,17 @@ func (app *App) isAutoHeadTwinFor(head *Route, key autoHeadKey) bool {
 	return !app.mountFields.hostScopedRoutes || app.routeOwner(head) == key.owner
 }
 
-// autoHeadTwinLocked finds the auto-HEAD route built for key, or -1 and nil; the caller must hold app.mutex.
-func (app *App) autoHeadTwinLocked(headIndex int, key autoHeadKey) (int, *Route) {
-	for i, head := range app.stack[headIndex] {
-		if app.isAutoHeadTwinFor(head, key) {
-			return i, head
+// autoHeadTwinLocked finds the auto-HEAD route built from the GET route get, or nil. The twin shares the
+// id of its GET route, which tells it from the twin of another GET route at the same path. The caller
+// must hold app.mutex.
+func (app *App) autoHeadTwinLocked(headIndex int, get *Route) *Route {
+	key := app.autoHeadKey(get)
+	for _, head := range app.stack[headIndex] {
+		if head.id == get.id && app.isAutoHeadForLocked(head, key) {
+			return head
 		}
 	}
-	return -1, nil
+	return nil
 }
 
 // explicitHeadPositionLocked returns where route goes in the stack of method index m; an explicit HEAD

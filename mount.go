@@ -825,6 +825,43 @@ func (app *App) takeCreatedTwinsLocked() []subAppTwins {
 	return twins
 }
 
+// mountedRoutesOf snapshots, under the sub-app's lock, the routes of method the sub-app brings to app.
+// The lock is released even if cloning a route panics.
+func (app *App) mountedRoutesOf(subApp *App, method string) []mountedRoute {
+	subApp.mutex.Lock()
+	defer subApp.mutex.Unlock()
+
+	subAppRoutes := subApp.routesForMethod(method)
+	// A sub-app that registers no automatic HEAD routes of its own
+	// must not be given them here either: its middleware is
+	// registered for the methods it serves, and a HEAD route
+	// synthesized from the GET one would run without it. An app that
+	// turned them off takes none from the apps mounted into it either:
+	// a guard it registered with Get has no HEAD companion to run in front.
+	skipsAutoHead := app.config.DisableHeadAutoRegister ||
+		subApp.config.DisableHeadAutoRegister || subApp.methodInt(MethodHead) < 0
+	sources := make([]mountedRoute, 0, len(subAppRoutes))
+	for _, subAppRoute := range subAppRoutes {
+		// A sub-app started before it was mounted carries its automatic HEAD routes already.
+		if skipsAutoHead && subAppRoute.autoHead {
+			continue
+		}
+
+		owner := subApp.routeOwner(subAppRoute)
+		if owner == nil {
+			owner = subApp
+		}
+
+		sources = append(sources, mountedRoute{
+			clone:        app.copyRoute(subAppRoute),
+			owner:        owner,
+			constraints:  slices.Clone(subApp.routeConstraintsFor(subAppRoute)),
+			skipAutoHead: skipsAutoHead || subApp.skipsAutoHeadFor(subAppRoute),
+		})
+	}
+	return sources
+}
+
 // processSubAppsRoutes adds routes of sub-apps recursively when the server is started
 func (app *App) processSubAppsRoutes() {
 	var handlersCount uint32
@@ -854,38 +891,7 @@ func (app *App) processSubAppsRoutes() {
 			// an app is free to configure its own RequestMethods, and the two
 			// tables then neither line up nor have to be the same length.
 			// Locks are taken parent first, then sub-app, and released before the routes are re-parsed.
-			subApp.mutex.Lock()
-			subAppRoutes := subApp.routesForMethod(app.method(m))
-
-			// A sub-app that registers no automatic HEAD routes of its own
-			// must not be given them here either: its middleware is
-			// registered for the methods it serves, and a HEAD route
-			// synthesized from the GET one would run without it. An app that
-			// turned them off takes none from the apps mounted into it either:
-			// a guard it registered with Get has no HEAD companion to run in front.
-			skipsAutoHead := app.config.DisableHeadAutoRegister ||
-				subApp.config.DisableHeadAutoRegister || subApp.methodInt(MethodHead) < 0
-			sources := make([]mountedRoute, 0, len(subAppRoutes))
-			for _, subAppRoute := range subAppRoutes {
-				// A sub-app started before it was mounted carries its automatic HEAD routes already.
-				if skipsAutoHead && subAppRoute.autoHead {
-					continue
-				}
-				clone := app.copyRoute(subAppRoute)
-
-				owner := subApp.routeOwner(subAppRoute)
-				if owner == nil {
-					owner = subApp
-				}
-
-				sources = append(sources, mountedRoute{
-					clone:        clone,
-					owner:        owner,
-					constraints:  slices.Clone(subApp.routeConstraintsFor(subAppRoute)),
-					skipAutoHead: skipsAutoHead || subApp.skipsAutoHeadFor(subAppRoute),
-				})
-			}
-			subApp.mutex.Unlock()
+			sources := app.mountedRoutesOf(subApp, app.method(m))
 
 			// Create a slice to hold the sub-app's routes
 			subRoutes := make([]*Route, len(sources))

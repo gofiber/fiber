@@ -11,6 +11,9 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
+// maxModelPointerDepth is how many pointers a parameter model is followed through to its struct.
+const maxModelPointerDepth = 32
+
 func docSetSummary(sum string) func(route *Route) {
 	return func(route *Route) { route.Summary = sum }
 }
@@ -115,7 +118,7 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 
 	location := param.In.Normalize()
 	if !validParamLocation(location, true) {
-		panic("AddParameter: invalid parameter location: " + param.In)
+		panic("AddParameter: invalid parameter location: " + string(param.In))
 	}
 	param.In = location
 
@@ -181,12 +184,12 @@ func getOrCreateResponse(route *Route, key string) RouteResponse {
 func docAddResponse(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(route *Route) {
 	sanitized := sanitizeMediaTypes(mediaTypes)
 
+	key := responseKey(status)
+
 	explicitDescription := description != ""
 	if !explicitDescription {
-		description = schemautil.ResponseDescription(responseKey(status))
+		description = schemautil.ResponseDescription(key)
 	}
-
-	key := responseKey(status)
 
 	resp := RouteResponse{Description: description, MediaTypes: sanitized, Example: example, Examples: examples}
 	if schemaRef != "" {
@@ -448,10 +451,14 @@ func validParamLocation(location ParamLocation, querystring bool) bool {
 func docAddParameterModel(in ParamLocation, model any) func(route *Route) {
 	location := in.Normalize()
 	if !validParamLocation(location, false) {
-		panic("Params: invalid parameter location: " + in)
+		panic("Params: invalid parameter location: " + string(in))
 	}
 	t := reflect.TypeOf(model)
-	for t != nil && t.Kind() == reflect.Pointer {
+	// Bounded: a self-referential pointer type ("type P *P") never reaches a struct.
+	for range maxModelPointerDepth {
+		if t == nil || t.Kind() != reflect.Pointer {
+			break
+		}
 		t = t.Elem()
 	}
 	if t == nil || t.Kind() != reflect.Struct {

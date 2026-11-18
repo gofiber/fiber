@@ -2833,9 +2833,7 @@ func Test_App_MetadataNoCollisionWithMountedRoutes(t *testing.T) {
 	app := New()
 	app.Use("/api", sub)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/a", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/api/a", StatusOK)
 
 	app.Get("/new", testEmptyHandler).Name("newname").Summary("new summary")
 
