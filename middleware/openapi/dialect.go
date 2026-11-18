@@ -76,8 +76,8 @@ func (d dialect) license(license License) License {
 // A schema with no type (a $ref or composition) takes an anyOf with a null-only branch.
 func (d dialect) nullable(schema map[string]any) map[string]any {
 	schema = maps.Clone(schema)
-	if enum, ok := enumValues(schema["enum"]); ok && !slices.Contains(enum, nil) {
-		schema["enum"] = append(enum, nil)
+	if enum, ok := enumValues(schema[schemaKeyEnum]); ok && !slices.Contains(enum, nil) {
+		schema[schemaKeyEnum] = append(enum, nil)
 	}
 	if d.hasJSONSchemaDialect() {
 		switch typ := schema[schemaKeyType].(type) {
@@ -102,16 +102,16 @@ func (d dialect) nullable(schema map[string]any) map[string]any {
 
 	null := map[string]any{schemaKeyType: schemaTypeNull}
 	if !d.hasJSONSchemaDialect() {
-		null = map[string]any{schemaKeyType: schemaTypeObject, "nullable": true, "enum": []any{nil}}
+		null = map[string]any{schemaKeyType: schemaTypeObject, "nullable": true, schemaKeyEnum: []any{nil}}
 	}
 	if target, isRef := schema[schemaKeyRef].(string); isRef {
 		delete(schema, schemaKeyRef)
-		schema["anyOf"] = []any{map[string]any{schemaKeyRef: target}, null}
+		schema[schemaKeyAnyOf] = []any{map[string]any{schemaKeyRef: target}, null}
 		return schema
 	}
-	for _, keyword := range [...]string{"allOf", "anyOf", "oneOf"} {
+	for _, keyword := range [...]string{schemaKeyAllOf, schemaKeyAnyOf, schemaKeyOneOf} {
 		if _, composed := schema[keyword]; composed {
-			return map[string]any{"anyOf": []any{schema, null}}
+			return map[string]any{schemaKeyAnyOf: []any{schema, null}}
 		}
 	}
 	return schema

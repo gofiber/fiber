@@ -378,7 +378,7 @@ func (s *securitySchemes) declarations() map[string]any {
 		schemes[securitySchemeBearer] = bearer
 	}
 	if s.apiKey {
-		schemes[securitySchemeAPIKey] = map[string]any{schemaKeyType: "apiKey", "in": s.keyLookup.In, "name": s.keyLookup.Name}
+		schemes[securitySchemeAPIKey] = map[string]any{schemaKeyType: "apiKey", "in": s.keyLookup.In, keyNameField: s.keyLookup.Name}
 	}
 	if s.basic {
 		schemes[securitySchemeBasic] = map[string]any{schemaKeyType: "http", "scheme": "basic"}
@@ -490,7 +490,7 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 		}
 		declared := make(map[string]fiber.RouteResponse, len(cfg.Middleware[i].Responses))
 		for status, resp := range cfg.Middleware[i].Responses {
-			key := "default"
+			key := keyDefault
 			if status != 0 {
 				key = utils.FormatInt(int64(status))
 			}

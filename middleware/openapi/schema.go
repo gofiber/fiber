@@ -3,6 +3,7 @@ package openapi
 import (
 	"encoding"
 	"encoding/json"
+	"encoding/xml"
 	"math"
 	"mime/multipart"
 	"reflect"
@@ -38,12 +39,26 @@ var (
 	timeType          = reflect.TypeFor[time.Time]()
 	fileHeaderType    = reflect.TypeFor[multipart.FileHeader]()
 	jsonNumberType    = reflect.TypeFor[json.Number]()
+	xmlNameType       = reflect.TypeFor[xml.Name]()
 	jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
 	textMarshalerType = reflect.TypeFor[encoding.TextMarshaler]()
 )
 
 // openapiDirectiveRe finds each directive's start; a value runs to the next one.
-var openapiDirectiveRe = regexp.MustCompile(`(?:^|,)\s*(description|example|format|enum):|(?:^|,)\s*(readOnly|readonly|writeOnly|writeonly|deprecated)\s*`)
+var openapiDirectiveRe = regexp.MustCompile(`(?:^|,)\s*(description|example|format|enum|default|pattern|title|multipleOf|x-[A-Za-z0-9_.-]+):|(?:^|,)\s*(readOnly|readonly|writeOnly|writeonly|deprecated|uniqueItems|uniqueitems|nullable)\s*`)
+
+// validatePatterns are the validator's string rules that are a regular expression, with its expressions.
+var validatePatterns = map[string]string{
+	"alpha":       `^[a-zA-Z]+$`,
+	"alphanum":    `^[a-zA-Z0-9]+$`,
+	"numeric":     `^[-+]?[0-9]+(?:\.[0-9]+)?$`,
+	"number":      `^[0-9]+$`,
+	"hexadecimal": `^(0[xX])?[0-9a-fA-F]+$`,
+	"hexcolor":    `^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$`,
+	"e164":        `^\+?[1-9]\d{7,14}$`,
+	"ascii":       `^[\x00-\x7F]*$`,
+	"jwt":         `^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]*$`,
+}
 
 var validateFormats = map[string]string{
 	formatEmail:        formatEmail,
@@ -112,6 +127,19 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegist
 		return map[string]any{}
 	}
 
+	// A type that describes itself: a named struct becomes a component, anything else is inline.
+	if hasCustomSchema(t, reg) {
+		if reg != nil && t.Kind() == reflect.Struct && t.Name() != "" && !reg.configured(t) {
+			return reg.ref(t)
+		}
+		if visited[t] {
+			return map[string]any{}
+		}
+		visited = markVisited(visited, t)
+		defer delete(visited, t)
+		return customSchema(t, visited, reg)
+	}
+
 	if t == timeType {
 		return map[string]any{schemaKeyType: schemaTypeString, schemaKeyFormat: "date-time"}
 	}
@@ -174,7 +202,7 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegist
 		if additional == nil {
 			return nil
 		}
-		return map[string]any{schemaKeyType: schemaTypeObject, "additionalProperties": additional}
+		return map[string]any{schemaKeyType: schemaTypeObject, schemaKeyAdditional: additional}
 	case reflect.Struct:
 		if reg != nil && t.Name() != "" {
 			return reg.ref(t)
@@ -212,8 +240,10 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 		optional bool
 	}
 
-	// A non-omitempty JSON field is always written, so required; a form field needs a validate rule.
-	implicitRequired := reg.tagKey() == tagJSON
+	// A non-omitempty JSON or XML field is always written, so required; a form field needs a validate rule.
+	implicitRequired := reg.tagKey() == tagJSON || reg.tagKey() == tagXML
+	// The object's own title, description and extensions, from a blank field tagged openapi, and its XML name.
+	objectMeta := map[string]any{}
 
 	level := []embedRef{{t: t}}
 	expanded := map[reflect.Type]bool{t: true}
@@ -227,6 +257,17 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 		for _, ref := range level {
 			for i := range ref.t.NumField() {
 				field := ref.t.Field(i)
+
+				if ref.t == t && field.Name == "_" {
+					applyOpenAPITag(&field, objectMeta)
+					continue
+				}
+				if ref.t == t && field.Type == xmlNameType && reg.tagKey() == tagXML {
+					if name, _, _ := utils.CutByte(field.Tag.Get(tagXML), ','); name != "" && name != "-" {
+						objectMeta["xml"] = map[string]any{keyNameField: name}
+					}
+					continue
+				}
 
 				tagInfo := parseJSONTag(&field, reg.tagKey())
 				if tagInfo.skip {
@@ -270,11 +311,12 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 					}
 				}
 
-				applyOpenAPITag(&field, fieldSchema)
+				nullable := applyOpenAPITag(&field, fieldSchema)
 				mustValidate := applyValidateTag(&field, fieldSchema)
+				applyXMLTag(fieldSchema, &tagInfo, reg)
 				fieldExample, hasExample := propertyExample(fieldSchema, reg)
 				// A nil pointer is written as null; an uploaded file part is never null.
-				if field.Type.Kind() == reflect.Pointer && !holdsFileHeaders(field.Type) {
+				if nullable || (field.Type.Kind() == reflect.Pointer && !holdsFileHeaders(field.Type)) {
 					fieldSchema = reg.nullable(fieldSchema)
 				}
 				fieldSchema = reg.withRefSiblings(fieldSchema)
@@ -340,7 +382,42 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 	if len(objectExample) > 0 {
 		schema["example"] = objectExample
 	}
+	applyObjectMeta(schema, objectMeta)
 	return schema
+}
+
+// applyObjectMeta adds what the blank field of a struct (and its XML name) says about the object itself. An
+// example given there is JSON and replaces the one assembled from the fields.
+func applyObjectMeta(schema, meta map[string]any) {
+	for key, value := range meta {
+		if key == "example" {
+			if text, isText := value.(string); isText {
+				var decoded any
+				if json.Unmarshal([]byte(text), &decoded) == nil {
+					schema[key] = decoded
+				}
+			}
+			continue
+		}
+		schema[key] = value
+	}
+}
+
+// applyXMLTag adds the XML object an xml tag implies: an attribute, or a wrapped list with its item name.
+func applyXMLTag(fieldSchema map[string]any, info *jsonTagInfo, reg *schemaRegistry) {
+	if reg.tagKey() != tagXML {
+		return
+	}
+	switch {
+	case info.attr:
+		fieldSchema["xml"] = map[string]any{"attribute": true}
+	case info.itemName != "" && fieldSchema[schemaKeyType] == schemaTypeArray:
+		fieldSchema["xml"] = map[string]any{"wrapped": true}
+		if items, isMap := fieldSchema[schemaKeyItems].(map[string]any); isMap {
+			items["xml"] = map[string]any{keyNameField: info.itemName}
+			fieldSchema[schemaKeyItems] = reg.withRefSiblings(items)
+		}
+	}
 }
 
 // propertyExample returns what a property adds to its object's example, read before wrapping hides its $ref.
@@ -358,9 +435,11 @@ func propertyExample(prop map[string]any, reg *schemaRegistry) (any, bool) {
 
 type jsonTagInfo struct {
 	name     string
+	itemName string // the element name of a list an xml tag wraps ("items>item")
 	omit     bool
 	skip     bool
 	asString bool
+	attr     bool // an xml attribute
 }
 
 func parseJSONTag(field *reflect.StructField, key string) jsonTagInfo {
@@ -377,6 +456,12 @@ func parseJSONTag(field *reflect.StructField, key string) jsonTagInfo {
 		name = effectiveJSONTagName(name)
 	}
 	info := jsonTagInfo{name: name}
+	if key == tagXML {
+		// "wrapper>item" names the element of a list and the element wrapped around its items.
+		if first, _, found := strings.Cut(name, ">"); found {
+			info.name, info.itemName = first, name[strings.LastIndexByte(name, '>')+1:]
+		}
+	}
 	for opts != "" {
 		var opt string
 		opt, opts, _ = utils.CutByte(opts, ',')
@@ -385,6 +470,11 @@ func parseJSONTag(field *reflect.StructField, key string) jsonTagInfo {
 			info.omit = true
 		case "string":
 			info.asString = key == tagJSON
+		case "attr":
+			info.attr = key == tagXML
+		case "any", "comment", "innerxml":
+			// Not an element of its own: the content XML collects, or a comment.
+			info.skip = key == tagXML
 		default:
 		}
 	}
@@ -433,11 +523,13 @@ func effectiveJSONTagName(name string) string {
 	return ""
 }
 
-func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
+// applyOpenAPITag applies the openapi tag of field to its schema, and reports whether it asked for null.
+func applyOpenAPITag(field *reflect.StructField, schema map[string]any) bool {
 	tag := field.Tag.Get("openapi")
 	if tag == "" {
-		return
+		return false
 	}
+	nullable := false
 
 	// A flag counts only when a comma or the end follows it.
 	locs := openapiDirectiveRe.FindAllStringSubmatchIndex(tag, -1)
@@ -453,6 +545,10 @@ func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 				schema["writeOnly"] = true
 			case "deprecated":
 				schema["deprecated"] = true
+			case "uniqueitems":
+				schema["uniqueItems"] = true
+			case "nullable":
+				nullable = true
 			default:
 			}
 			continue
@@ -472,15 +568,33 @@ func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 			schema["example"] = inferExampleValue(val, schema)
 		case "format":
 			schema["format"] = val
-		case "enum":
+		case schemaKeyEnum:
 			var enumSlice []any
 			for v := range utils.SplitTrimSeq(val, '|') {
 				enumSlice = append(enumSlice, inferExampleValue(v, schema))
 			}
-			schema["enum"] = enumSlice
+			schema[schemaKeyEnum] = enumSlice
+		case keyDefault:
+			schema[keyDefault] = inferExampleValue(val, schema)
+		case "pattern":
+			schema["pattern"] = val
+		case "title":
+			schema["title"] = val
+		case "multipleOf":
+			if f, err := parseFloat(val); err == nil && f > 0 {
+				schema["multipleOf"] = f
+			}
 		default:
+			// An "x-" extension: a value that is JSON (5, true, {"a":1}) is kept as such, anything else as text.
+			var decoded any
+			if err := json.Unmarshal([]byte(val), &decoded); err == nil {
+				schema[key] = decoded
+			} else {
+				schema[key] = val
+			}
 		}
 	}
+	return nullable
 }
 
 func inferExampleValue(val string, schema map[string]any) any {
@@ -564,7 +678,7 @@ type validateTarget struct {
 
 func (t validateTarget) dive() validateTarget {
 	next := validateTarget{}
-	for _, keyword := range [...]string{"items", "additionalProperties"} {
+	for _, keyword := range [...]string{"items", schemaKeyAdditional} {
 		child, ok := t.schema[keyword].(map[string]any)
 		if !ok {
 			continue
@@ -586,7 +700,10 @@ func (t *validateTarget) apply(key, value string) {
 	// An empty value is allowed after omitempty.
 	if t.omitted {
 		switch key {
-		case "min", "gte", "gt", "len", "oneof":
+		case "min", "gte", "gt", "len", "oneof", "eq", "port", "startswith", "endswith", ruleContains:
+			return
+		}
+		if _, isPattern := validatePatterns[key]; isPattern && key != "ascii" {
 			return
 		}
 	}
@@ -609,15 +726,77 @@ func (t *validateTarget) apply(key, value string) {
 			enum[i] = inferExampleValue(v, t.schema)
 		}
 		if len(enum) > 0 {
-			t.schema["enum"] = enum
+			t.schema[schemaKeyEnum] = enum
 		}
 	case "datetime":
 		if value == time.RFC3339 {
 			setFormat(t.schema, "date-time")
 		}
+	case "eq":
+		t.equal(value)
+	case "ne":
+		if enum := t.single(value); enum != nil {
+			t.schema["not"] = map[string]any{schemaKeyEnum: enum}
+		}
+	case "unique":
+		// A parameter names the field of the elements that must differ, which a schema cannot say.
+		if value == "" && t.schema[schemaKeyType] == schemaTypeArray {
+			t.schema["uniqueItems"] = true
+		}
+	case "port":
+		if t.schema[schemaKeyType] == schemaTypeInteger {
+			t.schema["minimum"], t.schema["maximum"] = 1, 65535
+		}
+	case "startswith":
+		t.pattern("^" + regexp.QuoteMeta(value))
+	case "endswith":
+		t.pattern(regexp.QuoteMeta(value) + "$")
+	case ruleContains:
+		t.pattern(regexp.QuoteMeta(value))
 	default:
 		if format, ok := validateFormats[key]; ok {
 			setFormat(t.schema, format)
+		} else if expression, ok := validatePatterns[key]; ok {
+			t.pattern(expression)
+		}
+	}
+}
+
+// pattern adds a regular expression to a string, unless it has one: a schema holds a single pattern.
+func (t *validateTarget) pattern(expression string) {
+	if t.schema[schemaKeyType] != schemaTypeString || t.bytes || t.numeric {
+		return
+	}
+	if _, has := t.schema["pattern"]; !has {
+		t.schema["pattern"] = expression
+	}
+}
+
+// single is the one-value enum a scalar must equal, or nil for a schema that is not a scalar.
+func (t *validateTarget) single(value string) []any {
+	switch t.schema[schemaKeyType] {
+	case schemaTypeString, schemaTypeInteger, schemaTypeNumber, schemaTypeBoolean:
+		if (t.bytes || t.numeric) && t.schema[schemaKeyType] != schemaTypeString {
+			return nil
+		}
+		return []any{inferExampleValue(value, t.schema)}
+	default:
+		return nil
+	}
+}
+
+// equal is the validator's eq: a scalar equals the value, and a list or map has that length.
+func (t *validateTarget) equal(value string) {
+	switch t.schema[schemaKeyType] {
+	case schemaTypeArray, schemaTypeObject:
+		t.bound(value, lowerBound)
+		t.bound(value, upperBound)
+	default:
+		if t.bytes || t.numeric {
+			return
+		}
+		if enum := t.single(value); enum != nil {
+			t.schema[schemaKeyEnum] = enum
 		}
 	}
 }

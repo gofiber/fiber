@@ -23,15 +23,25 @@ type schemaKey struct {
 const (
 	tagJSON = "json"
 	tagForm = "form"
+	tagXML  = "xml"
 )
 
 type schemaRegistry struct {
 	schemas map[string]map[string]any
 	names   map[schemaKey]string
 	// taken maps a component name to the type that owns it; a user-defined name is taken by nil.
-	taken   map[string]reflect.Type
-	tag     string
-	dialect dialect
+	taken map[string]reflect.Type
+	// typeSchemas and naming come from Config.TypeSchemas and Config.SchemaName.
+	typeSchemas map[reflect.Type]any
+	naming      func(reflect.Type) string
+	tag         string
+	dialect     dialect
+}
+
+// configured reports whether Config.TypeSchemas gives t its schema, which is then written inline.
+func (reg *schemaRegistry) configured(t reflect.Type) bool {
+	_, ok := reg.typeSchemas[t]
+	return ok
 }
 
 // newSchemaRegistry starts a registry that never reuses names in Components.schemas.
@@ -41,6 +51,9 @@ func newSchemaRegistry(cfg *Config, d dialect) *schemaRegistry {
 		names:   make(map[schemaKey]string),
 		taken:   make(map[string]reflect.Type),
 		dialect: d,
+
+		typeSchemas: cfg.TypeSchemas,
+		naming:      cfg.SchemaName,
 	}
 	for name := range stringKeyedEntries(cfg.Components["schemas"]) {
 		reg.taken[name] = nil
@@ -75,7 +88,11 @@ func (reg *schemaRegistry) ref(t reflect.Type) map[string]any {
 		name = reg.claimName(t, key.tag)
 		reg.names[key] = name
 		reg.schemas[name] = nil // reserve the entry so a recursive reference finds the name taken
-		reg.schemas[name] = structSchema(t, nil, reg)
+		if hasCustomSchema(t, reg) {
+			reg.schemas[name] = customSchema(t, nil, reg)
+		} else {
+			reg.schemas[name] = structSchema(t, nil, reg)
+		}
 	}
 	return map[string]any{schemaKeyRef: componentsSchemasRef + name}
 }
@@ -85,7 +102,13 @@ func (reg *schemaRegistry) claimName(t reflect.Type, tag string) string {
 	if tag != tagJSON {
 		suffix = "_" + tag
 	}
-	base := componentName(t.Name()) + suffix
+	typeName := t.Name()
+	if reg.naming != nil {
+		if custom := reg.naming(t); custom != "" {
+			typeName = custom
+		}
+	}
+	base := componentName(typeName) + suffix
 	candidates := []string{base}
 	if pkg := t.PkgPath(); pkg != "" {
 		if _, after, found := utils.LastCutByte(pkg, '/'); found {
@@ -186,7 +209,7 @@ func (reg *schemaRegistry) withRefSiblings(schema map[string]any) map[string]any
 			wrapped[key] = value
 		}
 	}
-	wrapped["allOf"] = []any{map[string]any{schemaKeyRef: target}}
+	wrapped[schemaKeyAllOf] = []any{map[string]any{schemaKeyRef: target}}
 	return wrapped
 }
 
@@ -203,12 +226,29 @@ func isFormMediaType(mediaType string) bool {
 	return utils.EqualFold(base, fiber.MIMEMultipartForm) || utils.EqualFold(base, fiber.MIMEApplicationForm)
 }
 
+// isXMLMediaType reports whether a media type carries XML, which is described by `xml` tags.
+func isXMLMediaType(mediaType string) bool {
+	base, _, _ := utils.CutByte(mediaType, ';')
+	base = utils.TrimSpace(base)
+	return utils.EqualFold(base, fiber.MIMEApplicationXML) || utils.EqualFold(base, fiber.MIMETextXML) ||
+		(len(base) > len("+xml") && utils.EqualFold(base[len(base)-len("+xml"):], "+xml"))
+}
+
 func contentEntryFor(mediaType string, mt *fiber.RouteMediaType, reg *schemaRegistry) map[string]any {
-	if reg == nil || !isFormMediaType(mediaType) {
+	if reg == nil {
+		return contentEntry(mt, reg)
+	}
+	var tag string
+	switch {
+	case isFormMediaType(mediaType):
+		tag = tagForm
+	case isXMLMediaType(mediaType):
+		tag = tagXML
+	default:
 		return contentEntry(mt, reg)
 	}
 	previous := reg.tag
-	reg.tag = tagForm
+	reg.tag = tag
 	defer func() { reg.tag = previous }()
 	return contentEntry(mt, reg)
 }
