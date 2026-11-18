@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"math/rand"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"reflect"
 	"runtime"
@@ -32,10 +31,7 @@ func Test_OpenAPI_Generate(t *testing.T) {
 
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/openapi.json", fiber.StatusOK)
 
 	var spec struct {
 		Paths map[string]map[string]any `json:"paths"`
@@ -60,10 +56,7 @@ func Test_OpenAPI_JSONEquality(t *testing.T) {
 
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/openapi.json", fiber.StatusOK)
 
 	body := apptest.BodyBytes(t, resp)
 
@@ -97,10 +90,7 @@ func Test_OpenAPI_RawJSON(t *testing.T) {
 
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/openapi.json", fiber.StatusOK)
 
 	body := apptest.BodyBytes(t, resp)
 
@@ -134,10 +124,7 @@ func Test_OpenAPI_JSONFileMatchesGeneratedSpec(t *testing.T) {
 
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/openapi.json", fiber.StatusOK)
 
 	body := apptest.BodyBytes(t, resp)
 
@@ -467,10 +454,7 @@ func Test_OpenAPI_GroupMiddleware(t *testing.T) {
 	api.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	api.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/api/v2/openapi.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/api/v2/openapi.json", fiber.StatusOK)
 
 	var spec openAPISpec
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
@@ -484,10 +468,7 @@ func Test_OpenAPI_DoesNotInterceptSimilarPaths(t *testing.T) {
 	app.Use(New())
 	app.Get("/reports/openapi.json", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusAccepted) })
 
-	req := httptest.NewRequest(fiber.MethodGet, "/reports/openapi.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusAccepted, resp.StatusCode)
+	apptest.Expect(t, app, "/reports/openapi.json", fiber.StatusAccepted)
 }
 
 func Test_OpenAPI_OnlyInterceptsGetAndHead(t *testing.T) {
@@ -497,16 +478,10 @@ func Test_OpenAPI_OnlyInterceptsGetAndHead(t *testing.T) {
 	app.Use(New())
 	app.Post("/openapi.json", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusAccepted) })
 
-	req := httptest.NewRequest(fiber.MethodHead, "/openapi.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, apptest.Req(fiber.MethodHead, "/openapi.json"), fiber.StatusOK)
 	require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	req = httptest.NewRequest(fiber.MethodPost, "/openapi.json", http.NoBody)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusAccepted, resp.StatusCode)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodPost, "/openapi.json"), fiber.StatusAccepted)
 }
 
 func Test_OpenAPI_RootAndGroupSpecs(t *testing.T) {
@@ -543,10 +518,7 @@ func Test_OpenAPI_ConfigValues(t *testing.T) {
 	}
 	app.Use(New(cfg))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/spec.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/spec.json", fiber.StatusOK)
 
 	var spec openAPISpec
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
@@ -563,10 +535,7 @@ func Test_OpenAPI_SwaggerUI_DefaultTemplate(t *testing.T) {
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/swagger", fiber.StatusOK)
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
 	body := apptest.BodyBytes(t, resp)
@@ -597,10 +566,7 @@ func Test_OpenAPI_SwaggerUI_ConfigurableAssetsAndOptions(t *testing.T) {
 		},
 	}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/docs", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/docs", fiber.StatusOK)
 
 	body := apptest.BodyBytes(t, resp)
 
@@ -621,10 +587,7 @@ func Test_OpenAPI_SwaggerUI_GroupPath(t *testing.T) {
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Group("/api").Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/api/swagger", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/api/swagger", fiber.StatusOK)
 
 	body := apptest.BodyBytes(t, resp)
 	require.Contains(t, string(body), `data-url="/api/openapi.json"`)
@@ -683,10 +646,7 @@ func Test_OpenAPI_Next(t *testing.T) {
 
 	app.Use(New(Config{Next: func(fiber.Ctx) bool { return true }}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/openapi.json", fiber.StatusNotFound)
 }
 
 func Test_OpenAPI_ConnectIgnored(t *testing.T) {
@@ -928,9 +888,7 @@ func Test_OpenAPI_SwaggerUI_StandalonePreset(t *testing.T) {
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/swagger")
 	body := apptest.BodyBytes(t, resp)
 	require.Contains(t, string(body), `src="https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"`)
 	require.Contains(t, string(body), "StandaloneLayout")
@@ -939,9 +897,7 @@ func Test_OpenAPI_SwaggerUI_StandalonePreset(t *testing.T) {
 	app2.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app2.Use(New(Config{SwaggerStandalonePresetURL: "https://cdn.example.com/standalone.js"}))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody)
-	resp, err = app2.Test(req)
-	require.NoError(t, err)
+	resp = apptest.Do(t, app2, "/swagger")
 	body = apptest.BodyBytes(t, resp)
 	require.Contains(t, string(body), `src="https://cdn.example.com/standalone.js"`)
 }
@@ -953,9 +909,7 @@ func Test_OpenAPI_PathTrailingSlash(t *testing.T) {
 	app.Use(New())
 
 	for _, path := range []string{"/openapi.json/", "/swagger/"} {
-		req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, path)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode, "path %q should resolve", path)
 	}
 }
@@ -1243,10 +1197,7 @@ func Test_OpenAPI_ResolvedSpecPathEdgeCases(t *testing.T) {
 			group.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 			group.Use(New(Config{Path: tt.middlewarePath}))
 
-			req := httptest.NewRequest(fiber.MethodGet, tt.expectedPath, http.NoBody)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			resp := apptest.Expect(t, app, tt.expectedPath, fiber.StatusOK)
 			require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 		})
 	}
@@ -1454,15 +1405,9 @@ func Test_OpenAPI_MarshalError(t *testing.T) {
 	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New())
 
-	req1 := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
-	resp1, err := app.Test(req1)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp1.StatusCode)
+	apptest.Expect(t, app, "/openapi.json", fiber.StatusOK)
 
-	req2 := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
-	resp2, err := app.Test(req2)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
+	apptest.Expect(t, app, "/openapi.json", fiber.StatusOK)
 }
 
 func Test_OpenAPI_ResponseWithSchemaRefAndExamples(t *testing.T) {
@@ -1973,9 +1918,7 @@ func Test_OpenAPI_CaseInsensitivePaths(t *testing.T) {
 	app.Use(New())
 
 	for _, target := range []string{"/OPENAPI.JSON", "/Swagger"} {
-		req := httptest.NewRequest(fiber.MethodGet, target, http.NoBody)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, target)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode, target)
 	}
 
@@ -1983,10 +1926,7 @@ func Test_OpenAPI_CaseInsensitivePaths(t *testing.T) {
 	sensitive.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	sensitive.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/OPENAPI.JSON", http.NoBody)
-	resp, err := sensitive.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, sensitive, "/OPENAPI.JSON", fiber.StatusNotFound)
 }
 
 func Test_OpenAPI_ExactRouteRegistration(t *testing.T) {
@@ -2030,10 +1970,7 @@ func Test_OpenAPI_MultiPrefixUIPages(t *testing.T) {
 	app.Use([]string{"/v1", "/v2"}, New())
 
 	for _, prefix := range []string{"/v1", "/v2"} {
-		req := httptest.NewRequest(fiber.MethodGet, prefix+"/swagger", http.NoBody)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, prefix+"/swagger", fiber.StatusOK)
 		body := apptest.BodyBytes(t, resp)
 		require.Contains(t, string(body), `data-url="/`+prefix[1:]+`/openapi.json"`, prefix)
 	}
@@ -2071,19 +2008,13 @@ func Test_OpenAPI_MountedSubAppExactRoute(t *testing.T) {
 	app := fiber.New()
 	app.Use("/api", sub)
 
-	req := httptest.NewRequest(fiber.MethodGet, "/api/openapi.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/api/openapi.json", fiber.StatusOK)
 
 	var spec openAPISpec
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
 	require.Contains(t, spec.Paths, "/api/users")
 
-	req = httptest.NewRequest(fiber.MethodGet, "/api/swagger", http.NoBody)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, "/api/swagger", fiber.StatusOK)
 	body := apptest.BodyBytes(t, resp)
 	require.Contains(t, string(body), `data-url="/api/openapi.json"`)
 }
@@ -2094,24 +2025,15 @@ func Test_OpenAPI_ParameterizedMountPrefix(t *testing.T) {
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use("/:tenant", New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/acme/openapi.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/acme/openapi.json", fiber.StatusOK)
 
 	var spec openAPISpec
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
 	require.Contains(t, spec.Paths, "/users")
 
-	req = httptest.NewRequest(fiber.MethodGet, "/acme/foo/openapi.json", http.NoBody)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	apptest.Expect(t, app, "/acme/foo/openapi.json", fiber.StatusNotFound)
 
-	req = httptest.NewRequest(fiber.MethodGet, "/acme/swagger", http.NoBody)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp = apptest.Expect(t, app, "/acme/swagger", fiber.StatusOK)
 	body := apptest.BodyBytes(t, resp)
 	require.Contains(t, string(body), `data-url="/acme/openapi.json"`)
 }
@@ -2153,10 +2075,7 @@ func Test_OpenAPI_ExactRouteUnderParameterizedMount(t *testing.T) {
 	app := fiber.New()
 	app.Use("/:tenant", sub)
 
-	req := httptest.NewRequest(fiber.MethodGet, "/acme/openapi.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/acme/openapi.json", fiber.StatusOK)
 
 	var spec openAPISpec
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
@@ -2275,9 +2194,7 @@ func Test_OpenAPI_SecurityEmptyScopesEmitArray(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/openapi.json", fiber.StatusOK)
 	body := apptest.BodyBytes(t, resp)
 	require.NoError(t, resp.Body.Close())
 
@@ -2291,9 +2208,7 @@ func Test_OpenAPI_MultiOptionalParamsSingleHierarchy(t *testing.T) {
 	app.Get("/files/:dir?/:name?", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New())
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/openapi.json", fiber.StatusOK)
 
 	var spec struct {
 		Paths map[string]any `json:"paths"`
@@ -2314,9 +2229,7 @@ func Test_OpenAPI_MountPrefixWithConstraintsAndEscapes(t *testing.T) {
 		app := fiber.New()
 		app.Use("/:id<regex([0-9]+)>/admin", New())
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/123/admin/openapi.json", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, "/123/admin/openapi.json", fiber.StatusOK)
 	})
 
 	t.Run("EscapedPlus", func(t *testing.T) {
@@ -2324,9 +2237,7 @@ func Test_OpenAPI_MountPrefixWithConstraintsAndEscapes(t *testing.T) {
 		app := fiber.New()
 		app.Use(`/c\+\+`, New())
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/c++/openapi.json", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, "/c++/openapi.json", fiber.StatusOK)
 	})
 
 	t.Run("IntConstraintControl", func(t *testing.T) {
@@ -2334,9 +2245,7 @@ func Test_OpenAPI_MountPrefixWithConstraintsAndEscapes(t *testing.T) {
 		app := fiber.New()
 		app.Use("/:id<int>/admin", New())
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/7/admin/openapi.json", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, "/7/admin/openapi.json", fiber.StatusOK)
 	})
 }
 
@@ -2354,9 +2263,7 @@ func Test_OpenAPI_SharedHandlerAcrossApps(t *testing.T) {
 
 	specOf := func(app *fiber.App) map[string]any {
 		t.Helper()
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		resp := apptest.Expect(t, app, "/openapi.json", fiber.StatusOK)
 		var spec struct {
 			Paths map[string]any `json:"paths"`
 		}
@@ -2386,9 +2293,7 @@ func Test_OpenAPI_SwaggerPageUsesAppJSONEncoder(t *testing.T) {
 	app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New(Config{SwaggerOptions: map[string]any{"deepLinking": true}}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/swagger", fiber.StatusOK)
 	require.True(t, encoderUsed)
 }
 
@@ -3167,10 +3072,7 @@ func Test_OpenAPI_SpecMarshalError(t *testing.T) {
 		OperationExtension(map[string]any{"bad": func() {}})
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, "/openapi.json", fiber.StatusInternalServerError)
 }
 
 func Test_OpenAPI_SwaggerOptionsMarshalError(t *testing.T) {
@@ -3179,10 +3081,7 @@ func Test_OpenAPI_SwaggerOptionsMarshalError(t *testing.T) {
 	app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New(Config{SwaggerOptions: map[string]any{"bad": func() {}}}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	apptest.Expect(t, app, "/swagger", fiber.StatusInternalServerError)
 }
 
 func Test_StringKeyedEntries(t *testing.T) {
@@ -3315,8 +3214,7 @@ func Test_OpenAPI_SharedHandlerResolvesCaseRulePerApp(t *testing.T) {
 	strict.Use(handler)
 
 	get := func(app *fiber.App) int {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/OPENAPI.JSON", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, "/OPENAPI.JSON")
 		return resp.StatusCode
 	}
 
@@ -3336,8 +3234,7 @@ func Test_OpenAPI_SwaggerUI_SubresourceIntegrity(t *testing.T) {
 		app := fiber.New()
 		app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 		app.Use(New(cfg))
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, "/swagger")
 		body := apptest.BodyBytes(t, resp)
 		return string(body)
 	}
@@ -3388,8 +3285,7 @@ func Test_OpenAPI_SharedHandlerBeyondCacheBound(t *testing.T) {
 
 	for range 2 {
 		for i, app := range apps {
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody))
-			require.NoError(t, err)
+			resp := apptest.Do(t, app, "/openapi.json")
 			body := apptest.BodyBytes(t, resp)
 			require.Contains(t, string(body), `"/app`+strconv.Itoa(i)+`"`)
 		}
@@ -3424,8 +3320,7 @@ func Test_OpenAPI_SwaggerUI_InlineScriptIsConstantAndHashed(t *testing.T) {
 		app := fiber.New()
 		app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 		app.Use(New(Config{Path: path, UIPath: "/docs", SwaggerOptions: map[string]any{"deepLinking": true}}))
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/docs", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, "/docs")
 		body := apptest.BodyBytes(t, resp)
 		return string(body)
 	}
@@ -3445,13 +3340,11 @@ func Test_OpenAPI_ConditionalRequests(t *testing.T) {
 	app.Use(New())
 
 	get := func(path string, headers ...string) *http.Response {
-		req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
-		for i := 0; i+1 < len(headers); i += 2 {
-			req.Header.Set(headers[i], headers[i+1])
+		opts := make([]apptest.Option, 0, len(headers)/2)
+		for name, value := range apptest.Pairs(headers) {
+			opts = append(opts, apptest.WithHeader(name, value))
 		}
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		return resp
+		return apptest.Do(t, app, apptest.Req(fiber.MethodGet, path, opts...))
 	}
 
 	for _, path := range []string{"/openapi.json", "/swagger"} {
@@ -3483,8 +3376,7 @@ func Test_OpenAPI_ETagChangesWithTheRoutes(t *testing.T) {
 	app.Use(New())
 
 	tag := func() string {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody))
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, "/openapi.json")
 		return resp.Header.Get(fiber.HeaderETag)
 	}
 

@@ -2,8 +2,6 @@ package openapi
 
 import (
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -16,8 +14,7 @@ import (
 //nolint:gocritic // unnamedResult: nonamedreturns forbids naming these
 func specBodyOf(t *testing.T, app *fiber.App, path string) (int, string) {
 	t.Helper()
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, path)
 	b := apptest.BodyBytes(t, resp)
 	require.NoError(t, resp.Body.Close())
 	return resp.StatusCode, string(b)

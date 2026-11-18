@@ -7,7 +7,6 @@ package fiber
 import (
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -2506,13 +2505,7 @@ func Test_Domain_Group_Use_EmptyHandlers(t *testing.T) {
 	dg.Use("/sub")
 	dg.Get("/users", func(c Ctx) error { return c.SendString("ok") })
 
-	req := httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
-	req.Host = "api.example.com"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	body := apptest.BodyBytes(t, resp)
-	require.Equal(t, "ok", string(body))
+	apptest.ExpectBody(t, app, apptest.Req(MethodGet, "/api/users", apptest.WithHost("api.example.com")), StatusOK, "ok")
 }
 
 func Test_Domain_Use_InvalidHandler(t *testing.T) {
@@ -2549,10 +2542,6 @@ func Test_Domain_AutoHead_PerDomain(t *testing.T) {
 	app.Domain("b.example.com").Get("/x", func(c Ctx) error { return c.SendString("B") })
 
 	for _, host := range []string{"a.example.com", "b.example.com"} {
-		req := httptest.NewRequest(MethodHead, "http://"+host+"/x", http.NoBody)
-		req.Host = host
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equalf(t, StatusOK, resp.StatusCode, "HEAD %s", host)
+		apptest.Expect(t, app, apptest.Req(MethodHead, "http://"+host+"/x", apptest.WithHost(host)), StatusOK)
 	}
 }

@@ -333,9 +333,7 @@ func Test_Mount_StartupConcurrentSubAppDocHelpers(t *testing.T) {
 		}
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/x", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/api/x", StatusOK)
 	close(stop)
 	wg.Wait()
 }
@@ -413,10 +411,7 @@ func Test_Domain_SamePathKeepsSeparateRoutes(t *testing.T) {
 	require.ElementsMatch(t, []string{"A docs", "B docs"}, summaries)
 
 	for host, want := range map[string]string{"a.example.com": "host a", "b.example.com": "host b"} {
-		req := httptest.NewRequest(MethodGet, "/x", http.NoBody)
-		req.Host = host
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, apptest.Req(MethodGet, "/x", apptest.WithHost(host)))
 		body := apptest.BodyBytes(t, resp)
 		require.NoError(t, resp.Body.Close())
 		require.Equal(t, want, string(body), host)
@@ -442,9 +437,7 @@ func Test_DocCursor_InvalidatedByRemovalAndStartup(t *testing.T) {
 		app.Get("/a", testHandlerOK).Summary("sum-a")
 		app.Post("/c", testHandlerOK)
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/a", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, StatusOK, resp.StatusCode)
+		apptest.Expect(t, app, "/a", StatusOK)
 
 		app.Summary("late")
 		require.Equal(t, "sum-a", routesFor(app, "/a")[MethodGet].Summary)
@@ -467,9 +460,7 @@ func Test_MountRegistration_DocHelpersAreNoOps(t *testing.T) {
 		require.NotContains(t, route.Tags, "mount", route.Path)
 	}
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/x", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, "/api/x", StatusOK)
 
 	for _, route := range app.GetRoutes() {
 		require.NotEqual(t, "mount summary", route.Summary, route.Path)
@@ -521,9 +512,7 @@ func Test_AutoHeadTwins_CarryNoDocumentation(t *testing.T) {
 		Summary("sum").Description("desc").Deprecated().
 		Response(StatusOK, "ok", MIMEApplicationJSON)
 
-	resp, err := app.Test(httptest.NewRequest(MethodHead, "/doc", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	apptest.Expect(t, app, apptest.Req(MethodHead, "/doc"), StatusOK)
 
 	twin, found := Route{}, false
 	for _, route := range app.GetRoutes() {
@@ -994,8 +983,7 @@ func Test_AutoHeadTwin_OutsideRegistrations(t *testing.T) {
 	api.Get("/a", testHandlerOK)
 	app.Get("/b", testHandlerOK)
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/api/a", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/api/a")
 
 	api.Summary("A").Deprecated()
 
@@ -1010,8 +998,7 @@ func Test_Name_ReachesAutoHeadTwin(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/a", testHandlerOK)
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/a", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/a")
 
 	app.Name("users")
 	require.Equal(t, "users", findRoute(t, app, MethodGet, "/a").Name)
@@ -1019,8 +1006,7 @@ func Test_Name_ReachesAutoHeadTwin(t *testing.T) {
 
 	grp := app.Group("/g")
 	grp.Get("/b", testHandlerOK)
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/g/b", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/g/b")
 	grp.Name("things")
 	require.Equal(t, "things", findRoute(t, app, MethodHead, "/g/b").Name)
 }
@@ -1149,8 +1135,7 @@ func Test_NamedRoute_SharesSnapshotForURLs(t *testing.T) {
 	require.Nil(t, app.namedRoute("missing"))
 
 	app.Get("/go", func(c Ctx) error { return c.Redirect().Route("user", RedirectConfig{Params: Map{"id": "7"}}) })
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/go", http.NoBody))
-	require.NoError(t, err)
+	resp := apptest.Do(t, app, "/go")
 	require.Equal(t, "/users/7", resp.Header.Get(HeaderLocation))
 }
 
@@ -1374,12 +1359,20 @@ func Test_ModelHelpers_OnEveryRouter(t *testing.T) {
 	}
 }
 
+// selfPointer is a pointer type that points at itself, so following it never reaches a struct.
+type selfPointer *selfPointer
+
 func Test_Params_Validation(t *testing.T) {
 	t.Parallel()
 	app := New()
 	require.Panics(t, func() { app.Get("/a", testHandlerOK).Params("body", routeModelQuery{}) })
 	require.Panics(t, func() { app.Get("/b", testHandlerOK).Params("query", 42) })
 	require.Panics(t, func() { app.Get("/c", testHandlerOK).Params("query", nil) })
+	require.Panics(t, func() { app.Get("/e", testHandlerOK).Params("query", new(selfPointer)) }, "a pointer type that never reaches a struct")
+	require.PanicsWithValue(t, "Params: invalid parameter location: body", func() { app.Get("/f", testHandlerOK).Params("body", routeModelQuery{}) })
+	require.PanicsWithValue(t, "AddParameter: invalid parameter location: body", func() {
+		app.Get("/g", testHandlerOK).Parameter("q", "body", false, nil, "")
+	})
 	app.Get("/d", testHandlerOK).Params(" Header ", &routeModelQuery{})
 	require.Equal(t, []RouteParameterModel{{In: "header", Model: &routeModelQuery{}}}, findRoute(t, app, MethodGet, "/d").ParameterModels)
 }
@@ -1505,8 +1498,7 @@ func Test_Route_InnerHandlers(t *testing.T) {
 		sub.Get("/leaf", testHandlerOK)
 		app := New()
 		app.Domain("api.example").Use("/api", sub)
-		_, err := app.Test(httptest.NewRequest(MethodGet, "/api/leaf", http.NoBody))
-		require.NoError(t, err)
+		apptest.Do(t, app, "/api/leaf")
 		route := findRoute(t, app, MethodGet, "/api/leaf")
 		require.Equal(t, handlerPointer(testHandlerOK), handlerPointer(route.InnerHandlers()[0]))
 		require.NotEqual(t, handlerPointer(testHandlerOK), handlerPointer(route.Handlers[0]))
@@ -1746,8 +1738,7 @@ func Test_NamedRouteIndex_TracksTableChanges(t *testing.T) {
 	requireNamedRoutesMatchScan(t, app, names)
 	require.Empty(t, app.GetRoute("c").Path)
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/g/x", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/g/x")
 	app.Get("/late", h).Name("late")
 	require.Equal(t, "/late", app.GetRoute("late").Path)
 }
@@ -1894,8 +1885,7 @@ func Test_LockIsFreeAfterStartupAndRebuild(t *testing.T) {
 	app.Use("/m", sub)
 	app.Get("/x", testHandlerOK)
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/m/s", http.NoBody))
-	require.NoError(t, err)
+	apptest.Do(t, app, "/m/s")
 	app.RebuildTree()
 
 	runBounded(t, "GetRoutes after startup and rebuild", func() { _ = app.GetRoutes() })
@@ -2052,10 +2042,7 @@ func Test_ExplicitHead_WinsOverTwinOfAnotherDomain(t *testing.T) {
 	t.Parallel()
 	head := func(t *testing.T, app *App, host string) string {
 		t.Helper()
-		req := httptest.NewRequest(MethodHead, "/a", http.NoBody)
-		req.Host = host
-		resp, err := app.Test(req)
-		require.NoError(t, err)
+		resp := apptest.Do(t, app, apptest.Req(MethodHead, "/a", apptest.WithHost(host)))
 		return resp.Header.Get("X-Handler")
 	}
 	handler := func(name string) Handler {
@@ -2290,4 +2277,63 @@ func Test_GetRoute_RacesWithDocHelpers(t *testing.T) {
 	}
 	close(stop)
 	apptest.Recv(t, done, 10*time.Second, "the documenting goroutine did not stop")
+}
+
+func Test_AutoHead_TwinsOfRepeatedPath(t *testing.T) {
+	t.Parallel()
+	// Two GET routes share "/a" without merging, so each has an automatic HEAD route of its own.
+	newApp := func() *App {
+		app := New()
+		app.Get("/a", testHandlerOK).Name("first")
+		app.Get("/b", testHandlerOK)
+		app.Get("/a", testHandlerOK, testHandlerOK)
+		app.RebuildTree()
+		return app
+	}
+	headRoutes := func(app *App) []string {
+		var routes []string
+		for _, route := range app.stack[app.methodInt(MethodHead)] {
+			if route.Path == "/a" {
+				routes = append(routes, fmt.Sprintf("%s auto=%t handlers=%d", route.Name, route.autoHead, len(route.Handlers)))
+			}
+		}
+		return routes
+	}
+
+	t.Run("an explicit HEAD replaces every twin", func(t *testing.T) {
+		t.Parallel()
+		app := newApp()
+		app.Head("/a", testHandlerOK).Name("explicit")
+		app.RebuildTree()
+		require.Equal(t, []string{"explicit auto=false handlers=1"}, headRoutes(app))
+		require.Equal(t, uint32(6), app.HandlersCount())
+	})
+
+	t.Run("removing a GET leaves no twin of it behind", func(t *testing.T) {
+		t.Parallel()
+		app := newApp()
+		app.RemoveRouteFunc(func(r *Route) bool { return r.Path == "/a" && len(r.Handlers) == 2 }, MethodGet)
+		app.RebuildTree()
+		require.Equal(t, []string{"first auto=true handlers=1"}, headRoutes(app))
+		require.Equal(t, uint32(4), app.HandlersCount())
+	})
+
+	t.Run("naming a GET names its own twin", func(t *testing.T) {
+		t.Parallel()
+		app := newApp()
+		app.Name("second")
+		require.Equal(t, []string{"first auto=true handlers=1", "second auto=true handlers=2"}, headRoutes(app))
+	})
+}
+
+func Test_RemoveRoute_HandlerCountPerUseRegistration(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use("/x", testHandlerOK)
+	app.Post("/y", testHandlerOK)
+	app.Use("/x", testHandlerOK, testHandlerOK)
+	require.Equal(t, uint32(4), app.HandlersCount())
+
+	app.RemoveRoute("/x")
+	require.Equal(t, uint32(1), app.HandlersCount())
 }

@@ -2,8 +2,6 @@ package openapi
 
 import (
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -52,9 +50,7 @@ type modelPathIDs struct {
 // fetchSpecBody requests the spec from an app that mounts the middleware and returns the raw document.
 func fetchSpecBody(t *testing.T, app *fiber.App) []byte {
 	t.Helper()
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	resp := apptest.Expect(t, app, "/openapi.json", fiber.StatusOK)
 	body := apptest.BodyBytes(t, resp)
 	require.NoError(t, resp.Body.Close())
 	return body
