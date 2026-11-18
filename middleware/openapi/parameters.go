@@ -96,7 +96,7 @@ func mergeRouteParameters(params []parameter, index map[parameterKey]int, extras
 			param.Examples = nil
 		case location == fiber.ParamInQuerystring:
 			param.Content = map[string]map[string]any{
-				querystringMediaType: contentEntry(fiber.RouteMediaType{
+				querystringMediaType: contentEntry(&fiber.RouteMediaType{
 					Schema:   schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString, reg),
 					Example:  paramExample,
 					Examples: paramExamples,

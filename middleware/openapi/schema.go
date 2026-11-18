@@ -160,7 +160,7 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegist
 		if items == nil {
 			return nil
 		}
-		return map[string]any{schemaKeyType: schemaTypeArray, "items": items}
+		return map[string]any{schemaKeyType: schemaTypeArray, schemaKeyItems: items}
 	case reflect.Map:
 		if t.Key().Kind() != reflect.String {
 			return map[string]any{schemaKeyType: schemaTypeObject}

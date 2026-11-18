@@ -16,6 +16,7 @@ const (
 	querystringMediaType = "application/x-www-form-urlencoded"
 
 	schemaKeyType     = "type"
+	schemaKeyItems    = "items"
 	schemaTypeNull    = "null"
 	schemaKeyRef      = "$ref"
 	schemaTypeArray   = "array"
@@ -42,6 +43,8 @@ var openAPIOperationMethods = map[string]struct{}{
 
 type openAPISpec struct {
 	Paths             map[string]map[string]operation `json:"paths"`
+	pathExtras        map[string]pathExtra            // Path Item fields beside the operations, merged at marshal time
+	extensions        map[string]any                  // Arbitrary document-object fields, merged at marshal time
 	Components        map[string]any                  `json:"components,omitempty"`
 	Webhooks          map[string]any                  `json:"webhooks,omitempty"`
 	ExternalDocs      *ExternalDocs                   `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
@@ -55,13 +58,26 @@ type openAPISpec struct {
 }
 
 type openAPIInfo struct {
-	Contact        *Contact `json:"contact,omitempty"`
-	License        *License `json:"license,omitempty"`
-	Title          string   `json:"title"`
-	Version        string   `json:"version"`
-	Summary        string   `json:"summary,omitempty"`
-	Description    string   `json:"description,omitempty"`
-	TermsOfService string   `json:"termsOfService,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	extensions     map[string]any // Arbitrary info-object fields, merged at marshal time
+	Contact        *Contact       `json:"contact,omitempty"`
+	License        *License       `json:"license,omitempty"`
+	Title          string         `json:"title"`
+	Version        string         `json:"version"`
+	Summary        string         `json:"summary,omitempty"`
+	Description    string         `json:"description,omitempty"`
+	TermsOfService string         `json:"termsOfService,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+}
+
+// MarshalJSON writes the info object with its extension fields.
+//
+//nolint:gocritic // hugeParam: a value receiver is required so the object is marshaled through this method
+func (i openAPIInfo) MarshalJSON() ([]byte, error) {
+	type alias openAPIInfo
+	base, err := json.Marshal(alias(i))
+	if err != nil {
+		return nil, fmt.Errorf("openapi: marshal info: %w", err)
+	}
+	return withExtensions(base, i.extensions, "info")
 }
 
 type operation struct {
@@ -90,16 +106,21 @@ func (o operation) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("openapi: marshal operation: %w", err)
 	}
-	if len(o.extensions) == 0 {
+	return withExtensions(base, o.extensions, "operation")
+}
+
+// withExtensions adds the extension fields to the JSON object base, leaving out any whose key base already has.
+func withExtensions(base []byte, extensions map[string]any, what string) ([]byte, error) {
+	if len(extensions) == 0 {
 		return base, nil
 	}
 	var existing map[string]json.RawMessage
-	if err = json.Unmarshal(base, &existing); err != nil {
-		return nil, fmt.Errorf("openapi: merge operation extensions: %w", err)
+	if err := json.Unmarshal(base, &existing); err != nil {
+		return nil, fmt.Errorf("openapi: merge %s extensions: %w", what, err)
 	}
 
-	keys := make([]string, 0, len(o.extensions))
-	for key := range o.extensions {
+	keys := make([]string, 0, len(extensions))
+	for key := range extensions {
 		if _, taken := existing[key]; taken {
 			continue
 		}
@@ -116,11 +137,11 @@ func (o operation) MarshalJSON() ([]byte, error) {
 	for _, key := range keys {
 		encodedKey, kErr := json.Marshal(key)
 		if kErr != nil {
-			return nil, fmt.Errorf("openapi: marshal operation extension key %q: %w", key, kErr)
+			return nil, fmt.Errorf("openapi: marshal %s extension key %q: %w", what, key, kErr)
 		}
-		encodedValue, vErr := json.Marshal(o.extensions[key])
+		encodedValue, vErr := json.Marshal(extensions[key])
 		if vErr != nil {
-			return nil, fmt.Errorf("openapi: marshal operation extension %q: %w", key, vErr)
+			return nil, fmt.Errorf("openapi: marshal %s extension %q: %w", what, key, vErr)
 		}
 		pairs = append(pairs, extensionPair{key: encodedKey, value: encodedValue})
 		size += len(encodedKey) + len(encodedValue) + 2 // ':' separator and ',' delimiter
@@ -138,6 +159,64 @@ func (o operation) MarshalJSON() ([]byte, error) {
 	}
 	out = append(out, '}')
 	return out, nil
+}
+
+// pathExtra holds the fields of a Path Item that are not one of its operations.
+type pathExtra struct {
+	additional  map[string]operation // 3.2 additionalOperations: operations for methods the Path Item has no field for
+	summary     string
+	description string
+	parameters  []parameter
+}
+
+// MarshalJSON writes the document with its path items completed from pathExtras and its own extension fields.
+//
+//nolint:gocritic // hugeParam: a value receiver is required so the document is marshaled through this method
+func (s openAPISpec) MarshalJSON() ([]byte, error) {
+	type plain openAPISpec
+	if len(s.pathExtras) == 0 {
+		base, err := json.Marshal(plain(s))
+		if err != nil {
+			return nil, fmt.Errorf("openapi: marshal document: %w", err)
+		}
+		return withExtensions(base, s.extensions, "document")
+	}
+
+	items := make(map[string]map[string]any, len(s.Paths))
+	for path, operations := range s.Paths {
+		item := make(map[string]any, len(operations)+1)
+		for method, op := range operations {
+			item[method] = op
+		}
+		items[path] = item
+	}
+	for path, extra := range s.pathExtras {
+		item := items[path]
+		if item == nil {
+			item = make(map[string]any)
+			items[path] = item
+		}
+		if extra.summary != "" {
+			item["summary"] = extra.summary
+		}
+		if extra.description != "" {
+			item["description"] = extra.description
+		}
+		if len(extra.parameters) > 0 {
+			item["parameters"] = extra.parameters
+		}
+		if len(extra.additional) > 0 {
+			item["additionalOperations"] = extra.additional
+		}
+	}
+	base, err := json.Marshal(struct {
+		Paths map[string]map[string]any `json:"paths"`
+		plain
+	}{Paths: items, plain: plain(s)})
+	if err != nil {
+		return nil, fmt.Errorf("openapi: marshal document: %w", err)
+	}
+	return withExtensions(base, s.extensions, "document")
 }
 
 type response struct {
@@ -172,6 +251,18 @@ type requestBody struct {
 func isOpenAPIOperationMethod(method string) bool {
 	_, ok := openAPIOperationMethods[method]
 	return ok
+}
+
+// additionalOperationPrefix marks, in a path's operation map, an operation of a method the Path Item has no
+// field for; the document moves it to additionalOperations.
+const additionalOperationPrefix = "additional:"
+
+// operationKey is the key of an operation in its path's operation map.
+func operationKey(method string) string {
+	if isOpenAPIOperationMethod(method) {
+		return utilsstrings.ToLower(method)
+	}
+	return additionalOperationPrefix + method
 }
 
 func generateOperationID(method, path string) string {
@@ -246,21 +337,30 @@ func uniqueOperationID(id string, used map[string]struct{}) string {
 }
 
 // undeclaredTags lists, sorted, the tags operations use that Config.Tags does not describe.
-func undeclaredTags(paths map[string]map[string]operation, declared []Tag) []Tag {
+func undeclaredTags(paths map[string]map[string]operation, extras map[string]pathExtra, declared []Tag) []Tag {
 	known := make(map[string]struct{}, len(declared))
 	for i := range declared {
 		known[declared[i].Name] = struct{}{}
 	}
 	var names []string
+	note := func(op *operation) {
+		for _, name := range op.Tags {
+			if _, ok := known[name]; !ok {
+				known[name] = struct{}{}
+				names = append(names, name)
+			}
+		}
+	}
 	for _, item := range paths {
 		for method := range item {
 			op := item[method]
-			for _, name := range op.Tags {
-				if _, ok := known[name]; !ok {
-					known[name] = struct{}{}
-					names = append(names, name)
-				}
-			}
+			note(&op)
+		}
+	}
+	for _, extra := range extras {
+		for method := range extra.additional {
+			op := extra.additional[method]
+			note(&op)
 		}
 	}
 	slices.Sort(names)
@@ -296,7 +396,7 @@ func generateSpec(routes []fiber.Route, cfg *Config, env specEnv) openAPISpec {
 		env:              env,
 		dialect:          version,
 		reg:              newSchemaRegistry(cfg, version),
-		schemes:          newSecuritySchemes(),
+		schemes:          newSecuritySchemes(cfg),
 		paths:            make(map[string]map[string]operation),
 		usedOperationIDs: make(map[string]struct{}),
 		hierarchyPaths:   make(map[string]canonicalPathItem),
@@ -323,7 +423,7 @@ func (b *specBuilder) addRoutes(routes []fiber.Route) {
 		}
 		if r.IsMiddleware() {
 			if b.policy.middlewareInference {
-				if set := handlerMiddleware(r.InnerHandlers()); set != 0 {
+				if set := handlerMiddleware(r.InnerHandlers(), b.policy.custom); set != 0 {
 					covering = append(covering, coveringMiddleware{prefix: r.Path, domain: host, set: set})
 				}
 			}
@@ -341,17 +441,24 @@ func (b *specBuilder) addRoutes(routes []fiber.Route) {
 }
 
 func (b *specBuilder) documents(r *fiber.Route) bool {
-	if !isOpenAPIOperationMethod(r.Method) {
+	if !isOpenAPIOperationMethod(r.Method) && !b.dialect.hasAdditionalOperations() {
 		return false
 	}
 	if r.Method == fiber.MethodQuery && !b.dialect.hasQueryMethod() {
 		return false
 	}
-	return !r.IsAutoHead() && !r.IsHidden()
+	if r.IsAutoHead() || r.IsHidden() {
+		return false
+	}
+	if b.cfg.Filter != nil {
+		route := *r
+		return b.cfg.Filter(&route)
+	}
+	return true
 }
 
 func (b *specBuilder) inferRoute(r *fiber.Route, covering []coveringMiddleware) routeFacts {
-	facts := resolveRoute(r, covering, b.policy)
+	facts := resolveRoute(r, covering, &b.policy)
 	if facts.security == nil {
 		if requirement := b.schemes.requirement(facts.chain); requirement != nil {
 			security := []map[string][]string{requirement}
@@ -368,13 +475,23 @@ func (b *specBuilder) declareParameters(r *fiber.Route, facts *routeFacts) {
 	}
 	facts.parametersDeclared = true
 	facts.declared = expandParameterModels(r.ParameterModels, b.reg)
+	var inferred []fiber.RouteParameter
 	if facts.chain.has(kindCSRF) && !isSafeMethod(r.Method) {
-		facts.declared = append([]fiber.RouteParameter{csrfParameter(b.cfg.CSRFHeader)}, facts.declared...)
+		inferred = append(inferred, csrfParameter(b.cfg.CSRFHeader))
 	}
+	if facts.chain.has(kindIdempotency) && !isSafeMethod(r.Method) {
+		inferred = append(inferred, idempotencyParameter(b.cfg.IdempotencyKeyHeader))
+	}
+	for i := range b.cfg.Middleware {
+		if facts.chain.has(kindCustom + middlewareKind(i)) {
+			inferred = append(inferred, b.cfg.Middleware[i].Parameters...)
+		}
+	}
+	facts.declared = append(inferred, facts.declared...)
 }
 
 func (b *specBuilder) addVariant(r *fiber.Route, facts *routeFacts, variant *pathVariant) {
-	methodLower := utilsstrings.ToLower(r.Method)
+	methodLower := operationKey(r.Method)
 	if _, exists := b.paths[variant.Path][methodLower]; exists {
 		b.addHost(variant.Path, methodLower, facts.host)
 		return
@@ -440,7 +557,9 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 		params = append(params, param)
 		paramIndex[parameterKey{param.In, param.Name}] = len(params) - 1
 	}
-	extras := remapRouteParameters(append(slices.Clone(facts.declared), r.Parameters...), variant.PathParamAliases, variant.ParamNames)
+	// What Config.Defaults supplies comes first, so a declared parameter of the same name and location replaces it.
+	declared := append(slices.Clone(facts.defaultParams), facts.declared...)
+	extras := remapRouteParameters(append(declared, r.Parameters...), variant.PathParamAliases, variant.ParamNames)
 	if b.dialect.hasQuerystringLocation() {
 		extras = dropQueryAlongsideQuerystring(extras)
 	} else {
@@ -471,12 +590,18 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 			responses["400"] = errorResponse("Bad Request", cfg, b.reg)
 		}
 	}
+	for key, resp := range convertRouteResponses(facts.defaultResponses, facts.respType, b.reg) {
+		if _, ok := responses[key]; !ok {
+			responses[key] = resp
+		}
+	}
+	applyErrorSchema(responses, r.Responses, cfg, b.reg)
 
 	reqBody := buildRequestBody(r.RequestBody, facts.bodyType, b.reg)
 	if reqBody == nil && facts.ownConsumes != "" {
 		reqBody = &requestBody{Content: map[string]map[string]any{facts.ownConsumes: {}}}
 	}
-	if r.Method == fiber.MethodGet || r.Method == fiber.MethodHead || r.Method == fiber.MethodTrace {
+	if r.Method == fiber.MethodTrace || (!cfg.DocumentGetBodies && (r.Method == fiber.MethodGet || r.Method == fiber.MethodHead)) {
 		reqBody = nil
 	}
 
@@ -518,6 +643,49 @@ func domainServers(pattern string) []Server {
 	return []Server{{URL: "//" + strings.Join(labels, "."), Variables: variables}}
 }
 
+// pathExtras builds the Path Item fields beside the operations for the documented paths Config.PathItems names.
+func (b *specBuilder) pathExtras() map[string]pathExtra {
+	var extras map[string]pathExtra
+	for path, operations := range b.paths {
+		for key := range operations {
+			method, additional := strings.CutPrefix(key, additionalOperationPrefix)
+			if !additional {
+				continue
+			}
+			if extras == nil {
+				extras = make(map[string]pathExtra)
+			}
+			extra := extras[path]
+			if extra.additional == nil {
+				extra.additional = make(map[string]operation)
+			}
+			extra.additional[method] = operations[key]
+			extras[path] = extra
+			delete(operations, key)
+		}
+	}
+	for path := range b.cfg.PathItems {
+		if _, documented := b.paths[path]; !documented {
+			continue
+		}
+		item := b.cfg.PathItems[path]
+		declared := item.Parameters
+		if b.dialect.hasQuerystringLocation() {
+			declared = dropQueryAlongsideQuerystring(declared)
+		} else {
+			declared = dropQuerystringParameters(declared)
+		}
+		if extras == nil {
+			extras = make(map[string]pathExtra)
+		}
+		extra := extras[path]
+		extra.summary, extra.description = item.Summary, item.Description
+		extra.parameters = mergeRouteParameters(nil, make(map[parameterKey]int), declared, b.reg)
+		extras[path] = extra
+	}
+	return extras
+}
+
 func (b *specBuilder) document() openAPISpec {
 	cfg := b.cfg
 	paths := b.paths
@@ -533,10 +701,13 @@ func (b *specBuilder) document() openAPISpec {
 			Contact:        cfg.Contact,
 			License:        copyLicense(cfg.License),
 		},
-		Paths: paths,
+		Paths:      paths,
+		extensions: cfg.Extensions,
 	}
+	spec.Info.extensions = cfg.InfoExtensions
 
 	spec.Servers = buildServers(cfg, b.dialect)
+	spec.pathExtras = b.pathExtras()
 
 	// An empty list is kept: the API as a whole needs no authentication.
 	if cfg.Security != nil {
@@ -545,9 +716,14 @@ func (b *specBuilder) document() openAPISpec {
 	}
 
 	spec.Tags = append([]Tag(nil), cfg.Tags...)
-	spec.Tags = append(spec.Tags, undeclaredTags(paths, cfg.Tags)...)
+	spec.Tags = append(spec.Tags, undeclaredTags(paths, spec.pathExtras, cfg.Tags)...)
 	if len(spec.Tags) == 0 {
 		spec.Tags = nil
+	}
+	if !b.dialect.hasTagMetadata() {
+		for i := range spec.Tags {
+			spec.Tags[i].Summary, spec.Tags[i].Parent, spec.Tags[i].Kind = "", "", ""
+		}
 	}
 
 	if cfg.ExternalDocs != nil {

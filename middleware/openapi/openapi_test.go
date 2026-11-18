@@ -2875,10 +2875,10 @@ func Test_schemaFrom(t *testing.T) {
 
 func Test_mediaTypesToContent(t *testing.T) {
 	t.Parallel()
-	require.Nil(t, mediaTypesToContent(nil, fiber.RouteMediaType{}, nil))
-	require.Nil(t, mediaTypesToContent([]string{""}, fiber.RouteMediaType{}, nil))
+	require.Nil(t, mediaTypesToContent(nil, &fiber.RouteMediaType{}, nil))
+	require.Nil(t, mediaTypesToContent([]string{""}, &fiber.RouteMediaType{}, nil))
 
-	content := mediaTypesToContent([]string{"application/json"}, fiber.RouteMediaType{}, nil)
+	content := mediaTypesToContent([]string{"application/json"}, &fiber.RouteMediaType{}, nil)
 	require.Contains(t, content, "application/json")
 	require.Empty(t, content["application/json"])
 }

@@ -244,11 +244,11 @@ func Test_handlerMiddleware(t *testing.T) {
 		kindETag:      etag.New(),
 		kindCache:     cache.New(),
 	} {
-		set := handlerMiddleware([]fiber.Handler{handler})
+		set := handlerMiddleware([]fiber.Handler{handler}, nil)
 		require.True(t, set.has(kind), kind)
 		require.Equal(t, middlewareSet(1<<kind), set, kind)
 	}
-	require.Zero(t, handlerMiddleware([]fiber.Handler{nil, listUsers, func(c fiber.Ctx) error { return c.Next() }}))
+	require.Zero(t, handlerMiddleware([]fiber.Handler{nil, listUsers, func(c fiber.Ctx) error { return c.Next() }}, nil))
 }
 
 func Test_coversRoute(t *testing.T) {
@@ -341,9 +341,9 @@ func Test_middlewareOn_Domain(t *testing.T) {
 	route := app.GetRoutes(true)[0]
 	var set middlewareSet
 	set.add(kindRequestID)
-	fold := utils.EqualFold[string]
-	require.Zero(t, middlewareOn([]coveringMiddleware{{prefix: "/", domain: "api.example", set: set}}, &route, fold))
-	require.Equal(t, set, middlewareOn([]coveringMiddleware{{prefix: "/", set: set}}, &route, fold))
+	policy := &routePolicy{equal: utils.EqualFold[string]}
+	require.Zero(t, middlewareOn([]coveringMiddleware{{prefix: "/", domain: "api.example", set: set}}, &route, policy))
+	require.Equal(t, set, middlewareOn([]coveringMiddleware{{prefix: "/", set: set}}, &route, policy))
 }
 
 func Test_securitySchemes_Declarations(t *testing.T) {
@@ -351,7 +351,7 @@ func Test_securitySchemes_Declarations(t *testing.T) {
 	var nilSchemes *securitySchemes
 	require.Nil(t, nilSchemes.declarations())
 
-	schemes := newSecuritySchemes()
+	schemes := newSecuritySchemes(&Config{})
 	require.Nil(t, schemes.requirement(0))
 	require.Nil(t, schemes.declarations())
 

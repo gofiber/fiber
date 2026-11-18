@@ -48,6 +48,15 @@ func (d dialect) hasQuerystringLocation() bool { return d.since(release32) }
 
 func (d dialect) hasServerName() bool { return d.since(release32) }
 
+// hasTagMetadata reports whether a Tag Object may carry a summary, a parent and a kind (3.2+).
+func (d dialect) hasTagMetadata() bool { return d.since(release32) }
+
+// hasAdditionalOperations reports whether a Path Item may carry operations for custom methods (3.2+).
+func (d dialect) hasAdditionalOperations() bool { return d.since(release32) }
+
+// hasItemSchema reports whether a Media Type Object may describe the items of a sequential media type (3.2+).
+func (d dialect) hasItemSchema() bool { return d.since(release32) }
+
 func (d dialect) hasSelf() bool { return d.since(release32) }
 
 // hasJSONSchemaDialect reports whether the document aligns with JSON Schema 2020-12 (3.1+).

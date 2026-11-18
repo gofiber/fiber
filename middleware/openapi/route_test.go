@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func fullPolicy() routePolicy {
-	return routePolicy{
+func fullPolicy() *routePolicy {
+	return &routePolicy{
 		equal:               func(a, b string) bool { return a == b },
 		defaultProduces:     fiber.MIMEApplicationJSON,
 		defaultConsumes:     fiber.MIMEApplicationJSON,

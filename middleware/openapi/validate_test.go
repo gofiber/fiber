@@ -56,6 +56,27 @@ func validateOpenAPIDocument(t *testing.T, raw []byte) {
 
 		templateParams := pathTemplateNames(pathKey)
 		for method, rawOp := range item {
+			switch method {
+			case "summary", "description":
+				_, isString := rawOp.(string)
+				require.Truef(t, isString, "path %q %s must be a string", pathKey, method)
+				continue
+			case "parameters":
+				_, isList := rawOp.([]any)
+				require.Truef(t, isList, "path %q parameters must be an array", pathKey)
+				continue
+			case "additionalOperations":
+				additional, isObject := rawOp.(map[string]any)
+				require.Truef(t, isObject, "path %q additionalOperations must be an object", pathKey)
+				for custom, rawCustom := range additional {
+					_, fixed := validOperationMethods[strings.ToLower(custom)]
+					require.Falsef(t, fixed, "path %q additionalOperations must not repeat the %q field", pathKey, custom)
+					op, isOp := rawCustom.(map[string]any)
+					require.Truef(t, isOp, "operation %s %s must be an object", custom, pathKey)
+					validateOperation(t, custom, pathKey, op, templateParams, securitySchemes, operationIDs)
+				}
+				continue
+			}
 			_, known := validOperationMethods[method]
 			require.Truef(t, known, "path %q has invalid operation %q", pathKey, method)
 			op, ok := rawOp.(map[string]any)
@@ -96,7 +117,7 @@ func validateOperation(t *testing.T, method, pathKey string, op map[string]any, 
 	}
 
 	if rawBody, present := op["requestBody"]; present {
-		require.Falsef(t, method == "get" || method == "head", "%s %s must not have a requestBody", method, pathKey)
+		require.NotEqualf(t, "trace", method, "%s %s must not have a requestBody", method, pathKey)
 		body, ok := rawBody.(map[string]any)
 		require.Truef(t, ok, "%s %s requestBody must be an object", method, pathKey)
 		content, ok := body["content"].(map[string]any)

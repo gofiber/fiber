@@ -609,11 +609,15 @@ type RouteParameterModel struct {
 
 // RouteMediaType describes one media type entry of a body or response.
 type RouteMediaType struct {
-	Schema    any            `json:"schema,omitempty"`
-	Example   any            `json:"example,omitempty"`
-	Examples  map[string]any `json:"examples,omitempty"`
-	Encoding  map[string]any `json:"encoding,omitempty"`
-	SchemaRef string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	// ItemSchema describes each item of a sequential media type such as text/event-stream or
+	// application/jsonl, for a stream the client reads item by item. OpenAPI 3.2 writes it as itemSchema;
+	// earlier versions get the equivalent array schema when Schema is empty.
+	ItemSchema any            `json:"itemSchema,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Schema     any            `json:"schema,omitempty"`
+	Example    any            `json:"example,omitempty"`
+	Examples   map[string]any `json:"examples,omitempty"`
+	Encoding   map[string]any `json:"encoding,omitempty"`
+	SchemaRef  string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 }
 
 // RouteResponse describes a response emitted by a route.
