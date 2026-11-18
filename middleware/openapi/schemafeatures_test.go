@@ -336,3 +336,64 @@ func Test_OpenAPI_MoreValidateRules(t *testing.T) {
 	require.NotContains(t, prop("quoted"), "enum", "a quoted number is compared as a number")
 	require.NotContains(t, prop("raw"), "minItems")
 }
+
+type conditionalModel struct {
+	Kind     string `json:"kind"`
+	Email    string `json:"email,omitempty" validate:"required_without=Phone"`
+	Phone    string `json:"phone,omitempty"`
+	Street   string `json:"street,omitempty" validate:"required_with=City"`
+	City     string `json:"city,omitempty"`
+	Zip      string `json:"zip,omitempty" validate:"required_with_all=Street City"`
+	Company  string `json:"company,omitempty" validate:"required_if=Kind business Count 2"`
+	Reason   string `json:"reason,omitempty" validate:"required_unless=Kind personal"`
+	Fax      string `json:"fax,omitempty" validate:"required_without_all=Email Phone"`
+	Rush     string `json:"rush,omitempty" validate:"required_if=Express true"`
+	Unknown  string `json:"unknown,omitempty" validate:"required_if=Nope x"`
+	Optional string `json:"optional,omitempty"`
+	Count    int    `json:"count"`
+	Express  bool   `json:"express"`
+}
+
+func Test_OpenAPI_ConditionalRequiredRules(t *testing.T) {
+	t.Parallel()
+	build := func(version string) map[string]any {
+		app := fiber.New()
+		app.Post("/c", listUsers).Accepts(conditionalModel{})
+		return requireMap(t, modelSchemas(t, modelSpec(t, app, Config{OpenAPIVersion: version}))["conditionalModel"])
+	}
+
+	require.NotContains(t, build("3.0.3"), "allOf", "3.0 has no if/then")
+
+	schema := build("3.1.0")
+	require.NotContains(t, requireSlice(t, schema["required"]), "email")
+	rules := requireSlice(t, schema["allOf"])
+	require.Len(t, rules, 7, "the rule on a field that does not exist is left out")
+	require.Contains(t, rules, map[string]any{"dependentRequired": map[string]any{"city": []any{"street"}}})
+	require.Contains(t, rules, map[string]any{
+		"if":   map[string]any{"not": map[string]any{"required": []any{"phone"}}},
+		"then": map[string]any{"required": []any{"email"}},
+	})
+	require.Contains(t, rules, map[string]any{
+		"if":   map[string]any{"required": []any{"street", "city"}},
+		"then": map[string]any{"required": []any{"zip"}},
+	})
+	require.Contains(t, rules, map[string]any{
+		"if": map[string]any{"allOf": []any{
+			map[string]any{"required": []any{"kind"}, "properties": map[string]any{"kind": map[string]any{"const": "business"}}},
+			map[string]any{"required": []any{"count"}, "properties": map[string]any{"count": map[string]any{"const": float64(2)}}},
+		}},
+		"then": map[string]any{"required": []any{"company"}},
+	})
+	require.Contains(t, rules, map[string]any{
+		"if":   map[string]any{"not": map[string]any{"required": []any{"kind"}, "properties": map[string]any{"kind": map[string]any{"const": "personal"}}}},
+		"then": map[string]any{"required": []any{"reason"}},
+	})
+	require.Contains(t, rules, map[string]any{
+		"if":   map[string]any{"allOf": []any{map[string]any{"not": map[string]any{"required": []any{"email"}}}, map[string]any{"not": map[string]any{"required": []any{"phone"}}}}},
+		"then": map[string]any{"required": []any{"fax"}},
+	})
+	require.Contains(t, rules, map[string]any{
+		"if":   map[string]any{"allOf": []any{map[string]any{"required": []any{"express"}, "properties": map[string]any{"express": map[string]any{"const": true}}}}},
+		"then": map[string]any{"required": []any{"rush"}},
+	})
+}

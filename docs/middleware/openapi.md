@@ -1041,6 +1041,14 @@ route's media type.
     method but the safe ones), `responsetime` its `X-Response-Time` header,
     `cors` the `Access-Control-Allow-Origin` header and `compress` the
     `Content-Encoding` header on the responses that carry a body.
+  - `session` adds the cookie (or header, see `SessionLookup`) that carries the
+    session ID as an optional parameter and the `Set-Cookie` header on the
+    responses; `earlydata` a `425 Too Early` on the unsafe methods, which is
+    what it answers an early-data request with unless `AllowEarlyData` says
+    otherwise; and `healthcheck`, as the handler of a route, its `200` and
+    `503` answers, in the media type `HealthcheckProduces` names (plain text
+    by default, or the `{"status": "..."}` object for a JSON, XML, MsgPack or
+    CBOR `ResponseFormat`).
   - `keyauth` is documented as a bearer token, which is its default extractor. If
     it reads the key from a header, a query parameter or a cookie, set
     `KeyAuthLookup: &openapi.APIKeyLookup{In: "header", Name: "X-API-Key"}` and
@@ -1227,6 +1235,8 @@ route's media type.
 | CacheHeader    | `string`                | Header the `cache` middleware sets, documented on every response of a route it covers. | `"X-Cache"` |
 | CSRFHeader     | `string`                | Header the `csrf` middleware reads its token from, documented as a required parameter on unsafe operations. | `"X-Csrf-Token"` |
 | IdempotencyKeyHeader | `string`          | Header the `idempotency` middleware reads its key from, documented on the unsafe operations it covers. | `"X-Idempotency-Key"` |
+| SessionLookup | `*APIKeyLookup`         | Where the `session` middleware keeps the session ID (`In` is `cookie` or `header`). | `nil` (a `session_id` cookie) |
+| HealthcheckProduces | `string`           | Media type of the `healthcheck` middleware's answer, matching its `ResponseFormat`. | `"text/plain; charset=utf-8"` |
 | ResponseTimeHeader | `string`            | Header the `responsetime` middleware sets, documented on routes it covers. | `"X-Response-Time"` |
 | KeyAuthLookup  | `*APIKeyLookup`         | Where `keyauth` reads its key from (`In` is `header`, `query` or `cookie`), documented as an `apiKey` scheme. | `nil` (a bearer token) |
 | InferMiddleware | `func(*fiber.Route, string) bool` | Returns `false` to leave a recognized middleware undocumented on a route. | `nil` |
@@ -1447,7 +1457,13 @@ has no JSON representation (channels, functions, etc.) are skipped.
   `uniqueItems`, `port` the range 1–65535 of an integer, `startswith`,
   `endswith` and `contains` a `pattern`, and `alpha`, `alphanum`, `numeric`,
   `number`, `hexadecimal`, `hexcolor`, `e164`, `ascii` and `jwt` the validator's own
-  expression as a `pattern`. A schema holds one pattern, so the first rule wins;
+  expression as a `pattern`. The conditional rules `required_with`,
+  `required_with_all`, `required_without`, `required_without_all`,
+  `required_if` and `required_unless` become `allOf` entries with `if`/`then`
+  (or `dependentRequired`) in a 3.1+ document, naming the properties of the
+  fields they mention; 3.0 has no such keywords, so they are left out there,
+  as is a rule that mentions a field the object does not have. A schema holds
+  one pattern, so the first rule wins;
   after `omitempty` the rules an empty string would break are left out, as with
   `min`.
 

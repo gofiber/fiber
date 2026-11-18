@@ -36,6 +36,9 @@ const (
 	kindCORS
 	kindCompress
 	kindRecover
+	kindSession
+	kindHealthcheck
+	kindEarlyData
 	// kindCustom is the kind of the first Config.Middleware entry, the next one of the second, and so on.
 	kindCustom
 )
@@ -59,6 +62,9 @@ var middlewareNames = [...]string{
 	kindCORS:         MiddlewareCORS,
 	kindCompress:     MiddlewareCompress,
 	kindRecover:      MiddlewareRecover,
+	kindSession:      MiddlewareSession,
+	kindHealthcheck:  MiddlewareHealthcheck,
+	kindEarlyData:    MiddlewareEarlyData,
 }
 
 const authMiddleware middlewareSet = 1<<kindKeyAuth | 1<<kindBasicAuth | 1<<kindJWT
@@ -80,6 +86,9 @@ var fiberMiddlewareDirs = [...]struct {
 	{"cors", kindCORS},
 	{"compress", kindCompress},
 	{"recover", kindRecover},
+	{"session", kindSession},
+	{"healthcheck", kindHealthcheck},
+	{"earlydata", kindEarlyData},
 }
 
 // contribMiddleware matches gofiber/contrib middleware by source path fragment (contrib/v3/jwt; the unversioned jwt is v2).
@@ -157,7 +166,7 @@ func handlerMiddleware(handlers []fiber.Handler, custom map[codeSite]middlewareK
 			set.add(kind)
 			continue
 		}
-		if strings.Contains(fn.Name(), ".New.") {
+		if strings.Contains(fn.Name(), ".New") {
 			set |= middlewareInFile(file)
 		}
 	}
@@ -484,6 +493,10 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 	if set.has(kindRecover) {
 		addError("500", "Internal Server Error")
 	}
+	// An early-data request is let through only for a safe method, and answered with 425 Too Early otherwise.
+	if set.has(kindEarlyData) && !isSafeMethod(method) {
+		addError("425", "Too Early")
+	}
 	for i := range cfg.Middleware {
 		if !set.has(kindCustom + middlewareKind(i)) {
 			continue
@@ -517,6 +530,9 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 		if set.has(kindETag) && (status == "200" || (status == "304" && readsOnly)) {
 			addHeader(&resp, fiber.HeaderETag, headerObject("The entity tag of the response", schemaTypeString))
 		}
+		if set.has(kindSession) {
+			addHeader(&resp, sessionResponseHeader(cfg), headerObject("The session ID, set when the session is created or changed", schemaTypeString))
+		}
 		if set.has(kindResponseTime) {
 			addHeader(&resp, cfg.ResponseTimeHeader, headerObject("How long the request took to handle", schemaTypeString))
 		}
@@ -549,6 +565,53 @@ func headerValue(header any) map[string]any {
 	}
 	description, _ := header.(string) //nolint:errcheck // anything else documents a header without a description
 	return headerObject(description, schemaTypeString)
+}
+
+// sessionLookup is where the session middleware keeps the session ID: a "session_id" cookie unless configured.
+func sessionLookup(cfg *Config) APIKeyLookup {
+	if cfg.SessionLookup != nil {
+		return *cfg.SessionLookup
+	}
+	return APIKeyLookup{In: locCookie, Name: "session_id"}
+}
+
+// sessionResponseHeader is the response header that carries the session ID: Set-Cookie for a cookie.
+func sessionResponseHeader(cfg *Config) string {
+	if lookup := sessionLookup(cfg); lookup.In == locHeader {
+		return lookup.Name
+	}
+	return fiber.HeaderSetCookie
+}
+
+func sessionParameter(cfg *Config) fiber.RouteParameter {
+	lookup := sessionLookup(cfg)
+	return fiber.RouteParameter{
+		Name:        lookup.Name,
+		In:          fiber.ParamLocation(lookup.In),
+		Description: "The session ID, issued by an earlier response",
+		Schema:      map[string]any{schemaKeyType: schemaTypeString},
+	}
+}
+
+// healthResponses are the responses of a route whose handler is the healthcheck middleware: 200 when the probe
+// passes and 503 when it fails, written in the configured format.
+func healthResponses(cfg *Config) map[string]response {
+	mediaType := cfg.HealthcheckProduces
+	schema := map[string]any{schemaKeyType: schemaTypeString}
+	if !strings.HasPrefix(mediaType, "text/") {
+		schema = map[string]any{
+			schemaKeyType:       schemaTypeObject,
+			schemaKeyProperties: map[string]any{"status": map[string]any{schemaKeyType: schemaTypeString}},
+			schemaKeyRequired:   []any{"status"},
+		}
+	}
+	content := func() map[string]map[string]any {
+		return map[string]map[string]any{mediaType: {"schema": maps.Clone(schema)}}
+	}
+	return map[string]response{
+		"200": {Description: "OK", Content: content()},
+		"503": {Description: "Service Unavailable", Content: content()},
+	}
 }
 
 func idempotencyParameter(header string) fiber.RouteParameter {

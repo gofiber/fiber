@@ -159,6 +159,9 @@ const (
 	MiddlewareCORS         = "cors"
 	MiddlewareCompress     = "compress"
 	MiddlewareRecover      = "recover"
+	MiddlewareSession      = "session"
+	MiddlewareHealthcheck  = "healthcheck"
+	MiddlewareEarlyData    = "earlydata"
 )
 
 // Config defines the config for middleware.
@@ -185,6 +188,15 @@ type Config struct {
 	// KeyAuthLookup says where the keyauth middleware reads its key from, so it is documented as an apiKey
 	// scheme instead of a bearer token. Optional. Default: nil, which documents a bearer token
 	KeyAuthLookup *APIKeyLookup
+
+	// SessionLookup says where the session middleware keeps the session ID: In is "cookie" or "header" and Name its
+	// name. Optional. Default: nil, which documents a "session_id" cookie
+	SessionLookup *APIKeyLookup
+
+	// HealthcheckProduces is the media type of the answer of the healthcheck middleware, which depends on its
+	// ResponseFormat: "text/plain; charset=utf-8", "application/json", "application/xml", "application/msgpack" or
+	// "application/cbor". Optional. Default: "text/plain; charset=utf-8"
+	HealthcheckProduces string
 
 	// Extensions are "x-" fields added to the document root. Optional. Default: nil
 	Extensions map[string]any
@@ -399,6 +411,7 @@ var ConfigDefault = Config{
 	CacheHeader:                      "X-Cache",
 	CSRFHeader:                       "X-Csrf-Token",
 	IdempotencyKeyHeader:             "X-Idempotency-Key",
+	HealthcheckProduces:              fiber.MIMETextPlainCharsetUTF8,
 	ResponseTimeHeader:               fiber.HeaderXResponseTime,
 	RateLimitHeaders: RateLimitHeaders{
 		Limit:     "X-RateLimit-Limit",
@@ -445,6 +458,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.CSRFHeader == "" {
 		cfg.CSRFHeader = ConfigDefault.CSRFHeader
+	}
+	if cfg.HealthcheckProduces == "" {
+		cfg.HealthcheckProduces = ConfigDefault.HealthcheckProduces
 	}
 	if cfg.IdempotencyKeyHeader == "" {
 		cfg.IdempotencyKeyHeader = ConfigDefault.IdempotencyKeyHeader
@@ -606,6 +622,16 @@ func cloneExtensions(cfg *Config) {
 	cfg.Middleware = cloneAny(original)
 	for i := range cfg.Middleware {
 		cfg.Middleware[i].Handler = original[i].Handler // a func is shared by the copy
+	}
+	if cfg.SessionLookup != nil {
+		lookup := *cfg.SessionLookup
+		cfg.SessionLookup = &lookup
+		if lookup.In != locCookie && lookup.In != locHeader {
+			panic("openapi: SessionLookup.In must be \"cookie\" or \"header\", got " + strconv.Quote(lookup.In))
+		}
+		if lookup.Name == "" {
+			panic("openapi: SessionLookup.Name is required")
+		}
 	}
 	if cfg.KeyAuthLookup != nil {
 		lookup := *cfg.KeyAuthLookup

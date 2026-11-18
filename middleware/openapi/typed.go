@@ -78,8 +78,8 @@ func Typed[Req, Res any](router fiber.Router, method, path string, handler func(
 func documentTyped(route fiber.Router, method string, req, res reflect.Type, status int) {
 	if reqType := derefType(req); reqType.Kind() == reflect.Struct {
 		model := reflect.New(reqType).Interface()
-		for location, tag := range modelTagByLocation {
-			if hasTaggedField(reqType, tag) {
+		for _, location := range [...]fiber.ParamLocation{fiber.ParamInPath, fiber.ParamInQuery, fiber.ParamInHeader, fiber.ParamInCookie} {
+			if hasTaggedField(reqType, modelTagByLocation[location]) {
 				route.Params(location, model)
 			}
 		}

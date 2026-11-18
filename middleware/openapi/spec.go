@@ -21,6 +21,11 @@ const (
 	schemaKeyOneOf      = "oneOf"
 	schemaKeyAnyOf      = "anyOf"
 	schemaKeyAdditional = "additionalProperties"
+	schemaKeyRequired   = "required"
+	schemaKeyNot        = "not"
+	schemaKeyProperties = "properties"
+	locCookie           = "cookie"
+	locHeader           = "header"
 	ruleContains        = "contains" // the validate rule, and the schema keyword of that name
 	keyDefault          = "default"  // the default response, and the schema keyword of that name
 	keyNameField        = "name"
@@ -495,6 +500,9 @@ func (b *specBuilder) declareParameters(r *fiber.Route, facts *routeFacts) {
 	if facts.chain.has(kindIdempotency) && !isSafeMethod(r.Method) {
 		inferred = append(inferred, idempotencyParameter(b.cfg.IdempotencyKeyHeader))
 	}
+	if facts.chain.has(kindSession) {
+		inferred = append(inferred, sessionParameter(b.cfg))
+	}
 	for i := range b.cfg.Middleware {
 		if facts.chain.has(kindCustom + middlewareKind(i)) {
 			inferred = append(inferred, b.cfg.Middleware[i].Parameters...)
@@ -597,6 +605,9 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 	if len(responses) == 0 {
 		status, defaultResp := defaultResponseForMethod(r.Method, facts.respType)
 		responses = map[string]response{status: defaultResp}
+	}
+	if facts.chain.has(kindHealthcheck) && len(r.Responses) == 0 {
+		responses = healthResponses(cfg)
 	}
 	if facts.chain != 0 {
 		applyMiddlewareResponses(responses, r.Method, facts.chain, cfg, b.reg)

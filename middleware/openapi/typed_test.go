@@ -125,3 +125,22 @@ func Test_OpenAPI_TypedDocumentsAnEmptyRouteWithoutABody(t *testing.T) {
 	_, err := json.Marshal(spec)
 	require.NoError(t, err)
 }
+
+func Test_OpenAPI_TypedDeclaresParametersInAFixedOrder(t *testing.T) {
+	t.Parallel()
+	for range 20 {
+		app := fiber.New()
+		Typed(app, fiber.MethodPost, "/users/:id", func(_ fiber.Ctx, _ *userRequest) (*userResponse, error) { return &userResponse{}, nil })
+		var in []fiber.ParamLocation
+		for _, route := range app.GetRoutes() {
+			if route.Path != "/users/:id" {
+				continue
+			}
+			for i := range route.ParameterModels {
+				in = append(in, route.ParameterModels[i].In)
+			}
+			break
+		}
+		require.Equal(t, []fiber.ParamLocation{fiber.ParamInPath, fiber.ParamInQuery, fiber.ParamInHeader}, in)
+	}
+}

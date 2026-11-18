@@ -109,9 +109,9 @@ func typeSchemaOrAny(t reflect.Type, visited map[reflect.Type]bool, reg *schemaR
 
 // schemaPositions are the keywords whose value is a schema, or a list or map of schemas.
 var (
-	schemaKeywords    = []string{"items", schemaKeyAdditional, "not", "if", "then", "else", ruleContains, "propertyNames", "unevaluatedItems", "unevaluatedProperties"}
+	schemaKeywords    = []string{"items", schemaKeyAdditional, schemaKeyNot, "if", "then", "else", ruleContains, "propertyNames", "unevaluatedItems", "unevaluatedProperties"}
 	schemaListKeyword = []string{schemaKeyOneOf, schemaKeyAnyOf, schemaKeyAllOf, "prefixItems"}
-	schemaMapKeyword  = []string{"properties", "patternProperties", "$defs", "dependentSchemas"}
+	schemaMapKeyword  = []string{schemaKeyProperties, "patternProperties", "$defs", "dependentSchemas"}
 )
 
 // resolveSchemaModels returns a copy of schema with the Go models in its schema positions replaced by schemas.
