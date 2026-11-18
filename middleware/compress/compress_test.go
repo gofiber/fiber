@@ -16,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/middleware/etag"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -687,6 +688,48 @@ func Test_Compress_Repeated_Accept_Encoding_Lines(t *testing.T) {
 	req.Header.Add(fiber.HeaderAcceptEncoding, "gzip")
 
 	compressTestExpectEncoding(t, apptest.Do(t, app, req, testConfig), "gzip")
+}
+
+func Test_Compress_KeepsRequestHeaderOrder(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name               string
+		acceptEncoding     string
+		disableNormalizing bool
+	}{
+		{name: "canonical", acceptEncoding: fiber.HeaderAcceptEncoding},
+		// PeekAll misses this spelling, so no saved line goes back.
+		{name: "lowercase_without_normalizing", acceptEncoding: "accept-encoding", disableNormalizing: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var forwarded, accept []string
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: tc.disableNormalizing})
+			app.Use(func(c fiber.Ctx) error {
+				err := c.Next()
+				for k, v := range c.Request().Header.All() {
+					switch {
+					case utils.EqualFold(string(k), fiber.HeaderXForwardedFor):
+						forwarded = append(forwarded, string(v))
+					case utils.EqualFold(string(k), fiber.HeaderAcceptEncoding):
+						accept = append(accept, string(v))
+					}
+				}
+				return err
+			})
+			app.Use(New())
+			app.Get("/", compressTestSendReadme)
+
+			req := apptest.Req(fiber.MethodGet, "/")
+			req.Header[tc.acceptEncoding] = []string{"gzip"}
+			req.Header.Add(fiber.HeaderXForwardedFor, "1.1.1.1")
+			req.Header.Add(fiber.HeaderXForwardedFor, "2.2.2.2")
+
+			compressTestExpectEncoding(t, apptest.Do(t, app, req, testConfig), "gzip")
+			require.Equal(t, []string{"1.1.1.1", "2.2.2.2"}, forwarded)
+			require.Equal(t, []string{"gzip"}, accept)
+		})
+	}
 }
 
 // Test_Compress_Cache_Control_No_Transform runs each Cache-Control shape as the field of the request and as the field

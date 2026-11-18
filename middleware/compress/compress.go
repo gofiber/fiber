@@ -228,9 +228,15 @@ func compressWith(c fiber.Ctx, compressor fasthttp.RequestHandler, encoding stri
 	header.Set(fiber.HeaderAcceptEncoding, encoding)
 	compressor(c.RequestCtx())
 
-	header.Del(fiber.HeaderAcceptEncoding)
-	for _, line := range saved {
-		header.AddBytesV(fiber.HeaderAcceptEncoding, line)
+	if len(saved) == 0 {
+		// A spelling PeekAll misses (normalizing off): drop the line added above.
+		header.Del(fiber.HeaderAcceptEncoding)
+	} else {
+		// Set keeps the first line in place, where Del would swap the last header into it.
+		header.SetBytesV(fiber.HeaderAcceptEncoding, saved[0])
+		for _, line := range saved[1:] {
+			header.AddBytesV(fiber.HeaderAcceptEncoding, line)
+		}
 	}
 	if vary != "" {
 		respHeader.Set(fiber.HeaderVary, vary)
