@@ -497,6 +497,36 @@ func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 	})
 }
 
+func Test_Session_Keys_AbsoluteTimeout(t *testing.T) {
+	t.Parallel()
+	store := NewStore(Config{IdleTimeout: time.Hour, AbsoluteTimeout: time.Hour})
+	app := fiber.New()
+
+	sess, _ := sessionTestFresh(t, store)
+	require.Equal(t, []any{}, sess.Keys())
+
+	// an int key with the same underlying value as the internal key is still listed
+	sess.Set(0, "zero")
+	sess.Set("name", "john")
+	require.ElementsMatch(t, []any{0, "name"}, sess.Keys())
+
+	// clearing every listed key keeps the absolute expiration
+	deadline := sess.absExpiration()
+	for _, key := range sess.Keys() {
+		sess.Delete(key)
+	}
+	require.Equal(t, []any{}, sess.Keys())
+	token := sess.ID()
+	require.NoError(t, sess.Save())
+
+	sess = loadSession(t, app, store, token)
+	require.Equal(t, token, sess.ID())
+	require.Equal(t, []any{}, sess.Keys())
+	require.True(t, deadline.Equal(sess.absExpiration()), "the deadline must survive unchanged")
+	sess.Set("name", "jane")
+	require.Equal(t, []any{"name"}, sess.Keys())
+}
+
 func Test_Session_Destroy(t *testing.T) {
 	t.Parallel()
 	t.Run("destroy from cookie", func(t *testing.T) {

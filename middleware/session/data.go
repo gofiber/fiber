@@ -151,10 +151,11 @@ func (d *data) Delete(key any) {
 	delete(d.Data, key)
 }
 
-// Keys retrieves all keys in the data map.
+// Keys retrieves all keys in the data map, except the internal key that holds
+// the absolute expiration.
 //
 // Returns:
-//   - []any: A slice of all keys in the data map.
+//   - []any: A slice of the keys in the data map.
 //
 // Usage:
 //
@@ -164,6 +165,9 @@ func (d *data) Keys() []any {
 	defer d.RUnlock()
 	keys := make([]any, 0, len(d.Data))
 	for k := range d.Data {
+		if k == absExpirationKey {
+			continue
+		}
 		if valueMayAlias(k) {
 			// gob flattens pointer keys, so mutating a pointee changes the payload.
 			d.dirty.Store(true)
