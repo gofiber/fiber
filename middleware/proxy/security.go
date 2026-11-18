@@ -24,11 +24,6 @@ const (
 // mutate the backing array.
 var defaultAllowedSchemes = []string{schemeHTTP, schemeHTTPS}
 
-// httpsSchemeBytes is the byte form of "https" used by redirect
-// downgrade checks. Stored once so the resolveRedirect hot path doesn't
-// allocate []byte("https") on every hop.
-var httpsSchemeBytes = []byte(schemeHTTPS)
-
 // Sentinel errors returned when an upstream target violates the configured
 // proxy security policy.
 var (

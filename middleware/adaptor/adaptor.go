@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/bodystream"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
+	"github.com/gofiber/fiber/v3/internal/requesthold"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -253,7 +255,7 @@ func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 
 // HTTPHandler wraps net/http handler to fiber handler
 func HTTPHandler(h http.Handler) fiber.Handler {
-	handler := fasthttpadaptor.NewFastHTTPHandler(h)
+	handler := requesthold.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
 		return serveRouted(c, handler)
 	}
@@ -261,7 +263,7 @@ func HTTPHandler(h http.Handler) fiber.Handler {
 
 // HTTPHandlerWithContext is like HTTPHandler, but additionally stores Fiber’s user context in the request context
 func HTTPHandlerWithContext(h http.Handler) fiber.Handler {
-	handler := fasthttpadaptor.NewFastHTTPHandler(h)
+	handler := requesthold.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
 		// Store the Fiber user context (c.Context()) in the fasthttp request context
 		// so adapted net/http handlers can retrieve it via adaptor.LocalContextFromHTTPRequest(r)
@@ -276,10 +278,14 @@ func serveRouted(c fiber.Ctx, handler fasthttp.RequestHandler) error {
 	if err := bufferBodyStream(c); err != nil {
 		return err
 	}
-	if !wiretarget.Serve(c, handler) {
+	switch wiretarget.Serve(c, handler) {
+	case wiretarget.BadRequest: // as net/http's server answers a "%" that begins no escape
+		return fiber.ErrBadRequest
+	case wiretarget.NotFound:
 		return fiber.ErrNotFound
+	default:
+		return nil
 	}
-	return nil
 }
 
 // bufferBodyStream applies BodyLimit to a streamed body, which fasthttpadaptor would read whatever its size.
@@ -323,9 +329,15 @@ func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
 // fiber.ErrBadRequest instead of being set, since the request's host would
 // then be read out of it; so is one holding a forged escape (see
 // wiretarget.HasForgedEscape), which URL.Path would decode into a segment the
-// router never matched. A streamed body over the app's BodyLimit returns
+// router never matched, and one holding a "%" that begins no escape (see
+// wiretarget.HasStrayPercent), as net/http's server answers it: URL.Path
+// would be the same for "/100%" and "/100%25", which the router keeps apart.
+// A streamed body over the app's BodyLimit returns
 // fiber.ErrRequestEntityTooLarge.
 func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
+	if wiretarget.StrayPercent(c) {
+		return nil, fiber.ErrBadRequest
+	}
 	target := wiretarget.Routed(c)
 	if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) || wiretarget.HasForgedEscape(target) {
 		return nil, fiber.ErrBadRequest
@@ -532,6 +544,18 @@ func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 	}
 }
 
+// announcesTooMany reports whether the values of a Trailer field name more than fieldname.MaxTrailers fields,
+// counted by their commas, which is never fewer than the names.
+func announcesTooMany(vals []string) bool {
+	n := 0
+	for _, v := range vals {
+		if n += strings.Count(v, ",") + 1; n > fieldname.MaxTrailers {
+			return true
+		}
+	}
+	return false
+}
+
 func isFramingHeader(name string) bool {
 	for _, h := range framingHeaders {
 		if utils.EqualFold(name, h) {
@@ -585,9 +609,11 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 					newPath = strings.Clone(r.URL.EscapedPath())
 				}
 			}
-			freq.SetRequestURI(requestURI)
-			freq.URI().SetHostBytes(host)
+			// The Host header goes first: a target that begins with "//" is a path read with it, which the
+			// rewrite may have left holding "://" (wiretarget.RestoreTarget reads it as one, as Reset does).
 			fhdr.SetHostBytes(host)
+			wiretarget.RestoreTarget(c.RequestCtx(), requestURI)
+			freq.URI().SetHostBytes(host)
 			// Only a genuine rewrite re-routes. The decoded path differs from the raw
 			// one for every escaped or non-canonical request, and overriding it there
 			// re-buckets the tree, resuming the chain past middleware that already ran.
@@ -640,7 +666,12 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		// would become the host of both the net/http request and the Fiber
 		// request behind the middleware. So is a path holding a forged
 		// escape (see wiretarget.HasForgedEscape), which URL.Path would
-		// decode into a segment the router never matched.
+		// decode into a segment the router never matched, and one holding a
+		// "%" that begins no escape (see wiretarget.HasStrayPercent), as
+		// net/http's server answers it.
+		if wiretarget.StrayPercent(c) {
+			return fiber.ErrBadRequest
+		}
 		target := wiretarget.Routed(c)
 		if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) || wiretarget.HasForgedEscape(target) {
 			return fiber.ErrBadRequest
@@ -649,10 +680,11 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			return err
 		}
 		wiretarget.SetTarget(c, target)
-		// Call the fasthttp adaptor directly: HTTPHandler would wrap it in a
-		// second closure that has to be built on every request, and its
-		// error result is always nil.
-		fasthttpadaptor.NewFastHTTPHandler(mw(nextHandler))(c.RequestCtx())
+		// Call the adaptor directly: HTTPHandler would wrap it in a second closure that has to be
+		// built on every request, and its error result is always nil. A middleware that flushes
+		// keeps running after this handler returned, so it is held like the handlers are
+		// (see requesthold).
+		requesthold.NewFastHTTPHandler(mw(nextHandler))(c.RequestCtx())
 
 		mu.Lock()
 		returned = true
@@ -877,8 +909,9 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		fctx.Response.Reset()
 		fctx.Request.Reset()
 		defer func() {
-			// As fasthttp's server does, leave a timed-out ctx to the handler that may still run on it.
-			if fctx.LastTimeoutErrorResponse() == nil {
+			// As fasthttp's server does, leave a timed-out ctx to the handler that may still run on it. So for
+			// a net/http handler that flushed and outlived its response: the next Reset would wait for it.
+			if fctx.LastTimeoutErrorResponse() == nil && !requesthold.Pending(fctx) {
 				ctxPool.Put(pctx)
 			}
 		}()
@@ -970,16 +1003,41 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		if cap(received) > maxHeaderScratch {
 			received = nil
 		}
+		var aliased []string
 		for key, vals := range r.Header {
 			if len(vals) == 0 {
 				continue
 			}
-			// Set replaces any value fasthttp derived while building the
-			// request, then Add appends the remaining values so multi-value
-			// headers (e.g. repeated X-Forwarded-For lines) survive instead
-			// of collapsing to the last value. fasthttp's Add keeps its own
-			// singleton semantics for Cookie/Content-Type/etc., which can
-			// only hold one value there by design.
+			// net/http keeps the Trailer field of a request that is not chunked, and fasthttp scans every name
+			// announced for each header it stores, so as the router does, refuse more than MaxTrailers.
+			if len(key) == len(fiber.HeaderTrailer) && utils.EqualFold(key, fiber.HeaderTrailer) && announcesTooMany(vals) {
+				http.Error(w, utils.StatusMessage(fiber.StatusRequestHeaderFieldsTooLarge), fiber.StatusRequestHeaderFieldsTooLarge)
+				return
+			}
+			// fasthttp files a key that is not in canonical spelling under another spelling than the
+			// map does, where a canonical key of the same name may sit: a hand-built map may hold both
+			// "x-a" and "X-A", or "content-type" and "Content-Type". Set replaces what that key added,
+			// so it goes after every Add, whatever the order of the map.
+			if !fieldname.IsCanonical(key) {
+				aliased = append(aliased, key)
+				continue
+			}
+			// A canonical name is new to the request, so Add appends it without Set's scan of the
+			// stored lines. The names fasthttp derives or stores specially (Host, Content-Type,
+			// Cookie, ...) reach the same special handling through Add as through Set, and fasthttp's
+			// Add keeps its own singleton semantics for them, which can only hold one value by design.
+			// Repeated values of the other names survive instead of collapsing to the last value.
+			for _, v := range vals {
+				req.Header.Add(key, v)
+			}
+			if len(vals) > 1 {
+				received = appendReceived(received, key, vals)
+			}
+		}
+		// Two non-canonical spellings of one name resolve alike whatever the order of the map.
+		slices.Sort(aliased)
+		for _, key := range aliased {
+			vals := r.Header[key]
 			req.Header.Set(key, vals[0])
 			for _, v := range vals[1:] {
 				req.Header.Add(key, v)

@@ -292,7 +292,7 @@ func Test_Proxy_Balancer_AbsoluteFormHost(t *testing.T) {
 		{"http://public.example/x", "public.example/evil", ""},
 		{"http://PUBLIC.example:8080/x?q=1", "Public.Example:8080", "/x?q=1|public.example:8080|"},
 		{"https://u:pw@public.example/x", "public.example", "/x|public.example|"},
-		// Since fasthttp 1.79 a path, refused for its empty segment.
+		// origin-form (RFC 9112 Section 3.2.1), also for fasthttp 1.79: an empty first segment is not forwarded
 		{"//public.example/a?x=://", "public.example", ""},
 		{"/x", "internal.example", "/x|internal.example|"},
 	} {
