@@ -134,8 +134,8 @@ func resolveSchemaModels(schema map[string]any, visited map[reflect.Type]bool, r
 	for _, key := range schemaMapKeyword {
 		if entries, ok := schemautil.AsMap(out[key]); ok {
 			resolved := make(map[string]any, len(entries))
-			for name, value := range entries {
-				resolved[name] = schemaValue(value, visited, reg)
+			for _, name := range sortedKeys(entries) {
+				resolved[name] = schemaValue(entries[name], visited, reg)
 			}
 			out[key] = resolved
 		}
@@ -170,7 +170,8 @@ func resolveDiscriminator(discriminator map[string]any, visited map[reflect.Type
 		return out
 	}
 	resolved := make(map[string]any, len(mapping))
-	for value, target := range mapping {
+	for _, value := range sortedKeys(mapping) {
+		target := mapping[value]
 		if reference, isText := target.(string); isText {
 			resolved[value] = reference
 			continue

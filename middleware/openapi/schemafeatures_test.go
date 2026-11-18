@@ -397,3 +397,20 @@ func Test_OpenAPI_ConditionalRequiredRules(t *testing.T) {
 		"then": map[string]any{"required": []any{"rush"}},
 	})
 }
+
+type commaModel struct {
+	Plain   string `json:"plain" openapi:"description:Sorted, then trimmed: yes"`
+	Split   string `json:"split" openapi:"description:Sorted, title:Name"`
+	Flagged string `json:"flagged" openapi:"description:Old, deprecated"`
+}
+
+func Test_OpenAPI_TagValueCommaLimitation(t *testing.T) {
+	t.Parallel()
+	props := requireMap(t, SchemaOf(commaModel{})["properties"])
+	prop := func(name string) map[string]any { return requireMap(t, props[name]) }
+	require.Equal(t, "Sorted, then trimmed: yes", prop("plain")["description"], "a comma not followed by a directive stays in the value")
+	require.Equal(t, "Sorted", prop("split")["description"])
+	require.Equal(t, "Name", prop("split")["title"])
+	require.Equal(t, "Old", prop("flagged")["description"])
+	require.Equal(t, true, prop("flagged")["deprecated"])
+}
