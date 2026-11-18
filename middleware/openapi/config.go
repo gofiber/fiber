@@ -1,6 +1,7 @@
 package openapi
 
 import (
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -291,6 +292,16 @@ type Config struct {
 	// SwaggerStandalonePresetIntegrity is the SRI value checked against SwaggerStandalonePresetURL, defaulting like SwaggerCSSIntegrity. Optional. Default: the hash of the default preset
 	SwaggerStandalonePresetIntegrity string
 
+	// TypeSchemas gives a Go type the schema you choose, written inline wherever the type is used: a generic
+	// map, or a Go value reflected like any model. It wins over a SchemaProvider, and serves types you cannot
+	// add a method to, such as time.Duration or a decimal of another package. Optional. Default: nil
+	TypeSchemas map[reflect.Type]any
+
+	// SchemaName names the component of a model type; return "" to keep the default (the type's name, then
+	// qualified by its package, then numbered on a clash). The result is restricted to the characters a
+	// component name may have. Optional. Default: nil
+	SchemaName func(t reflect.Type) string
+
 	// DefaultProduces is the response media type documented when a response declares none. Optional. Default: "application/json"
 	DefaultProduces string
 
@@ -567,6 +578,16 @@ func cloneExtensions(cfg *Config) {
 		if _, known := declared[parent]; parent != "" && (!known || parent == cfg.Tags[i].Name) {
 			panic("openapi: the parent " + strconv.Quote(parent) + " of tag " + strconv.Quote(cfg.Tags[i].Name) + " must be another tag of Tags")
 		}
+	}
+	if len(cfg.TypeSchemas) > 0 {
+		schemas := make(map[reflect.Type]any, len(cfg.TypeSchemas))
+		for t, schema := range cfg.TypeSchemas {
+			if t == nil {
+				panic("openapi: TypeSchemas needs a type for every schema")
+			}
+			schemas[t] = deepcopy.Value(schema)
+		}
+		cfg.TypeSchemas = schemas
 	}
 	cfg.PathItems = cloneAny(cfg.PathItems)
 	cfg.Defaults = cloneAny(cfg.Defaults)

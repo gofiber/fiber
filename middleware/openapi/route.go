@@ -135,7 +135,7 @@ func applyDefaults(facts *routeFacts, r *fiber.Route, policy *routePolicy) {
 		}
 		facts.defaultParams = append(facts.defaultParams, d.Parameters...)
 		for status, resp := range d.Responses {
-			key := "default"
+			key := keyDefault
 			if status != 0 {
 				key = utils.FormatInt(int64(status))
 			}

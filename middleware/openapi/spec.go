@@ -15,17 +15,25 @@ import (
 const (
 	querystringMediaType = "application/x-www-form-urlencoded"
 
-	schemaKeyType     = "type"
-	schemaKeyItems    = "items"
-	schemaTypeNull    = "null"
-	schemaKeyRef      = "$ref"
-	schemaTypeArray   = "array"
-	schemaKeyFormat   = "format"
-	schemaTypeString  = "string"
-	schemaTypeObject  = "object"
-	schemaTypeBoolean = "boolean"
-	schemaTypeInteger = "integer"
-	schemaTypeNumber  = "number"
+	schemaKeyType       = "type"
+	schemaKeyEnum       = "enum"
+	schemaKeyAllOf      = "allOf"
+	schemaKeyOneOf      = "oneOf"
+	schemaKeyAnyOf      = "anyOf"
+	schemaKeyAdditional = "additionalProperties"
+	ruleContains        = "contains" // the validate rule, and the schema keyword of that name
+	keyDefault          = "default"  // the default response, and the schema keyword of that name
+	keyNameField        = "name"
+	schemaKeyItems      = "items"
+	schemaTypeNull      = "null"
+	schemaKeyRef        = "$ref"
+	schemaTypeArray     = "array"
+	schemaKeyFormat     = "format"
+	schemaTypeString    = "string"
+	schemaTypeObject    = "object"
+	schemaTypeBoolean   = "boolean"
+	schemaTypeInteger   = "integer"
+	schemaTypeNumber    = "number"
 )
 
 // openAPIOperationMethods is the set of methods a Path Item can express; `query` is gated by the caller.

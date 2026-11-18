@@ -1188,6 +1188,8 @@ route's media type.
 | RedocBundleIntegrity | `string`          | Subresource Integrity value for `RedocBundleURL`, defaulting the same way as the Swagger hashes. | the hash of the default bundle |
 | ScalarBundleURL | `string`               | Scalar API Reference script URL.                                | `"https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.81.0/dist/browser/standalone.min.js"` |
 | ScalarBundleIntegrity | `string`         | Subresource Integrity value for `ScalarBundleURL`.              | the hash of the default bundle |
+| TypeSchemas    | `map[reflect.Type]any`  | Gives a Go type the schema you choose, written inline wherever it is used. | `nil` |
+| SchemaName     | `func(reflect.Type) string` | Names the component of a model type; `""` keeps the default.   | `nil` |
 | DocumentGetBodies | `bool`               | Documents the request body of a `GET` or `HEAD` route.          | `false` |
 | RateLimitHeaders | `RateLimitHeaders`    | Headers the `limiter` middleware sets (`Limit`, `Remaining`, `Reset`); an empty field keeps its default. | `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` |
 | DisableRateLimitHeaders | `bool`         | Stops documenting the headers a limiter sets on every response; its `429` and `Retry-After` stay. | `false` |
@@ -1357,6 +1359,12 @@ has no JSON representation (channels, functions, etc.) are skipped.
 - **`openapi:"example:value"`** — sets the property example (auto-converted to the correct type)
 - **`openapi:"format:fmt"`** — sets the format (e.g., `email`, `uuid`, `date-time`)
 - **`openapi:"enum:a|b|c"`** — sets allowed enum values (pipe-separated)
+- **`openapi:"default:value"`** (converted to the field's type), **`openapi:"pattern:regex"`**,
+  **`openapi:"title:text"`** and **`openapi:"multipleOf:n"`** set the keyword of the same name;
+  **`openapi:"uniqueItems"`** marks a list whose items must differ; **`openapi:"nullable"`**
+  allows `null` as a pointer field does, spelled for the document's version
+- **`openapi:"x-name:value"`** adds an extension to the property; a value that is JSON
+  (`5`, `true`, `[1,2]`, `{"a":1}`) is kept as such and anything else as text
 - **`openapi:"readOnly"`**, **`openapi:"writeOnly"`** and **`openapi:"deprecated"`**
   — set the flag of the same name, so one `User` type can serve both a
   request body and a response with `id` marked read-only
@@ -1378,7 +1386,14 @@ has no JSON representation (channels, functions, etc.) are skipped.
   `oneof`) are left out while upper bounds stay; a pointer is still validated
   when it is not nil, so its rules stay. Fields of type `*multipart.FileHeader`
   (and slices of it) are documented as `type: string, format: binary`, which
-  Swagger UI shows as a file picker.
+  Swagger UI shows as a file picker. Beyond those, `eq=v` becomes a one-value
+  `enum` (a list or map has that length), `ne=v` a `not`, `unique` on a list
+  `uniqueItems`, `port` the range 1–65535 of an integer, `startswith`,
+  `endswith` and `contains` a `pattern`, and `alpha`, `alphanum`, `numeric`,
+  `number`, `hexadecimal`, `hexcolor`, `e164`, `ascii` and `jwt` the validator's own
+  expression as a `pattern`. A schema holds one pattern, so the first rule wins;
+  after `omitempty` the rules an empty string would break are left out, as with
+  `min`.
 
 Multiple `openapi` directives can be combined with commas:
 
@@ -1395,3 +1410,69 @@ immediately followed by another directive key such as `,description:`.
 A struct whose fields carry examples gets an object-level `example` assembled
 from them, nested models included, so Swagger UI shows a value for the model
 rather than its shape.
+
+### Describing the struct itself
+
+A blank field tagged `openapi` sets what the object says about itself: `title`,
+`description`, `deprecated`, an `x-` extension, or an `example` that is JSON and
+replaces the assembled one.
+
+```go
+type Pet struct {
+    _    struct{} `openapi:"title:Pet,description:A pet in the shop,x-resource:pets"`
+    Name string   `json:"name"`
+}
+```
+
+### Types that describe themselves
+
+Reflection cannot know that a decimal is written as a string, or that an ID has a
+shape. A type that implements `openapi.SchemaProvider` returns its own schema
+(from a value or a pointer receiver, called on a zero value); a named struct
+becomes a component like any model. For a type you cannot add a method to, such
+as `time.Duration`, `Config.TypeSchemas` maps a Go type to a schema, written
+inline and winning over the provider and over the built-in mapping:
+
+```go
+func (Money) OpenAPISchema() map[string]any {
+    return map[string]any{"type": "string", "pattern": `^-?\d+(\.\d+)?$`, "example": "12.50"}
+}
+
+app.Use(openapi.New(openapi.Config{TypeSchemas: map[reflect.Type]any{
+    reflect.TypeFor[time.Duration](): map[string]any{"type": "integer", "format": "int64", "description": "nanoseconds"},
+}}))
+```
+
+A Go value in a schema position of the returned map (an item of `oneOf`, `anyOf`
+or `allOf`, `items`, `properties`, a `discriminator` mapping) is replaced by its
+type's schema, so a provider can stand for one of several types. `openapi.OneOf`,
+`AnyOf`, `AllOf` and `WithDiscriminator` build those maps:
+
+```go
+func (Pet) OpenAPISchema() map[string]any {
+    return openapi.WithDiscriminator(
+        openapi.OneOf(Cat{}, Dog{}), "kind",
+        map[string]any{"cat": Cat{}, "dog": Dog{}}, // mapped to references to the Cat and Dog components
+    )
+}
+```
+
+A discriminator mapping can only name structs (which are components); with
+`SchemaOf`, which has no components, the models are inlined and the mapping keeps
+only the entries that are already references.
+
+### Component names
+
+A struct is named after its Go type, then qualified by its package, then numbered
+on a clash. `Config.SchemaName` picks the name instead: return `""` to keep the default
+for a type. The result is restricted to the characters a component name allows.
+
+### XML bodies
+
+A media type of `application/xml`, `text/xml` or ending in `+xml` is described by
+`xml` tags instead of `json` ones, as a form media type is by `form` tags (the
+component is named with an `_xml` suffix): `xml:"name"` names the property,
+`xml:",attr"` marks an attribute, `xml:"items>item"` a list wrapped in an element,
+`xml:"-"` skips the field and `omitempty` makes it optional. An `XMLName xml.Name`
+field with a tag names the root element. Fields that are no element of their own
+(`,any`, `,comment` and `,innerxml`) are left out.
