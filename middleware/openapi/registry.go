@@ -61,6 +61,11 @@ func (reg *schemaRegistry) resolve(schema any) map[string]any {
 	return typeSchema(reflect.TypeOf(schema), nil, reg)
 }
 
+// itemSchemas reports whether the document may carry itemSchema in a media type.
+func (reg *schemaRegistry) itemSchemas() bool {
+	return reg != nil && reg.dialect.hasItemSchema()
+}
+
 // ref registers a named struct type and returns a reference to it. The name is claimed first so
 // self-referencing types do not recurse; the component is built independent of registration order.
 func (reg *schemaRegistry) ref(t reflect.Type) map[string]any {
@@ -198,7 +203,7 @@ func isFormMediaType(mediaType string) bool {
 	return utils.EqualFold(base, fiber.MIMEMultipartForm) || utils.EqualFold(base, fiber.MIMEApplicationForm)
 }
 
-func contentEntryFor(mediaType string, mt fiber.RouteMediaType, reg *schemaRegistry) map[string]any {
+func contentEntryFor(mediaType string, mt *fiber.RouteMediaType, reg *schemaRegistry) map[string]any {
 	if reg == nil || !isFormMediaType(mediaType) {
 		return contentEntry(mt, reg)
 	}

@@ -97,11 +97,12 @@ func cloneRouteMediaTypeMap(content map[string]RouteMediaType) map[string]RouteM
 	cloned := make(map[string]RouteMediaType, len(content))
 	for mediaType, mt := range content {
 		cloned[mediaType] = RouteMediaType{
-			Schema:    copySchema(mt.Schema),
-			SchemaRef: mt.SchemaRef,
-			Example:   deepcopy.Value(mt.Example),
-			Examples:  copyAnyMap(mt.Examples),
-			Encoding:  copyAnyMap(mt.Encoding),
+			Schema:     copySchema(mt.Schema),
+			ItemSchema: copySchema(mt.ItemSchema),
+			SchemaRef:  mt.SchemaRef,
+			Example:    deepcopy.Value(mt.Example),
+			Examples:   copyAnyMap(mt.Examples),
+			Encoding:   copyAnyMap(mt.Encoding),
 		}
 	}
 	return cloned

@@ -8,12 +8,19 @@ import (
 	"github.com/gofiber/fiber/v3/internal/schemautil"
 )
 
-func contentEntry(mt fiber.RouteMediaType, reg *schemaRegistry) map[string]any {
+func contentEntry(mt *fiber.RouteMediaType, reg *schemaRegistry) map[string]any {
 	entry := map[string]any{}
 	if mt.SchemaRef != "" {
 		entry["schema"] = map[string]any{schemaKeyRef: mt.SchemaRef}
 	} else if resolved := reg.resolve(mt.Schema); len(resolved) > 0 {
 		entry["schema"] = resolved
+	}
+	if item := reg.resolve(mt.ItemSchema); len(item) > 0 {
+		if reg.itemSchemas() {
+			entry["itemSchema"] = item
+		} else if _, hasSchema := entry["schema"]; !hasSchema {
+			entry["schema"] = map[string]any{schemaKeyType: schemaTypeArray, schemaKeyItems: item}
+		}
 	}
 	if ex := exampleObjects(mt.Examples); len(ex) > 0 {
 		entry["examples"] = ex
@@ -68,7 +75,7 @@ func routeMediaTypeContent(content map[string]fiber.RouteMediaType, reg *schemaR
 			continue
 		}
 		mt := content[mediaType]
-		entry := contentEntryFor(mediaType, mt, reg)
+		entry := contentEntryFor(mediaType, &mt, reg)
 		if len(mt.Encoding) > 0 {
 			entry["encoding"] = mt.Encoding
 		}
@@ -103,7 +110,7 @@ func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallba
 					mediaTypes = []string{fallbackMediaType}
 				}
 			}
-			content = mediaTypesToContent(mediaTypes, fiber.RouteMediaType{
+			content = mediaTypesToContent(mediaTypes, &fiber.RouteMediaType{
 				Schema: resp.Schema, SchemaRef: resp.SchemaRef, Example: resp.Example, Examples: resp.Examples,
 			}, reg)
 		}
@@ -124,7 +131,7 @@ func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallba
 	return merged
 }
 
-func mediaTypesToContent(mediaTypes []string, mt fiber.RouteMediaType, reg *schemaRegistry) map[string]map[string]any {
+func mediaTypesToContent(mediaTypes []string, mt *fiber.RouteMediaType, reg *schemaRegistry) map[string]map[string]any {
 	if len(mediaTypes) == 0 {
 		return nil
 	}
@@ -151,7 +158,7 @@ func buildRequestBody(routeBody *fiber.RouteRequestBody, defaultMediaType string
 		if len(mediaTypes) == 0 && defaultMediaType != "" {
 			mediaTypes = []string{defaultMediaType}
 		}
-		content = mediaTypesToContent(mediaTypes, fiber.RouteMediaType{
+		content = mediaTypesToContent(mediaTypes, &fiber.RouteMediaType{
 			Schema: routeBody.Schema, SchemaRef: routeBody.SchemaRef, Example: routeBody.Example, Examples: routeBody.Examples,
 		}, reg)
 	}

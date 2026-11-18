@@ -98,40 +98,43 @@ func New(config ...Config) fiber.Handler {
 
 		rev := app.RoutesRevision()
 		if cache.specBody.data == nil || cache.specRev != rev {
-			appCfg := app.Config()
-			spec := generateSpec(app.GetRoutes(false), &cfg, specEnv{validator: appCfg.StructValidator, equal: segmentEqualFor(&appCfg), strict: appCfg.StrictRouting})
-			data, err := appCfg.JSONEncoder(spec)
+			data, err := buildDocument(app, &cfg)
 			if err != nil {
-				return cachedBody{}, fmt.Errorf("openapi: marshal spec: %w", err)
+				return cachedBody{}, err
 			}
 			cache.specBody, cache.specRev = newCachedBody(data), rev
 		}
 		return cache.specBody, nil
 	}
 
-	uiBytes := func(app *fiber.App, targetPath string) (cachedBody, error) {
+	uiBytes := func(app *fiber.App, targetPath, redirectPath string) (cachedBody, error) {
+		key := targetPath + "\x00" + redirectPath
 		cache := cacheFor(app)
 		cache.uiMu.Lock()
 		defer cache.uiMu.Unlock()
 
-		if body, ok := cache.uiPages[targetPath]; ok {
+		if body, ok := cache.uiPages[key]; ok {
 			return body, nil
 		}
-		data, err := buildSwaggerUIPage(targetPath, &cfg, app.Config().JSONEncoder)
+		data, err := buildUIPage(targetPath, redirectPath, &cfg, app.Config().JSONEncoder)
 		if err != nil {
-			return cachedBody{}, fmt.Errorf("openapi: build swagger ui page: %w", err)
+			return cachedBody{}, fmt.Errorf("openapi: build %s page: %w", cfg.UI, err)
 		}
 		body := newCachedBody(data)
 		if len(cache.uiPages) >= maxCachedEntries {
 			// Keys derive from the request path (attacker-controlled); drop all rather than let junk pin the cache.
 			clear(cache.uiPages)
 		}
-		cache.uiPages[targetPath] = body
+		cache.uiPages[key] = body
 		return body, nil
 	}
 
 	specPath := utils.TrimRight(normalizedPath(cfg.Path), '/')
 	uiPath := utils.TrimRight(normalizedPath(cfg.UIPath), '/')
+	uiOn := !cfg.DisableUI
+	oauthOn := uiOn && cfg.UI == UISwagger && cfg.OAuth2RedirectPath != ""
+	oauthPath := utils.TrimRight(normalizedPath(cfg.OAuth2RedirectPath), '/')
+	oauthBody := newCachedBody([]byte(oauth2RedirectPage))
 
 	var lastEquality atomic.Pointer[appEquality]
 	equalityFor := func(app *fiber.App) func(a, b string) bool {
@@ -158,16 +161,19 @@ func New(config ...Config) fiber.Handler {
 		isMiddleware := route != nil && route.IsMiddleware()
 
 		// Fast path: most prefix-mounted requests match neither target.
-		if isMiddleware && !mayEndWith(request, specPath) && !mayEndWith(request, uiPath) {
+		mayServe := mayEndWith(request, specPath) || (uiOn && mayEndWith(request, uiPath)) || (oauthOn && mayEndWith(request, oauthPath))
+		if isMiddleware && !mayServe {
 			return c.Next()
 		}
 
 		equal := equalityFor(c.App())
-		if isMiddleware && !hasSuffix(request, specPath, equal) && !hasSuffix(request, uiPath, equal) {
+		serves := hasSuffix(request, specPath, equal) || (uiOn && hasSuffix(request, uiPath, equal)) || (oauthOn && hasSuffix(request, oauthPath, equal))
+		if isMiddleware && !serves {
 			return c.Next()
 		}
 
 		targets := resolveTargets(c, specPath, uiPath, equal)
+		targets.uiOK = targets.uiOK && uiOn
 
 		switch {
 		case targets.specOK && equal(request, targets.spec):
@@ -179,11 +185,17 @@ func New(config ...Config) fiber.Handler {
 		case targets.uiOK && equal(request, targets.ui):
 			// A rooted path: "//host/..." would be a network-path reference, and a root spec trims to "".
 			specURL := urlnorm.RootedPath(targets.spec)
-			body, err := uiBytes(c.App(), specURL)
+			redirectURL := ""
+			if oauthOn {
+				redirectURL = urlnorm.RootedPath(resolveTargets(c, specPath, oauthPath, equal).ui)
+			}
+			body, err := uiBytes(c.App(), specURL, redirectURL)
 			if err != nil {
 				return err
 			}
 			return body.send(c, fiber.MIMETextHTMLCharsetUTF8)
+		case oauthOn && resolveTargets(c, specPath, oauthPath, equal).isUI(request, equal):
+			return oauthBody.send(c, fiber.MIMETextHTMLCharsetUTF8)
 		default:
 			return c.Next()
 		}
@@ -220,6 +232,11 @@ type specTargets struct {
 	ui     string
 	specOK bool
 	uiOK   bool
+}
+
+// isUI reports whether request is the page the targets name as the UI.
+func (t specTargets) isUI(request string, equal segmentEqual) bool {
+	return t.uiOK && equal(request, t.ui)
 }
 
 func resolveTargets(c fiber.Ctx, specPath, uiPath string, equal segmentEqual) specTargets {

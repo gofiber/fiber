@@ -1,19 +1,24 @@
 package openapi
 
 import (
+	"maps"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/schemautil"
 	"github.com/gofiber/utils/v2"
 )
 
 const (
 	securitySchemeBearer = "bearerAuth"
 	securitySchemeBasic  = "basicAuth"
+	securitySchemeAPIKey = "apiKeyAuth"
 )
 
 const (
@@ -25,7 +30,36 @@ const (
 	kindLimiter
 	kindETag
 	kindCache
+	kindTimeout
+	kindIdempotency
+	kindResponseTime
+	kindCORS
+	kindCompress
+	kindRecover
+	// kindCustom is the kind of the first Config.Middleware entry, the next one of the second, and so on.
+	kindCustom
 )
+
+// maxCustomMiddleware is how many entries of Config.Middleware a middlewareSet can hold.
+const maxCustomMiddleware = 64 - int(kindCustom)
+
+// middlewareNames are the names Config.InferMiddleware receives, by kind.
+var middlewareNames = [...]string{
+	kindKeyAuth:      MiddlewareKeyAuth,
+	kindBasicAuth:    MiddlewareBasicAuth,
+	kindJWT:          MiddlewareJWT,
+	kindCSRF:         MiddlewareCSRF,
+	kindRequestID:    MiddlewareRequestID,
+	kindLimiter:      MiddlewareLimiter,
+	kindETag:         MiddlewareETag,
+	kindCache:        MiddlewareCache,
+	kindTimeout:      MiddlewareTimeout,
+	kindIdempotency:  MiddlewareIdempotency,
+	kindResponseTime: MiddlewareResponseTime,
+	kindCORS:         MiddlewareCORS,
+	kindCompress:     MiddlewareCompress,
+	kindRecover:      MiddlewareRecover,
+}
 
 const authMiddleware middlewareSet = 1<<kindKeyAuth | 1<<kindBasicAuth | 1<<kindJWT
 
@@ -40,6 +74,12 @@ var fiberMiddlewareDirs = [...]struct {
 	{"limiter", kindLimiter},
 	{"etag", kindETag},
 	{"cache", kindCache},
+	{"timeout", kindTimeout},
+	{"idempotency", kindIdempotency},
+	{"responsetime", kindResponseTime},
+	{"cors", kindCORS},
+	{"compress", kindCompress},
+	{"recover", kindRecover},
 }
 
 // contribMiddleware matches gofiber/contrib middleware by source path fragment (contrib/v3/jwt; the unversioned jwt is v2).
@@ -77,7 +117,7 @@ var fiberMiddlewarePrefixes = sync.OnceValue(func() []string {
 
 type middlewareKind uint8
 
-type middlewareSet uint16
+type middlewareSet uint64
 
 func (s middlewareSet) has(kind middlewareKind) bool { return s&(1<<kind) != 0 }
 
@@ -100,20 +140,45 @@ func middlewareInFile(file string) middlewareSet {
 	return set
 }
 
-func handlerMiddleware(handlers []fiber.Handler) middlewareSet {
+// handlerMiddleware reports the recognized middleware among handlers: Fiber's own by the file they were compiled
+// from, and the ones of Config.Middleware by the code of their constructor.
+func handlerMiddleware(handlers []fiber.Handler, custom map[codeSite]middlewareKind) middlewareSet {
 	var set middlewareSet
 	for _, handler := range handlers {
 		if handler == nil {
 			continue
 		}
 		fn := runtime.FuncForPC(reflect.ValueOf(handler).Pointer())
-		if fn == nil || !strings.Contains(fn.Name(), ".New.") {
+		if fn == nil {
 			continue
 		}
-		file, _ := fn.FileLine(fn.Entry())
-		set |= middlewareInFile(file)
+		file, line := fn.FileLine(fn.Entry())
+		if kind, ok := custom[codeSite{file: filepath.ToSlash(file), line: line}]; ok {
+			set.add(kind)
+			continue
+		}
+		if strings.Contains(fn.Name(), ".New.") {
+			set |= middlewareInFile(file)
+		}
 	}
 	return set
+}
+
+// codeSite is where a function was written. A handler is identified by it rather than by its code pointer,
+// as a constructor inlined into its caller gets a copy of its closure for each call site.
+type codeSite struct {
+	file string
+	line int
+}
+
+// siteOf returns where the code of a handler was written.
+func siteOf(handler fiber.Handler) codeSite {
+	fn := runtime.FuncForPC(reflect.ValueOf(handler).Pointer())
+	if fn == nil {
+		return codeSite{}
+	}
+	file, line := fn.FileLine(fn.Entry())
+	return codeSite{file: filepath.ToSlash(file), line: line}
 }
 
 type coveringMiddleware struct {
@@ -203,16 +268,26 @@ func literalSatisfies(constraint, literal string) bool {
 	}
 }
 
-func middlewareOn(covering []coveringMiddleware, route *fiber.Route, equal segmentEqual) middlewareSet {
-	set := handlerMiddleware(route.InnerHandlers())
+func middlewareOn(covering []coveringMiddleware, route *fiber.Route, policy *routePolicy) middlewareSet {
+	set := handlerMiddleware(route.InnerHandlers(), policy.custom)
 	host, _ := effectiveHost(route.Domains())
 	for i := range covering {
 		cover := &covering[i]
 		if !hostCovers(cover.domain, host) {
 			continue
 		}
-		if coversRoute(cover.prefix, route.Path, equal) {
+		if coversRoute(cover.prefix, route.Path, policy.equal) {
 			set |= cover.set
+		}
+	}
+	if policy.infer != nil && set != 0 {
+		for kind := range middlewareKind(64) {
+			if !set.has(kind) {
+				continue
+			}
+			if name := policy.middlewareName(kind); name != "" && !policy.infer(route, name) {
+				set &^= 1 << kind
+			}
 		}
 	}
 	return set
@@ -220,22 +295,39 @@ func middlewareOn(covering []coveringMiddleware, route *fiber.Route, equal segme
 
 // securitySchemes collects the schemes recognized middleware asked for.
 type securitySchemes struct {
-	bearer  bool
-	basic   bool
-	jwtOnly bool
+	keyLookup *APIKeyLookup // where keyauth reads its key from; nil documents a bearer token
+	custom    map[string]any
+	docs      []MiddlewareDoc
+	bearer    bool
+	basic     bool
+	apiKey    bool
+	jwtOnly   bool
 }
 
-func newSecuritySchemes() *securitySchemes {
-	return &securitySchemes{jwtOnly: true}
+func newSecuritySchemes(cfg *Config) *securitySchemes {
+	return &securitySchemes{jwtOnly: true, keyLookup: cfg.KeyAuthLookup, docs: cfg.Middleware}
 }
 
-func (*securitySchemes) requirement(set middlewareSet) map[string][]string {
+// keyAuthIsBearer reports whether the keyauth middleware is documented as a bearer token.
+func (s *securitySchemes) keyAuthIsBearer() bool { return s.keyLookup == nil }
+
+func (s *securitySchemes) requirement(set middlewareSet) map[string][]string {
 	requirement := map[string][]string{}
-	if set.has(kindKeyAuth) || set.has(kindJWT) {
+	if set.has(kindJWT) || (set.has(kindKeyAuth) && s.keyAuthIsBearer()) {
 		requirement[securitySchemeBearer] = []string{}
+	}
+	if set.has(kindKeyAuth) && !s.keyAuthIsBearer() {
+		requirement[securitySchemeAPIKey] = []string{}
 	}
 	if set.has(kindBasicAuth) {
 		requirement[securitySchemeBasic] = []string{}
+	}
+	for i := range s.docs {
+		if set.has(kindCustom + middlewareKind(i)) {
+			for name, scopes := range s.docs[i].Security {
+				requirement[name] = slices.Clone(scopes)
+			}
+		}
 	}
 	if len(requirement) == 0 {
 		return nil
@@ -245,14 +337,30 @@ func (*securitySchemes) requirement(set middlewareSet) map[string][]string {
 
 // use records the schemes an operation that made it into the document refers to.
 func (s *securitySchemes) use(set middlewareSet) {
-	if set.has(kindKeyAuth) || set.has(kindJWT) {
+	if set.has(kindJWT) || (set.has(kindKeyAuth) && s.keyAuthIsBearer()) {
 		s.bearer = true
 		if set.has(kindKeyAuth) {
 			s.jwtOnly = false
 		}
 	}
+	if set.has(kindKeyAuth) && !s.keyAuthIsBearer() {
+		s.apiKey = true
+	}
 	if set.has(kindBasicAuth) {
 		s.basic = true
+	}
+	for i := range s.docs {
+		if !set.has(kindCustom + middlewareKind(i)) {
+			continue
+		}
+		for name, scheme := range s.docs[i].SecuritySchemes {
+			if s.custom == nil {
+				s.custom = make(map[string]any)
+			}
+			if _, taken := s.custom[name]; !taken {
+				s.custom[name] = scheme
+			}
+		}
 	}
 }
 
@@ -260,16 +368,20 @@ func (s *securitySchemes) declarations() map[string]any {
 	if s == nil {
 		return nil
 	}
-	schemes := make(map[string]any, 2)
+	schemes := make(map[string]any, 3+len(s.custom))
+	maps.Copy(schemes, s.custom)
 	if s.bearer {
-		bearer := map[string]any{"type": "http", "scheme": "bearer"}
+		bearer := map[string]any{schemaKeyType: "http", "scheme": "bearer"}
 		if s.jwtOnly {
 			bearer["bearerFormat"] = "JWT"
 		}
 		schemes[securitySchemeBearer] = bearer
 	}
+	if s.apiKey {
+		schemes[securitySchemeAPIKey] = map[string]any{schemaKeyType: "apiKey", "in": s.keyLookup.In, "name": s.keyLookup.Name}
+	}
 	if s.basic {
-		schemes[securitySchemeBasic] = map[string]any{"type": "http", "scheme": "basic"}
+		schemes[securitySchemeBasic] = map[string]any{schemaKeyType: "http", "scheme": "basic"}
 	}
 	if len(schemes) == 0 {
 		return nil
@@ -308,10 +420,32 @@ func errorResponse(description string, cfg *Config, reg *schemaRegistry) respons
 	resp := response{Description: description}
 	if cfg.ErrorProduces != "" {
 		resp.Content = map[string]map[string]any{
-			cfg.ErrorProduces: contentEntry(fiber.RouteMediaType{Schema: cfg.ErrorSchema}, reg),
+			cfg.ErrorProduces: contentEntry(&fiber.RouteMediaType{Schema: cfg.ErrorSchema}, reg),
 		}
 	}
 	return resp
+}
+
+// applyErrorSchema gives a declared error response that documents no body the error media type and schema
+// of the config, as the responses the app's error handler writes have.
+func applyErrorSchema(responses map[string]response, declared map[string]fiber.RouteResponse, cfg *Config, reg *schemaRegistry) {
+	if cfg.ErrorSchema == nil || cfg.ErrorProduces == "" {
+		return
+	}
+	for code := range declared {
+		status, err := strconv.Atoi(code)
+		if err != nil || status < 400 {
+			continue
+		}
+		resp := declared[code]
+		if resp.Schema != nil || resp.SchemaRef != "" || resp.Example != nil || len(resp.Examples) > 0 ||
+			len(resp.Content) > 0 || len(resp.MediaTypes) > 0 {
+			continue
+		}
+		merged := responses[code]
+		merged.Content = errorResponse("", cfg, reg).Content
+		responses[code] = merged
+	}
 }
 
 // applyMiddlewareResponses adds the responses and headers recognized middleware writes; declared responses only gain missing headers.
@@ -344,6 +478,30 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 			responses["304"] = response{Description: "Not Modified"}
 		}
 	}
+	if set.has(kindTimeout) {
+		addError("503", "Service Unavailable")
+	}
+	if set.has(kindRecover) {
+		addError("500", "Internal Server Error")
+	}
+	for i := range cfg.Middleware {
+		if !set.has(kindCustom + middlewareKind(i)) {
+			continue
+		}
+		declared := make(map[string]fiber.RouteResponse, len(cfg.Middleware[i].Responses))
+		for status, resp := range cfg.Middleware[i].Responses {
+			key := "default"
+			if status != 0 {
+				key = utils.FormatInt(int64(status))
+			}
+			declared[key] = resp
+		}
+		for key, resp := range convertRouteResponses(declared, cfg.DefaultProduces, reg) {
+			if _, ok := responses[key]; !ok {
+				responses[key] = resp
+			}
+		}
+	}
 
 	for status, resp := range responses {
 		if set.has(kindRequestID) {
@@ -359,11 +517,46 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 		if set.has(kindETag) && (status == "200" || (status == "304" && readsOnly)) {
 			addHeader(&resp, fiber.HeaderETag, headerObject("The entity tag of the response", schemaTypeString))
 		}
+		if set.has(kindResponseTime) {
+			addHeader(&resp, cfg.ResponseTimeHeader, headerObject("How long the request took to handle", schemaTypeString))
+		}
+		if set.has(kindCORS) {
+			addHeader(&resp, fiber.HeaderAccessControlAllowOrigin, headerObject("The origin the CORS policy allows, set when the request names one", schemaTypeString))
+		}
+		if set.has(kindCompress) && success && status != "204" && status != "205" {
+			addHeader(&resp, fiber.HeaderContentEncoding, headerObject("The encoding the response body was compressed with, when the client accepts one", schemaTypeString))
+		}
+		for i := range cfg.Middleware {
+			if set.has(kindCustom + middlewareKind(i)) {
+				for name, header := range cfg.Middleware[i].ResponseHeaders {
+					addHeader(&resp, name, headerValue(header))
+				}
+			}
+		}
 		// The cache reports its status on every response the handler produced, but not on earlier middleware's.
 		if set.has(kindCache) && status != "401" && status != "403" && status != "429" {
 			addHeader(&resp, cfg.CacheHeader, headerObject("Whether the response was served from cache", schemaTypeString))
 		}
 		responses[status] = resp
+	}
+}
+
+// headerValue is a response header of Config.Middleware as the document carries it: a map is the Header Object
+// itself, and a bare string is its description.
+func headerValue(header any) map[string]any {
+	if object, ok := schemautil.AsMap(header); ok {
+		return object
+	}
+	description, _ := header.(string) //nolint:errcheck // anything else documents a header without a description
+	return headerObject(description, schemaTypeString)
+}
+
+func idempotencyParameter(header string) fiber.RouteParameter {
+	return fiber.RouteParameter{
+		Name:        header,
+		In:          fiber.ParamInHeader,
+		Description: "A key that makes a retried request replay the first response instead of running again",
+		Schema:      map[string]any{schemaKeyType: schemaTypeString},
 	}
 }
 
