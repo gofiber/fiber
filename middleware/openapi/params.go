@@ -55,7 +55,9 @@ func hasLocationOnlyFieldsIn(t reflect.Type, tagKey string, seen map[reflect.Typ
 		if field.Tag.Get(tagKey) == "" && taggedForAnotherLocation(&field, tagKey) {
 			return true
 		}
-		if hasLocationOnlyFieldsIn(derefElem(field.Type), tagKey, seen) {
+		// A named struct held by a field becomes its own component with its own key; only an embedded struct
+		// and an unnamed one are written into this schema.
+		if elem := derefElem(field.Type); (field.Anonymous || elem.Name() == "") && hasLocationOnlyFieldsIn(elem, tagKey, seen) {
 			return true
 		}
 	}
