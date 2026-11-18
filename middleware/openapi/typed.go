@@ -1,6 +1,7 @@
 package openapi
 
 import (
+	"errors"
 	"reflect"
 	"slices"
 
@@ -31,9 +32,11 @@ func WithMiddleware(handlers ...any) TypedOption {
 // Typed registers a route whose handler takes its request as a struct and returns its response as a struct, and
 // documents the route from those two types instead of from calls you repeat for each route: the parameters
 // from the fields tagged `uri`, `query`, `header` and `cookie`, the request body from the fields bound from the
-// body (`json`, `form`, `xml` or untagged), and the success response from Res. The handler gets the request
-// bound with c.Bind().All, and its result is written as JSON. A fields tagged only for a parameter is not part
-// of the body schema.
+// body (`json`, `form`, `xml` or untagged), and the success response from Res. The request is bound as it is
+// documented: a field is filled from the query, the path, a header or a cookie only when it carries that tag, and
+// a field tagged only for a parameter is neither part of the body schema nor filled from the body. That is
+// stricter than c.Bind().All, which also matches a field by its Go name in every source. A request that does
+// not bind or validate is answered with 400. The result is written as JSON.
 //
 // Handlers are not inspected for their types, so a plain handler has to be documented with Accepts, Returns and
 // Params; Typed is the registration that does it for you. It returns the route, to document it further:
@@ -53,9 +56,10 @@ func Typed[Req, Res any](router fiber.Router, method, path string, handler func(
 		}
 	}
 
+	binding := newTypedBinding(reflect.TypeFor[Req](), method)
 	wrapped := func(c fiber.Ctx) error {
 		req := new(Req)
-		if err := c.Bind().All(req); err != nil {
+		if err := binding.bind(c, req); err != nil {
 			return err
 		}
 		res, err := handler(c, req)
@@ -142,4 +146,145 @@ func anyField(t reflect.Type, seen map[reflect.Type]bool, match func(*reflect.St
 		}
 	}
 	return false
+}
+
+// typedBinding is how a typed route fills its request: the locations that have tagged fields, and the body.
+type typedBinding struct {
+	locations []fiber.ParamLocation
+	body      bool
+}
+
+func newTypedBinding(t reflect.Type, method string) *typedBinding {
+	binding := &typedBinding{}
+	t = derefType(t)
+	if t.Kind() != reflect.Struct {
+		return binding
+	}
+	for _, location := range typedLocations {
+		if hasTaggedField(t, modelTagByLocation[location]) {
+			binding.locations = append(binding.locations, location)
+		}
+	}
+	binding.body = hasBodyFields(t) && !isBodylessMethod(method)
+	return binding
+}
+
+var typedLocations = [...]fiber.ParamLocation{fiber.ParamInPath, fiber.ParamInQuery, fiber.ParamInHeader, fiber.ParamInCookie}
+
+// bodyTags are the tags of the body decoders.
+var bodyTags = [...]string{tagJSON, tagForm, tagXML, "cbor", "msgpack"}
+
+// bind fills req from the request. Fiber's binders match an untagged field by its Go name, in every source, so
+// each source is bound into a scratch value and only the fields tagged for it are taken over: a client cannot
+// set a body field from a header, a cookie or the query, nor a parameter from the body.
+func (b *typedBinding) bind(c fiber.Ctx, req any) error {
+	dst := reflect.ValueOf(req).Elem()
+	if dst.Kind() != reflect.Struct {
+		return nil
+	}
+	binder := c.Bind().SkipValidation(true)
+	defer binder.SkipValidation(false)
+
+	if b.body && len(c.Request().Body()) > 0 {
+		if err := binder.Body(req); err != nil {
+			return typedBadRequest(err)
+		}
+		clearParameterFields(dst)
+	}
+	for _, location := range b.locations {
+		scratch := reflect.New(dst.Type())
+		var err error
+		switch location {
+		case fiber.ParamInPath:
+			err = binder.URI(scratch.Interface())
+		case fiber.ParamInQuery:
+			err = binder.Query(scratch.Interface())
+		case fiber.ParamInHeader:
+			err = binder.Header(scratch.Interface())
+		case fiber.ParamInCookie:
+			err = binder.Cookie(scratch.Interface())
+		default:
+		}
+		if err != nil {
+			return typedBadRequest(err)
+		}
+		takeTagged(dst, scratch.Elem(), modelTagByLocation[location])
+	}
+
+	if validator := c.App().Config().StructValidator; validator != nil {
+		if err := validator.Validate(req); err != nil {
+			return typedBadRequest(err)
+		}
+	}
+	return nil
+}
+
+func typedBadRequest(err error) error {
+	if _, ok := errors.AsType[*fiber.Error](err); ok {
+		return err
+	}
+	return fiber.NewError(fiber.StatusBadRequest, "Bad request: "+err.Error())
+}
+
+func hasBodyTag(field *reflect.StructField) bool {
+	for _, tag := range bodyTags {
+		if value := field.Tag.Get(tag); value != "" && value != "-" {
+			return true
+		}
+	}
+	return false
+}
+
+// embeddedStruct returns the struct an embedded field holds; a nil pointer holds none.
+func embeddedStruct(field *reflect.StructField, value reflect.Value) (reflect.Value, bool) {
+	if !field.Anonymous || derefType(field.Type).Kind() != reflect.Struct || field.Tag.Get(tagJSON) != "" {
+		return reflect.Value{}, false
+	}
+	if value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return reflect.Value{}, false
+		}
+		value = value.Elem()
+	}
+	return value, value.Kind() == reflect.Struct
+}
+
+// clearParameterFields zeroes what a body decoder put into the fields that are parameters only.
+func clearParameterFields(dst reflect.Value) {
+	t := dst.Type()
+	for i := range t.NumField() {
+		field := t.Field(i)
+		if inner, ok := embeddedStruct(&field, dst.Field(i)); ok {
+			clearParameterFields(inner)
+			continue
+		}
+		if field.IsExported() && !hasBodyTag(&field) && taggedForAnotherLocation(&field, tagJSON) {
+			dst.Field(i).SetZero()
+		}
+	}
+}
+
+// takeTagged copies the fields tagged for a source from the value bound from it. A value already set, by the
+// body or an earlier source, is kept.
+func takeTagged(dst, src reflect.Value, tag string) {
+	t := dst.Type()
+	for i := range t.NumField() {
+		field := t.Field(i)
+		if source, ok := embeddedStruct(&field, src.Field(i)); ok {
+			target := dst.Field(i)
+			if target.Kind() == reflect.Pointer && target.IsNil() && target.CanSet() && field.Type.Elem().Kind() == reflect.Struct {
+				target.Set(reflect.New(field.Type.Elem()))
+			}
+			if inner, held := embeddedStruct(&field, target); held {
+				takeTagged(inner, source, tag)
+			}
+			continue
+		}
+		if !field.IsExported() || field.Tag.Get(tag) == "" || field.Tag.Get(tag) == "-" {
+			continue
+		}
+		if dst.Field(i).IsZero() && !src.Field(i).IsZero() {
+			dst.Field(i).Set(src.Field(i))
+		}
+	}
 }

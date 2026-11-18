@@ -545,7 +545,7 @@ func Test_OpenAPI_SwaggerUI_DefaultTemplate(t *testing.T) {
 	require.Contains(t, bodyText, `href="https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"`)
 	require.Contains(t, bodyText, `src="https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"`)
 	require.Contains(t, bodyText, `data-url="/openapi.json"`)
-	require.Contains(t, bodyText, `data-swagger-options='{}'`)
+	require.Contains(t, bodyText, `data-swagger-options='{&#34;validatorUrl&#34;:null}'`, "the validator badge is off by default")
 	require.NotContains(t, bodyText, "persistAuthorization")
 }
 
@@ -3509,4 +3509,12 @@ func Test_exampleObjects(t *testing.T) {
 	require.Equal(t, map[string]any{"$ref": "#/components/examples/E"}, got["ref"])
 	require.Equal(t, map[string]any{"value": map[string]any{"summary": "only a summary"}}, got["summary"])
 	require.Equal(t, map[string]any{"description": "d", "value": 1}, got["fiber"])
+}
+
+func Test_OpenAPI_SwaggerUI_ValidatorCanBeTurnedOn(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{SwaggerOptions: map[string]any{"validatorUrl": "https://validator.example.com"}}))
+	body := apptest.Body(t, apptest.Expect(t, app, "/swagger", fiber.StatusOK))
+	require.Contains(t, body, `&#34;validatorUrl&#34;:&#34;https://validator.example.com&#34;`)
 }
