@@ -11,6 +11,7 @@ import (
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/appconfig"
 )
 
 // profileNameKey carries the name of a registered profile to pprofCustom.
@@ -88,12 +89,10 @@ func New(config ...Config) fiber.Handler {
 		case "/threadcreate":
 			pprofThreadcreate(c.RequestCtx())
 		default:
-			// The index also lists the profiles an application registers with
-			// runtime/pprof.NewProfile, so serve those as net/http/pprof does.
-			// The index links each name escaped, which c.Path() keeps unless
-			// UnescapePath already decoded it.
+			// The index also links profiles registered with runtime/pprof.NewProfile,
+			// escaped; c.Path() keeps the escapes unless UnescapePath decoded them.
 			name := strings.TrimPrefix(path, "/")
-			if !c.App().Config().UnescapePath {
+			if !appconfig.Of(c.App()).UnescapePath {
 				if unescaped, err := url.PathUnescape(name); err == nil {
 					name = unescaped
 				}

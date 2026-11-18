@@ -147,9 +147,7 @@ func Test_Pprof_CustomProfile_Shadowed(t *testing.T) {
 		t.Run(m.name, func(t *testing.T) {
 			t.Parallel()
 			resp := apptest.Expect(t, m.app(Config{}), m.prefix+"/debug/pprof/"+shadowedProfile.Name()+"?debug=1", 200)
-			b := apptest.Body(t, resp)
-			require.Equal(t, strings.Join(os.Args, "\x00"), b)
-			require.NotContains(t, b, shadowedProfile.Name()+" profile: total ")
+			require.Equal(t, strings.Join(os.Args, "\x00"), apptest.Body(t, resp))
 		})
 	}
 }
