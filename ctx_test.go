@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -9135,6 +9136,43 @@ func Test_Ctx_End(t *testing.T) {
 	require.Equal(t, "Hello, World!", apptest.Body(t, resp))
 }
 
+func Test_Ctx_End_Head(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		require.NoError(t, c.SendString("Hello, World!"))
+		return c.End()
+	})
+	app.Get("/echo", func(c Ctx) error {
+		require.NoError(t, c.SendString(c.Query("msg")))
+		return c.End()
+	})
+	ln := apptest.Serve(t, app, ListenConfig{DisableStartupMessage: true})
+
+	for _, tc := range []struct {
+		name, request string
+		body          string
+	}{
+		{"head", "HEAD / HTTP/1.1\r\nHost: example.com\r\n\r\n", ""},
+		{"head_query", "HEAD /echo?msg=leftover HTTP/1.1\r\nHost: example.com\r\n\r\n", ""},
+		{"get", "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n", "Hello, World!"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			conn := apptest.Dial(t, ln)
+			_, err := conn.Write([]byte(tc.request))
+			require.NoError(t, err)
+			// the connection is closed after the answer, so reading to EOF returns all of it
+			raw, err := io.ReadAll(conn)
+			require.NoError(t, err)
+			head, body, found := strings.Cut(string(raw), "\r\n\r\n")
+			require.True(t, found)
+			require.Contains(t, head, "Connection: close")
+			require.Equal(t, tc.body, body)
+		})
+	}
+}
+
 // conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line
 func Test_Ctx_End_after_timeout(t *testing.T) {
 	app := New()
@@ -9930,6 +9968,8 @@ func Test_Res_Set_MatchesHeaderSet(t *testing.T) {
 		"Bad Key", "X-Key\r\nInjected", "Or\u00edgin", "", "etag", "X-REQUEST-ID", "x-upstream-id", strings.Repeat("Ab-", 21) + "C", // cspell:disable-line
 	}
 	values := []string{"v", "", "a\r\nb", "with space", "42", "text/html; charset=utf-8", "k=v; Path=/"}
+	// String appends fasthttp's cached server date, which can tick between the two calls.
+	serverDate := regexp.MustCompile("\r\nDate: [^\r]*")
 	// storeNormalizes false with a normalizing app is the state a proxied
 	// response leaves behind when a caller-supplied client parsed it with
 	// header normalization off: the store keeps names as sent, so Set must
@@ -9948,7 +9988,8 @@ func Test_Res_Set_MatchesHeaderSet(t *testing.T) {
 					c.Response().Header.CopyTo(&want)
 					want.Set(key, val)
 					c.Set(key, val)
-					require.Equal(t, want.String(), c.Response().Header.String(),
+					require.Equal(t, serverDate.ReplaceAllString(want.String(), ""),
+						serverDate.ReplaceAllString(c.Response().Header.String(), ""),
 						"normalizing=%v storeNormalizes=%v key=%q val=%q", normalizing, storeNormalizes, key, val)
 					app.ReleaseCtx(c)
 				}
@@ -10058,4 +10099,84 @@ func Test_PathNeedsNormalization(t *testing.T) {
 	} {
 		require.Equal(t, tc.want, pathNeedsNormalization(len(tc.norm), tc.path), "%q", tc.path)
 	}
+}
+
+// Test_Ctx_End_ArmsWriteDeadlineOnReusedConn pins that c.End arms the write deadline for its own write: fasthttp arms
+// the deadline of a request only after its handler returned, so on a keep-alive connection that was idle for longer than
+// WriteTimeout the deadline End meets is the expired one of the previous response. The in-memory pipe of apptest.Serve
+// does not enforce a deadline on a write that has room in its channel, so this goes over loopback TCP.
+func Test_Ctx_End_ArmsWriteDeadlineOnReusedConn(t *testing.T) {
+	t.Parallel()
+	for name, newApp := range map[string]func() *App{
+		"Config.WriteTimeout": func() *App { return New(Config{WriteTimeout: 100 * time.Millisecond}) },
+		"Server.WriteTimeout": func() *App {
+			app := New()
+			app.Server().WriteTimeout = 100 * time.Millisecond
+			return app
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			testCtxEndArmsWriteDeadlineOnReusedConn(t, newApp())
+		})
+	}
+}
+
+func testCtxEndArmsWriteDeadlineOnReusedConn(t *testing.T, app *App) {
+	t.Helper()
+	app.Get("/one", func(c Ctx) error { return c.SendString("one") })
+	app.Get("/end", func(c Ctx) error {
+		require.NoError(t, c.SendString("end"))
+		return c.End()
+	})
+	ln := newLocalListener(t)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = app.Listener(ln, ListenConfig{DisableStartupMessage: true}) //nolint:errcheck // the result is Shutdown's
+	}()
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+		<-done
+	})
+
+	conn, err := net.Dial(NetworkTCP4, ln.Addr().String())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // usually closed by the server already
+	require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+	br := bufio.NewReader(conn)
+
+	_, err = io.WriteString(conn, "GET /one HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	require.NoError(t, err)
+	resp, err := http.ReadResponse(br, nil)
+	require.NoError(t, err)
+	require.Equal(t, "one", apptest.Body(t, resp))
+
+	time.Sleep(250 * time.Millisecond) // past the deadline fasthttp armed after /one
+
+	_, err = io.WriteString(conn, "GET /end HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	require.NoError(t, err)
+	resp, err = http.ReadResponse(br, nil)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "end", apptest.Body(t, resp))
+}
+
+// deadlineRefusingConn is a connection that refuses a write deadline.
+type deadlineRefusingConn struct {
+	net.Conn
+	err error
+}
+
+func (c deadlineRefusingConn) SetWriteDeadline(time.Time) error { return c.err }
+
+// Test_Ctx_End_WriteDeadlineError pins that c.End answers the error of arming its write deadline, and writes nothing.
+func Test_Ctx_End_WriteDeadlineError(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Server().WriteTimeout = time.Second
+	refused := errors.New("deadline refused")
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Init2(deadlineRefusingConn{err: refused}, nil, true)
+	require.ErrorIs(t, apptest.CtxFor(t, app, fctx).End(), refused)
 }

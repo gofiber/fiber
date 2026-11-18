@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -916,6 +917,9 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.firstMatchIndex = -1
 	c.route = nil
 	// Set paths
+	if target := fctx.Request.Header.RequestURI(); len(target) > 1 && target[0] == '/' && target[1] == '/' {
+		wiretarget.ReadAsOriginForm(fctx, target)
+	}
 	uri := fctx.URI()
 	c.pathOriginal = c.app.toString(uri.PathOriginal())
 	if uri.DisablePathNormalizing {

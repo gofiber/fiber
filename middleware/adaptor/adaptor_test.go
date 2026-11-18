@@ -2420,3 +2420,82 @@ func Test_FiberAdaptors_HeadLeavesStreamUnread(t *testing.T) {
 	require.Equal(t, ": open\n\n", rec.Body.String())
 	require.Equal(t, int32(1), handlers.Load())
 }
+
+func Test_FiberApp_RequestHeaders_Linear(t *testing.T) {
+	t.Parallel()
+	const n = 1 << 16
+	app := fiber.New()
+	type seen struct {
+		repeated, cookie, agent, ctype, last string
+		distinct                             int
+	}
+	got := make(chan seen, 1)
+	app.Get("/", func(c fiber.Ctx) error {
+		s := seen{
+			repeated: strings.Join(c.GetReqHeaders()["X-Repeated"], ","),
+			cookie:   c.Get(fiber.HeaderCookie), agent: c.Get(fiber.HeaderUserAgent), ctype: c.Get(fiber.HeaderContentType),
+			last: c.Get("X-Name-" + strconv.Itoa(n-1)),
+		}
+		for name := range c.Request().Header.All() {
+			if strings.HasPrefix(string(name), "X-Name-") {
+				s.distinct++
+			}
+		}
+		got <- s
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+
+	r := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	for i := range n {
+		r.Header.Set("X-Name-"+strconv.Itoa(i), strconv.Itoa(i))
+	}
+	r.Header["X-Repeated"] = []string{"a", "b", "c"}
+	r.Header.Set(fiber.HeaderCookie, "k=v")
+	r.Header.Set(fiber.HeaderUserAgent, "agent/1")
+	r.Header.Set(fiber.HeaderContentType, "text/plain")
+
+	rec := httptest.NewRecorder()
+	start := time.Now()
+	FiberApp(app)(rec, r)
+	// A scan of the stored headers per header is n*n/2 steps, which takes many seconds
+	require.Less(t, time.Since(start), 5*time.Second)
+
+	require.Equal(t, fiber.StatusNoContent, rec.Code)
+	s := apptest.Recv(t, got, time.Second)
+	require.Equal(t, seen{repeated: "a,b,c", cookie: "k=v", agent: "agent/1", ctype: "text/plain", distinct: n, last: strconv.Itoa(n - 1)}, s)
+}
+
+// Test_FiberApp_RequestHeaders_AliasKeys pins that keys of a hand-built header map that name one header, such as "x-a"
+// and "X-A" or "content-type" and "Content-Type", are stored as one line, and that the key not in canonical spelling
+// wins, whatever the order the map is read in. fasthttp derives or stores some names (Host, Content-Type, ...) apart
+// from its plain lines, which is why they are covered as well.
+func Test_FiberApp_RequestHeaders_AliasKeys(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(strings.Join(c.GetReqHeaders()[c.Query("name")], ",")) })
+
+	for _, tc := range []struct {
+		header http.Header
+		name   string
+		want   string
+	}{
+		{name: "X-A", header: http.Header{"x-a": {"2", "3"}, "X-A": {"1"}}, want: "2,3"},
+		{name: "X-A", header: http.Header{"x-a": {"1"}, "X-a": {"2"}, "X-A": {"0"}}, want: "1"},
+		{name: "Content-Type", header: http.Header{"content-type": {"a"}, "Content-Type": {"b"}}, want: "a"},
+		{name: "Content-Type", header: http.Header{"content-type": {"a"}, "CONTENT-TYPE": {"b"}}, want: "a"},
+		{name: "User-Agent", header: http.Header{"user-agent": {"a"}, "User-Agent": {"b"}}, want: "a"},
+		{name: "Host", header: http.Header{"host": {"a.example"}, "Host": {"b.example"}}, want: "a.example"},
+		{name: "Connection", header: http.Header{"connection": {"upgrade"}, "Connection": {"close"}}, want: "upgrade"},
+	} {
+		t.Run(fmt.Sprint(tc.header), func(t *testing.T) {
+			t.Parallel()
+			for range 100 {
+				r := httptest.NewRequest(fiber.MethodGet, "/?name="+tc.name, http.NoBody)
+				r.Header = tc.header.Clone()
+				rec := httptest.NewRecorder()
+				FiberApp(app)(rec, r)
+				require.Equal(t, tc.want, rec.Body.String())
+			}
+		})
+	}
+}

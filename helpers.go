@@ -613,59 +613,39 @@ func peekJoinedResponseHeader(h *fasthttp.ResponseHeader, key string) ([]byte, b
 	return j.combined, j.multi
 }
 
-// forEachMediaRange parses an Accept or Content-Type header, calling functor
-// on each media range.
+// forEachMediaRange walks an Accept-family list, passing slices that alias header.
+// Only leading SP is trimmed; empty elements and trailing whitespace are preserved.
+// A bare trailing comma adds no element, but spaces after it yield an empty one.
+// Inside quotes, commas do not split and backslashes escape the next byte.
+// Outside quotes, backslashes are ordinary bytes; an unterminated quote consumes the rest.
 // See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
 func forEachMediaRange(header []byte, functor func([]byte)) {
-	hasDQuote := bytes.IndexByte(header, '"') != -1
-
-	for len(header) > 0 {
-		n := 0
-		header = utils.TrimLeft(header, ' ')
-		quotes := 0
-
-		if hasDQuote {
-			// Complex case. We need to keep track of quotes and quoted-pairs (i.e.,  characters escaped with \ )
-			// Only ',', '"' and '\\' can change state, so jump between them
-			// instead of visiting every byte.
-		loop:
-			for n < len(header) {
-				i := utils.IndexAny3(header[n:], ',', '"', '\\')
-				if i == -1 {
-					n = len(header)
-					break
-				}
-				n += i
-				switch header[n] {
-				case ',':
-					if quotes%2 == 0 {
-						break loop
-					}
-				case '"':
-					quotes++
-				default: // '\\'
-					if quotes%2 == 1 && n+1 < len(header) {
-						// A quoted-pair escapes exactly the next byte
-						// (RFC 9110 §5.6.4); consume it so an escaped
-						// quote is not mistaken for a closing quote.
-						n++
-					}
-				}
-				n++
+	if len(header) == 0 {
+		return
+	}
+	// Select the scanner once; most headers need only a comma search.
+	if bytes.IndexByte(header, '"') == -1 {
+		for len(header) > 0 {
+			header = utils.TrimLeft(header, ' ')
+			n := bytes.IndexByte(header, ',')
+			if n == -1 {
+				functor(header)
+				return
 			}
-		} else {
-			// Simple case. Just look for the next comma.
-			if n = bytes.IndexByte(header, ','); n == -1 {
-				n = len(header)
-			}
+			functor(header[:n])
+			header = header[n+1:]
 		}
+		return
+	}
 
-		functor(header[:n])
-
-		if n >= len(header) {
+	for {
+		header = utils.TrimLeft(header, ' ')
+		mediaRange, next := headerlist.NextQuoted(header, 0)
+		functor(mediaRange)
+		if next >= len(header) {
 			return
 		}
-		header = header[n+1:]
+		header = header[next:]
 	}
 }
 

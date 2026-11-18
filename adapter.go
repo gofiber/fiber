@@ -6,10 +6,11 @@ import (
 	"net/http"
 	"reflect"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/fasthttpadaptor"
 
 	"github.com/gofiber/fiber/v3/internal/bodystream"
+	"github.com/gofiber/fiber/v3/internal/requesthold"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 )
 
@@ -237,7 +238,10 @@ func adaptFastHTTPHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			h(c.RequestCtx())
+			// Like a net/http handler, it reads the path the router matched, not the request line as it arrived.
+			if !serveNative(c, h) {
+				return ErrNotFound
+			}
 			return nil
 		}, true
 	case func(*fasthttp.RequestCtx) error: // (17) fasthttp handler with error return
@@ -245,11 +249,28 @@ func adaptFastHTTPHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			return h(c.RequestCtx())
+			var err error
+			if !serveNative(c, func(ctx *fasthttp.RequestCtx) { err = h(ctx) }) {
+				return ErrNotFound
+			}
+			return err
 		}, true
 	default:
 		return nil, false
 	}
+}
+
+// serveNative runs a fasthttp route handler on the routed path, but leaves a request target that is not a path alone:
+// the asterisk form of OPTIONS and the authority form of CONNECT. fasthttp and the router read the same path for
+// them, so there is nothing to guard, and the handler needs the target as sent ("*", "example.com:443").
+func serveNative(c Ctx, h fasthttp.RequestHandler) bool {
+	// A view of the line, as c.OriginalURL() copies it under Immutable and it is only read here.
+	req := c.Request()
+	if wiretarget.NoPath(utils.UnsafeString(req.Header.RequestURI()), req.Header.IsConnect()) {
+		h(c.RequestCtx())
+		return true
+	}
+	return wiretarget.ServeNative(c, h)
 }
 
 // wrapHTTPHandler adapts a net/http handler to a Fiber handler.
@@ -258,7 +279,7 @@ func wrapHTTPHandler(handler http.Handler) Handler {
 		return nil
 	}
 
-	adapted := fasthttpadaptor.NewFastHTTPHandler(handler)
+	adapted := requesthold.NewFastHTTPHandler(handler)
 
 	// Same routed-path handling as adaptor.HTTPHandler: net/http decodes and cleans the raw line its own way.
 	return func(c Ctx) error {
@@ -273,10 +294,14 @@ func wrapHTTPHandler(handler http.Handler) Handler {
 			}
 			return ErrBadRequest
 		}
-		if !wiretarget.Serve(c, adapted) {
+		switch wiretarget.Serve(c, adapted) {
+		case wiretarget.BadRequest: // as net/http's server answers a "%" that begins no escape
+			return ErrBadRequest
+		case wiretarget.NotFound:
 			return ErrNotFound
+		default:
+			return nil
 		}
-		return nil
 	}
 }
 
