@@ -231,6 +231,8 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 		// example is what the property adds to the object's example, read before a wrapper hides its $ref.
 		example    any
 		schema     map[string]any
+		goName     string
+		conditions []conditionalRule
 		hasExample bool
 		required   bool
 		tagged     bool
@@ -248,6 +250,8 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 	level := []embedRef{{t: t}}
 	expanded := map[reflect.Type]bool{t: true}
 	dropped := make(map[string]bool)
+	goNames := make(map[string]string)
+	var conditions []fieldConditions
 
 	for len(level) > 0 {
 		var nextLevel []embedRef
@@ -334,6 +338,8 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 					hasExample: hasExample,
 					required:   mustValidate || (implicitRequired && !tagInfo.omit && field.Type.Kind() != reflect.Pointer && !ref.optional),
 					tagged:     tagInfo.name != "",
+					goName:     field.Name,
+					conditions: conditionalRules(&field),
 				})
 			}
 		}
@@ -362,6 +368,12 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 				chosen = taggedIdx
 			}
 			properties[name] = cands[chosen].schema
+			if _, taken := goNames[cands[chosen].goName]; !taken {
+				goNames[cands[chosen].goName] = name
+			}
+			if len(cands[chosen].conditions) > 0 {
+				conditions = append(conditions, fieldConditions{property: name, rules: cands[chosen].conditions})
+			}
 			if cands[chosen].hasExample {
 				objectExample[name] = cands[chosen].example
 			}
@@ -377,11 +389,16 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 	}
 
 	schema := map[string]any{
-		schemaKeyType: schemaTypeObject,
-		"properties":  properties,
+		schemaKeyType:       schemaTypeObject,
+		schemaKeyProperties: properties,
 	}
 	if len(required) > 0 {
-		schema["required"] = required
+		schema[schemaKeyRequired] = required
+	}
+	if reg != nil && reg.dialect.hasJSONSchemaDialect() {
+		if entries := conditionalSchemas(conditions, goNames, properties); len(entries) > 0 {
+			schema[schemaKeyAllOf] = entries
+		}
 	}
 	if len(objectExample) > 0 {
 		schema["example"] = objectExample
@@ -662,7 +679,7 @@ func applyValidateTag(field *reflect.StructField, schema map[string]any) bool {
 		if rules.schema == nil {
 			continue
 		}
-		if key == "required" {
+		if key == schemaKeyRequired {
 			required = required || rules.top
 			continue
 		}

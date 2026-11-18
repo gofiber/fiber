@@ -16,9 +16,12 @@ import (
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/middleware/compress"
 	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/gofiber/fiber/v3/middleware/earlydata"
+	"github.com/gofiber/fiber/v3/middleware/healthcheck"
 	"github.com/gofiber/fiber/v3/middleware/idempotency"
 	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/responsetime"
+	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/stretchr/testify/require"
 )
@@ -608,4 +611,44 @@ func Test_OpenAPI_DefaultsSecurityFillsRoutesWithoutAuthentication(t *testing.T)
 	require.Equal(t, []any{map[string]any{"own": []any{}}}, modelOperation(t, spec, "/api/own", "get")["security"])
 	require.Equal(t, []any{map[string]any{"bearerAuth": []any{}}}, modelOperation(t, spec, "/guarded/a", "get")["security"], "inferred authentication wins")
 	require.NotContains(t, modelOperation(t, spec, "/other", "get"), "security")
+}
+
+func Test_OpenAPI_RecognizesSessionHealthcheckAndEarlyData(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/s", session.New(), listUsers)
+	app.Get("/live", healthcheck.New())
+	app.Post("/early", earlydata.New(), listUsers)
+	app.Get("/early", earlydata.New(), listUsers)
+	spec := modelSpec(t, app)
+
+	op := modelOperation(t, spec, "/s", "get")
+	require.Contains(t, chainParams(t, op), "cookie:session_id")
+	require.Contains(t, chainHeaders(t, chainResponses(t, op)["200"]), "Set-Cookie")
+
+	health := chainResponses(t, modelOperation(t, spec, "/live", "get"))
+	require.Contains(t, health, "200")
+	require.Contains(t, health, "503")
+
+	require.Contains(t, chainResponses(t, modelOperation(t, spec, "/early", "post")), "425")
+	require.NotContains(t, chainResponses(t, modelOperation(t, spec, "/early", "get")), "425")
+}
+
+func Test_OpenAPI_SessionLookupAndHealthcheckProduces(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/s", session.New(), listUsers)
+	app.Get("/live", healthcheck.New())
+	spec := modelSpec(t, app, Config{
+		SessionLookup:       &APIKeyLookup{In: "header", Name: "X-Session"},
+		HealthcheckProduces: fiber.MIMEApplicationJSON,
+	})
+	op := modelOperation(t, spec, "/s", "get")
+	require.Contains(t, chainParams(t, op), "header:X-Session")
+	require.Contains(t, chainHeaders(t, chainResponses(t, op)["200"]), "X-Session")
+	health := requireMap(t, chainResponses(t, modelOperation(t, spec, "/live", "get"))["200"])
+	require.Contains(t, requireMap(t, health["content"]), fiber.MIMEApplicationJSON)
+
+	require.Panics(t, func() { New(Config{SessionLookup: &APIKeyLookup{In: "query", Name: "s"}}) })
+	require.Panics(t, func() { New(Config{SessionLookup: &APIKeyLookup{In: "cookie"}}) })
 }
