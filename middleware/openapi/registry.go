@@ -35,9 +35,11 @@ type schemaRegistry struct {
 	taken map[string]reflect.Type
 	// typeSchemas and naming come from Config.TypeSchemas and Config.SchemaName.
 	typeSchemas map[reflect.Type]any
-	naming      func(reflect.Type) string
-	tag         string
-	dialect     dialect
+	// locationOnly remembers hasLocationOnlyFields per type.
+	locationOnly map[reflect.Type]bool
+	naming       func(reflect.Type) string
+	tag          string
+	dialect      dialect
 	// request is set while a request body is converted: its structs leave out the fields bound from the query,
 	// the path, the headers and the cookies, which are parameters.
 	request bool
@@ -87,7 +89,7 @@ func (reg *schemaRegistry) itemSchemas() bool {
 // ref registers a named struct type and returns a reference to it. The name is claimed first so
 // self-referencing types do not recurse; the component is built independent of registration order.
 func (reg *schemaRegistry) ref(t reflect.Type) map[string]any {
-	key := schemaKey{t: t, tag: reg.tagKey(), request: reg.request && hasLocationOnlyFields(t, reg.tagKey())}
+	key := schemaKey{t: t, tag: reg.tagKey(), request: reg.request && reg.hasLocationOnlyFields(t)}
 	name, ok := reg.names[key]
 	if !ok {
 		name = reg.claimName(t, &key)
