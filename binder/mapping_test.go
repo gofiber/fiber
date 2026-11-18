@@ -540,6 +540,31 @@ func Test_equalFieldType_CacheTypeMismatch(t *testing.T) {
 	require.False(t, equalFieldType(&s, reflect.String, "field", "query"))
 }
 
+// Test_FieldCache_CollisionAllocatesNothing pins that a type whose slot holds another type is answered from the map
+// without an allocation: the slot is filled with the field information the map holds.
+// Sequential: testing.AllocsPerRun panics during a parallel test.
+func Test_FieldCache_CollisionAllocatesNothing(t *testing.T) {
+	type Left struct {
+		Name string `query:"name"`
+	}
+	type Right struct {
+		Age int `query:"age"`
+	}
+	cache := getFieldCache("query")
+	left, ok := cache.get(reflect.TypeFor[Left](), "query")
+	require.True(t, ok)
+	right, ok := cache.get(reflect.TypeFor[Right](), "query")
+	require.True(t, ok)
+	require.NotSame(t, left, right)
+	slot := cache.slot(reflect.TypeFor[Right]())
+	var got *fieldInfo
+	require.Zero(t, testing.AllocsPerRun(100, func() {
+		slot.Store(left) // as if another type held the slot Right hashes to
+		got, _ = cache.get(reflect.TypeFor[Right](), "query")
+	}))
+	require.Same(t, right, got)
+}
+
 func Test_buildFieldInfo_Unexported(t *testing.T) {
 	t.Parallel()
 	type nested struct {

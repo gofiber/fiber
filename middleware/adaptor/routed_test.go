@@ -92,7 +92,6 @@ func Test_HTTPHandler_RoutedPath(t *testing.T) {
 		for target, want := range map[string]string{
 			"/plain/path":       "/plain/path||/plain/path",
 			"/public/%41?x=%2F": "/public/A||/public/A?x=%2F",
-			"/%zz":              "/%zz||/%25zz",
 			"/a%3Fb%23c":        "/a?b#c||/a%3Fb%23c",
 			"/sp%20ace/":        "/sp ace/||/sp%20ace/",
 		} {
@@ -582,4 +581,252 @@ func Test_HTTPMiddleware_ServesEscapedSlash(t *testing.T) {
 	adaptorTestRequireRawOK(t, app, "/repos/group%2Fproject", "/repos/group%2Fproject")
 
 	adaptorTestRequireRawStatus(t, app, "/handler/group%2Fproject", fiber.StatusNotFound)
+}
+
+// Test_HTTPHandler_FileServerOneSpelling pins that a path reaches a net/http handler under one spelling: the router
+// keeps "/R&D" and "/R%26D" apart and a middleware mounted on one does not run for the other, but http.FileServer
+// decodes both into the same directory.
+func Test_HTTPHandler_FileServerOneSpelling(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for _, dir := range []string{"R&D", "café", "user@corp", "my dir"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(root, dir), 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(root, dir, "data.txt"), []byte("data"), 0o600))
+	}
+
+	for _, tc := range []struct {
+		guarded     map[string]int // target -> status with the guard
+		name, guard string
+	}{
+		{name: "sub-delim", guard: "/R&D", guarded: map[string]int{"/R&D/data.txt": fiber.StatusForbidden, "/R%26D/data.txt": fiber.StatusNotFound, "/R%26d/data.txt": fiber.StatusNotFound}},
+		{name: "at sign", guard: "/user@corp", guarded: map[string]int{"/user@corp/data.txt": fiber.StatusForbidden, "/user%40corp/data.txt": fiber.StatusNotFound}},
+		{name: "non-ASCII", guard: "/caf%C3%A9", guarded: map[string]int{"/caf%C3%A9/data.txt": fiber.StatusForbidden, "/café/data.txt": fiber.StatusNotFound, "/caf%c3%a9/data.txt": fiber.StatusForbidden}},
+		{name: "raw non-ASCII", guard: "/café", guarded: map[string]int{"/café/data.txt": fiber.StatusForbidden}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			for _, register := range []func(*fiber.App){
+				func(app *fiber.App) { app.Use(HTTPHandler(http.FileServer(http.Dir(root)))) },
+				func(app *fiber.App) { app.Use(HTTPHandlerFunc(http.FileServer(http.Dir(root)).ServeHTTP)) },
+				func(app *fiber.App) { app.Use(http.FileServer(http.Dir(root))) }, // registered directly
+			} {
+				app := fiber.New()
+				app.Use(tc.guard, denyAll)
+				register(app)
+				for target, status := range tc.guarded {
+					adaptorTestRequireRawStatus(t, app, target, status)
+				}
+			}
+		})
+	}
+
+	t.Run("unguarded", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(HTTPHandler(http.FileServer(http.Dir(root))))
+		for _, target := range []string{"/caf%C3%A9/data.txt", "/my%20dir/data.txt", "/R&D/data.txt", "/user@corp/data.txt"} {
+			adaptorTestRequireRawOK(t, app, target, "data")
+		}
+		// the spellings the router keeps apart from those are refused
+		for _, target := range []string{"/R%26D/data.txt", "/user%40corp/data.txt", "/café/data.txt"} {
+			adaptorTestRequireRawStatus(t, app, target, fiber.StatusNotFound)
+		}
+	})
+
+	t.Run("unescape path", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New(fiber.Config{UnescapePath: true})
+		app.Use("/R&D", denyAll)
+		app.Use(HTTPHandler(http.FileServer(http.Dir(root))))
+		for _, target := range []string{"/R&D/data.txt", "/R%26D/data.txt"} {
+			adaptorTestRequireRawStatus(t, app, target, fiber.StatusForbidden)
+		}
+		adaptorTestRequireRawOK(t, app, "/caf%C3%A9/data.txt", "data")
+	})
+}
+
+var (
+	// strayPercentTargets hold a "%" that begins no escape in their path, which net/http's server answers 400 for.
+	strayPercentTargets = []string{"/%", "/%zz", "/a%2", "/%4", "/100%/x", "/a%zz/b%41", "/100%25/x%", "/files/a%2Fb%"}
+	// escapedPercentTargets hold none: a "%" in them begins an escape or is in the query, which net/http reads as it is.
+	escapedPercentTargets = []string{"/%25", "/100%25/x", "/a%41", "/ok?x=%zz", "/ok?%", "/ok?x=%&y=%2"}
+)
+
+// netHTTPRefuses reports whether net/http's server answers a request for target with 400 Bad Request, which it does when it
+// cannot read the request line: it reads it with http.ReadRequest.
+func netHTTPRefuses(target string) bool {
+	_, err := http.ReadRequest(bufio.NewReader(strings.NewReader(fiber.MethodGet + " " + target + " HTTP/1.1\r\nHost: example.com\r\n\r\n")))
+	return err != nil
+}
+
+// Test_StrayPercentTargets pins the tables of the tests below to net/http: the ones that hold a stray "%" are the ones its
+// server refuses.
+func Test_StrayPercentTargets(t *testing.T) {
+	t.Parallel()
+	for _, target := range strayPercentTargets {
+		require.True(t, netHTTPRefuses(target), target)
+	}
+	for _, target := range escapedPercentTargets {
+		require.False(t, netHTTPRefuses(target), target)
+	}
+}
+
+// Test_HTTPHandler_StrayPercent pins that a net/http handler is answered 400 for a path whose "%" begins no escape, as
+// net/http's own server answers it, rather than handed the "%25" Routed writes for it, and that one whose "%" begins an
+// escape, or sits in the query, is handed on.
+func Test_HTTPHandler_StrayPercent(t *testing.T) {
+	t.Parallel()
+	describe := http.HandlerFunc(describeURL)
+	for name, register := range map[string]func(*fiber.App){
+		"HTTPHandler":            func(app *fiber.App) { app.Use(HTTPHandler(describe)) },
+		"HTTPHandlerFunc":        func(app *fiber.App) { app.Use(HTTPHandlerFunc(describeURL)) },
+		"HTTPHandlerWithContext": func(app *fiber.App) { app.Use(HTTPHandlerWithContext(describe)) },
+		"registered directly":    func(app *fiber.App) { app.Use(describe) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			register(app)
+			for _, target := range strayPercentTargets {
+				adaptorTestRequireRawStatus(t, app, target, fiber.StatusBadRequest)
+			}
+			for target, want := range map[string]string{
+				"/%25":          "/%||/%25",
+				"/100%25/x":     "/100%/x||/100%25/x",
+				"/a%41":         "/aA||/aA",
+				"/ok?x=%zz":     "/ok||/ok?x=%zz",
+				"/ok?%":         "/ok||/ok?%",
+				"/ok?x=%&y=%2":  "/ok||/ok?x=%&y=%2",
+				"/100%25/x?y=%": "/100%/x||/100%25/x?y=%",
+			} {
+				adaptorTestRequireRawOK(t, app, target, want)
+			}
+		})
+	}
+
+	// The router decodes every escape under UnescapePath: "/100%" and "/100%25" are one path to a middleware, and to the handler.
+	t.Run("unescape path", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New(fiber.Config{UnescapePath: true})
+		app.Use(HTTPHandler(describe))
+		for _, target := range []string{"/100%/x", "/100%25/x"} {
+			adaptorTestRequireRawOK(t, app, target, "/100%/x||/100%25/x")
+		}
+	})
+}
+
+// Test_HTTPHandler_StrayPercentGuard pins that no spelling of a name reaches a file server unguarded: the router keeps
+// "/100%" and "/100%25" apart, so a middleware mounted on one does not run for the other, but http.FileServer serves the
+// same directory for both, which net/http's own server never lets happen by refusing the first.
+func Test_HTTPHandler_StrayPercentGuard(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "100%"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "100%", "data.txt"), []byte("data"), 0o600))
+
+	for name, register := range map[string]func(*fiber.App){
+		"HTTPHandler":            func(app *fiber.App) { app.Use(HTTPHandler(http.FileServer(http.Dir(root)))) },
+		"HTTPHandlerFunc":        func(app *fiber.App) { app.Use(HTTPHandlerFunc(http.FileServer(http.Dir(root)).ServeHTTP)) },
+		"HTTPHandlerWithContext": func(app *fiber.App) { app.Use(HTTPHandlerWithContext(http.FileServer(http.Dir(root)))) },
+		"registered directly":    func(app *fiber.App) { app.Use(http.FileServer(http.Dir(root))) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use("/100%25", denyAll)
+			register(app)
+			adaptorTestRequireRawStatus(t, app, "/100%25/data.txt", fiber.StatusForbidden)
+			adaptorTestRequireRawStatus(t, app, "/100%/data.txt", fiber.StatusBadRequest)
+
+			unguarded := fiber.New()
+			register(unguarded)
+			adaptorTestRequireRawOK(t, unguarded, "/100%25/data.txt", "data")
+		})
+	}
+}
+
+// Test_HTTPMiddleware_StrayPercent pins that a net/http middleware is answered 400 for a path whose "%" begins no escape, as
+// it is for a handler.
+func Test_HTTPMiddleware_StrayPercent(t *testing.T) {
+	t.Parallel()
+	t.Run("default", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(HTTPMiddleware(func(next http.Handler) http.Handler { return next }))
+		app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
+		for _, target := range strayPercentTargets {
+			adaptorTestRequireRawStatus(t, app, target, fiber.StatusBadRequest)
+		}
+		for target, want := range map[string]string{"/100%25/x": "/100%25/x", "/a%41": "/aA", "/ok?x=%zz": "/ok", "/%25": "/%25"} {
+			adaptorTestRequireRawOK(t, app, target, want)
+		}
+	})
+
+	t.Run("unescape path", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New(fiber.Config{UnescapePath: true})
+		app.Use(HTTPMiddleware(func(next http.Handler) http.Handler { return next }))
+		app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
+		for _, target := range []string{"/100%/x", "/100%25/x"} {
+			adaptorTestRequireRawOK(t, app, target, "/100%/x")
+		}
+	})
+}
+
+// Test_ConvertRequest_StrayPercent pins that a request is not converted for a path whose "%" begins no escape, as for a
+// handler: its URL.Path would read "/100%" for both spellings, "/100%" and "/100%25", which the router keeps apart.
+func Test_ConvertRequest_StrayPercent(t *testing.T) {
+	t.Parallel()
+	for name, config := range map[string]fiber.Config{"default": {}, "unescape path": {UnescapePath: true}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New(config)
+			app.Get("/*", func(c fiber.Ctx) error {
+				r, err := ConvertRequest(c, true)
+				if err != nil {
+					return err
+				}
+				return c.SendString(r.URL.Path + "|" + r.RequestURI)
+			})
+			if !config.UnescapePath {
+				for _, target := range strayPercentTargets {
+					adaptorTestRequireRawStatus(t, app, target, fiber.StatusBadRequest)
+				}
+				for target, want := range map[string]string{"/100%25/x": "/100%/x|/100%25/x", "/a%41": "/aA|/aA", "/ok?x=%zz": "/ok|/ok?x=%zz"} {
+					adaptorTestRequireRawOK(t, app, target, want)
+				}
+				return
+			}
+			for _, target := range []string{"/100%/x", "/100%25/x"} {
+				adaptorTestRequireRawOK(t, app, target, "/100%/x|/100%25/x")
+			}
+		})
+	}
+}
+
+// Test_HTTPHandler_ConnectAuthorityForm pins that the authority form of CONNECT, which holds no path, is not refused for its
+// spelling: an IPv6 literal holds "[" and "]", which a path sent with them is answered 404 for (see
+// Test_HTTPHandler_FileServerOneSpelling). A target that does hold a path is judged as one.
+func Test_HTTPHandler_ConnectAuthorityForm(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(HTTPHandler(http.HandlerFunc(describeURL)))
+
+	for _, tc := range []struct {
+		name, target, want string
+		status             int
+	}{
+		{"host and port", "example.com:443", "/example.com:443||/example.com:443", fiber.StatusOK},
+		{"IPv6 literal", "[::1]:443", "/[::1]:443||/%5B::1%5D:443", fiber.StatusOK},
+		{"with a path", "[::1]:443/x", "", fiber.StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fctx := rawLine(t, app, fiber.MethodConnect+" "+tc.target+" HTTP/1.1\r\nHost: example.com\r\n\r\n")
+			require.Equal(t, tc.status, fctx.Response.StatusCode())
+			if tc.status == fiber.StatusOK {
+				require.Equal(t, tc.want, string(fctx.Response.Body()))
+			}
+		})
+	}
 }

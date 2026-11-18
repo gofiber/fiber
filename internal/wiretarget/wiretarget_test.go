@@ -2,8 +2,12 @@ package wiretarget_test
 
 import (
 	"bufio"
+	"crypto/tls"
 	"encoding/hex"
+	"net"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -251,6 +255,76 @@ func Test_HasForgedEscape(t *testing.T) {
 	}
 }
 
+// Test_HasStrayPercent pins the "%" a path may not carry: one that is not followed by two hex digits.
+func Test_HasStrayPercent(t *testing.T) {
+	t.Parallel()
+	for path, want := range map[string]bool{
+		"": false, "/": false, "/a/b": false, "/a%41": false, "/a%2f": false, "/a%2F%2f": false, "/%25": false,
+		"/%25%25": false, "/a%25b%20c": false, "/%C3%BCber": false,
+		"/%": true, "/a%": true, "/%z": true, "/%zz": true, "/a%2": true, "/a%2/b": true, "/%4g": true, "/%g4": true,
+		"/100%/x": true, "/%%41": true, "/a%25%": true, "/%41%": true, "/%41%4": true, "/%41%zz": true,
+	} {
+		require.Equal(t, want, wiretarget.HasStrayPercent(path), path)
+	}
+}
+
+// Test_HasStrayPercent_MatchesNetHTTP pins that HasStrayPercent finds what net/http's server answers 400 for: it reads
+// the request target with url.ParseRequestURI, which refuses a "%" that is not followed by two hex digits, and nothing
+// else in a path made of these bytes. Every path of up to six of them is compared.
+func Test_HasStrayPercent_MatchesNetHTTP(t *testing.T) {
+	t.Parallel()
+	const alphabet = "/%a2Fg"
+	checked := 0
+	var walk func(path string)
+	walk = func(path string) {
+		_, err := url.ParseRequestURI(path)
+		if stray := wiretarget.HasStrayPercent(path); stray != (err != nil) {
+			t.Fatalf("%q: HasStrayPercent=%t, url.ParseRequestURI=%v", path, stray, err)
+		}
+		if err != nil {
+			var escapeErr url.EscapeError
+			require.ErrorAs(t, err, &escapeErr, path)
+		}
+		checked++
+		if len(path) == 6 {
+			return
+		}
+		for i := range len(alphabet) {
+			walk(path + alphabet[i:i+1])
+		}
+	}
+	walk("/")
+	require.Greater(t, checked, 5000)
+}
+
+// Test_StrayPercent pins that the routed path of the request is what is looked at, and that it is not under
+// UnescapePath, where the router has decoded every escape and "/100%" and "/100%25" are one path.
+func Test_StrayPercent(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		config                       fiber.Config
+		name, target, override, want string
+	}{
+		{name: "stray", target: "/100%/x", want: "true"},
+		{name: "escape", target: "/100%25/x", want: "false"},
+		{name: "stray in the query", target: "/x?a=%zz&b=%", want: "false"},
+		{name: "unescape path", target: "/100%/x", config: fiber.Config{UnescapePath: true}, want: "false"},
+		{name: "path overridden by a handler", target: "/x", override: "/100%/x", want: "true"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New(tc.config)
+			app.Get("/*", func(c fiber.Ctx) error {
+				if tc.override != "" {
+					c.Path(tc.override)
+				}
+				return c.SendString(strconv.FormatBool(wiretarget.StrayPercent(c)))
+			})
+			require.Equal(t, tc.want, answerFor(t, app, tc.target))
+		})
+	}
+}
+
 func Test_SurvivesNormalization(t *testing.T) {
 	t.Parallel()
 	// An escape of a byte fasthttp escapes again when it writes the path
@@ -280,4 +354,94 @@ func Test_ParsesAsPath_Unrooted(t *testing.T) {
 	}
 	require.True(t, wiretarget.ParsesAsPath("/http://u:pw@evil.example/x", host))
 	require.True(t, wiretarget.ParsesAsPath("/http://u:pw@evil.example/x", nil))
+}
+
+func Test_NoPath(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		line    string
+		connect bool
+		want    bool
+	}{
+		{"*", false, true},
+		{"*", true, true},
+		{"example.com:443", true, true},
+		{"[::1]:443", true, true},
+		{"[2001:db8::1]:8443", true, true},
+		{"example.com:443", false, false},
+		{"/a", true, false},
+		{"", true, false},
+		{"/*", false, false},
+		{"//admin/x", true, false},
+		{"admin%2Fx", true, false},
+		{"host:443?x=1", true, false},
+		{"host:443#x", true, false},
+		{"a\\b:443", true, false},
+		{"a;b:443", true, false},
+		{"user@host:443", true, false},
+	} {
+		require.Equal(t, tc.want, wiretarget.NoPath(tc.line, tc.connect), "%q connect=%t", tc.line, tc.connect)
+	}
+}
+
+func Test_SingleSpelling(t *testing.T) {
+	t.Parallel()
+	for path, want := range map[string]bool{
+		"/":                                    true,
+		"/R&D/x":                               true,
+		"/user@corp/x":                         true,
+		"/a:b/c;d=e,f+g!h*i'(j)":               true,
+		"/caf%C3%A9":                           true,
+		"/my%20dir/x":                          true,
+		"/a%3Fb%23c%25d":                       true,
+		"/%zz":                                 true, // begins no escape: not judged here, see HasStrayPercent
+		"/100%":                                true,
+		"/R%26D/x":                             false,
+		"/user%40corp/x":                       false,
+		"/a%3Ab":                               false,
+		"/a%21b%24c%27d%28e%29%2A%2B%2C%3B%3D": false,
+		"/café":                                false,
+		"/a b":                                 false,
+		"/a|b":                                 false,
+		"/caf%c3%a9":                           false, // lower-case digits: the router writes upper case
+	} {
+		require.Equal(t, want, wiretarget.SingleSpelling(path), path)
+	}
+}
+
+// tlsConn is a connection that fasthttp takes for a TLS one: it has the methods of a *tls.Conn it looks for.
+type tlsConn struct{ net.Conn }
+
+func (tlsConn) Handshake() error                     { return nil }
+func (tlsConn) ConnectionState() tls.ConnectionState { return tls.ConnectionState{} }
+
+// Test_ReadAsOriginForm_KeepsTheScheme pins that the URI that reads a target that begins with "//" as a path is the
+// one of the connection: https over TLS. fasthttp reads such a target as a path itself when the Host header holds a
+// host, and the scheme is then the one it took from the connection (a request made by hand has none to take); the
+// URI is rewritten for a request without a host.
+func Test_ReadAsOriginForm_KeepsTheScheme(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		conn                         net.Conn
+		name, host, scheme, wantHost string
+	}{
+		{name: "plain", host: "example.com", scheme: "http", wantHost: "example.com"},
+		{name: "plain, no Host header", scheme: "http"},
+		{name: "TLS, no Host header", scheme: "https", conn: tlsConn{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			const target = "//a/b?x=http://y"
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Init2(tc.conn, nil, true)
+			fctx.Request.Header.SetHost(tc.host)
+			fctx.Request.SetRequestURI(target)
+			wiretarget.ReadAsOriginForm(fctx, []byte(target))
+			uri := fctx.Request.URI()
+			require.Equal(t, tc.scheme, string(uri.Scheme()))
+			require.Equal(t, tc.wantHost, string(uri.Host()))
+			require.Equal(t, "//a/b", string(uri.PathOriginal()))
+			require.Equal(t, "x=http://y", string(uri.QueryString()))
+		})
+	}
 }
