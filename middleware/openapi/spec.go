@@ -698,8 +698,9 @@ func domainServers(pattern string) []Server {
 // pathExtras builds the Path Item fields beside the operations for the documented paths Config.PathItems names.
 func (b *specBuilder) pathExtras() map[string]pathExtra {
 	var extras map[string]pathExtra
-	for path, operations := range b.paths {
-		for key := range operations {
+	for _, path := range sortedKeys(b.paths) {
+		operations := b.paths[path]
+		for _, key := range sortedKeys(operations) {
 			method, additional := strings.CutPrefix(key, additionalOperationPrefix)
 			if !additional {
 				continue
@@ -716,7 +717,7 @@ func (b *specBuilder) pathExtras() map[string]pathExtra {
 			delete(operations, key)
 		}
 	}
-	for path := range b.cfg.PathItems {
+	for _, path := range sortedKeys(b.cfg.PathItems) {
 		if _, documented := b.paths[path]; !documented {
 			continue
 		}

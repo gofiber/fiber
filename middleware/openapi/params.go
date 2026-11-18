@@ -55,7 +55,7 @@ func hasLocationOnlyFieldsIn(t reflect.Type, tagKey string, seen map[reflect.Typ
 		if field.Tag.Get(tagKey) == "" && taggedForAnotherLocation(&field, tagKey) {
 			return true
 		}
-		if field.Anonymous && hasLocationOnlyFieldsIn(derefType(field.Type), tagKey, seen) {
+		if hasLocationOnlyFieldsIn(derefElem(field.Type), tagKey, seen) {
 			return true
 		}
 	}
@@ -113,4 +113,17 @@ func appendModelFields(params []fiber.RouteParameter, t reflect.Type, in fiber.P
 		params = append(params, param)
 	}
 	return params
+}
+
+// derefElem strips pointers, slices, arrays and maps from a type, down to what a field holds.
+func derefElem(t reflect.Type) reflect.Type {
+	for range maxPointerDepth {
+		switch t.Kind() {
+		case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Map:
+			t = t.Elem()
+		default:
+			return t
+		}
+	}
+	return t
 }

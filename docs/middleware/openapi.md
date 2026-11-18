@@ -161,7 +161,8 @@ serve all three yourself.
 from a pinned CDN URL with a Subresource Integrity hash, and neither needs an
 inline script, so a strict Content-Security-Policy only has to allow the CDN in
 `script-src`. Both style the page with inline styles, so `style-src` needs
-`'unsafe-inline'`, and Redoc starts a worker from a `blob:` URL (`worker-src blob:`).
+`'unsafe-inline'`. Redoc starts a worker from a `blob:` URL (`worker-src blob:`);
+without it the browser logs a refusal and Redoc still renders the document.
 Both also try to load web fonts from their own hosts and fall back to system
 fonts when the policy refuses them.
 Override the script with `RedocBundleURL` / `ScalarBundleURL`; the default hash
@@ -1477,7 +1478,11 @@ type Product struct {
 
 A directive value may itself contain commas and colons (for example a
 description); the only limitation is that a value cannot contain a comma
-immediately followed by another directive key such as `,description:`.
+immediately followed by a directive key (`description`, `example`, `format`,
+`enum`, `default`, `pattern`, `title`, `multipleOf` or an `x-` name, then a
+colon) or by a flag (`readOnly`, `writeOnly`, `deprecated`, `uniqueItems` or
+`nullable`) that ends at a comma or the end of the tag. Such a comma starts the
+next directive, so `description:Sorted, title:x` sets a description and a title.
 
 A struct whose fields carry examples gets an object-level `example` assembled
 from them, nested models included, so Swagger UI shows a value for the model
