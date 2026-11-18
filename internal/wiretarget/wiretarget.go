@@ -32,6 +32,20 @@ type timeoutAnswerKey struct{}
 // answers a request that timed out.
 var TimeoutAnswerKey any = timeoutAnswerKey{}
 
+// Outcome is what Serve did with a request, and so the answer its caller gives when the handler did not run.
+type Outcome uint8
+
+const (
+	// Served means the handler ran.
+	Served Outcome = iota
+	// NotFound means the handler did not run, because it would read the routed path as another name than the router
+	// matched: the caller answers 404 Not Found.
+	NotFound
+	// BadRequest means the handler did not run, because the routed path holds a "%" that begins no escape (see
+	// HasStrayPercent), which net/http's own server answers 400 Bad Request for: the caller answers the same.
+	BadRequest
+)
+
 // Allowance names what SegmentsAsRouted lets through that it refuses
 // otherwise, for a caller that was told the reader keeps it as sent.
 type Allowance uint8
@@ -51,8 +65,9 @@ const (
 // escapes of unreserved characters decoded, every other escape kept, dot
 // segments resolved and empty segments kept. What it may still hold raw is
 // written as an escape, the valid spelling of the same name: a stray "%" that
-// begins no escape as "%25", and every byte RFC 3986 does not allow raw in a
-// path, such as a space, "\", "|", "{", "}", '"', "^", "<", ">", a control
+// begins no escape as "%25" (the net/http adapters answer such a path with 400
+// instead, see HasStrayPercent), and every byte RFC 3986 does not allow raw in
+// a path, such as a space, "\", "|", "{", "}", '"', "^", "<", ">", a control
 // byte or a byte of UTF-8, as its escape, as fasthttp's normalizing writer did
 // before. Under UnescapePath c.Path() is fully decoded, so it is escaped again
 // segment by segment, and a "/" that came from "%2F" stays the separator the
@@ -133,28 +148,34 @@ func routedFor[App any](c Ctx[App], path, line string) string {
 // "/user%40corp", "/caf%C3%A9" and a raw "/café" apart, but the handler decodes
 // each pair into one name. A target that holds no path (NoPath) has no spelling
 // to refuse: "CONNECT [::1]:443" is routed as "/[::1]:443", whose raw brackets
-// a path may not carry. Serve reports false, without running handler, for a
-// routed path it does not hand on.
-func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
+// a path may not carry. A routed path holding a "%" that begins no escape
+// (HasStrayPercent) is refused as net/http's own server refuses it, with a 400
+// rather than a 404: Routed would write "/100%" as "/100%25", and the handler
+// would read both as one name where the router keeps two. Serve returns NotFound
+// or BadRequest, without running handler, for a routed path it does not hand on.
+func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) Outcome {
 	return serveWith(c, handler, func(original string) {
 		if !c.Response().IsBodyStream() && !c.RequestCtx().Hijacked() {
 			RestoreTarget(c.RequestCtx(), original)
 		}
-	})
+	}, HasStrayPercent)
 }
 
 // ServeNative is Serve for a fasthttp handler registered as a route handler. The original line is put back
 // once it returned, unless the response is a body stream or hijacked, which can belong to a net/http handler
 // that fasthttpadaptor runs on a goroutine of its own and that goes on reading the line, or unless the handler
-// timed out (fasthttp.TimeoutHandler, the timeout middleware), which leaves it running on the request.
+// timed out (fasthttp.TimeoutHandler, the timeout middleware), which leaves it running on the request. A "%" that
+// begins no escape is handed on, as "%25": fasthttp decodes "/100%" and "/100%25" into one path for the handler, as
+// it does without Fiber, so a second spelling is not what it gets (see HasStrayPercent).
 func ServeNative[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
-	return serveWith(c, handler, func(original string) { restoreNative(c, original) })
+	return serveWith(c, handler, func(original string) { restoreNative(c, original) }, nil) == Served
 }
 
 // serveWith runs handler on the routed request line and has putBack set the original back afterwards, which
 // does not when the handler goes on reading the request: a net/http handler that streamed or hijacked the
-// response, or, native, one that was given up on.
-func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack func(original string)) bool {
+// response, or, native, one that was given up on. malformed, when there is one, reports a routed path that handler's
+// own server would have answered 400 for, which handler is not run for (unless UnescapePath, which decodes it).
+func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack func(original string), malformed func(path string) bool) Outcome {
 	// Read once: with Immutable every read of the path copies the string. The line is only a view of the request
 	// line, since it is compared below and copied where it has to outlive the request line.
 	req := c.Request()
@@ -163,16 +184,21 @@ func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack fun
 	if !unescape && lineIsTarget(req, path, line) {
 		// As most are, the line is the routed target and passes the checks below, which it is told without them.
 		handler(c.RequestCtx())
-		return true
+		return Served
+	}
+	// A plain path holds no "%" at all, so the fast path above has nothing to ask. Under UnescapePath the router has
+	// decoded every escape, and the path the handler is given is escaped again.
+	if malformed != nil && !unescape && malformed(path) {
+		return BadRequest
 	}
 	target := routedFor(c, path, line)
 	if !SegmentsAsRouted(target, AllowParameters) || (!unescape && !SingleSpelling(path) && !NoPath(line, req.Header.IsConnect())) {
-		return false
+		return NotFound
 	}
 	if target == line {
 		// the request line already spells the routed path
 		handler(c.RequestCtx())
-		return true
+		return Served
 	}
 	original := utils.CopyString(line)
 	SetTarget(c, target)
@@ -184,7 +210,7 @@ func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack fun
 	// handler read it.
 	defer putBack(original)
 	handler(c.RequestCtx())
-	return true
+	return Served
 }
 
 // NoPath reports whether line, the request target as it arrived, holds no path: the asterisk form of OPTIONS ("*")
@@ -387,9 +413,11 @@ func SegmentsAsRouted(target string, allow Allowance) bool {
 // into one URL.Path and serves the same directory for each. The spelling is the one a path
 // has on the wire when its sub-delimiters, ":" and "@" are raw, an unreserved character is
 // decoded (the router does that) and every other byte, a space or a byte of UTF-8 say,
-// is an escape with uppercase hex digits. A "%" that begins no escape is let through, as it
-// always was; the client cannot have meant an escape by it. Under UnescapePath the
-// router decodes every escape itself, so the middleware sees one path and the caller skips this.
+// is an escape with uppercase hex digits. A "%" that begins no escape is not judged here: a net/http
+// handler is answered 400 for one before this is asked (see HasStrayPercent), and a fasthttp
+// route handler reads one as it always did, since fasthttp decodes both spellings into one path.
+// Under UnescapePath the router decodes every escape itself, so the middleware sees one path and
+// the caller skips this.
 func SingleSpelling(path string) bool {
 	for i := 0; i < len(path); i++ {
 		c := path[i]
@@ -438,6 +466,33 @@ func HasForgedEscape(target string) bool {
 		}
 		path = path[i+1:]
 	}
+}
+
+// HasStrayPercent reports whether path, which holds no query, holds a "%" that begins no escape: one that is not
+// followed by two hex digits. net/http's server answers 400 Bad Request for a request line whose path holds one,
+// since url.ParseRequestURI refuses it, so a net/http handler never reads "/100%" and "/100%25" as one name. The
+// router keeps the two apart, a middleware mounted on one of them does not run for the other, and Routed would hand
+// a handler the first as the second, so a handler that serves names, http.FileServer say, would be reached around
+// that middleware. The net/http adapters therefore answer 400, as net/http's server does, instead.
+func HasStrayPercent(path string) bool {
+	for i := strings.IndexByte(path, '%'); i >= 0; {
+		if i+2 >= len(path) || !isHexDigit(path[i+1]) || !isHexDigit(path[i+2]) {
+			return true
+		}
+		next := strings.IndexByte(path[i+3:], '%')
+		if next < 0 {
+			return false
+		}
+		i += 3 + next
+	}
+	return false
+}
+
+// StrayPercent reports whether the routed path of c, c.Path(), holds a "%" that begins no escape (HasStrayPercent).
+// It does not under UnescapePath: the router has decoded every escape then, "/100%" and "/100%25" are one path to a
+// middleware as to a handler, which is given it escaped again, and there is no second spelling to keep out.
+func StrayPercent[App any](c Ctx[App]) bool {
+	return !appconfig.Of(c.App()).UnescapePath && HasStrayPercent(c.Path())
 }
 
 // SurvivesNormalization reports whether fasthttp's path normalization would

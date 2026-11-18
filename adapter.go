@@ -294,10 +294,14 @@ func wrapHTTPHandler(handler http.Handler) Handler {
 			}
 			return ErrBadRequest
 		}
-		if !wiretarget.Serve(c, adapted) {
+		switch wiretarget.Serve(c, adapted) {
+		case wiretarget.BadRequest: // as net/http's server answers a "%" that begins no escape
+			return ErrBadRequest
+		case wiretarget.NotFound:
 			return ErrNotFound
+		default:
+			return nil
 		}
-		return nil
 	}
 }
 

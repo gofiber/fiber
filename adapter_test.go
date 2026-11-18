@@ -1025,6 +1025,45 @@ func Test_Adapter_FastHTTP_UnescapePathRespellsTheLine(t *testing.T) {
 	require.Equal(t, "/a%2Cb/c:d?x=1", string(resp.Body()))
 }
 
+// Test_Adapter_StrayPercent pins that a net/http route handler is answered 400, as net/http's own server answers it, for a
+// path whose "%" begins no escape, and that a fasthttp route handler is not: fasthttp decodes "/100%" and "/100%25" into
+// one path for it, so there is no second spelling to keep out, and it is given the line Routed spells for it. With
+// UnescapePath the router decodes every escape itself, and both kinds get the one path.
+func Test_Adapter_StrayPercent(t *testing.T) {
+	t.Parallel()
+	netHTTP := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.WriteString(w, r.RequestURI)
+		assert.NoError(t, err)
+	})
+	for _, tc := range []struct {
+		handler  any
+		name     string
+		want     string // what the handler reads of "/100%/x" when it is answered 200
+		status   int    // the answer for "/100%/x"
+		unescape bool
+	}{
+		{name: "net/http", handler: netHTTP, status: StatusBadRequest},
+		{name: "net/http, UnescapePath", handler: netHTTP, unescape: true, status: StatusOK, want: "/100%25/x"},
+		{name: "fasthttp", handler: fasthttp.RequestHandler(echoRequestURI), status: StatusOK, want: "/100%25/x"},
+		{name: "fasthttp, UnescapePath", handler: fasthttp.RequestHandler(echoRequestURI), unescape: true, status: StatusOK, want: "/100%25/x"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{UnescapePath: tc.unescape})
+			app.Use(tc.handler)
+
+			resp := serveRawTarget(t, app, "/100%/x")
+			require.Equal(t, tc.status, resp.StatusCode())
+			if tc.status == StatusOK {
+				require.Equal(t, tc.want, string(resp.Body()))
+			}
+			resp = serveRawTarget(t, app, "/100%25/x?y=%zz")
+			require.Equal(t, StatusOK, resp.StatusCode())
+			require.Equal(t, "/100%25/x?y=%zz", string(resp.Body()))
+		})
+	}
+}
+
 // Test_Adapter_FastHTTP_DispatchAllocations pins that a fasthttp route handler costs the router no allocation more than
 // one that takes the Ctx for a request line that already spells the routed path, query or not, but for the copy
 // Immutable makes of the path it compares the line with.

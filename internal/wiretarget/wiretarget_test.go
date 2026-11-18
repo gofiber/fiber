@@ -5,7 +5,9 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"net"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -253,6 +255,76 @@ func Test_HasForgedEscape(t *testing.T) {
 	}
 }
 
+// Test_HasStrayPercent pins the "%" a path may not carry: one that is not followed by two hex digits.
+func Test_HasStrayPercent(t *testing.T) {
+	t.Parallel()
+	for path, want := range map[string]bool{
+		"": false, "/": false, "/a/b": false, "/a%41": false, "/a%2f": false, "/a%2F%2f": false, "/%25": false,
+		"/%25%25": false, "/a%25b%20c": false, "/%C3%BCber": false,
+		"/%": true, "/a%": true, "/%z": true, "/%zz": true, "/a%2": true, "/a%2/b": true, "/%4g": true, "/%g4": true,
+		"/100%/x": true, "/%%41": true, "/a%25%": true, "/%41%": true, "/%41%4": true, "/%41%zz": true,
+	} {
+		require.Equal(t, want, wiretarget.HasStrayPercent(path), path)
+	}
+}
+
+// Test_HasStrayPercent_MatchesNetHTTP pins that HasStrayPercent finds what net/http's server answers 400 for: it reads
+// the request target with url.ParseRequestURI, which refuses a "%" that is not followed by two hex digits, and nothing
+// else in a path made of these bytes. Every path of up to six of them is compared.
+func Test_HasStrayPercent_MatchesNetHTTP(t *testing.T) {
+	t.Parallel()
+	const alphabet = "/%a2Fg"
+	checked := 0
+	var walk func(path string)
+	walk = func(path string) {
+		_, err := url.ParseRequestURI(path)
+		if stray := wiretarget.HasStrayPercent(path); stray != (err != nil) {
+			t.Fatalf("%q: HasStrayPercent=%t, url.ParseRequestURI=%v", path, stray, err)
+		}
+		if err != nil {
+			var escapeErr url.EscapeError
+			require.ErrorAs(t, err, &escapeErr, path)
+		}
+		checked++
+		if len(path) == 6 {
+			return
+		}
+		for i := range len(alphabet) {
+			walk(path + alphabet[i:i+1])
+		}
+	}
+	walk("/")
+	require.Greater(t, checked, 5000)
+}
+
+// Test_StrayPercent pins that the routed path of the request is what is looked at, and that it is not under
+// UnescapePath, where the router has decoded every escape and "/100%" and "/100%25" are one path.
+func Test_StrayPercent(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		config                       fiber.Config
+		name, target, override, want string
+	}{
+		{name: "stray", target: "/100%/x", want: "true"},
+		{name: "escape", target: "/100%25/x", want: "false"},
+		{name: "stray in the query", target: "/x?a=%zz&b=%", want: "false"},
+		{name: "unescape path", target: "/100%/x", config: fiber.Config{UnescapePath: true}, want: "false"},
+		{name: "path overridden by a handler", target: "/x", override: "/100%/x", want: "true"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New(tc.config)
+			app.Get("/*", func(c fiber.Ctx) error {
+				if tc.override != "" {
+					c.Path(tc.override)
+				}
+				return c.SendString(strconv.FormatBool(wiretarget.StrayPercent(c)))
+			})
+			require.Equal(t, tc.want, answerFor(t, app, tc.target))
+		})
+	}
+}
+
 func Test_SurvivesNormalization(t *testing.T) {
 	t.Parallel()
 	// An escape of a byte fasthttp escapes again when it writes the path
@@ -322,7 +394,7 @@ func Test_SingleSpelling(t *testing.T) {
 		"/caf%C3%A9":                           true,
 		"/my%20dir/x":                          true,
 		"/a%3Fb%23c%25d":                       true,
-		"/%zz":                                 true, // begins no escape: let through as it always was
+		"/%zz":                                 true, // begins no escape: not judged here, see HasStrayPercent
 		"/100%":                                true,
 		"/R%26D/x":                             false,
 		"/user%40corp/x":                       false,

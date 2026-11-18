@@ -278,10 +278,14 @@ func serveRouted(c fiber.Ctx, handler fasthttp.RequestHandler) error {
 	if err := bufferBodyStream(c); err != nil {
 		return err
 	}
-	if !wiretarget.Serve(c, handler) {
+	switch wiretarget.Serve(c, handler) {
+	case wiretarget.BadRequest: // as net/http's server answers a "%" that begins no escape
+		return fiber.ErrBadRequest
+	case wiretarget.NotFound:
 		return fiber.ErrNotFound
+	default:
+		return nil
 	}
-	return nil
 }
 
 // bufferBodyStream applies BodyLimit to a streamed body, which fasthttpadaptor would read whatever its size.
@@ -325,9 +329,15 @@ func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
 // fiber.ErrBadRequest instead of being set, since the request's host would
 // then be read out of it; so is one holding a forged escape (see
 // wiretarget.HasForgedEscape), which URL.Path would decode into a segment the
-// router never matched. A streamed body over the app's BodyLimit returns
+// router never matched, and one holding a "%" that begins no escape (see
+// wiretarget.HasStrayPercent), as net/http's server answers it: URL.Path
+// would be the same for "/100%" and "/100%25", which the router keeps apart.
+// A streamed body over the app's BodyLimit returns
 // fiber.ErrRequestEntityTooLarge.
 func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
+	if wiretarget.StrayPercent(c) {
+		return nil, fiber.ErrBadRequest
+	}
 	target := wiretarget.Routed(c)
 	if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) || wiretarget.HasForgedEscape(target) {
 		return nil, fiber.ErrBadRequest
@@ -656,7 +666,12 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		// would become the host of both the net/http request and the Fiber
 		// request behind the middleware. So is a path holding a forged
 		// escape (see wiretarget.HasForgedEscape), which URL.Path would
-		// decode into a segment the router never matched.
+		// decode into a segment the router never matched, and one holding a
+		// "%" that begins no escape (see wiretarget.HasStrayPercent), as
+		// net/http's server answers it.
+		if wiretarget.StrayPercent(c) {
+			return fiber.ErrBadRequest
+		}
 		target := wiretarget.Routed(c)
 		if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) || wiretarget.HasForgedEscape(target) {
 			return fiber.ErrBadRequest
