@@ -103,13 +103,14 @@ func configDefault(config ...Config) Config {
 // allowed, and recipients resolve it against the request URI.
 func isURIReference(s string) bool {
 	for i := range len(s) {
-		c := s[i]
-		if c == '%' && (i+2 >= len(s) || !isHex(s[i+1]) || !isHex(s[i+2])) {
+		if c := s[i]; !isAlnum(c) && strings.IndexByte(uriPunctuation, c) < 0 {
 			return false
 		}
-		if !isAlnum(c) && strings.IndexByte(uriPunctuation, c) < 0 {
-			return false
-		}
+	}
+	// PathUnescape rejects a '%' that does not start a percent-encoding anywhere
+	// in s, which url.Parse does not check in the query.
+	if _, err := url.PathUnescape(s); err != nil {
+		return false
 	}
 	u, err := url.Parse(s)
 	if err != nil || u.User != nil {
@@ -125,8 +126,4 @@ func isURIReference(s string) bool {
 
 func isAlnum(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
-}
-
-func isHex(c byte) bool {
-	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }

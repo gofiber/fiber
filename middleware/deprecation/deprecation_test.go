@@ -2,20 +2,14 @@ package deprecation
 
 import (
 	"errors"
-	"maps"
 	"net/http"
-	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
-	"github.com/gofiber/fiber/v3/middleware/proxy"
-	"github.com/gofiber/fiber/v3/middleware/recover"
-	"github.com/gofiber/fiber/v3/middleware/timeout"
+	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -155,105 +149,29 @@ func Test_Deprecation_KeepsExistingLinks(t *testing.T) {
 	}
 }
 
-// The value written when no Link header is set must match what c.Links would
-// write, since the middleware takes either path.
-func Test_Deprecation_LinkMatchesLinks(t *testing.T) {
+// A link already in the Link header, as an earlier run of the instance wrote it, is not added again.
+func Test_Deprecation_HeldLinkNotRepeated(t *testing.T) {
 	t.Parallel()
-	cfgs := []Config{
-		{Link: "https://example.com/d"},
-		{SunsetLink: "https://example.com/s"},
-		{Link: "https://example.com/d", SunsetLink: "https://example.com/s"},
+	d, s := `<https://example.com/d>; rel="deprecation"`, `<https://example.com/s>; rel="sunset"`
+	for _, tt := range []struct{ name, existing, want string }{
+		{name: "deprecation link held", existing: d, want: d + "," + s},
+		{name: "sunset link held", existing: s, want: s + "," + d},
+		{name: "both held", existing: d + "," + s, want: d + "," + s},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderLink, tt.existing)
+				return c.Next()
+			})
+			app.Use(New(Config{Link: "https://example.com/d", SunsetLink: "https://example.com/s"}))
+			app.Get("/", func(fiber.Ctx) error { return nil })
+
+			resp := apptest.Expect(t, app, "/", fiber.StatusOK)
+			requireHeader(t, resp, fiber.HeaderLink, tt.want)
+		})
 	}
-	app := fiber.New()
-	for _, cfg := range cfgs {
-		l := newLinks(cfg.Link, cfg.SunsetLink)
-		c := apptest.Ctx(t, app)
-		c.Links(l.pairs...)
-		require.Equal(t, string(c.Response().Header.Peek(fiber.HeaderLink)), l.joined)
-	}
-}
-
-func Test_Deprecation_ReplacedResponse(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Deprecation: deprecatedAt, Sunset: sunsetAt, Link: "https://example.com/d"}))
-	app.Get("/", func(c fiber.Ctx) error {
-		// What proxy.Forward and fasthttp's NotModified do to the header block:
-		// reset it, and here keep an upstream Link under the name it sent.
-		c.Response().Reset()
-		c.Response().Header.DisableNormalizing()
-		c.Response().Header.Set("link", `</next>; rel="next"`)
-		return c.SendString("upstream")
-	})
-
-	resp := apptest.ExpectBody(t, app, "/", fiber.StatusOK, "upstream")
-	requireHeader(t, resp, fiber.HeaderDeprecation, deprecatedValue)
-	requireHeader(t, resp, fiber.HeaderSunset, sunsetValue)
-	requireHeader(t, resp, fiber.HeaderLink, `</next>; rel="next",<https://example.com/d>; rel="deprecation"`)
-}
-
-func Test_Deprecation_ReplacedResponseKeepsLink(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Deprecation: deprecatedAt, Link: "https://example.com/d"}))
-	app.Get("/", func(c fiber.Ctx) error {
-		c.Response().Reset()
-		c.Set(fiber.HeaderLink, `<https://example.com/d>; rel="deprecation"`)
-		return c.SendString("upstream")
-	})
-
-	resp := apptest.ExpectBody(t, app, "/", fiber.StatusOK, "upstream")
-	requireHeader(t, resp, fiber.HeaderDeprecation, deprecatedValue)
-	requireHeader(t, resp, fiber.HeaderLink, `<https://example.com/d>; rel="deprecation"`)
-}
-
-func Test_Deprecation_LeavesTimedOutResponse(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Deprecation: deprecatedAt, Link: "https://example.com/d"}))
-	ctxCh := make(chan fiber.Ctx, 1)
-	reset := make(chan struct{})
-	release := make(chan struct{})
-	defer close(release)
-	app.Get("/", timeout.New(func(c fiber.Ctx) error {
-		c.Response().Reset()
-		ctxCh <- c
-		close(reset)
-		<-c.Context().Done()
-		<-release
-		return nil
-	}, timeout.Config{
-		Timeout: 10 * time.Millisecond,
-		// Waiting here orders the Reset before the timeout response and the code after the chain.
-		OnTimeout: func(fiber.Ctx) error {
-			<-reset
-			return fiber.ErrServiceUnavailable
-		},
-	}))
-
-	resp := apptest.Expect(t, app, "/", fiber.StatusServiceUnavailable)
-	requireHeader(t, resp, fiber.HeaderDeprecation, deprecatedValue)
-	c := apptest.Recv(t, ctxCh, time.Second)
-	require.Empty(t, c.GetRespHeader(fiber.HeaderDeprecation), "the timed-out handler still owns the response")
-}
-
-// The default timeout response is built empty, so the headers are added to it.
-func Test_Deprecation_DefaultTimeoutResponse(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Deprecation: deprecatedAt, Sunset: sunsetAt, Link: "https://example.com/d"}))
-	release := make(chan struct{})
-	defer close(release)
-	app.Get("/", timeout.New(func(c fiber.Ctx) error {
-		<-c.Context().Done()
-		<-release
-		return nil
-	}, timeout.Config{Timeout: 10 * time.Millisecond}))
-
-	resp := apptest.Expect(t, app, "/", fiber.StatusServiceUnavailable)
-	requireHeader(t, resp, fiber.HeaderDeprecation, deprecatedValue)
-	requireHeader(t, resp, fiber.HeaderSunset, sunsetValue)
-	requireHeader(t, resp, fiber.HeaderLink, `<https://example.com/d>; rel="deprecation"`)
 }
 
 // An earlier writer's lines of the same field all give way to the configured value.
@@ -285,188 +203,6 @@ func Test_Deprecation_TwoLevels(t *testing.T) {
 	requireHeader(t, resp, fiber.HeaderSunset, sunsetValue)
 	requireHeader(t, resp, fiber.HeaderLink,
 		`<https://example.com/policy>; rel="deprecation",<https://example.com/v1>; rel="deprecation"`)
-}
-
-// The proxy replaces the response with the upstream's, Link included.
-func Test_Deprecation_Proxy(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		upstream    http.Header
-		name        string
-		deprecation string
-	}{
-		{
-			name:        "upstream sends a Link",
-			upstream:    http.Header{"Link": {`</next>; rel="next"`}},
-			deprecation: deprecatedValue,
-		},
-		{
-			name:        "upstream sends its own Deprecation",
-			upstream:    http.Header{"Link": {`</next>; rel="next"`}, "Deprecation": {"@1"}},
-			deprecation: "@1",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				maps.Copy(w.Header(), tt.upstream)
-				_, _ = w.Write([]byte("upstream")) //nolint:errcheck // the test reads the body
-			}))
-			t.Cleanup(upstream.Close)
-
-			policy := proxy.DefaultSecurityPolicy()
-			policy.AllowPrivateIPs = true
-			app := fiber.New()
-			app.Use(New(Config{Deprecation: deprecatedAt, Sunset: sunsetAt, Link: "https://example.com/d"}))
-			app.Get("/", proxy.Balancer(proxy.Config{Servers: []string{upstream.URL}, SecurityPolicy: &policy}))
-
-			resp := apptest.ExpectBody(t, app, "/", fiber.StatusOK, "upstream")
-			requireHeader(t, resp, fiber.HeaderDeprecation, tt.deprecation)
-			requireHeader(t, resp, fiber.HeaderSunset, sunsetValue)
-			requireHeader(t, resp, fiber.HeaderLink, `</next>; rel="next",<https://example.com/d>; rel="deprecation"`)
-		})
-	}
-}
-
-// Each configured header and link is checked on its own after the chain, so
-// what a handler changes does not depend on which of them are configured.
-func Test_Deprecation_AfterChain(t *testing.T) {
-	t.Parallel()
-	const (
-		d     = "https://example.com/d"
-		s     = "https://example.com/s"
-		dLink = `<https://example.com/d>; rel="deprecation"`
-		sLink = `<https://example.com/s>; rel="sunset"`
-	)
-	all := Config{Deprecation: deprecatedAt, Sunset: sunsetAt, Link: d, SunsetLink: s}
-	tests := []struct {
-		handler     fiber.Handler
-		appConfig   fiber.Config
-		name        string
-		deprecation string
-		sunset      string
-		link        string
-		config      Config
-	}{
-		{
-			name: "replaced block with its own Deprecation", config: all,
-			handler: func(c fiber.Ctx) error {
-				c.Response().Reset()
-				c.Set(fiber.HeaderDeprecation, "@1")
-				return nil
-			},
-			deprecation: "@1", sunset: sunsetValue, link: dLink + "," + sLink,
-		},
-		{
-			name: "replaced block with its own Sunset", config: Config{Sunset: sunsetAt, SunsetLink: s},
-			handler: func(c fiber.Ctx) error {
-				c.Response().Reset()
-				c.Set(fiber.HeaderSunset, "Mon, 01 Jan 2024 00:00:00 GMT")
-				return nil
-			},
-			sunset: "Mon, 01 Jan 2024 00:00:00 GMT", link: sLink,
-		},
-		{
-			name: "replaced block holding one of two links", config: all,
-			handler: func(c fiber.Ctx) error {
-				c.Response().Reset()
-				c.Set(fiber.HeaderLink, dLink)
-				return nil
-			},
-			deprecation: deprecatedValue, sunset: sunsetValue, link: dLink + "," + sLink,
-		},
-		{
-			name: "replaced block holding the other link", config: all,
-			handler: func(c fiber.Ctx) error {
-				c.Response().Reset()
-				c.Set(fiber.HeaderLink, sLink)
-				return nil
-			},
-			deprecation: deprecatedValue, sunset: sunsetValue, link: sLink + "," + dLink,
-		},
-		{
-			name: "Link replaced under a policy-only config", config: Config{Link: d},
-			handler: func(c fiber.Ctx) error {
-				c.Set(fiber.HeaderLink, `</next>; rel="next"`)
-				return nil
-			},
-			link: `</next>; rel="next",` + dLink,
-		},
-		{
-			name: "Link replaced under a dated config", config: Config{Deprecation: deprecatedAt, Link: d},
-			handler: func(c fiber.Ctx) error {
-				c.Set(fiber.HeaderLink, `</next>; rel="next"`)
-				return nil
-			},
-			deprecation: deprecatedValue, link: `</next>; rel="next",` + dLink,
-		},
-		{
-			name: "removed headers are written again", config: all,
-			handler: func(c fiber.Ctx) error {
-				c.Response().Header.Del(fiber.HeaderDeprecation)
-				c.Response().Header.Del(fiber.HeaderSunset)
-				c.Response().Header.Del(fiber.HeaderLink)
-				return nil
-			},
-			deprecation: deprecatedValue, sunset: sunsetValue, link: dLink + "," + sLink,
-		},
-		{
-			name:   "an added Deprecation line replaces ours",
-			config: Config{Deprecation: deprecatedAt, Sunset: sunsetAt},
-			handler: func(c fiber.Ctx) error {
-				c.Response().Header.Add(fiber.HeaderDeprecation, "@5")
-				c.Response().Header.Add(fiber.HeaderSunset, sunsetValue)
-				return nil
-			},
-			deprecation: "@5", sunset: sunsetValue,
-		},
-		{
-			name: "response with a trailer section", config: all,
-			handler: func(c fiber.Ctx) error {
-				return c.Response().Header.SetTrailer("X-Checksum")
-			},
-			deprecation: deprecatedValue, sunset: sunsetValue, link: dLink + "," + sLink,
-		},
-		{
-			name: "another spelling without normalizing", config: Config{Deprecation: deprecatedAt},
-			appConfig: fiber.Config{DisableHeaderNormalizing: true},
-			handler: func(c fiber.Ctx) error {
-				c.Set("deprecation", "@5")
-				return nil
-			},
-			deprecation: "@5",
-		},
-		{
-			name: "another spelling after the handler stops normalizing", config: Config{Deprecation: deprecatedAt},
-			handler: func(c fiber.Ctx) error {
-				c.Response().Header.DisableNormalizing()
-				c.Set("deprecation", "@5")
-				return nil
-			},
-			deprecation: "@5",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			app := fiber.New(tt.appConfig)
-			app.Use(New(tt.config))
-			app.Get("/", func(c fiber.Ctx) error {
-				if err := tt.handler(c); err != nil {
-					return err
-				}
-				return c.SendString("ok")
-			})
-
-			resp := apptest.ExpectBody(t, app, "/", fiber.StatusOK, "ok")
-			requireHeader(t, resp, fiber.HeaderDeprecation, tt.deprecation)
-			requireHeader(t, resp, fiber.HeaderSunset, tt.sunset)
-			requireHeader(t, resp, fiber.HeaderLink, tt.link)
-		})
-	}
 }
 
 // An earlier middleware's Deprecation under another spelling is replaced, not
@@ -553,44 +289,10 @@ func Test_Deprecation_LinksNotSharedWithCustomCtx(t *testing.T) {
 	for range 2 {
 		apptest.ExpectBody(t, app, "/", fiber.StatusOK, "ok")
 	}
-	// The Ctx's own rewrite drops the link, so each request folds it in twice.
-	require.Len(t, got, 4)
+	// The Ctx's own rewrite drops the link, so each request folds it in again.
+	require.Len(t, got, 2)
 	for _, args := range got {
 		require.Equal(t, []string{"https://example.com/d", "deprecation"}, args)
-	}
-}
-
-// fasthttp resets the response for the 304 of a conditional SendFile and the
-// 416 of an unsatisfiable range.
-func Test_Deprecation_SendFileReset(t *testing.T) {
-	t.Parallel()
-	file := filepath.Join(t.TempDir(), "doc.txt")
-	require.NoError(t, os.WriteFile(file, []byte("doc"), 0o600))
-	app := fiber.New()
-	app.Use(New(Config{Deprecation: deprecatedAt, Sunset: sunsetAt, Link: "https://example.com/d"}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendFile(file, fiber.SendFile{ByteRange: true}) })
-
-	lastModified := apptest.Expect(t, app, "/", fiber.StatusOK).Header.Get(fiber.HeaderLastModified)
-	require.NotEmpty(t, lastModified)
-
-	tests := []struct {
-		name   string
-		header string
-		value  string
-		status int
-	}{
-		{name: "304", header: fiber.HeaderIfModifiedSince, value: lastModified, status: fiber.StatusNotModified},
-		{name: "416", header: fiber.HeaderRange, value: "bytes=9-9", status: fiber.StatusRequestedRangeNotSatisfiable},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(tt.header, tt.value))
-			resp := apptest.Expect(t, app, req, tt.status)
-			requireHeader(t, resp, fiber.HeaderDeprecation, deprecatedValue)
-			requireHeader(t, resp, fiber.HeaderSunset, sunsetValue)
-			requireHeader(t, resp, fiber.HeaderLink, `<https://example.com/d>; rel="deprecation"`)
-		})
 	}
 }
 
@@ -626,7 +328,7 @@ func Test_Deprecation_BeforeChain(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
-			app.Use(recover.New())
+			app.Use(recoverer.New())
 			app.Use(New(Config{Deprecation: deprecatedAt, Sunset: sunsetAt}))
 			app.Get("/", tt.handler)
 

@@ -14,11 +14,11 @@ Deprecation does not change how the route behaves. The headers are a hint: clien
 
 ## When the headers are written
 
-The headers are set before the rest of the chain runs, so a response the handler sends itself with `c.End()`, and the 500 an outer `recover.New()` sends for a panic, carry them. A `103 Early Hints` response carries only the `Link` lines, so it gets the deprecation and sunset links but not the two dates.
+The headers are set before the rest of the chain runs, like those of `helmet` and `cors`, so a response the handler sends itself with `c.End()`, and the 500 an outer `recover.New()` sends for a panic, carry them. A `103 Early Hints` response carries only the `Link` lines, so it gets the deprecation and sunset links but not the two dates.
 
-After the chain returns, each configured header and link is checked on its own and written again when the response no longer carries it. That covers a replaced header block (proxied responses from `proxy.Do`, `proxy.Forward` and the other proxy helpers, a handler that calls `c.Response().Reset()`, and the `304` and `416` responses of `SendFile` and `static`), a handler that deletes one of the headers, and a `c.Set(fiber.HeaderLink, ...)` that replaced the links. To leave a route's headers to its handler, skip it with `Next`. A handler that `timeout.New` gave up on is left alone, and its timeout response gets each header it lacks.
+Anything later in the chain that replaces or edits the response headers wins. That includes a proxied response (`proxy.Do`, `proxy.Forward` and the other proxy helpers copy the upstream's headers over the response), a handler that calls `c.Response().Reset()`, the `304` and `416` responses of `SendFile` and `static`, the `503` that `timeout.New` sends, and a `c.Set` of `Deprecation`, `Sunset` or `Link`. Set the headers in the handler after those calls when such a route must carry them, or add links with `c.Links`, which appends to the `Link` header instead of replacing it.
 
-A `Deprecation` or `Sunset` that a later handler or a proxied upstream sets itself is kept instead of the configured one. Both fields take a single value, so when a writer adds a second line (`Header.Add`, `adaptor.HTTPHandler` copying an upstream response, or another spelling of the name under `DisableHeaderNormalizing`), the middleware keeps one of them, the other writer's.
+A link that the `Link` header already holds in the form the middleware writes (`<URL>; rel="deprecation"`) is not added again, for example when `c.RestartRouting()` runs the middleware a second time. The same link written another way, such as `<URL>;rel=deprecation`, is not recognized, and the middleware adds its own form next to it.
 
 ## Signatures
 
@@ -91,7 +91,7 @@ app.Use(deprecation.New(deprecation.Config{
 
 - Register it before `cache`. A cache hit returns before the middleware behind it runs, and with the default `StoreResponseHeaders: false` the cache replays only a fixed set of headers, so later responses would lose the headers. `StoreResponseHeaders: true` keeps them too, but a hit then replays the stored `Deprecation`, `Sunset` and `Link` over the ones the middleware just set: after you change a date or link, or skip the route with `Next`, entries stored earlier, including ones in an external `Storage` that outlives a deploy, serve the old values until they expire.
 - With `idempotency` registered after it, a handler that adds links with `c.Links` rewrites the `Link` line, and a replayed response repeats the deprecation link. Register `idempotency` first.
-- Each instance checks its own config. When it is registered at two levels, such as `app.Use` and a group, the inner instance replaces `Deprecation` and `Sunset` one by one, and both add their links. Set `Deprecation` and `Sunset` together at the level that overrides, so the pair stays in order.
+- When it is registered at two levels, such as `app.Use` and a group, the inner instance replaces `Deprecation` and `Sunset` one by one, and both add their links. Set `Deprecation` and `Sunset` together at the level that overrides, so the pair stays in order.
 
 ## Config
 

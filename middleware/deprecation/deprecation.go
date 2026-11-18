@@ -23,17 +23,25 @@ func New(config ...Config) fiber.Handler {
 	if !cfg.Sunset.IsZero() {
 		sunset = utils.FormatHTTPDate(cfg.Sunset)
 	}
-	l := newLinks(cfg.Link, cfg.SunsetLink)
+	// links holds the URL and rel pairs c.Links takes, parts each pair as c.Links writes it.
+	var links []string
+	var parts [][]byte
+	for _, p := range [...][2]string{{cfg.Link, "deprecation"}, {cfg.SunsetLink, "sunset"}} {
+		if p[0] != "" {
+			links = append(links, p[0], p[1])
+			parts = append(parts, []byte("<"+p[0]+`>; rel="`+p[1]+`"`))
+		}
+	}
 
 	return func(c fiber.Ctx) error {
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
 
-		// Set before the chain runs, so a response the handler writes itself with
-		// c.End(), and the 500 an outer recover.New() sends for a panic, carry them.
-		// The spelling is read from the response: an earlier middleware may have
-		// stopped normalizing it, whatever the app config says.
+		// Set before the chain runs, like helmet and cors, so a response the handler
+		// writes itself with c.End(), and the 500 an outer recover.New() sends for a
+		// panic, carry them. The spelling is read from the response: an earlier
+		// middleware may have stopped normalizing it, whatever the app config says.
 		h := &c.Response().Header
 		canonical := fieldname.Canonical(h)
 		if deprecation != "" {
@@ -42,71 +50,18 @@ func New(config ...Config) fiber.Handler {
 		if sunset != "" {
 			replace(c, h, fiber.HeaderSunset, sunset, canonical)
 		}
-		l.add(c, h, canonical)
-
-		err := c.Next()
-
-		// A handler timeout.New gave up on may still write the response; IsAbandoned orders the read.
-		// fasthttp sends the timeout response instead, and the default one is built empty.
-		if c.IsAbandoned() {
-			if tr := c.RequestCtx().LastTimeoutErrorResponse(); tr != nil {
-				fillTimeoutResponse(&tr.Header, deprecation, sunset, l.joined)
-				return err
+		if missing := missingLinks(h.Peek(fiber.HeaderLink), links, parts); len(missing) > 0 {
+			// c.Links may rewrite its arguments in a custom Ctx, and links is shared
+			// by every request (see vary in middleware/cors).
+			if dc, ok := c.(*fiber.DefaultCtx); ok {
+				dc.Links(missing...)
+			} else {
+				c.Links(slices.Clone(missing)...)
 			}
 		}
 
-		// A proxied response, c.Response().Reset() and the 304 or 416 of SendFile
-		// replace the header block, and a later handler may remove or add a line,
-		// so each header is checked on its own. The keyed reads answer for the
-		// common case, where every line set above is still there and alone.
-		if intact(h, deprecation != "", sunset != "", l.parts) {
-			return err
-		}
-
-		// A proxied response may hold field names as the upstream spelled them.
-		canonical = fieldname.Canonical(h)
-		if deprecation != "" {
-			keepOne(c, h, fiber.HeaderDeprecation, deprecation, canonical)
-		}
-		if sunset != "" {
-			keepOne(c, h, fiber.HeaderSunset, sunset, canonical)
-		}
-		l.add(c, h, canonical)
-
-		return err
+		return c.Next()
 	}
-}
-
-// intact reports, in one walk, whether each configured date has exactly one
-// line under its canonical name and the Link lines hold every link.
-func intact(h *fasthttp.ResponseHeader, deprecation, sunset bool, parts [][]byte) bool {
-	if fieldname.HasTrailers(h) {
-		return false
-	}
-	var dep, sun int
-	var held uint8
-	for k, v := range h.All() {
-		switch string(k) {
-		case fiber.HeaderDeprecation:
-			dep++
-		case fiber.HeaderSunset:
-			sun++
-		case fiber.HeaderLink:
-			for i, part := range parts {
-				if bytes.Contains(v, part) {
-					held |= 1 << i
-				}
-			}
-		default:
-			// Another spelling of ours, from a handler that stopped normalizing.
-			if n := utils.UnsafeString(k); utils.EqualFold(n, fiber.HeaderDeprecation) ||
-				utils.EqualFold(n, fiber.HeaderSunset) || utils.EqualFold(n, fiber.HeaderLink) {
-				return false
-			}
-		}
-	}
-
-	return (!deprecation || dep == 1) && (!sunset || sun == 1) && held == 1<<len(parts)-1
 }
 
 // replace sets name to value, removing the field under any other spelling.
@@ -118,121 +73,30 @@ func replace(c fiber.Ctx, h *fasthttp.ResponseHeader, name, value string, canoni
 	c.Set(name, value)
 }
 
-// fillTimeoutResponse sets each configured field the timeout response lacks. One
-// OnTimeout wrote starts from the headers set before the chain, so it keeps what OnTimeout left.
-func fillTimeoutResponse(h *fasthttp.ResponseHeader, deprecation, sunset, link string) {
-	canonical := fieldname.Canonical(h)
-	for _, f := range [...][2]string{
-		{fiber.HeaderDeprecation, deprecation}, {fiber.HeaderSunset, sunset}, {fiber.HeaderLink, link},
-	} {
-		if f[1] != "" && len(fieldname.Lines(h, f[0], canonical)) == 0 {
-			h.Set(f[0], f[1])
-		}
+// missingLinks returns the pairs of links whose link the Link value does not hold
+// yet, so an instance that runs again on one response, as after
+// c.RestartRouting, does not repeat its links.
+func missingLinks(existing []byte, links []string, parts [][]byte) []string {
+	if len(existing) == 0 {
+		return links
 	}
-}
-
-// keepOne leaves the single-valued field name with exactly one line (RFC 9110
-// Section 5.3): value when the line is gone, and a later writer's value over
-// ours when both are there.
-func keepOne(c fiber.Ctx, h *fasthttp.ResponseHeader, name, value string, canonical bool) {
-	lines := fieldname.Lines(h, name, canonical)
-	switch len(lines) {
-	case 1:
-		return
-	case 0:
-		c.Set(name, value)
-		return
-	}
-	// fasthttp's Del moves the last line into the gap, so the order of the lines
-	// says nothing; ours is the one the middleware set before the chain.
-	keep := value
-	for _, v := range lines {
-		if string(v) != value {
-			keep = string(v)
-			break
-		}
-	}
-	fieldname.Del(h, name, canonical)
-	c.Set(name, keep)
-}
-
-// links holds the Link values the middleware adds, formatted once.
-type links struct {
-	joined string   // every link, the Link value when the response has none
-	parts  [][]byte // each link on its own, to find the ones a Link line holds
-	pairs  []string // the URL and rel pairs c.Links takes, two per part
-}
-
-func newLinks(deprecationLink, sunsetLink string) links {
-	var l links
-	for _, p := range [][2]string{{deprecationLink, "deprecation"}, {sunsetLink, "sunset"}} {
-		if p[0] == "" {
-			continue
-		}
-		part := "<" + p[0] + `>; rel="` + p[1] + `"`
-		if l.joined != "" {
-			l.joined += ","
-		}
-		l.joined += part
-		l.parts = append(l.parts, []byte(part))
-		l.pairs = append(l.pairs, p[0], p[1])
-	}
-
-	return l
-}
-
-// add writes the links as the Link header, or folds the ones no Link line holds
-// yet into the Link header already set, under any spelling of its name.
-func (l *links) add(c fiber.Ctx, h *fasthttp.ResponseHeader, canonical bool) {
-	if l.joined == "" {
-		return
-	}
-	lines := fieldname.Lines(h, fiber.HeaderLink, canonical)
-	if len(lines) == 0 {
-		c.Set(fiber.HeaderLink, l.joined)
-		return
-	}
-
-	missing := l.pairs
-	if found := l.held(lines); found != 0 {
-		if found == len(l.parts) {
-			return
-		}
-		// Only one of two links is held, so the other pair is the one left.
-		missing = l.pairs[2:]
-		if !holds(lines, l.parts[0]) {
-			missing = l.pairs[:2]
-		}
-	}
-
-	// c.Links may rewrite its arguments in a custom Ctx, and pairs is shared by
-	// every request (see vary in middleware/cors).
-	if dc, ok := c.(*fiber.DefaultCtx); ok {
-		dc.Links(missing...)
-		return
-	}
-	c.Links(slices.Clone(missing)...)
-}
-
-// held counts the links some Link line already holds.
-func (l *links) held(lines [][]byte) int {
+	// At most two links, so the common answers, all or none, need no copy.
+	var held [2]bool
 	n := 0
-	for _, part := range l.parts {
-		if holds(lines, part) {
+	for i, part := range parts {
+		if held[i] = bytes.Contains(existing, part); held[i] {
 			n++
 		}
 	}
-
-	return n
-}
-
-// holds reports whether one of lines holds part.
-func holds(lines [][]byte, part []byte) bool {
-	for _, v := range lines {
-		if bytes.Contains(v, part) {
-			return true
-		}
+	switch n {
+	case 0:
+		return links
+	case len(parts):
+		return nil
+	}
+	if held[0] {
+		return links[2:]
 	}
 
-	return false
+	return links[:2]
 }
