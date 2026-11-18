@@ -55,7 +55,8 @@ func hasResponseNoTransform(c fiber.Ctx) bool {
 }
 
 func appendVaryAcceptEncoding(c fiber.Ctx) {
-	vary := c.GetRespHeader(fiber.HeaderVary)
+	// Several Vary lines are one list (RFC 9110 §5.3), and c.Set keeps only one line.
+	vary := utils.UnsafeString(headerlist.Join(c.Response().Header.PeekAll(fiber.HeaderVary)))
 	if vary == "" {
 		c.Set(fiber.HeaderVary, fiber.HeaderAcceptEncoding)
 		return
@@ -212,34 +213,26 @@ func encodingQuality(accept, offer string) float64 {
 // compressWith runs fasthttp's compressor for the negotiated encoding, handing
 // it the bare token, and restores the client's Accept-Encoding and the
 // handler's Vary afterwards.
-//
-// The compressor adds Accept-Encoding to the first Vary line itself, comparing
-// bytes, so it extends a Vary of "*" or one that names accept-encoding in
-// another case. Every Vary line is put back as the handler left it, an empty
-// first line included, and appendVaryAcceptEncoding merges the token instead.
 func compressWith(c fiber.Ctx, compressor fasthttp.RequestHandler, encoding string) {
-	reqHeader := &c.Request().Header
-	lines := reqHeader.PeekAll(fiber.HeaderAcceptEncoding)
+	header := &c.Request().Header
+	lines := header.PeekAll(fiber.HeaderAcceptEncoding)
 	saved := make([][]byte, len(lines))
 	for i, line := range lines {
 		saved[i] = utils.CopyBytes(line)
 	}
+	// The compressor merges Accept-Encoding into the first Vary line byte for
+	// byte and drops the others; the handler's lines go back as one list.
 	respHeader := &c.Response().Header
-	lines = respHeader.PeekAll(fiber.HeaderVary)
-	vary := make([][]byte, len(lines))
-	for i, line := range lines {
-		vary[i] = utils.CopyBytes(line)
-	}
+	vary := string(headerlist.Join(respHeader.PeekAll(fiber.HeaderVary)))
 
-	reqHeader.Set(fiber.HeaderAcceptEncoding, encoding)
+	header.Set(fiber.HeaderAcceptEncoding, encoding)
 	compressor(c.RequestCtx())
 
-	reqHeader.Del(fiber.HeaderAcceptEncoding)
+	header.Del(fiber.HeaderAcceptEncoding)
 	for _, line := range saved {
-		reqHeader.AddBytesV(fiber.HeaderAcceptEncoding, line)
+		header.AddBytesV(fiber.HeaderAcceptEncoding, line)
 	}
-	respHeader.Del(fiber.HeaderVary)
-	for _, line := range vary {
-		respHeader.AddBytesV(fiber.HeaderVary, line)
+	if vary != "" {
+		respHeader.Set(fiber.HeaderVary, vary)
 	}
 }

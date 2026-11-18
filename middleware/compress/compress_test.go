@@ -143,8 +143,8 @@ func Test_Compress_Vary(t *testing.T) {
 		contentEncoding string
 		vary            string
 		wantVary        string
-		// varyLines are added as separate Vary field lines, an empty one
-		// included; the response then carries wantVaryLines.
+		// varyLines are added as separate Vary field lines; the response then
+		// carries wantVaryLines.
 		varyLines     []string
 		wantVaryLines []string
 		// rangeRequest adds a Range header to the request, which makes the
@@ -169,8 +169,20 @@ func Test_Compress_Vary(t *testing.T) {
 		{name: "compressed_vary_list_star", compressed: true, vary: "User-Agent, *", wantVary: "User-Agent, *"},
 		{name: "compressed_vary_lowercase", compressed: true, vary: "accept-encoding", wantVary: "accept-encoding"},
 		{name: "compressed_vary_other", compressed: true, vary: "User-Agent", wantVary: "User-Agent, Accept-Encoding"},
-		{name: "vary_empty_line_then_origin", varyLines: []string{"", "Origin"}, wantVaryLines: []string{"Accept-Encoding", "Origin"}},
-		{name: "compressed_vary_empty_line_then_origin", compressed: true, varyLines: []string{"", "Origin"}, wantVaryLines: []string{"Accept-Encoding", "Origin"}},
+		{
+			name: "vary_two_lines", noAcceptEncoding: true, varyLines: []string{"Origin", "Accept-Language"},
+			wantVaryLines: []string{"Origin,Accept-Language, Accept-Encoding"},
+		},
+		{name: "vary_two_lines_star", noAcceptEncoding: true, varyLines: []string{"Origin", "*"}, wantVaryLines: []string{"Origin", "*"}},
+		{
+			name: "compressed_vary_two_lines", compressed: true, varyLines: []string{"Origin", "Accept-Language"},
+			wantVaryLines: []string{"Origin,Accept-Language, Accept-Encoding"},
+		},
+		{name: "compressed_vary_two_lines_star", compressed: true, varyLines: []string{"Origin", "*"}, wantVaryLines: []string{"Origin,*"}},
+		{
+			name: "compressed_vary_empty_line_then_origin", compressed: true, varyLines: []string{"", "Origin"},
+			wantVaryLines: []string{",Origin, Accept-Encoding"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -185,7 +197,7 @@ func Test_Compress_Vary(t *testing.T) {
 					c.Response().Header.Add(fiber.HeaderVary, line)
 				}
 				if tc.compressed {
-					return c.Send(filedata)
+					return compressTestSendUntypedReadme(c)
 				}
 				return c.SendString("hello")
 			})
@@ -212,6 +224,21 @@ func Test_Compress_Vary(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_Compress_Vary_KeepsHeaderOrder(t *testing.T) {
+	t.Parallel()
+	app := compressTestApp(func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderVary, "Origin")
+		c.Response().Header.Add(fiber.HeaderLink, "</a>; rel=preload")
+		c.Response().Header.Add(fiber.HeaderLink, "</b>; rel=preload")
+		return compressTestSendUntypedReadme(c)
+	})
+
+	resp := compressTestGet(t, app, "gzip")
+	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Equal(t, "Origin, Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
+	require.Equal(t, []string{"</a>; rel=preload", "</b>; rel=preload"}, resp.Header.Values(fiber.HeaderLink))
 }
 
 func Test_Compress_RespectsBodyLimitOnCompressedRequestBody(t *testing.T) {
@@ -440,6 +467,37 @@ func Benchmark_Compress(b *testing.B) {
 			b.ReportAllocs()
 
 			for b.Loop() {
+				h(fctx)
+			}
+		})
+	}
+}
+
+// Benchmark_Compress_Vary resets the response on every iteration, so each one
+// runs the compressor; the other benchmarks reuse an already encoded response.
+func Benchmark_Compress_Vary(b *testing.B) {
+	for _, bm := range []struct {
+		name           string
+		acceptEncoding string
+		vary           []string
+	}{
+		{name: "compressed_one_line", acceptEncoding: "gzip", vary: []string{"Origin"}},
+		{name: "compressed_three_lines", acceptEncoding: "gzip", vary: []string{"Origin", "Accept-Language", "User-Agent"}},
+		{name: "skipped_one_line", vary: []string{"Origin"}},
+	} {
+		b.Run(bm.name, func(b *testing.B) {
+			h := compressTestApp(func(c fiber.Ctx) error {
+				for _, line := range bm.vary {
+					c.Response().Header.Add(fiber.HeaderVary, line)
+				}
+				return compressTestSendUntypedReadme(c)
+			}).Handler()
+			fctx := benchRequest(bm.acceptEncoding)
+
+			b.ReportAllocs()
+
+			for b.Loop() {
+				fctx.Response.Reset()
 				h(fctx)
 			}
 		})
