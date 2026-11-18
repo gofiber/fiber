@@ -106,6 +106,9 @@ type Router interface {
 	ResponseContent(status int, description string, content map[string]RouteMediaType) Router
 	ResponseLink(status int, name string, link map[string]any) Router
 	OperationExtension(fields map[string]any) Router
+	OperationID(id string) Router
+	Callback(name string, callback map[string]any) Router
+	OperationServer(server map[string]any) Router
 	Accepts(model any, mediaTypes ...string) Router
 	Returns(status int, model any, mediaTypes ...string) Router
 	Params(in ParamLocation, model any) Router
@@ -190,6 +193,12 @@ type Route struct { // betteralign:ignore - see below
 	ExternalDocs map[string]any        `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI operation externalDocs
 	// OperationExtensions are extra operation-object fields, such as "x-" extensions.
 	OperationExtensions map[string]any `json:"operationExtensions,omitempty"` //nolint:tagliatelle // internal route metadata
+	// Callbacks are the operation's callbacks by name: each a Callback Object, which maps an expression to a Path Item.
+	Callbacks map[string]any `json:"callbacks,omitempty"`
+	// Servers are the operation's own Server Objects, which replace the ones a Domain router implies.
+	Servers []map[string]any `json:"servers,omitempty"`
+	// OperationID is the operationId to document the route with; empty derives it from the route's name or path.
+	OperationID string `json:"operationId,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 
 	Deprecated bool `json:"deprecated,omitempty"`
 	hidden     bool // Excluded from the generated OpenAPI specification

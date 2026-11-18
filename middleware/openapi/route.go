@@ -70,7 +70,8 @@ type routeFacts struct {
 	security           *[]map[string][]string
 	defaultResponses   map[string]fiber.RouteResponse // from Config.Defaults, for the statuses the route does not declare
 	defaultParams      []fiber.RouteParameter
-	host               string // the effective host pattern of a domain route, or "" for any host
+	defaultSecurity    *[]map[string][]string // from Config.Defaults, for a route that sets none and has no authentication inferred
+	host               string                 // the effective host pattern of a domain route, or "" for any host
 	summary            string
 	respType           string
 	ownConsumes        string
@@ -132,6 +133,10 @@ func applyDefaults(facts *routeFacts, r *fiber.Route, policy *routePolicy) {
 		}
 		if !tagged && len(r.Tags) == 0 && len(d.Tags) > 0 {
 			facts.tags, tagged = d.Tags, true
+		}
+		if facts.defaultSecurity == nil && d.Security != nil {
+			security := d.Security
+			facts.defaultSecurity = &security
 		}
 		facts.defaultParams = append(facts.defaultParams, d.Parameters...)
 		for status, resp := range d.Responses {

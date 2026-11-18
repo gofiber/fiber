@@ -119,6 +119,24 @@ func (t *docTarget[R]) OperationExternalDocs(description, url string) R {
 	return t.document(docOperationExternalDocs(description, url))
 }
 
+// OperationID sets the operationId of the most recently registered route; it overrides the one derived from the
+// route's name or path. An id another operation already uses gets a numeric suffix in the document.
+func (t *docTarget[R]) OperationID(id string) R {
+	return t.document(docOperationID(id))
+}
+
+// Callback documents a callback of the most recently registered route: name identifies it and callback is a
+// Callback Object, mapping each runtime expression to the Path Item that describes the request sent to it.
+func (t *docTarget[R]) Callback(name string, callback map[string]any) R {
+	return t.document(docCallback(name, callback))
+}
+
+// OperationServer adds a Server Object (a map with at least a "url") to the most recently registered route,
+// replacing the servers the document or a Domain router would give it.
+func (t *docTarget[R]) OperationServer(server map[string]any) R {
+	return t.document(docOperationServer(server))
+}
+
 // RequestBodyContent documents a per-media-type request body.
 func (t *docTarget[R]) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) R {
 	return t.document(docRequestBodyContent(description, required, content))

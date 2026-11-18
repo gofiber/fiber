@@ -269,6 +269,10 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 					continue
 				}
 
+				if reg != nil && reg.request && field.Tag.Get(reg.tagKey()) == "" && taggedForAnotherLocation(&field, reg.tagKey()) {
+					continue // a parameter, not a part of the body
+				}
+
 				tagInfo := parseJSONTag(&field, reg.tagKey())
 				if tagInfo.skip {
 					continue

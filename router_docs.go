@@ -17,7 +17,7 @@ func (app *App) copyRoute(route *Route) *Route {
 func (r *Route) isDocumented() bool {
 	return r.RequestBody != nil || r.Parameters != nil || r.ParameterModels != nil ||
 		r.Responses != nil || r.Tags != nil || r.Security != nil ||
-		r.ExternalDocs != nil || r.OperationExtensions != nil
+		r.ExternalDocs != nil || r.OperationExtensions != nil || r.Callbacks != nil || r.Servers != nil
 }
 
 // copyRouteInto copies route into dst, cloning its documentation metadata; Handlers and Params are shared.
@@ -41,6 +41,19 @@ func (*App) cloneRouteDocInto(dst, route *Route) {
 	dst.Security = deepcopy.Security(route.Security)
 	dst.ExternalDocs = copyAnyMap(route.ExternalDocs)
 	dst.OperationExtensions = copyAnyMap(route.OperationExtensions)
+	dst.Callbacks = copyAnyMap(route.Callbacks)
+	dst.Servers = cloneMaps(route.Servers)
+}
+
+func cloneMaps(list []map[string]any) []map[string]any {
+	if len(list) == 0 {
+		return nil
+	}
+	cloned := make([]map[string]any, len(list))
+	for i := range list {
+		cloned[i] = deepcopy.Map(list[i])
+	}
+	return cloned
 }
 
 func (app *App) copyRouteBase(route *Route) *Route {
@@ -67,6 +80,9 @@ func (*App) copyRouteBaseInto(dst, route *Route) {
 	dst.Security = nil
 	dst.ExternalDocs = nil
 	dst.OperationExtensions = nil
+	dst.Callbacks = nil
+	dst.Servers = nil
+	dst.OperationID = ""
 	dst.hidden = false
 	dst.docHandlers = nil
 }

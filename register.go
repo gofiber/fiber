@@ -44,6 +44,9 @@ type Register interface {
 	Hidden() Register
 	OperationExternalDocs(description, url string) Register
 	OperationExtension(fields map[string]any) Register
+	OperationID(id string) Register
+	Callback(name string, callback map[string]any) Register
+	OperationServer(server map[string]any) Register
 	Accepts(model any, mediaTypes ...string) Register
 	Returns(status int, model any, mediaTypes ...string) Register
 	Params(in ParamLocation, model any) Register

@@ -18,6 +18,8 @@ const componentsSchemasRef = "#/components/schemas/"
 type schemaKey struct {
 	t   reflect.Type
 	tag string
+	// request is set for a struct that has fields bound from elsewhere than the body, which a request body leaves out.
+	request bool
 }
 
 const (
@@ -36,6 +38,9 @@ type schemaRegistry struct {
 	naming      func(reflect.Type) string
 	tag         string
 	dialect     dialect
+	// request is set while a request body is converted: its structs leave out the fields bound from the query,
+	// the path, the headers and the cookies, which are parameters.
+	request bool
 }
 
 // configured reports whether Config.TypeSchemas gives t its schema, which is then written inline.
@@ -82,10 +87,10 @@ func (reg *schemaRegistry) itemSchemas() bool {
 // ref registers a named struct type and returns a reference to it. The name is claimed first so
 // self-referencing types do not recurse; the component is built independent of registration order.
 func (reg *schemaRegistry) ref(t reflect.Type) map[string]any {
-	key := schemaKey{t: t, tag: reg.tagKey()}
+	key := schemaKey{t: t, tag: reg.tagKey(), request: reg.request && hasLocationOnlyFields(t, reg.tagKey())}
 	name, ok := reg.names[key]
 	if !ok {
-		name = reg.claimName(t, key.tag)
+		name = reg.claimName(t, &key)
 		reg.names[key] = name
 		reg.schemas[name] = nil // reserve the entry so a recursive reference finds the name taken
 		if hasCustomSchema(t, reg) {
@@ -97,10 +102,13 @@ func (reg *schemaRegistry) ref(t reflect.Type) map[string]any {
 	return map[string]any{schemaKeyRef: componentsSchemasRef + name}
 }
 
-func (reg *schemaRegistry) claimName(t reflect.Type, tag string) string {
+func (reg *schemaRegistry) claimName(t reflect.Type, key *schemaKey) string {
 	suffix := ""
-	if tag != tagJSON {
-		suffix = "_" + tag
+	if key.tag != tagJSON {
+		suffix = "_" + key.tag
+	}
+	if key.request {
+		suffix += "_request"
 	}
 	typeName := t.Name()
 	if reg.naming != nil {

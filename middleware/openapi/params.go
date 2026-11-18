@@ -39,6 +39,29 @@ func taggedForAnotherLocation(field *reflect.StructField, tagKey string) bool {
 	return false
 }
 
+// hasLocationOnlyFields reports whether a struct has a field bound only from the query, the path, the headers or
+// the cookies, which makes it describe a request body differently from a response.
+func hasLocationOnlyFields(t reflect.Type, tagKey string) bool {
+	return hasLocationOnlyFieldsIn(t, tagKey, map[reflect.Type]bool{})
+}
+
+func hasLocationOnlyFieldsIn(t reflect.Type, tagKey string, seen map[reflect.Type]bool) bool {
+	if t.Kind() != reflect.Struct || seen[t] {
+		return false
+	}
+	seen[t] = true
+	for i := range t.NumField() {
+		field := t.Field(i)
+		if field.Tag.Get(tagKey) == "" && taggedForAnotherLocation(&field, tagKey) {
+			return true
+		}
+		if field.Anonymous && hasLocationOnlyFieldsIn(derefType(field.Type), tagKey, seen) {
+			return true
+		}
+	}
+	return false
+}
+
 func appendModelFields(params []fiber.RouteParameter, t reflect.Type, in fiber.ParamLocation, tagKey string, reg *schemaRegistry, expanded map[reflect.Type]bool) []fiber.RouteParameter {
 	for i := range t.NumField() {
 		field := t.Field(i)

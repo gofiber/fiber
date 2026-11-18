@@ -95,6 +95,9 @@ type Defaults struct {
 	PathPrefix string
 	// Tags tag a route that has none, replacing the tag derived from its group.
 	Tags []string
+	// Security is the requirement of a route that sets none and that no recognized authentication middleware
+	// covers; an empty non-nil list documents it as public (`security: []`).
+	Security []map[string][]string
 	// Parameters are added to a route that does not declare a parameter of the same name and location.
 	Parameters []fiber.RouteParameter
 }

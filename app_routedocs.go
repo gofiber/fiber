@@ -326,6 +326,41 @@ func docOperationExtension(fields map[string]any) func(route *Route) {
 	}
 }
 
+func docOperationID(id string) func(route *Route) {
+	id = utils.TrimSpace(id)
+	if id == "" {
+		panic("OperationID: id is required")
+	}
+	return func(route *Route) {
+		route.OperationID = id
+	}
+}
+
+func docCallback(name string, callback map[string]any) func(route *Route) {
+	name = utils.TrimSpace(name)
+	if name == "" {
+		panic("Callback: name is required")
+	}
+	if len(callback) == 0 {
+		panic("Callback: " + name + " needs at least one expression")
+	}
+	return func(route *Route) {
+		if route.Callbacks == nil {
+			route.Callbacks = make(map[string]any)
+		}
+		route.Callbacks[name] = deepcopy.Map(callback)
+	}
+}
+
+func docOperationServer(server map[string]any) func(route *Route) {
+	if url, ok := server["url"].(string); !ok || utils.TrimSpace(url) == "" {
+		panic("OperationServer: url is required")
+	}
+	return func(route *Route) {
+		route.Servers = append(route.Servers, deepcopy.Map(server))
+	}
+}
+
 // sanitizeContentMediaTypes returns content keyed by trimmed, validated media types.
 func sanitizeContentMediaTypes(content map[string]RouteMediaType) map[string]RouteMediaType {
 	rekey := false

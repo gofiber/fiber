@@ -678,6 +678,60 @@ app.Get("/users", listUsers).
     })
 ```
 
+### Typed routes
+
+Handlers are plain functions, so the middleware cannot read the types a handler
+works with. `openapi.Typed` registers a route from them instead: the handler
+takes its request as a struct, returns its response as a struct, and the route is
+documented from the two types.
+
+```go
+type GetUser struct {
+    ID     int    `uri:"id"`
+    Expand string `query:"expand"`
+    Token  string `header:"X-Token"`
+    Name   string `json:"name" validate:"required"` // a body field
+}
+
+openapi.Typed(app, fiber.MethodPost, "/users/:id", func(c fiber.Ctx, req *GetUser) (*User, error) {
+    return loadUser(req)
+}, openapi.WithStatus(fiber.StatusCreated)).Summary("Update a user")
+```
+
+The request is bound with `c.Bind().All` and the result is written as JSON
+with the status you set (`200` by default). The route documents the fields tagged
+`uri`, `query`, `header` and `cookie` as parameters, the others as the request body
+(not for `GET`, `HEAD`, `TRACE` and `OPTIONS`), and `*User` as the success response.
+`Empty` as the response type answers with no body (`204` by default).
+`WithMiddleware` runs handlers before the typed one. `Typed` returns the route, so
+`Summary`, `Tags` and the other helpers chain on it.
+
+A request body schema leaves out the fields that are bound only from the query,
+the path, the headers or the cookies, since those are parameters; the struct is
+then a second component with a `_request` suffix, next to the one a response of the
+same type uses.
+
+### Operation id, callbacks and servers
+
+`OperationID` sets the `operationId` of a route, which otherwise comes from its
+`Name` or its method and path; an id another operation already uses gets a numeric
+suffix. `Callback` documents a callback by name with a Callback Object, and
+`OperationServer` adds a Server Object (a map with a `url`) to the operation,
+replacing the servers the document or a [`Domain` router](#domain-routers) would
+give it; a route with servers of its own is not widened by another host that
+shares its path.
+
+```go
+app.Post("/files", upload).
+    OperationID("uploadFile").
+    Callback("done", map[string]any{
+        "{$request.body#/callbackUrl}": map[string]any{
+            "post": map[string]any{"responses": map[string]any{"200": map[string]any{"description": "Received"}}},
+        },
+    }).
+    OperationServer(map[string]any{"url": "https://uploads.example.com", "description": "Upload hosts"})
+```
+
 ### Several documents from one app
 
 `Filter` keeps a route in the document when it returns `true`, so one app can
@@ -743,6 +797,7 @@ app.Use(openapi.New(openapi.Config{
     Defaults: []openapi.Defaults{{
         PathPrefix: "/api/v1",
         Tags:       []string{"v1"},
+        Security:   []map[string][]string{{"company": {}}},
         Parameters: []fiber.RouteParameter{{Name: "X-Tenant", In: fiber.ParamInHeader, Required: true}},
         Responses: map[int]fiber.RouteResponse{
             fiber.StatusTooManyRequests: {Description: "Too many requests"},
@@ -755,7 +810,8 @@ app.Use(openapi.New(openapi.Config{
 An entry applies to the routes whose registered path is under `PathPrefix`, at a
 segment boundary (`/api/v1` does not select `/api/v1x`). What a route declares
 itself wins: `Tags` apply to a route without tags (replacing the tag derived from
-its group), `Parameters` only to a name and location the route does not declare,
+its group), `Security` to a route that sets none and has no authentication inferred
+from its middleware (an empty list documents it as public), `Parameters` only to a name and location the route does not declare,
 and `Responses` only to a status it does not declare, without replacing the
 automatic success response. With several entries, the first one that sets
 something wins. `ErrorSchema` also fills a declared `4xx` or `5xx` response that
