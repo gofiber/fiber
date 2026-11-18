@@ -2,7 +2,6 @@ package sse
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2/simd"
 )
 
 var errInvalidField = errors.New("field must not contain CR or LF")
@@ -52,170 +52,76 @@ func writeEvent(w *bufio.Writer, event Event, jsonMarshal ...utils.JSONMarshal) 
 		}
 	}
 
-	if err := writeEventFrame(w, data, id, name, event.Retry); err != nil {
+	if id != "" {
+		writeEventField(w, "id: ", id)
+	}
+	if name != "" {
+		writeEventField(w, "event: ", name)
+	}
+	if event.Retry > 0 {
+		writeRetryField(w, event.Retry)
+	}
+	if data.hasData {
+		writeEventData(w, data.text)
+	}
+	// The buffered writer returns the first write error on all subsequent writes.
+	if err := w.WriteByte('\n'); err != nil {
 		return fmt.Errorf("sse: write event: %w", err)
 	}
 	return nil
 }
 
-// writeEventFrame reuses the writer buffer and writes fields directly as it fills.
-func writeEventFrame(w *bufio.Writer, data eventPayload, id, name string, retry time.Duration) error {
-	frame := w.AvailableBuffer()
-	var err error
-	if id != "" {
-		frame, err = appendEventField(w, frame, "id: ", id)
-		if err != nil {
-			return err
-		}
-	}
-	if name != "" {
-		frame, err = appendEventField(w, frame, "event: ", name)
-		if err != nil {
-			return err
-		}
-	}
-	if retry > 0 {
-		frame, err = appendEventRetry(w, frame, retry)
-		if err != nil {
-			return err
-		}
-	}
-	if data.hasData {
-		if data.raw != nil {
-			frame, err = appendEventData(w, frame, data.raw)
-		} else {
-			frame, err = appendEventData(w, frame, data.text)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	return finishEventFrame(w, frame)
-}
-
-// appendEventData emits CRLF, bare CR, and LF as line breaks without copying the payload.
-func appendEventData[T string | []byte](w *bufio.Writer, frame []byte, data T) ([]byte, error) {
-	// For longer CR-free data, the standard library's single-byte search is faster.
-	mixed := len(data) <= 32 || eventIndexByte(data, '\r') >= 0
+// writeEventData emits CRLF, bare CR, and LF as line breaks without copying the payload.
+func writeEventData(w *bufio.Writer, data string) {
+	// AVX2 finds either delimiter in one scan. On other CPUs, the standard
+	// library's single-byte search is faster for longer CR-free payloads.
+	mixed := len(data) < simd.MinLen || simd.Accelerated() || strings.IndexByte(data, '\r') >= 0
 	for {
 		var i int
 		if mixed {
 			i = utils.IndexAny2(data, '\r', '\n')
 		} else {
-			i = eventIndexByte(data, '\n')
+			i = strings.IndexByte(data, '\n')
 		}
 		if i < 0 {
-			return appendEventField(w, frame, "data: ", data)
+			writeEventField(w, "data: ", data)
+			return
 		}
-		var err error
-		frame, err = appendEventField(w, frame, "data: ", data[:i])
-		if err != nil {
-			return nil, err
-		}
+		writeEventField(w, "data: ", data[:i])
 		cr := data[i] == '\r'
 		data = data[i+1:]
-		if cr && len(data) > 0 && data[0] == '\n' {
+		if cr && data != "" && data[0] == '\n' {
 			data = data[1:]
 		}
 	}
 }
 
-// eventIndexByte searches either payload representation without converting it.
-func eventIndexByte[T string | []byte](data T, c byte) int {
-	switch v := any(data).(type) {
-	case string:
-		return strings.IndexByte(v, c)
-	case []byte:
-		return bytes.IndexByte(v, c)
-	}
-	return -1
-}
-
-// appendEventField appends into the writer's available buffer or sends the field through the writer.
-func appendEventField[T string | []byte](w *bufio.Writer, frame []byte, prefix string, value T) ([]byte, error) {
-	if len(value) <= cap(frame)-len(frame)-len(prefix)-1 {
-		frame = append(frame, prefix...)
-		switch v := any(value).(type) {
-		case string:
-			frame = append(frame, v...)
-		case []byte:
-			frame = append(frame, v...)
-		}
-		return append(frame, '\n'), nil
-	}
-	return writeEventField(w, frame, prefix, value)
-}
-
-// writeEventField commits pending bytes before sending a field that does not fit.
+// writeEventField writes one field and its line terminator.
 //
-//nolint:wrapcheck // writeEvent adds the frame context to writer errors.
-func writeEventField[T string | []byte](w *bufio.Writer, frame []byte, prefix string, value T) ([]byte, error) {
-	if _, err := w.Write(frame); err != nil {
-		return nil, err
-	}
-	if _, err := w.WriteString(prefix); err != nil {
-		return nil, err
-	}
-	var err error
-	switch v := any(value).(type) {
-	case string:
-		_, err = w.WriteString(v)
-	case []byte:
-		_, err = w.Write(v)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := w.WriteByte('\n'); err != nil {
-		return nil, err
-	}
-	return w.AvailableBuffer(), nil
+//nolint:errcheck // The write of the final blank line reports any sticky bufio error.
+func writeEventField(w *bufio.Writer, prefix, value string) {
+	w.WriteString(prefix)
+	w.WriteString(value)
+	w.WriteByte('\n')
 }
 
-// appendEventRetry uses the writer's buffer when it has room for a complete retry field.
+// writeRetryField writes the delay in whole milliseconds.
 //
-//nolint:wrapcheck // writeEvent and Stream.Retry add the frame context to writer errors.
-func appendEventRetry(w *bufio.Writer, frame []byte, retry time.Duration) ([]byte, error) {
-	const maxRetryFieldSize = len("retry: \n") + 20 // An int64 takes at most 20 characters.
-	if cap(frame)-len(frame) >= maxRetryFieldSize {
-		return appendRetry(frame, retry), nil
-	}
-
-	var scratch [maxRetryFieldSize]byte
-	line := appendRetry(scratch[:0], retry)
-	if len(line) <= cap(frame)-len(frame) {
-		return append(frame, line...), nil
-	}
-	if _, err := w.Write(frame); err != nil {
-		return nil, err
-	}
-	for _, c := range line {
-		if err := w.WriteByte(c); err != nil {
-			return nil, err
+//nolint:errcheck // The write of the final blank line reports any sticky bufio error.
+func writeRetryField(w *bufio.Writer, retry time.Duration) {
+	w.WriteString("retry: ")
+	const maxDigits = 20 // An int64 takes at most 20 characters.
+	delay := retryMilliseconds(retry)
+	if w.Available() >= maxDigits {
+		w.Write(utils.AppendInt(w.AvailableBuffer(), delay))
+	} else {
+		var scratch [maxDigits]byte
+		// Write individual bytes so the scratch stays on the stack if the writer flushes.
+		for _, digit := range utils.AppendInt(scratch[:0], delay) {
+			w.WriteByte(digit)
 		}
 	}
-	return w.AvailableBuffer(), nil
-}
-
-// appendRetry appends the retry field, including its line terminator.
-func appendRetry(dst []byte, retry time.Duration) []byte {
-	dst = append(dst, "retry: "...)
-	dst = utils.AppendInt(dst, retryMilliseconds(retry))
-	return append(dst, '\n')
-}
-
-// finishEventFrame writes any pending fields and the blank line ending the frame.
-//
-//nolint:wrapcheck // writeEvent and Stream.Retry add the frame context to writer errors.
-func finishEventFrame(w *bufio.Writer, frame []byte) error {
-	if len(frame) < cap(frame) {
-		_, err := w.Write(append(frame, '\n'))
-		return err
-	}
-	if _, err := w.Write(frame); err != nil {
-		return err
-	}
-	return w.WriteByte('\n')
+	w.WriteByte('\n')
 }
 
 func writeComment(w *bufio.Writer, comment string) error {
@@ -239,10 +145,10 @@ func writeComment(w *bufio.Writer, comment string) error {
 
 type eventPayload struct {
 	text    string
-	raw     []byte
 	hasData bool
 }
 
+// eventData borrows byte-backed payloads for the duration of the synchronous write.
 func eventData(data any, jsonMarshal utils.JSONMarshal) (eventPayload, error) {
 	switch value := data.(type) {
 	case nil:
@@ -250,15 +156,15 @@ func eventData(data any, jsonMarshal utils.JSONMarshal) (eventPayload, error) {
 	case string:
 		return eventPayload{text: value, hasData: true}, nil
 	case []byte:
-		return eventPayload{raw: value, hasData: true}, nil
+		return eventPayload{text: utils.UnsafeString(value), hasData: true}, nil
 	case json.RawMessage:
-		return eventPayload{raw: value, hasData: true}, nil
+		return eventPayload{text: utils.UnsafeString(value), hasData: true}, nil
 	default:
 		encoded, err := jsonMarshal(value)
 		if err != nil {
 			return eventPayload{}, fmt.Errorf("sse: marshal data: %w", err)
 		}
-		return eventPayload{raw: encoded, hasData: true}, nil
+		return eventPayload{text: utils.UnsafeString(encoded), hasData: true}, nil
 	}
 }
 

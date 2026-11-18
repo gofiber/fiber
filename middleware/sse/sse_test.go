@@ -169,6 +169,7 @@ func Test_SSE_EventFrameSizes(t *testing.T) {
 }
 
 // Test_SSE_EventAllocations stays sequential because AllocsPerRun cannot run in a parallel test.
+// conventions:ignore parallel: apptest.FewestAllocs calls testing.AllocsPerRun
 func Test_SSE_EventAllocations(t *testing.T) {
 	w := bufio.NewWriter(io.Discard)
 	stream := newStream(context.Background(), w, "")
@@ -186,14 +187,8 @@ func Test_SSE_EventAllocations(t *testing.T) {
 		{name: "raw JSON", event: Event{Data: json.RawMessage(`{"status":"ready"}`)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			send := func() { require.NoError(t, stream.Event(tc.event)) }
-			// Other goroutines can raise this process-wide count. A per-event allocation
-			// will be present in every sample.
-			fewest := testing.AllocsPerRun(100, send)
-			for attempt := 0; attempt < 2 && fewest > 0; attempt++ {
-				fewest = min(fewest, testing.AllocsPerRun(100, send))
-			}
-			require.Zero(t, fewest)
+			allocs := apptest.FewestAllocs(3, 100, func() { require.NoError(t, stream.Event(tc.event)) })
+			require.Zero(t, allocs)
 		})
 	}
 }
@@ -268,16 +263,9 @@ func Test_SSE_FrameWritersReturnWriterError(t *testing.T) {
 		size          int
 		alreadyFailed bool
 	}{
-		{name: "ID", size: 1, write: eventWriter(Event{ID: "42"})},
-		{name: "name", size: 1, write: eventWriter(Event{Name: "update"})},
-		{name: "retry", size: 1, write: eventWriter(Event{Retry: time.Second})},
-		{name: "data prefix", size: 1, write: eventWriter(Event{Data: "hello"})},
-		{name: "multiline data value", size: 6, write: eventWriter(Event{Data: "hello\nworld"})},
-		{name: "data line terminator", size: 11, write: eventWriter(Event{Data: "hello"})},
+		{name: "oversized event", size: 1, write: eventWriter(Event{ID: "42", Name: "update", Data: "hello\nworld"})},
 		{name: "final blank line", size: 12, write: eventWriter(Event{Data: "hello"})},
-		{name: "failed writer before field", size: 1, alreadyFailed: true, write: eventWriter(Event{Data: "hello"})},
-		{name: "failed writer before retry", size: 1, alreadyFailed: true, write: eventWriter(Event{Retry: time.Second})},
-		{name: "failed writer at capacity", size: 12, alreadyFailed: true, write: eventWriter(Event{Data: "hello"})},
+		{name: "latched error", size: 16, alreadyFailed: true, write: eventWriter(Event{Retry: time.Second})},
 		{name: "comment", size: 1, write: func(w *bufio.Writer) error { return writeComment(w, "") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

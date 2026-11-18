@@ -197,11 +197,8 @@ func (s *Stream) Retry(retry time.Duration) error {
 		return nil
 	}
 	return s.write(func(w *bufio.Writer) error {
-		frame, err := appendEventRetry(w, w.AvailableBuffer(), retry)
-		if err == nil {
-			err = finishEventFrame(w, frame)
-		}
-		if err != nil {
+		writeRetryField(w, retry)
+		if err := w.WriteByte('\n'); err != nil {
 			return fmt.Errorf("sse: write retry: %w", err)
 		}
 		return nil
