@@ -150,6 +150,9 @@ func fullyPopulatedRoute() *Route {
 		},
 		ExternalDocs:        map[string]any{"url": "https://example.com"},
 		OperationExtensions: map[string]any{"x-custom": "v"},
+		Callbacks:           map[string]any{"done": map[string]any{"{$request.body#/url}": map[string]any{}}},
+		Servers:             []map[string]any{{"url": "https://example.com"}},
+		OperationID:         "operationID",
 		ParameterModels:     []RouteParameterModel{{In: "query", Model: routeModelQuery{}}},
 	}
 }
@@ -189,6 +192,8 @@ func Test_CopyRoute_Complete(t *testing.T) {
 	resp.Links["next"] = "mutated"
 	original.ExternalDocs["url"] = "mutated"
 	original.OperationExtensions["x-custom"] = "mutated"
+	original.Callbacks["done"] = "mutated"
+	original.Servers[0]["url"] = "mutated"
 
 	require.Equal(t, "tag", clone.Tags[0])
 	require.Equal(t, []string{"read"}, clone.Security[0]["auth"])
@@ -199,6 +204,8 @@ func Test_CopyRoute_Complete(t *testing.T) {
 	require.IsType(t, map[string]any{}, cloneResp.Links["next"])
 	require.Equal(t, "https://example.com", clone.ExternalDocs["url"])
 	require.Equal(t, "v", clone.OperationExtensions["x-custom"])
+	require.IsType(t, map[string]any{}, clone.Callbacks["done"])
+	require.Equal(t, "https://example.com", clone.Servers[0]["url"])
 }
 
 // boundedTimeout is how long runBounded waits before calling a deadlock.
@@ -2336,4 +2343,47 @@ func Test_RemoveRoute_HandlerCountPerUseRegistration(t *testing.T) {
 
 	app.RemoveRoute("/x")
 	require.Equal(t, uint32(1), app.HandlersCount())
+}
+
+func Test_Route_OperationIDCallbackAndServer(t *testing.T) {
+	t.Parallel()
+	app := New()
+	callback := map[string]any{"{$request.body#/url}": map[string]any{"post": map[string]any{"responses": map[string]any{"200": map[string]any{"description": "ok"}}}}}
+	server := map[string]any{"url": "https://uploads.example.com", "description": "uploads"}
+	app.Post("/files", testHandlerOK).Name("upload").OperationID(" uploadFile ").Callback("done", callback).OperationServer(server)
+	group := app.Group("/g")
+	group.Get("/x", testHandlerOK).OperationID("groupX")
+	app.RouteChain("/chain").Get(testHandlerOK).OperationID("chainGet")
+	app.Domain("a.example.com").Get("/d", testHandlerOK).OperationID("domainGet")
+
+	routes := routesFor(app, "/files")
+	route := routes[MethodPost]
+	require.Equal(t, "uploadFile", route.OperationID)
+	require.Equal(t, callback, route.Callbacks["done"])
+	require.Equal(t, []map[string]any{server}, route.Servers)
+	require.Equal(t, "groupX", routesFor(app, "/g/x")[MethodGet].OperationID)
+	require.Equal(t, "chainGet", routesFor(app, "/chain")[MethodGet].OperationID)
+	require.Equal(t, "domainGet", routesFor(app, "/d")[MethodGet].OperationID)
+
+	// What the app keeps is a copy: neither the arguments nor the returned route share their maps.
+	callback["extra"] = true
+	server["url"] = "changed"
+	route.Callbacks["done"] = nil
+	route.Servers[0]["url"] = "changed too"
+	again := routesFor(app, "/files")[MethodPost]
+	require.NotContains(t, again.Callbacks, "extra")
+	require.NotNil(t, again.Callbacks["done"])
+	require.Equal(t, "https://uploads.example.com", again.Servers[0]["url"])
+	require.Equal(t, "uploadFile", app.GetRoute("upload").OperationID)
+}
+
+func Test_Route_OperationHelpersValidate(t *testing.T) {
+	t.Parallel()
+	app := New()
+	route := app.Get("/x", testHandlerOK)
+	require.PanicsWithValue(t, "OperationID: id is required", func() { route.OperationID("  ") })
+	require.PanicsWithValue(t, "Callback: name is required", func() { route.Callback(" ", map[string]any{"e": map[string]any{}}) })
+	require.PanicsWithValue(t, "Callback: done needs at least one expression", func() { route.Callback("done", nil) })
+	require.PanicsWithValue(t, "OperationServer: url is required", func() { route.OperationServer(map[string]any{"description": "no url"}) })
+	require.PanicsWithValue(t, "OperationServer: url is required", func() { route.OperationServer(map[string]any{"url": " "}) })
 }

@@ -199,6 +199,9 @@ type Register interface {
     Hidden() Register
     OperationExternalDocs(description, url string) Register
     OperationExtension(fields map[string]any) Register
+    OperationID(id string) Register
+    Callback(name string, callback map[string]any) Register
+    OperationServer(server map[string]any) Register
     Accepts(model any, mediaTypes ...string) Register
     Returns(status int, model any, mediaTypes ...string) Register
     Params(in ParamLocation, model any) Register
@@ -725,6 +728,7 @@ A route can describe itself for tools that read the route table, such as the [Op
 | `Parameter`, `ParameterWithExample`, `AddParameter`, `Params` | Parameters, one at a time or from the fields of a struct. `Parameter` and `ParameterWithExample` are short forms of `AddParameter`; the location argument is a `fiber.ParamLocation`: `ParamInPath`, `ParamInQuery`, `ParamInHeader`, `ParamInCookie` or `ParamInQuerystring`. A plain `string` variable needs `fiber.ParamLocation(s)` |
 | `Security` | The authentication the route needs |
 | `OperationExternalDocs`, `OperationExtension` | External documentation and `x-` extensions |
+| `OperationID`, `Callback`, `OperationServer` | The operationId (overriding the one derived from the route's name or path; a repeated id gets a numeric suffix), a callback by name (a Callback Object, mapping an expression to a Path Item) and a Server Object (a map with a `url`) that replaces the servers the document or a `Domain` router would give the operation |
 
 Any helper that takes a schema accepts either a `map[string]any` or a Go value, which the OpenAPI middleware reflects into a schema. `Security` called with no argument documents a route that needs no authentication, which overrides both the document-level default and what the middleware chain would imply; with requirements it documents those instead. Both stop the OpenAPI middleware inferring authentication for the route.
 

@@ -559,3 +559,53 @@ func Test_OpenAPI_ServedDocumentCarriesTheNewConfigThroughACachedBuild(t *testin
 	req.Header.Set(fiber.HeaderIfNoneMatch, etag)
 	apptest.Expect(t, app, req, fiber.StatusNotModified)
 }
+
+func Test_OpenAPI_OperationIDCallbackAndServers(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Post("/files", listUsers).Name("upload files").OperationID("uploadFile").
+		Callback("done", map[string]any{"{$request.body#/url}": map[string]any{"post": map[string]any{"responses": map[string]any{"200": map[string]any{"description": "ok"}}}}}).
+		OperationServer(map[string]any{"url": "https://{region}.example.com", "variables": map[string]any{"region": map[string]any{"default": "eu"}}})
+	app.Get("/files", listUsers).Name("upload files") // the same name, so the generated id is numbered
+	app.Domain("a.example.com").Get("/hosted", listUsers).OperationServer(map[string]any{"url": "https://own.example.com"})
+	app.Domain("b.example.com").Get("/hosted", listUsers)
+	app.Post("/twin", listUsers).OperationID("uploadFile") // an id another operation uses is numbered
+	spec := modelSpec(t, app)
+
+	post := modelOperation(t, spec, "/files", "post")
+	require.Equal(t, "uploadFile", post["operationId"])
+	require.Contains(t, requireMap(t, post["callbacks"]), "done")
+	servers, ok := post["servers"].([]any)
+	require.True(t, ok)
+	require.Equal(t, "https://{region}.example.com", requireMap(t, servers[0])["url"])
+	require.Equal(t, "upload_files", modelOperation(t, spec, "/files", "get")["operationId"])
+	require.Equal(t, "uploadFile_2", modelOperation(t, spec, "/twin", "post")["operationId"])
+
+	hosted, ok := modelOperation(t, spec, "/hosted", "get")["servers"].([]any)
+	require.True(t, ok)
+	require.Len(t, hosted, 1, "a route's own servers are not widened by another host")
+	require.Equal(t, "https://own.example.com", requireMap(t, hosted[0])["url"])
+}
+
+func Test_OpenAPI_DefaultsSecurityFillsRoutesWithoutAuthentication(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use("/guarded", chainKeyAuth())
+	app.Get("/guarded/a", listUsers)
+	app.Get("/api/b", listUsers)
+	app.Get("/api/public", listUsers).Security()
+	app.Get("/api/own", listUsers).Security(map[string][]string{"own": {}})
+	app.Get("/other", listUsers)
+	spec := modelSpec(t, app, Config{
+		SecuritySchemes: map[string]any{"company": map[string]any{"type": "http", "scheme": "bearer"}, "own": map[string]any{"type": "http", "scheme": "basic"}},
+		Defaults: []Defaults{
+			{PathPrefix: "/api", Security: []map[string][]string{{"company": {}}}},
+			{PathPrefix: "/guarded", Security: []map[string][]string{{"company": {}}}},
+		},
+	})
+	require.Equal(t, []any{map[string]any{"company": []any{}}}, modelOperation(t, spec, "/api/b", "get")["security"])
+	require.Equal(t, []any{}, modelOperation(t, spec, "/api/public", "get")["security"], "an explicit Security() makes it public")
+	require.Equal(t, []any{map[string]any{"own": []any{}}}, modelOperation(t, spec, "/api/own", "get")["security"])
+	require.Equal(t, []any{map[string]any{"bearerAuth": []any{}}}, modelOperation(t, spec, "/guarded/a", "get")["security"], "inferred authentication wins")
+	require.NotContains(t, modelOperation(t, spec, "/other", "get"), "security")
+}

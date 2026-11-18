@@ -93,6 +93,7 @@ type operation struct {
 	RequestBody  *requestBody        `json:"requestBody,omitempty"`  //nolint:tagliatelle // OpenAPI spec uses camelCase
 	ExternalDocs map[string]any      `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	extensions   map[string]any      // Arbitrary operation-object fields, merged at marshal time
+	Callbacks    map[string]any      `json:"callbacks,omitempty"`
 
 	Security *[]map[string][]string `json:"security,omitempty"`
 
@@ -105,6 +106,8 @@ type operation struct {
 	Servers    []Server    `json:"servers,omitempty"`
 
 	Deprecated bool `json:"deprecated,omitempty"`
+
+	ownServers bool // the servers were set on the route itself, so a domain route sharing the path adds none
 }
 
 //nolint:gocritic // hugeParam: a value receiver is required so map values are marshaled through this method
@@ -471,6 +474,8 @@ func (b *specBuilder) inferRoute(r *fiber.Route, covering []coveringMiddleware) 
 		if requirement := b.schemes.requirement(facts.chain); requirement != nil {
 			security := []map[string][]string{requirement}
 			facts.security = &security
+		} else {
+			facts.security = facts.defaultSecurity
 		}
 	}
 	return facts
@@ -534,7 +539,7 @@ func (b *specBuilder) addVariant(r *fiber.Route, facts *routeFacts, variant *pat
 // follows becomes one for every host.
 func (b *specBuilder) addHost(path, method, host string) {
 	op := b.paths[path][method]
-	if len(op.Servers) == 0 {
+	if len(op.Servers) == 0 || op.ownServers {
 		return
 	}
 	if host == "" {
@@ -579,7 +584,10 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 	if summary == "" {
 		summary = r.Method + " " + variant.Path
 	}
-	operationID := operationIDFromName(r.Name)
+	operationID := r.OperationID
+	if operationID == "" {
+		operationID = operationIDFromName(r.Name)
+	}
 	if operationID == "" {
 		operationID = generateOperationID(r.Method, variant.Path)
 	}
@@ -605,7 +613,14 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 	}
 	applyErrorSchema(responses, r.Responses, cfg, b.reg)
 
+	servers := domainServers(facts.host)
+	if len(r.Servers) > 0 {
+		servers = serversFromMaps(r.Servers)
+	}
+
+	b.reg.request = true
 	reqBody := buildRequestBody(r.RequestBody, facts.bodyType, b.reg)
+	b.reg.request = false
 	if reqBody == nil && facts.ownConsumes != "" {
 		reqBody = &requestBody{Content: map[string]map[string]any{facts.ownConsumes: {}}}
 	}
@@ -624,9 +639,27 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 		Responses:    responses,
 		Security:     facts.security,
 		ExternalDocs: r.ExternalDocs,
-		Servers:      domainServers(facts.host),
+		Servers:      servers,
+		ownServers:   len(r.Servers) > 0,
+		Callbacks:    r.Callbacks,
 		extensions:   r.OperationExtensions,
 	}
+}
+
+// serversFromMaps reads the Server Objects of Route.Servers, skipping one that is not a Server Object.
+func serversFromMaps(objects []map[string]any) []Server {
+	servers := make([]Server, 0, len(objects))
+	for _, object := range objects {
+		data, err := json.Marshal(object)
+		if err != nil {
+			continue
+		}
+		var server Server
+		if json.Unmarshal(data, &server) == nil && server.URL != "" {
+			servers = append(servers, server)
+		}
+	}
+	return servers
 }
 
 // domainServers describes the host of a domain route as an operation-level server, or nil for any host.
