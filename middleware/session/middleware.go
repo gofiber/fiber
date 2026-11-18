@@ -522,7 +522,8 @@ func (m *Middleware) Delete(key any) {
 // Keys returns all keys in the current session.
 //
 // Returns:
-//   - []any: A slice of all keys in the session.
+//   - []any: A slice of all keys in the session. The internal key that holds
+//     the absolute expiration is left out.
 //
 // Usage:
 //

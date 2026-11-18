@@ -591,7 +591,8 @@ func (s *Session) overtakenBy(raw []byte) bool {
 // Keys retrieves all keys in the current session.
 //
 // Returns:
-//   - []any: A slice of all keys in the session.
+//   - []any: A slice of all keys in the session. The internal key that holds
+//     the absolute expiration is left out.
 //
 // Note: a key that can alias the session has the same effect as in Get.
 //

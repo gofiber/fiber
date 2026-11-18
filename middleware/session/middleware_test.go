@@ -467,6 +467,31 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	sessionTestRequest(t, app.Handler(), fiber.MethodGet, "", fiber.StatusOK)
 }
 
+// Keys lists what the application stored. The deadline of the session, which a store with an
+// AbsoluteTimeout keeps with the values, is not one of them in either format, and clearing the
+// session through its keys leaves the deadline in place. https://github.com/gofiber/fiber/issues/4888
+func Test_Session_Middleware_KeysLeaveOutTheDeadline(t *testing.T) {
+	t.Parallel()
+	for name, codec := range map[string]Codec{"gob": nil, "a Codec": JSONCodec{}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{IdleTimeout: time.Hour, AbsoluteTimeout: time.Hour, Codec: codec}))
+			app.Get("/", func(c fiber.Ctx) error {
+				m := FromContext(c)
+				fresh := m.Keys()
+				m.Set("name", "john")
+				listed := m.Keys()
+				for _, key := range listed {
+					m.Delete(key)
+				}
+				return c.SendString(fmt.Sprintf("%v %v %v %t", fresh, listed, m.Keys(), !m.Session.absExpiration().IsZero()))
+			})
+			apptest.ExpectBody(t, app, "/", fiber.StatusOK, "[] [name] [] true")
+		})
+	}
+}
+
 // Regression: https://github.com/gofiber/fiber/issues/4348
 // A failing session store must result in an error response, not a panic.
 func Test_Session_Middleware_StoreError(t *testing.T) {

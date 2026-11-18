@@ -2059,7 +2059,7 @@ The session middleware has undergone significant improvements in v3, focusing on
 
 - **Idle Timeout**: The `Expiration` field has been replaced with `IdleTimeout`, which handles session inactivity. If the session is idle for the specified duration, it will expire. The idle timeout is updated when the session is saved. If you are using the middleware handler, the idle timeout will be updated automatically.
 
-- **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
+- **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity. The deadline is kept with the values of the session, but `Keys()` of the `Session` and of the `Middleware` list only the keys you set, so clearing a session with `for _, k := range sess.Keys() { sess.Delete(k) }` leaves the deadline in place; it used to list the internal key too and clear the deadline with the rest.
 
 - **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
 

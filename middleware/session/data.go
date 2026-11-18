@@ -302,10 +302,11 @@ func (d *data) Delete(key any) {
 	delete(d.errs, key)
 }
 
-// Keys retrieves all keys in the data map.
+// Keys retrieves all keys in the data map, except the internal key that holds
+// the absolute expiration.
 //
 // Returns:
-//   - []any: A slice of all keys in the data map.
+//   - []any: A slice of the keys in the data map.
 //
 // Usage:
 //

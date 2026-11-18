@@ -839,7 +839,7 @@ sess := session.FromContext(c)
 sess.Get(key any) any
 sess.Set(key, value any)
 sess.Delete(key any)
-sess.Keys() []any
+sess.Keys() []any // the keys you set; the absolute deadline of the session is not one of them
 
 // Typed read: ok is false when the key is absent or holds another type
 visits, ok := session.GetAs[int](sess, "visits")

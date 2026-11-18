@@ -246,7 +246,9 @@ func getInto(lookup func(key any) (any, bool), key, target any) error {
 type format interface {
 	// keys returns the keys of the session, and whether one of them could alias the
 	// session, so that the caller can change it through the key without a Set. The
-	// caller holds the read lock.
+	// deadline of the session is not one of them: it is not a value of the application,
+	// and clearing a session through its keys must not clear it. The caller holds the
+	// read lock.
 	keys(values map[any]any) (keys []any, aliased bool)
 	// encode returns the values of the session as the bytes to store. The caller holds
 	// the read lock.
@@ -264,6 +266,9 @@ func (gobFormat) keys(values map[any]any) ([]any, bool) {
 	keys := make([]any, 0, len(values))
 	aliased := false
 	for k := range values {
+		if k == absExpirationKey {
+			continue
+		}
 		// gob flattens pointer keys, so mutating a pointee changes the payload.
 		aliased = aliased || valueMayAlias(k)
 		keys = append(keys, k)
