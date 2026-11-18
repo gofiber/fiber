@@ -39,25 +39,42 @@ func taggedForAnotherLocation(field *reflect.StructField, tagKey string) bool {
 	return false
 }
 
-// hasLocationOnlyFields reports whether a struct has a field bound only from the query, the path, the headers or
-// the cookies, which makes it describe a request body differently from a response.
-func hasLocationOnlyFields(t reflect.Type, tagKey string) bool {
-	return hasLocationOnlyFieldsIn(t, tagKey, map[reflect.Type]bool{})
+// hasLocationOnlyFields reports whether the schema of a struct has a field bound only from the query, the path,
+// the headers or the cookies, which makes it describe a request body differently from a response. Fields the
+// schema leaves out (a "-" tag, an unexported field) and types with a schema of their own do not count. The answer
+// is remembered per registry, as it only depends on the type.
+func (reg *schemaRegistry) hasLocationOnlyFields(t reflect.Type) bool {
+	if answer, known := reg.locationOnly[t]; known {
+		return answer
+	}
+	answer := locationOnlyIn(t, reg.tagKey(), reg, map[reflect.Type]bool{})
+	if reg.locationOnly == nil {
+		reg.locationOnly = make(map[reflect.Type]bool)
+	}
+	reg.locationOnly[t] = answer
+	return answer
 }
 
-func hasLocationOnlyFieldsIn(t reflect.Type, tagKey string, seen map[reflect.Type]bool) bool {
-	if t.Kind() != reflect.Struct || seen[t] {
+func locationOnlyIn(t reflect.Type, tagKey string, reg *schemaRegistry, seen map[reflect.Type]bool) bool {
+	if t.Kind() != reflect.Struct || seen[t] || t == timeType || hasCustomSchema(t, reg) {
 		return false
 	}
 	seen[t] = true
 	for i := range t.NumField() {
 		field := t.Field(i)
+		if parseJSONTag(&field, tagKey).skip {
+			continue
+		}
+		elem := derefElem(field.Type)
+		if !field.IsExported() && (!field.Anonymous || elem.Kind() != reflect.Struct) {
+			continue
+		}
 		if field.Tag.Get(tagKey) == "" && taggedForAnotherLocation(&field, tagKey) {
 			return true
 		}
 		// A named struct held by a field becomes its own component with its own key; only an embedded struct
 		// and an unnamed one are written into this schema.
-		if elem := derefElem(field.Type); (field.Anonymous || elem.Name() == "") && hasLocationOnlyFieldsIn(elem, tagKey, seen) {
+		if (field.Anonymous || elem.Name() == "") && locationOnlyIn(elem, tagKey, reg, seen) {
 			return true
 		}
 	}

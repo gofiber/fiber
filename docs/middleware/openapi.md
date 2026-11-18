@@ -1481,7 +1481,7 @@ description); the only limitation is that a value cannot contain a comma
 immediately followed by a directive key (`description`, `example`, `format`,
 `enum`, `default`, `pattern`, `title`, `multipleOf` or an `x-` name, then a
 colon) or by a flag (`readOnly`, `writeOnly`, `deprecated`, `uniqueItems` or
-`nullable`) that ends at a comma or the end of the tag. Such a comma starts the
+`nullable`, spelled in camelCase or all lowercase) that ends at a comma or the end of the tag. Such a comma starts the
 next directive, so `description:Sorted, title:x` sets a description and a title.
 
 A struct whose fields carry examples gets an object-level `example` assembled
