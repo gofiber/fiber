@@ -2471,53 +2471,91 @@ func Test_CacheDeltaSecondsOverflow(t *testing.T) {
 	t.Parallel()
 	const huge = "99999999999999999999"
 
-	t.Run("request min-fresh", func(t *testing.T) {
-		t.Parallel()
-		app, _ := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=5")
-		cacheTestAExpectBody(t, app, "/", cacheMiss, "1")
+	// A min-fresh above the freshness left is not met, whatever the lifetime comes from and
+	// whether or not the two are above the ceiling of a stored max-age.
+	for _, tc := range []struct{ name, origin, expires, minFresh string }{
+		{name: "max-age", origin: "public, max-age=5", minFresh: huge},
+		{name: "Expires", origin: "public", expires: "Fri, 31 Dec 9999 23:59:59 GMT", minFresh: huge},
+		{name: "Expires, both above the ceiling", origin: "public", expires: "Thu, 31 Dec 2099 23:59:59 GMT", minFresh: "2400000000"},
+	} {
+		t.Run("request min-fresh/"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			headers := []string{fiber.HeaderCacheControl, tc.origin}
+			if tc.expires != "" {
+				headers = append(headers, fiber.HeaderExpires, tc.expires)
+			}
+			app, _ := cacheTestAOrigin(New(), "", headers...)
+			cacheTestAExpectBody(t, app, "/", cacheMiss, "1")
 
-		cacheTestAExpectBody(t, app, cacheTestAGetCC("/", "min-fresh="+huge), cacheMiss, "2")
-	})
+			cacheTestAExpectBody(t, app, cacheTestAGetCC("/", "min-fresh="+tc.minFresh), cacheMiss, "2")
+		})
+	}
 
 	t.Run("request max-stale", func(t *testing.T) {
 		t.Parallel()
-		app, _ := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=1")
+		clock := clocktest.NewClock(time.Now().Truncate(time.Second))
+		app, _ := cacheTestAOrigin(New(Config{clock: clock.Now}), "", fiber.HeaderCacheControl, "public, max-age=1")
 		cacheTestAExpectBody(t, app, "/", cacheMiss, "1")
-
-		time.Sleep(1500 * time.Millisecond)
+		clock.Add(2 * time.Second)
 
 		cacheTestAExpectBody(t, app, cacheTestAGetCC("/", "max-stale="+huge), cacheHit, "1")
 	})
 
-	t.Run("response Age", func(t *testing.T) {
-		t.Parallel()
-		// An age above the lifetime: the response is stale on arrival and is not stored.
-		app, _ := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=60", fiber.HeaderAge, huge)
-		cacheTestAExpectBody(t, app, "/", cacheUnreachable, "1")
+	// An age as large as the lifetime: the response is stale on arrival and is not stored. In the
+	// second row both are above the ceiling, so the smaller age counts as the whole lifetime.
+	for _, tc := range []struct{ name, maxAge, age string }{
+		{name: "too large to parse", maxAge: "60", age: huge},
+		{name: "age and lifetime above the ceiling", maxAge: "4000000000", age: "3000000000"},
+	} {
+		t.Run("response Age/"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, _ := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age="+tc.maxAge, fiber.HeaderAge, tc.age)
+			cacheTestAExpectBody(t, app, "/", cacheUnreachable, "1")
 
-		cacheTestAExpectBody(t, app, "/", cacheUnreachable, "2")
-	})
+			cacheTestAExpectBody(t, app, "/", cacheUnreachable, "2")
+		})
+	}
 
-	t.Run("response directives", func(t *testing.T) {
+	// The lifetime handed to the storage fits a driver that keeps its TTL as int32 seconds.
+	for _, directive := range []string{"max-age", "s-maxage"} {
+		t.Run("response "+directive, func(t *testing.T) {
+			t.Parallel()
+			storage := storagetest.New()
+			app, _ := cacheTestAOrigin(New(Config{Storage: storage}), "", fiber.HeaderCacheControl, "public, "+directive+"="+huge)
+			cacheTestAExpectBody(t, app, "/", cacheMiss, "1")
+			cacheTestAExpectBody(t, app, "/", cacheHit, "1")
+
+			sets := storage.Calls(storagetest.OpSet)
+			require.NotEmpty(t, sets)
+			for _, call := range sets {
+				require.LessOrEqual(t, call.TTL, math.MaxInt32*time.Second, call.Key)
+			}
+		})
+	}
+
+	t.Run("response s-maxage with Authorization", func(t *testing.T) {
 		t.Parallel()
-		parsed := parseResponseCacheControl([]byte("max-age=" + huge + ", s-maxage=" + huge))
-		require.True(t, parsed.maxAgeSet)
-		require.Equal(t, maxDeltaSeconds, parsed.maxAge)
-		require.True(t, parsed.sMaxAgeSet)
-		require.Equal(t, maxDeltaSeconds, parsed.sMaxAge)
-		// The stored lifetime fits a storage driver that keeps its TTL as int32 seconds.
-		require.LessOrEqual(t, secondsToDuration(parsed.maxAge).Seconds(), float64(math.MaxInt32))
+		// Too large to parse is still an s-maxage, which lets a shared cache store the response
+		// to a request with Authorization (RFC 9111 Section 3.5).
+		app, _ := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "s-maxage="+huge)
+		req := func() *http.Request {
+			return apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, "Bearer token"))
+		}
+		cacheTestAExpectBody(t, app, req(), cacheMiss, "1")
+
+		cacheTestAExpectBody(t, app, req(), cacheHit, "1")
 	})
 
 	t.Run("request directives", func(t *testing.T) {
 		t.Parallel()
+		// Only compared, so not clamped: a value too large to parse is above every other one.
 		parsed := parseRequestCacheControl([]byte("max-age=" + huge + ", max-stale=" + huge + ", min-fresh=" + huge))
 		require.True(t, parsed.maxAgeSet)
-		require.Equal(t, maxDeltaSeconds, parsed.maxAge)
+		require.Equal(t, uint64(math.MaxUint64), parsed.maxAge)
 		require.True(t, parsed.maxStaleSet)
-		require.Equal(t, maxDeltaSeconds, parsed.maxStale)
+		require.Equal(t, uint64(math.MaxUint64), parsed.maxStale)
 		require.True(t, parsed.minFreshSet)
-		require.Equal(t, maxDeltaSeconds, parsed.minFresh)
+		require.Equal(t, uint64(math.MaxUint64), parsed.minFresh)
 	})
 }
 

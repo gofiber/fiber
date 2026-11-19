@@ -351,19 +351,20 @@ func Test_parseUintDirective(t *testing.T) {
 	_, ok = parseUintDirective(nil)
 	require.False(t, ok)
 
-	// Too large to parse, but not a delta-seconds: still ignored, with a zero value.
+	// Not a delta-seconds, whether or not its digits overflow: still ignored, with a zero value.
 	for _, val := range []string{"not-a-number", "99999999999999999999x", "-99999999999999999999", "1e99"} {
 		v, ok = parseUintDirective([]byte(val))
 		require.False(t, ok, val)
 		require.Zero(t, v, val)
 	}
 
-	// Every value above the ceiling counts as the ceiling, so the order is kept.
-	for _, val := range []string{"2147483647", "2147483648", "3000000000", "9223372036854775807", "99999999999999999999"} {
-		v, ok = parseUintDirective([]byte(val))
-		require.True(t, ok, val)
-		require.Equal(t, maxDeltaSeconds, v, val)
-	}
+	// A value too large to parse counts as the greatest one, so the order is kept.
+	v, ok = parseUintDirective([]byte("2147483647"))
+	require.True(t, ok)
+	require.Equal(t, uint64(math.MaxInt32), v)
+	v, ok = parseUintDirective([]byte("99999999999999999999"))
+	require.True(t, ok)
+	require.Equal(t, uint64(math.MaxUint64), v)
 
 	// Invalid max-age values are ignored when parsing full directives.
 	parsed := parseResponseCacheControl([]byte("max-age=abc, s-maxage=xyz"))

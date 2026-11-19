@@ -49,15 +49,17 @@ func hasDirective(cc, directive string) bool {
 	return false
 }
 
-// maxDeltaSeconds is the greatest delta-seconds the cache works with. RFC 9111
-// Section 1.2.2 allows 2^31 or the greatest integer that is convenient to
-// represent; one less than 2^31 is used so that a lifetime still fits a storage
-// driver that keeps its TTL as int32 seconds.
+// maxDeltaSeconds is the greatest delta-seconds that becomes a stored lifetime:
+// the ceiling of a response max-age, s-maxage and Age. RFC 9111 Section 1.2.2
+// allows 2^31 or the greatest integer that is convenient to represent; one less
+// than 2^31 is used so that a lifetime still fits a storage driver that keeps
+// its TTL as int32 seconds. An Age at the ceiling leaves a lifetime at the
+// ceiling nothing, so such a response is not stored. Request directives are
+// only compared and keep the value they were sent with.
 const maxDeltaSeconds = uint64(math.MaxInt32)
 
-// parseUintDirective reads a delta-seconds. Every value above maxDeltaSeconds,
-// including one too large to parse, counts as maxDeltaSeconds, so a larger
-// value never ends up smaller than a smaller one.
+// parseUintDirective reads a delta-seconds. One too large to parse counts as
+// math.MaxUint64, so a larger value never ends up smaller than a smaller one.
 func parseUintDirective(val []byte) (uint64, bool) {
 	if len(val) == 0 {
 		return 0, false
@@ -67,9 +69,9 @@ func parseUintDirective(val []byte) (uint64, bool) {
 		if len(bytes.TrimLeft(val, "0123456789")) != 0 {
 			return 0, false
 		}
-		return maxDeltaSeconds, true
+		return math.MaxUint64, true
 	}
-	return min(uint64(parsed), maxDeltaSeconds), true
+	return uint64(parsed), true
 }
 
 func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
@@ -136,12 +138,12 @@ func parseResponseCacheControl(cc []byte) responseCacheControl {
 		case utils.EqualFold(utils.UnsafeString(key), "max-age"):
 			if v, ok := parseUintDirective(value); ok {
 				parsed.maxAgeSet = true
-				parsed.maxAge = v
+				parsed.maxAge = min(v, maxDeltaSeconds)
 			}
 		case utils.EqualFold(utils.UnsafeString(key), "s-maxage"):
 			if v, ok := parseUintDirective(value); ok {
 				parsed.sMaxAgeSet = true
-				parsed.sMaxAge = v
+				parsed.sMaxAge = min(v, maxDeltaSeconds)
 			}
 		case utils.EqualFold(utils.UnsafeString(key), "must-revalidate"):
 			parsed.mustRevalidate = true
