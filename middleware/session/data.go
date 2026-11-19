@@ -259,6 +259,13 @@ func (d *data) holds(codec *namedCodec) bool {
 	return ok && held == codec
 }
 
+// heldAsGob reports whether the data is held as gob, as that of a store without a Codec
+// is, and that of a session a store with one read as gob. The caller holds the lock.
+func (d *data) heldAsGob() bool {
+	_, ok := d.format.(gobFormat)
+	return ok
+}
+
 // rememberFailedSet remembers that the Set of key under codec failed with err.
 func (d *data) rememberFailedSet(codec *namedCodec, key any, err error) {
 	d.Lock()

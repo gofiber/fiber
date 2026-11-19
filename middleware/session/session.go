@@ -547,6 +547,9 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	if changed {
 		s.data.RLock()
 		encoded, err := s.data.encode()
+		if err != nil && s.data.heldAsGob() {
+			err = s.config.gobUnderCodec(err)
+		}
 		s.data.RUnlock()
 		if err != nil {
 			return fmt.Errorf("failed to encode data: %w", err)
@@ -783,6 +786,9 @@ func (s *Session) decodeSessionData(rawData []byte) error {
 		snapshot, err = s.data.decodeRecord(rawData, s.config.recordCodec())
 	}
 	if err != nil {
+		if !isRecord(rawData) {
+			err = s.config.gobUnderCodec(err)
+		}
 		return err
 	}
 	s.rawData = snapshot

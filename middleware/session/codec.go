@@ -22,6 +22,12 @@ var errRecordNeedsCodec = errors.New("failed to decode session data: the session
 // errCodecMismatch is returned for a record of another codec than the store's.
 var errCodecMismatch = errors.New("session record of another codec")
 
+// errStaysGob is added to what gob says of a session of a store with a Codec, which needs
+// no registered types for the sessions it starts: this one was stored before the store had
+// the codec, and gob decodes and encodes it until it ends.
+var errStaysGob = errors.New("the session was stored before the store had its Codec and stays gob until it ends: " +
+	"keep RegisterType for the types of such sessions until they have expired")
+
 // errNonStringKey is remembered by a Set under a Codec with a key that is not a string.
 var errNonStringKey = errors.New("a store with a Codec keys its values by string")
 

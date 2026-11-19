@@ -573,6 +573,47 @@ func Test_Codec_EndingTheSessionLeavesOtherRecordsAlone(t *testing.T) {
 	}
 }
 
+// A store with a Codec needs no registered types for the sessions it starts, but a session that was
+// stored before it had the codec stays gob until it ends: a Set of a type gob was not told of fails
+// its save and a value of one fails its load, as in a store without a codec. The error says why gob
+// has a part in a store with a codec, which it does not say of a store without one, nor of what goes
+// wrong with a session of the codec.
+func Test_Codec_GobSessionStillNeedsRegisteredTypes(t *testing.T) {
+	t.Parallel()
+	type unregistered struct{ Name string }
+	for name, codec := range map[string]Codec{"a store with a codec": JSONCodec{}, "a store without one": nil} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app, mem := fiber.New(), memory.New()
+			id := seedSession(t, app, NewStore(Config{Storage: mem}), func(s *Session) { s.Set("visits", 1) })
+			store := NewStore(Config{Storage: mem, Codec: codec})
+			explained := codec != nil
+
+			stored := loadSession(t, app, store, id)
+			stored.Set("user", unregistered{Name: "john"})
+			err := stored.Save()
+			require.ErrorContains(t, err, "type not registered")
+			require.Equal(t, explained, errors.Is(err, errStaysGob), "the save of a session that stays gob: %v", err)
+
+			require.NoError(t, mem.Set(sessionKey("of-a-type-unknown"), gobStreamFailingMidway(t), 0))
+			_, err = store.GetByID(t.Context(), "of-a-type-unknown")
+			require.ErrorContains(t, err, "name not registered")
+			require.Equal(t, explained, errors.Is(err, errStaysGob), "the load of a session that was stored as gob: %v", err)
+
+			if codec == nil {
+				return
+			}
+			started, _ := sessionTestFresh(t, store)
+			started.Set("user", unregistered{Name: "john"})
+			require.NoError(t, started.Save(), "a session the store starts takes the type as it is")
+			started.Set("unsupported", make(chan int))
+			err = started.Save()
+			require.Error(t, err)
+			require.NotErrorIs(t, err, errStaysGob, "what the codec cannot encode is no matter of gob")
+		})
+	}
+}
+
 // A request can load the session of a store more than once: a middleware in front of the handler
 // asks the store, and the handler asks it again, or the middleware of the store runs behind it, or
 // another store that reads the same cookie finds the session. Once the first session is saved, a

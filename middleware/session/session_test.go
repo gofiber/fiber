@@ -2124,7 +2124,9 @@ func Test_Session_RegenerateCarriesRecordOverGob(t *testing.T) {
 			other.Set("role", "user")
 			require.NoError(t, other.Save())
 
-			require.ErrorIs(t, inFlight.Regenerate(), tc.wantErr)
+			err := inFlight.Regenerate()
+			require.ErrorIs(t, err, tc.wantErr)
+			require.NotErrorIs(t, err, errStaysGob, "what is wrong with a record is no matter of gob")
 			require.NotEqual(t, id, inFlight.ID())
 			require.Equal(t, tc.wantRole, inFlight.Get("role"))
 			require.Equal(t, tc.wantErr == nil, inFlight.data.holds(store.named), "only a record makes it a session of the store")

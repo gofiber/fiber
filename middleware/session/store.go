@@ -542,6 +542,15 @@ func (s *Store) recordCodec() *namedCodec {
 	}
 }
 
+// gobUnderCodec adds to err, which gob returned for a session of the store, why a store
+// with a Codec meets gob at all. A store without one gets err back.
+func (s *Store) gobUnderCodec(err error) error {
+	if s.recordCodec() == nil {
+		return err
+	}
+	return fmt.Errorf("%w: %w", err, errStaysGob)
+}
+
 // sessionFormat returns the format the sessions of the store hold.
 func (s *Store) sessionFormat() format {
 	if codec := s.recordCodec(); codec != nil {
