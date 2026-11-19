@@ -907,6 +907,19 @@ func (m *Middleware) sharedID(s *Store) (sessionIdentity, bool) {
 	return ident, found != nil
 }
 
+// disclaim tells the sessions of m and of the middleware it runs inside that the record
+// under key is the session of another store of the request, which has loaded it. One of
+// them took its place, because its store could not read it, and would delete it when it
+// is destroyed or reset.
+func (m *Middleware) disclaim(key storageKey) {
+	m.find(func(cur *Middleware) bool {
+		if cur.Session != nil {
+			cur.Session.disclaim(key)
+		}
+		return false
+	})
+}
+
 // endIfUnwound is the deferred call of serve: it ends the middleware when
 // a panic unwinds it. Once serve finished, the middleware was released or detached,
 // and may already belong to another request, so nothing is done.

@@ -395,6 +395,17 @@ func (s *Session) deleteUnreadable(ctx context.Context) error {
 	return nil
 }
 
+// disclaim forgets the record the session took the place of when it is the one under
+// key: another store of the request has loaded it as its session, so it is not a record
+// that only another instance reads, and not this session's to end.
+func (s *Session) disclaim(key storageKey) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.unreadable == key {
+		s.unreadable = ""
+	}
+}
+
 // resetData empties the data. A session of a store with a codec starts over as a
 // session of the store, which one that was stored as gob did not belong to.
 func (s *Session) resetData() {

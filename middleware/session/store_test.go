@@ -967,6 +967,26 @@ func Test_Session_Store_FindsTheSessionItsCookieNamesWhateverOtherStoresCached(t
 	}
 }
 
+// A store does not look twice under an ID it was handed, by a store it shares a source with, when the
+// request names that ID too. An ID that a store over another cookie issued is not one it was handed,
+// though it is the same, the two generating their IDs alike: the store finds the session its cookie
+// names.
+func Test_Session_Store_FindsItsSessionUnderAnIDAStoreOverAnotherCookieIssued(t *testing.T) {
+	t.Parallel()
+	fixed := func() string { return "fixed" }
+	other := NewStore(Config{Extractor: extractors.FromCookie("other"), KeyGenerator: fixed})
+	store := NewStore(Config{KeyGenerator: fixed})
+	app := fiber.New()
+	require.Equal(t, "fixed", seedSession(t, app, store, func(s *Session) { s.Set("k", "v") }))
+
+	c := apptest.Ctx(t, app)
+	c.Request().Header.SetCookie("session_id", "fixed")
+	require.Equal(t, "fixed", mustGet(t, other, c).ID(), "the other store issues the same ID, and caches it")
+	sess := mustGet(t, store, c)
+	require.False(t, sess.Fresh(), "the store did not look under the ID its cookie names")
+	require.Equal(t, "v", sess.Get("k"))
+}
+
 // A new session whose cookie names an ID the storage does not know is cached with the others of the
 // request, as the session of a cookie that names a stored one is not. W and X cache an ID first,
 // unsaved; Y, whose cookie is unknown, caches one after them and saves it. R shares Y's cookie but

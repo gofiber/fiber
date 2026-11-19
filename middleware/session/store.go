@@ -321,10 +321,11 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, error) {
 	}
 	// The record the request itself names, when the store cannot read it: the session
 	// takes its place, and ends it when it is ended. A record under an ID that another
-	// store issued is that store's, and is not remembered. When the store looked under
-	// the ID the request names earlier in the request, it is not read again below, and
-	// what the store found then holds; so does what the store found whose session this
-	// one has taken from the request.
+	// store of the request holds or issued is that store's, and is not remembered, also
+	// when the request names that ID: cachedSession has looked under it, and it is not
+	// read again below. Nor is the ID the store looked under earlier in the request,
+	// and what the store found then holds; so does what the store found whose session
+	// this one has taken from the request.
 	found.unreadable = cached.refusedBy(s, found.id)
 	if found.raw == nil {
 		// Nothing was cached for s that is saved: the request names the session, if any.
@@ -333,9 +334,14 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, error) {
 			return nil, err
 		}
 		found.res = res
-		if s.mayBeStored(cached, res.Value) {
+		if s.mayBeStored(cached, found.handed.id, res.Value) {
 			if found.unreadable, err = s.readSession(c, res.Value, &found); err != nil {
 				return nil, err
+			}
+			// The other way round: the record that the session of a middleware s runs
+			// inside took the place of is the session of s, and not that one's to end.
+			if outer != nil && found.raw != nil && found.handed.unreadable == found.key {
+				outer.disclaim(found.key)
 			}
 		}
 	}
@@ -391,15 +397,33 @@ func (s *Store) loadSession(c fiber.Ctx, outer *Middleware) (*Session, error) {
 }
 
 // mayBeStored reports whether a session may be stored under id, the ID the request names:
-// not when it names none, and not when s looked for a session under it earlier in the
-// request and found none. The entry s cached then holds the ID the request named when s
-// issued its own, or the one a Regenerate or Reset deleted, and neither names a session.
-func (s *Store) mayBeStored(cached *cachedID, id string) bool {
-	if id == "" {
+// not when it names none, and not when s has looked for a session under it and found
+// none. It did earlier in the request when the entry s cached then holds id as the ID
+// the request named when s issued its own, or as the one a Regenerate or Reset deleted,
+// and neither names a session. And it did just now, in cachedSession, when id is handed,
+// the ID of the session of a middleware s runs inside, or an ID that a store sharing a
+// source with s cached: what is stored under it is no session s can read, and a record
+// there is the session of that store, not one the session of s takes the place of.
+func (s *Store) mayBeStored(cached *cachedID, handed, id string) bool {
+	if id == "" || id == handed {
 		return false
 	}
-	entry := cached.of(s)
-	return entry == nil || entry.res.Value != id
+	// A request whose stores cached nothing, as that of the session middleware alone,
+	// does not pay for the call.
+	return cached == nil || !s.lookedUnder(cached, id)
+}
+
+// lookedUnder is the part of mayBeStored that reads the IDs cached on the request.
+func (s *Store) lookedUnder(cached *cachedID, id string) bool {
+	for entry := cached; entry != nil; entry = entry.next {
+		if entry.store == s && entry.res.Value == id {
+			return true
+		}
+		if entry.id == id && s.sharesSource(entry.store) {
+			return true
+		}
+	}
+	return false
 }
 
 // cachedSession reads the session that was saved under the newest ID which s, or a
@@ -409,9 +433,14 @@ func (s *Store) mayBeStored(cached *cachedID, id string) bool {
 // never saved, is passed over, and the request is asked instead. Stores that share no
 // source with s keep sessions of their own: their IDs are not taken, and they do not
 // replace the ones of s.
+//
+// found is told what that middleware handed over. The key readSession returns for a
+// record s cannot read is dropped: the record is under an ID another store holds or
+// issued, and is the session of that store.
 func (s *Store) cachedSession(c fiber.Ctx, outer *Middleware, cached *cachedID, found *storedSession) error {
 	if outer != nil {
 		if ident, ok := outer.sharedID(s); ok {
+			found.handed = handover{id: ident.id, unreadable: ident.unreadable}
 			if _, err := s.readSession(c, ident.id, found); err != nil || found.raw != nil {
 				found.res = s.places().adopt(ident.res)
 				return err
@@ -428,6 +457,15 @@ func (s *Store) cachedSession(c fiber.Ctx, outer *Middleware, cached *cachedID, 
 		}
 	}
 	return nil
+}
+
+// handover is what the session of the nearest session middleware a store runs inside and
+// shares a source with means to the session the store loads: its ID, under which the
+// store has looked, and the record it took the place of, see sessionIdentity. It is
+// empty when there is no such middleware.
+type handover struct {
+	id         string
+	unreadable storageKey
 }
 
 // places returns where s reads its session ID from and writes it back to: what NewStore
@@ -461,8 +499,9 @@ func (s *Store) sharesSource(other *Store) bool {
 // storedSession is the outcome of a lookup of a session: the record, if a session is
 // stored under the ID that was looked up, and where that ID came from.
 type storedSession struct {
-	raw []byte     // the record, nil if no session is stored under the ID
-	key storageKey // storage key of the session
+	handed handover   // of the session middleware the store runs inside, see cachedSession
+	key    storageKey // storage key of the session
+	raw    []byte     // the record, nil if no session is stored under the ID
 	// sessionIdentity is the ID of the session, which does not point into the request, with
 	// the provenance of the ID the request named. The provenance is set when no session is
 	// stored under the ID the request named, too: the new session is written back to the
@@ -548,7 +587,7 @@ func (s *Store) warnUnreadable(raw []byte, codec *namedCodec) {
 		log.Warnf("[session] a stored session is a record of the codec %q (format version %d), which this store, which %s, cannot read; "+
 			"it is treated as a new session, and the record is left alone unless the request destroys or resets that session. "+
 			"This is expected once after Config.Codec was changed or turned off; "+
-			"if it goes on, applications with different codecs share a storage and a session cookie",
+			"if it goes on, stores with different codecs share a storage and a session cookie",
 			name, version, have)
 	case known:
 		log.Warnf("[session] a stored session is a record of format version %d, which this store, which %s, does not know; "+

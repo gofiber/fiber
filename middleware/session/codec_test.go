@@ -439,25 +439,86 @@ func Test_Codec_EndingTheSessionDeletesTheRecordItReplaced(t *testing.T) {
 	}
 }
 
-// Only the record the request itself names is the visitor's to end. A store that shares one source
-// of two with another store is handed that store's ID, and a record under it that it cannot read is
-// the other store's session: ending its own leaves that one alone. And a store that met no such
-// record deletes its own session, once, and nothing else, as before.
+// Only the record the request itself names is the visitor's to end, and only when no other store of
+// the request holds it. A store that shares a source with another store is handed that store's ID,
+// and a record under it that it cannot read is the other store's session: ending its own leaves
+// that one alone, also when the request names the ID for both, and whichever of the two runs inside
+// the other. And a store that met no such record deletes its own session, once, and nothing else,
+// as before.
 func Test_Codec_EndingTheSessionLeavesOtherRecordsAlone(t *testing.T) {
 	t.Parallel()
-	t.Run("the session of a store that handed its ID over", func(t *testing.T) {
+	// Two session middleware, one inside the other, read the cookie "shared", and only the store of
+	// one has the codec of the record. The other starts a session of its own, and ends that.
+	for name, tc := range map[string]struct {
+		cookie      string // the cookie the request names the record through
+		holderInner bool   // the store that reads the record is the inner one
+	}{
+		"the outer store holds the record, which the request names for it alone": {cookie: "a"},
+		"the outer store holds the record, which the request names for both":     {cookie: "shared"},
+		"the inner store holds the record, which the request names for both":     {cookie: "shared", holderInner: true},
+	} {
+		for end, do := range map[string]func(*Middleware) error{"Destroy": (*Middleware).Destroy, "Reset": (*Middleware).Reset} {
+			t.Run(name+"/"+end, func(t *testing.T) {
+				t.Parallel()
+				mem := memory.New()
+				holder, holderStore := NewWithStore(Config{Storage: mem, Codec: JSONCodec{}, Extractor: extractors.Chain(extractors.FromCookie("a"), extractors.FromCookie("shared"))})
+				other, otherStore := NewWithStore(Config{Storage: mem, Extractor: extractors.FromCookie("shared")})
+				id := seedSession(t, fiber.New(), holderStore, func(s *Session) { s.Set("k", "v") })
+
+				app := fiber.New()
+				if tc.holderInner {
+					app.Use(other, holder)
+				} else {
+					app.Use(holder, other)
+				}
+				app.Get("/", func(c fiber.Ctx) error { return do(otherStore.FromContext(c)) })
+				apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withCookies(map[string]string{tc.cookie: id})), fiber.StatusOK)
+
+				require.NotNil(t, storedBytes(t, mem, id), "a store ended the session that another store of the request holds")
+			})
+		}
+	}
+
+	// Four of them: the outermost store met a record that no store of the request reads, and ends
+	// it with its session. The next met the record of the innermost store, and does not, though a
+	// middleware of a store over another cookie runs between the two.
+	t.Run("and the record no store of the request holds is still ended", func(t *testing.T) {
 		t.Parallel()
 		mem := memory.New()
-		outer, outerStore := NewWithStore(Config{Storage: mem, Codec: JSONCodec{}, Extractor: extractors.Chain(extractors.FromCookie("a"), extractors.FromCookie("shared"))})
-		inner, innerStore := NewWithStore(Config{Storage: mem, Extractor: extractors.FromCookie("shared")})
-		id := seedSession(t, fiber.New(), outerStore, func(s *Session) { s.Set("k", "v") })
+		holder, holderStore := NewWithStore(Config{Storage: mem, Codec: JSONCodec{}, Extractor: extractors.FromCookie("shared")})
+		between := New(Config{Extractor: extractors.FromCookie("between")})
+		other, otherStore := NewWithStore(Config{Storage: mem, Extractor: extractors.FromCookie("shared")})
+		outermost, outermostStore := NewWithStore(Config{Storage: mem, Extractor: extractors.FromCookie("x")})
+		held := seedSession(t, fiber.New(), holderStore, func(s *Session) { s.Set("k", "v") })
+		left := seedSession(t, fiber.New(), holderStore, func(s *Session) { s.Set("k", "v") })
 
 		app := fiber.New()
-		app.Use(outer, inner)
-		app.Get("/", func(c fiber.Ctx) error { return innerStore.FromContext(c).Destroy() })
-		apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withCookies(map[string]string{"a": id})), fiber.StatusOK)
+		app.Use(outermost, other, between, holder)
+		app.Get("/", func(c fiber.Ctx) error {
+			return errors.Join(outermostStore.FromContext(c).Destroy(), otherStore.FromContext(c).Destroy())
+		})
+		apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", withCookies(map[string]string{"x": left, "shared": held})), fiber.StatusOK)
 
-		require.NotNil(t, storedBytes(t, mem, id), "the inner store deleted the session of the outer one")
+		require.NotNil(t, storedBytes(t, mem, held), "a store ended the session that another store of the request holds")
+		require.Nil(t, storedBytes(t, mem, left), "the record that only the outermost store met was left behind")
+	})
+
+	// Store.Get, without a middleware: the first store issues the ID the request names, since it
+	// generates its IDs that way, and saves a record under it that the second cannot read.
+	t.Run("the session another store issued under the ID the request names", func(t *testing.T) {
+		t.Parallel()
+		mem := memory.New()
+		issuer := NewStore(Config{Storage: mem, Codec: JSONCodec{}, KeyGenerator: func() string { return "fixed" }})
+		store := NewStore(Config{Storage: mem})
+		c := apptest.Ctx(t, fiber.New())
+		c.Request().Header.SetCookie("session_id", "fixed")
+
+		issued := mustGet(t, issuer, c)
+		issued.Set("k", "v")
+		require.NoError(t, issued.Save())
+		require.NoError(t, mustGet(t, store, c).Destroy())
+
+		require.NotNil(t, storedBytes(t, mem, "fixed"), "a store ended the session that another store of the request issued")
 	})
 
 	t.Run("the record another store of the request could not read", func(t *testing.T) {
