@@ -229,14 +229,19 @@ func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
 		{name: "an absolute-form target", first: "http://example.com/page", second: "/page"},
 		{name: "a question mark no query follows", first: "/page?", second: "/page"},
 		{name: "a path a middleware rewrote", first: "/old", second: "/page"},
+		{name: "a query a middleware removed", first: `/bare?q="><script>`, second: "/bare"},
+		{name: "two queries a middleware removed", first: `/bare?q="><script>`, second: "/bare?q=%22%3E%3Cscript%3E"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
-			// A rewrite registered ahead of the cache: the handler still reads the target that was sent.
+			// Rewrites registered ahead of the cache: the handler still reads the target that was sent.
 			app.Use(func(c fiber.Ctx) error {
-				if c.Path() == "/old" {
+				switch c.Path() {
+				case "/old":
 					c.Path("/page")
+				case "/bare":
+					c.Request().URI().SetQueryString("")
 				}
 				return c.Next()
 			})
