@@ -3359,7 +3359,7 @@ To restore v2 behavior:
 Additional v3 cache key options:
 
 - `Methods`: HTTP methods eligible for caching (default `GET`, `HEAD`)
-- `DisableQueryKeys`: disable canonicalized query args in keys (default `false`)
+- `DisableQueryKeys`: leave the query string out of keys (default `false`)
 - `KeyHeaders`: request header allow-list for key partitioning
 - `KeyCookies`: explicit cookie allow-list for key partitioning; the values are hashed in the key
 - `KeyCredentialHeaders`: request headers that carry a client's credential; they partition entries like `KeyHeaders`, and hits on them are sent with `Cache-Control: private`
