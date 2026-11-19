@@ -1261,6 +1261,11 @@ func Test_Session_SkipEmptySessions(t *testing.T) {
 		resp, _ = sendRequest(t, app, "/health", map[string]string{"session_id": "expired-or-forged"})
 		require.Empty(t, resp.Cookies(), "an ID the visitor made up is not turned into a session")
 		require.Empty(t, mem.Keys())
+
+		// Nor is giving a new ID to a session that was never stored: only one that exists is kept by it.
+		resp, _ = sendRequest(t, app, "/regenerate", nil)
+		require.Empty(t, resp.Cookies(), "a new ID made a session of one that was never stored")
+		require.Empty(t, mem.Keys())
 	})
 
 	t.Run("a session that has data is kept: stored, refreshed on every request, and regenerated with its data", func(t *testing.T) {
@@ -1291,6 +1296,28 @@ func Test_Session_SkipEmptySessions(t *testing.T) {
 		require.Equal(t, "alice", body)
 		_, body = sendRequest(t, app, "/read", map[string]string{"session_id": id})
 		require.Equal(t, "<nil>", body, "the old ID no longer resolves")
+	})
+
+	t.Run("a stored session that holds nothing is still a session: regenerating it keeps it, under the new ID", func(t *testing.T) {
+		t.Parallel()
+		app, mem := skipEmptyApp(t, &Config{SkipEmptySessions: true, AbsoluteTimeout: time.Hour})
+		app.Get("/forget", func(c fiber.Ctx) error {
+			FromContext(c).Delete("user")
+			return nil
+		})
+
+		_, id := sendRequest(t, app, "/login", nil)
+		_, _ = sendRequest(t, app, "/forget", map[string]string{"session_id": id})
+		require.Len(t, mem.Keys(), 1, "a session that exists is saved, whatever it holds")
+
+		resp, newID := sendRequest(t, app, "/regenerate", map[string]string{"session_id": id})
+		require.NotEqual(t, id, newID)
+		require.Len(t, mem.Keys(), 1, "the session was deleted under its old ID and not stored under the new one")
+		require.Contains(t, cookiesByName(resp), "session_id", "the visitor was not told the new ID")
+		require.Equal(t, newID, cookiesByName(resp)["session_id"].Value)
+
+		_, body := sendRequest(t, app, "/touch", map[string]string{"session_id": newID})
+		require.Equal(t, "false", body, "the regenerated session did not survive the request")
 	})
 
 	t.Run("a logout expires the cookie and a destroy removes the record, and neither stores a replacement", func(t *testing.T) {

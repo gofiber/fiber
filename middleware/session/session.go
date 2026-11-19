@@ -797,13 +797,17 @@ func (s *Session) decodeSessionData(rawData []byte) error {
 
 // isEmptyFresh reports whether the session is new and holds nothing a handler
 // stored in it. The absolute-timeout bookkeeping, which every new session of a
-// store with an AbsoluteTimeout carries, does not count.
+// store with an AbsoluteTimeout carries, does not count. A stored session that
+// Regenerate gave a new ID is not new, although it is fresh: its record was
+// deleted under the old ID, and skipping the save would end it. It still holds
+// the snapshot it was loaded from, which a session that was never stored, or
+// was reset, does not.
 //
 // Returns:
-//   - bool: True if the session is fresh and has no data of its own; otherwise, false.
+//   - bool: True if the session was never stored and has no data of its own; otherwise, false.
 func (s *Session) isEmptyFresh() bool {
 	s.mu.RLock()
-	fresh := s.isFresh
+	fresh := s.isFresh && s.rawData == nil
 	s.mu.RUnlock()
 	return fresh && s.data != nil && s.data.isEmpty()
 }

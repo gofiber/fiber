@@ -505,7 +505,7 @@ app.Use(session.New(session.Config{
 ```
 
 - A session that holds data is saved exactly as before. A handler that wants a session to exist for a visitor stores something in it, if only a flag. Do not use `sess.ID()` as a visitor identifier while nothing is stored: without a cookie, the next request gets another one.
-- A session that already exists is still saved on every request that goes through the middleware, so its idle timeout keeps sliding.
+- A session that already exists is still saved on every request that goes through the middleware, so its idle timeout keeps sliding. That holds for one whose values were all deleted, and after `sess.Regenerate()`, which keeps it under the new ID whatever it holds.
 - A `sess.Reset()` that leaves nothing behind, such as a logout, expires the cookie and stores no new session. `sess.Fresh()` is `true` for a new session either way.
 - The option applies to the middleware. A session from `store.Get(c)` is saved when you call `Save`. With `Config.Store`, set it on the config of the middleware; a warning is logged when only the store has it.
 
