@@ -192,10 +192,11 @@ func NewStore(config ...Config) *Store {
 		named:   named,
 	}
 
-	if cfg.AbsoluteTimeout > 0 {
-		store.RegisterType(absExpirationKey)
-		store.RegisterType(time.Time{})
-	}
+	// Whatever AbsoluteTimeout the store has: a session that was stored as gob with a
+	// deadline holds the two types, and gob decodes neither unless it is registered. A
+	// store whose AbsoluteTimeout was turned off would fail to load every such session.
+	store.RegisterType(absExpirationKey)
+	store.RegisterType(time.Time{})
 
 	return store
 }

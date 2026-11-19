@@ -649,7 +649,7 @@ if ok {
 - Registration must happen during application startup
 - All instances of the application must register the same types
 - Types are encoded using Go's `gob` package
-- `time.Time` is a struct, so it needs `store.RegisterType(time.Time{})` as well. The store registers it by itself only when `AbsoluteTimeout` is greater than zero. Saving a session that holds an unregistered `time.Time` fails, and the middleware answers with its `ErrorHandler` (`500` by default). Store `time.Now().Unix()` when a plain timestamp is enough
+- `time.Time` is a struct too, but needs no registration: `NewStore` registers it, because the absolute deadline of a session is stored as one, and a session that was stored with a deadline must still load after `AbsoluteTimeout` is turned off. Saving a session that holds a value of any other unregistered type fails, and the middleware answers with its `ErrorHandler` (`500` by default)
 - Reading a struct back out with `Get` makes the save re-encode, even for an all-scalar struct like `User`, because every struct is treated as possibly sharing memory with the session. A request that only reads scalars or `time.Time` values writes the stored bytes back unchanged
 - A store with a `Codec` needs no registration, and a read never makes the save encode again; see [Codecs and Typed Reads](#codecs-and-typed-reads)
 

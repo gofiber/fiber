@@ -13,6 +13,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"os"
+	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
@@ -2958,8 +2959,8 @@ func Test_Session_DeadlineHonouredWithoutAbsoluteTimeout(t *testing.T) {
 		"gob": {
 			seed: func(t *testing.T, mem *memory.Storage, key string) {
 				t.Helper()
-				gob.Register(absExpirationKey)
-				gob.Register(time.Time{})
+				// The store registered the two types, though it has no AbsoluteTimeout, which
+				// Test_Session_StoredDeadlineLoadsAfterRestartWithoutAbsoluteTimeout pins.
 				var buf bytes.Buffer
 				require.NoError(t, gob.NewEncoder(&buf).Encode(map[any]any{absExpirationKey: past, "k": "v"}))
 				require.NoError(t, mem.Set(key, buf.Bytes(), time.Hour))
@@ -2997,6 +2998,47 @@ func Test_Session_DeadlineHonouredWithoutAbsoluteTimeout(t *testing.T) {
 			require.Equal(t, "false|false|<nil>", body, "the session that took its place was started over again")
 		})
 	}
+}
+
+// storedWithDeadlineEnv carries a session that a store with an AbsoluteTimeout stored, in base64, to the
+// process Test_Session_StoredDeadlineLoadsAfterRestartWithoutAbsoluteTimeout starts.
+const storedWithDeadlineEnv = "FIBER_SESSION_TEST_STORED_WITH_DEADLINE"
+
+// A session stored as gob with an absolute deadline loads in a process none of whose stores has an
+// AbsoluteTimeout, as after the option was turned off and the application started again: NewStore
+// registers the two types of the deadline with gob whatever the option is, and a store that did not
+// would fail every request of such a session until its record expired. Gob keeps what is registered
+// for the whole process, and other tests make stores with the option, so the process without one is a
+// subprocess of this test binary that runs this test alone and takes the first branch.
+func Test_Session_StoredDeadlineLoadsAfterRestartWithoutAbsoluteTimeout(t *testing.T) {
+	t.Parallel()
+	if stored := os.Getenv(storedWithDeadlineEnv); stored != "" {
+		raw, err := base64.StdEncoding.DecodeString(stored)
+		require.NoError(t, err)
+		mem := memory.New()
+		store := NewStore(Config{Storage: mem})
+		require.NoError(t, mem.Set(string(store.storageKey("id")), raw, time.Hour))
+		sess := sessionTestStored(t, store, "id")
+		_, hasDeadline := sess.AbsoluteExpiry()
+		t.Logf("after the restart: k=%v deadline=%t", sess.Get("k"), hasDeadline)
+		return
+	}
+
+	app, mem := fiber.New(), memory.New()
+	store := NewStore(Config{Storage: mem, AbsoluteTimeout: time.Hour})
+	id := seedSession(t, app, store, func(s *Session) { s.Set("k", "v") })
+	raw, err := mem.Get(string(store.storageKey(id)))
+	require.NoError(t, err)
+
+	exe, err := os.Executable()
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, exe, "-test.v=true", "-test.run=^"+t.Name()+"$")
+	cmd.Env = append(os.Environ(), storedWithDeadlineEnv+"="+base64.StdEncoding.EncodeToString(raw))
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(out))
+	require.Contains(t, string(out), "after the restart: k=v deadline=true", string(out))
 }
 
 // Once the session middleware has finished with the request, a Store.Get reads the session ID from
