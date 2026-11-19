@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"sync"
@@ -37,7 +39,21 @@ func keygenCorpus() []keygenCase {
 		{name: "multi_dup", uri: "/demo?b=2&a=1&a=3", want: keyStart + "a=1&a=3&b=2" + keyNoHeaders},
 		{name: "dup_order", uri: "/demo?a=3&a=1", want: keyStart + "a=3&a=1" + keyNoHeaders},
 		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: keyStart + "x=1" + keyNoHeaders},
-		{name: "query_escape", uri: "/p?k=a b&z=%2F&k=z", want: keyStart + "k=a+b&k=z&z=%2F" + keyNoHeaders},
+		// A parameter keeps the bytes it was sent in: nothing is decoded, and only the key's own delimiters are escaped.
+		{name: "query_escape", uri: "/p?k=a b&z=%2F&k=z", want: keyStart + "k=a b&k=z&z=%2F" + keyNoHeaders},
+		{name: "query_spellings", uri: "/p?b=%41&a=x+y&a=x%20y&b=A", want: keyStart + "a=x+y&a=x%20y&b=%41&b=A" + keyNoHeaders},
+		{name: "query_delims", uri: `/p?b=x|y&a=1:2&c=\`, want: keyStart + `a=1\c2&b=x\py&c=\\` + keyNoHeaders},
+		// The names are sorted as the parser decodes them, so two spellings of one name stay in the order sent.
+		{name: "query_name_spellings", uri: "/p?b=1&%61=2&a=3&%62=4", want: keyStart + "%61=2&a=3&b=1&%62=4" + keyNoHeaders},
+		{name: "query_name_plus", uri: "/p?b=1&+=2&%20=3&a=4", want: keyStart + "+=2&%20=3&a=4&b=1" + keyNoHeaders},
+		// A parameter without a value, without a name, or without either is one all the same.
+		{name: "query_bare_parameters", uri: "/p?b&&a=&=x&", want: keyStart + "&=x&&a=&b" + keyNoHeaders},
+		{name: "long_query_sorted", uri: "/p?b=" + strings.Repeat("x", 300) + "&a=1", want: keyStart + boundKeySegment("a=1&b="+strings.Repeat("x", 300)) + keyNoHeaders},
+		// maxQueryParams parameters in maxQueryBufferSize bytes are still sorted; a query past either bound is keyed as sent.
+		{name: "params_at_bound", uri: "/p?" + strings.Repeat("b&", maxQueryParams-1) + "a", want: keyStart + boundKeySegment("a"+strings.Repeat("&b", maxQueryParams-1)) + keyNoHeaders},
+		{name: "params_past_bound", uri: "/p?" + strings.Repeat("b&", maxQueryParams) + "a", want: keyStart + boundKeySegment(strings.Repeat("b&", maxQueryParams)+"a") + keyNoHeaders},
+		{name: "query_at_bound", uri: "/p?b=" + strings.Repeat("x", maxQueryBufferSize-6) + "&a=1", want: keyStart + boundKeySegment("a=1&b="+strings.Repeat("x", maxQueryBufferSize-6)) + keyNoHeaders},
+		{name: "query_past_bound", uri: "/p?b=" + strings.Repeat("x", maxQueryBufferSize-5) + "&a=1", want: keyStart + boundKeySegment("b="+strings.Repeat("x", maxQueryBufferSize-5)+"&a=1") + keyNoHeaders},
 		{name: "with_headers", uri: "/p?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: keyStart + "foo=bar|h=accept:1|text/html|accept-encoding:1|gzip|accept-language:0"},
 		{name: "with_cookie", uri: "/p?foo=bar", cookie: "sid=abc123", keyCooks: []string{"sid"}, want: keyStart + "foo=bar" + keyNoHeaders + "|c=sid:sha256:ccfb62d77d32969b64f7920fe3bfb66c50cbf9e9faea6f69222c34c7e5f30627"},
 		// A missing and an empty cookie leave nothing after the name, and share a key.
@@ -195,13 +211,13 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 		want        []string
 		disableVary bool
 	}{
-		{name: "anonymous", want: []string{"v7|manifest|v7|GET|/demo", "v7|GET|/demo"}},
+		{name: "anonymous", want: []string{"v8|manifest|v8|GET|/demo", "v8|GET|/demo"}},
 		{
 			name: "authenticated",
 			auth: "Bearer token",
-			want: []string{"v7|manifest|v7|GET|/demo|auth=" + authHash, "v7|GET|/demo|auth=" + authHash},
+			want: []string{"v8|manifest|v8|GET|/demo|auth=" + authHash, "v8|GET|/demo|auth=" + authHash},
 		},
-		{name: "vary disabled", disableVary: true, want: []string{"v7|GET|/demo"}},
+		{name: "vary disabled", disableVary: true, want: []string{"v8|GET|/demo"}},
 	}
 
 	for _, tc := range tests {
@@ -238,6 +254,100 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 			require.Equal(t, tc.want, lookedUp)
 		})
 	}
+}
+
+// Test_appendCanonicalQueryString_SharedKeyReadsTheSame checks the query segment against the parser
+// a handler reads the query through. Queries that share a key hold the same parameters, so the
+// target a handler reads differs in their order at most, and each name reads the same values in the
+// same order from all of them, so c.Query and c.Queries cannot tell them apart.
+func Test_appendCanonicalQueryString_SharedKeyReadsTheSame(t *testing.T) {
+	t.Parallel()
+	// Several spellings of one name among them, two of which only the parser's handling of a "%"
+	// that begins no escape makes one, and the parameters that lack a name, a value or both.
+	parameters := []string{
+		"a=1", "a=2", "%61=3", "A=4", "a=b=5", "b", "b=", "+=6", "%20=7", "x%+=8", "x%%2B=9",
+		"%=10", "%zz=11", "", "=", "=12", "c%3D=13",
+	}
+	key := func(query string) string {
+		var uri fasthttp.URI
+		uri.SetQueryString(query)
+		return string(appendCanonicalQueryString(nil, &uri))
+	}
+	// read is what the parser makes of query: its names, and the values of each in the order sent.
+	read := func(query string) string {
+		var args fasthttp.Args
+		args.Parse(query)
+		var names []string
+		for name := range args.All() {
+			if !slices.Contains(names, string(name)) {
+				names = append(names, string(name))
+			}
+		}
+		slices.Sort(names)
+		var values strings.Builder
+		for _, name := range names {
+			fmt.Fprintf(&values, "%q=%q;", name, args.PeekMulti(name))
+		}
+		return values.String()
+	}
+
+	sharing := map[string][]string{}
+	for i, first := range parameters {
+		for j, second := range parameters {
+			for k, third := range parameters {
+				if i != j && i != k && j != k {
+					query := first + "&" + second + "&" + third
+					sharing[key(query)] = append(sharing[key(query)], query)
+				}
+			}
+		}
+	}
+
+	shared := 0
+	for _, queries := range sharing {
+		for _, query := range queries[1:] {
+			shared++
+			require.ElementsMatch(t, strings.Split(queries[0], "&"), strings.Split(query, "&"), "%q and %q", queries[0], query)
+			require.Equal(t, read(queries[0]), read(query), "%q and %q", queries[0], query)
+		}
+	}
+	require.NotZero(t, shared, "parameters of different names share a key in either order")
+}
+
+// Test_appendCanonicalQueryString_KeepsTheOrderOfOneName checks that the parameters of one name
+// stay in the order sent among more parameters than a sort leaves in place by chance: one that is
+// not stable moves equal names past each other once there are more than a handful.
+func Test_appendCanonicalQueryString_KeepsTheOrderOfOneName(t *testing.T) {
+	t.Parallel()
+	var sent []string
+	byName := map[string][]string{}
+	for i, value := range "0123456789abcdefghijklmnopqrstuvwxyz" {
+		name := string("cab"[i%3])
+		sent = append(sent, name+"="+string(value))
+		byName[name] = append(byName[name], name+"="+string(value))
+	}
+
+	var uri fasthttp.URI
+	uri.SetQueryString(strings.Join(sent, "&"))
+	want := strings.Join(slices.Concat(byName["a"], byName["b"], byName["c"]), "&")
+	require.Equal(t, want, string(appendCanonicalQueryString(nil, &uri)))
+}
+
+// The query segment is built for every request the cache looks up, so sorting it must not allocate:
+// the names are decoded, and the parameters laid out, in a pooled buffer. The fewest of many runs,
+// since under -race sync.Pool drops a quarter of what it is handed at random. Sequential:
+// testing.AllocsPerRun panics during a parallel test.
+func Test_appendCanonicalQueryString_DoesNotAllocate(t *testing.T) {
+	var uri fasthttp.URI
+	uri.SetQueryString("q=hello+world&filter%5Bstatus%5D=active&page=2&sort=-created")
+	dst := make([]byte, 0, 512)
+
+	fewest := math.MaxFloat64
+	for range 200 {
+		fewest = min(fewest, testing.AllocsPerRun(1, func() { dst = appendCanonicalQueryString(dst[:0], &uri) }))
+	}
+	require.Zero(t, fewest)
+	require.Equal(t, "filter%5Bstatus%5D=active&page=2&q=hello+world&sort=-created", string(dst))
 }
 
 // The escaping and bounding below are the reference implementations the key

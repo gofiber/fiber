@@ -54,7 +54,7 @@ func Test_Cache_Security_UnusualInputs(t *testing.T) {
 			cache: []string{cacheMiss, cacheHit},
 		},
 		{
-			// Every "=" becomes "%3D" once escaped, three times larger, so the key outgrows its buffer and is hashed.
+			// Values made of "=", none of which ends a name but the first: sorted, and hashed for its length.
 			name:  "excessive query buffer",
 			app:   fiber.Config{ReadBufferSize: 16384}, // large enough to accept the query string for testing
 			url:   cacheTestCQuery(30, "key%d="+strings.Repeat("=", 50)),
@@ -185,6 +185,59 @@ func Test_Cache_Security_KeyValuesStayDistinct(t *testing.T) {
 
 			// Each value should create a distinct cache entry (no collision through injection).
 			require.Equal(t, len(tc.values), count, "All values should create distinct cache entries")
+		})
+	}
+}
+
+// Test_Cache_Security_QuerySpellingsStayDistinct tests that two requests share an entry only when
+// their queries hold the same parameters in the same bytes. A handler reads the target as it was
+// sent, so what it answers one spelling with is not the answer to another: stored for a request
+// that sends a quote or an angle bracket raw, and served to the browser that asks for the same
+// query with those escaped, as a browser does, an echo of the target is markup in that browser's
+// page. Only the order of parameters with different names is left out of the key.
+func Test_Cache_Security_QuerySpellingsStayDistinct(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, first, second string
+		shared              bool
+	}{
+		{name: "a raw byte and its escape", first: `/?q="><script>&x=1`, second: "/?q=%22%3E%3Cscript%3E&x=1"},
+		{name: "an escaped letter", first: "/?a=%41&b=1", second: "/?a=A&b=1"},
+		{name: "the case of an escape", first: "/?a=%2f&b=1", second: "/?a=%2F&b=1"},
+		{name: "a plus and an escaped space", first: "/?a=x+y&b=1", second: "/?a=x%20y&b=1"},
+		{name: "an escaped name", first: "/?%61=1&b=2", second: "/?a=1&b=2"},
+		{name: "no value and an empty one", first: "/?a&b=1", second: "/?a=&b=1"},
+		{name: "an empty parameter", first: "/?a=1&&b=2", second: "/?a=1&b=2"},
+		{name: "a trailing separator", first: "/?a=1&b=2&", second: "/?a=1&b=2"},
+		// c.Query reads the first value of a name, whichever way the name is spelled.
+		{name: "the values of one name", first: "/?a=1&a=2&b=3", second: "/?a=2&a=1&b=3"},
+		{name: "two spellings of one name", first: "/?a=1&%61=2&b=3", second: "/?%61=2&a=1&b=3"},
+		// A name ends at the first "=" and the rest is its value.
+		{name: "a value that holds the separator of a name", first: "/?a=1&a=b=c", second: "/?a=b=c&a=1"},
+		// One name to the parser alone, which keeps a "%" that begins no escape and whatever follows it.
+		{name: "one name by a stray percent sign", first: "/?x%+=1&x%%2B=2", second: "/?x%%2B=2&x%+=1"},
+		{name: "two names", first: "/?a=1&b=2", second: "/?b=2&a=1", shared: true},
+		{name: "two names around a repeated one", first: "/?b=2&a=1&a=3", second: "/?a=1&b=2&a=3", shared: true},
+		{name: "two names, one escaped", first: "/?b=2&%61=1", second: "/?%61=1&b=2", shared: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			wire := cacheTestCWireOf(t, &Config{Expiration: time.Hour}, func(c fiber.Ctx) error {
+				return c.SendString(c.OriginalURL() + " a=" + c.Query("a"))
+			})
+			answer := func(target string) string {
+				var args fasthttp.Args
+				args.Parse(target[len("/?"):])
+				return target + " a=" + string(args.Peek("a"))
+			}
+
+			cacheTestCRequireReply(t, wire.target(tc.first), cacheMiss, answer(tc.first))
+			if tc.shared {
+				cacheTestCRequireReply(t, wire.target(tc.second), cacheHit, answer(tc.first))
+				return
+			}
+			cacheTestCRequireReply(t, wire.target(tc.second), cacheMiss, answer(tc.second))
+			cacheTestCRequireReply(t, wire.target(tc.first), cacheHit, answer(tc.first), "the first spelling keeps its entry")
 		})
 	}
 }

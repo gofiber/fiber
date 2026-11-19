@@ -151,7 +151,15 @@ func cacheTestCExactWire(t *testing.T, route fiber.Handler) cacheTestCWire {
 func (w cacheTestCWire) get(lines ...string) reply {
 	w.t.Helper()
 
-	parts := []string{"GET / HTTP/1.1\r\nHost: example.com\r\n"}
+	return w.target("/", lines...)
+}
+
+// target is get for a request target of its own, sent in the bytes it is
+// written in here.
+func (w cacheTestCWire) target(target string, lines ...string) reply {
+	w.t.Helper()
+
+	parts := []string{"GET " + target + " HTTP/1.1\r\nHost: example.com\r\n"}
 	for _, line := range lines {
 		parts = append(parts, line+"\r\n")
 	}
