@@ -53,9 +53,9 @@ var ConfigDefault = Config{}
 // seconds of a Structured Field Date, can carry (RFC 9651 Section 3.3.1).
 const maxSFInteger = 999_999_999_999_999
 
-// uriPunctuation is every byte RFC 3986 allows in a URI reference besides
-// letters and digits: the unreserved and reserved characters and '%'.
-const uriPunctuation = "-._~:/?#[]@!$&'()*+,;=%"
+// uriChars is every byte RFC 3986 allows in a URI reference: the unreserved and
+// reserved characters and '%'.
+const uriChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~:/?#[]@!$&'()*+,;=%"
 
 // Helper function to set default values and validate the config.
 func configDefault(config ...Config) Config {
@@ -103,7 +103,7 @@ func configDefault(config ...Config) Config {
 // allowed, and recipients resolve it against the request URI.
 func isURIReference(s string) bool {
 	for i := range len(s) {
-		if c := s[i]; !isAlnum(c) && strings.IndexByte(uriPunctuation, c) < 0 {
+		if strings.IndexByte(uriChars, s[i]) < 0 {
 			return false
 		}
 	}
@@ -122,8 +122,4 @@ func isURIReference(s string) bool {
 
 	// Hostname, not Host: url.Parse keeps a port-only authority such as ":443" in Host.
 	return u.Hostname() != ""
-}
-
-func isAlnum(c byte) bool {
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }

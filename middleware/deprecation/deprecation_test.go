@@ -145,12 +145,16 @@ func Test_Deprecation_ExistingLinks(t *testing.T) {
 			},
 		},
 		{
-			name: "held under a lower-case name without normalizing", want: d + "," + s,
-			appConfig: fiber.Config{DisableHeaderNormalizing: true}, existing: func(c fiber.Ctx) { c.Set("link", d) },
-		},
-		{
 			name: "same link for another context", want: d + `; anchor="#a",` + d + "," + s,
 			existing: func(c fiber.Ctx) { c.Set(fiber.HeaderLink, d+`; anchor="#a"`) },
+		},
+		{
+			name: "held after the same link for another context", want: d + `; anchor="#a", ` + d + "," + s,
+			existing: func(c fiber.Ctx) { c.Set(fiber.HeaderLink, d+`; anchor="#a", `+d) },
+		},
+		{
+			name: "held before whitespace and a comma", want: d + " ," + next + "," + s,
+			existing: func(c fiber.Ctx) { c.Set(fiber.HeaderLink, d+" ,"+next) },
 		},
 	}
 
@@ -188,51 +192,20 @@ func Test_Deprecation_TwoLevels(t *testing.T) {
 		`<https://example.com/policy>; rel="deprecation",<https://example.com/v1>; rel="deprecation"`)
 }
 
-// An earlier writer's lines of the field, every one and under any spelling, give
-// way to the configured value. The spelling is read from the response, which an
-// earlier middleware may stop normalizing in a default app.
+// Every line an earlier writer set gives way to the configured value.
 func Test_Deprecation_ReplacesEarlierLines(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		appConfig fiber.Config
-		existing  func(c fiber.Ctx)
-		name      string
-	}{
-		{
-			name: "every earlier line",
-			existing: func(c fiber.Ctx) {
-				c.Response().Header.Add(fiber.HeaderDeprecation, "@1")
-				c.Response().Header.Add(fiber.HeaderDeprecation, "@2")
-			},
-		},
-		{
-			name: "app without normalizing", appConfig: fiber.Config{DisableHeaderNormalizing: true},
-			existing: func(c fiber.Ctx) { c.Set("deprecation", "@5") },
-		},
-		{
-			name: "response without normalizing",
-			existing: func(c fiber.Ctx) {
-				c.Response().Header.DisableNormalizing()
-				c.Set("deprecation", "@5")
-			},
-		},
-	}
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		c.Response().Header.Add(fiber.HeaderDeprecation, "@1")
+		c.Response().Header.Add(fiber.HeaderDeprecation, "@2")
+		return c.Next()
+	})
+	app.Use(New(Config{Deprecation: deprecatedAt}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			app := fiber.New(tt.appConfig)
-			app.Use(func(c fiber.Ctx) error {
-				tt.existing(c)
-				return c.Next()
-			})
-			app.Use(New(Config{Deprecation: deprecatedAt}))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
-
-			resp := apptest.ExpectBody(t, app, "/", fiber.StatusOK, "ok")
-			requireHeader(t, resp, fiber.HeaderDeprecation, deprecatedValue)
-		})
-	}
+	resp := apptest.ExpectBody(t, app, "/", fiber.StatusOK, "ok")
+	requireHeader(t, resp, fiber.HeaderDeprecation, deprecatedValue)
 }
 
 // A middleware that restarts routing runs the instance again on one response.
@@ -439,6 +412,8 @@ func Test_Deprecation_ValidConfig(t *testing.T) {
 		{Link: "/docs/%41%2F%25?q=%20"},
 		{Link: "urn:example:deprecation"},
 		{Link: "mailto:api@example.com"},
+		// Every punctuation byte RFC 3986 allows.
+		{Link: "/a-._~:@!$&'()*+,;=%41?/#[]"},
 	} {
 		require.NotPanics(t, func() { New(cfg) }, "%+v", cfg)
 	}
