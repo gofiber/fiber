@@ -307,6 +307,37 @@ func Test_defaultKeyGenerator_KeysTheTargetAsSent(t *testing.T) {
 	}
 }
 
+// Test_appendTargetAsSent_RewrittenQuery pins what a target adds to the key when middleware ahead
+// of the cache rewrote its query, which no request line alone produces: keyed is then another
+// query than the target sent. With DisableQueryKeys the target is cut at its "?" whatever the
+// query became, so a query it was given adds nothing either.
+func Test_appendTargetAsSent_RewrittenQuery(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, target, path, keyed, want string
+		noQuery                         bool
+	}{
+		{name: "sent as keyed", target: "/page?a=1", path: "/page", keyed: "a=1"},
+		{name: "added", target: "/page", path: "/page", keyed: "a=1", want: "|n=/page"},
+		{name: "added to a rewritten path", target: "/old", path: "/page", keyed: "a=1", want: "|n=/old"},
+		{name: "added before a fragment", target: "/page#top", path: "/page", keyed: "a=1", want: "|n=/page|f=top"},
+		{name: "added behind a bare question mark", target: "/page?", path: "/page", keyed: "a=1", want: "|p=/page?"},
+		{name: "rewritten", target: "/page?b=2", path: "/page", keyed: "a=1", want: "|p=/page?b=2"},
+		{name: "removed", target: "/page?b=2", path: "/page", want: "|p=/page?b=2"},
+		{name: "added, left out", target: "/page", path: "/page", keyed: "a=1", noQuery: true},
+		{name: "added, moved, left out", target: "/old", path: "/page", keyed: "a=1", noQuery: true, want: "|p=/old"},
+		{name: "rewritten, left out", target: "/page?b=2", path: "/page", keyed: "a=1", noQuery: true},
+		{name: "removed, left out", target: "/page?b=2", path: "/page", noQuery: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := &Config{DisableQueryKeys: tc.noQuery}
+			got := appendTargetAsSent(nil, []byte(tc.target), tc.path, []byte(tc.keyed), cfg)
+			require.Equal(t, tc.want, string(got))
+		})
+	}
+}
+
 // Test_appendCanonicalQueryString_SharedKeyReadsTheSame checks the query segment against the parser
 // a handler reads the query through. Queries that share a key hold the same parameters, so the
 // target a handler reads differs in their order at most, and each name reads the same values in the

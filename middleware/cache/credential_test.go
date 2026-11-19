@@ -54,7 +54,6 @@ func requestWith(headers map[string]string) fiber.Ctx {
 // requestAt is requestWith for another path.
 func requestAt(path string, headers map[string]string) fiber.Ctx {
 	c, _ := buildKeygenCtx(&keygenCase{uri: path, headers: headers})
-	c.Path(path)
 	return c
 }
 
