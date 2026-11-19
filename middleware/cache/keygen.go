@@ -101,11 +101,12 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	path := c.Path()
 	dst = appendEscapedBoundKeySegment(dst, path)
 
+	uri := c.Req().URI()
 	if !cfg.DisableQueryKeys {
 		dst = append(dst, '|', 'q', '=')
-		dst = appendCanonicalQueryString(dst, c.Req().URI())
+		dst = appendCanonicalQueryString(dst, uri)
 	}
-	dst = appendTargetAsSent(dst, c.Request().Header.RequestURI(), path, cfg)
+	dst = appendTargetAsSent(dst, c.Request().Header.RequestURI(), path, uri.QueryString(), cfg)
 
 	if len(cfg.KeyHeaders) > 0 {
 		dst = append(dst, '|', 'h', '=')
@@ -134,8 +135,8 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 }
 
 // appendTargetAsSent appends what target, the request target as it arrived, holds besides path,
-// the routed path, and the query, which the segments before it are built from: under "|p=" the
-// target up to its query, when that is not the routed path, and under "|f=" a fragment. Most
+// the routed path, and keyed, the query, which the segments before it are built from: under "|p="
+// the target up to its query, when that is not the routed path, and under "|f=" a fragment. Most
 // requests add neither.
 //
 // A handler reads the target as it was sent (c.OriginalURL), and the routed path is one of
@@ -147,10 +148,13 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 //
 // The target is cut at its "?": the query is the segment before this one's, or left out of the key
 // by DisableQueryKeys. A "?" that no query follows stays where queries are keyed, as nothing else
-// tells "/page?" from "/page".
-func appendTargetAsSent(dst, target []byte, path string, cfg *Config) []byte {
+// tells "/page?" from "/page". So does a query other than keyed, which middleware registered
+// before the cache rewrote: the segment before this one's holds the query it left, while a handler
+// still reads the one that was sent.
+func appendTargetAsSent(dst, target []byte, path string, keyed []byte, cfg *Config) []byte {
 	sent, fragment, hasFragment := bytes.Cut(target, []byte{'#'})
-	if before, query, hasQuery := bytes.Cut(sent, []byte{'?'}); hasQuery && (len(query) > 0 || cfg.DisableQueryKeys) {
+	if before, query, hasQuery := bytes.Cut(sent, []byte{'?'}); hasQuery &&
+		(cfg.DisableQueryKeys || (len(query) > 0 && bytes.Equal(query, keyed))) {
 		sent = before
 	}
 
