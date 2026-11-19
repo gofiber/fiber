@@ -175,7 +175,7 @@ func Test_Coverage_JoinUpstreamPath_RawPathFallback(t *testing.T) {
 }
 
 // Test_Coverage_EscapedPath pins that escapedPath returns what URL.EscapedPath does, without its allocation,
-// and that parseUpstream drops a RawPath net/url would not write.
+// and that parseUpstream drops a RawPath net/url would not write when Path writes the same.
 func Test_Coverage_EscapedPath(t *testing.T) {
 	// Intentionally not parallel: AllocsPerRun counts allocations process-wide and panics in a parallel test.
 	for _, path := range []string{"", "/a", "/my%20app", "/a%3Bb", "/a%3Bb!x:y@z;k=v", "/a%3B[b]", "/a%2F/b", "/a%3B//b", "/café", "/a%3Bb c", "/a%3B\"b"} {

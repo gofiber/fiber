@@ -648,7 +648,7 @@ func Test_Bind_Query_Schema(t *testing.T) {
 	}
 	bindQuery(new(Query1), "name=tom&nested.age=10", "")
 	bindQuery(new(Query1), "namex=tom&nested.age=10", `bind "name" from query: name is empty`)
-	bindQuery(new(Query1), "name=tom&nested.agex=10", "")
+	bindQuery(new(Query1), "name=tom&nested.agex=10", `bind "nested" from query: nested is empty`)
 	bindQuery(new(Query1), "name=tom&test.age=10", `bind "nested" from query: nested is empty`)
 
 	type Query2 struct {
@@ -673,10 +673,7 @@ func Test_Bind_Query_Schema(t *testing.T) {
 
 	bindQuery(new(Node), "next.val=2", `bind "val" from query: val is empty`)
 
-	n = &Node{Next: new(Node)}
-	bindQuery(n, "val=3&next.value=2", "")
-	require.Equal(t, 3, n.Value)
-	require.Equal(t, 0, n.Next.Value)
+	bindQuery(&Node{Next: new(Node)}, "val=3&next.value=2", `bind "next" from query: next is empty`)
 
 	type Person struct {
 		Name string `query:"name"`
@@ -790,7 +787,7 @@ func Test_Bind_Sources(t *testing.T) {
 			type Required struct {
 				Name string `header:"name,required" respHeader:"name,required" cookie:"name,required"`
 			}
-			src.del(c, "name")
+			src.del(c, "Name")
 			bindTestRequireMultiError(t, src.bind(c, new(Required)), `bind "name" from `+src.source+`: name is empty`)
 		})
 	}
@@ -882,7 +879,7 @@ func Test_Bind_Sources_Schema(t *testing.T) {
 			src.del(c, "Nested.Age")
 			src.add(c, "Nested.Agex", "10")
 			q = new(Fields1)
-			require.NoError(t, src.bind(c, q))
+			bindTestRequireMultiError(t, src.bind(c, q), isEmpty("Nested"))
 
 			src.del(c, "Nested.Agex")
 			q = new(Fields1)
@@ -930,11 +927,7 @@ func Test_Bind_Sources_Schema(t *testing.T) {
 			src.add(c, "Val", "3")
 			src.del(c, "Next.Val")
 			src.add(c, "Next.Value", "2")
-			n = new(Node)
-			n.Next = new(Node)
-			require.NoError(t, src.bind(c, n))
-			require.Equal(t, 3, n.Value)
-			require.Equal(t, 0, n.Next.Value)
+			bindTestRequireMultiError(t, src.bind(c, &Node{Next: new(Node)}), isEmpty("Next"))
 		})
 	}
 }

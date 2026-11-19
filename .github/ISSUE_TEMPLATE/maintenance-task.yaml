@@ -5,7 +5,6 @@ labels: ["🧹 Updates", "v3"]
 
 body:
   - type: markdown
-    id: notice
     attributes:
       value: |
         ### Notice

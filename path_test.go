@@ -435,6 +435,36 @@ func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
 	}
 }
 
+func Test_Constraint_NumericArgsIgnoreWhitespace(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		pattern string
+		path    string
+		match   bool
+	}{
+		{pattern: "/:id<range(1, 10)>", path: "/5", match: true},
+		{pattern: "/:id<range(1, 10)>", path: "/11", match: false},
+		{pattern: "/:id<range( 1 ,10 )>", path: "/10", match: true},
+		{pattern: "/:id<min( 5 )>", path: "/5", match: true},
+		{pattern: "/:id<min( 5 )>", path: "/4", match: false},
+		{pattern: "/:id<max( 5 )>", path: "/5", match: true},
+		{pattern: "/:name<betweenLen(2, 4)>", path: "/abc", match: true},
+		{pattern: "/:name<betweenLen(2, 4)>", path: "/abcde", match: false},
+		{pattern: "/:name<minLen( 3)>", path: "/abc", match: true},
+		{pattern: "/:name<maxLen( 3)>", path: "/abc", match: true},
+		{pattern: "/:name<len( 3)>", path: "/abc", match: true},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.pattern+" "+testCase.path, func(t *testing.T) {
+			t.Parallel()
+			parser := parseRoute(testCase.pattern, nil)
+			var params [maxParams]string
+			require.Equal(t, testCase.match, parser.getMatch(testCase.path, testCase.path, &params, false))
+		})
+	}
+}
+
 func Test_ConstraintCheckConstraint_NilRegexMatcher(t *testing.T) {
 	t.Parallel()
 	constraint := *newConstraint(regexConstraintType{}, ConstraintRegex, []string{"("})

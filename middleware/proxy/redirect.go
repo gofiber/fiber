@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net/url"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/crosshost"
@@ -176,25 +177,171 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy, 
 	if utils.IndexControl(location) != -1 {
 		return nil, fasthttp.ErrorInvalidURI
 	}
-	uri := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(uri)
-	uri.Update(currentURL)
-	// previousScheme is at most "https" (5 bytes). A stack-sized scratch
-	// buffer holds it without escaping to the heap, eliminating the
-	// per-hop allocation that the previous append([]byte(nil), ...)
-	// pattern produced.
-	var schemeBuf [8]byte
-	previousScheme := append(schemeBuf[:0], uri.Scheme()...)
-	uri.UpdateBytes(location)
-	if len(uri.Host()) == 0 {
-		return nil, fasthttp.ErrorInvalidURI
+	var (
+		target *url.URL
+		err    error
+	)
+	if plainAbsoluteURL(location) {
+		// There is nothing to resolve: resolveLocation would write the Location back as it is.
+		target, err = validateUpstream(string(location), policy, lookups)
+	} else {
+		target, err = resolveLocation(currentURL, location, policy, lookups)
 	}
-	target, err := validateUpstream(uri.String(), policy, lookups)
 	if err != nil {
 		return nil, err
 	}
-	if !policy.AllowHTTPSDowngrade && utils.EqualFold(previousScheme, httpsSchemeBytes) && target.Scheme == schemeHTTP {
+	if !policy.AllowHTTPSDowngrade && target.Scheme == schemeHTTP && strings.EqualFold(schemeOf(currentURL), schemeHTTPS) {
 		return nil, ErrRedirectDowngrade
 	}
 	return target, nil
+}
+
+// resolveLocation resolves location against currentURL and validates the URL it names under policy.
+func resolveLocation(currentURL string, location []byte, policy SecurityPolicy, lookups *lookupCache) (*url.URL, error) {
+	// Resolved on the escaped path (RFC 3986 Section 5.2), not through fasthttp.URI, which decodes
+	// "%2F" and resolves the ".." it uncovers: a Location that repeats the request URI, as a
+	// canonical-host redirect does, would otherwise name another path than the one requested.
+	base, err := url.Parse(currentURL)
+	if err != nil {
+		return nil, fasthttp.ErrorInvalidURI
+	}
+	ref, err := url.Parse(escapeStrayPercents(utils.UnsafeString(location)))
+	if err != nil {
+		return nil, fasthttp.ErrorInvalidURI
+	}
+	if !rawPathValid(ref.RawPath) {
+		ref.RawPath = repairRawPath(ref.RawPath, ref.Path)
+	}
+	next := base.ResolveReference(ref)
+	// A hop has never carried the user info of a Location: it would write an Authorization the
+	// request did not have.
+	next.User = nil
+	if next.Host == "" {
+		return nil, fasthttp.ErrorInvalidURI
+	}
+	return validateUpstream(next.String(), policy, lookups)
+}
+
+// plainAbsoluteURL reports whether location is an absolute http or https URL that resolveLocation writes back as it
+// is: a lowercase scheme, a host with at most a port and no user info, a path of unreserved bytes, sub-delimiters
+// and complete escapes with no dot segment, and a query, but no fragment. A Location that is anything else goes the
+// long way, through net/url, which costs about twice the allocations.
+func plainAbsoluteURL(location []byte) bool {
+	s := utils.UnsafeString(location)
+	rest, ok := strings.CutPrefix(s, "http://")
+	if !ok {
+		if rest, ok = strings.CutPrefix(s, "https://"); !ok {
+			return false
+		}
+	}
+	authority := rest
+	rest = ""
+	if i := utils.IndexAny2(authority, '/', '?'); i >= 0 {
+		authority, rest = authority[:i], authority[i:]
+	}
+	host, port, hasPort := strings.Cut(authority, ":")
+	if host == "" || hasPort && (port == "" || strings.Trim(port, "0123456789") != "") {
+		return false
+	}
+	for i := range len(host) {
+		if c := host[i]; !isAlnum(c) && c != '-' && c != '.' {
+			return false
+		}
+	}
+	path, query, _ := strings.Cut(rest, "?")
+	segment := 0
+	for i := 0; i <= len(path); i++ {
+		if i < len(path) && path[i] != '/' {
+			switch c := path[i]; {
+			case isAlnum(c), strings.IndexByte("-._~!$&'()*+,;=:@", c) >= 0:
+			case c == '%' && i+2 < len(path) && isHexDigit(path[i+1]) && isHexDigit(path[i+2]):
+				i += 2
+			default:
+				return false
+			}
+			continue
+		}
+		if seg := path[segment:i]; seg == "." || seg == ".." {
+			return false
+		}
+		segment = i + 1
+	}
+	for i := range len(query) {
+		if c := query[i]; c <= ' ' || c > '~' || c == '#' {
+			return false
+		}
+	}
+	return true
+}
+
+// isAlnum reports whether c is an ASCII letter or digit.
+func isAlnum(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
+// schemeOf returns the scheme ref opens with, as written, or "" when it opens with none.
+func schemeOf(ref string) string {
+	if end := schemeEnd(ref); end > 0 {
+		return ref[:end-1]
+	}
+	return ""
+}
+
+// escapeStrayPercents returns location with every "%" of its path that does not begin an escape written
+// as "%25", which is how browsers, curl and fasthttp.URI take "/discount/100%"; net/url refuses it. Only the
+// path is touched: the scheme and the authority are cut off as net/url does, so the host a Location names
+// does not depend on this. It returns location itself, without allocating, when there is nothing to write.
+func escapeStrayPercents(location string) string {
+	end := len(location)
+	if i := utils.IndexAny2(location, '?', '#'); i >= 0 {
+		end = i
+	}
+	var b []byte
+	last := 0
+	for i := pathStart(location[:end]); i < end; i++ {
+		if location[i] != '%' || i+2 < end && isHexDigit(location[i+1]) && isHexDigit(location[i+2]) {
+			continue
+		}
+		if b == nil {
+			b = make([]byte, 0, len(location)+8)
+		}
+		b = append(b, location[last:i+1]...)
+		b = append(b, "25"...)
+		last = i + 1
+	}
+	if b == nil {
+		return location
+	}
+	return string(append(b, location[last:]...))
+}
+
+// pathStart returns where the path of ref, which ends where its query or fragment begins, starts, as net/url cuts
+// it: after the "scheme:" and the "//authority" it opens with.
+func pathStart(ref string) int {
+	start := schemeEnd(ref)
+	if rest := ref[start:]; strings.HasPrefix(rest, "//") && (start > 0 || !strings.HasPrefix(rest, "///")) {
+		if i := strings.IndexByte(rest[2:], '/'); i >= 0 {
+			return start + 2 + i
+		}
+		return len(ref)
+	}
+	return start
+}
+
+// schemeEnd returns the index after the "scheme:" ref opens with, or 0 when it opens with none, as net/url's getScheme does.
+func schemeEnd(ref string) int {
+	for i := 0; i < len(ref); i++ {
+		switch c := ref[i]; {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+		case c >= '0' && c <= '9', c == '+', c == '-', c == '.':
+			if i == 0 {
+				return 0
+			}
+		case c == ':' && i > 0:
+			return i + 1
+		default:
+			return 0
+		}
+	}
+	return 0
 }

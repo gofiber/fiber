@@ -4,11 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
+	"sync"
 	"testing"
 	"testing/iotest"
 	"time"
@@ -18,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
 func TestToFiberHandler_Nil(t *testing.T) {
@@ -718,10 +723,13 @@ func Test_HTTPHandler_Direct_ServesRoutedPath(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "pub", "ok.txt"), []byte("ok"), 0o600))
 
 	fileServer := http.FileServer(http.Dir(dir))
+	files := fasthttp.FSHandler(dir, 0)
 	shapes := map[string]any{
-		"http.Handler":     fileServer,
-		"http.HandlerFunc": http.HandlerFunc(fileServer.ServeHTTP),
-		"http func":        fileServer.ServeHTTP,
+		"http.Handler":                   fileServer,
+		"http.HandlerFunc":               http.HandlerFunc(fileServer.ServeHTTP),
+		"http func":                      fileServer.ServeHTTP,
+		"fasthttp.RequestHandler":        files,
+		"func(*fasthttp.RequestCtx) err": func(ctx *fasthttp.RequestCtx) error { files(ctx); return nil },
 	}
 	mounts := map[string]func(app *App, h any){
 		"Use":     func(app *App, h any) { app.Use(h) },
@@ -734,6 +742,7 @@ func Test_HTTPHandler_Direct_ServesRoutedPath(t *testing.T) {
 		"/admin%2F":                        {StatusNotFound, StatusUnauthorized},
 		"/pub/..%2Fadmin/secret.txt":       {StatusNotFound, StatusUnauthorized},
 		"/pub/..%2fadmin%2fsecret.txt":     {StatusNotFound, StatusUnauthorized},
+		"/pub%2F..%2Fadmin%2Fsecret.txt":   {StatusNotFound, StatusUnauthorized},
 		"//admin/secret.txt":               {StatusNotFound, StatusNotFound},
 		"/%2Fadmin/secret.txt":             {StatusNotFound, StatusNotFound},
 		"/pub//../admin/secret.txt":        {StatusNotFound, StatusNotFound},
@@ -770,6 +779,351 @@ func Test_HTTPHandler_Direct_ServesRoutedPath(t *testing.T) {
 			}
 		}
 	}
+}
+
+// Test_Adapter_FastHTTP_RestoresRequestLine pins that the request line comes back once a fasthttp route handler returned,
+// unless the response is a body stream or hijacked: a net/http handler adapted by fasthttpadaptor goes on reading the line
+// then (see Test_Adapter_FastHTTP_AdaptedHandlerKeepsItsRequest), so it is left as the handler read it, as for the
+// net/http types.
+func Test_Adapter_FastHTTP_RestoresRequestLine(t *testing.T) {
+	t.Parallel()
+	const target = "/a/../%70ub/x%20y?q=%2F"
+	const routed = "/pub/x%20y?q=%2F"
+	for name, tc := range map[string]struct {
+		respond func(ctx *fasthttp.RequestCtx)
+		want    string
+	}{
+		"buffered":    {respond: func(ctx *fasthttp.RequestCtx) { ctx.SetBodyString("ok") }, want: target},
+		"body stream": {respond: func(ctx *fasthttp.RequestCtx) { ctx.SetBodyStream(strings.NewReader("ok"), 2) }, want: routed},
+		"hijacked":    {respond: func(ctx *fasthttp.RequestCtx) { ctx.Hijack(func(net.Conn) {}) }, want: routed},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var read, after string
+			app := New()
+			app.Use(func(c Ctx) error {
+				err := c.Next()
+				after = c.OriginalURL()
+				return err
+			})
+			app.Use(func(ctx *fasthttp.RequestCtx) error {
+				read = string(ctx.Path()) + "?" + string(ctx.QueryArgs().QueryString())
+				tc.respond(ctx)
+				return nil
+			})
+
+			serveRawTarget(t, app, target)
+			require.Equal(t, "/pub/x y?q=%2F", read, "the handler reads the routed path")
+			require.Equal(t, tc.want, after)
+		})
+	}
+}
+
+// Test_Adapter_FastHTTP_AdaptedHandlerKeepsItsRequest pins that a net/http handler adapted by fasthttpadaptor and registered
+// as a route handler, which flushes and goes on, reads the request line it was given until it returns: its URL and
+// RequestURI alias the line, so writing the original line over it once the route handler returned changed what it reads.
+func Test_Adapter_FastHTTP_AdaptedHandlerKeepsItsRequest(t *testing.T) {
+	t.Parallel()
+	proceed := make(chan struct{})
+	var once sync.Once
+	release := func() { once.Do(func() { close(proceed) }) }
+	t.Cleanup(release)
+	type reading struct{ before, after string }
+	got := make(chan reading, 1)
+	app := New()
+	app.Get("/events", fasthttpadaptor.NewFastHTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		before := r.URL.Path + "|" + r.RequestURI
+		_, err := io.WriteString(w, "first")
+		assert.NoError(t, err)
+		assert.NoError(t, http.NewResponseController(w).Flush())
+		<-proceed
+		got <- reading{before: before, after: r.URL.Path + "|" + r.RequestURI}
+	})))
+
+	serveRawTarget(t, app, "/a/../events?x=1")
+	release()
+	require.Equal(t, reading{before: "/events|/events?x=1", after: "/events|/events?x=1"}, apptest.Recv(t, got, 5*time.Second))
+}
+
+// Test_Adapter_RestoresAnOriginFormTargetAsAPath pins that a route handler gives the request line back so that a
+// target that begins with "//" and holds "://" is still a path: fasthttp takes the first segment of such a target for
+// the host when it parses the line again, and the Host header is the host of the request once the handler returned.
+func Test_Adapter_RestoresAnOriginFormTargetAsAPath(t *testing.T) {
+	t.Parallel()
+	for name, handler := range map[string]any{
+		"net/http": http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, err := io.WriteString(w, "ok")
+			assert.NoError(t, err)
+		}),
+		"fasthttp": fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) { ctx.SetBodyString("ok") }),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			var after string
+			app.Use(func(c Ctx) error {
+				c.Path("/pub/x") // the routed path is not the line, so the line is set for the handler and put back
+				err := c.Next()
+				after = c.Host() + "|" + c.OriginalURL()
+				return err
+			})
+			app.Use(handler)
+			fctx := wireRequestCtx(t, "GET //internal.example.com/data?x=:// HTTP/1.1\r\nHost: other.example\r\n\r\n", nil)
+			app.Handler()(fctx)
+			require.Equal(t, StatusOK, fctx.Response.StatusCode())
+			require.Equal(t, "other.example|//internal.example.com/data?x=://", after)
+		})
+	}
+}
+
+// Test_Adapter_FastHTTP_KeepsTargetsThatAreNoPath pins that the asterisk form of OPTIONS and the authority form of
+// CONNECT, which have no path to guard, reach a fasthttp handler as sent, while the ones that hide a path do not.
+func Test_Adapter_FastHTTP_KeepsTargetsThatAreNoPath(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) { ctx.SetBodyString(string(ctx.RequestURI())) }))
+
+	for _, tc := range []struct {
+		name, raw, body string
+		status          int
+	}{
+		{"asterisk-form", "OPTIONS * HTTP/1.1\r\nHost: example.com\r\n\r\n", "*", StatusOK},
+		{"authority-form", "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n", "example.com:443", StatusOK},
+		{"authority-form with an IPv6 literal", "CONNECT [::1]:443 HTTP/1.1\r\nHost: [::1]:443\r\n\r\n", "[::1]:443", StatusOK},
+		{"authority-form with an empty segment", "CONNECT //admin/data.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
+		{"authority-form with an escaped slash", "CONNECT admin%2Fdata.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			status, body := serveRaw(t, app, tc.raw)
+			require.Equal(t, tc.status, status)
+			if tc.status == StatusOK {
+				require.Equal(t, tc.body, body)
+			}
+		})
+	}
+}
+
+// Test_HTTPHandler_Direct_TargetsThatAreNoPath pins that the target of OPTIONS * and the authority form of CONNECT, which
+// hold no path, reach a net/http handler registered directly as the router read them (rooted, a byte a path may not carry
+// raw escaped) and are not refused for their spelling: an IPv6 literal holds "[" and "]", which a path sent with them is
+// answered 404 for (see Test_HTTPHandler_FileServerOneSpelling). A target that does hold a path is judged as one.
+func Test_HTTPHandler_Direct_TargetsThatAreNoPath(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.WriteString(w, r.RequestURI+"|"+r.Host)
+		assert.NoError(t, err)
+	})
+
+	for _, tc := range []struct {
+		name, raw, body string
+		status          int
+	}{
+		{"asterisk-form", "OPTIONS * HTTP/1.1\r\nHost: example.com\r\n\r\n", "/*|example.com", StatusOK},
+		{"authority-form", "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n", "/example.com:443|example.com:443", StatusOK},
+		{"authority-form with an IPv6 literal", "CONNECT [::1]:443 HTTP/1.1\r\nHost: [::1]:443\r\n\r\n", "/%5B::1%5D:443|[::1]:443", StatusOK},
+		{"authority-form with a path", "CONNECT [::1]:443/x HTTP/1.1\r\nHost: [::1]:443\r\n\r\n", "", StatusNotFound},
+		{"origin-form with brackets", "GET /a[1] HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			status, body := serveRaw(t, app, tc.raw)
+			require.Equal(t, tc.status, status)
+			if tc.status == StatusOK {
+				require.Equal(t, tc.body, body)
+			}
+		})
+	}
+}
+
+// echoRequestURI is a fasthttp handler that answers with the request line it reads.
+func echoRequestURI(ctx *fasthttp.RequestCtx) { ctx.SetBodyString(string(ctx.RequestURI())) }
+
+// Test_Adapter_FastHTTP_ReadsTheRoutedTarget pins what a fasthttp and a net/http route handler read of the request line:
+// a line that already spells the routed path, with or without a query, as it is, and the ones next to it that differ
+// in a byte, or in what a handler did to the query or the path, respelled or answered 404.
+func Test_Adapter_FastHTTP_ReadsTheRoutedTarget(t *testing.T) {
+	t.Parallel()
+	shapes := map[string]any{
+		"fasthttp": fasthttp.RequestHandler(echoRequestURI),
+		"net/http": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := io.WriteString(w, r.RequestURI)
+			assert.NoError(t, err)
+		}),
+	}
+	changes := map[string]func(c Ctx){
+		"read":             func(c Ctx) { _ = c.Query("x") },
+		"add":              func(c Ctx) { c.Request().URI().QueryArgs().Add("k", "v") },
+		"set":              func(c Ctx) { c.Request().URI().QueryArgs().Set("x", "9") },
+		"reset":            func(c Ctx) { c.Request().URI().QueryArgs().Reset() },
+		"set query string": func(c Ctx) { c.Request().URI().SetQueryString("z=1") },
+		"rewrite path":     func(c Ctx) { c.Path("/c") },
+	}
+	for _, tc := range []struct {
+		name, target, change string
+		want                 string // what the handler read of the request line; "" for a request answered 404
+	}{
+		{name: "path", target: "/a/b-c_d.e~f", want: "/a/b-c_d.e~f"},
+		{name: "root", target: "/", want: "/"},
+		{name: "trailing slash", target: "/a/", want: "/a/"},
+		{name: "query", target: "/a?x=1&y=%20;z", want: "/a?x=1&y=%20;z"},
+		{name: "query read", target: "/a?x=a%20b&c=;d", want: "/a?x=a%20b&c=;d", change: "read"},
+		{name: "escape", target: "/a%20b?x=1", want: "/a%20b?x=1"},
+		{name: "path parameter", target: "/a;b", want: "/a;b"},
+		{name: "empty query", target: "/a?", want: "/a"},
+		{name: "fragment", target: "/a?x=1#frag", want: "/a?x=1"},
+		{name: "dot segment", target: "/a/./b", want: "/a/b"},
+		{name: "empty segment", target: "/a//b"},
+		{name: "escaped slash", target: "/a%2Fb"},
+		{name: "second spelling", target: "/R%26D"},
+		{name: "backslash", target: `/a\b`},
+		{name: "parameters alone", target: "/;x/admin"},
+		{name: "dot segment parameters", target: "/a/..;/b"},
+		{name: "arguments added", target: "/a", want: "/a?k=v", change: "add"},
+		{name: "arguments set", target: "/a?x=1", want: "/a?x=9", change: "set"},
+		{name: "arguments removed", target: "/a?x=1", want: "/a", change: "reset"},
+		{name: "query string set", target: "/a", want: "/a?z=1", change: "set query string"},
+		{name: "path rewritten", target: "/a/b?x=1", want: "/c?x=1", change: "rewrite path"},
+	} {
+		for shape, handler := range shapes {
+			for _, immutable := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/immutable=%v", tc.name, shape, immutable), func(t *testing.T) {
+					t.Parallel()
+					app := New(Config{Immutable: immutable})
+					app.Use(func(c Ctx) error {
+						if change := changes[tc.change]; change != nil {
+							change(c)
+						}
+						return c.Next()
+					})
+					app.Use(handler)
+
+					resp := serveRawTarget(t, app, tc.target)
+					if tc.want == "" {
+						require.Equal(t, StatusNotFound, resp.StatusCode())
+						return
+					}
+					require.Equal(t, StatusOK, resp.StatusCode())
+					require.Equal(t, tc.want, string(resp.Body()))
+				})
+			}
+		}
+	}
+}
+
+// Test_Adapter_FastHTTP_UnescapePathRespellsTheLine pins that under UnescapePath, which makes the router decode every
+// escape and the handler get the path escaped again by segment, a line that is made of plain bytes is respelled too
+// when a segment holds one of them that is escaped again, a comma.
+func Test_Adapter_FastHTTP_UnescapePathRespellsTheLine(t *testing.T) {
+	t.Parallel()
+	app := New(Config{UnescapePath: true})
+	app.Use(fasthttp.RequestHandler(echoRequestURI))
+
+	resp := serveRawTarget(t, app, "/a,b/c:d?x=1")
+	require.Equal(t, StatusOK, resp.StatusCode())
+	require.Equal(t, "/a%2Cb/c:d?x=1", string(resp.Body()))
+}
+
+// Test_Adapter_StrayPercent pins that a net/http route handler is answered 400, as net/http's own server answers it, for a
+// path whose "%" begins no escape, and that a fasthttp route handler is not: fasthttp decodes "/100%" and "/100%25" into
+// one path for it, so there is no second spelling to keep out, and it is given the line Routed spells for it. With
+// UnescapePath the router decodes every escape itself, and both kinds get the one path.
+func Test_Adapter_StrayPercent(t *testing.T) {
+	t.Parallel()
+	netHTTP := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.WriteString(w, r.RequestURI)
+		assert.NoError(t, err)
+	})
+	for _, tc := range []struct {
+		handler  any
+		name     string
+		want     string // what the handler reads of "/100%/x" when it is answered 200
+		status   int    // the answer for "/100%/x"
+		unescape bool
+	}{
+		{name: "net/http", handler: netHTTP, status: StatusBadRequest},
+		{name: "net/http, UnescapePath", handler: netHTTP, unescape: true, status: StatusOK, want: "/100%25/x"},
+		{name: "fasthttp", handler: fasthttp.RequestHandler(echoRequestURI), status: StatusOK, want: "/100%25/x"},
+		{name: "fasthttp, UnescapePath", handler: fasthttp.RequestHandler(echoRequestURI), unescape: true, status: StatusOK, want: "/100%25/x"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{UnescapePath: tc.unescape})
+			app.Use(tc.handler)
+
+			resp := serveRawTarget(t, app, "/100%/x")
+			require.Equal(t, tc.status, resp.StatusCode())
+			if tc.status == StatusOK {
+				require.Equal(t, tc.want, string(resp.Body()))
+			}
+			resp = serveRawTarget(t, app, "/100%25/x?y=%zz")
+			require.Equal(t, StatusOK, resp.StatusCode())
+			require.Equal(t, "/100%25/x?y=%zz", string(resp.Body()))
+		})
+	}
+}
+
+// Test_Adapter_FastHTTP_DispatchAllocations pins that a fasthttp route handler costs the router no allocation more than
+// one that takes the Ctx for a request line that already spells the routed path, query or not, but for the copy
+// Immutable makes of the path it compares the line with.
+//
+// Not parallel: AllocsPerRun counts allocations process-wide, and Go pauses parallel tests while a sequential one runs.
+func Test_Adapter_FastHTTP_DispatchAllocations(t *testing.T) {
+	// The fewest allocations of many single runs, not an average: under -race sync.Pool drops a quarter of what it is
+	// handed at random, so an average varies from one run to the next.
+	allocs := func(immutable bool, target string, handler any) float64 {
+		app := New(Config{Immutable: immutable})
+		app.Get("/foo/:id", handler)
+		h := app.Handler()
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(MethodGet)
+		fctx.Request.SetRequestURI(target)
+		fewest := math.MaxFloat64
+		for range 200 {
+			fewest = min(fewest, testing.AllocsPerRun(1, func() { h(fctx) }))
+		}
+		return fewest
+	}
+	handlers := map[string]any{
+		"fasthttp.RequestHandler":          fasthttp.RequestHandler(func(*fasthttp.RequestCtx) {}),
+		"func(*fasthttp.RequestCtx) error": func(*fasthttp.RequestCtx) error { return nil },
+	}
+	for _, immutable := range []bool{false, true} {
+		extra := 0.0
+		if immutable {
+			extra = 1
+		}
+		for _, target := range []string{"/foo/bar", "/foo/bar?x=1&y=2"} {
+			base := allocs(immutable, target, func(Ctx) error { return nil })
+			for name, handler := range handlers {
+				got := allocs(immutable, target, handler)
+				require.LessOrEqual(t, got, base+extra, "%s %s immutable=%v", name, target, immutable)
+			}
+		}
+	}
+}
+
+// Test_Adapter_FastHTTP_TimedOutHandlerKeepsTheRequest pins that a route handler fasthttp.TimeoutHandler gave up on, which
+// goes on reading the request, is not written to once it was answered for: under -race, the line put back is a race with it.
+func Test_Adapter_FastHTTP_TimedOutHandlerKeepsTheRequest(t *testing.T) {
+	t.Parallel()
+	read := make(chan string, 1)
+	app := New()
+	app.Use(fasthttp.TimeoutHandler(func(ctx *fasthttp.RequestCtx) {
+		// No channel to tell it when the request was answered: that would order its read after the write it must not see.
+		time.Sleep(150 * time.Millisecond)
+		read <- string(ctx.Path())
+	}, 20*time.Millisecond, "timeout"))
+	ln := apptest.Serve(t, app, ListenConfig{DisableStartupMessage: true})
+
+	conn := apptest.Dial(t, ln)
+	_, err := io.WriteString(conn, "GET /%70ub/x?q=1 HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+	require.NoError(t, err)
+	answer, err := io.ReadAll(conn)
+	require.NoError(t, err)
+	require.Contains(t, string(answer), "408 Request Timeout")
+	require.Equal(t, "/pub/x", apptest.Recv(t, read, 5*time.Second))
 }
 
 func Test_HTTPHandler_Direct_RestoresRequestLine(t *testing.T) {

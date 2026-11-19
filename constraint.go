@@ -139,6 +139,19 @@ func parseConstraintArgs(args []string) []string {
 	return parsed
 }
 
+// errConstraintIntArg is returned for a numeric constraint argument that is not an integer.
+var errConstraintIntArg = errors.New("parse constraint arg: not an integer")
+
+// parseConstraintInt reads a numeric constraint argument. Surrounding whitespace is
+// ignored, so `range(1, 10)` means the same as `range(1,10)`.
+func parseConstraintInt(arg string) (int, error) {
+	n, err := utils.ParseNativeInt(utils.TrimSpace(arg))
+	if err != nil {
+		return 0, errConstraintIntArg
+	}
+	return n, nil
+}
+
 // builtinConstraints is the registry of all built-in constraint handlers.
 var builtinConstraints = []ConstraintHandler{
 	intConstraintType{},
@@ -256,12 +269,12 @@ type intConstraintType struct{}
 
 func (intConstraintType) Name() string { return ConstraintInt }
 
-// The int-family constraints (int, min, max, range) deliberately stay on
-// strconv.Atoi: utils.ParseNativeInt benchmarked slower for the short
-// (1-14 digit) params routes actually see, winning only near 19 digits.
+// The int-family constraints (int, min, max, range) use utils.ParseInt. The
+// int64(int(n)) == n check rejects, like strconv.Atoi, a value that does not
+// fit in an int on 32-bit platforms.
 func (intConstraintType) Execute(param string, _ []any) bool {
-	_, err := strconv.Atoi(param)
-	return err == nil
+	n, err := utils.ParseInt(param)
+	return err == nil && int64(int(n)) == n
 }
 
 type boolConstraintType struct{}
@@ -363,9 +376,9 @@ func (minLenConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) == 0 {
 		return nil, errors.New("minLen constraint requires an argument")
 	}
-	n, err := strconv.Atoi(args[0])
+	n, err := parseConstraintInt(args[0])
 	if err != nil {
-		return nil, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, err
 	}
 	return []any{n}, nil
 }
@@ -389,9 +402,9 @@ func (maxLenConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) == 0 {
 		return nil, errors.New("maxLen constraint requires an argument")
 	}
-	n, err := strconv.Atoi(args[0])
+	n, err := parseConstraintInt(args[0])
 	if err != nil {
-		return nil, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, err
 	}
 	return []any{n}, nil
 }
@@ -415,9 +428,9 @@ func (lenConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) == 0 {
 		return nil, errors.New("len constraint requires an argument")
 	}
-	n, err := strconv.Atoi(args[0])
+	n, err := parseConstraintInt(args[0])
 	if err != nil {
-		return nil, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, err
 	}
 	return []any{n}, nil
 }
@@ -441,13 +454,13 @@ func (betweenLenConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) < 2 {
 		return nil, errors.New("betweenLen constraint requires two arguments")
 	}
-	lo, err := strconv.Atoi(args[0])
+	lo, err := parseConstraintInt(args[0])
 	if err != nil {
-		return nil, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, err
 	}
-	hi, err := strconv.Atoi(args[1])
+	hi, err := parseConstraintInt(args[1])
 	if err != nil {
-		return nil, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, err
 	}
 	return []any{lo, hi}, nil
 }
@@ -476,9 +489,9 @@ func (minConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) == 0 {
 		return nil, errors.New("min constraint requires an argument")
 	}
-	n, err := strconv.Atoi(args[0])
+	n, err := parseConstraintInt(args[0])
 	if err != nil {
-		return nil, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, err
 	}
 	return []any{n}, nil
 }
@@ -491,8 +504,8 @@ func (minConstraintType) Execute(param string, data []any) bool {
 	if !ok {
 		return false
 	}
-	num, err := strconv.Atoi(param)
-	return err == nil && num >= limit
+	n, err := utils.ParseInt(param)
+	return err == nil && int64(int(n)) == n && int(n) >= limit
 }
 
 type maxConstraintType struct{}
@@ -503,9 +516,9 @@ func (maxConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) == 0 {
 		return nil, errors.New("max constraint requires an argument")
 	}
-	n, err := strconv.Atoi(args[0])
+	n, err := parseConstraintInt(args[0])
 	if err != nil {
-		return nil, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, err
 	}
 	return []any{n}, nil
 }
@@ -518,8 +531,8 @@ func (maxConstraintType) Execute(param string, data []any) bool {
 	if !ok {
 		return false
 	}
-	num, err := strconv.Atoi(param)
-	return err == nil && num <= limit
+	n, err := utils.ParseInt(param)
+	return err == nil && int64(int(n)) == n && int(n) <= limit
 }
 
 type rangeConstraintType struct{}
@@ -530,13 +543,13 @@ func (rangeConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) < 2 {
 		return nil, errors.New("range constraint requires two arguments")
 	}
-	lo, err := strconv.Atoi(args[0])
+	lo, err := parseConstraintInt(args[0])
 	if err != nil {
-		return nil, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, err
 	}
-	hi, err := strconv.Atoi(args[1])
+	hi, err := parseConstraintInt(args[1])
 	if err != nil {
-		return nil, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, err
 	}
 	return []any{lo, hi}, nil
 }
@@ -553,8 +566,8 @@ func (rangeConstraintType) Execute(param string, data []any) bool {
 	if !ok {
 		return false
 	}
-	num, err := strconv.Atoi(param)
-	return err == nil && num >= lo && num <= hi
+	n, err := utils.ParseInt(param)
+	return err == nil && int64(int(n)) == n && int(n) >= lo && int(n) <= hi
 }
 
 type regexConstraintType struct {

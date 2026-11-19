@@ -1,0 +1,121 @@
+// Package requesthold keeps the fasthttp.RequestCtx of a request out of reuse for as long as the net/http
+// handler adapted for it runs.
+//
+// fasthttpadaptor builds the *http.Request out of views of the buffers of the RequestCtx (method, URL, host,
+// every header key and value, the body) and makes the RequestCtx its context. It runs the handler in a
+// goroutine, and once the handler flushes the response it returns, without waiting for the handler.
+// When the client leaves, the server closes the response stream, takes the RequestCtx back and the next
+// request overwrites its buffers while the handler still runs: its r.Header.Get, r.URL.Path, r.Host,
+// r.Method, the strings it read earlier and r.Context().Value then answer for another request. A net/http
+// server never does that to a handler. The adaptor is in fasthttp and cannot be changed from here.
+//
+// The handler returned by NewFastHTTPHandler registers a hold in the user values of the RequestCtx. fasthttp
+// closes the user values of a request when it resets it for the next one, which happens after the
+// response was written and before the buffers are reused, and the hold's Close waits for the handler.
+// A handler that returns before the adaptor does, which is nearly all of them, leaves nothing to wait for.
+//
+// The hold covers the call of the handler. A goroutine the handler leaves running after it returned, such as the
+// one http.TimeoutHandler runs the wrapped handler in once it has answered 503, is not waited for: it reads a
+// RequestCtx that may already serve the next request, as it did before the hold.
+package requesthold
+
+import (
+	"net/http"
+	"sync"
+	"sync/atomic"
+
+	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
+)
+
+type holdKey struct{}
+
+// hold counts the net/http handler of one request that is still running.
+type hold struct {
+	resp    *fasthttp.Response
+	wg      sync.WaitGroup
+	running atomic.Int32
+}
+
+func acquire() *hold {
+	if hd, ok := holds.Get().(*hold); ok {
+		return hd
+	}
+	return new(hold)
+}
+
+var holds sync.Pool
+
+// Close ends the response stream, so that a handler blocked on a write returns, and waits for the handler.
+// fasthttp calls it when it resets the request, after it wrote the response.
+func (h *hold) Close() error {
+	if h.resp != nil {
+		_ = h.resp.CloseBodyStream() //nolint:errcheck // nothing to do with it: the response is done
+	}
+	h.wg.Wait()
+	return nil
+}
+
+// first stores hd on ctx as its first user value. fasthttp closes and clears the user values of a request in
+// order when it resets it, so the values stored ahead of the hold would be cleared while the handler
+// still reads them, and only those after it are kept until it returns: the ones stored before, such as
+// the user context adaptor.HTTPHandlerWithContext stores for the handler to read, are moved behind it.
+func first(ctx *fasthttp.RequestCtx, hd *hold) {
+	hd.resp = &ctx.Response
+	ctx.SetUserValue(holdKey{}, hd)
+	var key, value any
+	ctx.VisitUserValuesAll(func(k, v any) {
+		if key == nil {
+			key, value = k, v
+		}
+	})
+	if _, isHold := key.(holdKey); !isHold && key != nil {
+		// Remove moves the last value, the hold, into the slot of the removed one.
+		ctx.RemoveUserValue(key)
+		ctx.SetUserValue(key, value)
+	}
+}
+
+// NewFastHTTPHandler is fasthttpadaptor.NewFastHTTPHandler(h) that does not let the RequestCtx be reused
+// while h still runs.
+func NewFastHTTPHandler(h http.Handler) fasthttp.RequestHandler {
+	adapted := fasthttpadaptor.NewFastHTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// r.Context() is the RequestCtx, and Value its user values.
+		if hd, ok := r.Context().Value(holdKey{}).(*hold); ok {
+			hd.wg.Add(1)
+			hd.running.Add(1)
+			defer func() {
+				hd.running.Add(-1)
+				hd.wg.Done()
+			}()
+		}
+		h.ServeHTTP(w, r)
+	}))
+	return func(ctx *fasthttp.RequestCtx) {
+		hd, registered := ctx.UserValue(holdKey{}).(*hold)
+		if !registered {
+			hd = acquire()
+			first(ctx, hd)
+		}
+		defer func() {
+			// A streamed or hijacked response leaves the handler running: the hold stays until fasthttp
+			// closes it. Otherwise the handler returned before the adaptor did, or never started.
+			// A hold this call found registered belongs to an earlier adaptation of the request, whose handler
+			// may still run whatever this one answered: only the call that took the hold gives it back.
+			if registered || ctx.Response.IsBodyStream() || ctx.Hijacked() {
+				return
+			}
+			ctx.RemoveUserValue(holdKey{})
+			hd.resp = nil
+			holds.Put(hd)
+		}()
+		adapted(ctx)
+	}
+}
+
+// Pending reports whether the net/http handler of the request on ctx still runs. A caller that owns ctx
+// and would reuse it must leave it to the handler then: the next Reset waits for the handler.
+func Pending(ctx *fasthttp.RequestCtx) bool {
+	hd, ok := ctx.UserValue(holdKey{}).(*hold)
+	return ok && hd.running.Load() > 0
+}

@@ -2279,3 +2279,40 @@ func Test_CSRF_SessionModeKeepsConcurrentSessionChange(t *testing.T) {
 	require.NoError(t, apptest.Recv(t, done, 10*time.Second))
 	apptest.ExpectBody(t, app, withCookies("/role"), fiber.StatusOK, "user")
 }
+
+// Test_CSRF_OriginCheckGoesByTheHostHeaderForAPathTarget pins that a request target beginning with "/" is a
+// path (RFC 9112 Section 3.2.1): the Origin is compared with the Host header, not with the first segment of the path.
+func Test_CSRF_OriginCheckGoesByTheHostHeaderForAPathTarget(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
+	app.Post("/*", func(c fiber.Ctx) error { return c.SendString("accepted") })
+	h := app.Handler()
+	token, cookie := csrfTestVisit(t, h)
+
+	post := func(target, host, origin string) int {
+		return csrfTestPostWith(h, false, cookie, token, func(r *fasthttp.Request) {
+			r.SetRequestURI(target)
+			r.Header.SetHost(host)
+			r.Header.Set(fiber.HeaderOrigin, origin)
+		})
+	}
+
+	for _, tc := range []struct {
+		name, target, host, origin string
+		status                     int
+	}{
+		{"path begins with the origin's host", "//other.example/transfer?x=://", "victim.example", "http://other.example", fiber.StatusForbidden},
+		{"query with a URL", "//other.example/transfer?next=http://a", "victim.example", "http://other.example", fiber.StatusForbidden},
+		{"plain target", "/transfer?x=://", "victim.example", "http://other.example", fiber.StatusForbidden},
+		{"same origin", "//other.example/transfer?x=://", "victim.example", "http://victim.example", fiber.StatusOK},
+		{"plain same origin", "/transfer", "victim.example", "http://victim.example", fiber.StatusOK},
+		{"absolute-form names its own host", "http://other.example/transfer", "other.example", "http://other.example", fiber.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.status, post(tc.target, tc.host, tc.origin))
+		})
+	}
+}

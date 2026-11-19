@@ -1,6 +1,7 @@
 package hostauthorization
 
 import (
+	"bufio"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_ConfigDefault(t *testing.T) {
@@ -150,6 +152,8 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 		{name: "trailing dot in brackets", input: "[::1.]", expectOK: false},
 		{name: "bracketed name", input: "[allowed.com]", expectOK: false},
 		{name: "bracketed name with port inside", input: "[allowed.com:443]", expectOK: false},
+		// fasthttp 1.78 refuses this before the middleware; keep the middleware's own check pinned.
+		{name: "bracketed name with zone", input: "[allowed.com:443%25z]", expectOK: false},
 		{name: "bracketed ipv4", input: "[127.0.0.1]", expectOK: false},
 		{name: "bracketed label and port", input: "[1:80]", expectOK: false},
 		{name: "empty port", input: "example.com:", expectOK: false},
@@ -349,8 +353,6 @@ func Test_HostAuthorization_Hosts(t *testing.T) {
 		{name: "ipv6 zoned uncompressed", allowed: linkLocal, host: "[FE80:0:0:0:0:0:0:1%25eth0]:80", status: fiber.StatusForbidden},
 		{name: "ipv4-mapped zoned", allowed: loopback4, host: "[::ffff:127.0.0.1%25eth0]", status: fiber.StatusForbidden},
 		{name: "ipv4-mapped hex zoned", allowed: loopback4, host: "[::ffff:7f00:1%25eth0]:8080", status: fiber.StatusForbidden},
-		// fasthttp skips its IPv6 check for a "%25" literal, so this reaches the middleware.
-		{name: "bracketed name with zone", allowed: []string{"allowed.com"}, host: "[allowed.com:443%25z]", status: fiber.StatusForbidden},
 
 		{name: "subdomain wildcard allowed", allowed: wildcard, host: "api.myapp.com", status: fiber.StatusOK},
 		{name: "subdomain wildcard bare domain rejected", allowed: wildcard, host: "myapp.com", status: fiber.StatusForbidden},
@@ -736,4 +738,41 @@ func FuzzParseNormalizedAuthority(f *testing.F) {
 		require.Empty(t, addr.Zone())
 		require.Equal(t, addr.Unmap().String(), host)
 	})
+}
+
+// Test_HostAuthorization_PathTargetUsesTheHostHeader pins that a request target beginning with "/" is a path
+// (RFC 9112 Section 3.2.1): the host that is checked is the Host header, whatever the target holds.
+func Test_HostAuthorization_PathTargetUsesTheHostHeader(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{AllowedHosts: []string{"internal.example.com"}}))
+	app.Use(func(c fiber.Ctx) error { return c.SendString(c.Path()) })
+	h := app.Handler()
+
+	for _, tc := range []struct {
+		name, target, host string
+		status             int
+	}{
+		{"query with ://", "//internal.example.com/data?x=://", "other.example", fiber.StatusForbidden},
+		{"query with a URL", "//internal.example.com/data?next=http://a", "other.example", fiber.StatusForbidden},
+		{"fragment with ://", "//internal.example.com/data#://", "other.example", fiber.StatusForbidden},
+		{"plain target", "/data", "other.example", fiber.StatusForbidden},
+		// a Host header that names no host leaves the request without one, not with the first segment of its path
+		{"invalid Host header", "//internal.example.com/data?x=://", "bad[host", fiber.StatusForbidden},
+		{"invalid port", "//internal.example.com/data?x=://", "internal.example.com:abc", fiber.StatusForbidden},
+		{"allowed host", "//internal.example.com/data?x=://", "internal.example.com", fiber.StatusOK},
+		{"plain allowed host", "/data", "internal.example.com", fiber.StatusOK},
+		{"absolute-form names its own host", "http://internal.example.com/data", "other.example", fiber.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req := &fasthttp.Request{}
+			raw := "GET " + tc.target + " HTTP/1.1\r\nHost: " + tc.host + "\r\n\r\n"
+			require.NoError(t, req.ReadLimitBody(bufio.NewReader(strings.NewReader(raw)), 1<<20))
+			ctx := &fasthttp.RequestCtx{}
+			ctx.Init(req, nil, nil)
+			h(ctx)
+			require.Equal(t, tc.status, ctx.Response.StatusCode())
+		})
+	}
 }

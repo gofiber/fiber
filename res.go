@@ -22,6 +22,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/quotedstring"
+	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -1255,6 +1256,18 @@ const sendFileIndexName = "index.html"
 // config; each holds a file cache and a goroutine for as long as it is kept.
 const maxSendFileHandlers = 64
 
+// sendFileDrivePath drops the slash fasthttp puts before a Windows drive ("/C:/x"), whose ':' it
+// refuses to open otherwise; fasthttp's own ServeFile does the same.
+func sendFileDrivePath(ctx *fasthttp.RequestCtx) []byte {
+	path := ctx.Path()
+	if len(path) >= 4 && path[0] == '/' && path[2] == ':' && path[3] == '/' {
+		if letter := path[1] | 0x20; letter >= 'a' && letter <= 'z' {
+			return path[1:]
+		}
+	}
+	return path
+}
+
 // SendFile transfers the file from the specified path.
 // By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
 // The Content-Type response HTTP header field is set based on the file's extension.
@@ -1322,6 +1335,9 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 				ctx.Response.SetStatusCode(StatusNotFound)
 			},
 		}
+		if filepath.Separator == '\\' {
+			fasthttpFS.PathRewrite = sendFileDrivePath
+		}
 
 		handler := fasthttpFS.NewRequestHandler()
 		if cfg.ByteRange {
@@ -1379,7 +1395,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Restore the original requested URL
 	originalURL := utils.CopyString(r.c.OriginalURL())
-	defer request.SetRequestURI(originalURL)
+	defer wiretarget.RestoreTarget(r.c.fasthttp, originalURL)
 
 	// The file server reads the request URI, which fasthttp percent-decodes and
 	// splits at "?" and "#" as it parses it, so the name goes in escaped and
@@ -1688,6 +1704,22 @@ func (r *DefaultRes) End() error {
 	conn := ctx.Conn()
 	if conn == nil {
 		return nil
+	}
+
+	// fasthttp marks the answer to HEAD body-less only after the handler returns, and the
+	// connection is closed below, so both are announced here.
+	if ctx.Request.Header.IsHead() {
+		ctx.Response.SkipBody = true
+	}
+	ctx.Response.SetConnectionClose()
+
+	// fasthttp arms the write deadline of a request only after its handler returns, so the one on
+	// the connection still belongs to the previous response on a keep-alive connection and may have
+	// expired: arm it for this write, with the timeout the server uses (app.Server() may have changed it).
+	if wt := r.c.app.server.WriteTimeout; wt > 0 {
+		if err := conn.SetWriteDeadline(time.Now().Add(wt)); err != nil {
+			return err //nolint:wrapcheck // unnecessary to wrap it
+		}
 	}
 
 	bw := bufio.NewWriter(conn)

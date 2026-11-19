@@ -3,6 +3,7 @@ package headerlist
 import (
 	"iter"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -27,6 +28,13 @@ func Test_NextQuoted(t *testing.T) {
 		{list: `a="open, b, c`, want: []string{`a="open, b, c`}},
 		{list: `a="x\`, want: []string{`a="x\`}},
 		{list: `"a,b","c,d"`, want: []string{`"a,b"`, `"c,d"`}},
+	}
+	for _, padding := range []int{31, 32, 63, 64, 127, 128} {
+		element := `text/plain;p="` + strings.Repeat("a", padding) + `\",b"` + strings.Repeat(" ", padding)
+		tests = append(tests, struct {
+			list string
+			want []string
+		}{list: element + ", text/html", want: []string{element, " text/html"}})
 	}
 	for _, tt := range tests {
 		list := []byte(tt.list)

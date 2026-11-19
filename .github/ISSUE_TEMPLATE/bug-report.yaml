@@ -5,13 +5,13 @@ labels: ["☢️ Bug"]
 
 body:
   - type: markdown
-    id: notice
     attributes:
       value: |
         ### Notice
-        **This repository is not related to external or third-part Fiber modules. If you have a problem with them, open an issue under their repos. If you think the problem is related to Fiber, open the issue here.**
+        - **Security problem?** Do not open an issue. Report it privately with **Report a vulnerability** in the **Security** tab of this repository, as described in the [security policy](https://github.com/gofiber/fiber/security/policy).
+        - **This repository is not related to external or third-party Fiber modules. If you have a problem with them, open an issue under their repos. If you think the problem is related to Fiber, open the issue here.**
         - Don't forget you can ask your questions in our [Discord server](https://gofiber.io/discord).
-        - If you have a suggestion for a Fiber feature you would like to see, open the issue with the **✏️ Feature Request** template.
+        - If you have a suggestion for a Fiber feature you would like to see, open the issue with the **📝 Feature Proposal** template.
         - Write your issue with clear and understandable English.
   - type: textarea
     id: description
@@ -48,7 +48,7 @@ body:
     attributes:
       label: "Fiber Version"
       description: "Some bugs may be fixed in future Fiber releases, so we have to know your Fiber version."
-      placeholder: "Write your Fiber version. (v2.33.0, v2.34.1...)"
+      placeholder: "Write your Fiber version. (v3.6.1, v3.6.0...)"
     validations:
       required: true
   - type: textarea
@@ -77,7 +77,7 @@ body:
       label: "Checklist:"
       description: "By submitting this issue, you confirm that:"
       options:
-        - label: "I agree to follow Fiber's [Code of Conduct](https://github.com/gofiber/fiber/blob/main/.github/CODE_OF_CONDUCT.md)."
+        - label: "I agree to follow the gofiber [Code of Conduct](https://github.com/gofiber/.github/blob/main/CODE_OF_CONDUCT.md)."
           required: true
         - label: "I have checked for existing issues that describe my problem prior to opening this one."
           required: true

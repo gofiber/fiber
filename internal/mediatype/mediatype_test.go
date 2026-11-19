@@ -132,8 +132,9 @@ func Test_ParsesPostArgs(t *testing.T) {
 		{"application/x-www-form-urlencoded", true},
 		{"application/x-www-form-urlencoded; charset=utf-8", true},
 		{"application/x-www-form-urlencoded-not", true},
+		{"Application/X-WWW-Form-Urlencoded", true},
+		{"Application/X-WWW-Form-Urlencoded-Not", true},
 
-		{"Application/X-WWW-Form-Urlencoded", false},
 		{" application/x-www-form-urlencoded", false},
 		{"multipart/form-data", false},
 		{"", false},
