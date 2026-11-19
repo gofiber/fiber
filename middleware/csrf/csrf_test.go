@@ -2241,6 +2241,38 @@ func Test_CSRF_SessionModeCookieExpiresWithTheToken(t *testing.T) {
 	}
 }
 
+// Test_CSRF_ExpiredCookieCarriesExpires pins that the cookie the middleware sends to drop a stale token is
+// expired with CookieSessionOnly too: without Expires the browser would keep it until it closes.
+func Test_CSRF_ExpiredCookieCarriesExpires(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name        string
+		sessionOnly bool
+	}{
+		{name: "persistent cookie"},
+		{name: "session-only cookie", sessionOnly: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{CookieSessionOnly: tc.sessionOnly}))
+			app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+			// The cookie and the header agree, but the token is not in the storage.
+			const stale = "stale-token"
+			resp := apptest.Expect(t, app, apptest.Req(fiber.MethodPost, "/",
+				apptest.WithHeader(HeaderName, stale),
+				apptest.WithHeader(fiber.HeaderCookie, ConfigDefault.CookieName+"="+stale),
+			), fiber.StatusForbidden)
+
+			cookie := responseCookie(t, resp, ConfigDefault.CookieName)
+			require.Empty(t, cookie.Value)
+			require.False(t, cookie.Expires.IsZero(), "Set-Cookie: %q", resp.Header.Get(fiber.HeaderSetCookie))
+			require.True(t, cookie.Expires.Before(time.Now()))
+		})
+	}
+}
+
 // Test_CSRF_SessionModeKeepsConcurrentSessionChange pins that a request the middleware runs for in session mode
 // does not count as a writer of the session: the token it finds fresh is left as it is, so a change another
 // request stored while this one ran, such as a role taken away, is not undone when it finishes.
