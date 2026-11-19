@@ -69,13 +69,13 @@ func Test_Cache_Security_UnusualInputs(t *testing.T) {
 		},
 		{name: "long path segment is hashed", route: longPath, url: longPath, cache: []string{cacheMiss, cacheHit}},
 		{
-			// Malformed query string with invalid encoding: not a crash, and hashed as-is.
+			// Malformed query string with invalid encoding: nothing decodes it, and it is keyed as it was sent.
 			name:  "malformed query string",
 			url:   "/?invalid=%ZZ%XX",
 			cache: []string{cacheMiss, cacheHit},
 		},
 		{
-			// 100 values for the same parameter, hashed due to the param count.
+			// 100 values for the same parameter: kept in the order sent, and hashed for its length.
 			name:  "repeated query parameter",
 			url:   cacheTestCQuery(100, "key=%d"),
 			cache: []string{cacheMiss, cacheHit},
