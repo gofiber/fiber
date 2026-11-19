@@ -110,17 +110,7 @@ func writeEventField(w *bufio.Writer, prefix, value string) {
 //nolint:errcheck // The write of the final blank line reports any sticky bufio error.
 func writeRetryField(w *bufio.Writer, retry time.Duration) {
 	w.WriteString("retry: ")
-	const maxDigits = 20 // An int64 takes at most 20 characters.
-	delay := retryMilliseconds(retry)
-	if w.Available() >= maxDigits {
-		w.Write(utils.AppendInt(w.AvailableBuffer(), delay))
-	} else {
-		var scratch [maxDigits]byte
-		// Write individual bytes so the scratch stays on the stack if the writer flushes.
-		for _, digit := range utils.AppendInt(scratch[:0], delay) {
-			w.WriteByte(digit)
-		}
-	}
+	w.Write(utils.AppendInt(w.AvailableBuffer(), retryMilliseconds(retry)))
 	w.WriteByte('\n')
 }
 

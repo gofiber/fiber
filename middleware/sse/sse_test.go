@@ -169,7 +169,6 @@ func Test_SSE_EventFrameSizes(t *testing.T) {
 }
 
 // Test_SSE_EventAllocations stays sequential because AllocsPerRun cannot run in a parallel test.
-// conventions:ignore parallel: apptest.FewestAllocs calls testing.AllocsPerRun
 func Test_SSE_EventAllocations(t *testing.T) {
 	w := bufio.NewWriter(io.Discard)
 	stream := newStream(context.Background(), w, "")
@@ -354,19 +353,22 @@ func Test_SSE_StreamRetryIgnoresNonPositiveDuration(t *testing.T) {
 func Test_SSE_StreamRetryWithSmallBuffer(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name string
-		size int
+		name  string
+		want  string
+		retry time.Duration
+		size  int
 	}{
-		{name: "fits after formatting", size: 16},
-		{name: "spans writes", size: 1},
+		{name: "fits after formatting", size: 16, retry: 1500 * time.Microsecond, want: "retry: 2\n\n"},
+		{name: "spans writes", size: 1, retry: 1500 * time.Microsecond, want: "retry: 2\n\n"},
+		{name: "long delay spans writes", size: 16, retry: math.MaxInt64, want: "retry: 9223372036855\n\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var buf bytes.Buffer
 			stream := newStream(context.Background(), bufio.NewWriterSize(&buf, tc.size), "")
 			t.Cleanup(stream.closeStream)
-			require.NoError(t, stream.Retry(1500*time.Microsecond))
-			require.Equal(t, "retry: 2\n\n", buf.String())
+			require.NoError(t, stream.Retry(tc.retry))
+			require.Equal(t, tc.want, buf.String())
 		})
 	}
 }
