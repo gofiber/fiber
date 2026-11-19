@@ -1135,12 +1135,15 @@ type ParserConfig struct {
 type ParserType struct {
     CustomType any
     Converter  func(string) reflect.Value
+    ConverterE func(string) (reflect.Value, error)
 }
 ```
 
 - `IgnoreUnknownKeys`: when `false`, a request key that names no field fails the bind with `schema: invalid path "<key>"`. Fiber's default is `true`.
-- `ParserType`: registers a `Converter` for the type of `CustomType`. The converter returns `reflect.Value{}` to reject a value, which fails the bind with a `fiber.ConversionError`.
+- `ParserType` registers a converter for the type of `CustomType`. Fiber uses `ConverterE` when it is set and `Converter` otherwise. A converter can reject a value by returning an invalid `reflect.Value{}`. `ConverterE` can also reject a value by returning an error, which is stored in `fiber.ConversionError.Err`.
 - `ZeroEmpty`: when `true`, an empty value sets the field to its zero value, which for a slice field is one zero element and for a pointer field a non-nil pointer to the zero value. When `false`, an empty value leaves a plain field unchanged and a slice field empty, while a pointer field still gets a non-nil pointer to the zero value. Fiber's default is `true`.
+
+In the default error-handling mode, use `errors.As` to extract `fiber.MultiError` as shown in [Inspecting the underlying error](#inspecting-the-underlying-error). Call `errors.Is` or `errors.As` on the map entry for the failed request key to inspect the error from `ConverterE`.
 
 ```go title="Example"
 
