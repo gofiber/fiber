@@ -98,12 +98,14 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	dst = append(dst, '|')
 
 	// Escape delimiters in path to prevent crafted paths from injecting key structure
-	dst = appendEscapedBoundKeySegment(dst, c.Path())
+	path := c.Path()
+	dst = appendEscapedBoundKeySegment(dst, path)
 
 	if !cfg.DisableQueryKeys {
 		dst = append(dst, '|', 'q', '=')
 		dst = appendCanonicalQueryString(dst, c.Req().URI())
 	}
+	dst = appendTargetAsSent(dst, c.Request().Header.RequestURI(), path, cfg)
 
 	if len(cfg.KeyHeaders) > 0 {
 		dst = append(dst, '|', 'h', '=')
@@ -128,6 +130,38 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 		dst = appendQueryBodySegment(dst, c.Request().Body())
 	}
 
+	return dst
+}
+
+// appendTargetAsSent appends what target, the request target as it arrived, holds besides path,
+// the routed path, and the query, which the segments before it are built from: under "|p=" the
+// target up to its query, when that is not the routed path, and under "|f=" a fragment. Most
+// requests add neither.
+//
+// A handler reads the target as it was sent (c.OriginalURL), and the routed path is one of
+// several the target may have spelled: "/a/../page" and "/%70age" are routed as "/page", an
+// absolute-form target names the host on top of its path, and a fragment, which no browser sends,
+// is part of neither. With those left out of the key, a response that echoes the target, stored
+// for a request that wrote markup into a segment ".." removes or behind a "#", was served to
+// every client asking for the path itself.
+//
+// The target is cut at its "?": the query is the segment before this one's, or left out of the key
+// by DisableQueryKeys. A "?" that no query follows stays where queries are keyed, as nothing else
+// tells "/page?" from "/page".
+func appendTargetAsSent(dst, target []byte, path string, cfg *Config) []byte {
+	sent, fragment, hasFragment := bytes.Cut(target, []byte{'#'})
+	if before, query, hasQuery := bytes.Cut(sent, []byte{'?'}); hasQuery && (len(query) > 0 || cfg.DisableQueryKeys) {
+		sent = before
+	}
+
+	if string(sent) != path {
+		dst = append(dst, '|', 'p', '=')
+		dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(sent))
+	}
+	if hasFragment {
+		dst = append(dst, '|', 'f', '=')
+		dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(fragment))
+	}
 	return dst
 }
 

@@ -127,12 +127,15 @@ By default, cache keys include:
 - request scheme and host, as `c.Scheme()` and `c.Host()` report them (so `X-Forwarded-Proto` and `X-Forwarded-Host` apply behind a trusted proxy),
 - request path,
 - query string, its parameters in the bytes they were sent in, sorted by name, those of one name in the order sent (enabled unless `DisableQueryKeys` is `true`),
+- the rest of the request target as it was sent, when it holds more than that path and query: a path the router normalized, an absolute-form target, a `?` no query follows, or a fragment,
 - representation-driving request headers (`accept`, `accept-encoding`, `accept-language`),
 - a digest of the `Authorization` header, when the request carries one. The middleware adds it to every key, a custom `KeyGenerator`'s included, so a response stored for one credential is never served to another.
 
 This prevents common collisions from path-only keys (for example, `/?id=1` vs `/?id=2`, or `/dash` on two hosts routed with `app.Domain()`) while keeping fragmentation bounded. Two requests that differ only in their authority never share an entry, so a page routed by host or a redirect built from `c.BaseURL()` is served only to the host it was generated for. If you supply a custom `KeyGenerator` and your responses depend on the host, include `c.Host()` (and `c.Scheme()`) in the key yourself.
 
 Two requests share an entry when their queries differ only in the order of parameters with different names, such as `/?a=1&b=2` and `/?b=2&a=1`. The parameters of one name stay in the order sent, since `c.Query()` reads the first of them. Two spellings of a parameter, such as `q=%41` and `q=A`, `q=x+y` and `q=x%20y`, or `q` and `q=`, are separate entries: a handler can read the target as it was sent (`c.OriginalURL()`), so a response built from one spelling is not served for another. A query of more than 128 parameters, or longer than 4096 bytes, is keyed in the order it was sent. A handler that tells the order of the parameters apart as well needs a `KeyGenerator` of its own.
+
+The same holds for the rest of the target. `/a/../page`, `/%70age`, `http://example.com/page`, `/page?` and `/page#top` are all routed as `/page`, and each keeps an entry of its own, since a response that echoes one of them is not the page of a client that asked for `/page`. So does a path that middleware registered before the cache rewrote with `c.Path()`: the entry belongs to the target that was sent, and `/old` rewritten to `/new` no longer shares the entry of `/new`.
 
 The middleware **does not include request body/form values in the default cache key**, except for `QUERY` requests: per [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html), when `QUERY` is enabled via `Methods` the default key generator incorporates the request body and its `Content-Type` and `Content-Encoding`, so different bodies on the same URL, and the same bytes declared as another format or coding, get distinct keys.
 

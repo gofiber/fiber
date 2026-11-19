@@ -34,65 +34,80 @@ type keygenCase struct {
 
 func keygenCorpus() []keygenCase {
 	return []keygenCase{
-		{name: "noquery", uri: "/demo", want: keyStart + keyNoHeaders},
-		{name: "single", uri: "/demo?foo=bar", want: keyStart + "foo=bar" + keyNoHeaders},
-		{name: "multi_dup", uri: "/demo?b=2&a=1&a=3", want: keyStart + "a=1&a=3&b=2" + keyNoHeaders},
-		{name: "dup_order", uri: "/demo?a=3&a=1", want: keyStart + "a=3&a=1" + keyNoHeaders},
-		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: keyStart + "x=1" + keyNoHeaders},
+		{name: "noquery", uri: "/", want: keyStart + keyNoHeaders},
+		{name: "single", uri: "/?foo=bar", want: keyStart + "foo=bar" + keyNoHeaders},
+		{name: "multi_dup", uri: "/?b=2&a=1&a=3", want: keyStart + "a=1&a=3&b=2" + keyNoHeaders},
+		{name: "dup_order", uri: "/?a=3&a=1", want: keyStart + "a=3&a=1" + keyNoHeaders},
+		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: `scheme=http|host=example.com|/a\pb\cc\\d|q=x=1` + keyNoHeaders},
 		// A parameter keeps the bytes it was sent in: nothing is decoded, and only the key's own delimiters are escaped.
-		{name: "query_escape", uri: "/p?k=a b&z=%2F&k=z", want: keyStart + "k=a b&k=z&z=%2F" + keyNoHeaders},
-		{name: "query_spellings", uri: "/p?b=%41&a=x+y&a=x%20y&b=A", want: keyStart + "a=x+y&a=x%20y&b=%41&b=A" + keyNoHeaders},
-		{name: "query_delims", uri: `/p?b=x|y&a=1:2&c=\`, want: keyStart + `a=1\c2&b=x\py&c=\\` + keyNoHeaders},
+		{name: "query_escape", uri: "/?k=a b&z=%2F&k=z", want: keyStart + "k=a b&k=z&z=%2F" + keyNoHeaders},
+		{name: "query_spellings", uri: "/?b=%41&a=x+y&a=x%20y&b=A", want: keyStart + "a=x+y&a=x%20y&b=%41&b=A" + keyNoHeaders},
+		{name: "query_delims", uri: `/?b=x|y&a=1:2&c=\`, want: keyStart + `a=1\c2&b=x\py&c=\\` + keyNoHeaders},
 		// The names are sorted as the parser decodes them, so two spellings of one name stay in the order sent.
-		{name: "query_name_spellings", uri: "/p?b=1&%61=2&a=3&%62=4", want: keyStart + "%61=2&a=3&b=1&%62=4" + keyNoHeaders},
-		{name: "query_name_plus", uri: "/p?b=1&+=2&%20=3&a=4", want: keyStart + "+=2&%20=3&a=4&b=1" + keyNoHeaders},
+		{name: "query_name_spellings", uri: "/?b=1&%61=2&a=3&%62=4", want: keyStart + "%61=2&a=3&b=1&%62=4" + keyNoHeaders},
+		{name: "query_name_plus", uri: "/?b=1&+=2&%20=3&a=4", want: keyStart + "+=2&%20=3&a=4&b=1" + keyNoHeaders},
 		// A parameter without a value, without a name, or without either is one all the same.
-		{name: "query_bare_parameters", uri: "/p?b&&a=&=x&", want: keyStart + "&=x&&a=&b" + keyNoHeaders},
-		{name: "long_query_sorted", uri: "/p?b=" + strings.Repeat("x", 300) + "&a=1", want: keyStart + boundKeySegment("a=1&b="+strings.Repeat("x", 300)) + keyNoHeaders},
+		{name: "query_bare_parameters", uri: "/?b&&a=&=x&", want: keyStart + "&=x&&a=&b" + keyNoHeaders},
+		{name: "long_query_sorted", uri: "/?b=" + strings.Repeat("x", 300) + "&a=1", want: keyStart + boundKeySegment("a=1&b="+strings.Repeat("x", 300)) + keyNoHeaders},
 		// maxQueryParams parameters in maxQueryBufferSize bytes are still sorted; a query past either bound is keyed as sent.
-		{name: "params_at_bound", uri: "/p?" + strings.Repeat("b&", maxQueryParams-1) + "a", want: keyStart + boundKeySegment("a"+strings.Repeat("&b", maxQueryParams-1)) + keyNoHeaders},
-		{name: "params_past_bound", uri: "/p?" + strings.Repeat("b&", maxQueryParams) + "a", want: keyStart + boundKeySegment(strings.Repeat("b&", maxQueryParams)+"a") + keyNoHeaders},
-		{name: "query_at_bound", uri: "/p?b=" + strings.Repeat("x", maxQueryBufferSize-6) + "&a=1", want: keyStart + boundKeySegment("a=1&b="+strings.Repeat("x", maxQueryBufferSize-6)) + keyNoHeaders},
-		{name: "query_past_bound", uri: "/p?b=" + strings.Repeat("x", maxQueryBufferSize-5) + "&a=1", want: keyStart + boundKeySegment("b="+strings.Repeat("x", maxQueryBufferSize-5)+"&a=1") + keyNoHeaders},
-		{name: "with_headers", uri: "/p?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: keyStart + "foo=bar|h=accept:1|text/html|accept-encoding:1|gzip|accept-language:0"},
-		{name: "with_cookie", uri: "/p?foo=bar", cookie: "sid=abc123", keyCooks: []string{"sid"}, want: keyStart + "foo=bar" + keyNoHeaders + "|c=sid:sha256:ccfb62d77d32969b64f7920fe3bfb66c50cbf9e9faea6f69222c34c7e5f30627"},
+		{name: "params_at_bound", uri: "/?" + strings.Repeat("b&", maxQueryParams-1) + "a", want: keyStart + boundKeySegment("a"+strings.Repeat("&b", maxQueryParams-1)) + keyNoHeaders},
+		{name: "params_past_bound", uri: "/?" + strings.Repeat("b&", maxQueryParams) + "a", want: keyStart + boundKeySegment(strings.Repeat("b&", maxQueryParams)+"a") + keyNoHeaders},
+		{name: "query_at_bound", uri: "/?b=" + strings.Repeat("x", maxQueryBufferSize-6) + "&a=1", want: keyStart + boundKeySegment("a=1&b="+strings.Repeat("x", maxQueryBufferSize-6)) + keyNoHeaders},
+		{name: "query_past_bound", uri: "/?b=" + strings.Repeat("x", maxQueryBufferSize-5) + "&a=1", want: keyStart + boundKeySegment("b="+strings.Repeat("x", maxQueryBufferSize-5)+"&a=1") + keyNoHeaders},
+		{name: "with_headers", uri: "/?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: keyStart + "foo=bar|h=accept:1|text/html|accept-encoding:1|gzip|accept-language:0"},
+		{name: "with_cookie", uri: "/?foo=bar", cookie: "sid=abc123", keyCooks: []string{"sid"}, want: keyStart + "foo=bar" + keyNoHeaders + "|c=sid:sha256:ccfb62d77d32969b64f7920fe3bfb66c50cbf9e9faea6f69222c34c7e5f30627"},
 		// A missing and an empty cookie leave nothing after the name, and share a key.
-		{name: "cookie_empty", uri: "/p", cookie: "sid=", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:"},
-		{name: "cookie_absent", uri: "/p", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:"},
-		{name: "cookie_delims", uri: "/p", cookie: "sid=a|b:c", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:sha256:166f86ddd38c71229af5fa7dfacf4c0bd335848667481d07c6cbd2aabc727955"},
-		{name: "cookie_long", uri: "/p", cookie: "sid=" + strings.Repeat("x", 300), keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:sha256:95e98730d96605ac7a50fb8dfcd3e46bea8b14b5450f5ecb4fea105fa8564ac0"},
-		{name: "cookie_several", uri: "/p", cookie: "a=1; b=2", keyCooks: []string{"a", "b", "c"}, want: keyStart + keyNoHeaders + "|c=a:sha256:f16ba6fa61da3398815be2a6c0f7cb1351982dbcc6c64bbeb9b65f672a8b102a|b:sha256:7f774bb46e7e342a2d9d0514b27cee622012f7415645345054f8cd31e1dda661|c:"},
-		{name: "long_query", uri: "/p?q=" + strings.Repeat("x", 300), want: keyStart + "sha256:4d86f7dbfc8b3bfe229da7e27f4ac8f6cf8114e24e5cb6b5af1d09cb4cc3d982" + keyNoHeaders},
-		{name: "long_path", uri: "/" + strings.Repeat("p", 300) + "?a=1", want: keyStart + "a=1" + keyNoHeaders},
-		{name: "disable_query", uri: "/p?foo=bar", noQuery: true, want: "scheme=http|host=example.com|/" + keyNoHeaders},
-		{name: "header_val_delims", uri: "/p", headers: map[string]string{"Accept": "a|b:c"}, want: keyStart + "|h=accept:1|a\\pb\\cc|accept-encoding:0|accept-language:0"},
-		{name: "empty_query", uri: "/p?", want: keyStart + keyNoHeaders},
-		{name: "many_params", uri: "/p?" + strings.Repeat("k=v&", 200) + "z=1", want: keyStart + "sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829" + keyNoHeaders},
-		{name: "query_empty_body", uri: "/q", method: fiber.MethodQuery, want: keyStart + keyNoHeaders + "|m=0|0|b="},
-		{name: "query_body", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", want: keyStart + keyNoHeaders + "|m=0|0|b=foo=bar"},
-		{name: "query_body_delims", uri: "/q", method: fiber.MethodQuery, body: "a|b:c", want: keyStart + keyNoHeaders + "|m=0|0|b=a\\pb\\cc"},
-		{name: "query_with_querystring", uri: "/q?x=1", method: fiber.MethodQuery, body: "foo=bar", want: keyStart + "x=1" + keyNoHeaders + "|m=0|0|b=foo=bar"},
-		{name: "query_body_metadata", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", headers: map[string]string{"Content-Type": "application/json", "Content-Encoding": "gzip"}, want: keyStart + keyNoHeaders + "|m=1|gzip|1|application/json|b=foo=bar"},
+		{name: "cookie_empty", uri: "/", cookie: "sid=", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:"},
+		{name: "cookie_absent", uri: "/", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:"},
+		{name: "cookie_delims", uri: "/", cookie: "sid=a|b:c", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:sha256:166f86ddd38c71229af5fa7dfacf4c0bd335848667481d07c6cbd2aabc727955"},
+		{name: "cookie_long", uri: "/", cookie: "sid=" + strings.Repeat("x", 300), keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:sha256:95e98730d96605ac7a50fb8dfcd3e46bea8b14b5450f5ecb4fea105fa8564ac0"},
+		{name: "cookie_several", uri: "/", cookie: "a=1; b=2", keyCooks: []string{"a", "b", "c"}, want: keyStart + keyNoHeaders + "|c=a:sha256:f16ba6fa61da3398815be2a6c0f7cb1351982dbcc6c64bbeb9b65f672a8b102a|b:sha256:7f774bb46e7e342a2d9d0514b27cee622012f7415645345054f8cd31e1dda661|c:"},
+		{name: "long_query", uri: "/?q=" + strings.Repeat("x", 300), want: keyStart + "sha256:4d86f7dbfc8b3bfe229da7e27f4ac8f6cf8114e24e5cb6b5af1d09cb4cc3d982" + keyNoHeaders},
+		{name: "long_path", uri: "/" + strings.Repeat("p", 300) + "?a=1", want: "scheme=http|host=example.com|" + boundKeySegment("/"+strings.Repeat("p", 300)) + "|q=a=1" + keyNoHeaders},
+		{name: "disable_query", uri: "/?foo=bar", noQuery: true, want: "scheme=http|host=example.com|/" + keyNoHeaders},
+		{name: "header_val_delims", uri: "/", headers: map[string]string{"Accept": "a|b:c"}, want: keyStart + "|h=accept:1|a\\pb\\cc|accept-encoding:0|accept-language:0"},
+		// What the target holds besides the routed path and the query: the target up to its query where that is not the
+		// routed path, a "?" no query follows included, and a fragment.
+		{name: "empty_query", uri: "/?", want: keyStart + "|p=/?" + keyNoHeaders},
+		{name: "target_fragment", uri: "/?a=1#top", want: keyStart + "a=1|f=top" + keyNoHeaders},
+		{name: "target_empty_fragment", uri: "/#", want: keyStart + "|f=" + keyNoHeaders},
+		{name: "target_query_in_fragment", uri: "/#a?b=1", want: keyStart + "|f=a?b=1" + keyNoHeaders},
+		{name: "target_empty_query_and_fragment", uri: "/?#top", want: keyStart + "|p=/?|f=top" + keyNoHeaders},
+		{name: "target_dot_segments", uri: "/a/../?x=1", want: keyStart + "x=1|p=/a/../" + keyNoHeaders},
+		{name: "target_escaped_letter", uri: "/%70age", want: "scheme=http|host=example.com|/page|q=|p=/%70age" + keyNoHeaders},
+		{name: "target_absolute_form", uri: "http://example.com/?x=1", want: keyStart + `x=1|p=http\c//example.com/` + keyNoHeaders},
+		{name: "target_delims_and_bound", uri: "/a|b/../#" + strings.Repeat("f:", 100), want: keyStart + `|p=/a\pb/../|f=` + boundKeySegment(strings.Repeat(`f\c`, 100)) + keyNoHeaders},
+		// Without the query in the key, the target is cut at its "?" whatever follows it.
+		{name: "disable_query_target", uri: "/a/../?foo=bar#top", noQuery: true, want: "scheme=http|host=example.com|/|p=/a/../|f=top" + keyNoHeaders},
+		{name: "disable_query_empty_query", uri: "/?", noQuery: true, want: "scheme=http|host=example.com|/" + keyNoHeaders},
+		{name: "many_params", uri: "/?" + strings.Repeat("k=v&", 200) + "z=1", want: keyStart + "sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829" + keyNoHeaders},
+		{name: "query_empty_body", uri: "/", method: fiber.MethodQuery, want: keyStart + keyNoHeaders + "|m=0|0|b="},
+		{name: "query_body", uri: "/", method: fiber.MethodQuery, body: "foo=bar", want: keyStart + keyNoHeaders + "|m=0|0|b=foo=bar"},
+		{name: "query_body_delims", uri: "/", method: fiber.MethodQuery, body: "a|b:c", want: keyStart + keyNoHeaders + "|m=0|0|b=a\\pb\\cc"},
+		{name: "query_with_querystring", uri: "/?x=1", method: fiber.MethodQuery, body: "foo=bar", want: keyStart + "x=1" + keyNoHeaders + "|m=0|0|b=foo=bar"},
+		{name: "query_body_metadata", uri: "/", method: fiber.MethodQuery, body: "foo=bar", headers: map[string]string{"Content-Type": "application/json", "Content-Encoding": "gzip"}, want: keyStart + keyNoHeaders + "|m=1|gzip|1|application/json|b=foo=bar"},
 		// The authority: the port is part of it, its delimiters are escaped like
 		// every other segment's, and past the bound it is hashed rather than
 		// allowed to grow the key.
-		{name: "host_port", uri: "/p", host: "example.com:8443", want: "scheme=http|host=example.com\\c8443|/|q=" + keyNoHeaders},
-		{name: "host_delims", uri: "/p", host: "a|b:c\\d", want: "scheme=http|host=a\\pb\\cc\\\\d|/|q=" + keyNoHeaders},
-		{name: "long_host", uri: "/p", host: strings.Repeat("h", 300), want: "scheme=http|host=" + boundKeySegment(strings.Repeat("h", 300)) + "|/|q=" + keyNoHeaders},
+		{name: "host_port", uri: "/", host: "example.com:8443", want: "scheme=http|host=example.com\\c8443|/|q=" + keyNoHeaders},
+		{name: "host_delims", uri: "/", host: "a|b:c\\d", want: "scheme=http|host=a\\pb\\cc\\\\d|/|q=" + keyNoHeaders},
+		{name: "long_host", uri: "/", host: strings.Repeat("h", 300), want: "scheme=http|host=" + boundKeySegment(strings.Repeat("h", 300)) + "|/|q=" + keyNoHeaders},
 	}
 }
 
 func buildKeygenCtx(tc *keygenCase) (fiber.Ctx, *Config) {
 	app := fiber.New()
-	// Method must be set before AcquireCtx (fiber caches it); URI/body/headers are
-	// read live from the request afterwards.
+	// The request line is set before AcquireCtx, which caches the method and routes
+	// the path of the target: set afterwards, the target left every fixture routed
+	// as "/" whatever path it named. Body and headers are read live from the
+	// request afterwards.
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(cmp.Or(tc.method, fiber.MethodGet))
+	fctx.Request.SetRequestURI(tc.uri)
+	// A request without an authority is not what the key is built for, so the
+	// fixtures carry the host httptest would set.
+	fctx.Request.SetHost(cmp.Or(tc.host, "example.com"))
 	c := app.AcquireCtx(fctx)
-	c.Request().SetRequestURI(tc.uri)
-	// The authority is read live as well; a request without one is not what
-	// the key is built for, so the fixtures carry the host httptest would set.
-	c.Request().SetHost(cmp.Or(tc.host, "example.com"))
 	if tc.body != "" {
 		c.Request().SetBody([]byte(tc.body))
 	}
@@ -117,9 +132,9 @@ func buildKeygenCtx(tc *keygenCase) (fiber.Ctx, *Config) {
 
 func Benchmark_defaultKeyGenerator(b *testing.B) {
 	cases := []struct{ name, uri string }{
-		{"noquery", "/demo"},
-		{"singleparam", "/demo?foo=bar"},
-		{"multiparam", "/demo?foo=bar&baz=qux&alpha=1"},
+		{"noquery", "/"},
+		{"singleparam", "/?foo=bar"},
+		{"multiparam", "/?foo=bar&baz=qux&alpha=1"},
 	}
 	for _, tc := range cases {
 		b.Run(tc.name, func(b *testing.B) {
@@ -252,6 +267,42 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 			require.Equal(t, tc.want, lookedUp)
+		})
+	}
+}
+
+// Test_defaultKeyGenerator_KeysTheTargetAsSent checks the rule the default key is built on, over
+// every target made of a few spellings of each of its parts, all of them routed as /page: two
+// targets share a key only when they differ in the order of their parameters or, with
+// DisableQueryKeys, in their query.
+func Test_defaultKeyGenerator_KeysTheTargetAsSent(t *testing.T) {
+	t.Parallel()
+	paths := []string{"/page", "/pa%67e", "/x/../page", "/./page", "http://example.com/page"}
+	queries := []string{"", "?", "?a=1", "?a=1&b=2", "?b=2&a=1"}
+	fragments := []string{"", "#", "#top", "#a?b=1"}
+
+	for _, tc := range []struct {
+		name    string
+		keys    int
+		noQuery bool
+	}{
+		// The last two queries are one to the key, and no other two targets are.
+		{name: "query keyed", keys: len(paths) * (len(queries) - 1) * len(fragments)},
+		{name: "query left out", noQuery: true, keys: len(paths) * len(fragments)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			keys := map[string]struct{}{}
+			for _, path := range paths {
+				for _, query := range queries {
+					for _, fragment := range fragments {
+						c, cfg := buildKeygenCtx(&keygenCase{uri: path + query + fragment, noQuery: tc.noQuery})
+						require.Equal(t, "/page", c.Path(), path+query+fragment)
+						keys[defaultKeyGenerator(c, cfg)] = struct{}{}
+					}
+				}
+			}
+			require.Len(t, keys, tc.keys)
 		})
 	}
 }

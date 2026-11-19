@@ -87,10 +87,11 @@ const (
 // removed is no longer stored, as its key held the value the client sent while the
 // page was built from another. One the earlier rule stored would still be served,
 // on a store that survived the upgrade, to every client sending that value. v8:
-// the default key holds a query's parameters in the bytes they were sent in. They
-// were decoded and escaped again, so an entry stood for every spelling of its
-// query, and on a store that survived the upgrade a request spelled the way that
-// encoding wrote it would still find, and be served, what another spelling
+// the default key holds the request target as it was sent, the order of its
+// query parameters aside. The query was decoded and escaped again, and nothing
+// held a fragment or the spelling the routed path arrived in, so an entry stood
+// for every spelling of its target, and on a store that survived the upgrade a
+// plain request would still find, and be served, what another spelling
 // populated. Bump this whenever what a key stands for, or what its entry carries,
 // changes; the cost is one cold cache after a deploy. Additive bookkeeping fields
 // such as heapgen need no bump: old entries decode with generation zero, and

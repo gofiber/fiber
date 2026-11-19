@@ -34,6 +34,8 @@ type Config struct {
 	//     (bounded; two hosts never share an entry)
 	//   - Request path (bounded to 192 bytes, hashed if longer)
 	//   - Query string (parameters as they were sent, sorted by name; bounded)
+	//   - Rest of the request target as it was sent, where it holds more than
+	//     that path and query, such as a fragment (bounded)
 	//   - Selected request headers (from KeyHeaders)
 	//   - Selected cookies (from KeyCookies, their values hashed)
 	//
