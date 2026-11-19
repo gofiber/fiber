@@ -369,8 +369,8 @@ var byteBufferPool = sync.Pool{
 //
 // Gob merges into a map that holds keys and a record is loaded into the map it is given,
 // so data that holds keys is decoded beside, which also leaves it as it was when the
-// decode fails; the empty map of a session being loaded is decoded into in place. The
-// caller holds the lock.
+// decode fails; the empty map of a session being loaded is decoded into in place, and
+// emptied again when the decode fails. The caller holds the lock.
 func (d *data) decode(rawData []byte) ([]byte, error) {
 	// Copied before decoding: the storage owns rawData and may reuse it after Get
 	// returns, so the decode and the snapshot Save writes back read the same bytes.
@@ -396,6 +396,10 @@ func (d *data) decode(rawData []byte) ([]byte, error) {
 		// A copy, so that only this branch has the variable escape: gob needs its address.
 		gobDecoded := decoded
 		if err := gob.NewDecoder(byteBuffer).Decode(&gobDecoded); err != nil {
+			// Gob keeps the entries it decoded before the one that failed, a value of a type
+			// this process has not registered for instance. The map was empty, or is the one
+			// made for this decode.
+			clear(gobDecoded)
 			return nil, fmt.Errorf("failed to decode session data: %w", err)
 		}
 		decoded = gobDecoded

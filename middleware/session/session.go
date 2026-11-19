@@ -748,8 +748,8 @@ func (s *Session) setCookieAttributes(fcookie *fasthttp.Cookie) {
 
 // decodeSessionData replaces the data of the session with the stored session rawData and
 // keeps the snapshot it was decoded from, which a save writes back while the data is
-// unchanged. It takes the lock of the data. Data that holds keys is left as it was when the
-// decode fails.
+// unchanged. It takes the lock of the data. The data is left as it was when the decode
+// fails.
 //
 // Parameters:
 //   - rawData: The raw byte data to decode.

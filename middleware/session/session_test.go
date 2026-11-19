@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"encoding/gob"
 	"errors"
@@ -2032,27 +2033,68 @@ func Test_Session_UnchangedRequestKeepsConcurrentChange(t *testing.T) {
 
 // Test_Session_RegenerateKeepsSessionOnUndecodableChange pins that a Regenerate which cannot decode what
 // another request stored, bytes a newer instance wrote for instance, still rotates the ID and keeps this
-// request's snapshot: the old key is already deleted, so storing nothing would log the user out.
+// request's snapshot: the old key is already deleted, so storing nothing would log the user out. A session
+// without values keeps none of the other request's either: gob decodes into its empty map in place, and has
+// put there the entries that come before the one it cannot decode.
 func Test_Session_RegenerateKeepsSessionOnUndecodableChange(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	store := NewStore(Config{Storage: memory.New()})
-	id := seedSession(t, app, store, func(s *Session) { s.Set("role", "admin") })
+	for name, tc := range map[string]struct {
+		fill   func(*Session)
+		stored func(*testing.T) []byte
+		keys   []any
+	}{
+		"a session that holds values": {
+			fill:   func(s *Session) { s.Set("role", "admin") },
+			stored: func(*testing.T) []byte { return []byte("not a session") },
+			keys:   []any{"role"},
+		},
+		"a session without values, and a stream that fails midway": {stored: gobStreamFailingMidway, keys: []any{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			store := NewStore(Config{Storage: memory.New()})
+			id := seedSession(t, app, store, tc.fill)
 
-	inFlight := loadSession(t, app, store, id)
-	other := loadSession(t, app, store, id)
-	other.Set("role", "user")
-	require.NoError(t, other.Save())
-	require.NoError(t, store.Storage.Set(string(inFlight.storageKey()), []byte("not a session"), 0))
+			inFlight := loadSession(t, app, store, id)
+			other := loadSession(t, app, store, id)
+			other.Set("role", "user")
+			require.NoError(t, other.Save())
+			require.NoError(t, store.Storage.Set(string(inFlight.storageKey()), tc.stored(t), 0))
 
-	require.Error(t, inFlight.Regenerate())
-	require.NotEqual(t, id, inFlight.ID())
-	require.Equal(t, "admin", inFlight.Get("role"), "the snapshot is left as it was")
-	require.NoError(t, inFlight.Save())
+			require.Error(t, inFlight.Regenerate())
+			require.NotEqual(t, id, inFlight.ID())
+			require.Equal(t, tc.keys, inFlight.Keys(), "the snapshot is left as it was")
+			require.NoError(t, inFlight.Save())
 
-	stored := sessionTestStored(t, store, inFlight.ID())
-	require.Equal(t, "admin", stored.Get("role"))
-	sessionTestRequireGone(t, store, id)
+			stored := sessionTestStored(t, store, inFlight.ID())
+			require.Equal(t, tc.keys, stored.Keys())
+			if len(tc.keys) > 0 {
+				require.Equal(t, "admin", stored.Get("role"))
+			}
+			sessionTestRequireGone(t, store, id)
+		})
+	}
+}
+
+// gobStreamFailingMidway returns a stored session of two entries that gob decodes the first of before it
+// meets, in the second, a value of a type that no process has registered: the name the type was registered
+// under is changed in the stream.
+func gobStreamFailingMidway(t *testing.T) []byte {
+	t.Helper()
+	registered, unknown := []byte("map[string]int"), []byte("map[string]inx")
+	for range 100 {
+		var buf bytes.Buffer
+		require.NoError(t, gob.NewEncoder(&buf).Encode(map[any]any{"first": "decodes", "second": map[string]int{"n": 1}}))
+		raw := buf.Bytes()
+		require.Equal(t, 1, bytes.Count(raw, registered))
+		// Gob writes a map in the order Go ranges over it: once more, until the entry that decodes comes first.
+		if bytes.Index(raw, []byte("first")) < bytes.Index(raw, registered) {
+			return bytes.Replace(raw, registered, unknown, 1)
+		}
+	}
+	t.Fatal("gob never wrote the entry that decodes first")
+	return nil
 }
 
 // Test_Session_RegenerateCarriesRecordOverGob pins that a Regenerate of a session held as gob, in a store
