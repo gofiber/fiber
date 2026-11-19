@@ -16,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/middleware/etag"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -143,10 +144,15 @@ func Test_Compress_Vary(t *testing.T) {
 		contentEncoding string
 		vary            string
 		wantVary        string
+		// varyLines are added as separate Vary field lines; the response then
+		// carries wantVaryLines.
+		varyLines     []string
+		wantVaryLines []string
 		// rangeRequest adds a Range header to the request, which makes the
 		// middleware skip it. noAcceptEncoding leaves Accept-Encoding out of it.
 		rangeRequest     bool
 		noAcceptEncoding bool
+		compressed       bool
 	}{
 		{name: "adds_vary_header", wantVary: "Accept-Encoding"},
 		{name: "vary_star", vary: "*", wantVary: "*"},
@@ -159,6 +165,25 @@ func Test_Compress_Vary(t *testing.T) {
 		{name: "range_no_accept_encoding", rangeRequest: true, noAcceptEncoding: true, wantVary: "Accept-Encoding"},
 		{name: "range_vary_star", rangeRequest: true, vary: "*", wantVary: "*"},
 		{name: "range_vary_similar_substring", rangeRequest: true, vary: "Accept-Encoding2", wantVary: "Accept-Encoding2, Accept-Encoding"},
+		{name: "compressed", compressed: true, wantVary: "Accept-Encoding"},
+		{name: "compressed_vary_star", compressed: true, vary: "*", wantVary: "*"},
+		{name: "compressed_vary_list_star", compressed: true, vary: "User-Agent, *", wantVary: "User-Agent, *"},
+		{name: "compressed_vary_lowercase", compressed: true, vary: "accept-encoding", wantVary: "accept-encoding"},
+		{name: "compressed_vary_other", compressed: true, vary: "User-Agent", wantVary: "User-Agent, Accept-Encoding"},
+		{
+			name: "vary_two_lines", noAcceptEncoding: true, varyLines: []string{"Origin", "Accept-Language"},
+			wantVaryLines: []string{"Origin,Accept-Language, Accept-Encoding"},
+		},
+		{name: "vary_two_lines_star", noAcceptEncoding: true, varyLines: []string{"Origin", "*"}, wantVaryLines: []string{"Origin", "*"}},
+		{
+			name: "compressed_vary_two_lines", compressed: true, varyLines: []string{"Origin", "Accept-Language"},
+			wantVaryLines: []string{"Origin,Accept-Language, Accept-Encoding"},
+		},
+		{name: "compressed_vary_two_lines_star", compressed: true, varyLines: []string{"Origin", "*"}, wantVaryLines: []string{"Origin,*"}},
+		{
+			name: "compressed_vary_empty_line_then_origin", compressed: true, varyLines: []string{"", "Origin"},
+			wantVaryLines: []string{",Origin, Accept-Encoding"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -168,6 +193,12 @@ func Test_Compress_Vary(t *testing.T) {
 				}
 				if tc.vary != "" {
 					c.Set(fiber.HeaderVary, tc.vary)
+				}
+				for _, line := range tc.varyLines {
+					c.Response().Header.Add(fiber.HeaderVary, line)
+				}
+				if tc.compressed {
+					return compressTestSendUntypedReadme(c)
 				}
 				return c.SendString("hello")
 			})
@@ -181,11 +212,34 @@ func Test_Compress_Vary(t *testing.T) {
 				opts = append(opts, apptest.WithHeader(fiber.HeaderRange, "bytes=0-1"))
 			}
 
+			wantEncoding := tc.contentEncoding
+			if tc.compressed {
+				wantEncoding = "gzip"
+			}
 			resp := compressTestGet(t, app, acceptEncoding, opts...)
-			require.Equal(t, tc.contentEncoding, resp.Header.Get(fiber.HeaderContentEncoding))
-			require.Equal(t, tc.wantVary, resp.Header.Get(fiber.HeaderVary))
+			require.Equal(t, wantEncoding, resp.Header.Get(fiber.HeaderContentEncoding))
+			if tc.wantVaryLines != nil {
+				require.Equal(t, tc.wantVaryLines, resp.Header.Values(fiber.HeaderVary))
+			} else {
+				require.Equal(t, tc.wantVary, resp.Header.Get(fiber.HeaderVary))
+			}
 		})
 	}
+}
+
+func Test_Compress_Vary_KeepsHeaderOrder(t *testing.T) {
+	t.Parallel()
+	app := compressTestApp(func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderVary, "Origin")
+		c.Response().Header.Add(fiber.HeaderLink, "</a>; rel=preload")
+		c.Response().Header.Add(fiber.HeaderLink, "</b>; rel=preload")
+		return compressTestSendUntypedReadme(c)
+	})
+
+	resp := compressTestGet(t, app, "gzip")
+	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Equal(t, "Origin, Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
+	require.Equal(t, []string{"</a>; rel=preload", "</b>; rel=preload"}, resp.Header.Values(fiber.HeaderLink))
 }
 
 func Test_Compress_RespectsBodyLimitOnCompressedRequestBody(t *testing.T) {
@@ -420,6 +474,37 @@ func Benchmark_Compress(b *testing.B) {
 	}
 }
 
+// Benchmark_Compress_Vary resets the response on every iteration, so each one
+// runs the compressor; the other benchmarks reuse an already encoded response.
+func Benchmark_Compress_Vary(b *testing.B) {
+	for _, bm := range []struct {
+		name           string
+		acceptEncoding string
+		vary           []string
+	}{
+		{name: "compressed_one_line", acceptEncoding: "gzip", vary: []string{"Origin"}},
+		{name: "compressed_three_lines", acceptEncoding: "gzip", vary: []string{"Origin", "Accept-Language", "User-Agent"}},
+		{name: "skipped_one_line", vary: []string{"Origin"}},
+	} {
+		b.Run(bm.name, func(b *testing.B) {
+			h := compressTestApp(func(c fiber.Ctx) error {
+				for _, line := range bm.vary {
+					c.Response().Header.Add(fiber.HeaderVary, line)
+				}
+				return compressTestSendUntypedReadme(c)
+			}).Handler()
+			fctx := benchRequest(bm.acceptEncoding)
+
+			b.ReportAllocs()
+
+			for b.Loop() {
+				fctx.Response.Reset()
+				h(fctx)
+			}
+		})
+	}
+}
+
 func Benchmark_Compress_Levels(b *testing.B) {
 	for _, tt := range benchEncodings {
 		for _, lvl := range benchLevels {
@@ -603,6 +688,48 @@ func Test_Compress_Repeated_Accept_Encoding_Lines(t *testing.T) {
 	req.Header.Add(fiber.HeaderAcceptEncoding, "gzip")
 
 	compressTestExpectEncoding(t, apptest.Do(t, app, req, testConfig), "gzip")
+}
+
+func Test_Compress_KeepsRequestHeaderOrder(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name               string
+		acceptEncoding     string
+		disableNormalizing bool
+	}{
+		{name: "canonical", acceptEncoding: fiber.HeaderAcceptEncoding},
+		// PeekAll misses this spelling, so no saved line goes back.
+		{name: "lowercase_without_normalizing", acceptEncoding: "accept-encoding", disableNormalizing: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var forwarded, accept []string
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: tc.disableNormalizing})
+			app.Use(func(c fiber.Ctx) error {
+				err := c.Next()
+				for k, v := range c.Request().Header.All() {
+					switch {
+					case utils.EqualFold(string(k), fiber.HeaderXForwardedFor):
+						forwarded = append(forwarded, string(v))
+					case utils.EqualFold(string(k), fiber.HeaderAcceptEncoding):
+						accept = append(accept, string(v))
+					}
+				}
+				return err
+			})
+			app.Use(New())
+			app.Get("/", compressTestSendReadme)
+
+			req := apptest.Req(fiber.MethodGet, "/")
+			req.Header[tc.acceptEncoding] = []string{"gzip"}
+			req.Header.Add(fiber.HeaderXForwardedFor, "1.1.1.1")
+			req.Header.Add(fiber.HeaderXForwardedFor, "2.2.2.2")
+
+			compressTestExpectEncoding(t, apptest.Do(t, app, req, testConfig), "gzip")
+			require.Equal(t, []string{"1.1.1.1", "2.2.2.2"}, forwarded)
+			require.Equal(t, []string{"gzip"}, accept)
+		})
+	}
 }
 
 // Test_Compress_Cache_Control_No_Transform runs each Cache-Control shape as the field of the request and as the field
