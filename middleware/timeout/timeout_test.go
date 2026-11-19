@@ -150,6 +150,23 @@ func TestTimeout_Statuses(t *testing.T) {
 			want:    fiber.StatusServiceUnavailable,
 		},
 		{
+			// An OnTimeout that neither writes a response nor returns an error
+			// leaves the default 503, as it does once the deadline has passed.
+			name:    "deadline error with an OnTimeout that writes nothing",
+			handler: func(_ fiber.Ctx) error { return context.DeadlineExceeded },
+			cfg:     []Config{{Timeout: time.Second, OnTimeout: func(_ fiber.Ctx) error { return nil }}},
+			want:    fiber.StatusServiceUnavailable,
+		},
+		{
+			// A response OnTimeout wrote is kept.
+			name:    "deadline error with an OnTimeout that writes the response",
+			handler: func(_ fiber.Ctx) error { return context.DeadlineExceeded },
+			cfg: []Config{{Timeout: time.Second, OnTimeout: func(c fiber.Ctx) error {
+				return c.Status(fiber.StatusGatewayTimeout).SendString("upstream timed out")
+			}}},
+			want: fiber.StatusGatewayTimeout,
+		},
+		{
 			// The Next function skips the middleware.
 			name: "Next skips the middleware",
 			handler: func(c fiber.Ctx) error {

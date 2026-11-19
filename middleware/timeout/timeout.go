@@ -348,7 +348,12 @@ func (s *snapshot) release() {
 // invokeOnTimeout calls the OnTimeout handler if configured
 func invokeOnTimeout(ctx fiber.Ctx, cfg Config) error {
 	if cfg.OnTimeout != nil {
-		return cfg.OnTimeout(ctx)
+		err := cfg.OnTimeout(ctx)
+		// Left as it is, the response would go out as an empty 200.
+		if resp := ctx.Response(); err == nil && resp.StatusCode() == fiber.StatusOK && timeoutResponseUnwritten(resp) {
+			return fiber.ErrServiceUnavailable
+		}
+		return err
 	}
 	return fiber.ErrServiceUnavailable
 }
