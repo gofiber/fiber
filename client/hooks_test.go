@@ -286,6 +286,39 @@ func Test_Parser_Request_URL(t *testing.T) {
 	})
 }
 
+// Test_Parser_Request_URL_Fragment pins that the fragment starts at the first '#',
+// so a '?' after it opens no query (RFC 3986 Section 3.5).
+func Test_Parser_Request_URL_Fragment(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, url, param, wantURI, wantQuery, wantHash string
+	}{
+		{name: "question mark inside the fragment", url: "http://example.com/#/users?id=1", wantURI: "/", wantHash: "/users?id=1"},
+		{
+			name: "query ends where the fragment starts", url: "http://example.com/api?a=1#top?b=2",
+			wantURI: "/api?a=1", wantQuery: "a=1", wantHash: "top?b=2",
+		},
+		{
+			name: "fragment without a query is kept when a param is added", url: "http://example.com/api#top", param: "a",
+			wantURI: "/api?a=1", wantQuery: "a=1", wantHash: "top",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req := AcquireRequest().SetURL(tc.url)
+			if tc.param != "" {
+				req.SetParam(tc.param, "1")
+			}
+			require.NoError(t, parserRequestURL(New(), req))
+
+			uri := req.RawRequest.URI()
+			require.Equal(t, tc.wantURI, string(uri.RequestURI()))
+			require.Equal(t, tc.wantQuery, string(uri.QueryString()))
+			require.Equal(t, tc.wantHash, string(uri.Hash()))
+		})
+	}
+}
+
 func Test_Parser_Request_Header(t *testing.T) {
 	t.Parallel()
 	type cookies struct {

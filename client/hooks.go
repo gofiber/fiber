@@ -72,8 +72,10 @@ func unsafeRandString(n int) (string, error) {
 // parserRequestURL sets options for the hostclient and normalizes the URL.
 // It merges the baseURL with the request URI if needed and applies query and path parameters.
 func parserRequestURL(c *Client, req *Request) error {
-	// Split URL into path and query parts using Cut (avoids allocation)
-	uri, queryPart, _ := utils.CutByte(req.url, '?')
+	// Split URL into path, query and fragment parts using Cut (avoids allocation).
+	// The fragment goes first: a '?' after the '#' belongs to it (RFC 3986 Section 3.5).
+	uri, hashPart, _ := utils.CutByte(req.url, '#')
+	uri, queryOnly, _ := utils.CutByte(uri, '?')
 
 	// If the URL doesn't start with http/https, prepend the baseURL.
 	if !protocolCheck.MatchString(uri) {
@@ -107,8 +109,7 @@ func parserRequestURL(c *Client, req *Request) error {
 		req.RawRequest.URI().SetPathBytes(req.RawRequest.URI().PathOriginal())
 	}
 
-	// Merge query parameters (split query from fragment using Cut).
-	queryOnly, hashPart, _ := utils.CutByte(queryPart, '#')
+	// Merge query parameters.
 	args := fasthttp.AcquireArgs()
 	defer fasthttp.ReleaseArgs(args)
 
