@@ -55,7 +55,8 @@ func hasResponseNoTransform(c fiber.Ctx) bool {
 }
 
 func appendVaryAcceptEncoding(c fiber.Ctx) {
-	vary := c.GetRespHeader(fiber.HeaderVary)
+	// Several Vary lines are one list (RFC 9110 §5.3), and c.Set keeps only one line.
+	vary := utils.UnsafeString(headerlist.Join(c.Response().Header.PeekAll(fiber.HeaderVary)))
 	if vary == "" {
 		c.Set(fiber.HeaderVary, fiber.HeaderAcceptEncoding)
 		return
@@ -210,7 +211,8 @@ func encodingQuality(accept, offer string) float64 {
 }
 
 // compressWith runs fasthttp's compressor for the negotiated encoding, handing
-// it the bare token, and restores the client's Accept-Encoding afterwards.
+// it the bare token, and restores the client's Accept-Encoding and the
+// handler's Vary afterwards.
 func compressWith(c fiber.Ctx, compressor fasthttp.RequestHandler, encoding string) {
 	header := &c.Request().Header
 	lines := header.PeekAll(fiber.HeaderAcceptEncoding)
@@ -218,12 +220,25 @@ func compressWith(c fiber.Ctx, compressor fasthttp.RequestHandler, encoding stri
 	for i, line := range lines {
 		saved[i] = utils.CopyBytes(line)
 	}
+	// The compressor merges Accept-Encoding into the first Vary line byte for
+	// byte and drops the others; the handler's lines go back as one list.
+	respHeader := &c.Response().Header
+	vary := string(headerlist.Join(respHeader.PeekAll(fiber.HeaderVary)))
 
 	header.Set(fiber.HeaderAcceptEncoding, encoding)
 	compressor(c.RequestCtx())
 
-	header.Del(fiber.HeaderAcceptEncoding)
-	for _, line := range saved {
-		header.AddBytesV(fiber.HeaderAcceptEncoding, line)
+	if len(saved) == 0 {
+		// A spelling PeekAll misses (normalizing off): drop the line added above.
+		header.Del(fiber.HeaderAcceptEncoding)
+	} else {
+		// Set keeps the first line in place, where Del would swap the last header into it.
+		header.SetBytesV(fiber.HeaderAcceptEncoding, saved[0])
+		for _, line := range saved[1:] {
+			header.AddBytesV(fiber.HeaderAcceptEncoding, line)
+		}
+	}
+	if vary != "" {
+		respHeader.Set(fiber.HeaderVary, vary)
 	}
 }
