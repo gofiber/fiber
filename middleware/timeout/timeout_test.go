@@ -167,6 +167,15 @@ func TestTimeout_Statuses(t *testing.T) {
 			want: fiber.StatusGatewayTimeout,
 		},
 		{
+			// A body stream OnTimeout set is a written response too.
+			name:    "deadline error with an OnTimeout that streams the response",
+			handler: func(_ fiber.Ctx) error { return context.DeadlineExceeded },
+			cfg: []Config{{Timeout: time.Second, OnTimeout: func(c fiber.Ctx) error {
+				return c.SendStream(strings.NewReader("upstream timed out"))
+			}}},
+			want: fiber.StatusOK,
+		},
+		{
 			// The Next function skips the middleware.
 			name: "Next skips the middleware",
 			handler: func(c fiber.Ctx) error {

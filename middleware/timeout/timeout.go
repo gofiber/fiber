@@ -349,8 +349,10 @@ func (s *snapshot) release() {
 func invokeOnTimeout(ctx fiber.Ctx, cfg Config) error {
 	if cfg.OnTimeout != nil {
 		err := cfg.OnTimeout(ctx)
-		// Left as it is, the response would go out as an empty 200.
-		if resp := ctx.Response(); err == nil && resp.StatusCode() == fiber.StatusOK && timeoutResponseUnwritten(resp) {
+		// Left as it is, the response would go out as an empty 200. A stream is a
+		// written response here: nothing copies the response on this path, so it is sent.
+		resp := ctx.Response()
+		if err == nil && resp.StatusCode() == fiber.StatusOK && !resp.IsBodyStream() && len(resp.Body()) == 0 {
 			return fiber.ErrServiceUnavailable
 		}
 		return err
