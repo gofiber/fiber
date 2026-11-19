@@ -231,6 +231,9 @@ func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
 		{name: "a path a middleware rewrote", first: "/old", second: "/page"},
 		{name: "a query a middleware removed", first: `/bare?q="><script>`, second: "/bare"},
 		{name: "two queries a middleware removed", first: `/bare?q="><script>`, second: "/bare?q=%22%3E%3Cscript%3E"},
+		// The query the middleware gives a target without one is keyed for both; only one of them sent it.
+		{name: "a query a middleware added", first: "/added", second: "/added?lang=en"},
+		{name: "a query a middleware added to a path it rewrote", first: "/moved", second: "/moved?lang=en"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -242,6 +245,11 @@ func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
 					c.Path("/page")
 				case "/bare":
 					c.Request().URI().SetQueryString("")
+				case "/added":
+					c.Request().URI().SetQueryString("lang=en")
+				case "/moved":
+					c.Request().URI().SetQueryString("lang=en")
+					c.Path("/page")
 				}
 				return c.Next()
 			})

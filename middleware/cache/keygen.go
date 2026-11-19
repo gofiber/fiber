@@ -151,14 +151,22 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 // tells "/page?" from "/page". So does a query other than keyed, which middleware registered
 // before the cache rewrote: the segment before this one's holds the query it left, while a handler
 // still reads the one that was sent.
+//
+// A target that holds no "?" while such middleware gave the request a query is keyed under "|n="
+// in place of "|p=", whatever its path: cut at its "?", the target that sent that very query
+// leaves the same bytes, and the two are not one target to a handler.
 func appendTargetAsSent(dst, target []byte, path string, keyed []byte, cfg *Config) []byte {
 	sent, fragment, hasFragment := bytes.Cut(target, []byte{'#'})
-	if before, query, hasQuery := bytes.Cut(sent, []byte{'?'}); hasQuery &&
-		(cfg.DisableQueryKeys || (len(query) > 0 && bytes.Equal(query, keyed))) {
+	before, query, hasQuery := bytes.Cut(sent, []byte{'?'})
+	if hasQuery && (cfg.DisableQueryKeys || (len(query) > 0 && bytes.Equal(query, keyed))) {
 		sent = before
 	}
 
-	if string(sent) != path {
+	switch {
+	case !hasQuery && len(keyed) > 0 && !cfg.DisableQueryKeys:
+		dst = append(dst, '|', 'n', '=')
+		dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(sent))
+	case string(sent) != path:
 		dst = append(dst, '|', 'p', '=')
 		dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(sent))
 	}
