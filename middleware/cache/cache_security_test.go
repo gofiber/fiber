@@ -189,13 +189,13 @@ func Test_Cache_Security_KeyValuesStayDistinct(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_QuerySpellingsStayDistinct tests that two requests share an entry only when
-// their queries hold the same parameters in the same bytes. A handler reads the target as it was
-// sent, so what it answers one spelling with is not the answer to another: stored for a request
-// that sends a quote or an angle bracket raw, and served to the browser that asks for the same
-// query with those escaped, as a browser does, an echo of the target is markup in that browser's
-// page. Only the order of parameters with different names is left out of the key.
-func Test_Cache_Security_QuerySpellingsStayDistinct(t *testing.T) {
+// Test_Cache_Security_TargetSpellingsStayDistinct tests that two requests share an entry only when
+// their targets are spelled the same, the order of query parameters with different names aside. A
+// handler reads the target as it was sent, so what it answers one spelling with is not the answer
+// to another: an echo of the target is markup in the page of the client it is served to. A browser
+// escapes a quote and an angle bracket in a query, resolves dot segments and sends no fragment, so
+// it cannot send such a target itself, and was served it when its own shared the entry.
+func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name, first, second string
@@ -219,16 +219,34 @@ func Test_Cache_Security_QuerySpellingsStayDistinct(t *testing.T) {
 		{name: "two names", first: "/?a=1&b=2", second: "/?b=2&a=1", shared: true},
 		{name: "two names around a repeated one", first: "/?b=2&a=1&a=3", second: "/?a=1&b=2&a=3", shared: true},
 		{name: "two names, one escaped", first: "/?b=2&%61=1", second: "/?%61=1&b=2", shared: true},
+		// The rest of the target: all of these are routed as the path of the second request.
+		{name: "a fragment", first: `/page#"><script>alert(1)</script>`, second: "/page"},
+		{name: "an empty fragment", first: "/page#", second: "/page"},
+		{name: "a fragment behind a query", first: "/page?a=1#x", second: "/page?a=1"},
+		{name: "segments that dots remove", first: `/"><script>alert(1)</script>/../../page`, second: "/page"},
+		{name: "a dot segment", first: "/./page", second: "/page"},
+		{name: "an escaped letter of the path", first: "/pa%67e", second: "/page"},
+		{name: "an absolute-form target", first: "http://example.com/page", second: "/page"},
+		{name: "a question mark no query follows", first: "/page?", second: "/page"},
+		{name: "a path a middleware rewrote", first: "/old", second: "/page"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			wire := cacheTestCWireOf(t, &Config{Expiration: time.Hour}, func(c fiber.Ctx) error {
-				return c.SendString(c.OriginalURL() + " a=" + c.Query("a"))
+			app := fiber.New()
+			// A rewrite registered ahead of the cache: the handler still reads the target that was sent.
+			app.Use(func(c fiber.Ctx) error {
+				if c.Path() == "/old" {
+					c.Path("/page")
+				}
+				return c.Next()
 			})
+			app.Use(New(Config{Expiration: time.Hour}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString(c.OriginalURL() + " a=" + c.Query("a")) })
+			wire := cacheTestCWire{t: t, app: app}
 			answer := func(target string) string {
-				var args fasthttp.Args
-				args.Parse(target[len("/?"):])
-				return target + " a=" + string(args.Peek("a"))
+				var uri fasthttp.URI
+				require.NoError(t, uri.Parse(nil, []byte(target)))
+				return target + " a=" + string(uri.QueryArgs().Peek("a"))
 			}
 
 			cacheTestCRequireReply(t, wire.target(tc.first), cacheMiss, answer(tc.first))
