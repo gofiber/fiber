@@ -2479,6 +2479,25 @@ func Test_CacheDeltaSecondsOverflow(t *testing.T) {
 		cacheTestAExpectBody(t, app, cacheTestAGetCC("/", "min-fresh="+huge), cacheMiss, "2")
 	})
 
+	t.Run("request max-stale", func(t *testing.T) {
+		t.Parallel()
+		app, _ := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=1")
+		cacheTestAExpectBody(t, app, "/", cacheMiss, "1")
+
+		time.Sleep(1500 * time.Millisecond)
+
+		cacheTestAExpectBody(t, app, cacheTestAGetCC("/", "max-stale="+huge), cacheHit, "1")
+	})
+
+	t.Run("response Age", func(t *testing.T) {
+		t.Parallel()
+		// An age above the lifetime: the response is stale on arrival and is not stored.
+		app, _ := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=60", fiber.HeaderAge, huge)
+		cacheTestAExpectBody(t, app, "/", cacheUnreachable, "1")
+
+		cacheTestAExpectBody(t, app, "/", cacheUnreachable, "2")
+	})
+
 	t.Run("response directives", func(t *testing.T) {
 		t.Parallel()
 		parsed := parseResponseCacheControl([]byte("max-age=" + huge + ", s-maxage=" + huge))
