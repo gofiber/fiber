@@ -2256,7 +2256,13 @@ func Test_CSRF_ExpiredCookieCarriesExpires(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
 			app.Use(New(Config{CookieSessionOnly: tc.sessionOnly}))
-			app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+			app.All("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+			// A cookie that carries a token has a lifetime only when it is not session-only.
+			issued := responseCookie(t, apptest.Expect(t, app, "/", fiber.StatusOK), ConfigDefault.CookieName)
+			require.NotEmpty(t, issued.Value)
+			require.Equal(t, tc.sessionOnly, issued.Expires.IsZero())
+			require.Zero(t, issued.MaxAge, "the lifetime of a persistent cookie is sent as Expires")
 
 			// The cookie and the header agree, but the token is not in the storage.
 			const stale = "stale-token"
