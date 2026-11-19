@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"bytes"
+
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/utils/v2"
@@ -52,7 +54,8 @@ func parseUintDirective(val []byte) (uint64, bool) {
 	}
 	parsed, err := fasthttp.ParseUint(val)
 	if err != nil || parsed < 0 {
-		return 0, false
+		// A delta-seconds too large to represent counts as 2^31 (RFC 9111 Section 1.2.2).
+		return 1 << 31, len(bytes.TrimLeft(val, "0123456789")) == 0
 	}
 	return uint64(parsed), true
 }

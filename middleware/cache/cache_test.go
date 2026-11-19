@@ -2467,6 +2467,28 @@ func Test_CacheMinFreshForcesRevalidation(t *testing.T) {
 	cacheTestAExpectBody(t, app, "/", cacheHit, "2")
 }
 
+func Test_CacheDeltaSecondsOverflow(t *testing.T) {
+	t.Parallel()
+	const huge = "99999999999999999999"
+
+	t.Run("request min-fresh", func(t *testing.T) {
+		t.Parallel()
+		app, _ := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=5")
+		cacheTestAExpectBody(t, app, "/", cacheMiss, "1")
+
+		resp := apptest.Do(t, app, cacheTestAGetCC("/", "min-fresh="+huge))
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+		require.Equal(t, "2", apptest.Body(t, resp))
+	})
+
+	t.Run("response max-age", func(t *testing.T) {
+		t.Parallel()
+		parsed := parseResponseCacheControl([]byte("max-age=" + huge))
+		require.True(t, parsed.maxAgeSet)
+		require.Equal(t, uint64(1)<<31, parsed.maxAge)
+	})
+}
+
 func Test_CachePermanentRedirectCached(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
