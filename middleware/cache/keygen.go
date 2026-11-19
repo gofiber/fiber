@@ -1,11 +1,10 @@
 package cache
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"net/url"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 
@@ -19,8 +18,8 @@ import (
 const (
 	maxKeyDimensionSegmentLength = 192
 	defaultKeyBufferCap          = 256
-	maxQueryParams               = 128  // Maximum number of query parameters to parse
-	maxQueryBufferSize           = 4096 // Maximum buffer size for query string canonicalization
+	maxQueryParams               = 128  // Most parameters a query may have for them to be sorted
+	maxQueryBufferSize           = 4096 // Longest query whose parameters are sorted
 )
 
 // hashPrefix is the reserved namespace prefix for hashed key segments.
@@ -132,9 +131,30 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	return dst
 }
 
-// appendCanonicalQueryString appends the canonicalized query segment to dst.
-// It avoids copying the raw query and the intermediate result string the caller
-// would otherwise have to re-append.
+// querySegment is a parameter of a query string, the text between two "&": where it lies in the
+// query, and where its name, decoded, lies in the buffer the names are compared in.
+type querySegment struct {
+	start, end         uint16
+	nameStart, nameEnd uint16
+}
+
+// A query whose parameters are sorted has to fit the 16 bits of those offsets.
+const _ uint16 = maxQueryBufferSize
+
+// appendCanonicalQueryString appends the query segment to dst: the parameters as they were sent,
+// those of different names sorted by name, so the order a client lists them in does not split
+// the cache.
+//
+// A parameter keeps its bytes. They used to be decoded and escaped again, which gave every
+// spelling of a query one key, while a handler can read the spelling it was sent
+// (c.OriginalURL): a response echoing a raw `"` or `<`, which a browser escapes and so cannot
+// send, was stored for the query the browser does send, and served to it. The same went for
+// "a" and "a=", and for an "&" with no parameter behind it.
+//
+// Parameters of one name keep the order they were sent in, as c.Query reads the first of them.
+// Which parameters share a name is for fasthttp to say, since c.Query reads through its parser:
+// the names are compared as AppendUnquotedArg decodes them, which is how that parser decodes a
+// key, so "a" and "%61" are never reordered.
 func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	raw := uri.QueryString()
 	if len(raw) == 0 {
@@ -145,78 +165,57 @@ func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	// request buffer can be mutated, so no stable copy is required.
 	query := utils.UnsafeString(raw)
 
-	// Pre-scan query string to detect excessive parameters before expensive parsing.
-	// This prevents DoS via url.ParseQuery allocating large maps/slices.
+	// A lone parameter has no order, and a query past either bound is keyed as it was sent: the
+	// bounds cap the work one request can ask for here, and keep the offsets below in 16 bits.
 	if len(query) > maxQueryBufferSize {
 		return appendEscapedBoundKeySegment(dst, query)
 	}
-
-	// Fast path: single key=value pair needs no parsing or sorting
-	if strings.IndexByte(query, '&') < 0 {
+	count := strings.Count(query, "&") + 1
+	if count == 1 || count > maxQueryParams {
 		return appendEscapedBoundKeySegment(dst, query)
 	}
 
-	// Quick count of potential parameters (ampersands + 1)
-	paramCount := 1
-	for i := 0; i < len(query); i++ {
-		if query[i] == '&' {
-			paramCount++
-			if paramCount > maxQueryParams {
-				// Too many parameters detected, hash without parsing
-				return appendEscapedBoundKeySegment(dst, query)
-			}
-		}
-	}
-
-	parsed, err := url.ParseQuery(query)
-	if err != nil {
-		return appendEscapedBoundKeySegment(dst, query)
-	}
-
-	// Double-check actual parameter count after parsing
-	actualCount := 0
-	for _, values := range parsed {
-		actualCount += len(values)
-		if actualCount > maxQueryParams {
-			return appendEscapedBoundKeySegment(dst, query)
-		}
-	}
-
-	keys := make([]string, 0, len(parsed))
-	for key := range parsed {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	// Use pooled buffer to prevent excessive memory allocation during URL escaping.
-	// URL escaping can expand strings up to 3x (each byte -> %XX).
+	// One pooled buffer holds the decoded names and, behind them, the sorted query. Neither
+	// outgrows the query, as decoding only shortens a name and sorting moves the parameters.
 	bufPtr := acquireKeyBuffer()
 	buf := (*bufPtr)[:0]
 
-	for _, key := range keys {
-		// Values keep the order sent: c.Query reads the first, so a reordering is another request.
-		for _, value := range parsed[key] {
-			if len(buf) > 0 {
-				buf = append(buf, '&')
-			}
-
-			// Escape straight into the pooled buffer to skip the intermediate
-			// strings url.QueryEscape would allocate per key and value.
-			buf = utils.AppendQueryEscape(buf, key)
-			buf = append(buf, '=')
-			buf = utils.AppendQueryEscape(buf, value)
-
-			// Check buffer size to prevent unbounded growth. Equivalent to the
-			// pre-append check len(prev)+len(key)+len(value)+2 > max: the pair
-			// plus '=' is already appended, leaving only the +1 slack.
-			if len(buf)+1 > maxQueryBufferSize {
-				releaseKeyBuffer(bufPtr, buf)
-				return appendEscapedBoundKeySegment(dst, query)
-			}
+	var array [maxQueryParams]querySegment
+	segments := array[:count]
+	start := 0
+	for i := range segments {
+		end := len(raw)
+		if next := bytes.IndexByte(raw[start:], '&'); next >= 0 {
+			end = start + next
 		}
+		name := raw[start:end]
+		if eq := bytes.IndexByte(name, '='); eq >= 0 {
+			name = name[:eq]
+		}
+		nameStart := len(buf)
+		buf = fasthttp.AppendUnquotedArg(buf, name)
+		segments[i] = querySegment{ //nolint:gosec // G115 - offsets into a query of at most maxQueryBufferSize bytes
+			start: uint16(start), end: uint16(end), nameStart: uint16(nameStart), nameEnd: uint16(len(buf)),
+		}
+		start = end + 1
 	}
 
-	dst = appendBoundKeySegment(dst, utils.UnsafeString(buf))
+	// Stable, which is what keeps the parameters of one name in the order sent.
+	names := buf
+	slices.SortStableFunc(segments, func(a, b querySegment) int {
+		return bytes.Compare(names[a.nameStart:a.nameEnd], names[b.nameStart:b.nameEnd])
+	})
+
+	sorted := len(buf)
+	for i, segment := range segments {
+		if i > 0 {
+			buf = append(buf, '&')
+		}
+		buf = append(buf, raw[segment.start:segment.end]...)
+	}
+
+	// Escaped, unlike the encoding this replaces: a parameter sent raw may hold a delimiter.
+	dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(buf[sorted:]))
 	releaseKeyBuffer(bufPtr, buf)
 	return dst
 }

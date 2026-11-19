@@ -33,7 +33,7 @@ type Config struct {
 	//   - Request scheme and host, as c.Scheme() and c.Host() report them
 	//     (bounded; two hosts never share an entry)
 	//   - Request path (bounded to 192 bytes, hashed if longer)
-	//   - Canonical query string (sorted parameters, bounded)
+	//   - Query string (parameters as they were sent, sorted by name; bounded)
 	//   - Selected request headers (from KeyHeaders)
 	//   - Selected cookies (from KeyCookies, their values hashed)
 	//
