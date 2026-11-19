@@ -810,7 +810,6 @@ func New(config ...Config) fiber.Handler {
 						setFieldLine(&c.Response().Header, fiber.HeaderCacheControl, cacheControlValue, canonical)
 					}
 
-					const maxDeltaSeconds = uint64(math.MaxInt32)
 					ageSeconds := min(entryAge, maxDeltaSeconds)
 
 					// RFC-compliant Age header (RFC 9111)

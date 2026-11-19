@@ -2,6 +2,7 @@ package cache
 
 import (
 	"bytes"
+	"math"
 
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
@@ -48,16 +49,27 @@ func hasDirective(cc, directive string) bool {
 	return false
 }
 
+// maxDeltaSeconds is the greatest delta-seconds the cache works with. RFC 9111
+// Section 1.2.2 allows 2^31 or the greatest integer that is convenient to
+// represent; one less than 2^31 is used so that a lifetime still fits a storage
+// driver that keeps its TTL as int32 seconds.
+const maxDeltaSeconds = uint64(math.MaxInt32)
+
+// parseUintDirective reads a delta-seconds. Every value above maxDeltaSeconds,
+// including one too large to parse, counts as maxDeltaSeconds, so a larger
+// value never ends up smaller than a smaller one.
 func parseUintDirective(val []byte) (uint64, bool) {
 	if len(val) == 0 {
 		return 0, false
 	}
 	parsed, err := fasthttp.ParseUint(val)
 	if err != nil || parsed < 0 {
-		// A delta-seconds too large to represent counts as 2^31 (RFC 9111 Section 1.2.2).
-		return 1 << 31, len(bytes.TrimLeft(val, "0123456789")) == 0
+		if len(bytes.TrimLeft(val, "0123456789")) != 0 {
+			return 0, false
+		}
+		return maxDeltaSeconds, true
 	}
-	return uint64(parsed), true
+	return min(uint64(parsed), maxDeltaSeconds), true
 }
 
 func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {

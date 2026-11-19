@@ -2476,16 +2476,29 @@ func Test_CacheDeltaSecondsOverflow(t *testing.T) {
 		app, _ := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=5")
 		cacheTestAExpectBody(t, app, "/", cacheMiss, "1")
 
-		resp := apptest.Do(t, app, cacheTestAGetCC("/", "min-fresh="+huge))
-		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
-		require.Equal(t, "2", apptest.Body(t, resp))
+		cacheTestAExpectBody(t, app, cacheTestAGetCC("/", "min-fresh="+huge), cacheMiss, "2")
 	})
 
-	t.Run("response max-age", func(t *testing.T) {
+	t.Run("response directives", func(t *testing.T) {
 		t.Parallel()
-		parsed := parseResponseCacheControl([]byte("max-age=" + huge))
+		parsed := parseResponseCacheControl([]byte("max-age=" + huge + ", s-maxage=" + huge))
 		require.True(t, parsed.maxAgeSet)
-		require.Equal(t, uint64(1)<<31, parsed.maxAge)
+		require.Equal(t, maxDeltaSeconds, parsed.maxAge)
+		require.True(t, parsed.sMaxAgeSet)
+		require.Equal(t, maxDeltaSeconds, parsed.sMaxAge)
+		// The stored lifetime fits a storage driver that keeps its TTL as int32 seconds.
+		require.LessOrEqual(t, secondsToDuration(parsed.maxAge).Seconds(), float64(math.MaxInt32))
+	})
+
+	t.Run("request directives", func(t *testing.T) {
+		t.Parallel()
+		parsed := parseRequestCacheControl([]byte("max-age=" + huge + ", max-stale=" + huge + ", min-fresh=" + huge))
+		require.True(t, parsed.maxAgeSet)
+		require.Equal(t, maxDeltaSeconds, parsed.maxAge)
+		require.True(t, parsed.maxStaleSet)
+		require.Equal(t, maxDeltaSeconds, parsed.maxStale)
+		require.True(t, parsed.minFreshSet)
+		require.Equal(t, maxDeltaSeconds, parsed.minFresh)
 	})
 }
 
