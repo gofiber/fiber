@@ -3,6 +3,7 @@ package session
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -763,6 +764,13 @@ func (s *Session) decodeSessionData(rawData []byte) error {
 	s.data.Lock()
 	defer s.data.Unlock()
 	snapshot, err := s.data.decode(rawData)
+	// Asked only of a decode that failed: errors.Is is a call, and every load decodes.
+	if err != nil && errors.Is(err, errRecordNeedsCodec) {
+		// The data is held as gob, and rawData is a record: only a Regenerate meets one,
+		// since a load reads a record into a session of the store. Whether the store can
+		// read it is for its codec to say.
+		snapshot, err = s.data.decodeRecord(rawData, s.config.recordCodec())
+	}
 	if err != nil {
 		return err
 	}

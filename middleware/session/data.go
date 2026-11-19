@@ -407,6 +407,24 @@ func (d *data) decode(rawData []byte) ([]byte, error) {
 	return raw, nil
 }
 
+// decodeRecord is decode for a record that takes the place of data held as gob: the
+// session was stored before the store had its codec, and another request has started it
+// over as a session of the store since, under the same ID. The data becomes a session
+// of codec, the codec of the store, nil if it has none; it stays what it was when the
+// record does not load. The caller holds the lock.
+func (d *data) decodeRecord(rawData []byte, codec *namedCodec) ([]byte, error) {
+	if codec == nil {
+		return nil, errRecordNeedsCodec
+	}
+	held := d.format
+	d.format = codec
+	snapshot, err := d.decode(rawData)
+	if err != nil {
+		d.format = held
+	}
+	return snapshot, err
+}
+
 // editedSince reports whether the data differs from snapshot, the bytes it was decoded
 // from, as it does once a value a read returned was changed in place. Gob writes a map in
 // no fixed order, so the snapshot is decoded again and compared as data rather than as

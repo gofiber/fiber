@@ -2055,6 +2055,44 @@ func Test_Session_RegenerateKeepsSessionOnUndecodableChange(t *testing.T) {
 	sessionTestRequireGone(t, store, id)
 }
 
+// Test_Session_RegenerateCarriesRecordOverGob pins that a Regenerate of a session held as gob, in a store
+// with a codec, carries over the record another request started the session over as under the same ID: the
+// codec of the store reads it, where the gob the session is held as has none, and the session is one of the
+// store from then on. A record the store cannot read leaves the session as it was.
+func Test_Session_RegenerateCarriesRecordOverGob(t *testing.T) {
+	t.Parallel()
+	another := NewCodec("other", JSONCodec{}.Marshal, JSONCodec{}.Unmarshal)
+	for name, tc := range map[string]struct {
+		writer   Codec
+		wantErr  error
+		wantRole string
+	}{
+		"a record of the store":     {writer: JSONCodec{}, wantRole: "user"},
+		"a record of another codec": {writer: another, wantRole: "admin", wantErr: errCodecMismatch},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app, mem := fiber.New(), memory.New()
+			id := seedSession(t, app, NewStore(Config{Storage: mem}), func(s *Session) { s.Set("role", "admin") })
+			store := NewStore(Config{Storage: mem, Codec: JSONCodec{}})
+
+			inFlight := loadSession(t, app, store, id)
+			other := loadSession(t, app, NewStore(Config{Storage: mem, Codec: tc.writer}), id)
+			require.NoError(t, other.Destroy())
+			other.Set("role", "user")
+			require.NoError(t, other.Save())
+
+			require.ErrorIs(t, inFlight.Regenerate(), tc.wantErr)
+			require.NotEqual(t, id, inFlight.ID())
+			require.Equal(t, tc.wantRole, inFlight.Get("role"))
+			require.Equal(t, tc.wantErr == nil, inFlight.data.holds(store.named), "only a record makes it a session of the store")
+			require.NoError(t, inFlight.Save())
+			require.Equal(t, tc.wantRole, sessionTestStored(t, store, inFlight.ID()).Get("role"))
+			sessionTestRequireGone(t, store, id)
+		})
+	}
+}
+
 // Test_Session_RegenerateDropsKeyAnotherRequestDeleted pins that the change a Regenerate carries over
 // replaces the snapshot: a key the other request deleted does not survive the rotation.
 func Test_Session_RegenerateDropsKeyAnotherRequestDeleted(t *testing.T) {

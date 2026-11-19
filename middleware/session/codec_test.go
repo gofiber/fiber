@@ -2648,6 +2648,7 @@ func Test_Session_DecodeRecordRefusesWhatItCannotRead(t *testing.T) {
 			t.Parallel()
 			sess := acquireSession()
 			defer sess.Release()
+			sess.bind(NewStore()) // no codec of the store stands in for the format the session holds
 			sess.data.format = tc.format
 			require.ErrorIs(t, sess.decodeSessionData(tc.record), tc.err)
 			require.Empty(t, sess.data.Data, "nothing of the record is left")
