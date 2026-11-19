@@ -95,19 +95,23 @@ func keygenCorpus() []keygenCase {
 	}
 }
 
-func buildKeygenCtx(tc *keygenCase) (fiber.Ctx, *Config) {
+// buildKeygenCtx returns the context of the request tc describes, which goes back to its pool when
+// the test ends, and the config tc asks for as New would fill it in.
+func buildKeygenCtx(tb testing.TB, tc *keygenCase) (fiber.Ctx, *Config) {
+	tb.Helper()
+
 	app := fiber.New()
-	// The request line is set before AcquireCtx, which caches the method and routes
-	// the path of the target: set afterwards, the target left every fixture routed
-	// as "/" whatever path it named. Body and headers are read live from the
-	// request afterwards.
+	// The request line is set before the context is acquired, which caches the
+	// method and routes the path of the target: set afterwards, the target left
+	// every fixture routed as "/" whatever path it named. Body and headers are
+	// read live from the request afterwards.
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(cmp.Or(tc.method, fiber.MethodGet))
 	fctx.Request.SetRequestURI(tc.uri)
 	// A request without an authority is not what the key is built for, so the
 	// fixtures carry the host httptest would set.
 	fctx.Request.SetHost(cmp.Or(tc.host, "example.com"))
-	c := app.AcquireCtx(fctx)
+	c := apptest.CtxFor(tb, app, fctx)
 	if tc.body != "" {
 		c.Request().SetBody([]byte(tc.body))
 	}
@@ -138,7 +142,7 @@ func Benchmark_defaultKeyGenerator(b *testing.B) {
 	}
 	for _, tc := range cases {
 		b.Run(tc.name, func(b *testing.B) {
-			c, cfg := buildKeygenCtx(&keygenCase{uri: tc.uri})
+			c, cfg := buildKeygenCtx(b, &keygenCase{uri: tc.uri})
 			b.ReportAllocs()
 			var s string
 			for b.Loop() {
@@ -164,7 +168,7 @@ func Test_defaultKeyGenerator_stableKeys(t *testing.T) {
 	for _, tc := range keygenCorpus() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			c, cfg := buildKeygenCtx(&tc)
+			c, cfg := buildKeygenCtx(t, &tc)
 			require.Equal(t, tc.want, defaultKeyGenerator(c, cfg))
 		})
 	}
@@ -296,7 +300,7 @@ func Test_defaultKeyGenerator_KeysTheTargetAsSent(t *testing.T) {
 			for _, path := range paths {
 				for _, query := range queries {
 					for _, fragment := range fragments {
-						c, cfg := buildKeygenCtx(&keygenCase{uri: path + query + fragment, noQuery: tc.noQuery})
+						c, cfg := buildKeygenCtx(t, &keygenCase{uri: path + query + fragment, noQuery: tc.noQuery})
 						require.Equal(t, "/page", c.Path(), path+query+fragment)
 						keys[defaultKeyGenerator(c, cfg)] = struct{}{}
 					}
@@ -534,7 +538,7 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 func Test_appendCanonicalCookieSubset(t *testing.T) {
 	t.Parallel()
 	segment := func(cookie string, names ...string) string {
-		c, _ := buildKeygenCtx(&keygenCase{uri: "/", cookie: cookie})
+		c, _ := buildKeygenCtx(t, &keygenCase{uri: "/", cookie: cookie})
 		return string(appendCanonicalCookieSubset(nil, c, &Config{KeyCookies: names}))
 	}
 
@@ -617,7 +621,7 @@ func Test_Cache_KeyCookieValuesAreHashedInStorageKeys(t *testing.T) {
 // Hashing a cookie value is on the hit path, so it must not allocate: the digest goes into the key
 // buffer. Sequential: testing.AllocsPerRun panics during a parallel test.
 func Test_appendCanonicalCookieSubset_DoesNotAllocate(t *testing.T) {
-	c, _ := buildKeygenCtx(&keygenCase{uri: "/", cookie: "sid=sess_0123456789abcdefghijklmnopqrstuvwxyz"})
+	c, _ := buildKeygenCtx(t, &keygenCase{uri: "/", cookie: "sid=sess_0123456789abcdefghijklmnopqrstuvwxyz"})
 	dst := make([]byte, 0, 512)
 
 	cfg := &Config{KeyCookies: []string{"sid"}}

@@ -46,14 +46,19 @@ func Test_carriesCredential(t *testing.T) {
 // pathKey is the smallest custom KeyGenerator: the key is the path.
 func pathKey(c fiber.Ctx) string { return c.Path() }
 
-// requestWith returns the context of a request that carries the headers.
-func requestWith(headers map[string]string) fiber.Ctx {
-	return requestAt("/", headers)
+// requestWith returns the context of a request that carries the headers, which goes back to its
+// pool when the test ends.
+func requestWith(tb testing.TB, headers map[string]string) fiber.Ctx {
+	tb.Helper()
+
+	return requestAt(tb, "/", headers)
 }
 
 // requestAt is requestWith for another path.
-func requestAt(path string, headers map[string]string) fiber.Ctx {
-	c, _ := buildKeygenCtx(&keygenCase{uri: path, headers: headers})
+func requestAt(tb testing.TB, path string, headers map[string]string) fiber.Ctx {
+	tb.Helper()
+
+	c, _ := buildKeygenCtx(tb, &keygenCase{uri: path, headers: headers})
 	return c
 }
 
@@ -154,7 +159,7 @@ func Test_requestCredentials_scope(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			cfg := configDefault(tc.cfg)
-			c := requestWith(tc.headers)
+			c := requestWith(t, tc.headers)
 			scope := cfg.credentialsOf(c, tc.vary, tc.hasAuthorization).scope()
 			require.Equal(t, tc.wantEntry, scope.entry, "entry")
 			require.Equal(t, tc.wantKeyed, scope.keyed, "keyed")
@@ -178,7 +183,7 @@ func Test_sendsCredential(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, sendsCredential(requestWith(tc.headers), []string{"session"}, []string{"x-api-key"}))
+			require.Equal(t, tc.want, sendsCredential(requestWith(t, tc.headers), []string{"session"}, []string{"x-api-key"}))
 		})
 	}
 }
@@ -257,8 +262,8 @@ func Test_refusalLimit(t *testing.T) {
 func Test_refusalRecords_mayHold(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	c := requestAt("/page", nil)
-	elsewhere := requestAt("/dash", nil)
+	c := requestAt(t, "/page", nil)
+	elsewhere := requestAt(t, "/dash", nil)
 	require.NotEqual(t, groupOf("/page"), groupOf("/dash"))
 
 	t.Run("in memory, from the first record until the last has expired", func(t *testing.T) {
@@ -570,7 +575,7 @@ func Test_droppedRecords(t *testing.T) {
 func Test_refusalRecords_bound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	c := requestAt("/page", nil)
+	c := requestAt(t, "/page", nil)
 	keys := []string{"k1", "k2", "k3", "k4"}
 
 	t.Run("an in-memory store forgets the oldest", func(t *testing.T) {
@@ -659,7 +664,7 @@ func Test_refusalRecords_bound(t *testing.T) {
 func Test_refusalRecords_storageFailures(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	c := requestAt("/page", nil)
+	c := requestAt(t, "/page", nil)
 	failure := errors.New("storage unavailable")
 
 	t.Run("a record that cannot be written is remembered here, and the credential's hits fail closed until it would have lapsed", func(t *testing.T) {
@@ -852,7 +857,7 @@ func Test_refusalRecords_key(t *testing.T) {
 		t.Parallel()
 		r := cacheTestCRecords(&Config{KeyCredentialHeaders: []string{"X-Company-Token"}})
 		key := func(vary []string, headers map[string]string) string {
-			return recordKeyOf(r, requestWith(headers), "base", vary, false)
+			return recordKeyOf(r, requestWith(t, headers), "base", vary, false)
 		}
 		require.Empty(t, key(nil, session), "no Vary, and the key holds no cookie")
 		require.Empty(t, key([]string{"x-tenant"}, session), "a Vary on no credential")
@@ -870,13 +875,13 @@ func Test_refusalRecords_key(t *testing.T) {
 		t.Parallel()
 		r := cacheTestCRecords(&Config{})
 		key := func(vary []string, headers map[string]string) string {
-			return recordKeyOf(r, requestWith(headers), "base", vary, false)
+			return recordKeyOf(r, requestWith(t, headers), "base", vary, false)
 		}
 		got := key([]string{"cookie", "x-variant"}, session)
 		require.Equal(t, got, key([]string{"cookie"}, session), "the other Vary names are not part of the record")
 		require.Equal(t, got, key([]string{"cookie", "x-variant"}, map[string]string{"Cookie": "session=abc", "X-Variant": "two"}))
 		require.NotEqual(t, got, key([]string{"cookie"}, map[string]string{"Cookie": "session=other"}))
-		require.Equal(t, got, recordKeyOf(r, requestWith(session), "other base", []string{"cookie"}, false), "the key is built from the request")
+		require.Equal(t, got, recordKeyOf(r, requestWith(t, session), "other base", []string{"cookie"}, false), "the key is built from the request")
 		require.True(t, strings.HasPrefix(got, refusalMarker+"|GET|"), "%q", got)
 		require.Contains(t, got, "|vary|")
 	})
@@ -885,7 +890,7 @@ func Test_refusalRecords_key(t *testing.T) {
 		t.Parallel()
 		r := cacheTestCRecords(&Config{KeyCookies: []string{"session"}})
 		key := func(vary []string, headers map[string]string) string {
-			return recordKeyOf(r, requestWith(headers), "base", vary, false)
+			return recordKeyOf(r, requestWith(t, headers), "base", vary, false)
 		}
 		got := key(nil, session)
 		require.NotEmpty(t, got)
@@ -916,7 +921,7 @@ func Test_refusalRecords_key(t *testing.T) {
 				}
 			}
 			key := func(value, accept string) string {
-				return recordKeyOf(r, requestWith(credential(value, accept)), "base", nil, false)
+				return recordKeyOf(r, requestWith(t, credential(value, accept)), "base", nil, false)
 			}
 
 			got := key("abc", "text/html")
@@ -925,14 +930,14 @@ func Test_refusalRecords_key(t *testing.T) {
 			require.NotEqual(t, got, key("other", "text/html"), "%s: another credential", name)
 			require.NotContains(t, got, "abc", name)
 		}
-		require.Empty(t, recordKeyOf(cacheTestCRecords(&Config{KeyCookies: []string{"session"}}), requestWith(nil), "base", nil, false), "no cookie sent")
+		require.Empty(t, recordKeyOf(cacheTestCRecords(&Config{KeyCookies: []string{"session"}}), requestWith(t, nil), "base", nil, false), "no cookie sent")
 	})
 
 	t.Run("Authorization is recorded under its digest", func(t *testing.T) {
 		t.Parallel()
 		r := cacheTestCRecords(&Config{})
 		key := func(auth string) string {
-			return recordKeyOf(r, requestWith(map[string]string{"Authorization": auth, "Accept": "text/html"}), "base", nil, true)
+			return recordKeyOf(r, requestWith(t, map[string]string{"Authorization": auth, "Accept": "text/html"}), "base", nil, true)
 		}
 		got := key("Bearer one")
 		require.NotEmpty(t, got)
@@ -944,7 +949,7 @@ func Test_refusalRecords_key(t *testing.T) {
 		t.Parallel()
 		token := map[string]string{"X-Company-Token": "t"}
 		record := func(cfg Config, vary []string, headers map[string]string) string {
-			return recordKeyOf(cacheTestCRecords(&cfg), requestWith(headers), "base", vary, false)
+			return recordKeyOf(cacheTestCRecords(&cfg), requestWith(t, headers), "base", vary, false)
 		}
 		varyToken := []string{"x-company-token"}
 		declared := Config{KeyCredentialHeaders: []string{"X-Company-Token"}}
@@ -968,34 +973,34 @@ func Test_refusalRecords_key(t *testing.T) {
 		r := cacheTestCRecords(&Config{KeyGenerator: pathKey})
 		bearer := map[string]string{"Authorization": "Bearer one"}
 		want := refusalMarker + "|GET|base"
-		require.Equal(t, want, recordKeyOf(r, requestWith(bearer), "base", nil, true))
-		require.Equal(t, want, recordKeyOf(r, requestWith(bearer), "base", []string{"x-tenant"}, true), "a Vary on no credential")
-		require.Empty(t, recordKeyOf(r, requestWith(nil), "base", nil, false), "nothing sent")
+		require.Equal(t, want, recordKeyOf(r, requestWith(t, bearer), "base", nil, true))
+		require.Equal(t, want, recordKeyOf(r, requestWith(t, bearer), "base", []string{"x-tenant"}, true), "a Vary on no credential")
+		require.Empty(t, recordKeyOf(r, requestWith(t, nil), "base", nil, false), "nothing sent")
 
 		declared := cacheTestCRecords(&Config{KeyGenerator: pathKey, KeyCredentialHeaders: []string{"X-Company-Token"}})
 		both := map[string]string{"Authorization": "Bearer one", "X-Company-Token": "t"}
-		require.Equal(t, want, recordKeyOf(declared, requestWith(both), "base", nil, true), "the key holds Authorization")
+		require.Equal(t, want, recordKeyOf(declared, requestWith(t, both), "base", nil, true), "the key holds Authorization")
 	})
 
 	t.Run("a HEAD is recorded as the GET it mirrors", func(t *testing.T) {
 		t.Parallel()
 		head := func(headers map[string]string) fiber.Ctx {
-			c := requestWith(headers)
+			c := requestWith(t, headers)
 			c.Method(fiber.MethodHead)
 			return c
 		}
 		bearer := map[string]string{"Authorization": "Bearer one"}
 		for name, cfg := range map[string]Config{"default key": {}, "custom key": {KeyGenerator: pathKey}} {
 			r := cacheTestCRecords(&cfg)
-			get := recordKeyOf(r, requestWith(bearer), "base", nil, true)
+			get := recordKeyOf(r, requestWith(t, bearer), "base", nil, true)
 			require.NotEmpty(t, get, name)
 			require.Equal(t, get, recordKeyOf(r, head(bearer), "base", nil, true), name)
 		}
 
 		// Another method is its own: a refusal of a POST says nothing about the GET.
 		r := cacheTestCRecords(&Config{Methods: []string{fiber.MethodGet, fiber.MethodPost}})
-		post := requestWith(bearer)
+		post := requestWith(t, bearer)
 		post.Method(fiber.MethodPost)
-		require.NotEqual(t, recordKeyOf(r, requestWith(bearer), "base", nil, true), recordKeyOf(r, post, "base", nil, true))
+		require.NotEqual(t, recordKeyOf(r, requestWith(t, bearer), "base", nil, true), recordKeyOf(r, post, "base", nil, true))
 	})
 }
