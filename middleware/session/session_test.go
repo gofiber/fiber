@@ -2361,7 +2361,11 @@ func Test_Session_AbsoluteExpiry(t *testing.T) {
 		require.True(t, ok)
 		require.True(t, original.Equal(kept), "a new ID does not buy a longer session")
 
-		time.Sleep(10 * time.Millisecond)
+		// Until the wall clock has moved, which the two deadlines are compared by: where it moves in
+		// steps of several milliseconds, as on Windows, a short sleep can end within one step.
+		for !time.Now().Add(time.Hour).After(original) {
+			time.Sleep(time.Millisecond)
+		}
 		require.NoError(t, sess.Reset())
 		restarted, ok := sess.AbsoluteExpiry()
 		require.True(t, ok)

@@ -49,7 +49,7 @@ type Session struct {
 type absExpirationKeyType int
 
 const (
-	// sessionIDContextKey is the key used to store the session ID in the context locals.
+	// absExpirationKey is the key the absolute deadline of a session is kept under, with its values.
 	absExpirationKey absExpirationKeyType = iota
 )
 
