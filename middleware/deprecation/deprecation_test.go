@@ -114,18 +114,43 @@ func Test_Deprecation_Headers(t *testing.T) {
 	}
 }
 
-func Test_Deprecation_KeepsExistingLinks(t *testing.T) {
+// The links are appended to the Link lines already set, and a link one of them
+// already holds, as an earlier run of the instance wrote it, is not added again.
+func Test_Deprecation_ExistingLinks(t *testing.T) {
 	t.Parallel()
+	next := `<https://example.com/next>; rel="next"`
+	d, s := `<https://example.com/d>; rel="deprecation"`, `<https://example.com/s>; rel="sunset"`
 	tests := []struct {
 		appConfig fiber.Config
 		existing  func(c fiber.Ctx)
 		name      string
+		want      string
 	}{
-		{name: "set with Links", existing: func(c fiber.Ctx) { c.Links("https://example.com/next", "next") }},
 		{
-			name:      "lower-case name without normalizing",
-			appConfig: fiber.Config{DisableHeaderNormalizing: true},
-			existing:  func(c fiber.Ctx) { c.Set("link", `<https://example.com/next>; rel="next"`) },
+			name: "set with Links", want: next + "," + d + "," + s,
+			existing: func(c fiber.Ctx) { c.Links("https://example.com/next", "next") },
+		},
+		{
+			name: "lower-case name without normalizing", want: next + "," + d + "," + s,
+			appConfig: fiber.Config{DisableHeaderNormalizing: true}, existing: func(c fiber.Ctx) { c.Set("link", next) },
+		},
+		{name: "deprecation link held", want: d + "," + s, existing: func(c fiber.Ctx) { c.Set(fiber.HeaderLink, d) }},
+		{name: "sunset link held", want: s + "," + d, existing: func(c fiber.Ctx) { c.Set(fiber.HeaderLink, s) }},
+		{name: "both held", want: d + "," + s, existing: func(c fiber.Ctx) { c.Set(fiber.HeaderLink, d+","+s) }},
+		{
+			name: "held in a later line", want: next + "," + d + "," + s,
+			existing: func(c fiber.Ctx) {
+				c.Response().Header.Add(fiber.HeaderLink, next)
+				c.Response().Header.Add(fiber.HeaderLink, d)
+			},
+		},
+		{
+			name: "held under a lower-case name without normalizing", want: d + "," + s,
+			appConfig: fiber.Config{DisableHeaderNormalizing: true}, existing: func(c fiber.Ctx) { c.Set("link", d) },
+		},
+		{
+			name: "same link for another context", want: d + `; anchor="#a",` + d + "," + s,
+			existing: func(c fiber.Ctx) { c.Set(fiber.HeaderLink, d+`; anchor="#a"`) },
 		},
 	}
 
@@ -143,51 +168,9 @@ func Test_Deprecation_KeepsExistingLinks(t *testing.T) {
 			app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 
 			resp := apptest.Expect(t, app, "/", fiber.StatusNoContent)
-			requireHeader(t, resp, fiber.HeaderLink, `<https://example.com/next>; rel="next",`+
-				`<https://example.com/d>; rel="deprecation",<https://example.com/s>; rel="sunset"`)
-		})
-	}
-}
-
-// A link already in the Link header, as an earlier run of the instance wrote it, is not added again.
-func Test_Deprecation_HeldLinkNotRepeated(t *testing.T) {
-	t.Parallel()
-	d, s := `<https://example.com/d>; rel="deprecation"`, `<https://example.com/s>; rel="sunset"`
-	for _, tt := range []struct{ name, existing, want string }{
-		{name: "deprecation link held", existing: d, want: d + "," + s},
-		{name: "sunset link held", existing: s, want: s + "," + d},
-		{name: "both held", existing: d + "," + s, want: d + "," + s},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			app := fiber.New()
-			app.Use(func(c fiber.Ctx) error {
-				c.Set(fiber.HeaderLink, tt.existing)
-				return c.Next()
-			})
-			app.Use(New(Config{Link: "https://example.com/d", SunsetLink: "https://example.com/s"}))
-			app.Get("/", func(fiber.Ctx) error { return nil })
-
-			resp := apptest.Expect(t, app, "/", fiber.StatusOK)
 			requireHeader(t, resp, fiber.HeaderLink, tt.want)
 		})
 	}
-}
-
-// An earlier writer's lines of the same field all give way to the configured value.
-func Test_Deprecation_ReplacesEveryEarlierLine(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(func(c fiber.Ctx) error {
-		c.Response().Header.Add(fiber.HeaderDeprecation, "@1")
-		c.Response().Header.Add(fiber.HeaderDeprecation, "@2")
-		return c.Next()
-	})
-	app.Use(New(Config{Deprecation: deprecatedAt}))
-	app.Get("/", func(fiber.Ctx) error { return nil })
-
-	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
-	require.Equal(t, []string{deprecatedValue}, resp.Header.Values(fiber.HeaderDeprecation))
 }
 
 // At two levels the inner instance replaces the dates and both add their links.
@@ -205,19 +188,34 @@ func Test_Deprecation_TwoLevels(t *testing.T) {
 		`<https://example.com/policy>; rel="deprecation",<https://example.com/v1>; rel="deprecation"`)
 }
 
-// An earlier middleware's Deprecation under another spelling is replaced, not
-// kept beside ours.
-// The spelling is read from the response, which an earlier middleware may stop
-// normalizing in a default app.
-func Test_Deprecation_ReplacesOtherSpelling(t *testing.T) {
+// An earlier writer's lines of the field, every one and under any spelling, give
+// way to the configured value. The spelling is read from the response, which an
+// earlier middleware may stop normalizing in a default app.
+func Test_Deprecation_ReplacesEarlierLines(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		appConfig fiber.Config
+		existing  func(c fiber.Ctx)
 		name      string
-		disable   bool
 	}{
-		{name: "app without normalizing", appConfig: fiber.Config{DisableHeaderNormalizing: true}},
-		{name: "response without normalizing", disable: true},
+		{
+			name: "every earlier line",
+			existing: func(c fiber.Ctx) {
+				c.Response().Header.Add(fiber.HeaderDeprecation, "@1")
+				c.Response().Header.Add(fiber.HeaderDeprecation, "@2")
+			},
+		},
+		{
+			name: "app without normalizing", appConfig: fiber.Config{DisableHeaderNormalizing: true},
+			existing: func(c fiber.Ctx) { c.Set("deprecation", "@5") },
+		},
+		{
+			name: "response without normalizing",
+			existing: func(c fiber.Ctx) {
+				c.Response().Header.DisableNormalizing()
+				c.Set("deprecation", "@5")
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -225,10 +223,7 @@ func Test_Deprecation_ReplacesOtherSpelling(t *testing.T) {
 			t.Parallel()
 			app := fiber.New(tt.appConfig)
 			app.Use(func(c fiber.Ctx) error {
-				if tt.disable {
-					c.Response().Header.DisableNormalizing()
-				}
-				c.Set("deprecation", "@5")
+				tt.existing(c)
 				return c.Next()
 			})
 			app.Use(New(Config{Deprecation: deprecatedAt}))

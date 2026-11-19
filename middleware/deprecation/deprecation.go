@@ -50,7 +50,7 @@ func New(config ...Config) fiber.Handler {
 		if sunset != "" {
 			replace(c, h, fiber.HeaderSunset, sunset, canonical)
 		}
-		if missing := missingLinks(h.Peek(fiber.HeaderLink), links, parts); len(missing) > 0 {
+		if missing := missingLinks(h, canonical, links, parts); len(missing) > 0 {
 			// c.Links may rewrite its arguments in a custom Ctx, and links is shared
 			// by every request (see vary in middleware/cors).
 			if dc, ok := c.(*fiber.DefaultCtx); ok {
@@ -65,38 +65,47 @@ func New(config ...Config) fiber.Handler {
 }
 
 // replace sets name to value, removing the field under any other spelling.
-//
-//nolint:revive // flag-parameter: canonical is a property of the header store
 func replace(c fiber.Ctx, h *fasthttp.ResponseHeader, name, value string, canonical bool) {
 	// Set overwrites only the first line, so every earlier one goes first.
 	fieldname.Del(h, name, canonical)
 	c.Set(name, value)
 }
 
-// missingLinks returns the pairs of links whose link the Link value does not hold
-// yet, so an instance that runs again on one response, as after
-// c.RestartRouting, does not repeat its links.
-func missingLinks(existing []byte, links []string, parts [][]byte) []string {
-	if len(existing) == 0 {
-		return links
-	}
-	// At most two links, so the common answers, all or none, need no copy.
-	var held [2]bool
-	n := 0
-	for i, part := range parts {
-		if held[i] = bytes.Contains(existing, part); held[i] {
-			n++
-		}
-	}
-	switch n {
-	case 0:
-		return links
-	case len(parts):
+// missingLinks returns the pairs of links whose link no Link line holds yet, in
+// any spelling of the name c.Links folds, so an instance that runs again on one
+// response, as after c.RestartRouting, does not repeat its links.
+func missingLinks(h *fasthttp.ResponseHeader, canonical bool, links []string, parts [][]byte) []string {
+	if len(links) == 0 {
 		return nil
 	}
-	if held[0] {
-		return links[2:]
+	lines := fieldname.Lines(h, fiber.HeaderLink, canonical)
+	// At most two links, so the common answers, all or none, need no copy.
+	missing := -1
+	for i, part := range parts {
+		if !holds(lines, part) {
+			if missing >= 0 {
+				return links
+			}
+			missing = i
+		}
+	}
+	if missing < 0 {
+		return nil
 	}
 
-	return links[:2]
+	return links[2*missing : 2*missing+2]
+}
+
+// holds reports whether a line holds part as a whole link-value: one followed by
+// more parameters, such as an anchor, describes another context.
+func holds(lines [][]byte, part []byte) bool {
+	for _, rest := range lines {
+		for i := bytes.Index(rest, part); i >= 0; i = bytes.Index(rest, part) {
+			rest = rest[i+len(part):]
+			if after := utils.TrimLeft(rest, ' '); len(after) == 0 || after[0] == ',' {
+				return true
+			}
+		}
+	}
+	return false
 }
