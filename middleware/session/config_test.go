@@ -299,6 +299,11 @@ func Test_Config_StoreOptionWarnings(t *testing.T) {
 			cfg:  Config{Store: withCodec, Codec: NewCodec("other", json.Marshal, json.Unmarshal)},
 			want: []string{"Codec is taken from Config.Store"},
 		},
+		{
+			name: "a typed nil codec on the middleware is not asked for its name",
+			cfg:  Config{Store: withCodec, Codec: (*funcCodec)(nil)},
+			want: []string{"Codec is taken from Config.Store"},
+		},
 		{name: "no store, the codec is the middleware's", cfg: Config{Codec: JSONCodec{}}},
 		{
 			name: "the cookie options asked of the middleware",

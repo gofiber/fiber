@@ -72,8 +72,10 @@ func (k storageKey) lock() *idLock {
 // a Store is flagged by go vet.
 type Store struct {
 	// named is the Codec with its name, asked once. It is nil for a store without a
-	// Codec, and for one built without NewStore, which sessionFormat makes up. Changing
-	// the Codec of a Store after NewStore has no effect.
+	// Codec, and for one built without NewStore, which recordCodec makes up. Replacing
+	// or clearing the Codec of a store that NewStore made with one has no effect; a
+	// store that NewStore made without one cannot be told from one built without
+	// NewStore, so a Codec it is given later is used, and asked for its name every time.
 	named *namedCodec
 	// locals is the PassLocalsToContext setting of the app that served the store last,
 	// see passesLocalsToContext.

@@ -312,7 +312,9 @@ func warnStoreOptions(cfg *Config) {
 		log.Warnf("[session] HashStorageKeys and StorageKeyPrefix are taken from Config.Store, not from the Config of the middleware; "+
 			"sessions are stored with HashStorageKeys=%t and StorageKeyPrefix=%q", store.HashStorageKeys, store.StorageKeyPrefix)
 	}
-	if cfg.Codec != nil && (store.Codec == nil || cfg.Codec.Name() != store.Codec.Name()) {
+	// A typed nil is not asked for its name, which may be what panics: it is not the
+	// codec of the store either way.
+	if cfg.Codec != nil && (store.Codec == nil || isTypedNil(cfg.Codec) || cfg.Codec.Name() != store.Codec.Name()) {
 		log.Warnf("[session] Codec is taken from Config.Store, not from the Config of the middleware; " +
 			"sessions are stored with the codec of the store, or as gob if it has none")
 	}
