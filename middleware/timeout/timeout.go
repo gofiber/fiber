@@ -348,10 +348,14 @@ func (s *snapshot) release() {
 // invokeOnTimeout calls the OnTimeout handler if configured
 func invokeOnTimeout(ctx fiber.Ctx, cfg Config) error {
 	if cfg.OnTimeout != nil {
+		// OnTimeout starts from an empty response, as after the deadline, so what the
+		// handler wrote before it gave up is never sent as the timeout response.
+		resp := ctx.Response()
+		resp.ResetBody()
+		resp.SetStatusCode(fiber.StatusOK)
 		err := cfg.OnTimeout(ctx)
 		// Left as it is, the response would go out as an empty 200. A stream is a
 		// written response here: nothing copies the response on this path, so it is sent.
-		resp := ctx.Response()
 		if err == nil && resp.StatusCode() == fiber.StatusOK && !resp.IsBodyStream() && len(resp.Body()) == 0 {
 			return fiber.ErrServiceUnavailable
 		}
