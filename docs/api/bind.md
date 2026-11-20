@@ -1155,18 +1155,18 @@ func (ct *CustomTime) String() string {
     return t
 }
 
-// Converter for CustomTime type with format "2006-01-02"
-var timeConverter = func(value string) reflect.Value {
-    fmt.Println("timeConverter:", value)
-    if v, err := time.Parse("2006-01-02", value); err == nil {
-        return reflect.ValueOf(CustomTime(v))
+// Converter for CustomTime type with format "2006-01-02"; its error ends up in the bind error
+var timeConverter = func(value string) (reflect.Value, error) {
+    v, err := time.Parse("2006-01-02", value)
+    if err != nil {
+        return reflect.Value{}, err
     }
-    return reflect.Value{}
+    return reflect.ValueOf(CustomTime(v)), nil
 }
 
 customTime := binder.ParserType{
     CustomType: CustomTime{},
-    Converter:  timeConverter,
+    ConverterE: timeConverter,
 }
 
 // Add custom type to the Decoder settings

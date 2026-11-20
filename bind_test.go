@@ -1069,6 +1069,20 @@ func Test_Bind_Query_ConverterE(t *testing.T) {
 	var numErr *strconv.NumError
 	require.ErrorAs(t, fieldErr, &numErr)
 	require.Equal(t, "x", numErr.Num)
+
+	// A slice field splits a value it cannot convert whole on commas, and a part that fails keeps its error.
+	var list struct {
+		Levels []level `query:"levels"`
+	}
+	c.Request().URI().SetQueryString("levels=1,2")
+	require.NoError(t, c.Bind().Query(&list))
+	require.Equal(t, []level{1, 2}, list.Levels)
+	c.Request().URI().SetQueryString("levels=1,x")
+	fields = nil
+	require.ErrorAs(t, c.Bind().Query(&list), &fields)
+	require.ErrorIs(t, fields["levels"], strconv.ErrSyntax)
+	require.ErrorAs(t, fields["levels"], &numErr)
+	require.Equal(t, "x", numErr.Num)
 }
 
 func Benchmark_Bind_Query(b *testing.B) {
