@@ -14,6 +14,10 @@ import (
 type Config struct {
 	// Storage is used to store the state of the middleware
 	//
+	// A Storage that returns an error does not fail the request: the handler
+	// answers it, the error is logged, and X-Cache reads "unreachable" when the
+	// response was neither served from the cache nor stored.
+	//
 	// Default: an in-memory store for this process only
 	Storage fiber.Storage
 
