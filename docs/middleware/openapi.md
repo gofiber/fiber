@@ -41,9 +41,7 @@ generated specification at `GET /openapi.json` and a Swagger UI page at
 app.Use(openapi.New())
 ```
 
-Visiting `/swagger` renders the generated document. Everything below comes from
-the routes themselves and from `Config` — the tag groups, the server list and the
-**Authorize** button all appear because the sections further down configure them:
+Visiting `/swagger` renders the generated document:
 
 ![Swagger UI page served by the OpenAPI middleware, listing the documented operations grouped by tag](./img/openapi-swagger-ui.png)
 
@@ -112,14 +110,9 @@ app.Use(openapi.New(openapi.Config{
 }))
 ```
 
-Each scheme becomes an entry in the UI's **Authorize** dialog, rendered from its
-own type — an `http`/`bearer` scheme asks for a token, while an `apiKey` scheme
-also shows the header name it will be sent in:
+Each scheme becomes an entry in the UI's **Authorize** dialog:
 
 ![The Swagger UI Authorize dialog listing an apiKey scheme with its header name and a bearerAuth HTTP scheme](./img/openapi-authorize.png)
-
-Operations carrying a requirement show a padlock in their row, so it is visible
-which endpoints need credentials without expanding them.
 
 ### Customize the Swagger UI
 
@@ -266,11 +259,8 @@ api.Group("/v1").Use(openapi.New())     // or in a group of the domain router
 api.RouteChain("/openapi.json").Get(openapi.New())
 ```
 
-A host pattern with parameters, such as `:tenant.example.com`, works the same way.
-Each registration is its own handler with its own `Config`, so two hosts can serve
-two differently titled documents. A sub-app that registers the middleware and is
-mounted with `Domain(...).Use` serves its document on that host under the mount
-prefix.
+A host pattern with parameters, such as `:tenant.example.com`, works the same
+way, and each registration has its own `Config`.
 
 Every document describes the whole application, whatever host it is fetched
 from; use `Filter` to narrow it. Routes of a domain router carry an
@@ -374,10 +364,7 @@ entry that already is one (`summary`, `description`, `value`, `externalValue` or
 `$ref`) is used as it is; any other value, such as `"xyz-789"` or
 `{"name": "bob"}` above, is wrapped as the `value` of one.
 
-Expanding that operation in the UI shows where each helper lands: `Description`
-under the summary, `RequestBodyWithExample` as the **Example Value**,
-`ResponseWithExample` as the response body, and `ResponseHeader` as the headers
-table beneath it:
+Expanding that operation in the UI shows where each helper lands:
 
 ![An expanded operation in Swagger UI showing the request body example, the response schema and the documented Location response header](./img/openapi-operation-detail.png)
 
@@ -446,24 +433,16 @@ app.Get("/pages/:n<range(1,10)>", getPage)           // {"type": "integer", "min
 | `minLen(n)` / `maxLen(n)` / `len(n)` / `betweenLen(a,b)` | `{"type": "string"}` with `minLength` / `maxLength` |
 | `min(n)` / `max(n)` / `range(a,b)` | `{"type": "integer"}` with `minimum` / `maximum` |
 
-The derived schema is what the UI renders for the parameter — no `AddParameter`
-call produced the `string($uuid)` below, only the `<guid>` in the route pattern:
+The UI renders the derived schema:
 
 ![An operation in Swagger UI whose path parameter is typed as string with uuid format, derived from a guid route constraint](./img/openapi-path-constraints.png)
 
-Chained constraints (`:id<int;min(5)>`) are merged, with the first constraint that
-sets a keyword keeping it. A custom or unrecognized constraint leaves the default
-`{"type": "string"}` rather than guessing. An explicit `AddParameter` for the
-same name wins over the derived schema when it supplies one; a call that only
-adds a description or an example keeps the derived schema.
+Chained constraints (`:id<int;min(5)>`) are merged, and a custom constraint
+leaves `{"type": "string"}`. An explicit `AddParameter` schema for the same name
+wins.
 
-`alpha` accepts any Unicode letter at runtime, so no `pattern` is emitted: an
-ASCII-only pattern would document the route as stricter than it is.
-
-The length constraints count UTF-8 **bytes** at runtime, while JSON Schema's
-`minLength`/`maxLength` count **characters**. The two agree for ASCII values; for
-non-ASCII ones the emitted bound is an approximation, so document such parameters
-explicitly with `AddParameter` if the exact bound matters.
+The length constraints count bytes at runtime, while `minLength`/`maxLength`
+count characters, so the bound is approximate for non-ASCII values.
 
 ### Response headers
 
@@ -527,9 +506,7 @@ app.Post("/users", createUser).
     })
 ```
 
-The UI offers one entry per media type and swaps the schema and example with the
-selection, so the XML variant is documented separately from the JSON one rather
-than sharing its shape:
+The UI offers one entry per media type:
 
 ![A request body in Swagger UI with application/xml selected, showing an XML example distinct from the JSON one](./img/openapi-media-types.png)
 
@@ -705,13 +682,8 @@ app.Use(openapi.New(openapi.Config{
 }))
 ```
 
-An entry applies to the routes whose registered path is under `PathPrefix`, at a
-segment boundary (`/api/v1` does not select `/api/v1x`). What a route declares
-itself wins: `Tags` apply to a route without tags (replacing the tag derived from
-its group), `Security` to a route that sets none and has no authentication inferred
-from its middleware (an empty list documents it as public), `Parameters` only to a name and location the route does not declare,
-and `Responses` only to a status it does not declare, without replacing the
-automatic success response. With several entries, the first one that sets
+An entry applies to the routes under `PathPrefix`, at a segment boundary. What
+a route declares itself wins, and with several entries the first one that sets
 something wins. `ErrorSchema` also fills a declared `4xx` or `5xx` response that
 documents no body.
 
@@ -830,11 +802,9 @@ app.Get("/report", reportHandler).
 `querystring` parameters are dropped from the document when `OpenAPIVersion` is
 below `"3.2.0"`, where the location does not exist.
 
-Other 3.2 additions live inside objects the middleware passes through as raw maps,
-so they need no special API — supply them via `Components` / schemas / security
-schemes: security device-authorization flow and `oauth2MetadataUrl`, XML
-`nodeType` and `components.mediaTypes`. Path Item `additionalOperations`, Media
-Type `itemSchema` and the Tag fields have their own support, described above.
+Other 3.2 additions, such as the device-authorization flow and
+`components.mediaTypes`, need no special API: supply them through `Components`
+or `SecuritySchemes`.
 
 ### Validation
 
@@ -1005,83 +975,77 @@ on a prefix that covers its path, documents itself:
 
 ## Config
 
-| Property       | Type                    | Description                                                     | Default            |
-|:---------------|:------------------------|:----------------------------------------------------------------|:------------------:|
-| Next           | `func(fiber.Ctx) bool`  | Next defines a function to skip this middleware when returned true. | `nil` |
-| Title          | `string`                | Title is the title for the generated OpenAPI specification.     | `"Fiber API"`     |
-| Version        | `string`                | Version is the version for the generated OpenAPI specification. | `"1.0.0"`         |
-| Description    | `string`                | Description is the description for the generated specification. | `""`             |
-| ServerURL      | `string`                | ServerURL is the server URL used in the generated specification.| `""`             |
-| Path           | `string`                | Path is the route where the specification will be served.       | `"/openapi.json"` |
-| UIPath         | `string`                | UIPath is the route where the Swagger UI page will be served.     | `"/swagger"` |
-| SwaggerCSSURL  | `string`                | Stylesheet URL used by the generated Swagger UI page.           | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"` |
-| SwaggerBundleURL | `string`              | Script URL used by the generated Swagger UI page.               | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"` |
-| SwaggerStandalonePresetURL | `string`    | Standalone preset script URL, giving the UI its `StandaloneLayout` (top bar with the Authorize button). Always loaded — an empty value selects the default rather than omitting the script. | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"` |
-| SwaggerCSSIntegrity | `string`           | Subresource Integrity value the browser checks `SwaggerCSSURL` against. Defaults to the default stylesheet's hash only while the URL is left at its default. | the hash of the default stylesheet |
-| SwaggerBundleIntegrity | `string`        | Subresource Integrity value for `SwaggerBundleURL`, defaulting the same way. | the hash of the default bundle |
-| SwaggerStandalonePresetIntegrity | `string` | Subresource Integrity value for `SwaggerStandalonePresetURL`, defaulting the same way. | the hash of the default preset |
-| SwaggerOptions | `map[string]any`        | Additional options merged into the generated `SwaggerUIBundle` call. | `nil` |
-| OpenAPIVersion | `string`                | OpenAPI specification version to generate: any 3.0.x, 3.1.x or 3.2.x release (`"3.0.3"`, `"3.1.1"`), written to the document as given. `New` panics on anything else. | `"3.1.0"`     |
-| Components     | `map[string]any`        | Reusable OpenAPI component definitions (schemas, responses, etc.) emitted under `"components"`. | `nil` |
-| SecuritySchemes | `map[string]any`       | Reusable security scheme definitions, emitted under `"components.securitySchemes"`. | `nil` |
-| Security       | `[]map[string][]string` | Document-level (default) security requirements; each map is a requirement (OR semantics across entries). An empty non-nil list is written as `security: []`, stating the API needs no authentication. | `nil` |
-| Contact        | `*Contact`              | Contact information for the API (`info.contact`).               | `nil` |
-| License        | `*License`              | License information for the API (`info.license`).               | `nil` |
-| TermsOfService | `string`                | Terms of Service URL (`info.termsOfService`).                   | `""` |
-| Servers        | `[]Server`              | Servers hosting the API; takes precedence over `ServerURL`. Each `Server` supports `Variables` for URL templating. | `nil` |
-| Tags           | `[]Tag`                 | Top-level tag definitions (with descriptions and optional `ExternalDocs`). | `nil` |
-| ExternalDocs   | `*ExternalDocs`         | External documentation reference (`externalDocs`).             | `nil` |
-| Summary        | `string`                | Short API summary (`info.summary`, OpenAPI 3.1+).             | `""` |
-| Webhooks       | `map[string]any`        | Webhook definitions (`webhooks`, OpenAPI 3.1+).              | `nil` |
-| JSONSchemaDialect | `string`             | Default JSON Schema dialect (`jsonSchemaDialect`, OpenAPI 3.1+). | `""` |
-| Self           | `string`                | Self-assigned document URI (`$self`, OpenAPI 3.2+).          | `""` |
-| DefaultProduces | `string`               | Response media type documented for a response that declares none; `Produces` and the `Response*` media types override it per route. | `"application/json"` |
-| DefaultConsumes | `string`               | Request media type documented for a request body that declares none; `Consumes` and the `RequestBody*` media types override it per route. | `"application/json"` |
-| ErrorProduces  | `string`                | Media type documented for the error responses the middleware infers, such as `400`, `401`, `429` and `500`. | `"text/plain; charset=utf-8"`, or `"application/json"` when `ErrorSchema` is set |
-| ErrorSchema    | `any`                   | Schema, or a Go value reflected into one, documented for those error responses. | `nil` |
-| DisableDefaultMediaTypes | `bool`        | Stops filling in `DefaultProduces`, `DefaultConsumes` and `ErrorProduces` when they are unset, leaving a response or body that declares no media type without content; values you set still apply. | `false` |
-| DisableMiddlewareInference | `bool`      | Stops documenting the security, headers, parameters and responses of recognized middleware on a route's path. | `false` |
-| DisableValidationResponses | `bool`      | Stops documenting the `400` response a configured `StructValidator` makes possible on routes with a body or parameters. | `false` |
-| RequestIDHeader | `string`               | Header the `requestid` middleware sets, documented on every response of a route it covers. | `"X-Request-ID"` |
-| CacheHeader    | `string`                | Header the `cache` middleware sets, documented on every response of a route it covers. | `"X-Cache"` |
-| CSRFHeader     | `string`                | Header the `csrf` middleware reads its token from, documented as a required parameter on unsafe operations. | `"X-Csrf-Token"` |
-| IdempotencyKeyHeader | `string`          | Header the `idempotency` middleware reads its key from, documented on the unsafe operations it covers. | `"X-Idempotency-Key"` |
-| SessionLookup | `*APIKeyLookup`         | Where the `session` middleware keeps the session ID (`In` is `cookie` or `header`). | `nil` (a `session_id` cookie) |
-| HealthcheckProduces | `string`           | Media type of the `healthcheck` middleware's answer, matching its `ResponseFormat`. | `"text/plain; charset=utf-8"` |
-| ResponseTimeHeader | `string`            | Header the `responsetime` middleware sets, documented on routes it covers. | `"X-Response-Time"` |
-| KeyAuthLookup  | `*APIKeyLookup`         | Where `keyauth` reads its key from (`In` is `header`, `query` or `cookie`), documented as an `apiKey` scheme. | `nil` (a bearer token) |
-| InferMiddleware | `func(*fiber.Route, string) bool` | Returns `false` to leave a recognized middleware undocumented on a route. | `nil` |
-| Middleware     | `[]MiddlewareDoc`       | Documents middleware of your own: schemes, requirement, parameters, responses and response headers. | `nil` |
-| Filter         | `func(*fiber.Route) bool` | Keeps a route in the document when it returns `true`. | `nil` |
-| Transform      | `func(map[string]any) error` | Edits the finished document before it is encoded. | `nil` |
-| Extensions     | `map[string]any`        | `x-` fields added to the document root.                         | `nil` |
-| InfoExtensions | `map[string]any`        | `x-` fields added to the `info` object.                         | `nil` |
-| PathItems      | `map[string]PathItem`   | Summary, description and parameters shared by every method of a path, keyed by its OpenAPI path. | `nil` |
-| Defaults       | `[]Defaults`            | Tags, security, parameters and responses for the routes under a path prefix. | `nil` |
-| UI             | `UI`                    | The documentation page: `UISwagger`, `UIRedoc` or `UIScalar`.   | `UISwagger` |
-| DisableUI      | `bool`                  | Serves only the document, no documentation page.                | `false` |
-| OAuth2RedirectPath | `string`            | Route of the OAuth2 redirect page of Swagger UI; empty serves none. | `""` |
-| RedocBundleURL | `string`                | Redoc script URL.                                               | `"https://unpkg.com/redoc@2.5.0/bundles/redoc.standalone.js"` |
-| RedocBundleIntegrity | `string`          | Subresource Integrity value for `RedocBundleURL`, defaulting the same way as the Swagger hashes. | the hash of the default bundle |
-| ScalarBundleURL | `string`               | Scalar API Reference script URL.                                | `"https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.81.0/dist/browser/standalone.min.js"` |
-| ScalarBundleIntegrity | `string`         | Subresource Integrity value for `ScalarBundleURL`.              | the hash of the default bundle |
-| TypeSchemas    | `map[reflect.Type]any`  | Gives a Go type the schema you choose, written inline wherever it is used. | `nil` |
-| SchemaName     | `func(reflect.Type) string` | Names the component of a model type; `""` keeps the default.   | `nil` |
-| DocumentGetBodies | `bool`               | Documents the request body of a `GET` or `HEAD` route.          | `false` |
-| RateLimitHeaders | `RateLimitHeaders`    | Headers the `limiter` middleware sets (`Limit`, `Remaining`, `Reset`); an empty field keeps its default. | `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` |
-| DisableRateLimitHeaders | `bool`         | Stops documenting the headers a limiter sets on every response; its `429` and `Retry-After` stay. | `false` |
-| DisableGroupTags | `bool`                | Stops tagging an untagged route with its group's name or last static prefix segment. | `false` |
-| DisableHandlerSummaries | `bool`         | Stops deriving a missing summary from the handler function's name. | `false` |
+| Property | Type | Description | Default |
+|:---|:---|:---|:---|
+| Next | `func(fiber.Ctx) bool` | Skips the middleware when it returns `true`. | `nil` |
+| Title | `string` | Document title. | `"Fiber API"` |
+| Version | `string` | API version. | `"1.0.0"` |
+| Description | `string` | API description. | `""` |
+| ServerURL | `string` | Server URL; `Servers` takes precedence. | `""` |
+| Path | `string` | Route of the document. | `"/openapi.json"` |
+| UIPath | `string` | Route of the documentation page. | `"/swagger"` |
+| SwaggerCSSURL | `string` | Swagger UI stylesheet URL. | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"` |
+| SwaggerBundleURL | `string` | Swagger UI script URL. | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"` |
+| SwaggerStandalonePresetURL | `string` | Swagger UI standalone preset URL; always loaded. | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"` |
+| SwaggerCSSIntegrity | `string` | Integrity hash for `SwaggerCSSURL`; defaults only with the default URL. | the hash of the default stylesheet |
+| SwaggerBundleIntegrity | `string` | Integrity hash for `SwaggerBundleURL`. | the hash of the default bundle |
+| SwaggerStandalonePresetIntegrity | `string` | Integrity hash for `SwaggerStandalonePresetURL`. | the hash of the default preset |
+| SwaggerOptions | `map[string]any` | Options merged into the `SwaggerUIBundle` call. | `nil` |
+| OpenAPIVersion | `string` | Any 3.0.x, 3.1.x or 3.2.x release; `New` panics on anything else. | `"3.1.0"` |
+| Components | `map[string]any` | Reusable definitions emitted under `components`. | `nil` |
+| SecuritySchemes | `map[string]any` | Emitted under `components.securitySchemes`. | `nil` |
+| Security | `[]map[string][]string` | Document-level requirements, ORed. An empty non-nil list means no authentication. | `nil` |
+| Contact | `*Contact` | `info.contact`. | `nil` |
+| License | `*License` | `info.license`. | `nil` |
+| TermsOfService | `string` | `info.termsOfService`. | `""` |
+| Servers | `[]Server` | Servers hosting the API, with optional `Variables`. | `nil` |
+| Tags | `[]Tag` | Top-level tag definitions. | `nil` |
+| ExternalDocs | `*ExternalDocs` | `externalDocs`. | `nil` |
+| Summary | `string` | `info.summary` (3.1+). | `""` |
+| Webhooks | `map[string]any` | `webhooks` (3.1+). | `nil` |
+| JSONSchemaDialect | `string` | `jsonSchemaDialect` (3.1+). | `""` |
+| Self | `string` | `$self` (3.2). | `""` |
+| DefaultProduces | `string` | Media type of a response that declares none. | `"application/json"` |
+| DefaultConsumes | `string` | Media type of a request body that declares none. | `"application/json"` |
+| ErrorProduces | `string` | Media type of inferred error responses. | `"text/plain; charset=utf-8"`, or `"application/json"` when `ErrorSchema` is set |
+| ErrorSchema | `any` | Schema, or Go value, of those error responses. | `nil` |
+| DisableDefaultMediaTypes | `bool` | Leaves a response or body without a media type without content. | `false` |
+| DisableMiddlewareInference | `bool` | Stops documenting recognized middleware. | `false` |
+| DisableValidationResponses | `bool` | Stops documenting the `400` of a `StructValidator`. | `false` |
+| RequestIDHeader | `string` | Header the `requestid` middleware sets. | `"X-Request-ID"` |
+| CacheHeader | `string` | Header the `cache` middleware sets. | `"X-Cache"` |
+| CSRFHeader | `string` | Header the `csrf` middleware reads its token from. | `"X-Csrf-Token"` |
+| IdempotencyKeyHeader | `string` | Header the `idempotency` middleware reads its key from. | `"X-Idempotency-Key"` |
+| SessionLookup | `*APIKeyLookup` | Where `session` keeps its ID: `In` is `cookie` or `header`. | `nil` (a `session_id` cookie) |
+| HealthcheckProduces | `string` | Media type of the `healthcheck` answer. | `"text/plain; charset=utf-8"` |
+| ResponseTimeHeader | `string` | Header the `responsetime` middleware sets. | `"X-Response-Time"` |
+| KeyAuthLookup | `*APIKeyLookup` | Where `keyauth` reads its key: `In` is `header`, `query` or `cookie`. | `nil` (a bearer token) |
+| InferMiddleware | `func(*fiber.Route, string) bool` | Returns `false` to leave a recognized middleware off a route. | `nil` |
+| Middleware | `[]MiddlewareDoc` | Describes middleware of your own. | `nil` |
+| Filter | `func(*fiber.Route) bool` | Keeps a route when it returns `true`. | `nil` |
+| Transform | `func(map[string]any) error` | Edits the finished document. | `nil` |
+| Extensions | `map[string]any` | `x-` fields on the document root. | `nil` |
+| InfoExtensions | `map[string]any` | `x-` fields on `info`. | `nil` |
+| PathItems | `map[string]PathItem` | Summary, description and parameters of a path, keyed by OpenAPI path. | `nil` |
+| Defaults | `[]Defaults` | Tags, security, parameters and responses by path prefix. | `nil` |
+| UI | `UI` | `UISwagger`, `UIRedoc` or `UIScalar`. | `UISwagger` |
+| DisableUI | `bool` | Serves only the document. | `false` |
+| OAuth2RedirectPath | `string` | Route of Swagger UI's OAuth2 redirect page. | `""` |
+| RedocBundleURL | `string` | Redoc script URL. | `"https://unpkg.com/redoc@2.5.0/bundles/redoc.standalone.js"` |
+| RedocBundleIntegrity | `string` | Integrity hash for `RedocBundleURL`. | the hash of the default bundle |
+| ScalarBundleURL | `string` | Scalar script URL. | `"https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.81.0/dist/browser/standalone.min.js"` |
+| ScalarBundleIntegrity | `string` | Integrity hash for `ScalarBundleURL`. | the hash of the default bundle |
+| TypeSchemas | `map[reflect.Type]any` | Schema of your choice for a Go type, written inline. | `nil` |
+| SchemaName | `func(reflect.Type) string` | Names a model's component; `""` keeps the default. | `nil` |
+| DocumentGetBodies | `bool` | Documents `GET` and `HEAD` request bodies. | `false` |
+| RateLimitHeaders | `RateLimitHeaders` | Headers the `limiter` middleware sets. | `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` |
+| DisableRateLimitHeaders | `bool` | Stops documenting the limiter headers; the `429` stays. | `false` |
+| DisableGroupTags | `bool` | Stops tagging routes from their group. | `false` |
+| DisableHandlerSummaries | `bool` | Stops deriving summaries from handler names. | `false` |
 
-`Summary`, `Webhooks` and `JSONSchemaDialect` require OpenAPI 3.1+; `Self`,
-`Server.Name` and `License.Identifier` are emitted only for the versions that
-support them (3.2, 3.2 and 3.1+ respectively). Setting an unsupported
-`OpenAPIVersion` makes `New` panic.
-
-The License Object allows `identifier` or `url`, never both. Setting both keeps
-`identifier` and drops `url` on 3.1+, and does the reverse on 3.0.0 where
-`identifier` does not exist. A `Server` with an empty `URL` is dropped, and
-`Servers` falls back to `ServerURL` only when it contributes no usable entry.
+Fields marked 3.1+ or 3.2 are left out of older documents, as are `Server.Name`
+(3.2) and `License.Identifier` (3.1+). A License with both `Identifier` and
+`URL` keeps the one its version supports.
 
 `Path`, `UIPath` and `OAuth2RedirectPath` resolve against the mount prefix:
 `app.Group("/v1").Use(openapi.New())` serves `/v1/openapi.json` and `/v1/swagger`,
@@ -1136,12 +1100,9 @@ only one.
 ## Automatic Schema Inference
 
 A Go value passed to `Accepts`, `Returns`, `Params` or any helper that takes a
-schema is reflected into an OpenAPI JSON Schema when the document is generated.
-The `SchemaOf` helper exposes the same reflection for a schema you want to build
-or inspect yourself, the differences being that `SchemaOf` inlines nested
-structs while the route helpers register named types under `components.schemas`
-and reference them, and that it leaves pointer fields non-nullable, as it has no
-document version to spell `null` for. Given a struct:
+schema is reflected into a JSON Schema. `SchemaOf` exposes the same reflection,
+except that it inlines nested structs instead of referencing components and
+leaves pointer fields non-nullable. Given a struct:
 
 ```go
 type User struct {
@@ -1159,10 +1120,7 @@ app.Post("/users", createUser).
     ResponseWithExample(201, "Created", openapi.SchemaOf(User{}), "", nil, nil, fiber.MIMEApplicationJSON)
 ```
 
-The **Schema** tab beside each example renders what reflection produced — Go
-types mapped to JSON Schema types, `openapi:"format:…"` as format badges, and
-required fields marked with a red asterisk. A pointer field tagged `omitempty`
-(`nickname` below) is documented as optional:
+The **Schema** tab beside each example renders what reflection produced:
 
 ![The Schema tab in Swagger UI showing properties generated by SchemaOf, with date-time and email format badges and required markers](./img/openapi-schemaof-model.png)
 
@@ -1199,27 +1157,16 @@ app.Use(openapi.New(openapi.Config{
 | implements `json.Marshaler` | `{}` (custom output cannot be predicted) |
 | implements `encoding.TextMarshaler` | `string` |
 
-A `TextMarshaler` yields `string` only when the method has a value receiver. If
-just `*T` implements it, `encoding/json` may or may not use it depending on
-addressability, so the schema falls back to `{}`.
-
-Embedded structs and embedded pointers to structs are flattened into the parent
-object (matching `encoding/json`). A name is taken at its shallowest depth; when
-two fields collide at the same depth, exactly one of them being `json`-tagged
-wins and any other tie drops the name — the same conflict rules `encoding/json`
-applies. Self-referential or mutually recursive structs are handled safely by
-emitting a bare `{"type": "object"}` where the cycle repeats. Fields whose type
-has no JSON representation (channels, functions, etc.) are skipped.
+Embedded structs are flattened into the parent with the conflict rules of
+`encoding/json`. A recursive struct becomes a bare `{"type": "object"}` where the
+cycle repeats, and fields with no JSON representation are skipped.
 
 ### Struct field tags
 
-- **`json:"name"`** — sets the property name; `json:"-"` skips the field. A name
-  `encoding/json` rejects (one containing a backslash or a quote) is ignored here
-  too, so the schema always matches the wire format
+- **`json:"name"`** — sets the property name; `json:"-"` skips the field
 - **`json:",omitempty"`** and **`json:",omitzero"`** — make the field optional
   (not in `required`)
-- **`json:",string"`** — documents the field as `string`, matching the quoted
-  form `encoding/json` writes for numeric and boolean fields
+- **`json:",string"`** — documents the field as `string`
 - **`openapi:"description:text"`** — sets the property description
 - **`openapi:"example:value"`** — sets the property example (auto-converted to the correct type)
 - **`openapi:"format:fmt"`** — sets the format (e.g., `email`, `uuid`, `date-time`)
@@ -1227,12 +1174,11 @@ has no JSON representation (channels, functions, etc.) are skipped.
 - **`openapi:"default:value"`** (converted to the field's type), **`openapi:"pattern:regex"`**,
   **`openapi:"title:text"`** and **`openapi:"multipleOf:n"`** set the keyword of the same name;
   **`openapi:"uniqueItems"`** marks a list whose items must differ; **`openapi:"nullable"`**
-  allows `null` as a pointer field does, spelled for the document's version
+  allows `null`
 - **`openapi:"x-name:value"`** adds an extension to the property; a value that is JSON
   (`5`, `true`, `[1,2]`, `{"a":1}`) is kept as such and anything else as text
 - **`openapi:"readOnly"`**, **`openapi:"writeOnly"`** and **`openapi:"deprecated"`**
-  — set the flag of the same name, so one `User` type can serve both a
-  request body and a response with `id` marked read-only
+  — set the flag of the same name
 - **`validate:"..."`** — the rules a `StructValidator` enforces become
   constraints; see [Validate rules](#validate-rules)
 
