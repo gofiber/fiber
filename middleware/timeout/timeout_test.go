@@ -86,6 +86,7 @@ func TestTimeout_Statuses(t *testing.T) {
 	for _, tc := range []struct {
 		handler fiber.Handler
 		name    string
+		body    string   // checked when set
 		cfg     []Config // the arguments of New after the handler
 		want    int
 	}{
@@ -150,6 +151,47 @@ func TestTimeout_Statuses(t *testing.T) {
 			want:    fiber.StatusServiceUnavailable,
 		},
 		{
+			// An OnTimeout that neither writes a response nor returns an error
+			// leaves the default 503, as it does once the deadline has passed.
+			name:    "deadline error with an OnTimeout that writes nothing",
+			handler: func(_ fiber.Ctx) error { return context.DeadlineExceeded },
+			cfg:     []Config{{Timeout: time.Second, OnTimeout: func(_ fiber.Ctx) error { return nil }}},
+			want:    fiber.StatusServiceUnavailable,
+		},
+		{
+			// A response OnTimeout wrote is kept.
+			name:    "deadline error with an OnTimeout that writes the response",
+			handler: func(_ fiber.Ctx) error { return context.DeadlineExceeded },
+			cfg: []Config{{Timeout: time.Second, OnTimeout: func(c fiber.Ctx) error {
+				return c.Status(fiber.StatusGatewayTimeout).SendString("upstream timed out")
+			}}},
+			want: fiber.StatusGatewayTimeout,
+			body: "upstream timed out",
+		},
+		{
+			// What the handler wrote before it returned the error is not the timeout response.
+			name: "deadline error after a partial response, with an OnTimeout that writes nothing",
+			handler: func(c fiber.Ctx) error {
+				if err := c.Status(fiber.StatusAccepted).SendString("partial"); err != nil {
+					return err
+				}
+				return context.DeadlineExceeded
+			},
+			cfg:  []Config{{Timeout: time.Second, OnTimeout: func(_ fiber.Ctx) error { return nil }}},
+			want: fiber.StatusServiceUnavailable,
+			body: fiber.ErrServiceUnavailable.Message,
+		},
+		{
+			// A body stream OnTimeout set is a written response too.
+			name:    "deadline error with an OnTimeout that streams the response",
+			handler: func(_ fiber.Ctx) error { return context.DeadlineExceeded },
+			cfg: []Config{{Timeout: time.Second, OnTimeout: func(c fiber.Ctx) error {
+				return c.SendStream(strings.NewReader("upstream timed out"))
+			}}},
+			want: fiber.StatusOK,
+			body: "upstream timed out",
+		},
+		{
 			// The Next function skips the middleware.
 			name: "Next skips the middleware",
 			handler: func(c fiber.Ctx) error {
@@ -164,6 +206,10 @@ func TestTimeout_Statuses(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
 			app.Get("/", New(tc.handler, tc.cfg...))
+			if tc.body != "" {
+				apptest.ExpectBody(t, app, "/", tc.want, tc.body)
+				return
+			}
 			apptest.Expect(t, app, "/", tc.want)
 		})
 	}
@@ -1045,4 +1091,28 @@ func Test_Timeout_HEADResponseHasNoBody(t *testing.T) {
 			require.Equal(t, "HTTP/1.1 200 OK\r\n", next)
 		})
 	}
+}
+
+// Test_Timeout_FastHTTPRouteHandlerReturnsWhileTheAnswerIsWritten pins that a fasthttp route handler that returns
+// while timeout.New is answering for its request (OnTimeout still runs, the answer is not written yet) does not read
+// the timeout response unordered with that write, and leaves the request line alone, as for a handler timeout.New
+// gave up on: under -race either is a data race. The line has no reader here, since the timeout docs call a read
+// after Next racy.
+func Test_Timeout_FastHTTPRouteHandlerReturnsWhileTheAnswerIsWritten(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{
+		Timeout:   20 * time.Millisecond,
+		OnTimeout: func(fiber.Ctx) error { time.Sleep(150 * time.Millisecond); return nil },
+	}))
+	// a request line that differs from the routed path: it is put back once the handler returned, unless abandoned
+	app.Get("/*", fasthttp.RequestHandler(func(*fasthttp.RequestCtx) { time.Sleep(60 * time.Millisecond) }))
+	ln := apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true})
+
+	conn := apptest.Dial(t, ln)
+	_, err := io.WriteString(conn, "GET /%70ub/x?q=1 HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+	require.NoError(t, err)
+	answer, err := io.ReadAll(conn)
+	require.NoError(t, err)
+	require.Contains(t, string(answer), "503 Service Unavailable")
 }

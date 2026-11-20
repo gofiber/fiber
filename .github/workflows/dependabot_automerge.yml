@@ -12,6 +12,9 @@ jobs:
   automerge:
     uses: gofiber/.github/.github/workflows/dependabot-automerge.yml@main
     with:
-      match_pattern: '^unit|^lint /'
+      match_pattern: '^unit|^repeated|^lint /|^actionlint /'
+      required_checks: |
+        gomod: ^unit|^repeated|^lint /
+        github-actions: ^actionlint /
     secrets:
       github-token: ${{ secrets.PR_TOKEN }}

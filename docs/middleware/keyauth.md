@@ -79,7 +79,7 @@ curl --cookie "access_token=Clearly A Wrong Key" http://localhost:3000
 #> missing or invalid API Key
 ```
 
-For a more detailed example, see the [`fiber-envoy-extauthz`](https://github.com/gofiber/recipes/tree/master/fiber-envoy-extauthz) recipe in the `gofiber/recipes` repository.
+For a more detailed example, see the [`envoy-extauthz`](https://github.com/gofiber/recipes/tree/master/envoy-extauthz) recipe in the `gofiber/recipes` repository.
 
 ### Authenticate only certain endpoints
 

@@ -29,11 +29,12 @@ type ParserConfig struct {
 	ZeroEmpty         bool
 }
 
-// ParserType require two element, type and converter for register.
-// Use ParserType with BodyParser for parsing custom type in form data.
+// ParserType configures a converter for the type of CustomType.
+// ConverterE takes precedence over Converter when both are set.
 type ParserType struct {
 	CustomType any
 	Converter  func(string) reflect.Value
+	ConverterE func(string) (reflect.Value, error)
 }
 
 // tags is used to classify parser's pool; a tag's position is its index in
@@ -108,7 +109,12 @@ func decoderBuilder(aliasTag string, parserConfig ParserConfig) any {
 	// honored here: one global tag is incompatible with per-source binding.
 	decoder.SetAliasTag(aliasTag)
 	for _, v := range parserConfig.ParserType {
-		decoder.RegisterConverter(reflect.ValueOf(v.CustomType).Interface(), v.Converter)
+		customType := reflect.ValueOf(v.CustomType).Interface()
+		if v.ConverterE != nil {
+			decoder.RegisterConverterE(customType, v.ConverterE)
+		} else {
+			decoder.RegisterConverter(customType, v.Converter)
+		}
 	}
 	decoder.ZeroEmpty(parserConfig.ZeroEmpty)
 	return &pooledDecoder{Decoder: decoder, types: make(map[reflect.Type]*boundType)}
@@ -401,6 +407,11 @@ func checkKeyDepth(key string) error {
 
 // Parse data into the struct with gofiber/schema
 func parseToStruct(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
+	// Only a file part fills a *multipart.FileHeader, see fileHeaders.
+	if g := guardFileHeaders(out, files); g != nil {
+		defer g.restore(out)
+	}
+
 	// Get decoder from pool
 	pool := getDecoderPool(aliasTag)
 	schemaDecoder := pool.Get().(*pooledDecoder) //nolint:errcheck,forcetypeassert // not needed
@@ -418,7 +429,7 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 	// Alias tag is baked in at build time (see decoderBuilder); setting it here
 	// would reset the decoder's type cache on every request.
 	if err := schemaDecoder.Decode(out, data, files...); err != nil {
-		return fmt.Errorf("%w", err)
+		return err //nolint:wrapcheck // a wrap adds no context and costs a formatted message per failed bind
 	}
 
 	return nil
@@ -445,6 +456,10 @@ func formKeys(data map[string][]string, files []map[string][]*multipart.FileHead
 // parseValuesToStruct is parseToStruct for key/value pairs: values[i] is a
 // value of keys[i].
 func parseValuesToStruct(aliasTag string, out any, keys, values []string) error {
+	if g := guardFileHeaders(out, nil); g != nil {
+		defer g.restore(out)
+	}
+
 	pool := getDecoderPool(aliasTag)
 	schemaDecoder := pool.Get().(*pooledDecoder) //nolint:errcheck,forcetypeassert // not needed
 	defer putDecoder(pool, schemaDecoder)
@@ -459,7 +474,7 @@ func parseValuesToStruct(aliasTag string, out any, keys, values []string) error 
 	}
 
 	if err := schemaDecoder.DecodeValues(out, keys, values); err != nil {
-		return fmt.Errorf("%w", err)
+		return err //nolint:wrapcheck // a wrap adds no context and costs a formatted message per failed bind
 	}
 
 	return nil
@@ -617,6 +632,7 @@ type fieldInfo struct {
 	promoted    map[string]promotedField
 	kinds       map[string]reflect.Kind
 	nestedKinds map[reflect.Kind]struct{}
+	id          uintptr // typeID of the type it describes, which the slot of the cache is checked against
 }
 
 type promotedField struct {
@@ -637,15 +653,11 @@ func unwrapType(t reflect.Type) reflect.Type {
 // interface-keyed hash of a sync.Map lookup was most of what that cost, so a
 // small direct-mapped cache in front answers a type seen before in a few
 // loads. A collision only falls through to the map; nothing is ever wrong,
-// just slower.
+// just slower, and a slot is filled with the field information the map holds,
+// so it costs no allocation.
 type fieldCache struct {
-	slots [fieldCacheSlots]atomic.Pointer[fieldCacheEntry]
+	slots [fieldCacheSlots]atomic.Pointer[fieldInfo]
 	types sync.Map // reflect.Type -> *fieldInfo
-}
-
-type fieldCacheEntry struct {
-	info *fieldInfo
-	id   uintptr
 }
 
 // fieldCacheSlots is a power of two, so a slot is a mask rather than a division.
@@ -794,7 +806,7 @@ func typeID(t reflect.Type) uintptr {
 }
 
 // slot returns the direct-mapped slot a type hashes to.
-func (c *fieldCache) slot(t reflect.Type) *atomic.Pointer[fieldCacheEntry] {
+func (c *fieldCache) slot(t reflect.Type) *atomic.Pointer[fieldInfo] {
 	return &c.slots[(typeID(t)>>4)&(fieldCacheSlots-1)]
 }
 
@@ -802,19 +814,20 @@ func (c *fieldCache) slot(t reflect.Type) *atomic.Pointer[fieldCacheEntry] {
 func (c *fieldCache) get(t reflect.Type, aliasTag string) (*fieldInfo, bool) {
 	id := typeID(t)
 	slot := &c.slots[(id>>4)&(fieldCacheSlots-1)]
-	if e := slot.Load(); e != nil && e.id == id {
-		return e.info, true
+	if info := slot.Load(); info != nil && info.id == id {
+		return info, true
 	}
 
 	val, ok := c.types.Load(t)
 	if !ok {
 		info := buildFieldInfo(t, aliasTag)
+		info.id = id
 		val, _ = c.types.LoadOrStore(t, &info)
 	}
 
 	info, ok := val.(*fieldInfo)
 	if ok {
-		slot.Store(&fieldCacheEntry{id: id, info: info})
+		slot.Store(info)
 	}
 	return info, ok
 }
@@ -1105,6 +1118,30 @@ func (d *bindData) bindAll(aliasTag string, out any, key string, values []string
 		d.split(aliasTag, out, key, value, enableSplitting)
 	}
 	return nil
+}
+
+// bindValues files values under key as bindAll does. The struct decoder only
+// reads them, so the slice is filed without a copy when key is new and no
+// value splits.
+func (d *bindData) bindValues(aliasTag string, out any, key string, values []string, enableSplitting bool) error { //nolint:revive // the flag is the binder's setting
+	key, err := bindKey(key, true)
+	if err != nil {
+		return err
+	}
+	if _, filed := d.values[key]; !filed && len(values) > 0 &&
+		(!enableSplitting || !slices.ContainsFunc(values, hasComma)) {
+		// Clipped, so that a later append for the same key copies the slice.
+		d.values[key] = slices.Clip(values)
+		return nil
+	}
+	for _, value := range values {
+		d.split(aliasTag, out, key, value, enableSplitting)
+	}
+	return nil
+}
+
+func hasComma(s string) bool {
+	return strings.IndexByte(s, ',') >= 0
 }
 
 // split files value under key, split at its commas when splitting is on and

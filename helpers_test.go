@@ -77,6 +77,113 @@ func Test_JoinedInReceivedOrder(t *testing.T) {
 	}
 }
 
+// mediaRangeCases shares wrapper contracts and benchmark inputs across behavior and allocation checks.
+var mediaRangeCases = []struct {
+	name      string
+	header    string
+	want      []string
+	benchmark bool
+}{
+	{name: "empty", benchmark: true},
+	{name: "spaces", header: "   ", want: []string{""}},
+	{name: "plain single", header: "text/plain", want: []string{"text/plain"}},
+	{name: "short list", header: "text/plain, application/json", want: []string{"text/plain", "application/json"}},
+	{name: "single", header: "application/json", want: []string{"application/json"}, benchmark: true},
+	{
+		name: "list", header: "text/plain, application/json, text/html",
+		want: []string{"text/plain", "application/json", "text/html"}, benchmark: true,
+	},
+	{
+		name: "browser", header: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+		want: []string{"text/html", "application/xhtml+xml", "application/xml;q=0.9", "*/*;q=0.8"}, benchmark: true,
+	},
+	{name: "empty elements", header: ",,text/plain,,", want: []string{"", "", "text/plain", ""}},
+	{name: "trailing comma", header: "text/plain,", want: []string{"text/plain"}},
+	{name: "trailing spaces", header: "text/plain,   ", want: []string{"text/plain", ""}},
+	{name: "whitespace", header: " \ttext/plain\t , \v\f", want: []string{"\ttext/plain\t ", "\v\f"}},
+	{name: "quoted whitespace", header: "\t\"a\"\t , \v\f", want: []string{"\t\"a\"\t ", "\v\f"}},
+	{name: "raw bytes", header: "\x00\xff,é", want: []string{"\x00\xff", "é"}},
+	{
+		name: "quoted comma", header: `text/plain;p="a,b", text/html`,
+		want: []string{`text/plain;p="a,b"`, "text/html"}, benchmark: true,
+	},
+	{name: "late quote", header: `text/html, text/*;p="a,b"`, want: []string{"text/html", `text/*;p="a,b"`}},
+	{
+		name: "quote beyond probe", header: strings.Repeat("text/html, ", 8) + `text/*;p="a,b"`,
+		want: []string{
+			"text/html", "text/html", "text/html", "text/html", "text/html", "text/html", "text/html", "text/html",
+			`text/*;p="a,b"`,
+		},
+	},
+	{name: "quoted empties", header: `,"",,`, want: []string{"", `""`, ""}},
+	{name: "quoted trailing spaces", header: `"a",   `, want: []string{`"a"`, ""}},
+	{
+		name: "escaped quote", header: `text/plain;p="a\"b,c", text/html`,
+		want: []string{`text/plain;p="a\"b,c"`, "text/html"}, benchmark: true,
+	},
+	{
+		name: "escaped backslash", header: `text/plain;p="a\\", text/html`,
+		want: []string{`text/plain;p="a\\"`, "text/html"}, benchmark: true,
+	},
+	{name: "bare backslash", header: `\, a`, want: []string{`\`, "a"}},
+	{
+		name: "unterminated quote", header: `text/plain;p="a,b, text/html`,
+		want: []string{`text/plain;p="a,b, text/html`}, benchmark: true,
+	},
+	{name: "adjacent quotes", header: `"a,b""c,d",e`, want: []string{`"a,b""c,d"`, "e"}},
+}
+
+func Test_Utils_ForEachMediaRange(t *testing.T) {
+	t.Parallel()
+	for _, tt := range mediaRangeCases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			header := []byte(tt.header)
+			var got []string
+			forEachMediaRange(header, func(mediaRange []byte) {
+				if len(mediaRange) > 0 {
+					off := cap(header) - cap(mediaRange)
+					require.GreaterOrEqual(t, off, 0)
+					require.LessOrEqual(t, off+len(mediaRange), len(header))
+					require.Same(t, &header[off], &mediaRange[0], "media range must alias the input header")
+				}
+				got = append(got, string(mediaRange))
+			})
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_Utils_ForEachMediaRange_NoAllocations(t *testing.T) {
+	// AllocsPerRun cannot run in a parallel test.
+	for _, tc := range mediaRangeCases {
+		header := []byte(tc.header)
+		totalLen := 0
+		allocs := testing.AllocsPerRun(100, func() {
+			forEachMediaRange(header, func(mediaRange []byte) { totalLen += len(mediaRange) })
+		})
+		runtime.KeepAlive(totalLen)
+		require.Zero(t, allocs, tc.name)
+	}
+}
+
+func Benchmark_Utils_ForEachMediaRange(b *testing.B) {
+	for _, tc := range mediaRangeCases {
+		if !tc.benchmark {
+			continue
+		}
+		b.Run(tc.name, func(b *testing.B) {
+			header := []byte(tc.header)
+			totalLen := 0
+			b.ReportAllocs()
+			for b.Loop() {
+				forEachMediaRange(header, func(mediaRange []byte) { totalLen += len(mediaRange) })
+			}
+			runtime.KeepAlive(totalLen)
+		})
+	}
+}
+
 func Test_Utils_GetOffer(t *testing.T) {
 	t.Parallel()
 	require.Empty(t, getOffer([]byte("hello"), acceptsOffer))
@@ -106,6 +213,8 @@ func Test_Utils_GetOffer(t *testing.T) {
 	// A quoted-pair escapes exactly one byte, so the string ends at the genuine
 	// closing quote and the later comma splits the ranges (RFC 9110 Section 5.6.4).
 	require.Equal(t, "text/plain", getOffer([]byte(`text/html;p="a\"b", text/plain`), acceptsOfferType, "text/plain"))
+	// A quoted comma must stay in its range so the following q=0 still rejects that offer.
+	require.Equal(t, "text/html", getOffer([]byte(`text/html;q=0.5, text/plain;p="a,b";q=0`), acceptsOfferType, `text/plain;p="a,b"`, "text/html"))
 	require.Equal(t, "text/plain;A=CAPS", getOffer([]byte(`text/plain;a="caPs"`), acceptsOfferType, "text/plain;A=CAPS"))
 
 	// The media type and subtype tokens are case-insensitive (RFC 9110 8.3.1)
@@ -381,6 +490,16 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 		offers      []string
 	}{
 		{description: "simple", accept: "application/json", offers: []string{"application/json"}},
+		{
+			description: "quoted comma",
+			accept:      `text/plain;p="a,b", text/html;q=0.5`,
+			offers:      []string{`text/plain;p="a,b"`, "text/html"},
+		},
+		{
+			description: "quoted pair",
+			accept:      `text/plain;p="a\"b,c", text/html;q=0.5`,
+			offers:      []string{`text/plain;p="a\"b,c"`, "text/html"},
+		},
 		{
 			description: "6 offers",
 			accept:      "text/plain",

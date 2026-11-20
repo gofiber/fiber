@@ -58,13 +58,13 @@ func newMultipartRequestWith(tb testing.TB, write func(mw *multipart.Writer)) *f
 }
 
 // writeFormFile adds a file part to mw.
-func writeFormFile(t *testing.T, mw *multipart.Writer, field, filename, content string) {
-	t.Helper()
+func writeFormFile(tb testing.TB, mw *multipart.Writer, field, filename, content string) {
+	tb.Helper()
 
 	part, err := mw.CreateFormFile(field, filename)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	_, err = part.Write([]byte(content))
-	require.NoError(t, err)
+	require.NoError(tb, err)
 }
 
 // requireJohn42 requires that a benchmark's last bind succeeded and filled in

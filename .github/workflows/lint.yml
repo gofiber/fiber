@@ -4,11 +4,19 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**"
+      - "!**/*.md"
+      - "!.github/dependabot.yml"
+      - "!.github/workflows/**"
+      - ".github/workflows/lint.yml"
   pull_request:
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**"
+      - "!**/*.md"
+      - "!.github/dependabot.yml"
+      - "!.github/workflows/**"
+      - ".github/workflows/lint.yml"
   workflow_dispatch:
 
 concurrency:

@@ -90,14 +90,20 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 	// The files are merged into the decoder's view of the source map, so a
 	// multipart form is always filed into one.
 	mode := bindModeFor(out)
-	if mode == bindPairs {
+	// The struct decoder only reads the map, so its values need no copy.
+	readOnly := mode == bindPairs
+	if readOnly {
 		mode = bindMap
 	}
 	data := acquireBindDataMode(mode)
 	defer releaseBindData(data)
 
 	for key, values := range multipartForm.Value {
-		err = data.bindAll(b.Name(), out, key, values, b.EnableSplitting, true)
+		if readOnly {
+			err = data.bindValues(b.Name(), out, key, values, b.EnableSplitting)
+		} else {
+			err = data.bindAll(b.Name(), out, key, values, b.EnableSplitting, true)
+		}
 		if err != nil {
 			return err
 		}

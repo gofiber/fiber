@@ -391,11 +391,11 @@ func Test_KeepReceivedOrder(t *testing.T) {
 			require.Equal(t, []string{"client", "proxy", "app"}, lines(h, "X-Forwarded-For", canonical))
 			require.Equal(t, []string{"http", "https"}, lines(h, "X-Forwarded-Proto", canonical))
 
-			// So does a changed one.
+			// Set replaces every received line (fasthttp >= 1.79).
 			h = readRequestHeader(t, raw, canonical)
 			h.Set("X-Forwarded-For", "app")
 			require.True(t, KeepReceivedOrder(h, h.RawHeaders(), forwarding))
-			require.Equal(t, []string{"proxy", "app"}, lines(h, "X-Forwarded-For", canonical))
+			require.Equal(t, []string{"app"}, lines(h, "X-Forwarded-For", canonical))
 		})
 	}
 

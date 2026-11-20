@@ -1,14 +1,21 @@
 package pprof
 
 import (
+	"net/http"
 	"net/http/pprof"
+	"net/url"
+	runtimepprof "runtime/pprof"
 	"strings"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/appconfig"
 )
+
+// profileNameKey carries the name of a registered profile to pprofCustom.
+type profileNameKey struct{}
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -28,6 +35,10 @@ func New(config ...Config) fiber.Handler {
 		pprofHeap         = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("heap").ServeHTTP)
 		pprofMutex        = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("mutex").ServeHTTP)
 		pprofThreadcreate = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("threadcreate").ServeHTTP)
+		pprofCustom       = fasthttpadaptor.NewFastHTTPHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			name, _ := r.Context().Value(profileNameKey{}).(string) //nolint:errcheck // set by the handler below
+			pprof.Handler(name).ServeHTTP(w, r)
+		})
 	)
 
 	// Construct actual prefix
@@ -78,6 +89,19 @@ func New(config ...Config) fiber.Handler {
 		case "/threadcreate":
 			pprofThreadcreate(c.RequestCtx())
 		default:
+			// The index also links profiles registered with runtime/pprof.NewProfile,
+			// escaped; c.Path() keeps the escapes unless UnescapePath decoded them.
+			name := strings.TrimPrefix(path, "/")
+			if !appconfig.Of(c.App()).UnescapePath {
+				if unescaped, err := url.PathUnescape(name); err == nil {
+					name = unescaped
+				}
+			}
+			if name != "" && runtimepprof.Lookup(name) != nil {
+				c.RequestCtx().SetUserValue(profileNameKey{}, name)
+				pprofCustom(c.RequestCtx())
+				return nil
+			}
 			// pprof index only works with trailing slash
 			if strings.HasSuffix(path, "/") {
 				path = prefix + utils.TrimRight(path, '/')
