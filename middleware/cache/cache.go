@@ -494,6 +494,20 @@ func New(config ...Config) fiber.Handler {
 
 		reqCtx := c.Context()
 
+		// unserved answers a request the Storage could not be asked about without the cache. A
+		// Storage that fails is no reason to fail the request: the handler can answer it, and an
+		// outage of the store was an outage of every route behind the cache, with the store's own
+		// error for a body. The failure is logged. only-if-cached forbids the handler, so that
+		// request is told there is nothing stored for it, as on any miss.
+		unserved := func(err error) error {
+			log.Warnf("%v; the request is answered without the cache", err)
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			if reqDirectives.onlyIfCached {
+				return c.SendStatus(fiber.StatusGatewayTimeout)
+			}
+			return c.Next()
+		}
+
 		varyNames := []string(nil)
 		hasVaryManifest := false
 		var err error
@@ -501,7 +515,7 @@ func New(config ...Config) fiber.Handler {
 			varyNames, hasVaryManifest, err = loadVaryManifest(reqCtx, manager, manifestKey)
 			if err != nil {
 				releaseKeyBuffer(keyBufPtr, keyBuf)
-				return err
+				return unserved(err)
 			}
 			if len(varyNames) > 0 {
 				keyBuf = appendVaryKey(keyBuf, varyNames, &c.Request().Header, canonical)
@@ -512,8 +526,15 @@ func New(config ...Config) fiber.Handler {
 
 		// Get entry from pool
 		e, err := manager.get(reqCtx, key)
-		if err != nil && !errors.Is(err, errCacheMiss) {
-			return err
+		switch {
+		case err == nil, errors.Is(err, errCacheMiss):
+		case errors.Is(err, errUndecodable):
+			// What the Storage holds under the key is not an entry: a miss, so that the response
+			// stored for this request replaces it. Left alone it would keep every request for the
+			// key away from the cache until the Storage expired it, if it ever does.
+			log.Warnf("%v; it is treated as a miss", err)
+		default:
+			return unserved(err)
 		}
 		// Set aside, or deleted as expired or invalidated, the entry is still one the request found.
 		foundAtLookup := e != nil
@@ -634,19 +655,23 @@ func New(config ...Config) fiber.Handler {
 			if e != nil && e.ttl == 0 && e.exp != 0 && ts >= e.exp {
 				guard.Unlock()
 				if err := deleteFound(reqCtx); err != nil {
-					if cfg.Storage != nil {
-						manager.release(e)
-					}
-					return false, fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), err)
+					// Left where it is, the entry is found expired again by the next request and
+					// is served to none; its heap node stays for the store that replaces it.
+					log.Warnf("cache: failed to delete expired key %q: %v", maskKey(key), err)
+				} else {
+					guard.Relock()
+					removeHeapEntry(key, e.heapidx, e.heapgen)
 				}
-				guard.Relock()
-				removeHeapEntry(key, e.heapidx, e.heapgen)
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
 				e = nil
 				guard.Unlock()
 				c.Set(cfg.CacheHeader, cacheUnreachable)
+				// Nothing is left to serve, and only-if-cached forbids the handler.
+				if reqDirectives.onlyIfCached {
+					return true, c.SendStatus(fiber.StatusGatewayTimeout)
+				}
 				return false, nil
 			}
 
@@ -711,28 +736,28 @@ func New(config ...Config) fiber.Handler {
 				switch {
 				case entryExpired && !allowStale:
 					guard.Unlock()
-					if err := deleteFound(reqCtx); err != nil {
-						if e != nil {
-							manager.release(e)
-						}
-						return false, fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), err)
-					}
-					guard.Relock()
 					idx := e.heapidx
 					gen := e.heapgen
+					if err := deleteFound(reqCtx); err != nil {
+						// As above: it stays, expired, for the next request to find and try again.
+						log.Warnf("cache: failed to delete expired key %q: %v", maskKey(key), err)
+						manager.release(e)
+						e = nil
+						break
+					}
+					guard.Relock()
 					manager.release(e)
 					removeHeapEntry(key, idx, gen)
 					e = nil
 				case entryHasPrivate:
 					guard.Unlock()
 					if err := deleteFound(reqCtx); err != nil {
-						if e != nil {
-							manager.release(e)
-						}
-						return false, fmt.Errorf("cache: failed to delete private response for key %q: %w", maskKey(key), err)
+						// It stays, and is found private again: no request is ever served it.
+						log.Warnf("cache: failed to delete private response for key %q: %v", maskKey(key), err)
+					} else {
+						guard.Relock()
+						removeHeapEntry(key, e.heapidx, e.heapgen)
 					}
-					guard.Relock()
-					removeHeapEntry(key, e.heapidx, e.heapgen)
 					if cfg.Storage != nil && e != nil {
 						manager.release(e)
 					}
@@ -767,21 +792,28 @@ func New(config ...Config) fiber.Handler {
 						guard.Unlock()
 						rawBody, err := manager.getRaw(reqCtx, bodyKey(key))
 						if err != nil {
-							if !errors.Is(err, errCacheMiss) {
-								manager.release(e)
-								return false, cacheBodyFetchError(maskKey, key, err)
+							// A body the backend dropped leaves metadata that is a miss, so the
+							// orphan goes. A Storage that fails that delete keeps it to be found
+							// without a body again, and one that failed the read keeps the entry
+							// for when it answers.
+							if errors.Is(err, errCacheMiss) {
+								err = deleteKey(reqCtx, key)
 							}
-							// The backend dropped the body but kept the metadata: a miss, so
-							// drop the orphaned metadata.
-							if err := deleteKey(reqCtx, key); err != nil {
-								manager.release(e)
-								return false, fmt.Errorf("cache: failed to delete key %q without a body: %w", maskKey(key), err)
+							if err != nil {
+								log.Warnf("%v; the entry is left as it is", err)
+							} else {
+								guard.Relock()
+								removeHeapEntry(key, e.heapidx, e.heapgen)
+								guard.Unlock()
 							}
-							guard.Relock()
-							removeHeapEntry(key, e.heapidx, e.heapgen)
-							guard.Unlock()
 							manager.release(e)
 							e = nil
+							// Without its body this request is a miss, which only-if-cached answers
+							// with 504 instead of the handler.
+							if reqDirectives.onlyIfCached {
+								c.Set(cfg.CacheHeader, cacheUnreachable)
+								return true, c.SendStatus(fiber.StatusGatewayTimeout)
+							}
 							return false, nil
 						}
 						e.body = rawBody
@@ -1143,7 +1175,12 @@ func New(config ...Config) fiber.Handler {
 			}
 		} else if !cfg.DisableVaryHeaders && hasVaryManifest {
 			if err := manager.del(reqCtx, manifestKey); err != nil {
-				return fmt.Errorf("cache: failed to delete stale vary manifest %q: %w", maskKey(manifestKey), err)
+				// A lookup still goes by the manifest left behind and would not find the
+				// response under the key without it, so it is not stored. The handler's
+				// answer stands, here and for every failure of the Storage below.
+				log.Warnf("cache: failed to delete stale vary manifest %q: %v", maskKey(manifestKey), err)
+				markUnreachable()
+				return nil
 			}
 			key = baseKey
 		}
@@ -1362,7 +1399,7 @@ func New(config ...Config) fiber.Handler {
 		// Strategy:
 		// 1. Under lock: reserve space by pre-incrementing storedBytes, then collect entries to evict
 		// 2. Outside lock: perform I/O deletions
-		// 3. On deletion failure: restore storedBytes and return error
+		// 3. On deletion failure: restore storedBytes and leave the response unstored
 		// 4. Track reservation with a flag; unreserve on early return via defer
 		var spaceReserved bool
 		// The entry being replaced is untracked before its replacement is
@@ -1394,7 +1431,7 @@ func New(config ...Config) fiber.Handler {
 
 			if restore {
 				if err := restoreHeapEntry(reqCtx, replaced); err != nil {
-					log.Warnf("cache: %v", err)
+					log.Warnf("%v", err)
 				}
 			}
 		}()
@@ -1466,25 +1503,26 @@ func New(config ...Config) fiber.Handler {
 					spaceReserved = false
 					mux.Unlock()
 
-					var restoreErr error
 					for _, candidate := range candidates[i:] {
 						if err := restoreHeapEntry(reqCtx, candidate); err != nil {
-							restoreErr = errors.Join(restoreErr, err)
+							log.Warnf("%v", err)
 						}
 					}
 
-					if restoreErr != nil {
-						return errors.Join(fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), delErr), restoreErr)
-					}
-
-					return fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), delErr)
+					// No room was made, so the response is not stored.
+					log.Warnf("cache: failed to delete key %q while evicting: %v", maskKey(keyToRemove), delErr)
+					markUnreachable()
+					return nil
 				}
 			}
 		}
 
 		if !cfg.DisableVaryHeaders && shouldStoreVaryManifest {
 			if err := storeVaryManifest(reqCtx, manager, manifestKey, respVaryNames, storageExpiration); err != nil {
-				return err
+				// Without its manifest no lookup would reach the variant.
+				log.Warnf("%v", err)
+				markUnreachable()
+				return nil
 			}
 		}
 
@@ -1553,23 +1591,29 @@ func New(config ...Config) fiber.Handler {
 			return cleanupErr
 		}
 
+		// notStored leaves the handler's answer as it is when the Storage would not take it. The
+		// entry has been handed back by then, by cleanupOnStoreError or by manager.set.
+		notStored := func(err, cleanupErr error) error {
+			log.Warnf("%v", err)
+			if cleanupErr != nil {
+				log.Warnf("%v", cleanupErr)
+			}
+			e = nil
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return nil
+		}
+
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
 			if err := manager.setRaw(reqCtx, bodyKey(key), e.body, storageExpiration); err != nil {
-				if cleanupErr := cleanupOnStoreError(reqCtx, true, false); cleanupErr != nil {
-					err = errors.Join(err, cleanupErr)
-				}
-				return err
+				return notStored(err, cleanupOnStoreError(reqCtx, true, false))
 			}
 			rawWritten = true
 			// avoid body msgp encoding
 			e.body = nil
 			entryExp := e.exp // manager.set hands e back to the pool
 			if err := manager.set(reqCtx, key, e, storageExpiration); err != nil {
-				if cleanupErr := cleanupOnStoreError(reqCtx, false, true); cleanupErr != nil {
-					err = errors.Join(err, cleanupErr)
-				}
-				return err
+				return notStored(err, cleanupOnStoreError(reqCtx, false, true))
 			}
 
 			// The write runs outside the lock, so an eviction may have popped the node and run
@@ -1582,20 +1626,17 @@ func New(config ...Config) fiber.Handler {
 					if delErr := deleteKey(reqCtx, key); delErr != nil {
 						// Still stored, so track it again for a later eviction to retry.
 						untracked := evictionCandidate{key: key, manifest: entryManifest, size: entrySize, exp: entryExp, oldGen: heapGen}
-						return errors.Join(
-							fmt.Errorf("cache: failed to delete key %q evicted while it was stored: %w", maskKey(key), delErr),
-							restoreHeapEntry(reqCtx, untracked),
-						)
+						log.Warnf("cache: failed to delete key %q evicted while it was stored: %v", maskKey(key), delErr)
+						if err := restoreHeapEntry(reqCtx, untracked); err != nil {
+							log.Warnf("%v", err)
+						}
 					}
 				}
 			}
 		} else if !stored {
 			// Store entry in memory
 			if err := manager.set(reqCtx, key, e, storageExpiration); err != nil {
-				if cleanupErr := cleanupOnStoreError(reqCtx, true, false); cleanupErr != nil {
-					err = errors.Join(err, cleanupErr)
-				}
-				return err
+				return notStored(err, cleanupOnStoreError(reqCtx, true, false))
 			}
 		}
 

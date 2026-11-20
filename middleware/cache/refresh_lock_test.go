@@ -16,16 +16,16 @@ import (
 )
 
 // cacheTestCEvict sends GET /new through app in the background, a request the
-// test arranged to fail with a 500 because the eviction it starts cannot delete
-// the entry it picked. The channel yields what went wrong with the request or
-// with its answer, nil when nothing did.
+// test arranged to be answered unstored because the eviction it starts cannot
+// delete the entry it picked. The channel yields what went wrong with the
+// request or with its answer, nil when nothing did.
 func cacheTestCEvict(app *fiber.App) <-chan error {
 	done := make(chan error, 1)
 	go func() {
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/new", http.NoBody))
 		if err == nil {
-			if resp.StatusCode != fiber.StatusInternalServerError {
-				err = errors.New("eviction did not fail")
+			if resp.StatusCode != fiber.StatusOK || resp.Header.Get("X-Cache") != cacheUnreachable {
+				err = errors.New("the request was not answered unstored")
 			}
 			if closeErr := resp.Body.Close(); closeErr != nil {
 				err = errors.Join(err, closeErr)

@@ -99,6 +99,10 @@ type manager struct {
 
 var errCacheMiss = errors.New("cache: miss")
 
+// errUndecodable is the error of an entry the Storage handed over that is not one this version of the
+// middleware wrote, or not all of one. Its text opens the message get wraps it in.
+var errUndecodable = errors.New("cache: failed to unmarshal key")
+
 func newManager(storage fiber.Storage, shouldRedactKeys bool) *manager {
 	// Create new storage handler
 	manager := &manager{
@@ -172,7 +176,7 @@ func (m *manager) get(ctx context.Context, key string) (*item, error) {
 		it := m.acquire()
 		if _, err := it.UnmarshalMsg(raw); err != nil {
 			m.release(it)
-			return nil, fmt.Errorf("cache: failed to unmarshal key %q: %w", m.logKey(key), err)
+			return nil, fmt.Errorf("%w %q: %w", errUndecodable, m.logKey(key), err)
 		}
 
 		return it, nil

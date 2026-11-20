@@ -1500,8 +1500,10 @@ func Test_Cache_ExpiredDeleteChecksTheEntry(t *testing.T) {
 }
 
 // An entry that cannot be served is deleted before the request goes on. A Storage that fails that delete,
-// or the read that checks it, fails the request rather than leave the entry to be found again.
-func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) {
+// or the read that checks it, leaves the entry to be found again, and it is found unservable again: the
+// handler answers each request, and what it answers replaces an expired entry once the Storage takes it.
+// The request used to fail instead, with the Storage's error for a body.
+func Test_Cache_UnservableEntryThatCannotBeDeletedIsNotServed(t *testing.T) {
 	t.Parallel()
 	const key = cacheKeyVersion + "|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"
 	future := uint64(time.Now().Unix()) + 3600
@@ -1509,13 +1511,20 @@ func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) 
 	for _, tc := range []struct {
 		entry       *item
 		name        string
-		want        string
+		want        string // X-Cache of the request that finds the entry
+		again       string // and of the one after it
 		invalidator bool
 	}{
-		{name: "expired, held past its lifetime", entry: &item{exp: 1, ttl: 1}, want: "failed to delete expired key"},
-		{name: "private", entry: &item{exp: future, private: true}, want: "failed to delete private response"},
-		{name: "expired, and the read that checks it fails", entry: &item{exp: 1, ttl: 1}, invalidator: true, want: "failed to delete expired key"},
-		{name: "private, and the read that checks it fails", entry: &item{exp: future, private: true}, invalidator: true, want: "failed to delete private response"},
+		{name: "expired, held past its lifetime", entry: &item{exp: 1, ttl: 1}, want: cacheMiss, again: cacheHit},
+		{name: "private", entry: &item{exp: future, private: true}, want: cacheUnreachable, again: cacheUnreachable},
+		{
+			name: "expired, and the read that checks it fails", entry: &item{exp: 1, ttl: 1}, invalidator: true,
+			want: cacheMiss, again: cacheUnreachable,
+		},
+		{
+			name: "private, and the read that checks it fails", entry: &item{exp: future, private: true}, invalidator: true,
+			want: cacheUnreachable, again: cacheUnreachable,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -1523,6 +1532,7 @@ func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) 
 			raw, err := tc.entry.MarshalMsg(nil)
 			require.NoError(t, err)
 			base.Data[key] = raw
+			base.Data[bodyKey(key)] = []byte("stored")
 
 			cfg := Config{Storage: base, Expiration: time.Hour}
 			if tc.invalidator {
@@ -1543,8 +1553,13 @@ func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) 
 			app.Use(New(cfg))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-			require.Equal(t, fiber.StatusInternalServerError, getRoot(t, app, nil).status)
-			require.ErrorContains(t, failures.err, tc.want)
+			for _, want := range []string{tc.want, tc.again} {
+				got := getRoot(t, app, nil)
+				require.Equal(t, fiber.StatusOK, got.status)
+				require.Equal(t, want, got.cache)
+				require.Equal(t, "ok", got.body, "the handler's answer, never the entry's")
+			}
+			require.NoError(t, failures.err)
 		})
 	}
 }
