@@ -2124,6 +2124,40 @@ func Test_Client_UppercaseScheme(t *testing.T) {
 	require.Equal(t, "ok", resp.String())
 }
 
+func Test_Request_Resend_WithFiles(t *testing.T) {
+	t.Parallel()
+	client := clientTestAClient(t, func(app *fiber.App) {
+		app.Post("/", func(c fiber.Ctx) error {
+			fh, err := c.FormFile("file1")
+			if err != nil {
+				return err
+			}
+			f, err := fh.Open()
+			if err != nil {
+				return err
+			}
+			defer func() { require.NoError(t, f.Close()) }()
+			body, err := io.ReadAll(f)
+			if err != nil {
+				return err
+			}
+			return c.Send(body)
+		})
+	})
+
+	path := filepath.Join(t.TempDir(), "a.txt")
+	require.NoError(t, os.WriteFile(path, []byte("hello file"), 0o600))
+
+	req := AcquireRequest().SetClient(client).AddFile(path)
+	for range 2 {
+		resp, err := req.Post("http://example.com/")
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "hello file", resp.String())
+		resp.Close()
+	}
+}
+
 func Test_CookieJar_MaxAgeBeyond32Bit(t *testing.T) {
 	t.Parallel()
 	// int is 32 bits on 386 and arm, where this used to fail to parse and leave

@@ -496,6 +496,11 @@ func parserRequestBody(c *Client, req *Request) error {
 
 // parserRequestBodyFile handles the case where the request contains files to be uploaded.
 func parserRequestBodyFile(req *Request) error {
+	// Rebuild the multipart body from scratch on every send. BodyWriter
+	// appends, so without this a resend would carry the previous body
+	// followed by a second copy of it.
+	req.RawRequest.ResetBody()
+
 	mw := multipart.NewWriter(req.RawRequest.BodyWriter())
 	if err := mw.SetBoundary(req.boundary); err != nil {
 		return fmt.Errorf("set boundary error: %w", err)
@@ -562,17 +567,22 @@ func writeMultipartBody(mw *multipart.Writer, req *Request) error {
 }
 
 func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) error {
-	// If reader is not set, open the file.
-	if f.reader == nil {
-		var err error
-		f.reader, err = os.Open(f.path)
+	// Open a file added by path on every send instead of caching the handle
+	// in f.reader: the handle is closed after the first copy, so a resend
+	// would read a closed file.
+	reader := f.reader
+	if reader == nil {
+		file, err := os.Open(f.path)
 		if err != nil {
 			return fmt.Errorf("open file error: %w", err)
 		}
+		defer file.Close() //nolint:errcheck // not needed
+		reader = file
+	} else {
+		// A caller-supplied reader is consumed by the first send; keep
+		// closing it after the copy, as before.
+		defer reader.Close() //nolint:errcheck // not needed
 	}
-
-	// Ensure the file reader is always closed after copying.
-	defer f.reader.Close() //nolint:errcheck // not needed
 
 	// Create form file and copy the content.
 	w, err := mw.CreateFormFile(f.fieldName, f.name)
@@ -580,7 +590,7 @@ func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) error {
 		return fmt.Errorf("create file error: %w", err)
 	}
 
-	if _, err := io.CopyBuffer(w, f.reader, *fileBuf); err != nil {
+	if _, err := io.CopyBuffer(w, reader, *fileBuf); err != nil {
 		return fmt.Errorf("failed to copy file data: %w", err)
 	}
 

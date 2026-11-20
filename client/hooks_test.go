@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -578,6 +579,43 @@ func Test_Parser_Request_Body(t *testing.T) {
 		req := AcquireRequest().AddFile(missingPath)
 
 		require.ErrorContains(t, parserRequestBody(client, req), "open file error")
+	})
+
+	t.Run("resending a request with a file by path rebuilds the body", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		path := filepath.Join(t.TempDir(), "a.txt")
+		require.NoError(t, os.WriteFile(path, []byte("hello file"), 0o600))
+
+		req := AcquireRequest().AddFile(path)
+		t.Cleanup(func() { ReleaseRequest(req) })
+
+		require.NoError(t, parserRequestBody(client, req))
+		first := string(req.RawRequest.Body())
+		require.Contains(t, first, "hello file")
+
+		require.NoError(t, parserRequestBody(client, req))
+		require.Equal(t, first, string(req.RawRequest.Body()))
+	})
+
+	t.Run("resending a request with a reader does not append the body again", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+
+		req := AcquireRequest().AddFileWithReader("hello", io.NopCloser(strings.NewReader("world")))
+		t.Cleanup(func() { ReleaseRequest(req) })
+
+		require.NoError(t, parserRequestBody(client, req))
+		first := string(req.RawRequest.Body())
+		require.Contains(t, first, "world")
+
+		require.NoError(t, parserRequestBody(client, req))
+		second := string(req.RawRequest.Body())
+		// The reader is consumed by the first send, so the rebuilt body holds
+		// the same framing with an empty file part instead of the first body
+		// followed by a second copy of it.
+		require.Equal(t, len(first)-len("world"), len(second))
+		require.NotContains(t, second, "world")
 	})
 
 	t.Run("file body missing path and name", func(t *testing.T) {
