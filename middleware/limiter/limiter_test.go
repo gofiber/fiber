@@ -1468,11 +1468,7 @@ func rejectingHandler(tb testing.TB, cfg *Config, expiration time.Duration) (fas
 //
 // It calls testing.AllocsPerRun, so its callers must not be parallel.
 func limiterTestFewestAllocs(h fasthttp.RequestHandler, fctx *fasthttp.RequestCtx) float64 {
-	fewest := math.MaxFloat64
-	for range 200 {
-		fewest = min(fewest, testing.AllocsPerRun(1, func() { h(fctx) }))
-	}
-	return fewest
+	return apptest.FewestAllocs(200, 1, func() { h(fctx) })
 }
 
 // A rejected request never reaches the handler, so it skips the key copy made for the read after it.
@@ -1511,6 +1507,7 @@ func Test_Limiter_RejectDoesNotCopyKey(t *testing.T) {
 // rejected request no more than one under 100, which utils.FormatUint serves from a table.
 //
 // Intentionally not parallel: testing.AllocsPerRun panics when called from a parallel test.
+// conventions:ignore parallel: limiterTestFewestAllocs calls testing.AllocsPerRun through apptest
 func Test_Limiter_RejectRetryAfterDoesNotAllocate(t *testing.T) {
 	rejectAllocs := func(t *testing.T, expiration time.Duration) float64 {
 		t.Helper()
@@ -1522,11 +1519,7 @@ func Test_Limiter_RejectRetryAfterDoesNotAllocate(t *testing.T) {
 		require.Equal(t, fiber.StatusTooManyRequests, fctx.Response.StatusCode())
 		require.Equal(t, strconv.Itoa(int(expiration/time.Second)), string(fctx.Response.Header.Peek(fiber.HeaderRetryAfter)))
 
-		fewest := math.MaxFloat64
-		for range 200 {
-			fewest = min(fewest, testing.AllocsPerRun(1, func() { h(fctx) }))
-		}
-		return fewest
+		return limiterTestFewestAllocs(h, fctx)
 	}
 
 	short := rejectAllocs(t, time.Minute)

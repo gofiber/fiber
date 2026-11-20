@@ -72,8 +72,10 @@ func unsafeRandString(n int) (string, error) {
 // parserRequestURL sets options for the hostclient and normalizes the URL.
 // It merges the baseURL with the request URI if needed and applies query and path parameters.
 func parserRequestURL(c *Client, req *Request) error {
-	// Split URL into path and query parts using Cut (avoids allocation)
-	uri, queryPart, _ := utils.CutByte(req.url, '?')
+	// Split URL into path, query and fragment parts using Cut (avoids allocation).
+	// The fragment goes first: a '?' after the '#' belongs to it (RFC 3986 Section 3.5).
+	uri, hashPart, _ := utils.CutByte(req.url, '#')
+	uri, queryOnly, _ := utils.CutByte(uri, '?')
 
 	// If the URL doesn't start with http/https, prepend the baseURL.
 	if !protocolCheck.MatchString(uri) {
@@ -107,8 +109,7 @@ func parserRequestURL(c *Client, req *Request) error {
 		req.RawRequest.URI().SetPathBytes(req.RawRequest.URI().PathOriginal())
 	}
 
-	// Merge query parameters (split query from fragment using Cut).
-	queryOnly, hashPart, _ := utils.CutByte(queryPart, '#')
+	// Merge query parameters.
 	args := fasthttp.AcquireArgs()
 	defer fasthttp.ReleaseArgs(args)
 
@@ -495,6 +496,8 @@ func parserRequestBody(c *Client, req *Request) error {
 
 // parserRequestBodyFile handles the case where the request contains files to be uploaded.
 func parserRequestBodyFile(req *Request) error {
+	// A resent request still holds the previous multipart body.
+	req.RawRequest.ResetBody()
 	mw := multipart.NewWriter(req.RawRequest.BodyWriter())
 	if err := mw.SetBoundary(req.boundary); err != nil {
 		return fmt.Errorf("set boundary error: %w", err)
@@ -561,17 +564,19 @@ func writeMultipartBody(mw *multipart.Writer, req *Request) error {
 }
 
 func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) error {
-	// If reader is not set, open the file.
-	if f.reader == nil {
-		var err error
-		f.reader, err = os.Open(f.path)
+	// If reader is not set, open the file. Keep it out of f.reader so a
+	// resend opens the file again instead of reading a closed handle.
+	reader := f.reader
+	if reader == nil {
+		file, err := os.Open(f.path)
 		if err != nil {
 			return fmt.Errorf("open file error: %w", err)
 		}
+		reader = file
 	}
 
 	// Ensure the file reader is always closed after copying.
-	defer f.reader.Close() //nolint:errcheck // not needed
+	defer reader.Close() //nolint:errcheck // not needed
 
 	// Create form file and copy the content.
 	w, err := mw.CreateFormFile(f.fieldName, f.name)
@@ -579,7 +584,7 @@ func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) error {
 		return fmt.Errorf("create file error: %w", err)
 	}
 
-	if _, err := io.CopyBuffer(w, f.reader, *fileBuf); err != nil {
+	if _, err := io.CopyBuffer(w, reader, *fileBuf); err != nil {
 		return fmt.Errorf("failed to copy file data: %w", err)
 	}
 

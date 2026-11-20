@@ -1056,6 +1056,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 - Unified binding from URL parameters, query parameters, headers, and request bodies.
 - Support for custom binders and constraints.
 - Improved error handling and validation.
+- Custom converters registered with `binder.ParserType.ConverterE` can report why a value failed to bind. [Learn more](./api/bind.md#setparserdecoder).
 - Support multipart file binding for `*multipart.FileHeader`, `*[]*multipart.FileHeader`, and `[]*multipart.FileHeader` field types.
 - Support for unified binding (`Bind().All()`) with defined precedence order: (URI -> Body -> Query -> Headers -> Cookies). A struct can customize the order for all its fields with one `binding_source` tag on any top-level field. [Learn more](./api/bind.md#all).
 - Support MsgPack binding for request body.
@@ -1738,6 +1739,10 @@ A streamed response that declares no length (`SendStreamWriter`, or `SendStream`
 The key alone identifies a request, so whoever sends a stored key receives the response stored for it, whatever the user or route. The new `KeyScope` function returns the scope a key belongs to, such as the ID of the authenticated user, and a response is then stored, replayed and locked per scope and key. `Set-Cookie` and `Set-Cookie2` are no longer stored, and an entry that holds one is replayed without it, unless `KeepResponseHeaders` names the header; a replay no longer hands the cookie of the first client to the next one, while a session or token carried in another response header is still replayed unless `KeepResponseHeaders` leaves it out or `KeyScope` scopes the key. Have clients draw keys from a cryptographically secure random source, as the default validator checks only the length. See [Behavior](./middleware/idempotency.md#behavior).
 
 A response is stored under `idempotency:` followed by the key (or its digest with `KeyScope`), so a key sent by a client cannot read or overwrite an entry another middleware keeps in the same `Storage`. Responses stored by an earlier version are not replayed after the upgrade: a retry with such a key runs the handler again.
+
+### Deprecation
+
+A new deprecation middleware marks routes as deprecated. It sends the `Deprecation` header ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)), the `Sunset` header ([RFC 8594](https://www.rfc-editor.org/rfc/rfc8594)), or both, and can add `Link` relations to the deprecation and sunset documentation, also on their own to publish a policy. See the [deprecation middleware](./middleware/deprecation.md) docs.
 
 ### EncryptCookie
 

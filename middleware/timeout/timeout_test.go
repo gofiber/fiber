@@ -86,6 +86,7 @@ func TestTimeout_Statuses(t *testing.T) {
 	for _, tc := range []struct {
 		handler fiber.Handler
 		name    string
+		body    string   // checked when set
 		cfg     []Config // the arguments of New after the handler
 		want    int
 	}{
@@ -150,6 +151,47 @@ func TestTimeout_Statuses(t *testing.T) {
 			want:    fiber.StatusServiceUnavailable,
 		},
 		{
+			// An OnTimeout that neither writes a response nor returns an error
+			// leaves the default 503, as it does once the deadline has passed.
+			name:    "deadline error with an OnTimeout that writes nothing",
+			handler: func(_ fiber.Ctx) error { return context.DeadlineExceeded },
+			cfg:     []Config{{Timeout: time.Second, OnTimeout: func(_ fiber.Ctx) error { return nil }}},
+			want:    fiber.StatusServiceUnavailable,
+		},
+		{
+			// A response OnTimeout wrote is kept.
+			name:    "deadline error with an OnTimeout that writes the response",
+			handler: func(_ fiber.Ctx) error { return context.DeadlineExceeded },
+			cfg: []Config{{Timeout: time.Second, OnTimeout: func(c fiber.Ctx) error {
+				return c.Status(fiber.StatusGatewayTimeout).SendString("upstream timed out")
+			}}},
+			want: fiber.StatusGatewayTimeout,
+			body: "upstream timed out",
+		},
+		{
+			// What the handler wrote before it returned the error is not the timeout response.
+			name: "deadline error after a partial response, with an OnTimeout that writes nothing",
+			handler: func(c fiber.Ctx) error {
+				if err := c.Status(fiber.StatusAccepted).SendString("partial"); err != nil {
+					return err
+				}
+				return context.DeadlineExceeded
+			},
+			cfg:  []Config{{Timeout: time.Second, OnTimeout: func(_ fiber.Ctx) error { return nil }}},
+			want: fiber.StatusServiceUnavailable,
+			body: fiber.ErrServiceUnavailable.Message,
+		},
+		{
+			// A body stream OnTimeout set is a written response too.
+			name:    "deadline error with an OnTimeout that streams the response",
+			handler: func(_ fiber.Ctx) error { return context.DeadlineExceeded },
+			cfg: []Config{{Timeout: time.Second, OnTimeout: func(c fiber.Ctx) error {
+				return c.SendStream(strings.NewReader("upstream timed out"))
+			}}},
+			want: fiber.StatusOK,
+			body: "upstream timed out",
+		},
+		{
 			// The Next function skips the middleware.
 			name: "Next skips the middleware",
 			handler: func(c fiber.Ctx) error {
@@ -164,6 +206,10 @@ func TestTimeout_Statuses(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
 			app.Get("/", New(tc.handler, tc.cfg...))
+			if tc.body != "" {
+				apptest.ExpectBody(t, app, "/", tc.want, tc.body)
+				return
+			}
 			apptest.Expect(t, app, "/", tc.want)
 		})
 	}

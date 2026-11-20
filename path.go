@@ -1109,6 +1109,9 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler any
 				rawName = c
 				data = []string{}
 			}
+			// A name that keeps its padding resolves to no handler, and a
+			// constraint without one is dropped: `<int; min(5)>` would lose min.
+			rawName = utils.TrimSpace(rawName)
 
 			handler := findConstraintHandler(rawName, regexHandler, customConstraints)
 			if handler == nil {
