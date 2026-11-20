@@ -95,7 +95,11 @@ const (
 // plain request would still find, and be served, what another spelling
 // populated. An entry also carries the fields that restrict what a client does
 // with its body (keptHeaders), which one written before would be served
-// without. Bump this whenever what a key stands for, or what its entry carries,
+// without. A request that names a Content-Encoding without a body is keyed apart
+// from one with neither, as c.Body() answers by it: the 501 it writes for
+// compress, stored under the plain key by the earlier rule, would still be served
+// to every plain request on a store that survived the upgrade. Bump this
+// whenever what a key stands for, or what its entry carries,
 // changes; the cost is one cold cache after a deploy. Additive bookkeeping fields
 // such as heapgen need no bump: old entries decode with generation zero, and
 // older readers skip the new field without changing the response or key
