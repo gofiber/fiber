@@ -3734,8 +3734,10 @@ func Benchmark_Cache_HitConfigs(b *testing.B) {
 		vary    string
 		cfg     Config
 		refused bool // another session's refusal is recorded before the hits are measured
+		written bool // a request that is not safe has succeeded before the hits are measured
 	}{
 		{name: "default"},
+		{name: "after a write", written: true},
 		{name: "vary", vary: "Accept-Encoding, Accept-Language"},
 		{name: "vary Cookie", vary: "Cookie"},
 		{name: "invalidator", cfg: Config{CacheInvalidator: func(fiber.Ctx) bool { return false }}},
@@ -3759,10 +3761,20 @@ func Benchmark_Cache_HitConfigs(b *testing.B) {
 				}
 				return c.SendString("body")
 			})
+			app.Put("/written", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 			h, fctx := cacheBenchStored(app, fiber.MethodGet, func(req *fasthttp.Request) {
 				req.Header.Set("X-API-Key", "tok_0123456789abcdefghijklmnopqrstuvwxyz")
 				req.Header.SetCookie("session", "abc")
 			})
+
+			if bc.written {
+				// The table of writes is allocated by the first one, and every hit looks in it from then on.
+				write := &fasthttp.RequestCtx{}
+				write.Request.Header.SetMethod(fiber.MethodPut)
+				write.Request.SetRequestURI("/written")
+				h(write)
+				require.Equal(b, fiber.StatusNoContent, write.Response.StatusCode())
+			}
 
 			if bc.refused {
 				// Another session's entry, then its refusal on a revalidation, leave a record in the group.

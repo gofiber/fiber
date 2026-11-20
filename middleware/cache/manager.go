@@ -28,6 +28,7 @@ type item struct {
 	etag            []byte         `msg:",limit=256"`  // ETags are small tokens/quoted strings.
 	vary            []byte         `msg:",limit=2048"` // Vary lists field names, bounded like Cache-Control.
 	date            uint64
+	stored          uint64 // when the request that produced the entry began, in nanoseconds since the epoch; zero if an earlier version stored it
 	status          int
 	age             uint64
 	exp             uint64
@@ -148,6 +149,7 @@ func (m *manager) release(e *item) {
 	e.ctype = nil
 	e.cencoding = nil
 	e.date = 0
+	e.stored = 0
 	e.status = 0
 	e.age = 0
 	e.exp = 0

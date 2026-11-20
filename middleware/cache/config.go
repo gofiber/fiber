@@ -26,6 +26,8 @@ type Config struct {
 	// It is asked twice: before an entry is looked up, where true passes the
 	// request on without the cache, and again before the response is stored, where
 	// true leaves it unstored. It may so decide by the request or by the response.
+	// It is asked of a request that is not safe too, which ends the stored responses
+	// of its path once it succeeds, unless Next returns true for it.
 	//
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
@@ -66,6 +68,9 @@ type Config struct {
 
 	accounting func(storedBytes uint, heapLen int)
 
+	// purges overrides the table of writes in tests, which pick paths of slots of their own.
+	purges *purgeTable
+
 	// CacheHeader header on response header, indicate cache status, with the following possible return value
 	//
 	// hit, miss, unreachable
@@ -104,7 +109,9 @@ type Config struct {
 	KeyCredentialHeaders []string
 
 	// Methods specifies which HTTP methods are eligible for caching.
-	// Requests with methods not in this list bypass the cache entirely.
+	// Requests with methods not in this list bypass the cache, but one that is not safe, a POST,
+	// a PUT or a DELETE, ends the stored responses of its path once it succeeds (RFC 9111 §4.4).
+	// A method named here is treated as a read, and ends nothing.
 	// Method names are normalized to uppercase automatically.
 	// Set to nil to use the default; set to an empty slice to disable caching for all methods.
 	//

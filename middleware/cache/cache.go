@@ -99,7 +99,9 @@ const (
 // without. A request that names a Content-Encoding without a body is keyed apart
 // from one with neither, as c.Body() answers by it: the 501 it writes for
 // compress, stored under the plain key by the earlier rule, would still be served
-// to every plain request on a store that survived the upgrade. Bump this
+// to every plain request on a store that survived the upgrade. An entry carries
+// when the request that stored it began (stored), which a write to its path is
+// judged by; one written before has none, and any write there ends it. Bump this
 // whenever what a key stands for, or what its entry carries,
 // changes; the cost is one cold cache after a deploy. Additive bookkeeping fields
 // such as heapgen need no bump: old entries decode with generation zero, and
@@ -312,6 +314,11 @@ func New(config ...Config) fiber.Handler {
 	// Cache-Control of its own has to name in its Vary.
 	keyVary := cfg.keyVaryFields()
 	keyVaryValue := []byte(strings.Join(keyVary, ", "))
+	// When a request that is not safe last succeeded at each path, for the entries a write ends.
+	purges := cfg.purges
+	if purges == nil {
+		purges = newPurgeTable()
+	}
 	maxEntries := max(minTrackedEntries, int(min(cfg.MaxBytes/trackedEntryOverhead, math.MaxInt32)))
 
 	// Delete key from both manager and storage
@@ -440,17 +447,35 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// Refrain from caching
-		if reqDirectives.noStore {
-			return c.Next()
+		requestMethod := c.Method()
+		cached := slices.Contains(cfg.Methods, requestMethod)
+
+		// pass answers a request without the cache. One the cache does not serve that is not safe, a PUT,
+		// a POST or a DELETE, ends the stored responses of its path once it succeeds, as RFC 9111 §4.4
+		// requires of a cache that gets a non-error response to one, whether it asked to be stored or not.
+		// Without that, a GET served what the path held before the write until the entry expired. Next
+		// skips the middleware for the request, and so the invalidation.
+		pass := func() error {
+			if cached || !unsafeMethod(requestMethod) || (cfg.Next != nil && cfg.Next(c)) {
+				return c.Next()
+			}
+			slot := purges.slot(c.Host(), c.Path()) // before the handler, which may rewrite the path
+			err := c.Next()
+			if status := c.Response().StatusCode(); err == nil && status >= fiber.StatusOK && status < fiber.StatusBadRequest {
+				purges.mark(slot, unixNanos(cfg.now()))
+			}
+			return err
 		}
 
-		requestMethod := c.Method()
+		// Refrain from caching
+		if reqDirectives.noStore {
+			return pass()
+		}
 
 		// Only cache methods listed in cfg.Methods (default: GET, HEAD).
-		if !slices.Contains(cfg.Methods, requestMethod) {
+		if !cached {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
-			return c.Next()
+			return pass()
 		}
 
 		// A key generator may read the body (QUERY), and only a declared length bounds a streamed one;
@@ -655,8 +680,11 @@ func New(config ...Config) fiber.Handler {
 		// App code runs before the lock is taken and the clock read, so a slow call stalls no request, a
 		// panic leaves the lock free, and freshness is judged as of one instant; the entry is immutable, so
 		// a concurrent replacement is harmless. The app is not asked about an entry already ruled out.
-		invalidated := false
-		if e != nil && cfg.CacheInvalidator != nil {
+		//
+		// An entry stored by a request that began before a write to its path succeeded is ended without
+		// asking, as one the app invalidates is (see purgeTable).
+		invalidated := e != nil && purges.supersedes(c.Host(), c.Path(), e)
+		if e != nil && !invalidated && cfg.CacheInvalidator != nil {
 			early := safeUnixSeconds(cfg.now())
 			settle(early)
 			expired := e != nil && e.ttl == 0 && e.exp != 0 && early >= e.exp
@@ -668,7 +696,8 @@ func New(config ...Config) fiber.Handler {
 		// Lock entry before reading the current timestamp so freshness decisions
 		// are based on the time the protected cache entry is evaluated.
 		guard := newCacheLockGuard(mux)
-		ts := safeUnixSeconds(cfg.now())
+		lookedUp := cfg.now()
+		ts := safeUnixSeconds(lookedUp)
 
 		// handled reports that the lookup phase already wrote the response.
 		handled, lookupErr := func() (bool, error) {
@@ -1281,6 +1310,9 @@ func New(config ...Config) fiber.Handler {
 		// Every field line, joined: the stored response has to be replayed with
 		// the Vary it was selected by, and Peek would drop a second line.
 		e.vary = utils.CopyBytes(joinedHeader(&c.Response().Header, fiber.HeaderVary, respCanonical))
+		// The response is to what the path held when the request began: a write that succeeds after
+		// that ends the entry.
+		e.stored = unixNanos(lookedUp)
 		e.date = 0
 
 		ageVal := uint64(0)
