@@ -142,6 +142,8 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 	app.Hooks().OnGroupName(func(_ Group) error { return errors.New("unknown error") })
 
 	require.PanicsWithError(t, "unknown error", func() { _ = app.Group("/x").Name("x.") })
+	require.True(t, app.mutex.TryLock(), "app mutex is still held after the hook error")
+	app.mutex.Unlock()
 }
 
 func Test_Hook_OnPreShutdown(t *testing.T) {
