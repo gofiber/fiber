@@ -2516,10 +2516,12 @@ func Test_CacheDeltaSecondsOverflow(t *testing.T) {
 		})
 	}
 
-	// Age is not capped: one above a configured lifetime above the ceiling still uses it up.
-	t.Run("response Age above the configured lifetime", func(t *testing.T) {
+	// Age is not capped: one above a generated lifetime above the ceiling still uses it up. The
+	// generator keeps Expiration small, which New converts to int, 32 bits on 386.
+	t.Run("response Age above a generated lifetime", func(t *testing.T) {
 		t.Parallel()
-		app, _ := cacheTestAOrigin(New(Config{Expiration: 2_500_000_000 * time.Second}), "", fiber.HeaderAge, "3000000000")
+		long := func(fiber.Ctx, *Config) time.Duration { return 2_500_000_000 * time.Second }
+		app, _ := cacheTestAOrigin(New(Config{ExpirationGenerator: long}), "", fiber.HeaderAge, "3000000000")
 		cacheTestAExpectBody(t, app, "/", cacheUnreachable, "1")
 	})
 
