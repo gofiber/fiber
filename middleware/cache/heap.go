@@ -30,7 +30,7 @@ func newIndexedHeap() *indexedHeap {
 type heapEntry struct {
 	key      string
 	manifest string // the Vary manifest the entry was stored under, if any
-	exp      uint64
+	exp      uint64 // when the entry is due to be evicted, which the handler sets no later than Expiration after it was stored
 	gen      uint64
 	bytes    uint
 	idx      int
@@ -75,9 +75,19 @@ func (h *indexedHeap) Len() int {
 	return len(h.entries)
 }
 
-// Less implements heap.Interface and orders entries by expiration time.
+// Less implements heap.Interface and orders entries by the time they are due to be evicted, the one
+// that was stored first going first among those due together. Entries stored in the same second with the
+// same lifetime are, and every entry that outlives Expiration is due at the same time as the ones stored
+// in its second, so without the tie-break their order was whatever the heap made of it.
 func (h *indexedHeap) Less(i, j int) bool {
-	return h.entries[i].exp < h.entries[j].exp
+	a, b := &h.entries[i], &h.entries[j]
+	if a.exp != b.exp {
+		return a.exp < b.exp
+	}
+	// Generations count up, wrapping, from a random start (see nextGeneration): a stored first when the
+	// distance from it to b is under half the range.
+	ahead := b.gen - a.gen
+	return ahead != 0 && ahead < 1<<63
 }
 
 // Swap implements heap.Interface and swaps the entries at the provided indices.

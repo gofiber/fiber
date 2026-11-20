@@ -123,7 +123,10 @@ type Config struct {
 	Expiration time.Duration
 
 	// Max number of bytes simultaneously stored in cache, counting each entry's body, key and stored
-	// headers. When limit is reached, entries with the nearest expiration are deleted to make room for new.
+	// headers. When limit is reached, entries with the nearest expiration are deleted to make room for new,
+	// the one stored first going first among those that expire together. An entry's lifetime counts as no
+	// more than Expiration from when it was stored, so one with a longer lifetime does not outlast the
+	// entries stored after it.
 	// The number of entries is limited along with it, to MaxBytes/256 but no fewer than 1024,
 	// since an entry also takes memory for bookkeeping that is not counted.
 	// 0 means the default; set DisableMaxBytes to store without a limit.

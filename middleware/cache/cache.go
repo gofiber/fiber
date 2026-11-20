@@ -297,6 +297,12 @@ func New(config ...Config) fiber.Handler {
 	heap := newIndexedHeap()
 	// count stored bytes (each entry's body, key and stored headers)
 	var storedBytes uint
+	// An entry is evicted in the order it would expire, but counting no more than Expiration from when it
+	// was stored: one that outlives it, by a long max-age, does not outlast the entries stored after it.
+	// Counted to its own expiry, a burst of requests for a long-lived route under query strings of the
+	// client's making filled the cache with entries that went last, for as long as they lived, and the
+	// entries stored after them evicted one another.
+	evictionHorizon := uint64(cfg.Expiration.Seconds())
 	maxEntries := max(minTrackedEntries, int(min(cfg.MaxBytes/trackedEntryOverhead, math.MaxInt32)))
 
 	// Delete key from both manager and storage
@@ -1553,6 +1559,7 @@ func New(config ...Config) fiber.Handler {
 		if expiresParseError {
 			e.exp = responseTS + 1
 		}
+		evictAt := min(e.exp, responseTS+evictionHorizon)
 
 		// Store entry in heap (space already reserved in eviction phase)
 		var heapIdx int
@@ -1567,7 +1574,7 @@ func New(config ...Config) fiber.Handler {
 					replaced, replacedOK = candidate, true
 				}
 			}
-			heapIdx = heap.put(key, e.exp, entrySize, entryManifest)
+			heapIdx = heap.put(key, evictAt, entrySize, entryManifest)
 			e.heapidx = heapIdx
 			heapGen = heap.generation(heapIdx)
 			e.heapgen = heapGen
@@ -1633,7 +1640,6 @@ func New(config ...Config) fiber.Handler {
 			rawWritten = true
 			// avoid body msgp encoding
 			e.body = nil
-			entryExp := e.exp // manager.set hands e back to the pool
 			if err := manager.set(reqCtx, key, e, storageExpiration); err != nil {
 				return notStored(err, cleanupOnStoreError(reqCtx, false, true))
 			}
@@ -1647,7 +1653,7 @@ func New(config ...Config) fiber.Handler {
 				if !tracked {
 					if delErr := deleteKey(reqCtx, key); delErr != nil {
 						// Still stored, so track it again for a later eviction to retry.
-						untracked := evictionCandidate{key: key, manifest: entryManifest, size: entrySize, exp: entryExp, oldGen: heapGen}
+						untracked := evictionCandidate{key: key, manifest: entryManifest, size: entrySize, exp: evictAt, oldGen: heapGen}
 						log.Warnf("cache: failed to delete key %q evicted while it was stored: %v", maskKey(key), delErr)
 						if err := restoreHeapEntry(reqCtx, untracked); err != nil {
 							log.Warnf("%v", err)

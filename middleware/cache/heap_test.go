@@ -84,6 +84,20 @@ func TestIndexedHeapPutBackNodesLeaveNoOrphans(t *testing.T) {
 	require.Nil(t, h.takeOrphans())
 }
 
+// Entries due together, as those stored in one second are, go in the order they were stored.
+func TestIndexedHeapEvictsEntriesDueTogetherInStoringOrder(t *testing.T) {
+	t.Parallel()
+	h := &indexedHeap{}
+	const nodes = 64
+	for i := range nodes {
+		h.put(strconv.Itoa(i), 7, 1, "")
+	}
+	for i := range nodes {
+		key, _ := h.removeFirst()
+		require.Equal(t, strconv.Itoa(i), key)
+	}
+}
+
 func TestIndexedHeapRemoveKeepsOrder(t *testing.T) {
 	t.Parallel()
 	rng := rand.New(rand.NewPCG(1, 2))
