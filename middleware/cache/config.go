@@ -122,7 +122,7 @@ type Config struct {
 	// headers. When limit is reached, entries with the nearest expiration are deleted to make room for new.
 	// The number of entries is limited along with it, to MaxBytes/256 but no fewer than 1024,
 	// since an entry also takes memory for bookkeeping that is not counted.
-	// 0 means no limit
+	// 0 means the default; set DisableMaxBytes to store without a limit.
 	//
 	// Optional. Default: 1 * 1024 * 1024
 	MaxBytes uint
@@ -130,6 +130,13 @@ type Config struct {
 	// keyHeadersNameCredential: KeyHeaders names a credential header, so every entry is one client's,
 	// whatever the KeyGenerator.
 	keyHeadersNameCredential bool
+
+	// DisableMaxBytes stores responses without the MaxBytes limit, however large and however
+	// many: every distinct key a client asks for is then held until it expires, so set it only
+	// where something else bounds what is cached.
+	//
+	// Optional. Default: false
+	DisableMaxBytes bool
 
 	// DisableQueryKeys disables query-string partitioning in cache keys.
 	//
@@ -200,6 +207,7 @@ var ConfigDefault = Config{
 	StoreResponseHeaders:          false,
 	Storage:                       nil,
 	MaxBytes:                      1 * 1024 * 1024,
+	DisableMaxBytes:               false,
 }
 
 // Helper function to set default values
@@ -229,6 +237,15 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.CacheHeader == "" {
 		cfg.CacheHeader = ConfigDefault.CacheHeader
+	}
+	// Left at zero, MaxBytes is the default limit, as it is without a Config. It was none at
+	// all, so a client asking for URLs it made up, or for a large file under one query after
+	// another, filled the memory. From here on zero means no limit, which DisableMaxBytes asks for.
+	switch {
+	case cfg.DisableMaxBytes:
+		cfg.MaxBytes = 0
+	case cfg.MaxBytes == 0:
+		cfg.MaxBytes = ConfigDefault.MaxBytes
 	}
 	cfg.normalizeKeys()
 	// nil = use default methods; explicit empty slice = cache no methods
