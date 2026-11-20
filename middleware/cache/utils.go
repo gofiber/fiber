@@ -4,8 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
-	"fmt"
 	"math"
 	"math/bits"
 	"strings"
@@ -19,13 +17,6 @@ import (
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
-
-func cacheBodyFetchError(mask func(string) string, key string, err error) error {
-	if errors.Is(err, errCacheMiss) {
-		return fmt.Errorf("cache: no cached body for key %q: %w", mask(key), err)
-	}
-	return err
-}
 
 func cachedResponseAge(e *item, now uint64) uint64 {
 	clampedDate := clampDateSeconds(e.date, now)

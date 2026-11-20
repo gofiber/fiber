@@ -284,6 +284,20 @@ entry keyed that way is sent with `Cache-Control: private`, as described below.
 
 :::
 
+### A Storage that fails
+
+A `Storage` that returns an error does not fail the request. The handler answers it, the failure is logged as a warning, with the key as `[redacted]` unless `DisableValueRedaction` is set, and `X-Cache` reads `unreachable` whenever the response was neither served from the cache nor stored:
+
+- **A lookup that fails**, for the entry or for the Vary manifest of its URL, sends the request to the handler, and the response is not stored.
+- **An entry that cannot be decoded**, because this version of the middleware did not write it or the backend returned only part of it, is a miss, and the response stored for the request replaces it.
+- **A body that cannot be read**, or one the backend dropped while it kept the entry, makes the entry a miss as well.
+- **A response that cannot be stored** is sent as the handler produced it: a write fails, the entries that have to make room for it under `MaxBytes` cannot be deleted, or the Vary manifest of its URL cannot be written or, for a response that no longer varies, deleted. What a failed write left behind is deleted again, and an entry that could not be evicted stays counted, so a later eviction retries it.
+- **An entry that cannot be deleted** when a request finds it expired, or otherwise not to be served, stays where it is. The request is answered by the handler, whose response replaces the entry if it is stored, and each later request judges the entry again.
+
+`Cache-Control: only-if-cached` forbids calling the handler, so such a request is answered `504 Gateway Timeout` in each of these cases, as it is when nothing is stored. The record of a refused credential (see [Responses that are never stored](#responses-that-are-never-stored)) that cannot be read still counts as a refusal, which has the entry revalidated rather than served.
+
+While the `Storage` fails, every request reaches the handler, so the app carries the load the cache was taking from it.
+
 ### Per-user entries and a cache in front of the app
 
 A hit is sent with the stored response's `Vary`, whether or not

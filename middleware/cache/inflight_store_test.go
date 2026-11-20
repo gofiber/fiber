@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -98,52 +99,61 @@ func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsNotKept(t *testing.T) {
 }
 
 // When the entry cannot be taken back out, it has to be tracked again so that a
-// later eviction reaches it.
+// later eviction reaches it. The request that stored it is answered all the same.
 func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsTrackedWhenDeleteFails(t *testing.T) {
 	t.Parallel()
-	storage := &interleavedSetStorage{Memory: storagetest.New()}
-	probe := &accountingProbe{}
+	// The entry tracked again is read back to check it is the one written; a Storage that fails that
+	// read too leaves it tracked.
+	for _, failing := range [][]string{{storagetest.OpDelete}, {storagetest.OpDelete, storagetest.OpGet}} {
+		t.Run(strings.Join(failing, " and ")+" fail", func(t *testing.T) {
+			t.Parallel()
+			storage := &interleavedSetStorage{Memory: storagetest.New()}
+			probe := &accountingProbe{}
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Expiration: time.Hour,
-		MaxBytes:   charged(defaultKey("/second"), 100, textPlain), // one entry
-		Storage:    storage,
-		accounting: probe.record,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.Send(make([]byte, 100)) })
+			app := fiber.New()
+			app.Use(New(Config{
+				Expiration: time.Hour,
+				MaxBytes:   charged(defaultKey("/second"), 100, textPlain), // one entry
+				Storage:    storage,
+				accounting: probe.record,
+			}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.Send(make([]byte, 100)) })
 
-	get := func(target string) (int, error) {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
-		if err != nil {
-			return 0, err
-		}
-		return resp.StatusCode, resp.Body.Close()
+			get := func(target string) (int, error) {
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+				if err != nil {
+					return 0, err
+				}
+				return resp.StatusCode, resp.Body.Close()
+			}
+
+			var (
+				secondStatus int
+				errSecond    error
+			)
+			storage.duringFirstSet = func() {
+				secondStatus, errSecond = get("/second")
+				for _, op := range failing {
+					storage.SetErr(op, "*", errors.New("storage unavailable"))
+				}
+			}
+			status, err := get("/first")
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, status)
+			require.NoError(t, errSecond)
+			require.Equal(t, fiber.StatusOK, secondStatus)
+			require.Equal(t, 2, probe.nodes())
+			require.Equal(t, charged(defaultKey("/first"), 100, textPlain)+charged(defaultKey("/second"), 100, textPlain), probe.counted())
+
+			storage.ClearErrs()
+			status, err = get("/third")
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, status)
+			require.Equal(t, 1, probe.nodes())
+			require.Equal(t, charged(defaultKey("/third"), 100, textPlain), probe.counted())
+			require.Equal(t, 1, storage.bodiesOfSize(100))
+		})
 	}
-
-	var (
-		secondStatus int
-		errSecond    error
-	)
-	storage.duringFirstSet = func() {
-		secondStatus, errSecond = get("/second")
-		storage.SetErr(storagetest.OpDelete, "*", errors.New("delete failed"))
-	}
-	status, err := get("/first")
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, status)
-	require.NoError(t, errSecond)
-	require.Equal(t, fiber.StatusOK, secondStatus)
-	require.Equal(t, 2, probe.nodes())
-	require.Equal(t, charged(defaultKey("/first"), 100, textPlain)+charged(defaultKey("/second"), 100, textPlain), probe.counted())
-
-	storage.ClearErrs()
-	status, err = get("/third")
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, status)
-	require.Equal(t, 1, probe.nodes())
-	require.Equal(t, charged(defaultKey("/third"), 100, textPlain), probe.counted())
-	require.Equal(t, 1, storage.bodiesOfSize(100))
 }
 
 // The in-memory store offers no seam between the two steps, so this one races

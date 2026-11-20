@@ -32,6 +32,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
+	"github.com/gofiber/fiber/v3/internal/loggertest"
 	"github.com/gofiber/fiber/v3/internal/personalheader"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
@@ -199,46 +200,204 @@ func (f *cacheTestAFailures) app() *fiber.App {
 	})
 }
 
+// A Storage that fails does not fail the request: the handler answers it, the failure is logged
+// and X-Cache says the cache had no part in the answer. It was a 500 carrying the Storage's own
+// error, so an outage of the store was an outage of every route behind the cache.
 func TestCacheStorageErrors(t *testing.T) {
 	t.Parallel()
 	key := defaultKey("/")
+	unstored := [2]string{cacheUnreachable, cacheUnreachable}
+	// Use an obviously expired timestamp without relying on time-based conversions
+	expired, err := (&item{exp: 1}).MarshalMsg(nil)
+	require.NoError(t, err)
 
 	for _, tc := range []struct {
-		name    string
-		op      string // the failing storage operation
-		key     string // the key it fails on
-		wantErr string
-		expired bool // the storage already holds an expired entry for the request
+		name   string
+		op     string    // the failing storage operation, if one does
+		key    string    // the key it fails on
+		want   [2]string // X-Cache of two requests in a row
+		stored []byte    // what the storage already holds for the request
 	}{
-		{name: "get", op: storagetest.OpGet, key: key, wantErr: "cache: failed to get key"},
-		{name: "set", op: storagetest.OpSet, key: bodyKey(key), wantErr: "cache: failed to store raw key"},
-		{
-			name: "delete", op: storagetest.OpDelete, key: key,
-			wantErr: "cache: failed to delete expired key", expired: true,
-		},
+		{name: "get", op: storagetest.OpGet, key: key, want: unstored},
+		{name: "get of the Vary manifest", op: storagetest.OpGet, key: manifestKeyPrefix + key, want: unstored},
+		// 0xc1 is the one byte MessagePack never uses: an entry no version of the middleware wrote. It is
+		// a miss, and the handler's answer replaces it.
+		{name: "entry that cannot be decoded", stored: []byte{0xc1}, want: [2]string{cacheMiss, cacheHit}},
+		{name: "set of the body", op: storagetest.OpSet, key: bodyKey(key), want: unstored},
+		{name: "set of the entry", op: storagetest.OpSet, key: key, want: unstored},
+		// The expired entry that cannot be deleted is replaced by the handler's answer, which is then a hit.
+		{name: "delete", op: storagetest.OpDelete, key: key, stored: expired, want: [2]string{cacheMiss, cacheHit}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			storage := storagetest.New()
-			storage.SetErr(tc.op, tc.key, errors.New("boom"))
-
-			if tc.expired {
-				// Use an obviously expired timestamp without relying on time-based conversions
-				raw, err := (&item{exp: 1}).MarshalMsg(nil)
-				require.NoError(t, err)
-				storage.Data[key] = raw
+			if tc.op != "" {
+				storage.SetErr(tc.op, tc.key, errors.New("boom"))
+			}
+			if tc.stored != nil {
+				storage.Data[key] = tc.stored
 			}
 
 			var failures cacheTestAFailures
 			app := failures.app()
 			app.Use(New(Config{Storage: storage, Expiration: time.Second}))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+			var calls atomic.Int32
+			app.Get("/", func(c fiber.Ctx) error { calls.Add(1); return c.SendString("ok") })
 
-			apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
-			require.Error(t, failures.err)
-			require.ErrorContains(t, failures.err, tc.wantErr)
+			// only-if-cached forbids the handler, so there is nothing to answer it with.
+			cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", "only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
+			require.Zero(t, calls.Load())
+
+			// The handler answers every request the cache cannot, for as long as the Storage fails.
+			answered := int32(0)
+			for _, want := range tc.want {
+				cacheTestAExpectBody(t, app, "/", want, "ok")
+				if want != cacheHit {
+					answered++
+				}
+				require.Equal(t, answered, calls.Load())
+			}
+			require.NoError(t, failures.err)
 		})
 	}
+}
+
+// What a failing Storage does is logged, now that the request no longer fails with it: the operation,
+// the Storage's own error, and the key as a placeholder unless DisableValueRedaction is set.
+// conventions:ignore parallel: the default logger is redirected to read what is logged
+func Test_Cache_StorageFailureIsLogged(t *testing.T) {
+	key := defaultKey("/")
+
+	for _, tc := range []struct {
+		name   string
+		fails  [][2]string // the failing storage operations, each with the key it fails on
+		stored []byte      // what the storage already holds for the request
+		want   []string
+		shown  bool // DisableValueRedaction
+	}{
+		{
+			name: "lookup", fails: [][2]string{{storagetest.OpGet, key}},
+			want: []string{`cache: failed to get key "[redacted]" from storage: boom; the request is answered without the cache`},
+		},
+		{
+			name: "lookup, keys shown", fails: [][2]string{{storagetest.OpGet, key}}, shown: true,
+			want: []string{fmt.Sprintf("cache: failed to get key %q from storage: boom", key)},
+		},
+		{
+			name: "entry that cannot be decoded", stored: []byte{0xc1},
+			want: []string{`cache: failed to unmarshal key "[redacted]"`, "; it is treated as a miss"},
+		},
+		{
+			name: "body write", fails: [][2]string{{storagetest.OpSet, bodyKey(key)}},
+			want: []string{`cache: failed to store raw key "[redacted]": boom`},
+		},
+		{
+			name:  "entry write, and the delete of the body written before it",
+			fails: [][2]string{{storagetest.OpSet, key}, {storagetest.OpDelete, bodyKey(key)}},
+			want: []string{
+				`cache: failed to store key "[redacted]": boom`,
+				`cache: failed to delete raw key "[redacted]" after store error`,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logged := loggertest.CaptureContextLog(t, "")
+			storage := storagetest.New()
+			for _, failing := range tc.fails {
+				storage.SetErr(failing[0], failing[1], errors.New("boom"))
+			}
+			if tc.stored != nil {
+				storage.Data[key] = tc.stored
+			}
+			app := fiber.New()
+			app.Use(New(Config{Storage: storage, Expiration: time.Hour, DisableValueRedaction: tc.shown}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+			// X-Cache is pinned by TestCacheStorageErrors, failure by failure.
+			apptest.ExpectBody(t, app, "/", fiber.StatusOK, "ok")
+			for _, want := range tc.want {
+				require.Contains(t, logged.String(), want)
+			}
+			if !tc.shown {
+				require.NotContains(t, logged.String(), key)
+			}
+		})
+	}
+}
+
+// An entry found for an only-if-cached request and dropped rather than served leaves nothing to answer
+// it with, whether or not the Storage lets go of the entry: 504, and the handler is not reached. The
+// entry dropped as expired, or for want of its body, sent the request on to the handler.
+func Test_Cache_OnlyIfCachedEntryDropped(t *testing.T) {
+	t.Parallel()
+	key := defaultKey("/")
+	future := uint64(time.Now().Unix()) + 3600
+
+	for _, tc := range []struct {
+		entry *item
+		name  string
+	}{
+		{name: "expired", entry: &item{exp: 1}},
+		{name: "expired, held past its lifetime", entry: &item{exp: 1, ttl: 1}},
+		{name: "private", entry: &item{exp: future, private: true}},
+	} {
+		for _, deleteFails := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/deleteFails=%t", tc.name, deleteFails), func(t *testing.T) {
+				t.Parallel()
+				storage := storagetest.New()
+				raw, err := tc.entry.MarshalMsg(nil)
+				require.NoError(t, err)
+				storage.Data[key] = raw
+				storage.Data[bodyKey(key)] = []byte("stored")
+				if deleteFails {
+					storage.SetErr(storagetest.OpDelete, key, errors.New("boom"))
+				}
+				app, calls := cacheTestAOrigin(New(Config{Storage: storage, Expiration: time.Hour}), "response-")
+
+				cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", "only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
+				require.Zero(t, calls.Load(), "only-if-cached must not reach the handler")
+				require.Equal(t, deleteFails, storage.Holds(key), "the entry stays only when it cannot be deleted")
+			})
+		}
+	}
+}
+
+// A response that no longer varies ends the Vary manifest of its URL before it is stored. While the
+// Storage keeps the manifest, a lookup goes on selecting by it and would not reach the response, so the
+// response is not stored: the request is answered all the same, and the variant stored earlier is
+// served until the manifest can go.
+func Test_Cache_StaleVaryManifestThatCannotBeDeleted(t *testing.T) {
+	t.Parallel()
+	storage := storagetest.New()
+	manifest := manifestKeyPrefix + defaultKey("/")
+	var varies atomic.Bool
+	varies.Store(true)
+	var calls atomic.Int32
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage, Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error {
+		if varies.Load() {
+			c.Set(fiber.HeaderVary, "X-Variant")
+		}
+		return c.SendString("response-" + strconv.Itoa(int(calls.Add(1))))
+	})
+	plain := func() *http.Request { return apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Variant", "a")) }
+	reload := func() *http.Request {
+		return apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Variant", "a"), apptest.WithHeader(fiber.HeaderCacheControl, "max-age=0"))
+	}
+
+	cacheTestAExpectBody(t, app, plain(), cacheMiss, "response-1")
+	require.True(t, storage.Holds(manifest))
+
+	varies.Store(false)
+	storage.SetErr(storagetest.OpDelete, manifest, errors.New("boom"))
+	cacheTestAExpectBody(t, app, reload(), cacheUnreachable, "response-2")
+	cacheTestAExpectBody(t, app, plain(), cacheHit, "response-1")
+
+	storage.ClearErrs()
+	cacheTestAExpectBody(t, app, reload(), cacheMiss, "response-3")
+	require.False(t, storage.Holds(manifest))
+	cacheTestAExpectBody(t, app, plain(), cacheHit, "response-3")
 }
 
 func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
@@ -298,9 +457,8 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("payload") })
 
-	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
-	require.Error(t, failures.err)
-	require.ErrorContains(t, failures.err, "cache: failed to store key")
+	cacheTestAExpectBody(t, app, "/", cacheUnreachable, "payload")
+	require.NoError(t, failures.err)
 
 	records := storage.Calls(storagetest.OpDelete)
 	require.Len(t, records, 1)
@@ -1607,7 +1765,7 @@ func Test_Cache_FailedRefresh(t *testing.T) {
 
 			storage.SetErr(storagetest.OpSet, tc.failedKey, errors.New("boom"))
 
-			apptest.Expect(t, app, cacheTestAGetCC("/", noCache), fiber.StatusInternalServerError)
+			cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", noCache), cacheUnreachable, fiber.StatusOK)
 
 			if !tc.keepsOld {
 				counted, nodes = 0, 0
@@ -2940,7 +3098,7 @@ func Test_CacheStorage_EvictionRestoreDropsAbsentOrReplacedEntry(t *testing.T) {
 			cacheTestBRequireAccounting(t, probe, stale, 1)
 
 			storage.armed.Store(true)
-			apptest.Expect(t, app, "/new", fiber.StatusInternalServerError)
+			cacheTestAExpectBody(t, app, "/new", cacheUnreachable, "fresh")
 			cacheTestBRequireAccounting(t, probe, 0, 0)
 		})
 	}
@@ -3020,8 +3178,9 @@ func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *
 
 	apptest.Expect(t, app, cacheTestAGetCC("/old?replacement=true", "max-age=0"), fiber.StatusOK)
 
-	oldResp := evicting.finish(t)
-	require.Equal(t, fiber.StatusInternalServerError, oldResp.StatusCode)
+	unstored := evicting.finish(t)
+	require.Equal(t, fiber.StatusOK, unstored.StatusCode)
+	require.Equal(t, cacheUnreachable, unstored.Header.Get("X-Cache"))
 	cacheTestBRequireAccounting(t, probe, replacement, 1)
 	require.True(t, storage.Holds(storage.key), "the replacement is stored")
 }
@@ -3861,11 +4020,11 @@ func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 		}
 	}
 
-	// Next request triggers eviction; deletion failure should surface an error
-	rsp := apptest.Do(t, app, "/second")
-	require.Equal(t, fiber.StatusInternalServerError, rsp.StatusCode)
-	require.Contains(t, apptest.Body(t, rsp), "failed to delete key")
+	// The next request needs the room of /first, which cannot be deleted: it is answered unstored,
+	// and /first is still served.
+	cacheTestAExpectBody(t, app, "/second", cacheUnreachable, "data")
 	t.Logf("stored keys after deletion failure: %v", storage.Keys())
+	cacheTestAExpect(t, app, "/first", cacheHit)
 	storage.ClearErrs()
 
 	// Another request should succeed and be cacheable after restoring heap tracking
@@ -3935,8 +4094,6 @@ func Test_Cache_HelperFunctions(t *testing.T) {
 	pastHeuristicAge := uint64(25 * time.Hour / time.Second)
 	contentType := []cachedHeader{{key: []byte("Content-Type"), value: []byte("text/html")}}
 	authorization := []cachedHeader{{key: []byte("Authorization"), value: []byte("Bearer token")}}
-	mask := func(_ string) string { return "***" }
-	storageErr := errors.New("storage error")
 
 	// Each row holds what a call returned, made as the table is built, and what it should return.
 	for _, tc := range []struct {
@@ -3973,18 +4130,12 @@ func Test_Cache_HelperFunctions(t *testing.T) {
 			got: isHeuristicFreshness(publicExpires, cfg, pastHeuristicAge),
 		},
 		{name: "isHeuristicFreshness true", got: isHeuristicFreshness(public, cfg, pastHeuristicAge), want: true},
-		{name: "cacheBodyFetchError other", got: cacheBodyFetchError(mask, "key", storageErr), want: storageErr},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tc.want, tc.got)
 		})
 	}
-
-	t.Run("cacheBodyFetchError miss", func(t *testing.T) {
-		t.Parallel()
-		require.ErrorContains(t, cacheBodyFetchError(mask, "key", errCacheMiss), "no cached body")
-	})
 }
 
 // cacheTestBNewApp returns an app that caches under cfg and whose GET /test
@@ -4540,39 +4691,67 @@ func Test_Cache_OrphanedMetadataWithoutBody(t *testing.T) {
 	}
 }
 
+// An entry whose body the Storage does not hand over is a miss, not a failure: the handler answers,
+// and its answer replaces the entry when the Storage takes it. only-if-cached forbids the handler, so
+// that request is answered 504, as it is for a URL with nothing stored.
 func Test_Cache_BodyFetchFailure(t *testing.T) {
 	t.Parallel()
-	// prime returns an app whose entry for / is stored in storage, and the key of that entry.
-	prime := func(t *testing.T, storage *storagetest.Memory) (*fiber.App, string) {
-		t.Helper()
-
-		app := fiber.New()
-		app.Use(New(Config{Storage: storage, Expiration: time.Hour}))
-		app.Get("/", func(c fiber.Ctx) error { return c.SendString("cached") })
-		cacheTestAExpect(t, app, "/", cacheMiss)
-		bodies := bodyKeys(storage)
-		require.NotEmpty(t, bodies)
-		return app, cacheKeyVersion + "|" + strings.TrimPrefix(bodies[0], bodyKeyPrefix)
+	key := defaultKey("/")
+	type step struct {
+		cacheControl string // of the request
+		cache        string // X-Cache of the answer
+		body         string // of the answer; none for a 504
 	}
+	onlyIfCached := step{cacheControl: "only-if-cached", cache: cacheUnreachable}
+	// The entry stored first holds response-1.
+	replaced := []step{onlyIfCached, {cache: cacheMiss, body: "response-2"}, {cache: cacheHit, body: "response-2"}}
 
-	t.Run("body read fails", func(t *testing.T) {
-		t.Parallel()
-		storage := storagetest.New()
-		app, key := prime(t, storage)
-		storage.SetErr(storagetest.OpGet, bodyKey(key), errors.New("boom"))
-		apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
-	})
+	for _, tc := range []struct {
+		name     string
+		failOp   string // the operation the Storage fails
+		failKey  string // on this key
+		steps    []step
+		bodyGone bool // the Storage dropped the body and kept the metadata
+	}{
+		{
+			name: "body read fails", failOp: storagetest.OpGet, failKey: bodyKey(key),
+			// Each answer is stored, and its body cannot be read either.
+			steps: []step{{cache: cacheMiss, body: "response-2"}, onlyIfCached, {cache: cacheMiss, body: "response-3"}},
+		},
+		{name: "body gone", bodyGone: true, steps: replaced},
+		{name: "body gone, metadata delete fails", bodyGone: true, failOp: storagetest.OpDelete, failKey: key, steps: replaced},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			storage := storagetest.New()
+			var failures cacheTestAFailures
+			app := failures.app()
+			app.Use(New(Config{Storage: storage, Expiration: time.Hour}))
+			var calls atomic.Int32
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("response-" + strconv.Itoa(int(calls.Add(1)))) })
 
-	t.Run("orphaned metadata delete fails", func(t *testing.T) {
-		t.Parallel()
-		storage := storagetest.New()
-		app, key := prime(t, storage)
-		storage.Mu.Lock()
-		delete(storage.Data, bodyKey(key))
-		storage.Mu.Unlock()
-		storage.SetErr(storagetest.OpDelete, key, errors.New("boom"))
-		apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
-	})
+			cacheTestAExpectBody(t, app, "/", cacheMiss, "response-1")
+			if tc.bodyGone {
+				storage.Mu.Lock()
+				delete(storage.Data, bodyKey(key))
+				storage.Mu.Unlock()
+			}
+			if tc.failOp != "" {
+				storage.SetErr(tc.failOp, tc.failKey, errors.New("boom"))
+			}
+
+			for _, s := range tc.steps {
+				before := calls.Load()
+				if s.body == "" {
+					cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", s.cacheControl), s.cache, fiber.StatusGatewayTimeout)
+					require.Equal(t, before, calls.Load(), "only-if-cached must not reach the handler")
+					continue
+				}
+				cacheTestAExpectBody(t, app, "/", s.cache, s.body)
+			}
+			require.NoError(t, failures.err)
+		})
+	}
 }
 
 func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
@@ -4590,7 +4769,7 @@ func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
 
 	manifestKey := manifestKeyPrefix + defaultKey("/a")
 	storage.SetErr(storagetest.OpSet, manifestKey, errors.New("boom"))
-	apptest.Expect(t, app, "/a", fiber.StatusInternalServerError)
+	cacheTestAExpectBody(t, app, "/a", cacheUnreachable, body)
 	storage.SetErr(storagetest.OpSet, manifestKey, nil)
 
 	// The abandoned reservation must be gone, or the second entry evicts the first.

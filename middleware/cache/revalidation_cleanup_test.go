@@ -225,21 +225,22 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 			bodySlot := bodyKey(key)
 			app := cacheTestBPathKeyedApp(&Config{Storage: storage, MaxBytes: entry, accounting: probe.record})
 			app.Get("/:name", func(c fiber.Ctx) error { return c.SendString("0123456789") })
-			request := func(path string, status int) {
+			request := func(path, cache string) {
 				t.Helper()
-				apptest.BodyBytes(t, apptest.Expect(t, app, path, status))
+				cacheTestAExpectBody(t, app, path, cache, "0123456789")
 			}
-			request("/a", fiber.StatusOK)
+			request("/a", cacheMiss)
 			storage.SetErr(storagetest.OpDelete, bodySlot, errors.New("body deletion failed"))
 			if failBodyRead {
 				storage.SetErr(storagetest.OpGet, bodySlot, errors.New("body verification failed"))
 			}
-			request("/b", fiber.StatusInternalServerError)
+			// No room is made for /b, so it is answered unstored.
+			request("/b", cacheUnreachable)
 			cacheTestBRequireAccounting(t, probe, entry, 1)
 			require.False(t, storage.Holds(key), key)
 			require.True(t, storage.Holds(bodySlot), bodySlot)
 			storage.ClearErrs()
-			request("/c", fiber.StatusOK)
+			request("/c", cacheMiss)
 			require.False(t, storage.Holds(bodySlot), bodySlot)
 			cacheTestBRequireAccounting(t, probe, entry, 1)
 		})
