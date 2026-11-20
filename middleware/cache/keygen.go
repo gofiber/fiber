@@ -118,17 +118,22 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 		dst = appendCanonicalCookieSubset(dst, c, cfg)
 	}
 
-	if c.Method() == fiber.MethodQuery {
-		// RFC 10008: incorporate the request body so different QUERY bodies on the
-		// same URL get distinct keys, and the fields that say how it is decoded.
-		// Unnamed, as their order is fixed: the names would lengthen every QUERY key.
+	// RFC 10008: incorporate the request body so different QUERY bodies on the
+	// same URL get distinct keys, and the fields that say how it is decoded.
+	// Unnamed, as their order is fixed: the names would lengthen every QUERY key.
+	//
+	// So does any other request that carries a body, once Methods names its method:
+	// what a POST is answered with depends on what it posts as much, and left out
+	// of the key, the first body's answer was served for every other one. A request
+	// without a body adds nothing, which is every GET but an unusual one.
+	if body := c.Request().Body(); len(body) > 0 || c.Method() == fiber.MethodQuery {
 		normalized := headerlookup.Canonical(c)
 		dst = append(dst, '|', 'm', '=')
 		dst = appendKeyFieldLines(dst, &c.Request().Header, "content-encoding", nil, normalized)
 		dst = append(dst, '|')
 		dst = appendKeyFieldLines(dst, &c.Request().Header, "content-type", nil, normalized)
 		dst = append(dst, '|', 'b', '=')
-		dst = appendQueryBodySegment(dst, c.Request().Body())
+		dst = appendQueryBodySegment(dst, body)
 	}
 
 	return dst

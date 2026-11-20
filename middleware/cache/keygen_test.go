@@ -86,6 +86,11 @@ func keygenCorpus() []keygenCase {
 		{name: "query_body_delims", uri: "/", method: fiber.MethodQuery, body: "a|b:c", want: keyStart + keyNoHeaders + "|m=0|0|b=a\\pb\\cc"},
 		{name: "query_with_querystring", uri: "/?x=1", method: fiber.MethodQuery, body: "foo=bar", want: keyStart + "x=1" + keyNoHeaders + "|m=0|0|b=foo=bar"},
 		{name: "query_body_metadata", uri: "/", method: fiber.MethodQuery, body: "foo=bar", headers: map[string]string{"Content-Type": "application/json", "Content-Encoding": "gzip"}, want: keyStart + keyNoHeaders + "|m=1|gzip|1|application/json|b=foo=bar"},
+		// Any other request that carries a body is keyed by it the same way, and one without a body adds nothing.
+		{name: "post_body", uri: "/", method: fiber.MethodPost, body: "foo=bar", want: keyStart + keyNoHeaders + "|m=0|0|b=foo=bar"},
+		{name: "post_body_metadata", uri: "/", method: fiber.MethodPost, body: "{}", headers: map[string]string{"Content-Type": "application/json"}, want: keyStart + keyNoHeaders + "|m=0|1|application/json|b={}"},
+		{name: "post_no_body", uri: "/", method: fiber.MethodPost, want: keyStart + keyNoHeaders},
+		{name: "get_body", uri: "/", body: "foo=bar", want: keyStart + keyNoHeaders + "|m=0|0|b=foo=bar"},
 		// The authority: the port is part of it, its delimiters are escaped like
 		// every other segment's, and past the bound it is hashed rather than
 		// allowed to grow the key.
