@@ -1271,9 +1271,9 @@ func Test_Session_Middleware_HeaderIDIsNotReplayedByTheCache(t *testing.T) {
 func Test_Session_Store_MarksOnlyItsHeaderSinks(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		extractor extractors.Extractor
 		name      string
 		want      []string
+		extractor extractors.Extractor
 	}{
 		{name: "cookie", extractor: extractors.FromCookie("sid")},
 		{name: "query", extractor: extractors.FromQuery("sid")},

@@ -1040,15 +1040,15 @@ func collectSources(ext extractors.Extractor) []sourceID {
 
 // idPlaces are the places a store reads its session ID from and writes it back to.
 type idPlaces struct {
+	// headers names the response headers among the sinks, which hold the ID of one
+	// client's session and are marked as such: see personalheader. Nil without any.
+	headers *personalheader.Names
 	// sinks are the cookies and headers a session ID can be written back to, in the
 	// order of the extractor. Read-only: every session of the store shares the slice.
 	sinks []extractors.Extractor
 	// sources names every source the store reads the session ID from, as shares
 	// compares them.
 	sources []sourceID
-	// headers names the response headers among the sinks, which hold the ID of one
-	// client's session and are marked as such: see personalheader. Nil without any.
-	headers *personalheader.Names
 }
 
 // placesOf works out the places of ext.
