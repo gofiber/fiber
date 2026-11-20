@@ -414,6 +414,16 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
+		// Next passes the request on without the cache. It was asked only once the
+		// handler had answered, where it kept the response from being stored, so a
+		// request it would have skipped was still served what another had stored: one
+		// without a credential, say, the response to one with it. It is asked again
+		// there, as it may decide by the response.
+		if cfg.Next != nil && cfg.Next(c) {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return c.Next()
+		}
+
 		// Get key from request. Assembled in one pooled buffer so the whole key
 		// costs a single allocation: the pieces used to be concatenated one at a
 		// time, and every join copied the key built so far into a fresh string.
@@ -1123,7 +1133,7 @@ func New(config ...Config) fiber.Handler {
 
 		sharedCacheMode := !hasAuthorization || isSharedCacheAllowed
 
-		// Don't cache response if Next returns true
+		// Don't cache response if Next returns true, now that it can see the response
 		if cfg.Next != nil && cfg.Next(c) {
 			markUnreachable()
 			return nil
