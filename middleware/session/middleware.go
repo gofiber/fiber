@@ -580,6 +580,11 @@ func (m *Middleware) DestroyWithContext(ctx context.Context) error {
 
 // Fresh checks if the session is fresh.
 //
+// It reads the session under the middleware's read lock, as every other method
+// does: the end of the request forgets the session under the write lock, and a
+// goroutine that outlives the request must see either the session or none, never
+// the session of the request that takes the object next.
+//
 // Returns:
 //   - bool: True if the session is fresh; otherwise, false.
 //
@@ -587,10 +592,14 @@ func (m *Middleware) DestroyWithContext(ctx context.Context) error {
 //
 //	isFresh := m.Fresh()
 func (m *Middleware) Fresh() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	return m.Session.Fresh()
 }
 
-// ID returns the session ID.
+// ID returns the session ID. It reads the session under the middleware's read
+// lock, see Fresh.
 //
 // Returns:
 //   - string: The session ID.
@@ -599,6 +608,9 @@ func (m *Middleware) Fresh() bool {
 //
 //	id := m.ID()
 func (m *Middleware) ID() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	return m.Session.ID()
 }
 

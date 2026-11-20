@@ -1162,6 +1162,40 @@ func Test_Session_Middleware_StreamedOrHijackedResponseKeepsItsObjects(t *testin
 	}
 }
 
+// ID and Fresh read the session under the lock of the middleware, which the end of the request holds
+// while it forgets the session. Read bare, a goroutine that outlives the request could take the
+// session of the request that gets the pooled object next.
+func Test_Session_Middleware_IDAndFreshWaitForTheLock(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		read func(*Middleware)
+		name string
+	}{
+		{name: "ID", read: func(m *Middleware) { _ = m.ID() }},
+		{name: "Fresh", read: func(m *Middleware) { _ = m.Fresh() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			m := startMiddleware(t, apptest.Ctx(t, fiber.New()), NewStore())
+			m.mu.Lock() // as the release holds it
+			read := make(chan struct{})
+			go func() {
+				tc.read(m)
+				close(read)
+			}()
+			select {
+			case <-read:
+				m.mu.Unlock()
+				t.Fatal("the session was read while the middleware's lock was held")
+			case <-time.After(50 * time.Millisecond):
+			}
+			m.mu.Unlock()
+			apptest.Recv(t, read, 5*time.Second)
+			releaseMiddleware(m)
+		})
+	}
+}
+
 // Benchmark_Middleware drives the whole handler, which the store benchmarks do
 // not: it is where the middleware object is acquired, published to the request
 // context and released again.
