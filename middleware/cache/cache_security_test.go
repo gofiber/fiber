@@ -273,6 +273,35 @@ func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
 	}
 }
 
+// Test_Cache_Security_RequestBodiesStayDistinct tests that two requests share an entry only when they
+// carry the same body, whatever their method: with POST in Methods, what one client posted was
+// answered with what another had, as the default key held the body of a QUERY alone.
+func Test_Cache_Security_RequestBodiesStayDistinct(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost}}))
+	app.All("/", func(c fiber.Ctx) error { return c.SendString(c.Method() + ":" + string(c.Body())) })
+
+	for _, step := range []struct{ method, body, cache string }{
+		{method: fiber.MethodPost, body: "alice's search", cache: cacheMiss},
+		{method: fiber.MethodPost, body: "bob's search", cache: cacheMiss},
+		{method: fiber.MethodPost, body: "alice's search", cache: cacheHit},
+		{method: fiber.MethodPost, cache: cacheMiss},
+		{method: fiber.MethodPost, cache: cacheHit},
+		// A GET may carry a body too, and is then no more the GET without one than a POST is.
+		{method: fiber.MethodGet, cache: cacheMiss},
+		{method: fiber.MethodGet, body: "alice's search", cache: cacheMiss},
+		{method: fiber.MethodGet, cache: cacheHit},
+	} {
+		var body io.Reader = http.NoBody
+		if step.body != "" {
+			body = strings.NewReader(step.body)
+		}
+		got := doRequest(t, app, httptest.NewRequest(step.method, "/", body))
+		cacheTestCRequireReply(t, got, step.cache, step.method+":"+step.body, "%s %q", step.method, step.body)
+	}
+}
+
 // Concurrent requests whose query has more parameters than the key spells out.
 func Test_Cache_Security_Concurrent_QueryParamDoS(t *testing.T) {
 	t.Parallel()
