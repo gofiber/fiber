@@ -398,13 +398,9 @@ func (d *data) decode(rawData []byte) ([]byte, error) {
 			return nil, err
 		}
 	} else {
-		byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
-		defer byteBufferPool.Put(byteBuffer)
-		defer byteBuffer.Reset()
-		_, _ = byteBuffer.Write(raw)
 		// A copy, so that only this branch has the variable escape: gob needs its address.
 		gobDecoded := decoded
-		if err := decodeGob(byteBuffer, &gobDecoded); err != nil {
+		if err := decodeGob(raw, &gobDecoded); err != nil {
 			// Gob keeps the entries it decoded before the one that failed, a value of a type
 			// this process has not registered for instance. The map was empty, or is the one
 			// made for this decode.
@@ -446,7 +442,7 @@ func (d *data) decodeRecord(rawData []byte, codec *namedCodec) ([]byte, error) {
 // way: what a codec decodes is a copy.
 func (d *data) editedSince(snapshot []byte) bool {
 	var before map[any]any
-	if err := decodeGob(bytes.NewReader(snapshot), &before); err != nil {
+	if err := decodeGob(snapshot, &before); err != nil {
 		return true
 	}
 	d.RLock()

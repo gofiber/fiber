@@ -25,6 +25,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/gobcheck"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
@@ -2787,10 +2788,18 @@ func Test_Codec_GobErrorIsLoggedQuoted(t *testing.T) {
 	require.NotContains(t, quoted.Error(), "\n")
 	require.ErrorIs(t, quoted, cause, "the cause stays reachable")
 
-	var decoded map[any]any
-	err := decodeGob(strings.NewReader("not a gob stream"), &decoded)
-	require.ErrorAs(t, err, new(gobError))
-	require.Equal(t, strconv.Quote(errors.Unwrap(err).Error()), err.Error(), "a stream that gob cannot read is an error, quoted")
+	// A stream that is not one is refused before gob reads it, and one that is but is not a session
+	// is refused by gob. Both are errors, quoted.
+	var uintStream bytes.Buffer
+	require.NoError(t, gob.NewEncoder(&uintStream).Encode(uint8(1)))
+	for name, raw := range map[string][]byte{"not a stream": []byte("not a gob stream"), "not a session": uintStream.Bytes()} {
+		var decoded map[any]any
+		err := decodeGob(raw, &decoded)
+		require.ErrorAs(t, err, new(gobError), name)
+		require.Equal(t, strconv.Quote(errors.Unwrap(err).Error()), err.Error(), name)
+	}
+	require.ErrorIs(t, decodeGob([]byte("not a gob stream"), new(map[any]any)), gobcheck.ErrInvalid)
+	require.NotErrorIs(t, decodeGob(uintStream.Bytes(), new(map[any]any)), gobcheck.ErrInvalid)
 }
 
 type (

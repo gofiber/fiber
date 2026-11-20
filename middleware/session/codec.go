@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math/bits"
 	"reflect"
 	"slices"
@@ -17,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/gobcheck"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -296,21 +296,33 @@ func (e gobError) Error() string { return strconv.Quote(e.err.Error()) }
 
 func (e gobError) Unwrap() error { return e.err }
 
-// decodeGob reads the gob stream of r into target. Gob turns most faults of a stream
-// into errors, not all: a map key that cannot be hashed makes it panic. The session
-// middleware runs in front of the recover middleware of the application, so that panic
-// ended the process. It is an error here, as it is for any record that does not decode.
+// decodeGob reads the gob stream in raw into target. Gob is not hardened against streams made
+// to harm (see the Security section of its documentation): a few bytes can ask it for gigabytes
+// of memory or for hours of CPU, or for a stack deeper than the process has, which ends it and
+// is not an error that can be recovered. Nothing is handed to gob that gobcheck has not read
+// first, so that a stored record that is not what the encoder writes is an error for the
+// request that loads it, and costs what its bytes cost. What the check cannot bound is the
+// memory of a value of a type the application registered, which is the size of the type.
 //
-// Time and memory are another matter. Gob is not hardened against streams made to harm
-// (see the Security section of its documentation): a few bytes can ask it for gigabytes
-// or for hours. The storage has to be trusted as far as the code of the application is.
-func decodeGob(r io.Reader, target any) (err error) { //nolint:nonamedreturns // the deferred call turns a panic into the error
+// Gob turns most other faults of a stream into errors, not all: a map key that cannot be hashed
+// makes it panic. The session middleware runs in front of the recover middleware of the
+// application, so that panic ended the process. It is an error here, as it is for any record
+// that does not decode.
+func decodeGob(raw []byte, target any) (err error) { //nolint:nonamedreturns // the deferred call turns a panic into the error
+	checked, checkErr := gobcheck.Normalize(raw)
+	if checkErr != nil {
+		return gobError{checkErr}
+	}
+	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
+	defer byteBufferPool.Put(byteBuffer)
+	defer byteBuffer.Reset()
+	_, _ = byteBuffer.Write(checked)
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = gobError{fmt.Errorf("the gob decoder panicked: %v", recovered)}
 		}
 	}()
-	if decodeErr := gob.NewDecoder(r).Decode(target); decodeErr != nil {
+	if decodeErr := gob.NewDecoder(byteBuffer).Decode(target); decodeErr != nil {
 		return gobError{decodeErr}
 	}
 	return nil
