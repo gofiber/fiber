@@ -343,12 +343,11 @@ func acquireMiddleware() *Middleware {
 // pointer pointing at a finished, empty middleware that nothing else uses.
 //
 // So is one that other middleware still run inside, since they hold it as their
-// outer, and one whose request context was abandoned: both happen when a
-// middleware that abandons the request, such as sse, lets handlers outlive the
-// middleware around them, and such a handler finds a finished middleware instead
-// of another request's. The session of an abandoned request is not recycled
-// either, for the same reason. A request that the timeout middleware answered
-// itself never gets here: serve leaves it alone, see there.
+// outer, and one whose request has code that outlives the handlers, see
+// outlivesHandlers: such code finds a finished middleware instead of another
+// request's. The session of such a request is not recycled either, for the same
+// reason. A request that the timeout middleware answered itself never gets here:
+// serve leaves it alone, see there.
 //
 // The middleware this one ran inside becomes the current one of the request
 // again, and learns that one fewer runs inside it.
@@ -373,10 +372,10 @@ func releaseMiddleware(m *Middleware) {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		outer, c, session = m.outer, m.ctx, m.Session
-		// A request whose context was abandoned, as the sse middleware does, can have
-		// handlers still running that hold its middleware and its session: neither goes
-		// back to the pool, or such a handler could find the next request's in its place.
-		abandoned = c != nil && c.IsAbandoned()
+		// A request that code outlives, see outlivesHandlers, can have it still running
+		// with the middleware and the session of the request in hand: neither goes back
+		// to the pool, or that code could find the next request's in its place.
+		abandoned = c != nil && outlivesHandlers(c)
 		drop = m.is(lifeEscaped) || abandoned || m.links.Load() > 0
 		if drop {
 			// First, so a lookup that races the release finds a middleware that is
@@ -430,6 +429,16 @@ func releaseMiddleware(m *Middleware) {
 	}
 }
 
+// outlivesHandlers reports whether code of the request can still run once the
+// handlers have returned, with whatever the handlers handed it: a handler that
+// abandoned the request (sse, a timeout), a response written from a stream, as
+// SendStreamWriter and a net/http handler that flushed do, and a connection that
+// was hijacked. The framework runs such code, so the handlers cannot be told to
+// wait for it.
+func outlivesHandlers(c fiber.Ctx) bool {
+	return c.IsAbandoned() || c.Response().IsBodyStream() || c.RequestCtx().Hijacked()
+}
+
 // FromContext returns the Middleware from the Fiber context.
 // It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
 //
@@ -446,10 +455,12 @@ func releaseMiddleware(m *Middleware) {
 // session nor recycles it, and the handler goes on using it, never another
 // request's; both let go of the request, whose context is reused once the handler
 // is done. A request
-// abandoned any other way, as the sse middleware does, is saved as usual when its
-// handler returns, and FromContext returns nil for it from then on; a Middleware
-// that a handler still running got before stays finished: it is never recycled
-// for another request, but its session is gone, so the methods that use it panic.
+// abandoned any other way, as the sse middleware does, one whose response is written
+// from a stream (SendStreamWriter, a net/http handler that flushed) and one whose
+// connection was hijacked are saved as usual when the handlers return, and FromContext
+// returns nil for them from then on; a Middleware that the code still running got
+// before stays finished: it is never recycled for another request, but its session is
+// gone, so the methods that use it panic.
 // A middleware that a panic unwound is not saved or recycled either, and stays the
 // current one for whatever recovers the panic, with its session and the one it
 // runs inside, until the request ends: a Destroy, Reset or Regenerate from there

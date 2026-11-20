@@ -873,6 +873,8 @@ The returned `*session.Middleware` is only valid while the request is being hand
 
 A handler the [Timeout](./timeout.md) middleware gave up on keeps its `*session.Middleware` and its session until it returns, and no other request is handed them. The session of such a request is not saved: the timeout response is already fixed and cannot carry a cookie, and the handler may still be changing the data.
 
+Code that Fiber runs after the handlers returned is treated alike: the callback of `SendStreamWriter`, the body of `SendStream`, a `net/http` handler that flushed (see [Adaptor](./adaptor.md)) and a hijack handler. The session is saved when the handlers return, but neither the middleware nor the session goes back to the pool, so that code never finds the session of another request. It finds a finished middleware, whose methods panic. Copy what it needs before it starts, or give it the session ID and use the [Store Pattern](#store-pattern-advanced).
+
 A session that was only read is written back to storage without being re-encoded. `Get` and `Keys` give that up when the value or key they return could share memory with the session (a map, slice, array, pointer or struct; scalars and `time.Time` are safe), because the caller could then change it in place without calling `Set`. Such an edit counts as the request's own change, as a `Set` does: its whole session then wins as described under [Session Security](#session-security), while a request that only read yields to a change another request stored meanwhile. Calling `Set` with the edited value says so outright and spares the save a decode of the snapshot.
 
 ### Store Methods

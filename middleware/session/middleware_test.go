@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -27,6 +28,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
@@ -1088,6 +1090,76 @@ func Test_Session_Middleware_AbandonedWithoutTimeoutKeepsItsObjects(t *testing.T
 
 	require.True(t, m.is(lifeReleased), "the middleware is finished, and not in the pool")
 	require.Equal(t, "alice", sess.Get("user"), "its session is left as it was, not reset for the pool")
+}
+
+// Test_Session_Middleware_StreamedOrHijackedResponseKeepsItsObjects covers the code that the framework
+// runs once the handlers returned: the callback of SendStreamWriter, the body of SendStream, a
+// net/http handler that flushed and a hijack handler. It can hold the middleware and the session of
+// its request, and the next request would take both from the pool while it still does. Neither goes
+// back: the code finds a finished middleware, and its session is left as it was.
+func Test_Session_Middleware_StreamedOrHijackedResponseKeepsItsObjects(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		route func(app *fiber.App, hold func(*Middleware), late chan<- struct{})
+		name  string
+	}{
+		{name: "SendStreamWriter", route: func(app *fiber.App, hold func(*Middleware), late chan<- struct{}) {
+			app.Get("/", func(c fiber.Ctx) error {
+				hold(FromContext(c))
+				close(late)
+				return c.SendStreamWriter(func(w *bufio.Writer) { _, _ = w.WriteString("late") }) //nolint:errcheck // a test
+			})
+		}},
+		{name: "SendStream", route: func(app *fiber.App, hold func(*Middleware), late chan<- struct{}) {
+			app.Get("/", func(c fiber.Ctx) error {
+				hold(FromContext(c))
+				close(late)
+				return c.SendStream(strings.NewReader("late"))
+			})
+		}},
+		{name: "net/http handler that flushed", route: func(app *fiber.App, hold func(*Middleware), late chan<- struct{}) {
+			app.Get("/", adaptor.HTTPHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hold(FromContext(r.Context()))
+				close(late)
+				_, _ = w.Write([]byte("early")) //nolint:errcheck // a test
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
+			}))
+		}},
+		{name: "hijack handler", route: func(app *fiber.App, hold func(*Middleware), late chan<- struct{}) {
+			app.Get("/", func(c fiber.Ctx) error {
+				hold(FromContext(c))
+				c.RequestCtx().Hijack(func(net.Conn) { close(late) })
+				return nil
+			})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var (
+				m    *Middleware
+				sess *Session
+			)
+			store := NewStore()
+			app := fiber.New()
+			app.Use(New(Config{Store: store}))
+			late := make(chan struct{})
+			tc.route(app, func(held *Middleware) {
+				m, sess = held, held.Session
+				held.Set("user", "alice")
+			}, late)
+
+			resp := apptest.Expect(t, app, "/", fiber.StatusOK)
+			require.NotEmpty(t, resp.Header.Get(fiber.HeaderSetCookie), "the response still carries the cookie")
+			apptest.Recv(t, late, 5*time.Second)
+			require.NotEmpty(t, storedFor(t, store, sess.ID()), "and the session is saved")
+
+			require.True(t, m.is(lifeReleased), "the middleware is finished, and not in the pool")
+			require.Nil(t, m.Session, "the code that holds it finds no session to read")
+			require.Equal(t, "alice", sess.Get("user"), "the session is left as it was, not reset for the pool")
+		})
+	}
 }
 
 // Benchmark_Middleware drives the whole handler, which the store benchmarks do
