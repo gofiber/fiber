@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1034,6 +1035,54 @@ func Test_Bind_WithSetParserDecoder(t *testing.T) {
 		testDecodeParser(MIMEApplicationForm, "date=2020-12-15&title=&body=New Body")
 		testDecodeParser(MIMEMultipartForm+`; boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"date\"\r\n\r\n2020-12-15\r\n--b\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\n\r\n--b\r\nContent-Disposition: form-data; name=\"body\"\r\n\r\nNew Body\r\n--b--")
 	})
+}
+
+// conventions:ignore parallel: SetParserDecoder replaces the process-wide decoder configuration
+func Test_Bind_Query_ConverterE(t *testing.T) {
+	type level int
+	binder.SetParserDecoder(binder.ParserConfig{
+		IgnoreUnknownKeys: true,
+		ZeroEmpty:         true,
+		ParserType: []binder.ParserType{{
+			CustomType: level(0),
+			Converter:  func(string) reflect.Value { return reflect.ValueOf(level(99)) },
+			ConverterE: func(value string) (reflect.Value, error) {
+				n, err := strconv.Atoi(value)
+				if err != nil {
+					return reflect.Value{}, err
+				}
+				return reflect.ValueOf(level(n)), nil
+			},
+		}},
+	})
+	t.Cleanup(func() { binder.SetParserDecoder(binder.ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true}) })
+
+	c := apptest.Ctx(t, New())
+	c.Request().URI().SetQueryString("level=x")
+	var input struct {
+		Level level `query:"level"`
+	}
+	var fields MultiError
+	require.ErrorAs(t, c.Bind().Query(&input), &fields)
+	fieldErr := fields["level"]
+	require.ErrorIs(t, fieldErr, strconv.ErrSyntax)
+	var numErr *strconv.NumError
+	require.ErrorAs(t, fieldErr, &numErr)
+	require.Equal(t, "x", numErr.Num)
+
+	// A slice field splits a value it cannot convert whole on commas, and a part that fails keeps its error.
+	var list struct {
+		Levels []level `query:"levels"`
+	}
+	c.Request().URI().SetQueryString("levels=1,2")
+	require.NoError(t, c.Bind().Query(&list))
+	require.Equal(t, []level{1, 2}, list.Levels)
+	c.Request().URI().SetQueryString("levels=1,x")
+	fields = nil
+	require.ErrorAs(t, c.Bind().Query(&list), &fields)
+	require.ErrorIs(t, fields["levels"], strconv.ErrSyntax)
+	require.ErrorAs(t, fields["levels"], &numErr)
+	require.Equal(t, "x", numErr.Num)
 }
 
 func Benchmark_Bind_Query(b *testing.B) {

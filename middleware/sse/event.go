@@ -2,7 +2,6 @@ package sse
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2/simd"
 )
 
 var errInvalidField = errors.New("field must not contain CR or LF")
@@ -17,7 +17,8 @@ var errInvalidField = errors.New("field must not contain CR or LF")
 // Event defines a single Server-Sent Event frame.
 type Event struct {
 	// Data is written as one or more data fields. Strings and byte slices are
-	// written as-is; other values are JSON encoded.
+	// written as-is; other values are JSON encoded. Do not modify byte slices
+	// or raw JSON until Event returns.
 	Data any
 
 	// ID sets the SSE id field.
@@ -30,43 +31,87 @@ type Event struct {
 	Retry time.Duration
 }
 
+// writeEvent encodes the payload and validates the ID and name before writing any fields.
 func writeEvent(w *bufio.Writer, event Event, jsonMarshal ...utils.JSONMarshal) error {
 	data, err := eventData(event.Data, jsonMarshalOrDefault(jsonMarshal))
 	if err != nil {
 		return err
 	}
 
-	var frame bytes.Buffer
-
-	if event.ID != "" {
-		id, err := sanitizeField(event.ID)
+	id, name := event.ID, event.Name
+	if id != "" {
+		id, err = sanitizeField(id)
 		if err != nil {
 			return fmt.Errorf("sse: invalid id: %w", err)
 		}
-		if id != "" {
-			appendField(&frame, "id", id)
-		}
 	}
-	if event.Name != "" {
-		name, err := sanitizeField(event.Name)
+	if name != "" {
+		name, err = sanitizeField(name)
 		if err != nil {
 			return fmt.Errorf("sse: invalid event: %w", err)
 		}
-		if name != "" {
-			appendField(&frame, "event", name)
-		}
+	}
+
+	if id != "" {
+		writeEventField(w, "id: ", id)
+	}
+	if name != "" {
+		writeEventField(w, "event: ", name)
 	}
 	if event.Retry > 0 {
-		appendField(&frame, "retry", utils.FormatInt(retryMilliseconds(event.Retry)))
+		writeRetryField(w, event.Retry)
 	}
 	if data.hasData {
-		appendData(&frame, data.data)
+		writeEventData(w, data.text)
 	}
-	frame.WriteByte('\n') //nolint:errcheck // bytes.Buffer writes never fail.
-	if _, err := w.Write(frame.Bytes()); err != nil {
+	// The buffered writer returns the first write error on all subsequent writes.
+	if err := w.WriteByte('\n'); err != nil {
 		return fmt.Errorf("sse: write event: %w", err)
 	}
 	return nil
+}
+
+// writeEventData emits CRLF, bare CR, and LF as line breaks without copying the payload.
+func writeEventData(w *bufio.Writer, data string) {
+	// AVX2 finds either delimiter in one scan. On other CPUs, the standard
+	// library's single-byte search is faster for longer CR-free payloads.
+	mixed := len(data) < simd.MinLen || simd.Accelerated() || strings.IndexByte(data, '\r') >= 0
+	for {
+		var i int
+		if mixed {
+			i = utils.IndexAny2(data, '\r', '\n')
+		} else {
+			i = strings.IndexByte(data, '\n')
+		}
+		if i < 0 {
+			writeEventField(w, "data: ", data)
+			return
+		}
+		writeEventField(w, "data: ", data[:i])
+		cr := data[i] == '\r'
+		data = data[i+1:]
+		if cr && data != "" && data[0] == '\n' {
+			data = data[1:]
+		}
+	}
+}
+
+// writeEventField writes one field and its line terminator.
+//
+//nolint:errcheck // The write of the final blank line reports any sticky bufio error.
+func writeEventField(w *bufio.Writer, prefix, value string) {
+	w.WriteString(prefix)
+	w.WriteString(value)
+	w.WriteByte('\n')
+}
+
+// writeRetryField writes the delay in whole milliseconds.
+//
+//nolint:errcheck // The write of the final blank line reports any sticky bufio error.
+func writeRetryField(w *bufio.Writer, retry time.Duration) {
+	w.WriteString("retry: ")
+	w.Write(utils.AppendInt(w.AvailableBuffer(), retryMilliseconds(retry)))
+	w.WriteByte('\n')
 }
 
 func writeComment(w *bufio.Writer, comment string) error {
@@ -89,26 +134,27 @@ func writeComment(w *bufio.Writer, comment string) error {
 }
 
 type eventPayload struct {
-	data    string
+	text    string
 	hasData bool
 }
 
+// eventData borrows byte-backed payloads for the duration of the synchronous write.
 func eventData(data any, jsonMarshal utils.JSONMarshal) (eventPayload, error) {
 	switch value := data.(type) {
 	case nil:
 		return eventPayload{}, nil
 	case string:
-		return eventPayload{data: value, hasData: true}, nil
+		return eventPayload{text: value, hasData: true}, nil
 	case []byte:
-		return eventPayload{data: string(value), hasData: true}, nil
+		return eventPayload{text: utils.UnsafeString(value), hasData: true}, nil
 	case json.RawMessage:
-		return eventPayload{data: string(value), hasData: true}, nil
+		return eventPayload{text: utils.UnsafeString(value), hasData: true}, nil
 	default:
 		encoded, err := jsonMarshal(value)
 		if err != nil {
 			return eventPayload{}, fmt.Errorf("sse: marshal data: %w", err)
 		}
-		return eventPayload{data: string(encoded), hasData: true}, nil
+		return eventPayload{text: utils.UnsafeString(encoded), hasData: true}, nil
 	}
 }
 
@@ -117,20 +163,6 @@ func jsonMarshalOrDefault(jsonMarshal []utils.JSONMarshal) utils.JSONMarshal {
 		return jsonMarshal[0]
 	}
 	return json.Marshal
-}
-
-func appendField(w *bytes.Buffer, field, value string) {
-	w.WriteString(field) //nolint:errcheck // bytes.Buffer writes never fail.
-	w.WriteString(": ")  //nolint:errcheck // bytes.Buffer writes never fail.
-	w.WriteString(value) //nolint:errcheck // bytes.Buffer writes never fail.
-	w.WriteByte('\n')    //nolint:errcheck // bytes.Buffer writes never fail.
-}
-
-func appendData(w *bytes.Buffer, data string) {
-	data = normalizeNewlines(data)
-	for line := range strings.SplitSeq(data, "\n") {
-		appendField(w, "data", line)
-	}
 }
 
 func sanitizeField(value string) (string, error) {

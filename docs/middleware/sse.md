@@ -139,6 +139,7 @@ type Event struct {
 | Retry | `time.Duration` | Sets the `retry` field for this event. Values less than or equal to zero are omitted.                                                                                                                                             |
 
 `ID` and `Name` must not contain a carriage return or line feed. `Stream.Event` returns an error instead of writing a value that could start a new field.
+Keep `[]byte` and `json.RawMessage` payloads unchanged until `Stream.Event` returns.
 
 ## Stream
 
@@ -152,7 +153,7 @@ func (s *Stream) Err() error
 func (s *Stream) LastEventID() string
 ```
 
-Every write is flushed. A failed write closes `Done`, stores the error returned by `Err`, and lets the handler stop without relying on `fasthttp.RequestCtx.Done`, which is not a per-client disconnect signal. A write fails when the flush fails, and also when `Event` rejects an `ID` or `Name` with a line break or cannot encode `Data`. In every case the stream ends and later writes return the same error. After a normal handler return, `Done` is closed and `Context()` is canceled while `Err()` remains `nil`; writes after that return `sse: stream closed`.
+Every write is flushed. A failed write closes `Done`, stores the error returned by `Err`, and lets the handler stop without relying on `fasthttp.RequestCtx.Done`, which is not a per-client disconnect signal. A connection error during writing or flushing can leave the last frame incomplete. `Event` validates `ID` and `Name` and encodes `Data` before it writes any part of the event. In every error case the stream ends and later writes return the same error. After a normal handler return, `Done` is closed and `Context()` is canceled while `Err()` remains `nil`; writes after that return `sse: stream closed`.
 
 The stream also ends, with `Err()` returning `sse: stream closed`, when the server closes the response body, for example after a write to a client that has gone failed. The server waits for `Handler` and `OnClose` to return before it reuses the request, so `c` stays the stream's own request in both, and a handler that ignores `Done` and `Context()` holds its connection until it returns. Write to the client only through `stream`: replacing the response body through `c` (`Send`, `SendString`, `JSON` and the like) inside either callback waits for that callback and never returns.
 
