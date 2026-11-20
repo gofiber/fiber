@@ -4699,11 +4699,12 @@ func Benchmark_hasDirective(b *testing.B) {
 // miss, and the miss stores the fresh response again.
 func Test_Cache_OrphanedMetadataWithoutBody(t *testing.T) {
 	t.Parallel()
-	for _, maxBytes := range []uint{0, 4096} {
-		t.Run(fmt.Sprintf("maxbytes-%d", maxBytes), func(t *testing.T) {
+	// With a limit the entry has a node in the eviction heap, and without one it has none.
+	for _, unlimited := range []bool{true, false} {
+		t.Run(fmt.Sprintf("DisableMaxBytes=%t", unlimited), func(t *testing.T) {
 			t.Parallel()
 			storage := storagetest.New()
-			cfg := Config{Storage: storage, Expiration: time.Hour, MaxBytes: maxBytes}
+			cfg := Config{Storage: storage, Expiration: time.Hour, MaxBytes: 4096, DisableMaxBytes: unlimited}
 			app, _ := cacheTestAOrigin(New(cfg), "response-")
 
 			cacheTestAExpect(t, app, "/", cacheMiss)
