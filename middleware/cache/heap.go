@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
-	"slices"
 	"sync"
 	"sync/atomic"
 )
@@ -46,9 +45,11 @@ type heapEntry struct {
 type indexedHeap struct {
 	// One live heap index per cache key.
 	keys map[string]int
-	// Live entries per Vary manifest, and the manifests whose last entry left since takeOrphans.
+	// Live entries per Vary manifest, and the manifests whose last entry left since takeOrphans and
+	// that no entry has been stored under since. A set: a store that pops nodes and puts them back
+	// pops the same manifests again, and a list grew with every one of those stores.
 	manifests map[string]int
-	orphans   []string
+	orphans   map[string]struct{}
 	// Slice the heap is built on
 	entries []heapEntry
 	// Mapping "index" to position in heap slice
@@ -106,7 +107,10 @@ func (h *indexedHeap) popInternal() heapEntry {
 		h.manifests[entry.manifest]--
 		if h.manifests[entry.manifest] == 0 {
 			delete(h.manifests, entry.manifest)
-			h.orphans = append(h.orphans, entry.manifest)
+			if h.orphans == nil {
+				h.orphans = make(map[string]struct{})
+			}
+			h.orphans[entry.manifest] = struct{}{}
 		}
 	}
 	h.entries = h.entries[0 : n-1]
@@ -123,6 +127,8 @@ func (h *indexedHeap) pushInternal(entry heapEntry) {
 			h.manifests = make(map[string]int)
 		}
 		h.manifests[entry.manifest]++
+		// Stored under again, or put back after a failed eviction: no longer an orphan.
+		delete(h.orphans, entry.manifest)
 	}
 	h.indices[entry.idx] = len(h.entries)
 	h.entries = append(h.entries, entry)
@@ -135,13 +141,14 @@ func (h *indexedHeap) tracks(manifest string) bool {
 
 // takeOrphans hands over the manifests no live entry has been stored under since their last one left.
 func (h *indexedHeap) takeOrphans() []string {
-	// A replaced entry's manifest is tracked again by now; keeping the array spares a store an allocation.
-	h.orphans = slices.DeleteFunc(h.orphans, h.tracks)
 	if len(h.orphans) == 0 {
 		return nil
 	}
-	orphans := h.orphans
-	h.orphans = nil
+	orphans := make([]string, 0, len(h.orphans))
+	for manifest := range h.orphans {
+		orphans = append(orphans, manifest)
+	}
+	clear(h.orphans)
 	return orphans
 }
 

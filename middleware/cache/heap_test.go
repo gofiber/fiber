@@ -2,6 +2,7 @@ package cache
 
 import (
 	"math/rand/v2"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -51,6 +52,35 @@ func TestIndexedHeapOrphansAManifestWithItsLastEntry(t *testing.T) {
 
 	h.remove(h.keys["m|b"])
 	require.Equal(t, []string{"m"}, h.takeOrphans())
+	require.Nil(t, h.takeOrphans())
+}
+
+// A store that pops nodes to make room and puts them back, as one does when a delete fails or the room
+// cannot be made, pops the same manifests each time. They are no orphans once their entries are tracked
+// again, and the record of them is not left to grow by every node popped, which a store that succeeds
+// alone emptied.
+func TestIndexedHeapPutBackNodesLeaveNoOrphans(t *testing.T) {
+	t.Parallel()
+	h := &indexedHeap{}
+	const nodes = 100
+	for i := range nodes {
+		h.put("key"+strconv.Itoa(i), uint64(i), 1, "manifest"+strconv.Itoa(i))
+	}
+
+	for range 50 {
+		var popped []heapEntry
+		for h.Len() > 0 {
+			popped = append(popped, h.entries[0])
+			h.removeFirst()
+		}
+		require.Len(t, h.orphans, nodes)
+
+		for _, entry := range slices.Backward(popped) {
+			h.putWithGeneration(entry.key, entry.exp, entry.bytes, entry.gen, entry.manifest)
+		}
+		require.Empty(t, h.orphans)
+		require.Equal(t, nodes, h.Len())
+	}
 	require.Nil(t, h.takeOrphans())
 }
 
