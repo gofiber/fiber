@@ -245,8 +245,10 @@ func cannotBeParallel(body *ast.BlockStmt) bool {
 	ast.Inspect(body, func(n ast.Node) bool {
 		if call, ok := n.(*ast.CallExpr); ok {
 			name := callName(call)
-			found = name == "testing.AllocsPerRun" || name == "apptest.FewestAllocs" ||
-				strings.HasSuffix(name, ".Setenv") || strings.HasSuffix(name, ".Chdir")
+			if name == "testing.AllocsPerRun" || name == "apptest.FewestAllocs" ||
+				strings.HasSuffix(name, ".Setenv") || strings.HasSuffix(name, ".Chdir") {
+				found = true
+			}
 		}
 		return !found
 	})
@@ -450,6 +452,7 @@ func Test_TestConventions_Rules(t *testing.T) {
 		{"subtest with parallel", "func TestA(t *testing.T) {\n\tt.Parallel()\n\tt.Run(\"a\", func(t *testing.T) {\n\t\tt.Parallel()\n\t})\n}", nil},
 		{"Setenv cannot be parallel", "func TestA(t *testing.T) {\n\tt.Setenv(\"A\", \"b\")\n}", nil},
 		{"AllocsPerRun cannot be parallel", "func TestA(t *testing.T) {\n\ttesting.AllocsPerRun(1, func() {})\n}", nil},
+		{"AllocsPerRun before another call", "func TestA(t *testing.T) {\n\tcheck(testing.AllocsPerRun(1, func() {}), float64(0))\n}", nil},
 		{"FewestAllocs subtest cannot be parallel", `func TestA(t *testing.T) {
 	t.Run("allocations", func(t *testing.T) {
 		apptest.FewestAllocs(3, 100, func() {})
