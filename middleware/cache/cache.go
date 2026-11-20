@@ -93,7 +93,9 @@ const (
 // held a fragment or the spelling the routed path arrived in, so an entry stood
 // for every spelling of its target, and on a store that survived the upgrade a
 // plain request would still find, and be served, what another spelling
-// populated. Bump this whenever what a key stands for, or what its entry carries,
+// populated. An entry also carries the fields that restrict what a client does
+// with its body (keptHeaders), which one written before would be served
+// without. Bump this whenever what a key stands for, or what its entry carries,
 // changes; the cost is one cold cache after a deploy. Additive bookkeeping fields
 // such as heapgen need no bump: old entries decode with generation zero, and
 // older readers skip the new field without changing the response or key
@@ -178,6 +180,34 @@ var ignoreHeaders = map[string]struct{}{
 	"Transfer-Encoding": {},
 	"Upgrade":           {},
 	"Vary":              {}, // already stored explicitly by the cache manager
+}
+
+// keptHeaders are the response fields an entry carries whether or not StoreResponseHeaders is set:
+// the ones by which a response restricts what the client does with its body. A hit that came
+// without them handed the body over unrestricted: a download marked as an attachment was rendered
+// in the page's origin, and a page was served without the Content-Security-Policy, the framing
+// rule or the nosniff it was sent with. A field that grants rather than restricts, as the CORS
+// fields do, is not among them, since a hit without it is refused what the first response allowed.
+var keptHeaders = map[string]struct{}{
+	fiber.HeaderContentDisposition:              {},
+	fiber.HeaderContentSecurityPolicy:           {},
+	fiber.HeaderContentSecurityPolicyReportOnly: {},
+	"Cross-Origin-Embedder-Policy":              {},
+	"Cross-Origin-Embedder-Policy-Report-Only":  {},
+	"Cross-Origin-Opener-Policy":                {},
+	"Cross-Origin-Opener-Policy-Report-Only":    {},
+	fiber.HeaderCrossOriginResourcePolicy:       {},
+	"Origin-Agent-Cluster":                      {},
+	fiber.HeaderPermissionsPolicy:               {},
+	fiber.HeaderReferrerPolicy:                  {},
+	fiber.HeaderStrictTransportSecurity:         {},
+	fiber.HeaderXContentTypeOptions:             {},
+	fiber.HeaderXDNSPrefetchControl:             {},
+	fiber.HeaderXDownloadOptions:                {},
+	fiber.HeaderXFrameOptions:                   {},
+	fiber.HeaderXPermittedCrossDomainPolicies:   {},
+	fiber.HeaderXRobotsTag:                      {},
+	fiber.HeaderXXSSProtection:                  {},
 }
 
 var cacheableStatusCodes = map[int]struct{}{
@@ -1204,39 +1234,38 @@ func New(config ...Config) fiber.Handler {
 
 		// Store all response headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
-		if cfg.StoreResponseHeaders {
-			allHeaders := c.Response().Header.All()
-			// A field the response names in Connection belongs to the connection it was
-			// sent on (RFC 9110 Section 7.6.1), like the ones ignoreHeaders lists by name.
-			connection := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderConnection, respCanonical))
-			e.headers = e.headers[:0]
-			// A header that middleware inside this one wrote for the client of this request,
-			// as the session middleware writes the session ID into one, is that client's:
-			// the entry is served to every client that hits it, so it is not kept, as
-			// Set-Cookie is not.
-			personal := personalheader.Marked(c.RequestCtx())
-			for key, value := range allHeaders {
-				if isIgnoredHeader(key) || personal.Has(key) ||
-					(connection != "" && headerlist.ContainsFold(connection, utils.UnsafeString(key))) {
-					continue
-				}
-
-				e.headers = append(e.headers, cachedHeader{
-					key:   utils.CopyBytes(key),
-					value: utils.CopyBytes(value),
-				})
-			}
-		} else {
+		e.headers = e.headers[:0]
+		if !cfg.StoreResponseHeaders {
 			// Keep a redirect's destination even when headers are not stored: 300 and
 			// 301 are cacheable, so without this the first client got
 			// "301 Location: /new" and every one after it a bare 301.
-			e.headers = e.headers[:0]
 			if location := fieldname.First(&c.Response().Header, fiber.HeaderLocation, respCanonical); len(location) > 0 {
 				e.headers = append(e.headers, cachedHeader{
 					key:   utils.CopyBytes(utils.UnsafeBytes(fiber.HeaderLocation)),
 					value: utils.CopyBytes(location),
 				})
 			}
+		}
+		// A field the response names in Connection belongs to the connection it was
+		// sent on (RFC 9110 Section 7.6.1), like the ones ignoreHeaders lists by name.
+		connection := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderConnection, respCanonical))
+		// A header that middleware inside this one wrote for the client of this request,
+		// as the session middleware writes the session ID into one, is that client's:
+		// the entry is served to every client that hits it, so it is not kept, as
+		// Set-Cookie is not.
+		personal := personalheader.Marked(c.RequestCtx())
+		for key, value := range c.Response().Header.All() {
+			// Without StoreResponseHeaders, the fields that restrict what a client does with
+			// the body are stored all the same (see keptHeaders), every line of each.
+			if isIgnoredHeader(key) || personal.Has(key) || (!cfg.StoreResponseHeaders && !isKeptHeader(key)) ||
+				(connection != "" && headerlist.ContainsFold(connection, utils.UnsafeString(key))) {
+				continue
+			}
+
+			e.headers = append(e.headers, cachedHeader{
+				key:   utils.CopyBytes(key),
+				value: utils.CopyBytes(value),
+			})
 		}
 
 		// Written past a decode limit, the entry would fail every later lookup with
