@@ -20,6 +20,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/personalheader"
 	"github.com/gofiber/fiber/v3/internal/sizedstream"
@@ -150,17 +151,20 @@ type requestCacheDirectives struct {
 }
 
 var ignoreHeaders = map[string]struct{}{
-	"Age":                 {},
-	"Cache-Control":       {}, // already stored explicitly by the cache manager
-	"Connection":          {},
-	"Content-Encoding":    {}, // already stored explicitly by the cache manager
-	"Content-Type":        {}, // already stored explicitly by the cache manager
-	"Date":                {},
-	"ETag":                {}, // already stored explicitly by the cache manager
-	"Expires":             {}, // already stored explicitly by the cache manager
-	"Keep-Alive":          {},
-	"Proxy-Authenticate":  {},
-	"Proxy-Authorization": {},
+	"Age":                {},
+	"Cache-Control":      {}, // already stored explicitly by the cache manager
+	"Connection":         {},
+	"Content-Encoding":   {}, // already stored explicitly by the cache manager
+	"Content-Type":       {}, // already stored explicitly by the cache manager
+	"Date":               {},
+	"ETag":               {}, // already stored explicitly by the cache manager
+	"Expires":            {}, // already stored explicitly by the cache manager
+	"Keep-Alive":         {},
+	"Proxy-Authenticate": {},
+	// With the two beside it, the fields RFC 9111 Section 3.1 names as specific to
+	// the proxy a response came through, which the key says nothing about.
+	"Proxy-Authentication-Info": {},
+	"Proxy-Authorization":       {},
 	// Served to every client matching the key, so a captured Set-Cookie hands one
 	// client's session to all the others. It still reaches the client that caused
 	// the miss. Set-Cookie2 is the obsolete RFC 2965 spelling and leaks the same.
@@ -1188,6 +1192,9 @@ func New(config ...Config) fiber.Handler {
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
 		if cfg.StoreResponseHeaders {
 			allHeaders := c.Response().Header.All()
+			// A field the response names in Connection belongs to the connection it was
+			// sent on (RFC 9110 Section 7.6.1), like the ones ignoreHeaders lists by name.
+			connection := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderConnection, respCanonical))
 			e.headers = e.headers[:0]
 			// A header that middleware inside this one wrote for the client of this request,
 			// as the session middleware writes the session ID into one, is that client's:
@@ -1195,7 +1202,8 @@ func New(config ...Config) fiber.Handler {
 			// Set-Cookie is not.
 			personal := personalheader.Marked(c.RequestCtx())
 			for key, value := range allHeaders {
-				if isIgnoredHeader(key) || personal.Has(key) {
+				if isIgnoredHeader(key) || personal.Has(key) ||
+					(connection != "" && headerlist.ContainsFold(connection, utils.UnsafeString(key))) {
 					continue
 				}
 

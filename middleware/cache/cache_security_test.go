@@ -974,6 +974,49 @@ func Test_StoreResponseHeaders_DropsTrailer(t *testing.T) {
 	require.Equal(t, "kept", resp.Header.Get("X-Keep"))
 }
 
+// Test_StoreResponseHeaders_DropsConnectionAndProxyFields covers the fields a stored response must
+// not carry to another client besides the ones ignoreHeaders lists by name: one the response names
+// in Connection belongs to the connection it was sent on (RFC 9110 Section 7.6.1), and
+// Proxy-Authentication-Info to the proxy it came through (RFC 9111 Section 3.1).
+func Test_StoreResponseHeaders_DropsConnectionAndProxyFields(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, connection string
+		dropped, kept    []string
+	}{
+		{name: "none named", kept: []string{"X-Hop", "X-Other", "X-Keep"}},
+		{name: "one named", connection: "X-Hop", dropped: []string{"X-Hop"}, kept: []string{"X-Other", "X-Keep"}},
+		{name: "two named in another case", connection: "x-hop, X-OTHER", dropped: []string{"X-Hop", "X-Other"}, kept: []string{"X-Keep"}},
+		{name: "named beside an option", connection: "keep-alive, X-Other", dropped: []string{"X-Other"}, kept: []string{"X-Hop", "X-Keep"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{Expiration: time.Hour, StoreResponseHeaders: true}))
+			app.Get("/", func(c fiber.Ctx) error {
+				if tc.connection != "" {
+					c.Response().Header.Set(fiber.HeaderConnection, tc.connection)
+				}
+				c.Set("X-Hop", "hop")
+				c.Set("X-Other", "other")
+				c.Set("X-Keep", "kept")
+				c.Set("Proxy-Authentication-Info", `nextnonce="abc"`)
+				return c.SendString("hi")
+			})
+
+			cacheTestAExpect(t, app, "/", cacheMiss)
+			resp := cacheTestAExpect(t, app, "/", cacheHit)
+			require.Empty(t, resp.Header.Values("Proxy-Authentication-Info"))
+			for _, name := range tc.dropped {
+				require.Empty(t, resp.Header.Values(name), name)
+			}
+			for _, name := range tc.kept {
+				require.NotEmpty(t, resp.Header.Values(name), name)
+			}
+		})
+	}
+}
+
 // Test_SetCookie2ResponseIsNotStored covers the obsolete RFC 2965 spelling.
 // fasthttp does not route it into its cookie store, so h.Cookies() alone does
 // not see it and the response would have been stored and shared.
