@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/bits"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -280,6 +282,36 @@ func (gobFormat) keys(values map[any]any) ([]any, bool) {
 		keys = append(keys, k)
 	}
 	return keys, aliased
+}
+
+// gobError is a failure of the gob decoder. What gob says about a stream can hold bytes
+// of the stream, such as the name it gives a type, line breaks among them, and the
+// error is logged: Error shows the text quoted, so that a record in the storage cannot
+// add a line to a log. The cause stays reachable.
+type gobError struct{ err error }
+
+func (e gobError) Error() string { return strconv.Quote(e.err.Error()) }
+
+func (e gobError) Unwrap() error { return e.err }
+
+// decodeGob reads the gob stream of r into target. Gob turns most faults of a stream
+// into errors, not all: a map key that cannot be hashed makes it panic. The session
+// middleware runs in front of the recover middleware of the application, so that panic
+// ended the process. It is an error here, as it is for any record that does not decode.
+//
+// Time and memory are another matter. Gob is not hardened against streams made to harm
+// (see the Security section of its documentation): a few bytes can ask it for gigabytes
+// or for hours. The storage has to be trusted as far as the code of the application is.
+func decodeGob(r io.Reader, target any) (err error) { //nolint:nonamedreturns // the deferred call turns a panic into the error
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = gobError{fmt.Errorf("the gob decoder panicked: %v", recovered)}
+		}
+	}()
+	if decodeErr := gob.NewDecoder(r).Decode(target); decodeErr != nil {
+		return gobError{decodeErr}
+	}
+	return nil
 }
 
 func (gobFormat) encode(values map[any]any) ([]byte, error) {

@@ -1007,6 +1007,37 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 	require.ErrorContains(t, err, "failed to decode session data", "Unexpected error")
 }
 
+// Gob turns most faults of a stream into errors, but not a map key that cannot be hashed: that makes
+// it panic, and the session middleware runs in front of the recover middleware of the application,
+// so a record like that in the storage ended the process. It is an error for the request that
+// loads it, as any record that does not decode is, and the text of the error is quoted, since what
+// gob says about a stream can hold bytes of the stream and the error is logged.
+func Test_Session_StoredRecordThatPanicsTheGobDecoderIsAnError(t *testing.T) {
+	t.Parallel()
+	var record bytes.Buffer
+	// Gob names a value by the type its pointer points to, so a key of type []uint8 is written.
+	require.NoError(t, gob.NewEncoder(&record).Encode(map[any]any{&[]byte{1}: "v"}))
+	storage := storagetest.New()
+	require.NoError(t, storage.Set(sessionKey("planted"), record.Bytes(), 0))
+
+	store := NewStore(Config{Storage: storage})
+	require.NotPanics(t, func() {
+		_, err := store.GetByID(t.Context(), "planted")
+		require.ErrorContains(t, err, `failed to decode session data: "the gob decoder panicked: runtime error: hash of unhashable type []uint8"`)
+	})
+
+	// Without a recover middleware in front: the request fails, the server stays.
+	var handled error
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage, ErrorHandler: func(c fiber.Ctx, err error) {
+		handled = err
+		require.NoError(t, c.SendStatus(fiber.StatusInternalServerError))
+	}}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderCookie, "session_id=planted")), fiber.StatusInternalServerError)
+	require.ErrorContains(t, handled, `"the gob decoder panicked: runtime error: hash of unhashable type []uint8"`)
+}
+
 // This test verifies the fix for the fresh flag bug where calling getSession()
 // multiple times in the same request would incorrectly mark the session as fresh
 // when the ID was found in context locals.

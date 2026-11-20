@@ -2,7 +2,6 @@ package session
 
 import (
 	"bytes"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"maps"
@@ -402,7 +401,7 @@ func (d *data) decode(rawData []byte) ([]byte, error) {
 		_, _ = byteBuffer.Write(raw)
 		// A copy, so that only this branch has the variable escape: gob needs its address.
 		gobDecoded := decoded
-		if err := gob.NewDecoder(byteBuffer).Decode(&gobDecoded); err != nil {
+		if err := decodeGob(byteBuffer, &gobDecoded); err != nil {
 			// Gob keeps the entries it decoded before the one that failed, a value of a type
 			// this process has not registered for instance. The map was empty, or is the one
 			// made for this decode.
@@ -444,7 +443,7 @@ func (d *data) decodeRecord(rawData []byte, codec *namedCodec) ([]byte, error) {
 // way: what a codec decodes is a copy.
 func (d *data) editedSince(snapshot []byte) bool {
 	var before map[any]any
-	if err := gob.NewDecoder(bytes.NewReader(snapshot)).Decode(&before); err != nil {
+	if err := decodeGob(bytes.NewReader(snapshot), &before); err != nil {
 		return true
 	}
 	d.RLock()

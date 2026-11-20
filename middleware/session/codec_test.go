@@ -2776,3 +2776,19 @@ func Test_Record_AppendAllocatesOnce(t *testing.T) { // not parallel: testing.Al
 	require.NotEmpty(t, sink)
 	require.InDelta(t, 1, allocs, 0, "one buffer, sized in advance")
 }
+
+// What gob says about a stream can hold bytes of the stream, the name it gives a type for one, line
+// breaks among them. The error is logged, and a record in the storage must not add a line to the log.
+func Test_Codec_GobErrorIsLoggedQuoted(t *testing.T) {
+	t.Parallel()
+	cause := errors.New("gob: type mismatch for \nfake log line\x1b[31m")
+	quoted := gobError{cause}
+	require.Equal(t, `"gob: type mismatch for \nfake log line\x1b[31m"`, quoted.Error())
+	require.NotContains(t, quoted.Error(), "\n")
+	require.ErrorIs(t, quoted, cause, "the cause stays reachable")
+
+	var decoded map[any]any
+	err := decodeGob(strings.NewReader("not a gob stream"), &decoded)
+	require.ErrorAs(t, err, new(gobError))
+	require.Equal(t, strconv.Quote(errors.Unwrap(err).Error()), err.Error(), "a stream that gob cannot read is an error, quoted")
+}

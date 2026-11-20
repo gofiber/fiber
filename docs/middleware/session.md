@@ -496,6 +496,8 @@ A session is stored under `session:<session ID>`, so a session ID sent by a clie
 
 A `Storage` that is a typed nil, such as an unset `*redis.Storage`, panics when the store is created, instead of on the first request, even if its methods would cope with a nil receiver. A plain `nil` stands for the default in-memory storage, and a `Storage` next to a `Config.Store` is not used, so it is not checked.
 
+A record that cannot be decoded is an error for the request that loads it, and never ends the process: a record that makes the decoder panic is one too. The text of the error is quoted, so that a record cannot add lines to the log. The default format is `encoding/gob`, which Go documents as not hardened against input that was made to cause harm: a few bytes in the storage can still ask it for gigabytes of memory or for minutes of CPU time. Keep the `Storage` as far from untrusted writers as the code of the application: whoever can write to it can also sign in as any user. A store with a [`Codec`](#codecs-and-typed-reads) decodes its records with the codec, and reads a session that was stored as gob until that session ends.
+
 ### Skipping Empty Sessions
 
 By default, every request that arrives without a valid session creates one: a record in the storage that lives until the idle timeout, and a `Set-Cookie` header on the response. A client that never sends cookies, such as a health check, a monitoring probe or a crawler, therefore leaves a record behind with every request. `SkipEmptySessions` keeps a new session that nothing was stored in out of the storage and out of the response:
