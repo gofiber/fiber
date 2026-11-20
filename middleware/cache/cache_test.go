@@ -2229,6 +2229,37 @@ func Test_CachePreservesCacheControlHeaders(t *testing.T) {
 	}
 }
 
+// A response that gives its lifetime twice is stored for the first (RFC 9111 Section 4.2.1), on one
+// field line or on two.
+func Test_Cache_FirstLifetimeOfTheResponseCounts(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		lines []string
+		cache []string
+	}{
+		{name: "none left, then an hour", lines: []string{"max-age=0, max-age=3600"}, cache: []string{cacheUnreachable, cacheUnreachable}},
+		{name: "none left, then an hour on a line of its own", lines: []string{"max-age=0", "max-age=3600"}, cache: []string{cacheUnreachable, cacheUnreachable}},
+		{name: "an hour, then none left", lines: []string{"max-age=3600", "max-age=0"}, cache: []string{cacheMiss, cacheHit}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New())
+			app.Get("/", func(c fiber.Ctx) error {
+				for _, line := range tc.lines {
+					c.Response().Header.Add(fiber.HeaderCacheControl, line)
+				}
+				return c.SendString("ok")
+			})
+
+			for _, want := range tc.cache {
+				cacheTestAExpect(t, app, "/", want)
+			}
+		})
+	}
+}
+
 func setResponseDate(date time.Time) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		if err := c.Next(); err != nil {

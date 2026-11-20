@@ -118,13 +118,15 @@ func parseResponseCacheControl(cc []byte) responseCacheControl {
 			parsed.hasPrivate = true
 		case utils.EqualFold(utils.UnsafeString(key), "public"):
 			parsed.hasPublic = true
+		// The first occurrence of a lifetime counts (RFC 9111 Section 4.2.1): the last
+		// one did, so "max-age=0" followed by "max-age=3600" was stored for an hour.
 		case utils.EqualFold(utils.UnsafeString(key), "max-age"):
-			if v, ok := parseUintDirective(value); ok {
+			if v, ok := parseUintDirective(value); ok && !parsed.maxAgeSet {
 				parsed.maxAgeSet = true
 				parsed.maxAge = v
 			}
 		case utils.EqualFold(utils.UnsafeString(key), "s-maxage"):
-			if v, ok := parseUintDirective(value); ok {
+			if v, ok := parseUintDirective(value); ok && !parsed.sMaxAgeSet {
 				parsed.sMaxAgeSet = true
 				parsed.sMaxAge = v
 			}
