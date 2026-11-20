@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
+	"github.com/gofiber/fiber/v3/internal/personalheader"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -688,6 +689,9 @@ func (s *Session) setSession(ttl time.Duration) {
 		switch ext.Source {
 		case extractors.SourceHeader:
 			resp.Header.SetBytesV(ext.Key, utils.UnsafeBytes(s.id))
+			// The header holds this client's session, so a middleware that keeps the
+			// response for other clients must leave it out, as it does Set-Cookie.
+			personalheader.Mark(s.fasthttpCtx(), s.config.places().headers)
 		case extractors.SourceCookie:
 			fcookie := fasthttp.AcquireCookie()
 
@@ -1113,6 +1117,18 @@ func (s *Session) requestResponse() (*fasthttp.Request, *fasthttp.Response) {
 	default:
 		return nil, nil
 	}
+}
+
+// fasthttpCtx returns the fasthttp context of the request that requestResponse answers
+// for, which the caller found to be there, and holds s.reqMu. It decides as
+// requestResponse does: the context of a request that a panic unwound the middleware of
+// is kept, because the fiber.Ctx may be given back to the pool, without a lock, while a
+// goroutine still asks.
+func (s *Session) fasthttpCtx() *fasthttp.RequestCtx {
+	if s.rctx != nil {
+		return s.rctx
+	}
+	return s.ctx.RequestCtx()
 }
 
 // handlersRun reports whether the handlers of the request a panic unwound the middleware

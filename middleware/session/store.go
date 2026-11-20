@@ -16,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
+	"github.com/gofiber/fiber/v3/internal/personalheader"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
@@ -1045,11 +1046,26 @@ type idPlaces struct {
 	// sources names every source the store reads the session ID from, as shares
 	// compares them.
 	sources []sourceID
+	// headers names the response headers among the sinks, which hold the ID of one
+	// client's session and are marked as such: see personalheader. Nil without any.
+	headers *personalheader.Names
 }
 
 // placesOf works out the places of ext.
 func placesOf(ext extractors.Extractor) idPlaces {
-	return idPlaces{sinks: collectSinks(ext), sources: collectSources(ext)}
+	sinks := collectSinks(ext)
+	return idPlaces{sinks: sinks, sources: collectSources(ext), headers: headerSinks(sinks)}
+}
+
+// headerSinks returns the names of the headers among sinks.
+func headerSinks(sinks []extractors.Extractor) *personalheader.Names {
+	var names []string
+	for _, sink := range sinks {
+		if sink.Source == extractors.SourceHeader {
+			names = append(names, sink.Key)
+		}
+	}
+	return personalheader.New(names...)
 }
 
 // shares reports whether p and other have a source in common, by kind and name, or

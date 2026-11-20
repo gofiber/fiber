@@ -433,6 +433,8 @@ extractors.Chain(
 )
 ```
 
+The [Cache](./cache.md) middleware leaves the header the ID is written to out of the responses it stores, even with `StoreResponseHeaders`, since a cached copy would hand the session to every client that hits it.
+
 ### Custom Extractors (Session-specific)
 
 Prefer the helper constructors from the extractors module. See the Extractors Guide for the full API; below are session-specific examples and notes.

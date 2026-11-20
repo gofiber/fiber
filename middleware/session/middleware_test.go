@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,10 +26,12 @@ import (
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
+	"github.com/gofiber/fiber/v3/internal/personalheader"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
+	"github.com/gofiber/fiber/v3/middleware/cache"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
@@ -1192,6 +1195,64 @@ func Test_Session_Middleware_IDAndFreshWaitForTheLock(t *testing.T) {
 			m.mu.Unlock()
 			apptest.Recv(t, read, 5*time.Second)
 			releaseMiddleware(m)
+		})
+	}
+}
+
+// A session whose ID travels in a header writes it to every response. The cache middleware in front
+// of it must not store that header with the page: the entry is served to every client that hits
+// it, and would hand them the session of the client that caused the miss.
+func Test_Session_Middleware_HeaderIDIsNotReplayedByTheCache(t *testing.T) {
+	t.Parallel()
+	const header = "X-Session-ID"
+	for _, tc := range []struct {
+		name  string
+		cache cache.Config
+	}{
+		{name: "default key", cache: cache.Config{StoreResponseHeaders: true}},
+		{name: "header named as a credential", cache: cache.Config{StoreResponseHeaders: true, KeyCredentialHeaders: []string{header}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(cache.New(tc.cache))
+			app.Use(New(Config{Extractor: extractors.FromHeader(header)}))
+			app.Get("/public", func(c fiber.Ctx) error { return c.SendString("public page") })
+
+			first := apptest.Do(t, app, "/public") // a client without a session: it gets one
+			require.Equal(t, "miss", first.Header.Get("X-Cache"))
+			require.NotEmpty(t, first.Header.Get(header), "the client that caused the miss is given its session")
+
+			second := apptest.Do(t, app, "/public")
+			require.Equal(t, "hit", second.Header.Get("X-Cache"), "the page is cached")
+			require.Empty(t, second.Header.Get(header), "the cache handed the session of the first client to the second")
+		})
+	}
+}
+
+// The header sinks of a store are the names it marks as one client's.
+func Test_Session_Store_MarksOnlyItsHeaderSinks(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		extractor extractors.Extractor
+		name      string
+		want      []string
+	}{
+		{name: "cookie", extractor: extractors.FromCookie("sid")},
+		{name: "query", extractor: extractors.FromQuery("sid")},
+		{name: "header", extractor: extractors.FromHeader("X-A"), want: []string{"X-A"}},
+		{
+			name:      "chain",
+			extractor: extractors.Chain(extractors.FromCookie("sid"), extractors.FromHeader("X-A"), extractors.FromQuery("sid"), extractors.FromHeader("X-B")),
+			want:      []string{"X-A", "X-B"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			names := placesOf(tc.extractor).headers
+			for _, name := range []string{"sid", "X-A", "X-B", "X-C"} {
+				require.Equal(t, slices.Contains(tc.want, name), names.Has([]byte(name)), name)
+			}
 		})
 	}
 }
@@ -2471,6 +2532,30 @@ func Test_Session_Middleware_RecoveringSaveAfterACallHeldTheSessionAcrossTheUnwi
 	require.NoError(t, apptest.Recv(t, regenerated, 5*time.Second, "Regenerate never returned"))
 	require.NotEmpty(t, storedBytes(t, storage.Storage, id), "the save of the recovering side stored nothing")
 	require.Equal(t, id, cookiesByName(resp)["session_id"].Value, "and its cookie")
+}
+
+// The session of a middleware a panic unwound writes the header its ID travels in to its own
+// request, and marks it as the client's own as the middleware does, though the fiber.Ctx of the
+// request is not its to use any more.
+func Test_Session_Middleware_UnwoundSessionMarksTheHeaderItWrites(t *testing.T) {
+	t.Parallel()
+	var (
+		saveErr error
+		marked  *personalheader.Names
+	)
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		saveErr = FromContext(c).Session.Save()
+		marked = personalheader.Marked(c.RequestCtx())
+		return err
+	}, recoverer.New(), New(Config{Extractor: extractors.FromHeader("X-Session-ID")}))
+	app.Get("/", func(fiber.Ctx) error { panic("boom") })
+
+	resp := apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
+	require.NoError(t, saveErr)
+	require.NotEmpty(t, resp.Header.Get("X-Session-ID"), "the recovering side saved the session and wrote its ID")
+	require.True(t, marked.Has([]byte("X-Session-ID")), "and marked the header")
 }
 
 // A panic unwinds a middleware while another goroutine caches the new ID of its session on the
