@@ -758,8 +758,12 @@ func New(config ...Config) fiber.Handler {
 					} else {
 						guard.Unlock()
 					}
+					// A copy of the stored body, not the body itself: the entry is every later
+					// client's too, and a middleware in front of the cache that edits the
+					// response body in place, to mask or rewrite part of it, edited the entry
+					// with it. The copy lands in the response's own pooled buffer.
+					c.Response().SetBody(e.body)
 					// Set response headers from cache
-					c.Response().SetBodyRaw(e.body)
 					c.Response().SetStatusCode(e.status)
 					c.Response().Header.SetContentTypeBytes(e.ctype)
 					if len(e.cencoding) > 0 {
