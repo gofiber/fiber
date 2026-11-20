@@ -3931,6 +3931,52 @@ func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 	cacheTestAExpect(t, app, "/third", cacheMiss)
 }
 
+// A store that cannot make room because a delete fails puts the nodes it popped back. Those after the
+// one that failed were not touched, so they go back without a read of the Storage for each: every one was
+// read back, and logged when that failed, which asked a Storage that was failing already for as many reads
+// as the entries the store needed room from, MaxBytes / 256 of them at most.
+func Test_Cache_FailedEvictionChecksOnlyTheEntryItFailedOn(t *testing.T) {
+	t.Parallel()
+	const entries = 20
+	storage := storagetest.New()
+	probe := &accountingProbe{}
+	path := func(i int) string { return fmt.Sprintf("/s/%02d", i) }
+	size := charged(defaultKey(path(0)), len("0123456789"), textPlain)
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage, Expiration: time.Hour, MaxBytes: entries * size, accounting: probe.record}))
+	app.Get("/s/:id", func(c fiber.Ctx) error { return c.SendString("0123456789") })
+	// Half of what fits, so the store needs the room of about half of the entries.
+	app.Get("/big", func(c fiber.Ctx) error { return c.Send(make([]byte, entries*size/2)) })
+
+	for i := range entries {
+		cacheTestAExpect(t, app, path(i), cacheMiss)
+	}
+	cacheTestBRequireAccounting(t, probe, entries*size, entries)
+
+	for i := range entries {
+		for _, op := range []string{storagetest.OpGet, storagetest.OpDelete} {
+			storage.SetErr(op, defaultKey(path(i)), errors.New("storage unavailable"))
+		}
+	}
+	storage.ClearCalls()
+	cacheTestAExpect(t, app, "/big", cacheUnreachable)
+
+	reads := 0
+	for _, key := range storage.CallKeys(storagetest.OpGet) {
+		if strings.Contains(key, "|/s/") {
+			reads++
+		}
+	}
+	require.Equal(t, 1, reads, "only the entry whose delete failed is read back")
+	cacheTestBRequireAccounting(t, probe, entries*size, entries)
+
+	// Every node is tracked again, so the room is made once the Storage answers.
+	storage.ClearErrs()
+	cacheTestAExpect(t, app, "/big", cacheMiss)
+	cacheTestAExpect(t, app, "/big", cacheHit)
+	require.Less(t, probe.nodes(), entries)
+}
+
 // Test_Cache_MaxBytes_ConcurrencyAndRaceConditions tests that the race condition fix works correctly
 // under concurrent load, verifying that storedBytes never exceeds MaxBytes even with multiple
 // goroutines making simultaneous requests. The -race flag detects any regression.
