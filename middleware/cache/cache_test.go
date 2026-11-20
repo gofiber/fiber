@@ -1951,6 +1951,61 @@ func Test_Cache_MaxBytesEviction(t *testing.T) {
 	}
 }
 
+// An entry is evicted in the order it would expire, counting no more than Expiration from when it was
+// stored. Counted to its own expiry, an entry with a long lifetime went last for as long as it lived: a
+// burst of requests for such a route under query strings the client made up filled the cache with entries
+// that outlasted everything stored after them, which then evicted one another.
+func Test_Cache_EvictionOrderCountsNoMoreThanExpiration(t *testing.T) {
+	t.Parallel()
+	lifetime := func(c fiber.Ctx, _ *Config) time.Duration {
+		switch {
+		case strings.HasPrefix(c.Path(), "/long/"):
+			return 365 * 24 * time.Hour
+		case strings.HasPrefix(c.Path(), "/short/"):
+			return 10 * time.Second
+		default:
+			return time.Minute
+		}
+	}
+
+	for _, tc := range []struct {
+		name          string
+		next, evicted string
+		stored, kept  []string // stored one second apart, in this order, and the room is theirs
+	}{
+		{
+			name: "an entry with a long lifetime goes in the order it was stored", next: "/page/1", evicted: "/long/0",
+			stored: []string{"/long/0", "/long/1", "/long/2", "/page/0"}, kept: []string{"/long/1", "/long/2", "/page/0"},
+		},
+		{
+			name: "an entry that expires sooner goes first", next: "/page/2", evicted: "/short/0",
+			stored: []string{"/page/0", "/short/0", "/page/1"}, kept: []string{"/page/0", "/page/1"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			clock := clocktest.NewClock(time.Now().Truncate(time.Second))
+			// The paths are of one length, so every entry is charged alike.
+			size := charged(defaultKey("/long/0"), len("x"), textPlain)
+			app := fiber.New()
+			app.Use(New(Config{
+				MaxBytes: uint(len(tc.stored)) * size, Expiration: time.Minute, ExpirationGenerator: lifetime, clock: clock.Now,
+			}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("x") })
+
+			for _, path := range tc.stored {
+				cacheTestAExpect(t, app, path, cacheMiss)
+				clock.Add(time.Second)
+			}
+			cacheTestAExpect(t, app, tc.next, cacheMiss)
+			for _, path := range append(tc.kept, tc.next) {
+				cacheTestAExpect(t, app, path, cacheHit)
+			}
+			cacheTestAExpectStatus(t, app, cacheTestAGetCC(tc.evicted, "only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
+		})
+	}
+}
+
 func Test_Cache_UncacheableStatusCodes(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
