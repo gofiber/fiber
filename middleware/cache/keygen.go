@@ -108,9 +108,10 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	}
 	dst = appendTargetAsSent(dst, c.Request().Header.RequestURI(), path, uri.QueryString(), cfg)
 
+	normalized := headerlookup.Canonical(c)
 	if len(cfg.KeyHeaders) > 0 {
 		dst = append(dst, '|', 'h', '=')
-		dst = appendCanonicalHeaderSubset(dst, &c.Request().Header, cfg.KeyHeaders, cfg.credentialKeyHeaders, headerlookup.Canonical(c))
+		dst = appendCanonicalHeaderSubset(dst, &c.Request().Header, cfg.KeyHeaders, cfg.credentialKeyHeaders, normalized)
 	}
 
 	if len(cfg.KeyCookies) > 0 {
@@ -125,9 +126,12 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	// So does any other request that carries a body, once Methods names its method:
 	// what a POST is answered with depends on what it posts as much, and left out
 	// of the key, the first body's answer was served for every other one. A request
-	// without a body adds nothing, which is every GET but an unusual one.
-	if body := c.Request().Body(); len(body) > 0 || c.Method() == fiber.MethodQuery {
-		normalized := headerlookup.Canonical(c)
+	// without a body adds nothing, which is every GET but an unusual one, and one
+	// that names a Content-Encoding: c.Body() decodes by it whether or not there is
+	// a body, and for an encoding it cannot undo, compress, writes a 501 into the
+	// response, which is cacheable. Left out of the key, one request with that
+	// header replaced the entry of every plain request for the URL.
+	if body := c.Request().Body(); len(body) > 0 || c.Method() == fiber.MethodQuery || namesContentEncoding(&c.Request().Header, normalized) {
 		dst = append(dst, '|', 'm', '=')
 		dst = appendKeyFieldLines(dst, &c.Request().Header, "content-encoding", nil, normalized)
 		dst = append(dst, '|')
@@ -137,6 +141,16 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	}
 
 	return dst
+}
+
+// namesContentEncoding reports whether the request carries a Content-Encoding field line, which
+// c.Body() reads whatever the length of the body. Asked of every request, so the common one is
+// answered by the header's own slot, as c.Body() does, before any search of its lines.
+func namesContentEncoding(header *fasthttp.RequestHeader, normalized bool) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
+	if normalized && header.ContentEncoding() == nil {
+		return false
+	}
+	return len(keyFieldLines(header, "content-encoding", normalized)) > 0
 }
 
 // appendTargetAsSent appends what target, the request target as it arrived, holds besides path,

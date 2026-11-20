@@ -305,6 +305,72 @@ func Test_Cache_Security_RequestBodiesStayDistinct(t *testing.T) {
 	}
 }
 
+// Test_Cache_Security_BodylessContentEncodingStaysDistinct tests that a request that names a
+// Content-Encoding but has no body does not share an entry with one that has neither. c.Body() decodes by
+// the encoding whatever the length of the body: for compress, which it cannot undo, it writes a 501 into
+// the response, a cacheable status, and gzip over nothing reads as "EOF". Left out of the key, one request
+// replaced the entry of every plain request for the URL with that answer.
+func Test_Cache_Security_BodylessContentEncodingStaysDistinct(t *testing.T) {
+	t.Parallel()
+	read := func(c fiber.Ctx) error { return c.SendString("body=" + string(c.Body())) }
+	methods := []string{fiber.MethodGet, fiber.MethodHead, fiber.MethodPost}
+
+	for _, method := range methods {
+		for _, tc := range []struct {
+			encoding, body string
+			status         int // what c.Body() leaves on the answer to a request with that encoding and no body
+		}{
+			{encoding: "compress", status: fiber.StatusNotImplemented, body: "body=Not Implemented"},
+			{encoding: "x-compress", status: fiber.StatusNotImplemented, body: "body=Not Implemented"},
+			{encoding: "gzip", status: fiber.StatusOK, body: "body=EOF"},
+		} {
+			t.Run(method+"/"+tc.encoding, func(t *testing.T) {
+				t.Parallel()
+				app := fiber.New()
+				app.Use(New(Config{Expiration: time.Hour, Methods: methods}))
+				app.Add([]string{fiber.MethodGet, fiber.MethodPost}, "/", read)
+				send := func(opts ...apptest.Option) reply { return doRequest(t, app, apptest.Req(method, "/", opts...)) }
+				// HEAD answers without a body.
+				requireReply := func(got reply, cache string, status int, body string) {
+					t.Helper()
+					require.Equal(t, cache, got.cache)
+					require.Equal(t, status, got.status)
+					if method != fiber.MethodHead {
+						require.Equal(t, body, got.body)
+					}
+				}
+
+				requireReply(send(), cacheMiss, fiber.StatusOK, "body=")
+				requireReply(send(), cacheHit, fiber.StatusOK, "body=")
+
+				// The request that reloads the entry with the encoding, and the one that repeats it.
+				coded := []apptest.Option{apptest.WithHeader(fiber.HeaderContentEncoding, tc.encoding)}
+				requireReply(send(append(coded, apptest.WithHeader(fiber.HeaderCacheControl, "no-cache"))...), cacheMiss, tc.status, tc.body)
+				requireReply(send(coded...), cacheHit, tc.status, tc.body)
+
+				// What a plain request is served stays what it was.
+				requireReply(send(), cacheHit, fiber.StatusOK, "body=")
+			})
+		}
+	}
+
+	t.Run("the name spelled as it was sent", func(t *testing.T) {
+		t.Parallel()
+		wire := cacheTestCExactWire(t, read)
+		for _, step := range []struct {
+			cache, body string
+			lines       []string
+		}{
+			{cache: cacheMiss, body: "body="},
+			{lines: []string{"content-encoding: gzip", "cache-control: no-cache"}, cache: cacheMiss, body: "body=EOF"},
+			{lines: []string{"content-encoding: gzip"}, cache: cacheHit, body: "body=EOF"},
+			{cache: cacheHit, body: "body="},
+		} {
+			cacheTestCRequireReply(t, wire.get(step.lines...), step.cache, step.body, "%v", step.lines)
+		}
+	})
+}
+
 // Test_Cache_Security_NextSkipsTheLookup tests that a request Next skips is not served what another
 // request stored. Next was asked only before a response was stored, so one written to keep requests
 // without a credential away from the cache left them the stored response of a request that had it.
