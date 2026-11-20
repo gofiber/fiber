@@ -7,11 +7,15 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"net/textproto"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -142,6 +146,28 @@ func varyKey(base string, names []string, hdr *fasthttp.RequestHeader, normalize
 func varyHeadersChanged(names []string, lookup, live *fasthttp.RequestHeader, normalized bool) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
 	var atLookup, now [len("|vary|") + 2*sha256.Size]byte
 	return !bytes.Equal(appendVaryKey(atLookup[:0], names, lookup, normalized), appendVaryKey(now[:0], names, live, normalized))
+}
+
+// keyVaryFields returns the request headers the key tells entries apart by, which the Cache-Control a hit
+// is given grants freshness for. The default key holds KeyHeaders, and Cookie for KeyCookies. A custom
+// KeyGenerator's key is opaque, so only the headers declared in KeyCredentialHeaders are taken to be in it.
+// Authorization is not among them: a response stored for a request that carries it has a Cache-Control of
+// its own, which a hit keeps.
+func (cfg *Config) keyVaryFields() []string {
+	names := cfg.KeyCredentialHeaders
+	if cfg.usesDefaultKeyGenerator {
+		names = cfg.KeyHeaders
+		if len(cfg.KeyCookies) > 0 {
+			names = append(slices.Clone(names), fiber.HeaderCookie)
+		}
+	}
+	var fields []string
+	for _, name := range names {
+		if !fieldname.ContainsFold(fields, name) {
+			fields = append(fields, textproto.CanonicalMIMEHeaderKey(name))
+		}
+	}
+	return fields
 }
 
 // lookupHeaders pools the copies of the request headers a miss keeps while the handler runs.

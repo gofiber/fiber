@@ -316,6 +316,17 @@ may. The entry counts as keyed by a credential when the response's `Vary` lists
 `DisableVaryHeaders` does not change this: a response whose `Vary` lists `Cookie`
 is one user's whether or not this middleware partitions on it.
 
+A hit that is given this `Cache-Control` also names, in its `Vary`, the request
+headers the key tells entries apart by, after the names the stored `Vary` has:
+the headers of `KeyHeaders`, which are `Accept`, `Accept-Encoding` and
+`Accept-Language` by default, `Cookie` for `KeyCookies`, and those of
+`KeyCredentialHeaders`. Without them, a cache in front of the app that was told
+it may store the hit would keep one copy for the URL and send it to every client,
+whichever language, format or tenant it asked for. A custom `KeyGenerator`'s key
+is opaque, so it names the headers of `KeyCredentialHeaders` alone. A hit that
+keeps a `Cache-Control` of the handler's own keeps the `Vary` the handler chose,
+and with `DisableCacheControl` nothing is added.
+
 A handler that sends its own `Cache-Control` keeps it on hits. On a per-user
 route that says `max-age` without `private`, add `private` yourself if a cache
 in front of the app ignores `Vary`. A custom `KeyGenerator` that keys on a

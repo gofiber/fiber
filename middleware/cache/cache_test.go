@@ -1310,8 +1310,9 @@ func Test_StoreResponseHeaders_KeepsRepeatedFieldLines(t *testing.T) {
 
 	resp = cacheTestAExpect(t, app, "/", cacheHit)
 	// Vary is carried by the entry itself rather than by the stored header
-	// list, and comes back on one line with every name (RFC 9110 §5.3).
-	require.Equal(t, []string{"Cookie,Accept-Encoding"}, resp.Header.Values("Vary"))
+	// list, and comes back on one line with every name (RFC 9110 §5.3), then
+	// the request headers the key tells entries apart by that it does not name.
+	require.Equal(t, []string{"Cookie,Accept-Encoding, Accept, Accept-Language"}, resp.Header.Values("Vary"))
 	require.Equal(t, []string{"default-src 'none'", "script-src 'self'"}, resp.Header.Values("Content-Security-Policy"))
 	// A name sent once is still restored once, so the fix did not turn Set into
 	// an unconditional Add.
@@ -4946,8 +4947,14 @@ func Test_Cache_VaryIsReplayedOnHit(t *testing.T) {
 				t.Helper()
 				resp := cacheTestAExpectBody(t, app, cacheTestAAcceptLanguage("en"), wantStatus, "page-in:en")
 				// Once, not once per place it is kept: under StoreResponseHeaders
-				// the stored header list must not carry a second copy.
-				require.Equal(t, []string{fiber.HeaderAcceptLanguage}, resp.Header.Values(fiber.HeaderVary), "(%s)", wantStatus)
+				// the stored header list must not carry a second copy. A hit given a
+				// Cache-Control of the middleware's own adds the other headers the key
+				// tells entries apart by.
+				wantVary := fiber.HeaderAcceptLanguage
+				if wantStatus == cacheHit && tc.wantCacheControl != "" {
+					wantVary += ", Accept, Accept-Encoding"
+				}
+				require.Equal(t, []string{wantVary}, resp.Header.Values(fiber.HeaderVary), "(%s)", wantStatus)
 				return resp
 			}
 
@@ -4965,6 +4972,9 @@ func Test_Cache_VaryIsReplayedOnHit(t *testing.T) {
 	}
 }
 
+// keyVaryHeaders is what a hit names in its Vary for the default KeyHeaders.
+const keyVaryHeaders = "Accept, Accept-Encoding, Accept-Language"
+
 // Test_Cache_CredentialKeyedHitIsPrivate asserts a hit on an entry holding one
 // user's response says so. Such an entry has no Cache-Control of its own in the
 // common case, and the "public, max-age" this middleware then wrote told a
@@ -4981,8 +4991,12 @@ func Test_Cache_CredentialKeyedHitIsPrivate(t *testing.T) {
 		// A Cache-Control of the handler's own.
 		cacheControl string
 		// What the hit must carry: Vary with its field lines joined, and the
-		// exact Cache-Control, which defaults to the private form.
+		// exact Cache-Control, which defaults to the private form. The Vary of
+		// the miss is the handler's own; a hit that is given a Cache-Control adds
+		// the request headers the key tells entries apart by, wantHitVary when
+		// that differs from the handler's.
 		wantVary         string
+		wantHitVary      string
 		wantCacheControl string
 		// The Vary field lines the handler sends, and the spelling of the field
 		// name it writes them under, "Vary" when empty.
@@ -4992,27 +5006,45 @@ func Test_Cache_CredentialKeyedHitIsPrivate(t *testing.T) {
 		// Whether the request carries the session cookie.
 		noCookie bool
 	}{
-		{name: "Vary: Cookie", vary: []string{"Cookie"}, wantVary: "Cookie"},
-		{name: "Vary: cookie in lower case", vary: []string{"cookie"}, wantVary: "cookie"},
-		{name: "Vary: Cookie on a second field line", vary: []string{"Accept-Encoding", "Cookie"}, wantVary: "Accept-Encoding,Cookie"},
-		{name: "Vary: Authorization", vary: []string{"Authorization"}, wantVary: "Authorization"},
-		{name: "Vary: Proxy-Authorization", vary: []string{"Proxy-Authorization"}, wantVary: "Proxy-Authorization"},
-		{name: "Vary: X-API-Key", vary: []string{"X-API-Key"}, wantVary: "X-API-Key"},
-		{name: "KeyCookies", cfg: Config{KeyCookies: []string{"session"}}},
-		{name: "KeyCookies without the cookie on the request", cfg: Config{KeyCookies: []string{"session"}}, noCookie: true},
-		{name: "KeyHeaders naming Cookie", cfg: Config{KeyHeaders: []string{"Cookie"}}},
-		{name: "KeyHeaders naming Authorization", cfg: Config{KeyHeaders: []string{"Authorization"}}},
-		{name: "KeyCredentialHeaders", cfg: Config{KeyCredentialHeaders: []string{"X-Company-Token"}}},
-		{name: "KeyHeaders naming Proxy-Authorization", cfg: Config{KeyHeaders: []string{"Proxy-Authorization"}}},
-		{name: "KeyHeaders naming X-API-Key", cfg: Config{KeyHeaders: []string{"X-API-Key"}}},
-		{name: "KeyHeaders naming X-Auth-Token", cfg: Config{KeyHeaders: []string{"X-Auth-Token"}}},
-		{name: "KeyHeaders naming X-Access-Token", cfg: Config{KeyHeaders: []string{"X-Access-Token"}}},
+		{name: "Vary: Cookie", vary: []string{"Cookie"}, wantVary: "Cookie", wantHitVary: "Cookie, " + keyVaryHeaders},
+		{name: "Vary: cookie in lower case", vary: []string{"cookie"}, wantVary: "cookie", wantHitVary: "cookie, " + keyVaryHeaders},
+		{
+			name: "Vary: Cookie on a second field line", vary: []string{"Accept-Encoding", "Cookie"},
+			wantVary: "Accept-Encoding,Cookie", wantHitVary: "Accept-Encoding,Cookie, Accept, Accept-Language",
+		},
+		{name: "Vary: Authorization", vary: []string{"Authorization"}, wantVary: "Authorization", wantHitVary: "Authorization, " + keyVaryHeaders},
+		{
+			name: "Vary: Proxy-Authorization", vary: []string{"Proxy-Authorization"},
+			wantVary: "Proxy-Authorization", wantHitVary: "Proxy-Authorization, " + keyVaryHeaders,
+		},
+		{name: "Vary: X-API-Key", vary: []string{"X-API-Key"}, wantVary: "X-API-Key", wantHitVary: "X-API-Key, " + keyVaryHeaders},
+		{name: "KeyCookies", cfg: Config{KeyCookies: []string{"session"}}, wantHitVary: keyVaryHeaders + ", Cookie"},
+		{
+			name: "KeyCookies without the cookie on the request", cfg: Config{KeyCookies: []string{"session"}}, noCookie: true,
+			wantHitVary: keyVaryHeaders + ", Cookie",
+		},
+		{name: "KeyHeaders naming Cookie", cfg: Config{KeyHeaders: []string{"Cookie"}}, wantHitVary: "Cookie"},
+		{name: "KeyHeaders naming Authorization", cfg: Config{KeyHeaders: []string{"Authorization"}}, wantHitVary: "Authorization"},
+		{name: "KeyCredentialHeaders", cfg: Config{KeyCredentialHeaders: []string{"X-Company-Token"}}, wantHitVary: keyVaryHeaders + ", X-Company-Token"},
+		{name: "KeyHeaders naming Proxy-Authorization", cfg: Config{KeyHeaders: []string{"Proxy-Authorization"}}, wantHitVary: "Proxy-Authorization"},
+		{name: "KeyHeaders naming X-API-Key", cfg: Config{KeyHeaders: []string{"X-API-Key"}}, wantHitVary: "X-Api-Key"},
+		{name: "KeyHeaders naming X-Auth-Token", cfg: Config{KeyHeaders: []string{"X-Auth-Token"}}, wantHitVary: "X-Auth-Token"},
+		{name: "KeyHeaders naming X-Access-Token", cfg: Config{KeyHeaders: []string{"X-Access-Token"}}, wantHitVary: "X-Access-Token"},
 		// KeyHeaders naming a credential header makes every entry one client's, whatever the generator.
 		{name: "custom KeyGenerator, KeyHeaders naming Cookie, without the cookie on the request", cfg: Config{KeyGenerator: pathKey, KeyHeaders: []string{"Cookie"}}, noCookie: true},
 		{name: "custom KeyGenerator, KeyHeaders naming Authorization", cfg: Config{KeyGenerator: pathKey, KeyHeaders: []string{"Authorization"}}},
-		{name: "DisableVaryHeaders", cfg: Config{DisableVaryHeaders: true}, vary: []string{"Cookie"}, wantVary: "Cookie"},
-		{name: "DisableHeaderNormalizing", appCfg: fiber.Config{DisableHeaderNormalizing: true}, vary: []string{"cookie"}, wantVary: "cookie"},
-		{name: "DisableHeaderNormalizing with the field name in lower case", appCfg: fiber.Config{DisableHeaderNormalizing: true}, vary: []string{"Cookie"}, varyName: "vary", wantVary: "Cookie"},
+		{
+			name: "DisableVaryHeaders", cfg: Config{DisableVaryHeaders: true}, vary: []string{"Cookie"},
+			wantVary: "Cookie", wantHitVary: "Cookie, " + keyVaryHeaders,
+		},
+		{
+			name: "DisableHeaderNormalizing", appCfg: fiber.Config{DisableHeaderNormalizing: true}, vary: []string{"cookie"},
+			wantVary: "cookie", wantHitVary: "cookie, " + keyVaryHeaders,
+		},
+		{
+			name: "DisableHeaderNormalizing with the field name in lower case", appCfg: fiber.Config{DisableHeaderNormalizing: true},
+			vary: []string{"Cookie"}, varyName: "vary", wantVary: "Cookie", wantHitVary: "Cookie, " + keyVaryHeaders,
+		},
 		{
 			name:             "the handler's own Cache-Control is kept",
 			vary:             []string{"Cookie"},
@@ -5050,19 +5082,19 @@ func Test_Cache_CredentialKeyedHitIsPrivate(t *testing.T) {
 			if tc.noCookie {
 				wantBody = "page-for:"
 			}
-			get := func(wantStatus string) *http.Response {
+			get := func(wantStatus, wantVary string) *http.Response {
 				t.Helper()
 				req := httptest.NewRequest(fiber.MethodGet, "/me", http.NoBody)
 				if !tc.noCookie {
 					req.Header.Set(fiber.HeaderCookie, "session=alice")
 				}
 				resp := cacheTestAExpectBody(t, app, req, wantStatus, wantBody)
-				require.Equal(t, tc.wantVary, strings.Join(resp.Header.Values(fiber.HeaderVary), ","), "(%s)", wantStatus)
+				require.Equal(t, wantVary, strings.Join(resp.Header.Values(fiber.HeaderVary), ","), "(%s)", wantStatus)
 				return resp
 			}
 
-			get(cacheMiss)
-			resp := get(cacheHit)
+			get(cacheMiss, tc.wantVary)
+			resp := get(cacheHit, cmp.Or(tc.wantHitVary, tc.wantVary))
 			require.Equal(t, wantCacheControl, resp.Header.Get(fiber.HeaderCacheControl))
 		})
 	}
@@ -5129,11 +5161,13 @@ func Test_Cache_VaryReplayedWithCompress(t *testing.T) {
 	app.Use(compress.New())
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString(strings.Repeat("compressible ", 256)) })
 
-	for _, want := range []string{cacheMiss, cacheHit} {
+	// The hit adds the other headers the key tells entries apart by.
+	for _, step := range [][2]string{{cacheMiss, "Accept-Encoding"}, {cacheHit, "Accept-Encoding, Accept, Accept-Language"}} {
+		want, vary := step[0], step[1]
 		req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAcceptEncoding, "gzip"))
 		resp := cacheTestAExpect(t, app, req, want)
 		require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding), "(%s)", want)
-		require.Equal(t, []string{fiber.HeaderAcceptEncoding}, resp.Header.Values(fiber.HeaderVary), "(%s)", want)
+		require.Equal(t, []string{vary}, resp.Header.Values(fiber.HeaderVary), "(%s)", want)
 	}
 }
 
@@ -5233,7 +5267,12 @@ func Test_Cache_VaryLongerThanEntryLimitIsUncacheable(t *testing.T) {
 				}
 				body := apptest.Body(t, resp)
 				require.Equal(t, "body", body, "request %d", i+1)
-				require.Equal(t, []string{vary}, resp.Header.Values(fiber.HeaderVary), "request %d", i+1)
+				// A hit names the request headers the key tells entries apart by after the stored ones.
+				wantVary := vary
+				if want == cacheHit {
+					wantVary += ", Accept, Accept-Encoding, Accept-Language"
+				}
+				require.Equal(t, []string{wantVary}, resp.Header.Values(fiber.HeaderVary), "request %d", i+1)
 			}
 		})
 	}
