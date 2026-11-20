@@ -341,6 +341,39 @@ func Test_Cache_Security_NextSkipsTheLookup(t *testing.T) {
 	}
 }
 
+// Test_Cache_Security_HitDoesNotShareTheStoredBody tests that what a middleware in front of the cache
+// does to the body of one hit stays with that response. The hit was handed the stored body itself,
+// so one that masks part of a response in place masked the entry, and every later client was served
+// the masked body.
+func Test_Cache_Security_HitDoesNotShareTheStoredBody(t *testing.T) {
+	t.Parallel()
+	const body = "card 4111111111111111"
+	for _, kind := range storageKinds {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				err := c.Next()
+				if c.Get("X-Mask") != "" {
+					masked := c.Response().Body()
+					for i := range masked {
+						if masked[i] >= '0' && masked[i] <= '9' {
+							masked[i] = '#'
+						}
+					}
+				}
+				return err
+			})
+			app.Use(New(Config{Storage: storageOf(kind), Expiration: time.Hour}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString(body) })
+
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, body)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Mask", "1"), cacheHit, "card ################")
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, body, "the entry is as it was stored")
+		})
+	}
+}
+
 // Concurrent requests whose query has more parameters than the key spells out.
 func Test_Cache_Security_Concurrent_QueryParamDoS(t *testing.T) {
 	t.Parallel()
