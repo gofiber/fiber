@@ -549,8 +549,11 @@ func Test_Cache_Security_HitKeepsTheHeadersThatRestrictTheBody(t *testing.T) {
 			})
 			app.Use(New(Config{Storage: storageOf(kind), Expiration: time.Hour}))
 			app.Get("/", func(c fiber.Ctx) error {
+				// The field set in front of the cache goes first, before the others are added: fasthttp
+				// fills the place of a field it removes with the last one, which turned the two lines
+				// of the Content-Security-Policy around whenever it was removed after them.
+				c.Response().Header.Del(fiber.HeaderXFrameOptions)
 				for name, lines := range kept {
-					c.Response().Header.Del(name)
 					for _, line := range lines {
 						c.Response().Header.Add(name, line)
 					}
