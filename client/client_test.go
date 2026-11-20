@@ -2054,6 +2054,63 @@ func Test_Request_Resend_DoesNotAccumulateHeaders(t *testing.T) {
 	}
 }
 
+func Test_Request_Resend_Files(t *testing.T) {
+	t.Parallel()
+	client := clientTestAClient(t, func(app *fiber.App) {
+		app.Post("/", func(c fiber.Ctx) error {
+			form, err := c.MultipartForm()
+			if err != nil {
+				return err
+			}
+			fh := form.File["file"]
+			if len(fh) != 1 {
+				return c.SendString("files: " + strconv.Itoa(len(fh)))
+			}
+			f, err := fh[0].Open()
+			require.NoError(t, err)
+			defer func() { require.NoError(t, f.Close()) }()
+			b, err := io.ReadAll(f)
+			require.NoError(t, err)
+			return c.SendString(fh[0].Filename + ":" + string(b))
+		})
+	})
+
+	t.Run("file added by path", func(t *testing.T) {
+		t.Parallel()
+		path := filepath.Join(t.TempDir(), "a.txt")
+		require.NoError(t, os.WriteFile(path, []byte("hello"), 0o600))
+
+		req := clientTestBRequest(t)
+		req.SetClient(client).AddFile(path)
+		req.Files()[0].SetFieldName("file")
+
+		for range 2 {
+			resp, err := req.Post("http://example.com/")
+			require.NoError(t, err)
+			require.Equal(t, "a.txt:hello", resp.String())
+			resp.Close()
+		}
+	})
+
+	t.Run("body is replaced", func(t *testing.T) {
+		t.Parallel()
+		req := clientTestBRequest(t)
+		req.SetClient(client).AddFileWithReader("a.txt", io.NopCloser(strings.NewReader("first")))
+		req.Files()[0].SetFieldName("file")
+
+		resp, err := req.Post("http://example.com/")
+		require.NoError(t, err)
+		require.Equal(t, "a.txt:first", resp.String())
+		resp.Close()
+
+		req.Files()[0].SetReader(io.NopCloser(strings.NewReader("second")))
+		resp, err = req.Post("http://example.com/")
+		require.NoError(t, err)
+		require.Equal(t, "a.txt:second", resp.String())
+		resp.Close()
+	})
+}
+
 func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 	t.Parallel()
 	server := startTestServer(t, func(app *fiber.App) {

@@ -1135,12 +1135,15 @@ type ParserConfig struct {
 type ParserType struct {
     CustomType any
     Converter  func(string) reflect.Value
+    ConverterE func(string) (reflect.Value, error)
 }
 ```
 
 - `IgnoreUnknownKeys`: when `false`, a request key that names no field fails the bind with `schema: invalid path "<key>"`. Fiber's default is `true`.
-- `ParserType`: registers a `Converter` for the type of `CustomType`. The converter returns `reflect.Value{}` to reject a value, which fails the bind with a `fiber.ConversionError`.
+- `ParserType` registers a converter for the type of `CustomType`. Fiber uses `ConverterE` when it is set and `Converter` otherwise. A converter can reject a value by returning an invalid `reflect.Value{}`. `ConverterE` can also reject a value by returning an error, which is stored in `fiber.ConversionError.Err`.
 - `ZeroEmpty`: when `true`, an empty value sets the field to its zero value, which for a slice field is one zero element and for a pointer field a non-nil pointer to the zero value. When `false`, an empty value leaves a plain field unchanged and a slice field empty, while a pointer field still gets a non-nil pointer to the zero value. Fiber's default is `true`.
+
+In the default error-handling mode, use `errors.As` to extract `fiber.MultiError` as shown in [Inspecting the underlying error](#inspecting-the-underlying-error). Call `errors.Is` or `errors.As` on the map entry for the failed request key to inspect the error from `ConverterE`.
 
 ```go title="Example"
 
@@ -1152,18 +1155,18 @@ func (ct *CustomTime) String() string {
     return t
 }
 
-// Converter for CustomTime type with format "2006-01-02"
-var timeConverter = func(value string) reflect.Value {
-    fmt.Println("timeConverter:", value)
-    if v, err := time.Parse("2006-01-02", value); err == nil {
-        return reflect.ValueOf(CustomTime(v))
+// Converter for CustomTime type with format "2006-01-02"; its error ends up in the bind error
+var timeConverter = func(value string) (reflect.Value, error) {
+    v, err := time.Parse("2006-01-02", value)
+    if err != nil {
+        return reflect.Value{}, err
     }
-    return reflect.Value{}
+    return reflect.ValueOf(CustomTime(v)), nil
 }
 
 customTime := binder.ParserType{
     CustomType: CustomTime{},
-    Converter:  timeConverter,
+    ConverterE: timeConverter,
 }
 
 // Add custom type to the Decoder settings

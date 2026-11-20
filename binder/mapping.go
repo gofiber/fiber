@@ -29,11 +29,12 @@ type ParserConfig struct {
 	ZeroEmpty         bool
 }
 
-// ParserType require two element, type and converter for register.
-// Use ParserType with BodyParser for parsing custom type in form data.
+// ParserType configures a converter for the type of CustomType.
+// ConverterE takes precedence over Converter when both are set.
 type ParserType struct {
 	CustomType any
 	Converter  func(string) reflect.Value
+	ConverterE func(string) (reflect.Value, error)
 }
 
 // tags is used to classify parser's pool; a tag's position is its index in
@@ -108,7 +109,12 @@ func decoderBuilder(aliasTag string, parserConfig ParserConfig) any {
 	// honored here: one global tag is incompatible with per-source binding.
 	decoder.SetAliasTag(aliasTag)
 	for _, v := range parserConfig.ParserType {
-		decoder.RegisterConverter(reflect.ValueOf(v.CustomType).Interface(), v.Converter)
+		customType := reflect.ValueOf(v.CustomType).Interface()
+		if v.ConverterE != nil {
+			decoder.RegisterConverterE(customType, v.ConverterE)
+		} else {
+			decoder.RegisterConverter(customType, v.Converter)
+		}
 	}
 	decoder.ZeroEmpty(parserConfig.ZeroEmpty)
 	return &pooledDecoder{Decoder: decoder, types: make(map[reflect.Type]*boundType)}

@@ -811,7 +811,6 @@ func New(config ...Config) fiber.Handler {
 						setFieldLine(&c.Response().Header, fiber.HeaderCacheControl, cacheControlValue, canonical)
 					}
 
-					const maxDeltaSeconds = uint64(math.MaxInt32)
 					ageSeconds := min(entryAge, maxDeltaSeconds)
 
 					// RFC-compliant Age header (RFC 9111)
@@ -1158,10 +1157,9 @@ func New(config ...Config) fiber.Handler {
 
 		ageVal := uint64(0)
 		if b := fieldname.First(&c.Response().Header, fiber.HeaderAge, respCanonical); len(b) > 0 {
-			if v, err := fasthttp.ParseUint(b); err == nil {
-				if v >= 0 {
-					ageVal = uint64(v)
-				}
+			// Age is a delta-seconds too (RFC 9111 Section 5.1).
+			if v, ok := parseUintDirective(b); ok {
+				ageVal = v
 			}
 		} else {
 			setFieldLine(&c.Response().Header, fiber.HeaderAge, []byte("0"), respCanonical)
