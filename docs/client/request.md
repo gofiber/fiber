@@ -915,7 +915,7 @@ func (r *Request) FileByPath(path string) *File
 
 ### AddFile
 
-**AddFile** adds a single file to the request from a file path.
+**AddFile** adds a single file to the request from a file path. The file is opened on every send, so the request can be sent again.
 
 ```go title="Signature"
 func (r *Request) AddFile(path string) *Request
@@ -954,7 +954,7 @@ fmt.Println(string(resp.Body()))
 
 ### AddFileWithReader
 
-**AddFileWithReader** adds a single file to the request from an `io.ReadCloser`.
+**AddFileWithReader** adds a single file to the request from an `io.ReadCloser`. The first send reads and closes the reader, so set a new one with `SetReader` before sending the request again.
 
 ```go title="Signature"
 func (r *Request) AddFileWithReader(name string, reader io.ReadCloser) *Request
@@ -1564,7 +1564,7 @@ func (f *File) SetPath(p string)
 
 ### SetReader
 
-**SetReader** sets the file's `io.ReadCloser`. The reader is closed automatically when the request body is parsed.
+**SetReader** sets the file's `io.ReadCloser`. The reader is closed automatically when the request body is parsed, so it serves one send.
 
 ```go title="Signature"
 func (f *File) SetReader(r io.ReadCloser)
