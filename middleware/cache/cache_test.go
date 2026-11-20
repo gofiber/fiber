@@ -995,6 +995,35 @@ func cacheTestAExpectRepeat(t *testing.T, app *fiber.App, target string) []byte 
 	return body
 }
 
+// Next is asked again once the handler has answered, and keeps out of the cache a response it judges
+// by what it sees there, one that would be stored otherwise, as a 404 is.
+func Test_Cache_NextSeesTheResponse(t *testing.T) {
+	t.Parallel()
+	var handled atomic.Int32
+	app := fiber.New()
+	app.Use(New(Config{Next: func(c fiber.Ctx) bool { return c.Response().StatusCode() == fiber.StatusNotFound }}))
+	app.Get("/*", func(c fiber.Ctx) error {
+		handled.Add(1)
+		if c.Path() == "/missing" {
+			return c.Status(fiber.StatusNotFound).SendString("missing")
+		}
+		return c.SendString("found")
+	})
+
+	for _, step := range []struct {
+		path, cache string
+		handled     int32 // how often the handler has run by then
+	}{
+		{path: "/missing", cache: cacheUnreachable, handled: 1},
+		{path: "/missing", cache: cacheUnreachable, handled: 2},
+		{path: "/", cache: cacheMiss, handled: 3},
+		{path: "/", cache: cacheHit, handled: 3},
+	} {
+		cacheTestAExpect(t, app, step.path, step.cache)
+		require.Equal(t, step.handled, handled.Load(), step.path)
+	}
+}
+
 func Test_Cache_CustomNext(t *testing.T) {
 	t.Parallel()
 	app, _ := cacheTestAOrigin(New(Config{
