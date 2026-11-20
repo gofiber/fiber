@@ -66,18 +66,21 @@ func valueMayAlias(v any) bool {
 		return false
 	}
 	t := reflect.TypeOf(v)
-	if t == nil {
-		return false
-	}
-	switch t.Kind() {
+	// Matched on Kind so named scalars (type UserID int) are covered too.
+	return t != nil && !scalarKind(t.Kind())
+}
+
+// scalarKind reports whether a value of the kind is a copy of itself that holds no other
+// value: a boolean, a number or a string.
+func scalarKind(kind reflect.Kind) bool {
+	switch kind {
 	case reflect.Bool, reflect.String,
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
 		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-		// Matched on Kind so named scalars (type UserID int) are covered too.
-		return false
-	default:
 		return true
+	default:
+		return false
 	}
 }
 

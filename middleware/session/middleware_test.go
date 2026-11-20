@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"io"
@@ -1163,6 +1164,42 @@ func Test_Session_Middleware_StreamedOrHijackedResponseKeepsItsObjects(t *testin
 			require.Equal(t, "alice", sess.Get("user"), "the session is left as it was, not reset for the pool")
 		})
 	}
+}
+
+// An application that keeps what a client sent in the session can be asked by a body of 60 KB, nested
+// as deep as encoding/json goes, for seconds and gigabytes: gob copies a value once per level. The
+// save is refused, quickly, and nothing is stored.
+func Test_Session_Middleware_ValueNestedTooDeepIsNotSaved(t *testing.T) {
+	t.Parallel()
+	gob.Register(map[string]any{})
+	storage := storagetest.New()
+	var handled error
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage, ErrorHandler: func(c fiber.Ctx, err error) {
+		handled = err
+		require.NoError(t, c.SendStatus(fiber.StatusInternalServerError))
+	}}))
+	app.Post("/", func(c fiber.Ctx) error {
+		var filters map[string]any
+		if err := c.Bind().JSON(&filters); err != nil {
+			return fiber.ErrBadRequest
+		}
+		FromContext(c).Set("filters", filters)
+		return c.SendString("saved")
+	})
+	deep := strings.Repeat(`{"a":`, 9_999) + `1` + strings.Repeat(`}`, 9_999)
+	shallow := strings.Repeat(`{"a":`, 9) + `1` + strings.Repeat(`}`, 9)
+
+	start := time.Now()
+	apptest.Expect(t, app, httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader(deep)), fiber.StatusInternalServerError)
+	require.Less(t, time.Since(start), 5*time.Second)
+	require.ErrorIs(t, handled, errNestedTooDeep)
+	require.Empty(t, storage.Keys(), "nothing was stored")
+
+	handled = nil
+	apptest.Expect(t, app, httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader(shallow)), fiber.StatusOK)
+	require.NoError(t, handled)
+	require.Len(t, storage.Keys(), 1, "a value of ordinary depth is saved")
 }
 
 // ID and Fresh read the session under the lock of the middleware, which the end of the request holds

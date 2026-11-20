@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"encoding"
 	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/utils/v2"
@@ -314,7 +316,152 @@ func decodeGob(r io.Reader, target any) (err error) { //nolint:nonamedreturns //
 	return nil
 }
 
+// maxGobNesting is how deep a value of a session may be nested for gob to save it: every
+// map, slice, array, struct and pointer that holds the value counts one level. Gob encodes
+// each value that an interface holds into a buffer of its own and copies it into the one
+// of the value around it, so a value n levels deep costs n times its size in time and in
+// memory: 60 KB of JSON nested 9,999 deep, which encoding/json decodes into a
+// map[string]any, took 0.8 s and 1.7 GiB to save. A value that holds itself would never
+// be saved.
+const maxGobNesting = 64
+
+// errNestedTooDeep is the reason a session that holds a value nested deeper than
+// maxGobNesting is not saved as gob.
+var errNestedTooDeep = fmt.Errorf("a value is nested more than %d levels deep, which gob cannot save in reasonable time and memory: "+
+	"keep it flatter, or store the sessions with a Codec", maxGobNesting)
+
+// nestedTooDeep reports whether a key or a value of values is nested deeper than
+// maxGobNesting.
+func nestedTooDeep(values map[any]any) bool {
+	for key, value := range values {
+		if tooDeep(key, 0) || tooDeep(value, 0) {
+			return true
+		}
+	}
+	return false
+}
+
+// tooDeep reports whether v, which sits depth levels down, holds a value that goes deeper
+// than maxGobNesting. What a session mostly holds, and what a client shapes, such as a
+// JSON document decoded into any, is walked without reflection.
+func tooDeep(v any, depth int) bool {
+	switch typed := v.(type) {
+	case nil, string, int, int64, bool, float64, time.Time:
+		return false
+	case map[string]any:
+		if depth >= maxGobNesting {
+			return true
+		}
+		for _, held := range typed {
+			if tooDeep(held, depth+1) {
+				return true
+			}
+		}
+		return false
+	case []any:
+		if depth >= maxGobNesting {
+			return true
+		}
+		for _, held := range typed {
+			if tooDeep(held, depth+1) {
+				return true
+			}
+		}
+		return false
+	default:
+		return tooDeepValue(reflect.ValueOf(v), depth)
+	}
+}
+
+var (
+	gobEncoderType      = reflect.TypeFor[gob.GobEncoder]()
+	binaryMarshalerType = reflect.TypeFor[encoding.BinaryMarshaler]()
+	textMarshalerType   = reflect.TypeFor[encoding.TextMarshaler]()
+	// encodesItself caches the answer of encodesItselfType by type.
+	encodesItself sync.Map
+)
+
+// encodesItselfType reports whether gob writes a value of type t with a method of its own,
+// GobEncode, MarshalBinary or MarshalText, as it does for time.Time. It never looks inside
+// such a value, which can be linked to itself once decoded, and neither does the walk.
+func encodesItselfType(t reflect.Type) bool {
+	if cached, ok := encodesItself.Load(t); ok {
+		itself, isBool := cached.(bool)
+		return isBool && itself
+	}
+	ptr := reflect.PointerTo(t)
+	itself := t.Implements(gobEncoderType) || ptr.Implements(gobEncoderType) ||
+		t.Implements(binaryMarshalerType) || ptr.Implements(binaryMarshalerType) ||
+		t.Implements(textMarshalerType) || ptr.Implements(textMarshalerType)
+	encodesItself.Store(t, itself)
+	return itself
+}
+
+// tooDeepValue is tooDeep for any value, by reflection. A value that encodes itself is not
+// looked into.
+func tooDeepValue(rv reflect.Value, depth int) bool {
+	switch rv.Kind() {
+	case reflect.Interface:
+		return !rv.IsNil() && tooDeepValue(rv.Elem(), depth)
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Array, reflect.Struct:
+		return !encodesItselfType(rv.Type()) && tooDeepContainer(rv, depth)
+	default:
+		return false
+	}
+}
+
+// tooDeepContainer is tooDeepValue for a pointer, map, slice, array or struct. Only what holds
+// other values is looked into: a container of scalars has nothing to go deeper, and gob leaves
+// out the fields of a struct that are not exported.
+func tooDeepContainer(rv reflect.Value, depth int) bool {
+	switch rv.Kind() {
+	case reflect.Pointer:
+		if rv.IsNil() {
+			return false
+		}
+		return depth >= maxGobNesting || tooDeepValue(rv.Elem(), depth+1)
+	case reflect.Map:
+		if scalarKind(rv.Type().Key().Kind()) && scalarKind(rv.Type().Elem().Kind()) {
+			return false
+		}
+		if depth >= maxGobNesting {
+			return true
+		}
+		for iter := rv.MapRange(); iter.Next(); {
+			if tooDeepValue(iter.Key(), depth+1) || tooDeepValue(iter.Value(), depth+1) {
+				return true
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		if scalarKind(rv.Type().Elem().Kind()) {
+			return false
+		}
+		if depth >= maxGobNesting {
+			return true
+		}
+		for i := range rv.Len() {
+			if tooDeepValue(rv.Index(i), depth+1) {
+				return true
+			}
+		}
+	case reflect.Struct:
+		if depth >= maxGobNesting {
+			return true
+		}
+		for i := range rv.NumField() {
+			if field := rv.Field(i); field.CanInterface() && tooDeepValue(field, depth+1) {
+				return true
+			}
+		}
+	default:
+	}
+	return false
+}
+
 func (gobFormat) encode(values map[any]any) ([]byte, error) {
+	if nestedTooDeep(values) {
+		return nil, fmt.Errorf("failed to encode session data: %w", errNestedTooDeep)
+	}
 	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 	defer byteBufferPool.Put(byteBuffer)
 	defer byteBuffer.Reset()

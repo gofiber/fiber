@@ -2792,3 +2792,145 @@ func Test_Codec_GobErrorIsLoggedQuoted(t *testing.T) {
 	require.ErrorAs(t, err, new(gobError))
 	require.Equal(t, strconv.Quote(errors.Unwrap(err).Error()), err.Error(), "a stream that gob cannot read is an error, quoted")
 }
+
+type (
+	nestedMap map[string]any
+	nestedBox struct{ Inner any }
+
+	// The three that gob writes with a method of their own, and so never looks inside.
+	nestedGob    struct{ Inner any }
+	nestedBinary struct{ Inner any }
+	nestedText   struct{ Inner any }
+)
+
+func (nestedGob) GobEncode() ([]byte, error)        { return []byte("gob"), nil }
+func (*nestedGob) GobDecode([]byte) error           { return nil }
+func (nestedBinary) MarshalBinary() ([]byte, error) { return []byte("binary"), nil }
+func (*nestedBinary) UnmarshalBinary([]byte) error  { return nil }
+func (nestedText) MarshalText() ([]byte, error)     { return []byte("text"), nil }
+func (*nestedText) UnmarshalText([]byte) error      { return nil }
+
+// Gob encodes the value an interface holds into a buffer of its own and copies it into the one of
+// the value around it, so a value n levels deep costs n times its size, which a client can shape
+// (a JSON body decoded into a map[string]any). A value nested deeper than maxGobNesting is not saved,
+// whatever holds the levels, and one at the limit is.
+func Test_Codec_GobRefusesValuesNestedTooDeep(t *testing.T) {
+	t.Parallel()
+	for _, registered := range []any{map[string]any{}, []any{}, map[any]any{}, nestedMap{}, nestedBox{}, [1]any{}, time.Time{}} {
+		gob.Register(registered)
+	}
+	for _, tc := range []struct {
+		wrap   func(any) any
+		name   string
+		levels int // the levels a wrap adds
+	}{
+		{name: "map[string]any", levels: 1, wrap: func(v any) any { return map[string]any{"k": v} }},
+		{name: "[]any", levels: 1, wrap: func(v any) any { return []any{v} }},
+		{name: "map[any]any", levels: 1, wrap: func(v any) any { return map[any]any{"k": v} }},
+		{name: "named map", levels: 1, wrap: func(v any) any { return nestedMap{"k": v} }},
+		{name: "array", levels: 1, wrap: func(v any) any { return [1]any{v} }},
+		{name: "struct", levels: 1, wrap: func(v any) any { return nestedBox{Inner: v} }},
+		{name: "pointer to struct", levels: 2, wrap: func(v any) any { return &nestedBox{Inner: v} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			nested := func(wraps int) map[any]any {
+				var v any = "leaf"
+				for range wraps {
+					v = tc.wrap(v)
+				}
+				return map[any]any{"k": v}
+			}
+			_, err := gobStream.encode(nested(maxGobNesting / tc.levels))
+			require.NoError(t, err, "a value at the limit is saved")
+			_, err = gobStream.encode(nested(maxGobNesting/tc.levels + 1))
+			require.ErrorIs(t, err, errNestedTooDeep)
+			require.ErrorContains(t, err, "failed to encode session data")
+		})
+	}
+
+	t.Run("a key", func(t *testing.T) {
+		t.Parallel()
+		key := func(levels int) any {
+			var k any = "leaf"
+			for range levels {
+				k = [1]any{k}
+			}
+			return k
+		}
+		_, err := gobStream.encode(map[any]any{key(maxGobNesting): 1, "k": map[any]any{key(maxGobNesting - 1): 1}})
+		require.NoError(t, err, "keys at the limit are saved")
+		for name, values := range map[string]map[any]any{
+			"of the session":      {key(maxGobNesting + 1): 1},
+			"of a map in a value": {"k": map[any]any{key(maxGobNesting): 1}},
+		} {
+			_, err := gobStream.encode(values)
+			require.ErrorIs(t, err, errNestedTooDeep, name)
+		}
+	})
+	t.Run("a value that holds itself", func(t *testing.T) {
+		t.Parallel()
+		loop := map[string]any{}
+		loop["self"] = loop
+		box := &nestedBox{}
+		box.Inner = box
+		for _, v := range []any{loop, box, []any{loop}} {
+			_, err := gobStream.encode(map[any]any{"k": v})
+			require.ErrorIs(t, err, errNestedTooDeep)
+		}
+	})
+	t.Run("a value that encodes itself is not looked into", func(t *testing.T) {
+		t.Parallel()
+		for _, registered := range []any{nestedGob{}, nestedBinary{}, nestedText{}} {
+			gob.Register(registered)
+		}
+		var deep any = "leaf"
+		for range 2 * maxGobNesting {
+			deep = []any{deep}
+		}
+		_, err := gobStream.encode(map[any]any{"deep": deep})
+		require.ErrorIs(t, err, errNestedTooDeep, "what the wrappers hold is deep")
+		for name, wrapped := range map[string]any{
+			"GobEncoder":      nestedGob{Inner: deep},
+			"BinaryMarshaler": &nestedBinary{Inner: deep},
+			"TextMarshaler":   nestedText{Inner: deep},
+		} {
+			_, err := gobStream.encode(map[any]any{"k": wrapped})
+			require.NoError(t, err, name)
+		}
+	})
+	t.Run("a wide value is not a deep one", func(t *testing.T) {
+		t.Parallel()
+		wide := make([]any, 5000)
+		for i := range wide {
+			wide[i] = map[string]any{"a": []any{i, "x"}, "b": nestedBox{Inner: []string{"y"}}}
+		}
+		_, err := gobStream.encode(map[any]any{"k": wide, "bytes": make([]byte, 1<<20), "ints": make([]int, 1<<16), "time": time.Now()})
+		require.NoError(t, err)
+	})
+}
+
+// Benchmark_Codec_GobNesting is what the check for values nested too deep costs a save, which runs
+// it before gob encodes anything: a session of a few scalars, a document of the shape JSON decodes
+// into, and what must not be walked, a long slice of scalars.
+func Benchmark_Codec_GobNesting(b *testing.B) {
+	doc := map[string]any{"a": []any{1, "x", map[string]any{"b": []any{2.5, true}}}, "c": map[string]any{"d": "e"}}
+	long := make([]int, 1<<20)
+	for _, tc := range []struct {
+		values map[any]any
+		name   string
+	}{
+		{name: "scalars", values: map[any]any{"user": "alice", "id": 42, "admin": true, "seen": time.Now()}},
+		{name: "document", values: map[any]any{"doc": doc}},
+		{name: "long slice of scalars", values: map[any]any{"long": long}},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if nestedTooDeep(tc.values) {
+					b.Fatal("not deep")
+				}
+			}
+		})
+	}
+}
