@@ -1081,6 +1081,8 @@ func Test_Bind_Query_ConverterE(t *testing.T) {
 	fields = nil
 	require.ErrorAs(t, c.Bind().Query(&list), &fields)
 	require.ErrorIs(t, fields["levels"], strconv.ErrSyntax)
+	require.ErrorAs(t, fields["levels"], &numErr)
+	require.Equal(t, "x", numErr.Num)
 }
 
 func Benchmark_Bind_Query(b *testing.B) {
