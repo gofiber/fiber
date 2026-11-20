@@ -302,6 +302,45 @@ func Test_Cache_Security_RequestBodiesStayDistinct(t *testing.T) {
 	}
 }
 
+// Test_Cache_Security_NextSkipsTheLookup tests that a request Next skips is not served what another
+// request stored. Next was asked only before a response was stored, so one written to keep requests
+// without a credential away from the cache left them the stored response of a request that had it.
+func Test_Cache_Security_NextSkipsTheLookup(t *testing.T) {
+	t.Parallel()
+	var handled, asked atomic.Int32
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour, Next: func(c fiber.Ctx) bool {
+		asked.Add(1)
+		return c.Get("X-API-Key") == ""
+	}}))
+	app.Get("/", func(c fiber.Ctx) error {
+		handled.Add(1)
+		if c.Get("X-API-Key") != "secret" {
+			return c.Status(fiber.StatusUnauthorized).SendString("no key")
+		}
+		return c.SendString("confidential")
+	})
+
+	for _, step := range []struct {
+		key, cache, body string
+		status           int
+		handled, asked   int32 // how often the handler has run and Next been asked by then
+	}{
+		// Asked before the lookup and again before the response is stored.
+		{key: "secret", cache: cacheMiss, status: fiber.StatusOK, body: "confidential", handled: 1, asked: 2},
+		{key: "secret", cache: cacheHit, status: fiber.StatusOK, body: "confidential", handled: 1, asked: 3},
+		// Skipped: the handler answers, and the entry stays for the requests that are not.
+		{cache: cacheUnreachable, status: fiber.StatusUnauthorized, body: "no key", handled: 2, asked: 4},
+		{key: "secret", cache: cacheHit, status: fiber.StatusOK, body: "confidential", handled: 2, asked: 5},
+	} {
+		got := cacheTestCGet(t, app, "/", "X-API-Key", step.key)
+		require.Equal(t, step.status, got.status, "key %q", step.key)
+		cacheTestCRequireReply(t, got, step.cache, step.body, "key %q", step.key)
+		require.Equal(t, step.handled, handled.Load(), "handler runs, key %q", step.key)
+		require.Equal(t, step.asked, asked.Load(), "times Next was asked, key %q", step.key)
+	}
+}
+
 // Concurrent requests whose query has more parameters than the key spells out.
 func Test_Cache_Security_Concurrent_QueryParamDoS(t *testing.T) {
 	t.Parallel()

@@ -19,6 +19,10 @@ type Config struct {
 
 	// Next defines a function to skip this middleware when returned true.
 	//
+	// It is asked twice: before an entry is looked up, where true passes the
+	// request on without the cache, and again before the response is stored, where
+	// true leaves it unstored. It may so decide by the request or by the response.
+	//
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
