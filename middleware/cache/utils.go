@@ -200,6 +200,40 @@ func isIgnoredHeader(key []byte) bool {
 	return ok
 }
 
+// keptHeaderNames is keptHeaders keyed the way a field name has to be matched, like
+// ignoredHeaderNames.
+var keptHeaderNames = func() map[string]struct{} {
+	folded := make(map[string]struct{}, len(keptHeaders))
+	for name := range keptHeaders {
+		folded[strings.ToLower(name)] = struct{}{}
+	}
+	return folded
+}()
+
+// maxKeptHeaderLen is the longest name in keptHeaderNames.
+const maxKeptHeaderLen = 40
+
+// isKeptHeader reports whether key names a field every entry carries, matched
+// case-insensitively like isIgnoredHeader.
+func isKeptHeader(key []byte) bool {
+	if len(key) > maxKeptHeaderLen {
+		return false
+	}
+
+	var buf [maxKeptHeaderLen]byte
+	lower := buf[:len(key)]
+	for i := range key {
+		c := key[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		lower[i] = c
+	}
+
+	_, ok := keptHeaderNames[string(lower)]
+	return ok
+}
+
 // joinedHeader returns every field line for key, comma-joined, since a recipient
 // may combine them into that form (RFC 9110 §5.2). Peek returns only the first,
 // so a second "Vary:" line was cached as if it had never been sent.

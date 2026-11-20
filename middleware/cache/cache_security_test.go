@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +23,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
+	"github.com/gofiber/fiber/v3/middleware/helmet"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -371,6 +374,99 @@ func Test_Cache_Security_HitDoesNotShareTheStoredBody(t *testing.T) {
 			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Mask", "1"), cacheHit, "card ################")
 			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, body, "the entry is as it was stored")
 		})
+	}
+}
+
+// Test_Cache_Security_HitKeepsTheHeadersThatRestrictTheBody tests that a hit carries the fields by
+// which the stored response restricted what a client does with its body, without
+// StoreResponseHeaders: a hit came without them, so a download was rendered in the page's origin
+// and a page lost its Content-Security-Policy and its framing rule for as long as it was cached.
+func Test_Cache_Security_HitKeepsTheHeadersThatRestrictTheBody(t *testing.T) {
+	t.Parallel()
+	kept := map[string][]string{}
+	for name := range keptHeaders {
+		kept[name] = []string{"value of " + name}
+	}
+	// Each line of a field is a policy of its own.
+	kept[fiber.HeaderContentSecurityPolicy] = []string{"default-src 'none'", "sandbox"}
+
+	for _, kind := range storageKinds {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			// A header set in front of the cache is replaced by the one the response was stored with.
+			app.Use(func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderXFrameOptions, "SAMEORIGIN")
+				return c.Next()
+			})
+			app.Use(New(Config{Storage: storageOf(kind), Expiration: time.Hour}))
+			app.Get("/", func(c fiber.Ctx) error {
+				for name, lines := range kept {
+					c.Response().Header.Del(name)
+					for _, line := range lines {
+						c.Response().Header.Add(name, line)
+					}
+				}
+				// Neither restricts the body: one grants, the other says nothing about it.
+				c.Set(fiber.HeaderAccessControlAllowOrigin, "https://app.example")
+				c.Set("X-Request-Id", "first")
+				return c.SendString("page")
+			})
+
+			for _, want := range []string{cacheMiss, cacheHit} {
+				resp := cacheTestAExpect(t, app, "/", want)
+				for name, lines := range kept {
+					require.Equal(t, lines, resp.Header.Values(name), "%s on a %s", name, want)
+				}
+			}
+			hit := cacheTestAExpect(t, app, "/", cacheHit)
+			require.Empty(t, hit.Header.Values(fiber.HeaderAccessControlAllowOrigin))
+			require.Empty(t, hit.Header.Values("X-Request-Id"))
+		})
+	}
+}
+
+// Test_Cache_Security_HitKeepsWhatFiberSetsToRestrictTheBody runs the same through the two places
+// Fiber itself sets such fields: a download, and the helmet middleware registered behind the cache.
+func Test_Cache_Security_HitKeepsWhatFiberSetsToRestrictTheBody(t *testing.T) {
+	t.Parallel()
+	upload := filepath.Join(t.TempDir(), "upload.html")
+	require.NoError(t, os.WriteFile(upload, []byte("<script>alert(document.domain)</script>"), 0o600))
+
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/download", func(c fiber.Ctx) error { return c.Download(upload, "upload.html") })
+	app.Get("/page", helmet.New(), func(c fiber.Ctx) error { return c.SendString("page") })
+
+	miss := cacheTestAExpect(t, app, "/download", cacheMiss)
+	require.Equal(t, `attachment; filename="upload.html"`, miss.Header.Get(fiber.HeaderContentDisposition))
+	hit := cacheTestAExpect(t, app, "/download", cacheHit)
+	require.Equal(t, miss.Header.Get(fiber.HeaderContentDisposition), hit.Header.Get(fiber.HeaderContentDisposition))
+
+	miss = cacheTestAExpect(t, app, "/page", cacheMiss)
+	hit = cacheTestAExpect(t, app, "/page", cacheHit)
+	set := 0
+	for name, lines := range miss.Header {
+		if isKeptHeader([]byte(name)) {
+			set++
+			require.Equal(t, lines, hit.Header.Values(name), name)
+		}
+	}
+	require.Greater(t, set, 5, "helmet sets a field for most of its protections")
+}
+
+// Every name in keptHeaders is matched whatever case it is written in, within the length the
+// lookup folds.
+func Test_isKeptHeader(t *testing.T) {
+	t.Parallel()
+	for name := range keptHeaders {
+		require.LessOrEqual(t, len(name), maxKeptHeaderLen, name)
+		for _, spelled := range []string{name, strings.ToLower(name), strings.ToUpper(name)} {
+			require.True(t, isKeptHeader([]byte(spelled)), spelled)
+		}
+	}
+	for _, name := range []string{"", "X-Request-Id", fiber.HeaderLocation, fiber.HeaderSetCookie, fiber.HeaderAccessControlAllowOrigin, strings.Repeat("a", maxKeptHeaderLen+1)} {
+		require.False(t, isKeptHeader([]byte(name)), name)
 	}
 }
 
