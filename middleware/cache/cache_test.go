@@ -2502,7 +2502,7 @@ func Test_CacheDeltaSecondsOverflow(t *testing.T) {
 	})
 
 	// An age as large as the lifetime: the response is stale on arrival and is not stored. In the
-	// second row both are above the ceiling, so the smaller age counts as the whole lifetime.
+	// second row the lifetime is cut to the ceiling, and the age is above it.
 	for _, tc := range []struct{ name, maxAge, age string }{
 		{name: "too large to parse", maxAge: "60", age: huge},
 		{name: "age and lifetime above the ceiling", maxAge: "4000000000", age: "3000000000"},
@@ -2515,6 +2515,13 @@ func Test_CacheDeltaSecondsOverflow(t *testing.T) {
 			cacheTestAExpectBody(t, app, "/", cacheUnreachable, "2")
 		})
 	}
+
+	// Age is not capped: one above a configured lifetime above the ceiling still uses it up.
+	t.Run("response Age above the configured lifetime", func(t *testing.T) {
+		t.Parallel()
+		app, _ := cacheTestAOrigin(New(Config{Expiration: 2_500_000_000 * time.Second}), "", fiber.HeaderAge, "3000000000")
+		cacheTestAExpectBody(t, app, "/", cacheUnreachable, "1")
+	})
 
 	// The lifetime handed to the storage fits a driver that keeps its TTL as int32 seconds.
 	for _, directive := range []string{"max-age", "s-maxage"} {

@@ -7,7 +7,6 @@ import (
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/utils/v2"
-	"github.com/valyala/fasthttp"
 )
 
 // hasDirective checks if a cache directive header value contains a directive (case-insensitive).
@@ -50,12 +49,12 @@ func hasDirective(cc, directive string) bool {
 }
 
 // maxDeltaSeconds is the greatest delta-seconds that becomes a stored lifetime:
-// the ceiling of a response max-age, s-maxage and Age. RFC 9111 Section 1.2.2
+// the ceiling of a response max-age and s-maxage. RFC 9111 Section 1.2.2
 // allows 2^31 or the greatest integer that is convenient to represent; one less
 // than 2^31 is used so that a lifetime still fits a storage driver that keeps
-// its TTL as int32 seconds. An Age at the ceiling leaves a lifetime at the
-// ceiling nothing, so such a response is not stored. Request directives are
-// only compared and keep the value they were sent with.
+// its TTL as int32 seconds. Age is only subtracted from a lifetime and is not
+// capped, so one above the ceiling leaves nothing of a lifetime cut to it.
+// Request directives are only compared and keep the value they were sent with.
 const maxDeltaSeconds = uint64(math.MaxInt32)
 
 // parseUintDirective reads a delta-seconds. One too large to parse counts as
@@ -64,14 +63,15 @@ func parseUintDirective(val []byte) (uint64, bool) {
 	if len(val) == 0 {
 		return 0, false
 	}
-	parsed, err := fasthttp.ParseUint(val)
-	if err != nil || parsed < 0 {
+	// uint64 on every platform: fasthttp.ParseUint stops at math.MaxInt, which is 2^31-1 on 386.
+	parsed, err := utils.ParseUint(val)
+	if err != nil {
 		if len(bytes.TrimLeft(val, "0123456789")) != 0 {
 			return 0, false
 		}
 		return math.MaxUint64, true
 	}
-	return uint64(parsed), true
+	return parsed, true
 }
 
 func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {

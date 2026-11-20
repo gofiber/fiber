@@ -1158,7 +1158,7 @@ func New(config ...Config) fiber.Handler {
 		if b := fieldname.First(&c.Response().Header, fiber.HeaderAge, respCanonical); len(b) > 0 {
 			// Age is a delta-seconds too (RFC 9111 Section 5.1).
 			if v, ok := parseUintDirective(b); ok {
-				ageVal = min(v, maxDeltaSeconds)
+				ageVal = v
 			}
 		} else {
 			setFieldLine(&c.Response().Header, fiber.HeaderAge, []byte("0"), respCanonical)
