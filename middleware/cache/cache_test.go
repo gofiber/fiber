@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -3495,15 +3496,15 @@ func Benchmark_Cache_QueryMethod(b *testing.B) {
 
 func Benchmark_Cache_MaxSize(b *testing.B) {
 	// The benchmark is run with three different MaxSize parameters
-	// 1) 0:        Tracking is disabled = no overhead
+	// 1) no limit: Tracking is disabled = no overhead
 	// 2) MaxInt32: Enough to store all entries = no removals
 	// 3) 16 KiB:   Small size = constant insertions and removals
-	cases := []uint{0, math.MaxUint32, 16 * 1024}
+	cases := []Config{{DisableMaxBytes: true}, {MaxBytes: math.MaxUint32}, {MaxBytes: 16 * 1024}}
 	names := []string{"Disabled", "Unlim", "LowBounded"}
-	for i, size := range cases {
+	for i := range cases {
 		b.Run(names[i], func(b *testing.B) {
 			app := fiber.New()
-			app.Use(New(Config{MaxBytes: size}))
+			app.Use(New(cases[i]))
 
 			app.Get("/*", func(c fiber.Ctx) error { return c.Status(fiber.StatusOK).SendString("1") })
 
@@ -5002,6 +5003,94 @@ func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 			require.Equal(t, cacheHit, got.cache)
 			require.Equal(t, int32(1), calls.Load())
 		})
+	}
+}
+
+// MaxBytes left unset is the default limit for a Config as it is for New(), and only
+// DisableMaxBytes removes it; past configDefault zero is what says no limit.
+func Test_configDefault_MaxBytes(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, ConfigDefault.MaxBytes, configDefault().MaxBytes)
+	for _, tc := range []struct {
+		name string
+		cfg  Config
+		want uint
+	}{
+		{name: "unset", cfg: Config{}, want: ConfigDefault.MaxBytes},
+		{name: "unset beside other settings", cfg: Config{Expiration: time.Hour, StoreResponseHeaders: true}, want: ConfigDefault.MaxBytes},
+		{name: "set", cfg: Config{MaxBytes: 5}, want: 5},
+		{name: "disabled", cfg: Config{DisableMaxBytes: true}, want: 0},
+		{name: "disabled wins over a limit", cfg: Config{DisableMaxBytes: true, MaxBytes: 5}, want: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, configDefault(tc.cfg).MaxBytes)
+		})
+	}
+}
+
+// Test_Cache_MaxBytes_DefaultAppliesToAConfig tests that a Config which leaves MaxBytes unset
+// holds no more than cache.New() does. It held everything it was asked for: any client could
+// fill the memory with URLs it made up, and a large file sent as a stream was read into memory
+// to be stored, once for every query it was asked under.
+func Test_Cache_MaxBytes_DefaultAppliesToAConfig(t *testing.T) {
+	t.Parallel()
+	third := ConfigDefault.MaxBytes / 3
+	large := filepath.Join(t.TempDir(), "large.bin")
+	require.NoError(t, os.WriteFile(large, make([]byte, 2*ConfigDefault.MaxBytes), 0o600))
+
+	for _, kind := range storageKinds {
+		for _, tc := range []struct {
+			name   string
+			beyond string // the X-Cache of a response past the default limit, as a body and as a stream
+			cfg    Config
+			held   int // how many of four responses of a third of the default limit stay stored
+		}{
+			{name: "unset", cfg: Config{Expiration: time.Hour}, held: 2, beyond: cacheUnreachable},
+			{name: "disabled", cfg: Config{Expiration: time.Hour, DisableMaxBytes: true}, held: 4, beyond: cacheMiss},
+		} {
+			t.Run(kind+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+				cfg := tc.cfg
+				cfg.Storage = storageOf(kind)
+				app := fiber.New()
+				app.Use(New(cfg))
+				app.Get("/page/:n", func(c fiber.Ctx) error { return c.Send(make([]byte, third)) })
+				app.Get("/body", func(c fiber.Ctx) error { return c.Send(make([]byte, 2*ConfigDefault.MaxBytes)) })
+				app.Get("/stream", func(c fiber.Ctx) error { return c.SendFile(large) })
+				var withdrawn atomic.Int32
+				app.Get("/withdrawn", func(c fiber.Ctx) error {
+					if withdrawn.Add(1) == 2 {
+						c.Set(fiber.HeaderCacheControl, "no-store")
+					}
+					return c.SendString("page")
+				})
+
+				for n := range 4 {
+					cacheTestAExpect(t, app, "/page/"+strconv.Itoa(n), cacheMiss)
+				}
+				held := 0
+				for n := range 4 {
+					// only-if-cached asks without storing, so the count is of what the stores left.
+					resp := apptest.Do(t, app, cacheTestCReq("/page/"+strconv.Itoa(n), fiber.HeaderCacheControl, "only-if-cached"))
+					if resp.StatusCode == fiber.StatusOK {
+						held++
+					}
+					apptest.BodyBytes(t, resp)
+				}
+				require.Equal(t, tc.held, held)
+
+				for _, target := range []string{"/body", "/stream"} {
+					cacheTestAExpect(t, app, target, tc.beyond)
+				}
+				// Stored without a limit, an entry is replaced and dropped as any other.
+				cacheTestAExpect(t, app, cacheTestCReq("/page/0", fiber.HeaderCacheControl, "no-cache"), cacheMiss)
+				cacheTestAExpect(t, app, "/page/0", cacheHit)
+				cacheTestAExpect(t, app, "/withdrawn", cacheMiss)
+				cacheTestAExpect(t, app, cacheTestCReq("/withdrawn", fiber.HeaderCacheControl, "no-cache"), cacheUnreachable)
+				cacheTestAExpect(t, app, "/withdrawn", cacheMiss)
+			})
+		}
 	}
 }
 
