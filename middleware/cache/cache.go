@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -306,6 +307,10 @@ func New(config ...Config) fiber.Handler {
 	// client's making filled the cache with entries that went last, for as long as they lived, and the
 	// entries stored after them evicted one another.
 	evictionHorizon := uint64(cfg.Expiration.Seconds())
+	// The request headers the key tells entries apart by, which a hit the middleware gives a
+	// Cache-Control of its own has to name in its Vary.
+	keyVary := cfg.keyVaryFields()
+	keyVaryValue := []byte(strings.Join(keyVary, ", "))
 	maxEntries := max(minTrackedEntries, int(min(cfg.MaxBytes/trackedEntryOverhead, math.MaxInt32)))
 
 	// Delete key from both manager and storage
@@ -914,6 +919,18 @@ func New(config ...Config) fiber.Handler {
 						var ccBuf [len(privateMaxAge) + maxUintDigits]byte
 						cacheControlValue := utils.AppendUint(append(ccBuf[:0], directive...), remaining)
 						setFieldLine(&c.Response().Header, fiber.HeaderCacheControl, cacheControlValue, canonical)
+
+						// The freshness granted above holds for requests the key puts under this entry
+						// only. A cache in front of the app that stored the hit once for the URL would
+						// serve it to every client, whatever they send in the headers the key splits by
+						// (RFC 9111 §4.1), unless the response says which they are.
+						switch {
+						case len(keyVary) == 0:
+						case len(fieldname.First(&c.Response().Header, fiber.HeaderVary, canonical)) == 0:
+							setFieldLine(&c.Response().Header, fiber.HeaderVary, keyVaryValue, canonical)
+						default:
+							c.Vary(keyVary...)
+						}
 					}
 
 					const maxDeltaSeconds = uint64(math.MaxInt32)

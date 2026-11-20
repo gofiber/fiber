@@ -371,6 +371,88 @@ func Test_Cache_Security_BodylessContentEncodingStaysDistinct(t *testing.T) {
 	})
 }
 
+// Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy tests that a hit that is given a Cache-Control by the
+// middleware names, in its Vary, the request headers the key tells entries apart by. "public, max-age" lets a
+// cache in front of the app store the hit once for the URL, and with no Vary to say which headers the page
+// depends on, it served the page of one tenant or language to every client, the entries the key kept apart
+// being one entry downstream.
+func Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy(t *testing.T) {
+	t.Parallel()
+	page := func(c fiber.Ctx) error { return c.SendString("page of tenant " + c.Get("X-Tenant")) }
+	withHeader := func(name, value string) fiber.Handler {
+		return func(c fiber.Ctx) error {
+			c.Set(name, value)
+			return page(c)
+		}
+	}
+
+	for _, tc := range []struct {
+		route    fiber.Handler // the handler's own, page when nil
+		name     string
+		wantVary string // of the hit; the miss has the handler's own
+		wantCC   string // the start of the hit's Cache-Control
+		cfg      Config
+	}{
+		{name: "the default KeyHeaders", wantVary: "Accept, Accept-Encoding, Accept-Language", wantCC: "public, max-age="},
+		{name: "KeyHeaders", cfg: Config{KeyHeaders: []string{"X-Tenant"}}, wantVary: "X-Tenant", wantCC: "public, max-age="},
+		{name: "KeyHeaders left empty", cfg: Config{KeyHeaders: []string{}}, wantCC: "public, max-age="},
+		{
+			name: "KeyCookies", cfg: Config{KeyHeaders: []string{"X-Tenant"}, KeyCookies: []string{"session"}},
+			wantVary: "X-Tenant, Cookie", wantCC: "private, max-age=",
+		},
+		{
+			name: "KeyCredentialHeaders", cfg: Config{KeyHeaders: []string{"X-Tenant"}, KeyCredentialHeaders: []string{"X-Token"}},
+			wantVary: "X-Tenant, X-Token", wantCC: "private, max-age=",
+		},
+		{
+			name:     "a custom KeyGenerator holds the KeyCredentialHeaders alone",
+			cfg:      Config{KeyGenerator: pathKey, KeyHeaders: []string{"X-Tenant"}, KeyCredentialHeaders: []string{"X-Token"}},
+			wantVary: "X-Token", wantCC: "private, max-age=",
+		},
+		{name: "a custom KeyGenerator without any", cfg: Config{KeyGenerator: pathKey, KeyHeaders: []string{"X-Tenant"}}, wantCC: "public, max-age="},
+		{
+			name: "after the names the response has, none repeated", cfg: Config{KeyHeaders: []string{"X-Tenant", "Accept"}},
+			route: withHeader("Vary", "accept, Origin"), wantVary: "accept, Origin, X-Tenant", wantCC: "public, max-age=",
+		},
+		{
+			name: "DisableCacheControl", cfg: Config{KeyHeaders: []string{"X-Tenant"}, DisableCacheControl: true},
+		},
+		{
+			name: "a Cache-Control of the handler's own", cfg: Config{KeyHeaders: []string{"X-Tenant"}},
+			route: withHeader(fiber.HeaderCacheControl, "max-age=60"), wantCC: "max-age=60",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := tc.cfg
+			cfg.Expiration = time.Hour
+			app := fiber.New()
+			app.Use(New(cfg))
+			route := tc.route
+			if route == nil {
+				route = page
+			}
+			app.Get("/", route)
+
+			send := func() *http.Response {
+				return apptest.Do(t, app, apptest.Req(fiber.MethodGet, "/",
+					apptest.WithHeader("X-Tenant", "acme"), apptest.WithHeader("X-Token", "t0ken"), apptest.WithHeader(fiber.HeaderCookie, "session=alice")))
+			}
+			require.Equal(t, cacheMiss, send().Header.Get("X-Cache"))
+
+			hit := send()
+			require.Equal(t, cacheHit, hit.Header.Get("X-Cache"))
+			require.Equal(t, "page of tenant acme", apptest.Body(t, hit))
+			require.True(t, strings.HasPrefix(hit.Header.Get(fiber.HeaderCacheControl), tc.wantCC), "Cache-Control %q", hit.Header.Get(fiber.HeaderCacheControl))
+			if tc.wantVary == "" {
+				require.Empty(t, hit.Header.Values(fiber.HeaderVary))
+			} else {
+				require.Equal(t, []string{tc.wantVary}, hit.Header.Values(fiber.HeaderVary))
+			}
+		})
+	}
+}
+
 // Test_Cache_Security_NextSkipsTheLookup tests that a request Next skips is not served what another
 // request stored. Next was asked only before a response was stored, so one written to keep requests
 // without a credential away from the cache left them the stored response of a request that had it.
