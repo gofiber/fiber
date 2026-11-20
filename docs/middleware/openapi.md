@@ -6,7 +6,9 @@ id: openapi
 
 OpenAPI middleware for [Fiber](https://github.com/gofiber/fiber) that generates an OpenAPI specification based on the routes registered in your application.
 
-This middleware supports the OpenAPI 3.0.x, 3.1.x and 3.2.x specifications. Set `OpenAPIVersion` to a release such as `"3.0.3"`, `"3.1.0"` (the default) or `"3.2.0"`; it is written to the document as given. `New` panics on a value that is not a 3.0.x, 3.1.x or 3.2.x release, so a typo fails at startup; leave it empty for the default.
+It supports OpenAPI 3.0.x, 3.1.x and 3.2.x. Set `OpenAPIVersion` to a release
+such as `"3.0.3"`, `"3.1.0"` (the default) or `"3.2.0"`; `New` panics on any
+other value.
 
 ## Signatures
 
@@ -45,18 +47,13 @@ the routes themselves and from `Config` — the tag groups, the server list and 
 
 ![Swagger UI page served by the OpenAPI middleware, listing the documented operations grouped by tag](./img/openapi-swagger-ui.png)
 
-Most of the document exists before a single route is documented: each
-operation's summary is derived from its handler's function name, its tags from
-the enclosing group, and every response that has a body carries `application/json`
-unless the route says otherwise (a `204` has none). The helpers further down refine those defaults; see
-[Behavior and defaults](#behavior-and-defaults) for the exact rules.
+Most of the document exists before a single route is documented: summaries come
+from handler names, tags from groups, and responses default to
+`application/json`. The helpers below refine those defaults; see
+[Behavior and defaults](#behavior-and-defaults) for the rules.
 
-The middleware inspects the app's routes and generates the spec on the first
-matching request. The spec is cached, but the cache is automatically invalidated
-whenever the route table changes — routes added or removed, or route
-documentation metadata mutated — so changes after the first request are still
-reflected without a restart. Requests to other paths pass through without
-generation work.
+The document is built on the first request and cached. It is rebuilt whenever
+the route table changes, so no restart is needed.
 
 ### Document metadata
 
@@ -144,200 +141,115 @@ app.Use(openapi.New(openapi.Config{
 ```
 
 `SwaggerOptions` is merged into the `SwaggerUIBundle` call, so anything Swagger
-UI itself supports works here. The middleware sets `validatorUrl` to `null`
-unless you set it: Swagger UI's validator badge would otherwise send the
-document's URL to `validator.swagger.io`, which then fetches it. With `"filter": true` and `"docExpansion":
-"full"`, for example, the page gains a tag filter box and opens every operation
-on load:
+UI supports works here. With `"filter": true` and `"docExpansion": "full"`, for
+example, the page gains a tag filter box and opens every operation on load:
 
 ![Swagger UI with a filter box narrowing the page to the catalog tag, with its operations expanded on load](./img/openapi-swagger-options.png)
 
-Any asset URL you leave unset keeps its `unpkg.com` default; see
-[Offline and air-gapped deployments](#offline-and-air-gapped-deployments) to
-serve all three yourself.
+The middleware sets `validatorUrl` to `null` unless you set it, because Swagger
+UI's validator badge would otherwise send the document's URL to
+`validator.swagger.io`. To serve the assets yourself, see
+[Offline and air-gapped deployments](#offline-and-air-gapped-deployments).
 
 ### Choose the documentation page
 
 `UI` selects the page served at `UIPath`: `openapi.UISwagger` (the default),
-`openapi.UIRedoc` or `openapi.UIScalar`. Redoc and Scalar load one script each
-from a pinned CDN URL with a Subresource Integrity hash, and neither needs an
-inline script, so a strict Content-Security-Policy only has to allow the CDN in
-`script-src`. Both style the page with inline styles, so `style-src` needs
-`'unsafe-inline'`. Redoc starts a worker from a `blob:` URL (`worker-src blob:`);
-without it the browser logs a refusal and Redoc still renders the document.
-Both also try to load web fonts from their own hosts and fall back to system
-fonts when the policy refuses them.
-Override the script with `RedocBundleURL` / `ScalarBundleURL`; the default hash
-applies only to the default URL, so set `RedocBundleIntegrity` /
-`ScalarBundleIntegrity` with a custom one. `SwaggerOptions` and the other
-`Swagger*` fields apply to Swagger UI only.
+`openapi.UIRedoc` or `openapi.UIScalar`. `DisableUI` serves only the document.
 
 ```go
 app.Use(openapi.New(openapi.Config{UI: openapi.UIScalar}))
 ```
 
-`DisableUI` serves only the document, and leaves `UIPath` to the rest of your app.
+Redoc and Scalar each load one script from a pinned CDN URL with a Subresource
+Integrity hash. Override it with `RedocBundleURL` or `ScalarBundleURL`, and set
+the matching `*Integrity` field, as the default hash fits only the default URL.
+The `Swagger*` fields apply to Swagger UI only.
+
+Under a strict Content-Security-Policy, both need the CDN in `script-src` and
+`'unsafe-inline'` in `style-src`; neither needs an inline script. Redoc also
+wants `worker-src blob:`, and still renders without it.
 
 #### OAuth2 redirect page
 
-The authorization code flow of Swagger UI opens a popup that must land on a page
-of your origin. Set `OAuth2RedirectPath` and the middleware serves that page
-(`oauth2-redirect.js` of swagger-ui-dist, unchanged, inlined) and points Swagger
-UI at it. Register the same path as the redirect URI at your identity provider.
-Like `Path` and `UIPath` it resolves against the mount prefix, so
-`app.Group("/docs").Use(openapi.New(openapi.Config{OAuth2RedirectPath: "/oauth2-redirect.html"}))`
-serves `/docs/oauth2-redirect.html`. The page has one inline script; allow it in a
-strict policy with `openapi.OAuth2RedirectScriptCSPSource`, next to
-`openapi.UIScriptCSPSource` for the Swagger UI page.
+Swagger UI's authorization code flow opens a popup that must land on a page of
+your origin. Set `OAuth2RedirectPath` and the middleware serves that page and
+points Swagger UI at it; register the same path as the redirect URI at your
+identity provider. The page has one inline script, which a strict policy can
+allow with `openapi.OAuth2RedirectScriptCSPSource`.
 
 ### Offline and air-gapped deployments
 
-The generated specification is served by the middleware itself and never leaves
-your process. The Swagger UI **page**, however, is plain HTML that tells the
-browser to fetch three assets, and by default those point at the `unpkg.com` CDN:
+The document is served by the middleware itself, but the UI page loads its
+assets from a CDN by default. In an air-gapped network, or under a strict
+`Content-Security-Policy`, those requests fail and the page stays blank. Vendor
+the assets and point the config at your copies.
 
-| Config field                 | Asset                            |
-|:-----------------------------|:---------------------------------|
-| `SwaggerCSSURL`              | `swagger-ui.css`                 |
-| `SwaggerBundleURL`           | `swagger-ui-bundle.js`           |
-| `SwaggerStandalonePresetURL` | `swagger-ui-standalone-preset.js` |
+1. Download the pinned version:
 
-In an air-gapped network, behind a proxy, or under a strict `Content-Security-Policy`,
-those requests fail and the UI renders as a blank page. Vendor the assets and point
-all three fields at your own URLs.
+   ```bash
+   mkdir -p public/swagger-ui
+   npm pack swagger-ui-dist@5.32.6
+   tar -xzf swagger-ui-dist-5.32.6.tgz
+   cp package/swagger-ui.css \
+      package/swagger-ui-bundle.js \
+      package/swagger-ui-standalone-preset.js \
+      public/swagger-ui/
+   ```
 
-The page has one inline script. It is the same for every page, because the spec URL and
-`SwaggerOptions` travel in data attributes, so a strict policy can allow it by hash
-instead of `'unsafe-inline'`:
+2. Serve the files and set all three URLs:
 
-```go
-c.Set(fiber.HeaderContentSecurityPolicy,
-    "script-src 'self' https://unpkg.com "+openapi.UIScriptCSPSource)
-```
+   ```go
+   //go:embed public/swagger-ui
+   var swaggerAssets embed.FS
 
-`UIScriptCSPSource` is the `'sha256-…'` source expression for that script. The stylesheet
-needs `style-src` for its URL as well.
+   func main() {
+       assets, err := fs.Sub(swaggerAssets, "public/swagger-ui")
+       if err != nil {
+           log.Fatal(err)
+       }
+
+       app := fiber.New()
+       app.Use("/swagger-ui", static.New("", static.Config{FS: assets}))
+       app.Use(openapi.New(openapi.Config{
+           SwaggerCSSURL:              "/swagger-ui/swagger-ui.css",
+           SwaggerBundleURL:           "/swagger-ui/swagger-ui-bundle.js",
+           SwaggerStandalonePresetURL: "/swagger-ui/swagger-ui-standalone-preset.js",
+       }))
+       log.Fatal(app.Listen(":3000"))
+   }
+   ```
+
+3. Check that the page references nothing external. This should print nothing:
+
+   ```bash
+   curl -s http://localhost:3000/swagger | grep -o 'https\?://[^"]*'
+   ```
 
 :::caution Override all three
-An empty string means "use the default", not "disable". Overriding only
-`SwaggerCSSURL` and `SwaggerBundleURL` leaves `SwaggerStandalonePresetURL`
-pointing at the CDN, and the page still makes one outbound request. Set every
-field you do not want fetched from `unpkg.com`.
+An empty URL means "use the default", not "disable". Any of the three fields you
+leave unset still points at the CDN.
 :::
 
-The default URLs carry a [Subresource Integrity](https://developer.mozilla.org/docs/Web/Security/Subresource_Integrity)
-hash (`integrity` with `crossorigin="anonymous"`), so a browser refuses a file
-the CDN changed or a compromised mirror served. The hash describes only the
-default file: a URL you override gets none unless you also set
-`SwaggerCSSIntegrity`, `SwaggerBundleIntegrity` or
-`SwaggerStandalonePresetIntegrity` (a value such as `sha384-...`) for it.
+For Redoc or Scalar, vendor the one script and set `RedocBundleURL` or
+`ScalarBundleURL` the same way.
 
-#### 1. Vendor the assets
+#### Content-Security-Policy and integrity
 
-Pin the same version the middleware defaults to, so the UI you test is the UI you
-ship:
+- **Inline script**: the Swagger UI page has one inline script, identical on
+  every page. Allow it by hash with `openapi.UIScriptCSPSource` instead of
+  `'unsafe-inline'`:
 
-```bash
-mkdir -p public/swagger-ui
-npm pack swagger-ui-dist@5.32.6
-tar -xzf swagger-ui-dist-5.32.6.tgz
-cp package/swagger-ui.css \
-   package/swagger-ui-bundle.js \
-   package/swagger-ui-standalone-preset.js \
-   public/swagger-ui/
-```
+  ```go
+  c.Set(fiber.HeaderContentSecurityPolicy,
+      "script-src 'self' https://unpkg.com "+openapi.UIScriptCSPSource)
+  ```
 
-Copy the matching `*.js.map` files too if you want source maps in devtools; the
-UI works without them.
-
-#### 2. Serve them and point the config at them
-
-This is the complete program — one binary, no network access required at runtime:
-
-```go
-package main
-
-import (
-    "embed"
-    "io/fs"
-    "log"
-
-    "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/fiber/v3/middleware/openapi"
-    "github.com/gofiber/fiber/v3/middleware/static"
-)
-
-// The assets are compiled into the binary, so there is nothing to deploy
-// alongside it.
-//
-//go:embed public/swagger-ui
-var swaggerAssets embed.FS
-
-type User struct {
-    ID   int    `json:"id"`
-    Name string `json:"name"`
-}
-
-func main() {
-    // embed.FS keeps the full "public/swagger-ui" path from the directive
-    // above; fs.Sub strips it so the files sit at the root of the served FS.
-    assets, err := fs.Sub(swaggerAssets, "public/swagger-ui")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    app := fiber.New()
-
-    app.Get("/users/:id<int>", func(c fiber.Ctx) error {
-        return c.JSON(User{ID: 1, Name: "alice"})
-    }).
-        Summary("Get user").
-        ResponseWithExample(
-            fiber.StatusOK, "OK",
-            openapi.SchemaOf(User{}), "", nil, nil,
-            fiber.MIMEApplicationJSON,
-        )
-
-    // Serve the vendored assets at /swagger-ui/*.
-    app.Use("/swagger-ui", static.New("", static.Config{FS: assets}))
-
-    app.Use(openapi.New(openapi.Config{
-        Title:   "My API",
-        Version: "1.0.0",
-        // All three, or the page still reaches for the CDN.
-        SwaggerCSSURL:              "/swagger-ui/swagger-ui.css",
-        SwaggerBundleURL:           "/swagger-ui/swagger-ui-bundle.js",
-        SwaggerStandalonePresetURL: "/swagger-ui/swagger-ui-standalone-preset.js",
-    }))
-
-    log.Fatal(app.Listen(":3000"))
-}
-```
-
-To ship the assets as files on disk instead of embedding them, swap the static
-registration for a directory and drop the `embed`/`fs.Sub` plumbing:
-
-```go
-app.Use("/swagger-ui", static.New("./public/swagger-ui"))
-```
-
-#### 3. Verify nothing escapes
-
-```bash
-curl -s http://localhost:3000/swagger | grep -o 'https\?://[^"]*'
-```
-
-The command should print nothing. Any URL it does print is still being fetched
-from the internet.
-
-:::note Cross-origin assets
-The default URLs carry an `integrity` hash, and a tag with an `integrity` attribute
-also carries `crossorigin="anonymous"`. Assets served from the same origin as the
-app — as above — are unaffected. If you host them on a separate origin (an
-internal CDN, a different port) and set an `integrity` value for them, that origin
-must send `Access-Control-Allow-Origin`, or the browser will refuse the scripts;
-URLs you set without an `integrity` value get no `crossorigin` attribute.
-:::
+- **Subresource Integrity**: the default URLs carry an `integrity` hash, so a
+  browser refuses a file the CDN changed. A URL you override gets no hash
+  unless you set the matching `*Integrity` field.
+- **Cross-origin assets**: a tag with an `integrity` value also carries
+  `crossorigin="anonymous"`, so assets on another origin must send
+  `Access-Control-Allow-Origin`.
 
 ### Domain routers
 
@@ -361,23 +273,14 @@ mounted with `Domain(...).Use` serves its document on that host under the mount
 prefix.
 
 Every document describes the whole application, whatever host it is fetched
-from; use `Config.Next` to narrow it. The routes registered through a domain
-router carry an operation-level `servers` entry naming their host, so Swagger
-UI sends **Try it out** requests to the right host. Documentation helpers,
-recognized middleware (`keyauth` registered with `api.Use(...)` documents the
-security requirement of the routes under it) and `Hidden` work on domain
-routers, groups and `RouteChain` chains exactly as they do on the app.
+from; use `Filter` to narrow it. Routes of a domain router carry an
+operation-level `servers` entry naming their host, so **Try it out** requests go
+to the right place. The documentation helpers, recognized middleware and
+`Hidden` work on domain routers as they do on the app.
 
-Several routes of one path and method on different hosts are one operation in
-the document, described from the first registration, with every host in its
-`servers`. A route registered for every host after a domain route makes that
-operation apply to every host, and one registered before it answers on every
-host first, so the domain route is reached only if that handler calls `c.Next()`. A sub-app with `Domain` routes of its own,
-mounted on a `Domain` router, answers only on a host that matches both patterns.
-The document names the one pattern they reduce to, a literal label winning over a
-parameter, and leaves out a route no host can reach, such as two different
-literals. A `Use` registered on a `Domain` router covers the routes of every host
-its pattern matches.
+OpenAPI allows one operation per path and method. When several hosts register
+the same one, the document describes the first registration and lists every
+host in its `servers`.
 
 ### Document a route
 
@@ -411,37 +314,28 @@ app.Get("/users", listUsers).
     Returns(fiber.StatusOK, []User{})
 ```
 
-A `map[string]any` passed where a schema is expected is taken as a raw schema
-object, not reflected: `Returns(201, map[string]any{"id": 1})` publishes
-`{"id": 1}` as the schema, which is not a valid one. Pass a struct, or a real
-schema map, to describe a response; use the example helpers for sample values.
-An empty schema map reads as no schema.
+What the model gives you:
 
-A named struct is emitted once under `components.schemas` and referenced with
-`$ref` wherever it appears, nested structs included, so the **Schemas** panel in
-Swagger UI lists your models; an anonymous struct is inlined. `validate` tags
-become constraints (`required`, `min`/`max`/`len`, `gte`/`lte`, `oneof`, and the
-format rules such as `email` and `uuid`), and `Params` reads the same `query`,
-`header`, `cookie` and `uri` tags that `Bind` does, so the documented names
-cannot drift from the bound ones. Media types come from `DefaultConsumes` and
-`DefaultProduces` unless passed explicitly, and an explicit `Parameter` for the
-same name overrides what the model says.
+- **Components**: a named struct is emitted once under `components.schemas` and
+  referenced with `$ref`, nested structs included. An anonymous struct is
+  inlined. Of two types sharing a name, the second is package-qualified
+  (`billing.User`).
+- **Constraints**: `validate` tags become schema constraints; see
+  [Validate rules](#validate-rules).
+- **Parameters**: `Params` reads the same `query`, `header`, `cookie` and `uri`
+  tags that `Bind` does, and skips fields tagged for another location. An
+  explicit `Parameter` of the same name overrides the model.
+- **Media types**: `DefaultConsumes` and `DefaultProduces` unless passed
+  explicitly. Form media types read `form` tags and XML ones `xml` tags; a
+  struct used for several gets one component each (`_form`, `_xml`).
+- **Nullability**: pointer fields are nullable, spelled for the document's
+  version.
 
-A few details follow the model closely. Form media types read `form` tags
-(JSON ones read `json`), and a struct used for both is registered twice, the
-form one with a `_form` suffix. Pointer fields are nullable: `nullable: true` next to the type before 3.1 and a
-`null` type from 3.1 on. A pointer to a struct, or a schema built from `allOf`,
-`anyOf` or `oneOf`, has no type, so it becomes an `anyOf` with a branch that
-accepts only null (`{"type": "null"}` from 3.1, and
-`{"type": "object", "nullable": true, "enum": [null]}` before it, as 3.0 defines
-`nullable` only next to a type). `Params` skips fields tagged for another
-location. Generic types get readable component names. Of two types sharing a
-name, the one the document reaches first keeps it and the other is
-package-qualified (`billing.User`); routes are read method by method in
-registration order and a route's responses and media types in sorted order, so
-every build of the document names them the same way. Statuses that carry no
-body (such as 204 and 304) drop their `content`, and tags used by operations
-are declared at the top level automatically.
+:::caution Maps are raw schemas
+A `map[string]any` passed where a schema is expected is used as the schema
+itself, not reflected: `Returns(201, map[string]any{"id": 1})` publishes
+`{"id": 1}`, which is not a valid schema. Pass a struct or a real schema map.
+:::
 
 Any helper that takes a schema accepts a Go value in its place, so
 `Parameter("filter", "query", false, ListFilter{}, "")` works too. For full
@@ -611,14 +505,10 @@ app.Get("/users", listUsers).
     ResponseHeader(0, "X-Request-Id", "Correlation id", map[string]any{"type": "string"})
 ```
 
-`Response`, `ResponseWithExample` and `Returns` given an empty description keep
-the one an earlier call set for the status, and otherwise use the status text
-(`"OK"`, `"Not Found"`, …, or `"Default response"` for `0`). They preserve any
-headers and links already documented for the status, and keep its body (schema,
-examples, media types and content) unless the call documents a new one with a
-schema or an example, which then replaces it. `ResponseContent` likewise leaves the description untouched when
-given an empty one, so it can add content to an entry another call described.
-`RequestBody` and `Accepts` keep an earlier body description the same way.
+An empty description keeps the one an earlier call set, or else uses the status
+text (`"OK"`, `"Not Found"`, or `"Default response"` for `0`). A later call for
+the same status keeps its headers and links, and replaces its body only when it
+documents a new schema or example.
 
 ### Per-media-type content
 
@@ -701,23 +591,23 @@ openapi.Typed(app, fiber.MethodPost, "/users/:id", func(c fiber.Ctx, req *GetUse
 }, openapi.WithStatus(fiber.StatusCreated)).Summary("Update a user")
 ```
 
-The request is bound the way it is documented: a field is filled from the
-query, the path, a header or a cookie only when it carries that tag, and a
-field tagged only for a parameter is not filled from the body. This is stricter
-than `c.Bind().All`, which also matches a field by its Go name in every source,
-so a client cannot set a body field such as `IsAdmin` with a header, a cookie
-or a query parameter. A request that does not bind or validate gets a `400`.
-The result is written as JSON with the status you set (`200` by default). The route documents the fields tagged
-`uri`, `query`, `header` and `cookie` as parameters, the others as the request body
-(not for `GET`, `HEAD`, `TRACE` and `OPTIONS`), and `*User` as the success response.
-`Empty` as the response type answers with no body (`204` by default).
-`WithMiddleware` runs handlers before the typed one. `Typed` returns the route, so
-`Summary`, `Tags` and the other helpers chain on it.
+The route documents the fields tagged `uri`, `query`, `header` and `cookie` as
+parameters, the others as the request body (not for `GET`, `HEAD`, `TRACE`,
+`OPTIONS` and `CONNECT`), and `*User` as the success response.
 
-A request body schema leaves out the fields that are bound only from the query,
-the path, the headers or the cookies, since those are parameters; the struct is
-then a second component with a `_request` suffix, next to the one a response of the
-same type uses.
+- **Binding**: each field is filled only from the source it is tagged for.
+  Unlike `c.Bind().All`, a field is never matched by its Go name in another
+  source, so a client cannot set a body field such as `IsAdmin` with a header,
+  a cookie or a query parameter. A request that does not bind or validate gets
+  a `400`.
+- **Response**: written as JSON with the status from `WithStatus` (`200` by
+  default). `Empty` as the response type answers with no body (`204` by default).
+- **Options**: `WithMiddleware` runs handlers before the typed one. `Typed`
+  returns the route, so `Summary`, `Tags` and the other helpers chain on it.
+
+A struct used as a request body leaves out its parameter-only fields. If that
+makes it differ from the same type used as a response, the body gets its own
+component with a `_request` suffix.
 
 ### Operation id, callbacks and servers
 
@@ -964,241 +854,154 @@ route's media type.
 
 ### Behavior and defaults
 
-- If a route declares no responses, a sensible default is added: `200 OK` for most
-  methods and `204 No Content` for `DELETE`, one of the statuses RFC 9110 names
-  for a successful delete. A `HEAD` route documents `200 OK` with its own media type
-  (`DefaultProduces` unless `Produces` is set on it), so give an explicit `HEAD`
-  route the `GET`'s `Produces`: RFC 9110 has a `HEAD` response carry the same
-  header fields as the `GET` would, minus the content. Declaring any response via the helpers
-  disables the automatic default.
-- What a route does not say is filled from what the router already knows, and
-  anything set explicitly always wins:
-  - The summary comes from the final handler's function name:
-    `app.Get("/users", listUsers)` documents as `List users`, and a method value
-    such as `(*Server).GetUserByID` as `Get user by ID`. A closure has no usable
-    name, so its summary falls back to `"METHOD /path"`. `DisableHandlerSummaries`
-    keeps that fallback everywhere. The summary puts the Go function name in the
-    public document, so set `DisableHandlerSummaries` if handler names are
-    internal, or give those routes an explicit `Summary`.
-  - Tags come from the enclosing group. A named group contributes the last
-    segment of its name, so `app.Group("/u").Name("users.")` tags `users`;
-    otherwise the last static segment of the prefix does, skipping parameters
-    and version markers such as `v1`, so routes under `app.Group("/api/v1/users")`
-    are tagged `users` and routes under `app.Group("/api/v1")` are tagged `api`.
-    Nested groups use the innermost one, and a route registered on the app
-    itself gets no tag. `DisableGroupTags` turns this off.
-  - A response that declares no media type documents `DefaultProduces`, which is
-    `application/json` unless configured; `Produces` and the `Response*` media
-    types override it per route, and a status that carries no body (`1xx`,
-    `204`, `205`, `304`) never gets one. A request body declared without a
-    media type documents the route's `Consumes`, then `DefaultConsumes`. No
-    request body is invented: it appears only when `Consumes`/`Accepts`/
-    `RequestBody*` is set explicitly, since documenting one would claim the
-    handler reads it. `DisableDefaultMediaTypes` stops the built-in defaults from being filled in, so
-    a response or body that names no media type is documented without content
-    unless you set `DefaultProduces`, `DefaultConsumes` or `ErrorProduces`.
-- Operations without metadata have no `description` key at all and are not
-  deprecated.
-- The middleware a request passes through documents itself. A route's own
-  handlers and the `Use` routes registered ahead of it whose prefix covers its
-  path (so `app.Group("/admin", keyauth.New(...))` covers `/admin/x` but not
-  `/administrators`) are recognized by the source file their handler was
-  compiled from, which survives inlining, the module cache, vendoring and
-  `-trimpath` builds. Fiber's own middleware is matched against the directory the
-  `fiber` module itself was built from, so a package of your own called
-  `middleware/keyauth` is never mistaken for it; a fork of the module is a
-  different directory and is not recognized, and neither is a middleware you
-  wrote yourself, so document those routes with `Security(...)` and friends. A `Use` prefix covers a route when every request the route
-  can answer passes it: a parameter in the prefix (`/users/:id`) covers a route
-  segment that always has a value there (a literal or a required parameter, not
-  an optional or greedy one, and not a missing segment), a constrained parameter
-  (`:id<int>`) covers only a parameter with the same constraint or a literal
-  that satisfies `int`, `alpha` or `bool`, a literal covers only the same text
-  under the app's case rule, and an optional segment is never claimed:
-  - Inference cannot see a `Next` function that skips a middleware for some
-    requests, so a recognized middleware is documented as always applying. Tell
-    the middleware instead with `InferMiddleware`, which receives each route and
-    the name of a recognized middleware (the `Middleware*` constants, or the
-    `Name` of a `MiddlewareDoc`) and returns `false` to leave it undocumented
-    there; or give the route an explicit `Security()`, or attach the middleware
-    to the routes it guards only.
-  - `keyauth` and `gofiber/contrib/v3/jwt` add a `bearerAuth` requirement and an
-    `http`/`bearer` scheme (with `bearerFormat: JWT` when only the JWT
-    middleware uses it); `basicauth` adds `basicAuth` with `http`/`basic`. A
-    chained pair becomes one requirement naming both. Each adds a `401`
-    response carrying `WWW-Authenticate`. `keyauth` is documented as a bearer
-    token because that is its default extractor; with another `KeyLookup`,
-    define `bearerAuth` yourself under `SecuritySchemes` and it replaces the
-    inferred scheme. An explicit `Security(...)` on the route always wins and
-    replaces every inferred authentication detail, the `401` included;
-    `Security()` with no argument documents a route that needs no authentication
-    and is written as `security: []`, overriding the document-level default.
-  - `csrf` adds a required `X-Csrf-Token` header parameter and a `403` on the
-    methods it protects (everything but `GET`, `HEAD`, `OPTIONS`, `TRACE` and
-    `QUERY`).
-  - `requestid` adds the `X-Request-ID` header, `limiter` the `X-RateLimit-*`
-    headers on the `2xx` responses it lets through plus a `429` with
-    `Retry-After`, `etag` an `ETag` header on the `200` response (any method)
-    plus a `304` on `GET` and `HEAD`, which is all the middleware answers that
-    way, and `cache` the `X-Cache` header on every response the handler
-    produces, errors included, but not on a `401`, `403` or `429` an earlier
-    middleware sent.
-    Headers and responses a route already documents are kept.
-  - `timeout` adds a `503` (the status it answers with), `recover` a `500`,
-    `idempotency` its optional key header on the methods it applies to (every
-    method but the safe ones), `responsetime` its `X-Response-Time` header,
-    `cors` the `Access-Control-Allow-Origin` header and `compress` the
-    `Content-Encoding` header on the responses that carry a body.
-  - `session` adds the cookie (or header, see `SessionLookup`) that carries the
-    session ID as an optional parameter and the `Set-Cookie` header on the
-    responses; `earlydata` a `425 Too Early` on the unsafe methods, which is
-    what it answers an early-data request with unless `AllowEarlyData` says
-    otherwise; and `healthcheck`, as the handler of a route, its `200` and
-    `503` answers, in the media type `HealthcheckProduces` names (plain text
-    by default, or the `{"status": "..."}` object for a JSON, XML, MsgPack or
-    CBOR `ResponseFormat`).
-  - `keyauth` is documented as a bearer token, which is its default extractor. If
-    it reads the key from a header, a query parameter or a cookie, set
-    `KeyAuthLookup: &openapi.APIKeyLookup{In: "header", Name: "X-API-Key"}` and
-    the route gets an `apiKeyAuth` requirement with an `apiKey` scheme instead.
-  - Your own middleware is recognized once you describe it in `Middleware`: pass
-    one instance of the handler its constructor returns, and every handler built
-    by that constructor is recognized, wherever it sits in the chain, the way
-    Fiber's own are (it is identified by where its code was written, so a
-    constructor you wrap in another function is a different middleware).
+Anything a route sets explicitly wins over what is described here.
 
-    ```go
-    app.Use(openapi.New(openapi.Config{Middleware: []openapi.MiddlewareDoc{{
-        Handler:         tenantauth.New(),
-        Name:            "tenantauth",
-        SecuritySchemes: map[string]any{"tenantAuth": map[string]any{"type": "apiKey", "in": "header", "name": "X-Tenant-Key"}},
-        Security:        map[string][]string{"tenantAuth": {}},
-        Responses:       map[int]fiber.RouteResponse{fiber.StatusUnauthorized: {Description: "Unknown tenant key"}},
-        ResponseHeaders: map[string]any{"X-Tenant": "The tenant the request was served for"},
-    }}}))
-    ```
+#### What is filled in for you
 
-    A `MiddlewareDoc` can also add `Parameters` to the routes it covers; its
-    `Responses` fill the statuses a route does not declare, and a
-    `ResponseHeaders` value is a Header Object, or a string used as its
-    description. An explicit `Security(...)` on a route still replaces
-    the requirement. `Middleware` holds at most 50 entries.
-  - The headers and parameter above are documented under their default names.
-    A middleware configured with another name cannot be read from its handler,
-    so say so in the config: `RequestIDHeader` (`requestid.Config.Header`),
-    `CacheHeader` (`cache.Config.CacheHeader`), `CSRFHeader` (the header a
-    custom `csrf` extractor reads) and `RateLimitHeaders`. A limiter with
-    `DisableHeaders` is matched by `DisableRateLimitHeaders`, which drops the
-    `X-RateLimit-*` headers and `Retry-After` and keeps the `429`. `DisableMiddlewareInference` turns it all off.
-  - Middleware registered through a domain router is recognized, and covers the
-    routes of the same host pattern; middleware registered on the app covers
-    every host.
-  - With a `StructValidator` configured, a route that declares a body or
-    parameters gets a `400` response, since binding can reject the request.
-  Error responses use `ErrorProduces` and `ErrorSchema`, matching the app's
-  error handler. `DisableMiddlewareInference` and `DisableValidationResponses`
-  turn the two halves off.
-- A route's `Consumes`/`Produces` are inferred from the first media type passed
-  to `RequestBody*` and to a `200` `Response*`, but only when `Consumes()` or
-  `Produces()` did not set one explicitly.
-- The spec and the UI page are sent with an `ETag` and `Cache-Control: no-cache`, and a
-  matching `If-None-Match` gets `304 Not Modified`. The tag changes whenever the document
-  does, so clients revalidate on every load and refetch only after a route changed.
-- `New` panics on a `Servers` entry the specification would reject: a variable without a
-  `Default`, a `Default` that is not in its `Enum`, or a `{name}` in the URL that no
-  variable declares. A server with an empty `URL` is skipped. It also panics when `Path`
-  and `UIPath` are the same path, as the UI would be unreachable.
-- Under OpenAPI 3.0 a `$ref` may not have sibling keys, so a struct field that references a
-  named type and also carries a description, `readOnly` or `deprecated` is written as
-  `{"allOf": [{"$ref": …}], "description": …}`; 3.1 and 3.2 keep the keys beside the `$ref`.
-  A component schema is built the same way whichever route is documented first.
-- Each operation gets a unique `operationId`: routes documented with `Name` use
-  that name, with anything but letters, digits, `_`, `-` and `.` replaced by `_`
-  (`list all users` → `list_all_users`, `2fa.verify` → `op_2fa.verify`) because code
-  generators turn the id into an identifier; routes without a usable name get an id generated from the method
-  and path (for example `GET /users/{id}` → `getUsersId`). Collisions get a
-  numeric suffix (`_2`, `_3`, …) so the document stays valid. Renaming a route
-  changes its id.
-- Path parameters whose sanitized names collide are also suffixed (`_2`, `_3`, …)
-  so parameter names stay unique per path.
-- Wildcard segments (`*`, `+`) become an ordinary path parameter named
-  `wildcard<n>`: `/files/*` documents as `/files/{wildcard1}`. Pass that name to
-  `AddParameter` (`In: "path"`) to give it a description or a schema. Since `*`
-  also matches no segment, the bare path (`/files`) is documented as well, as for
-  an optional parameter; `+` requires a segment and gets no such variant.
-- A trailing slash is dropped from a path (`/a/` is published as `/a`), except under
-  `StrictRouting`, where `/a` and `/a/` are different routes and a pattern that ends in
-  `/` keeps it. A variant of such a pattern that drops an optional segment (`/a/:id?/`
-  without `:id`) would end in `//`, which no request reaches, so it is left out. The
-  routes of a mounted sub-app follow the parent app's `StrictRouting`, as they do when
-  served.
-- A literal `{` or `}` in a route is published percent-encoded (`%7B`, `%7D`), because
-  OpenAPI reads braces as template expressions. Fiber matches such a route only with
-  `UnescapePath` enabled, where both forms reach it.
-- A header parameter named `Accept`, `Content-Type` or `Authorization` is left out, as
-  OpenAPI says to ignore those definitions; the headers are described by the media types
-  and security schemes instead. A query parameter with one of those names is kept.
-- In 3.2 a `querystring` parameter describes the whole query string, so every `query`
-  parameter of the same operation is dropped when one is present, whether you declared
-  it, a parameter model produced it or middleware added it, as the specification forbids
-  using both. Before 3.2 the `querystring` parameter is dropped instead. Nothing warns
-  when a parameter is dropped, so declare either a `querystring` parameter or `query`
-  parameters on a route, not both.
-- Routes with several optional parameters (e.g. `/files/:dir?/:name?`) emit one
-  templated path per hierarchy level (`/files`, `/files/{dir}`,
-  `/files/{dir}/{name}`): the router always binds the first parameter, and the
-  OpenAPI specification forbids templated paths that differ only in parameter
-  names. The expansion is capped at 64 variants per route, since it is otherwise
-  exponential in the number of optional parameters; the fully-populated variant
-  is always emitted.
-- Every method the application registers itself is documented, so `app.All`
-  yields one operation per method. The `HEAD` route Fiber derives automatically
-  from every `GET` is omitted, so a plain `app.Get(...)` produces a single `get`
-  operation; register `app.Head(...)` explicitly to document one.
-- The middleware itself answers only `GET` and `HEAD` requests; any other method
-  on the spec or UI path falls through to the next handler.
-- `GET` and `HEAD` operations never emit a `requestBody`, even if `Consumes` or
-  `RequestBody` is set, because those methods do not carry a request body; set
-  `DocumentGetBodies` to document one. `TRACE`, which must not include content
-  per RFC 9110, never does.
-- `CONNECT` routes (and routes of any custom method) are ignored before OpenAPI 3.2,
-  which does not define a `connect` operation; 3.2 documents them as
-  [additional operations](#custom-http-methods-openapi-32).
-- The documentation helpers are also available on `RouteChain` chains:
-  `app.RouteChain("/users").Get(handler).Summary("List users")`. Helpers on a
-  `Group`, `RouteChain`, or `Domain` router document that router's own most
-  recent registration, even when other routes were registered on the app in
-  the meantime; before the first registration through such a router its
-  helpers are no-ops.
-- The parent copies a sub-app's routes, documentation included, when the mount
-  is expanded at startup. Document the sub-app's routes before the parent starts
-  serving; changes made to them afterwards do not reach the parent's document.
-  A sub-app mounted through `Domain(...).Use` is copied when `Use` is called
-  instead, so document its routes before mounting it.
-- Documentation helpers chained onto a sub-app mount
-  (`app.Use("/api", subApp).Summary(...)`) are no-ops: mount placeholders are
-  replaced by the sub-app's own routes at startup, so document the sub-app's
-  routes instead.
+- **Responses**: a route that declares none gets `200 OK`, or `204 No Content`
+  for `DELETE`. Declaring any response turns this off.
+- **Summary**: derived from the handler's function name, so `listUsers` becomes
+  `List users` and `(*Server).GetUserByID` becomes `Get user by ID`. A closure
+  falls back to `"METHOD /path"`. This puts Go function names in a public
+  document; set `DisableHandlerSummaries` if they are internal.
+- **Tags**: taken from the enclosing group: the last segment of its name
+  (`Name("users.")` tags `users`), or else the last static segment of its
+  prefix, skipping parameters and version markers (`/api/v1/users` tags
+  `users`). The innermost group wins, and a route on the app itself gets no
+  tag. `DisableGroupTags` turns this off. Tags that operations use are declared
+  at the top level automatically.
+- **Media types**: a response without one documents `DefaultProduces`, and a
+  request body the route's `Consumes`, then `DefaultConsumes`. A status without
+  a body (`1xx`, `204`, `205`, `304`) gets no content, and a request body is
+  never invented. `DisableDefaultMediaTypes` turns the defaults off.
+- **`operationId`**: `OperationID`, else the route's `Name` (characters other
+  than letters, digits, `_`, `-` and `.` become `_`), else the method and path
+  (`GET /users/{id}` → `getUsersId`). A duplicate gets a numeric suffix.
+- **Validation errors**: with a `StructValidator` configured, a route that
+  declares a body or parameters gets a `400`. `DisableValidationResponses`
+  turns this off.
+- **Error bodies**: inferred error responses use `ErrorProduces` and
+  `ErrorSchema`, which should match your app's error handler.
+
+#### Recognized middleware
+
+Fiber middleware among a route's handlers, or registered with `Use` ahead of it
+on a prefix that covers its path, documents itself:
+
+| Middleware | Adds to the operation |
+|:-----------|:----------------------|
+| `keyauth`, `gofiber/contrib/v3/jwt` | a `bearerAuth` requirement and scheme, and a `401` with `WWW-Authenticate` |
+| `basicauth` | a `basicAuth` requirement and scheme, and a `401` with `WWW-Authenticate` |
+| `csrf` | a required `X-Csrf-Token` header and a `403`, on unsafe methods |
+| `limiter` | the `X-RateLimit-*` headers on `2xx` responses, and a `429` with `Retry-After` |
+| `requestid` | the `X-Request-ID` response header |
+| `etag` | an `ETag` header on the `200`, and a `304` on `GET` and `HEAD` |
+| `cache` | the `X-Cache` response header |
+| `idempotency` | an optional `X-Idempotency-Key` header, on unsafe methods |
+| `session` | an optional `session_id` cookie and the `Set-Cookie` response header |
+| `responsetime` | the `X-Response-Time` response header |
+| `cors` | the `Access-Control-Allow-Origin` response header |
+| `compress` | the `Content-Encoding` response header |
+| `timeout` | a `503` |
+| `recover` | a `500` |
+| `earlydata` | a `425 Too Early`, on unsafe methods |
+| `healthcheck` | its `200` and `503` answers, as the handler of a route |
+
+- **Custom names**: a middleware's configuration cannot be read from its
+  handler. If yours differs from the defaults above, repeat it in the config:
+  `KeyAuthLookup` (a key read from a header, a query parameter or a cookie
+  becomes an `apiKeyAuth` scheme), `CSRFHeader`, `RateLimitHeaders` or
+  `DisableRateLimitHeaders`, `RequestIDHeader`, `CacheHeader`,
+  `IdempotencyKeyHeader`, `SessionLookup`, `ResponseTimeHeader` and
+  `HealthcheckProduces`.
+- **Skipped routes**: a middleware's own `Next` function is not visible, so a
+  recognized middleware is documented as always applying. Return `false` from
+  `InferMiddleware` to leave one out for a route, or give the route an explicit
+  `Security()`:
+
+  ```go
+  openapi.Config{InferMiddleware: func(r *fiber.Route, name string) bool {
+      return !(name == openapi.MiddlewareKeyAuth && r.Path == "/health")
+  }}
+  ```
+
+- **Precedence**: an explicit `Security(...)` replaces every inferred
+  authentication detail, the `401` included. Headers and responses a route
+  documents itself are kept.
+- **Coverage**: a `Use` prefix covers a route only when every request the route
+  answers passes it, so `/admin` covers `/admin/x` but not `/administrators`.
+  Middleware on a `Domain` router covers the routes of that host.
+- **Your own middleware**: only the middleware of the `fiber` module is
+  recognized by default, not a fork or a package of yours. Describe yours in
+  `Middleware` with one instance of its handler, and every handler that
+  constructor builds is recognized:
+
+  ```go
+  app.Use(openapi.New(openapi.Config{Middleware: []openapi.MiddlewareDoc{{
+      Handler:         tenantauth.New(),
+      Name:            "tenantauth",
+      SecuritySchemes: map[string]any{"tenantAuth": map[string]any{"type": "apiKey", "in": "header", "name": "X-Tenant-Key"}},
+      Security:        map[string][]string{"tenantAuth": {}},
+      Responses:       map[int]fiber.RouteResponse{fiber.StatusUnauthorized: {Description: "Unknown tenant key"}},
+      ResponseHeaders: map[string]any{"X-Tenant": "The tenant the request was served for"},
+  }}}))
+  ```
+
+  A `MiddlewareDoc` can also add `Parameters`. `Middleware` holds at most 50
+  entries.
+
+`DisableMiddlewareInference` turns all of this off.
+
+#### Paths and parameters
+
+- A wildcard (`*`, `+`) becomes a path parameter named `wildcard<n>`:
+  `/files/*` documents as `/files/{wildcard1}`, plus `/files` since `*` also
+  matches nothing. Pass that name to `AddParameter` to describe it.
+- Optional parameters emit one path per level: `/files/:dir?/:name?` documents
+  `/files`, `/files/{dir}` and `/files/{dir}/{name}`, up to 64 variants per
+  route.
+- A trailing slash is dropped (`/a/` is published as `/a`), except under
+  `StrictRouting`.
+- A literal `{` or `}` in a route is published percent-encoded.
+- A header parameter named `Accept`, `Content-Type` or `Authorization` is left
+  out, as OpenAPI ignores those; media types and security schemes describe them.
+- A `querystring` parameter (3.2) and `query` parameters cannot share an
+  operation. In 3.2 the `query` ones are dropped without a warning; before 3.2
+  the `querystring` one is.
+
+#### Methods
+
+- Every registered method is documented, so `app.All` yields one operation per
+  method. The `HEAD` route Fiber derives from each `GET` is omitted; an explicit
+  `app.Head(...)` is documented, and should be given the `GET`'s `Produces`.
+- `GET` and `HEAD` operations have no request body unless `DocumentGetBodies`
+  is set, and `TRACE` never has one.
+- `QUERY`, `CONNECT` and custom methods appear only in 3.2 documents.
+
+#### Groups, sub-apps and domains
+
+- Helpers on a `Group`, `RouteChain` or `Domain` router document that router's
+  latest registration, and do nothing before its first one.
+- A sub-app's routes are copied into the parent when the app starts (or when
+  `Domain(...).Use` is called), so document them before that. Helpers chained
+  onto the mount itself (`app.Use("/api", subApp).Summary(...)`) do nothing.
+- The document describes the whole application, wherever the middleware is
+  registered. Use `Filter` to narrow it.
 - Registering the same method and path twice in a row merges the handlers into
-  one route entry; its documentation (including `Name`) belongs to the latest
-  registration. Routes registered on different domains never merge — each
-  keeps its own handlers and documentation. An operation on a domain route
-  carries an operation-level `servers` entry naming its host (a scheme-relative
-  URL such as `//api.example.com`, with each `:param` label as a server variable
-  defaulting to its name). OpenAPI allows one operation per path and method, so
-  when two domains share both, the document describes the first-registered one
-  and its `servers` lists every host that serves the path. The server URL has no scheme, so it resolves
-  against how the document was fetched, and an operation-level server replaces
-  the document-level `ServerURL`, base path included.
-- The specification always describes the whole application the middleware runs
-  in. When the middleware is registered inside a mounted sub-app, the routes are
-  expanded into the parent application at startup, so the generated document
-  covers the parent's full route set — use `Config.Next` to scope it if needed.
-- Spec generation takes a deep snapshot of the route table under the router
-  lock, so serving the spec concurrently with route registration or the
-  documentation helpers is safe. Runtime route mutation itself (e.g.
-  `RemoveRoute` while serving traffic) remains subject to the router's own
-  `RebuildTree` thread-safety caveats.
+  one route, documented by the latest registration.
+
+#### Serving
+
+- The middleware answers only `GET` and `HEAD`. The document is built on the
+  first request, cached, and rebuilt when the route table changes.
+- The document and the UI page carry an `ETag` and `Cache-Control: no-cache`, so
+  clients revalidate and refetch only after a change.
+- Generating the document while routes are being registered is safe.
+- `New` panics on a `Servers` entry the specification rejects (a variable
+  without a `Default`, a `Default` outside its `Enum`, or an undeclared `{name}`
+  in the URL) and when `Path` equals `UIPath`.
+- OpenAPI 3.0 allows no keys beside a `$ref`, so a described reference is
+  written as `{"allOf": [{"$ref": …}], "description": …}` there.
 
 ## Config
 
@@ -1234,7 +1037,7 @@ route's media type.
 | Self           | `string`                | Self-assigned document URI (`$self`, OpenAPI 3.2+).          | `""` |
 | DefaultProduces | `string`               | Response media type documented for a response that declares none; `Produces` and the `Response*` media types override it per route. | `"application/json"` |
 | DefaultConsumes | `string`               | Request media type documented for a request body that declares none; `Consumes` and the `RequestBody*` media types override it per route. | `"application/json"` |
-| ErrorProduces  | `string`                | Media type documented for the responses the app's error handler writes (`400`, `401`, `403`, `429`). | `"text/plain; charset=utf-8"`, or `"application/json"` when `ErrorSchema` is set |
+| ErrorProduces  | `string`                | Media type documented for the error responses the middleware infers, such as `400`, `401`, `429` and `500`. | `"text/plain; charset=utf-8"`, or `"application/json"` when `ErrorSchema` is set |
 | ErrorSchema    | `any`                   | Schema, or a Go value reflected into one, documented for those error responses. | `nil` |
 | DisableDefaultMediaTypes | `bool`        | Stops filling in `DefaultProduces`, `DefaultConsumes` and `ErrorProduces` when they are unset, leaving a response or body that declares no media type without content; values you set still apply. | `false` |
 | DisableMiddlewareInference | `bool`      | Stops documenting the security, headers, parameters and responses of recognized middleware on a route's path. | `false` |
@@ -1254,7 +1057,7 @@ route's media type.
 | Extensions     | `map[string]any`        | `x-` fields added to the document root.                         | `nil` |
 | InfoExtensions | `map[string]any`        | `x-` fields added to the `info` object.                         | `nil` |
 | PathItems      | `map[string]PathItem`   | Summary, description and parameters shared by every method of a path, keyed by its OpenAPI path. | `nil` |
-| Defaults       | `[]Defaults`            | Tags, parameters and responses for the routes under a path prefix. | `nil` |
+| Defaults       | `[]Defaults`            | Tags, security, parameters and responses for the routes under a path prefix. | `nil` |
 | UI             | `UI`                    | The documentation page: `UISwagger`, `UIRedoc` or `UIScalar`.   | `UISwagger` |
 | DisableUI      | `bool`                  | Serves only the document, no documentation page.                | `false` |
 | OAuth2RedirectPath | `string`            | Route of the OAuth2 redirect page of Swagger UI; empty serves none. | `""` |
@@ -1280,68 +1083,55 @@ The License Object allows `identifier` or `url`, never both. Setting both keeps
 `identifier` does not exist. A `Server` with an empty `URL` is dropped, and
 `Servers` falls back to `ServerURL` only when it contributes no usable entry.
 
-When the middleware is attached to a group or mounted under a prefixed `Use`, the configured `Path` is resolved relative to that
-prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specification at `/v1/openapi.json`, while a global
-`app.Use(openapi.New())` only intercepts `/openapi.json` and will not affect other endpoints ending in `openapi.json`.
-The same prefix resolution applies to `UIPath`, so `app.Group("/v1").Use(openapi.New())` also serves the Swagger UI page at
-`/v1/swagger` by default.
+`Path`, `UIPath` and `OAuth2RedirectPath` resolve against the mount prefix:
+`app.Group("/v1").Use(openapi.New())` serves `/v1/openapi.json` and `/v1/swagger`,
+while a global `app.Use(openapi.New())` answers only `/openapi.json` and
+`/swagger`. A prefix may have parameters: `app.Use("/:tenant?", openapi.New())`
+serves `/acme/openapi.json` and `/openapi.json`.
 
-A prefix may itself be parameterized. `app.Use("/:tenant?", openapi.New())` serves
-`/acme/openapi.json` and `/openapi.json`, and `app.Use("/files/*", openapi.New())`
-serves the document under whatever the wildcard matched. The prefix is resolved
-per request against the number of segments the pattern can consume, so a mount
-that can take at most one segment does not answer two levels down.
-
-The middleware can also be pinned to an exact route — `app.Get("/openapi.json", openapi.New())` or
-`app.Use("/v1/openapi.json", openapi.New())` serves the specification at that registered path. Note that an exact-route
-mount serves only that one endpoint, so the Swagger UI needs its own registration (or a prefix `Use`) to be reachable.
+The middleware can also be pinned to one route, such as
+`app.Get("/openapi.json", openapi.New())`. That serves only the document, so the
+UI page needs its own registration.
 
 ## Default Config
 
 ```go
 var ConfigDefault = Config{
-    Next:                       nil,
     Title:                      "Fiber API",
     Version:                    "1.0.0",
-    Description:                "",
-    ServerURL:                  "",
     Path:                       "/openapi.json",
     UIPath:                     "/swagger",
+    OpenAPIVersion:             "3.1.0",
+    UI:                         openapi.UISwagger,
     SwaggerCSSURL:              "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css",
     SwaggerBundleURL:           "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
     SwaggerStandalonePresetURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js",
-    SwaggerCSSIntegrity:        "sha384-9Q2fpS+xeS4ffJy6CagnwoUl+4ldAYhOs9pgZuEKxypVModhmZFzeMlvVsAjf7uT",
-    SwaggerBundleIntegrity:     "sha384-EYdOaiRwn44zNjrw+Tfs06qYz9BGQVo2f4/pLY5i7VorbjnZNhdplAbTBk8FXHUJ",
-    SwaggerStandalonePresetIntegrity: "sha384-49fpFaVrAWI/qdgl9Vv5E/4NXxRUiJX5vGuLws1NUpTWGtEqzWEx8gHTw2UTehFK",
-    SwaggerOptions:             nil,
-    OpenAPIVersion:             "3.1.0",
+    RedocBundleURL:             "https://unpkg.com/redoc@2.5.0/bundles/redoc.standalone.js",
+    ScalarBundleURL:            "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.81.0/dist/browser/standalone.min.js",
+    // Each default URL also has its Subresource Integrity hash in the matching *Integrity field.
     DefaultProduces:            "application/json",
     DefaultConsumes:            "application/json",
-    DisableGroupTags:           false,
-    DisableHandlerSummaries:    false,
     ErrorProduces:              "text/plain; charset=utf-8",
-    ErrorSchema:                nil,
-    DisableDefaultMediaTypes:   false,
-    DisableMiddlewareInference: false,
-    DisableValidationResponses: false,
     RequestIDHeader:            "X-Request-ID",
     CacheHeader:                "X-Cache",
     CSRFHeader:                 "X-Csrf-Token",
+    IdempotencyKeyHeader:       "X-Idempotency-Key",
+    ResponseTimeHeader:         "X-Response-Time",
+    HealthcheckProduces:        "text/plain; charset=utf-8",
     RateLimitHeaders: openapi.RateLimitHeaders{
         Limit:     "X-RateLimit-Limit",
         Remaining: "X-RateLimit-Remaining",
         Reset:     "X-RateLimit-Reset",
     },
-    DisableRateLimitHeaders: false,
 }
 ```
 
-Every field left at its zero value falls back to the entry above, so an empty
-string never means "disable" — see
-[Offline and air-gapped deployments](#offline-and-air-gapped-deployments) for what
-that implies when replacing the CDN URLs.
+A field left at its zero value falls back to its default, so an empty string
+never means "disable".
 
-Schema references (`SchemaRef`) are emitted as `$ref` entries in the generated JSON and can point to components such as `#/components/schemas/User`. To make these references resolve correctly, provide the corresponding definitions via the `Components` config field. `Example` and `Examples` follow the OpenAPI specification's mutual exclusivity rule: when both are provided, `Examples` takes precedence and `Example` is omitted.
+A `SchemaRef` is emitted as a `$ref`, so define its target under `Components`.
+When both `Example` and `Examples` are given, `Examples` wins, as OpenAPI allows
+only one.
 
 ## Automatic Schema Inference
 
@@ -1402,6 +1192,7 @@ app.Use(openapi.New(openapi.Config{
 | `map[string]T` | `object` (additionalProperties: schema of `T`) |
 | `map[K]T` with a non-string key | `object` (no `additionalProperties`) |
 | struct | `object` (properties from fields) |
+| `*multipart.FileHeader` (or a slice of it) | `string` (format: `binary`), a file upload |
 | `*T` | schema of `T` (field not included in `required`) |
 | `any` / `interface{}` | `{}` (accepts any value) |
 | `json.Number` | `number` (a string kind that marshals as a bare number) |
@@ -1443,37 +1234,7 @@ has no JSON representation (channels, functions, etc.) are skipped.
   — set the flag of the same name, so one `User` type can serve both a
   request body and a response with `id` marked read-only
 - **`validate:"..."`** — the rules a `StructValidator` enforces become
-  constraints: `required` marks the property required even with `omitempty`;
-  `min`, `max`, `len`, `gte` and `lte` become `minimum`/`maximum` for numbers,
-  `minLength`/`maxLength` for strings, `minItems`/`maxItems` for arrays and
-  `minProperties`/`maxProperties` for objects (a `[]byte`, written as base64,
-  gets the matching character counts, and a number quoted with `json:",string"`
-  gets no bounds); `gt` and `lt` do the same one step inside the limit, except on
-  floats; `oneof=a b` becomes `enum`, with `'two words'` kept as one value; and
-  `email`, `uuid`, `url`, `uri`, `ipv4`, `ipv6`, `hostname`, `base64` and an
-  RFC 3339 `datetime` set `format` unless the `openapi` tag already did. Rules
-  the schema cannot express, such as `gt` and `lt` on a float, are ignored. The
-  structure of the tag is followed: rules after `dive` constrain the elements
-  (`items`, or `additionalProperties` for a map) and never make the field
-  required, rules between `keys` and `endkeys` are skipped, and after
-  `omitempty` the rules an empty value would break (`min`, `gte`, `gt`, `len`,
-  `oneof`) are left out while upper bounds stay; a pointer is still validated
-  when it is not nil, so its rules stay. Fields of type `*multipart.FileHeader`
-  (and slices of it) are documented as `type: string, format: binary`, which
-  Swagger UI shows as a file picker. Beyond those, `eq=v` becomes a one-value
-  `enum` (a list or map has that length), `ne=v` a `not`, `unique` on a list
-  `uniqueItems`, `port` the range 1–65535 of an integer, `startswith`,
-  `endswith` and `contains` a `pattern`, and `alpha`, `alphanum`, `numeric`,
-  `number`, `hexadecimal`, `hexcolor`, `e164`, `ascii` and `jwt` the validator's own
-  expression as a `pattern`. The conditional rules `required_with`,
-  `required_with_all`, `required_without`, `required_without_all`,
-  `required_if` and `required_unless` become `allOf` entries with `if`/`then`
-  (or `dependentRequired`) in a 3.1+ document, naming the properties of the
-  fields they mention; 3.0 has no such keywords, so they are left out there,
-  as is a rule that mentions a field the object does not have. A schema holds
-  one pattern, so the first rule wins;
-  after `omitempty` the rules an empty string would break are left out, as with
-  `min`.
+  constraints; see [Validate rules](#validate-rules)
 
 Multiple `openapi` directives can be combined with commas:
 
@@ -1483,17 +1244,34 @@ type Product struct {
 }
 ```
 
-A directive value may itself contain commas and colons (for example a
-description); the only limitation is that a value cannot contain a comma
-immediately followed by a directive key (`description`, `example`, `format`,
-`enum`, `default`, `pattern`, `title`, `multipleOf` or an `x-` name, then a
-colon) or by a flag (`readOnly`, `writeOnly`, `deprecated`, `uniqueItems` or
-`nullable`, spelled in camelCase or all lowercase) that ends at a comma or the end of the tag. Such a comma starts the
-next directive, so `description:Sorted, title:x` sets a description and a title.
+A value may contain commas and colons. Only a comma directly followed by another
+directive key or flag starts the next directive, so `description:Sorted, title:x`
+sets a description and a title.
 
 A struct whose fields carry examples gets an object-level `example` assembled
 from them, nested models included, so Swagger UI shows a value for the model
 rather than its shape.
+
+### Validate rules
+
+| Rule | Schema |
+|:-----|:-------|
+| `required` | the property is required, even with `omitempty` |
+| `min`, `max`, `len`, `gte`, `lte` | `minimum`/`maximum` for numbers, `minLength`/`maxLength` for strings, `minItems`/`maxItems` for lists, `minProperties`/`maxProperties` for maps |
+| `gt`, `lt` | the same, one step inside the limit (ignored on floats) |
+| `oneof=a b` | `enum`; `'two words'` is one value |
+| `eq=v`, `ne=v` | a one-value `enum`, a `not` |
+| `unique` | `uniqueItems` on a list |
+| `port` | an integer from 1 to 65535 |
+| `email`, `uuid`, `url`, `uri`, `ipv4`, `ipv6`, `hostname`, `base64`, RFC 3339 `datetime` | `format`, unless the `openapi` tag set one |
+| `startswith`, `endswith`, `contains`, `alpha`, `alphanum`, `numeric`, `number`, `hexadecimal`, `hexcolor`, `e164`, `ascii`, `jwt` | `pattern`; a schema holds one, so the first rule wins |
+| `required_with`, `required_with_all`, `required_without`, `required_without_all`, `required_if`, `required_unless` | `if`/`then` or `dependentRequired` entries under `allOf`, in 3.1+ documents only |
+
+The tag's structure is followed: rules after `dive` apply to the elements, rules
+between `keys` and `endkeys` are skipped, and after `omitempty` the rules an
+empty value would break (`min`, `gte`, `gt`, `len`, `oneof`) are left out. A
+`[]byte` gets base64 character counts, a number quoted with `json:",string"`
+gets no bounds, and a rule the schema cannot express is ignored.
 
 ### Describing the struct itself
 
