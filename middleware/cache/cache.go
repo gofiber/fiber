@@ -341,18 +341,28 @@ func New(config ...Config) fiber.Handler {
 		return evictionCandidate{key: entryKey, manifest: entry.manifest, size: size, exp: exp, oldGen: heapGen}, true
 	}
 
-	restoreHeapEntry := func(ctx context.Context, candidate evictionCandidate) error {
-		// Storage I/O must stay outside the global heap lock: a slow backend
-		// must not block requests for unrelated keys. The original generation
-		// can be restored directly in the heap, so metadata needs no rewrite.
-		mux.Lock()
+	// retrack puts a node popped for eviction back as it was: the original generation can be restored
+	// directly in the heap, so metadata needs no rewrite. A node that a store finished meanwhile put
+	// under the key stays. The caller holds mux.
+	retrack := func(candidate evictionCandidate) (int, bool) {
 		if _, exists := heap.findKey(candidate.key); exists {
-			mux.Unlock()
-			return nil
+			return 0, false
 		}
 		idx := heap.putWithGeneration(candidate.key, candidate.exp, candidate.size, candidate.oldGen, candidate.manifest)
 		storedBytes += candidate.size
+		return idx, true
+	}
+
+	// restoreHeapEntry puts a node back and checks that the Storage still holds the entry it stood for.
+	restoreHeapEntry := func(ctx context.Context, candidate evictionCandidate) error {
+		// Storage I/O must stay outside the global heap lock: a slow backend
+		// must not block requests for unrelated keys.
+		mux.Lock()
+		idx, restored := retrack(candidate)
 		mux.Unlock()
+		if !restored {
+			return nil
+		}
 
 		entry, err := manager.get(ctx, candidate.key)
 		if err != nil {
@@ -1468,8 +1478,7 @@ func New(config ...Config) fiber.Handler {
 					// The rest is reserved by stores still in flight. The popped entries are
 					// still stored, so they go back, in reverse to regain their heap indices.
 					for _, candidate := range slices.Backward(candidates) {
-						heap.putWithGeneration(candidate.key, candidate.exp, candidate.size, candidate.oldGen, candidate.manifest)
-						storedBytes += candidate.size
+						retrack(candidate)
 					}
 					storedBytes -= entrySize
 					// Set spaceReserved to false so the deferred cleanup does not unreserve again
@@ -1507,10 +1516,19 @@ func New(config ...Config) fiber.Handler {
 					spaceReserved = false
 					mux.Unlock()
 
-					for _, candidate := range candidates[i:] {
-						if err := restoreHeapEntry(reqCtx, candidate); err != nil {
-							log.Warnf("%v", err)
-						}
+					// The candidates after the failed one were not touched: they are stored, and go back as
+					// they were popped, in reverse to regain their heap indices, without a read of the
+					// Storage for each. Those reads, and a log line for each that failed, were the cost
+					// of one failed delete: as many as the entries the store needed room from, up to
+					// MaxBytes / 256, asked of a Storage that was failing already. Only the candidate
+					// whose delete failed may be gone in part, so only it is checked.
+					mux.Lock()
+					for _, candidate := range slices.Backward(candidates[i+1:]) {
+						retrack(candidate)
+					}
+					mux.Unlock()
+					if err := restoreHeapEntry(reqCtx, candidates[i]); err != nil {
+						log.Warnf("%v", err)
 					}
 
 					// No room was made, so the response is not stored.
