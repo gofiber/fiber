@@ -27,6 +27,8 @@ func (grp *Group) Name(name string) Router {
 	}
 
 	grp.app.mutex.Lock()
+	defer grp.app.mutex.Unlock()
+
 	if grp.parentGroup != nil {
 		grp.name = grp.parentGroup.name + name
 	} else {
@@ -36,7 +38,6 @@ func (grp *Group) Name(name string) Router {
 	if err := grp.app.hooks.executeOnGroupNameHooks(*grp); err != nil {
 		panic(err)
 	}
-	grp.app.mutex.Unlock()
 
 	return grp
 }
