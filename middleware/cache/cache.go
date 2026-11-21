@@ -21,6 +21,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	"github.com/gofiber/fiber/v3/internal/personalheader"
 	"github.com/gofiber/fiber/v3/internal/sizedstream"
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -1182,8 +1183,13 @@ func New(config ...Config) fiber.Handler {
 		if cfg.StoreResponseHeaders {
 			allHeaders := c.Response().Header.All()
 			e.headers = e.headers[:0]
+			// A header that middleware inside this one wrote for the client of this request,
+			// as the session middleware writes the session ID into one, is that client's:
+			// the entry is served to every client that hits it, so it is not kept, as
+			// Set-Cookie is not.
+			personal := personalheader.Marked(c.RequestCtx())
 			for key, value := range allHeaders {
-				if isIgnoredHeader(key) {
+				if isIgnoredHeader(key) || personal.Has(key) {
 					continue
 				}
 
