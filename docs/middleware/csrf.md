@@ -151,7 +151,6 @@ Shared with `net/http`, but different from `csrf.New`:
 
 ## Recipes for Common Use Cases
 
-- **Without Sessions**: [CSRF Recipe](https://github.com/gofiber/recipes/tree/master/csrf) - Simple Double Submit Cookie pattern
 - **With Sessions**: [CSRF with Session Recipe](https://github.com/gofiber/recipes/tree/master/csrf-with-session) - More secure Synchronizer Token pattern
 
 ## Using CSRF Tokens
