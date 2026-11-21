@@ -33,6 +33,11 @@ import (
 	"golang.org/x/net/http/httpproxy"
 )
 
+// maxRootCertFileSize caps the certificate file SetRootCertificate reads. It
+// is far above the largest public root CA bundle, so a legitimate file never
+// reaches it, and an oversized or malformed one is never buffered in full.
+const maxRootCertFileSize = 8 << 20
+
 var ErrFailedToAppendCert = errors.New("failed to append certificate")
 
 // Client provides Fiber's high-level HTTP API while delegating transport work
@@ -356,7 +361,8 @@ func (c *Client) panicf(format string, args ...any) {
 }
 
 // SetRootCertificate adds one or more root certificates to the client's TLS configuration.
-// It panics when the file cannot be read or holds no valid PEM certificate.
+// It panics when the file cannot be read, is larger than the 8 MiB limit, or
+// holds no valid PEM certificate.
 func (c *Client) SetRootCertificate(path string) *Client {
 	cleanPath := filepath.Clean(path)
 	file, err := os.Open(cleanPath)
@@ -369,9 +375,14 @@ func (c *Client) SetRootCertificate(path string) *Client {
 		}
 	}()
 
-	pem, err := io.ReadAll(file)
+	// One byte past the limit is read so a file at the limit still loads; the
+	// extra byte only tells an oversized file apart.
+	pem, err := io.ReadAll(io.LimitReader(file, maxRootCertFileSize+1))
 	if err != nil {
 		c.panicf("client: %v", err)
+	}
+	if len(pem) > maxRootCertFileSize {
+		c.panicf("client: certificate file %q exceeds the maximum size of %d bytes", cleanPath, maxRootCertFileSize)
 	}
 
 	config := c.TLSConfig()

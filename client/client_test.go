@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1150,6 +1151,47 @@ func Test_Client_SetRootCertificate(t *testing.T) {
 	t.Parallel()
 	client := New().SetRootCertificate("../.github/testdata/ssl.pem")
 	require.NotNil(t, client.TLSConfig().RootCAs)
+}
+
+// Test_Client_SetRootCertificate_FileSizeLimit checks the limit on the file
+// SetRootCertificate reads: a file at the limit is still loaded, and one byte
+// more is rejected, naming the limit, instead of being buffered in full.
+func Test_Client_SetRootCertificate_FileSizeLimit(t *testing.T) {
+	t.Parallel()
+	pem, err := os.ReadFile("../.github/testdata/ssl.pem")
+	require.NoError(t, err)
+
+	// The padding follows the newline that ends the certificate line, as it does
+	// in a real file with extra data after the first PEM block.
+	atLimit := []byte(string(pem) + "\n" + strings.Repeat("A", maxRootCertFileSize-len(pem)-1))
+	overLimit := slices.Clone(atLimit)
+	overLimit = append(overLimit, 'A')
+
+	tests := []struct {
+		name    string
+		want    string
+		content []byte
+	}{
+		{name: "file at the limit is read", content: atLimit},
+		{name: "file one byte over the limit", content: overLimit, want: "exceeds the maximum size"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "roots.pem")
+			require.NoError(t, os.WriteFile(path, tc.content, 0o600))
+			client := New()
+			recovered := recoverValue(func() { client.SetRootCertificate(path) })
+			if tc.want == "" {
+				require.Nil(t, recovered)
+				require.NotNil(t, client.TLSConfig().RootCAs)
+				return
+			}
+			require.NotNil(t, recovered, "a certificate file over the size limit must not be accepted")
+			require.Contains(t, fmt.Sprint(recovered), tc.want)
+		})
+	}
 }
 
 func Test_Client_SetRootCertificateFromString(t *testing.T) {
