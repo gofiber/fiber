@@ -25,7 +25,10 @@ type Config struct {
 	//
 	// It is asked twice: before an entry is looked up, where true passes the
 	// request on without the cache, and again before the response is stored, where
-	// true leaves it unstored. It may so decide by the request or by the response.
+	// true leaves it unstored. Only the second time has the handler run: the first
+	// time the response is the empty one a request starts with, and c.Route() is
+	// the route the cache is registered on, so a Next that decides by the response
+	// or the route has to return false for that, or no request reaches the cache.
 	// It is asked of a request that is not safe too, which ends the stored responses
 	// of its path once it succeeds, unless Next returns true for it.
 	//
@@ -229,6 +232,7 @@ func configDefault(config ...Config) Config {
 	// Return default config if nothing provided
 	if len(config) < 1 {
 		cfg := ConfigDefault
+		cfg.normalizeMaxBytes()
 		cfg.normalizeKeys()
 		if cfg.KeyGenerator == nil {
 			cfg.usesDefaultKeyGenerator = true
@@ -252,15 +256,7 @@ func configDefault(config ...Config) Config {
 	if cfg.CacheHeader == "" {
 		cfg.CacheHeader = ConfigDefault.CacheHeader
 	}
-	// Left at zero, MaxBytes is the default limit, as it is without a Config. It was none at
-	// all, so a client asking for URLs it made up, or for a large file under one query after
-	// another, filled the memory. From here on zero means no limit, which DisableMaxBytes asks for.
-	switch {
-	case cfg.DisableMaxBytes:
-		cfg.MaxBytes = 0
-	case cfg.MaxBytes == 0:
-		cfg.MaxBytes = ConfigDefault.MaxBytes
-	}
+	cfg.normalizeMaxBytes()
 	cfg.normalizeKeys()
 	// nil = use default methods; explicit empty slice = cache no methods
 	if cfg.Methods == nil {
@@ -286,6 +282,18 @@ func configDefault(config ...Config) Config {
 		cfg.usesDefaultKeyGenerator = false
 	}
 	return cfg
+}
+
+// normalizeMaxBytes gives a MaxBytes left at zero the default limit, as New() has without a Config. It was
+// none at all, so a client asking for URLs it made up, or for a large file under one query after another,
+// filled the memory. From here on zero means no limit, which DisableMaxBytes asks for.
+func (cfg *Config) normalizeMaxBytes() {
+	switch {
+	case cfg.DisableMaxBytes:
+		cfg.MaxBytes = 0
+	case cfg.MaxBytes == 0:
+		cfg.MaxBytes = ConfigDefault.MaxBytes
+	}
 }
 
 // normalizeKeys normalizes the key's dimensions and works out which headers carry a credential.

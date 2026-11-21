@@ -131,7 +131,7 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	// a body, and for an encoding it cannot undo, compress, writes a 501 into the
 	// response, which is cacheable. Left out of the key, one request with that
 	// header replaced the entry of every plain request for the URL.
-	if body := c.Request().Body(); len(body) > 0 || c.Method() == fiber.MethodQuery || namesContentEncoding(&c.Request().Header, normalized) {
+	if body, held := bodySegment(c, normalized); held {
 		dst = append(dst, '|', 'm', '=')
 		dst = appendKeyFieldLines(dst, &c.Request().Header, "content-encoding", nil, normalized)
 		dst = append(dst, '|')
@@ -141,6 +141,18 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	}
 
 	return dst
+}
+
+// bodySegment returns the body of the request and reports whether the default key holds it, with the fields
+// that say how it is decoded: it does for a request that carries a body, a QUERY, and one that names a
+// Content-Encoding (see appendDefaultKey). A stream that declares no body is not read: reading it closes it
+// under the handler, and an empty body adds nothing to the key. New bounds the length of any other stream.
+func bodySegment(c fiber.Ctx, normalized bool) ([]byte, bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
+	var body []byte
+	if req := c.Request(); !req.IsBodyStream() || req.Header.ContentLength() > 0 {
+		body = req.Body()
+	}
+	return body, len(body) > 0 || c.Method() == fiber.MethodQuery || namesContentEncoding(&c.Request().Header, normalized)
 }
 
 // namesContentEncoding reports whether the request carries a Content-Encoding field line, which

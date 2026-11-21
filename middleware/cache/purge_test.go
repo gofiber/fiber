@@ -9,7 +9,9 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
+	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 // cacheTestPItem answers GET and HEAD /item with its version, and any other method by bumping the version and
@@ -56,8 +58,12 @@ func Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry(t *testing.T) {
 			t.Parallel()
 			var version atomic.Int32
 			version.Store(1)
+			// A clock of the test's own, moved past the write: on a wall clock as coarse as Windows has, the
+			// request after the write falls in its tick, and the entry it stores reads as stored before it.
+			clock := cacheTestCClock()
 			cfg := tc.cfg
 			cfg.Expiration = time.Hour
+			cfg.clock = clock.Now
 			app := fiber.New()
 			app.Use(New(cfg))
 			app.All("/item", cacheTestPItem(&version, tc.status))
@@ -68,6 +74,7 @@ func Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry(t *testing.T) {
 
 			write := doRequest(t, app, apptest.Req(tc.method, "/item", apptest.WithHeaderIf(tc.header[0], tc.header[1])))
 			require.Equal(t, tc.status, write.status)
+			clock.Add(time.Second)
 
 			if tc.ends {
 				cacheTestCRequireReply(t, get(), cacheMiss, "item v2")
@@ -135,6 +142,31 @@ func Test_Cache_Security_WriteEndsEveryEntryOfThePath(t *testing.T) {
 	}
 }
 
+// A write ends the entries of the spellings of its path the router takes for one: with StrictRouting off, the
+// default, trailing slashes are left out, as the case is with CaseSensitive off.
+func Test_Cache_Security_WriteEndsThePathWithoutItsTrailingSlashes(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ write, read string }{
+		{write: "/item/", read: "/item"},
+		{write: "/item", read: "/item/"},
+		{write: "/item//", read: "/item"},
+	} {
+		t.Run(tc.write+" ends "+tc.read, func(t *testing.T) {
+			t.Parallel()
+			var version atomic.Int32
+			version.Store(1)
+			app := fiber.New()
+			app.Use(New(Config{Expiration: time.Hour}))
+			app.All("/item", cacheTestPItem(&version, fiber.StatusNoContent))
+
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, tc.read), cacheMiss, "item v1")
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, tc.read), cacheHit, "item v1")
+			require.Equal(t, fiber.StatusNoContent, doRequest(t, app, apptest.Req(fiber.MethodPut, tc.write)).status)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, tc.read), cacheMiss, "item v2")
+		})
+	}
+}
+
 // An entry stored by a request that began before the write succeeded holds what the path was before it,
 // whenever the request stores it: it is ended too, where one stored by a request that began after is not.
 func Test_Cache_Security_WriteEndsAnEntryTheRequestBeganBefore(t *testing.T) {
@@ -184,8 +216,9 @@ func Test_Cache_Security_WriteEndsEntriesOfAStorage(t *testing.T) {
 			storage := storagetest.New()
 			var version atomic.Int32
 			version.Store(1)
+			clock := cacheTestCClock() // moved past the write, as in Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry
 			app := fiber.New()
-			app.Use(New(Config{Storage: storage, Expiration: time.Hour}))
+			app.Use(New(Config{Storage: storage, Expiration: time.Hour, clock: clock.Now}))
 			app.All("/item", cacheTestPItem(&version, fiber.StatusNoContent))
 
 			key := defaultKey("/item")
@@ -200,10 +233,34 @@ func Test_Cache_Security_WriteEndsEntriesOfAStorage(t *testing.T) {
 			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheHit, "item v1")
 
 			require.Equal(t, fiber.StatusNoContent, doRequest(t, app, apptest.Req(fiber.MethodDelete, "/item")).status)
+			clock.Add(time.Second)
 			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheMiss, "item v2")
 			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheHit, "item v2")
 		})
 	}
+}
+
+// A write timeout.New gives up on is answered with the timeout's error, while its handler goes on running and
+// may still write the response: the cache does not read the status it writes (go test -race reported the read).
+func Test_Cache_Security_TimedOutWriteIsNotRead(t *testing.T) {
+	t.Parallel()
+	finished := make(chan struct{})
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Put("/item", timeout.New(func(c fiber.Ctx) error {
+		defer close(finished)
+		<-c.Context().Done()
+		return c.SendStatus(fiber.StatusNoContent)
+	}, timeout.Config{Timeout: 10 * time.Millisecond}))
+
+	fctx := cacheTestServe(func(fctx *fasthttp.RequestCtx) {
+		fctx.Request.Header.SetMethod(fiber.MethodPut)
+		app.Handler()(fctx)
+	}, "/item")
+	resp := fctx.LastTimeoutErrorResponse()
+	require.NotNil(t, resp, "timeout.New did not give up on the handler")
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode())
+	apptest.Recv(t, finished, 5*time.Second, "the timed-out handler did not finish")
 }
 
 // An entry a write ended is not served to a request that accepts a stale one, and is not there for one that
@@ -251,6 +308,12 @@ func Test_purgeTable(t *testing.T) {
 	t.Run("the slot ignores case", func(t *testing.T) {
 		t.Parallel()
 		require.Equal(t, table.slot("example.com", "/item"), table.slot("EXAMPLE.com", "/Item"))
+	})
+
+	t.Run("the slot ignores trailing slashes", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, table.slot("example.com", "/item"), table.slot("example.com", "/item//"))
+		require.Equal(t, table.slot("example.com", "/"), table.slot("example.com", "//"))
 	})
 
 	t.Run("a write supersedes the entries stored before it, and the ones it cannot date", func(t *testing.T) {

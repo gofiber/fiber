@@ -149,16 +149,19 @@ func varyHeadersChanged(names []string, lookup, live *fasthttp.RequestHeader, no
 }
 
 // keyVaryFields returns the request headers the key tells entries apart by, which the Cache-Control a hit
-// is given grants freshness for. The default key holds KeyHeaders, and Cookie for KeyCookies. A custom
-// KeyGenerator's key is opaque, so only the headers declared in KeyCredentialHeaders are taken to be in it.
-// Authorization is not among them: a response stored for a request that carries it has a Cache-Control of
-// its own, which a hit keeps.
-func (cfg *Config) keyVaryFields() []string {
+// is given grants freshness for. The default key holds KeyHeaders, Cookie for KeyCookies, and, for a request
+// whose body it holds (body), Content-Encoding and Content-Type. A custom KeyGenerator's key is opaque, so
+// only the headers declared in KeyCredentialHeaders are taken to be in it. Authorization is not among them:
+// a response stored for a request that carries it has a Cache-Control of its own, which a hit keeps.
+func (cfg *Config) keyVaryFields(body bool) []string { //nolint:revive // flag-parameter: the two lists differ by the key segment it names
 	names := cfg.KeyCredentialHeaders
 	if cfg.usesDefaultKeyGenerator {
 		names = cfg.KeyHeaders
 		if len(cfg.KeyCookies) > 0 {
 			names = append(slices.Clone(names), fiber.HeaderCookie)
+		}
+		if body {
+			names = append(slices.Clone(names), fiber.HeaderContentEncoding, fiber.HeaderContentType)
 		}
 	}
 	var fields []string

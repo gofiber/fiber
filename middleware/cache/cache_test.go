@@ -262,6 +262,28 @@ func TestCacheStorageErrors(t *testing.T) {
 	}
 }
 
+// A Storage that fails with the error of a request context that is done, as that of a request timeout.New gave
+// up on is, leaves the request to whatever ended the context: the handler ran for a request that had been
+// answered, and the log put the failure down to the Storage.
+func Test_Cache_StorageFailureOfADoneRequestRunsNoHandler(t *testing.T) {
+	t.Parallel()
+	var failures cacheTestAFailures
+	app := failures.app()
+	app.Use(func(c fiber.Ctx) error {
+		ctx, cancel := context.WithCancel(c.Context())
+		cancel()
+		c.SetContext(ctx)
+		return c.Next()
+	})
+	app.Use(New(Config{Storage: &storagetest.Memory{HonorContext: true}}))
+	var calls atomic.Int32
+	app.Get("/", func(c fiber.Ctx) error { calls.Add(1); return c.SendString("ok") })
+
+	apptest.ExpectBody(t, app, "/", fiber.StatusInternalServerError, "storage failure")
+	require.ErrorIs(t, failures.err, context.Canceled)
+	require.Zero(t, calls.Load())
+}
+
 // What a failing Storage does is logged, now that the request no longer fails with it: the operation,
 // the Storage's own error, and the key as a placeholder unless DisableValueRedaction is set.
 // conventions:ignore parallel: the default logger is redirected to read what is logged
@@ -2433,6 +2455,20 @@ func Test_CacheOnlyIfCachedWithNoCache(t *testing.T) {
 			})
 		}
 	}
+}
+
+// A request that sends no-store beside only-if-cached is answered from the cache, or with 504: no-store forbids
+// storing, not serving what is stored (RFC 9111 Section 5.2.1.5), and only-if-cached forbids the handler
+// (Section 5.2.1.7). It reached the handler either way.
+func Test_CacheOnlyIfCachedWithNoStore(t *testing.T) {
+	t.Parallel()
+	app, calls := cacheTestAOrigin(New(Config{Expiration: time.Hour}), "origin-")
+	cacheTestAExpect(t, app, "/", cacheMiss)
+	for _, directive := range []string{"no-store, only-if-cached", "only-if-cached, no-store"} {
+		cacheTestAExpectBody(t, app, cacheTestAGetCC("/", directive), cacheHit, "origin-1")
+		cacheTestAExpectStatus(t, app, cacheTestAGetCC("/?other", directive), cacheUnreachable, fiber.StatusGatewayTimeout)
+	}
+	require.Equal(t, int32(1), calls.Load())
 }
 
 func Test_CacheMaxStaleServesStaleResponse(t *testing.T) {
@@ -4835,6 +4871,50 @@ func Test_Cache_OrphanedMetadataWithoutBody(t *testing.T) {
 	}
 }
 
+// The metadata a request finds without its body goes only if no request replaced it meanwhile: deleted
+// without that check, it took with it the entry another request had just stored, body and all.
+func Test_Cache_OrphanedMetadataKeepsAReplacement(t *testing.T) {
+	t.Parallel()
+	key := defaultKey("/")
+	storage := &hookedStorage{Memory: storagetest.New()}
+	app, _ := cacheTestAOrigin(New(Config{Storage: storage, Expiration: time.Hour}), "response-")
+	cacheTestAExpect(t, app, "/", cacheMiss)
+	storage.Mu.Lock()
+	delete(storage.Data, bodyKey(key))
+	storage.Mu.Unlock()
+
+	// Once the lookup below has missed the body, another request stores a fresh entry before the lookup
+	// reaches the Storage again.
+	var (
+		missed, replaced atomic.Bool
+		replacedStatus   int
+		errReplace       error
+	)
+	replace := func(k string) {
+		if k != key || !missed.Load() || !replaced.CompareAndSwap(false, true) {
+			return
+		}
+		resp, err := app.Test(cacheTestAGetCC("/", "no-cache"))
+		if errReplace = err; err == nil {
+			replacedStatus, errReplace = resp.StatusCode, resp.Body.Close()
+		}
+	}
+	storage.onGet = func(k string) {
+		if k == bodyKey(key) && !storage.Holds(k) {
+			missed.Store(true)
+		}
+		replace(k)
+	}
+	storage.onDelete = replace
+
+	// only-if-cached stores no answer of its own, which would replace the entry either way.
+	cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", "only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
+	require.True(t, replaced.Load())
+	require.NoError(t, errReplace)
+	require.Equal(t, fiber.StatusOK, replacedStatus)
+	cacheTestAExpectBody(t, app, "/", cacheHit, "response-2")
+}
+
 // An entry whose body the Storage does not hand over is a miss, not a failure: the handler answers,
 // and its answer replaces the entry when the Storage takes it. only-if-cached forbids the handler, so
 // that request is answered 504, as it is for a URL with nothing stored.
@@ -5523,6 +5603,16 @@ func Test_configDefault_MaxBytes(t *testing.T) {
 			require.Equal(t, tc.want, configDefault(tc.cfg).MaxBytes)
 		})
 	}
+}
+
+// New() takes the DisableMaxBytes of ConfigDefault as New(ConfigDefault) does: it kept the limit.
+// conventions:ignore parallel: it sets ConfigDefault, which every test that calls New() without a Config reads
+func Test_configDefault_DisableMaxBytesWithoutAConfig(t *testing.T) {
+	saved := ConfigDefault
+	t.Cleanup(func() { ConfigDefault = saved })
+	ConfigDefault.DisableMaxBytes = true
+	require.Zero(t, configDefault().MaxBytes)
+	require.Zero(t, configDefault(ConfigDefault).MaxBytes)
 }
 
 // Test_Cache_MaxBytes_DefaultAppliesToAConfig tests that a Config which leaves MaxBytes unset

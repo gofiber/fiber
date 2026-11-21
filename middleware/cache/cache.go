@@ -3,6 +3,7 @@
 package cache
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -31,6 +32,10 @@ import (
 // hexLen is the hex-encoded length of a SHA-256 sum, shared by the auth and vary hashers.
 const hexLen = sha256.Size * 2
 
+// replayPlaceholder stands for the stored lines of a name while a hit replays them. The NUL bytes keep it
+// apart from any value a stored line holds.
+var replayPlaceholder = []byte("\x00cache replay\x00")
+
 // Sizes for the local arrays the response headers are formatted into, so the
 // values reach the header store — which copies them — without a heap
 // allocation each. Both are upper bounds; an append past one still produces the
@@ -48,6 +53,8 @@ const (
 // a credential — a cookie, Authorization or another credential header, through Vary, KeyCookies or
 // KeyHeaders — and so holds one user's response: a shared cache downstream that
 // keys on the URL alone would otherwise store it and serve it to the next user.
+// It also goes out when the default key holds the body the request carried, which
+// no Vary can name, so that a cache downstream does not serve it for another body.
 const (
 	publicMaxAge  = "public, max-age="
 	privateMaxAge = "private, max-age="
@@ -311,9 +318,9 @@ func New(config ...Config) fiber.Handler {
 	// entries stored after them evicted one another.
 	evictionHorizon := uint64(cfg.Expiration.Seconds())
 	// The request headers the key tells entries apart by, which a hit the middleware gives a
-	// Cache-Control of its own has to name in its Vary.
-	keyVary := cfg.keyVaryFields()
-	keyVaryValue := []byte(strings.Join(keyVary, ", "))
+	// Cache-Control of its own has to name in its Vary, and those for a request whose body it holds.
+	keyVary, bodyVary := cfg.keyVaryFields(false), cfg.keyVaryFields(true)
+	keyVaryValue, bodyVaryValue := []byte(strings.Join(keyVary, ", ")), []byte(strings.Join(bodyVary, ", "))
 	// When a request that is not safe last succeeded at each path, for the entries a write ends.
 	purges := cfg.purges
 	if purges == nil {
@@ -460,15 +467,22 @@ func New(config ...Config) fiber.Handler {
 				return c.Next()
 			}
 			slot := purges.slot(c.Host(), c.Path()) // before the handler, which may rewrite the path
-			err := c.Next()
-			if status := c.Response().StatusCode(); err == nil && status >= fiber.StatusOK && status < fiber.StatusBadRequest {
+			// Only a non-error response ends the entries. A handler timeout.New gave up on may still write
+			// the response, so its status is not read then: IsAbandoned goes first, as its atomic load orders
+			// the read after the timeout middleware's write.
+			if err := c.Next(); err != nil || (c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil) {
+				return err
+			}
+			if status := c.Response().StatusCode(); status >= fiber.StatusOK && status < fiber.StatusBadRequest {
 				purges.mark(slot, unixNanos(cfg.now()))
 			}
-			return err
+			return nil
 		}
 
-		// Refrain from caching
-		if reqDirectives.noStore {
+		// Refrain from caching. no-store forbids storing, not serving what is stored (RFC 9111 §5.2.1.5), so a
+		// request that also sends only-if-cached, which forbids the handler, is answered from the cache or with
+		// 504, and its handler never runs to be stored.
+		if reqDirectives.noStore && !reqDirectives.onlyIfCached {
 			return pass()
 		}
 
@@ -549,8 +563,13 @@ func New(config ...Config) fiber.Handler {
 		// Storage that fails is no reason to fail the request: the handler can answer it, and an
 		// outage of the store was an outage of every route behind the cache, with the store's own
 		// error for a body. The failure is logged. only-if-cached forbids the handler, so that
-		// request is told there is nothing stored for it, as on any miss.
+		// request is told there is nothing stored for it, as on any miss. A request whose context is done,
+		// as that of one timeout.New gave up on, is left to whatever ended it, with the error as it was: the
+		// handler would run for a request that has been answered.
 		unserved := func(err error) error {
+			if reqCtx.Err() != nil {
+				return err
+			}
 			log.Warnf("%v; the request is answered without the cache", err)
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			if reqDirectives.onlyIfCached {
@@ -581,8 +600,8 @@ func New(config ...Config) fiber.Handler {
 		case err == nil, errors.Is(err, errCacheMiss):
 		case errors.Is(err, errUndecodable):
 			// What the Storage holds under the key is not an entry: a miss, so that the response
-			// stored for this request replaces it. Left alone it would keep every request for the
-			// key away from the cache until the Storage expired it, if it ever does.
+			// stored for this request, if one is, replaces it. Left alone it would keep every request
+			// for the key away from the cache until the Storage expired it, if it ever does.
 			log.Warnf("%v; it is treated as a miss", err)
 		default:
 			return unserved(err)
@@ -848,11 +867,11 @@ func New(config ...Config) fiber.Handler {
 						rawBody, err := manager.getRaw(reqCtx, bodyKey(key))
 						if err != nil {
 							// A body the backend dropped leaves metadata that is a miss, so the
-							// orphan goes. A Storage that fails that delete keeps it to be found
-							// without a body again, and one that failed the read keeps the entry
-							// for when it answers.
+							// orphan goes, unless a request replaced it meanwhile. A Storage that
+							// fails that delete keeps it to be found without a body again, and one
+							// that failed the read keeps the entry for when it answers.
 							if errors.Is(err, errCacheMiss) {
-								err = deleteKey(reqCtx, key)
+								err = deleteFound(reqCtx)
 							}
 							if err != nil {
 								log.Warnf("%v; the entry is left as it is", err)
@@ -908,28 +927,47 @@ func New(config ...Config) fiber.Handler {
 					var dateBuf [httpDateLen]byte
 					dateValue := utils.AppendHTTPDate(dateBuf[:0], secondsToTime(clampedDate))
 					setFieldLine(&c.Response().Header, fiber.HeaderDate, dateValue, canonical)
-					// One entry per field line, so Set collapsed a repeated name — a Vary
-					// sent twice came back varying only on the second. Clear every stored
-					// name first, then append; a per-entry scan would be quadratic here.
-					for i := range e.headers {
-						if isIgnoredHeader(e.headers[i].key) {
-							// An entry stored before Set-Cookie joined ignoreHeaders still
-							// carries one, and DelBytes on it clears fasthttp's whole cookie
-							// store — wiping the session an outer middleware just set.
-							continue
-						}
-						if !canonical {
-							// DelBytes is byte-exact, so a line under another spelling survives
-							// it and the append lands beside it — the pair this clear prevents.
-							fieldname.DelOthers(&c.Response().Header, utils.UnsafeString(e.headers[i].key))
-						}
-						c.Response().Header.DelBytes(e.headers[i].key)
+					// One entry per field line, so Set collapsed a repeated name — a Vary sent
+					// twice came back varying only on the second. A stored name the response
+					// already holds, as one a middleware in front of the cache set, is first set
+					// to a placeholder: fasthttp's Set writes over the first line of the name in
+					// its place and drops the later ones without moving any other line, where Del
+					// fills a removed line's place with the last line, which turned around the
+					// lines of a field that middleware repeats (Link, Server-Timing). The first
+					// stored line of such a name then writes over the placeholder, and every other
+					// stored line is added. Only lines the response held before are looked up, so
+					// a hit costs no more per stored line than the response held.
+					var placedBuf [1]uint64
+					placed := placedBuf[:] // the stored lines that write over a placeholder
+					if len(e.headers) > 64 {
+						placed = make([]uint64, (len(e.headers)+63)/64)
 					}
 					for i := range e.headers {
 						if isIgnoredHeader(e.headers[i].key) {
+							// An entry stored before Set-Cookie joined ignoreHeaders still
+							// carries one, which is not replayed: Del on it cleared fasthttp's
+							// whole cookie store, wiping the session an outer middleware set.
 							continue
 						}
-						c.Response().Header.AddBytesKV(e.headers[i].key, e.headers[i].value)
+						name := utils.UnsafeString(e.headers[i].key)
+						if !canonical {
+							// Set is byte-exact, so a line under another spelling survives
+							// it and the value lands beside it — the pair this clear prevents.
+							fieldname.DelOthers(&c.Response().Header, name)
+						}
+						if held := c.Response().Header.PeekAll(name); len(held) > 0 && !bytes.Equal(held[0], replayPlaceholder) {
+							c.Response().Header.SetBytesKV(e.headers[i].key, replayPlaceholder)
+							placed[i/64] |= 1 << (i % 64)
+						}
+					}
+					for i := range e.headers {
+						switch {
+						case isIgnoredHeader(e.headers[i].key):
+						case placed[i/64]&(1<<(i%64)) != 0:
+							c.Response().Header.SetBytesKV(e.headers[i].key, e.headers[i].value)
+						default:
+							c.Response().Header.AddBytesKV(e.headers[i].key, e.headers[i].value)
+						}
 					}
 					// Set Cache-Control header if not disabled and not already set
 					if !cfg.DisableCacheControl && len(fieldname.First(&c.Response().Header, fiber.HeaderCacheControl, canonical)) == 0 {
@@ -939,9 +977,16 @@ func New(config ...Config) fiber.Handler {
 						}
 						// private for an entry that holds one user's response: public, or
 						// a bare max-age, lets a shared cache downstream store this hit
-						// and serve it to whoever asks for the URL next.
+						// and serve it to whoever asks for the URL next. So does an entry the
+						// default key tells apart by the body of its request, which no Vary can
+						// name; a cache that serves QUERY keys it by its content (RFC 10008).
+						var body []byte
+						bodyKeyed := false
+						if cfg.usesDefaultKeyGenerator {
+							body, bodyKeyed = bodySegment(c, canonical)
+						}
 						directive := publicMaxAge
-						if holdsCredential() {
+						if holdsCredential() || (bodyKeyed && len(body) > 0 && requestMethod != fiber.MethodQuery) {
 							directive = privateMaxAge
 						}
 						// Built in a local array: FormatUint and the join were two
@@ -954,12 +999,16 @@ func New(config ...Config) fiber.Handler {
 						// only. A cache in front of the app that stored the hit once for the URL would
 						// serve it to every client, whatever they send in the headers the key splits by
 						// (RFC 9111 §4.1), unless the response says which they are.
+						vary, varyValue := keyVary, keyVaryValue
+						if bodyKeyed {
+							vary, varyValue = bodyVary, bodyVaryValue
+						}
 						switch {
-						case len(keyVary) == 0:
+						case len(vary) == 0:
 						case len(fieldname.First(&c.Response().Header, fiber.HeaderVary, canonical)) == 0:
-							setFieldLine(&c.Response().Header, fiber.HeaderVary, keyVaryValue, canonical)
+							setFieldLine(&c.Response().Header, fiber.HeaderVary, varyValue, canonical)
 						default:
-							c.Vary(keyVary...)
+							c.Vary(vary...)
 						}
 					}
 
@@ -1374,14 +1423,14 @@ func New(config ...Config) fiber.Handler {
 			})
 		}
 
-		// Written past a decode limit, the entry would fail every later lookup with
-		// a 500 until it expired. The in-memory store never encodes it.
+		// Written past a decode limit, the entry would be a miss, logged, for every later
+		// lookup until it expired. The in-memory store never encodes it.
 		if cfg.Storage != nil && !e.decodable() {
 			markUnreachable()
 			return nil
 		}
 
-		// A short body can sit under a key or Location many times its size, so all three are charged.
+		// A short body can sit under a key or stored headers many times its size, so all three are charged.
 		entrySize := bodySize + uint(len(key)) + e.metaSize()
 		if cfg.MaxBytes > 0 && entrySize > cfg.MaxBytes {
 			markUnreachable()

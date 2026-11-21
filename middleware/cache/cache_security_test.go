@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -414,9 +415,7 @@ func Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy(t *testing.T) {
 			name: "after the names the response has, none repeated", cfg: Config{KeyHeaders: []string{"X-Tenant", "Accept"}},
 			route: withHeader("Vary", "accept, Origin"), wantVary: "accept, Origin, X-Tenant", wantCC: "public, max-age=",
 		},
-		{
-			name: "DisableCacheControl", cfg: Config{KeyHeaders: []string{"X-Tenant"}, DisableCacheControl: true},
-		},
+		{name: "DisableCacheControl", cfg: Config{KeyHeaders: []string{"X-Tenant"}, DisableCacheControl: true}},
 		{
 			name: "a Cache-Control of the handler's own", cfg: Config{KeyHeaders: []string{"X-Tenant"}},
 			route: withHeader(fiber.HeaderCacheControl, "max-age=60"), wantCC: "max-age=60",
@@ -449,6 +448,55 @@ func Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy(t *testing.T) {
 			} else {
 				require.Equal(t, []string{tc.wantVary}, hit.Header.Values(fiber.HeaderVary))
 			}
+		})
+	}
+}
+
+// Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy tests the hit of a request the default key tells apart by the
+// body it carries, or by the fields that say how the body is decoded. The hit names those fields in its Vary too,
+// and a request that carries a body is answered with a private one, as no Vary names a body: sent as
+// "public, max-age" with the Vary of the key headers alone, it let a cache in front of the app store, for every
+// plain request for the URL, the 501 c.Body() answers a Content-Encoding it cannot undo with, or the answer to
+// one client's body. A cache that serves QUERY keys it by its content (RFC 10008), so that hit stays public.
+func Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy(t *testing.T) {
+	t.Parallel()
+	const keyHeaders, bodyFields = "Accept, Accept-Encoding, Accept-Language", ", Content-Encoding, Content-Type"
+	for _, tc := range []struct {
+		name, method, body, encoding string
+		wantCC, wantVary             string
+		status                       int
+	}{
+		{name: "a plain GET", method: fiber.MethodGet, status: fiber.StatusOK, wantCC: "public, max-age=", wantVary: keyHeaders},
+		{
+			name: "a Content-Encoding without a body", method: fiber.MethodGet, encoding: "compress",
+			status: fiber.StatusNotImplemented, wantCC: "public, max-age=", wantVary: keyHeaders + bodyFields,
+		},
+		{name: "a GET with a body", method: fiber.MethodGet, body: "x", status: fiber.StatusOK, wantCC: "private, max-age=", wantVary: keyHeaders + bodyFields},
+		{name: "a POST", method: fiber.MethodPost, body: "x", status: fiber.StatusOK, wantCC: "private, max-age=", wantVary: keyHeaders + bodyFields},
+		{name: "a QUERY", method: fiber.MethodQuery, body: "x", status: fiber.StatusOK, wantCC: "public, max-age=", wantVary: keyHeaders + bodyFields},
+		{name: "a QUERY without a body", method: fiber.MethodQuery, status: fiber.StatusOK, wantCC: "public, max-age=", wantVary: keyHeaders + bodyFields},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodQuery}}))
+			app.All("/", func(c fiber.Ctx) error { return c.SendString("body=" + string(c.Body())) })
+			send := func() *http.Response {
+				var body io.Reader = http.NoBody
+				if tc.body != "" {
+					body = strings.NewReader(tc.body)
+				}
+				req := httptest.NewRequest(tc.method, "/", body)
+				apptest.WithHeaderIf(fiber.HeaderContentEncoding, tc.encoding)(req)
+				return apptest.Do(t, app, req)
+			}
+			require.Equal(t, cacheMiss, send().Header.Get("X-Cache"))
+
+			hit := send()
+			require.Equal(t, cacheHit, hit.Header.Get("X-Cache"))
+			require.Equal(t, tc.status, hit.StatusCode)
+			require.True(t, strings.HasPrefix(hit.Header.Get(fiber.HeaderCacheControl), tc.wantCC), "Cache-Control %q", hit.Header.Get(fiber.HeaderCacheControl))
+			require.Equal(t, []string{tc.wantVary}, hit.Header.Values(fiber.HeaderVary))
 		})
 	}
 }
@@ -604,6 +652,98 @@ func Test_Cache_Security_HitKeepsWhatFiberSetsToRestrictTheBody(t *testing.T) {
 		}
 	}
 	require.Greater(t, set, 5, "helmet sets a field for most of its protections")
+}
+
+// A hit keeps the order of the lines of a field that a middleware in front of the cache repeats, which is part
+// of the field's value (RFC 9110 Section 5.3). Replaying the fields every entry keeps, as helmet sets them in
+// front of the cache, turned those lines around.
+func Test_Cache_Security_HitKeepsTheOrderOfRepeatedLines(t *testing.T) {
+	t.Parallel()
+	links := []string{"</first.css>; rel=preload; as=style", "</second.js>; rel=preload; as=script"}
+	app := fiber.New()
+	app.Use(helmet.New())
+	app.Use(func(c fiber.Ctx) error {
+		for _, link := range links {
+			c.Response().Header.Add(fiber.HeaderLink, link)
+		}
+		return c.Next()
+	})
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("page") })
+
+	for _, want := range []string{cacheMiss, cacheHit} {
+		require.Equal(t, links, cacheTestAExpect(t, app, "/", want).Header.Values(fiber.HeaderLink), want)
+	}
+}
+
+// A hit replays every stored line of a field that a middleware in front of the cache also sets, in place of the
+// line that middleware set, the first written over it and the rest after it, past the 64 lines a hit marks without
+// an allocation too.
+func Test_Cache_Security_HitReplacesTheLinesSetInFrontOfTheCache(t *testing.T) {
+	t.Parallel()
+	robots := make([]string, 70)
+	for i := range robots {
+		robots[i] = "r" + strconv.Itoa(i)
+	}
+	for _, tc := range []struct {
+		route fiber.Handler
+		want  map[string][]string // on the miss and on the hit
+		name  string
+		outer [][2]string // the lines the middleware in front of the cache adds
+	}{
+		{
+			name:  "a second line of the field",
+			outer: [][2]string{{fiber.HeaderXRobotsTag, "a"}},
+			route: func(c fiber.Ctx) error {
+				c.Response().Header.Add(fiber.HeaderXRobotsTag, "b")
+				return c.SendString("page")
+			},
+			want: map[string][]string{fiber.HeaderXRobotsTag: {"a", "b"}},
+		},
+		{
+			name:  "past 64 stored lines",
+			outer: [][2]string{{fiber.HeaderContentSecurityPolicy, "outer"}},
+			route: func(c fiber.Ctx) error {
+				c.Response().Header.Del(fiber.HeaderContentSecurityPolicy)
+				for _, line := range robots {
+					c.Response().Header.Add(fiber.HeaderXRobotsTag, line)
+				}
+				c.Response().Header.Add(fiber.HeaderContentSecurityPolicy, "inner")
+				return c.SendString("page")
+			},
+			want: map[string][]string{fiber.HeaderContentSecurityPolicy: {"inner"}, fiber.HeaderXRobotsTag: robots},
+		},
+		{
+			// Each of the lines set in front goes, not only the first.
+			name:  "two lines of the field the handler replaces with one",
+			outer: [][2]string{{fiber.HeaderXRobotsTag, "outer1"}, {fiber.HeaderXRobotsTag, "outer2"}},
+			route: func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderXRobotsTag, "inner")
+				return c.SendString("page")
+			},
+			want: map[string][]string{fiber.HeaderXRobotsTag: {"inner"}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				for _, line := range tc.outer {
+					c.Response().Header.Add(line[0], line[1])
+				}
+				return c.Next()
+			})
+			app.Use(New(Config{Expiration: time.Hour}))
+			app.Get("/", tc.route)
+
+			for _, want := range []string{cacheMiss, cacheHit} {
+				resp := cacheTestAExpect(t, app, "/", want)
+				for name, lines := range tc.want {
+					require.Equal(t, lines, resp.Header.Values(name), "%s on a %s", name, want)
+				}
+			}
+		})
+	}
 }
 
 // Every name in keptHeaders is matched whatever case it is written in, within the length the
@@ -1130,6 +1270,19 @@ func Test_Cache_Security_QueryBody_StreamedBodyLimit(t *testing.T) {
 		cacheTestCRequireReply(t, doQuery("small", false), want, "s5 streamed=false")
 	}
 	require.Equal(t, cacheMiss, doQuery("other", false).cache)
+}
+
+// With StreamRequestBody, a request whose stream declares an empty body is left its stream: the key gains
+// nothing from an empty body, while reading the stream to find out closed it, so a handler reading
+// c.Request().BodyStream() was handed none.
+func Test_Cache_EmptyBodyStreamIsLeftToTheHandler(t *testing.T) {
+	t.Parallel()
+	app := fiber.New(fiber.Config{StreamRequestBody: true})
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(strconv.FormatBool(c.Request().BodyStream() != nil)) })
+
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderContentLength, "0"))
+	apptest.ExpectBody(t, app, req, fiber.StatusOK, "true")
 }
 
 // countingReader yields zeros and counts how many were read.

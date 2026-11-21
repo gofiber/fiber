@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
@@ -43,10 +44,14 @@ func unsafeMethod(method string) bool {
 	}
 }
 
-// slot is where the writes to a path are kept. The host and path are folded to lower case: a write to
-// "/Item" may well have changed what "/item" holds, and ending too many entries costs a request, where
-// ending too few serves one that is out of date.
+// slot is where the writes to a path are kept. The host and path are folded to lower case, and the path
+// loses its trailing slashes but for the root, as the router takes "/Item" and "/item/" for "/item" unless
+// CaseSensitive or StrictRouting say otherwise: a write to one may well have changed what the other holds,
+// and ending too many entries costs a request, where ending too few serves one that is out of date.
 func (t *purgeTable) slot(host, path string) uint64 {
+	if path = utils.TrimRight(path, '/'); path == "" {
+		path = "/"
+	}
 	h := maphash.String(t.seed, utilsstrings.ToLower(host))
 	p := maphash.String(t.seed, utilsstrings.ToLower(path))
 	return (h ^ bits.RotateLeft64(p, 32)) & (purgeSlots - 1)
