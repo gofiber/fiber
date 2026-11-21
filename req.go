@@ -328,7 +328,7 @@ func (r *DefaultReq) AcceptEncoding() string {
 // The field name matches case-insensitively (RFC 9110 Section 5.1), so this
 // agrees with GetAll on whether the field is there.
 func (r *DefaultReq) HasHeader(key string) bool {
-	return len(r.headerField(key)) > 0
+	return fieldname.Has(&r.c.fasthttp.Request.Header, key, !r.c.app.config.DisableHeaderNormalizing)
 }
 
 // HasHeaderValue reports whether the request header key lists value as one of
@@ -340,12 +340,20 @@ func (r *DefaultReq) HasHeader(key string) bool {
 // (RFC 9111 permits quoted directive arguments, escaped quotes included). An
 // empty value is never present. Only valid within the handler.
 func (r *DefaultReq) HasHeaderValue(key, value string) bool {
-	// One lookup settles the common case of a header that is not there at all.
-	if value == "" || len(r.headerField(key)) == 0 {
+	if value == "" {
 		return false
 	}
 	app := r.c.app
-	for _, line := range fieldname.Lines(&r.c.fasthttp.Request.Header, key, !app.config.DisableHeaderNormalizing) {
+	h := &r.c.fasthttp.Request.Header
+	canonical := !app.config.DisableHeaderNormalizing && !fieldname.HasTrailers(h)
+	if !canonical && len(r.headerField(key)) == 0 {
+		// Avoid collecting folded lines when no non-empty value exists.
+		return false
+	}
+	for _, line := range fieldname.Lines(h, key, canonical) {
+		if len(line) == 0 {
+			continue
+		}
 		for member := range headerlist.AllQuotedPairs(app.toString(line)) {
 			if utils.EqualFold(member, value) {
 				return true
