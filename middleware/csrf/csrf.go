@@ -303,14 +303,15 @@ func expireCSRFCookie(c fiber.Ctx, cfg *Config) {
 // setCSRFCookie sends token in the cookie, which expires with the stored token.
 func setCSRFCookie(c fiber.Ctx, cfg *Config, token string, expires time.Time) {
 	cookie := &fiber.Cookie{
-		Name:        cfg.CookieName,
-		Value:       token,
-		Domain:      cfg.CookieDomain,
-		Path:        cfg.CookiePath,
-		Secure:      cfg.CookieSecure,
-		HTTPOnly:    cfg.CookieHTTPOnly,
-		SameSite:    cfg.CookieSameSite,
-		SessionOnly: cfg.CookieSessionOnly,
+		Name:     cfg.CookieName,
+		Value:    token,
+		Domain:   cfg.CookieDomain,
+		Path:     cfg.CookiePath,
+		Secure:   cfg.CookieSecure,
+		HTTPOnly: cfg.CookieHTTPOnly,
+		SameSite: cfg.CookieSameSite,
+		// A session-only cookie carries no Expires, so the one that expires the cookie cannot be one.
+		SessionOnly: cfg.CookieSessionOnly && token != "",
 		Expires:     expires,
 	}
 
