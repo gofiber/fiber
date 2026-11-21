@@ -193,6 +193,7 @@ func TestGenerateErrors(t *testing.T) {
 	}{
 		{name: "no markers", markdown: "Handwritten documentation.", want: errNoBlocks},
 		{name: "missing end", markdown: "<!-- go:doc Config -->\nold\n", want: errMalformedBlocks},
+		{name: "unclosed fence", markdown: "<!-- go:doc Config -->\nold\n<!-- /go:doc -->\n```go\n<!-- go:doc Config -->\n", want: errMalformedBlocks},
 		{name: "empty names", markdown: "<!-- go:doc   -->\nold\n<!-- /go:doc -->", want: errMalformedBlocks},
 		{name: "extra end", markdown: "<!-- go:doc Config -->\nold\n<!-- /go:doc -->\n<!-- /go:doc -->", want: errMalformedBlocks},
 		{name: "unknown symbol", markdown: "<!-- go:doc Missing -->\nold\n<!-- /go:doc -->", want: errUnknownSymbol},

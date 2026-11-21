@@ -2123,6 +2123,9 @@ In v3, Fiber introduced Addons. Addons are additional useful packages that can b
 ### Retry
 
 The Retry addon retries failed operations with exponential backoff and jitter.
+
+A field of `retry.ExponentialBackoff` left at zero takes its default, also on a struct literal, so even the zero value calls the function and waits between the attempts as the default config does. A literal that sets only `MaxRetryCount` used to retry at once; it now waits too.
+
 See the [retry documentation](addon/retry.md) for the current API, configuration and executable examples.
 
 ## 📋 Migration guide

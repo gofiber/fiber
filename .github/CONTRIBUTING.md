@@ -46,7 +46,9 @@ The Go source is canonical: edit it and run `make generate` to update the page.
   An optional `_suffix` is supported, as in `ExampleNewExponentialBackoff_defaults`;
   examples must be standalone programs.
 - Prose outside the blocks is preserved, so do not restate generated facts there.
-- The `Generated API docs` workflow fails when a page drifts from its source.
+- The `Generated API docs` workflow fails when a page drifts from its source. It runs on the
+  Go version in `go.mod` with `GOOS=linux`, `GOARCH=amd64` and `CGO_ENABLED=0`; if `make generate`
+  is clean locally and the workflow still fails, regenerate with that toolchain and build context.
 
 Markers inside fenced or indented code blocks and inline examples are ignored.
 Generated text must not contain marker strings; the page's LF or CRLF line ending is preserved.

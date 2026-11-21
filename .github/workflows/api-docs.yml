@@ -1,6 +1,6 @@
 name: Generated API docs
 
-# Fails when a go:doc block in docs/ no longer matches its Go source. Runs on
+# Fails when a go:doc block in any Markdown page no longer matches its Go source. Runs on
 # Markdown-only changes too (test.yml ignores them), on one pinned toolchain and
 # build context, because go/printer output and file selection vary across them.
 
@@ -10,13 +10,13 @@ on:
       - main
     paths:
       - "**.go"
-      - "docs/**"
+      - "**.md"
       - "go.mod"
       - ".github/workflows/api-docs.yml"
   pull_request:
     paths:
       - "**.go"
-      - "docs/**"
+      - "**.md"
       - "go.mod"
       - ".github/workflows/api-docs.yml"
 
@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
 
@@ -58,4 +58,4 @@ jobs:
         run: go generate -run genapidocs ./...
 
       - name: Check for drift
-        run: git diff --exit-code -- docs || (echo "::error::Run 'make generate' and commit the updated docs." && exit 1)
+        run: git diff --exit-code || (echo "::error::Run 'make generate' and commit the updated docs." && exit 1)

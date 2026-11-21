@@ -28,7 +28,7 @@ var (
 	errNoBlocks          = errors.New("no go:doc blocks found")
 	errMalformedBlocks   = errors.New("unbalanced or malformed go:doc blocks")
 	errUnknownSymbol     = errors.New("unknown exported declaration or example")
-	errUnplayableExample = errors.New("example cannot be rendered as a standalone program")
+	errUnplayableExample = errors.New("example cannot be rendered as a standalone program (it uses another file's declarations, or an import whose package name differs from its path and needs an explicit name)")
 	errAmbiguousSymbol   = errors.New("ambiguous declaration or example name")
 	errGeneratedMarker   = errors.New("generated text contains a go:doc marker")
 	errUndocumentedAPI   = errors.New("exported declarations are not documented")
@@ -291,9 +291,18 @@ func selfContained(file *ast.File) bool {
 				delete(unresolved, ident)
 			}
 		}
-		if kv, ok := n.(*ast.KeyValueExpr); ok {
-			if ident, ok := kv.Key.(*ast.Ident); ok {
-				delete(unresolved, ident) // Struct field keys never resolve at file scope.
+		// The parser never reports composite literal keys as unresolved (go.dev/issue/45160),
+		// so a map, slice or array key naming another file's declaration has to be found here.
+		// shortcut: only literals that spell out their type are checked; compile the program if named or elided types hide one.
+		if lit, ok := n.(*ast.CompositeLit); ok && keyed(lit.Type) {
+			for _, elt := range lit.Elts {
+				kv, ok := elt.(*ast.KeyValueExpr)
+				if !ok {
+					continue
+				}
+				if ident, ok := kv.Key.(*ast.Ident); ok && ident.Obj == nil && types.Universe.Lookup(ident.Name) == nil {
+					unresolved[ident] = true
+				}
 			}
 		}
 		return true
@@ -304,6 +313,16 @@ func selfContained(file *ast.File) bool {
 		}
 	}
 	return true
+}
+
+// keyed reports whether a composite literal of this type takes values, not field names, as keys.
+func keyed(typ ast.Expr) bool {
+	switch typ.(type) {
+	case *ast.MapType, *ast.ArrayType:
+		return true
+	default:
+		return false
+	}
 }
 
 // render replaces whole-line markers outside code fences and preserves the file's line endings.
@@ -321,6 +340,9 @@ func render(markdown []byte, docs packageDocs) ([]byte, error) {
 	for index, line := range strings.SplitAfter(string(markdown), "\n") {
 		content := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
 		match := fencePattern.FindStringSubmatch(content)
+		if match != nil && fence == "" && match[1][0] == '`' && strings.Contains(match[2], "`") {
+			match = nil // CommonMark: a backtick fence's info string cannot contain a backtick.
+		}
 		if match != nil {
 			if fence == "" {
 				fence = match[1]
@@ -368,6 +390,10 @@ func render(markdown []byte, docs packageDocs) ([]byte, error) {
 	if names != nil {
 		return nil, fmt.Errorf("%w: missing closing marker", errMalformedBlocks)
 	}
+	if fence != "" {
+		// An open fence would silently hide every marker below it.
+		return nil, fmt.Errorf("%w: unclosed code fence", errMalformedBlocks)
+	}
 	if blocks == 0 {
 		return nil, errNoBlocks
 	}
@@ -414,7 +440,9 @@ func renderSymbols(names []string, docs packageDocs, selected map[ast.Node]bool)
 		}
 		printed := bytes.TrimRight(formatted.Bytes(), "\n")
 		if symbol.fragment {
-			printed = bytes.TrimSpace(printed[bytes.IndexByte(printed, '{')+1 : bytes.LastIndexByte(printed, '}')])
+			// Drop the wrapper's braces and one indent level from every line, not only the first.
+			printed = printed[bytes.IndexByte(printed, '{')+1 : bytes.LastIndexByte(printed, '}')]
+			printed = bytes.TrimSpace(bytes.ReplaceAll(printed, []byte("\n    "), []byte("\n")))
 		}
 		goFence := codeFence(append([]byte(symbol.text), printed...))
 		fmt.Fprintln(&code)

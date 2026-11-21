@@ -52,7 +52,7 @@ func TestInnerComments(t *testing.T) {
 func TestPackageMembers(t *testing.T) {
 	t.Parallel()
 	dir := fixture(t)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "members.go"), []byte("package sample\ntype API interface { Fetch() string; hidden() }\ntype Nested struct { Value struct { Leaf int } }\ntype Paired struct { First, Second int }\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "members.go"), []byte("package sample\ntype API interface { Fetch() string; hidden() }\ntype Nested struct { Value struct { Leaf int } }\ntype Paired struct { First, Second int }\ntype Documented struct {\n\t// Limit caps the retries.\n\t//\n\t// Optional. Default: 3\n\tLimit int\n}\n"), 0o600))
 	docs, err := loadPackage(dir)
 	require.NoError(t, err)
 	out, err := render([]byte("<!-- go:doc API.Fetch Config.Value Paired.First Paired.Second -->\n<!-- /go:doc -->"), docs)
@@ -62,6 +62,9 @@ func TestPackageMembers(t *testing.T) {
 	require.NotContains(t, docs.symbols, "API.hidden")
 	require.NotContains(t, docs.symbols, "Nested.Leaf")
 	require.Equal(t, 1, strings.Count(string(out), "First, Second int"))
+	out, err = render([]byte("<!-- go:doc Documented.Limit -->\n<!-- /go:doc -->"), docs)
+	require.NoError(t, err)
+	require.Contains(t, string(out), "```go\n// Limit caps the retries.\n//\n// Optional. Default: 3\nLimit int\n```")
 }
 
 // TestPackageNameCollisions makes example selection deterministic and rejects ambiguous public names.
@@ -184,12 +187,15 @@ func TestWriteAtomicErrors(t *testing.T) {
 func TestSelfContainedSelectors(t *testing.T) {
 	t.Parallel()
 	for source, want := range map[string]bool{
-		"import \"fmt\"\nfunc Example() { fmt.Println(shared.Value) }":                                      false,
-		"import \"github.com/gofiber/fiber/v3\"\nfunc Example() { fiber.New() }":                            true,
-		"import f \"fmt\"\nfunc Example() { f.Println(1) }":                                                 true,
-		"import \"net/http\"\nfunc Example() { _ = http.MethodGet }\nvar helper = 1":                        true,
-		"import . \"fmt\"\nfunc Example() { Println(shared.Value) }":                                        true,
-		"import \"fmt\"\nfunc Example() { fmt.Println(Config{Value: 1}) }\ntype Config struct{ Value int }": true,
+		"import \"fmt\"\nfunc Example() { fmt.Println(shared.Value) }":                                          false,
+		"import \"github.com/gofiber/fiber/v3\"\nfunc Example() { fiber.New() }":                                true,
+		"import f \"fmt\"\nfunc Example() { f.Println(1) }":                                                     true,
+		"import \"net/http\"\nfunc Example() { _ = http.MethodGet }\nvar helper = 1":                            true,
+		"import . \"fmt\"\nfunc Example() { Println(shared.Value) }":                                            true,
+		"import \"fmt\"\nfunc Example() { fmt.Println(Config{Value: 1}) }\ntype Config struct{ Value int }":     true,
+		"func Example() { _ = map[string]int{value: 1} }":                                                       false,
+		"func Example() { _ = []string{index: \"a\"} }":                                                         false,
+		"func Example() { _ = map[bool]int{true: 1} }\nvar _ = []int{1}\nconst key = 0\nvar _ = [1]int{key: 1}": true,
 	} {
 		file, err := parser.ParseFile(token.NewFileSet(), "example_test.go", "package sample_test\n"+source+"\n", 0)
 		require.NoError(t, err)
@@ -211,4 +217,14 @@ func TestRenderLiteralBytes(t *testing.T) {
 	again, err := render(out, docs)
 	require.NoError(t, err)
 	require.Equal(t, string(out), string(again))
+}
+
+// TestRenderInlineCodeLine keeps regenerating blocks below a prose line that only looks like a fence.
+func TestRenderInlineCodeLine(t *testing.T) {
+	t.Parallel()
+	docs, err := loadPackage(fixture(t))
+	require.NoError(t, err)
+	out, err := render([]byte("```inline``` is prose, not a fence\n<!-- go:doc Config -->\nold\n<!-- /go:doc -->\n"), docs)
+	require.NoError(t, err)
+	require.NotContains(t, string(out), "old")
 }
