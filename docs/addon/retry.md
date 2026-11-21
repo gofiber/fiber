@@ -2,6 +2,8 @@
 id: retry
 ---
 
+<!-- go:doc-all -->
+
 # Retry Addon
 
 The Retry addon for [Fiber](https://github.com/gofiber/fiber) retries failed network operations using exponential
@@ -20,73 +22,152 @@ addon returns an error.
 
 ## Signatures
 
+<!-- go:doc NewExponentialBackoff ExponentialBackoff ExponentialBackoff.Retry -->
+
 ```go
-func NewExponentialBackoff(config ...retry.Config) *retry.ExponentialBackoff
-func (e *retry.ExponentialBackoff) Retry(f func() error) error
+// NewExponentialBackoff creates a ExponentialBackoff with default values.
+func NewExponentialBackoff(config ...Config) *ExponentialBackoff
 ```
 
-`Retry` calls `f` up to `MaxRetryCount` times in total and returns `nil` as soon as `f` returns `nil`. If every attempt fails, it returns the error of the last attempt. Each call to `Retry` starts from `InitialInterval` with its own state, so one `ExponentialBackoff` can be shared.
+```go
+// ExponentialBackoff is a retry mechanism for retrying some calls.
+type ExponentialBackoff struct {
+    // InitialInterval is the initial time interval for backoff algorithm.
+    InitialInterval time.Duration
 
-A field left at zero or below takes its default from the [Default Config](#default-config-example), also on a `retry.ExponentialBackoff` you build as a struct literal instead of with `NewExponentialBackoff`. Even `retry.ExponentialBackoff{}` therefore calls `f` at least once, and up to 10 times when it keeps failing, waiting between the attempts as the default does: about 160 seconds in all. A literal that sets only some fields waits as well, so `retry.ExponentialBackoff{MaxRetryCount: 2}` no longer retries at once. To retry without waiting, set `MaxBackoffTime` to a short duration such as `time.Nanosecond`.
+    // MaxBackoffTime is the maximum time duration for backoff algorithm. It limits
+    // the maximum sleep time.
+    MaxBackoffTime time.Duration
+
+    // Multiplier is a multiplier number of the backoff algorithm.
+    Multiplier float64
+
+    // MaxRetryCount is the maximum number of retry count.
+    MaxRetryCount int
+    // contains filtered or unexported fields
+}
+```
+
+```go
+// Retry is the core logic of the retry mechanism. If the calling function returns
+// nil as an error, then the Retry method is terminated with returning nil. Otherwise,
+// if all function calls are returned error, then the method returns this error.
+//
+// f is called at least once: a field left at its zero value takes its default, so
+// even a zero ExponentialBackoff makes up to DefaultConfig.MaxRetryCount attempts.
+//
+// Each call starts from InitialInterval with its own state, so one ExponentialBackoff can be shared.
+func (e *ExponentialBackoff) Retry(f func() error) error
+```
+
+<!-- /go:doc -->
+
+A field left at zero or below takes its default from the [Default Config](#default-config-example), also on a `retry.ExponentialBackoff` you build as a struct literal instead of with `NewExponentialBackoff`. Even `retry.ExponentialBackoff{}` therefore calls `f` at least once, and up to `DefaultConfig.MaxRetryCount` times when it keeps failing, waiting between the attempts as the default does. A literal that sets only some fields waits as well, so `retry.ExponentialBackoff{MaxRetryCount: 2}` no longer retries at once. To retry without waiting, set `MaxBackoffTime` to a short duration such as `time.Nanosecond`.
 
 ## Examples
+
+<!-- go:doc ExampleExponentialBackoff_Retry -->
+
+```go
+package main
+
+import (
+    "errors"
+    "fmt"
+    "os"
+    "time"
+
+    "github.com/gofiber/fiber/v3/addon/retry"
+)
+
+func main() {
+    backoff := retry.NewExponentialBackoff(retry.Config{MaxBackoffTime: time.Nanosecond})
+    attempts := 0
+    err := backoff.Retry(func() error {
+        attempts++
+        if attempts < 3 {
+            return errors.New("temporarily unavailable")
+        }
+        return nil
+    })
+    fmt.Fprintf(os.Stdout, "attempts: %d\nerror: %v\n", attempts, err)
+}
+```
+
+Output:
+
+```text
+attempts: 3
+error: <nil>
+```
+
+<!-- /go:doc -->
+
+## Default Config
+
+<!-- go:doc ExampleNewExponentialBackoff_defaults -->
 
 ```go
 package main
 
 import (
     "fmt"
+    "os"
 
     "github.com/gofiber/fiber/v3/addon/retry"
-    "github.com/gofiber/fiber/v3/client"
 )
 
 func main() {
-    expBackoff := retry.NewExponentialBackoff(retry.Config{})
-
-    // Local variables used inside Retry
-    var resp *client.Response
-    var err error
-
-    // Retry a network request and return an error to signal another attempt
-    err = expBackoff.Retry(func() error {
-        client := client.New()
-        resp, err = client.Get("https://gofiber.io")
-        if err != nil {
-            return fmt.Errorf("GET gofiber.io failed: %w", err)
-        }
-        if resp.StatusCode() != 200 {
-            return fmt.Errorf("GET gofiber.io did not return 200 OK")
-        }
-        return nil
-    })
-
-    // If all retries failed, panic
-    if err != nil {
-        panic(err)
-    }
-    fmt.Printf("GET gofiber.io succeeded with status code %d\n", resp.StatusCode())
+    backoff := retry.NewExponentialBackoff()
+    fmt.Fprintln(os.Stdout, backoff.InitialInterval, backoff.MaxBackoffTime, backoff.Multiplier, backoff.MaxRetryCount)
 }
 ```
 
-## Default Config
+Output:
 
-```go
-retry.NewExponentialBackoff()
+```text
+1s 32s 2 10
 ```
+
+<!-- /go:doc -->
 
 ## Custom Config
 
+<!-- go:doc ExampleNewExponentialBackoff -->
+
 ```go
-retry.NewExponentialBackoff(retry.Config{
-    InitialInterval: 2 * time.Second,
-    MaxBackoffTime:  64 * time.Second,
-    Multiplier:      2.0,
-    MaxRetryCount:   15,
-})
+package main
+
+import (
+    "fmt"
+    "os"
+    "time"
+
+    "github.com/gofiber/fiber/v3/addon/retry"
+)
+
+func main() {
+    backoff := retry.NewExponentialBackoff(retry.Config{
+        InitialInterval: 2 * time.Second,
+        MaxBackoffTime:  64 * time.Second,
+        Multiplier:      2,
+        MaxRetryCount:   15,
+    })
+    fmt.Fprintln(os.Stdout, backoff.InitialInterval, backoff.MaxBackoffTime, backoff.Multiplier, backoff.MaxRetryCount)
+}
 ```
 
+Output:
+
+```text
+2s 1m4s 2 15
+```
+
+<!-- /go:doc -->
+
 ## Config
+
+<!-- go:doc Config -->
 
 ```go
 // Config defines the config for addon.
@@ -112,15 +193,15 @@ type Config struct {
     //
     // Optional. Default: 10
     MaxRetryCount int
-
-    // currentInterval tracks the current waiting time.
-    //
-    // Optional. Default: 1 * time.Second
-    currentInterval time.Duration
+    // contains filtered or unexported fields
 }
 ```
 
+<!-- /go:doc -->
+
 ## Default Config Example
+
+<!-- go:doc DefaultConfig -->
 
 ```go
 // DefaultConfig is the default config for retry.
@@ -129,6 +210,7 @@ var DefaultConfig = Config{
     MaxBackoffTime:  32 * time.Second,
     Multiplier:      2.0,
     MaxRetryCount:   10,
-    currentInterval: 1 * time.Second,
 }
 ```
+
+<!-- /go:doc -->
