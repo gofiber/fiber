@@ -1051,7 +1051,8 @@ Fields marked 3.1+ or 3.2 are left out of older documents, as are `Server.Name`
 `app.Group("/v1").Use(openapi.New())` serves `/v1/openapi.json` and `/v1/swagger`,
 while a global `app.Use(openapi.New())` answers only `/openapi.json` and
 `/swagger`. A prefix may have parameters: `app.Use("/:tenant?", openapi.New())`
-serves `/acme/openapi.json` and `/openapi.json`.
+serves `/acme/openapi.json` and `/openapi.json`. A trailing slash (`/swagger/`)
+also matches, except under `StrictRouting`.
 
 The middleware can also be pinned to one route, such as
 `app.Get("/openapi.json", openapi.New())`. That serves only the document, so the

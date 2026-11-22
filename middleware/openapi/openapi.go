@@ -26,6 +26,7 @@ const maxCachedEntries = 32
 
 type appCache struct {
 	uiPages  map[string]cachedBody
+	specErr  error
 	specBody cachedBody
 	specRev  uint64
 	// specMu and uiMu serialize the builds of one app, so a slow spec build holds up neither another app's
@@ -97,14 +98,15 @@ func New(config ...Config) fiber.Handler {
 		defer cache.specMu.Unlock()
 
 		rev := app.RoutesRevision()
-		if cache.specBody.data == nil || cache.specRev != rev {
+		if (cache.specBody.data == nil && cache.specErr == nil) || cache.specRev != rev {
+			// Failures are cached too, so a broken spec is not rebuilt on every request.
 			data, err := buildDocument(app, &cfg)
-			if err != nil {
-				return cachedBody{}, err
+			cache.specBody, cache.specErr, cache.specRev = cachedBody{}, err, rev
+			if err == nil {
+				cache.specBody = newCachedBody(data)
 			}
-			cache.specBody, cache.specRev = newCachedBody(data), rev
 		}
-		return cache.specBody, nil
+		return cache.specBody, cache.specErr
 	}
 
 	uiBytes := func(app *fiber.App, targetPath, redirectPath string) (cachedBody, error) {
@@ -156,7 +158,12 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		request := utils.TrimRight(c.Path(), '/')
+		rawPath := c.Path()
+		request := utils.TrimRight(rawPath, '/')
+		// Under StrictRouting "/openapi.json/" is a different route; leave it to the app.
+		if request != "" && len(request) != len(rawPath) && c.App().Config().StrictRouting {
+			return c.Next()
+		}
 		route := c.Route()
 		isMiddleware := route != nil && route.IsMiddleware()
 

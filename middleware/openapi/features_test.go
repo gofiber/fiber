@@ -142,6 +142,23 @@ func Test_OpenAPI_TransformErrorFailsTheRequest(t *testing.T) {
 	apptest.Expect(t, app, "/openapi.json", fiber.StatusInternalServerError)
 }
 
+func Test_OpenAPI_BuildErrorIsCachedUntilRoutesChange(t *testing.T) {
+	t.Parallel()
+	builds := 0
+	app := fiber.New()
+	app.Use(New(Config{Transform: func(map[string]any) error {
+		builds++
+		return errors.New("refused")
+	}}))
+	apptest.Expect(t, app, "/openapi.json", fiber.StatusInternalServerError)
+	apptest.Expect(t, app, "/openapi.json", fiber.StatusInternalServerError)
+	require.Equal(t, 1, builds)
+
+	app.Get("/later", listUsers)
+	apptest.Expect(t, app, "/openapi.json", fiber.StatusInternalServerError)
+	require.Equal(t, 2, builds)
+}
+
 func Test_OpenAPI_ExtensionsAreAddedToTheRootAndInfo(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

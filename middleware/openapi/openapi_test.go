@@ -914,6 +914,25 @@ func Test_OpenAPI_PathTrailingSlash(t *testing.T) {
 	}
 }
 
+func Test_OpenAPI_StrictRoutingTrailingSlashNotServed(t *testing.T) {
+	t.Parallel()
+	app := fiber.New(fiber.Config{StrictRouting: true})
+	app.Use(New())
+	app.Get("/swagger/", func(c fiber.Ctx) error { return c.SendString("user") })
+
+	resp := apptest.Do(t, app, "/swagger/")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "user", apptest.Body(t, resp))
+
+	resp = apptest.Do(t, app, "/openapi.json/")
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	for _, path := range []string{"/openapi.json", "/swagger"} {
+		resp = apptest.Do(t, app, path)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "path %q should resolve", path)
+	}
+}
+
 func requireSlice(t *testing.T, value any) []any {
 	t.Helper()
 	s, ok := value.([]any)
