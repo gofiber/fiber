@@ -774,11 +774,8 @@ func Test_Cache_Security_MultiDimensionInjection(t *testing.T) {
 	}
 
 	for i, tc := range testCases {
-		got := getRoot(t, app, map[string]string{
-			"X-Header-1": tc.header1,
-			"X-Header-2": tc.header2,
-			"Cookie":     fmt.Sprintf("cookie1=%s; cookie2=%s", tc.cookie1, tc.cookie2),
-		})
+		got := cacheTestCGet(t, app, "/", "X-Header-1", tc.header1, "X-Header-2", tc.header2,
+			"Cookie", fmt.Sprintf("cookie1=%s; cookie2=%s", tc.cookie1, tc.cookie2))
 		require.Equal(t, fiber.StatusOK, got.status, "Test case %d failed", i)
 		require.Equal(t, tc.expected, got.body, "Test case %d failed", i)
 	}
@@ -969,7 +966,7 @@ func Test_Cache_Security_DelimiterCollisionPrevention(t *testing.T) {
 	}
 
 	for i, tc := range testCases {
-		got := getRoot(t, app, map[string]string{"X-Header": tc.header, "Cookie": "session=" + tc.cookie})
+		got := cacheTestCGet(t, app, "/", "X-Header", tc.header, "Cookie", "session="+tc.cookie)
 		require.Equal(t, fiber.StatusOK, got.status, "Test case %d failed", i)
 		require.Equal(t, fmt.Sprintf("h=%s,c=%s", tc.header, tc.cookie), got.body, "Test case %d failed", i)
 	}

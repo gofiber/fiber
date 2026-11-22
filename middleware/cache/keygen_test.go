@@ -557,7 +557,7 @@ func Test_Cache_KeyCookieValuesAreHashedInStorageKeys(t *testing.T) {
 		session = "sess_0123456789abcdefghijklmnopqrstuvwxyz"
 		other   = "sess_other_other_other_other_other_other"
 	)
-	withCookie := func(value string) map[string]string { return map[string]string{"Cookie": "session=" + value} }
+	withCookie := func(value string) []string { return []string{"Cookie", "session=" + value} }
 
 	for _, kind := range storageKinds {
 		t.Run(kind, func(t *testing.T) {
@@ -567,13 +567,13 @@ func Test_Cache_KeyCookieValuesAreHashedInStorageKeys(t *testing.T) {
 			app.Use(New(Config{Storage: storage, KeyCookies: []string{"session"}}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("for:" + c.Cookies("session")) })
 
-			cacheTestCRequireReply(t, getRoot(t, app, withCookie(session)), cacheMiss, "for:"+session)
-			require.Equal(t, cacheHit, getRoot(t, app, withCookie(session)).cache)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", withCookie(session)...), cacheMiss, "for:"+session)
+			require.Equal(t, cacheHit, cacheTestCGet(t, app, "/", withCookie(session)...).cache)
 
-			cacheTestCRequireReply(t, getRoot(t, app, withCookie(other)), cacheMiss, "for:"+other)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", withCookie(other)...), cacheMiss, "for:"+other)
 
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
-			require.Equal(t, cacheHit, getRoot(t, app, withCookie("")).cache, "an empty cookie is the partition of none")
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
+			require.Equal(t, cacheHit, cacheTestCGet(t, app, "/", withCookie("")...).cache, "an empty cookie is the partition of none")
 
 			external, ok := storage.(*storagetest.Memory)
 			if !ok {

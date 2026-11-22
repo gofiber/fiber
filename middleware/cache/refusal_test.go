@@ -945,12 +945,12 @@ func Test_Cache_HandlerErrorKeepsTheEntry(t *testing.T) {
 				return c.SendString("PUBLIC")
 			})
 
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 			for _, reload := range []string{"no-cache", "max-age=0"} {
-				got := getRoot(t, app, map[string]string{"X-Fail": "1", fiber.HeaderCacheControl: reload})
+				got := cacheTestCGet(t, app, "/", "X-Fail", "1", fiber.HeaderCacheControl, reload)
 				require.Equal(t, fiber.StatusServiceUnavailable, got.status)
 			}
-			cacheTestCRequireReply(t, getRoot(t, app, nil), cacheHit, "PUBLIC")
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "PUBLIC")
 		})
 	}
 }
@@ -1042,38 +1042,38 @@ func Test_Cache_RefusalEndsTheSharedEntryOnlyForACredential(t *testing.T) {
 	t.Parallel()
 	custom := Config{KeyGenerator: pathKey}
 	tests := []struct {
-		blocked   map[string]string // what the client the app refuses sends besides X-Blocked
+		blocked   []string // what the client the app refuses sends besides X-Blocked, as name and value pairs
 		name      string
 		directive string // the Cache-Control the refusal carries, if any
 		cfg       Config
 		kept      bool
 	}{
 		{name: "default key", kept: true},
-		{name: "default key, a cookie the key does not hold", blocked: map[string]string{"Cookie": "sid=1"}, kept: true},
-		{name: "default key, a credential header the key does not hold", blocked: map[string]string{"X-API-Key": "k"}, kept: true},
+		{name: "default key, a cookie the key does not hold", blocked: []string{"Cookie", "sid=1"}, kept: true},
+		{name: "default key, a credential header the key does not hold", blocked: []string{"X-API-Key", "k"}, kept: true},
 		{name: "KeyHeaders naming a tenant", cfg: Config{KeyHeaders: []string{"X-Tenant"}}, kept: true},
 		{name: "KeyCookies the request does not carry", cfg: Config{KeyCookies: []string{"session"}}, kept: true},
-		{name: "custom KeyGenerator, client with an undeclared cookie", cfg: custom, blocked: map[string]string{"Cookie": "sid=1"}, kept: true},
+		{name: "custom KeyGenerator, client with an undeclared cookie", cfg: custom, blocked: []string{"Cookie", "sid=1"}, kept: true},
 		{name: "custom KeyGenerator, anonymous client", cfg: custom, kept: true},
 		{
 			name: "custom KeyGenerator, client with a header that is no credential",
-			cfg:  custom, blocked: map[string]string{"X-Tenant": "acme"}, kept: true,
+			cfg:  custom, blocked: []string{"X-Tenant", "acme"}, kept: true,
 		},
 		{
 			name:    "custom KeyGenerator, client with a declared cookie",
 			cfg:     Config{KeyGenerator: pathKey, KeyCredentialHeaders: []string{"Cookie"}},
-			blocked: map[string]string{"Cookie": "sid=1"},
+			blocked: []string{"Cookie", "sid=1"},
 		},
 		{
 			name:    "custom KeyGenerator, client with a declared header",
 			cfg:     Config{KeyGenerator: pathKey, KeyCredentialHeaders: []string{"X-Company-Token"}},
-			blocked: map[string]string{"X-Company-Token": "t"},
+			blocked: []string{"X-Company-Token", "t"},
 		},
-		{name: "custom KeyGenerator, client with a built-in credential header it does not declare", cfg: custom, blocked: map[string]string{"X-API-Key": "junk"}, kept: true},
+		{name: "custom KeyGenerator, client with a built-in credential header it does not declare", cfg: custom, blocked: []string{"X-API-Key", "junk"}, kept: true},
 		{
 			name:    "custom KeyGenerator, client with a built-in credential header it declares",
 			cfg:     Config{KeyGenerator: pathKey, KeyCredentialHeaders: []string{"X-API-Key"}},
-			blocked: map[string]string{"X-API-Key": "k"},
+			blocked: []string{"X-API-Key", "k"},
 		},
 		// What the refusal says about keeping its own response is no verdict on the entry others share.
 		{name: "default key, anonymous client, refusal says no-store", directive: "no-store", kept: true},
@@ -1083,7 +1083,7 @@ func Test_Cache_RefusalEndsTheSharedEntryOnlyForACredential(t *testing.T) {
 		{
 			name:      "custom KeyGenerator, client with a built-in credential header, refusal says no-store",
 			cfg:       custom,
-			blocked:   map[string]string{"X-API-Key": "junk"},
+			blocked:   []string{"X-API-Key", "junk"},
 			directive: "no-store",
 			kept:      true,
 		},
@@ -1113,18 +1113,17 @@ func Test_Cache_RefusalEndsTheSharedEntryOnlyForACredential(t *testing.T) {
 								return c.SendStatus(status)
 							})
 
-							require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
-							require.Equal(t, cacheHit, getRoot(t, app, nil).cache)
+							require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
+							require.Equal(t, cacheHit, cacheTestCGet(t, app, "/").cache)
 
-							headers := map[string]string{"X-Blocked": "1", fiber.HeaderCacheControl: reload}
-							maps.Copy(headers, tc.blocked)
-							require.Equal(t, status, getRoot(t, app, headers).status)
+							headers := append([]string{"X-Blocked", "1", fiber.HeaderCacheControl, reload}, tc.blocked...)
+							require.Equal(t, status, cacheTestCGet(t, app, "/", headers...).status)
 
 							want := cacheMiss
 							if tc.kept {
 								want = cacheHit
 							}
-							require.Equal(t, want, getRoot(t, app, nil).cache)
+							require.Equal(t, want, cacheTestCGet(t, app, "/").cache)
 						})
 					}
 				}
@@ -1287,7 +1286,7 @@ func Test_Cache_ExpiredDeleteKeepsAConcurrentReplacement(t *testing.T) {
 				return c.SendString("fresh")
 			})
 
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 			clock.Add(2 * time.Minute)
 
 			// The slow request finds the expired entry and waits in the invalidator.
@@ -1306,11 +1305,11 @@ func Test_Cache_ExpiredDeleteKeepsAConcurrentReplacement(t *testing.T) {
 			<-entered
 
 			// Another request replaces the entry it found expired, then the slow one resumes.
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 			close(gate)
 			<-inHandler
 
-			require.Equal(t, cacheHit, getRoot(t, app, nil).cache, "the delete of the expired entry took the replacement with it")
+			require.Equal(t, cacheHit, cacheTestCGet(t, app, "/").cache, "the delete of the expired entry took the replacement with it")
 			close(release)
 			res := <-done
 			require.NoError(t, res.err)
@@ -1338,10 +1337,10 @@ func Test_Cache_InvalidatorRunsBeforeFreshnessIsJudged(t *testing.T) {
 				},
 			}), "response-")
 
-			require.Equal(t, "response-1", getRoot(t, app, nil).body)
+			require.Equal(t, "response-1", cacheTestCGet(t, app, "/").body)
 			clock.Add(30 * time.Second)
 
-			got := getRoot(t, app, map[string]string{"X-Slow": "1", fiber.HeaderCacheControl: "max-age=60"})
+			got := cacheTestCGet(t, app, "/", "X-Slow", "1", fiber.HeaderCacheControl, "max-age=60")
 			require.Equal(t, "response-2", got.body, "an entry the call aged past max-age was served")
 		})
 	}
@@ -1489,11 +1488,11 @@ func Test_Cache_ExpiredDeleteChecksTheEntry(t *testing.T) {
 			}
 			app, _ := cacheTestAOrigin(New(cfg), "")
 
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 			clock.Add(2 * time.Minute)
 
 			reads.Store(0)
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 			require.Equal(t, int32(2), reads.Load(), "the lookup, and the check that the entry is the one found")
 		})
 	}
@@ -1552,7 +1551,7 @@ func Test_Cache_UnservableEntryThatCannotBeDeletedIsNotServed(t *testing.T) {
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 			for _, want := range []string{tc.want, tc.again} {
-				got := getRoot(t, app, nil)
+				got := cacheTestCGet(t, app, "/")
 				require.Equal(t, fiber.StatusOK, got.status)
 				require.Equal(t, want, got.cache)
 				require.Equal(t, "ok", got.body, "the handler's answer, never the entry's")
@@ -1843,15 +1842,11 @@ func Test_Cache_InvalidatorIsNotAskedAboutAnEntryRuledOut(t *testing.T) {
 					},
 				}), "")
 
-				require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+				require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 				require.Zero(t, asked.Load(), "a miss has no entry to ask about")
 				clock.Add(tc.age)
 
-				headers := map[string]string{}
-				if tc.cacheControl != "" {
-					headers[fiber.HeaderCacheControl] = tc.cacheControl
-				}
-				getRoot(t, app, headers)
+				cacheTestCGet(t, app, "/", fiber.HeaderCacheControl, tc.cacheControl)
 				want := int32(0)
 				if tc.asked {
 					want = 1
@@ -1878,8 +1873,8 @@ func Test_Cache_InvalidatorIsNotAskedAboutAnEntryThatHasExpired(t *testing.T) {
 				},
 			}), "")
 
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache, "the entry was found expired")
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache, "the entry was found expired")
 			require.Zero(t, asked.Load())
 		})
 	}

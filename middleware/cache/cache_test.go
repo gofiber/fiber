@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"math"
 	"math/rand/v2"
 	"net/http"
@@ -76,17 +75,6 @@ func doRequest(t *testing.T, app *fiber.App, req *http.Request) reply {
 	resp := apptest.Do(t, app, req)
 	body := apptest.Body(t, resp)
 	return reply{status: resp.StatusCode, header: resp.Header, cache: resp.Header.Get("X-Cache"), body: body}
-}
-
-// getRoot sends GET / with the headers.
-func getRoot(t *testing.T, app *fiber.App, headers map[string]string) reply {
-	t.Helper()
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	for name, value := range headers {
-		req.Header.Set(name, value)
-	}
-	return doRequest(t, app, req)
 }
 
 func newMutatingStorage(mutate func(key string, value []byte) []byte) *mutatingStorage {
@@ -1421,15 +1409,15 @@ func Test_CacheInvalidation_IgnoresMaxStale(t *testing.T) {
 					CacheInvalidator: func(c fiber.Ctx) bool { return c.Get("X-Session-Ended") == "1" },
 				}), "response ")
 
-				cacheTestCRequireReply(t, getRoot(t, app, nil), cacheMiss, "response 1")
-				cacheTestCRequireReply(t, getRoot(t, app, nil), cacheHit, "response 1")
+				cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "response 1")
+				cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "response 1")
 
-				got := getRoot(t, app, map[string]string{"X-Session-Ended": "1", fiber.HeaderCacheControl: maxStale})
+				got := cacheTestCGet(t, app, "/", "X-Session-Ended", "1", fiber.HeaderCacheControl, maxStale)
 				require.Equal(t, "response 2", got.body, "an invalidated entry was served to a request that accepts stale ones")
 				require.NotEqual(t, cacheHit, got.cache)
 				require.Equal(t, int32(2), calls.Load())
 
-				cacheTestCRequireReply(t, getRoot(t, app, nil), cacheHit, "response 2")
+				cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "response 2")
 			})
 		}
 	}
@@ -1454,10 +1442,10 @@ func Test_CacheInvalidation_RunsWithoutTheLock(t *testing.T) {
 			}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
-			require.Equal(t, fiber.StatusInternalServerError, getRoot(t, app, map[string]string{"X-Panic": "1"}).status)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
+			require.Equal(t, fiber.StatusInternalServerError, cacheTestCGet(t, app, "/", "X-Panic", "1").status)
 			// The next request must not wait on a lock left held, and the panicking one's entry is back in the pool.
-			cacheTestCRequireReply(t, getRoot(t, app, nil), cacheHit, "ok")
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "ok")
 		})
 	}
 
@@ -1480,7 +1468,7 @@ func Test_CacheInvalidation_RunsWithoutTheLock(t *testing.T) {
 			},
 		}))
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
-		require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+		require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 
 		slowErr := make(chan error, 1)
 		go func() {
@@ -1495,7 +1483,7 @@ func Test_CacheInvalidation_RunsWithoutTheLock(t *testing.T) {
 		<-entered
 
 		// Served while the lookup is still running.
-		require.Equal(t, cacheHit, getRoot(t, app, nil).cache)
+		require.Equal(t, cacheHit, cacheTestCGet(t, app, "/").cache)
 
 		releaseSlow()
 		require.NoError(t, <-slowErr)
@@ -5373,7 +5361,7 @@ func Test_Cache_CredentialHeadersAreHashedInTheKey(t *testing.T) {
 
 			get := func(value string) string {
 				t.Helper()
-				return getRoot(t, app, map[string]string{tc.header: value}).cache
+				return cacheTestCGet(t, app, "/", tc.header, value).cache
 			}
 
 			// The credential still tells entries apart.
@@ -5396,9 +5384,9 @@ func Test_Cache_CredentialHeadersAreHashedInTheKey(t *testing.T) {
 // that sends one of the headers is private and not served stale. One that sends none finds the shared entry.
 func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 	t.Parallel()
-	token := map[string]string{"X-Company-Token": "t"}
+	token := []string{"X-Company-Token", "t"}
 	tests := []struct {
-		headers    map[string]string
+		headers    []string
 		name       string
 		keyHeaders []string
 		declared   bool
@@ -5422,9 +5410,9 @@ func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 			cfg.KeyHeaders = tc.keyHeaders
 			app, calls := cacheTestAOrigin(New(cfg), "")
 
-			require.Equal(t, cacheMiss, getRoot(t, app, tc.headers).cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/", tc.headers...).cache)
 
-			hit := getRoot(t, app, tc.headers)
+			hit := cacheTestCGet(t, app, "/", tc.headers...)
 			require.Equal(t, cacheHit, hit.cache)
 			wantCacheControl := "public, max-age=60"
 			if tc.private {
@@ -5434,9 +5422,7 @@ func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 
 			// Past the entry's lifetime, well inside what the storage keeps.
 			clock.Add(2 * time.Minute)
-			headers := map[string]string{fiber.HeaderCacheControl: "max-stale"}
-			maps.Copy(headers, tc.headers)
-			got := getRoot(t, app, headers)
+			got := cacheTestCGet(t, app, "/", append([]string{fiber.HeaderCacheControl, "max-stale"}, tc.headers...)...)
 			if tc.private {
 				require.Equal(t, int32(2), calls.Load(), "an entry holding a credential's response was served stale")
 				return
