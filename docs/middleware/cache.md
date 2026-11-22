@@ -8,6 +8,8 @@ Cache middleware for [Fiber](https://github.com/gofiber/fiber) that intercepts r
 
 By default, cached responses expire after five minutes and the middleware stores up to 1 MB of responses, counting each entry's body, key and stored headers. A `Config` that leaves `MaxBytes` unset gets the same limit, and only `DisableMaxBytes` removes it. A streamed response (`SendStream`, `SendStreamWriter`, `SendFile`, `static`) is judged by the length it declares instead of being read to measure it: one that declares more than `MaxBytes`, or no length at all, is passed on as a stream, is not stored and reports `unreachable`. So is a stream that ends early, fails or runs past the length it declares. Middleware that encodes a stream as it is sent leaves it without a declared length, so `compress` registered between the cache and a file handler keeps those files out of the cache: register `compress.New()` before `cache.New()`, or serve the files with `static.Config{Compress: true}`, to keep caching them.
 
+A hit is sent a copy of the stored body rather than the stored bytes, so middleware in front of the cache can edit the response body, in place or not, without changing what later hits are sent. The copy is made on every hit, which costs time and memory in proportion to the body, about a microsecond for 30 KiB, held until the response has been written.
+
 ## Request directives
 
 - `Cache-Control: no-cache` (or `Pragma: no-cache`) returns the latest response while still caching it, so the status is `miss` unless the new response cannot be stored.
