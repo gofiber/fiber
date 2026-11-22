@@ -37,15 +37,17 @@ func Test_RouteDocs_MultiMethodRegistration(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Add([]string{MethodGet, MethodPost}, "/multi", testHandlerOK).
+	app.Add([]string{MethodPut, MethodPost}, "/multi", testHandlerOK).
 		Summary("multi summary").
-		Security(map[string][]string{"auth": {}})
+		Security(map[string][]string{"auth": {}}).
+		Response(StatusCreated, "created", MIMEApplicationJSON)
 
 	routes := routesFor(app, "/multi")
 	require.Len(t, routes, 2)
 	for method, route := range routes {
 		require.Equal(t, "multi summary", route.Summary, "method %s missing summary", method)
 		require.Len(t, route.Security, 1, "method %s missing security", method)
+		require.Contains(t, route.Responses, "201", method)
 	}
 }
 
@@ -254,11 +256,7 @@ func Test_Shutdown_WithInflightGetRoutes(t *testing.T) {
 	_, err = conn.Write([]byte("GET /routes HTTP/1.1\r\nHost: example.com\r\n\r\n"))
 	require.NoError(t, err)
 
-	select {
-	case <-started:
-	case <-time.After(boundedTimeout):
-		t.Fatal("the request never reached the handler")
-	}
+	apptest.Recv(t, started, boundedTimeout, "the request never reached the handler")
 
 	shuttingDown := make(chan struct{})
 	app.Hooks().OnPreShutdown(func() error { close(shuttingDown); return nil })
@@ -266,19 +264,9 @@ func Test_Shutdown_WithInflightGetRoutes(t *testing.T) {
 	go func() { done <- app.Shutdown() }()
 
 	// Shutdown is now running while the handler is still in flight.
-	select {
-	case <-shuttingDown:
-	case <-time.After(boundedTimeout):
-		t.Fatal("shutdown never started")
-	}
+	apptest.Recv(t, shuttingDown, boundedTimeout, "shutdown never started")
 	close(proceed)
-
-	select {
-	case err := <-done:
-		require.NoError(t, err)
-	case <-time.After(boundedTimeout):
-		t.Fatal("shutdown deadlocked on in-flight GetRoutes call")
-	}
+	require.NoError(t, apptest.Recv(t, done, boundedTimeout, "shutdown deadlocked on in-flight GetRoutes call"))
 }
 
 func Test_Hooks_MayCallLockingAppMethods(t *testing.T) {
@@ -347,42 +335,44 @@ func Test_Mount_StartupConcurrentSubAppDocHelpers(t *testing.T) {
 
 func Test_ScopedDocHelpers_TargetOwnRegistration(t *testing.T) {
 	t.Parallel()
-	t.Run("RouteChain", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		users := app.RouteChain("/users")
-		users.Get(testHandlerOK)
-		app.Get("/health", testHandlerOK)
-		users.Summary("List users")
-
-		routes := routesFor(app, "/users")
-		require.Equal(t, "List users", routes[MethodGet].Summary)
-		require.Empty(t, routesFor(app, "/health")[MethodGet].Summary)
-	})
-
-	t.Run("Group", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		api := app.Group("/api")
-		api.Get("/a", testHandlerOK)
-		app.Get("/b", testHandlerOK)
-		api.Summary("group route")
-
-		require.Equal(t, "group route", routesFor(app, "/api/a")[MethodGet].Summary)
-		require.Empty(t, routesFor(app, "/b")[MethodGet].Summary)
-	})
-
-	t.Run("Domain", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		d := app.Domain("api.example.com")
-		d.Get("/a", testHandlerOK)
-		app.Get("/b", testHandlerOK)
-		d.Summary("domain route")
-
-		require.Equal(t, "domain route", routesFor(app, "/a")[MethodGet].Summary)
-		require.Empty(t, routesFor(app, "/b")[MethodGet].Summary)
-	})
+	// Each scope registers one route, the app registers "/other" after it, and the scope then documents its own.
+	scopes := map[string]func(app *App) string{
+		"RouteChain": func(app *App) string {
+			chain := app.RouteChain("/users")
+			chain.Get(testHandlerOK)
+			app.Get("/other", testHandlerOK)
+			chain.Name("own").Summary("mine")
+			return "/users"
+		},
+		"Group": func(app *App) string {
+			api := app.Group("/api")
+			api.Get("/a", testHandlerOK)
+			app.Get("/other", testHandlerOK)
+			api.Name("own").Summary("mine")
+			return "/api/a"
+		},
+		"Domain": func(app *App) string {
+			d := app.Domain("api.example.com")
+			d.Get("/a", testHandlerOK)
+			app.Get("/other", testHandlerOK)
+			d.Name("own").Summary("mine")
+			return "/a"
+		},
+	}
+	for name, document := range scopes {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			path := document(app)
+			own := findRoute(t, app, MethodGet, path)
+			require.Equal(t, "own", own.Name)
+			require.Equal(t, "mine", own.Summary)
+			other := findRoute(t, app, MethodGet, "/other")
+			require.Empty(t, other.Name)
+			require.Empty(t, other.Summary)
+			require.Equal(t, path, app.GetRoute("own").Path)
+		})
+	}
 
 	t.Run("UnregisteredScopeIsNoOp", func(t *testing.T) {
 		t.Parallel()
@@ -402,12 +392,8 @@ func Test_ScopedDocHelpers_TargetOwnRegistration(t *testing.T) {
 func Test_Domain_SamePathKeepsSeparateRoutes(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Domain("a.example.com").Get("/x", func(c Ctx) error {
-		return c.SendString("host a")
-	}).Summary("A docs")
-	app.Domain("b.example.com").Get("/x", func(c Ctx) error {
-		return c.SendString("host b")
-	}).Summary("B docs")
+	app.Domain("a.example.com").Get("/x", func(c Ctx) error { return c.SendString("host a") }).Summary("A docs")
+	app.Domain("b.example.com").Get("/x", func(c Ctx) error { return c.SendString("host b") }).Summary("B docs")
 
 	var summaries []string
 	for _, route := range app.GetRoutes() {
@@ -418,10 +404,7 @@ func Test_Domain_SamePathKeepsSeparateRoutes(t *testing.T) {
 	require.ElementsMatch(t, []string{"A docs", "B docs"}, summaries)
 
 	for host, want := range map[string]string{"a.example.com": "host a", "b.example.com": "host b"} {
-		resp := apptest.Do(t, app, apptest.Req(MethodGet, "/x", apptest.WithHost(host)))
-		body := apptest.BodyBytes(t, resp)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, want, string(body), host)
+		apptest.ExpectBody(t, app, apptest.Req(MethodGet, "/x", apptest.WithHost(host)), StatusOK, want)
 	}
 }
 
@@ -586,47 +569,6 @@ func Test_DocMetadata_CyclicValueDoesNotCrash(t *testing.T) {
 	})
 }
 
-func Test_ScopedName_TargetsOwnRegistration(t *testing.T) {
-	t.Parallel()
-	t.Run("RouteChain", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		chain := app.RouteChain("/users")
-		chain.Get(testHandlerOK)
-		app.Get("/other", testHandlerOK)
-		chain.Name("listUsers").Summary("List users")
-
-		require.Equal(t, "listUsers", routesFor(app, "/users")[MethodGet].Name)
-		require.Equal(t, "List users", routesFor(app, "/users")[MethodGet].Summary)
-		require.Empty(t, routesFor(app, "/other")[MethodGet].Name)
-		require.Equal(t, "/users", app.GetRoute("listUsers").Path)
-	})
-
-	t.Run("Group", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		api := app.Group("/api")
-		api.Get("/a", testHandlerOK)
-		app.Get("/b", testHandlerOK)
-		api.Name("groupRoute")
-
-		require.Equal(t, "groupRoute", routesFor(app, "/api/a")[MethodGet].Name)
-		require.Empty(t, routesFor(app, "/b")[MethodGet].Name)
-	})
-
-	t.Run("Domain", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		d := app.Domain("api.example.com")
-		d.Get("/a", testHandlerOK)
-		app.Get("/b", testHandlerOK)
-		d.Name("domainRoute")
-
-		require.Equal(t, "domainRoute", routesFor(app, "/a")[MethodGet].Name)
-		require.Empty(t, routesFor(app, "/b")[MethodGet].Name)
-	})
-}
-
 func Test_ScopedHelpers_AfterMergedRegistration(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -675,172 +617,28 @@ func Test_AddParameter_ExampleDetached(t *testing.T) {
 
 func Test_AddParameter_SchemaSelection(t *testing.T) {
 	t.Parallel()
-	t.Run("content wins over schema", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/content", testHandlerOK).AddParameter(RouteParameter{
-			Name:      "filter",
-			In:        "query",
-			Schema:    map[string]any{"type": "string"},
-			SchemaRef: "#/components/schemas/Filter",
-			Content: map[string]RouteMediaType{
-				MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
-			},
-		})
-
-		param := routesFor(app, "/content")[MethodGet].Parameters[0]
-		require.Nil(t, param.Schema)
-		require.Empty(t, param.SchemaRef)
-		require.Equal(t, map[string]any{"type": "object"}, param.Content[MIMEApplicationJSON].Schema)
-	})
-
-	t.Run("schema ref becomes a ref schema", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/ref", testHandlerOK).AddParameter(RouteParameter{
-			Name:      "id",
-			In:        "query",
-			SchemaRef: "#/components/schemas/ID",
-		})
-
-		param := routesFor(app, "/ref")[MethodGet].Parameters[0]
-		require.Equal(t, map[string]any{"$ref": "#/components/schemas/ID"}, param.Schema)
-	})
-
-	t.Run("querystring gets no default schema", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/qs", testHandlerOK).
-			AddParameter(RouteParameter{Name: "q", In: "querystring"})
-
-		param := routesFor(app, "/qs")[MethodGet].Parameters[0]
-		require.Equal(t, ParamInQuerystring, param.In)
-		require.Nil(t, param.Schema)
-	})
-
-	t.Run("other locations get a default string schema", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/plain", testHandlerOK).
-			AddParameter(RouteParameter{Name: "q", In: "query"})
-
-		param := routesFor(app, "/plain")[MethodGet].Parameters[0]
-		require.Equal(t, map[string]any{"type": "string"}, param.Schema)
-	})
-
-	t.Run("path location is forced required", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/items/:id", testHandlerOK).
-			AddParameter(RouteParameter{Name: "id", In: "path"})
-
-		param := routesFor(app, "/items/:id")[MethodGet].Parameters[0]
-		require.True(t, param.Required)
-	})
-
-	t.Run("explode is copied rather than aliased", func(t *testing.T) {
-		t.Parallel()
-		explode := true
-		app := New()
-		app.Get("/explode", testHandlerOK).
-			AddParameter(RouteParameter{Name: "ids", In: "query", Explode: &explode})
-
-		param := routesFor(app, "/explode")[MethodGet].Parameters[0]
-		require.NotNil(t, param.Explode)
-		require.True(t, *param.Explode)
-		explode = false
-		param = routesFor(app, "/explode")[MethodGet].Parameters[0]
-		require.True(t, *param.Explode)
-	})
-
-	t.Run("empty name panics", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		require.Panics(t, func() {
-			app.Get("/panic", testHandlerOK).AddParameter(RouteParameter{Name: "  ", In: "query"})
-		})
-	})
-
-	t.Run("invalid location panics", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		require.Panics(t, func() {
-			app.Get("/panic2", testHandlerOK).AddParameter(RouteParameter{Name: "x", In: "body"})
-		})
-	})
-}
-
-func Test_AddParameter_ContentSingleMediaType(t *testing.T) {
-	t.Parallel()
-	t.Run("two media types panic", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		require.Panics(t, func() {
-			app.Get("/multi", testHandlerOK).AddParameter(RouteParameter{
-				Name: "filter",
-				In:   "query",
-				Content: map[string]RouteMediaType{
-					MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
-					MIMEApplicationXML:  {Schema: map[string]any{"type": "object"}},
-				},
-			})
-		})
-	})
-
-	t.Run("invalid media type panics", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		require.Panics(t, func() {
-			app.Get("/bad", testHandlerOK).AddParameter(RouteParameter{
-				Name:    "filter",
-				In:      "query",
-				Content: map[string]RouteMediaType{"nonsense": {}},
-			})
-		})
-	})
-
-	t.Run("one media type is accepted", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Get("/one", testHandlerOK).AddParameter(RouteParameter{
-			Name:    "filter",
-			In:      "query",
+	explode, stillTrue := true, true
+	app := New()
+	app.Get("/items/:id", testHandlerOK).
+		AddParameter(RouteParameter{
+			Name: "filter", In: "query", Schema: map[string]any{"type": "string"}, SchemaRef: "#/components/schemas/Filter",
 			Content: map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}}},
-		})
-		param := routesFor(app, "/one")[MethodGet].Parameters[0]
-		require.Len(t, param.Content, 1)
-	})
-}
+		}).
+		AddParameter(RouteParameter{Name: "ref", In: "query", SchemaRef: "#/components/schemas/ID"}).
+		AddParameter(RouteParameter{Name: "qs", In: "querystring"}).
+		AddParameter(RouteParameter{Name: "plain", In: "query"}).
+		AddParameter(RouteParameter{Name: "id", In: "path"}).
+		AddParameter(RouteParameter{Name: "ids", In: "query", Explode: &explode})
+	explode = false // the stored flag is a copy, not an alias
 
-func Test_ContentHelpers_ValidateMediaTypes(t *testing.T) {
-	t.Parallel()
-	t.Run("request body content", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		require.Panics(t, func() {
-			app.Post("/a", testHandlerOK).
-				RequestBodyContent("payload", true, map[string]RouteMediaType{"invalid": {}})
-		})
-	})
-
-	t.Run("response content", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		require.Panics(t, func() {
-			app.Get("/b", testHandlerOK).
-				ResponseContent(StatusOK, "ok", map[string]RouteMediaType{"invalid": {}})
-		})
-	})
-
-	t.Run("valid media types are accepted", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		app.Post("/c", testHandlerOK).
-			RequestBodyContent("payload", true, map[string]RouteMediaType{MIMEApplicationJSON: {}}).
-			ResponseContent(StatusOK, "ok", map[string]RouteMediaType{MIMEApplicationXML: {}})
-		route := routesFor(app, "/c")[MethodPost]
-		require.Len(t, route.RequestBody.Content, 1)
-	})
+	require.Equal(t, []RouteParameter{
+		{Name: "filter", In: ParamInQuery, Content: map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}}}},
+		{Name: "ref", In: ParamInQuery, SchemaRef: "#/components/schemas/ID", Schema: map[string]any{"$ref": "#/components/schemas/ID"}},
+		{Name: "qs", In: ParamInQuerystring},
+		{Name: "plain", In: ParamInQuery, Schema: map[string]any{"type": "string"}},
+		{Name: "id", In: ParamInPath, Required: true, Schema: map[string]any{"type": "string"}},
+		{Name: "ids", In: ParamInQuery, Schema: map[string]any{"type": "string"}, Explode: &stillTrue},
+	}, routesFor(app, "/items/:id")[MethodGet].Parameters)
 }
 
 func Test_RemoveRoute_HandlerCountPerDomain(t *testing.T) {
@@ -1169,18 +967,6 @@ func Test_ContentHelpers_KeyByTrimmedMediaType(t *testing.T) {
 		require.Contains(t, route.Responses["200"].Content, MIMEApplicationXML)
 	})
 
-	t.Run("collision after trimming panics", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		require.Panics(t, func() {
-			app.Post("/b", testHandlerOK).
-				RequestBodyContent("payload", true, map[string]RouteMediaType{
-					MIMEApplicationJSON:       {},
-					" " + MIMEApplicationJSON: {},
-				})
-		})
-	})
-
 	t.Run("empty content is left alone", func(t *testing.T) {
 		t.Parallel()
 		app := New()
@@ -1198,22 +984,6 @@ func Test_ContentHelpers_KeyByTrimmedMediaType(t *testing.T) {
 		})
 
 		require.Contains(t, findRoute(t, app, MethodGet, "/c").Parameters[0].Content, MIMEApplicationJSON)
-	})
-}
-
-func Test_ResponseHeader_RequiresName(t *testing.T) {
-	t.Parallel()
-	app := New()
-	require.Panics(t, func() {
-		app.Get("/a", testHandlerOK).ResponseHeader(StatusOK, "  ", "blank", nil)
-	})
-}
-
-func Test_OperationExternalDocs_RequiresURL(t *testing.T) {
-	t.Parallel()
-	app := New()
-	require.PanicsWithValue(t, "OperationExternalDocs: url is required", func() {
-		app.Get("/a", testHandlerOK).OperationExternalDocs("More info", " ")
 	})
 }
 
@@ -1328,40 +1098,164 @@ type routeModelQuery struct {
 	Page int `query:"page"`
 }
 
-func Test_ModelHelpers_OnEveryRouter(t *testing.T) {
-	t.Parallel()
-	cases := map[string]func(app *App){
-		"app": func(app *App) {
-			app.Post("/m", testHandlerOK).Accepts(routeModelIn{}).Returns(StatusCreated, routeModelOut{}).Params("query", routeModelQuery{})
-		},
-		"group": func(app *App) {
-			app.Group("/g").Post("/m", testHandlerOK).Accepts(routeModelIn{}).Returns(StatusCreated, routeModelOut{}).Params("query", routeModelQuery{})
-		},
-		"route chain": func(app *App) {
-			app.RouteChain("/m").Post(testHandlerOK).Accepts(routeModelIn{}).Returns(StatusCreated, routeModelOut{}).Params("query", routeModelQuery{})
-		},
-		"domain": func(app *App) {
-			app.Domain("api.example").Post("/m", testHandlerOK).Accepts(routeModelIn{}).Returns(StatusCreated, routeModelOut{}).Params("query", routeModelQuery{})
-		},
+// docChain is the documentation helper set that Router and Register share, each returning its own type.
+type docChain[R any] interface {
+	Name(name string) R
+	Summary(sum string) R
+	Description(desc string) R
+	Consumes(typ string) R
+	Produces(typ string) R
+	RequestBody(description string, required bool, mediaTypes ...string) R
+	RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) R
+	RequestBodyContent(description string, required bool, content map[string]RouteMediaType) R
+	Parameter(name string, in ParamLocation, required bool, schema any, description string) R
+	ParameterWithExample(name string, in ParamLocation, required bool, schema any, schemaRef, description string, example any, examples map[string]any) R
+	AddParameter(param RouteParameter) R
+	Response(status int, description string, mediaTypes ...string) R
+	ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) R
+	ResponseHeader(status int, name, description string, schema any) R
+	ResponseContent(status int, description string, content map[string]RouteMediaType) R
+	ResponseLink(status int, name string, link map[string]any) R
+	Tags(tags ...string) R
+	Deprecated() R
+	Security(requirements ...map[string][]string) R
+	Hidden() R
+	OperationExternalDocs(description, url string) R
+	OperationExtension(fields map[string]any) R
+	OperationID(id string) R
+	Accepts(model any, mediaTypes ...string) R
+	Returns(status int, model any, mediaTypes ...string) R
+	Params(in ParamLocation, model any) R
+}
+
+// routerOn registers "/users/:id" for one method on r.
+func routerOn(r Router) func(method string) Router {
+	return func(method string) Router { return r.Add([]string{method}, "/users/:id", testEmptyHandler) }
+}
+
+// chainOn registers "/users/:id" for one method through a route chain of r.
+func chainOn(r interface{ RouteChain(path string) Register }) func(method string) Register {
+	return func(method string) Register {
+		return r.RouteChain("/users/:id").Add([]string{method}, testEmptyHandler)
 	}
-	for name, register := range cases {
-		t.Run(name, func(t *testing.T) {
+}
+
+// documentEverything calls every documentation helper, giving the helpers that replace each other a method of
+// their own.
+func documentEverything[R docChain[R]](on func(method string) R) {
+	on(MethodPost).Name("createUser").Summary("Create a user").Description("Creates a new user").
+		Consumes(MIMEApplicationJSON).Produces(MIMEApplicationXML).
+		Parameter("id", "path", false, map[string]any{"type": "integer"}, "identifier").
+		Parameter("filter", "query", true, nil, "Filter results").
+		ParameterWithExample("lang", "query", false, nil, "#/components/schemas/Lang", "language", "en", map[string]any{"sample": "en"}).
+		AddParameter(RouteParameter{Name: "limit", In: "query", Schema: map[string]any{"type": "integer"}}).
+		Response(StatusCreated, "Created", MIMEApplicationJSON).
+		Response(0, "Default fallback").
+		ResponseWithExample(StatusAccepted, "Accepted", nil, "#/components/schemas/User", map[string]any{"id": 1}, map[string]any{"sample": map[string]any{"id": 2}}, MIMEApplicationJSON).
+		ResponseHeader(StatusCreated, "Location", "resource url", nil).
+		ResponseContent(StatusOK, "OK", map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "array"}}}).
+		ResponseLink(StatusCreated, "self", map[string]any{"operationId": "createUser"}).
+		Tags("users", "write").Deprecated().Security(map[string][]string{"bearerAuth": {}}).Hidden().
+		OperationExternalDocs("docs", "https://example.com/docs").
+		OperationExtension(map[string]any{"x-team": "core"}).
+		OperationID("createUser")
+	on(MethodPut).RequestBody("User payload", true, MIMEApplicationJSON, MIMEApplicationXML).Response(StatusOK, "OK", MIMEApplicationJSON)
+	on(MethodPatch).RequestBodyWithExample("payload", true, map[string]any{"type": "object"}, "#/components/schemas/User",
+		map[string]any{"name": "doe"}, map[string]any{"sample": map[string]any{"name": "john"}}, MIMEApplicationJSON).
+		ResponseWithExample(StatusOK, "ok", nil, "", map[string]any{"id": 1}, nil, MIMEApplicationJSON)
+	on(MethodDelete).RequestBodyContent("User", true, map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}}})
+	on(MethodOptions).Accepts(routeModelIn{}).Returns(StatusCreated, routeModelOut{}).Params("query", routeModelQuery{})
+}
+
+func Test_DocHelpers_OnEveryRouter(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		document func(app *App)
+		name     string
+		path     string
+		handlers int
+	}{
+		{name: "app", path: "/users/:id", handlers: 1, document: func(app *App) { documentEverything(routerOn(app)) }},
+		{name: "group", path: "/api/users/:id", handlers: 1, document: func(app *App) { documentEverything(routerOn(app.Group("/api"))) }},
+		{name: "domain", path: "/users/:id", handlers: 1, document: func(app *App) { documentEverything(routerOn(app.Domain("api.example.com"))) }},
+		{name: "app route chain", path: "/users/:id", handlers: 1, document: func(app *App) { documentEverything(chainOn(app)) }},
+		{name: "group route chain", path: "/api/users/:id", handlers: 1, document: func(app *App) { documentEverything(chainOn(app.Group("/api"))) }},
+		{name: "domain route chain", path: "/users/:id", handlers: 1, document: func(app *App) { documentEverything(chainOn(app.Domain("api.example.com"))) }},
+		{name: "nested route chain", path: "/api/users/:id", handlers: 1, document: func(app *App) { documentEverything(chainOn(app.RouteChain("/api"))) }},
+		{name: "merged registration", path: "/users/:id", handlers: 2, document: func(app *App) {
+			app.Post("/users/:id", testEmptyHandler)
+			documentEverything(routerOn(app))
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := New()
-			register(app)
-
-			var route Route
-			for _, r := range app.GetRoutes() {
-				if r.Method == MethodPost && r.RequestBody != nil {
-					route = r
-				}
+			tc.document(app)
+			stored := func(method string) *Route {
+				routes := app.stack[app.methodInt(method)]
+				require.Len(t, routes, 1, method)
+				require.Equal(t, tc.path, routes[0].Path, method)
+				return routes[0]
 			}
-			require.NotNil(t, route.RequestBody)
-			require.Equal(t, routeModelIn{}, route.RequestBody.Schema)
-			require.True(t, route.RequestBody.Required)
-			require.Equal(t, routeModelOut{}, route.Responses["201"].Schema)
-			require.Equal(t, "Created", route.Responses["201"].Description)
-			require.Equal(t, []RouteParameterModel{{In: "query", Model: routeModelQuery{}}}, route.ParameterModels)
+
+			post := stored(MethodPost)
+			require.Len(t, post.Handlers, tc.handlers)
+			require.Equal(t, "createUser", post.Name)
+			require.Equal(t, "Create a user", post.Summary)
+			require.Equal(t, "Creates a new user", post.Description)
+			require.Equal(t, MIMEApplicationJSON, post.Consumes) //nolint:testifylint // a media type, not a JSON payload
+			require.Equal(t, MIMEApplicationXML, post.Produces, "an explicit Produces wins over the responses")
+			require.Equal(t, []RouteParameter{
+				{Name: "id", In: ParamInPath, Required: true, Schema: map[string]any{"type": "integer"}, Description: "identifier"},
+				{Name: "filter", In: ParamInQuery, Required: true, Schema: map[string]any{"type": "string"}, Description: "Filter results"},
+				{
+					Name: "lang", In: ParamInQuery, SchemaRef: "#/components/schemas/Lang", Schema: map[string]any{"$ref": "#/components/schemas/Lang"},
+					Description: "language", Example: "en", Examples: map[string]any{"sample": "en"},
+				},
+				{Name: "limit", In: ParamInQuery, Schema: map[string]any{"type": "integer"}},
+			}, post.Parameters)
+			require.Equal(t, map[string]RouteResponse{
+				"200": {Description: "OK", Content: map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "array"}}}},
+				"201": {
+					Description: "Created", MediaTypes: []string{MIMEApplicationJSON},
+					Headers: map[string]any{"Location": map[string]any{"description": "resource url", "schema": map[string]any{"type": "string"}}},
+					Links:   map[string]any{"self": map[string]any{"operationId": "createUser"}},
+				},
+				"202": {
+					Description: "Accepted", MediaTypes: []string{MIMEApplicationJSON}, SchemaRef: "#/components/schemas/User",
+					Schema: map[string]any{"$ref": "#/components/schemas/User"}, Example: map[string]any{"id": 1},
+					Examples: map[string]any{"sample": map[string]any{"id": 2}},
+				},
+				"default": {Description: "Default fallback"},
+			}, post.Responses)
+			require.Equal(t, []string{"users", "write"}, post.Tags)
+			require.True(t, post.Deprecated)
+			require.Equal(t, []map[string][]string{{"bearerAuth": {}}}, post.Security)
+			require.True(t, post.IsHidden())
+			require.Equal(t, map[string]any{"description": "docs", "url": "https://example.com/docs"}, post.ExternalDocs)
+			require.Equal(t, map[string]any{"x-team": "core"}, post.OperationExtensions)
+			require.Equal(t, "createUser", post.OperationID)
+
+			put := stored(MethodPut)
+			require.Equal(t, &RouteRequestBody{Description: "User payload", Required: true, MediaTypes: []string{MIMEApplicationJSON, MIMEApplicationXML}}, put.RequestBody)
+			require.Equal(t, MIMEApplicationJSON, put.Consumes, "the first body media type")     //nolint:testifylint // a media type, not a JSON payload
+			require.Equal(t, MIMEApplicationJSON, put.Produces, "the first response media type") //nolint:testifylint // a media type, not a JSON payload
+			patch := stored(MethodPatch)
+			require.Equal(t, MIMEApplicationJSON, patch.Produces, "the first example response media type") //nolint:testifylint // a media type, not a JSON payload
+			require.Equal(t, &RouteRequestBody{
+				Description: "payload", Required: true, MediaTypes: []string{MIMEApplicationJSON}, SchemaRef: "#/components/schemas/User",
+				Schema: map[string]any{"$ref": "#/components/schemas/User"}, Example: map[string]any{"name": "doe"},
+				Examples: map[string]any{"sample": map[string]any{"name": "john"}},
+			}, patch.RequestBody)
+			require.Equal(t, &RouteRequestBody{
+				Description: "User", Required: true, Content: map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}}},
+			}, stored(MethodDelete).RequestBody)
+
+			models := findRoute(t, app, MethodOptions, tc.path)
+			require.Equal(t, &RouteRequestBody{Schema: routeModelIn{}, Required: true}, models.RequestBody)
+			require.Equal(t, RouteResponse{Description: "Created", Schema: routeModelOut{}}, models.Responses["201"])
+			require.Equal(t, []RouteParameterModel{{In: "query", Model: routeModelQuery{}}}, models.ParameterModels)
 		})
 	}
 }
@@ -1369,19 +1263,67 @@ func Test_ModelHelpers_OnEveryRouter(t *testing.T) {
 // selfPointer is a pointer type that points at itself, so following it never reaches a struct.
 type selfPointer *selfPointer
 
-func Test_Params_Validation(t *testing.T) {
+func Test_DocHelpers_RejectInvalidInput(t *testing.T) {
+	t.Parallel()
+	// rejects runs document on a fresh route and expects it to panic with want, or with anything when want is nil.
+	rejects := func(name string, want any, document func(r Router)) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			route := New().Get("/:id", testEmptyHandler)
+			if want == nil {
+				require.Panics(t, func() { document(route) })
+				return
+			}
+			require.PanicsWithValue(t, want, func() { document(route) })
+		})
+	}
+	invalid := map[string]RouteMediaType{"invalid": {}}
+	collide := map[string]RouteMediaType{MIMEApplicationJSON: {}, " " + MIMEApplicationJSON: {}}
+	twoTypes := RouteParameter{Name: "f", In: "query", Content: map[string]RouteMediaType{MIMEApplicationJSON: {}, MIMEApplicationXML: {}}}
+	noURL := "OperationServer: url is required"
+
+	rejects("Produces media type", nil, func(r Router) { r.Produces("invalid") })
+	rejects("Consumes media type", nil, func(r Router) { r.Consumes("invalid") })
+	rejects("RequestBody media type", nil, func(r Router) { r.RequestBody("payload", true, "invalid") })
+	rejects("Response media type", nil, func(r Router) { r.Response(StatusOK, "", "invalid") })
+	rejects("Response status", nil, func(r Router) { r.Response(42, "invalid") })
+	rejects("ResponseHeader name", nil, func(r Router) { r.ResponseHeader(StatusOK, "  ", "blank", nil) })
+	rejects("RequestBodyContent media type", nil, func(r Router) { r.RequestBodyContent("payload", true, invalid) })
+	rejects("RequestBodyContent keys that collide trimmed", nil, func(r Router) { r.RequestBodyContent("p", true, collide) })
+	rejects("ResponseContent media type", nil, func(r Router) { r.ResponseContent(StatusOK, "ok", invalid) })
+	rejects("AddParameter blank name", nil, func(r Router) { r.AddParameter(RouteParameter{Name: "  ", In: "query"}) })
+	rejects("AddParameter location", nil, func(r Router) { r.AddParameter(RouteParameter{Name: "x", In: "body"}) })
+	rejects("AddParameter two media types", nil, func(r Router) { r.AddParameter(twoTypes) })
+	rejects("AddParameter media type", nil, func(r Router) { r.AddParameter(RouteParameter{Name: "f", In: "query", Content: invalid}) })
+	rejects("Parameter location", "AddParameter: invalid parameter location: body", func(r Router) { r.Parameter("q", "body", false, nil, "") })
+	rejects("Params location", "Params: invalid parameter location: body", func(r Router) { r.Params("body", routeModelQuery{}) })
+	rejects("Params non-struct model", nil, func(r Router) { r.Params("query", 42) })
+	rejects("Params nil model", nil, func(r Router) { r.Params("query", nil) })
+	rejects("Params pointer that never reaches a struct", nil, func(r Router) { r.Params("query", new(selfPointer)) })
+	rejects("OperationExternalDocs url", "OperationExternalDocs: url is required", func(r Router) { r.OperationExternalDocs("More info", " ") })
+	rejects("OperationID", "OperationID: id is required", func(r Router) { r.OperationID("  ") })
+	rejects("Callback name", "Callback: name is required", func(r Router) { r.Callback(" ", map[string]any{"e": map[string]any{}}) })
+	rejects("Callback expressions", "Callback: done needs at least one expression", func(r Router) { r.Callback("done", nil) })
+	rejects("OperationServer without url", noURL, func(r Router) { r.OperationServer(map[string]any{"description": "no url"}) })
+	rejects("OperationServer blank url", noURL, func(r Router) { r.OperationServer(map[string]any{"url": " "}) })
+	rejects("domain Use handler", nil, func(r Router) { r.Domain("api.example.com").Use(12345) })
+}
+
+func Test_Params_NormalizesLocation(t *testing.T) {
 	t.Parallel()
 	app := New()
-	require.Panics(t, func() { app.Get("/a", testHandlerOK).Params("body", routeModelQuery{}) })
-	require.Panics(t, func() { app.Get("/b", testHandlerOK).Params("query", 42) })
-	require.Panics(t, func() { app.Get("/c", testHandlerOK).Params("query", nil) })
-	require.Panics(t, func() { app.Get("/e", testHandlerOK).Params("query", new(selfPointer)) }, "a pointer type that never reaches a struct")
-	require.PanicsWithValue(t, "Params: invalid parameter location: body", func() { app.Get("/f", testHandlerOK).Params("body", routeModelQuery{}) })
-	require.PanicsWithValue(t, "AddParameter: invalid parameter location: body", func() {
-		app.Get("/g", testHandlerOK).Parameter("q", "body", false, nil, "")
-	})
 	app.Get("/d", testHandlerOK).Params(" Header ", &routeModelQuery{})
 	require.Equal(t, []RouteParameterModel{{In: "header", Model: &routeModelQuery{}}}, findRoute(t, app, MethodGet, "/d").ParameterModels)
+}
+
+func Test_RequestBody_WithoutMediaTypesInfersNone(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Post("/", testEmptyHandler).RequestBody("payload", true)
+	route := findRoute(t, app, MethodPost, "/")
+	require.NotNil(t, route.RequestBody)
+	require.Empty(t, route.RequestBody.MediaTypes)
+	require.Empty(t, route.Consumes)
 }
 
 func Test_Parameter_ModelSchemaKeepsItsType(t *testing.T) {
@@ -2351,19 +2293,11 @@ func Test_Route_OperationIDCallbackAndServer(t *testing.T) {
 	callback := map[string]any{"{$request.body#/url}": map[string]any{"post": map[string]any{"responses": map[string]any{"200": map[string]any{"description": "ok"}}}}}
 	server := map[string]any{"url": "https://uploads.example.com", "description": "uploads"}
 	app.Post("/files", testHandlerOK).Name("upload").OperationID(" uploadFile ").Callback("done", callback).OperationServer(server)
-	group := app.Group("/g")
-	group.Get("/x", testHandlerOK).OperationID("groupX")
-	app.RouteChain("/chain").Get(testHandlerOK).OperationID("chainGet")
-	app.Domain("a.example.com").Get("/d", testHandlerOK).OperationID("domainGet")
 
-	routes := routesFor(app, "/files")
-	route := routes[MethodPost]
+	route := routesFor(app, "/files")[MethodPost]
 	require.Equal(t, "uploadFile", route.OperationID)
 	require.Equal(t, callback, route.Callbacks["done"])
 	require.Equal(t, []map[string]any{server}, route.Servers)
-	require.Equal(t, "groupX", routesFor(app, "/g/x")[MethodGet].OperationID)
-	require.Equal(t, "chainGet", routesFor(app, "/chain")[MethodGet].OperationID)
-	require.Equal(t, "domainGet", routesFor(app, "/d")[MethodGet].OperationID)
 
 	// What the app keeps is a copy: neither the arguments nor the returned route share their maps.
 	callback["extra"] = true
@@ -2375,15 +2309,4 @@ func Test_Route_OperationIDCallbackAndServer(t *testing.T) {
 	require.NotNil(t, again.Callbacks["done"])
 	require.Equal(t, "https://uploads.example.com", again.Servers[0]["url"])
 	require.Equal(t, "uploadFile", app.GetRoute("upload").OperationID)
-}
-
-func Test_Route_OperationHelpersValidate(t *testing.T) {
-	t.Parallel()
-	app := New()
-	route := app.Get("/x", testHandlerOK)
-	require.PanicsWithValue(t, "OperationID: id is required", func() { route.OperationID("  ") })
-	require.PanicsWithValue(t, "Callback: name is required", func() { route.Callback(" ", map[string]any{"e": map[string]any{}}) })
-	require.PanicsWithValue(t, "Callback: done needs at least one expression", func() { route.Callback("done", nil) })
-	require.PanicsWithValue(t, "OperationServer: url is required", func() { route.OperationServer(map[string]any{"description": "no url"}) })
-	require.PanicsWithValue(t, "OperationServer: url is required", func() { route.OperationServer(map[string]any{"url": " "}) })
 }
