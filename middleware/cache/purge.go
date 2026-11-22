@@ -27,13 +27,33 @@ const purgeFoldBuf = 128
 // write to either does, which ends an entry early and never keeps one. The seed is random for every
 // table, so a client cannot pick a path that lands in the slot of another. The slots are allocated at the
 // first write, so an app that never sees one pays a pointer load per hit.
+//
+// Writes and entries are stamped on a clock of the table's own: the wall time of one reading of now, start,
+// plus the time now says has passed since, which real time measures by the monotonic clock. Stamped by the
+// wall clock, a step back, as NTP may set it, made an entry stored by a request that began before a write
+// look as if it came after, and was served, and a step forward put a write in the future, which ended the
+// entries of its path until real time caught up.
 type purgeTable struct {
 	slots atomic.Pointer[[purgeSlots]atomic.Uint64]
+	now   func() time.Time
+	start time.Time
 	seed  maphash.Seed
+	base  uint64 // start in nanoseconds since the epoch
 }
 
-func newPurgeTable() *purgeTable {
-	return &purgeTable{seed: maphash.MakeSeed()}
+func newPurgeTable(now func() time.Time) *purgeTable {
+	start := now()
+	return &purgeTable{seed: maphash.MakeSeed(), now: now, start: start, base: unixNanos(start)}
+}
+
+// stamp is the time on the table's clock, in nanoseconds since the epoch.
+func (t *purgeTable) stamp() uint64 {
+	elapsed := t.now().Sub(t.start)
+	if elapsed < 0 {
+		// A clock that keeps no monotonic reading, as a test's, set back past start.
+		return t.base
+	}
+	return t.base + uint64(elapsed)
 }
 
 // unsafeMethod reports whether a request of the method may change what the server holds: any method that

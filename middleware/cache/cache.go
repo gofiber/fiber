@@ -329,7 +329,7 @@ func New(config ...Config) fiber.Handler {
 	// When a request that is not safe last succeeded at each path, for the entries a write ends.
 	purges := cfg.purges
 	if purges == nil {
-		purges = newPurgeTable()
+		purges = newPurgeTable(cfg.now)
 	}
 	maxEntries := max(minTrackedEntries, int(min(cfg.MaxBytes/trackedEntryOverhead, math.MaxInt32)))
 
@@ -498,7 +498,7 @@ func New(config ...Config) fiber.Handler {
 				return err
 			}
 			if status := c.Response().StatusCode(); status >= fiber.StatusOK && status < fiber.StatusBadRequest {
-				purges.mark(slot, unixNanos(cfg.now()))
+				purges.mark(slot, purges.stamp())
 			}
 			return nil
 		}
@@ -739,8 +739,7 @@ func New(config ...Config) fiber.Handler {
 		// Lock entry before reading the current timestamp so freshness decisions
 		// are based on the time the protected cache entry is evaluated.
 		guard := newCacheLockGuard(mux)
-		lookedUp := cfg.now()
-		ts := safeUnixSeconds(lookedUp)
+		ts := safeUnixSeconds(cfg.now())
 
 		// handled reports that the lookup phase already wrote the response.
 		handled, lookupErr := func() (bool, error) {
@@ -1217,6 +1216,10 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
+		// When the request began, on the clock writes are judged by: the response holds what the path held
+		// then, so a write that succeeds after ends the entry it is stored as (see purgeTable).
+		began := purges.stamp()
+
 		// Continue stack, return err to Fiber if exist
 		if err := c.Next(); err != nil {
 			// A handler that returns the refusal (fiber.ErrUnauthorized) writes no status.
@@ -1391,7 +1394,7 @@ func New(config ...Config) fiber.Handler {
 		e.vary = utils.CopyBytes(joinedHeader(&c.Response().Header, fiber.HeaderVary, respCanonical))
 		// The response is to what the path held when the request began: a write that succeeds after
 		// that ends the entry.
-		e.stored = unixNanos(lookedUp)
+		e.stored = began
 		e.date = 0
 
 		ageVal := uint64(0)

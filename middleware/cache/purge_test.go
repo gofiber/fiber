@@ -92,7 +92,7 @@ func Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry(t *testing.T) {
 func Test_Cache_Security_WriteEndsEveryEntryOfThePath(t *testing.T) {
 	t.Parallel()
 	// A path that does not share the slot of /item, which the table chooses by a hash of its own.
-	purges := newPurgeTable()
+	purges := newPurgeTable(time.Now)
 	elsewhere := "/elsewhere"
 	for i := 0; purges.slot("example.com", elsewhere) == purges.slot("example.com", "/item"); i++ {
 		elsewhere = "/elsewhere" + strconv.Itoa(i)
@@ -206,6 +206,54 @@ func Test_Cache_Security_WriteEndsAnEntryTheRequestBeganBefore(t *testing.T) {
 	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheHit, "item v2")
 }
 
+// Writes and entries are ordered by the table's clock, which counts the time elapsed since it read the wall
+// clock once. Ordered by the wall clock, a step back, as NTP may set it, left in place an entry stored by a
+// request that began before a write, and a step forward put the write in the future, ending the entries of the
+// path until real time caught up. The two test clocks stand for the wall clock, which steps, and the monotonic
+// one, which only goes forward.
+func Test_Cache_Security_WriteOrderIgnoresWallClockSteps(t *testing.T) {
+	t.Parallel()
+	for _, step := range []time.Duration{-2 * time.Second, time.Hour} {
+		t.Run(step.String(), func(t *testing.T) {
+			t.Parallel()
+			wall, monotonic := cacheTestCClock(), cacheTestCClock()
+			var version atomic.Int32
+			version.Store(1)
+			parked, release := make(chan struct{}), make(chan struct{})
+			var slow atomic.Bool
+			slow.Store(true)
+			app := fiber.New()
+			app.Use(New(Config{Expiration: time.Hour, clock: wall.Now, purges: newPurgeTable(monotonic.Now)}))
+			app.All("/item", func(c fiber.Ctx) error {
+				if c.Method() == fiber.MethodPut {
+					version.Add(1)
+					return c.SendStatus(fiber.StatusNoContent)
+				}
+				read := version.Load()
+				if slow.CompareAndSwap(true, false) {
+					close(parked)
+					<-release
+				}
+				return c.SendString("item v" + strconv.Itoa(int(read)))
+			})
+
+			// A GET reads the item, the wall clock steps, and the write succeeds before the GET answers.
+			reading := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/item"), parked, release)
+			wall.Add(step)
+			monotonic.Add(time.Second)
+			require.Equal(t, fiber.StatusNoContent, doRequest(t, app, apptest.Req(fiber.MethodPut, "/item")).status)
+			monotonic.Add(time.Second)
+			require.Equal(t, cacheMiss, reading.finish(t).Header.Get("X-Cache"))
+
+			// What it stored predates the write, and the response stored after it is served.
+			monotonic.Add(time.Second)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheMiss, "item v2")
+			monotonic.Add(time.Second)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheHit, "item v2")
+		})
+	}
+}
+
 // An external Storage keeps the time the request that stored an entry began with it, and an entry stored without
 // one, by an earlier version, is ended by any write to its path, as it cannot say when it was stored.
 func Test_Cache_Security_WriteEndsEntriesOfAStorage(t *testing.T) {
@@ -296,7 +344,7 @@ func Test_unsafeMethod(t *testing.T) {
 
 func Test_purgeTable(t *testing.T) {
 	t.Parallel()
-	table := newPurgeTable()
+	table := newPurgeTable(time.Now)
 	stored := func(at uint64) *item { return &item{stored: at} }
 
 	t.Run("nothing is superseded before the first write", func(t *testing.T) {
@@ -318,7 +366,7 @@ func Test_purgeTable(t *testing.T) {
 
 	t.Run("a write supersedes the entries stored before it, and the ones it cannot date", func(t *testing.T) {
 		t.Parallel()
-		own := newPurgeTable()
+		own := newPurgeTable(time.Now)
 		own.mark(own.slot("example.com", "/item"), 100)
 		require.True(t, own.supersedes("example.com", "/item", stored(99)))
 		require.True(t, own.supersedes("example.com", "/item", stored(100)), "stored in the instant of the write")
@@ -326,9 +374,21 @@ func Test_purgeTable(t *testing.T) {
 		require.False(t, own.supersedes("example.com", "/item", stored(101)))
 	})
 
+	t.Run("the clock counts from the one reading it starts at, and never below it", func(t *testing.T) {
+		t.Parallel()
+		clock := cacheTestCClock()
+		own := newPurgeTable(clock.Now)
+		start := own.stamp()
+		require.Equal(t, unixNanos(time.Unix(1_700_000_000, 0)), start)
+		clock.Add(time.Second)
+		require.Equal(t, start+uint64(time.Second), own.stamp())
+		clock.Add(-time.Hour) // a clock without a monotonic reading, set back past the start
+		require.Equal(t, start, own.stamp())
+	})
+
 	t.Run("a slot only goes forward", func(t *testing.T) {
 		t.Parallel()
-		own := newPurgeTable()
+		own := newPurgeTable(time.Now)
 		slot := own.slot("example.com", "/item")
 		own.mark(slot, 200)
 		own.mark(slot, 100)
@@ -340,7 +400,7 @@ func Test_purgeTable(t *testing.T) {
 // Sequential: testing.AllocsPerRun panics in a parallel test. Folding the host and the path to lower case
 // allocated whenever either held a capital letter, which every hit paid once a write had been seen.
 func Test_purgeTable_slotDoesNotAllocate(t *testing.T) {
-	table := newPurgeTable()
+	table := newPurgeTable(time.Now)
 	for _, target := range [][2]string{{"example.com", "/item"}, {"Example.COM", "/Item/"}} {
 		require.Zero(t, testing.AllocsPerRun(100, func() { table.slot(target[0], target[1]) }), "%v", target)
 	}
