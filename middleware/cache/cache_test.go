@@ -5185,7 +5185,13 @@ func Test_Cache_HitMergesTheKeyVaryWithoutAllocating(t *testing.T) {
 		serve()
 		require.Equal(t, cacheHit, cacheTestXCache(fctx))
 		require.Equal(t, wantVary, string(fctx.Response.Header.Peek(fiber.HeaderVary)))
-		return int(testing.AllocsPerRun(100, serve))
+		// The fewest of many single runs, not an average: under -race sync.Pool drops a quarter of what it
+		// is handed at random, so an average varies from one run to the next.
+		fewest := math.MaxFloat64
+		for range 200 {
+			fewest = min(fewest, testing.AllocsPerRun(1, serve))
+		}
+		return int(fewest)
 	}
 
 	merged := hitAllocs(Config{Expiration: time.Hour}, "Origin, "+keyVaryHeaders)
