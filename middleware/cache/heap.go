@@ -31,9 +31,16 @@ type heapEntry struct {
 	key      string
 	manifest string // the Vary manifest the entry was stored under, if any
 	exp      uint64 // when the entry is due to be evicted, which the handler sets no later than Expiration after it was stored
+	expires  uint64 // when the entry stops being fresh
 	gen      uint64
 	bytes    uint
 	idx      int
+}
+
+// expiryNode is an entry's place in the heap by expiry: when it stops being fresh, and its index.
+type expiryNode struct {
+	expires uint64
+	idx     int
 }
 
 // indexedHeap is a regular min-heap that allows finding
@@ -54,6 +61,10 @@ type indexedHeap struct {
 	entries []heapEntry
 	// Mapping "index" to position in heap slice
 	indices []int
+	// The entries again, by when each stops being fresh, and each index's position there: an entry that
+	// has expired is found ahead of any that is fresh, whatever their order of eviction (see removeExpired).
+	byExpiry  []expiryNode
+	expiryPos []int
 	// Max index handed out
 	maxidx int
 }
@@ -123,6 +134,7 @@ func (h *indexedHeap) popInternal() heapEntry {
 			h.orphans[entry.manifest] = struct{}{}
 		}
 	}
+	h.expiryRemove(entry.idx)
 	h.entries = h.entries[0 : n-1]
 	return entry
 }
@@ -142,6 +154,76 @@ func (h *indexedHeap) pushInternal(entry heapEntry) {
 	}
 	h.indices[entry.idx] = len(h.entries)
 	h.entries = append(h.entries, entry)
+	h.expiryPush(entry.idx, entry.expires)
+}
+
+// expiryPush adds the entry of idx to the heap by expiry.
+func (h *indexedHeap) expiryPush(idx int, expires uint64) {
+	for len(h.expiryPos) <= idx {
+		h.expiryPos = append(h.expiryPos, 0)
+	}
+	h.expiryPos[idx] = len(h.byExpiry)
+	h.byExpiry = append(h.byExpiry, expiryNode{expires: expires, idx: idx})
+	h.expiryUp(len(h.byExpiry) - 1)
+}
+
+// expiryRemove takes the entry of idx out of the heap by expiry.
+func (h *indexedHeap) expiryRemove(idx int) {
+	pos, last := h.expiryPos[idx], len(h.byExpiry)-1
+	if pos != last {
+		h.expirySwap(pos, last)
+	}
+	h.byExpiry = h.byExpiry[:last]
+	if pos != last {
+		h.expiryDown(pos)
+		h.expiryUp(pos)
+	}
+}
+
+func (h *indexedHeap) expirySwap(i, j int) {
+	h.byExpiry[i], h.byExpiry[j] = h.byExpiry[j], h.byExpiry[i]
+	h.expiryPos[h.byExpiry[i].idx] = i
+	h.expiryPos[h.byExpiry[j].idx] = j
+}
+
+func (h *indexedHeap) expiryUp(j int) {
+	for j > 0 {
+		i := (j - 1) / 2
+		if h.byExpiry[i].expires <= h.byExpiry[j].expires {
+			return
+		}
+		h.expirySwap(i, j)
+		j = i
+	}
+}
+
+func (h *indexedHeap) expiryDown(i int) {
+	n := len(h.byExpiry)
+	for {
+		j := 2*i + 1
+		if j >= n {
+			return
+		}
+		if r := j + 1; r < n && h.byExpiry[r].expires < h.byExpiry[j].expires {
+			j = r
+		}
+		if h.byExpiry[j].expires >= h.byExpiry[i].expires {
+			return
+		}
+		h.expirySwap(i, j)
+		i = j
+	}
+}
+
+// removeExpired takes out and returns the entry that stopped being fresh first, if one has by now.
+func (h *indexedHeap) removeExpired(now uint64) (heapEntry, bool) {
+	if len(h.byExpiry) == 0 || h.byExpiry[0].expires > now {
+		return heapEntry{}, false
+	}
+	realIdx := h.indices[h.byExpiry[0].idx]
+	entry := h.entries[realIdx]
+	h.removeInternal(realIdx)
+	return entry, true
 }
 
 // tracks reports whether a live entry was stored under the Vary manifest.
@@ -168,14 +250,15 @@ func (h *indexedHeap) findKey(key string) (int, bool) {
 	return idx, ok
 }
 
-// Returns index to track entry
-func (h *indexedHeap) put(key string, exp uint64, bytes uint, manifest string) int {
-	return h.putWithGeneration(key, exp, bytes, h.nextGeneration(), manifest)
+// Returns index to track entry. exp is when the entry is due to be evicted, and expires when it stops
+// being fresh.
+func (h *indexedHeap) put(key string, exp, expires uint64, bytes uint, manifest string) int {
+	return h.putWithGeneration(key, exp, expires, bytes, h.nextGeneration(), manifest)
 }
 
 // putWithGeneration restores an existing entry without changing its persisted
 // identity. Its heap index may change if another entry reused the old slot.
-func (h *indexedHeap) putWithGeneration(key string, exp uint64, bytes uint, gen uint64, manifest string) int {
+func (h *indexedHeap) putWithGeneration(key string, exp, expires uint64, bytes uint, gen uint64, manifest string) int {
 	idx := 0
 	if len(h.entries) < h.maxidx {
 		// Steal index from previously removed entry
@@ -189,7 +272,7 @@ func (h *indexedHeap) putWithGeneration(key string, exp uint64, bytes uint, gen 
 	}
 	// Push manually to avoid allocation
 	h.pushInternal(heapEntry{
-		key: key, manifest: manifest, exp: exp, gen: gen, idx: idx, bytes: bytes,
+		key: key, manifest: manifest, exp: exp, expires: expires, gen: gen, idx: idx, bytes: bytes,
 	})
 	heap.Fix(h, h.Len()-1)
 	return idx

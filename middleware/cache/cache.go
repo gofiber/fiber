@@ -285,7 +285,8 @@ func New(config ...Config) fiber.Handler {
 		key      string
 		manifest string
 		size     uint
-		exp      uint64
+		exp      uint64 // when the entry is due to be evicted
+		expires  uint64 // when it stops being fresh
 		oldGen   uint64
 	}
 	// poppedNode names a node an eviction popped, by key and generation.
@@ -372,7 +373,7 @@ func New(config ...Config) fiber.Handler {
 		_, size := heap.remove(heapIdx)
 		storedBytes -= size
 
-		return evictionCandidate{key: entryKey, manifest: entry.manifest, size: size, exp: exp, oldGen: heapGen}, true
+		return evictionCandidate{key: entryKey, manifest: entry.manifest, size: size, exp: exp, expires: entry.expires, oldGen: heapGen}, true
 	}
 
 	// evicting holds the nodes that evictions have popped and are still deleting the entries of, and whether
@@ -401,7 +402,7 @@ func New(config ...Config) fiber.Handler {
 		if _, exists := heap.findKey(candidate.key); exists {
 			return 0, false
 		}
-		idx := heap.putWithGeneration(candidate.key, candidate.exp, candidate.size, candidate.oldGen, candidate.manifest)
+		idx := heap.putWithGeneration(candidate.key, candidate.exp, candidate.expires, candidate.size, candidate.oldGen, candidate.manifest)
 		storedBytes += candidate.size
 		return idx, true
 	}
@@ -1628,16 +1629,24 @@ func New(config ...Config) fiber.Handler {
 					markUnreachable()
 					return nil
 				}
-				next := heap.entries[0]
-				keyToRemove, size := heap.removeFirst()
+				// An entry that has stopped being fresh goes before any that has not, whatever their order
+				// of eviction: it can be served only to a request that accepts a stale one, and the fresh
+				// one to every request. Kept for max-stale, a short-lived entry outlasted a fresh one stored
+				// long enough ago, as that one counts as due no later than Expiration after it was stored.
+				next, expired := heap.removeExpired(nowUnix)
+				if !expired {
+					next = heap.entries[0]
+					heap.removeFirst()
+				}
 				candidates = append(candidates, evictionCandidate{
-					key:      keyToRemove,
+					key:      next.key,
 					manifest: next.manifest,
-					size:     size,
+					size:     next.bytes,
 					exp:      next.exp,
+					expires:  next.expires,
 					oldGen:   next.gen,
 				})
-				storedBytes -= size
+				storedBytes -= next.bytes
 			}
 			for _, candidate := range candidates {
 				evicting[poppedNode{key: candidate.key, gen: candidate.oldGen}] = false
@@ -1710,6 +1719,7 @@ func New(config ...Config) fiber.Handler {
 			e.exp = responseTS + 1
 		}
 		evictAt := min(e.exp, responseTS+evictionHorizon)
+		entryExpires := e.exp // manager.set hands e back to the pool
 
 		// Store entry in heap (space already reserved in eviction phase)
 		var heapIdx int
@@ -1724,7 +1734,7 @@ func New(config ...Config) fiber.Handler {
 					replaced, replacedOK = candidate, true
 				}
 			}
-			heapIdx = heap.put(key, evictAt, entrySize, entryManifest)
+			heapIdx = heap.put(key, evictAt, entryExpires, entrySize, entryManifest)
 			e.heapidx = heapIdx
 			heapGen = heap.generation(heapIdx)
 			e.heapgen = heapGen
@@ -1803,7 +1813,9 @@ func New(config ...Config) fiber.Handler {
 				if !tracked {
 					if delErr := deleteKey(reqCtx, key); delErr != nil {
 						// Still stored, so track it again for a later eviction to retry.
-						untracked := evictionCandidate{key: key, manifest: entryManifest, size: entrySize, exp: evictAt, oldGen: heapGen}
+						untracked := evictionCandidate{
+							key: key, manifest: entryManifest, size: entrySize, exp: evictAt, expires: entryExpires, oldGen: heapGen,
+						}
 						log.Warnf("cache: failed to delete key %q evicted while it was stored: %v", maskKey(key), delErr)
 						if err := restoreHeapEntry(reqCtx, untracked); err != nil {
 							log.Warnf("%v", err)

@@ -2058,6 +2058,39 @@ func Test_Cache_EvictionOrderCountsNoMoreThanExpiration(t *testing.T) {
 	}
 }
 
+// An entry that has expired, and is kept only for a request that accepts a stale one, is evicted before any
+// that is fresh. Ordered by when an entry is due, counted no more than Expiration from when it was stored, an
+// entry fresh for a year that was stored long enough ago went first, and the expired one stayed.
+func Test_Cache_EvictionTakesAnExpiredEntryFirst(t *testing.T) {
+	t.Parallel()
+	clock := cacheTestCClock()
+	lifetime := func(c fiber.Ctx, _ *Config) time.Duration {
+		switch c.Path() {
+		case "/year":
+			return 365 * 24 * time.Hour
+		case "/half":
+			return 30 * time.Second
+		default:
+			return 5 * time.Minute
+		}
+	}
+	// The paths are of one length, so every entry is charged alike, and there is room for two.
+	size := charged(defaultKey("/year"), len("x"), textPlain)
+	app := fiber.New()
+	app.Use(New(Config{MaxBytes: 2 * size, Expiration: 5 * time.Minute, ExpirationGenerator: lifetime, clock: clock.Now}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("x") })
+
+	cacheTestAExpect(t, app, "/year", cacheMiss) // due 300 s on
+	clock.Add(400 * time.Second)
+	cacheTestAExpect(t, app, "/half", cacheMiss) // due, and expired, 430 s on
+	clock.Add(100 * time.Second)
+	cacheTestAExpect(t, app, "/next", cacheMiss) // needs the room of one
+
+	cacheTestAExpect(t, app, "/year", cacheHit)
+	cacheTestAExpect(t, app, "/next", cacheHit)
+	cacheTestAExpectStatus(t, app, cacheTestAGetCC("/half", "only-if-cached, max-stale"), cacheUnreachable, fiber.StatusGatewayTimeout)
+}
+
 func Test_Cache_UncacheableStatusCodes(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

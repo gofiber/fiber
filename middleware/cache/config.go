@@ -136,7 +136,7 @@ type Config struct {
 	// headers. When limit is reached, entries with the nearest expiration are deleted to make room for new,
 	// the one stored first going first among those that expire together. An entry's lifetime counts as no
 	// more than Expiration from when it was stored, so one with a longer lifetime does not outlast the
-	// entries stored after it.
+	// entries stored after it. An entry that has expired, kept only for max-stale, goes before any fresh one.
 	// The number of entries is limited along with it, to MaxBytes/256 but no fewer than 1024,
 	// since an entry also takes memory for bookkeeping that is not counted.
 	// 0 means the default; set DisableMaxBytes to store without a limit.
