@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -15,37 +14,6 @@ import (
 	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/stretchr/testify/require"
 )
-
-type blockingManifestStorage struct {
-	*storagetest.Memory
-	blocked      chan struct{}
-	release      chan struct{}
-	manifestSets atomic.Int32
-	failBodySet  atomic.Bool
-}
-
-func newBlockingManifestStorage() *blockingManifestStorage {
-	return &blockingManifestStorage{
-		Memory:  storagetest.New(),
-		blocked: make(chan struct{}),
-		release: make(chan struct{}),
-	}
-}
-
-func (s *blockingManifestStorage) SetWithContext(ctx context.Context, key string, value []byte, exp time.Duration) error {
-	if strings.HasPrefix(key, bodyKeyPrefix) && s.failBodySet.Load() {
-		return errors.New("body write failed")
-	}
-	if strings.HasPrefix(key, manifestKeyPrefix) && s.manifestSets.Add(1) == 2 {
-		close(s.blocked)
-		<-s.release
-	}
-	return s.Memory.SetWithContext(ctx, key, value, exp)
-}
-
-func (s *blockingManifestStorage) Set(key string, value []byte, exp time.Duration) error {
-	return s.SetWithContext(context.Background(), key, value, exp)
-}
 
 // cacheTestCReloads is the interleaving the concurrent-reload tests share: a
 // 100-byte answer is cached at GET /entry, and two reloads of it are parked in
@@ -154,20 +122,31 @@ func Test_Cache_ConcurrentReloadAfterReservationReplacesHeapNode(t *testing.T) {
 	for _, failBody := range []bool{false, true} {
 		t.Run("failBody="+strconv.FormatBool(failBody), func(t *testing.T) {
 			t.Parallel()
-			storage := newBlockingManifestStorage()
+			blocked, release := make(chan struct{}), make(chan struct{})
+			var manifestSets atomic.Int32
+			var failBodySet atomic.Bool
+			storage := &hookedStorage{Memory: storagetest.New(), onSet: func(key string, _ time.Duration) error {
+				if strings.HasPrefix(key, bodyKeyPrefix) && failBodySet.Load() {
+					return errors.New("body write failed")
+				}
+				if strings.HasPrefix(key, manifestKeyPrefix) && manifestSets.Add(1) == 2 {
+					close(blocked)
+					<-release
+				}
+				return nil
+			}}
 			r := cacheTestCStartReloads(t, storage, fiber.HeaderAcceptLanguage)
 
-			// The second reload pauses after its reservation, before its heap insertion, while the first stores.
 			r.second.open()
-			<-storage.blocked
+			<-blocked
 			r.first.finish(t)
-			storage.failBodySet.Store(failBody)
-			close(storage.release)
+			failBodySet.Store(failBody)
+			close(release)
 			second := r.second.finish(t)
 			require.Equal(t, fiber.StatusOK, second.StatusCode)
 			if failBody {
 				require.Equal(t, cacheUnreachable, second.Header.Get("X-Cache"))
-				storage.failBodySet.Store(false)
+				failBodySet.Store(false)
 			}
 
 			r.requireSettled(t)

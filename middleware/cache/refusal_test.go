@@ -1476,10 +1476,11 @@ func Test_Cache_ExpiredDeleteChecksTheEntry(t *testing.T) {
 		t.Run(fmt.Sprintf("invalidator=%t", withInvalidator), func(t *testing.T) {
 			t.Parallel()
 			var reads atomic.Int32
-			storage := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) {
+			storage := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) error {
 				if strings.HasPrefix(key, cacheKeyVersion+"|GET|") && !strings.HasPrefix(key, bodyKeyPrefix) {
 					reads.Add(1)
 				}
+				return nil
 			}}
 			clock := cacheTestCClock()
 			cfg := Config{Storage: storage, Expiration: time.Minute, clock: clock.Now, DisableVaryHeaders: true}
@@ -1535,10 +1536,11 @@ func Test_Cache_UnservableEntryThatCannotBeDeletedIsNotServed(t *testing.T) {
 			if tc.invalidator {
 				// The entry is read to find it, and again to check that it is still the one found.
 				var reads atomic.Int32
-				cfg.Storage = &hookedStorage{Memory: base, onGet: func(read string) {
+				cfg.Storage = &hookedStorage{Memory: base, onGet: func(read string) error {
 					if read == key && reads.Add(1) == 2 {
 						base.SetErr(storagetest.OpGet, key, errors.New("storage unavailable"))
 					}
+					return nil
 				}}
 				cfg.CacheInvalidator = func(fiber.Ctx) bool { return false }
 			} else {
@@ -1573,11 +1575,12 @@ func Test_Cache_RefusalToleratesAStorageThatFailsWhileDroppingTheReplacement(t *
 			var armed atomic.Bool
 			var watched atomic.Pointer[string]
 			var reads atomic.Int32
-			storage := &hookedStorage{Memory: base, onGet: func(key string) {
+			storage := &hookedStorage{Memory: base, onGet: func(key string) error {
 				// The first read of the key after the replacement is stored finds it, and the next removes it.
 				if w := watched.Load(); w != nil && key == *w && reads.Add(1) == 2 && failing == "read" {
 					base.SetErr(storagetest.OpGet, key, failure)
 				}
+				return nil
 			}}
 			entryOf := func(session string) string {
 				base.Mu.RLock()
@@ -1880,31 +1883,37 @@ func Test_Cache_InvalidatorIsNotAskedAboutAnEntryThatHasExpired(t *testing.T) {
 	}
 }
 
-// hookedStorage runs onGet, onSet and onDelete before it reads, writes and deletes a key, when set.
+// hookedStorage runs onGet, onSet and onDelete before it reads, writes and deletes a key; a hook's error is the operation's.
 type hookedStorage struct {
 	*storagetest.Memory
-	onGet    func(key string)
-	onSet    func(key string, exp time.Duration)
-	onDelete func(key string)
+	onGet    func(key string) error
+	onSet    func(key string, exp time.Duration) error
+	onDelete func(key string) error
 }
 
 func (s *hookedStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
 	if s.onSet != nil {
-		s.onSet(key, exp)
+		if err := s.onSet(key, exp); err != nil {
+			return err
+		}
 	}
 	return s.Memory.SetWithContext(ctx, key, val, exp)
 }
 
 func (s *hookedStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
 	if s.onGet != nil {
-		s.onGet(key)
+		if err := s.onGet(key); err != nil {
+			return nil, err
+		}
 	}
 	return s.Memory.GetWithContext(ctx, key)
 }
 
 func (s *hookedStorage) DeleteWithContext(ctx context.Context, key string) error {
 	if s.onDelete != nil {
-		s.onDelete(key)
+		if err := s.onDelete(key); err != nil {
+			return err
+		}
 	}
 	return s.Memory.DeleteWithContext(ctx, key)
 }

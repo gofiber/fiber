@@ -14,8 +14,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// cacheTestPItemApp serves /item through New(*cfg): GET and HEAD read its version, from 1, running whileReading
-// before they answer, and any other method bumps it and answers status.
+// cacheTestPItemApp serves /item via New(*cfg): reads of its version run whileReading; writes bump it and answer status.
 func cacheTestPItemApp(cfg *Config, status int, whileReading ...func()) *fiber.App {
 	var version atomic.Int32
 	version.Store(1)
@@ -81,8 +80,7 @@ func Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry(t *testing.T) {
 				cacheTestCRequireReply(t, get(), cacheMiss, "item v2")
 				cacheTestCRequireReply(t, get(), cacheHit, "item v2")
 			} else {
-				// Not ended, though the handler bumped the version.
-				cacheTestCRequireReply(t, get(), cacheHit, "item v1")
+				cacheTestCRequireReply(t, get(), cacheHit, "item v1", "not ended, though the handler bumped the version")
 			}
 		})
 	}
@@ -188,7 +186,6 @@ func Test_Cache_Security_WriteEndsAnEntryTheRequestBeganBefore(t *testing.T) {
 				}
 			})
 
-			// A GET reads the item, the wall clock steps, and the write succeeds before the GET answers.
 			reading := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/item"), parked, release)
 			wall.Add(tc.step)
 			monotonic.Add(time.Second)

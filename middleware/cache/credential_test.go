@@ -478,8 +478,9 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 	t.Run("a write that takes a while keeps hits looking past when the store drops the record", func(t *testing.T) {
 		t.Parallel()
 		var once sync.Once
-		storage := &hookedStorage{Memory: storagetest.New(), onSet: func(string, time.Duration) {
+		storage := &hookedStorage{Memory: storagetest.New(), onSet: func(string, time.Duration) error {
 			once.Do(func() { clocktest.SleepPast(t, 3*time.Second) })
+			return nil
 		}}
 		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute})
 		records.record(ctx, records.group(c, "base"), "k", 0)

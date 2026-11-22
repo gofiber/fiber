@@ -562,7 +562,6 @@ func Test_Cache_Security_HitKeepsTheHeadersThatRestrictTheBody(t *testing.T) {
 						c.Response().Header.Add(name, line)
 					}
 				}
-				// Neither restricts the body: one grants, the other says nothing about it.
 				c.Set(fiber.HeaderAccessControlAllowOrigin, "https://app.example")
 				c.Set("X-Request-Id", "first")
 				return c.SendString("page")
@@ -1419,8 +1418,7 @@ func Test_StoreResponseHeaders_DropsConnectionAndProxyFields(t *testing.T) {
 
 			miss := cacheTestAExpect(t, app, "/", cacheMiss)
 			resp := cacheTestAExpect(t, app, "/", cacheHit)
-			// The client reads a Trailer field into Trailer, not Header.
-			require.Equal(t, tc.trailer != "", len(miss.Trailer) > 0)
+			require.Equal(t, tc.trailer != "", len(miss.Trailer) > 0, "the client reads a Trailer field into Trailer")
 			require.Empty(t, resp.Trailer)
 			require.Empty(t, resp.Header.Values("Proxy-Authentication-Info"))
 			for _, name := range tc.dropped {

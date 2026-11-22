@@ -86,7 +86,6 @@ func keygenCorpus() []keygenCase {
 		{name: "post_body_metadata", uri: "/", method: fiber.MethodPost, body: "{}", headers: map[string]string{"Content-Type": "application/json"}, want: keyStart + keyNoHeaders + "|m=0|1|application/json|b={}"},
 		{name: "post_no_body", uri: "/", method: fiber.MethodPost, want: keyStart + keyNoHeaders},
 		{name: "get_body", uri: "/", body: "foo=bar", want: keyStart + keyNoHeaders + "|m=0|0|b=foo=bar"},
-		// c.Body() decodes by Content-Encoding whatever the length of the body, so the request is keyed by it.
 		{name: "get_encoding_no_body", uri: "/", headers: map[string]string{"Content-Encoding": "gzip"}, want: keyStart + keyNoHeaders + "|m=1|gzip|0|b="},
 		{name: "get_encoding_empty_no_body", uri: "/", headers: map[string]string{"Content-Encoding": ""}, want: keyStart + keyNoHeaders + "|m=1||0|b="},
 		// The authority: the port is part of it, its delimiters are escaped like
@@ -242,12 +241,13 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 			// Every key the middleware reads, in order and without duplicates.
 			var mu sync.Mutex
 			var lookedUp []string
-			store := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) {
+			store := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) error {
 				mu.Lock()
 				defer mu.Unlock()
 				if !slices.Contains(lookedUp, key) {
 					lookedUp = append(lookedUp, key)
 				}
+				return nil
 			}}
 			app := fiber.New()
 			app.Use(New(Config{

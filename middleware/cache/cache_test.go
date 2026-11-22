@@ -106,73 +106,35 @@ func bodyKeys(storage *storagetest.Memory) []string {
 	return slices.DeleteFunc(storage.Keys(), func(key string) bool { return !strings.HasPrefix(key, bodyKeyPrefix) })
 }
 
-// blockingDeleteStorage pauses the first stale metadata deletion while another
-// request replaces that entry and reuses its heap index.
-type blockingDeleteStorage struct {
-	*storagetest.Memory
-	deleteStarted  chan struct{}
-	continueDelete chan struct{}
-	key            string
-	blockOnce      atomic.Bool
+// cacheTestGate parks the first call of park once armed: it closes entered and waits for release.
+type cacheTestGate struct {
+	entered, release chan struct{}
+	armed            atomic.Bool
 }
 
-func (s *blockingDeleteStorage) DeleteWithContext(ctx context.Context, key string) error {
-	if key == s.key && s.blockOnce.CompareAndSwap(false, true) {
-		close(s.deleteStarted)
-		<-s.continueDelete
+func newCacheTestGate(armed bool) *cacheTestGate {
+	g := &cacheTestGate{entered: make(chan struct{}), release: make(chan struct{})}
+	g.armed.Store(armed)
+	return g
+}
+
+func (g *cacheTestGate) park() bool {
+	if !g.armed.CompareAndSwap(true, false) {
+		return false
 	}
-	return s.Memory.DeleteWithContext(ctx, key)
+	close(g.entered)
+	<-g.release
+	return true
 }
 
-// restoreMutationStorage models a backend change while eviction has dropped
-// the old heap node and its storage deletion fails.
-type restoreMutationStorage struct {
-	*storagetest.Memory
-	key      string
-	mutation string
-	armed    atomic.Bool
-}
-
-type blockingFailedEvictionStorage struct {
-	*storagetest.Memory
-	started        chan struct{}
-	continueDelete chan struct{}
-	key            string
-	armed          atomic.Bool
-}
-
-func (s *blockingFailedEvictionStorage) DeleteWithContext(ctx context.Context, key string) error {
-	if key == s.key && s.armed.CompareAndSwap(true, false) {
-		close(s.started)
-		<-s.continueDelete
-		return errors.New("eviction delete failed")
-	}
-	return s.Memory.DeleteWithContext(ctx, key)
-}
-
-func (s *restoreMutationStorage) DeleteWithContext(ctx context.Context, key string) error {
-	if key != s.key || !s.armed.CompareAndSwap(true, false) {
-		return s.Memory.DeleteWithContext(ctx, key)
-	}
-
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-	if s.mutation == "missing" {
-		delete(s.Data, key)
-		delete(s.Data, bodyKey(key))
-	} else {
-		var entry item
-		if _, err := entry.UnmarshalMsg(s.Data[key]); err != nil {
+// cacheTestParkedDelete is a storage whose delete of key parks on gate, then fails with err, or deletes when nil.
+func cacheTestParkedDelete(key string, gate *cacheTestGate, err error) *hookedStorage {
+	return &hookedStorage{Memory: storagetest.New(), onDelete: func(k string) error {
+		if k == key && gate.park() {
 			return err
 		}
-		entry.heapgen += 1000
-		raw, err := entry.MarshalMsg(nil)
-		if err != nil {
-			return err
-		}
-		s.Data[key] = raw
-	}
-	return errors.New("eviction delete failed")
+		return nil
+	}}
 }
 
 // cacheTestAFailures keeps the last error that failed a request of the app it serves.
@@ -3067,13 +3029,33 @@ func Test_CacheStorage_EvictionRestoreDropsAbsentOrReplacedEntry(t *testing.T) {
 	for _, mutation := range []string{"missing", "replaced"} {
 		t.Run(mutation, func(t *testing.T) {
 			t.Parallel()
-			storage := &restoreMutationStorage{
-				Memory:   storagetest.New(),
-				key:      cacheKeyVersion + "|GET|/old",
-				mutation: mutation,
-			}
+			key, base := cacheKeyVersion+"|GET|/old", storagetest.New()
+			var armed atomic.Bool
+			storage := &hookedStorage{Memory: base, onDelete: func(k string) error {
+				if k != key || !armed.CompareAndSwap(true, false) {
+					return nil
+				}
+				base.Mu.Lock()
+				defer base.Mu.Unlock()
+				if mutation == "missing" {
+					delete(base.Data, key)
+					delete(base.Data, bodyKey(key))
+					return errors.New("eviction delete failed")
+				}
+				var entry item
+				if _, err := entry.UnmarshalMsg(base.Data[key]); err != nil {
+					return err
+				}
+				entry.heapgen += 1000
+				raw, err := entry.MarshalMsg(nil)
+				if err != nil {
+					return err
+				}
+				base.Data[key] = raw
+				return errors.New("eviction delete failed")
+			}}
 			probe := &accountingProbe{}
-			stale := charged(storage.key, len("stale"), textPlain)
+			stale := charged(key, len("stale"), textPlain)
 			app := cacheTestBPathKeyedApp(&Config{MaxBytes: stale, Storage: storage, accounting: probe.record})
 			app.Get("/:name", func(c fiber.Ctx) error {
 				if c.Path() == "/old" {
@@ -3085,7 +3067,7 @@ func Test_CacheStorage_EvictionRestoreDropsAbsentOrReplacedEntry(t *testing.T) {
 			cacheTestAExpect(t, app, "/old", cacheMiss)
 			cacheTestBRequireAccounting(t, probe, stale, 1)
 
-			storage.armed.Store(true)
+			armed.Store(true)
 			cacheTestAExpectBody(t, app, "/new", cacheUnreachable, "fresh")
 			cacheTestBRequireAccounting(t, probe, 0, 0)
 		})
@@ -3137,15 +3119,11 @@ func (p *cacheTestBParked) finish(t *testing.T) *http.Response {
 
 func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *testing.T) {
 	t.Parallel()
-	storage := &blockingFailedEvictionStorage{
-		Memory:         storagetest.New(),
-		key:            cacheKeyVersion + "|GET|/old",
-		started:        make(chan struct{}),
-		continueDelete: make(chan struct{}),
-	}
+	key, gate := cacheKeyVersion+"|GET|/old", newCacheTestGate(false)
+	storage := cacheTestParkedDelete(key, gate, errors.New("eviction delete failed"))
 	probe := &accountingProbe{}
 	fresh := charged(cacheKeyVersion+"|GET|/new", len("012345678"), textPlain, "public, max-age=60")
-	replacement := charged(storage.key, len("x"), textPlain, "public, max-age=60")
+	replacement := charged(key, len("x"), textPlain, "public, max-age=60")
 	app := cacheTestBPathKeyedApp(&Config{MaxBytes: fresh + replacement, Storage: storage, accounting: probe.record})
 	app.Get("/:name", func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
@@ -3161,8 +3139,8 @@ func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *
 
 	cacheTestAExpect(t, app, "/old", cacheMiss)
 
-	storage.armed.Store(true)
-	evicting := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/new"), storage.started, storage.continueDelete)
+	gate.armed.Store(true)
+	evicting := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/new"), gate.entered, gate.release)
 
 	apptest.Expect(t, app, cacheTestAGetCC("/old?replacement=true", "max-age=0"), fiber.StatusOK)
 
@@ -3170,7 +3148,7 @@ func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *
 	require.Equal(t, fiber.StatusOK, unstored.StatusCode)
 	require.Equal(t, cacheUnreachable, unstored.Header.Get("X-Cache"))
 	cacheTestBRequireAccounting(t, probe, replacement, 1)
-	require.True(t, storage.Holds(storage.key), "the replacement is stored")
+	require.True(t, storage.Holds(key), "the replacement is stored")
 }
 
 func Test_CacheStorage_FailedEvictionPutsBackWhatTheStorageHolds(t *testing.T) {
@@ -3186,14 +3164,10 @@ func Test_CacheStorage_FailedEvictionPutsBackWhatTheStorageHolds(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			clock := cacheTestCClock()
-			storage := &blockingFailedEvictionStorage{
-				Memory:         storagetest.New(),
-				key:            cacheKeyVersion + "|GET|/a",
-				started:        make(chan struct{}),
-				continueDelete: make(chan struct{}),
-			}
+			key, gate := cacheKeyVersion+"|GET|/a", newCacheTestGate(false)
+			storage := cacheTestParkedDelete(key, gate, errors.New("eviction delete failed"))
 			probe := &accountingProbe{}
-			entry := charged(storage.key, len("x"), textPlain) // /a and /b alike
+			entry := charged(key, len("x"), textPlain) // /a and /b alike
 			bigKey := cacheKeyVersion + "|GET|/big"
 			var withdrawn atomic.Bool
 			app := cacheTestBPathKeyedApp(&Config{MaxBytes: 2 * entry, Storage: storage, accounting: probe.record, clock: clock.Now})
@@ -3214,8 +3188,8 @@ func Test_CacheStorage_FailedEvictionPutsBackWhatTheStorageHolds(t *testing.T) {
 			cacheTestBRequireAccounting(t, probe, 2*entry, 2)
 
 			// The store of /big pops both nodes and parks in the delete of /a, which then fails.
-			storage.armed.Store(true)
-			evicting := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/big"), storage.started, storage.continueDelete)
+			gate.armed.Store(true)
+			evicting := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/big"), gate.entered, gate.release)
 			withdrawn.Store(tc.withdraw)
 			cacheTestAExpect(t, app, cacheTestAGetCC("/b", tc.reload), cacheUnreachable)
 			require.Equal(t, cacheUnreachable, evicting.finish(t).Header.Get("X-Cache"))
@@ -3225,7 +3199,7 @@ func Test_CacheStorage_FailedEvictionPutsBackWhatTheStorageHolds(t *testing.T) {
 				held = 2
 			}
 			require.Equal(t, !tc.withdraw, storage.Holds(cacheKeyVersion+"|GET|/b"))
-			require.True(t, storage.Holds(storage.key))
+			require.True(t, storage.Holds(key))
 			cacheTestBRequireAccounting(t, probe, uint(held)*entry, held)
 		})
 	}
@@ -3405,17 +3379,13 @@ func (r *cacheTestBRace) finish(t *testing.T) {
 
 func Test_Cache_ConcurrentUncacheableCleanupPreservesReplacementAccounting(t *testing.T) {
 	t.Parallel()
-	storage := &blockingDeleteStorage{
-		Memory:         storagetest.New(),
-		deleteStarted:  make(chan struct{}),
-		continueDelete: make(chan struct{}),
-		key:            cacheKeyVersion + "|GET|/cached",
-	}
+	gate := newCacheTestGate(true)
+	storage := cacheTestParkedDelete(cacheKeyVersion+"|GET|/cached", gate, nil)
 	probe := &accountingProbe{}
 	app := cacheTestBPathKeyedApp(&Config{MaxBytes: 2 * replacementCharge, Storage: storage, accounting: probe.record})
 	app.Get("/cached", cacheTestBVersionedOrigin(nil, nil))
 
-	race := cacheTestBStartRace(t, app, storage.deleteStarted, storage.continueDelete)
+	race := cacheTestBStartRace(t, app, gate.entered, gate.release)
 	race.replace(t)
 	cacheTestBRequireAccounting(t, probe, replacementCharge, 1)
 
@@ -4726,13 +4696,14 @@ func Test_Cache_OrphanedMetadataKeepsAReplacement(t *testing.T) {
 			replacedStatus, errReplace = resp.StatusCode, resp.Body.Close()
 		}
 	}
-	storage.onGet = func(k string) {
+	storage.onGet = func(k string) error {
 		if k == bodyKey(key) && !storage.Holds(k) {
 			missed.Store(true)
 		}
 		replace(k)
+		return nil
 	}
-	storage.onDelete = replace
+	storage.onDelete = func(k string) error { replace(k); return nil }
 
 	// only-if-cached stores no answer of its own, which would replace the entry either way.
 	cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", "only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
