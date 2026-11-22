@@ -821,6 +821,12 @@ func New(config ...Config) fiber.Handler {
 						guard.Unlock()
 						rawBody, err := manager.getRaw(reqCtx, bodyKey(key))
 						if err != nil {
+							// A request whose context ended gets the error, as for a failed lookup (see unserved).
+							if !errors.Is(err, errCacheMiss) && reqCtx.Err() != nil {
+								manager.release(e)
+								e = nil
+								return true, err
+							}
 							// Metadata without its body goes unless replaced meanwhile; a failed read keeps it.
 							if errors.Is(err, errCacheMiss) {
 								err = deleteFound(reqCtx)
@@ -1693,7 +1699,13 @@ func New(config ...Config) fiber.Handler {
 				_, tracked := heap.findKey(key)
 				mux.Unlock()
 				if !tracked {
-					if delErr := deleteKey(reqCtx, key); delErr != nil {
+					delErr := deleteKey(reqCtx, key)
+					if delErr == nil {
+						// Gone now, so an eviction that popped the node and then fails must not put it back.
+						mux.Lock()
+						removeDeleted(key, heapIdx, heapGen)
+						mux.Unlock()
+					} else {
 						// Still stored, so track it again for a later eviction to retry.
 						untracked := evictionCandidate{
 							key: key, manifest: entryManifest, size: entrySize, exp: evictAt, expires: entryExpires, oldGen: heapGen,

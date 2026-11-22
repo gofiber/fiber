@@ -208,21 +208,45 @@ func TestCacheStorageErrors(t *testing.T) {
 
 func Test_Cache_StorageFailureOfADoneRequestRunsNoHandler(t *testing.T) {
 	t.Parallel()
-	var failures cacheTestAFailures
-	app := failures.app()
-	app.Use(func(c fiber.Ctx) error {
-		ctx, cancel := context.WithCancel(c.Context())
-		cancel()
-		c.SetContext(ctx)
-		return c.Next()
-	})
-	app.Use(New(Config{Storage: &storagetest.Memory{HonorContext: true}}))
-	var calls atomic.Int32
-	app.Get("/", func(c fiber.Ctx) error { calls.Add(1); return c.SendString("ok") })
+	for _, tc := range []struct {
+		storage fiber.Storage
+		name    string
+		stored  bool
+	}{
+		{name: "lookup", storage: &storagetest.Memory{HonorContext: true}},
+		{name: "body read", stored: true, storage: &hookedStorage{Memory: storagetest.New(), onGet: func(k string) error {
+			if k == bodyKey(defaultKey("/")) {
+				return context.Canceled
+			}
+			return nil
+		}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var failures cacheTestAFailures
+			app := failures.app()
+			app.Use(func(c fiber.Ctx) error {
+				if c.Get("X-Done") != "" {
+					ctx, cancel := context.WithCancel(c.Context())
+					cancel()
+					c.SetContext(ctx)
+				}
+				return c.Next()
+			})
+			app.Use(New(Config{Storage: tc.storage}))
+			var calls atomic.Int32
+			app.Get("/", func(c fiber.Ctx) error { calls.Add(1); return c.SendString("ok") })
+			if tc.stored {
+				cacheTestAExpectBody(t, app, "/", cacheMiss, "ok")
+			}
+			before := calls.Load()
 
-	apptest.ExpectBody(t, app, "/", fiber.StatusInternalServerError, "storage failure")
-	require.ErrorIs(t, failures.err, context.Canceled)
-	require.Zero(t, calls.Load())
+			done := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Done", "1"))
+			apptest.ExpectBody(t, app, done, fiber.StatusInternalServerError, "storage failure")
+			require.ErrorIs(t, failures.err, context.Canceled)
+			require.Equal(t, before, calls.Load())
+		})
+	}
 }
 
 // conventions:ignore parallel: the default logger is redirected to read what is logged

@@ -118,6 +118,53 @@ func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsTrackedWhenDeleteFails(t *test
 	}
 }
 
+func Test_Cache_MaxBytes_EntryTakenBackOutIsNotRetracked(t *testing.T) {
+	t.Parallel()
+	key := func(target string) string { return cacheKeyVersion + "|GET|" + target }
+	gate := newCacheTestGate(true)
+	evicted := make(chan error, 1)
+	app := fiber.New()
+	var entered atomic.Bool
+	storage := &hookedStorage{Memory: storagetest.New(), onDelete: func(k string) error {
+		if k == key("/first/100") && gate.park() {
+			return errors.New("storage unavailable")
+		}
+		return nil
+	}}
+	// /evict pops /first and /inflight, then parks deleting /first while /inflight is written.
+	storage.onSet = func(k string, _ time.Duration) error {
+		if k == bodyKey(key("/inflight/100")) && entered.CompareAndSwap(false, true) {
+			go func() {
+				resp, err := app.Test(apptest.Req(fiber.MethodGet, "/evict/150"))
+				if err == nil {
+					err = resp.Body.Close()
+				}
+				evicted <- err
+			}()
+			<-gate.entered
+		}
+		return nil
+	}
+	probe := &accountingProbe{}
+	maxBytes := charged(key("/first/100"), 100, textPlain) + charged(key("/inflight/100"), 100, textPlain)
+	app.Use(New(Config{
+		ExpirationGenerator: stableAscendingExpiration(),
+		KeyGenerator:        pathKey,
+		MaxBytes:            maxBytes,
+		Storage:             storage,
+		accounting:          probe.record,
+	}))
+	app.Get("/:name/:size", func(c fiber.Ctx) error { return c.Send(make([]byte, fiber.Params[int](c, "size"))) })
+
+	require.Equal(t, cacheMiss, apptest.Expect(t, app, "/first/100", fiber.StatusOK).Header.Get("X-Cache"))
+	apptest.Expect(t, app, "/inflight/100", fiber.StatusOK)
+	close(gate.release)
+	require.NoError(t, apptest.Recv(t, evicted, 5*time.Second, "the evicting request did not finish"))
+
+	require.Equal(t, 1, probe.nodes(), "only /first, whose delete failed, is tracked again")
+	require.Equal(t, charged(key("/first/100"), 100, textPlain), probe.counted())
+}
+
 // The in-memory store offers no seam between the two steps, so this one races
 // for real: distinct keys, every store evicting, then a count of what is held.
 func Test_Cache_MaxBytes_ConcurrentStoresStayWithinLimit(t *testing.T) {
