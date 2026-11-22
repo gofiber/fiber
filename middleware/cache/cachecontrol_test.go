@@ -43,9 +43,8 @@ func Test_parseCacheControlDirectives_Elements(t *testing.T) {
 	}
 }
 
-// Test_parseResponseCacheControl_SmallestLifetimeCounts pins which of two lifetimes a response is
-// stored for: the smallest that can be read, never longer than the first RFC 9111 Section 4.2.1
-// allows, so that another one cannot lengthen it.
+// Test_parseResponseCacheControl_SmallestLifetimeCounts pins that the smallest readable lifetime
+// counts, never longer than the first RFC 9111 Section 4.2.1 allows.
 func Test_parseResponseCacheControl_SmallestLifetimeCounts(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

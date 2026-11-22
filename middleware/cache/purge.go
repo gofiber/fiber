@@ -11,28 +11,16 @@ import (
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
 )
 
-// purgeSlots is how many paths a purgeTable tells apart: a power of two, so a hash picks a slot with a mask.
+// purgeSlots is a power of two, so a hash picks a slot with a mask.
 const purgeSlots = 1 << 14
 
-// purgeFoldBuf is the room slot folds a host or a path in on the stack; a longer one is folded on the heap.
+// purgeFoldBuf is the stack room slot folds a host or path in; a longer one is folded on the heap.
 const purgeFoldBuf = 128
 
-// purgeTable remembers when a request that is not safe last succeeded at a path. A cache must invalidate
-// the target URI when it gets a non-error response to one (RFC 9111 §4.4), and an entry stored by a
-// request that began before the change may hold what it was before.
-//
-// A fixed table indexed by a keyed hash of the host and the path rather than a record for each path: the
-// client chooses the paths of its requests, and a record apiece would grow with them, while a record
-// only for the paths that hold an entry would have to know them. Two paths that share a slot share what a
-// write to either does, which ends an entry early and never keeps one. The seed is random for every
-// table, so a client cannot pick a path that lands in the slot of another. The slots are allocated at the
-// first write, so an app that never sees one pays a pointer load per hit.
-//
-// Writes and entries are stamped on a clock of the table's own: the wall time of one reading of now, start,
-// plus the time now says has passed since, which real time measures by the monotonic clock. Stamped by the
-// wall clock, a step back, as NTP may set it, made an entry stored by a request that began before a write
-// look as if it came after, and was served, and a step forward put a write in the future, which ended the
-// entries of its path until real time caught up.
+// purgeTable records when an unsafe request last succeeded at each path, ending entries whose request began
+// earlier (RFC 9111 §4.4). A fixed table under a randomly keyed hash of host and path, so clients can neither
+// grow it nor aim at another path's slot; a collision only ends an entry early. Stamps add monotonic time to
+// one wall-clock reading, so clock steps cannot reorder writes and entries.
 type purgeTable struct {
 	slots atomic.Pointer[[purgeSlots]atomic.Uint64]
 	now   func() time.Time
@@ -56,8 +44,7 @@ func (t *purgeTable) stamp() uint64 {
 	return t.base + uint64(elapsed)
 }
 
-// unsafeMethod reports whether a request of the method may change what the server holds: any method that
-// is not one of the safe ones (RFC 9110 §9.2.1, and QUERY, RFC 10008), unknown ones included (RFC 9111 §4.4).
+// unsafeMethod reports whether method is unsafe, unknown ones included (RFC 9110 §9.2.1, RFC 10008).
 func unsafeMethod(method string) bool {
 	switch method {
 	case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace, fiber.MethodQuery:
@@ -67,16 +54,13 @@ func unsafeMethod(method string) bool {
 	}
 }
 
-// slot is where the writes to a path are kept. The host and path are folded to lower case, and the path
-// loses its trailing slashes but for the root, as the router takes "/Item" and "/item/" for "/item" unless
-// CaseSensitive or StrictRouting say otherwise: a write to one may well have changed what the other holds,
-// and ending too many entries costs a request, where ending too few serves one that is out of date.
+// slot is where the writes to a path are kept. Case and trailing slashes are folded, as the router does by
+// default: ending too many entries costs a request, ending too few serves a stale one.
 func (t *purgeTable) slot(host, path string) uint64 {
 	if path = utils.TrimRight(path, '/'); path == "" {
 		path = "/"
 	}
-	// Folded in a local array: lowering the strings allocated for every hit, once a write had been seen,
-	// on a path or a forwarded host that holds a capital letter.
+	// Folded on the stack, so that hits do not allocate.
 	var buf [purgeFoldBuf]byte
 	h := maphash.Bytes(t.seed, utilsbytes.UnsafeToLower(append(buf[:0], host...)))
 	p := maphash.Bytes(t.seed, utilsbytes.UnsafeToLower(append(buf[:0], path...)))
@@ -91,8 +75,7 @@ func unixNanos(t time.Time) uint64 {
 	return 0
 }
 
-// mark notes that a request that is not safe succeeded at the path in slot at the time, which is when
-// its response was ready: every request that began before it may have read what it changed.
+// mark records an unsafe request's success at the path in slot, stamped when its response was ready.
 func (t *purgeTable) mark(slot, at uint64) {
 	slots := t.slots.Load()
 	if slots == nil {
@@ -102,9 +85,7 @@ func (t *purgeTable) mark(slot, at uint64) {
 	raise(&slots[slot], at)
 }
 
-// supersedes reports whether a request that is not safe succeeded at the path of the request after the
-// request that stored e began, so that e is not the response to what the path holds now. An entry that
-// carries no such time, one an earlier version stored, is superseded by any write there, as it cannot say.
+// supersedes reports whether a write succeeded at the path after e's request began; any write ends an unstamped e.
 func (t *purgeTable) supersedes(host, path string, e *item) bool {
 	slots := t.slots.Load()
 	if slots == nil {

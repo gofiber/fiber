@@ -200,9 +200,7 @@ func (f *cacheTestAFailures) app() *fiber.App {
 	})
 }
 
-// A Storage that fails does not fail the request: the handler answers it, the failure is logged
-// and X-Cache says the cache had no part in the answer. It was a 500 carrying the Storage's own
-// error, so an outage of the store was an outage of every route behind the cache.
+// A failing Storage does not fail the request: the handler answers it, and X-Cache says so.
 func TestCacheStorageErrors(t *testing.T) {
 	t.Parallel()
 	key := defaultKey("/")
@@ -220,12 +218,10 @@ func TestCacheStorageErrors(t *testing.T) {
 	}{
 		{name: "get", op: storagetest.OpGet, key: key, want: unstored},
 		{name: "get of the Vary manifest", op: storagetest.OpGet, key: manifestKeyPrefix + key, want: unstored},
-		// 0xc1 is the one byte MessagePack never uses: an entry no version of the middleware wrote. It is
-		// a miss, and the handler's answer replaces it.
+		// 0xc1 is never valid MessagePack: a miss, which the handler's answer replaces.
 		{name: "entry that cannot be decoded", stored: []byte{0xc1}, want: [2]string{cacheMiss, cacheHit}},
 		{name: "set of the body", op: storagetest.OpSet, key: bodyKey(key), want: unstored},
 		{name: "set of the entry", op: storagetest.OpSet, key: key, want: unstored},
-		// The expired entry that cannot be deleted is replaced by the handler's answer, which is then a hit.
 		{name: "delete", op: storagetest.OpDelete, key: key, stored: expired, want: [2]string{cacheMiss, cacheHit}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -244,11 +240,9 @@ func TestCacheStorageErrors(t *testing.T) {
 			var calls atomic.Int32
 			app.Get("/", func(c fiber.Ctx) error { calls.Add(1); return c.SendString("ok") })
 
-			// only-if-cached forbids the handler, so there is nothing to answer it with.
 			cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", "only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
 			require.Zero(t, calls.Load())
 
-			// The handler answers every request the cache cannot, for as long as the Storage fails.
 			answered := int32(0)
 			for _, want := range tc.want {
 				cacheTestAExpectBody(t, app, "/", want, "ok")
@@ -262,9 +256,7 @@ func TestCacheStorageErrors(t *testing.T) {
 	}
 }
 
-// A Storage that fails with the error of a request context that is done, as that of a request timeout.New gave
-// up on is, leaves the request to whatever ended the context: the handler ran for a request that had been
-// answered, and the log put the failure down to the Storage.
+// A Storage failing with a done request context's error leaves the request to whatever ended it.
 func Test_Cache_StorageFailureOfADoneRequestRunsNoHandler(t *testing.T) {
 	t.Parallel()
 	var failures cacheTestAFailures
@@ -284,8 +276,7 @@ func Test_Cache_StorageFailureOfADoneRequestRunsNoHandler(t *testing.T) {
 	require.Zero(t, calls.Load())
 }
 
-// What a failing Storage does is logged, now that the request no longer fails with it: the operation,
-// the Storage's own error, and the key as a placeholder unless DisableValueRedaction is set.
+// A Storage failure is logged with the operation, the error, and the key, redacted unless DisableValueRedaction.
 // conventions:ignore parallel: the default logger is redirected to read what is logged
 func Test_Cache_StorageFailureIsLogged(t *testing.T) {
 	key := defaultKey("/")
@@ -347,9 +338,7 @@ func Test_Cache_StorageFailureIsLogged(t *testing.T) {
 	}
 }
 
-// An entry found for an only-if-cached request and dropped rather than served leaves nothing to answer
-// it with, whether or not the Storage lets go of the entry: 504, and the handler is not reached. The
-// entry dropped as expired, or for want of its body, sent the request on to the handler.
+// An only-if-cached request whose entry is dropped rather than served gets 504, never the handler.
 func Test_Cache_OnlyIfCachedEntryDropped(t *testing.T) {
 	t.Parallel()
 	key := defaultKey("/")
@@ -384,10 +373,7 @@ func Test_Cache_OnlyIfCachedEntryDropped(t *testing.T) {
 	}
 }
 
-// A response that no longer varies ends the Vary manifest of its URL before it is stored. While the
-// Storage keeps the manifest, a lookup goes on selecting by it and would not reach the response, so the
-// response is not stored: the request is answered all the same, and the variant stored earlier is
-// served until the manifest can go.
+// A response that no longer varies is not stored while the stale Vary manifest cannot be deleted.
 func Test_Cache_StaleVaryManifestThatCannotBeDeleted(t *testing.T) {
 	t.Parallel()
 	storage := storagetest.New()
@@ -1018,8 +1004,7 @@ func cacheTestAExpectRepeat(t *testing.T, app *fiber.App, target string) []byte 
 	return body
 }
 
-// Next is asked again once the handler has answered, and keeps out of the cache a response it judges
-// by what it sees there, one that would be stored otherwise, as a 404 is.
+// Next is asked again after the handler, and can keep a response it judges, such as a 404, unstored.
 func Test_Cache_NextSeesTheResponse(t *testing.T) {
 	t.Parallel()
 	var handled atomic.Int32
@@ -1333,7 +1318,7 @@ func Test_StoreResponseHeaders_KeepsRepeatedFieldLines(t *testing.T) {
 	resp = cacheTestAExpect(t, app, "/", cacheHit)
 	// Vary is carried by the entry itself rather than by the stored header
 	// list, and comes back on one line with every name (RFC 9110 §5.3), then
-	// the request headers the key tells entries apart by that it does not name.
+	// the key's other headers.
 	require.Equal(t, []string{"Cookie,Accept-Encoding, Accept, Accept-Language"}, resp.Header.Values("Vary"))
 	require.Equal(t, []string{"default-src 'none'", "script-src 'self'"}, resp.Header.Values("Content-Security-Policy"))
 	// A name sent once is still restored once, so the fix did not turn Set into
@@ -2003,10 +1988,7 @@ func Test_Cache_MaxBytesEviction(t *testing.T) {
 	}
 }
 
-// An entry is evicted in the order it would expire, counting no more than Expiration from when it was
-// stored. Counted to its own expiry, an entry with a long lifetime went last for as long as it lived: a
-// burst of requests for such a route under query strings the client made up filled the cache with entries
-// that outlasted everything stored after them, which then evicted one another.
+// Eviction counts an entry's lifetime as no more than Expiration from when it was stored.
 func Test_Cache_EvictionOrderCountsNoMoreThanExpiration(t *testing.T) {
 	t.Parallel()
 	lifetime := func(c fiber.Ctx, _ *Config) time.Duration {
@@ -2058,9 +2040,7 @@ func Test_Cache_EvictionOrderCountsNoMoreThanExpiration(t *testing.T) {
 	}
 }
 
-// An entry that has expired, and is kept only for a request that accepts a stale one, is evicted before any
-// that is fresh. Ordered by when an entry is due, counted no more than Expiration from when it was stored, an
-// entry fresh for a year that was stored long enough ago went first, and the expired one stayed.
+// An expired entry, kept only for max-stale, is evicted before any fresh one, even one due sooner.
 func Test_Cache_EvictionTakesAnExpiredEntryFirst(t *testing.T) {
 	t.Parallel()
 	clock := cacheTestCClock()
@@ -2490,9 +2470,7 @@ func Test_CacheOnlyIfCachedWithNoCache(t *testing.T) {
 	}
 }
 
-// A request that sends no-store beside only-if-cached is answered from the cache, or with 504: no-store forbids
-// storing, not serving what is stored (RFC 9111 Section 5.2.1.5), and only-if-cached forbids the handler
-// (Section 5.2.1.7). It reached the handler either way.
+// no-store with only-if-cached is answered from the cache or with 504 (RFC 9111 Sections 5.2.1.5, 5.2.1.7).
 func Test_CacheOnlyIfCachedWithNoStore(t *testing.T) {
 	t.Parallel()
 	app, calls := cacheTestAOrigin(New(Config{Expiration: time.Hour}), "origin-")
@@ -2571,7 +2549,7 @@ func Test_CachePreservesCacheControlHeaders(t *testing.T) {
 	}
 }
 
-// A response that gives its lifetime twice is stored for the smaller, on one field line or on two.
+// A lifetime given twice counts the smaller, on one field line or two.
 func Test_Cache_SmallestLifetimeOfTheResponseCounts(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -3339,10 +3317,7 @@ func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *
 	require.True(t, storage.Holds(storage.key), "the replacement is stored")
 }
 
-// A store that cannot make room puts back the nodes it popped, but not the node of an entry a request deleted
-// while the eviction's deletes ran: that request found no node to take out, and the bytes of an entry that was
-// gone stayed counted against MaxBytes, evicting live entries in its place, until a later eviction popped the
-// node again. An entry a request only failed to replace is still stored, and is put back.
+// A failed eviction puts back its popped nodes, except that of an entry a request deleted meanwhile.
 func Test_CacheStorage_FailedEvictionPutsBackWhatTheStorageHolds(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -4249,8 +4224,7 @@ func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 		}
 	}
 
-	// The next request needs the room of /first, which cannot be deleted: it is answered unstored,
-	// and /first is still served.
+	// /second needs the room of /first, which cannot be deleted: it is answered unstored.
 	cacheTestAExpectBody(t, app, "/second", cacheUnreachable, "data")
 	t.Logf("stored keys after deletion failure: %v", storage.Keys())
 	cacheTestAExpect(t, app, "/first", cacheHit)
@@ -4260,10 +4234,7 @@ func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 	cacheTestAExpect(t, app, "/third", cacheMiss)
 }
 
-// A store that cannot make room because a delete fails puts the nodes it popped back. Those after the
-// one that failed were not touched, so they go back without a read of the Storage for each: every one was
-// read back, and logged when that failed, which asked a Storage that was failing already for as many reads
-// as the entries the store needed room from, MaxBytes / 256 of them at most.
+// A failed eviction puts the untouched nodes back without reading the Storage for each.
 func Test_Cache_FailedEvictionChecksOnlyTheEntryItFailedOn(t *testing.T) {
 	t.Parallel()
 	const entries = 20
@@ -4967,8 +4938,7 @@ func Test_Cache_OrphanedMetadataWithoutBody(t *testing.T) {
 	}
 }
 
-// The metadata a request finds without its body goes only if no request replaced it meanwhile: deleted
-// without that check, it took with it the entry another request had just stored, body and all.
+// Metadata found without its body is deleted only if no request replaced it meanwhile.
 func Test_Cache_OrphanedMetadataKeepsAReplacement(t *testing.T) {
 	t.Parallel()
 	key := defaultKey("/")
@@ -4979,8 +4949,7 @@ func Test_Cache_OrphanedMetadataKeepsAReplacement(t *testing.T) {
 	delete(storage.Data, bodyKey(key))
 	storage.Mu.Unlock()
 
-	// Once the lookup below has missed the body, another request stores a fresh entry before the lookup
-	// reaches the Storage again.
+	// After the lookup misses the body, another request stores a fresh entry before it reaches the Storage again.
 	var (
 		missed, replaced atomic.Bool
 		replacedStatus   int
@@ -5011,9 +4980,7 @@ func Test_Cache_OrphanedMetadataKeepsAReplacement(t *testing.T) {
 	cacheTestAExpectBody(t, app, "/", cacheHit, "response-2")
 }
 
-// An entry whose body the Storage does not hand over is a miss, not a failure: the handler answers,
-// and its answer replaces the entry when the Storage takes it. only-if-cached forbids the handler, so
-// that request is answered 504, as it is for a URL with nothing stored.
+// An entry whose body cannot be fetched is a miss, which only-if-cached answers with 504.
 func Test_Cache_BodyFetchFailure(t *testing.T) {
 	t.Parallel()
 	key := defaultKey("/")
@@ -5135,9 +5102,7 @@ func Test_Cache_VaryIsReplayedOnHit(t *testing.T) {
 				t.Helper()
 				resp := cacheTestAExpectBody(t, app, cacheTestAAcceptLanguage("en"), wantStatus, "page-in:en")
 				// Once, not once per place it is kept: under StoreResponseHeaders
-				// the stored header list must not carry a second copy. A hit given a
-				// Cache-Control of the middleware's own adds the other headers the key
-				// tells entries apart by.
+				// the stored header list must not carry a second copy.
 				wantVary := fiber.HeaderAcceptLanguage
 				if wantStatus == cacheHit && tc.wantCacheControl != "" {
 					wantVary += ", Accept, Accept-Encoding"
@@ -5160,9 +5125,7 @@ func Test_Cache_VaryIsReplayedOnHit(t *testing.T) {
 	}
 }
 
-// Sequential: testing.AllocsPerRun panics in a parallel test. A hit of an entry stored with a Vary adds the
-// headers the key splits by to it without an allocation of its own: c.Vary built the list by concatenating
-// strings, two or three allocations on every such hit.
+// Sequential: testing.AllocsPerRun panics in a parallel test. Merging a stored Vary must not allocate.
 func Test_Cache_HitMergesTheKeyVaryWithoutAllocating(t *testing.T) {
 	hitAllocs := func(cfg Config, wantVary string) int {
 		app := fiber.New()
@@ -5185,8 +5148,7 @@ func Test_Cache_HitMergesTheKeyVaryWithoutAllocating(t *testing.T) {
 		serve()
 		require.Equal(t, cacheHit, cacheTestXCache(fctx))
 		require.Equal(t, wantVary, string(fctx.Response.Header.Peek(fiber.HeaderVary)))
-		// The fewest of many single runs, not an average: under -race sync.Pool drops a quarter of what it
-		// is handed at random, so an average varies from one run to the next.
+		// The fewest of many single runs: under -race sync.Pool drops items at random, so averages vary.
 		fewest := math.MaxFloat64
 		for range 200 {
 			fewest = min(fewest, testing.AllocsPerRun(1, serve))
@@ -5218,10 +5180,8 @@ func Test_Cache_CredentialKeyedHitIsPrivate(t *testing.T) {
 		// A Cache-Control of the handler's own.
 		cacheControl string
 		// What the hit must carry: Vary with its field lines joined, and the
-		// exact Cache-Control, which defaults to the private form. The Vary of
-		// the miss is the handler's own; a hit that is given a Cache-Control adds
-		// the request headers the key tells entries apart by, wantHitVary when
-		// that differs from the handler's.
+		// exact Cache-Control, which defaults to the private form. A hit given a
+		// Cache-Control also names the key's headers: wantHitVary, when that differs.
 		wantVary         string
 		wantHitVary      string
 		wantCacheControl string
@@ -5388,7 +5348,6 @@ func Test_Cache_VaryReplayedWithCompress(t *testing.T) {
 	app.Use(compress.New())
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString(strings.Repeat("compressible ", 256)) })
 
-	// The hit adds the other headers the key tells entries apart by.
 	for _, step := range [][2]string{{cacheMiss, "Accept-Encoding"}, {cacheHit, "Accept-Encoding, Accept, Accept-Language"}} {
 		want, vary := step[0], step[1]
 		req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAcceptEncoding, "gzip"))
@@ -5494,7 +5453,6 @@ func Test_Cache_VaryLongerThanEntryLimitIsUncacheable(t *testing.T) {
 				}
 				body := apptest.Body(t, resp)
 				require.Equal(t, "body", body, "request %d", i+1)
-				// A hit names the request headers the key tells entries apart by after the stored ones.
 				wantVary := vary
 				if want == cacheHit {
 					wantVary += ", Accept, Accept-Encoding, Accept-Language"
@@ -5717,8 +5675,7 @@ func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 	}
 }
 
-// MaxBytes left unset is the default limit for a Config as it is for New(), and only
-// DisableMaxBytes removes it; past configDefault zero is what says no limit.
+// An unset MaxBytes gets the default limit, which only DisableMaxBytes removes.
 func Test_configDefault_MaxBytes(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, ConfigDefault.MaxBytes, configDefault().MaxBytes)
@@ -5740,7 +5697,7 @@ func Test_configDefault_MaxBytes(t *testing.T) {
 	}
 }
 
-// New() takes the DisableMaxBytes of ConfigDefault as New(ConfigDefault) does: it kept the limit.
+// New() honors ConfigDefault.DisableMaxBytes as New(ConfigDefault) does.
 // conventions:ignore parallel: it sets ConfigDefault, which every test that calls New() without a Config reads
 func Test_configDefault_DisableMaxBytesWithoutAConfig(t *testing.T) {
 	saved := ConfigDefault
@@ -5750,10 +5707,7 @@ func Test_configDefault_DisableMaxBytesWithoutAConfig(t *testing.T) {
 	require.Zero(t, configDefault(ConfigDefault).MaxBytes)
 }
 
-// Test_Cache_MaxBytes_DefaultAppliesToAConfig tests that a Config which leaves MaxBytes unset
-// holds no more than cache.New() does. It held everything it was asked for: any client could
-// fill the memory with URLs it made up, and a large file sent as a stream was read into memory
-// to be stored, once for every query it was asked under.
+// Test_Cache_MaxBytes_DefaultAppliesToAConfig tests that a Config without MaxBytes holds no more than New().
 func Test_Cache_MaxBytes_DefaultAppliesToAConfig(t *testing.T) {
 	t.Parallel()
 	third := ConfigDefault.MaxBytes / 3

@@ -191,8 +191,7 @@ func isIgnoredHeader(key []byte) bool {
 	return ok
 }
 
-// keptHeaderNames is keptHeaders keyed the way a field name has to be matched, like
-// ignoredHeaderNames.
+// keptHeaderNames is keptHeaders keyed for matching, like ignoredHeaderNames.
 var keptHeaderNames = func() map[string]struct{} {
 	folded := make(map[string]struct{}, len(keptHeaders))
 	for name := range keptHeaders {
@@ -204,8 +203,7 @@ var keptHeaderNames = func() map[string]struct{} {
 // maxKeptHeaderLen is the longest name in keptHeaderNames.
 const maxKeptHeaderLen = 40
 
-// isKeptHeader reports whether key names a field every entry carries, matched
-// case-insensitively like isIgnoredHeader.
+// isKeptHeader reports, case-insensitively, whether key is one of keptHeaders.
 func isKeptHeader(key []byte) bool {
 	if len(key) > maxKeptHeaderLen {
 		return false

@@ -58,7 +58,7 @@ func Test_Cache_Security_UnusualInputs(t *testing.T) {
 			cache: []string{cacheMiss, cacheHit},
 		},
 		{
-			// Values made of "=", none of which ends a name but the first: sorted, and hashed for its length.
+			// Values made of "=": sorted, and hashed for their length.
 			name:  "excessive query buffer",
 			app:   fiber.Config{ReadBufferSize: 16384}, // large enough to accept the query string for testing
 			url:   cacheTestCQuery(30, "key%d="+strings.Repeat("=", 50)),
@@ -73,13 +73,13 @@ func Test_Cache_Security_UnusualInputs(t *testing.T) {
 		},
 		{name: "long path segment is hashed", route: longPath, url: longPath, cache: []string{cacheMiss, cacheHit}},
 		{
-			// Malformed query string with invalid encoding: nothing decodes it, and it is keyed as it was sent.
+			// Malformed query string with invalid encoding: keyed as sent.
 			name:  "malformed query string",
 			url:   "/?invalid=%ZZ%XX",
 			cache: []string{cacheMiss, cacheHit},
 		},
 		{
-			// 100 values for the same parameter: kept in the order sent, and hashed for its length.
+			// 100 values for the same parameter: kept in order, and hashed for their length.
 			name:  "repeated query parameter",
 			url:   cacheTestCQuery(100, "key=%d"),
 			cache: []string{cacheMiss, cacheHit},
@@ -193,12 +193,8 @@ func Test_Cache_Security_KeyValuesStayDistinct(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_TargetSpellingsStayDistinct tests that two requests share an entry only when
-// their targets are spelled the same, the order of query parameters with different names aside. A
-// handler reads the target as it was sent, so what it answers one spelling with is not the answer
-// to another: an echo of the target is markup in the page of the client it is served to. A browser
-// escapes a quote and an angle bracket in a query, resolves dot segments and sends no fragment, so
-// it cannot send such a target itself, and was served it when its own shared the entry.
+// Test_Cache_Security_TargetSpellingsStayDistinct tests that only targets spelled alike share an entry,
+// the order of differently named query parameters aside, as a handler can echo the raw target.
 func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -277,9 +273,7 @@ func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_RequestBodiesStayDistinct tests that two requests share an entry only when they
-// carry the same body, whatever their method: with POST in Methods, what one client posted was
-// answered with what another had, as the default key held the body of a QUERY alone.
+// Test_Cache_Security_RequestBodiesStayDistinct tests that only requests with the same body share an entry.
 func Test_Cache_Security_RequestBodiesStayDistinct(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -292,7 +286,7 @@ func Test_Cache_Security_RequestBodiesStayDistinct(t *testing.T) {
 		{method: fiber.MethodPost, body: "alice's search", cache: cacheHit},
 		{method: fiber.MethodPost, cache: cacheMiss},
 		{method: fiber.MethodPost, cache: cacheHit},
-		// A GET may carry a body too, and is then no more the GET without one than a POST is.
+		// A GET with a body is keyed by it too.
 		{method: fiber.MethodGet, cache: cacheMiss},
 		{method: fiber.MethodGet, body: "alice's search", cache: cacheMiss},
 		{method: fiber.MethodGet, cache: cacheHit},
@@ -306,11 +300,8 @@ func Test_Cache_Security_RequestBodiesStayDistinct(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_BodylessContentEncodingStaysDistinct tests that a request that names a
-// Content-Encoding but has no body does not share an entry with one that has neither. c.Body() decodes by
-// the encoding whatever the length of the body: for compress, which it cannot undo, it writes a 501 into
-// the response, a cacheable status, and gzip over nothing reads as "EOF". Left out of the key, one request
-// replaced the entry of every plain request for the URL with that answer.
+// Test_Cache_Security_BodylessContentEncodingStaysDistinct tests that a request naming a Content-Encoding
+// without a body does not share an entry with a plain one, as c.Body() may answer it with a cacheable 501.
 func Test_Cache_Security_BodylessContentEncodingStaysDistinct(t *testing.T) {
 	t.Parallel()
 	read := func(c fiber.Ctx) error { return c.SendString("body=" + string(c.Body())) }
@@ -344,7 +335,6 @@ func Test_Cache_Security_BodylessContentEncodingStaysDistinct(t *testing.T) {
 				requireReply(send(), cacheMiss, fiber.StatusOK, "body=")
 				requireReply(send(), cacheHit, fiber.StatusOK, "body=")
 
-				// The request that reloads the entry with the encoding, and the one that repeats it.
 				coded := []apptest.Option{apptest.WithHeader(fiber.HeaderContentEncoding, tc.encoding)}
 				requireReply(send(append(coded, apptest.WithHeader(fiber.HeaderCacheControl, "no-cache"))...), cacheMiss, tc.status, tc.body)
 				requireReply(send(coded...), cacheHit, tc.status, tc.body)
@@ -372,11 +362,8 @@ func Test_Cache_Security_BodylessContentEncodingStaysDistinct(t *testing.T) {
 	})
 }
 
-// Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy tests that a hit that is given a Cache-Control by the
-// middleware names, in its Vary, the request headers the key tells entries apart by. "public, max-age" lets a
-// cache in front of the app store the hit once for the URL, and with no Vary to say which headers the page
-// depends on, it served the page of one tenant or language to every client, the entries the key kept apart
-// being one entry downstream.
+// Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy tests that a hit given the middleware's Cache-Control
+// names the request headers the key splits by in its Vary, so a downstream cache keeps them apart too.
 func Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy(t *testing.T) {
 	t.Parallel()
 	page := func(c fiber.Ctx) error { return c.SendString("page of tenant " + c.Get("X-Tenant")) }
@@ -452,12 +439,8 @@ func Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy tests the hit of a request the default key tells apart by the
-// body it carries, or by the fields that say how the body is decoded. The hit names those fields in its Vary too,
-// and a request that carries a body is answered with a private one, as no Vary names a body: sent as
-// "public, max-age" with the Vary of the key headers alone, it let a cache in front of the app store, for every
-// plain request for the URL, the 501 c.Body() answers a Content-Encoding it cannot undo with, or the answer to
-// one client's body. A cache that serves QUERY keys it by its content (RFC 10008), so that hit stays public.
+// Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy tests that a body-keyed hit names the body's fields in its
+// Vary and, as no Vary names a body, is private when the request has one, except for QUERY (RFC 10008).
 func Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy(t *testing.T) {
 	t.Parallel()
 	const keyHeaders, bodyFields = "Accept, Accept-Encoding, Accept-Language", ", Content-Encoding, Content-Type"
@@ -501,9 +484,7 @@ func Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_NextSkipsTheLookup tests that a request Next skips is not served what another
-// request stored. Next was asked only before a response was stored, so one written to keep requests
-// without a credential away from the cache left them the stored response of a request that had it.
+// Test_Cache_Security_NextSkipsTheLookup tests that a request Next skips is not served a stored response.
 func Test_Cache_Security_NextSkipsTheLookup(t *testing.T) {
 	t.Parallel()
 	var handled, asked atomic.Int32
@@ -540,10 +521,7 @@ func Test_Cache_Security_NextSkipsTheLookup(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_HitDoesNotShareTheStoredBody tests that what a middleware in front of the cache
-// does to the body of one hit stays with that response. The hit was handed the stored body itself,
-// so one that masks part of a response in place masked the entry, and every later client was served
-// the masked body.
+// Test_Cache_Security_HitDoesNotShareTheStoredBody tests that editing a hit's body in place spares the entry.
 func Test_Cache_Security_HitDoesNotShareTheStoredBody(t *testing.T) {
 	t.Parallel()
 	const body = "card 4111111111111111"
@@ -573,10 +551,7 @@ func Test_Cache_Security_HitDoesNotShareTheStoredBody(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_HitKeepsTheHeadersThatRestrictTheBody tests that a hit carries the fields by
-// which the stored response restricted what a client does with its body, without
-// StoreResponseHeaders: a hit came without them, so a download was rendered in the page's origin
-// and a page lost its Content-Security-Policy and its framing rule for as long as it was cached.
+// Test_Cache_Security_HitKeepsTheHeadersThatRestrictTheBody tests keptHeaders without StoreResponseHeaders.
 func Test_Cache_Security_HitKeepsTheHeadersThatRestrictTheBody(t *testing.T) {
 	t.Parallel()
 	kept := map[string][]string{}
@@ -597,9 +572,7 @@ func Test_Cache_Security_HitKeepsTheHeadersThatRestrictTheBody(t *testing.T) {
 			})
 			app.Use(New(Config{Storage: storageOf(kind), Expiration: time.Hour}))
 			app.Get("/", func(c fiber.Ctx) error {
-				// The field set in front of the cache goes first, before the others are added: fasthttp
-				// fills the place of a field it removes with the last one, which turned the two lines
-				// of the Content-Security-Policy around whenever it was removed after them.
+				// Deleted before the others are added, as Del moves the last line into its place.
 				c.Response().Header.Del(fiber.HeaderXFrameOptions)
 				for name, lines := range kept {
 					for _, line := range lines {
@@ -625,8 +598,7 @@ func Test_Cache_Security_HitKeepsTheHeadersThatRestrictTheBody(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_HitKeepsWhatFiberSetsToRestrictTheBody runs the same through the two places
-// Fiber itself sets such fields: a download, and the helmet middleware registered behind the cache.
+// Test_Cache_Security_HitKeepsWhatFiberSetsToRestrictTheBody covers a download and helmet behind the cache.
 func Test_Cache_Security_HitKeepsWhatFiberSetsToRestrictTheBody(t *testing.T) {
 	t.Parallel()
 	upload := filepath.Join(t.TempDir(), "upload.html")
@@ -654,9 +626,7 @@ func Test_Cache_Security_HitKeepsWhatFiberSetsToRestrictTheBody(t *testing.T) {
 	require.Greater(t, set, 5, "helmet sets a field for most of its protections")
 }
 
-// A hit keeps the order of the lines of a field that a middleware in front of the cache repeats, which is part
-// of the field's value (RFC 9110 Section 5.3). Replaying the fields every entry keeps, as helmet sets them in
-// front of the cache, turned those lines around.
+// A hit keeps the order of a field's lines that a middleware in front of the cache repeats (RFC 9110 Section 5.3).
 func Test_Cache_Security_HitKeepsTheOrderOfRepeatedLines(t *testing.T) {
 	t.Parallel()
 	links := []string{"</first.css>; rel=preload; as=style", "</second.js>; rel=preload; as=script"}
@@ -676,9 +646,8 @@ func Test_Cache_Security_HitKeepsTheOrderOfRepeatedLines(t *testing.T) {
 	}
 }
 
-// A hit replays every stored line of a field that a middleware in front of the cache also sets, in place of the
-// line that middleware set, the first written over it and the rest after it, past the 64 lines a hit marks without
-// an allocation too.
+// A hit replays every stored line of a field a middleware in front of the cache also sets in place of that
+// middleware's line, past the 64 lines marked without allocating too.
 func Test_Cache_Security_HitReplacesTheLinesSetInFrontOfTheCache(t *testing.T) {
 	t.Parallel()
 	robots := make([]string, 70)
@@ -746,8 +715,7 @@ func Test_Cache_Security_HitReplacesTheLinesSetInFrontOfTheCache(t *testing.T) {
 	}
 }
 
-// Every name in keptHeaders is matched whatever case it is written in, within the length the
-// lookup folds.
+// Every name in keptHeaders matches in any case, within the length the lookup folds.
 func Test_isKeptHeader(t *testing.T) {
 	t.Parallel()
 	for name := range keptHeaders {
@@ -1272,9 +1240,7 @@ func Test_Cache_Security_QueryBody_StreamedBodyLimit(t *testing.T) {
 	require.Equal(t, cacheMiss, doQuery("other", false).cache)
 }
 
-// With StreamRequestBody, a request whose stream declares an empty body is left its stream: the key gains
-// nothing from an empty body, while reading the stream to find out closed it, so a handler reading
-// c.Request().BodyStream() was handed none.
+// With StreamRequestBody, a stream that declares an empty body is not read, so the handler still gets it.
 func Test_Cache_EmptyBodyStreamIsLeftToTheHandler(t *testing.T) {
 	t.Parallel()
 	app := fiber.New(fiber.Config{StreamRequestBody: true})
@@ -1475,10 +1441,8 @@ func Test_StoreResponseHeaders_DropsTrailer(t *testing.T) {
 	require.Equal(t, "kept", resp.Header.Get("X-Keep"))
 }
 
-// Test_StoreResponseHeaders_DropsConnectionAndProxyFields covers the fields a stored response must
-// not carry to another client besides the ones ignoreHeaders lists by name: one the response names
-// in Connection belongs to the connection it was sent on (RFC 9110 Section 7.6.1), and
-// Proxy-Authentication-Info to the proxy it came through (RFC 9111 Section 3.1).
+// Test_StoreResponseHeaders_DropsConnectionAndProxyFields tests that fields named in Connection (RFC 9110
+// Section 7.6.1) and Proxy-Authentication-Info (RFC 9111 Section 3.1) are not stored.
 func Test_StoreResponseHeaders_DropsConnectionAndProxyFields(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

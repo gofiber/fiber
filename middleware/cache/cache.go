@@ -32,8 +32,7 @@ import (
 // hexLen is the hex-encoded length of a SHA-256 sum, shared by the auth and vary hashers.
 const hexLen = sha256.Size * 2
 
-// replayPlaceholder stands for the stored lines of a name while a hit replays them. The NUL bytes keep it
-// apart from any value a stored line holds.
+// replayPlaceholder holds a replayed name's place; the NUL bytes keep it apart from any real value.
 var replayPlaceholder = []byte("\x00cache replay\x00")
 
 // Sizes for the local arrays the response headers are formatted into, so the
@@ -53,8 +52,7 @@ const (
 // a credential — a cookie, Authorization or another credential header, through Vary, KeyCookies or
 // KeyHeaders — and so holds one user's response: a shared cache downstream that
 // keys on the URL alone would otherwise store it and serve it to the next user.
-// It also goes out when the default key holds the body the request carried, which
-// no Vary can name, so that a cache downstream does not serve it for another body.
+// It also goes out when the default key holds the request body, which no Vary can name.
 const (
 	publicMaxAge  = "public, max-age="
 	privateMaxAge = "private, max-age="
@@ -96,24 +94,13 @@ const (
 // removed is no longer stored, as its key held the value the client sent while the
 // page was built from another. One the earlier rule stored would still be served,
 // on a store that survived the upgrade, to every client sending that value. v8:
-// the default key holds the request target as it was sent, the order of its
-// query parameters aside. The query was decoded and escaped again, and nothing
-// held a fragment or the spelling the routed path arrived in, so an entry stood
-// for every spelling of its target, and on a store that survived the upgrade a
-// plain request would still find, and be served, what another spelling
-// populated. An entry also carries the fields that restrict what a client does
-// with its body (keptHeaders), which one written before would be served
-// without. A request that names a Content-Encoding without a body is keyed apart
-// from one with neither, as c.Body() answers by it: the 501 it writes for
-// compress, stored under the plain key by the earlier rule, would still be served
-// to every plain request on a store that survived the upgrade. An entry carries
-// when the request that stored it began (stored), which a write to its path is
-// judged by; one written before has none, and any write there ends it. Bump this
-// whenever what a key stands for, or what its entry carries,
-// changes; the cost is one cold cache after a deploy. Additive bookkeeping fields
-// such as heapgen need no bump: old entries decode with generation zero, and
-// older readers skip the new field without changing the response or key
-// semantics.
+// the key holds the request target as sent, the query order aside, and keys a
+// bodyless Content-Encoding apart; entries carry keptHeaders and when their
+// request began (stored), which a write to the path is judged by. Bump
+// this whenever what a key stands for, or what its entry carries, changes; the
+// cost is one cold cache after a deploy. Additive bookkeeping fields such as
+// heapgen need no bump: old entries decode with generation zero, and older
+// readers skip the new field without changing the response or key semantics.
 const cacheKeyVersion = "v8"
 
 // The keys derived from an entry key sit right after the version, where no entry
@@ -177,8 +164,7 @@ var ignoreHeaders = map[string]struct{}{
 	"Expires":            {}, // already stored explicitly by the cache manager
 	"Keep-Alive":         {},
 	"Proxy-Authenticate": {},
-	// With the two beside it, the fields RFC 9111 Section 3.1 names as specific to
-	// the proxy a response came through, which the key says nothing about.
+	// Proxy-specific, with the two beside it (RFC 9111 §3.1).
 	"Proxy-Authentication-Info": {},
 	"Proxy-Authorization":       {},
 	// Served to every client matching the key, so a captured Set-Cookie hands one
@@ -196,12 +182,8 @@ var ignoreHeaders = map[string]struct{}{
 	"Vary":              {}, // already stored explicitly by the cache manager
 }
 
-// keptHeaders are the response fields an entry carries whether or not StoreResponseHeaders is set:
-// the ones by which a response restricts what the client does with its body. A hit that came
-// without them handed the body over unrestricted: a download marked as an attachment was rendered
-// in the page's origin, and a page was served without the Content-Security-Policy, the framing
-// rule or the nosniff it was sent with. A field that grants rather than restricts, as the CORS
-// fields do, is not among them, since a hit without it is refused what the first response allowed.
+// keptHeaders are stored even without StoreResponseHeaders: they restrict what a client may do with the
+// body. Fields that grant rather than restrict, such as CORS, are not among them.
 var keptHeaders = map[string]struct{}{
 	fiber.HeaderContentDisposition:              {},
 	fiber.HeaderContentSecurityPolicy:           {},
@@ -289,7 +271,6 @@ func New(config ...Config) fiber.Handler {
 		expires  uint64 // when it stops being fresh
 		oldGen   uint64
 	}
-	// poppedNode names a node an eviction popped, by key and generation.
 	type poppedNode struct {
 		key string
 		gen uint64
@@ -317,17 +298,10 @@ func New(config ...Config) fiber.Handler {
 	heap := newIndexedHeap()
 	// count stored bytes (each entry's body, key and stored headers)
 	var storedBytes uint
-	// An entry is evicted in the order it would expire, but counting no more than Expiration from when it
-	// was stored: one that outlives it, by a long max-age, does not outlast the entries stored after it.
-	// Counted to its own expiry, a burst of requests for a long-lived route under query strings of the
-	// client's making filled the cache with entries that went last, for as long as they lived, and the
-	// entries stored after them evicted one another.
+	// Eviction counts at most Expiration past storing, so a long max-age cannot outlast newer entries.
 	evictionHorizon := uint64(cfg.Expiration.Seconds())
-	// The request headers the key tells entries apart by, which a hit the middleware gives a
-	// Cache-Control of its own has to name in its Vary, and those for a request whose body it holds.
 	keyVary, bodyVary := cfg.keyVaryFields(false), cfg.keyVaryFields(true)
 	keyVaryValue, bodyVaryValue := []byte(strings.Join(keyVary, ", ")), []byte(strings.Join(bodyVary, ", "))
-	// When a request that is not safe last succeeded at each path, for the entries a write ends.
 	purges := cfg.purges
 	if purges == nil {
 		purges = newPurgeTable(cfg.now)
@@ -376,15 +350,10 @@ func New(config ...Config) fiber.Handler {
 		return evictionCandidate{key: entryKey, manifest: entry.manifest, size: size, exp: exp, expires: entry.expires, oldGen: heapGen}, true
 	}
 
-	// evicting holds the nodes that evictions have popped and are still deleting the entries of, and whether
-	// the entry a node stood for has been removed since (see removeDeleted). Guarded by mux.
+	// evicting maps the nodes in-flight evictions popped to whether their entry was removed since. Guarded by mux.
 	evicting := make(map[poppedNode]bool)
 
-	// removeDeleted drops the node of an entry whose delete has finished, or that the Storage no longer
-	// holds. The caller holds mux. An eviction that has the node popped finds it marked instead, and does not
-	// put it back should one of its deletes fail: the bytes of an entry that was gone stayed counted against
-	// MaxBytes, evicting live entries in its place, until a later eviction popped the node again. A store
-	// that supersedes an entry does not use it, as the entry stays in the Storage until the store succeeds.
+	// removeDeleted drops a gone entry's node, or marks it so its eviction won't restore it. The caller holds mux.
 	removeDeleted := func(entryKey string, heapIdx int, heapGen uint64) {
 		if _, removed := removeHeapEntry(entryKey, heapIdx, heapGen); removed {
 			return
@@ -395,9 +364,7 @@ func New(config ...Config) fiber.Handler {
 		}
 	}
 
-	// retrack puts a node popped for eviction back as it was: the original generation can be restored
-	// directly in the heap, so metadata needs no rewrite. A node that a store finished meanwhile put
-	// under the key stays. The caller holds mux.
+	// retrack puts a popped node back, unless a store replaced it meanwhile. The caller holds mux.
 	retrack := func(candidate evictionCandidate) (int, bool) {
 		if _, exists := heap.findKey(candidate.key); exists {
 			return 0, false
@@ -482,19 +449,13 @@ func New(config ...Config) fiber.Handler {
 		requestMethod := c.Method()
 		cached := slices.Contains(cfg.Methods, requestMethod)
 
-		// pass answers a request without the cache. One the cache does not serve that is not safe, a PUT,
-		// a POST or a DELETE, ends the stored responses of its path once it succeeds, as RFC 9111 §4.4
-		// requires of a cache that gets a non-error response to one, whether it asked to be stored or not.
-		// Without that, a GET served what the path held before the write until the entry expired. Next
-		// skips the middleware for the request, and so the invalidation.
+		// pass answers without the cache; an unsafe request that succeeds ends its path's entries (RFC 9111 §4.4).
 		pass := func() error {
 			if cached || !unsafeMethod(requestMethod) || (cfg.Next != nil && cfg.Next(c)) {
 				return c.Next()
 			}
 			slot := purges.slot(c.Host(), c.Path()) // before the handler, which may rewrite the path
-			// Only a non-error response ends the entries. A handler timeout.New gave up on may still write
-			// the response, so its status is not read then: IsAbandoned goes first, as its atomic load orders
-			// the read after the timeout middleware's write.
+			// Only a non-error response invalidates. An abandoned handler may still be writing its status.
 			if err := c.Next(); err != nil || (c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil) {
 				return err
 			}
@@ -504,9 +465,8 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		// Refrain from caching. no-store forbids storing, not serving what is stored (RFC 9111 §5.2.1.5), so a
-		// request that also sends only-if-cached, which forbids the handler, is answered from the cache or with
-		// 504, and its handler never runs to be stored.
+		// Refrain from caching. A request that also sends only-if-cached goes on to the lookup, as no-store
+		// forbids only storing (RFC 9111 §5.2.1.5).
 		if reqDirectives.noStore && !reqDirectives.onlyIfCached {
 			return pass()
 		}
@@ -533,11 +493,7 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Next passes the request on without the cache. It was asked only once the
-		// handler had answered, where it kept the response from being stored, so a
-		// request it would have skipped was still served what another had stored: one
-		// without a credential, say, the response to one with it. It is asked again
-		// there, as it may decide by the response.
+		// Next skips the cache before the lookup too, and is asked again after the handler to judge the response.
 		if cfg.Next != nil && cfg.Next(c) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
@@ -584,13 +540,7 @@ func New(config ...Config) fiber.Handler {
 
 		reqCtx := c.Context()
 
-		// unserved answers a request the Storage could not be asked about without the cache. A
-		// Storage that fails is no reason to fail the request: the handler can answer it, and an
-		// outage of the store was an outage of every route behind the cache, with the store's own
-		// error for a body. The failure is logged. only-if-cached forbids the handler, so that
-		// request is told there is nothing stored for it, as on any miss. A request whose context is done,
-		// as that of one timeout.New gave up on, is left to whatever ended it, with the error as it was: the
-		// handler would run for a request that has been answered.
+		// unserved fails open on a Storage error (only-if-cached gets 504), unless the request's context is done.
 		unserved := func(err error) error {
 			if reqCtx.Err() != nil {
 				return err
@@ -624,9 +574,7 @@ func New(config ...Config) fiber.Handler {
 		switch {
 		case err == nil, errors.Is(err, errCacheMiss):
 		case errors.Is(err, errUndecodable):
-			// What the Storage holds under the key is not an entry: a miss, so that the response
-			// stored for this request, if one is, replaces it. Left alone it would keep every request
-			// for the key away from the cache until the Storage expired it, if it ever does.
+			// Undecodable data is a miss, so that this request's response replaces it.
 			log.Warnf("%v; it is treated as a miss", err)
 		default:
 			return unserved(err)
@@ -724,9 +672,7 @@ func New(config ...Config) fiber.Handler {
 		// App code runs before the lock is taken and the clock read, so a slow call stalls no request, a
 		// panic leaves the lock free, and freshness is judged as of one instant; the entry is immutable, so
 		// a concurrent replacement is harmless. The app is not asked about an entry already ruled out.
-		//
-		// An entry stored by a request that began before a write to its path succeeded is ended without
-		// asking, as one the app invalidates is (see purgeTable).
+		// One stored before a write to its path succeeded is ended without asking (see purgeTable).
 		invalidated := e != nil && purges.supersedes(c.Host(), c.Path(), e)
 		if e != nil && !invalidated && cfg.CacheInvalidator != nil {
 			early := safeUnixSeconds(cfg.now())
@@ -753,8 +699,7 @@ func New(config ...Config) fiber.Handler {
 			if e != nil && e.ttl == 0 && e.exp != 0 && ts >= e.exp {
 				guard.Unlock()
 				if err := deleteFound(reqCtx); err != nil {
-					// Left where it is, the entry is found expired again by the next request and
-					// is served to none; its heap node stays for the store that replaces it.
+					// It stays, expired and served to none, until a store replaces it.
 					log.Warnf("cache: failed to delete expired key %q: %v", maskKey(key), err)
 				} else {
 					guard.Relock()
@@ -766,7 +711,6 @@ func New(config ...Config) fiber.Handler {
 				e = nil
 				guard.Unlock()
 				c.Set(cfg.CacheHeader, cacheUnreachable)
-				// Nothing is left to serve, and only-if-cached forbids the handler.
 				if reqDirectives.onlyIfCached {
 					return true, c.SendStatus(fiber.StatusGatewayTimeout)
 				}
@@ -837,7 +781,6 @@ func New(config ...Config) fiber.Handler {
 					idx := e.heapidx
 					gen := e.heapgen
 					if err := deleteFound(reqCtx); err != nil {
-						// As above: it stays, expired, for the next request to find and try again.
 						log.Warnf("cache: failed to delete expired key %q: %v", maskKey(key), err)
 						manager.release(e)
 						e = nil
@@ -890,10 +833,7 @@ func New(config ...Config) fiber.Handler {
 						guard.Unlock()
 						rawBody, err := manager.getRaw(reqCtx, bodyKey(key))
 						if err != nil {
-							// A body the backend dropped leaves metadata that is a miss, so the
-							// orphan goes, unless a request replaced it meanwhile. A Storage that
-							// fails that delete keeps it to be found without a body again, and one
-							// that failed the read keeps the entry for when it answers.
+							// Metadata without its body goes unless replaced meanwhile; a failed read keeps it.
 							if errors.Is(err, errCacheMiss) {
 								err = deleteFound(reqCtx)
 							}
@@ -906,8 +846,6 @@ func New(config ...Config) fiber.Handler {
 							}
 							manager.release(e)
 							e = nil
-							// Without its body this request is a miss, which only-if-cached answers
-							// with 504 instead of the handler.
 							if reqDirectives.onlyIfCached {
 								c.Set(cfg.CacheHeader, cacheUnreachable)
 								return true, c.SendStatus(fiber.StatusGatewayTimeout)
@@ -918,10 +856,7 @@ func New(config ...Config) fiber.Handler {
 					} else {
 						guard.Unlock()
 					}
-					// A copy of the stored body, not the body itself: the entry is every later
-					// client's too, and a middleware in front of the cache that edits the
-					// response body in place, to mask or rewrite part of it, edited the entry
-					// with it. The copy lands in the response's own pooled buffer.
+					// Copied, so a middleware that edits the body in place cannot edit the entry.
 					c.Response().SetBody(e.body)
 					// Set response headers from cache
 					c.Response().SetStatusCode(e.status)
@@ -951,16 +886,8 @@ func New(config ...Config) fiber.Handler {
 					var dateBuf [httpDateLen]byte
 					dateValue := utils.AppendHTTPDate(dateBuf[:0], secondsToTime(clampedDate))
 					setFieldLine(&c.Response().Header, fiber.HeaderDate, dateValue, canonical)
-					// One entry per field line, so Set collapsed a repeated name — a Vary sent
-					// twice came back varying only on the second. A stored name the response
-					// already holds, as one a middleware in front of the cache set, is first set
-					// to a placeholder: fasthttp's Set writes over the first line of the name in
-					// its place and drops the later ones without moving any other line, where Del
-					// fills a removed line's place with the last line, which turned around the
-					// lines of a field that middleware repeats (Link, Server-Timing). The first
-					// stored line of such a name then writes over the placeholder, and every other
-					// stored line is added. Only lines the response held before are looked up, so
-					// a hit costs no more per stored line than the response held.
+					// Added per line, so repeated names survive. A name the response holds is first Set to a
+					// placeholder that its first stored line replaces, as Set keeps line order and Del does not.
 					var placedBuf [1]uint64
 					placed := placedBuf[:] // the stored lines that write over a placeholder
 					if len(e.headers) > 64 {
@@ -969,8 +896,8 @@ func New(config ...Config) fiber.Handler {
 					for i := range e.headers {
 						if isIgnoredHeader(e.headers[i].key) {
 							// An entry stored before Set-Cookie joined ignoreHeaders still
-							// carries one, which is not replayed: Del on it cleared fasthttp's
-							// whole cookie store, wiping the session an outer middleware set.
+							// carries one, which is not replayed: Del on it clears fasthttp's whole
+							// cookie store, wiping the session an outer middleware set.
 							continue
 						}
 						name := utils.UnsafeString(e.headers[i].key)
@@ -1001,9 +928,8 @@ func New(config ...Config) fiber.Handler {
 						}
 						// private for an entry that holds one user's response: public, or
 						// a bare max-age, lets a shared cache downstream store this hit
-						// and serve it to whoever asks for the URL next. So does an entry the
-						// default key tells apart by the body of its request, which no Vary can
-						// name; a cache that serves QUERY keys it by its content (RFC 10008).
+						// and serve it to whoever asks for the URL next. So does an entry keyed by a
+						// request body, which no Vary can name, unless a QUERY's (keyed by content, RFC 10008).
 						var body []byte
 						bodyKeyed := false
 						if cfg.usesDefaultKeyGenerator {
@@ -1019,10 +945,7 @@ func New(config ...Config) fiber.Handler {
 						cacheControlValue := utils.AppendUint(append(ccBuf[:0], directive...), remaining)
 						setFieldLine(&c.Response().Header, fiber.HeaderCacheControl, cacheControlValue, canonical)
 
-						// The freshness granted above holds for requests the key puts under this entry
-						// only. A cache in front of the app that stored the hit once for the URL would
-						// serve it to every client, whatever they send in the headers the key splits by
-						// (RFC 9111 §4.1), unless the response says which they are.
+						// Vary on the key's headers, or a downstream cache serves this hit to all (RFC 9111 §4.1).
 						vary, varyValue := keyVary, keyVaryValue
 						if bodyKeyed {
 							vary, varyValue = bodyVary, bodyVaryValue
@@ -1032,8 +955,7 @@ func New(config ...Config) fiber.Handler {
 						case len(fieldname.First(&c.Response().Header, fiber.HeaderVary, canonical)) == 0:
 							setFieldLine(&c.Response().Header, fiber.HeaderVary, varyValue, canonical)
 						default:
-							// Merged in a local array: c.Vary built the list by concatenating strings,
-							// which cost every hit of an entry stored with a Vary two or three allocations.
+							// Merged on the stack: c.Vary allocates on every hit.
 							var varyBuf [256]byte
 							current := joinedHeader(&c.Response().Header, fiber.HeaderVary, canonical)
 							if merged, added := appendMissingFields(varyBuf[:0], current, vary); added {
@@ -1217,8 +1139,7 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// When the request began, on the clock writes are judged by: the response holds what the path held
-		// then, so a write that succeeds after ends the entry it is stored as (see purgeTable).
+		// A write that succeeds after this ends the entry (see purgeTable).
 		began := purges.stamp()
 
 		// Continue stack, return err to Fiber if exist
@@ -1324,9 +1245,7 @@ func New(config ...Config) fiber.Handler {
 			}
 		} else if !cfg.DisableVaryHeaders && hasVaryManifest {
 			if err := manager.del(reqCtx, manifestKey); err != nil {
-				// A lookup still goes by the manifest left behind and would not find the
-				// response under the key without it, so it is not stored. The handler's
-				// answer stands, here and for every failure of the Storage below.
+				// Lookups would follow the stale manifest, so this and every Storage failure below leave it unstored.
 				log.Warnf("cache: failed to delete stale vary manifest %q: %v", maskKey(manifestKey), err)
 				markUnreachable()
 				return nil
@@ -1353,7 +1272,7 @@ func New(config ...Config) fiber.Handler {
 
 		sharedCacheMode := !hasAuthorization || isSharedCacheAllowed
 
-		// Don't cache response if Next returns true, now that it can see the response
+		// Don't cache response if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			markUnreachable()
 			return nil
@@ -1393,8 +1312,6 @@ func New(config ...Config) fiber.Handler {
 		// Every field line, joined: the stored response has to be replayed with
 		// the Vary it was selected by, and Peek would drop a second line.
 		e.vary = utils.CopyBytes(joinedHeader(&c.Response().Header, fiber.HeaderVary, respCanonical))
-		// The response is to what the path held when the request began: a write that succeeds after
-		// that ends the entry.
 		e.stored = began
 		e.date = 0
 
@@ -1435,8 +1352,7 @@ func New(config ...Config) fiber.Handler {
 				})
 			}
 		}
-		// A field the response names in Connection belongs to the connection it was
-		// sent on (RFC 9110 Section 7.6.1), like the ones ignoreHeaders lists by name.
+		// Fields named in Connection are hop-by-hop (RFC 9110 §7.6.1).
 		connection := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderConnection, respCanonical))
 		// A header that middleware inside this one wrote for the client of this request,
 		// as the session middleware writes the session ID into one, is that client's:
@@ -1444,8 +1360,6 @@ func New(config ...Config) fiber.Handler {
 		// Set-Cookie is not.
 		personal := personalheader.Marked(c.RequestCtx())
 		for key, value := range c.Response().Header.All() {
-			// Without StoreResponseHeaders, the fields that restrict what a client does with
-			// the body are stored all the same (see keptHeaders), every line of each.
 			if isIgnoredHeader(key) || personal.Has(key) || (!cfg.StoreResponseHeaders && !isKeptHeader(key)) ||
 				(connection != "" && headerlist.ContainsFold(connection, utils.UnsafeString(key))) {
 				continue
@@ -1457,8 +1371,7 @@ func New(config ...Config) fiber.Handler {
 			})
 		}
 
-		// Written past a decode limit, the entry would be a miss, logged, for every later
-		// lookup until it expired. The in-memory store never encodes it.
+		// Past a decode limit every lookup would miss; the in-memory store never encodes.
 		if cfg.Storage != nil && !e.decodable() {
 			markUnreachable()
 			return nil
@@ -1629,10 +1542,7 @@ func New(config ...Config) fiber.Handler {
 					markUnreachable()
 					return nil
 				}
-				// An entry that has stopped being fresh goes before any that has not, whatever their order
-				// of eviction: it can be served only to a request that accepts a stale one, and the fresh
-				// one to every request. Kept for max-stale, a short-lived entry outlasted a fresh one stored
-				// long enough ago, as that one counts as due no later than Expiration after it was stored.
+				// Expired entries go first: only a request that accepts a stale response can use them.
 				next, expired := heap.removeExpired(nowUnix)
 				if !expired {
 					next = heap.entries[0]
@@ -1668,13 +1578,8 @@ func New(config ...Config) fiber.Handler {
 					storedBytes -= entrySize
 					spaceReserved = false
 
-					// The candidates after the failed one were not touched: they are stored, and go back as
-					// they were popped, in reverse to regain their heap indices, without a read of the
-					// Storage for each. Those reads, and a log line for each that failed, were the cost
-					// of one failed delete: as many as the entries the store needed room from, up to
-					// MaxBytes / 256, asked of a Storage that was failing already. One that a request
-					// removed meanwhile stays out. Only the candidate whose delete failed may be gone in
-					// part, so only it is checked.
+					// Untouched candidates go back without a Storage read, in reverse to regain their heap
+					// indices; only the one whose delete failed may be partly gone, so only it is checked.
 					for _, candidate := range slices.Backward(candidates[i+1:]) {
 						if !evicting[poppedNode{key: candidate.key, gen: candidate.oldGen}] {
 							retrack(candidate)
@@ -1691,7 +1596,6 @@ func New(config ...Config) fiber.Handler {
 						}
 					}
 
-					// No room was made, so the response is not stored.
 					log.Warnf("cache: failed to delete key %q while evicting: %v", maskKey(keyToRemove), delErr)
 					markUnreachable()
 					return nil
@@ -1780,8 +1684,7 @@ func New(config ...Config) fiber.Handler {
 			return cleanupErr
 		}
 
-		// notStored leaves the handler's answer as it is when the Storage would not take it. The
-		// entry has been handed back by then, by cleanupOnStoreError or by manager.set.
+		// notStored keeps the handler's answer when the Storage refuses the entry, already released.
 		notStored := func(err, cleanupErr error) error {
 			log.Warnf("%v", err)
 			if cleanupErr != nil {

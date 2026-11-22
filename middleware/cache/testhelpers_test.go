@@ -154,8 +154,7 @@ func (w cacheTestCWire) get(lines ...string) reply {
 	return w.target("/", lines...)
 }
 
-// target is get for a request target of its own, sent in the bytes it is
-// written in here.
+// target is get for a raw request target, sent byte for byte.
 func (w cacheTestCWire) target(target string, lines ...string) reply {
 	w.t.Helper()
 

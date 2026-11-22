@@ -30,7 +30,7 @@ func newIndexedHeap() *indexedHeap {
 type heapEntry struct {
 	key      string
 	manifest string // the Vary manifest the entry was stored under, if any
-	exp      uint64 // when the entry is due to be evicted, which the handler sets no later than Expiration after it was stored
+	exp      uint64 // when the entry is due to be evicted
 	expires  uint64 // when the entry stops being fresh
 	gen      uint64
 	bytes    uint
@@ -52,17 +52,15 @@ type expiryNode struct {
 type indexedHeap struct {
 	// One live heap index per cache key.
 	keys map[string]int
-	// Live entries per Vary manifest, and the manifests whose last entry left since takeOrphans and
-	// that no entry has been stored under since. A set: a store that pops nodes and puts them back
-	// pops the same manifests again, and a list grew with every one of those stores.
+	// Live entries per Vary manifest, and the manifests whose last entry left since takeOrphans; a set,
+	// as a failed eviction pops and restores the same manifests again and again.
 	manifests map[string]int
 	orphans   map[string]struct{}
 	// Slice the heap is built on
 	entries []heapEntry
 	// Mapping "index" to position in heap slice
 	indices []int
-	// The entries again, by when each stops being fresh, and each index's position there: an entry that
-	// has expired is found ahead of any that is fresh, whatever their order of eviction (see removeExpired).
+	// A second heap by when entries stop being fresh, and each index's position in it (see removeExpired).
 	byExpiry  []expiryNode
 	expiryPos []int
 	// Max index handed out
@@ -86,17 +84,13 @@ func (h *indexedHeap) Len() int {
 	return len(h.entries)
 }
 
-// Less implements heap.Interface and orders entries by the time they are due to be evicted, the one
-// that was stored first going first among those due together. Entries stored in the same second with the
-// same lifetime are, and every entry that outlives Expiration is due at the same time as the ones stored
-// in its second, so without the tie-break their order was whatever the heap made of it.
+// Less implements heap.Interface, ordering by when entries are due to be evicted, then by storing order.
 func (h *indexedHeap) Less(i, j int) bool {
 	a, b := &h.entries[i], &h.entries[j]
 	if a.exp != b.exp {
 		return a.exp < b.exp
 	}
-	// Generations count up, wrapping, from a random start (see nextGeneration): a stored first when the
-	// distance from it to b is under half the range.
+	// Generations wrap from a random start (see nextGeneration): a is older if b is under half the range ahead.
 	ahead := b.gen - a.gen
 	return ahead != 0 && ahead < 1<<63
 }
@@ -157,7 +151,6 @@ func (h *indexedHeap) pushInternal(entry heapEntry) {
 	h.expiryPush(entry.idx, entry.expires)
 }
 
-// expiryPush adds the entry of idx to the heap by expiry.
 func (h *indexedHeap) expiryPush(idx int, expires uint64) {
 	for len(h.expiryPos) <= idx {
 		h.expiryPos = append(h.expiryPos, 0)
@@ -167,7 +160,6 @@ func (h *indexedHeap) expiryPush(idx int, expires uint64) {
 	h.expiryUp(len(h.byExpiry) - 1)
 }
 
-// expiryRemove takes the entry of idx out of the heap by expiry.
 func (h *indexedHeap) expiryRemove(idx int) {
 	pos, last := h.expiryPos[idx], len(h.byExpiry)-1
 	if pos != last {
@@ -250,8 +242,7 @@ func (h *indexedHeap) findKey(key string) (int, bool) {
 	return idx, ok
 }
 
-// Returns index to track entry. exp is when the entry is due to be evicted, and expires when it stops
-// being fresh.
+// Returns index to track entry; exp is when it is due to be evicted, expires when it stops being fresh.
 func (h *indexedHeap) put(key string, exp, expires uint64, bytes uint, manifest string) int {
 	return h.putWithGeneration(key, exp, expires, bytes, h.nextGeneration(), manifest)
 }

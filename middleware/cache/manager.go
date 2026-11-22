@@ -28,7 +28,7 @@ type item struct {
 	etag            []byte         `msg:",limit=256"`  // ETags are small tokens/quoted strings.
 	vary            []byte         `msg:",limit=2048"` // Vary lists field names, bounded like Cache-Control.
 	date            uint64
-	stored          uint64 // when the request that produced the entry began, in nanoseconds since the epoch; zero if an earlier version stored it
+	stored          uint64 // when the storing request began (purgeTable clock, ns); zero from an earlier version
 	status          int
 	age             uint64
 	exp             uint64
@@ -100,8 +100,7 @@ type manager struct {
 
 var errCacheMiss = errors.New("cache: miss")
 
-// errUndecodable is the error of an entry the Storage handed over that is not one this version of the
-// middleware wrote, or not all of one. Its text opens the message get wraps it in.
+// errUndecodable marks Storage data that is not a whole entry written by this version.
 var errUndecodable = errors.New("cache: failed to unmarshal key")
 
 func newManager(storage fiber.Storage, shouldRedactKeys bool) *manager {

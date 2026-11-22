@@ -14,8 +14,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// cacheTestPItem answers GET and HEAD /item with its version, and any other method by bumping the version and
-// answering with status.
+// cacheTestPItem serves /item's version to GET and HEAD, and bumps it for any other method, answering status.
 func cacheTestPItem(version *atomic.Int32, status int) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		if c.Method() == fiber.MethodGet || c.Method() == fiber.MethodHead {
@@ -26,9 +25,8 @@ func cacheTestPItem(version *atomic.Int32, status int) fiber.Handler {
 	}
 }
 
-// Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry tests that a request that is not safe ends the
-// response stored for its path once it succeeds, as RFC 9111 §4.4 requires of a cache that gets a non-error
-// response to one. A GET was served what the path held before a PUT, a POST or a DELETE until the entry expired.
+// Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry tests that an unsafe request that succeeds ends
+// the response stored for its path (RFC 9111 §4.4).
 func Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -58,8 +56,7 @@ func Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry(t *testing.T) {
 			t.Parallel()
 			var version atomic.Int32
 			version.Store(1)
-			// A clock of the test's own, moved past the write: on a wall clock as coarse as Windows has, the
-			// request after the write falls in its tick, and the entry it stores reads as stored before it.
+			// A test clock moved past the write, as a coarse wall clock (Windows) puts both in one tick.
 			clock := cacheTestCClock()
 			cfg := tc.cfg
 			cfg.Expiration = time.Hour
@@ -80,15 +77,14 @@ func Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry(t *testing.T) {
 				cacheTestCRequireReply(t, get(), cacheMiss, "item v2")
 				cacheTestCRequireReply(t, get(), cacheHit, "item v2")
 			} else {
-				// Not ended: what the app changed is not what is served, which the request did not say it changed.
+				// Not ended, though the handler bumped the version.
 				cacheTestCRequireReply(t, get(), cacheHit, "item v1")
 			}
 		})
 	}
 }
 
-// A write to a path ends every entry stored for it: the other query strings, the other methods that are
-// served from the cache, and the variants of the Vary the response sets. One for another path stays.
+// A write ends every entry of its path, whatever its query, method or Vary variant; other paths keep theirs.
 func Test_Cache_Security_WriteEndsEveryEntryOfThePath(t *testing.T) {
 	t.Parallel()
 	// A path that does not share the slot of /item, which the table chooses by a hash of its own.
@@ -142,8 +138,7 @@ func Test_Cache_Security_WriteEndsEveryEntryOfThePath(t *testing.T) {
 	}
 }
 
-// A write ends the entries of the spellings of its path the router takes for one: with StrictRouting off, the
-// default, trailing slashes are left out, as the case is with CaseSensitive off.
+// A write ends the entries of every spelling the router takes for its path: by default, case and trailing slashes.
 func Test_Cache_Security_WriteEndsThePathWithoutItsTrailingSlashes(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ write, read string }{
@@ -167,8 +162,7 @@ func Test_Cache_Security_WriteEndsThePathWithoutItsTrailingSlashes(t *testing.T)
 	}
 }
 
-// An entry stored by a request that began before the write succeeded holds what the path was before it,
-// whenever the request stores it: it is ended too, where one stored by a request that began after is not.
+// An entry stored by a request that began before the write is ended too; one that began after is not.
 func Test_Cache_Security_WriteEndsAnEntryTheRequestBeganBefore(t *testing.T) {
 	t.Parallel()
 	clock := cacheTestCClock()
@@ -206,11 +200,7 @@ func Test_Cache_Security_WriteEndsAnEntryTheRequestBeganBefore(t *testing.T) {
 	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheHit, "item v2")
 }
 
-// Writes and entries are ordered by the table's clock, which counts the time elapsed since it read the wall
-// clock once. Ordered by the wall clock, a step back, as NTP may set it, left in place an entry stored by a
-// request that began before a write, and a step forward put the write in the future, ending the entries of the
-// path until real time caught up. The two test clocks stand for the wall clock, which steps, and the monotonic
-// one, which only goes forward.
+// Writes and entries are ordered by monotonic time, so wall-clock steps reorder neither.
 func Test_Cache_Security_WriteOrderIgnoresWallClockSteps(t *testing.T) {
 	t.Parallel()
 	for _, step := range []time.Duration{-2 * time.Second, time.Hour} {
@@ -254,8 +244,7 @@ func Test_Cache_Security_WriteOrderIgnoresWallClockSteps(t *testing.T) {
 	}
 }
 
-// An external Storage keeps the time the request that stored an entry began with it, and an entry stored without
-// one, by an earlier version, is ended by any write to its path, as it cannot say when it was stored.
+// An external Storage keeps an entry's stamp; any write ends an entry without one, from an earlier version.
 func Test_Cache_Security_WriteEndsEntriesOfAStorage(t *testing.T) {
 	t.Parallel()
 	for _, legacy := range []bool{false, true} {
@@ -288,8 +277,7 @@ func Test_Cache_Security_WriteEndsEntriesOfAStorage(t *testing.T) {
 	}
 }
 
-// A write timeout.New gives up on is answered with the timeout's error, while its handler goes on running and
-// may still write the response: the cache does not read the status it writes (go test -race reported the read).
+// The cache does not read the status of a write timeout.New gave up on, as its handler may still be writing it.
 func Test_Cache_Security_TimedOutWriteIsNotRead(t *testing.T) {
 	t.Parallel()
 	finished := make(chan struct{})
@@ -311,8 +299,7 @@ func Test_Cache_Security_TimedOutWriteIsNotRead(t *testing.T) {
 	apptest.Recv(t, finished, 5*time.Second, "the timed-out handler did not finish")
 }
 
-// An entry a write ended is not served to a request that accepts a stale one, and is not there for one that
-// forbids the handler either.
+// An entry a write ended is served neither stale nor to only-if-cached.
 func Test_Cache_Security_EndedEntryIsNotServedStale(t *testing.T) {
 	t.Parallel()
 	var version atomic.Int32
@@ -397,8 +384,7 @@ func Test_purgeTable(t *testing.T) {
 	})
 }
 
-// Sequential: testing.AllocsPerRun panics in a parallel test. Folding the host and the path to lower case
-// allocated whenever either held a capital letter, which every hit paid once a write had been seen.
+// Sequential: testing.AllocsPerRun panics in a parallel test. Folding case must not allocate on a hit.
 func Test_purgeTable_slotDoesNotAllocate(t *testing.T) {
 	table := newPurgeTable(time.Now)
 	for _, target := range [][2]string{{"example.com", "/item"}, {"Example.COM", "/Item/"}} {

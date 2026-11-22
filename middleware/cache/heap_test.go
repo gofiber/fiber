@@ -55,10 +55,7 @@ func TestIndexedHeapOrphansAManifestWithItsLastEntry(t *testing.T) {
 	require.Nil(t, h.takeOrphans())
 }
 
-// A store that pops nodes to make room and puts them back, as one does when a delete fails or the room
-// cannot be made, pops the same manifests each time. They are no orphans once their entries are tracked
-// again, and the record of them is not left to grow by every node popped, which a store that succeeds
-// alone emptied.
+// Nodes a failed eviction pops and puts back leave no orphans, however often it repeats.
 func TestIndexedHeapPutBackNodesLeaveNoOrphans(t *testing.T) {
 	t.Parallel()
 	h := &indexedHeap{}
@@ -98,8 +95,7 @@ func TestIndexedHeapEvictsEntriesDueTogetherInStoringOrder(t *testing.T) {
 	}
 }
 
-// An entry that has stopped being fresh is found ahead of any that has not, whatever their order of
-// eviction, and the two orderings stay in step through every removal.
+// removeExpired goes by expiry, and the two orderings stay in step through every removal.
 func TestIndexedHeapRemoveExpiredGoesByExpiry(t *testing.T) {
 	t.Parallel()
 	h := &indexedHeap{}

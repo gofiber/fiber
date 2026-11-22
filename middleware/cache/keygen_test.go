@@ -66,8 +66,7 @@ func keygenCorpus() []keygenCase {
 		{name: "long_path", uri: "/" + strings.Repeat("p", 300) + "?a=1", want: "scheme=http|host=example.com|" + boundKeySegment("/"+strings.Repeat("p", 300)) + "|q=a=1" + keyNoHeaders},
 		{name: "disable_query", uri: "/?foo=bar", noQuery: true, want: "scheme=http|host=example.com|/" + keyNoHeaders},
 		{name: "header_val_delims", uri: "/", headers: map[string]string{"Accept": "a|b:c"}, want: keyStart + "|h=accept:1|a\\pb\\cc|accept-encoding:0|accept-language:0"},
-		// What the target holds besides the routed path and the query: the target up to its query where that is not the
-		// routed path, a "?" no query follows included, and a fragment.
+		// The raw target where it differs from the routed path, an empty "?" included, and a fragment.
 		{name: "empty_query", uri: "/?", want: keyStart + "|p=/?" + keyNoHeaders},
 		{name: "target_fragment", uri: "/?a=1#top", want: keyStart + "a=1|f=top" + keyNoHeaders},
 		{name: "target_empty_fragment", uri: "/#", want: keyStart + "|f=" + keyNoHeaders},
@@ -103,21 +102,17 @@ func keygenCorpus() []keygenCase {
 	}
 }
 
-// buildKeygenCtx returns the context of the request tc describes, which goes back to its pool when
-// the test ends, and the config tc asks for as New would fill it in.
+// buildKeygenCtx returns tc's request context, released when the test ends, and its config as New fills it.
 func buildKeygenCtx(tb testing.TB, tc *keygenCase) (fiber.Ctx, *Config) {
 	tb.Helper()
 
 	app := fiber.New()
-	// The request line is set before the context is acquired, which caches the
-	// method and routes the path of the target: set afterwards, the target left
-	// every fixture routed as "/" whatever path it named. Body and headers are
-	// read live from the request afterwards.
+	// The request line is set before AcquireCtx, which caches the method and routes
+	// the path; body and headers are read live from the request afterwards.
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(cmp.Or(tc.method, fiber.MethodGet))
 	fctx.Request.SetRequestURI(tc.uri)
-	// A request without an authority is not what the key is built for, so the
-	// fixtures carry the host httptest would set.
+	// The fixtures carry the host httptest would set, as the key needs an authority.
 	fctx.Request.SetHost(cmp.Or(tc.host, "example.com"))
 	c := apptest.CtxFor(tb, app, fctx)
 	if tc.body != "" {
@@ -283,10 +278,7 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 	}
 }
 
-// Test_defaultKeyGenerator_KeysTheTargetAsSent checks the rule the default key is built on, over
-// every target made of a few spellings of each of its parts, all of them routed as /page: two
-// targets share a key only when they differ in the order of their parameters or, with
-// DisableQueryKeys, in their query.
+// Test_defaultKeyGenerator_KeysTheTargetAsSent checks which spellings of /page share a key.
 func Test_defaultKeyGenerator_KeysTheTargetAsSent(t *testing.T) {
 	t.Parallel()
 	paths := []string{"/page", "/pa%67e", "/x/../page", "/./page", "http://example.com/page"}
@@ -319,10 +311,7 @@ func Test_defaultKeyGenerator_KeysTheTargetAsSent(t *testing.T) {
 	}
 }
 
-// Test_appendTargetAsSent_RewrittenQuery pins what a target adds to the key when middleware ahead
-// of the cache rewrote its query, which no request line alone produces: keyed is then another
-// query than the target sent. With DisableQueryKeys the target is cut at its "?" whatever the
-// query became, so a query it was given adds nothing either.
+// Test_appendTargetAsSent_RewrittenQuery pins the key of a target whose query middleware rewrote.
 func Test_appendTargetAsSent_RewrittenQuery(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -350,14 +339,10 @@ func Test_appendTargetAsSent_RewrittenQuery(t *testing.T) {
 	}
 }
 
-// Test_appendCanonicalQueryString_SharedKeyReadsTheSame checks the query segment against the parser
-// a handler reads the query through. Queries that share a key hold the same parameters, so the
-// target a handler reads differs in their order at most, and each name reads the same values in the
-// same order from all of them, so c.Query and c.Queries cannot tell them apart.
+// Test_appendCanonicalQueryString_SharedKeyReadsTheSame checks that queries sharing a key parse alike.
 func Test_appendCanonicalQueryString_SharedKeyReadsTheSame(t *testing.T) {
 	t.Parallel()
-	// Several spellings of one name among them, two of which only the parser's handling of a "%"
-	// that begins no escape makes one, and the parameters that lack a name, a value or both.
+	// Spellings of one name, stray "%" signs, and parameters that lack a name, a value or both.
 	parameters := []string{
 		"a=1", "a=2", "%61=3", "A=4", "a=b=5", "b", "b=", "+=6", "%20=7", "x%+=8", "x%%2B=9",
 		"%=10", "%zz=11", "", "=", "=12", "c%3D=13",
@@ -408,9 +393,7 @@ func Test_appendCanonicalQueryString_SharedKeyReadsTheSame(t *testing.T) {
 	require.NotZero(t, shared, "parameters of different names share a key in either order")
 }
 
-// Test_appendCanonicalQueryString_KeepsTheOrderOfOneName checks that the parameters of one name
-// stay in the order sent among more parameters than a sort leaves in place by chance: one that is
-// not stable moves equal names past each other once there are more than a handful.
+// Test_appendCanonicalQueryString_KeepsTheOrderOfOneName checks that parameters of one name keep their order.
 func Test_appendCanonicalQueryString_KeepsTheOrderOfOneName(t *testing.T) {
 	t.Parallel()
 	var sent []string
@@ -427,10 +410,8 @@ func Test_appendCanonicalQueryString_KeepsTheOrderOfOneName(t *testing.T) {
 	require.Equal(t, want, string(appendCanonicalQueryString(nil, &uri)))
 }
 
-// The query segment is built for every request the cache looks up, so sorting it must not allocate:
-// the names are decoded, and the parameters laid out, in a pooled buffer. The fewest of many runs,
-// since under -race sync.Pool drops a quarter of what it is handed at random. Sequential:
-// testing.AllocsPerRun panics during a parallel test.
+// Sorting the query segment, built on every lookup, must not allocate; the fewest of many runs counts, as
+// under -race sync.Pool drops items at random. Sequential: testing.AllocsPerRun panics in a parallel test.
 func Test_appendCanonicalQueryString_DoesNotAllocate(t *testing.T) {
 	var uri fasthttp.URI
 	uri.SetQueryString("q=hello+world&filter%5Bstatus%5D=active&page=2&sort=-created")

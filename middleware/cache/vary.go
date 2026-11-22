@@ -148,11 +148,9 @@ func varyHeadersChanged(names []string, lookup, live *fasthttp.RequestHeader, no
 	return !bytes.Equal(appendVaryKey(atLookup[:0], names, lookup, normalized), appendVaryKey(now[:0], names, live, normalized))
 }
 
-// keyVaryFields returns the request headers the key tells entries apart by, which the Cache-Control a hit
-// is given grants freshness for. The default key holds KeyHeaders, Cookie for KeyCookies, and, for a request
-// whose body it holds (body), Content-Encoding and Content-Type. A custom KeyGenerator's key is opaque, so
-// only the headers declared in KeyCredentialHeaders are taken to be in it. Authorization is not among them:
-// a response stored for a request that carries it has a Cache-Control of its own, which a hit keeps.
+// keyVaryFields returns the request headers the key splits by: KeyHeaders, Cookie for KeyCookies and, with
+// body, Content-Encoding and Content-Type; for a custom KeyGenerator, only KeyCredentialHeaders. Authorization
+// is left out, as an entry stored for it keeps a Cache-Control of its own.
 func (cfg *Config) keyVaryFields(body bool) []string { //nolint:revive // flag-parameter: the two lists differ by the key segment it names
 	names := cfg.KeyCredentialHeaders
 	if cfg.usesDefaultKeyGenerator {
@@ -173,9 +171,8 @@ func (cfg *Config) keyVaryFields(body bool) []string { //nolint:revive // flag-p
 	return fields
 }
 
-// appendMissingFields appends list, a Vary value, to dst, followed by each of names it does not list, and
-// reports whether it added one. A list holding "*" is left as it is: it varies on everything already.
-// names holds no name twice, so each is looked for in list alone.
+// appendMissingFields appends the Vary value list to dst, then each of names (which must not repeat) that it
+// lacks, and reports whether it added any. A list holding "*" is left as it is.
 func appendMissingFields(dst, list []byte, names []string) ([]byte, bool) {
 	existing := utils.UnsafeString(list)
 	if headerlist.Contains(existing, "*") {

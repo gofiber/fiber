@@ -17,8 +17,7 @@ import (
 
 // cacheTestCEvict sends GET /new through app in the background, a request the
 // test arranged to be answered unstored because the eviction it starts cannot
-// delete the entry it picked. The channel yields what went wrong with the
-// request or with its answer, nil when nothing did.
+// delete the entry it picked. The channel yields what went wrong, or nil.
 func cacheTestCEvict(app *fiber.App) <-chan error {
 	done := make(chan error, 1)
 	go func() {

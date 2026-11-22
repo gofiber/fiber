@@ -1500,9 +1500,7 @@ func Test_Cache_ExpiredDeleteChecksTheEntry(t *testing.T) {
 }
 
 // An entry that cannot be served is deleted before the request goes on. A Storage that fails that delete,
-// or the read that checks it, leaves the entry to be found again, and it is found unservable again: the
-// handler answers each request, and what it answers replaces an expired entry once the Storage takes it.
-// The request used to fail instead, with the Storage's error for a body.
+// or the read that checks it, leaves it to be found unservable again, and the handler answers each request.
 func Test_Cache_UnservableEntryThatCannotBeDeletedIsNotServed(t *testing.T) {
 	t.Parallel()
 	const key = cacheKeyVersion + "|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"

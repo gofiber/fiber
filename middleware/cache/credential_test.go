@@ -46,8 +46,7 @@ func Test_carriesCredential(t *testing.T) {
 // pathKey is the smallest custom KeyGenerator: the key is the path.
 func pathKey(c fiber.Ctx) string { return c.Path() }
 
-// requestWith returns the context of a request that carries the headers, which goes back to its
-// pool when the test ends.
+// requestWith returns a request context carrying the headers, released when the test ends.
 func requestWith(tb testing.TB, headers map[string]string) fiber.Ctx {
 	tb.Helper()
 

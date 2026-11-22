@@ -122,15 +122,8 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	// RFC 10008: incorporate the request body so different QUERY bodies on the
 	// same URL get distinct keys, and the fields that say how it is decoded.
 	// Unnamed, as their order is fixed: the names would lengthen every QUERY key.
-	//
-	// So does any other request that carries a body, once Methods names its method:
-	// what a POST is answered with depends on what it posts as much, and left out
-	// of the key, the first body's answer was served for every other one. A request
-	// without a body adds nothing, which is every GET but an unusual one, and one
-	// that names a Content-Encoding: c.Body() decodes by it whether or not there is
-	// a body, and for an encoding it cannot undo, compress, writes a 501 into the
-	// response, which is cacheable. Left out of the key, one request with that
-	// header replaced the entry of every plain request for the URL.
+	// Likewise for any request with a body, and for one that names a Content-Encoding,
+	// which c.Body() may answer with a cacheable 501.
 	if body, held := bodySegment(c, normalized); held {
 		dst = append(dst, '|', 'm', '=')
 		dst = appendKeyFieldLines(dst, &c.Request().Header, "content-encoding", nil, normalized)
@@ -143,10 +136,8 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	return dst
 }
 
-// bodySegment returns the body of the request and reports whether the default key holds it, with the fields
-// that say how it is decoded: it does for a request that carries a body, a QUERY, and one that names a
-// Content-Encoding (see appendDefaultKey). A stream that declares no body is not read: reading it closes it
-// under the handler, and an empty body adds nothing to the key. New bounds the length of any other stream.
+// bodySegment returns the request body and whether the default key holds it (see appendDefaultKey). A
+// stream that declares no body is not read, as that would close it under the handler.
 func bodySegment(c fiber.Ctx, normalized bool) ([]byte, bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	var body []byte
 	if req := c.Request(); !req.IsBodyStream() || req.Header.ContentLength() > 0 {
@@ -155,9 +146,7 @@ func bodySegment(c fiber.Ctx, normalized bool) ([]byte, bool) { //nolint:revive 
 	return body, len(body) > 0 || c.Method() == fiber.MethodQuery || namesContentEncoding(&c.Request().Header, normalized)
 }
 
-// namesContentEncoding reports whether the request carries a Content-Encoding field line, which
-// c.Body() reads whatever the length of the body. Asked of every request, so the common one is
-// answered by the header's own slot, as c.Body() does, before any search of its lines.
+// namesContentEncoding reports whether the request has a Content-Encoding line, trying the fast slot first.
 func namesContentEncoding(header *fasthttp.RequestHeader, normalized bool) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
 	if normalized && header.ContentEncoding() == nil {
 		return false
@@ -165,27 +154,10 @@ func namesContentEncoding(header *fasthttp.RequestHeader, normalized bool) bool 
 	return len(keyFieldLines(header, "content-encoding", normalized)) > 0
 }
 
-// appendTargetAsSent appends what target, the request target as it arrived, holds besides path,
-// the routed path, and keyed, the query, which the segments before it are built from: under "|p="
-// the target up to its query, when that is not the routed path, and under "|f=" a fragment. Most
-// requests add neither.
-//
-// A handler reads the target as it was sent (c.OriginalURL), and the routed path is one of
-// several the target may have spelled: "/a/../page" and "/%70age" are routed as "/page", an
-// absolute-form target names the host on top of its path, and a fragment, which no browser sends,
-// is part of neither. With those left out of the key, a response that echoes the target, stored
-// for a request that wrote markup into a segment ".." removes or behind a "#", was served to
-// every client asking for the path itself.
-//
-// The target is cut at its "?": the query is the segment before this one's, or left out of the key
-// by DisableQueryKeys. A "?" that no query follows stays where queries are keyed, as nothing else
-// tells "/page?" from "/page". So does a query other than keyed, which middleware registered
-// before the cache rewrote: the segment before this one's holds the query it left, while a handler
-// still reads the one that was sent.
-//
-// A target that holds no "?" while such middleware gave the request a query is keyed under "|n="
-// in place of "|p=", whatever its path: cut at its "?", the target that sent that very query
-// leaves the same bytes, and the two are not one target to a handler.
+// appendTargetAsSent keys what the raw target, which a handler can read, holds beyond the routed path and
+// keyed query: under "|p=" a target that differs from the path ("/a/../page"), less its query when that is
+// keyed or DisableQueryKeys is set; under "|f=" a fragment; under "|n=" a target with no "?" that middleware
+// gave a query.
 func appendTargetAsSent(dst, target []byte, path string, keyed []byte, cfg *Config) []byte {
 	sent, fragment, hasFragment := bytes.Cut(target, []byte{'#'})
 	before, query, hasQuery := bytes.Cut(sent, []byte{'?'})
@@ -208,8 +180,7 @@ func appendTargetAsSent(dst, target []byte, path string, keyed []byte, cfg *Conf
 	return dst
 }
 
-// querySegment is a parameter of a query string, the text between two "&": where it lies in the
-// query, and where its name, decoded, lies in the buffer the names are compared in.
+// querySegment locates a query parameter, and its decoded name in the buffer names are compared in.
 type querySegment struct {
 	start, end         uint16
 	nameStart, nameEnd uint16
@@ -218,20 +189,8 @@ type querySegment struct {
 // A query whose parameters are sorted has to fit the 16 bits of those offsets.
 const _ uint16 = maxQueryBufferSize
 
-// appendCanonicalQueryString appends the query segment to dst: the parameters as they were sent,
-// those of different names sorted by name, so the order a client lists them in does not split
-// the cache.
-//
-// A parameter keeps its bytes. They used to be decoded and escaped again, which gave every
-// spelling of a query one key, while a handler can read the spelling it was sent
-// (c.OriginalURL): a response echoing a raw `"` or `<`, which a browser escapes and so cannot
-// send, was stored for the query the browser does send, and served to it. The same went for
-// "a" and "a=", and for an "&" with no parameter behind it.
-//
-// Parameters of one name keep the order they were sent in, as c.Query reads the first of them.
-// Which parameters share a name is for fasthttp to say, since c.Query reads through its parser:
-// the names are compared as AppendUnquotedArg decodes them, which is how that parser decodes a
-// key, so "a" and "%61" are never reordered.
+// appendCanonicalQueryString appends the query with its parameters stably sorted by name as fasthttp decodes
+// it, each kept as sent, since a handler can read the raw query (c.OriginalURL).
 func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	raw := uri.QueryString()
 	if len(raw) == 0 {
@@ -242,8 +201,7 @@ func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	// request buffer can be mutated, so no stable copy is required.
 	query := utils.UnsafeString(raw)
 
-	// A lone parameter has no order, and a query past either bound is keyed as it was sent: the
-	// bounds cap the work one request can ask for here, and keep the offsets below in 16 bits.
+	// Past either bound the query is keyed as sent: they cap the work and keep the offsets in 16 bits.
 	if len(query) > maxQueryBufferSize {
 		return appendEscapedBoundKeySegment(dst, query)
 	}
@@ -252,8 +210,7 @@ func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 		return appendEscapedBoundKeySegment(dst, query)
 	}
 
-	// One pooled buffer holds the decoded names and, behind them, the sorted query. Neither
-	// outgrows the query, as decoding only shortens a name and sorting moves the parameters.
+	// One pooled buffer holds the decoded names, then the sorted query; neither outgrows the query.
 	bufPtr := acquireKeyBuffer()
 	buf := (*bufPtr)[:0]
 
@@ -277,7 +234,6 @@ func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 		start = end + 1
 	}
 
-	// Stable, which is what keeps the parameters of one name in the order sent.
 	names := buf
 	slices.SortStableFunc(segments, func(a, b querySegment) int {
 		return bytes.Compare(names[a.nameStart:a.nameEnd], names[b.nameStart:b.nameEnd])
@@ -291,7 +247,7 @@ func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 		buf = append(buf, raw[segment.start:segment.end]...)
 	}
 
-	// Escaped, unlike the encoding this replaces: a parameter sent raw may hold a delimiter.
+	// Escaped, as a parameter sent raw may hold a delimiter.
 	dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(buf[sorted:]))
 	releaseKeyBuffer(bufPtr, buf)
 	return dst
