@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gofiber/fiber/v3/internal/apptest"
-
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +24,6 @@ var pathTemplateRe = regexp.MustCompile(`\{([^}]+)\}`)
 
 func validateOpenAPIDocument(t *testing.T, raw []byte) {
 	t.Helper()
-
 	var doc map[string]any
 	require.NoError(t, json.Unmarshal(raw, &doc))
 
@@ -34,17 +31,14 @@ func validateOpenAPIDocument(t *testing.T, raw []byte) {
 	require.True(t, ok, "openapi version must be a string")
 	_, supported := parseVersion(version)
 	require.True(t, supported, "unsupported openapi version %q", version)
-
 	info, ok := doc["info"].(map[string]any)
 	require.True(t, ok, "info must be an object")
 	title, ok := info["title"].(string)
 	require.True(t, ok && title != "", "info.title must be a non-empty string")
 	infoVersion, ok := info["version"].(string)
 	require.True(t, ok && infoVersion != "", "info.version must be a non-empty string")
-
 	securitySchemes := documentSecuritySchemes(t, doc)
-	validateDocumentSecurity(t, doc, securitySchemes)
-
+	validateSecurityRequirements(t, doc["security"], securitySchemes, "document")
 	paths, ok := doc["paths"].(map[string]any)
 	require.True(t, ok, "paths must be an object")
 
@@ -53,7 +47,6 @@ func validateOpenAPIDocument(t *testing.T, raw []byte) {
 		require.Truef(t, strings.HasPrefix(pathKey, "/"), "path %q must start with /", pathKey)
 		item, ok := rawItem.(map[string]any)
 		require.Truef(t, ok, "path item %q must be an object", pathKey)
-
 		templateParams := pathTemplateNames(pathKey)
 		for method, rawOp := range item {
 			switch method {
@@ -81,7 +74,6 @@ func validateOpenAPIDocument(t *testing.T, raw []byte) {
 			require.Truef(t, known, "path %q has invalid operation %q", pathKey, method)
 			op, ok := rawOp.(map[string]any)
 			require.Truef(t, ok, "operation %s %s must be an object", method, pathKey)
-
 			validateOperation(t, method, pathKey, op, templateParams, securitySchemes, operationIDs)
 		}
 	}
@@ -89,7 +81,6 @@ func validateOpenAPIDocument(t *testing.T, raw []byte) {
 
 func validateOperation(t *testing.T, method, pathKey string, op map[string]any, templateParams, securitySchemes, operationIDs map[string]struct{}) {
 	t.Helper()
-
 	if rawID, present := op["operationId"]; present {
 		id, ok := rawID.(string)
 		require.Truef(t, ok && id != "", "%s %s operationId must be a non-empty string", method, pathKey)
@@ -97,7 +88,6 @@ func validateOperation(t *testing.T, method, pathKey string, op map[string]any, 
 		require.Falsef(t, dup, "duplicate operationId %q", id)
 		operationIDs[id] = struct{}{}
 	}
-
 	responses, ok := op["responses"].(map[string]any)
 	require.Truef(t, ok, "%s %s must have a responses object", method, pathKey)
 	require.NotEmptyf(t, responses, "%s %s responses must not be empty", method, pathKey)
@@ -110,12 +100,10 @@ func validateOperation(t *testing.T, method, pathKey string, op map[string]any, 
 	}
 
 	declaredPathParams := validateParameters(t, method, pathKey, op)
-
 	for name := range templateParams {
 		_, declared := declaredPathParams[name]
 		require.Truef(t, declared, "%s %s missing path parameter %q for template", method, pathKey, name)
 	}
-
 	if rawBody, present := op["requestBody"]; present {
 		require.NotEqualf(t, "trace", method, "%s %s must not have a requestBody", method, pathKey)
 		body, ok := rawBody.(map[string]any)
@@ -123,13 +111,11 @@ func validateOperation(t *testing.T, method, pathKey string, op map[string]any, 
 		content, ok := body["content"].(map[string]any)
 		require.Truef(t, ok && len(content) > 0, "%s %s requestBody.content must be a non-empty object", method, pathKey)
 	}
-
 	validateSecurityRequirements(t, op["security"], securitySchemes, method+" "+pathKey)
 }
 
 func validateParameters(t *testing.T, method, pathKey string, op map[string]any) map[string]struct{} {
 	t.Helper()
-
 	declaredPathParams := make(map[string]struct{})
 	rawParams, present := op["parameters"]
 	if !present {
@@ -137,12 +123,10 @@ func validateParameters(t *testing.T, method, pathKey string, op map[string]any)
 	}
 	params, ok := rawParams.([]any)
 	require.Truef(t, ok, "%s %s parameters must be an array", method, pathKey)
-
 	seen := make(map[string]struct{})
 	for _, rawParam := range params {
 		param, ok := rawParam.(map[string]any)
 		require.Truef(t, ok, "%s %s parameter must be an object", method, pathKey)
-
 		name, ok := param["name"].(string)
 		require.Truef(t, ok && name != "", "%s %s parameter needs a name", method, pathKey)
 		in, ok := param["in"].(string)
@@ -154,7 +138,6 @@ func validateParameters(t *testing.T, method, pathKey string, op map[string]any)
 		_, dup := seen[key]
 		require.Falsef(t, dup, "%s %s duplicate parameter %s", method, pathKey, key)
 		seen[key] = struct{}{}
-
 		_, hasSchema := param["schema"]
 		rawContent, hasContent := param["content"]
 		require.NotEqualf(t, hasSchema, hasContent,
@@ -168,7 +151,6 @@ func validateParameters(t *testing.T, method, pathKey string, op map[string]any)
 			require.Truef(t, hasContent,
 				"%s %s querystring parameter %q must use content", method, pathKey, name)
 		}
-
 		if in == "path" {
 			required, ok := param["required"].(bool)
 			require.Truef(t, ok && required, "%s %s path parameter %q must be required", method, pathKey, name)
@@ -180,7 +162,6 @@ func validateParameters(t *testing.T, method, pathKey string, op map[string]any)
 
 func documentSecuritySchemes(t *testing.T, doc map[string]any) map[string]struct{} {
 	t.Helper()
-
 	schemes := make(map[string]struct{})
 	components, ok := doc["components"].(map[string]any)
 	if !ok {
@@ -194,11 +175,6 @@ func documentSecuritySchemes(t *testing.T, doc map[string]any) map[string]struct
 		schemes[name] = struct{}{}
 	}
 	return schemes
-}
-
-func validateDocumentSecurity(t *testing.T, doc map[string]any, schemes map[string]struct{}) {
-	t.Helper()
-	validateSecurityRequirements(t, doc["security"], schemes, "document")
 }
 
 func validateSecurityRequirements(t *testing.T, rawSecurity any, schemes map[string]struct{}, where string) {
@@ -241,7 +217,6 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 		Email string `json:"email" openapi:"format:email,description:User email"`
 		ID    int    `json:"id"`
 	}
-
 	build := func(version string) []byte {
 		app := fiber.New()
 
@@ -253,7 +228,6 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 			Response(fiber.StatusOK, "OK", fiber.MIMEApplicationJSON).
 			ResponseHeader(fiber.StatusOK, "X-Rate-Limit", "Requests left", map[string]any{"type": "integer"}).
 			Tags("users")
-
 		app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
 			RequestBodyContent("Create user", true, map[string]fiber.RouteMediaType{
 				fiber.MIMEApplicationJSON: {Schema: SchemaOf(User{})},
@@ -267,7 +241,6 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 			OperationExternalDocs("docs", "https://docs.example.com/create").
 			OperationExtension(map[string]any{"servers": []any{map[string]any{"url": "https://op.example.com"}}}).
 			Security(map[string][]string{"bearerAuth": {}})
-
 		app.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 			AddParameter(fiber.RouteParameter{
 				Name: "fields", In: "query", Style: "form", Explode: new(true),
@@ -280,7 +253,6 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 			RequestBody("Query payload", true, fiber.MIMEApplicationJSON)
 		app.Delete("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) }).Deprecated()
 		app.Get("/internal", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).Hidden()
-
 		app.Use(New(Config{
 			OpenAPIVersion:    version,
 			Title:             "Validation API",
@@ -306,12 +278,8 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 			Security: []map[string][]string{{"bearerAuth": {}}},
 		}))
 
-		resp := apptest.Expect(t, app, "/openapi.json", fiber.StatusOK)
-
-		body := apptest.BodyBytes(t, resp)
-		return body
+		return fetchSpecBody(t, app)
 	}
-
 	for _, version := range []string{"3.0.0", "3.1.0", "3.2.0"} {
 		t.Run(version, func(t *testing.T) {
 			t.Parallel()

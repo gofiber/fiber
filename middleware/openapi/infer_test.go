@@ -16,66 +16,101 @@ type userService struct{}
 
 func (*userService) GetUserByID(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }
 
-func fetchInferredPaths(t *testing.T, app *fiber.App, cfg ...Config) map[string]any {
-	t.Helper()
-	app.Use(New(cfg...))
-	return requireMap(t, fetchJSON(t, app)["paths"])
+// rfInferCase registers routes on a fresh app and names the GET operation whose field a test inspects.
+type rfInferCase struct {
+	register   func(app *fiber.App)
+	want       any
+	name, path string
+	cfg        Config
 }
 
-func inferredOperation(t *testing.T, paths map[string]any, path, method string) map[string]any {
+// rfRunInferCases runs each case on its own app and compares the field key of its GET operation with want; a nil
+// want expects the field to be absent.
+func rfRunInferCases(t *testing.T, key string, cases []rfInferCase) {
 	t.Helper()
-	return requireMap(t, requireMap(t, paths[path])[method])
+	for i := range cases {
+		tc := &cases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			tc.register(app)
+			app.Use(New(tc.cfg))
+			op := modelOperation(t, fetchJSON(t, app), tc.path, "get")
+			if tc.want == nil {
+				require.NotContains(t, op, key)
+				return
+			}
+			require.Equal(t, tc.want, op[key])
+		})
+	}
 }
 
 func Test_OpenAPI_HandlerSummaries(t *testing.T) {
 	t.Parallel()
-	t.Run("named function", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Get("/users", listUsers)
-		op := inferredOperation(t, fetchInferredPaths(t, app), "/users", "get")
-		require.Equal(t, "List users", op["summary"])
+	rfRunInferCases(t, "summary", []rfInferCase{
+		{name: "named function", register: func(app *fiber.App) { app.Get("/users", listUsers) }, path: "/users", want: "List users"},
+		{name: "method value", register: func(app *fiber.App) { app.Get("/users/:id", (&userService{}).GetUserByID) }, path: "/users/{id}", want: "Get user by ID"},
+		{name: "last handler names the operation", register: func(app *fiber.App) { app.Get("/users", passThrough, listUsers) }, path: "/users", want: "List users"},
+		{name: "closure falls back to method and path", path: "/users", want: "GET /users", register: func(app *fiber.App) {
+			app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+		}},
+		{name: "explicit summary wins", register: func(app *fiber.App) { app.Get("/users", listUsers).Summary("Everyone") }, path: "/users", want: "Everyone"},
+		{name: "disabled", register: func(app *fiber.App) { app.Get("/users", listUsers) }, path: "/users", want: "GET /users", cfg: Config{DisableHandlerSummaries: true}},
 	})
+}
 
-	t.Run("method value", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Get("/users/:id", (&userService{}).GetUserByID)
-		op := inferredOperation(t, fetchInferredPaths(t, app), "/users/{id}", "get")
-		require.Equal(t, "Get user by ID", op["summary"])
+func Test_OpenAPI_GroupTags(t *testing.T) {
+	t.Parallel()
+	rfRunInferCases(t, "tags", []rfInferCase{
+		{name: "innermost group", register: func(app *fiber.App) { app.Group("/api").Group("/v1").Group("/users").Get("/", listUsers) }, path: "/api/v1/users", want: []any{"users"}},
+		{name: "version segments are skipped", register: func(app *fiber.App) { app.Group("/api/v1").Get("/users", listUsers) }, path: "/api/v1/users", want: []any{"api"}},
+		{name: "parameter segments are skipped", register: func(app *fiber.App) { app.Group("/users/:id").Get("/posts", listUsers) }, path: "/users/{id}/posts", want: []any{"users"}},
+		{name: "named group uses its name", path: "/api/u", want: []any{"users"}, register: func(app *fiber.App) {
+			app.Group("/api").Name("api.").Group("/u").Name("users.").Get("/", listUsers)
+		}},
+		{name: "explicit tags win", register: func(app *fiber.App) { app.Group("/users").Get("/", listUsers).Tags("people") }, path: "/users", want: []any{"people"}},
+		{name: "route on the app has no tags", register: func(app *fiber.App) { app.Get("/users", listUsers) }, path: "/users"},
+		{name: "only version segments yield no tag", register: func(app *fiber.App) { app.Group("/v2").Get("/users", listUsers) }, path: "/v2/users"},
+		{name: "disabled", register: func(app *fiber.App) { app.Group("/users").Get("/", listUsers) }, path: "/users", cfg: Config{DisableGroupTags: true}},
 	})
+}
 
-	t.Run("last handler names the operation", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Get("/users", passThrough, listUsers)
-		op := inferredOperation(t, fetchInferredPaths(t, app), "/users", "get")
-		require.Equal(t, "List users", op["summary"])
-	})
-
-	t.Run("closure falls back to method and path", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-		op := inferredOperation(t, fetchInferredPaths(t, app), "/users", "get")
-		require.Equal(t, "GET /users", op["summary"])
-	})
-
-	t.Run("explicit summary wins", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Get("/users", listUsers).Summary("Everyone")
-		op := inferredOperation(t, fetchInferredPaths(t, app), "/users", "get")
-		require.Equal(t, "Everyone", op["summary"])
-	})
-
-	t.Run("disabled", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Get("/users", listUsers)
-		op := inferredOperation(t, fetchInferredPaths(t, app, Config{DisableHandlerSummaries: true}), "/users", "get")
-		require.Equal(t, "GET /users", op["summary"])
-	})
+func Test_OpenAPI_DefaultProduces(t *testing.T) {
+	t.Parallel()
+	statuses := func(app *fiber.App) {
+		app.Put("/users/:id", listUsers).Response(fiber.StatusNoContent, "Updated").Response(fiber.StatusNotModified, "Unchanged").Response(fiber.StatusContinue, "Go on")
+	}
+	for _, tc := range []struct {
+		register           func(app *fiber.App)
+		name, path, method string
+		status             string
+		content            []string
+		cfg                Config
+	}{
+		{name: "undocumented route documents JSON", register: func(app *fiber.App) { app.Get("/users", listUsers) }, path: "/users", method: "get", status: "200", content: []string{fiber.MIMEApplicationJSON}},
+		{name: "configured default", register: func(app *fiber.App) { app.Get("/users", listUsers) }, path: "/users", method: "get", status: "200", content: []string{fiber.MIMETextPlain}, cfg: Config{DefaultProduces: fiber.MIMETextPlain}},
+		{name: "explicit produces wins", register: func(app *fiber.App) { app.Get("/users", listUsers).Produces(fiber.MIMEApplicationXML) }, path: "/users", method: "get", status: "200", content: []string{fiber.MIMEApplicationXML}},
+		{name: "declared response without a media type uses the default", path: "/users", method: "post", status: "201", content: []string{fiber.MIMEApplicationJSON}, register: func(app *fiber.App) {
+			app.Post("/users", listUsers).Response(fiber.StatusCreated, "Created")
+		}},
+		{name: "204 stays without content", register: statuses, path: "/users/{id}", method: "put", status: "204"},
+		{name: "304 stays without content", register: statuses, path: "/users/{id}", method: "put", status: "304"},
+		{name: "100 stays without content", register: statuses, path: "/users/{id}", method: "put", status: "100"},
+		{name: "delete default stays without content", register: func(app *fiber.App) { app.Delete("/users/:id", listUsers) }, path: "/users/{id}", method: "delete", status: "204"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			tc.register(app)
+			app.Use(New(tc.cfg))
+			resp := requireMap(t, requireMap(t, modelOperation(t, fetchJSON(t, app), tc.path, tc.method)["responses"])[tc.status])
+			if tc.content == nil {
+				require.NotContains(t, resp, "content")
+				return
+			}
+			require.Equal(t, tc.content, rfKeys(requireMap(t, resp["content"])))
+		})
+	}
 }
 
 func Test_summaryFromFuncName(t *testing.T) {
@@ -104,155 +139,18 @@ func Test_summaryFromFuncName(t *testing.T) {
 		"main.(*Server).handle-fm":                              "Handle",
 		"github.com/acme/api/v2/handlers.Create":                "Create",
 		"main._":                                                "",
+		"pkg.日本語Handler":                                        "日本語 handler",
+		"pkg._2fa":                                              "2fa",
+		"pkg.élanCheck":                                         "Élan check",
 	}
 	for name, want := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, want, summaryFromFuncName(name))
+			got := summaryFromFuncName(name)
+			require.True(t, utf8.ValidString(got))
+			require.Equal(t, want, got)
 		})
 	}
-}
-
-func Test_OpenAPI_GroupTags(t *testing.T) {
-	t.Parallel()
-	t.Run("innermost group", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Group("/api").Group("/v1").Group("/users").Get("/", listUsers)
-		op := inferredOperation(t, fetchInferredPaths(t, app), "/api/v1/users", "get")
-		require.Equal(t, []any{"users"}, op["tags"])
-	})
-
-	t.Run("version segments are skipped", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Group("/api/v1").Get("/users", listUsers)
-		op := inferredOperation(t, fetchInferredPaths(t, app), "/api/v1/users", "get")
-		require.Equal(t, []any{"api"}, op["tags"])
-	})
-
-	t.Run("parameter segments are skipped", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Group("/users/:id").Get("/posts", listUsers)
-		op := inferredOperation(t, fetchInferredPaths(t, app), "/users/{id}/posts", "get")
-		require.Equal(t, []any{"users"}, op["tags"])
-	})
-
-	t.Run("named group uses its name", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Group("/api").Name("api.").Group("/u").Name("users.").Get("/", listUsers)
-		op := inferredOperation(t, fetchInferredPaths(t, app), "/api/u", "get")
-		require.Equal(t, []any{"users"}, op["tags"])
-	})
-
-	t.Run("explicit tags win", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Group("/users").Get("/", listUsers).Tags("people")
-		op := inferredOperation(t, fetchInferredPaths(t, app), "/users", "get")
-		require.Equal(t, []any{"people"}, op["tags"])
-	})
-
-	t.Run("route on the app has no tags", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Get("/users", listUsers)
-		op := inferredOperation(t, fetchInferredPaths(t, app), "/users", "get")
-		require.NotContains(t, op, "tags")
-	})
-
-	t.Run("only version segments yield no tag", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Group("/v2").Get("/users", listUsers)
-		op := inferredOperation(t, fetchInferredPaths(t, app), "/v2/users", "get")
-		require.NotContains(t, op, "tags")
-	})
-
-	t.Run("disabled", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Group("/users").Get("/", listUsers)
-		op := inferredOperation(t, fetchInferredPaths(t, app, Config{DisableGroupTags: true}), "/users", "get")
-		require.NotContains(t, op, "tags")
-	})
-}
-
-func Test_OpenAPI_DefaultProduces(t *testing.T) {
-	t.Parallel()
-	responseContent := func(t *testing.T, op map[string]any, status string) (map[string]any, bool) {
-		t.Helper()
-		resp := requireMap(t, requireMap(t, op["responses"])[status])
-		content, ok := resp["content"]
-		if !ok {
-			return nil, false
-		}
-		return requireMap(t, content), true
-	}
-
-	t.Run("undocumented route documents JSON", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Get("/users", listUsers)
-		content, ok := responseContent(t, inferredOperation(t, fetchInferredPaths(t, app), "/users", "get"), "200")
-		require.True(t, ok)
-		require.Contains(t, content, fiber.MIMEApplicationJSON)
-		require.Len(t, content, 1)
-	})
-
-	t.Run("configured default", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Get("/users", listUsers)
-		paths := fetchInferredPaths(t, app, Config{DefaultProduces: fiber.MIMETextPlain})
-		content, ok := responseContent(t, inferredOperation(t, paths, "/users", "get"), "200")
-		require.True(t, ok)
-		require.Contains(t, content, fiber.MIMETextPlain)
-		require.Len(t, content, 1)
-	})
-
-	t.Run("explicit produces wins", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Get("/users", listUsers).Produces(fiber.MIMEApplicationXML)
-		content, ok := responseContent(t, inferredOperation(t, fetchInferredPaths(t, app), "/users", "get"), "200")
-		require.True(t, ok)
-		require.Contains(t, content, fiber.MIMEApplicationXML)
-		require.Len(t, content, 1)
-	})
-
-	t.Run("declared response without a media type uses the default", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Post("/users", listUsers).Response(fiber.StatusCreated, "Created")
-		content, ok := responseContent(t, inferredOperation(t, fetchInferredPaths(t, app), "/users", "post"), "201")
-		require.True(t, ok)
-		require.Contains(t, content, fiber.MIMEApplicationJSON)
-	})
-
-	t.Run("statuses without a body stay without content", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Put("/users/:id", listUsers).
-			Response(fiber.StatusNoContent, "Updated").
-			Response(fiber.StatusNotModified, "Unchanged").
-			Response(fiber.StatusContinue, "Go on")
-		op := inferredOperation(t, fetchInferredPaths(t, app), "/users/{id}", "put")
-		for _, status := range []string{"204", "304", "100"} {
-			_, ok := responseContent(t, op, status)
-			require.False(t, ok, status)
-		}
-	})
-
-	t.Run("delete default stays without content", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Delete("/users/:id", listUsers)
-		_, ok := responseContent(t, inferredOperation(t, fetchInferredPaths(t, app), "/users/{id}", "delete"), "204")
-		require.False(t, ok)
-	})
 }
 
 func Test_statusHasNoBody(t *testing.T) {
@@ -280,18 +178,5 @@ func Test_isVersionSegment(t *testing.T) {
 		"v": false, "": false, "va1": false, "1": false, "version": false, "v1beta": false,
 	} {
 		require.Equal(t, want, isVersionSegment(segment), segment)
-	}
-}
-
-func Test_summaryFromFuncName_NonASCIIAndDigits(t *testing.T) {
-	t.Parallel()
-	for name, want := range map[string]string{
-		"pkg.日本語Handler": "日本語 handler",
-		"pkg._2fa":       "2fa",
-		"pkg.élanCheck":  "Élan check",
-	} {
-		got := summaryFromFuncName(name)
-		require.True(t, utf8.ValidString(got), name)
-		require.Equal(t, want, got, name)
 	}
 }

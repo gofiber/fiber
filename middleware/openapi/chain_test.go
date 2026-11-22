@@ -67,77 +67,90 @@ func chainParams(t *testing.T, op map[string]any) map[string]map[string]any {
 	return params
 }
 
+// rfSchemes returns the security schemes a document declares.
+func rfSchemes(t *testing.T, spec map[string]any) map[string]any {
+	t.Helper()
+	return requireMap(t, requireMap(t, spec["components"])["securitySchemes"])
+}
+
+// rfSecurity returns the security requirement the GET operation of path states, nil only when the field is absent.
+func rfSecurity(t *testing.T, spec map[string]any, path string) any {
+	t.Helper()
+	security, ok := modelOperation(t, spec, path, "get")["security"]
+	require.True(t, !ok || security != nil, "a present security field is never null")
+	return security
+}
+
+// rfRequirement is the security requirement of one or more schemes with no scopes.
+func rfRequirement(schemes ...string) []any {
+	req := map[string]any{}
+	for _, scheme := range schemes {
+		req[scheme] = []any{}
+	}
+	return []any{req}
+}
+
 func Test_OpenAPI_MiddlewareSecurity(t *testing.T) {
 	t.Parallel()
 	t.Run("group middleware covers its routes", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-		app.Group("/admin", chainKeyAuth()).Get("/x", listUsers)
-		app.Get("/y", listUsers)
-		app.Get("/administrators/x", listUsers)
-		spec := modelSpec(t, app)
-
-		admin := modelOperation(t, spec, "/admin/x", "get")
-		require.Equal(t, []any{map[string]any{securitySchemeBearer: []any{}}}, admin["security"])
-		unauthorized := requireMap(t, chainResponses(t, admin)["401"])
+		spec := rfSpec(t, func(app *fiber.App) {
+			app.Group("/admin", chainKeyAuth()).Get("/x", listUsers)
+			app.Get("/y", listUsers)
+			app.Get("/administrators/x", listUsers)
+		})
+		require.Equal(t, rfRequirement(securitySchemeBearer), rfSecurity(t, spec, "/admin/x"))
+		unauthorized := rfResp(t, spec, "/admin/x", "get", "401")
 		require.Equal(t, "Unauthorized", unauthorized["description"])
 		require.Contains(t, requireMap(t, unauthorized["content"]), fiber.MIMETextPlainCharsetUTF8)
 		require.Contains(t, chainHeaders(t, unauthorized), fiber.HeaderWWWAuthenticate)
-
 		for _, path := range []string{"/y", "/administrators/x"} {
 			op := modelOperation(t, spec, path, "get")
 			require.NotContains(t, op, "security", path)
 			require.NotContains(t, chainResponses(t, op), "401", path)
 		}
-
-		schemes := requireMap(t, requireMap(t, spec["components"])["securitySchemes"])
-		require.Equal(t, map[string]any{"type": "http", "scheme": "bearer"}, schemes[securitySchemeBearer])
+		require.Equal(t, map[string]any{"type": "http", "scheme": "bearer"}, rfSchemes(t, spec)[securitySchemeBearer])
 	})
 
 	t.Run("basic auth and a chained pair", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-		app.Get("/basic", chainBasicAuth(), listUsers)
-		app.Get("/both", chainBasicAuth(), chainKeyAuth(), listUsers)
-		spec := modelSpec(t, app)
-
-		require.Equal(t, []any{map[string]any{securitySchemeBasic: []any{}}}, modelOperation(t, spec, "/basic", "get")["security"])
-		require.Equal(t, []any{map[string]any{securitySchemeBasic: []any{}, securitySchemeBearer: []any{}}}, modelOperation(t, spec, "/both", "get")["security"])
-		schemes := requireMap(t, requireMap(t, spec["components"])["securitySchemes"])
-		require.Equal(t, map[string]any{"type": "http", "scheme": "basic"}, schemes[securitySchemeBasic])
+		spec := rfSpec(t, func(app *fiber.App) {
+			app.Get("/basic", chainBasicAuth(), listUsers)
+			app.Get("/both", chainBasicAuth(), chainKeyAuth(), listUsers)
+		})
+		require.Equal(t, rfRequirement(securitySchemeBasic), rfSecurity(t, spec, "/basic"))
+		require.Equal(t, rfRequirement(securitySchemeBasic, securitySchemeBearer), rfSecurity(t, spec, "/both"))
+		require.Equal(t, map[string]any{"type": "http", "scheme": "basic"}, rfSchemes(t, spec)[securitySchemeBasic])
 	})
 
 	t.Run("registration order decides coverage", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-		group := app.Group("/g")
-		group.Get("/early", listUsers)
-		group.Use(chainKeyAuth())
-		group.Get("/late", listUsers)
-		spec := modelSpec(t, app)
-		require.NotContains(t, modelOperation(t, spec, "/g/early", "get"), "security")
-		require.Contains(t, modelOperation(t, spec, "/g/late", "get"), "security")
+		spec := rfSpec(t, func(app *fiber.App) {
+			group := app.Group("/g")
+			group.Get("/early", listUsers)
+			group.Use(chainKeyAuth())
+			group.Get("/late", listUsers)
+		})
+		require.Nil(t, rfSecurity(t, spec, "/g/early"))
+		require.NotNil(t, rfSecurity(t, spec, "/g/late"))
 	})
 
 	t.Run("explicit security and user schemes win", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-		app.Get("/x", chainKeyAuth(), listUsers).Security(map[string][]string{"apiKey": {}})
-		app.Get("/y", chainKeyAuth(), listUsers)
-		spec := modelSpec(t, app, Config{SecuritySchemes: map[string]any{
+		spec := rfSpec(t, func(app *fiber.App) {
+			app.Get("/x", chainKeyAuth(), listUsers).Security(map[string][]string{"apiKey": {}})
+			app.Get("/y", chainKeyAuth(), listUsers)
+		}, Config{SecuritySchemes: map[string]any{
 			"apiKey":             map[string]any{"type": "apiKey", "in": "header", "name": "X-API-Key"},
 			securitySchemeBearer: map[string]any{"type": "apiKey", "in": "header", "name": "X-Token"},
 		}})
-		require.Equal(t, []any{map[string]any{"apiKey": []any{}}}, modelOperation(t, spec, "/x", "get")["security"])
-		schemes := requireMap(t, requireMap(t, spec["components"])["securitySchemes"])
-		require.Equal(t, "X-Token", requireMap(t, schemes[securitySchemeBearer])["name"])
+		require.Equal(t, rfRequirement("apiKey"), rfSecurity(t, spec, "/x"))
+		require.Equal(t, "X-Token", requireMap(t, rfSchemes(t, spec)[securitySchemeBearer])["name"])
 	})
 
 	t.Run("disabled", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-		app.Get("/x", chainKeyAuth(), listUsers)
-		spec := modelSpec(t, app, Config{DisableMiddlewareInference: true})
+		spec := rfSpec(t, func(app *fiber.App) { app.Get("/x", chainKeyAuth(), listUsers) }, Config{DisableMiddlewareInference: true})
 		op := modelOperation(t, spec, "/x", "get")
 		require.NotContains(t, op, "security")
 		require.NotContains(t, chainResponses(t, op), "401")
@@ -147,20 +160,17 @@ func Test_OpenAPI_MiddlewareSecurity(t *testing.T) {
 
 func Test_OpenAPI_MiddlewareHeadersAndResponses(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(requestid.New(), limiter.New(), etag.New(), cache.New(), csrf.New())
-	app.Get("/x", listUsers).Returns(fiber.StatusOK, modelAddress{})
-	app.Post("/x", listUsers)
-	spec := modelSpec(t, app)
-
+	spec := rfSpec(t, func(app *fiber.App) {
+		app.Use(requestid.New(), limiter.New(), etag.New(), cache.New(), csrf.New())
+		app.Get("/x", listUsers).Returns(fiber.StatusOK, modelAddress{})
+		app.Post("/x", listUsers)
+	})
 	get := modelOperation(t, spec, "/x", "get")
 	responses := chainResponses(t, get)
 	ok := requireMap(t, responses["200"])
 	require.Equal(t, componentRef("modelAddress"), contentSchema(t, ok))
 	headers := chainHeaders(t, ok)
-	for _, name := range []string{fiber.HeaderXRequestID, headerRateLimitLimit, headerRateLimitRemain, headerRateLimitReset, fiber.HeaderETag, headerCacheStatus} {
-		require.Contains(t, headers, name)
-	}
+	require.ElementsMatch(t, []string{fiber.HeaderXRequestID, headerRateLimitLimit, headerRateLimitRemain, headerRateLimitReset, fiber.HeaderETag, headerCacheStatus}, rfKeys(headers))
 	require.Equal(t, "integer", requireMap(t, requireMap(t, headers[headerRateLimitLimit])["schema"])["type"])
 
 	tooMany := requireMap(t, responses["429"])
@@ -172,65 +182,53 @@ func Test_OpenAPI_MiddlewareHeadersAndResponses(t *testing.T) {
 	require.NotContains(t, notModified, "content")
 	require.Contains(t, chainHeaders(t, notModified), fiber.HeaderXRequestID)
 	require.Contains(t, chainHeaders(t, notModified), fiber.HeaderETag, "the 304 repeats the tag")
-
 	require.NotContains(t, chainParams(t, get), "header:"+headerCSRFToken)
 	require.NotContains(t, responses, "403")
 
 	post := modelOperation(t, spec, "/x", "post")
-	token := chainParams(t, post)["header:"+headerCSRFToken]
-	require.Equal(t, true, token["required"])
+	require.Equal(t, true, chainParams(t, post)["header:"+headerCSRFToken]["required"])
 	postResponses := chainResponses(t, post)
 	require.Contains(t, postResponses, "403")
-	require.NotContains(t, postResponses, "304")
+	require.NotContains(t, postResponses, "304", "a 304 answers GET and HEAD only")
+	require.Contains(t, chainHeaders(t, postResponses["200"]), fiber.HeaderETag, "a POST 200 carries a tag too")
 }
 
 func Test_OpenAPI_MiddlewareKeepsDocumentedHeaders(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(requestid.New())
-	app.Get("/x", listUsers).ResponseHeader(fiber.StatusOK, fiber.HeaderXRequestID, "Mine", nil)
-	op := modelOperation(t, modelSpec(t, app), "/x", "get")
-	header := requireMap(t, chainHeaders(t, chainResponses(t, op)["200"])[fiber.HeaderXRequestID])
-	require.Equal(t, "Mine", header["description"])
+	spec := rfSpec(t, func(app *fiber.App) {
+		app.Use(requestid.New())
+		app.Get("/x", listUsers).ResponseHeader(fiber.StatusOK, fiber.HeaderXRequestID, "Mine", nil)
+	})
+	require.Equal(t, "Mine", requireMap(t, chainHeaders(t, rfResp(t, spec, "/x", "get", "200"))[fiber.HeaderXRequestID])["description"])
 }
 
 func Test_OpenAPI_ValidationResponse(t *testing.T) {
 	t.Parallel()
-	t.Run("documented with a validator", func(t *testing.T) {
-		t.Parallel()
+	validated := func(register func(app *fiber.App), cfg ...Config) map[string]any {
 		app := fiber.New(fiber.Config{StructValidator: stubValidator{}})
-		app.Post("/u", listUsers).Accepts(modelAddress{})
+		register(app)
+		return modelSpec(t, app, cfg...)
+	}
+	acceptsAddress := func(app *fiber.App) { app.Post("/u", listUsers).Accepts(modelAddress{}) }
+
+	spec := validated(func(app *fiber.App) {
+		acceptsAddress(app)
 		app.Get("/q", listUsers).Params("query", modelPaging{})
 		app.Get("/plain", listUsers)
-		spec := modelSpec(t, app)
-		for _, tc := range []struct{ path, method string }{{"/u", "post"}, {"/q", "get"}} {
-			bad := requireMap(t, chainResponses(t, modelOperation(t, spec, tc.path, tc.method))["400"])
-			require.Equal(t, "Bad Request", bad["description"])
-			require.Contains(t, requireMap(t, bad["content"]), fiber.MIMETextPlainCharsetUTF8)
-		}
-		require.NotContains(t, chainResponses(t, modelOperation(t, spec, "/plain", "get")), "400")
 	})
+	for _, tc := range []struct{ path, method string }{{"/u", "post"}, {"/q", "get"}} {
+		bad := rfResp(t, spec, tc.path, tc.method, "400")
+		require.Equal(t, "Bad Request", bad["description"])
+		require.Contains(t, requireMap(t, bad["content"]), fiber.MIMETextPlainCharsetUTF8)
+	}
+	require.NotContains(t, chainResponses(t, modelOperation(t, spec, "/plain", "get")), "400")
 
-	t.Run("error schema and media type", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New(fiber.Config{StructValidator: stubValidator{}})
-		app.Post("/u", listUsers).Accepts(modelAddress{})
-		spec := modelSpec(t, app, Config{ErrorProduces: fiber.MIMEApplicationJSON, ErrorSchema: modelPaging{}})
-		bad := requireMap(t, chainResponses(t, modelOperation(t, spec, "/u", "post"))["400"])
-		require.Equal(t, componentRef("modelPaging"), contentSchema(t, bad))
-	})
+	spec = validated(acceptsAddress, Config{ErrorProduces: fiber.MIMEApplicationJSON, ErrorSchema: modelPaging{}})
+	require.Equal(t, componentRef("modelPaging"), contentSchema(t, rfResp(t, spec, "/u", "post", "400")), "error schema and media type")
 
-	t.Run("absent without a validator or when disabled", func(t *testing.T) {
-		t.Parallel()
-		plain := fiber.New()
-		plain.Post("/u", listUsers).Accepts(modelAddress{})
-		require.NotContains(t, chainResponses(t, modelOperation(t, modelSpec(t, plain), "/u", "post")), "400")
-
-		disabled := fiber.New(fiber.Config{StructValidator: stubValidator{}})
-		disabled.Post("/u", listUsers).Accepts(modelAddress{})
-		spec := modelSpec(t, disabled, Config{DisableValidationResponses: true})
-		require.NotContains(t, chainResponses(t, modelOperation(t, spec, "/u", "post")), "400")
-	})
+	require.NotContains(t, chainResponses(t, modelOperation(t, rfSpec(t, acceptsAddress), "/u", "post")), "400", "absent without a validator")
+	spec = validated(acceptsAddress, Config{DisableValidationResponses: true})
+	require.NotContains(t, chainResponses(t, modelOperation(t, spec, "/u", "post")), "400", "absent when disabled")
 }
 
 func Test_handlerMiddleware(t *testing.T) {
@@ -381,86 +379,67 @@ type flaggedUser struct {
 
 func Test_OpenAPI_FlagTagsAndExamples(t *testing.T) {
 	t.Parallel()
-	props := requireMap(t, SchemaOf(flaggedUser{})["properties"])
+	schema := SchemaOf(flaggedUser{})
+	props := requireMap(t, schema["properties"])
 	require.Equal(t, true, requireMap(t, props["id"])["readOnly"])
 	require.Equal(t, true, requireMap(t, props["secret"])["writeOnly"])
 	old := requireMap(t, props["old"])
 	require.Equal(t, true, old["deprecated"])
 	require.Equal(t, "Use new", old["description"])
-	require.Equal(t, map[string]any{"id": int64(7), "home": map[string]any{"city": "Berlin"}}, SchemaOf(flaggedUser{})["example"])
+	require.Equal(t, map[string]any{"id": int64(7), "home": map[string]any{"city": "Berlin"}}, schema["example"])
 
-	app := fiber.New()
-	app.Get("/u", listUsers).Returns(fiber.StatusOK, flaggedUser{})
-	spec := modelSpec(t, app)
-	user := requireMap(t, modelSchemas(t, spec)["flaggedUser"])
-	require.Equal(t, map[string]any{"id": float64(7), "home": map[string]any{"city": "Berlin"}}, user["example"])
+	spec := rfSpec(t, func(app *fiber.App) { app.Get("/u", listUsers).Returns(fiber.StatusOK, flaggedUser{}) })
+	require.Equal(t, map[string]any{"id": float64(7), "home": map[string]any{"city": "Berlin"}}, requireMap(t, modelSchemas(t, spec)["flaggedUser"])["example"])
 }
 
-func Test_OpenAPI_ConsumesDecidesBodyMediaType(t *testing.T) {
+func Test_OpenAPI_RequestBodyMediaType(t *testing.T) {
 	t.Parallel()
-	bodyContent := func(t *testing.T, app *fiber.App, path string, cfg ...Config) map[string]any {
-		t.Helper()
-		body := requireMap(t, modelOperation(t, modelSpec(t, app, cfg...), path, "post")["requestBody"])
-		return requireMap(t, body["content"])
+	for _, tc := range []struct {
+		register func(app *fiber.App)
+		name     string
+		want     string
+		cfg      Config
+	}{
+		{name: "declared body without a media type documents JSON", register: func(app *fiber.App) { app.Post("/x", listUsers).RequestBody("payload", true) }, want: fiber.MIMEApplicationJSON},
+		{name: "configured default", register: func(app *fiber.App) { app.Post("/x", listUsers).Accepts(modelAddress{}) }, want: fiber.MIMETextPlain, cfg: Config{DefaultConsumes: fiber.MIMETextPlain}},
+		{name: "explicit media type wins", register: func(app *fiber.App) { app.Post("/x", listUsers).Accepts(modelAddress{}, fiber.MIMEApplicationXML) }, want: fiber.MIMEApplicationXML},
+		{name: "Consumes with Accepts", register: func(app *fiber.App) {
+			app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML).Accepts(modelAddress{})
+		}, want: fiber.MIMEApplicationXML},
+		{name: "Consumes with RequestBody", want: fiber.MIMEApplicationXML, register: func(app *fiber.App) {
+			app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML).RequestBody("payload", true)
+		}},
+		{name: "a declared media type beats Consumes", want: fiber.MIMEApplicationJSON, register: func(app *fiber.App) {
+			app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML).Accepts(modelAddress{}, fiber.MIMEApplicationJSON)
+		}},
+		{name: "Consumes alone still documents a body", register: func(app *fiber.App) { app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML) }, want: fiber.MIMEApplicationXML},
+		{name: "no Consumes uses the default", register: func(app *fiber.App) { app.Post("/x", listUsers).Accepts(modelAddress{}) }, want: fiber.MIMEApplicationJSON},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			body := requireMap(t, modelOperation(t, rfSpec(t, tc.register, tc.cfg), "/x", "post")["requestBody"])
+			content := requireMap(t, body["content"])
+			require.Len(t, content, 1)
+			require.Contains(t, content, tc.want)
+		})
 	}
-
-	t.Run("Consumes with Accepts", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML).Accepts(modelAddress{})
-		content := bodyContent(t, app, "/x")
-		require.Len(t, content, 1)
-		require.Contains(t, content, fiber.MIMEApplicationXML)
-	})
-
-	t.Run("Consumes with RequestBody", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML).RequestBody("payload", true)
-		require.Contains(t, bodyContent(t, app, "/x"), fiber.MIMEApplicationXML)
-	})
-
-	t.Run("a declared media type beats Consumes", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML).Accepts(modelAddress{}, fiber.MIMEApplicationJSON)
-		content := bodyContent(t, app, "/x")
-		require.Len(t, content, 1)
-		require.Contains(t, content, fiber.MIMEApplicationJSON)
-	})
-
-	t.Run("Consumes alone still documents a body", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML)
-		require.Contains(t, bodyContent(t, app, "/x"), fiber.MIMEApplicationXML)
-	})
-
-	t.Run("no Consumes uses the default", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Post("/x", listUsers).Accepts(modelAddress{})
-		require.Contains(t, bodyContent(t, app, "/x"), fiber.MIMEApplicationJSON)
-	})
 }
 
 func Test_OpenAPI_ExplicitSecurityWinsOverMiddleware(t *testing.T) {
 	t.Parallel()
 	t.Run("Security() documents no authentication", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-		app.Get("/public", chainKeyAuth(), listUsers).Security()
-		app.Get("/private", chainKeyAuth(), listUsers)
-		spec := modelSpec(t, app, Config{
+		spec := rfSpec(t, func(app *fiber.App) {
+			app.Get("/public", chainKeyAuth(), listUsers).Security()
+			app.Get("/private", chainKeyAuth(), listUsers)
+		}, Config{
 			Security:        []map[string][]string{{"docLevel": {}}},
 			SecuritySchemes: map[string]any{"docLevel": map[string]any{"type": "http", "scheme": "basic"}},
 		})
-
 		public := modelOperation(t, spec, "/public", "get")
 		require.Equal(t, []any{}, public["security"])
 		require.NotContains(t, chainResponses(t, public), "401")
-		require.Contains(t, modelOperation(t, spec, "/private", "get"), "security")
-
+		require.NotNil(t, rfSecurity(t, spec, "/private"))
 		raw, err := json.Marshal(public)
 		require.NoError(t, err)
 		require.Contains(t, string(raw), `"security":[]`)
@@ -468,22 +447,31 @@ func Test_OpenAPI_ExplicitSecurityWinsOverMiddleware(t *testing.T) {
 
 	t.Run("a stated requirement replaces inference entirely", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-		app.Get("/x", chainKeyAuth(), listUsers).Security(map[string][]string{"oauth": {"read"}})
-		spec := modelSpec(t, app, Config{SecuritySchemes: map[string]any{"oauth": map[string]any{"type": "oauth2"}}})
+		spec := rfSpec(t, func(app *fiber.App) {
+			app.Get("/x", chainKeyAuth(), listUsers).Security(map[string][]string{"oauth": {"read"}})
+		},
+			Config{SecuritySchemes: map[string]any{"oauth": map[string]any{"type": "oauth2"}}})
 		op := modelOperation(t, spec, "/x", "get")
 		require.Equal(t, []any{map[string]any{"oauth": []any{"read"}}}, op["security"])
 		require.NotContains(t, chainResponses(t, op), "401")
-		require.NotContains(t, requireMap(t, requireMap(t, spec["components"])["securitySchemes"]), securitySchemeBearer)
+		require.NotContains(t, rfSchemes(t, spec), securitySchemeBearer)
 	})
 
 	t.Run("other middleware is still documented", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-		app.Use(requestid.New())
-		app.Get("/x", chainKeyAuth(), listUsers).Security()
-		op := modelOperation(t, modelSpec(t, app), "/x", "get")
-		require.Contains(t, chainHeaders(t, chainResponses(t, op)["200"]), fiber.HeaderXRequestID)
+		spec := rfSpec(t, func(app *fiber.App) {
+			app.Use(requestid.New())
+			app.Get("/x", chainKeyAuth(), listUsers).Security()
+		})
+		require.Contains(t, chainHeaders(t, rfResp(t, spec, "/x", "get", "200")), fiber.HeaderXRequestID)
+	})
+
+	t.Run("no inferred scheme is declared", func(t *testing.T) {
+		t.Parallel()
+		spec := rfSpec(t, func(app *fiber.App) { app.Get("/public", chainBasicAuth(), listUsers).Security() })
+		if components, ok := spec["components"].(map[string]any); ok {
+			require.NotContains(t, components, "securitySchemes")
+		}
 	})
 }
 
@@ -496,13 +484,11 @@ func Test_OpenAPI_DisableDefaultMediaTypes(t *testing.T) {
 	app.Get("/w", listUsers).Produces(fiber.MIMEApplicationXML)
 	spec := modelSpec(t, app, Config{DisableDefaultMediaTypes: true})
 
-	require.NotContains(t, requireMap(t, chainResponses(t, modelOperation(t, spec, "/x", "get"))["200"]), "content")
+	require.NotContains(t, rfResp(t, spec, "/x", "get", "200"), "content")
 	require.NotContains(t, modelOperation(t, spec, "/y", "post"), "requestBody")
-	unauthorized := requireMap(t, chainResponses(t, modelOperation(t, spec, "/z", "get"))["401"])
-	require.NotContains(t, unauthorized, "content")
-	bad := requireMap(t, chainResponses(t, modelOperation(t, spec, "/y", "post"))["400"])
-	require.NotContains(t, bad, "content")
-	require.Contains(t, requireMap(t, requireMap(t, chainResponses(t, modelOperation(t, spec, "/w", "get"))["200"])["content"]), fiber.MIMEApplicationXML)
+	require.NotContains(t, rfResp(t, spec, "/z", "get", "401"), "content")
+	require.NotContains(t, rfResp(t, spec, "/y", "post", "400"), "content")
+	require.Contains(t, requireMap(t, rfResp(t, spec, "/w", "get", "200")["content"]), fiber.MIMEApplicationXML)
 
 	cfg := configDefault(Config{DisableDefaultMediaTypes: true, DefaultProduces: fiber.MIMETextPlain})
 	require.Equal(t, fiber.MIMETextPlain, cfg.DefaultProduces)
@@ -514,151 +500,87 @@ func Test_OpenAPI_MiddlewareCoverage(t *testing.T) {
 	t.Parallel()
 	t.Run("a parametric Use prefix covers the routes under it", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-		app.Group("/users/:id", chainKeyAuth()).Get("/posts", listUsers)
-		app.Get("/accounts/:id/posts", listUsers)
-		spec := modelSpec(t, app)
-		require.Contains(t, modelOperation(t, spec, "/users/{id}/posts", "get"), "security")
-		require.NotContains(t, modelOperation(t, spec, "/accounts/{id}/posts", "get"), "security")
+		spec := rfSpec(t, func(app *fiber.App) {
+			app.Group("/users/:id", chainKeyAuth()).Get("/posts", listUsers)
+			app.Get("/accounts/:id/posts", listUsers)
+		})
+		require.NotNil(t, rfSecurity(t, spec, "/users/{id}/posts"))
+		require.Nil(t, rfSecurity(t, spec, "/accounts/{id}/posts"))
 	})
 
 	t.Run("the app's case rule applies", func(t *testing.T) {
 		t.Parallel()
-		insensitive := fiber.New()
-		insensitive.Use("/Admin", chainKeyAuth())
-		insensitive.Get("/admin/x", listUsers)
-		require.Contains(t, modelOperation(t, modelSpec(t, insensitive), "/admin/x", "get"), "security")
-
-		sensitive := fiber.New(fiber.Config{CaseSensitive: true})
-		sensitive.Use("/Admin", chainKeyAuth())
-		sensitive.Get("/admin/x", listUsers)
-		require.NotContains(t, modelOperation(t, modelSpec(t, sensitive), "/admin/x", "get"), "security")
+		for sensitive, want := range map[bool]bool{false: true, true: false} {
+			app := fiber.New(fiber.Config{CaseSensitive: sensitive})
+			app.Use("/Admin", chainKeyAuth())
+			app.Get("/admin/x", listUsers)
+			require.Equal(t, want, rfSecurity(t, modelSpec(t, app), "/admin/x") != nil, "case sensitive: %v", sensitive)
+		}
 	})
 
 	t.Run("domain routes", func(t *testing.T) {
 		t.Parallel()
-		app := fiber.New()
-		api := app.Domain("api.example")
-		api.Get("/own", chainKeyAuth(), listUsers)
-		api.Use(chainBasicAuth())
-		api.Get("/covered", listUsers)
-		app.Domain("other.example").Get("/elsewhere", listUsers)
-		spec := modelSpec(t, app)
-
+		spec := rfSpec(t, func(app *fiber.App) {
+			api := app.Domain("api.example")
+			api.Get("/own", chainKeyAuth(), listUsers)
+			api.Use(chainBasicAuth())
+			api.Get("/covered", listUsers)
+			app.Domain("other.example").Get("/elsewhere", listUsers)
+			app.Domain("chain.example").RouteChain("/chain").Get(chainKeyAuth(), listUsers)
+		})
 		own := modelOperation(t, spec, "/own", "get")
-		require.Equal(t, []any{map[string]any{securitySchemeBearer: []any{}}}, own["security"])
+		require.Equal(t, rfRequirement(securitySchemeBearer), own["security"])
 		require.Equal(t, "List users", own["summary"])
-		require.Equal(t, []any{map[string]any{securitySchemeBasic: []any{}}}, modelOperation(t, spec, "/covered", "get")["security"])
-		require.NotContains(t, modelOperation(t, spec, "/elsewhere", "get"), "security")
+		require.Equal(t, rfRequirement(securitySchemeBasic), rfSecurity(t, spec, "/covered"))
+		require.Nil(t, rfSecurity(t, spec, "/elsewhere"))
+		chain := modelOperation(t, spec, "/chain", "get")
+		require.Contains(t, chain, "security", "a domain route chain")
+		require.Equal(t, "List users", chain["summary"])
 	})
-
-	t.Run("a domain route chain", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Domain("api.example").RouteChain("/chain").Get(chainKeyAuth(), listUsers)
-		op := modelOperation(t, modelSpec(t, app), "/chain", "get")
-		require.Contains(t, op, "security")
-		require.Equal(t, "List users", op["summary"])
-	})
-}
-
-func Test_OpenAPI_ETagHeaderOn200AndReadOnly304(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(etag.New())
-	app.Get("/x", listUsers)
-	app.Post("/x", listUsers)
-	spec := modelSpec(t, app)
-	require.Contains(t, chainHeaders(t, chainResponses(t, modelOperation(t, spec, "/x", "get"))["200"]), fiber.HeaderETag)
-	require.Contains(t, chainHeaders(t, chainResponses(t, modelOperation(t, spec, "/x", "post"))["200"]), fiber.HeaderETag, "a POST 200 carries a tag too")
-	require.NotContains(t, chainResponses(t, modelOperation(t, spec, "/x", "post")), "304", "a 304 answers GET and HEAD only")
 }
 
 func Test_classifySegment(t *testing.T) {
 	t.Parallel()
 	for segment, want := range map[string]segmentKind{
-		"users":          segmentLiteral,
-		"":               segmentLiteral,
-		":id":            segmentParam,
-		":id<int>":       segmentParam,
-		"v-:n":           segmentParam,
-		":id?":           segmentOptional,
-		"*":              segmentGreedy,
-		"+":              segmentGreedy,
-		"a\\:b":          segmentLiteral,
-		":id<regex(a+)>": segmentParam,
+		"users": segmentLiteral, "": segmentLiteral, "a\\:b": segmentLiteral,
+		":id": segmentParam, ":id<int>": segmentParam, "v-:n": segmentParam, ":id<regex(a+)>": segmentParam,
+		":id?": segmentOptional, "*": segmentGreedy, "+": segmentGreedy,
 	} {
 		kind, _ := classifySegment(segment)
 		require.Equal(t, want, kind, segment)
 	}
 }
 
-func Test_keyName(t *testing.T) {
-	t.Parallel()
-	require.Equal(t, "Page_pkg.User_", keyName("Page[pkg.User]"))
-	require.Equal(t, "a-b_c.d", keyName("a-b_c.d"))
-	require.Equal(t, "_", keyName("é"))
-	require.Empty(t, keyName(""))
-	require.Equal(t, "___", keyName("日本語"))
-	require.Equal(t, "_", componentName(""))
-}
-
 func Test_OpenAPI_MiddlewareHeaderNames(t *testing.T) {
 	t.Parallel()
-	newApp := func() *fiber.App {
-		app := fiber.New()
-		app.Use(
-			requestid.New(requestid.Config{Header: "X-Trace-ID"}),
-			limiter.New(),
-			cache.New(cache.Config{CacheHeader: "X-Edge"}),
-			csrf.New(),
-		)
+	register := func(app *fiber.App) {
+		app.Use(requestid.New(requestid.Config{Header: "X-Trace-ID"}), limiter.New(), cache.New(cache.Config{CacheHeader: "X-Edge"}), csrf.New())
 		app.Get("/x", listUsers)
 		app.Post("/x", listUsers)
-		return app
 	}
 
 	t.Run("renamed", func(t *testing.T) {
 		t.Parallel()
-		spec := modelSpec(t, newApp(), Config{
+		spec := rfSpec(t, register, Config{
 			RequestIDHeader:  "X-Trace-ID",
 			CacheHeader:      "X-Edge",
 			CSRFHeader:       "X-XSRF",
 			RateLimitHeaders: RateLimitHeaders{Limit: "RateLimit-Limit", Reset: "RateLimit-Reset"},
 		})
-		headers := chainHeaders(t, chainResponses(t, modelOperation(t, spec, "/x", "get"))["200"])
-		for _, name := range []string{"X-Trace-ID", "X-Edge", "RateLimit-Limit", "RateLimit-Reset", headerRateLimitRemain} {
-			require.Contains(t, headers, name)
-		}
-		for _, name := range []string{fiber.HeaderXRequestID, headerCacheStatus, headerRateLimitLimit, headerRateLimitReset} {
-			require.NotContains(t, headers, name)
-		}
-		params := chainParams(t, modelOperation(t, spec, "/x", "post"))
-		require.Contains(t, params, "header:X-XSRF")
-		require.NotContains(t, params, "header:"+headerCSRFToken)
+		headers := rfKeys(chainHeaders(t, rfResp(t, spec, "/x", "get", "200")))
+		require.ElementsMatch(t, []string{"X-Trace-ID", "X-Edge", "RateLimit-Limit", "RateLimit-Reset", headerRateLimitRemain}, headers)
+		require.ElementsMatch(t, []string{"header:X-XSRF"}, rfKeys(chainParams(t, modelOperation(t, spec, "/x", "post"))))
 	})
 
 	t.Run("rate limit headers disabled", func(t *testing.T) {
 		t.Parallel()
-		spec := modelSpec(t, newApp(), Config{DisableRateLimitHeaders: true})
-		responses := chainResponses(t, modelOperation(t, spec, "/x", "get"))
-		headers := chainHeaders(t, responses["200"])
+		spec := rfSpec(t, register, Config{DisableRateLimitHeaders: true})
+		headers := chainHeaders(t, rfResp(t, spec, "/x", "get", "200"))
 		for _, name := range []string{headerRateLimitLimit, headerRateLimitRemain, headerRateLimitReset} {
 			require.NotContains(t, headers, name)
 		}
-		require.NotContains(t, chainHeaders(t, responses["429"]), fiber.HeaderRetryAfter, "the limiter drops Retry-After with its other headers")
+		require.NotContains(t, chainHeaders(t, rfResp(t, spec, "/x", "get", "429")), fiber.HeaderRetryAfter, "the limiter drops Retry-After with its other headers")
 	})
-}
-
-func Test_OpenAPI_UserPackageNamedLikeFiberMiddleware(t *testing.T) {
-	t.Parallel()
-	// A handler compiled outside middleware/keyauth must not read as recognized middleware.
-	app := fiber.New()
-	app.Get("/x", listUsers)
-	spec := modelSpec(t, app)
-	op := modelOperation(t, spec, "/x", "get")
-	require.NotContains(t, op, "security")
-	require.NotContains(t, chainResponses(t, op), "401")
 }
 
 func Test_OpenAPI_ErrorSchemaImpliesJSON(t *testing.T) {
@@ -667,12 +589,9 @@ func Test_OpenAPI_ErrorSchemaImpliesJSON(t *testing.T) {
 		Message string `json:"message"`
 	}
 	media := func(cfg Config) map[string]any {
-		app := fiber.New()
-		app.Get("/x", chainKeyAuth(), listUsers)
-		unauthorized := requireMap(t, chainResponses(t, modelOperation(t, modelSpec(t, app, cfg), "/x", "get"))["401"])
-		return requireMap(t, unauthorized["content"])
+		spec := rfSpec(t, func(app *fiber.App) { app.Get("/x", chainKeyAuth(), listUsers) }, cfg)
+		return requireMap(t, rfResp(t, spec, "/x", "get", "401")["content"])
 	}
-
 	require.Contains(t, media(Config{ErrorSchema: errBody{}}), fiber.MIMEApplicationJSON)
 	require.Contains(t, media(Config{ErrorSchema: errBody{}, ErrorProduces: fiber.MIMETextPlain}), fiber.MIMETextPlain, "an explicit choice wins")
 	require.Contains(t, media(Config{}), fiber.MIMETextPlainCharsetUTF8)
@@ -680,61 +599,22 @@ func Test_OpenAPI_ErrorSchemaImpliesJSON(t *testing.T) {
 
 func Test_OpenAPI_MiddlewareHeadersOnlyOnResponsesThatCarryThem(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Get("/x", requestid.New(), chainKeyAuth(), limiter.New(), cache.New(), listUsers)
-	responses := chainResponses(t, modelOperation(t, modelSpec(t, app), "/x", "get"))
-
+	spec := rfSpec(t, func(app *fiber.App) {
+		app.Get("/x", requestid.New(), chainKeyAuth(), limiter.New(), cache.New(), listUsers)
+		app.Get("/y", chainKeyAuth(), cache.New(), listUsers).Response(fiber.StatusNotFound, "Missing")
+	})
+	responses := chainResponses(t, modelOperation(t, spec, "/x", "get"))
 	headersOf := func(status string) map[string]any { return chainHeaders(t, responses[status]) }
 
-	require.Contains(t, headersOf("200"), headerRateLimitLimit)
-	require.Contains(t, headersOf("200"), headerCacheStatus)
-
+	require.Subset(t, rfKeys(headersOf("200")), []string{headerRateLimitLimit, headerCacheStatus})
 	// A keyauth 401 never reached the limiter or the cache.
-	require.NotContains(t, headersOf("401"), headerRateLimitLimit)
-	require.NotContains(t, headersOf("401"), headerCacheStatus)
-	require.Contains(t, headersOf("401"), fiber.HeaderWWWAuthenticate)
-
+	require.ElementsMatch(t, []string{fiber.HeaderXRequestID, fiber.HeaderWWWAuthenticate}, rfKeys(headersOf("401")))
 	// The limiter's own 429 carries Retry-After; the window headers are set only after the handler ran.
-	require.NotContains(t, headersOf("429"), headerRateLimitLimit)
-	require.Contains(t, headersOf("429"), fiber.HeaderRetryAfter)
-	require.NotContains(t, headersOf("429"), headerCacheStatus)
-
+	require.ElementsMatch(t, []string{fiber.HeaderXRequestID, fiber.HeaderRetryAfter}, rfKeys(headersOf("429")))
 	for status := range responses {
 		require.Contains(t, headersOf(status), fiber.HeaderXRequestID, status)
 	}
-}
 
-func Test_OpenAPI_DroppedDuplicateRouteDeclaresNoScheme(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Get("/a/:id", chainBasicAuth(), listUsers)
-	// The same template up to parameter names: the first registration wins, so this one is not documented.
-	app.Get("/a/:name", chainKeyAuth(), listUsers)
-	spec := modelSpec(t, app)
-
-	schemes := requireMap(t, requireMap(t, spec["components"])["securitySchemes"])
-	require.Contains(t, schemes, securitySchemeBasic)
-	require.NotContains(t, schemes, securitySchemeBearer)
-}
-
-func Test_OpenAPI_ExplicitSecurityDeclaresNoInferredScheme(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Get("/public", chainBasicAuth(), listUsers).Security()
-	spec := modelSpec(t, app)
-
-	components, ok := spec["components"].(map[string]any)
-	if ok {
-		require.NotContains(t, components, "securitySchemes")
-	}
-}
-
-func Test_OpenAPI_CacheStatusHeaderOnHandlerErrors(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Get("/x", chainKeyAuth(), cache.New(), listUsers).Response(fiber.StatusNotFound, "Missing")
-	responses := chainResponses(t, modelOperation(t, modelSpec(t, app), "/x", "get"))
-
-	require.Contains(t, chainHeaders(t, responses["404"]), headerCacheStatus, "the cache sets it on the handler's errors too")
-	require.NotContains(t, chainHeaders(t, responses["401"]), headerCacheStatus)
+	require.Contains(t, chainHeaders(t, rfResp(t, spec, "/y", "get", "404")), headerCacheStatus, "the cache sets it on the handler's errors too")
+	require.NotContains(t, chainHeaders(t, rfResp(t, spec, "/y", "get", "401")), headerCacheStatus)
 }

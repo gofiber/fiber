@@ -2,8 +2,10 @@ package openapi
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"mime/multipart"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -11,15 +13,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// rfM shortens the schema literals the tables in this file compare against.
+type rfM = map[string]any
+
 func embedStruct(embedded []any, extra ...reflect.StructField) any {
 	fields := make([]reflect.StructField, 0, len(embedded)+len(extra))
 	for _, value := range embedded {
 		typ := reflect.TypeOf(value)
-		fields = append(fields, reflect.StructField{
-			Name:      typ.Name(),
-			Type:      typ,
-			Anonymous: true,
-		})
+		fields = append(fields, reflect.StructField{Name: typ.Name(), Type: typ, Anonymous: true})
 	}
 	fields = append(fields, extra...)
 	return reflect.New(reflect.StructOf(fields)).Elem().Interface()
@@ -46,341 +47,130 @@ func requireProp(t *testing.T, props map[string]any, name string) map[string]any
 	return prop
 }
 
-func Test_SchemaOf_SimpleStruct(t *testing.T) {
-	t.Parallel()
-	type User struct {
-		Name string `json:"name"`
-		ID   int    `json:"id"`
-	}
+type rfSchemaAddress struct {
+	Street string `json:"street"`
+	City   string `json:"city"`
+}
 
-	schema := SchemaOf(User{})
+type rfSchemaItem struct {
+	Name string `json:"name"`
+}
+
+// rfSchemaFixture holds one field per independent field rule SchemaOf applies.
+type rfSchemaFixture struct {
+	At        time.Time       `json:"at"`
+	Meta      map[string]int  `json:"meta"`
+	ByInt     map[int]string  `json:"by_int"`
+	Any       any             `json:"any"`
+	Ptr       *string         `json:"ptr"`
+	Ch        chan int        `json:"ch"`
+	Fn        func() bool     `json:"fn"`
+	Address   rfSchemaAddress `json:"address"`
+	S         string          `json:"s"`
+	Omit      string          `json:"omit,omitempty"`
+	Skipped   string          `json:"-"`
+	private   string          //nolint:unused // an unexported field is skipped
+	FieldName string
+	Name      string         `json:"name" openapi:"description:Product name,example:Widget"`
+	Email     string         `json:"email" openapi:"format:email"`
+	Status    string         `json:"status" openapi:"enum:active|inactive|pending"`
+	Comma     string         `json:"comma" openapi:"enum:active|inactive,description:Status, including a comma"`
+	Mode      string         `json:"mode" openapi:"enum:on|off"`
+	Tags      []string       `json:"tags"`
+	Items     []rfSchemaItem `json:"items"`
+	Data      []byte         `json:"data"`
+	I64       int64          `json:"i64"`
+	U64       uint64         `json:"u64"`
+	F64       float64        `json:"f64"`
+	Price     float64        `json:"price" openapi:"example:9.99"`
+	Rate      float64        `json:"rate" openapi:"enum:0.5|1.0"`
+	QuotedF   float64        `json:"quoted_f,string"`
+	QuotedI   int64          `json:"quoted_i,string"`
+	I         int            `json:"i"`
+	U         uint           `json:"u"`
+	Count     int            `json:"count" openapi:"example:42"`
+	Level     int            `json:"level" openapi:"enum:1|2|3"`
+	Codes     [3]int         `json:"codes"`
+	F32       float32        `json:"f32"`
+	I32       int32          `json:"i32"`
+	U32       uint32         `json:"u32"`
+	FixedID   [4]byte        `json:"fixed_id"`
+	I16       int16          `json:"i16"`
+	U16       uint16         `json:"u16"`
+	I8        int8           `json:"i8"`
+	U8        uint8          `json:"u8"`
+	B         bool           `json:"b"`
+	Active    bool           `json:"active" openapi:"example:true"`
+	Flag      bool           `json:"flag" openapi:"enum:true|false"`
+	QuotedB   bool           `json:"quoted_b,string"`
+}
+
+func Test_SchemaOf_Fields(t *testing.T) {
+	t.Parallel()
+	schema := SchemaOf(rfSchemaFixture{})
 	require.Equal(t, "object", schema["type"])
-
-	props := requireProps(t, schema)
-	require.Equal(t, map[string]any{"type": "integer"}, props["id"])
-	require.Equal(t, map[string]any{"type": "string"}, props["name"])
-
+	str, integer, number := rfM{"type": "string"}, rfM{"type": "integer"}, rfM{"type": "number"}
+	require.Equal(t, rfM{
+		"at":      rfM{"type": "string", "format": "date-time"},
+		"meta":    rfM{"type": "object", "additionalProperties": integer},
+		"by_int":  rfM{"type": "object"},
+		"any":     rfM{},
+		"ptr":     str,
+		"address": rfM{"type": "object", "properties": rfM{"street": str, "city": str}, "required": []string{"street", "city"}},
+		"s":       str, "omit": str, "FieldName": str,
+		"name":     rfM{"type": "string", "description": "Product name", "example": "Widget"},
+		"email":    rfM{"type": "string", "format": "email"},
+		"status":   rfM{"type": "string", "enum": []any{"active", "inactive", "pending"}},
+		"comma":    rfM{"type": "string", "enum": []any{"active", "inactive"}, "description": "Status, including a comma"},
+		"mode":     rfM{"type": "string", "enum": []any{"on", "off"}},
+		"tags":     rfM{"type": "array", "items": str},
+		"items":    rfM{"type": "array", "items": rfM{"type": "object", "properties": rfM{"name": str}, "required": []string{"name"}}},
+		"data":     rfM{"type": "string", "format": "byte"},
+		"price":    rfM{"type": "number", "example": 9.99},
+		"rate":     rfM{"type": "number", "enum": []any{0.5, 1.0}},
+		"count":    rfM{"type": "integer", "example": int64(42)},
+		"level":    rfM{"type": "integer", "enum": []any{int64(1), int64(2), int64(3)}},
+		"codes":    rfM{"type": "array", "items": integer},
+		"fixed_id": rfM{"type": "array", "items": integer},
+		"active":   rfM{"type": "boolean", "example": true},
+		"flag":     rfM{"type": "boolean", "enum": []any{true, false}},
+		"quoted_f": str, "quoted_i": str, "quoted_b": str,
+		"i": integer, "i8": integer, "i16": integer, "i32": integer, "i64": integer,
+		"u": integer, "u8": integer, "u16": integer, "u32": integer, "u64": integer,
+		"f32": number, "f64": number, "b": rfM{"type": "boolean"},
+	}, requireProps(t, schema))
 	required := requireRequired(t, schema)
-	require.Contains(t, required, "id")
-	require.Contains(t, required, "name")
+	require.NotContains(t, required, "ptr", "a pointer is optional")
+	require.NotContains(t, required, "omit")
+	require.Contains(t, required, "s")
+	require.Contains(t, required, "FieldName")
 }
 
-func Test_SchemaOf_AllPrimitiveTypes(t *testing.T) {
-	t.Parallel()
-	type Primitives struct {
-		S   string  `json:"s"`
-		I64 int64   `json:"i64"`
-		U64 uint64  `json:"u64"`
-		F64 float64 `json:"f64"`
-		I   int     `json:"i"`
-		U   uint    `json:"u"`
-		F32 float32 `json:"f32"`
-		I32 int32   `json:"i32"`
-		U32 uint32  `json:"u32"`
-		I16 int16   `json:"i16"`
-		U16 uint16  `json:"u16"`
-		I8  int8    `json:"i8"`
-		U8  uint8   `json:"u8"`
-		B   bool    `json:"b"`
-	}
-
-	schema := SchemaOf(Primitives{})
-	props := requireProps(t, schema)
-
-	require.Equal(t, "string", requireProp(t, props, "s")["type"])
-	require.Equal(t, "boolean", requireProp(t, props, "b")["type"])
-	require.Equal(t, "integer", requireProp(t, props, "i")["type"])
-	require.Equal(t, "integer", requireProp(t, props, "i8")["type"])
-	require.Equal(t, "integer", requireProp(t, props, "i16")["type"])
-	require.Equal(t, "integer", requireProp(t, props, "i32")["type"])
-	require.Equal(t, "integer", requireProp(t, props, "i64")["type"])
-	require.Equal(t, "integer", requireProp(t, props, "u")["type"])
-	require.Equal(t, "integer", requireProp(t, props, "u8")["type"])
-	require.Equal(t, "integer", requireProp(t, props, "u16")["type"])
-	require.Equal(t, "integer", requireProp(t, props, "u32")["type"])
-	require.Equal(t, "integer", requireProp(t, props, "u64")["type"])
-	require.Equal(t, "number", requireProp(t, props, "f32")["type"])
-	require.Equal(t, "number", requireProp(t, props, "f64")["type"])
-}
-
-func Test_SchemaOf_PointerField(t *testing.T) {
-	t.Parallel()
-	type WithPointer struct {
-		Name *string `json:"name"`
-		Age  int     `json:"age"`
-	}
-
-	schema := SchemaOf(WithPointer{})
-	props := requireProps(t, schema)
-
-	require.Equal(t, "string", requireProp(t, props, "name")["type"])
-
-	required := requireRequired(t, schema)
-	require.NotContains(t, required, "name")
-	require.Contains(t, required, "age")
-}
-
-func Test_SchemaOf_OmitemptyNotRequired(t *testing.T) {
-	t.Parallel()
-	type WithOmit struct {
-		Name string `json:"name,omitempty"`
-		ID   int    `json:"id"`
-	}
-
-	schema := SchemaOf(WithOmit{})
-	required := requireRequired(t, schema)
-	require.Contains(t, required, "id")
-	require.NotContains(t, required, "name")
-}
-
-func Test_SchemaOf_JSONDash_SkipsField(t *testing.T) {
-	t.Parallel()
-	type WithSkip struct {
-		Public  string `json:"public"`
-		private string //nolint:unused // testing unexported field
-		Skipped string `json:"-"`
-	}
-
-	schema := SchemaOf(WithSkip{})
-	props := requireProps(t, schema)
-	require.Contains(t, props, "public")
-	require.NotContains(t, props, "Skipped")
-	require.NotContains(t, props, "private")
-}
-
-func Test_SchemaOf_SliceAndArray(t *testing.T) {
-	t.Parallel()
-	type WithSlice struct {
-		Tags  []string `json:"tags"`
-		Codes [3]int   `json:"codes"`
-	}
-
-	schema := SchemaOf(WithSlice{})
-	props := requireProps(t, schema)
-
-	tagsSchema := requireProp(t, props, "tags")
-	require.Equal(t, "array", tagsSchema["type"])
-	require.Equal(t, map[string]any{"type": "string"}, tagsSchema["items"])
-
-	codesSchema := requireProp(t, props, "codes")
-	require.Equal(t, "array", codesSchema["type"])
-	require.Equal(t, map[string]any{"type": "integer"}, codesSchema["items"])
-}
-
-func Test_SchemaOf_MapField(t *testing.T) {
-	t.Parallel()
-	type WithMap struct {
-		Meta map[string]int `json:"meta"`
-	}
-
-	schema := SchemaOf(WithMap{})
-	props := requireProps(t, schema)
-
-	metaSchema := requireProp(t, props, "meta")
-	require.Equal(t, "object", metaSchema["type"])
-	require.Equal(t, map[string]any{"type": "integer"}, metaSchema["additionalProperties"])
-}
-
-func Test_SchemaOf_NestedStruct(t *testing.T) {
-	t.Parallel()
-	type Address struct {
-		Street string `json:"street"`
-		City   string `json:"city"`
-	}
-	type Person struct {
-		Address Address `json:"address"`
-		Name    string  `json:"name"`
-	}
-
-	schema := SchemaOf(Person{})
-	props := requireProps(t, schema)
-
-	addrSchema := requireProp(t, props, "address")
-	require.Equal(t, "object", addrSchema["type"])
-	addrProps := requireProps(t, addrSchema)
-	require.Equal(t, map[string]any{"type": "string"}, addrProps["street"])
-	require.Equal(t, map[string]any{"type": "string"}, addrProps["city"])
-}
-
-func Test_SchemaOf_EmbeddedStruct(t *testing.T) {
-	t.Parallel()
-	type Base struct {
-		ID int `json:"id"`
-	}
-	type Extended struct {
-		Name string `json:"name"`
-		Base
-	}
-
-	schema := SchemaOf(Extended{})
-	props := requireProps(t, schema)
-
-	require.Contains(t, props, "id")
-	require.Contains(t, props, "name")
-}
-
-func Test_SchemaOf_TimeField(t *testing.T) {
-	t.Parallel()
-	type Event struct {
-		At   time.Time `json:"at"`
-		Name string    `json:"name"`
-	}
-
-	schema := SchemaOf(Event{})
-	props := requireProps(t, schema)
-
-	atSchema := requireProp(t, props, "at")
-	require.Equal(t, "string", atSchema["type"])
-	require.Equal(t, "date-time", atSchema["format"])
-}
-
-func Test_SchemaOf_OpenAPITags(t *testing.T) {
-	t.Parallel()
-	type Product struct {
-		Name   string  `json:"name" openapi:"description:Product name,example:Widget"`
-		Email  string  `json:"email" openapi:"format:email"`
-		Status string  `json:"status" openapi:"enum:active|inactive|pending"`
-		Price  float64 `json:"price" openapi:"example:9.99"`
-	}
-
-	schema := SchemaOf(Product{})
-	props := requireProps(t, schema)
-
-	nameSchema := requireProp(t, props, "name")
-	require.Equal(t, "string", nameSchema["type"])
-	require.Equal(t, "Product name", nameSchema["description"])
-	require.Equal(t, "Widget", nameSchema["example"])
-
-	priceSchema := requireProp(t, props, "price")
-	require.Equal(t, "number", priceSchema["type"])
-	require.InEpsilon(t, 9.99, priceSchema["example"], 0.001)
-
-	emailSchema := requireProp(t, props, "email")
-	require.Equal(t, "email", emailSchema["format"])
-
-	statusSchema := requireProp(t, props, "status")
-	require.Equal(t, []any{"active", "inactive", "pending"}, statusSchema["enum"])
-}
-
-func Test_SchemaOf_Nil(t *testing.T) {
+func Test_SchemaOf_NonStructValues(t *testing.T) {
 	t.Parallel()
 	require.Nil(t, SchemaOf(nil))
-}
-
-func Test_SchemaOf_Pointer(t *testing.T) {
-	t.Parallel()
-	type Simple struct {
-		Name string `json:"name"`
-	}
-
-	schema := SchemaOf(&Simple{})
-	require.Equal(t, "object", schema["type"])
-	props := requireProps(t, schema)
-	require.Contains(t, props, "name")
-}
-
-func Test_SchemaOf_NoJSONTag(t *testing.T) {
-	t.Parallel()
-	type NoTag struct {
-		FieldName string
-	}
-
-	schema := SchemaOf(NoTag{})
-	props := requireProps(t, schema)
-	require.Contains(t, props, "FieldName")
-}
-
-func Test_SchemaOf_MapWithNonStringKey(t *testing.T) {
-	t.Parallel()
-	type WithIntKey struct {
-		Data map[int]string `json:"data"`
-	}
-
-	schema := SchemaOf(WithIntKey{})
-	props := requireProps(t, schema)
-	dataSchema := requireProp(t, props, "data")
-	require.Equal(t, "object", dataSchema["type"])
-	require.Nil(t, dataSchema["additionalProperties"])
-}
-
-func Test_SchemaOf_NoRequiredWhenAllOmitempty(t *testing.T) {
-	t.Parallel()
+	require.Equal(t, rfM{"type": "string"}, SchemaOf("hello"))
+	require.Equal(t, rfM{"type": "integer"}, SchemaOf(42))
+	require.Equal(t, rfM{"type": "boolean"}, SchemaOf(true))
+	require.Equal(t, rfM{"type": "number"}, SchemaOf(3.14))
+	require.Equal(t, rfM{"type": "object", "properties": rfM{"name": rfM{"type": "string"}}, "required": []string{"name"}}, SchemaOf(&rfSchemaItem{}))
 	type AllOptional struct {
 		A string `json:"a,omitempty"`
 		B int    `json:"b,omitempty"`
 	}
-
-	schema := SchemaOf(AllOptional{})
-	_, hasRequired := schema["required"]
-	require.False(t, hasRequired)
+	require.NotContains(t, SchemaOf(AllOptional{}), "required")
 }
 
-func Test_SchemaOf_SliceOfStructs(t *testing.T) {
-	t.Parallel()
-	type Item struct {
-		Name string `json:"name"`
-	}
-	type Container struct {
-		Items []Item `json:"items"`
-	}
-
-	schema := SchemaOf(Container{})
-	props := requireProps(t, schema)
-	itemsSchema := requireProp(t, props, "items")
-	require.Equal(t, "array", itemsSchema["type"])
-	items := requireMap(t, itemsSchema["items"])
-	require.Equal(t, "object", items["type"])
-	itemProps := requireProps(t, items)
-	require.Contains(t, itemProps, "name")
-}
-
-func Test_SchemaOf_BooleanExample(t *testing.T) {
-	t.Parallel()
-	type Flags struct {
-		Active bool `json:"active" openapi:"example:true"`
-	}
-
-	schema := SchemaOf(Flags{})
-	props := requireProps(t, schema)
-	activeSchema := requireProp(t, props, "active")
-	require.Equal(t, true, activeSchema["example"])
-}
-
-func Test_SchemaOf_IntegerExample(t *testing.T) {
-	t.Parallel()
-	type Counter struct {
-		Count int `json:"count" openapi:"example:42"`
-	}
-
-	schema := SchemaOf(Counter{})
-	props := requireProps(t, schema)
-	countSchema := requireProp(t, props, "count")
-	require.Equal(t, int64(42), countSchema["example"])
-}
-
-func Test_SchemaOf_PlainType(t *testing.T) {
-	t.Parallel()
-	require.Equal(t, map[string]any{"type": "string"}, SchemaOf("hello"))
-	require.Equal(t, map[string]any{"type": "integer"}, SchemaOf(42))
-	require.Equal(t, map[string]any{"type": "boolean"}, SchemaOf(true))
-	require.Equal(t, map[string]any{"type": "number"}, SchemaOf(3.14))
-}
-
-func Test_SchemaOf_RecursiveStruct(t *testing.T) {
+func Test_SchemaOf_RecursiveStructs(t *testing.T) {
 	t.Parallel()
 	type Node struct {
 		Next  *Node `json:"next"`
 		Value int   `json:"value"`
 	}
+	props := requireProps(t, SchemaOf(Node{}))
+	require.Equal(t, rfM{"type": "integer"}, requireProp(t, props, "value"))
+	require.Equal(t, rfM{"type": "object"}, requireProp(t, props, "next"))
 
-	schema := SchemaOf(Node{})
-	props := requireProps(t, schema)
-	require.Equal(t, map[string]any{"type": "integer"}, requireProp(t, props, "value"))
-	require.Equal(t, map[string]any{"type": "object"}, requireProp(t, props, "next"))
-}
-
-func Test_SchemaOf_MutuallyRecursiveStructs(t *testing.T) {
-	t.Parallel()
 	type B struct{}
 	type A struct {
 		B *B `json:"b"`
@@ -389,149 +179,109 @@ func Test_SchemaOf_MutuallyRecursiveStructs(t *testing.T) {
 		First  A `json:"first"`
 		Second A `json:"second"`
 	}
-
-	schema := SchemaOf(Pair{})
-	props := requireProps(t, schema)
-	first := requireProp(t, props, "first")
-	second := requireProp(t, props, "second")
-	require.Equal(t, "object", first["type"])
-	require.Equal(t, "object", second["type"])
-	require.Contains(t, requireProps(t, first), "b")
-	require.Contains(t, requireProps(t, second), "b")
-}
-
-func Test_SchemaOf_ByteSlice(t *testing.T) {
-	t.Parallel()
-	type WithBytes struct {
-		Data    []byte  `json:"data"`
-		FixedID [4]byte `json:"fixed_id"`
+	props = requireProps(t, SchemaOf(Pair{}))
+	for _, name := range []string{"first", "second"} {
+		require.Equal(t, "object", requireProp(t, props, name)["type"])
+		require.Contains(t, requireProps(t, requireProp(t, props, name)), "b")
 	}
-
-	schema := SchemaOf(WithBytes{})
-	props := requireProps(t, schema)
-	require.Equal(t, map[string]any{"type": "string", "format": "byte"}, requireProp(t, props, "data"))
-	require.Equal(t, "array", requireProp(t, props, "fixed_id")["type"])
 }
 
-func Test_SchemaOf_EmbeddedPointerStruct(t *testing.T) {
+type unexportedBase struct {
+	ID int `json:"id"`
+}
+
+func Test_SchemaOf_Embedding(t *testing.T) {
 	t.Parallel()
+	type Base struct {
+		ID int `json:"id"`
+	}
+	type Extended struct {
+		Name string `json:"name"`
+		Base
+	}
 	type Inner struct {
 		ID int `json:"id"`
 	}
-	type Outer struct {
+	type PtrOuter struct {
 		*Inner
 		Name string `json:"name"`
 	}
-
-	schema := SchemaOf(Outer{})
-	props := requireProps(t, schema)
-	require.Equal(t, map[string]any{"type": "integer"}, requireProp(t, props, "id"))
-	require.Equal(t, map[string]any{"type": "string"}, requireProp(t, props, "name"))
-	require.NotContains(t, props, "Inner")
-
-	required := requireRequired(t, schema)
-	require.Contains(t, required, "name")
-	require.NotContains(t, required, "id")
-}
-
-func Test_SchemaOf_AnyField(t *testing.T) {
-	t.Parallel()
-	type WithAny struct {
-		Meta any `json:"meta"`
-	}
-
-	schema := SchemaOf(WithAny{})
-	props := requireProps(t, schema)
-	require.Equal(t, map[string]any{}, requireProp(t, props, "meta"))
-}
-
-func Test_SchemaOf_UnsupportedFieldSkipped(t *testing.T) {
-	t.Parallel()
-	type WithChan struct {
-		Ch   chan int    `json:"ch"`
-		Fn   func() bool `json:"fn"`
-		Name string      `json:"name"`
-	}
-
-	schema := SchemaOf(WithChan{})
-	props := requireProps(t, schema)
-	require.Contains(t, props, "name")
-	require.NotContains(t, props, "ch")
-	require.NotContains(t, props, "fn")
-}
-
-func Test_SchemaOf_OpenAPITagWithComma(t *testing.T) {
-	t.Parallel()
-	type Product struct {
-		Status string `json:"status" openapi:"enum:active|inactive,description:Status, including a comma"`
-	}
-
-	schema := SchemaOf(Product{})
-	props := requireProps(t, schema)
-	status := requireProp(t, props, "status")
-	require.Equal(t, "Status, including a comma", status["description"])
-	require.Equal(t, []any{"active", "inactive"}, status["enum"])
-}
-
-func Test_SchemaOf_EmbeddedFieldDoesNotShadowParent(t *testing.T) {
-	t.Parallel()
-	type Inner struct {
+	type ShadowInner struct {
 		ID   string `json:"id"`
 		Note string `json:"note"`
 	}
-	type Outer struct { //nolint:govet // fieldalignment: the embedded struct must follow the parent field to exercise shadowing; betteralign:ignore
+	type ShadowOuter struct { //nolint:govet // fieldalignment: the embedded struct must follow the parent field to exercise shadowing; betteralign:ignore
 		ID int `json:"id"`
-		Inner
+		ShadowInner
 	}
-
-	schema := SchemaOf(Outer{})
-	props := requireProps(t, schema)
-
-	id := requireProp(t, props, "id")
-	require.Equal(t, "integer", id[schemaKeyType])
-	require.Contains(t, props, "note")
-
-	required, ok := schema["required"].([]string)
-	require.True(t, ok)
-	require.ElementsMatch(t, []string{"id", "note"}, required)
-}
-
-func Test_SchemaOf_StringOption(t *testing.T) {
-	t.Parallel()
-	type User struct {
-		Name   string  `json:"name"`
-		ID     int64   `json:"id,string"`
-		Score  float64 `json:"score,string"`
-		Active bool    `json:"active,string"`
-	}
-
-	schema := SchemaOf(User{})
-	props := requireProps(t, schema)
-	require.Equal(t, "string", requireProp(t, props, "id")[schemaKeyType])
-	require.Equal(t, "string", requireProp(t, props, "score")[schemaKeyType])
-	require.Equal(t, "string", requireProp(t, props, "active")[schemaKeyType])
-	require.Equal(t, "string", requireProp(t, props, "name")[schemaKeyType])
-}
-
-func Test_SchemaOf_ConflictingEmbeddedFieldsDropped(t *testing.T) {
-	t.Parallel()
 	type B1 struct {
 		X int `json:"x"`
 	}
 	type B2 struct {
 		X string `json:"x"`
 	}
-	schema := SchemaOf(embedStruct(
-		[]any{B1{}, B2{}},
-		reflect.StructField{Name: "Y", Type: reflect.TypeFor[string](), Tag: `json:"y"`},
-	))
-	props := requireProps(t, schema)
-	require.NotContains(t, props, "x")
-	require.Contains(t, props, "y")
-
-	required, ok := schema["required"].([]string)
-	require.True(t, ok)
-	require.Equal(t, []string{"y"}, required)
+	type DepthB struct {
+		B1
+		Y int `json:"y"`
+	}
+	type Depth struct {
+		B1
+		DepthB
+	}
+	type E1 struct {
+		Val int `json:"v"`
+	}
+	type E2 struct {
+		V string
+	}
+	type E3 struct {
+		V bool `json:"v"`
+	}
+	type P2 struct { //nolint:govet // fieldalignment: embed order mirrors the documented scenario; betteralign:ignore
+		E1
+		E2
+	}
+	type User struct { //nolint:govet // fieldalignment: embed order mirrors the documented scenario; betteralign:ignore
+		unexportedBase
+		Name string `json:"name"`
+	}
+	type DiamondB struct {
+		B1
+	}
+	type DiamondC struct {
+		B1
+	}
+	y := func(typ reflect.Type) reflect.StructField {
+		return reflect.StructField{Name: "Y", Type: typ, Tag: `json:"y"`}
+	}
+	str, integer := rfM{"type": "string"}, rfM{"type": "integer"}
+	for _, tc := range []struct {
+		value    any
+		props    rfM
+		name     string
+		required []string
+	}{
+		{name: "embedded", value: Extended{}, props: rfM{"id": integer, "name": str}, required: []string{"name", "id"}},
+		{name: "embedded pointer", value: PtrOuter{}, props: rfM{"id": integer, "name": str}, required: []string{"name"}},
+		{name: "parent field wins", value: ShadowOuter{}, props: rfM{"id": integer, "note": str}, required: []string{"id", "note"}},
+		{name: "conflict dropped", value: embedStruct([]any{B1{}, B2{}}, y(reflect.TypeFor[string]())), props: rfM{"y": str}, required: []string{"y"}},
+		{name: "shallower wins", value: Depth{}, props: rfM{"x": integer, "y": integer}, required: []string{"x", "y"}},
+		{name: "tagged conflict dropped", value: embedStruct([]any{E1{}, E3{}}), props: rfM{}},
+		{name: "tag and name differ", value: P2{}, props: rfM{"v": integer, "V": str}, required: []string{"v", "V"}},
+		{name: "unexported embedded", value: User{}, props: rfM{"id": integer, "name": str}, required: []string{"id", "name"}},
+		{name: "diamond", value: embedStruct([]any{DiamondB{}, DiamondC{}}, y(reflect.TypeFor[int]())), props: rfM{"y": integer}, required: []string{"y"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			schema := SchemaOf(tc.value)
+			require.Equal(t, tc.props, requireProps(t, schema))
+			if tc.required == nil {
+				require.NotContains(t, schema, "required")
+				return
+			}
+			require.ElementsMatch(t, tc.required, requireRequired(t, schema))
+		})
+	}
 }
 
 func Test_SchemaOf_EmbeddedRequiredDeterministic(t *testing.T) {
@@ -546,114 +296,9 @@ func Test_SchemaOf_EmbeddedRequiredDeterministic(t *testing.T) {
 	type T struct {
 		Base
 	}
-
-	first, ok := SchemaOf(T{})["required"].([]string)
-	require.True(t, ok)
-	require.Equal(t, []string{"a", "b", "c", "d", "e"}, first)
 	for range 10 {
-		next, ok := SchemaOf(T{})["required"].([]string)
-		require.True(t, ok)
-		require.Equal(t, first, next)
+		require.Equal(t, []string{"a", "b", "c", "d", "e"}, requireRequired(t, SchemaOf(T{})))
 	}
-}
-
-func Test_SchemaOf_DepthResolvedEmbeddedField(t *testing.T) {
-	t.Parallel()
-	type A struct {
-		X int `json:"x"`
-	}
-	type B struct {
-		A
-		Y int `json:"y"`
-	}
-	type P struct {
-		A
-		B
-	}
-
-	schema := SchemaOf(P{})
-	props := requireProps(t, schema)
-	require.Contains(t, props, "x")
-	require.Contains(t, props, "y")
-}
-
-func Test_SchemaOf_TaggedFieldWinsConflict(t *testing.T) {
-	t.Parallel()
-	type E1 struct {
-		Val int `json:"v"`
-	}
-	type E2 struct {
-		V string
-	}
-	type E3 struct {
-		V bool `json:"v"`
-	}
-	props := requireProps(t, SchemaOf(embedStruct([]any{E1{}, E3{}})))
-	require.NotContains(t, props, "v")
-
-	type P2 struct { //nolint:govet // fieldalignment: embed order mirrors the documented scenario; betteralign:ignore
-		E1
-		E2
-	}
-	props = requireProps(t, SchemaOf(P2{}))
-	require.Contains(t, props, "v")
-	require.Contains(t, props, "V")
-}
-
-type unexportedBase struct {
-	ID int `json:"id"`
-}
-
-func Test_SchemaOf_UnexportedEmbeddedStruct(t *testing.T) {
-	t.Parallel()
-	type User struct { //nolint:govet // fieldalignment: embed order mirrors the documented scenario; betteralign:ignore
-		unexportedBase
-		Name string `json:"name"`
-	}
-
-	schema := SchemaOf(User{})
-	props := requireProps(t, schema)
-	require.Contains(t, props, "id")
-	require.Contains(t, props, "name")
-
-	required, ok := schema["required"].([]string)
-	require.True(t, ok)
-	require.ElementsMatch(t, []string{"id", "name"}, required)
-}
-
-func Test_SchemaOf_DiamondEmbeddingDropsAmbiguous(t *testing.T) {
-	t.Parallel()
-	type D struct {
-		X int `json:"x"`
-	}
-	type B struct {
-		D
-	}
-	type C struct {
-		D
-	}
-	props := requireProps(t, SchemaOf(embedStruct(
-		[]any{B{}, C{}},
-		reflect.StructField{Name: "Y", Type: reflect.TypeFor[int](), Tag: `json:"y"`},
-	)))
-	require.NotContains(t, props, "x")
-	require.Contains(t, props, "y")
-}
-
-func Test_SchemaOf_TypedEnumValues(t *testing.T) {
-	t.Parallel()
-	type Config struct {
-		Mode   string  `json:"mode" openapi:"enum:on|off"`
-		Level  int     `json:"level" openapi:"enum:1|2|3"`
-		Rate   float64 `json:"rate" openapi:"enum:0.5|1.0"`
-		Active bool    `json:"active" openapi:"enum:true|false"`
-	}
-
-	props := requireProps(t, SchemaOf(Config{}))
-	require.Equal(t, []any{int64(1), int64(2), int64(3)}, requireProp(t, props, "level")["enum"])
-	require.Equal(t, []any{0.5, 1.0}, requireProp(t, props, "rate")["enum"])
-	require.Equal(t, []any{true, false}, requireProp(t, props, "active")["enum"])
-	require.Equal(t, []any{"on", "off"}, requireProp(t, props, "mode")["enum"])
 }
 
 type customMarshaler struct {
@@ -668,40 +313,29 @@ type textID struct {
 
 func (textID) MarshalText() ([]byte, error) { return []byte("id"), nil }
 
-func Test_SchemaOf_CustomMarshalers(t *testing.T) {
-	t.Parallel()
-	require.Empty(t, SchemaOf(customMarshaler{}))
-
-	require.Equal(t, map[string]any{schemaKeyType: schemaTypeString}, SchemaOf(textID{}))
-
-	type Payload struct {
-		time.Time
-		N int `json:"n"`
-	}
-	require.Empty(t, SchemaOf(Payload{}))
-
-	type Wrapper struct {
-		Stamp customMarshaler `json:"stamp"`
-	}
-	props := requireProps(t, SchemaOf(Wrapper{}))
-	require.Empty(t, requireProp(t, props, "stamp"))
-}
-
 type ptrTextID struct {
 	V int `json:"v"`
 }
 
 func (*ptrTextID) MarshalText() ([]byte, error) { return []byte("id"), nil } //nolint:revive // the pointer receiver is what this test exercises
 
-func Test_SchemaOf_JSONNumberAndPtrTextMarshaler(t *testing.T) {
+func Test_SchemaOf_CustomMarshalers(t *testing.T) {
 	t.Parallel()
+	require.Empty(t, SchemaOf(customMarshaler{}))
+	require.Equal(t, rfM{schemaKeyType: schemaTypeString}, SchemaOf(textID{}))
 	type Payload struct {
-		N json.Number `json:"n"`
-		P ptrTextID   `json:"p"`
+		time.Time
+		N int `json:"n"`
 	}
-
-	props := requireProps(t, SchemaOf(Payload{}))
-	require.Equal(t, map[string]any{schemaKeyType: schemaTypeNumber}, requireProp(t, props, "n"))
+	require.Empty(t, SchemaOf(Payload{}))
+	type Wrapper struct {
+		N     json.Number     `json:"n"`
+		Stamp customMarshaler `json:"stamp"`
+		P     ptrTextID       `json:"p"`
+	}
+	props := requireProps(t, SchemaOf(Wrapper{}))
+	require.Empty(t, requireProp(t, props, "stamp"))
+	require.Equal(t, rfM{schemaKeyType: schemaTypeNumber}, requireProp(t, props, "n"))
 	require.Empty(t, requireProp(t, props, "p"))
 }
 
@@ -724,64 +358,40 @@ type validateStructure struct {
 func Test_SchemaOf_ValidateStructure(t *testing.T) {
 	t.Parallel()
 	schema := SchemaOf(validateStructure{})
-	props := requireProps(t, schema)
-
-	tags := requireProp(t, props, "tags")
-	require.EqualValues(t, 1, tags["minItems"], "rules before dive constrain the slice")
-	require.NotContains(t, tags, "maxItems")
-	items := requireMap(t, tags["items"])
-	require.EqualValues(t, 3, items["minLength"], "rules after dive constrain the elements")
-	require.EqualValues(t, 10, items["maxLength"])
-
-	require.EqualValues(t, 100, requireMap(t, requireProp(t, props, "levels")["items"])["maximum"])
-	require.NotContains(t, requireProp(t, props, "levels"), "maxItems")
-	require.Equal(t, []any{"a", "b"}, requireMap(t, requireProp(t, props, "roles")["items"])["enum"])
-	require.NotContains(t, requireProp(t, props, "roles"), "enum")
-
-	required, isList := schema["required"].([]string)
-	require.True(t, isList)
-	require.NotContains(t, required, "needed", "required after dive is about the elements")
-	require.Contains(t, required, "tags")
-
-	scores := requireMap(t, requireProp(t, props, "scores")["additionalProperties"])
-	require.EqualValues(t, 1, scores["minimum"], "key rules are skipped, value rules apply")
-
-	nick := requireProp(t, props, "nick")
-	require.NotContains(t, nick, "minLength", "an empty value skips the rules after omitempty")
-	require.EqualValues(t, 9, nick["maxLength"], "an upper bound holds for an empty value")
-	require.EqualValues(t, 3, requireProp(t, props, "pointer")["minLength"], "a non-nil pointer is validated")
-}
-
-func Test_SchemaOf_ValidateTypeAwareBounds(t *testing.T) {
-	t.Parallel()
-	props := requireProps(t, SchemaOf(validateStructure{}))
-
-	age := requireProp(t, props, "age")
-	require.Equal(t, "string", age["type"])
-	require.NotContains(t, age, "minLength", "a quoted number is compared as a number, not a length")
-	require.NotContains(t, age, "maxLength")
-
-	hash := requireProp(t, props, "hash")
-	require.EqualValues(t, 44, hash["minLength"], "32 bytes are 44 base64 characters")
-	require.EqualValues(t, 44, hash["maxLength"])
-	blob := requireProp(t, props, "blob")
-	require.EqualValues(t, 4, blob["minLength"])
-	require.EqualValues(t, 24, blob["maxLength"])
-
-	require.Equal(t, []any{"in progress", "done"}, requireProp(t, props, "status")["enum"])
-
-	price := requireProp(t, props, "price")
-	require.InDelta(t, 0.7, price["minimum"], 0)
-	require.InDelta(t, 19.99, price["example"], 0)
-	require.Equal(t, []any{0.3, 1.1}, price["enum"])
+	str := rfM{"type": "string"}
+	require.Equal(t, rfM{
+		// Rules before dive constrain the slice, rules after it the elements.
+		"tags":   rfM{"type": "array", "minItems": int64(1), "items": rfM{"type": "string", "minLength": int64(3), "maxLength": int64(10)}},
+		"levels": rfM{"type": "array", "items": rfM{"type": "integer", "maximum": int64(100)}},
+		"roles":  rfM{"type": "array", "items": rfM{"type": "string", "enum": []any{"a", "b"}}},
+		"needed": rfM{"type": "array", "items": str},
+		// Key rules are skipped, value rules apply.
+		"scores": rfM{"type": "object", "additionalProperties": rfM{"type": "integer", "minimum": int64(1)}},
+		"extra":  rfM{"type": "object", "additionalProperties": str},
+		// An empty value skips the rules after omitempty, but an upper bound holds for it; a non-nil pointer is validated.
+		"nick":    rfM{"type": "string", "maxLength": int64(9)},
+		"pointer": rfM{"type": "string", "minLength": int64(3)},
+		// A quoted number is compared as a number, not a length; 32 bytes are 44 base64 characters.
+		"age":    str,
+		"hash":   rfM{"type": "string", "format": "byte", "minLength": int64(44), "maxLength": int64(44)},
+		"blob":   rfM{"type": "string", "format": "byte", "minLength": int64(4), "maxLength": int64(24)},
+		"status": rfM{"type": "string", "enum": []any{"in progress", "done"}},
+		"price":  rfM{"type": "number", "minimum": 0.7, "example": 19.99, "enum": []any{0.3, 1.1}},
+	}, requireProps(t, schema))
+	// Required after dive is about the elements, so needed stays optional.
+	require.Equal(t, []string{"scores", "extra", "status", "tags", "levels", "roles", "hash", "blob", "age", "price"}, requireRequired(t, schema))
 }
 
 func Test_splitRuleParams(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, []string{"a", "b"}, splitRuleParams("a b"))
-	require.Equal(t, []string{"red green", "blue yellow"}, splitRuleParams("'red green' 'blue yellow'"))
-	require.Equal(t, []string{"in progress", "done"}, splitRuleParams("'in progress'  done"))
-	require.Equal(t, []string{"ab"}, splitRuleParams("a'b'"))
+	for in, want := range map[string][]string{
+		"a b":                       {"a", "b"},
+		"'red green' 'blue yellow'": {"red green", "blue yellow"},
+		"'in progress'  done":       {"in progress", "done"},
+		"a'b'":                      {"ab"},
+	} {
+		require.Equal(t, want, splitRuleParams(in), in)
+	}
 	require.Empty(t, splitRuleParams("  "))
 }
 
@@ -796,17 +406,13 @@ func Test_SchemaOf_MultipartFileHeaderIsBinary(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Post("/up", listUsers).Accepts(fileUploadForm{}, fiber.MIMEMultipartForm)
-	spec := modelSpec(t, app)
-
-	schemas := modelSchemas(t, spec)
+	schemas := modelSchemas(t, modelSpec(t, app))
 	require.NotContains(t, schemas, "FileHeader_form", "no component for the file header")
 	props := requireMap(t, requireMap(t, schemas["fileUploadForm_form"])["properties"])
 
-	binary := map[string]any{"type": "string", "format": "binary"}
+	binary := rfM{"type": "string", "format": "binary"}
 	require.Equal(t, binary, requireMap(t, props["file"]))
-	files := requireMap(t, props["files"])
-	require.Equal(t, "array", files["type"])
-	require.Equal(t, binary, requireMap(t, files["items"]))
+	require.Equal(t, rfM{"type": "array", "items": binary}, requireMap(t, props["files"]))
 	require.Equal(t, "array", requireMap(t, props["many"])["type"])
 }
 
@@ -820,4 +426,560 @@ func Test_parseJSONTag_EmptyNameSkipsTheProbe(t *testing.T) {
 	require.Empty(t, info.name)
 	require.True(t, info.omit)
 	require.InDelta(t, 0, testing.AllocsPerRun(50, func() { _ = parseJSONTag(&field, tagJSON) }), 0, "the encoding/json probe allocates")
+}
+
+func Test_PathParamSchema(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		expected map[string]any
+		name     string
+		raw      string
+	}{
+		{map[string]any{"type": "string"}, "no constraint", ""},
+		{map[string]any{"type": "string"}, "only separators", ";;"},
+		{map[string]any{"type": "string"}, "blank entry", "  "},
+		{map[string]any{"type": "integer"}, "int", "int"},
+		{map[string]any{"type": "integer"}, "case insensitive", "INT"},
+		{map[string]any{"type": "boolean"}, "bool", "bool"},
+		{map[string]any{"type": "number"}, "float", "float"},
+		{map[string]any{"type": "string"}, "alpha carries no pattern", "alpha"},
+		{map[string]any{"type": "string", "format": "uuid"}, "guid", "guid"},
+		{map[string]any{"type": "string"}, "unknown constraint", "totallyMadeUp"},
+		{map[string]any{"type": "string"}, "custom with args", "myConstraint(1,2)"},
+
+		{map[string]any{"type": "string", "format": "date-time"}, "datetime rfc3339", "datetime(" + time.RFC3339 + ")"},
+		{map[string]any{"type": "string", "format": "date-time"}, "datetime rfc3339 nano", "datetime(" + time.RFC3339Nano + ")"},
+		{map[string]any{"type": "string", "format": "date"}, "datetime date only", "datetime(" + time.DateOnly + ")"},
+		{map[string]any{"type": "string", "format": "time"}, "datetime time only", "datetime(" + time.TimeOnly + ")"},
+		{map[string]any{"type": "string"}, "datetime custom layout", "datetime(2006/01/02)"},
+		{map[string]any{"type": "string"}, "datetime without layout", "datetime"},
+
+		{map[string]any{"type": "string", "pattern": "^[a-z]+$"}, "regex", "regex(^[a-z]+$)"},
+		{map[string]any{"type": "string"}, "regex without pattern", "regex()"},
+		{map[string]any{"type": "string"}, "regex needing a slash is not a segment pattern", `regex(\d+/x)`},
+		{map[string]any{"type": "string"}, "regex bare", "regex"},
+
+		{map[string]any{"type": "string", "minLength": 3}, "minLen", "minLen(3)"},
+		{map[string]any{"type": "string", "minLength": 3}, "minLen lowercase alias", "minlen(3)"},
+		{map[string]any{"type": "string", "maxLength": 9}, "maxLen", "maxLen(9)"},
+		{map[string]any{"type": "string", "maxLength": 9}, "maxLen lowercase alias", "maxlen(9)"},
+		{map[string]any{"type": "string", "minLength": 4, "maxLength": 4}, "len", "len(4)"},
+		{map[string]any{"type": "string", "minLength": 2, "maxLength": 6}, "betweenLen", "betweenLen(2,6)"},
+		{map[string]any{"type": "string", "minLength": 2, "maxLength": 6}, "betweenLen alias", "betweenlen(2,6)"},
+		{map[string]any{"type": "string", "minLength": 2}, "betweenLen missing upper", "betweenLen(2)"},
+		{map[string]any{"type": "string"}, "minLen without argument", "minLen"},
+		{map[string]any{"type": "string"}, "minLen with non-numeric argument", "minLen(abc)"},
+		{map[string]any{"type": "string", "minLength": 3}, "argument is trimmed", "minLen( 3 )"},
+
+		{map[string]any{"type": "integer", "minimum": 5}, "min", "min(5)"},
+		{map[string]any{"type": "integer", "maximum": 7}, "max", "max(7)"},
+		{map[string]any{"type": "integer", "minimum": 1, "maximum": 10}, "range", "range(1,10)"},
+		{map[string]any{"type": "integer", "minimum": -3}, "negative bound", "min(-3)"},
+
+		{map[string]any{"type": "integer", "minimum": 5}, "chain type then bound", "int;min(5)"},
+		{map[string]any{"type": "integer", "minimum": 5}, "chain bound then type", "min(5);int"},
+		{map[string]any{"type": "string", "minLength": 2}, "conflicting type is ignored", "minLen(2);int"},
+		{map[string]any{"type": "integer", "minimum": 1}, "first bound wins", "min(1);min(9)"},
+
+		{map[string]any{"type": "string", "pattern": `a\;b`}, "escaped separator", `regex(a\;b)`},
+		{map[string]any{"type": "string", "pattern": `a\,b`}, "escaped argument separator", `regex(a\,b)`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.expected, pathParamSchema(tc.raw))
+		})
+	}
+}
+
+func Test_ScanConstraintSpan(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		pattern  string
+		raw      string
+		open     int
+		wantNext int
+	}{
+		{"simple", "<int>rest", "int", 0, 5},
+		{"empty span", "<>", "", 0, 2},
+		{"inner angle bracket stays in the span", "<regex(^<a>$)>", "regex(^<a>$)", 0, 14},
+		{"a terminator after the first close ends it", "<int>/rest>", "int", 0, 5},
+		{"a class with '>' before the real close", "<regex(^[^>]+$)>?", "regex(^[^>]+$)", 0, 16},
+		{"escaped close", `<regex(a\>b)>`, `regex(a\>b)`, 0, 13},
+		{"unterminated runs to end", "<int", "int", 0, 4},
+		{"offset start", "x<bool>", "bool", 1, 7},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			raw, next := scanConstraintSpan(tc.pattern, tc.open)
+			require.Equal(t, tc.raw, raw)
+			require.Equal(t, tc.wantNext, next)
+		})
+	}
+}
+
+func Test_SplitNonEscaped(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string][]string{"a;b;c": {"a", "b", "c"}, `a\;b`: {`a\;b`}, "": {""}, ";a": {"", "a"}, "a;": {"a", ""}} {
+		require.Equal(t, want, splitNonEscaped(in, ';'), in)
+	}
+}
+
+func Test_SplitConstraintEntry(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]parsedConstraint{
+		"int":           {name: "int"},
+		"range(1,10)":   {name: "range", args: []string{"1", "10"}},
+		"regex((a|b)+)": {name: "regex", args: []string{"(a|b)+"}},
+		"odd)name":      {name: "odd)name"},
+		"  int  ":       {name: "int"},
+	} {
+		require.Equal(t, want, splitConstraintEntry(in), in)
+	}
+}
+
+func Test_IsPlainJSONTagName(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"name", "a b", "a-b_c.d", "field2", "Ünïcøde"} {
+		require.True(t, isPlainJSONTagName(name), name)
+	}
+	require.False(t, isPlainJSONTagName(""))
+	for _, name := range []string{`a\b`, `a"b`, "a'b", "a`b", "a\tb"} {
+		require.Falsef(t, isPlainJSONTagName(name), "%q should take the probe path", name)
+		require.Equalf(t, wireNameFor(t, name), effectiveJSONTagName(name), "probe disagrees with encoding/json for tag %q", name)
+	}
+}
+
+// wireNameFor returns the key encoding/json writes for a field tagged with name, or "" for the Go field name.
+func wireNameFor(t *testing.T, name string) string {
+	t.Helper()
+	typ := reflect.StructOf([]reflect.StructField{{Name: "Probe", Type: reflect.TypeFor[string](), Tag: reflect.StructTag("json:" + strconv.Quote(name))}})
+	encoded, err := json.Marshal(reflect.New(typ).Elem().Interface())
+	require.NoError(t, err)
+	var decoded map[string]string
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	for key := range decoded {
+		if key != "Probe" {
+			return key
+		}
+	}
+	return ""
+}
+
+type nestedLocationNamed struct {
+	Page int `query:"page"`
+}
+
+type nestedLocationOuter struct {
+	Items []struct {
+		Name string `json:"name"`
+		Page int    `query:"page"`
+	} `json:"items"`
+}
+
+type nestedLocationHolder struct {
+	Items []nestedLocationNamed `json:"items"`
+}
+
+type hiddenLocation struct {
+	Name   string `json:"name"`
+	Secret string `json:"-" query:"secret"`
+	hidden string `query:"hidden"` //nolint:unused,revive // an unexported field is not in the schema
+}
+
+type customLocation struct {
+	Page int `query:"page"`
+}
+
+func (customLocation) OpenAPISchema() map[string]any { return map[string]any{"type": "string"} }
+
+type customHolder struct {
+	Inner customLocation `json:"inner"`
+}
+
+func Test_OpenAPI_LocationOnlyFieldsAreFoundInNestedStructs(t *testing.T) {
+	t.Parallel()
+	reg := newSchemaRegistry(&Config{}, dialect{})
+	require.True(t, reg.hasLocationOnlyFields(reflect.TypeFor[nestedLocationOuter]()))
+	require.False(t, reg.hasLocationOnlyFields(reflect.TypeFor[nestedLocationHolder]()), "a named struct is its own component")
+	require.False(t, reg.hasLocationOnlyFields(reflect.TypeFor[userResponse]()))
+	require.False(t, reg.hasLocationOnlyFields(reflect.TypeFor[hiddenLocation]()), "a field the schema leaves out does not count")
+	require.False(t, reg.hasLocationOnlyFields(reflect.TypeFor[customHolder]()))
+}
+
+func Test_OpenAPI_RequestComponentsAreEmittedOnlyWhenTheyDiffer(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Post("/a", listUsers).Accepts(nestedLocationHolder{}).Returns(fiber.StatusOK, nestedLocationHolder{})
+	app.Post("/b", listUsers).Accepts(hiddenLocation{}).Returns(fiber.StatusOK, hiddenLocation{})
+	app.Post("/c", listUsers).Accepts(userRequest{}).Returns(fiber.StatusOK, userRequest{})
+	schemas := modelSchemas(t, modelSpec(t, app))
+	require.Contains(t, schemas, "nestedLocationHolder")
+	require.NotContains(t, schemas, "nestedLocationHolder_request")
+	require.NotContains(t, schemas, "hiddenLocation_request")
+	require.Contains(t, schemas, "userRequest_request", "a type with a query field differs as a body")
+}
+
+type directiveModel struct {
+	//nolint:revive // struct-tag: a tag on the blank field is how a struct describes itself
+	_       struct{} `openapi:"title:A directive model,description:Every directive,x-model:7,example:{\"qty\":4}"`
+	Status  string   `json:"status" openapi:"default:open,enum:open|closed,pattern:^[a-z]+$,title:Status,x-order:1,x-group:main"`
+	Comment string   `json:"comment,omitempty" openapi:"x-flags:[1,2],x-ok:true"`
+	Tags    []string `json:"tags" openapi:"uniqueItems"`
+	Qty     int      `json:"qty" openapi:"multipleOf:5,nullable"`
+	Price   float64  `json:"price" openapi:"default:9.5"`
+}
+
+func Test_OpenAPI_TagDirectivesBeyondTheBasics(t *testing.T) {
+	t.Parallel()
+	schema := SchemaOf(directiveModel{})
+	require.Equal(t, "A directive model", schema["title"])
+	require.Equal(t, "Every directive", schema["description"])
+	require.InDelta(t, 7, schema["x-model"], 0)
+	require.Equal(t, map[string]any{"qty": float64(4)}, schema["example"], "an example on the blank field is JSON and replaces the assembled one")
+
+	require.Equal(t, rfM{
+		"status":  rfM{"type": "string", "default": "open", "enum": []any{"open", "closed"}, "pattern": "^[a-z]+$", "title": "Status", "x-group": "main", "x-order": 1.0},
+		"comment": rfM{"type": "string", "x-flags": []any{1.0, 2.0}, "x-ok": true},
+		"tags":    rfM{"type": "array", "items": rfM{"type": "string"}, "uniqueItems": true},
+		"qty":     rfM{"type": "integer", "multipleOf": 5.0},
+		"price":   rfM{"type": "number", "default": 9.5},
+	}, requireProps(t, schema))
+}
+
+func Test_OpenAPI_NullableTagIsSpelledPerVersion(t *testing.T) {
+	t.Parallel()
+	qty := func(version string) map[string]any {
+		spec := rfSpec(t, func(app *fiber.App) { app.Get("/a", listUsers).Returns(fiber.StatusOK, directiveModel{}) }, Config{OpenAPIVersion: version})
+		return requireMap(t, requireMap(t, requireMap(t, modelSchemas(t, spec)["directiveModel"])["properties"])["qty"])
+	}
+	require.Equal(t, []any{"integer", "null"}, qty("3.1.0")["type"])
+	require.Equal(t, map[string]any{"type": "integer", "nullable": true, "multipleOf": float64(5)}, qty("3.0.3"))
+}
+
+type duration struct{ time.Duration }
+
+type decimal struct{ _ int64 }
+
+func (decimal) OpenAPISchema() map[string]any {
+	return map[string]any{"type": "string", "pattern": `^-?\d+(\.\d+)?$`, "example": "12.50"}
+}
+
+type node struct {
+	Next *node  `json:"next"`
+	Kind string `json:"kind"`
+}
+
+func (*node) OpenAPISchema() map[string]any {
+	return map[string]any{"type": "object", "properties": map[string]any{"next": &node{}, "kind": map[string]any{"type": "string"}}}
+}
+
+type invoice struct {
+	At    time.Time `json:"at"`
+	Head  node      `json:"head"`
+	Total decimal   `json:"total"`
+	Wait  duration  `json:"wait"`
+}
+
+func Test_OpenAPI_TypesDescribeThemselves(t *testing.T) {
+	t.Parallel()
+	spec := rfSpec(t, func(app *fiber.App) { app.Get("/invoices", listUsers).Returns(fiber.StatusOK, invoice{}) }, Config{TypeSchemas: map[reflect.Type]any{
+		reflect.TypeFor[duration]():  map[string]any{"type": "integer", "format": "int64", "description": "nanoseconds"},
+		reflect.TypeFor[time.Time](): map[string]any{"type": "string", "format": "date"},
+	}})
+	schemas := modelSchemas(t, spec)
+	require.Contains(t, schemas, "decimal", "a provider's struct is a component")
+	require.Equal(t, "string", requireMap(t, schemas["decimal"])["type"])
+	require.NotContains(t, schemas, "duration", "a configured type is inline")
+
+	props := requireMap(t, requireMap(t, schemas["invoice"])["properties"])
+	require.Equal(t, map[string]any{"$ref": "#/components/schemas/decimal"}, props["total"])
+	require.Equal(t, "nanoseconds", requireMap(t, props["wait"])["description"])
+	require.Equal(t, "date", requireMap(t, props["at"])["format"], "a configured type wins over the built-in one")
+	require.Equal(t, map[string]any{"$ref": "#/components/schemas/node"}, props["head"])
+
+	next := requireMap(t, requireMap(t, schemas["node"])["properties"])["next"]
+	require.Equal(t, map[string]any{"$ref": "#/components/schemas/node"}, next, "a type that mentions itself terminates")
+
+	require.Panics(t, func() { New(Config{TypeSchemas: map[reflect.Type]any{nil: map[string]any{}}}) })
+	require.NotPanics(t, func() { New(Config{TypeSchemas: map[reflect.Type]any{reflect.TypeFor[duration](): cat{}}}) })
+}
+
+func Test_OpenAPI_SchemaOfUsesTheProvider(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "string", SchemaOf(decimal{})["type"])
+	require.Equal(t, "string", SchemaOf(&decimal{})["type"])
+	list := SchemaOf([]decimal{})
+	require.Equal(t, "array", list["type"])
+	require.Equal(t, "string", requireMap(t, list["items"])["type"])
+	require.NotPanics(t, func() { SchemaOf(node{}) }, "a self-referencing provider ends")
+}
+
+type cat struct {
+	Kind  string `json:"kind"`
+	Lives int    `json:"lives"`
+}
+
+type dog struct {
+	Kind string `json:"kind"`
+	Bark bool   `json:"bark"`
+}
+
+type pet struct{}
+
+func (pet) OpenAPISchema() map[string]any {
+	return WithDiscriminator(OneOf(cat{}, &dog{}), "kind", map[string]any{"cat": cat{}, "dog": dog{}, "text": "#/components/schemas/cat"})
+}
+
+type household struct {
+	Main pet   `json:"main"`
+	Pets []pet `json:"pets"`
+}
+
+func Test_OpenAPI_OneOfWithADiscriminator(t *testing.T) {
+	t.Parallel()
+	for _, version := range []string{"3.0.3", "3.1.0", "3.2.0"} {
+		schemas := modelSchemas(t, rfSpec(t, func(app *fiber.App) { app.Post("/homes", listUsers).Accepts(household{}) }, Config{OpenAPIVersion: version}))
+		require.Contains(t, schemas, "cat", version)
+		require.Contains(t, schemas, "dog", version)
+
+		got := requireMap(t, schemas["pet"])
+		require.Equal(t, []any{
+			map[string]any{"$ref": "#/components/schemas/cat"},
+			map[string]any{"$ref": "#/components/schemas/dog"},
+		}, got["oneOf"], version)
+		discriminator := requireMap(t, got["discriminator"])
+		require.Equal(t, "kind", discriminator["propertyName"])
+		require.Equal(t, map[string]any{
+			"cat":  "#/components/schemas/cat",
+			"dog":  "#/components/schemas/dog",
+			"text": "#/components/schemas/cat",
+		}, discriminator["mapping"], version)
+	}
+
+	inline := SchemaOf(pet{})
+	oneOf := requireSlice(t, inline["oneOf"])
+	require.Len(t, oneOf, 2)
+	require.Equal(t, "object", requireMap(t, oneOf[0])["type"], "SchemaOf inlines the models")
+	require.Equal(t, map[string]any{"text": "#/components/schemas/cat"}, requireMap(t, inline["discriminator"])["mapping"], "only a reference can be named without a registry")
+}
+
+func Test_OpenAPI_CompositionBuilders(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, []any{cat{}, dog{}}, AnyOf(cat{}, dog{})["anyOf"])
+	require.Equal(t, []any{cat{}}, AllOf(cat{})["allOf"])
+	base := map[string]any{"description": "kept"}
+	got := WithDiscriminator(base, "kind", nil)
+	require.NotContains(t, base, "discriminator", "the input is left alone")
+	require.Equal(t, map[string]any{"propertyName": "kind"}, got["discriminator"])
+	require.Equal(t, "kept", got["description"])
+	require.Contains(t, WithDiscriminator(nil, "kind", nil), "discriminator")
+}
+
+func Test_OpenAPI_SchemaNameHook(t *testing.T) {
+	t.Parallel()
+	spec := rfSpec(t, func(app *fiber.App) {
+		app.Get("/a", listUsers).Returns(fiber.StatusOK, cat{})
+		app.Get("/b", listUsers).Returns(fiber.StatusOK, dog{})
+		app.Get("/c", listUsers).Returns(fiber.StatusOK, directiveModel{})
+	}, Config{SchemaName: func(typ reflect.Type) string {
+		switch typ {
+		case reflect.TypeFor[cat](), reflect.TypeFor[dog]():
+			return "pets/animal v1" // sanitized; the second type with the name falls back to its qualified one
+		default:
+			return ""
+		}
+	}})
+	require.ElementsMatch(t, []string{"pets_animal_v1", "openapi.dog", "directiveModel"}, rfKeys(modelSchemas(t, spec)), "an empty name keeps the default")
+}
+
+type xmlItem struct {
+	Name string `xml:"name"`
+}
+
+type xmlPet struct {
+	XMLName xml.Name  `xml:"pet"`
+	Name    string    `xml:"name"`
+	Nick    string    `xml:"nick,omitempty"`
+	Skip    string    `xml:"-"`
+	Extra   string    `xml:",any"`
+	Hidden  string    `xml:",comment"`
+	JSONOne string    `json:"json_one" xml:"-"`
+	Items   []xmlItem `xml:"items>item"`
+	Notes   []string  `xml:"note"`
+	ID      int       `xml:"id,attr"`
+}
+
+func Test_OpenAPI_XMLTagsDescribeXMLBodies(t *testing.T) {
+	t.Parallel()
+	schemas := modelSchemas(t, rfSpec(t, func(app *fiber.App) {
+		app.Get("/pets", listUsers).Returns(fiber.StatusOK, xmlPet{}, fiber.MIMEApplicationXML)
+		app.Get("/json-pets", listUsers).Returns(fiber.StatusOK, xmlPet{})
+	}))
+	xmlSchema := requireMap(t, schemas["xmlPet_xml"])
+	require.Equal(t, map[string]any{"name": "pet"}, xmlSchema["xml"])
+	props := requireMap(t, xmlSchema["properties"])
+	require.Equal(t, map[string]any{"attribute": true}, requireMap(t, props["id"])["xml"])
+	// A skipped field, a catch-all, a comment and a field only JSON names are not elements.
+	require.ElementsMatch(t, []string{"id", "name", "nick", "items", "note"}, rfKeys(props))
+	items := requireMap(t, props["items"])
+	require.Equal(t, map[string]any{"wrapped": true}, items["xml"])
+	item := requireMap(t, items["items"])
+	require.Equal(t, "#/components/schemas/xmlItem_xml", item["$ref"])
+	require.Equal(t, map[string]any{"name": "item"}, item["xml"])
+	require.ElementsMatch(t, []any{"id", "name", "items", "note"}, xmlSchema["required"], "omitempty is optional, the rest is always written")
+
+	jsonSchema := requireMap(t, schemas["xmlPet"])
+	require.NotContains(t, jsonSchema, "xml", "a JSON body reads json tags")
+	require.Contains(t, requireMap(t, jsonSchema["properties"]), "json_one")
+}
+
+func Test_OpenAPI_XMLMediaTypes(t *testing.T) {
+	t.Parallel()
+	for mediaType, want := range map[string]bool{
+		"application/xml":                   true,
+		"text/xml; charset=utf-8":           true,
+		"application/atom+xml":              true,
+		"image/svg+xml":                     true,
+		"application/json":                  false,
+		"application/x-www-form-urlencoded": false,
+		"+xml":                              false,
+	} {
+		require.Equal(t, want, isXMLMediaType(mediaType), mediaType)
+	}
+}
+
+type validated struct {
+	Handle   string   `json:"handle" validate:"alphanum,startswith=u_"`
+	Word     string   `json:"word" validate:"alpha,endswith=ing,contains=in"`
+	Code     string   `json:"code" validate:"numeric"`
+	Hex      string   `json:"hex" validate:"hexcolor"`
+	Phone    string   `json:"phone" validate:"e164"`
+	Text     string   `json:"text" validate:"ascii"`
+	Token    string   `json:"token" validate:"jwt"`
+	Kind     string   `json:"kind" validate:"eq=a.b"`
+	Banned   string   `json:"banned" validate:"ne=root"`
+	Optional string   `json:"optional,omitempty" validate:"omitempty,alpha,eq=x,startswith=a"`
+	OptASCII string   `json:"opt_ascii,omitempty" validate:"omitempty,ascii"`
+	Labels   []string `json:"labels" validate:"unique,eq=2"`
+	People   []string `json:"people" validate:"unique=Name"`
+	Raw      []byte   `json:"raw" validate:"eq=3"`
+	Level    int      `json:"level" validate:"eq=3"`
+	NotZero  int      `json:"not_zero" validate:"ne=0"`
+	Port     int      `json:"port" validate:"port"`
+	OptPort  int      `json:"opt_port,omitempty" validate:"omitempty,port"`
+	Quoted   int      `json:"quoted,string" validate:"eq=4"`
+	Flag     bool     `json:"flag" validate:"eq=true"`
+}
+
+func Test_OpenAPI_MoreValidateRules(t *testing.T) {
+	t.Parallel()
+	str, list := rfM{"type": "string"}, rfM{"type": "array", "items": rfM{"type": "string"}}
+	pattern := func(p string) rfM { return rfM{"type": "string", "pattern": p} }
+	require.Equal(t, rfM{
+		"handle":   pattern(`^[a-zA-Z0-9]+$`), // the first pattern rule keeps the pattern
+		"word":     pattern(`^[a-zA-Z]+$`),
+		"code":     pattern(`^[-+]?[0-9]+(?:\.[0-9]+)?$`),
+		"hex":      pattern(`^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$`),
+		"phone":    pattern(`^\+?[1-9]\d{7,14}$`),
+		"text":     pattern("^[\\x00-\\x7F]*$"),
+		"token":    pattern(`^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]*$`),
+		"kind":     rfM{"type": "string", "enum": []any{"a.b"}},
+		"banned":   rfM{"type": "string", "not": rfM{"enum": []any{"root"}}},
+		"level":    rfM{"type": "integer", "enum": []any{int64(3)}},
+		"not_zero": rfM{"type": "integer", "not": rfM{"enum": []any{int64(0)}}},
+		"flag":     rfM{"type": "boolean", "enum": []any{true}},
+		"port":     rfM{"type": "integer", "minimum": 1, "maximum": 65535},
+		// eq on a list is its length; unique by a field cannot be expressed.
+		"labels": rfM{"type": "array", "items": str, "uniqueItems": true, "minItems": int64(2), "maxItems": int64(2)},
+		"people": list,
+		// omitempty lets an empty value through, which these rules refuse, but ascii accepts the empty string.
+		"optional":  str,
+		"opt_port":  rfM{"type": "integer"},
+		"opt_ascii": pattern("^[\\x00-\\x7F]*$"),
+		// A quoted number is compared as a number.
+		"quoted": str,
+		"raw":    rfM{"type": "string", "format": "byte"},
+	}, requireProps(t, SchemaOf(validated{})))
+}
+
+type conditionalModel struct {
+	Kind     string `json:"kind"`
+	Email    string `json:"email,omitempty" validate:"required_without=Phone"`
+	Phone    string `json:"phone,omitempty"`
+	Street   string `json:"street,omitempty" validate:"required_with=City"`
+	City     string `json:"city,omitempty"`
+	Zip      string `json:"zip,omitempty" validate:"required_with_all=Street City"`
+	Company  string `json:"company,omitempty" validate:"required_if=Kind business Count 2"`
+	Reason   string `json:"reason,omitempty" validate:"required_unless=Kind personal"`
+	Fax      string `json:"fax,omitempty" validate:"required_without_all=Email Phone"`
+	Rush     string `json:"rush,omitempty" validate:"required_if=Express true"`
+	Unknown  string `json:"unknown,omitempty" validate:"required_if=Nope x"`
+	Optional string `json:"optional,omitempty"`
+	Count    int    `json:"count"`
+	Express  bool   `json:"express"`
+}
+
+func Test_OpenAPI_ConditionalRequiredRules(t *testing.T) {
+	t.Parallel()
+	build := func(version string) map[string]any {
+		spec := rfSpec(t, func(app *fiber.App) { app.Post("/c", listUsers).Accepts(conditionalModel{}) }, Config{OpenAPIVersion: version})
+		return requireMap(t, modelSchemas(t, spec)["conditionalModel"])
+	}
+
+	require.NotContains(t, build("3.0.3"), "allOf", "3.0 has no if/then")
+
+	schema := build("3.1.0")
+	require.NotContains(t, requireSlice(t, schema["required"]), "email")
+	rules := requireSlice(t, schema["allOf"])
+	require.Len(t, rules, 7, "the rule on a field that does not exist is left out")
+	require.Contains(t, rules, map[string]any{"dependentRequired": map[string]any{"city": []any{"street"}}})
+	require.Contains(t, rules, map[string]any{
+		"if":   map[string]any{"not": map[string]any{"required": []any{"phone"}}},
+		"then": map[string]any{"required": []any{"email"}},
+	})
+	require.Contains(t, rules, map[string]any{
+		"if":   map[string]any{"required": []any{"street", "city"}},
+		"then": map[string]any{"required": []any{"zip"}},
+	})
+	require.Contains(t, rules, map[string]any{
+		"if": map[string]any{"allOf": []any{
+			map[string]any{"required": []any{"kind"}, "properties": map[string]any{"kind": map[string]any{"const": "business"}}},
+			map[string]any{"required": []any{"count"}, "properties": map[string]any{"count": map[string]any{"const": float64(2)}}},
+		}},
+		"then": map[string]any{"required": []any{"company"}},
+	})
+	require.Contains(t, rules, map[string]any{
+		"if":   map[string]any{"not": map[string]any{"required": []any{"kind"}, "properties": map[string]any{"kind": map[string]any{"const": "personal"}}}},
+		"then": map[string]any{"required": []any{"reason"}},
+	})
+	require.Contains(t, rules, map[string]any{
+		"if":   map[string]any{"allOf": []any{map[string]any{"not": map[string]any{"required": []any{"email"}}}, map[string]any{"not": map[string]any{"required": []any{"phone"}}}}},
+		"then": map[string]any{"required": []any{"fax"}},
+	})
+	require.Contains(t, rules, map[string]any{
+		"if":   map[string]any{"allOf": []any{map[string]any{"required": []any{"express"}, "properties": map[string]any{"express": map[string]any{"const": true}}}}},
+		"then": map[string]any{"required": []any{"rush"}},
+	})
+}
+
+type commaModel struct {
+	Plain   string `json:"plain" openapi:"description:Sorted, then trimmed: yes"`
+	Split   string `json:"split" openapi:"description:Sorted, title:Name"`
+	Flagged string `json:"flagged" openapi:"description:Old, deprecated"`
+}
+
+func Test_OpenAPI_TagValueCommaLimitation(t *testing.T) {
+	t.Parallel()
+	props := requireMap(t, SchemaOf(commaModel{})["properties"])
+	prop := func(name string) map[string]any { return requireMap(t, props[name]) }
+	require.Equal(t, "Sorted, then trimmed: yes", prop("plain")["description"], "a comma not followed by a directive stays in the value")
+	require.Equal(t, "Sorted", prop("split")["description"])
+	require.Equal(t, "Name", prop("split")["title"])
+	require.Equal(t, "Old", prop("flagged")["description"])
+	require.Equal(t, true, prop("flagged")["deprecated"])
 }
