@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -150,34 +151,26 @@ func Test_Cache_ConcurrentReloadsReplaceSameKeyHeapNode(t *testing.T) {
 // request's completed store. The final heap insertion must replace that node.
 func Test_Cache_ConcurrentReloadAfterReservationReplacesHeapNode(t *testing.T) {
 	t.Parallel()
-	storage := newBlockingManifestStorage()
-	r := cacheTestCStartReloads(t, storage, fiber.HeaderAcceptLanguage)
+	for _, failBody := range []bool{false, true} {
+		t.Run("failBody="+strconv.FormatBool(failBody), func(t *testing.T) {
+			t.Parallel()
+			storage := newBlockingManifestStorage()
+			r := cacheTestCStartReloads(t, storage, fiber.HeaderAcceptLanguage)
 
-	// Store the second reload first, but pause it after reservation and
-	// before heap insertion while the first reload finishes its store.
-	r.second.open()
-	<-storage.blocked
-	r.first.finish(t)
-	close(storage.release)
-	r.second.finish(t)
+			// The second reload pauses after its reservation, before its heap insertion, while the first stores.
+			r.second.open()
+			<-storage.blocked
+			r.first.finish(t)
+			storage.failBodySet.Store(failBody)
+			close(storage.release)
+			second := r.second.finish(t)
+			require.Equal(t, fiber.StatusOK, second.StatusCode)
+			if failBody {
+				require.Equal(t, cacheUnreachable, second.Header.Get("X-Cache"))
+				storage.failBodySet.Store(false)
+			}
 
-	r.requireSettled(t)
-}
-
-func Test_Cache_ConcurrentReloadStoreFailureRestoresLatestHeapNode(t *testing.T) {
-	t.Parallel()
-	storage := newBlockingManifestStorage()
-	r := cacheTestCStartReloads(t, storage, fiber.HeaderAcceptLanguage)
-
-	r.second.open()
-	<-storage.blocked
-	r.first.finish(t)
-	storage.failBodySet.Store(true)
-	close(storage.release)
-	unstored := r.second.finish(t)
-	require.Equal(t, fiber.StatusOK, unstored.StatusCode)
-	require.Equal(t, cacheUnreachable, unstored.Header.Get("X-Cache"))
-	storage.failBodySet.Store(false)
-
-	r.requireSettled(t)
+			r.requireSettled(t)
+		})
+	}
 }

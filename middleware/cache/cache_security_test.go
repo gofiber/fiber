@@ -1499,58 +1499,48 @@ func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 	}
 }
 
-// Test_Vary_PartitionsWithoutHeaderNormalizing asserts a Vary'd dimension keys
-// the same whether or not fasthttp normalizes header names.
-//
-// PeekAll compares stored keys byte for byte. With DisableHeaderNormalizing the
-// store keeps the spelling the client sent, while the names reaching the key
-// come lower-cased from parseVary — so every lookup missed and the dimension
-// dropped out of the key silently. A request sending application/json was then
-// served the entry stored for a form.
-func Test_Vary_PartitionsWithoutHeaderNormalizing(t *testing.T) {
+// A key dimension named by the response's Vary or by KeyHeaders partitions whatever case header names keep.
+func Test_PartitionsWithoutHeaderNormalizing(t *testing.T) {
 	t.Parallel()
-	for _, disable := range []bool{false, true} {
-		t.Run(fmt.Sprintf("DisableHeaderNormalizing=%v", disable), func(t *testing.T) {
-			t.Parallel()
-			app := fiber.New(fiber.Config{DisableHeaderNormalizing: disable})
-			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost}}))
-			app.Post("/", func(c fiber.Ctx) error {
-				c.Response().Header.Set(fiber.HeaderVary, fiber.HeaderContentType)
-				return c.SendString("body-for:" + c.Get(fiber.HeaderContentType))
-			})
-
-			do := func(ct string) reply {
+	for _, tc := range []struct {
+		send               func(value string) *http.Request
+		values             [2]string
+		name, header, vary string // header is the dimension the body echoes; vary the response's Vary
+		cfg                Config
+	}{
+		{
+			name: "Vary", cfg: Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost}},
+			header: fiber.HeaderContentType, vary: fiber.HeaderContentType, values: [2]string{"application/x-www-form-urlencoded", "application/json"},
+			send: func(ct string) *http.Request {
 				req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a=1"))
 				req.Header.Set(fiber.HeaderContentType, ct)
-				return doRequest(t, app, req)
-			}
+				return req
+			},
+		},
+		{
+			name: "KeyHeaders", cfg: Config{Expiration: time.Hour, KeyHeaders: []string{"X-Tenant"}}, header: "X-Tenant", values: [2]string{"acme", "beta"},
+			send: func(tenant string) *http.Request { return cacheTestCReq("/", "X-Tenant", tenant) },
+		},
+	} {
+		for _, disable := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/DisableHeaderNormalizing=%v", tc.name, disable), func(t *testing.T) {
+				t.Parallel()
+				app := fiber.New(fiber.Config{DisableHeaderNormalizing: disable})
+				app.Use(New(tc.cfg))
+				app.All("/", func(c fiber.Ctx) error {
+					if tc.vary != "" {
+						c.Response().Header.Set(fiber.HeaderVary, tc.vary)
+					}
+					return c.SendString("body-for:" + c.Get(tc.header))
+				})
+				do := func(value string) reply { return doRequest(t, app, tc.send(value)) }
 
-			cacheTestCRequireReply(t, do("application/x-www-form-urlencoded"), cacheMiss, "body-for:application/x-www-form-urlencoded")
-			cacheTestCRequireReply(t, do("application/json"), cacheMiss, "body-for:application/json",
-				"a different Content-Type must not hit the form entry")
-			cacheTestCRequireReply(t, do("application/json"), cacheHit, "body-for:application/json")
-		})
-	}
-}
-
-// Test_KeyHeaders_PartitionWithoutHeaderNormalizing is the same property for a
-// dimension named by KeyHeaders rather than by the response's Vary.
-func Test_KeyHeaders_PartitionWithoutHeaderNormalizing(t *testing.T) {
-	t.Parallel()
-	for _, disable := range []bool{false, true} {
-		t.Run(fmt.Sprintf("DisableHeaderNormalizing=%v", disable), func(t *testing.T) {
-			t.Parallel()
-			app := fiber.New(fiber.Config{DisableHeaderNormalizing: disable})
-			app.Use(New(Config{Expiration: time.Hour, KeyHeaders: []string{"X-Tenant"}}))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendString("body-for:" + c.Get("X-Tenant")) })
-
-			do := func(tenant string) reply { return cacheTestCGet(t, app, "/", "X-Tenant", tenant) }
-
-			cacheTestCRequireReply(t, do("acme"), cacheMiss, "body-for:acme")
-			cacheTestCRequireReply(t, do("beta"), cacheMiss, "body-for:beta",
-				"a different tenant must not hit the first one's entry")
-			cacheTestCRequireReply(t, do("acme"), cacheHit, "body-for:acme")
-		})
+				cacheTestCRequireReply(t, do(tc.values[0]), cacheMiss, "body-for:"+tc.values[0])
+				cacheTestCRequireReply(t, do(tc.values[1]), cacheMiss, "body-for:"+tc.values[1], "another value must not hit the first one's entry")
+				cacheTestCRequireReply(t, do(tc.values[1]), cacheHit, "body-for:"+tc.values[1])
+				cacheTestCRequireReply(t, do(tc.values[0]), cacheHit, "body-for:"+tc.values[0])
+			})
+		}
 	}
 }
 
@@ -1582,29 +1572,30 @@ func Test_CachedRedirectKeepsItsLocation(t *testing.T) {
 	require.Empty(t, resp.Header.Get("X-Extra"))
 }
 
-// Test_Authorization_DetectedWithoutHeaderNormalizing asserts a credential is
-// seen whatever case its field name arrived in.
-//
-// hasAuthorization and the auth hash read the header by its canonical name,
-// which fasthttp answers only while it normalizes what it stored. With
-// DisableHeaderNormalizing an "authorization:" sent in lower case matched
-// nothing, so the request read as anonymous: its response was stored in the
-// anonymous partition and replayed to the next client that asked, bearer token
-// and all.
+// With DisableHeaderNormalizing a credential under another spelling, even beside an empty canonical line, is seen.
 func Test_Authorization_DetectedWithoutHeaderNormalizing(t *testing.T) {
 	t.Parallel()
-	wire := cacheTestCExactWire(t, func(c fiber.Ctx) error {
-		// With normalizing off a handler reads the name as it arrived.
-		if tok := c.Get("authorization"); tok != "" {
-			return c.SendString("PRIVATE for " + tok)
-		}
-		return c.SendString("PUBLIC")
-	})
+	for _, tc := range []struct {
+		name, token string
+		lines       []string
+	}{
+		{name: "in lower case", lines: []string{"authorization: Bearer alice-secret"}, token: "Bearer alice-secret"},
+		{name: "beside an empty canonical line", lines: []string{"Authorization:", "authorization: Bearer alice"}, token: "Bearer alice"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			wire := cacheTestCExactWire(t, func(c fiber.Ctx) error {
+				if tok := cmp.Or(c.Get("Authorization"), c.Get("authorization")); tok != "" {
+					return c.SendString("PRIVATE for " + tok)
+				}
+				return c.SendString("PUBLIC")
+			})
 
-	cacheTestCRequireReply(t, wire.get("authorization: Bearer alice-secret"), cacheUnreachable, "PRIVATE for Bearer alice-secret",
-		"an authorized response must not enter the shared store")
-	cacheTestCRequireReply(t, wire.get(), cacheMiss, "PUBLIC", "an anonymous request must not be served the authorized response")
-	cacheTestCRequireReply(t, wire.get(), cacheHit, "PUBLIC")
+			cacheTestCRequireReply(t, wire.get(tc.lines...), cacheUnreachable, "PRIVATE for "+tc.token, "an authorized response must not enter the shared store")
+			cacheTestCRequireReply(t, wire.get(), cacheMiss, "PUBLIC", "an anonymous request must not be served the authorized response")
+			cacheTestCRequireReply(t, wire.get(), cacheHit, "PUBLIC")
+		})
+	}
 }
 
 // Test_RequestDirectives_HonoredWithoutHeaderNormalizing covers the same
@@ -1618,35 +1609,6 @@ func Test_RequestDirectives_HonoredWithoutHeaderNormalizing(t *testing.T) {
 	require.Equal(t, cacheHit, wire.get().cache)
 	require.Empty(t, wire.get("cache-control: no-store").cache, "no-store must be honored whatever case it arrived in")
 	require.Equal(t, cacheMiss, wire.get("cache-control: no-cache").cache, "no-cache must force revalidation")
-}
-
-// Test_Authorization_MixedCaseFieldLines closes the other half of the
-// case-insensitive lookup.
-//
-// Falling back to a case-insensitive walk only when the byte-for-byte lookup
-// came back empty was not enough: with DisableHeaderNormalizing a request can
-// send both spellings, and an empty canonical "Authorization:" line satisfies
-// the fast path, so the credential on the lowercase line beside it was never
-// looked at. The request read as anonymous and its private response was stored
-// in the anonymous partition.
-func Test_Authorization_MixedCaseFieldLines(t *testing.T) {
-	t.Parallel()
-	wire := cacheTestCExactWire(t, func(c fiber.Ctx) error {
-		tok := c.Get("Authorization")
-		if tok == "" {
-			tok = c.Get("authorization")
-		}
-		if tok == "" {
-			return c.SendString("PUBLIC")
-		}
-		return c.SendString("PRIVATE for " + tok)
-	})
-
-	// The canonical line is present but empty, so the byte-for-byte lookup
-	// succeeds and would have stopped there.
-	cacheTestCRequireReply(t, wire.get("Authorization:", "authorization: Bearer alice"), cacheUnreachable, "PRIVATE for Bearer alice",
-		"the credential on the second spelling must still be seen")
-	cacheTestCRequireReply(t, wire.get(), cacheMiss, "PUBLIC", "an anonymous request must not be served the authorized response")
 }
 
 // Test_Cache_NonCanonicalResponseNamesAreNotDuplicated checks that the fields

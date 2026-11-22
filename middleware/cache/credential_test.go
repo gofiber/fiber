@@ -745,32 +745,19 @@ func Test_refusalRecords_storageFailures(t *testing.T) {
 	})
 }
 
-func Test_refusesCredential(t *testing.T) {
+func Test_refusesAndAcceptsCredential(t *testing.T) {
 	t.Parallel()
-	for status, want := range map[int]bool{
-		fiber.StatusUnauthorized: true, fiber.StatusForbidden: true, fiber.StatusProxyAuthRequired: true,
-		fiber.StatusOK: false, fiber.StatusFound: false, fiber.StatusNotFound: false,
-		fiber.StatusTooManyRequests: false, fiber.StatusServiceUnavailable: false,
-	} {
-		t.Run(strconv.Itoa(status), func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, want, refusesCredential(status))
-		})
-	}
-}
-
-func Test_acceptsCredential(t *testing.T) {
-	t.Parallel()
-	for status, want := range map[int]bool{
-		fiber.StatusOK: true, fiber.StatusNoContent: true, fiber.StatusNotModified: true,
+	for status, want := range map[int]struct{ refuses, accepts bool }{
+		fiber.StatusOK: {accepts: true}, fiber.StatusNoContent: {accepts: true}, fiber.StatusNotModified: {accepts: true},
+		fiber.StatusUnauthorized: {refuses: true}, fiber.StatusForbidden: {refuses: true}, fiber.StatusProxyAuthRequired: {refuses: true},
 		// A redirect is how an app sends an ended session to its login page.
-		fiber.StatusMovedPermanently: false, fiber.StatusFound: false, fiber.StatusSeeOther: false,
-		fiber.StatusTemporaryRedirect: false, fiber.StatusUnauthorized: false, fiber.StatusNotFound: false,
-		fiber.StatusServiceUnavailable: false,
+		fiber.StatusMovedPermanently: {}, fiber.StatusFound: {}, fiber.StatusSeeOther: {}, fiber.StatusTemporaryRedirect: {},
+		fiber.StatusNotFound: {}, fiber.StatusTooManyRequests: {}, fiber.StatusServiceUnavailable: {},
 	} {
 		t.Run(strconv.Itoa(status), func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, want, acceptsCredential(status))
+			require.Equal(t, want.refuses, refusesCredential(status), "refuses")
+			require.Equal(t, want.accepts, acceptsCredential(status), "accepts")
 		})
 	}
 }
