@@ -336,3 +336,12 @@ func Test_purgeTable(t *testing.T) {
 		require.False(t, own.supersedes("example.com", "/item", stored(201)))
 	})
 }
+
+// Sequential: testing.AllocsPerRun panics in a parallel test. Folding the host and the path to lower case
+// allocated whenever either held a capital letter, which every hit paid once a write had been seen.
+func Test_purgeTable_slotDoesNotAllocate(t *testing.T) {
+	table := newPurgeTable()
+	for _, target := range [][2]string{{"example.com", "/item"}, {"Example.COM", "/Item/"}} {
+		require.Zero(t, testing.AllocsPerRun(100, func() { table.slot(target[0], target[1]) }), "%v", target)
+	}
+}

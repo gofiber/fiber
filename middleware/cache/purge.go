@@ -8,11 +8,14 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
-	utilsstrings "github.com/gofiber/utils/v2/strings"
+	utilsbytes "github.com/gofiber/utils/v2/bytes"
 )
 
 // purgeSlots is how many paths a purgeTable tells apart: a power of two, so a hash picks a slot with a mask.
 const purgeSlots = 1 << 14
+
+// purgeFoldBuf is the room slot folds a host or a path in on the stack; a longer one is folded on the heap.
+const purgeFoldBuf = 128
 
 // purgeTable remembers when a request that is not safe last succeeded at a path. A cache must invalidate
 // the target URI when it gets a non-error response to one (RFC 9111 §4.4), and an entry stored by a
@@ -52,8 +55,11 @@ func (t *purgeTable) slot(host, path string) uint64 {
 	if path = utils.TrimRight(path, '/'); path == "" {
 		path = "/"
 	}
-	h := maphash.String(t.seed, utilsstrings.ToLower(host))
-	p := maphash.String(t.seed, utilsstrings.ToLower(path))
+	// Folded in a local array: lowering the strings allocated for every hit, once a write had been seen,
+	// on a path or a forwarded host that holds a capital letter.
+	var buf [purgeFoldBuf]byte
+	h := maphash.Bytes(t.seed, utilsbytes.UnsafeToLower(append(buf[:0], host...)))
+	p := maphash.Bytes(t.seed, utilsbytes.UnsafeToLower(append(buf[:0], path...)))
 	return (h ^ bits.RotateLeft64(p, 32)) & (purgeSlots - 1)
 }
 

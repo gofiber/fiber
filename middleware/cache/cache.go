@@ -1008,7 +1008,13 @@ func New(config ...Config) fiber.Handler {
 						case len(fieldname.First(&c.Response().Header, fiber.HeaderVary, canonical)) == 0:
 							setFieldLine(&c.Response().Header, fiber.HeaderVary, varyValue, canonical)
 						default:
-							c.Vary(vary...)
+							// Merged in a local array: c.Vary built the list by concatenating strings,
+							// which cost every hit of an entry stored with a Vary two or three allocations.
+							var varyBuf [256]byte
+							current := joinedHeader(&c.Response().Header, fiber.HeaderVary, canonical)
+							if merged, added := appendMissingFields(varyBuf[:0], current, vary); added {
+								setFieldLine(&c.Response().Header, fiber.HeaderVary, merged, canonical)
+							}
 						}
 					}
 

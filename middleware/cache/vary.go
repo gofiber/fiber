@@ -173,6 +173,29 @@ func (cfg *Config) keyVaryFields(body bool) []string { //nolint:revive // flag-p
 	return fields
 }
 
+// appendMissingFields appends list, a Vary value, to dst, followed by each of names it does not list, and
+// reports whether it added one. A list holding "*" is left as it is: it varies on everything already.
+// names holds no name twice, so each is looked for in list alone.
+func appendMissingFields(dst, list []byte, names []string) ([]byte, bool) {
+	existing := utils.UnsafeString(list)
+	if headerlist.Contains(existing, "*") {
+		return dst, false
+	}
+	dst = append(dst, list...)
+	added := false
+	for _, name := range names {
+		if headerlist.ContainsFold(existing, name) {
+			continue
+		}
+		if len(dst) > 0 {
+			dst = append(dst, ", "...)
+		}
+		dst = append(dst, name...)
+		added = true
+	}
+	return dst, added
+}
+
 // lookupHeaders pools the copies of the request headers a miss keeps while the handler runs.
 var lookupHeaders = sync.Pool{New: func() any { return new(fasthttp.RequestHeader) }}
 

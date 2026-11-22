@@ -5064,6 +5064,39 @@ func Test_Cache_VaryIsReplayedOnHit(t *testing.T) {
 	}
 }
 
+// Sequential: testing.AllocsPerRun panics in a parallel test. A hit of an entry stored with a Vary adds the
+// headers the key splits by to it without an allocation of its own: c.Vary built the list by concatenating
+// strings, two or three allocations on every such hit.
+func Test_Cache_HitMergesTheKeyVaryWithoutAllocating(t *testing.T) {
+	hitAllocs := func(cfg Config, wantVary string) int {
+		app := fiber.New()
+		app.Use(New(cfg))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderVary, "Origin")
+			return c.SendString("body")
+		})
+		h := app.Handler()
+		fctx := &fasthttp.RequestCtx{}
+		serve := func() {
+			fctx.Request.Reset()
+			fctx.Response.Reset()
+			fctx.Request.Header.SetMethod(fiber.MethodGet)
+			fctx.Request.Header.SetHost("example.com")
+			fctx.Request.SetRequestURI("/")
+			h(fctx)
+		}
+		serve()
+		serve()
+		require.Equal(t, cacheHit, cacheTestXCache(fctx))
+		require.Equal(t, wantVary, string(fctx.Response.Header.Peek(fiber.HeaderVary)))
+		return int(testing.AllocsPerRun(100, serve))
+	}
+
+	merged := hitAllocs(Config{Expiration: time.Hour}, "Origin, "+keyVaryHeaders)
+	unmerged := hitAllocs(Config{Expiration: time.Hour, DisableCacheControl: true}, "Origin")
+	require.Equal(t, unmerged, merged)
+}
+
 // keyVaryHeaders is what a hit names in its Vary for the default KeyHeaders.
 const keyVaryHeaders = "Accept, Accept-Encoding, Accept-Language"
 
