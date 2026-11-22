@@ -136,12 +136,13 @@ func parseResponseCacheControl(cc []byte) responseCacheControl {
 		case utils.EqualFold(utils.UnsafeString(key), "public"):
 			parsed.hasPublic = true
 		case utils.EqualFold(utils.UnsafeString(key), "max-age"):
-			if v, ok := parseUintDirective(value); ok {
+			// RFC 9111 §4.2.1: when a directive repeats, the first occurrence is used.
+			if v, ok := parseUintDirective(value); ok && !parsed.maxAgeSet {
 				parsed.maxAgeSet = true
 				parsed.maxAge = min(v, maxDeltaSeconds)
 			}
 		case utils.EqualFold(utils.UnsafeString(key), "s-maxage"):
-			if v, ok := parseUintDirective(value); ok {
+			if v, ok := parseUintDirective(value); ok && !parsed.sMaxAgeSet {
 				parsed.sMaxAgeSet = true
 				parsed.sMaxAge = min(v, maxDeltaSeconds)
 			}
