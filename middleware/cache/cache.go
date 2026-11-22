@@ -288,6 +288,11 @@ func New(config ...Config) fiber.Handler {
 		exp      uint64
 		oldGen   uint64
 	}
+	// poppedNode names a node an eviction popped, by key and generation.
+	type poppedNode struct {
+		key string
+		gen uint64
+	}
 
 	redactKeys := !cfg.DisableValueRedaction
 
@@ -368,6 +373,25 @@ func New(config ...Config) fiber.Handler {
 		storedBytes -= size
 
 		return evictionCandidate{key: entryKey, manifest: entry.manifest, size: size, exp: exp, oldGen: heapGen}, true
+	}
+
+	// evicting holds the nodes that evictions have popped and are still deleting the entries of, and whether
+	// the entry a node stood for has been removed since (see removeDeleted). Guarded by mux.
+	evicting := make(map[poppedNode]bool)
+
+	// removeDeleted drops the node of an entry whose delete has finished, or that the Storage no longer
+	// holds. The caller holds mux. An eviction that has the node popped finds it marked instead, and does not
+	// put it back should one of its deletes fail: the bytes of an entry that was gone stayed counted against
+	// MaxBytes, evicting live entries in its place, until a later eviction popped the node again. A store
+	// that supersedes an entry does not use it, as the entry stays in the Storage until the store succeeds.
+	removeDeleted := func(entryKey string, heapIdx int, heapGen uint64) {
+		if _, removed := removeHeapEntry(entryKey, heapIdx, heapGen); removed {
+			return
+		}
+		node := poppedNode{key: entryKey, gen: heapGen}
+		if _, popped := evicting[node]; popped {
+			evicting[node] = true
+		}
 	}
 
 	// retrack puts a node popped for eviction back as it was: the original generation can be restored
@@ -734,7 +758,7 @@ func New(config ...Config) fiber.Handler {
 					log.Warnf("cache: failed to delete expired key %q: %v", maskKey(key), err)
 				} else {
 					guard.Relock()
-					removeHeapEntry(key, e.heapidx, e.heapgen)
+					removeDeleted(key, e.heapidx, e.heapgen)
 				}
 				if cfg.Storage != nil {
 					manager.release(e)
@@ -821,7 +845,7 @@ func New(config ...Config) fiber.Handler {
 					}
 					guard.Relock()
 					manager.release(e)
-					removeHeapEntry(key, idx, gen)
+					removeDeleted(key, idx, gen)
 					e = nil
 				case entryHasPrivate:
 					guard.Unlock()
@@ -830,7 +854,7 @@ func New(config ...Config) fiber.Handler {
 						log.Warnf("cache: failed to delete private response for key %q: %v", maskKey(key), err)
 					} else {
 						guard.Relock()
-						removeHeapEntry(key, e.heapidx, e.heapgen)
+						removeDeleted(key, e.heapidx, e.heapgen)
 					}
 					if cfg.Storage != nil && e != nil {
 						manager.release(e)
@@ -877,7 +901,7 @@ func New(config ...Config) fiber.Handler {
 								log.Warnf("%v; the entry is left as it is", err)
 							} else {
 								guard.Relock()
-								removeHeapEntry(key, e.heapidx, e.heapgen)
+								removeDeleted(key, e.heapidx, e.heapgen)
 								guard.Unlock()
 							}
 							manager.release(e)
@@ -1137,7 +1161,7 @@ func New(config ...Config) fiber.Handler {
 			}
 			if removeStaleHeap {
 				mux.Lock()
-				removeHeapEntry(key, heapIdx, heapGen)
+				removeDeleted(key, heapIdx, heapGen)
 				mux.Unlock()
 			}
 			return replaced
@@ -1175,7 +1199,7 @@ func New(config ...Config) fiber.Handler {
 				return
 			}
 			mux.Lock()
-			removeHeapEntry(key, heapIdx, heapGen)
+			removeDeleted(key, heapIdx, heapGen)
 			mux.Unlock()
 		}
 
@@ -1612,6 +1636,9 @@ func New(config ...Config) fiber.Handler {
 				})
 				storedBytes -= size
 			}
+			for _, candidate := range candidates {
+				evicting[poppedNode{key: candidate.key, gen: candidate.oldGen}] = false
+			}
 			mux.Unlock()
 
 			// Perform deletions outside the lock
@@ -1628,21 +1655,28 @@ func New(config ...Config) fiber.Handler {
 					// Unreserve space for the new entry
 					storedBytes -= entrySize
 					spaceReserved = false
-					mux.Unlock()
 
 					// The candidates after the failed one were not touched: they are stored, and go back as
 					// they were popped, in reverse to regain their heap indices, without a read of the
 					// Storage for each. Those reads, and a log line for each that failed, were the cost
 					// of one failed delete: as many as the entries the store needed room from, up to
-					// MaxBytes / 256, asked of a Storage that was failing already. Only the candidate
-					// whose delete failed may be gone in part, so only it is checked.
-					mux.Lock()
+					// MaxBytes / 256, asked of a Storage that was failing already. One that a request
+					// removed meanwhile stays out. Only the candidate whose delete failed may be gone in
+					// part, so only it is checked.
 					for _, candidate := range slices.Backward(candidates[i+1:]) {
-						retrack(candidate)
+						if !evicting[poppedNode{key: candidate.key, gen: candidate.oldGen}] {
+							retrack(candidate)
+						}
+					}
+					failedRemoved := evicting[poppedNode{key: candidates[i].key, gen: candidates[i].oldGen}]
+					for _, candidate := range candidates {
+						delete(evicting, poppedNode{key: candidate.key, gen: candidate.oldGen})
 					}
 					mux.Unlock()
-					if err := restoreHeapEntry(reqCtx, candidates[i]); err != nil {
-						log.Warnf("%v", err)
+					if !failedRemoved {
+						if err := restoreHeapEntry(reqCtx, candidates[i]); err != nil {
+							log.Warnf("%v", err)
+						}
 					}
 
 					// No room was made, so the response is not stored.
@@ -1650,6 +1684,11 @@ func New(config ...Config) fiber.Handler {
 					markUnreachable()
 					return nil
 				}
+				mux.Lock()
+				for _, candidate := range candidates {
+					delete(evicting, poppedNode{key: candidate.key, gen: candidate.oldGen})
+				}
+				mux.Unlock()
 			}
 		}
 
@@ -1713,7 +1752,7 @@ func New(config ...Config) fiber.Handler {
 			var cleanupErr error
 			if cfg.MaxBytes > 0 {
 				mux.Lock()
-				removeHeapEntry(key, heapIdx, heapGen)
+				removeDeleted(key, heapIdx, heapGen)
 				mux.Unlock()
 			}
 			if releaseEntry {

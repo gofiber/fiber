@@ -3306,6 +3306,69 @@ func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *
 	require.True(t, storage.Holds(storage.key), "the replacement is stored")
 }
 
+// A store that cannot make room puts back the nodes it popped, but not the node of an entry a request deleted
+// while the eviction's deletes ran: that request found no node to take out, and the bytes of an entry that was
+// gone stayed counted against MaxBytes, evicting live entries in its place, until a later eviction popped the
+// node again. An entry a request only failed to replace is still stored, and is put back.
+func Test_CacheStorage_FailedEvictionPutsBackWhatTheStorageHolds(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		reload   string // the Cache-Control of the request for /b made while the eviction is parked
+		withdraw bool   // the app answers it with no-store, which deletes /b
+	}{
+		{name: "an entry deleted meanwhile stays out", reload: "max-age=0", withdraw: true},
+		{name: "an entry a reload failed to replace goes back", reload: "no-cache"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			clock := cacheTestCClock()
+			storage := &blockingFailedEvictionStorage{
+				Memory:         storagetest.New(),
+				key:            cacheKeyVersion + "|GET|/a",
+				started:        make(chan struct{}),
+				continueDelete: make(chan struct{}),
+			}
+			probe := &accountingProbe{}
+			entry := charged(storage.key, len("x"), textPlain) // /a and /b alike
+			bigKey := cacheKeyVersion + "|GET|/big"
+			var withdrawn atomic.Bool
+			app := cacheTestBPathKeyedApp(&Config{MaxBytes: 2 * entry, Storage: storage, accounting: probe.record, clock: clock.Now})
+			app.Get("/:name", func(c fiber.Ctx) error {
+				switch {
+				case c.Path() == "/big":
+					// Needs the room of both entries.
+					return c.Send(make([]byte, int(2*entry)-len(bigKey)-len(textPlain)))
+				case c.Path() == "/b" && withdrawn.Load():
+					c.Set(fiber.HeaderCacheControl, "no-store")
+				}
+				return c.SendString("x")
+			})
+
+			// /a goes first, being the older.
+			cacheTestAExpect(t, app, "/a", cacheMiss)
+			clock.Add(time.Second)
+			cacheTestAExpect(t, app, "/b", cacheMiss)
+			cacheTestBRequireAccounting(t, probe, 2*entry, 2)
+
+			// The store of /big pops both nodes and parks in the delete of /a, which then fails.
+			storage.armed.Store(true)
+			evicting := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/big"), storage.started, storage.continueDelete)
+			withdrawn.Store(tc.withdraw)
+			cacheTestAExpect(t, app, cacheTestAGetCC("/b", tc.reload), cacheUnreachable)
+			require.Equal(t, cacheUnreachable, evicting.finish(t).Header.Get("X-Cache"))
+
+			held := 1
+			if !tc.withdraw {
+				held = 2
+			}
+			require.Equal(t, !tc.withdraw, storage.Holds(cacheKeyVersion+"|GET|/b"))
+			require.True(t, storage.Holds(storage.key))
+			cacheTestBRequireAccounting(t, probe, uint(held)*entry, held)
+		})
+	}
+}
+
 func Test_CacheStorage_MinFreshUncacheableRevalidationCleansEntry(t *testing.T) {
 	t.Parallel()
 	storage := storagetest.New()
