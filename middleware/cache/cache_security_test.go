@@ -193,8 +193,7 @@ func Test_Cache_Security_KeyValuesStayDistinct(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_TargetSpellingsStayDistinct tests that only targets spelled alike share an entry,
-// the order of differently named query parameters aside, as a handler can echo the raw target.
+// A handler can echo the raw target, so only targets spelled alike, query order aside, share an entry.
 func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -209,17 +208,14 @@ func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
 		{name: "no value and an empty one", first: "/?a&b=1", second: "/?a=&b=1"},
 		{name: "an empty parameter", first: "/?a=1&&b=2", second: "/?a=1&b=2"},
 		{name: "a trailing separator", first: "/?a=1&b=2&", second: "/?a=1&b=2"},
-		// c.Query reads the first value of a name, whichever way the name is spelled.
 		{name: "the values of one name", first: "/?a=1&a=2&b=3", second: "/?a=2&a=1&b=3"},
 		{name: "two spellings of one name", first: "/?a=1&%61=2&b=3", second: "/?%61=2&a=1&b=3"},
-		// A name ends at the first "=" and the rest is its value.
 		{name: "a value that holds the separator of a name", first: "/?a=1&a=b=c", second: "/?a=b=c&a=1"},
 		// One name to the parser alone, which keeps a "%" that begins no escape and whatever follows it.
 		{name: "one name by a stray percent sign", first: "/?x%+=1&x%%2B=2", second: "/?x%%2B=2&x%+=1"},
 		{name: "two names", first: "/?a=1&b=2", second: "/?b=2&a=1", shared: true},
 		{name: "two names around a repeated one", first: "/?b=2&a=1&a=3", second: "/?a=1&b=2&a=3", shared: true},
 		{name: "two names, one escaped", first: "/?b=2&%61=1", second: "/?%61=1&b=2", shared: true},
-		// The rest of the target: all of these are routed as the path of the second request.
 		{name: "a fragment", first: `/page#"><script>alert(1)</script>`, second: "/page"},
 		{name: "an empty fragment", first: "/page#", second: "/page"},
 		{name: "a fragment behind a query", first: "/page?a=1#x", second: "/page?a=1"},
@@ -273,7 +269,6 @@ func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_RequestBodiesStayDistinct tests that only requests with the same body share an entry.
 func Test_Cache_Security_RequestBodiesStayDistinct(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -286,7 +281,6 @@ func Test_Cache_Security_RequestBodiesStayDistinct(t *testing.T) {
 		{method: fiber.MethodPost, body: "alice's search", cache: cacheHit},
 		{method: fiber.MethodPost, cache: cacheMiss},
 		{method: fiber.MethodPost, cache: cacheHit},
-		// A GET with a body is keyed by it too.
 		{method: fiber.MethodGet, cache: cacheMiss},
 		{method: fiber.MethodGet, body: "alice's search", cache: cacheMiss},
 		{method: fiber.MethodGet, cache: cacheHit},
@@ -300,8 +294,7 @@ func Test_Cache_Security_RequestBodiesStayDistinct(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_BodylessContentEncodingStaysDistinct tests that a request naming a Content-Encoding
-// without a body does not share an entry with a plain one, as c.Body() may answer it with a cacheable 501.
+// c.Body() may answer a bodyless Content-Encoding with a cacheable 501, which plain requests must not get.
 func Test_Cache_Security_BodylessContentEncodingStaysDistinct(t *testing.T) {
 	t.Parallel()
 	read := func(c fiber.Ctx) error { return c.SendString("body=" + string(c.Body())) }
@@ -322,7 +315,6 @@ func Test_Cache_Security_BodylessContentEncodingStaysDistinct(t *testing.T) {
 				app.Use(New(Config{Expiration: time.Hour, Methods: methods}))
 				app.Add([]string{fiber.MethodGet, fiber.MethodPost}, "/", read)
 				send := func(opts ...apptest.Option) reply { return doRequest(t, app, apptest.Req(method, "/", opts...)) }
-				// HEAD answers without a body.
 				requireReply := func(got reply, cache string, status int, body string) {
 					t.Helper()
 					require.Equal(t, cache, got.cache)
@@ -339,7 +331,6 @@ func Test_Cache_Security_BodylessContentEncodingStaysDistinct(t *testing.T) {
 				requireReply(send(append(coded, apptest.WithHeader(fiber.HeaderCacheControl, "no-cache"))...), cacheMiss, tc.status, tc.body)
 				requireReply(send(coded...), cacheHit, tc.status, tc.body)
 
-				// What a plain request is served stays what it was.
 				requireReply(send(), cacheHit, fiber.StatusOK, "body=")
 			})
 		}
@@ -362,8 +353,7 @@ func Test_Cache_Security_BodylessContentEncodingStaysDistinct(t *testing.T) {
 	})
 }
 
-// Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy tests that a hit given the middleware's Cache-Control
-// names the request headers the key splits by in its Vary, so a downstream cache keeps them apart too.
+// A downstream cache must split a hit by the headers the key splits by (RFC 9111 §4.1).
 func Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy(t *testing.T) {
 	t.Parallel()
 	page := func(c fiber.Ctx) error { return c.SendString("page of tenant " + c.Get("X-Tenant")) }
@@ -439,8 +429,7 @@ func Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy tests that a body-keyed hit names the body's fields in its
-// Vary and, as no Vary names a body, is private when the request has one, except for QUERY (RFC 10008).
+// No Vary names a body, so a body-keyed hit is private, unless it is a QUERY's (RFC 10008).
 func Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy(t *testing.T) {
 	t.Parallel()
 	const keyHeaders, bodyFields = "Accept, Accept-Encoding, Accept-Language", ", Content-Encoding, Content-Type"
@@ -484,7 +473,6 @@ func Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_NextSkipsTheLookup tests that a request Next skips is not served a stored response.
 func Test_Cache_Security_NextSkipsTheLookup(t *testing.T) {
 	t.Parallel()
 	var handled, asked atomic.Int32
@@ -506,10 +494,8 @@ func Test_Cache_Security_NextSkipsTheLookup(t *testing.T) {
 		status           int
 		handled, asked   int32 // how often the handler has run and Next been asked by then
 	}{
-		// Asked before the lookup and again before the response is stored.
 		{key: "secret", cache: cacheMiss, status: fiber.StatusOK, body: "confidential", handled: 1, asked: 2},
 		{key: "secret", cache: cacheHit, status: fiber.StatusOK, body: "confidential", handled: 1, asked: 3},
-		// Skipped: the handler answers, and the entry stays for the requests that are not.
 		{cache: cacheUnreachable, status: fiber.StatusUnauthorized, body: "no key", handled: 2, asked: 4},
 		{key: "secret", cache: cacheHit, status: fiber.StatusOK, body: "confidential", handled: 2, asked: 5},
 	} {
@@ -521,7 +507,6 @@ func Test_Cache_Security_NextSkipsTheLookup(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_HitDoesNotShareTheStoredBody tests that editing a hit's body in place spares the entry.
 func Test_Cache_Security_HitDoesNotShareTheStoredBody(t *testing.T) {
 	t.Parallel()
 	const body = "card 4111111111111111"
@@ -551,14 +536,12 @@ func Test_Cache_Security_HitDoesNotShareTheStoredBody(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_HitKeepsTheHeadersThatRestrictTheBody tests keptHeaders without StoreResponseHeaders.
 func Test_Cache_Security_HitKeepsTheHeadersThatRestrictTheBody(t *testing.T) {
 	t.Parallel()
 	kept := map[string][]string{}
 	for name := range keptHeaders {
 		kept[name] = []string{"value of " + name}
 	}
-	// Each line of a field is a policy of its own.
 	kept[fiber.HeaderContentSecurityPolicy] = []string{"default-src 'none'", "sandbox"}
 
 	for _, kind := range storageKinds {
@@ -598,7 +581,6 @@ func Test_Cache_Security_HitKeepsTheHeadersThatRestrictTheBody(t *testing.T) {
 	}
 }
 
-// Test_Cache_Security_HitKeepsWhatFiberSetsToRestrictTheBody covers a download and helmet behind the cache.
 func Test_Cache_Security_HitKeepsWhatFiberSetsToRestrictTheBody(t *testing.T) {
 	t.Parallel()
 	upload := filepath.Join(t.TempDir(), "upload.html")
@@ -646,8 +628,7 @@ func Test_Cache_Security_HitKeepsTheOrderOfRepeatedLines(t *testing.T) {
 	}
 }
 
-// A hit replays every stored line of a field a middleware in front of the cache also sets in place of that
-// middleware's line, past the 64 lines marked without allocating too.
+// Stored lines replace those set in front of the cache, past the 64 a hit marks without allocating too.
 func Test_Cache_Security_HitReplacesTheLinesSetInFrontOfTheCache(t *testing.T) {
 	t.Parallel()
 	robots := make([]string, 70)
@@ -683,7 +664,6 @@ func Test_Cache_Security_HitReplacesTheLinesSetInFrontOfTheCache(t *testing.T) {
 			want: map[string][]string{fiber.HeaderContentSecurityPolicy: {"inner"}, fiber.HeaderXRobotsTag: robots},
 		},
 		{
-			// Each of the lines set in front goes, not only the first.
 			name:  "two lines of the field the handler replaces with one",
 			outer: [][2]string{{fiber.HeaderXRobotsTag, "outer1"}, {fiber.HeaderXRobotsTag, "outer2"}},
 			route: func(c fiber.Ctx) error {
@@ -715,7 +695,6 @@ func Test_Cache_Security_HitReplacesTheLinesSetInFrontOfTheCache(t *testing.T) {
 	}
 }
 
-// Every name in keptHeaders matches in any case, within the length the lookup folds.
 func Test_isKeptHeader(t *testing.T) {
 	t.Parallel()
 	for name := range keptHeaders {
@@ -1240,7 +1219,6 @@ func Test_Cache_Security_QueryBody_StreamedBodyLimit(t *testing.T) {
 	require.Equal(t, cacheMiss, doQuery("other", false).cache)
 }
 
-// With StreamRequestBody, a stream that declares an empty body is not read, so the handler still gets it.
 func Test_Cache_EmptyBodyStreamIsLeftToTheHandler(t *testing.T) {
 	t.Parallel()
 	app := fiber.New(fiber.Config{StreamRequestBody: true})
@@ -1441,8 +1419,7 @@ func Test_StoreResponseHeaders_DropsTrailer(t *testing.T) {
 	require.Equal(t, "kept", resp.Header.Get("X-Keep"))
 }
 
-// Test_StoreResponseHeaders_DropsConnectionAndProxyFields tests that fields named in Connection (RFC 9110
-// Section 7.6.1) and Proxy-Authentication-Info (RFC 9111 Section 3.1) are not stored.
+// Covers fields named in Connection (RFC 9110 Section 7.6.1) and Proxy-Authentication-Info (RFC 9111 Section 3.1).
 func Test_StoreResponseHeaders_DropsConnectionAndProxyFields(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

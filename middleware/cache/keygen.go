@@ -119,11 +119,8 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 		dst = appendCanonicalCookieSubset(dst, c, cfg)
 	}
 
-	// RFC 10008: incorporate the request body so different QUERY bodies on the
-	// same URL get distinct keys, and the fields that say how it is decoded.
-	// Unnamed, as their order is fixed: the names would lengthen every QUERY key.
-	// Likewise for any request with a body, and for one that names a Content-Encoding,
-	// which c.Body() may answer with a cacheable 501.
+	// The body and the fields that say how it is decoded, unnamed as their order is fixed: for a QUERY (RFC
+	// 10008), any request with a body, and one with a Content-Encoding, which c.Body() may answer with a 501.
 	if body, held := bodySegment(c, normalized); held {
 		dst = append(dst, '|', 'm', '=')
 		dst = appendKeyFieldLines(dst, &c.Request().Header, "content-encoding", nil, normalized)
@@ -136,8 +133,7 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	return dst
 }
 
-// bodySegment returns the request body and whether the default key holds it (see appendDefaultKey). A
-// stream that declares no body is not read, as that would close it under the handler.
+// bodySegment returns the body and whether the key holds it, leaving unread a stream that declares none.
 func bodySegment(c fiber.Ctx, normalized bool) ([]byte, bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	var body []byte
 	if req := c.Request(); !req.IsBodyStream() || req.Header.ContentLength() > 0 {
@@ -146,7 +142,6 @@ func bodySegment(c fiber.Ctx, normalized bool) ([]byte, bool) { //nolint:revive 
 	return body, len(body) > 0 || c.Method() == fiber.MethodQuery || namesContentEncoding(&c.Request().Header, normalized)
 }
 
-// namesContentEncoding reports whether the request has a Content-Encoding line, trying the fast slot first.
 func namesContentEncoding(header *fasthttp.RequestHeader, normalized bool) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
 	if normalized && header.ContentEncoding() == nil {
 		return false
@@ -155,9 +150,7 @@ func namesContentEncoding(header *fasthttp.RequestHeader, normalized bool) bool 
 }
 
 // appendTargetAsSent keys what the raw target, which a handler can read, holds beyond the routed path and
-// keyed query: under "|p=" a target that differs from the path ("/a/../page"), less its query when that is
-// keyed or DisableQueryKeys is set; under "|f=" a fragment; under "|n=" a target with no "?" that middleware
-// gave a query.
+// query: under "|p=" a differing target, "|f=" a fragment, "|n=" a target with no "?" given a query.
 func appendTargetAsSent(dst, target []byte, path string, keyed []byte, cfg *Config) []byte {
 	sent, fragment, hasFragment := bytes.Cut(target, []byte{'#'})
 	before, query, hasQuery := bytes.Cut(sent, []byte{'?'})
@@ -180,7 +173,6 @@ func appendTargetAsSent(dst, target []byte, path string, keyed []byte, cfg *Conf
 	return dst
 }
 
-// querySegment locates a query parameter, and its decoded name in the buffer names are compared in.
 type querySegment struct {
 	start, end         uint16
 	nameStart, nameEnd uint16
@@ -189,8 +181,7 @@ type querySegment struct {
 // A query whose parameters are sorted has to fit the 16 bits of those offsets.
 const _ uint16 = maxQueryBufferSize
 
-// appendCanonicalQueryString appends the query with its parameters stably sorted by name as fasthttp decodes
-// it, each kept as sent, since a handler can read the raw query (c.OriginalURL).
+// appendCanonicalQueryString appends the query stably sorted by decoded name, each parameter kept as sent.
 func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	raw := uri.QueryString()
 	if len(raw) == 0 {
@@ -210,7 +201,6 @@ func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 		return appendEscapedBoundKeySegment(dst, query)
 	}
 
-	// One pooled buffer holds the decoded names, then the sorted query; neither outgrows the query.
 	bufPtr := acquireKeyBuffer()
 	buf := (*bufPtr)[:0]
 

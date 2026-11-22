@@ -39,14 +39,12 @@ func keygenCorpus() []keygenCase {
 		{name: "multi_dup", uri: "/?b=2&a=1&a=3", want: keyStart + "a=1&a=3&b=2" + keyNoHeaders},
 		{name: "dup_order", uri: "/?a=3&a=1", want: keyStart + "a=3&a=1" + keyNoHeaders},
 		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: `scheme=http|host=example.com|/a\pb\cc\\d|q=x=1` + keyNoHeaders},
-		// A parameter keeps the bytes it was sent in: nothing is decoded, and only the key's own delimiters are escaped.
 		{name: "query_escape", uri: "/?k=a b&z=%2F&k=z", want: keyStart + "k=a b&k=z&z=%2F" + keyNoHeaders},
 		{name: "query_spellings", uri: "/?b=%41&a=x+y&a=x%20y&b=A", want: keyStart + "a=x+y&a=x%20y&b=%41&b=A" + keyNoHeaders},
 		{name: "query_delims", uri: `/?b=x|y&a=1:2&c=\`, want: keyStart + `a=1\c2&b=x\py&c=\\` + keyNoHeaders},
 		// The names are sorted as the parser decodes them, so two spellings of one name stay in the order sent.
 		{name: "query_name_spellings", uri: "/?b=1&%61=2&a=3&%62=4", want: keyStart + "%61=2&a=3&b=1&%62=4" + keyNoHeaders},
 		{name: "query_name_plus", uri: "/?b=1&+=2&%20=3&a=4", want: keyStart + "+=2&%20=3&a=4&b=1" + keyNoHeaders},
-		// A parameter without a value, without a name, or without either is one all the same.
 		{name: "query_bare_parameters", uri: "/?b&&a=&=x&", want: keyStart + "&=x&&a=&b" + keyNoHeaders},
 		{name: "long_query_sorted", uri: "/?b=" + strings.Repeat("x", 300) + "&a=1", want: keyStart + boundKeySegment("a=1&b="+strings.Repeat("x", 300)) + keyNoHeaders},
 		// maxQueryParams parameters in maxQueryBufferSize bytes are still sorted; a query past either bound is keyed as sent.
@@ -76,7 +74,6 @@ func keygenCorpus() []keygenCase {
 		{name: "target_escaped_letter", uri: "/%70age", want: "scheme=http|host=example.com|/page|q=|p=/%70age" + keyNoHeaders},
 		{name: "target_absolute_form", uri: "http://example.com/?x=1", want: keyStart + `x=1|p=http\c//example.com/` + keyNoHeaders},
 		{name: "target_delims_and_bound", uri: "/a|b/../#" + strings.Repeat("f:", 100), want: keyStart + `|p=/a\pb/../|f=` + boundKeySegment(strings.Repeat(`f\c`, 100)) + keyNoHeaders},
-		// Without the query in the key, the target is cut at its "?" whatever follows it.
 		{name: "disable_query_target", uri: "/a/../?foo=bar#top", noQuery: true, want: "scheme=http|host=example.com|/|p=/a/../|f=top" + keyNoHeaders},
 		{name: "disable_query_empty_query", uri: "/?", noQuery: true, want: "scheme=http|host=example.com|/" + keyNoHeaders},
 		{name: "many_params", uri: "/?" + strings.Repeat("k=v&", 200) + "z=1", want: keyStart + "sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829" + keyNoHeaders},
@@ -85,7 +82,6 @@ func keygenCorpus() []keygenCase {
 		{name: "query_body_delims", uri: "/", method: fiber.MethodQuery, body: "a|b:c", want: keyStart + keyNoHeaders + "|m=0|0|b=a\\pb\\cc"},
 		{name: "query_with_querystring", uri: "/?x=1", method: fiber.MethodQuery, body: "foo=bar", want: keyStart + "x=1" + keyNoHeaders + "|m=0|0|b=foo=bar"},
 		{name: "query_body_metadata", uri: "/", method: fiber.MethodQuery, body: "foo=bar", headers: map[string]string{"Content-Type": "application/json", "Content-Encoding": "gzip"}, want: keyStart + keyNoHeaders + "|m=1|gzip|1|application/json|b=foo=bar"},
-		// Any other request that carries a body is keyed by it the same way, and one without a body adds nothing.
 		{name: "post_body", uri: "/", method: fiber.MethodPost, body: "foo=bar", want: keyStart + keyNoHeaders + "|m=0|0|b=foo=bar"},
 		{name: "post_body_metadata", uri: "/", method: fiber.MethodPost, body: "{}", headers: map[string]string{"Content-Type": "application/json"}, want: keyStart + keyNoHeaders + "|m=0|1|application/json|b={}"},
 		{name: "post_no_body", uri: "/", method: fiber.MethodPost, want: keyStart + keyNoHeaders},
@@ -107,12 +103,10 @@ func buildKeygenCtx(tb testing.TB, tc *keygenCase) (fiber.Ctx, *Config) {
 	tb.Helper()
 
 	app := fiber.New()
-	// The request line is set before AcquireCtx, which caches the method and routes
-	// the path; body and headers are read live from the request afterwards.
+	// The request line is set before AcquireCtx, which caches the method and path.
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(cmp.Or(tc.method, fiber.MethodGet))
 	fctx.Request.SetRequestURI(tc.uri)
-	// The fixtures carry the host httptest would set, as the key needs an authority.
 	fctx.Request.SetHost(cmp.Or(tc.host, "example.com"))
 	c := apptest.CtxFor(tb, app, fctx)
 	if tc.body != "" {
@@ -278,7 +272,6 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 	}
 }
 
-// Test_defaultKeyGenerator_KeysTheTargetAsSent checks which spellings of /page share a key.
 func Test_defaultKeyGenerator_KeysTheTargetAsSent(t *testing.T) {
 	t.Parallel()
 	paths := []string{"/page", "/pa%67e", "/x/../page", "/./page", "http://example.com/page"}
@@ -311,7 +304,6 @@ func Test_defaultKeyGenerator_KeysTheTargetAsSent(t *testing.T) {
 	}
 }
 
-// Test_appendTargetAsSent_RewrittenQuery pins the key of a target whose query middleware rewrote.
 func Test_appendTargetAsSent_RewrittenQuery(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -339,10 +331,8 @@ func Test_appendTargetAsSent_RewrittenQuery(t *testing.T) {
 	}
 }
 
-// Test_appendCanonicalQueryString_SharedKeyReadsTheSame checks that queries sharing a key parse alike.
 func Test_appendCanonicalQueryString_SharedKeyReadsTheSame(t *testing.T) {
 	t.Parallel()
-	// Spellings of one name, stray "%" signs, and parameters that lack a name, a value or both.
 	parameters := []string{
 		"a=1", "a=2", "%61=3", "A=4", "a=b=5", "b", "b=", "+=6", "%20=7", "x%+=8", "x%%2B=9",
 		"%=10", "%zz=11", "", "=", "=12", "c%3D=13",
@@ -352,7 +342,6 @@ func Test_appendCanonicalQueryString_SharedKeyReadsTheSame(t *testing.T) {
 		uri.SetQueryString(query)
 		return string(appendCanonicalQueryString(nil, &uri))
 	}
-	// read is what the parser makes of query: its names, and the values of each in the order sent.
 	read := func(query string) string {
 		var args fasthttp.Args
 		args.Parse(query)
@@ -393,7 +382,6 @@ func Test_appendCanonicalQueryString_SharedKeyReadsTheSame(t *testing.T) {
 	require.NotZero(t, shared, "parameters of different names share a key in either order")
 }
 
-// Test_appendCanonicalQueryString_KeepsTheOrderOfOneName checks that parameters of one name keep their order.
 func Test_appendCanonicalQueryString_KeepsTheOrderOfOneName(t *testing.T) {
 	t.Parallel()
 	var sent []string
@@ -410,8 +398,7 @@ func Test_appendCanonicalQueryString_KeepsTheOrderOfOneName(t *testing.T) {
 	require.Equal(t, want, string(appendCanonicalQueryString(nil, &uri)))
 }
 
-// Sorting the query segment, built on every lookup, must not allocate; the fewest of many runs counts, as
-// under -race sync.Pool drops items at random. Sequential: testing.AllocsPerRun panics in a parallel test.
+// Sequential: testing.AllocsPerRun panics in a parallel test. The fewest of many runs counts under -race.
 func Test_appendCanonicalQueryString_DoesNotAllocate(t *testing.T) {
 	var uri fasthttp.URI
 	uri.SetQueryString("q=hello+world&filter%5Bstatus%5D=active&page=2&sort=-created")

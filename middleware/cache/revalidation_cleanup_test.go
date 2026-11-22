@@ -234,7 +234,6 @@ func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 			if failBodyRead {
 				storage.SetErr(storagetest.OpGet, bodySlot, errors.New("body verification failed"))
 			}
-			// No room is made for /b, so it is answered unstored.
 			request("/b", cacheUnreachable)
 			cacheTestBRequireAccounting(t, probe, entry, 1)
 			require.False(t, storage.Holds(key), key)

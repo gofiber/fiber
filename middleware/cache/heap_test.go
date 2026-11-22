@@ -55,7 +55,6 @@ func TestIndexedHeapOrphansAManifestWithItsLastEntry(t *testing.T) {
 	require.Nil(t, h.takeOrphans())
 }
 
-// Nodes a failed eviction pops and puts back leave no orphans, however often it repeats.
 func TestIndexedHeapPutBackNodesLeaveNoOrphans(t *testing.T) {
 	t.Parallel()
 	h := &indexedHeap{}
@@ -81,7 +80,6 @@ func TestIndexedHeapPutBackNodesLeaveNoOrphans(t *testing.T) {
 	require.Nil(t, h.takeOrphans())
 }
 
-// Entries due together, as those stored in one second are, go in the order they were stored.
 func TestIndexedHeapEvictsEntriesDueTogetherInStoringOrder(t *testing.T) {
 	t.Parallel()
 	h := &indexedHeap{}
@@ -95,7 +93,6 @@ func TestIndexedHeapEvictsEntriesDueTogetherInStoringOrder(t *testing.T) {
 	}
 }
 
-// removeExpired goes by expiry, and the two orderings stay in step through every removal.
 func TestIndexedHeapRemoveExpiredGoesByExpiry(t *testing.T) {
 	t.Parallel()
 	h := &indexedHeap{}
@@ -117,7 +114,6 @@ func TestIndexedHeapRemoveExpiredGoesByExpiry(t *testing.T) {
 	require.Zero(t, h.Len())
 	require.Empty(t, h.byExpiry)
 
-	// Random puts and removals of every kind, against what is left.
 	rng := rand.New(rand.NewPCG(3, 4))
 	live := map[string]uint64{} // key -> when it expires
 	idx := map[string]int{}

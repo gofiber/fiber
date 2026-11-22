@@ -43,8 +43,7 @@ func Test_parseCacheControlDirectives_Elements(t *testing.T) {
 	}
 }
 
-// Test_parseResponseCacheControl_SmallestLifetimeCounts pins that the smallest readable lifetime
-// counts, never longer than the first RFC 9111 Section 4.2.1 allows.
+// The smallest readable lifetime counts, never longer than the first (RFC 9111 Section 4.2.1).
 func Test_parseResponseCacheControl_SmallestLifetimeCounts(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -57,7 +56,6 @@ func Test_parseResponseCacheControl_SmallestLifetimeCounts(t *testing.T) {
 		{input: "max-age=3600, max-age=0", maxAgeSet: true},
 		{input: "s-maxage=0, s-maxage=3600", sMaxAgeSet: true},
 		{input: "max-age=5, s-maxage=7, max-age=9, s-maxage=11", maxAge: 5, maxAgeSet: true, sMaxAge: 7, sMaxAgeSet: true},
-		// One that cannot be read is ignored: the one that can counts.
 		{input: "max-age=soon, max-age=60", maxAge: 60, maxAgeSet: true},
 		{input: "s-maxage=, s-maxage=60", sMaxAge: 60, sMaxAgeSet: true},
 	} {

@@ -100,7 +100,6 @@ type manager struct {
 
 var errCacheMiss = errors.New("cache: miss")
 
-// errUndecodable marks Storage data that is not a whole entry written by this version.
 var errUndecodable = errors.New("cache: failed to unmarshal key")
 
 func newManager(storage fiber.Storage, shouldRedactKeys bool) *manager {

@@ -37,7 +37,6 @@ type heapEntry struct {
 	idx      int
 }
 
-// expiryNode is an entry's place in the heap by expiry: when it stops being fresh, and its index.
 type expiryNode struct {
 	expires uint64
 	idx     int
@@ -52,8 +51,7 @@ type expiryNode struct {
 type indexedHeap struct {
 	// One live heap index per cache key.
 	keys map[string]int
-	// Live entries per Vary manifest, and the manifests whose last entry left since takeOrphans; a set,
-	// as a failed eviction pops and restores the same manifests again and again.
+	// Live entries per Vary manifest, and the manifests whose last entry left since takeOrphans.
 	manifests map[string]int
 	orphans   map[string]struct{}
 	// Slice the heap is built on
@@ -207,7 +205,6 @@ func (h *indexedHeap) expiryDown(i int) {
 	}
 }
 
-// removeExpired takes out and returns the entry that stopped being fresh first, if one has by now.
 func (h *indexedHeap) removeExpired(now uint64) (heapEntry, bool) {
 	if len(h.byExpiry) == 0 || h.byExpiry[0].expires > now {
 		return heapEntry{}, false
@@ -242,7 +239,7 @@ func (h *indexedHeap) findKey(key string) (int, bool) {
 	return idx, ok
 }
 
-// Returns index to track entry; exp is when it is due to be evicted, expires when it stops being fresh.
+// Returns index to track entry
 func (h *indexedHeap) put(key string, exp, expires uint64, bytes uint, manifest string) int {
 	return h.putWithGeneration(key, exp, expires, bytes, h.nextGeneration(), manifest)
 }

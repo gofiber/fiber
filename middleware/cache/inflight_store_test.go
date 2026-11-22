@@ -99,10 +99,9 @@ func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsNotKept(t *testing.T) {
 }
 
 // When the entry cannot be taken back out, it has to be tracked again so that a
-// later eviction reaches it. The request that stored it is answered all the same.
+// later eviction reaches it.
 func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsTrackedWhenDeleteFails(t *testing.T) {
 	t.Parallel()
-	// A Storage that also fails the read-back check leaves the entry tracked.
 	for _, failing := range [][]string{{storagetest.OpDelete}, {storagetest.OpDelete, storagetest.OpGet}} {
 		t.Run(strings.Join(failing, " and ")+" fail", func(t *testing.T) {
 			t.Parallel()
