@@ -76,9 +76,10 @@ Use `make help` to list all available commands. Common targets include:
 - **longtest**: run the test suite 15 times with shuffling enabled.
 - **tidy**: clean and tidy dependencies.
 - **betteralign**: optimize struct field alignment.
-- **generate**: run `go generate` after installing msgp and ifacemaker. On a pull request a maintainer
-  can get the same result without a local toolchain by commenting `/generate`, which runs the target
-  and pushes the regenerated files onto the branch.
+- **generate**: run `go generate` after installing msgp and ifacemaker; this also rewrites the
+  `<!-- go:doc -->` blocks in the API doc pages. On a pull request a maintainer can get the same result
+  without a local toolchain by commenting `/generate`, which runs the target and pushes the regenerated
+  files and docs onto the branch.
 
 These targets can be invoked via `make <target>` as needed during development and testing.
 
