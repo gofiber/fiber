@@ -789,12 +789,12 @@ func Test_OpenAPI_SchemaNameHook(t *testing.T) {
 	}, Config{SchemaName: func(typ reflect.Type) string {
 		switch typ {
 		case reflect.TypeFor[cat](), reflect.TypeFor[dog]():
-			return "pets/animal v1" // sanitized; the second type with the name falls back to its qualified one
+			return "pets/animal v1" // sanitized, and the second type with the name is numbered
 		default:
 			return ""
 		}
 	}})
-	require.ElementsMatch(t, []string{"pets_animal_v1", "openapi.dog", "directiveModel"}, rfKeys(modelSchemas(t, spec)), "an empty name keeps the default")
+	require.ElementsMatch(t, []string{"pets_animal_v1", "pets_animal_v1_2", "directiveModel"}, rfKeys(modelSchemas(t, spec)), "an empty name keeps the default")
 }
 
 type xmlItem struct {

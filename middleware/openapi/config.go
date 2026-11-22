@@ -313,8 +313,8 @@ type Config struct {
 	TypeSchemas map[reflect.Type]any
 
 	// SchemaName names the component of a model type; return "" to keep the default (the type's name, then
-	// qualified by its package, then numbered on a clash). The result is restricted to the characters a
-	// component name may have. Optional. Default: nil
+	// qualified by its package, then numbered on a clash). A chosen name is numbered on a clash and restricted
+	// to the characters a component name may have. Optional. Default: nil
 	SchemaName func(t reflect.Type) string
 
 	// DefaultProduces is the response media type documented when a response declares none. Optional. Default: "application/json"

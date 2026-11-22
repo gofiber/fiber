@@ -1274,7 +1274,8 @@ only the entries that are already references.
 
 A struct is named after its Go type, then qualified by its package, then numbered
 on a clash. `Config.SchemaName` picks the name instead: return `""` to keep the default
-for a type. The result is restricted to the characters a component name allows.
+for a type. A chosen name is numbered on a clash, and is restricted to the
+characters a component name allows.
 
 ### XML bodies
 

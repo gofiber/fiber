@@ -113,14 +113,17 @@ func (reg *schemaRegistry) claimName(t reflect.Type, key *schemaKey) string {
 		suffix += "_request"
 	}
 	typeName := t.Name()
+	custom := ""
 	if reg.naming != nil {
-		if custom := reg.naming(t); custom != "" {
-			typeName = custom
-		}
+		custom = reg.naming(t)
+	}
+	if custom != "" {
+		typeName = custom
 	}
 	base := componentName(typeName) + suffix
 	candidates := []string{base}
-	if pkg := t.PkgPath(); pkg != "" {
+	// A name from Config.SchemaName is numbered on a clash; qualifying it by package would discard it.
+	if pkg := t.PkgPath(); pkg != "" && custom == "" {
 		if _, after, found := utils.LastCutByte(pkg, '/'); found {
 			pkg = after
 		}
