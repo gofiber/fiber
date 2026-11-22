@@ -14,15 +14,25 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// cacheTestPItem serves /item's version to GET and HEAD, and bumps it for any other method, answering status.
-func cacheTestPItem(version *atomic.Int32, status int) fiber.Handler {
-	return func(c fiber.Ctx) error {
-		if c.Method() == fiber.MethodGet || c.Method() == fiber.MethodHead {
-			return c.SendString("item v" + strconv.Itoa(int(version.Load())))
+// cacheTestPItemApp serves /item through New(*cfg): GET and HEAD read its version, from 1, running whileReading
+// before they answer, and any other method bumps it and answers status.
+func cacheTestPItemApp(cfg *Config, status int, whileReading ...func()) *fiber.App {
+	var version atomic.Int32
+	version.Store(1)
+	app := fiber.New()
+	app.Use(New(*cfg))
+	app.All("/item", func(c fiber.Ctx) error {
+		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
+			version.Add(1)
+			return c.SendStatus(status)
 		}
-		version.Add(1)
-		return c.SendStatus(status)
-	}
+		read := version.Load()
+		for _, hook := range whileReading {
+			hook()
+		}
+		return c.SendString("item v" + strconv.Itoa(int(read)))
+	})
+	return app
 }
 
 // RFC 9111 §4.4: a successful unsafe request ends the response stored for its path.
@@ -53,23 +63,18 @@ func Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			var version atomic.Int32
-			version.Store(1)
 			// A test clock moved past the write, as a coarse wall clock (Windows) puts both in one tick.
 			clock := cacheTestCClock()
 			cfg := tc.cfg
 			cfg.Expiration = time.Hour
 			cfg.clock = clock.Now
-			app := fiber.New()
-			app.Use(New(cfg))
-			app.All("/item", cacheTestPItem(&version, tc.status))
+			app := cacheTestPItemApp(&cfg, tc.status)
 
 			get := func() reply { return cacheTestCGet(t, app, "/item") }
 			cacheTestCRequireReply(t, get(), cacheMiss, "item v1")
 			cacheTestCRequireReply(t, get(), cacheHit, "item v1")
 
-			write := doRequest(t, app, apptest.Req(tc.method, "/item", apptest.WithHeaderIf(tc.header[0], tc.header[1])))
-			require.Equal(t, tc.status, write.status)
+			apptest.Expect(t, app, apptest.Req(tc.method, "/item", apptest.WithHeaderIf(tc.header[0], tc.header[1])), tc.status)
 			clock.Add(time.Second)
 
 			if tc.ends {
@@ -145,15 +150,10 @@ func Test_Cache_Security_WriteEndsThePathWithoutItsTrailingSlashes(t *testing.T)
 	} {
 		t.Run(tc.write+" ends "+tc.read, func(t *testing.T) {
 			t.Parallel()
-			var version atomic.Int32
-			version.Store(1)
-			app := fiber.New()
-			app.Use(New(Config{Expiration: time.Hour}))
-			app.All("/item", cacheTestPItem(&version, fiber.StatusNoContent))
-
+			app := cacheTestPItemApp(&Config{Expiration: time.Hour}, fiber.StatusNoContent)
 			cacheTestCRequireReply(t, cacheTestCGet(t, app, tc.read), cacheMiss, "item v1")
 			cacheTestCRequireReply(t, cacheTestCGet(t, app, tc.read), cacheHit, "item v1")
-			require.Equal(t, fiber.StatusNoContent, doRequest(t, app, apptest.Req(fiber.MethodPut, tc.write)).status)
+			apptest.Expect(t, app, apptest.Req(fiber.MethodPut, tc.write), fiber.StatusNoContent)
 			cacheTestCRequireReply(t, cacheTestCGet(t, app, tc.read), cacheMiss, "item v2")
 		})
 	}
@@ -161,71 +161,38 @@ func Test_Cache_Security_WriteEndsThePathWithoutItsTrailingSlashes(t *testing.T)
 
 func Test_Cache_Security_WriteEndsAnEntryTheRequestBeganBefore(t *testing.T) {
 	t.Parallel()
-	clock := cacheTestCClock()
-	var version atomic.Int32
-	version.Store(1)
-	parked, release := make(chan struct{}), make(chan struct{})
-	var slow atomic.Bool
-	slow.Store(true)
-	app := fiber.New()
-	app.Use(New(Config{Expiration: time.Hour, clock: clock.Now}))
-	app.All("/item", func(c fiber.Ctx) error {
-		if c.Method() == fiber.MethodPut {
-			version.Add(1)
-			return c.SendStatus(fiber.StatusNoContent)
-		}
-		read := version.Load()
-		if slow.CompareAndSwap(true, false) {
-			close(parked)
-			<-release
-		}
-		return c.SendString("item v" + strconv.Itoa(int(read)))
-	})
-
-	// A GET reads the item, and the write succeeds before it answers.
-	reading := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/item"), parked, release)
-	clock.Add(time.Second)
-	require.Equal(t, fiber.StatusNoContent, doRequest(t, app, apptest.Req(fiber.MethodPut, "/item")).status)
-	clock.Add(time.Second)
-	answered := reading.finish(t)
-	require.Equal(t, cacheMiss, answered.Header.Get("X-Cache"))
-
-	clock.Add(time.Second)
-	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheMiss, "item v2")
-	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheHit, "item v2")
-}
-
-func Test_Cache_Security_WriteOrderIgnoresWallClockSteps(t *testing.T) {
-	t.Parallel()
-	for _, step := range []time.Duration{-2 * time.Second, time.Hour} {
-		t.Run(step.String(), func(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		step time.Duration // of the wall clock while the GET is parked
+		own  bool          // the write table keeps a monotonic clock of its own
+	}{
+		{name: "on the default table"},
+		{name: "wall clock set back", step: -2 * time.Second, own: true},
+		{name: "wall clock set forward", step: time.Hour, own: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			wall, monotonic := cacheTestCClock(), cacheTestCClock()
-			var version atomic.Int32
-			version.Store(1)
+			wall := cacheTestCClock()
+			monotonic, cfg := wall, Config{Expiration: time.Hour, clock: wall.Now}
+			if tc.own {
+				monotonic = cacheTestCClock()
+				cfg.purges = newPurgeTable(monotonic.Now)
+			}
 			parked, release := make(chan struct{}), make(chan struct{})
 			var slow atomic.Bool
 			slow.Store(true)
-			app := fiber.New()
-			app.Use(New(Config{Expiration: time.Hour, clock: wall.Now, purges: newPurgeTable(monotonic.Now)}))
-			app.All("/item", func(c fiber.Ctx) error {
-				if c.Method() == fiber.MethodPut {
-					version.Add(1)
-					return c.SendStatus(fiber.StatusNoContent)
-				}
-				read := version.Load()
+			app := cacheTestPItemApp(&cfg, fiber.StatusNoContent, func() {
 				if slow.CompareAndSwap(true, false) {
 					close(parked)
 					<-release
 				}
-				return c.SendString("item v" + strconv.Itoa(int(read)))
 			})
 
 			// A GET reads the item, the wall clock steps, and the write succeeds before the GET answers.
 			reading := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/item"), parked, release)
-			wall.Add(step)
+			wall.Add(tc.step)
 			monotonic.Add(time.Second)
-			require.Equal(t, fiber.StatusNoContent, doRequest(t, app, apptest.Req(fiber.MethodPut, "/item")).status)
+			apptest.Expect(t, app, apptest.Req(fiber.MethodPut, "/item"), fiber.StatusNoContent)
 			monotonic.Add(time.Second)
 			require.Equal(t, cacheMiss, reading.finish(t).Header.Get("X-Cache"))
 
@@ -244,12 +211,8 @@ func Test_Cache_Security_WriteEndsEntriesOfAStorage(t *testing.T) {
 		t.Run("legacy="+strconv.FormatBool(legacy), func(t *testing.T) {
 			t.Parallel()
 			storage := storagetest.New()
-			var version atomic.Int32
-			version.Store(1)
 			clock := cacheTestCClock() // moved past the write, as in Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry
-			app := fiber.New()
-			app.Use(New(Config{Storage: storage, Expiration: time.Hour, clock: clock.Now}))
-			app.All("/item", cacheTestPItem(&version, fiber.StatusNoContent))
+			app := cacheTestPItemApp(&Config{Storage: storage, Expiration: time.Hour, clock: clock.Now}, fiber.StatusNoContent)
 
 			key := defaultKey("/item")
 			if legacy {
@@ -262,7 +225,7 @@ func Test_Cache_Security_WriteEndsEntriesOfAStorage(t *testing.T) {
 			}
 			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheHit, "item v1")
 
-			require.Equal(t, fiber.StatusNoContent, doRequest(t, app, apptest.Req(fiber.MethodDelete, "/item")).status)
+			apptest.Expect(t, app, apptest.Req(fiber.MethodDelete, "/item"), fiber.StatusNoContent)
 			clock.Add(time.Second)
 			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheMiss, "item v2")
 			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheHit, "item v2")
@@ -293,14 +256,9 @@ func Test_Cache_Security_TimedOutWriteIsNotRead(t *testing.T) {
 
 func Test_Cache_Security_EndedEntryIsNotServedStale(t *testing.T) {
 	t.Parallel()
-	var version atomic.Int32
-	version.Store(1)
-	app := fiber.New()
-	app.Use(New(Config{Expiration: time.Hour}))
-	app.All("/item", cacheTestPItem(&version, fiber.StatusNoContent))
-
+	app := cacheTestPItemApp(&Config{Expiration: time.Hour}, fiber.StatusNoContent)
 	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheMiss, "item v1")
-	require.Equal(t, fiber.StatusNoContent, doRequest(t, app, apptest.Req(fiber.MethodPut, "/item")).status)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodPut, "/item"), fiber.StatusNoContent)
 
 	for _, directive := range []string{"only-if-cached", "only-if-cached, max-stale"} {
 		cacheTestAExpectStatus(t, app, cacheTestAGetCC("/item", directive), cacheUnreachable, fiber.StatusGatewayTimeout)

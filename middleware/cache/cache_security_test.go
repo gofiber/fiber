@@ -608,26 +608,6 @@ func Test_Cache_Security_HitKeepsWhatFiberSetsToRestrictTheBody(t *testing.T) {
 	require.Greater(t, set, 5, "helmet sets a field for most of its protections")
 }
 
-// A hit keeps the order of a field's lines that a middleware in front of the cache repeats (RFC 9110 Section 5.3).
-func Test_Cache_Security_HitKeepsTheOrderOfRepeatedLines(t *testing.T) {
-	t.Parallel()
-	links := []string{"</first.css>; rel=preload; as=style", "</second.js>; rel=preload; as=script"}
-	app := fiber.New()
-	app.Use(helmet.New())
-	app.Use(func(c fiber.Ctx) error {
-		for _, link := range links {
-			c.Response().Header.Add(fiber.HeaderLink, link)
-		}
-		return c.Next()
-	})
-	app.Use(New(Config{Expiration: time.Hour}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("page") })
-
-	for _, want := range []string{cacheMiss, cacheHit} {
-		require.Equal(t, links, cacheTestAExpect(t, app, "/", want).Header.Values(fiber.HeaderLink), want)
-	}
-}
-
 // Stored lines replace those set in front of the cache, past the 64 a hit marks without allocating too.
 func Test_Cache_Security_HitReplacesTheLinesSetInFrontOfTheCache(t *testing.T) {
 	t.Parallel()
@@ -635,12 +615,21 @@ func Test_Cache_Security_HitReplacesTheLinesSetInFrontOfTheCache(t *testing.T) {
 	for i := range robots {
 		robots[i] = "r" + strconv.Itoa(i)
 	}
+	links := []string{"</first.css>; rel=preload; as=style", "</second.js>; rel=preload; as=script"}
 	for _, tc := range []struct {
 		route fiber.Handler
 		want  map[string][]string // on the miss and on the hit
 		name  string
-		outer [][2]string // the lines the middleware in front of the cache adds
+		outer [][2]string     // the lines the middleware in front of the cache adds
+		front []fiber.Handler // registered ahead of that middleware
 	}{
+		{
+			name:  "the order of lines only the middleware sets, behind helmet",
+			front: []fiber.Handler{helmet.New()},
+			outer: [][2]string{{fiber.HeaderLink, links[0]}, {fiber.HeaderLink, links[1]}},
+			route: func(c fiber.Ctx) error { return c.SendString("page") },
+			want:  map[string][]string{fiber.HeaderLink: links},
+		},
 		{
 			name:  "a second line of the field",
 			outer: [][2]string{{fiber.HeaderXRobotsTag, "a"}},
@@ -676,6 +665,9 @@ func Test_Cache_Security_HitReplacesTheLinesSetInFrontOfTheCache(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
+			for _, h := range tc.front {
+				app.Use(h)
+			}
 			app.Use(func(c fiber.Ctx) error {
 				for _, line := range tc.outer {
 					c.Response().Header.Add(line[0], line[1])
@@ -1396,40 +1388,19 @@ func Test_AuthorizationHash_CoversEveryFieldLine(t *testing.T) {
 		"principals differing only on a later field line must not share a partition")
 }
 
-// Test_StoreResponseHeaders_DropsTrailer pins the hop-by-hop header's real
-// name. The list said "Trailers", which is not a header, so the actual Trailer
-// field was stored and replayed — announcing to every later client a trailer
-// that only the connection it came from ever sent.
-func Test_StoreResponseHeaders_DropsTrailer(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Expiration: time.Hour, StoreResponseHeaders: true}))
-	app.Get("/", func(c fiber.Ctx) error {
-		c.Response().Header.Set("Trailer", "Expires")
-		c.Response().Header.Set("X-Keep", "kept")
-		return c.SendString("hi")
-	})
-
-	cacheTestAExpect(t, app, "/", cacheMiss)
-
-	resp := cacheTestAExpect(t, app, "/", cacheHit)
-	require.Empty(t, resp.Header.Values("Trailer"))
-	// A stored header that is not hop-by-hop still comes back, so the assertion
-	// above is about Trailer and not about header storage being off.
-	require.Equal(t, "kept", resp.Header.Get("X-Keep"))
-}
-
-// Covers fields named in Connection (RFC 9110 Section 7.6.1) and Proxy-Authentication-Info (RFC 9111 Section 3.1).
+// Trailer, fields named in Connection (RFC 9110 §6.6.2, §7.6.1) and Proxy-Authentication-Info (RFC 9111 §3.1) are not stored.
 func Test_StoreResponseHeaders_DropsConnectionAndProxyFields(t *testing.T) {
 	t.Parallel()
+	sent := map[string]string{"X-Hop": "hop", "X-Other": "other", "X-Keep": "kept"}
 	for _, tc := range []struct {
-		name, connection string
-		dropped, kept    []string
+		name, connection, trailer string
+		dropped, kept             []string
 	}{
 		{name: "none named", kept: []string{"X-Hop", "X-Other", "X-Keep"}},
 		{name: "one named", connection: "X-Hop", dropped: []string{"X-Hop"}, kept: []string{"X-Other", "X-Keep"}},
 		{name: "two named in another case", connection: "x-hop, X-OTHER", dropped: []string{"X-Hop", "X-Other"}, kept: []string{"X-Keep"}},
 		{name: "named beside an option", connection: "keep-alive, X-Other", dropped: []string{"X-Other"}, kept: []string{"X-Hop", "X-Keep"}},
+		{name: "a Trailer field", trailer: "Expires", kept: []string{"X-Hop", "X-Other", "X-Keep"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -1439,21 +1410,27 @@ func Test_StoreResponseHeaders_DropsConnectionAndProxyFields(t *testing.T) {
 				if tc.connection != "" {
 					c.Response().Header.Set(fiber.HeaderConnection, tc.connection)
 				}
-				c.Set("X-Hop", "hop")
-				c.Set("X-Other", "other")
-				c.Set("X-Keep", "kept")
+				if tc.trailer != "" {
+					c.Response().Header.Set(fiber.HeaderTrailer, tc.trailer)
+				}
+				for name, value := range sent {
+					c.Set(name, value)
+				}
 				c.Set("Proxy-Authentication-Info", `nextnonce="abc"`)
 				return c.SendString("hi")
 			})
 
-			cacheTestAExpect(t, app, "/", cacheMiss)
+			miss := cacheTestAExpect(t, app, "/", cacheMiss)
 			resp := cacheTestAExpect(t, app, "/", cacheHit)
+			// The client reads a Trailer field into Trailer, not Header.
+			require.Equal(t, tc.trailer != "", len(miss.Trailer) > 0)
+			require.Empty(t, resp.Trailer)
 			require.Empty(t, resp.Header.Values("Proxy-Authentication-Info"))
 			for _, name := range tc.dropped {
 				require.Empty(t, resp.Header.Values(name), name)
 			}
 			for _, name := range tc.kept {
-				require.NotEmpty(t, resp.Header.Values(name), name)
+				require.Equal(t, []string{sent[name]}, resp.Header.Values(name), name)
 			}
 		})
 	}

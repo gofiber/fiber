@@ -1104,23 +1104,6 @@ func Test_CustomExpiration(t *testing.T) {
 	}
 }
 
-func Test_AdditionalE2EResponseHeaders(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{StoreResponseHeaders: true}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		c.Response().Header.Add("X-Foobar", "foobar")
-		return c.SendString("hi")
-	})
-
-	resp := apptest.Do(t, app, "/")
-	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
-
-	resp = apptest.Do(t, app, "/")
-	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
-}
-
 // Test_PersonalHeaderIsNotStored asserts that a header which middleware inside the cache marked as
 // the client's own, as the session middleware does for the header its session ID travels in, reaches
 // the client that caused the miss and is not in the stored entry: the entry is served to every
@@ -1983,82 +1966,58 @@ func Test_Cache_MaxBytesEviction(t *testing.T) {
 
 func Test_Cache_EvictionOrderCountsNoMoreThanExpiration(t *testing.T) {
 	t.Parallel()
-	lifetime := func(c fiber.Ctx, _ *Config) time.Duration {
-		switch {
-		case strings.HasPrefix(c.Path(), "/long/"):
-			return 365 * 24 * time.Hour
-		case strings.HasPrefix(c.Path(), "/short/"):
-			return 10 * time.Second
-		default:
-			return time.Minute
-		}
-	}
-
 	for _, tc := range []struct {
 		name          string
 		next, evicted string
-		stored, kept  []string // stored one second apart, in this order, and the room is theirs
+		stored, kept  []string // stored gap apart, in this order, and the room is theirs
+		gap, expire   time.Duration
 	}{
 		{
 			name: "an entry with a long lifetime goes in the order it was stored", next: "/page/1", evicted: "/long/0",
 			stored: []string{"/long/0", "/long/1", "/long/2", "/page/0"}, kept: []string{"/long/1", "/long/2", "/page/0"},
+			gap: time.Second, expire: time.Minute,
 		},
 		{
-			name: "an entry that expires sooner goes first", next: "/page/2", evicted: "/short/0",
-			stored: []string{"/page/0", "/short/0", "/page/1"}, kept: []string{"/page/0", "/page/1"},
+			name: "an entry that expires sooner goes first", next: "/page/2", evicted: "/fast/0",
+			stored: []string{"/page/0", "/fast/0", "/page/1"}, kept: []string{"/page/0", "/page/1"},
+			gap: time.Second, expire: time.Minute,
+		},
+		{
+			name: "an entry that has expired goes before one due sooner", next: "/page/0", evicted: "/half/0",
+			stored: []string{"/long/0", "/half/0"}, kept: []string{"/long/0"}, gap: 5 * time.Minute, expire: 5 * time.Minute,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			clock := clocktest.NewClock(time.Now().Truncate(time.Second))
-			size := charged(defaultKey("/long/0"), len("x"), textPlain)
+			lifetime := func(c fiber.Ctx, _ *Config) time.Duration {
+				switch {
+				case strings.HasPrefix(c.Path(), "/long/"):
+					return 365 * 24 * time.Hour
+				case strings.HasPrefix(c.Path(), "/fast/"):
+					return 10 * time.Second
+				case strings.HasPrefix(c.Path(), "/half/"):
+					return 30 * time.Second
+				default:
+					return tc.expire
+				}
+			}
+			clock := cacheTestCClock()
+			size := charged(defaultKey(tc.next), len("x"), textPlain) // every path is as long
 			app := fiber.New()
-			app.Use(New(Config{
-				MaxBytes: uint(len(tc.stored)) * size, Expiration: time.Minute, ExpirationGenerator: lifetime, clock: clock.Now,
-			}))
+			app.Use(New(Config{MaxBytes: uint(len(tc.stored)) * size, Expiration: tc.expire, ExpirationGenerator: lifetime, clock: clock.Now}))
 			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("x") })
 
 			for _, path := range tc.stored {
 				cacheTestAExpect(t, app, path, cacheMiss)
-				clock.Add(time.Second)
+				clock.Add(tc.gap)
 			}
 			cacheTestAExpect(t, app, tc.next, cacheMiss)
 			for _, path := range append(tc.kept, tc.next) {
 				cacheTestAExpect(t, app, path, cacheHit)
 			}
-			cacheTestAExpectStatus(t, app, cacheTestAGetCC(tc.evicted, "only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
+			cacheTestAExpectStatus(t, app, cacheTestAGetCC(tc.evicted, "only-if-cached, max-stale"), cacheUnreachable, fiber.StatusGatewayTimeout)
 		})
 	}
-}
-
-func Test_Cache_EvictionTakesAnExpiredEntryFirst(t *testing.T) {
-	t.Parallel()
-	clock := cacheTestCClock()
-	lifetime := func(c fiber.Ctx, _ *Config) time.Duration {
-		switch c.Path() {
-		case "/year":
-			return 365 * 24 * time.Hour
-		case "/half":
-			return 30 * time.Second
-		default:
-			return 5 * time.Minute
-		}
-	}
-	// The paths are of one length, so every entry is charged alike, and there is room for two.
-	size := charged(defaultKey("/year"), len("x"), textPlain)
-	app := fiber.New()
-	app.Use(New(Config{MaxBytes: 2 * size, Expiration: 5 * time.Minute, ExpirationGenerator: lifetime, clock: clock.Now}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("x") })
-
-	cacheTestAExpect(t, app, "/year", cacheMiss) // due 300 s on
-	clock.Add(400 * time.Second)
-	cacheTestAExpect(t, app, "/half", cacheMiss) // due, and expired, 430 s on
-	clock.Add(100 * time.Second)
-	cacheTestAExpect(t, app, "/next", cacheMiss) // needs the room of one
-
-	cacheTestAExpect(t, app, "/year", cacheHit)
-	cacheTestAExpect(t, app, "/next", cacheHit)
-	cacheTestAExpectStatus(t, app, cacheTestAGetCC("/half", "only-if-cached, max-stale"), cacheUnreachable, fiber.StatusGatewayTimeout)
 }
 
 func Test_Cache_UncacheableStatusCodes(t *testing.T) {
@@ -2412,23 +2371,21 @@ func Test_CacheOnlyIfCachedStaleNotServed(t *testing.T) {
 	require.Equal(t, int32(1), calls.Load())
 }
 
-// Test_CacheOnlyIfCachedWithNoCache covers a request that asks for a stored
-// response and refuses to have it served unvalidated. RFC 9111 Section 5.2.1.7
-// has a cache that cannot satisfy only-if-cached without contacting the origin
-// answer 504, and validating a stored response is contacting the origin. The
-// fresh entry used to fall through to the handler instead.
-func Test_CacheOnlyIfCachedWithNoCache(t *testing.T) {
+// RFC 9111 Section 5.2.1.7: only-if-cached is served from the cache or answered 504, never by the handler.
+func Test_CacheOnlyIfCachedBesideAnotherDirective(t *testing.T) {
 	t.Parallel()
 	requests := []struct {
-		header map[string]string
 		name   string
+		header []string // name and value pairs
+		hit    bool     // served from the cache; no-store forbids only storing (Section 5.2.1.5)
 	}{
-		{name: "no-cache beside only-if-cached", header: map[string]string{fiber.HeaderCacheControl: "no-cache, only-if-cached"}},
-		{name: "only-if-cached before no-cache", header: map[string]string{fiber.HeaderCacheControl: "only-if-cached, no-cache"}},
-		{name: "Pragma no-cache", header: map[string]string{fiber.HeaderCacheControl: "only-if-cached", fiber.HeaderPragma: "no-cache"}},
-		{name: "max-age=0 behaves the same way", header: map[string]string{fiber.HeaderCacheControl: "max-age=0, only-if-cached"}},
+		{name: "no-cache beside only-if-cached", header: []string{fiber.HeaderCacheControl, "no-cache, only-if-cached"}},
+		{name: "only-if-cached before no-cache", header: []string{fiber.HeaderCacheControl, "only-if-cached, no-cache"}},
+		{name: "Pragma no-cache", header: []string{fiber.HeaderCacheControl, "only-if-cached", fiber.HeaderPragma, "no-cache"}},
+		{name: "max-age=0 behaves the same way", header: []string{fiber.HeaderCacheControl, "max-age=0, only-if-cached"}},
+		{name: "no-store beside only-if-cached", header: []string{fiber.HeaderCacheControl, "no-store, only-if-cached"}, hit: true},
+		{name: "only-if-cached before no-store", header: []string{fiber.HeaderCacheControl, "only-if-cached, no-store"}, hit: true},
 	}
-
 	for _, storageName := range []string{"in-memory", "storage"} {
 		for _, tc := range requests {
 			t.Run(storageName+"/"+tc.name, func(t *testing.T) {
@@ -2437,39 +2394,20 @@ func Test_CacheOnlyIfCachedWithNoCache(t *testing.T) {
 				if storageName == "storage" {
 					cfg.Storage = memory.New()
 				}
-
 				app, calls := cacheTestAOrigin(New(cfg), "origin-", fiber.HeaderCacheControl, "public, max-age=60")
-
-				// A fresh entry, stored by an ordinary request.
 				cacheTestAExpect(t, app, "/", cacheMiss)
-				require.Equal(t, int32(1), calls.Load())
 
-				req := apptest.Req(fiber.MethodGet, "/")
-				for k, v := range tc.header {
-					req.Header.Set(k, v)
+				if tc.hit {
+					cacheTestAExpectBody(t, app, cacheTestCReq("/", tc.header...), cacheHit, "origin-1")
+				} else {
+					cacheTestAExpectStatus(t, app, cacheTestCReq("/", tc.header...), cacheUnreachable, fiber.StatusGatewayTimeout)
 				}
-				cacheTestAExpectStatus(t, app, req, cacheUnreachable, fiber.StatusGatewayTimeout)
+				cacheTestAExpectStatus(t, app, cacheTestCReq("/?other", tc.header...), cacheUnreachable, fiber.StatusGatewayTimeout)
 				require.Equal(t, int32(1), calls.Load(), "only-if-cached must not reach the handler")
-
-				// The refusal leaves the stored response alone.
-				resp := cacheTestAExpectStatus(t, app, "/", cacheHit, fiber.StatusOK)
-				require.Equal(t, "origin-1", apptest.Body(t, resp))
-				require.Equal(t, int32(1), calls.Load())
+				cacheTestAExpectBody(t, app, "/", cacheHit, "origin-1")
 			})
 		}
 	}
-}
-
-// no-store with only-if-cached is answered from the cache or with 504 (RFC 9111 Sections 5.2.1.5, 5.2.1.7).
-func Test_CacheOnlyIfCachedWithNoStore(t *testing.T) {
-	t.Parallel()
-	app, calls := cacheTestAOrigin(New(Config{Expiration: time.Hour}), "origin-")
-	cacheTestAExpect(t, app, "/", cacheMiss)
-	for _, directive := range []string{"no-store, only-if-cached", "only-if-cached, no-store"} {
-		cacheTestAExpectBody(t, app, cacheTestAGetCC("/", directive), cacheHit, "origin-1")
-		cacheTestAExpectStatus(t, app, cacheTestAGetCC("/?other", directive), cacheUnreachable, fiber.StatusGatewayTimeout)
-	}
-	require.Equal(t, int32(1), calls.Load())
 }
 
 func Test_CacheMaxStaleServesStaleResponse(t *testing.T) {
