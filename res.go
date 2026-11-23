@@ -20,6 +20,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/byterange"
 	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/filestream"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/quotedstring"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
@@ -1434,6 +1435,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Serve file
 	fsHandler(r.c.fasthttp)
+	filestream.Mark(r.c.fasthttp)
 
 	// Get the status code which is set by fasthttp
 	fsStatus := response.StatusCode()

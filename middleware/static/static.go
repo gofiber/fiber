@@ -16,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/byterange"
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
+	"github.com/gofiber/fiber/v3/internal/filestream"
 	"github.com/gofiber/fiber/v3/internal/fspath"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 )
@@ -383,6 +384,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 
 			// Serve file
 			server.handler(fctx)
+			filestream.Mark(fctx)
 
 			if rerouted {
 				fctx.URI().SetPathBytes(rw.sent)

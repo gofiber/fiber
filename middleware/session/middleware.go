@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
+	"github.com/gofiber/fiber/v3/internal/filestream"
 	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/valyala/fasthttp"
@@ -434,9 +435,13 @@ func releaseMiddleware(m *Middleware) {
 // abandoned the request (sse, a timeout), a response written from a stream, as
 // SendStreamWriter and a net/http handler that flushed do, and a connection that
 // was hijacked. The framework runs such code, so the handlers cannot be told to
-// wait for it.
+// wait for it. A file that SendFile or the static middleware streams is read by
+// the file server alone, which holds nothing of the request.
 func outlivesHandlers(c fiber.Ctx) bool {
-	return c.IsAbandoned() || c.Response().IsBodyStream() || c.RequestCtx().Hijacked()
+	if c.IsAbandoned() || c.RequestCtx().Hijacked() {
+		return true
+	}
+	return c.Response().IsBodyStream() && !filestream.Marked(c.RequestCtx())
 }
 
 // FromContext returns the Middleware from the Fiber context.

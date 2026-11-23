@@ -35,6 +35,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/cache"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
+	"github.com/gofiber/fiber/v3/middleware/static"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
@@ -1166,6 +1167,67 @@ func Test_Session_Middleware_StreamedOrHijackedResponseKeepsItsObjects(t *testin
 	}
 }
 
+// Test_Session_Middleware_FileResponseGoesBackToThePool tells the streams of a response apart: a file
+// that SendFile or the static middleware streams is read by the file server alone, so the middleware
+// and the session of the request go back to the pool. Every other stream, also one that replaced such
+// a file, can still run code of the request once the handlers returned, and keeps both out of it.
+func Test_Session_Middleware_FileResponseGoesBackToThePool(t *testing.T) {
+	t.Parallel()
+	const file = "../../.github/testdata/index.html"
+	for _, tc := range []struct {
+		route    func(app *fiber.App)
+		name     string
+		outlives bool
+	}{
+		{name: "SendString", route: func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
+		}},
+		{name: "SendFile", route: func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error { return c.SendFile(file) })
+		}},
+		{name: "static", route: func(app *fiber.App) { app.Get("/*", static.New(file)) }},
+		{name: "SendStream", outlives: true, route: func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error { return c.SendStream(strings.NewReader("body")) })
+		}},
+		{name: "SendStreamWriter", outlives: true, route: func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendStreamWriter(func(w *bufio.Writer) { _, _ = w.WriteString("body") }) //nolint:errcheck // a test
+			})
+		}},
+		{name: "SendStreamWriter after SendFile", outlives: true, route: func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				require.NoError(t, c.SendFile(file))
+				return c.SendStreamWriter(func(w *bufio.Writer) { _, _ = w.WriteString("body") }) //nolint:errcheck // a test
+			})
+		}},
+		{name: "net/http handler that flushed", outlives: true, route: func(app *fiber.App) {
+			app.Get("/", adaptor.HTTPHandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte("body")) //nolint:errcheck // a test
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
+			}))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var outlives atomic.Bool
+			app := fiber.New()
+			app.Use(New())
+			// Asked where the session middleware asks it, once the handlers returned.
+			app.Use(func(c fiber.Ctx) error {
+				err := c.Next()
+				outlives.Store(outlivesHandlers(c))
+				return err
+			})
+			tc.route(app)
+
+			apptest.Expect(t, app, "/", fiber.StatusOK)
+			require.Equal(t, tc.outlives, outlives.Load())
+		})
+	}
+}
+
 // An application that keeps what a client sent in the session can be asked by a body of 60 KB, nested
 // as deep as encoding/json goes, for seconds and gigabytes: gob copies a value once per level. The
 // save is refused, quickly, and nothing is stored.
@@ -1299,18 +1361,23 @@ func Test_Session_Store_MarksOnlyItsHeaderSinks(t *testing.T) {
 // context and released again.
 func Benchmark_Middleware(b *testing.B) {
 	for _, tc := range []struct {
+		send func(c fiber.Ctx) error // the response, after the handler set a value
 		name string
 		pass bool
 	}{
 		{name: "default"},
 		{name: "PassLocalsToContext", pass: true},
+		{name: "SendFile", send: func(c fiber.Ctx) error { return c.SendFile("../../.github/testdata/index.html") }},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			app := fiber.New(fiber.Config{PassLocalsToContext: tc.pass})
 			app.Use(New())
 			app.Get("/", func(c fiber.Ctx) error {
 				FromContext(c).Set("john", "doe")
-				return nil
+				if tc.send == nil {
+					return nil
+				}
+				return tc.send(c)
 			})
 			handler := app.Handler()
 
