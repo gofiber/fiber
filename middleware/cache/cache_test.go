@@ -31,6 +31,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
+	"github.com/gofiber/fiber/v3/internal/personalheader"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/gofiber/fiber/v3/middleware/compress"
@@ -929,6 +930,34 @@ func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 
 	resp = apptest.Do(t, app, "/")
 	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
+}
+
+// Test_PersonalHeaderIsNotStored asserts that a header which middleware inside the cache marked as
+// the client's own, as the session middleware does for the header its session ID travels in, reaches
+// the client that caused the miss and is not in the stored entry: the entry is served to every
+// client that hits it, and would hand that session to all of them, as a stored Set-Cookie would.
+// The other headers of the response are stored as before.
+func Test_PersonalHeaderIsNotStored(t *testing.T) {
+	t.Parallel()
+	names := personalheader.New("X-Session-ID")
+	var calls int
+	app := fiber.New()
+	app.Use(New(Config{StoreResponseHeaders: true}))
+	app.Get("/", func(c fiber.Ctx) error {
+		calls++
+		c.Set("x-session-id", fmt.Sprintf("session-%d", calls))
+		c.Set("X-Other", "kept")
+		personalheader.Mark(c.RequestCtx(), names)
+		return c.SendString("page")
+	})
+
+	resp := cacheTestAExpect(t, app, "/", cacheMiss)
+	require.Equal(t, "session-1", resp.Header.Get("X-Session-ID"), "the client that caused the miss gets its own")
+
+	resp = cacheTestAExpect(t, app, "/", cacheHit)
+	require.Empty(t, resp.Header.Values("X-Session-ID"), "the entry handed the session of the first client to the second")
+	require.Equal(t, "kept", resp.Header.Get("X-Other"))
+	require.Equal(t, 1, calls)
 }
 
 // Test_SetCookieResponseIsNotStored asserts that a response handing the client

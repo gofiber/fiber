@@ -1721,6 +1721,47 @@ func Test_resolveRemoteAddr_FastPath(t *testing.T) {
 	})
 }
 
+// closedValue is a request value that implements io.Closer, as a value of an application or of a
+// middleware may: it notes whether the response of its request was still there when it was closed.
+type closedValue struct {
+	fctx               *fasthttp.RequestCtx
+	closed, sawItsResp atomic.Bool
+}
+
+func (v *closedValue) Close() error {
+	v.sawItsResp.Store(len(v.fctx.Response.Header.Peek("X-First")) > 0)
+	v.closed.Store(true)
+	return nil
+}
+
+// The pooled context of a request is reset for the next one request first, as fasthttp's server
+// resets it: its values are closed while the response is still that of their own request, so what a
+// value writes to the response as it is closed does not end up in the response of the next request.
+func Test_FiberApp_ClosesRequestValuesBeforeTheResponseIsReset(t *testing.T) {
+	t.Parallel()
+	var value atomic.Pointer[closedValue]
+	app := fiber.New()
+	app.Get("/first", func(c fiber.Ctx) error {
+		value.Store(&closedValue{fctx: c.RequestCtx()})
+		c.Locals("value", value.Load())
+		c.Set("X-First", "1")
+		return c.SendString("first")
+	})
+	app.Get("/next", func(c fiber.Ctx) error { return c.SendString("next") })
+	h := FiberApp(app)
+
+	// The pool hands a request the context of the one before it, unless it dropped it: several rounds.
+	for range 100 {
+		adaptorTestServe(h, apptest.Req(http.MethodGet, "/first"))
+		adaptorTestServe(h, apptest.Req(http.MethodGet, "/next"))
+		if v := value.Load(); v.closed.Load() {
+			require.True(t, v.sawItsResp.Load(), "the response was reset before the values of its request were closed")
+			return
+		}
+	}
+	require.FailNow(t, "the pool never handed a request the context of the one before it")
+}
+
 func Test_FiberApp_NoBody(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
