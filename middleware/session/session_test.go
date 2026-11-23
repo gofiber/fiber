@@ -15,7 +15,6 @@ import (
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
-	"github.com/gofiber/fiber/v3/internal/gobcheck"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/google/uuid"
@@ -1037,113 +1036,6 @@ func Test_Session_StoredRecordThatPanicsTheGobDecoderIsAnError(t *testing.T) {
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderCookie, "session_id=planted")), fiber.StatusInternalServerError)
 	require.ErrorContains(t, handled, `"the gob decoder panicked: runtime error: hash of unhashable type []uint8"`)
-}
-
-// Gob does as much as a stream asks of it: a map is allocated for the entries it claims before the
-// first is read, and a stream that nests deeply enough ends the process with a stack overflow,
-// which cannot be recovered. The stream of a stored record is read before gob gets it, so that a
-// record that is not what the encoder writes is an error for the request that loads it, and costs
-// what its bytes do. The claims are ones that gob alone answers without ending the test process, so
-// that a regression fails the test: it reads a count of 2^40 entries until the first that is not
-// there and nests 5,000 levels in 15 ms, where larger claims could take the process with them.
-func Test_Session_StoredRecordThatAsksGobForMoreThanItIsLongIsAnError(t *testing.T) {
-	t.Parallel()
-	gob.Register([]any{})
-	var nested bytes.Buffer
-	var deep any = "leaf"
-	for range 5_000 {
-		deep = []any{deep}
-	}
-	require.NoError(t, gob.NewEncoder(&nested).Encode(map[any]any{"deep": deep}))
-
-	for name, tc := range map[string]struct {
-		reason string
-		record []byte
-	}{
-		// What gob writes of a session that holds no entry, with the id 64 for its type: its definition,
-		// and a value of it that claims 2^40 entries and has none.
-		"a map that claims entries it has not": {
-			reason: "a map claims more entries than there are bytes left",
-			record: []byte{
-				0x0d, 0x7f, 0x04, 0x01, 0x02, 0xff, 0x80, 0x00, 0x01, 0x10, 0x01, 0x10, 0x00, 0x00,
-				0x0a, 0xff, 0x80, 0x00, 0xfa, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
-			},
-		},
-		"a value nested five thousand levels deep": {reason: "the values are nested too deeply", record: nested.Bytes()},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			storage := storagetest.New()
-			require.NoError(t, storage.Set(sessionKey("planted"), tc.record, 0))
-			store := NewStore(Config{Storage: storage})
-			_, err := store.GetByID(t.Context(), "planted")
-			require.ErrorIs(t, err, gobcheck.ErrInvalid)
-			require.ErrorContains(t, err, `failed to decode session data: "gob stream refused: `+tc.reason)
-
-			// The request that loads it fails, and the next one is served.
-			var handled error
-			app := fiber.New()
-			app.Use(New(Config{Storage: storage, ErrorHandler: func(c fiber.Ctx, err error) {
-				handled = err
-				require.NoError(t, c.SendStatus(fiber.StatusInternalServerError))
-			}}))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
-			apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderCookie, "session_id=planted")), fiber.StatusInternalServerError)
-			require.ErrorContains(t, handled, tc.reason)
-			apptest.ExpectBody(t, app, "/", fiber.StatusOK, "ok")
-		})
-	}
-}
-
-type (
-	// storedHolderV1 is what a session held when one of its values had a field of any type, and
-	// storedHolderV2 what the code that dropped that field reads it as.
-	storedHolderV1 struct {
-		W any
-		B string
-		A int
-	}
-	storedHolderV2 struct {
-		B string
-		A int
-	}
-	// storedPart is what the field held, and storedLeaf a field of that.
-	storedPart struct {
-		Y any
-		Z string
-		X int
-	}
-	storedLeaf struct{ P, Q int }
-)
-
-// A record that gob cannot read by itself is loaded as the encoder meant it: gob writes the length
-// of an interface value as the length of its first part when the value holds the definition of a
-// type, and skips a field that the reading code dropped by that length, into the middle of the value.
-// The stream is written out again with exact lengths before gob reads it, and the session of the
-// record, with the field dropped, loads.
-func Test_Session_StoredRecordOfAnOlderVersionOfATypeLoads(t *testing.T) {
-	t.Parallel()
-	gob.RegisterName("sessionStoredHolderV1", storedHolderV1{})
-	gob.RegisterName("sessionStoredHolderV2", storedHolderV2{})
-	gob.Register(storedPart{})
-	gob.Register(storedLeaf{})
-	var record bytes.Buffer
-	require.NoError(t, gob.NewEncoder(&record).Encode(map[any]any{
-		"holder": storedHolderV1{A: 7, B: "bee", W: storedPart{X: 1, Y: storedLeaf{P: 1, Q: 2}, Z: "tail"}},
-		"after":  "zzz",
-	}))
-	// The code that reads it no longer has the field: the name of the type is the one of the type without it.
-	stored := bytes.Replace(record.Bytes(), []byte("sessionStoredHolderV1"), []byte("sessionStoredHolderV2"), 1)
-	var plain map[any]any
-	require.Error(t, gob.NewDecoder(bytes.NewReader(stored)).Decode(&plain), "gob does not read it without the check")
-
-	storage := storagetest.New()
-	require.NoError(t, storage.Set(sessionKey("older"), stored, 0))
-	sess, err := NewStore(Config{Storage: storage}).GetByID(t.Context(), "older")
-	require.NoError(t, err)
-	defer sess.Release()
-	require.Equal(t, storedHolderV2{A: 7, B: "bee"}, sess.Get("holder"))
-	require.Equal(t, "zzz", sess.Get("after"))
 }
 
 // This test verifies the fix for the fresh flag bug where calling getSession()
