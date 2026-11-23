@@ -411,6 +411,11 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 			wantErr: fasthttp.ErrorInvalidURI,
 		},
 		{
+			name:    "a scheme without an authority and a control character",
+			calls:   []stubRedirectCall{{status: new(fasthttp.StatusFound), location: new("mailto:user@\texample.com")}},
+			wantErr: fasthttp.ErrorInvalidURI,
+		},
+		{
 			name: "more redirects than the limit",
 			calls: []stubRedirectCall{
 				{status: new(fasthttp.StatusMovedPermanently), location: new("/loop")},
@@ -427,6 +432,24 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 		client := &stubRedirectClient{calls: tc.calls}
 		require.ErrorIs(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 1}, client),
 			tc.wantErr, tc.name)
+	}
+
+	// A scheme without an authority names nothing to fetch, so the redirect is the
+	// answer and the request stays as it was sent, as in fasthttp's DoRedirects.
+	for _, location := range []string{"mailto:user@example.com", "com.example.app:/callback"} {
+		resp.Reset()
+		req.Header.SetMethod(fasthttp.MethodPost)
+		req.SetRequestURI("http://example.com/start")
+		req.SetBodyString("payload")
+
+		client := &stubRedirectClient{calls: []stubRedirectCall{{status: new(fasthttp.StatusSeeOther), location: new(location)}}}
+		require.NoError(t, doRedirectsWithClient(req, resp, &redirectOptions{maxRedirects: 1}, client), location)
+		require.Equal(t, 1, client.CallCount(), location)
+		require.Equal(t, fasthttp.StatusSeeOther, resp.StatusCode(), location)
+		require.Equal(t, location, string(resp.Header.Peek(fasthttp.HeaderLocation)), location)
+		require.Equal(t, fasthttp.MethodPost, string(req.Header.Method()), location)
+		require.Equal(t, "http://example.com/start", req.URI().String(), location)
+		require.Equal(t, "payload", string(req.Body()), location)
 	}
 }
 

@@ -53,6 +53,13 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		if len(location) == 0 {
 			return fasthttp.ErrMissingLocation
 		}
+		// mailto:, tel: or an app callback has nothing to fetch: the redirect goes back as it is.
+		if fasthttp.HasNonHTTPSchemeWithoutAuthority(location) {
+			if utils.IndexControl(location) != -1 {
+				return fasthttp.ErrorInvalidURI
+			}
+			return nil
+		}
 		if currentURLStr == "" {
 			currentURLStr = currentURL.String()
 		}
