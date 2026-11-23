@@ -429,8 +429,7 @@ func Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy(t *testing.T) {
 	}
 }
 
-// No Vary names a body, so a body-keyed hit is private, unless it is a QUERY's (RFC 10008). A custom key may hold
-// the body, which the middleware cannot tell, so the hit of a request that carries one is private all the same.
+// No Vary names a body, so a hit for a request with one is private, unless it is a QUERY's (RFC 10008).
 func Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy(t *testing.T) {
 	t.Parallel()
 	const keyHeaders, bodyFields = "Accept, Accept-Encoding, Accept-Language", ", Content-Encoding, Content-Type"
@@ -1403,8 +1402,7 @@ func Test_AuthorizationHash_CoversEveryFieldLine(t *testing.T) {
 		"principals differing only on a later field line must not share a partition")
 }
 
-// Trailer, fields named in Connection and Proxy-Connection (RFC 9110 §6.6.2, §7.6.1), and Proxy-Authentication-Info
-// (RFC 9111 §3.1) are not stored.
+// Trailer, Connection-named, Proxy-Connection and Proxy-Authentication-Info fields are not stored (RFC 9110 §7.6.1).
 func Test_StoreResponseHeaders_DropsConnectionAndProxyFields(t *testing.T) {
 	t.Parallel()
 	sent := map[string]string{"X-Hop": "hop", "X-Other": "other", "X-Keep": "kept"}
@@ -1492,8 +1490,7 @@ func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 		t.Run(spelling, func(t *testing.T) {
 			t.Parallel()
 			var calls atomic.Int32
-			// Kept as sent: a multipart form fasthttp parses while reading it passes the cache by (see
-			// Test_Cache_PreParsedMultipartPassesTheCacheBy).
+			// Kept as sent, as a form fasthttp parses passes the cache by.
 			app := fiber.New(fiber.Config{DisablePreParseMultipartForm: true})
 			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost}}))
 			app.Post("/", func(c fiber.Ctx) error {
@@ -1518,8 +1515,6 @@ func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 	}
 }
 
-// fasthttp parses a multipart form of declared length while reading it and keeps no copy of the body, which
-// c.Body() then writes in another field order each time, or as an error's text, so the default key cannot hold it.
 func Test_Cache_PreParsedMultipartPassesTheCacheBy(t *testing.T) {
 	t.Parallel()
 	parts := make([]string, 0, 21)

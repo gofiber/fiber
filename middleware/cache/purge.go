@@ -51,8 +51,7 @@ func unsafeMethod(method string) bool {
 	}
 }
 
-// slot folds case and trailing slashes, as the router does by default, and leaves out the port, so example.com:443
-// and example.com share a slot (RFC 9110 §4.2.3): better to end too many entries.
+// slot folds case and trailing slashes, as the router does, and the port (RFC 9110 §4.2.3): better to end too many.
 func (t *purgeTable) slot(host, path string) uint64 {
 	host, _ = hostname.SplitPort(host)
 	if path = utils.TrimRight(path, '/'); path == "" {
@@ -62,8 +61,7 @@ func (t *purgeTable) slot(host, path string) uint64 {
 	return (h ^ bits.RotateLeft64(p, 32)) & (purgeSlots - 1)
 }
 
-// foldHash hashes s in lower case, through a buffer on the stack, so a long host or path allocates nothing either;
-// what it writes a buffer at a time hashes as it would in one piece.
+// foldHash hashes s in lower case through a stack buffer, a long s a buffer at a time, so it never allocates.
 func (t *purgeTable) foldHash(s string) uint64 {
 	var buf [purgeFoldBuf]byte
 	if len(s) <= len(buf) {

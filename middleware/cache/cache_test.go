@@ -3231,8 +3231,6 @@ func Test_CacheStorage_FailedEvictionPutsBackWhatTheStorageHolds(t *testing.T) {
 	}
 }
 
-// A store for a key whose node a failing eviction holds popped may replace the entry and lose it again, so the
-// eviction reads that entry back instead of putting the node back unread.
 func Test_CacheStorage_FailedEvictionReadsBackAnEntryAStoreTookUp(t *testing.T) {
 	t.Parallel()
 	kKey, xKey, bigKey := cacheKeyVersion+"|GET|/k", cacheKeyVersion+"|GET|/x", cacheKeyVersion+"|GET|/big"
@@ -3264,8 +3262,7 @@ func Test_CacheStorage_FailedEvictionReadsBackAnEntryAStoreTookUp(t *testing.T) 
 	cacheTestAExpect(t, app, "/k", cacheMiss)
 	cacheTestAExpect(t, app, "/x", cacheMiss)
 
-	// The store of /big pops /x and /k and parks in the delete of /x, which then fails. Meanwhile a reload
-	// replaces /k, and a no-store answer to the next one deletes the replacement.
+	// /big parks deleting /x, which then fails; meanwhile a reload replaces /k and a no-store reload deletes it.
 	gate.armed.Store(true)
 	evicting := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/big"), gate.entered, gate.release)
 	short.Store(true)
@@ -3278,8 +3275,6 @@ func Test_CacheStorage_FailedEvictionReadsBackAnEntryAStoreTookUp(t *testing.T) 
 	cacheTestBRequireAccounting(t, probe, sizeX, 1)
 }
 
-// A store that fails puts back the node of the entry it replaced and reads that entry back. Finding it gone, it
-// drops the node, which an eviction may have popped again meanwhile: that eviction, failing too, leaves it out.
 func Test_CacheStorage_FailedEvictionLeavesOutANodeARestoreDropped(t *testing.T) {
 	t.Parallel()
 	aKey, cKey, bigKey := cacheKeyVersion+"|GET|/a", cacheKeyVersion+"|GET|/c", cacheKeyVersion+"|GET|/big"
@@ -3331,8 +3326,7 @@ func Test_CacheStorage_FailedEvictionLeavesOutANodeARestoreDropped(t *testing.T)
 	cacheTestAExpect(t, app, "/a", cacheMiss)
 	cacheTestAExpect(t, app, "/c", cacheMiss)
 
-	// The reload of /a fails to store, puts the node of /a back and parks reading /a; then the store of /big pops
-	// /c and /a and parks in the delete of /c, which fails once the reload has dropped the node again.
+	// The failed reload of /a parks reading /a back; /big pops /c and /a and parks deleting /c, which then fails.
 	failBodyWrite.Store(true)
 	reloading := cacheTestBPark(t, app, cacheTestAGetCC("/a", "max-age=0"), reading.entered, reading.release)
 	deleting.armed.Store(true)

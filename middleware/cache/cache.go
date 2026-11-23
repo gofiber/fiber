@@ -324,8 +324,7 @@ func New(config ...Config) fiber.Handler {
 		return nil
 	}
 
-	// evict deletes an entry an eviction popped. The in-memory store deletes it only while it holds that entry, so a
-	// replacement stored after the node was popped stays; a Storage has no conditional delete.
+	// evict deletes a popped entry, sparing in memory a replacement stored since: a Storage has no conditional delete.
 	evict := func(ctx context.Context, candidate evictionCandidate) error {
 		if cfg.Storage == nil {
 			manager.memory.DeleteIf(candidate.key, func(current any) bool {
@@ -365,13 +364,11 @@ func New(config ...Config) fiber.Handler {
 		return evictionCandidate{key: entryKey, manifest: entry.manifest, size: size, exp: exp, expires: entry.expires, oldGen: heapGen}, true
 	}
 
-	// evicting maps the nodes in-flight evictions popped to whether their entry was removed since, and evictingKeys
-	// counts them by key. Guarded by mux.
+	// evicting maps popped nodes to whether their entry went since; evictingKeys counts them by key. Guarded by mux.
 	evicting := make(map[poppedNode]bool)
 	evictingKeys := make(map[string]evictingKey)
 
-	// trackEvicting records the nodes an eviction popped until its deletes are done, and untrackEvicting forgets
-	// them. The caller holds mux.
+	// trackEvicting and untrackEvicting record and forget an eviction's popped nodes. The caller holds mux.
 	trackEvicting := func(candidates []evictionCandidate) {
 		for _, candidate := range candidates {
 			evicting[poppedNode{key: candidate.key, gen: candidate.oldGen}] = false
@@ -495,8 +492,7 @@ func New(config ...Config) fiber.Handler {
 			}
 			slot := purges.slot(c.Host(), c.Path()) // before the handler, which may rewrite the path
 			err := c.Next()
-			// A handler timeout.New gave up on may still complete the write, and may still be writing its status,
-			// so its path's entries end unread. Otherwise only a non-error response invalidates.
+			// An abandoned write may still complete, so its entries end, its status unread as it may still be written.
 			if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
 				purges.mark(slot, purges.stamp())
 				return err
@@ -980,8 +976,7 @@ func New(config ...Config) fiber.Handler {
 						// private for an entry that holds one user's response: public, or
 						// a bare max-age, lets a shared cache downstream store this hit
 						// and serve it to whoever asks for the URL next.
-						// So does one for a request that carries a body, unless a QUERY's (RFC 10008): the default key
-						// holds the body, and a custom one may, as the middleware cannot tell.
+						// So does one for a request with a body, a QUERY's aside (RFC 10008): the key may hold it.
 						bodyKeyed := false
 						length := c.Request().Header.ContentLength() // -1 is chunked, -2 no body framing at all
 						carriesBody := length > 0 || length == -1
@@ -1640,8 +1635,7 @@ func New(config ...Config) fiber.Handler {
 					storedBytes -= entrySize
 					spaceReserved = false
 
-					// The untouched candidates go back unread. The one whose delete failed is read back, and so
-					// is one whose key a store took up meanwhile: that store may have replaced or lost its entry.
+					// Untouched candidates go back unread; the failed one and those a store took up are read back.
 					var readBack []evictionCandidate
 					if !evicting[poppedNode{key: candidates[failed].key, gen: candidates[failed].oldGen}] {
 						readBack = append(readBack, candidates[failed])
@@ -1703,7 +1697,7 @@ func New(config ...Config) fiber.Handler {
 			e.heapidx = heapIdx
 			heapGen = heap.generation(heapIdx)
 			e.heapgen = heapGen
-			// An eviction holding a node of this key popped can no longer trust what that node stands for.
+			// An eviction holding a popped node of this key must read it back.
 			if popped, ok := evictingKeys[key]; ok {
 				popped.superseded = true
 				evictingKeys[key] = popped

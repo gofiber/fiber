@@ -140,7 +140,6 @@ func Test_Cache_Security_WriteEndsEveryEntryOfThePath(t *testing.T) {
 	}
 }
 
-// A write ends the entries of its path without the trailing slashes, and of its host without the port (RFC 9110 §4.2.3).
 func Test_Cache_Security_WriteEndsThePathWithoutItsTrailingSlashesAndTheHostWithoutItsPort(t *testing.T) {
 	t.Parallel()
 	const host = "example.com"
@@ -239,8 +238,6 @@ func Test_Cache_Security_WriteEndsEntriesOfAStorage(t *testing.T) {
 	}
 }
 
-// A write timeout.New gave up on ends the entry, as its handler may still complete it, without its status being
-// read while that handler may still be writing it.
 func Test_Cache_Security_TimedOutWriteEndsTheEntryUnread(t *testing.T) {
 	t.Parallel()
 	finished := make(chan struct{})
@@ -271,7 +268,6 @@ func Test_Cache_Security_TimedOutWriteEndsTheEntryUnread(t *testing.T) {
 	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheMiss, "item v2")
 }
 
-// Each request meets the entry the write ended, which max-stale does not bring back.
 func Test_Cache_Security_EndedEntryIsNotServedStale(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

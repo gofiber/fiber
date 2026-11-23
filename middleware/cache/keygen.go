@@ -85,17 +85,14 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 
 	normalized := headerlookup.Canonical(c)
 	dst = appendFieldsKey(dst, c, cfg, normalized)
-	// The body: for a QUERY (RFC 10008), any request with a body, and one with a Content-Encoding, which c.Body()
-	// may answer with a 501.
+	// The body: for a QUERY (RFC 10008), any request with one, and a Content-Encoding c.Body() may answer with 501.
 	if body, held := bodySegment(c, normalized); held {
 		dst = appendBodyKey(dst, &c.Request().Header, body, normalized)
 	}
 	return dst
 }
 
-// appendRecordKey appends what a refusal record of the default key is kept under: the URL, its query decoded, and
-// the key's headers and cookies. Every spelling of the URL and every body sent to it reach the one record, as
-// they did when they shared an entry; a QUERY's body stays in, as it is the query (RFC 10008).
+// appendRecordKey keys a refusal record so that every spelling of the URL and every body but a QUERY's reach it.
 func appendRecordKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	dst = appendURLKey(dst, c)
 	if !cfg.DisableQueryKeys {
@@ -111,7 +108,6 @@ func appendRecordKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	return dst
 }
 
-// appendURLKey appends the scheme, the host and the path of the request.
 func appendURLKey(dst []byte, c fiber.Ctx) []byte {
 	// The target URI, not only its path: a cache key is composed of the request
 	// method and the target URI at a minimum (RFC 9111 §2), and the target URI
@@ -139,7 +135,6 @@ func appendURLKey(dst []byte, c fiber.Ctx) []byte {
 	return appendEscapedBoundKeySegment(dst, c.Path())
 }
 
-// appendFieldsKey appends the request headers of KeyHeaders and the cookies of KeyCookies.
 func appendFieldsKey(dst []byte, c fiber.Ctx, cfg *Config, normalized bool) []byte { //nolint:revive // flag-parameter: normalized is a property of the header store
 	if len(cfg.KeyHeaders) > 0 {
 		dst = append(dst, '|', 'h', '=')
@@ -171,9 +166,7 @@ func bodySegment(c fiber.Ctx, normalized bool) ([]byte, bool) { //nolint:revive 
 	return body, len(body) > 0 || c.Method() == fiber.MethodQuery || namesContentEncoding(&c.Request().Header, normalized)
 }
 
-// preParsedMultipart reports whether fasthttp parsed the request's multipart form while reading it, which it does
-// for a form of declared length without a Content-Encoding unless the server is told not to. It keeps no copy of
-// the body then: Body() writes one from the parsed form, its fields in map order, or an error's text instead.
+// preParsedMultipart reports whether fasthttp parsed the multipart form while reading it, keeping no copy of the body.
 func preParsedMultipart(c fiber.Ctx) bool {
 	req := c.Request()
 	return req.Header.ContentLength() > 0 && !req.IsBodyStream() && !c.App().Server().DisablePreParseMultipartForm &&
@@ -224,14 +217,11 @@ func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	return appendSortedQuery(dst, uri.QueryString(), false)
 }
 
-// appendDecodedQueryString appends the query stably sorted by name, each name and value decoded and escaped
-// again, so that every spelling of a query appends the same.
+// appendDecodedQueryString appends the query sorted by name, decoded and escaped again: the same for every spelling.
 func appendDecodedQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	return appendSortedQuery(dst, uri.QueryString(), true)
 }
 
-// appendSortedQuery appends raw stably sorted by decoded name, each parameter as sent or, with decode, decoded and
-// escaped again.
 func appendSortedQuery(dst, raw []byte, decode bool) []byte { //nolint:revive // flag-parameter: the two forms share the sort
 	if len(raw) == 0 {
 		return dst
@@ -296,8 +286,7 @@ func appendSortedQuery(dst, raw []byte, decode bool) []byte { //nolint:revive //
 	return dst
 }
 
-// appendDecodedParam appends the parameter param, whose name decodes to name, as name=value with both escaped
-// again: q=%41 and q=A, q=x+y and q=x%20y, q and q= all append the same.
+// appendDecodedParam appends param as name=value, both escaped again: q=%41 and q=A, q and q= append the same.
 func appendDecodedParam(dst, name, param []byte) []byte {
 	var value []byte
 	if _, raw, found := utils.CutByte(param, '='); found {

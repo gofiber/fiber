@@ -1194,8 +1194,6 @@ func Test_Cache_RefusalOfGetOrHeadReachesTheOther(t *testing.T) {
 	}
 }
 
-// The spellings of a URL and the bodies sent to it keep entries of their own, and a refusal of the credential
-// reaches each of them, as it did when they shared one.
 func Test_Cache_RefusalReachesEverySpellingAndBodyOfTheURL(t *testing.T) {
 	t.Parallel()
 	type request struct{ target, body string }
