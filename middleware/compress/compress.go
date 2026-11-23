@@ -221,7 +221,7 @@ func compressWith(c fiber.Ctx, compressor fasthttp.RequestHandler, encoding stri
 		saved[i] = utils.CopyBytes(line)
 	}
 	// The compressor merges Accept-Encoding into the first Vary line byte for
-	// byte and drops the others; the handler's lines go back as one list.
+	// byte; the handler's lines go back as one list.
 	respHeader := &c.Response().Header
 	vary := string(headerlist.Join(respHeader.PeekAll(fiber.HeaderVary)))
 

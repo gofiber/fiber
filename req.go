@@ -139,41 +139,32 @@ func (r *DefaultReq) tryDecodeBodyInOrder(encodings []string) ([]byte, error) {
 		return nil, err
 	}
 	last := len(encodings) - 1
-	body, err := r.decodeContentCoding(request, encodings[last])
+	body, err := r.decodeContentCoding(request.Body(), encodings[last])
 	if err != nil {
 		return nil, err
 	}
-	if last == 0 {
-		return body, nil
-	}
-
-	// Replacing the request body would pool its buffer while Body and BodyRaw
-	// results still alias it (ReduceMemoryUsage, adaptor).
-	scratch := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(scratch)
 	for _, encoding := range slices.Backward(encodings[:last]) {
-		scratch.SetBodyRaw(body)
-		if body, err = r.decodeContentCoding(scratch, encoding); err != nil {
+		if body, err = r.decodeContentCoding(body, encoding); err != nil {
 			return nil, err
 		}
 	}
 	return body, nil
 }
 
-// decodeContentCoding undoes one content coding of src's body within BodyLimit.
-func (r *DefaultReq) decodeContentCoding(src *fasthttp.Request, encoding string) ([]byte, error) {
+// decodeContentCoding undoes one content coding of src within BodyLimit, into a new slice.
+func (r *DefaultReq) decodeContentCoding(src []byte, encoding string) ([]byte, error) {
 	maxBodySize := r.c.app.config.BodyLimit
 	switch encoding {
 	case StrGzip, "x-gzip":
-		return src.BodyGunzipWithLimit(maxBodySize)
+		return fasthttp.AppendGunzipBytesWithLimit(nil, src, maxBodySize)
 	case StrBr, StrBrotli:
-		return src.BodyUnbrotliWithLimit(maxBodySize)
+		return fasthttp.AppendUnbrotliBytesWithLimit(nil, src, maxBodySize)
 	case StrDeflate:
-		return src.BodyInflateWithLimit(maxBodySize)
+		return fasthttp.AppendInflateBytesWithLimit(nil, src, maxBodySize)
 	case StrZstd:
-		return src.BodyUnzstdWithLimit(maxBodySize)
+		return fasthttp.AppendUnzstdBytesWithLimit(nil, src, maxBodySize)
 	case StrIdentity:
-		return src.Body(), nil
+		return src, nil
 	case StrCompress, "x-compress":
 		return nil, ErrNotImplemented
 	default:

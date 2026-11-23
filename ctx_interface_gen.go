@@ -129,7 +129,6 @@ type Ctx interface {
 	// Its Method field is resolved like c.Method() (including the raw-header
 	// fallback for unregistered methods) so Route and Method always agree.
 	// Never inlined: inlining it would push Route over the inlining budget.
-	//
 	routeFallback() *Route
 	// Endpoint returns the route that will handle this request, without advancing the
 	// handler chain, so global middleware can read its Path or Name before calling
@@ -315,8 +314,8 @@ type Ctx interface {
 	BodyRaw() []byte
 	// tryDecodeBodyInOrder undoes the codings last-applied first and never replaces the request body.
 	tryDecodeBodyInOrder(encodings []string) ([]byte, error)
-	// decodeContentCoding undoes one content coding of src's body within BodyLimit.
-	decodeContentCoding(src *fasthttp.Request, encoding string) ([]byte, error)
+	// decodeContentCoding undoes one content coding of src within BodyLimit, into a new slice.
+	decodeContentCoding(src []byte, encoding string) ([]byte, error)
 	// BodyStream returns the request body as a stream, non-nil only when
 	// Config.StreamRequestBody is enabled and the body is not already buffered.
 	// Reading it consumes the body, so a later Body call will not see it.

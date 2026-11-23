@@ -469,7 +469,7 @@ func Test_App_serverErrorHandler(t *testing.T) {
 			wantBody: utils.StatusMessage(StatusBadGateway), wantStatus: StatusBadGateway,
 		},
 		{
-			name: "unsupported method error", err: errors.New("unsupported http request method 'FOO'"),
+			name: "unsupported method error", err: fmt.Errorf("error when reading request headers: %w", fasthttp.ErrUnsupportedRequestMethod),
 			wantBody: utils.StatusMessage(StatusNotImplemented), wantStatus: StatusNotImplemented,
 		},
 	}
