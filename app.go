@@ -1781,7 +1781,7 @@ const (
 	getOnlyAllow = MethodGet + ", " + MethodHead
 
 	// unsupportedTransferCodingMarker precedes the quoted coding in fasthttp's
-	// error. The ErrUnsupportedTransferEncoding sentinel is not matched: it also
+	// error. The ErrUnsupportedTransferEncoding sentinel it wraps is not enough: it also
 	// covers HTTP/1.0 and repeated fields, which are framing errors and stay 400,
 	// and with Server.SecureErrorLogMessage it stands for every fault, the
 	// coding included, which then stays 400 as well.
@@ -1828,11 +1828,11 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		// A 405 must carry Allow (RFC 9110 §15.5.6).
 		c.Set(HeaderAllow, getOnlyAllow)
 	case errors.Is(err, fasthttp.ErrUnsupportedRequestMethod),
-		strings.HasPrefix(innermostMessage(err), "unsupported http request method"):
-		// The innermost error, not the whole text: the wrappers quote request
+		hasMessagePrefix(err, "unsupported http request method"):
+		// A prefix per layer, not the whole text: the wrappers quote request
 		// bytes, so a malformed trailer could otherwise pick its own status.
 		err = ErrNotImplemented
-	case strings.HasPrefix(innermostMessage(err), unsupportedTransferCodingMarker):
+	case hasMessagePrefix(err, unsupportedTransferCodingMarker):
 		// An unknown transfer coding is a 501, not a 400 (RFC 9112 §6.1).
 		err = ErrNotImplemented
 	case errors.As(err, &timeoutErr) && timeoutErr.Timeout(),
@@ -1881,16 +1881,15 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	}
 }
 
-// innermostMessage returns the text of the error err wraps last, which fasthttp
-// starts with its own words before any bytes of the request it quotes.
-func innermostMessage(err error) string {
-	for {
-		inner := errors.Unwrap(err)
-		if inner == nil {
-			return err.Error()
+// hasMessagePrefix reports whether an error in err's chain starts with prefix.
+// fasthttp starts each text with its own words, so the request bytes it quotes can't match.
+func hasMessagePrefix(err error, prefix string) bool {
+	for ; err != nil; err = errors.Unwrap(err) {
+		if strings.HasPrefix(err.Error(), prefix) {
+			return true
 		}
-		err = inner
 	}
+	return false
 }
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
