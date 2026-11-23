@@ -1541,12 +1541,26 @@ func Test_Cache_PreParsedMultipartPassesTheCacheBy(t *testing.T) {
 			t.Parallel()
 			app := fiber.New(tc.server)
 			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodHead, fiber.MethodPost}}))
-			app.All("/", func(c fiber.Ctx) error { return c.SendString("form") })
-			for _, want := range tc.want {
+			var calls atomic.Int32
+			app.All("/", func(c fiber.Ctx) error { calls.Add(1); return c.SendString("form") })
+			send := func(cacheControl string) *http.Request {
 				req := httptest.NewRequest(tc.method, "/", strings.NewReader(body))
 				req.Header.Set(fiber.HeaderContentType, "multipart/form-data; boundary=XBOUNDARYX")
-				cacheTestAExpect(t, app, req, want)
+				if cacheControl != "" {
+					req.Header.Set(fiber.HeaderCacheControl, cacheControl)
+				}
+				return req
 			}
+			for _, want := range tc.want {
+				cacheTestAExpect(t, app, send(""), want)
+			}
+			handled := calls.Load()
+			if tc.want[1] == cacheHit {
+				cacheTestAExpectStatus(t, app, send("only-if-cached"), cacheHit, fiber.StatusOK)
+			} else {
+				cacheTestAExpectStatus(t, app, send("only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
+			}
+			require.Equal(t, handled, calls.Load(), "only-if-cached must not reach the handler")
 		})
 	}
 }

@@ -533,6 +533,9 @@ func New(config ...Config) fiber.Handler {
 		// The default key holds the body, and the body of a multipart form fasthttp parsed is not the one sent.
 		if cfg.usesDefaultKeyGenerator && preParsedMultipart(c) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
+			if reqDirectives.onlyIfCached {
+				return c.SendStatus(fiber.StatusGatewayTimeout)
+			}
 			return c.Next()
 		}
 
