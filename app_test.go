@@ -469,8 +469,9 @@ func Test_App_serverErrorHandler(t *testing.T) {
 			wantBody: utils.StatusMessage(StatusBadGateway), wantStatus: StatusBadGateway,
 		},
 		{
-			name: "unsupported method error", err: fmt.Errorf("error when reading request headers: %w", fasthttp.ErrUnsupportedRequestMethod),
-			wantBody: utils.StatusMessage(StatusNotImplemented), wantStatus: StatusNotImplemented,
+			name: "invalid method token error", err: fmt.Errorf("error when reading request headers: %w", fasthttp.ErrUnsupportedRequestMethod),
+			wantBody:   "error when reading request headers: " + fasthttp.ErrUnsupportedRequestMethod.Error(),
+			wantStatus: StatusBadRequest,
 		},
 	}
 
@@ -3285,11 +3286,17 @@ func Test_App_serverErrorHandler_RawRequestStatus(t *testing.T) {
 			status: StatusNotImplemented, body: utils.StatusMessage(StatusNotImplemented),
 		},
 
+		// Invalid method tokens are malformed request lines, not unsupported methods.
+		{
+			name: "method containing a control byte", raw: "G\x01T / HTTP/1.1\r\nHost: example.com\r\n\r\n",
+			status: StatusBadRequest,
+		},
+
 		// The status follows what the parser reported, never request bytes its error quotes.
-		{name: "rejected method token", raw: "GE(T / HTTP/1.1\r\nHost: example.com\r\n\r\n", status: StatusNotImplemented},
+		{name: "rejected method token", raw: "GE(T / HTTP/1.1\r\nHost: example.com\r\n\r\n", status: StatusBadRequest},
 		{
 			name: "rejected method token, secure message", raw: "GE(T / HTTP/1.1\r\nHost: example.com\r\n\r\n",
-			status: StatusNotImplemented, secure: true,
+			status: StatusBadRequest, secure: true,
 		},
 		{
 			name: "trailer quoting the method wording", raw: chunked + "Content-Length: unsupported http request method\r\n\r\n",
