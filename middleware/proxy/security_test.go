@@ -891,6 +891,14 @@ func Test_Security_FollowRedirects_NonHTTPSchemeIsReturned(t *testing.T) {
 			require.Equal(t, location, string(resp.Header.Peek(fiber.HeaderLocation)))
 		})
 	}
+
+	t.Run("a control character", func(t *testing.T) {
+		t.Parallel()
+		client, _ := newCountingRedirectClient(map[string]redirectStep{
+			"http://example.com/start": {status: fasthttp.StatusFound, location: "mailto:user@\texample.com"},
+		})
+		require.ErrorIs(t, proxyTestFollow(t, client.client, "http://example.com/start", 3, proxyTestAllowPrivatePolicy()), fasthttp.ErrorInvalidURI)
+	})
 }
 
 // Test_Security_FollowRedirects_LeavesCallerRequestIntact pins that a redirect changes a copy of

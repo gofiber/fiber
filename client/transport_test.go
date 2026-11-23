@@ -411,6 +411,11 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 			wantErr: fasthttp.ErrorInvalidURI,
 		},
 		{
+			name:    "a scheme without an authority and a control character",
+			calls:   []stubRedirectCall{{status: new(fasthttp.StatusFound), location: new("mailto:user@\texample.com")}},
+			wantErr: fasthttp.ErrorInvalidURI,
+		},
+		{
 			name: "more redirects than the limit",
 			calls: []stubRedirectCall{
 				{status: new(fasthttp.StatusMovedPermanently), location: new("/loop")},

@@ -55,6 +55,9 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		}
 		// mailto:, tel: or an app callback has nothing to fetch: the redirect goes back as it is.
 		if fasthttp.HasNonHTTPSchemeWithoutAuthority(location) {
+			if utils.IndexControl(location) != -1 {
+				return fasthttp.ErrorInvalidURI
+			}
 			return nil
 		}
 		if currentURLStr == "" {
