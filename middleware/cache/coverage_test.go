@@ -374,11 +374,18 @@ func Test_parseUintDirective(t *testing.T) {
 	require.False(t, parsed.maxAgeSet)
 	require.False(t, parsed.sMaxAgeSet)
 
-	// A repeated directive keeps its first occurrence (RFC 9111 §4.2.1).
-	parsed = parseResponseCacheControl([]byte("max-age=0, max-age=3600, s-maxage=1, s-maxage=60"))
-	require.True(t, parsed.maxAgeSet)
-	require.Zero(t, parsed.maxAge)
-	require.Equal(t, uint64(1), parsed.sMaxAge)
+	// A repeated directive keeps its smallest valid occurrence (RFC 9111 §4.2.1).
+	for _, cc := range []string{
+		"max-age=0, max-age=3600, s-maxage=1, s-maxage=60",
+		"max-age=3600, max-age=0, s-maxage=60, s-maxage=1",
+		"max-age=abc, max-age=0, s-maxage=xyz, s-maxage=1",
+	} {
+		parsed = parseResponseCacheControl([]byte(cc))
+		require.True(t, parsed.maxAgeSet)
+		require.Zero(t, parsed.maxAge)
+		require.True(t, parsed.sMaxAgeSet)
+		require.Equal(t, uint64(1), parsed.sMaxAge)
+	}
 }
 
 func Test_allowsSharedCacheDirectives(t *testing.T) {

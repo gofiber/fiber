@@ -136,15 +136,25 @@ func parseResponseCacheControl(cc []byte) responseCacheControl {
 		case utils.EqualFold(utils.UnsafeString(key), "public"):
 			parsed.hasPublic = true
 		case utils.EqualFold(utils.UnsafeString(key), "max-age"):
-			// RFC 9111 §4.2.1: when a directive repeats, the first occurrence is used.
-			if v, ok := parseUintDirective(value); ok && !parsed.maxAgeSet {
+			// RFC 9111 §4.2.1: when a directive repeats, resolve to the most restrictive
+			// value, so keep the smallest valid occurrence. An invalid value is ignored.
+			if v, ok := parseUintDirective(value); ok {
+				v = min(v, maxDeltaSeconds)
+				if parsed.maxAgeSet {
+					v = min(v, parsed.maxAge)
+				}
 				parsed.maxAgeSet = true
-				parsed.maxAge = min(v, maxDeltaSeconds)
+				parsed.maxAge = v
 			}
 		case utils.EqualFold(utils.UnsafeString(key), "s-maxage"):
-			if v, ok := parseUintDirective(value); ok && !parsed.sMaxAgeSet {
+			// Same rule as max-age: keep the smallest valid occurrence.
+			if v, ok := parseUintDirective(value); ok {
+				v = min(v, maxDeltaSeconds)
+				if parsed.sMaxAgeSet {
+					v = min(v, parsed.sMaxAge)
+				}
 				parsed.sMaxAgeSet = true
-				parsed.sMaxAge = min(v, maxDeltaSeconds)
+				parsed.sMaxAge = v
 			}
 		case utils.EqualFold(utils.UnsafeString(key), "must-revalidate"):
 			parsed.mustRevalidate = true
