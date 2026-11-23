@@ -250,7 +250,7 @@ type parameter struct {
 	Explode         *bool                     `json:"explode,omitempty"`
 	Description     string                    `json:"description,omitempty"`
 	Name            string                    `json:"name"`
-	In              fiber.ParamLocation       `json:"in"`
+	In              ParamLocation             `json:"in"`
 	Style           string                    `json:"style,omitempty"`
 	Required        bool                      `json:"required"`
 	Deprecated      bool                      `json:"deprecated,omitempty"`
@@ -463,7 +463,10 @@ func (b *specBuilder) documents(r *fiber.Route) bool {
 	if r.Method == fiber.MethodQuery && !b.dialect.hasQueryMethod() {
 		return false
 	}
-	if r.IsAutoHead() || r.IsHidden() {
+	if r.IsAutoHead() {
+		return false
+	}
+	if op := OperationOf(r); op != nil && op.Hidden {
 		return false
 	}
 	if b.cfg.Filter != nil {
@@ -492,8 +495,8 @@ func (b *specBuilder) declareParameters(r *fiber.Route, facts *routeFacts) {
 		return
 	}
 	facts.parametersDeclared = true
-	facts.declared = expandParameterModels(r.ParameterModels, b.reg)
-	var inferred []fiber.RouteParameter
+	facts.declared = expandParameterModels(facts.doc.ParameterModels, b.reg)
+	var inferred []RouteParameter
 	if facts.chain.has(kindCSRF) && !isSafeMethod(r.Method) {
 		inferred = append(inferred, csrfParameter(b.cfg.CSRFHeader))
 	}
@@ -565,13 +568,14 @@ func (b *specBuilder) addHost(path, method, host string) {
 
 func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant *pathVariant) operation {
 	cfg := b.cfg
+	doc := facts.doc
 
 	params := make([]parameter, 0, len(variant.ParamNames))
 	paramIndex := make(map[parameterKey]int, len(variant.ParamNames))
 	for _, p := range variant.ParamNames {
 		param := parameter{
 			Name:     p,
-			In:       fiber.ParamInPath,
+			In:       ParamInPath,
 			Required: true,
 			Schema:   pathParamSchema(variant.ParamConstraints[p]),
 		}
@@ -580,7 +584,7 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 	}
 	// What Config.Defaults supplies comes first, so a declared parameter of the same name and location replaces it.
 	declared := append(slices.Clone(facts.defaultParams), facts.declared...)
-	extras := remapRouteParameters(append(declared, r.Parameters...), variant.PathParamAliases, variant.ParamNames)
+	extras := remapRouteParameters(append(declared, doc.Parameters...), variant.PathParamAliases, variant.ParamNames)
 	if b.dialect.hasQuerystringLocation() {
 		extras = dropQueryAlongsideQuerystring(extras)
 	} else {
@@ -592,7 +596,7 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 	if summary == "" {
 		summary = r.Method + " " + variant.Path
 	}
-	operationID := r.OperationID
+	operationID := doc.OperationID
 	if operationID == "" {
 		operationID = operationIDFromName(r.Name)
 	}
@@ -601,12 +605,12 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 	}
 	operationID = uniqueOperationID(operationID, b.usedOperationIDs)
 
-	responses := convertRouteResponses(r.Responses, facts.respType, b.reg)
+	responses := convertRouteResponses(doc.Responses, facts.respType, b.reg)
 	if len(responses) == 0 {
 		status, defaultResp := defaultResponseForMethod(r.Method, facts.respType)
 		responses = map[string]response{status: defaultResp}
 	}
-	if facts.chain.has(kindHealthcheck) && len(r.Responses) == 0 {
+	if facts.chain.has(kindHealthcheck) && len(doc.Responses) == 0 {
 		responses = healthResponses(cfg)
 	}
 	if facts.chain != 0 {
@@ -622,15 +626,15 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 			responses[key] = resp
 		}
 	}
-	applyErrorSchema(responses, r.Responses, cfg, b.reg)
+	applyErrorSchema(responses, doc.Responses, cfg, b.reg)
 
 	servers := domainServers(facts.host)
-	if len(r.Servers) > 0 {
-		servers = serversFromMaps(r.Servers)
+	if len(doc.Servers) > 0 {
+		servers = serversFromMaps(doc.Servers)
 	}
 
 	b.reg.request = true
-	reqBody := buildRequestBody(r.RequestBody, facts.bodyType, b.reg)
+	reqBody := buildRequestBody(doc.RequestBody, facts.bodyType, b.reg)
 	b.reg.request = false
 	if reqBody == nil && facts.ownConsumes != "" {
 		reqBody = &requestBody{Content: map[string]map[string]any{facts.ownConsumes: {}}}
@@ -642,22 +646,22 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 	return operation{
 		OperationID:  operationID,
 		Summary:      summary,
-		Description:  r.Description,
+		Description:  doc.Description,
 		Tags:         facts.tags,
-		Deprecated:   r.Deprecated,
+		Deprecated:   doc.Deprecated,
 		Parameters:   params,
 		RequestBody:  reqBody,
 		Responses:    responses,
 		Security:     facts.security,
-		ExternalDocs: r.ExternalDocs,
+		ExternalDocs: doc.ExternalDocs,
 		Servers:      servers,
-		ownServers:   len(r.Servers) > 0,
-		Callbacks:    r.Callbacks,
-		extensions:   r.OperationExtensions,
+		ownServers:   len(doc.Servers) > 0,
+		Callbacks:    doc.Callbacks,
+		extensions:   doc.OperationExtensions,
 	}
 }
 
-// serversFromMaps reads the Server Objects of Route.Servers, skipping one that is not a Server Object.
+// serversFromMaps reads the Server Objects of Operation.Servers, skipping one that is not a Server Object.
 func serversFromMaps(objects []map[string]any) []Server {
 	servers := make([]Server, 0, len(objects))
 	for _, object := range objects {

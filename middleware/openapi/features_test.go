@@ -43,8 +43,8 @@ func Test_OpenAPI_FilterNarrowsTheDocument(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{Filter: func(route *fiber.Route) bool { return !strings.HasPrefix(route.Path, "/internal") }}))
 	app.Use(chainKeyAuth())
-	app.Get("/public/pets", listUsers).Returns(fiber.StatusOK, publicModel{})
-	app.Get("/internal/keys", listUsers).Returns(fiber.StatusOK, secretModel{}).Security()
+	Doc(app.Get("/public/pets", listUsers)).Returns(fiber.StatusOK, publicModel{})
+	Doc(app.Get("/internal/keys", listUsers)).Returns(fiber.StatusOK, secretModel{}).Security()
 	app.Delete("/internal/keys", listUsers)
 
 	spec := mountedSpec(t, app)
@@ -56,8 +56,8 @@ func Test_OpenAPI_FilterNarrowsTheDocument(t *testing.T) {
 	require.Contains(t, schemas, "publicModel")
 	require.NotContains(t, schemas, "secretModel", "a filtered-out route leaves no schema behind")
 
-	spec = rfSpec(t, func(app *fiber.App) { app.Get("/a", listUsers).Summary("kept") }, Config{Filter: func(route *fiber.Route) bool {
-		route.Summary = "changed"
+	spec = rfSpec(t, func(app *fiber.App) { Doc(app.Get("/a", listUsers)).Summary("kept") }, Config{Filter: func(route *fiber.Route) bool {
+		route.Path = "/changed"
 		return true
 	}})
 	require.Equal(t, "kept", modelOperation(t, spec, "/a", "get")["summary"], "the filter receives a copy")
@@ -67,7 +67,7 @@ func Test_OpenAPI_GenerateMatchesTheServedDocument(t *testing.T) {
 	t.Parallel()
 	build := func() *fiber.App {
 		sub := fiber.New()
-		sub.Get("/items", listUsers).Returns(fiber.StatusOK, publicModel{}).Summary("Items")
+		Doc(sub.Get("/items", listUsers)).Returns(fiber.StatusOK, publicModel{}).Summary("Items")
 		app := fiber.New()
 		app.Use("/api", sub)
 		app.Get("/health", listUsers)
@@ -153,21 +153,21 @@ func Test_OpenAPI_ExtensionsAreAddedToTheRootAndInfo(t *testing.T) {
 
 func Test_OpenAPI_DefaultsDocumentRoutesUnderAPrefix(t *testing.T) {
 	t.Parallel()
-	headers := fiber.RouteParameter{Name: "X-Tenant", In: fiber.ParamInHeader, Description: "default says", Required: true}
+	headers := RouteParameter{Name: "X-Tenant", In: ParamInHeader, Description: "default says", Required: true}
 	spec := rfSpec(t, func(app *fiber.App) {
 		app.Get("/api/v1/pets", listUsers)
-		app.Get("/api/v1/owners", listUsers).Tags("own").
-			AddParameter(fiber.RouteParameter{Name: "X-Tenant", In: fiber.ParamInHeader, Description: "route says"}).
+		Doc(app.Get("/api/v1/owners", listUsers)).Tags("own").
+			AddParameter(RouteParameter{Name: "X-Tenant", In: ParamInHeader, Description: "route says"}).
 			Response(fiber.StatusBadRequest, "route 400")
 		app.Get("/api/v1x/other", listUsers)
 		app.Get("/open", listUsers)
 	}, Config{Defaults: []Defaults{
-		{PathPrefix: "/api/v1", Tags: []string{"v1"}, Parameters: []fiber.RouteParameter{headers}, Responses: map[int]fiber.RouteResponse{
+		{PathPrefix: "/api/v1", Tags: []string{"v1"}, Parameters: []RouteParameter{headers}, Responses: map[int]RouteResponse{
 			fiber.StatusBadRequest: {Description: "default 400", Schema: publicModel{}},
 			fiber.StatusForbidden:  {Description: "forbidden"},
 			0:                      {Description: "any other error"},
 		}},
-		{PathPrefix: "/api", Tags: []string{"api"}, Responses: map[int]fiber.RouteResponse{fiber.StatusForbidden: {Description: "second entry loses"}}},
+		{PathPrefix: "/api", Tags: []string{"api"}, Responses: map[int]RouteResponse{fiber.StatusForbidden: {Description: "second entry loses"}}},
 	}})
 
 	pets := modelOperation(t, spec, "/api/v1/pets", "get")
@@ -190,7 +190,7 @@ func Test_OpenAPI_DefaultsDocumentRoutesUnderAPrefix(t *testing.T) {
 func Test_OpenAPI_ErrorSchemaFillsDeclaredErrorResponses(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Get("/a", listUsers).
+		Doc(app.Get("/a", listUsers)).
 			Response(fiber.StatusNotFound, "missing").
 			Response(fiber.StatusConflict, "conflict", MIMEForTest).
 			ResponseWithExample(fiber.StatusBadRequest, "bad", publicModel{}, "", nil, nil, fiber.MIMEApplicationJSON).
@@ -285,7 +285,7 @@ func Test_OpenAPI_PathItemsAddSharedFields(t *testing.T) {
 		"/pets/{id}": {
 			Summary:     "A pet",
 			Description: "Every method of a pet",
-			Parameters:  []fiber.RouteParameter{{Name: "X-Region", In: fiber.ParamInHeader, Description: "region"}},
+			Parameters:  []RouteParameter{{Name: "X-Region", In: ParamInHeader, Description: "region"}},
 		},
 		"/missing": {Summary: "not documented, so ignored"},
 	}})
@@ -333,10 +333,10 @@ func Test_OpenAPISpec_MarshalsPathExtrasAndExtensions(t *testing.T) {
 func Test_OpenAPI_DocumentGetBodies(t *testing.T) {
 	t.Parallel()
 	register := func(app *fiber.App) {
-		app.Get("/search", listUsers).Accepts(publicModel{})
-		app.Head("/search", listUsers).Accepts(publicModel{})
-		app.Trace("/search", listUsers).Accepts(publicModel{})
-		app.Post("/search", listUsers).Accepts(publicModel{})
+		Doc(app.Get("/search", listUsers)).Accepts(publicModel{})
+		Doc(app.Head("/search", listUsers)).Accepts(publicModel{})
+		Doc(app.Trace("/search", listUsers)).Accepts(publicModel{})
+		Doc(app.Post("/search", listUsers)).Accepts(publicModel{})
 	}
 	spec := rfSpec(t, register)
 	require.NotContains(t, modelOperation(t, spec, "/search", "get"), "requestBody")
@@ -352,7 +352,7 @@ func Test_OpenAPI_CustomMethodsAreAdditionalOperationsIn32(t *testing.T) {
 	t.Parallel()
 	build := func(version string) map[string]any {
 		app := fiber.New(fiber.Config{RequestMethods: append(slices.Clip(fiber.DefaultMethods), "PURGE")})
-		app.Add([]string{"PURGE"}, "/cache/:key", listUsers).Summary("Purge").Tags("ops")
+		Doc(app.Add([]string{"PURGE"}, "/cache/:key", listUsers)).Summary("Purge").Tags("ops")
 		app.Get("/cache/:key", listUsers)
 		app.Add([]string{fiber.MethodConnect}, "/tunnel", listUsers)
 		return modelSpec(t, app, Config{OpenAPIVersion: version})
@@ -377,7 +377,7 @@ func Test_OpenAPI_CustomMethodsAreAdditionalOperationsIn32(t *testing.T) {
 func Test_OpenAPI_TagMetadataIs32Only(t *testing.T) {
 	t.Parallel()
 	tags := []Tag{{Name: "pets", Summary: "Pets", Kind: "nav"}, {Name: "cats", Parent: "pets", Description: "Cats"}}
-	register := func(app *fiber.App) { app.Get("/cats", listUsers).Tags("cats") }
+	register := func(app *fiber.App) { Doc(app.Get("/cats", listUsers)).Tags("cats") }
 
 	got := requireSlice(t, rfSpec(t, register, Config{OpenAPIVersion: "3.2.0", Tags: tags})["tags"])
 	require.Equal(t, "Pets", requireMap(t, got[0])["summary"])
@@ -400,7 +400,7 @@ func Test_OpenAPI_ItemSchemaDescribesStreamItems(t *testing.T) {
 	t.Parallel()
 	content := func(version string) map[string]any {
 		spec := rfSpec(t, func(app *fiber.App) {
-			app.Get("/events", listUsers).ResponseContent(fiber.StatusOK, "events", map[string]fiber.RouteMediaType{"text/event-stream": {ItemSchema: publicModel{}}})
+			Doc(app.Get("/events", listUsers)).ResponseContent(fiber.StatusOK, "events", map[string]RouteMediaType{"text/event-stream": {ItemSchema: publicModel{}}})
 		}, Config{OpenAPIVersion: version})
 		return requireMap(t, requireMap(t, rfResp(t, spec, "/events", "get", "200")["content"])["text/event-stream"])
 	}
@@ -525,8 +525,8 @@ func Test_OpenAPI_CustomMiddlewareDocumentsItself(t *testing.T) {
 		Name:            "customauth",
 		SecuritySchemes: map[string]any{"customAuth": map[string]any{"type": "apiKey", "in": "header", "name": "X-Custom"}},
 		Security:        map[string][]string{"customAuth": {}},
-		Parameters:      []fiber.RouteParameter{{Name: "X-Tenant", In: fiber.ParamInHeader}},
-		Responses:       map[int]fiber.RouteResponse{fiber.StatusUnauthorized: {Description: "no custom header"}},
+		Parameters:      []RouteParameter{{Name: "X-Tenant", In: ParamInHeader}},
+		Responses:       map[int]RouteResponse{fiber.StatusUnauthorized: {Description: "no custom header"}},
 		ResponseHeaders: map[string]any{"X-Served-By": "the node that answered"},
 	}}}
 
@@ -559,13 +559,13 @@ func Test_OpenAPI_ServedDocumentCarriesTheNewConfigThroughACachedBuild(t *testin
 func Test_OpenAPI_OperationIDCallbackAndServers(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Post("/files", listUsers).Name("upload files").OperationID("uploadFile").
+		Doc(app.Post("/files", listUsers).Name("upload files")).OperationID("uploadFile").
 			Callback("done", map[string]any{"{$request.body#/url}": map[string]any{"post": map[string]any{"responses": map[string]any{"200": map[string]any{"description": "ok"}}}}}).
 			OperationServer(map[string]any{"url": "https://{region}.example.com", "variables": map[string]any{"region": map[string]any{"default": "eu"}}})
 		app.Get("/files", listUsers).Name("upload files") // the same name, so the generated id is numbered
-		app.Domain("a.example.com").Get("/hosted", listUsers).OperationServer(map[string]any{"url": "https://own.example.com"})
+		Doc(app.Domain("a.example.com").Get("/hosted", listUsers)).OperationServer(map[string]any{"url": "https://own.example.com"})
 		app.Domain("b.example.com").Get("/hosted", listUsers)
-		app.Post("/twin", listUsers).OperationID("uploadFile") // an id another operation uses is numbered
+		Doc(app.Post("/twin", listUsers)).OperationID("uploadFile") // an id another operation uses is numbered
 	})
 	post := modelOperation(t, spec, "/files", "post")
 	require.Equal(t, "uploadFile", post["operationId"])
@@ -584,8 +584,8 @@ func Test_OpenAPI_DefaultsSecurityFillsRoutesWithoutAuthentication(t *testing.T)
 		app.Use("/guarded", chainKeyAuth())
 		app.Get("/guarded/a", listUsers)
 		app.Get("/api/b", listUsers)
-		app.Get("/api/public", listUsers).Security()
-		app.Get("/api/own", listUsers).Security(map[string][]string{"own": {}})
+		Doc(app.Get("/api/public", listUsers)).Security()
+		Doc(app.Get("/api/own", listUsers)).Security(map[string][]string{"own": {}})
 		app.Get("/other", listUsers)
 	}, Config{
 		SecuritySchemes: map[string]any{"company": map[string]any{"type": "http", "scheme": "bearer"}, "own": map[string]any{"type": "http", "scheme": "basic"}},

@@ -429,7 +429,7 @@ func errorResponse(description string, cfg *Config, reg *schemaRegistry) respons
 	resp := response{Description: description}
 	if cfg.ErrorProduces != "" {
 		resp.Content = map[string]map[string]any{
-			cfg.ErrorProduces: contentEntry(&fiber.RouteMediaType{Schema: cfg.ErrorSchema}, reg),
+			cfg.ErrorProduces: contentEntry(&RouteMediaType{Schema: cfg.ErrorSchema}, reg),
 		}
 	}
 	return resp
@@ -437,7 +437,7 @@ func errorResponse(description string, cfg *Config, reg *schemaRegistry) respons
 
 // applyErrorSchema gives a declared error response that documents no body the error media type and schema
 // of the config, as the responses the app's error handler writes have.
-func applyErrorSchema(responses map[string]response, declared map[string]fiber.RouteResponse, cfg *Config, reg *schemaRegistry) {
+func applyErrorSchema(responses map[string]response, declared map[string]RouteResponse, cfg *Config, reg *schemaRegistry) {
 	if cfg.ErrorSchema == nil || cfg.ErrorProduces == "" {
 		return
 	}
@@ -501,7 +501,7 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 		if !set.has(kindCustom + middlewareKind(i)) {
 			continue
 		}
-		declared := make(map[string]fiber.RouteResponse, len(cfg.Middleware[i].Responses))
+		declared := make(map[string]RouteResponse, len(cfg.Middleware[i].Responses))
 		for status, resp := range cfg.Middleware[i].Responses {
 			key := keyDefault
 			if status != 0 {
@@ -583,11 +583,11 @@ func sessionResponseHeader(cfg *Config) string {
 	return fiber.HeaderSetCookie
 }
 
-func sessionParameter(cfg *Config) fiber.RouteParameter {
+func sessionParameter(cfg *Config) RouteParameter {
 	lookup := sessionLookup(cfg)
-	return fiber.RouteParameter{
+	return RouteParameter{
 		Name:        lookup.Name,
-		In:          fiber.ParamLocation(lookup.In),
+		In:          ParamLocation(lookup.In),
 		Description: "The session ID, issued by an earlier response",
 		Schema:      map[string]any{schemaKeyType: schemaTypeString},
 	}
@@ -614,19 +614,19 @@ func healthResponses(cfg *Config) map[string]response {
 	}
 }
 
-func idempotencyParameter(header string) fiber.RouteParameter {
-	return fiber.RouteParameter{
+func idempotencyParameter(header string) RouteParameter {
+	return RouteParameter{
 		Name:        header,
-		In:          fiber.ParamInHeader,
+		In:          ParamInHeader,
 		Description: "A key that makes a retried request replay the first response instead of running again",
 		Schema:      map[string]any{schemaKeyType: schemaTypeString},
 	}
 }
 
-func csrfParameter(header string) fiber.RouteParameter {
-	return fiber.RouteParameter{
+func csrfParameter(header string) RouteParameter {
+	return RouteParameter{
 		Name:        header,
-		In:          fiber.ParamInHeader,
+		In:          ParamInHeader,
 		Required:    true,
 		Description: "The CSRF token issued to the client",
 		Schema:      map[string]any{schemaKeyType: schemaTypeString},

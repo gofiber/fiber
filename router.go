@@ -84,41 +84,13 @@ type Router interface {
 	Route(prefix string, fn func(router Router), name ...string) Router
 
 	Name(name string) Router
-
-	Summary(sum string) Router
-	Description(desc string) Router
-	Consumes(typ string) Router
-	Produces(typ string) Router
-	RequestBody(description string, required bool, mediaTypes ...string) Router
-	RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
-	Parameter(name string, in ParamLocation, required bool, schema any, description string) Router
-	ParameterWithExample(name string, in ParamLocation, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router
-	Response(status int, description string, mediaTypes ...string) Router
-	ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
-	Tags(tags ...string) Router
-	Deprecated() Router
-	Security(requirements ...map[string][]string) Router
-	ResponseHeader(status int, name, description string, schema any) Router
-	Hidden() Router
-	AddParameter(param RouteParameter) Router
-	OperationExternalDocs(description, url string) Router
-	RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router
-	ResponseContent(status int, description string, content map[string]RouteMediaType) Router
-	ResponseLink(status int, name string, link map[string]any) Router
-	OperationExtension(fields map[string]any) Router
-	OperationID(id string) Router
-	Callback(name string, callback map[string]any) Router
-	OperationServer(server map[string]any) Router
-	Accepts(model any, mediaTypes ...string) Router
-	Returns(status int, model any, mediaTypes ...string) Router
-	Params(in ParamLocation, model any) Router
 }
 
 // Route is a struct that holds all metadata for each registered handler.
 //
 //nolint:govet // fieldalignment: the router's scan dictates this order, see below
 type Route struct { // betteralign:ignore - see below
-	// ### important: a field that holds a slice, map or pointer must be cloned by cloneRouteDocInto (and counted by isDocumented) or the clone aliases the live route; copyRouteBaseInto must clear every documentation field. Test_Route_DocumentationFieldsStayInSync guards this. ###
+	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	//
 	// Field order is load-bearing. App.next scans a bucket of routes and
 	// discards most of them, so the fields it needs to do that lead the struct
@@ -173,35 +145,6 @@ type Route struct { // betteralign:ignore - see below
 	groupName   string
 
 	docHandlers []Handler
-
-	Summary     string `json:"summary,omitempty"`
-	Description string `json:"description,omitempty"`
-	Consumes    string `json:"consumes,omitempty"`
-	Produces    string `json:"produces,omitempty"`
-
-	// Responses, RequestBody, Parameters and ParameterModels can hold the Go models a route is documented
-	// from, which need not be marshalable (a func field fails json.Marshal), so a Route marshals without them.
-	Responses   map[string]RouteResponse `json:"-"`
-	RequestBody *RouteRequestBody        `json:"-"`
-
-	Parameters []RouteParameter `json:"-"`
-	// ParameterModels are structs expanded into parameters when the spec is built.
-	ParameterModels []RouteParameterModel `json:"-"`
-	Tags            []string              `json:"tags,omitempty"`
-	// Security holds the OpenAPI security requirements; a non-nil empty slice means none are needed.
-	Security     []map[string][]string `json:"security,omitempty"`
-	ExternalDocs map[string]any        `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI operation externalDocs
-	// OperationExtensions are extra operation-object fields, such as "x-" extensions.
-	OperationExtensions map[string]any `json:"operationExtensions,omitempty"` //nolint:tagliatelle // internal route metadata
-	// Callbacks are the operation's callbacks by name: each a Callback Object, which maps an expression to a Path Item.
-	Callbacks map[string]any `json:"callbacks,omitempty"`
-	// Servers are the operation's own Server Objects, which replace the ones a Domain router implies.
-	Servers []map[string]any `json:"servers,omitempty"`
-	// OperationID is the operationId to document the route with; empty derives it from the route's name or path.
-	OperationID string `json:"operationId,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-
-	Deprecated bool `json:"deprecated,omitempty"`
-	hidden     bool // Excluded from the generated OpenAPI specification
 
 	// annotations is replaced on write and never changed in place, so copies may share it.
 	annotations map[any]any
@@ -548,11 +491,6 @@ func (r *Route) Annotation(key any) any {
 	return r.annotations[key]
 }
 
-// IsHidden reports whether the route is excluded from the generated OpenAPI specification.
-func (r *Route) IsHidden() bool {
-	return r.hidden
-}
-
 func (r *Route) captureGroupLocked() {
 	if r.group == nil {
 		r.groupPrefix, r.groupName = "", ""
@@ -599,68 +537,6 @@ func (r *Route) Domains() []string {
 		patterns[i] = r.hosts[i].pattern
 	}
 	return patterns
-}
-
-// RouteParameter describes an input captured by a route. Content wins over Schema/SchemaRef.
-type RouteParameter struct {
-	Schema          any                       `json:"schema"`
-	Content         map[string]RouteMediaType `json:"content,omitempty"`
-	SchemaRef       string                    `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	Example         any                       `json:"example,omitempty"`
-	Examples        map[string]any            `json:"examples,omitempty"`
-	Explode         *bool                     `json:"explode,omitempty"`
-	Description     string                    `json:"description"`
-	Name            string                    `json:"name"`
-	In              ParamLocation             `json:"in"`
-	Style           string                    `json:"style,omitempty"`
-	Required        bool                      `json:"required"`
-	Deprecated      bool                      `json:"deprecated,omitempty"`
-	AllowEmptyValue bool                      `json:"allowEmptyValue,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	AllowReserved   bool                      `json:"allowReserved,omitempty"`   //nolint:tagliatelle // OpenAPI spec uses camelCase
-}
-
-// RouteParameterModel declares parameters through a Go struct, expanded by the OpenAPI middleware.
-type RouteParameterModel struct {
-	Model any           `json:"model"`
-	In    ParamLocation `json:"in"`
-}
-
-// RouteMediaType describes one media type entry of a body or response.
-type RouteMediaType struct {
-	// ItemSchema describes each item of a sequential media type such as text/event-stream or
-	// application/jsonl, for a stream the client reads item by item. OpenAPI 3.2 writes it as itemSchema;
-	// earlier versions get the equivalent array schema when Schema is empty.
-	ItemSchema any            `json:"itemSchema,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	Schema     any            `json:"schema,omitempty"`
-	Example    any            `json:"example,omitempty"`
-	Examples   map[string]any `json:"examples,omitempty"`
-	Encoding   map[string]any `json:"encoding,omitempty"`
-	SchemaRef  string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-}
-
-// RouteResponse describes a response emitted by a route.
-type RouteResponse struct {
-	Example     any                       `json:"example,omitempty"`
-	Schema      any                       `json:"schema,omitempty"`
-	Examples    map[string]any            `json:"examples,omitempty"`
-	Headers     map[string]any            `json:"headers,omitempty"`
-	Links       map[string]any            `json:"links,omitempty"`
-	Content     map[string]RouteMediaType `json:"content,omitempty"`
-	SchemaRef   string                    `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	Description string                    `json:"description"`
-	MediaTypes  []string                  `json:"mediaTypes"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-}
-
-// RouteRequestBody describes the request payload accepted by a route.
-type RouteRequestBody struct {
-	Example     any                       `json:"example,omitempty"`
-	Schema      any                       `json:"schema,omitempty"`
-	Examples    map[string]any            `json:"examples,omitempty"`
-	Content     map[string]RouteMediaType `json:"content,omitempty"`
-	SchemaRef   string                    `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	Description string                    `json:"description"`
-	MediaTypes  []string                  `json:"mediaTypes"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	Required    bool                      `json:"required"`
 }
 
 // pathHeadWord packs the first swar.WordLen bytes of a detection path into a

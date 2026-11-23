@@ -405,7 +405,7 @@ type fileUploadForm struct {
 func Test_SchemaOf_MultipartFileHeaderIsBinary(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Post("/up", listUsers).Accepts(fileUploadForm{}, fiber.MIMEMultipartForm)
+	Doc(app.Post("/up", listUsers)).Accepts(fileUploadForm{}, fiber.MIMEMultipartForm)
 	schemas := modelSchemas(t, modelSpec(t, app))
 	require.NotContains(t, schemas, "FileHeader_form", "no component for the file header")
 	props := requireMap(t, requireMap(t, schemas["fileUploadForm_form"])["properties"])
@@ -614,9 +614,9 @@ func Test_OpenAPI_LocationOnlyFieldsAreFoundInNestedStructs(t *testing.T) {
 func Test_OpenAPI_RequestComponentsAreEmittedOnlyWhenTheyDiffer(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Post("/a", listUsers).Accepts(nestedLocationHolder{}).Returns(fiber.StatusOK, nestedLocationHolder{})
-	app.Post("/b", listUsers).Accepts(hiddenLocation{}).Returns(fiber.StatusOK, hiddenLocation{})
-	app.Post("/c", listUsers).Accepts(userRequest{}).Returns(fiber.StatusOK, userRequest{})
+	Doc(app.Post("/a", listUsers)).Accepts(nestedLocationHolder{}).Returns(fiber.StatusOK, nestedLocationHolder{})
+	Doc(app.Post("/b", listUsers)).Accepts(hiddenLocation{}).Returns(fiber.StatusOK, hiddenLocation{})
+	Doc(app.Post("/c", listUsers)).Accepts(userRequest{}).Returns(fiber.StatusOK, userRequest{})
 	schemas := modelSchemas(t, modelSpec(t, app))
 	require.Contains(t, schemas, "nestedLocationHolder")
 	require.NotContains(t, schemas, "nestedLocationHolder_request")
@@ -654,7 +654,7 @@ func Test_OpenAPI_TagDirectivesBeyondTheBasics(t *testing.T) {
 func Test_OpenAPI_NullableTagIsSpelledPerVersion(t *testing.T) {
 	t.Parallel()
 	qty := func(version string) map[string]any {
-		spec := rfSpec(t, func(app *fiber.App) { app.Get("/a", listUsers).Returns(fiber.StatusOK, directiveModel{}) }, Config{OpenAPIVersion: version})
+		spec := rfSpec(t, func(app *fiber.App) { Doc(app.Get("/a", listUsers)).Returns(fiber.StatusOK, directiveModel{}) }, Config{OpenAPIVersion: version})
 		return requireMap(t, requireMap(t, requireMap(t, modelSchemas(t, spec)["directiveModel"])["properties"])["qty"])
 	}
 	require.Equal(t, []any{"integer", "null"}, qty("3.1.0")["type"])
@@ -687,7 +687,7 @@ type invoice struct {
 
 func Test_OpenAPI_TypesDescribeThemselves(t *testing.T) {
 	t.Parallel()
-	spec := rfSpec(t, func(app *fiber.App) { app.Get("/invoices", listUsers).Returns(fiber.StatusOK, invoice{}) }, Config{TypeSchemas: map[reflect.Type]any{
+	spec := rfSpec(t, func(app *fiber.App) { Doc(app.Get("/invoices", listUsers)).Returns(fiber.StatusOK, invoice{}) }, Config{TypeSchemas: map[reflect.Type]any{
 		reflect.TypeFor[duration]():  map[string]any{"type": "integer", "format": "int64", "description": "nanoseconds"},
 		reflect.TypeFor[time.Time](): map[string]any{"type": "string", "format": "date"},
 	}})
@@ -743,7 +743,7 @@ type household struct {
 func Test_OpenAPI_OneOfWithADiscriminator(t *testing.T) {
 	t.Parallel()
 	for _, version := range []string{"3.0.3", "3.1.0", "3.2.0"} {
-		schemas := modelSchemas(t, rfSpec(t, func(app *fiber.App) { app.Post("/homes", listUsers).Accepts(household{}) }, Config{OpenAPIVersion: version}))
+		schemas := modelSchemas(t, rfSpec(t, func(app *fiber.App) { Doc(app.Post("/homes", listUsers)).Accepts(household{}) }, Config{OpenAPIVersion: version}))
 		require.Contains(t, schemas, "cat", version)
 		require.Contains(t, schemas, "dog", version)
 
@@ -783,9 +783,9 @@ func Test_OpenAPI_CompositionBuilders(t *testing.T) {
 func Test_OpenAPI_SchemaNameHook(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Get("/a", listUsers).Returns(fiber.StatusOK, cat{})
-		app.Get("/b", listUsers).Returns(fiber.StatusOK, dog{})
-		app.Get("/c", listUsers).Returns(fiber.StatusOK, directiveModel{})
+		Doc(app.Get("/a", listUsers)).Returns(fiber.StatusOK, cat{})
+		Doc(app.Get("/b", listUsers)).Returns(fiber.StatusOK, dog{})
+		Doc(app.Get("/c", listUsers)).Returns(fiber.StatusOK, directiveModel{})
 	}, Config{SchemaName: func(typ reflect.Type) string {
 		switch typ {
 		case reflect.TypeFor[cat](), reflect.TypeFor[dog]():
@@ -817,8 +817,8 @@ type xmlPet struct {
 func Test_OpenAPI_XMLTagsDescribeXMLBodies(t *testing.T) {
 	t.Parallel()
 	schemas := modelSchemas(t, rfSpec(t, func(app *fiber.App) {
-		app.Get("/pets", listUsers).Returns(fiber.StatusOK, xmlPet{}, fiber.MIMEApplicationXML)
-		app.Get("/json-pets", listUsers).Returns(fiber.StatusOK, xmlPet{})
+		Doc(app.Get("/pets", listUsers)).Returns(fiber.StatusOK, xmlPet{}, fiber.MIMEApplicationXML)
+		Doc(app.Get("/json-pets", listUsers)).Returns(fiber.StatusOK, xmlPet{})
 	}))
 	xmlSchema := requireMap(t, schemas["xmlPet_xml"])
 	require.Equal(t, map[string]any{"name": "pet"}, xmlSchema["xml"])
@@ -927,7 +927,7 @@ type conditionalModel struct {
 func Test_OpenAPI_ConditionalRequiredRules(t *testing.T) {
 	t.Parallel()
 	build := func(version string) map[string]any {
-		spec := rfSpec(t, func(app *fiber.App) { app.Post("/c", listUsers).Accepts(conditionalModel{}) }, Config{OpenAPIVersion: version})
+		spec := rfSpec(t, func(app *fiber.App) { Doc(app.Post("/c", listUsers)).Accepts(conditionalModel{}) }, Config{OpenAPIVersion: version})
 		return requireMap(t, modelSchemas(t, spec)["conditionalModel"])
 	}
 

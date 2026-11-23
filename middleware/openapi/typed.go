@@ -39,11 +39,12 @@ func WithMiddleware(handlers ...any) TypedOption {
 // not bind or validate is answered with 400. The result is written as JSON.
 //
 // Handlers are not inspected for their types, so a plain handler has to be documented with Accepts, Returns and
-// Params; Typed is the registration that does it for you. It returns the route, to document it further:
+// Params; Typed is the registration that does it for you. It returns the route's [RouteDoc], to document it
+// further:
 //
 //	openapi.Typed(app, fiber.MethodPost, "/users", createUser, openapi.WithStatus(fiber.StatusCreated)).
 //	    Summary("Create a user")
-func Typed[Req, Res any](router fiber.Router, method, path string, handler func(c fiber.Ctx, req *Req) (*Res, error), options ...TypedOption) fiber.Router {
+func Typed[Req, Res any](router fiber.Router, method, path string, handler func(c fiber.Ctx, req *Req) (*Res, error), options ...TypedOption) *RouteDoc {
 	cfg := typedConfig{}
 	for _, option := range options {
 		option(&cfg)
@@ -73,16 +74,16 @@ func Typed[Req, Res any](router fiber.Router, method, path string, handler func(
 	}
 
 	handlers := append(slices.Clone(cfg.middleware), wrapped)
-	route := router.Add([]string{method}, path, handlers[0], handlers[1:]...)
-	documentTyped(route, method, reflect.TypeFor[Req](), reflect.TypeFor[Res](), cfg.status)
-	return route
+	doc := Doc(router.Add([]string{method}, path, handlers[0], handlers[1:]...))
+	documentTyped(doc, method, reflect.TypeFor[Req](), reflect.TypeFor[Res](), cfg.status)
+	return doc
 }
 
 // documentTyped documents a route from its request and response types.
-func documentTyped(route fiber.Router, method string, req, res reflect.Type, status int) {
+func documentTyped(route *RouteDoc, method string, req, res reflect.Type, status int) {
 	if reqType := derefType(req); reqType.Kind() == reflect.Struct {
 		model := reflect.New(reqType).Interface()
-		for _, location := range [...]fiber.ParamLocation{fiber.ParamInPath, fiber.ParamInQuery, fiber.ParamInHeader, fiber.ParamInCookie} {
+		for _, location := range [...]ParamLocation{ParamInPath, ParamInQuery, ParamInHeader, ParamInCookie} {
 			if hasTaggedField(reqType, modelTagByLocation[location]) {
 				route.Params(location, model)
 			}
@@ -150,7 +151,7 @@ func anyField(t reflect.Type, seen map[reflect.Type]bool, match func(*reflect.St
 
 // typedBinding is how a typed route fills its request: the locations that have tagged fields, and the body.
 type typedBinding struct {
-	locations []fiber.ParamLocation
+	locations []ParamLocation
 	body      bool
 }
 
@@ -169,7 +170,7 @@ func newTypedBinding(t reflect.Type, method string) *typedBinding {
 	return binding
 }
 
-var typedLocations = [...]fiber.ParamLocation{fiber.ParamInPath, fiber.ParamInQuery, fiber.ParamInHeader, fiber.ParamInCookie}
+var typedLocations = [...]ParamLocation{ParamInPath, ParamInQuery, ParamInHeader, ParamInCookie}
 
 // bodyTags are the tags of the body decoders.
 var bodyTags = [...]string{tagJSON, tagForm, tagXML, "cbor", "msgpack"}
@@ -195,13 +196,13 @@ func (b *typedBinding) bind(c fiber.Ctx, req any) error {
 		scratch := reflect.New(dst.Type())
 		var err error
 		switch location {
-		case fiber.ParamInPath:
+		case ParamInPath:
 			err = binder.URI(scratch.Interface())
-		case fiber.ParamInQuery:
+		case ParamInQuery:
 			err = binder.Query(scratch.Interface())
-		case fiber.ParamInHeader:
+		case ParamInHeader:
 			err = binder.Header(scratch.Interface())
-		case fiber.ParamInCookie:
+		case ParamInCookie:
 			err = binder.Cookie(scratch.Interface())
 		default:
 		}

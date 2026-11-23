@@ -54,7 +54,7 @@ func Test_OpenAPI_HandlerSummaries(t *testing.T) {
 		{name: "closure falls back to method and path", path: "/users", want: "GET /users", register: func(app *fiber.App) {
 			app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 		}},
-		{name: "explicit summary wins", register: func(app *fiber.App) { app.Get("/users", listUsers).Summary("Everyone") }, path: "/users", want: "Everyone"},
+		{name: "explicit summary wins", register: func(app *fiber.App) { Doc(app.Get("/users", listUsers)).Summary("Everyone") }, path: "/users", want: "Everyone"},
 		{name: "disabled", register: func(app *fiber.App) { app.Get("/users", listUsers) }, path: "/users", want: "GET /users", cfg: Config{DisableHandlerSummaries: true}},
 	})
 }
@@ -68,7 +68,7 @@ func Test_OpenAPI_GroupTags(t *testing.T) {
 		{name: "named group uses its name", path: "/api/u", want: []any{"users"}, register: func(app *fiber.App) {
 			app.Group("/api").Name("api.").Group("/u").Name("users.").Get("/", listUsers)
 		}},
-		{name: "explicit tags win", register: func(app *fiber.App) { app.Group("/users").Get("/", listUsers).Tags("people") }, path: "/users", want: []any{"people"}},
+		{name: "explicit tags win", register: func(app *fiber.App) { Doc(app.Group("/users").Get("/", listUsers)).Tags("people") }, path: "/users", want: []any{"people"}},
 		{name: "route on the app has no tags", register: func(app *fiber.App) { app.Get("/users", listUsers) }, path: "/users"},
 		{name: "only version segments yield no tag", register: func(app *fiber.App) { app.Group("/v2").Get("/users", listUsers) }, path: "/v2/users"},
 		{name: "disabled", register: func(app *fiber.App) { app.Group("/users").Get("/", listUsers) }, path: "/users", cfg: Config{DisableGroupTags: true}},
@@ -78,7 +78,7 @@ func Test_OpenAPI_GroupTags(t *testing.T) {
 func Test_OpenAPI_DefaultProduces(t *testing.T) {
 	t.Parallel()
 	statuses := func(app *fiber.App) {
-		app.Put("/users/:id", listUsers).Response(fiber.StatusNoContent, "Updated").Response(fiber.StatusNotModified, "Unchanged").Response(fiber.StatusContinue, "Go on")
+		Doc(app.Put("/users/:id", listUsers)).Response(fiber.StatusNoContent, "Updated").Response(fiber.StatusNotModified, "Unchanged").Response(fiber.StatusContinue, "Go on")
 	}
 	for _, tc := range []struct {
 		register           func(app *fiber.App)
@@ -89,9 +89,9 @@ func Test_OpenAPI_DefaultProduces(t *testing.T) {
 	}{
 		{name: "undocumented route documents JSON", register: func(app *fiber.App) { app.Get("/users", listUsers) }, path: "/users", method: "get", status: "200", content: []string{fiber.MIMEApplicationJSON}},
 		{name: "configured default", register: func(app *fiber.App) { app.Get("/users", listUsers) }, path: "/users", method: "get", status: "200", content: []string{fiber.MIMETextPlain}, cfg: Config{DefaultProduces: fiber.MIMETextPlain}},
-		{name: "explicit produces wins", register: func(app *fiber.App) { app.Get("/users", listUsers).Produces(fiber.MIMEApplicationXML) }, path: "/users", method: "get", status: "200", content: []string{fiber.MIMEApplicationXML}},
+		{name: "explicit produces wins", register: func(app *fiber.App) { Doc(app.Get("/users", listUsers)).Produces(fiber.MIMEApplicationXML) }, path: "/users", method: "get", status: "200", content: []string{fiber.MIMEApplicationXML}},
 		{name: "declared response without a media type uses the default", path: "/users", method: "post", status: "201", content: []string{fiber.MIMEApplicationJSON}, register: func(app *fiber.App) {
-			app.Post("/users", listUsers).Response(fiber.StatusCreated, "Created")
+			Doc(app.Post("/users", listUsers)).Response(fiber.StatusCreated, "Created")
 		}},
 		{name: "204 stays without content", register: statuses, path: "/users/{id}", method: "put", status: "204"},
 		{name: "304 stays without content", register: statuses, path: "/users/{id}", method: "put", status: "304"},

@@ -128,7 +128,7 @@ func componentRef(name string) map[string]any {
 func Test_OpenAPI_ModelsBecomeComponents(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Post("/users", listUsers).Accepts(modelUser{}).Returns(fiber.StatusCreated, modelUser{})
+		Doc(app.Post("/users", listUsers)).Accepts(modelUser{}).Returns(fiber.StatusCreated, modelUser{})
 	})
 	body := requireMap(t, modelOperation(t, spec, "/users", "post")["requestBody"])
 	require.Equal(t, true, body["required"])
@@ -157,9 +157,9 @@ func Test_OpenAPI_ModelsBecomeComponents(t *testing.T) {
 func Test_OpenAPI_ReturnsSliceNilAndAnonymous(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Get("/users", listUsers).Returns(fiber.StatusOK, []modelUser{})
-		app.Delete("/users/:id", listUsers).Returns(fiber.StatusNoContent, nil)
-		app.Get("/health", listUsers).Returns(fiber.StatusOK, struct {
+		Doc(app.Get("/users", listUsers)).Returns(fiber.StatusOK, []modelUser{})
+		Doc(app.Delete("/users/:id", listUsers)).Returns(fiber.StatusNoContent, nil)
+		Doc(app.Get("/health", listUsers)).Returns(fiber.StatusOK, struct {
 			OK bool `json:"ok"`
 		}{})
 	})
@@ -178,7 +178,7 @@ func Test_OpenAPI_ReturnsSliceNilAndAnonymous(t *testing.T) {
 
 func Test_OpenAPI_ComponentsKeepUserSchemas(t *testing.T) {
 	t.Parallel()
-	accepts := func(app *fiber.App) { app.Post("/users", listUsers).Accepts(modelAddress{}) }
+	accepts := func(app *fiber.App) { Doc(app.Post("/users", listUsers)).Accepts(modelAddress{}) }
 	t.Run("a taken name is qualified by package", func(t *testing.T) {
 		t.Parallel()
 		spec := rfSpec(t, accepts, Config{Components: map[string]any{"schemas": map[string]any{"modelAddress": map[string]any{"type": "string"}}}})
@@ -202,7 +202,7 @@ func Test_OpenAPI_ComponentsKeepUserSchemas(t *testing.T) {
 func Test_OpenAPI_ParamsFromModel(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Get("/users/:id", listUsers).Params("query", modelFilter{}).Params("header", &modelHeaders{}).Params("path", modelPathIDs{})
+		Doc(app.Get("/users/:id", listUsers)).Params("query", modelFilter{}).Params("header", &modelHeaders{}).Params("path", modelPathIDs{})
 	})
 	params := chainParams(t, modelOperation(t, spec, "/users/{id}", "get"))
 	require.Len(t, params, 5)
@@ -220,7 +220,7 @@ func Test_OpenAPI_ParamsFromModel(t *testing.T) {
 func Test_OpenAPI_ParamsExplicitOverride(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Get("/users", listUsers).Params("query", modelPaging{}).Parameter("page", "query", true, map[string]any{"type": "string"}, "Override")
+		Doc(app.Get("/users", listUsers)).Params("query", modelPaging{}).Parameter("page", "query", true, map[string]any{"type": "string"}, "Override")
 	})
 	var pages []map[string]any
 	for _, raw := range requireSlice(t, modelOperation(t, spec, "/users", "get")["parameters"]) {
@@ -234,7 +234,7 @@ func Test_OpenAPI_ParamsExplicitOverride(t *testing.T) {
 func Test_OpenAPI_HeaderSchemaModel(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Get("/users", listUsers).ResponseHeader(fiber.StatusOK, "X-Meta", "Meta", modelAddress{})
+		Doc(app.Get("/users", listUsers)).ResponseHeader(fiber.StatusOK, "X-Meta", "Meta", modelAddress{})
 	})
 	header := requireMap(t, chainHeaders(t, rfResp(t, spec, "/users", "get", "200"))["X-Meta"])
 	require.Equal(t, componentRef("modelAddress"), header["schema"])
@@ -307,8 +307,8 @@ func Test_schemaRegistry_NilResolvesInline(t *testing.T) {
 
 func Test_expandParameterModels_SkipsWhatIsNotAStruct(t *testing.T) {
 	t.Parallel()
-	require.Empty(t, expandParameterModels([]fiber.RouteParameterModel{{In: "query", Model: nil}, {In: "query", Model: 42}, {In: "query", Model: "text"}}, nil))
-	require.Len(t, expandParameterModels([]fiber.RouteParameterModel{{In: "query", Model: &modelPaging{}}}, nil), 2)
+	require.Empty(t, expandParameterModels([]RouteParameterModel{{In: "query", Model: nil}, {In: "query", Model: 42}, {In: "query", Model: "text"}}, nil))
+	require.Len(t, expandParameterModels([]RouteParameterModel{{In: "query", Model: &modelPaging{}}}, nil), 2)
 }
 
 func Test_isDefaultStringSchema(t *testing.T) {
@@ -349,8 +349,8 @@ func Test_OpenAPI_ComponentsDoNotDependOnRegistrationOrder(t *testing.T) {
 	t.Parallel()
 	build := func(first, second any) map[string]any {
 		spec := rfSpec(t, func(app *fiber.App) {
-			app.Post("/a", listUsers).Accepts(first)
-			app.Post("/b", listUsers).Accepts(second)
+			Doc(app.Post("/a", listUsers)).Accepts(first)
+			Doc(app.Post("/b", listUsers)).Accepts(second)
 		})
 		return requireMap(t, modelSchemas(t, spec)["orderNode"])
 	}
@@ -370,7 +370,7 @@ type refSiblingOuter struct {
 func Test_OpenAPI_RefSiblingsAreWrappedBefore31(t *testing.T) {
 	t.Parallel()
 	for _, version := range []string{"3.0.0", "3.0.3", "3.1.0", "3.2.0"} {
-		spec := rfSpec(t, func(app *fiber.App) { app.Post("/x", listUsers).Accepts(refSiblingOuter{}) }, Config{OpenAPIVersion: version})
+		spec := rfSpec(t, func(app *fiber.App) { Doc(app.Post("/x", listUsers)).Accepts(refSiblingOuter{}) }, Config{OpenAPIVersion: version})
 		got := requireMap(t, requireMap(t, requireMap(t, modelSchemas(t, spec)["refSiblingOuter"])["properties"])["inner"])
 		require.Equal(t, "the inner", got["description"], version)
 		if strings.HasPrefix(version, "3.0") {
@@ -393,8 +393,8 @@ type uploadForm struct {
 func Test_OpenAPI_FormBodiesReadFormTags(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Post("/json", listUsers).Accepts(uploadForm{}, fiber.MIMEApplicationJSON)
-		app.Post("/form", listUsers).Accepts(uploadForm{}, fiber.MIMEMultipartForm, fiber.MIMEApplicationForm)
+		Doc(app.Post("/json", listUsers)).Accepts(uploadForm{}, fiber.MIMEApplicationJSON)
+		Doc(app.Post("/form", listUsers)).Accepts(uploadForm{}, fiber.MIMEMultipartForm, fiber.MIMEApplicationForm)
 	})
 	body := func(path, mediaType string) map[string]any {
 		content := requireMap(t, requireMap(t, modelOperation(t, spec, path, "post")["requestBody"])["content"])
@@ -414,7 +414,7 @@ func Test_OpenAPI_FormBodiesReadFormTags(t *testing.T) {
 func Test_OpenAPI_BodylessStatusesCarryNoContent(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Get("/g", listUsers).Returns(fiber.StatusNoContent, uploadForm{}).
+		Doc(app.Get("/g", listUsers)).Returns(fiber.StatusNoContent, uploadForm{}).
 			Response(fiber.StatusNotModified, "unchanged", fiber.MIMEApplicationJSON).Returns(fiber.StatusOK, uploadForm{})
 	})
 	require.NotContains(t, rfResp(t, spec, "/g", "get", "204"), "content")
@@ -439,7 +439,7 @@ type nullableInner struct {
 func Test_OpenAPI_PointerFieldsAreNullable(t *testing.T) {
 	t.Parallel()
 	for _, version := range []string{"3.1.0", "3.2.0", "3.0.0", "3.0.3"} {
-		spec := rfSpec(t, func(app *fiber.App) { app.Post("/x", listUsers).Accepts(nullableModel{}) }, Config{OpenAPIVersion: version})
+		spec := rfSpec(t, func(app *fiber.App) { Doc(app.Post("/x", listUsers)).Accepts(nullableModel{}) }, Config{OpenAPIVersion: version})
 		got := requireMap(t, requireMap(t, modelSchemas(t, spec)["nullableModel"])["properties"])
 		prop := func(name string) map[string]any { return requireMap(t, got[name]) }
 		inner := prop("inner")
@@ -479,7 +479,7 @@ type exampleOuter struct {
 func Test_OpenAPI_NullableReferenceKeepsNestedExample(t *testing.T) {
 	t.Parallel()
 	for _, version := range []string{"3.0.3", "3.1.0", "3.2.0"} {
-		spec := rfSpec(t, func(app *fiber.App) { app.Post("/x", listUsers).Accepts(exampleOuter{}) }, Config{OpenAPIVersion: version})
+		spec := rfSpec(t, func(app *fiber.App) { Doc(app.Post("/x", listUsers)).Accepts(exampleOuter{}) }, Config{OpenAPIVersion: version})
 		want := map[string]any{"name": "bob"}
 		require.Equal(t, map[string]any{"pointer": want, "plain": want}, requireMap(t, modelSchemas(t, spec)["exampleOuter"])["example"], version)
 	}
@@ -505,7 +505,7 @@ func Test_OpenAPI_SameNamedModelsKeepTheirNames(t *testing.T) {
 	t.Parallel()
 	for range 50 {
 		spec := rfSpec(t, func(app *fiber.App) {
-			app.Get("/x", listUsers).Returns(fiber.StatusOK, sameNamedOK()).Returns(fiber.StatusBadRequest, sameNamedError())
+			Doc(app.Get("/x", listUsers)).Returns(fiber.StatusOK, sameNamedOK()).Returns(fiber.StatusBadRequest, sameNamedError())
 		})
 		require.Equal(t, componentRef("Response"), contentSchema(t, rfResp(t, spec, "/x", "get", "200")))
 		require.Equal(t, componentRef("openapi.Response"), contentSchema(t, rfResp(t, spec, "/x", "get", "400")))
@@ -523,7 +523,7 @@ type mixedLocations struct {
 func Test_OpenAPI_ParamsSkipFieldsTaggedForOtherLocations(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Get("/q/:id", listUsers).Params(fiber.ParamInQuery, mixedLocations{}).Params(fiber.ParamInHeader, mixedLocations{}).Params(fiber.ParamInCookie, mixedLocations{})
+		Doc(app.Get("/q/:id", listUsers)).Params(ParamInQuery, mixedLocations{}).Params(ParamInHeader, mixedLocations{}).Params(ParamInCookie, mixedLocations{})
 	})
 	params := chainParams(t, modelOperation(t, spec, "/q/{id}", "get"))
 	// An untagged field binds by name from any source.
@@ -553,7 +553,7 @@ func Test_SchemaOf_ExclusiveBounds(t *testing.T) {
 func Test_OpenAPI_EmptyResponseDescriptionFallsBack(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Get("/x", func(c fiber.Ctx) error { return c.SendString("x") }).
+	Doc(app.Get("/x", func(c fiber.Ctx) error { return c.SendString("x") })).
 		Response(fiber.StatusNotFound, "", fiber.MIMEApplicationJSON).
 		Response(0, "", fiber.MIMEApplicationJSON)
 	app.Use(New())
@@ -567,11 +567,11 @@ func Test_OpenAPI_EmptyResponseDescriptionFallsBack(t *testing.T) {
 func Test_OpenAPI_ParameterSchemaKeepsItsOwnType(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Get("/p", listUsers).
-			AddParameter(fiber.RouteParameter{Name: "either", In: fiber.ParamInQuery, Schema: map[string]any{
+		Doc(app.Get("/p", listUsers)).
+			AddParameter(RouteParameter{Name: "either", In: ParamInQuery, Schema: map[string]any{
 				"oneOf": []any{map[string]any{"type": "integer"}, map[string]any{"type": "string"}},
 			}}).
-			AddParameter(fiber.RouteParameter{Name: "ints", In: fiber.ParamInQuery, Schema: map[string]any{"enum": []int{1, 2}}})
+			AddParameter(RouteParameter{Name: "ints", In: ParamInQuery, Schema: map[string]any{"enum": []int{1, 2}}})
 	})
 	params := chainParams(t, modelOperation(t, spec, "/p", "get"))
 	require.NotContains(t, requireMap(t, params["query:either"]["schema"]), "type")
@@ -589,7 +589,7 @@ type refParamModel struct {
 func Test_OpenAPI_ParamsModelRefSiblings(t *testing.T) {
 	t.Parallel()
 	for version, wrapped := range map[string]bool{"3.0.3": true, "3.1.0": false} {
-		spec := rfSpec(t, func(app *fiber.App) { app.Get("/p", listUsers).Params(fiber.ParamInQuery, refParamModel{}) }, Config{OpenAPIVersion: version})
+		spec := rfSpec(t, func(app *fiber.App) { Doc(app.Get("/p", listUsers)).Params(ParamInQuery, refParamModel{}) }, Config{OpenAPIVersion: version})
 		params := requireSlice(t, modelOperation(t, spec, "/p", "get")["parameters"])
 		require.Len(t, params, 1, version)
 		schema := requireMap(t, requireMap(t, params[0])["schema"])
@@ -602,9 +602,9 @@ func Test_OpenAPI_ParamsModelRefSiblings(t *testing.T) {
 func Test_OpenAPI_DefinedMapTypesAreRawSchemas(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Get("/x", listUsers).
+		Doc(app.Get("/x", listUsers)).
 			Returns(fiber.StatusOK, fiber.Map{"type": "object", "properties": fiber.Map{"id": fiber.Map{"type": "integer"}}}).
-			Parameter("q", fiber.ParamInQuery, false, fiber.Map{"type": "integer"}, "")
+			Parameter("q", ParamInQuery, false, fiber.Map{"type": "integer"}, "")
 	}, Config{ErrorSchema: fiber.Map{"type": "object", "properties": fiber.Map{"error": fiber.Map{"type": "string"}}}})
 	schema := contentSchema(t, rfResp(t, spec, "/x", "get", "200"))
 	require.Equal(t, "object", schema["type"])
@@ -627,7 +627,7 @@ func Test_OpenAPI_DroppedDuplicatesRegisterNothing(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
 		app.Get("/a/:id", listUsers)
-		app.Get("/a/:name", listUsers).Params(fiber.ParamInQuery, orphanFilter{})
+		Doc(app.Get("/a/:name", listUsers)).Params(ParamInQuery, orphanFilter{})
 	})
 	if components, ok := spec["components"].(map[string]any); ok {
 		require.NotContains(t, components, "schemas")
@@ -719,8 +719,8 @@ type plainBody struct {
 func Test_OpenAPI_RequestBodiesLeaveOutParameters(t *testing.T) {
 	t.Parallel()
 	schemas := modelSchemas(t, rfSpec(t, func(app *fiber.App) {
-		app.Post("/users/:id", listUsers).Accepts(userRequest{}).Returns(fiber.StatusOK, userRequest{})
-		app.Post("/plain", listUsers).Accepts(plainBody{}).Returns(fiber.StatusOK, plainBody{})
+		Doc(app.Post("/users/:id", listUsers)).Accepts(userRequest{}).Returns(fiber.StatusOK, userRequest{})
+		Doc(app.Post("/plain", listUsers)).Accepts(plainBody{}).Returns(fiber.StatusOK, plainBody{})
 	}))
 	require.Contains(t, requireMap(t, requireMap(t, schemas["userRequest"])["properties"]), "ID", "a response keeps every field")
 	require.NotContains(t, requireMap(t, requireMap(t, schemas["userRequest_request"])["properties"]), "ID")
@@ -752,17 +752,18 @@ func Test_OpenAPI_TypedDeclaresParametersInAFixedOrder(t *testing.T) {
 	for range 20 {
 		app := fiber.New()
 		Typed(app, fiber.MethodPost, "/users/:id", func(_ fiber.Ctx, _ *userRequest) (*userResponse, error) { return &userResponse{}, nil })
-		var in []fiber.ParamLocation
+		var in []ParamLocation
 		for _, route := range app.GetRoutes() {
 			if route.Path != "/users/:id" {
 				continue
 			}
-			for i := range route.ParameterModels {
-				in = append(in, route.ParameterModels[i].In)
+			op := OperationOf(&route)
+			for i := range op.ParameterModels {
+				in = append(in, op.ParameterModels[i].In)
 			}
 			break
 		}
-		require.Equal(t, []fiber.ParamLocation{fiber.ParamInPath, fiber.ParamInQuery, fiber.ParamInHeader}, in)
+		require.Equal(t, []ParamLocation{ParamInPath, ParamInQuery, ParamInHeader}, in)
 	}
 }
 
@@ -816,10 +817,10 @@ func benchApp(routes int) *fiber.App {
 		path := "/r" + strconv.Itoa(i) + "/:id"
 		route := users.Get(path, listUsers)
 		if i%2 == 0 {
-			route.Returns(fiber.StatusOK, modelUser{}).Params("query", modelPaging{})
+			Doc(route).Returns(fiber.StatusOK, modelUser{}).Params("query", modelPaging{})
 		}
 	}
-	users.Post("/create", listUsers).Accepts(modelUser{}).Returns(fiber.StatusCreated, modelUser{})
+	Doc(users.Post("/create", listUsers)).Accepts(modelUser{}).Returns(fiber.StatusCreated, modelUser{})
 	return app
 }
 

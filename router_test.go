@@ -2006,25 +2006,6 @@ func Test_AddRoute_MergeHandlers(t *testing.T) {
 	require.Len(t, app.stack[app.methodInt(MethodGet)][0].Handlers, 2)
 }
 
-func Test_CopyAnyMap_DeepCopy(t *testing.T) {
-	t.Parallel()
-	newSrc := func() map[string]any {
-		return map[string]any{
-			"properties": map[string]any{"id": map[string]any{"type": "string"}},
-			"required":   []any{"id"},
-			"names":      []string{"id"},
-			"oneOf":      []map[string]any{{"type": "string"}},
-		}
-	}
-	src := newSrc()
-	cloned := copyAnyMap(src)
-	cloned["properties"].(map[string]any)["id"].(map[string]any)["type"] = "integer" //nolint:errcheck,forcetypeassert // built just above
-	cloned["required"].([]any)[0] = "changed"                                        //nolint:errcheck,forcetypeassert // built just above
-	cloned["names"].([]string)[0] = "changed"                                        //nolint:errcheck,forcetypeassert // built just above
-	cloned["oneOf"].([]map[string]any)[0]["type"] = "integer"                        //nolint:errcheck,forcetypeassert // built just above
-	require.Equal(t, newSrc(), src, "the copy shares no nested map or slice, typed or not")
-}
-
 func Benchmark_App_RebuildTree_Parallel(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -2402,101 +2383,51 @@ func Test_Route_URL(t *testing.T) {
 func Test_App_MetadataUseDoesNotClobberConcreteRoutes(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/api", testEmptyHandler).Summary("Real endpoint")
-	app.Use("/api", func(c Ctx) error { return c.Next() }).Summary("middleware").Hidden()
+	annotate(t, app.Get("/api", testEmptyHandler), "Real endpoint")
+	annotate(t, app.Use("/api", func(c Ctx) error { return c.Next() }), "middleware")
 
 	route := app.stack[app.methodInt(MethodGet)][0]
 	require.False(t, route.use)
-	require.Equal(t, "Real endpoint", route.Summary)
-	require.False(t, route.IsHidden())
+	require.Equal(t, "Real endpoint", annotationOf(route))
 }
 
 func Test_App_MetadataDoesNotClobberExplicitHead(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Head("/file", testEmptyHandler).Summary("Probe")
-	app.Get("/file", testEmptyHandler).Summary("Download")
+	annotate(t, app.Head("/file", testEmptyHandler), "Probe")
+	annotate(t, app.Get("/file", testEmptyHandler), "Download")
 
-	headRoute := app.stack[app.methodInt(MethodHead)][0]
-	require.Equal(t, "Probe", headRoute.Summary)
-
-	getRoute := app.stack[app.methodInt(MethodGet)][0]
-	require.Equal(t, "Download", getRoute.Summary)
-}
-
-func Test_App_ResponseKeepsHeadersAndLinks(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/", testEmptyHandler).
-		ResponseHeader(StatusOK, "X-RateLimit", "requests remaining", nil).
-		ResponseLink(StatusOK, "next", map[string]any{"operationId": "getNext"}).
-		Response(StatusOK, "OK", MIMEApplicationJSON)
-
-	route := app.stack[app.methodInt(MethodGet)][0]
-	resp, ok := route.Responses["200"]
-	require.True(t, ok)
-	require.Equal(t, "OK", resp.Description)
-	require.Equal(t, []string{MIMEApplicationJSON}, resp.MediaTypes)
-	require.Contains(t, resp.Headers, "X-RateLimit")
-	require.Contains(t, resp.Links, "next")
-}
-
-func Test_App_ResponseKeepsExplicitProduces(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/", testEmptyHandler).
-		Produces(MIMEApplicationJSON).
-		Response(StatusOK, "OK", "text/csv")
-
-	route := app.stack[app.methodInt(MethodGet)][0]
-	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
-	require.Equal(t, MIMEApplicationJSON, route.Produces)
-
-	app2 := New()
-	app2.Get("/", testEmptyHandler).Response(StatusOK, "OK", "text/csv")
-	route2 := app2.stack[app2.methodInt(MethodGet)][0]
-	require.Equal(t, "text/csv", route2.Produces)
-}
-
-func Test_App_RequestBodyKeepsExplicitConsumes(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Post("/", testEmptyHandler).
-		Consumes(MIMEApplicationJSON).
-		RequestBody("payload", true, MIMEApplicationXML)
-
-	route := app.stack[app.methodInt(MethodPost)][0]
-	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
-	require.Equal(t, MIMEApplicationJSON, route.Consumes)
+	require.Equal(t, "Probe", annotationOf(app.stack[app.methodInt(MethodHead)][0]))
+	require.Equal(t, "Download", annotationOf(app.stack[app.methodInt(MethodGet)][0]))
 }
 
 func Test_App_MetadataDoesNotClobberShadowedRoute(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/a", testEmptyHandler).Summary("first")
+	annotate(t, app.Get("/a", testEmptyHandler), "first")
 	app.Get("/b", testEmptyHandler)
-	app.Get("/a", testEmptyHandler).Summary("second")
+	annotate(t, app.Get("/a", testEmptyHandler), "second")
 
 	getStack := app.stack[app.methodInt(MethodGet)]
-	require.Equal(t, "first", getStack[0].Summary)
-	require.Equal(t, "second", getStack[2].Summary)
+	require.Equal(t, "first", annotationOf(getStack[0]))
+	require.Equal(t, "second", annotationOf(getStack[2]))
 }
 
 func Test_App_MetadataSecondUseDoesNotClobberFirst(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Use("/api", func(c Ctx) error { return c.Next() }).Summary("auth")
+	annotate(t, app.Use("/api", func(c Ctx) error { return c.Next() }), "auth")
 	app.Get("/api/x", testEmptyHandler)
-	app.Use("/api", func(c Ctx) error { return c.Next() }).Summary("rate")
+	annotate(t, app.Use("/api", func(c Ctx) error { return c.Next() }), "rate")
 
-	summaries := make(map[string]int)
+	annotations := make(map[string]int)
 	for _, route := range app.stack[app.methodInt(MethodGet)] {
 		if route.use {
-			summaries[route.Summary]++
+			annotations[annotationOf(route)]++
 		}
 	}
-	require.Equal(t, 1, summaries["auth"])
-	require.Equal(t, 1, summaries["rate"])
+	require.Equal(t, 1, annotations["auth"])
+	require.Equal(t, 1, annotations["rate"])
 }
 
 func Test_App_MetadataAfterMountDoesNotTouchPreviousRoute(t *testing.T) {
@@ -2505,14 +2436,12 @@ func Test_App_MetadataAfterMountDoesNotTouchPreviousRoute(t *testing.T) {
 	sub.Get("/users", testEmptyHandler)
 
 	app := New()
-	app.Get("/health", testEmptyHandler).Summary("Health")
-	app.Use("/api", sub).Tags("api").Description("sub-app")
+	annotate(t, app.Get("/health", testEmptyHandler), "Health")
+	annotate(t, app.Use("/api", sub), "sub-app")
 
 	for _, route := range app.stack[app.methodInt(MethodGet)] {
 		if route.Path == "/health" {
-			require.Equal(t, "Health", route.Summary)
-			require.Empty(t, route.Tags)
-			require.Empty(t, route.Description)
+			require.Equal(t, "Health", annotationOf(route))
 		}
 	}
 }
@@ -2532,43 +2461,24 @@ func Test_App_NameOnUseDoesNotRenameConcreteRoutes(t *testing.T) {
 	}
 }
 
-func Test_App_OperationExtensionNilElements(t *testing.T) {
-	t.Parallel()
-	app := New()
-	require.NotPanics(t, func() {
-		app.Get("/", testEmptyHandler).OperationExtension(map[string]any{
-			"x-errs": []error{nil},
-			"x-map":  map[string]error{"e": nil},
-		})
-	})
-
-	route := app.stack[app.methodInt(MethodGet)][0]
-	errs, ok := route.OperationExtensions["x-errs"].([]error)
-	require.True(t, ok)
-	require.Len(t, errs, 1)
-	m, ok := route.OperationExtensions["x-map"].(map[string]error)
-	require.True(t, ok)
-	require.Contains(t, m, "e")
-}
-
 func Test_App_MetadataNoCollisionWithMountedRoutes(t *testing.T) {
 	t.Parallel()
 	sub := New()
 	sub.Get("/a", testEmptyHandler)
-	sub.Get("/b", testEmptyHandler).Summary("sub b")
+	annotate(t, sub.Get("/b", testEmptyHandler), "sub b")
 
 	app := New()
 	app.Use("/api", sub)
 
 	apptest.Expect(t, app, "/api/a", StatusOK)
 
-	app.Get("/new", testEmptyHandler).Name("newname").Summary("new summary")
+	annotate(t, app.Get("/new", testEmptyHandler).Name("newname"), "new annotation")
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Path == "/api/b" {
 				if !route.IsAutoHead() {
-					require.Equal(t, "sub b", route.Summary, route.Method)
+					require.Equal(t, "sub b", annotationOf(route), route.Method)
 				}
 				require.NotEqual(t, "newname", route.Name, route.Method)
 			}

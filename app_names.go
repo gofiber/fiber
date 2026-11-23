@@ -127,8 +127,7 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 // namedRouteIndex is an immutable by-name snapshot of the routes at one revision.
 type namedRouteIndex struct {
 	routes   map[string]*Route
-	live     map[*Route]*Route // snapshot of a documented route -> the route it was taken from, for GetRoute to clone from
-	small    []*Route          // the same snapshots in registration order when there are few, to scan instead of hash
+	small    []*Route // the same snapshots in registration order when there are few, to scan instead of hash
 	revision uint64
 }
 
@@ -167,28 +166,21 @@ func (app *App) indexNamedRoutes() *namedRouteIndex {
 	return app.indexNamedRoutesLocked()
 }
 
-// indexNamedRoutesLocked is indexNamedRoutes for a caller holding app.mutex. A snapshot of a documented
-// route carries no documentation, which only GetRoute reads and clones from the live route.
+// indexNamedRoutesLocked is indexNamedRoutes for a caller holding app.mutex.
 func (app *App) indexNamedRoutesLocked() *namedRouteIndex {
 	revision := app.routesRevision.Load()
 	if index := app.namedRoutes.Load(); index != nil && index.revision == revision {
 		return index
 	}
 
-	index := &namedRouteIndex{revision: revision, routes: make(map[string]*Route), live: make(map[*Route]*Route)}
+	index := &namedRouteIndex{revision: revision, routes: make(map[string]*Route)}
 	var inOrder []*Route
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if _, taken := index.routes[route.Name]; taken {
 				continue
 			}
-			var snapshot *Route
-			if route.isDocumented() {
-				snapshot = app.copyRouteBase(route)
-				index.live[snapshot] = route
-			} else {
-				snapshot = app.copyRoute(route)
-			}
+			snapshot := app.copyRoute(route)
 			index.routes[route.Name] = snapshot
 			inOrder = append(inOrder, snapshot)
 		}
@@ -206,17 +198,8 @@ func (app *App) indexNamedRoutesLocked() *namedRouteIndex {
 // GetRoute returns a copy of the route with the given name; Handlers and Params are shared and must not be modified.
 func (app *App) GetRoute(name string) (found Route) { //nolint:nonamedreturns // the named result is what keeps this to a single struct move
 	index := app.currentNamedIndex()
-	snapshot := index.lookup(name)
-	if snapshot == nil {
-		return found
+	if snapshot := index.lookup(name); snapshot != nil {
+		found = *snapshot
 	}
-	live := index.live[snapshot]
-	if live == nil {
-		return *snapshot
-	}
-
-	app.mutex.Lock()
-	defer app.mutex.Unlock()
-	app.copyRouteInto(&found, live)
 	return found
 }

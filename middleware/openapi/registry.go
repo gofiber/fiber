@@ -247,7 +247,7 @@ func isXMLMediaType(mediaType string) bool {
 		(len(base) > len("+xml") && utils.EqualFold(base[len(base)-len("+xml"):], "+xml"))
 }
 
-func contentEntryFor(mediaType string, mt *fiber.RouteMediaType, reg *schemaRegistry) map[string]any {
+func contentEntryFor(mediaType string, mt *RouteMediaType, reg *schemaRegistry) map[string]any {
 	if reg == nil {
 		return contentEntry(mt, reg)
 	}

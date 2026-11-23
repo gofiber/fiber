@@ -97,15 +97,15 @@ func Test_OpenAPI_GenerationEdgeCases(t *testing.T) {
 		contains []string
 	}{
 		{name: "ResponseSchemaWithoutProducesKept", contains: []string{"application/json", `"type":"object"`}, register: func(app *fiber.App) {
-			app.Get("/x", listUsers).ResponseWithExample(200, "OK", map[string]any{"type": "object"}, "", map[string]any{"id": 1}, nil)
+			Doc(app.Get("/x", listUsers)).ResponseWithExample(200, "OK", map[string]any{"type": "object"}, "", map[string]any{"id": 1}, nil)
 		}},
 		{name: "BigIntSurvivesExtensions", contains: []string{"1234567890123456789", "x-owner"}, register: func(app *fiber.App) {
-			app.Get("/big", listUsers).ResponseWithExample(200, "ok", nil, "", map[string]any{"id": int64(1234567890123456789)}, nil, fiber.MIMEApplicationJSON).
+			Doc(app.Get("/big", listUsers)).ResponseWithExample(200, "ok", nil, "", map[string]any{"id": int64(1234567890123456789)}, nil, fiber.MIMEApplicationJSON).
 				OperationExtension(map[string]any{"x-owner": "team"})
 		}},
 		{name: "ResponseContentKeepsDescription", contains: []string{"My custom description"}, register: func(app *fiber.App) {
-			app.Get("/y", listUsers).Response(201, "My custom description", fiber.MIMEApplicationJSON).
-				ResponseContent(201, "", map[string]fiber.RouteMediaType{fiber.MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}}})
+			Doc(app.Get("/y", listUsers)).Response(201, "My custom description", fiber.MIMEApplicationJSON).
+				ResponseContent(201, "", map[string]RouteMediaType{fiber.MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}}})
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -288,12 +288,12 @@ func Test_OpenAPI_ReservedHeaderParametersAreIgnored(t *testing.T) {
 	t.Parallel()
 	str := map[string]any{"type": "string"}
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Get("/x", listUsers).
-			Parameter("Accept", fiber.ParamInHeader, false, str, "ignored").
-			Parameter("content-type", fiber.ParamInHeader, false, str, "ignored").
-			Parameter("Authorization", fiber.ParamInHeader, false, str, "ignored").
-			Parameter("X-Trace", fiber.ParamInHeader, false, str, "kept").
-			Parameter("Accept", fiber.ParamInQuery, false, str, "a query parameter named Accept stays")
+		Doc(app.Get("/x", listUsers)).
+			Parameter("Accept", ParamInHeader, false, str, "ignored").
+			Parameter("content-type", ParamInHeader, false, str, "ignored").
+			Parameter("Authorization", ParamInHeader, false, str, "ignored").
+			Parameter("X-Trace", ParamInHeader, false, str, "kept").
+			Parameter("Accept", ParamInQuery, false, str, "a query parameter named Accept stays")
 	})
 	require.ElementsMatch(t, []string{"header:X-Trace", "query:Accept"}, rfKeys(chainParams(t, modelOperation(t, spec, "/x", "get"))))
 }
@@ -302,10 +302,10 @@ func Test_OpenAPI_QuerystringExcludesQueryParameters(t *testing.T) {
 	t.Parallel()
 	params := func(version string) map[string]map[string]any {
 		spec := rfSpec(t, func(app *fiber.App) {
-			app.Get("/x", listUsers).
-				Parameter("page", fiber.ParamInQuery, false, map[string]any{"type": "integer"}, "p").
-				AddParameter(fiber.RouteParameter{Name: "qs", In: fiber.ParamInQuerystring, Content: map[string]fiber.RouteMediaType{"application/x-www-form-urlencoded": {Schema: map[string]any{"type": "object"}}}}).
-				Parameter("X-Trace", fiber.ParamInHeader, false, map[string]any{"type": "string"}, "h")
+			Doc(app.Get("/x", listUsers)).
+				Parameter("page", ParamInQuery, false, map[string]any{"type": "integer"}, "p").
+				AddParameter(RouteParameter{Name: "qs", In: ParamInQuerystring, Content: map[string]RouteMediaType{"application/x-www-form-urlencoded": {Schema: map[string]any{"type": "object"}}}}).
+				Parameter("X-Trace", ParamInHeader, false, map[string]any{"type": "string"}, "h")
 		}, Config{OpenAPIVersion: version})
 		return chainParams(t, modelOperation(t, spec, "/x", "get"))
 	}
@@ -318,7 +318,7 @@ func Test_OpenAPI_SpecDoesNotAliasRouteSecurity(t *testing.T) {
 	t.Parallel()
 	requirements := []map[string][]string{{"oauth": {"read"}}}
 	app := fiber.New()
-	app.Get("/x", listUsers).Security(requirements...)
+	Doc(app.Get("/x", listUsers)).Security(requirements...)
 	// Changing what the caller passed afterwards must not change the route or the document.
 	requirements[0]["oauth"][0] = "changed"
 	requirements[0]["other"] = []string{"x"}
@@ -420,7 +420,7 @@ func Test_OpenAPI_UsedTagsAreDeclaredAtTheTop(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
 		app.Group("/users").Get("/", listUsers)
-		app.Get("/items", listUsers).Tags("zeta", "described")
+		Doc(app.Get("/items", listUsers)).Tags("zeta", "described")
 		app.Get("/plain-root", listUsers)
 	}, Config{Tags: []Tag{{Name: "described", Description: "kept as written"}}})
 	require.Equal(t, []any{
@@ -498,8 +498,8 @@ func Test_OpenAPI_GroupTagSkipsVersionMarkersInNamesToo(t *testing.T) {
 func Test_OpenAPI_SamePathOnSeveralDomainsListsEveryHost(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
-		app.Domain("a.example.com").Get("/pets", listUsers).Summary("A pets")
-		app.Domain("b.example.com").Get("/pets", listUsers).Summary("B pets")
+		Doc(app.Domain("a.example.com").Get("/pets", listUsers)).Summary("A pets")
+		Doc(app.Domain("b.example.com").Get("/pets", listUsers)).Summary("B pets")
 		app.Domain("b.example.com").Get("/pets", listUsers) // a repeated host adds nothing
 		app.Domain("a.example.com").Get("/pets/:id", listUsers)
 		app.Domain(":tenant.example.org").Get("/pets/:name", listUsers) // same template up to the parameter name
@@ -580,8 +580,8 @@ func Test_OpenAPI_AnyHostRouteAndADomainRoute(t *testing.T) {
 	t.Run("an any-host route before a domain route shadows it", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
-		app.Get("/x", func(c fiber.Ctx) error { return c.SendString("any") }).Summary("any host")
-		app.Domain("a.example.com").Get("/x", func(c fiber.Ctx) error { return c.SendString("domain") }).Summary("a.example.com")
+		Doc(app.Get("/x", func(c fiber.Ctx) error { return c.SendString("any") })).Summary("any host")
+		Doc(app.Domain("a.example.com").Get("/x", func(c fiber.Ctx) error { return c.SendString("domain") })).Summary("a.example.com")
 		_, body := hostGet(t, app, "a.example.com", "/x")
 		require.Equal(t, "any", body, "the route for every host answers first")
 		op := modelOperation(t, modelSpec(t, app), "/x", "get")
@@ -712,7 +712,7 @@ func Test_OpenAPI_DomainRouterAuthIsDocumented(t *testing.T) {
 	d := app.Domain("api.example.com")
 	d.Get("/pets", chainKeyAuth(), listUsers)
 	d.Get("/health", listUsers)
-	d.Get("/secret", listUsers).Hidden()
+	Doc(d.Get("/secret", listUsers)).Hidden()
 	guarded := app.Domain("guarded.example.com")
 	guarded.Use(chainKeyAuth())
 	guarded.Get("/inner", listUsers)
@@ -737,6 +737,24 @@ func fullPolicy() *routePolicy {
 	}
 }
 
+// documentedRoute registers one route on a fresh app, documents it with doc and returns the copy GetRoutes gives.
+func documentedRoute(t *testing.T, method, path string, handler fiber.Handler, doc func(d *RouteDoc)) *fiber.Route {
+	t.Helper()
+	app := fiber.New()
+	registered := app.Add([]string{method}, path, handler)
+	if doc != nil {
+		doc(Doc(registered))
+	}
+	routes := app.GetRoutes(true)
+	for i := range routes {
+		if routes[i].Method == method && routes[i].Path == path {
+			return &routes[i]
+		}
+	}
+	t.Fatalf("no %s %s route", method, path)
+	return nil
+}
+
 func Test_resolveRoute(t *testing.T) {
 	t.Parallel()
 	without := func(change func(p *routePolicy)) *routePolicy {
@@ -745,39 +763,39 @@ func Test_resolveRoute(t *testing.T) {
 		return policy
 	}
 
-	route := &fiber.Route{Method: fiber.MethodGet, Path: "/users", Handlers: []fiber.Handler{listUsers}}
+	route := documentedRoute(t, fiber.MethodGet, "/users", listUsers, nil)
 	require.Equal(t, "List users", resolveRoute(route, nil, fullPolicy()).summary)
 	require.Empty(t, resolveRoute(route, nil, without(func(p *routePolicy) { p.handlerSummaries = false })).summary)
-	route.Summary = "Explicit"
+	route = documentedRoute(t, fiber.MethodGet, "/users", listUsers, func(d *RouteDoc) { d.Summary("Explicit") })
 	require.Equal(t, "Explicit", resolveRoute(route, nil, fullPolicy()).summary)
 
-	route = &fiber.Route{Method: fiber.MethodPost, Path: "/x"}
+	route = documentedRoute(t, fiber.MethodPost, "/x", omOK, nil)
 	facts := resolveRoute(route, nil, fullPolicy())
 	require.Equal(t, fiber.MIMEApplicationJSON, facts.respType)
 	require.Equal(t, fiber.MIMEApplicationJSON, facts.bodyType)
 	require.Empty(t, facts.ownConsumes, "a default is not a statement by the route")
-	route.Produces = fiber.MIMETextPlain
-	route.Consumes = fiber.MIMEApplicationForm
+	route = documentedRoute(t, fiber.MethodPost, "/x", omOK, func(d *RouteDoc) {
+		d.Produces(fiber.MIMETextPlain).Consumes(fiber.MIMEApplicationForm)
+	})
 	facts = resolveRoute(route, nil, fullPolicy())
 	require.Equal(t, fiber.MIMETextPlain, facts.respType)
 	require.Equal(t, fiber.MIMEApplicationForm, facts.bodyType)
 	require.Equal(t, fiber.MIMEApplicationForm, facts.ownConsumes)
 
-	declares := &fiber.Route{Method: fiber.MethodPost, Path: "/x", Parameters: []fiber.RouteParameter{{Name: "q", In: fiber.ParamInQuery}}}
+	declares := documentedRoute(t, fiber.MethodPost, "/x", omOK, func(d *RouteDoc) { d.Parameter("q", ParamInQuery, false, nil, "") })
 	require.True(t, resolveRoute(declares, nil, fullPolicy()).badRequest)
-	require.False(t, resolveRoute(&fiber.Route{Method: fiber.MethodGet, Path: "/x"}, nil, fullPolicy()).badRequest, "nothing to reject")
+	require.False(t, resolveRoute(documentedRoute(t, fiber.MethodGet, "/x", omOK, nil), nil, fullPolicy()).badRequest, "nothing to reject")
 	require.False(t, resolveRoute(declares, nil, without(func(p *routePolicy) { p.validates = false })).badRequest, "no validator")
 
 	covering := []coveringMiddleware{{prefix: "/", set: 1 << kindBasicAuth}}
-	route = &fiber.Route{Method: fiber.MethodGet, Path: "/x"}
+	route = documentedRoute(t, fiber.MethodGet, "/x", omOK, nil)
 	facts = resolveRoute(route, covering, fullPolicy())
 	require.True(t, facts.chain.has(kindBasicAuth))
 	require.Nil(t, facts.security, "the requirement is registered later")
-	route.Security = []map[string][]string{}
-	facts = resolveRoute(route, covering, fullPolicy())
+	noAuth := documentedRoute(t, fiber.MethodGet, "/x", omOK, func(d *RouteDoc) { d.Security() })
+	facts = resolveRoute(noAuth, covering, fullPolicy())
 	require.False(t, facts.chain.has(kindBasicAuth), "documented security suppresses inference")
 	require.NotNil(t, facts.security)
 	require.Empty(t, *facts.security)
-	route.Security = nil
 	require.Zero(t, resolveRoute(route, covering, without(func(p *routePolicy) { p.middlewareInference = false })).chain)
 }

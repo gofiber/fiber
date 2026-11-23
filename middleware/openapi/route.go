@@ -67,9 +67,10 @@ func newRoutePolicy(cfg *Config, env specEnv) routePolicy {
 
 // routeFacts is a route's metadata with inferences filled in, before its path is expanded.
 type routeFacts struct {
+	doc                *Operation // the route's own copy of its documentation, never nil
 	security           *[]map[string][]string
-	defaultResponses   map[string]fiber.RouteResponse // from Config.Defaults, for the statuses the route does not declare
-	defaultParams      []fiber.RouteParameter
+	defaultResponses   map[string]RouteResponse // from Config.Defaults, for the statuses the route does not declare
+	defaultParams      []RouteParameter
 	defaultSecurity    *[]map[string][]string // from Config.Defaults, for a route that sets none and has no authentication inferred
 	host               string                 // the effective host pattern of a domain route, or "" for any host
 	summary            string
@@ -77,7 +78,7 @@ type routeFacts struct {
 	ownConsumes        string
 	bodyType           string
 	tags               []string
-	declared           []fiber.RouteParameter
+	declared           []RouteParameter
 	chain              middlewareSet
 	documentsInput     bool
 	parametersDeclared bool
@@ -86,14 +87,17 @@ type routeFacts struct {
 
 // resolveRoute fills unset route metadata from handler names, groups, app-wide media types and recognized middleware.
 func resolveRoute(r *fiber.Route, covering []coveringMiddleware, policy *routePolicy) routeFacts {
+	// A private copy: what the generator derives from it must not reach the Operation every route copy shares.
+	doc := cloneOperation(r.Annotation(operationAnnotation{}))
 	facts := routeFacts{
-		summary:     r.Summary,
-		tags:        r.Tags,
-		respType:    r.Produces,
-		ownConsumes: r.Consumes,
-		bodyType:    r.Consumes,
-		documentsInput: r.RequestBody != nil || len(r.ParameterModels) > 0 ||
-			len(r.Parameters) > 0,
+		doc:         doc,
+		summary:     doc.Summary,
+		tags:        doc.Tags,
+		respType:    doc.Produces,
+		ownConsumes: doc.Consumes,
+		bodyType:    doc.Consumes,
+		documentsInput: doc.RequestBody != nil || len(doc.ParameterModels) > 0 ||
+			len(doc.Parameters) > 0,
 	}
 	if facts.summary == "" && policy.handlerSummaries {
 		facts.summary = handlerSummary(r.InnerHandlers())
@@ -113,9 +117,9 @@ func resolveRoute(r *fiber.Route, covering []coveringMiddleware, policy *routePo
 	if policy.middlewareInference {
 		facts.chain = middlewareOn(covering, r, policy)
 	}
-	if r.Security != nil {
+	if doc.Security != nil {
 		facts.chain &^= authMiddleware
-		security := r.Security
+		security := doc.Security
 		facts.security = &security
 	}
 	facts.badRequest = policy.validates && facts.documentsInput
@@ -131,7 +135,7 @@ func applyDefaults(facts *routeFacts, r *fiber.Route, policy *routePolicy) {
 		if !coversRoute(d.PathPrefix, r.Path, policy.equal) {
 			continue
 		}
-		if !tagged && len(r.Tags) == 0 && len(d.Tags) > 0 {
+		if !tagged && len(facts.doc.Tags) == 0 && len(d.Tags) > 0 {
 			facts.tags, tagged = d.Tags, true
 		}
 		if facts.defaultSecurity == nil && d.Security != nil {
@@ -144,14 +148,14 @@ func applyDefaults(facts *routeFacts, r *fiber.Route, policy *routePolicy) {
 			if status != 0 {
 				key = utils.FormatInt(int64(status))
 			}
-			if _, declared := r.Responses[key]; declared {
+			if _, declared := facts.doc.Responses[key]; declared {
 				continue
 			}
 			if _, set := facts.defaultResponses[key]; set {
 				continue
 			}
 			if facts.defaultResponses == nil {
-				facts.defaultResponses = make(map[string]fiber.RouteResponse)
+				facts.defaultResponses = make(map[string]RouteResponse)
 			}
 			facts.defaultResponses[key] = resp
 		}

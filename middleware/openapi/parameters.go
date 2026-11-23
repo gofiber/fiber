@@ -7,17 +7,17 @@ import (
 )
 
 type parameterKey struct {
-	in   fiber.ParamLocation
+	in   ParamLocation
 	name string
 }
 
 // filterParams returns extras without the parameters drop reports true for.
-func filterParams(extras []fiber.RouteParameter, drop func(in fiber.ParamLocation) bool) []fiber.RouteParameter {
+func filterParams(extras []RouteParameter, drop func(in ParamLocation) bool) []RouteParameter {
 	for i := range extras {
 		if !drop(extras[i].In.Normalize()) {
 			continue
 		}
-		filtered := append([]fiber.RouteParameter(nil), extras[:i]...)
+		filtered := append([]RouteParameter(nil), extras[:i]...)
 		for j := i + 1; j < len(extras); j++ {
 			if !drop(extras[j].In.Normalize()) {
 				filtered = append(filtered, extras[j])
@@ -28,8 +28,8 @@ func filterParams(extras []fiber.RouteParameter, drop func(in fiber.ParamLocatio
 	return extras
 }
 
-func dropQuerystringParameters(extras []fiber.RouteParameter) []fiber.RouteParameter {
-	return filterParams(extras, func(in fiber.ParamLocation) bool { return in == fiber.ParamInQuerystring })
+func dropQuerystringParameters(extras []RouteParameter) []RouteParameter {
+	return filterParams(extras, func(in ParamLocation) bool { return in == ParamInQuerystring })
 }
 
 func isReservedHeader(name string) bool {
@@ -40,10 +40,10 @@ func isReservedHeader(name string) bool {
 }
 
 // dropQueryAlongsideQuerystring removes every "query" parameter when a "querystring" one is present (3.2 forbids both).
-func dropQueryAlongsideQuerystring(extras []fiber.RouteParameter) []fiber.RouteParameter {
+func dropQueryAlongsideQuerystring(extras []RouteParameter) []RouteParameter {
 	hasQuerystring := false
 	for i := range extras {
-		if extras[i].In.Normalize() == fiber.ParamInQuerystring {
+		if extras[i].In.Normalize() == ParamInQuerystring {
 			hasQuerystring = true
 			break
 		}
@@ -51,10 +51,10 @@ func dropQueryAlongsideQuerystring(extras []fiber.RouteParameter) []fiber.RouteP
 	if !hasQuerystring {
 		return extras
 	}
-	return filterParams(extras, func(in fiber.ParamLocation) bool { return in == fiber.ParamInQuery })
+	return filterParams(extras, func(in ParamLocation) bool { return in == ParamInQuery })
 }
 
-func mergeRouteParameters(params []parameter, index map[parameterKey]int, extras []fiber.RouteParameter, reg *schemaRegistry) []parameter {
+func mergeRouteParameters(params []parameter, index map[parameterKey]int, extras []RouteParameter, reg *schemaRegistry) []parameter {
 	if len(extras) == 0 {
 		return params
 	}
@@ -65,9 +65,9 @@ func mergeRouteParameters(params []parameter, index map[parameterKey]int, extras
 		}
 		location := extra.In.Normalize()
 		if location == "" {
-			location = fiber.ParamInQuery
+			location = ParamInQuery
 		}
-		if location == fiber.ParamInHeader && isReservedHeader(extra.Name) {
+		if location == ParamInHeader && isReservedHeader(extra.Name) {
 			continue
 		}
 		var paramExample any
@@ -94,9 +94,9 @@ func mergeRouteParameters(params []parameter, index map[parameterKey]int, extras
 			param.Content = content
 			param.Example = nil
 			param.Examples = nil
-		case location == fiber.ParamInQuerystring:
+		case location == ParamInQuerystring:
 			param.Content = map[string]map[string]any{
-				querystringMediaType: contentEntry(&fiber.RouteMediaType{
+				querystringMediaType: contentEntry(&RouteMediaType{
 					Schema:   schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString, reg),
 					Example:  paramExample,
 					Examples: paramExamples,
@@ -111,7 +111,7 @@ func mergeRouteParameters(params []parameter, index map[parameterKey]int, extras
 			explode := *extra.Explode
 			param.Explode = &explode
 		}
-		if param.In == fiber.ParamInPath {
+		if param.In == ParamInPath {
 			param.Required = true
 			// AddParameter's default string schema must not replace one derived from the route constraint.
 			if idx, ok := index[parameterKey{param.In, param.Name}]; ok && extra.SchemaRef == "" && param.Content == nil && isDefaultStringSchema(extra.Schema) {
@@ -216,7 +216,7 @@ func adoptCanonicalParamNames(variant *pathVariant, canonical []string) {
 	variant.ParamNames = append([]string(nil), canonical...)
 }
 
-func remapRouteParameters(extras []fiber.RouteParameter, aliases map[string]string, pathParams []string) []fiber.RouteParameter {
+func remapRouteParameters(extras []RouteParameter, aliases map[string]string, pathParams []string) []RouteParameter {
 	if len(extras) == 0 {
 		return nil
 	}
@@ -224,10 +224,10 @@ func remapRouteParameters(extras []fiber.RouteParameter, aliases map[string]stri
 	for _, name := range pathParams {
 		pathSet[name] = struct{}{}
 	}
-	out := make([]fiber.RouteParameter, 0, len(extras))
+	out := make([]RouteParameter, 0, len(extras))
 	for i := range extras {
 		copyExtra := extras[i]
-		if copyExtra.In.Normalize() == fiber.ParamInPath {
+		if copyExtra.In.Normalize() == ParamInPath {
 			if mapped, ok := aliases[copyExtra.Name]; ok {
 				copyExtra.Name = mapped
 			}

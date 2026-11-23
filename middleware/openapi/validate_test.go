@@ -220,7 +220,7 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 	build := func(version string) []byte {
 		app := fiber.New()
 
-		app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		Doc(app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })).
 			Summary("List users").
 			Parameter("page", "query", false, map[string]any{"type": "integer"}, "Page number").
 			Parameter("X-Trace", "header", false, nil, "Trace id").
@@ -228,12 +228,12 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 			Response(fiber.StatusOK, "OK", fiber.MIMEApplicationJSON).
 			ResponseHeader(fiber.StatusOK, "X-Rate-Limit", "Requests left", map[string]any{"type": "integer"}).
 			Tags("users")
-		app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
-			RequestBodyContent("Create user", true, map[string]fiber.RouteMediaType{
+		Doc(app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) })).
+			RequestBodyContent("Create user", true, map[string]RouteMediaType{
 				fiber.MIMEApplicationJSON: {Schema: SchemaOf(User{})},
 				fiber.MIMEApplicationXML:  {SchemaRef: "#/components/schemas/User"},
 			}).
-			ResponseContent(fiber.StatusCreated, "Created", map[string]fiber.RouteMediaType{
+			ResponseContent(fiber.StatusCreated, "Created", map[string]RouteMediaType{
 				fiber.MIMEApplicationJSON: {Schema: SchemaOf(User{}), Encoding: map[string]any{"id": map[string]any{"contentType": "text/plain"}}},
 			}).
 			ResponseHeader(fiber.StatusCreated, "Location", "Created URL", map[string]any{"type": "string"}).
@@ -241,18 +241,18 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 			OperationExternalDocs("docs", "https://docs.example.com/create").
 			OperationExtension(map[string]any{"servers": []any{map[string]any{"url": "https://op.example.com"}}}).
 			Security(map[string][]string{"bearerAuth": {}})
-		app.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
-			AddParameter(fiber.RouteParameter{
+		Doc(app.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })).
+			AddParameter(RouteParameter{
 				Name: "fields", In: "query", Style: "form", Explode: new(true),
 				Deprecated: true, AllowEmptyValue: true, AllowReserved: true,
 				Schema: map[string]any{"type": "array"},
 			})
 		app.Get("/files/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 		app.Get("/items/:id?", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-		app.Query("/search", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		Doc(app.Query("/search", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })).
 			RequestBody("Query payload", true, fiber.MIMEApplicationJSON)
-		app.Delete("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) }).Deprecated()
-		app.Get("/internal", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).Hidden()
+		Doc(app.Delete("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })).Deprecated()
+		Doc(app.Get("/internal", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })).Hidden()
 		app.Use(New(Config{
 			OpenAPIVersion:    version,
 			Title:             "Validation API",

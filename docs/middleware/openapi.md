@@ -16,6 +16,9 @@ other value.
 func New(config ...Config) fiber.Handler
 func Generate(app *fiber.App, config ...Config) ([]byte, error)
 func SchemaOf(v any) map[string]any
+func Doc(route any) *RouteDoc
+func OperationOf(route *fiber.Route) *Operation
+func Typed[Req, Res any](router fiber.Router, method, path string, handler func(c fiber.Ctx, req *Req) (*Res, error), options ...TypedOption) *RouteDoc
 ```
 
 ## Examples
@@ -252,7 +255,7 @@ any port on it:
 
 ```go
 api := app.Domain("api.example.com")
-api.Get("/pets", listPets).Summary("List pets")
+openapi.Doc(api.Get("/pets", listPets)).Summary("List pets")
 api.Use(openapi.New())                  // /openapi.json and /swagger on api.example.com only
 api.Use("/docs", openapi.New())         // or under a prefix: /docs/openapi.json
 api.Group("/v1").Use(openapi.New())     // or in a group of the domain router
@@ -273,6 +276,26 @@ the same one, the document describes the first registration and lists every
 host in its `servers`.
 
 ### Document a route
+
+Wrap a route's registration in `openapi.Doc` and chain the documentation helpers
+on the `*openapi.RouteDoc` it returns. `Doc` takes the result of any
+registration — `app.Get(...)`, `group.Post(...)`, `app.Domain(...).Put(...)` or
+`app.RouteChain(...).Get(...)` — and panics on any other value. Passed the `App`
+or a `Group` itself, it documents that router's latest registration. Every
+helper returns the same `*RouteDoc`, so they chain:
+
+```go
+openapi.Doc(app.Get("/users/:id", getUser)).
+    Summary("Get a user").
+    Returns(fiber.StatusOK, User{})
+```
+
+Since `Doc` returns its own builder, the chain cannot go on with `Name` or
+another registration after a helper. Name the route before wrapping it:
+
+```go
+openapi.Doc(app.Get("/users/:id", getUser).Name("getUser")).Summary("Get a user")
+```
 
 The shortest way to document a route is to hand it the Go types it already
 binds. `Accepts` documents the request body, `Returns` a response and `Params`
@@ -295,12 +318,12 @@ type ListFilter struct {
     PerPage int `query:"per_page" validate:"lte=100"`
 }
 
-app.Post("/users", createUser).
+openapi.Doc(app.Post("/users", createUser)).
     Accepts(CreateUser{}).
     Returns(fiber.StatusCreated, User{})
 
-app.Get("/users", listUsers).
-    Params("query", ListFilter{}).
+openapi.Doc(app.Get("/users", listUsers)).
+    Params(openapi.ParamInQuery, ListFilter{}).
     Returns(fiber.StatusOK, []User{})
 ```
 
@@ -328,13 +351,17 @@ itself, not reflected: `Returns(201, map[string]any{"id": 1})` publishes
 :::
 
 Any helper that takes a schema accepts a Go value in its place, so
-`Parameter("filter", "query", false, ListFilter{}, "")` works too. For full
+`Parameter("filter", openapi.ParamInQuery, false, ListFilter{}, "")` works too.
+The location argument of `Parameter`, `ParameterWithExample` and `Params` is an
+`openapi.ParamLocation`: `ParamInPath`, `ParamInQuery`, `ParamInHeader`,
+`ParamInCookie` or `ParamInQuerystring`. A constant such as `"query"` converts on
+its own, but a plain `string` variable needs `openapi.ParamLocation(s)`. For full
 control, `Summary`, `Description`, `RequestBody`, `Parameter`, `Response`,
 `Tags`, `Deprecated`, `Produces` and `Consumes` remain, and the `*WithExample`
 helpers attach schemas and examples (including `$ref`) explicitly:
 
 ```go
-app.Post("/users", createUser).
+openapi.Doc(app.Post("/users", createUser)).
     Summary("Create user").
     Description("Creates a new user").
     RequestBodyWithExample(
@@ -375,7 +402,7 @@ combined with OR, and a route that sets its own requirements is not given any
 inferred from the middleware on its path:
 
 ```go
-app.Get("/users", listUsers).
+openapi.Doc(app.Get("/users", listUsers)).
     Security(map[string][]string{"bearerAuth": {}})
 ```
 
@@ -388,19 +415,19 @@ present credentials.
 
 ```go
 // Behind a keyauth middleware that skips this route, and public.
-app.Get("/health", health).Security()
+openapi.Doc(app.Get("/health", health)).Security()
 ```
 
 ### Advanced parameters
 
-`AddParameter` takes a full `fiber.RouteParameter`, exposing the serialization
+`AddParameter` takes a full `openapi.RouteParameter`, exposing the serialization
 fields (`Deprecated`, `Style`, `Explode`, `AllowEmptyValue`, `AllowReserved`) that
 the simpler `Parameter`/`ParameterWithExample` helpers do not:
 
 ```go
 explode := false
-app.Get("/items", listItems).
-    AddParameter(fiber.RouteParameter{
+openapi.Doc(app.Get("/items", listItems)).
+    AddParameter(openapi.RouteParameter{
         Name:    "ids",
         In:      "query",
         Style:   "form",
@@ -450,7 +477,7 @@ count characters, so the bound is approximate for non-ASCII values.
 for a given status code, creating the response entry if it does not exist yet:
 
 ```go
-app.Post("/users", createUser).
+openapi.Doc(app.Post("/users", createUser)).
     Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON).
     ResponseHeader(fiber.StatusCreated, "Location", "URL of the created user", map[string]any{"type": "string"})
 ```
@@ -460,7 +487,7 @@ app.Post("/users", createUser).
 `ResponseLink(status, name, link)` documents an OpenAPI link for a response:
 
 ```go
-app.Post("/users", createUser).
+openapi.Doc(app.Post("/users", createUser)).
     Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON).
     ResponseLink(fiber.StatusCreated, "getUserById", map[string]any{
         "operationId": "getUsersId",
@@ -474,7 +501,7 @@ A status of `0` addresses the OpenAPI `default` response — the one that applie
 to any status code not listed explicitly. Every status-taking helper accepts it:
 
 ```go
-app.Get("/users", listUsers).
+openapi.Doc(app.Get("/users", listUsers)).
     Response(fiber.StatusOK, "OK", fiber.MIMEApplicationJSON).
     ResponseWithExample(
         0, "Unexpected error",
@@ -492,16 +519,16 @@ documents a new schema or example.
 ### Per-media-type content
 
 `RequestBodyContent` and `ResponseContent` accept a map of media type to
-`fiber.RouteMediaType`, so each content type can carry a different schema, example
+`openapi.RouteMediaType`, so each content type can carry a different schema, example
 and `encoding`:
 
 ```go
-app.Post("/users", createUser).
-    RequestBodyContent("User payload", true, map[string]fiber.RouteMediaType{
+openapi.Doc(app.Post("/users", createUser)).
+    RequestBodyContent("User payload", true, map[string]openapi.RouteMediaType{
         fiber.MIMEApplicationJSON: {Schema: openapi.SchemaOf(User{})},
         fiber.MIMEApplicationXML:  {SchemaRef: "#/components/schemas/User"},
     }).
-    ResponseContent(fiber.StatusCreated, "Created", map[string]fiber.RouteMediaType{
+    ResponseContent(fiber.StatusCreated, "Created", map[string]openapi.RouteMediaType{
         fiber.MIMEApplicationJSON: {Schema: openapi.SchemaOf(User{})},
     })
 ```
@@ -523,11 +550,11 @@ either `schema` or `content` and never both, so setting `Content` discards any
 `Schema`/`SchemaRef` on the same parameter:
 
 ```go
-app.Get("/users", listUsers).
-    AddParameter(fiber.RouteParameter{
+openapi.Doc(app.Get("/users", listUsers)).
+    AddParameter(openapi.RouteParameter{
         Name: "filter",
         In:   "query",
-        Content: map[string]fiber.RouteMediaType{
+        Content: map[string]openapi.RouteMediaType{
             fiber.MIMEApplicationJSON: {Schema: openapi.SchemaOf(Filter{})},
         },
     })
@@ -541,7 +568,7 @@ empty URL, which the External Documentation Object requires, and
 `servers`, `callbacks` or `x-*` extensions) without clobbering generated keys:
 
 ```go
-app.Get("/users", listUsers).
+openapi.Doc(app.Get("/users", listUsers)).
     OperationExternalDocs("More info", "https://docs.example.com/list-users").
     OperationExtension(map[string]any{
         "servers": []any{map[string]any{"url": "https://users.example.com"}},
@@ -580,7 +607,8 @@ parameters, the others as the request body (not for `GET`, `HEAD`, `TRACE`,
 - **Response**: written as JSON with the status from `WithStatus` (`200` by
   default). `Empty` as the response type answers with no body (`204` by default).
 - **Options**: `WithMiddleware` runs handlers before the typed one. `Typed`
-  returns the route, so `Summary`, `Tags` and the other helpers chain on it.
+  returns the route's `*RouteDoc`, so `Summary`, `Tags` and the other helpers
+  chain on it.
 
 A struct used as a request body leaves out its parameter-only fields. If that
 makes it differ from the same type used as a response, the body gets its own
@@ -597,7 +625,7 @@ give it; a route with servers of its own is not widened by another host that
 shares its path.
 
 ```go
-app.Post("/files", upload).
+openapi.Doc(app.Post("/files", upload)).
     OperationID("uploadFile").
     Callback("done", map[string]any{
         "{$request.body#/callbackUrl}": map[string]any{
@@ -623,6 +651,30 @@ public := openapi.New(openapi.Config{
 app.Group("/docs").Use(public)
 app.Group("/internal-docs", auth).Use(openapi.New(openapi.Config{Title: "Internal API"}))
 ```
+
+### Read a route's documentation
+
+What the helpers of `openapi.Doc` record is stored on the route as an
+`openapi.Operation` (with the fields `Summary`, `Description`, `Consumes`,
+`Produces`, `Responses`, `RequestBody`, `Parameters`, `ParameterModels`, `Tags`,
+`Security`, `ExternalDocs`, `OperationExtensions`, `Callbacks`, `Servers`,
+`OperationID`, `Deprecated` and `Hidden`). `openapi.OperationOf(route)` returns
+it, or `nil` for a route that was never documented. The `Operation` is shared
+with every copy of the route, so read it but do not modify it. A `Filter` can
+use it to build a document from the tags a route was given:
+
+```go
+partners := openapi.New(openapi.Config{
+    Title: "Partner API",
+    Filter: func(r *fiber.Route) bool {
+        op := openapi.OperationOf(r)
+        return op != nil && slices.Contains(op.Tags, "partners")
+    },
+})
+```
+
+`openapi.OperationOf(r) != nil && openapi.OperationOf(r).Hidden` reports whether
+`Hidden` excluded a route.
 
 ### Generate the document without serving it
 
@@ -663,8 +715,9 @@ app.Use(openapi.New(openapi.Config{
 
 ### Defaults for a group of routes
 
-The documentation helpers on a `Group` document that group's latest registration,
-so something common to every route under a prefix goes in `Defaults`:
+`openapi.Doc(group)` documents that group's latest registration, not every
+route of the group, so something common to every route under a prefix goes in
+`Defaults`:
 
 ```go
 app.Use(openapi.New(openapi.Config{
@@ -673,8 +726,8 @@ app.Use(openapi.New(openapi.Config{
         PathPrefix: "/api/v1",
         Tags:       []string{"v1"},
         Security:   []map[string][]string{{"company": {}}},
-        Parameters: []fiber.RouteParameter{{Name: "X-Tenant", In: fiber.ParamInHeader, Required: true}},
-        Responses: map[int]fiber.RouteResponse{
+        Parameters: []openapi.RouteParameter{{Name: "X-Tenant", In: openapi.ParamInHeader, Required: true}},
+        Responses: map[int]openapi.RouteResponse{
             fiber.StatusTooManyRequests: {Description: "Too many requests"},
             0:                           {Description: "Unexpected error"}, // the default response
         },
@@ -694,7 +747,7 @@ of a path, keyed by its OpenAPI path:
 
 ```go
 app.Use(openapi.New(openapi.Config{PathItems: map[string]openapi.PathItem{
-    "/pets/{id}": {Summary: "A pet", Parameters: []fiber.RouteParameter{{Name: "X-Region", In: fiber.ParamInHeader}}},
+    "/pets/{id}": {Summary: "A pet", Parameters: []openapi.RouteParameter{{Name: "X-Region", In: openapi.ParamInHeader}}},
 }}))
 ```
 
@@ -712,7 +765,7 @@ meaning (and `TRACE` never has one). `DocumentGetBodies` documents the body of a
 internal or admin endpoints:
 
 ```go
-app.Get("/internal/metrics", metricsHandler).Hidden()
+openapi.Doc(app.Get("/internal/metrics", metricsHandler)).Hidden()
 ```
 
 ### QUERY routes (OpenAPI 3.2)
@@ -724,7 +777,7 @@ documents like any other operation (and, unlike `GET`, may carry a request body)
 ```go
 app.Use(openapi.New(openapi.Config{OpenAPIVersion: "3.2.0"}))
 
-app.Query("/search", searchHandler).
+openapi.Doc(app.Query("/search", searchHandler)).
     Summary("Search").
     RequestBody("Search criteria", true, fiber.MIMEApplicationJSON)
 ```
@@ -741,7 +794,7 @@ any entry of the app's `RequestMethods`) is written under the path's
 
 ```go
 app := fiber.New(fiber.Config{RequestMethods: append(fiber.DefaultMethods[:len(fiber.DefaultMethods):len(fiber.DefaultMethods)], "PURGE")})
-app.Add([]string{"PURGE"}, "/cache/:key", purge).Summary("Purge a cache entry")
+openapi.Doc(app.Add([]string{"PURGE"}, "/cache/:key", purge)).Summary("Purge a cache entry")
 app.Use(openapi.New(openapi.Config{OpenAPIVersion: "3.2.0"}))
 ```
 
@@ -753,7 +806,7 @@ describes each item; 3.2 writes it as `itemSchema`, and earlier versions get the
 equivalent array schema (`type: array`, `items`) unless `Schema` is set:
 
 ```go
-app.Get("/events", events).ResponseContent(fiber.StatusOK, "A stream of events", map[string]fiber.RouteMediaType{
+openapi.Doc(app.Get("/events", events)).ResponseContent(fiber.StatusOK, "A stream of events", map[string]openapi.RouteMediaType{
     "text/event-stream": {ItemSchema: Event{}},
 })
 ```
@@ -786,14 +839,14 @@ into an `application/x-www-form-urlencoded` entry. Set `Content` explicitly to p
 a different media type:
 
 ```go
-app.Get("/search", searchHandler).
-    AddParameter(fiber.RouteParameter{Name: "q", In: "querystring", Schema: map[string]any{"type": "string"}})
+openapi.Doc(app.Get("/search", searchHandler)).
+    AddParameter(openapi.RouteParameter{Name: "q", In: "querystring", Schema: map[string]any{"type": "string"}})
 
-app.Get("/report", reportHandler).
-    AddParameter(fiber.RouteParameter{
+openapi.Doc(app.Get("/report", reportHandler)).
+    AddParameter(openapi.RouteParameter{
         Name: "q",
         In:   "querystring",
-        Content: map[string]fiber.RouteMediaType{
+        Content: map[string]openapi.RouteMediaType{
             fiber.MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
         },
     })
@@ -912,7 +965,7 @@ on a prefix that covers its path, documents itself:
       Name:            "tenantauth",
       SecuritySchemes: map[string]any{"tenantAuth": map[string]any{"type": "apiKey", "in": "header", "name": "X-Tenant-Key"}},
       Security:        map[string][]string{"tenantAuth": {}},
-      Responses:       map[int]fiber.RouteResponse{fiber.StatusUnauthorized: {Description: "Unknown tenant key"}},
+      Responses:       map[int]openapi.RouteResponse{fiber.StatusUnauthorized: {Description: "Unknown tenant key"}},
       ResponseHeaders: map[string]any{"X-Tenant": "The tenant the request was served for"},
   }}}))
   ```
@@ -950,11 +1003,12 @@ on a prefix that covers its path, documents itself:
 
 #### Groups, sub-apps and domains
 
-- Helpers on a `Group`, `RouteChain` or `Domain` router document that router's
-  latest registration, and do nothing before its first one.
+- `openapi.Doc` on a `Group`, `RouteChain` or `Domain` router documents that
+  router's latest registration, and its helpers do nothing before its first one.
 - A sub-app's routes are copied into the parent when the app starts (or when
-  `Domain(...).Use` is called), so document them before that. Helpers chained
-  onto the mount itself (`app.Use("/api", subApp).Summary(...)`) do nothing.
+  `Domain(...).Use` is called), so document them in the sub-app, before that.
+  The mount (`app.Use("/api", subApp)`) is not a route of its own, so there is
+  nothing on it to document.
 - The document describes the whole application, wherever the middleware is
   registered. Use `Filter` to narrow it.
 - Registering the same method and path twice in a row merges the handlers into
@@ -1116,7 +1170,7 @@ type User struct {
 Use the generated schema directly in the route helpers:
 
 ```go
-app.Post("/users", createUser).
+openapi.Doc(app.Post("/users", createUser)).
     RequestBodyWithExample("Create user", true, openapi.SchemaOf(User{}), "", nil, nil, fiber.MIMEApplicationJSON).
     ResponseWithExample(201, "Created", openapi.SchemaOf(User{}), "", nil, nil, fiber.MIMEApplicationJSON)
 ```

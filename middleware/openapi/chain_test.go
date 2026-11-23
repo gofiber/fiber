@@ -138,7 +138,7 @@ func Test_OpenAPI_MiddlewareSecurity(t *testing.T) {
 	t.Run("explicit security and user schemes win", func(t *testing.T) {
 		t.Parallel()
 		spec := rfSpec(t, func(app *fiber.App) {
-			app.Get("/x", chainKeyAuth(), listUsers).Security(map[string][]string{"apiKey": {}})
+			Doc(app.Get("/x", chainKeyAuth(), listUsers)).Security(map[string][]string{"apiKey": {}})
 			app.Get("/y", chainKeyAuth(), listUsers)
 		}, Config{SecuritySchemes: map[string]any{
 			"apiKey":             map[string]any{"type": "apiKey", "in": "header", "name": "X-API-Key"},
@@ -162,7 +162,7 @@ func Test_OpenAPI_MiddlewareHeadersAndResponses(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
 		app.Use(requestid.New(), limiter.New(), etag.New(), cache.New(), csrf.New())
-		app.Get("/x", listUsers).Returns(fiber.StatusOK, modelAddress{})
+		Doc(app.Get("/x", listUsers)).Returns(fiber.StatusOK, modelAddress{})
 		app.Post("/x", listUsers)
 	})
 	get := modelOperation(t, spec, "/x", "get")
@@ -197,7 +197,7 @@ func Test_OpenAPI_MiddlewareKeepsDocumentedHeaders(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
 		app.Use(requestid.New())
-		app.Get("/x", listUsers).ResponseHeader(fiber.StatusOK, fiber.HeaderXRequestID, "Mine", nil)
+		Doc(app.Get("/x", listUsers)).ResponseHeader(fiber.StatusOK, fiber.HeaderXRequestID, "Mine", nil)
 	})
 	require.Equal(t, "Mine", requireMap(t, chainHeaders(t, rfResp(t, spec, "/x", "get", "200"))[fiber.HeaderXRequestID])["description"])
 }
@@ -209,11 +209,11 @@ func Test_OpenAPI_ValidationResponse(t *testing.T) {
 		register(app)
 		return modelSpec(t, app, cfg...)
 	}
-	acceptsAddress := func(app *fiber.App) { app.Post("/u", listUsers).Accepts(modelAddress{}) }
+	acceptsAddress := func(app *fiber.App) { Doc(app.Post("/u", listUsers)).Accepts(modelAddress{}) }
 
 	spec := validated(func(app *fiber.App) {
 		acceptsAddress(app)
-		app.Get("/q", listUsers).Params("query", modelPaging{})
+		Doc(app.Get("/q", listUsers)).Params("query", modelPaging{})
 		app.Get("/plain", listUsers)
 	})
 	for _, tc := range []struct{ path, method string }{{"/u", "post"}, {"/q", "get"}} {
@@ -388,7 +388,7 @@ func Test_OpenAPI_FlagTagsAndExamples(t *testing.T) {
 	require.Equal(t, "Use new", old["description"])
 	require.Equal(t, map[string]any{"id": int64(7), "home": map[string]any{"city": "Berlin"}}, schema["example"])
 
-	spec := rfSpec(t, func(app *fiber.App) { app.Get("/u", listUsers).Returns(fiber.StatusOK, flaggedUser{}) })
+	spec := rfSpec(t, func(app *fiber.App) { Doc(app.Get("/u", listUsers)).Returns(fiber.StatusOK, flaggedUser{}) })
 	require.Equal(t, map[string]any{"id": float64(7), "home": map[string]any{"city": "Berlin"}}, requireMap(t, modelSchemas(t, spec)["flaggedUser"])["example"])
 }
 
@@ -400,20 +400,20 @@ func Test_OpenAPI_RequestBodyMediaType(t *testing.T) {
 		want     string
 		cfg      Config
 	}{
-		{name: "declared body without a media type documents JSON", register: func(app *fiber.App) { app.Post("/x", listUsers).RequestBody("payload", true) }, want: fiber.MIMEApplicationJSON},
-		{name: "configured default", register: func(app *fiber.App) { app.Post("/x", listUsers).Accepts(modelAddress{}) }, want: fiber.MIMETextPlain, cfg: Config{DefaultConsumes: fiber.MIMETextPlain}},
-		{name: "explicit media type wins", register: func(app *fiber.App) { app.Post("/x", listUsers).Accepts(modelAddress{}, fiber.MIMEApplicationXML) }, want: fiber.MIMEApplicationXML},
+		{name: "declared body without a media type documents JSON", register: func(app *fiber.App) { Doc(app.Post("/x", listUsers)).RequestBody("payload", true) }, want: fiber.MIMEApplicationJSON},
+		{name: "configured default", register: func(app *fiber.App) { Doc(app.Post("/x", listUsers)).Accepts(modelAddress{}) }, want: fiber.MIMETextPlain, cfg: Config{DefaultConsumes: fiber.MIMETextPlain}},
+		{name: "explicit media type wins", register: func(app *fiber.App) { Doc(app.Post("/x", listUsers)).Accepts(modelAddress{}, fiber.MIMEApplicationXML) }, want: fiber.MIMEApplicationXML},
 		{name: "Consumes with Accepts", register: func(app *fiber.App) {
-			app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML).Accepts(modelAddress{})
+			Doc(app.Post("/x", listUsers)).Consumes(fiber.MIMEApplicationXML).Accepts(modelAddress{})
 		}, want: fiber.MIMEApplicationXML},
 		{name: "Consumes with RequestBody", want: fiber.MIMEApplicationXML, register: func(app *fiber.App) {
-			app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML).RequestBody("payload", true)
+			Doc(app.Post("/x", listUsers)).Consumes(fiber.MIMEApplicationXML).RequestBody("payload", true)
 		}},
 		{name: "a declared media type beats Consumes", want: fiber.MIMEApplicationJSON, register: func(app *fiber.App) {
-			app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML).Accepts(modelAddress{}, fiber.MIMEApplicationJSON)
+			Doc(app.Post("/x", listUsers)).Consumes(fiber.MIMEApplicationXML).Accepts(modelAddress{}, fiber.MIMEApplicationJSON)
 		}},
-		{name: "Consumes alone still documents a body", register: func(app *fiber.App) { app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML) }, want: fiber.MIMEApplicationXML},
-		{name: "no Consumes uses the default", register: func(app *fiber.App) { app.Post("/x", listUsers).Accepts(modelAddress{}) }, want: fiber.MIMEApplicationJSON},
+		{name: "Consumes alone still documents a body", register: func(app *fiber.App) { Doc(app.Post("/x", listUsers)).Consumes(fiber.MIMEApplicationXML) }, want: fiber.MIMEApplicationXML},
+		{name: "no Consumes uses the default", register: func(app *fiber.App) { Doc(app.Post("/x", listUsers)).Accepts(modelAddress{}) }, want: fiber.MIMEApplicationJSON},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -430,7 +430,7 @@ func Test_OpenAPI_ExplicitSecurityWinsOverMiddleware(t *testing.T) {
 	t.Run("Security() documents no authentication", func(t *testing.T) {
 		t.Parallel()
 		spec := rfSpec(t, func(app *fiber.App) {
-			app.Get("/public", chainKeyAuth(), listUsers).Security()
+			Doc(app.Get("/public", chainKeyAuth(), listUsers)).Security()
 			app.Get("/private", chainKeyAuth(), listUsers)
 		}, Config{
 			Security:        []map[string][]string{{"docLevel": {}}},
@@ -448,7 +448,7 @@ func Test_OpenAPI_ExplicitSecurityWinsOverMiddleware(t *testing.T) {
 	t.Run("a stated requirement replaces inference entirely", func(t *testing.T) {
 		t.Parallel()
 		spec := rfSpec(t, func(app *fiber.App) {
-			app.Get("/x", chainKeyAuth(), listUsers).Security(map[string][]string{"oauth": {"read"}})
+			Doc(app.Get("/x", chainKeyAuth(), listUsers)).Security(map[string][]string{"oauth": {"read"}})
 		},
 			Config{SecuritySchemes: map[string]any{"oauth": map[string]any{"type": "oauth2"}}})
 		op := modelOperation(t, spec, "/x", "get")
@@ -461,14 +461,14 @@ func Test_OpenAPI_ExplicitSecurityWinsOverMiddleware(t *testing.T) {
 		t.Parallel()
 		spec := rfSpec(t, func(app *fiber.App) {
 			app.Use(requestid.New())
-			app.Get("/x", chainKeyAuth(), listUsers).Security()
+			Doc(app.Get("/x", chainKeyAuth(), listUsers)).Security()
 		})
 		require.Contains(t, chainHeaders(t, rfResp(t, spec, "/x", "get", "200")), fiber.HeaderXRequestID)
 	})
 
 	t.Run("no inferred scheme is declared", func(t *testing.T) {
 		t.Parallel()
-		spec := rfSpec(t, func(app *fiber.App) { app.Get("/public", chainBasicAuth(), listUsers).Security() })
+		spec := rfSpec(t, func(app *fiber.App) { Doc(app.Get("/public", chainBasicAuth(), listUsers)).Security() })
 		if components, ok := spec["components"].(map[string]any); ok {
 			require.NotContains(t, components, "securitySchemes")
 		}
@@ -479,9 +479,9 @@ func Test_OpenAPI_DisableDefaultMediaTypes(t *testing.T) {
 	t.Parallel()
 	app := fiber.New(fiber.Config{StructValidator: stubValidator{}})
 	app.Get("/x", listUsers)
-	app.Post("/y", listUsers).RequestBody("payload", true)
+	Doc(app.Post("/y", listUsers)).RequestBody("payload", true)
 	app.Get("/z", chainKeyAuth(), listUsers)
-	app.Get("/w", listUsers).Produces(fiber.MIMEApplicationXML)
+	Doc(app.Get("/w", listUsers)).Produces(fiber.MIMEApplicationXML)
 	spec := modelSpec(t, app, Config{DisableDefaultMediaTypes: true})
 
 	require.NotContains(t, rfResp(t, spec, "/x", "get", "200"), "content")
@@ -601,7 +601,7 @@ func Test_OpenAPI_MiddlewareHeadersOnlyOnResponsesThatCarryThem(t *testing.T) {
 	t.Parallel()
 	spec := rfSpec(t, func(app *fiber.App) {
 		app.Get("/x", requestid.New(), chainKeyAuth(), limiter.New(), cache.New(), listUsers)
-		app.Get("/y", chainKeyAuth(), cache.New(), listUsers).Response(fiber.StatusNotFound, "Missing")
+		Doc(app.Get("/y", chainKeyAuth(), cache.New(), listUsers)).Response(fiber.StatusNotFound, "Missing")
 	})
 	responses := chainResponses(t, modelOperation(t, spec, "/x", "get"))
 	headersOf := func(status string) map[string]any { return chainHeaders(t, responses[status]) }

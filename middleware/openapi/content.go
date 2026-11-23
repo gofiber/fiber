@@ -8,7 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/schemautil"
 )
 
-func contentEntry(mt *fiber.RouteMediaType, reg *schemaRegistry) map[string]any {
+func contentEntry(mt *RouteMediaType, reg *schemaRegistry) map[string]any {
 	entry := map[string]any{}
 	if mt.SchemaRef != "" {
 		entry["schema"] = map[string]any{schemaKeyRef: mt.SchemaRef}
@@ -65,7 +65,7 @@ func sortedKeys[V any](m map[string]V) []string {
 	return slices.Sorted(maps.Keys(m))
 }
 
-func routeMediaTypeContent(content map[string]fiber.RouteMediaType, reg *schemaRegistry) map[string]map[string]any {
+func routeMediaTypeContent(content map[string]RouteMediaType, reg *schemaRegistry) map[string]map[string]any {
 	if len(content) == 0 {
 		return nil
 	}
@@ -88,7 +88,7 @@ func routeMediaTypeContent(content map[string]fiber.RouteMediaType, reg *schemaR
 }
 
 // convertRouteResponses converts response metadata, falling back to the route's Produces for a media type.
-func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallbackMediaType string, reg *schemaRegistry) map[string]response {
+func convertRouteResponses(routeResponses map[string]RouteResponse, fallbackMediaType string, reg *schemaRegistry) map[string]response {
 	if len(routeResponses) == 0 {
 		return nil
 	}
@@ -110,7 +110,7 @@ func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallba
 					mediaTypes = []string{fallbackMediaType}
 				}
 			}
-			content = mediaTypesToContent(mediaTypes, &fiber.RouteMediaType{
+			content = mediaTypesToContent(mediaTypes, &RouteMediaType{
 				Schema: resp.Schema, SchemaRef: resp.SchemaRef, Example: resp.Example, Examples: resp.Examples,
 			}, reg)
 		}
@@ -131,7 +131,7 @@ func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallba
 	return merged
 }
 
-func mediaTypesToContent(mediaTypes []string, mt *fiber.RouteMediaType, reg *schemaRegistry) map[string]map[string]any {
+func mediaTypesToContent(mediaTypes []string, mt *RouteMediaType, reg *schemaRegistry) map[string]map[string]any {
 	if len(mediaTypes) == 0 {
 		return nil
 	}
@@ -148,7 +148,7 @@ func mediaTypesToContent(mediaTypes []string, mt *fiber.RouteMediaType, reg *sch
 	return content
 }
 
-func buildRequestBody(routeBody *fiber.RouteRequestBody, defaultMediaType string, reg *schemaRegistry) *requestBody {
+func buildRequestBody(routeBody *RouteRequestBody, defaultMediaType string, reg *schemaRegistry) *requestBody {
 	if routeBody == nil {
 		return nil
 	}
@@ -158,7 +158,7 @@ func buildRequestBody(routeBody *fiber.RouteRequestBody, defaultMediaType string
 		if len(mediaTypes) == 0 && defaultMediaType != "" {
 			mediaTypes = []string{defaultMediaType}
 		}
-		content = mediaTypesToContent(mediaTypes, &fiber.RouteMediaType{
+		content = mediaTypesToContent(mediaTypes, &RouteMediaType{
 			Schema: routeBody.Schema, SchemaRef: routeBody.SchemaRef, Example: routeBody.Example, Examples: routeBody.Examples,
 		}, reg)
 	}

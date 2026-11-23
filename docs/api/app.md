@@ -176,35 +176,7 @@ type Register interface {
 
     RouteChain(path string) Register
 
-    // Route documentation helpers; they target the most recently registered route.
     Name(name string) Register
-    Summary(sum string) Register
-    Description(desc string) Register
-    Consumes(typ string) Register
-    Produces(typ string) Register
-    RequestBody(description string, required bool, mediaTypes ...string) Register
-    RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register
-    Parameter(name string, in ParamLocation, required bool, schema any, description string) Register
-    ParameterWithExample(name string, in ParamLocation, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Register
-    AddParameter(param RouteParameter) Register
-    Response(status int, description string, mediaTypes ...string) Register
-    ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register
-    ResponseHeader(status int, name, description string, schema any) Register
-    ResponseContent(status int, description string, content map[string]RouteMediaType) Register
-    ResponseLink(status int, name string, link map[string]any) Register
-    RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Register
-    Tags(tags ...string) Register
-    Deprecated() Register
-    Security(requirements ...map[string][]string) Register
-    Hidden() Register
-    OperationExternalDocs(description, url string) Register
-    OperationExtension(fields map[string]any) Register
-    OperationID(id string) Register
-    Callback(name string, callback map[string]any) Register
-    OperationServer(server map[string]any) Register
-    Accepts(model any, mediaTypes ...string) Register
-    Returns(status int, model any, mediaTypes ...string) Register
-    Params(in ParamLocation, model any) Register
 }
 ```
 
@@ -584,7 +556,7 @@ This method retrieves a route by its name.
 
 The returned `Route` can be inspected or used to generate a URL directly with `route.URL(params)`. When no route has that name, `GetRoute` returns the zero `Route`, and its `URL` method returns `ErrNotFound`.
 
-The `Route` is a copy. Its documentation metadata (`Responses`, `Parameters`, `Tags` and the rest) is cloned, so it is safe to call while routes are being registered and changing those fields never changes the app. `Handlers` and `Params` still share their backing arrays with the app, so do not modify them. Names are looked up in an index that is rebuilt, under the router lock, the first time it is used after the route table changes; every other lookup takes no lock and costs one map read (or a scan of a handful of names) however many routes the app has. Because the copy includes the documentation fields, `GetRoute` returns a larger value than it once did; code that only builds a URL by name should call `c.GetRouteURL` or `c.Redirect().Route`, which read the route without copying it.
+The `Route` is a copy, so it is safe to call while routes are being registered and changing its fields never changes the app. `Handlers` and `Params` still share their backing arrays with the app, and the values stored with [`Annotate`](#annotate) are shared with every copy, so do not modify them. Names are looked up in an index that is rebuilt, under the router lock, the first time it is used after the route table changes; every other lookup takes no lock and costs one map read (or a scan of a handful of names) however many routes the app has. Code that only builds a URL by name should call `c.GetRouteURL` or `c.Redirect().Route`, which read the route without copying it.
 
 ```go title="Signature"
 func (app *App) GetRoute(name string) Route
@@ -715,37 +687,44 @@ func main() {
 
 </details>
 
-### Route documentation
+### Annotate
 
-A route can describe itself for tools that read the route table, such as the [OpenAPI middleware](../middleware/openapi.md). Each helper documents the route registered most recently on the router it is called on — the `App`, a `Group`, a `RouteChain` or a `Domain` — and chains like `Name`.
+`Annotate` lets a package keep its own metadata on a route, the way the [OpenAPI middleware](../middleware/openapi.md) stores what `openapi.Doc` documents. It replaces the value stored under `key` on the routes of the latest registration of the router it is called on — the `App`, a `Group`, a `RouteChain` or a `Domain` router — with `update(current)`, where `current` is the value stored before, or `nil`. Like `Name`, it does nothing before that router's first registration. `Route.Annotation` returns the value stored under a key, or `nil`.
 
-| Helper | Documents |
-|:-------|:----------|
-| `Summary`, `Description`, `Tags`, `Deprecated`, `Hidden` | The operation's text, grouping, deprecation, and exclusion from generated documents |
-| `Consumes`, `Produces` | The route's request and response media types |
-| `RequestBody`, `RequestBodyWithExample`, `RequestBodyContent`, `Accepts` | The request body. `RequestBody` and `RequestBodyWithExample` use one schema for every media type; `RequestBodyContent` gives each its own |
-| `Response`, `ResponseWithExample`, `ResponseContent`, `ResponseHeader`, `ResponseLink`, `Returns` | A response by status, with headers and links. `Response` and `ResponseWithExample` use one schema for every media type; `ResponseContent` gives each its own |
-| `Parameter`, `ParameterWithExample`, `AddParameter`, `Params` | Parameters, one at a time or from the fields of a struct. `Parameter` and `ParameterWithExample` are short forms of `AddParameter`; the location argument is a `fiber.ParamLocation`: `ParamInPath`, `ParamInQuery`, `ParamInHeader`, `ParamInCookie` or `ParamInQuerystring`. A plain `string` variable needs `fiber.ParamLocation(s)` |
-| `Security` | The authentication the route needs |
-| `OperationExternalDocs`, `OperationExtension` | External documentation and `x-` extensions |
-| `OperationID`, `Callback`, `OperationServer` | The operationId (overriding the one derived from the route's name or path; a repeated id gets a numeric suffix), a callback by name (a Callback Object, mapping an expression to a Path Item) and a Server Object (a map with a `url`) that replaces the servers the document or a `Domain` router would give the operation |
-
-Any helper that takes a schema accepts either a `map[string]any` or a Go value, which the OpenAPI middleware reflects into a schema. `Security` called with no argument documents a route that needs no authentication, which overrides both the document-level default and what the middleware chain would imply; with requirements it documents those instead. Both stop the OpenAPI middleware inferring authentication for the route.
-
-```go title="Example"
-app.Post("/users", createUser).
-    Summary("Create a user").
-    Accepts(CreateUser{}).
-    Returns(fiber.StatusCreated, User{})
+```go title="Signature"
+func (app *App) Annotate(key any, update func(current any) any)
+func (grp *Group) Annotate(key any, update func(current any) any)
+func (r *Registering) Annotate(key any, update func(current any) any)
+func (r *Route) Annotation(key any) any
 ```
 
-A `Route` exposes what these helpers recorded, along with where it came from. Marshaling a `Route` with `encoding/json` leaves out `Responses`, `RequestBody`, `Parameters` and `ParameterModels`, which can hold Go models that need not be marshalable:
+The domain router returned by [`Domain`](#domain) has the same `Annotate` method. It is not part of the `Router` or `Register` interfaces, so call it on the concrete value a registration returns, or assert an interface that has it.
+
+A stored value is shared by every copy of the route — the ones `GetRoute` and `GetRoutes` return, the snapshots hooks receive and the copies of a mounted app's routes — so it must never be modified in place: `update` builds a new value from `current` and returns it. Use an unexported key type, so the keys of two packages cannot clash:
+
+```go title="Example"
+type ownerKey struct{}
+
+app.Get("/users", listUsers)
+app.Annotate(ownerKey{}, func(current any) any { return "team-users" })
+
+for _, route := range app.GetRoutes(true) {
+    if owner, ok := route.Annotation(ownerKey{}).(string); ok {
+        log.Println(route.Path, owner)
+    }
+}
+```
+
+To document a route for OpenAPI, wrap its registration in `openapi.Doc`; see [Document a route](../middleware/openapi.md#document-a-route).
+
+### Route metadata
+
+A `Route` also tells where it came from:
 
 | Method | Returns |
 |:-------|:--------|
 | `IsMiddleware()` | `true` for a route registered with `Use` |
 | `IsAutoHead()` | `true` for a `HEAD` route Fiber derived from a `GET` route |
-| `IsHidden()` | `true` when `Hidden` excluded the route from generated documents |
 | `GroupPrefix()`, `GroupName()` | The prefix and name of the group the route was registered through, or `""` |
 | `Domain()` | The host pattern from [`Domain`](#domain), or `""` for a route that answers on every host. A route behind several patterns reports the innermost |
 | `Domains()` | Every host pattern the route is behind, innermost first, or `nil` for every host. A request reaches the route only when its hostname matches all of them. A sub-app that has `Domain` routes of its own and is mounted on a `Domain` router has two |
@@ -753,7 +732,7 @@ A `Route` exposes what these helpers recorded, along with where it came from. Ma
 
 ### RoutesRevision
 
-`RoutesRevision` returns a counter that increases whenever a route is added, removed, named or documented. A consumer that derives something from the route table, as the OpenAPI middleware does with its cached document, compares it to the value it last saw instead of locking and scanning the table.
+`RoutesRevision` returns a counter that increases whenever a route is added, removed, named or annotated. A consumer that derives something from the route table, as the OpenAPI middleware does with its cached document, compares it to the value it last saw instead of locking and scanning the table.
 
 ```go title="Signature"
 func (app *App) RoutesRevision() uint64

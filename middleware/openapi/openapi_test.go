@@ -107,7 +107,7 @@ func Test_OpenAPI_Generate(t *testing.T) {
 func Test_OpenAPI_JSONEquality(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Get("/users", omOK).Name("listUsers").Produces(fiber.MIMEApplicationJSON)
+	Doc(app.Get("/users", omOK).Name("listUsers")).Produces(fiber.MIMEApplicationJSON)
 	app.Use(New())
 	body := fetchSpecBody(t, app)
 
@@ -134,8 +134,8 @@ func Test_OpenAPI_RouteDocuments(t *testing.T) {
 	created := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }
 	omRunDocCases(t, []omDocCase{
 		{name: "route helper metadata", register: func(app *fiber.App) {
-			app.Post("/users", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"hello": "world"}) }).
-				Name("createUserCustom").Summary("Create user").Description("Creates users").Tags("users").Deprecated().
+			Doc(app.Post("/users", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"hello": "world"}) }).
+				Name("createUserCustom")).Summary("Create user").Description("Creates users").Tags("users").Deprecated().
 				Consumes(fiber.MIMEApplicationJSON).Produces(fiber.MIMEApplicationJSON).
 				ParameterWithExample("pageSize", "query", true,
 					map[string]any{"type": "integer"}, "", "Page size", nil, nil).
@@ -158,7 +158,7 @@ func Test_OpenAPI_RouteDocuments(t *testing.T) {
 				map[string]any{"name": "pageSize", "schema": map[string]any{"type": "integer"}})
 		}},
 		{name: "route metadata", register: func(app *fiber.App) {
-			app.Get("/users", omOK).Summary("List users").Description("User list").Produces(fiber.MIMEApplicationJSON).
+			Doc(app.Get("/users", omOK)).Summary("List users").Description("User list").Produces(fiber.MIMEApplicationJSON).
 				Parameter("trace-id", "header", true, nil, "Tracing identifier").Tags("users", "read").Deprecated()
 		}, check: func(t omT, spec map[string]any) {
 			op := omMap(t, spec, "paths", "/users", "get")
@@ -172,7 +172,7 @@ func Test_OpenAPI_RouteDocuments(t *testing.T) {
 		}},
 		{name: "group metadata", register: func(app *fiber.App) {
 			api := app.Group("/api")
-			api.Get("/users", omOK).Summary("List users").Description("Group users").
+			Doc(api.Get("/users", omOK)).Summary("List users").Description("Group users").
 				Produces(fiber.MIMEApplicationJSON).Tags("users").Deprecated()
 			api.Post("/users", created)
 		}, check: func(t omT, spec map[string]any) {
@@ -183,7 +183,7 @@ func Test_OpenAPI_RouteDocuments(t *testing.T) {
 			require.Contains(t, omMap(t, op, "responses", "200", "content"), fiber.MIMEApplicationJSON)
 		}},
 		{name: "request body and responses", register: func(app *fiber.App) {
-			app.Post("/users", created).RequestBody("Create user", true, fiber.MIMEApplicationJSON).
+			Doc(app.Post("/users", created)).RequestBody("Create user", true, fiber.MIMEApplicationJSON).
 				Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON)
 		}, check: func(t omT, spec map[string]any) {
 			op := omMap(t, spec, "paths", "/users", "post")
@@ -194,7 +194,7 @@ func Test_OpenAPI_RouteDocuments(t *testing.T) {
 			require.Contains(t, omMap(t, op, "responses", "201", "content"), fiber.MIMEApplicationJSON)
 		}},
 		{name: "request body with example", register: func(app *fiber.App) {
-			app.Post("/users", created).RequestBodyWithExample("User from route", true,
+			Doc(app.Post("/users", created)).RequestBodyWithExample("User from route", true,
 				map[string]any{"type": "object"}, "",
 				map[string]any{"name": "Alice"}, nil, fiber.MIMEApplicationJSON)
 		}, check: func(t omT, spec map[string]any) {
@@ -210,7 +210,7 @@ func Test_OpenAPI_RouteDocuments(t *testing.T) {
 			require.Equal(t, map[string]any{"description": "No Content"}, responses["204"])
 		}},
 		{name: "non-200 responses remain untouched", register: func(app *fiber.App) {
-			app.Get("/users", omOK).Response(fiber.StatusNotFound, "Not Found", fiber.MIMETextPlain)
+			Doc(app.Get("/users", omOK)).Response(fiber.StatusNotFound, "Not Found", fiber.MIMETextPlain)
 		}, check: func(t omT, spec map[string]any) {
 			responses := omMap(t, spec, "paths", "/users", "get", "responses")
 			require.Len(t, responses, 1)
@@ -218,7 +218,7 @@ func Test_OpenAPI_RouteDocuments(t *testing.T) {
 			require.Contains(t, omMap(t, responses, "404", "content"), fiber.MIMETextPlain)
 		}},
 		{name: "schema refs and examples", register: func(app *fiber.App) {
-			app.Post("/users", created).
+			Doc(app.Post("/users", created)).
 				ParameterWithExample("q", "query", false, nil, "#/components/schemas/Query", "search query", "abc",
 					map[string]any{"sample": "abc"}).
 				RequestBodyWithExample("user body", true, nil, "#/components/schemas/User",
@@ -247,7 +247,7 @@ func Test_OpenAPI_RouteDocuments(t *testing.T) {
 			require.Equal(t, map[string]any{"sample": map[string]any{"value": map[string]any{"id": float64(2)}}}, resp["examples"])
 		}},
 		{name: "path parameter", register: func(app *fiber.App) {
-			app.Get("/users/:id", omOK).Parameter("id", "path", true, map[string]any{"type": "integer"}, "identifier")
+			Doc(app.Get("/users/:id", omOK)).Parameter("id", "path", true, map[string]any{"type": "integer"}, "identifier")
 		}, check: func(t omT, spec map[string]any) {
 			params := omAt(t, spec, "paths", "/users/{id}", "get", "parameters")
 			require.Len(t, params, 1)
@@ -256,7 +256,7 @@ func Test_OpenAPI_RouteDocuments(t *testing.T) {
 			})
 		}},
 		{name: "optional path parameter declared not required stays required", register: func(app *fiber.App) {
-			app.Get("/test/:id", omOK).Parameter("id", "path", false, nil, "resource identifier")
+			Doc(app.Get("/test/:id", omOK)).Parameter("id", "path", false, nil, "resource identifier")
 		}, check: func(t omT, spec map[string]any) {
 			params := omAt(t, spec, "paths", "/test/{id}", "get", "parameters")
 			require.Len(t, params, 1)
@@ -271,7 +271,7 @@ func Test_OpenAPI_RouteDocuments(t *testing.T) {
 			omHas(t, omMap(t, params, 1), map[string]any{"name": "bid", "in": "path"})
 		}},
 		{name: "consumes and produces", register: func(app *fiber.App) {
-			app.Post("/users", created).Consumes(fiber.MIMEApplicationJSON).Produces(fiber.MIMEApplicationXML)
+			Doc(app.Post("/users", created)).Consumes(fiber.MIMEApplicationJSON).Produces(fiber.MIMEApplicationXML)
 			app.Post("/webhook", omOK)
 		}, check: func(t omT, spec map[string]any) {
 			op := omMap(t, spec, "paths", "/users", "post")
@@ -282,15 +282,15 @@ func Test_OpenAPI_RouteDocuments(t *testing.T) {
 		}},
 		{name: "GET has no request body", register: func(app *fiber.App) {
 			app.Get("/users", omOK)
-			app.Get("/search", omOK).RequestBody("query", false, fiber.MIMEApplicationJSON)
+			Doc(app.Get("/search", omOK)).RequestBody("query", false, fiber.MIMEApplicationJSON)
 		}, check: func(t omT, spec map[string]any) {
 			require.NotContains(t, omMap(t, spec, "paths", "/users", "get"), "requestBody")
 			require.NotContains(t, omMap(t, spec, "paths", "/search", "get"), "requestBody",
 				"an explicit body is suppressed")
 		}},
 		{name: "route security", register: func(app *fiber.App) {
-			app.Get("/private", omOK).Security(map[string][]string{"bearerAuth": {"read"}})
-			app.Get("/public", omOK).Security(map[string][]string{})
+			Doc(app.Get("/private", omOK)).Security(map[string][]string{"bearerAuth": {"read"}})
+			Doc(app.Get("/public", omOK)).Security(map[string][]string{})
 		}, check: func(t omT, spec map[string]any) {
 			require.Equal(t, []any{map[string]any{"bearerAuth": []any{"read"}}}, omAt(t, spec, "paths",
 				"/private", "get", "security"))
@@ -572,7 +572,7 @@ func Test_OpenAPI_ConfigDocument(t *testing.T) {
 			require.Contains(t, components, "securitySchemes")
 		}},
 		{name: "components", register: func(app *fiber.App) {
-			app.Get("/users", omOK).
+			Doc(app.Get("/users", omOK)).
 				ResponseWithExample(fiber.StatusOK, "User list", nil, "#/components/schemas/User", nil,
 					nil, fiber.MIMEApplicationJSON)
 		}, cfg: Config{Components: map[string]any{"schemas": map[string]any{"User": map[string]any{
@@ -777,7 +777,7 @@ func Test_OpenAPI_ShouldIncludeRequestBody(t *testing.T) {
 			app := fiber.New()
 			route := app.Add([]string{tt.method}, "/test", omOK)
 			if tt.consumes != "" {
-				route.Consumes(tt.consumes)
+				Doc(route).Consumes(tt.consumes)
 			}
 			app.Use(New())
 			op := fetchSpec(t, app).Paths["/test"][strings.ToLower(tt.method)]
@@ -794,7 +794,7 @@ func Test_OpenAPI_OperationDocuments(t *testing.T) {
 	t.Parallel()
 	omRunDocCases(t, []omDocCase{
 		{name: "response content from route", register: func(app *fiber.App) {
-			app.Get("/test", omOK).ResponseWithExample(fiber.StatusOK, "Success", nil,
+			Doc(app.Get("/test", omOK)).ResponseWithExample(fiber.StatusOK, "Success", nil,
 				"#/components/schemas/DefaultSchema",
 				map[string]any{"default": "example"}, map[string]any{"example1": map[string]any{"value": "test"}}, fiber.MIMEApplicationJSON)
 		}, check: func(t omT, spec map[string]any) {
@@ -804,7 +804,7 @@ func Test_OpenAPI_OperationDocuments(t *testing.T) {
 			require.Contains(t, content, "examples")
 		}},
 		{name: "example without examples", register: func(app *fiber.App) {
-			app.Get("/test", omOK).ParameterWithExample("q", "query", false, nil, "", "search", "abc", nil).
+			Doc(app.Get("/test", omOK)).ParameterWithExample("q", "query", false, nil, "", "search", "abc", nil).
 				ResponseWithExample(fiber.StatusOK, "OK", nil, "", map[string]any{"id": 1},
 					nil, fiber.MIMEApplicationJSON)
 		}, check: func(t omT, spec map[string]any) {
@@ -818,7 +818,7 @@ func Test_OpenAPI_OperationDocuments(t *testing.T) {
 			require.Nil(t, resp["examples"])
 		}},
 		{name: "schema from combinations", register: func(app *fiber.App) {
-			app.Get("/test", omOK).
+			Doc(app.Get("/test", omOK)).
 				ParameterWithExample("withSchemaRef", "query", false, map[string]any{"type": "string"},
 					"#/components/schemas/MySchema", "", nil, nil).
 				ParameterWithExample("withSchema", "query", false,
@@ -836,7 +836,7 @@ func Test_OpenAPI_OperationDocuments(t *testing.T) {
 			}, schemas)
 		}},
 		{name: "empty media type is skipped", register: func(app *fiber.App) {
-			app.Get("/test", omOK).Response(200, "Success", fiber.MIMEApplicationJSON, "", fiber.MIMETextPlain)
+			Doc(app.Get("/test", omOK)).Response(200, "Success", fiber.MIMEApplicationJSON, "", fiber.MIMETextPlain)
 		}, check: func(t omT, spec map[string]any) {
 			content := omMap(t, spec, "paths", "/test", "get", "responses", "200", "content")
 			require.Len(t, content, 2)
@@ -848,10 +848,10 @@ func Test_OpenAPI_OperationDocuments(t *testing.T) {
 				Name string `json:"name"`
 				ID   int    `json:"id"`
 			}
-			app.Get("/users/:id", omOK).
+			Doc(app.Get("/users/:id", omOK)).
 				ResponseWithExample(fiber.StatusOK, "User found", SchemaOf(User{}), "", nil,
 					nil, fiber.MIMEApplicationJSON)
-			app.Post("/users", omOK).
+			Doc(app.Post("/users", omOK)).
 				RequestBodyWithExample("Create user", true, SchemaOf(User{}), "", nil, nil, fiber.MIMEApplicationJSON).
 				ResponseWithExample(fiber.StatusCreated, "Created", SchemaOf(User{}), "", nil,
 					nil, fiber.MIMEApplicationJSON)
@@ -886,15 +886,15 @@ func Test_OpenAPI_OperationDocuments(t *testing.T) {
 		}},
 		{name: "hidden route excluded", register: func(app *fiber.App) {
 			app.Get("/public", omOK)
-			app.Get("/internal", omOK).Hidden()
+			Doc(app.Get("/internal", omOK)).Hidden()
 		}, check: func(t omT, spec map[string]any) {
 			require.Contains(t, omMap(t, spec, "paths"), "/public")
 			require.NotContains(t, omMap(t, spec, "paths"), "/internal")
 		}},
 		{name: "response header", register: func(app *fiber.App) {
-			app.Get("/users", omOK).Response(200, "OK", fiber.MIMEApplicationJSON).
+			Doc(app.Get("/users", omOK)).Response(200, "OK", fiber.MIMEApplicationJSON).
 				ResponseHeader(200, "X-Rate-Limit", "Requests left", map[string]any{"type": "integer"})
-			app.Get("/trace", omOK).ResponseHeader(200, "X-Trace-Id", "Trace identifier", nil)
+			Doc(app.Get("/trace", omOK)).ResponseHeader(200, "X-Trace-Id", "Trace identifier", nil)
 		}, check: func(t omT, spec map[string]any) {
 			omHas(t, omMap(t, spec, "paths", "/users", "get", "responses", "200", "headers", "X-Rate-Limit"),
 				map[string]any{"description": "Requests left", "schema": map[string]any{"type": "integer"}})
@@ -908,7 +908,7 @@ func Test_OpenAPI_OperationFeatures(t *testing.T) {
 	t.Parallel()
 	omRunDocCases(t, []omDocCase{
 		{name: "parameter serialization", register: func(app *fiber.App) {
-			app.Get("/items", omOK).AddParameter(fiber.RouteParameter{
+			Doc(app.Get("/items", omOK)).AddParameter(RouteParameter{
 				Name: "ids", In: "query", Description: "Item ids", Style: "form", Explode: new(false), Deprecated: true,
 				AllowEmptyValue: true, AllowReserved: true, Schema: map[string]any{"type": "array"},
 			})
@@ -921,19 +921,19 @@ func Test_OpenAPI_OperationFeatures(t *testing.T) {
 			})
 		}},
 		{name: "operation external docs", register: func(app *fiber.App) {
-			app.Get("/x", omOK).OperationExternalDocs("See more", "https://docs.example.com/x")
+			Doc(app.Get("/x", omOK)).OperationExternalDocs("See more", "https://docs.example.com/x")
 		}, check: func(t omT, spec map[string]any) {
 			require.Equal(t, map[string]any{"url": "https://docs.example.com/x", "description": "See more"},
 				omAt(t, spec, "paths", "/x", "get", "externalDocs"))
 		}},
 		{name: "per media type content", register: func(app *fiber.App) {
-			app.Post("/x", omOK).
-				RequestBodyContent("payload", true, map[string]fiber.RouteMediaType{
+			Doc(app.Post("/x", omOK)).
+				RequestBodyContent("payload", true, map[string]RouteMediaType{
 					fiber.MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
 					fiber.MIMEApplicationXML:  {SchemaRef: "#/components/schemas/X"},
 				}).
 				ResponseContent(fiber.StatusCreated, "Created",
-					map[string]fiber.RouteMediaType{fiber.MIMEApplicationJSON: {
+					map[string]RouteMediaType{fiber.MIMEApplicationJSON: {
 						Schema:   map[string]any{"type": "string"},
 						Encoding: map[string]any{"field": map[string]any{"contentType": "text/plain"}},
 					}})
@@ -946,14 +946,14 @@ func Test_OpenAPI_OperationFeatures(t *testing.T) {
 			require.Contains(t, omMap(t, op, "responses", "201", "content", fiber.MIMEApplicationJSON), "encoding")
 		}},
 		{name: "response links", register: func(app *fiber.App) {
-			app.Get("/x", omOK).Response(fiber.StatusOK, "OK", fiber.MIMEApplicationJSON).
+			Doc(app.Get("/x", omOK)).Response(fiber.StatusOK, "OK", fiber.MIMEApplicationJSON).
 				ResponseLink(fiber.StatusOK, "next", map[string]any{"operationId": "getNext"})
 		}, check: func(t omT, spec map[string]any) {
 			require.Equal(t, "getNext", omAt(t, spec, "paths", "/x", "get", "responses", "200",
 				"links", "next", "operationId"))
 		}},
 		{name: "operation extension", register: func(app *fiber.App) {
-			app.Get("/x", omOK).OperationExtension(map[string]any{
+			Doc(app.Get("/x", omOK)).OperationExtension(map[string]any{
 				"servers":   []any{map[string]any{"url": "https://op.example.com"}},
 				"callbacks": map[string]any{"onData": map[string]any{}},
 				"responses": map[string]any{"999": map[string]any{"description": "ignored"}},
@@ -965,7 +965,7 @@ func Test_OpenAPI_OperationFeatures(t *testing.T) {
 			require.NotContains(t, omMap(t, op, "responses"), "999")
 		}},
 		{name: "response schema without media type", register: func(app *fiber.App) {
-			app.Get("/users", omOK).Produces(fiber.MIMEApplicationJSON).
+			Doc(app.Get("/users", omOK)).Produces(fiber.MIMEApplicationJSON).
 				ResponseWithExample(fiber.StatusOK, "OK", map[string]any{"type": "object"}, "", nil, nil)
 		}, check: func(t omT, spec map[string]any) {
 			require.Equal(t, "object",
@@ -973,10 +973,10 @@ func Test_OpenAPI_OperationFeatures(t *testing.T) {
 					fiber.MIMEApplicationJSON, "schema", "type"))
 		}},
 		{name: "parameter content replaces schema", register: func(app *fiber.App) {
-			app.Get("/filter", omOK).AddParameter(fiber.RouteParameter{
+			Doc(app.Get("/filter", omOK)).AddParameter(RouteParameter{
 				Name: "criteria", In: "query", Description: "JSON encoded filter", Required: true,
 				Schema: map[string]any{"type": "string"},
-				Content: map[string]fiber.RouteMediaType{
+				Content: map[string]RouteMediaType{
 					fiber.MIMEApplicationJSON: {
 						Schema: map[string]any{"type": "object"}, Example: map[string]any{"color": "red"},
 					},
@@ -992,7 +992,7 @@ func Test_OpenAPI_OperationFeatures(t *testing.T) {
 				map[string]any{"schema": map[string]any{"type": "object"}, "example": map[string]any{"color": "red"}})
 		}},
 		{name: "querystring without schema stays valid", register: func(app *fiber.App) {
-			app.Get("/q", omOK).AddParameter(fiber.RouteParameter{Name: "filter", In: "querystring"})
+			Doc(app.Get("/q", omOK)).AddParameter(RouteParameter{Name: "filter", In: "querystring"})
 		}, cfg: Config{OpenAPIVersion: "3.2.0"}, check: func(t omT, spec map[string]any) {
 			param := omMap(t, spec, "paths", "/q", "get", "parameters", 0)
 			require.NotContains(t, param, "schema")
@@ -1000,8 +1000,8 @@ func Test_OpenAPI_OperationFeatures(t *testing.T) {
 				querystringMediaType, "schema"))
 		}},
 		{name: "querystring honors an explicit content map", register: func(app *fiber.App) {
-			app.Get("/q", omOK).AddParameter(fiber.RouteParameter{
-				Name: "filter", In: "querystring", Content: map[string]fiber.RouteMediaType{
+			Doc(app.Get("/q", omOK)).AddParameter(RouteParameter{
+				Name: "filter", In: "querystring", Content: map[string]RouteMediaType{
 					fiber.MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
 				},
 			})
@@ -1012,7 +1012,7 @@ func Test_OpenAPI_OperationFeatures(t *testing.T) {
 		}},
 		{name: "operation description omitted when empty", register: func(app *fiber.App) {
 			app.Get("/bare", omOK)
-			app.Get("/documented", omOK).Description("has one")
+			Doc(app.Get("/documented", omOK)).Description("has one")
 		}, check: func(t omT, spec map[string]any) {
 			require.NotContains(t, omMap(t, spec, "paths", "/bare", "get"), "description")
 			require.Equal(t, "has one", omAt(t, spec, "paths", "/documented", "get", "description"))
@@ -1021,10 +1021,10 @@ func Test_OpenAPI_OperationFeatures(t *testing.T) {
 
 	t.Run("parameter content map is not aliased", func(t *testing.T) {
 		t.Parallel()
-		schema := fiber.RouteMediaType{Schema: map[string]any{"type": "object"}}
-		content := map[string]fiber.RouteMediaType{fiber.MIMEApplicationJSON: schema}
+		schema := RouteMediaType{Schema: map[string]any{"type": "object"}}
+		content := map[string]RouteMediaType{fiber.MIMEApplicationJSON: schema}
 		app := fiber.New()
-		app.Get("/x", omOK).AddParameter(fiber.RouteParameter{Name: "p", In: "query", Content: content})
+		Doc(app.Get("/x", omOK)).AddParameter(RouteParameter{Name: "p", In: "query", Content: content})
 		requireMap(t, content[fiber.MIMEApplicationJSON].Schema)["type"] = "array"
 		delete(content, fiber.MIMEApplicationJSON)
 		app.Use(New())
@@ -1036,7 +1036,7 @@ func Test_OpenAPI_OperationFeatures(t *testing.T) {
 	t.Run("security with empty scopes emits an array", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
-		app.Get("/secure", omOK).Security(map[string][]string{"bearerAuth": {}})
+		Doc(app.Get("/secure", omOK)).Security(map[string][]string{"bearerAuth": {}})
 		schemes := map[string]any{"bearerAuth": map[string]any{"type": "http", "scheme": "bearer"}}
 		app.Use(New(Config{SecuritySchemes: schemes}))
 		body := string(fetchSpecBody(t, app))
@@ -1049,9 +1049,9 @@ func Test_OpenAPI_VersionGated(t *testing.T) {
 	t.Parallel()
 	x := func(app *fiber.App) { app.Get("/x", omOK) }
 	query := func(app *fiber.App) {
-		app.Query("/search", omOK).RequestBody("query", true, fiber.MIMEApplicationJSON)
-		app.Get("/qs", omOK).
-			AddParameter(fiber.RouteParameter{Name: "q", In: "querystring", Schema: map[string]any{"type": "string"}})
+		Doc(app.Query("/search", omOK)).RequestBody("query", true, fiber.MIMEApplicationJSON)
+		Doc(app.Get("/qs", omOK)).
+			AddParameter(RouteParameter{Name: "q", In: "querystring", Schema: map[string]any{"type": "string"}})
 	}
 	license := &License{Name: "MIT", Identifier: "MIT", URL: "https://example.com/license"}
 	unchanged := *license
@@ -1144,8 +1144,8 @@ func Test_OpenAPI_PathTemplates(t *testing.T) {
 			require.Equal(t, "wildcard1", omAt(t, params, 0, "name"))
 		}},
 		{name: "optional variant does not overwrite", register: func(app *fiber.App) {
-			app.Get("/users", omOK).Summary("List users")
-			app.Get("/users/:id?", omOK).Summary("Get user")
+			Doc(app.Get("/users", omOK)).Summary("List users")
+			Doc(app.Get("/users/:id?", omOK)).Summary("Get user")
 		}, check: func(t omT, spec map[string]any) {
 			require.Equal(t, "List users", omAt(t, spec, "paths", "/users", "get", "summary"))
 			require.Equal(t, "Get user", omAt(t, spec, "paths", "/users/{id}", "get", "summary"))
@@ -1207,8 +1207,8 @@ func Test_OpenAPI_Mounts(t *testing.T) {
 		app := fiber.New()
 		app.Get("/users", omOK)
 		handler := New()
-		app.Get("/openapi.json", handler).Hidden()
-		app.Get("/swagger", handler).Hidden()
+		Doc(app.Get("/openapi.json", handler)).Hidden()
+		Doc(app.Get("/swagger", handler)).Hidden()
 		require.Contains(t, fetchSpec(t, app).Paths, "/users")
 		body := apptest.Body(t, apptest.Expect(t, app, "/swagger", fiber.StatusOK))
 		require.Contains(t, body, `data-url="/openapi.json"`)
@@ -1248,7 +1248,7 @@ func Test_OpenAPI_Mounts(t *testing.T) {
 		app.Use(New())
 		app.Get("/late", omOK)
 		require.NotContains(t, omMap(t, fetchJSON(t, app), "paths", "/late", "get", "responses"), "201")
-		app.Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON)
+		Doc(app).Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON)
 		require.Contains(t, omMap(t, fetchJSON(t, app), "paths", "/late", "get", "responses"), "201")
 	})
 
@@ -1268,8 +1268,8 @@ func Test_OpenAPI_Mounts(t *testing.T) {
 		sub := fiber.New()
 		sub.Get("/users", omOK)
 		handler := New()
-		sub.Get("/openapi.json", handler).Hidden()
-		sub.Get("/swagger", handler).Hidden()
+		Doc(sub.Get("/openapi.json", handler)).Hidden()
+		Doc(sub.Get("/swagger", handler)).Hidden()
 		app := fiber.New()
 		app.Use("/api", sub)
 		body := apptest.Body(t, apptest.Expect(t, app, "/api/openapi.json", fiber.StatusOK))
@@ -1294,7 +1294,7 @@ func Test_OpenAPI_Mounts(t *testing.T) {
 		t.Parallel()
 		sub := fiber.New()
 		sub.Get("/users", omOK)
-		sub.Get("/openapi.json", New()).Hidden()
+		Doc(sub.Get("/openapi.json", New())).Hidden()
 		app := fiber.New()
 		app.Use("/:tenant", sub)
 		body := apptest.Body(t, apptest.Expect(t, app, "/acme/openapi.json", fiber.StatusOK))
@@ -1357,7 +1357,7 @@ func Test_OpenAPI_ConcurrentDocsAndSpecRequests(t *testing.T) {
 	go func() {
 		defer close(documented)
 		for range 50 {
-			app.Summary("iteration summary").
+			Doc(app).Summary("iteration summary").
 				Response(fiber.StatusOK, "OK", fiber.MIMEApplicationJSON).
 				ResponseHeader(fiber.StatusOK, "X-Iter", "iteration", map[string]any{"type": "integer"}).
 				Tags("concurrent")
@@ -1514,11 +1514,11 @@ func Test_OpenAPI_ConstraintSchemas(t *testing.T) {
 	t.Parallel()
 	omRunDocCases(t, []omDocCase{
 		{name: "explicit parameter is kept", register: func(app *fiber.App) {
-			app.Get("/items/:id<int>", omOK).AddParameter(fiber.RouteParameter{
+			Doc(app.Get("/items/:id<int>", omOK)).AddParameter(RouteParameter{
 				Name: "id", In: "path", Description: "item identifier",
 				Schema: map[string]any{"type": "integer", "format": "int64"},
 			})
-			app.Get("/codes/:code<int>", omOK).
+			Doc(app.Get("/codes/:code<int>", omOK)).
 				Parameter("code", "path", true, map[string]any{"type": "string", "pattern": "^[0-9]+$"}, "explicit")
 		}, check: func(t omT, spec map[string]any) {
 			params := omAt(t, spec, "paths", "/items/{id}", "get", "parameters")
@@ -1530,8 +1530,8 @@ func Test_OpenAPI_ConstraintSchemas(t *testing.T) {
 				omAt(t, spec, "paths", "/codes/{code}", "get", "parameters", 0, "schema"))
 		}},
 		{name: "a description keeps the constraint schema", register: func(app *fiber.App) {
-			app.Get("/users/:id<int>", omOK).
-				AddParameter(fiber.RouteParameter{Name: "id", In: "path", Description: "User ID"})
+			Doc(app.Get("/users/:id<int>", omOK)).
+				AddParameter(RouteParameter{Name: "id", In: "path", Description: "User ID"})
 		}, check: func(t omT, spec map[string]any) {
 			omHas(t, omMap(t, spec, "paths", "/users/{id}", "get", "parameters", 0),
 				map[string]any{"description": "User ID", "schema": map[string]any{"type": "integer"}})
@@ -1743,7 +1743,7 @@ func Test_uniqueOperationID(t *testing.T) {
 func Test_appendOrReplaceParameter_Guards(t *testing.T) {
 	t.Parallel()
 	params := []parameter{{Name: "a", In: "query"}}
-	index := map[parameterKey]int{{fiber.ParamInQuery, "a"}: 0}
+	index := map[parameterKey]int{{ParamInQuery, "a"}: 0}
 
 	require.Len(t, appendOrReplaceParameter(params, index, nil), 1)
 	require.Len(t, appendOrReplaceParameter(params, index, &parameter{In: "query"}), 1)
@@ -1762,15 +1762,15 @@ func Test_ContentBuilders(t *testing.T) {
 	require.Nil(t, schemaFrom(nil, "", "", nil))
 	require.Equal(t, map[string]any{"type": "integer"}, schemaFrom(map[string]any{"type": "integer"}, "", "string", nil))
 
-	require.Nil(t, mediaTypesToContent(nil, &fiber.RouteMediaType{}, nil))
-	require.Nil(t, mediaTypesToContent([]string{""}, &fiber.RouteMediaType{}, nil))
-	content := mediaTypesToContent([]string{"application/json"}, &fiber.RouteMediaType{}, nil)
+	require.Nil(t, mediaTypesToContent(nil, &RouteMediaType{}, nil))
+	require.Nil(t, mediaTypesToContent([]string{""}, &RouteMediaType{}, nil))
+	content := mediaTypesToContent([]string{"application/json"}, &RouteMediaType{}, nil)
 	require.Contains(t, content, "application/json")
 	require.Empty(t, content["application/json"])
 
 	require.Nil(t, routeMediaTypeContent(nil, nil))
-	require.Nil(t, routeMediaTypeContent(map[string]fiber.RouteMediaType{"": {Schema: map[string]any{"type": "string"}}}, nil))
-	out := routeMediaTypeContent(map[string]fiber.RouteMediaType{
+	require.Nil(t, routeMediaTypeContent(map[string]RouteMediaType{"": {Schema: map[string]any{"type": "string"}}}, nil))
+	out := routeMediaTypeContent(map[string]RouteMediaType{
 		"":                 {Schema: map[string]any{"type": "string"}},
 		"application/json": {},
 	}, nil)
@@ -1778,7 +1778,7 @@ func Test_ContentBuilders(t *testing.T) {
 	require.Empty(t, out["application/json"])
 
 	require.Nil(t, buildRequestBody(nil, "", nil))
-	require.Nil(t, buildRequestBody(&fiber.RouteRequestBody{Content: map[string]fiber.RouteMediaType{"": {}}}, "", nil))
+	require.Nil(t, buildRequestBody(&RouteRequestBody{Content: map[string]RouteMediaType{"": {}}}, "", nil))
 
 	require.Equal(t, "x", inferExampleValue("x", map[string]any{}))
 	require.Equal(t, "x", inferExampleValue("x", map[string]any{"type": 123}))
@@ -1847,12 +1847,12 @@ func Test_buildComponents_MergeSecuritySchemes(t *testing.T) {
 func Test_RouteParameterInternals(t *testing.T) {
 	t.Parallel()
 	out := mergeRouteParameters(nil, map[parameterKey]int{},
-		[]fiber.RouteParameter{{Name: "  "}, {Name: "q"}, {Name: "h", In: "Header"}}, nil)
+		[]RouteParameter{{Name: "  "}, {Name: "q"}, {Name: "h", In: "Header"}}, nil)
 	require.Len(t, out, 2)
-	require.Equal(t, fiber.ParamInQuery, out[0].In)
-	require.Equal(t, fiber.ParamInHeader, out[1].In)
+	require.Equal(t, ParamInQuery, out[0].In)
+	require.Equal(t, ParamInHeader, out[1].In)
 
-	remapped := remapRouteParameters([]fiber.RouteParameter{{Name: "ghost", In: "path"}, {Name: "q", In: "query"}},
+	remapped := remapRouteParameters([]RouteParameter{{Name: "ghost", In: "path"}, {Name: "q", In: "query"}},
 		map[string]string{}, []string{"id"})
 	require.Len(t, remapped, 1, "an unknown path parameter is dropped")
 	require.Equal(t, "q", remapped[0].Name)
@@ -1879,7 +1879,7 @@ func Test_OpenAPI_MarshalErrors(t *testing.T) {
 	t.Run("spec", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
-		app.Get("/x", omOK).OperationExtension(map[string]any{"bad": func() {}})
+		Doc(app.Get("/x", omOK)).OperationExtension(map[string]any{"bad": func() {}})
 		app.Use(New())
 		apptest.Expect(t, app, "/openapi.json", fiber.StatusInternalServerError)
 	})

@@ -28,7 +28,6 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/utils/v2"
-	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
@@ -40,30 +39,6 @@ import (
 
 // Version of current fiber package
 const Version = "3.7.0"
-
-const (
-	openapiRefKey     = "$ref"
-	openapiTypeString = "string"
-)
-
-// Parameter locations accepted by the documentation helpers.
-const (
-	ParamInPath        ParamLocation = "path"
-	ParamInQuery       ParamLocation = "query"
-	ParamInHeader      ParamLocation = "header"
-	ParamInCookie      ParamLocation = "cookie"
-	ParamInQuerystring ParamLocation = "querystring"
-)
-
-// ParamLocation is where a documented parameter is read from. Use the ParamIn constants.
-type ParamLocation string
-
-// Normalize trims and lower-cases a location, so "Query " reads as "query".
-func (l ParamLocation) Normalize() ParamLocation {
-	return ParamLocation(utilsstrings.ToLower(utils.TrimSpace(string(l))))
-}
-
-const defaultResponseKey = "default"
 
 const smallIndexMax = 8
 

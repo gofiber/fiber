@@ -83,14 +83,14 @@ type PathItem struct {
 	// Description describes the path.
 	Description string
 	// Parameters apply to every operation of the path.
-	Parameters []fiber.RouteParameter
+	Parameters []RouteParameter
 }
 
 // Defaults documents every route whose path starts with PathPrefix. A route's own documentation wins:
 // Tags apply to a route without tags, and Parameters and Responses only fill in what the route does not declare.
 type Defaults struct {
 	// Responses are added for the statuses a route does not declare, keyed by status; 0 is the default response.
-	Responses map[int]fiber.RouteResponse
+	Responses map[int]RouteResponse
 	// PathPrefix selects the routes by their registered path, at a segment boundary; "" or "/" selects all.
 	PathPrefix string
 	// Tags tag a route that has none, replacing the tag derived from its group.
@@ -99,7 +99,7 @@ type Defaults struct {
 	// covers; an empty non-nil list documents it as public (`security: []`).
 	Security []map[string][]string
 	// Parameters are added to a route that does not declare a parameter of the same name and location.
-	Parameters []fiber.RouteParameter
+	Parameters []RouteParameter
 }
 
 // MiddlewareDoc documents a middleware of your own. Handler is one instance of the middleware: every handler
@@ -113,13 +113,13 @@ type MiddlewareDoc struct {
 	// authentication middleware chained with it, and an explicit Security(...) on a route replaces it.
 	Security map[string][]string
 	// Responses are documented on a route the middleware covers, keyed by status, unless the route declares the status.
-	Responses map[int]fiber.RouteResponse
+	Responses map[int]RouteResponse
 	// ResponseHeaders are added to every response of a route the middleware covers, keyed by header name.
 	ResponseHeaders map[string]any
 	// Name identifies the middleware to Config.InferMiddleware.
 	Name string
 	// Parameters are added to a route the middleware covers.
-	Parameters []fiber.RouteParameter
+	Parameters []RouteParameter
 }
 
 // APIKeyLookup says where the keyauth middleware reads its key from, as its KeyLookup does.

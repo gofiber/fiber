@@ -7,15 +7,15 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-var modelTagByLocation = map[fiber.ParamLocation]string{
-	fiber.ParamInQuery:  fiber.BindSourceQuery,
-	fiber.ParamInHeader: fiber.BindSourceHeader,
-	fiber.ParamInCookie: fiber.BindSourceCookie,
-	fiber.ParamInPath:   fiber.BindSourceURI,
+var modelTagByLocation = map[ParamLocation]string{
+	ParamInQuery:  fiber.BindSourceQuery,
+	ParamInHeader: fiber.BindSourceHeader,
+	ParamInCookie: fiber.BindSourceCookie,
+	ParamInPath:   fiber.BindSourceURI,
 }
 
-func expandParameterModels(models []fiber.RouteParameterModel, reg *schemaRegistry) []fiber.RouteParameter {
-	var params []fiber.RouteParameter
+func expandParameterModels(models []RouteParameterModel, reg *schemaRegistry) []RouteParameter {
+	var params []RouteParameter
 	for i := range models {
 		model := &models[i]
 		if model.Model == nil {
@@ -81,7 +81,7 @@ func locationOnlyIn(t reflect.Type, tagKey string, reg *schemaRegistry, seen map
 	return false
 }
 
-func appendModelFields(params []fiber.RouteParameter, t reflect.Type, in fiber.ParamLocation, tagKey string, reg *schemaRegistry, expanded map[reflect.Type]bool) []fiber.RouteParameter {
+func appendModelFields(params []RouteParameter, t reflect.Type, in ParamLocation, tagKey string, reg *schemaRegistry, expanded map[reflect.Type]bool) []RouteParameter {
 	for i := range t.NumField() {
 		field := t.Field(i)
 		name, _, _ := utils.CutByte(field.Tag.Get(tagKey), ',')
@@ -114,11 +114,11 @@ func appendModelFields(params []fiber.RouteParameter, t reflect.Type, in fiber.P
 		applyOpenAPITag(&field, schema)
 		required := applyValidateTag(&field, schema)
 
-		param := fiber.RouteParameter{
+		param := RouteParameter{
 			Name:     name,
 			In:       in,
 			Schema:   schema,
-			Required: required || in == fiber.ParamInPath,
+			Required: required || in == ParamInPath,
 		}
 		if description, ok := schema["description"].(string); ok {
 			param.Description = description

@@ -1,4 +1,4 @@
-package fiber
+package openapi
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/deepcopy"
 	"github.com/gofiber/fiber/v3/internal/schemautil"
 	"github.com/gofiber/utils/v2"
@@ -14,12 +15,12 @@ import (
 // maxModelPointerDepth is how many pointers a parameter model is followed through to its struct.
 const maxModelPointerDepth = 32
 
-func docSetSummary(sum string) func(route *Route) {
-	return func(route *Route) { route.Summary = sum }
+func docSetSummary(sum string) func(op *Operation) {
+	return func(op *Operation) { op.Summary = sum }
 }
 
-func docSetDescription(desc string) func(route *Route) {
-	return func(route *Route) { route.Description = desc }
+func docSetDescription(desc string) func(op *Operation) {
+	return func(op *Operation) { op.Description = desc }
 }
 
 func validateMediaType(typ string) string {
@@ -37,14 +38,14 @@ func optionalMediaType(typ string) string {
 	return validateMediaType(typ)
 }
 
-func docSetConsumes(typ string) func(route *Route) {
+func docSetConsumes(typ string) func(op *Operation) {
 	typ = optionalMediaType(typ)
-	return func(route *Route) { route.Consumes = typ }
+	return func(op *Operation) { op.Consumes = typ }
 }
 
-func docSetProduces(typ string) func(route *Route) {
+func docSetProduces(typ string) func(op *Operation) {
 	typ = optionalMediaType(typ)
-	return func(route *Route) { route.Produces = typ }
+	return func(op *Operation) { op.Produces = typ }
 }
 
 func hasSchema(schema any) bool {
@@ -73,7 +74,7 @@ func copySchema(schema any) any {
 	}
 }
 
-func docRequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(route *Route) {
+func docRequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(op *Operation) {
 	sanitized := sanitizeMediaTypes(mediaTypes)
 
 	body := &RouteRequestBody{
@@ -85,7 +86,7 @@ func docRequestBodyWithExample(description string, required bool, schema any, sc
 		Examples:    examples,
 	}
 	if schemaRef != "" {
-		body.Schema = map[string]any{openapiRefKey: schemaRef}
+		body.Schema = map[string]any{schemaKeyRef: schemaRef}
 	} else if hasSchema(schema) {
 		body.Schema = schema
 	}
@@ -93,25 +94,25 @@ func docRequestBodyWithExample(description string, required bool, schema any, sc
 	// A schema or example documented here replaces an earlier body; a description or media types alone keep it.
 	definesBody := body.Schema != nil || example != nil || len(examples) > 0
 
-	return func(route *Route) {
-		previous := route.RequestBody
-		route.RequestBody = cloneRouteRequestBody(body)
+	return func(op *Operation) {
+		previous := op.RequestBody
+		op.RequestBody = cloneRouteRequestBody(body)
 		if previous != nil {
 			if description == "" {
-				route.RequestBody.Description = previous.Description
+				op.RequestBody.Description = previous.Description
 			}
 			if !definesBody {
-				carryEarlierRequestBody(route.RequestBody, previous)
+				carryEarlierRequestBody(op.RequestBody, previous)
 			}
 		}
-		if len(sanitized) > 0 && route.Consumes == "" {
-			route.Consumes = sanitized[0]
+		if len(sanitized) > 0 && op.Consumes == "" {
+			op.Consumes = sanitized[0]
 		}
 	}
 }
 
 //nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
-func docAddParameter(param RouteParameter) func(route *Route) {
+func docAddParameter(param RouteParameter) func(op *Operation) {
 	if utils.TrimSpace(param.Name) == "" {
 		panic("AddParameter: parameter name is required")
 	}
@@ -132,7 +133,7 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 		param.Schema = nil
 		param.SchemaRef = ""
 	case param.SchemaRef != "":
-		param.Schema = map[string]any{openapiRefKey: param.SchemaRef}
+		param.Schema = map[string]any{schemaKeyRef: param.SchemaRef}
 	case location == ParamInQuerystring:
 	default:
 		injectType = true
@@ -142,7 +143,7 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 		param.Required = true
 	}
 
-	return func(route *Route) {
+	return func(op *Operation) {
 		paramCopy := cloneRouteParameter(&param)
 		if injectType {
 			schema, ok := paramCopy.Schema.(map[string]any)
@@ -150,13 +151,13 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 				schema, ok = map[string]any{}, true
 			}
 			if ok {
-				if typ, ok := schemautil.DefaultType(schema, openapiTypeString); ok {
+				if typ, ok := schemautil.DefaultType(schema, schemaTypeString); ok {
 					schema["type"] = typ
 				}
 				paramCopy.Schema = schema
 			}
 		}
-		route.Parameters = append(route.Parameters, paramCopy)
+		op.Parameters = append(op.Parameters, paramCopy)
 	}
 }
 
@@ -170,18 +171,18 @@ func responseKey(status int) string {
 	return utils.FormatInt(int64(status))
 }
 
-func getOrCreateResponse(route *Route, key string) RouteResponse {
-	if route.Responses == nil {
-		route.Responses = make(map[string]RouteResponse)
+func getOrCreateResponse(op *Operation, key string) RouteResponse {
+	if op.Responses == nil {
+		op.Responses = make(map[string]RouteResponse)
 	}
-	resp, ok := route.Responses[key]
+	resp, ok := op.Responses[key]
 	if !ok {
 		resp = RouteResponse{Description: schemautil.ResponseDescription(key)}
 	}
 	return resp
 }
 
-func docAddResponse(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(route *Route) {
+func docAddResponse(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(op *Operation) {
 	sanitized := sanitizeMediaTypes(mediaTypes)
 
 	key := responseKey(status)
@@ -194,7 +195,7 @@ func docAddResponse(status int, description string, schema any, schemaRef string
 	resp := RouteResponse{Description: description, MediaTypes: sanitized, Example: example, Examples: examples}
 	if schemaRef != "" {
 		resp.SchemaRef = schemaRef
-		resp.Schema = map[string]any{openapiRefKey: schemaRef}
+		resp.Schema = map[string]any{schemaKeyRef: schemaRef}
 	} else if hasSchema(schema) {
 		resp.Schema = schema
 	}
@@ -202,12 +203,12 @@ func docAddResponse(status int, description string, schema any, schemaRef string
 	// A schema or example documented here replaces an earlier body; a description or media types alone keep it.
 	definesBody := resp.Schema != nil || example != nil || len(examples) > 0
 
-	return func(route *Route) {
-		if route.Responses == nil {
-			route.Responses = make(map[string]RouteResponse)
+	return func(op *Operation) {
+		if op.Responses == nil {
+			op.Responses = make(map[string]RouteResponse)
 		}
 		copyResp := cloneRouteResponse(&resp)
-		if existing, ok := route.Responses[key]; ok {
+		if existing, ok := op.Responses[key]; ok {
 			copyResp.Headers = existing.Headers
 			copyResp.Links = existing.Links
 			if !explicitDescription && existing.Description != "" {
@@ -224,9 +225,9 @@ func docAddResponse(status int, description string, schema any, schemaRef string
 				}
 			}
 		}
-		route.Responses[key] = copyResp
-		if status == StatusOK && len(copyResp.MediaTypes) > 0 && route.Produces == "" {
-			route.Produces = copyResp.MediaTypes[0]
+		op.Responses[key] = copyResp
+		if status == fiber.StatusOK && len(copyResp.MediaTypes) > 0 && op.Produces == "" {
+			op.Produces = copyResp.MediaTypes[0]
 		}
 	}
 }
@@ -256,32 +257,32 @@ func sanitizeMediaTypes(mediaTypes []string) []string {
 	return sanitized
 }
 
-func docSetTags(tags ...string) func(route *Route) {
-	return func(route *Route) {
-		route.Tags = append([]string(nil), tags...)
+func docSetTags(tags ...string) func(op *Operation) {
+	return func(op *Operation) {
+		op.Tags = append([]string(nil), tags...)
 	}
 }
 
-func docSetDeprecated() func(route *Route) {
-	return func(route *Route) { route.Deprecated = true }
+func docSetDeprecated() func(op *Operation) {
+	return func(op *Operation) { op.Deprecated = true }
 }
 
-func docSetSecurity(requirements ...map[string][]string) func(route *Route) {
-	return func(route *Route) {
+func docSetSecurity(requirements ...map[string][]string) func(op *Operation) {
+	return func(op *Operation) {
 		if len(requirements) == 0 {
 			// No requirement means no authentication, which differs from unset.
-			route.Security = []map[string][]string{}
+			op.Security = []map[string][]string{}
 			return
 		}
-		route.Security = deepcopy.Security(requirements)
+		op.Security = deepcopy.Security(requirements)
 	}
 }
 
-func docSetHidden() func(route *Route) {
-	return func(route *Route) { route.hidden = true }
+func docSetHidden() func(op *Operation) {
+	return func(op *Operation) { op.Hidden = true }
 }
 
-func docResponseHeader(status int, name, description string, schema any) func(route *Route) {
+func docResponseHeader(status int, name, description string, schema any) func(op *Operation) {
 	if utils.TrimSpace(name) == "" {
 		panic("ResponseHeader: header name is required")
 	}
@@ -293,13 +294,13 @@ func docResponseHeader(status int, name, description string, schema any) func(ro
 	if hasSchema(schema) {
 		header["schema"] = schema
 	} else {
-		header["schema"] = map[string]any{"type": openapiTypeString}
+		header["schema"] = map[string]any{"type": schemaTypeString}
 	}
 
 	return docSetResponseEntry(status, name, header, func(resp *RouteResponse) *map[string]any { return &resp.Headers })
 }
 
-func docOperationExternalDocs(description, url string) func(route *Route) {
+func docOperationExternalDocs(description, url string) func(op *Operation) {
 	if utils.TrimSpace(url) == "" {
 		panic("OperationExternalDocs: url is required")
 	}
@@ -307,36 +308,36 @@ func docOperationExternalDocs(description, url string) func(route *Route) {
 	if description != "" {
 		docs["description"] = description
 	}
-	return func(route *Route) {
-		route.ExternalDocs = copyAnyMap(docs)
+	return func(op *Operation) {
+		op.ExternalDocs = copyAnyMap(docs)
 	}
 }
 
-func docOperationExtension(fields map[string]any) func(route *Route) {
+func docOperationExtension(fields map[string]any) func(op *Operation) {
 	if len(fields) == 0 {
 		return nil
 	}
-	return func(route *Route) {
-		if route.OperationExtensions == nil {
-			route.OperationExtensions = make(map[string]any, len(fields))
+	return func(op *Operation) {
+		if op.OperationExtensions == nil {
+			op.OperationExtensions = make(map[string]any, len(fields))
 		}
 		for key, value := range fields {
-			route.OperationExtensions[key] = deepcopy.Value(value)
+			op.OperationExtensions[key] = deepcopy.Value(value)
 		}
 	}
 }
 
-func docOperationID(id string) func(route *Route) {
+func docOperationID(id string) func(op *Operation) {
 	id = utils.TrimSpace(id)
 	if id == "" {
 		panic("OperationID: id is required")
 	}
-	return func(route *Route) {
-		route.OperationID = id
+	return func(op *Operation) {
+		op.OperationID = id
 	}
 }
 
-func docCallback(name string, callback map[string]any) func(route *Route) {
+func docCallback(name string, callback map[string]any) func(op *Operation) {
 	name = utils.TrimSpace(name)
 	if name == "" {
 		panic("Callback: name is required")
@@ -344,20 +345,20 @@ func docCallback(name string, callback map[string]any) func(route *Route) {
 	if len(callback) == 0 {
 		panic("Callback: " + name + " needs at least one expression")
 	}
-	return func(route *Route) {
-		if route.Callbacks == nil {
-			route.Callbacks = make(map[string]any)
+	return func(op *Operation) {
+		if op.Callbacks == nil {
+			op.Callbacks = make(map[string]any)
 		}
-		route.Callbacks[name] = deepcopy.Map(callback)
+		op.Callbacks[name] = deepcopy.Map(callback)
 	}
 }
 
-func docOperationServer(server map[string]any) func(route *Route) {
+func docOperationServer(server map[string]any) func(op *Operation) {
 	if url, ok := server["url"].(string); !ok || utils.TrimSpace(url) == "" {
 		panic("OperationServer: url is required")
 	}
-	return func(route *Route) {
-		route.Servers = append(route.Servers, deepcopy.Map(server))
+	return func(op *Operation) {
+		op.Servers = append(op.Servers, deepcopy.Map(server))
 	}
 }
 
@@ -384,7 +385,7 @@ func sanitizeContentMediaTypes(content map[string]RouteMediaType) map[string]Rou
 	return sanitized
 }
 
-func docRequestBodyContent(description string, required bool, content map[string]RouteMediaType) func(route *Route) {
+func docRequestBodyContent(description string, required bool, content map[string]RouteMediaType) func(op *Operation) {
 	content = sanitizeContentMediaTypes(content)
 
 	body := &RouteRequestBody{
@@ -392,11 +393,11 @@ func docRequestBodyContent(description string, required bool, content map[string
 		Required:    required,
 		Content:     content,
 	}
-	return func(route *Route) {
-		previous := route.RequestBody
-		route.RequestBody = cloneRouteRequestBody(body)
+	return func(op *Operation) {
+		previous := op.RequestBody
+		op.RequestBody = cloneRouteRequestBody(body)
 		if previous != nil && description == "" {
-			route.RequestBody.Description = previous.Description
+			op.RequestBody.Description = previous.Description
 		}
 	}
 }
@@ -412,31 +413,31 @@ func carryEarlierRequestBody(body, previous *RouteRequestBody) {
 	}
 }
 
-func docResponseContent(status int, description string, content map[string]RouteMediaType) func(route *Route) {
+func docResponseContent(status int, description string, content map[string]RouteMediaType) func(op *Operation) {
 	content = sanitizeContentMediaTypes(content)
 
 	key := responseKey(status)
-	return func(route *Route) {
-		resp := getOrCreateResponse(route, key)
+	return func(op *Operation) {
+		resp := getOrCreateResponse(op, key)
 		if description != "" {
 			resp.Description = description
 		}
 		resp.Content = cloneRouteMediaTypeMap(content)
-		route.Responses[key] = resp
+		op.Responses[key] = resp
 	}
 }
 
-func docResponseLink(status int, name string, link map[string]any) func(route *Route) {
+func docResponseLink(status int, name string, link map[string]any) func(op *Operation) {
 	if utils.TrimSpace(name) == "" {
 		panic("ResponseLink: link name is required")
 	}
 	return docSetResponseEntry(status, name, link, func(resp *RouteResponse) *map[string]any { return &resp.Links })
 }
 
-func docSetResponseEntry(status int, name string, entry map[string]any, pick func(*RouteResponse) *map[string]any) func(route *Route) {
+func docSetResponseEntry(status int, name string, entry map[string]any, pick func(*RouteResponse) *map[string]any) func(op *Operation) {
 	key := responseKey(status)
-	return func(route *Route) {
-		resp := getOrCreateResponse(route, key)
+	return func(op *Operation) {
+		resp := getOrCreateResponse(op, key)
 		entries := pick(&resp)
 		if *entries == nil {
 			*entries = make(map[string]any)
@@ -446,7 +447,7 @@ func docSetResponseEntry(status int, name string, entry map[string]any, pick fun
 			copied = map[string]any{}
 		}
 		(*entries)[name] = copied
-		route.Responses[key] = resp
+		op.Responses[key] = resp
 	}
 }
 
@@ -463,11 +464,11 @@ func newRouteParameter(name string, in ParamLocation, required bool, schema any,
 	}
 }
 
-func docAccepts(model any, mediaTypes ...string) func(route *Route) {
+func docAccepts(model any, mediaTypes ...string) func(op *Operation) {
 	return docRequestBodyWithExample("", true, model, "", nil, nil, mediaTypes...)
 }
 
-func docReturns(status int, model any, mediaTypes ...string) func(route *Route) {
+func docReturns(status int, model any, mediaTypes ...string) func(op *Operation) {
 	return docAddResponse(status, "", model, "", nil, nil, mediaTypes...)
 }
 
@@ -483,7 +484,7 @@ func validParamLocation(location ParamLocation, querystring bool) bool {
 	}
 }
 
-func docAddParameterModel(in ParamLocation, model any) func(route *Route) {
+func docAddParameterModel(in ParamLocation, model any) func(op *Operation) {
 	location := in.Normalize()
 	if !validParamLocation(location, false) {
 		panic("Params: invalid parameter location: " + string(in))
@@ -499,7 +500,7 @@ func docAddParameterModel(in ParamLocation, model any) func(route *Route) {
 	if t == nil || t.Kind() != reflect.Struct {
 		panic(fmt.Sprintf("Params: parameter model must be a struct, got %T", model))
 	}
-	return func(route *Route) {
-		route.ParameterModels = append(route.ParameterModels, RouteParameterModel{In: location, Model: model})
+	return func(op *Operation) {
+		op.ParameterModels = append(op.ParameterModels, RouteParameterModel{In: location, Model: model})
 	}
 }
