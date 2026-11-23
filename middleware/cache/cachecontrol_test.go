@@ -58,6 +58,7 @@ func Test_parseResponseCacheControl_SmallestLifetimeCounts(t *testing.T) {
 		{input: "max-age=5, s-maxage=7, max-age=9, s-maxage=11", maxAge: 5, maxAgeSet: true, sMaxAge: 7, sMaxAgeSet: true},
 		{input: "max-age=soon, max-age=60", maxAge: 60, maxAgeSet: true},
 		{input: "s-maxage=, s-maxage=60", sMaxAge: 60, sMaxAgeSet: true},
+		{input: "max-age=60, s-maxage=x, s-maxage=7", maxAge: 60, maxAgeSet: true, sMaxAge: 7, sMaxAgeSet: true},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			t.Parallel()

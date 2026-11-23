@@ -163,6 +163,8 @@ var ignoreHeaders = map[string]struct{}{
 	// Proxy-specific, with the two beside it (RFC 9111 §3.1).
 	"Proxy-Authentication-Info": {},
 	"Proxy-Authorization":       {},
+	// Hop-by-hop like Keep-Alive, whether or not Connection names it (RFC 9110 §7.6.1).
+	"Proxy-Connection": {},
 	// Served to every client matching the key, so a captured Set-Cookie hands one
 	// client's session to all the others. It still reaches the client that caused
 	// the miss. Set-Cookie2 is the obsolete RFC 2965 spelling and leaks the same.
@@ -270,6 +272,11 @@ func New(config ...Config) fiber.Handler {
 		key string
 		gen uint64
 	}
+	// evictingKey counts the nodes of a key in-flight evictions popped, and whether a store for the key began since.
+	type evictingKey struct {
+		count      int
+		superseded bool
+	}
 
 	redactKeys := !cfg.DisableValueRedaction
 
@@ -317,6 +324,19 @@ func New(config ...Config) fiber.Handler {
 		return nil
 	}
 
+	// evict deletes an entry an eviction popped. The in-memory store deletes it only while it holds that entry, so a
+	// replacement stored after the node was popped stays; a Storage has no conditional delete.
+	evict := func(ctx context.Context, candidate evictionCandidate) error {
+		if cfg.Storage == nil {
+			manager.memory.DeleteIf(candidate.key, func(current any) bool {
+				entry, ok := current.(*item)
+				return ok && entry.heapgen == candidate.oldGen
+			})
+			return nil
+		}
+		return deleteKey(ctx, candidate.key)
+	}
+
 	// removeHeapEntry drops a tracked entry and reports it, so a caller that
 	// removes one before storing its replacement can put it back on failure.
 	removeHeapEntry := func(entryKey string, heapIdx int, heapGen uint64) (evictionCandidate, bool) {
@@ -345,8 +365,32 @@ func New(config ...Config) fiber.Handler {
 		return evictionCandidate{key: entryKey, manifest: entry.manifest, size: size, exp: exp, expires: entry.expires, oldGen: heapGen}, true
 	}
 
-	// evicting maps the nodes in-flight evictions popped to whether their entry was removed since. Guarded by mux.
+	// evicting maps the nodes in-flight evictions popped to whether their entry was removed since, and evictingKeys
+	// counts them by key. Guarded by mux.
 	evicting := make(map[poppedNode]bool)
+	evictingKeys := make(map[string]evictingKey)
+
+	// trackEvicting records the nodes an eviction popped until its deletes are done, and untrackEvicting forgets
+	// them. The caller holds mux.
+	trackEvicting := func(candidates []evictionCandidate) {
+		for _, candidate := range candidates {
+			evicting[poppedNode{key: candidate.key, gen: candidate.oldGen}] = false
+			popped := evictingKeys[candidate.key]
+			popped.count++
+			evictingKeys[candidate.key] = popped
+		}
+	}
+	untrackEvicting := func(candidates []evictionCandidate) {
+		for _, candidate := range candidates {
+			delete(evicting, poppedNode{key: candidate.key, gen: candidate.oldGen})
+			if popped := evictingKeys[candidate.key]; popped.count > 1 {
+				popped.count--
+				evictingKeys[candidate.key] = popped
+			} else {
+				delete(evictingKeys, candidate.key)
+			}
+		}
+	}
 
 	// removeDeleted drops a gone entry's node, or marks it so its eviction won't restore it. The caller holds mux.
 	removeDeleted := func(entryKey string, heapIdx int, heapGen uint64) {
@@ -393,8 +437,9 @@ func New(config ...Config) fiber.Handler {
 						return fmt.Errorf("cache: failed to verify body for key %q after eviction failure: %w", maskKey(candidate.key), bodyErr)
 					}
 				}
+				// Recorded, as an eviction may have popped the node again since it went back.
 				mux.Lock()
-				removeHeapEntry(candidate.key, idx, candidate.oldGen)
+				removeDeleted(candidate.key, idx, candidate.oldGen)
 				mux.Unlock()
 				return nil
 			}
@@ -405,7 +450,7 @@ func New(config ...Config) fiber.Handler {
 			}
 			if !matches {
 				mux.Lock()
-				removeHeapEntry(candidate.key, idx, candidate.oldGen)
+				removeDeleted(candidate.key, idx, candidate.oldGen)
 				mux.Unlock()
 				return nil
 			}
@@ -449,8 +494,14 @@ func New(config ...Config) fiber.Handler {
 				return c.Next()
 			}
 			slot := purges.slot(c.Host(), c.Path()) // before the handler, which may rewrite the path
-			// Only a non-error response invalidates. An abandoned handler may still be writing its status.
-			if err := c.Next(); err != nil || (c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil) {
+			err := c.Next()
+			// A handler timeout.New gave up on may still complete the write, and may still be writing its status,
+			// so its path's entries end unread. Otherwise only a non-error response invalidates.
+			if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
+				purges.mark(slot, purges.stamp())
+				return err
+			}
+			if err != nil {
 				return err
 			}
 			if status := c.Response().StatusCode(); status >= fiber.StatusOK && status < fiber.StatusBadRequest {
@@ -477,6 +528,12 @@ func New(config ...Config) fiber.Handler {
 				c.Set(cfg.CacheHeader, cacheUnreachable)
 				return c.Next()
 			}
+		}
+
+		// The default key holds the body, and the body of a multipart form fasthttp parsed is not the one sent.
+		if cfg.usesDefaultKeyGenerator && preParsedMultipart(c) {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return c.Next()
 		}
 
 		// A request the server refused runs the chain without its route, and the
@@ -920,14 +977,18 @@ func New(config ...Config) fiber.Handler {
 						// private for an entry that holds one user's response: public, or
 						// a bare max-age, lets a shared cache downstream store this hit
 						// and serve it to whoever asks for the URL next.
-						// So does an entry keyed by a request body, unless a QUERY's (RFC 10008).
-						var body []byte
+						// So does one for a request that carries a body, unless a QUERY's (RFC 10008): the default key
+						// holds the body, and a custom one may, as the middleware cannot tell.
 						bodyKeyed := false
+						length := c.Request().Header.ContentLength() // -1 is chunked, -2 no body framing at all
+						carriesBody := length > 0 || length == -1
 						if cfg.usesDefaultKeyGenerator {
+							var body []byte
 							body, bodyKeyed = bodySegment(c, canonical)
+							carriesBody = len(body) > 0
 						}
 						directive := publicMaxAge
-						if holdsCredential() || (bodyKeyed && len(body) > 0 && requestMethod != fiber.MethodQuery) {
+						if holdsCredential() || (carriesBody && requestMethod != fiber.MethodQuery) {
 							directive = privateMaxAge
 						}
 						// Built in a local array: FormatUint and the join were two
@@ -1546,52 +1607,63 @@ func New(config ...Config) fiber.Handler {
 				})
 				storedBytes -= next.bytes
 			}
-			for _, candidate := range candidates {
-				evicting[poppedNode{key: candidate.key, gen: candidate.oldGen}] = false
-			}
+			trackEvicting(candidates)
 			mux.Unlock()
 
 			// Perform deletions outside the lock
 			if len(candidates) > 0 {
-				for i := range candidates {
-					keyToRemove := candidates[i].key
-					delErr := deleteKey(reqCtx, keyToRemove)
-					if delErr == nil {
-						continue
+				failed := -1
+				var delErr error
+				func() {
+					// Done, or the Storage panicked: either way no popped node stays recorded.
+					defer func() {
+						if failed < 0 {
+							mux.Lock()
+							untrackEvicting(candidates)
+							mux.Unlock()
+						}
+					}()
+					for i := range candidates {
+						if delErr = evict(reqCtx, candidates[i]); delErr != nil {
+							failed = i
+							return
+						}
 					}
-
+				}()
+				if failed >= 0 {
 					// Deletion failed: restore only entries still present in storage.
 					mux.Lock()
 					// Unreserve space for the new entry
 					storedBytes -= entrySize
 					spaceReserved = false
 
-					// The untouched candidates go back unread; only the one whose delete failed is checked.
-					for _, candidate := range slices.Backward(candidates[i+1:]) {
-						if !evicting[poppedNode{key: candidate.key, gen: candidate.oldGen}] {
+					// The untouched candidates go back unread. The one whose delete failed is read back, and so
+					// is one whose key a store took up meanwhile: that store may have replaced or lost its entry.
+					var readBack []evictionCandidate
+					if !evicting[poppedNode{key: candidates[failed].key, gen: candidates[failed].oldGen}] {
+						readBack = append(readBack, candidates[failed])
+					}
+					for _, candidate := range slices.Backward(candidates[failed+1:]) {
+						switch {
+						case evicting[poppedNode{key: candidate.key, gen: candidate.oldGen}]:
+						case evictingKeys[candidate.key].superseded:
+							readBack = append(readBack, candidate)
+						default:
 							retrack(candidate)
 						}
 					}
-					failedRemoved := evicting[poppedNode{key: candidates[i].key, gen: candidates[i].oldGen}]
-					for _, candidate := range candidates {
-						delete(evicting, poppedNode{key: candidate.key, gen: candidate.oldGen})
-					}
+					untrackEvicting(candidates)
 					mux.Unlock()
-					if !failedRemoved {
-						if err := restoreHeapEntry(reqCtx, candidates[i]); err != nil {
+					for _, candidate := range readBack {
+						if err := restoreHeapEntry(reqCtx, candidate); err != nil {
 							log.Warnf("%v", err)
 						}
 					}
 
-					log.Warnf("cache: failed to delete key %q while evicting: %v", maskKey(keyToRemove), delErr)
+					log.Warnf("cache: failed to delete key %q while evicting: %v", maskKey(candidates[failed].key), delErr)
 					markUnreachable()
 					return nil
 				}
-				mux.Lock()
-				for _, candidate := range candidates {
-					delete(evicting, poppedNode{key: candidate.key, gen: candidate.oldGen})
-				}
-				mux.Unlock()
 			}
 		}
 
@@ -1628,6 +1700,11 @@ func New(config ...Config) fiber.Handler {
 			e.heapidx = heapIdx
 			heapGen = heap.generation(heapIdx)
 			e.heapgen = heapGen
+			// An eviction holding a node of this key popped can no longer trust what that node stands for.
+			if popped, ok := evictingKeys[key]; ok {
+				popped.superseded = true
+				evictingKeys[key] = popped
+			}
 			// Note: storedBytes was incremented during reservation, and evictions
 			// have already been accounted for, so no additional increment is needed
 			spaceReserved = false // Clear flag to prevent defer from unreserving

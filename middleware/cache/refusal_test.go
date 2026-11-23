@@ -1194,6 +1194,61 @@ func Test_Cache_RefusalOfGetOrHeadReachesTheOther(t *testing.T) {
 	}
 }
 
+// The spellings of a URL and the bodies sent to it keep entries of their own, and a refusal of the credential
+// reaches each of them, as it did when they shared one.
+func Test_Cache_RefusalReachesEverySpellingAndBodyOfTheURL(t *testing.T) {
+	t.Parallel()
+	type request struct{ target, body string }
+	for _, tc := range []struct {
+		name           string
+		refused, other request
+	}{
+		{name: "escaped path", refused: request{target: "/page"}, other: request{target: "/%70age"}},
+		{name: "dot segments", refused: request{target: "/a/../page"}, other: request{target: "/page"}},
+		{name: "empty query", refused: request{target: "/page"}, other: request{target: "/page?"}},
+		{name: "fragment", refused: request{target: "/page#top"}, other: request{target: "/page"}},
+		{name: "absolute form", refused: request{target: "/page"}, other: request{target: "http://example.com/page"}},
+		{name: "escaped query", refused: request{target: "/page?a=1&b=A"}, other: request{target: "/page?b=%41&a=1"}},
+		{name: "query without a value", refused: request{target: "/page?a&b=x+y"}, other: request{target: "/page?a=&b=x%20y"}},
+		{name: "another body", refused: request{target: "/page", body: "a"}, other: request{target: "/page", body: "b"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var ended atomic.Bool
+			app := fiber.New()
+			app.Use(New(Config{Expiration: time.Hour, KeyCredentialHeaders: []string{"X-Token"}}))
+			app.Get("/page", func(c fiber.Ctx) error {
+				if ended.Load() {
+					return c.SendStatus(fiber.StatusUnauthorized)
+				}
+				return c.SendString("secret for " + c.Get("X-Token"))
+			})
+			w := cacheTestCWire{t: t, app: app}
+			send := func(r request, cacheControl string) reply {
+				req := fasthttp.AcquireRequest()
+				defer fasthttp.ReleaseRequest(req)
+				req.Header.SetHost("example.com")
+				req.SetRequestURI(r.target)
+				req.Header.Set("X-Token", "t1")
+				if cacheControl != "" {
+					req.Header.Set(fiber.HeaderCacheControl, cacheControl)
+				}
+				if r.body != "" {
+					req.SetBodyString(r.body)
+				}
+				return w.serve(req)
+			}
+
+			require.Equal(t, cacheMiss, send(tc.refused, "").cache)
+			require.Equal(t, cacheMiss, send(tc.other, "").cache, "the two keep entries of their own")
+			ended.Store(true)
+			require.Equal(t, fiber.StatusUnauthorized, send(tc.refused, "max-age=0").status)
+			got := send(tc.other, "")
+			require.Equal(t, fiber.StatusUnauthorized, got.status, "the refused credential was served %q from the cache", got.body)
+		})
+	}
+}
+
 func Test_Cache_RefusalReachesTheVariantsWhateverEachVariesOn(t *testing.T) {
 	t.Parallel()
 	for _, storage := range storageKinds {

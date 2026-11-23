@@ -155,7 +155,8 @@ type Config struct {
 	// with "public, max-age=<remaining>", or "private, max-age=<remaining>" when
 	// the entry holds one user's response: the response's Vary lists a credential
 	// header, KeyCookies or KeyCredentialHeaders is set, or KeyHeaders names a
-	// credential header (see KeyCredentialHeaders).
+	// credential header (see KeyCredentialHeaders). So is the hit of a request that
+	// carries a body, a QUERY's aside, as no Vary can name the body.
 	//
 	// Optional. Default: false
 	DisableCacheControl bool

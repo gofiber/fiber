@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/hostname"
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
 )
@@ -50,15 +51,32 @@ func unsafeMethod(method string) bool {
 	}
 }
 
-// slot folds case and trailing slashes, as the router does by default: better to end too many entries.
+// slot folds case and trailing slashes, as the router does by default, and leaves out the port, so example.com:443
+// and example.com share a slot (RFC 9110 §4.2.3): better to end too many entries.
 func (t *purgeTable) slot(host, path string) uint64 {
+	host, _ = hostname.SplitPort(host)
 	if path = utils.TrimRight(path, '/'); path == "" {
 		path = "/"
 	}
-	var buf [purgeFoldBuf]byte
-	h := maphash.Bytes(t.seed, utilsbytes.UnsafeToLower(append(buf[:0], host...)))
-	p := maphash.Bytes(t.seed, utilsbytes.UnsafeToLower(append(buf[:0], path...)))
+	h, p := t.foldHash(host), t.foldHash(path)
 	return (h ^ bits.RotateLeft64(p, 32)) & (purgeSlots - 1)
+}
+
+// foldHash hashes s in lower case, through a buffer on the stack, so a long host or path allocates nothing either;
+// what it writes a buffer at a time hashes as it would in one piece.
+func (t *purgeTable) foldHash(s string) uint64 {
+	var buf [purgeFoldBuf]byte
+	if len(s) <= len(buf) {
+		return maphash.Bytes(t.seed, utilsbytes.UnsafeToLower(append(buf[:0], s...)))
+	}
+	var h maphash.Hash
+	h.SetSeed(t.seed)
+	for s != "" {
+		n := copy(buf[:], s)
+		_, _ = h.Write(utilsbytes.UnsafeToLower(buf[:n])) //nolint:errcheck // maphash.Hash.Write never fails
+		s = s[n:]
+	}
+	return h.Sum64()
 }
 
 func unixNanos(t time.Time) uint64 {

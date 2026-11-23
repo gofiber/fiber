@@ -112,12 +112,14 @@ type cacheTestGate struct {
 	armed            atomic.Bool
 }
 
+// newCacheTestGate returns a gate armed now, or later with g.armed.Store(true).
 func newCacheTestGate(armed bool) *cacheTestGate {
 	g := &cacheTestGate{entered: make(chan struct{}), release: make(chan struct{})}
 	g.armed.Store(armed)
 	return g
 }
 
+// park reports whether it disarmed the gate, which it does once, closing entered and waiting for release.
 func (g *cacheTestGate) park() bool {
 	if !g.armed.CompareAndSwap(true, false) {
 		return false
@@ -214,12 +216,10 @@ func Test_Cache_StorageFailureOfADoneRequestRunsNoHandler(t *testing.T) {
 		stored  bool
 	}{
 		{name: "lookup", storage: &storagetest.Memory{HonorContext: true}},
-		{name: "body read", stored: true, storage: &hookedStorage{Memory: storagetest.New(), onGet: func(k string) error {
-			if k == bodyKey(defaultKey("/")) {
-				return context.Canceled
-			}
-			return nil
-		}}},
+		{
+			name: "body read", stored: true,
+			storage: storagetest.New().SetErr(storagetest.OpGet, bodyKey(defaultKey("/")), context.Canceled),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -550,16 +550,18 @@ func Test_Cache_Expired(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name       string
+		headers    []string // of the response, as name and value pairs
 		expiration time.Duration
 		wait       time.Duration
 		recached   bool // the answer to the request after the expired one is cached again
 	}{
 		{name: "expired entry is replaced", expiration: 2 * time.Second, wait: 3 * time.Second, recached: true},
-		{name: "nothing to cache", expiration: -(time.Second * 1), wait: 500 * time.Millisecond},
+		// A pass-through, which stores not even a response that gives a lifetime of its own.
+		{name: "nothing to cache", expiration: -(time.Second * 1), headers: []string{fiber.HeaderCacheControl, "public, max-age=3600"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app, _ := cacheTestAOrigin(New(Config{Expiration: tc.expiration}), "")
+			app, _ := cacheTestAOrigin(New(Config{Expiration: tc.expiration}), "", tc.headers...)
 
 			resp := apptest.Do(t, app, "/")
 			body := apptest.BodyBytes(t, resp)
@@ -3229,6 +3231,119 @@ func Test_CacheStorage_FailedEvictionPutsBackWhatTheStorageHolds(t *testing.T) {
 	}
 }
 
+// A store for a key whose node a failing eviction holds popped may replace the entry and lose it again, so the
+// eviction reads that entry back instead of putting the node back unread.
+func Test_CacheStorage_FailedEvictionReadsBackAnEntryAStoreTookUp(t *testing.T) {
+	t.Parallel()
+	kKey, xKey, bigKey := cacheKeyVersion+"|GET|/k", cacheKeyVersion+"|GET|/x", cacheKeyVersion+"|GET|/big"
+	const ccK, ccX = "public, max-age=120", "public, max-age=60"
+	sizeK, sizeX := charged(kKey, len("kkkk"), textPlain, ccK), charged(xKey, len("xxxxxxxxxxxxxxxxxx"), textPlain, ccX)
+	// One byte over /x, so the eviction pops /x and then /k, leaving room for a /k one byte shorter.
+	bigBody := strings.Repeat("b", int(sizeX)+1-len(bigKey)-len(textPlain)-len(ccX))
+	gate := newCacheTestGate(false)
+	storage := cacheTestParkedDelete(xKey, gate, errors.New("eviction delete failed"))
+	var short, noStore atomic.Bool
+	probe := &accountingProbe{}
+	app := cacheTestBPathKeyedApp(&Config{MaxBytes: sizeK + sizeX, Storage: storage, accounting: probe.record})
+	app.Get("/:name", func(c fiber.Ctx) error {
+		body, cacheControl := bigBody, ccX
+		switch {
+		case c.Path() == "/x":
+			body = "xxxxxxxxxxxxxxxxxx"
+		case c.Path() != "/k":
+		case noStore.Load():
+			body, cacheControl = "gone", "no-store"
+		case short.Load():
+			body, cacheControl = "kkk", ccK
+		default:
+			body, cacheControl = "kkkk", ccK
+		}
+		c.Set(fiber.HeaderCacheControl, cacheControl)
+		return c.SendString(body)
+	})
+	cacheTestAExpect(t, app, "/k", cacheMiss)
+	cacheTestAExpect(t, app, "/x", cacheMiss)
+
+	// The store of /big pops /x and /k and parks in the delete of /x, which then fails. Meanwhile a reload
+	// replaces /k, and a no-store answer to the next one deletes the replacement.
+	gate.armed.Store(true)
+	evicting := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/big"), gate.entered, gate.release)
+	short.Store(true)
+	cacheTestAExpect(t, app, cacheTestAGetCC("/k", "max-age=0"), cacheMiss)
+	noStore.Store(true)
+	cacheTestAExpect(t, app, cacheTestAGetCC("/k", "max-age=0"), cacheUnreachable)
+	require.Equal(t, cacheUnreachable, evicting.finish(t).Header.Get("X-Cache"))
+
+	require.False(t, storage.Holds(kKey))
+	cacheTestBRequireAccounting(t, probe, sizeX, 1)
+}
+
+// A store that fails puts back the node of the entry it replaced and reads that entry back. Finding it gone, it
+// drops the node, which an eviction may have popped again meanwhile: that eviction, failing too, leaves it out.
+func Test_CacheStorage_FailedEvictionLeavesOutANodeARestoreDropped(t *testing.T) {
+	t.Parallel()
+	aKey, cKey, bigKey := cacheKeyVersion+"|GET|/a", cacheKeyVersion+"|GET|/c", cacheKeyVersion+"|GET|/big"
+	const ccA, ccC = "public, max-age=120", "public, max-age=60"
+	sizeA, sizeC := charged(aKey, len("aaaa"), textPlain, ccA), charged(cKey, len("cccccccccccccccccc"), textPlain, ccC)
+	bigBody := strings.Repeat("b", int(sizeA+sizeC)-len(bigKey)-len(textPlain)-len(ccC)) // the room of both
+	deleting, reading := newCacheTestGate(false), newCacheTestGate(false)
+	var failBodyWrite atomic.Bool
+	storage := &hookedStorage{Memory: storagetest.New()}
+	storage.onDelete = func(k string) error {
+		if k == cKey && deleting.park() {
+			return errors.New("eviction delete failed")
+		}
+		return nil
+	}
+	storage.onSet = func(k string, _ time.Duration) error {
+		if k != bodyKey(aKey) || !failBodyWrite.CompareAndSwap(true, false) {
+			return nil
+		}
+		// /a goes while the reload holds its node out of the heap, and the write that was to replace it fails.
+		if err := storage.Delete(aKey); err != nil {
+			return err
+		}
+		if err := storage.Delete(bodyKey(aKey)); err != nil {
+			return err
+		}
+		reading.armed.Store(true)
+		return errors.New("body write failed")
+	}
+	storage.onGet = func(k string) error {
+		if k == aKey {
+			reading.park()
+		}
+		return nil
+	}
+	probe := &accountingProbe{}
+	app := cacheTestBPathKeyedApp(&Config{MaxBytes: sizeA + sizeC, Storage: storage, accounting: probe.record})
+	app.Get("/:name", func(c fiber.Ctx) error {
+		body, cacheControl := bigBody, ccC
+		switch c.Path() {
+		case "/a":
+			body, cacheControl = "aaaa", ccA
+		case "/c":
+			body = "cccccccccccccccccc"
+		}
+		c.Set(fiber.HeaderCacheControl, cacheControl)
+		return c.SendString(body)
+	})
+	cacheTestAExpect(t, app, "/a", cacheMiss)
+	cacheTestAExpect(t, app, "/c", cacheMiss)
+
+	// The reload of /a fails to store, puts the node of /a back and parks reading /a; then the store of /big pops
+	// /c and /a and parks in the delete of /c, which fails once the reload has dropped the node again.
+	failBodyWrite.Store(true)
+	reloading := cacheTestBPark(t, app, cacheTestAGetCC("/a", "max-age=0"), reading.entered, reading.release)
+	deleting.armed.Store(true)
+	evicting := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/big"), deleting.entered, deleting.release)
+	require.Equal(t, cacheUnreachable, reloading.finish(t).Header.Get("X-Cache"))
+	require.Equal(t, cacheUnreachable, evicting.finish(t).Header.Get("X-Cache"))
+
+	require.False(t, storage.Holds(aKey))
+	cacheTestBRequireAccounting(t, probe, sizeC, 1)
+}
+
 func Test_CacheStorage_MinFreshUncacheableRevalidationCleansEntry(t *testing.T) {
 	t.Parallel()
 	storage := storagetest.New()
@@ -3724,11 +3839,7 @@ func Benchmark_Cache_HitConfigs(b *testing.B) {
 
 			if bc.written {
 				// The table of writes is allocated by the first one, and every hit looks in it from then on.
-				write := &fasthttp.RequestCtx{}
-				write.Request.Header.SetMethod(fiber.MethodPut)
-				write.Request.SetRequestURI("/written")
-				h(write)
-				require.Equal(b, fiber.StatusNoContent, write.Response.StatusCode())
+				apptest.Expect(b, app, apptest.Req(fiber.MethodPut, "/written"), fiber.StatusNoContent)
 			}
 
 			if bc.refused {

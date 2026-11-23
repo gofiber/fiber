@@ -2,6 +2,7 @@ package cache
 
 import (
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -139,20 +140,28 @@ func Test_Cache_Security_WriteEndsEveryEntryOfThePath(t *testing.T) {
 	}
 }
 
-func Test_Cache_Security_WriteEndsThePathWithoutItsTrailingSlashes(t *testing.T) {
+// A write ends the entries of its path without the trailing slashes, and of its host without the port (RFC 9110 §4.2.3).
+func Test_Cache_Security_WriteEndsThePathWithoutItsTrailingSlashesAndTheHostWithoutItsPort(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct{ write, read string }{
-		{write: "/item/", read: "/item"},
-		{write: "/item", read: "/item/"},
-		{write: "/item//", read: "/item"},
+	const host = "example.com"
+	for _, tc := range []struct{ write, writeHost, read, readHost string }{
+		{write: "/item/", writeHost: host, read: "/item", readHost: host},
+		{write: "/item", writeHost: host, read: "/item/", readHost: host},
+		{write: "/item//", writeHost: host, read: "/item", readHost: host},
+		{write: "/item", writeHost: host + ":80", read: "/item", readHost: host},
+		{write: "/item", writeHost: host, read: "/item", readHost: host + ":443"},
+		{write: "/item", writeHost: "[::1]:8080", read: "/item", readHost: "[::1]"},
 	} {
-		t.Run(tc.write+" ends "+tc.read, func(t *testing.T) {
+		t.Run(tc.writeHost+tc.write+" ends "+tc.readHost+tc.read, func(t *testing.T) {
 			t.Parallel()
 			app := cacheTestPItemApp(&Config{Expiration: time.Hour}, fiber.StatusNoContent)
-			cacheTestCRequireReply(t, cacheTestCGet(t, app, tc.read), cacheMiss, "item v1")
-			cacheTestCRequireReply(t, cacheTestCGet(t, app, tc.read), cacheHit, "item v1")
-			apptest.Expect(t, app, apptest.Req(fiber.MethodPut, tc.write), fiber.StatusNoContent)
-			cacheTestCRequireReply(t, cacheTestCGet(t, app, tc.read), cacheMiss, "item v2")
+			get := func() reply {
+				return doRequest(t, app, apptest.Req(fiber.MethodGet, tc.read, apptest.WithHost(tc.readHost)))
+			}
+			cacheTestCRequireReply(t, get(), cacheMiss, "item v1")
+			cacheTestCRequireReply(t, get(), cacheHit, "item v1")
+			apptest.Expect(t, app, apptest.Req(fiber.MethodPut, tc.write, apptest.WithHost(tc.writeHost)), fiber.StatusNoContent)
+			cacheTestCRequireReply(t, get(), cacheMiss, "item v2")
 		})
 	}
 }
@@ -230,16 +239,25 @@ func Test_Cache_Security_WriteEndsEntriesOfAStorage(t *testing.T) {
 	}
 }
 
-func Test_Cache_Security_TimedOutWriteIsNotRead(t *testing.T) {
+// A write timeout.New gave up on ends the entry, as its handler may still complete it, without its status being
+// read while that handler may still be writing it.
+func Test_Cache_Security_TimedOutWriteEndsTheEntryUnread(t *testing.T) {
 	t.Parallel()
 	finished := make(chan struct{})
+	var version atomic.Int32
+	version.Store(1)
+	clock := cacheTestCClock() // moved past the write, as in Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry
 	app := fiber.New()
-	app.Use(New(Config{Expiration: time.Hour}))
+	app.Use(New(Config{Expiration: time.Hour, clock: clock.Now}))
+	app.Get("/item", func(c fiber.Ctx) error { return c.SendString("item v" + strconv.Itoa(int(version.Load()))) })
 	app.Put("/item", timeout.New(func(c fiber.Ctx) error {
 		defer close(finished)
 		<-c.Context().Done()
+		version.Add(1)
 		return c.SendStatus(fiber.StatusNoContent)
 	}, timeout.Config{Timeout: 10 * time.Millisecond}))
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheMiss, "item v1")
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheHit, "item v1")
 
 	fctx := cacheTestServe(func(fctx *fasthttp.RequestCtx) {
 		fctx.Request.Header.SetMethod(fiber.MethodPut)
@@ -249,19 +267,31 @@ func Test_Cache_Security_TimedOutWriteIsNotRead(t *testing.T) {
 	require.NotNil(t, resp, "timeout.New did not give up on the handler")
 	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode())
 	apptest.Recv(t, finished, 5*time.Second, "the timed-out handler did not finish")
+	clock.Add(time.Second)
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheMiss, "item v2")
 }
 
+// Each request meets the entry the write ended, which max-stale does not bring back.
 func Test_Cache_Security_EndedEntryIsNotServedStale(t *testing.T) {
 	t.Parallel()
-	app := cacheTestPItemApp(&Config{Expiration: time.Hour}, fiber.StatusNoContent)
-	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheMiss, "item v1")
-	apptest.Expect(t, app, apptest.Req(fiber.MethodPut, "/item"), fiber.StatusNoContent)
-
-	for _, directive := range []string{"only-if-cached", "only-if-cached, max-stale"} {
-		cacheTestAExpectStatus(t, app, cacheTestAGetCC("/item", directive), cacheUnreachable, fiber.StatusGatewayTimeout)
+	for _, tc := range []struct {
+		directive, cache, body string
+		status                 int
+	}{
+		{directive: "only-if-cached", cache: cacheUnreachable, status: fiber.StatusGatewayTimeout, body: "Gateway Timeout"},
+		{directive: "only-if-cached, max-stale", cache: cacheUnreachable, status: fiber.StatusGatewayTimeout, body: "Gateway Timeout"},
+		{directive: "max-stale", cache: cacheMiss, status: fiber.StatusOK, body: "item v2"},
+	} {
+		t.Run(tc.directive, func(t *testing.T) {
+			t.Parallel()
+			app := cacheTestPItemApp(&Config{Expiration: time.Hour}, fiber.StatusNoContent)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheMiss, "item v1")
+			apptest.Expect(t, app, apptest.Req(fiber.MethodPut, "/item"), fiber.StatusNoContent)
+			got := doRequest(t, app, cacheTestAGetCC("/item", tc.directive))
+			require.Equal(t, tc.status, got.status)
+			cacheTestCRequireReply(t, got, tc.cache, tc.body)
+		})
 	}
-	got := doRequest(t, app, apptest.Req(fiber.MethodGet, "/item", apptest.WithHeader(fiber.HeaderCacheControl, "max-stale")))
-	cacheTestCRequireReply(t, got, cacheMiss, "item v2")
 }
 
 func Test_unsafeMethod(t *testing.T) {
@@ -333,7 +363,12 @@ func Test_purgeTable(t *testing.T) {
 // Sequential: testing.AllocsPerRun panics in a parallel test.
 func Test_purgeTable_slotDoesNotAllocate(t *testing.T) {
 	table := newPurgeTable(time.Now)
-	for _, target := range [][2]string{{"example.com", "/item"}, {"Example.COM", "/Item/"}} {
+	long := "/" + strings.Repeat("Segment/", 40) // longer than the buffer it is folded in
+	for _, target := range [][2]string{
+		{"example.com", "/item"}, {"Example.COM", "/Item/"}, {"example.com", long}, {strings.Repeat("a", 200) + ".com", "/item"},
+	} {
 		require.Zero(t, testing.AllocsPerRun(100, func() { table.slot(target[0], target[1]) }), "%v", target)
 	}
+	// Folded through the buffer, a long path keeps the slot it has in one piece and in another case.
+	require.Equal(t, table.slot("example.com", long), table.slot("EXAMPLE.com", strings.ToLower(long)+"/"))
 }

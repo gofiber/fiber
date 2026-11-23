@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
-	"net/textproto"
 	"slices"
 	"sort"
 	"strings"
@@ -164,7 +163,7 @@ func (cfg *Config) keyVaryFields(body bool) []string { //nolint:revive // flag-p
 	var fields []string
 	for _, name := range names {
 		if !fieldname.ContainsFold(fields, name) {
-			fields = append(fields, textproto.CanonicalMIMEHeaderKey(name))
+			fields = append(fields, utils.CanonicalHeaderKey(name))
 		}
 	}
 	return fields

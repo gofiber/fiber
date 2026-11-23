@@ -429,7 +429,8 @@ func Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy(t *testing.T) {
 	}
 }
 
-// No Vary names a body, so a body-keyed hit is private, unless it is a QUERY's (RFC 10008).
+// No Vary names a body, so a body-keyed hit is private, unless it is a QUERY's (RFC 10008). A custom key may hold
+// the body, which the middleware cannot tell, so the hit of a request that carries one is private all the same.
 func Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy(t *testing.T) {
 	t.Parallel()
 	const keyHeaders, bodyFields = "Accept, Accept-Encoding, Accept-Language", ", Content-Encoding, Content-Type"
@@ -437,7 +438,17 @@ func Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy(t *testing.T) {
 		name, method, body, encoding string
 		wantCC, wantVary             string
 		status                       int
+		custom                       bool // keyed by a KeyGenerator of its own that holds the body
 	}{
+		{
+			name: "a POST under a KeyGenerator of its own", method: fiber.MethodPost, body: "x", custom: true,
+			status: fiber.StatusOK, wantCC: "private, max-age=",
+		},
+		{
+			name: "a QUERY under a KeyGenerator of its own", method: fiber.MethodQuery, body: "x", custom: true,
+			status: fiber.StatusOK, wantCC: "public, max-age=",
+		},
+		{name: "a GET under a KeyGenerator of its own", method: fiber.MethodGet, custom: true, status: fiber.StatusOK, wantCC: "public, max-age="},
 		{name: "a plain GET", method: fiber.MethodGet, status: fiber.StatusOK, wantCC: "public, max-age=", wantVary: keyHeaders},
 		{
 			name: "a Content-Encoding without a body", method: fiber.MethodGet, encoding: "compress",
@@ -450,8 +461,12 @@ func Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			cfg := Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodQuery}}
+			if tc.custom {
+				cfg.KeyGenerator = func(c fiber.Ctx) string { return c.Path() + "|" + string(c.Body()) }
+			}
 			app := fiber.New()
-			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodQuery}}))
+			app.Use(New(cfg))
 			app.All("/", func(c fiber.Ctx) error { return c.SendString("body=" + string(c.Body())) })
 			send := func() *http.Response {
 				var body io.Reader = http.NoBody
@@ -468,7 +483,11 @@ func Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy(t *testing.T) {
 			require.Equal(t, cacheHit, hit.Header.Get("X-Cache"))
 			require.Equal(t, tc.status, hit.StatusCode)
 			require.True(t, strings.HasPrefix(hit.Header.Get(fiber.HeaderCacheControl), tc.wantCC), "Cache-Control %q", hit.Header.Get(fiber.HeaderCacheControl))
-			require.Equal(t, []string{tc.wantVary}, hit.Header.Values(fiber.HeaderVary))
+			if tc.wantVary == "" {
+				require.Empty(t, hit.Header.Values(fiber.HeaderVary))
+			} else {
+				require.Equal(t, []string{tc.wantVary}, hit.Header.Values(fiber.HeaderVary))
+			}
 		})
 	}
 }
@@ -1384,7 +1403,8 @@ func Test_AuthorizationHash_CoversEveryFieldLine(t *testing.T) {
 		"principals differing only on a later field line must not share a partition")
 }
 
-// Trailer, fields named in Connection (RFC 9110 §6.6.2, §7.6.1) and Proxy-Authentication-Info (RFC 9111 §3.1) are not stored.
+// Trailer, fields named in Connection and Proxy-Connection (RFC 9110 §6.6.2, §7.6.1), and Proxy-Authentication-Info
+// (RFC 9111 §3.1) are not stored.
 func Test_StoreResponseHeaders_DropsConnectionAndProxyFields(t *testing.T) {
 	t.Parallel()
 	sent := map[string]string{"X-Hop": "hop", "X-Other": "other", "X-Keep": "kept"}
@@ -1413,6 +1433,7 @@ func Test_StoreResponseHeaders_DropsConnectionAndProxyFields(t *testing.T) {
 					c.Set(name, value)
 				}
 				c.Set("Proxy-Authentication-Info", `nextnonce="abc"`)
+				c.Set("Proxy-Connection", "keep-alive")
 				return c.SendString("hi")
 			})
 
@@ -1421,6 +1442,7 @@ func Test_StoreResponseHeaders_DropsConnectionAndProxyFields(t *testing.T) {
 			require.Equal(t, tc.trailer != "", len(miss.Trailer) > 0, "the client reads a Trailer field into Trailer")
 			require.Empty(t, resp.Trailer)
 			require.Empty(t, resp.Header.Values("Proxy-Authentication-Info"))
+			require.Empty(t, resp.Header.Values("Proxy-Connection"))
 			for _, name := range tc.dropped {
 				require.Empty(t, resp.Header.Values(name), name)
 			}
@@ -1470,7 +1492,9 @@ func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 		t.Run(spelling, func(t *testing.T) {
 			t.Parallel()
 			var calls atomic.Int32
-			app := fiber.New()
+			// Kept as sent: a multipart form fasthttp parses while reading it passes the cache by (see
+			// Test_Cache_PreParsedMultipartPassesTheCacheBy).
+			app := fiber.New(fiber.Config{DisablePreParseMultipartForm: true})
 			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost}}))
 			app.Post("/", func(c fiber.Ctx) error {
 				calls.Add(1)
@@ -1494,6 +1518,39 @@ func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 	}
 }
 
+// fasthttp parses a multipart form of declared length while reading it and keeps no copy of the body, which
+// c.Body() then writes in another field order each time, or as an error's text, so the default key cannot hold it.
+func Test_Cache_PreParsedMultipartPassesTheCacheBy(t *testing.T) {
+	t.Parallel()
+	parts := make([]string, 0, 21)
+	for i := range 20 {
+		parts = append(parts, "--XBOUNDARYX\r\nContent-Disposition: form-data; name=\"f"+strconv.Itoa(i)+"\"\r\n\r\nv\r\n")
+	}
+	body := strings.Join(append(parts, "--XBOUNDARYX--\r\n"), "")
+	for _, tc := range []struct {
+		name   string
+		method string
+		server fiber.Config
+		want   [2]string // the X-Cache of two identical requests
+	}{
+		{name: "GET", method: fiber.MethodGet, want: [2]string{cacheUnreachable, cacheUnreachable}},
+		{name: "POST", method: fiber.MethodPost, want: [2]string{cacheUnreachable, cacheUnreachable}},
+		{name: "kept as sent", method: fiber.MethodPost, server: fiber.Config{DisablePreParseMultipartForm: true}, want: [2]string{cacheMiss, cacheHit}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New(tc.server)
+			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodHead, fiber.MethodPost}}))
+			app.All("/", func(c fiber.Ctx) error { return c.SendString("form") })
+			for _, want := range tc.want {
+				req := httptest.NewRequest(tc.method, "/", strings.NewReader(body))
+				req.Header.Set(fiber.HeaderContentType, "multipart/form-data; boundary=XBOUNDARYX")
+				cacheTestAExpect(t, app, req, want)
+			}
+		})
+	}
+}
+
 // A key dimension named by the response's Vary or by KeyHeaders partitions whatever case header names keep.
 func Test_PartitionsWithoutHeaderNormalizing(t *testing.T) {
 	t.Parallel()
@@ -1503,14 +1560,10 @@ func Test_PartitionsWithoutHeaderNormalizing(t *testing.T) {
 		name, header, vary string // header is the dimension the body echoes; vary the response's Vary
 		cfg                Config
 	}{
+		// A header the key does not hold, so that only the Vary tells the two apart.
 		{
-			name: "Vary", cfg: Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost}},
-			header: fiber.HeaderContentType, vary: fiber.HeaderContentType, values: [2]string{"application/x-www-form-urlencoded", "application/json"},
-			send: func(ct string) *http.Request {
-				req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a=1"))
-				req.Header.Set(fiber.HeaderContentType, ct)
-				return req
-			},
+			name: "Vary", cfg: Config{Expiration: time.Hour}, header: "X-Tenant", vary: "X-Tenant", values: [2]string{"acme", "beta"},
+			send: func(tenant string) *http.Request { return cacheTestCReq("/", "X-Tenant", tenant) },
 		},
 		{
 			name: "KeyHeaders", cfg: Config{Expiration: time.Hour, KeyHeaders: []string{"X-Tenant"}}, header: "X-Tenant", values: [2]string{"acme", "beta"},
