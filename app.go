@@ -1827,10 +1827,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = ErrMethodNotAllowed
 		// A 405 must carry Allow (RFC 9110 §15.5.6).
 		c.Set(HeaderAllow, getOnlyAllow)
-	case errors.Is(err, fasthttp.ErrUnsupportedRequestMethod),
-		hasMessagePrefix(err, "unsupported http request method"):
-		// A prefix per layer, not the whole text: the wrappers quote request
-		// bytes, so a malformed trailer could otherwise pick its own status.
+	case errors.Is(err, fasthttp.ErrUnsupportedRequestMethod):
 		err = ErrNotImplemented
 	case hasMessagePrefix(err, unsupportedTransferCodingMarker):
 		// An unknown transfer coding is a 501, not a 400 (RFC 9112 §6.1).

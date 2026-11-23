@@ -18,8 +18,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// defaultRedirectLimit mirrors fasthttp's default when callers supply a negative redirect cap.
-const defaultRedirectLimit = 16
+// defaultRedirectLimit is fasthttp's default, for callers that supply a negative redirect cap.
+const defaultRedirectLimit = fasthttp.DefaultMaxRedirectsCount
 
 // defaultMaxResponseBodySize bounds the buffer fasthttp allocates from a declared
 // Content-Length or chunk size before the body arrives; an unmappable size is a fatal error.

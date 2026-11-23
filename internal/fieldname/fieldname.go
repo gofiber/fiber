@@ -156,8 +156,8 @@ func ClearTrailers(req *fasthttp.Request) bool {
 		SetReceived(req, &block)
 	}
 
-	// It returns the previous setting, which Reset clears.
-	disabled := h.DisableNormalizing()
+	// Reset clears the setting.
+	disabled := h.NormalizingDisabled()
 	h.Reset()
 	if disabled {
 		h.DisableNormalizing()
