@@ -316,60 +316,67 @@ func decodeGob(r io.Reader, target any) (err error) { //nolint:nonamedreturns //
 	return nil
 }
 
-// maxGobNesting is how deep a value of a session may be nested for gob to save it: every
-// map, slice, array, struct and pointer that holds the value counts one level. Gob encodes
-// each value that an interface holds into a buffer of its own and copies it into the one
-// of the value around it, so a value n levels deep costs n times its size in time and in
-// memory: 60 KB of JSON nested 9,999 deep, which encoding/json decodes into a
-// map[string]any, took 0.8 s and 1.7 GiB to save. A value that holds itself would never
-// be saved.
-const maxGobNesting = 64
+// maxGobNesting is how many interfaces deep a value of a session may hold another for gob to
+// save it. Gob encodes each value an interface holds into a buffer of its own and copies it into
+// the one around it, so n such levels cost n times the size: 60 KB of JSON nested 9,999 deep,
+// which encoding/json decodes into a map[string]any, took 0.8 s and 1.7 GiB to save. Typed
+// levels are encoded in place and count only toward maxGobDepth, which a value reaches by
+// holding itself, and which gob would follow until its stack overflows.
+const (
+	maxGobNesting = 64
+	maxGobDepth   = 10_000
+)
 
-// errNestedTooDeep is the reason a session that holds a value nested deeper than
-// maxGobNesting is not saved as gob.
-var errNestedTooDeep = fmt.Errorf("a value is nested more than %d levels deep, which gob cannot save in reasonable time and memory: "+
-	"keep it flatter, or store the sessions with a Codec", maxGobNesting)
+// errNestedTooDeep is the reason a session that holds a value nested too deeply is not saved
+// as gob.
+var errNestedTooDeep = fmt.Errorf("a value is nested more than %d interfaces deep (such as map[string]any or []any), "+
+	"or more than %d levels in all, which gob cannot save in reasonable time and memory: "+
+	"keep it flatter, or store the sessions with a Codec", maxGobNesting, maxGobDepth)
 
-// nestedTooDeep reports whether a key or a value of values is nested deeper than
-// maxGobNesting.
+// nestedTooDeep reports whether a key or a value of values is nested too deeply for gob.
 func nestedTooDeep(values map[any]any) bool {
 	for key, value := range values {
-		if tooDeep(key, 0) || tooDeep(value, 0) {
+		if tooDeep(key, 0, 0) || tooDeep(value, 0, 0) {
 			return true
 		}
 	}
 	return false
 }
 
-// tooDeep reports whether v, which sits depth levels down, holds a value that goes deeper
-// than maxGobNesting. What a session mostly holds, and what a client shapes, such as a
-// JSON document decoded into any, is walked without reflection.
-func tooDeep(v any, depth int) bool {
+// atGobLimit reports whether a container at these levels may not hold anything further.
+func atGobLimit(ifaces, depth int) bool {
+	return ifaces >= maxGobNesting || depth >= maxGobDepth
+}
+
+// tooDeep reports whether v, which sits ifaces interfaces and depth levels down, holds a value
+// nested too deeply. What a session mostly holds, and what a client shapes, such as a JSON
+// document decoded into any, is walked without reflection.
+func tooDeep(v any, ifaces, depth int) bool {
 	switch typed := v.(type) {
 	case nil, string, int, int64, bool, float64, time.Time:
 		return false
 	case map[string]any:
-		if depth >= maxGobNesting {
+		if atGobLimit(ifaces, depth) {
 			return true
 		}
 		for _, held := range typed {
-			if tooDeep(held, depth+1) {
+			if tooDeep(held, ifaces+1, depth+1) {
 				return true
 			}
 		}
 		return false
 	case []any:
-		if depth >= maxGobNesting {
+		if atGobLimit(ifaces, depth) {
 			return true
 		}
 		for _, held := range typed {
-			if tooDeep(held, depth+1) {
+			if tooDeep(held, ifaces+1, depth+1) {
 				return true
 			}
 		}
 		return false
 	default:
-		return tooDeepValue(reflect.ValueOf(v), depth)
+		return tooDeepValue(reflect.ValueOf(v), ifaces, depth)
 	}
 }
 
@@ -399,12 +406,12 @@ func encodesItselfType(t reflect.Type) bool {
 
 // tooDeepValue is tooDeep for any value, by reflection. A value that encodes itself is not
 // looked into.
-func tooDeepValue(rv reflect.Value, depth int) bool {
+func tooDeepValue(rv reflect.Value, ifaces, depth int) bool {
 	switch rv.Kind() {
 	case reflect.Interface:
-		return !rv.IsNil() && tooDeepValue(rv.Elem(), depth)
+		return !rv.IsNil() && tooDeepValue(rv.Elem(), ifaces+1, depth)
 	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Array, reflect.Struct:
-		return !encodesItselfType(rv.Type()) && tooDeepContainer(rv, depth)
+		return !encodesItselfType(rv.Type()) && tooDeepContainer(rv, ifaces, depth)
 	default:
 		return false
 	}
@@ -413,22 +420,22 @@ func tooDeepValue(rv reflect.Value, depth int) bool {
 // tooDeepContainer is tooDeepValue for a pointer, map, slice, array or struct. Only what holds
 // other values is looked into: a container of scalars has nothing to go deeper, and gob leaves
 // out the fields of a struct that are not exported.
-func tooDeepContainer(rv reflect.Value, depth int) bool {
+func tooDeepContainer(rv reflect.Value, ifaces, depth int) bool {
 	switch rv.Kind() {
 	case reflect.Pointer:
 		if rv.IsNil() {
 			return false
 		}
-		return depth >= maxGobNesting || tooDeepValue(rv.Elem(), depth+1)
+		return atGobLimit(ifaces, depth) || tooDeepValue(rv.Elem(), ifaces, depth+1)
 	case reflect.Map:
 		if scalarKind(rv.Type().Key().Kind()) && scalarKind(rv.Type().Elem().Kind()) {
 			return false
 		}
-		if depth >= maxGobNesting {
+		if atGobLimit(ifaces, depth) {
 			return true
 		}
 		for iter := rv.MapRange(); iter.Next(); {
-			if tooDeepValue(iter.Key(), depth+1) || tooDeepValue(iter.Value(), depth+1) {
+			if tooDeepValue(iter.Key(), ifaces, depth+1) || tooDeepValue(iter.Value(), ifaces, depth+1) {
 				return true
 			}
 		}
@@ -436,20 +443,20 @@ func tooDeepContainer(rv reflect.Value, depth int) bool {
 		if scalarKind(rv.Type().Elem().Kind()) {
 			return false
 		}
-		if depth >= maxGobNesting {
+		if atGobLimit(ifaces, depth) {
 			return true
 		}
 		for i := range rv.Len() {
-			if tooDeepValue(rv.Index(i), depth+1) {
+			if tooDeepValue(rv.Index(i), ifaces, depth+1) {
 				return true
 			}
 		}
 	case reflect.Struct:
-		if depth >= maxGobNesting {
+		if atGobLimit(ifaces, depth) {
 			return true
 		}
 		for i := range rv.NumField() {
-			if field := rv.Field(i); field.CanInterface() && tooDeepValue(field, depth+1) {
+			if field := rv.Field(i); field.CanInterface() && tooDeepValue(field, ifaces, depth+1) {
 				return true
 			}
 		}

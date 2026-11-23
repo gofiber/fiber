@@ -2794,8 +2794,9 @@ func Test_Codec_GobErrorIsLoggedQuoted(t *testing.T) {
 }
 
 type (
-	nestedMap map[string]any
-	nestedBox struct{ Inner any }
+	nestedMap  map[string]any
+	nestedBox  struct{ Inner any }
+	nestedNode struct{ Kids []*nestedNode }
 
 	// The three that gob writes with a method of their own, and so never looks inside.
 	nestedGob    struct{ Inner any }
@@ -2811,26 +2812,25 @@ func (nestedText) MarshalText() ([]byte, error)     { return []byte("text"), nil
 func (*nestedText) UnmarshalText([]byte) error      { return nil }
 
 // Gob encodes the value an interface holds into a buffer of its own and copies it into the one of
-// the value around it, so a value n levels deep costs n times its size, which a client can shape
+// the value around it, so a value n interfaces deep costs n times its size, which a client can shape
 // (a JSON body decoded into a map[string]any). A value nested deeper than maxGobNesting is not saved,
-// whatever holds the levels, and one at the limit is.
+// whatever holds the interfaces, and one at the limit is.
 func Test_Codec_GobRefusesValuesNestedTooDeep(t *testing.T) {
 	t.Parallel()
 	for _, registered := range []any{map[string]any{}, []any{}, map[any]any{}, nestedMap{}, nestedBox{}, [1]any{}, time.Time{}} {
 		gob.Register(registered)
 	}
 	for _, tc := range []struct {
-		wrap   func(any) any
-		name   string
-		levels int // the levels a wrap adds
+		wrap func(any) any
+		name string
 	}{
-		{name: "map[string]any", levels: 1, wrap: func(v any) any { return map[string]any{"k": v} }},
-		{name: "[]any", levels: 1, wrap: func(v any) any { return []any{v} }},
-		{name: "map[any]any", levels: 1, wrap: func(v any) any { return map[any]any{"k": v} }},
-		{name: "named map", levels: 1, wrap: func(v any) any { return nestedMap{"k": v} }},
-		{name: "array", levels: 1, wrap: func(v any) any { return [1]any{v} }},
-		{name: "struct", levels: 1, wrap: func(v any) any { return nestedBox{Inner: v} }},
-		{name: "pointer to struct", levels: 2, wrap: func(v any) any { return &nestedBox{Inner: v} }},
+		{name: "map[string]any", wrap: func(v any) any { return map[string]any{"k": v} }},
+		{name: "[]any", wrap: func(v any) any { return []any{v} }},
+		{name: "map[any]any", wrap: func(v any) any { return map[any]any{"k": v} }},
+		{name: "named map", wrap: func(v any) any { return nestedMap{"k": v} }},
+		{name: "array", wrap: func(v any) any { return [1]any{v} }},
+		{name: "struct", wrap: func(v any) any { return nestedBox{Inner: v} }},
+		{name: "pointer to struct", wrap: func(v any) any { return &nestedBox{Inner: v} }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -2841,9 +2841,9 @@ func Test_Codec_GobRefusesValuesNestedTooDeep(t *testing.T) {
 				}
 				return map[any]any{"k": v}
 			}
-			_, err := gobStream.encode(nested(maxGobNesting / tc.levels))
+			_, err := gobStream.encode(nested(maxGobNesting))
 			require.NoError(t, err, "a value at the limit is saved")
-			_, err = gobStream.encode(nested(maxGobNesting/tc.levels + 1))
+			_, err = gobStream.encode(nested(maxGobNesting + 1))
 			require.ErrorIs(t, err, errNestedTooDeep)
 			require.ErrorContains(t, err, "failed to encode session data")
 		})
@@ -2874,10 +2874,28 @@ func Test_Codec_GobRefusesValuesNestedTooDeep(t *testing.T) {
 		loop["self"] = loop
 		box := &nestedBox{}
 		box.Inner = box
-		for _, v := range []any{loop, box, []any{loop}} {
+		node := &nestedNode{}
+		node.Kids = []*nestedNode{node}
+		for _, v := range []any{loop, box, []any{loop}, node} {
 			_, err := gobStream.encode(map[any]any{"k": v})
 			require.ErrorIs(t, err, errNestedTooDeep)
 		}
+	})
+	t.Run("typed levels count toward maxGobDepth only", func(t *testing.T) {
+		t.Parallel()
+		gob.Register(&nestedNode{})
+		chain := func(n int) *nestedNode {
+			root := &nestedNode{}
+			for tail := root; n > 1; n-- {
+				tail.Kids = []*nestedNode{{}}
+				tail = tail.Kids[0]
+			}
+			return root
+		}
+		_, err := gobStream.encode(map[any]any{"k": chain(1000)})
+		require.NoError(t, err, "gob encodes typed levels in place")
+		_, err = gobStream.encode(map[any]any{"k": chain(maxGobDepth)})
+		require.ErrorIs(t, err, errNestedTooDeep)
 	})
 	t.Run("a value that encodes itself is not looked into", func(t *testing.T) {
 		t.Parallel()
