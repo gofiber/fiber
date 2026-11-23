@@ -610,8 +610,10 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk *domainClone) [][]*Route
 	src.mutex.Lock()
 	// As startupProcess does before a plain mount: src's HEAD routes are placed in its
 	// own route order, never by id against the routes of the apps it is flattened with.
+	// Their OnRoute hooks fire once the lock is released, so they may call locking app methods.
+	var twins []*Route
 	if !skipAutoHead {
-		src.ensureAutoHeadRoutesLocked()
+		twins = src.ensureAutoHeadRoutesLocked()
 	}
 	stack := make([][]sourceRoute, len(routes))
 	for m := range stack {
@@ -642,6 +644,7 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk *domainClone) [][]*Route
 	// Only the apps above src, never its siblings, resolve what its routes left unresolved.
 	enclosing := mergeCustomConstraints(slices.Clone(src.customConstraints), walk.customs)
 	src.mutex.Unlock()
+	src.fireOnRouteHooks(twins)
 
 	// Mounted apps are flattened once and reused across the method indexes:
 	// register files a copy of the placeholder in every method's stack, and

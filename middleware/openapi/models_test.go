@@ -531,26 +531,8 @@ func Test_OpenAPI_ParamsSkipFieldsTaggedForOtherLocations(t *testing.T) {
 	require.Equal(t, true, params["header:X-Trace"]["required"])
 }
 
-// boundedTimeout is how long runBounded waits before calling a hang.
+// boundedTimeout is how long apptest.Bounded waits before calling a deadlock.
 const boundedTimeout = 10 * time.Second
-
-// runBounded runs fn and fails the test, instead of hanging it, when fn does not return in time or panics.
-func runBounded(t *testing.T, what string, fn func()) {
-	t.Helper()
-	done := make(chan any, 1)
-	go func() {
-		defer func() { done <- recover() }()
-		fn()
-	}()
-	select {
-	case recovered := <-done:
-		if recovered != nil {
-			t.Fatalf("%s panicked: %v", what, recovered)
-		}
-	case <-time.After(boundedTimeout):
-		t.Fatalf("%s did not return within %v", what, boundedTimeout)
-	}
-}
 
 type exclusiveBounds struct {
 	Name  string  `json:"name" validate:"gt=2,lt=9"`

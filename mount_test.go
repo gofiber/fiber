@@ -49,7 +49,7 @@ func Test_App_Mount_ExpansionLockOrder(t *testing.T) {
 	// Let the parent reach the sub-app, where taking the lock inside the Once would leave it holding the Once.
 	time.Sleep(50 * time.Millisecond)
 
-	runBounded(t, "a sub-app expanding its mounts while its parent expands them", sub.mountStartupProcess)
+	apptest.Bounded(t, boundedTimeout, "a sub-app expanding its mounts while its parent expands them", sub.mountStartupProcess)
 	released = true
 	sub.mutex.Unlock()
 	<-expanded

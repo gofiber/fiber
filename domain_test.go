@@ -2289,3 +2289,18 @@ func Test_Domain_AutoHead_PerDomain(t *testing.T) {
 		apptest.Expect(t, app, apptest.Req(MethodHead, "http://"+host+"/x", apptest.WithHost(host)), StatusOK)
 	}
 }
+
+func Test_Domain_Mount_FiresOnRouteForAutoHeadRoutes(t *testing.T) {
+	t.Parallel()
+	sub := New()
+	sub.Get("/x", testHandlerOK)
+	var heads []string
+	sub.Hooks().OnRoute(func(r Route) error {
+		if r.Method == MethodHead {
+			heads = append(heads, r.Path)
+		}
+		return nil
+	})
+	routerDomainMount(sub)
+	require.Equal(t, []string{"/x"}, heads)
+}

@@ -1,6 +1,7 @@
 package apptest
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -20,5 +21,21 @@ func Recv[T any](tb testing.TB, ch <-chan T, timeout time.Duration, msgAndArgs .
 	case <-time.After(timeout):
 		require.FailNow(tb, "no value arrived within "+timeout.String(), msgAndArgs...)
 		panic("unreachable") // FailNow stops the test
+	}
+}
+
+// Bounded runs fn on its own goroutine and fails the test, instead of hanging
+// it, when fn panics or does not return within timeout, as a deadlock would.
+// what names fn in the failure message.
+func Bounded(tb testing.TB, timeout time.Duration, what string, fn func()) {
+	tb.Helper()
+
+	done := make(chan any, 1)
+	go func() {
+		defer func() { done <- recover() }()
+		fn()
+	}()
+	if recovered := Recv(tb, done, timeout, "%s did not return within %v", what, timeout); recovered != nil {
+		require.FailNow(tb, fmt.Sprintf("%s panicked: %v", what, recovered))
 	}
 }

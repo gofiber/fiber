@@ -210,27 +210,8 @@ func Test_CopyRoute_Complete(t *testing.T) {
 	require.Equal(t, "https://example.com", clone.Servers[0]["url"])
 }
 
-// boundedTimeout is how long runBounded waits before calling a deadlock.
+// boundedTimeout is how long apptest.Bounded waits before calling a deadlock.
 const boundedTimeout = 10 * time.Second
-
-// runBounded runs fn and fails the test, instead of hanging it, when fn does not return in time or
-// panics.
-func runBounded(t *testing.T, what string, fn func()) {
-	t.Helper()
-	done := make(chan any, 1)
-	go func() {
-		defer func() { done <- recover() }()
-		fn()
-	}()
-	select {
-	case recovered := <-done:
-		if recovered != nil {
-			t.Fatalf("%s panicked: %v", what, recovered)
-		}
-	case <-time.After(boundedTimeout):
-		t.Fatalf("%s did not return within %v: deadlock?", what, boundedTimeout)
-	}
-}
 
 func Test_Shutdown_WithInflightGetRoutes(t *testing.T) {
 	t.Parallel()
@@ -283,7 +264,7 @@ func Test_Hooks_MayCallLockingAppMethods(t *testing.T) {
 		return nil
 	})
 
-	runBounded(t, "route registration with hooks that call GetRoutes", func() {
+	apptest.Bounded(t, boundedTimeout, "route registration with hooks that call GetRoutes", func() {
 		app.Get("/x", testHandlerOK).Name("x")
 	})
 	require.Equal(t, 1, onRouteSaw, "the hook saw the one registered route")
@@ -525,7 +506,7 @@ func Test_Hooks_OutsideRouterLock(t *testing.T) {
 		t.Parallel()
 		app := New()
 		app.Hooks().OnGroupName(func(Group) error { _ = app.GetRoutes(); return nil })
-		runBounded(t, "OnGroupName", func() { app.Group("/x").Name("grp") })
+		apptest.Bounded(t, boundedTimeout, "OnGroupName", func() { app.Group("/x").Name("grp") })
 	})
 
 	t.Run("OnMountThroughDomain", func(t *testing.T) {
@@ -534,7 +515,7 @@ func Test_Hooks_OutsideRouterLock(t *testing.T) {
 		sub := New()
 		sub.Get("/a", testHandlerOK)
 		sub.Hooks().OnMount(func(*App) error { _ = sub.GetRoutes(); return nil })
-		runBounded(t, "OnMount", func() { app.Domain("api.example.com").Use("/s", sub) })
+		apptest.Bounded(t, boundedTimeout, "OnMount", func() { app.Domain("api.example.com").Use("/s", sub) })
 	})
 
 	t.Run("OnPreShutdown", func(t *testing.T) {
@@ -552,7 +533,7 @@ func Test_Hooks_OutsideRouterLock(t *testing.T) {
 			}
 		}()
 		<-listening
-		runBounded(t, "OnPreShutdown", func() { require.NoError(t, app.Shutdown()) })
+		apptest.Bounded(t, boundedTimeout, "OnPreShutdown", func() { require.NoError(t, app.Shutdown()) })
 	})
 }
 
@@ -859,7 +840,7 @@ func Test_LockingLookups_FromCallbacks(t *testing.T) {
 		app.Get("/old", testHandlerOK).Name("old")
 		app.Get("/keep", testHandlerOK)
 
-		runBounded(t, "RemoveRouteFunc with a matcher that calls GetRoute", func() {
+		apptest.Bounded(t, boundedTimeout, "RemoveRouteFunc with a matcher that calls GetRoute", func() {
 			app.RemoveRouteFunc(func(r *Route) bool { return r.Path == app.GetRoute("old").Path })
 		})
 		require.Len(t, app.GetRoutes(true), 1)
@@ -877,7 +858,7 @@ func Test_LockingLookups_FromCallbacks(t *testing.T) {
 		})
 		parent.Use("/api", sub)
 
-		runBounded(t, "startup with a sub-app hook that calls the parent's GetRoutes", func() {
+		apptest.Bounded(t, boundedTimeout, "startup with a sub-app hook that calls the parent's GetRoutes", func() {
 			resp, err := parent.Test(httptest.NewRequest(MethodHead, "/api/x", http.NoBody))
 			if assert.NoError(t, err) {
 				assert.Equal(t, StatusOK, resp.StatusCode)
@@ -1837,7 +1818,7 @@ func Test_LockIsFreeAfterStartupAndRebuild(t *testing.T) {
 	apptest.Do(t, app, "/m/s")
 	app.RebuildTree()
 
-	runBounded(t, "GetRoutes after startup and rebuild", func() { _ = app.GetRoutes() })
+	apptest.Bounded(t, boundedTimeout, "GetRoutes after startup and rebuild", func() { _ = app.GetRoutes() })
 }
 
 func Test_OperationExtension_NilIsNoOp(t *testing.T) {
@@ -1847,7 +1828,7 @@ func Test_OperationExtension_NilIsNoOp(t *testing.T) {
 
 	require.NotPanics(t, func() { app.OperationExtension(nil) })
 	require.NotPanics(t, func() { app.OperationExtension(map[string]any{}) })
-	runBounded(t, "GetRoutes after a nil mutation", func() { _ = app.GetRoutes() })
+	apptest.Bounded(t, boundedTimeout, "GetRoutes after a nil mutation", func() { _ = app.GetRoutes() })
 }
 
 func Test_RegistrationCursors_AreAtomicValues(t *testing.T) {
@@ -2072,7 +2053,7 @@ func Test_Mount_StartupConcurrentWithNestedSubApp(t *testing.T) {
 		}
 	})
 
-	runBounded(t, "startup with a nested mount", func() {
+	apptest.Bounded(t, boundedTimeout, "startup with a nested mount", func() {
 		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/inner/leaf", http.NoBody))
 		if assert.NoError(t, err) {
 			assert.Equal(t, StatusOK, resp.StatusCode)

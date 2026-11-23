@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -106,16 +107,7 @@ func Test_ValueClonesStructsPointersAndArrays(t *testing.T) {
 // runsQuickly fails the test if f does not finish: a copy of a cyclic value must not blow up.
 func runsQuickly(t *testing.T, f func()) {
 	t.Helper()
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		f()
-	}()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("copy of a cyclic value did not finish")
-	}
+	apptest.Bounded(t, 5*time.Second, "copy of a cyclic value", f)
 }
 
 func Test_ValueCopiesFanOutCyclesOnce(t *testing.T) {

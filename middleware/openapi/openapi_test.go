@@ -1463,7 +1463,7 @@ func Test_SchemaOf_Edges(t *testing.T) {
 			require.Equal(t, "array", SchemaOf(recSlice{})["type"])
 		})
 		var schema map[string]any
-		runBounded(t, "SchemaOf on a self-referential pointer field", func() { schema = SchemaOf(holder{}) })
+		apptest.Bounded(t, boundedTimeout, "SchemaOf on a self-referential pointer field", func() { schema = SchemaOf(holder{}) })
 		require.Equal(t, schemaTypeObject, schema[schemaKeyType])
 	})
 }
@@ -2163,7 +2163,7 @@ func Test_resolveDynamicMountPrefix_LongPathStaysLinear(t *testing.T) {
 	t.Parallel()
 	// A quadratic search takes minutes on this path; a linear one takes microseconds.
 	request := strings.Repeat("/a", 100_000) + "/openapi.json"
-	runBounded(t, "resolving a mount prefix on a long path", func() {
+	apptest.Bounded(t, boundedTimeout, "resolving a mount prefix on a long path", func() {
 		prefix, ok := resolveDynamicMountPrefix("/*", request, "/openapi.json", "/swagger", stringsEqual)
 		require.True(t, ok)
 		require.Len(t, prefix, len(request)-len("/openapi.json"))
