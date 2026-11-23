@@ -4095,6 +4095,12 @@ func Test_Cache_CacheControlCombinations(t *testing.T) {
 		{name: "private overrides public", cacheControl: "public, private, max-age=3600", first: cacheUnreachable},
 		{name: "stale-while-revalidate with max-age", cacheControl: "max-age=60, stale-while-revalidate=120", first: cacheMiss, second: cacheHit},
 		{name: "stale-if-error with max-age", cacheControl: "max-age=60, stale-if-error=3600", first: cacheMiss, second: cacheHit},
+		{name: "repeated max-age restrictive first uses the smallest", cacheControl: "public, max-age=0, max-age=3600", first: cacheUnreachable},
+		{name: "repeated max-age permissive first uses the smallest", cacheControl: "public, max-age=3600, max-age=0", first: cacheUnreachable},
+		{name: "repeated max-age invalid first uses the valid one", cacheControl: "public, max-age=abc, max-age=3600", first: cacheMiss, second: cacheHit},
+		{name: "repeated s-maxage restrictive first uses the smallest", cacheControl: "public, s-maxage=0, s-maxage=3600", first: cacheUnreachable},
+		{name: "repeated s-maxage permissive first uses the smallest", cacheControl: "public, s-maxage=3600, s-maxage=0", first: cacheUnreachable},
+		{name: "repeated s-maxage invalid first uses the valid one", cacheControl: "public, s-maxage=abc, s-maxage=3600", first: cacheMiss, second: cacheHit},
 	})
 }
 
