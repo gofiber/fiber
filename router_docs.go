@@ -85,6 +85,7 @@ func (*App) copyRouteBaseInto(dst, route *Route) {
 	dst.OperationID = ""
 	dst.hidden = false
 	dst.docHandlers = nil
+	dst.annotations = nil
 }
 
 func cloneRouteRequestBody(body *RouteRequestBody) *RouteRequestBody {

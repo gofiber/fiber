@@ -1,6 +1,7 @@
 package fiber
 
 import (
+	"maps"
 	"sync/atomic"
 )
 
@@ -15,6 +16,19 @@ type docTarget[R any] struct {
 func (t *docTarget[R]) document(apply func(route *Route)) R {
 	t.app.applyToCursor(t.cursor, apply)
 	return t.self
+}
+
+// Annotate replaces the value stored under key on the routes of the latest registration with
+// update(current), where current is the value stored before or nil. A stored value must not be changed
+// afterwards: copies of a route, such as the ones GetRoutes returns, share it. Packages that keep their own
+// metadata on a route, like the OpenAPI middleware, use an unexported key type so their keys cannot clash.
+func (t *docTarget[R]) Annotate(key any, update func(current any) any) {
+	t.document(func(route *Route) {
+		next := make(map[any]any, len(route.annotations)+1)
+		maps.Copy(next, route.annotations)
+		next[key] = update(route.annotations[key])
+		route.annotations = next
+	})
 }
 
 // Summary assigns a short summary to the most recently registered route.

@@ -202,6 +202,9 @@ type Route struct { // betteralign:ignore - see below
 
 	Deprecated bool `json:"deprecated,omitempty"`
 	hidden     bool // Excluded from the generated OpenAPI specification
+
+	// annotations is replaced on write and never changed in place, so copies may share it.
+	annotations map[any]any
 }
 
 var (
@@ -537,6 +540,12 @@ func (r *Route) IsMiddleware() bool {
 // IsAutoHead reports whether the route is an automatic HEAD twin of a GET route.
 func (r *Route) IsAutoHead() bool {
 	return r.autoHead
+}
+
+// Annotation returns the value stored under key by Annotate, or nil. The value is shared with every copy
+// of the route and must not be modified.
+func (r *Route) Annotation(key any) any {
+	return r.annotations[key]
 }
 
 // IsHidden reports whether the route is excluded from the generated OpenAPI specification.
