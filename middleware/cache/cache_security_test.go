@@ -1219,6 +1219,11 @@ func Test_Cache_Security_QueryBody_StreamedBodyLimit(t *testing.T) {
 
 	cacheTestCRequireReply(t, doQuery("small", true), cacheUnreachable, "s5 streamed=true",
 		"a chunked body has no length to bound")
+	// only-if-cached forbids the handler for a body the key cannot hold too.
+	onlyIfCached := cacheTestQuery("small")
+	onlyIfCached.TransferEncoding = []string{"chunked"}
+	onlyIfCached.Header.Set(fiber.HeaderCacheControl, "only-if-cached")
+	cacheTestAExpectStatus(t, app, onlyIfCached, cacheUnreachable, fiber.StatusGatewayTimeout)
 	for _, want := range []string{cacheMiss, cacheHit} {
 		cacheTestCRequireReply(t, doQuery("small", false), want, "s5 streamed=false")
 	}
@@ -1527,15 +1532,21 @@ func Test_Cache_PreParsedMultipartPassesTheCacheBy(t *testing.T) {
 		method string
 		server fiber.Config
 		want   [2]string // the X-Cache of two identical requests
+		next   bool      // Next skips the middleware, so only-if-cached reaches the handler
 	}{
 		{name: "GET", method: fiber.MethodGet, want: [2]string{cacheUnreachable, cacheUnreachable}},
+		{name: "skipped by Next", method: fiber.MethodGet, next: true, want: [2]string{cacheUnreachable, cacheUnreachable}},
 		{name: "POST", method: fiber.MethodPost, want: [2]string{cacheUnreachable, cacheUnreachable}},
 		{name: "kept as sent", method: fiber.MethodPost, server: fiber.Config{DisablePreParseMultipartForm: true}, want: [2]string{cacheMiss, cacheHit}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New(tc.server)
-			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodHead, fiber.MethodPost}}))
+			cfg := Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodHead, fiber.MethodPost}}
+			if tc.next {
+				cfg.Next = func(fiber.Ctx) bool { return true }
+			}
+			app.Use(New(cfg))
 			var calls atomic.Int32
 			app.All("/", func(c fiber.Ctx) error { calls.Add(1); return c.SendString("form") })
 			send := func(cacheControl string) *http.Request {
@@ -1550,6 +1561,11 @@ func Test_Cache_PreParsedMultipartPassesTheCacheBy(t *testing.T) {
 				cacheTestAExpect(t, app, send(""), want)
 			}
 			handled := calls.Load()
+			if tc.next {
+				cacheTestAExpectStatus(t, app, send("only-if-cached"), cacheUnreachable, fiber.StatusOK)
+				require.Equal(t, handled+1, calls.Load(), "a request Next skips must reach the handler")
+				return
+			}
 			if tc.want[1] == cacheHit {
 				cacheTestAExpectStatus(t, app, send("only-if-cached"), cacheHit, fiber.StatusOK)
 			} else {
