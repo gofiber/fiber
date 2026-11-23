@@ -872,6 +872,27 @@ func Test_Security_FollowRedirects_MissingLocation(t *testing.T) {
 	require.ErrorIs(t, proxyTestFollow(t, client.client, "http://example.com/start", 3, proxyTestAllowPrivatePolicy()), fasthttp.ErrMissingLocation)
 }
 
+// A scheme without an authority names nothing to fetch, so the redirect goes back as the answer.
+func Test_Security_FollowRedirects_NonHTTPSchemeIsReturned(t *testing.T) {
+	t.Parallel()
+	for _, location := range []string{"mailto:user@example.com", "com.example.app:/callback"} {
+		t.Run(location, func(t *testing.T) {
+			t.Parallel()
+			client, hits := newCountingRedirectClient(map[string]redirectStep{
+				"http://example.com/start": {status: fasthttp.StatusFound, location: location},
+			})
+			req, resp := proxyTestRequest(t), proxyTestResponse(t)
+			req.SetRequestURI("http://example.com/start")
+
+			start := mustParseTestURL(t, "http://example.com/start")
+			require.NoError(t, followRedirects(client.client, req, resp, 3, start, proxyTestAllowPrivatePolicy()))
+			require.Equal(t, 1, *hits)
+			require.Equal(t, fasthttp.StatusFound, resp.StatusCode())
+			require.Equal(t, location, string(resp.Header.Peek(fiber.HeaderLocation)))
+		})
+	}
+}
+
 // Test_Security_FollowRedirects_LeavesCallerRequestIntact pins that a redirect changes a copy of
 // the request: the handler's keeps its method, body and credentials.
 func Test_Security_FollowRedirects_LeavesCallerRequestIntact(t *testing.T) {

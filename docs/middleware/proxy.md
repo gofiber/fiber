@@ -95,6 +95,8 @@ Where header names are kept as sent (`DisableHeaderNormalizing`), each spelling 
 
 A redirect that keeps the body of a request whose body is streamed (`StreamRequestBody`) is followed when the first hop left all of that body in memory: a body of known length that fits what the server reads ahead of the handler, 8 KiB, an empty one included. A chunked body or a longer one fails the redirect with `fasthttp.ErrRedirectBodyStream`, as in fasthttp's own redirect loop: the first hop consumed the stream, and what it left cannot be sent again. A redirect that drops the body goes on.
 
+A `Location` with a scheme other than `http` or `https` and no authority, such as `mailto:user@example.com` or an app callback like `com.example.app:/callback`, has nothing to fetch. `DoRedirects` does not follow it and returns that redirect response as it is, as fasthttp's `DoRedirects` does, so the client receives the `Location` the upstream sent.
+
 When following the chain fails, `fasthttp.ErrTooManyRedirects` included, `DoRedirects` leaves the response empty: the redirect it stopped at, with its `Location`, its cookies and its hop-by-hop fields, does not go out with the error.
 
 ### RFC 9110 hop-by-hop header stripping

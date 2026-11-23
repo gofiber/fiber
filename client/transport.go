@@ -601,6 +601,11 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, opts 
 		if len(location) == 0 {
 			return fasthttp.ErrMissingLocation
 		}
+		// mailto:, tel: or an app callback has nothing to fetch, and UpdateBytes
+		// would resolve it as a path on this host: the redirect is the answer.
+		if fasthttp.HasNonHTTPSchemeWithoutAuthority(location) {
+			return nil
+		}
 
 		nextURL, nextHost, err := composeRedirectURL(currentURL, location, req.DisableRedirectPathNormalizing)
 		if err != nil {
