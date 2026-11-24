@@ -433,7 +433,7 @@ extractors.Chain(
 )
 ```
 
-The [Cache](./cache.md) middleware leaves the header the ID is written to out of the responses it stores, even with `StoreResponseHeaders`, since a cached copy would hand the session to every client that hits it. It does not store a response whose session save stored nothing, for example because another request ended the session meanwhile, either: no cookie tells it that the page is one client's.
+The [Cache](./cache.md) middleware leaves the header the ID is written to out of the responses it stores, even with `StoreResponseHeaders`, since a cached copy would hand the session to every client that hits it. It does not store a response whose session save stored nothing, for example because another request ended the session meanwhile, either, unless the response itself allows shared storage with `Cache-Control: public` or `s-maxage`: no cookie tells it that the page is one client's.
 
 ### Custom Extractors (Session-specific)
 
