@@ -5,6 +5,10 @@
 package fiber
 
 import (
+	"bytes"
+	"io"
+	"mime/multipart"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -217,4 +221,66 @@ func TestApp_releaseDefaultCtx_NotAbandonedPools(t *testing.T) {
 
 	require.False(t, c.IsAbandoned())
 	require.NotPanics(t, func() { app.releaseDefaultCtx(c) })
+}
+
+type reclaimCloser struct {
+	io.Reader
+	closed *atomic.Int32
+}
+
+func (r reclaimCloser) Close() error {
+	r.closed.Add(1)
+	return nil
+}
+
+// fasthttp never resets a RequestCtx it answered with a timeout response, so the reclaim closes what the request
+// left open, and only once the handler is done. Any other RequestCtx is fasthttp's to reset.
+func TestDefaultCtx_ScheduleReclaim_ClosesTimedOutRequest(t *testing.T) {
+	t.Parallel()
+	for _, timedOut := range []bool{true, false} {
+		t.Run("timedOut="+strconv.FormatBool(timedOut), func(t *testing.T) {
+			t.Parallel()
+			app, c := acquireReclaimTestCtx(t)
+
+			var body bytes.Buffer
+			w := multipart.NewWriter(&body)
+			part, err := w.CreateFormFile("file", "upload.bin")
+			require.NoError(t, err)
+			_, err = part.Write(make([]byte, 64<<10))
+			require.NoError(t, err)
+			require.NoError(t, w.Close())
+			c.Request().Header.SetContentType(w.FormDataContentType())
+			c.Request().SetBodyStream(&body, body.Len()) // a streamed upload is kept in a temp file
+			form, err := c.MultipartForm()
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, form.RemoveAll()) })
+			upload := form.File["file"][0]
+			onDisk := func() bool {
+				f, err := upload.Open()
+				return err == nil && f.Close() == nil
+			}
+			require.True(t, onDisk())
+
+			var closed atomic.Int32
+			c.Locals("closer", reclaimCloser{closed: &closed})
+			require.NoError(t, c.SendStream(reclaimCloser{Reader: strings.NewReader("body"), closed: &closed}))
+			if timedOut {
+				c.RequestCtx().TimeoutErrorWithResponse(&fasthttp.Response{})
+			}
+			untouched := func() bool { return closed.Load() == 0 && onDisk() }
+
+			handlerDone := make(chan struct{})
+			c.ScheduleReclaim(handlerDone, nil)
+			app.ReleaseCtx(c)
+			require.Never(t, func() bool { return !untouched() }, 50*time.Millisecond, 5*time.Millisecond)
+
+			close(handlerDone)
+			ctxExpectReclaimed(t, c, "ctx must be reclaimed")
+			if !timedOut {
+				require.Never(t, func() bool { return !untouched() }, 50*time.Millisecond, 5*time.Millisecond)
+				return
+			}
+			require.Eventually(t, func() bool { return closed.Load() == 2 && !onDisk() }, time.Second, 5*time.Millisecond)
+		})
+	}
 }

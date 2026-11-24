@@ -262,28 +262,7 @@ func handleTimeout(
 	// Fiber's requestHandler releases the context (after any ErrorHandler runs),
 	// so we never race with goroutines still using it. This fixes the unbounded
 	// fiber.Ctx leak that previously affected every timed-out request (#4359).
-	//
-	// Use a concrete type assertion to *fiber.DefaultCtx rather than an interface
-	// assertion, because only *fiber.DefaultCtx has the signalReleased wiring in
-	// ReleaseCtx/releaseDefaultCtx. An interface assertion could accidentally match
-	// custom Ctx implementations that provide ScheduleReclaim but lack the release
-	// signal, causing the reclamation goroutine to block forever.
-	if dc, ok := ctx.(*fiber.DefaultCtx); ok {
-		dc.ScheduleReclaim(handlerDone, cancel)
-		return timeoutErr
-	}
-
-	// Custom context implementations stay out of the pool, so only cancel the timeout context
-	// once the handler finishes: restoring the parent would race an inner timeout's handler.
-	//
-	// Mark the context as abandoned so ReleaseCtx will skip pooling, allowing the
-	// handler goroutine to continue safely using the context.
-	ctx.Abandon()
-	go func() {
-		<-handlerDone
-		cancel()
-	}()
-
+	ctx.ScheduleReclaim(handlerDone, cancel)
 	return timeoutErr
 }
 

@@ -1012,6 +1012,11 @@ func (c *DefaultCtx) IsAbandoned() bool {
 // any goroutine is still running causes races.
 func (c *DefaultCtx) ForceRelease() {
 	c.isAbandoned.Store(false)
+	// Promoted to a custom ctx, c is only its embedded DefaultCtx: pool the ctx the app built.
+	if c.handlerCtx != nil {
+		c.app.ReleaseCtx(c.handlerCtx)
+		return
+	}
 	c.app.ReleaseCtx(c)
 }
 
@@ -1056,9 +1061,28 @@ func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context
 		}
 		<-latch.releasedCh
 		if latch.owners.Add(-1) == 0 {
+			fctx := c.fasthttp
 			c.ForceRelease()
+			// After pooling: a value's Close may wait for a goroutine the handler left behind.
+			closeTimedOutRequest(fctx)
 		}
 	}()
+}
+
+// closeTimedOutRequest closes what a request fasthttp answered with a timeout response left open, as the reset
+// fasthttp never runs on it would: the response body stream, io.Closer user values and multipart temp files.
+func closeTimedOutRequest(fctx *fasthttp.RequestCtx) {
+	if fctx == nil || fctx.LastTimeoutErrorResponse() == nil {
+		return
+	}
+	_ = fctx.Response.CloseBodyStream() //nolint:errcheck // the response is never sent
+	// Closed, not cleared as ResetUserValues does: a goroutine the handler left may still call Value.
+	fctx.VisitUserValuesAll(func(_, value any) {
+		if closer, ok := value.(io.Closer); ok {
+			_ = closer.Close() //nolint:errcheck // as fasthttp's reset does
+		}
+	})
+	fctx.Request.RemoveMultipartFormFiles()
 }
 
 // signalReleased records that the request handler is done touching an abandoned,

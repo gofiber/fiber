@@ -130,9 +130,7 @@ func (app *App) ReleaseCtx(c CustomCtx) {
 		// handler is done so the reclaimer can return the ctx to the pool. The ctx
 		// is still not pooled here; the reclaimer does that once the handler also
 		// finishes. Otherwise (e.g. SSE) leave it unreleased as before.
-		if dc, ok := c.(*DefaultCtx); ok {
-			dc.signalReleased()
-		}
+		c.signalReleased()
 		return
 	}
 	c.release()

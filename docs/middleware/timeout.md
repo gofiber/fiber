@@ -16,7 +16,7 @@ handler to finish. This is achieved through Fiber's **Abandon mechanism**:
 1. The handler runs in a goroutine with a timeout context
 2. On timeout, the middleware marks the context as "abandoned" and returns `503` immediately
 3. The handler goroutine can continue safely (e.g., for cleanup) without blocking the response
-4. A background cleanup goroutine waits for the handler to finish and performs context cleanup
+4. A background cleanup goroutine waits for the handler to finish, returns the context to the pool and closes what the request left open (a response body stream, `Locals` that implement `io.Closer`, multipart temp files)
 
 Handlers can detect the timeout by listening on `c.Context().Done()` and return early.
 This is the recommended pattern for cooperative cancellation.
@@ -55,12 +55,12 @@ timeout.Config{
 - The error is returned to the outer middleware, but the app's `ErrorHandler` is not run for a timed-out request: fasthttp already holds the response it will send, so the handler could not change it, and the timed-out handler may still be writing to the context.
 
 - Timed-out requests abandon their `fiber.Ctx` to avoid data races with the core
-  request handler. A `*fiber.DefaultCtx` is reclaimed once both the timed-out
-  handler has finished and Fiber has released the context, so it does return to
-  the pool. A **custom `Ctx` implementation** has no such wiring: its context
-  stays out of the pool, and each timed-out request leaks one. Calling
-  `ForceRelease` yourself is only safe if you can guarantee that no goroutine
-  (including Fiber internals) will touch the context anymore.
+  request handler. The context, a custom `Ctx` implementation included, is
+  reclaimed once both the timed-out handler has finished and Fiber has released
+  the context, so it does return to the pool. Calling `ForceRelease` yourself on
+  such a context releases it a second time; it is only safe for a context you
+  abandoned yourself, once you can guarantee that no goroutine (including Fiber
+  internals) will touch it anymore.
 
 :::caution
 `timeout.New` wraps your final handler, so register it per route rather than

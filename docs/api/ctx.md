@@ -34,9 +34,7 @@ func (c fiber.Ctx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context.C
 
 `ScheduleReclaim` is the race-free alternative to calling `ForceRelease` yourself, and the way the timeout middleware hands the context to a handler that outlives the request. It calls `Abandon` itself, so calling `Abandon` first is harmless. Close `handlerDone` once the goroutine that still uses the context has completely finished. If it never closes, because the handler never returns, the context is deliberately never reclaimed. It may be called more than once for a request, as happens when one timeout middleware runs inside another: the context is then reclaimed once every `handlerDone` is closed.
 
-:::note
-Only `*fiber.DefaultCtx` signals `ReleaseCtx` that reclamation is armed. With a custom `Ctx` type that embeds it the signal never arrives, so the context is never reclaimed. The timeout middleware uses `Abandon` alone for such types.
-:::
+fasthttp never resets a request it answered with a timeout response (`RequestCtx.TimeoutErrorWithResponse`, as the timeout middleware does), so reclaiming the context of such a request also closes what the request left open: the response body stream, the [`Locals`](#locals) that implement `io.Closer` and the multipart temp files. A custom `Ctx` type is reclaimed the same way, and `ForceRelease` returns the custom context to the pool, not the `DefaultCtx` it embeds.
 
 :::caution
 These methods are primarily for internal use and advanced middleware development. Most applications should not need to call them directly.

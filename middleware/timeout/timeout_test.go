@@ -603,6 +603,46 @@ func TestTimeout_AbandonedCtxReclaimed(t *testing.T) {
 	}
 }
 
+type closerFunc func()
+
+func (f closerFunc) Close() error {
+	f()
+	return nil
+}
+
+// fasthttp never resets the request of a timed-out handler, so the reclaim closes what that request holds.
+func Test_Timeout_ClosesWhatTheTimedOutRequestLeftOpen(t *testing.T) {
+	t.Parallel()
+	for name, app := range map[string]*fiber.App{"default": fiber.New(), "custom": newCustomCtxApp()} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var localClosed atomic.Bool
+			ctxCh := make(chan fiber.Ctx, 1)
+			release, writerDone := make(chan struct{}), make(chan struct{})
+			app.Get("/", New(func(c fiber.Ctx) error {
+				ctxCh <- c
+				c.Locals("resource", closerFunc(func() { localClosed.Store(true) }))
+				<-release
+				return c.SendStreamWriter(func(w *bufio.Writer) {
+					defer close(writerDone)
+					for {
+						if _, err := w.WriteString("chunk"); err != nil || w.Flush() != nil {
+							return
+						}
+					}
+				})
+			}, Config{Timeout: 20 * time.Millisecond}))
+
+			apptest.Expect(t, app, "/", fiber.StatusServiceUnavailable)
+			c := apptest.Recv(t, ctxCh, time.Second)
+			require.Never(t, localClosed.Load, 50*time.Millisecond, 5*time.Millisecond, "closed while the handler still runs")
+			releaseAndAwaitReclaim(t, c, release, "the context was not reclaimed")
+			apptest.Recv(t, writerDone, 5*time.Second, "the stream writer was left blocked")
+			require.Eventually(t, localClosed.Load, time.Second, 5*time.Millisecond, "the Locals value was not closed")
+		})
+	}
+}
+
 type neverReturningReader struct{}
 
 func (neverReturningReader) Read(_ []byte) (int, error) { select {} }
@@ -950,12 +990,16 @@ type customCtx struct {
 	fiber.DefaultCtx
 }
 
-// A ctx other than *fiber.DefaultCtx is never pooled, so neither timeout.New touches its context after timing out.
-func Test_Timeout_NestedCustomCtxLeavesContextToHandler(t *testing.T) {
-	t.Parallel()
-	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+func newCustomCtxApp() *fiber.App {
+	return fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
 		return &customCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
 	})
+}
+
+// A custom ctx is reclaimed only once every handler is done, so neither timeout.New touches its context after timing out.
+func Test_Timeout_NestedCustomCtxLeavesContextToHandler(t *testing.T) {
+	t.Parallel()
+	app := newCustomCtxApp()
 	app.Use(outerTimeout(Config{Timeout: 20 * time.Millisecond}))
 	app.Get("/", New(untilDeadline, Config{Timeout: 19 * time.Millisecond}))
 
