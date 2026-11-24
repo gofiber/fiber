@@ -1075,6 +1075,8 @@ With `EnableSplittingOnParsers`, a value whose key is longer than 1,024 bytes is
 
 `Bind().Cookie` binds the first value of a repeated cookie name, the one `c.Cookies` returns, instead of the last. A slice field gets the elements of that cookie only. [Learn more](./api/bind.md#cookie).
 
+A multipart form is bound in the sorted order of its part names, so of the names that address one field (`role` and `Role`, `user[role]` and `user.role`, or two file parts) the one that sorts last wins on every bind; it used to depend on map order and could differ between two binds of one request. [Learn more](./api/bind.md#form).
+
 <details>
 <summary>Example</summary>
 

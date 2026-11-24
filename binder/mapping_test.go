@@ -236,20 +236,20 @@ func Test_BindData_BracketNotation(t *testing.T) {
 	out := &map[string][]string{}
 	data := &bindData{values: make(map[string][]string), mode: bindMap}
 	require.NoError(t, data.bind("query", out, "user[name]", "john", false, true))
-	require.NoError(t, data.bindAll("query", out, "user[tags]", []string{"a", "b"}, false, true))
+	require.NoError(t, data.bind("query", out, "user[tags]", "a", false, true))
+	require.NoError(t, data.bind("query", out, "user[tags]", "b", false, true))
 	// A source without the notation files the key as it came.
 	require.NoError(t, data.bind("query", out, "user[age]", "7", false, false))
 	require.Equal(t, map[string][]string{"user.name": {"john"}, "user.tags": {"a", "b"}, "user[age]": {"7"}}, data.values)
 
 	files := make(map[string][]*multipart.FileHeader)
 	headers := []*multipart.FileHeader{{Filename: "file1.txt"}, {Filename: "file2.txt"}}
-	require.NoError(t, bindFiles(files, "files", headers))
-	require.NoError(t, bindFiles(files, "user[avatars]", headers[:1]))
+	require.NoError(t, data.bindFiles(files, "files", headers))
+	require.NoError(t, data.bindFiles(files, "user[avatars]", headers[:1]))
 	require.Equal(t, map[string][]*multipart.FileHeader{"files": headers, "user.avatars": headers[:1]}, files)
 
 	require.EqualError(t, data.bind("query", out, "invalid[", "value", false, true), "unmatched brackets")
-	require.EqualError(t, data.bindAll("query", out, "invalid[", []string{"value"}, false, true), "unmatched brackets")
-	require.EqualError(t, bindFiles(files, "invalid[", headers), "unmatched brackets")
+	require.EqualError(t, data.bindFiles(files, "invalid[", headers), "unmatched brackets")
 }
 
 func Test_parseToStruct_MismatchedData(t *testing.T) {

@@ -285,6 +285,8 @@ curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe"
 `Form` reads only the request body, never the query string. A `multipart/form-data` body is read with the app's [`BodyLimit`](fiber.md#bodylimit) as its size limit, which also bounds the size of a `Content-Encoding: gzip` body after decompression. A larger body fails with an error that wraps `fasthttp.ErrBodyTooLarge`, and so does a larger urlencoded body under [`StreamRequestBody`](fiber.md#streamrequestbody). A form under a `Content-Encoding` that the form parser would not undo as [`c.Body()`](./ctx.md#body) does (any coding on a urlencoded form, anything but one `gzip` on a multipart form) is not bound and fails with `binder.ErrFormContentEncoding`.
 
 On a form request, `Form` and `Body` also lowercase the case-insensitive parts of the request's own `Content-Type` (the media type and the parameter names, never the `boundary` value), so copy a value you read earlier from `Get(HeaderContentType)` if you need it to outlive the call, see [FormValue](./ctx.md#formvalue). Other body types leave the header untouched.
+
+A multipart form keeps its parts by name, not in the order they were sent, so they are bound in the sorted order of their names: of the names that address one field, such as `role` and `Role`, `user[role]` and `user.role` or two file parts `avatar` and `Avatar`, the one that sorts last wins, on every bind of the form.
 :::
 
 #### Nested and Array Form Fields

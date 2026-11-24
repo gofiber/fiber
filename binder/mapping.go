@@ -454,9 +454,10 @@ func formKeys(data map[string][]string, files []map[string][]*multipart.FileHead
 }
 
 // parseValuesToStruct is parseToStruct for key/value pairs: values[i] is a
-// value of keys[i].
-func parseValuesToStruct(aliasTag string, out any, keys, values []string) error {
-	if g := guardFileHeaders(out, nil); g != nil {
+// value of keys[i]. The keys of files are among them, with an empty value.
+func parseValuesToStruct(aliasTag string, out any, keys, values []string, files ...map[string][]*multipart.FileHeader) error {
+	g := guardFileHeaders(out, files)
+	if g != nil {
 		defer g.restore(out)
 	}
 
@@ -473,11 +474,97 @@ func parseValuesToStruct(aliasTag string, out any, keys, values []string) error 
 		return err
 	}
 
-	if err := schemaDecoder.DecodeValues(out, keys, values); err != nil {
-		return err //nolint:wrapcheck // a wrap adds no context and costs a formatted message per failed bind
+	err := schemaDecoder.DecodeValues(out, keys, values)
+	// Only a destination the guard walks has a field that takes a file.
+	if g != nil && len(files) > 0 && len(files[0]) > 0 {
+		schemaDecoder.decodeFiles(g, out, keys, files[0])
+		if err != nil {
+			err = schemaDecoder.judgeWithFiles(out, keys, values, files[0])
+		}
 	}
+	return err
+}
 
-	return nil
+// judgeWithFiles returns what Decode, given the files DecodeValues does not take, reports for the pairs and files:
+// only it can tell that a file fills a required file field. It decodes into a scratch value, so out is left alone.
+func (d *pooledDecoder) judgeWithFiles(out any, keys, values []string, files map[string][]*multipart.FileHeader) error {
+	src := make(map[string][]string, len(keys))
+	for i, key := range keys {
+		src[key] = append(src[key], values[i])
+	}
+	return d.Decode(reflect.New(reflect.TypeOf(out).Elem()).Interface(), src, files) //nolint:wrapcheck // a wrap adds no context and costs a formatted message per failed bind
+}
+
+// decodeFiles decodes files into a scratch value, the keys of one field in the order of keys, and sets the file fields
+// of out from it: decoded into out, the files would rerun the defaults and required checks the pairs have done.
+func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, files map[string][]*multipart.FileHeader) {
+	dst := reflect.ValueOf(out).Elem()
+	if dst.Kind() != reflect.Struct {
+		return
+	}
+	scratch := reflect.New(dst.Type())
+	// All at once first, which grows each slice the keys index to its length in one step.
+	d.Decode(scratch.Interface(), nil, files) //nolint:errcheck // reported by the decode of the pairs
+	if len(files) > 1 {
+		one := acquireFileHeaderMap()
+		defer releaseFileHeaderMap(one)
+		for _, key := range keys {
+			if headers, ok := files[key]; ok {
+				one[key] = headers
+				d.Decode(scratch.Interface(), nil, one) //nolint:errcheck // reported by the decode of the pairs
+				delete(one, key)
+			}
+		}
+	}
+	g.setFiles(dst, scratch.Elem())
+}
+
+var fileHeaderSliceType = reflect.SliceOf(fileHeaderPtrType)
+
+// setFiles sets each field of to that takes files to what it holds in from, a value of the same type, where that is
+// the header of a file part. What to does not hold, a nil pointer or an element past the end of a slice, is skipped.
+func (g *fileHeaders) setFiles(to, from reflect.Value) {
+	switch t := from.Type(); {
+	case t == fileHeaderPtrType || t == fileHeaderSliceType || t.Kind() == reflect.Pointer && t.Elem() == fileHeaderSliceType:
+		if g.holdsFile(from) && to.CanSet() {
+			to.Set(from)
+		}
+	case t.Kind() == reflect.Pointer:
+		if !from.IsNil() && !to.IsNil() {
+			g.setFiles(to.Elem(), from.Elem())
+		}
+	case t.Kind() == reflect.Struct:
+		for _, i := range headerFields(t) {
+			g.setFiles(to.Field(i), from.Field(i))
+		}
+	case t.Kind() == reflect.Slice || t.Kind() == reflect.Array:
+		for i := range min(to.Len(), from.Len()) {
+			g.setFiles(to.Index(i), from.Index(i))
+		}
+	default:
+	}
+}
+
+// holdsFile reports whether v, a *multipart.FileHeader or a slice of them or a pointer to one, holds the header of
+// a file part. Schema sets all the files of a key or none, so the first header of a slice answers for it.
+func (g *fileHeaders) holdsFile(v reflect.Value) bool {
+	if v.Type() != fileHeaderPtrType {
+		if v.Kind() == reflect.Pointer {
+			if v.IsNil() {
+				return false
+			}
+			v = v.Elem()
+		}
+		if v.Len() == 0 {
+			return false
+		}
+		v = v.Index(0)
+	}
+	if !v.CanInterface() {
+		return false
+	}
+	fh, ok := reflect.TypeAssert[*multipart.FileHeader](v)
+	return ok && g.known(fh)
 }
 
 // parseLast is parse for a map[string]string destination, from the last value
@@ -1018,17 +1105,6 @@ func bindKey(key string, supportBracketNotation bool) (string, error) { //nolint
 	return key, nil
 }
 
-// bindFiles files a multipart form's headers under key, which is rewritten
-// from bracket notation as a form's value keys are.
-func bindFiles(files map[string][]*multipart.FileHeader, key string, headers []*multipart.FileHeader) error {
-	key, err := bindKey(key, true)
-	if err != nil {
-		return err
-	}
-	files[key] = append(files[key], headers...)
-	return nil
-}
-
 // bindData is what a string binder files the values it reads under, pooled
 // so that filing a value costs no allocation of its own. What it keeps
 // depends on the destination, see bindMode: a struct is decoded straight from
@@ -1045,7 +1121,9 @@ type bindData struct {
 	keys, pairValues []string
 	// seen is the names a source whose first value wins has filed, see firstOf
 	seen map[string]struct{}
-	mode bindMode
+	// names is the sorted keys of a multipart form's files or values
+	names []string
+	mode  bindMode
 }
 
 // bindMode is how a bindData keeps what is filed in it.
@@ -1111,40 +1189,18 @@ func (d *bindData) bind(aliasTag string, out any, key, value string, enableSplit
 	return nil
 }
 
-// bindAll is bind for several values of one key, rewriting the key once.
-func (d *bindData) bindAll(aliasTag string, out any, key string, values []string, enableSplitting, supportBracketNotation bool) error { //nolint:revive // the flags are the binder's settings
-	key, err := bindKey(key, supportBracketNotation)
-	if err != nil {
-		return err
-	}
-	for _, value := range values {
-		d.split(aliasTag, out, key, value, enableSplitting)
-	}
-	return nil
-}
-
-// bindValues files values under key as bindAll does. The struct decoder only
-// reads them, so the slice is filed without a copy when key is new and no
-// value splits.
-func (d *bindData) bindValues(aliasTag string, out any, key string, values []string, enableSplitting bool) error { //nolint:revive // the flag is the binder's setting
+// bindFiles files a multipart form's headers under key, rewritten from bracket notation as value keys are. A struct
+// also gets the key as a pair with an empty value, as Decode reads the key of a file.
+func (d *bindData) bindFiles(files map[string][]*multipart.FileHeader, key string, headers []*multipart.FileHeader) error {
 	key, err := bindKey(key, true)
 	if err != nil {
 		return err
 	}
-	if _, filed := d.values[key]; !filed && len(values) > 0 &&
-		(!enableSplitting || !slices.ContainsFunc(values, hasComma)) {
-		// Clipped, so that a later append for the same key copies the slice.
-		d.values[key] = slices.Clip(values)
-		return nil
+	if _, filed := files[key]; !filed && d.mode == bindPairs {
+		d.add(key, "")
 	}
-	for _, value := range values {
-		d.split(aliasTag, out, key, value, enableSplitting)
-	}
+	files[key] = append(files[key], headers...)
 	return nil
-}
-
-func hasComma(s string) bool {
-	return strings.IndexByte(s, ',') >= 0
 }
 
 // maxSplitKeyBytes is the longest key whose value is split: every piece is filed

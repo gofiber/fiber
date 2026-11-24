@@ -186,6 +186,72 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	requireFile(t, user.Avatars[1], "avatar2.txt", "avatar2")
 }
 
+// Test_FormBinder_BindMultipart_KeysOfOneField pins that binds of one multipart form agree when several of its keys
+// name one field: the parts are filed in sorted key order, so the same key wins every time.
+func Test_FormBinder_BindMultipart_KeysOfOneField(t *testing.T) {
+	t.Parallel()
+	type profile struct {
+		Avatar *multipart.FileHeader `form:"avatar"`
+		Role   string                `form:"role"`
+		User   struct {
+			Role string `form:"role"`
+		} `form:"user"`
+		Items []struct {
+			Name string `form:"name"`
+		} `form:"items"`
+	}
+	req := newMultipartRequestWith(t, func(mw *multipart.Writer) {
+		for _, field := range [][2]string{
+			{"role", "member"},
+			{"Role", "admin"},
+			{"user[role]", "member"},
+			{"user.role", "admin"},
+			{"items[0][name]", "first"},
+			{"items.00.name", "second"},
+		} {
+			require.NoError(t, mw.WriteField(field[0], field[1]))
+		}
+		writeFormFile(t, mw, "avatar", "avatar.txt", "avatar")
+		writeFormFile(t, mw, "Avatar", "other.txt", "other")
+	})
+
+	for range 50 {
+		var p profile
+		require.NoError(t, (&FormBinding{}).Bind(req, &p))
+		require.Equal(t, "member", p.Role)
+		require.Equal(t, "member", p.User.Role)
+		require.Len(t, p.Items, 1)
+		require.Equal(t, "first", p.Items[0].Name)
+		requireFile(t, p.Avatar, "avatar.txt", "avatar")
+	}
+}
+
+// Test_FormBinder_BindMultipart_RequiredFile pins that the upload of a required file field satisfies it, though the
+// text pairs are decoded apart from the files.
+func Test_FormBinder_BindMultipart_RequiredFile(t *testing.T) {
+	t.Parallel()
+	type upload struct {
+		Avatar *multipart.FileHeader `form:"avatar,required"`
+		Name   string                `form:"name,required"`
+	}
+	var u upload
+	require.NoError(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
+		require.NoError(t, mw.WriteField("name", "john"))
+		writeFormFile(t, mw, "avatar", "avatar.txt", "avatar")
+	}), &u))
+	requireFile(t, u.Avatar, "avatar.txt", "avatar")
+
+	require.Error(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
+		require.NoError(t, mw.WriteField("name", "john"))
+	}), &upload{}))
+
+	err := (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
+		writeFormFile(t, mw, "avatar", "avatar.txt", "avatar")
+	}), &upload{})
+	require.ErrorContains(t, err, "name is empty")
+	require.NotContains(t, err.Error(), "avatar")
+}
+
 // requireFile pins the name, content type and content of an uploaded file.
 func requireFile(t *testing.T, fh *multipart.FileHeader, filename, content string) {
 	t.Helper()
@@ -316,7 +382,7 @@ func Test_FormBinder_BindMultipart_SameKeyTwice(t *testing.T) {
 
 	var p payload
 	require.NoError(t, b.Bind(req, &p))
-	require.ElementsMatch(t, []string{"a", "b", "c", "d", "e"}, p.Tags)
+	require.Equal(t, []string{"a", "b", "c", "d", "e"}, p.Tags)
 
 	form, err := req.MultipartForm()
 	require.NoError(t, err)
