@@ -29,6 +29,15 @@ func Test_CookieBinder_Bind_FirstWins(t *testing.T) {
 	all := map[string][]string{}
 	require.NoError(t, b.Bind(req, &all))
 	require.Equal(t, map[string][]string{"tok": {"a"}, "ids": {"1", "2"}}, all)
+
+	// Past the names firstOf scans, the map takes over and keeps the first value as well.
+	req = acquireRequest(t)
+	req.Header.Set(fasthttp.HeaderCookie, "c1=1; c2=2; c3=3; c4=4; c5=5; c6=6; c7=7; c8=8; c9=9; c2=x; c10=10; c9=y")
+	many := map[string]string{}
+	require.NoError(t, b.Bind(req, &many))
+	require.Equal(t, map[string]string{
+		"c1": "1", "c2": "2", "c3": "3", "c4": "4", "c5": "5", "c6": "6", "c7": "7", "c8": "8", "c9": "9", "c10": "10",
+	}, many)
 }
 
 func Benchmark_CookieBinder_Bind(b *testing.B) {

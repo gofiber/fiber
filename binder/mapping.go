@@ -1117,12 +1117,16 @@ type bindData struct {
 	// last is the last value filed under each key, for a map[string]string
 	// destination
 	last map[string]string
+	// seen is the names a source whose first value wins has filed past the
+	// first len(few), see firstOf
+	seen map[string]struct{}
+	// few is the first names firstOf saw, nFew of them
+	few [8]string
 	// keys and pairValues are the pairs, for a struct destination
 	keys, pairValues []string
-	// seen is the names a source whose first value wins has filed, see firstOf
-	seen map[string]struct{}
 	// names is the sorted keys of a multipart form's files or values
 	names []string
+	nFew  int
 	mode  bindMode
 }
 
@@ -1236,10 +1240,24 @@ func (d *bindData) split(aliasTag string, out any, key, value string, enableSpli
 	d.add(key, value)
 }
 
-// firstOf reports whether name is new to this bind, and records it.
+// firstOf reports whether name is new to this bind, and records it. The first names are scanned in few, which costs
+// less than hashing them; past len(few) the map holds them all, so a long list stays linear.
 func (d *bindData) firstOf(name string) bool {
-	if d.seen == nil {
-		d.seen = make(map[string]struct{}, 8)
+	if len(d.seen) == 0 {
+		if slices.Contains(d.few[:d.nFew], name) {
+			return false
+		}
+		if d.nFew < len(d.few) {
+			d.few[d.nFew] = name
+			d.nFew++
+			return true
+		}
+		if d.seen == nil {
+			d.seen = make(map[string]struct{}, 2*len(d.few))
+		}
+		for _, f := range d.few {
+			d.seen[f] = struct{}{}
+		}
 	}
 	n := len(d.seen)
 	d.seen[name] = struct{}{}
