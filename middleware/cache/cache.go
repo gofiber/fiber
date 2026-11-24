@@ -407,9 +407,11 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Ctx.Body answers a coding it cannot undo with a status and text of its own, and the key of a GET
-		// or HEAD does not hold the coding: what such a request leaves is not the URL's response.
+		// or HEAD does not hold the coding: what such a request leaves is not the URL's response. Every line:
+		// fieldname.First reads an empty first line in a slot fasthttp grew into as no line at all.
 		if (requestMethod == fiber.MethodGet || requestMethod == fiber.MethodHead) &&
-			fieldname.First(&c.Request().Header, fiber.HeaderContentEncoding, canonical) != nil {
+			slices.ContainsFunc(fieldname.Lines(&c.Request().Header, fiber.HeaderContentEncoding, canonical),
+				func(v []byte) bool { return len(v) > 0 }) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}

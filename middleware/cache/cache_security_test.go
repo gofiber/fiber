@@ -2372,6 +2372,31 @@ func Test_Cache_RequestTheHandlerDoesNotSeeAsSentIsNotStored(t *testing.T) {
 	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "beta"), cacheMiss, "tenant=beta")
 }
 
+// fasthttp grows its header store by zeroed slots, where an empty line peeks as nil, as if absent: the
+// coding on the line after it must still keep the request out of the cache, in a fresh context or a reused one.
+func Test_Cache_ContentEncodingBehindAnEmptyLineIsNotStored(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	handler := app.Handler()
+	serve := func(fctx *fasthttp.RequestCtx, lines string) string {
+		fctx.Request.Reset()
+		fctx.Response.Reset()
+		require.NoError(t, fctx.Request.Read(bufio.NewReader(strings.NewReader("GET / HTTP/1.1\r\nHost: example.com\r\n"+lines+"\r\n"))))
+		handler(fctx)
+		return string(fctx.Response.Header.Peek("X-Cache"))
+	}
+	// Three lines ahead put the empty one in the fourth slot, spare since the third grew the store to four.
+	const coded = "X-A: 1\r\nX-B: 2\r\nX-C: 3\r\nContent-Encoding:\r\nContent-Encoding: compress\r\n"
+	reused := &fasthttp.RequestCtx{}
+	serve(reused, "X-A: 1\r\nX-B: 2\r\nX-C: 3\r\nCache-Control: no-store\r\n")
+	for name, fctx := range map[string]*fasthttp.RequestCtx{"fresh": {}, "reused": reused} {
+		require.Equal(t, cacheUnreachable, serve(fctx, coded), name)
+	}
+	require.Equal(t, cacheMiss, serve(&fasthttp.RequestCtx{}, ""))
+}
+
 // A dropped or hijacked connection is sent nothing: the untouched 200 must neither be stored nor replace an entry.
 func Test_Cache_DroppedRequestIsNotStored(t *testing.T) {
 	t.Parallel()
