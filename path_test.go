@@ -1260,7 +1260,7 @@ func Test_RoutePatternMatch_UnescapePathDecodesOnce(t *testing.T) {
 	for target, routed := range map[string]string{
 		"/accounts/42/%252e%252e/%252e%252e/public/x":      "/accounts/42/%2e%2e/%2e%2e/public/x",
 		"/accounts/42/x%252f..%252f..%252f..%252fpublic/x": "/accounts/42/x%2f..%2f..%2f..%2fpublic/x",
-		"/accounts/42/%2570ublic":                          "/accounts/42/%70ublic",
+		"/accounts/42/%2570ublic":                          "/accounts/42/%70ublic", // cspell:disable-line
 	} {
 		apptest.ExpectBody(t, app, target, StatusOK, "account public=false accounts=true path="+routed)
 	}
