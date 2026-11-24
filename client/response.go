@@ -105,21 +105,13 @@ func (r *Response) Protocol() string {
 // and is left to RawResponse.Header.PeekTrailer.
 func (r *Response) Header(key string) string {
 	h := &r.RawResponse.Header
-	if !fieldname.HasTrailers(h) || len(h.PeekAllTrailer(key)) == 0 {
+	if !fieldname.HasTrailers(h) {
 		return string(h.Peek(key))
 	}
 	if lines := fieldname.Lines(h, key, true); len(lines) > 0 {
 		return string(lines[0])
 	}
 	return ""
-}
-
-// headerLines is PeekAll without the trailer fields fasthttp appends under the same name.
-func headerLines(h *fasthttp.ResponseHeader, key string) [][]byte {
-	if !fieldname.HasTrailers(h) || len(h.PeekAllTrailer(key)) == 0 {
-		return h.PeekAll(key)
-	}
-	return fieldname.Lines(h, key, true)
 }
 
 // Headers returns all headers in the response using an iterator.
@@ -130,19 +122,28 @@ func headerLines(h *fasthttp.ResponseHeader, key string) [][]byte {
 // Do not store references to returned values; make copies instead.
 func (r *Response) Headers() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
-		peekKeys := r.RawResponse.Header.PeekKeys()
+		h := &r.RawResponse.Header
+		trailers := fieldname.HasTrailers(h)
+		peekKeys := h.PeekKeys()
 
 		// PeekAll reuses the slice PeekKeys returns, so copy the keys out first.
 		// PeekKeys lists a key once per header line; keep the first occurrence only.
 		keys := make([]string, 0, len(peekKeys))
 		for _, key := range peekKeys {
-			if k := utils.UnsafeString(key); !slices.Contains(keys, k) {
-				keys = append(keys, k)
+			k := utils.UnsafeString(key)
+			// Lines below matches names case-insensitively, so the keys fold alike.
+			if trailers && fieldname.ContainsFold(keys, k) || !trailers && slices.Contains(keys, k) {
+				continue
 			}
+			keys = append(keys, k)
 		}
 
 		for _, key := range keys {
-			vals := headerLines(&r.RawResponse.Header, key)
+			// Lines leaves out the trailer fields PeekAll appends under the same name.
+			vals := h.PeekAll(key)
+			if trailers {
+				vals = fieldname.Lines(h, key, true)
+			}
 			valsStr := make([]string, len(vals))
 			for i, v := range vals {
 				valsStr[i] = utils.UnsafeString(v)
