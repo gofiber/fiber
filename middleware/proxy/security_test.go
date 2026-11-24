@@ -848,7 +848,7 @@ func proxyTestFollow(t *testing.T, client *fasthttp.Client, start string, maxRed
 	req.SetRequestURI(start)
 	req.Header.SetMethod(fasthttp.MethodGet)
 
-	return followRedirects(client, req, proxyTestResponse(t), maxRedirects, mustParseTestURL(t, start), policy)
+	return followRedirects(client, req, proxyTestResponse(t), maxRedirects, mustParseTestURL(t, start), policy, new(hopCaching))
 }
 
 // Test_Security_FollowRedirects_NegativeMaxBecomesZero ensures a
@@ -886,7 +886,7 @@ func Test_Security_FollowRedirects_NonHTTPSchemeIsReturned(t *testing.T) {
 			req.SetRequestURI("http://example.com/start")
 
 			start := mustParseTestURL(t, "http://example.com/start")
-			require.NoError(t, followRedirects(client.client, req, resp, 3, start, proxyTestAllowPrivatePolicy()))
+			require.NoError(t, followRedirects(client.client, req, resp, 3, start, proxyTestAllowPrivatePolicy(), new(hopCaching)))
 			require.Equal(t, 1, *hits)
 			require.Equal(t, fasthttp.StatusFound, resp.StatusCode())
 			require.Equal(t, location, string(resp.Header.Peek(fiber.HeaderLocation)))
@@ -1285,7 +1285,7 @@ func followRecordingPolicy(
 		setup(req)
 	}
 
-	return req, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, start), policy)
+	return req, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, start), policy, new(hopCaching))
 }
 
 // withCredentials gives req what a redirect to another origin must not carry.

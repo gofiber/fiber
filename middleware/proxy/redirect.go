@@ -30,7 +30,8 @@ import (
 // A hop that needs another method or no credentials goes out as a copy, so req keeps its method,
 // body and credentials. A redirect that keeps a streamed body (StreamRequestBody) is followed only
 // if the first hop left all of it in memory; otherwise it fails with fasthttp.ErrRedirectBodyStream.
-func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy) error {
+// carried collects the caching of every redirect followed, for the caller to apply.
+func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy, carried *hopCaching) error { //nolint:revive // argument-limit: carried is filled for DoRedirects
 	if maxRedirects < 0 {
 		maxRedirects = 0
 	}
@@ -40,14 +41,12 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 	lookups := lookupsFor(cli)
 	currentURL := initialURL
 	currentURLStr := "" // rendered when a redirect needs it as the base of Location
-	var carried hopCaching
 	for redirects := 0; ; redirects++ {
 		if err := cli.Do(hop, resp); err != nil {
 			return err
 		}
 		status := resp.Header.StatusCode()
 		if !fasthttp.StatusCodeIsRedirect(status) {
-			carried.apply(&resp.Header)
 			return nil
 		}
 		if redirects >= maxRedirects {
@@ -62,7 +61,6 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 			if utils.IndexControl(location) != -1 {
 				return fasthttp.ErrorInvalidURI
 			}
-			carried.apply(&resp.Header)
 			return nil
 		}
 		if currentURLStr == "" {
@@ -116,8 +114,8 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 	}
 }
 
-// hopCaching keeps what the followed redirects said about caching: the response a chain ends with
-// depends on them, so it goes out no more cacheable than they were.
+// hopCaching keeps the restrictive caching of the followed redirects, their bare no-store, private and
+// no-cache and their Vary names, for the response a chain ends with, which depends on them.
 type hopCaching struct {
 	directives []string
 	vary       []string
@@ -128,9 +126,9 @@ var restrictiveDirectives = [...]string{"no-store", "private", "no-cache"}
 
 func (k *hopCaching) collect(h *fasthttp.ResponseHeader) {
 	canonical := fieldname.Canonical(h)
-	for directive := range headerlist.AllLines(fieldname.Lines(h, fiber.HeaderCacheControl, canonical)) {
+	for _, line := range fieldname.Lines(h, fiber.HeaderCacheControl, canonical) {
 		for _, name := range restrictiveDirectives {
-			if utils.EqualFold(directive, name) && !slices.Contains(k.directives, name) {
+			if holdsDirective(utils.UnsafeString(line), name) && !slices.Contains(k.directives, name) {
 				k.directives = append(k.directives, name)
 			}
 		}
@@ -145,24 +143,39 @@ func (k *hopCaching) apply(h *fasthttp.ResponseHeader) {
 		return
 	}
 	canonical := fieldname.Canonical(h)
-	addToList(h, fiber.HeaderCacheControl, canonical, k.directives)
-	addToList(h, fiber.HeaderVary, canonical, k.vary)
+	cacheControl := string(headerlist.Join(fieldname.Lines(h, fiber.HeaderCacheControl, canonical)))
+	updated := cacheControl
+	for _, name := range k.directives {
+		switch {
+		case holdsDirective(cacheControl, name):
+		case updated == "":
+			updated = name
+		default:
+			updated += ", " + name
+		}
+	}
+	if updated != cacheControl {
+		fieldname.Del(h, fiber.HeaderCacheControl, canonical)
+		h.Set(fiber.HeaderCacheControl, updated)
+	}
+	if vary := headerlist.AppendUniqueFold(string(headerlist.Join(fieldname.Lines(h, fiber.HeaderVary, canonical))), k.vary); vary != "" {
+		if headerlist.Contains(vary, "*") { // "*" stays alone (RFC 9110 §12.5.5)
+			vary = "*"
+		}
+		fieldname.Del(h, fiber.HeaderVary, canonical)
+		h.Set(fiber.HeaderVary, vary)
+	}
 }
 
-// addToList adds the values the field does not list yet, as one line. A Vary of "*" stays alone (RFC 9110 §12.5.5).
-func addToList(h *fasthttp.ResponseHeader, name string, canonical bool, values []string) { //nolint:revive // flag-parameter: a property of the header store
-	if len(values) == 0 {
-		return
+// holdsDirective reports whether cacheControl holds name as a bare directive. A comma or a directive inside a
+// quoted argument, as in ext="a, no-store", separates or names nothing.
+func holdsDirective(cacheControl, name string) bool {
+	for directive := range headerlist.AllQuotedPairs(cacheControl) {
+		if utils.EqualFold(directive, name) {
+			return true
+		}
 	}
-	updated := headerlist.AppendUniqueFold(string(headerlist.Join(fieldname.Lines(h, name, canonical))), values)
-	if updated == "" {
-		return
-	}
-	if name == fiber.HeaderVary && headerlist.Contains(updated, "*") {
-		updated = "*"
-	}
-	fieldname.Del(h, name, canonical)
-	h.Set(name, updated)
+	return false
 }
 
 // redirectChangesMethod reports whether a redirect with this status makes req a GET (RFC 9110

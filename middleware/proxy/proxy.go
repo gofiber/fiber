@@ -115,14 +115,20 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 // cannot be rebound to a private IP between validation and connection.
 func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error {
 	policy := currentSecurityPolicy()
-	return doActionWithPolicy(c, addr, policy, nil, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
-		err := followRedirects(cli, req, resp, maxRedirectsCount, u, policy)
+	var carried hopCaching
+	err := doActionWithPolicy(c, addr, policy, nil, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
+		err := followRedirects(cli, req, resp, maxRedirectsCount, u, policy, &carried)
 		if err != nil {
 			// resp holds the hop the loop stopped at, unstripped: none of it is the client's.
 			resetUpstreamResponse(resp)
 		}
 		return err
 	}, clients...)
+	if err == nil {
+		// Once the upstream's hop-by-hop fields are gone: the strip would take a field it listed in Connection.
+		carried.apply(&c.Response().Header)
+	}
+	return err
 }
 
 // DoDeadline performs the given request and waits for response until the given deadline.
