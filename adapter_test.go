@@ -1126,6 +1126,43 @@ func Test_Adapter_FastHTTP_TimedOutHandlerKeepsTheRequest(t *testing.T) {
 	require.Equal(t, "/pub/x", apptest.Recv(t, read, 5*time.Second))
 }
 
+// A fasthttp route handler that answered with a timeout response of its own still runs on the request, so the
+// middleware before it is told so, as for timeout.New: the ctx is abandoned and Next returns the timeout status.
+func Test_Adapter_FastHTTP_TimedOutHandlerIsAbandoned(t *testing.T) {
+	t.Parallel()
+	slow := fasthttp.TimeoutHandler(func(*fasthttp.RequestCtx) { time.Sleep(150 * time.Millisecond) }, 20*time.Millisecond, "timeout")
+	for name, handler := range map[string]any{
+		"fasthttp.RequestHandler":          slow,
+		"func(*fasthttp.RequestCtx) error": func(ctx *fasthttp.RequestCtx) error { slow(ctx); return nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			type outcome struct {
+				err       error
+				abandoned bool
+			}
+			seen := make(chan outcome, 1)
+			app := New()
+			app.Use(func(c Ctx) error {
+				err := c.Next()
+				seen <- outcome{err: err, abandoned: c.IsAbandoned()}
+				return err
+			})
+			app.Get("/", handler)
+
+			conn := apptest.Dial(t, apptest.Serve(t, app, ListenConfig{DisableStartupMessage: true}))
+			_, err := io.WriteString(conn, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+			require.NoError(t, err)
+			answer, err := io.ReadAll(conn)
+			require.NoError(t, err)
+			require.Contains(t, string(answer), "408 Request Timeout")
+			got := apptest.Recv(t, seen, 5*time.Second)
+			require.True(t, got.abandoned)
+			require.Equal(t, NewError(StatusRequestTimeout), got.err)
+		})
+	}
+}
+
 func Test_HTTPHandler_Direct_RestoresRequestLine(t *testing.T) {
 	t.Parallel()
 	const target = "/a/../%70ub/x%20y?q=%2F"

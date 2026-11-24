@@ -450,6 +450,8 @@ To align even closer with Express, you can also register handlers that accept th
 | 16 | `fasthttp.RequestHandler` | Direct fasthttp handler without error return. |
 | 17 | `func(*fasthttp.RequestCtx) error` | fasthttp handler that returns an error to Fiber. |
 
+A fasthttp handler that answered with a timeout response of its own, such as `fasthttp.TimeoutHandler`, may still run on the request. Fiber then abandons the context, as the timeout middleware does, and `c.Next()` returns a `*fiber.Error` with the status of that response, so the middleware before it neither stores nor recycles what the handler still uses.
+
 ### Route chaining
 
 `RouteChain` is a new helper inspired by [`Express`](https://expressjs.com/en/api.html#app.route) that makes it easy to declare a stack of handlers on the same path, while the existing `Route` helper stays available for prefix encapsulation.
