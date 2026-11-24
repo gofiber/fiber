@@ -81,6 +81,14 @@ curl --cookie "access_token=Clearly A Wrong Key" http://localhost:3000
 
 For a more detailed example, see the [`envoy-extauthz`](https://github.com/gofiber/recipes/tree/master/envoy-extauthz) recipe in the `gofiber/recipes` repository.
 
+:::caution With the cache middleware
+
+Register KeyAuth before the [Cache](./cache.md) middleware. A hit is answered without running the middleware registered after the cache, so if KeyAuth is registered after it, a page stored for a client with a valid key is served to clients without one. With the default `extractors.FromAuthHeader`, the cache does not store such a page unless the response permits it, since the request carries `Authorization`.
+
+Registering KeyAuth first is not enough when a page depends on which key was sent. The cache's default key holds no cookie, so with `extractors.FromCookie`, as above, such a page is served to every client with a valid key. Name the cookie in the cache's `KeyCookies` (`cache.Config{KeyCookies: []string{"access_token"}}`), or send `Cache-Control: private` from those routes. See [Default cache key behavior](./cache.md#default-cache-key-behavior).
+
+:::
+
 ### Authenticate only certain endpoints
 
 Use the `Next` function to run KeyAuth only on selected routes.

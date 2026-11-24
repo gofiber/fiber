@@ -309,6 +309,31 @@ app.Post("/login", func(c fiber.Ctx) error {
 })
 ```
 
+❌ **Caching pages built from the session:**
+
+```go
+// DANGEROUS: the cache runs inside the session middleware, so it stores the page
+// before the session cookie is written and serves it to every client
+app.Use(session.New())
+app.Use(cache.New())
+
+app.Get("/account", func(c fiber.Ctx) error {
+    sess := session.FromContext(c)
+    return c.SendString(fmt.Sprintf("Signed in as %v", sess.Get("user_id")))
+})
+```
+
+✅ **Secure Implementation:**
+
+```go
+// SECURE: register the cache first. The session middleware then writes its cookie
+// before the cache decides, and the cache does not store a response that sets one.
+app.Use(cache.New())
+app.Use(session.New())
+```
+
+This relies on the cookie the session middleware writes. With the [Store Pattern](#store-pattern-advanced), a session that `store.Get` loads and that is never saved sets no cookie, and a page built from it is stored and served to every client. On such routes, name the session cookie in the cache's `KeyCookies`, or send `Cache-Control: private`. See [Default cache key behavior](./cache.md#default-cache-key-behavior).
+
 ### Authentication Middleware
 
 This is a basic example of an authentication middleware that checks if a user is logged in before accessing protected routes.
