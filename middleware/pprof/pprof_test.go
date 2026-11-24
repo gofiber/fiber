@@ -1,7 +1,10 @@
 package pprof
 
 import (
+	"bufio"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	runtimepprof "runtime/pprof"
@@ -194,4 +197,35 @@ func Test_Pprof_Sibling_Prefix_Path(t *testing.T) {
 	app.Get("/debug/pprofiler", func(c fiber.Ctx) error { return c.SendString("app route") })
 
 	apptest.ExpectBody(t, app, "/debug/pprofiler", fiber.StatusOK, "app route")
+}
+
+// fasthttpadaptor buffers the body for the http.Request, and with StreamRequestBody the server passes on a body of any size.
+func Test_Pprof_StreamedBodyLimit(t *testing.T) {
+	t.Parallel()
+	const limit = 1024
+	app := fiber.New(fiber.Config{StreamRequestBody: true, BodyLimit: limit})
+	app.Use(New())
+
+	for _, target := range []string{"/debug/pprof/", "/debug/pprof/cmdline", "/debug/pprof/symbol", "/debug/pprof/heap"} {
+		for _, chunked := range []bool{false, true} {
+			for size, status := range map[int]int{limit: fiber.StatusOK, limit + 1: fiber.StatusRequestEntityTooLarge} {
+				req := httptest.NewRequest(fiber.MethodPost, target, strings.NewReader(strings.Repeat("a", size)))
+				if chunked {
+					req.TransferEncoding = []string{"chunked"}
+				}
+				resp := apptest.Do(t, app, req, testConfig)
+				require.Equal(t, status, resp.StatusCode, "%s chunked=%v size=%d", target, chunked, size)
+			}
+		}
+	}
+
+	// A body that fails to read is refused as well, instead of being served as far as it came.
+	conn := apptest.Dial(t, apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true}))
+	_, err := conn.Write([]byte("POST /debug/pprof/cmdline HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\n" +
+		"Connection: close\r\n\r\nzz\r\n"))
+	require.NoError(t, err)
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 }

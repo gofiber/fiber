@@ -713,6 +713,10 @@ func Test_StreamedBodyLimit(t *testing.T) {
 	c.Request().SetBodyStream(iotest.ErrReader(fiber.ErrRequestHeaderFieldsTooLarge), -1)
 	_, err = ConvertRequest(c, true)
 	require.ErrorIs(t, err, fiber.ErrRequestHeaderFieldsTooLarge)
+	// A declared length within the limit does not keep the connection from failing before it.
+	c.Request().SetBodyStream(iotest.ErrReader(errors.New("connection reset by peer")), limit)
+	_, err = ConvertRequest(c, true)
+	require.ErrorIs(t, err, fiber.ErrBadRequest)
 }
 
 func Test_StreamedTrailerCap(t *testing.T) {

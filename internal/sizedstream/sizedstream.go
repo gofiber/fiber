@@ -1,4 +1,4 @@
-// Package sizedstream buffers a response body stream that declares its length.
+// Package sizedstream buffers a body stream within a length: the one a response declares, or a request's limit.
 package sizedstream
 
 import (
@@ -41,10 +41,11 @@ func keep[T []byte | string](w *buffer, p T) (int, error) {
 	return len(p), nil
 }
 
-// grow makes room for need more bytes, doubling like append but never past the declared length.
+// grow makes room for need more bytes, doubling the capacity but never past the declared length. Doubling keeps a
+// pool's power-of-two buffer at one, which fasthttp's body pool, calibrated by size class, then keeps.
 func (w *buffer) grow(need int) {
 	if cap(w.b)-len(w.b) < need {
-		w.b = append(make([]byte, 0, len(w.b)+max(need, min(max(cap(w.b), 4096), w.limit-len(w.b)))), w.b...)
+		w.b = append(make([]byte, 0, max(len(w.b)+need, min(max(2*cap(w.b), 4096), w.limit))), w.b...)
 	}
 }
 
@@ -76,15 +77,21 @@ func (w *buffer) ReadFrom(r io.Reader) (int64, error) {
 // the response's own, so fasthttp's calibrated body pool decides which sizes stay around.
 var buffers = sync.Pool{New: func() any { return new(buffer) }}
 
-// Read reads the body stream of resp, which declares n bytes, into its body and reports whether
-// exactly n arrived without error. Response.Body reads to the end and keeps a read error as the body.
-func Read(resp *fasthttp.Response, n int) bool {
+// acquire returns a pooled buffer that keeps at most limit bytes.
+func acquire(limit int) *buffer {
 	w, ok := buffers.Get().(*buffer)
 	if !ok {
 		w = new(buffer)
 	}
+	w.b, w.limit, w.past = w.b[:0], limit, 0
+	return w
+}
+
+// Read reads the body stream of resp, which declares n bytes, into its body and reports whether
+// exactly n arrived without error. Response.Body reads to the end and keeps a read error as the body.
+func Read(resp *fasthttp.Response, n int) bool {
+	w := acquire(n)
 	defer buffers.Put(w)
-	w.b, w.limit, w.past = w.b[:0], n, 0
 
 	// Sized up front, since growing to it leaves about the body again as garbage. A larger
 	// declared length is not trusted with an allocation.
@@ -100,4 +107,21 @@ func Read(resp *fasthttp.Response, n int) bool {
 	resp.SetBodyStream(bytes.NewReader(append(w.b, w.tail[:w.past]...)), n)
 	w.b = nil
 	return false
+}
+
+// ReadRequest reads the body stream of req into its body, failing with fasthttp.ErrBodyTooLarge past limit or with the
+// stream's own error, which Request.Body would keep as the body. A client's declared length is not presized for.
+func ReadRequest(req *fasthttp.Request, limit int) error {
+	w := acquire(limit)
+	defer buffers.Put(w)
+	if _, err := w.ReadFrom(req.BodyStream()); err != nil {
+		if errors.Is(err, errTooLong) {
+			return fasthttp.ErrBodyTooLarge
+		}
+		return err
+	}
+	// SwapBody keeps a multipart form already parsed off this stream; SetBodyRaw drops it.
+	req.CloseBodyStream() //nolint:errcheck // already read to its end
+	w.b = req.SwapBody(w.b)
+	return nil
 }

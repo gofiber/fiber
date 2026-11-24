@@ -1328,7 +1328,7 @@ Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. 
 
 ### BodyRaw
 
-Returns the raw request **body**. Under [`StreamRequestBody`](./fiber.md#streamrequestbody), a body larger than the app [BodyLimit](./fiber.md#bodylimit) sets `413 Request Entity Too Large` while no response body was written, and the returned slice holds the error message instead of request data.
+Returns the raw request **body**. Under [`StreamRequestBody`](./fiber.md#streamrequestbody), a body larger than the app [BodyLimit](./fiber.md#bodylimit) sets `413 Request Entity Too Large` while no response body was written, and the returned slice holds the error message instead of request data. A streamed body that breaks off before its end, also one with a declared length, returns the read error's message the same way, without the `413`, and the [body binders](./bind.md) fail with that error.
 
 ```go title="Signature"
 func (c fiber.Ctx) BodyRaw() []byte
@@ -2190,7 +2190,7 @@ app.Post("/override", func(c fiber.Ctx) error {
 
 ### MultipartForm
 
-To access multipart form entries, you can parse the binary with `MultipartForm()`. This returns a `*multipart.Form`, allowing you to access form values and files. Parsing is bounded by the app [BodyLimit](./fiber.md#bodylimit).
+To access multipart form entries, you can parse the binary with `MultipartForm()`. This returns a `*multipart.Form`, allowing you to access form values and files. Parsing is bounded by the app [BodyLimit](./fiber.md#bodylimit). Under [`StreamRequestBody`](./fiber.md#streamrequestbody), a body that failed to parse, because it is malformed or larger than the limit, is not read again: `MultipartForm`, [`FormFile`](#formfile) and [`Bind().Form`](./bind.md#form) return the same error on every later call, [`FormValue`](#formvalue) finds no value in it, and [`Body`](#body) holds the error message.
 
 :::caution
 

@@ -89,7 +89,10 @@ We have made several changes to the Fiber app, including:
   through the adaptor, and `adaptor.ConvertRequest` answer a streamed body larger than `BodyLimit` with `413` as well,
   and the cache middleware leaves a request whose streamed body is chunked or longer than `BodyLimit` uncached instead
   of reading it to build the key. The logger's `${body}` and `${form:}` read it within `BodyLimit` too, without
-  changing the handler's response.
+  changing the handler's response. The pprof middleware refuses a streamed body larger than `BodyLimit` with `413`. A
+  streamed body that breaks off before its end is an error for `Body()` and the body binders also when it declared its
+  length, and a multipart body that failed to parse is not read again: `MultipartForm`, `FormFile` and `Bind().Form()`
+  return the same error on every later call. A `fasthttp.RequestHandler` route still reads the stream unbounded.
 - **Buffer sizes**: The default `ReadBufferSize` and `WriteBufferSize` are now `8192` bytes (they were `4096` in v2). The read buffer also limits the size of the request headers, so requests with larger headers or cookies are accepted by default. Set either field to keep a different size.
 
 ### New Methods

@@ -1163,6 +1163,47 @@ func Test_Ctx_Body_StreamedBodyLimit(t *testing.T) {
 	}
 }
 
+// A streamed multipart body that failed to parse is left partly read, and no later reader takes the rest for the form or the body.
+func Test_Ctx_MultipartForm_StreamedFailureIsFinal(t *testing.T) {
+	t.Parallel()
+	// The multipart reader takes 4096 bytes at a time: a failed parse of a longer body stops inside it.
+	const limit = 8 * 1024
+	app := New(Config{StreamRequestBody: true, BodyLimit: limit})
+	form := "--X\r\nContent-Disposition: form-data; name=\"role\"\r\n\r\nadmin\r\n--X--\r\n"
+
+	for _, tc := range []struct {
+		name   string
+		body   string
+		status int
+	}{
+		{name: "over the limit", body: "--X\r\nContent-Disposition: form-data; name=\"pad\"\r\n\r\n" + strings.Repeat("x", limit) + "\r\n" + form, status: StatusRequestEntityTooLarge},
+		{name: "malformed, within the limit", body: "--X\r\nno colon\r\n\r\n" + strings.Repeat("\r\n", 3000) + form, status: StatusOK},
+	} {
+		for length, declared := range map[string]int{"chunked": -1, "declared length": len(tc.body)} {
+			t.Run(tc.name+", "+length, func(t *testing.T) {
+				t.Parallel()
+				c := ctxWithStreamedBody(t, app, MIMEMultipartForm+"; boundary=X", strings.NewReader(tc.body), declared)
+
+				_, failure := c.MultipartForm()
+				require.Error(t, failure)
+				require.Equal(t, tc.status == StatusRequestEntityTooLarge, errors.Is(failure, fasthttp.ErrBodyTooLarge))
+				_, err := c.MultipartForm()
+				require.Equal(t, failure, err)
+				require.Empty(t, c.FormValue("role"))
+				_, err = c.FormFile("role")
+				require.Equal(t, failure, err)
+				var out struct {
+					Role string `form:"role"`
+				}
+				require.ErrorIs(t, c.Bind().Form(&out), failure)
+				require.Empty(t, out.Role)
+				require.Equal(t, failure.Error(), string(c.Body()))
+				require.Equal(t, tc.status, c.Response().StatusCode())
+			})
+		}
+	}
+}
+
 // Body returns its failure as the body, and leaves a response the handler has written alone.
 func Test_Ctx_Body_FailureKeepsWrittenResponse(t *testing.T) {
 	t.Parallel()
