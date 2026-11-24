@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -1067,27 +1068,39 @@ func Test_Idempotency_RefusedRequestIsNotStored(t *testing.T) {
 	require.Equal(t, 1, calls)
 }
 
-// A dropped connection is sent nothing, so the retry reaches the handler instead of an empty 200.
+// A dropped or hijacked connection is sent nothing, so the retry reaches the handler instead of an empty 200.
 func Test_Idempotency_DroppedRequestIsNotStored(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	s := storagetest.New()
-	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
-	var calls atomic.Int32
-	app.Post("/", func(c fiber.Ctx) error {
-		if calls.Add(1) == 1 {
-			return c.Drop()
-		}
-		return c.SendString("done")
-	})
-	post := func() *http.Request {
-		req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
-		req.Header.Set(ConfigDefault.KeyHeader, validKey)
-		return req
-	}
+	for name, end := range map[string]func(fiber.Ctx) error{
+		"drop": func(c fiber.Ctx) error { return c.Drop() },
+		"hijack": func(c fiber.Ctx) error {
+			c.RequestCtx().HijackSetNoResponse(true)
+			c.RequestCtx().Hijack(func(net.Conn) {})
+			return nil
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			s := storagetest.New()
+			app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
+			var calls atomic.Int32
+			app.Post("/", func(c fiber.Ctx) error {
+				if calls.Add(1) == 1 {
+					return end(c)
+				}
+				return c.SendString("done")
+			})
+			post := func() *http.Request {
+				req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
+				req.Header.Set(ConfigDefault.KeyHeader, validKey)
+				return req
+			}
 
-	_, err := app.Test(post())
-	require.Error(t, err)
-	require.Empty(t, s.Calls(storagetest.OpSet))
-	apptest.ExpectBody(t, app, post(), fiber.StatusOK, "done")
+			_, err := app.Test(post())
+			require.Error(t, err)
+			require.Empty(t, s.Calls(storagetest.OpSet))
+			apptest.ExpectBody(t, app, post(), fiber.StatusOK, "done")
+		})
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -2371,23 +2372,36 @@ func Test_Cache_RequestTheHandlerDoesNotSeeAsSentIsNotStored(t *testing.T) {
 	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "beta"), cacheMiss, "tenant=beta")
 }
 
-// A dropped connection is sent nothing: the untouched 200 must neither be stored nor replace an entry.
+// A dropped or hijacked connection is sent nothing: the untouched 200 must neither be stored nor replace an entry.
 func Test_Cache_DroppedRequestIsNotStored(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New())
-	app.Get("/", func(c fiber.Ctx) error {
-		if c.Get("X-Blocked") != "" {
-			return c.Drop()
-		}
-		return c.SendString("page")
-	})
+	for name, end := range map[string]func(fiber.Ctx) error{
+		"drop": func(c fiber.Ctx) error { return c.Drop() },
+		"hijack": func(c fiber.Ctx) error {
+			c.RequestCtx().HijackSetNoResponse(true)
+			c.RequestCtx().Hijack(func(net.Conn) {})
+			return nil
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New())
+			app.Get("/", func(c fiber.Ctx) error {
+				if c.Get("X-Blocked") != "" {
+					return end(c)
+				}
+				return c.SendString("page")
+			})
+			blocked := func() {
+				_, err := app.Test(cacheTestCReq("/", "X-Blocked", "1", fiber.HeaderCacheControl, "no-cache"))
+				require.Error(t, err)
+			}
 
-	blocked := cacheTestCReq("/", "X-Blocked", "1", fiber.HeaderCacheControl, "no-cache")
-	_, err := app.Test(blocked)
-	require.Error(t, err)
-	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "page")
-	_, err = app.Test(cacheTestCReq("/", "X-Blocked", "1", fiber.HeaderCacheControl, "no-cache"))
-	require.Error(t, err)
-	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "page")
+			blocked()
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "page")
+			blocked()
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "page")
+		})
+	}
 }
