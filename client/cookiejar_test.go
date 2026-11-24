@@ -284,6 +284,53 @@ func Test_CookieJarHostCapacitySweepsOncePerClockReading(t *testing.T) {
 	require.Len(t, cj.hostCookies, maxCookieJarHosts-1)
 }
 
+// Test_CookieJarExpiredCookieTakesNoRoom checks that an expired cookie is not stored in a full jar, so it
+// evicts no host and leaves the jar no entry that a later key of the same clock reading would evict past.
+func Test_CookieJarExpiredCookieTakesNoRoom(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		store  func(t *testing.T, jar *CookieJar)
+		stored map[string]bool
+		name   string
+	}{
+		{
+			name: "set with a live Domain cookie",
+			store: func(t *testing.T, jar *CookieJar) {
+				t.Helper()
+				expired := clientTestCCookie(t, "a", "1")
+				expired.SetExpire(time.Now().Add(-time.Minute))
+				live := clientTestCCookie(t, "b", "1")
+				live.SetDomain("tenant.example.com")
+				jar.Set(clientTestCURI(t, "http://x.tenant.example.com/"), expired, live)
+			},
+			stored: map[string]bool{"tenant.example.com": true, "x.tenant.example.com": false, "host-0001.example.com": true},
+		},
+		{
+			name: "response",
+			store: func(t *testing.T, jar *CookieJar) {
+				t.Helper()
+				clientTestCReceive(jar, "x.tenant.example.com", "/", "a=1; Max-Age=0")
+			},
+			stored: map[string]bool{"x.tenant.example.com": false, "host-0000.example.com": true},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			jar := clientTestCJar(t)
+			for i := range maxCookieJarHosts {
+				jar.SetKeyValue(fmt.Sprintf("host-%04d.example.com", i), "k", "v")
+			}
+			tc.store(t, jar)
+
+			require.Len(t, jar.hostCookies, maxCookieJarHosts)
+			for host, stored := range tc.stored {
+				_, ok := jar.hostCookies[host]
+				require.Equal(t, stored, ok, host)
+			}
+		})
+	}
+}
+
 // Test_CookieJarHostSeqFollowsStorageKeys checks that the last-write record of a key is dropped with
 // the key, whichever way the key goes.
 func Test_CookieJarHostSeqFollowsStorageKeys(t *testing.T) {
@@ -300,11 +347,9 @@ func Test_CookieJarHostSeqFollowsStorageKeys(t *testing.T) {
 	require.Empty(t, jar.hostCookies)
 	require.Empty(t, jar.hostSeq)
 
-	// A key whose only cookie has expired, removed when the jar is read.
-	expired := clientTestCCookie(t, "c", "1")
-	expired.SetExpire(time.Now().Add(-time.Minute))
-	jar.Set(uri, expired)
-	require.Len(t, jar.hostSeq, 1)
+	// A key whose only cookie has expired since it was stored, removed when the jar is read.
+	jar.hostCookies["www.example.com"] = []storedCookie{clientTestCStored("c", time.Now().Add(-time.Minute), 1)}
+	jar.hostSeq["www.example.com"] = 1
 	require.Empty(t, jar.Get(uri))
 	require.Empty(t, jar.hostSeq)
 
