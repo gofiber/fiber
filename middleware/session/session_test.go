@@ -1632,7 +1632,7 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 		require.Equal(t, "fenny", reloaded.Get("user"))
 	})
 
-	// Reset moves the session to a new ID, Destroy keeps it.
+	// Both move the session to a new ID, Destroy once it is saved.
 	for _, tc := range []struct {
 		drop func(*Session) error
 		name string
@@ -2150,8 +2150,10 @@ func Test_Session_RegenerateCarriesRecordOverGob(t *testing.T) {
 			store := NewStore(Config{Storage: mem, Codec: JSONCodec{}})
 
 			inFlight := loadSession(t, app, store, id)
-			other := loadSession(t, app, NewStore(Config{Storage: mem, Codec: tc.writer}), id)
-			require.NoError(t, other.Destroy())
+			// Deleted and saved again under the same ID, as an instance that does not move a destroyed session does.
+			writer := NewStore(Config{Storage: mem, Codec: tc.writer, KeyGenerator: func() string { return id }})
+			require.NoError(t, writer.Delete(t.Context(), id))
+			other := loadSession(t, app, writer, id)
 			other.Set("role", "user")
 			require.NoError(t, other.Save())
 
@@ -2824,4 +2826,65 @@ func Test_Session_ReleaseForgetsItsRequest(t *testing.T) {
 	releaseSession(sess)
 	_, over := sess.reach()
 	require.False(t, over)
+}
+
+// A request that rotated its loaded session still runs when the new ID, or every session, is deleted: its save
+// must not store the rotated session after all.
+func Test_Session_EndAfterRegenerate(t *testing.T) {
+	t.Parallel()
+	for name, end := range map[string]func(store *Store, id string) error{
+		"store.Delete": func(store *Store, id string) error { return store.Delete(context.Background(), id) },
+		"store.Reset":  func(store *Store, _ string) error { return store.Reset(context.Background()) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			store := NewStore(Config{Storage: memory.New()})
+			id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
+
+			sess := loadSession(t, app, store, id)
+			require.NoError(t, sess.Regenerate())
+			newID := sess.ID()
+			require.NoError(t, end(store, newID))
+			sess.Set("cart", "1")
+			require.NoError(t, sess.Save())
+
+			sessionTestRequireGone(t, store, id)
+			sessionTestRequireGone(t, store, newID)
+			require.Empty(t, sess.ctx.Response().Header.Peek(fiber.HeaderSetCookie))
+		})
+	}
+}
+
+// A session saved after Destroy starts over under a new ID and deadline: an entry under the destroyed ID would
+// let a request that loaded the session before store its own copy over it.
+func Test_Session_SaveAfterDestroy(t *testing.T) {
+	t.Parallel()
+	for name, finish := range map[string]func(*Session) error{
+		"Save":       (*Session).Save,
+		"Regenerate": func(sess *Session) error { return errors.Join(sess.Regenerate(), sess.Save()) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			store := NewStore(Config{Storage: memory.New(), AbsoluteTimeout: time.Hour})
+			id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
+			inFlight := loadSession(t, app, store, id)
+
+			ending := loadSession(t, app, store, id)
+			require.NoError(t, ending.Destroy())
+			require.NoError(t, finish(ending))
+			newID := ending.ID()
+			require.NotEqual(t, id, newID)
+			sessionTestRequireGone(t, store, id)
+			stored := sessionTestStored(t, store, newID)
+			require.Nil(t, stored.Get("user"))
+			require.False(t, stored.absExpiration().IsZero())
+			require.Contains(t, string(ending.ctx.Response().Header.Peek(fiber.HeaderSetCookie)), "session_id="+newID)
+
+			inFlight.Set("cart", "1")
+			require.NoError(t, inFlight.Save())
+			sessionTestRequireGone(t, store, id)
+		})
+	}
 }

@@ -44,6 +44,7 @@ type Session struct {
 	isFresh     bool                    // if new session
 	loaded      bool                    // the data was read from storage under the current id
 	dropped     bool                    // another request ended or rotated it: never stored or sent again
+	destroyed   bool                    // Destroy deleted it: a save starts it over under a new ID
 	requestOver bool                    // the request is over for the session, which touches none any more; under reqMu
 }
 
@@ -116,6 +117,7 @@ func releaseSession(s *Session) {
 	s.rawData = nil
 	s.loaded = false
 	s.dropped = false
+	s.destroyed = false
 	if s.data != nil {
 		s.data.reset(gobStream)
 	}
@@ -243,7 +245,9 @@ func (s *Session) DestroyWithContext(ctx context.Context) error {
 	// Reset local data only after the storage delete succeeded, so a
 	// canceled/failed delete leaves the session data intact.
 	s.resetData()
+	s.armAbsExpiration()
 	s.loaded = false
+	s.destroyed = true
 
 	// Expire session
 	s.delSession()
@@ -289,7 +293,12 @@ func (s *Session) RegenerateWithContext(ctx context.Context) error {
 		ended  bool
 		err    error
 	)
-	if s.loaded {
+	loaded := s.loaded
+	if loaded {
+		// Held until the rotated session is stored, so a store.Reset comes before both or after both.
+		l := s.storageKey().lock()
+		l.mu.Lock()
+		defer l.mu.Unlock()
 		stored, ended, err = s.config.deleteLoadedKey(ctx, s.storageKey(), s.loadGen)
 	} else {
 		err = s.config.deleteKey(ctx, s.storageKey())
@@ -314,7 +323,30 @@ func (s *Session) RegenerateWithContext(ctx context.Context) error {
 	// Generate a new session, and set session.isFresh to true
 	s.refresh()
 
+	if loaded && !s.dropped {
+		err = errors.Join(err, s.storeRotated(ctx))
+	}
 	return err
+}
+
+// storeRotated stores the session Regenerate rotated under its new ID and marks it loaded there, so its save
+// sees a store.Delete or store.Reset that ended it since. The caller holds s.mu.
+func (s *Session) storeRotated(ctx context.Context) error {
+	data, _, err := s.encode()
+	if err != nil {
+		return err
+	}
+	if s.idleTimeout <= 0 {
+		s.idleTimeout = s.config.IdleTimeout
+	}
+	key := s.storageKey()
+	// Read before the write, as a load does: a change in the shard in between costs the save a read, no more.
+	gen := key.lock().gen.Load()
+	if err := s.config.Storage.SetWithContext(ctx, string(key), data, s.lifetime()); err != nil {
+		return err
+	}
+	s.rawData, s.loaded, s.loadGen = data, true, gen
+	return nil
 }
 
 // Reset generates a new session id, deletes the old one from storage, and resets the associated data.
@@ -364,10 +396,7 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	// canceled/failed delete leaves the session data intact.
 	if s.data != nil {
 		s.resetData()
-		// Reset wiped the absolute expiration, so the rotated session must be armed again.
-		if s.config != nil && s.config.AbsoluteTimeout > 0 {
-			s.setAbsExpiration(time.Now().Add(s.config.AbsoluteTimeout))
-		}
+		s.armAbsExpiration()
 	}
 	s.idleTimeout = 0
 
@@ -414,6 +443,13 @@ func (s *Session) resetData() {
 	s.rawData = nil
 }
 
+// armAbsExpiration sets the absolute deadline again after resetData wiped it: the session starts over.
+func (s *Session) armAbsExpiration() {
+	if s.config != nil && s.config.AbsoluteTimeout > 0 {
+		s.setAbsExpiration(time.Now().Add(s.config.AbsoluteTimeout))
+	}
+}
+
 // refresh generates a new session, and sets session.isFresh to be true.
 func (s *Session) refresh() {
 	old := s.id
@@ -421,6 +457,7 @@ func (s *Session) refresh() {
 	s.key = ""
 	s.isFresh = true
 	s.loaded = false
+	s.destroyed = false
 	s.recache(old)
 }
 
@@ -528,6 +565,10 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	if s.dropped {
 		return nil
 	}
+	// Under the destroyed ID it would be read as a change by a request that loaded the session before.
+	if s.destroyed {
+		s.refresh()
+	}
 
 	// Set idleTimeout if not already set
 	if s.idleTimeout <= 0 {
@@ -537,25 +578,9 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	// Neither the record nor the cookie may outlive the absolute deadline.
 	ttl := s.lifetime()
 
-	// Unchanged since the decode: write the snapshot back so the idle timeout still
-	// slides. Lock-free is enough; the flags are set before what they report.
-	data := s.rawData
-	// Set, Delete or Reset changed the session. A read of a value the caller may change
-	// in place only makes the snapshot stale: the data is encoded again, and whether it
-	// changed is asked only once another request's change is there to yield to.
-	mutated := s.data.mutated.Load()
-	changed := data == nil || mutated || s.data.dirty.Load()
-	if changed {
-		s.data.RLock()
-		encoded, err := s.data.encode()
-		if err != nil && s.data.heldAsGob() {
-			err = s.config.gobUnderCodec(err)
-		}
-		s.data.RUnlock()
-		if err != nil {
-			return fmt.Errorf("failed to encode data: %w", err)
-		}
-		data = encoded
+	data, changed, err := s.encode()
+	if err != nil {
+		return err
 	}
 
 	key := s.storageKey()
@@ -590,6 +615,31 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	// Update client cookie
 	s.setSession(ttl)
 	return s.config.Storage.SetWithContext(ctx, string(key), data, ttl)
+}
+
+// encode returns what a save stores and whether it differs from the snapshot of the load. The caller holds s.mu.
+//
+//nolint:gocritic // returning explicit values keeps the signature concise while avoiding unnecessary named results
+func (s *Session) encode() ([]byte, bool, error) {
+	// Unchanged since the decode: write the snapshot back so the idle timeout still
+	// slides. Lock-free is enough; the flags are set before what they report.
+	data := s.rawData
+	// Set, Delete or Reset changed the session. A read of a value the caller may change
+	// in place only makes the snapshot stale: the data is encoded again, and whether it
+	// changed is asked only once another request's change is there to yield to.
+	if data != nil && !s.data.mutated.Load() && !s.data.dirty.Load() {
+		return data, false, nil
+	}
+	s.data.RLock()
+	encoded, err := s.data.encode()
+	if err != nil && s.data.heldAsGob() {
+		err = s.config.gobUnderCodec(err)
+	}
+	s.data.RUnlock()
+	if err != nil {
+		return nil, true, fmt.Errorf("failed to encode data: %w", err)
+	}
+	return encoded, true, nil
 }
 
 // overtakenBy reports whether raw, what the storage holds now, is a change another request

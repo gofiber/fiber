@@ -705,19 +705,16 @@ func (s *Store) deleteKey(ctx context.Context, key storageKey) error {
 
 // deleteLoadedKey is deleteKey for a session read at loadGen. It returns what the key held
 // when another request had written the shard since, nil when none had, and reports whether
-// one had deleted the key.
+// one had deleted the key. The caller holds the shard's lock.
 //
 //nolint:gocritic // returning explicit values keeps the signature concise while avoiding unnecessary named results
 func (s *Store) deleteLoadedKey(ctx context.Context, key storageKey, loadGen uint64) ([]byte, bool, error) {
-	l := key.lock()
-	l.mu.Lock()
-	defer l.mu.Unlock()
 	stored, moved, err := s.storedSince(ctx, key, loadGen)
 	if err != nil {
 		return nil, false, err
 	}
 	err = s.Storage.DeleteWithContext(ctx, string(key))
-	l.gen.Add(1)
+	key.lock().gen.Add(1)
 	return stored, moved && stored == nil, err
 }
 
