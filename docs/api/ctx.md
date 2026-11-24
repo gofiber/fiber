@@ -1328,7 +1328,7 @@ Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. 
 
 ### BodyRaw
 
-Returns the raw request **body**. Under [`StreamRequestBody`](./fiber.md#streamrequestbody), a body larger than the app [BodyLimit](./fiber.md#bodylimit) sets `413 Request Entity Too Large` while no response body was written, and the returned slice holds the error message instead of request data. A streamed body that breaks off before its end, also one with a declared length, returns the read error's message the same way, without the `413`, and the [body binders](./bind.md) fail with that error.
+Returns the raw request **body**. Under [`StreamRequestBody`](./fiber.md#streamrequestbody), a body larger than the app [BodyLimit](./fiber.md#bodylimit) sets `413 Request Entity Too Large` while no response body was written, and the returned slice holds the error message instead of request data. A streamed body whose read fails, also one with a declared length, returns the read error's message the same way, without the `413`, and the [body binders](./bind.md) fail with that error. A connection the client closes early ends the stream without an error, so the body is then shorter than declared.
 
 ```go title="Signature"
 func (c fiber.Ctx) BodyRaw() []byte
