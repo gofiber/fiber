@@ -1256,7 +1256,8 @@ func Test_Proxy_UpstreamNonFinalResponseRefused(t *testing.T) {
 				require.Equal(t, "header", resp.Header.Get("X-Kept"), name)
 				require.Equal(t, "ran", resp.Header.Get("X-Hook"), name)
 
-				for _, status := range []string{"101 Switching Protocols", "099 Below The Range"} {
+				apptest.ExpectBody(t, app, get("599 Top Of The Range"), 599, "ok")
+				for _, status := range []string{"101 Switching Protocols", "099 Below The Range", "600 Past The Range"} {
 					resp = apptest.Expect(t, app, get(status), fiber.StatusBadGateway)
 					for _, dropped := range []string{"X-Kept", "X-Hook", fiber.HeaderUpgrade} {
 						require.Empty(t, resp.Header.Values(dropped), name+" "+status+" "+dropped)

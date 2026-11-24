@@ -96,6 +96,8 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 	return true
 }
 
+const maxStatusCode = 599
+
 // sanitizeUpstreamResponse readies an upstream response for the client, before a
 // ModifyResponse hook or a Do caller sees it: its trailer section is discarded
 // whatever the hop-by-hop policy, since the proxy answers with a sized body, which
@@ -105,11 +107,12 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 // them, except naming the ones to keep. On either failure, more trailer names than
 // fieldname.MaxTrailers (each costs a scan of the header) or the strip's budget running
 // out, res is reset so none of the upstream's fields go out with the 502 Bad Gateway
-// returned. A response that is not final is refused the same way, whatever the policy.
+// returned. A response that is not final, or whose status is past 599 (RFC 9110 §15), is
+// refused the same way, whatever the policy.
 func sanitizeUpstreamResponse(res *fasthttp.Response, policy SecurityPolicy, except ...string) error {
 	// fasthttp hands over a 101 and a status below 100 as the result. The proxy does not tunnel, and a front end
 	// that starts relaying bytes on a 101 would hand its client a raw connection to this server.
-	if res.StatusCode() < fasthttp.StatusOK {
+	if status := res.StatusCode(); status < fasthttp.StatusOK || status > maxStatusCode {
 		resetUpstreamResponse(res)
 		return fiber.ErrBadGateway
 	}
