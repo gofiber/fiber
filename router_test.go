@@ -1747,6 +1747,61 @@ func newCustomApp(cfg ...Config) *App {
 	return NewWithCustomCtx(func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }, cfg...)
 }
 
+// pathUnescapeCtx overrides Path to return the percent-decoded path, which is shorter than the path the router
+// matched whenever that one keeps an escape.
+type pathUnescapeCtx struct {
+	DefaultCtx
+}
+
+func (c *pathUnescapeCtx) Path(override ...string) string {
+	path := c.DefaultCtx.Path(override...)
+	if decoded, err := neturl.PathUnescape(path); err == nil {
+		return decoded
+	}
+	return path
+}
+
+// A custom Ctx overriding Path changes what handlers read and nothing about routing: parameter values are cut from
+// the path the router matched, and a mount's error handler is picked by that path.
+func Test_Router_CustomCtx_PathOverrideIsNotRouted(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		cfg    Config
+		name   string
+		target string
+		body   string
+		status int
+	}{
+		{name: "Param", target: "/users/a%20b", status: StatusOK, body: "a%20b|/users/a b"},
+		{name: "Wildcard", target: "/files/a%20b/c", status: StatusOK, body: "a%20b/c|/files/a b/c"},
+		{name: "Lookahead", target: "/users/a%20b", status: StatusOK, body: "a%20b|/users/a b", cfg: Config{SkipUnmatchedRoutes: true}},
+		{name: "DomainMountNotFound", target: "/t/%20%20%20%20%20%20/nope", status: StatusNotFound, body: "Not Found"},
+		{name: "MountNotFound", target: "/api%2Fnope", status: StatusNotFound, body: "Not Found"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := NewWithCustomCtx(func(app *App) CustomCtx { return &pathUnescapeCtx{DefaultCtx: *NewDefaultCtx(app)} }, tc.cfg)
+			app.Use(func(c Ctx) error { return c.Next() })
+			app.Get("/users/:name", func(c Ctx) error { return c.SendString(c.Params("name") + "|" + c.Path()) })
+			app.Get("/files/*", func(c Ctx) error { return c.SendString(c.Params("*") + "|" + c.Path()) })
+			api := New(Config{ErrorHandler: func(c Ctx, _ error) error { return c.Status(StatusTeapot).SendString("api") }})
+			api.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
+			app.Use("/api", api)
+			tenant := New()
+			tenant.Get("/hello", func(c Ctx) error { return c.SendString("hello") })
+			app.Domain("example.com").Use("/t/:tenant", tenant)
+
+			fctx := routerTestRequestCtx(MethodGet, tc.target)
+			fctx.Request.Header.SetHost("example.com")
+			handler := app.Handler()
+			require.NotPanics(t, func() { handler(fctx) })
+			require.Equal(t, tc.status, fctx.Response.StatusCode())
+			require.Equal(t, tc.body, string(fctx.Response.Body()))
+		})
+	}
+}
+
 func Test_Next_SkipNonUseRoutesSkipsFallback(t *testing.T) {
 	t.Parallel()
 	app := New()

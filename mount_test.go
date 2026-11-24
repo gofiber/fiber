@@ -714,6 +714,48 @@ func Test_App_Mount_CaseInsensitivePath(t *testing.T) {
 // Test_App_Mount_ViewsPathOnly verifies that a mounted app's views are chosen
 // by the request path, not by its mount path appearing anywhere in the URL — a
 // query string carrying it must not select them.
+// Neither side of the mount lookup is read as the other: a backslash in the request path is a byte, so `/ad\min` is
+// not below "/admin", and a path that spells a parametric mount pattern is not below that mount. Such a request runs
+// none of the mounted app's routes, so it gets neither its error handler nor its views.
+func Test_App_Mount_PathReadAsPattern(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		mount   string
+		path    string
+		covered bool
+	}{
+		{mount: "/admin", path: "/admin/doe", covered: true},
+		{mount: "/admin", path: "/ADMIN/doe/", covered: true},
+		{mount: "/admin", path: `/ad\min`},
+		{mount: "/admin", path: `/\admin`},
+		{mount: "/admin", path: `/admin\`},
+		{mount: "/admin", path: `/ad\min/doe`},
+		{mount: `/v1\:admin`, path: "/v1:admin/doe", covered: true},
+		{mount: `/v1\:admin`, path: `/v1\:admin/doe`},
+		{mount: "/:id<int>", path: "/:id<int>/doe"},
+	} {
+		t.Run(tc.mount+" "+tc.path, func(t *testing.T) {
+			t.Parallel()
+			// no route answers the path, so its error handler is looked up by the path alone
+			app := New(Config{ErrorHandler: domainTestErrorHandler(598, "parent")})
+			app.Use(tc.mount, domainTestFailingApp(599, "sub", "/doe"))
+			if tc.covered {
+				require.Equal(t, 599, serveRawTarget(t, app, tc.path).StatusCode())
+				return
+			}
+			require.Equal(t, 598, serveRawTarget(t, app, tc.path).StatusCode())
+
+			// a route of the parent answers it, and renders with the parent's views
+			app = New(Config{Views: domainTestEngine(t, "")})
+			app.Use(tc.mount, New(Config{Views: domainTestEngine(t, "testdata2")}))
+			app.Get("/*", func(c Ctx) error { return c.Render("index.tmpl", Map{"Title": "parent"}) })
+			resp := serveRawTarget(t, app, tc.path)
+			require.Equal(t, StatusOK, resp.StatusCode())
+			require.Equal(t, "<h1>parent</h1>", string(resp.Body()))
+		})
+	}
+}
+
 func Test_App_Mount_ViewsPathOnly(t *testing.T) {
 	t.Parallel()
 	for _, tc := range routerMountVariants {

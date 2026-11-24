@@ -1143,6 +1143,11 @@ func (c *DefaultCtx) getDetectionPath() string {
 	return c.app.toString(c.detectionPath)
 }
 
+// getPath is the path parameters are cut from, at offsets found in the detection path; a custom Path may not fit them.
+func (c *DefaultCtx) getPath() string {
+	return c.app.toString(c.path)
+}
+
 func (c *DefaultCtx) getValues() *[maxParams]string {
 	return &c.values
 }

@@ -1106,7 +1106,7 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 				continue
 			}
 		}
-		if prefix == "" || rootApp.mountCoversPath(prefix, r.c.Path()) {
+		if prefix == "" || rootApp.mountCoversPath(prefix, r.c.getDetectionPath()) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
 					app.config.ViewsLayout,

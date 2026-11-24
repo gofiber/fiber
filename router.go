@@ -846,7 +846,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	// Hoist loop-invariant accessors; nothing changes mid-loop (Next()/RestartRouting re-enter with fresh reads).
 	detectionPath := c.getDetectionPath()
 	head := pathHeadWord(detectionPath)
-	path := c.Path()
+	path := c.getPath()
 	values := c.getValues()
 	pathSlashes := c.pathSlashCount(app)
 	firstMatchIndex := c.getFirstMatchIndex()
@@ -1084,7 +1084,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	// exempt so cors middleware can answer paths that lack an explicit OPTIONS route.
 	if app.skip.enabled && !ctx.IsPreflight() {
 		res := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(), ctx.pathSlashCount(app),
-			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
+			ctx.getDetectionPath(), ctx.getPath(), ctx.getValues())
 		switch res.decision {
 		case skipNotFound:
 			app.emitSkipCustom(ctx, 0, ErrNotFound)

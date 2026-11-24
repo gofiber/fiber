@@ -331,7 +331,7 @@ func (d *domainRouter) hosts() []domainMatcher {
 
 // servesHost reports whether the request's hostname satisfies every Domain
 // pattern the route is behind, which is whether its handlers run or decline.
-func (r *Route) servesHost(c *DefaultCtx) bool {
+func (r *Route) servesHost(c Ctx) bool {
 	if len(r.hosts) == 0 {
 		return true
 	}

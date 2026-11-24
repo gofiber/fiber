@@ -343,15 +343,18 @@ func domainMountConfig(owner domainOwner, want func(*App) bool) *App {
 // and among equally deep ones the first registered, matching the order their
 // routes are matched in.
 func (app *App) domainMountOwner(c Ctx) domainOwner {
-	// The app the route that ran was mounted from, if it was mounted at all.
-	// Its mount still has to match the request: a domain-wrapped handler that
-	// declined the host left the route it belongs to as the one that ran, and
-	// that app served nothing.
-	routeApp := app.routeOwner(c.Route())
+	// The app the route that ran was mounted from, if it was mounted at all and
+	// served the request: a domain-wrapped handler that declined the host left
+	// the route it belongs to as the one that ran, and that app served nothing.
+	route := c.Route()
+	routeApp := app.routeOwner(route)
+	if routeApp != nil && !route.servesHost(c) {
+		routeApp = nil
+	}
 
 	var owner, byRoute domainOwner
 
-	detectionPath, path := c.getDetectionPath(), c.Path()
+	detectionPath, path := c.getDetectionPath(), c.getPath()
 
 	for i := range app.mountFields.domainAppList {
 		mount := &app.mountFields.domainAppList[i]
@@ -377,10 +380,10 @@ func (app *App) domainMountOwner(c Ctx) domainOwner {
 	}
 
 	// A route that names an app none of these mounts describe was served by an
-	// ordinary mount, or by one whose host these patterns reject. Either way
-	// this request is not a domain mount's to answer for, and only one that ran
-	// no mounted route at all — a 404, or an error raised above them — is left
-	// to the mount covering its path.
+	// ordinary mount, and this request is not a domain mount's to answer for.
+	// Only one that no mounted route served (a 404, an error raised above
+	// them, or one the routes of another host's mount declined) is left to the
+	// mount covering its path.
 	if routeApp != nil {
 		return domainOwner{}
 	}
@@ -560,20 +563,22 @@ func (app *App) domainMountsSnapshot() []domainMountedApp {
 	return slices.Clone(app.mountFields.domainAppList)
 }
 
-// mountCoversPath reports whether a mount registered at mountPath covers path.
+// mountCoversPath reports whether a mount registered at mountPath covers a
+// request the router matched by detectionPath.
 //
-// Both sides are put through this app's routing rules first: an app list is
-// keyed by the path the caller spelled, so on a case-insensitive app a mount
-// registered as "/API" has to cover a request for "/api/x" the same way its
-// routes do. A parametric mount path is matched literally here — the app list
-// keeps no parsed form of its keys.
-func (app *App) mountCoversPath(mountPath, path string) bool {
-	if mountPath == "" {
+// Only the mount path is a pattern and goes through this app's routing rules:
+// an app list is keyed by the path the caller spelled, so on a case-insensitive
+// app a mount registered as "/API" has to cover a request for "/api/x" the same
+// way its routes do. A backslash in detectionPath is a byte, not an escape. A
+// parametric mount path covers nothing here: the app list keeps no parsed form
+// of its keys.
+func (app *App) mountCoversPath(mountPath, detectionPath string) bool {
+	if mountPath == "" || findNextParamPosition(mountPath) != -1 {
 		return false
 	}
 
 	return strings.HasPrefix(
-		utils.AddTrailingSlashString(app.normalizePath(path)),
+		utils.AddTrailingSlashString(detectionPath),
 		utils.AddTrailingSlashString(app.normalizePath(mountPath)),
 	)
 }

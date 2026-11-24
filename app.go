@@ -1735,7 +1735,7 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	for _, prefix := range app.mountFields.appListKeys {
 		subApp := app.mountFields.appList[prefix]
 
-		if app.mountCoversPath(prefix, ctx.Path()) {
+		if app.mountCoversPath(prefix, ctx.getDetectionPath()) {
 			// Count slashes instead of splitting - more efficient
 			parts := mountDepth(prefix)
 			if mountedPrefixParts <= parts {

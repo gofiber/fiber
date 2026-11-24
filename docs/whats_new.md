@@ -202,6 +202,8 @@ func main() {
 
 This example creates a `CustomCtx` with an extra `CustomMethod` and initializes the app with `NewWithCustomCtx`.
 
+Routing does not go through an overridden `Path`: routes are matched, and the mounted app whose `ErrorHandler` and views apply is picked, by the path Fiber normalized for the request. A mount with a parameter in its prefix, or one on a `Domain` whose host the request does not match, no longer picks them for a request it did not serve.
+
 </details>
 
 ### Configurable TLS Minimum Version
