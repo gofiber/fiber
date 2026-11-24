@@ -1,6 +1,7 @@
 package static
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -106,8 +107,9 @@ func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
 	}
 	// the value is the routed path's, stale once a handler before this one set
 	// another path, which the URI then holds instead of the one sent
-	sent := utils.UnsafeString(c.Request().Header.RequestURI())
-	moved := utils.UnsafeString(c.Request().URI().PathOriginal()) != sent[:pathEnd(sent)]
+	req := c.Request()
+	sent, current := req.Header.RequestURI(), req.URI().PathOriginal()
+	moved := !bytes.HasPrefix(sent, current) || (len(sent) > len(current) && sent[len(current)] != '?')
 	if moved && (end < 0 || !fiber.RoutePatternMatch(p[:end], s.prefixPattern, *s.config)) {
 		return movedPrefix
 	}
