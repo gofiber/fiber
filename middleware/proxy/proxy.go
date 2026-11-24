@@ -128,22 +128,21 @@ func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fa
 // This method can be used within a fiber.Handler
 //
 // SSRF note: same protection as Do — up-front host validation plus the
-// dial-time validated-IP guard when AllowPrivateIPs is false.
+// dial-time validated-IP guard when AllowPrivateIPs is false. The deadline bounds its lookup too.
 func DoDeadline(c fiber.Ctx, addr string, deadline time.Time, clients ...*fasthttp.Client) error {
-	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
+	send := func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.DoDeadline(req, resp, deadline)
-	}, clients...)
+	}
+	return doActionBy(c, addr, currentSecurityPolicy(), nil, deadline, send, clients...)
 }
 
 // DoTimeout performs the given request and waits for response during the given timeout duration.
 // This method can be used within a fiber.Handler
 //
 // SSRF note: same protection as Do — up-front host validation plus the
-// dial-time validated-IP guard when AllowPrivateIPs is false.
+// dial-time validated-IP guard when AllowPrivateIPs is false. The timeout bounds its lookup too.
 func DoTimeout(c fiber.Ctx, addr string, timeout time.Duration, clients ...*fasthttp.Client) error {
-	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
-		return cli.DoTimeout(req, resp, timeout)
-	}, clients...)
+	return DoDeadline(c, addr, time.Now().Add(timeout), clients...)
 }
 
 // doActionFunc is the per-method callback driven by doActionWithPolicy.
@@ -166,6 +165,19 @@ func doActionWithPolicy(
 	addr string,
 	policy SecurityPolicy,
 	ip []byte,
+	action doActionFunc,
+	clients ...*fasthttp.Client,
+) error {
+	return doActionBy(c, addr, policy, ip, time.Time{}, action, clients...)
+}
+
+// doActionBy is doActionWithPolicy whose up-front lookup ends at deadline, unless zero.
+func doActionBy(
+	c fiber.Ctx,
+	addr string,
+	policy SecurityPolicy,
+	ip []byte,
+	deadline time.Time,
 	action doActionFunc,
 	clients ...*fasthttp.Client,
 ) error {
@@ -196,7 +208,7 @@ func doActionWithPolicy(
 	// callback in followRedirects, which inspects u.Host after the
 	// SetRequestURI write.
 	addrCopy := utils.CopyString(addr)
-	u, err := validateUpstream(addrCopy, policy, lookupsFor(cli))
+	u, err := validateUpstreamBy(addrCopy, policy, lookupsFor(cli), deadline)
 	if err != nil {
 		return err
 	}

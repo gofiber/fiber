@@ -678,6 +678,28 @@ func Test_Security_DialWithin_BoundsTheLookup(t *testing.T) {
 	require.Less(t, time.Since(start), dnsLookupTimeout-time.Second)
 }
 
+// A resolver that never answers costs DoTimeout and DoDeadline their own time, not the lookup limit.
+// conventions:ignore parallel: it swaps the process-wide security policy and DNS resolver
+func Test_Security_RequestTimeout_BoundsTheUpfrontLookup(t *testing.T) {
+	withSecurityPolicyForTest(t, DefaultSecurityPolicy())
+	withRebindingResolver(t, startSilentDNS(t))
+
+	const upstream, allowed = "http://silent.test/", 200 * time.Millisecond
+	perCall := &fasthttp.Client{} // a lookup of its own, without the cache of the shared client
+	for name, handler := range map[string]fiber.Handler{
+		"DoTimeout":                func(c fiber.Ctx) error { return DoTimeout(c, upstream, allowed) },
+		"DoDeadline":               func(c fiber.Ctx) error { return DoDeadline(c, upstream, time.Now().Add(allowed)) },
+		"a client passed per call": func(c fiber.Ctx) error { return DoTimeout(c, upstream, allowed, perCall) },
+	} {
+		app := fiber.New()
+		app.Get("/", handler)
+		start := time.Now()
+		resp := apptest.Do(t, app, "/", fiber.TestConfig{Timeout: 2 * dnsLookupTimeout, FailOnTimeout: true})
+		require.Less(t, time.Since(start), dnsLookupTimeout-time.Second, name)
+		require.Contains(t, apptest.Body(t, resp), "silent.test could not be resolved", name)
+	}
+}
+
 // Test_Security_RequestTimeout_ReachesTheConnect pins that the time a request leaves reaches the
 // dialer that connects, through DoTimeout on the shared client and through a Balancer with a Timeout.
 // conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line

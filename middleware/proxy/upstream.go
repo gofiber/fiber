@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/utils/v2"
@@ -68,6 +69,11 @@ func repairRawPath(raw, path string) string {
 // resolver returns a mix of public and private IPs. A non-nil lookups may answer for the
 // hostname from a recent lookup; see validateHostForSSRF.
 func validateUpstream(raw string, policy SecurityPolicy, lookups *lookupCache) (*url.URL, error) {
+	return validateUpstreamBy(raw, policy, lookups, time.Time{})
+}
+
+// validateUpstreamBy is validateUpstream whose lookup ends at deadline, unless zero.
+func validateUpstreamBy(raw string, policy SecurityPolicy, lookups *lookupCache, deadline time.Time) (*url.URL, error) {
 	u, err := parseAllowedUpstream(raw, policy)
 	if err != nil {
 		return nil, err
@@ -75,7 +81,7 @@ func validateUpstream(raw string, policy SecurityPolicy, lookups *lookupCache) (
 	if policy.AllowPrivateIPs {
 		return u, nil
 	}
-	if err := validateHostForSSRF(u.Hostname(), lookups); err != nil {
+	if err := validateHostBy(u.Hostname(), lookups, deadline); err != nil {
 		return nil, err
 	}
 	return u, nil

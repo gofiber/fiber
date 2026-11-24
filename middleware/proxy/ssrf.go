@@ -57,6 +57,11 @@ func init() {
 // the blocked ranges. The IP literal shortcut avoids DNS lookups when
 // the host is already a numeric address. A non-nil cache may answer from a recent lookup.
 func validateHostForSSRF(host string, cache *lookupCache) error {
+	return validateHostBy(host, cache, time.Time{})
+}
+
+// validateHostBy is validateHostForSSRF whose lookup ends at deadline, unless zero.
+func validateHostBy(host string, cache *lookupCache, deadline time.Time) error {
 	if host == "" {
 		return ErrUpstreamHostInvalid
 	}
@@ -72,7 +77,7 @@ func validateHostForSSRF(host string, cache *lookupCache) error {
 		}
 		return nil
 	}
-	addrs, err := lookupHost(dnsResolver.Load(), host, cache, time.Time{})
+	addrs, err := lookupHost(dnsResolver.Load(), host, cache, deadline)
 	if err != nil {
 		return err
 	}
