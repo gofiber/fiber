@@ -177,6 +177,10 @@ const (
 	// maxHeaderScratch bounds the header staging buffers that are returned to
 	// the pool.
 	maxHeaderScratch = 16 * 1024
+
+	// maxClearedNames is the most names clearCopiedHeaders deletes one by one:
+	// each Del scans every line the request still holds.
+	maxClearedNames = 64
 )
 
 var bufferPool = sync.Pool{
@@ -563,11 +567,15 @@ func snapshotHeaders(h http.Header) []headerPair {
 // clearCopiedHeaders deletes every non-framing header from the fiber request so
 // the copy that follows rebuilds the set as the wrapped middleware left it.
 // Set-then-Add cannot: Set replaces only the first entry, and removals never did.
-func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
+func clearCopiedHeaders(req *fasthttp.Request) {
+	fhdr := &req.Header
 	// Not sized from fhdr.Len(): that counts by walking every header, so
 	// pre-sizing would traverse them twice — and the walk also collects the
 	// cookie store and re-serializes it, on a per-request path.
-	var removed []string
+	var (
+		removed []string
+		over    bool
+	)
 	// Trailer fields first: All never names them, and deleting Trailer would move
 	// them into the header section, where r.Header.Del never reached them.
 	for _, key := range fhdr.PeekTrailerKeys() {
@@ -578,14 +586,65 @@ func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 		if isFramingHeader(name) {
 			continue
 		}
+		// A client chooses how many names there are, and n Dels cost n*n/2 comparisons.
+		if over = len(removed) >= maxClearedNames; over {
+			break
+		}
 		// Repeated names are Del'd repeatedly; Del removes every line at once, so
 		// the second finds nothing. Skipping it costs more — a slices.Contains scan
 		// measured 17% slower at twenty headers and 61% at a hundred.
 		removed = append(removed, string(key))
 	}
 
+	if over {
+		resetCopiedHeaders(req)
+		return
+	}
 	for _, name := range removed {
 		fhdr.Del(name)
+	}
+}
+
+// resetCopiedHeaders is clearCopiedHeaders in one pass, as fieldname.ClearTrailers is for a trailer section: the
+// header is reset, and the request line and the framing headers are put back.
+func resetCopiedHeaders(req *fasthttp.Request) {
+	h := &req.Header
+	tmp := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(tmp)
+	saved := &tmp.Header
+	h.CopyTo(saved)
+	// Reset empties the received block, which the forwarding order is read from.
+	if raw := h.RawHeaders(); len(raw) > 0 {
+		block := slices.Clone(raw)
+		fieldname.SetReceived(req, &block)
+	}
+
+	// Reset clears the setting.
+	disabled := h.NormalizingDisabled()
+	h.Reset()
+	if disabled {
+		h.DisableNormalizing()
+	}
+	h.SetMethodBytes(saved.Method())
+	h.SetRequestURIBytes(saved.RequestURI())
+	h.SetProtocolBytes(saved.Protocol())
+	if length := saved.ContentLength(); length < 0 {
+		// The Transfer-Encoding line this adds is not the stored one, which follows.
+		h.SetContentLength(length)
+		h.Del(fiber.HeaderTransferEncoding)
+	}
+	for k, v := range saved.All() {
+		switch name := utils.UnsafeString(k); {
+		case !isFramingHeader(name):
+			// Cleared: the copy that follows rebuilds it.
+		case utils.EqualFold(name, fiber.HeaderTransferEncoding):
+			// As stored: Add drops the framing field.
+			h.DisableSpecialHeader()
+			h.AddBytesKV(k, v)
+			h.EnableSpecialHeader()
+		default:
+			h.AddBytesKV(k, v)
+		}
 	}
 }
 
@@ -610,7 +669,8 @@ func isFramingHeader(name string) bool {
 	return false
 }
 
-// HTTPMiddleware wraps net/http middleware to fiber middleware
+// HTTPMiddleware wraps net/http middleware to fiber middleware. The Fiber handlers behind it run after the middleware
+// has returned, so what it does around its call to next (a deferred recover, a replaced r.Body, a deadline) misses them.
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var (
@@ -668,7 +728,7 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
 			fhdr.DelAllCookies()
-			clearCopiedHeaders(fhdr)
+			clearCopiedHeaders(freq)
 			// Connection lives in a slot of its own, so a second Add replaces the
 			// first rather than appending: net/http represents a combined value as
 			// several entries, and ["keep-alive", "X-Internal"] arrived as
