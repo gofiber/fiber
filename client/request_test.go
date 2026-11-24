@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -158,6 +159,40 @@ func (e clientTestBMultiValue[T]) runOverride(t *testing.T, setName, setManyName
 			require.Equal(t, []string{"foo"}, e.get(r, "bar"))
 		})
 	}
+}
+
+// runSetMany registers the scenarios of setMany with as many keys as a request body can name, and with
+// values read from T itself, which point into the buffers setMany rewrites.
+func (e clientTestBMultiValue[T]) runSetMany(t *testing.T) {
+	t.Helper()
+
+	t.Run("set many "+e.noun+"s", func(t *testing.T) {
+		t.Parallel()
+		m := make(map[string]string, 40_000)
+		for i := range 40_000 {
+			m["k"+strconv.Itoa(i)] = "new"
+		}
+		r := e.addMany(e.fresh(t), map[string][]string{"k1": {"old", "older"}, "other": {"kept"}})
+		done := make(chan T, 1)
+		go func() { done <- e.setMany(r, m) }()
+		apptest.Recv(t, done, 2*time.Second, "setMany is not linear in the size of the map")
+
+		require.Equal(t, []string{"new"}, e.get(r, "k1"))
+		require.Equal(t, []string{"kept"}, e.get(r, "other"))
+	})
+
+	t.Run("set "+e.noun+"s to values read from them", func(t *testing.T) {
+		t.Parallel()
+		r := e.fresh(t)
+		for _, kv := range [][2]string{{"a", "1"}, {"b", "22"}, {"c", "333"}, {"d", "4444"}, {"e", "55555"}, {"f", "666666"}} {
+			e.add(r, kv[0], kv[1])
+		}
+		e.setMany(r, map[string]string{"b": e.get(r, "c")[0], "e": e.get(r, "e")[0], "f": e.get(r, "f")[0]})
+
+		for key, want := range map[string]string{"a": "1", "b": "333", "c": "333", "d": "4444", "e": "55555", "f": "666666"} {
+			require.Equal(t, []string{want}, e.get(r, key), key)
+		}
+	})
 }
 
 // runIter registers the scenarios of the iterator over all entries, which all
@@ -442,6 +477,7 @@ func Test_Request_QueryParam(t *testing.T) {
 	clientTestBParams.runStruct(t)
 	clientTestBParams.runDel(t)
 	clientTestBParams.runOverride(t, "set param overrides every value", "set params overrides every value")
+	clientTestBParams.runSetMany(t)
 }
 
 var keysTestCases = []struct {
@@ -576,6 +612,7 @@ func Test_Request_FormData(t *testing.T) {
 	clientTestBFormData.runDel(t)
 	clientTestBFormData.runOverride(
 		t, "set form data overrides every value", "set form data with map overrides every value")
+	clientTestBFormData.runSetMany(t)
 }
 
 func Test_Request_File(t *testing.T) {

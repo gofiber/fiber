@@ -815,9 +815,29 @@ func (p *QueryParam) AddParams(r map[string][]string) {
 
 // SetParams sets multiple parameters from a map, overriding previously set values.
 func (p *QueryParam) SetParams(r map[string]string) {
-	for k, v := range r {
-		p.Set(k, v)
+	setArgsMap(p.Args, r)
+}
+
+// setArgsMap sets every key of m in args. A Set per key scans every pair, so the pairs m replaces are
+// dropped in one pass instead; m is read before args is rewritten, as its values may point into args.
+func setArgsMap(args *fasthttp.Args, m map[string]string) {
+	kept := fasthttp.AcquireArgs()
+	defer fasthttp.ReleaseArgs(kept)
+	for k, v := range args.All() {
+		if _, ok := m[string(k)]; !ok {
+			kept.AddBytesKV(k, v)
+		}
 	}
+	if kept.Len() == args.Len() {
+		for k, v := range m {
+			args.Add(k, v)
+		}
+		return
+	}
+	for k, v := range m {
+		kept.Add(k, v)
+	}
+	kept.CopyTo(args)
 }
 
 // SetParamsWithStruct sets multiple parameters from a struct.
@@ -954,9 +974,7 @@ func (f *FormData) AddWithMap(m map[string][]string) {
 
 // SetWithMap sets multiple form fields from a map, overriding previously set values.
 func (f *FormData) SetWithMap(m map[string]string) {
-	for k, v := range m {
-		f.Set(k, v)
-	}
+	setArgsMap(f.Args, m)
 }
 
 // SetWithStruct sets multiple form fields from a struct.
