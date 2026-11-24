@@ -326,13 +326,15 @@ app.Get("/account", func(c fiber.Ctx) error {
 ✅ **Secure Implementation:**
 
 ```go
-// SECURE: register the cache first. The session middleware then writes its cookie
-// before the cache decides, and the cache does not store a response that sets one.
-app.Use(cache.New())
+// SECURE: register the cache first, so it sees the cookie the session middleware
+// writes and does not store a response that sets one (unless the response says
+// Cache-Control: public or s-maxage), and key it by the session cookie for the
+// pages that set none.
+app.Use(cache.New(cache.Config{KeyCookies: []string{"session_id"}}))
 app.Use(session.New())
 ```
 
-This relies on the cookie the session middleware writes. With the [Store Pattern](#store-pattern-advanced), a session that `store.Get` loads and that is never saved sets no cookie, and a page built from it is stored and served to every client. On such routes, name the session cookie in the cache's `KeyCookies`, or send `Cache-Control: private`. See [Default cache key behavior](./cache.md#default-cache-key-behavior).
+Registering the cache first relies on the cookie the session middleware writes, and not every response gets one. With the [Store Pattern](#store-pattern-advanced), a session that `store.Get` loads and that is never saved sets no cookie, and a page built from it is stored and served to every client. Nor does the middleware write a cookie for a new session that holds nothing when `SkipEmptySessions` is set, so that client's page is stored and served to the clients that are signed in. Naming the session cookie in the cache's `KeyCookies`, as above, keeps such pages apart, and sending `Cache-Control: private` keeps them out of the cache: do one or the other on every route whose page depends on the session. See [Default cache key behavior](./cache.md#default-cache-key-behavior).
 
 ### Authentication Middleware
 
