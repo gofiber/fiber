@@ -37,7 +37,7 @@ func buildTestTemplate(t *testing.T, format string, custom map[string]ContextTag
 	tags := defaultContextTagMap()
 	maps.Copy(tags, custom)
 	tags[TagContextValue] = defaultContextValueTag
-	tmpl, err := logtemplate.Build[any, ContextData](format, tags)
+	tmpl, err := buildContextTemplate(format, tags)
 	require.NoError(t, err)
 	return tmpl
 }
@@ -84,6 +84,38 @@ func Test_ContextTemplate_ValueTag(t *testing.T) {
 			require.Equal(t, "[req-42]", executeContextTemplate(t, tmpl, tt.ctx))
 		})
 	}
+}
+
+func Test_ContextTemplate_KeyValueFieldQuoted(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ id, want string }{
+		{id: "6f1c2a", want: "6f1c2a"},
+		{id: "6f1c2a username=admin", want: `"6f1c2a username=admin"`},
+		{id: "dGVzdA==", want: `"dGVzdA=="`},
+		{id: `x" username="admin`, want: `"x\" username=\"admin"`},
+		{id: "x\ty\\", want: `"x\ty\\"`},
+		{id: `corp\john`, want: `corp\john`},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			t.Parallel()
+			tmpl := buildTestTemplate(t, KeyValueFormat, map[string]ContextTagFunc{
+				TagRequestIDDashed: stringTag(tc.id), TagUsername: stringTag("john"),
+			})
+			want := "request-id=" + tc.want + " username=john api-key= csrf-token= session-id= "
+			require.Equal(t, want, executeContextTemplate(t, tmpl, context.Background()))
+		})
+	}
+
+	// Only a tag right behind a '=' is a field value.
+	tmpl := buildTestTemplate(t, "[${requestid}] id=${value:id} user=${username}|${username} ",
+		map[string]ContextTagFunc{TagRequestID: stringTag("a =b"), TagUsername: stringTag("j d")})
+	require.Equal(t, `[a =b] id="a user=admin" user="j d"|j d `,
+		executeContextTemplate(t, tmpl, testUserValueContext{"id": "a user=admin"}))
+
+	tmpl = buildTestTemplate(t, "user=${username}", map[string]ContextTagFunc{
+		TagUsername: func(Buffer, any, *ContextData, string) (int, error) { return 0, errContextTestWrite },
+	})
+	require.ErrorIs(t, tmpl.Execute(new(bytebufferpool.ByteBuffer), nil, &ContextData{}), errContextTestWrite)
 }
 
 func Test_ContextTemplate_ValueTagSanitizesControlChars(t *testing.T) {

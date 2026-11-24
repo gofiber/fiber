@@ -1,14 +1,17 @@
 package log
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"maps"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
+	"github.com/gofiber/utils/v2"
 )
 
 // TagContextValue reads a value from the bound context-like value using the tag parameter as the key.
@@ -37,7 +40,8 @@ const (
 	RequestIDFormat = "[${" + TagRequestID + "}] "
 	// KeyValueFormat renders commonly registered middleware context values as
 	// key/value fields. Sensitive values (api-key, csrf-token, session-id) are
-	// redacted by the registering middleware before reaching the log line.
+	// redacted by the registering middleware before reaching the log line. A
+	// value holding a space, a tab, '=' or '"' is quoted, see SetContextTemplate.
 	KeyValueFormat = "request-id=${" + TagRequestIDDashed + "} " +
 		"username=${" + TagUsername + "} " +
 		"api-key=${" + TagAPIKey + "} " +
@@ -91,7 +95,8 @@ var (
 // SetContextTemplate configures contextual fields rendered by WithContext for Fiber's default logger.
 // Pass an empty ContextConfig (or ContextConfig{Format: DefaultFormat}) to disable contextual fields.
 // It returns an error if config.Format cannot be parsed or if config.CustomTags attempts to
-// override the reserved TagContextValue tag.
+// override the reserved TagContextValue tag. A tag right behind a '=' is the value of a key=value
+// field: when it holds a space, a tab, '=' or '"' it is written as a Go quoted string.
 func SetContextTemplate(config ContextConfig) error {
 	if _, ok := config.CustomTags[TagContextValue]; ok {
 		return ErrContextTagReserved
@@ -110,7 +115,7 @@ func SetContextTemplate(config ContextConfig) error {
 	var tmpl *logtemplate.Template[any, ContextData]
 	if config.Format != "" {
 		var err error
-		tmpl, err = logtemplate.Build[any, ContextData](config.Format, tags)
+		tmpl, err = buildContextTemplate(config.Format, tags)
 		if err != nil {
 			return err
 		}
@@ -150,7 +155,7 @@ func RegisterContextTag(tag string, fn ContextTagFunc) error {
 	var tmpl *logtemplate.Template[any, ContextData]
 	if contextFormat != "" {
 		var err error
-		tmpl, err = logtemplate.Build[any, ContextData](contextFormat, tags)
+		tmpl, err = buildContextTemplate(contextFormat, tags)
 		if err != nil {
 			return err
 		}
@@ -165,6 +170,42 @@ func RegisterContextTag(tag string, fn ContextTagFunc) error {
 func MustRegisterContextTag(tag string, fn ContextTagFunc) {
 	if err := RegisterContextTag(tag, fn); err != nil {
 		panic(err)
+	}
+}
+
+// buildContextTemplate is logtemplate.Build with the value of a key=value field, a tag right behind a '=', quoted.
+func buildContextTemplate(format string, tags map[string]ContextTagFunc) (*logtemplate.Template[any, ContextData], error) {
+	tmpl, err := logtemplate.Build[any, ContextData](format, tags)
+	if err != nil {
+		return nil, err
+	}
+	// Not shared yet, so the chain is edited in place.
+	fixedParts, funcChain := tmpl.Chains()
+	for i := 1; i < len(funcChain); i++ {
+		if funcChain[i] != nil && funcChain[i-1] == nil && bytes.HasSuffix(fixedParts[i-1], []byte("=")) {
+			funcChain[i] = fieldValueTag(funcChain[i])
+		}
+	}
+	return tmpl, nil
+}
+
+// fieldValueTag writes the value fn renders quoted when it holds a space, a tab, '=' or '"', so a value taken from
+// the request, such as X-Request-ID, cannot end its field and start another.
+func fieldValueTag(fn ContextTagFunc) ContextTagFunc {
+	return func(output Buffer, ctx any, data *ContextData, extraParam string) (int, error) {
+		start := output.Len()
+		n, err := fn(output, ctx, data, extraParam)
+		if err != nil {
+			return n, err
+		}
+		b := output.Bytes()
+		if start > len(b) || utils.IndexAny3(b[start:], ' ', '=', '"') < 0 && bytes.IndexByte(b[start:], '\t') < 0 {
+			return n, nil
+		}
+		// Rare, so the copies are fine; Bytes may be a copy, so the whole buffer is set again.
+		quoted := strconv.Quote(string(b[start:]))
+		output.Set(append(b[:start:start], quoted...))
+		return len(quoted), nil
 	}
 }
 

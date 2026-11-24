@@ -1553,6 +1553,8 @@ The `log.AllLogger[T]` interface (package `github.com/gofiber/fiber/v3/log`) now
 
 You can find more details about this feature in [/docs/api/log.md](./api/log.md#logger).
 
+In a context format such as `log.KeyValueFormat`, a tag right behind a `=` is the value of a key/value field, and a value that holds a space, a tab, `=` or `"`, such as a request ID taken from `X-Request-ID`, is now written as a Go quoted string, so it cannot add fields of its own. See [Context Tags](./api/log.md#context-tags).
+
 `logger.Config` now supports a new field called `ForceColors`. This field allows you to force the logger to always use colors, even if the output is not a terminal. This is useful when you want to ensure that the logs are always colored, regardless of the output destination.
 
 ```go
