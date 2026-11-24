@@ -724,6 +724,35 @@ func Test_Utils_GetOffer_ManyRanges(t *testing.T) {
 	require.Equal(t, "application/json", getOffer(header, acceptsOfferType, "application/json", "text/html"))
 }
 
+func Test_Utils_ReleaseHeaderParams_DropsGrownMap(t *testing.T) {
+	t.Parallel()
+	large := make(headerParams, maxPoolableHeaderParams+1)
+	for i := range maxPoolableHeaderParams + 1 {
+		large[strconv.Itoa(i)] = nil
+	}
+	releaseHeaderParams(large)
+	require.Len(t, large, maxPoolableHeaderParams+1, "dropped, not cleared and pooled")
+}
+
+// The pool gets no map a client grew, and none that still views a request.
+func Test_Utils_GetOffer_PooledParams(t *testing.T) {
+	t.Parallel()
+	var accept strings.Builder
+	accept.WriteString("text/plain;level=1,text/html")
+	for i := range 9 {
+		accept.WriteString(";p" + strconv.Itoa(i) + "=1")
+	}
+	header := []byte(accept.String())
+	for range 32 {
+		require.Empty(t, getOffer(header, acceptsOfferType, "application/json"))
+		for range 2 {
+			params, ok := headerParamPool.Get().(headerParams)
+			require.True(t, ok)
+			require.Empty(t, params)
+		}
+	}
+}
+
 func Benchmark_Utils_SortAcceptedTypes_Long(b *testing.B) {
 	const n = 6000
 	acceptedTypes := make([]acceptedType, n)

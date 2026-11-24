@@ -649,11 +649,25 @@ func forEachMediaRange(header []byte, functor func([]byte)) {
 }
 
 // Pool for headerParams instances. The headerParams object *must*
-// be cleared before being returned to the pool.
+// be cleared before being returned to the pool: use releaseHeaderParams.
 var headerParamPool = sync.Pool{
 	New: func() any {
 		return make(headerParams)
 	},
+}
+
+// maxPoolableHeaderParams is the largest headerParams map that goes back to headerParamPool: one header can take
+// thousands of maps, and a Go map that never held more than eight entries has not grown.
+const maxPoolableHeaderParams = 8
+
+// releaseHeaderParams clears params and pools it, unless the client grew it: clearing keeps the capacity.
+func releaseHeaderParams(params headerParams) {
+	if params == nil || len(params) > maxPoolableHeaderParams {
+		return
+	}
+
+	clear(params)
+	headerParamPool.Put(params)
 }
 
 // getOffer return valid offer for header negotiation.
@@ -694,9 +708,6 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 				}
 			} else {
 				params, _ = headerParamPool.Get().(headerParams) //nolint:errcheck // only contains headerParams
-				for k := range params {
-					delete(params, k)
-				}
 				fasthttp.VisitHeaderParams(accept[i:], func(key, value []byte) bool {
 					// The weight parameter name "q" is case-insensitive
 					// (RFC 9110 §12.4.2).
@@ -797,9 +808,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 	}
 
 	for i := range acceptedTypes {
-		if acceptedTypes[i].params != nil {
-			headerParamPool.Put(acceptedTypes[i].params)
-		}
+		releaseHeaderParams(acceptedTypes[i].params)
 	}
 
 	return result
