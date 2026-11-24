@@ -700,6 +700,36 @@ func Test_Security_RequestTimeout_BoundsTheUpfrontLookup(t *testing.T) {
 	}
 }
 
+// conventions:ignore parallel: it swaps the process-wide DNS resolver
+func Test_Security_DialBy_EndsTheWalk(t *testing.T) {
+	withRebindingResolver(t, startManyAnswersDNS(t, 4)) // 198.51.100.1 to 198.51.100.4
+	for name, answer := range map[string]error{"bounded": errors.New("connection refused"), "fails over": nil} {
+		t.Run(name, func(t *testing.T) {
+			var dialed int
+			deadline := time.Now().Add(50 * time.Millisecond)
+			guard := dialGuard{dial: func(_, addr string) (net.Conn, error) {
+				dialed++
+				if dialed == 1 {
+					time.Sleep(time.Until(deadline)) // an address nobody answers at
+					return nil, fasthttp.ErrDialTimeout
+				}
+				if answer != nil {
+					return nil, answer
+				}
+				return stubConn{addr: addr}, nil
+			}}
+			conn, err := guard.dialBy("many.test:80", deadline)
+			require.Equal(t, 2, dialed)
+			if answer != nil {
+				require.ErrorIs(t, err, answer)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, conn)
+		})
+	}
+}
+
 // Test_Security_RequestTimeout_ReachesTheConnect pins that the time a request leaves reaches the
 // dialer that connects, through DoTimeout on the shared client and through a Balancer with a Timeout.
 // conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line

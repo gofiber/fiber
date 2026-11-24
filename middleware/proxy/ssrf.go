@@ -296,11 +296,17 @@ func (g dialGuard) dialBy(addr string, deadline time.Time) (net.Conn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("proxy: invalid dial address %q: %w", addr, err)
 	}
+	// The owner of the name chooses how many addresses there are, and a dial given no time takes
+	// a whole connect timeout for each.
+	until := deadline
+	if until.IsZero() {
+		until = time.Now().Add(dnsLookupTimeout)
+	}
 	ips, err := resolveAndValidateHost(host, deadline)
 	if err != nil {
 		return nil, err
 	}
-	return g.dialValidatedIPs(ips, host, port)
+	return g.dialValidatedIPs(ips, host, port, until)
 }
 
 // errIPv6Only is why a host that passed the blocklist still has nothing to dial.
@@ -308,14 +314,20 @@ var errIPv6Only = errors.New("only IPv6 addresses, and DialDualStack is off")
 
 // dialValidatedIPs dials the first non-skipped address, skipping IPv6 unless the guard is
 // dual-stack, as fasthttp does. If every candidate is skipped the error says so (nothing was
-// blocked); otherwise it is the last dial error.
-func (g dialGuard) dialValidatedIPs(ips []net.IP, host, port string) (net.Conn, error) {
+// blocked); otherwise it is the last dial error. A third address and later are tried only before until.
+func (g dialGuard) dialValidatedIPs(ips []net.IP, host, port string, until time.Time) (net.Conn, error) {
 	var lastErr error
+	tried := 0
 	for _, ip := range ips {
 		// Mirror fasthttp's default of IPv4-only unless DialDualStack.
 		if !g.dualStack && ip.To4() == nil {
 			continue
 		}
+		// The second goes on regardless, so a first address that hangs still fails over.
+		if tried >= 2 && !time.Now().Before(until) {
+			break
+		}
+		tried++
 		conn, derr := g.dial("tcp", net.JoinHostPort(ip.String(), port))
 		if derr == nil {
 			return conn, nil
