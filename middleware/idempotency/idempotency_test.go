@@ -962,6 +962,32 @@ func Test_New_RoutedThroughTwice(t *testing.T) {
 			app.Use(New(Config{Lock: lock}))
 			app.Post("/v1", handler)
 		},
+		"two instances sharing a lock value that holds a slice": func(app *fiber.App, handler fiber.Handler) {
+			lock := sliceLock{Locker: NewMemoryLock(), meta: []int{1}}
+			app.Use(New(Config{Lock: lock}))
+			app.Use(New(Config{Lock: lock}))
+			app.Post("/v1", handler)
+		},
+		"two instances sharing a lock value with a slice in an interface": func(app *fiber.App, handler fiber.Handler) {
+			lock := anyLock{Locker: NewMemoryLock(), meta: []int{1}}
+			app.Use(New(Config{Lock: lock}))
+			app.Use(New(Config{Lock: lock}))
+			app.Post("/v1", handler)
+		},
+		"another key in between": func(app *fiber.App, handler fiber.Handler) {
+			app.Use(New())
+			app.Post("/v1", func(c fiber.Ctx) error {
+				c.Request().Header.Set("X-Idempotency-Key", "11111111-1111-1111-1111-111111111111")
+				c.Path("/v2")
+				return c.RestartRouting()
+			})
+			app.Post("/v2", func(c fiber.Ctx) error {
+				c.Request().Header.Set("X-Idempotency-Key", validKey)
+				c.Path("/v3")
+				return c.RestartRouting()
+			})
+			app.Post("/v3", handler)
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -979,6 +1005,16 @@ func Test_New_RoutedThroughTwice(t *testing.T) {
 			require.Equal(t, int32(1), calls.Load())
 		})
 	}
+}
+
+type sliceLock struct {
+	Locker
+	meta []int
+}
+
+type anyLock struct {
+	Locker
+	meta any
 }
 
 func Test_MemoryLock_WaiterCap(t *testing.T) {

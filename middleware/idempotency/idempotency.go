@@ -4,8 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"reflect"
 	"slices"
+	"sync"
 
 	"github.com/gofiber/fiber/v3/internal/redact"
 
@@ -28,11 +28,14 @@ type contextKey int
 const (
 	localsKeyIsFromCache contextKey = iota //
 	localsKeyWasPutToCache
+	localsKeyHeld
 )
 
-// heldKey is the Locals key a pass records the key it locked under, one per Locker: a request routed through any
-// middleware sharing that Locker again with the same key would otherwise wait on the lock it holds.
-type heldKey struct{ lock Locker }
+// heldKeys is the keys a request holds the lock of, in any instance: one that reaches the middleware again with
+// such a key, by RestartRouting or a second registration, would otherwise wait on its own lock.
+type heldKeys struct{ keys []string }
+
+var heldKeysPool = sync.Pool{New: func() any { return new(heldKeys) }}
 
 // maxStoredStream is the longest stream of known length read into memory to store it.
 const maxStoredStream = 1 << 20
@@ -90,11 +93,6 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	maskKey := redact.Masker(!cfg.DisableValueRedaction)
-
-	var held any = heldKey{cfg.Lock}
-	if !reflect.TypeOf(cfg.Lock).Comparable() {
-		held = new(heldKey) // a Locals key must be comparable
-	}
 
 	// Snapshot the configured names so later mutation of the caller's slice
 	// cannot change an already-constructed handler. Matching uses
@@ -186,7 +184,8 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// The pass that holds the lock stores the response.
-		if locked, ok := c.Locals(held).(string); ok && locked == storageKey {
+		held, holding := c.Locals(localsKeyHeld).(*heldKeys)
+		if holding && slices.Contains(held.keys, storageKey) {
 			return c.Next()
 		}
 
@@ -200,10 +199,19 @@ func New(config ...Config) fiber.Handler {
 		if err := cfg.Lock.Lock(storageKey); err != nil {
 			return fmt.Errorf("failed to lock: %w", err)
 		}
-		prev := c.Locals(held)
-		_ = ctxlocal.Set(c, held, storageKey)
+		if !holding {
+			held = acquireHeldKeys()
+			_ = ctxlocal.Set(c, localsKeyHeld, held)
+		}
+		held.keys = append(held.keys, storageKey)
 		defer func() {
-			_ = ctxlocal.Set(c, held, prev)
+			n := len(held.keys) - 1
+			held.keys[n] = ""
+			held.keys = held.keys[:n]
+			if !holding {
+				_ = ctxlocal.Set(c, localsKeyHeld, nil)
+				heldKeysPool.Put(held)
+			}
 			if err := cfg.Lock.Unlock(storageKey); err != nil {
 				log.Errorf("[IDEMPOTENCY] failed to unlock key %q: %v", maskKey(key), err)
 			}
@@ -283,4 +291,11 @@ func New(config ...Config) fiber.Handler {
 
 		return nil
 	}
+}
+
+func acquireHeldKeys() *heldKeys {
+	if h, ok := heldKeysPool.Get().(*heldKeys); ok {
+		return h
+	}
+	return new(heldKeys)
 }
