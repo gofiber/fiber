@@ -1793,7 +1793,7 @@ Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.m
 
 ### HostAuthorization
 
-IPv6 hosts are compared in their RFC 5952 Section 4 form, and an IPv4-mapped address as the IPv4 address it maps, in requests and in `AllowedHosts` alike: `[0:0:0:0:0:0:0:1]` matches `[::1]`, and `[::ffff:127.0.0.1]` and `127.0.0.1` match each other. `AllowedHostsFunc` receives that form too, so `[::ffff:127.0.0.1]` arrives as `127.0.0.1` and `[64:ff9b::192.0.2.33]` as `64:ff9b::c000:221`. A request host with brackets around anything but an IPv6 address, such as `[allowed.com]`, is refused.
+IPv6 hosts are compared in their RFC 5952 Section 4 form, in requests and in `AllowedHosts` alike: `[0:0:0:0:0:0:0:1]` matches `[::1]`. `AllowedHostsFunc` receives that form too, so `[64:ff9b::192.0.2.33]` arrives as `64:ff9b::c000:221`. An IPv4-mapped entry such as `[::ffff:127.0.0.1]` admits `127.0.0.1`. A request host with brackets around anything but an IPv6 address, such as `[allowed.com]`, is refused, and so is one the middleware would have to convert to match it, which `app.Domain` would not match: an IPv4-mapped address in brackets, or a byte outside ASCII, such as an IDN sent in UTF-8 rather than Punycode or a full-width letter.
 
 An `AllowedHosts` entry no request could match now panics in `New()` instead of loading as a rule that never matches: a URL (`http://localhost:3000`), a `%` such as a zoned `[fe80::1%25eth0]`, a port that is not numeric, brackets around anything but an IPv6 address, another colon that is not part of an IPv6 address, and a `*.` entry holding an IP address (`*.127.0.0.1`). Write an entry as `host`, `host:port` or `[IPv6]:port`. See [Host Normalization](./middleware/hostauthorization.md#host-normalization).
 
