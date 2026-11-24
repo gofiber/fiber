@@ -74,7 +74,8 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 		if budget < 0 {
 			return false
 		}
-		if isForwardingHeader(name) {
+		// Nor is Host, which the request cannot be sent without.
+		if isForwardingHeader(name) || utils.EqualFold(name, fiber.HeaderHost) {
 			continue
 		}
 		if budget = fieldname.DelWithin(&req.Header, name, normalized, budget); budget < 0 {

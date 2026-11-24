@@ -2,9 +2,13 @@ package proxy
 
 import (
 	"errors"
+	"io"
+	"mime/multipart"
+	"net"
 	"sync/atomic"
 	"time"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -33,6 +37,7 @@ var defaultClient = &fasthttp.Client{
 	DisablePathNormalizing:   true,
 	MaxConnsPerHost:          defaultMaxConnsPerHost,
 	MaxResponseBodySize:      defaultMaxResponseBodySize,
+	RetryIfErr:               retryConnectionErrors,
 }
 
 // sharedClient is the client used when none is passed per call.
@@ -73,6 +78,27 @@ func lookupsFor(cli *fasthttp.Client) *lookupCache {
 		return upfrontLookups
 	}
 	return nil
+}
+
+// retryConnectionErrors sends the methods fasthttp retries by default again only after the connection failed, as a
+// kept-alive one the upstream closed does. An error another connection would not change costs one, not five.
+func retryConnectionErrors(req *fasthttp.Request, _ int, err error) (resetTimeout, retry bool) { //nolint:nonamedreturns // gocritic unnamedResult asks for names
+	h := &req.Header
+	if !h.IsGet() && !h.IsHead() && !h.IsPut() && !h.IsQuery() {
+		return false, false
+	}
+	var netErr net.Error
+	return false, errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.As(err, &netErr)
+}
+
+// sendable reports whether fasthttp can write req, which it finds out only with an upstream connection in hand.
+func sendable(req *fasthttp.Request) bool {
+	if len(req.Header.Host()) == 0 && len(req.URI().Host()) == 0 {
+		return false
+	}
+	// A pre-parsed form is marshaled again, which mime/multipart refuses for a boundary RFC 2046 does not allow.
+	b := req.Header.MultipartFormBoundary()
+	return len(b) == 0 || (&multipart.Writer{}).SetBoundary(utils.UnsafeString(b)) == nil
 }
 
 func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*fasthttp.Client, error) {

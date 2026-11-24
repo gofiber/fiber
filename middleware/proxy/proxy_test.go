@@ -2599,3 +2599,112 @@ func Test_Proxy_Balancer_WriteBufferSize(t *testing.T) {
 
 	apptest.ExpectBody(t, app, req, fiber.StatusOK, strconv.Itoa(len(cookie)))
 }
+
+type proxyTestCountingListener struct {
+	net.Listener
+	accepted *atomic.Int32
+}
+
+func (l proxyTestCountingListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err == nil {
+		l.accepted.Add(1)
+	}
+	return conn, err //nolint:wrapcheck // the listener's error, for the server
+}
+
+// A request fasthttp cannot write is refused before it takes a connection to the upstream.
+func Test_Proxy_UnsendableRequest(t *testing.T) {
+	t.Parallel()
+	form := func(boundary string) string {
+		return "--" + boundary + "\r\nContent-Disposition: form-data; name=\"x\"\r\n\r\nv\r\n--" + boundary + "--\r\n"
+	}
+	for _, tc := range []struct {
+		name, boundary string
+		status         int
+	}{
+		{name: "writable", boundary: "a-b", status: fiber.StatusOK},
+		{name: "a boundary byte the writer refuses", boundary: "a@b", status: fiber.StatusBadRequest},
+		{name: "a boundary too long to write", boundary: strings.Repeat("b", 71), status: fiber.StatusBadRequest},
+	} {
+		for _, method := range []string{fiber.MethodPut, fiber.MethodPost} {
+			t.Run(tc.name+"/"+method, func(t *testing.T) {
+				t.Parallel()
+				var accepted atomic.Int32
+				upstream := fiber.New()
+				upstream.Use(func(c fiber.Ctx) error { return c.SendString(c.FormValue("x")) })
+				ln := proxyTestCountingListener{Listener: proxyTestListen(t), accepted: &accepted}
+				startServer(upstream, ln)
+				for name, handler := range proxyTestHandlersUnder(ln.Addr().String(), proxyTestAllowPrivatePolicy(), nil) {
+					app := fiber.New()
+					app.Use(handler)
+					before := accepted.Load()
+					req := httptest.NewRequest(method, "/", strings.NewReader(form(tc.boundary)))
+					req.Header.Set(fiber.HeaderContentType, "multipart/form-data; boundary="+tc.boundary)
+					resp := apptest.Expect(t, app, req, tc.status)
+					if tc.status == fiber.StatusOK {
+						require.Equal(t, "v", apptest.Body(t, resp), name)
+						continue
+					}
+					require.Equal(t, before, accepted.Load(), "%s took an upstream connection", name)
+				}
+			})
+		}
+	}
+
+	t.Run("no Host", func(t *testing.T) {
+		t.Parallel()
+		var accepted atomic.Int32
+		upstream := fiber.New()
+		upstream.Use(func(c fiber.Ctx) error { return c.SendString(c.Host()) })
+		ln := proxyTestCountingListener{Listener: proxyTestListen(t), accepted: &accepted}
+		startServer(upstream, ln)
+		app := fiber.New()
+		app.Use(Balancer(Config{Servers: []string{ln.Addr().String()}}))
+		for _, raw := range []string{"GET / HTTP/1.0\r\n\r\n", "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: host\r\n\r\n"} {
+			resp := serveParsed(t, app, proxyTestRequest(t), raw)
+			if resp.StatusCode() == fiber.StatusOK {
+				require.Equal(t, "example.com", string(resp.Body()), "Connection does not remove Host")
+				continue
+			}
+			require.Equal(t, fiber.StatusBadRequest, resp.StatusCode())
+		}
+		require.Equal(t, int32(1), accepted.Load())
+
+		// A Host that ModifyRequest sets is the one the request goes out with.
+		named := fiber.New()
+		named.Use(Balancer(Config{Servers: []string{ln.Addr().String()}, ModifyRequest: func(c fiber.Ctx) error {
+			c.Request().Header.SetHost("backend.example")
+			return nil
+		}}))
+		resp := serveParsed(t, named, proxyTestRequest(t), "GET / HTTP/1.0\r\n\r\n")
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "backend.example", string(resp.Body()))
+	})
+}
+
+func Test_Proxy_RetryConnectionErrors(t *testing.T) {
+	t.Parallel()
+	unwritable := errors.New("error when marshaling multipart form")
+	for _, tc := range []struct {
+		err    error
+		method string
+		want   bool
+	}{
+		{method: fiber.MethodGet, err: io.EOF, want: true},
+		{method: fiber.MethodHead, err: io.ErrUnexpectedEOF, want: true},
+		{method: fiber.MethodPut, err: fmt.Errorf("read: %w", &net.OpError{Op: "read", Err: errors.New("reset")}), want: true},
+		{method: fiber.MethodPost, err: io.EOF},
+		{method: fiber.MethodGet, err: unwritable},
+		{method: fiber.MethodPut, err: unwritable},
+	} {
+		req := proxyTestRequest(t)
+		req.Header.SetMethod(tc.method)
+		reset, retry := retryConnectionErrors(req, 1, tc.err)
+		require.False(t, reset)
+		require.Equal(t, tc.want, retry, "%s after %v", tc.method, tc.err)
+	}
+	require.NotNil(t, defaultClient.RetryIfErr)
+	cfg := configDefault(Config{Servers: []string{"http://upstream.example"}})
+	require.NotNil(t, newHostClient(mustParseTestURL(t, "http://upstream.example:8080"), &cfg, DefaultSecurityPolicy()).RetryIfErr)
+}

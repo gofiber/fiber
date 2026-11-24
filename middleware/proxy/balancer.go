@@ -191,6 +191,9 @@ func Balancer(config ...Config) fiber.Handler {
 		if streams && len(req.Header.UserAgent()) == 0 {
 			defer req.Header.Del(fiber.HeaderUserAgent)
 		}
+		if !sendable(req) { // after ModifyRequest, which may set a Host
+			return fiber.ErrBadRequest
+		}
 
 		// Forward request. A client that streams response bodies hands the upstream's trailer section
 		// to the response after Do returned: such a response is read into one of the proxy's own, see
@@ -257,6 +260,7 @@ func newHostClient(u *url.URL, cfg *Config, policy SecurityPolicy) *fasthttp.Hos
 		Addr:                     addr,
 		IsTLS:                    isTLS,
 		MaxConns:                 cfg.MaxConnsPerHost,
+		RetryIfErr:               retryConnectionErrors,
 
 		ReadBufferSize:  cfg.ReadBufferSize,
 		WriteBufferSize: cfg.WriteBufferSize,
