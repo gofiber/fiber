@@ -1289,14 +1289,11 @@ func sendFileDrivePath(ctx *fasthttp.RequestCtx) []byte {
 // The Content-Type response HTTP header field is set based on the file's extension.
 // If the file extension is missing or invalid, the Content-Type is detected from the file's format.
 func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
-	// Save the filename, we will need it in the error message if the file isn't found
-	filename := file
-
 	// A control byte is no part of a name a client can ask for. One that
 	// reached fasthttp's URI parser failed it silently, which left the root
 	// path and served the root's index.html instead.
 	if utils.IndexControl(utils.UnsafeBytes(file)) >= 0 {
-		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
+		return ErrNotFound
 	}
 
 	var cfg SendFile
@@ -1407,17 +1404,18 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	originalURL := utils.CopyString(r.c.OriginalURL())
 	defer wiretarget.RestoreTarget(r.c.fasthttp, originalURL)
 
-	// The file server reads the request URI, which fasthttp percent-decodes and
-	// splits at "?" and "#" as it parses it, so the name goes in escaped and
-	// comes out of that decode exactly as given: "100%25.txt" is the file of
-	// that name and not "100%.txt", "a?b" is not "a" with a query, and a
-	// "..%2Fsecret.txt" that a route parameter carried into filepath.Join stays
-	// one segment instead of decoding, after the join was cleaned, into a step
-	// out of the caller's directory. SetRequestURIBytes copies the escaped
-	// name, so a pooled buffer holds it only for the call.
+	// The file server reads the request URI's path, which fasthttp percent-decodes
+	// as it is set, so the name goes in escaped and comes out of that decode
+	// exactly as given: "100%25.txt" is the file of that name and not "100%.txt",
+	// "a?b" is not "a" with a query, and a "..%2Fsecret.txt" that a route
+	// parameter carried into filepath.Join stays one segment instead of decoding,
+	// after the join was cleaned, into a step out of the caller's directory. Set
+	// as the request line instead, "public//x://secret.txt" lost "public//x:" to
+	// a scheme and an authority. SetPathBytes copies the escaped name, so a pooled
+	// buffer holds it only for the call.
 	uriBuf := bytebufferpool.Get()
 	uriBuf.B = utils.AppendPathSegmentsEscape(uriBuf.B[:0], file)
-	request.SetRequestURIBytes(uriBuf.B)
+	request.URI().SetPathBytes(uriBuf.B)
 	bytebufferpool.Put(uriBuf)
 
 	// Save status code
@@ -1465,9 +1463,9 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 		fsStatus = StatusNotFound
 	}
 
-	// Check for error
+	// The error carries no name: it is a filesystem path the error handler would send.
 	if status != StatusNotFound && fsStatus == StatusNotFound {
-		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
+		return ErrNotFound
 	}
 
 	// A status set before SendFile replaces the file server's 200; a 206, 304 or 416 describes the body sent.

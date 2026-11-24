@@ -913,6 +913,8 @@ resolve to the **request**; use `c.Res().Get()`, `c.Res().GetHeaders()`, `c.Res(
   `public`, and it is set only when the response has no `Cache-Control` yet, so a guard's `private, no-store` is kept.
   `public` let a shared cache, the [cache](./middleware/cache.md) middleware included, store a file sent with a cookie.
   For files every client may share, write `public` yourself in `ModifyResponse` or after `SendFile` returns.
+- **SendFile() and Download()**: A file that is not found returns `fiber.ErrNotFound`. The error used to carry the file
+  name, which the default error handler sent to the client along with its directory.
 - **Body()**: A `Content-Encoding` list of more than five codings, `identity` members included, is now answered
   `415 Unsupported Media Type` before anything is decoded, since `BodyLimit` bounds each decoding step but not their
   number. A chain of codings is now undone without replacing the request body, so slices returned by an earlier

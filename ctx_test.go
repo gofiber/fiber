@@ -6293,12 +6293,24 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	app := New()
 	app.Get("/", func(c Ctx) error { return c.SendFile("ctx12.go") })
 
-	apptest.ExpectBody(t, app, "/", StatusNotFound, "sendfile: file ctx12.go not found")
+	apptest.ExpectBody(t, app, "/", StatusNotFound, "Not Found")
+}
+
+// An fs.FS name has no leading slash; read as a request line, "public//x://config.yaml"
+// lost "public//x:" to a scheme and an authority and opened config.yaml.
+func Test_Ctx_SendFile_FSNameIsAPath(t *testing.T) {
+	t.Parallel()
+	files := fstest.MapFS{"config.yaml": {Data: []byte("SECRET")}, "public/ok.txt": {Data: []byte("OK")}}
+	app := New()
+	app.Get("/assets/*", func(c Ctx) error { return c.SendFile("public/"+c.Params("*"), SendFile{FS: files}) })
+
+	apptest.ExpectBody(t, app, "/assets/ok.txt", StatusOK, "OK")
+	apptest.ExpectBody(t, app, "/assets//x://config.yaml", StatusNotFound, "Not Found")
 }
 
 // Test_Ctx_SendFile_NameIsLiteral pins that SendFile opens exactly the name it
-// is given, the way os.Open would. The file server reads the request URI,
-// which fasthttp decodes and splits at "?" and "#", so the name is escaped on
+// is given, the way os.Open would. The file server reads the request URI's
+// path, which fasthttp decodes, so the name is escaped on
 // its way in: a "%", "?" or "#" is part of the name, and "100%25.txt" is not
 // "100%.txt".
 func Test_Ctx_SendFile_NameIsLiteral(t *testing.T) {
@@ -6447,7 +6459,7 @@ func Test_Ctx_SendFile_ControlByteIsNotFound(t *testing.T) {
 		})
 		resp := apptest.Do(t, app, "/")
 		require.Equal(t, StatusNotFound, resp.StatusCode, "fs=%v", cfg.FS != nil)
-		require.NotContains(t, apptest.Body(t, resp), "INDEX", "fs=%v", cfg.FS != nil)
+		require.Equal(t, "Not Found", apptest.Body(t, resp), "fs=%v", cfg.FS != nil)
 	}
 }
 
