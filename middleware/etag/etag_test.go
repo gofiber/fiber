@@ -108,6 +108,20 @@ func Test_ETag_StreamOfUnknownLength(t *testing.T) {
 
 		require.Equal(t, string(Generate([]byte("hello"))), string(fctx.Response.Header.Peek(fiber.HeaderETag)))
 	})
+
+	t.Run("declared length with an ETag", func(t *testing.T) {
+		t.Parallel()
+		stream := &failOnReadStream{}
+		fctx := etagTestServe(etagTestApp(func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderETag, `"v1"`)
+			c.Response().SetBodyStream(stream, 5)
+			return nil
+		}))
+
+		require.True(t, fctx.Response.IsBodyStream())
+		require.Zero(t, stream.readCalls)
+		require.Equal(t, `"v1"`, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
+	})
 }
 
 // Body keeps a read error as the body, and an outer cache would store it under this ETag.

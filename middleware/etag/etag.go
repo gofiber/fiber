@@ -75,6 +75,18 @@ func New(config ...Config) fiber.Handler {
 		if c.Res().StatusCode() != fiber.StatusOK {
 			return nil
 		}
+		// Skip ETag if any field line is already present, whatever case the
+		// handler spelled the name in — a second line would be a conflicting
+		// validator (RFC 9110 Section 8.8.3). Checked before a stream is read,
+		// which it then need not be.
+		//
+		// Both halves of the guard are needed: fasthttp canonicalizes ETag to
+		// "Etag", so a store of canonical names still holds a spelling the
+		// byte-exact PeekAll(fiber.HeaderETag) misses while normalizing is off.
+		respHeader := &c.Response().Header
+		if len(fieldname.Lines(respHeader, fiber.HeaderETag, headerlookup.Canonical(c) && fieldname.Canonical(respHeader))) > 0 {
+			return nil
+		}
 		// Body keeps a read error as the body; a stream that fails or delivers other than it declares goes out untagged.
 		if c.Response().IsBodyStream() && !sizedstream.Read(c.Response(), c.Response().Header.ContentLength()) {
 			return nil
@@ -82,17 +94,6 @@ func New(config ...Config) fiber.Handler {
 		body := c.Response().Body()
 		// Skips ETag if no response body is present
 		if len(body) == 0 {
-			return nil
-		}
-		// Skip ETag if any field line is already present, whatever case the
-		// handler spelled the name in — a second line would be a conflicting
-		// validator (RFC 9110 Section 8.8.3).
-		//
-		// Both halves of the guard are needed: fasthttp canonicalizes ETag to
-		// "Etag", so a store of canonical names still holds a spelling the
-		// byte-exact PeekAll(fiber.HeaderETag) misses while normalizing is off.
-		respHeader := &c.Response().Header
-		if len(fieldname.Lines(respHeader, fiber.HeaderETag, headerlookup.Canonical(c) && fieldname.Canonical(respHeader))) > 0 {
 			return nil
 		}
 
