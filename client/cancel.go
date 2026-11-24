@@ -56,7 +56,19 @@ func (w *cancelContext) end() {
 	defer w.mu.Unlock()
 	w.ended = true
 	if w.conn != nil {
-		_ = w.conn.Close() //nolint:errcheck // the close is the cancellation; fasthttp reports what it does to the exchange
+		_ = lowestConn(w.conn).Close() //nolint:errcheck // the close is the cancellation; fasthttp reports what it does to the exchange
+	}
+}
+
+// lowestConn unwraps layers such as *tls.Conn, whose Close first sends close_notify
+// and can wait up to 5s on a server that stopped reading; the transport closes the layers.
+func lowestConn(conn net.Conn) net.Conn {
+	for {
+		layered, ok := conn.(interface{ NetConn() net.Conn })
+		if !ok || layered.NetConn() == nil {
+			return conn
+		}
+		conn = layered.NetConn()
 	}
 }
 
