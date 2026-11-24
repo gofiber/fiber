@@ -102,15 +102,17 @@ func newTCPAddr(ip []byte, port int, zone string) *net.TCPAddr {
 }
 
 // pooledCtx bundles the RequestCtx with the per-request scratch space it
-// needs — the noopConn handed to fasthttp and the io.LimitedReader used to
-// bound the request body — so a single pool entry serves them all and the
-// request path stays allocation-free. The conn comes first to keep the
-// struct's trailing pointer span minimal (govet fieldalignment).
+// needs (the noopConn handed to fasthttp, the io.LimitedReader used to
+// bound the request body, the URI the host is checked with), so a single
+// pool entry serves them all and the request path stays allocation-free. The
+// conn comes first to keep the struct's trailing pointer span minimal (govet
+// fieldalignment).
 type pooledCtx struct {
 	conn     noopConn
 	tlsConn  tlsNoopConn
 	lr       io.LimitedReader
 	received []byte
+	uri      fasthttp.URI
 	fctx     fasthttp.RequestCtx
 }
 
@@ -807,7 +809,12 @@ func requestTarget(r *http.Request) string {
 		return ""
 	}
 	if r.Method != http.MethodConnect || r.URL.Path != "" {
-		return r.URL.RequestURI()
+		target := r.URL.RequestURI()
+		// fasthttp reads a path without its leading slash, as http.StripPrefix("/api/", h) leaves one, as an absolute URL.
+		if r.URL.Opaque == "" && r.URL.Path != "*" && target[0] != '/' {
+			target = "/" + target
+		}
+		return target
 	}
 	if r.URL.Opaque != "" {
 		return r.URL.Opaque
@@ -841,6 +848,12 @@ func routedRequestURI(r *http.Request) string {
 		return fromURL
 	}
 	return r.RequestURI
+}
+
+// hasOpaqueTarget reports whether net/http read r's request line as an opaque URL, such as "http:admin/users",
+// which leaves URL.Path empty and is no request target (RFC 9112 Section 3.2). CONNECT may carry its authority there.
+func hasOpaqueTarget(r *http.Request) bool {
+	return r.URL != nil && r.Method != http.MethodConnect && r.URL.Opaque != "" && r.URL.Opaque[0] != '/'
 }
 
 // decodesTo reports whether raw, a path whose escapes are well formed as
@@ -894,6 +907,9 @@ func appendReceived(dst []byte, key string, vals []string) []byte {
 	return dst
 }
 
+// rootTarget is the target a host is parsed with; shared and never written.
+var rootTarget = []byte{'/'}
+
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 	// App.Config returns the config by value, so read the body limit once at
 	// construction instead of copying the whole 624-byte struct on every
@@ -918,6 +934,13 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 				ctxPool.Put(pctx)
 			}
 		}()
+
+		// Refused as fasthttp's server refuses them: a target without a path, and a host its URI parser rejects,
+		// which the next SetRequestURI (the proxy middleware, c.SendFile) would read as the path "/".
+		if hasOpaqueTarget(r) || (r.Host != "" && pctx.uri.Parse(utils.UnsafeBytes(r.Host), rootTarget) != nil) {
+			http.Error(w, utils.StatusMessage(fiber.StatusBadRequest), fiber.StatusBadRequest)
+			return
+		}
 
 		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey))
 		if err != nil {
@@ -981,7 +1004,8 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			req.Header.SetContentLength(int(n))
 		}
 		req.Header.SetMethod(r.Method)
-		req.SetRequestURI(routedRequestURI(r))
+		// net/http reads no fragment in a request line, where fasthttp would end the path or the query.
+		req.SetRequestURI(strings.ReplaceAll(routedRequestURI(r), "#", "%23"))
 		req.SetHost(r.Host)
 		req.Header.SetHost(r.Host)
 		// Propagate the real protocol version so protocol-dependent behavior
@@ -1011,11 +1035,18 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			if len(vals) == 0 {
 				continue
 			}
-			// net/http keeps the Trailer field of a request that is not chunked, and fasthttp scans every name
-			// announced for each header it stores, so as the router does, refuse more than MaxTrailers.
-			if len(key) == len(fiber.HeaderTrailer) && utils.EqualFold(key, fiber.HeaderTrailer) && announcesTooMany(vals) {
-				http.Error(w, utils.StatusMessage(fiber.StatusRequestHeaderFieldsTooLarge), fiber.StatusRequestHeaderFieldsTooLarge)
-				return
+			// The host is r.Host, as for net/http: its HTTP/2 server leaves a "host" field here.
+			if len(key) == len(fiber.HeaderHost) && utils.EqualFold(key, fiber.HeaderHost) {
+				continue
+			}
+			// net/http keeps the Trailer field of a request that is not chunked. As the router does, refuse more than
+			// MaxTrailers names and drop the field: no trailer section follows, and fasthttp would file the names as one.
+			if len(key) == len(fiber.HeaderTrailer) && utils.EqualFold(key, fiber.HeaderTrailer) {
+				if announcesTooMany(vals) {
+					http.Error(w, utils.StatusMessage(fiber.StatusRequestHeaderFieldsTooLarge), fiber.StatusRequestHeaderFieldsTooLarge)
+					return
+				}
+				continue
 			}
 			// fasthttp files a key that is not in canonical spelling under another spelling than the
 			// map does, where a canonical key of the same name may sit: a hand-built map may hold both
@@ -1026,7 +1057,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 				continue
 			}
 			// A canonical name is new to the request, so Add appends it without Set's scan of the
-			// stored lines. The names fasthttp derives or stores specially (Host, Content-Type,
+			// stored lines. The names fasthttp derives or stores specially (Content-Type, User-Agent,
 			// Cookie, ...) reach the same special handling through Add as through Set, and fasthttp's
 			// Add keeps its own singleton semantics for them, which can only hold one value by design.
 			// Repeated values of the other names survive instead of collapsing to the last value.

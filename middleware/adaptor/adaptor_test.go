@@ -27,6 +27,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/middleware/sse"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -2508,8 +2509,8 @@ func Test_FiberApp_RequestHeaders_Linear(t *testing.T) {
 
 // Test_FiberApp_RequestHeaders_AliasKeys pins that keys of a hand-built header map that name one header, such as "x-a"
 // and "X-A" or "content-type" and "Content-Type", are stored as one line, and that the key not in canonical spelling
-// wins, whatever the order the map is read in. fasthttp derives or stores some names (Host, Content-Type, ...) apart
-// from its plain lines, which is why they are covered as well.
+// wins, whatever the order the map is read in. fasthttp derives or stores some names (Content-Type, User-Agent, ...)
+// apart from its plain lines, which is why they are covered as well.
 func Test_FiberApp_RequestHeaders_AliasKeys(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -2525,7 +2526,6 @@ func Test_FiberApp_RequestHeaders_AliasKeys(t *testing.T) {
 		{name: "Content-Type", header: http.Header{"content-type": {"a"}, "Content-Type": {"b"}}, want: "a"},
 		{name: "Content-Type", header: http.Header{"content-type": {"a"}, "CONTENT-TYPE": {"b"}}, want: "a"},
 		{name: "User-Agent", header: http.Header{"user-agent": {"a"}, "User-Agent": {"b"}}, want: "a"},
-		{name: "Host", header: http.Header{"host": {"a.example"}, "Host": {"b.example"}}, want: "a.example"},
 		{name: "Connection", header: http.Header{"connection": {"upgrade"}, "Connection": {"close"}}, want: "upgrade"},
 	} {
 		t.Run(fmt.Sprint(tc.header), func(t *testing.T) {
@@ -2538,5 +2538,80 @@ func Test_FiberApp_RequestHeaders_AliasKeys(t *testing.T) {
 				require.Equal(t, tc.want, rec.Body.String())
 			}
 		})
+	}
+}
+
+// Test_FiberApp_HostIsRequestHost pins that the Fiber request has one host, r.Host, whatever r.Header holds under
+// Host, as net/http's HTTP/2 server leaves a "host" field sent next to ":authority" there.
+func Test_FiberApp_HostIsRequestHost(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/*", func(c fiber.Ctx) error {
+		hosts := []string{c.Host(), c.Get(fiber.HeaderHost), string(c.Request().Header.Host()), c.BaseURL()}
+		return c.SendString(strings.Join(hosts, " "))
+	})
+	h := FiberApp(app)
+
+	for _, tc := range []struct {
+		header http.Header
+		target string
+	}{
+		{target: "/", header: http.Header{"Host": {"admin.internal"}}},
+		{target: "/", header: http.Header{"Host": {"public.example", "admin.internal"}}},
+		{target: "/", header: http.Header{"host": {"admin.internal"}}},
+		{target: "/", header: http.Header{"HOST": {"a.internal"}, "Host": {"admin.internal"}}},
+		// fasthttp reads a path that begins with "//" together with the Host header.
+		{target: "//a/b", header: http.Header{"Host": {"admin.internal"}}},
+	} {
+		t.Run(fmt.Sprint(tc.target, " ", tc.header), func(t *testing.T) {
+			t.Parallel()
+			r := apptest.Req(fiber.MethodGet, tc.target, apptest.WithHost("public.example"))
+			r.Proto, r.ProtoMajor, r.ProtoMinor = "HTTP/2.0", 2, 0
+			r.Header = tc.header.Clone()
+			rec := adaptorTestServe(h, r)
+			require.Equal(t, fiber.StatusOK, rec.Code)
+			require.Equal(t, "public.example public.example public.example http://public.example", rec.Body.String())
+		})
+	}
+}
+
+// Test_FiberApp_UnparsableHost pins that the adapters answer 400, as Fiber's own server does, for a Host fasthttp's
+// URI parser rejects: the next SetRequestURI, as the proxy middleware and c.SendFile make, left the path "/".
+func Test_FiberApp_UnparsableHost(t *testing.T) {
+	t.Parallel()
+	const target = "/api/public/items?t=1"
+	reparsed := func(c fiber.Ctx) error {
+		original := utils.CopyString(c.OriginalURL())
+		c.Request().SetRequestURI("/other")
+		c.Request().SetRequestURI(original)
+		uri := c.Request().URI()
+		return c.SendString(string(uri.Path()) + "?" + string(uri.QueryString()))
+	}
+	app := fiber.New()
+	app.Get("/api/public/items", reparsed)
+	adapters := map[string]http.Handler{
+		"FiberApp": FiberApp(app), "FiberHandler": FiberHandler(reparsed), "FiberHandlerFunc": FiberHandlerFunc(reparsed),
+	}
+
+	for host, status := range map[string]int{
+		"example.com": fiber.StatusOK, "example.com:": fiber.StatusOK, "EXAMPLE.com:8080": fiber.StatusOK,
+		"exa_mple.com": fiber.StatusOK, "[::1]:8080": fiber.StatusOK, "": fiber.StatusOK,
+		"example.com:x": fiber.StatusBadRequest, "a:b:c": fiber.StatusBadRequest, "example.com:80:80": fiber.StatusBadRequest,
+		"example.com%": fiber.StatusBadRequest, "%41.example.com": fiber.StatusBadRequest, "example.com]": fiber.StatusBadRequest,
+		"[::1": fiber.StatusBadRequest, "example.com ": fiber.StatusBadRequest, " example.com": fiber.StatusBadRequest,
+		"example.com\t": fiber.StatusBadRequest, "example.com/x": fiber.StatusBadRequest,
+	} {
+		for name, h := range adapters {
+			t.Run(name+" "+strconv.Quote(host), func(t *testing.T) {
+				t.Parallel()
+				rec := adaptorTestServe(h, apptest.Req(fiber.MethodGet, target, apptest.WithHost(host)))
+				require.Equal(t, status, rec.Code)
+				if status == fiber.StatusOK {
+					require.Equal(t, target, rec.Body.String())
+					return
+				}
+				require.Equal(t, "Bad Request\n", rec.Body.String(), "the handler ran for a refused request")
+			})
+		}
 	}
 }
