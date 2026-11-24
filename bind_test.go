@@ -1932,6 +1932,36 @@ func (rc *RequestConfig) ApplyTo(ctx Ctx) {
 	}
 }
 
+// Test_Bind_Cookie_ExactName pins that Bind().Cookie and Bind().All bind the cookie c.Cookies returns for a tag.
+func Test_Bind_Cookie_ExactName(t *testing.T) {
+	t.Parallel()
+	type session struct {
+		Token string `cookie:"access_token"`
+	}
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		var cookie, all session
+		if err := c.Bind().Cookie(&cookie); err != nil {
+			return err
+		}
+		if err := c.Bind().All(&all); err != nil {
+			return err
+		}
+		return c.SendString(c.Cookies("access_token") + "," + cookie.Token + "," + all.Token)
+	})
+	for _, header := range []string{
+		"access_token=mallory; Access_Token=alice",
+		"Access_Token=alice; access_token=mallory",
+		"access_token=mallory; access_token=alice",
+	} {
+		t.Run(header, func(t *testing.T) {
+			t.Parallel()
+			req := apptest.Req(MethodGet, "/", apptest.WithHeader(HeaderCookie, header))
+			apptest.ExpectBody(t, app, req, StatusOK, "mallory,mallory,mallory")
+		})
+	}
+}
+
 func Test_Bind_All(t *testing.T) {
 	t.Parallel()
 	type User struct {

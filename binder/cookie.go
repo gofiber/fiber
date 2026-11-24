@@ -17,13 +17,15 @@ func (*CookieBinding) Name() string {
 
 // Bind parses the request cookie and returns the result.
 func (b *CookieBinding) Bind(req *fasthttp.Request, out any) error {
-	data := acquireBindData(out, 0)
+	mode, target := bindTarget(out)
+	data := acquireBindDataMode(mode)
 	defer releaseBindData(data)
+	fields := cookieFieldCache.cookieChecks(target)
 
 	for key, val := range req.Header.Cookies() {
 		k := utils.UnsafeString(key)
-		// The first of a repeated name wins, as in Ctx.Cookies.
-		if !data.firstOf(k) {
+		// A field takes the cookie Ctx.Cookies returns: its exact name, and the first of a repeated one.
+		if fields != nil && !cookieFieldCache.takesCookie(fields, k) || !data.firstOf(k) {
 			continue
 		}
 		v := utils.UnsafeString(val)

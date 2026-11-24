@@ -776,15 +776,21 @@ func fieldName(f *reflect.StructField, aliasTag string) string {
 		return ""
 	}
 
-	name := f.Tag.Get(aliasTag)
-	if first, _, found := utils.CutByte(name, ','); found {
-		name = first
-	}
+	name := tagName(f, aliasTag)
 	if name == "" {
 		name = f.Name
 	}
 
 	return utilsstrings.ToLower(name)
+}
+
+// tagName returns the alias in f's tag as written, or "" when the tag carries none.
+func tagName(f *reflect.StructField, aliasTag string) string {
+	name := f.Tag.Get(aliasTag)
+	if first, _, found := utils.CutByte(name, ','); found {
+		name = first
+	}
+	return name
 }
 
 // fieldInfo describes how the keys of one struct type resolve to fields, so a
@@ -795,11 +801,21 @@ type fieldInfo struct {
 	promoted    map[string]promotedField
 	kinds       map[string]reflect.Kind
 	nestedKinds map[reflect.Kind]struct{}
-	id          uintptr // typeID of the type it describes, which the slot of the cache is checked against
+	exact       []string     // the aliases as written of the tagged fields a one-segment key resolves to
+	embeds      []string     // the lowercased names of the embedded structs at any depth
+	containers  []namedField // the struct, slice of struct and map fields a one-segment key resolves to
+	id          uintptr      // typeID of the type it describes, which the slot of the cache is checked against
+}
+
+type namedField struct {
+	typ     reflect.Type // the struct, or the element struct of a slice or array; nil for a map
+	name    string
+	indexed bool
 }
 
 type promotedField struct {
 	typ   reflect.Type
+	alias string // as written, "" for an untagged field
 	depth int
 }
 
@@ -872,11 +888,13 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 
 		if f.Anonymous && fieldType.Kind() == reflect.Struct {
 			info.embedded[name] = fieldType
+			info.embeds = append(info.embeds, name)
 			info.collectPromoted(fieldType, aliasTag, 1, map[reflect.Type]struct{}{t: {}})
 			continue
 		}
 
 		info.fields[name] = fieldType
+		info.addNamed(name, tagName(&f, aliasTag), fieldType)
 		if fieldType.Kind() == reflect.Struct {
 			for j := 0; j < fieldType.NumField(); j++ {
 				sf := fieldType.Field(j)
@@ -888,9 +906,13 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 		}
 	}
 
-	for _, p := range info.promoted {
-		if p.typ != nil {
-			info.nestedKinds[p.typ.Kind()] = struct{}{}
+	for name, p := range info.promoted {
+		if p.typ == nil {
+			continue
+		}
+		info.nestedKinds[p.typ.Kind()] = struct{}{}
+		if _, shadowed := info.fields[name]; !shadowed {
+			info.addNamed(name, p.alias, p.typ)
 		}
 	}
 	info.resolveKinds()
@@ -945,18 +967,104 @@ func (info *fieldInfo) collectPromoted(t reflect.Type, aliasTag string, depth in
 		name := fieldName(&f, aliasTag)
 
 		if f.Anonymous && fieldType.Kind() == reflect.Struct {
+			info.embeds = append(info.embeds, name)
 			info.collectPromoted(fieldType, aliasTag, depth+1, visited)
 			continue
 		}
 
 		switch existing, ok := info.promoted[name]; {
 		case !ok || existing.depth > depth:
-			info.promoted[name] = promotedField{typ: fieldType, depth: depth}
+			info.promoted[name] = promotedField{typ: fieldType, alias: tagName(&f, aliasTag), depth: depth}
 		case existing.depth == depth:
 			// Declared at the same depth by two embedded structs: ambiguous.
 			info.promoted[name] = promotedField{depth: depth}
 		}
 	}
+}
+
+// addNamed records a field a one-segment key resolves to for the cookie name checks.
+func (info *fieldInfo) addNamed(name, alias string, t reflect.Type) {
+	if alias != "" {
+		info.exact = append(info.exact, alias)
+	}
+	indexed := t.Kind() == reflect.Slice || t.Kind() == reflect.Array
+	if indexed {
+		t = unwrapType(t.Elem())
+	}
+	switch t.Kind() { //nolint:exhaustive // the kinds a dotted key walks into
+	case reflect.Struct:
+		info.containers = append(info.containers, namedField{typ: t, name: name, indexed: indexed})
+	case reflect.Map:
+		info.containers = append(info.containers, namedField{name: name})
+	}
+}
+
+// spelling reports whether a key segment is the alias of a tagged field as written, or one only ignoring case.
+func (info *fieldInfo) spelling(segment string) (exact, folded bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two results
+	for _, alias := range info.exact {
+		if len(alias) != len(segment) {
+			continue
+		}
+		if alias == segment {
+			return true, false
+		}
+		folded = folded || utils.EqualFold(alias, segment)
+	}
+	return false, folded
+}
+
+// takesCookie reports whether a cookie name reaches tagged fields only by their aliases as written, as Ctx.Cookies
+// reads it: schema folds every segment of a dotted name and reaches a promoted field through its embedded struct.
+func (c *fieldCache) takesCookie(info *fieldInfo, name string) bool {
+	if exact, folded := info.spelling(name); exact || folded {
+		return exact
+	}
+	if len(info.containers) == 0 && len(info.embeds) == 0 || strings.IndexByte(name, '.') < 0 {
+		return true
+	}
+	for {
+		segment, rest, _ := strings.Cut(name, ".")
+		if _, folded := info.spelling(segment); folded {
+			return false
+		}
+		for _, embed := range info.embeds {
+			if utils.EqualFold(embed, segment) {
+				return false
+			}
+		}
+		i := slices.IndexFunc(info.containers, func(f namedField) bool { return utils.EqualFold(f.name, segment) })
+		if i < 0 || info.containers[i].typ == nil || rest == "" {
+			// Past a map field the rest is its key, read as written.
+			return true
+		}
+		next := info.containers[i]
+		if next.indexed {
+			// The decoder reads 00 or +0 as index 0 too.
+			index, after, _ := strings.Cut(rest, ".")
+			if !isDigits(index) || len(index) > 1 && index[0] == '0' {
+				return false
+			}
+			rest = after
+		}
+		var ok bool
+		if info, ok = c.get(next.typ, bindingCookie); !ok || rest == "" {
+			return true
+		}
+		name = rest
+	}
+}
+
+// cookieChecks returns the field information cookie names bound into t are checked against, or nil when t is no
+// struct or has no tagged, nested or embedded field.
+func (c *fieldCache) cookieChecks(t reflect.Type) *fieldInfo {
+	if t == nil || t.Kind() != reflect.Struct {
+		return nil
+	}
+	info, ok := c.get(t, bindingCookie)
+	if !ok || len(info.exact) == 0 && len(info.containers) == 0 && len(info.embeds) == 0 {
+		return nil
+	}
+	return info
 }
 
 // typeID identifies a type by the address of its descriptor, which is stable
@@ -1226,23 +1334,30 @@ const (
 // parse does: a map with string keys, or a pointer to one, gets a map, and
 // everything else is decoded as a struct.
 func bindModeFor(out any) bindMode {
+	mode, _ := bindTarget(out)
+	return mode
+}
+
+// bindTarget returns bindModeFor's mode and, for one it dispatched through
+// reflection, the type out points to.
+func bindTarget(out any) (bindMode, reflect.Type) {
 	switch out.(type) {
 	case *map[string][]string, map[string][]string:
-		return bindMap
+		return bindMap, nil
 	case *map[string]string, map[string]string:
-		return bindLast
+		return bindLast, nil
 	}
 	t := reflect.TypeOf(out)
 	if t == nil {
-		return bindPairs
+		return bindPairs, nil
 	}
 	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Map || t.Key().Kind() != reflect.String {
-		return bindPairs
+		return bindPairs, t
 	}
-	return bindMap
+	return bindMap, t
 }
 
 // parse decodes what was filed into out.

@@ -528,7 +528,7 @@ Run tests with the following `curl` command:
 curl --cookie "name=Joseph; age=23; job=true" http://localhost:8000/
 ```
 
-A cookie name sent more than once binds its first value, the one [`c.Cookies`](./ctx.md#cookies) returns, so a slice field gets the elements of that one cookie. The tag is matched against the cookie name ignoring case, while `c.Cookies` matches it exactly: with `token=a; Token=b`, a `cookie:"token"` field gets `b`.
+A tagged field binds the cookie [`c.Cookies`](./ctx.md#cookies) returns for its tag: a name sent more than once binds its first value, so a slice field gets the elements of that one cookie, and only the exact spelling counts. With `token=a; Token=b`, a `cookie:"token"` field gets `a`, and `Token=b` alone binds nothing; neither does `Auth.token` for a field promoted from an embedded `Auth`. A field of a nested struct, of a slice of structs or of a map binds from its dotted path with every tag spelled as written and an index in plain digits, such as `auth.token`, `items.0.token` or `meta.key`, so `auth.Token` or `items.00.token` binds nothing; cookie names are not read in bracket notation. A field without a `cookie` tag matches its Go name ignoring case, so tag a field whose value has to be the one `c.Cookies` returns.
 
 ### Header
 
