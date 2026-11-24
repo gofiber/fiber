@@ -233,6 +233,89 @@ func Test_CookieJarHostCapacityPrefersExpiredEntries(t *testing.T) {
 	require.True(t, ok)
 }
 
+// Test_CookieJarHostCapacityEvictsLeastRecentlyWritten checks that two keys of one response do not
+// evict each other on every Set-Cookie line, however their names sort.
+func Test_CookieJarHostCapacityEvictsLeastRecentlyWritten(t *testing.T) {
+	t.Parallel()
+	jar := clientTestCJar(t)
+	for i := range maxCookieJarHosts {
+		jar.SetKeyValue(fmt.Sprintf("host-%04d.example.com", i), "k", "v")
+	}
+
+	for range 8 {
+		clientTestCReceive(jar, "0.0.example.org", "/", "a=1")
+		clientTestCReceive(jar, "0.0.example.org", "/", "a=1; Domain=0.example.org")
+	}
+
+	require.Len(t, jar.hostCookies, maxCookieJarHosts)
+	for host, stored := range map[string]bool{
+		"0.0.example.org":       true,
+		"0.example.org":         true,
+		"host-0000.example.com": false,
+		"host-0001.example.com": false,
+		"host-0002.example.com": true,
+	} {
+		_, ok := jar.hostCookies[host]
+		require.Equal(t, stored, ok, host)
+	}
+}
+
+func Test_CookieJarHostCapacitySweepsOncePerClockReading(t *testing.T) {
+	t.Parallel()
+	cj := &CookieJar{hostCookies: make(map[string][]storedCookie, maxCookieJarHosts)}
+	now := time.Now()
+
+	for i := range maxCookieJarHosts {
+		cj.hostCookies[fmt.Sprintf("host-%04d.example.com", i+1)] = []storedCookie{clientTestCStored("k", time.Time{}, 0)}
+	}
+	cj.ensureHostCapacityLocked("new-1.example.com", now)
+
+	// The same reading does not sweep again, so the expired entry stays.
+	cj.hostCookies["zzz-expired.example.com"] = []storedCookie{clientTestCStored("expired", now.Add(-time.Minute), 0)}
+	cj.ensureHostCapacityLocked("new-2.example.com", now)
+	_, ok := cj.hostCookies["zzz-expired.example.com"]
+	require.True(t, ok)
+
+	// A later reading sweeps again.
+	cj.hostCookies["new-2.example.com"] = []storedCookie{clientTestCStored("k", time.Time{}, 0)}
+	cj.ensureHostCapacityLocked("new-3.example.com", now.Add(time.Second))
+	_, ok = cj.hostCookies["zzz-expired.example.com"]
+	require.False(t, ok)
+	require.Len(t, cj.hostCookies, maxCookieJarHosts-1)
+}
+
+// Test_CookieJarHostSeqFollowsStorageKeys checks that the last-write record of a key is dropped with
+// the key, whichever way the key goes.
+func Test_CookieJarHostSeqFollowsStorageKeys(t *testing.T) {
+	t.Parallel()
+	jar := clientTestCJar(t)
+	uri := clientTestCURI(t, "http://www.example.com/")
+
+	// A host-only key and a Domain= key, both removed by the server.
+	clientTestCReceive(jar, "www.example.com", "/", "a=1")
+	clientTestCReceive(jar, "www.example.com", "/", "b=1; Domain=example.com")
+	require.Len(t, jar.hostSeq, 2)
+	clientTestCReceive(jar, "www.example.com", "/", "a=; Max-Age=0")
+	clientTestCReceive(jar, "www.example.com", "/", "b=; Max-Age=0; Domain=example.com")
+	require.Empty(t, jar.hostCookies)
+	require.Empty(t, jar.hostSeq)
+
+	// A key whose only cookie has expired, removed when the jar is read.
+	expired := clientTestCCookie(t, "c", "1")
+	expired.SetExpire(time.Now().Add(-time.Minute))
+	jar.Set(uri, expired)
+	require.Len(t, jar.hostSeq, 1)
+	require.Empty(t, jar.Get(uri))
+	require.Empty(t, jar.hostSeq)
+
+	// Keys evicted from a full jar.
+	for i := range maxCookieJarHosts + 32 {
+		jar.SetKeyValue(fmt.Sprintf("host-%04d.example.com", i), "k", "v")
+	}
+	require.Len(t, jar.hostCookies, maxCookieJarHosts)
+	require.Len(t, jar.hostSeq, maxCookieJarHosts)
+}
+
 func Test_CookieJarGetFromResponse(t *testing.T) {
 	t.Parallel()
 	res := fasthttp.AcquireResponse()
