@@ -149,7 +149,6 @@ The HTTP server rejects some requests while it reads them. Fiber maps those erro
 | Headers larger than [`ReadBufferSize`](../api/fiber.md#readbuffersize)   | `431 Request Header Fields Too Large`                |
 | Body larger than [`BodyLimit`](../api/fiber.md#bodylimit)                | `413 Request Entity Too Large`                       |
 | A method other than `GET` or `HEAD` while [`GETOnly`](../api/fiber.md#getonly) is enabled | `405 Method Not Allowed`, with `Allow: GET, HEAD`    |
-| A method token the parser rejects, such as `GE(T`                        | `501 Not Implemented`                                |
 | A `Transfer-Encoding` naming a coding the server cannot decode           | `501 Not Implemented`                                |
 | A timeout while reading the request, or another network error            | `408 Request Timeout`, or `502 Bad Gateway`          |
 | Any other malformed request                                              | `400 Bad Request`, with the parser's message         |
