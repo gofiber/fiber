@@ -16,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/redact"
 
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
@@ -1280,7 +1281,7 @@ func New(config ...Config) fiber.Handler {
 				}
 				// Whole fields: a hit clears a stored name before appending its lines.
 				if len(upstream) > 0 {
-					name := utils.ToLower(string(key))
+					name := utilsstrings.ToLower(string(key))
 					if lines, ok := upstream[name]; ok && slices.Equal(lines, downstream[name]) {
 						continue
 					}

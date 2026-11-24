@@ -18,6 +18,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 )
 
@@ -167,7 +168,7 @@ func droppedReceivedCookie(req *fasthttp.Request) bool {
 			if _, value, ok := bytes.Cut(pair, []byte("=")); ok {
 				pair = value
 			}
-			// Trimmed and unquoted the way fasthttp's cookie scanner does.
+			// Trimmed and unquoted as fasthttp parses a cookie value.
 			pair = bytes.Trim(pair, " \t")
 			if len(pair) > 1 && pair[0] == '"' && pair[len(pair)-1] == '"' {
 				pair = pair[1 : len(pair)-1]
@@ -217,7 +218,7 @@ func storableFieldLines(h *fasthttp.ResponseHeader) map[string][]string {
 		if fields == nil {
 			fields = make(map[string][]string)
 		}
-		name := utils.ToLower(string(key))
+		name := utilsstrings.ToLower(string(key))
 		fields[name] = append(fields[name], string(value))
 	}
 	return fields

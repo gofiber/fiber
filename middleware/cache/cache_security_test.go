@@ -2355,7 +2355,7 @@ func Test_Cache_RequestTheHandlerDoesNotSeeAsSentIsNotStored(t *testing.T) {
 		forwarded := fasthttp.AcquireRequest()
 		defer fasthttp.ReleaseRequest(forwarded)
 		c.Request().CopyTo(forwarded)
-		for _, name := range strings.Split(c.Get(fiber.HeaderConnection), ",") {
+		for name := range strings.SplitSeq(c.Get(fiber.HeaderConnection), ",") {
 			forwarded.Header.Del(strings.TrimSpace(name))
 		}
 		return c.SendString("tenant=" + string(forwarded.Header.Peek("X-Tenant")))
