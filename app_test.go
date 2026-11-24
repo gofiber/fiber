@@ -827,36 +827,36 @@ func Test_App_RefusedRequest_RestartSkipsRoutes(t *testing.T) {
 // A custom ErrorHandler can time out a refused request without a Use chain too, also a mounted app's one.
 func Test_App_RefusedRequest_ErrorHandlerTimesOut(t *testing.T) {
 	t.Parallel()
-	timesOut := func(c Ctx, _ error) error {
-		c.RequestCtx().TimeoutError("late")
-		return nil
+	timingOut := func() *App {
+		app := New(Config{BodyLimit: 16, ErrorHandler: func(c Ctx, _ error) error {
+			c.RequestCtx().TimeoutError("late")
+			return nil
+		}})
+		app.Post("/", func(c Ctx) error { return c.SendString("ok") })
+		return app
 	}
-	ok := func(c Ctx) error { return c.SendString("ok") }
-	app := New(Config{BodyLimit: 16, ErrorHandler: timesOut})
-	app.Post("/", ok)
-	mounted := func() *App {
-		sub := New(Config{ErrorHandler: timesOut})
-		sub.Post("/", ok)
-		return sub
-	}
-	root := New(Config{BodyLimit: 16})
-	root.Use("/sub", mounted())
-	domainRoot := New(Config{BodyLimit: 16})
-	domainRoot.Domain("example.com").Use("/sub", mounted())
 
 	for _, tc := range []struct {
-		app    *App
+		app    func() *App
 		name   string
 		target string
 	}{
-		{name: "route", app: app, target: "POST /"},
-		{name: "method without routes", app: app, target: "PURGE /"},
-		{name: "mounted app", app: root, target: "POST /sub"},
-		{name: "domain mounted app", app: domainRoot, target: "POST /sub"},
+		{name: "route", app: timingOut, target: "POST /"},
+		{name: "method without routes", app: timingOut, target: "PURGE /"},
+		{name: "mounted app", target: "POST /sub", app: func() *App {
+			root := New(Config{BodyLimit: 16})
+			root.Use("/sub", timingOut())
+			return root
+		}},
+		{name: "domain mounted app", target: "POST /sub", app: func() *App {
+			root := New(Config{BodyLimit: 16})
+			root.Domain("example.com").Use("/sub", timingOut())
+			return root
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			ln := startRawServer(t, tc.app)
+			ln := startRawServer(t, tc.app())
 			resp := rawExpectStatus(t, ln, tc.target+" HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n", StatusRequestTimeout)
 			require.Equal(t, "late", resp.body)
 		})
