@@ -919,11 +919,11 @@ func New(config ...Config) fiber.Handler {
 			defer lookupHeaders.Put(lookupHeader)
 		}
 		var (
-			scope     credentialScope
-			recordKey string
+			scope      credentialScope
+			recordKeys [2]string
 		)
 		if foundAtLookup {
-			recordKey = refusals.key(c, generatedKey, varyNames, requestCreds())
+			recordKeys = refusals.recordKeys(c, generatedKey, varyNames, requestCreds())
 			scope = requestCreds().scope()
 		}
 
@@ -1014,8 +1014,10 @@ func New(config ...Config) fiber.Handler {
 			if hasVaryManifest && scope.keyed {
 				dropManifest()
 			}
-			if recordKey != "" {
-				refusals.record(reqCtx, urlGroup, recordKey, foundExp)
+			for _, recordKey := range recordKeys {
+				if recordKey != "" {
+					refusals.record(reqCtx, urlGroup, recordKey, foundExp)
+				}
 			}
 		}
 
@@ -1054,7 +1056,11 @@ func New(config ...Config) fiber.Handler {
 
 		// The origin accepting a credential recorded as refused ends the record, stored or not.
 		if refusalRecorded && acceptsCredential(status) {
-			refusals.forget(reqCtx, recordKey)
+			for _, recordKey := range recordKeys {
+				if recordKey != "" {
+					refusals.forget(reqCtx, recordKey)
+				}
+			}
 		}
 
 		if _, cacheable := cacheableStatusCodes[status]; !cacheable && !refused {

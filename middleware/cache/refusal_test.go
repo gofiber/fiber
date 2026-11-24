@@ -1942,3 +1942,59 @@ func (s *hookedStorage) DeleteWithContext(ctx context.Context, key string) error
 	}
 	return s.Memory.DeleteWithContext(ctx, key)
 }
+
+// A credential every session shares in the key, as a site-wide password, must not let another session's
+// acceptance end the record of a refused one; nor may a request adding a cookie to a custom key's Cookie
+// miss the record of the session that key holds.
+func Test_Cache_RefusalRecordReachesTheRefusedSessionOnly(t *testing.T) {
+	t.Parallel()
+	const shared = "Basic c2l0ZTpwYXNz"
+	for name, tc := range map[string]struct {
+		cfg         Config
+		header      string
+		otherCookie string // what a session cookie is sent with to look past the record
+		vary        []string
+	}{
+		"shared Authorization in the key": {header: shared, vary: []string{fiber.HeaderCookie}},
+		"session in a custom key": {cfg: Config{
+			KeyGenerator:         func(c fiber.Ctx) string { return c.Path() + " " + c.Cookies("session") },
+			KeyCredentialHeaders: []string{fiber.HeaderCookie},
+		}, otherCookie: "; x=1", vary: []string{fiber.HeaderAccept}},
+	} {
+		for _, kind := range storageKinds {
+			t.Run(name+"/"+kind, func(t *testing.T) {
+				t.Parallel()
+				var ended sync.Map
+				cfg := tc.cfg
+				cfg.Storage = storageOf(kind)
+				app := fiber.New()
+				app.Use(New(cfg))
+				app.Get("/account", func(c fiber.Ctx) error {
+					session := c.Cookies("session")
+					if _, gone := ended.Load(session); gone || session == "" {
+						return c.SendStatus(fiber.StatusUnauthorized)
+					}
+					c.Set(fiber.HeaderCacheControl, "max-age=300, must-revalidate")
+					c.Vary(tc.vary...)
+					return c.SendString(session + " " + c.Get(fiber.HeaderAccept))
+				})
+				get := func(session, accept, cacheControl string) reply {
+					return cacheTestCGet(t, app, "/account", fiber.HeaderAuthorization, tc.header,
+						fiber.HeaderCookie, "session="+session, fiber.HeaderAccept, accept, fiber.HeaderCacheControl, cacheControl)
+				}
+
+				for _, accept := range []string{"text/html", "text/csv"} {
+					require.Equal(t, cacheMiss, get("alice", accept, "").cache)
+				}
+				ended.Store("alice", true)
+				require.Equal(t, fiber.StatusUnauthorized, get("alice", "text/html", "no-cache").status)
+				for range 2 {
+					require.Equal(t, fiber.StatusOK, get("mallory", "text/html", "").status)
+				}
+
+				got := get("alice"+tc.otherCookie, "text/csv", "")
+				require.Equal(t, fiber.StatusUnauthorized, got.status, got.body)
+			})
+		}
+	}
+}

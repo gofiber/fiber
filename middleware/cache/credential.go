@@ -87,6 +87,8 @@ type requestCredentials struct {
 	authorization bool // an Authorization header, which is in every key
 	keyed         bool // Authorization, or a credential the default key holds
 	selected      bool // a credential header the entry's Vary names or, with a custom key, a declared one
+	apart         bool // keyed, and selected by a header the key does not hold whole: the key's credential may be shared
+	declared      bool // not keyed, and a header declared for a custom key, which may hold any part of it
 }
 
 // credentialsOf finds what the request sends, before the handler can clear it.
@@ -97,11 +99,37 @@ func (cfg *Config) credentialsOf(c fiber.Ctx, varyNames []string, hasAuthorizati
 		// A custom key is opaque: the declared headers are taken to be in it.
 		credentials = append(credentials, cfg.KeyCredentialHeaders...)
 	}
-	return requestCredentials{
+	creds := requestCredentials{
 		authorization: hasAuthorization,
 		keyed:         hasAuthorization || cfg.keyHoldsRequestCredential(c),
 		selected:      len(credentials) > 0 && hasHeaderValue(c, credentials),
 	}
+	switch {
+	case creds.keyed && creds.selected:
+		creds.apart = hasHeaderValue(c, slices.DeleteFunc(credentials, cfg.keyHoldsHeader))
+	case !creds.keyed && !cfg.usesDefaultKeyGenerator:
+		creds.declared = hasHeaderValue(c, cfg.KeyCredentialHeaders)
+	}
+	return creds
+}
+
+// keyHoldsHeader reports whether every key holds the header's value: Authorization, or a credential header of the default key.
+func (cfg *Config) keyHoldsHeader(name string) bool {
+	return utils.EqualFold(name, fiber.HeaderAuthorization) ||
+		(cfg.usesDefaultKeyGenerator && fieldname.ContainsFold(cfg.credentialKeyHeaders, name))
+}
+
+// second is the other record a refusal is kept under, if any; see recordKeys.
+func (creds requestCredentials) second(varyNames []string) (requestCredentials, []string, bool) {
+	switch {
+	case creds.apart:
+		// Not keyed, so appendKey adds the credentials the Vary selects by to the one the key holds.
+		return requestCredentials{authorization: creds.authorization, selected: true}, varyNames, true
+	case creds.declared:
+		// Keyed: the custom key alone.
+		return requestCredentials{keyed: true}, nil, true
+	}
+	return creds, nil, false
 }
 
 // scope says how far a refusal reaches: the entry ends only if the key holds the credential or the Vary selects it.
@@ -214,9 +242,31 @@ func (r *refusalRecords) key(c fiber.Ctx, generated string, varyNames []string, 
 	return key
 }
 
-// refusedFor reports whether the request's credential is recorded as refused. The key is built in a
-// pooled buffer, which the in-memory store can look up as it is: only a Storage gets a string.
+// recordKeys is where a refusal is recorded: under key and, for some credentials, a second key too.
+// A shared credential in the key, as a site-wide password before a session cookie, gets one with the
+// credentials the Vary selects by as well, which only the refused client's acceptance ends. A header
+// declared for a custom key, which may hold just part of it, gets the custom key alone, which a request
+// adding to the header still finds. "" for none.
+func (r *refusalRecords) recordKeys(c fiber.Ctx, generated string, varyNames []string, creds requestCredentials) [2]string {
+	keys := [2]string{r.key(c, generated, varyNames, creds)}
+	if other, names, ok := creds.second(varyNames); ok {
+		keys[1] = r.key(c, generated, names, other)
+	}
+	return keys
+}
+
+// refusedFor reports whether the request's credential is recorded as refused, under either of its recordKeys.
 func (r *refusalRecords) refusedFor(ctx context.Context, c fiber.Ctx, generated string, varyNames []string, creds requestCredentials) bool {
+	if r.recorded(ctx, c, generated, varyNames, creds) {
+		return true
+	}
+	other, names, ok := creds.second(varyNames)
+	return ok && r.recorded(ctx, c, generated, names, other)
+}
+
+// recorded reports whether there is a record under the key of creds. The key is built in a pooled
+// buffer, which the in-memory store can look up as it is: only a Storage gets a string.
+func (r *refusalRecords) recorded(ctx context.Context, c fiber.Ctx, generated string, varyNames []string, creds requestCredentials) bool {
 	bufPtr := acquireKeyBuffer()
 	buf := r.appendKey((*bufPtr)[:0], c, generated, varyNames, creds)
 	refused := false
@@ -249,6 +299,8 @@ func (r *refusalRecords) appendKey(buf []byte, c fiber.Ctx, generated string, va
 			slices.Sort(varied)
 			varied = slices.Compact(varied)
 		}
+		// What the key holds is in the record already, so variants that also vary on it share the record.
+		varied = slices.DeleteFunc(varied, cfg.keyHoldsHeader)
 	}
 
 	canonical := headerlookup.Canonical(c)
