@@ -484,6 +484,68 @@ func Test_Parser_Request_Header(t *testing.T) {
 		require.False(t, hasRefererHeader(&req.RawRequest.Header))
 	})
 
+	t.Run("a client header does not follow the request to another client", func(t *testing.T) {
+		t.Parallel()
+		first := New().SetHeader("Authorization", "Bearer first").AddHeader("X-Api-Key", "k1").AddHeader("X-Api-Key", "k2")
+		second := New().SetHeader("X-Second", "yes")
+		req := clientTestBRequest(t).SetHeader("X-Own", "kept")
+		req.RawRequest.Header.Set("X-Raw", "kept")
+
+		require.NoError(t, parserRequestHeader(first, req))
+		require.Equal(t, "Bearer first", string(req.RawRequest.Header.Peek("Authorization")))
+		require.Len(t, req.RawRequest.Header.PeekAll("X-Api-Key"), 2)
+
+		require.NoError(t, parserRequestHeader(second, req))
+		require.Empty(t, req.RawRequest.Header.Peek("Authorization"))
+		require.Empty(t, req.RawRequest.Header.PeekAll("X-Api-Key"))
+		require.Equal(t, "yes", string(req.RawRequest.Header.Peek("X-Second")))
+		require.Equal(t, "kept", string(req.RawRequest.Header.Peek("X-Own")))
+		require.Equal(t, "kept", string(req.RawRequest.Header.Peek("X-Raw")))
+
+		require.NoError(t, parserRequestHeader(first, req))
+		require.Equal(t, "Bearer first", string(req.RawRequest.Header.Peek("Authorization")))
+		require.Empty(t, req.RawRequest.Header.Peek("X-Second"))
+	})
+
+	t.Run("the request's own header replaces the one of an earlier client", func(t *testing.T) {
+		t.Parallel()
+		first := New().SetHeader("Authorization", "Bearer first")
+		req := clientTestBRequest(t)
+
+		require.NoError(t, parserRequestHeader(first, req))
+		require.Equal(t, "Bearer first", string(req.RawRequest.Header.Peek("Authorization")))
+
+		req.SetHeader("Authorization", "Bearer own")
+		require.NoError(t, parserRequestHeader(New(), req))
+		require.Equal(t, [][]byte{[]byte("Bearer own")}, req.RawRequest.Header.PeekAll("Authorization"))
+	})
+
+	t.Run("a client header that is no longer set does not linger on a resend", func(t *testing.T) {
+		t.Parallel()
+		client := New().SetHeader("Authorization", "Bearer token").SetHeader("Host", "internal.example")
+		req := clientTestBRequest(t)
+
+		require.NoError(t, parserRequestHeader(client, req))
+		require.Equal(t, "Bearer token", string(req.RawRequest.Header.Peek("Authorization")))
+		require.Equal(t, "internal.example", string(req.RawRequest.Header.Host()))
+
+		client.Reset()
+		require.NoError(t, parserRequestHeader(client, req))
+		require.Empty(t, req.RawRequest.Header.Peek("Authorization"))
+		require.Empty(t, req.RawRequest.Header.Host())
+	})
+
+	t.Run("a reset request forgets the headers of its last client", func(t *testing.T) {
+		t.Parallel()
+		req := clientTestBRequest(t)
+		require.NoError(t, parserRequestHeader(New().SetHeader("X-Trace", "client"), req))
+
+		req.Reset()
+		req.RawRequest.Header.Set("X-Trace", "raw")
+		require.NoError(t, parserRequestHeader(New(), req))
+		require.Equal(t, "raw", string(req.RawRequest.Header.Peek("X-Trace")))
+	})
+
 	t.Run("a cookie that is no longer set does not linger on a resend", func(t *testing.T) {
 		t.Parallel()
 		client := New().SetCookie("foo", "bar")

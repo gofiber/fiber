@@ -2253,6 +2253,55 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 	})
 }
 
+func Test_Request_Resend_DropsPreviousClientHeaders(t *testing.T) {
+	t.Parallel()
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString(c.Get(fiber.HeaderAuthorization) + "|" + c.Get("X-Partner-Id"))
+		})
+	})
+	t.Cleanup(server.stop)
+
+	send := func(t *testing.T, req *Request, client *Client, url string) string {
+		t.Helper()
+		resp, err := req.SetClient(client).Get(url)
+		require.NoError(t, err)
+		defer resp.Close()
+		return resp.String()
+	}
+
+	t.Run("a client header does not follow the request to another client", func(t *testing.T) {
+		t.Parallel()
+		billing := New().SetDial(server.dial()).SetHeader(fiber.HeaderAuthorization, "Bearer billing")
+		partner := New().SetDial(server.dial()).SetHeader("X-Partner-Id", "42")
+		req := clientTestBRequest(t)
+
+		require.Equal(t, "Bearer billing|", send(t, req, billing, "http://billing.example/"))
+		require.Equal(t, "|42", send(t, req, partner, "http://partner.example/"))
+		require.Equal(t, "Bearer billing|", send(t, req, billing, "http://billing.example/"))
+	})
+
+	t.Run("a header of a client reset since is not sent again", func(t *testing.T) {
+		t.Parallel()
+		client := New().SetDial(server.dial()).SetHeader(fiber.HeaderAuthorization, "Bearer billing")
+		req := clientTestBRequest(t)
+
+		require.Equal(t, "Bearer billing|", send(t, req, client, "http://billing.example/"))
+		client.Reset()
+		require.Equal(t, "|", send(t, req, client.SetDial(server.dial()), "http://billing.example/"))
+	})
+
+	t.Run("a header set on the request is kept", func(t *testing.T) {
+		t.Parallel()
+		billing := New().SetDial(server.dial()).SetHeader(fiber.HeaderAuthorization, "Bearer billing")
+		partner := New().SetDial(server.dial())
+		req := clientTestBRequest(t).SetHeader(fiber.HeaderAuthorization, "Bearer own")
+
+		require.Equal(t, "Bearer own|", send(t, req, billing, "http://billing.example/"))
+		require.Equal(t, "Bearer own|", send(t, req, partner, "http://partner.example/"))
+	})
+}
+
 func Test_Client_UppercaseScheme(t *testing.T) {
 	t.Parallel()
 	client := clientAOKClient(t)

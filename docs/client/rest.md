@@ -628,7 +628,7 @@ fmt.Println(string(resp.Body()))
 
 ## Headers
 
-Client-level headers are applied to every request when it is sent. A header set on the request itself with the same key replaces the client's values rather than being added to them, and each send starts from those keys cleared, so re-sending a request does not accumulate values.
+Client-level headers are applied to every request when it is sent. A header set on the request itself with the same key replaces the client's values rather than being added to them, and each send starts from those keys cleared, so re-sending a request does not accumulate values. The headers an earlier send took from its client are removed too, so a `Request` that is sent again through another client (see [SetClient](./request.md#setclient)), or after the client was reset, carries only the headers of the client that sends it and its own.
 
 ### Header
 

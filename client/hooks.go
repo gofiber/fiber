@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -372,10 +373,21 @@ func parserRequestHeader(c *Client, req *Request) error {
 	// follow it to another host. A Cookie header from SetHeader is merged below.
 	req.RawRequest.Header.DelAllCookies()
 
-	// Merge headers from the client, clearing each key first so a resend does not accumulate values.
-	for key := range c.header.All() {
+	// Neither must the headers the previous send took from its client, which may be another one or reset
+	// since; a header the request sets itself under such a key is merged again below.
+	for _, key := range req.clientHeaderKeys {
 		req.RawRequest.Header.DelBytes(key)
 	}
+
+	// Merge headers from the client, clearing each key first so a resend does not accumulate values.
+	keys := req.clientHeaderKeys[:0]
+	for key := range c.header.All() {
+		req.RawRequest.Header.DelBytes(key)
+		n := len(keys)
+		keys = slices.Grow(keys, 1)[:n+1]
+		keys[n] = append(keys[n][:0], key...) // reuses the buffer of an earlier send's key
+	}
+	req.clientHeaderKeys = keys
 	for key, value := range c.header.All() {
 		req.RawRequest.Header.AddBytesKV(key, value)
 	}

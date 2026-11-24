@@ -63,6 +63,8 @@ type Request struct {
 	boundary   string
 	referer    string
 	files      []*File
+	// clientHeaderKeys are the headers the last send copied from its client, removed by the next one.
+	clientHeaderKeys [][]byte
 
 	redirectSensitiveHeaders crosshost.HeaderNames
 
@@ -720,6 +722,7 @@ func (r *Request) Reset() {
 	r.bodyType = noBody
 	r.boundary = boundary
 	r.isPathNormalizingDisabled = false
+	r.clientHeaderKeys = r.clientHeaderKeys[:0]
 
 	for len(r.files) != 0 {
 		t := r.files[0]

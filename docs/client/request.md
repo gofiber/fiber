@@ -221,7 +221,7 @@ func (r *Request) Header(key string) []string
 ```
 
 :::info
-When the request is sent, the client's headers are applied first and the request's own headers with the same key replace them rather than being appended. Each send clears those keys before applying them again, so sending the same request twice does not accumulate values.
+When the request is sent, the client's headers are applied first and the request's own headers with the same key replace them rather than being appended. Each send clears those keys before applying them again, so sending the same request twice does not accumulate values. It also removes the headers the previous send took from its client, so a request that is sent again through another client, or after the client was reset, does not carry them.
 :::
 
 ### Headers
