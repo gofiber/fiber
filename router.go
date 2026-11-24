@@ -1326,10 +1326,13 @@ func (app *App) pruneAutoHeadRouteLocked(route *Route) {
 	norm := app.normalizePath(route.path)
 	pattern := route.routeParser.patternKey()
 	hostsKey := matchersKey(route.hosts)
+	owner := app.routeOwner(route)
 
 	app.stack[headIndex] = slices.DeleteFunc(app.stack[headIndex], func(headRoute *Route) bool {
+		// Only one of route's own app: another app's GET route keeps its generated route, as before startup.
 		if headRoute.path != norm || headRoute.mount || headRoute.use || !headRoute.autoHead ||
-			matchersKey(headRoute.hosts) != hostsKey || headRoute.routeParser.patternKey() != pattern {
+			app.routeOwner(headRoute) != owner || matchersKey(headRoute.hosts) != hostsKey ||
+			headRoute.routeParser.patternKey() != pattern {
 			return false
 		}
 

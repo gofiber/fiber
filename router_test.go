@@ -4553,6 +4553,21 @@ func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 			app.Head(`/admin/:name<regex(^[^a-z]+$)>`, next)
 			app.Get("/admin/:name", endpoint)
 		}},
+		{name: "explicit Head beside a mounted app", register: func(app *App) {
+			sub := New()
+			sub.Get("/secret", guard)
+			app.Use("/admin", sub)
+			app.Head("/admin/secret", endpoint)
+		}},
+		{name: "late explicit Head beside a mounted app", register: func(app *App) {
+			sub := New()
+			sub.Get("/secret", guard)
+			app.Use("/admin", sub)
+			app.Handler()
+
+			app.Head("/admin/secret", endpoint)
+			app.RebuildTree()
+		}},
 		{name: "late explicit Head with a constraint in another case", register: func(app *App) {
 			app.Get(`/admin/:name<regex(^\D+$)>`, guard)
 			app.Get("/admin/:name", endpoint)
