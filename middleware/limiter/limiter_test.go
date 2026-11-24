@@ -2179,3 +2179,20 @@ func Benchmark_Limiter_Headers(b *testing.B) {
 		}
 	}
 }
+
+// A dropped connection is sent nothing, so SkipSuccessfulRequests must still count it.
+func Test_Limiter_DroppedRequestIsNoSuccess(t *testing.T) {
+	t.Parallel()
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{Max: 1, Expiration: time.Minute, SkipSuccessfulRequests: true, LimiterMiddleware: strategy.handler}))
+			app.Get("/", func(c fiber.Ctx) error { return c.Drop() })
+
+			_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.Error(t, err)
+			apptest.Expect(t, app, "/", fiber.StatusTooManyRequests)
+		})
+	}
+}

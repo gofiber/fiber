@@ -2370,3 +2370,24 @@ func Test_Cache_RequestTheHandlerDoesNotSeeAsSentIsNotStored(t *testing.T) {
 	require.Equal(t, cacheUnreachable, got.cache)
 	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "beta"), cacheMiss, "tenant=beta")
 }
+
+// A dropped connection is sent nothing: the untouched 200 must neither be stored nor replace an entry.
+func Test_Cache_DroppedRequestIsNotStored(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		if c.Get("X-Blocked") != "" {
+			return c.Drop()
+		}
+		return c.SendString("page")
+	})
+
+	blocked := cacheTestCReq("/", "X-Blocked", "1", fiber.HeaderCacheControl, "no-cache")
+	_, err := app.Test(blocked)
+	require.Error(t, err)
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "page")
+	_, err = app.Test(cacheTestCReq("/", "X-Blocked", "1", fiber.HeaderCacheControl, "no-cache"))
+	require.Error(t, err)
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "page")
+}

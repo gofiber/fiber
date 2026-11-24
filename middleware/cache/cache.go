@@ -24,6 +24,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/personalheader"
 	"github.com/gofiber/fiber/v3/internal/sizedstream"
+	"github.com/gofiber/fiber/v3/internal/unsent"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -1080,6 +1081,12 @@ func New(config ...Config) fiber.Handler {
 		// The exception is a refusal, when the request found an entry.
 		status := c.Res().StatusCode()
 		refused := foundAtLookup && refusesCredential(status)
+
+		// A dropped or hijacked connection is sent nothing: only a refusal on it is a verdict.
+		if !refused && unsent.Is(c.RequestCtx()) {
+			markUnreachable()
+			return nil
+		}
 
 		// The origin accepting a credential recorded as refused ends the record, stored or not.
 		if refusalRecorded && acceptsCredential(status) {

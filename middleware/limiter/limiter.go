@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/nilerror"
+	"github.com/gofiber/fiber/v3/internal/unsent"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -144,7 +145,12 @@ func getEffectiveStatusCode(c fiber.Ctx, err error) int {
 		return resp.StatusCode()
 	}
 	if nilerror.IsNil(err) {
-		return c.Res().StatusCode()
+		// A dropped connection is sent nothing, so the untouched 200 is no success.
+		status := c.Res().StatusCode()
+		if status < fiber.StatusBadRequest && unsent.Dropped(c.RequestCtx()) {
+			return fiber.StatusInternalServerError
+		}
+		return status
 	}
 
 	// If there's an error and it's a *fiber.Error, use its status code

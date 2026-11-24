@@ -1066,3 +1066,28 @@ func Test_Idempotency_RefusedRequestIsNotStored(t *testing.T) {
 	require.Equal(t, "ok", apptest.Body(t, resp))
 	require.Equal(t, 1, calls)
 }
+
+// A dropped connection is sent nothing, so the retry reaches the handler instead of an empty 200.
+func Test_Idempotency_DroppedRequestIsNotStored(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	s := storagetest.New()
+	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
+	var calls atomic.Int32
+	app.Post("/", func(c fiber.Ctx) error {
+		if calls.Add(1) == 1 {
+			return c.Drop()
+		}
+		return c.SendString("done")
+	})
+	post := func() *http.Request {
+		req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
+		req.Header.Set(ConfigDefault.KeyHeader, validKey)
+		return req
+	}
+
+	_, err := app.Test(post())
+	require.Error(t, err)
+	require.Empty(t, s.Calls(storagetest.OpSet))
+	apptest.ExpectBody(t, app, post(), fiber.StatusOK, "done")
+}

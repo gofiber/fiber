@@ -22,6 +22,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/quotedstring"
+	"github.com/gofiber/fiber/v3/internal/unsent"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
@@ -1687,6 +1688,8 @@ func (r *DefaultRes) WriteString(s string) (int, error) {
 // This can be useful for silently terminating client connections, such as in DDoS mitigation
 // or when blocking access to sensitive endpoints.
 func (r *DefaultRes) Drop() error {
+	// The untouched response left on the context is never sent: middleware must not take it for the answer.
+	unsent.Mark(r.c.fasthttp)
 	//nolint:wrapcheck // error wrapping is avoided to keep the operation lightweight and focused on connection closure.
 	return r.c.fasthttp.Conn().Close()
 }
