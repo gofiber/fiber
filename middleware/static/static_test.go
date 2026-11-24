@@ -1746,6 +1746,54 @@ func Test_Static_DirectoryWithoutIndexKeepsHeaders(t *testing.T) {
 	require.Contains(t, resp.Header.Get(fiber.HeaderSetCookie), "session=s1")
 }
 
+// A handler before static on its route may move the path off what the router matched; static must not cut
+// the old prefix off the new path, or a file below a guarded prefix is served past its guard.
+func Test_Static_PathChangedOnTheRoute(t *testing.T) {
+	t.Parallel()
+	root := staticTestRoot(t, map[string]string{"pub.txt": "PUB", "internal/r.txt": "SECRET"})
+	deny := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) }
+	rewrite := func(from, to string) fiber.Handler {
+		return func(c fiber.Ctx) error {
+			if rest, ok := strings.CutPrefix(c.Path(), from); ok {
+				c.Path(to + rest)
+			}
+			return c.Next()
+		}
+	}
+
+	prefix := fiber.New()
+	prefix.Use("/v1/internal", deny)
+	prefix.Use("/v1", rewrite("/v1/guides/", "/v2/"), rewrite("/v1/old/", "/v1/"), rewrite("/v1/short/", "/a"),
+		rewrite("/v1/glued/", "/v1internal/"), New(root))
+	param := fiber.New()
+	param.Use("/:l/internal", deny)
+	param.Get("/:l/*", rewrite("/en/xinternal/", "/en/x/internal/"), rewrite("/fr/", "/de/"), New(root))
+
+	for app, targets := range map[*fiber.App]map[string]int{
+		prefix: {
+			"/v1/pub.txt":               fiber.StatusOK,
+			"/v1/old/pub.txt":           fiber.StatusOK,
+			"/v1/internal/r.txt":        fiber.StatusForbidden,
+			"/v1/guides/internal/r.txt": fiber.StatusNotFound,
+			"/v1/short/":                fiber.StatusNotFound,
+			"/v1/glued/r.txt":           fiber.StatusNotFound,
+		},
+		param: {
+			"/en/pub.txt":           fiber.StatusOK,
+			"/en/p%75b.txt":         fiber.StatusOK,
+			"/fr/pub.txt":           fiber.StatusOK,
+			"/en/internal/r.txt":    fiber.StatusForbidden,
+			"/en/xinternal/r.txt":   fiber.StatusNotFound,
+			"/en/%78internal/r.txt": fiber.StatusNotFound,
+		},
+	} {
+		h := app.Handler()
+		for target, want := range targets {
+			staticTestExpectRaw(t, h, target, want, "target=%s", target)
+		}
+	}
+}
+
 // staticTestFS serves its files through Open alone, counting the calls, and opens a name with the aliases
 // replaced, the way a case-folding or FAT file system resolves another spelling of an entry.
 type staticTestFS struct {

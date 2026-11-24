@@ -49,13 +49,17 @@ var rewritePool = sync.Pool{
 type fileServer struct {
 	fsys          fs.FS
 	handler       fasthttp.RequestHandler
+	config        *fiber.Config // the app's, to match the pattern before the wildcard
 	root          string
 	wildcard      string // a trailing wildcard after another parameter, whose value is the rest of the path
+	prefix        string // the route prefix stripped from the path, prefixLen bytes long
+	prefixPattern string // the route pattern before the wildcard
 	fsRootPrefix  []byte // the fs.FS subdirectory served, put before every path
 	prefixLen     int    // length of the route prefix stripped from the path, without its trailing slash; -1 when a parameter hides it
 	decodeEscapes bool   // off under UnescapePath, which already decoded everything
 	rootIsFile    bool
 	strictRouting bool // the router keeps name and name/ apart, so a directory has the slash and a file has none
+	caseSensitive bool
 	browse        bool
 	invalid       bool // the fs.FS root cannot be opened, so no path names a file
 	unrouted      bool // no route runs, so the whole path stands for the route prefix
@@ -82,6 +86,10 @@ func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
 		return end
 	}
 	if s.wildcard == "" {
+		// a handler before this one on the route, a rewrite say, may have moved p off the prefix
+		if s.prefixLen > 0 && s.prefixLen <= len(p) && !s.isPrefix(p[:s.prefixLen]) {
+			return -1
+		}
 		return s.prefixLen
 	}
 	// the router matched the wildcard at the end of p without the trailing slashes it ignores
@@ -93,7 +101,22 @@ func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
 	if end > 0 && p[end-1] == '/' {
 		end--
 	}
+	// the value is the routed path's, stale once a handler before this one set
+	// another path, which the URI then holds instead of the one sent
+	sent := utils.UnsafeString(c.Request().Header.RequestURI())
+	moved := utils.UnsafeString(c.Request().URI().PathOriginal()) != sent[:pathEnd(sent)]
+	if end >= 0 && moved && !fiber.RoutePatternMatch(p[:end], s.prefixPattern, *s.config) {
+		return -1
+	}
 	return end
+}
+
+// isPrefix reports whether head is the route prefix, as the router compares it.
+func (s *fileServer) isPrefix(head string) bool {
+	if s.caseSensitive {
+		return head == s.prefix
+	}
+	return utils.EqualFold(head, s.prefix)
 }
 
 // requestPath appends to dst the path the file server opens for the routed
@@ -317,9 +340,10 @@ func New(root string, cfg ...Config) fiber.Handler {
 			handler = byterange.Wrap(handler)
 		}
 
-		return &fileServer{
+		server := &fileServer{
 			handler:       handler,
 			fsys:          config.FS,
+			config:        cfg,
 			root:          root,
 			wildcard:      wildcard,
 			fsRootPrefix:  fsRootPrefix,
@@ -327,10 +351,18 @@ func New(root string, cfg ...Config) fiber.Handler {
 			decodeEscapes: !cfg.UnescapePath,
 			rootIsFile:    rootIsFile,
 			strictRouting: cfg.StrictRouting,
+			caseSensitive: cfg.CaseSensitive,
 			browse:        config.Browse,
 			invalid:       rootCheckErr != nil && config.FS != nil,
 			unrouted:      unrouted,
 		}
+		if prefixLen > 0 {
+			server.prefix = prefix[:prefixLen]
+		}
+		if wildcard != "" {
+			server.prefixPattern = strings.TrimSuffix(pattern[:len(pattern)-1], "/")
+		}
+		return server
 	}
 
 	// serverFor returns the file server for the app and route serving c, built on first use.
