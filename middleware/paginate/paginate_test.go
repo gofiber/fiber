@@ -194,6 +194,16 @@ func Test_CursorValuesRoundTrip(t *testing.T) {
 	require.Equal(t, "2026-01-01T00:00:00Z", decoded["created_at"])
 }
 
+// oversizedCursor returns a cursor longer than maxCursorLen that is otherwise
+// valid, Base64 of a JSON object, so only the length limit can refuse it.
+func oversizedCursor() string {
+	data, err := json.Marshal(map[string]string{"id": strings.Repeat("a", maxCursorLen)})
+	if err != nil {
+		panic(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(data)
+}
+
 // Test_CursorValuesUndecodable covers the cursors CursorValues cannot decode.
 func Test_CursorValuesUndecodable(t *testing.T) {
 	t.Parallel()
@@ -204,7 +214,7 @@ func Test_CursorValuesUndecodable(t *testing.T) {
 		{name: "empty cursor", cursor: ""},
 		{name: "invalid base64", cursor: "not-valid-base64!!!"},
 		{name: "valid base64 but invalid JSON", cursor: "bm90LWpzb24"},
-		{name: "cursor longer than maxCursorLen", cursor: strings.Repeat("a", maxCursorLen+1)},
+		{name: "cursor longer than maxCursorLen", cursor: oversizedCursor()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -484,7 +494,7 @@ func Test_PaginateBadRequest(t *testing.T) {
 		{paginateTestApp(Config{Next: func(_ fiber.Ctx) bool { return true }}), "Next skips the middleware", "/"},
 		{paginateTestApp(), "Invalid base64 cursor", "/?cursor=not-valid!!!"},
 		{paginateTestApp(), "Valid base64 cursor but invalid JSON", "/?cursor=" + notJSON},
-		{paginateTestApp(), "Cursor longer than maxCursorLen", "/?cursor=" + strings.Repeat("a", maxCursorLen+1)},
+		{paginateTestApp(), "Cursor longer than maxCursorLen", "/?cursor=" + oversizedCursor()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
