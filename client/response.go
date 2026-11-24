@@ -139,10 +139,13 @@ func (r *Response) Headers() iter.Seq2[string, []string] {
 		}
 
 		for _, key := range keys {
-			// Lines leaves out the trailer fields PeekAll appends under the same name.
-			vals := h.PeekAll(key)
-			if trailers {
+			// Asked per key: draining BodyStream between yields can bring in a trailer section,
+			// whose fields PeekAll appends under the same name and Lines leaves out.
+			var vals [][]byte
+			if fieldname.HasTrailers(h) {
 				vals = fieldname.Lines(h, key, true)
+			} else {
+				vals = h.PeekAll(key)
 			}
 			valsStr := make([]string, len(vals))
 			for i, v := range vals {
