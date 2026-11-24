@@ -167,6 +167,7 @@ func Test_FilterFlags(t *testing.T) {
 
 		{input: "text/javascript; charset=utf-8; foo=bar", expected: "text/javascript"},
 		{input: "text/javascript charset=utf-8", expected: "text/javascript"},
+		{input: "text/javascript\t; charset=utf-8", expected: "text/javascript"},
 	}
 
 	for _, tt := range tests {

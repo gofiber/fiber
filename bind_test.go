@@ -2424,6 +2424,22 @@ func Test_Bind_Form_ContentTypeNormalization(t *testing.T) {
 	})
 }
 
+// Test_Bind_TabBeforeParameters pins that a tab before the parameters of a multipart Content-Type, which fasthttp's
+// form readers accept, does not hide the form from Bind().Form and Bind().Body.
+func Test_Bind_TabBeforeParameters(t *testing.T) {
+	t.Parallel()
+	body := bindTestMultipart(t, "AbCdEfMixed12345", [2]string{"name", "john"}).Body
+	for name, bind := range map[string]func(c Ctx, out any) error{
+		"Form": func(c Ctx, out any) error { return c.Bind().Form(out) },
+		"Body": func(c Ctx, out any) error { return c.Bind().Body(out) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			bindTestPostName(t, bind, "multipart/form-data\t; boundary=AbCdEfMixed12345", body, nil)
+		})
+	}
+}
+
 // ctxTypeBinder records the concrete context type handed to Parse.
 type ctxTypeBinder struct {
 	seen string

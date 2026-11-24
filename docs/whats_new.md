@@ -1067,6 +1067,8 @@ A key bound into a struct can have at most 64 segments (`items[0][sku]` has thre
 
 With `EnableSplittingOnParsers`, a value whose key is longer than 1,024 bytes is not split at its commas: a slice field or a map of slices gets it as one element.
 
+`Bind().Form`, `Bind().Body` and `Bind().All` read a `Content-Type` with a tab before its parameters, such as `multipart/form-data<TAB>; boundary=x`, as the form readers do; a multipart form sent that way used to bind nothing.
+
 <details>
 <summary>Example</summary>
 

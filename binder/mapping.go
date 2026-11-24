@@ -1001,8 +1001,9 @@ func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 }
 
 // FilterFlags returns the media type value by trimming any parameters from a Content-Type header.
+// The media type ends at the ';' or the space or tab before it, as fasthttp's form readers end it.
 func FilterFlags(content string) string {
-	if i := utils.IndexAny2(content, ' ', ';'); i >= 0 {
+	if i := utils.IndexAny3(content, ' ', '\t', ';'); i >= 0 {
 		return content[:i]
 	}
 	return content
