@@ -587,7 +587,8 @@ func (r *Request) AddFile(path string) *Request {
 	return r
 }
 
-// AddFileWithReader adds a file using an io.ReadCloser.
+// AddFileWithReader adds a file using an io.ReadCloser. The request takes over
+// the reader and closes it, see File.SetReader.
 func (r *Request) AddFileWithReader(name string, reader io.ReadCloser) *Request {
 	r.files = append(r.files, AcquireFile(SetFileName(name), SetFileReader(reader)))
 	r.resetBody(filesBody)
@@ -982,6 +983,8 @@ type File struct {
 	name      string
 	fieldName string
 	path      string
+
+	isReaderClosed bool
 }
 
 // SetName sets the file's name.
@@ -999,13 +1002,26 @@ func (f *File) SetPath(p string) {
 	f.path = p
 }
 
-// SetReader sets the file's reader, which will be closed in the parserBody hook.
+// SetReader sets the file's reader, which the file owns from here on: it is closed once,
+// when the request body is built or when the file is reset or released.
 func (f *File) SetReader(r io.ReadCloser) {
 	f.reader = r
+	f.isReaderClosed = false
 }
 
-// Reset clears the File object.
+// closeReader closes the file's reader, once.
+func (f *File) closeReader() {
+	if f.reader == nil || f.isReaderClosed {
+		return
+	}
+	f.isReaderClosed = true
+	f.reader.Close() //nolint:errcheck // not needed
+}
+
+// Reset clears the File object and closes a reader no request body was built from.
 func (f *File) Reset() {
+	f.closeReader()
+	f.isReaderClosed = false
 	f.name = ""
 	f.fieldName = ""
 	f.path = ""

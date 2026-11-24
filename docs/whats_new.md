@@ -1248,6 +1248,7 @@ it used to carry an empty one.
 - A `Request` sent again no longer carries the headers an earlier send took from its client: sent through another client with `SetClient`, or after `Client.Reset`, it has the headers of the client that sends it and its own. A header written straight to `RawRequest` under a key the previous client had is removed with them.
 - `SetParam`, `SetParams`, `SetFormData` and `SetFormDataWithMap` on a `Request`, `SetParam`, `SetParams` and `SetHeader` on the `Client`, and `QueryParam.Set` and `FormData.Set` replace every value stored under the key, not only the first, so a value added before with `AddParam`, `AddFormData` or `AddHeader` is no longer sent next to the new one. The key moves to the end of the query string or form body.
 - `Response.Header` and `Response.Headers` read the header section only; a trailer field of a chunked response is read with `RawResponse.Header.PeekTrailer`.
+- A file reader given with `AddFileWithReader` or `SetReader` is closed when the request is released unsent, as it already was when the body was built. The body is built after the client lock is released, so a reader or marshaler that waits on its source no longer holds up the client's other requests.
 
 ## 🧰 Generic functions
 

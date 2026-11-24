@@ -8,12 +8,15 @@ import (
 	"iter"
 	"maps"
 	"mime/multipart"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -1286,5 +1289,86 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		require.Equal(b, 0, p.Len())
+	})
+}
+
+// countedReader is a file reader that counts how often it is closed.
+type countedReader struct {
+	io.Reader
+
+	closes atomic.Int32
+}
+
+func (r *countedReader) Close() error {
+	r.closes.Add(1)
+	return nil
+}
+
+// A reader handed to a file belongs to it: it is closed exactly once, also when
+// the request fails before its body is built or before the body gets to that file.
+func Test_Request_FileReaderClosedOnFailure(t *testing.T) {
+	t.Parallel()
+	refuseDial := func(string) (net.Conn, error) { return nil, io.ErrClosedPipe }
+
+	for name, tc := range map[string]struct {
+		first     io.Reader
+		album     string
+		firstName string
+	}{
+		"the URL is refused":          {album: "a/b", firstName: "first", first: strings.NewReader("first")},
+		"an earlier file fails":       {album: "a", firstName: "first", first: iotest.ErrReader(io.ErrUnexpectedEOF)},
+		"an earlier file has no name": {album: "a", first: strings.NewReader("first")},
+		"the dial is refused":         {album: "a", firstName: "first", first: strings.NewReader("first")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			first := &countedReader{Reader: tc.first}
+			second := &countedReader{Reader: strings.NewReader("second")}
+			_, err := New().SetDial(refuseDial).Post("http://example.com/albums/:album", Config{
+				PathParam: map[string]string{"album": tc.album},
+				File: []*File{
+					AcquireFile(SetFileName(tc.firstName), SetFileReader(first)),
+					AcquireFile(SetFileName("second"), SetFileReader(second)),
+				},
+			})
+			require.Error(t, err)
+			require.Equal(t, int32(1), first.closes.Load(), "the first reader")
+			require.Equal(t, int32(1), second.closes.Load(), "the second reader")
+		})
+	}
+
+	t.Run("the request is released unsent", func(t *testing.T) {
+		t.Parallel()
+		reader := &countedReader{Reader: strings.NewReader("unsent")}
+		ReleaseRequest(AcquireRequest().AddFileWithReader("unsent", reader))
+		require.Equal(t, int32(1), reader.closes.Load())
+	})
+
+	t.Run("a request of the caller keeps the reader until it is released", func(t *testing.T) {
+		t.Parallel()
+		reader := &countedReader{Reader: strings.NewReader("kept")}
+		req := AcquireRequest().
+			SetClient(New().SetDial(refuseDial)).
+			SetPathParam("album", "a/b").
+			AddFileWithReader("kept", reader)
+		_, err := req.Post("http://example.com/albums/:album")
+		require.ErrorIs(t, err, ErrPathParamInPath)
+		require.Equal(t, int32(0), reader.closes.Load())
+
+		ReleaseRequest(req)
+		require.Equal(t, int32(1), reader.closes.Load())
+	})
+
+	t.Run("a pooled file does not remember an earlier close", func(t *testing.T) {
+		t.Parallel()
+		file := AcquireFile()
+		for range 2 {
+			reader := &countedReader{Reader: strings.NewReader("again")}
+			file.SetReader(reader)
+			file.Reset()
+			file.Reset()
+			require.Equal(t, int32(1), reader.closes.Load())
+		}
+		ReleaseFile(file)
 	})
 }

@@ -618,11 +618,11 @@ func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) error {
 		if err != nil {
 			return fmt.Errorf("open file error: %w", err)
 		}
+		defer file.Close() //nolint:errcheck // not needed
 		reader = file
+	} else {
+		defer f.closeReader()
 	}
-
-	// Ensure the file reader is always closed after copying.
-	defer reader.Close() //nolint:errcheck // not needed
 
 	// Create form file and copy the content.
 	w, err := mw.CreateFormFile(f.fieldName, f.name)

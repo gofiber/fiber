@@ -956,7 +956,7 @@ fmt.Println(string(resp.Body()))
 
 ### AddFileWithReader
 
-**AddFileWithReader** adds a single file to the request from an `io.ReadCloser`. The first send reads and closes the reader, so set a new one with `SetReader` before sending the request again.
+**AddFileWithReader** adds a single file to the request from an `io.ReadCloser`. The request takes over the reader: the first send reads and closes it, so set a new one with `SetReader` before sending the request again, and a request released unsent closes it too.
 
 ```go title="Signature"
 func (r *Request) AddFileWithReader(name string, reader io.ReadCloser) *Request
@@ -1508,7 +1508,7 @@ func ReleaseFile(f *File)
 - **SetFileName** sets the file name that is sent in the multipart form.
 - **SetFileFieldName** sets the name of the form field that carries the file.
 - **SetFilePath** sets the path the file is read from.
-- **SetFileReader** sets the `io.ReadCloser` the file is read from. It is closed automatically when the request body is built.
+- **SetFileReader** sets the `io.ReadCloser` the file is read from. It is closed automatically when the request body is built, or when the file is released without that having happened (for example because the request failed earlier).
 
 ```go title="Signature"
 type SetFileFunc func(f *File)
@@ -1567,7 +1567,7 @@ func (f *File) SetPath(p string)
 
 ### SetReader
 
-**SetReader** sets the file's `io.ReadCloser`. The reader is closed automatically when the request body is parsed, so it serves one send.
+**SetReader** sets the file's `io.ReadCloser`. The reader is closed automatically when the request body is built, so it serves one send, or when the file is reset or released without that having happened.
 
 ```go title="Signature"
 func (f *File) SetReader(r io.ReadCloser)
@@ -1575,7 +1575,7 @@ func (f *File) SetReader(r io.ReadCloser)
 
 ### Reset
 
-**Reset** clears the file's fields.
+**Reset** clears the file's fields. A reader that has not been closed yet is closed first.
 
 ```go title="Signature"
 func (f *File) Reset()
