@@ -2845,7 +2845,7 @@ func Test_Proxy_RealIPAliasLimit(t *testing.T) {
 	}
 }
 
-// conventions:ignore parallel: AllocsPerRun panics in a parallel test
+// Sequential: AllocsPerRun panics in a parallel test.
 func Test_Proxy_ScreenFieldNamesDoesNotAllocate(t *testing.T) {
 	req := proxyTestRequest(t)
 	proxyTestReadRequest(t, req, rawGet+"X-Real-IP: 6.6.6.6\r\nX_Request_ID: 1\r\nAccept: */*\r\n\r\n")
