@@ -802,6 +802,28 @@ func Test_App_RefusedRequest_ChainTimesOut(t *testing.T) {
 	require.Equal(t, "ran", resp.header.Get("X-Chain"))
 }
 
+// Route handlers stay skipped for a refused request when the ErrorHandler restarts routing, also without a Use chain.
+func Test_App_RefusedRequest_RestartSkipsRoutes(t *testing.T) {
+	t.Parallel()
+	app := New(Config{BodyLimit: 16, ErrorHandler: func(c Ctx, err error) error {
+		c.Path("/slow")
+		if restartErr := c.RestartRouting(); restartErr != nil {
+			err = restartErr
+		}
+		return DefaultErrorHandler(c, err)
+	}})
+	ran := make(chan struct{}, 1)
+	app.Post("/slow", func(c Ctx) error {
+		ran <- struct{}{}
+		c.RequestCtx().TimeoutError("late")
+		return nil
+	})
+	ln := startRawServer(t, app)
+
+	rawExpectStatus(t, ln, "POST /slow HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n", StatusRequestEntityTooLarge)
+	require.Empty(t, ran)
+}
+
 // closedLocal is a request-local value that reports being closed.
 type closedLocal chan struct{}
 

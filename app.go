@@ -1800,8 +1800,8 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	if state := fctx.TLSConnectionState(); state != nil && !state.HandshakeComplete {
 		return
 	}
-	// Only a replayed chain can keep or time out the context, so without one fctx is answered in place.
-	if !app.replaysRefused(fctx) {
+	// Only a handler can keep or time out the context, so where none can run fctx is answered in place.
+	if app.answersInPlace(fctx) {
 		app.answerRefusedRequest(fctx, err)
 		return
 	}
@@ -1860,14 +1860,16 @@ func (s *refusedStream) Close() error {
 	return nil
 }
 
-// replaysRefused reports whether a request the server refused has a Use chain to replay.
-func (app *App) replaysRefused(fctx *fasthttp.RequestCtx) bool {
-	// A method GETOnly refuses is not replayed: a Use handler that ends the chain would carry it out.
-	// Asked of the method, not ErrGetOnly, since a header error is reported first.
-	if app.server.GetOnly && !fctx.IsGet() && !fctx.IsHead() {
-		return false
-	}
-	return app.skip.hasUse && app.methodInt(utils.UnsafeString(fctx.Method())) != -1
+// answersInPlace reports whether no handler can run for a request the server refused, also when the ErrorHandler
+// restarts routing: its method has no routes, or route handlers are skipped for it and the app has no Use handler.
+func (app *App) answersInPlace(fctx *fasthttp.RequestCtx) bool {
+	return app.methodInt(utils.UnsafeString(fctx.Method())) == -1 || (!app.getOnlyRefuses(fctx) && !app.skip.hasUse)
+}
+
+// getOnlyRefuses reports whether GETOnly refuses the method of the request.
+// Asked of the method, not ErrGetOnly, since a header error is reported first.
+func (app *App) getOnlyRefuses(fctx *fasthttp.RequestCtx) bool {
+	return app.server.GetOnly && !fctx.IsGet() && !fctx.IsHead()
 }
 
 // answerRefusedRequest runs the Use chain and the ErrorHandler for a request the server refused with err.
@@ -1927,11 +1929,16 @@ func (app *App) answerRefusedRequest(fctx *fasthttp.RequestCtx, err error) {
 		c.Status(fiberErr.Code)
 	}
 
-	// The trailers are dropped as the request handlers drop them, or a header the chain sets is filed with them.
-	if app.replaysRefused(fctx) && dropTrailers(&fctx.Request) {
+	// A method GETOnly refuses is not replayed: a Use handler that ends the chain would carry it out.
+	methodRefused := app.getOnlyRefuses(fctx)
+	if !methodRefused {
+		// Route handlers never run for a refused request, also not when the ErrorHandler restarts routing.
 		c.setSkipNonUseRoutes(true)
-		// The route never runs, so what the chain leaves is no response for the URL. The mark stays until
-		// the reset, which waits for a flushed net/http handler that still reads the user values.
+	}
+	// The trailers are dropped as the request handlers drop them, or a header the chain sets is filed with them.
+	if !methodRefused && c.getMethodInt() != -1 && dropTrailers(&fctx.Request) {
+		// What the chain leaves is no response for the URL. The mark stays until the reset, which waits
+		// for a flushed net/http handler that still reads the user values.
 		errorreplay.Mark(fctx)
 
 		var nextErr error
