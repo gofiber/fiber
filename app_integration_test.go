@@ -16,6 +16,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/basicauth"
 	"github.com/gofiber/fiber/v3/middleware/cache"
 	"github.com/gofiber/fiber/v3/middleware/compress"
@@ -543,6 +545,29 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 			tc.assertions(t, resp)
 		})
 	}
+}
+
+// Answering a refused request leaves the user values alone that a flushed net/http handler of the replay still reads.
+func Test_Integration_App_ServerErrorHandler_LeavesUserValuesAlone(t *testing.T) {
+	t.Parallel()
+	app := fiber.New(fiber.Config{BodyLimit: 8})
+	answered, marked := make(chan struct{}), make(chan bool, 1)
+	app.Use(adaptor.HTTPHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			return
+		}
+		<-answered
+		ctx, ok := r.Context().(*fasthttp.RequestCtx)
+		marked <- ok && errorreplay.Active(ctx)
+	}))
+
+	var resp *fasthttp.Response
+	func() {
+		defer close(answered) // also when the request fails: the server waits for the handler
+		resp = performOversizedRequest(t, app, nil)
+	}()
+	require.Equal(t, fiber.StatusRequestEntityTooLarge, resp.StatusCode())
+	require.True(t, apptest.Recv(t, marked, 10*time.Second, "the handler did not return"))
 }
 
 func Test_Integration_App_ServerErrorHandler_CustomMultipartBodyLimit(t *testing.T) {

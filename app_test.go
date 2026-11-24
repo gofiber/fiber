@@ -29,6 +29,7 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 
 	"github.com/stretchr/testify/assert"
@@ -765,6 +766,117 @@ func Test_App_RefusedRequest_ChainBodyIsNotSent(t *testing.T) {
 
 	resp := rawExpectStatus(t, ln, get+"Content-Length: 99999\r\n\r\n", StatusRequestEntityTooLarge)
 	require.Equal(t, "Request Entity Too Large", resp.body)
+}
+
+// fasthttp panics when it releases a refused request's RequestCtx that holds a timeout response, so the chain and
+// the ErrorHandler get one of their own, and a timeout there is answered with its timeout response.
+func Test_App_RefusedRequest_ChainTimesOut(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		BodyLimit: 16,
+		ErrorHandler: func(c Ctx, err error) error {
+			if c.Path() == "/restart" {
+				c.Path("/slow")
+				return c.RestartRouting()
+			}
+			return DefaultErrorHandler(c, err)
+		},
+	})
+	app.Use(func(c Ctx) error {
+		c.Set("X-Chain", "ran")
+		return c.Next()
+	})
+	app.Use("/slow", func(c Ctx) error {
+		c.RequestCtx().TimeoutError("late")
+		return nil
+	})
+	ln := startRawServer(t, app)
+
+	const tooLarge = " HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n"
+	for _, target := range []string{"/slow", "/restart"} {
+		resp := rawExpectStatus(t, ln, "POST "+target+tooLarge, StatusRequestTimeout)
+		require.Equal(t, "late", resp.body, target)
+		require.Empty(t, resp.header.Get("X-Chain"), target)
+	}
+	resp := rawExpectStatus(t, ln, "POST /"+tooLarge, StatusRequestEntityTooLarge)
+	require.Equal(t, "ran", resp.header.Get("X-Chain"))
+}
+
+// closedLocal is a request-local value that reports being closed.
+type closedLocal chan struct{}
+
+func (l closedLocal) Close() error {
+	close(l)
+	return nil
+}
+
+// The answer is copied back from the RequestCtx the chain ran on: its headers, a streamed body, and the locals that
+// are closed with the request.
+func Test_App_RefusedRequest_StreamedAnswer(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		BodyLimit: 16,
+		ErrorHandler: func(c Ctx, err error) error {
+			return c.Status(StatusRequestEntityTooLarge).SendStream(strings.NewReader(err.Error()))
+		},
+	})
+	closed := make(closedLocal)
+	app.Use(func(c Ctx) error {
+		c.Set("X-Chain", "ran")
+		c.Locals("local", closed)
+		return c.Next()
+	})
+	ln := startRawServer(t, app)
+
+	resp := rawExpectStatus(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n", StatusRequestEntityTooLarge)
+	require.Equal(t, "Request Entity Too Large", resp.body)
+	require.Equal(t, "ran", resp.header.Get("X-Chain"))
+	require.True(t, resp.closes)
+	apptest.Recv(t, closed, time.Second, "the local is closed")
+}
+
+// A header the chain sets under a name of the request's trailer section replaces the client's line in the replay too.
+func Test_App_RefusedRequest_DropsTrailers(t *testing.T) {
+	t.Parallel()
+	for name, newApp := range map[string]func(...Config) *App{"default": New, "custom ctx": ctxTestACustomApp} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := newApp()
+			var fiberRead, peekRead, netRead []string
+			app.Use(func(c Ctx) error {
+				c.Request().Header.Set("X-User", "guest")
+				return c.Next()
+			}, func(c Ctx) error {
+				fiberRead = append(fiberRead, utils.CopyString(c.Get("X-User")))
+				peekRead = append(peekRead, string(c.Request().Header.Peek("X-User")))
+				return c.Next()
+			}, func(_ http.ResponseWriter, r *http.Request) {
+				netRead = append(netRead, utils.CopyString(r.Header.Get("X-User")))
+			})
+			ln := startRawServer(t, app)
+
+			const (
+				head     = "POST / HTTP/1.1\r\nHost: example.com\r\nX-User: admin\r\n"
+				tooLarge = "Content-Length: 99999999\r\n\r\n"
+				chunked  = "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"
+			)
+			rawExpectStatus(t, ln, head+"Trailer: X-User\r\n"+tooLarge, StatusRequestEntityTooLarge)
+			rawExpectStatus(t, ln, head+"Trailer: X-User\r\n"+chunked+"Host: a\r\n\r\n", StatusBadRequest)
+			rawExpectStatus(t, ln, head+chunked+"X-User: root\r\nHost: a\r\n\r\n", StatusBadRequest)
+			want := []string{"guest", "guest", "guest"}
+			require.Equal(t, want, fiberRead)
+			require.Equal(t, want, peekRead)
+			require.Equal(t, want, netRead)
+
+			// Past the names dropTrailers takes, the chain does not run, as for a request that is served.
+			names := []string{"X-User"}
+			for i := range fieldname.MaxTrailers {
+				names = append(names, "X-"+strconv.Itoa(i))
+			}
+			rawExpectStatus(t, ln, head+"Trailer: "+strings.Join(names, ", ")+"\r\n"+tooLarge, StatusRequestEntityTooLarge)
+			require.Len(t, netRead, len(want))
+		})
+	}
 }
 
 // An ErrorHandler that writes only a body used to answer a transport-refused
@@ -3596,6 +3708,24 @@ func Test_App_Test_TLS_NegotiatedProtocol(t *testing.T) {
 	req := apptest.Req(MethodGet, "https://example.com/")
 	req.TLS.NegotiatedProtocol = "h2"
 	apptest.ExpectBody(t, app, req, StatusOK, "https h2")
+}
+
+// A request Test serves did arrive, so it is refused and replayed like any other, whatever a hand-built TLS state
+// says about the handshake.
+func Test_App_Test_TLS_RefusedRequestIsReplayed(t *testing.T) {
+	t.Parallel()
+	app := New(Config{BodyLimit: 8})
+	handshakes := make(chan bool, 1)
+	app.Use(func(c Ctx) error {
+		handshakes <- c.RequestCtx().TLSConnectionState().HandshakeComplete
+		return c.Next()
+	})
+
+	req := httptest.NewRequest(MethodPost, "/", strings.NewReader(strings.Repeat("x", 64)))
+	req.TLS = &tls.ConnectionState{ServerName: "fiber.test"}
+	_, err := app.Test(req)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+	require.True(t, apptest.Recv(t, handshakes, time.Second, "the Use chain was not replayed"))
 }
 
 // Test serves the connection itself, so it installs the close hook too.

@@ -50,6 +50,8 @@ timeout.Config{
 
 - The error is returned to the outer middleware, but the app's `ErrorHandler` is not run for a timed-out request: fasthttp already holds the response it will send, so the handler could not change it, and the timed-out handler may still be writing to the context.
 
+- A request the server refused while reading it, such as one declaring a body over `BodyLimit`, still runs the middleware registered with `Use` (see [Errors Before a Handler Runs](../guide/error-handling.md#errors-before-a-handler-runs)). When a `timeout.New` registered that way fires for it, the client receives the timeout response instead of the refusal.
+
 - Timed-out requests abandon their `fiber.Ctx` to avoid data races with the core
   request handler. A `*fiber.DefaultCtx` is reclaimed once both the timed-out
   handler has finished and Fiber has released the context, so it does return to

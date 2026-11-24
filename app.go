@@ -1550,7 +1550,9 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	var served net.Conn = conn
 	if req.TLS != nil {
 		// httptest.NewRequest sets TLS for an https target; serve such a request over TLS.
-		served = &testTLSConn{testConn: conn, state: *req.TLS}
+		state := *req.TLS
+		state.HandshakeComplete = true // a request arrives only after the handshake, whatever a hand-built state says
+		served = &testTLSConn{testConn: conn, state: state}
 	}
 
 	// Write raw http request
@@ -1792,6 +1794,35 @@ const (
 // user for the fasthttp server configuration. It maps a set of fasthttp errors to fiber
 // errors before calling the application's error handler method.
 func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
+	// fasthttp reports a failed TLS handshake as the read error of a request that never arrived.
+	if state := fctx.TLSConnectionState(); state != nil && !state.HandshakeComplete {
+		return
+	}
+
+	// fasthttp releases fctx without the timeout handling a served request gets, and panics on one a
+	// handler timed out, so the chain runs on a RequestCtx of its own that such a handler can keep.
+	rctx := new(fasthttp.RequestCtx)
+	rctx.Init2(fctx.Conn(), app.server.Logger, true)
+	rctx.SetRemoteAddr(fctx.RemoteAddr())
+	fctx.Request.CopyTo(&rctx.Request)
+	fctx.Response.CopyTo(&rctx.Response) // with the options the server set
+	app.answerRefusedRequest(rctx, err)
+
+	if timeoutResp := rctx.LastTimeoutErrorResponse(); timeoutResp != nil {
+		timeoutResp.CopyTo(&fctx.Response)
+		return
+	}
+	rctx.Response.CopyTo(&fctx.Response)
+	fctx.Response.ImmediateHeaderFlush = rctx.Response.ImmediateHeaderFlush
+	if rctx.Response.IsBodyStream() {
+		fctx.Response.SetBodyStream(rctx.Response.BodyStream(), rctx.Response.Header.ContentLength())
+	}
+	// Only fctx is reset, which closes the request's io.Closer values and waits for a flushed handler.
+	rctx.VisitUserValuesAll(fctx.SetUserValue)
+}
+
+// answerRefusedRequest runs the Use chain and the ErrorHandler for a request the server refused with err.
+func (app *App) answerRefusedRequest(fctx *fasthttp.RequestCtx, err error) {
 	// Acquire Ctx with fasthttp request from pool
 	c := app.AcquireCtx(fctx)
 	defer app.ReleaseCtx(c)
@@ -1850,12 +1881,12 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	// A method GETOnly refuses is not replayed: a Use handler that ends the chain would carry it out.
 	// Asked of the method, not ErrGetOnly, since a header error is reported first.
 	methodRefused := app.server.GetOnly && !fctx.IsGet() && !fctx.IsHead()
-	if !methodRefused && c.getMethodInt() != -1 {
+	// The trailers are dropped as the request handlers drop them, or a header the chain sets is filed with them.
+	if !methodRefused && c.getMethodInt() != -1 && dropTrailers(&fctx.Request) {
 		c.setSkipNonUseRoutes(true)
-		defer c.setSkipNonUseRoutes(false)
-		// The route never runs, so what the chain leaves is no response for the URL.
+		// The route never runs, so what the chain leaves is no response for the URL. The mark stays until
+		// the reset, which waits for a flushed net/http handler that still reads the user values.
 		errorreplay.Mark(fctx)
-		defer errorreplay.Unmark(fctx)
 
 		var nextErr error
 		if d, isDefault := c.(*DefaultCtx); isDefault {
@@ -1866,6 +1897,9 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 		if nextErr != nil && !errors.Is(nextErr, ErrNotFound) && !errors.Is(nextErr, ErrMethodNotAllowed) {
 			log.Errorf("serverErrorHandler: middleware traversal failed: %v", nextErr)
+		}
+		if fctx.LastTimeoutErrorResponse() != nil {
+			return // the handler that timed out may still write the response
 		}
 		// Route guards were skipped too: drop the chain's body, which an ErrorHandler calling SendStatus would send.
 		fctx.Response.ResetBody()

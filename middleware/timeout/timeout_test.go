@@ -1116,3 +1116,25 @@ func Test_Timeout_FastHTTPRouteHandlerReturnsWhileTheAnswerIsWritten(t *testing.
 	require.NoError(t, err)
 	require.Contains(t, string(answer), "503 Service Unavailable")
 }
+
+// fasthttp panics releasing a refused request's RequestCtx that holds a timeout response, so a timeout.New registered
+// with Use runs on a RequestCtx of its own there, and the refused request is answered with the timeout response.
+func Test_Timeout_RefusedRequest(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	timedOut := make(chan error, 1)
+	app.Use("/slow", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		timedOut <- c.Context().Err()
+		return c.Context().Err()
+	}, Config{Timeout: 20 * time.Millisecond}))
+	ln := apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true})
+
+	conn := apptest.Dial(t, ln)
+	_, err := io.WriteString(conn, "GET /slow HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999999\r\n\r\n")
+	require.NoError(t, err)
+	answer, err := io.ReadAll(conn)
+	require.NoError(t, err)
+	require.Contains(t, string(answer), "503 Service Unavailable")
+	require.ErrorIs(t, apptest.Recv(t, timedOut, time.Second, "the handler did not time out"), context.DeadlineExceeded)
+}
