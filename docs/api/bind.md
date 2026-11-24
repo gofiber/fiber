@@ -613,7 +613,7 @@ curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
 ```
 
 :::info
-`EnableSplittingOnParsers` applies to the Cookie, Form, Header, Query, and RespHeader binders. The Header and RespHeader binders also remove the spaces and tabs around each element and skip empty elements (see [Header](#header)); the Cookie, Form and Query binders keep each element as written. A value whose key is longer than 1,024 bytes is not split: a slice field or a map of slices gets it as one element. For more parser settings, please refer to [Config](fiber.md#enablesplittingonparsers)
+`EnableSplittingOnParsers` applies to the Cookie, Form, Header, Query, and RespHeader binders. The Header and RespHeader binders also remove the spaces and tabs around each element and skip empty elements (see [Header](#header)); the Cookie, Form and Query binders keep each element as written. A value whose key is longer than 1,024 bytes is not split: a slice of strings or a map of them gets it as one element. A slice of numbers, such as `[]int`, reads a comma-separated value as a list either way, with splitting on or off. For more parser settings, please refer to [Config](fiber.md#enablesplittingonparsers)
 :::
 
 #### Array Query Parameters
