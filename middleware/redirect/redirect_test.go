@@ -268,6 +268,16 @@ func Test_Redirect_ExtraSlashesBeforeTheCapture(t *testing.T) {
 	})
 }
 
+// Test_Redirect_SlashesAloneAreTheRoot covers a path of slashes alone, which the router reads as "/".
+func Test_Redirect_SlashesAloneAreTheRoot(t *testing.T) {
+	t.Parallel()
+	redirectTestRun(t, false, "/", []redirectTestCase{
+		{target: "/new", request: "//", want: "/new"},
+		{target: "/new", request: "///", want: "/new"},
+		{pattern: "/*", target: "/new/$1", request: "//", want: "/new/"},
+	})
+}
+
 // Test_Redirect_OverlappingRulesAreDeterministic pins that two patterns matching one path resolve the same every run.
 func Test_Redirect_OverlappingRulesAreDeterministic(t *testing.T) {
 	t.Parallel()
