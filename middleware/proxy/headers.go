@@ -102,8 +102,14 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 // them, except naming the ones to keep. On either failure, more trailer names than
 // fieldname.MaxTrailers (each costs a scan of the header) or the strip's budget running
 // out, res is reset so none of the upstream's fields go out with the 502 Bad Gateway
-// returned.
+// returned. A response that is not final is refused the same way, whatever the policy.
 func sanitizeUpstreamResponse(res *fasthttp.Response, policy SecurityPolicy, except ...string) error {
+	// fasthttp hands over a 101 and a status below 100 as the result. The proxy does not tunnel, and a front end
+	// that starts relaying bytes on a 101 would hand its client a raw connection to this server.
+	if res.StatusCode() < fasthttp.StatusOK {
+		resetUpstreamResponse(res)
+		return fiber.ErrBadGateway
+	}
 	if !fieldname.DropResponseTrailers(&res.Header) || !policy.KeepHopByHopHeaders && !stripHopByHopResponseHeaders(res, except...) {
 		resetUpstreamResponse(res)
 		return fiber.ErrBadGateway

@@ -1196,6 +1196,53 @@ func proxyTestStreamingHandlersUnder(addr string, policy SecurityPolicy, after f
 	}
 }
 
+func Test_Proxy_UpstreamNonFinalResponseRefused(t *testing.T) {
+	t.Parallel()
+	// Not a Fiber app: the status line goes out as the request names it, which no server writes for a status below 100.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, _, err := http.NewResponseController(w).Hijack()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer conn.Close() //nolint:errcheck // It is fine to ignore the error here
+		fmt.Fprintf(conn, "HTTP/1.1 %s\r\nX-Kept: header\r\nUpgrade: websocket\r\nConnection: close\r\nContent-Length: 2\r\n\r\nok", r.Header.Get("X-Status"))
+	}))
+	t.Cleanup(upstream.Close)
+	addr := upstream.Listener.Addr().String()
+
+	for _, keep := range []bool{false, true} {
+		t.Run(fmt.Sprintf("keep=%v", keep), func(t *testing.T) {
+			t.Parallel()
+			policy := proxyTestAllowPrivatePolicy()
+			policy.KeepHopByHopHeaders = keep
+			hookRan := func(c fiber.Ctx) error { c.Set("X-Hook", "ran"); return nil }
+			handlers := proxyTestHandlersUnder(addr, policy, hookRan)
+			maps.Copy(handlers, proxyTestStreamingHandlersUnder(addr, policy, hookRan))
+			for name, handler := range handlers {
+				app := fiber.New()
+				app.Get("/", handler)
+				// With Upgrade, which the upstream is sent when the policy keeps the hop-by-hop headers.
+				get := func(status string) *http.Request {
+					return apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Status", status),
+						apptest.WithHeader(fiber.HeaderUpgrade, "websocket"), apptest.WithHeader(fiber.HeaderConnection, "Upgrade"))
+				}
+
+				resp := apptest.ExpectBody(t, app, get("200 OK"), fiber.StatusOK, "ok")
+				require.Equal(t, "header", resp.Header.Get("X-Kept"), name)
+				require.Equal(t, "ran", resp.Header.Get("X-Hook"), name)
+
+				for _, status := range []string{"101 Switching Protocols", "099 Below The Range"} {
+					resp = apptest.Expect(t, app, get(status), fiber.StatusBadGateway)
+					for _, dropped := range []string{"X-Kept", "X-Hook", fiber.HeaderUpgrade} {
+						require.Empty(t, resp.Header.Values(dropped), name+" "+status+" "+dropped)
+					}
+				}
+			}
+		})
+	}
+}
+
 // Test_Proxy_UpstreamTrailerSectionDropped checks that the trailer section of an upstream response reaches the
 // client neither as trailers nor as header lines, announced or not, whatever the hop-by-hop policy and whether
 // the client buffers the response or streams it, and that a section naming more than fieldname.MaxTrailers
