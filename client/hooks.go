@@ -500,22 +500,23 @@ func parserRequestHeader(c *Client, req *Request) error {
 }
 
 // parserRequestBody serializes the request body based on its type and sets it into the RawRequest.
+// It runs outside the client lock (see runBuiltinRequestHooks), so it takes the marshalers through their getters.
 func parserRequestBody(c *Client, req *Request) error {
 	switch req.bodyType {
 	case jsonBody:
-		body, err := c.jsonMarshal(req.body)
+		body, err := c.JSONMarshal()(req.body)
 		if err != nil {
 			return err
 		}
 		req.RawRequest.SetBody(body)
 	case xmlBody:
-		body, err := c.xmlMarshal(req.body)
+		body, err := c.XMLMarshal()(req.body)
 		if err != nil {
 			return err
 		}
 		req.RawRequest.SetBody(body)
 	case cborBody:
-		body, err := c.cborMarshal(req.body)
+		body, err := c.CBORMarshal()(req.body)
 		if err != nil {
 			return err
 		}

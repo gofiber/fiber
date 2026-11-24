@@ -324,9 +324,18 @@ func (c *core) preHooks() error {
 	return nil
 }
 
-// runBuiltinRequestHooks serializes the request under the client lock, as the
-// built-in hooks read client-level state while they fill in RawRequest.
+// runBuiltinRequestHooks serializes the URL and headers under the client lock and the body after it:
+// a marshaler or a multipart file reader may wait on its source while other requests need the lock.
 func (c *core) runBuiltinRequestHooks() error {
+	if err := c.runLockedRequestHooks(); err != nil {
+		return err
+	}
+
+	return parserRequestBody(c.client, c.req)
+}
+
+// runLockedRequestHooks runs the built-in hooks that read client-level state, under the client lock.
+func (c *core) runLockedRequestHooks() error {
 	c.client.mu.Lock()
 	defer c.client.mu.Unlock()
 

@@ -1282,3 +1282,86 @@ func (c *closeSignal) Close() error {
 	c.once.Do(func() { close(c.closed) })
 	return nil
 }
+
+// clientTestCBlockedBody is a request body that waits in Read or MarshalJSON until freed; reading is
+// closed once serializing starts.
+type clientTestCBlockedBody struct {
+	reading  chan struct{}
+	freed    chan struct{}
+	readOnce sync.Once
+	freeOnce sync.Once
+}
+
+func (b *clientTestCBlockedBody) wait() {
+	b.readOnce.Do(func() { close(b.reading) })
+	<-b.freed
+}
+
+func (b *clientTestCBlockedBody) free() { b.freeOnce.Do(func() { close(b.freed) }) }
+
+func (b *clientTestCBlockedBody) Read([]byte) (int, error) {
+	b.wait()
+	return 0, io.EOF
+}
+
+func (*clientTestCBlockedBody) Close() error { return nil }
+
+//nolint:revive // marshal-receiver: the body holds sync.Once values, which a copy would not share
+func (b *clientTestCBlockedBody) MarshalJSON() ([]byte, error) {
+	b.wait()
+	return []byte(`"marshaled"`), nil
+}
+
+// Test_Execute_BlockedBodyLeavesOtherRequestsAlone pins that a request body is serialized outside the
+// client lock, so a blocked multipart reader or marshaler does not hold up the client's other requests.
+func Test_Execute_BlockedBodyLeavesOtherRequestsAlone(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		cfg  func(body *clientTestCBlockedBody) Config
+		name string
+		want string
+	}{
+		{
+			name: "multipart file reader",
+			cfg: func(body *clientTestCBlockedBody) Config {
+				return Config{File: []*File{AcquireFile(SetFileName("upload.bin"), SetFileReader(body))}}
+			},
+			want: `filename="upload.bin"`,
+		},
+		{name: "JSON marshaler", cfg: func(body *clientTestCBlockedBody) Config { return Config{Body: body} }, want: `"marshaled"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := New().SetDial(clientTestCServe(t, func(ctx *fasthttp.RequestCtx) { ctx.SetBody(ctx.PostBody()) }))
+			body := &clientTestCBlockedBody{reading: make(chan struct{}), freed: make(chan struct{})}
+
+			sent, done := make(chan string, 1), make(chan struct{})
+			go func() {
+				defer close(done)
+				resp, err := client.Post("http://example.com/upload", tc.cfg(body))
+				if assert.NoError(t, err) {
+					defer resp.Close()
+					sent <- string(resp.Body())
+				}
+			}()
+			t.Cleanup(func() {
+				body.free()
+				<-done
+			})
+			apptest.Recv(t, body.reading, time.Second, "the request body was not serialized")
+
+			other := make(chan error, 1)
+			go func() {
+				resp, err := client.Get("http://example.com/")
+				if err == nil {
+					resp.Close()
+				}
+				other <- err
+			}()
+			require.NoError(t, apptest.Recv(t, other, 5*time.Second, "a request waited for the body of another request"))
+
+			body.free()
+			require.Contains(t, apptest.Recv(t, sent, 5*time.Second, "the request was not sent"), tc.want)
+		})
+	}
+}

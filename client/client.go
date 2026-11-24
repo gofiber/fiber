@@ -1103,7 +1103,7 @@ func newClient(transport httpClientTransport) *Client {
 		path:    &PathParam{},
 
 		userRequestHooks:     []RequestHook{},
-		builtinRequestHooks:  []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
+		builtinRequestHooks:  []RequestHook{parserRequestURL, parserRequestHeader},
 		finalRequestHooks:    []RequestHook{},
 		userResponseHooks:    []ResponseHook{},
 		builtinResponseHooks: []ResponseHook{parserResponseCookie, logger},
