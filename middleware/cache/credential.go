@@ -401,9 +401,23 @@ func (r *refusalRecords) refused(ctx context.Context, key string) bool {
 // (unix seconds) or until the group's longest-lived credential entry stops being kept, whichever is
 // latest, and never shorter than the record there already. A record the Storage cannot take is remembered here.
 func (r *refusalRecords) record(ctx context.Context, group int, key string, entryExp uint64) {
+	noted := r.expiry[group].Load()
+	for {
+		r.write(ctx, group, key, max(entryExp, noted))
+		// A request that noted its entry during the write found no record to extend.
+		latest := r.expiry[group].Load()
+		if latest <= noted {
+			return
+		}
+		noted = latest
+	}
+}
+
+// write is one pass of record, for a record kept at least until last (unix seconds).
+func (r *refusalRecords) write(ctx context.Context, group int, key string, last uint64) {
 	retention := r.cfg.Expiration
 	clock := safeUnixSeconds(r.cfg.now())
-	if last := max(entryExp, r.expiry[group].Load()); last > clock {
+	if last > clock {
 		retention = max(retention, secondsToDuration(last-clock))
 	}
 	now := uint64(utils.Timestamp())

@@ -591,6 +591,7 @@ func isRefusalRecord(key string) bool {
 // and writes.
 type refusalStorage struct {
 	*storagetest.Memory
+	beforeWrite func() // runs before each record write; set before the first request
 	reads       atomic.Int32
 	writes      atomic.Int32
 	markerReads atomic.Int32 // of the marker for all URLs
@@ -605,6 +606,9 @@ func newRefusalStorage() *refusalStorage {
 
 func (s *refusalStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
 	if isRefusalRecord(key) {
+		if s.beforeWrite != nil {
+			s.beforeWrite()
+		}
 		s.writes.Add(1)
 		if s.failWrites.Load() {
 			return errors.New("storage unavailable")
@@ -2087,5 +2091,56 @@ func Test_Cache_RefusalRecordOutlivesAnEntryStoredAfterIt(t *testing.T) {
 			}
 			require.Equal(t, 1, records)
 		})
+	}
+}
+
+// A request for the credential that stores its entry while the refusal's record is being written finds no
+// record to extend yet: the record written has to outlast that entry itself.
+func Test_Cache_RefusalRecordOutlivesAnEntryStoredDuringItsWrite(t *testing.T) {
+	t.Parallel()
+	storage := newRefusalStorage()
+	var held atomic.Bool
+	writing, release := make(chan struct{}), make(chan struct{})
+	storage.beforeWrite = func() {
+		if held.CompareAndSwap(false, true) {
+			writing <- struct{}{}
+			<-release
+		}
+	}
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage}))
+	app.Get("/account", func(c fiber.Ctx) error {
+		if c.Get("X-Refuse") != "" {
+			return c.SendStatus(fiber.StatusUnauthorized)
+		}
+		c.Set(fiber.HeaderCacheControl, "public, max-age="+c.Get("X-Max-Age", "60"))
+		return c.SendString("account")
+	})
+	req := func(accept string, more ...string) *http.Request {
+		return cacheTestCReq("/account", append([]string{fiber.HeaderAuthorization, "Bearer a", fiber.HeaderAccept, accept}, more...)...)
+	}
+
+	require.Equal(t, cacheMiss, doRequest(t, app, req("text/short")).cache)
+	done := make(chan error, 1)
+	go func() {
+		resp, err := app.Test(req("text/short", fiber.HeaderCacheControl, "no-cache", "X-Refuse", "1"), fiber.TestConfig{Timeout: time.Minute})
+		if err == nil {
+			err = resp.Body.Close()
+		}
+		done <- err
+	}()
+	apptest.Recv(t, writing, time.Minute)
+	stored := uint64(time.Now().Unix())
+	require.Equal(t, cacheMiss, doRequest(t, app, req("text/other", "X-Max-Age", "3600")).cache)
+	close(release)
+	require.NoError(t, apptest.Recv(t, done, time.Minute))
+
+	require.Equal(t, 1, storage.records())
+	storage.Mu.RLock()
+	defer storage.Mu.RUnlock()
+	for key, value := range storage.Data {
+		if isRefusalRecord(key) {
+			require.GreaterOrEqual(t, lapseOf(value), stored+3598, key)
+		}
 	}
 }
