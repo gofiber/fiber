@@ -710,17 +710,18 @@ func Test_Cache_RefusalRecordIsReadOnlyWhereOneCanApply(t *testing.T) {
 					vary:      tc.vary,
 					valid:     []string{session},
 				})
+				// A miss reads a record only to extend one over the entry it stores.
+				perRequest := int32(0)
+				if announced == "the group" {
+					perRequest = tc.reads
+				}
 				require.Equal(t, cacheMiss, f.get(session, "", "").cache)
-				require.Zero(t, storage.reads.Load(), "a miss has nothing to check")
+				require.Equal(t, perRequest, storage.reads.Load())
 
 				for range 3 {
 					require.Equal(t, cacheHit, f.get(session, "", "").cache)
 				}
-				want := int32(0)
-				if announced == "the group" {
-					want = 3 * tc.reads
-				}
-				require.Equal(t, want, storage.reads.Load())
+				require.Equal(t, 4*perRequest, storage.reads.Load())
 				// A marker is read once per poll, and not at all for a hit that can hold no credential.
 				if !tc.polls {
 					require.Zero(t, storage.markerReads.Load(), "a hit that can hold no credential read a marker")
@@ -2019,6 +2020,72 @@ func Test_Cache_RefusalEndsAnEntryKeyedByAnySpellingOfTheCookie(t *testing.T) {
 			ended.Store(true)
 			require.Equal(t, fiber.StatusUnauthorized, cacheTestCGet(t, app, "/", fiber.HeaderCookie, cookie, fiber.HeaderCacheControl, "no-cache").status)
 			require.Equal(t, fiber.StatusUnauthorized, cacheTestCGet(t, app, "/", fiber.HeaderCookie, cookie).status)
+		})
+	}
+}
+
+// A request for the credential whose handler ran across the refusal stores its entry after the record
+// was written: the record has to outlast that entry too.
+func Test_Cache_RefusalRecordOutlivesAnEntryStoredAfterIt(t *testing.T) {
+	t.Parallel()
+	for name, cacheControl := range map[string]string{"miss": "", "accepted refresh": "no-cache"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			storage := storagetest.New()
+			var ended atomic.Bool
+			entered, release := make(chan struct{}), make(chan struct{})
+			app := fiber.New()
+			app.Use(New(Config{Storage: storage}))
+			app.Get("/account", func(c fiber.Ctx) error {
+				refused := ended.Load()
+				c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+				if c.Get("X-Slow") != "" {
+					entered <- struct{}{}
+					<-release
+					c.Set(fiber.HeaderCacheControl, "public, max-age=3600")
+				}
+				if refused {
+					return c.SendStatus(fiber.StatusUnauthorized)
+				}
+				return c.SendString("account")
+			})
+			req := func(accept, cacheControl string, more ...string) *http.Request {
+				return cacheTestCReq("/account", append([]string{
+					fiber.HeaderAuthorization, "Bearer a",
+					fiber.HeaderAccept, accept, fiber.HeaderCacheControl, cacheControl,
+				}, more...)...)
+			}
+
+			require.Equal(t, cacheMiss, doRequest(t, app, req("text/short", "")).cache)
+			if cacheControl != "" {
+				require.Equal(t, cacheMiss, doRequest(t, app, req("text/other", "")).cache)
+			}
+			// Its handler accepts the credential, then the refusal is recorded before it stores.
+			done := make(chan error, 1)
+			go func() {
+				resp, err := app.Test(req("text/other", cacheControl, "X-Slow", "1"), fiber.TestConfig{Timeout: time.Minute})
+				if err == nil {
+					err = resp.Body.Close()
+				}
+				done <- err
+			}()
+			apptest.Recv(t, entered, time.Minute)
+			ended.Store(true)
+			stored := uint64(time.Now().Unix())
+			require.Equal(t, fiber.StatusUnauthorized, doRequest(t, app, req("text/short", "no-cache")).status)
+			close(release)
+			require.NoError(t, apptest.Recv(t, done, time.Minute))
+
+			storage.Mu.RLock()
+			defer storage.Mu.RUnlock()
+			records := 0
+			for key, value := range storage.Data {
+				if isRefusalRecord(key) {
+					records++
+					require.GreaterOrEqual(t, lapseOf(value), stored+3598, key)
+				}
+			}
+			require.Equal(t, 1, records)
 		})
 	}
 }

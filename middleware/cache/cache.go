@@ -1364,6 +1364,17 @@ func New(config ...Config) fiber.Handler {
 		// Authorization is in every key, so its entry is a credential's whatever the response varies on.
 		if hasAuthorization || cfg.holdsCredentialResponse(c, e.vary) {
 			refusals.noteLifetime(urlGroup, storageExpiration)
+			// A refusal of the credential recorded while the handler ran must outlast this entry too; one
+			// recorded from now on reads the lifetime noted above.
+			if refusals.mayHoldIn(reqCtx, urlGroup) {
+				keys := recordKeys
+				if !foundAtLookup {
+					keys = refusals.recordKeys(c, generatedKey, respVaryNames, cfg.credentialsOf(c, respVaryNames, hasAuthorization))
+				}
+				for _, key := range keys {
+					refusals.cover(reqCtx, urlGroup, key)
+				}
+			}
 		}
 
 		if expiration <= 0 && !expiresParseError {

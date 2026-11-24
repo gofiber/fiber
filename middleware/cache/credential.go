@@ -338,11 +338,15 @@ func (r *refusalRecords) group(c fiber.Ctx, generated string) int {
 // mayHold reports whether a record can exist for a hit on this URL to find: one written here or, in
 // an external Storage, one another instance announced.
 func (r *refusalRecords) mayHold(ctx context.Context, c fiber.Ctx, generated string) bool {
+	return r.mayHoldIn(ctx, r.group(c, generated))
+}
+
+// mayHoldIn is mayHold for a group of URLs.
+func (r *refusalRecords) mayHoldIn(ctx context.Context, group int) bool {
 	now := uint64(utils.Timestamp())
 	if now >= r.all.until.Load() && !r.announced(ctx, &r.all, refusalMarker) {
 		return false
 	}
-	group := r.group(c, generated)
 	gate := &r.gates[group]
 	return now < gate.until.Load() || r.announced(ctx, gate, groupMarkers[group])
 }
@@ -426,6 +430,14 @@ func (r *refusalRecords) record(ctx context.Context, group int, key string, entr
 		if err := r.m.del(ctx, oldest.key); err != nil {
 			log.Warnf("cache: failed to drop the oldest record of a refused credential: %v", err)
 		}
+	}
+}
+
+// cover extends the record under key, if there is one, over the credential entries of the group noted
+// since it was written: a refusal recorded while a request for the credential ran knew nothing of its entry.
+func (r *refusalRecords) cover(ctx context.Context, group int, key string) {
+	if key != "" && (r.dropped.has(key, uint64(utils.Timestamp())) || r.lapse(ctx, key) > 0) {
+		r.record(ctx, group, key, 0)
 	}
 }
 
