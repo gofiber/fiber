@@ -31,6 +31,7 @@ type Session struct {
 	data        *data                   // key value data
 	rawData     []byte                  // snapshot from the last decode, reused by Save while the data is unchanged
 	id          string                  // session id
+	sent        string                  // the ID the last save wrote to the response
 	key         storageKey              // storage key of id, built on first use
 	unreadable  storageKey              // key of the record the request named and the store cannot read: Destroy and Reset delete it too
 	extractor   extractors.Result       // provenance of the extractor that supplied the session ID
@@ -105,6 +106,7 @@ func (s *Session) Release() {
 func releaseSession(s *Session) {
 	s.mu.Lock()
 	s.id = ""
+	s.sent = ""
 	s.key = ""
 	s.unreadable = ""
 	s.idleTimeout = 0
@@ -568,7 +570,7 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	if s.dropped {
-		s.markPersonal()
+		s.withdraw()
 		return nil
 	}
 	// Under the destroyed ID it would be read as a change by a request that loaded the session before.
@@ -608,7 +610,7 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 		}
 		if moved {
 			if raw == nil {
-				s.markPersonal()
+				s.withdraw()
 				return nil // ended by another request: neither store it nor send its cookie again
 			}
 			if s.overtakenBy(raw) {
@@ -739,6 +741,7 @@ func (s *Session) setSession(ttl time.Duration) {
 	if resp == nil {
 		return
 	}
+	s.sent = s.id
 
 	// Get all relevant extractors
 	relevantExtractors := s.getExtractorInfo()
@@ -781,6 +784,35 @@ func (s *Session) markPersonal() {
 	defer s.reqMu.Unlock()
 	if _, resp := s.requestResponse(); resp != nil {
 		personalheader.MarkResponse(s.fasthttpCtx())
+	}
+}
+
+// withdraw takes the ID an earlier save sent off the response of a session another request ended, so it neither
+// revives nor overwrites a newer one in the client; a value written since is left. The caller holds s.mu.
+func (s *Session) withdraw() {
+	s.markPersonal()
+	s.reqMu.Lock()
+	defer s.reqMu.Unlock()
+	_, resp := s.requestResponse()
+	if resp == nil || s.sent == "" {
+		return
+	}
+	for _, ext := range s.getExtractorInfo() {
+		switch ext.Source {
+		case extractors.SourceHeader:
+			if string(resp.Header.Peek(ext.Key)) == s.sent {
+				resp.Header.Del(ext.Key)
+			}
+		case extractors.SourceCookie:
+			fcookie := fasthttp.AcquireCookie()
+			fcookie.SetKey(ext.Key)
+			if resp.Header.Cookie(fcookie) && string(fcookie.Value()) == s.sent {
+				resp.Header.DelCookie(ext.Key)
+			}
+			fasthttp.ReleaseCookie(fcookie)
+		default:
+			// Other sources are read-only
+		}
 	}
 }
 

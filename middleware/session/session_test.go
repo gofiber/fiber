@@ -2870,6 +2870,7 @@ func Test_Session_SaveAfterDestroy(t *testing.T) {
 			store := NewStore(Config{Storage: memory.New(), AbsoluteTimeout: time.Hour})
 			id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
 			inFlight := loadSession(t, app, store, id)
+			require.NoError(t, inFlight.Save())
 
 			ending := loadSession(t, app, store, id)
 			require.NoError(t, ending.Destroy())
@@ -2885,10 +2886,49 @@ func Test_Session_SaveAfterDestroy(t *testing.T) {
 			require.NoError(t, store.Delete(context.Background(), newID))
 			require.NoError(t, ending.Save())
 			sessionTestRequireGone(t, store, newID)
+			require.Empty(t, ending.ctx.Response().Header.Peek(fiber.HeaderSetCookie))
 
 			inFlight.Set("cart", "1")
-			require.NoError(t, inFlight.Save())
+			require.NoError(t, finish(inFlight))
 			sessionTestRequireGone(t, store, id)
+			sessionTestRequireGone(t, store, inFlight.ID())
+			// The ID its first save sent is not handed out once another request ended the session.
+			require.Empty(t, inFlight.ctx.Response().Header.Peek(fiber.HeaderSetCookie))
+		})
+	}
+}
+
+// An ended session takes the ID its earlier save sent off the response, from a header as from a cookie, and leaves
+// a value written there since.
+func Test_Session_EndedSaveWithdrawsSentID(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		header    string
+		want      string
+		extractor extractors.Extractor
+	}{
+		"cookie":               {extractor: extractors.FromCookie("session_id"), header: fiber.HeaderSetCookie},
+		"header":               {extractor: extractors.FromHeader("X-Session"), header: "X-Session"},
+		"cookie written since": {extractor: extractors.FromCookie("session_id"), header: fiber.HeaderSetCookie, want: "session_id=other"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			store := NewStore(Config{Extractor: tc.extractor})
+			sess, err := store.Get(apptest.Ctx(t, fiber.New()))
+			require.NoError(t, err)
+			t.Cleanup(sess.Release)
+			sess.Set("user", "alice")
+			require.NoError(t, sess.Save())
+			if tc.want != "" {
+				sess.ctx.Cookie(&fiber.Cookie{Name: "session_id", Value: "other"})
+			}
+			require.NoError(t, store.Delete(context.Background(), sess.ID()))
+			require.NoError(t, sess.Save())
+			if tc.want == "" {
+				require.Empty(t, sess.ctx.Response().Header.Peek(tc.header))
+			} else {
+				require.Contains(t, string(sess.ctx.Response().Header.Peek(tc.header)), tc.want)
+			}
 		})
 	}
 }
