@@ -745,6 +745,16 @@ var keyClass = func() [256]byte {
 	return t
 }()
 
+// IsToken reports whether name is a field name, one or more token bytes (RFC 9110 Section 5.1).
+func IsToken(name []byte) bool {
+	for _, c := range name {
+		if keyClass[c] == keyInvalid {
+			return false
+		}
+	}
+	return len(name) > 0
+}
+
 // IsCanonical reports whether name is already in fasthttp's canonical form: a
 // token with an upper-case letter first and after each '-' and lower case
 // elsewhere. fasthttp derives that form again on every keyed call, three

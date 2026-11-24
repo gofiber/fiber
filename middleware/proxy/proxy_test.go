@@ -2779,3 +2779,109 @@ func Test_Proxy_RetryConnectionErrors(t *testing.T) {
 	cfg := configDefault(Config{Servers: []string{"http://upstream.example"}})
 	require.NotNil(t, newHostClient(mustParseTestURL(t, "http://upstream.example:8080"), &cfg, DefaultSecurityPolicy()).RetryIfErr)
 }
+
+// cgiVariable returns the name a CGI gateway hands name on under, less the HTTP_ in front (RFC 3875 Section 4.1.18).
+func cgiVariable(name []byte) string {
+	return strings.ReplaceAll(strings.ToUpper(string(name)), "-", "_")
+}
+
+func Test_Proxy_RealIPAliasesRemoved(t *testing.T) {
+	t.Parallel()
+	for _, tc := range realIPHandlers() {
+		for _, normalizing := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s normalizing=%v", tc.name, normalizing), func(t *testing.T) {
+				t.Parallel()
+				seen := make(chan []string, 1)
+				_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+					var lines []string
+					for k, v := range c.Request().Header.All() {
+						if name := cgiVariable(k); name == "X_REAL_IP" || name == "X_REAL_IPS" {
+							lines = append(lines, name+"="+string(v))
+						}
+					}
+					seen <- lines
+					return c.SendString("upstream")
+				})
+				app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalizing})
+				app.Use(tc.build(addr))
+				send := sendRaw
+				if !normalizing {
+					send = sendRawUnnormalized
+				}
+				body := send(t, app, rawGet+"X_Real_IP: 6.6.6.6\r\nx_real-ip: 6.6.6.6\r\nX-REAL_IP: 6.6.6.6\r\n"+
+					"X_Real_IP: 6.6.6.6\r\nX_Real_IPs: kept\r\nX-Real-IP: 6.6.6.6\r\n\r\n")
+				require.Equal(t, "upstream", body)
+				lines := apptest.Recv(t, seen, 5*time.Second)
+				require.Len(t, lines, 2, "one X-Real-IP, and the field that is not one: %v", lines)
+				require.Contains(t, lines, "X_REAL_IPS=kept")
+				require.NotContains(t, lines, "X_REAL_IP=6.6.6.6")
+			})
+		}
+	}
+}
+
+func Test_Proxy_RealIPAliasLimit(t *testing.T) {
+	t.Parallel()
+	for _, tc := range realIPHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			addr, seen := proxyTestFieldLinesUpstream(t, "", realIPHeader, "X_Real_IP")
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+			app.Use(tc.build(addr))
+			for n, status := range map[int]int{
+				maxConnectionOptions:     fiber.StatusOK,
+				maxConnectionOptions + 1: fiber.StatusRequestHeaderFieldsTooLarge,
+			} {
+				req := apptest.Req(fiber.MethodGet, "/", apptest.WithHost("example.com"))
+				for _, k := range caseSpellings("x_real_ip", n) {
+					req.Header[k] = []string{"6.6.6.6"} // assigned, not added, which would canonicalize the key
+				}
+				apptest.Expect(t, app, req, status)
+				if status == fiber.StatusOK {
+					require.Equal(t, []string{"X-Real-Ip=0.0.0.0"}, apptest.Recv(t, seen, 5*time.Second))
+				}
+			}
+		})
+	}
+}
+
+// conventions:ignore parallel: AllocsPerRun panics in a parallel test
+func Test_Proxy_ScreenFieldNamesDoesNotAllocate(t *testing.T) {
+	req := proxyTestRequest(t)
+	proxyTestReadRequest(t, req, rawGet+"X-Real-IP: 6.6.6.6\r\nX_Request_ID: 1\r\nAccept: */*\r\n\r\n")
+	require.Zero(t, testing.AllocsPerRun(100, func() {
+		if screenFieldNames(&req.Header, true) != nil {
+			t.Fatal("refused")
+		}
+	}))
+}
+
+func Test_Proxy_FieldNameNotATokenRefused(t *testing.T) {
+	t.Parallel()
+	handlers := trailerHandlers()
+	keeping := proxyTestAllowPrivatePolicy()
+	keeping.KeepHopByHopHeaders = true
+	for _, name := range []string{"Balancer", "Forward"} {
+		build := func(addr string) fiber.Handler { return proxyTestHandlersUnder(addr, keeping, nil)[name] }
+		handlers = append(handlers, realIPHandler{name: name + " keeping hop-by-hop", build: build})
+	}
+	for _, tc := range handlers {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var forwarded atomic.Int32
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				forwarded.Add(1)
+				return c.SendString("upstream")
+			})
+			app := fiber.New()
+			app.Use(tc.build(addr))
+			for _, lines := range []string{"X Y: z", "X_Real_IP: 10.0.0.5\r\nX Y: z", "Connection: X Y\r\nX Y: z"} {
+				resp := serveParsed(t, app, proxyTestRequest(t), rawGet+lines+"\r\n\r\n")
+				require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), lines)
+			}
+			require.Zero(t, forwarded.Load(), "none of them may reach the upstream")
+			require.Equal(t, "upstream", sendRaw(t, app, rawGet+"X-Y: z\r\n\r\n"))
+			require.Equal(t, int32(1), forwarded.Load())
+		})
+	}
+}

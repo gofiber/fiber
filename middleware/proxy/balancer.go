@@ -109,6 +109,9 @@ func Balancer(config ...Config) fiber.Handler {
 		if !fieldname.DropTrailers(&req.Header) {
 			return fiber.ErrRequestHeaderFieldsTooLarge
 		}
+		if err := screenFieldNames(&req.Header, true); err != nil {
+			return err
+		}
 		if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized, keepHeaders...) {
 			return fiber.ErrRequestHeaderFieldsTooLarge
 		}

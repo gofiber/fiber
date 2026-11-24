@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"slices"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
@@ -188,6 +190,51 @@ func setRealIP(c fiber.Ctx, ip []byte) bool {
 		return false
 	}
 	c.Request().Header.AddBytesV(realIPHeader, ip)
+	return true
+}
+
+// screenFieldNames refuses a field name that is not a token, which fasthttp forwards as sent and an upstream may end
+// the header section at, hiding the lines written behind it. With realIP it removes the names a CGI upstream reads as
+// X-Real-IP, "_" standing for "-" there (RFC 3875 Section 4.1.18), within maxConnectionOptions.
+func screenFieldNames(h *fasthttp.RequestHeader, realIP bool) error {
+	var err error
+	var aliases []string
+	h.All()(func(k, _ []byte) bool { // called, not ranged, which heap-allocates the loop state
+		if !fieldname.IsToken(k) {
+			err = fiber.ErrBadRequest
+			return false
+		}
+		if realIP && isRealIPAlias(k) && !slices.Contains(aliases, utils.UnsafeString(k)) {
+			if len(aliases) == maxConnectionOptions {
+				err = fiber.ErrRequestHeaderFieldsTooLarge
+				return false
+			}
+			aliases = append(aliases, string(k))
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+	for _, alias := range aliases {
+		h.Del(alias)
+	}
+	return nil
+}
+
+// isRealIPAlias reports whether name is X-Real-IP, in any case, with "_" in place of at least one "-".
+func isRealIPAlias(name []byte) bool {
+	if len(name) != len(realIPHeader) || !slices.Contains(name, '_') {
+		return false
+	}
+	for i, c := range name {
+		if c == '_' {
+			c = '-'
+		}
+		if c|0x20 != realIPHeader[i]|0x20 {
+			return false
+		}
+	}
 	return true
 }
 
