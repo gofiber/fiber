@@ -842,7 +842,7 @@ resp, err := cli.Get("https://api.example.com/items", client.Config{MaxRedirects
 
 ## Cookies
 
-A cookie set on a request replaces a client cookie with the same name, and a client cookie replaces one from the [cookie jar](#cookie-jar). Cookies are selected anew each time a request is sent, so a `Request` that is sent again carries only what applies to its current URL: a jar cookie does not follow it to another host, and a cookie that expired or was deleted since the last send is not sent. Cookies written straight to `RawRequest` before the send are discarded; use `SetCookie`, a `Cookie` header or a [final request hook](./hooks.md#final-request-hooks).
+A cookie set on a request replaces a client cookie with the same name, and a client cookie replaces one from the [cookie jar](#cookie-jar). A cookie in a `Cookie` header set on the client or the request replaces a jar cookie with the same name as well. Cookies are selected anew each time a request is sent, so a `Request` that is sent again carries only what applies to its current URL: a jar cookie does not follow it to another host, and a cookie that expired or was deleted since the last send is not sent. Cookies written straight to `RawRequest` before the send are discarded; use `SetCookie`, a `Cookie` header or a [final request hook](./hooks.md#final-request-hooks).
 
 ### Cookie
 
@@ -971,7 +971,7 @@ func ReleaseCookieJar(c *CookieJar)
 
 ### CookieJar.Get
 
-**Get** returns the cookies that apply to a URI: the host and path match, `Secure` cookies are returned only for an `https` URI, and expired cookies are dropped. It returns `nil` when no cookie applies or the URI is `nil`. The jar keeps its own copies, so the returned cookies may be released with `fasthttp.ReleaseCookie`.
+**Get** returns the cookies that apply to a URI: the host and path match, `Secure` cookies are returned only for an `https` URI, and expired cookies are dropped. It returns `nil` when no cookie applies or the URI is `nil`. A host-only cookie is returned without a `Domain`, so it stays host-only when it is passed to [CookieJar.Set](#cookiejarset) or [CookieJar.SetByHost](#cookiejarsetbyhost). The jar keeps its own copies, so the returned cookies may be released with `fasthttp.ReleaseCookie`.
 
 ```go title="Signature"
 func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie
@@ -979,7 +979,7 @@ func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie
 
 ### CookieJar.Set
 
-**Set** stores copies of the cookies for the host of a URI, ignoring the port. A cookie without a usable `Path` is scoped to the default path of the URI (RFC 6265), so cookies set against `/a/b` apply to `/a` and below; set `Path` on the cookie to widen it. A cookie whose `Domain` the host may not set, such as an unrelated domain or a public suffix, is skipped. This and the other setters below also skip a cookie without a name, and whitespace around a name is not part of it.
+**Set** stores copies of the cookies for the host of a URI, ignoring the port. A cookie without a usable `Path` is scoped to the default path of the URI (RFC 6265), so cookies set against `/a/b` apply to `/a` and below; set `Path` on the cookie to widen it. A cookie whose `Domain` the host may not set, such as an unrelated domain, a public suffix or a domain above the host's registrable domain, is skipped. This and the other setters below also skip a cookie without a name, and whitespace around a name is not part of it.
 
 ```go title="Signature"
 func (cj *CookieJar) Set(uri *fasthttp.URI, cookies ...*fasthttp.Cookie)

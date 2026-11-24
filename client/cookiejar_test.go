@@ -152,7 +152,7 @@ func Test_CookieJarSetRepeatedCookieKeys(t *testing.T) {
 	require.Len(t, cookies, 2)
 	require.Equal(t, "k", string(cookies[0].Key()))
 	require.Equal(t, "v2", string(cookies[0].Value()))
-	require.Equal(t, host, string(cookies[0].Domain()))
+	require.Empty(t, cookies[0].Domain())
 	require.True(t, bytes.Equal(cookies[0].Value(), cookie2.Value()))
 }
 
@@ -298,7 +298,7 @@ func Test_CookieJar_HostPort(t *testing.T) {
 	require.Len(t, cookies, 1)
 	require.Equal(t, "k", string(cookies[0].Key()))
 	require.Equal(t, "v", string(cookies[0].Value()))
-	require.Equal(t, "fasthttp.com", string(cookies[0].Domain()))
+	require.Empty(t, cookies[0].Domain())
 }
 
 func Test_CookieJar_isIPLiteral(t *testing.T) {
@@ -438,6 +438,34 @@ func Test_CookieJar_ResponseDomainScoping(t *testing.T) {
 			sent: map[string]bool{"http://other.example.com/": true},
 		},
 		{
+			// execute-api.us-east-1.amazonaws.com is a public suffix, amazonaws.com is not.
+			name:   "a Domain above the registrable domain of the responding host is rejected",
+			origin: "http://tenant-a.execute-api.us-east-1.amazonaws.com/", key: "sess", value: "tenant",
+			domain: "amazonaws.com", rejected: true,
+			sent: map[string]bool{
+				"http://tenant-b.execute-api.us-east-1.amazonaws.com/": false,
+				"http://amazonaws.com/":                                false,
+			},
+		},
+		{
+			name:   "a Domain cookie is not sent into another registrable domain below it",
+			origin: "http://amazonaws.com/", key: "sess", value: "apex", domain: "amazonaws.com",
+			sent: map[string]bool{
+				"http://amazonaws.com/":                                true,
+				"http://docs.amazonaws.com/":                           true,
+				"http://tenant-a.execute-api.us-east-1.amazonaws.com/": false,
+			},
+		},
+		{
+			name:   "a Domain cookie is shared inside a registrable domain below a multi-label public suffix",
+			origin: "http://a.app.execute-api.us-east-1.amazonaws.com/", key: "sess", value: "shared",
+			domain: "app.execute-api.us-east-1.amazonaws.com",
+			sent: map[string]bool{
+				"http://b.app.execute-api.us-east-1.amazonaws.com/": true,
+				"http://other.execute-api.us-east-1.amazonaws.com/": false,
+			},
+		},
+		{
 			name:   "a trailing-dot Domain is downgraded to host-only",
 			origin: "http://sub.example.com./", key: "sess", value: "123", domain: "example.com.",
 			hostOnly: "sub.example.com.",
@@ -516,6 +544,12 @@ func Test_CookieJar_SetScoping(t *testing.T) {
 			origin: "http://sub.example.com/", key: "k", value: "v", domain: "example.com",
 			sent: map[string]bool{"http://other.example.com/": true},
 		},
+		{
+			name:   "a Domain above the registrable domain of the origin is rejected",
+			origin: "http://tenant-a.execute-api.us-east-1.amazonaws.com/", key: "sess", value: "tenant",
+			domain: "amazonaws.com", rejected: true,
+			sent: map[string]bool{"http://tenant-b.execute-api.us-east-1.amazonaws.com/": false},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -539,6 +573,64 @@ func Test_CookieJar_SetByHostDoesNotMutateHostOnlyCookieToDomainCookie(t *testin
 	require.Empty(t, c.Domain())
 
 	require.Empty(t, jar.Get(clientTestCURI(t, "http://other.example.com/")))
+}
+
+// Test_CookieJar_GetSetKeepsHostOnly checks that cookies read with Get keep their scope when they
+// are stored again, in another jar or the same one.
+func Test_CookieJar_GetSetKeepsHostOnly(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		store func(t *testing.T, jar *CookieJar, cookies []*fasthttp.Cookie)
+		name  string
+	}{
+		{name: "Set", store: func(t *testing.T, jar *CookieJar, cookies []*fasthttp.Cookie) {
+			t.Helper()
+			jar.Set(clientTestCURI(t, "http://example.com/"), cookies...)
+		}},
+		{name: "SetByHost", store: func(t *testing.T, jar *CookieJar, cookies []*fasthttp.Cookie) {
+			t.Helper()
+			jar.SetByHost([]byte("example.com"), cookies...)
+		}},
+		{name: "Set-Cookie text", store: func(t *testing.T, jar *CookieJar, cookies []*fasthttp.Cookie) {
+			t.Helper()
+			for _, c := range cookies {
+				clientTestCSetByHost(t, jar, string(c.Cookie()))
+			}
+		}},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			origin := clientTestCURI(t, "http://example.com/")
+			sub := clientTestCURI(t, "http://sub.example.com/")
+
+			// A host-only cookie, one the jar turned into a host-only cookie,
+			// and a domain cookie.
+			from := clientTestCJar(t)
+			clientTestCReceive(from, "example.com", "/", "sid=1; Path=/")
+			clientTestCReceive(from, "example.com", "/", "pinned=2; Path=/; Domain=example.com.")
+			clientTestCReceive(from, "example.com", "/", "shared=3; Path=/; Domain=example.com")
+			require.Equal(t, []string{"shared=3"}, clientTestCPairs(from.Get(sub)))
+
+			got := from.Get(origin)
+
+			to := clientTestCJar(t)
+			testCase.store(t, to, got)
+			require.Equal(t, []string{"sid=1", "pinned=2", "shared=3"}, clientTestCPairs(to.Get(origin)))
+			require.Equal(t, []string{"shared=3"}, clientTestCPairs(to.Get(sub)))
+
+			testCase.store(t, from, got)
+			require.Equal(t, []string{"sid=1", "pinned=2", "shared=3"}, clientTestCPairs(from.Get(origin)))
+			require.Equal(t, []string{"shared=3"}, clientTestCPairs(from.Get(sub)))
+
+			require.Len(t, got, 3)
+			require.Empty(t, got[0].Domain())
+			require.Empty(t, got[1].Domain())
+			require.Equal(t, "example.com", string(got[2].Domain()))
+			require.Equal(t, []string{"sid=1", "pinned=2", "shared=3"}, clientTestCPairs(got))
+		})
+	}
 }
 
 func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
@@ -885,6 +977,20 @@ func Test_CookieJar_MatchesStdlibJar(t *testing.T) {
 			name: "public suffix rejected",
 			sets: []setStep{{"http://example.com/", "a=1; Domain=com"}},
 			gets: []string{"http://example.com/", "http://other.com/"},
+		},
+		{
+			// The host that set it is left out: net/http/cookiejar hands the cookie back to
+			// that host alone, and this jar refuses a Domain of another site altogether.
+			name: "parent of a multi-label public suffix",
+			sets: []setStep{{"http://tenant-a.execute-api.us-east-1.amazonaws.com/", "a=1; Domain=amazonaws.com"}},
+			gets: []string{"http://tenant-b.execute-api.us-east-1.amazonaws.com/", "http://amazonaws.com/"},
+		},
+		{
+			name: "domain cookie above a multi-label public suffix",
+			sets: []setStep{{"http://amazonaws.com/", "a=1; Domain=amazonaws.com"}},
+			gets: []string{
+				"http://amazonaws.com/", "http://docs.amazonaws.com/", "http://x.execute-api.us-east-1.amazonaws.com/",
+			},
 		},
 		{
 			name: "unrelated domain rejected",

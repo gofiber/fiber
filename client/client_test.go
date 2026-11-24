@@ -2219,6 +2219,30 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 		require.Empty(t, send(t, req, "http://a.example/cookies"))
 	})
 
+	t.Run("a Cookie header wins over a jar cookie of the same name", func(t *testing.T) {
+		t.Parallel()
+		jar := clientTestCJar(t)
+		clientTestCReceive(jar, "files.shop.example", "/", "sid=stored; Domain=shop.example; Path=/")
+		clientTestCReceive(jar, "api.shop.example", "/", "other=kept; Path=/")
+		newClient := func() *Client { return New().SetDial(server.dial()).SetCookieJar(jar) }
+		newRequest := func(client *Client) *Request { return clientTestBRequest(t).SetClient(client) }
+		const url = "http://api.shop.example/cookies"
+		require.Equal(t, "sid=stored; other=kept", send(t, newRequest(newClient()), url))
+
+		for name, req := range map[string]*Request{
+			"Request.SetHeader": newRequest(newClient()).SetHeader(fiber.HeaderCookie, "sid=mine"),
+			"Request.AddHeader": newRequest(newClient()).AddHeader("cookie", "sid=mine"),
+			"Client.SetHeader":  newRequest(newClient().SetHeader(fiber.HeaderCookie, "sid=mine")),
+			"Client.AddHeader":  newRequest(newClient().AddHeader("cookie", "sid=mine")),
+		} {
+			for range 2 {
+				require.Equal(t, "sid=mine; other=kept", send(t, req, url), name)
+			}
+		}
+		empty := newRequest(newClient()).SetHeader(fiber.HeaderCookie, "sid=")
+		require.Equal(t, "sid=; other=kept", send(t, empty, url))
+	})
+
 	t.Run("a Cookie header set on the request is kept", func(t *testing.T) {
 		t.Parallel()
 		req := clientTestBRequest(t).SetClient(New().SetDial(server.dial())).SetHeader(fiber.HeaderCookie, "a=1")

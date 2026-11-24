@@ -436,7 +436,7 @@ func parserRequestHeader(c *Client, req *Request) error {
 		req.RawRequest.Header.Del(fasthttp.HeaderReferer)
 	}
 
-	// Set cookies from the cookie jar if available.
+	// Set cookies from the cookie jar if available; a cookie of the Cookie header merged above is kept.
 	if c.cookieJar != nil {
 		c.cookieJar.dumpCookiesToReq(req.RawRequest)
 	}

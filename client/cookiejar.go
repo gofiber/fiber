@@ -126,6 +126,9 @@ type cookieDomainAcceptance struct {
 // Get returns all cookies stored for a given URI. If there are no cookies for the
 // provided host, the returned slice will be nil.
 //
+// A host-only cookie is returned without a Domain attribute, so it stays
+// host-only when it is passed back to Set or SetByHost.
+//
 // The CookieJar keeps its own copies of cookies, so it is safe to release the returned
 // cookies after use.
 func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie {
@@ -197,6 +200,7 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 
 	now := time.Now()
 	var matched []matchedCookie
+	site, siteKnown := "", false // host's registrable domain, looked up for the first parent-domain key
 
 	for domain, cookies := range cj.hostCookies {
 		if len(cookies) == 0 {
@@ -204,6 +208,15 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 		}
 		if !domainMatch(host, domain) {
 			continue
+		}
+		if host != domain {
+			if !siteKnown {
+				site, siteKnown = registrableDomain(host), true
+			}
+			// A public suffix between host and domain makes host a site of its own.
+			if site == "" || !domainMatch(domain, site) {
+				continue
+			}
 		}
 
 		kept := cookies[:0]
@@ -226,6 +239,10 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 			}
 			nc := fasthttp.AcquireCookie()
 			nc.CopyTo(c)
+			if sc.isHostOnly {
+				// fasthttp.Cookie has no host-only flag: a copy keeping Domain would come back through Set for every subdomain.
+				nc.SetDomain("")
+			}
 			matched = append(matched, matchedCookie{cookie: nc, seq: sc.seq})
 		}
 		if len(kept) == 0 {
@@ -442,6 +459,9 @@ func (cj *CookieJar) SetKeyValueBytes(host string, key, value []byte) {
 // name twice, so where several stored cookies share a name only the first —
 // the most specific — is written; writing them all would let the least
 // specific overwrite the most specific.
+//
+// A cookie the request already carries, from a Cookie header the caller set, is kept:
+// what the caller wrote wins over what a server, a sibling subdomain included, stored.
 func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 	uri := req.URI()
 	secure := bytes.Equal(uri.Scheme(), httpsScheme)
@@ -460,7 +480,7 @@ func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 		// Linear scan rather than a set: the list is bounded by
 		// maxCookiesPerRequest and is typically a handful, so this stays
 		// allocation-free where a map would cost one alloc per request.
-		if !containsCookieName(writable[:i], cookie.Key()) {
+		if !containsCookieName(writable[:i], cookie.Key()) && !requestHasCookie(req, cookie.Key()) {
 			req.Header.SetCookieBytesKV(cookie.Key(), cookie.Value())
 		}
 	}
@@ -477,6 +497,16 @@ func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 func containsCookieName(cookies []*fasthttp.Cookie, name []byte) bool {
 	for _, c := range cookies {
 		if bytes.Equal(c.Key(), name) {
+			return true
+		}
+	}
+	return false
+}
+
+// requestHasCookie reports whether req carries a cookie named name.
+func requestHasCookie(req *fasthttp.Request, name []byte) bool {
+	for key := range req.Header.Cookies() {
+		if bytes.Equal(key, name) {
 			return true
 		}
 	}
@@ -835,7 +865,21 @@ func acceptCookieDomain(host, domain string) cookieDomainAcceptance {
 		return cookieDomainAcceptance{}
 	}
 
+	// "amazonaws.com" is no public suffix, yet "execute-api.us-east-1.amazonaws.com" below it is one.
+	if site := registrableDomain(host); site == "" || !domainMatch(domain, site) {
+		return cookieDomainAcceptance{}
+	}
+
 	return cookieDomainAcceptance{domain: domain, isOk: true}
+}
+
+// registrableDomain returns host's public suffix plus one label, or "" when host is a public suffix itself.
+func registrableDomain(host string) string {
+	site, err := publicsuffix.EffectiveTLDPlusOne(host)
+	if err != nil {
+		return ""
+	}
+	return site
 }
 
 func isIPLiteral(host string) bool {
