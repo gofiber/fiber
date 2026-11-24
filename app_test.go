@@ -836,6 +836,18 @@ func Test_App_RefusedRequest_StreamedAnswer(t *testing.T) {
 }
 
 // A header the chain sets under a name of the request's trailer section replaces the client's line in the replay too.
+// AllocsPerRun panics under t.Parallel, so this test stays sequential.
+func Test_App_RefusedRequest_WithoutChainAnswersInPlace(t *testing.T) {
+	app := New()
+	app.Post("/", func(c Ctx) error { return c.SendString("ok") })
+	app.Handler()
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodPost)
+	allocs := testing.AllocsPerRun(20, func() { app.serverErrorHandler(fctx, fasthttp.ErrBodyTooLarge) })
+	require.Equal(t, StatusRequestEntityTooLarge, fctx.Response.StatusCode())
+	require.LessOrEqual(t, allocs, 8.0)
+}
+
 func Test_App_RefusedRequest_DropsTrailers(t *testing.T) {
 	t.Parallel()
 	for name, newApp := range map[string]func(...Config) *App{"default": New, "custom ctx": ctxTestACustomApp} {

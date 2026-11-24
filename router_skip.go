@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"slices"
 	"strings"
 )
 
@@ -27,6 +28,8 @@ type skipRouteIndex struct {
 	enabled bool
 	// hasParamUse is true when any param/wildcard middleware exists; when false next() can reuse the lookahead's params
 	hasParamUse bool
+	// hasUse is true when any middleware exists; without it a request the server refused has no chain to replay
+	hasUse bool
 	// methodMaskValid is true when routeMethods is trustworthy (len(RequestMethods) <= 64)
 	methodMaskValid bool
 }
@@ -65,6 +68,12 @@ type skipResult struct {
 // buildSkipIndexes rebuilds app.skip from the route tree; called from buildTree.
 func (app *App) buildSkipIndexes() {
 	idx := skipRouteIndex{}
+	for _, routes := range app.stack {
+		if slices.ContainsFunc(routes, func(r *Route) bool { return r.use }) {
+			idx.hasUse = true
+			break
+		}
+	}
 
 	// Masks are 64-bit; with more methods leave everything disabled, next() answers as usual.
 	idx.methodMaskValid = len(app.config.RequestMethods) <= 64
@@ -95,7 +104,6 @@ func (idx *skipRouteIndex) buildLookahead(app *App) {
 	nMethods := len(app.config.RequestMethods)
 	static := make(map[string]uint64)
 	buckets := make(map[int]*skipBucket)
-	hasUse := false
 	hasParamUse := false
 
 	getBucket := func(treeHash int) *skipBucket {
@@ -113,7 +121,6 @@ func (idx *skipRouteIndex) buildLookahead(app *App) {
 		// Static endpoints match by exact compare against route.path, so keying by route.path is exact.
 		for _, route := range app.stack[method] {
 			if route.use {
-				hasUse = true
 				// param/wildcard middleware clobbers c.values on match
 				if route.star || len(route.Params) > 0 {
 					hasParamUse = true
@@ -172,7 +179,7 @@ func (idx *skipRouteIndex) buildLookahead(app *App) {
 	idx.staticMethods = static
 	idx.buckets = buckets
 	idx.zeroBucket = zero
-	idx.enabled = hasUse
+	idx.enabled = idx.hasUse
 	idx.hasParamUse = hasParamUse
 }
 

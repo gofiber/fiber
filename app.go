@@ -1799,6 +1799,11 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	if state := fctx.TLSConnectionState(); state != nil && !state.HandshakeComplete {
 		return
 	}
+	// Only a replayed chain can keep or time out the context, so without one fctx is answered in place.
+	if !app.replaysRefused(fctx) {
+		app.answerRefusedRequest(fctx, err)
+		return
+	}
 
 	// fasthttp releases fctx without the timeout handling a served request gets, and panics on one a
 	// handler timed out, so the chain runs on a RequestCtx of its own that such a handler can keep.
@@ -1820,6 +1825,16 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	}
 	// Only fctx is reset, which closes the request's io.Closer values and waits for a flushed handler.
 	rctx.VisitUserValuesAll(fctx.SetUserValue)
+}
+
+// replaysRefused reports whether a request the server refused has a Use chain to replay.
+func (app *App) replaysRefused(fctx *fasthttp.RequestCtx) bool {
+	// A method GETOnly refuses is not replayed: a Use handler that ends the chain would carry it out.
+	// Asked of the method, not ErrGetOnly, since a header error is reported first.
+	if app.server.GetOnly && !fctx.IsGet() && !fctx.IsHead() {
+		return false
+	}
+	return app.skip.hasUse && app.methodInt(utils.UnsafeString(fctx.Method())) != -1
 }
 
 // answerRefusedRequest runs the Use chain and the ErrorHandler for a request the server refused with err.
@@ -1879,11 +1894,8 @@ func (app *App) answerRefusedRequest(fctx *fasthttp.RequestCtx, err error) {
 		c.Status(fiberErr.Code)
 	}
 
-	// A method GETOnly refuses is not replayed: a Use handler that ends the chain would carry it out.
-	// Asked of the method, not ErrGetOnly, since a header error is reported first.
-	methodRefused := app.server.GetOnly && !fctx.IsGet() && !fctx.IsHead()
 	// The trailers are dropped as the request handlers drop them, or a header the chain sets is filed with them.
-	if !methodRefused && c.getMethodInt() != -1 && dropTrailers(&fctx.Request) {
+	if app.replaysRefused(fctx) && dropTrailers(&fctx.Request) {
 		c.setSkipNonUseRoutes(true)
 		// The route never runs, so what the chain leaves is no response for the URL. The mark stays until
 		// the reset, which waits for a flushed net/http handler that still reads the user values.
