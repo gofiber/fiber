@@ -1145,8 +1145,10 @@ func (t *trailerDropReader) Read(p []byte) (int, error) {
 	return n, err //nolint:wrapcheck // io.Reader passes io.EOF through as is
 }
 
-func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) {
+// addPrefixToRoute moves route under prefix; prefixConstraints are those of the prefix's parameters, as its app parsed them.
+func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, prefixConstraints [][]*Constraint, customConstraints ...CustomConstraint) {
 	prefixedPath, prettyPath, cleanPath := normalizeRoutePattern(getGroupPath(prefix, route.Path), &app.config, route.use)
+	resolved := slices.Concat(prefixConstraints, route.routeParser.paramConstraints())
 
 	route.Path = prefixedPath
 	route.path = cleanPath
@@ -1154,6 +1156,8 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	// As in register: the constraints come from the pattern as written.
 	rawParser := parseRoute(prefixedPath, regexHandler, customConstraints...)
 	route.routeParser.adoptConstraints(&rawParser)
+	// One merged list can resolve a name to another app's constraint; keep each parameter's, as middleware on the prefix does.
+	route.routeParser.keepConstraints(resolved, regexHandler)
 	if app.config.StrictRouting {
 		route.routeParser.applyStrictRouting()
 	}

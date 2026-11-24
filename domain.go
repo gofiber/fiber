@@ -436,9 +436,9 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	wrapperApp.mountFields.hostScopedRoutes = true
 
 	// Clone routes from the sub-app with domain-wrapped handlers. The clone
-	// also collects the constraints of every app it walks, since the wrapper is
-	// what the routes are re-parsed against when the mount is expanded, and
-	// marks the routes of the apps that register no automatic HEAD routes.
+	// records the constraints each route is re-parsed with when the mount is
+	// expanded, and marks the routes of the apps that register no automatic
+	// HEAD routes.
 	d.cloneRoutesForDomain(wrapperApp, subApp)
 
 	// Give the clones their automatic HEAD routes. A mounted app normally gets
@@ -530,7 +530,7 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 func (d *domainRouter) cloneRoutesForDomain(dst, src *App) {
 	// The app the routes are mounted on has the last word, as in processSubAppsRoutes:
 	// its opt-out covers everything flattened into it, so it seeds the whole walk.
-	for m, routes := range d.domainRoutes(dst, src, domainClone{skipAutoHead: d.app.config.DisableHeadAutoRegister}) {
+	for m, routes := range d.domainRoutes(dst, src, &domainClone{skipAutoHead: d.app.config.DisableHeadAutoRegister}) {
 		dst.stack[m] = routes
 	}
 }
@@ -545,6 +545,10 @@ type domainClone struct {
 	// a few entries deep and each branch needs its own: an app mounted twice on
 	// sibling branches is cloned for both.
 	chain []*App
+	// constraints are those of prefix's parameters, as the apps that wrote its parts parsed them
+	constraints [][]*Constraint
+	// customs are the custom constraints of the apps above, for names a route left unresolved
+	customs []CustomConstraint
 	// skipAutoHead marks that an app above this one registers no automatic HEAD
 	// routes, and stands in front of these
 	skipAutoHead bool
@@ -554,7 +558,7 @@ type domainClone struct {
 // with the walk's prefix applied, as one slice per method index of dst. Routes
 // of an app src has mounted take the placeholder's position, so the order the
 // sub-app registered its routes in is preserved.
-func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route {
+func (d *domainRouter) domainRoutes(dst, src *App, walk *domainClone) [][]*Route {
 	routes := make([][]*Route, len(dst.stack))
 	if slices.Contains(walk.chain, src) {
 		return routes
@@ -621,7 +625,8 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 			}
 		}
 	}
-	dst.customConstraints = mergeCustomConstraints(dst.customConstraints, src.customConstraints)
+	// Only the apps above src, never its siblings, resolve what its routes left unresolved.
+	enclosing := mergeCustomConstraints(slices.Clone(src.customConstraints), walk.customs)
 	src.mutex.Unlock()
 
 	// Mounted apps are flattened once and reused across the method indexes:
@@ -640,9 +645,11 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 					if mounted == nil {
 						mounted = make(map[*Group][][]*Route)
 					}
-					mounted[group] = d.domainRoutes(dst, group.app, domainClone{
+					mounted[group] = d.domainRoutes(dst, group.app, &domainClone{
 						prefix:       getGroupPath(walk.prefix, source.route.Path),
 						chain:        append(walk.chain, src),
+						constraints:  slices.Concat(walk.constraints, source.route.routeParser.paramConstraints()),
+						customs:      enclosing,
 						skipAutoHead: skipAutoHead,
 					})
 				}
@@ -660,14 +667,14 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 			// An empty prefix cannot change the path, and re-parsing the route
 			// to reach the same result is the most expensive thing here.
 			// The route brings the constraints of the apps that composed its
-			// path, and those win over the ones collected from the rest of the
-			// tree: two apps mounted side by side can name one constraint
-			// differently, and neither binds the other.
-			constraints := mergeCustomConstraints(slices.Clone(source.constraints), dst.customConstraints)
+			// path, and those win over the ones of the apps above: two apps
+			// mounted side by side can name one constraint differently, and
+			// neither binds the other.
+			constraints := mergeCustomConstraints(slices.Clone(source.constraints), enclosing)
 			dst.markRouteConstraints(clonedRoute, constraints)
 
 			if walk.prefix != "" {
-				dst.addPrefixToRoute(walk.prefix, clonedRoute, src.config.RegexHandler, constraints...)
+				dst.addPrefixToRoute(walk.prefix, clonedRoute, src.config.RegexHandler, walk.constraints, constraints...)
 			}
 			clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
 			clonedRoute.hosts = append(slices.Clone(clonedRoute.hosts), d.matcher)

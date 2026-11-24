@@ -867,6 +867,89 @@ func Test_Route_Match_Middleware_ParamBeforeConst(t *testing.T) {
 	})
 }
 
+// Test_Route_Match_Guard_ParamBeforeConstAndParam pins that a guard whose parameter and literal
+// text are followed by a '/' and a further parameter covers what a literal route below answers.
+func Test_Route_Match_Guard_ParamBeforeConstAndParam(t *testing.T) {
+	t.Parallel()
+	deny := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
+	ok := func(c Ctx) error { return c.SendStatus(StatusOK) }
+	denyingSub := func(app *App, pattern string) *App {
+		sub := New(Config{StrictRouting: app.config.StrictRouting})
+		sub.Use(pattern, deny)
+		return sub
+	}
+	guards := map[string]func(app *App, prefix string){
+		"route wildcard":   func(app *App, prefix string) { app.Get(prefix+"/*", deny) },
+		"route plus":       func(app *App, prefix string) { app.All(prefix+"/+", deny) },
+		"route parameters": func(app *App, prefix string) { app.Get(prefix+"/:dir/:file", deny) },
+		"use wildcard":     func(app *App, prefix string) { app.Use(prefix+"/*", deny) },
+		"use parameter":    func(app *App, prefix string) { app.Use(prefix+"/:service", deny) },
+		"group use":        func(app *App, prefix string) { app.Group(prefix).Use("/*", deny) },
+		"group all":        func(app *App, prefix string) { app.Group(prefix).All("/*", deny) },
+		"mount wildcard":   func(app *App, prefix string) { app.Use(prefix, denyingSub(app, "/*")) },
+		"mount star":       func(app *App, prefix string) { app.Use(prefix, denyingSub(app, "*")) },
+		"mount parameter":  func(app *App, prefix string) { app.Use(prefix, denyingSub(app, "/:service")) },
+		"domain mount":     func(app *App, prefix string) { app.Domain("example.com").Use(prefix, denyingSub(app, "/*")) },
+	}
+	shapes := []struct {
+		prefix, below string
+		guarded, open []string
+	}{
+		{
+			prefix:  "/:owner/:repo.git",
+			below:   "/:owner/:repo.git/info/refs",
+			guarded: []string{"/o/a.git/info/refs", "/o/o.github.io.git/info/refs", "/o/.github.git/info/refs", "/o/a.GIT.git/info/refs"},
+			open:    []string{"/o/a.github/info/refs", "/o/a/b.git/info/refs"},
+		},
+		{
+			prefix:  "/admin/:v.",
+			below:   "/admin/:v./x/y",
+			guarded: []string{"/admin/a./x/y", "/admin/a.b./x/y"},
+			open:    []string{"/admin/a.b/x/y", "/admin/./x/y"},
+		},
+	}
+	for name, guard := range guards {
+		for _, strict := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/strict=%v", name, strict), func(t *testing.T) {
+				t.Parallel()
+				for _, shape := range shapes {
+					app := New(Config{StrictRouting: strict})
+					guard(app, shape.prefix)
+					app.Get(shape.below, ok)
+					app.Get("/*", ok)
+
+					for _, method := range []string{MethodGet, MethodHead} {
+						routerTestExpectStatus(t, app, method, StatusUnauthorized, shape.guarded...)
+						routerTestExpectStatus(t, app, method, StatusOK, shape.open...)
+					}
+				}
+			})
+		}
+	}
+
+	t.Run("case sensitive", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{CaseSensitive: true})
+		app.Get("/files/:name.JSON/*", deny)
+		app.Get("/*", ok)
+
+		apptest.Expect(t, app, "/files/a.JSON.JSON/raw", StatusUnauthorized)
+		apptest.Expect(t, app, "/files/a.JSON.json/raw", StatusOK)
+	})
+
+	// A constrained parameter keeps the first match, as in a prefix. A custom constraint with an
+	// upper-case name is only found in the pattern as written, which adoptConstraints reads.
+	t.Run("custom constraint", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.RegisterCustomConstraint(&testCustomConstraintForCoverage{allowed: "a.json"})
+		app.Get("/files/:name<customTest>.json/*", deny)
+		app.Get("/*", ok)
+
+		apptest.Expect(t, app, "/files/a.json.json/raw", StatusOK)
+	})
+}
+
 // Test_Route_Match_Middleware_Prefix pins which paths a Use prefix covers:
 // everything below it, but not a sibling that only starts with the same characters.
 func Test_Route_Match_Middleware_Prefix(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,7 +67,7 @@ type routeSegment struct {
 	IsLast           bool // shows if the segment is the last one for the route
 	HasOptionalSlash bool // segment has the possibility of an optional slash
 	GreedyTail       bool // a prefix's only greedy parameter, right before its last constant; see findGreedyTailLen
-	ParamTail        bool // a prefix's plain parameter, the only one in its segment before its last constant; see findParamTailLen
+	ParamTail        bool // a plain parameter that ends where the constant after it ends the segment; see markTail, markParamTails
 }
 
 // different special routing signs
@@ -310,6 +311,50 @@ func (parser *routeParser) adoptConstraints(raw *routeParser) {
 		seg.Constraints = raw.segs[j].Constraints
 		j++
 	}
+	// A constraint rules out ParamTail and constParam alike, so both are decided again.
+	parser.markParamTails()
+	parser.constParam = isConstParamShape(parser.segs)
+}
+
+func (parser *routeParser) paramConstraints() [][]*Constraint {
+	constraints := make([][]*Constraint, 0, len(parser.params))
+	for _, seg := range parser.segs {
+		if seg.IsParam {
+			constraints = append(constraints, seg.Constraints)
+		}
+	}
+	return constraints
+}
+
+// keepConstraints restores the constraints the app that wrote each parameter resolved; the new parse only adds
+// names that resolved to nothing then. regex() is recompiled, as a mount's RegexHandler covers the full path.
+func (parser *routeParser) keepConstraints(resolved [][]*Constraint, regexHandler any) {
+	if len(resolved) != len(parser.params) {
+		return
+	}
+	i := 0
+	for _, seg := range parser.segs {
+		if !seg.IsParam {
+			continue
+		}
+		if prior := resolved[i]; len(prior) > 0 {
+			kept := make([]*Constraint, 0, max(len(prior), len(seg.Constraints)))
+			for _, constraint := range prior {
+				if _, ok := constraint.handler.(regexConstraintType); ok {
+					constraint = newConstraint(regexConstraintType{regexHandler: regexHandler}, constraint.Name, constraint.Data)
+				}
+				kept = append(kept, constraint)
+			}
+			for _, constraint := range seg.Constraints {
+				if !slices.ContainsFunc(prior, func(existing *Constraint) bool { return existing.Name == constraint.Name }) {
+					kept = append(kept, constraint)
+				}
+			}
+			seg.Constraints = kept
+		}
+		i++
+	}
+	parser.markParamTails()
 	parser.constParam = isConstParamShape(parser.segs)
 }
 
@@ -716,7 +761,19 @@ func (parser *routeParser) parseRoute(pattern string, regexHandler any, customCo
 	for _, s := range parser.segs {
 		parser.yields = parser.yields || s.CanYield
 	}
+	parser.markParamTails()
 	parser.constParam = isConstParamShape(parser.segs)
+}
+
+// markParamTails ends a plain parameter followed by text, '/' and a parameter, as in "/files/:name.json/*", where
+// the text ends its segment, as in "/files/:name.json/raw": addParameterMetaInfo trims that '/' from the compare part.
+func (parser *routeParser) markParamTails() {
+	for i := 1; i+2 < len(parser.segs); i++ {
+		c, p, text := parser.segs[i-1], parser.segs[i], parser.segs[i+1]
+		tail := utils.TrimRight(text.Const, slashDelimiter)
+		p.ParamTail = strings.IndexByte(c.Const, slashDelimiter) != -1 && p.IsParam && !p.IsGreedy && !p.IsOptional &&
+			len(p.Constraints) == 0 && tail != "" && tail != text.Const && strings.IndexByte(tail, slashDelimiter) == -1
+	}
 }
 
 // isConstParamShape reports whether segs is the "/const/:param" shape that
@@ -1532,8 +1589,8 @@ func findGreedyTailLen(s, tail string) int {
 	return len(s)
 }
 
-// findParamTailLen ends a prefix's parameter where tail ends its path segment, else at first:
-// the first match, which a one-byte tail lets cross a '/' as on an endpoint.
+// findParamTailLen ends a ParamTail parameter where tail ends its path segment, else at first:
+// the first match, which a one-byte tail lets cross a '/' as without the mark.
 func findParamTailLen(s, tail string, first int) int {
 	if i := strings.IndexByte(s, slashDelimiter); i != -1 {
 		s = s[:i]
@@ -1558,7 +1615,7 @@ func (parser *routeParser) greedyTail() *routeSegment {
 	return g
 }
 
-// markTail is for prefixes only: an endpoint keeps findParamLen's guess.
+// markTail is for prefixes only: an endpoint keeps findParamLen's guess for these shapes.
 func (parser *routeParser) markTail() {
 	if g := parser.greedyTail(); g != nil {
 		g.GreedyTail = true

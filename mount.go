@@ -807,10 +807,6 @@ func (app *App) processSubAppsRoutes() {
 			// tables then neither line up nor have to be the same length.
 			subAppRoutes := route.group.app.routesForMethod(app.method(m))
 
-			// The sub-app's routes are about to be re-parsed against this app,
-			// so its constraints have to be resolvable here too.
-			app.customConstraints = mergeCustomConstraints(app.customConstraints, route.group.app.customConstraints)
-
 			// A sub-app that registers no automatic HEAD routes of its own
 			// must not be given them here either: its middleware is
 			// registered for the methods it serves, and a HEAD route
@@ -844,7 +840,7 @@ func (app *App) processSubAppsRoutes() {
 
 				// The prefix is parsed again, so it has to be the pattern as written:
 				// route.path lost the case and escapes parameters are read from.
-				app.addPrefixToRoute(route.Path, subAppRouteClone, route.group.app.config.RegexHandler, constraints...)
+				app.addPrefixToRoute(route.Path, subAppRouteClone, route.group.app.config.RegexHandler, route.routeParser.paramConstraints(), constraints...)
 				app.markRouteConstraints(subAppRouteClone, constraints)
 
 				// Carry the sub-app's stance on automatic HEAD routes over to

@@ -172,6 +172,19 @@ func Test_Route_OptionalParamDoesNotSwallowSlash(t *testing.T) {
 	apptest.Expect(t, app, "/api/1-/-", StatusNotFound)
 }
 
+// A constraint kept from an earlier parse rules out ParamTail as one the pattern names does; no mount reaches this
+// today, since every name a writer resolved resolves again, so the parser is checked directly.
+func Test_RouteParser_KeepConstraintsMarksParamTails(t *testing.T) {
+	t.Parallel()
+	parser := parseRoute("/files/:name.json/*", nil)
+	require.True(t, parser.segs[1].ParamTail)
+	constrained := parseRoute("/files/:name<int>.json/*", nil)
+	require.False(t, constrained.segs[1].ParamTail)
+	parser.keepConstraints(constrained.paramConstraints(), nil)
+	require.Equal(t, constrained.paramConstraints(), parser.paramConstraints())
+	require.False(t, parser.segs[1].ParamTail)
+}
+
 // Test_Path_ParameterEndChars_MatchesRouteGrammar pins the shared set against
 // the delimiter constants it is built from but no longer names, so widening the
 // route grammar has to reach the client's copy too (#4635).
