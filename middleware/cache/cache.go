@@ -98,16 +98,10 @@ const (
 // readers skip the new field without changing the response or key semantics.
 const cacheKeyVersion = "v8"
 
-// bodyStampLen is the size of the generation an external Storage keeps in front of a body.
+// bodyStampLen is the size of the generation an external Storage keeps in front of a body. A Storage
+// takes the body and the metadata in two unlocked writes, so two stores of one key can leave one's body
+// beside the other's metadata.
 const bodyStampLen = 8
-
-// stampBody prefixes body with its entry's generation. A Storage takes the body and the metadata in
-// two unlocked writes, so two stores of one key can leave one's body beside the other's metadata.
-func stampBody(body []byte, gen uint64) []byte {
-	stamped := make([]byte, bodyStampLen, bodyStampLen+len(body))
-	binary.BigEndian.PutUint64(stamped, gen)
-	return append(stamped, body...)
-}
 
 // stampedBody returns the body in raw, and false unless raw was stored for the entry of generation gen.
 func stampedBody(raw []byte, gen uint64) ([]byte, bool) {
@@ -1225,7 +1219,14 @@ func New(config ...Config) fiber.Handler {
 		releaseEntry()
 		e = manager.acquire()
 		// Cache response
-		e.body = utils.CopyBytes(c.Response().Body())
+		var stamped []byte // an external Storage's body, behind room for its generation
+		if cfg.Storage != nil {
+			stamped = make([]byte, bodyStampLen+len(c.Response().Body()))
+			copy(stamped[bodyStampLen:], c.Response().Body())
+			e.body = stamped[bodyStampLen:]
+		} else {
+			e.body = utils.CopyBytes(c.Response().Body())
+		}
 		e.status = status
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
@@ -1597,7 +1598,8 @@ func New(config ...Config) fiber.Handler {
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
-			if err := manager.setRaw(reqCtx, bodyKey(key), stampBody(e.body, e.heapgen), storageExpiration); err != nil {
+			binary.BigEndian.PutUint64(stamped, e.heapgen)
+			if err := manager.setRaw(reqCtx, bodyKey(key), stamped, storageExpiration); err != nil {
 				if cleanupErr := cleanupOnStoreError(reqCtx, true, false); cleanupErr != nil {
 					err = errors.Join(err, cleanupErr)
 				}
