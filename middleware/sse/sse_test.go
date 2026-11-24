@@ -3,7 +3,6 @@ package sse
 import (
 	"bufio"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -660,15 +659,9 @@ func Test_SSE_HandlerStartsAfterMiddlewareChain(t *testing.T) {
 		req := apptest.Req(fiber.MethodGet, "/events", cookie, apptest.WithHeader(fiber.HeaderAcceptEncoding, coding))
 		resp := apptest.Do(t, app, req)
 
-		got := apptest.BodyBytes(t, resp)
-		if coding == "gzip" {
-			require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
-			zr, err := gzip.NewReader(bytes.NewReader(got))
-			require.NoError(t, err)
-			got, err = io.ReadAll(zr)
-			require.NoError(t, err)
-		}
-		require.Equal(t, "event: dark\ndata: true\n\n", string(got))
+		// compress leaves an event stream alone, so it goes out as written whatever the client accepts
+		require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding), coding)
+		require.Equal(t, "event: dark\ndata: true\n\n", apptest.Body(t, resp), coding)
 	}
 }
 
