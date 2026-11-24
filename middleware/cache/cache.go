@@ -5,6 +5,7 @@ package cache
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -93,6 +94,25 @@ const (
 // heapgen need no bump: old entries decode with generation zero, and older
 // readers skip the new field without changing the response or key semantics.
 const cacheKeyVersion = "v8"
+
+// bodyStampLen is the size of the generation an external Storage keeps in front of a body.
+const bodyStampLen = 8
+
+// stampBody prefixes body with its entry's generation. A Storage takes the body and the metadata in
+// two unlocked writes, so two stores of one key can leave one's body beside the other's metadata.
+func stampBody(body []byte, gen uint64) []byte {
+	stamped := make([]byte, bodyStampLen, bodyStampLen+len(body))
+	binary.BigEndian.PutUint64(stamped, gen)
+	return append(stamped, body...)
+}
+
+// stampedBody returns the body in raw, and false unless raw was stored for the entry of generation gen.
+func stampedBody(raw []byte, gen uint64) ([]byte, bool) {
+	if len(raw) < bodyStampLen || binary.BigEndian.Uint64(raw) != gen {
+		return nil, false
+	}
+	return raw[bodyStampLen:], true
+}
 
 // The keys derived from an entry key sit right after the version, where no entry
 // key goes: those continue with their method.
@@ -740,7 +760,15 @@ func New(config ...Config) fiber.Handler {
 							e = nil
 							return false, nil
 						}
-						e.body = rawBody
+						body, own := stampedBody(rawBody, e.heapgen)
+						if !own {
+							// Another store's body: a miss, never two responses mixed. Nothing is deleted, as
+							// that store may yet write its metadata.
+							manager.release(e)
+							e = nil
+							break
+						}
+						e.body = body
 					} else {
 						guard.Unlock()
 					}
@@ -1517,7 +1545,7 @@ func New(config ...Config) fiber.Handler {
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
-			if err := manager.setRaw(reqCtx, bodyKey(key), e.body, storageExpiration); err != nil {
+			if err := manager.setRaw(reqCtx, bodyKey(key), stampBody(e.body, e.heapgen), storageExpiration); err != nil {
 				if cleanupErr := cleanupOnStoreError(reqCtx, true, false); cleanupErr != nil {
 					err = errors.Join(err, cleanupErr)
 				}

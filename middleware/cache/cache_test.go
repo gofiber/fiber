@@ -3289,7 +3289,7 @@ func Test_Cache_ExternalUncacheableRevalidationPreservesCompletedReplacement(t *
 			key := cacheKeyVersion + "|GET|/cached"
 			storage.Mu.RLock()
 			require.Contains(t, storage.Data, key)
-			require.Equal(t, []byte("newer!"), storage.Data[bodyKey(key)])
+			require.Equal(t, []byte("newer!"), storage.Data[bodyKey(key)][bodyStampLen:])
 			storage.Mu.RUnlock()
 
 			cacheTestAExpectBody(t, app, "/cached", cacheHit, "newer!")
