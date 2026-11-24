@@ -358,6 +358,41 @@ func (parser *routeParser) keepConstraints(resolved [][]*Constraint, regexHandle
 	parser.constParam = isConstParamShape(parser.segs)
 }
 
+// patternKey tells apart patterns that share the folded, unescaped Route.path by what the parser matches with:
+// each constant, and each parameter's kind and constraints.
+func (parser *routeParser) patternKey() string {
+	var key []byte
+	for _, seg := range parser.segs {
+		if !seg.IsParam {
+			key = strconv.AppendQuote(key, seg.Const)
+			continue
+		}
+		switch {
+		case seg.IsGreedy && seg.IsOptional:
+			key = append(key, wildcardParam)
+		case seg.IsGreedy:
+			key = append(key, plusParam)
+		case seg.IsOptional:
+			key = append(key, optionalParam)
+		default:
+			key = append(key, paramStarterChar)
+		}
+		for _, c := range seg.Constraints {
+			// A built-in is one constraint however the pattern spells its name, a
+			// custom one is found by its exact name; see findConstraintHandler.
+			kind, name := paramConstraintStart, c.Name
+			if _, custom := c.handler.(*customConstraintWrapper); !custom && c.handler != nil {
+				kind, name = paramConstraintSeparator, c.handler.Name()
+			}
+			key = strconv.AppendQuote(append(key, kind), name)
+			for _, arg := range c.Data {
+				key = strconv.AppendQuote(append(key, paramConstraintDataSeparator), arg)
+			}
+		}
+	}
+	return string(key)
+}
+
 // applyStrictRouting makes a trailing slash on the last constant segment
 // mandatory under StrictRouting, so "/a/:id/" does not match "/a/x".
 func (parser *routeParser) applyStrictRouting() {

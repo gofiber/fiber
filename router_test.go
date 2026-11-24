@@ -4548,6 +4548,53 @@ func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 			app.Get("/admin/secret", endpoint)
 			app.Head("/admin/secret", endpoint)
 		}},
+		{name: "explicit Head with a constraint in another case", register: func(app *App) {
+			app.Get(`/admin/:name<regex(^[^A-Z]+$)>`, guard)
+			app.Head(`/admin/:name<regex(^[^a-z]+$)>`, next)
+			app.Get("/admin/:name", endpoint)
+		}},
+		{name: "late explicit Head with a constraint in another case", register: func(app *App) {
+			app.Get(`/admin/:name<regex(^\D+$)>`, guard)
+			app.Get("/admin/:name", endpoint)
+			app.Handler()
+
+			app.Head(`/admin/:name<regex(^\d+$)>`, next)
+			app.RebuildTree()
+		}},
+		{name: "explicit Head on an escaped wildcard", register: func(app *App) {
+			app.Get("/admin/*", guard)
+			app.Head(`/admin/\*`, next)
+			app.Get("/admin/:name", endpoint)
+		}},
+		{name: "explicit Head with another parameter escaped", register: func(app *App) {
+			app.Get(`/:a/\:b`, guard)
+			app.Head(`/\:a/:b`, next)
+			app.Get("/*", endpoint)
+		}, want: []routerReq{{method: MethodHead, path: "/admin/:b", status: StatusUnauthorized, header: "X-Secret"}}},
+		{name: "explicit Head with the parameter required", register: func(app *App) {
+			// An unclosed constraint is part of the name, up to the end of the
+			// pattern, and only a "?" there makes the parameter optional.
+			app.Get(`/admin/:name<?`, guard)
+			app.Head(`/admin/:name<?\`, next)
+			app.Get("/admin", endpoint)
+		}, want: []routerReq{{method: MethodHead, path: "/admin", status: StatusUnauthorized, header: "X-Secret"}}},
+		{name: "explicit Head with a custom constraint named in another case", register: func(app *App) {
+			app.RegisterCustomConstraint(&evenConstraint{})
+			app.Get("/admin/:id<isEven>", guard)
+			app.Head("/admin/:id<iseven>", next) // names no constraint
+			app.Get("/admin/:id", endpoint)
+		}, want: []routerReq{{method: MethodHead, path: "/admin/42", status: StatusUnauthorized, header: "X-Secret"}}},
+		{name: "explicit Head with another spelling of the same pattern", register: func(app *App) {
+			app.Get("/n/:id<int;minLen(1)>", endpoint)
+			app.Head("/N/:id<INT;minlen(1)>/", func(c Ctx) error { return c.SendStatus(StatusTeapot) })
+		}, want: []routerReq{{method: MethodHead, path: "/n/1", status: StatusTeapot}}},
+		{name: "late explicit Head with another spelling of the same pattern", register: func(app *App) {
+			app.Get("/n/:id<int;minLen(1)>", endpoint)
+			app.Handler()
+
+			app.Head("/N/:id<INT;minlen(1)>/", func(c Ctx) error { return c.SendStatus(StatusTeapot) })
+			app.RebuildTree()
+		}, want: []routerReq{{method: MethodHead, path: "/n/1", status: StatusTeapot}}},
 		{name: "Use before and after", register: func(app *App) {
 			app.Use(next)
 			app.Get("/admin/*", guard)
@@ -4617,6 +4664,51 @@ func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 			app.Handler()
 
 			app.Get("/admin/*", guard)
+			app.Get("/admin/secret", endpoint)
+			app.RebuildTree()
+		}, want: []routerReq{guardedHead}},
+		{name: "repeated Head path around the guard", register: func(app *App) {
+			app.Head("/admin/secret", next)
+			app.Get("/admin/*", guard)
+			app.Head("/admin/secret", endpoint)
+		}},
+		{name: "repeated Head path of a group around the guard", register: func(app *App) {
+			app.Group("/admin").Head("/secret", next)
+			app.Get("/admin/*", guard)
+			app.Group("/admin").Head("/secret", endpoint)
+		}},
+		{name: "repeated Head path of a mounted app around the guard", register: func(app *App) {
+			sub := New()
+			sub.Head("/secret", next)
+			sub.Get("/*", guard)
+			sub.Head("/secret", endpoint)
+			app.Use("/admin", sub)
+		}},
+		{name: "repeated Head and Post path around the guard", register: func(app *App) {
+			app.Add([]string{MethodHead, MethodPost}, "/admin/secret", next)
+			app.Get("/admin/*", guard)
+			app.Add([]string{MethodHead, MethodPost}, "/admin/secret", endpoint)
+		}},
+		{name: "repeated Get path around a Head guard", register: func(app *App) {
+			app.Get("/admin/secret", next)
+			app.Head("/admin/*", guard)
+			app.Get("/admin/secret", endpoint)
+		}, want: []routerReq{guardedHead}},
+		{name: "repeated Get path around a Head guard after startup", register: func(app *App) {
+			app.Get("/admin/secret", next)
+			app.Head("/admin/*", guard)
+			app.Handler()
+
+			app.Get("/admin/secret", endpoint)
+			app.RebuildTree()
+		}, want: []routerReq{guardedHead}},
+		{name: "repeated Get path around a mounted Head guard after startup", register: func(app *App) {
+			sub := New()
+			sub.Head("/*", guard)
+			app.Get("/admin/secret", next)
+			app.Use("/admin", sub)
+			app.Handler()
+
 			app.Get("/admin/secret", endpoint)
 			app.RebuildTree()
 		}, want: []routerReq{guardedHead}},

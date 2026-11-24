@@ -644,7 +644,7 @@ app.Head("/users/:id", func(c fiber.Ctx) error {
 })
 ```
 
-The replacement covers the `GET` routes of the same app registered with the same [`Domain`](../api/app.md#domain) pattern, or with none. A `HEAD` route on another `Domain` pattern, or in a mounted sub-app, keeps its place in the route order instead: the generated route of a `GET` route registered before it runs first, so register or mount it ahead of that `GET` route when it has to answer first.
+The replacement covers the `GET` routes of the same app registered with the same [`Domain`](../api/app.md#domain) pattern, or with none. The path has to be the same pattern. Its letter case does not matter under the default case-insensitive routing, but a pattern with other [constraints](#constraints), such as `:id<regex(^\D+$)>` beside `:id<regex(^\d+$)>`, or one that escapes what the other reads as a parameter (`/files/\:id`), is another path: its `GET` routes keep their generated routes. A `HEAD` route on another `Domain` pattern, or in a mounted sub-app, keeps its place in the route order instead: the generated route of a `GET` route registered before it runs first, so register or mount it ahead of that `GET` route when it has to answer first.
 
 To opt out globally, start the app with `DisableHeadAutoRegister`:
 
