@@ -606,6 +606,28 @@ func Test_Integration_App_ServerErrorHandler_ClosesStreamOnce(t *testing.T) {
 	require.Len(t, stream.closes, 1)
 }
 
+// The trailers an adapted net/http handler in the ErrorHandler sets at the end of its stream reach the client.
+func Test_Integration_App_ServerErrorHandler_StreamTrailers(t *testing.T) {
+	t.Parallel()
+	answer := adaptor.HTTPHandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Trailer", "X-Sum")
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+		if _, err := w.Write([]byte("refused")); err != nil {
+			return
+		}
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			return
+		}
+		w.Header().Set("X-Sum", "7")
+	})
+	app := fiber.New(fiber.Config{BodyLimit: 8, ErrorHandler: func(c fiber.Ctx, _ error) error { return answer(c) }})
+	app.Use(func(c fiber.Ctx) error { return c.Next() })
+
+	resp := performOversizedRequest(t, app, nil)
+	require.Equal(t, "refused", string(resp.Body()))
+	require.Equal(t, "7", string(resp.Header.Peek("X-Sum")))
+}
+
 func Test_Integration_App_ServerErrorHandler_CustomMultipartBodyLimit(t *testing.T) {
 	t.Parallel()
 	app := fiber.New(fiber.Config{

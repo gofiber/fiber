@@ -1822,11 +1822,42 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	rctx.Response.CopyTo(&fctx.Response)
 	fctx.Response.ImmediateHeaderFlush = rctx.Response.ImmediateHeaderFlush
 	if rctx.Response.IsBodyStream() {
-		fctx.Response.SetBodyStream(rctx.Response.BodyStream(), rctx.Response.Header.ContentLength())
+		stream := &refusedStream{Reader: rctx.Response.BodyStream(), from: &rctx.Response.Header, to: &fctx.Response.Header}
+		fctx.Response.SetBodyStream(stream, rctx.Response.Header.ContentLength())
 		requesthold.Rebind(rctx, &fctx.Response)
 	}
 	// Only fctx is reset, which closes the request's io.Closer values and waits for a flushed handler.
 	rctx.VisitUserValuesAll(fctx.SetUserValue)
+}
+
+// refusedStream is the body stream of a refused request's answer, moved off the RequestCtx the chain ran on. An adapted
+// net/http handler sets its trailers on that one when the stream ends, so they are handed on to the response written.
+type refusedStream struct {
+	io.Reader
+	from, to *fasthttp.ResponseHeader
+}
+
+func (s *refusedStream) Read(p []byte) (int, error) {
+	n, err := s.Reader.Read(p)
+	if errors.Is(err, io.EOF) {
+		for _, key := range s.from.PeekTrailerKeys() {
+			s.to.DelBytes(key)
+			if s.to.AddTrailerBytes(key) != nil {
+				continue
+			}
+			for _, value := range s.from.PeekAll(string(key)) {
+				s.to.AddBytesV(string(key), value)
+			}
+		}
+	}
+	return n, err //nolint:wrapcheck // io.Reader passes io.EOF through as is
+}
+
+func (s *refusedStream) Close() error {
+	if closer, ok := s.Reader.(io.Closer); ok {
+		return closer.Close() //nolint:wrapcheck // the stream's own error
+	}
+	return nil
 }
 
 // replaysRefused reports whether a request the server refused has a Use chain to replay.
