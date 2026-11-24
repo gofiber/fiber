@@ -405,7 +405,8 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 }
 
 // SetProxyURL sets the proxy URL for the client. This affects all subsequent requests.
-// The timeout of a request bounds its dial through the proxy as well.
+// The timeout of a request bounds its dial through the proxy as well; without one, the dial and the
+// proxy handshake each get fasthttp.DefaultDialTimeout.
 func (c *Client) SetProxyURL(proxyURL string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -418,7 +419,7 @@ func (c *Client) SetProxyURL(proxyURL string) error {
 	if err != nil {
 		return fmt.Errorf("client: invalid proxy URL: %w", err)
 	}
-	c.applyDial(dialFunc, proxyDialTimeout(config, dialFunc))
+	c.applyDial(dialFunc, proxyDialTimeout(config))
 	return nil
 }
 

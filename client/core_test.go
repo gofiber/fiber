@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
+	"golang.org/x/net/http/httpproxy"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
@@ -1093,6 +1094,33 @@ func Test_Execute_TimeoutEndsProxyDial(t *testing.T) {
 			_, err = client.Get(tc.url)
 			require.ErrorIs(t, err, ErrTimeoutOrCancel)
 			apptest.Recv(t, hungUp, 2*time.Second, "the connection to the proxy is still open after the call ended")
+		})
+	}
+}
+
+// Test_ProxyDialTimeout_BoundsADialWithoutTimeout checks that a proxy dial fasthttp starts without a timeout,
+// as for a request waiting on a busy host, still gives up on a proxy that never answers.
+func Test_ProxyDialTimeout_BoundsADialWithoutTimeout(t *testing.T) {
+	t.Parallel()
+	for _, scheme := range []string{"http", "socks5"} {
+		t.Run(scheme, func(t *testing.T) {
+			t.Parallel()
+			ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+			require.NoError(t, err)
+			hungUp := silentListener(t, ln)
+			proxyURL := scheme + "://" + ln.Addr().String()
+			dial := proxyDialTimeout(httpproxy.Config{HTTPProxy: proxyURL, HTTPSProxy: proxyURL})
+
+			done := make(chan error, 1)
+			go func() {
+				conn, err := dial("example.com:80", 0)
+				if conn != nil {
+					assert.NoError(t, conn.Close())
+				}
+				done <- err
+			}()
+			require.Error(t, apptest.Recv(t, done, 2*fasthttp.DefaultDialTimeout, "the dial waited for the proxy"))
+			apptest.Recv(t, hungUp, time.Second, "the connection to the proxy is still open")
 		})
 	}
 }

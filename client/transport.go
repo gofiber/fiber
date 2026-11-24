@@ -194,11 +194,12 @@ func (c handshakeConn) SetWriteDeadline(t time.Time) error {
 
 // proxyDialTimeout is the SetProxyURL dialer in the form fasthttp hands the request timeout, so a
 // proxy that leaves a CONNECT or SOCKS request unanswered does not outlive the call.
-func proxyDialTimeout(config httpproxy.Config, unbounded fasthttp.DialFunc) fasthttp.DialFuncWithTimeout {
+func proxyDialTimeout(config httpproxy.Config) fasthttp.DialFuncWithTimeout {
 	socks := socksProxyDialer(&config)
 	return func(addr string, timeout time.Duration) (net.Conn, error) {
 		if timeout <= 0 {
-			return unbounded(addr)
+			// fasthttp passes none for a request without a timeout or one waiting on a busy host.
+			timeout = fasthttp.DefaultDialTimeout
 		}
 		if socks != nil {
 			// fasthttpproxy has no timeout for the SOCKS negotiation; DialContext keeps one for both phases.
