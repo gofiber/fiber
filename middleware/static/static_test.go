@@ -1707,12 +1707,18 @@ func Test_Static_MaxAge_NotOnErrorResponses(t *testing.T) {
 // A guard's "private, no-store" must reach a shared cache as the guard wrote it, whatever case it spelled the name in.
 func Test_Static_MaxAge_KeepsCacheControl(t *testing.T) {
 	t.Parallel()
-	root := staticTestRoot(t, map[string]string{"logo.txt": "LOGO", "private/report.txt": "REPORT", "split/logo.txt": "LOGO"})
+	root := staticTestRoot(t, map[string]string{
+		"logo.txt": "LOGO", "private/report.txt": "REPORT", "split/logo.txt": "LOGO", "empty/logo.txt": "LOGO",
+	})
 
 	for _, name := range []string{fiber.HeaderCacheControl, "cache-control"} {
 		app := fiber.New(fiber.Config{DisableHeaderNormalizing: name != fiber.HeaderCacheControl})
 		app.Use("/private", func(c fiber.Ctx) error {
 			c.Set(name, "private, no-store")
+			return c.Next()
+		})
+		app.Use("/empty", func(c fiber.Ctx) error {
+			c.Response().Header.Add(name, "")
 			return c.Next()
 		})
 		app.Use("/split", func(c fiber.Ctx) error {
@@ -1734,6 +1740,8 @@ func Test_Static_MaxAge_KeepsCacheControl(t *testing.T) {
 		require.NotContains(t, resp.Header.Values(fiber.HeaderCacheControl), "max-age=3600", name)
 		raw := serveRaw(app.Handler(), fiber.MethodGet, "/split/logo.txt")
 		require.NotContains(t, string(raw.Header.Header()), "max-age=3600", name)
+		resp = apptest.ExpectBody(t, app, "/empty/logo.txt", fiber.StatusOK, "LOGO")
+		require.NotContains(t, resp.Header.Values(fiber.HeaderCacheControl), "max-age=3600", name)
 	}
 }
 

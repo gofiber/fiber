@@ -115,14 +115,10 @@ func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
 	return end
 }
 
-// hasCacheControl reports whether h holds a Cache-Control, in any spelling once
-// header normalizing is off.
+// hasCacheControl reports whether h holds a Cache-Control line, an empty one included: a later one may say
+// "private", and fasthttp keeps an empty value in a fresh slot nil, so Peek cannot tell it from none.
 func (s *fileServer) hasCacheControl(h *fasthttp.ResponseHeader) bool {
-	if s.config.DisableHeaderNormalizing {
-		return len(fieldname.First(h, fiber.HeaderCacheControl, false)) > 0
-	}
-	// a present but empty first line still counts: a later one may say "private"; it peeks as nil in a fresh slot
-	return len(h.PeekAll(fiber.HeaderCacheControl)) > 0
+	return len(fieldname.Lines(h, fiber.HeaderCacheControl, !s.config.DisableHeaderNormalizing)) > 0
 }
 
 // isPrefix reports whether head is the route prefix, as the router compares it.
