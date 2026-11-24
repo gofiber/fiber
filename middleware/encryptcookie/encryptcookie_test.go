@@ -15,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
 )
 
@@ -974,4 +975,58 @@ func Test_Middleware_ExplicitCallbacks_InvalidKey_Panics(t *testing.T) {
 	require.Panics(t, func() {
 		New(Config{Key: key, Encryptor: EncryptCookie, Decryptor: DecryptCookie})
 	})
+}
+
+// The response a recover middleware in front sends after a panic, and the one OnTimeout writes after the deadline,
+// both leave past this middleware: their cookies are encrypted all the same.
+func Test_Middleware_EncryptsResponsesSentPastIt(t *testing.T) {
+	t.Parallel()
+	setCookie := func(c fiber.Ctx, name string) { c.Cookie(&fiber.Cookie{Name: name, Value: "plain"}) }
+	for name, tc := range map[string]struct {
+		route  fiber.Handler
+		status int
+		inner  bool
+	}{
+		"panic": {status: fiber.StatusInternalServerError, route: func(c fiber.Ctx) error {
+			setCookie(c, "test")
+			panic("boom")
+		}},
+		"OnTimeout": {status: fiber.StatusGatewayTimeout, route: timeout.New(func(c fiber.Ctx) error {
+			<-c.Context().Done()
+			return nil
+		}, timeout.Config{Timeout: 10 * time.Millisecond, OnTimeout: func(c fiber.Ctx) error {
+			setCookie(c, "test")
+			return fiber.ErrGatewayTimeout
+		}})},
+		"OnTimeout with two instances": {status: fiber.StatusGatewayTimeout, inner: true, route: timeout.New(func(c fiber.Ctx) error {
+			<-c.Context().Done()
+			return nil
+		}, timeout.Config{Timeout: 10 * time.Millisecond, OnTimeout: func(c fiber.Ctx) error {
+			setCookie(c, "test")
+			setCookie(c, "inner")
+			return fiber.ErrGatewayTimeout
+		}})},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			key := GenerateKey(32)
+			app := fiber.New()
+			app.Use(recoverer.New())
+			app.Use(New(Config{Key: key, Except: []string{"inner"}}))
+			if tc.inner {
+				app.Use(New(Config{Key: key, Except: []string{"test"}}))
+			}
+			app.Get("/", tc.route)
+
+			resp := apptest.Expect(t, app, "/", tc.status)
+			cookies := resp.Cookies()
+			require.NotEmpty(t, cookies)
+			for _, ck := range cookies {
+				require.NotEqual(t, "plain", ck.Value, ck.Name)
+				got, err := DecryptCookie(ck.Name, ck.Value, key)
+				require.NoError(t, err, ck.Name)
+				require.Equal(t, "plain", got)
+			}
+		})
+	}
 }

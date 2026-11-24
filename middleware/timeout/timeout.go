@@ -294,6 +294,7 @@ func (s *snapshot) runOnTimeout(ctx fiber.Ctx, cfg Config) (resp *fasthttp.Respo
 	orig := ctx.RequestCtx()
 	fctx := new(fasthttp.RequestCtx)
 	resp = &fctx.Response
+	var headerPass func(*fasthttp.ResponseHeader) error
 	defer func() {
 		if p := recover(); p != nil {
 			log.Errorw("panic recovered in timeout OnTimeout", "panic", p, "stack", string(debug.Stack()))
@@ -301,6 +302,11 @@ func (s *snapshot) runOnTimeout(ctx fiber.Ctx, cfg Config) (resp *fasthttp.Respo
 			resp.SetStatusCode(fiber.StatusInternalServerError)
 			resp.SetBodyString(fiber.ErrInternalServerError.Message)
 			err = fiber.ErrInternalServerError
+		}
+		if headerPass != nil {
+			if passErr := headerPass(&resp.Header); passErr != nil {
+				err = errors.Join(err, passErr)
+			}
 		}
 	}()
 	// The real conn keeps IsTLS, LocalAddr and the TLS state; fctx is never served on it.
@@ -311,6 +317,10 @@ func (s *snapshot) runOnTimeout(ctx fiber.Ctx, cfg Config) (resp *fasthttp.Respo
 	s.resp.CopyTo(&fctx.Response.Header)
 	for _, l := range s.locals {
 		fctx.SetUserValue(l.key, l.value)
+	}
+	// The response goes out past the middleware in front, which left this pass for it (encryptcookie).
+	if pass, ok := fctx.UserValue(wiretarget.TimeoutHeaderKey).(func(*fasthttp.ResponseHeader) error); ok {
+		headerPass = pass
 	}
 
 	app := ctx.App()

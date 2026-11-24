@@ -1753,6 +1753,7 @@ A new deprecation middleware marks routes as deprecated. It sends the `Deprecati
 - Added support for specifying key length when using `encryptcookie.GenerateKey(length)`. Keys must be base64-encoded and may be 16, 24, or 32 bytes when decoded, supporting AES-128, AES-192, and AES-256 (default).
 - Custom encryptor and decryptor callbacks now receive the cookie name. The default AES-GCM helpers bind it as additional authenticated data (AAD) so ciphertext cannot be replayed under a different cookie.
 - Every `Set-Cookie` line of a response is encrypted, also when a name repeats or the line was written with `c.Add`, and only its value is replaced, so `Path`, `HttpOnly`, `Secure` and any other attribute are kept as written.
+- The cookies of the response a recover middleware in front sends after a panic, and of the response `OnTimeout` of a timeout middleware behind `encryptcookie` writes, are encrypted as well.
 - **Breaking change:** Custom encryptor/decryptor hooks now accept the cookie name as their first argument. Update overrides like:
 
   ```go
