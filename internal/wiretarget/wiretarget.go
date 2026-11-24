@@ -441,6 +441,16 @@ func SingleSpelling(path string) bool {
 
 func isHexLower(b byte) bool { return b >= 'a' && b <= 'f' }
 
+// RoutedAsMatched is Routed for a reader that takes the target as written, as a proxy upstream does. ok is false when
+// Routed would escape a raw byte or a stray "%", whose escaped spelling the router keeps apart as another path.
+func RoutedAsMatched[App any](c Ctx[App]) (target string, ok bool) {
+	path := c.Path()
+	if !appconfig.Of(c.App()).UnescapePath && needsEscape(path) {
+		return "", false
+	}
+	return routedFor(c, path, ""), true
+}
+
 // HasForgedEscape reports whether target's path holds an escape of an
 // unreserved character (RFC 3986 Section 2.3: a letter, a digit, "-", ".",
 // "_" or "~"). The router decodes every such escape when it normalizes a

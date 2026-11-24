@@ -116,13 +116,14 @@ func Test_Proxy_ForwardsRoutedPath(t *testing.T) {
 			build: func(addr string) fiber.Handler { return Balancer(Config{Servers: []string{addr}}) },
 			forwarded: map[string]string{
 				"/public/%41?x=%2F&y=1": "/public/A?x=%2F&y=1",
-				"/public/%zz":           "/public/%25zz",
+				"/public/%25zz":         "/public/%25zz",
 				"/public/a%3Ab%20c":     "/public/a%3Ab%20c",
 			},
 			forbidden: []string{"/admin/secret", "/public/../admin/secret", "/%2e%2e/admin/secret", "/public/%2E./admin/secret"},
 			// Kept as routed, an escaped slash or an empty segment would be read
-			// as another path by an upstream that decodes or merges: refused.
-			refused: []string{"/public/..%2Fadmin/secret", "/public%2F..%2Fadmin", "//admin/secret", "/public//x"},
+			// as another path by an upstream that decodes or merges: refused. So is
+			// a stray "%", which could only be forwarded as the "%25" of another path.
+			refused: []string{"/public/..%2Fadmin/secret", "/public%2F..%2Fadmin", "//admin/secret", "/public//x", "/public/%zz"},
 		},
 		{
 			name:   "Balancer with UnescapePath",
@@ -150,9 +151,9 @@ func Test_Proxy_ForwardsRoutedPath(t *testing.T) {
 		{
 			name:      "DomainForward",
 			build:     func(addr string) fiber.Handler { return DomainForward("example.com", "http://"+addr) },
-			forwarded: map[string]string{"/a/../public/%zz?x=1": "/public/%25zz?x=1", "/public/a%3Ab": "/public/a%3Ab"},
+			forwarded: map[string]string{"/a/../public/%25zz?x=1": "/public/%25zz?x=1", "/public/a%3Ab": "/public/a%3Ab"},
 			forbidden: []string{"/public/../admin/secret"},
-			refused:   []string{"//admin/secret", "/public/..%2Fadmin/secret"},
+			refused:   []string{"//admin/secret", "/public/..%2Fadmin/secret", "/a/../public/%zz?x=1"},
 		},
 		{
 			name:  "BalancerForward",
@@ -471,13 +472,8 @@ func Test_Proxy_RejectsPathParameters(t *testing.T) {
 	}
 }
 
-// Test_Proxy_EscapesRawBytes pins that a byte a path may not carry raw (RFC
-// 3986 Section 3.3) reaches the upstream as its escape, as fasthttp's
-// normalizing writer sent it before the proxy forwarded the routed path: an
-// upstream such as Tomcat answers 400 to a raw "|" or "{", and a raw byte of
-// UTF-8 is not a valid request line. The sub-delims, ":" and "@" stay raw, but
-// for the ";" that begins a path parameter (see Test_Proxy_RejectsPathParameters).
-func Test_Proxy_EscapesRawBytes(t *testing.T) {
+// The router keeps "/a|b" and "/a%7Cb" apart, and the raw one could only be sent on as the other: 400.
+func Test_Proxy_RefusesRawBytes(t *testing.T) {
 	t.Parallel()
 	addr := echoTarget(t)
 
@@ -486,13 +482,79 @@ func Test_Proxy_EscapesRawBytes(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
 			app.Use(h.build(addr))
+			proxyTestExpectStatus(t, app, fiber.StatusBadRequest,
+				"/a|b{c}d", "/q\"^<>`", "/a[1]", "/\xc3\xbcber?x=1", "/%C3\xbcber", "/\xc3%BCber", "/100%", "/a%zz", "/a%2")
 			proxyTestExpectForwarded(t, app, map[string]string{
-				"/a|b{c}d":              "/a%7Cb%7Bc%7Dd",
-				"/q\"^<>`":              "/q%22%5E%3C%3E%60",
-				"/\xc3\xbcber?x=1":      "/%C3%BCber?x=1",
+				"/a%7Cb%7Bc%7Dd":        "/a%7Cb%7Bc%7Dd",
+				"/q%22%5E%3C%3E%60":     "/q%22%5E%3C%3E%60",
+				"/%c3%bcber?x=1":        "/%C3%BCber?x=1",
+				"/100%25":               "/100%25",
+				"/plain?x=\xc3\xbc|%":   "/plain?x=\xc3\xbc|%", // the query is forwarded as sent
 				"/keep!$&'()*+,=:@/end": "/keep!$&'()*+,=:@/end",
 			})
+			// The authority form of CONNECT is routed as the path "/[::1]:443" and judged as one.
+			resp := serveParsed(t, app, proxyTestRequest(t), "CONNECT [::1]:443 HTTP/1.1\r\nHost: example.com\r\n\r\n")
+			require.Equal(t, fiber.StatusBadRequest, resp.StatusCode())
 		})
+		// A path a middleware set, as rewrite does, is judged as one that arrived.
+		t.Run(h.name+" with a path override", func(t *testing.T) {
+			t.Parallel()
+			for prefix, want := range map[string]string{"/My Docs": "", "/50%": "", "/My%20Docs": "/My%20Docs/x", "/50%25": "/50%25/x"} {
+				app := fiber.New()
+				app.Use(func(c fiber.Ctx) error {
+					c.Path(prefix + c.Path())
+					return c.Next()
+				})
+				app.Use(h.build(addr))
+				if want == "" {
+					proxyTestExpectStatus(t, app, fiber.StatusBadRequest, "/x")
+					continue
+				}
+				proxyTestExpectForwarded(t, app, map[string]string{"/x": want})
+			}
+		})
+		t.Run(h.name+" with UnescapePath", func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New(fiber.Config{UnescapePath: true})
+			app.Use(h.build(addr))
+			proxyTestExpectForwarded(t, app, map[string]string{
+				"/a|b":             "/a%7Cb",
+				"/a%7Cb":           "/a%7Cb",
+				"/\xc3\xbcber?x=1": "/%C3%BCber?x=1",
+				"/%C3%BCber?x=1":   "/%C3%BCber?x=1",
+				"/100%":            "/100%25",
+				"/100%25":          "/100%25",
+			})
+		})
+	}
+}
+
+func Test_Proxy_PrefixMiddlewareSeesEveryForwardedSpelling(t *testing.T) {
+	t.Parallel()
+	addr := echoTarget(t)
+
+	for _, h := range forwardingHandlers() {
+		for _, tc := range []struct {
+			guard, guarded string
+			spellings      []string
+		}{
+			{guard: "/%C3%BCber", guarded: "/%C3%BCber/secret", spellings: []string{"/\xc3\xbcber/secret", "/%C3\xbcber/secret", "/\xc3%BCber/secret"}},
+			{guard: "/a%7Cb", guarded: "/a%7Cb/secret", spellings: []string{"/a|b/secret"}},
+			{guard: "/100%25", guarded: "/100%25/secret", spellings: []string{"/100%/secret"}},
+		} {
+			t.Run(h.name+" "+tc.guard, func(t *testing.T) {
+				t.Parallel()
+				app := fiber.New()
+				app.Use(tc.guard, forbid)
+				app.Use(h.build(addr))
+
+				proxyTestExpectStatus(t, app, fiber.StatusForbidden, tc.guarded)
+				for _, target := range tc.spellings {
+					resp := rawRequest(t, app, target, "example.com")
+					require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), "%q was answered %q around the middleware on %q", target, resp.Body(), tc.guard)
+				}
+			})
+		}
 	}
 }
 
@@ -641,8 +703,8 @@ func (o *opaqueClient) PendingRequests() int {
 // Test_Proxy_Balancer_OpaqueClientFailsClosed pins that behind a
 // BalancingClient the proxy cannot keep from normalizing, a target that
 // normalization would change is refused rather than sent as another path,
-// while one it leaves alone, including the escapes the proxy writes for raw
-// bytes, is forwarded.
+// while one it leaves alone, including the escape of a byte a path may not
+// carry raw, is forwarded.
 func Test_Proxy_Balancer_OpaqueClientFailsClosed(t *testing.T) {
 	t.Parallel()
 	addr := echoTarget(t)
@@ -658,8 +720,8 @@ func Test_Proxy_Balancer_OpaqueClientFailsClosed(t *testing.T) {
 	proxyTestExpectForwarded(t, app, map[string]string{
 		"/plain/path?q=%2F": "/plain/path?q=%2F",
 		"/a%20b":            "/a%20b",
-		"/caf\xc3\xa9":      "/caf%C3%A9",
-		"/a|b%25":           "/a%7Cb%25",
+		"/caf%C3%A9":        "/caf%C3%A9",
+		"/a%7Cb%25":         "/a%7Cb%25",
 	})
 }
 

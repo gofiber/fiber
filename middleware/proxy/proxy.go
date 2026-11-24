@@ -271,11 +271,12 @@ func doActionWithPolicy(
 
 // forwardRouted forwards the routed path to base for DomainForward and BalancerForward. A path
 // an upstream could read as another (wiretarget.SegmentsAsRouted) is a 400 unless the policy
-// allows that spelling (AllowAmbiguousSlashes, AllowPathParameters).
+// allows that spelling (AllowAmbiguousSlashes, AllowPathParameters). So is one the target could only
+// spell as another path (wiretarget.RoutedAsMatched), whatever the policy.
 func forwardRouted(c fiber.Ctx, base *url.URL, clients ...*fasthttp.Client) error {
-	target := wiretarget.Routed(c)
+	target, ok := wiretarget.RoutedAsMatched(c)
 	active := currentSecurityPolicy()
-	if !segmentsAsRouted(target, active) {
+	if !ok || !segmentsAsRouted(target, active) {
 		return fiber.ErrBadRequest
 	}
 	return forwardWithRealIP(c, joinUpstreamPath(base, target), active, clients...)

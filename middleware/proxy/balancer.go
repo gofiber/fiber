@@ -140,9 +140,10 @@ func Balancer(config ...Config) fiber.Handler {
 		// decodes the forged escape as a path no middleware here matched.
 		// Behind a BalancingClient the proxy cannot configure, one that
 		// normalization would change (see wiretarget.SurvivesNormalization)
-		// is refused too.
-		target := wiretarget.Routed(c)
-		if !wiretarget.ParsesAsPath(target, req.Header.Host()) || !segmentsAsRouted(target, policy) ||
+		// is refused too, as is a path the target could only spell as another
+		// one the router keeps apart (see wiretarget.RoutedAsMatched).
+		target, ok := wiretarget.RoutedAsMatched(c)
+		if !ok || !wiretarget.ParsesAsPath(target, req.Header.Host()) || !segmentsAsRouted(target, policy) ||
 			(opaqueClient && !wiretarget.SurvivesNormalization(target)) {
 			return fiber.ErrBadRequest
 		}
