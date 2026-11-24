@@ -19,7 +19,6 @@ import (
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/fspath"
-	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 )
 
@@ -114,6 +113,15 @@ func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
 		return movedPrefix
 	}
 	return end
+}
+
+// hasCacheControl reports whether h holds a Cache-Control, in any spelling once
+// header normalizing is off.
+func (s *fileServer) hasCacheControl(h *fasthttp.ResponseHeader) bool {
+	if s.config.DisableHeaderNormalizing {
+		return len(fieldname.First(h, fiber.HeaderCacheControl, false)) > 0
+	}
+	return len(h.PeekCanonical(utils.UnsafeBytes(fiber.HeaderCacheControl))) > 0
 }
 
 // isPrefix reports whether head is the route prefix, as the router compares it.
@@ -490,7 +498,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 			// An error response such as 416 must not be cached under the file's MaxAge,
 			// and a Cache-Control set ahead, a guard's "private" say, is kept.
 			if cacheControlValue != "" && status >= fiber.StatusOK && status < fiber.StatusBadRequest &&
-				len(fieldname.First(&fctx.Response.Header, fiber.HeaderCacheControl, headerlookup.Canonical(c))) == 0 {
+				!server.hasCacheControl(&fctx.Response.Header) {
 				fctx.Response.Header.Set(fiber.HeaderCacheControl, cacheControlValue)
 			}
 
