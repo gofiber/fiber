@@ -1329,6 +1329,23 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 	})
 }
 
+func Test_SetWithMap_KeepsValuelessPairs(t *testing.T) {
+	t.Parallel()
+	m := map[string]string{"x": "new"}
+	for _, set := range []func(args *fasthttp.Args){
+		func(args *fasthttp.Args) { (&FormData{Args: args}).SetWithMap(m) },
+		func(args *fasthttp.Args) { (&QueryParam{Args: args}).SetParams(m) },
+	} {
+		for _, tc := range []struct{ args, want string }{{"flag&x=old", "flag&x=new"}, {"flag=&x=old", "flag=&x=new"}} {
+			args := fasthttp.AcquireArgs()
+			args.Parse(tc.args)
+			set(args)
+			require.Equal(t, tc.want, args.String(), tc.args)
+			fasthttp.ReleaseArgs(args)
+		}
+	}
+}
+
 // countedReader is a file reader that counts how often it is closed.
 type countedReader struct {
 	io.Reader

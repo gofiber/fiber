@@ -823,21 +823,30 @@ func (p *QueryParam) SetParams(r map[string]string) {
 func setArgsMap(args *fasthttp.Args, m map[string]string) {
 	kept := fasthttp.AcquireArgs()
 	defer fasthttp.ReleaseArgs(kept)
+	emptyKept := false
 	for k, v := range args.All() {
 		if _, ok := m[string(k)]; !ok {
 			kept.AddBytesKV(k, v)
+			emptyKept = emptyKept || len(v) == 0
 		}
 	}
-	if kept.Len() == args.Len() {
+	switch {
+	case kept.Len() == args.Len():
 		for k, v := range m {
 			args.Add(k, v)
 		}
-		return
+	case emptyKept:
+		// All does not tell "flag" from "flag=", so a rebuild would turn the first into the second.
+		for k, v := range m {
+			args.Del(k)
+			args.Set(k, v)
+		}
+	default:
+		for k, v := range m {
+			kept.Add(k, v)
+		}
+		kept.CopyTo(args)
 	}
-	for k, v := range m {
-		kept.Add(k, v)
-	}
-	kept.CopyTo(args)
 }
 
 // SetParamsWithStruct sets multiple parameters from a struct.
