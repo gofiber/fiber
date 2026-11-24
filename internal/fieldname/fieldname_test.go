@@ -482,6 +482,46 @@ func Test_KeepReceivedOrder(t *testing.T) {
 		require.Equal(t, []string{"client, 6.6.6.6", "proxy"}, lines(h, "X-Forwarded-For", true))
 	})
 
+	// fasthttp ends the header at a bare LF when the body, read along with it, holds a CRLFCRLF.
+	t.Run("folded in a block ending in a bare LF", func(t *testing.T) {
+		t.Parallel()
+		h := readRequestHeader(t, "POST / HTTP/1.1\nHost: app.example\nX-Junk: 1\nX-Note: a\n b\nX-Forwarded-For: client\n"+
+			"Content-Length: 4\n\n\r\n\r\n", true)
+		require.True(t, bytes.HasSuffix(h.RawHeaders(), []byte("4\n\n")))
+		h.Add("X-Forwarded-For", "app")
+		Del(h, "X-Junk", true)
+		require.Equal(t, []string{"app", "client"}, lines(h, "X-Forwarded-For", true))
+		require.True(t, KeepReceivedOrder(h, h.RawHeaders(), forwarding))
+		require.Equal(t, []string{"client", "app"}, lines(h, "X-Forwarded-For", true))
+	})
+
+	// fasthttp stores the space that joins an empty continuation line, which the received line is read without.
+	t.Run("folded onto an empty line", func(t *testing.T) {
+		t.Parallel()
+		h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\nX-Forwarded-For: client\r\n \r\n\r\n", true)
+		require.Equal(t, []string{"client "}, lines(h, "X-Forwarded-For", true))
+		h.Add("X-Forwarded-For", "app")
+		Del(h, "X-Junk", true)
+		require.Equal(t, []string{"app", "client "}, lines(h, "X-Forwarded-For", true))
+		require.True(t, KeepReceivedOrder(h, h.RawHeaders(), forwarding))
+		require.Equal(t, []string{"client ", "app"}, lines(h, "X-Forwarded-For", true))
+	})
+
+	// ClearTrailers leaves the header without a block of its own, so the recorded one is all there is to read.
+	t.Run("folded in a recorded block", func(t *testing.T) {
+		t.Parallel()
+		req := readRequest(t, "POST / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\nX-Note: a\r\n\tb\r\n"+
+			"X-Forwarded-For: client,\r\n 6.6.6.6\r\nTrailer: X-T\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX-T: v\r\n\r\n", true)
+		require.True(t, ClearTrailers(req))
+		h := &req.Header
+		require.Empty(t, h.RawHeaders())
+		h.Add("X-Forwarded-For", "app")
+		Del(h, "X-Junk", true)
+		require.Equal(t, []string{"app", "client, 6.6.6.6"}, lines(h, "X-Forwarded-For", true))
+		require.True(t, KeepReceivedOrder(h, Received(req), forwarding))
+		require.Equal(t, []string{"client, 6.6.6.6", "app"}, lines(h, "X-Forwarded-For", true))
+	})
+
 	t.Run("too many lines", func(t *testing.T) {
 		t.Parallel()
 		var raw strings.Builder
@@ -545,6 +585,15 @@ func Test_ReceivedOrder(t *testing.T) {
 		h := readRequestHeader(t, head+"X-Forwarded-For: client,\r\n 6.6.6.6\r\nX-Forwarded-For: proxy\r\n\r\n", true)
 		Del(h, "X-Junk", true)
 		require.Equal(t, []string{"client, 6.6.6.6", "proxy"}, read(h, h.RawHeaders()))
+	})
+
+	t.Run("folded in a block ending in a bare LF", func(t *testing.T) {
+		t.Parallel()
+		h := readRequestHeader(t, "POST / HTTP/1.1\nHost: app.example\nX-Junk: 1\nX-Note: a\n b\nX-Forwarded-For: client,\n\t6.6.6.6 \n"+
+			"X-Forwarded-For: proxy\nContent-Length: 4\n\n\r\n\r\n", true)
+		h.Add("X-Forwarded-For", "app")
+		Del(h, "X-Junk", true)
+		require.Equal(t, []string{"client, 6.6.6.6", "proxy", "app"}, read(h, h.RawHeaders()))
 	})
 
 	t.Run("recorded block", func(t *testing.T) {

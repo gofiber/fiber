@@ -244,14 +244,14 @@ func ReceivedOrder(h *fasthttp.RequestHeader, raw []byte, name string, f func(va
 		}
 	})
 	if over {
-		visitReceived(h, raw, func(k, v []byte) {
+		visitReceived(raw, func(k, v []byte) {
 			if named(k) {
 				f(v)
 			}
 		})
 		return
 	}
-	rankReceived(h, raw, lines, named)
+	rankReceived(raw, lines, named)
 	slices.SortStableFunc(lines, func(a, b orderedLine) int { return a.rank - b.rank })
 	for _, l := range lines {
 		f(l.value)
@@ -355,7 +355,7 @@ func KeepReceivedOrder(h *fasthttp.RequestHeader, raw []byte, match func(name []
 		return true
 	}
 
-	rankReceived(h, raw, lines, match)
+	rankReceived(raw, lines, match)
 	for g := range lines {
 		if lines[g].group == g && !rankedInOrder(lines, g) {
 			rewriteInRankOrder(h, lines)
@@ -366,9 +366,9 @@ func KeepReceivedOrder(h *fasthttp.RequestHeader, raw []byte, match func(name []
 }
 
 // rankReceived ranks the stored lines by the received lines they equal, walking the received block once.
-func rankReceived(h *fasthttp.RequestHeader, raw []byte, lines []orderedLine, match func(name []byte) bool) {
+func rankReceived(raw []byte, lines []orderedLine, match func(name []byte) bool) {
 	rank := 0
-	visitReceived(h, raw, func(k, v []byte) {
+	visitReceived(raw, func(k, v []byte) {
 		if !match(k) {
 			return
 		}
@@ -386,27 +386,41 @@ func rankReceived(h *fasthttp.RequestHeader, raw []byte, lines []orderedLine, ma
 }
 
 // visitReceived calls visit with each field line of the received block raw, in order.
-func visitReceived(h *fasthttp.RequestHeader, raw []byte, visit func(k, v []byte)) {
-	// A folded line (obs-fold) only AllInOrder joins, and it does so in place, so on a copy.
-	if bytes.Contains(raw, []byte("\n ")) || bytes.Contains(raw, []byte("\n\t")) {
-		scratch := fasthttp.AcquireRequest()
-		defer fasthttp.ReleaseRequest(scratch)
-		h.CopyTo(&scratch.Header)
-		for k, v := range scratch.Header.AllInOrder() {
-			visit(k, v)
-		}
-		return
-	}
+func visitReceived(raw []byte, visit func(k, v []byte)) {
+	var joined []byte
 	for {
-		line, n, _ := rawLine(raw)
+		line, n, folded := rawLine(raw)
 		if line == nil {
 			return
 		}
 		raw = raw[n:]
+		if folded {
+			joined, n = joinFolded(joined[:0], line, raw)
+			line, raw = joined, raw[n:]
+		}
 		if colon := bytes.IndexByte(line, ':'); colon > 0 {
 			visit(line[:colon], headerlist.TrimOWS(line[colon+1:]))
 		}
 	}
+}
+
+// joinFolded appends line to dst joined with the continuation lines rest begins with (obs-fold), as fasthttp stores
+// them, and returns the length those take up. Not AllInOrder, which reparses the header's own block.
+func joinFolded(dst, line, rest []byte) (joined []byte, n int) { //nolint:nonamedreturns // gocritic unnamedResult asks for names
+	dst = append(dst, headerlist.TrimOWS(line)...)
+	for n < len(rest) && (rest[n] == ' ' || rest[n] == '\t') {
+		line = rest[n:]
+		if i := bytes.IndexByte(line, '\n'); i >= 0 {
+			line = line[:i]
+			n += i + 1
+		} else {
+			n = len(rest)
+		}
+		line = bytes.TrimSuffix(line, []byte{'\r'})
+		dst = append(dst, ' ')
+		dst = append(dst, headerlist.TrimOWS(line)...)
+	}
+	return dst, n
 }
 
 func rankedInOrder(lines []orderedLine, group int) bool {
