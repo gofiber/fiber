@@ -563,6 +563,7 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	if s.dropped {
+		s.markPersonal()
 		return nil
 	}
 	// Under the destroyed ID it would be read as a change by a request that loaded the session before.
@@ -580,6 +581,7 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 
 	data, changed, err := s.encode()
 	if err != nil {
+		s.markPersonal()
 		return err
 	}
 
@@ -596,10 +598,12 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 		}
 		raw, moved, err := s.config.storedSince(ctx, key, s.loadGen)
 		if err != nil {
+			s.markPersonal()
 			return err
 		}
 		if moved {
 			if raw == nil {
+				s.markPersonal()
 				return nil // ended by another request: neither store it nor send its cookie again
 			}
 			if s.overtakenBy(raw) {
@@ -762,6 +766,16 @@ func (s *Session) setSession(ttl time.Duration) {
 		default:
 			// For non-cookie/header sources, do nothing (read-only)
 		}
+	}
+}
+
+// markPersonal tells a cache in front that the response is this client's although the save sends no cookie: the
+// handler may have shown the session. The caller holds s.mu.
+func (s *Session) markPersonal() {
+	s.reqMu.Lock()
+	defer s.reqMu.Unlock()
+	if _, resp := s.requestResponse(); resp != nil {
+		personalheader.MarkResponse(s.fasthttpCtx())
 	}
 }
 
