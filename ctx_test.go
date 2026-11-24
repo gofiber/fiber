@@ -2686,6 +2686,23 @@ func Test_Ctx_HeaderAccessors_SkipTrailerSection(t *testing.T) {
 	}
 }
 
+func Test_Ctx_Referer_AnySpelling(t *testing.T) {
+	t.Parallel()
+	const referer = "https://example.com/page"
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{DisableHeaderNormalizing: !normalize})
+			app.Get("/", func(c Ctx) error { return c.SendString(c.Referer() + "|" + c.Get(HeaderReferer)) })
+			ln := startRawServer(t, app)
+			for _, name := range []string{"Referer", "referer", "REFERER"} {
+				raw := "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n" + name + ": " + referer + "\r\n\r\n"
+				require.Equal(t, referer+"|"+referer, rawExpectStatus(t, ln, raw, StatusOK).body, name)
+			}
+		})
+	}
+}
+
 func Test_Ctx_HeaderWrittenUnderTrailerName(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

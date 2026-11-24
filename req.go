@@ -305,7 +305,8 @@ func (r *DefaultReq) UserAgent() string {
 // Referer returns the Referer request header.
 func (r *DefaultReq) Referer() string {
 	h := &r.c.fasthttp.Request.Header
-	if fieldname.HasTrailers(h) {
+	// fasthttp's accessor falls through to the trailer section and matches the stored name byte-exactly.
+	if fieldname.HasTrailers(h) || r.c.app.config.DisableHeaderNormalizing {
 		return r.c.app.toString(r.headerField(HeaderReferer))
 	}
 	return r.c.app.toString(h.Referer())
