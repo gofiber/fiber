@@ -583,9 +583,11 @@ func Test_App_Mount_SiblingConstraintOverride(t *testing.T) {
 				mid := New()
 				if mount == "override first" {
 					mid.Use("/override", override)
+					mid.Use("/guarded", guarded)
+				} else {
+					mid.Use("/guarded", guarded)
+					mid.Use("/override", override)
 				}
-				mid.Use("/guarded", guarded)
-				mid.Use("/override", override)
 				app := mid
 				switch mount {
 				case "nested":
