@@ -325,6 +325,56 @@ func Test_SubstitutePathParams_SourceOrder(t *testing.T) {
 	require.Equal(t, "http://example.com/api/request/client", got)
 }
 
+// Test_SubstitutePathParams_ColonRun pins that the placeholder scan stays linear in a long run of colons,
+// in a segment and in the authority.
+func Test_SubstitutePathParams_ColonRun(t *testing.T) {
+	t.Parallel()
+	type result struct {
+		err error
+		got string
+	}
+	segment, authority := strings.Repeat(":", 1<<16), strings.Repeat(":", 1<<18)
+	version := PathParam{"version": "2"}
+	tests := []struct {
+		params PathParam
+		name   string
+		uri    string
+		want   string
+	}{
+		{
+			name: "in a segment with no name set", uri: "http://example.com/" + segment,
+			want: "http://example.com/" + segment,
+		},
+		{
+			name: "in a segment", uri: "http://example.com/v:version/" + segment,
+			params: version, want: "http://example.com/v2/" + segment,
+		},
+		{
+			name: "in the authority", uri: "http://" + authority + "/v:version",
+			params: version, want: "http://" + authority + "/v2",
+		},
+		{
+			name: "in an IPv6 literal", uri: "http://[" + authority + "]/v:version",
+			params: version, want: "http://[" + authority + "]/v2",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			done := make(chan result, 1)
+			go func() {
+				got, err := substitutePathParams(tc.uri, false, tc.params)
+				done <- result{got: got, err: err}
+			}()
+
+			res := apptest.Recv(t, done, 5*time.Second, "the placeholder scan is not linear in the URL")
+			require.NoError(t, res.err)
+			require.Equal(t, tc.want, res.got)
+		})
+	}
+}
+
 // Test_PathParam_RoundTrip sends each value through a real server and checks the
 // handler reads back exactly what was set: escaping on the way out has to be
 // undone by the server's own decoding, not just look right in the URL.

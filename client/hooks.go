@@ -161,11 +161,20 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 		return uri, nil
 	}
 
+	// No placeholder is longer than the longest name set: the bound keeps the scan linear.
+	maxName := longestPathParamName(sources)
+	if maxName == 0 {
+		return uri, nil
+	}
+
 	authEnd := authorityEnd(uri)
 
 	var (
 		buf  []byte
 		last int
+
+		inLiteral bool // uri[:scanned] ends inside an IPv6 literal; carried from one ":" to the next
+		scanned   int
 	)
 
 	for i := 0; i < len(uri); i++ {
@@ -175,11 +184,15 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 
 		// The colons inside an IPv6 literal belong to the address, so
 		// "http://[2001:db8::1]/x" must not be rewritten by a "db8" parameter.
-		if i < authEnd && inIPv6Literal(uri[:i]) {
-			continue
+		if i < authEnd {
+			inLiteral = inIPv6Literal(uri[scanned:i], inLiteral)
+			scanned = i
+			if inLiteral {
+				continue
+			}
 		}
 
-		ph, ok := lookupPlaceholder(uri, i, i < authEnd, sources)
+		ph, ok := lookupPlaceholder(uri, i, maxName, i < authEnd, sources)
 		if !ok {
 			continue
 		}
@@ -264,10 +277,14 @@ func isHostSafe(val string) bool {
 	return val != "" && utf8.ValidString(val)
 }
 
-// inIPv6Literal reports whether the authority prefix ends inside a "[...]"
-// IPv6 literal.
-func inIPv6Literal(prefix string) bool {
-	return strings.LastIndexByte(prefix, '[') > strings.LastIndexByte(prefix, ']')
+// inIPv6Literal reports whether the authority is inside a "[...]" IPv6 literal
+// at the end of part, given whether it was at the start of it.
+func inIPv6Literal(part string, inLiteral bool) bool {
+	opened, closed := strings.LastIndexByte(part, '['), strings.LastIndexByte(part, ']')
+	if opened == closed {
+		return inLiteral
+	}
+	return opened > closed
 }
 
 // authorityEnd returns the index at which uri's authority ends, or 0 when uri
@@ -314,6 +331,8 @@ var pathParamSegmentEndChars = [256]bool{
 // to each terminator inside it, longest first, so a name holding a "-", "." or
 // ":" still resolves. ":idx" never offers "id", because "x" does not terminate a
 // name and the shorter run is therefore not a candidate at all.
+// No candidate is longer than maxName: ":" starts a placeholder and ends a name, so a
+// run of n colons would otherwise cost n*n lookups.
 // placeholder is a resolved ":name" in a request URL: the parameter name, the
 // value found for it, and the index just past the name in the URL.
 type placeholder struct {
@@ -323,14 +342,16 @@ type placeholder struct {
 }
 
 //nolint:revive // flag-parameter: inAuthority selects the port rule, as in substitutePathParams
-func lookupPlaceholder(uri string, i int, inAuthority bool, sources []PathParam) (placeholder, bool) {
+func lookupPlaceholder(uri string, i, maxName int, inAuthority bool, sources []PathParam) (placeholder, bool) {
+	limit := min(len(uri), i+1+maxName)
 	segEnd := i + 1
-	for segEnd < len(uri) && !pathParamSegmentEndChars[uri[segEnd]] {
+	for segEnd < limit && !pathParamSegmentEndChars[uri[segEnd]] {
 		segEnd++
 	}
 
 	for end := segEnd; end > i+1; end-- {
-		if end != segEnd && !pathParamEndChars[uri[end]] {
+		// The scan may have stopped at limit, which ends no name.
+		if end != len(uri) && !pathParamSegmentEndChars[uri[end]] && !pathParamEndChars[uri[end]] {
 			continue
 		}
 
@@ -349,6 +370,18 @@ func lookupPlaceholder(uri string, i int, inAuthority bool, sources []PathParam)
 	}
 
 	return placeholder{}, false
+}
+
+// longestPathParamName returns the length of the longest name in sources, or 0
+// when they hold no name a placeholder could spell.
+func longestPathParamName(sources []PathParam) int {
+	longest := 0
+	for _, source := range sources {
+		for name := range source {
+			longest = max(longest, len(name))
+		}
+	}
+	return longest
 }
 
 // lookupPathParam returns the first value stored under name, searching sources
