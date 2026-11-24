@@ -115,7 +115,7 @@ app.Use(cache.New(cache.Config{
 }))
 ```
 
-`CacheInvalidator` defines custom invalidation rules. Return `true` to bypass the cache. In the example above, setting the `invalidateCache` query parameter to `true` invalidates the entry. It is called for a request that finds an entry and has not already asked for a fresh response (`max-age=0`, an unmet `min-fresh`), without any lock of the middleware held, so requests call it concurrently and it must be safe for that; a slow call delays only its own request.
+`CacheInvalidator` defines custom invalidation rules. Return `true` to bypass the cache. In the example above, setting the `invalidateCache` query parameter to `true` invalidates the entry. It is called for a request that finds an entry and has not already asked for a fresh response (`max-age=0`, an unmet `min-fresh`), without any lock of the middleware held, so requests call it concurrently and it must be safe for that; a slow call delays only its own request. The entry it invalidates is deleted before the handler runs, so it is not served again even when the handler fails.
 
 Cache keys are masked in logs and error messages by default. Set `DisableValueRedaction` to `true` if you explicitly need the raw key for debugging.
 

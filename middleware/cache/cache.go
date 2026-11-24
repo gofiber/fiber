@@ -579,8 +579,11 @@ func New(config ...Config) fiber.Handler {
 			// Frees the lock on a panic; a no-op after the explicit unlocks below.
 			defer guard.Unlock()
 
-			// Cache Entry found
-			settle(ts)
+			// Cache Entry found. An invalidated one is deleted below, not set aside: that would keep it stored
+			// unless the origin's answer replaced it.
+			if !invalidated {
+				settle(ts)
+			}
 
 			if e != nil && e.ttl == 0 && e.exp != 0 && ts >= e.exp {
 				guard.Unlock()
@@ -642,11 +645,12 @@ func New(config ...Config) fiber.Handler {
 					(reqDirectives.maxStaleAny || (reqDirectives.maxStaleSet && staleness <= reqDirectives.maxStale)) &&
 					(cfg.AllowStaleCredentialResponses || (!hasAuthorization && !holdsCredential()))
 
-				if entryExpired && e.revalidate {
-					setAside()
+				if !invalidated {
+					if entryExpired && e.revalidate {
+						setAside()
+					}
+					handleMinFresh(ts)
 				}
-
-				handleMinFresh(ts)
 
 				if revalidate {
 					guard.Unlock()

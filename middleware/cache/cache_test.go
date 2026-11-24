@@ -1264,6 +1264,57 @@ func Test_CacheInvalidator_PanicReleasesLock(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
+// An invalidated entry ends with the request that invalidated it, whatever the origin answers.
+func Test_CacheInvalidation_EndsTheEntry(t *testing.T) {
+	t.Parallel()
+	for _, storage := range storageKinds {
+		for _, cacheControl := range []string{"public, max-age=60", "public, max-age=60, must-revalidate"} {
+			for _, directive := range []string{"", "only-if-cached", "max-age=5"} {
+				for _, answer := range []string{"error", "panic"} {
+					t.Run(storage+"/"+cacheControl+"/"+directive+"/"+answer, func(t *testing.T) {
+						t.Parallel()
+						clock := cacheTestCClock()
+						var withdrawn atomic.Bool
+						app := fiber.New()
+						app.Use(recover.New())
+						app.Use(New(Config{
+							MaxBytes: 1 << 20,
+							Storage:  storageOf(storage),
+							clock:    clock.Now,
+							CacheInvalidator: func(c fiber.Ctx) bool {
+								if c.Get("X-Purge") != "1" {
+									return false
+								}
+								clock.Add(10 * time.Second) // past the request's max-age=5
+								return true
+							},
+						}))
+						app.Get("/", func(c fiber.Ctx) error {
+							switch {
+							case !withdrawn.Load():
+								c.Set(fiber.HeaderCacheControl, cacheControl)
+								return c.SendString("page")
+							case answer == "panic":
+								panic("page withdrawn")
+							default:
+								return fiber.ErrNotFound
+							}
+						})
+
+						cacheTestCRequireReply(t, getRoot(t, app, nil), cacheMiss, "page")
+						cacheTestCRequireReply(t, getRoot(t, app, nil), cacheHit, "page")
+						withdrawn.Store(true)
+						require.NotEqual(t, "page", getRoot(t, app, map[string]string{"X-Purge": "1", fiber.HeaderCacheControl: directive}).body)
+						got := getRoot(t, app, nil)
+						require.NotEqual(t, cacheHit, got.cache, "the invalidated entry was served")
+						require.NotEqual(t, "page", got.body, "the invalidated entry was served")
+					})
+				}
+			}
+		}
+	}
+}
+
 func Test_CacheInvalidation_IgnoresMaxStale(t *testing.T) {
 	t.Parallel()
 	for _, storage := range storageKinds {
@@ -2804,7 +2855,6 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 			var returnNoCache atomic.Bool
 
 			app := cacheTestBPathKeyedApp(&Config{
-				CacheInvalidator: cacheTestBInvalidateByQuery,
 				// Room for one entry, so storing /next evicts whatever is still tracked.
 				MaxBytes: charged(key, len("stale"), textPlain, "public, max-age=60, must-revalidate"),
 				Storage:  storage,
@@ -2817,7 +2867,8 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 			storage.SetErr(storagetest.OpDelete, tt.failedKey, errors.New("delete failed"))
 			returnNoCache.Store(true)
 
-			cacheTestBExpectNewer(t, app, "/cached?invalidate=true")
+			// The request forces the revalidation: an invalidated entry is deleted before the origin is asked.
+			cacheTestBExpectNewer(t, app, cacheTestAGetCC("/cached", "max-age=0"))
 			require.Equal(t, tt.metadataRemaining, storage.Holds(key))
 			require.True(t, storage.Holds(bodySlot))
 
