@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/xml"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -166,6 +168,58 @@ func Test_Response_Header(t *testing.T) {
 	}, "http://example.com")
 
 	require.Equal(t, "bar", resp.Header("foo"))
+}
+
+// A field of the trailer section is not a header (RFC 9110 Section 6.5.1):
+// fasthttp's Peek and PeekAll fall through to that section, Header and Headers do not.
+func Test_Response_Header_TrailerSection(t *testing.T) {
+	t.Parallel()
+	const raw = "HTTP/1.1 200 OK\r\nX-Role: user\r\nX-Plain: plain\r\nTransfer-Encoding: chunked\r\n\r\n" +
+		"2\r\nok\r\n0\r\nX-Verified: yes\r\nX-Role: admin\r\nServer: trailer\r\n\r\n"
+
+	requireHeaderSection := func(t *testing.T, resp *Response) {
+		t.Helper()
+		require.Empty(t, resp.Header("X-Verified"))
+		require.Empty(t, resp.Header("Server"))
+		require.Equal(t, "user", resp.Header("x-role"))
+		require.Equal(t, "plain", resp.Header("X-Plain"))
+
+		headers := maps.Collect(resp.Headers())
+		require.NotContains(t, headers, "X-Verified")
+		require.NotContains(t, headers, "Server")
+		require.Equal(t, []string{"user"}, headers["X-Role"])
+		require.Equal(t, []string{"plain"}, headers["X-Plain"])
+	}
+
+	t.Run("buffered body", func(t *testing.T) {
+		t.Parallel()
+		resp := AcquireResponse()
+		defer ReleaseResponse(resp)
+		require.NoError(t, resp.RawResponse.Read(bufio.NewReader(strings.NewReader(raw))))
+
+		requireHeaderSection(t, resp)
+		require.Equal(t, "yes", string(resp.RawResponse.Header.PeekTrailer("X-Verified")))
+		require.Equal(t, "admin", string(resp.RawResponse.Header.PeekTrailer("X-Role")))
+	})
+
+	// The section arrives once the stream is drained, and the answers stay the same.
+	t.Run("streamed body", func(t *testing.T) {
+		t.Parallel()
+		resp := AcquireResponse()
+		defer ReleaseResponse(resp)
+		resp.RawResponse.StreamBody = true
+		require.NoError(t, resp.RawResponse.Read(bufio.NewReader(strings.NewReader(raw))))
+
+		requireHeaderSection(t, resp)
+		require.Empty(t, resp.RawResponse.Header.PeekTrailer("X-Verified"))
+
+		body, err := io.ReadAll(resp.BodyStream())
+		require.NoError(t, err)
+		require.Equal(t, "ok", string(body))
+
+		requireHeaderSection(t, resp)
+		require.Equal(t, "yes", string(resp.RawResponse.Header.PeekTrailer("X-Verified")))
+	})
 }
 
 func Test_Response_Headers(t *testing.T) {

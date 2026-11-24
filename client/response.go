@@ -12,6 +12,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -99,12 +100,31 @@ func (r *Response) Protocol() string {
 }
 
 // Header returns the value of the specified response header field.
+//
+// Only the header section is read: a trailer field is no header (RFC 9110 Section 6.5.1)
+// and is left to RawResponse.Header.PeekTrailer.
 func (r *Response) Header(key string) string {
-	return string(r.RawResponse.Header.Peek(key))
+	h := &r.RawResponse.Header
+	if len(h.PeekAllTrailer(key)) == 0 {
+		return string(h.Peek(key))
+	}
+	if lines := fieldname.Lines(h, key, true); len(lines) > 0 {
+		return string(lines[0])
+	}
+	return ""
+}
+
+// headerLines is PeekAll without the trailer fields fasthttp appends under the same name.
+func headerLines(h *fasthttp.ResponseHeader, key string) [][]byte {
+	if len(h.PeekAllTrailer(key)) == 0 {
+		return h.PeekAll(key)
+	}
+	return fieldname.Lines(h, key, true)
 }
 
 // Headers returns all headers in the response using an iterator.
 // Use maps.Collect() to gather them into a map if needed.
+// Like Header, it leaves out the fields of the trailer section.
 //
 // The returned values are valid only until the response object is released.
 // Do not store references to returned values; make copies instead.
@@ -122,7 +142,7 @@ func (r *Response) Headers() iter.Seq2[string, []string] {
 		}
 
 		for _, key := range keys {
-			vals := r.RawResponse.Header.PeekAll(key)
+			vals := headerLines(&r.RawResponse.Header, key)
 			valsStr := make([]string, len(vals))
 			for i, v := range vals {
 				valsStr[i] = utils.UnsafeString(v)
