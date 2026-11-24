@@ -253,10 +253,16 @@ The same applies to any handler wrapper of the form
 only rewrites the cookies a response already sets, so the cache sees them in the
 clear either way round; it also decrypts the request's cookies, and a response
 that varies on `Cookie` is stored only when the cache is registered **behind**
-it (see `Vary` above). Note also that a response
-personalized from a **request** cookie without setting one is cached and shared
-by design — use `KeyCookies` or `Vary: Cookie` to key those apart. A hit on an
-entry keyed that way is sent with `Cache-Control: private`, as described below.
+it (see `Vary` above).
+
+:::
+
+:::caution A response built from a request cookie is shared unless keyed by it
+
+A response personalized from a **request** cookie without setting one is cached
+and shared by design: use `KeyCookies` or `Vary: Cookie` to key those apart. A
+hit on an entry keyed that way is sent with `Cache-Control: private`, as
+described below.
 
 :::
 
