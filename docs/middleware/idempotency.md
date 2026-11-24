@@ -31,7 +31,7 @@ type Locker interface {
 
 `IsFromCache` reports whether the middleware replayed a stored response for the current request, and `WasPutToCache` whether it stored the response of the current request. Both are set as the middleware returns, so read them from a middleware registered before it, after `c.Next()`.
 
-`NewMemoryLock` returns the in-memory `Locker` the middleware uses by default. It only locks within the current process; implement `Locker` yourself to coordinate several instances. The middleware calls `Lock` before it runs the handler and `Unlock` once the request is done, so `Lock` has to block until the caller holds the key.
+`NewMemoryLock` returns the in-memory `Locker` the middleware uses by default. It only locks within the current process; implement `Locker` yourself to coordinate several instances. The middleware calls `Lock` before it runs the handler and `Unlock` once the request is done, so `Lock` has to block until the caller holds the key. `MemoryLock` lets at most 100 requests wait for one key and refuses the next with `ErrTooManyWaiters`, which answers `409 Conflict`.
 
 ## Behavior
 
@@ -41,7 +41,7 @@ type Locker interface {
 * Register middleware whose decisions must be made for every request, such as CORS and request ID, before idempotency. Middleware registered after it runs only on a cache miss, and its response headers are replayed with the stored response. Entries written before upstream header filtering was introduced retain their original headers until they expire; the storage keys are unchanged, so upgrading does not cause an already-recorded operation to run again.
 * A streamed response that declares no length (`SendStreamWriter`, or `SendStream` without a size) is sent as it is produced and not stored, since storing it would mean reading it to its end first. The next request with that key runs the handler again. A stream of known length, such as `SendFile` serves, is read and stored like any other response when it is no longer than 1 MiB and delivers that length without an error; otherwise it is sent as read and not stored.
 * Cookies are not stored: `Set-Cookie` and the obsolete `Set-Cookie2` are left out of the stored response unless `KeepResponseHeaders` names them. The client that caused the miss still receives them, and a replay does not, so a retry after a lost response does not set the cookie. A stored entry is replayed through the same filter, so one that holds a cookie, written by an earlier version or under a configuration that named it, is replayed without it.
-* Later requests with the same key receive the stored response and the handler does not run. A request that arrives while the first is still running waits for `Lock` and then receives the stored response.
+* Later requests with the same key receive the stored response and the handler does not run. A request that arrives while the first is still running waits for `Lock` and then receives the stored response. A request routed through the middleware again while it holds the lock of its key, by `RestartRouting` or by a second registration with the same `Lock`, does not wait for itself: it runs on, and the outer pass stores the response.
 * The key alone identifies a request, unless `KeyScope` is set. The method, path and body are not compared, so a retry with the same key but a different payload, or on another route, gets the original response, and so does anyone else who sends the key.
 * With `KeyScope`, a response is stored under the scope and the key together. A request replays only what was stored in its own scope, and a request in another scope that sends the same key runs the handler and stores a response of its own.
 * A key that fails `KeyHeaderValidate` is returned as an error to the error handler, which answers `500` unless the validator returns a `*fiber.Error`.
@@ -49,6 +49,10 @@ type Locker interface {
 
 :::caution Treat a key as a secret
 Whoever sends a stored key receives the response stored for it, whatever the user, route, method or body of their request: its status, its body and every header the config keeps. The default validator checks only the length, so `00000000-0000-0000-0000-000000000000` passes. Have clients draw keys from a cryptographically secure random source, such as a version 4 UUID, and never derive one from a counter, a timestamp or an identifier like a user ID that another client can guess. When responses differ per user, set `KeyScope` to something that identifies the caller, so that a key someone else sent or guessed returns nothing stored for you. If you name a cookie in `KeepResponseHeaders`, scope the keys too: an unscoped replay would hand that cookie to whoever sends the key. Only the cookies are left out by default. A session or token carried in another response header, such as the session ID the session middleware writes to the header it reads it from, is stored and replayed like any header: list the headers to replay in `KeepResponseHeaders` so that it is left out, or scope the keys.
+:::
+
+:::caution Bound the storage
+The default storage keeps every response until its `Lifetime` ends and has no size limit, so each new key a client sends adds an entry as large as the response. In production, pass a `Storage` that limits its size or evicts entries, such as Redis with `maxmemory` set, and put the [limiter](./limiter.md) before this middleware.
 :::
 
 ## Examples
@@ -144,7 +148,7 @@ Idempotency keys are hidden in logs and error messages by default. Set `DisableV
 | KeepResponseHeaders | `[]string`             | List of headers to preserve from original response, matched case-insensitively. An empty list keeps all headers, like `nil`, but for `Set-Cookie` and `Set-Cookie2`, which are kept only when named. | `nil` (keep all headers but the cookies)                           |
 | DisableValueRedaction | `bool`                | Disables idempotency key redaction in logs and error messages. | `false`                                              |
 | Lock                | `Locker`               | Locks an idempotency key to prevent race conditions. The default only locks within this process. | `NewMemoryLock()` (in-memory locker)                               |
-| Storage             | `fiber.Storage`        | Stores response data by idempotency key. An entry is stored under `idempotency:` followed by the key, or by its digest with `KeyScope`, so the storage can be shared with other middleware. Responses stored by an earlier version are not replayed after the upgrade, so a retry with such a key runs the handler again, and the old entries expire on their own. The default store is private to this process. | In-memory storage                                                  |
+| Storage             | `fiber.Storage`        | Stores response data by idempotency key. An entry is stored under `idempotency:` followed by the key, or by its digest with `KeyScope`, so the storage can be shared with other middleware. Responses stored by an earlier version are not replayed after the upgrade, so a retry with such a key runs the handler again, and the old entries expire on their own. The default store is private to this process and has no size limit. | In-memory storage                                                  |
 
 ## Default Config Values
 

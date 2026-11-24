@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"slices"
 
 	"github.com/gofiber/fiber/v3/internal/redact"
@@ -28,6 +29,10 @@ const (
 	localsKeyIsFromCache contextKey = iota //
 	localsKeyWasPutToCache
 )
+
+// heldKey is the Locals key a pass records the key it locked under, one per Locker: a request routed through any
+// middleware sharing that Locker again with the same key would otherwise wait on the lock it holds.
+type heldKey struct{ lock Locker }
 
 // maxStoredStream is the longest stream of known length read into memory to store it.
 const maxStoredStream = 1 << 20
@@ -85,6 +90,11 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	maskKey := redact.Masker(!cfg.DisableValueRedaction)
+
+	var held any = heldKey{cfg.Lock}
+	if !reflect.TypeOf(cfg.Lock).Comparable() {
+		held = new(heldKey) // a Locals key must be comparable
+	}
 
 	// Snapshot the configured names so later mutation of the caller's slice
 	// cannot change an already-constructed handler. Matching uses
@@ -175,6 +185,11 @@ func New(config ...Config) fiber.Handler {
 			storageKey = entryKey[len(storagePrefix):]
 		}
 
+		// The pass that holds the lock stores the response.
+		if locked, ok := c.Locals(held).(string); ok && locked == storageKey {
+			return c.Next()
+		}
+
 		// First-pass: if the idempotency key is in the storage, get and return the response
 		if ok, err := maybeWriteCachedResponse(c, entryKey); err != nil {
 			return fmt.Errorf("failed to write cached response at fastpath: %w", err)
@@ -185,7 +200,10 @@ func New(config ...Config) fiber.Handler {
 		if err := cfg.Lock.Lock(storageKey); err != nil {
 			return fmt.Errorf("failed to lock: %w", err)
 		}
+		prev := c.Locals(held)
+		_ = ctxlocal.Set(c, held, storageKey)
 		defer func() {
+			_ = ctxlocal.Set(c, held, prev)
 			if err := cfg.Lock.Unlock(storageKey); err != nil {
 				log.Errorf("[IDEMPOTENCY] failed to unlock key %q: %v", maskKey(key), err)
 			}

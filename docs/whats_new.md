@@ -1752,6 +1752,8 @@ The key alone identifies a request, so whoever sends a stored key receives the r
 
 A response is stored under `idempotency:` followed by the key (or its digest with `KeyScope`), so a key sent by a client cannot read or overwrite an entry another middleware keeps in the same `Storage`. Responses stored by an earlier version are not replayed after the upgrade: a retry with such a key runs the handler again.
 
+A request routed through the middleware again while it holds the lock of its key, by `RestartRouting` or by a second registration with the same `Lock`, no longer waits for itself forever: it runs on, and the outer pass stores the response. `MemoryLock` lets at most 100 requests wait for one key and refuses the next with `ErrTooManyWaiters` (`409 Conflict`). The default storage has no size limit, so pass a bounded `Storage` in production, see [Bound the storage](./middleware/idempotency.md#behavior).
+
 ### Deprecation
 
 A new deprecation middleware marks routes as deprecated. It sends the `Deprecation` header ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)), the `Sunset` header ([RFC 8594](https://www.rfc-editor.org/rfc/rfc8594)), or both, and can add `Link` relations to the deprecation and sunset documentation, also on their own to publish a policy. See the [deprecation middleware](./middleware/deprecation.md) docs.

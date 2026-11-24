@@ -2,7 +2,15 @@ package idempotency
 
 import (
 	"sync"
+
+	"github.com/gofiber/fiber/v3"
 )
+
+// maxLockWaiters is how many requests MemoryLock lets wait for one key: each holds a connection and a goroutine.
+const maxLockWaiters = 100
+
+// ErrTooManyWaiters is returned by MemoryLock when maxLockWaiters requests already wait for the key.
+var ErrTooManyWaiters = fiber.NewError(fiber.StatusConflict, "too many requests are waiting for this idempotency key")
 
 // Locker implements a spinlock for a string key.
 type Locker interface {
@@ -32,6 +40,10 @@ func (l *MemoryLock) Lock(key string) error {
 	if !ok {
 		lock = new(countedLock)
 		l.keys[key] = lock
+	}
+	if lock.locked > maxLockWaiters {
+		l.mu.Unlock()
+		return ErrTooManyWaiters
 	}
 	lock.locked++
 	l.mu.Unlock()

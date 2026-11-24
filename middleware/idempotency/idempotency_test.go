@@ -937,6 +937,82 @@ func Test_New_UnlockError(t *testing.T) {
 	require.Equal(t, "ok", body)
 }
 
+// Test_New_RoutedThroughTwice pins that a request reaching the middleware again with the key it holds passes
+// through instead of waiting on itself, and that the outer pass stores the response.
+func Test_New_RoutedThroughTwice(t *testing.T) {
+	t.Parallel()
+	for name, setup := range map[string]func(app *fiber.App, handler fiber.Handler){
+		"RestartRouting": func(app *fiber.App, handler fiber.Handler) {
+			app.Use(New())
+			app.Post("/v1", func(c fiber.Ctx) error {
+				c.Path("/v2")
+				return c.RestartRouting()
+			})
+			app.Post("/v2", handler)
+		},
+		"one instance matched twice": func(app *fiber.App, handler fiber.Handler) {
+			idem := New()
+			app.Use(idem)
+			app.Use("/v1", idem)
+			app.Post("/v1", handler)
+		},
+		"two instances sharing a lock": func(app *fiber.App, handler fiber.Handler) {
+			lock := NewMemoryLock()
+			app.Use(New(Config{Lock: lock}))
+			app.Use(New(Config{Lock: lock}))
+			app.Post("/v1", handler)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			var calls atomic.Int32
+			setup(app, func(c fiber.Ctx) error {
+				calls.Add(1)
+				return c.SendString("ok")
+			})
+			for range 2 {
+				resp, body := idempotencyTestPost(t, app, "/v1", validKey)
+				require.Equal(t, fiber.StatusOK, resp.StatusCode)
+				require.Equal(t, "ok", body)
+			}
+			require.Equal(t, int32(1), calls.Load())
+		})
+	}
+}
+
+func Test_MemoryLock_WaiterCap(t *testing.T) {
+	t.Parallel()
+	l := NewMemoryLock()
+	require.NoError(t, l.Lock("a"))
+	var wg sync.WaitGroup
+	for range maxLockWaiters {
+		wg.Go(func() {
+			assert.NoError(t, l.Lock("a"))
+			assert.NoError(t, l.Unlock("a"))
+		})
+	}
+	counted := func() int {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		return l.keys["a"].locked
+	}
+	require.Eventually(t, func() bool { return counted() == maxLockWaiters+1 }, 10*time.Second, time.Millisecond)
+	require.ErrorIs(t, l.Lock("a"), ErrTooManyWaiters)
+	require.NoError(t, l.Lock("b"), "the cap is per key")
+	require.NoError(t, l.Unlock("b"))
+
+	require.NoError(t, l.Unlock("a"))
+	wg.Wait()
+	require.Empty(t, l.keys)
+
+	app := fiber.New()
+	app.Use(New(Config{Lock: &stubLock{lockErr: ErrTooManyWaiters}, Storage: &storagetest.Memory{}}))
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	resp, _ := idempotencyTestPost(t, app, "/", validKey)
+	require.Equal(t, fiber.StatusConflict, resp.StatusCode)
+}
+
 // The response is stored after the handler returns, so a handler's own deferred
 // cancel must not reach storage through Ctx.Err().
 func Test_Idempotency_Store_After_Handler_Cancel(t *testing.T) {
