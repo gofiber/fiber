@@ -656,9 +656,9 @@ var headerParamPool = sync.Pool{
 	},
 }
 
-// maxPoolableHeaderParams is the largest headerParams map that goes back to headerParamPool: one header can take
-// thousands of maps, and a Go map that never held more than eight entries has not grown.
-const maxPoolableHeaderParams = 8
+// maxPoolableHeaderParams is the largest headerParams map that goes back to headerParamPool: far above any real
+// media range, so only maps a client grew stay out of the pool.
+const maxPoolableHeaderParams = 64
 
 // releaseHeaderParams clears params and pools it, unless the client grew it: clearing keeps the capacity.
 func releaseHeaderParams(params headerParams) {
