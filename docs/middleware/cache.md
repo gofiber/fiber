@@ -211,7 +211,7 @@ A credential entry of the URL's group is not stored when:
 - this instance recorded a refusal in the URL's group while the handler ran, and the handler ran for `Expiration` less two seconds or longer, so that the record may be gone;
 - this instance writes a record of the group for the third time, because entries kept being stored during its writes.
 
-The lifetimes a record covers are the ones this instance noted: an entry that another instance sharing the `Storage` stores for the credential while the record is being written, or after the record lapsed while its handler ran, is not covered.
+The lifetimes a record covers are the ones this instance noted: an entry that another instance sharing the `Storage` stores for the credential while the record is being written, or after the record lapsed while its handler ran, is not covered. An entry is checked against the record under the URL as the request reached the cache, except for a credential only a `Vary` selects on a URL that has stored no `Vary` list yet: there a handler that rewrites the path or the query while the credential is refused stores an entry the record is not extended over.
 
 `GET` and `HEAD` answer for the same resource and credential, so they share the record: a refusal answering one revalidates the other's entries too. The record goes as soon as the origin answers that credential again with a `2xx` or a `304`, stored or not, so a refusal that no longer stands costs one more trip to the origin and no more. A redirect does not end it: an app sends an ended session to its login page that way, and no other `3xx` can be told from one. It is written only for a credential that has an entry, and it is bookkeeping like the Vary manifest, which `MaxBytes` does not count.
 
