@@ -5303,3 +5303,31 @@ func Test_Cache_EntryKeyNeverNamesDerivedSlot(t *testing.T) {
 		})
 	}
 }
+
+// Middleware before the cache runs again on a hit and writes its own lines for that request.
+func Test_Cache_StoreResponseHeadersLeavesOutOuterMiddleware(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderXRequestID, c.Get(fiber.HeaderXRequestID))
+		c.Set("X-Theme", "outer")
+		c.Set("X-Trace", "outer")
+		return c.Next()
+	})
+	app.Use(New(Config{StoreResponseHeaders: true}))
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set("X-Price-List", "2026-11")
+		c.Set("X-Theme", "inner")
+		c.Response().Header.Add("X-Trace", "inner")
+		return c.SendString("prices")
+	})
+
+	for i, id := range []string{"alice-1", "mallory-2"} {
+		got := cacheTestCGet(t, app, "/", fiber.HeaderXRequestID, id)
+		require.Equal(t, []string{cacheMiss, cacheHit}[i], got.cache)
+		require.Equal(t, id, got.header.Get(fiber.HeaderXRequestID))
+		require.Equal(t, "2026-11", got.header.Get("X-Price-List"))
+		require.Equal(t, "inner", got.header.Get("X-Theme"))
+		require.Equal(t, []string{"outer", "inner"}, got.header.Values("X-Trace"))
+	}
+}

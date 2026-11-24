@@ -88,8 +88,9 @@ const (
 // removed is no longer stored, as its key held the value the client sent while the
 // page was built from another. One the earlier rule stored would still be served,
 // on a store that survived the upgrade, to every client sending that value. v8: the
-// query and the cookies are keyed as received, and an external Storage's body is
-// stamped with its entry's generation. Bump this whenever what a key stands for, or
+// query and the cookies are keyed as received, an external Storage's body is
+// stamped with its entry's generation, refusal markers have a key per lifetime, and
+// StoreResponseHeaders leaves out the lines of middleware before the cache. Bump this whenever what a key stands for, or
 // what its entry carries, changes; the cost is one cold cache after a deploy. Additive bookkeeping fields such as
 // heapgen need no bump: old entries decode with generation zero, and older
 // readers skip the new field without changing the response or key semantics.
@@ -1021,6 +1022,13 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
+		// Middleware before the cache runs again on a hit: its lines, copied before handlers can reuse the
+		// buffers, are not stored unless something behind the cache changed them.
+		var upstream map[string][]string
+		if cfg.StoreResponseHeaders {
+			upstream = storableFieldLines(&c.Response().Header)
+		}
+
 		// Continue stack, return err to Fiber if exist
 		if err := c.Next(); err != nil {
 			// A handler that returns the refusal (fiber.ErrUnauthorized) writes no status.
@@ -1236,9 +1244,20 @@ func New(config ...Config) fiber.Handler {
 			// the entry is served to every client that hits it, so it is not kept, as
 			// Set-Cookie is not.
 			personal := personalheader.Marked(c.RequestCtx())
+			var downstream map[string][]string
+			if len(upstream) > 0 {
+				downstream = storableFieldLines(&c.Response().Header)
+			}
 			for key, value := range allHeaders {
 				if isIgnoredHeader(key) || personal.Has(key) {
 					continue
+				}
+				// Whole fields: a hit clears a stored name before appending its lines.
+				if len(upstream) > 0 {
+					name := utils.ToLower(string(key))
+					if lines, ok := upstream[name]; ok && slices.Equal(lines, downstream[name]) {
+						continue
+					}
 				}
 
 				e.headers = append(e.headers, cachedHeader{

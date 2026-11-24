@@ -180,6 +180,23 @@ func droppedReceivedCookie(req *fasthttp.Request) bool {
 	return false
 }
 
+// storableFieldLines copies the lines of each field of h a stored entry can hold, by lower-cased name:
+// under DisableHeaderNormalizing one field can be written under several spellings.
+func storableFieldLines(h *fasthttp.ResponseHeader) map[string][]string {
+	var fields map[string][]string
+	for key, value := range h.All() {
+		if isIgnoredHeader(key) {
+			continue
+		}
+		if fields == nil {
+			fields = make(map[string][]string)
+		}
+		name := utils.ToLower(string(key))
+		fields[name] = append(fields[name], string(value))
+	}
+	return fields
+}
+
 // keyFieldLines returns the field lines of name to key a cache entry on.
 func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]byte { //nolint:revive // flag-parameter: normalized is a property of the header store
 	collectKeyField(h, name)
