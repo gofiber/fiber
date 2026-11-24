@@ -48,13 +48,13 @@ func Test_Cache_Security_UnusualInputs(t *testing.T) {
 		cache []string // the X-Cache status of each request, sent one after the other
 	}{
 		{
-			// More than maxQueryParams (128), so the query is hashed instead of spelled out.
+			// Longer than maxKeyDimensionSegmentLength, so the query is hashed instead of spelled out.
 			name:  "excessive query params",
 			url:   cacheTestCQuery(150, "param%[1]d=value%[1]d"),
 			cache: []string{cacheMiss, cacheHit},
 		},
 		{
-			// Every "=" becomes "%3D" once escaped, three times larger, so the key outgrows its buffer and is hashed.
+			// A query of several kilobytes is hashed like any other long one.
 			name:  "excessive query buffer",
 			app:   fiber.Config{ReadBufferSize: 16384}, // large enough to accept the query string for testing
 			url:   cacheTestCQuery(30, "key%d="+strings.Repeat("=", 50)),
@@ -75,7 +75,7 @@ func Test_Cache_Security_UnusualInputs(t *testing.T) {
 			cache: []string{cacheMiss, cacheHit},
 		},
 		{
-			// 100 values for the same parameter, hashed due to the param count.
+			// 100 values for the same parameter, hashed due to their length.
 			name:  "repeated query parameter",
 			url:   cacheTestCQuery(100, "key=%d"),
 			cache: []string{cacheMiss, cacheHit},
@@ -2301,6 +2301,41 @@ func Test_Cache_VaryOnHeaderChangedBehindTheCache(t *testing.T) {
 				require.Equal(t, fiber.StatusOK, got.status, s.headers)
 				cacheTestCRequireReply(t, got, s.cache, s.body, s.headers)
 			}
+		})
+	}
+}
+
+// fasthttp's cookie collection drops a value holding a quote or a backslash, which code reading the Cookie
+// field still sees, so a page built from it is not stored under a key read off the collected cookies.
+func Test_Cache_CookieTheCollectionDropsIsNotStored(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		cfg  Config
+		vary string
+	}{
+		"Vary":       {vary: fiber.HeaderCookie},
+		"KeyCookies": {cfg: Config{KeyCookies: []string{"session"}}},
+		"KeyHeaders": {cfg: Config{KeyHeaders: []string{fiber.HeaderCookie}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				c.Locals("cookie", c.Get(fiber.HeaderCookie))
+				return c.Next()
+			})
+			app.Use(New(tc.cfg))
+			app.Get("/", func(c fiber.Ctx) error {
+				if tc.vary != "" {
+					c.Set(fiber.HeaderVary, tc.vary)
+				}
+				return c.SendString(fmt.Sprint("cookie=", c.Locals("cookie")))
+			})
+
+			// Framing quotes are no part of the value.
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/?framed", fiber.HeaderCookie, `session="tok"`), cacheMiss, `cookie=session="tok"`)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", fiber.HeaderCookie, `session="a\"b"`), cacheUnreachable, `cookie=session="a\"b"`)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "cookie=")
 		})
 	}
 }

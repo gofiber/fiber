@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -142,6 +143,39 @@ func collectKeyField(h *fasthttp.RequestHeader, name string) bool {
 		// the handler and once after, and the form accessors lowercase this header
 		// in between, so the entry landed under a key no lookup would produce.
 		mediatype.NormalizeRequestContentType(h)
+	}
+	return false
+}
+
+// droppedReceivedCookie reports whether the request was received with a cookie fasthttp's collection
+// leaves out, one whose value holds a quote or a backslash: code reading the Cookie field still sees it,
+// a key read off the collected cookies does not.
+func droppedReceivedCookie(req *fasthttp.Request) bool {
+	cookie := false
+	for line := range bytes.Lines(fieldname.Received(req)) {
+		line = bytes.TrimRight(line, "\r\n")
+		// A line opening with whitespace continues the field before it (obs-fold).
+		if len(line) == 0 || (line[0] != ' ' && line[0] != '\t') {
+			name, value, ok := bytes.Cut(line, []byte(":"))
+			cookie = ok && utils.EqualFold(utils.UnsafeString(name), fiber.HeaderCookie)
+			line = value
+		}
+		if !cookie {
+			continue
+		}
+		for pair := range bytes.SplitSeq(line, []byte(";")) {
+			if _, value, ok := bytes.Cut(pair, []byte("=")); ok {
+				pair = value
+			}
+			// Trimmed and unquoted the way fasthttp's cookie scanner does.
+			pair = bytes.Trim(pair, " \t")
+			if len(pair) > 1 && pair[0] == '"' && pair[len(pair)-1] == '"' {
+				pair = pair[1 : len(pair)-1]
+			}
+			if bytes.ContainsAny(pair, `"\`) {
+				return true
+			}
+		}
 	}
 	return false
 }

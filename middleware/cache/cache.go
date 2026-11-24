@@ -86,12 +86,13 @@ const (
 // response that varies on a request header an inner middleware added, rewrote or
 // removed is no longer stored, as its key held the value the client sent while the
 // page was built from another. One the earlier rule stored would still be served,
-// on a store that survived the upgrade, to every client sending that value. Bump
-// this whenever what a key stands for, or what its entry carries, changes; the
-// cost is one cold cache after a deploy. Additive bookkeeping fields such as
+// on a store that survived the upgrade, to every client sending that value. v8: the
+// query and the cookies are keyed as received, and an external Storage's body is
+// stamped with its entry's generation. Bump this whenever what a key stands for, or
+// what its entry carries, changes; the cost is one cold cache after a deploy. Additive bookkeeping fields such as
 // heapgen need no bump: old entries decode with generation zero, and older
 // readers skip the new field without changing the response or key semantics.
-const cacheKeyVersion = "v7"
+const cacheKeyVersion = "v8"
 
 // The keys derived from an entry key sit right after the version, where no entry
 // key goes: those continue with their method.
@@ -1067,6 +1068,15 @@ func New(config ...Config) fiber.Handler {
 				dropManifest()
 			}
 
+			markUnreachable()
+			return nil
+		}
+
+		// Keyed off the collected cookies, a page built from a cookie fasthttp's collection drops would
+		// be stored for the requests that never sent it.
+		keyReadsCookies := (cfg.usesDefaultKeyGenerator && (len(cfg.KeyCookies) > 0 || slices.Contains(cfg.KeyHeaders, "cookie"))) ||
+			(!cfg.DisableVaryHeaders && slices.Contains(respVaryNames, "cookie"))
+		if keyReadsCookies && droppedReceivedCookie(c.Request()) {
 			markUnreachable()
 			return nil
 		}

@@ -3,9 +3,7 @@ package cache
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"net/url"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 
@@ -19,8 +17,6 @@ import (
 const (
 	maxKeyDimensionSegmentLength = 192
 	defaultKeyBufferCap          = 256
-	maxQueryParams               = 128  // Maximum number of query parameters to parse
-	maxQueryBufferSize           = 4096 // Maximum buffer size for query string canonicalization
 )
 
 // hashPrefix is the reserved namespace prefix for hashed key segments.
@@ -102,8 +98,10 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	dst = appendEscapedBoundKeySegment(dst, c.Path())
 
 	if !cfg.DisableQueryKeys {
+		// As sent, not parsed and sorted: Bind and a proxied upstream read some spellings, orders and empty
+		// pairs as different requests.
 		dst = append(dst, '|', 'q', '=')
-		dst = appendCanonicalQueryString(dst, c.Req().URI())
+		dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(c.Request().URI().QueryString()))
 	}
 
 	if len(cfg.KeyHeaders) > 0 {
@@ -129,95 +127,6 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 		dst = appendQueryBodySegment(dst, c.Request().Body())
 	}
 
-	return dst
-}
-
-// appendCanonicalQueryString appends the canonicalized query segment to dst.
-// It avoids copying the raw query and the intermediate result string the caller
-// would otherwise have to re-append.
-func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
-	raw := uri.QueryString()
-	if len(raw) == 0 {
-		return dst
-	}
-
-	// Safe: the segment is consumed synchronously (appended/hashed) before the
-	// request buffer can be mutated, so no stable copy is required.
-	query := utils.UnsafeString(raw)
-
-	// Pre-scan query string to detect excessive parameters before expensive parsing.
-	// This prevents DoS via url.ParseQuery allocating large maps/slices.
-	if len(query) > maxQueryBufferSize {
-		return appendEscapedBoundKeySegment(dst, query)
-	}
-
-	// Fast path: single key=value pair needs no parsing or sorting
-	if strings.IndexByte(query, '&') < 0 {
-		return appendEscapedBoundKeySegment(dst, query)
-	}
-
-	// Quick count of potential parameters (ampersands + 1)
-	paramCount := 1
-	for i := 0; i < len(query); i++ {
-		if query[i] == '&' {
-			paramCount++
-			if paramCount > maxQueryParams {
-				// Too many parameters detected, hash without parsing
-				return appendEscapedBoundKeySegment(dst, query)
-			}
-		}
-	}
-
-	parsed, err := url.ParseQuery(query)
-	if err != nil {
-		return appendEscapedBoundKeySegment(dst, query)
-	}
-
-	// Double-check actual parameter count after parsing
-	actualCount := 0
-	for _, values := range parsed {
-		actualCount += len(values)
-		if actualCount > maxQueryParams {
-			return appendEscapedBoundKeySegment(dst, query)
-		}
-	}
-
-	keys := make([]string, 0, len(parsed))
-	for key := range parsed {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	// Use pooled buffer to prevent excessive memory allocation during URL escaping.
-	// URL escaping can expand strings up to 3x (each byte -> %XX).
-	bufPtr := acquireKeyBuffer()
-	buf := (*bufPtr)[:0]
-
-	for _, key := range keys {
-		// Values keep the order sent: c.Query reads the first, so a reordering is another request.
-		for _, value := range parsed[key] {
-			if len(buf) > 0 {
-				buf = append(buf, '&')
-			}
-
-			// Escape straight into the pooled buffer to skip the intermediate
-			// strings url.QueryEscape would allocate per key and value.
-			buf = utils.AppendQueryEscape(buf, key)
-			buf = append(buf, '=')
-			buf = utils.AppendQueryEscape(buf, value)
-
-			// Check buffer size to prevent unbounded growth. Equivalent to the
-			// pre-append check len(prev)+len(key)+len(value)+2 > max: the pair
-			// plus '=' is already appended, leaving only the +1 slack.
-			if len(buf)+1 > maxQueryBufferSize {
-				releaseKeyBuffer(bufPtr, buf)
-				return appendEscapedBoundKeySegment(dst, query)
-			}
-		}
-	}
-
-	dst = appendBoundKeySegment(dst, utils.UnsafeString(buf))
-	releaseKeyBuffer(bufPtr, buf)
 	return dst
 }
 
@@ -279,14 +188,37 @@ func appendCanonicalCookieSubset(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 		// Escape name (though names are normalized and trusted)
 		dst = appendEscapedKeyDelimiters(dst, name)
 		dst = append(dst, ':')
-
-		if value := c.Cookies(name); value != "" {
-			dst = append(dst, hashPrefix...)
-			dst = appendAuthHash(dst, [][]byte{utils.UnsafeBytes(value)})
-		}
+		dst = appendKeyCookie(dst, &c.Request().Header, name)
 	}
 
 	return dst
+}
+
+// appendKeyCookie appends the digest of the cookie name, nothing for a missing or empty one. Every
+// occurrence in any letter case, as Bind().Cookie reads them: c.Cookies answers with the first exact one.
+func appendKeyCookie(dst []byte, h *fasthttp.RequestHeader, name string) []byte {
+	var one [2][]byte
+	pairs := one[:0]
+	for key, value := range h.Cookies() {
+		if utils.EqualFold(utils.UnsafeString(key), name) {
+			pairs = append(pairs, key, value)
+		}
+	}
+
+	switch {
+	case len(pairs) == 0:
+		return dst
+	case len(pairs) == 2 && string(pairs[0]) == name:
+		if len(pairs[1]) == 0 {
+			return dst
+		}
+		dst = append(dst, hashPrefix...)
+		return appendAuthHash(dst, pairs[1:])
+	}
+	// Names and values in turn, counted to keep this form apart from the one above.
+	dst = utils.AppendInt(dst, int64(len(pairs)/2))
+	dst = append(dst, hashPrefix...)
+	return appendAuthHash(dst, pairs)
 }
 
 // countKeyDelimiters returns how many bytes escaping s would add, which is one

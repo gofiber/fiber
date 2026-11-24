@@ -34,10 +34,15 @@ func keygenCorpus() []keygenCase {
 	return []keygenCase{
 		{name: "noquery", uri: "/demo", want: keyStart + keyNoHeaders},
 		{name: "single", uri: "/demo?foo=bar", want: keyStart + "foo=bar" + keyNoHeaders},
-		{name: "multi_dup", uri: "/demo?b=2&a=1&a=3", want: keyStart + "a=1&a=3&b=2" + keyNoHeaders},
+		// The query as sent: Bind reads doc and doc[] as one field, and a proxy forwards a trailing &.
+		{name: "multi_dup", uri: "/demo?b=2&a=1&a=3", want: keyStart + "b=2&a=1&a=3" + keyNoHeaders},
 		{name: "dup_order", uri: "/demo?a=3&a=1", want: keyStart + "a=3&a=1" + keyNoHeaders},
+		{name: "bind_spellings", uri: "/view?doc[]=welcome&doc=minutes", want: keyStart + "doc[]=welcome&doc=minutes" + keyNoHeaders},
+		{name: "bind_spellings_swapped", uri: "/view?doc=minutes&doc[]=welcome", want: keyStart + "doc=minutes&doc[]=welcome" + keyNoHeaders},
+		{name: "trailing_pair", uri: "/p?id=7&", want: keyStart + "id=7&" + keyNoHeaders},
 		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: keyStart + "x=1" + keyNoHeaders},
-		{name: "query_escape", uri: "/p?k=a b&z=%2F&k=z", want: keyStart + "k=a+b&k=z&z=%2F" + keyNoHeaders},
+		{name: "query_escape", uri: "/p?k=a b&z=%2F&k=z", want: keyStart + "k=a b&z=%2F&k=z" + keyNoHeaders},
+		{name: "query_delims", uri: "/p?k=a|b:c", want: keyStart + "k=a\\pb\\cc" + keyNoHeaders},
 		{name: "with_headers", uri: "/p?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: keyStart + "foo=bar|h=accept:1|text/html|accept-encoding:1|gzip|accept-language:0"},
 		{name: "with_cookie", uri: "/p?foo=bar", cookie: "sid=abc123", keyCooks: []string{"sid"}, want: keyStart + "foo=bar" + keyNoHeaders + "|c=sid:sha256:ccfb62d77d32969b64f7920fe3bfb66c50cbf9e9faea6f69222c34c7e5f30627"},
 		// A missing and an empty cookie leave nothing after the name, and share a key.
@@ -195,13 +200,13 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 		want        []string
 		disableVary bool
 	}{
-		{name: "anonymous", want: []string{"v7|manifest|v7|GET|/demo", "v7|GET|/demo"}},
+		{name: "anonymous", want: []string{"v8|manifest|v8|GET|/demo", "v8|GET|/demo"}},
 		{
 			name: "authenticated",
 			auth: "Bearer token",
-			want: []string{"v7|manifest|v7|GET|/demo|auth=" + authHash, "v7|GET|/demo|auth=" + authHash},
+			want: []string{"v8|manifest|v8|GET|/demo|auth=" + authHash, "v8|GET|/demo|auth=" + authHash},
 		},
-		{name: "vary disabled", disableVary: true, want: []string{"v7|GET|/demo"}},
+		{name: "vary disabled", disableVary: true, want: []string{"v8|GET|/demo"}},
 	}
 
 	for _, tc := range tests {
@@ -376,6 +381,18 @@ func Test_appendCanonicalCookieSubset(t *testing.T) {
 		t.Parallel()
 		require.Equal(t, "a:sha256:"+authDigest("1")+"|b:sha256:"+authDigest("2")+"|c:", segment("a=1; b=2", "a", "b", "c"))
 		require.NotEqual(t, segment("a=1; b=2", "a", "b"), segment("a=2; b=1", "a", "b"))
+	})
+
+	// Bind().Cookie reads the last occurrence, in any letter case, so every one is keyed.
+	t.Run("every occurrence of the name in any case is keyed", func(t *testing.T) {
+		t.Parallel()
+		one := segment("currency=EUR", "currency")
+		for _, cookie := range []string{"currency=EUR; currency=JPY", "currency=; currency=JPY", "Currency=JPY", "currency=EUR; Currency=EUR"} {
+			got := segment(cookie, "currency")
+			require.NotEqual(t, one, got, cookie)
+			require.NotEqual(t, "currency:", got, cookie)
+		}
+		require.NotEqual(t, segment("currency=EUR; currency=JPY", "currency"), segment("currency=JPY; currency=EUR", "currency"))
 	})
 }
 
