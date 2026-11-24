@@ -1185,6 +1185,8 @@ The default redirect status code has been updated from `302 Found` to `303 See O
 
 :::
 
+`Redirect().Back()` adds `Referer` to `Vary`, since the referer picks the target: a cache that stores a `301` or `308` from it must not send one client's target to another.
+
 ## 🌎 Client package
 
 The Gofiber client has been completely rebuilt. It includes numerous new features such as Cookiejar, request/response hooks, and more.
