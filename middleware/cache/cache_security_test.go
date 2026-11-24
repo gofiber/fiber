@@ -2310,8 +2310,8 @@ func Test_Cache_VaryOnHeaderChangedBehindTheCache(t *testing.T) {
 func Test_Cache_CookieTheCollectionDropsIsNotStored(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
-		cfg  Config
 		vary string
+		cfg  Config
 	}{
 		"Vary":       {vary: fiber.HeaderCookie},
 		"KeyCookies": {cfg: Config{KeyCookies: []string{"session"}}},

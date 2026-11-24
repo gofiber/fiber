@@ -1950,10 +1950,10 @@ func Test_Cache_RefusalRecordReachesTheRefusedSessionOnly(t *testing.T) {
 	t.Parallel()
 	const shared = "Basic c2l0ZTpwYXNz"
 	for name, tc := range map[string]struct {
-		cfg         Config
 		header      string
 		otherCookie string // what a session cookie is sent with to look past the record
 		vary        []string
+		cfg         Config
 	}{
 		"shared Authorization in the key": {header: shared, vary: []string{fiber.HeaderCookie}},
 		"session in a custom key": {cfg: Config{
