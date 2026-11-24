@@ -2615,3 +2615,66 @@ func Test_FiberApp_UnparsableHost(t *testing.T) {
 		}
 	}
 }
+
+// Test_FiberApp_GETOnly pins that GETOnly holds behind net/http as on Fiber's own server: the error handler answers
+// a refused method with 405 and Allow, its body stays unread, and nothing of the chain runs for it.
+func Test_FiberApp_GETOnly(t *testing.T) {
+	t.Parallel()
+	for name, config := range map[string]fiber.Config{
+		"default error handler": {GETOnly: true},
+		"custom error handler": {
+			GETOnly:      true,
+			ErrorHandler: func(c fiber.Ctx, err error) error { return c.SendString("refused: " + err.Error()) },
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New(config)
+			var ran []string
+			app.Use(func(c fiber.Ctx) error {
+				ran = append(ran, c.Method())
+				return c.Next()
+			})
+			app.All("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+			handler := FiberApp(app)
+
+			wantBody := "Method Not Allowed"
+			if config.ErrorHandler != nil {
+				wantBody = "refused: " + wantBody
+			}
+			for _, method := range []string{
+				fiber.MethodPost, fiber.MethodPut, fiber.MethodPatch, fiber.MethodDelete, fiber.MethodOptions, "PROPFIND",
+			} {
+				body := strings.NewReader("body")
+				rec := adaptorTestServe(handler, httptest.NewRequest(method, "/", body))
+				require.Equal(t, fiber.StatusMethodNotAllowed, rec.Code, method)
+				require.Equal(t, "GET, HEAD", rec.Header().Get(fiber.HeaderAllow), method)
+				require.Equal(t, wantBody, rec.Body.String(), method)
+				require.Equal(t, 4, body.Len(), method)
+			}
+			require.Empty(t, ran)
+
+			for _, method := range []string{fiber.MethodGet, fiber.MethodHead} {
+				rec := adaptorTestServe(handler, httptest.NewRequest(method, "/", http.NoBody))
+				require.Equal(t, fiber.StatusOK, rec.Code, method)
+				require.Empty(t, rec.Header().Get(fiber.HeaderAllow), method)
+			}
+			require.Equal(t, []string{fiber.MethodGet, fiber.MethodHead}, ran)
+		})
+	}
+
+	t.Run("mounted error handler", func(t *testing.T) {
+		t.Parallel()
+		sub := fiber.New(fiber.Config{
+			ErrorHandler: func(c fiber.Ctx, err error) error { return c.SendString("sub: " + err.Error()) },
+		})
+		sub.Post("/x", func(c fiber.Ctx) error { return c.SendString("ok") })
+		app := fiber.New(fiber.Config{GETOnly: true})
+		app.Use("/sub", sub)
+
+		rec := adaptorTestServe(FiberApp(app), httptest.NewRequest(fiber.MethodPost, "/sub/x", http.NoBody))
+		require.Equal(t, fiber.StatusMethodNotAllowed, rec.Code)
+		require.Equal(t, "GET, HEAD", rec.Header().Get(fiber.HeaderAllow))
+		require.Equal(t, "sub: Method Not Allowed", rec.Body.String())
+	})
+}

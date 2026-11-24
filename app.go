@@ -364,9 +364,9 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 
 	// GETOnly rejects every method except GET and HEAD if set to true.
 	// This option is useful as anti-DoS protection for servers
-	// accepting only GET requests. The request size is limited
-	// by ReadBufferSize if GETOnly is set. A rejected request gets 405 with
-	// "Allow: GET, HEAD", and no middleware runs for it.
+	// accepting only GET requests. It refuses methods only: the body of a
+	// GET or HEAD is still read up to BodyLimit. A rejected request gets 405
+	// with "Allow: GET, HEAD", and no middleware runs for it.
 	//
 	// Default: false
 	GETOnly bool `json:"get_only"`

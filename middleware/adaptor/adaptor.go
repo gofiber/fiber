@@ -965,9 +965,12 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		// order fasthttp's Init uses, minus its full request copy.
 		fctx.Init2(conn, disabledLogger, true)
 		req := &fctx.Request
+		req.Header.SetMethod(r.Method)
+		// net/http's server knows no GETOnly; as Fiber's own server does, refuse the method and leave the body unread.
+		methodRefused := app.Server().GetOnly && !req.Header.IsGet() && !req.Header.IsHead()
 
 		// Convert net/http -> fasthttp request with size limit
-		if r.Body != nil {
+		if r.Body != nil && !methodRefused {
 			if r.ContentLength > maxBodySize {
 				http.Error(w, utils.StatusMessage(fiber.StatusRequestEntityTooLarge), fiber.StatusRequestEntityTooLarge)
 				return
@@ -1003,7 +1006,6 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 
 			req.Header.SetContentLength(int(n))
 		}
-		req.Header.SetMethod(r.Method)
 		// net/http reads no fragment in a request line, where fasthttp would end the path or the query.
 		req.SetRequestURI(strings.ReplaceAll(routedRequestURI(r), "#", "%23"))
 		req.SetHost(r.Host)
@@ -1086,7 +1088,12 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			fieldname.SetReceived(req, &pctx.received)
 		}
 
-		if len(h) > 0 {
+		switch {
+		case methodRefused:
+			// Handler prepares the app first: the error handler of a mounted app is looked up among those it collects.
+			app.Handler()
+			app.Server().ErrorHandler(fctx, fasthttp.ErrGetOnly)
+		case len(h) > 0:
 			// New fiber Ctx
 			ctx := app.AcquireCtx(fctx)
 			defer app.ReleaseCtx(ctx)
@@ -1096,7 +1103,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			if err != nil {
 				_ = app.ErrorHandler(ctx, err) //nolint:errcheck // not needed
 			}
-		} else {
+		default:
 			// Execute fasthttp Ctx though app.Handler
 			app.Handler()(fctx)
 		}
