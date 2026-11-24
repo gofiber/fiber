@@ -1130,13 +1130,20 @@ func Test_Adapter_FastHTTP_TimedOutHandlerKeepsTheRequest(t *testing.T) {
 // middleware before it is told so, as for timeout.New: the ctx is abandoned and Next returns the timeout status.
 func Test_Adapter_FastHTTP_TimedOutHandlerIsAbandoned(t *testing.T) {
 	t.Parallel()
-	slow := fasthttp.TimeoutHandler(func(*fasthttp.RequestCtx) { time.Sleep(150 * time.Millisecond) }, 20*time.Millisecond, "timeout")
-	for name, handler := range map[string]any{
-		"fasthttp.RequestHandler":          slow,
-		"func(*fasthttp.RequestCtx) error": func(ctx *fasthttp.RequestCtx) error { slow(ctx); return nil },
+	for name, adapt := range map[string]func(fasthttp.RequestHandler) any{
+		"fasthttp.RequestHandler": func(h fasthttp.RequestHandler) any { return h },
+		"func(*fasthttp.RequestCtx) error": func(h fasthttp.RequestHandler) any {
+			return func(ctx *fasthttp.RequestCtx) error { h(ctx); return nil }
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+			wrote := make(chan struct{})
+			slow := fasthttp.TimeoutHandler(func(ctx *fasthttp.RequestCtx) {
+				time.Sleep(150 * time.Millisecond)
+				ctx.SetBodyString("late")
+				close(wrote)
+			}, 20*time.Millisecond, "timeout")
 			type outcome struct {
 				err       error
 				abandoned bool
@@ -1148,7 +1155,7 @@ func Test_Adapter_FastHTTP_TimedOutHandlerIsAbandoned(t *testing.T) {
 				seen <- outcome{err: err, abandoned: c.IsAbandoned()}
 				return err
 			})
-			app.Get("/", handler)
+			app.Get("/", adapt(slow))
 
 			conn := apptest.Dial(t, apptest.Serve(t, app, ListenConfig{DisableStartupMessage: true}))
 			_, err := io.WriteString(conn, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
@@ -1159,6 +1166,7 @@ func Test_Adapter_FastHTTP_TimedOutHandlerIsAbandoned(t *testing.T) {
 			got := apptest.Recv(t, seen, 5*time.Second)
 			require.True(t, got.abandoned)
 			require.Equal(t, NewError(StatusRequestTimeout), got.err)
+			apptest.Recv(t, wrote, 5*time.Second)
 		})
 	}
 }
