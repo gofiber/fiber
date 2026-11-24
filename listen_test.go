@@ -1986,7 +1986,8 @@ func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
 
 // rootrestServeTLSHandler serves app on a TLS listener over base, whose certificate lookup records the
 // ClientHelloInfo of each connection in handler. The app is shut down, which has to end cleanly, when the test ends.
-func rootrestServeTLSHandler(t *testing.T, app *App, handler *TLSHandler, base net.Listener) {
+// A config replaces the default one, which only disables the startup message.
+func rootrestServeTLSHandler(t *testing.T, app *App, handler *TLSHandler, base net.Listener, config ...ListenConfig) {
 	t.Helper()
 
 	app.SetTLSHandler(handler)
@@ -1995,9 +1996,12 @@ func rootrestServeTLSHandler(t *testing.T, app *App, handler *TLSHandler, base n
 		Certificates:   []tls.Certificate{rootMiscBTestCert(t)},
 		GetCertificate: handler.GetClientInfo,
 	})
+	if len(config) == 0 {
+		config = []ListenConfig{{DisableStartupMessage: true}}
+	}
 
 	errs := make(chan error, 1)
-	go func() { errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true}) }()
+	go func() { errs <- app.Listener(tlsLn, config...) }()
 	t.Cleanup(func() {
 		require.NoError(t, app.Shutdown())
 		require.NoError(t, <-errs)
@@ -2221,6 +2225,64 @@ func Test_Listener_TLS_FailedHandshakeRunsNoHandler(t *testing.T) {
 			apptest.Recv(t, closed, 5*time.Second, "the server did not close the connection")
 			require.Equal(t, tc.runs, replays.Load(), "runs of the Use chain")
 			require.Equal(t, tc.runs, refusals.Load(), "runs of the ErrorHandler")
+		})
+	}
+}
+
+// startupProcess installs the hook that drops the ClientHelloInfo of a closed connection, and it runs ahead of the
+// OnListen hooks and BeforeServeFunc, and in Test. A ConnState callback assigned after it must not replace the hook.
+func Test_Listener_TLS_ClientHelloInfo_LateConnState_NoLeak(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		// late makes the application assign its callback once the app has started up
+		late func(t *testing.T, app *App, cfg *ListenConfig, assign func(*App))
+		name string
+	}{
+		{name: "in BeforeServeFunc", late: func(_ *testing.T, _ *App, cfg *ListenConfig, assign func(*App)) {
+			cfg.BeforeServeFunc = func(app *App) error { assign(app); return nil }
+		}},
+		{name: "in an OnListen hook", late: func(_ *testing.T, app *App, _ *ListenConfig, assign func(*App)) {
+			app.Hooks().OnListen(func(ListenData) error { assign(app); return nil })
+		}},
+		{name: "after Test", late: func(t *testing.T, app *App, _ *ListenConfig, assign func(*App)) {
+			t.Helper()
+			apptest.ExpectBody(t, app, "/", StatusOK, "ok")
+			assign(app)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tlsHandler := &TLSHandler{}
+			app := New()
+			app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+
+			var userCalls atomic.Int32
+			cfg := ListenConfig{DisableStartupMessage: true}
+			tc.late(t, app, &cfg, func(app *App) {
+				app.Server().ConnState = func(net.Conn, fasthttp.ConnState) { userCalls.Add(1) }
+			})
+
+			raw := newLocalListener(t)
+			rootrestServeTLSHandler(t, app, tlsHandler, raw, cfg)
+
+			count := func(m *sync.Map) int {
+				n := 0
+				m.Range(func(_, _ any) bool { n++; return true })
+				return n
+			}
+			for range 5 {
+				conn, dialErr := tls.Dial("tcp", raw.Addr().String(), rootMiscBTLSClientConfig("example.com"))
+				require.NoError(t, dialErr)
+				require.Positive(t, count(&tlsHandler.clientHelloInfos), "the handshake recorded no ClientHelloInfo")
+				rootMiscBTLSGet(t, conn)
+				require.NoError(t, conn.Close())
+			}
+
+			require.Eventually(t, func() bool {
+				return count(&tlsHandler.clientHelloInfos) == 0 && count(&tlsHandler.serverConns) == 0
+			}, 5*time.Second, 20*time.Millisecond, "closed connections left %d ClientHelloInfo and %d wrapper entries behind",
+				count(&tlsHandler.clientHelloInfos), count(&tlsHandler.serverConns))
+			require.Positive(t, userCalls.Load(), "the user ConnState callback was not called")
 		})
 	}
 }

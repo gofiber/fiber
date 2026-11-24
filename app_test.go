@@ -3624,6 +3624,28 @@ func Test_App_HeaderReceivedHook_Reinstalled(t *testing.T) {
 	require.False(t, sameFunc(app.Server().HeaderReceived, installed))
 }
 
+// The ConnState hook is installed once too, and a replaced callback is wrapped again and still called.
+func Test_App_ConnStateHook_Reinstalled(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.hookServer()
+	installed := app.Server().ConnState
+	require.NotNil(t, installed)
+
+	app.hookServer()
+	require.True(t, sameConnStateFunc(app.Server().ConnState, installed), "the hook is not wrapped again")
+
+	var calls int
+	replaced := func(net.Conn, fasthttp.ConnState) { calls++ }
+	app.Server().ConnState = replaced
+	app.hookServer()
+	require.False(t, sameConnStateFunc(app.Server().ConnState, replaced), "a replaced callback is wrapped")
+	require.False(t, sameConnStateFunc(app.Server().ConnState, installed))
+
+	app.Server().ConnState(nil, fasthttp.StateClosed)
+	require.Equal(t, 1, calls, "the replaced callback is called through the hook")
+}
+
 // Test and a listener run on one server at the same time, and the connections they
 // serve read the callback, so installing the hook must not write it again. Meant
 // for -race.
@@ -3640,7 +3662,7 @@ func Test_App_HeaderReceivedHook_RaceFreeWithTest(t *testing.T) {
 			case <-stop:
 				return
 			default:
-				app.hookHeaderReceived()
+				app.hookServer()
 				runtime.Gosched()
 			}
 		}

@@ -325,7 +325,7 @@ app.Listener(ln)
 
 ## Server
 
-Server returns the underlying [fasthttp server](https://godoc.org/github.com/valyala/fasthttp#Server). Fiber wraps its `HeaderReceived` callback when it starts serving, and keeps calling the one you set, including one set in `BeforeServeFunc`.
+Server returns the underlying [fasthttp server](https://godoc.org/github.com/valyala/fasthttp#Server). Fiber wraps its `ConnState` and `HeaderReceived` callbacks when it starts serving, and keeps calling the ones you set, including ones set in an `OnListen` hook or in `BeforeServeFunc`. Set them before the server serves: a callback assigned while it is serving replaces Fiber's wrapper.
 
 ```go title="Signature"
 func (app *App) Server() *fasthttp.Server

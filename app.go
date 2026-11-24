@@ -102,6 +102,8 @@ type App struct {
 	// headerHook is the HeaderReceived callback hookHeaderReceived installed, kept
 	// to tell it from one set since
 	headerHook func(*fasthttp.RequestHeader) fasthttp.RequestConfig
+	// connStateHook is the ConnState callback hookConnState installed, as headerHook
+	connStateHook func(net.Conn, fasthttp.ConnState)
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// customConstraints is a list of external constraints
@@ -131,7 +133,6 @@ type App struct {
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
 	hasRoutesRefreshed bool
-	connStateHooked    bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
 	// hasParamRoutes tracks whether any route consults the per-request slash
@@ -1561,7 +1562,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	}
 	// prepare the server for the start
 	app.startupProcess()
-	app.hookHeaderReceived()
+	app.hookServer()
 
 	// Serve conn to server
 	channel := make(chan error, 1)
@@ -1947,14 +1948,14 @@ func (app *App) startupProcess() {
 // hookConnState makes the server report new and closed connections to the TLS
 // handler, keeping a user ConnState callback. A connection is reported new
 // while it can still say what it wraps, which is what lets its record be found
-// again at close. Idempotent; the caller holds app.mutex.
+// again at close. A callback set since is wrapped in turn, or it would replace
+// the hook for good; the hook itself is left alone. The caller holds app.mutex.
 func (app *App) hookConnState() {
-	if app.connStateHooked || app.server == nil {
+	if app.server == nil || sameConnStateFunc(app.server.ConnState, app.connStateHook) {
 		return
 	}
-	app.connStateHooked = true
 	user := app.server.ConnState
-	app.server.ConnState = func(conn net.Conn, state fasthttp.ConnState) {
+	app.connStateHook = func(conn net.Conn, state fasthttp.ConnState) {
 		// StateHijacked is terminal too: fasthttp never reports StateClosed after
 		// it, so a hijacked connection (every WebSocket upgrade) would strand its
 		// record.
@@ -1974,6 +1975,17 @@ func (app *App) hookConnState() {
 			user(conn, state)
 		}
 	}
+	app.server.ConnState = app.connStateHook
+}
+
+// hookServer runs right before serving, after the OnListen hooks and BeforeServeFunc
+// that startupProcess precedes, so a callback they assign is wrapped too.
+func (app *App) hookServer() {
+	app.mutex.Lock()
+	app.hookConnState()
+	app.mutex.Unlock()
+
+	app.hookHeaderReceived()
 }
 
 // hookHeaderReceived makes the server close the connection after a request that
