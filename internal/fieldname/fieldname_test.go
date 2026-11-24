@@ -68,21 +68,22 @@ func lineValues(lines [][]byte) []string {
 	return out
 }
 
-// Test_First_EmptyLineIsNotNil pins the fasthttp behavior First's fast path
-// rests on: Peek answers nil for a field that is absent and a non-nil empty
-// slice for one that is present and empty. First skips its second walk on the
-// nil answer, so were the two to become indistinguishable it would read only
-// the first line again — silently, and only for the messages this guards
-// against. This test is what makes that loud instead.
-func Test_First_EmptyLineIsNotNil(t *testing.T) {
+// Test_First_EmptyLineInUnusedSlot covers fasthttp storing an empty value as nil in a slot that never held one.
+func Test_First_EmptyLineInUnusedSlot(t *testing.T) {
 	t.Parallel()
-	h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\nOrigin:\r\n\r\n", true)
+	const origin, private = "http://other.example", "private"
 
-	require.Nil(t, h.Peek("Absent"), "Peek must answer nil for a field that is not there")
+	for before := range 41 {
+		pad := apptest.FieldLines("X-Pad-", "x", before)
 
-	present := h.Peek("Origin")
-	require.Empty(t, present)
-	require.NotNil(t, present, "Peek must answer a non-nil empty slice for a field line that is present and empty")
+		h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\n"+pad+"Origin:\r\nOrigin: "+origin+"\r\n\r\n", true)
+		require.Equal(t, origin, string(First(h, fasthttp.HeaderOrigin, true)), "request, %d lines before", before)
+		require.Nil(t, First(h, "Absent", true))
+
+		resp := readResponse(t, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n"+pad+"Cache-Control:\r\nCache-Control: "+private+"\r\n\r\n", true)
+		require.Equal(t, private, string(First(&resp.Header, fasthttp.HeaderCacheControl, true)), "response, %d lines before", before)
+		require.Nil(t, First(&resp.Header, "Absent", true))
+	}
 }
 
 // Test_First_EmptyLineDoesNotHideTheValue covers the read First exists for: a
@@ -96,7 +97,7 @@ func Test_First_EmptyLineIsNotNil(t *testing.T) {
 // refuse a repeated field rather than resolve it go through headerlookup.Value.
 func Test_First_EmptyLineDoesNotHideTheValue(t *testing.T) {
 	t.Parallel()
-	const origin = "http://evil.example"
+	const origin = "http://other.example"
 
 	tests := []struct {
 		name      string

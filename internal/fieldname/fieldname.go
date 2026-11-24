@@ -499,18 +499,7 @@ func First(h Peeker, name string, canonical bool) []byte {
 		if len(v) > 0 {
 			return v
 		}
-		if v == nil {
-			// Nothing is stored under the name, so there is nothing beside it
-			// to find and the walk below is skipped: a nil answer means absent,
-			// a non-nil empty one means a line that is present and empty. That
-			// distinction is fasthttp's to keep, so Test_First_EmptyLineIsNotNil
-			// pins it — if it ever stops holding, that test says so rather than
-			// this quietly reverting to reading only the first line.
-			return nil
-		}
-
-		// Reached only for a field that is present and empty, which is the shape
-		// being guarded against rather than one anything sends by accident.
+		// Not even a nil answer means absent: fasthttp stores an empty value as nil in a slot that never held one.
 		// PeekAll costs no allocation and resolves the slotted names.
 		for _, v := range h.PeekAll(name) {
 			if len(v) > 0 {

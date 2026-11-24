@@ -2481,6 +2481,22 @@ func Test_Ctx_Body_With_Compression_MultiFieldLines(t *testing.T) {
 	}
 }
 
+func Test_Ctx_Body_With_Compression_EmptyLineInUnusedSlot(t *testing.T) {
+	t.Parallel()
+	for _, before := range []int{0, 1, 2, 3, 4, 5, 9, 20, 40} {
+		t.Run(fmt.Sprintf("%d lines before", before), func(t *testing.T) {
+			t.Parallel()
+			c := apptest.Ctx(t, New())
+			body := ctxTestACompress(t, StrGzip, []byte("john=doe"))
+			raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + apptest.FieldLines("X-Pad-", "x", before) +
+				"Content-Encoding:\r\nContent-Encoding: gzip\r\nContent-Length: " + strconv.Itoa(len(body)) + "\r\n\r\n" + string(body)
+			require.NoError(t, c.Request().Read(bufio.NewReader(strings.NewReader(raw))))
+
+			require.Equal(t, []byte("john=doe"), c.Body())
+		})
+	}
+}
+
 func Benchmark_Ctx_Fresh_WithNoCache(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -2618,6 +2634,23 @@ func Test_Ctx_Get_EmptyFirstLine(t *testing.T) {
 	require.Equal(t, "secret", c.Get("X-Token"))
 	require.Empty(t, c.Request().Header.Peek("X-Token"))
 	require.Len(t, c.Request().Header.PeekAll("X-Token"), 2)
+}
+
+func Test_Ctx_Get_EmptyLineInUnusedSlot(t *testing.T) {
+	t.Parallel()
+	for _, before := range []int{0, 1, 2, 3, 4, 5, 9, 20, 40} {
+		t.Run(fmt.Sprintf("%d lines before", before), func(t *testing.T) {
+			t.Parallel()
+			c := apptest.Ctx(t, New())
+			raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" + apptest.FieldLines("X-Pad-", "x", before) + "X-Role:\r\nX-Role: admin\r\n\r\n"
+			require.NoError(t, c.Request().Read(bufio.NewReader(strings.NewReader(raw))))
+
+			require.Equal(t, "admin", c.Get("X-Role"))
+			require.True(t, c.HasHeader("X-Role"))
+			require.True(t, c.HasHeaderValue("X-Role", "admin"))
+			require.Equal(t, []string{"admin"}, c.GetAll("X-Role"))
+		})
+	}
 }
 
 func Test_Ctx_HeaderAccessors_SkipTrailerSection(t *testing.T) {

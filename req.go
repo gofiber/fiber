@@ -196,13 +196,14 @@ func (r *DefaultReq) Body() []byte {
 
 	request := &r.c.fasthttp.Request
 
-	// Fast path: no Content-Encoding header at all. ContentEncoding peeks the
-	// stored key byte-exactly, which is decisive only while fasthttp normalized
-	// the names on the way in — under DisableHeaderNormalizing a lower-case
+	// Fast path: no Content-Encoding header at all. PeekAll matches the stored
+	// key byte-exactly, which is decisive only while fasthttp normalized the
+	// names on the way in — under DisableHeaderNormalizing a lower-case
 	// spelling would read as absent here and skip decompression entirely.
 	// An empty value is still a present field line and must be joined with
-	// duplicates below before RFC 9110 empty-list elements are ignored.
-	if !r.c.app.config.DisableHeaderNormalizing && request.Header.ContentEncoding() == nil {
+	// duplicates below before RFC 9110 empty-list elements are ignored. Counted,
+	// since fasthttp stores an empty first line as nil in a slot that never held one.
+	if !r.c.app.config.DisableHeaderNormalizing && len(request.Header.PeekAll(HeaderContentEncoding)) == 0 {
 		return r.getBody()
 	}
 
