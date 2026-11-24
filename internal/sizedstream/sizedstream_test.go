@@ -152,3 +152,30 @@ func Test_Read_CostsNoMoreThanBodyOnceThePoolSettled(t *testing.T) {
 	viaBody := fewestBytes(large, func() { resp.Body() })
 	require.LessOrEqual(t, fewestBytes(large, func() { Read(&resp, len(large)) }), viaBody)
 }
+
+func Test_ReadFrom_DeclaredLengthDoesNotGrowAFullBuffer(t *testing.T) {
+	t.Parallel()
+	errBroken := errors.New("broken")
+	for _, tc := range []struct {
+		stream  io.Reader
+		err     error
+		name    string
+		want    string
+		size    int
+		wantCap int
+	}{
+		{name: "ends at the declared length", stream: strings.NewReader("hello"), size: 5, want: "hello", wantCap: 5},
+		{name: "empty", stream: strings.NewReader(""), size: 0, wantCap: 0},
+		{name: "runs longer", stream: strings.NewReader("hello world"), size: 5, want: "hello world", wantCap: 100},
+		{name: "breaks off after it", stream: io.MultiReader(strings.NewReader("hello"), iotest.ErrReader(errBroken)), size: 5, want: "hello", err: errBroken, wantCap: 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := &buffer{b: make([]byte, 0, tc.size), limit: 100, size: tc.size}
+			_, err := w.ReadFrom(struct{ io.Reader }{tc.stream})
+			require.ErrorIs(t, err, tc.err)
+			require.Equal(t, tc.want, string(w.b))
+			require.Equal(t, tc.wantCap, cap(w.b))
+		})
+	}
+}

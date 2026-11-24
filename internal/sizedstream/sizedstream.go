@@ -20,6 +20,7 @@ const maxPresized = 1 << 20
 type buffer struct {
 	b     []byte
 	limit int
+	size  int // a request's declared length, or -1
 	past  int // bytes held in tail, 0 or 1
 	tail  [1]byte
 }
@@ -53,15 +54,22 @@ func (w *buffer) grow(need int) {
 func (w *buffer) ReadFrom(r io.Reader) (int64, error) {
 	start := len(w.b)
 	for {
-		p := w.tail[:] // once the buffer is full, only to see whether the stream runs longer
-		if room := w.limit - len(w.b); room > 0 {
+		// Past limit, or at a declared length that fills the buffer, the tail only shows whether the stream runs
+		// longer: growing to see the end would leave a buffer the calibrated body pool drops.
+		probe := len(w.b) == w.limit || (len(w.b) == w.size && len(w.b) == cap(w.b))
+		p := w.tail[:]
+		if !probe {
 			w.grow(1)
 			p = w.b[len(w.b):min(cap(w.b), w.limit)]
 		}
 		m, err := r.Read(p)
-		if m > 0 && len(w.b) == w.limit {
-			w.past = 1
-			return int64(len(w.b) - start + 1), errTooLong
+		if probe && m > 0 {
+			if len(w.b) == w.limit {
+				w.past = 1
+				return int64(len(w.b) - start + 1), errTooLong
+			}
+			w.grow(1)
+			w.b, m = append(w.b, w.tail[0]), 0
 		}
 		w.b = w.b[:len(w.b)+m]
 		if errors.Is(err, io.EOF) {
@@ -83,7 +91,7 @@ func acquire(limit int) *buffer {
 	if !ok {
 		w = new(buffer)
 	}
-	w.b, w.limit, w.past = w.b[:0], limit, 0
+	w.b, w.limit, w.size, w.past = w.b[:0], limit, -1, 0
 	return w
 }
 
@@ -114,6 +122,7 @@ func Read(resp *fasthttp.Response, n int) bool {
 func ReadRequest(req *fasthttp.Request, limit int) error {
 	w := acquire(limit)
 	defer buffers.Put(w)
+	w.size = req.Header.ContentLength()
 	if _, err := w.ReadFrom(req.BodyStream()); err != nil {
 		if errors.Is(err, errTooLong) {
 			return fasthttp.ErrBodyTooLarge
