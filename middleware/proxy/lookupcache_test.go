@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -98,6 +99,32 @@ func Test_Security_LookupHost_RemembersASmallAnswerOnly(t *testing.T) {
 			require.Len(t, addrs, tc.addrs, "the caller gets the whole answer either way")
 
 			_, remembered := cache.get("big.test", resolver)
+			require.Equal(t, tc.remembered, remembered)
+		})
+	}
+}
+
+func Test_Security_LookupHost_RemembersAShortHostOnly(t *testing.T) {
+	t.Parallel()
+	const literal = "2001:db8::1%"
+	for name, tc := range map[string]struct {
+		length     int
+		remembered bool
+	}{
+		"at the cap":   {length: lookupCacheMaxHost, remembered: true},
+		"over the cap": {length: lookupCacheMaxHost + 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			resolver := &net.Resolver{}
+			cache := newLookupCache(16, time.Minute, time.Now)
+			host := literal + strings.Repeat("a", tc.length-len(literal))
+
+			addrs, err := lookupHost(resolver, host, cache, time.Time{})
+			require.NoError(t, err)
+			require.Len(t, addrs, 1, "the caller gets the answer either way")
+
+			_, remembered := cache.get(host, resolver)
 			require.Equal(t, tc.remembered, remembered)
 		})
 	}

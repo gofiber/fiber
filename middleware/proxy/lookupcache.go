@@ -21,6 +21,10 @@ const (
 	// lookupCacheMaxAddrs is the most addresses an answer may hold to be remembered: a name's owner
 	// chooses the answer, and the cap bounds the memory the slots can take. Larger answers pay a lookup.
 	lookupCacheMaxAddrs = 32
+
+	// lookupCacheMaxHost is the longest DNS name with its trailing dot. The zone of an IPv6 literal has no
+	// limit and comes back in the answer too, so longer hosts pay a lookup instead of holding a slot.
+	lookupCacheMaxHost = 254
 )
 
 // upfrontLookups serves validateHostForSSRF, which runs on every request.
@@ -66,6 +70,9 @@ func (c *lookupCache) get(host string, resolver *net.Resolver) ([]net.IPAddr, bo
 
 // put remembers what resolver answered for host, replacing whatever shares its slot.
 func (c *lookupCache) put(host string, resolver *net.Resolver, addrs []net.IPAddr) {
+	if len(host) > lookupCacheMaxHost {
+		return
+	}
 	c.slot(host).Store(&lookupEntry{
 		// host may alias a request buffer.
 		host:     utils.CopyString(host),
