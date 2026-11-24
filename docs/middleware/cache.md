@@ -143,7 +143,7 @@ On a route whose responses depend on a request cookie, do one of these:
 - Name the cookie in `KeyCookies`, so each of its values gets its own entry. Hits on such entries are sent as `private` (see [Per-user entries](#per-user-entries-and-a-cache-in-front-of-the-app)).
 - Keep the cache off the route: register it only on routes that serve every client the same response, or skip it there with the [Skip](./skip.md) middleware.
 
-This holds whatever reads the cookie: [KeyAuth](./keyauth.md) with `extractors.FromCookie`, a session that `store.Get` loads from a [session](./session.md) store and that is never saved, or a check of your own. The session middleware is covered when the cache is registered before it, as shown under [Responses that are never stored](#responses-that-are-never-stored): it writes `Set-Cookie` on every response for which it saves the session, and such a response is not stored.
+This holds whatever reads the cookie: [KeyAuth](./keyauth.md) with `extractors.FromCookie`, a session that `store.Get` loads from a [session](./session.md) store and that is never saved, or a check of your own. The session middleware with its default cookie extractor is covered when the cache is registered before it, as shown under [Responses that are never stored](#responses-that-are-never-stored): it writes `Set-Cookie` on every response for which it saves the session, and such a response is not stored.
 
 :::
 
