@@ -149,10 +149,10 @@ func Balancer(config ...Config) fiber.Handler {
 			return fiber.ErrBadRequest
 		}
 		originalURL := utils.CopyString(line)
-		defer wiretarget.RestoreTarget(c.RequestCtx(), originalURL)
+		// With the URI as it is now: parsed from the line again, it would lose what a handler set in the query.
+		defer wiretarget.RestoreURI(c.RequestCtx(), originalURL, wiretarget.SaveURI(c.RequestCtx()))
 		// fasthttp writes the host of the URI it parsed, in lower case, into the Host field when it sends the
-		// request: put the field back as received, as doActionWithPolicy does, before the line is (a target that
-		// begins with "//" is read with it).
+		// request: put the field back as received, as doActionWithPolicy does.
 		var hostBuf [64]byte
 		originalHost := append(hostBuf[:0], req.Header.Host()...)
 		defer func() { req.Header.SetHostBytes(originalHost) }()

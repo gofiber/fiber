@@ -154,9 +154,9 @@ func routedFor[App any](c Ctx[App], path, line string) string {
 // would read both as one name where the router keeps two. Serve returns NotFound
 // or BadRequest, without running handler, for a routed path it does not hand on.
 func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) Outcome {
-	return serveWith(c, handler, func(original string) {
+	return serveWith(c, handler, func(original string, saved *fasthttp.URI) {
 		if !c.Response().IsBodyStream() && !c.RequestCtx().Hijacked() {
-			RestoreTarget(c.RequestCtx(), original)
+			RestoreURI(c.RequestCtx(), original, saved)
 		}
 	}, HasStrayPercent)
 }
@@ -168,14 +168,15 @@ func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) Outcome {
 // begins no escape is handed on, as "%25": fasthttp decodes "/100%" and "/100%25" into one path for the handler, as
 // it does without Fiber, so a second spelling is not what it gets (see HasStrayPercent).
 func ServeNative[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
-	return serveWith(c, handler, func(original string) { restoreNative(c, original) }, nil) == Served
+	return serveWith(c, handler, func(original string, saved *fasthttp.URI) { restoreNative(c, original, saved) }, nil) == Served
 }
 
-// serveWith runs handler on the routed request line and has putBack set the original back afterwards, which
-// does not when the handler goes on reading the request: a net/http handler that streamed or hijacked the
-// response, or, native, one that was given up on. malformed, when there is one, reports a routed path that handler's
-// own server would have answered 400 for, which handler is not run for (unless UnescapePath, which decodes it).
-func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack func(original string), malformed func(path string) bool) Outcome {
+// serveWith runs handler on the routed request line and has putBack set the original and the saved URI back
+// afterwards, which does not when the handler goes on reading the request: a net/http handler that streamed or
+// hijacked the response, or, native, one that was given up on. malformed, when there is one, reports a routed path
+// that handler's own server would have answered 400 for, which handler is not run for (unless UnescapePath, which
+// decodes it).
+func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack func(original string, saved *fasthttp.URI), malformed func(path string) bool) Outcome {
 	// Read once: with Immutable every read of the path copies the string. The line is only a view of the request
 	// line, since it is compared below and copied where it has to outlive the request line.
 	req := c.Request()
@@ -200,7 +201,7 @@ func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack fun
 		handler(c.RequestCtx())
 		return Served
 	}
-	original := utils.CopyString(line)
+	original, saved := utils.CopyString(line), SaveURI(c.RequestCtx())
 	SetTarget(c, target)
 	// Buffered, the handler has returned, or panicked, in which case
 	// fasthttpadaptor re-panics here and the recover middleware or error
@@ -208,7 +209,7 @@ func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack fun
 	// or hijacked, the handler is still running with an http.Request whose
 	// URL aliases the request line's storage, so the line is left as the
 	// handler read it.
-	defer putBack(original)
+	defer putBack(original, saved)
 	handler(c.RequestCtx())
 	return Served
 }
@@ -222,9 +223,9 @@ func NoPath(line string, connect bool) bool {
 	return line == "*" || (connect && line != "" && !strings.ContainsAny(line, "/%?#\\;@"))
 }
 
-// restoreNative puts original back as the request line of a request whose fasthttp handler returned, unless a
-// timeout answered for the request and left the handler running on it.
-func restoreNative[App any](c Ctx[App], original string) {
+// restoreNative puts original and saved back as the request line and the URI of a request whose fasthttp handler
+// returned, unless a timeout answered for the request and left the handler running on it.
+func restoreNative[App any](c Ctx[App], original string, saved *fasthttp.URI) {
 	// IsAbandoned goes first, as in the limiter: its atomic load orders the read of the timeout response
 	// after the write of a timeout.New that gave up on the request on another goroutine.
 	if c.IsAbandoned() {
@@ -250,7 +251,7 @@ func restoreNative[App any](c Ctx[App], original string) {
 	if c.Response().IsBodyStream() || rctx.Hijacked() {
 		return
 	}
-	RestoreTarget(rctx, original)
+	RestoreURI(rctx, original, saved)
 }
 
 // SetTarget sets target, the routed request target, as c's request line.
@@ -277,7 +278,7 @@ func SetTarget[App any](c Ctx[App], target string) {
 // the authority out of such a target when it holds "://" anywhere, query and fragment included, or
 // when the request has no Host header, and then c.Host() is the first path segment and c.Path()
 // lacks it. The cause is in that parser, which this module cannot change. DefaultCtx.Reset calls this for
-// the request line as it arrived, RestoreTarget for the one a handler put back.
+// the request line as it arrived, RestoreTarget for one a net/http middleware handed on.
 //
 // What fasthttp parsed is looked at, not predicted from the Host header (see ParsesAsPath): a request built
 // before its Host header was set, as adaptor.FiberApp builds one, was parsed without it, and the authority
@@ -322,7 +323,22 @@ func ReadAsOriginForm(fctx *fasthttp.RequestCtx, target []byte) {
 	uri.SetPathBytes(path)
 }
 
-// RestoreTarget sets original, the request line as it arrived, back as fctx's request target. fasthttp parses it
+// SaveURI returns a pooled copy of the URI of fctx's request, with what handlers changed in it, for RestoreURI.
+func SaveURI(fctx *fasthttp.RequestCtx) *fasthttp.URI {
+	saved := fasthttp.AcquireURI()
+	fctx.Request.URI().CopyTo(saved)
+	return saved
+}
+
+// RestoreURI sets original and saved back as fctx's request line and URI, and releases saved. Parsed from the line
+// again, the URI would lose what a handler set through QueryArgs() and the origin-form reading of a "//" target.
+func RestoreURI(fctx *fasthttp.RequestCtx, original string, saved *fasthttp.URI) {
+	fctx.Request.SetRequestURI(original)
+	fctx.Request.SetURI(saved)
+	fasthttp.ReleaseURI(saved)
+}
+
+// RestoreTarget sets original, a request line, as fctx's request target. fasthttp parses it
 // again, and takes the authority out of a "//" target again, so the origin-form reading Reset gave it is applied
 // again. The Host header has to be back in place by then.
 func RestoreTarget(fctx *fasthttp.RequestCtx, original string) {

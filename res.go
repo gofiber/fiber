@@ -1393,9 +1393,9 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	// the handler will convert back to OS path separator before opening the file
 	file = filepath.ToSlash(file)
 
-	// Restore the original requested URL
+	// Restore the original requested URL and URI
 	originalURL := utils.CopyString(r.c.OriginalURL())
-	defer wiretarget.RestoreTarget(r.c.fasthttp, originalURL)
+	defer wiretarget.RestoreURI(r.c.fasthttp, originalURL, wiretarget.SaveURI(r.c.fasthttp))
 
 	// The file server reads the request URI, which fasthttp percent-decodes and
 	// splits at "?" and "#" as it parses it, so the name goes in escaped and

@@ -897,3 +897,29 @@ func Test_Proxy_Forward_Allowances(t *testing.T) {
 		})
 	}
 }
+
+func Test_Proxy_KeepsQueryArgsChange(t *testing.T) {
+	t.Parallel()
+	addr := echoTarget(t)
+
+	for _, tc := range trailerHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			first := tc.build(addr)
+			app := fiber.New()
+			var query, line string
+			app.Use(func(c fiber.Ctx) error {
+				c.Request().URI().QueryArgs().Del("as_user")
+				if err := first(c); err != nil {
+					return err
+				}
+				query, line = c.Query("as_user"), c.OriginalURL()
+				return c.Next()
+			}, Balancer(Config{Servers: []string{addr}}))
+			resp := rawRequest(t, app, "/?as_user=alice&year=2026", "example.com")
+			require.Equal(t, "/?year=2026", string(resp.Body()))
+			require.Empty(t, query)
+			require.Equal(t, "/?as_user=alice&year=2026", line)
+		})
+	}
+}

@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"crypto/tls"
 	"encoding/hex"
+	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -484,6 +487,32 @@ func Test_ReadAsOriginForm_KeepsTheScheme(t *testing.T) {
 			require.Equal(t, tc.wantHost, string(uri.Host()))
 			require.Equal(t, "//a/b", string(uri.PathOriginal()))
 			require.Equal(t, "x=http://y", string(uri.QueryString()))
+		})
+	}
+}
+
+func Test_Serve_KeepsQueryArgsChange(t *testing.T) {
+	t.Parallel()
+	for name, handler := range map[string]any{
+		"net/http": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := io.WriteString(w, r.RequestURI)
+			assert.NoError(t, err)
+		}),
+		"fasthttp": fasthttp.RequestHandler(func(fctx *fasthttp.RequestCtx) { fctx.SetBody(fctx.RequestURI()) }),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			var after string
+			app.Use(func(c fiber.Ctx) error {
+				c.Request().URI().QueryArgs().Del("as_user")
+				err := c.Next()
+				after = c.Query("as_user") + "|" + c.OriginalURL() + "|" + wiretarget.Routed(c)
+				return err
+			})
+			app.Get("/*", handler)
+			require.Equal(t, "/a?year=2026", answerFor(t, app, "/a?as_user=alice&year=2026"))
+			require.Equal(t, "|/a?as_user=alice&year=2026|/a?year=2026", after)
 		})
 	}
 }

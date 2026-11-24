@@ -219,10 +219,11 @@ func doActionBy(
 	originalURL := utils.CopyString(c.OriginalURL())
 	// fasthttp rewrote the Host header to the upstream's; put the client's back for later middleware.
 	originalHost := utils.CopyBytes(req.Header.Host())
+	// The URI goes back as it is now: parsed from the line again, it would lose what a handler set in the query.
+	originalURI := wiretarget.SaveURI(c.RequestCtx())
 	defer func() {
-		// The Host header first: an origin-form target that begins with "//" is read by it again.
 		req.Header.SetHostBytes(originalHost)
-		wiretarget.RestoreTarget(c.RequestCtx(), originalURL)
+		wiretarget.RestoreURI(c.RequestCtx(), originalURL, originalURI)
 	}()
 
 	// The request is rewritten for the upstream from here on: a value a handler read before keeps its bytes.

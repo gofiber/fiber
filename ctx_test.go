@@ -6623,6 +6623,21 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 	require.NoError(t, err2)
 }
 
+func Test_Ctx_SendFile_KeepsQueryArgsChange(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var after string
+	app.Get("/", func(c Ctx) error {
+		c.Request().URI().QueryArgs().Del("as_user")
+		err := c.SendFile("ctx.go")
+		after = c.Query("as_user") + "|" + c.Query("year") + "|" + c.OriginalURL()
+		return err
+	})
+
+	apptest.Expect(t, app, "/?as_user=alice&year=2026", StatusOK)
+	require.Equal(t, "|2026|/?as_user=alice&year=2026", after)
+}
+
 func Test_SendFile_withRoutes(t *testing.T) {
 	t.Parallel()
 	app := New()
