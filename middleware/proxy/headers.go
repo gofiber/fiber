@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"slices"
+	"strconv"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
@@ -236,6 +237,24 @@ func isRealIPAlias(name []byte) bool {
 		}
 	}
 	return true
+}
+
+// lastTraceHop applies Max-Forwards to a TRACE (RFC 9110 Section 7.6.2): it reports whether the request must not be
+// forwarded, and counts the value down otherwise.
+func lastTraceHop(req *fasthttp.Request, normalized bool) bool {
+	if !req.Header.IsTrace() {
+		return false
+	}
+	n, err := fasthttp.ParseUint(fieldname.First(&req.Header, fiber.HeaderMaxForwards, normalized))
+	if err != nil {
+		return false
+	}
+	if n == 0 {
+		return true
+	}
+	fieldname.DelWithin(&req.Header, fiber.HeaderMaxForwards, normalized, maxConnectionOptions)
+	req.Header.Set(fiber.HeaderMaxForwards, strconv.Itoa(n-1))
+	return false
 }
 
 // keepForwardingOrder puts the forwarding fields sent on several lines back in the order they were received,

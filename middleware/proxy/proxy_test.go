@@ -2885,3 +2885,31 @@ func Test_Proxy_FieldNameNotATokenRefused(t *testing.T) {
 		})
 	}
 }
+
+func Test_Proxy_TraceMaxForwards(t *testing.T) {
+	t.Parallel()
+	for _, tc := range trailerHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var forwarded atomic.Int32
+			upstream := fiber.New()
+			upstream.Use(func(c fiber.Ctx) error {
+				forwarded.Add(1)
+				return c.SendString(c.Get(fiber.HeaderMaxForwards))
+			})
+			ln := proxyTestListen(t)
+			startServer(upstream, ln)
+			app := fiber.New()
+			app.Use(tc.build(ln.Addr().String()))
+			for maxForwards, want := range map[string]string{"0": "", "2": "1", "": ""} {
+				req := apptest.Req(fiber.MethodTrace, "/", apptest.WithHeaderIf(fiber.HeaderMaxForwards, maxForwards))
+				if maxForwards == "0" {
+					apptest.Expect(t, app, req, fiber.StatusNotImplemented)
+					continue
+				}
+				apptest.ExpectBody(t, app, req, fiber.StatusOK, want)
+			}
+			require.Equal(t, int32(2), forwarded.Load())
+		})
+	}
+}

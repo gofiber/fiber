@@ -243,6 +243,9 @@ func doActionBy(
 	if err := screenFieldNames(&req.Header, ip != nil); err != nil {
 		return err
 	}
+	if lastTraceHop(req, normalized) {
+		return fiber.ErrNotImplemented
+	}
 	if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized) {
 		return fiber.ErrRequestHeaderFieldsTooLarge
 	}
