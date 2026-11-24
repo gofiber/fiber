@@ -12,6 +12,8 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
+var errMalformedAddress = errors.New("malformed address")
+
 // parseUpstream returns the parsed url.URL for raw. Hosts without an
 // explicit scheme default to http:// to match the historical Balancer
 // behavior where bare "host:port" entries were accepted. A parse failure is
@@ -26,9 +28,10 @@ func parseUpstream(raw string) (*url.URL, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		// The address may hold credentials, and the default error handler answers with this text.
+		// The address may hold credentials, and the default error handler answers with this text. The cause
+		// can quote a part of it, as `invalid port ":s3cret"` for a password before a "/".
 		if urlErr, ok := errors.AsType[*url.Error](err); ok {
-			urlErr.URL = redact.Placeholder
+			urlErr.URL, urlErr.Err = redact.Placeholder, errMalformedAddress
 		}
 		return nil, fmt.Errorf("%w: %w", ErrUpstreamHostInvalid, err)
 	}

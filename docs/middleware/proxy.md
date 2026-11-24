@@ -63,7 +63,7 @@ Set `SecurityPolicy.AllowPrivateIPs = true` to opt out — required when proxyin
 
 ### Scheme allowlist
 
-Only `http` and `https` upstream schemes are accepted by default; `file://`, `gopher://`, `ftp://`, and other schemes are rejected with `ErrUpstreamSchemeNotAllowed`. An empty address, one without a host, or one that cannot be parsed is rejected with `ErrUpstreamHostInvalid`; for an address that cannot be parsed, the `*url.Error` from `net/url` is wrapped beside it, so `errors.As` still finds it. The address that error would quote is replaced by `[redacted]`: the default error handler answers with the text of the error, and the address may hold credentials. Override the schemes via `SecurityPolicy.AllowedSchemes`.
+Only `http` and `https` upstream schemes are accepted by default; `file://`, `gopher://`, `ftp://`, and other schemes are rejected with `ErrUpstreamSchemeNotAllowed`. An empty address, one without a host, or one that cannot be parsed is rejected with `ErrUpstreamHostInvalid`; for an address that cannot be parsed, the `*url.Error` from `net/url` is wrapped beside it, so `errors.As` still finds it. The address that error would quote is replaced by `[redacted]`, and its cause, which can quote a part of the address, by `malformed address`: the default error handler answers with the text of the error, and the address may hold credentials. Override the schemes via `SecurityPolicy.AllowedSchemes`.
 
 ### HTTPS-to-HTTP redirect downgrades
 

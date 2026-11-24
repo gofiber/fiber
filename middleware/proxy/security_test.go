@@ -22,6 +22,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -2040,12 +2041,14 @@ func Test_Security_KeepHopByHopHeaders_Do(t *testing.T) {
 // parse is ErrUpstreamHostInvalid, with the *url.Error still reachable and the address out of its text.
 func Test_Security_ValidateUpstream_UnparsableIsHostInvalid(t *testing.T) {
 	t.Parallel()
-	for _, raw := range []string{"http://[::1", "http://exam ple.com", "http://%zz.com/", "http://a:b:c/"} {
+	for _, raw := range []string{
+		"http://[::1", "http://exam ple.com", "http://%zz.com/", "http://a:b:c/", "http://svc:s3cret/x@backend.internal:8080", "http://[s3cret]/",
+	} {
 		_, err := validateUpstream(raw, DefaultSecurityPolicy(), nil)
 		require.ErrorIs(t, err, ErrUpstreamHostInvalid, raw)
 		_, ok := errors.AsType[*url.Error](err)
 		require.True(t, ok, "the net/url error must stay reachable: %q", raw)
-		require.NotContains(t, err.Error(), raw, "the address must stay out of the error text")
+		require.Equal(t, ErrUpstreamHostInvalid.Error()+`: parse "`+redact.Placeholder+`": malformed address`, err.Error(), raw)
 	}
 
 	// "" and "http:///path" are pinned by RejectsEmpty and EmptyHostAfterScheme.
