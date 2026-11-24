@@ -1716,6 +1716,10 @@ func Test_Static_MaxAge_KeepsCacheControl(t *testing.T) {
 			return c.Next()
 		})
 		app.Use("/split", func(c fiber.Ctx) error {
+			// the padding puts the empty line in a spare slot append left zeroed, where it peeks as nil
+			for _, pad := range []string{"X-Pad-1", "X-Pad-2", "X-Pad-3"} {
+				c.Response().Header.Set(pad, "1")
+			}
 			c.Response().Header.Add(name, "")
 			c.Response().Header.Add(name, "private")
 			return c.Next()
@@ -1728,6 +1732,8 @@ func Test_Static_MaxAge_KeepsCacheControl(t *testing.T) {
 		require.Equal(t, []string{"private, no-store"}, resp.Header.Values(fiber.HeaderCacheControl), name)
 		resp = apptest.ExpectBody(t, app, "/split/logo.txt", fiber.StatusOK, "LOGO")
 		require.NotContains(t, resp.Header.Values(fiber.HeaderCacheControl), "max-age=3600", name)
+		raw := serveRaw(app.Handler(), fiber.MethodGet, "/split/logo.txt")
+		require.NotContains(t, string(raw.Header.Header()), "max-age=3600", name)
 	}
 }
 

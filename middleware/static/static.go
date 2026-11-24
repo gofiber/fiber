@@ -121,8 +121,8 @@ func (s *fileServer) hasCacheControl(h *fasthttp.ResponseHeader) bool {
 	if s.config.DisableHeaderNormalizing {
 		return len(fieldname.First(h, fiber.HeaderCacheControl, false)) > 0
 	}
-	// a present but empty first line still counts: a later one may say "private"
-	return h.PeekCanonical(utils.UnsafeBytes(fiber.HeaderCacheControl)) != nil
+	// a present but empty first line still counts: a later one may say "private"; it peeks as nil in a fresh slot
+	return len(h.PeekAll(fiber.HeaderCacheControl)) > 0
 }
 
 // isPrefix reports whether head is the route prefix, as the router compares it.
