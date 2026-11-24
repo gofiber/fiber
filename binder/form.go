@@ -51,6 +51,9 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 	if mediatype.IsForm(req.Header.ContentType()) {
 		mediatype.NormalizeRequestContentType(&req.Header)
 	}
+	if !mediatype.FormCodingAgrees(&req.Header) {
+		return ErrFormContentEncoding
+	}
 
 	// Handle multipart form. Media types are case-insensitive
 	// (RFC 9110 Section 8.3.1), so compare accordingly.

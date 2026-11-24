@@ -528,6 +528,10 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 		}
 		return defaultString("", defaultValue)
 	}
+	// PostArgs parses the body as sent, so a form under a coding Body undoes is not read.
+	if !mediatype.FormCodingAgrees(&r.c.fasthttp.Request.Header) {
+		return defaultString(r.c.app.toString(r.c.fasthttp.QueryArgs().Peek(key)), defaultValue)
+	}
 	// PostArgs drains a streamed urlencoded body whatever its size.
 	if r.c.fasthttp.Request.IsBodyStream() && mediatype.ParsesPostArgs(r.c.fasthttp.Request.Header.ContentType()) {
 		if v := r.c.fasthttp.QueryArgs().Peek(key); len(v) > 0 {
@@ -1319,6 +1323,9 @@ func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 	// here too. Guarded like FormValue: the fold writes.
 	if mediatype.IsForm(r.c.fasthttp.Request.Header.ContentType()) {
 		mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
+	}
+	if !mediatype.FormCodingAgrees(&r.c.fasthttp.Request.Header) {
+		return nil, ErrUnsupportedMediaType
 	}
 
 	return r.c.fasthttp.MultipartFormWithLimit(r.c.app.config.BodyLimit)
