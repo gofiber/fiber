@@ -1860,6 +1860,24 @@ func Test_Static_Unrouted_OneFileServer(t *testing.T) {
 	require.Equal(t, "INDEX", string(resp.Body()))
 }
 
+// Off a route no handler follows, so a miss or a skipped request is a 404, not a call to Next.
+func Test_Static_Unrouted_MissIsNotFound(t *testing.T) {
+	t.Parallel()
+	handler := New("", Config{FS: fstest.MapFS{"a.txt": {Data: []byte("A")}}})
+	app := fiber.New(fiber.Config{ErrorHandler: func(c fiber.Ctx, _ error) error {
+		if err := handler(c); err != nil {
+			return c.Status(fiber.StatusTeapot).SendString(err.Error())
+		}
+		return nil
+	}})
+	for _, req := range []*http.Request{
+		apptest.Req(fiber.MethodGet, "/missing.txt"),
+		apptest.Req(fiber.MethodPost, "/a.txt"),
+	} {
+		apptest.ExpectBody(t, app, req, fiber.StatusTeapot, fiber.ErrNotFound.Message)
+	}
+}
+
 // With ByteRange on, the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) are
 // applied around the file server's single range; internal/byterange tests them
 // in full.

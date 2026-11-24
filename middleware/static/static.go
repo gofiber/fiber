@@ -399,18 +399,18 @@ func New(root string, cfg ...Config) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if config.Next != nil && config.Next(c) {
-			return c.Next()
+			return next(c)
 		}
 
 		// We only serve static assets on GET or HEAD methods
 		method := c.Method()
 		if method != fiber.MethodGet && method != fiber.MethodHead {
-			return c.Next()
+			return next(c)
 		}
 
 		// A refused request skipped any route guarding the file, and its headers would go out with the refusal.
 		if errorreplay.Active(c.RequestCtx()) {
-			return c.Next()
+			return next(c)
 		}
 
 		server := serverFor(c)
@@ -509,9 +509,16 @@ func New(root string, cfg ...Config) fiber.Handler {
 		fctx.Response.SetStatusCode(fiber.StatusOK)
 		fctx.Response.SetBodyString("")
 
-		// Next middleware
-		return c.Next()
+		return next(c)
 	}
+}
+
+// next passes c on to the next handler; off a route there is none, so it is a miss.
+func next(c fiber.Ctx) error {
+	if isUnrouted(c.Route()) {
+		return fiber.ErrNotFound
+	}
+	return c.Next()
 }
 
 // isUnrouted reports whether route is the one c.Route() makes up where no route
