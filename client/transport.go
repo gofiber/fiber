@@ -5,15 +5,14 @@ package client
 
 import (
 	"crypto/tls"
-	"errors"
 	"fmt"
-	"net"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/internal/redirectbody"
+	"github.com/gofiber/fiber/v3/internal/tlshandshake"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -119,47 +118,13 @@ func newOwnedStandardClientTransport() *standardClientTransport {
 			// On the client, which fasthttp gives every host client before the hook
 			// runs, so a hook of the caller's own in place of this one does not lose it.
 			Transport:       cancelTransport{},
-			ConfigureClient: boundTLSHandshake,
+			ConfigureClient: func(hc *fasthttp.HostClient) error {
+				tlshandshake.Bound(hc)
+				return nil
+			},
 		},
 		settingKnown: true,
 	}
-}
-
-// boundTLSHandshake gives a new TLS connection a read deadline of the request timeout.
-// fasthttp handshakes inside the first write, where only a write deadline applies.
-func boundTLSHandshake(hc *fasthttp.HostClient) error {
-	if !hc.IsTLS || hc.WriteTimeout > 0 { // with WriteTimeout fasthttp handshakes at dial time, under a deadline
-		return nil
-	}
-	dial, dialTimeout, dualStack := hc.Dial, hc.DialTimeout, hc.DialDualStack
-	hc.DialTimeout = func(addr string, timeout time.Duration) (net.Conn, error) {
-		var conn net.Conn
-		var err error
-		// The dialer fasthttp's callDialFunc would pick; addr already carries the port.
-		switch {
-		case dialTimeout != nil:
-			conn, err = dialTimeout(addr, timeout)
-		case dial != nil:
-			conn, err = dial(addr)
-		case timeout <= 0 && dualStack:
-			conn, err = fasthttp.DialDualStack(addr)
-		case timeout <= 0:
-			conn, err = fasthttp.Dial(addr)
-		case dualStack:
-			conn, err = fasthttp.DialDualStackTimeout(addr, timeout)
-		default:
-			conn, err = fasthttp.DialTimeout(addr, timeout)
-		}
-		if err != nil || timeout <= 0 {
-			return conn, err
-		}
-		// The request sets its own read deadline after the handshake, replacing this one.
-		if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-			return nil, errors.Join(err, conn.Close())
-		}
-		return conn, nil
-	}
-	return nil
 }
 
 // noteSend records a request about to be sent through a client that normalizes.

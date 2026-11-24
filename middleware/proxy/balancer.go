@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
+	"github.com/gofiber/fiber/v3/internal/tlshandshake"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -274,5 +275,6 @@ func newHostClient(u *url.URL, cfg *Config, policy SecurityPolicy) *fasthttp.Hos
 		hc.Dial = g.dialChecked
 		hc.DialTimeout = g.dialCheckedTimeout
 	}
+	tlshandshake.Bound(hc) // Config.Timeout covers the TLS handshake too
 	return hc
 }

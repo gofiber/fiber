@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/tlshandshake"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -365,6 +366,7 @@ func (g *guardedConfigureClient) run(hc *fasthttp.HostClient) error {
 		}
 	}
 	installHostClientGuard(hc)
+	tlshandshake.Bound(hc) // over the guarded dialers
 	// The target the proxy hands the client is the one it matched and
 	// validated; a client left normalizing would decode "%2F" into a
 	// separator and merge "//" on the way out, undoing that.

@@ -2539,6 +2539,51 @@ func Test_Proxy_DefaultBounds(t *testing.T) {
 	require.Equal(t, 0, hc.MaxResponseBodySize)
 }
 
+// An upstream that accepts the connection and never answers the ClientHello holds neither the handler nor the
+// connection past the request's bound.
+func Test_Proxy_TLSHandshakeTimeout(t *testing.T) {
+	t.Parallel()
+	ln := proxyTestListen(t)
+	closed := make(chan struct{}, 8)
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				_, err := io.Copy(io.Discard, conn) // reads the ClientHello, then waits for the proxy to give up
+				if err == nil {
+					err = conn.Close()
+				}
+				if err == nil {
+					closed <- struct{}{}
+				}
+			}()
+		}
+	}()
+	t.Cleanup(func() { require.NoError(t, ln.Close()) })
+
+	upstream := "https://" + ln.Addr().String()
+	timeout := 200 * time.Millisecond
+	dialing := &fasthttp.Client{Dial: func(addr string) (net.Conn, error) { return net.Dial(fiber.NetworkTCP4, addr) }}
+	for name, handler := range map[string]fiber.Handler{
+		"DoTimeout":            func(c fiber.Ctx) error { return DoTimeout(c, upstream, timeout) },
+		"DoDeadline":           func(c fiber.Ctx) error { return DoDeadline(c, upstream, time.Now().Add(timeout)) },
+		"client with a dialer": func(c fiber.Ctx) error { return DoTimeout(c, upstream, timeout, dialing) },
+		"Balancer":             Balancer(Config{Servers: []string{upstream}, Timeout: timeout}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Get("/", handler)
+			resp := apptest.Do(t, app, "/", fiber.TestConfig{Timeout: 5 * time.Second, FailOnTimeout: true})
+			require.Equal(t, fasthttp.ErrTimeout.Error(), apptest.Body(t, resp))
+			apptest.Recv(t, closed, 5*time.Second, "the proxy kept the connection")
+		})
+	}
+}
+
 // Headers larger than WriteBufferSize must still arrive whole.
 func Test_Proxy_Balancer_WriteBufferSize(t *testing.T) {
 	t.Parallel()
