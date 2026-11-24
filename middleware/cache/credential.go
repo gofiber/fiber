@@ -209,15 +209,16 @@ type recordGate struct {
 
 // refusalRecords keeps the records of refused credentials: bounded in memory, left to expire in a Storage.
 type refusalRecords struct {
-	cfg     *Config
-	m       *manager
-	keys    keyLog
-	dropped droppedRecords
-	family  Config // cfg keyed by the credential headers alone, so a record reaches every variant
-	gates   [refusalGroups]recordGate
-	expiry  [refusalGroups]atomic.Uint64 // the second the longest-lived credential entry stored in the group stops being kept
-	all     recordGate
-	poll    int64 // milliseconds between reads of a marker
+	cfg      *Config
+	m        *manager
+	keys     keyLog
+	dropped  droppedRecords
+	family   Config // cfg keyed by the credential headers alone, so a record reaches every variant
+	gates    [refusalGroups]recordGate
+	expiry   [refusalGroups]atomic.Uint64 // the second the longest-lived credential entry stored in the group stops being kept
+	refusals [refusalGroups]atomic.Uint64 // refusals recorded in the group so far
+	all      recordGate
+	poll     int64 // milliseconds between reads of a marker
 }
 
 func newRefusalRecords(cfg *Config, m *manager) *refusalRecords {
@@ -383,38 +384,56 @@ func (r *refusalRecords) announced(ctx context.Context, gate *recordGate, marker
 // refused reports whether a refusal was recorded under key. A storage that cannot answer counts as
 // one, and so does a key whose record was dropped live or could not be written.
 func (r *refusalRecords) refused(ctx context.Context, key string) bool {
-	if r.dropped.has(key, uint64(utils.Timestamp())) {
+	recorded, err := r.hasRecord(ctx, key)
+	if err != nil {
+		log.Warnf("cache: failed to read the record of a refused credential: %v", err)
 		return true
+	}
+	return recorded
+}
+
+// hasRecord reports whether a record is under key, one dropped live or not written included.
+func (r *refusalRecords) hasRecord(ctx context.Context, key string) (bool, error) {
+	if r.dropped.has(key, uint64(utils.Timestamp())) {
+		return true, nil
 	}
 	_, err := r.m.getRaw(ctx, key)
-	if err == nil {
-		return true
-	}
 	if errors.Is(err, errCacheMiss) {
-		return false
+		return false, nil
 	}
-	log.Warnf("cache: failed to read the record of a refused credential: %v", err)
-	return true
+	return err == nil, err
 }
 
 // record keeps the refusal under key, in the group of URLs the lookup saw, for Expiration, until entryExp
 // (unix seconds) or until the group's longest-lived credential entry stops being kept, whichever is
-// latest, and never shorter than the record there already. A record the Storage cannot take is remembered here.
-func (r *refusalRecords) record(ctx context.Context, group int, key string, entryExp uint64) {
+// latest, and never shorter than the record there already. A record the Storage cannot take is remembered
+// here, and false returned.
+func (r *refusalRecords) record(ctx context.Context, group int, key string, entryExp uint64) bool {
 	noted := r.expiry[group].Load()
 	for {
-		r.write(ctx, group, key, max(entryExp, noted))
+		stored := r.write(ctx, group, key, max(entryExp, noted))
 		// A request that noted its entry during the write found no record to extend.
 		latest := r.expiry[group].Load()
 		if latest <= noted {
-			return
+			return stored
 		}
 		noted = latest
 	}
 }
 
+// refuse records the refusal under key; see record. A store in the group whose handler ran meanwhile
+// sees it in refusalsIn.
+func (r *refusalRecords) refuse(ctx context.Context, group int, key string, entryExp uint64) {
+	r.refusals[group].Add(1)
+	r.record(ctx, group, key, entryExp)
+}
+
+func (r *refusalRecords) refusalsIn(group int) uint64 {
+	return r.refusals[group].Load()
+}
+
 // write is one pass of record, for a record kept at least until last (unix seconds).
-func (r *refusalRecords) write(ctx context.Context, group int, key string, last uint64) {
+func (r *refusalRecords) write(ctx context.Context, group int, key string, last uint64) bool {
 	retention := r.cfg.Expiration
 	clock := safeUnixSeconds(r.cfg.now())
 	if last > clock {
@@ -427,7 +446,7 @@ func (r *refusalRecords) write(ctx context.Context, group int, key string, last 
 	if err := r.m.setRaw(ctx, key, lapseValue(until), secondsToDuration(until-now)); err != nil {
 		log.Warnf("cache: failed to record the refusal of a credential: %v", err)
 		r.dropped.add(key, until+2)
-		return
+		return false
 	}
 	// The store counts from the write, which may have taken a while.
 	end := uint64(utils.Timestamp()) + (until - now) + 2
@@ -445,14 +464,22 @@ func (r *refusalRecords) write(ctx context.Context, group int, key string, last 
 			log.Warnf("cache: failed to drop the oldest record of a refused credential: %v", err)
 		}
 	}
+	return true
 }
 
 // cover extends the record under key, if there is one, over the credential entries of the group noted
 // since it was written: a refusal recorded while a request for the credential ran knew nothing of its entry.
-func (r *refusalRecords) cover(ctx context.Context, group int, key string) {
-	if key != "" && (r.dropped.has(key, uint64(utils.Timestamp())) || r.lapse(ctx, key) > 0) {
-		r.record(ctx, group, key, 0)
+// False when there may be a record it could not extend, so the entry must not be stored.
+func (r *refusalRecords) cover(ctx context.Context, group int, key string) bool {
+	if key == "" {
+		return true
 	}
+	recorded, err := r.hasRecord(ctx, key)
+	if err != nil {
+		log.Warnf("cache: failed to read the record of a refused credential: %v", err)
+		return false
+	}
+	return !recorded || r.record(ctx, group, key, 0)
 }
 
 // open has hits look for a record of the group until the second given.

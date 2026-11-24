@@ -927,6 +927,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Read before the handler can clear the credential or rewrite the path.
 		urlGroup := refusals.group(c, generatedKey)
+		refusalsAtLookup := refusals.refusalsIn(urlGroup)
 		// Also the headers, for a response that varies on other names than the lookup used: an inner
 		// middleware may rewrite them in place, as encryptcookie does with the cookie it decrypts.
 		var lookupHeader *fasthttp.RequestHeader
@@ -1032,7 +1033,7 @@ func New(config ...Config) fiber.Handler {
 			}
 			for _, recordKey := range recordKeys {
 				if recordKey != "" {
-					refusals.record(reqCtx, urlGroup, recordKey, foundExp)
+					refusals.refuse(reqCtx, urlGroup, recordKey, foundExp)
 				}
 			}
 		}
@@ -1366,14 +1367,21 @@ func New(config ...Config) fiber.Handler {
 			refusals.noteLifetime(urlGroup, storageExpiration)
 			// A refusal of the credential recorded while the handler ran must outlast this entry too; one
 			// recorded from now on reads the lifetime noted above.
+			covered := true
 			if refusals.mayHoldIn(reqCtx, urlGroup) {
 				keys := recordKeys
 				if !foundAtLookup {
 					keys = refusals.recordKeys(c, generatedKey, respVaryNames, cfg.credentialsOf(c, respVaryNames, hasAuthorization))
 				}
 				for _, key := range keys {
-					refusals.cover(reqCtx, urlGroup, key)
+					covered = refusals.cover(reqCtx, urlGroup, key) && covered
 				}
+			}
+			// Not stored past a record other instances cannot see extended, nor after a refusal in the group
+			// while the handler ran, whose record may be gone already.
+			if !covered || refusals.refusalsIn(urlGroup) != refusalsAtLookup {
+				markUnreachable()
+				return nil
 			}
 		}
 
