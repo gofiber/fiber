@@ -32,7 +32,7 @@ func (failingContextBuffer) String() string                      { return "" }
 // buildTestTemplate compiles a context template using the package-default tag
 // map merged with the supplied custom tags. It mirrors the production merge
 // performed by SetContextTemplate so test expectations stay aligned.
-func buildTestTemplate(t *testing.T, format string, custom map[string]ContextTagFunc) *logtemplate.Template[any, ContextData] {
+func buildTestTemplate(t *testing.T, format string, custom map[string]ContextTagFunc) *compiledContext {
 	t.Helper()
 	tags := defaultContextTagMap()
 	maps.Copy(tags, custom)
@@ -43,7 +43,7 @@ func buildTestTemplate(t *testing.T, format string, custom map[string]ContextTag
 }
 
 // executeContextTemplate executes tmpl against ctx and returns what it wrote.
-func executeContextTemplate(t *testing.T, tmpl *logtemplate.Template[any, ContextData], ctx any) string {
+func executeContextTemplate(t *testing.T, tmpl *compiledContext, ctx any) string {
 	t.Helper()
 
 	buf := bytebufferpool.Get()
@@ -90,6 +90,8 @@ func Test_ContextTemplate_KeyValueFieldQuoted(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ id, want string }{
 		{id: "6f1c2a", want: "6f1c2a"},
+		{id: "0f8e7c1a-6d1b-4f8e-9a2b-3c4d5e6f7a8b", want: "0f8e7c1a-6d1b-4f8e-9a2b-3c4d5e6f7a8b"},
+		{id: `01234567"`, want: `"01234567\""`},
 		{id: "6f1c2a username=admin", want: `"6f1c2a username=admin"`},
 		{id: "dGVzdA==", want: `"dGVzdA=="`},
 		{id: `x" username="admin`, want: `"x\" username=\"admin"`},
@@ -180,7 +182,7 @@ func Test_ContextTemplate_DefaultTagsRenderEmpty(t *testing.T) {
 	}
 	format := strings.Join(parts, "")
 
-	tmpl, err := logtemplate.Build[any, ContextData](format, defaults)
+	tmpl, err := buildContextTemplate(format, defaults)
 	require.NoError(t, err)
 
 	// Each stub renders empty, so the only bytes left are the "|" separators.
