@@ -6066,6 +6066,22 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 	require.Contains(t, string(c.Response().Header.Peek(HeaderSetCookie)), "test2=; expires=")
 }
 
+// Each name the request holds is expired once, and a pending cookie of that name is withdrawn.
+func Test_Ctx_ClearCookie_AllNames(t *testing.T) {
+	t.Parallel()
+	c := apptest.Ctx(t, New())
+	c.Request().Header.Set(HeaderCookie, "a=1; b=2; a=3")
+	c.Cookie(&Cookie{Name: "a", Value: "pending"})
+	c.Cookie(&Cookie{Name: "kept", Value: "v"})
+
+	c.ClearCookie()
+	var got []string
+	for _, line := range c.Response().Header.PeekAll(HeaderSetCookie) {
+		got = append(got, strings.SplitN(string(line), ";", 2)[0])
+	}
+	require.ElementsMatch(t, []string{"kept=v", "a=", "b="}, got)
+}
+
 // ctxTestBCtxGoSource returns the content of ctx.go, the file the SendFile and
 // Download tests serve and compare against.
 func ctxTestBCtxGoSource(t *testing.T) []byte {

@@ -334,9 +334,28 @@ func (r *DefaultRes) ClearCookie(key ...string) {
 		}
 		return
 	}
-	for k := range request.Header.Cookies() {
-		response.Header.DelClientCookieBytes(k)
+	// DelClientCookie scans every response cookie, the expired ones it added
+	// included, so one call per request cookie was quadratic.
+	n := 0
+	for range request.Header.Cookies() {
+		n++
 	}
+	names := make(map[string]struct{}, n)
+	for k := range request.Header.Cookies() {
+		names[utils.UnsafeString(k)] = struct{}{}
+		response.Header.DelCookieBytes(k)
+	}
+	cookie := fasthttp.AcquireCookie()
+	cookie.SetExpire(fasthttp.CookieExpireDelete)
+	for k := range request.Header.Cookies() {
+		if _, ok := names[utils.UnsafeString(k)]; !ok {
+			continue // a repeated name, already expired
+		}
+		delete(names, utils.UnsafeString(k))
+		cookie.SetKeyBytes(k)
+		response.Header.AddBytesV(HeaderSetCookie, cookie.Cookie())
+	}
+	fasthttp.ReleaseCookie(cookie)
 }
 
 // RequestCtx returns *fasthttp.RequestCtx that carries a deadline
