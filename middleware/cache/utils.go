@@ -180,6 +180,32 @@ func droppedReceivedCookie(req *fasthttp.Request) bool {
 	return false
 }
 
+// hopByHopNames are what a request may list in Connection without withholding a header the key can
+// tell requests apart by: the options, the hop-by-hop fields a forwarding handler drops from every
+// request alike, and HTTP2-Settings, which an h2c upgrade must list (RFC 7540 section 3.2.1).
+var hopByHopNames = []string{
+	fiber.HeaderKeepAlive,
+	"close",
+	fiber.HeaderUpgrade,
+	fiber.HeaderTE,
+	"HTTP2-Settings",
+	fiber.HeaderConnection,
+	fiber.HeaderProxyAuthenticate,
+	fiber.HeaderProxyAuthorization,
+	fiber.HeaderTrailer,
+	fiber.HeaderTransferEncoding,
+}
+
+// connectionWithholdsHeader reports whether the request lists a name in Connection other than the hopByHopNames.
+func connectionWithholdsHeader(h *fasthttp.RequestHeader, canonical bool) bool { //nolint:revive // flag-parameter: a property of the header store
+	for name := range headerlist.AllLines(fieldname.Lines(h, fiber.HeaderConnection, canonical)) {
+		if !fieldname.ContainsFold(hopByHopNames, name) {
+			return true
+		}
+	}
+	return false
+}
+
 // storableFieldLines copies the lines of each field of h a stored entry can hold, by lower-cased name:
 // under DisableHeaderNormalizing one field can be written under several spellings.
 func storableFieldLines(h *fasthttp.ResponseHeader) map[string][]string {

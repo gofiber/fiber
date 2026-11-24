@@ -2339,3 +2339,34 @@ func Test_Cache_CookieTheCollectionDropsIsNotStored(t *testing.T) {
 		})
 	}
 }
+
+// A forwarding handler drops what Connection lists, and Ctx.Body answers a coding it cannot undo itself,
+// so neither request's answer is the one the key or the Vary describes.
+func Test_Cache_RequestTheHandlerDoesNotSeeAsSentIsNotStored(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Vary("X-Tenant")
+		if body := c.Body(); c.Response().StatusCode() != fiber.StatusOK {
+			return c.Send(body)
+		}
+		// Forwarded as proxy does, on a copy without what Connection lists.
+		forwarded := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(forwarded)
+		c.Request().CopyTo(forwarded)
+		for _, name := range strings.Split(c.Get(fiber.HeaderConnection), ",") {
+			forwarded.Header.Del(strings.TrimSpace(name))
+		}
+		return c.SendString("tenant=" + string(forwarded.Header.Peek("X-Tenant")))
+	})
+
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme", fiber.HeaderConnection, "X-Tenant"), cacheUnreachable, "tenant=")
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme", fiber.HeaderConnection, "keep-alive"), cacheMiss, "tenant=acme")
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme"), cacheHit, "tenant=acme")
+
+	got := cacheTestCGet(t, app, "/", "X-Tenant", "beta", fiber.HeaderContentEncoding, "compress")
+	require.Equal(t, fiber.StatusNotImplemented, got.status)
+	require.Equal(t, cacheUnreachable, got.cache)
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "beta"), cacheMiss, "tenant=beta")
+}

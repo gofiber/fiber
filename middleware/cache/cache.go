@@ -410,6 +410,14 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
+		// Ctx.Body answers a coding it cannot undo with a status and text of its own, and the key of a GET
+		// or HEAD does not hold the coding: what such a request leaves is not the URL's response.
+		if (requestMethod == fiber.MethodGet || requestMethod == fiber.MethodHead) &&
+			fieldname.First(&c.Request().Header, fiber.HeaderContentEncoding, canonical) != nil {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return c.Next()
+		}
+
 		// A key generator may read the body (QUERY), and only a declared length bounds a streamed one;
 		// otherwise the stream is left to the handler. MaxRequestBodySize is BodyLimit, read without copying Config.
 		if req := c.Request(); req.IsBodyStream() {
@@ -424,6 +432,17 @@ func New(config ...Config) fiber.Handler {
 		if errorreplay.Active(c.RequestCtx()) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
+		}
+
+		// A header listed in Connection is for this hop alone, so a forwarding handler such as proxy drops
+		// it (RFC 9110 section 7.6.1) while the key and Vary hold it as sent.
+		if connectionWithholdsHeader(&c.Request().Header, canonical) {
+			if err := c.Next(); err != nil {
+				return err
+			}
+			// Set after the handler: proxy replaces the response headers with the upstream's.
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return nil
 		}
 
 		// Get key from request. Assembled in one pooled buffer so the whole key

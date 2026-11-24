@@ -193,6 +193,8 @@ that identifies a single client is not stored at all:
 
 A request the server refused while reading it, such as one declaring a body over `BodyLimit`, is neither served from the cache nor stored, and `X-Cache` reads `unreachable`. Fiber runs the `Use` chain for such a request without its route (see [Errors Before a Handler Runs](../guide/error-handling.md#errors-before-a-handler-runs)), so what the chain produces is not the URL's response.
 
+The same holds for a request that lists a header of its own in `Connection`, such as `Connection: X-Tenant`, since a handler that forwards it, as [proxy](./proxy.md) does, drops that header while the key and `Vary` hold it as sent (the hop-by-hop names, `keep-alive` and `close` do not count), and for a `GET` or `HEAD` that sends `Content-Encoding`, which `c.Body()` may answer with a status of its own while the key does not hold the coding.
+
 When revalidation returns `private`, `no-cache`, `no-store`, or `Vary: *`, the middleware removes the previous cached entry and its Vary manifest. A concurrently replaced entry keeps its manifest. Cleanup errors are logged and the origin response is still returned; if storage fails during cleanup, the old entry can still be served until it expires, and it keeps counting toward `MaxBytes` until a later eviction retries the delete. A plain miss answered with `no-store` preserves the shared Vary manifest, so existing sibling variants remain reachable.
 
 This cleanup applies to those four directives on a response with a [cacheable status code](#cacheable-status-codes). Any other status, such as `503` or `429`, leaves the stored entry and its Vary manifest in place whether or not it carries one of them, so an error page does not evict a healthy entry.
