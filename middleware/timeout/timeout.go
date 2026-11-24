@@ -192,7 +192,11 @@ func handleResult(err error, ctx fiber.Ctx, cfg Config) error {
 func sendTimeoutResponse(ctx fiber.Ctx, resp *fasthttp.Response, isHead bool) {
 	// Or kept as OnTimeout set it: a response it meant to send without a body goes without one.
 	resp.SkipBody = resp.SkipBody || isHead
+	// The handler given up on keeps the connection and may still write to it (c.End, a hijack).
+	resp.SetConnectionClose()
 	ctx.RequestCtx().TimeoutErrorWithResponse(resp)
+	// The copy carries no body stream, and nothing else closes one OnTimeout left on resp.
+	_ = resp.CloseBodyStream() //nolint:errcheck // the stream is never sent, so its error has no reader
 }
 
 // handleTimeout handles the timeout case using the Abandon mechanism

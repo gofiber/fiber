@@ -656,6 +656,45 @@ func Test_Timeout_OnTimeout_ResetsBodyStream(t *testing.T) {
 	require.Equal(t, fiber.ErrServiceUnavailable.Message, string(resp.Body()))
 }
 
+type closeSignalStream struct {
+	neverReturningReader
+	closed chan struct{}
+}
+
+func (s closeSignalStream) Close() error {
+	close(s.closed)
+	return nil
+}
+
+// fasthttp sends a copy of the OnTimeout response without its body stream, so nothing else closes the stream.
+func Test_Timeout_OnTimeoutClosesBodyStream(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		body       string
+		status     int
+		wantStatus int
+	}{
+		{status: fiber.StatusOK, wantStatus: fiber.StatusServiceUnavailable, body: fiber.ErrServiceUnavailable.Message},
+		{status: fiber.StatusServiceUnavailable, wantStatus: fiber.StatusServiceUnavailable},
+		{status: fiber.StatusGatewayTimeout, wantStatus: fiber.StatusGatewayTimeout},
+	} {
+		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
+			t.Parallel()
+			stream := closeSignalStream{closed: make(chan struct{})}
+			release := make(chan struct{})
+			defer close(release)
+			app := fiber.New()
+			app.Get("/", New(func(fiber.Ctx) error { <-release; return nil }, Config{
+				Timeout:   20 * time.Millisecond,
+				OnTimeout: func(c fiber.Ctx) error { return c.Status(tc.status).SendStream(stream) },
+			}))
+
+			apptest.ExpectBody(t, app, "/", tc.wantStatus, tc.body)
+			apptest.Recv(t, stream.closed, 5*time.Second, "the OnTimeout body stream was not closed")
+		})
+	}
+}
+
 // OnTimeout answers from a response of its own, so the handler's late writes neither race nor leak into it.
 func Test_Timeout_OnTimeoutLeavesHandlerResponseAlone(t *testing.T) {
 	t.Parallel()
@@ -1074,10 +1113,9 @@ func Test_Timeout_HEADResponseHasNoBody(t *testing.T) {
 			release := make(chan struct{})
 			defer close(release)
 			app.Get("/slow", New(func(fiber.Ctx) error { <-release; return nil }, tc.cfg))
-			app.Get("/fast", func(c fiber.Ctx) error { return c.SendString("fast") })
 
 			conn := apptest.Dial(t, apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true}))
-			_, err := conn.Write([]byte("HEAD /slow HTTP/1.1\r\nHost: example.com\r\n\r\nGET /fast HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+			_, err := conn.Write([]byte("HEAD /slow HTTP/1.1\r\nHost: example.com\r\n\r\n"))
 			require.NoError(t, err)
 
 			br := bufio.NewReader(conn)
@@ -1086,9 +1124,76 @@ func Test_Timeout_HEADResponseHasNoBody(t *testing.T) {
 			require.NoError(t, head.Body.Close())
 			require.Equal(t, tc.status, head.StatusCode)
 			require.Equal(t, strconv.Itoa(len(tc.body)), head.Header.Get(fiber.HeaderContentLength))
-			next, err := br.ReadString('\n')
+			rest, err := io.ReadAll(br)
 			require.NoError(t, err)
-			require.Equal(t, "HTTP/1.1 200 OK\r\n", next)
+			require.Empty(t, rest)
+		})
+	}
+}
+
+// The handler given up on keeps the connection and may still write to it (c.End, a hijack), so the timeout
+// response is the last one on it: a late write must not answer the next request.
+func Test_Timeout_ClosesConnection(t *testing.T) {
+	t.Parallel()
+	const secret = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nsecret"
+	hijack := func(late bool) func(<-chan struct{}, chan<- error) any {
+		return func(answered <-chan struct{}, wrote chan<- error) any {
+			return func(w http.ResponseWriter, _ *http.Request) {
+				if late {
+					<-answered
+				}
+				conn, _, err := http.NewResponseController(w).Hijack()
+				if err != nil {
+					wrote <- err
+					return
+				}
+				go func() {
+					<-answered
+					_, err := io.WriteString(conn, secret)
+					wrote <- err
+				}()
+			}
+		}
+	}
+	for name, handler := range map[string]func(answered <-chan struct{}, wrote chan<- error) any{
+		"hijacked late":    hijack(true),
+		"hijacked in time": hijack(false),
+		"ended late": func(answered <-chan struct{}, wrote chan<- error) any {
+			return func(c fiber.Ctx) error {
+				<-answered
+				c.Response().SetBodyString("secret")
+				wrote <- c.End()
+				return nil
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			answered, wrote := make(chan struct{}), make(chan error, 1)
+			app := fiber.New()
+			app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{Timeout: 50 * time.Millisecond}))
+			// keeps the chain past the deadline when the handler returns before it
+			app.Use(func(c fiber.Ctx) error {
+				err := c.Next()
+				<-answered
+				return err
+			})
+			app.Get("/slow", handler(answered, wrote))
+
+			conn := apptest.Dial(t, apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true}))
+			_, err := io.WriteString(conn, "GET /slow HTTP/1.1\r\nHost: example.com\r\n\r\n")
+			require.NoError(t, err)
+			br := bufio.NewReader(conn)
+			resp, err := http.ReadResponse(br, nil)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+			require.True(t, resp.Close)
+			require.Equal(t, fiber.ErrServiceUnavailable.Message, apptest.Body(t, resp))
+			rest, err := io.ReadAll(br)
+			require.NoError(t, err)
+			require.Empty(t, rest)
+			close(answered)
+			require.Error(t, apptest.Recv(t, wrote, 5*time.Second, "the handler did not use the connection"))
 		})
 	}
 }
