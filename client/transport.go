@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3/internal/crosshost"
+	"github.com/gofiber/fiber/v3/internal/escapedpath"
 	"github.com/gofiber/fiber/v3/internal/redirectbody"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -350,6 +351,10 @@ func (l *lbClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Res
 // load-balanced transport mirrors fasthttp.Client semantics despite
 // fasthttp.LBClient not exposing DoRedirects directly.
 func (l *lbClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
+	// See standardClientTransport.DoRedirects.
+	if l.DisablePathNormalizing() {
+		req.URI().DisablePathNormalizing = true
+	}
 	return doRedirectsWithClient(req, resp, opts, l.client)
 }
 
@@ -552,6 +557,8 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, opts 
 	}
 
 	currentURL := req.URI().String()
+	// Read before the loop: every SetRequestURI parses the URI anew, which resets the flag.
+	asBuilt := req.URI().DisablePathNormalizing
 	initialHostname := hostnameWithoutPort(string(req.URI().Host()))
 	redirects := 0
 
@@ -610,7 +617,7 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, opts 
 			return nil
 		}
 
-		nextURL, nextHost, err := composeRedirectURL(currentURL, location, req.DisableRedirectPathNormalizing)
+		nextURL, nextHost, err := composeRedirectURL(currentURL, location, asBuilt)
 		if err != nil {
 			return err
 		}
@@ -704,7 +711,7 @@ func parsesAsURI(full []byte) error {
 	return nil
 }
 
-func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (redirectURL, host string, err error) { //nolint:nonamedreturns // names document the two string results
+func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (redirectURL, host string, err error) { //nolint:nonamedreturns,revive // names document the two string results; the flag is the client's path setting
 	// Control bytes (C0 including HTAB, plus DEL) in a Location value are a
 	// header-injection vector; utils.IndexControl scans for exactly that set
 	// two words per branch instead of one byte at a time.
@@ -717,7 +724,16 @@ func composeRedirectURL(base string, location []byte, disablePathNormalizing boo
 
 	uri.Update(base)
 	wasHTTPS := utils.EqualFold(uri.Scheme(), httpsScheme)
-	uri.UpdateBytes(location)
+	if disablePathNormalizing {
+		// fasthttp.URI resolves on the decoded path, where a "%2F" the path was built with is a separator.
+		next, err := escapedpath.Resolve(base, location)
+		if err != nil {
+			return "", "", err
+		}
+		uri.Update(next.String())
+	} else {
+		uri.UpdateBytes(location)
+	}
 	uri.DisablePathNormalizing = disablePathNormalizing
 
 	// UpdateBytes resolves the reference but discards the parse error, leaving

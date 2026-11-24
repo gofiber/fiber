@@ -1273,6 +1273,60 @@ func Test_Transport_DoRedirects_KeepsPathNormalizingDisabled(t *testing.T) {
 	}
 }
 
+func Test_Transport_DoRedirects_ResolvesTargetAsBuilt(t *testing.T) {
+	t.Parallel()
+	const start = "/files/..%2F..%2Fadmin%2Fkey"
+	transports := []struct {
+		build func(dial fasthttp.DialFunc, asBuilt bool) httpClientTransport
+		name  string
+	}{
+		{name: "client", build: func(dial fasthttp.DialFunc, asBuilt bool) httpClientTransport {
+			return newStandardClientTransport(&fasthttp.Client{DisablePathNormalizing: asBuilt, Dial: dial})
+		}},
+		{name: "host client", build: func(dial fasthttp.DialFunc, asBuilt bool) httpClientTransport {
+			return newHostClientTransport(&fasthttp.HostClient{Addr: "example.com:80", DisablePathNormalizing: asBuilt, Dial: dial})
+		}},
+		{name: "balancer", build: func(dial fasthttp.DialFunc, asBuilt bool) httpClientTransport {
+			return newLBClientTransport(&fasthttp.LBClient{Timeout: 5 * time.Second, Clients: []fasthttp.BalancingClient{
+				&fasthttp.HostClient{Addr: "example.com:80", DisablePathNormalizing: asBuilt, Dial: dial},
+			}})
+		}},
+	}
+	for _, tr := range transports {
+		for _, tc := range []struct {
+			name, location, want string
+			normalizing          bool
+		}{
+			{name: "absolute path", location: "/v2" + start, want: "/v2" + start},
+			{name: "absolute URL", location: "http://example.com/v2" + start, want: "/v2" + start},
+			{name: "relative path", location: "next", want: "/files/next"},
+			{name: "space and non-ASCII", location: "/v2/my file/café", want: "/v2/my%20file/caf%C3%A9"},
+			{name: "normalizing client", location: "/v2/a%2Fb//c", want: "/v2/a/b/c", normalizing: true},
+		} {
+			t.Run(tr.name+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+				seen := make(chan string, 3)
+				var hops atomic.Int32
+				dial := clientTestCServe(t, func(ctx *fasthttp.RequestCtx) {
+					seen <- string(ctx.Request.Header.RequestURI())
+					if hops.Add(1) < 3 {
+						ctx.Response.Header.Set(fiber.HeaderLocation, tc.location)
+						ctx.SetStatusCode(fasthttp.StatusMovedPermanently)
+					}
+				})
+				req, resp := clientTestCReqResp(t)
+				req.SetRequestURI("http://example.com" + start)
+
+				require.NoError(t, tr.build(dial, !tc.normalizing).DoRedirects(req, resp, &redirectOptions{maxRedirects: 3}))
+				require.Equal(t, fasthttp.StatusOK, resp.StatusCode())
+				<-seen
+				require.Equal(t, tc.want, <-seen, "first redirect")
+				require.Equal(t, tc.want, <-seen, "second redirect")
+			})
+		}
+	}
+}
+
 // TestDoRedirectsWithClient_DropsTrailerSection pins that a 302 drops the trailer section with the
 // body: fasthttp files a value set under an announced name with that section and returns it to the
 // header section when Trailer alone is deleted, so the value would reach the target, possibly another
