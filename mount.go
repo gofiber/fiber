@@ -280,9 +280,13 @@ func (o domainOwner) supersedes(plainDepth int, plain *App) bool {
 func appHasErrorHandler(app *App) bool { return app.configured.ErrorHandler != nil }
 
 // hasCustomErrorHandler reports whether the app or one mounted on it configures an ErrorHandler.
+// It reads the mounts ErrorHandler resolves from, appListKeys rather than a range over the map.
 func (app *App) hasCustomErrorHandler() bool {
-	for _, mounted := range app.mountFields.appList {
-		if appHasErrorHandler(mounted) {
+	if appHasErrorHandler(app) {
+		return true
+	}
+	for _, prefix := range app.mountFields.appListKeys {
+		if appHasErrorHandler(app.mountFields.appList[prefix]) {
 			return true
 		}
 	}
