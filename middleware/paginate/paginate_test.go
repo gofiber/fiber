@@ -3,12 +3,14 @@ package paginate
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -141,6 +143,7 @@ func Test_PageInfoPageURLs(t *testing.T) {
 		{nextWithKeys, "Next with keys", users, users + "?p=3&per_page=10", PageInfo{Page: 2, Limit: 10}},
 		{prevWithKeys, "Previous with keys", items, items + "?p=2&size=15", PageInfo{Page: 3, Limit: 15}},
 		{prevWithKeys, "Previous with keys, first page returns empty", items, "", PageInfo{Page: 1, Limit: 15}},
+		{next, "Next returns an unparsable base URL as is", "http://[::1", "http://[::1", PageInfo{Page: 2, Limit: 10}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -201,6 +204,7 @@ func Test_CursorValuesUndecodable(t *testing.T) {
 		{name: "empty cursor", cursor: ""},
 		{name: "invalid base64", cursor: "not-valid-base64!!!"},
 		{name: "valid base64 but invalid JSON", cursor: "bm90LWpzb24"},
+		{name: "cursor longer than maxCursorLen", cursor: strings.Repeat("a", maxCursorLen+1)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -237,6 +241,51 @@ func Test_NextCursorURL(t *testing.T) {
 				expected = fmt.Sprintf(expected, p.NextCursor)
 			}
 			require.Equal(t, expected, tc.cursorURL(p, users))
+		})
+	}
+}
+
+// Test_CursorValuesPreParsed covers a PageInfo whose cursor the middleware
+// already decoded: CursorValues returns that data without decoding again.
+func Test_CursorValuesPreParsed(t *testing.T) {
+	t.Parallel()
+	parsed := map[string]any{"id": float64(7)}
+	p := &PageInfo{Cursor: "not-valid-base64!!!", cursorData: parsed}
+	require.Equal(t, parsed, p.CursorValues())
+}
+
+// Test_SetNextCursorErrors covers the values SetNextCursor cannot turn into a
+// cursor: it returns ErrCursorEncode and leaves NextCursor and HasMore unset.
+func Test_SetNextCursorErrors(t *testing.T) {
+	t.Parallel()
+	errMarshal := errors.New("marshal failed")
+	for _, tc := range []struct {
+		pageInfo *PageInfo
+		values   map[string]any
+		wantErr  error
+		name     string
+	}{
+		{
+			name:     "marshal error",
+			pageInfo: &PageInfo{jsonMarshal: func(any) ([]byte, error) { return nil, errMarshal }},
+			values:   map[string]any{"id": float64(1)},
+			wantErr:  errMarshal,
+		},
+		{
+			name:     "token longer than maxCursorLen",
+			pageInfo: &PageInfo{},
+			values:   map[string]any{"id": strings.Repeat("a", maxCursorLen)},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := tc.pageInfo.SetNextCursor(tc.values)
+			require.ErrorIs(t, err, ErrCursorEncode)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+			}
+			require.Empty(t, tc.pageInfo.NextCursor)
+			require.False(t, tc.pageInfo.HasMore)
 		})
 	}
 }
@@ -435,6 +484,7 @@ func Test_PaginateBadRequest(t *testing.T) {
 		{paginateTestApp(Config{Next: func(_ fiber.Ctx) bool { return true }}), "Next skips the middleware", "/"},
 		{paginateTestApp(), "Invalid base64 cursor", "/?cursor=not-valid!!!"},
 		{paginateTestApp(), "Valid base64 cursor but invalid JSON", "/?cursor=" + notJSON},
+		{paginateTestApp(), "Cursor longer than maxCursorLen", "/?cursor=" + strings.Repeat("a", maxCursorLen+1)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
