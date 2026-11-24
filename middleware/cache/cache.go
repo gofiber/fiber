@@ -1380,12 +1380,11 @@ func New(config ...Config) fiber.Handler {
 				for _, key := range recordKeys {
 					covered = refusals.cover(reqCtx, urlGroup, key) && covered
 				}
-				// A miss's lookup may have had no manifest to build them on, so the response's Vary keys them too.
-				if !foundAtLookup {
-					for _, key := range refusals.recordKeys(c, generatedKey, respVaryNames, cfg.credentialsOf(c, respVaryNames, hasAuthorization)) {
-						if key != recordKeys[0] && key != recordKeys[1] {
-							covered = refusals.cover(reqCtx, urlGroup, key) && covered
-						}
+				// The response's Vary keys them too: a miss's lookup may have had no manifest, and an entry found
+				// another one.
+				for _, key := range refusals.recordKeys(c, generatedKey, respVaryNames, cfg.credentialsOf(c, respVaryNames, hasAuthorization)) {
+					if key != recordKeys[0] && key != recordKeys[1] {
+						covered = refusals.cover(reqCtx, urlGroup, key) && covered
 					}
 				}
 			}
