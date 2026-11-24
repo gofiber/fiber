@@ -121,7 +121,7 @@ app.Use(logger.New(logger.Config{
 
 The `${error}` tag reports a non-nil error returned by a downstream handler or middleware. When no error is returned, it renders `-`. A response status alone is not an error: `return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "..."})` sets `${status}` to `500`, but `${error}` remains `-`.
 
-To include an error in the log, return it and let Fiber's `ErrorHandler` create the response. The logger invokes the configured error handler before rendering the log, so a custom handler can return JSON while `${error}` keeps the original error message:
+To include an error in the log, return it and let Fiber's `ErrorHandler` create the response. The logger invokes the error handler of the app that serves the request before rendering the log, so a custom handler can return JSON while `${error}` keeps the original error message:
 
 ```go
 app := fiber.New(fiber.Config{
@@ -245,7 +245,7 @@ A `Format` that names a tag which is neither built in, registered nor listed in 
 
 ### Use Logger Middleware with Other Loggers
 
-To combine the logger middleware with loggers like Zerolog, Zap, or Logrus, use the `LoggerToWriter` helper to adapt them to an `io.Writer`. It sends each log line to the logger's method for `level`, which is one of `log.LevelTrace`, `log.LevelDebug`, `log.LevelInfo`, `log.LevelWarn` or `log.LevelError`. It panics for a `nil` logger and for `log.LevelFatal` or `log.LevelPanic`.
+To combine the logger middleware with loggers like Zerolog, Zap, or Logrus, use the `LoggerToWriter` helper to adapt them to an `io.Writer`. It sends each log line to the logger's method for `level`, which is one of `log.LevelTrace`, `log.LevelDebug`, `log.LevelInfo`, `log.LevelWarn` or `log.LevelError`. It hands the logger a copy of each line, so the logger may keep it. It panics for a `nil` logger and for `log.LevelFatal` or `log.LevelPanic`.
 
 ```go
 package main
@@ -349,7 +349,7 @@ Logger provides predefined formats that you can use by name or directly by speci
 :::
 
 :::note
-For a request the timeout middleware gave up on, `${status}`, `${bytesSent}`, `${resBody}`, `${respHeader:}` and the status column of the default format report the timeout response the client receives, not the response the timed-out handler may still be writing. Tags that read the request log nothing for such a request, since the timed-out handler may still read or change it and even fasthttp's reads change state the two would share: `${body}`, `${cookie:}`, `${form:}`, `${ips}`, `${locals:}`, `${query:}`, `${queryParams}`, `${referer}`, `${reqHeader:}`, `${reqHeaders}` and `${ua}`, and behind a trusted proxy also `${ip}`, `${host}`, `${scheme}` and the IP column of the default format. The logger returns the timeout error for such a request instead of `nil`, since the error handler does not answer it: middleware registered before the logger that skips its work on an error, such as `cache`, `compress`, `etag` or `idempotency`, then leaves the response to the timed-out handler instead of storing or rewriting it. An error-handling middleware registered before the logger receives that error too, so it should check `c.IsAbandoned()` before it writes a response.
+For a request the timeout middleware gave up on, `${status}`, `${bytesSent}`, `${resBody}`, `${respHeader:}` and the status column of the default format report the timeout response the client receives, not the response the timed-out handler may still be writing. `${method}`, `${path}`, `${url}`, `${protocol}`, `${host}` and the method and path columns of the default format log the request line as it reached the logger. Tags that read the request log nothing for such a request, since the timed-out handler may still read or change it and even fasthttp's reads change state the two would share: `${body}`, `${cookie:}`, `${form:}`, `${ips}`, `${locals:}`, `${query:}`, `${queryParams}`, `${referer}`, `${reqHeader:}`, `${reqHeaders}`, `${ua}` and the tags registered with `RegisterContextTag`, and behind a trusted proxy also `${ip}`, `${host}`, `${scheme}` and the IP column of the default format. The logger returns the timeout error for such a request instead of `nil`, since the error handler does not answer it: middleware registered before the logger that skips its work on an error, such as `cache`, `compress`, `etag` or `idempotency`, then leaves the response to the timed-out handler instead of storing or rewriting it. An error-handling middleware registered before the logger receives that error too, so it should check `c.IsAbandoned()` before it writes a response.
 :::
 
 ## The `${ips}` tag
@@ -387,6 +387,8 @@ Scrubbing covers the default format as well as these tags:
 
 Tags whose values the framework controls — `${status}`, `${method}`, `${protocol}`, `${port}`, `${latency}`, `${pid}`, `${time}`, `${bytesSent}`, `${bytesReceived}` and the color tags — are written unchanged. `${method}` and `${protocol}` come from the request line, which fasthttp rejects outright if it holds a control byte.
 
+The scrubbed tags, except `${body}`, `${resBody}` and `${respHeader:}`, also escape `"` and `\` with a backslash, so a value cannot end a quoted field of the format, as in `CombinedFormat` or `JSONFormat`. The default format writes them unchanged.
+
 Only ASCII controls are replaced. Bytes at or above `0x80` pass through untouched, so C1 controls (U+0080–U+009F, including NEL U+0085, which some log pipelines treat as a line break) survive scrubbing. Handle those yourself if your values can carry them.
 
 :::caution
@@ -396,7 +398,7 @@ Three paths bypass the built-in scrubbing, because each one replaces the rendere
 - `RegisterTag` / `MustRegisterTag`
 - `Config.LoggerFunc`, which replaces the rendering pipeline wholesale
 
-Anything request-derived that you write from one of these needs scrubbing. Use `logger.SanitizeValue`, which applies exactly what the built-in tags apply:
+Anything request-derived that you write from one of these needs scrubbing. Use `logger.SanitizeValue`, which applies the control-byte scrubbing of the built-in tags, and escape `"` and `\` yourself when the value goes into a quoted field:
 
 ```go
 logger.MustRegisterTag("tenant", func(output logger.Buffer, c fiber.Ctx, _ *logger.Data, _ string) (int, error) {

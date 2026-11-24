@@ -1845,7 +1845,11 @@ func main() {
 
 </details>
 
-For a request the timeout middleware gave up on, `${status}`, `${bytesSent}`, `${resBody}`, `${respHeader:}` and the default format report the timeout response the client receives. Tags that read the request, such as `${cookie:}`, `${query:}`, `${reqHeader:}` or `${body}`, and behind a trusted proxy `${ip}`, log nothing, since the timed-out handler may still read or change it. The logger returns the timeout error for such a request instead of `nil`, so `cache`, `compress`, `etag` or `idempotency` registered before it no longer store or rewrite the timed-out handler's response. An error-handling middleware registered before the logger now receives that error too and should check `c.IsAbandoned()` before it writes.
+For a request the timeout middleware gave up on, `${status}`, `${bytesSent}`, `${resBody}`, `${respHeader:}` and the default format report the timeout response the client receives. Tags that read the request, such as `${cookie:}`, `${query:}`, `${reqHeader:}` or `${body}`, and behind a trusted proxy `${ip}`, log nothing, since the timed-out handler may still read or change it. The logger returns the timeout error for such a request instead of `nil`, so `cache`, `compress`, `etag` or `idempotency` registered before it no longer store or rewrite the timed-out handler's response. An error-handling middleware registered before the logger now receives that error too and should check `c.IsAbandoned()` before it writes. `${method}`, `${path}`, `${url}`, `${protocol}`, `${host}` and the default format log the request line as it reached the logger, and tags registered with `RegisterContextTag` log nothing for such a request.
+
+Tags that log a request-derived value, such as `${ua}`, `${referer}`, `${path}` or `${reqHeader:}`, now escape `"` and `\` with a backslash, so a value cannot end a quoted field of formats like `CombinedFormat` or `JSONFormat`. A logged `\` now appears as `\\`. `${body}`, `${resBody}`, `${respHeader:}` and the default format are unchanged.
+
+`LoggerToWriter` hands the logger a copy of each line, so a logger that keeps the message no longer sees it overwritten by the next request. A logger shared by several apps answers an error with the `ErrorHandler` of the app that serves the request, not the one that served the first request.
 
 :::note
 The deprecated `TagHeader` constant was removed. Use `TagReqHeader` when you need to log request headers.

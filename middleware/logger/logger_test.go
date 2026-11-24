@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -1835,4 +1836,136 @@ func Test_Logger_Form_LeavesNonFormStreamUnread(t *testing.T) {
 	apptest.Expect(t, app, req, fiber.StatusUnauthorized)
 	require.True(t, unread.Load())
 	require.Empty(t, buf.String())
+}
+
+// The request line of a timed-out request is logged as it reached the logger: the handler may still rewrite it.
+func Test_Logger_TimedOutRequestLogsRequestLineAsReceived(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		want string
+		cfg  Config
+	}{
+		"tags":            {cfg: Config{Format: "${method} ${path} ${url} ${protocol} ${host}"}, want: "GET /old /old?a=b HTTP/1.1 example.com"},
+		"default":         {cfg: Config{Format: DefaultFormat}, want: "| GET     | /old "},
+		"default colored": {cfg: Config{Format: DefaultFormat, ForceColors: true}, want: "| /old "},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app, logged := loggerTestApp(t, &tc.cfg)
+			written := make(chan struct{})
+			rewrite := func(c fiber.Ctx, method, target, host string) {
+				c.Method(method)
+				c.Path(target)
+				c.Request().SetRequestURI(target + "?late=1")
+				c.Request().SetHost(host)
+				c.Request().Header.SetProtocol("HTTP/1.0")
+			}
+			app.Get("/old", timeout.New(func(c fiber.Ctx) error {
+				defer close(written)
+				rewrite(c, fiber.MethodPut, "/other", "other.example")
+				<-c.Context().Done()
+				rewrite(c, fiber.MethodPatch, "/another", "another.example")
+				return nil
+			}, timeout.Config{Timeout: 20 * time.Millisecond}))
+
+			apptest.Expect(t, app, "/old?a=b", fiber.StatusServiceUnavailable)
+			<-written
+			require.Contains(t, logged.String(), tc.want)
+			require.NotContains(t, logged.String(), "other")
+		})
+	}
+}
+
+// Context tags read the Locals, which the timed-out handler may still change.
+func Test_Logger_TimedOutRequestSkipsContextTags(t *testing.T) {
+	t.Parallel()
+	const tagName = "timed-out-ctx-tag"
+	RegisterContextTag(tagName, func(ctx any) string {
+		v, ok := fiber.ValueFromContext[string](ctx, tagName)
+		if !ok {
+			return ""
+		}
+		return v
+	})
+	app, logged := loggerTestApp(t, &Config{Format: "${status} [${" + tagName + "}]\n"})
+	app.Use(func(c fiber.Ctx) error {
+		fiber.StoreInContext(c, tagName, "value")
+		return c.Next()
+	})
+	written := make(chan struct{})
+	app.Get("/slow", timeout.New(func(c fiber.Ctx) error {
+		defer close(written)
+		<-c.Context().Done()
+		c.Locals("late", "1")
+		return nil
+	}, timeout.Config{Timeout: 20 * time.Millisecond}))
+	app.Get("/fast", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	apptest.Expect(t, app, "/fast", fiber.StatusOK)
+	apptest.Expect(t, app, "/slow", fiber.StatusServiceUnavailable)
+	<-written
+	require.Equal(t, "200 [value]\n503 []\n", logged.String())
+}
+
+// A tag between quotes in the format, as in JSONFormat or CombinedFormat, cannot end its field.
+func Test_Logger_EscapesQuotesAndBackslashes(t *testing.T) {
+	t.Parallel()
+	app, logged := loggerTestApp(t, &Config{Format: `{"ua":"${ua}","referer":"${referer}"}` + "\n"})
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	const ua, referer = `x","ip":"1.2.3.4\`, `a\"b`
+
+	apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderUserAgent, ua),
+		apptest.WithHeader(fiber.HeaderReferer, referer)), fiber.StatusOK)
+	var entry map[string]string
+	require.NoError(t, json.Unmarshal(logged.Bytes(), &entry))
+	require.Equal(t, map[string]string{"ua": ua, "referer": referer}, entry)
+}
+
+// A logger registered in several apps answers an error with the ErrorHandler of the app serving the request.
+func Test_Logger_SharedByApps_ErrorHandler(t *testing.T) {
+	t.Parallel()
+	shared := New(Config{Stream: io.Discard})
+	newApp := func(body string) *fiber.App {
+		app := fiber.New(fiber.Config{ErrorHandler: func(c fiber.Ctx, _ error) error {
+			return c.Status(fiber.StatusInternalServerError).SendString(body)
+		}})
+		app.Use(shared)
+		app.Get("/", func(fiber.Ctx) error { return errors.New("failed") })
+		return app
+	}
+	first, second := newApp("first"), newApp("second")
+
+	apptest.ExpectBody(t, first, "/", fiber.StatusInternalServerError, "first")
+	apptest.ExpectBody(t, second, "/", fiber.StatusInternalServerError, "second")
+}
+
+// retainingLogger keeps the messages it is handed, as a logger that writes them out later does.
+type retainingLogger struct {
+	fiberlog.AllLogger[*log.Logger]
+	messages []any
+}
+
+func (l *retainingLogger) Trace(v ...any) { l.messages = append(l.messages, v...) }
+func (l *retainingLogger) Debug(v ...any) { l.messages = append(l.messages, v...) }
+func (l *retainingLogger) Info(v ...any)  { l.messages = append(l.messages, v...) }
+func (l *retainingLogger) Warn(v ...any)  { l.messages = append(l.messages, v...) }
+func (l *retainingLogger) Error(v ...any) { l.messages = append(l.messages, v...) }
+
+// The middleware renders each line in a pooled buffer the next request writes over.
+func Test_Logger_LoggerToWriter_MessageOutlivesBuffer(t *testing.T) {
+	t.Parallel()
+	for _, level := range []fiberlog.Level{fiberlog.LevelTrace, fiberlog.LevelDebug, fiberlog.LevelInfo, fiberlog.LevelWarn, fiberlog.LevelError} {
+		t.Run(strconv.Itoa(int(level)), func(t *testing.T) {
+			t.Parallel()
+			kept := &retainingLogger{}
+			w := LoggerToWriter[*log.Logger](kept, level)
+			line := []byte("GET /first 200\n")
+			n, err := w.Write(line)
+			require.NoError(t, err)
+			require.Equal(t, len(line), n)
+
+			copy(line, "GET /other 404\n")
+			require.Equal(t, []any{"GET /first 200\n"}, kept.messages)
+		})
+	}
 }

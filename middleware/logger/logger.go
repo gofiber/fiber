@@ -61,9 +61,7 @@ func New(config ...Config) fiber.Handler {
 
 	// Set variables
 	var (
-		once       sync.Once
-		errHandler fiber.ErrorHandler
-
+		once     sync.Once
 		dataPool = sync.Pool{New: func() any { return new(Data) }}
 	)
 
@@ -74,6 +72,10 @@ func New(config ...Config) fiber.Handler {
 
 	// Before handling func
 	cfg.BeforeHandlerFunc(&cfg)
+
+	logsTag := func(tag string) bool { return strings.Contains(cfg.Format, "${"+tag+"}") }
+	logsMethod, logsPath, logsURL := logsTag(TagMethod), logsTag(TagPath), logsTag(TagURL)
+	logsProtocol, logsHost := logsTag(TagProtocol), logsTag(TagHost)
 
 	// Logger data
 	// instead of analyzing the template inside(handler) each time, this is done once before
@@ -94,7 +96,7 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Set error handler once
+		// Set error padding once
 		once.Do(func() {
 			// get longest possible path
 			stack := c.App().Stack()
@@ -106,8 +108,6 @@ func New(config ...Config) fiber.Handler {
 					}
 				}
 			}
-			// override error handler
-			errHandler = c.App().ErrorHandler
 		})
 
 		// Logger data
@@ -130,6 +130,23 @@ func New(config ...Config) fiber.Handler {
 		// put data back in the pool
 		defer dataPool.Put(data)
 
+		// Copied while nothing else uses the request: the handler of one that times out may still rewrite it.
+		if logsMethod {
+			data.req.method = c.Method()
+		}
+		if logsPath {
+			data.req.path = append(data.req.path[:0], c.Path()...)
+		}
+		if logsURL {
+			data.req.url = append(data.req.url[:0], c.OriginalURL()...)
+		}
+		if logsProtocol {
+			data.req.protocol = append(data.req.protocol[:0], c.Protocol()...)
+		}
+		if logsHost {
+			data.req.host = append(data.req.host[:0], c.Hostname()...)
+		}
+
 		// Set latency start time
 		if cfg.isLatencyEnabled {
 			data.Start = time.Now()
@@ -140,9 +157,9 @@ func New(config ...Config) fiber.Handler {
 
 		data.ChainErr = chainErr
 		data.timeoutResp = timeoutResponse(c)
-		// Manually call error handler
+		// The error handler of the app serving this request: one logger may be registered in several apps.
 		if chainErr != nil {
-			if err := errHandler(c, chainErr); err != nil {
+			if err := c.App().ErrorHandler(c, chainErr); err != nil {
 				// The error handler failed, so fall back to a bare 500. SendStatus only
 				// sets the status and body on the response and does no I/O; if it fails,
 				// there is no further fallback left.
@@ -158,7 +175,7 @@ func New(config ...Config) fiber.Handler {
 		// Logger instance & update some logger data fields
 		err := cfg.LoggerFunc(c, data, &cfg)
 		if err == nil && data.timeoutResp != nil {
-			// errHandler answered nothing, and the error keeps the middleware before us off the handler's response.
+			// The error handler answered nothing, and the error keeps the middleware before us off the handler's response.
 			return chainErr
 		}
 		return err
