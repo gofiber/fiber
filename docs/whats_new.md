@@ -909,6 +909,10 @@ resolve to the **request**; use `c.Res().Get()`, `c.Res().GetHeaders()`, `c.Res(
   The unit is case-insensitive (`Bytes=0-4` used to get `416`). `If-Range` was ignored, so a resumed download was
   spliced onto a file that had changed; the range is now served only when the date in `If-Range` is exactly the file's
   `Last-Modified` (and at least two seconds old), and the whole file is sent otherwise.
+- **SendFile() and the static middleware, with `MaxAge`**: The header is now `Cache-Control: max-age=<MaxAge>`, without
+  `public`, and it is set only when the response has no `Cache-Control` yet, so a guard's `private, no-store` is kept.
+  `public` let a shared cache, the [cache](./middleware/cache.md) middleware included, store a file sent with a cookie.
+  For files every client may share, write `public` yourself in `ModifyResponse` or after `SendFile` returns.
 - **Body()**: A `Content-Encoding` list of more than five codings, `identity` members included, is now answered
   `415 Unsupported Media Type` before anything is decoded, since `BodyLimit` bounds each decoding step but not their
   number. A chain of codings is now undone without replacing the request body, so slices returned by an earlier

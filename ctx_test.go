@@ -6147,7 +6147,7 @@ func Test_Ctx_SendFile(t *testing.T) {
 	}{
 		{name: "simple test case"},
 		{name: "download", config: SendFile{Download: true}, header: HeaderContentDisposition, want: "attachment"},
-		{name: "max age", config: SendFile{MaxAge: 100}, header: HeaderCacheControl, want: "public, max-age=100"},
+		{name: "max age", config: SendFile{MaxAge: 100}, header: HeaderCacheControl, want: "max-age=100"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -6161,6 +6161,17 @@ func Test_Ctx_SendFile(t *testing.T) {
 			require.Equal(t, StatusOK, c.Response().StatusCode())
 		})
 	}
+
+	t.Run("max age keeps an earlier Cache-Control", func(t *testing.T) {
+		t.Parallel()
+		for _, name := range []string{HeaderCacheControl, "cache-control"} {
+			c := apptest.Ctx(t, New(Config{DisableHeaderNormalizing: name != HeaderCacheControl}))
+			c.Set(name, "private, no-store")
+
+			require.NoError(t, c.SendFile("ctx.go", SendFile{MaxAge: 100}))
+			require.NotContains(t, c.Response().Header.String(), "max-age", name)
+		}
+	})
 
 	t.Run("custom error code", func(t *testing.T) {
 		t.Parallel()
@@ -6839,7 +6850,7 @@ func Test_SendFile_KeepsFileServerAnswer(t *testing.T) {
 				require.Equal(t, strconv.Itoa(tc.wantLength), resp.Header.Get(HeaderContentLength))
 			}
 			require.Equal(t, tc.wantAttachment, resp.Header.Get(HeaderContentDisposition) == "attachment")
-			require.Equal(t, tc.wantCacheHeader, resp.Header.Get(HeaderCacheControl) == "public, max-age=60")
+			require.Equal(t, tc.wantCacheHeader, resp.Header.Get(HeaderCacheControl) == "max-age=60")
 			require.Equal(t, tc.fields[HeaderRange], resp.Header.Get("X-Range"))
 		})
 	}

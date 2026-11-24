@@ -3915,8 +3915,8 @@ type SendFile struct {
   // Optional. Default: 10 * time.Second
   CacheDuration time.Duration `json:"cache_duration"`
 
-  // The value for the Cache-Control HTTP-header
-  // that is set on the file response. MaxAge is defined in seconds.
+  // The max-age, in seconds, of the Cache-Control HTTP-header that is set
+  // on the file response unless the response already has one.
   //
   // Optional. Default: 0
   MaxAge int `json:"max_age"`
@@ -3976,7 +3976,7 @@ With `ByteRange` on, the file server answers one range of a `GET` request: `Rang
 :::
 
 :::info Status
-A status set with `Status` before `SendFile` is the status of the whole file. From `300` up, the file is sent whole without looking at `Range`, `If-Range` or `If-Modified-Since`, which apply only to a `2xx` ([RFC 9110 §13.2.1](https://www.rfc-editor.org/rfc/rfc9110#section-13.2.1)). Below `300` it replaces only a `200`: a `206`, `304` or `416` keeps its own. `Download` applies only to a `2xx` and `MaxAge` only below `400`.
+A status set with `Status` before `SendFile` is the status of the whole file. From `300` up, the file is sent whole without looking at `Range`, `If-Range` or `If-Modified-Since`, which apply only to a `2xx` ([RFC 9110 §13.2.1](https://www.rfc-editor.org/rfc/rfc9110#section-13.2.1)). Below `300` it replaces only a `200`: a `206`, `304` or `416` keeps its own. `Download` applies only to a `2xx` and `MaxAge` only below `400`. `MaxAge` sends `max-age=<MaxAge>` without `public`, which would let a shared cache, the [cache](../middleware/cache.md) middleware included, store a file sent with a cookie, and it keeps a `Cache-Control` set before the call, such as a guard's `private, no-store`. For a file every client may share, set `Cache-Control: public, max-age=<seconds>` after `SendFile` returns.
 :::
 
 :::info

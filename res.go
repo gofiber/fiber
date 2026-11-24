@@ -61,8 +61,8 @@ type SendFile struct {
 	// Optional. Default: 10 * time.Second
 	CacheDuration time.Duration `json:"cache_duration"`
 
-	// The value for the Cache-Control HTTP-header
-	// that is set on the file response. MaxAge is defined in seconds.
+	// The max-age, in seconds, of the Cache-Control HTTP-header that is set
+	// on the file response unless the response already has one.
 	//
 	// Optional. Default: 0
 	MaxAge int `json:"max_age"`
@@ -1350,7 +1350,8 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 		maxAge := cfg.MaxAge
 		if maxAge > 0 {
-			sf.cacheControlValue = "public, max-age=" + utils.FormatInt(int64(maxAge))
+			// No "public": it would let a shared cache keep a file sent with a cookie.
+			sf.cacheControlValue = "max-age=" + utils.FormatInt(int64(maxAge))
 		}
 
 		// set vars
@@ -1473,8 +1474,10 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
-		// An error response such as 416 must not be cached under the file's MaxAge.
-		if cacheControlValue != "" && finalStatus < StatusBadRequest {
+		// An error response such as 416 must not be cached under the file's MaxAge,
+		// and a Cache-Control set before the call, a guard's "private" say, is kept.
+		if cacheControlValue != "" && finalStatus < StatusBadRequest &&
+			len(fieldname.First(&response.Header, HeaderCacheControl, !app.config.DisableHeaderNormalizing)) == 0 {
 			response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 

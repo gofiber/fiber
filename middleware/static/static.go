@@ -16,7 +16,9 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/byterange"
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/fspath"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 )
 
@@ -199,7 +201,8 @@ func New(root string, cfg ...Config) fiber.Handler {
 	)
 	cacheControlValue := ""
 	if config.MaxAge > 0 {
-		cacheControlValue = "public, max-age=" + strconv.Itoa(config.MaxAge)
+		// No "public": it would let a shared cache keep a file sent with a cookie.
+		cacheControlValue = "max-age=" + strconv.Itoa(config.MaxAge)
 	}
 
 	// adjustments for io/fs compatibility: io/fs paths are always relative and
@@ -421,8 +424,10 @@ func New(root string, cfg ...Config) fiber.Handler {
 				}
 			}
 
-			// An error response such as 416 must not be cached under the file's MaxAge.
-			if cacheControlValue != "" && status >= fiber.StatusOK && status < fiber.StatusBadRequest {
+			// An error response such as 416 must not be cached under the file's MaxAge,
+			// and a Cache-Control set ahead, a guard's "private" say, is kept.
+			if cacheControlValue != "" && status >= fiber.StatusOK && status < fiber.StatusBadRequest &&
+				len(fieldname.First(&fctx.Response.Header, fiber.HeaderCacheControl, headerlookup.Canonical(c))) == 0 {
 				fctx.Response.Header.Set(fiber.HeaderCacheControl, cacheControlValue)
 			}
 

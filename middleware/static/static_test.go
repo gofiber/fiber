@@ -118,7 +118,7 @@ func Test_Static_MaxAge(t *testing.T) {
 	app.Get("/*", New("../../.github", Config{MaxAge: 100}))
 
 	resp := staticTestExpect(t, app, "/index.html", 200, "text/html; charset=utf-8")
-	require.Equal(t, "public, max-age=100", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.Equal(t, "max-age=100", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
 func Test_Static_Custom_CacheControl(t *testing.T) {
@@ -1699,7 +1699,27 @@ func Test_Static_MaxAge_NotOnErrorResponses(t *testing.T) {
 	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl))
 
 	resp = apptest.Expect(t, app, "/static/index.html", fiber.StatusOK)
-	require.Equal(t, "public, max-age=3600", resp.Header.Get(fiber.HeaderCacheControl))
+	require.Equal(t, "max-age=3600", resp.Header.Get(fiber.HeaderCacheControl))
+}
+
+// A guard's "private, no-store" must reach a shared cache as the guard wrote it, whatever case it spelled the name in.
+func Test_Static_MaxAge_KeepsCacheControl(t *testing.T) {
+	t.Parallel()
+	root := staticTestRoot(t, map[string]string{"logo.txt": "LOGO", "private/report.txt": "REPORT"})
+
+	for _, name := range []string{fiber.HeaderCacheControl, "cache-control"} {
+		app := fiber.New(fiber.Config{DisableHeaderNormalizing: name != fiber.HeaderCacheControl})
+		app.Use("/private", func(c fiber.Ctx) error {
+			c.Set(name, "private, no-store")
+			return c.Next()
+		})
+		app.Use(New(root, Config{MaxAge: 3600}))
+
+		resp := apptest.ExpectBody(t, app, "/logo.txt", fiber.StatusOK, "LOGO")
+		require.Equal(t, []string{"max-age=3600"}, resp.Header.Values(fiber.HeaderCacheControl), name)
+		resp = apptest.ExpectBody(t, app, "/private/report.txt", fiber.StatusOK, "REPORT")
+		require.Equal(t, []string{"private, no-store"}, resp.Header.Values(fiber.HeaderCacheControl), name)
+	}
 }
 
 // With ByteRange on, the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) are
