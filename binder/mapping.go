@@ -515,8 +515,10 @@ func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, file
 		return nil
 	}
 	scratch := reflect.New(dst.Type())
-	scratch.Elem().Set(dst)
-	zeroSettable(scratch.Elem())
+	if behindUnexportedPointer(dst.Type()) {
+		scratch.Elem().Set(dst)
+		zeroSettable(scratch.Elem())
+	}
 	// All at once first, which grows each slice the keys index to its length in one step.
 	err := d.Decode(scratch.Interface(), nil, files)
 	if len(files) > 1 {
@@ -534,15 +536,33 @@ func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, file
 	return err //nolint:wrapcheck // judged by unfilled, not returned as is
 }
 
-// zeroSettable zeroes every field of the struct v that schema can set. The scratch keeps the rest of out: schema follows
-// an unexported embedded pointer but cannot allocate one, so a file under it can only reach out through out's own.
+// unexportedPointers caches behindUnexportedPointer per struct type.
+var unexportedPointers sync.Map // map[reflect.Type]bool
+
+// behindUnexportedPointer reports whether the struct type t holds a file field under an unexported embedded pointer,
+// one schema follows when it is set but cannot allocate, so a scratch value has to share out's.
+func behindUnexportedPointer(t reflect.Type) bool {
+	if cached, ok := unexportedPointers.Load(t); ok {
+		if found, isBool := cached.(bool); isBool {
+			return found
+		}
+	}
+	found := slices.ContainsFunc(headerFields(t), func(i int) bool {
+		f := t.Field(i)
+		return !f.IsExported() && f.Type.Kind() == reflect.Pointer || f.Type.Kind() == reflect.Struct && behindUnexportedPointer(f.Type)
+	})
+	unexportedPointers.Store(t, found)
+	return found
+}
+
+// zeroSettable zeroes every field of the struct v that schema can set and keeps the unexported pointers.
 func zeroSettable(v reflect.Value) {
 	for i := range v.NumField() {
 		switch f := v.Field(i); {
-		case f.CanSet():
-			f.SetZero()
 		case f.Kind() == reflect.Struct:
 			zeroSettable(f)
+		case f.CanSet():
+			f.SetZero()
 		default:
 		}
 	}

@@ -274,11 +274,17 @@ type embeddedUpload struct {
 // unexported embedded pointer the caller set, which schema follows but cannot allocate.
 func Test_FormBinder_BindMultipart_UnexportedEmbeddedPointer(t *testing.T) {
 	t.Parallel()
-	out := struct{ *embeddedUpload }{&embeddedUpload{}}
+	out := struct {
+		*embeddedUpload
+		Profile struct{ *embeddedUpload } `form:"profile"`
+	}{embeddedUpload: &embeddedUpload{}}
+	out.Profile.embeddedUpload = &embeddedUpload{}
 	require.NoError(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
 		writeFormFile(t, mw, "avatar", "avatar.txt", "avatar")
+		writeFormFile(t, mw, "profile.avatar", "profile.txt", "profile")
 	}), &out))
 	requireFile(t, out.Avatar, "avatar.txt", "avatar")
+	requireFile(t, out.Profile.Avatar, "profile.txt", "profile")
 }
 
 // requireFile pins the name, content type and content of an uploaded file.
