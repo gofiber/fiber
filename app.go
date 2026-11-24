@@ -1800,7 +1800,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	if state := fctx.TLSConnectionState(); state != nil && !state.HandshakeComplete {
 		return
 	}
-	// Only a handler can keep or time out the context, so where none can run fctx is answered in place.
+	// Only user code can keep or time out the context, so where none can run fctx is answered in place.
 	if app.answersInPlace(fctx) {
 		app.answerRefusedRequest(fctx, err)
 		return
@@ -1860,10 +1860,11 @@ func (s *refusedStream) Close() error {
 	return nil
 }
 
-// answersInPlace reports whether no handler can run for a request the server refused, also when the ErrorHandler
-// restarts routing: its method has no routes, or route handlers are skipped for it and the app has no Use handler.
+// answersInPlace reports whether no user code can run for a request the server refused: no app configures an
+// ErrorHandler, and its method has no routes or route handlers are skipped for it and the app has no Use handler.
 func (app *App) answersInPlace(fctx *fasthttp.RequestCtx) bool {
-	return app.methodInt(utils.UnsafeString(fctx.Method())) == -1 || (!app.getOnlyRefuses(fctx) && !app.skip.hasUse)
+	return (app.methodInt(utils.UnsafeString(fctx.Method())) == -1 || (!app.getOnlyRefuses(fctx) && !app.skip.hasUse)) &&
+		!app.hasCustomErrorHandler()
 }
 
 // getOnlyRefuses reports whether GETOnly refuses the method of the request.

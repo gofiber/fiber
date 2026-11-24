@@ -279,6 +279,22 @@ func (o domainOwner) supersedes(plainDepth int, plain *App) bool {
 // it was reached through.
 func appHasErrorHandler(app *App) bool { return app.configured.ErrorHandler != nil }
 
+// hasCustomErrorHandler reports whether the app or one mounted on it configures an ErrorHandler.
+func (app *App) hasCustomErrorHandler() bool {
+	for _, mounted := range app.mountFields.appList {
+		if appHasErrorHandler(mounted) {
+			return true
+		}
+	}
+	for i := range app.mountFields.domainAppList {
+		mount := &app.mountFields.domainAppList[i]
+		if appHasErrorHandler(mount.app) || slices.ContainsFunc(mount.ancestors, appHasErrorHandler) {
+			return true
+		}
+	}
+	return false
+}
+
 // domainMountRender resolves what a domain mount contributes to a render: the
 // nearest app configuring a view engine, and the layout of the nearest app at
 // or below that one which configures a layout.

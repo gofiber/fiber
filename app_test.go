@@ -824,6 +824,39 @@ func Test_App_RefusedRequest_RestartSkipsRoutes(t *testing.T) {
 	require.Empty(t, ran)
 }
 
+// A custom ErrorHandler can time out a refused request without a Use chain too, also a mounted app's one.
+func Test_App_RefusedRequest_ErrorHandlerTimesOut(t *testing.T) {
+	t.Parallel()
+	timesOut := func(c Ctx, _ error) error {
+		c.RequestCtx().TimeoutError("late")
+		return nil
+	}
+	ok := func(c Ctx) error { return c.SendString("ok") }
+	app := New(Config{BodyLimit: 16, ErrorHandler: timesOut})
+	app.Post("/", ok)
+	mounted := New(Config{ErrorHandler: timesOut})
+	mounted.Post("/", ok)
+	root := New(Config{BodyLimit: 16})
+	root.Use("/sub", mounted)
+
+	for _, tc := range []struct {
+		app    *App
+		name   string
+		target string
+	}{
+		{name: "route", app: app, target: "POST /"},
+		{name: "method without routes", app: app, target: "PURGE /"},
+		{name: "mounted app", app: root, target: "POST /sub"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ln := startRawServer(t, tc.app)
+			resp := rawExpectStatus(t, ln, tc.target+" HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n", StatusRequestTimeout)
+			require.Equal(t, "late", resp.body)
+		})
+	}
+}
+
 // closedLocal is a request-local value that reports being closed.
 type closedLocal chan struct{}
 
