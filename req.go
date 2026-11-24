@@ -1384,7 +1384,13 @@ func (r *DefaultReq) Path(override ...string) string {
 		// than repeat the length comparison Reset makes.
 		r.c.pathNeedsNorm = needsPathNormalization(r.c.pathOriginal)
 		// A buffer of its own: earlier Path and Params results view the old one, as keyauth's key may.
-		r.c.path = nil
+		// The first override per request reuses the spare, which no live view holds; later ones allocate.
+		if r.c.pathSwapped {
+			r.c.path = nil
+		} else {
+			r.c.path, r.c.pathSpare = r.c.pathSpare[:0], r.c.path
+			r.c.pathSwapped = true
+		}
 		// Prettify path
 		r.c.configDependentPaths()
 		// The detection path/tree hash changed; invalidate the lookahead index.

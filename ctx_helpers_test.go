@@ -125,6 +125,20 @@ func Test_Req_PathOverride_KeepsEarlierViews(t *testing.T) {
 	}
 }
 
+func Test_Req_PathOverride_Twice_KeepsEarlierViews(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(c Ctx) error {
+		first := c.Path()
+		second := c.Path("/b/second")
+		third := c.Path("/c")
+		return c.SendString(first + " " + second + " " + third)
+	})
+	for range 3 {
+		apptest.ExpectBody(t, app, "/a/first/path", StatusOK, "/a/first/path /b/second /c")
+	}
+}
+
 func Test_Req_GetAll(t *testing.T) {
 	t.Parallel()
 	c := ctxReqFor(t, func(req *fasthttp.Request) {
