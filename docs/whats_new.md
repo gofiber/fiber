@@ -1755,7 +1755,7 @@ The key alone identifies a request, so whoever sends a stored key receives the r
 
 A response is stored under `idempotency:` followed by the key (or its digest with `KeyScope`), so a key sent by a client cannot read or overwrite an entry another middleware keeps in the same `Storage`. Responses stored by an earlier version are not replayed after the upgrade: a retry with such a key runs the handler again.
 
-A request that reaches the middleware again with a key it holds the lock of, by `RestartRouting` or by a second registration, no longer waits for itself forever: it runs on, and the pass that took the lock stores the response. `MemoryLock` lets at most 100 requests wait for one key and refuses the next with `ErrTooManyWaiters` (`409 Conflict`). The default storage has no size limit, so pass a bounded `Storage` in production, see [Bound the storage](./middleware/idempotency.md#behavior).
+A request that reaches the middleware again with a key it holds the lock of, by `RestartRouting` or by a second registration, no longer waits for itself forever: it runs on, and the pass that took the lock stores the response. This holds for every idempotency middleware on the route, whatever its `Lock`, so a second registration with its own `Storage` stores nothing for a key the first one holds. `MemoryLock` lets at most 100 requests wait for one key and refuses the next with `ErrTooManyWaiters` (`409 Conflict`). The default storage has no size limit, so pass a bounded `Storage` in production, see [Bound the storage](./middleware/idempotency.md#behavior).
 
 ### Deprecation
 

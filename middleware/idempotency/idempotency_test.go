@@ -1007,6 +1007,23 @@ func Test_New_RoutedThroughTwice(t *testing.T) {
 	}
 }
 
+// Test_New_SecondRegistrationPassesHeldKey pins that a second registration with its own Lock and Storage passes a key
+// the first one holds through: it neither reads, locks nor stores it.
+func Test_New_SecondRegistrationPassesHeldKey(t *testing.T) {
+	t.Parallel()
+	inner := &storagetest.Memory{}
+	app := fiber.New()
+	app.Use(New())
+	app.Use(New(Config{Storage: inner}))
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	resp, body := idempotencyTestPost(t, app, "/", validKey)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "ok", body)
+	require.Empty(t, inner.Keys())
+	require.Empty(t, inner.CallKeys(storagetest.OpGet))
+}
+
 type sliceLock struct {
 	Locker
 	meta []int
