@@ -22,6 +22,10 @@ func (b *CookieBinding) Bind(req *fasthttp.Request, out any) error {
 
 	for key, val := range req.Header.Cookies() {
 		k := utils.UnsafeString(key)
+		// The first of a repeated name wins, as in Ctx.Cookies.
+		if !data.firstOf(k) {
+			continue
+		}
 		v := utils.UnsafeString(val)
 		if err := data.bind(b.Name(), out, k, v, b.EnableSplitting, false); err != nil {
 			return err

@@ -1069,6 +1069,8 @@ With `EnableSplittingOnParsers`, a value whose key is longer than 1,024 bytes is
 
 `Bind().Form`, `Bind().Body` and `Bind().All` read a `Content-Type` with a tab before its parameters, such as `multipart/form-data<TAB>; boundary=x`, as the form readers do; a multipart form sent that way used to bind nothing.
 
+`Bind().Cookie` binds the first value of a repeated cookie name, the one `c.Cookies` returns, instead of the last. A slice field gets the elements of that cookie only. [Learn more](./api/bind.md#cookie).
+
 <details>
 <summary>Example</summary>
 

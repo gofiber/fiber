@@ -1043,7 +1043,9 @@ type bindData struct {
 	last map[string]string
 	// keys and pairValues are the pairs, for a struct destination
 	keys, pairValues []string
-	mode             bindMode
+	// seen is the names a source whose first value wins has filed, see firstOf
+	seen map[string]struct{}
+	mode bindMode
 }
 
 // bindMode is how a bindData keeps what is filed in it.
@@ -1176,6 +1178,16 @@ func (d *bindData) split(aliasTag string, out any, key, value string, enableSpli
 		return
 	}
 	d.add(key, value)
+}
+
+// firstOf reports whether name is new to this bind, and records it.
+func (d *bindData) firstOf(name string) bool {
+	if d.seen == nil {
+		d.seen = make(map[string]struct{}, 8)
+	}
+	n := len(d.seen)
+	d.seen[name] = struct{}{}
+	return len(d.seen) > n
 }
 
 // add appends value to the values of key.

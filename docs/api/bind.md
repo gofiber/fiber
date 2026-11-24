@@ -526,6 +526,8 @@ Run tests with the following `curl` command:
 curl --cookie "name=Joseph; age=23; job=true" http://localhost:8000/
 ```
 
+A cookie name sent more than once binds its first value, the one [`c.Cookies`](./ctx.md#cookies) returns, so a slice field gets the elements of that one cookie. The tag is matched against the cookie name ignoring case, while `c.Cookies` matches it exactly: with `token=a; Token=b`, a `cookie:"token"` field gets `b`.
+
 ### Header
 
 This method is similar to [Body Binding](#body), but for request headers.

@@ -161,7 +161,7 @@ func acquireBindDataMode(mode bindMode) *bindData {
 
 func releaseBindData(d *bindData) {
 	if len(d.values) > maxPoolableDataMapSize || len(d.last) > maxPoolableDataMapSize ||
-		cap(d.keys) > maxPoolablePairs {
+		len(d.seen) > maxPoolableDataMapSize || cap(d.keys) > maxPoolablePairs {
 		return
 	}
 
@@ -177,6 +177,9 @@ func (d *bindData) reset() {
 	// into the runtime for it.
 	if len(d.last) > 0 {
 		clear(d.last)
+	}
+	if len(d.seen) > 0 {
+		clear(d.seen)
 	}
 	clear(d.keys)
 	clear(d.pairValues)
