@@ -981,6 +981,93 @@ func (*failingStreamWriter) WriteHeader(int) {}
 
 func (*failingStreamWriter) Flush() {}
 
+// noFlushWriter has no Flush method, like a middleware's status recorder. Its first Write succeeds and notes whether
+// the stream was still open; later ones fail.
+type noFlushWriter struct {
+	header       http.Header
+	streamEnded  <-chan struct{}
+	writes       int
+	wroteWhileOn bool
+}
+
+func (n *noFlushWriter) Header() http.Header {
+	return n.header
+}
+
+func (n *noFlushWriter) Write(p []byte) (int, error) {
+	n.writes++
+	if n.writes > 1 {
+		return 0, errors.New("simulated write error")
+	}
+	select {
+	case <-n.streamEnded:
+	default:
+		n.wroteWhileOn = true
+	}
+	return len(p), nil
+}
+
+func (*noFlushWriter) WriteHeader(int) {}
+
+// unwrapWriter has no Flush method either; Unwrap leads http.ResponseController to the writer it wraps.
+type unwrapWriter struct{ http.ResponseWriter }
+
+func (u unwrapWriter) Unwrap() http.ResponseWriter { return u.ResponseWriter }
+
+// failingFlushWriter takes every write and fails every flush, as net/http's writer does once the client has left.
+type failingFlushWriter struct{ netHTTPResponseWriter }
+
+func (*failingFlushWriter) FlushError() error { return errors.New("simulated flush error") }
+
+// adaptorTestTicks streams up to ticks lines, stops at the first flush that fails, counts the lines it sent and
+// closes ended when the stream writer returns.
+func adaptorTestTicks(ticks int32, sent *atomic.Int32, ended chan<- struct{}) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			defer close(ended)
+			for range ticks {
+				if _, err := w.WriteString("tick\n"); err != nil {
+					return
+				}
+				if err := w.Flush(); err != nil {
+					return
+				}
+				sent.Add(1)
+			}
+		})
+	}
+}
+
+func Test_FiberHandler_StreamsToWriterWithoutFlush(t *testing.T) {
+	t.Parallel()
+	const ticks = 10_000
+	var sent atomic.Int32
+	ended := make(chan struct{})
+	w := &noFlushWriter{header: make(http.Header), streamEnded: ended}
+	FiberHandlerFunc(adaptorTestTicks(ticks, &sent, ended)).ServeHTTP(w, apptest.Req(http.MethodGet, "/test"))
+	apptest.Recv(t, ended, 5*time.Second)
+	require.True(t, w.wroteWhileOn, "the stream reaches the writer while it is open")
+	require.Less(t, sent.Load(), int32(ticks), "a failed write ends the stream")
+}
+
+func Test_FiberHandler_FlushesThroughUnwrap(t *testing.T) {
+	t.Parallel()
+	rec := httptest.NewRecorder()
+	FiberHandlerFunc(adaptorTestHelloWorldStream(0)).ServeHTTP(unwrapWriter{ResponseWriter: rec}, apptest.Req(http.MethodGet, "/test"))
+	require.Equal(t, "Hello World!", rec.Body.String())
+	require.True(t, rec.Flushed)
+}
+
+func Test_FiberHandler_FlushErrorEndsStream(t *testing.T) {
+	t.Parallel()
+	const ticks = 10_000
+	var sent atomic.Int32
+	ended := make(chan struct{})
+	FiberHandlerFunc(adaptorTestTicks(ticks, &sent, ended)).ServeHTTP(&failingFlushWriter{}, apptest.Req(http.MethodGet, "/test"))
+	apptest.Recv(t, ended, 5*time.Second)
+	require.Less(t, sent.Load(), int32(ticks))
+}
+
 func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 	t.Parallel()
 	// Test streaming functionality to ensure data is sent even during a timeout.
@@ -1775,6 +1862,114 @@ func Test_FiberApp_NoBody(t *testing.T) {
 
 	require.Equal(t, fiber.StatusOK, w.Code)
 	require.Equal(t, "0", w.Body.String())
+}
+
+// Test_FiberApp_Drop pins that a request the handler dropped gets no response behind net/http either, whatever the
+// handler wrote or hinted before and also from the timeout middleware's OnTimeout, while c.End still answers.
+func Test_FiberApp_Drop(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	app := fiber.New()
+	app.Get("/drop", func(c fiber.Ctx) error { return c.Drop() })
+	app.Get("/body", func(c fiber.Ctx) error {
+		if err := c.SendString("withheld"); err != nil {
+			return err
+		}
+		return c.Drop()
+	})
+	app.Get("/hints", func(c fiber.Ctx) error {
+		if err := c.SendEarlyHints([]string{"</a.css>; rel=preload"}); err != nil {
+			return err
+		}
+		return c.Drop()
+	})
+	app.Get("/timeout", timeout.New(func(c fiber.Ctx) error {
+		<-release
+		return c.SendString("late")
+	}, timeout.Config{Timeout: 10 * time.Millisecond, OnTimeout: func(c fiber.Ctx) error { return c.Drop() }}))
+	app.Get("/end", func(c fiber.Ctx) error {
+		if err := c.SendString("ended"); err != nil {
+			return err
+		}
+		return c.End()
+	})
+	app.Get("/end/switch", func(c fiber.Ctx) error { return c.Status(fiber.StatusSwitchingProtocols).End() })
+	handler := FiberApp(app)
+
+	for name, origin := range map[string]string{"plain": "http://example.com", "tls": "https://example.com"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			for _, target := range []string{"/drop", "/body", "/hints", "/timeout"} {
+				rec, req := httptest.NewRecorder(), apptest.Req(http.MethodGet, origin+target)
+				require.PanicsWithValue(t, http.ErrAbortHandler, func() { handler.ServeHTTP(rec, req) }, target)
+				require.Empty(t, rec.Header(), target)
+				require.Empty(t, rec.Body.String(), target)
+
+				// The closed connection is not left on the pooled context for the next request.
+				rec = adaptorTestServe(handler, apptest.Req(http.MethodGet, origin+"/end"))
+				require.Equal(t, http.StatusOK, rec.Code, target)
+				require.Equal(t, "ended", rec.Body.String(), target)
+			}
+			rec := adaptorTestServe(handler, apptest.Req(http.MethodGet, origin+"/end/switch"))
+			require.Equal(t, http.StatusSwitchingProtocols, rec.Code)
+		})
+	}
+
+	t.Run("server", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(handler)
+		t.Cleanup(srv.Close)
+		for _, target := range []string{"/drop", "/body", "/hints", "/timeout"} {
+			conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+			require.NoError(t, err)
+			require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+			_, err = conn.Write([]byte("GET " + target + " HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+			require.NoError(t, err)
+			received, err := io.ReadAll(conn)
+			require.NoError(t, err, target)
+			require.Empty(t, string(received), target)
+			require.NoError(t, conn.Close())
+		}
+	})
+}
+
+// Test_FiberApp_Hijack pins that a hijacked request, which only Fiber's own server can hand over, gets no response
+// instead of one announcing the hijack, and that the hijack does not stay on the pooled context, also on a panic.
+func Test_FiberApp_Hijack(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/raw", func(c fiber.Ctx) error {
+		c.Hijack(func(net.Conn) {})
+		return c.SendStatus(fiber.StatusSwitchingProtocols)
+	})
+	app.Get("/panic", func(c fiber.Ctx) error {
+		c.Hijack(func(net.Conn) {})
+		panic("after hijack")
+	})
+	app.Get("/nethttp", HTTPHandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		conn, _, err := http.NewResponseController(w).Hijack()
+		if assert.NoError(t, err) {
+			assert.NoError(t, conn.Close())
+		}
+	}))
+	app.Get("/abort", HTTPHandlerFunc(func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) }))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(strconv.FormatBool(c.Hijacked())) })
+	handler := FiberApp(app)
+
+	// The pool usually hands back the context it was given last, so each request is served on that of the one before.
+	for range 20 {
+		for _, target := range []string{"/raw", "/nethttp", "/abort"} {
+			rec, req := httptest.NewRecorder(), apptest.Req(http.MethodGet, target)
+			require.PanicsWithValue(t, http.ErrAbortHandler, func() { handler.ServeHTTP(rec, req) }, target)
+			require.Empty(t, rec.Header(), target)
+			require.Empty(t, rec.Body.String(), target)
+			require.Equal(t, "false", adaptorTestServe(handler, apptest.Req(http.MethodGet, "/")).Body.String(), target)
+		}
+		panics := apptest.Req(http.MethodGet, "/panic")
+		require.PanicsWithValue(t, "after hijack", func() { handler.ServeHTTP(httptest.NewRecorder(), panics) })
+		require.Equal(t, "false", adaptorTestServe(handler, apptest.Req(http.MethodGet, "/")).Body.String())
+	}
 }
 
 func Test_FiberApp_RemoteAddrSurvivesPooling(t *testing.T) {

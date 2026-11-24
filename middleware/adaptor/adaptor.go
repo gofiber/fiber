@@ -1,6 +1,7 @@
 package adaptor
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -40,9 +42,23 @@ func (*disableLogger) Printf(string, ...any) {
 // RequestCtx.Init), whose Write panics, it silently discards writes so that
 // interim responses written directly to the connection (e.g. a 103 from
 // SendEarlyHints) degrade gracefully: the final response is still delivered
-// through the http.ResponseWriter copy-back.
+// through the http.ResponseWriter copy-back. It records a Close, as c.Drop and
+// c.End make, and whether a final response was written before it, as c.End does.
 type noopConn struct {
 	remoteAddr net.Addr
+	closed     atomic.Bool
+	answered   atomic.Bool
+}
+
+func (c *noopConn) reset(remoteAddr net.Addr) {
+	c.remoteAddr = remoteAddr
+	c.closed.Store(false)
+	c.answered.Store(false)
+}
+
+// dropped reports whether the handler closed the connection without writing a response to it.
+func (c *noopConn) dropped() bool {
+	return c.closed.Load() && !c.answered.Load()
 }
 
 // tlsNoopConn is the connection handed to fasthttp for a request net/http
@@ -61,10 +77,21 @@ func (*tlsNoopConn) Handshake() error {
 	return nil
 }
 
-func (*noopConn) Read([]byte) (int, error)    { return 0, io.EOF }
-func (*noopConn) Write(p []byte) (int, error) { return len(p), nil }
-func (*noopConn) Close() error                { return nil }
-func (*noopConn) LocalAddr() net.Addr         { return &net.TCPAddr{} }
+func (*noopConn) Read([]byte) (int, error) { return 0, io.EOF }
+
+func (c *noopConn) Write(p []byte) (int, error) {
+	if !c.closed.Load() && isFinalResponse(p) {
+		c.answered.Store(true)
+	}
+	return len(p), nil
+}
+
+func (c *noopConn) Close() error {
+	c.closed.Store(true)
+	return nil
+}
+
+func (*noopConn) LocalAddr() net.Addr { return &net.TCPAddr{} }
 
 func (c *noopConn) RemoteAddr() net.Addr {
 	if c.remoteAddr == nil {
@@ -76,6 +103,20 @@ func (c *noopConn) RemoteAddr() net.Addr {
 func (*noopConn) SetDeadline(time.Time) error      { return nil }
 func (*noopConn) SetReadDeadline(time.Time) error  { return nil }
 func (*noopConn) SetWriteDeadline(time.Time) error { return nil }
+
+// isFinalResponse reports whether p begins with the status line of a response other than an interim one (1xx but 101).
+func isFinalResponse(p []byte) bool {
+	const prefix = "HTTP/"
+	if len(p) < len(prefix) || string(p[:len(prefix)]) != prefix {
+		return false
+	}
+	sp := bytes.IndexByte(p, ' ')
+	if sp < 0 || len(p) < sp+4 {
+		return false
+	}
+	status := p[sp+1 : sp+4]
+	return status[0] != '1' || string(status) == "101"
+}
 
 // tcpAddrBuf co-locates a net.TCPAddr with the storage for its IP so the
 // common "ip:port" remote address form costs one allocation instead of two
@@ -932,7 +973,8 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		defer func() {
 			// As fasthttp's server does, leave a timed-out ctx to the handler that may still run on it. So for
 			// a net/http handler that flushed and outlived its response: the next Reset would wait for it.
-			if fctx.LastTimeoutErrorResponse() == nil && !requesthold.Pending(fctx) {
+			// A hijack stays on the ctx, which no Reset clears, so a hijacked ctx is not reused either.
+			if fctx.LastTimeoutErrorResponse() == nil && !requesthold.Pending(fctx) && !fctx.Hijacked() {
 				ctxPool.Put(pctx)
 			}
 		}()
@@ -948,14 +990,15 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		if err != nil {
 			remoteAddr = nil // Fallback to nil
 		}
-		pctx.conn.remoteAddr = remoteAddr
-		var conn net.Conn = &pctx.conn
+		noop := &pctx.conn
+		var conn net.Conn = noop
 		if r.TLS != nil {
 			// Carry the TLS state over, so c.Scheme() and c.Secure() describe the connection.
-			pctx.tlsConn.noopConn = pctx.conn
+			noop = &pctx.tlsConn.noopConn
 			pctx.tlsConn.state = *r.TLS
 			conn = &pctx.tlsConn
 		}
+		noop.reset(remoteAddr)
 
 		// Init2 mirrors fasthttp's RequestCtx.Init, but with a no-op
 		// connection instead of fasthttp's fakeAddrer, whose Write panics.
@@ -1109,22 +1152,30 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 
 		// Convert fasthttp Ctx -> net/http
 		resp := &fctx.Response
+		// c.Drop closed the connection, on which fasthttp's server then fails to write the response.
+		abort := noop.dropped()
 		if timeoutResp := fctx.LastTimeoutErrorResponse(); timeoutResp != nil {
 			// The timed-out handler still owns fctx.Response; send what fasthttp would.
 			resp = timeoutResp
+		} else if fctx.Hijacked() {
+			// The connection is net/http's and cannot be handed to the hijack handler, nor announced to the client.
+			abort = true
+		}
+		if abort {
+			// net/http ends the exchange without a response: it closes the connection or resets the HTTP/2 stream.
+			_ = resp.CloseBodyStream() //nolint:errcheck // not needed
+			panic(http.ErrAbortHandler)
 		}
 		copyResponseHeaders(w.Header(), &resp.Header)
 		w.WriteHeader(resp.StatusCode())
 
-		// Check if streaming is not possible or unnecessary.
 		bodyStream := resp.BodyStream()
 		if bodyStream != nil && r.Method == http.MethodHead {
 			// net/http discards a HEAD body, so as fasthttp's server does, close the stream unread.
 			_ = resp.CloseBodyStream() //nolint:errcheck // not needed
 			return
 		}
-		flusher, ok := w.(http.Flusher)
-		if !ok || bodyStream == nil {
+		if bodyStream == nil {
 			_, _ = w.Write(resp.Body()) //nolint:errcheck // not needed
 			return
 		}
@@ -1133,14 +1184,17 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			_ = resp.CloseBodyStream() //nolint:errcheck // not needed
 		}()
 
-		// Stream resp.BodyStream() -> w
-		// in chunks.
+		// Stream resp.BodyStream() -> w in chunks, whether or not w can flush: resp.Body() would read
+		// the stream to its end first, and a stream writer that stops on a failed write never would.
 		bufPtr, ok := bufferPool.Get().(*[bufferSize]byte)
 		if !ok {
 			panic(fmt.Errorf("failed to type-assert to *[%d]byte", bufferSize))
 		}
 		defer bufferPool.Put(bufPtr)
 
+		// A middleware's wrapper around w seldom has Flush itself; the controller finds it through Unwrap.
+		rc := http.NewResponseController(w)
+		canFlush := true
 		buf := bufPtr[:]
 		for {
 			n, err := bodyStream.Read(buf)
@@ -1148,7 +1202,13 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 				if _, writeErr := w.Write(buf[:n]); writeErr != nil {
 					break
 				}
-				flusher.Flush()
+				if canFlush {
+					if flushErr := rc.Flush(); errors.Is(flushErr, http.ErrNotSupported) {
+						canFlush = false
+					} else if flushErr != nil {
+						break // the client is gone; closing the stream tells its writer
+					}
+				}
 			}
 
 			if err != nil {
