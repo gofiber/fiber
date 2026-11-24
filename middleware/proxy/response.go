@@ -27,7 +27,7 @@ func upstreamResponse(streams bool, res *fasthttp.Response) *fasthttp.Response {
 // adoptUpstreamResponse readies upstream, the response the client filled with err as the outcome, as res, the
 // client's: sanitized and, when upstream is the proxy's own, its header section copied over and its body read
 // from it through an upstreamBody, which releases it once the body has been sent, or moved over without a copy
-// when the client buffered the body after all. On an error upstream is released, or emptied when it is res.
+// when the client buffered the body after all. On an error res is emptied and upstream, if the proxy's own, released.
 //
 // A body the client streams is held to limit bytes when that is positive, which fasthttp does not do for one:
 // it ignores a client's MaxResponseBodySize for a body it hands over as a stream. A length the response declares
@@ -48,6 +48,8 @@ func adoptUpstreamResponse(res, upstream *fasthttp.Response, err error, policy S
 	}
 	if err != nil {
 		fasthttp.ReleaseResponse(upstream)
+		// fasthttp empties a response it fills before sending, so res ends up empty on an error either way.
+		resetUpstreamResponse(res)
 		return err
 	}
 	upstream.Header.CopyTo(&res.Header)

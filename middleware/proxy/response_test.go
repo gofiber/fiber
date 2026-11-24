@@ -519,3 +519,36 @@ func Test_Proxy_Balancer_FailedStreamLeavesNoHeaders(t *testing.T) {
 		require.Empty(t, resp.Header.Values(field), field)
 	}
 }
+
+// A failed exchange leaves the response empty whichever response the client filled, as fasthttp does for its own.
+func Test_Proxy_FailedExchangeEmptiesTheResponse(t *testing.T) {
+	t.Parallel()
+	policy := normalizePolicy(proxyTestAllowPrivatePolicy())
+	send := func(cli *fasthttp.Client, req *fasthttp.Request, res *fasthttp.Response, _ *url.URL) error {
+		return cli.Do(req, res)
+	}
+	failing := roundTripperFunc(func(*fasthttp.Request, *fasthttp.Response) error { return io.ErrUnexpectedEOF })
+	clients := map[string]*fasthttp.Client{
+		"default client":         defaultClient,
+		"client of the caller's": {Transport: failing},
+		"streaming client":       {Transport: failing, StreamResponseBody: true},
+	}
+	for name, cli := range clients {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Set("X-Before", "1")
+				if err := c.SendString("previous"); err != nil {
+					return err
+				}
+				if err := doActionWithPolicy(c, "http://127.0.0.1:1", policy, nil, send, cli); err == nil {
+					return errors.New("the exchange did not fail")
+				}
+				return c.SendStatus(fiber.StatusBadGateway)
+			})
+			resp := apptest.ExpectBody(t, app, "/", fiber.StatusBadGateway, "Bad Gateway")
+			require.Empty(t, resp.Header.Get("X-Before"))
+		})
+	}
+}
