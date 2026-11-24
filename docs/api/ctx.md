@@ -2164,7 +2164,7 @@ app.Post("/", func(c fiber.Ctx) error {
 ### Method
 
 Returns a string corresponding to the HTTP method of the request: `GET`, `POST`, `PUT`, and so on.
-Optionally, you can override the method by passing a string; [Next](#next) then continues with the routes registered after the current one for the new method.
+Optionally, you can override the method by passing a string; [Next](#next) then continues with the routes registered after the current one for the new method. The request carries the new method as well, so a `net/http` or fasthttp handler and a proxy upstream see the method that was routed. An override to `HEAD` of a request sent with another method is carried as `GET`, and a request sent as `HEAD` is answered without a body whatever it is overridden to.
 
 Method tokens are case-sensitive (RFC 9110): the override is first matched exactly against the methods registered in [`Config.RequestMethods`](./fiber.md#requestmethods), and only falls back to the uppercase form as a convenience for the standard methods (e.g. `"get"` → `GET`). An unregistered override is ignored.
 

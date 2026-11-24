@@ -1708,7 +1708,7 @@ func (r *DefaultRes) End() error {
 
 	// fasthttp marks the answer to HEAD body-less only after the handler returns, and the
 	// connection is closed below, so both are announced here.
-	if ctx.Request.Header.IsHead() {
+	if r.c.sentHead || ctx.Request.Header.IsHead() {
 		ctx.Response.SkipBody = true
 	}
 	ctx.Response.SetConnectionClose()

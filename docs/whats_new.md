@@ -392,6 +392,8 @@ A request target that begins with `/` is a path ([RFC 9112 Section 3.2.1](https:
 
 After `c.Path(...)` or `c.Method(...)`, `c.Next()` continues with the routes registered after the current one that match the new path and method. Before, a handler mounted on a prefix, such as `app.Use("/v1", rewrite.New(...))` or `http.StripPrefix` through `adaptor.HTTPMiddleware`, or registered for a single method resumed at a position taken from another route list, and skipped routes registered after it, middleware included. A `Use` registered right after a route for a single method is no longer merged into the previous `Use` under the other methods, and a route is merged into the one before it on the same path only when both were registered for the same methods: `app.Get` after `app.All` or a multi-method `app.Add` on one path stays a route of its own, so `app.Stack()` can list one more route there.
 
+`c.Method(...)` also sets the new method on the request itself, as `c.Path(...)` sets the path, so a `net/http` or fasthttp handler and the proxy middleware see the method the request was routed with. An override to `HEAD` of a request sent with another method is carried as `GET`, and a request sent as `HEAD` is still answered without a body.
+
 ### Trailing slashes
 
 Without `StrictRouting`, a path of slashes alone, such as `//`, is matched as `/`, the way `/about//` is matched as `/about`. Before, it was matched as the empty path, which a root `app.Use` did not cover while a `/*` or `/:name?` route still answered it. A route registered as `//` is the root route now, and `//` also answers a `/` route. `c.Path()` still returns `//`.

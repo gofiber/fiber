@@ -111,6 +111,19 @@ func Test_Static_Direct(t *testing.T) {
 	require.Contains(t, apptest.Body(t, resp), "test_routes")
 }
 
+func Test_Static_MethodOverriddenToHead(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		c.Method(fiber.MethodHead)
+		return c.Next()
+	})
+	app.Use(New("../../.github"))
+
+	resp := staticTestExpect(t, app, "/index.html", 200, fiber.MIMETextHTMLCharsetUTF8)
+	require.Contains(t, apptest.Body(t, resp), "Hello, World!")
+}
+
 func Test_Static_MaxAge(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

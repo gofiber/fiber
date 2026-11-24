@@ -1290,6 +1290,18 @@ func (r *DefaultReq) Method(override ...string) string {
 	r.c.methodInt = methodInt
 	// Method changed; invalidate the lookahead index
 	r.c.firstMatchIndex = -1
+
+	// On the request too: a net/http handler or an upstream runs the method the routes and csrf decided on.
+	header := &r.c.fasthttp.Request.Header
+	// Remembered for End, since the request no longer says so. Not Response.SkipBody: the proxy reads the
+	// upstream's answer with it.
+	r.c.sentHead = r.c.sentHead || header.IsHead()
+	if method == MethodHead && !r.c.sentHead {
+		// The client waits for the body an upstream leaves out for HEAD.
+		header.SetMethod(MethodGet)
+	} else {
+		header.SetMethod(method)
+	}
 	return method
 }
 

@@ -495,6 +495,32 @@ func Test_Proxy_Forward(t *testing.T) {
 	}
 }
 
+func Test_Proxy_SendsOverriddenMethod(t *testing.T) {
+	t.Parallel()
+	for _, tc := range realIPHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			upstream := fiber.New()
+			upstream.Use(func(c fiber.Ctx) error { return c.SendString(c.Method()) })
+
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				c.Method(c.Get("X-HTTP-Method-Override"))
+				return c.Next()
+			})
+			app.Post("/articles", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusUnauthorized) })
+			app.Get("/articles", tc.build(listenUpstream(t, upstream)))
+
+			req := httptest.NewRequest(fiber.MethodPost, "http://example.com/articles", strings.NewReader("text"))
+			apptest.Expect(t, app, req, fiber.StatusUnauthorized)
+
+			req = httptest.NewRequest(fiber.MethodPost, "http://example.com/articles", strings.NewReader("text"))
+			req.Header.Set("X-HTTP-Method-Override", fiber.MethodGet)
+			apptest.ExpectBody(t, app, req, fiber.StatusOK, fiber.MethodGet)
+		})
+	}
+}
+
 // A refused request replays the Use chain; forwarded, the upstream ran it with
 // an empty body while the client was told 413.
 func Test_Proxy_RefusedRequestIsNotForwarded(t *testing.T) {

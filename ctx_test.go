@@ -4330,6 +4330,45 @@ func Test_Ctx_Method(t *testing.T) {
 	require.Equal(t, MethodGet, c.Method())
 }
 
+func Test_Ctx_Method_OverrideReachesRequest(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		wire, override, want string
+	}{
+		{wire: MethodPost, override: MethodGet, want: MethodGet},
+		{wire: MethodGet, override: MethodPost, want: MethodPost},
+		{wire: MethodPost, override: "delete", want: MethodDelete},
+		// The client waits for a body, so the request does not turn into a HEAD.
+		{wire: MethodPost, override: MethodHead, want: MethodGet},
+		{wire: MethodGet, override: MethodHead, want: MethodGet},
+		{wire: MethodHead, override: MethodPut, want: MethodPut},
+		{wire: MethodHead, override: MethodHead, want: MethodHead},
+		{wire: MethodPost, override: "NOPE", want: MethodPost},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.wire+" to "+tc.override, func(t *testing.T) {
+			t.Parallel()
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(tc.wire)
+			c := apptest.CtxFor(t, New(), fctx)
+
+			c.Method(tc.override)
+			require.Equal(t, tc.want, string(c.Request().Header.Method()))
+		})
+	}
+
+	t.Run("HEAD and back", func(t *testing.T) {
+		t.Parallel()
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(MethodHead)
+		c := apptest.CtxFor(t, New(), fctx)
+
+		c.Method(MethodPost)
+		c.Method(MethodHead)
+		require.Equal(t, MethodHead, string(c.Request().Header.Method()))
+	})
+}
+
 // Test_Ctx_Method_Unregistered verifies that a ctx carrying a method that is
 // not registered in RequestMethods (methodInt == -1) does not panic: Method()
 // reports the raw request-header method and Route()'s fallback stays safe.
@@ -9217,6 +9256,11 @@ func Test_Ctx_End_Head(t *testing.T) {
 		require.NoError(t, c.SendString(c.Query("msg")))
 		return c.End()
 	})
+	app.Get("/override", func(c Ctx) error {
+		c.Method(MethodPost)
+		require.NoError(t, c.SendString("Hello, World!"))
+		return c.End()
+	})
 	ln := apptest.Serve(t, app, ListenConfig{DisableStartupMessage: true})
 
 	for _, tc := range []struct {
@@ -9225,6 +9269,7 @@ func Test_Ctx_End_Head(t *testing.T) {
 	}{
 		{"head", "HEAD / HTTP/1.1\r\nHost: example.com\r\n\r\n", ""},
 		{"head_query", "HEAD /echo?msg=leftover HTTP/1.1\r\nHost: example.com\r\n\r\n", ""},
+		{"head_overridden", "HEAD /override HTTP/1.1\r\nHost: example.com\r\n\r\n", ""},
 		{"get", "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n", "Hello, World!"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
