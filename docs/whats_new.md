@@ -1769,6 +1769,7 @@ A streamed response that declares no length is sent without an `ETag` and no lon
 ### Favicon
 
 The favicon middleware now caps cached favicon assets with a configurable `MaxBytes` limit (default `1 MiB`) and uses a limited reader to guard against oversized files when loading from disk.
+A request the server refused while reading it, such as one over `BodyLimit`, gets its error response without the icon's `Cache-Control`, so a shared cache does not store the refusal as the icon.
 
 ### EnvVar
 
