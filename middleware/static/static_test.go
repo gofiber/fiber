@@ -1722,6 +1722,28 @@ func Test_Static_MaxAge_KeepsCacheControl(t *testing.T) {
 	}
 }
 
+// fasthttp wipes the response to refuse a directory without an index; the route behind static must
+// still answer with what the middleware ahead of it set.
+func Test_Static_DirectoryWithoutIndexKeepsHeaders(t *testing.T) {
+	t.Parallel()
+	root := staticTestRoot(t, map[string]string{"css/app.css": "CSS"})
+
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "private")
+		c.Vary(fiber.HeaderCookie)
+		c.Cookie(&fiber.Cookie{Name: "session", Value: "s1"})
+		return c.Next()
+	})
+	app.Use(New(root))
+	app.Get("/css", func(c fiber.Ctx) error { return c.SendString("per-user") })
+
+	resp := apptest.ExpectBody(t, app, "/css/", fiber.StatusOK, "per-user")
+	require.Equal(t, "private", resp.Header.Get(fiber.HeaderCacheControl))
+	require.Equal(t, fiber.HeaderCookie, resp.Header.Get(fiber.HeaderVary))
+	require.Contains(t, resp.Header.Get(fiber.HeaderSetCookie), "session=s1")
+}
+
 // With ByteRange on, the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) are
 // applied around the file server's single range; internal/byterange tests them
 // in full.

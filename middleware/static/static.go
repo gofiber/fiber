@@ -32,8 +32,9 @@ const invalidPathSentinel = "/__fiber_invalid__"
 // rewrite carries the path the file server opens for one request. The handler
 // builds it before it calls fasthttp, so PathRewrite only has to read it.
 type rewrite struct {
-	path []byte
-	sent []byte // the request URI's path as sent, while a listing is built from the routed one
+	path   []byte
+	sent   []byte                  // the request URI's path as sent, while a listing is built from the routed one
+	header fasthttp.ResponseHeader // the response header before the file server, which wipes it on a 403
 }
 
 // rewriteKey is the fasthttp user-value key under which PathRewrite finds the rewrite.
@@ -385,7 +386,14 @@ func New(root string, cfg ...Config) fiber.Handler {
 			}
 
 			// Serve file
+			fctx.Response.Header.CopyTo(&rw.header)
 			server.handler(fctx)
+			// fasthttp wipes the response to refuse a directory without an index; that
+			// is a miss passed on like a missing file, with what earlier middleware set
+			if fctx.Response.StatusCode() == fiber.StatusForbidden {
+				rw.header.CopyTo(&fctx.Response.Header)
+				fctx.Response.SetStatusCode(fiber.StatusForbidden)
+			}
 
 			if rerouted {
 				fctx.URI().SetPathBytes(rw.sent)

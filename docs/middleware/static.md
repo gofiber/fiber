@@ -205,6 +205,8 @@ When **Download** is enabled, the response of a served file includes a `Content-
 
 **MaxAge** only applies to successful responses; an error such as `416 Range Not Satisfiable` carries no `Cache-Control`. It sends `max-age=<MaxAge>` without `public`, which would let a shared cache, the [cache](./cache.md) middleware included, store a file sent with a cookie, and it keeps a `Cache-Control` that middleware in front of `static` set, such as `private, no-store` on a guarded directory. Write `public` in `ModifyResponse` for files every client may share. A handler registered on several routes serves each under that route's own prefix.
 
+A directory without an index file is a miss like a missing file: the next handler runs with the response headers that earlier middleware set.
+
 A root on disk must be named: `New` panics on an empty root, which would be the filesystem root, so an unset variable cannot expose every file the process can read; use `"."` for the working directory. With `FS`, an empty root is the root of that file system. A root on disk is confined: a relative symbolic link that stays inside it is followed, while one that leaves it, and an absolute link even when it points inside, is handled like a missing file. Set **AllowSymlinksOutsideRoot** when such links are intended, for example a shared asset directory or a build tool that writes absolute links. With `Compress`, the compressed copy of a file reached through a linked directory is written into that directory. A file root, and a root given through `FS`, are not confined this way.
 
 :::info
