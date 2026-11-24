@@ -1838,24 +1838,29 @@ func Test_Static_FileSystemAliases(t *testing.T) {
 			"static/café/menu.txt":      {Data: []byte("MENU")},
 			"static/a~b.txt":            {Data: []byte("TILDE")},
 			"static/keys/x.txt":         {Data: []byte("SECRET")},
+			"static/classified/x.txt":   {Data: []byte("SECRET")},
 		},
-		alias: strings.NewReplacer("ſ", "s", "ı", "i", "\u212a", "k", "PRIVAT~1", "private-docs", "private-docs.", "private-docs"),
+		alias: strings.NewReplacer("ſ", "s", "ı", "i", "\u212a", "k", "ß", "ss", "ﬁ", "fi", "\u00ad", "",
+			"PRIVAT~1", "private-docs", "private-docs.", "private-docs"),
 	}
 	for _, unescape := range []bool{false, true} {
-		app := staticTestApp(unescape, "/static/secret", "/static/private-docs", "/static/keys")
+		app := staticTestApp(unescape, "/static/secret", "/static/private-docs", "/static/keys", "/static/classified")
 		app.Use("/static", New("static", Config{FS: fsys}))
 		h := app.Handler()
 
 		for target, want := range map[string]int{
-			"/static/café/menu.txt":         fiber.StatusOK,
-			"/static/a~b.txt":               fiber.StatusOK,
-			"/static/secret/x.txt":          fiber.StatusForbidden,
-			"/static/ſecret/x.txt":          fiber.StatusNotFound,
-			"/static/prıvate-docs/r.txt":    fiber.StatusNotFound,
-			"/static/\u212aeys/x.txt":       fiber.StatusNotFound,
-			"/static/PRIVAT~1/r.txt":        fiber.StatusNotFound,
-			"/static/private-docs./r.txt":   fiber.StatusNotFound,
-			"/static/private-docs%2E/r.txt": fiber.StatusNotFound,
+			"/static/café/menu.txt":          fiber.StatusOK,
+			"/static/a~b.txt":                fiber.StatusOK,
+			"/static/secret/x.txt":           fiber.StatusForbidden,
+			"/static/ſecret/x.txt":           fiber.StatusNotFound,
+			"/static/prıvate-docs/r.txt":     fiber.StatusNotFound,
+			"/static/\u212aeys/x.txt":        fiber.StatusNotFound,
+			"/static/claßified/x.txt":        fiber.StatusNotFound,
+			"/static/classiﬁed/x.txt":        fiber.StatusNotFound,
+			"/static/class\u00adified/x.txt": fiber.StatusNotFound,
+			"/static/PRIVAT~1/r.txt":         fiber.StatusNotFound,
+			"/static/private-docs./r.txt":    fiber.StatusNotFound,
+			"/static/private-docs%2E/r.txt":  fiber.StatusNotFound,
 		} {
 			staticTestExpectRaw(t, h, target, want, "unescape=%t target=%s", unescape, target)
 		}

@@ -34,9 +34,10 @@
 //     with a 403; the check here runs on every OS.
 //  8. An fs.FS name must also be valid UTF-8.
 //  9. The router folds ASCII case only. A case-folding file system opens
-//     "secret" for "ſecret" (U+017F), likewise for "ı", "İ" and the Kelvin
-//     sign, and an 8.3 short name such as "PRIVAT~1" opens a long one. Another
-//     normalization or case of a non-ASCII name still opens the same file.
+//     "secret" for "ſecret" (U+017F), "session" for "seßion", "fish" for
+//     "ﬁsh", drops a soft hyphen or zero-width space, and an 8.3 short name
+//     such as "PRIVAT~1" opens a long one. Another normalization or case of a
+//     non-ASCII name still opens the same file.
 //
 // Stray "%" policy: a "%" is a name byte wherever nothing decodes the name
 // after it, that is under UnescapePath, where the router already decoded every
@@ -57,6 +58,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gofiber/utils/v2"
 )
@@ -197,9 +200,8 @@ func hasDriveLetter(name string) bool {
 }
 
 // Aliased reports whether p, a path Valid accepted, holds a spelling a file
-// system may open under another name than the router matched: a non-ASCII
-// letter whose upper or lower case is ASCII, or a "~" and a digit, the tail of
-// an 8.3 short name such as "PRIVAT~1".
+// system may open under another name than the router matched: a rune of
+// aliasRunes, or a "~" and a digit, the tail of an 8.3 short name such as "PRIVAT~1".
 func Aliased(p []byte) bool {
 	if i := bytes.IndexByte(p, '~'); i >= 0 && hasShortNameTail(p[i:]) {
 		return true
@@ -208,12 +210,55 @@ func Aliased(p []byte) bool {
 		return false
 	}
 	for _, r := range utils.UnsafeString(p) {
-		switch r {
-		case '\u0130', '\u0131', '\u017f', '\u212a': // İ, ı, ſ and the Kelvin sign
+		if r >= utf8.RuneSelf && unicode.Is(aliasRunes, r) {
 			return true
 		}
 	}
 	return false
+}
+
+// aliasRunes are the non-ASCII runes a case-folding or normalizing file system can open as ASCII or drop:
+// those whose case, or full case fold and canonical decomposition, is ASCII, and the default ignorables.
+// Derived from golang.org/x/text v0.44.0 cases.Fold and norm.NFD over every code point.
+var aliasRunes = &unicode.RangeTable{
+	R16: []unicode.Range16{
+		{0x00ad, 0x00ad, 1},
+		{0x00df, 0x00df, 1},
+		{0x0130, 0x0131, 1},
+		{0x017f, 0x017f, 1},
+		{0x034f, 0x034f, 1},
+		{0x037e, 0x037e, 1},
+		{0x0600, 0x0605, 1},
+		{0x061c, 0x061c, 1},
+		{0x06dd, 0x06dd, 1},
+		{0x070f, 0x070f, 1},
+		{0x0890, 0x0891, 1},
+		{0x08e2, 0x08e2, 1},
+		{0x115f, 0x1160, 1},
+		{0x17b4, 0x17b5, 1},
+		{0x180b, 0x180f, 1},
+		{0x1e9e, 0x1e9e, 1},
+		{0x1fef, 0x1fef, 1},
+		{0x200b, 0x200f, 1},
+		{0x202a, 0x202e, 1},
+		{0x2060, 0x206f, 1},
+		{0x212a, 0x212a, 1},
+		{0x3164, 0x3164, 1},
+		{0xfb00, 0xfb06, 1},
+		{0xfe00, 0xfe0f, 1},
+		{0xfeff, 0xfeff, 1},
+		{0xffa0, 0xffa0, 1},
+		{0xfff0, 0xfffb, 1},
+	},
+	R32: []unicode.Range32{
+		{0x110bd, 0x110bd, 1},
+		{0x110cd, 0x110cd, 1},
+		{0x13430, 0x1343f, 1},
+		{0x1bca0, 0x1bca3, 1},
+		{0x1d173, 0x1d17a, 1},
+		{0xe0000, 0xe0fff, 1},
+	},
+	LatinOffset: 2,
 }
 
 // hasShortNameTail reports whether a "~" in p is followed by a digit.

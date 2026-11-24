@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"unicode"
@@ -277,16 +278,23 @@ func Test_Aliased(t *testing.T) {
 	for input, want := range map[string]bool{
 		"/plain/missing.txt": false, "/café/menu.txt": false, "/a~b.txt": false, "/nope~": false,
 		"/ſecret/x": true, "/ınfo": true, "/İnfo": true, "/\u212aeys": true, "/PRIVAT~1/r.txt": true, "/x/LONGNA~12.TXT": true,
+		"/a\u00dfets": true, "/a\u1e9eets": true, "/\ufb01sh": true, "/o\ufb03ce": true, "/sta\ufb06": true, "/v1\u037e2": true,
+		"/\u1fefx": true, "/as\u00adsets": true, "/as\u200bsets": true, "/as\u200dsets": true, "/a\ufe0f": true,
+		"/naïve/x": false, "/日本/x": false, "/caf\u0065\u0301/x": false,
 	} {
 		require.Equal(t, want, Aliased([]byte(input)), "input=%q", input)
 	}
 }
 
-// The runes Aliased refuses are all those whose case Go maps to ASCII.
+// Aliased refuses every rune whose case Go maps to ASCII, and of the other letters only those that fold to ASCII
+// or that file systems ignore.
 func Test_Aliased_CoversEveryASCIICaseMapping(t *testing.T) {
 	t.Parallel()
+	const extra = "\u00df\u1e9e\ufb00\ufb01\ufb02\ufb03\ufb04\ufb05\ufb06\u115f\u1160\u3164\uffa0"
 	for r := rune(utf8.RuneSelf); r <= unicode.MaxRune; r++ {
-		toASCII := unicode.ToUpper(r) < utf8.RuneSelf || unicode.ToLower(r) < utf8.RuneSelf
-		require.Equal(t, toASCII, Aliased([]byte(string(r))), "%U", r)
+		caseASCII := unicode.ToUpper(r) < utf8.RuneSelf || unicode.ToLower(r) < utf8.RuneSelf
+		if caseASCII || unicode.IsLetter(r) {
+			require.Equal(t, caseASCII || strings.ContainsRune(extra, r), Aliased([]byte(string(r))), "%U", r)
+		}
 	}
 }
