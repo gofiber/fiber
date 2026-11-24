@@ -190,13 +190,20 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			}
 			return writeSanitized(output, body)
 		},
-		TagBytesReceived: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagBytesReceived: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			return appendInt(output, c.Req().ContentLength())
 		},
 		TagBytesSent: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
 			return appendInt(output, response(c, data).Header.ContentLength())
 		},
-		TagRoute: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagRoute: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			// A timed-out handler's c.Next may still be setting it.
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			// Normally the registered pattern, but Ctx.Route falls back to a
 			// synthetic route carrying the raw request path when no route
 			// matched, so this can be request-derived too.

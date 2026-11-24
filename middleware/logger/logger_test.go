@@ -1534,19 +1534,19 @@ func Test_Logger_Body_LeavesResponseAlone(t *testing.T) {
 func Test_Logger_TimedOutRequestLeavesRequestToHandler(t *testing.T) {
 	t.Parallel()
 	const format = "${method} ${url}|${ip}|${host}|${scheme}|${cookie:theme}|${query:a}|${queryParams}|${reqHeader:x-req}|" +
-		"${referer}|${ua}|${ips}|${form:f}|${locals:user}|${reqHeaders}|${body}"
+		"${referer}|${ua}|${ips}|${form:f}|${locals:user}|${reqHeaders}|${body}|${route}|${bytesReceived}"
 	for name, tc := range map[string]struct {
 		cfg  fiber.Config
 		want string
 	}{
-		"direct": {want: "POST /?a=1|0.0.0.0|example.com|http|||||||||||"},
+		"direct": {want: "POST /?a=1|0.0.0.0|example.com|http|||||||||||||"},
 		"trusted proxy": {
 			cfg: fiber.Config{
 				TrustProxy:       true,
 				ProxyHeader:      fiber.HeaderXForwardedFor,
 				TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
 			},
-			want: "POST /?a=1||||||||||||||",
+			want: "POST /?a=1||||||||||||||||",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -1560,9 +1560,14 @@ func Test_Logger_TimedOutRequestLeavesRequestToHandler(t *testing.T) {
 				defer close(read)
 				<-c.Context().Done()
 				c.Locals("user", "late")
+				c.Request().Header.SetContentLength(9)
+				if err := c.Next(); err != nil {
+					return err
+				}
 				return c.SendString(c.Cookies("theme") + c.Query("a") + c.FormValue("f") + string(c.Body()) +
 					c.IP() + strings.Join(c.IPs(), ",") + c.Hostname() + c.Scheme() + c.Get("x-other"))
 			}, timeout.Config{Timeout: 20 * time.Millisecond}))
+			app.Post("/", func(fiber.Ctx) error { return nil })
 
 			req := httptest.NewRequest(fiber.MethodPost, "/?a=1", strings.NewReader("f=2"))
 			req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)

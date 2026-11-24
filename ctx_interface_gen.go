@@ -241,6 +241,7 @@ type Ctx interface {
 	// It does nothing for a context that is not abandoned or whose reclaim ScheduleReclaim
 	// armed: a second release would hand one context to two requests.
 	ForceRelease()
+	releaseAbandoned()
 	// ScheduleReclaim arms automatic reclamation of an abandoned context, returning
 	// it to the pool once it is safe to do so.
 	//
