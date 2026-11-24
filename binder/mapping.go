@@ -516,8 +516,7 @@ func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, file
 	}
 	scratch := reflect.New(dst.Type())
 	if behindUnexportedPointer(dst.Type()) {
-		scratch.Elem().Set(dst)
-		zeroSettable(scratch.Elem())
+		allocEmbedded(scratch.Elem(), dst)
 	}
 	// All at once first, which grows each slice the keys index to its length in one step.
 	err := d.Decode(scratch.Interface(), nil, files)
@@ -540,7 +539,7 @@ func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, file
 var unexportedPointers sync.Map // map[reflect.Type]bool
 
 // behindUnexportedPointer reports whether the struct type t holds a file field under an unexported embedded pointer,
-// one schema follows when it is set but cannot allocate, so a scratch value has to share out's.
+// one schema follows when it is set but cannot allocate, so a scratch value needs one set for it.
 func behindUnexportedPointer(t reflect.Type) bool {
 	if cached, ok := unexportedPointers.Load(t); ok {
 		if found, isBool := cached.(bool); isBool {
@@ -555,14 +554,20 @@ func behindUnexportedPointer(t reflect.Type) bool {
 	return found
 }
 
-// zeroSettable zeroes every field of the struct v that schema can set and keeps the unexported pointers.
-func zeroSettable(v reflect.Value) {
-	for i := range v.NumField() {
-		switch f := v.Field(i); {
-		case f.Kind() == reflect.Struct:
-			zeroSettable(f)
-		case f.CanSet():
-			f.SetZero()
+// allocEmbedded gives scratch a zero pointee of its own for each unexported embedded pointer dst has set. The files
+// decoded into it reach dst through setFiles, and the defaults the decode sets there go nowhere.
+func allocEmbedded(scratch, dst reflect.Value) {
+	for _, i := range headerFields(dst.Type()) {
+		to, from := scratch.Field(i), dst.Field(i)
+		switch {
+		case from.Kind() == reflect.Struct:
+			allocEmbedded(to, from)
+		case from.Kind() == reflect.Pointer && !to.CanSet() && !from.IsNil():
+			p := reflect.New(from.Type().Elem())
+			reflect.NewAt(to.Type(), unsafe.Pointer(to.UnsafeAddr())).Elem().Set(p) //nolint:gosec // reflect cannot set the unexported field; scratch is our own value
+			if p.Elem().Kind() == reflect.Struct {
+				allocEmbedded(p.Elem(), from.Elem())
+			}
 		default:
 		}
 	}

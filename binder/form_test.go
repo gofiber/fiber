@@ -268,10 +268,12 @@ func Test_FormBinder_BindMultipart_RequiredFile(t *testing.T) {
 
 type embeddedUpload struct {
 	Avatar *multipart.FileHeader `form:"avatar"`
+	Count  int                   `form:"count,default:7"`
 }
 
 // Test_FormBinder_BindMultipart_UnexportedEmbeddedPointer pins that a file reaches a field promoted through an
-// unexported embedded pointer the caller set, which schema follows but cannot allocate.
+// unexported embedded pointer the caller set, which schema follows but cannot allocate, and that decoding the files
+// leaves the other fields under it as the pairs decoded them.
 func Test_FormBinder_BindMultipart_UnexportedEmbeddedPointer(t *testing.T) {
 	t.Parallel()
 	out := struct {
@@ -280,11 +282,18 @@ func Test_FormBinder_BindMultipart_UnexportedEmbeddedPointer(t *testing.T) {
 	}{embeddedUpload: &embeddedUpload{}}
 	out.Profile.embeddedUpload = &embeddedUpload{}
 	require.NoError(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
+		require.NoError(t, mw.WriteField("count", "0"))
 		writeFormFile(t, mw, "avatar", "avatar.txt", "avatar")
 		writeFormFile(t, mw, "profile.avatar", "profile.txt", "profile")
 	}), &out))
 	requireFile(t, out.Avatar, "avatar.txt", "avatar")
 	requireFile(t, out.Profile.Avatar, "profile.txt", "profile")
+
+	pairsOnly := struct{ *embeddedUpload }{&embeddedUpload{}}
+	require.NoError(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
+		require.NoError(t, mw.WriteField("count", "0"))
+	}), &pairsOnly))
+	require.Equal(t, pairsOnly.Count, out.Count)
 }
 
 // requireFile pins the name, content type and content of an uploaded file.
