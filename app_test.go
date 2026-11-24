@@ -834,10 +834,15 @@ func Test_App_RefusedRequest_ErrorHandlerTimesOut(t *testing.T) {
 	ok := func(c Ctx) error { return c.SendString("ok") }
 	app := New(Config{BodyLimit: 16, ErrorHandler: timesOut})
 	app.Post("/", ok)
-	mounted := New(Config{ErrorHandler: timesOut})
-	mounted.Post("/", ok)
+	mounted := func() *App {
+		sub := New(Config{ErrorHandler: timesOut})
+		sub.Post("/", ok)
+		return sub
+	}
 	root := New(Config{BodyLimit: 16})
-	root.Use("/sub", mounted)
+	root.Use("/sub", mounted())
+	domainRoot := New(Config{BodyLimit: 16})
+	domainRoot.Domain("example.com").Use("/sub", mounted())
 
 	for _, tc := range []struct {
 		app    *App
@@ -847,6 +852,7 @@ func Test_App_RefusedRequest_ErrorHandlerTimesOut(t *testing.T) {
 		{name: "route", app: app, target: "POST /"},
 		{name: "method without routes", app: app, target: "PURGE /"},
 		{name: "mounted app", app: root, target: "POST /sub"},
+		{name: "domain mounted app", app: domainRoot, target: "POST /sub"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
