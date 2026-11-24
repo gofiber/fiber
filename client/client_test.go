@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -486,6 +487,7 @@ func (tr clientTestATransport) run(t *testing.T) {
 		require.NoError(t, client.SetProxyURL("http://127.0.0.1:8080"))
 		hc := tr.hostClient(t, client)
 		require.NotNil(t, hc.Dial)
+		require.NotNil(t, hc.DialTimeout, "the proxy dialer is not handed the time a request leaves for the connect")
 
 		var called atomic.Int32
 		customDial := func(string) (net.Conn, error) {
@@ -497,6 +499,7 @@ func (tr clientTestATransport) run(t *testing.T) {
 		_, err := hc.Dial("example.com:80")
 		require.Error(t, err)
 		require.EqualValues(t, 1, called.Load())
+		require.Nil(t, hc.DialTimeout, "fasthttp prefers it to Dial and would still dial through the proxy")
 
 		client.Reset()
 		require.NotNil(t, client.FasthttpClient())
@@ -1346,6 +1349,48 @@ func Test_Set_Config_To_Request(t *testing.T) {
 	})
 }
 
+// clientTestASOCKS5 starts a SOCKS5 proxy that grants every CONNECT to a domain name and answers
+// the tunneled request itself with the target it was asked for.
+func clientTestASOCKS5(t *testing.T) string {
+	t.Helper()
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, ln.Close()) })
+
+	serve := func(conn net.Conn) {
+		read := func(n int) []byte {
+			b := make([]byte, n)
+			_, err := io.ReadFull(conn, b)
+			assert.NoError(t, err)
+			return b
+		}
+		assert.Equal(t, []byte{5, 1, 0}, read(3)) // version 5, one method on offer: no authentication
+		if _, err := conn.Write([]byte{5, 0}); !assert.NoError(t, err) {
+			return
+		}
+		request := read(5) // version 5, CONNECT, reserved, a domain name, its length
+		assert.Equal(t, []byte{5, 1, 0, 3}, request[:4])
+		name, port := read(int(request[4])), read(2)
+		_, err := conn.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}) // granted, bound to 0.0.0.0:0
+		assert.NoError(t, err)
+		assert.NoError(t, fasthttp.ServeConn(conn, func(ctx *fasthttp.RequestCtx) {
+			ctx.SetConnectionClose()
+			ctx.SetBodyString(fmt.Sprintf("socks5 to %s:%d", name, binary.BigEndian.Uint16(port)))
+		}))
+	}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go serve(conn)
+		}
+	}()
+	return "socks5://" + ln.Addr().String()
+}
+
 func Test_Client_SetProxyURL(t *testing.T) {
 	t.Parallel()
 	app, dial, start := createHelperServer(t)
@@ -1382,18 +1427,29 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		})
 	})
 
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
-		client := New()
+	socksAddr := clientTestASOCKS5(t)
+	for _, tc := range []struct {
+		name, proxy, body string
+		timeout           time.Duration
+	}{
+		{name: "success", proxy: proxyAddr, body: "true"},
+		{name: "success with a timeout", proxy: proxyAddr, body: "true", timeout: time.Minute},
+		{name: "success through socks5", proxy: socksAddr, body: "socks5 to localhost:3000"},
+		{name: "success through socks5 with a timeout", proxy: socksAddr, body: "socks5 to localhost:3000", timeout: time.Minute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := New().SetTimeout(tc.timeout)
 
-		require.NoError(t, client.SetProxyURL(proxyAddr))
+			require.NoError(t, client.SetProxyURL(tc.proxy))
 
-		resp, err := client.Get("http://localhost:3000")
-		require.NoError(t, err)
+			resp, err := client.Get("http://localhost:3000")
+			require.NoError(t, err)
 
-		require.Equal(t, 200, resp.StatusCode())
-		require.Equal(t, "true", string(resp.Body()))
-	})
+			require.Equal(t, 200, resp.StatusCode())
+			require.Equal(t, tc.body, string(resp.Body()))
+		})
+	}
 
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()

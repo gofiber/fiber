@@ -1015,6 +1015,35 @@ func Test_httpClientTransport_Interface(t *testing.T) {
 // Test_Transport_PathNormalizing covers the setting that decides what reaches the
 // wire: the wrapped client's own field, read and written through every kind of
 // transport.
+func Test_BoundTLSHandshake_DialsHostsWithoutDialer(t *testing.T) {
+	t.Parallel()
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, ln.Close()) })
+	for _, tc := range []struct {
+		name           string
+		tls, dualStack bool
+	}{
+		{name: "http"}, {name: "http dual stack", dualStack: true}, {name: "https", tls: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			hc := &fasthttp.HostClient{Addr: ln.Addr().String(), IsTLS: tc.tls, DialDualStack: tc.dualStack}
+			require.NoError(t, boundTLSHandshake(hc))
+			require.NotNil(t, hc.DialTimeout, "the host client dials through fasthttp's default, unbounded by the hook")
+			conn, err := hc.DialTimeout(hc.Addr, time.Minute)
+			require.NoError(t, err)
+			require.NoError(t, conn.Close())
+		})
+	}
+	t.Run("a dialer of the caller's is kept", func(t *testing.T) {
+		t.Parallel()
+		hc := &fasthttp.HostClient{Addr: ln.Addr().String(), Dial: fasthttp.Dial}
+		require.NoError(t, boundTLSHandshake(hc))
+		require.Nil(t, hc.DialTimeout)
+	})
+}
+
 func Test_Transport_PathNormalizing(t *testing.T) {
 	t.Parallel()
 	t.Run("fasthttp.Client the Fiber client made", func(t *testing.T) {

@@ -519,6 +519,8 @@ func (*clientTestCStubTransport) SetStreamResponseBody(bool) {}
 func (*clientTestCStubTransport) MaxResponseBodySize() int   { return 0 }
 func (*clientTestCStubTransport) SetMaxResponseBodySize(int) {}
 
+func (*clientTestCStubTransport) SetDialTimeout(fasthttp.DialFuncWithTimeout) {}
+
 // delayedTransport completes successfully after a fixed delay, without any
 // synchronization with the caller, mirroring a slow upstream that answers after
 // the client has already given up.
@@ -966,6 +968,12 @@ func silentServer(t *testing.T) (dial fasthttp.DialFunc, hungUp <-chan struct{})
 	t.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
+	return func(string) (net.Conn, error) { return ln.Dial() }, silentListener(t, ln)
+}
+
+// silentListener serves ln as silentServer does and closes it when the test ends.
+func silentListener(t *testing.T, ln net.Listener) <-chan struct{} {
+	t.Helper()
 	t.Cleanup(func() { require.NoError(t, ln.Close()) })
 
 	closed := make(chan struct{}, 16)
@@ -983,7 +991,7 @@ func silentServer(t *testing.T) (dial fasthttp.DialFunc, hungUp <-chan struct{})
 			}()
 		}
 	}()
-	return func(string) (net.Conn, error) { return ln.Dial() }, closed
+	return closed
 }
 
 // Test_Execute_CancelEndsTheExchange checks that an exchange with a server that never answers ends
@@ -1051,6 +1059,99 @@ func Test_Execute_CancelEndsTheExchange(t *testing.T) {
 			})
 		}
 	}
+}
+
+// Test_Execute_TimeoutEndsProxyDial checks that the call's timeout ends a dial through a proxy that
+// never answers the CONNECT or SOCKS request, on every kind of transport.
+func Test_Execute_TimeoutEndsProxyDial(t *testing.T) {
+	t.Parallel()
+	newHostClient := func() *Client { return NewWithHostClient(&fasthttp.HostClient{Addr: "example.com:80"}) }
+	newBalancer := func() *Client {
+		lb := &fasthttp.LBClient{Timeout: 50 * time.Millisecond}
+		lb.Clients = append(lb.Clients, &fasthttp.HostClient{Addr: "example.com:80"})
+		return NewWithLBClient(lb)
+	}
+	for _, tc := range []struct {
+		newClient         func() *Client
+		name, scheme, url string
+	}{
+		{name: "http proxy", scheme: "http", url: "http://example.com/", newClient: New},
+		{name: "http proxy, TLS target", scheme: "http", url: "https://example.com/", newClient: New},
+		{name: "http proxy, host client", scheme: "http", url: "http://example.com/", newClient: newHostClient},
+		{name: "http proxy, balancer", scheme: "http", url: "http://example.com/", newClient: newBalancer},
+		{name: "socks5 proxy", scheme: "socks5", url: "http://example.com/", newClient: New},
+		{name: "socks5 proxy, TLS target", scheme: "socks5", url: "https://example.com/", newClient: New},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+			require.NoError(t, err)
+			hungUp := silentListener(t, ln)
+			client := tc.newClient().SetTimeout(50 * time.Millisecond)
+			require.NoError(t, client.SetProxyURL(tc.scheme+"://"+ln.Addr().String()))
+
+			_, err = client.Get(tc.url)
+			require.ErrorIs(t, err, ErrTimeoutOrCancel)
+			apptest.Recv(t, hungUp, 2*time.Second, "the connection to the proxy is still open after the call ended")
+		})
+	}
+}
+
+// Test_Execute_TimeoutEndsTheHandshakeOfAWaitingRequest checks that a request that waited for a free
+// connection, which fasthttp dials without a timeout, still bounds the TLS handshake on it.
+func Test_Execute_TimeoutEndsTheHandshakeOfAWaitingRequest(t *testing.T) {
+	t.Parallel()
+	dial, hungUp := silentServer(t)
+	connected := make(chan struct{}, 16)
+	client := New().SetDial(func(addr string) (net.Conn, error) {
+		conn, err := dial(addr)
+		connected <- struct{}{}
+		return conn, err
+	})
+	client.FasthttpClient().MaxConnsPerHost = 1
+	client.FasthttpClient().MaxConnWaitTimeout = time.Minute
+
+	failed := make(chan error, 2)
+	get := func(timeout time.Duration) {
+		_, err := client.R().SetTimeout(timeout).Get("https://example.com/")
+		failed <- err
+	}
+	go get(300 * time.Millisecond)
+	apptest.Recv(t, connected, 2*time.Second, "the first request did not dial")
+	go get(time.Second) // waits, and gets the connection dialed when the first one is closed
+	for range 2 {
+		require.ErrorIs(t, apptest.Recv(t, failed, 5*time.Second), ErrTimeoutOrCancel)
+	}
+	apptest.Recv(t, connected, 2*time.Second, "no connection was dialed for the waiting request")
+	for range 2 {
+		apptest.Recv(t, hungUp, 2*time.Second, "the connection is still open after the call ended")
+	}
+}
+
+// Test_Execute_ConnectionDialedWithoutTimeoutStaysUsable checks that a TLS connection dialed without
+// a timeout and pooled unused serves the requests that share it, with and without a timeout.
+func Test_Execute_ConnectionDialedWithoutTimeoutStaysUsable(t *testing.T) {
+	t.Parallel()
+	app, addr, clientTLS := clientTestAStartTLSServer(t, "ok")
+	t.Cleanup(func() { require.NoError(t, app.Shutdown()) })
+
+	var dials atomic.Int32
+	host := &fasthttp.HostClient{Addr: addr, IsTLS: true, TLSConfig: clientTLS, Dial: func(addr string) (net.Conn, error) {
+		dials.Add(1)
+		return net.Dial(fiber.NetworkTCP4, addr)
+	}}
+	require.NoError(t, boundTLSHandshake(host))
+	cc, err := host.AcquireConn(0, false)
+	require.NoError(t, err)
+	host.ReleaseConn(cc)
+
+	client := NewWithHostClient(host)
+	for _, timeout := range []time.Duration{10 * time.Second, 0, 10 * time.Second, 0} {
+		resp, err := client.R().SetTimeout(timeout).Get("https://" + addr + "/")
+		clientTestARequireOK(t, resp, err, "ok")
+		resp.Close()
+	}
+	require.Equal(t, int32(1), dials.Load(), "the requests share the connection dialed first")
 }
 
 // Test_Execute_CancelOnlyContextKeepsConnectionsUsable checks that requests under a context that can

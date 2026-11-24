@@ -116,13 +116,15 @@ func (c *Client) applyTLSConfig(config *tls.Config) {
 	c.transport.SetTLSConfig(config)
 }
 
-func (c *Client) applyDial(dial fasthttp.DialFunc) {
+// applyDial sets both dial functions: fasthttp prefers DialTimeout, so a stale one would win over dial.
+func (c *Client) applyDial(dial fasthttp.DialFunc, dialTimeout fasthttp.DialFuncWithTimeout) {
 	c.transport.SetDial(dial)
+	c.transport.SetDialTimeout(dialTimeout)
 }
 
 // FasthttpClient returns the underlying *fasthttp.Client if the client was created with one.
 //
-// A client created by New bounds TLS handshakes through this client's ConfigureClient
+// A client created by New bounds dials and TLS handshakes through this client's ConfigureClient
 // hook, which has one slot: a hook of your own, set before the first request, applies
 // its settings and then calls the hook that was there.
 func (c *Client) FasthttpClient() *fasthttp.Client {
@@ -403,20 +405,20 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 }
 
 // SetProxyURL sets the proxy URL for the client. This affects all subsequent requests.
+// The timeout of a request bounds its dial through the proxy as well.
 func (c *Client) SetProxyURL(proxyURL string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// Build the fasthttp proxy dialer directly so invalid proxy URLs are returned
 	// to callers instead of being swallowed by FasthttpHTTPDialer.
-	dialer := fasthttpproxy.Dialer{
-		Config: httpproxy.Config{HTTPProxy: proxyURL, HTTPSProxy: proxyURL},
-	}
+	config := httpproxy.Config{HTTPProxy: proxyURL, HTTPSProxy: proxyURL}
+	dialer := fasthttpproxy.Dialer{Config: config}
 	dialFunc, err := dialer.GetDialFunc(false)
 	if err != nil {
 		return fmt.Errorf("client: invalid proxy URL: %w", err)
 	}
-	c.applyDial(dialFunc)
+	c.applyDial(dialFunc, proxyDialTimeout(config, dialFunc))
 	return nil
 }
 
@@ -888,12 +890,13 @@ func (c *Client) Custom(url, method string, cfg ...Config) (*Response, error) {
 	return req.Custom(url, method)
 }
 
-// SetDial sets the custom dial function for the client.
+// SetDial sets the custom dial function for the client. It also removes a DialTimeout
+// function, the one SetProxyURL installs included, which fasthttp would call instead.
 func (c *Client) SetDial(dial fasthttp.DialFunc) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.applyDial(dial)
+	c.applyDial(dial, nil)
 	return c
 }
 
