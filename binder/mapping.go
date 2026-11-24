@@ -1144,10 +1144,15 @@ func hasComma(s string) bool {
 	return strings.IndexByte(s, ',') >= 0
 }
 
+// maxSplitKeyBytes is the longest key whose value is split: every piece is filed
+// under the whole key, so splitting costs the key's length times its commas.
+const maxSplitKeyBytes = 1 << 10
+
 // split files value under key, split at its commas when splitting is on and
-// the key names a slice of out's.
+// the key, at most maxSplitKeyBytes long, names a slice of out's.
 func (d *bindData) split(aliasTag string, out any, key, value string, enableSplitting bool) { //nolint:revive // the flag is the binder's setting
-	if enableSplitting && strings.IndexByte(value, ',') >= 0 && equalFieldType(out, reflect.Slice, key, aliasTag) {
+	if enableSplitting && len(key) <= maxSplitKeyBytes && strings.IndexByte(value, ',') >= 0 &&
+		equalFieldType(out, reflect.Slice, key, aliasTag) {
 		// A header value is a comma-separated list (RFC 9110 Section 5.6.1): its
 		// elements carry no surrounding OWS, and empty ones are ignored. Quoted
 		// strings are not parsed, so a comma inside one still splits.

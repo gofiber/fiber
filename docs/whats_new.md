@@ -1065,6 +1065,8 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 
 A key bound into a struct can have at most 64 segments (`items[0][sku]` has three). A deeper key fails the bind with `binder.ErrKeyTooDeep`; map destinations are not limited. In a struct with a slice of structs inside a slice element or below a field of its own type, an index that can grow such a slice, such as the `3` in `items[0][variants][3][sku]`, counts as its value plus one elements of the largest such slice element, and keys that add up to more than 8 MiB fail the bind with `binder.ErrTooManyElements`. [Learn more](./api/bind.md#nested-and-array-form-fields).
 
+With `EnableSplittingOnParsers`, a value whose key is longer than 1,024 bytes is not split at its commas: a slice field or a map of slices gets it as one element.
+
 <details>
 <summary>Example</summary>
 
