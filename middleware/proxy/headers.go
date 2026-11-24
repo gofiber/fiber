@@ -197,7 +197,7 @@ func setRealIP(c fiber.Ctx, ip []byte) bool {
 // screenFieldNames refuses a field name that is not a token, which fasthttp forwards as sent and an upstream may end
 // the header section at, hiding the lines written behind it. With realIP it removes the names a CGI upstream reads as
 // X-Real-IP, "_" standing for "-" there (RFC 3875 Section 4.1.18), within maxConnectionOptions.
-func screenFieldNames(h *fasthttp.RequestHeader, realIP bool) error {
+func screenFieldNames(h *fasthttp.RequestHeader, realIP bool) error { //nolint:revive // flag-parameter: realIP says whether the caller writes X-Real-IP
 	var err error
 	var aliases []string
 	h.All()(func(k, _ []byte) bool { // called, not ranged, which heap-allocates the loop state

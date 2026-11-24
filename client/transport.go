@@ -117,7 +117,7 @@ func newOwnedStandardClientTransport() *standardClientTransport {
 			MaxResponseBodySize: defaultMaxResponseBodySize,
 			// On the client, which fasthttp gives every host client before the hook
 			// runs, so a hook of the caller's own in place of this one does not lose it.
-			Transport:       cancelTransport{},
+			Transport: cancelTransport{},
 			ConfigureClient: func(hc *fasthttp.HostClient) error {
 				tlshandshake.Bound(hc)
 				return nil

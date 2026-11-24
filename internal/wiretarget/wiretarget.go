@@ -459,7 +459,7 @@ func isHexLower(b byte) bool { return b >= 'a' && b <= 'f' }
 
 // RoutedAsMatched is Routed for a reader that takes the target as written, as a proxy upstream does. ok is false when
 // Routed would escape a raw byte or a stray "%", whose escaped spelling the router keeps apart as another path.
-func RoutedAsMatched[App any](c Ctx[App]) (target string, ok bool) {
+func RoutedAsMatched[App any](c Ctx[App]) (string, bool) {
 	path := c.Path()
 	if !appconfig.Of(c.App()).UnescapePath && needsEscape(path) {
 		return "", false

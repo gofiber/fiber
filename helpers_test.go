@@ -737,12 +737,7 @@ func Test_Utils_ReleaseHeaderParams_DropsGrownMap(t *testing.T) {
 // The pool gets no map a client grew, and none that still views a request.
 func Test_Utils_GetOffer_PooledParams(t *testing.T) {
 	t.Parallel()
-	var accept strings.Builder
-	accept.WriteString("text/plain;level=1,text/html")
-	for i := range 9 {
-		accept.WriteString(";p" + strconv.Itoa(i) + "=1")
-	}
-	header := []byte(accept.String())
+	header := []byte("text/plain;level=1,text/html;p0=1;p1=1;p2=1;p3=1;p4=1;p5=1;p6=1;p7=1;p8=1")
 	for range 32 {
 		require.Empty(t, getOffer(header, acceptsOfferType, "application/json"))
 		for range 2 {
