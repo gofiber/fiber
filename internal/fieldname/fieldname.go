@@ -531,12 +531,8 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
 	if canonical && !HasTrailers(h) {
-		v := Peek(h, name)
-		if len(v) > 0 {
-			return v
-		}
-		// Not even a nil answer means absent: fasthttp stores an empty value as nil in a slot that never held one.
-		// PeekAll costs no allocation and resolves the slotted names.
+		// PeekAll alone: fasthttp stores an empty value as nil in a slot that never held one, so a nil Peek
+		// cannot rule the name out and a miss would scan twice. It costs no allocation and resolves the slotted names.
 		for _, v := range h.PeekAll(name) {
 			if len(v) > 0 {
 				return v
