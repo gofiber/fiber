@@ -236,7 +236,7 @@ func newRefusalRecords(cfg *Config, m *manager) *refusalRecords {
 
 // key is where the refusal is recorded, under refusalMarker: the key without its other dimensions, so
 // one record reaches every variant, or, for a credential the key does not hold, a digest of the
-// credential headers the Vary selects by; "" for none. A HEAD is recorded as the GET it mirrors.
+// credential headers the Vary selects by that the request sends; "" for none. A HEAD is recorded as the GET it mirrors.
 func (r *refusalRecords) key(c fiber.Ctx, generated string, varyNames []string, creds requestCredentials) string {
 	bufPtr := acquireKeyBuffer()
 	buf := r.appendKey((*bufPtr)[:0], c, generated, varyNames, creds)
@@ -302,8 +302,11 @@ func (r *refusalRecords) appendKey(buf []byte, c fiber.Ctx, generated string, va
 			slices.Sort(varied)
 			varied = slices.Compact(varied)
 		}
-		// What the key holds is in the record already, so variants that also vary on it share the record.
-		varied = slices.DeleteFunc(varied, cfg.keyHoldsHeader)
+		// What the key holds is in the record already, and a header not sent selects nothing: variants that
+		// also vary on either share the record.
+		varied = slices.DeleteFunc(varied, func(name string) bool {
+			return cfg.keyHoldsHeader(name) || !hasHeaderValue(c, []string{name})
+		})
 	}
 
 	canonical := headerlookup.Canonical(c)

@@ -2043,6 +2043,9 @@ func accountApp(cfg *Config, entered, release chan struct{}) *fiber.App {
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
 		c.Set(fiber.HeaderCacheControl, "public, max-age="+c.Get("X-Max-Age", "60"))
+		if vary := c.Get("X-Vary"); vary != "" {
+			c.Set(fiber.HeaderVary, vary)
+		}
 		return c.SendString("account")
 	})
 	return app
@@ -2160,6 +2163,97 @@ func Test_Cache_RefusalOfAnotherCredentialLeavesTheStore(t *testing.T) {
 	require.NoError(t, got.err)
 	require.Equal(t, cacheMiss, got.cache)
 	require.Equal(t, cacheHit, doRequest(t, app, accountReq("text/short")).cache)
+}
+
+// A refusal reaches the credential's entries of the URL that also vary on credential headers it does not send.
+func Test_Cache_RefusalReachesTheVariantsVaryingOnHeadersNotSent(t *testing.T) {
+	t.Parallel()
+	for _, kind := range storageKinds {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			app := accountApp(&Config{Storage: storageOf(kind)}, nil, nil)
+			req := func(accept, vary string, more ...string) *http.Request {
+				return cacheTestCReq("/account", append([]string{fiber.HeaderAccept, accept, "X-Vary", vary, fiber.HeaderCookie, "session=a"}, more...)...)
+			}
+			require.Equal(t, cacheMiss, doRequest(t, app, req("text/short", fiber.HeaderCookie)).cache)
+			require.Equal(t, cacheMiss, doRequest(t, app, req("text/other", "Cookie, X-API-Key")).cache)
+
+			require.Equal(t, fiber.StatusUnauthorized, doRequest(t, app, req("text/short", fiber.HeaderCookie, fiber.HeaderCacheControl, "no-cache", "X-Refuse", "1")).status)
+			require.NotEqual(t, cacheHit, doRequest(t, app, req("text/other", "Cookie, X-API-Key")).cache)
+		})
+	}
+}
+
+// A request for the credential whose handler ran while the credential was refused keeps it out until its entry
+// expires, whatever its response varies on. One varying on no credential is every client's, the refused one's too.
+func Test_Cache_StoreVaryingOtherwiseAfterARefusalWhileItsHandlerRan(t *testing.T) {
+	t.Parallel()
+	credentials := map[string]struct {
+		vary       string // of the entry refused
+		credential []string
+		cfg        Config
+	}{
+		"authorization": {credential: []string{fiber.HeaderAuthorization, "Bearer a"}},
+		"KeyCookies":    {cfg: Config{KeyCookies: []string{"session"}}, credential: []string{fiber.HeaderCookie, "session=a"}},
+		"vary cookie":   {vary: fiber.HeaderCookie, credential: []string{fiber.HeaderCookie, "session=a"}},
+	}
+	for name, tc := range credentials {
+		for _, vary := range []string{"", "X-Tenant", "Cookie, X-API-Key"} {
+			for path, cacheControl := range map[string]string{"miss": "", "accepted refresh": "no-cache"} {
+				for _, kind := range storageKinds {
+					t.Run(name+"/"+cmp.Or(vary, "no Vary")+"/"+path+"/"+kind, func(t *testing.T) {
+						t.Parallel()
+						var storage *refusalStorage
+						cfg := tc.cfg
+						if kind == "external" {
+							storage = newRefusalStorage()
+							cfg.Storage = storage
+						}
+						entered, release := make(chan struct{}), make(chan struct{})
+						app := accountApp(&cfg, entered, release)
+						req := func(accept, vary string, more ...string) *http.Request {
+							headers := append([]string{fiber.HeaderAccept, accept, "X-Vary", vary}, tc.credential...)
+							return cacheTestCReq("/account", append(headers, more...)...)
+						}
+						require.Equal(t, cacheMiss, doRequest(t, app, req("text/short", tc.vary)).cache)
+
+						// The refresh is of the entry refused, so no entry outlives the record but the one stored.
+						accept := "text/other"
+						if cacheControl != "" {
+							accept = "text/short"
+						}
+						done := sendAsync(app, req(accept, vary, fiber.HeaderCacheControl, cacheControl, "X-Slow", "1", "X-Max-Age", "3600"))
+						apptest.Recv(t, entered, time.Minute)
+						stored := uint64(time.Now().Unix())
+						require.Equal(t, fiber.StatusUnauthorized, doRequest(t, app, req("text/short", tc.vary, fiber.HeaderCacheControl, "no-cache", "X-Refuse", "1")).status)
+						close(release)
+						require.NoError(t, apptest.Recv(t, done, time.Minute).err)
+
+						if storage != nil {
+							lapseRecordsBefore(storage, stored+3598)
+						}
+						got := doRequest(t, app, req(accept, vary)).cache
+						if shared := tc.vary != "" && !strings.Contains(vary, tc.vary); shared {
+							require.Equal(t, cacheHit, got)
+							return
+						}
+						require.NotEqual(t, cacheHit, got)
+					})
+				}
+			}
+		}
+	}
+}
+
+// lapseRecordsBefore deletes the refusal records that lapse before the second given, as time would.
+func lapseRecordsBefore(storage *refusalStorage, second uint64) {
+	storage.Mu.Lock()
+	defer storage.Mu.Unlock()
+	for key, value := range storage.Data {
+		if isRefusalRecord(key) && lapseOf(value) < second {
+			delete(storage.Data, key)
+		}
+	}
 }
 
 // A request for the credential that stores its entry while the refusal's record is being written finds no
