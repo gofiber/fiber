@@ -1396,6 +1396,21 @@ func Test_Request_FileReaderClosedOnFailure(t *testing.T) {
 		require.Equal(t, int32(1), reader.closes.Load())
 	})
 
+	t.Run("a replaced reader is closed once", func(t *testing.T) {
+		t.Parallel()
+		first := &countedReader{Reader: strings.NewReader("first")}
+		second := &countedReader{Reader: strings.NewReader("second")}
+		file := AcquireFile(SetFileReader(first))
+		file.SetReader(second)
+		require.Equal(t, int32(1), first.closes.Load())
+
+		file.closeReader() // as building the body does
+		file.SetReader(&countedReader{Reader: strings.NewReader("third")})
+		ReleaseFile(file)
+		require.Equal(t, int32(1), first.closes.Load())
+		require.Equal(t, int32(1), second.closes.Load())
+	})
+
 	t.Run("a pooled file does not remember an earlier close", func(t *testing.T) {
 		t.Parallel()
 		file := AcquireFile()

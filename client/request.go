@@ -1021,8 +1021,9 @@ func (f *File) SetPath(p string) {
 }
 
 // SetReader sets the file's reader, which the file owns from here on: it is closed once,
-// when the request body is built or when the file is reset or released.
+// when the request body is built, when the file is reset or released, or when it is replaced.
 func (f *File) SetReader(r io.ReadCloser) {
+	f.closeReader()
 	f.reader = r
 	f.isReaderClosed = false
 }

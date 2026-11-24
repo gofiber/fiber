@@ -1567,7 +1567,7 @@ func (f *File) SetPath(p string)
 
 ### SetReader
 
-**SetReader** sets the file's `io.ReadCloser`. The reader is closed automatically when the request body is built, so it serves one send, or when the file is reset or released without that having happened.
+**SetReader** sets the file's `io.ReadCloser`. The reader is closed automatically when the request body is built, so it serves one send, or when the file is reset, released or given another reader without that having happened.
 
 ```go title="Signature"
 func (f *File) SetReader(r io.ReadCloser)
