@@ -380,7 +380,6 @@ func Test_Redirect_Back(t *testing.T) {
 	require.NoError(t, c.Redirect().Back("/"))
 	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
 	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
-	require.Equal(t, HeaderReferer, string(c.Response().Header.Peek(HeaderVary)))
 
 	err := c.Redirect().Back()
 	require.Equal(t, 500, c.Response().StatusCode())
@@ -399,7 +398,29 @@ func Test_Redirect_Back_WithReferer(t *testing.T) {
 	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
 	require.Equal(t, "/back", c.Get(HeaderReferer))
 	require.Equal(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
-	require.Equal(t, HeaderReferer, string(c.Response().Header.Peek(HeaderVary)))
+	require.Empty(t, c.Response().Header.Peek(HeaderVary))
+}
+
+func Test_Redirect_Back_VaryRefererOnPermanentRedirect(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		vary   string
+		status int
+	}{
+		{status: StatusMovedPermanently, vary: HeaderReferer},
+		{status: StatusPermanentRedirect, vary: HeaderReferer},
+		{status: StatusFound},
+		{status: StatusTemporaryRedirect},
+	} {
+		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
+			t.Parallel()
+			c := apptest.Ctx(t, New())
+			c.Request().Header.Set(HeaderReferer, "/back")
+			require.NoError(t, c.Redirect().Status(tc.status).Back("/"))
+			require.Equal(t, tc.status, c.Response().StatusCode())
+			require.Equal(t, tc.vary, string(c.Response().Header.Peek(HeaderVary)))
+		})
+	}
 }
 
 // rootMiscBExpectBackTo asks a context for a request to example.com that came from referer to redirect back,

@@ -132,8 +132,8 @@ value like `/\evil.com`, which a browser resolves to `//evil.com`, is not
 mistaken for a local path. A referer that is missing, cross-origin, or
 unparsable falls back to the provided URL. If there is no fallback either,
 `Back` returns `fiber.ErrRedirectBackNoFallback`, an error with status 500.
-`Back` adds `Referer` to `Vary`, so a cache that stores the redirect, for
-example a `301` or `308`, keys it by the referer it was built from.
+With a `301` or `308` status, which a cache may store by default, `Back` adds
+`Referer` to `Vary`, so the cache keys the redirect by the referer it was built from.
 
 This browser-style normalization applies to the referer checked by `Back`, not to every redirect API or the fallback URL. The [HTTP client](../client/request.md#control-characters-in-redirect-targets) instead rejects upstream `Location` values containing control bytes rather than removing them and following a changed target.
 

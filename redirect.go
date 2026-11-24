@@ -419,8 +419,10 @@ func queryMergePoint(location string) (separator string, fragment int) { //nolin
 // It validates that the Referer is same-origin to prevent open redirect attacks.
 // If the Referer is missing, invalid, or cross-origin, the fallback URL is used.
 func (r *Redirect) Back(fallback ...string) error {
-	// The Referer picks the target, so a cache must not replay one client's redirect to another.
-	r.c.Vary(HeaderReferer)
+	// A 301 or 308 is cacheable by default, and the Referer picks its target.
+	if r.status == StatusMovedPermanently || r.status == StatusPermanentRedirect {
+		r.c.Vary(HeaderReferer)
+	}
 	location := r.refererHeader()
 	if location != "" {
 		// Reject invalid or cross-origin referrers, and redirect to the
