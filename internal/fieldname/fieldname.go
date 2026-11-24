@@ -43,6 +43,7 @@ type Peeker interface {
 type Deleter interface {
 	Del(key string)
 	PeekAll(key string) [][]byte
+	PeekTrailerKeys() [][]byte
 	All() iter.Seq2[[]byte, []byte]
 }
 
@@ -672,7 +673,8 @@ func DelOthers(h Deleter, name string) {
 }
 
 // DelSet removes every field line matching any of names in a single pass, which
-// beats Del's per-name scan when the whole set is known up front.
+// beats Del's per-name scan when the whole set is known up front. The fields of
+// the trailer section go with the header lines.
 func DelSet(h Deleter, names []string) {
 	DelSetWithin(h, names, math.MaxInt)
 }
@@ -689,6 +691,15 @@ func DelSetWithin(h Deleter, names []string, spare int) bool {
 		}
 		return len(removed)-len(names) <= spare
 	})
+	// All skips the trailer section, which Del clears only for a name it is given; every name there is a trailer key.
+	for _, k := range h.PeekTrailerKeys() {
+		if len(removed)-len(names) > spare {
+			break
+		}
+		if ks := utils.UnsafeString(k); ContainsFold(names, ks) && !slices.Contains(removed, ks) {
+			removed = append(removed, string(k))
+		}
+	}
 	if len(removed)-len(names) > spare {
 		return false
 	}

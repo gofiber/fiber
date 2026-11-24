@@ -769,6 +769,32 @@ func Test_DelSetWithin_Limit(t *testing.T) {
 	require.Equal(t, "v", string(First(h, "X-Keep", false)))
 }
 
+// A spelling stored in the trailer section alone counts against spare like one in the header section.
+func Test_DelSetWithin_TrailerSection(t *testing.T) {
+	t.Parallel()
+	newHeader := func(t *testing.T) *fasthttp.RequestHeader {
+		t.Helper()
+		h := &fasthttp.RequestHeader{}
+		h.DisableNormalizing()
+		require.NoError(t, h.SetTrailer("x-token, X-Keep"))
+		h.Add("x-token", "in the trailer section")
+		h.Add("X-Keep", "v")
+		h.Add("X-TOKEN", "in the header section")
+		return h
+	}
+
+	h := newHeader(t)
+	require.False(t, DelSetWithin(h, []string{"X-Token"}, 0))
+	require.Equal(t, "in the trailer section", string(h.PeekTrailer("x-token")))
+	require.Equal(t, "in the header section", string(h.Peek("X-TOKEN")))
+
+	h = newHeader(t)
+	require.True(t, DelSetWithin(h, []string{"X-Token"}, 1))
+	require.Empty(t, h.PeekTrailer("x-token"))
+	require.Empty(t, h.Peek("X-TOKEN"))
+	require.Equal(t, "v", string(h.PeekTrailer("X-Keep")))
+}
+
 // Test_IsCanonical_MatchesFasthttp checks the form against fasthttp itself: a
 // token name is canonical exactly when Set stores it unchanged, and any other
 // name is not, because fasthttp stores such a key as sent.
