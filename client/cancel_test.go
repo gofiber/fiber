@@ -201,3 +201,32 @@ func Test_RoundTripCancelable_MaxConnDuration(t *testing.T) {
 	require.True(t, closeAsked.Load(), "no request asked the server to close the aged connection")
 	apptest.Recv(t, closed, 2*time.Second, "the aged connection was not closed")
 }
+
+func Test_RoundTripCancelable_ClosesTunnel(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, method string
+		status       int
+	}{
+		{name: "switching protocols", method: fiber.MethodGet, status: fiber.StatusSwitchingProtocols},
+		{name: "connect 2xx", method: fiber.MethodConnect, status: fiber.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ts := startTestServer(t, func(app *fiber.App) {
+				app.Add([]string{tc.method}, "/", func(c fiber.Ctx) error { return c.SendStatus(tc.status) })
+			})
+			t.Cleanup(ts.stop)
+			closed := make(chan struct{}, 1)
+			client := New().SetDial(faultDial(ts, connFaults{}, closed))
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			resp, err := client.R().SetContext(ctx).SetMethod(tc.method).SetURL("http://example.com/").Send()
+			require.NoError(t, err)
+			require.Equal(t, tc.status, resp.StatusCode())
+			resp.Close()
+			apptest.Recv(t, closed, 2*time.Second, "the tunneled connection was not closed")
+		})
+	}
+}

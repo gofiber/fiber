@@ -177,8 +177,8 @@ func roundTripCancelable(watch *cancelContext, hc *fasthttp.HostClient, req *fas
 	}
 
 	// A context done once the response was read in full has closed the connection
-	// as well: it is not pooled, or the next request on it would fail.
-	if watch.detach() || resetConnection || req.ConnectionClose() || resp.ConnectionClose() {
+	// as well: it is not pooled, or the next request on it would fail. Nor is one that left HTTP.
+	if watch.detach() || resetConnection || req.ConnectionClose() || resp.ConnectionClose() || leftHTTP(req, resp) {
 		hc.CloseConn(cc)
 	} else {
 		// ReleaseConn records that the deadlines were touched, so fasthttp's own
@@ -186,4 +186,10 @@ func roundTripCancelable(watch *cancelContext, hc *fasthttp.HostClient, req *fas
 		hc.ReleaseConn(cc)
 	}
 	return false, nil
+}
+
+// leftHTTP mirrors fasthttp's transport: after a 101 or a 2xx to CONNECT the connection is a tunnel.
+func leftHTTP(req *fasthttp.Request, resp *fasthttp.Response) bool {
+	status := resp.StatusCode()
+	return status == fasthttp.StatusSwitchingProtocols || (req.Header.IsConnect() && status >= 200 && status < 300)
 }
