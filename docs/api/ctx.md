@@ -1587,7 +1587,7 @@ func (r fiber.Req) Fresh() bool
 
 ### FullURL
 
-Returns the full request URL (protocol + host + original URL).
+Returns the full request URL (protocol + host + original URL). Of an absolute-form request target (`GET http://example.com/search HTTP/1.1`) only the path and query follow the host, which is always the one [`Host`](#host) reports.
 
 ```go title="Signature"
 func (c fiber.Ctx) FullURL() string

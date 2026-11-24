@@ -262,7 +262,8 @@ func (r *DefaultReq) RequestCtx() *fasthttp.RequestCtx {
 	return r.c.fasthttp
 }
 
-// FullURL returns the full request URL (protocol + host + original URL).
+// FullURL returns the full request URL (protocol + host + original URL). Of an absolute-form
+// request target ("GET http://example.com/search") only the path and query follow the host.
 func (r *DefaultReq) FullURL() string {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
@@ -270,9 +271,25 @@ func (r *DefaultReq) FullURL() string {
 	buf.WriteString(r.Scheme())
 	buf.WriteString("://")
 	buf.WriteString(r.Host())
-	buf.WriteString(r.OriginalURL())
+	buf.WriteString(afterAuthority(r.OriginalURL()))
 
 	return buf.String()
+}
+
+// afterAuthority returns what follows the authority in target as it arrived: all of an origin-form target, the path
+// and query of an absolute-form one, nothing of an asterisk- or authority-form one (RFC 9112 Section 3.3).
+func afterAuthority(target string) string {
+	if target == "" || target[0] == '/' {
+		return target
+	}
+	scheme, rest, found := strings.Cut(target, "://")
+	if !found || strings.ContainsAny(scheme, "/?#") {
+		return ""
+	}
+	if i := utils.IndexAny3(rest, '/', '?', '#'); i >= 0 {
+		return rest[i:]
+	}
+	return ""
 }
 
 // UserAgent returns the User-Agent request header.

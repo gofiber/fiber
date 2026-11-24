@@ -925,6 +925,7 @@ resolve to the **request**; use `c.Res().Get()`, `c.Res().GetHeaders()`, `c.Res(
 - **IPs()**: Empty `X-Forwarded-For` elements are now ignored after trimming spaces and tabs, even when `EnableIPValidation` is disabled. Repeated commas and whitespace-only elements no longer produce empty strings in the returned slice. See [`Ctx.IPs`](./api/ctx.md#ips).
 - **Links()**: Adds to a `Link` header that is already set, as `res.links` does in Express, instead of replacing it. A second call, or one after `SendEarlyHints`, keeps the earlier links; call `c.Del(fiber.HeaderLink)` first to replace them. See [`Ctx.Links`](./api/ctx.md#links).
 - **Scheme()**: Behind a trusted proxy, the scheme headers are ranked instead of read in the order they arrive: `X-Forwarded-Proto` wins over `X-Forwarded-Protocol`, then `X-Forwarded-Ssl: on`, then `X-Url-Scheme`, so a client can no longer override the proxy's `X-Forwarded-Proto` with one of the others. A proxy that sets only a lower-ranked header must drop the ones above it. Empty elements of an `X-Forwarded-Proto` or `X-Forwarded-Protocol` list are skipped, so `,https` announces `https`. See the [reverse proxy guide](./guide/reverse-proxy.md#scheme-and-host-behind-a-proxy).
+- **FullURL()**: For an absolute-form request target (`GET http://example.com/search HTTP/1.1`) only the path and query follow the host. The target used to be appended whole, so its scheme ran on from the host name.
 
 ### SendEarlyHints
 
