@@ -1643,6 +1643,7 @@ A request the timeout middleware gave up on behind `FiberHandler`, `FiberHandler
 The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. Passwords must be provided in **hashed** form (e.g. SHA-256 or bcrypt) rather than plaintext. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Responses also set a `Vary: Authorization` header to prevent caching based on credentials. Passwords are no longer stored in the request context. A `Charset` option controls the value used in the challenge header. A request that carries the `Authorization` field on more than one line is refused with `400 Bad Request`: the field is defined as a single value, and reading either line would let the other decide what the request means.
 A new `HeaderLimit` option restricts the maximum length of the `Authorization` header (default: `8192` bytes).
 The `Authorizer` function now receives the current `fiber.Ctx` as a third argument, allowing credential checks to incorporate request context.
+Custom `Unauthorized` and `BadRequest` handlers run with the `401` or `400` status already set, and `Unauthorized` also with the challenge, `Cache-Control: no-store` and `Vary: Authorization`, so one that only writes a body, such as `c.SendFile`, no longer answers a refused request with `200`.
 
 ### Cache
 
