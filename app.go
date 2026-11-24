@@ -32,6 +32,7 @@ import (
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/nilerror"
+	"github.com/gofiber/fiber/v3/internal/requesthold"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -1822,6 +1823,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	fctx.Response.ImmediateHeaderFlush = rctx.Response.ImmediateHeaderFlush
 	if rctx.Response.IsBodyStream() {
 		fctx.Response.SetBodyStream(rctx.Response.BodyStream(), rctx.Response.Header.ContentLength())
+		requesthold.Rebind(rctx, &fctx.Response)
 	}
 	// Only fctx is reset, which closes the request's io.Closer values and waits for a flushed handler.
 	rctx.VisitUserValuesAll(fctx.SetUserValue)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"errors"
+	"io"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -568,6 +569,41 @@ func Test_Integration_App_ServerErrorHandler_LeavesUserValuesAlone(t *testing.T)
 	}()
 	require.Equal(t, fiber.StatusRequestEntityTooLarge, resp.StatusCode())
 	require.True(t, apptest.Recv(t, marked, 10*time.Second, "the handler did not return"))
+}
+
+// closeCounter is a body stream or local that reports each Close.
+type closeCounter struct {
+	io.Reader
+	closes chan struct{}
+}
+
+func (c closeCounter) Close() error {
+	c.closes <- struct{}{}
+	return nil
+}
+
+// The stream the ErrorHandler answers a refused request with is closed once, also while a flushed net/http handler
+// of the replay holds the request.
+func Test_Integration_App_ServerErrorHandler_ClosesStreamOnce(t *testing.T) {
+	t.Parallel()
+	stream := closeCounter{Reader: strings.NewReader("refused"), closes: make(chan struct{}, 2)}
+	app := fiber.New(fiber.Config{BodyLimit: 8, ErrorHandler: func(c fiber.Ctx, _ error) error {
+		return c.Status(fiber.StatusRequestEntityTooLarge).SendStream(stream)
+	}})
+	reset := closeCounter{closes: make(chan struct{}, 1)}
+	app.Use(func(c fiber.Ctx) error {
+		c.Locals("reset", reset)
+		return c.Next()
+	}, adaptor.HTTPHandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			return
+		}
+	}))
+
+	resp := performOversizedRequest(t, app, nil)
+	require.Equal(t, "refused", string(resp.Body()))
+	apptest.Recv(t, reset.closes, 10*time.Second, "the request was not reset")
+	require.Len(t, stream.closes, 1)
 }
 
 func Test_Integration_App_ServerErrorHandler_CustomMultipartBodyLimit(t *testing.T) {
