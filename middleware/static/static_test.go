@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -1742,6 +1744,41 @@ func Test_Static_DirectoryWithoutIndexKeepsHeaders(t *testing.T) {
 	require.Equal(t, "private", resp.Header.Get(fiber.HeaderCacheControl))
 	require.Equal(t, fiber.HeaderCookie, resp.Header.Get(fiber.HeaderVary))
 	require.Contains(t, resp.Header.Get(fiber.HeaderSetCookie), "session=s1")
+}
+
+// staticTestFS serves its files through Open alone, counting the calls, and opens a name with the aliases
+// replaced, the way a case-folding or FAT file system resolves another spelling of an entry.
+type staticTestFS struct {
+	files fstest.MapFS
+	alias *strings.Replacer
+	opens atomic.Int64
+}
+
+func (f *staticTestFS) Open(name string) (fs.File, error) {
+	f.opens.Add(1)
+	if f.alias != nil {
+		name = f.alias.Replace(name)
+	}
+	return f.files.Open(name) //nolint:wrapcheck // the file system's own error
+}
+
+// Off a route, as in an ErrorHandler, every path shares one file server, which serves the root.
+func Test_Static_Unrouted_OneFileServer(t *testing.T) {
+	t.Parallel()
+	fsys := &staticTestFS{files: fstest.MapFS{"index.html": {Data: []byte("INDEX")}, "secret.txt": {Data: []byte("SECRET")}}}
+	handler := New("", Config{FS: fsys})
+	app := fiber.New(fiber.Config{ErrorHandler: func(c fiber.Ctx, _ error) error { return handler(c) }})
+	h := app.Handler()
+
+	resp := staticTestExpectRaw(t, h, "/first", fiber.StatusOK)
+	require.Equal(t, "INDEX", string(resp.Body()))
+	opens := fsys.opens.Load()
+	for i := range 50 {
+		staticTestExpectRaw(t, h, fmt.Sprintf("/p%d/x", i), fiber.StatusOK)
+	}
+	require.Equal(t, opens, fsys.opens.Load(), "each path built a file server of its own")
+	resp = staticTestExpectRaw(t, h, "/"+strings.Repeat(`\`, 19)+"/secret.txt", fiber.StatusOK)
+	require.Equal(t, "INDEX", string(resp.Body()))
 }
 
 // With ByteRange on, the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) are

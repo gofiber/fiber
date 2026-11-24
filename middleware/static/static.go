@@ -58,6 +58,7 @@ type fileServer struct {
 	strictRouting bool // the router keeps name and name/ apart, so a directory has the slash and a file has none
 	browse        bool
 	invalid       bool // the fs.FS root cannot be opened, so no path names a file
+	unrouted      bool // no route runs, so the whole path stands for the route prefix
 }
 
 // fileServerKey identifies a file server: the decoding mode and the compressed
@@ -70,6 +71,16 @@ type fileServerKey struct {
 // prefixEnd returns where the rest of the routed path p begins, or -1 when no
 // part of it is known to be a name below the root.
 func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
+	if s.unrouted {
+		end := len(p)
+		if !s.strictRouting && end > 1 {
+			end = len(utils.TrimRight(p, '/'))
+		}
+		if end > 0 && p[end-1] == '/' {
+			end--
+		}
+		return end
+	}
 	if s.wildcard == "" {
 		return s.prefixLen
 	}
@@ -225,9 +236,13 @@ func New(root string, cfg ...Config) fiber.Handler {
 		if !cfg.StrictRouting && len(pattern) > 1 {
 			pattern = utils.TrimRight(pattern, '/')
 		}
+		// A made-up route's path is the request's own: it is no pattern to parse.
+		unrouted := isUnrouted(route)
 		prefixLen, wildcard := -1, ""
 		prefix, constant := pattern, true
 		switch params := route.Params; {
+		case unrouted:
+			prefix = ""
 		case len(params) == 0:
 		case isWildcard(params[0]):
 			// /john*, /john+ and /john/*.js -> /john; the text after the wildcard is part of the name
@@ -265,7 +280,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 
 		// a listing links below the prefix, which the cache key leaves out; fasthttp
 		// can only skip its whole cache, so files on such a route are not cached either
-		skipCache := config.CacheDuration < 0 || (config.Browse && wildcard != "")
+		skipCache := config.CacheDuration < 0 || (config.Browse && (wildcard != "" || unrouted))
 
 		files := &fasthttp.FS{
 			Root: fsRoot,
@@ -314,6 +329,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 			strictRouting: cfg.StrictRouting,
 			browse:        config.Browse,
 			invalid:       rootCheckErr != nil && config.FS != nil,
+			unrouted:      unrouted,
 		}
 	}
 
@@ -321,6 +337,10 @@ func New(root string, cfg ...Config) fiber.Handler {
 	serverFor := func(c fiber.Ctx) *fileServer {
 		route := c.Route()
 		key := fileServerKey{app: c.App(), route: route.Path}
+		if isUnrouted(route) {
+			// every path off a route shares one server: the made-up route's path is the request's
+			key.route = ""
+		}
 		if s, ok := servers.Load(key); ok {
 			if server, ok := s.(*fileServer); ok {
 				return server
@@ -459,6 +479,13 @@ func New(root string, cfg ...Config) fiber.Handler {
 		// Next middleware
 		return c.Next()
 	}
+}
+
+// isUnrouted reports whether route is the one c.Route() makes up where no route
+// runs, as under adaptor.FiberHandler or in an ErrorHandler; a registered one
+// has at least the handler that asks.
+func isUnrouted(route *fiber.Route) bool {
+	return len(route.Handlers) == 0
 }
 
 // endsInWildcard reports whether pattern ends in param, a wildcard.
