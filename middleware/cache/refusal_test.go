@@ -2059,15 +2059,22 @@ func refuseAccount(t *testing.T, app *fiber.App) {
 	require.Equal(t, fiber.StatusUnauthorized, doRequest(t, app, accountReq("text/short", fiber.HeaderCacheControl, "no-cache", "X-Refuse", "1")).status)
 }
 
-// sendAsync sends req through app in the background; the channel gets the transport error.
-func sendAsync(app *fiber.App, req *http.Request) <-chan error {
-	done := make(chan error, 1)
+// asyncReply is what sendAsync hands back: the response's X-Cache, or the transport error.
+type asyncReply struct {
+	err   error
+	cache string
+}
+
+// sendAsync sends req through app in the background.
+func sendAsync(app *fiber.App, req *http.Request) <-chan asyncReply {
+	done := make(chan asyncReply, 1)
 	go func() {
 		resp, err := app.Test(req, fiber.TestConfig{Timeout: time.Minute})
-		if err == nil {
-			err = resp.Body.Close()
+		if err != nil {
+			done <- asyncReply{err: err}
+			return
 		}
-		done <- err
+		done <- asyncReply{cache: resp.Header.Get("X-Cache"), err: resp.Body.Close()}
 	}()
 	return done
 }
@@ -2085,29 +2092,40 @@ func requireRecordLapsesAfter(t *testing.T, storage *refusalStorage, second uint
 	}
 }
 
-// A request for the credential whose handler ran across the refusal stores its entry after the record
-// was written: the record has to outlast that entry too.
-func Test_Cache_RefusalRecordOutlivesAnEntryStoredAfterIt(t *testing.T) {
+// A request for the credential whose handler ran while this instance recorded a refusal in the URL's group
+// does not store its response: the record may have lapsed by then, leaving nothing to extend over it.
+func Test_Cache_EntryIsNotStoredAfterARefusalWhileItsHandlerRan(t *testing.T) {
 	t.Parallel()
 	for name, cacheControl := range map[string]string{"miss": "", "accepted refresh": "no-cache"} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			storage := newRefusalStorage()
-			entered, release := make(chan struct{}), make(chan struct{})
-			app := accountApp(storage, entered, release)
-			require.Equal(t, cacheMiss, doRequest(t, app, accountReq("text/short")).cache)
-			if cacheControl != "" {
-				require.Equal(t, cacheMiss, doRequest(t, app, accountReq("text/other")).cache)
-			}
+		for _, lapsed := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/lapsed=%t", name, lapsed), func(t *testing.T) {
+				t.Parallel()
+				storage := newRefusalStorage()
+				entered, release := make(chan struct{}), make(chan struct{})
+				app := accountApp(storage, entered, release)
+				require.Equal(t, cacheMiss, doRequest(t, app, accountReq("text/short")).cache)
+				if cacheControl != "" {
+					require.Equal(t, cacheMiss, doRequest(t, app, accountReq("text/other")).cache)
+				}
 
-			done := sendAsync(app, accountReq("text/other", fiber.HeaderCacheControl, cacheControl, "X-Slow", "1", "X-Max-Age", "3600"))
-			apptest.Recv(t, entered, time.Minute)
-			stored := uint64(time.Now().Unix())
-			refuseAccount(t, app)
-			close(release)
-			require.NoError(t, apptest.Recv(t, done, time.Minute))
-			requireRecordLapsesAfter(t, storage, stored+3598)
-		})
+				done := sendAsync(app, accountReq("text/other", fiber.HeaderCacheControl, cacheControl, "X-Slow", "1", "X-Max-Age", "3600"))
+				apptest.Recv(t, entered, time.Minute)
+				refuseAccount(t, app)
+				if lapsed {
+					storage.Mu.Lock()
+					for key := range storage.Data {
+						if isRefusalRecord(key) {
+							delete(storage.Data, key)
+						}
+					}
+					storage.Mu.Unlock()
+				}
+				close(release)
+				got := apptest.Recv(t, done, time.Minute)
+				require.NoError(t, got.err)
+				require.Equal(t, cacheUnreachable, got.cache)
+			})
+		}
 	}
 }
 
@@ -2132,39 +2150,16 @@ func Test_Cache_RefusalRecordOutlivesAnEntryStoredDuringItsWrite(t *testing.T) {
 	stored := uint64(time.Now().Unix())
 	require.Equal(t, cacheMiss, doRequest(t, app, accountReq("text/other", "X-Max-Age", "3600")).cache)
 	close(release)
-	require.NoError(t, apptest.Recv(t, done, time.Minute))
+	require.NoError(t, apptest.Recv(t, done, time.Minute).err)
 	requireRecordLapsesAfter(t, storage, stored+3598)
 }
 
-// A refusal recorded while a request for the credential ran can lapse before that request stores, leaving
-// no record to extend: the entry is not stored.
-func Test_Cache_EntryIsNotStoredAfterARefusalWhileItsHandlerRan(t *testing.T) {
-	t.Parallel()
-	storage := newRefusalStorage()
-	entered, release := make(chan struct{}), make(chan struct{})
-	app := accountApp(storage, entered, release)
-	require.Equal(t, cacheMiss, doRequest(t, app, accountReq("text/short")).cache)
-
-	done := sendAsync(app, accountReq("text/other", "X-Slow", "1", "X-Max-Age", "3600"))
-	apptest.Recv(t, entered, time.Minute)
-	refuseAccount(t, app)
-	storage.Mu.Lock()
-	for key := range storage.Data {
-		if isRefusalRecord(key) {
-			delete(storage.Data, key) // the record lapses
-		}
-	}
-	storage.Mu.Unlock()
-	close(release)
-	require.NoError(t, apptest.Recv(t, done, time.Minute))
-	require.Equal(t, cacheMiss, doRequest(t, app, accountReq("text/other")).cache)
-}
-
-// An entry a refusal record has to be extended over is not stored when the extension cannot be made:
-// the instances sharing the Storage would read only the shorter record.
-func Test_Cache_EntryIsNotStoredPastARecordItCannotExtend(t *testing.T) {
+// A credential entry stored while a refusal record of the credential is kept extends the record over it, and
+// is not stored when it cannot: the instances sharing the Storage would read only the shorter record.
+func Test_Cache_EntryIsStoredOnlyWithTheRecordExtendedOverIt(t *testing.T) {
 	t.Parallel()
 	for name, failing := range map[string]func(*refusalStorage) *atomic.Bool{
+		"extended":                     nil,
 		"the record cannot be written": func(s *refusalStorage) *atomic.Bool { return &s.failWrites },
 		"the record cannot be read":    func(s *refusalStorage) *atomic.Bool { return &s.fail },
 	} {
@@ -2176,6 +2171,12 @@ func Test_Cache_EntryIsNotStoredPastARecordItCannotExtend(t *testing.T) {
 			refuseAccount(t, app)
 			require.Equal(t, 1, storage.records())
 
+			stored := uint64(time.Now().Unix())
+			if failing == nil {
+				require.Equal(t, cacheMiss, doRequest(t, app, accountReq("text/other", "X-Max-Age", "3600")).cache)
+				requireRecordLapsesAfter(t, storage, stored+3598)
+				return
+			}
 			failing(storage).Store(true)
 			require.Equal(t, cacheUnreachable, doRequest(t, app, accountReq("text/other", "X-Max-Age", "3600")).cache)
 		})
