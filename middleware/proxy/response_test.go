@@ -68,6 +68,36 @@ func Test_Proxy_UpstreamBodyLimit(t *testing.T) {
 	}
 }
 
+// Test_Proxy_UpstreamBodyReadFailure checks that a streamed body keeps the failure of a read of the upstream,
+// with a limit and without one, and that the end of a body is none.
+func Test_Proxy_UpstreamBodyReadFailure(t *testing.T) {
+	t.Parallel()
+	for name, limit := range map[string]int64{"limit": 64, "no limit": 0} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			// Fails on the second read only, as a read that ran into its deadline does.
+			body := &upstreamBody{Reader: iotest.TimeoutReader(iotest.OneByteReader(strings.NewReader("hello"))), limit: limit}
+			got, err := io.ReadAll(body)
+			require.ErrorIs(t, err, iotest.ErrTimeout)
+			require.Equal(t, "h", string(got))
+			n, again := body.Read(make([]byte, 8))
+			require.Zero(t, n)
+			require.ErrorIs(t, again, iotest.ErrTimeout, "the failure is kept")
+
+			var res fasthttp.Response
+			res.SetBodyString(iotest.ErrTimeout.Error())
+			require.True(t, body.failureStands(&res), "what fasthttp's Body leaves of a read that failed")
+
+			whole := &upstreamBody{Reader: strings.NewReader("hello"), limit: limit}
+			got, err = io.ReadAll(whole)
+			require.NoError(t, err)
+			require.Equal(t, "hello", string(got))
+			res.SetBodyString(io.EOF.Error())
+			require.False(t, whole.failureStands(&res), "the end of a body is no failure")
+		})
+	}
+}
+
 // Test_Proxy_StreamedBodyLimit pins the size a body that Balancer streams is held to.
 func Test_Proxy_StreamedBodyLimit(t *testing.T) {
 	t.Parallel()
@@ -390,6 +420,70 @@ func Test_Proxy_FailedResponseLeavesNothing(t *testing.T) {
 				} {
 					require.Empty(t, resp.Header.Values(field), field)
 				}
+			})
+		}
+	}
+}
+
+func Test_Proxy_StreamedBody_ModifyResponse_UpstreamBreaksOff(t *testing.T) {
+	t.Parallel()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(fiber.HeaderContentLength, "500")
+		fmt.Fprint(w, "hello") // 5 of 500 bytes: net/http closes the connection
+	}))
+	t.Cleanup(upstream.Close)
+	policy := proxyTestAllowPrivatePolicy()
+	failure := io.ErrUnexpectedEOF.Error()
+
+	for _, tc := range []struct {
+		hook   fiber.Handler
+		name   string
+		body   string
+		status int
+	}{
+		{
+			name: "Body read", status: fiber.StatusInternalServerError, body: failure,
+			hook: func(c fiber.Ctx) error {
+				c.Response().Body()
+				return nil
+			},
+		},
+		{
+			name: "Body read, body rewritten", status: fiber.StatusInternalServerError, body: failure,
+			hook: func(c fiber.Ctx) error {
+				c.Response().SetBody([]byte(strings.ReplaceAll(string(c.Response().Body()), "hello", "bye")))
+				return nil
+			},
+		},
+		{
+			name: "stream read, failure not answered", status: fiber.StatusInternalServerError, body: failure,
+			hook: func(c fiber.Ctx) error {
+				if _, err := io.ReadAll(c.Response().BodyStream()); err == nil {
+					return errors.New("the body arrived whole")
+				}
+				return nil
+			},
+		},
+		{
+			name: "stream read, failure answered", status: fiber.StatusBadGateway, body: "fallback",
+			hook: func(c fiber.Ctx) error {
+				if _, err := io.ReadAll(c.Response().BodyStream()); err != nil {
+					return c.Status(fiber.StatusBadGateway).SendString("fallback")
+				}
+				return nil
+			},
+		},
+	} {
+		for boundName, bound := range map[string]int{"bound": 4096, "no bound": -1} {
+			t.Run(tc.name+", "+boundName, func(t *testing.T) {
+				t.Parallel()
+				app := fiber.New()
+				app.Get("/", Balancer(Config{
+					Servers: []string{upstream.URL}, SecurityPolicy: &policy, MaxResponseBodySize: bound,
+					ModifyRequest:  func(c fiber.Ctx) error { c.Response().StreamBody = true; return nil },
+					ModifyResponse: tc.hook,
+				}))
+				apptest.ExpectBody(t, app, "/", tc.status, tc.body)
 			})
 		}
 	}
