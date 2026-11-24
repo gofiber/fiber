@@ -2678,3 +2678,99 @@ func Test_FiberApp_GETOnly(t *testing.T) {
 		require.Equal(t, "sub: Method Not Allowed", rec.Body.String())
 	})
 }
+
+// Test_HTTP_RepeatedHeaderLinesKeepReceivedOrder pins that a net/http handler reads the lines of a repeated header in
+// the order they were received, as c.IP() does, after fasthttp moved the store's last line into a removed one's slot.
+func Test_HTTP_RepeatedHeaderLinesKeepReceivedOrder(t *testing.T) {
+	t.Parallel()
+	const (
+		lines = "X-Forwarded-For: 198.51.100.10\r\nVia: 1.1 a\r\nVia: 1.1 b\r\nX-Forwarded-For: 203.0.113.7\r\n"
+		want  = "198.51.100.10,203.0.113.7|1.1 a,1.1 b"
+	)
+	read := func(r *http.Request) string {
+		return strings.Join(r.Header.Values(fiber.HeaderXForwardedFor), ",") + "|" + strings.Join(r.Header.Values(fiber.HeaderVia), ",")
+	}
+	answer := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := w.Write([]byte(read(r)))
+		assert.NoError(t, err)
+	})
+
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		c.Request().Header.Del(fiber.HeaderXRequestID)
+		return c.Next()
+	})
+	app.Post("/handler", HTTPHandler(answer))
+	app.Post("/context", HTTPHandlerWithContext(answer))
+	app.Post("/native", answer)
+	app.Post("/middleware", HTTPMiddleware(func(http.Handler) http.Handler { return answer }))
+	app.Post("/convert", func(c fiber.Ctx) error {
+		r, err := ConvertRequest(c, true)
+		if err != nil {
+			return err
+		}
+		return c.SendString(read(r))
+	})
+	app.Post("/next", HTTPMiddleware(func(next http.Handler) http.Handler { return next }), func(c fiber.Ctx) error {
+		var got [2][]string
+		for i, name := range []string{fiber.HeaderXForwardedFor, fiber.HeaderVia} {
+			for _, v := range c.Request().Header.PeekAll(name) {
+				got[i] = append(got[i], string(v))
+			}
+		}
+		return c.SendString(strings.Join(got[0], ",") + "|" + strings.Join(got[1], ","))
+	})
+	handler := app.Handler()
+	serve := func(raw string) *fasthttp.Response {
+		var req fasthttp.Request
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(&req, nil, nil)
+		handler(fctx)
+		return &fctx.Response
+	}
+
+	many := strings.Repeat("X-Pad: p\r\n", 4*fieldname.MaxOrderedLines)
+	for _, target := range []string{"/handler", "/context", "/native", "/middleware", "/convert", "/next"} {
+		for name, raw := range map[string]string{
+			"content length":     "Content-Length: 0\r\n" + lines + "\r\n",
+			"one byte chunk":     "Transfer-Encoding: chunked\r\n" + lines + "\r\n1\r\nx\r\n0\r\n\r\n",
+			"empty chunked body": "Transfer-Encoding: chunked\r\n" + lines + "\r\n0\r\n\r\n",
+			"line removed":       "X-Request-Id: 1\r\n" + lines + "Content-Length: 0\r\n\r\n",
+			"many lines":         "Transfer-Encoding: chunked\r\n" + lines + many + "\r\n0\r\n\r\n",
+		} {
+			resp := serve("POST " + target + " HTTP/1.1\r\nHost: app.example\r\n" + raw)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode(), "%s %s", target, name)
+			require.Equal(t, want, string(resp.Body()), "%s %s", target, name)
+		}
+	}
+}
+
+// Test_FiberApp_AddedProxyHeaderLineFollowsReceivedOne pins that a line a handler adds to a header the client sent on
+// one line stays behind it when another header is removed, whatever the header's name.
+func Test_FiberApp_AddedProxyHeaderLineFollowsReceivedOne(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{fiber.HeaderXForwardedFor, "X-Client-Chain"} {
+		app := fiber.New(fiber.Config{
+			ProxyHeader:        name,
+			TrustProxy:         true,
+			EnableIPValidation: true,
+			TrustProxyConfig:   fiber.TrustProxyConfig{Loopback: true},
+		})
+		app.Use(func(c fiber.Ctx) error {
+			c.Request().Header.Add(name, "203.0.113.7")
+			c.Request().Header.Del(fiber.HeaderAuthorization)
+			return c.Next()
+		})
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.IP()) })
+		h := FiberApp(app)
+
+		// The map order decides which line is stored last, so several rounds.
+		for range 32 {
+			r := apptest.Req(http.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, "Bearer t"))
+			r.RemoteAddr = "127.0.0.1:40000"
+			r.Header.Set(name, "6.6.6.6")
+			require.Equal(t, "203.0.113.7", adaptorTestServe(h, r).Body.String(), name)
+		}
+	}
+}

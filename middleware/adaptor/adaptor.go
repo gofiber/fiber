@@ -335,7 +335,8 @@ func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
 // wiretarget.HasStrayPercent), as net/http's server answers it: URL.Path
 // would be the same for "/100%" and "/100%25", which the router keeps apart.
 // A streamed body over the app's BodyLimit returns
-// fiber.ErrRequestEntityTooLarge.
+// fiber.ErrRequestEntityTooLarge. The lines of a repeated header are in the
+// order they were received.
 func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 	if wiretarget.StrayPercent(c) {
 		return nil, fiber.ErrBadRequest
@@ -352,6 +353,7 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 	if err := fasthttpadaptor.ConvertRequest(c.RequestCtx(), &req, forServer); err != nil {
 		return nil, err //nolint:wrapcheck // This must not be wrapped
 	}
+	fieldname.OrderValues(&c.Request().Header, fieldname.Received(c.Request()), req.Header)
 	return &req, nil
 }
 
@@ -1066,9 +1068,8 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			for _, v := range vals {
 				req.Header.Add(key, v)
 			}
-			if len(vals) > 1 {
-				received = appendReceived(received, key, vals)
-			}
+			// A single line as well: only this block tells it from one a handler adds.
+			received = appendReceived(received, key, vals)
 		}
 		// Two non-canonical spellings of one name resolve alike whatever the order of the map.
 		slices.Sort(aliased)
@@ -1078,9 +1079,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			for _, v := range vals[1:] {
 				req.Header.Add(key, v)
 			}
-			if len(vals) > 1 {
-				received = appendReceived(received, key, vals)
-			}
+			received = appendReceived(received, key, vals)
 		}
 		pctx.received = received
 		if len(received) > 0 {
