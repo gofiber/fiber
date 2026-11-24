@@ -150,6 +150,7 @@ const (
 	refusalRecordSize       = 256   // bytes of MaxBytes one record stands for
 	droppedPerRecord        = 4     // dropped records remembered for each one kept
 	refusalGroups           = 64    // groups of URLs, each with a marker of its own
+	recordPasses            = 3     // writes of a record before stores noting a later lifetime are turned away
 )
 
 // markerPoll is how long a record another instance wrote can go unseen.
@@ -209,16 +210,17 @@ type recordGate struct {
 
 // refusalRecords keeps the records of refused credentials: bounded in memory, left to expire in a Storage.
 type refusalRecords struct {
-	cfg      *Config
-	m        *manager
-	keys     keyLog
-	dropped  droppedRecords
-	family   Config // cfg keyed by the credential headers alone, so a record reaches every variant
-	gates    [refusalGroups]recordGate
-	expiry   [refusalGroups]atomic.Uint64 // the second the longest-lived credential entry stored in the group stops being kept
-	refusals [refusalGroups]atomic.Uint64 // refusals recorded in the group so far
-	all      recordGate
-	poll     int64 // milliseconds between reads of a marker
+	cfg       *Config
+	m         *manager
+	keys      keyLog
+	dropped   droppedRecords
+	family    Config // cfg keyed by the credential headers alone, so a record reaches every variant
+	gates     [refusalGroups]recordGate
+	expiry    [refusalGroups]atomic.Uint64 // the second the longest-lived credential entry stored in the group stops being kept
+	refusals  [refusalGroups]atomic.Uint64 // refusals recorded in the group so far
+	recording [refusalGroups]atomic.Int32  // records of the group in their last write
+	all       recordGate
+	poll      int64 // milliseconds between reads of a marker
 }
 
 func newRefusalRecords(cfg *Config, m *manager) *refusalRecords {
@@ -410,7 +412,7 @@ func (r *refusalRecords) hasRecord(ctx context.Context, key string) (bool, error
 // here, and false returned.
 func (r *refusalRecords) record(ctx context.Context, group int, key string, entryExp uint64) bool {
 	noted := r.expiry[group].Load()
-	for {
+	for pass := 1; pass < recordPasses; pass++ {
 		stored := r.write(ctx, group, key, max(entryExp, noted))
 		// A request that noted its entry during the write found no record to extend.
 		latest := r.expiry[group].Load()
@@ -419,17 +421,40 @@ func (r *refusalRecords) record(ctx context.Context, group int, key string, entr
 		}
 		noted = latest
 	}
+	// The last pass: raised before the lifetime is read, so a store noting a later one meanwhile sees it and
+	// stores nothing.
+	r.recording[group].Add(1)
+	defer r.recording[group].Add(-1)
+	return r.write(ctx, group, key, max(entryExp, r.expiry[group].Load()))
+}
+
+// recordingLast reports whether a record of the group is in its last write; see record.
+func (r *refusalRecords) recordingLast(group int) bool {
+	return r.recording[group].Load() > 0
 }
 
 // refuse records the refusal under key; see record. A store in the group whose handler ran meanwhile
-// sees it in refusalsIn.
+// sees it in lapsedSince.
 func (r *refusalRecords) refuse(ctx context.Context, group int, key string, entryExp uint64) {
 	r.refusals[group].Add(1)
 	r.record(ctx, group, key, entryExp)
 }
 
-func (r *refusalRecords) refusalsIn(group int) uint64 {
-	return r.refusals[group].Load()
+// refusalMark is the state of a group a store compares against: its refusals and the second the handler started.
+type refusalMark struct {
+	refusals uint64
+	second   uint64
+}
+
+func (r *refusalRecords) mark(group int) refusalMark {
+	return refusalMark{refusals: r.refusals[group].Load(), second: uint64(utils.Timestamp())}
+}
+
+// lapsedSince reports whether a refusal recorded in the group since mark may have no record left: one is
+// kept for Expiration at least, which the 2 seconds of the stores' rounding and the clock's tick bring closer.
+func (r *refusalRecords) lapsedSince(group int, m refusalMark) bool {
+	return r.refusals[group].Load() != m.refusals &&
+		uint64(utils.Timestamp())-m.second+2 >= uint64(r.cfg.Expiration.Seconds())
 }
 
 // write is one pass of record, for a record kept at least until last (unix seconds).
