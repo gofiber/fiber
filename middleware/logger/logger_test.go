@@ -1852,7 +1852,7 @@ func Test_Logger_TimedOutRequestLogsRequestLineAsReceived(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			app, logged := loggerTestApp(t, &tc.cfg)
-			written := make(chan struct{})
+			written, release := make(chan struct{}), make(chan struct{})
 			rewrite := func(c fiber.Ctx, method, target, host string) {
 				c.Method(method)
 				c.Path(target)
@@ -1865,10 +1865,12 @@ func Test_Logger_TimedOutRequestLogsRequestLineAsReceived(t *testing.T) {
 				rewrite(c, fiber.MethodPut, "/other", "other.example")
 				<-c.Context().Done()
 				rewrite(c, fiber.MethodPatch, "/another", "another.example")
+				<-release // returned at the deadline, it could win the race with it
 				return nil
 			}, timeout.Config{Timeout: 20 * time.Millisecond}))
 
 			apptest.Expect(t, app, "/old?a=b", fiber.StatusServiceUnavailable)
+			close(release)
 			<-written
 			require.Contains(t, logged.String(), tc.want)
 			require.NotContains(t, logged.String(), "other")
@@ -1892,17 +1894,19 @@ func Test_Logger_TimedOutRequestSkipsContextTags(t *testing.T) {
 		fiber.StoreInContext(c, tagName, "value")
 		return c.Next()
 	})
-	written := make(chan struct{})
+	written, release := make(chan struct{}), make(chan struct{})
 	app.Get("/slow", timeout.New(func(c fiber.Ctx) error {
 		defer close(written)
 		<-c.Context().Done()
 		c.Locals("late", "1")
+		<-release // returned at the deadline, it could win the race with it
 		return nil
 	}, timeout.Config{Timeout: 20 * time.Millisecond}))
 	app.Get("/fast", func(c fiber.Ctx) error { return c.SendString("ok") })
 
 	apptest.Expect(t, app, "/fast", fiber.StatusOK)
 	apptest.Expect(t, app, "/slow", fiber.StatusServiceUnavailable)
+	close(release)
 	<-written
 	require.Equal(t, "200 [value]\n503 []\n", logged.String())
 }

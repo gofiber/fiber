@@ -982,6 +982,20 @@ func Test_Middleware_ExplicitCallbacks_InvalidKey_Panics(t *testing.T) {
 func Test_Middleware_EncryptsResponsesSentPastIt(t *testing.T) {
 	t.Parallel()
 	setCookie := func(c fiber.Ctx, name string) { c.Cookie(&fiber.Cookie{Name: name, Value: "plain"}) }
+	// Held until the test ends: a handler that returned at the deadline could win the race with it.
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	onTimeout := func(names ...string) fiber.Handler {
+		return timeout.New(func(fiber.Ctx) error { <-release; return nil }, timeout.Config{
+			Timeout: 10 * time.Millisecond,
+			OnTimeout: func(c fiber.Ctx) error {
+				for _, name := range names {
+					setCookie(c, name)
+				}
+				return fiber.ErrGatewayTimeout
+			},
+		})
+	}
 	for name, tc := range map[string]struct {
 		route  fiber.Handler
 		status int
@@ -991,21 +1005,8 @@ func Test_Middleware_EncryptsResponsesSentPastIt(t *testing.T) {
 			setCookie(c, "test")
 			panic("boom")
 		}},
-		"OnTimeout": {status: fiber.StatusGatewayTimeout, route: timeout.New(func(c fiber.Ctx) error {
-			<-c.Context().Done()
-			return nil
-		}, timeout.Config{Timeout: 10 * time.Millisecond, OnTimeout: func(c fiber.Ctx) error {
-			setCookie(c, "test")
-			return fiber.ErrGatewayTimeout
-		}})},
-		"OnTimeout with two instances": {status: fiber.StatusGatewayTimeout, inner: true, route: timeout.New(func(c fiber.Ctx) error {
-			<-c.Context().Done()
-			return nil
-		}, timeout.Config{Timeout: 10 * time.Millisecond, OnTimeout: func(c fiber.Ctx) error {
-			setCookie(c, "test")
-			setCookie(c, "inner")
-			return fiber.ErrGatewayTimeout
-		}})},
+		"OnTimeout":                    {status: fiber.StatusGatewayTimeout, route: onTimeout("test")},
+		"OnTimeout with two instances": {status: fiber.StatusGatewayTimeout, inner: true, route: onTimeout("test", "inner")},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
