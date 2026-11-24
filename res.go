@@ -107,6 +107,20 @@ func (sf *sendFileStore) configEqual(cfg SendFile) bool {
 	return true
 }
 
+// cachedSendFile returns the cached handler store for cfg, if any, and whether
+// cfg may be cached: a config new on every call, such as an fs.Sub result,
+// must not grow the cache past maxSendFileHandlers.
+func (app *App) cachedSendFile(cfg SendFile) (*sendFileStore, bool) {
+	app.sendfilesMutex.RLock()
+	defer app.sendfilesMutex.RUnlock()
+	for _, sf := range app.sendfiles {
+		if sf.configEqual(cfg) {
+			return sf, true
+		}
+	}
+	return nil, len(app.sendfiles) < maxSendFileHandlers
+}
+
 // sameFS reports whether two file systems are the same one. Values of an
 // uncomparable dynamic type (fstest.MapFS) are compared by what they reference.
 func sameFS(a, b fs.FS) bool {
@@ -118,7 +132,8 @@ func sameFS(a, b fs.FS) bool {
 	if va.Type() != vb.Type() {
 		return false
 	}
-	if va.Type().Comparable() {
+	// Ask the values, not the type: == panics on a struct whose interface field holds a map.
+	if va.Comparable() && vb.Comparable() {
 		return a == b
 	}
 
@@ -132,7 +147,8 @@ func sameFS(a, b fs.FS) bool {
 	default:
 		// A func's pointer is its code entry, shared by every closure over the
 		// same body, so two file systems capturing different roots would look
-		// like one. Treat them as distinct rather than serve the wrong root.
+		// like one. Treat them as distinct rather than serve the wrong root. A
+		// struct holding an uncomparable value lands here as well.
 		return false
 	}
 }
@@ -1296,25 +1312,18 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	var cacheControlValue string
 	// Function values have no safe identity in Go: reflect.Value.Pointer only
 	// identifies their shared code, not captured closure data. Do not retain
-	// handlers for function-backed file systems, since they can never be safely
-	// matched and would otherwise grow the application cache on every request.
-	cacheHandler := cfg.FS == nil || reflect.ValueOf(cfg.FS).Kind() != reflect.Func
+	// handlers for a file system sameFS cannot match to itself, such as a func
+	// or a struct around one, since it would grow the cache on every request.
+	cacheHandler := cfg.FS == nil || sameFS(cfg.FS, cfg.FS)
 
 	app := r.c.app
 	if cacheHandler {
-		app.sendfilesMutex.RLock()
-		for _, sf := range app.sendfiles {
-			if sf.configEqual(cfg) {
-				fsHandler = sf.handler
-				cacheControlValue = sf.cacheControlValue
-				break
-			}
+		var sf *sendFileStore
+		sf, cacheHandler = app.cachedSendFile(cfg)
+		if sf != nil {
+			fsHandler = sf.handler
+			cacheControlValue = sf.cacheControlValue
 		}
-		// A config new on every call, such as an fs.Sub result, must not grow the cache.
-		if fsHandler == nil && len(app.sendfiles) >= maxSendFileHandlers {
-			cacheHandler = false
-		}
-		app.sendfilesMutex.RUnlock()
 	}
 
 	if fsHandler == nil {

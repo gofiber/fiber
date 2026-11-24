@@ -2002,6 +2002,14 @@ func Test_App_RenderAndReloadViews_ReturnNoViewEngineForNilViews(t *testing.T) {
 	}
 }
 
+// A struct type is comparable while its interface field holds a map, and hashing it as a lock key panicked.
+func Test_App_Render_StructAroundUncomparableViews(t *testing.T) {
+	t.Parallel()
+	app := New(Config{Views: struct{ Views }{mapViews{}}})
+	require.NoError(t, app.Render(io.Discard, "partial", nil))
+	require.NoError(t, app.ReloadViews())
+}
+
 func Test_isNilViews_ReturnsTrueForNilUnsafePointer(t *testing.T) {
 	t.Parallel()
 	var view unsafe.Pointer

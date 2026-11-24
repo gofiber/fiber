@@ -9580,6 +9580,18 @@ func Test_Ctx_SendFile_FunctionFSDoesNotGrowHandlerCache(t *testing.T) {
 	require.Empty(t, sendFileCache(app))
 }
 
+func Test_Ctx_SendFile_StructAroundUncomparableFS(t *testing.T) {
+	t.Parallel()
+	app := New()
+	files := struct{ fs.FS }{fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("hello")}}}
+	app.Get("/", func(c Ctx) error { return c.SendFile("hello.txt", SendFile{FS: files}) })
+
+	for range 3 {
+		apptest.ExpectBody(t, app, "/", StatusOK, "hello")
+	}
+	require.Empty(t, sendFileCache(app))
+}
+
 func Test_Ctx_SendFile_FreshConfigPerCallDoesNotGrowHandlerCache(t *testing.T) {
 	t.Parallel()
 	files := fstest.MapFS{"public/hello.txt": &fstest.MapFile{Data: []byte("hello")}}
@@ -9873,6 +9885,8 @@ func Test_SameFS(t *testing.T) {
 	require.False(t, sameFS(mapA, fstest.MapFS{"a": &fstest.MapFile{}}))
 	require.False(t, sameFS(openA, openB))
 	require.False(t, sameFS(openA, openA))
+	wrapped := struct{ fs.FS }{mapA} // a comparable type that == panics on
+	require.False(t, sameFS(wrapped, wrapped))
 }
 
 // perIPConnStub mirrors fasthttp's perIPTLSConn, which wraps an accepted TLS

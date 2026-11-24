@@ -168,7 +168,8 @@ func (s *viewsLockStore) get(views Views) *sync.RWMutex {
 	case reflect.Pointer, reflect.Chan, reflect.Func, reflect.Map, reflect.Slice, reflect.UnsafePointer:
 		key.ptr = viewValue.Pointer()
 	default:
-		if viewValue.Type().Comparable() {
+		// The value, not its type: hashing a struct whose interface field holds a map panics.
+		if viewValue.Comparable() {
 			key.view = views
 		}
 	}
