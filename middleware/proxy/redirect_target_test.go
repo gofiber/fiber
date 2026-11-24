@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_Proxy_DoRedirects_KeepsTheEscapesOfTheTarget(t *testing.T) {
@@ -81,6 +82,69 @@ func Test_Proxy_DoRedirects_ResolvesRelativeLocations(t *testing.T) {
 		t.Run(target, func(t *testing.T) {
 			t.Parallel()
 			apptest.ExpectBody(t, app, target, fiber.StatusOK, want)
+		})
+	}
+}
+
+// The response a chain ends with is no more cacheable than the redirects that led to it.
+func Test_Proxy_FollowRedirects_CarriesRestrictiveCaching(t *testing.T) {
+	t.Parallel()
+	type hop struct {
+		location string
+		fields   [][2]string
+	}
+	cases := []struct {
+		hops         map[string]hop
+		name         string
+		cacheControl string
+		vary         string
+		status       int
+	}{
+		{name: "bare directives and Vary", status: fasthttp.StatusOK, hops: map[string]hop{
+			"/start": {location: "/next", fields: [][2]string{
+				{"Cache-Control", "No-Store, max-age=0"}, {"Cache-Control", `private="Set-Cookie"`}, {"Vary", "Authorization"},
+			}},
+			"/next":  {location: "/final", fields: [][2]string{{"Cache-Control", `no-cache="Set-Cookie", private`}, {"Vary", "Accept-Language"}}},
+			"/final": {fields: [][2]string{{"Cache-Control", "public, max-age=60"}, {"Vary", "accept-encoding, authorization"}}},
+		}, cacheControl: "public, max-age=60, no-store, private", vary: "accept-encoding, authorization, Accept-Language"},
+		{name: "a Vary of *", status: fasthttp.StatusOK, hops: map[string]hop{
+			"/start": {location: "/final", fields: [][2]string{{"Vary", "*"}}},
+			"/final": {fields: [][2]string{{"Vary", "Accept"}}},
+		}, vary: "*"},
+		{name: "a redirect that goes back", status: fasthttp.StatusFound, hops: map[string]hop{
+			"/start": {location: "/next", fields: [][2]string{{"Cache-Control", "no-cache"}}},
+			"/next":  {location: "mailto:user@example.com"},
+		}, cacheControl: "no-cache"},
+		{name: "nothing restrictive", status: fasthttp.StatusOK, hops: map[string]hop{
+			"/start": {location: "/final", fields: [][2]string{{"Cache-Control", "public, max-age=60"}}},
+			"/final": {fields: [][2]string{{"Cache-Control", "max-age=5"}}},
+		}, cacheControl: "max-age=5"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := &fasthttp.Client{Transport: roundTripperFunc(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+				step := tc.hops[string(req.URI().Path())]
+				resp.Reset()
+				resp.Header.SetStatusCode(fasthttp.StatusOK)
+				if step.location != "" {
+					resp.Header.SetStatusCode(fasthttp.StatusFound)
+					resp.Header.Set(fiber.HeaderLocation, step.location)
+				}
+				for _, f := range step.fields {
+					resp.Header.Add(f[0], f[1])
+				}
+				return nil
+			})}
+			req, resp := proxyTestRequest(t), proxyTestResponse(t)
+			req.SetRequestURI("http://example.com/start")
+
+			start := mustParseTestURL(t, "http://example.com/start")
+			require.NoError(t, followRedirects(client, req, resp, 3, start, proxyTestAllowPrivatePolicy()))
+			require.Equal(t, tc.status, resp.StatusCode())
+			require.Equal(t, tc.cacheControl, string(resp.Header.Peek(fiber.HeaderCacheControl)))
+			require.Equal(t, tc.vary, string(resp.Header.Peek(fiber.HeaderVary)))
+			require.Len(t, resp.Header.PeekAll(fiber.HeaderCacheControl), min(1, len(tc.cacheControl)))
 		})
 	}
 }

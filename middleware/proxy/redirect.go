@@ -2,11 +2,13 @@ package proxy
 
 import (
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/redirectbody"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
 	"github.com/gofiber/utils/v2"
@@ -38,12 +40,14 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 	lookups := lookupsFor(cli)
 	currentURL := initialURL
 	currentURLStr := "" // rendered when a redirect needs it as the base of Location
+	var carried hopCaching
 	for redirects := 0; ; redirects++ {
 		if err := cli.Do(hop, resp); err != nil {
 			return err
 		}
 		status := resp.Header.StatusCode()
 		if !fasthttp.StatusCodeIsRedirect(status) {
+			carried.apply(&resp.Header)
 			return nil
 		}
 		if redirects >= maxRedirects {
@@ -58,6 +62,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 			if utils.IndexControl(location) != -1 {
 				return fasthttp.ErrorInvalidURI
 			}
+			carried.apply(&resp.Header)
 			return nil
 		}
 		if currentURLStr == "" {
@@ -97,6 +102,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 				return fiber.ErrRequestHeaderFieldsTooLarge
 			}
 		}
+		carried.collect(&resp.Header)
 		currentURL = nextURL
 		// Rendered once per hop: SetRequestURI copies it and the next resolveRedirect uses it as base.
 		currentURLStr = nextURL.String()
@@ -108,6 +114,55 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		// See https://github.com/gofiber/fiber/issues/1762.
 		hop.URI().SetScheme(currentURL.Scheme)
 	}
+}
+
+// hopCaching keeps what the followed redirects said about caching: the response a chain ends with
+// depends on them, so it goes out no more cacheable than they were.
+type hopCaching struct {
+	directives []string
+	vary       []string
+}
+
+// restrictiveDirectives are carried only bare: a field-qualified one names a field of the hop itself.
+var restrictiveDirectives = [...]string{"no-store", "private", "no-cache"}
+
+func (k *hopCaching) collect(h *fasthttp.ResponseHeader) {
+	canonical := fieldname.Canonical(h)
+	for directive := range headerlist.AllLines(fieldname.Lines(h, fiber.HeaderCacheControl, canonical)) {
+		for _, name := range restrictiveDirectives {
+			if utils.EqualFold(directive, name) && !slices.Contains(k.directives, name) {
+				k.directives = append(k.directives, name)
+			}
+		}
+	}
+	for name := range headerlist.AllLines(fieldname.Lines(h, fiber.HeaderVary, canonical)) {
+		k.vary = append(k.vary, strings.Clone(name))
+	}
+}
+
+func (k *hopCaching) apply(h *fasthttp.ResponseHeader) {
+	if len(k.directives) == 0 && len(k.vary) == 0 {
+		return
+	}
+	canonical := fieldname.Canonical(h)
+	addToList(h, fiber.HeaderCacheControl, canonical, k.directives)
+	addToList(h, fiber.HeaderVary, canonical, k.vary)
+}
+
+// addToList adds the values the field does not list yet, as one line. A Vary of "*" stays alone (RFC 9110 §12.5.5).
+func addToList(h *fasthttp.ResponseHeader, name string, canonical bool, values []string) { //nolint:revive // flag-parameter: a property of the header store
+	if len(values) == 0 {
+		return
+	}
+	updated := headerlist.AppendUniqueFold(string(headerlist.Join(fieldname.Lines(h, name, canonical))), values)
+	if updated == "" {
+		return
+	}
+	if name == fiber.HeaderVary && headerlist.Contains(updated, "*") {
+		updated = "*"
+	}
+	fieldname.Del(h, name, canonical)
+	h.Set(name, updated)
 }
 
 // redirectChangesMethod reports whether a redirect with this status makes req a GET (RFC 9110

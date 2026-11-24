@@ -98,6 +98,7 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 // DoRedirects performs the given http request and fills the given http response, following up to maxRedirectsCount redirects.
 // When the redirect count exceeds maxRedirectsCount, ErrTooManyRedirects is returned.
 // An error while following the chain resets the response, so no upstream answer goes out with it.
+// The response the chain ends with also gets the bare no-store, private and no-cache and the Vary names of the redirects followed.
 // This method can be used within a fiber.Handler
 //
 // Each redirect target is re-validated against the active SecurityPolicy.
