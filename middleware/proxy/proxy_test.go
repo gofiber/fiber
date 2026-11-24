@@ -1155,9 +1155,29 @@ func Test_Proxy_Balancer_CustomClientBodyMoved(t *testing.T) {
 	}
 }
 
+// proxyTestStreamingTransport is a Transport that has every response body streamed, whatever its Client says.
+type proxyTestStreamingTransport struct{}
+
+func (proxyTestStreamingTransport) RoundTrip(hc *fasthttp.HostClient, req *fasthttp.Request, resp *fasthttp.Response) (bool, error) {
+	resp.StreamBody = true
+	return fasthttp.DefaultTransport.RoundTrip(hc, req, resp)
+}
+
+// proxyTestUnsaidStreamingClients returns clients that stream through their ConfigureClient hook or Transport while
+// their StreamResponseBody says they do not.
+func proxyTestUnsaidStreamingClients(bound int) map[string]*fasthttp.Client {
+	return map[string]*fasthttp.Client{
+		"its ConfigureClient hook": {
+			MaxResponseBodySize: bound,
+			ConfigureClient:     func(hc *fasthttp.HostClient) error { hc.StreamResponseBody = true; return nil },
+		},
+		"its Transport": {MaxResponseBodySize: bound, Transport: proxyTestStreamingTransport{}},
+	}
+}
+
 // proxyTestStreamingHandlersUnder is proxyTestHandlersUnder for clients that stream response bodies: Balancer
-// with a HostClient of its own, bare or behind a type of the caller's, Forward and Do with a Client, and Do with
-// the response set to stream.
+// with a HostClient of its own, bare or behind a type of the caller's, Forward and Do with a Client, Do with a
+// Client that streams without saying so (proxyTestUnsaidStreamingClients), and Do with the response set to stream.
 func proxyTestStreamingHandlersUnder(addr string, policy SecurityPolicy, after fiber.Handler) map[string]fiber.Handler {
 	streaming := &fasthttp.Client{StreamResponseBody: true}
 	do := func(c fiber.Ctx, cli *fasthttp.Client) error {
@@ -1169,7 +1189,7 @@ func proxyTestStreamingHandlersUnder(addr string, policy SecurityPolicy, after f
 		}
 		return after(c)
 	}
-	return map[string]fiber.Handler{
+	handlers := map[string]fiber.Handler{
 		"Balancer streaming": Balancer(Config{
 			Client:         &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{&fasthttp.HostClient{Addr: addr, StreamResponseBody: true}}},
 			SecurityPolicy: &policy,
@@ -1194,6 +1214,10 @@ func proxyTestStreamingHandlersUnder(addr string, policy SecurityPolicy, after f
 			return do(c, &fasthttp.Client{})
 		},
 	}
+	for by, cli := range proxyTestUnsaidStreamingClients(0) {
+		handlers["Do streaming by "+by] = func(c fiber.Ctx) error { return do(c, cli) }
+	}
+	return handlers
 }
 
 func Test_Proxy_UpstreamNonFinalResponseRefused(t *testing.T) {

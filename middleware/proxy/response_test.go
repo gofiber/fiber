@@ -150,7 +150,8 @@ func proxyTestSizedUpstream(t *testing.T) string {
 
 // proxyTestStreamedHandlers returns every way a response reaches the proxy as a stream, each holding it to bound
 // bytes, none when that is zero: Balancer with a response set to stream, Balancer with a client of the caller's
-// that streams, Do with a client that streams or a response set to stream, and Forward with a client that streams.
+// that streams, Do with a client that streams, by its own setting or without saying so
+// (proxyTestUnsaidStreamingClients), or a response set to stream, and Forward with a client that streams.
 func proxyTestStreamedHandlers(addr string, bound int) map[string]fiber.Handler {
 	policy := proxyTestAllowPrivatePolicy()
 	configured := bound // Config's way to say none
@@ -166,7 +167,7 @@ func proxyTestStreamedHandlers(addr string, bound int) map[string]fiber.Handler 
 			return doActionWithPolicy(c, "http://"+addr, normalizePolicy(policy), nil, send, cli)
 		}
 	}
-	return map[string]fiber.Handler{
+	handlers := map[string]fiber.Handler{
 		"Balancer, response streamed": Balancer(Config{
 			Servers: []string{addr}, SecurityPolicy: &policy, MaxResponseBodySize: configured,
 			ModifyRequest: func(c fiber.Ctx) error { c.Response().StreamBody = true; return nil },
@@ -181,6 +182,10 @@ func proxyTestStreamedHandlers(addr string, bound int) map[string]fiber.Handler 
 			return forwardWithRealIP(c, "http://"+addr, normalizePolicy(policy), &fasthttp.Client{StreamResponseBody: true, MaxResponseBodySize: bound})
 		},
 	}
+	for by, cli := range proxyTestUnsaidStreamingClients(bound) {
+		handlers["Do, client streaming by "+by] = do(false, cli)
+	}
+	return handlers
 }
 
 // Test_Proxy_StreamedBodyBound checks that a body the proxy streams is held to the bound its client was given,
