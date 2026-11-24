@@ -516,7 +516,7 @@ func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, file
 	}
 	scratch := reflect.New(dst.Type())
 	if behindUnexportedPointer(dst.Type()) {
-		allocEmbedded(scratch.Elem(), dst)
+		allocEmbedded(scratch.Elem(), dst, nil)
 	}
 	// All at once first, which grows each slice the keys index to its length in one step.
 	err := d.Decode(scratch.Interface(), nil, files)
@@ -539,35 +539,57 @@ func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, file
 var unexportedPointers sync.Map // map[reflect.Type]bool
 
 // behindUnexportedPointer reports whether the struct type t holds a file field under an unexported embedded pointer,
-// one schema follows when it is set but cannot allocate, so a scratch value needs one set for it.
+// through struct values and pointers: schema follows one that is set but cannot allocate it, so a scratch value
+// needs one set for it.
 func behindUnexportedPointer(t reflect.Type) bool {
 	if cached, ok := unexportedPointers.Load(t); ok {
 		if found, isBool := cached.(bool); isBool {
 			return found
 		}
 	}
-	found := slices.ContainsFunc(headerFields(t), func(i int) bool {
-		f := t.Field(i)
-		return !f.IsExported() && f.Type.Kind() == reflect.Pointer || f.Type.Kind() == reflect.Struct && behindUnexportedPointer(f.Type)
-	})
+	found := reachesUnexportedPointer(t, nil)
 	unexportedPointers.Store(t, found)
 	return found
 }
 
-// allocEmbedded gives scratch a zero pointee of its own for each unexported embedded pointer dst has set. The files
-// decoded into it reach dst through setFiles, and the defaults the decode sets there go nowhere.
-func allocEmbedded(scratch, dst reflect.Value) {
+// reachesUnexportedPointer is behindUnexportedPointer for t, skipping the types in seen, which a recursive type
+// leads back to.
+func reachesUnexportedPointer(t reflect.Type, seen []reflect.Type) bool {
+	if slices.Contains(seen, t) {
+		return false
+	}
+	seen = append(seen, t)
+	return slices.ContainsFunc(headerFields(t), func(i int) bool {
+		f := t.Field(i)
+		ft := f.Type
+		if ft.Kind() == reflect.Pointer {
+			if !f.IsExported() {
+				return true
+			}
+			ft = ft.Elem()
+		}
+		return ft.Kind() == reflect.Struct && reachesUnexportedPointer(ft, seen)
+	})
+}
+
+// allocEmbedded gives scratch a zero pointee of its own for each pointer to a struct dst has set, so that an unexported
+// embedded one is set in scratch too. The files decoded into them reach dst through setFiles, and the defaults the
+// decode sets there go nowhere. seen holds the pointers followed so far, which a cycle in dst leads back to.
+func allocEmbedded(scratch, dst reflect.Value, seen []uintptr) {
 	for _, i := range headerFields(dst.Type()) {
 		to, from := scratch.Field(i), dst.Field(i)
 		switch {
 		case from.Kind() == reflect.Struct:
-			allocEmbedded(to, from)
-		case from.Kind() == reflect.Pointer && !to.CanSet() && !from.IsNil():
+			allocEmbedded(to, from, seen)
+		case from.Kind() == reflect.Pointer && from.Type() != fileHeaderPtrType && !from.IsNil() &&
+			from.Elem().Kind() == reflect.Struct && !slices.Contains(seen, from.Pointer()):
 			p := reflect.New(from.Type().Elem())
-			reflect.NewAt(to.Type(), unsafe.Pointer(to.UnsafeAddr())).Elem().Set(p) //nolint:gosec // reflect cannot set the unexported field; scratch is our own value
-			if p.Elem().Kind() == reflect.Struct {
-				allocEmbedded(p.Elem(), from.Elem())
+			if to.CanSet() {
+				to.Set(p)
+			} else {
+				reflect.NewAt(to.Type(), unsafe.Pointer(to.UnsafeAddr())).Elem().Set(p) //nolint:gosec // reflect cannot set the unexported field; scratch is our own value
 			}
+			allocEmbedded(p.Elem(), from.Elem(), append(seen, from.Pointer()))
 		default:
 		}
 	}

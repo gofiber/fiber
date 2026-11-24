@@ -278,16 +278,20 @@ func Test_FormBinder_BindMultipart_UnexportedEmbeddedPointer(t *testing.T) {
 	t.Parallel()
 	out := struct {
 		*embeddedUpload
-		Profile struct{ *embeddedUpload } `form:"profile"`
+		Profile struct{ *embeddedUpload }  `form:"profile"`
+		Owner   *struct{ *embeddedUpload } `form:"owner"`
 	}{embeddedUpload: &embeddedUpload{}}
 	out.Profile.embeddedUpload = &embeddedUpload{}
+	out.Owner = &struct{ *embeddedUpload }{&embeddedUpload{}}
 	require.NoError(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
 		require.NoError(t, mw.WriteField("count", "0"))
 		writeFormFile(t, mw, "avatar", "avatar.txt", "avatar")
 		writeFormFile(t, mw, "profile.avatar", "profile.txt", "profile")
+		writeFormFile(t, mw, "owner.avatar", "owner.txt", "owner")
 	}), &out))
 	requireFile(t, out.Avatar, "avatar.txt", "avatar")
 	requireFile(t, out.Profile.Avatar, "profile.txt", "profile")
+	requireFile(t, out.Owner.Avatar, "owner.txt", "owner")
 
 	pairsOnly := struct{ *embeddedUpload }{&embeddedUpload{}}
 	require.NoError(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
