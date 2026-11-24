@@ -194,7 +194,8 @@ func Test_FormBinder_BindMultipart_KeysOfOneField(t *testing.T) {
 		Avatar *multipart.FileHeader `form:"avatar"`
 		Role   string                `form:"role"`
 		User   struct {
-			Role string `form:"role"`
+			Avatar *multipart.FileHeader `form:"avatar"`
+			Role   string                `form:"role"`
 		} `form:"user"`
 		Items []struct {
 			Name string `form:"name"`
@@ -213,6 +214,8 @@ func Test_FormBinder_BindMultipart_KeysOfOneField(t *testing.T) {
 		}
 		writeFormFile(t, mw, "avatar", "avatar.txt", "avatar")
 		writeFormFile(t, mw, "Avatar", "other.txt", "other")
+		writeFormFile(t, mw, "user[avatar]", "bracket.txt", "bracket")
+		writeFormFile(t, mw, "user.avatar", "dot.txt", "dot")
 	})
 
 	for range 50 {
@@ -223,6 +226,7 @@ func Test_FormBinder_BindMultipart_KeysOfOneField(t *testing.T) {
 		require.Len(t, p.Items, 1)
 		require.Equal(t, "first", p.Items[0].Name)
 		requireFile(t, p.Avatar, "avatar.txt", "avatar")
+		requireFile(t, p.User.Avatar, "bracket.txt", "bracket")
 	}
 }
 
@@ -250,6 +254,31 @@ func Test_FormBinder_BindMultipart_RequiredFile(t *testing.T) {
 	}), &upload{})
 	require.ErrorContains(t, err, "name is empty")
 	require.NotContains(t, err.Error(), "avatar")
+
+	// The file must not hide an empty required field of the pairs, here the later of two names.
+	req := newMultipartRequestWith(t, func(mw *multipart.Writer) {
+		require.NoError(t, mw.WriteField("Name", "john"))
+		require.NoError(t, mw.WriteField("name", ""))
+		writeFormFile(t, mw, "avatar", "avatar.txt", "avatar")
+	})
+	for range 50 {
+		require.ErrorContains(t, (&FormBinding{}).Bind(req, &upload{}), "name is empty")
+	}
+}
+
+type embeddedUpload struct {
+	Avatar *multipart.FileHeader `form:"avatar"`
+}
+
+// Test_FormBinder_BindMultipart_UnexportedEmbeddedPointer pins that a file reaches a field promoted through an
+// unexported embedded pointer the caller set, which schema follows but cannot allocate.
+func Test_FormBinder_BindMultipart_UnexportedEmbeddedPointer(t *testing.T) {
+	t.Parallel()
+	out := struct{ *embeddedUpload }{&embeddedUpload{}}
+	require.NoError(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
+		writeFormFile(t, mw, "avatar", "avatar.txt", "avatar")
+	}), &out))
+	requireFile(t, out.Avatar, "avatar.txt", "avatar")
 }
 
 // requireFile pins the name, content type and content of an uploaded file.

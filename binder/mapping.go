@@ -1,6 +1,7 @@
 package binder
 
 import (
+	"errors"
 	"fmt"
 	"iter"
 	"maps"
@@ -477,34 +478,47 @@ func parseValuesToStruct(aliasTag string, out any, keys, values []string, files 
 	err := schemaDecoder.DecodeValues(out, keys, values)
 	// Only a destination the guard walks has a field that takes a file.
 	if g != nil && len(files) > 0 && len(files[0]) > 0 {
-		schemaDecoder.decodeFiles(g, out, keys, files[0])
-		if err != nil {
-			err = schemaDecoder.judgeWithFiles(out, keys, values, files[0])
-		}
+		err = unfilled(err, schemaDecoder.decodeFiles(g, out, keys, files[0]))
 	}
 	return err
 }
 
-// judgeWithFiles returns what Decode, given the files DecodeValues does not take, reports for the pairs and files:
-// only it can tell that a file fills a required file field. It decodes into a scratch value, so out is left alone.
-func (d *pooledDecoder) judgeWithFiles(out any, keys, values []string, files map[string][]*multipart.FileHeader) error {
-	src := make(map[string][]string, len(keys))
-	for i, key := range keys {
-		src[key] = append(src[key], values[i])
+// unfilled returns err, what DecodeValues reported for the pairs, without the empty required fields a file fills:
+// those the decode of the files alone, filesErr, does not report. DecodeValues takes no files, so it reports them all.
+func unfilled(err, filesErr error) error {
+	var missing schema.MultiError
+	if !errors.As(err, &missing) {
+		return err
 	}
-	return d.Decode(reflect.New(reflect.TypeOf(out).Elem()).Interface(), src, files) //nolint:wrapcheck // a wrap adds no context and costs a formatted message per failed bind
+	var stillMissing schema.MultiError
+	if filesErr != nil && !errors.As(filesErr, &stillMissing) {
+		return err
+	}
+	for key, e := range missing {
+		var empty schema.EmptyFieldError
+		if errors.As(e, &empty) && stillMissing[key] == nil {
+			delete(missing, key)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return missing
 }
 
 // decodeFiles decodes files into a scratch value, the keys of one field in the order of keys, and sets the file fields
-// of out from it: decoded into out, the files would rerun the defaults and required checks the pairs have done.
-func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, files map[string][]*multipart.FileHeader) {
+// of out from it: decoded into out, the files would rerun the defaults and required checks the pairs have done. It
+// returns what the decode of all files reports.
+func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, files map[string][]*multipart.FileHeader) error {
 	dst := reflect.ValueOf(out).Elem()
 	if dst.Kind() != reflect.Struct {
-		return
+		return nil
 	}
 	scratch := reflect.New(dst.Type())
+	scratch.Elem().Set(dst)
+	zeroSettable(scratch.Elem())
 	// All at once first, which grows each slice the keys index to its length in one step.
-	d.Decode(scratch.Interface(), nil, files) //nolint:errcheck // reported by the decode of the pairs
+	err := d.Decode(scratch.Interface(), nil, files)
 	if len(files) > 1 {
 		one := acquireFileHeaderMap()
 		defer releaseFileHeaderMap(one)
@@ -517,6 +531,21 @@ func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, file
 		}
 	}
 	g.setFiles(dst, scratch.Elem())
+	return err //nolint:wrapcheck // judged by unfilled, not returned as is
+}
+
+// zeroSettable zeroes every field of the struct v that schema can set. The scratch keeps the rest of out: schema follows
+// an unexported embedded pointer but cannot allocate one, so a file under it can only reach out through out's own.
+func zeroSettable(v reflect.Value) {
+	for i := range v.NumField() {
+		switch f := v.Field(i); {
+		case f.CanSet():
+			f.SetZero()
+		case f.Kind() == reflect.Struct:
+			zeroSettable(f)
+		default:
+		}
+	}
 }
 
 var fileHeaderSliceType = reflect.SliceOf(fileHeaderPtrType)
@@ -1203,7 +1232,8 @@ func (d *bindData) bindFiles(files map[string][]*multipart.FileHeader, key strin
 	if _, filed := files[key]; !filed && d.mode == bindPairs {
 		d.add(key, "")
 	}
-	files[key] = append(files[key], headers...)
+	// Of the names that spell one key, the one that sorts last wins, as among the values.
+	files[key] = headers
 	return nil
 }
 
