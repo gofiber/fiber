@@ -1535,7 +1535,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 Form values can be retrieved by name, the **first** value for the given key is returned. The query string is searched first, then the urlencoded body, then the multipart form, so a query parameter hides a form field of the same name. A multipart form is parsed within the app [BodyLimit](./fiber.md#bodylimit) and yields no values past it. So is a streamed urlencoded body, under [`StreamRequestBody`](./fiber.md#streamrequestbody), which also sets `413 Request Entity Too Large` while no response body was written.
 
-A form is read only where the form parser reads the bytes [`Body`](#body) returns: a urlencoded form without a `Content-Encoding` (`identity` aside), and a multipart form without one or with a single `gzip`. Under any other coding `FormValue` finds query parameters only, and [`FormFile`](#formfile) and [`MultipartForm`](#multipartform) return `fiber.ErrUnsupportedMediaType`, so a handler never checks one body and reads the fields of another. Decode such a form from `Body` yourself.
+A form is read only where the form parser reads the bytes [`Body`](#body) returns: a urlencoded form without a `Content-Encoding` (`identity` aside), and a multipart form without one or with a single `gzip`, either under a list of at most five members, `identity` included, as `Body` takes. Under any other coding `FormValue` finds query parameters only, and [`FormFile`](#formfile) and [`MultipartForm`](#multipartform) return `fiber.ErrUnsupportedMediaType`, so a handler never checks one body and reads the fields of another. Decode such a form from `Body` yourself.
 
 :::caution
 

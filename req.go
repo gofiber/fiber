@@ -28,8 +28,8 @@ import (
 // Pre-allocated for the charset parameter comparison to avoid allocations
 var charsetBytes = []byte("charset")
 
-// maxContentCodings is the longest Content-Encoding list Body undoes; curl stops at five as well.
-const maxContentCodings = 5
+// maxContentCodings is the longest Content-Encoding list Body undoes, the one the form binders agree with.
+const maxContentCodings = mediatype.MaxContentCodings
 
 // Ranks of the headers Scheme reads, lowest first.
 const (

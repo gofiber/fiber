@@ -103,8 +103,12 @@ func ParsesPostArgs(ct []byte) bool {
 	return utils.HasPrefixFold(ct, applicationForm)
 }
 
+// MaxContentCodings is the longest Content-Encoding list Ctx.Body undoes; curl stops at five as well.
+const MaxContentCodings = 5
+
 // FormCodingAgrees reports whether fasthttp's form readers take the form from the bytes Ctx.Body returns. Body undoes
-// every coding on every Content-Encoding line; PostArgs undoes none, MultipartForm only a gzip on the first line.
+// every coding on every Content-Encoding line, at most MaxContentCodings members counting identity; PostArgs undoes
+// none, MultipartForm only a gzip on the first line.
 func FormCodingAgrees(h *fasthttp.RequestHeader) bool {
 	if !h.NormalizingDisabled() && h.ContentEncoding() == nil {
 		return true
@@ -113,17 +117,21 @@ func FormCodingAgrees(h *fasthttp.RequestHeader) bool {
 	if !multipart && !ParsesPostArgs(h.ContentType()) {
 		return true
 	}
-	coded, gzip := 0, false
+	members, coded, gzip := 0, 0, false
 	for name, line := range h.All() {
 		if !utils.EqualFold(utils.UnsafeString(name), fasthttp.HeaderContentEncoding) {
 			continue
 		}
 		for coding := range headerlist.All(utils.UnsafeString(line)) {
+			members++
 			if !utils.EqualFold(coding, "identity") {
 				coded++
 				gzip = utils.EqualFold(coding, "gzip")
 			}
 		}
+	}
+	if members > MaxContentCodings {
+		return false
 	}
 	return coded == 0 || multipart && coded == 1 && gzip && utils.EqualFold(utils.UnsafeString(h.ContentEncoding()), "gzip")
 }

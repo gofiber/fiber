@@ -916,8 +916,9 @@ resolve to the **request**; use `c.Res().Get()`, `c.Res().GetHeaders()`, `c.Res(
   middleware.
 - **FormValue(), FormFile(), MultipartForm() and Bind().Form()**: A form is read only where the form parser reads the
   bytes `Body()` returns. A urlencoded form under a `Content-Encoding` other than `identity`, and a multipart form under
-  one other than a single `gzip`, is refused: `FormValue` finds query parameters only, `FormFile` and `MultipartForm`
-  return `fiber.ErrUnsupportedMediaType`, and `Bind().Form()` fails with `binder.ErrFormContentEncoding`.
+  one other than a single `gzip`, or under a list longer than the five members `Body()` undoes, is refused: `FormValue`
+  finds query parameters only, `FormFile` and `MultipartForm` return `fiber.ErrUnsupportedMediaType`, and
+  `Bind().Form()` fails with `binder.ErrFormContentEncoding`.
 - **Render()**: The `fiber.Map` passed as `bind` is no longer modified. `ViewBind` values and, with
   `PassLocalsToViews`, the `Locals` used to be written into it, so a map kept across requests carried the first
   request's values into every later render, and a nil `fiber.Map` panicked. They are now merged into a copy, and a

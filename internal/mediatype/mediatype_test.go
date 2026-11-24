@@ -410,6 +410,11 @@ func Test_IsToken(t *testing.T) {
 	}
 }
 
+// identities returns n identity members, the first on a Content-Encoding line of its own.
+func identities(n int) string {
+	return "Content-Encoding: identity\r\nContent-Encoding: " + strings.TrimSuffix(strings.Repeat("identity, ", n-1), ", ") + "\r\n"
+}
+
 func Test_FormCodingAgrees(t *testing.T) {
 	t.Parallel()
 	const (
@@ -425,6 +430,9 @@ func Test_FormCodingAgrees(t *testing.T) {
 		{name: "urlencoded", contentType: urlencoded, want: true},
 		{name: "urlencoded, empty line", contentType: urlencoded, lines: "Content-Encoding:\r\n", want: true},
 		{name: "urlencoded, identity", contentType: urlencoded, lines: "Content-Encoding: Identity\r\n", want: true},
+		{name: "urlencoded, identity up to the cap", contentType: urlencoded, lines: identities(MaxContentCodings), want: true},
+		{name: "urlencoded, identity past the cap", contentType: urlencoded, lines: identities(MaxContentCodings + 1)},
+		{name: "multipart, gzip and identity past the cap", contentType: multipart, lines: "Content-Encoding: gzip\r\n" + identities(MaxContentCodings)},
 		{name: "urlencoded, gzip", contentType: urlencoded, lines: "Content-Encoding: gzip\r\n"},
 		{name: "urlencoded, gzip beside identity", contentType: urlencoded, lines: "Content-Encoding: identity, gzip\r\n"},
 		{name: "urlencoded, gzip under a lower-case name", contentType: urlencoded, lines: "content-encoding: gzip\r\n", asSent: true},
