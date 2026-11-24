@@ -1819,11 +1819,12 @@ func Test_Static_FileSystemAliases(t *testing.T) {
 			"static/private-docs/r.txt": {Data: []byte("SECRET")},
 			"static/café/menu.txt":      {Data: []byte("MENU")},
 			"static/a~b.txt":            {Data: []byte("TILDE")},
+			"static/keys/x.txt":         {Data: []byte("SECRET")},
 		},
-		alias: strings.NewReplacer("ſ", "s", "PRIVAT~1", "private-docs", "private-docs.", "private-docs"),
+		alias: strings.NewReplacer("ſ", "s", "ı", "i", "\u212a", "k", "PRIVAT~1", "private-docs", "private-docs.", "private-docs"),
 	}
 	for _, unescape := range []bool{false, true} {
-		app := staticTestApp(unescape, "/static/secret", "/static/private-docs")
+		app := staticTestApp(unescape, "/static/secret", "/static/private-docs", "/static/keys")
 		app.Use("/static", New("static", Config{FS: fsys}))
 		h := app.Handler()
 
@@ -1832,6 +1833,8 @@ func Test_Static_FileSystemAliases(t *testing.T) {
 			"/static/a~b.txt":               fiber.StatusOK,
 			"/static/secret/x.txt":          fiber.StatusForbidden,
 			"/static/ſecret/x.txt":          fiber.StatusNotFound,
+			"/static/prıvate-docs/r.txt":    fiber.StatusNotFound,
+			"/static/\u212aeys/x.txt":       fiber.StatusNotFound,
 			"/static/PRIVAT~1/r.txt":        fiber.StatusNotFound,
 			"/static/private-docs./r.txt":   fiber.StatusNotFound,
 			"/static/private-docs%2E/r.txt": fiber.StatusNotFound,

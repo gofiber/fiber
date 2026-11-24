@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"testing"
 	"testing/fstest"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 )
@@ -275,20 +277,21 @@ func Test_OSName_Windows(t *testing.T) {
 	}
 }
 
-func Test_Listed(t *testing.T) {
+func Test_Aliased(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
-	require.NoError(t, os.Mkdir(filepath.Join(root, "café"), 0o750))
-	for _, name := range []string{"café/menu.txt", "a~b.txt"} {
-		require.NoError(t, os.WriteFile(filepath.Join(root, filepath.FromSlash(name)), nil, 0o600))
-	}
-	files := fstest.MapFS{"site/café/menu.txt": {}, "site/a~b.txt": {}}
-
 	for input, want := range map[string]bool{
-		"/plain/missing.txt": true, "/café/menu.txt": true, "/café/": true, "/a~b.txt": true,
-		"/nope~/x": false, "/cafè/menu.txt": false, "/a~c.txt": false,
+		"/plain/missing.txt": false, "/café/menu.txt": false, "/a~b.txt": false, "/nope~": false,
+		"/ſecret/x": true, "/ınfo": true, "/İnfo": true, "/\u212aeys": true, "/PRIVAT~1/r.txt": true, "/x/LONGNA~12.TXT": true,
 	} {
-		require.Equal(t, want, Listed([]byte(input), nil, root, false), "input=%q", input)
-		require.Equal(t, want, Listed([]byte(input), files, "site", false), "fs input=%q", input)
+		require.Equal(t, want, Aliased([]byte(input)), "input=%q", input)
+	}
+}
+
+// The runes Aliased refuses are all those whose case Go maps to ASCII.
+func Test_Aliased_CoversEveryASCIICaseMapping(t *testing.T) {
+	t.Parallel()
+	for r := rune(utf8.RuneSelf); r <= unicode.MaxRune; r++ {
+		toASCII := unicode.ToUpper(r) < utf8.RuneSelf || unicode.ToLower(r) < utf8.RuneSelf
+		require.Equal(t, toASCII, Aliased([]byte(string(r))), "%U", r)
 	}
 }

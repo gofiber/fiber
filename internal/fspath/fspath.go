@@ -12,7 +12,7 @@
 //	segment ending "." or " "    404       -         (6)
 //	drive letter or volume       404       -         (7) OS root only
 //	fs.ValidPath                 404       -         (8) fs.FS root only
-//	non-ASCII or "~", unlisted   404       -         (9) Listed
+//	ASCII case alias, "~" digit  404       -         (9) Aliased
 //
 // The reasons, by number:
 //
@@ -34,8 +34,9 @@
 //     with a 403; the check here runs on every OS.
 //  8. An fs.FS name must also be valid UTF-8.
 //  9. The router folds ASCII case only. A case-folding file system opens
-//     "secret" for "ſecret" (U+017F), and 8.3 short names such as "PRIVAT~1"
-//     open a long one, so a segment holding either must be a listed name.
+//     "secret" for "ſecret" (U+017F), likewise for "ı", "İ" and the Kelvin
+//     sign, and an 8.3 short name such as "PRIVAT~1" opens a long one. Another
+//     normalization or case of a non-ASCII name still opens the same file.
 //
 // Stray "%" policy: a "%" is a name byte wherever nothing decodes the name
 // after it, that is under UnescapePath, where the router already decoded every
@@ -53,7 +54,6 @@ package fspath
 import (
 	"bytes"
 	"io/fs"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -209,66 +209,32 @@ func hasTrailingDotOrSpaceSegment(p []byte) bool {
 	return false
 }
 
-// Listed reports whether every segment of p, a path Valid accepted, that holds
-// a non-ASCII byte or a "~" is the name of an entry listed in its directory,
-// ASCII case folded unless caseSensitive. root is the directory p is below, in
-// fsys when set and on disk otherwise. A name that does not resolve costs one
-// lookup; one that does is read from its directory's listing.
-func Listed(p []byte, fsys fs.FS, root string, caseSensitive bool) bool { //nolint:revive // the flag mirrors CaseSensitive
-	if utils.IsASCII(p) && bytes.IndexByte(p, '~') < 0 {
+// Aliased reports whether p, a path Valid accepted, holds a spelling a file
+// system may open under another name than the router matched: a non-ASCII
+// letter whose upper or lower case is ASCII, or a "~" and a digit, the tail of
+// an 8.3 short name such as "PRIVAT~1".
+func Aliased(p []byte) bool {
+	if i := bytes.IndexByte(p, '~'); i >= 0 && hasShortNameTail(p[i:]) {
 		return true
 	}
-	start := 0
-	for i := 0; i <= len(p); i++ {
-		if i < len(p) && p[i] != '/' {
-			continue
-		}
-		name := p[start:i]
-		if (!utils.IsASCII(name) || bytes.IndexByte(name, '~') >= 0) &&
-			!hasEntry(fsys, root, string(p[:start]), string(name), caseSensitive) {
-			return false
-		}
-		start = i + 1
+	if utils.IsASCII(p) {
+		return false
 	}
-	return true
+	for _, r := range utils.UnsafeString(p) {
+		switch r {
+		case '\u0130', '\u0131', '\u017f', '\u212a': // İ, ı, ſ and the Kelvin sign
+			return true
+		}
+	}
+	return false
 }
 
-// hasEntry reports whether dir, a slash-separated path below root, resolves
-// name and lists it under that spelling.
-func hasEntry(fsys fs.FS, root, dir, name string, caseSensitive bool) bool { //nolint:revive // see Listed
-	var d fs.File
-	var err error
-	if fsys != nil {
-		dir = path.Join(root, dir)
-		if _, err = fs.Stat(fsys, path.Join(dir, name)); err != nil {
-			return false
-		}
-		d, err = fsys.Open(dir)
-	} else {
-		dir = filepath.Join(root, filepath.FromSlash(dir))
-		if _, err = os.Lstat(filepath.Join(dir, name)); err != nil {
-			return false
-		}
-		d, err = os.Open(dir) //nolint:gosec // dir is below root, as Valid checked
-	}
-	if err != nil {
-		return false
-	}
-	defer d.Close() //nolint:errcheck // read only
-	rd, ok := d.(fs.ReadDirFile)
-	if !ok {
-		return false
-	}
-	// In batches, unsorted, up to the name: a directory may hold many entries.
-	for {
-		entries, readErr := rd.ReadDir(64)
-		for _, entry := range entries {
-			if entry.Name() == name || (!caseSensitive && utils.EqualFold(entry.Name(), name)) {
-				return true
-			}
-		}
-		if readErr != nil || len(entries) == 0 {
-			return false
+// hasShortNameTail reports whether a "~" in p is followed by a digit.
+func hasShortNameTail(p []byte) bool {
+	for i := 0; i+1 < len(p); i++ {
+		if p[i] == '~' && p[i+1] >= '0' && p[i+1] <= '9' {
+			return true
 		}
 	}
+	return false
 }

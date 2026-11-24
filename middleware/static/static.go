@@ -175,7 +175,7 @@ func (s *fileServer) requestPath(dst []byte, p string, end int) ([]byte, bool) {
 	// PathRewrite skips fasthttp's Path() normalization; fspath lists what
 	// each check covers instead.
 	if !fspath.Valid(dst[start:], s.fsys, s.decodeEscapes) ||
-		(!s.rootIsFile && !fspath.Listed(dst[start:], s.fsys, s.root, s.caseSensitive)) {
+		(!s.rootIsFile && fspath.Aliased(dst[start:])) {
 		return dst[:0], false
 	}
 	// fasthttp drops a trailing slash before it opens the name, so file/ would
