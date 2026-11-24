@@ -169,10 +169,15 @@ func Test_Valid_NoDecode(t *testing.T) {
 
 func Test_HasUnsafeSegment(t *testing.T) {
 	t.Parallel()
-	for _, p := range []string{"/../x", "/a/../x", "/a/..", "/./x", "/a/.", "/a//b", "//", "/a//", "//a", "..", "."} {
+	for _, p := range []string{
+		"/../x", "/a/../x", "/a/..", "/./x", "/a/.", "/a//b", "//", "/a//", "//a", "..", ".", "/.../a", "/c./d",
+		"/foo./bar", "/foo /bar", "/foo.", "/foo ", "/foo./", "/foo/bar. ",
+	} {
 		require.True(t, hasUnsafeSegment([]byte(p)), "path=%q", p)
 	}
-	for _, p := range []string{"", "/", "/a", "/a/", "/a/b", "/.a/..b/c./d..", "/.../a", "/%2e%2e/a", "a/b"} {
+	for _, p := range []string{
+		"", "/", "/a", "/a/", "/a/b", "/.a/..b/c", "/%2e%2e/a", "a/b", "/foo/bar.txt", "/.well-known/x", "/a.b/c",
+	} {
 		require.False(t, hasUnsafeSegment([]byte(p)), "path=%q", p)
 	}
 }
@@ -184,16 +189,6 @@ func Test_HasDriveLetter(t *testing.T) {
 		"": false, "C": false, "1:/x": false, "@:/x": false, "CC:/x": false, "/C:/x": false,
 	} {
 		require.Equal(t, want, hasDriveLetter(input), "input=%q", input)
-	}
-}
-
-func Test_HasTrailingDotOrSpaceSegment(t *testing.T) {
-	t.Parallel()
-	for input, want := range map[string]bool{
-		"/": false, "/foo/bar.txt": false, "/.well-known/x": false, "/..x/y": false, "/a.b/c": false, "/foo/": false,
-		"/foo./bar": true, "/foo /bar": true, "/foo.": true, "/foo ": true, "/foo./": true, "/foo/bar. ": true,
-	} {
-		require.Equal(t, want, hasTrailingDotOrSpaceSegment([]byte(input)), "input=%q", input)
 	}
 }
 

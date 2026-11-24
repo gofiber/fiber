@@ -75,7 +75,7 @@ func Valid(p []byte, fsys fs.FS, escaped bool) bool { //nolint:revive // the fla
 	if !validName(p, escaped) {
 		return false
 	}
-	if hasUnsafeSegment(p) || hasTrailingDotOrSpaceSegment(p) {
+	if hasUnsafeSegment(p) {
 		return false
 	}
 
@@ -161,22 +161,25 @@ func unhex(c byte) int {
 	}
 }
 
-// hasUnsafeSegment reports whether p holds a "." or ".." segment, or an empty
-// one other than the root's leading and a directory's trailing slash. The
-// router removes dot segments and keeps empty ones as sent, so none of them
-// is part of a path it matched to a file.
+// hasUnsafeSegment reports whether p holds an empty segment other than the
+// root's leading and a directory's trailing slash, or a segment ending in a dot
+// or a space, "." and ".." included. The router removes dot segments and keeps
+// empty ones as sent, so none of them is part of a path it matched to a file.
+// Windows and FAT volumes drop a trailing dot or space when they open a file,
+// so "private./x" would open "private/x", which middleware guarding "private"
+// never saw; the volume, or what backs an fs.FS, is not known here, so such a
+// name is refused for every root.
 func hasUnsafeSegment(p []byte) bool {
 	start := 0
 	for i := 0; i <= len(p); i++ {
 		if i < len(p) && p[i] != '/' {
 			continue
 		}
-		switch n := i - start; {
-		case n == 0:
+		if i == start {
 			if start > 0 && i < len(p) {
 				return true
 			}
-		case n == 1 && p[start] == '.', n == 2 && p[start] == '.' && p[start+1] == '.':
+		} else if c := p[i-1]; c == '.' || c == ' ' {
 			return true
 		}
 		start = i + 1
@@ -191,22 +194,6 @@ func hasDriveLetter(name string) bool {
 	}
 	drive := name[0]
 	return (drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z')
-}
-
-// hasTrailingDotOrSpaceSegment reports whether a segment of p ends in a dot or
-// a space. Windows and FAT volumes drop both from a path component when they
-// open a file, so "private./secret.txt" and "private /secret.txt" would open
-// "private/secret.txt": a path the router kept apart from "private", and one
-// that middleware guarding "private" never saw. Which volume a root lives on
-// is not known here, and an fs.FS may be OS-backed (os.DirFS), so such a name
-// is refused for every root rather than leave the alias open.
-func hasTrailingDotOrSpaceSegment(p []byte) bool {
-	for i, c := range p {
-		if (c == '.' || c == ' ') && (i+1 == len(p) || p[i+1] == '/') {
-			return true
-		}
-	}
-	return false
 }
 
 // Aliased reports whether p, a path Valid accepted, holds a spelling a file

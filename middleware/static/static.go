@@ -116,10 +116,7 @@ func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
 
 // isPrefix reports whether head is the route prefix, as the router compares it.
 func (s *fileServer) isPrefix(head string) bool {
-	if s.caseSensitive {
-		return head == s.prefix
-	}
-	return utils.EqualFold(head, s.prefix)
+	return head == s.prefix || (!s.caseSensitive && utils.EqualFold(head, s.prefix))
 }
 
 // requestPath appends to dst the path the file server opens for the routed
