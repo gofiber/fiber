@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const windowsOS = "windows"
+
 func Benchmark_Valid(b *testing.B) {
 	bench := func(name string, filesystem fs.FS, path string) {
 		b.Run(name, func(b *testing.B) {
@@ -193,14 +195,14 @@ func Test_HasTrailingDotOrSpaceSegment(t *testing.T) {
 	}
 }
 
-// Test_Valid_TrailingDotOrSpace pins that a segment ending in a dot or a
-// space names an ordinary file everywhere except Windows, which strips both
-// when it opens a file and would turn "private." into the guarded "private".
+// Test_Valid_TrailingDotOrSpace pins that a segment ending in a dot or a space
+// is refused on every OS: Windows and FAT volumes strip both when they open a
+// file and would turn "private." into the guarded "private".
 func Test_Valid_TrailingDotOrSpace(t *testing.T) {
 	t.Parallel()
 	for _, filesystem := range []fs.FS{nil, fstest.MapFS{}} {
 		for _, input := range []string{"/private./secret.txt", "/private /secret.txt", "/y.../z.", "/foo. /"} {
-			require.Equal(t, runtime.GOOS != windowsOS, Valid([]byte(input), filesystem, true), "input=%q", input)
+			require.False(t, Valid([]byte(input), filesystem, true), "input=%q", input)
 		}
 	}
 }
@@ -270,5 +272,23 @@ func Test_OSName_Windows(t *testing.T) {
 		"//server/share/../a.txt": `\\server\share\a.txt`,
 	} {
 		require.Equal(t, want, OSName(input), "input=%q", input)
+	}
+}
+
+func Test_Listed(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "café"), 0o750))
+	for _, name := range []string{"café/menu.txt", "a~b.txt"} {
+		require.NoError(t, os.WriteFile(filepath.Join(root, filepath.FromSlash(name)), nil, 0o600))
+	}
+	files := fstest.MapFS{"site/café/menu.txt": {}, "site/a~b.txt": {}}
+
+	for input, want := range map[string]bool{
+		"/plain/missing.txt": true, "/café/menu.txt": true, "/café/": true, "/a~b.txt": true,
+		"/nope~/x": false, "/cafè/menu.txt": false, "/a~c.txt": false,
+	} {
+		require.Equal(t, want, Listed([]byte(input), nil, root, false), "input=%q", input)
+		require.Equal(t, want, Listed([]byte(input), files, "site", false), "fs input=%q", input)
 	}
 }

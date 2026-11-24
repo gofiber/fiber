@@ -1810,6 +1810,37 @@ func (f *staticTestFS) Open(name string) (fs.File, error) {
 	return f.files.Open(name) //nolint:wrapcheck // the file system's own error
 }
 
+// The router folds ASCII case only, so another spelling a file system resolves would skip a guard.
+func Test_Static_FileSystemAliases(t *testing.T) {
+	t.Parallel()
+	fsys := &staticTestFS{
+		files: fstest.MapFS{
+			"static/secret/x.txt":       {Data: []byte("SECRET")},
+			"static/private-docs/r.txt": {Data: []byte("SECRET")},
+			"static/café/menu.txt":      {Data: []byte("MENU")},
+			"static/a~b.txt":            {Data: []byte("TILDE")},
+		},
+		alias: strings.NewReplacer("ſ", "s", "PRIVAT~1", "private-docs", "private-docs.", "private-docs"),
+	}
+	for _, unescape := range []bool{false, true} {
+		app := staticTestApp(unescape, "/static/secret", "/static/private-docs")
+		app.Use("/static", New("static", Config{FS: fsys}))
+		h := app.Handler()
+
+		for target, want := range map[string]int{
+			"/static/café/menu.txt":         fiber.StatusOK,
+			"/static/a~b.txt":               fiber.StatusOK,
+			"/static/secret/x.txt":          fiber.StatusForbidden,
+			"/static/ſecret/x.txt":          fiber.StatusNotFound,
+			"/static/PRIVAT~1/r.txt":        fiber.StatusNotFound,
+			"/static/private-docs./r.txt":   fiber.StatusNotFound,
+			"/static/private-docs%2E/r.txt": fiber.StatusNotFound,
+		} {
+			staticTestExpectRaw(t, h, target, want, "unescape=%t target=%s", unescape, target)
+		}
+	}
+}
+
 // Off a route, as in an ErrorHandler, every path shares one file server, which serves the root.
 func Test_Static_Unrouted_OneFileServer(t *testing.T) {
 	t.Parallel()

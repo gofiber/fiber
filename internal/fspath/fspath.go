@@ -9,9 +9,10 @@
 //	escape the router kept       opened    -         (3)
 //	stray "%", forged escape     404       literal   (4)
 //	".", ".." or empty segment   404       cleaned   (5)
-//	segment ending "." or " "    404       -         (6) Windows only
+//	segment ending "." or " "    404       -         (6)
 //	drive letter or volume       404       -         (7) OS root only
 //	fs.ValidPath                 404       -         (8) fs.FS root only
+//	non-ASCII or "~", unlisted   404       -         (9) Listed
 //
 // The reasons, by number:
 //
@@ -27,10 +28,14 @@
 //     fasthttp a request URI instead, whose Path() resolves dot segments and
 //     merges "//"; FSName and OSName give the name that comes out.
 //  6. Windows strips a trailing dot or space from a path component when it
-//     opens a file, so "private./x" would open "private/x".
+//     opens a file, so "private./x" would open "private/x"; so does a FAT
+//     volume on any OS.
 //  7. fasthttp refuses ":" only on Windows and only for its OS file system,
 //     with a 403; the check here runs on every OS.
 //  8. An fs.FS name must also be valid UTF-8.
+//  9. The router folds ASCII case only. A case-folding file system opens
+//     "secret" for "ſecret" (U+017F), and 8.3 short names such as "PRIVAT~1"
+//     open a long one, so a segment holding either must be a listed name.
 //
 // Stray "%" policy: a "%" is a name byte wherever nothing decodes the name
 // after it, that is under UnescapePath, where the router already decoded every
@@ -48,17 +53,13 @@ package fspath
 import (
 	"bytes"
 	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/gofiber/utils/v2"
 )
-
-// windowsOS is runtime.GOOS on Windows, where a path component loses its
-// trailing dots and spaces when a file is opened.
-const windowsOS = "windows"
 
 // Valid reports whether the routed path p, with the route's prefix stripped,
 // can name a file inside the root, which is fsys when set and the OS file
@@ -67,14 +68,14 @@ const windowsOS = "windows"
 // "private/secret.txt" the router did not match), an escape of an unreserved
 // character (a stray '%' the router kept that would otherwise double-decode
 // past the route and middleware), a malformed escape, a backslash, a control
-// character, a ".", ".." or empty segment, a drive letter and, on Windows, a
-// segment ending in a dot or a space that the OS would strip. escaped is off
-// under UnescapePath, which already decoded everything.
+// character, a ".", ".." or empty segment, a drive letter and a segment ending
+// in a dot or a space that the file system may strip. escaped is off under
+// UnescapePath, which already decoded everything.
 func Valid(p []byte, fsys fs.FS, escaped bool) bool { //nolint:revive // the flag mirrors UnescapePath
 	if !validName(p, escaped) {
 		return false
 	}
-	if hasUnsafeSegment(p) || (runtime.GOOS == windowsOS && hasTrailingDotOrSpaceSegment(p)) {
+	if hasUnsafeSegment(p) || hasTrailingDotOrSpaceSegment(p) {
 		return false
 	}
 
@@ -193,14 +194,12 @@ func hasDriveLetter(name string) bool {
 }
 
 // hasTrailingDotOrSpaceSegment reports whether a segment of p ends in a dot or
-// a space. Windows drops both from a path component when it opens a file, so
-// "private./secret.txt" and "private /secret.txt" would open
+// a space. Windows and FAT volumes drop both from a path component when they
+// open a file, so "private./secret.txt" and "private /secret.txt" would open
 // "private/secret.txt": a path the router kept apart from "private", and one
-// that middleware guarding "private" never saw. Elsewhere such a name is an
-// ordinary file, so Valid applies this only on Windows, and there to every
-// root: an fs.FS may be OS-backed (os.DirFS) and cannot be told apart from a
-// virtual one such as embed.FS, so a virtual name ending in a dot or a space
-// is refused on Windows rather than leave the alias open for the rest.
+// that middleware guarding "private" never saw. Which volume a root lives on
+// is not known here, and an fs.FS may be OS-backed (os.DirFS), so such a name
+// is refused for every root rather than leave the alias open.
 func hasTrailingDotOrSpaceSegment(p []byte) bool {
 	for i, c := range p {
 		if (c == '.' || c == ' ') && (i+1 == len(p) || p[i+1] == '/') {
@@ -208,4 +207,68 @@ func hasTrailingDotOrSpaceSegment(p []byte) bool {
 		}
 	}
 	return false
+}
+
+// Listed reports whether every segment of p, a path Valid accepted, that holds
+// a non-ASCII byte or a "~" is the name of an entry listed in its directory,
+// ASCII case folded unless caseSensitive. root is the directory p is below, in
+// fsys when set and on disk otherwise. A name that does not resolve costs one
+// lookup; one that does is read from its directory's listing.
+func Listed(p []byte, fsys fs.FS, root string, caseSensitive bool) bool { //nolint:revive // the flag mirrors CaseSensitive
+	if utils.IsASCII(p) && bytes.IndexByte(p, '~') < 0 {
+		return true
+	}
+	start := 0
+	for i := 0; i <= len(p); i++ {
+		if i < len(p) && p[i] != '/' {
+			continue
+		}
+		name := p[start:i]
+		if (!utils.IsASCII(name) || bytes.IndexByte(name, '~') >= 0) &&
+			!hasEntry(fsys, root, string(p[:start]), string(name), caseSensitive) {
+			return false
+		}
+		start = i + 1
+	}
+	return true
+}
+
+// hasEntry reports whether dir, a slash-separated path below root, resolves
+// name and lists it under that spelling.
+func hasEntry(fsys fs.FS, root, dir, name string, caseSensitive bool) bool { //nolint:revive // see Listed
+	var d fs.File
+	var err error
+	if fsys != nil {
+		dir = path.Join(root, dir)
+		if _, err = fs.Stat(fsys, path.Join(dir, name)); err != nil {
+			return false
+		}
+		d, err = fsys.Open(dir)
+	} else {
+		dir = filepath.Join(root, filepath.FromSlash(dir))
+		if _, err = os.Lstat(filepath.Join(dir, name)); err != nil {
+			return false
+		}
+		d, err = os.Open(dir) //nolint:gosec // dir is below root, as Valid checked
+	}
+	if err != nil {
+		return false
+	}
+	defer d.Close() //nolint:errcheck // read only
+	rd, ok := d.(fs.ReadDirFile)
+	if !ok {
+		return false
+	}
+	// In batches, unsorted, up to the name: a directory may hold many entries.
+	for {
+		entries, readErr := rd.ReadDir(64)
+		for _, entry := range entries {
+			if entry.Name() == name || (!caseSensitive && utils.EqualFold(entry.Name(), name)) {
+				return true
+			}
+		}
+		if readErr != nil || len(entries) == 0 {
+			return false
+		}
+	}
 }
