@@ -105,7 +105,7 @@ func (r *Response) Protocol() string {
 // and is left to RawResponse.Header.PeekTrailer.
 func (r *Response) Header(key string) string {
 	h := &r.RawResponse.Header
-	if len(h.PeekAllTrailer(key)) == 0 {
+	if !fieldname.HasTrailers(h) || len(h.PeekAllTrailer(key)) == 0 {
 		return string(h.Peek(key))
 	}
 	if lines := fieldname.Lines(h, key, true); len(lines) > 0 {
@@ -116,7 +116,7 @@ func (r *Response) Header(key string) string {
 
 // headerLines is PeekAll without the trailer fields fasthttp appends under the same name.
 func headerLines(h *fasthttp.ResponseHeader, key string) [][]byte {
-	if len(h.PeekAllTrailer(key)) == 0 {
+	if !fieldname.HasTrailers(h) || len(h.PeekAllTrailer(key)) == 0 {
 		return h.PeekAll(key)
 	}
 	return fieldname.Lines(h, key, true)
