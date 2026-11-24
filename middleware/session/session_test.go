@@ -2881,6 +2881,10 @@ func Test_Session_SaveAfterDestroy(t *testing.T) {
 			require.Nil(t, stored.Get("user"))
 			require.False(t, stored.absExpiration().IsZero())
 			require.Contains(t, string(ending.ctx.Response().Header.Peek(fiber.HeaderSetCookie)), "session_id="+newID)
+			// Ended after its save, it is not stored again by a later one.
+			require.NoError(t, store.Delete(context.Background(), newID))
+			require.NoError(t, ending.Save())
+			sessionTestRequireGone(t, store, newID)
 
 			inFlight.Set("cart", "1")
 			require.NoError(t, inFlight.Save())

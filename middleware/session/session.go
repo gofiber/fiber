@@ -339,10 +339,15 @@ func (s *Session) storeRotated(ctx context.Context) error {
 	if s.idleTimeout <= 0 {
 		s.idleTimeout = s.config.IdleTimeout
 	}
-	key := s.storageKey()
-	// Read before the write, as a load does: a change in the shard in between costs the save a read, no more.
+	return s.store(ctx, s.storageKey(), data, s.lifetime())
+}
+
+// store writes data under key and marks the session loaded there, so its next save sees a store.Delete or
+// store.Reset that ended it since. The caller holds s.mu.
+func (s *Session) store(ctx context.Context, key storageKey, data []byte, ttl time.Duration) error {
+	// Read before the write, as a load does: a change in the shard in between costs the next save a read, no more.
 	gen := key.lock().gen.Load()
-	if err := s.config.Storage.SetWithContext(ctx, string(key), data, s.lifetime()); err != nil {
+	if err := s.config.Storage.SetWithContext(ctx, string(key), data, ttl); err != nil {
 		return err
 	}
 	s.rawData, s.loaded, s.loadGen = data, true, gen
@@ -618,7 +623,7 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 
 	// Update client cookie
 	s.setSession(ttl)
-	return s.config.Storage.SetWithContext(ctx, string(key), data, ttl)
+	return s.store(ctx, key, data, ttl)
 }
 
 // encode returns what a save stores and whether it differs from the snapshot of the load. The caller holds s.mu.
