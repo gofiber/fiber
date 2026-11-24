@@ -223,6 +223,29 @@ func Test_Response_Header_TrailerSection(t *testing.T) {
 		require.Equal(t, []string{"user"}, headers["X-Role"])
 	})
 
+	t.Run("names that differ in case, stream drained while iterating", func(t *testing.T) {
+		t.Parallel()
+		const late = "HTTP/1.1 200 OK\r\nX-Before: ready\r\nX-Test: one\r\nx-test: two\r\nTransfer-Encoding: chunked\r\n\r\n" +
+			"2\r\nok\r\n0\r\nX-Test: three\r\n\r\n"
+		resp := AcquireResponse()
+		defer ReleaseResponse(resp)
+		resp.RawResponse.Header.DisableNormalizing()
+		resp.RawResponse.StreamBody = true
+		require.NoError(t, resp.RawResponse.Read(bufio.NewReader(strings.NewReader(late))))
+
+		headers := map[string][]string{}
+		for k, v := range resp.Headers() {
+			if len(headers) == 0 {
+				_, err := io.ReadAll(resp.BodyStream())
+				require.NoError(t, err)
+			}
+			headers[k] = append(v, "appended")
+		}
+		require.Equal(t, "three", string(resp.RawResponse.Header.PeekTrailer("X-Test")))
+		require.Equal(t, []string{"one", "appended"}, headers["X-Test"])
+		require.Equal(t, []string{"two", "appended"}, headers["x-test"])
+	})
+
 	t.Run("names that differ in case", func(t *testing.T) {
 		t.Parallel()
 		const mixed = "HTTP/1.1 200 OK\r\nX-Test: one\r\nx-test: two\r\nTransfer-Encoding: chunked\r\n\r\n" +

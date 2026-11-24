@@ -128,33 +128,40 @@ func (r *Response) Headers() iter.Seq2[string, []string] {
 
 		// PeekAll reuses the slice PeekKeys returns, so copy the keys out first.
 		// PeekKeys lists a key once per header line; keep the first occurrence only.
+		// With trailers Lines matches names case-insensitively, so the keys fold alike.
 		keys := make([]string, 0, len(peekKeys))
 		for _, key := range peekKeys {
 			k := utils.UnsafeString(key)
-			// Lines below matches names case-insensitively, so the keys fold alike.
 			if trailers && fieldname.ContainsFold(keys, k) || !trailers && slices.Contains(keys, k) {
 				continue
 			}
 			keys = append(keys, k)
 		}
 
-		for _, key := range keys {
-			// Asked per key: draining BodyStream between yields can bring in a trailer section,
-			// whose fields PeekAll appends under the same name and Lines leaves out.
-			var vals [][]byte
-			if fieldname.HasTrailers(h) {
-				vals = fieldname.Lines(h, key, true)
+		// Read before the first yield: draining BodyStream in between can bring in a trailer
+		// section, whose fields PeekAll appends under the same name.
+		vals := make([]string, 0, len(peekKeys))
+		ends := make([]int, len(keys))
+		for i, key := range keys {
+			var lines [][]byte
+			if trailers {
+				lines = fieldname.Lines(h, key, true)
 			} else {
-				vals = h.PeekAll(key)
+				lines = h.PeekAll(key)
 			}
-			valsStr := make([]string, len(vals))
-			for i, v := range vals {
-				valsStr[i] = utils.UnsafeString(v)
+			for _, v := range lines {
+				vals = append(vals, utils.UnsafeString(v))
 			}
+			ends[i] = len(vals)
+		}
 
-			if !yield(key, valsStr) {
+		start := 0
+		for i, key := range keys {
+			// Capped, so appending to one key's values cannot overwrite the next key's.
+			if !yield(key, vals[start:ends[i]:ends[i]]) {
 				return
 			}
+			start = ends[i]
 		}
 	}
 }
