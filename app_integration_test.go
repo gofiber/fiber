@@ -624,7 +624,7 @@ func Test_Integration_App_ServerErrorHandler_ClosesStreamOnce(t *testing.T) {
 
 			resp := performOversizedRequest(t, app, nil)
 			require.Equal(t, "refused", string(resp.Body()))
-			apptest.Recv(t, reset.closes, 10*time.Second, "the request was not reset")
+			require.NoError(t, apptest.Recv(t, reset.closes, 10*time.Second, "the request was not reset"))
 			require.Len(t, closes, 1)
 		})
 	}

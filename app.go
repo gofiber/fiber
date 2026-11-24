@@ -1863,7 +1863,7 @@ func (s *refusedStream) Close() error {
 
 func (s *refusedStream) CloseWithError(err error) error {
 	if closer, ok := s.Reader.(fasthttp.ReadCloserWithError); ok {
-		return closer.CloseWithError(err) //nolint:wrapcheck // the stream's own error
+		return closer.CloseWithError(err)
 	}
 	return nil
 }
