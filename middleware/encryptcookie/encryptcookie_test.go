@@ -1033,7 +1033,7 @@ func Test_Middleware_EncryptsResponsesSentPastIt(t *testing.T) {
 }
 
 // An Encryptor that panics on the response OnTimeout wrote leaves it unfinished: the request is still answered as
-// timed out, with a 500 that carries none of its cookies, and the context stays with the handler that runs on.
+// timed out, with a 500 that carries none of its cookies.
 func Test_Middleware_EncryptorPanicOnTimeoutResponse(t *testing.T) {
 	t.Parallel()
 	release := make(chan struct{})
