@@ -1799,6 +1799,46 @@ func Test_Cache_RefusalRecordOutlivesTheGroupsEntriesWhenThePathIsRewritten(t *t
 	require.Equal(t, 1, records)
 }
 
+// Authorization is in every key, so the record outlives the credential's longest-lived variant without a Vary.
+func Test_Cache_RefusalRecordOutlivesTheAuthorizationEntries(t *testing.T) {
+	t.Parallel()
+	storage := storagetest.New()
+	var ended atomic.Bool
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage}))
+	app.Get("/account", func(c fiber.Ctx) error {
+		if ended.Load() {
+			return c.SendStatus(fiber.StatusUnauthorized)
+		}
+		c.Set(fiber.HeaderCacheControl, "public, max-age="+c.Query("max-age"))
+		return c.SendString("account")
+	})
+	get := func(accept, cacheControl string) reply {
+		target := "/account?max-age=60"
+		if accept == "text/long" {
+			target = "/account?max-age=3600"
+		}
+		return cacheTestCGet(t, app, target, fiber.HeaderAuthorization, "Bearer a", fiber.HeaderAccept, accept, fiber.HeaderCacheControl, cacheControl)
+	}
+
+	stored := uint64(time.Now().Unix())
+	require.Equal(t, cacheMiss, get("text/long", "").cache)
+	require.Equal(t, cacheMiss, get("text/short", "").cache)
+	ended.Store(true)
+	require.Equal(t, fiber.StatusUnauthorized, get("text/short", "no-cache").status)
+
+	storage.Mu.RLock()
+	defer storage.Mu.RUnlock()
+	records := 0
+	for key, value := range storage.Data {
+		if isRefusalRecord(key) {
+			records++
+			require.GreaterOrEqual(t, lapseOf(value), stored+3598, key)
+		}
+	}
+	require.Equal(t, 1, records)
+}
+
 // The app is not asked about an entry the request already rules out: that stays so a moment later.
 func Test_Cache_InvalidatorIsNotAskedAboutAnEntryRuledOut(t *testing.T) {
 	t.Parallel()

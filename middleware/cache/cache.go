@@ -1270,7 +1270,8 @@ func New(config ...Config) fiber.Handler {
 		if expiresParseError || storageExpiration < cfg.Expiration {
 			storageExpiration = cfg.Expiration
 		}
-		if cfg.holdsCredentialResponse(c, e.vary) {
+		// Authorization is in every key, so its entry is a credential's whatever the response varies on.
+		if hasAuthorization || cfg.holdsCredentialResponse(c, e.vary) {
 			refusals.noteLifetime(urlGroup, storageExpiration)
 		}
 
