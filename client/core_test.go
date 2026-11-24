@@ -7,6 +7,10 @@ import (
 	"errors"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -799,6 +803,164 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 	})
 }
 
+func Test_Execute_CancelTakesBackBodyStream(t *testing.T) {
+	t.Parallel()
+	canceled := func(t *testing.T, body io.Reader, started <-chan struct{}, read func(io.Reader)) <-chan error {
+		t.Helper()
+		client := New()
+		client.transport = &clientTestCStubTransport{do: func(req *fasthttp.Request, _ *fasthttp.Response) error {
+			read(req.BodyStream())
+			return errors.New("not sent")
+		}}
+		req := clientTestBRequest(t)
+		req.SetURL("http://example.com/upload").SetMethod(fiber.MethodPost)
+		req.RawRequest.SetBodyStream(body, -1)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+		go func() {
+			<-started
+			cancel()
+		}()
+		result := make(chan error, 1)
+		go func() {
+			_, err := newCore().execute(ctx, client, req)
+			result <- err
+		}()
+		return result
+	}
+
+	t.Run("not read after the call", func(t *testing.T) {
+		t.Parallel()
+		content := bytes.NewBufferString("payload")
+		body := &closeSignal{Reader: content, closed: make(chan struct{})}
+		started, proceed, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+		var n int64
+		var readErr error
+		result := canceled(t, body, started, func(stream io.Reader) {
+			defer close(finished)
+			close(started)
+			<-proceed
+			n, readErr = io.Copy(io.Discard, stream)
+		})
+
+		require.ErrorIs(t, apptest.Recv(t, result, time.Second, "the call did not return"), ErrTimeoutOrCancel)
+		select {
+		case <-body.closed:
+		default:
+			require.FailNow(t, "the body was not closed when the call returned")
+		}
+
+		close(proceed)
+		apptest.Recv(t, finished, time.Second, "the transport did not finish")
+		require.ErrorIs(t, readErr, ErrTimeoutOrCancel)
+		require.Zero(t, n)
+		require.Equal(t, "payload", content.String())
+	})
+
+	t.Run("waits for the read in progress", func(t *testing.T) {
+		t.Parallel()
+		body := &stalledBody{reading: make(chan struct{}), release: make(chan struct{})}
+		finished := make(chan struct{})
+		result := canceled(t, body, body.reading, func(stream io.Reader) {
+			defer close(finished)
+			_, _ = io.Copy(io.Discard, stream) //nolint:errcheck // ends with the loan, or with the body
+		})
+
+		select {
+		case err := <-result:
+			require.FailNow(t, "the call returned while its body was being read", "%v", err)
+		case <-time.After(100 * time.Millisecond):
+		}
+		close(body.release)
+		require.ErrorIs(t, apptest.Recv(t, result, time.Second, "the call did not return"), ErrTimeoutOrCancel)
+		apptest.Recv(t, finished, time.Second, "the transport did not finish")
+		require.Equal(t, int32(1), body.reads.Load(), "the body was read again")
+	})
+
+	t.Run("closing ends a blocked read", func(t *testing.T) {
+		t.Parallel()
+		pr, pw := io.Pipe()
+		t.Cleanup(func() { require.NoError(t, pw.Close()) })
+		body := &readingPipe{PipeReader: pr, reading: make(chan struct{})}
+		finished := make(chan struct{})
+		result := canceled(t, body, body.reading, func(stream io.Reader) {
+			defer close(finished)
+			_, _ = io.Copy(io.Discard, stream) //nolint:errcheck // ends with the closed pipe
+		})
+
+		require.ErrorIs(t, apptest.Recv(t, result, time.Second, "the call did not return"), ErrTimeoutOrCancel)
+		apptest.Recv(t, finished, time.Second, "the transport did not finish")
+	})
+
+	t.Run("a LimitedReader still gives the length", func(t *testing.T) {
+		t.Parallel()
+		client := clientTestAClient(t, func(app *fiber.App) {
+			app.Post("/", func(c fiber.Ctx) error {
+				return c.SendString(strconv.Itoa(c.Request().Header.ContentLength()) + " " + string(c.Body()))
+			})
+		})
+
+		req := client.R().SetTimeout(time.Minute)
+		defer ReleaseRequest(req)
+		req.RawRequest.SetBodyStream(&io.LimitedReader{R: strings.NewReader("payload and more"), N: int64(len("payload"))}, -1)
+		resp, err := req.Post("http://example.com/")
+		require.NoError(t, err)
+		defer resp.Close()
+		require.Equal(t, "7 payload", resp.String())
+	})
+
+	t.Run("a file is still sent up to its size", func(t *testing.T) {
+		t.Parallel()
+		client := clientTestAClient(t, func(app *fiber.App) {
+			app.Post("/", func(c fiber.Ctx) error {
+				return c.SendString(strconv.Itoa(c.Request().Header.ContentLength()) + " " + string(c.Body()))
+			})
+		})
+		name := filepath.Join(t.TempDir(), "body")
+		require.NoError(t, os.WriteFile(name, []byte("payload and more"), 0o600))
+		file, err := os.Open(filepath.Clean(name))
+		require.NoError(t, err)
+
+		req := client.R().SetTimeout(time.Minute)
+		defer ReleaseRequest(req)
+		req.RawRequest.SetBodyStream(file, len("payload"))
+		resp, err := req.Post("http://example.com/")
+		require.NoError(t, err)
+		defer resp.Close()
+		require.Equal(t, "7 payload", resp.String())
+		require.ErrorIs(t, file.Close(), os.ErrClosed, "the body was not closed")
+	})
+}
+
+// readingPipe signals the first Read, which then blocks until the pipe is closed.
+type readingPipe struct {
+	*io.PipeReader
+	reading chan struct{}
+	once    sync.Once
+}
+
+func (p *readingPipe) Read(b []byte) (int, error) {
+	p.once.Do(func() { close(p.reading) })
+	return p.PipeReader.Read(b) //nolint:wrapcheck // the pipe error is what the test waits for
+}
+
+// stalledBody blocks its first Read until release and ends the body on the second.
+type stalledBody struct {
+	reading chan struct{}
+	release chan struct{}
+	reads   atomic.Int32
+}
+
+func (b *stalledBody) Read(p []byte) (int, error) {
+	if b.reads.Add(1) > 1 {
+		return 0, io.EOF
+	}
+	close(b.reading)
+	<-b.release
+	return copy(p, "x"), nil
+}
+
 // silentServer reads what it is sent and never answers; hungUp receives once per connection the client closes.
 func silentServer(t *testing.T) (dial fasthttp.DialFunc, hungUp <-chan struct{}) { //nolint:nonamedreturns // gocritic unnamedResult requires result names
 	t.Helper()
@@ -996,8 +1158,10 @@ func Test_Execute_TimeoutEndsTheExchange(t *testing.T) {
 			_, err := req.Get("http://example.com/")
 			require.ErrorIs(t, err, ErrTimeoutOrCancel)
 
-			// The transport goroutine closes the body when it releases its request.
-			apptest.Recv(t, body.closed, time.Second, "the call kept retrying after it was given up")
+			apptest.Recv(t, body.closed, time.Second, "the body was not closed")
+			made := attempts.Load()
+			time.Sleep(100 * time.Millisecond) // twenty retry intervals
+			require.LessOrEqual(t, attempts.Load(), made+1, "the call kept retrying after it was given up")
 			if tc.attempts >= 0 {
 				require.Equal(t, tc.attempts, attempts.Load())
 			}
