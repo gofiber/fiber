@@ -236,8 +236,7 @@ func appendLowerASCII(dst, src []byte) []byte {
 // for nearly every request, and a separate bytes.Count call cost more than the
 // few instructions it takes per word here.
 //
-// lowerBuf must not alias src. src may alias dstBuf at a higher offset, as it
-// does when Path is overridden with a substring of its current value.
+// lowerBuf must not alias src.
 func appendCopyLowerASCII(dstBuf, lowerBuf []byte, src string) (dst, lower []byte, slashes int) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two same-typed slices
 	n := len(src)
 	// Amortized growth like append: every byte of both slices is overwritten

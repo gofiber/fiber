@@ -471,6 +471,15 @@ func rewriteInRankOrder(h *fasthttp.RequestHeader, lines []orderedLine) {
 	}
 }
 
+// Retain returns v, which a walk over a header yielded under name k, for a caller that keeps it past the walk. Only
+// Cookie is copied: fasthttp joins the parsed cookies in a scratch buffer that the next Set or Add reuses.
+func Retain(k, v []byte) []byte {
+	if len(k) == len(fasthttp.HeaderCookie) && utils.EqualFold(utils.UnsafeString(k), fasthttp.HeaderCookie) {
+		return bytes.Clone(v)
+	}
+	return v
+}
+
 // Lines returns every field line stored under name. The walk replaces the
 // byte-exact lookup rather than backing it up: a message can carry both
 // spellings, and an empty canonical line would hide the value beside it.
@@ -492,7 +501,7 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 	var values [][]byte
 	h.VisitAll(func(k, v []byte) {
 		if utils.EqualFold(utils.UnsafeString(k), name) {
-			values = append(values, v)
+			values = append(values, Retain(k, v))
 		}
 	})
 	return values
@@ -553,7 +562,7 @@ func firstFold(h Peeker, name string) []byte {
 	var found []byte
 	h.VisitAll(func(k, v []byte) {
 		if found == nil && len(v) > 0 && utils.EqualFold(utils.UnsafeString(k), name) {
-			found = v
+			found = Retain(k, v)
 		}
 	})
 	return found

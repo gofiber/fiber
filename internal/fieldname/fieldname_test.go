@@ -186,6 +186,17 @@ func Test_First_Lines_ResponseLineUnderTrailerName(t *testing.T) {
 	}
 }
 
+func Test_First_Lines_CookieSurvivesHeaderWrite(t *testing.T) {
+	t.Parallel()
+	h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\nCookie: a=1\r\n\r\n", false)
+
+	first, lines := First(h, "cookie", false), Lines(h, "cookie", false)
+	h.Set("X-Note", "b=2")
+
+	require.Equal(t, "a=1", string(first))
+	require.Equal(t, []string{"a=1"}, lineValues(lines))
+}
+
 // Test_DropTrailers pins that the header lines stay and that a later Set lands
 // in the header section, where fasthttp filed it with the trailer section before.
 func Test_DropTrailers(t *testing.T) {

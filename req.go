@@ -781,7 +781,7 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 			}
 		}
 		key := app.toString(k)
-		headers[key] = append(headers[key], app.toString(v))
+		headers[key] = append(headers[key], app.toString(fieldname.Retain(k, v)))
 	}
 	return headers
 }
@@ -1353,6 +1353,8 @@ func (r *DefaultReq) Path(override ...string) string {
 		// An override is off the request hot path, so scan the new path rather
 		// than repeat the length comparison Reset makes.
 		r.c.pathNeedsNorm = needsPathNormalization(r.c.pathOriginal)
+		// A buffer of its own: earlier Path and Params results view the old one, as keyauth's key may.
+		r.c.path = nil
 		// Prettify path
 		r.c.configDependentPaths()
 		// The detection path/tree hash changed; invalidate the lookahead index.

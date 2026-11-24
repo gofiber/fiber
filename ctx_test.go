@@ -9067,6 +9067,41 @@ func Test_Ctx_GetReqHeaders_TrailerSection(t *testing.T) {
 	}
 }
 
+func Test_Ctx_CookieHeader_SurvivesHeaderWrite(t *testing.T) {
+	t.Parallel()
+	const cookie = "uid=1001.signature"
+	writes := map[string]func(c Ctx){
+		"set":  func(c Ctx) { c.Request().Header.Set("X-Set", "uid=1000") },
+		"body": func(c Ctx) { c.Body() },
+	}
+	for _, normalize := range []bool{true, false} {
+		for name, write := range writes {
+			t.Run(fmt.Sprintf("normalize=%v %s", normalize, name), func(t *testing.T) {
+				t.Parallel()
+				app := New(Config{StreamRequestBody: true, DisableHeaderNormalizing: !normalize})
+				app.Post("/", func(c Ctx) error {
+					var bound struct {
+						Cookie string `header:"Cookie"`
+					}
+					if err := c.Bind().Header(&bound); err != nil {
+						return err
+					}
+					headers, first, lines := c.GetReqHeaders(), c.Get(HeaderCookie), c.GetAll(HeaderCookie)
+					write(c)
+					return c.SendString(fmt.Sprintf("%q %q %q %q", headers[HeaderCookie], bound.Cookie, first, lines))
+				})
+				ln := startRawServer(t, app)
+
+				raw := "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nCookie: " + cookie +
+					"\r\nX-Note: uid=1000\r\n\r\n5\r\nhello\r\n0\r\nX-Trailer: t\r\n\r\n"
+				responses, _ := rawExchange(t, ln, raw, 1)
+				want := fmt.Sprintf("%q %q %q %q", []string{cookie}, cookie, cookie, []string{cookie})
+				require.Equal(t, want, responses[0].body)
+			})
+		}
+	}
+}
+
 func Benchmark_Ctx_GetReqHeaders_TrailerSection(b *testing.B) {
 	for _, n := range []int{256, 4096} {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
