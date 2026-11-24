@@ -97,7 +97,7 @@ A redirect that keeps the body of a request whose body is streamed (`StreamReque
 
 A `Location` with a scheme other than `http` or `https` and no authority, such as `mailto:user@example.com` or an app callback like `com.example.app:/callback`, has nothing to fetch. `DoRedirects` does not follow it and returns that redirect response as it is, as fasthttp's `DoRedirects` does, so the client receives the `Location` the upstream sent.
 
-The response a chain ends with keeps what the redirects before it said about caching. A bare `no-store`, `private` or `no-cache` in the `Cache-Control` of a followed redirect, and the names in its `Vary`, are added to that response, so it is not cached more freely than the redirects that led to it. A directive qualified with field names, such as `private="Set-Cookie"`, concerns a field of that redirect alone and is not carried.
+A bare `no-store`, `private` or `no-cache` in the `Cache-Control` of a followed redirect, and the names in its `Vary`, are added to the response the chain ends with, after the upstream's hop-by-hop fields were removed. No other directive is carried, `max-age` included, nor one qualified with field names, such as `private="Set-Cookie"`, which concerns a field of that redirect alone.
 
 When following the chain fails, `fasthttp.ErrTooManyRedirects` included, `DoRedirects` leaves the response empty: the redirect it stopped at, with its `Location`, its cookies and its hop-by-hop fields, does not go out with the error.
 
