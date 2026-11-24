@@ -350,6 +350,10 @@ func Test_SubstitutePathParams_ColonRun(t *testing.T) {
 			params: version, want: "http://example.com/v2/" + segment,
 		},
 		{
+			name: "in a segment with a long name set", uri: "http://example.com/v:version/" + segment,
+			params: PathParam{"version": "2", strings.Repeat("n", 1<<16): "x"}, want: "http://example.com/v2/" + segment,
+		},
+		{
 			name: "in the authority", uri: "http://" + authority + "/v:version",
 			params: version, want: "http://" + authority + "/v2",
 		},

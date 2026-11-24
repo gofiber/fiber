@@ -161,17 +161,19 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 		return uri, nil
 	}
 
-	// No placeholder is longer than the longest name set: the bound keeps the scan linear.
-	maxName := longestPathParamName(sources)
-	if maxName == 0 {
+	// Only the lengths of the names set are tried at a ":", so a run of colons costs one lookup per length.
+	var lengthsBuf [8]int
+	lengths := pathParamNameLengths(lengthsBuf[:0], sources)
+	if len(lengths) == 0 {
 		return uri, nil
 	}
 
 	authEnd := authorityEnd(uri)
 
 	var (
-		buf  []byte
-		last int
+		buf    []byte
+		last   int
+		segEnd int // where the segment of the current ":" ends, kept for the colons before it
 
 		inLiteral bool // uri[:scanned] ends inside an IPv6 literal; carried from one ":" to the next
 		scanned   int
@@ -192,7 +194,13 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 			}
 		}
 
-		ph, ok := lookupPlaceholder(uri, i, maxName, i < authEnd, sources)
+		if segEnd <= i {
+			segEnd = i + 1
+			for segEnd < len(uri) && !pathParamSegmentEndChars[uri[segEnd]] {
+				segEnd++
+			}
+		}
+		ph, ok := lookupPlaceholder(uri, i, segEnd, lengths, i < authEnd, sources)
 		if !ok {
 			continue
 		}
@@ -327,12 +335,10 @@ var pathParamSegmentEndChars = [256]bool{
 }
 
 // lookupPlaceholder resolves the ":name" starting at i, returning the value and
-// the index just past the name. Candidates run from the end of the segment down
-// to each terminator inside it, longest first, so a name holding a "-", "." or
-// ":" still resolves. ":idx" never offers "id", because "x" does not terminate a
-// name and the shorter run is therefore not a candidate at all.
-// No candidate is longer than maxName: ":" starts a placeholder and ends a name, so a
-// run of n colons would otherwise cost n*n lookups.
+// the index just past the name. Candidates take the lengths of the names set,
+// longest first, and end at segEnd or at a terminator, so a name holding a "-",
+// "." or ":" still resolves. ":idx" never offers "id", because "x" does not
+// terminate a name and the shorter run is therefore not a candidate at all.
 // placeholder is a resolved ":name" in a request URL: the parameter name, the
 // value found for it, and the index just past the name in the URL.
 type placeholder struct {
@@ -342,16 +348,10 @@ type placeholder struct {
 }
 
 //nolint:revive // flag-parameter: inAuthority selects the port rule, as in substitutePathParams
-func lookupPlaceholder(uri string, i, maxName int, inAuthority bool, sources []PathParam) (placeholder, bool) {
-	limit := min(len(uri), i+1+maxName)
-	segEnd := i + 1
-	for segEnd < limit && !pathParamSegmentEndChars[uri[segEnd]] {
-		segEnd++
-	}
-
-	for end := segEnd; end > i+1; end-- {
-		// The scan may have stopped at limit, which ends no name.
-		if end != len(uri) && !pathParamSegmentEndChars[uri[end]] && !pathParamEndChars[uri[end]] {
+func lookupPlaceholder(uri string, i, segEnd int, lengths []int, inAuthority bool, sources []PathParam) (placeholder, bool) {
+	for _, n := range lengths {
+		end := i + 1 + n
+		if end > segEnd || (end < segEnd && !pathParamEndChars[uri[end]]) {
 			continue
 		}
 
@@ -372,16 +372,19 @@ func lookupPlaceholder(uri string, i, maxName int, inAuthority bool, sources []P
 	return placeholder{}, false
 }
 
-// longestPathParamName returns the length of the longest name in sources, or 0
-// when they hold no name a placeholder could spell.
-func longestPathParamName(sources []PathParam) int {
-	longest := 0
+// pathParamNameLengths appends the distinct lengths of the names in sources a
+// placeholder could spell to dst, longest first.
+func pathParamNameLengths(dst []int, sources []PathParam) []int {
 	for _, source := range sources {
 		for name := range source {
-			longest = max(longest, len(name))
+			if name != "" {
+				dst = append(dst, len(name))
+			}
 		}
 	}
-	return longest
+	slices.Sort(dst)
+	slices.Reverse(dst)
+	return slices.Compact(dst)
 }
 
 // lookupPathParam returns the first value stored under name, searching sources
