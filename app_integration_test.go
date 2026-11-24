@@ -1,6 +1,7 @@
 package fiber_test
 
 import (
+	"bufio"
 	"bytes"
 	"cmp"
 	"errors"
@@ -574,11 +575,19 @@ func Test_Integration_App_ServerErrorHandler_LeavesUserValuesAlone(t *testing.T)
 // closeCounter is a body stream or local that reports each Close.
 type closeCounter struct {
 	io.Reader
-	closes chan struct{}
+	closes chan error
 }
 
 func (c closeCounter) Close() error {
-	c.closes <- struct{}{}
+	c.closes <- nil
+	return nil
+}
+
+// closeWithError is a body stream that reports each CloseWithError, the only close a streamed client response has.
+type closeWithError closeCounter
+
+func (c closeWithError) CloseWithError(err error) error {
+	c.closes <- err
 	return nil
 }
 
@@ -586,24 +595,58 @@ func (c closeCounter) Close() error {
 // of the replay holds the request.
 func Test_Integration_App_ServerErrorHandler_ClosesStreamOnce(t *testing.T) {
 	t.Parallel()
-	stream := closeCounter{Reader: strings.NewReader("refused"), closes: make(chan struct{}, 2)}
-	app := fiber.New(fiber.Config{BodyLimit: 8, ErrorHandler: func(c fiber.Ctx, _ error) error {
-		return c.Status(fiber.StatusRequestEntityTooLarge).SendStream(stream)
-	}})
-	reset := closeCounter{closes: make(chan struct{}, 1)}
-	app.Use(func(c fiber.Ctx) error {
-		c.Locals("reset", reset)
-		return c.Next()
-	}, adaptor.HTTPHandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		if err := http.NewResponseController(w).Flush(); err != nil {
-			return
-		}
-	}))
+	for _, tc := range []struct {
+		stream func(closes chan error) io.Reader
+		name   string
+	}{
+		{name: "Close", stream: func(closes chan error) io.Reader {
+			return closeCounter{Reader: strings.NewReader("refused"), closes: closes}
+		}},
+		{name: "CloseWithError", stream: func(closes chan error) io.Reader {
+			return closeWithError{Reader: strings.NewReader("refused"), closes: closes}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			closes := make(chan error, 2)
+			app := fiber.New(fiber.Config{BodyLimit: 8, ErrorHandler: func(c fiber.Ctx, _ error) error {
+				return c.Status(fiber.StatusRequestEntityTooLarge).SendStream(tc.stream(closes))
+			}})
+			reset := closeCounter{closes: make(chan error, 1)}
+			app.Use(func(c fiber.Ctx) error {
+				c.Locals("reset", reset)
+				return c.Next()
+			}, adaptor.HTTPHandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if err := http.NewResponseController(w).Flush(); err != nil {
+					return
+				}
+			}))
 
-	resp := performOversizedRequest(t, app, nil)
-	require.Equal(t, "refused", string(resp.Body()))
-	apptest.Recv(t, reset.closes, 10*time.Second, "the request was not reset")
-	require.Len(t, stream.closes, 1)
+			resp := performOversizedRequest(t, app, nil)
+			require.Equal(t, "refused", string(resp.Body()))
+			apptest.Recv(t, reset.closes, 10*time.Second, "the request was not reset")
+			require.Len(t, closes, 1)
+		})
+	}
+}
+
+// The stream of a refused request's answer is closed with the error its write failed with.
+func Test_Integration_App_ServerErrorHandler_StreamCloseError(t *testing.T) {
+	t.Parallel()
+	closes := make(chan error, 2)
+	app := fiber.New(fiber.Config{ErrorHandler: func(c fiber.Ctx, _ error) error {
+		return c.SendStream(closeWithError{Reader: strings.NewReader("refused"), closes: closes})
+	}})
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodPost)
+	app.Server().ErrorHandler(fctx, fasthttp.ErrBodyTooLarge)
+
+	conn, peer := net.Pipe()
+	require.NoError(t, peer.Close())
+	fctx.Response.ImmediateHeaderFlush = true
+	require.ErrorIs(t, fctx.Response.Write(bufio.NewWriter(conn)), io.ErrClosedPipe)
+	require.Len(t, closes, 1)
+	require.ErrorIs(t, <-closes, io.ErrClosedPipe)
 }
 
 // The trailers an adapted net/http handler in the ErrorHandler sets at the end of its stream reach the client.

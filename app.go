@@ -1853,9 +1853,17 @@ func (s *refusedStream) Read(p []byte) (int, error) {
 	return n, err //nolint:wrapcheck // io.Reader passes io.EOF through as is
 }
 
+// Close and CloseWithError are each passed on to the stream that has it, as fasthttp calls both on a stream that does.
 func (s *refusedStream) Close() error {
 	if closer, ok := s.Reader.(io.Closer); ok {
 		return closer.Close() //nolint:wrapcheck // the stream's own error
+	}
+	return nil
+}
+
+func (s *refusedStream) CloseWithError(err error) error {
+	if closer, ok := s.Reader.(fasthttp.ReadCloserWithError); ok {
+		return closer.CloseWithError(err) //nolint:wrapcheck // the stream's own error
 	}
 	return nil
 }
