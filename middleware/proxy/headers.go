@@ -105,7 +105,7 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 // returned.
 func sanitizeUpstreamResponse(res *fasthttp.Response, policy SecurityPolicy, except ...string) error {
 	if !fieldname.DropResponseTrailers(&res.Header) || !policy.KeepHopByHopHeaders && !stripHopByHopResponseHeaders(res, except...) {
-		res.Reset()
+		resetUpstreamResponse(res)
 		return fiber.ErrBadGateway
 	}
 	return nil

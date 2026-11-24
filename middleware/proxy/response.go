@@ -26,7 +26,7 @@ func upstreamResponse(streams bool, res *fasthttp.Response) *fasthttp.Response {
 // adoptUpstreamResponse readies upstream, the response the client filled with err as the outcome, as res, the
 // client's: sanitized and, when upstream is the proxy's own, its header section copied over and its body read
 // from it through an upstreamBody, which releases it once the body has been sent, or moved over without a copy
-// when the client buffered the body after all. upstream is released on an error.
+// when the client buffered the body after all. On an error upstream is released, or emptied when it is res.
 //
 // A body the client streams is held to limit bytes when that is positive, which fasthttp does not do for one:
 // it ignores a client's MaxResponseBodySize for a body it hands over as a stream. A length the response declares
@@ -37,6 +37,9 @@ func adoptUpstreamResponse(res, upstream *fasthttp.Response, err error, policy S
 		err = sanitizeUpstreamResponse(upstream, policy, except...)
 	}
 	if upstream == res {
+		if err != nil {
+			resetUpstreamResponse(res)
+		}
 		return err
 	}
 	if err == nil && limit > 0 && upstream.IsBodyStream() && upstream.Header.ContentLength() > limit {
@@ -56,6 +59,16 @@ func adoptUpstreamResponse(res, upstream *fasthttp.Response, err error, policy S
 	}
 	res.SetBodyStream(&upstreamBody{Reader: upstream.BodyStream(), upstream: upstream, limit: int64(limit)}, upstream.Header.ContentLength())
 	return nil
+}
+
+// resetUpstreamResponse empties a failed upstream response, whose fields were neither stripped nor seen by
+// ModifyResponse, keeping the app's choice of no default Content-Type.
+func resetUpstreamResponse(res *fasthttp.Response) {
+	// The option has no getter: without a Content-Type, one is reported only where the default is added.
+	res.Header.SetContentTypeBytes(nil)
+	noDefaultContentType := len(res.Header.ContentType()) == 0
+	res.Reset()
+	res.Header.SetNoDefaultContentType(noDefaultContentType)
 }
 
 // moveBody gives res the buffered body of upstream without copying it: res takes upstream's buffer and

@@ -118,7 +118,7 @@ func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fa
 		err := followRedirects(cli, req, resp, maxRedirectsCount, u, policy)
 		if err != nil {
 			// resp holds the hop the loop stopped at, unstripped: none of it is the client's.
-			resp.Reset()
+			resetUpstreamResponse(resp)
 		}
 		return err
 	}, clients...)

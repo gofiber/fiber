@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 
@@ -326,4 +327,96 @@ func Test_Proxy_Do_StreamedResponseDefaultBound(t *testing.T) {
 
 	apptest.Expect(t, app, "/", fiber.StatusBadGateway)
 	require.ErrorIs(t, handled, fasthttp.ErrBodyTooLarge)
+}
+
+func Test_Proxy_FailedResponseLeavesNothing(t *testing.T) {
+	t.Parallel()
+	const bound = 8
+	policy := proxyTestAllowPrivatePolicy()
+	cli := &fasthttp.Client{MaxResponseBodySize: bound}
+	dropNode := func(c fiber.Ctx) error {
+		c.Response().Header.Del("X-Node")
+		return nil
+	}
+
+	for failure, respond := range map[string]func(w http.ResponseWriter){
+		"past the bound": func(w http.ResponseWriter) {
+			w.Header().Set(fiber.HeaderContentLength, strconv.Itoa(bound+1))
+			fmt.Fprint(w, strings.Repeat("x", bound+1))
+		},
+		"cut short": func(w http.ResponseWriter) {
+			// A declared length the body does not reach has net/http close the connection.
+			w.Header().Set(fiber.HeaderContentLength, strconv.Itoa(bound))
+			fmt.Fprint(w, "x")
+		},
+		"refused by the strip": func(w http.ResponseWriter) {
+			w.Header().Set(fiber.HeaderConnection, "X-Hop"+strings.Repeat(", X-Hop", maxConnectionOptions))
+			fmt.Fprint(w, "x")
+		},
+	} {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set(fiber.HeaderConnection, "X-Hop")
+			w.Header().Set("X-Hop", "1")
+			w.Header().Set("X-Node", "n1")
+			w.Header().Set(fiber.HeaderSetCookie, "a=b")
+			w.Header().Set(fiber.HeaderCacheControl, "public, max-age=60")
+			w.Header().Set(fiber.HeaderContentType, fiber.MIMEOctetStream)
+			respond(w)
+		}))
+		t.Cleanup(upstream.Close)
+
+		for name, handler := range map[string]fiber.Handler{
+			"Balancer": Balancer(Config{
+				Servers: []string{upstream.URL}, SecurityPolicy: &policy, MaxResponseBodySize: bound, ModifyResponse: dropNode,
+			}),
+			"Forward":         Forward(upstream.URL, cli),
+			"DomainForward":   DomainForward("example.com", upstream.URL, cli),
+			"BalancerForward": BalancerForward([]string{upstream.URL}, cli),
+			"Do":              func(c fiber.Ctx) error { return Do(c, upstream.URL, cli) },
+			"DoRedirects":     func(c fiber.Ctx) error { return DoRedirects(c, upstream.URL, 1, cli) },
+			"DoTimeout":       func(c fiber.Ctx) error { return DoTimeout(c, upstream.URL, time.Minute, cli) },
+			"DoDeadline":      func(c fiber.Ctx) error { return DoDeadline(c, upstream.URL, time.Now().Add(time.Minute), cli) },
+		} {
+			t.Run(name+", "+failure, func(t *testing.T) {
+				t.Parallel()
+				app := fiber.New(fiber.Config{DisableDefaultContentType: true, ErrorHandler: func(c fiber.Ctx, _ error) error {
+					return c.SendStatus(fiber.StatusBadGateway) // keeps a body that is already there
+				}})
+				app.Get("/", handler)
+
+				resp := apptest.ExpectBody(t, app, "/", fiber.StatusBadGateway, utils.StatusMessage(fiber.StatusBadGateway))
+				for _, field := range []string{
+					fiber.HeaderConnection, "X-Hop", "X-Node", fiber.HeaderSetCookie, fiber.HeaderCacheControl, fiber.HeaderContentType,
+				} {
+					require.Empty(t, resp.Header.Values(field), field)
+				}
+			})
+		}
+	}
+}
+
+func Test_Proxy_Balancer_FailedStreamLeavesNoHeaders(t *testing.T) {
+	t.Parallel()
+	const bound = 8
+	policy := proxyTestAllowPrivatePolicy()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(fiber.HeaderSetCookie, "a=b")
+		w.Header().Set(fiber.HeaderCacheControl, "public, max-age=60")
+		if http.NewResponseController(w).Flush() == nil { // chunked: no length is declared
+			fmt.Fprint(w, strings.Repeat("x", bound+1))
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	app := fiber.New()
+	app.Get("/", Balancer(Config{
+		Servers: []string{upstream.URL}, SecurityPolicy: &policy, MaxResponseBodySize: bound,
+		ModifyRequest:  func(c fiber.Ctx) error { c.Response().StreamBody = true; return nil },
+		ModifyResponse: func(c fiber.Ctx) error { c.Response().Body(); return nil },
+	}))
+
+	resp := apptest.ExpectBody(t, app, "/", fiber.StatusInternalServerError, fasthttp.ErrBodyTooLarge.Error())
+	for _, field := range []string{fiber.HeaderSetCookie, fiber.HeaderCacheControl} {
+		require.Empty(t, resp.Header.Values(field), field)
+	}
 }

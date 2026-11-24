@@ -213,6 +213,8 @@ func Balancer(config ...Config) fiber.Handler {
 			// since: the stream would end the response early, and fasthttp's Body replaces a body whose
 			// read failed with the error's text, which would go out as the upstream's response.
 			if streamed && body.failureStands(res) {
+				// As in adoptUpstreamResponse: the failed response's fields are not the error's.
+				resetUpstreamResponse(res)
 				return body.err
 			}
 		}
