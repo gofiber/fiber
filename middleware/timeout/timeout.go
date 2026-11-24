@@ -297,14 +297,11 @@ func (s *snapshot) runOnTimeout(ctx fiber.Ctx, cfg Config) (resp *fasthttp.Respo
 	var headerPass func(*fasthttp.ResponseHeader) error
 	defer func() {
 		if p := recover(); p != nil {
-			log.Errorw("panic recovered in timeout OnTimeout", "panic", p, "stack", string(debug.Stack()))
-			resp.ResetBody()
-			resp.SetStatusCode(fiber.StatusInternalServerError)
-			resp.SetBodyString(fiber.ErrInternalServerError.Message)
+			answerPanic(resp, "OnTimeout", p)
 			err = fiber.ErrInternalServerError
 		}
 		if headerPass != nil {
-			if passErr := headerPass(&resp.Header); passErr != nil {
+			if passErr := runHeaderPass(headerPass, resp); passErr != nil {
 				err = errors.Join(err, passErr)
 			}
 		}
@@ -327,6 +324,26 @@ func (s *snapshot) runOnTimeout(ctx fiber.Ctx, cfg Config) (resp *fasthttp.Respo
 	c := app.AcquireCtx(fctx)
 	defer app.ReleaseCtx(c)
 	return resp, cfg.OnTimeout(c)
+}
+
+// runHeaderPass runs pass on the header of resp. A panic there answers 500 without the cookies it left unfinished.
+func runHeaderPass(pass func(*fasthttp.ResponseHeader) error, resp *fasthttp.Response) (err error) { //nolint:nonamedreturns // Uses recover() to overwrite the error
+	defer func() {
+		if p := recover(); p != nil {
+			resp.Header.DelAllCookies()
+			answerPanic(resp, "response pass", p)
+			err = fiber.ErrInternalServerError
+		}
+	}()
+	return pass(&resp.Header)
+}
+
+// answerPanic logs a panic recovered in what of the timeout response and makes resp the 500 response.
+func answerPanic(resp *fasthttp.Response, what string, p any) {
+	log.Errorw("panic recovered in timeout "+what, "panic", p, "stack", string(debug.Stack()))
+	resp.ResetBody()
+	resp.SetStatusCode(fiber.StatusInternalServerError)
+	resp.SetBodyString(fiber.ErrInternalServerError.Message)
 }
 
 func (s *snapshot) release() {

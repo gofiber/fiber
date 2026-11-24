@@ -1031,3 +1031,30 @@ func Test_Middleware_EncryptsResponsesSentPastIt(t *testing.T) {
 		})
 	}
 }
+
+// An Encryptor that panics on the response OnTimeout wrote leaves it unfinished: the request is still answered as
+// timed out, with a 500 that carries none of its cookies, and the context stays with the handler that runs on.
+func Test_Middleware_EncryptorPanicOnTimeoutResponse(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	app := fiber.New()
+	app.Use(recoverer.New())
+	app.Use(New(Config{Key: GenerateKey(32), Encryptor: func(name, value, key string) (string, error) {
+		if name == "late" {
+			panic("boom")
+		}
+		return EncryptCookie(name, value, key)
+	}}))
+	app.Get("/", timeout.New(func(fiber.Ctx) error { <-release; return nil }, timeout.Config{
+		Timeout: 10 * time.Millisecond,
+		OnTimeout: func(c fiber.Ctx) error {
+			c.Cookie(&fiber.Cookie{Name: "late", Value: "plain"})
+			return fiber.ErrGatewayTimeout
+		},
+	}))
+
+	resp := apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
+	require.True(t, resp.Close, "not answered as a timeout response")
+	require.Empty(t, resp.Cookies())
+}
