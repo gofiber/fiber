@@ -57,6 +57,32 @@ func TestDefaultCtx_ScheduleReclaim_HappyPath(t *testing.T) {
 	ctxExpectReclaimed(t, c, "ctx must be reclaimed once both signals fire")
 }
 
+// An application that releases its timed-out contexts itself must not pool one a second time.
+func TestDefaultCtx_ForceRelease_LeavesReclaimedCtx(t *testing.T) {
+	t.Parallel()
+	t.Run("reclaim armed", func(t *testing.T) {
+		t.Parallel()
+		app, c := acquireReclaimTestCtx(t)
+		handlerDone := make(chan struct{})
+		c.ScheduleReclaim(handlerDone, nil)
+		c.ForceRelease()
+		require.True(t, c.IsAbandoned())
+		require.NotNil(t, c.fasthttp)
+
+		close(handlerDone)
+		app.ReleaseCtx(c)
+		ctxExpectReclaimed(t, c, "the reclaim must still pool the ctx")
+	})
+	t.Run("not abandoned", func(t *testing.T) {
+		t.Parallel()
+		_, c := acquireReclaimTestCtx(t)
+		c.route = &Route{}
+		c.ForceRelease()
+		require.NotNil(t, c.route)
+		require.NotNil(t, c.fasthttp)
+	})
+}
+
 // TestDefaultCtx_ScheduleReclaim_ReleaseBeforeHandlerDone covers the reverse
 // ordering: the context is released first, then handlerDone closes. The reclaim
 // goroutine must still wait on handlerDone before pooling. Both release entry

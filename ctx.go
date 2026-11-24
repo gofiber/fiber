@@ -1010,8 +1010,16 @@ func (c *DefaultCtx) IsAbandoned() bool {
 // This MUST only be called after all goroutines (including requestHandler and
 // ErrorHandler) have completely finished using this context. Calling it while
 // any goroutine is still running causes races.
+// It does nothing for a context that is not abandoned or whose reclaim ScheduleReclaim
+// armed: a second release would hand one context to two requests.
 func (c *DefaultCtx) ForceRelease() {
-	c.isAbandoned.Store(false)
+	if c.reclaim.Load() != nil || !c.isAbandoned.CompareAndSwap(true, false) {
+		return
+	}
+	c.releaseAbandoned()
+}
+
+func (c *DefaultCtx) releaseAbandoned() {
 	// Promoted to a custom ctx, c is only its embedded DefaultCtx: pool the ctx the app built.
 	if c.handlerCtx != nil {
 		c.app.ReleaseCtx(c.handlerCtx)
@@ -1062,7 +1070,8 @@ func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context
 		<-latch.releasedCh
 		if latch.owners.Add(-1) == 0 {
 			fctx := c.fasthttp
-			c.ForceRelease()
+			c.isAbandoned.Store(false)
+			c.releaseAbandoned()
 			// After pooling: a value's Close may wait for a goroutine the handler left behind.
 			closeTimedOutRequest(fctx)
 		}

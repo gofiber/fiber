@@ -58,9 +58,10 @@ timeout.Config{
   request handler. The context, a custom `Ctx` implementation included, is
   reclaimed once both the timed-out handler has finished and Fiber has released
   the context, so it does return to the pool. Calling `ForceRelease` yourself on
-  such a context releases it a second time; it is only safe for a context you
-  abandoned yourself, once you can guarantee that no goroutine (including Fiber
-  internals) will touch it anymore.
+  such a context does nothing, so an application that released timed-out
+  contexts itself does not release them a second time. `ForceRelease` is for a
+  context you abandoned yourself, once you can guarantee that no goroutine
+  (including Fiber internals) will touch it anymore.
 
 :::caution
 `timeout.New` wraps your final handler, so register it per route rather than
