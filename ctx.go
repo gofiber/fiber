@@ -389,6 +389,10 @@ func (c *DefaultCtx) Next() error {
 // RestartRouting instead of going to the next handler. This may be useful after
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
+	// Only an ErrorHandler for a request the server refused gets here with a method that has no routing tree.
+	if c.methodInt == -1 {
+		return ErrNotImplemented
+	}
 	c.indexRoute = -1
 	// Path may have changed; invalidate the lookahead index
 	c.firstMatchIndex = -1

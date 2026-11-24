@@ -3449,6 +3449,35 @@ func Test_App_serverErrorHandler_RawRequestStatus(t *testing.T) {
 	}
 }
 
+// The server refuses this request before the router can answer its method with 501, so the ErrorHandler runs for a
+// method that has no routing tree.
+func Test_App_serverErrorHandler_RestartRoutingUnregisteredMethod(t *testing.T) {
+	t.Parallel()
+	config := Config{
+		BodyLimit: 16,
+		ErrorHandler: func(c Ctx, _ error) error {
+			c.Path("/error")
+			if err := c.RestartRouting(); err != nil {
+				return DefaultErrorHandler(c, err)
+			}
+			return nil
+		},
+	}
+	for name, app := range map[string]*App{"default ctx": New(config), "custom ctx": newCustomApp(config)} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			// Use, not Get: only Use handlers run for a request the server refused.
+			app.Use("/error", func(c Ctx) error { return c.SendString("error page") })
+			ln := startRawServer(t, app)
+
+			const oversized = " / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 17\r\n\r\n"
+			require.Equal(t, "error page", rawExpectStatus(t, ln, "GET"+oversized, StatusRequestEntityTooLarge).body)
+			resp := rawExpectStatus(t, ln, "FOO"+oversized, StatusNotImplemented)
+			require.Equal(t, utils.StatusMessage(StatusNotImplemented), resp.body)
+		})
+	}
+}
+
 // RFC 9112 §6.1: a request with both Content-Length and Transfer-Encoding is
 // framed by Transfer-Encoding, and the connection must close after the response.
 func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {

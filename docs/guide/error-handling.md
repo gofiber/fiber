@@ -160,6 +160,6 @@ The chain and the error handler run on a `fasthttp.RequestCtx` of their own, who
 
 A TLS connection whose handshake failed is no such request: a client without the certificate that [`CertClientFile`](../api/fiber.md#certclientfile) requires, or plain HTTP sent to the TLS port. No request arrived on it, so neither middleware nor the error handler runs, and the connection is closed.
 
-A well-formed method that is not in [`RequestMethods`](../api/fiber.md#requestmethods), such as `FOO`, or a known one in another letter case, such as `get`, does not get that far: Fiber answers `501 Not Implemented` itself, and neither middleware nor the error handler runs.
+A well-formed method that is not in [`RequestMethods`](../api/fiber.md#requestmethods), such as `FOO`, or a known one in another letter case, such as `get`, does not get that far: Fiber answers `501 Not Implemented` itself, and neither middleware nor the error handler runs. Only when the server refuses such a request for one of the causes above does the error handler answer it, still without the middleware; no route can match the method, so [`RestartRouting`](../api/ctx.md#restartrouting) returns `fiber.ErrNotImplemented` there.
 
 > Special thanks to the [Echo](https://echo.labstack.com/) and [Express](https://expressjs.com/) frameworks for inspiring parts of this error-handling approach.
