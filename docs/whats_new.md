@@ -1717,6 +1717,7 @@ An IPv6 host in `AllowOrigins` is written in the form browsers send in `Origin`,
 - Compression is bypassed for responses that already specify `Content-Encoding`, for range requests or `206` statuses, and when either side sends `Cache-Control: no-transform`.
 - `HEAD` requests still negotiate compression so `Content-Encoding`, `Content-Length`, `ETag`, and `Vary` match a corresponding `GET`, but the body is omitted.
 - `Vary: Accept-Encoding` is merged into responses even when compression is skipped, preventing caches from mixing encoded and unencoded variants.
+- A `text/event-stream` response is not compressed: fasthttp holds a stream's encoder until the stream ends, megabytes for `zstd`, and an event stream ends only once the client is noticed gone.
 - Decoding compressed request bodies now enforces the app `BodyLimit` through fasthttp `WithLimit` helpers, including when the compression middleware is active.
 - Multipart form parsing now enforces the app `BodyLimit` by using fasthttp `MultipartFormWithLimit`.
 

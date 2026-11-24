@@ -66,7 +66,8 @@ func New(config ...Config) fiber.Handler {
 
 		// Never generate ETags for Server-Sent Events or a stream of unknown length: hashing the
 		// body would materialize the stream and break real-time delivery.
-		if isEventStream(c) || (c.Response().IsBodyStream() && c.Response().Header.ContentLength() < 0) {
+		if mediatype.IsEventStream(c.Response().Header.ContentType()) ||
+			(c.Response().IsBodyStream() && c.Response().Header.ContentLength() < 0) {
 			return nil
 		}
 
@@ -130,14 +131,6 @@ func New(config ...Config) fiber.Handler {
 
 		return nil
 	}
-}
-
-// isEventStream reports whether the response is a Server-Sent Events stream.
-// Such responses must be passed through untouched: buffering the body to hash
-// it would break real-time delivery.
-func isEventStream(c fiber.Ctx) bool {
-	ct := mediatype.StripParams(utils.UnsafeBytes(c.GetRespHeader(fiber.HeaderContentType)))
-	return utils.EqualFold(utils.UnsafeString(ct), fiber.MIMETextEventStream)
 }
 
 // appendUint appends n to dst and returns the extended dst.

@@ -605,6 +605,22 @@ func Test_Compress_Streaming_With_Compression(t *testing.T) {
 	compressTestExpectEncoding(t, resp, "gzip")
 }
 
+// fasthttp would hold the encoder of an event stream until the client is noticed gone.
+func Test_Compress_SkipsEventStream(t *testing.T) {
+	t.Parallel()
+	app := compressTestApp(func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, fiber.MIMETextEventStream+"; charset=utf-8")
+		return c.SendStream(bytes.NewReader(filedata))
+	})
+
+	for _, encoding := range []string{"gzip", "br", "zstd"} {
+		req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAcceptEncoding, encoding))
+		resp := apptest.Expect(t, app, req, fiber.StatusOK)
+		require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding), encoding)
+		require.Equal(t, filedata, apptest.BodyBytes(t, resp), encoding)
+	}
+}
+
 func Test_Compress_StreamedBody_KeepsETagWeak(t *testing.T) {
 	t.Parallel()
 	payload := strings.Repeat("streamed content ", 500)

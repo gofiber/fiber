@@ -79,7 +79,7 @@ func Test_ETag_StreamOfUnknownLength(t *testing.T) {
 	for name, contentType := range map[string]string{
 		"unknown length": "",
 		// A real SSE stream must pass through untouched too: hashing the body would materialize the stream and break
-		// real-time delivery. The charset exercises the media-type strip in isEventStream.
+		// real-time delivery. The charset exercises the media-type strip in IsEventStream.
 		"event stream": fiber.MIMETextEventStream + "; charset=utf-8",
 	} {
 		t.Run(name, func(t *testing.T) {

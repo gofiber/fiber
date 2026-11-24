@@ -241,3 +241,8 @@ func Unescape(v []byte) ([]byte, bool) {
 	}
 	return out, true
 }
+
+// IsEventStream reports whether ct is text/event-stream, parameters ignored.
+func IsEventStream(ct []byte) bool {
+	return utils.EqualFold(utils.UnsafeString(StripParams(ct)), "text/event-stream")
+}

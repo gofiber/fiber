@@ -7,6 +7,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/middleware/etag"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -26,6 +27,12 @@ func shouldSkip(c fiber.Ctx) bool {
 		c.Get(fiber.HeaderRange) != "" ||
 		c.HasHeaderValue(fiber.HeaderCacheControl, "no-transform") ||
 		hasResponseNoTransform(c) {
+		return true
+	}
+
+	// fasthttp holds a stream's encoder, megabytes for zstd, until the stream
+	// ends, and an event stream ends only once the client is noticed gone.
+	if mediatype.IsEventStream(c.Response().Header.ContentType()) {
 		return true
 	}
 
