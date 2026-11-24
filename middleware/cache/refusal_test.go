@@ -2245,6 +2245,70 @@ func Test_Cache_StoreVaryingOtherwiseAfterARefusalWhileItsHandlerRan(t *testing.
 	}
 }
 
+// A request for the credential whose handler rewrote what its record keys are built from, and ran while the
+// credential was refused, keeps it out until its entry expires.
+func Test_Cache_StoreAfterARefusalWhileItsHandlerRewroteTheRequest(t *testing.T) {
+	t.Parallel()
+	bearer := []string{fiber.HeaderAuthorization, "Bearer a"}
+	rewrites := map[string]struct {
+		rewrite    func(c fiber.Ctx)
+		credential []string
+		cfg        Config
+	}{
+		"path":          {rewrite: func(c fiber.Ctx) { c.Path("/elsewhere") }, credential: bearer},
+		"query":         {rewrite: func(c fiber.Ctx) { c.Request().URI().SetQueryString("rewritten") }, credential: bearer},
+		"authorization": {rewrite: func(c fiber.Ctx) { c.Request().Header.Del(fiber.HeaderAuthorization) }, credential: bearer},
+		"cookie": {
+			rewrite:    func(c fiber.Ctx) { c.Request().Header.SetCookie("session", "decrypted") },
+			cfg:        Config{KeyCookies: []string{"session"}},
+			credential: []string{fiber.HeaderCookie, "session=a"},
+		},
+	}
+	for name, tc := range rewrites {
+		for path, cacheControl := range map[string]string{"miss": "", "accepted refresh": "no-cache"} {
+			t.Run(name+"/"+path, func(t *testing.T) {
+				t.Parallel()
+				storage := newRefusalStorage()
+				cfg := tc.cfg
+				cfg.Storage = storage
+				entered, release := make(chan struct{}), make(chan struct{})
+				app := fiber.New()
+				app.Use(New(cfg))
+				app.Get("/account", func(c fiber.Ctx) error {
+					if c.Get("X-Slow") != "" {
+						entered <- struct{}{}
+						<-release
+						tc.rewrite(c)
+					}
+					if c.Get("X-Refuse") != "" {
+						return c.SendStatus(fiber.StatusUnauthorized)
+					}
+					c.Set(fiber.HeaderCacheControl, "public, max-age="+c.Get("X-Max-Age", "60"))
+					return c.SendString("account")
+				})
+				req := func(accept string, more ...string) *http.Request {
+					return cacheTestCReq("/account", append(append([]string{fiber.HeaderAccept, accept}, tc.credential...), more...)...)
+				}
+				require.Equal(t, cacheMiss, doRequest(t, app, req("text/short")).cache)
+
+				accept := "text/other"
+				if cacheControl != "" {
+					accept = "text/short"
+				}
+				done := sendAsync(app, req(accept, fiber.HeaderCacheControl, cacheControl, "X-Slow", "1", "X-Max-Age", "3600"))
+				apptest.Recv(t, entered, time.Minute)
+				stored := uint64(time.Now().Unix())
+				require.Equal(t, fiber.StatusUnauthorized, doRequest(t, app, req("text/short", fiber.HeaderCacheControl, "no-cache", "X-Refuse", "1")).status)
+				close(release)
+				require.NoError(t, apptest.Recv(t, done, time.Minute).err)
+
+				lapseRecordsBefore(storage, stored+3598)
+				require.NotEqual(t, cacheHit, doRequest(t, app, req(accept)).cache)
+			})
+		}
+	}
+}
+
 // lapseRecordsBefore deletes the refusal records that lapse before the second given, as time would.
 func lapseRecordsBefore(storage *refusalStorage, second uint64) {
 	storage.Mu.Lock()

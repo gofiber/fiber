@@ -939,8 +939,11 @@ func New(config ...Config) fiber.Handler {
 			scope      credentialScope
 			recordKeys [2]string
 		)
-		if foundAtLookup {
+		// A miss's too, built before a handler can rewrite the request: its store extends a record under them.
+		if foundAtLookup || cfg.mayKeyCredential(hasAuthorization, varyNames) {
 			recordKeys = refusals.recordKeys(c, generatedKey, varyNames, requestCreds())
+		}
+		if foundAtLookup {
 			scope = requestCreds().scope()
 		}
 
@@ -1374,12 +1377,16 @@ func New(config ...Config) fiber.Handler {
 			// recorded from now on reads the lifetime noted above.
 			covered := true
 			if refusals.mayHoldIn(reqCtx, urlGroup) {
-				keys := recordKeys
-				if !foundAtLookup {
-					keys = refusals.recordKeys(c, generatedKey, respVaryNames, cfg.credentialsOf(c, respVaryNames, hasAuthorization))
-				}
-				for _, key := range keys {
+				for _, key := range recordKeys {
 					covered = refusals.cover(reqCtx, urlGroup, key) && covered
+				}
+				// A miss's lookup may have had no manifest to build them on, so the response's Vary keys them too.
+				if !foundAtLookup {
+					for _, key := range refusals.recordKeys(c, generatedKey, respVaryNames, cfg.credentialsOf(c, respVaryNames, hasAuthorization)) {
+						if key != recordKeys[0] && key != recordKeys[1] {
+							covered = refusals.cover(reqCtx, urlGroup, key) && covered
+						}
+					}
 				}
 			}
 			// Not stored past a record other instances cannot see extended, nor after a refusal in the group
