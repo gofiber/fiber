@@ -190,6 +190,9 @@ var (
 // leading slash matches no pattern. Request routing differs in one respect: it
 // roots the request target it is handed before matching, so "OPTIONS *" is
 // routed as "/*", whereas RoutePatternMatch("*", "/*") is false.
+//
+// With UnescapePath set in the Config, path is taken as already decoded, as
+// c.Path() returns it, so pass the Config of the app it comes from.
 func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	// See logic in (*Route).match and (*App).register
 	var ctxParams [maxParams]string
@@ -214,9 +217,14 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	// Mirror DefaultCtx.configDependentPaths: normalize the path, then derive
 	// the detection path (lowercased when CaseSensitive is off, trailing slash
 	// stripped when StrictRouting is off). getMatch takes both, so constraints
-	// see the same bytes here as in the router.
+	// see the same bytes here as in the router. A decoded path from c.Path()
+	// must not be decoded again: "%2e%2e" the router matched would become "..".
 	if needsPathNormalization(path) {
-		path = utils.UnsafeString(normalizeRequestPath([]byte(path), config.UnescapePath))
+		if config.UnescapePath {
+			path = utils.UnsafeString(cleanPathSegments([]byte(path)))
+		} else {
+			path = utils.UnsafeString(normalizeRequestPath([]byte(path), false))
+		}
 	}
 
 	detectionPath := path
