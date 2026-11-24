@@ -356,6 +356,79 @@ func Test_ClearTrailers(t *testing.T) {
 	}
 }
 
+func Test_ClearTrailers_KeepsEarlierViews(t *testing.T) {
+	t.Parallel()
+	req := readRequest(t, "POST / HTTP/1.1\r\nHost: app.example\r\nCookie: \" \"; login=1077; x=1042\r\nX-Role: user\r\n"+
+		"Transfer-Encoding: chunked\r\n\r\n0\r\nX-T: x\r\n\r\n", true)
+	login, role := req.Header.Cookie("login"), req.Header.Peek("X-Role")
+	held := lineValues([][]byte{login, role})
+
+	require.True(t, ClearTrailers(req))
+	require.Equal(t, held, lineValues([][]byte{login, role}))
+	require.Equal(t, "1077", string(req.Header.Cookie("login")))
+	require.Equal(t, "user", string(req.Header.Peek("X-Role")))
+}
+
+func Test_Detach(t *testing.T) {
+	t.Parallel()
+	const raw = "POST / HTTP/1.1\r\nHost: app.example\r\nUser-Agent: ua\r\nCookie: a=1\r\nX-Role: user\r\nConnection: x-a\r\n" +
+		"Cookie: b=2\r\nConnection: close\r\nContent-Type: text/plain\r\nX-Forwarded-For: client\r\nTrailer: X-T\r\n" +
+		"Transfer-Encoding: chunked\r\nX-Forwarded-For: proxy\r\nX-After: zz\r\n\r\n5\r\nhello\r\n0\r\nX-T: v\r\n\r\n"
+
+	for _, canonical := range []bool{true, false} {
+		t.Run(fmt.Sprintf("canonical=%v", canonical), func(t *testing.T) {
+			t.Parallel()
+			req, want := readRequest(t, raw, canonical), readRequest(t, raw, canonical)
+			names := []string{"X-Role", "X-Forwarded-For", "X-After", "Connection", "Host", "User-Agent", "Content-Type"}
+			var aliased [][]byte
+			for _, name := range names {
+				aliased = append(aliased, req.Header.PeekAll(name)...)
+			}
+			// The first Cookie line, as stored.
+			aliased = append(aliased, req.Header.Peek("Cookie"))
+			held := lineValues(aliased)
+
+			Detach(&req.Header)
+
+			for _, name := range names {
+				require.Equal(t, lineValues(want.Header.PeekAll(name)), lineValues(req.Header.PeekAll(name)), name)
+			}
+			require.Equal(t, "a=1", string(req.Header.Peek("Cookie")))
+			require.Equal(t, want.Header.PeekTrailerKeys(), req.Header.PeekTrailerKeys())
+			require.Equal(t, string(want.Header.RawHeaders()), string(Received(req)))
+			require.Equal(t, want.Header.String(), req.Header.String())
+			require.Equal(t, want.Header.ConnectionClose(), req.Header.ConnectionClose())
+			require.Equal(t, want.Header.ContentLength(), req.Header.ContentLength())
+			req.Header.Set("x-probe", "1")
+			require.Equal(t, !canonical, strings.Contains(req.Header.String(), "x-probe:"))
+
+			// The cookie parser takes its lines out of the store, as Del does.
+			require.Equal(t, "2", string(req.Header.Cookie("b")))
+			for _, name := range names {
+				Del(&req.Header, name, canonical)
+			}
+			// One byte fits the buffers of any line removed above, which fasthttp hands to the next line added.
+			for i := range aliased {
+				req.Header.Add("X-Added-"+strconv.Itoa(i), "#")
+			}
+			req.Header.SetHost("up.example")
+			req.Header.SetUserAgent("px")
+			req.Header.SetContentType("text/html")
+			require.Equal(t, held, lineValues(aliased))
+		})
+	}
+
+	t.Run("special headers stay disabled", func(t *testing.T) {
+		t.Parallel()
+		req := readRequest(t, raw, true)
+		req.Header.DisableSpecialHeader()
+		Detach(&req.Header)
+		require.True(t, req.Header.EnableSpecialHeader())
+		Detach(&req.Header)
+		require.False(t, req.Header.EnableSpecialHeader())
+	})
+}
+
 // Test_KeepReceivedOrder pins that repeated lines go back to received order after
 // fasthttp's Del moved the last line into the removed one's slot.
 func Test_KeepReceivedOrder(t *testing.T) {

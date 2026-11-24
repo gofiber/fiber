@@ -136,29 +136,41 @@ func hasKey(keys [][]byte, key []byte) bool {
 	return false
 }
 
-// ClearTrailers is DropTrailers in one pass for any number of names, putting each line back in the buffer a value
-// read earlier aliases. It reports false, having dropped the section all the same, for more than MaxTrailers names.
+// Detach moves h into buffers of its own, leaving the old ones to the values read from them so far: fasthttp writes a
+// line added after a Del, or after the cookies were parsed, into the buffers of the line taken out.
+func Detach(h *fasthttp.RequestHeader) {
+	tmp := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(tmp)
+	h.CopyTo(&tmp.Header)
+	disabled := h.EnableSpecialHeader() // CopyTo leaves the setting out
+	*h = fasthttp.RequestHeader{}
+	tmp.Header.CopyTo(h)
+	if disabled {
+		h.DisableSpecialHeader()
+	}
+}
+
+// ClearTrailers is DropTrailers in one pass for any number of names, rebuilding the header in buffers of its own, so
+// a value read earlier keeps the bytes it was read with. It reports false, having dropped the section all the same,
+// for more than MaxTrailers names.
 func ClearTrailers(req *fasthttp.Request) bool {
 	h := &req.Header
 	keys := len(h.PeekTrailerKeys())
 	if keys == 0 {
 		return true
 	}
-	// Collected first, as the walk below collects them, so each line keeps its slot.
-	h.Cookie("")
 	tmp := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(tmp)
 	saved := &tmp.Header
 	h.CopyTo(saved)
-	// Reset empties the received block, which the forwarding order is read from.
+	// The fresh header has no received block, which the forwarding order is read from; nothing writes the old one.
 	if raw := h.RawHeaders(); len(raw) > 0 {
-		block := slices.Clone(raw)
-		SetReceived(req, &block)
+		SetReceived(req, &raw)
 	}
 
-	// Reset clears the setting.
 	disabled := h.NormalizingDisabled()
-	h.Reset()
+	// Not Reset: values read earlier view its buffers, and the joined cookies would parse back into other slots.
+	*h = fasthttp.RequestHeader{}
 	if disabled {
 		h.DisableNormalizing()
 	}

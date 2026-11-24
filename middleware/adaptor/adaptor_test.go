@@ -2540,3 +2540,24 @@ func Test_FiberApp_RequestHeaders_AliasKeys(t *testing.T) {
 		})
 	}
 }
+
+func Test_HTTPMiddleware_KeepsEarlierViews(t *testing.T) {
+	t.Parallel()
+	token, cookie := strings.Repeat("t", 40), strings.Repeat("c", 40)
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		heldToken, heldCookie := c.Get("X-Token"), c.Cookies("session")
+		if err := c.Next(); err != nil {
+			return err
+		}
+		return c.SendString(heldToken + "|" + heldCookie)
+	})
+	app.Use(HTTPMiddleware(adaptorTestRewriteRequest(func(r *http.Request) {
+		r.Header.Del("X-Token")
+		r.Header.Set("X-Added", strings.Repeat("#", 40))
+	})))
+	app.Get("/", func(c fiber.Ctx) error { return nil })
+
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Token", token), apptest.WithHeader(fiber.HeaderCookie, "session="+cookie))
+	apptest.ExpectBody(t, app, req, fiber.StatusOK, token+"|"+cookie)
+}

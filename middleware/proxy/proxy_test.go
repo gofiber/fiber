@@ -1415,6 +1415,46 @@ func Test_Proxy_ForwardingLinesKeepReceivedOrder(t *testing.T) {
 	})
 }
 
+func Test_Proxy_RewriteKeepsEarlierViews(t *testing.T) {
+	t.Parallel()
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	long, other := strings.Repeat(".", 100), strings.Repeat("#", 100)
+
+	for name, handler := range map[string]fiber.Handler{
+		"user info in the address": BalancerForward([]string{"http://svc:s3cr3t@" + addr}),
+		"Do":                       func(c fiber.Ctx) error { return Do(c, "http://svc:s3cr3t@"+addr) },
+		"ModifyRequest": Balancer(Config{Servers: []string{addr}, ModifyRequest: func(c fiber.Ctx) error {
+			c.Request().Header.Set("X-Api-Key", "s3cr3t")
+			return nil
+		}}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			for _, tc := range []struct{ field, want, head string }{
+				{"X-Correlation-ID", long, "Connection: X-Correlation-ID\r\nX-Correlation-ID: " + long + "\r\n"},
+				{"X-Correlation-ID", long, "Connection: Connection, X-Correlation-ID\r\nX-Correlation-ID: " + long + "\r\n"},
+				{"X-Correlation-ID", long, "Connection: X-Correlation-ID, Connection\r\nX-Correlation-ID: " + long + "\r\n"},
+				{fiber.HeaderConnection, long, "Connection: " + long + "\r\n"},
+				{fiber.HeaderKeepAlive, long, "Keep-Alive: " + long + "\r\n"},
+				{realIPHeader, long, "X-Real-IP: " + long + "\r\n"},
+				{realIPHeader, long, "X-Real-IP: " + long + "\r\nX-Real-IP: " + other + "\r\n"},
+				// The cookie parser takes the line out of the list as Del does.
+				{fiber.HeaderCookie, "session=" + long, "Cookie: session=" + long + "\r\n"},
+			} {
+				app := fiber.New()
+				app.Use(func(c fiber.Ctx) error {
+					held := c.Get(tc.field)
+					if err := c.Next(); err != nil {
+						return err
+					}
+					return c.SendString(held)
+				}, handler)
+				require.Equal(t, tc.want, sendRaw(t, app, rawGet+tc.head+"\r\n"), tc.head)
+			}
+		})
+	}
+}
+
 // A client's forwarding lines followed by the ones a front proxy appended.
 const (
 	forwardingLines = "X-Forwarded-For: 6.6.6.6\r\nX-Forwarded-Proto: http\r\nX-Url-Scheme: http\r\n" +

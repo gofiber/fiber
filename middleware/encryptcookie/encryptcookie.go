@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 )
 
 // New creates a new middleware handler
@@ -105,7 +106,7 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 	cookies := make([]requestCookie, 0, 8)
 	// A scan of cookies per entry would be quadratic in what the client sends
 	seen := make(map[string]struct{})
-	rebuild := false
+	rebuild, decrypts := false, false
 
 	for key, value := range header.Cookies() {
 		name := string(key)
@@ -113,6 +114,7 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 			cookies = append(cookies, requestCookie{name: name, value: string(value), except: true, keep: true})
 			continue
 		}
+		decrypts = true
 		if _, ok := seen[name]; ok {
 			// The name already has its value; a later duplicate is dropped
 			// without decrypting it.
@@ -129,6 +131,12 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 		seen[name] = struct{}{}
 		cookies = append(cookies, requestCookie{name: name, value: decrypted, keep: true})
 	}
+
+	if !decrypts {
+		return
+	}
+	// Rewritten in buffers of its own: a cookie read before, by keyauth say, keeps the value it was read with.
+	fieldname.Detach(header)
 
 	if !rebuild {
 		for i := range cookies {

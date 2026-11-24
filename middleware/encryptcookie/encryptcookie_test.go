@@ -975,3 +975,33 @@ func Test_Middleware_ExplicitCallbacks_InvalidKey_Panics(t *testing.T) {
 		New(Config{Key: key, Encryptor: EncryptCookie, Decryptor: DecryptCookie})
 	})
 }
+
+func Test_Middleware_KeepsEarlierCookieViews(t *testing.T) {
+	t.Parallel()
+	key := GenerateKey(32)
+	token, err := EncryptCookie("token", "alice", key)
+	require.NoError(t, err)
+	other, err := EncryptCookie("other", strings.Repeat("b", 20), key)
+	require.NoError(t, err)
+
+	for name, cookies := range map[string][]string{
+		"in place": {"token", token},
+		"rebuilt":  {"bad", "x", "token", token, "other", other},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				held := c.Cookies("token")
+				if err := c.Next(); err != nil {
+					return err
+				}
+				return c.SendString(held)
+			})
+			app.Use(New(Config{Key: key}))
+			app.Get("/", func(fiber.Ctx) error { return nil })
+			ctx := serve(t, app.Handler(), fiber.MethodGet, cookies...)
+			require.Equal(t, token, string(ctx.Response.Body()))
+		})
+	}
+}

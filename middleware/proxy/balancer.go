@@ -102,6 +102,8 @@ func Balancer(config ...Config) fiber.Handler {
 		var scratch [realIPScratch]byte
 		ip := realIP(c, scratch[:0])
 
+		// The request is rewritten for the upstream from here on: a value a handler read before keeps its bytes.
+		fieldname.Detach(&req.Header)
 		// Whatever the policy, as in doActionWithPolicy.
 		if !fieldname.DropTrailers(&req.Header) {
 			return fiber.ErrRequestHeaderFieldsTooLarge

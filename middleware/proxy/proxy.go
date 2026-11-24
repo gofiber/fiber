@@ -213,6 +213,8 @@ func doActionWithPolicy(
 		wiretarget.RestoreTarget(c.RequestCtx(), originalURL)
 	}()
 
+	// The request is rewritten for the upstream from here on: a value a handler read before keeps its bytes.
+	fieldname.Detach(&req.Header)
 	req.SetRequestURI(u.String())
 	// SetScheme takes the string directly (fasthttp appends its bytes),
 	// avoiding the per-request []byte(u.Scheme) allocation. Re-applying
