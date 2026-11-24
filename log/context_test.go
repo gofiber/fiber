@@ -96,6 +96,7 @@ func Test_ContextTemplate_KeyValueFieldQuoted(t *testing.T) {
 		{id: "dGVzdA==", want: `"dGVzdA=="`},
 		{id: `x" username="admin`, want: `"x\" username=\"admin"`},
 		{id: "x\ty\\", want: `"x\ty\\"`},
+		{id: "0f8e7c1a-6d1b\t4f8e", want: `"0f8e7c1a-6d1b\t4f8e"`},
 		{id: `corp\john`, want: `corp\john`},
 	} {
 		t.Run(tc.id, func(t *testing.T) {
