@@ -131,6 +131,19 @@ const markerPoll = 250 * time.Millisecond
 // one marker covers every URL and one each group. The records are keyed under it too, where no entry key lands.
 const refusalMarker = cacheKeyVersion + "|refused"
 
+// markerLifetimes are the seconds a marker is written for: the shortest that covers what it announces.
+// A Storage keeps a key's last write, so each lifetime has a key of its own, written only for that
+// lifetime: two instances announcing at once cannot cut each other's marker short.
+var markerLifetimes = [...]uint64{1 << 9, 1 << 15, 1 << 21, 1 << 27, math.MaxUint64}
+
+// lifetimeMarker is the key of the marker written for markerLifetimes[i].
+func lifetimeMarker(marker string, i int) string {
+	if i == 0 {
+		return marker
+	}
+	return marker + "~" + strconv.Itoa(i)
+}
+
 var groupMarkers = func() [refusalGroups]string {
 	var markers [refusalGroups]string
 	for i := range markers {
@@ -282,8 +295,8 @@ func (r *refusalRecords) mayHold(ctx context.Context, c fiber.Ctx, generated str
 	return now < gate.until.Load() || r.announced(ctx, gate, groupMarkers[group])
 }
 
-// announced reports whether a record was announced under the marker, which it reads at most once
-// per markerPoll. A Storage that cannot answer counts as an announcement.
+// announced reports whether a record was announced under the marker, for any of markerLifetimes, which
+// it reads at most once per markerPoll. A Storage that cannot answer counts as an announcement.
 func (r *refusalRecords) announced(ctx context.Context, gate *recordGate, marker string) bool {
 	if r.cfg.Storage == nil {
 		return false
@@ -294,12 +307,19 @@ func (r *refusalRecords) announced(ctx context.Context, gate *recordGate, marker
 	if since := nowMilli - seen; (since >= 0 && since < r.poll) || !gate.seen.CompareAndSwap(seen, nowMilli) {
 		return gate.open.Load()
 	}
-	raw, err := r.m.getRaw(ctx, marker)
-	if err != nil && !errors.Is(err, errCacheMiss) {
-		log.Warnf("cache: failed to read the marker of refusal records: %v", err)
+	open := false
+	for i := range markerLifetimes {
+		raw, err := r.m.getRaw(ctx, lifetimeMarker(marker, i))
+		if errors.Is(err, errCacheMiss) {
+			continue
+		}
+		if err != nil {
+			log.Warnf("cache: failed to read the marker of refusal records: %v", err)
+		}
+		raise(&gate.until, lapseOf(raw)) // hits look until then without polling again
+		open = true
+		break
 	}
-	open := !errors.Is(err, errCacheMiss)
-	raise(&gate.until, lapseOf(raw)) // hits look until then without polling again
 	gate.open.Store(open)
 	return open
 }
@@ -370,20 +390,24 @@ func (r *refusalRecords) noteLifetime(group int, lifetime time.Duration) {
 	}
 }
 
-// announce marks the gate in the Storage until its second, or the later one the marker already says.
+// announce marks the gate in the Storage until its second. It reads nothing first: what a write asks
+// for must not hang on what another instance wrote meanwhile.
 func (r *refusalRecords) announce(ctx context.Context, gate *recordGate, marker string) {
-	raise(&gate.until, r.lapse(ctx, marker))
 	until := gate.until.Load()
 	now := uint64(utils.Timestamp())
 	if until <= now {
-		return // a TTL of zero would mean no expiry
+		return
 	}
-	if err := r.m.setRaw(ctx, marker, lapseValue(until), secondsToDuration(until-now)); err != nil {
+	i := 0
+	for until-now > markerLifetimes[i] {
+		i++
+	}
+	if err := r.m.setRaw(ctx, lifetimeMarker(marker, i), lapseValue(until), secondsToDuration(markerLifetimes[i])); err != nil {
 		log.Warnf("cache: failed to announce the record of a refused credential: %v", err)
 	}
 }
 
-// lapse is the second the record or marker under key lapses, as its value says; 0 for none.
+// lapse is the second the record under key lapses, as its value says; 0 for none.
 func (r *refusalRecords) lapse(ctx context.Context, key string) uint64 {
 	raw, err := r.m.getRaw(ctx, key)
 	if err != nil {

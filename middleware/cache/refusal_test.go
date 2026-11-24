@@ -579,6 +579,7 @@ func Test_Cache_InvalidatorCutsOffEndedSession(t *testing.T) {
 
 // isMarker tells the markers announcing refusal records from the records, which are keyed under them.
 func isMarker(key string) bool {
+	key, _, _ = strings.Cut(key, "~") // the lifetime of the marker
 	return key == refusalMarker || slices.Contains(groupMarkers[:], key)
 }
 
@@ -625,9 +626,10 @@ func (s *refusalStorage) records() int {
 }
 
 func (s *refusalStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	// Polls are counted: each reads the marker of the shortest lifetime first.
 	if key == refusalMarker {
 		s.markerReads.Add(1)
-	} else if isMarker(key) {
+	} else if isMarker(key) && !strings.Contains(key, "~") {
 		s.groupReads.Add(1)
 	}
 	// A read with no key is a record read for a request that has no credential to record.

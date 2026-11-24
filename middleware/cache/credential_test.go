@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -422,16 +423,24 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 		require.Equal(t, lapse, lapseOf(storage.Data["k"]))
 	})
 
-	t.Run("a marker announced for later stays", func(t *testing.T) {
+	t.Run("a marker is not cut short by an instance announcing at the same time", func(t *testing.T) {
 		t.Parallel()
-		storage := storagetest.New()
-		records := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute})
-		later := uint64(utils.Timestamp()) + 3600
-		storage.Data[refusalMarker] = lapseValue(later) // another instance's, for an hour
-		records.record(ctx, records.group(c, "base"), "k", 0)
-		require.GreaterOrEqual(t, lastTTL(storage, refusalMarker), 3596*time.Second)
-		require.Equal(t, later, lapseOf(storage.Data[refusalMarker]))
-		require.GreaterOrEqual(t, records.all.until.Load(), later, "and this instance looks until then")
+		var raced atomic.Bool
+		storage := &hookedStorage{Memory: storagetest.New()}
+		long := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Hour})
+		short := cacheTestCRecords(&Config{Storage: storage, Expiration: time.Minute})
+		// The instance with less to announce writes its marker last.
+		storage.onSet = func(key string, _ time.Duration) {
+			if isMarker(key) && raced.CompareAndSwap(false, true) {
+				long.record(ctx, long.group(c, "base"), "long", 0)
+			}
+		}
+		short.record(ctx, short.group(c, "base"), "short", 0)
+		var kept time.Duration
+		for i := range markerLifetimes {
+			kept = max(kept, lastTTL(storage.Memory, lifetimeMarker(refusalMarker, i)))
+		}
+		require.GreaterOrEqual(t, kept, 3596*time.Second)
 	})
 
 	t.Run("a marker is not announced for a second that has passed", func(t *testing.T) {
