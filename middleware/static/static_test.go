@@ -1717,16 +1717,19 @@ func Test_Static_MaxAge_KeepsCacheControl(t *testing.T) {
 			c.Set(name, "private, no-store")
 			return c.Next()
 		})
-		app.Use("/empty", func(c fiber.Ctx) error {
-			c.Response().Header.Add(name, "")
-			return c.Next()
-		})
-		app.Use("/split", func(c fiber.Ctx) error {
-			// the padding puts the empty line in a spare slot append left zeroed, where it peeks as nil
+		// the padding puts the empty line in a spare slot append left zeroed, where it peeks as nil
+		pad := func(c fiber.Ctx) {
 			for _, pad := range []string{"X-Pad-1", "X-Pad-2", "X-Pad-3"} {
 				c.Response().Header.Set(pad, "1")
 			}
 			c.Response().Header.Add(name, "")
+		}
+		app.Use("/empty", func(c fiber.Ctx) error {
+			pad(c)
+			return c.Next()
+		})
+		app.Use("/split", func(c fiber.Ctx) error {
+			pad(c)
 			c.Response().Header.Add(name, "private")
 			return c.Next()
 		})
@@ -1742,6 +1745,8 @@ func Test_Static_MaxAge_KeepsCacheControl(t *testing.T) {
 		require.NotContains(t, string(raw.Header.Header()), "max-age=3600", name)
 		resp = apptest.ExpectBody(t, app, "/empty/logo.txt", fiber.StatusOK, "LOGO")
 		require.NotContains(t, resp.Header.Values(fiber.HeaderCacheControl), "max-age=3600", name)
+		raw = serveRaw(app.Handler(), fiber.MethodGet, "/empty/logo.txt")
+		require.NotContains(t, string(raw.Header.Header()), "max-age=3600", name)
 	}
 }
 
