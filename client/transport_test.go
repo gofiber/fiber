@@ -1,6 +1,7 @@
 package client
 
 import (
+	"cmp"
 	"crypto/tls"
 	"errors"
 	"net"
@@ -1323,14 +1324,15 @@ func Test_Transport_DoRedirects_ResolvesTargetAsBuilt(t *testing.T) {
 	}
 	for _, tr := range transports {
 		for _, tc := range []struct {
-			name, location, want string
-			normalizing          bool
+			name, start, location, want string
+			normalizing                 bool
 		}{
 			{name: "absolute path", location: "/v2" + start, want: "/v2" + start},
 			{name: "absolute URL", location: "http://example.com/v2" + start, want: "/v2" + start},
 			{name: "relative path", location: "next", want: "/files/next"},
 			{name: "space and non-ASCII", location: "/v2/my file/café", want: "/v2/my%20file/caf%C3%A9"},
 			{name: "normalizing client", location: "/v2/a%2Fb//c", want: "/v2/a/b/c", normalizing: true},
+			{name: "stray percent in the request path", start: "/discount/100%", location: "/next", want: "/next"},
 		} {
 			t.Run(tr.name+"/"+tc.name, func(t *testing.T) {
 				t.Parallel()
@@ -1344,7 +1346,7 @@ func Test_Transport_DoRedirects_ResolvesTargetAsBuilt(t *testing.T) {
 					}
 				})
 				req, resp := clientTestCReqResp(t)
-				req.SetRequestURI("http://example.com" + start)
+				req.SetRequestURI("http://example.com" + cmp.Or(tc.start, start))
 
 				require.NoError(t, tr.build(dial, !tc.normalizing).DoRedirects(req, resp, &redirectOptions{maxRedirects: 3}))
 				require.Equal(t, fasthttp.StatusOK, resp.StatusCode())

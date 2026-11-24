@@ -17,16 +17,13 @@ import (
 // repeats the request URI, as a canonical-host redirect does, would otherwise name another path
 // than the one requested. The result carries no user info and has a host.
 func Resolve(base string, location []byte) (*url.URL, error) {
-	baseURL, err := url.Parse(base)
+	baseURL, err := parse(base)
 	if err != nil {
-		return nil, fasthttp.ErrorInvalidURI
+		return nil, err
 	}
-	ref, err := url.Parse(escapeStrayPercents(utils.UnsafeString(location)))
+	ref, err := parse(utils.UnsafeString(location))
 	if err != nil {
-		return nil, fasthttp.ErrorInvalidURI
-	}
-	if !RawPathValid(ref.RawPath) {
-		ref.RawPath = RepairRawPath(ref.RawPath, ref.Path)
+		return nil, err
 	}
 	next := baseURL.ResolveReference(ref)
 	// A hop has never carried the user info of a Location: it would write an Authorization the
@@ -36,6 +33,18 @@ func Resolve(base string, location []byte) (*url.URL, error) {
 		return nil, fasthttp.ErrorInvalidURI
 	}
 	return next, nil
+}
+
+// parse parses ref as written, so a base sent as built with a stray "%" parses like a Location does.
+func parse(ref string) (*url.URL, error) {
+	u, err := url.Parse(escapeStrayPercents(ref))
+	if err != nil {
+		return nil, fasthttp.ErrorInvalidURI
+	}
+	if !RawPathValid(u.RawPath) {
+		u.RawPath = RepairRawPath(u.RawPath, u.Path)
+	}
+	return u, nil
 }
 
 // RepairRawPath escapes the bytes of raw that a path cannot hold raw, as "%XX", and leaves the

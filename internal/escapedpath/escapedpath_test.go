@@ -17,6 +17,9 @@ func Test_Resolve(t *testing.T) {
 		{"http://example.com/", "/discount/100%", "http://example.com/discount/100%25"},
 		{"http://example.com/", "/my file/café", "http://example.com/my%20file/caf%C3%A9"},
 		{"http://example.com/", "http://u:p@other.example/x", "http://other.example/x"},
+		{"http://example.com/discount/100%", "/next", "http://example.com/next"},
+		{"http://example.com/discount/100%", "?page=2", "http://example.com/discount/100%25?page=2"},
+		{"http://example.com/a%2Fb c/d", "e", "http://example.com/a%2Fb%20c/e"},
 	} {
 		next, err := Resolve(tc.base, []byte(tc.location))
 		require.NoError(t, err, tc.location)
