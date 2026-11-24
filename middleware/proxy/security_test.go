@@ -2037,7 +2037,7 @@ func Test_Security_KeepHopByHopHeaders_Do(t *testing.T) {
 }
 
 // Test_Security_ValidateUpstream_UnparsableIsHostInvalid pins that an address net/url cannot
-// parse is ErrUpstreamHostInvalid, with the *url.Error still reachable.
+// parse is ErrUpstreamHostInvalid, with the *url.Error still reachable and the address out of its text.
 func Test_Security_ValidateUpstream_UnparsableIsHostInvalid(t *testing.T) {
 	t.Parallel()
 	for _, raw := range []string{"http://[::1", "http://exam ple.com", "http://%zz.com/", "http://a:b:c/"} {
@@ -2045,12 +2045,38 @@ func Test_Security_ValidateUpstream_UnparsableIsHostInvalid(t *testing.T) {
 		require.ErrorIs(t, err, ErrUpstreamHostInvalid, raw)
 		_, ok := errors.AsType[*url.Error](err)
 		require.True(t, ok, "the net/url error must stay reachable: %q", raw)
+		require.NotContains(t, err.Error(), raw, "the address must stay out of the error text")
 	}
 
 	// "" and "http:///path" are pinned by RejectsEmpty and EmptyHostAfterScheme.
 	for _, raw := range []string{"   ", "http://", "http://:8080"} {
 		_, err := validateUpstream(raw, DefaultSecurityPolicy(), nil)
 		require.ErrorIs(t, err, ErrUpstreamHostInvalid, raw)
+	}
+}
+
+func Test_Security_Do_UnparsableAddressStaysOutOfTheAnswer(t *testing.T) {
+	t.Parallel()
+	const base = "http://svc:s3cret@backend.internal:8080"
+	for name, do := range map[string]func(c fiber.Ctx, addr string) error{
+		"Do":          func(c fiber.Ctx, addr string) error { return Do(c, addr) },
+		"DoRedirects": func(c fiber.Ctx, addr string) error { return DoRedirects(c, addr, 3) },
+		"DoTimeout":   func(c fiber.Ctx, addr string) error { return DoTimeout(c, addr, time.Second) },
+		"DoDeadline":  func(c fiber.Ctx, addr string) error { return DoDeadline(c, addr, time.Now().Add(time.Second)) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error { return do(c, base+c.Path()+"?key=k3y") })
+
+			resp := rawRequest(t, app, "/100%", "example.com")
+			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode())
+			body := string(resp.Body())
+			require.Contains(t, body, ErrUpstreamHostInvalid.Error())
+			for _, part := range []string{"svc", "s3cret", "backend.internal", "k3y"} {
+				require.NotContains(t, body, part)
+			}
+		})
 	}
 }
 

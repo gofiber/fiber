@@ -1,18 +1,20 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"strings"
 
+	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/utils/v2"
 )
 
 // parseUpstream returns the parsed url.URL for raw. Hosts without an
 // explicit scheme default to http:// to match the historical Balancer
 // behavior where bare "host:port" entries were accepted. A parse failure is
-// ErrUpstreamHostInvalid wrapping the *url.Error.
+// ErrUpstreamHostInvalid wrapping the *url.Error, without the address in it.
 func parseUpstream(raw string) (*url.URL, error) {
 	raw = utils.TrimSpace(raw)
 	if raw == "" {
@@ -23,6 +25,10 @@ func parseUpstream(raw string) (*url.URL, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
+		// The address may hold credentials, and the default error handler answers with this text.
+		if urlErr, ok := errors.AsType[*url.Error](err); ok {
+			urlErr.URL = redact.Placeholder
+		}
 		return nil, fmt.Errorf("%w: %w", ErrUpstreamHostInvalid, err)
 	}
 	// net/url ignores a RawPath it would not write ("/café") and writes Path again, which turns a
