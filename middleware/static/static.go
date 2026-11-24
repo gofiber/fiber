@@ -72,8 +72,11 @@ type fileServerKey struct {
 	route string
 }
 
-// prefixEnd returns where the rest of the routed path p begins, or -1 when no
-// part of it is known to be a name below the root.
+// movedPrefix is the prefixEnd of a path a handler before static moved off its route.
+const movedPrefix = -2
+
+// prefixEnd returns where the rest of the routed path p begins, -1 when no part
+// of it is known to be a name below the root, or movedPrefix.
 func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
 	if s.unrouted {
 		end := len(p)
@@ -88,7 +91,7 @@ func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
 	if s.wildcard == "" {
 		// a handler before this one on the route, a rewrite say, may have moved p off the prefix
 		if s.prefixLen > 0 && s.prefixLen <= len(p) && !s.isPrefix(p[:s.prefixLen]) {
-			return -1
+			return movedPrefix
 		}
 		return s.prefixLen
 	}
@@ -105,8 +108,8 @@ func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
 	// another path, which the URI then holds instead of the one sent
 	sent := utils.UnsafeString(c.Request().Header.RequestURI())
 	moved := utils.UnsafeString(c.Request().URI().PathOriginal()) != sent[:pathEnd(sent)]
-	if end >= 0 && moved && !fiber.RoutePatternMatch(p[:end], s.prefixPattern, *s.config) {
-		return -1
+	if moved && (end < 0 || !fiber.RoutePatternMatch(p[:end], s.prefixPattern, *s.config)) {
+		return movedPrefix
 	}
 	return end
 }
@@ -124,7 +127,7 @@ func (s *fileServer) isPrefix(head string) bool {
 // names nothing inside the root, and then there is nothing to open: a file of
 // any name could stand in for that answer.
 func (s *fileServer) requestPath(dst []byte, p string, end int) ([]byte, bool) {
-	if s.invalid || end > len(p) {
+	if s.invalid || end > len(p) || end == movedPrefix {
 		return dst, false
 	}
 	// a wildcard right after the prefix, as in /static* or /static+, also

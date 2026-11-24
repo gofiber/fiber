@@ -1768,6 +1768,14 @@ func Test_Static_PathChangedOnTheRoute(t *testing.T) {
 	param := fiber.New()
 	param.Use("/:l/internal", deny)
 	param.Get("/:l/*", rewrite("/en/xinternal/", "/en/x/internal/"), rewrite("/fr/", "/de/"), New(root))
+	// a file root serves its file whatever the name, but not for a path moved off the route either
+	file := filepath.Join(root, "pub.txt")
+	filePrefix := fiber.New()
+	filePrefix.Use("/v1", rewrite("/v1/guides/", "/v2/"), New(file))
+	fileParam := fiber.New()
+	fileParam.Get("/:l/*", rewrite("/en/xinternal/", "/en/x/internal/"), rewrite("/de/long/", "/de/"), New(file))
+	fileNamed := fiber.New()
+	fileNamed.Get("/:name", New(file))
 
 	for app, targets := range map[*fiber.App]map[string]int{
 		prefix: {
@@ -1786,6 +1794,9 @@ func Test_Static_PathChangedOnTheRoute(t *testing.T) {
 			"/en/xinternal/r.txt":   fiber.StatusNotFound,
 			"/en/%78internal/r.txt": fiber.StatusNotFound,
 		},
+		filePrefix: {"/v1/any": fiber.StatusOK, "/v1/guides/any": fiber.StatusNotFound},
+		fileParam:  {"/en/any": fiber.StatusOK, "/en/xinternal/r.txt": fiber.StatusNotFound, "/de/long/name.txt": fiber.StatusNotFound},
+		fileNamed:  {"/any": fiber.StatusOK},
 	} {
 		h := app.Handler()
 		for target, want := range targets {
