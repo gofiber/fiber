@@ -134,6 +134,8 @@ unparsable falls back to the provided URL. If there is no fallback either,
 `Back` returns `fiber.ErrRedirectBackNoFallback`, an error with status 500.
 With a `301` or `308` status, which a cache may store by default, `Back` adds
 `Referer` to `Vary`, so the cache keys the redirect by the referer it was built from.
+A `302`, `303` or `307` that you make storable with `Cache-Control` or `Expires`
+gets no `Vary` from `Back`; call `c.Vary(fiber.HeaderReferer)` along with them.
 
 This browser-style normalization applies to the referer checked by `Back`, not to every redirect API or the fallback URL. The [HTTP client](../client/request.md#control-characters-in-redirect-targets) instead rejects upstream `Location` values containing control bytes rather than removing them and following a changed target.
 

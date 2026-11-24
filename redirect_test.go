@@ -404,18 +404,24 @@ func Test_Redirect_Back_WithReferer(t *testing.T) {
 func Test_Redirect_Back_VaryRefererOnPermanentRedirect(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		vary   string
-		status int
+		vary         string
+		cacheControl string
+		status       int
 	}{
 		{status: StatusMovedPermanently, vary: HeaderReferer},
 		{status: StatusPermanentRedirect, vary: HeaderReferer},
 		{status: StatusFound},
 		{status: StatusTemporaryRedirect},
+		// explicit freshness is the caller's to pair with Vary, as the docs say
+		{status: StatusSeeOther, cacheControl: "max-age=60"},
 	} {
-		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
+		t.Run(strconv.Itoa(tc.status)+tc.cacheControl, func(t *testing.T) {
 			t.Parallel()
 			c := apptest.Ctx(t, New())
 			c.Request().Header.Set(HeaderReferer, "/back")
+			if tc.cacheControl != "" {
+				c.Set(HeaderCacheControl, tc.cacheControl)
+			}
 			require.NoError(t, c.Redirect().Status(tc.status).Back("/"))
 			require.Equal(t, tc.status, c.Response().StatusCode())
 			require.Equal(t, tc.vary, string(c.Response().Header.Peek(HeaderVary)))
