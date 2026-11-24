@@ -2014,6 +2014,8 @@ A custom `Storage` keeps an entry under `limiter:` followed by the key the `KeyG
 
 For a request the timeout middleware gave up on, the limiter leaves the response alone, since the timed-out handler may still be writing it: the timeout response carries no `X-RateLimit-*` headers, and `SkipFailedRequests` and `SkipSuccessfulRequests` judge the timeout response's status.
 
+A custom `LimitReached` runs with the response status already set to `429`, so one that only writes a body, such as `c.SendFile("./toofast.html")`, no longer answers a refused request with `200`. One that lets the request through with `c.Next()` has to set the status itself.
+
 :::note
 Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `Expiration`, `Storage`, and `KeyGenerator` instead.
 :::

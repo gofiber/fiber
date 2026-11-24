@@ -281,6 +281,29 @@ func Test_Limiter_TimedOutRequest(t *testing.T) {
 	}
 }
 
+func Test_Limiter_CustomLimitReachedStatus(t *testing.T) {
+	t.Parallel()
+	for _, strategy := range windowStrategies {
+		for _, tc := range []struct {
+			handler fiber.Handler
+			name    string
+			want    int
+		}{
+			{name: "body only", want: fiber.StatusTooManyRequests, handler: func(c fiber.Ctx) error { return c.SendString("slow down") }},
+			{name: "own status", want: fiber.StatusServiceUnavailable, handler: func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusServiceUnavailable) }},
+		} {
+			t.Run(strategy.name+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+				app := fiber.New()
+				app.Use(New(Config{Max: 1, LimiterMiddleware: strategy.handler, LimitReached: tc.handler}))
+				app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+				apptest.Expect(t, app, "/", fiber.StatusOK)
+				apptest.Expect(t, app, "/", tc.want)
+			})
+		}
+	}
+}
+
 // Test_getEffectiveStatusCode covers the status a request is counted with: the code of a *fiber.Error,
 // else an error status the response already carries, else 500 for a plain error. A typed nil error is no
 // error at all and must not panic.

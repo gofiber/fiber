@@ -84,8 +84,10 @@ func (cfg *Config) skipsHit(statusCode int) bool {
 		(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest)
 }
 
-// reject sets Retry-After (RFC 9110 section 10.2.3, RFC 6585 section 4), then calls LimitReached.
+// reject sets Retry-After (RFC 9110 section 10.2.3, RFC 6585 section 4) and 429, then calls LimitReached.
 func (cfg *Config) reject(c fiber.Ctx, resetInSec uint64) error {
+	// A LimitReached that only writes a body, as c.SendFile does, would otherwise answer 200.
+	c.Status(fiber.StatusTooManyRequests)
 	if !cfg.DisableHeaders {
 		if _, ok := c.(*fiber.DefaultCtx); ok {
 			// Retry-After is already canonical, so SetCanonical stores the line
