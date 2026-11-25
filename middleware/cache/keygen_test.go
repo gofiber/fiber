@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"math"
 	"slices"
 	"strings"
 	"sync"
@@ -404,11 +403,7 @@ func Test_appendCanonicalQueryString_DoesNotAllocate(t *testing.T) {
 	uri.SetQueryString("q=hello+world&filter%5Bstatus%5D=active&page=2&sort=-created")
 	dst := make([]byte, 0, 512)
 
-	fewest := math.MaxFloat64
-	for range 200 {
-		fewest = min(fewest, testing.AllocsPerRun(1, func() { dst = appendCanonicalQueryString(dst[:0], &uri) }))
-	}
-	require.Zero(t, fewest)
+	require.Zero(t, apptest.FewestAllocs(200, 1, func() { dst = appendCanonicalQueryString(dst[:0], &uri) }))
 	require.Equal(t, "filter%5Bstatus%5D=active&page=2&q=hello+world&sort=-created", string(dst))
 }
 
