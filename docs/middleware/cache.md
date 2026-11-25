@@ -219,7 +219,7 @@ that identifies a single client is not stored at all:
   [RFC 9111 §3.5](https://www.rfc-editor.org/rfc/rfc9111.html#section-3.5).
 - **`Cache-Control: no-store`, `private`, `no-cache`, or `Vary: *`.**
 
-Nor is a response to a query of more than 128 parameters, or longer than 4096 bytes, when the key can hold a credential (an `Authorization` header, `KeyCookies`, or a credential header in `KeyHeaders` or `KeyCredentialHeaders`) or the response's `Vary` names a header that carries one. Past those bounds the query is keyed as it was sent, and the record a refusal leaves, described below, would not reach the other spellings of the query.
+With the default key, a response to a query of more than 128 parameters, or longer than 4096 bytes, is not stored either when the key can hold a credential (an `Authorization` header, `KeyCookies`, or a credential header in `KeyHeaders` or `KeyCredentialHeaders`) or the response's `Vary` names a header that carries one. Past those bounds the key holds the query as it was sent, and the record a refusal leaves, described below, would not reach its other spellings. A key of your own, or one that `DisableQueryKeys` leaves the query out of, is not affected.
 
 Nor is a response whose `Connection` names `Cache-Control`, `Content-Encoding`, `Content-Type`, `ETag`, `Expires` or `Vary`. The fields `Connection` names are hop-by-hop ([RFC 9110 §7.6.1](https://www.rfc-editor.org/rfc/rfc9110.html#section-7.6.1)) and are left out of an entry, and these label the body or decided how long it is kept, so it could not be replayed without them.
 

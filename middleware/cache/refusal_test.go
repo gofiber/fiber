@@ -1259,29 +1259,43 @@ func Test_Cache_RefusalReachesEverySpellingAndBodyOfTheURL(t *testing.T) {
 }
 
 // A key sorts the parameters of a query only within bounds, and past them a refusal recorded at another spelling
-// would not reach the entry, so a response that may be a credential's is not stored. Without a credential, with
-// query keys disabled or with a key of the app's own, the spelling of the query does not matter.
+// would not reach the entry, so a response that may be a credential's is not stored: one whose key holds a credential
+// header or Authorization, or whose Vary names a credential header. Without a credential, with query keys disabled or
+// with a key of the app's own, the spelling of the query does not matter.
 func Test_Cache_CredentialResponsePastTheBoundsOfTheQueryKeyIsNotStored(t *testing.T) {
 	t.Parallel()
 	params := "/page?a=1" + strings.Repeat("&", maxQueryParams-1)          // as many parameters as a key sorts
 	full := "/page?a=" + strings.Repeat("x", maxQueryBufferSize-len("a=")) // as long a query as a key sorts
+	// How each credential is sent, and what the response varies on.
+	type sending struct{ header, value, vary string }
+	credentials := map[string]sending{
+		"":              {header: "X-Token", value: "t1"}, // not declared, so no credential
+		"header":        {header: "X-Token", value: "t1"},
+		"authorization": {header: fiber.HeaderAuthorization, value: "Bearer t1"},
+		"cookie":        {header: fiber.HeaderCookie, value: "session=t1", vary: fiber.HeaderCookie},
+	}
 	for _, tc := range []struct {
-		name, target                            string
-		credential, noQueryKeys, ownKey, stored bool
+		name, target, credential    string
+		noQueryKeys, ownKey, stored bool
 	}{
-		{name: "as many parameters as a key sorts", target: params, credential: true, stored: true},
-		{name: "more parameters", target: params + "&", credential: true},
+		{name: "the most parameters a key sorts", target: params, credential: "header", stored: true},
+		{name: "more parameters", target: params + "&", credential: "header"},
+		{name: "the most parameters with Authorization", target: params, credential: "authorization", stored: true},
+		{name: "more parameters with Authorization", target: params + "&", credential: "authorization"},
+		{name: "the most parameters varying on a cookie", target: params, credential: "cookie", stored: true},
+		{name: "more parameters varying on a cookie", target: params + "&", credential: "cookie"},
 		{name: "more parameters without a credential", target: params + "&", stored: true},
-		{name: "as long a query as a key sorts", target: full, credential: true, stored: true},
-		{name: "a longer query", target: full + "x", credential: true},
+		{name: "as long a query as a key sorts", target: full, credential: "header", stored: true},
+		{name: "a longer query", target: full + "x", credential: "header"},
 		{name: "a longer query without a credential", target: full + "x", stored: true},
-		{name: "query keys disabled", target: params + "&", credential: true, noQueryKeys: true, stored: true},
-		{name: "a key of the app's own", target: params + "&", credential: true, ownKey: true, stored: true},
+		{name: "query keys disabled", target: params + "&", credential: "header", noQueryKeys: true, stored: true},
+		{name: "a key of the app's own", target: params + "&", credential: "header", ownKey: true, stored: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			cfg := Config{Expiration: time.Hour, DisableQueryKeys: tc.noQueryKeys}
-			if tc.credential {
+			sent := credentials[tc.credential]
+			cfg := Config{DisableQueryKeys: tc.noQueryKeys}
+			if tc.credential == "header" {
 				cfg.KeyCredentialHeaders = []string{"X-Token"}
 			}
 			if tc.ownKey {
@@ -1289,7 +1303,14 @@ func Test_Cache_CredentialResponsePastTheBoundsOfTheQueryKeyIsNotStored(t *testi
 			}
 			app := fiber.New()
 			app.Use(New(cfg))
-			app.Get("/page", func(c fiber.Ctx) error { return c.SendString("page") })
+			app.Get("/page", func(c fiber.Ctx) error {
+				// public, or a response to a request with Authorization is not stored at all.
+				c.Set(fiber.HeaderCacheControl, "public, max-age=3600")
+				if sent.vary != "" {
+					c.Set(fiber.HeaderVary, sent.vary)
+				}
+				return c.SendString("page")
+			})
 			w := cacheTestCWire{t: t, app: app}
 			// Built rather than read off the wire, which holds no request line longer than its buffer.
 			send := func() string {
@@ -1297,7 +1318,7 @@ func Test_Cache_CredentialResponsePastTheBoundsOfTheQueryKeyIsNotStored(t *testi
 				defer fasthttp.ReleaseRequest(req)
 				req.Header.SetHost("example.com")
 				req.SetRequestURI(tc.target)
-				req.Header.Set("X-Token", "t1")
+				req.Header.Set(sent.header, sent.value)
 				return w.serve(req).cache
 			}
 

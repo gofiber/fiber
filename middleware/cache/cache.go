@@ -1347,15 +1347,6 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		// Fields named in Connection are hop-by-hop (RFC 9110 §7.6.1) and left out of the entry. Those it
-		// keeps apart from the rest label the body or decided its lifetime and cannot be left out, so a
-		// response naming one is not stored.
-		connection := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderConnection, respCanonical))
-		if connection != "" && namesEntryField(connection) {
-			markUnreachable()
-			return nil
-		}
-
 		// unreachable marks the response uncacheable and hands back any entry still
 		// held from the lookup: each decision below is a decision not to store, so
 		// the unmarshalled copy would otherwise be dropped rather than pooled.
@@ -1394,6 +1385,15 @@ func New(config ...Config) fiber.Handler {
 		// Don't try to cache if body won't fit into cache
 		bodySize := uint(len(c.Response().Body()))
 		if cfg.MaxBytes > 0 && bodySize > cfg.MaxBytes {
+			markUnreachable()
+			return nil
+		}
+
+		// Fields named in Connection are hop-by-hop (RFC 9110 §7.6.1) and left out of the entry. Those it
+		// keeps apart from the rest label the body or decided its lifetime and cannot be left out, so a
+		// response naming one is not stored. Read after the app's Next, as the header loop below reads it.
+		connection := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderConnection, respCanonical))
+		if connection != "" && namesEntryField(connection) {
 			markUnreachable()
 			return nil
 		}
