@@ -191,6 +191,22 @@ func isIgnoredHeader(key []byte) bool {
 	return ok
 }
 
+// entryFields are the response fields an entry keeps apart from its other headers.
+var entryFields = []string{
+	fiber.HeaderCacheControl, fiber.HeaderContentEncoding, fiber.HeaderContentType,
+	fiber.HeaderETag, fiber.HeaderExpires, fiber.HeaderVary,
+}
+
+// namesEntryField reports whether a Connection value names one of entryFields.
+func namesEntryField(connection string) bool {
+	for name := range headerlist.All(connection) {
+		if fieldname.ContainsFold(entryFields, name) {
+			return true
+		}
+	}
+	return false
+}
+
 var keptHeaderNames = func() map[string]struct{} {
 	folded := make(map[string]struct{}, len(keptHeaders))
 	for name := range keptHeaders {

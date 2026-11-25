@@ -1221,6 +1221,12 @@ func New(config ...Config) fiber.Handler {
 		if cfg.MaxBytes > 0 {
 			tag = purgeTag{slot: purges.slot(c.Host(), c.Path()), stored: began}
 		}
+		// Whether the query is keyed as sent (see sortedQueryParams), read before the handler can rewrite it.
+		pastBounds := false
+		if cfg.usesDefaultKeyGenerator && !cfg.DisableQueryKeys {
+			_, within := sortedQueryParams(utils.UnsafeString(c.Request().URI().QueryString()))
+			pastBounds = !within
+		}
 
 		// Continue stack, return err to Fiber if exist
 		if err := c.Next(); err != nil {
@@ -1333,6 +1339,23 @@ func New(config ...Config) fiber.Handler {
 			key = baseKey
 		}
 
+		// A refusal record reaches every spelling of a query only within the bounds a key sorts its
+		// parameters in (see appendRecordKey), so a response that may be a credential's is not stored
+		// past them, where a refusal recorded at another spelling would not end it.
+		if pastBounds && cfg.mayKeyCredential(hasAuthorization, respVaryNames) {
+			markUnreachable()
+			return nil
+		}
+
+		// Fields named in Connection are hop-by-hop (RFC 9110 §7.6.1) and left out of the entry. Those it
+		// keeps apart from the rest label the body or decided its lifetime and cannot be left out, so a
+		// response naming one is not stored.
+		connection := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderConnection, respCanonical))
+		if connection != "" && namesEntryField(connection) {
+			markUnreachable()
+			return nil
+		}
+
 		// unreachable marks the response uncacheable and hands back any entry still
 		// held from the lookup: each decision below is a decision not to store, so
 		// the unmarshalled copy would otherwise be dropped rather than pooled.
@@ -1422,7 +1445,6 @@ func New(config ...Config) fiber.Handler {
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
 		e.headers = e.headers[:0]
 		// Fields named in Connection are hop-by-hop (RFC 9110 §7.6.1).
-		connection := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderConnection, respCanonical))
 		if !cfg.StoreResponseHeaders && (connection == "" || !headerlist.ContainsFold(connection, fiber.HeaderLocation)) {
 			// Keep a redirect's destination even when headers are not stored: 300 and
 			// 301 are cacheable, so without this the first client got

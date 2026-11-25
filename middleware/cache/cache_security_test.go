@@ -1460,6 +1460,29 @@ func Test_StoreResponseHeaders_DropsConnectionAndProxyFields(t *testing.T) {
 	}
 }
 
+// A field the entry keeps apart from its other headers labels the body or decided its lifetime, so a response whose
+// Connection names one is not stored rather than replayed without it (RFC 9110 §7.6.1).
+func Test_Cache_ConnectionNamingAFieldTheEntryKeepsIsNotStored(t *testing.T) {
+	t.Parallel()
+	for _, connection := range []string{
+		fiber.HeaderCacheControl, "keep-alive, content-encoding", fiber.HeaderContentType,
+		fiber.HeaderETag, fiber.HeaderExpires, fiber.HeaderVary,
+	} {
+		t.Run(connection, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{Expiration: time.Hour}))
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Response().Header.Set(fiber.HeaderConnection, connection)
+				return c.SendString("hi")
+			})
+
+			cacheTestAExpect(t, app, "/", cacheUnreachable)
+			cacheTestAExpect(t, app, "/", cacheUnreachable)
+		})
+	}
+}
+
 // Test_SetCookie2ResponseIsNotStored covers the obsolete RFC 2965 spelling.
 // fasthttp does not route it into its cookie store, so h.Cookies() alone does
 // not see it and the response would have been stored and shared.

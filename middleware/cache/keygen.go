@@ -212,6 +212,16 @@ type querySegment struct {
 // A query whose parameters are sorted has to fit the 16 bits of those offsets.
 const _ uint16 = maxQueryBufferSize
 
+// sortedQueryParams returns the number of parameters in query and whether a key sorts them. Past either bound
+// it does not, and the query is keyed as sent: the bounds cap the work and keep the offsets in 16 bits.
+func sortedQueryParams(query string) (int, bool) {
+	if len(query) > maxQueryBufferSize {
+		return 0, false
+	}
+	count := strings.Count(query, "&") + 1
+	return count, count <= maxQueryParams
+}
+
 // appendCanonicalQueryString appends the query stably sorted by decoded name, each parameter kept as sent.
 func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	return appendSortedQuery(dst, uri.QueryString(), false)
@@ -231,12 +241,8 @@ func appendSortedQuery(dst, raw []byte, decode bool) []byte { //nolint:revive //
 	// request buffer can be mutated, so no stable copy is required.
 	query := utils.UnsafeString(raw)
 
-	// Past either bound the query is keyed as sent: they cap the work and keep the offsets in 16 bits.
-	if len(query) > maxQueryBufferSize {
-		return appendEscapedBoundKeySegment(dst, query)
-	}
-	count := strings.Count(query, "&") + 1
-	if (count == 1 && !decode) || count > maxQueryParams {
+	count, within := sortedQueryParams(query)
+	if !within || (count == 1 && !decode) {
 		return appendEscapedBoundKeySegment(dst, query)
 	}
 
