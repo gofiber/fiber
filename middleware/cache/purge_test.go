@@ -88,6 +88,45 @@ func Test_Cache_Security_SuccessfulUnsafeRequestEndsTheEntry(t *testing.T) {
 	}
 }
 
+// only-if-cached forbids the handler (RFC 9111 §5.2.1.7), and nothing is stored for a method Methods does not
+// name: such a request is answered 504, so a write it carries neither runs nor ends anything. Next still skips.
+func Test_Cache_OnlyIfCachedForAMethodNotCached(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		method string
+		status int  // of the request that sends only-if-cached
+		next   bool // Next skips every request but a GET
+		ran    bool // whether its handler ran
+	}{
+		{name: "PUT", method: fiber.MethodPut, status: fiber.StatusGatewayTimeout},
+		{name: "OPTIONS", method: fiber.MethodOptions, status: fiber.StatusGatewayTimeout},
+		{name: "skipped by Next", method: fiber.MethodPut, next: true, status: fiber.StatusNoContent, ran: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			clock := cacheTestCClock()
+			cfg := Config{Expiration: time.Hour, clock: clock.Now}
+			if tc.next {
+				cfg.Next = func(c fiber.Ctx) bool { return c.Method() != fiber.MethodGet }
+			}
+			app := cacheTestPItemApp(&cfg, fiber.StatusNoContent)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheMiss, "item v1")
+
+			req := apptest.Req(tc.method, "/item", apptest.WithHeader(fiber.HeaderCacheControl, "only-if-cached"))
+			apptest.Expect(t, app, req, tc.status)
+			clock.Add(time.Second)
+
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheHit, "item v1", "nothing ended the entry")
+			want := "item v1"
+			if tc.ran {
+				want = "item v2"
+			}
+			require.Equal(t, want, cacheTestCGet(t, app, "/item", fiber.HeaderCacheControl, "no-cache").body)
+		})
+	}
+}
+
 func Test_Cache_Security_WriteEndsEveryEntryOfThePath(t *testing.T) {
 	t.Parallel()
 	// A path that does not share the slot of /item, which the table chooses by a hash of its own.

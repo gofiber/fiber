@@ -529,6 +529,14 @@ func New(config ...Config) fiber.Handler {
 		// Only cache methods listed in cfg.Methods (default: GET, HEAD).
 		if !cached {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
+			// Nothing is stored for the method, and only-if-cached forbids the handler (RFC 9111 §5.2.1.7), unless the
+			// error handler answers a refused request or Next skips the middleware.
+			if reqDirectives.onlyIfCached {
+				if errorreplay.Active(c.RequestCtx()) || (cfg.Next != nil && cfg.Next(c)) {
+					return c.Next()
+				}
+				return c.SendStatus(fiber.StatusGatewayTimeout)
+			}
 			return pass()
 		}
 

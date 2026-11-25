@@ -2706,11 +2706,11 @@ func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 
 			ln := apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true})
 
-			// send writes GET target and the header lines extra, ended by their blank line, and reads the answer.
-			send := func(target, extra string) reply {
+			// send writes method target and the header lines extra, ended by their blank line, and reads the answer.
+			send := func(method, target, extra string) reply {
 				conn := apptest.Dial(t, ln)
 				const lines = " HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n"
-				_, err := conn.Write([]byte("GET " + target + lines + extra))
+				_, err := conn.Write([]byte(method + " " + target + lines + extra))
 				require.NoError(t, err)
 				resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 				require.NoError(t, err)
@@ -2718,16 +2718,23 @@ func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 			}
 
 			// "/" holds a fresh entry the refused request asks to replace, "/?page=2" none yet.
-			require.Equal(t, fiber.StatusOK, send("/", "\r\n").status)
+			require.Equal(t, fiber.StatusOK, send(fiber.MethodGet, "/", "\r\n").status)
 
 			for _, target := range []string{"/", "/?page=2"} {
-				refused := send(target, "Cache-Control: no-cache\r\n"+tc.refused)
+				refused := send(fiber.MethodGet, target, "Cache-Control: no-cache\r\n"+tc.refused)
 				require.GreaterOrEqual(t, refused.status, fiber.StatusBadRequest, target)
 				require.Equal(t, cacheUnreachable, refused.cache, target)
 
-				retry := send(target, "\r\n")
+				retry := send(fiber.MethodGet, target, "\r\n")
 				require.Equal(t, fiber.StatusOK, retry.status, target)
 				require.Equal(t, "home page", retry.body, target)
+
+				// only-if-cached leaves a refused request to the error handler too, a method not cached included.
+				for _, method := range []string{fiber.MethodGet, fiber.MethodPut} {
+					refused = send(method, target, "Cache-Control: only-if-cached\r\n"+tc.refused)
+					require.GreaterOrEqual(t, refused.status, fiber.StatusBadRequest, method+" "+target)
+					require.NotEqual(t, fiber.StatusGatewayTimeout, refused.status, method+" "+target)
+				}
 			}
 		})
 	}
