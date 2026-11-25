@@ -716,7 +716,7 @@ func Test_Static_Compress_PrecompressedSibling(t *testing.T) {
 	resp := apptest.Expect(t, app, req, fiber.StatusOK)
 	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 
-	zr, err := gzip.NewReader(resp.Body)
+	zr, err := gzip.NewReader(bytes.NewReader(apptest.BodyBytes(t, resp)))
 	require.NoError(t, err)
 	body, err := io.ReadAll(zr)
 	require.NoError(t, err)
