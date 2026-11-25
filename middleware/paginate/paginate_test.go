@@ -31,6 +31,10 @@ func Test_ConfigDefault(t *testing.T) {
 	override.PageKey, override.LimitKey, override.DefaultPage, override.DefaultLimit = "p", "l", 5, 50
 	cursor.CursorKey, cursor.CursorParam = "after", "starting_after"
 	maxLimit.MaxLimit = 50
+	clamped := maxLimit
+	clamped.DefaultLimit = 50
+	sorts := defaults
+	sorts.DefaultSort, sorts.AllowedSorts = "name", []string{"name", "date"}
 
 	for _, tc := range []struct {
 		name string
@@ -43,6 +47,8 @@ func Test_ConfigDefault(t *testing.T) {
 		{"negative defaults", []Config{{DefaultPage: -1, DefaultLimit: -1}}, defaults},
 		{"zero MaxLimit is normalized", []Config{{MaxLimit: 0}}, defaults},
 		{"MaxLimit is kept", []Config{{MaxLimit: 50}}, maxLimit},
+		{"DefaultLimit above MaxLimit is clamped", []Config{{DefaultLimit: 100, MaxLimit: 50}}, clamped},
+		{"DefaultSort outside AllowedSorts falls back to the first allowed", []Config{{DefaultSort: "id", AllowedSorts: []string{"name", "date"}}}, sorts},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
