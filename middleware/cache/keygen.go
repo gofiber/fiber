@@ -269,14 +269,24 @@ func appendSortedQuery(dst, raw []byte, decode bool) []byte { //nolint:revive //
 	})
 
 	sorted := len(buf)
-	for i, segment := range segments {
-		if i > 0 {
+	emitted := 0
+	for _, segment := range segments {
+		param, name := raw[segment.start:segment.end], names[segment.nameStart:segment.nameEnd]
+		if decode {
+			// fasthttp drops a parameter with neither a name nor a value (a=1&&b=2, a trailing "&"), so the
+			// handler reads the same query whatever number of them a spelling holds.
+			if _, value, _ := utils.CutByte(param, '='); len(name) == 0 && len(value) == 0 {
+				continue
+			}
+		}
+		if emitted > 0 {
 			buf = append(buf, '&')
 		}
+		emitted++
 		if decode {
-			buf = appendDecodedParam(buf, names[segment.nameStart:segment.nameEnd], raw[segment.start:segment.end])
+			buf = appendDecodedParam(buf, name, param)
 		} else {
-			buf = append(buf, raw[segment.start:segment.end]...)
+			buf = append(buf, param...)
 		}
 	}
 

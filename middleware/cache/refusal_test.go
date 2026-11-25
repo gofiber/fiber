@@ -1208,6 +1208,8 @@ func Test_Cache_RefusalReachesEverySpellingAndBodyOfTheURL(t *testing.T) {
 		{name: "absolute form", refused: request{target: "/page"}, other: request{target: "http://example.com/page"}},
 		{name: "escaped query", refused: request{target: "/page?a=1&b=A"}, other: request{target: "/page?b=%41&a=1"}},
 		{name: "query without a value", refused: request{target: "/page?a&b=x+y"}, other: request{target: "/page?a=&b=x%20y"}},
+		{name: "empty parameters", refused: request{target: "/page?a=1&b=2"}, other: request{target: "/page?a=1&&b=2&"}},
+		{name: "only empty parameters", refused: request{target: "/page"}, other: request{target: "/page?&="}},
 		{name: "another body", refused: request{target: "/page", body: "a"}, other: request{target: "/page", body: "b"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

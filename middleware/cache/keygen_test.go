@@ -397,6 +397,32 @@ func Test_appendCanonicalQueryString_KeepsTheOrderOfOneName(t *testing.T) {
 	require.Equal(t, want, string(appendCanonicalQueryString(nil, &uri)))
 }
 
+// The decoded form keys refusal records: a parameter fasthttp drops, with neither a name nor a value, adds
+// nothing to it, so every spelling of a query reaches the record, while one with a value and no name stays.
+func Test_appendDecodedQueryString(t *testing.T) {
+	t.Parallel()
+	decoded := func(query string) string {
+		var uri fasthttp.URI
+		uri.SetQueryString(query)
+		return string(appendDecodedQueryString(nil, &uri))
+	}
+	for _, tc := range []struct{ query, same string }{
+		{query: "a=1&&b=2&", same: "a=1&b=2"},
+		{query: "=&a=1", same: "a=1"},
+		{query: "&=&", same: ""},
+		{query: "b=%41&a=1", same: "a=1&b=A"},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, decoded(tc.same), decoded(tc.query))
+		})
+	}
+	t.Run("a value without a name stays", func(t *testing.T) {
+		t.Parallel()
+		require.NotEqual(t, decoded("a=1"), decoded("a=1&=x"))
+	})
+}
+
 // Sequential: testing.AllocsPerRun panics in a parallel test. The fewest of many runs counts under -race.
 func Test_appendCanonicalQueryString_DoesNotAllocate(t *testing.T) {
 	var uri fasthttp.URI
