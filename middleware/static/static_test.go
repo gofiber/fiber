@@ -2,8 +2,11 @@ package static
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"embed"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -681,6 +684,51 @@ func Test_Static_Compress_Suffixes(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Test_Static_Compress_PrecompressedSibling covers a directory that already
+// holds compressed copies under the suffixes of the app: with Compress, the
+// copy is served as it is, and the file server writes no copy of its own.
+func Test_Static_Compress_PrecompressedSibling(t *testing.T) {
+	t.Parallel()
+	const precompressed = "served from app.js.gz"
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	_, err := zw.Write([]byte(precompressed))
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+
+	root := staticTestRoot(t, map[string]string{
+		"app.js":    strings.Repeat("console.log('original');\n", 200),
+		"app.js.gz": gz.String(),
+	})
+	// A copy older than its original is stale, and the file server would
+	// write a new one over it.
+	older := time.Now().Add(-time.Hour)
+	require.NoError(t, os.Chtimes(filepath.Join(root, "app.js"), older, older))
+
+	app := fiber.New(fiber.Config{
+		CompressedFileSuffixes: map[string]string{"gzip": ".gz", "br": ".br", "zstd": ".zst"},
+	})
+	app.Get("/*", New(root, Config{Compress: true}))
+
+	req := apptest.Req(fiber.MethodGet, "/app.js", apptest.WithHeader(fiber.HeaderAcceptEncoding, "gzip"))
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
+	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+
+	zr, err := gzip.NewReader(resp.Body)
+	require.NoError(t, err)
+	body, err := io.ReadAll(zr)
+	require.NoError(t, err)
+	require.Equal(t, precompressed, string(body))
+
+	entries, err := os.ReadDir(root)
+	require.NoError(t, err)
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	require.ElementsMatch(t, []string{"app.js", "app.js.gz"}, names)
 }
 
 func Test_Router_Mount_n_Static(t *testing.T) {
