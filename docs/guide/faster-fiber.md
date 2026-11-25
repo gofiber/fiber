@@ -29,6 +29,28 @@ func main() {
 }
 ```
 
+### Example JSON response benchmark
+
+A loopback HTTP benchmark on a shared Linux amd64 host (AMD EPYC 9V74, Go 1.27.4,
+`GOMAXPROCS=2`, Fiber v3.7.0) measured a route returning the same 20 typed
+records from `c.JSON`. Each record contains an ID, name, price, boolean,
+and two tags. Only the encoder changed. One client sent requests sequentially
+over a persistent HTTP/1.1 connection without TLS or compression and read the
+full response. Before timing, every encoder's response was decoded and
+checked against the original records.
+
+| JSON encoder | Median µs/request | Range (µs/request) | Allocations/request |
+| :----------- | ----------------: | -----------------: | ------------------: |
+| Default (`encoding/json`) | 71.6 | 62.5–95.2 | 61 |
+| `go-json` v0.12.0 | 61.3 | 46.5–77.2 | 60 |
+| `sonic.ConfigStd` v1.15.5 | 51.3 | 44.9–67.6 | 61 |
+
+The median and range are over seven runs per encoder. These measurements
+include client, TCP, and handler work; they are not server CPU time, maximum
+throughput, or a benchmark of decoding. Both alternatives reduced median
+latency in this run, but all three ranges overlapped. Benchmark your own
+payloads and verify the JSON output before changing encoders.
+
 ### References
 
 - [Set custom JSON encoder for client](../client/rest.md#setjsonmarshal)
