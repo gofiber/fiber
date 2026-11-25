@@ -1421,7 +1421,9 @@ func New(config ...Config) fiber.Handler {
 		// Store all response headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
 		e.headers = e.headers[:0]
-		if !cfg.StoreResponseHeaders {
+		// Fields named in Connection are hop-by-hop (RFC 9110 §7.6.1).
+		connection := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderConnection, respCanonical))
+		if !cfg.StoreResponseHeaders && (connection == "" || !headerlist.ContainsFold(connection, fiber.HeaderLocation)) {
 			// Keep a redirect's destination even when headers are not stored: 300 and
 			// 301 are cacheable, so without this the first client got
 			// "301 Location: /new" and every one after it a bare 301.
@@ -1432,8 +1434,6 @@ func New(config ...Config) fiber.Handler {
 				})
 			}
 		}
-		// Fields named in Connection are hop-by-hop (RFC 9110 §7.6.1).
-		connection := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderConnection, respCanonical))
 		// A header that middleware inside this one wrote for the client of this request,
 		// as the session middleware writes the session ID into one, is that client's:
 		// the entry is served to every client that hits it, so it is not kept, as
@@ -1816,15 +1816,17 @@ func New(config ...Config) fiber.Handler {
 						mux.Lock()
 						removeDeleted(key, heapIdx, heapGen)
 						mux.Unlock()
-					} else {
-						// Still stored, so track it again for a later eviction to retry.
-						untracked := evictionCandidate{
-							key: key, manifest: entryManifest, size: entrySize, exp: evictAt, expires: entryExpires, oldGen: heapGen, tag: tag,
-						}
-						log.Warnf("cache: failed to delete key %q evicted while it was stored: %v", maskKey(key), delErr)
-						if err := restoreHeapEntry(reqCtx, untracked); err != nil {
-							log.Warnf("%v", err)
-						}
+						// Neither served from the cache nor stored; the replaced body was overwritten, so nothing is restored.
+						c.Set(cfg.CacheHeader, cacheUnreachable)
+						return nil
+					}
+					// Still stored, so track it again for a later eviction to retry.
+					untracked := evictionCandidate{
+						key: key, manifest: entryManifest, size: entrySize, exp: evictAt, expires: entryExpires, oldGen: heapGen, tag: tag,
+					}
+					log.Warnf("cache: failed to delete key %q evicted while it was stored: %v", maskKey(key), delErr)
+					if err := restoreHeapEntry(reqCtx, untracked); err != nil {
+						log.Warnf("%v", err)
 					}
 				}
 			}

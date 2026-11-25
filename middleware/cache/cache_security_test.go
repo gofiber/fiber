@@ -1632,6 +1632,10 @@ func Test_CachedRedirectKeepsItsLocation(t *testing.T) {
 		c.Set("X-Extra", "not-stored")
 		return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new")
 	})
+	app.Get("/hop", func(c fiber.Ctx) error {
+		c.Response().Header.Set(fiber.HeaderConnection, fiber.HeaderLocation)
+		return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new")
+	})
 
 	resp := cacheTestAExpect(t, app, "/old", cacheMiss)
 	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
@@ -1643,6 +1647,10 @@ func Test_CachedRedirectKeepsItsLocation(t *testing.T) {
 	// Only the destination is kept, not response headers at large — that is
 	// still what StoreResponseHeaders is for.
 	require.Empty(t, resp.Header.Get("X-Extra"))
+
+	// A Location the response names in Connection is hop-by-hop (RFC 9110 Section 7.6.1), so it is not kept.
+	cacheTestAExpect(t, app, "/hop", cacheMiss)
+	require.Empty(t, cacheTestAExpect(t, app, "/hop", cacheHit).Header.Values(fiber.HeaderLocation))
 }
 
 // With DisableHeaderNormalizing a credential under another spelling, even beside an empty canonical line, is seen.

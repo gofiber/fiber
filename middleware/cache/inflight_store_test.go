@@ -17,17 +17,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type cacheTestIGet func(target string, headers ...string) (int, error)
+// cacheTestIGet sends GET target with the header pairs and reports its status and X-Cache.
+type cacheTestIGet func(target string, headers ...string) (int, string, error)
 
 // cacheTestIStoreRace serves GET /* (100 bytes, room for one) over storage, running during at its first write.
 func cacheTestIStoreRace(storage *storagetest.Memory, probe *accountingProbe, during func(get cacheTestIGet)) cacheTestIGet {
 	app := fiber.New()
-	get := func(target string, headers ...string) (int, error) {
+	get := func(target string, headers ...string) (int, string, error) {
 		resp, err := app.Test(cacheTestCReq(target, headers...))
 		if err != nil {
-			return 0, err
+			return 0, "", err
 		}
-		return resp.StatusCode, resp.Body.Close()
+		return resp.StatusCode, resp.Header.Get("X-Cache"), resp.Body.Close()
 	}
 	var entered atomic.Bool
 	hooked := &hookedStorage{Memory: storage, onSet: func(string, time.Duration) error {
@@ -63,17 +64,18 @@ func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsNotKept(t *testing.T) {
 		secondStatus int
 		errSecond    error
 	)
-	get := cacheTestIStoreRace(storage, probe, func(get cacheTestIGet) { secondStatus, errSecond = get("/second") })
-	status, err := get("/first")
+	get := cacheTestIStoreRace(storage, probe, func(get cacheTestIGet) { secondStatus, _, errSecond = get("/second") })
+	status, cache, err := get("/first")
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, status)
+	require.Equal(t, cacheUnreachable, cache, "the entry it stored was taken back out")
 	require.NoError(t, errSecond)
 	require.Equal(t, fiber.StatusOK, secondStatus)
 
-	status, err = get("/second", fiber.HeaderCacheControl, "only-if-cached")
+	status, _, err = get("/second", fiber.HeaderCacheControl, "only-if-cached")
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, status)
-	status, err = get("/first", fiber.HeaderCacheControl, "only-if-cached")
+	status, _, err = get("/first", fiber.HeaderCacheControl, "only-if-cached")
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusGatewayTimeout, status)
 	require.Equal(t, 1, probe.nodes())
@@ -94,21 +96,22 @@ func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsTrackedWhenDeleteFails(t *test
 				errSecond    error
 			)
 			get := cacheTestIStoreRace(storage, probe, func(get cacheTestIGet) {
-				secondStatus, errSecond = get("/second")
+				secondStatus, _, errSecond = get("/second")
 				for _, op := range failing {
 					storage.SetErr(op, "*", errors.New("storage unavailable"))
 				}
 			})
-			status, err := get("/first")
+			status, cache, err := get("/first")
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusOK, status)
+			require.Equal(t, cacheMiss, cache, "the entry could not be taken back out, so it stays stored")
 			require.NoError(t, errSecond)
 			require.Equal(t, fiber.StatusOK, secondStatus)
 			require.Equal(t, 2, probe.nodes())
 			require.Equal(t, charged(defaultKey("/first"), 100, textPlain)+charged(defaultKey("/second"), 100, textPlain), probe.counted())
 
 			storage.ClearErrs()
-			status, err = get("/third")
+			status, _, err = get("/third")
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusOK, status)
 			require.Equal(t, 1, probe.nodes())
