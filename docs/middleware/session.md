@@ -460,7 +460,7 @@ extractors.Chain(
 )
 ```
 
-The [Cache](./cache.md) middleware leaves the header the ID is written to out of the responses it stores, even with `StoreResponseHeaders`, since a cached copy would hand the session to every client that hits it. It does not store a response whose session save stored nothing, for example because another request ended the session meanwhile, either, unless the response itself allows shared storage with `Cache-Control: public` or `s-maxage`: no cookie tells it that the page is one client's.
+The [Cache](./cache.md) middleware leaves the header the ID is written to out of the responses it stores, even with `StoreResponseHeaders`, since a cached copy would hand the session to every client that hits it. It still stores the response itself, so a page built from the session is served to every client whose request matches the cache key, unless the header is named in the cache's `KeyCredentialHeaders` (`cache.Config{KeyCredentialHeaders: []string{"X-Session-ID"}}`), which adds it to the default key; a custom `KeyGenerator` has to put it in its own key. It does not store a response whose session save stored nothing, for example because another request ended the session meanwhile, unless the response itself allows shared storage with `Cache-Control: public` or `s-maxage`: no cookie tells it that the page is one client's. See [Default cache key behavior](./cache.md#default-cache-key-behavior).
 
 ### Custom Extractors (Session-specific)
 

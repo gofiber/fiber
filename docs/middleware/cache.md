@@ -173,7 +173,12 @@ for the client of the request is still left out of the entry, as `Set-Cookie`
 is: it would be sent to every client that hits the entry. The session
 middleware does this for the header its ID travels in, when the session ID is
 read from a header (`extractors.FromHeader`). The response still reaches the
-client that caused the miss with it.
+client that caused the miss with it. Only the header is left out: the response
+itself is stored, with `StoreResponseHeaders` or without it, so a page built
+from such a session is served to every client whose request matches its key,
+unless the header is named in `KeyCredentialHeaders`, which adds it to the
+default key; a custom `KeyGenerator` has to put it in its own key (see
+[Default cache key behavior](#default-cache-key-behavior)).
 
 A header that middleware registered before the cache wrote, such as the ID
 `requestid` sets, is not stored either unless something behind the cache changed
@@ -211,7 +216,7 @@ that identifies a single client is not stored at all:
   [RFC 9111 §3.5](https://www.rfc-editor.org/rfc/rfc9111.html#section-3.5).
 - **`Cache-Control: no-store`, `private`, `no-cache`, or `Vary: *`.**
 
-A response built from a cookie the **request** sends, without setting one, is not on this list: nothing in it tells the middleware that it belongs to one client, so it is stored and served to every client whose request matches its key. See [Default cache key behavior](#default-cache-key-behavior) for the ways to keep such a response to its client.
+A response built from a cookie the **request** sends, without setting one, is not on this list: nothing in it tells the middleware that it belongs to one client, so it is stored and served to every client whose request matches its key. The same goes for a credential sent in a header other than `Authorization` that the key does not hold. See [Default cache key behavior](#default-cache-key-behavior) for the ways to keep such a response to its client.
 
 A request the server refused while reading it, such as one declaring a body over `BodyLimit`, is neither served from the cache nor stored, and `X-Cache` reads `unreachable`. Fiber runs the `Use` chain for such a request without its route (see [Errors Before a Handler Runs](../guide/error-handling.md#errors-before-a-handler-runs)), so what the chain produces is not the URL's response.
 
