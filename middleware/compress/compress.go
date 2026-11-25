@@ -7,6 +7,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	"github.com/gofiber/fiber/v3/internal/qvalue"
 	"github.com/gofiber/fiber/v3/middleware/etag"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -193,8 +194,10 @@ func encodingQuality(accept, offer string) float64 {
 		if params != "" {
 			fasthttp.VisitHeaderParams(utils.UnsafeBytes(params), func(key, value []byte) bool {
 				if len(key) == 1 && (key[0] == 'q' || key[0] == 'Q') {
-					if parsed, err := fasthttp.ParseUfloat(value); err == nil {
+					if parsed, ok := qvalue.Parse(value); ok {
 						quality = parsed
+					} else {
+						quality = 0
 					}
 					return false
 				}

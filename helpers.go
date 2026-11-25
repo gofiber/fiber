@@ -33,6 +33,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	etagpkg "github.com/gofiber/fiber/v3/internal/etag"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/qvalue"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/log"
@@ -690,8 +691,10 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 				// trims the leading side. Trim the trailing side here so the
 				// weight still parses; otherwise the error below is swallowed
 				// and an explicit q=0 rejection silently becomes q=1.
-				if q, err := fasthttp.ParseUfloat(utils.TrimSpace(accept[qIndex:])); err == nil {
+				if q, ok := qvalue.Parse(utils.TrimSpace(accept[qIndex:])); ok {
 					quality = q
+				} else {
+					quality = 0
 				}
 			} else {
 				params, _ = headerParamPool.Get().(headerParams) //nolint:errcheck // only contains headerParams
@@ -702,8 +705,10 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 					// The weight parameter name "q" is case-insensitive
 					// (RFC 9110 §12.4.2).
 					if len(key) == 1 && (key[0] == 'q' || key[0] == 'Q') {
-						if q, err := fasthttp.ParseUfloat(value); err == nil {
+						if q, ok := qvalue.Parse(value); ok {
 							quality = q
+						} else {
+							quality = 0
 						}
 						return false
 					}

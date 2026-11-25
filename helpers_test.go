@@ -2063,3 +2063,15 @@ func Benchmark_bothFramingFields(b *testing.B) {
 		})
 	}
 }
+
+func Test_Utils_GetOffer_MalformedQValueRejected(t *testing.T) {
+	t.Parallel()
+	// RFC 9110 §12.4.2 permits only 0, 1 and a decimal with at most three
+	// digits. Malformed weights must not silently become q=1.
+	require.Empty(t, getOffer([]byte("text/plain;q=-0"), acceptsOfferType, "text/plain"))
+	require.Empty(t, getOffer([]byte("text/plain;q=nan"), acceptsOfferType, "text/plain"))
+	require.Empty(t, getOffer([]byte("text/plain;q=inf"), acceptsOfferType, "text/plain"))
+	require.Empty(t, getOffer([]byte("text/plain;q=1.5"), acceptsOfferType, "text/plain"))
+	require.Empty(t, getOffer([]byte("text/plain;q=+0.5"), acceptsOfferType, "text/plain"))
+	require.Equal(t, "text/plain", getOffer([]byte("text/plain;q=0.5"), acceptsOfferType, "text/plain"))
+}
