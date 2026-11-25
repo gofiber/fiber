@@ -530,8 +530,8 @@ func New(config ...Config) fiber.Handler {
 		if !cached {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			// Nothing is stored for the method, and only-if-cached forbids the handler (RFC 9111 §5.2.1.7), unless the
-			// error handler answers a refused request or Next skips the middleware.
-			if reqDirectives.onlyIfCached {
+			// error handler answers a refused request or Next skips the middleware. An empty Methods turns caching off.
+			if reqDirectives.onlyIfCached && len(cfg.Methods) > 0 {
 				if errorreplay.Active(c.RequestCtx()) || (cfg.Next != nil && cfg.Next(c)) {
 					return c.Next()
 				}

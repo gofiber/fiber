@@ -127,6 +127,15 @@ func Test_Cache_OnlyIfCachedForAMethodNotCached(t *testing.T) {
 	}
 }
 
+// An empty Methods turns caching off, so the middleware passes every request on, only-if-cached included.
+func Test_Cache_OnlyIfCachedWithCachingTurnedOff(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{Methods: []string{}}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("page") })
+	apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderCacheControl, "only-if-cached")), fiber.StatusOK, "page")
+}
+
 func Test_Cache_Security_WriteEndsEveryEntryOfThePath(t *testing.T) {
 	t.Parallel()
 	// A path that does not share the slot of /item, which the table chooses by a hash of its own.

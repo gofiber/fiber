@@ -100,9 +100,11 @@ type Config struct {
 	KeyCredentialHeaders []string
 
 	// Methods specifies which HTTP methods are eligible for caching.
-	// Requests with other methods bypass the cache, though an unsafe one that succeeds ends its path's entries.
+	// Requests with other methods bypass the cache, though an unsafe one that succeeds ends its path's entries,
+	// and one that sends only-if-cached is answered 504 (RFC 9111 §5.2.1.7).
 	// Method names are normalized to uppercase automatically.
-	// Set to nil to use the default; set to an empty slice to disable caching for all methods.
+	// Set to nil to use the default; set to an empty slice to disable caching for all methods, which passes
+	// every request on, only-if-cached included.
 	//
 	// Default: []string{fiber.MethodGet, fiber.MethodHead}
 	Methods []string

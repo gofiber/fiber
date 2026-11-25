@@ -2711,6 +2711,8 @@ func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
 			app.Use(New())
+			// Marks the response of a request the chain past the cache ran for, a replayed one included.
+			app.Use(func(c fiber.Ctx) error { c.Set("X-Chain", "ran"); return c.Next() })
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("home page") })
 			if tc.catchAll {
 				app.Use(func(c fiber.Ctx) error { return c.Status(fiber.StatusNotFound).SendString("no such page") })
@@ -2726,7 +2728,7 @@ func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 				require.NoError(t, err)
 				resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 				require.NoError(t, err)
-				return reply{status: resp.StatusCode, cache: resp.Header.Get("X-Cache"), body: apptest.Body(t, resp)}
+				return reply{status: resp.StatusCode, cache: resp.Header.Get("X-Cache"), body: apptest.Body(t, resp), header: resp.Header}
 			}
 
 			// "/" holds a fresh entry the refused request asks to replace, "/?page=2" none yet.
@@ -2746,6 +2748,7 @@ func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 					refused = send(method, target, "Cache-Control: only-if-cached\r\n"+tc.refused)
 					require.GreaterOrEqual(t, refused.status, fiber.StatusBadRequest, method+" "+target)
 					require.NotEqual(t, fiber.StatusGatewayTimeout, refused.status, method+" "+target)
+					require.Equal(t, "ran", refused.header.Get("X-Chain"), "%s %s: the chain past the cache did not run", method, target)
 				}
 			}
 		})
