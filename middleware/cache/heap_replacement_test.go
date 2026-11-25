@@ -138,7 +138,7 @@ func Test_Cache_ConcurrentReloadAfterReservationReplacesHeapNode(t *testing.T) {
 			r := cacheTestCStartReloads(t, storage, fiber.HeaderAcceptLanguage)
 
 			r.second.open()
-			<-blocked
+			apptest.Recv(t, blocked, 5*time.Second, "the second manifest write did not start")
 			r.first.finish(t)
 			failBodySet.Store(failBody)
 			close(release)

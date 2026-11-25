@@ -419,7 +419,11 @@ func Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy(t *testing.T) {
 			hit := send()
 			require.Equal(t, cacheHit, hit.Header.Get("X-Cache"))
 			require.Equal(t, "page of tenant acme", apptest.Body(t, hit))
-			require.True(t, strings.HasPrefix(hit.Header.Get(fiber.HeaderCacheControl), tc.wantCC), "Cache-Control %q", hit.Header.Get(fiber.HeaderCacheControl))
+			if tc.wantCC == "" {
+				require.Empty(t, hit.Header.Values(fiber.HeaderCacheControl))
+			} else {
+				require.True(t, strings.HasPrefix(hit.Header.Get(fiber.HeaderCacheControl), tc.wantCC), "Cache-Control %q", hit.Header.Get(fiber.HeaderCacheControl))
+			}
 			if tc.wantVary == "" {
 				require.Empty(t, hit.Header.Values(fiber.HeaderVary))
 			} else {
