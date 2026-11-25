@@ -12,7 +12,9 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
-	// Storage is used to store the state of the middleware; its errors are logged and do not fail requests.
+	// Storage is used to store the state of the middleware. Its errors are logged and the handler answers the
+	// request instead, except that a lookup or a body read that fails once the request's context has ended
+	// returns the error.
 	//
 	// Default: an in-memory store for this process only
 	Storage fiber.Storage
