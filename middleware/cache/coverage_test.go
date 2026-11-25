@@ -323,9 +323,9 @@ func Test_indexedHeap_PushAndOps(t *testing.T) {
 	t.Parallel()
 	h := &indexedHeap{}
 
-	h.put("a", 30, 30, 1, "")
-	h.put("b", 10, 10, 2, "")
-	idxC := h.put("c", 20, 20, 3, "")
+	h.put("a", 30, 30, 1, "", purgeTag{})
+	h.put("b", 10, 10, 2, "", purgeTag{})
+	idxC := h.put("c", 20, 20, 3, "", purgeTag{})
 	require.Equal(t, 3, h.Len())
 
 	// The lowest expiration must come out first.

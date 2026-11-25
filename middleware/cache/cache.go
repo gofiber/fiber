@@ -267,6 +267,7 @@ func New(config ...Config) fiber.Handler {
 		exp      uint64 // when the entry is due to be evicted
 		expires  uint64 // when it stops being fresh
 		oldGen   uint64
+		tag      purgeTag // so an entry put back stays ended for a write that ended it
 	}
 	type poppedNode struct {
 		key string
@@ -308,6 +309,7 @@ func New(config ...Config) fiber.Handler {
 	if purges == nil {
 		purges = newPurgeTable(cfg.now)
 	}
+	heap.ends = purges.ends
 	maxEntries := max(minTrackedEntries, int(min(cfg.MaxBytes/trackedEntryOverhead, math.MaxInt32)))
 
 	// Delete key from both manager and storage
@@ -361,7 +363,9 @@ func New(config ...Config) fiber.Handler {
 		_, size := heap.remove(heapIdx)
 		storedBytes -= size
 
-		return evictionCandidate{key: entryKey, manifest: entry.manifest, size: size, exp: exp, expires: entry.expires, oldGen: heapGen}, true
+		return evictionCandidate{
+			key: entryKey, manifest: entry.manifest, size: size, exp: exp, expires: entry.expires, oldGen: heapGen, tag: entry.tag,
+		}, true
 	}
 
 	// evicting maps popped nodes to whether their entry went since; evictingKeys counts them by key. Guarded by mux.
@@ -404,7 +408,7 @@ func New(config ...Config) fiber.Handler {
 		if _, exists := heap.findKey(candidate.key); exists {
 			return 0, false
 		}
-		idx := heap.putWithGeneration(candidate.key, candidate.exp, candidate.expires, candidate.size, candidate.oldGen, candidate.manifest)
+		idx := heap.putWithGeneration(candidate.key, candidate.exp, candidate.expires, candidate.size, candidate.oldGen, candidate.manifest, candidate.tag)
 		storedBytes += candidate.size
 		return idx, true
 	}
@@ -459,6 +463,17 @@ func New(config ...Config) fiber.Handler {
 		return nil
 	}
 
+	// endPath ends the entries of the path a write succeeded at (RFC 9111 §4.4), and lets eviction find them
+	// first: none can be served again, while the entries it would evict instead still can.
+	endPath := func(slot uint64) {
+		purges.mark(slot, purges.stamp())
+		if cfg.MaxBytes > 0 {
+			mux.Lock()
+			heap.flag(slot)
+			mux.Unlock()
+		}
+	}
+
 	// Return new handler
 	return func(c fiber.Ctx) error {
 		// Every field line, like the hash below: an empty first Authorization line
@@ -494,14 +509,14 @@ func New(config ...Config) fiber.Handler {
 			err := c.Next()
 			// An abandoned write may still complete, so its entries end, its status unread as it may still be written.
 			if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
-				purges.mark(slot, purges.stamp())
+				endPath(slot)
 				return err
 			}
 			if err != nil {
 				return err
 			}
 			if status := c.Response().StatusCode(); status >= fiber.StatusOK && status < fiber.StatusBadRequest {
-				purges.mark(slot, purges.stamp())
+				endPath(slot)
 			}
 			return nil
 		}
@@ -1193,6 +1208,11 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		began := purges.stamp()
+		// How a write finds the entry this request may store, its path read before the handler can rewrite it.
+		var tag purgeTag
+		if cfg.MaxBytes > 0 {
+			tag = purgeTag{slot: purges.slot(c.Host(), c.Path()), stored: began}
+		}
 
 		// Continue stack, return err to Fiber if exist
 		if err := c.Next(); err != nil {
@@ -1593,9 +1613,13 @@ func New(config ...Config) fiber.Handler {
 					markUnreachable()
 					return nil
 				}
-				// Expired entries go first: only a request that accepts a stale response can use them.
-				next, expired := heap.removeExpired(nowUnix)
-				if !expired {
+				// Entries a write ended go first, as no request can be served them, then expired ones:
+				// only a request that accepts a stale response can use those.
+				next, found := heap.removeEnded()
+				if !found {
+					next, found = heap.removeExpired(nowUnix)
+				}
+				if !found {
 					next = heap.entries[0]
 					heap.removeFirst()
 				}
@@ -1606,6 +1630,7 @@ func New(config ...Config) fiber.Handler {
 					exp:      next.exp,
 					expires:  next.expires,
 					oldGen:   next.gen,
+					tag:      next.tag,
 				})
 				storedBytes -= next.bytes
 			}
@@ -1697,7 +1722,7 @@ func New(config ...Config) fiber.Handler {
 					replaced, replacedOK = candidate, true
 				}
 			}
-			heapIdx = heap.put(key, evictAt, entryExpires, entrySize, entryManifest)
+			heapIdx = heap.put(key, evictAt, entryExpires, entrySize, entryManifest, tag)
 			e.heapidx = heapIdx
 			heapGen = heap.generation(heapIdx)
 			e.heapgen = heapGen
@@ -1786,7 +1811,7 @@ func New(config ...Config) fiber.Handler {
 					} else {
 						// Still stored, so track it again for a later eviction to retry.
 						untracked := evictionCandidate{
-							key: key, manifest: entryManifest, size: entrySize, exp: evictAt, expires: entryExpires, oldGen: heapGen,
+							key: key, manifest: entryManifest, size: entrySize, exp: evictAt, expires: entryExpires, oldGen: heapGen, tag: tag,
 						}
 						log.Warnf("cache: failed to delete key %q evicted while it was stored: %v", maskKey(key), delErr)
 						if err := restoreHeapEntry(reqCtx, untracked); err != nil {

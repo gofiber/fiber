@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -288,6 +289,124 @@ func Test_Cache_Security_EndedEntryIsNotServedStale(t *testing.T) {
 			cacheTestCRequireReply(t, got, tc.cache, tc.body)
 		})
 	}
+}
+
+// cacheTestPKeptPath returns a path as long as /item whose purge slot is not that of /item, which the
+// table chooses by a hash of its own, so a write to /item cannot end its entries.
+func cacheTestPKeptPath(purges *purgeTable) string {
+	for i := 100; ; i++ {
+		if path := "/k" + strconv.Itoa(i); purges.slot("example.com", path) != purges.slot("example.com", "/item") {
+			return path
+		}
+	}
+}
+
+// cacheTestPEvictionApp serves any path through New(*cfg), its entries keyed by URL: a GET answers "x"
+// after whileReading, a PUT 204.
+func cacheTestPEvictionApp(cfg *Config, whileReading func(fiber.Ctx)) *fiber.App {
+	keyed := *cfg
+	keyed.KeyGenerator = func(c fiber.Ctx) string { return c.OriginalURL() }
+	app := fiber.New()
+	app.Use(New(keyed))
+	app.All("/*", func(c fiber.Ctx) error {
+		if c.Method() == fiber.MethodPut {
+			return c.SendStatus(fiber.StatusNoContent)
+		}
+		if whileReading != nil {
+			whileReading(c)
+		}
+		return c.SendString("x")
+	})
+	return app
+}
+
+// An entry a write ended makes room first: no request can be served it, while an older live entry can,
+// and so can an expired one with max-stale.
+func Test_Cache_WriteEndedEntryIsEvictedFirst(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		stale  bool // the kept entry has expired when room is needed, so only max-stale reaches it
+		parked bool // the ended entry is stored by a request that began before the write
+	}{
+		{name: "before an older live entry"},
+		{name: "before an expired entry max-stale can use", stale: true},
+		{name: "stored by a request that began before the write", parked: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			clock := cacheTestCClock()
+			purges := newPurgeTable(clock.Now)
+			kept := cacheTestPKeptPath(purges) + "?v=0"
+			lifetime := func(c fiber.Ctx, _ *Config) time.Duration {
+				if tc.stale && c.OriginalURL() == kept {
+					return 10 * time.Second
+				}
+				return time.Hour
+			}
+			parked, release := make(chan struct{}), make(chan struct{})
+			var parking atomic.Bool
+			parking.Store(tc.parked)
+			app := cacheTestPEvictionApp(&Config{
+				MaxBytes: 2 * charged(cacheKeyVersion+"|GET|"+kept, len("x"), textPlain), Expiration: time.Hour,
+				ExpirationGenerator: lifetime, clock: clock.Now, purges: purges,
+			}, func(c fiber.Ctx) {
+				if c.Path() == "/item" && parking.CompareAndSwap(true, false) {
+					close(parked)
+					<-release
+				}
+			})
+
+			cacheTestAExpect(t, app, kept, cacheMiss)
+			clock.Add(time.Second)
+			if tc.parked {
+				reading := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/item?v=0"), parked, release)
+				clock.Add(time.Second)
+				apptest.Expect(t, app, apptest.Req(fiber.MethodPut, "/item"), fiber.StatusNoContent)
+				clock.Add(time.Second)
+				require.Equal(t, cacheMiss, reading.finish(t).Header.Get("X-Cache"))
+			} else {
+				cacheTestAExpect(t, app, "/item?v=0", cacheMiss)
+				clock.Add(time.Second)
+				apptest.Expect(t, app, apptest.Req(fiber.MethodPut, "/item"), fiber.StatusNoContent)
+			}
+			clock.Add(time.Minute)
+
+			// Room for one more: the ended entry goes, not the one stored before it.
+			cacheTestAExpect(t, app, "/next?v=0", cacheMiss)
+			if tc.stale {
+				cacheTestAExpect(t, app, cacheTestAGetCC(kept, "max-stale"), cacheHit)
+			} else {
+				cacheTestAExpect(t, app, kept, cacheHit)
+			}
+		})
+	}
+}
+
+// A failed eviction puts the ended entry it took back as ended, so the next one makes room with it again.
+func Test_CacheStorage_FailedEvictionPutsBackAWriteEndedEntryAsEnded(t *testing.T) {
+	t.Parallel()
+	clock := cacheTestCClock()
+	purges := newPurgeTable(clock.Now)
+	kept, item := cacheTestPKeptPath(purges)+"?v=0", cacheKeyVersion+"|GET|/item?v=0"
+	storage := storagetest.New()
+	app := cacheTestPEvictionApp(&Config{
+		MaxBytes: 2 * charged(item, len("x"), textPlain), Storage: storage, Expiration: time.Hour, clock: clock.Now, purges: purges,
+	}, nil)
+
+	cacheTestAExpect(t, app, kept, cacheMiss)
+	clock.Add(time.Second)
+	cacheTestAExpect(t, app, "/item?v=0", cacheMiss)
+	clock.Add(time.Second)
+	apptest.Expect(t, app, apptest.Req(fiber.MethodPut, "/item"), fiber.StatusNoContent)
+	clock.Add(time.Second)
+
+	storage.SetErr(storagetest.OpDelete, item, errors.New("eviction delete failed"))
+	cacheTestAExpect(t, app, "/next?v=0", cacheUnreachable)
+	storage.SetErr(storagetest.OpDelete, item, nil)
+	cacheTestAExpect(t, app, "/next?v=0", cacheMiss)
+	cacheTestAExpect(t, app, kept, cacheHit)
+	require.False(t, storage.Holds(item))
 }
 
 func Test_unsafeMethod(t *testing.T) {

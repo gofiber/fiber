@@ -95,10 +95,19 @@ func (t *purgeTable) mark(slot, at uint64) {
 
 // supersedes reports whether a write succeeded at the path after e's request began; any write ends an unstamped e.
 func (t *purgeTable) supersedes(host, path string, e *item) bool {
+	if t.slots.Load() == nil {
+		return false // no write yet: spare a hit the hash
+	}
+	return t.ends(t.slot(host, path), e.stored)
+}
+
+// ends reports whether a write succeeded at slot after a request that began at stored. Lookups,
+// and the eviction heap (see indexedHeap.removeEnded), ask it alike, so they never disagree.
+func (t *purgeTable) ends(slot, stored uint64) bool {
 	slots := t.slots.Load()
 	if slots == nil {
 		return false
 	}
-	last := slots[t.slot(host, path)].Load()
-	return last != 0 && e.stored <= last
+	last := slots[slot].Load()
+	return last != 0 && stored <= last
 }

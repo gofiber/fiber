@@ -35,6 +35,23 @@ type heapEntry struct {
 	gen      uint64
 	bytes    uint
 	idx      int
+	tag      purgeTag
+}
+
+// purgeTag is how a write finds the entries it ends (RFC 9111 §4.4): the purgeTable slot of
+// the entry's path, and the stamp taken when its request began.
+type purgeTag struct {
+	slot, stored uint64
+}
+
+// slotLink holds an index's neighbors in its slot's list, each one above its index, so 0 is none.
+type slotLink struct {
+	prev, next int
+}
+
+// slotList holds the first and last index of a slot's list, one above as in slotLink.
+type slotList struct {
+	head, tail int
 }
 
 type expiryNode struct {
@@ -61,6 +78,13 @@ type indexedHeap struct {
 	// A second heap by when entries stop being fresh, and each index's position in it (see removeExpired).
 	byExpiry  []expiryNode
 	expiryPos []int
+	// ends reports whether a write ended an entry, as purgeTable.ends does; nil ends none.
+	ends func(slot, stored uint64) bool
+	// Each purge slot's indices in storing order, those ended on arrival first, and the slots
+	// whose first entries a write may have ended (see removeEnded).
+	slots   map[uint64]slotList
+	flagged map[uint64]struct{}
+	links   []slotLink
 	// Max index handed out
 	maxidx int
 }
@@ -102,7 +126,8 @@ func (h *indexedHeap) Swap(i, j int) {
 
 // Push implements heap.Interface and inserts a new entry into the heap.
 func (h *indexedHeap) Push(x any) {
-	h.pushInternal(x.(heapEntry)) //nolint:forcetypeassert,errcheck // Forced type assertion required to implement the heap.Interface interface
+	entry := x.(heapEntry) //nolint:forcetypeassert,errcheck // Forced type assertion required to implement the heap.Interface interface
+	h.pushInternal(&entry)
 }
 
 // Pop implements heap.Interface and removes the last entry from the heap.
@@ -127,11 +152,12 @@ func (h *indexedHeap) popInternal() heapEntry {
 		}
 	}
 	h.expiryRemove(entry.idx)
+	h.unlink(entry.idx, entry.tag.slot)
 	h.entries = h.entries[0 : n-1]
 	return entry
 }
 
-func (h *indexedHeap) pushInternal(entry heapEntry) {
+func (h *indexedHeap) pushInternal(entry *heapEntry) {
 	if h.keys == nil {
 		h.keys = make(map[string]int)
 	}
@@ -145,8 +171,93 @@ func (h *indexedHeap) pushInternal(entry heapEntry) {
 		delete(h.orphans, entry.manifest)
 	}
 	h.indices[entry.idx] = len(h.entries)
-	h.entries = append(h.entries, entry)
+	h.entries = append(h.entries, *entry)
 	h.expiryPush(entry.idx, entry.expires)
+	h.link(entry.idx, entry.tag)
+}
+
+// link appends idx to its slot's list or, when a write ended it already, puts it first and flags the slot.
+func (h *indexedHeap) link(idx int, tag purgeTag) {
+	for len(h.links) <= idx {
+		h.links = append(h.links, slotLink{})
+	}
+	if h.slots == nil {
+		h.slots = make(map[uint64]slotList)
+	}
+	list, self := h.slots[tag.slot], idx+1
+	if h.ends != nil && h.ends(tag.slot, tag.stored) {
+		h.links[idx] = slotLink{next: list.head}
+		if list.head != 0 {
+			h.links[list.head-1].prev = self
+		} else {
+			list.tail = self
+		}
+		list.head = self
+		h.slots[tag.slot] = list
+		h.flag(tag.slot)
+		return
+	}
+	h.links[idx] = slotLink{prev: list.tail}
+	if list.tail != 0 {
+		h.links[list.tail-1].next = self
+	} else {
+		list.head = self
+	}
+	list.tail = self
+	h.slots[tag.slot] = list
+}
+
+// unlink takes idx out of its slot's list, and forgets a slot left empty.
+func (h *indexedHeap) unlink(idx int, slot uint64) {
+	link, list := h.links[idx], h.slots[slot]
+	if link.prev != 0 {
+		h.links[link.prev-1].next = link.next
+	} else {
+		list.head = link.next
+	}
+	if link.next != 0 {
+		h.links[link.next-1].prev = link.prev
+	} else {
+		list.tail = link.prev
+	}
+	if list.head == 0 {
+		delete(h.slots, slot)
+		delete(h.flagged, slot)
+		return
+	}
+	h.slots[slot] = list
+}
+
+// flag has removeEnded look at slot, whose first entries a write may have ended. A slot that holds
+// no entry stays unflagged, so the flags never outnumber the entries.
+func (h *indexedHeap) flag(slot uint64) {
+	if _, ok := h.slots[slot]; !ok {
+		return
+	}
+	if h.flagged == nil {
+		h.flagged = make(map[uint64]struct{})
+	}
+	h.flagged[slot] = struct{}{}
+}
+
+// removeEnded removes an entry a write ended (RFC 9111 §4.4), which no request can be served, from the
+// front of a flagged slot, and unflags a slot whose first entry is live. An ended entry behind a live one,
+// left by a request that ran wholly between a write's stamp and its mark, waits for a lookup.
+func (h *indexedHeap) removeEnded() (heapEntry, bool) {
+	if h.ends == nil || len(h.flagged) == 0 {
+		return heapEntry{}, false // spare an eviction without a write the map iteration
+	}
+	for slot := range h.flagged {
+		if list, ok := h.slots[slot]; ok {
+			realIdx := h.indices[list.head-1]
+			if entry := h.entries[realIdx]; h.ends(slot, entry.tag.stored) {
+				h.removeInternal(realIdx)
+				return entry, true
+			}
+		}
+		delete(h.flagged, slot)
+	}
+	return heapEntry{}, false
 }
 
 func (h *indexedHeap) expiryPush(idx int, expires uint64) {
@@ -240,13 +351,13 @@ func (h *indexedHeap) findKey(key string) (int, bool) {
 }
 
 // Returns index to track entry
-func (h *indexedHeap) put(key string, exp, expires uint64, bytes uint, manifest string) int {
-	return h.putWithGeneration(key, exp, expires, bytes, h.nextGeneration(), manifest)
+func (h *indexedHeap) put(key string, exp, expires uint64, bytes uint, manifest string, tag purgeTag) int {
+	return h.putWithGeneration(key, exp, expires, bytes, h.nextGeneration(), manifest, tag)
 }
 
 // putWithGeneration restores an existing entry without changing its persisted
 // identity. Its heap index may change if another entry reused the old slot.
-func (h *indexedHeap) putWithGeneration(key string, exp, expires uint64, bytes uint, gen uint64, manifest string) int {
+func (h *indexedHeap) putWithGeneration(key string, exp, expires uint64, bytes uint, gen uint64, manifest string, tag purgeTag) int {
 	idx := 0
 	if len(h.entries) < h.maxidx {
 		// Steal index from previously removed entry
@@ -259,8 +370,8 @@ func (h *indexedHeap) putWithGeneration(key string, exp, expires uint64, bytes u
 		h.indices = append(h.indices, idx)
 	}
 	// Push manually to avoid allocation
-	h.pushInternal(heapEntry{
-		key: key, manifest: manifest, exp: exp, expires: expires, gen: gen, idx: idx, bytes: bytes,
+	h.pushInternal(&heapEntry{
+		key: key, manifest: manifest, exp: exp, expires: expires, gen: gen, idx: idx, bytes: bytes, tag: tag,
 	})
 	heap.Fix(h, h.Len()-1)
 	return idx
