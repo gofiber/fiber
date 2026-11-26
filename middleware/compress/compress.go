@@ -25,14 +25,7 @@ func shouldSkip(c fiber.Ctx) bool {
 		status == fiber.StatusNotModified ||
 		status == fiber.StatusPartialContent ||
 		c.Get(fiber.HeaderRange) != "" ||
-		c.HasHeaderValue(fiber.HeaderCacheControl, "no-transform") ||
-		hasResponseNoTransform(c) {
-		return true
-	}
-
-	// fasthttp holds a stream's encoder, megabytes for zstd, until the stream
-	// ends, and an event stream ends only once the client is noticed gone.
-	if mediatype.IsEventStream(c.Response().Header.ContentType()) {
+		c.HasHeaderValue(fiber.HeaderCacheControl, "no-transform") {
 		return true
 	}
 
@@ -42,7 +35,15 @@ func shouldSkip(c fiber.Ctx) bool {
 		return true
 	}
 
-	return false
+	// Ahead of the costlier reads below, and through the getter: a keyed read of
+	// Content-Encoding answers from this same field, after normalizing the name.
+	if len(c.Response().Header.ContentEncoding()) > 0 || hasResponseNoTransform(c) {
+		return true
+	}
+
+	// fasthttp holds a stream's encoder, megabytes for zstd, until the stream
+	// ends, and an event stream ends only once the client is noticed gone.
+	return mediatype.IsEventStream(c.Response().Header.ContentType())
 }
 
 func hasResponseNoTransform(c fiber.Ctx) bool {
@@ -125,11 +126,6 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if shouldSkip(c) {
-			appendVaryAcceptEncoding(c)
-			return nil
-		}
-
-		if c.GetRespHeader(fiber.HeaderContentEncoding) != "" {
 			appendVaryAcceptEncoding(c)
 			return nil
 		}
