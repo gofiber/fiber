@@ -1010,6 +1010,19 @@ func appendReceived(dst []byte, key string, vals []string) []byte {
 	return dst
 }
 
+// flush flushes w as http.ResponseController does; the controller, which can cost an allocation, is made only for a
+// middleware's wrapper, whose Flush it finds through Unwrap.
+func flush(w http.ResponseWriter) error {
+	switch f := w.(type) {
+	case interface{ FlushError() error }:
+		return f.FlushError()
+	case http.Flusher:
+		f.Flush()
+		return nil
+	}
+	return http.NewResponseController(w).Flush() //nolint:wrapcheck // the writer's own error, as the cases above
+}
+
 // rootTarget is the target a host is parsed with; shared and never written.
 var rootTarget = []byte{'/'}
 
@@ -1252,8 +1265,6 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 		defer bufferPool.Put(bufPtr)
 
-		// A middleware's wrapper around w seldom has Flush itself; the controller finds it through Unwrap.
-		rc := http.NewResponseController(w)
 		canFlush := true
 		buf := bufPtr[:]
 		for {
@@ -1263,7 +1274,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 					break
 				}
 				if canFlush {
-					if flushErr := rc.Flush(); errors.Is(flushErr, http.ErrNotSupported) {
+					if flushErr := flush(w); errors.Is(flushErr, http.ErrNotSupported) {
 						canFlush = false
 					} else if flushErr != nil {
 						break // the client is gone; closing the stream tells its writer
