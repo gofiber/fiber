@@ -160,16 +160,23 @@ const markerPoll = 250 * time.Millisecond
 // one marker covers every URL and one each group. The records are keyed under it too, where no entry key lands.
 const refusalMarker = cacheKeyVersion + "|refused"
 
-// markerLifetimes are the seconds a marker is written for: the shortest that covers what it announces.
-// A Storage keeps a key's last write, so each lifetime has a key of its own, written only for that
-// lifetime: two instances announcing at once cannot cut each other's marker short.
-var markerLifetimes = [...]uint64{1 << 9, 1 << 15, 1 << 21, 1 << 27, math.MaxUint64}
+// recentMarkerLifetime is how many seconds every announcement keeps the marker a poll reads.
+const recentMarkerLifetime = 1 << 9
+
+// markerLifetimes are the seconds a record that outlives that marker is announced for too: the shortest that
+// covers it, under twice as long up to 2^27. A Storage keeps a key's last write, so each has a key written for it
+// alone: two instances announcing at once cannot cut each other's marker short.
+var markerLifetimes = func() [19]uint64 {
+	var lifetimes [19]uint64
+	for i := range len(lifetimes) - 1 {
+		lifetimes[i] = recentMarkerLifetime << (i + 1)
+	}
+	lifetimes[len(lifetimes)-1] = math.MaxUint64
+	return lifetimes
+}()
 
 // lifetimeMarker is the key of the marker written for markerLifetimes[i].
 func lifetimeMarker(marker string, i int) string {
-	if i == 0 {
-		return marker
-	}
 	return marker + "~" + strconv.Itoa(i)
 }
 
@@ -203,9 +210,11 @@ func (cfg *Config) refusalLimit() int {
 
 // recordGate says whether refusal records may exist, for every URL or for one group of them.
 type recordGate struct {
-	until atomic.Uint64 // the second no record written here outlives
-	seen  atomic.Int64  // the millisecond its marker was last read
-	open  atomic.Bool   // whether the marker was there
+	until   atomic.Uint64 // the second no record written here outlives
+	seen    atomic.Int64  // the millisecond its marker was last read
+	scanned atomic.Uint64 // the second its lifetime markers were last read
+	open    atomic.Bool   // whether a marker was there
+	lasting atomic.Bool   // whether a lifetime marker was there
 }
 
 // refusalRecords keeps the records of refused credentials: bounded in memory, left to expire in a Storage.
@@ -357,8 +366,8 @@ func (r *refusalRecords) mayHoldIn(ctx context.Context, group int) bool {
 	return now < gate.until.Load() || r.announced(ctx, gate, groupMarkers[group])
 }
 
-// announced reports whether a record was announced under the marker, for any of markerLifetimes, which
-// it reads at most once per markerPoll. A Storage that cannot answer counts as an announcement.
+// announced reports whether a record was announced under the marker, which it reads at most once per
+// markerPoll. A Storage that cannot answer counts as an announcement.
 func (r *refusalRecords) announced(ctx context.Context, gate *recordGate, marker string) bool {
 	if r.cfg.Storage == nil {
 		return false
@@ -369,21 +378,38 @@ func (r *refusalRecords) announced(ctx context.Context, gate *recordGate, marker
 	if since := nowMilli - seen; (since >= 0 && since < r.poll) || !gate.seen.CompareAndSwap(seen, nowMilli) {
 		return gate.open.Load()
 	}
-	open := false
-	for i := range markerLifetimes {
-		raw, err := r.m.getRaw(ctx, lifetimeMarker(marker, i))
-		if errors.Is(err, errCacheMiss) {
-			continue
+	open := r.marked(ctx, gate, marker)
+	if !open {
+		// The marker outlives every announcement by recentMarkerLifetime, so a longer one made before it went
+		// is in a lifetime marker read since then, as long as they are read again within half of that.
+		now := uint64(utils.Timestamp())
+		if scanned := gate.scanned.Load(); now < scanned || now-scanned >= recentMarkerLifetime/2 {
+			gate.scanned.Store(now)
+			lasting := false
+			for i := range markerLifetimes {
+				if lasting = r.marked(ctx, gate, lifetimeMarker(marker, i)); lasting {
+					break
+				}
+			}
+			gate.lasting.Store(lasting)
 		}
-		if err != nil {
-			log.Warnf("cache: failed to read the marker of refusal records: %v", err)
-		}
-		raise(&gate.until, lapseOf(raw)) // hits look until then without polling again
-		open = true
-		break
+		open = gate.lasting.Load()
 	}
 	gate.open.Store(open)
 	return open
+}
+
+// marked reports whether the marker under key is there, and has hits look until the second it says.
+func (r *refusalRecords) marked(ctx context.Context, gate *recordGate, key string) bool {
+	raw, err := r.m.getRaw(ctx, key)
+	if errors.Is(err, errCacheMiss) {
+		return false
+	}
+	if err != nil {
+		log.Warnf("cache: failed to read the marker of refusal records: %v", err)
+	}
+	raise(&gate.until, lapseOf(raw)) // hits look until then without polling again
+	return true
 }
 
 // refused reports whether a refusal was recorded under key. A storage that cannot answer counts as
@@ -523,19 +549,28 @@ func (r *refusalRecords) noteLifetime(group int, lifetime time.Duration) {
 	}
 }
 
-// announce marks the gate in the Storage until its second. It reads nothing first: what a write asks
-// for must not hang on what another instance wrote meanwhile.
+// announce marks the gate in the Storage until its second: in the marker and, for longer than that keeps,
+// in a lifetime marker. It reads nothing first: what a write asks for must not hang on what another
+// instance wrote meanwhile.
 func (r *refusalRecords) announce(ctx context.Context, gate *recordGate, marker string) {
 	until := gate.until.Load()
 	now := uint64(utils.Timestamp())
 	if until <= now {
 		return
 	}
+	r.setMarker(ctx, marker, until, recentMarkerLifetime)
+	if until-now <= recentMarkerLifetime {
+		return
+	}
 	i := 0
 	for until-now > markerLifetimes[i] {
 		i++
 	}
-	if err := r.m.setRaw(ctx, lifetimeMarker(marker, i), lapseValue(until), secondsToDuration(markerLifetimes[i])); err != nil {
+	r.setMarker(ctx, lifetimeMarker(marker, i), until, markerLifetimes[i])
+}
+
+func (r *refusalRecords) setMarker(ctx context.Context, key string, until, lifetime uint64) {
+	if err := r.m.setRaw(ctx, key, lapseValue(until), secondsToDuration(lifetime)); err != nil {
 		log.Warnf("cache: failed to announce the record of a refused credential: %v", err)
 	}
 }

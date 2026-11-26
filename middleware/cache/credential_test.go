@@ -443,6 +443,64 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 		require.GreaterOrEqual(t, kept, 3596*time.Second)
 	})
 
+	t.Run("a marker is kept less than twice as long as the record it announces", func(t *testing.T) {
+		t.Parallel()
+		for _, expiration := range []time.Duration{time.Minute, 10 * time.Minute, 5 * time.Hour, 30 * 24 * time.Hour} {
+			storage := storagetest.New()
+			records := cacheTestCRecords(&Config{Storage: storage, Expiration: expiration})
+			records.record(ctx, records.group(c, "base"), "k", 0)
+			var kept time.Duration
+			for _, key := range storage.Keys() {
+				if isMarker(key) {
+					kept = max(kept, lastTTL(storage, key))
+				}
+			}
+			require.GreaterOrEqual(t, kept, expiration, expiration)
+			require.LessOrEqual(t, kept, max(2*expiration, 512*time.Second), expiration)
+		}
+	})
+
+	t.Run("in a Storage, a poll that finds nothing reads one marker", func(t *testing.T) {
+		t.Parallel()
+		storage := storagetest.New()
+		records := cacheTestCRecords(&Config{Storage: storage})
+		require.False(t, records.mayHold(ctx, c, "base"))
+		storage.ClearCalls()
+		for range 10 {
+			records.all.seen.Store(0)
+			require.False(t, records.mayHold(ctx, c, "base"))
+		}
+		require.Equal(t, slices.Repeat([]string{refusalMarker}, 10), storage.CallKeys(storagetest.OpGet))
+	})
+
+	t.Run("in a Storage, a long record is seen after the marker of recent ones is gone", func(t *testing.T) {
+		t.Parallel()
+		storage := storagetest.New()
+		records := cacheTestCRecords(&Config{Storage: storage, Expiration: 5 * time.Hour})
+		records.record(ctx, records.group(c, "base"), "k", 0)
+		delete(storage.Data, refusalMarker)
+		delete(storage.Data, groupMarkers[groupOf("/page")])
+
+		other := cacheTestCRecords(&Config{Storage: storage})
+		require.True(t, other.mayHold(ctx, c, "base"), "a fresh instance")
+		require.False(t, other.mayHold(ctx, elsewhere, "base"), "the group of another URL")
+	})
+
+	t.Run("in a Storage, the lifetime markers are read again within half the marker's lifetime", func(t *testing.T) {
+		t.Parallel()
+		storage := storagetest.New()
+		other := cacheTestCRecords(&Config{Storage: storage})
+		require.False(t, other.mayHold(ctx, c, "base"))
+
+		records := cacheTestCRecords(&Config{Storage: storage, Expiration: 5 * time.Hour})
+		records.record(ctx, records.group(c, "base"), "k", 0)
+		delete(storage.Data, refusalMarker)
+		delete(storage.Data, groupMarkers[groupOf("/page")])
+		other.all.seen.Store(0)
+		other.all.scanned.Store(uint64(utils.Timestamp()) - recentMarkerLifetime/2)
+		require.True(t, other.mayHold(ctx, c, "base"))
+	})
+
 	t.Run("a marker is not announced for a second that has passed", func(t *testing.T) {
 		t.Parallel()
 		storage := storagetest.New()
