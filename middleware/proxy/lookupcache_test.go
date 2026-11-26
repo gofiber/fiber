@@ -141,6 +141,20 @@ func Test_Security_LookupHost_EndsAtTheDeadline(t *testing.T) {
 	require.True(t, dnsErr.IsTimeout, "%v", err)
 }
 
+// Test_Security_ValidateUpstream_LookupPastDeadline pins that DoTimeout and DoDeadline report a lookup their own
+// bound cut short as fasthttp.ErrTimeout, as the exchange does, while an address the policy blocks stays blocked.
+func Test_Security_ValidateUpstream_LookupPastDeadline(t *testing.T) {
+	t.Parallel()
+	// A deadline of now is DoTimeout's with no time.
+	for _, deadline := range []time.Time{time.Now().Add(-time.Second), time.Now()} {
+		_, err := validateUpstreamBy("http://deadline.test", DefaultSecurityPolicy(), nil, deadline)
+		require.ErrorIs(t, err, fasthttp.ErrTimeout)
+		require.NotErrorIs(t, err, ErrUpstreamHostBlocked)
+	}
+	_, err := validateUpstreamBy("http://127.0.0.1", DefaultSecurityPolicy(), nil, time.Now().Add(-time.Second))
+	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+}
+
 // Test_Security_LookupsFor pins which clients the up-front check may serve from the cache: only the
 // shared client, whose dials are checked again where they are made.
 // conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line

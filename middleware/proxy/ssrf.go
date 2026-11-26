@@ -79,6 +79,10 @@ func validateHostBy(host string, cache *lookupCache, deadline time.Time) error {
 	}
 	addrs, err := lookupHost(dnsResolver.Load(), host, cache, deadline)
 	if err != nil {
+		// The request's own bound ran out, which says nothing about the host: reported as the exchange would.
+		if !deadline.IsZero() && !time.Now().Before(deadline) {
+			return fasthttp.ErrTimeout
+		}
 		return err
 	}
 	return checkResolved(host, addrs)

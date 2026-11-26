@@ -678,7 +678,8 @@ func Test_Security_DialWithin_BoundsTheLookup(t *testing.T) {
 	require.Less(t, time.Since(start), dnsLookupTimeout-time.Second)
 }
 
-// A resolver that never answers costs DoTimeout and DoDeadline their own time, not the lookup limit.
+// A resolver that never answers costs DoTimeout and DoDeadline their own time, not the lookup limit, and reads as
+// their timeout, not as a host that does not resolve.
 // conventions:ignore parallel: it swaps the process-wide security policy and DNS resolver
 func Test_Security_RequestTimeout_BoundsTheUpfrontLookup(t *testing.T) {
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy())
@@ -696,7 +697,7 @@ func Test_Security_RequestTimeout_BoundsTheUpfrontLookup(t *testing.T) {
 		start := time.Now()
 		resp := apptest.Do(t, app, "/", fiber.TestConfig{Timeout: 2 * dnsLookupTimeout, FailOnTimeout: true})
 		require.Less(t, time.Since(start), dnsLookupTimeout-time.Second, name)
-		require.Contains(t, apptest.Body(t, resp), "silent.test could not be resolved", name)
+		require.Equal(t, fasthttp.ErrTimeout.Error(), apptest.Body(t, resp), name)
 	}
 }
 

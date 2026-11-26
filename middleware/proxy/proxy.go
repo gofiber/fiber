@@ -135,7 +135,7 @@ func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fa
 // This method can be used within a fiber.Handler
 //
 // SSRF note: same protection as Do — up-front host validation plus the
-// dial-time validated-IP guard when AllowPrivateIPs is false. The deadline bounds its lookup too.
+// dial-time validated-IP guard when AllowPrivateIPs is false. The deadline bounds its lookup too, which then fails with fasthttp.ErrTimeout.
 func DoDeadline(c fiber.Ctx, addr string, deadline time.Time, clients ...*fasthttp.Client) error {
 	send := func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.DoDeadline(req, resp, deadline)
@@ -147,7 +147,7 @@ func DoDeadline(c fiber.Ctx, addr string, deadline time.Time, clients ...*fastht
 // This method can be used within a fiber.Handler
 //
 // SSRF note: same protection as Do — up-front host validation plus the
-// dial-time validated-IP guard when AllowPrivateIPs is false. The timeout bounds its lookup too.
+// dial-time validated-IP guard when AllowPrivateIPs is false. The timeout bounds its lookup too, which then fails with fasthttp.ErrTimeout.
 func DoTimeout(c fiber.Ctx, addr string, timeout time.Duration, clients ...*fasthttp.Client) error {
 	return DoDeadline(c, addr, time.Now().Add(timeout), clients...)
 }
