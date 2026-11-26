@@ -846,7 +846,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	// Hoist loop-invariant accessors; nothing changes mid-loop (Next()/RestartRouting re-enter with fresh reads).
 	detectionPath := c.getDetectionPath()
 	head := pathHeadWord(detectionPath)
-	path := c.Path()
+	path := c.getPath()
 	values := c.getValues()
 	pathSlashes := c.pathSlashCount(app)
 	firstMatchIndex := c.getFirstMatchIndex()
@@ -1084,7 +1084,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	// exempt so cors middleware can answer paths that lack an explicit OPTIONS route.
 	if app.skip.enabled && !ctx.IsPreflight() {
 		res := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(), ctx.pathSlashCount(app),
-			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
+			ctx.getDetectionPath(), ctx.getPath(), ctx.getValues())
 		switch res.decision {
 		case skipNotFound:
 			app.emitSkipCustom(ctx, 0, ErrNotFound)
@@ -1145,8 +1145,10 @@ func (t *trailerDropReader) Read(p []byte) (int, error) {
 	return n, err //nolint:wrapcheck // io.Reader passes io.EOF through as is
 }
 
-func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) {
+// addPrefixToRoute moves route under prefix; prefixConstraints are those of the prefix's parameters, as its app parsed them.
+func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, prefixConstraints [][]*Constraint, customConstraints ...CustomConstraint) {
 	prefixedPath, prettyPath, cleanPath := normalizeRoutePattern(getGroupPath(prefix, route.Path), &app.config, route.use)
+	resolved := slices.Concat(prefixConstraints, route.routeParser.paramConstraints())
 
 	route.Path = prefixedPath
 	route.path = cleanPath
@@ -1154,6 +1156,8 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	// As in register: the constraints come from the pattern as written.
 	rawParser := parseRoute(prefixedPath, regexHandler, customConstraints...)
 	route.routeParser.adoptConstraints(&rawParser)
+	// One merged list can resolve a name to another app's constraint; keep each parameter's, as middleware on the prefix does.
+	route.routeParser.keepConstraints(resolved, regexHandler)
 	if app.config.StrictRouting {
 		route.routeParser.applyStrictRouting()
 	}
@@ -1304,26 +1308,31 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			}
 
 			if method == MethodGet && !route.use && !route.mount {
-				app.pruneAutoHeadRouteLocked(route.path, route.hosts)
+				app.pruneAutoHeadRouteLocked(route)
 			}
 		}
 	}
 }
 
-// pruneAutoHeadRouteLocked removes the automatic HEAD routes of path behind the same Domain
-// patterns, so a later explicit registration can take their place without duplicating handler
-// chains. The caller must already hold app.mutex.
-func (app *App) pruneAutoHeadRouteLocked(path string, hosts []domainMatcher) {
+// pruneAutoHeadRouteLocked removes the automatic HEAD routes of route's pattern behind the same
+// Domain patterns, so a later explicit registration can take their place without duplicating
+// handler chains. The caller must already hold app.mutex.
+func (app *App) pruneAutoHeadRouteLocked(route *Route) {
 	headIndex := app.methodInt(MethodHead)
 	if headIndex == -1 {
 		return
 	}
 
-	norm := app.normalizePath(path)
-	hostsKey := matchersKey(hosts)
+	norm := app.normalizePath(route.path)
+	pattern := route.routeParser.patternKey()
+	hostsKey := matchersKey(route.hosts)
+	owner := app.routeOwner(route)
 
 	app.stack[headIndex] = slices.DeleteFunc(app.stack[headIndex], func(headRoute *Route) bool {
-		if headRoute.path != norm || headRoute.mount || headRoute.use || !headRoute.autoHead || matchersKey(headRoute.hosts) != hostsKey {
+		// Only one of route's own app: another app's GET route keeps its generated route, as before startup.
+		if headRoute.path != norm || headRoute.mount || headRoute.use || !headRoute.autoHead ||
+			app.routeOwner(headRoute) != owner || matchersKey(headRoute.hosts) != hostsKey ||
+			headRoute.routeParser.patternKey() != pattern {
 			return false
 		}
 
@@ -1454,7 +1463,35 @@ func (app *App) mergesIntoLastLocked(m int, route *Route) bool {
 	}
 	last := app.stack[m][l-1]
 	return last.Path == route.Path && route.use == last.use && !route.mount && !last.mount && !last.autoHead &&
-		matchersKey(last.hosts) == matchersKey(route.hosts)
+		matchersKey(last.hosts) == matchersKey(route.hosts) && !app.headOrderSplitsLocked(m, last)
+}
+
+// headOrderSplitsLocked reports whether HEAD runs a route of the other one of GET and HEAD behind last, which
+// handlers merged into last would then overtake. The caller holds app.mutex.
+func (app *App) headOrderSplitsLocked(m int, last *Route) bool {
+	getIndex, headIndex := app.methodInt(MethodGet), app.methodInt(MethodHead)
+	if app.config.DisableHeadAutoRegister || getIndex == -1 || headIndex == -1 {
+		return false
+	}
+
+	switch m {
+	case headIndex:
+		// A GET route registered after last gets its automatic HEAD route behind it.
+		return slices.ContainsFunc(app.stack[getIndex], func(route *Route) bool { return route.id > last.id })
+	case getIndex:
+		headStack := app.stack[headIndex]
+		// The automatic HEAD route of last holds its place once it exists: a route a mount
+		// put behind it can have been registered, and so numbered, before last.
+		if at := slices.IndexFunc(headStack, func(route *Route) bool {
+			return route.autoHead && route.id == last.id && route.Path == last.Path
+		}); at != -1 {
+			return slices.ContainsFunc(headStack[at+1:], func(route *Route) bool { return !route.autoHead })
+		}
+		// An automatic HEAD route stands for a GET route, which is ahead of last in its own stack.
+		return slices.ContainsFunc(headStack, func(route *Route) bool { return !route.autoHead && route.id > last.id })
+	default:
+		return false
+	}
 }
 
 // mergesInEveryStack reports whether a registration filing route in stacks merges
@@ -1488,7 +1525,7 @@ func (app *App) addRoute(method string, route *Route, merge bool) { //nolint:rev
 	m := app.methodInt(method)
 
 	if method == MethodHead && !route.mount && !route.use {
-		app.pruneAutoHeadRouteLocked(route.path, route.hosts)
+		app.pruneAutoHeadRouteLocked(route)
 	}
 
 	// prevent identically route registration
@@ -1536,6 +1573,9 @@ type autoHeadKey struct {
 	// HEAD route of one mounted app from standing in for another app's GET
 	owner *App
 	path  string
+	// pattern keeps the HEAD route of one pattern from standing in for the GET of
+	// another that only shares its path; see routeParser.patternKey
+	pattern string
 	// hosts keeps one Domain pattern's HEAD route from standing in for another's GET
 	hosts string
 }
@@ -1546,11 +1586,12 @@ type autoHeadKey struct {
 // pattern rejects it declines, leaving a GET route of another one there without
 // a companion to answer for it.
 func (app *App) autoHeadKey(route *Route) autoHeadKey {
-	if !app.mountFields.hostScopedRoutes {
-		return autoHeadKey{path: route.path, hosts: matchersKey(route.hosts)}
+	key := autoHeadKey{path: route.path, pattern: route.routeParser.patternKey(), hosts: matchersKey(route.hosts)}
+	if app.mountFields.hostScopedRoutes {
+		key.owner = app.routeOwner(route)
 	}
 
-	return autoHeadKey{owner: app.routeOwner(route), path: route.path, hosts: matchersKey(route.hosts)}
+	return key
 }
 
 // routeCopyKey pairs the copies one registration leaves in different method

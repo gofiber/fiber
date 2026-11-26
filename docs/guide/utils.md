@@ -125,11 +125,19 @@ and strict routing; only `CaseSensitive`, `StrictRouting`, `UnescapePath` and
 `RegexHandler` are read from it. It knows no app, so a pattern that names a
 custom constraint is matched without that constraint.
 
-The path is normalized the way the router normalizes a request path before
-matching, so the answer agrees with what the app would actually do. In
-particular, with the default `StrictRouting: false` a trailing slash on the
+The path is read the way the router reads the `c.Path()` it matched, so the
+answer agrees with what the app would actually do: dot segments are resolved
+and, without `UnescapePath`, escapes are normalized as the router normalizes
+a request path. In particular, with the default `StrictRouting: false` a trailing slash on the
 path is ignored, so `RoutePatternMatch("/a/", "/a")` reports `true`. Set
 `StrictRouting: true` if you need the two forms to be distinguished.
+
+With `UnescapePath: true` the path is taken as already decoded, which is what
+`c.Path()` returns in such an app, and its escapes are not decoded a second
+time: `/%2e%2e` is then the literal name the router matched for a request for
+`/%252e%252e`, not a dot segment. When the path comes from a request, pass the
+`Config` of its app (`c.App().Config()`), so that `RoutePatternMatch` reads the
+path the way the router did.
 
 It takes a path, not a request target. The empty string is read as `/`, and any
 other string without a leading slash matches no pattern, so

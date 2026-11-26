@@ -471,6 +471,245 @@ func Test_App_Mount_SiblingConstraintNames(t *testing.T) {
 	}
 }
 
+// mountAnyConstraint accepts every value under the name of another constraint.
+type mountAnyConstraint struct{ name string }
+
+func (c *mountAnyConstraint) Name() string { return c.name }
+
+func (*mountAnyConstraint) Execute(string, ...string) bool { return true }
+
+// Test_App_Mount_PrefixConstraintOfMountingApp verifies that a constraint in a
+// mount prefix stays the one of the app that wrote the prefix, as for middleware
+// on it, when the mounted app gives the same name to a constraint of its own or
+// overrides a built-in one.
+func Test_App_Mount_PrefixConstraintOfMountingApp(t *testing.T) {
+	t.Parallel()
+	const host = "api.example.com"
+	guard := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
+	handler := func(c Ctx) error { return c.SendString(c.Params("own")) }
+
+	for _, tc := range []struct{ constraint, covered, outside string }{
+		{constraint: "same", covered: "foo", outside: "FOO"},
+		{constraint: ConstraintInt, covered: "12", outside: "twelve"},
+	} {
+		prefix := "/t/:name<" + tc.constraint + ">"
+		newApp := func() *App {
+			app := New()
+			app.RegisterCustomConstraint(&mountSameNameConstraint{allowed: "foo"})
+			return app
+		}
+		newMicro := func() *App {
+			micro := New()
+			micro.RegisterCustomConstraint(&mountAnyConstraint{name: tc.constraint})
+			micro.Get("/doe/:own<"+tc.constraint+">", handler)
+			return micro
+		}
+		mounts := map[string]func(app *App, guard Handler){
+			"plain":  func(app *App, guard Handler) { app.Use(prefix, guard); app.Use(prefix, newMicro()) },
+			"group":  func(app *App, guard Handler) { app.Group(prefix, guard).Use("/", newMicro()) },
+			"domain": func(app *App, guard Handler) { app.Use(prefix, guard); app.Domain(host).Use(prefix, newMicro()) },
+			"nested": func(app *App, guard Handler) {
+				mid := New()
+				mid.Use("/", newMicro())
+				app.Use(prefix, guard)
+				app.Use(prefix, mid)
+			},
+			"nested prefix": func(app *App, guard Handler) {
+				mid := newApp()
+				mid.Use(prefix, guard)
+				mid.Use(prefix, newMicro())
+				app.Use("/", mid)
+			},
+			"nested in domain": func(app *App, guard Handler) {
+				mid := newApp()
+				mid.Use(prefix, guard)
+				mid.Use(prefix, newMicro())
+				app.Domain(host).Use("/", mid)
+			},
+		}
+		for name, mount := range mounts {
+			t.Run(tc.constraint+" "+name, func(t *testing.T) {
+				t.Parallel()
+				do := func(app *App, method, path string) int {
+					return apptest.Do(t, app, apptest.Req(method, path, apptest.WithHost(host))).StatusCode
+				}
+				get := func(app *App, path string) int { return do(app, MethodGet, path) }
+
+				app := newApp()
+				mount(app, guard)
+				require.Equal(t, StatusUnauthorized, get(app, "/t/"+tc.covered+"/doe/x"))
+				require.Equal(t, StatusNotFound, get(app, "/t/"+tc.outside+"/doe/x"))
+				require.Equal(t, StatusNotFound, do(app, MethodHead, "/t/"+tc.outside+"/doe/x"))
+
+				// the mounted app's own parameter keeps the mounted app's constraint
+				open := newApp()
+				mount(open, func(c Ctx) error { return c.Next() })
+				require.Equal(t, StatusOK, get(open, "/t/"+tc.covered+"/doe/"+tc.outside))
+				require.Equal(t, StatusNotFound, get(open, "/t/"+tc.outside+"/doe/"+tc.outside))
+			})
+		}
+	}
+}
+
+// mountTwoLetterAlpha overrides the built-in alpha with a stricter rule.
+type mountTwoLetterAlpha struct{}
+
+func (*mountTwoLetterAlpha) Name() string { return ConstraintAlpha }
+
+func (*mountTwoLetterAlpha) Execute(param string, _ ...string) bool { return len(param) == 2 }
+
+// A constraint one app registers binds none of the routes of the apps mounted beside it, for any method or mount
+// order: neither the built-in a guard names nor a name nothing above the guard defines.
+func Test_App_Mount_SiblingConstraintOverride(t *testing.T) {
+	t.Parallel()
+	const host = "api.example.com"
+	for _, tc := range []struct {
+		constraint CustomConstraint
+		guard      string
+	}{
+		{guard: "/:section<alpha>", constraint: &mountTwoLetterAlpha{}},
+		{guard: "/:section<same>", constraint: &mountSameNameConstraint{allowed: "foo"}},
+	} {
+		for _, mount := range []string{"guarded first", "override first", "nested", "domain"} {
+			t.Run(tc.guard+" "+mount, func(t *testing.T) {
+				t.Parallel()
+				guarded := New()
+				guarded.Use(tc.guard, func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
+				guarded.All("/users/export", func(c Ctx) error { return c.SendString("export") })
+				override := New()
+				override.RegisterCustomConstraint(tc.constraint)
+				override.All("/:value<"+tc.constraint.Name()+">", func(c Ctx) error { return c.SendString("ok") })
+
+				mid := New()
+				if mount == "override first" {
+					mid.Use("/override", override)
+					mid.Use("/guarded", guarded)
+				} else {
+					mid.Use("/guarded", guarded)
+					mid.Use("/override", override)
+				}
+				app := mid
+				switch mount {
+				case "nested":
+					app = New()
+					app.Use("/", mid)
+				case "domain":
+					app = New()
+					app.Domain(host).Use("/", mid)
+				}
+				for _, method := range []string{MethodGet, MethodHead, MethodPost, MethodDelete} {
+					resp := apptest.Do(t, app, apptest.Req(method, "/guarded/users/export", apptest.WithHost(host)))
+					require.Equal(t, StatusUnauthorized, resp.StatusCode, method)
+				}
+			})
+		}
+	}
+}
+
+// A mount prefix whose parameter is followed by text matches what middleware on that prefix matches, with or
+// without a constraint the mounted app also names: a plain parameter ends where the text ends its segment, a
+// constrained one at the first copy of the text.
+func Test_App_Mount_PrefixParamBeforeText(t *testing.T) {
+	t.Parallel()
+	const host = "api.example.com"
+	for _, tc := range []struct {
+		prefix, path, body string
+		guarded            bool
+	}{
+		{prefix: "/f/:name.json", path: "/f/a.json.json/doe", body: "a.json", guarded: true},
+		{prefix: "/f/:name.json", path: "/f/a.json/doe", body: "a", guarded: true},
+		{prefix: "/f/:name<same>.json", path: "/f/foo.json/doe", body: "foo", guarded: true},
+		{prefix: "/f/:name<same>.json", path: "/f/foo.json.json/doe"},
+		{prefix: "/f/:name<same>.json", path: "/f/bar.json/doe"},
+	} {
+		for _, domain := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s %s domain=%v", tc.prefix, tc.path, domain), func(t *testing.T) {
+				t.Parallel()
+				newApp := func(guard Handler) *App {
+					micro := New()
+					micro.RegisterCustomConstraint(&mountAnyConstraint{name: "same"})
+					micro.Get("/*", func(c Ctx) error { return c.SendString(c.Params("name")) })
+					app := New()
+					app.RegisterCustomConstraint(&mountSameNameConstraint{allowed: "foo"})
+					app.Use(tc.prefix, guard)
+					if domain {
+						app.Domain(host).Use(tc.prefix, micro)
+					} else {
+						app.Use(tc.prefix, micro)
+					}
+					return app
+				}
+				req := apptest.Req(MethodGet, tc.path, apptest.WithHost(host))
+
+				guarded := newApp(func(c Ctx) error { return c.SendStatus(StatusUnauthorized) })
+				open := newApp(func(c Ctx) error { return c.Next() })
+				if !tc.guarded {
+					apptest.Expect(t, guarded, req, StatusNotFound)
+					apptest.Expect(t, open, req, StatusNotFound)
+					return
+				}
+				apptest.Expect(t, guarded, req, StatusUnauthorized)
+				apptest.ExpectBody(t, open, req, StatusOK, tc.body)
+			})
+		}
+	}
+}
+
+// Test_App_Mount_PrefixRegexHandlerOfMountedApp verifies that the RegexHandler of
+// a mounted app compiles the regex() constraints of the mount prefix too.
+func Test_App_Mount_PrefixRegexHandlerOfMountedApp(t *testing.T) {
+	t.Parallel()
+	const prefix = "/:code<regex(^[a-z]+$)>"
+	micro := New(Config{RegexHandler: func(pattern string) *matchOnlyRegexCompiler {
+		return &matchOnlyRegexCompiler{re: regexp.MustCompile("(?i)" + pattern)}
+	}})
+	micro.Get("/doe", func(c Ctx) error { return c.SendString("doe") })
+
+	app := New()
+	app.Use(prefix, micro)
+
+	apptest.Expect(t, app, "/foo/doe", StatusOK)
+	apptest.Expect(t, app, "/FOO/doe", StatusOK)
+	apptest.Expect(t, app, "/123/doe", StatusNotFound)
+}
+
+// Test_App_Mount_RouteConstraintOfMountingApp verifies that a name a mounted
+// app's route could not resolve is still resolved among the constraints of the
+// app it is mounted on, beside the constraint its parameter arrived with.
+func Test_App_Mount_RouteConstraintOfMountingApp(t *testing.T) {
+	t.Parallel()
+	micro := New()
+	micro.RegisterCustomConstraint(&mountAnyConstraint{name: ConstraintInt})
+	micro.Get("/doe/:own<int;same>", func(c Ctx) error { return c.SendString(c.Params("own")) })
+
+	app := New()
+	app.RegisterCustomConstraint(&mountSameNameConstraint{allowed: "foo"})
+	app.Use("/john", micro)
+
+	apptest.Expect(t, app, "/john/doe/foo", StatusOK)
+	apptest.Expect(t, app, "/john/doe/12", StatusNotFound)
+}
+
+// Test_App_Mount_BuiltinConstraintOfMountedApp verifies that a built-in
+// constraint in a mounted app's route stays the built-in one when the app it is
+// mounted on overrides that name for its own routes.
+func Test_App_Mount_BuiltinConstraintOfMountedApp(t *testing.T) {
+	t.Parallel()
+	handler := func(c Ctx) error { return c.SendString(c.Params("own")) }
+
+	micro := New()
+	micro.Get("/doe/:own<int>", handler)
+
+	app := New()
+	app.RegisterCustomConstraint(&mountAnyConstraint{name: ConstraintInt})
+	app.Get("/jane/:own<int>", handler)
+	app.Use("/john", micro)
+
+	apptest.Expect(t, app, "/jane/twelve", StatusOK)
+	apptest.Expect(t, app, "/john/doe/12", StatusOK)
+	apptest.Expect(t, app, "/john/doe/twelve", StatusNotFound)
+}
+
 // Test_App_Mount_PreservesNestedCustomConstraint verifies that a custom
 // constraint registered on an app reached through two mounts still validates.
 // Expanding a mount re-parses the routes against the app above, so the
@@ -714,6 +953,48 @@ func Test_App_Mount_CaseInsensitivePath(t *testing.T) {
 // Test_App_Mount_ViewsPathOnly verifies that a mounted app's views are chosen
 // by the request path, not by its mount path appearing anywhere in the URL — a
 // query string carrying it must not select them.
+// Neither side of the mount lookup is read as the other: a backslash in the request path is a byte, so `/ad\min` is
+// not below "/admin", and a path that spells a parametric mount pattern is not below that mount. Such a request runs
+// none of the mounted app's routes, so it gets neither its error handler nor its views.
+func Test_App_Mount_PathReadAsPattern(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		mount   string
+		path    string
+		covered bool
+	}{
+		{mount: "/admin", path: "/admin/doe", covered: true},
+		{mount: "/admin", path: "/ADMIN/doe/", covered: true},
+		{mount: "/admin", path: `/ad\min`},
+		{mount: "/admin", path: `/\admin`},
+		{mount: "/admin", path: `/admin\`},
+		{mount: "/admin", path: `/ad\min/doe`},
+		{mount: `/v1\:admin`, path: "/v1:admin/doe", covered: true},
+		{mount: `/v1\:admin`, path: `/v1\:admin/doe`},
+		{mount: "/:id<int>", path: "/:id<int>/doe"},
+	} {
+		t.Run(tc.mount+" "+tc.path, func(t *testing.T) {
+			t.Parallel()
+			// no route answers the path, so its error handler is looked up by the path alone
+			app := New(Config{ErrorHandler: domainTestErrorHandler(598, "parent")})
+			app.Use(tc.mount, domainTestFailingApp(599, "sub", "/doe"))
+			if tc.covered {
+				require.Equal(t, 599, serveRawTarget(t, app, tc.path).StatusCode())
+				return
+			}
+			require.Equal(t, 598, serveRawTarget(t, app, tc.path).StatusCode())
+
+			// a route of the parent answers it, and renders with the parent's views
+			app = New(Config{Views: domainTestEngine(t, "")})
+			app.Use(tc.mount, New(Config{Views: domainTestEngine(t, "testdata2")}))
+			app.Get("/*", func(c Ctx) error { return c.Render("index.tmpl", Map{"Title": "parent"}) })
+			resp := serveRawTarget(t, app, tc.path)
+			require.Equal(t, StatusOK, resp.StatusCode())
+			require.Equal(t, "<h1>parent</h1>", string(resp.Body()))
+		})
+	}
+}
+
 func Test_App_Mount_ViewsPathOnly(t *testing.T) {
 	t.Parallel()
 	for _, tc := range routerMountVariants {

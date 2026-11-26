@@ -7,6 +7,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/middleware/etag"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -24,8 +25,7 @@ func shouldSkip(c fiber.Ctx) bool {
 		status == fiber.StatusNotModified ||
 		status == fiber.StatusPartialContent ||
 		c.Get(fiber.HeaderRange) != "" ||
-		c.HasHeaderValue(fiber.HeaderCacheControl, "no-transform") ||
-		hasResponseNoTransform(c) {
+		c.HasHeaderValue(fiber.HeaderCacheControl, "no-transform") {
 		return true
 	}
 
@@ -35,16 +35,21 @@ func shouldSkip(c fiber.Ctx) bool {
 		return true
 	}
 
-	return false
+	// Ahead of the costlier reads below, and through the getter: a keyed read of
+	// Content-Encoding answers from this same field, after normalizing the name.
+	if len(c.Response().Header.ContentEncoding()) > 0 || hasResponseNoTransform(c) {
+		return true
+	}
+
+	// fasthttp holds a stream's encoder, megabytes for zstd, until the stream
+	// ends, and an event stream ends only once the client is noticed gone.
+	return mediatype.IsEventStream(c.Response().Header.ContentType())
 }
 
 func hasResponseNoTransform(c fiber.Ctx) bool {
 	respHeader := &c.Response().Header
-	canonical := headerlookup.Canonical(c)
-	if len(fieldname.First(respHeader, fiber.HeaderCacheControl, canonical)) == 0 {
-		return false
-	}
-	for _, line := range fieldname.Lines(respHeader, fiber.HeaderCacheControl, canonical) {
+	// Lines, not a First gate: an empty first line in a fresh slot peeks as nil and hid the rest.
+	for _, line := range fieldname.Lines(respHeader, fiber.HeaderCacheControl, headerlookup.Canonical(c)) {
 		for member := range headerlist.AllQuotedPairs(utils.UnsafeString(line)) {
 			if utils.EqualFold(member, "no-transform") {
 				return true
@@ -121,11 +126,6 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if shouldSkip(c) {
-			appendVaryAcceptEncoding(c)
-			return nil
-		}
-
-		if c.GetRespHeader(fiber.HeaderContentEncoding) != "" {
 			appendVaryAcceptEncoding(c)
 			return nil
 		}

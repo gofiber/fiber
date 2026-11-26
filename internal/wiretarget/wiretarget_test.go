@@ -212,6 +212,41 @@ func Test_SegmentsAsRouted(t *testing.T) {
 	}
 }
 
+// Test_Serve_UnescapePathParameters pins that under UnescapePath Serve judges the path parameters of the path the
+// router decoded, which is the one the handler reads: the request line it is given spells every ";" as "%3B", a name
+// to SegmentsAsRouted. A "." or ".." segment with parameters and a segment of parameters alone before another are not
+// served, whether the ";" arrived raw or as "%3B"; a parameter on a named segment or alone in the last one is.
+func Test_Serve_UnescapePathParameters(t *testing.T) {
+	t.Parallel()
+	app := fiber.New(fiber.Config{UnescapePath: true})
+	app.Get("/*", func(c fiber.Ctx) error {
+		read := ""
+		handler := func(fctx *fasthttp.RequestCtx) { read = string(fctx.RequestURI()) + " " + string(fctx.Path()) }
+		if wiretarget.Serve(c, handler) == wiretarget.NotFound {
+			read = "not found"
+		}
+		return c.SendString(read)
+	})
+	for _, target := range []string{
+		"/public/..;/admin", "/public/..%3B/admin", "/public/..%3b/admin", "/public/.;x/admin", "/public/%2e%2E%3Bx/admin",
+		"/public/..;jsessionid=x/admin", "/a/..;", "/a/.%3Bx", "/..%3B/a", "/a;x/..%3B/b", "/a%2F..%3B/b",
+		"/;/admin", "/%3B/admin", "/;x/admin", "/public/%3Bx/admin", "/public%2F;x/admin", "/a/%3Bx;y/",
+	} {
+		require.Equal(t, "not found", answerFor(t, app, target), target)
+	}
+	for target, read := range map[string]string{
+		"/admin;x/secret":    "/admin%3Bx/secret /admin;x/secret",
+		"/admin%3Bx/b;c=d":   "/admin%3Bx/b%3Bc=d /admin;x/b;c=d",
+		"/..x;y/a/.b%3Bc":    "/..x%3By/a/.b%3Bc /..x;y/a/.b;c",
+		"/app/;jsessionid=x": "/app/%3Bjsessionid=x /app/;jsessionid=x",
+		"/app/%3B":           "/app/%3B /app/;",
+		"/a/..%253B/b":       "/a/..%253B/b /a/..%3B/b", // an escaped "%" is no escape of a ";"
+		"/a/../b?x=..;/c":    "/b?x=..;/c /b",
+	} {
+		require.Equal(t, read, answerFor(t, app, target), target)
+	}
+}
+
 func Test_ParsesAsPath(t *testing.T) {
 	t.Parallel()
 	host := []byte("example.com")
@@ -382,6 +417,31 @@ func Test_NoPath(t *testing.T) {
 		{"a\\b:443", true, false},
 		{"a;b:443", true, false},
 		{"user@host:443", true, false},
+		{"example.com", true, true},
+		{"192.0.2.1:443", true, true},
+		{"[::1]", true, true},
+		{"[::ffff:192.0.2.1]:443", true, true},
+		// no authority: a byte a path may not carry raw, or brackets that hold no IPv6 address and a port
+		{"\u00fcber", true, false},
+		{"\u00fcber.txt", true, false},
+		{"\u00fcber:443", true, false},
+		{"a b", true, false},
+		{"a|b", true, false},
+		{"a[1]", true, false},
+		{"a{b}", true, false},
+		{"[a|b]:443", true, false},
+		{"[g]", true, false},
+		{"[a:b]", true, false},
+		{"[1]", true, false},
+		{"[]", true, false},
+		{"[192.0.2.1]:443", true, false},
+		{"[::1", true, false},
+		{"[::1]x", true, false},
+		{"[::1]:x", true, false},
+		{"[::1]:443|", true, false},
+		{"[::1][::1]", true, false},
+		{"x[::1]:443", true, false},
+		{"[::1]:443", false, false},
 	} {
 		require.Equal(t, tc.want, wiretarget.NoPath(tc.line, tc.connect), "%q connect=%t", tc.line, tc.connect)
 	}

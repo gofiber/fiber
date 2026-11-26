@@ -337,16 +337,21 @@ func Test_HostAuthorization_Hosts(t *testing.T) {
 		{name: "ipv6 zero padded", allowed: loopback6, host: "[0000:0000:0000:0000:0000:0000:0000:0001]", status: fiber.StatusOK},
 		{name: "ipv6 entry uncompressed", allowed: []string{"[2001:db8:0:0:0:0:0:1]"}, host: "[2001:db8::1]:8080", status: fiber.StatusOK},
 		{name: "ipv6 entry zero padded", allowed: []string{"[2001:0db8::0001]"}, host: "[2001:db8::1]", status: fiber.StatusOK},
-		{name: "ipv6 entry ipv4-mapped dotted", allowed: []string{"[::ffff:127.0.0.1]"}, host: "[::ffff:7f00:1]", status: fiber.StatusOK},
+		{name: "ipv6 entry ipv4-mapped dotted", allowed: []string{"[::ffff:127.0.0.1]"}, host: "127.0.0.1", status: fiber.StatusOK},
 		{name: "ipv6 other address", allowed: loopback6, host: "[0:0:0:0:0:0:0:2]", status: fiber.StatusForbidden},
 		{name: "ipv6 other address, same prefix", allowed: docIPv6, host: "[2001:db8::1:0]", status: fiber.StatusForbidden},
-		{name: "ipv4-mapped dotted", allowed: loopback4, host: "[::ffff:127.0.0.1]", status: fiber.StatusOK},
-		{name: "ipv4-mapped hex", allowed: loopback4, host: "[::ffff:7f00:1]:8080", status: fiber.StatusOK},
+		// A request host is not folded, as app.Domain would not see the name it folds to.
+		{name: "ipv4-mapped dotted", allowed: loopback4, host: "[::ffff:127.0.0.1]", status: fiber.StatusForbidden},
+		{name: "ipv4-mapped hex", allowed: loopback4, host: "[::ffff:7f00:1]:8080", status: fiber.StatusForbidden},
 		{name: "ipv4-mapped other address", allowed: loopback4, host: "[::ffff:127.0.0.2]", status: fiber.StatusForbidden},
+		{name: "ipv4-mapped to allowed hosts func", fn: func(string) bool { return true }, host: "[::ffff:7f00:1]", status: fiber.StatusForbidden},
+		{name: "idn utf-8 request", allowed: []string{"münchen.example.com"}, host: "münchen.example.com", status: fiber.StatusForbidden},
+		{name: "full-width letter", allowed: example, host: "\uff45xample.com", status: fiber.StatusForbidden},
+		{name: "ideographic full stop", allowed: example, host: "example\u3002com", status: fiber.StatusForbidden},
 		// An embedded IPv4 spelling must not leave a dotted tail for a subdomain rule.
 		{name: "ipv4 wildcard skips nat64 literal", allowed: ipWildcard, host: "[64:ff9b::1.2.3.4]", status: fiber.StatusForbidden},
 		{name: "ipv4 wildcard skips ipv4-compatible literal", allowed: ipWildcard, host: "[::1.2.3.4]:443", status: fiber.StatusForbidden},
-		{name: "ipv4 wildcard matches ipv4-mapped literal", allowed: ipWildcard, host: "[::ffff:1.2.3.4]", status: fiber.StatusOK},
+		{name: "ipv4 wildcard skips ipv4-mapped literal", allowed: ipWildcard, host: "[::ffff:1.2.3.4]", status: fiber.StatusForbidden},
 
 		// Canonicalization must not drop a zone, and Unmap does for a mapped one.
 		{name: "ipv6 zoned", allowed: linkLocal, host: "[fe80::1%25eth0]", status: fiber.StatusForbidden},
@@ -483,6 +488,33 @@ func Test_AllowedHostsFuncFallback(t *testing.T) {
 	require.Equal(t, 1, called, "AllowedHostsFunc must be called when no static rule matches")
 }
 
+// A host app.Domain does not match as sent is refused rather than admitted under the name it folds to, so a guard on
+// that Domain cannot be skipped for a route registered outside it. The request is raw: net/http would fold the host.
+func Test_HostAuthorization_DomainGuardSeesAdmittedHost(t *testing.T) {
+	t.Parallel()
+	allowed := []string{"admin.example.com", "xn--mnchen-3ya.example.com", "10.0.0.5"}
+	app := fiber.New()
+	app.Use(New(Config{AllowedHosts: allowed}))
+	for _, host := range allowed {
+		app.Domain(host).Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusUnauthorized) })
+	}
+	app.Get("/reports", func(c fiber.Ctx) error { return c.SendString("reports") })
+	handler := app.Handler()
+	for host, status := range map[string]int{
+		"admin.example.com": fiber.StatusUnauthorized, "ADMIN.example.com.": fiber.StatusUnauthorized,
+		"xn--mnchen-3ya.example.com": fiber.StatusUnauthorized, "10.0.0.5:80": fiber.StatusUnauthorized,
+		"\uff41dmin.example.com": fiber.StatusForbidden, "admin\u3002example.com": fiber.StatusForbidden,
+		"münchen.example.com": fiber.StatusForbidden, "[::ffff:10.0.0.5]": fiber.StatusForbidden,
+		"[::ffff:a00:5]:80": fiber.StatusForbidden,
+	} {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.SetRequestURI("/reports")
+		fctx.Request.Header.SetHost(host)
+		handler(fctx)
+		require.Equal(t, status, fctx.Response.StatusCode(), host)
+	}
+}
+
 func Test_HostAuthorization_AllowedHostsFuncReceivesCanonicalIPv6(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -491,7 +523,6 @@ func Test_HostAuthorization_AllowedHostsFuncReceivesCanonicalIPv6(t *testing.T) 
 	}{
 		{host: "[0:0:0:0:0:0:0:1]:3000", want: "::1"},
 		{host: "[2001:0DB8::0001]", want: "2001:db8::1"},
-		{host: "[::ffff:7f00:1]", want: "127.0.0.1"},
 		{host: "[2001:db8::1]:8080", want: "2001:db8::1"},
 	} {
 		t.Run(tc.host, func(t *testing.T) {
@@ -559,9 +590,8 @@ func Test_IsAllowed_Allocations(t *testing.T) {
 	}{
 		{host: "[2001:db8::1]:8080", want: true},
 		{host: "[2001:0db8:0:0:0:0:0:1]", want: true},
-		{host: "[::ffff:7f00:1]", want: true},
-		{host: "[::ffff:127.0.0.1]:80", want: true},
-		{host: "[::ffff:7f00:2]", want: false},
+		{host: "[::ffff:7f00:1]", want: false},
+		{host: "[::ffff:127.0.0.1]:80", want: false},
 		{host: "[0:0:0:0:0:0:0:2]", want: false},
 	} {
 		t.Run(tc.host, func(t *testing.T) {

@@ -392,6 +392,10 @@ func (c *DefaultCtx) Next() error {
 // RestartRouting instead of going to the next handler. This may be useful after
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
+	// Only an ErrorHandler for a request the server refused gets here with a method that has no routing tree.
+	if c.methodInt == -1 {
+		return ErrNotImplemented
+	}
 	c.indexRoute = -1
 	// Path may have changed; invalidate the lookahead index
 	c.firstMatchIndex = -1
@@ -1177,6 +1181,11 @@ func (c *DefaultCtx) pathSlashCount(app *App) int {
 
 func (c *DefaultCtx) getDetectionPath() string {
 	return c.app.toString(c.detectionPath)
+}
+
+// getPath is the path parameters are cut from, at offsets found in the detection path; a custom Path may not fit them.
+func (c *DefaultCtx) getPath() string {
+	return c.app.toString(c.path)
 }
 
 func (c *DefaultCtx) getValues() *[maxParams]string {

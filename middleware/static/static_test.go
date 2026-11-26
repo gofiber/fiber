@@ -14,7 +14,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -134,7 +136,7 @@ func Test_Static_MaxAge(t *testing.T) {
 	app.Get("/*", New("../../.github", Config{MaxAge: 100}))
 
 	resp := staticTestExpect(t, app, "/index.html", 200, "text/html; charset=utf-8")
-	require.Equal(t, "public, max-age=100", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.Equal(t, "max-age=100", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
 func Test_Static_Custom_CacheControl(t *testing.T) {
@@ -1760,7 +1762,234 @@ func Test_Static_MaxAge_NotOnErrorResponses(t *testing.T) {
 	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl))
 
 	resp = apptest.Expect(t, app, "/static/index.html", fiber.StatusOK)
-	require.Equal(t, "public, max-age=3600", resp.Header.Get(fiber.HeaderCacheControl))
+	require.Equal(t, "max-age=3600", resp.Header.Get(fiber.HeaderCacheControl))
+}
+
+// A guard's "private, no-store" must reach a shared cache as the guard wrote it, whatever case it spelled the name in.
+func Test_Static_MaxAge_KeepsCacheControl(t *testing.T) {
+	t.Parallel()
+	root := staticTestRoot(t, map[string]string{
+		"logo.txt": "LOGO", "private/report.txt": "REPORT", "split/logo.txt": "LOGO", "empty/logo.txt": "LOGO",
+		"lower/logo.txt": "LOGO",
+	})
+
+	for _, name := range []string{fiber.HeaderCacheControl, "cache-control"} {
+		app := fiber.New(fiber.Config{DisableHeaderNormalizing: name != fiber.HeaderCacheControl})
+		app.Use("/private", func(c fiber.Ctx) error {
+			c.Set(name, "private, no-store")
+			return c.Next()
+		})
+		// the padding puts the empty line in a spare slot append left zeroed, where it peeks as nil
+		pad := func(c fiber.Ctx) {
+			for _, pad := range []string{"X-Pad-1", "X-Pad-2", "X-Pad-3"} {
+				c.Response().Header.Set(pad, "1")
+			}
+			c.Response().Header.Add(name, "")
+		}
+		app.Use("/empty", func(c fiber.Ctx) error {
+			pad(c)
+			return c.Next()
+		})
+		app.Use("/split", func(c fiber.Ctx) error {
+			pad(c)
+			c.Response().Header.Add(name, "private")
+			return c.Next()
+		})
+		app.Use("/lower", func(c fiber.Ctx) error {
+			c.Response().Header.SetCanonical([]byte("cache-control"), []byte("private"))
+			return c.Next()
+		})
+		app.Use(New(root, Config{MaxAge: 3600}))
+
+		resp := apptest.ExpectBody(t, app, "/logo.txt", fiber.StatusOK, "LOGO")
+		require.Equal(t, []string{"max-age=3600"}, resp.Header.Values(fiber.HeaderCacheControl), name)
+		resp = apptest.ExpectBody(t, app, "/private/report.txt", fiber.StatusOK, "REPORT")
+		require.Equal(t, []string{"private, no-store"}, resp.Header.Values(fiber.HeaderCacheControl), name)
+		resp = apptest.ExpectBody(t, app, "/split/logo.txt", fiber.StatusOK, "LOGO")
+		require.NotContains(t, resp.Header.Values(fiber.HeaderCacheControl), "max-age=3600", name)
+		raw := serveRaw(app.Handler(), fiber.MethodGet, "/split/logo.txt")
+		require.NotContains(t, string(raw.Header.Header()), "max-age=3600", name)
+		resp = apptest.ExpectBody(t, app, "/empty/logo.txt", fiber.StatusOK, "LOGO")
+		require.NotContains(t, resp.Header.Values(fiber.HeaderCacheControl), "max-age=3600", name)
+		raw = serveRaw(app.Handler(), fiber.MethodGet, "/empty/logo.txt")
+		require.NotContains(t, string(raw.Header.Header()), "max-age=3600", name)
+		raw = serveRaw(app.Handler(), fiber.MethodGet, "/lower/logo.txt")
+		require.NotContains(t, string(raw.Header.Header()), "max-age=3600", name)
+	}
+}
+
+// fasthttp wipes the response to refuse a directory without an index; the route behind static must
+// still answer with what the middleware ahead of it set.
+func Test_Static_DirectoryWithoutIndexKeepsHeaders(t *testing.T) {
+	t.Parallel()
+	root := staticTestRoot(t, map[string]string{"css/app.css": "CSS"})
+
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "private")
+		c.Vary(fiber.HeaderCookie)
+		c.Cookie(&fiber.Cookie{Name: "session", Value: "s1"})
+		return c.Next()
+	})
+	app.Use(New(root))
+	app.Get("/css", func(c fiber.Ctx) error { return c.SendString("per-user") })
+
+	resp := apptest.ExpectBody(t, app, "/css/", fiber.StatusOK, "per-user")
+	require.Equal(t, "private", resp.Header.Get(fiber.HeaderCacheControl))
+	require.Equal(t, fiber.HeaderCookie, resp.Header.Get(fiber.HeaderVary))
+	require.Contains(t, resp.Header.Get(fiber.HeaderSetCookie), "session=s1")
+}
+
+// A handler before static on its route may move the path off what the router matched; static must not cut
+// the old prefix off the new path, or a file below a guarded prefix is served past its guard.
+func Test_Static_PathChangedOnTheRoute(t *testing.T) {
+	t.Parallel()
+	root := staticTestRoot(t, map[string]string{"pub.txt": "PUB", "internal/r.txt": "SECRET"})
+	deny := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusForbidden) }
+	rewrite := func(from, to string) fiber.Handler {
+		return func(c fiber.Ctx) error {
+			if rest, ok := strings.CutPrefix(c.Path(), from); ok {
+				c.Path(to + rest)
+			}
+			return c.Next()
+		}
+	}
+
+	prefix := fiber.New()
+	prefix.Use("/v1/internal", deny)
+	prefix.Use("/v1", rewrite("/v1/guides/", "/v2/"), rewrite("/v1/old/", "/v1/"), rewrite("/v1/short/", "/a"),
+		rewrite("/v1/glued/", "/v1internal/"), New(root))
+	param := fiber.New()
+	param.Use("/:l/internal", deny)
+	param.Get("/:l/*", rewrite("/en/xinternal/", "/en/x/internal/"), rewrite("/fr/", "/de/"), New(root))
+	// a file root serves its file whatever the name, but not for a path moved off the route either
+	file := filepath.Join(root, "pub.txt")
+	filePrefix := fiber.New()
+	filePrefix.Use("/v1", rewrite("/v1/guides/", "/v2/"), New(file))
+	fileParam := fiber.New()
+	fileParam.Get("/:l/*", rewrite("/en/xinternal/", "/en/x/internal/"), rewrite("/de/long/", "/de/"), New(file))
+	fileNamed := fiber.New()
+	fileNamed.Get("/:name", New(file))
+
+	for app, targets := range map[*fiber.App]map[string]int{
+		prefix: {
+			"/v1/pub.txt":               fiber.StatusOK,
+			"/v1/old/pub.txt":           fiber.StatusOK,
+			"/v1/internal/r.txt":        fiber.StatusForbidden,
+			"/v1/guides/internal/r.txt": fiber.StatusNotFound,
+			"/v1/short/":                fiber.StatusNotFound,
+			"/v1/glued/r.txt":           fiber.StatusNotFound,
+		},
+		param: {
+			"/en/pub.txt":           fiber.StatusOK,
+			"/en/p%75b.txt":         fiber.StatusOK,
+			"/fr/pub.txt":           fiber.StatusOK,
+			"/en/internal/r.txt":    fiber.StatusForbidden,
+			"/en/xinternal/r.txt":   fiber.StatusNotFound,
+			"/en/%78internal/r.txt": fiber.StatusNotFound,
+		},
+		filePrefix: {"/v1/any": fiber.StatusOK, "/v1/guides/any": fiber.StatusNotFound},
+		fileParam:  {"/en/any": fiber.StatusOK, "/en/xinternal/r.txt": fiber.StatusNotFound, "/de/long/name.txt": fiber.StatusNotFound},
+		fileNamed:  {"/any": fiber.StatusOK},
+	} {
+		h := app.Handler()
+		for target, want := range targets {
+			staticTestExpectRaw(t, h, target, want, "target=%s", target)
+		}
+	}
+}
+
+// staticTestFS serves its files through Open alone, counting the calls, and opens a name with the aliases
+// replaced, the way a case-folding or FAT file system resolves another spelling of an entry.
+type staticTestFS struct {
+	files fstest.MapFS
+	alias *strings.Replacer
+	opens atomic.Int64
+}
+
+func (f *staticTestFS) Open(name string) (fs.File, error) {
+	f.opens.Add(1)
+	if f.alias != nil {
+		name = f.alias.Replace(name)
+	}
+	return f.files.Open(name) //nolint:wrapcheck // the file system's own error
+}
+
+// The router folds ASCII case only, so another spelling a file system resolves would skip a guard.
+func Test_Static_FileSystemAliases(t *testing.T) {
+	t.Parallel()
+	fsys := &staticTestFS{
+		files: fstest.MapFS{
+			"static/secret/x.txt":       {Data: []byte("SECRET")},
+			"static/private-docs/r.txt": {Data: []byte("SECRET")},
+			"static/café/menu.txt":      {Data: []byte("MENU")},
+			"static/a~b.txt":            {Data: []byte("TILDE")},
+			"static/keys/x.txt":         {Data: []byte("SECRET")},
+			"static/classified/x.txt":   {Data: []byte("SECRET")},
+		},
+		alias: strings.NewReplacer("ſ", "s", "ı", "i", "\u212a", "k", "ß", "ss", "ﬁ", "fi", "\u00ad", "",
+			"PRIVAT~1", "private-docs", "private-docs.", "private-docs"),
+	}
+	for _, unescape := range []bool{false, true} {
+		app := staticTestApp(unescape, "/static/secret", "/static/private-docs", "/static/keys", "/static/classified")
+		app.Use("/static", New("static", Config{FS: fsys}))
+		h := app.Handler()
+
+		for target, want := range map[string]int{
+			"/static/café/menu.txt":          fiber.StatusOK,
+			"/static/a~b.txt":                fiber.StatusOK,
+			"/static/secret/x.txt":           fiber.StatusForbidden,
+			"/static/ſecret/x.txt":           fiber.StatusNotFound,
+			"/static/prıvate-docs/r.txt":     fiber.StatusNotFound,
+			"/static/\u212aeys/x.txt":        fiber.StatusNotFound,
+			"/static/claßified/x.txt":        fiber.StatusNotFound,
+			"/static/classiﬁed/x.txt":        fiber.StatusNotFound,
+			"/static/class\u00adified/x.txt": fiber.StatusNotFound,
+			"/static/PRIVAT~1/r.txt":         fiber.StatusNotFound,
+			"/static/private-docs./r.txt":    fiber.StatusNotFound,
+			"/static/private-docs%2E/r.txt":  fiber.StatusNotFound,
+		} {
+			staticTestExpectRaw(t, h, target, want, "unescape=%t target=%s", unescape, target)
+		}
+	}
+}
+
+// Off a route, as in an ErrorHandler for a request no route matched, every path shares one
+// file server, which serves the root.
+func Test_Static_Unrouted_OneFileServer(t *testing.T) {
+	t.Parallel()
+	fsys := &staticTestFS{files: fstest.MapFS{"index.html": {Data: []byte("INDEX")}, "secret.txt": {Data: []byte("SECRET")}}}
+	handler := New("", Config{FS: fsys})
+	app := fiber.New(fiber.Config{ErrorHandler: func(c fiber.Ctx, _ error) error { return handler(c) }})
+	h := app.Handler()
+
+	resp := staticTestExpectRaw(t, h, "/first", fiber.StatusOK)
+	require.Equal(t, "INDEX", string(resp.Body()))
+	opens := fsys.opens.Load()
+	for i := range 50 {
+		staticTestExpectRaw(t, h, fmt.Sprintf("/p%d/x", i), fiber.StatusOK)
+	}
+	require.Equal(t, opens, fsys.opens.Load(), "each path built a file server of its own")
+	resp = staticTestExpectRaw(t, h, "/"+strings.Repeat(`\`, 19)+"/secret.txt", fiber.StatusOK)
+	require.Equal(t, "INDEX", string(resp.Body()))
+}
+
+// Off a route no handler follows, so a miss or a skipped request is a 404, not a call to Next.
+func Test_Static_Unrouted_MissIsNotFound(t *testing.T) {
+	t.Parallel()
+	handler := New("", Config{FS: fstest.MapFS{"a.txt": {Data: []byte("A")}}})
+	app := fiber.New(fiber.Config{ErrorHandler: func(c fiber.Ctx, _ error) error {
+		if err := handler(c); err != nil {
+			return c.Status(fiber.StatusTeapot).SendString(err.Error())
+		}
+		return nil
+	}})
+	for _, req := range []*http.Request{
+		apptest.Req(fiber.MethodGet, "/missing.txt"),
+		apptest.Req(fiber.MethodPost, "/a.txt"),
+	} {
+		apptest.ExpectBody(t, app, req, fiber.StatusTeapot, fiber.ErrNotFound.Message)
+	}
 }
 
 // With ByteRange on, the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) are

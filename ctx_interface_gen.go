@@ -285,6 +285,8 @@ type Ctx interface {
 	// Route.match skip the quick-reject entirely.
 	pathSlashCount(app *App) int
 	getDetectionPath() string
+	// getPath is the path parameters are cut from, at offsets found in the detection path; a custom Path may not fit them.
+	getPath() string
 	getValues() *[maxParams]string
 	getMatched() bool
 	getSkipNonUseRoutes() bool

@@ -1,8 +1,10 @@
 package favicon
 
 import (
+	"bufio"
 	"bytes"
 	"math"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -119,4 +121,20 @@ func Test_Favicon_MaxBytes_MaxInt64(t *testing.T) {
 	resp := apptest.Expect(t, app, "/favicon.ico", fiber.StatusOK)
 	body := apptest.BodyBytes(t, resp)
 	require.NotEmpty(t, body)
+}
+
+func Test_Favicon_RefusedRequestCarriesNoCacheControl(t *testing.T) {
+	t.Parallel()
+	app := fiber.New(fiber.Config{BodyLimit: 16})
+	app.Use(New(Config{Data: []byte("icon")}))
+
+	conn := apptest.Dial(t, apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true}))
+	_, err := conn.Write([]byte("GET /favicon.ico HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n"))
+	require.NoError(t, err)
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	require.NoError(t, err)
+	require.Equal(t, "Request Entity Too Large", apptest.Body(t, resp))
+	require.Equal(t, fiber.StatusRequestEntityTooLarge, resp.StatusCode)
+	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl))
 }

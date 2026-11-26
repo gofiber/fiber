@@ -611,6 +611,19 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 	return values
 }
 
+// Has reports whether h holds a line named name in any spelling, an empty one
+// included: fasthttp keeps an empty value in a fresh slot nil, so Peek cannot
+// tell it from none, and a name stored in another spelling escapes PeekAll.
+func Has(h *fasthttp.ResponseHeader, name string) bool {
+	// Ranged, unlike Lines: on the concrete type the iterator stays on the stack and stops at the match.
+	for k := range h.All() {
+		if utils.EqualFold(utils.UnsafeString(k), name) {
+			return true
+		}
+	}
+	return false
+}
+
 // First returns the first field line stored under name that holds anything, or
 // nil if there is none. The names fasthttp keeps in a slot of their own are
 // unaffected either way: every spelling is routed into the slot on the way in.

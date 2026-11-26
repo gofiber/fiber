@@ -25,6 +25,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/gofiber/utils/v2"
 )
@@ -278,6 +279,29 @@ func Test_Limiter_TimedOutRequest(t *testing.T) {
 			require.Equal(t, "1", string(fctx.Response.Header.Peek("X-Handler")))
 			require.Empty(t, fctx.Response.Header.Peek(xRateLimitLimit), "the limiter wrote to the timed-out handler's response")
 		})
+	}
+}
+
+func Test_Limiter_CustomLimitReachedStatus(t *testing.T) {
+	t.Parallel()
+	for _, strategy := range windowStrategies {
+		for _, tc := range []struct {
+			handler fiber.Handler
+			name    string
+			want    int
+		}{
+			{name: "body only", want: fiber.StatusTooManyRequests, handler: func(c fiber.Ctx) error { return c.SendString("slow down") }},
+			{name: "own status", want: fiber.StatusServiceUnavailable, handler: func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusServiceUnavailable) }},
+		} {
+			t.Run(strategy.name+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+				app := fiber.New()
+				app.Use(New(Config{Max: 1, LimiterMiddleware: strategy.handler, LimitReached: tc.handler}))
+				app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+				apptest.Expect(t, app, "/", fiber.StatusOK)
+				apptest.Expect(t, app, "/", tc.want)
+			})
+		}
 	}
 }
 
@@ -2153,6 +2177,34 @@ func Benchmark_Limiter_Headers(b *testing.B) {
 					set()
 				}
 			})
+		}
+	}
+}
+
+// A request sent no response is neither a success nor a failure, so both Skip options count it.
+func Test_Limiter_UnsentRequestIsCounted(t *testing.T) {
+	t.Parallel()
+	ends := map[string]fiber.Handler{
+		"drop":  func(c fiber.Ctx) error { return c.Drop() },
+		"abort": adaptor.HTTPHandlerFunc(func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) }),
+	}
+	for _, strategy := range windowStrategies {
+		for endName, end := range ends {
+			for _, skipFailed := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/skipFailed=%t", strategy.name, endName, skipFailed), func(t *testing.T) {
+					t.Parallel()
+					app := fiber.New()
+					app.Use(New(Config{
+						Max: 1, Expiration: time.Minute, LimiterMiddleware: strategy.handler,
+						SkipSuccessfulRequests: !skipFailed, SkipFailedRequests: skipFailed,
+					}))
+					app.Get("/", end)
+
+					_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+					require.Error(t, err)
+					apptest.Expect(t, app, "/", fiber.StatusTooManyRequests)
+				})
+			}
 		}
 	}
 }

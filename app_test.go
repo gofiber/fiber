@@ -29,6 +29,7 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 
 	"github.com/stretchr/testify/assert"
@@ -742,6 +743,26 @@ func Test_App_GETOnly_RefusedMethodIsNotReplayed(t *testing.T) {
 	require.Equal(t, []string{MethodGet}, ran)
 }
 
+// The method GETOnly refused must not reach a route when the ErrorHandler restarts routing.
+func Test_App_GETOnly_RestartRoutingSkipsRoutes(t *testing.T) {
+	t.Parallel()
+	ran := make(chan string, 1)
+	app := New(Config{GETOnly: true, ErrorHandler: func(c Ctx, err error) error {
+		c.Path("/error")
+		if restartErr := c.RestartRouting(); restartErr != nil {
+			return restartErr
+		}
+		return DefaultErrorHandler(c, err)
+	}})
+	app.Post("/error", func(c Ctx) error {
+		ran <- c.Method()
+		return nil
+	})
+
+	apptest.ExpectBody(t, app, apptest.Req(MethodPost, "/jobs"), StatusMethodNotAllowed, "Method Not Allowed")
+	require.Empty(t, ran)
+}
+
 // The replay skips a guard registered as a route, and SendStatus keeps a body already written.
 func Test_App_RefusedRequest_ChainBodyIsNotSent(t *testing.T) {
 	t.Parallel()
@@ -765,6 +786,191 @@ func Test_App_RefusedRequest_ChainBodyIsNotSent(t *testing.T) {
 
 	resp := rawExpectStatus(t, ln, get+"Content-Length: 99999\r\n\r\n", StatusRequestEntityTooLarge)
 	require.Equal(t, "Request Entity Too Large", resp.body)
+}
+
+// fasthttp panics when it releases a refused request's RequestCtx that holds a timeout response, so the chain and
+// the ErrorHandler get one of their own, and a timeout there is answered with its timeout response.
+func Test_App_RefusedRequest_ChainTimesOut(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		BodyLimit: 16,
+		ErrorHandler: func(c Ctx, err error) error {
+			if c.Path() == "/restart" {
+				c.Path("/slow")
+				return c.RestartRouting()
+			}
+			return DefaultErrorHandler(c, err)
+		},
+	})
+	app.Use(func(c Ctx) error {
+		c.Set("X-Chain", "ran")
+		return c.Next()
+	})
+	app.Use("/slow", func(c Ctx) error {
+		c.RequestCtx().TimeoutError("late")
+		return nil
+	})
+	ln := startRawServer(t, app)
+
+	const tooLarge = " HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n"
+	for _, target := range []string{"/slow", "/restart"} {
+		resp := rawExpectStatus(t, ln, "POST "+target+tooLarge, StatusRequestTimeout)
+		require.Equal(t, "late", resp.body, target)
+		require.Empty(t, resp.header.Get("X-Chain"), target)
+	}
+	resp := rawExpectStatus(t, ln, "POST /"+tooLarge, StatusRequestEntityTooLarge)
+	require.Equal(t, "ran", resp.header.Get("X-Chain"))
+}
+
+// Route handlers stay skipped for a refused request when the ErrorHandler restarts routing, also without a Use chain.
+func Test_App_RefusedRequest_RestartSkipsRoutes(t *testing.T) {
+	t.Parallel()
+	app := New(Config{BodyLimit: 16, ErrorHandler: func(c Ctx, err error) error {
+		c.Path("/slow")
+		if restartErr := c.RestartRouting(); restartErr != nil {
+			err = restartErr
+		}
+		return DefaultErrorHandler(c, err)
+	}})
+	ran := make(chan struct{}, 1)
+	app.Post("/slow", func(c Ctx) error {
+		ran <- struct{}{}
+		c.RequestCtx().TimeoutError("late")
+		return nil
+	})
+	ln := startRawServer(t, app)
+
+	rawExpectStatus(t, ln, "POST /slow HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n", StatusRequestEntityTooLarge)
+	require.Empty(t, ran)
+}
+
+// A custom ErrorHandler can time out a refused request without a Use chain too, also a mounted app's one.
+func Test_App_RefusedRequest_ErrorHandlerTimesOut(t *testing.T) {
+	t.Parallel()
+	timingOut := func() *App {
+		app := New(Config{BodyLimit: 16, ErrorHandler: func(c Ctx, _ error) error {
+			c.RequestCtx().TimeoutError("late")
+			return nil
+		}})
+		app.Post("/", func(c Ctx) error { return c.SendString("ok") })
+		return app
+	}
+
+	for _, tc := range []struct {
+		app    func() *App
+		name   string
+		target string
+	}{
+		{name: "route", app: timingOut, target: "POST /"},
+		{name: "method without routes", app: timingOut, target: "PURGE /"},
+		{name: "mounted app", target: "POST /sub", app: func() *App {
+			root := New(Config{BodyLimit: 16})
+			root.Use("/sub", timingOut())
+			return root
+		}},
+		{name: "domain mounted app", target: "POST /sub", app: func() *App {
+			root := New(Config{BodyLimit: 16})
+			root.Domain("example.com").Use("/sub", timingOut())
+			return root
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ln := startRawServer(t, tc.app())
+			resp := rawExpectStatus(t, ln, tc.target+" HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n", StatusRequestTimeout)
+			require.Equal(t, "late", resp.body)
+		})
+	}
+}
+
+// closedLocal is a request-local value that reports being closed.
+type closedLocal chan struct{}
+
+func (l closedLocal) Close() error {
+	close(l)
+	return nil
+}
+
+// The answer is copied back from the RequestCtx the chain ran on: its headers, a streamed body, and the locals that
+// are closed with the request.
+func Test_App_RefusedRequest_StreamedAnswer(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		BodyLimit: 16,
+		ErrorHandler: func(c Ctx, err error) error {
+			return c.Status(StatusRequestEntityTooLarge).SendStream(strings.NewReader(err.Error()))
+		},
+	})
+	closed := make(closedLocal)
+	app.Use(func(c Ctx) error {
+		c.Set("X-Chain", "ran")
+		c.Locals("local", closed)
+		return c.Next()
+	})
+	ln := startRawServer(t, app)
+
+	resp := rawExpectStatus(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999\r\n\r\n", StatusRequestEntityTooLarge)
+	require.Equal(t, "Request Entity Too Large", resp.body)
+	require.Equal(t, "ran", resp.header.Get("X-Chain"))
+	require.True(t, resp.closes)
+	apptest.Recv(t, closed, time.Second, "the local is closed")
+}
+
+// A refused request with no Use chain and the default ErrorHandler is answered in place, with few allocations.
+// AllocsPerRun panics under t.Parallel, so this test stays sequential.
+func Test_App_RefusedRequest_WithoutChainAnswersInPlace(t *testing.T) {
+	app := New()
+	app.Post("/", func(c Ctx) error { return c.SendString("ok") })
+	app.Handler()
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodPost)
+	allocs := testing.AllocsPerRun(20, func() { app.serverErrorHandler(fctx, fasthttp.ErrBodyTooLarge) })
+	require.Equal(t, StatusRequestEntityTooLarge, fctx.Response.StatusCode())
+	require.LessOrEqual(t, allocs, 8.0)
+}
+
+// A header the chain sets under a name of the request's trailer section replaces the client's line in the replay too.
+func Test_App_RefusedRequest_DropsTrailers(t *testing.T) {
+	t.Parallel()
+	for name, newApp := range map[string]func(...Config) *App{"default": New, "custom ctx": ctxTestACustomApp} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := newApp()
+			var fiberRead, peekRead, netRead []string
+			app.Use(func(c Ctx) error {
+				c.Request().Header.Set("X-User", "guest")
+				return c.Next()
+			}, func(c Ctx) error {
+				fiberRead = append(fiberRead, utils.CopyString(c.Get("X-User")))
+				peekRead = append(peekRead, string(c.Request().Header.Peek("X-User")))
+				return c.Next()
+			}, func(_ http.ResponseWriter, r *http.Request) {
+				netRead = append(netRead, utils.CopyString(r.Header.Get("X-User")))
+			})
+			ln := startRawServer(t, app)
+
+			const (
+				head     = "POST / HTTP/1.1\r\nHost: example.com\r\nX-User: admin\r\n"
+				tooLarge = "Content-Length: 99999999\r\n\r\n"
+				chunked  = "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n"
+			)
+			rawExpectStatus(t, ln, head+"Trailer: X-User\r\n"+tooLarge, StatusRequestEntityTooLarge)
+			rawExpectStatus(t, ln, head+"Trailer: X-User\r\n"+chunked+"Host: a\r\n\r\n", StatusBadRequest)
+			rawExpectStatus(t, ln, head+chunked+"X-User: root\r\nHost: a\r\n\r\n", StatusBadRequest)
+			want := []string{"guest", "guest", "guest"}
+			require.Equal(t, want, fiberRead)
+			require.Equal(t, want, peekRead)
+			require.Equal(t, want, netRead)
+
+			// Past the names dropTrailers takes, the chain does not run, as for a request that is served.
+			names := []string{"X-User"}
+			for i := range fieldname.MaxTrailers {
+				names = append(names, "X-"+strconv.Itoa(i))
+			}
+			rawExpectStatus(t, ln, head+"Trailer: "+strings.Join(names, ", ")+"\r\n"+tooLarge, StatusRequestEntityTooLarge)
+			require.Len(t, netRead, len(want))
+		})
+	}
 }
 
 // An ErrorHandler that writes only a body used to answer a transport-refused
@@ -2000,6 +2206,14 @@ func Test_App_RenderAndReloadViews_ReturnNoViewEngineForNilViews(t *testing.T) {
 			require.ErrorIs(t, reloadErr, ErrNoViewEngineConfigured)
 		})
 	}
+}
+
+// A struct type is comparable while its interface field holds a map, and hashing it as a lock key panicked.
+func Test_App_Render_StructAroundUncomparableViews(t *testing.T) {
+	t.Parallel()
+	app := New(Config{Views: struct{ Views }{mapViews{}}})
+	require.NoError(t, app.Render(io.Discard, "partial", nil))
+	require.NoError(t, app.ReloadViews())
 }
 
 func Test_isNilViews_ReturnsTrueForNilUnsafePointer(t *testing.T) {
@@ -3337,6 +3551,35 @@ func Test_App_serverErrorHandler_RawRequestStatus(t *testing.T) {
 	}
 }
 
+// The server refuses this request before the router can answer its method with 501, so the ErrorHandler runs for a
+// method that has no routing tree.
+func Test_App_serverErrorHandler_RestartRoutingUnregisteredMethod(t *testing.T) {
+	t.Parallel()
+	config := Config{
+		BodyLimit: 16,
+		ErrorHandler: func(c Ctx, _ error) error {
+			c.Path("/error")
+			if err := c.RestartRouting(); err != nil {
+				return DefaultErrorHandler(c, err)
+			}
+			return nil
+		},
+	}
+	for name, app := range map[string]*App{"default ctx": New(config), "custom ctx": newCustomApp(config)} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			// Use, not Get: only Use handlers run for a request the server refused.
+			app.Use("/error", func(c Ctx) error { return c.SendString("error page") })
+			ln := startRawServer(t, app)
+
+			const oversized = " / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 17\r\n\r\n"
+			require.Equal(t, "error page", rawExpectStatus(t, ln, "GET"+oversized, StatusRequestEntityTooLarge).body)
+			resp := rawExpectStatus(t, ln, "FOO"+oversized, StatusNotImplemented)
+			require.Equal(t, utils.StatusMessage(StatusNotImplemented), resp.body)
+		})
+	}
+}
+
 // RFC 9112 §6.1: a request with both Content-Length and Transfer-Encoding is
 // framed by Transfer-Encoding, and the connection must close after the response.
 func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
@@ -3483,6 +3726,28 @@ func Test_App_HeaderReceivedHook_Reinstalled(t *testing.T) {
 	require.False(t, sameFunc(app.Server().HeaderReceived, installed))
 }
 
+// The ConnState hook is installed once too, and a replaced callback is wrapped again and still called.
+func Test_App_ConnStateHook_Reinstalled(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.hookServer()
+	installed := app.Server().ConnState
+	require.NotNil(t, installed)
+
+	app.hookServer()
+	require.True(t, sameConnStateFunc(app.Server().ConnState, installed), "the hook is not wrapped again")
+
+	var calls int
+	replaced := func(net.Conn, fasthttp.ConnState) { calls++ }
+	app.Server().ConnState = replaced
+	app.hookServer()
+	require.False(t, sameConnStateFunc(app.Server().ConnState, replaced), "a replaced callback is wrapped")
+	require.False(t, sameConnStateFunc(app.Server().ConnState, installed))
+
+	app.Server().ConnState(nil, fasthttp.StateClosed)
+	require.Equal(t, 1, calls, "the replaced callback is called through the hook")
+}
+
 // Test and a listener run on one server at the same time, and the connections they
 // serve read the callback, so installing the hook must not write it again. Meant
 // for -race.
@@ -3499,7 +3764,7 @@ func Test_App_HeaderReceivedHook_RaceFreeWithTest(t *testing.T) {
 			case <-stop:
 				return
 			default:
-				app.hookHeaderReceived()
+				app.hookServer()
 				runtime.Gosched()
 			}
 		}
@@ -3596,6 +3861,24 @@ func Test_App_Test_TLS_NegotiatedProtocol(t *testing.T) {
 	req := apptest.Req(MethodGet, "https://example.com/")
 	req.TLS.NegotiatedProtocol = "h2"
 	apptest.ExpectBody(t, app, req, StatusOK, "https h2")
+}
+
+// A request Test serves did arrive, so it is refused and replayed like any other, whatever a hand-built TLS state
+// says about the handshake.
+func Test_App_Test_TLS_RefusedRequestIsReplayed(t *testing.T) {
+	t.Parallel()
+	app := New(Config{BodyLimit: 8})
+	handshakes := make(chan bool, 1)
+	app.Use(func(c Ctx) error {
+		handshakes <- c.RequestCtx().TLSConnectionState().HandshakeComplete
+		return c.Next()
+	})
+
+	req := httptest.NewRequest(MethodPost, "/", strings.NewReader(strings.Repeat("x", 64)))
+	req.TLS = &tls.ConnectionState{ServerName: "fiber.test"}
+	_, err := app.Test(req)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+	require.True(t, apptest.Recv(t, handshakes, time.Second, "the Use chain was not replayed"))
 }
 
 // Test serves the connection itself, so it installs the close hook too.

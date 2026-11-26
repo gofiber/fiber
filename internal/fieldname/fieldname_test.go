@@ -125,6 +125,33 @@ func Test_First_EmptyLineDoesNotHideTheValue(t *testing.T) {
 	}
 }
 
+func Test_Has(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		set  func(h *fasthttp.ResponseHeader)
+		name string
+		want bool
+	}{
+		{name: "absent", set: func(h *fasthttp.ResponseHeader) { h.Set("X-Other", "1") }},
+		{name: "set", set: func(h *fasthttp.ResponseHeader) { h.Set("Cache-Control", "private") }, want: true},
+		{name: "lower case", set: func(h *fasthttp.ResponseHeader) { h.SetCanonical([]byte("cache-control"), nil) }, want: true},
+		// the padding puts the empty line in a spare slot append left zeroed, where it peeks as nil
+		{name: "empty in a fresh slot", set: func(h *fasthttp.ResponseHeader) {
+			for _, pad := range []string{"X-Pad-1", "X-Pad-2", "X-Pad-3"} {
+				h.Set(pad, "1")
+			}
+			h.Add("Cache-Control", "")
+		}, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var h fasthttp.ResponseHeader
+			tc.set(&h)
+			require.Equal(t, tc.want, Has(&h, "Cache-Control"))
+		})
+	}
+}
+
 // Test_First_Lines_SkipTrailerSection pins that a field sent after the last
 // chunk is not read as a header: fasthttp's Peek and PeekAll fall through to it.
 // Nor is a header line of its name, which a Set may not have replaced.

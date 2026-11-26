@@ -1647,6 +1647,39 @@ func Test_Domain_UseMountDeclinedHostKeepsRootErrorHandler(t *testing.T) {
 // on an ordinary descendant of a domain-mounted app is found: those records live
 // only on the app they were registered on, and ordinary mounting does not carry
 // them upward.
+// A request that fell through the routes of another host's mount, which declined it, is still answered by the error
+// handler and the views of the mount its own host matches, whichever of the two was mounted first.
+func Test_Domain_UseMountDeclinedHostKeepsServingMount(t *testing.T) {
+	t.Parallel()
+	errorTenant := func(status int, body string) *App {
+		sub := New(Config{ErrorHandler: domainTestErrorHandler(status, body)})
+		sub.Use(func(c Ctx) error { return c.Next() })
+		return sub
+	}
+	app := New()
+	app.Domain("a.example.com").Use("/", errorTenant(583, "a error"))
+	app.Domain("b.example.com").Use("/", errorTenant(584, "b error"))
+	domainTestExpectBody(t, app, "a.example.com", "/missing", 583, "a error")
+	domainTestExpectBody(t, app, "b.example.com", "/missing", 584, "b error")
+	domainTestExpect(t, app, "c.example.com", "/missing", StatusNotFound)
+
+	viewTenant := func(dir, tmpl string, data Map) *App {
+		sub := New(Config{Views: domainTestEngine(t, dir)})
+		sub.Use(func(c Ctx) error {
+			if err := c.Next(); !errors.Is(err, ErrNotFound) {
+				return err
+			}
+			return c.Render(tmpl, data)
+		})
+		return sub
+	}
+	app = New()
+	app.Domain("a.example.com").Use("/", viewTenant("testdata2", "bruh.tmpl", Map{}))
+	app.Domain("b.example.com").Use("/", viewTenant("testdata3", "hello_world.tmpl", Map{"Name": "b"}))
+	domainTestExpectBody(t, app, "a.example.com", "/missing", StatusOK, "<h1>I'm Bruh</h1>")
+	domainTestExpectBody(t, app, "b.example.com", "/missing", StatusOK, "<h1>Hello b!</h1>")
+}
+
 func Test_Domain_UseMountBehindPlainDescendant(t *testing.T) {
 	t.Parallel()
 	inner := domainTestFailingApp(586, "inner", "/boom")

@@ -195,6 +195,34 @@ func Test_HTTPHandler_RefusesBackslashAndDotParams(t *testing.T) {
 	}
 }
 
+// Test_HTTPHandler_RefusesDotParams_UnescapePath pins the same under UnescapePath, for a ";" that arrived raw and for
+// one that arrived as "%3B". The router decodes either and the request line the handler is given spells both "%3B",
+// but the handler reads the ";" in URL.Path, and an httputil.ReverseProxy whose Rewrite or Director sets URL.Path
+// writes it raw for the upstream.
+func Test_HTTPHandler_RefusesDotParams_UnescapePath(t *testing.T) {
+	t.Parallel()
+	app := fiber.New(fiber.Config{UnescapePath: true})
+	app.Use("/admin", denyAll)
+	app.Use(HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, r.URL.Path) })))
+
+	for _, target := range []string{
+		"/public/..;/admin", "/public/..%3B/admin", "/public/..%3b/admin", "/public/.;x/admin", "/public/.%3Bx/admin",
+		"/public/..;jsessionid=1/admin", "/public/..%3Bjsessionid=1/admin", "/public/..;", "/public%2F..%3B/admin",
+		"/;x/admin", "/%3Bx/admin", "/public/;/admin", "/public/%3B/admin", "/public/;jsessionid=1/admin",
+		"/public/..\\admin", "/public/..%5Cadmin",
+	} {
+		fctx := rawCtx(t, app, target)
+		require.Equal(t, fiber.StatusNotFound, fctx.Response.StatusCode(), target)
+		require.NotContains(t, string(fctx.Response.Body()), "admin", target)
+	}
+	for target, routed := range map[string]string{
+		"/a;b/c": "/a;b/c", "/a%3Bb/c": "/a;b/c", "/m;x=1;y=2": "/m;x=1;y=2", "/..x;y/a": "/..x;y/a",
+		"/app/;jsessionid=1": "/app/;jsessionid=1", "/app/%3B": "/app/;", "/public/../a": "/a",
+	} {
+		adaptorTestRequireRawOK(t, app, target, routed)
+	}
+}
+
 func Test_HTTPHandler_RestoresRequestLine(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -971,6 +999,8 @@ func Test_HTTPHandler_ConnectAuthorityForm(t *testing.T) {
 		{"host and port", "example.com:443", "/example.com:443||/example.com:443", fiber.StatusOK},
 		{"IPv6 literal", "[::1]:443", "/[::1]:443||/%5B::1%5D:443", fiber.StatusOK},
 		{"with a path", "[::1]:443/x", "", fiber.StatusNotFound},
+		{"no authority, a byte of UTF-8", "\u00fcber", "", fiber.StatusNotFound},
+		{"no authority, brackets", "a[1]", "", fiber.StatusNotFound},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -1004,5 +1034,36 @@ func Test_HTTPHandler_SeesOverriddenMethod(t *testing.T) {
 		fctx := rawLine(t, app, "POST "+target+" HTTP/1.1\r\nHost: x\r\nX-HTTP-Method-Override: GET\r\nContent-Length: 0\r\n\r\n")
 		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode(), target)
 		require.Equal(t, fiber.MethodGet, string(fctx.Response.Body()), target)
+	}
+}
+
+// Test_HTTPHandler_ConnectNoAuthorityIsGuarded pins that a CONNECT target that is no host and port is not taken for the
+// authority form: "CONNECT über.txt" is routed as a raw "/über.txt", which a middleware mounted on "/%C3%BCber.txt" does not
+// run for, while a file server reads both as the one name that middleware guards.
+func Test_HTTPHandler_ConnectNoAuthorityIsGuarded(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "über.txt"), []byte("data"), 0o600))
+
+	for name, register := range map[string]func(*fiber.App){
+		"HTTPHandler":                  func(app *fiber.App) { app.Use(HTTPHandler(http.FileServer(http.Dir(root)))) },
+		"net/http registered directly": func(app *fiber.App) { app.Use(http.FileServer(http.Dir(root))) },
+		"fasthttp registered directly": func(app *fiber.App) { app.Use(fasthttp.FSHandler(root, 0)) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			served := fiber.New()
+			register(served)
+			adaptorTestRequireRawOK(t, served, "/%C3%BCber.txt", "data")
+
+			app := fiber.New()
+			app.Use("/%C3%BCber.txt", denyAll)
+			register(app)
+			adaptorTestRequireRawStatus(t, app, "/%C3%BCber.txt", fiber.StatusForbidden)
+			for _, target := range []string{"/über.txt", "über.txt"} {
+				fctx := rawLine(t, app, fiber.MethodConnect+" "+target+" HTTP/1.1\r\nHost: example.com\r\n\r\n")
+				require.Equal(t, fiber.StatusNotFound, fctx.Response.StatusCode(), target)
+			}
+		})
 	}
 }

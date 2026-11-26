@@ -1,9 +1,11 @@
 package fiber_test
 
 import (
+	"bufio"
 	"bytes"
 	"cmp"
 	"errors"
+	"io"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -16,6 +18,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/basicauth"
 	"github.com/gofiber/fiber/v3/middleware/cache"
 	"github.com/gofiber/fiber/v3/middleware/compress"
@@ -543,6 +547,128 @@ func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *tes
 			tc.assertions(t, resp)
 		})
 	}
+}
+
+// Answering a refused request leaves the user values alone that a flushed net/http handler of the replay still reads.
+func Test_Integration_App_ServerErrorHandler_LeavesUserValuesAlone(t *testing.T) {
+	t.Parallel()
+	app := fiber.New(fiber.Config{BodyLimit: 8})
+	answered, marked := make(chan struct{}), make(chan bool, 1)
+	app.Use(adaptor.HTTPHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			return
+		}
+		<-answered
+		ctx, ok := r.Context().(*fasthttp.RequestCtx)
+		marked <- ok && errorreplay.Active(ctx)
+	}))
+
+	var resp *fasthttp.Response
+	func() {
+		defer close(answered) // also when the request fails: the server waits for the handler
+		resp = performOversizedRequest(t, app, nil)
+	}()
+	require.Equal(t, fiber.StatusRequestEntityTooLarge, resp.StatusCode())
+	require.True(t, apptest.Recv(t, marked, 10*time.Second, "the handler did not return"))
+}
+
+// closeCounter is a body stream or local that reports each Close.
+type closeCounter struct {
+	io.Reader
+	closes chan error
+}
+
+func (c closeCounter) Close() error {
+	c.closes <- nil
+	return nil
+}
+
+// closeWithError is a body stream that reports each CloseWithError, the only close a streamed client response has.
+type closeWithError closeCounter
+
+func (c closeWithError) CloseWithError(err error) error {
+	c.closes <- err
+	return nil
+}
+
+// The stream the ErrorHandler answers a refused request with is closed once, also while a flushed net/http handler
+// of the replay holds the request.
+func Test_Integration_App_ServerErrorHandler_ClosesStreamOnce(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		stream func(closes chan error) io.Reader
+		name   string
+	}{
+		{name: "Close", stream: func(closes chan error) io.Reader {
+			return closeCounter{Reader: strings.NewReader("refused"), closes: closes}
+		}},
+		{name: "CloseWithError", stream: func(closes chan error) io.Reader {
+			return closeWithError{Reader: strings.NewReader("refused"), closes: closes}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			closes := make(chan error, 2)
+			app := fiber.New(fiber.Config{BodyLimit: 8, ErrorHandler: func(c fiber.Ctx, _ error) error {
+				return c.Status(fiber.StatusRequestEntityTooLarge).SendStream(tc.stream(closes))
+			}})
+			reset := closeCounter{closes: make(chan error, 1)}
+			app.Use(func(c fiber.Ctx) error {
+				c.Locals("reset", reset)
+				return c.Next()
+			}, adaptor.HTTPHandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if err := http.NewResponseController(w).Flush(); err != nil {
+					return
+				}
+			}))
+
+			resp := performOversizedRequest(t, app, nil)
+			require.Equal(t, "refused", string(resp.Body()))
+			require.NoError(t, apptest.Recv(t, reset.closes, 10*time.Second, "the request was not reset"))
+			require.Len(t, closes, 1)
+		})
+	}
+}
+
+// The stream of a refused request's answer is closed with the error its write failed with.
+func Test_Integration_App_ServerErrorHandler_StreamCloseError(t *testing.T) {
+	t.Parallel()
+	closes := make(chan error, 2)
+	app := fiber.New(fiber.Config{ErrorHandler: func(c fiber.Ctx, _ error) error {
+		return c.SendStream(closeWithError{Reader: strings.NewReader("refused"), closes: closes})
+	}})
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodPost)
+	app.Server().ErrorHandler(fctx, fasthttp.ErrBodyTooLarge)
+
+	conn, peer := net.Pipe()
+	require.NoError(t, peer.Close())
+	fctx.Response.ImmediateHeaderFlush = true
+	require.ErrorIs(t, fctx.Response.Write(bufio.NewWriter(conn)), io.ErrClosedPipe)
+	require.Len(t, closes, 1)
+	require.ErrorIs(t, <-closes, io.ErrClosedPipe)
+}
+
+// The trailers an adapted net/http handler in the ErrorHandler sets at the end of its stream reach the client.
+func Test_Integration_App_ServerErrorHandler_StreamTrailers(t *testing.T) {
+	t.Parallel()
+	answer := adaptor.HTTPHandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Trailer", "X-Sum")
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+		if _, err := w.Write([]byte("refused")); err != nil {
+			return
+		}
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			return
+		}
+		w.Header().Set("X-Sum", "7")
+	})
+	app := fiber.New(fiber.Config{BodyLimit: 8, ErrorHandler: func(c fiber.Ctx, _ error) error { return answer(c) }})
+	app.Use(func(c fiber.Ctx) error { return c.Next() })
+
+	resp := performOversizedRequest(t, app, nil)
+	require.Equal(t, "refused", string(resp.Body()))
+	require.Equal(t, "7", string(resp.Header.Peek("X-Sum")))
 }
 
 func Test_Integration_App_ServerErrorHandler_CustomMultipartBodyLimit(t *testing.T) {

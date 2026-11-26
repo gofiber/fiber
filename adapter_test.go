@@ -890,6 +890,8 @@ func Test_Adapter_FastHTTP_KeepsTargetsThatAreNoPath(t *testing.T) {
 		{"asterisk-form", "OPTIONS * HTTP/1.1\r\nHost: example.com\r\n\r\n", "*", StatusOK},
 		{"authority-form", "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n", "example.com:443", StatusOK},
 		{"authority-form with an IPv6 literal", "CONNECT [::1]:443 HTTP/1.1\r\nHost: [::1]:443\r\n\r\n", "[::1]:443", StatusOK},
+		{"no authority, a byte of UTF-8", "CONNECT \u00fcber HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
+		{"no authority, brackets", "CONNECT a[1] HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
 		{"authority-form with an empty segment", "CONNECT //admin/data.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
 		{"authority-form with an escaped slash", "CONNECT admin%2Fdata.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
 	} {
@@ -923,6 +925,8 @@ func Test_HTTPHandler_Direct_TargetsThatAreNoPath(t *testing.T) {
 		{"asterisk-form", "OPTIONS * HTTP/1.1\r\nHost: example.com\r\n\r\n", "/*|example.com", StatusOK},
 		{"authority-form", "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n", "/example.com:443|example.com:443", StatusOK},
 		{"authority-form with an IPv6 literal", "CONNECT [::1]:443 HTTP/1.1\r\nHost: [::1]:443\r\n\r\n", "/%5B::1%5D:443|[::1]:443", StatusOK},
+		{"no authority, a byte of UTF-8", "CONNECT \u00fcber HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
+		{"no authority, brackets", "CONNECT a[1] HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
 		{"authority-form with a path", "CONNECT [::1]:443/x HTTP/1.1\r\nHost: [::1]:443\r\n\r\n", "", StatusNotFound},
 		{"origin-form with brackets", "GET /a[1] HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
 	} {
@@ -1023,6 +1027,36 @@ func Test_Adapter_FastHTTP_UnescapePathRespellsTheLine(t *testing.T) {
 	resp := serveRawTarget(t, app, "/a,b/c:d?x=1")
 	require.Equal(t, StatusOK, resp.StatusCode())
 	require.Equal(t, "/a%2Cb/c:d?x=1", string(resp.Body()))
+}
+
+// Test_Adapter_UnescapePathParameters pins that under UnescapePath a fasthttp and a net/http route handler are answered
+// 404, as they are without it, for a "." or ".." segment that carries parameters and for a segment of parameters alone
+// before another, whether the ";" arrived raw or as "%3B": the router decodes it, and so does the handler, although
+// the line it is given spells it "%3B".
+func Test_Adapter_UnescapePathParameters(t *testing.T) {
+	t.Parallel()
+	for name, handler := range map[string]any{
+		"fasthttp": fasthttp.RequestHandler(echoRequestURI),
+		"net/http": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := io.WriteString(w, r.RequestURI)
+			assert.NoError(t, err)
+		}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{UnescapePath: true})
+			app.Use(handler)
+
+			for _, target := range []string{"/a/..;/b", "/a/..%3B/b", "/a/.%3bx/b", "/;x/admin", "/%3Bx/admin"} {
+				require.Equal(t, StatusNotFound, serveRawTarget(t, app, target).StatusCode(), target)
+			}
+			for target, want := range map[string]string{"/a;b/c": "/a%3Bb/c", "/a%3Bb": "/a%3Bb", "/a/;x": "/a/%3Bx"} {
+				resp := serveRawTarget(t, app, target)
+				require.Equal(t, StatusOK, resp.StatusCode(), target)
+				require.Equal(t, want, string(resp.Body()), target)
+			}
+		})
+	}
 }
 
 // Test_Adapter_StrayPercent pins that a net/http route handler is answered 400, as net/http's own server answers it, for a
