@@ -1001,8 +1001,9 @@ func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 }
 
 // FilterFlags returns the media type value by trimming any parameters from a Content-Type header.
+// The media type ends at the ';' or the space or tab before it, as fasthttp's form readers end it.
 func FilterFlags(content string) string {
-	if i := utils.IndexAny2(content, ' ', ';'); i >= 0 {
+	if i := utils.IndexAny3(content, ' ', '\t', ';'); i >= 0 {
 		return content[:i]
 	}
 	return content
@@ -1040,8 +1041,14 @@ type bindData struct {
 	// last is the last value filed under each key, for a map[string]string
 	// destination
 	last map[string]string
+	// seen is the names a source whose first value wins has filed past the
+	// first len(few), see firstOf
+	seen map[string]struct{}
+	// few is the first names firstOf saw, nFew of them
+	few [8]string
 	// keys and pairValues are the pairs, for a struct destination
 	keys, pairValues []string
+	nFew             int
 	mode             bindMode
 }
 
@@ -1144,10 +1151,15 @@ func hasComma(s string) bool {
 	return strings.IndexByte(s, ',') >= 0
 }
 
+// maxSplitKeyBytes is the longest key whose value is split: every piece is filed
+// under the whole key, so splitting costs the key's length times its commas.
+const maxSplitKeyBytes = 1 << 10
+
 // split files value under key, split at its commas when splitting is on and
-// the key names a slice of out's.
+// the key, at most maxSplitKeyBytes long, names a slice of out's.
 func (d *bindData) split(aliasTag string, out any, key, value string, enableSplitting bool) { //nolint:revive // the flag is the binder's setting
-	if enableSplitting && strings.IndexByte(value, ',') >= 0 && equalFieldType(out, reflect.Slice, key, aliasTag) {
+	if enableSplitting && len(key) <= maxSplitKeyBytes && strings.IndexByte(value, ',') >= 0 &&
+		equalFieldType(out, reflect.Slice, key, aliasTag) {
 		// A header value is a comma-separated list (RFC 9110 Section 5.6.1): its
 		// elements carry no surrounding OWS, and empty ones are ignored. Quoted
 		// strings are not parsed, so a comma inside one still splits.
@@ -1170,6 +1182,48 @@ func (d *bindData) split(aliasTag string, out any, key, value string, enableSpli
 		return
 	}
 	d.add(key, value)
+}
+
+// firstOf reports whether name is new to this bind. A map destination files each name under itself and is looked up;
+// for a struct the first names are scanned in few, which costs less than hashing them, and past len(few) the map holds
+// them all, so a long list stays linear.
+func (d *bindData) firstOf(name string) bool {
+	switch d.mode {
+	case bindMap:
+		_, filed := d.values[name]
+		return !filed
+	case bindLast:
+		_, filed := d.last[name]
+		return !filed
+	default:
+	}
+	if len(d.seen) == 0 {
+		if slices.Contains(d.few[:d.nFew], name) {
+			return false
+		}
+		if d.nFew < len(d.few) {
+			d.few[d.nFew] = name
+			d.nFew++
+			return true
+		}
+		if d.seen == nil {
+			d.seen = make(map[string]struct{}, 2*len(d.few))
+		}
+		for _, f := range d.few {
+			d.seen[f] = struct{}{}
+		}
+	}
+	n := len(d.seen)
+	d.seen[name] = struct{}{}
+	return len(d.seen) > n
+}
+
+// filedNames returns how many names a map destination holds.
+func (d *bindData) filedNames() int {
+	if d.mode == bindLast {
+		return len(d.last)
+	}
+	return len(d.values)
 }
 
 // add appends value to the values of key.

@@ -2450,6 +2450,71 @@ func Test_Bind_Form_ContentTypeNormalization(t *testing.T) {
 	})
 }
 
+// Test_Bind_TabBeforeParameters pins that a tab before the parameters of a multipart Content-Type, which fasthttp's
+// form readers accept, does not hide the form from Bind().Form and Bind().Body.
+func Test_Bind_TabBeforeParameters(t *testing.T) {
+	t.Parallel()
+	body := bindTestMultipart(t, "AbCdEfMixed12345", [2]string{"name", "john"}).Body
+	for name, bind := range map[string]func(c Ctx, out any) error{
+		"Form": func(c Ctx, out any) error { return c.Bind().Form(out) },
+		"Body": func(c Ctx, out any) error { return c.Bind().Body(out) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			bindTestPostName(t, bind, "multipart/form-data\t; boundary=AbCdEfMixed12345", body, nil)
+		})
+	}
+}
+
+// Test_Bind_Form_ContentEncoding pins that the form readers take a form only from the bytes Body returns: a gzip
+// member can inflate to one form while its header comment spells another, which PostArgs reads as sent.
+func Test_Bind_Form_ContentEncoding(t *testing.T) {
+	t.Parallel()
+	var polyglot bytes.Buffer
+	gz := gzip.NewWriter(&polyglot)
+	gz.Comment = "&name=admin&z="
+	_, err := gz.Write([]byte("name=john"))
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+	multipartBody, multipartType := ctxTestMultipartField(t, "name", "admin")
+
+	app := New()
+	for _, tc := range []struct {
+		name, contentType, encoding string // encoding: the Content-Encoding field lines, as sent
+		want                        string // empty: the form is refused
+		sent                        []byte
+	}{
+		{name: "urlencoded", contentType: MIMEApplicationForm, sent: []byte("name=john"), want: "john"},
+		{name: "urlencoded identity", contentType: MIMEApplicationForm, encoding: "Content-Encoding: identity\r\n", sent: []byte("name=john"), want: "john"},
+		{name: "urlencoded gzip", contentType: MIMEApplicationForm, encoding: "Content-Encoding: gzip\r\n", sent: polyglot.Bytes()},
+		{name: "multipart", contentType: multipartType, sent: multipartBody, want: "admin"},
+		{name: "multipart gzip", contentType: multipartType, encoding: "Content-Encoding: gzip\r\n", sent: gzipLayers(t, multipartBody, 1), want: "admin"},
+		{name: "multipart gzip behind an empty line", contentType: multipartType, encoding: "Content-Encoding:\r\nContent-Encoding: gzip\r\n", sent: multipartBody},
+		{name: "multipart gzip twice", contentType: multipartType, encoding: "Content-Encoding: gzip\r\nContent-Encoding: gzip\r\n", sent: gzipLayers(t, multipartBody, 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			raw := "POST /?q=1 HTTP/1.1\r\nHost: example.com\r\nContent-Type: " + tc.contentType + "\r\n" + tc.encoding +
+				"Content-Length: " + strconv.Itoa(len(tc.sent)) + "\r\n\r\n" + string(tc.sent)
+			c := apptest.CtxFor(t, app, wireRequestCtx(t, raw, nil))
+			var bound struct {
+				Name string `form:"name"`
+			}
+			bindErr := c.Bind().Form(&bound)
+			require.Equal(t, tc.want, bound.Name)
+			require.Equal(t, tc.want, c.FormValue("name"))
+			require.Equal(t, "1", c.FormValue("q"))
+			if tc.want != "" {
+				require.NoError(t, bindErr)
+				return
+			}
+			require.ErrorIs(t, bindErr, binder.ErrFormContentEncoding)
+			_, err := c.MultipartForm()
+			require.ErrorIs(t, err, ErrUnsupportedMediaType)
+		})
+	}
+}
+
 // ctxTypeBinder records the concrete context type handed to Parse.
 type ctxTypeBinder struct {
 	seen string

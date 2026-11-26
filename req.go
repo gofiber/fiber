@@ -28,8 +28,8 @@ import (
 // Pre-allocated for the charset parameter comparison to avoid allocations
 var charsetBytes = []byte("charset")
 
-// maxContentCodings is the longest Content-Encoding list Body undoes; curl stops at five as well.
-const maxContentCodings = 5
+// maxContentCodings is the longest Content-Encoding list Body undoes, the one the form binders agree with.
+const maxContentCodings = mediatype.MaxContentCodings
 
 // Ranks of the headers Scheme reads, lowest first.
 const (
@@ -546,6 +546,10 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 			return vals[0]
 		}
 		return defaultString("", defaultValue)
+	}
+	// PostArgs parses the body as sent, so a form under a coding Body undoes is not read.
+	if !mediatype.FormCodingAgrees(&r.c.fasthttp.Request.Header) {
+		return defaultString(r.c.app.toString(r.c.fasthttp.QueryArgs().Peek(key)), defaultValue)
 	}
 	// PostArgs drains a streamed urlencoded body whatever its size.
 	if r.c.fasthttp.Request.IsBodyStream() && mediatype.ParsesPostArgs(r.c.fasthttp.Request.Header.ContentType()) {
@@ -1350,6 +1354,9 @@ func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 	// here too. Guarded like FormValue: the fold writes.
 	if mediatype.IsForm(r.c.fasthttp.Request.Header.ContentType()) {
 		mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
+	}
+	if !mediatype.FormCodingAgrees(&r.c.fasthttp.Request.Header) {
+		return nil, ErrUnsupportedMediaType
 	}
 
 	return bodystream.MultipartForm(&r.c.fasthttp.Request, r.c.app.config.BodyLimit)

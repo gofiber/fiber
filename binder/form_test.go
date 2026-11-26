@@ -36,6 +36,11 @@ func Test_FormBinder_Bind_MixedCaseContentType(t *testing.T) {
 			contentType: `Multipart/Form-Data; BOUNDARY=AbC`,
 			body:        "--AbC\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--AbC--\r\n",
 		},
+		{
+			name:        "multipart with a tab before the parameters",
+			contentType: "multipart/form-data\t; boundary=AbC",
+			body:        "--AbC\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--AbC--\r\n",
+		},
 	}
 
 	for _, tc := range tests {

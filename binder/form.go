@@ -51,6 +51,9 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 	if mediatype.IsForm(req.Header.ContentType()) {
 		mediatype.NormalizeRequestContentType(&req.Header)
 	}
+	if !mediatype.FormCodingAgrees(&req.Header) {
+		return ErrFormContentEncoding
+	}
 
 	// Handle multipart form. Media types are case-insensitive
 	// (RFC 9110 Section 8.3.1), so compare accordingly.
@@ -161,7 +164,7 @@ func acquireBindDataMode(mode bindMode) *bindData {
 
 func releaseBindData(d *bindData) {
 	if len(d.values) > maxPoolableDataMapSize || len(d.last) > maxPoolableDataMapSize ||
-		cap(d.keys) > maxPoolablePairs {
+		len(d.seen) > maxPoolableDataMapSize || cap(d.keys) > maxPoolablePairs {
 		return
 	}
 
@@ -178,6 +181,11 @@ func (d *bindData) reset() {
 	if len(d.last) > 0 {
 		clear(d.last)
 	}
+	if len(d.seen) > 0 {
+		clear(d.seen)
+	}
+	clear(d.few[:d.nFew])
+	d.nFew = 0
 	clear(d.keys)
 	clear(d.pairValues)
 	d.keys, d.pairValues = d.keys[:0], d.pairValues[:0]

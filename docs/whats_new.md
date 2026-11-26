@@ -934,6 +934,11 @@ resolve to the **request**; use `c.Res().Get()`, `c.Res().GetHeaders()`, `c.Res(
   number. A chain of codings is now undone without replacing the request body, so slices returned by an earlier
   `BodyRaw()` or by `Body()` stay valid for the whole handler, also under `ReduceMemoryUsage` and behind the adaptor
   middleware.
+- **FormValue(), FormFile(), MultipartForm() and Bind().Form()**: A form is read only where the form parser reads the
+  bytes `Body()` returns. A urlencoded form under a `Content-Encoding` other than `identity`, and a multipart form under
+  one other than a single `gzip`, or under a list longer than the five members `Body()` undoes, is refused: `FormValue`
+  finds query parameters only, `FormFile` and `MultipartForm` return `fiber.ErrUnsupportedMediaType`, and
+  `Bind().Form()` fails with `binder.ErrFormContentEncoding`.
 - **Render()**: The `fiber.Map` passed as `bind` is no longer modified. `ViewBind` values and, with
   `PassLocalsToViews`, the `Locals` used to be written into it, so a map kept across requests carried the first
   request's values into every later render, and a nil `fiber.Map` panicked. They are now merged into a copy, and a
@@ -1085,6 +1090,12 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 - With `EnableSplittingOnParsers`, the header and response header binders read a comma-separated value as an HTTP list: the spaces and tabs around each element are removed and empty elements are skipped, so `X-Ids: 1, 2` binds `[]int{1, 2}`. This also applies to a `map[string][]string`, whose elements no longer keep a leading space. [Learn more](./api/bind.md#header).
 
 A key bound into a struct can have at most 64 segments (`items[0][sku]` has three). A deeper key fails the bind with `binder.ErrKeyTooDeep`; map destinations are not limited. In a struct with a slice of structs inside a slice element or below a field of its own type, an index that can grow such a slice, such as the `3` in `items[0][variants][3][sku]`, counts as its value plus one elements of the largest such slice element, and keys that add up to more than 8 MiB fail the bind with `binder.ErrTooManyElements`. [Learn more](./api/bind.md#nested-and-array-form-fields).
+
+With `EnableSplittingOnParsers`, a value whose key is longer than 1,024 bytes is not split at its commas: a slice of strings or a map of them gets it as one element.
+
+`Bind().Form`, `Bind().Body` and `Bind().All` read a `Content-Type` with a tab before its parameters, such as `multipart/form-data<TAB>; boundary=x`, as the form readers do; a multipart form sent that way used to bind nothing.
+
+`Bind().Cookie` binds the first value of a repeated cookie name, the one `c.Cookies` returns, instead of the last. A slice field gets the elements of that cookie only. [Learn more](./api/bind.md#cookie).
 
 <details>
 <summary>Example</summary>
@@ -1569,6 +1580,8 @@ The `log.AllLogger[T]` interface (package `github.com/gofiber/fiber/v3/log`) now
 
 You can find more details about this feature in [/docs/api/log.md](./api/log.md#logger).
 
+In a context format such as `log.KeyValueFormat`, a tag right behind a `=` is the value of a key/value field, and a value that holds a space, a tab, `=` or `"`, such as a request ID taken from `X-Request-ID`, is now written as a Go quoted string, so it cannot add fields of its own. See [Context Tags](./api/log.md#context-tags).
+
 `logger.Config` now supports a new field called `ForceColors`. This field allows you to force the logger to always use colors, even if the output is not a terminal. This is useful when you want to ensure that the logs are always colored, regardless of the output destination.
 
 ```go
@@ -1777,6 +1790,8 @@ A streamed response that declares no length (`SendStreamWriter`, or `SendStream`
 The key alone identifies a request, so whoever sends a stored key receives the response stored for it, whatever the user or route. The new `KeyScope` function returns the scope a key belongs to, such as the ID of the authenticated user, and a response is then stored, replayed and locked per scope and key. `Set-Cookie` and `Set-Cookie2` are no longer stored, and an entry that holds one is replayed without it, unless `KeepResponseHeaders` names the header; a replay no longer hands the cookie of the first client to the next one, while a session or token carried in another response header is still replayed unless `KeepResponseHeaders` leaves it out or `KeyScope` scopes the key. Have clients draw keys from a cryptographically secure random source, as the default validator checks only the length. See [Behavior](./middleware/idempotency.md#behavior).
 
 A response is stored under `idempotency:` followed by the key (or its digest with `KeyScope`), so a key sent by a client cannot read or overwrite an entry another middleware keeps in the same `Storage`. Responses stored by an earlier version are not replayed after the upgrade: a retry with such a key runs the handler again.
+
+A request that reaches the middleware again with a key it holds the lock of, by `RestartRouting` or by a second registration, no longer waits for itself forever: it runs on, and the pass that took the lock stores the response. This holds for every idempotency middleware on the route, whatever its `Lock`, so a second registration with its own `Storage` stores nothing for a key the first one holds. `MemoryLock` lets at most 100 requests wait for one key and refuses the next with `ErrTooManyWaiters` (`409 Conflict`). The default storage has no size limit, so pass a bounded `Storage` in production, see [Bound the storage](./middleware/idempotency.md#behavior).
 
 ### Deprecation
 

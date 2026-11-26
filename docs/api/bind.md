@@ -282,7 +282,7 @@ curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe"
 ```
 
 :::info
-`Form` reads only the request body, never the query string. A `multipart/form-data` body is read with the app's [`BodyLimit`](fiber.md#bodylimit) as its size limit, which also bounds the size of a `Content-Encoding: gzip` body after decompression. A larger body fails with an error that wraps `fasthttp.ErrBodyTooLarge`, and so does a larger urlencoded body under [`StreamRequestBody`](fiber.md#streamrequestbody).
+`Form` reads only the request body, never the query string. A `multipart/form-data` body is read with the app's [`BodyLimit`](fiber.md#bodylimit) as its size limit, which also bounds the size of a `Content-Encoding: gzip` body after decompression. A larger body fails with an error that wraps `fasthttp.ErrBodyTooLarge`, and so does a larger urlencoded body under [`StreamRequestBody`](fiber.md#streamrequestbody). A form under a `Content-Encoding` that the form parser would not undo as [`c.Body()`](./ctx.md#body) does (any coding on a urlencoded form, anything but one `gzip` on a multipart form, or a list longer than the five members `c.Body()` undoes) is not bound and fails with `binder.ErrFormContentEncoding`.
 
 On a form request, `Form` and `Body` also lowercase the case-insensitive parts of the request's own `Content-Type` (the media type and the parameter names, never the `boundary` value), so copy a value you read earlier from `Get(HeaderContentType)` if you need it to outlive the call, see [FormValue](./ctx.md#formvalue). Other body types leave the header untouched.
 :::
@@ -526,6 +526,8 @@ Run tests with the following `curl` command:
 curl --cookie "name=Joseph; age=23; job=true" http://localhost:8000/
 ```
 
+A cookie name sent more than once binds its first value, the one [`c.Cookies`](./ctx.md#cookies) returns, so a slice field gets the elements of that one cookie. The tag is matched against the cookie name ignoring case, while `c.Cookies` matches it exactly: with `token=a; Token=b`, a `cookie:"token"` field gets `b`.
+
 ### Header
 
 This method is similar to [Body Binding](#body), but for request headers.
@@ -609,7 +611,7 @@ curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
 ```
 
 :::info
-`EnableSplittingOnParsers` applies to the Cookie, Form, Header, Query, and RespHeader binders. The Header and RespHeader binders also remove the spaces and tabs around each element and skip empty elements (see [Header](#header)); the Cookie, Form and Query binders keep each element as written. For more parser settings, please refer to [Config](fiber.md#enablesplittingonparsers)
+`EnableSplittingOnParsers` applies to the Cookie, Form, Header, Query, and RespHeader binders. The Header and RespHeader binders also remove the spaces and tabs around each element and skip empty elements (see [Header](#header)); the Cookie, Form and Query binders keep each element as written. A value whose key is longer than 1,024 bytes is not split: a slice of strings or a map of them gets it as one element. A slice of numbers, such as `[]int`, reads a comma-separated value as a list either way, with splitting on or off. For more parser settings, please refer to [Config](fiber.md#enablesplittingonparsers)
 :::
 
 #### Array Query Parameters

@@ -1,6 +1,7 @@
 package mediatype
 
 import (
+	"bufio"
 	"strings"
 	"testing"
 
@@ -406,5 +407,55 @@ func Test_IsToken(t *testing.T) {
 		{"\xc3\xbc", false},
 	} {
 		require.Equal(t, tc.want, IsToken([]byte(tc.in)), "%q", tc.in)
+	}
+}
+
+// identities returns n identity members, the first on a Content-Encoding line of its own.
+func identities(n int) string {
+	return "Content-Encoding: identity\r\nContent-Encoding: " + strings.TrimSuffix(strings.Repeat("identity, ", n-1), ", ") + "\r\n"
+}
+
+func Test_FormCodingAgrees(t *testing.T) {
+	t.Parallel()
+	const (
+		urlencoded = "application/x-www-form-urlencoded"
+		multipart  = "multipart/form-data; boundary=xyz"
+	)
+	for _, tc := range []struct {
+		name, contentType string
+		lines             string // the Content-Encoding field lines, as sent
+		asSent            bool   // field names are not normalized
+		want              bool
+	}{
+		{name: "urlencoded", contentType: urlencoded, want: true},
+		{name: "urlencoded, empty line", contentType: urlencoded, lines: "Content-Encoding:\r\n", want: true},
+		{name: "urlencoded, identity", contentType: urlencoded, lines: "Content-Encoding: Identity\r\n", want: true},
+		{name: "urlencoded, identity up to the cap", contentType: urlencoded, lines: identities(MaxContentCodings), want: true},
+		{name: "urlencoded, identity past the cap", contentType: urlencoded, lines: identities(MaxContentCodings + 1)},
+		{name: "multipart, gzip and identity past the cap", contentType: multipart, lines: "Content-Encoding: gzip\r\n" + identities(MaxContentCodings)},
+		{name: "urlencoded, gzip", contentType: urlencoded, lines: "Content-Encoding: gzip\r\n"},
+		{name: "urlencoded, gzip beside identity", contentType: urlencoded, lines: "Content-Encoding: identity, gzip\r\n"},
+		{name: "urlencoded, gzip under a lower-case name", contentType: urlencoded, lines: "content-encoding: gzip\r\n", asSent: true},
+		{name: "multipart", contentType: multipart, want: true},
+		{name: "multipart, gzip", contentType: multipart, lines: "Content-Encoding: GZip\r\n", want: true},
+		{name: "multipart, gzip ahead of an identity line", contentType: multipart, lines: "Content-Encoding: gzip\r\nContent-Encoding: identity\r\n", want: true},
+		{name: "multipart, gzip behind an empty line", contentType: multipart, lines: "Content-Encoding:\r\nContent-Encoding: gzip\r\n"},
+		// An empty line behind other fields, where fasthttp can peek it as nil.
+		{name: "urlencoded, gzip behind an empty line in a later slot", contentType: urlencoded, lines: "A: 1\r\nB: 2\r\nC: 3\r\nContent-Encoding:\r\nContent-Encoding: gzip\r\n"},
+		{name: "multipart, gzip twice", contentType: multipart, lines: "Content-Encoding: gzip\r\nContent-Encoding: gzip\r\n"},
+		{name: "multipart, gzip under a lower-case name", contentType: multipart, lines: "content-encoding: gzip\r\n", asSent: true},
+		{name: "multipart, x-gzip", contentType: multipart, lines: "Content-Encoding: x-gzip\r\n"},
+		{name: "not a form", contentType: "application/json", lines: "Content-Encoding: gzip, br\r\n", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var h fasthttp.RequestHeader
+			if tc.asSent {
+				h.DisableNormalizing()
+			}
+			message := "POST / HTTP/1.1\r\nHost: example.com\r\nContent-Type: " + tc.contentType + "\r\n" + tc.lines + "Content-Length: 0\r\n\r\n"
+			require.NoError(t, h.Read(bufio.NewReader(strings.NewReader(message))))
+			require.Equal(t, tc.want, FormCodingAgrees(&h))
+		})
 	}
 }
