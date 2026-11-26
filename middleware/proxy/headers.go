@@ -242,22 +242,23 @@ func isRealIPAlias(name []byte) bool {
 	return true
 }
 
-// lastTraceHop applies Max-Forwards to a TRACE (RFC 9110 Section 7.6.2): it reports whether the request must not be
-// forwarded, and counts the value down otherwise.
-func lastTraceHop(req *fasthttp.Request, normalized bool) bool {
+// lastTraceHop applies Max-Forwards to a TRACE (RFC 9110 Section 7.6.2): it refuses the request at the last hop,
+// and counts the value down otherwise.
+func lastTraceHop(req *fasthttp.Request, normalized bool) error {
 	if !req.Header.IsTrace() {
-		return false
+		return nil
 	}
-	n, err := fasthttp.ParseUint(fieldname.First(&req.Header, fiber.HeaderMaxForwards, normalized))
-	if err != nil {
-		return false
+	// A value that is not a count is forwarded as received.
+	if n, err := fasthttp.ParseUint(fieldname.First(&req.Header, fiber.HeaderMaxForwards, normalized)); err == nil {
+		switch {
+		case n == 0:
+			return fiber.ErrNotImplemented
+		case fieldname.DelWithin(&req.Header, fiber.HeaderMaxForwards, normalized, maxConnectionOptions) < 0:
+			return fiber.ErrRequestHeaderFieldsTooLarge
+		}
+		req.Header.Set(fiber.HeaderMaxForwards, strconv.Itoa(n-1))
 	}
-	if n == 0 {
-		return true
-	}
-	fieldname.DelWithin(&req.Header, fiber.HeaderMaxForwards, normalized, maxConnectionOptions)
-	req.Header.Set(fiber.HeaderMaxForwards, strconv.Itoa(n-1))
-	return false
+	return nil
 }
 
 // keepForwardingOrder puts the forwarding fields sent on several lines back in the order they were received,

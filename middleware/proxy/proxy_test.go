@@ -2914,3 +2914,35 @@ func Test_Proxy_TraceMaxForwards(t *testing.T) {
 		})
 	}
 }
+
+// Test_Proxy_TraceMaxForwardsSpellingLimit checks that under DisableHeaderNormalizing a TRACE spelling Max-Forwards
+// in more ways than the proxy removes is refused, not forwarded with the received lines beside the counted one.
+func Test_Proxy_TraceMaxForwardsSpellingLimit(t *testing.T) {
+	t.Parallel()
+	for _, tc := range trailerHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var forwarded atomic.Int32
+			upstream := fiber.New()
+			upstream.Use(func(c fiber.Ctx) error {
+				forwarded.Add(1)
+				return c.SendStatus(fiber.StatusOK)
+			})
+			ln := proxyTestListen(t)
+			startServer(upstream, ln)
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+			app.Use(tc.build(ln.Addr().String()))
+			for n, status := range map[int]int{
+				maxConnectionOptions:     fiber.StatusOK,
+				2 * maxConnectionOptions: fiber.StatusRequestHeaderFieldsTooLarge,
+			} {
+				req := apptest.Req(fiber.MethodTrace, "/")
+				for _, k := range caseSpellings("max-forwards", n) {
+					req.Header[k] = []string{"5"}
+				}
+				apptest.Expect(t, app, req, status)
+			}
+			require.Equal(t, int32(1), forwarded.Load())
+		})
+	}
+}
