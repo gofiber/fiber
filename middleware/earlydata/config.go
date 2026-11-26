@@ -1,7 +1,10 @@
 package earlydata
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 )
 
 const (
@@ -35,7 +38,13 @@ type Config struct {
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	IsEarlyData: func(c fiber.Ctx) bool {
-		return c.Get(DefaultHeaderName) == DefaultHeaderTrueValue
+		// RFC 8470 §5.1 requires multiple Early-Data instances (separate lines
+		// or comma-folded per RFC 9110 §5.3) to be treated as "1".
+		val, ok := headerlookup.Value(c, DefaultHeaderName)
+		if !ok {
+			return true
+		}
+		return val == DefaultHeaderTrueValue || strings.IndexByte(val, ',') >= 0
 	},
 
 	AllowEarlyData: func(c fiber.Ctx) bool {

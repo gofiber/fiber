@@ -3,6 +3,7 @@ package earlydata
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 const (
@@ -202,4 +204,94 @@ func Test_configDefault_WithConfig(t *testing.T) {
 	c.Request().Header.SetMethod(fiber.MethodGet)
 	require.True(t, cfg.IsEarlyData(c))
 	require.True(t, cfg.AllowEarlyData(c))
+}
+
+func runEarlyDataRaw(app *fiber.App, method string, remoteIP net.IP, headers [][2]string) (int, bool) {
+	var sawEarly bool
+	app.Add([]string{fiber.MethodGet, fiber.MethodPost}, "/", func(c fiber.Ctx) error {
+		sawEarly = IsEarly(c)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	ctx := &fasthttp.RequestCtx{}
+	if app.Config().DisableHeaderNormalizing {
+		ctx.Request.Header.DisableNormalizing()
+	}
+	ctx.SetRemoteAddr(&net.TCPAddr{IP: remoteIP, Port: 1234})
+	ctx.Request.Header.SetMethod(method)
+	ctx.Request.SetRequestURI("/")
+	for _, h := range headers {
+		ctx.Request.Header.Add(h[0], h[1])
+	}
+	app.Handler()(ctx)
+	return ctx.Response.StatusCode(), sawEarly
+}
+
+func Test_EarlyData_MultipleHeaders(t *testing.T) {
+	t.Parallel()
+	trustedIP := net.IPv4(0, 0, 0, 0)
+	untrustedIP := net.IPv4(203, 0, 113, 1)
+
+	tests := []struct {
+		name                     string
+		method                   string
+		remoteIP                 net.IP
+		headers                  [][2]string
+		wantCode                 int
+		disableHeaderNormalizing bool
+		wantEarly                bool
+	}{
+		{
+			name: "duplicate lines 0 then 1 reject POST", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", "0"}, {"Early-Data", "1"}}, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "duplicate lines 0 then 1 reject untrusted GET", method: fiber.MethodGet, remoteIP: untrustedIP,
+			headers: [][2]string{{"Early-Data", "0"}, {"Early-Data", "1"}}, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "duplicate lines 1 then 1 mark trusted GET as early", method: fiber.MethodGet, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", "1"}, {"Early-Data", "1"}}, wantCode: fiber.StatusOK, wantEarly: true,
+		},
+		{
+			name: "duplicate lines empty then 0 reject POST", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", ""}, {"Early-Data", "0"}}, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "mixed-case duplicate lines reject POST with DisableHeaderNormalizing", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"early-data", "0"}, {"Early-Data", "1"}}, disableHeaderNormalizing: true, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "comma-folded 0 and 1 rejects POST", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", "0, 1"}}, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "comma-folded 1 and 1 rejects POST", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", "1, 1"}}, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "single lowercase header rejects POST with DisableHeaderNormalizing", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"early-data", "1"}}, disableHeaderNormalizing: true, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "single lowercase zero is not early with DisableHeaderNormalizing", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"early-data", "0"}}, disableHeaderNormalizing: true, wantCode: fiber.StatusOK,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New(fiber.Config{
+				DisableHeaderNormalizing: tc.disableHeaderNormalizing,
+				TrustProxy:               true,
+				TrustProxyConfig:         fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
+			})
+			app.Use(New())
+
+			status, early := runEarlyDataRaw(app, tc.method, tc.remoteIP, tc.headers)
+			require.Equal(t, tc.wantCode, status)
+			require.Equal(t, tc.wantEarly, early)
+		})
+	}
 }
