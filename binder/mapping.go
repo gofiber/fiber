@@ -539,8 +539,8 @@ func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, file
 var unexportedPointers sync.Map // map[reflect.Type]bool
 
 // behindUnexportedPointer reports whether the struct type t holds a file field under an unexported embedded pointer,
-// through struct values and pointers: schema follows one that is set but cannot allocate it, so a scratch value
-// needs one set for it.
+// through struct values, pointers and slices: schema follows one that is set but cannot allocate it, so a scratch
+// value needs one set for it.
 func behindUnexportedPointer(t reflect.Type) bool {
 	if cached, ok := unexportedPointers.Load(t); ok {
 		if found, isBool := cached.(bool); isBool {
@@ -562,37 +562,57 @@ func reachesUnexportedPointer(t reflect.Type, seen []reflect.Type) bool {
 	return slices.ContainsFunc(headerFields(t), func(i int) bool {
 		f := t.Field(i)
 		ft := f.Type
-		if ft.Kind() == reflect.Pointer {
+		switch ft.Kind() { //nolint:exhaustive // the kinds a key walks through to a struct
+		case reflect.Pointer:
 			if !f.IsExported() {
 				return true
 			}
 			ft = ft.Elem()
+		case reflect.Slice:
+			ft = unwrapType(ft.Elem())
 		}
 		return ft.Kind() == reflect.Struct && reachesUnexportedPointer(ft, seen)
 	})
 }
 
-// allocEmbedded gives scratch a zero pointee of its own for each pointer to a struct dst has set, so that an unexported
-// embedded one is set in scratch too. The files decoded into them reach dst through setFiles, and the defaults the
-// decode sets there go nowhere. seen holds the pointers followed so far, which a cycle in dst leads back to.
+// allocEmbedded gives scratch a zero pointee of its own for each pointer to a struct dst has set, and an element for
+// each element of a slice dst holds there, so that an unexported embedded pointer is set in scratch too. The files
+// decoded into them reach dst through setFiles, and the defaults the decode sets there go nowhere. seen holds the
+// pointers followed so far, which a cycle in dst leads back to.
 func allocEmbedded(scratch, dst reflect.Value, seen []uintptr) {
-	for _, i := range headerFields(dst.Type()) {
-		to, from := scratch.Field(i), dst.Field(i)
-		switch {
-		case from.Kind() == reflect.Struct:
-			allocEmbedded(to, from, seen)
-		case from.Kind() == reflect.Pointer && from.Type() != fileHeaderPtrType && !from.IsNil() &&
-			from.Elem().Kind() == reflect.Struct && !slices.Contains(seen, from.Pointer()):
-			p := reflect.New(from.Type().Elem())
-			if to.CanSet() {
-				to.Set(p)
-			} else {
-				reflect.NewAt(to.Type(), unsafe.Pointer(to.UnsafeAddr())).Elem().Set(p) //nolint:gosec // reflect cannot set the unexported field; scratch is our own value
-			}
-			allocEmbedded(p.Elem(), from.Elem(), append(seen, from.Pointer()))
-		default:
+	switch dst.Kind() { //nolint:exhaustive // the kinds a key walks through to a struct
+	case reflect.Struct:
+		for _, i := range headerFields(dst.Type()) {
+			allocEmbedded(scratch.Field(i), dst.Field(i), seen)
+		}
+	case reflect.Pointer:
+		if dst.Type() == fileHeaderPtrType || dst.IsNil() || dst.Elem().Kind() != reflect.Struct ||
+			slices.Contains(seen, dst.Pointer()) {
+			return
+		}
+		p := reflect.New(dst.Type().Elem())
+		setScratch(scratch, p)
+		allocEmbedded(p.Elem(), dst.Elem(), append(seen, dst.Pointer()))
+	case reflect.Slice:
+		if elem := unwrapType(dst.Type().Elem()); dst.Len() == 0 || elem.Kind() != reflect.Struct ||
+			!behindUnexportedPointer(elem) {
+			return
+		}
+		elems := reflect.MakeSlice(dst.Type(), dst.Len(), dst.Len())
+		setScratch(scratch, elems)
+		for i := range dst.Len() {
+			allocEmbedded(elems.Index(i), dst.Index(i), seen)
 		}
 	}
+}
+
+// setScratch sets v, a part of a scratch value, to x, also where v is an unexported field.
+func setScratch(v, x reflect.Value) {
+	if v.CanSet() {
+		v.Set(x)
+		return
+	}
+	reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem().Set(x) //nolint:gosec // reflect cannot set the unexported field; scratch is our own value
 }
 
 var fileHeaderSliceType = reflect.SliceOf(fileHeaderPtrType)
