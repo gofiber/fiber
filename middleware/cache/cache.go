@@ -1106,7 +1106,8 @@ func New(config ...Config) fiber.Handler {
 		// A cookie personalizes the response for the one client that caused this
 		// miss, and the body is the payload. Stricter than the test above: RFC 9111
 		// §3.5 allows must-revalidate on a cache that re-checks, and this never does.
-		if !allowsSharedCacheStorage(respCacheControl) && responseSetsCookie(&c.Response().Header, respCanonical) {
+		if !allowsSharedCacheStorage(respCacheControl) &&
+			(responseSetsCookie(&c.Response().Header, respCanonical) || personalheader.ResponseMarked(c.RequestCtx())) {
 			markUnreachable()
 			return nil
 		}

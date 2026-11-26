@@ -98,8 +98,7 @@ func (m *sessionManager) setRaw(c fiber.Ctx, key string, raw []byte, exp time.Du
 		// would make this request a writer of the session, whose save then stands in for a
 		// change another request stored while it ran, such as a role taken away. The cookie
 		// expires with the token, so the browser does not keep sending one that is gone.
-		if token, ok := sess.Get(sessionKey).(Token); ok && token.Key == key && compareTokens(raw, token.Raw) &&
-			time.Until(token.Expiration) > exp/2 {
+		if token, ok := sess.Get(sessionKey).(Token); ok && token.Key == key && token.kept(raw, exp) {
 			return token.Expiration
 		}
 		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
@@ -118,6 +117,21 @@ func (m *sessionManager) setRaw(c fiber.Ctx, key string, raw []byte, exp time.Du
 		}
 	}
 	return expires
+}
+
+// keptKey returns the key of the token the session middleware holds when setRaw would leave it as it is, or "".
+func (m *sessionManager) keptKey(c fiber.Ctx, raw []byte, exp time.Duration) string {
+	if sess := m.middleware(c); sess != nil {
+		if token, ok := sess.Get(sessionKey).(Token); ok && token.kept(raw, exp) {
+			return token.Key
+		}
+	}
+	return ""
+}
+
+// kept reports whether setRaw leaves the token as it is: it has more than half its lifetime left.
+func (t *Token) kept(raw []byte, exp time.Duration) bool {
+	return compareTokens(raw, t.Raw) && time.Until(t.Expiration) > exp/2
 }
 
 // delete token from session
