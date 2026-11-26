@@ -354,8 +354,9 @@ func KeepReceivedOrder(h *fasthttp.RequestHeader, raw []byte, match func(name []
 	return true
 }
 
-// OrderValues is KeepReceivedOrder for a net/http header filled from h: each repeated name's values go back in the
-// order raw, the block from Received, holds their lines, and a value raw lacks follows them.
+// OrderValues is KeepReceivedOrder for a net/http header filled from h, and a bridge like it until fasthttp's Del
+// keeps the order: each repeated name's values go back in the order raw, the block from Received, holds their lines,
+// and a value raw lacks follows them.
 func OrderValues(h *fasthttp.RequestHeader, raw []byte, values map[string][]string) {
 	if len(raw) == 0 || inReceivedOrder(h, raw, values) {
 		return
