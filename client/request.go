@@ -1046,7 +1046,7 @@ func (f *File) SetPath(p string) {
 // when the request body is built, when the file is reset or released, or when it is replaced.
 func (f *File) SetReader(r io.ReadCloser) {
 	// == panics on two readers of one dynamic type that cannot be compared.
-	if reflect.ValueOf(r).Comparable() && f.reader == r {
+	if f.reader != nil && reflect.ValueOf(r).Comparable() && f.reader == r {
 		return
 	}
 	f.closeReader()
