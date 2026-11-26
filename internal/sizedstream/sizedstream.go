@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"math"
 	"sync"
 
 	"github.com/valyala/fasthttp"
@@ -20,7 +21,7 @@ const maxPresized = 1 << 20
 type buffer struct {
 	b     []byte
 	limit int
-	size  int // a request's declared length, or -1
+	size  int // the declared length, or -1
 	past  int // bytes held in tail, 0 or 1
 	tail  [1]byte
 }
@@ -54,9 +55,9 @@ func (w *buffer) grow(need int) {
 func (w *buffer) ReadFrom(r io.Reader) (int64, error) {
 	start := len(w.b)
 	for {
-		// Past limit, or at a declared length that fills the buffer, the tail only shows whether the stream runs
-		// longer: growing to see the end would leave a buffer the calibrated body pool drops.
-		probe := len(w.b) == w.limit || (len(w.b) == w.size && len(w.b) == cap(w.b))
+		// Past limit, or with a full buffer at its declared length or with none declared, the tail only shows whether
+		// the stream runs longer: growing to see the end would leave a buffer the calibrated body pool drops.
+		probe := len(w.b) == w.limit || (len(w.b) == cap(w.b) && (w.size < 0 || len(w.b) == w.size))
 		p := w.tail[:]
 		if !probe {
 			w.grow(1)
@@ -100,6 +101,7 @@ func acquire(limit int) *buffer {
 func Read(resp *fasthttp.Response, n int) bool {
 	w := acquire(n)
 	defer buffers.Put(w)
+	w.size = n
 
 	// Sized up front, since growing to it leaves about the body again as garbage. A larger
 	// declared length is not trusted with an allocation.
@@ -123,7 +125,18 @@ func ReadRequest(req *fasthttp.Request, limit int) error {
 	w := acquire(limit)
 	defer buffers.Put(w)
 	w.size = req.Header.ContentLength()
-	if _, err := w.ReadFrom(req.BodyStream()); err != nil {
+	var err error
+	if w.size < 0 && cap(w.b) == 0 {
+		// No length to grow toward and no buffer in hand: io.ReadAll's exactly sized copy costs about twice the
+		// body, where doubling from nothing costs up to four times.
+		w.b, err = io.ReadAll(io.LimitReader(req.BodyStream(), int64(min(limit, math.MaxInt-1))+1))
+		if err == nil && len(w.b) > limit {
+			err = errTooLong
+		}
+	} else {
+		_, err = w.ReadFrom(req.BodyStream())
+	}
+	if err != nil {
 		w.b = nil // it can hold limit bytes; as in Read, fasthttp's calibrated pool decides which sizes stay
 		if errors.Is(err, errTooLong) {
 			return fasthttp.ErrBodyTooLarge
