@@ -209,6 +209,10 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
+		// A token the session keeps is handed out again: a new one would make a reader of the session its writer.
+		if token == "" && cfg.Session != nil {
+			token = sessionManager.keptKey(c, dummyValue, cfg.IdleTimeout)
+		}
 		// Generate CSRF token if not exist
 		if token == "" {
 			// And generate a new token

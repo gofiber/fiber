@@ -12,6 +12,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -99,18 +100,45 @@ func (r *Response) Protocol() string {
 }
 
 // Header returns the value of the specified response header field.
+//
+// Only the header section is read: a trailer field is no header (RFC 9110 Section 6.5.1)
+// and is left to RawResponse.Header.PeekTrailer.
 func (r *Response) Header(key string) string {
-	return string(r.RawResponse.Header.Peek(key))
+	h := &r.RawResponse.Header
+	if !fieldname.HasTrailers(h) {
+		return string(h.Peek(key))
+	}
+	if lines := r.headerLines(key); len(lines) > 0 {
+		return string(lines[0])
+	}
+	return ""
+}
+
+// headerLines reads name's lines off the header section alone, comparing names as PeekAll does:
+// exactly when the header keeps them as received, regardless of case when it normalizes them.
+func (r *Response) headerLines(name string) [][]byte {
+	h := &r.RawResponse.Header
+	exact := h.NormalizingDisabled()
+	var lines [][]byte
+	for k, v := range h.All() {
+		if exact && string(k) == name || !exact && utils.EqualFold(utils.UnsafeString(k), name) {
+			lines = append(lines, v)
+		}
+	}
+	return lines
 }
 
 // Headers returns all headers in the response using an iterator.
 // Use maps.Collect() to gather them into a map if needed.
+// Like Header, it leaves out the fields of the trailer section.
 //
 // The returned values are valid only until the response object is released.
 // Do not store references to returned values; make copies instead.
 func (r *Response) Headers() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
-		peekKeys := r.RawResponse.Header.PeekKeys()
+		h := &r.RawResponse.Header
+		trailers := fieldname.HasTrailers(h)
+		peekKeys := h.PeekKeys()
 
 		// PeekAll reuses the slice PeekKeys returns, so copy the keys out first.
 		// PeekKeys lists a key once per header line; keep the first occurrence only.
@@ -121,16 +149,30 @@ func (r *Response) Headers() iter.Seq2[string, []string] {
 			}
 		}
 
-		for _, key := range keys {
-			vals := r.RawResponse.Header.PeekAll(key)
-			valsStr := make([]string, len(vals))
-			for i, v := range vals {
-				valsStr[i] = utils.UnsafeString(v)
+		// Read before the first yield: draining BodyStream in between can bring in a trailer
+		// section, whose fields PeekAll appends under the same name.
+		vals := make([]string, 0, len(peekKeys))
+		ends := make([]int, len(keys))
+		for i, key := range keys {
+			var lines [][]byte
+			if trailers {
+				lines = r.headerLines(key)
+			} else {
+				lines = h.PeekAll(key)
 			}
+			for _, v := range lines {
+				vals = append(vals, utils.UnsafeString(v))
+			}
+			ends[i] = len(vals)
+		}
 
-			if !yield(key, valsStr) {
+		start := 0
+		for i, key := range keys {
+			// Capped, so appending to one key's values cannot overwrite the next key's.
+			if !yield(key, vals[start:ends[i]:ends[i]]) {
 				return
 			}
+			start = ends[i]
 		}
 	}
 }

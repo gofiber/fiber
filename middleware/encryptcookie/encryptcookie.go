@@ -4,7 +4,11 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/valyala/fasthttp"
+
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/ctxlocal"
+	"github.com/gofiber/fiber/v3/internal/wiretarget"
 )
 
 // New creates a new middleware handler
@@ -12,8 +16,10 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
+	encrypt := func(header *fasthttp.ResponseHeader) error { return encryptResponseCookies(header, &cfg) }
+
 	// Return new handler
-	return func(c fiber.Ctx) error {
+	return func(c fiber.Ctx) (err error) { //nolint:nonamedreturns // the deferred pass joins its error
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -22,27 +28,34 @@ func New(config ...Config) fiber.Handler {
 		// Decrypt request cookies
 		decryptRequestCookies(c, &cfg)
 
+		// For the response OnTimeout writes; an inner instance encrypts first, as on the way back.
+		if outer, ok := c.Locals(wiretarget.TimeoutHeaderKey).(func(*fasthttp.ResponseHeader) error); ok {
+			ctxlocal.Set(c, wiretarget.TimeoutHeaderKey, func(header *fasthttp.ResponseHeader) error {
+				return errors.Join(encrypt(header), outer(header))
+			})
+		} else {
+			ctxlocal.Set(c, wiretarget.TimeoutHeaderKey, encrypt)
+		}
+
+		// Deferred, so the response a recover in front sends after a panic is encrypted too.
+		defer func() {
+			// A handler timeout.New gave up on may still write the response; IsAbandoned orders the read.
+			if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
+				return
+			}
+			if encErr := encrypt(&c.Response().Header); encErr != nil {
+				err = errors.Join(err, encErr)
+			}
+		}()
+
 		// Continue stack
-		err := c.Next()
-
-		// A handler timeout.New gave up on may still write the response; IsAbandoned orders the read.
-		if c.IsAbandoned() && c.RequestCtx().LastTimeoutErrorResponse() != nil {
-			return err
-		}
-
-		if encErr := encryptResponseCookies(c, &cfg); encErr != nil {
-			return errors.Join(err, encErr)
-		}
-
-		return err
+		return c.Next()
 	}
 }
 
 // encryptResponseCookies rewrites each Set-Cookie line on its own: a lookup by name
 // misses a repeated name, and a re-serialize drops what fasthttp cannot parse.
-func encryptResponseCookies(c fiber.Ctx, cfg *Config) error {
-	header := &c.Response().Header
-
+func encryptResponseCookies(header *fasthttp.ResponseHeader, cfg *Config) error {
 	lines := make([]string, 0, 4)
 	for _, line := range header.Cookies() {
 		lines = append(lines, string(line))

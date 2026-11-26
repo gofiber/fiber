@@ -85,7 +85,7 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 
 // bindMultipart parses the request body and returns the result.
 func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
-	multipartForm, err := req.MultipartFormWithLimit(b.MaxBodySize)
+	multipartForm, err := bodystream.MultipartForm(req, b.MaxBodySize)
 	if err != nil {
 		return err
 	}

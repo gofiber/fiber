@@ -94,3 +94,10 @@ func Test_EnvVarHandlerSpecialValue(t *testing.T) {
 	require.False(t, exists)
 	require.Equal(t, fakeBase64, envvarTestVars(t, app, "http://localhost/envvars/export").Vars[testEnvKey])
 }
+
+func Test_ConfigDefaultNilExportVars(t *testing.T) {
+	t.Parallel()
+	cfg := configDefault(Config{})
+	require.NotNil(t, cfg.ExportVars)
+	require.Empty(t, cfg.ExportVars)
+}

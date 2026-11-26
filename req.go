@@ -1328,7 +1328,7 @@ func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 		return nil, ErrUnsupportedMediaType
 	}
 
-	return r.c.fasthttp.MultipartFormWithLimit(r.c.app.config.BodyLimit)
+	return bodystream.MultipartForm(&r.c.fasthttp.Request, r.c.app.config.BodyLimit)
 }
 
 // OriginalURL contains the original request URL.
