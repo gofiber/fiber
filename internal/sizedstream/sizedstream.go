@@ -124,6 +124,7 @@ func ReadRequest(req *fasthttp.Request, limit int) error {
 	defer buffers.Put(w)
 	w.size = req.Header.ContentLength()
 	if _, err := w.ReadFrom(req.BodyStream()); err != nil {
+		w.b = nil // it can hold limit bytes; as in Read, fasthttp's calibrated pool decides which sizes stay
 		if errors.Is(err, errTooLong) {
 			return fasthttp.ErrBodyTooLarge
 		}

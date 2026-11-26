@@ -80,19 +80,22 @@ func Test_Buffer_NoLimit(t *testing.T) {
 	req.SetBodyStream(strings.NewReader("body"), -1)
 
 	require.NoError(t, Buffer(&req, 0))
-	require.True(t, req.IsBodyStream())
+	require.False(t, req.IsBodyStream())
+	require.Equal(t, "body", string(req.Body()))
 }
 
 func Test_Buffer_ReadError(t *testing.T) {
 	t.Parallel()
-	for _, declared := range []int{-1, limit} {
-		var req fasthttp.Request
-		req.SetBodyStream(io.MultiReader(strings.NewReader("partial"), failedReader{err: io.ErrUnexpectedEOF}), declared)
+	for _, max := range []int{limit, 0} {
+		for _, declared := range []int{-1, limit} {
+			var req fasthttp.Request
+			req.SetBodyStream(io.MultiReader(strings.NewReader("partial"), failedReader{err: io.ErrUnexpectedEOF}), declared)
 
-		require.ErrorIs(t, Buffer(&req, limit), io.ErrUnexpectedEOF)
-		require.ErrorIs(t, Buffer(&req, limit), io.ErrUnexpectedEOF)
-		require.ErrorIs(t, Buffer(&req, 0), io.ErrUnexpectedEOF, "whatever the limit")
-		require.Equal(t, declared, req.Header.ContentLength())
+			require.ErrorIs(t, Buffer(&req, max), io.ErrUnexpectedEOF)
+			require.ErrorIs(t, Buffer(&req, max), io.ErrUnexpectedEOF)
+			require.ErrorIs(t, Buffer(&req, limit-max), io.ErrUnexpectedEOF, "whatever the limit")
+			require.Equal(t, declared, req.Header.ContentLength())
+		}
 	}
 }
 

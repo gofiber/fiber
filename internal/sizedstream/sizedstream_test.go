@@ -153,6 +153,18 @@ func Test_Read_CostsNoMoreThanBodyOnceThePoolSettled(t *testing.T) {
 	require.LessOrEqual(t, fewestBytes(large, func() { Read(&resp, len(large)) }), viaBody)
 }
 
+func Test_ReadRequest_FailureLeavesNoBufferInThePool(t *testing.T) {
+	t.Parallel()
+	const limit = 3 << 20
+	var req fasthttp.Request
+	req.SetBodyStream(bytes.NewReader(make([]byte, limit+1)), -1)
+	require.ErrorIs(t, ReadRequest(&req, limit), fasthttp.ErrBodyTooLarge)
+
+	w := acquire(1)
+	defer buffers.Put(w)
+	require.Less(t, cap(w.b), limit)
+}
+
 func Test_ReadFrom_DeclaredLengthDoesNotGrowAFullBuffer(t *testing.T) {
 	t.Parallel()
 	errBroken := errors.New("broken")

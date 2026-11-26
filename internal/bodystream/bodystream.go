@@ -3,6 +3,7 @@ package bodystream
 
 import (
 	"errors"
+	"math"
 	"mime/multipart"
 
 	"github.com/gofiber/fiber/v3/internal/sizedstream"
@@ -25,8 +26,11 @@ func Buffer(req *fasthttp.Request, limit int) error {
 	if failed, ok := stream.(failedReader); ok {
 		return failed.err
 	}
-	if stream == nil || limit <= 0 {
+	if stream == nil {
 		return nil
+	}
+	if limit <= 0 {
+		limit = math.MaxInt
 	}
 
 	// A declared length is read here too: the connection can fail before the stream ends there, and over limit
