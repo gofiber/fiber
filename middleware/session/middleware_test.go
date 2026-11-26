@@ -2674,6 +2674,16 @@ func Test_Session_WritesToTheValuesOfARequestWaitForEachOther(t *testing.T) {
 			old := requestIDs(c).id
 			return func() { assert.NoError(t, sess.Regenerate()) }, func() bool { return requestIDs(c).id != old }
 		},
+		"the mark of a response that holds the session": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			sess := mustGet(t, NewStore(), c)
+			mark := func() {
+				sess.mu.Lock()
+				defer sess.mu.Unlock()
+				sess.markPersonal()
+			}
+			return mark, func() bool { return personalheader.ResponseMarked(c.RequestCtx()) }
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

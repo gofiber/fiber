@@ -470,8 +470,8 @@ func (s *Session) refresh() {
 
 // valuesMu serializes what this package writes to the values of a request from a
 // goroutine that need not be the one serving it: the new ID that Regenerate and Reset
-// cache there, and the entry that ends the request for the session of an unwound
-// middleware. fasthttp appends to those values without a lock, so of two such writes at
+// cache there, the entry that ends the request for the session of an unwound
+// middleware, and the mark of a response that holds the session. fasthttp appends to those values without a lock, so of two such writes at
 // once one is lost, and a session whose entry is lost is never told that its request
 // ended. Two sessions of a request have a lock each for their own writes (reqMu), which
 // is why this one is shared; nothing but those writes is done under it. What the
@@ -783,6 +783,8 @@ func (s *Session) markPersonal() {
 	s.reqMu.Lock()
 	defer s.reqMu.Unlock()
 	if _, resp := s.requestResponse(); resp != nil {
+		valuesMu.Lock()
+		defer valuesMu.Unlock()
 		personalheader.MarkResponse(s.fasthttpCtx())
 	}
 }
