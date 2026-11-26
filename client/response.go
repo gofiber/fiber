@@ -108,10 +108,24 @@ func (r *Response) Header(key string) string {
 	if !fieldname.HasTrailers(h) {
 		return string(h.Peek(key))
 	}
-	if lines := fieldname.Lines(h, key, true); len(lines) > 0 {
+	if lines := r.headerLines(key); len(lines) > 0 {
 		return string(lines[0])
 	}
 	return ""
+}
+
+// headerLines reads name's lines off the header section alone, comparing names as PeekAll does:
+// exactly when the header keeps them as received, regardless of case when it normalizes them.
+func (r *Response) headerLines(name string) [][]byte {
+	h := &r.RawResponse.Header
+	exact := h.NormalizingDisabled()
+	var lines [][]byte
+	for k, v := range h.All() {
+		if exact && string(k) == name || !exact && utils.EqualFold(utils.UnsafeString(k), name) {
+			lines = append(lines, v)
+		}
+	}
+	return lines
 }
 
 // Headers returns all headers in the response using an iterator.
@@ -128,14 +142,11 @@ func (r *Response) Headers() iter.Seq2[string, []string] {
 
 		// PeekAll reuses the slice PeekKeys returns, so copy the keys out first.
 		// PeekKeys lists a key once per header line; keep the first occurrence only.
-		// With trailers Lines matches names case-insensitively, so the keys fold alike.
 		keys := make([]string, 0, len(peekKeys))
 		for _, key := range peekKeys {
-			k := utils.UnsafeString(key)
-			if trailers && fieldname.ContainsFold(keys, k) || !trailers && slices.Contains(keys, k) {
-				continue
+			if k := utils.UnsafeString(key); !slices.Contains(keys, k) {
+				keys = append(keys, k)
 			}
-			keys = append(keys, k)
 		}
 
 		// Read before the first yield: draining BodyStream in between can bring in a trailer
@@ -145,7 +156,7 @@ func (r *Response) Headers() iter.Seq2[string, []string] {
 		for i, key := range keys {
 			var lines [][]byte
 			if trailers {
-				lines = fieldname.Lines(h, key, true)
+				lines = r.headerLines(key)
 			} else {
 				lines = h.PeekAll(key)
 			}

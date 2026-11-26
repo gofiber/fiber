@@ -246,6 +246,7 @@ func Test_Response_Header_TrailerSection(t *testing.T) {
 		require.Equal(t, []string{"two", "appended"}, headers["x-test"])
 	})
 
+	// Without normalizing, names compare as PeekAll compares them, before and after the section arrives.
 	t.Run("names that differ in case", func(t *testing.T) {
 		t.Parallel()
 		const mixed = "HTTP/1.1 200 OK\r\nX-Test: one\r\nx-test: two\r\nTransfer-Encoding: chunked\r\n\r\n" +
@@ -253,17 +254,22 @@ func Test_Response_Header_TrailerSection(t *testing.T) {
 		resp := AcquireResponse()
 		defer ReleaseResponse(resp)
 		resp.RawResponse.Header.DisableNormalizing()
+		resp.RawResponse.StreamBody = true
 		require.NoError(t, resp.RawResponse.Read(bufio.NewReader(strings.NewReader(mixed))))
 
-		var keys []string
-		for k, v := range resp.Headers() {
-			if strings.EqualFold(k, "X-Test") {
-				keys = append(keys, k)
-				require.Equal(t, []string{"one", "two"}, v)
-			}
+		requireApart := func(t *testing.T) {
+			t.Helper()
+			headers := maps.Collect(resp.Headers())
+			require.Equal(t, []string{"one"}, headers["X-Test"])
+			require.Equal(t, []string{"two"}, headers["x-test"])
+			require.Equal(t, "one", resp.Header("X-Test"))
+			require.Equal(t, "two", resp.Header("x-test"))
 		}
-		require.Equal(t, []string{"X-Test"}, keys)
-		require.Equal(t, "one", resp.Header("x-test"))
+		requireApart(t)
+		_, err := io.ReadAll(resp.BodyStream())
+		require.NoError(t, err)
+		require.Equal(t, "three", string(resp.RawResponse.Header.PeekTrailer("X-Test")))
+		requireApart(t)
 	})
 
 	// The section arrives once the stream is drained, and the answers stay the same.
