@@ -533,6 +533,17 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 		require.False(t, sequential.Load(), "a read waited for the one before it")
 	})
 
+	t.Run("in a Storage, a panic reading a lifetime marker reaches the request", func(t *testing.T) {
+		t.Parallel()
+		storage := &hookedStorage{Memory: storagetest.New()}
+		storage.onGet = func(key string) {
+			if strings.HasPrefix(key, refusalMarker+"~") {
+				panic("storage down")
+			}
+		}
+		require.PanicsWithValue(t, "storage down", func() { cacheTestCRecords(&Config{Storage: storage}).mayHold(ctx, c, "base") })
+	})
+
 	t.Run("in a Storage, the lifetime markers are read again within half the marker's lifetime", func(t *testing.T) {
 		t.Parallel()
 		storage := storagetest.New()

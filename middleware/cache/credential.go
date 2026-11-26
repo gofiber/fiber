@@ -389,19 +389,29 @@ func (r *refusalRecords) announced(ctx context.Context, gate *recordGate, marker
 		// is in a lifetime marker read since then, as long as they are read again within half of that.
 		now := uint64(utils.Timestamp())
 		if scanned := gate.scanned.Load(); now < scanned || now-scanned >= recentMarkerLifetime/2 {
-			// At once: one after the other, the request that polls waits a round trip per marker.
-			var lasting atomic.Bool
+			// At once: one after the other, the request that polls waits a round trip per marker. A Storage
+			// that panics does so on the request's goroutine again, as it did before.
+			var reads [len(markerLifetimes)]struct {
+				failure any
+				marked  bool
+			}
 			var wg sync.WaitGroup
 			for i := range markerLifetimes {
 				wg.Go(func() {
-					if r.marked(ctx, gate, lifetimeMarker(marker, i)) {
-						lasting.Store(true)
-					}
+					defer func() { reads[i].failure = recover() }()
+					reads[i].marked = r.marked(ctx, gate, lifetimeMarker(marker, i))
 				})
 			}
 			wg.Wait()
+			lasting := false
+			for _, read := range reads {
+				if read.failure != nil {
+					panic(read.failure)
+				}
+				lasting = lasting || read.marked
+			}
 			// Only once read: a poll meanwhile reads them as well rather than take an older answer.
-			gate.lasting.Store(lasting.Load())
+			gate.lasting.Store(lasting)
 			gate.scanned.Store(now)
 		}
 		open = gate.lasting.Load()
