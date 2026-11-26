@@ -6180,12 +6180,33 @@ func Test_Ctx_SendFile(t *testing.T) {
 
 	t.Run("max age keeps an earlier Cache-Control", func(t *testing.T) {
 		t.Parallel()
-		for _, name := range []string{HeaderCacheControl, "cache-control"} {
-			c := apptest.Ctx(t, New(Config{DisableHeaderNormalizing: name != HeaderCacheControl}))
-			c.Set(name, "private, no-store")
+		// the padding puts an empty line in a spare slot append left zeroed, where it peeks as nil
+		padded := func(h *fasthttp.ResponseHeader, name string, values ...string) {
+			for _, pad := range []string{"X-Pad-1", "X-Pad-2", "X-Pad-3"} {
+				h.Set(pad, "1")
+			}
+			for _, v := range values {
+				h.Add(name, v)
+			}
+		}
+		for _, tc := range []struct {
+			set  func(h *fasthttp.ResponseHeader, name string)
+			name string
+		}{
+			{name: "set", set: func(h *fasthttp.ResponseHeader, name string) { h.Set(name, "private, no-store") }},
+			{name: "split", set: func(h *fasthttp.ResponseHeader, name string) { padded(h, name, "", "private") }},
+			{name: "empty", set: func(h *fasthttp.ResponseHeader, name string) { padded(h, name, "") }},
+			{name: "lower case", set: func(h *fasthttp.ResponseHeader, _ string) {
+				h.SetCanonical([]byte("cache-control"), []byte("private"))
+			}},
+		} {
+			for _, name := range []string{HeaderCacheControl, "cache-control"} {
+				c := apptest.Ctx(t, New(Config{DisableHeaderNormalizing: name != HeaderCacheControl}))
+				tc.set(&c.Response().Header, name)
 
-			require.NoError(t, c.SendFile("ctx.go", SendFile{MaxAge: 100}))
-			require.NotContains(t, c.Response().Header.String(), "max-age", name)
+				require.NoError(t, c.SendFile("ctx.go", SendFile{MaxAge: 100}))
+				require.NotContains(t, c.Response().Header.String(), "max-age", "%s %s", tc.name, name)
+			}
 		}
 	})
 

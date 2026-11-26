@@ -1503,7 +1503,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 		// An error response such as 416 must not be cached under the file's MaxAge,
 		// and a Cache-Control set before the call, a guard's "private" say, is kept.
 		if cacheControlValue != "" && finalStatus < StatusBadRequest &&
-			len(fieldname.First(&response.Header, HeaderCacheControl, !app.config.DisableHeaderNormalizing)) == 0 {
+			!fieldname.Has(&response.Header, HeaderCacheControl) {
 			response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 

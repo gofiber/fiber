@@ -1709,6 +1709,7 @@ func Test_Static_MaxAge_KeepsCacheControl(t *testing.T) {
 	t.Parallel()
 	root := staticTestRoot(t, map[string]string{
 		"logo.txt": "LOGO", "private/report.txt": "REPORT", "split/logo.txt": "LOGO", "empty/logo.txt": "LOGO",
+		"lower/logo.txt": "LOGO",
 	})
 
 	for _, name := range []string{fiber.HeaderCacheControl, "cache-control"} {
@@ -1733,6 +1734,10 @@ func Test_Static_MaxAge_KeepsCacheControl(t *testing.T) {
 			c.Response().Header.Add(name, "private")
 			return c.Next()
 		})
+		app.Use("/lower", func(c fiber.Ctx) error {
+			c.Response().Header.SetCanonical([]byte("cache-control"), []byte("private"))
+			return c.Next()
+		})
 		app.Use(New(root, Config{MaxAge: 3600}))
 
 		resp := apptest.ExpectBody(t, app, "/logo.txt", fiber.StatusOK, "LOGO")
@@ -1746,6 +1751,8 @@ func Test_Static_MaxAge_KeepsCacheControl(t *testing.T) {
 		resp = apptest.ExpectBody(t, app, "/empty/logo.txt", fiber.StatusOK, "LOGO")
 		require.NotContains(t, resp.Header.Values(fiber.HeaderCacheControl), "max-age=3600", name)
 		raw = serveRaw(app.Handler(), fiber.MethodGet, "/empty/logo.txt")
+		require.NotContains(t, string(raw.Header.Header()), "max-age=3600", name)
+		raw = serveRaw(app.Handler(), fiber.MethodGet, "/lower/logo.txt")
 		require.NotContains(t, string(raw.Header.Header()), "max-age=3600", name)
 	}
 }

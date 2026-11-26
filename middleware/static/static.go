@@ -115,12 +115,6 @@ func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
 	return end
 }
 
-// hasCacheControl reports whether h holds a Cache-Control line, an empty one included: a later one may say
-// "private", and fasthttp keeps an empty value in a fresh slot nil, so Peek cannot tell it from none.
-func (s *fileServer) hasCacheControl(h *fasthttp.ResponseHeader) bool {
-	return len(fieldname.Lines(h, fiber.HeaderCacheControl, !s.config.DisableHeaderNormalizing)) > 0
-}
-
 // isPrefix reports whether head is the route prefix, as the router compares it.
 func (s *fileServer) isPrefix(head string) bool {
 	return head == s.prefix || (!s.caseSensitive && utils.EqualFold(head, s.prefix))
@@ -495,7 +489,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 			// An error response such as 416 must not be cached under the file's MaxAge,
 			// and a Cache-Control set ahead, a guard's "private" say, is kept.
 			if cacheControlValue != "" && status >= fiber.StatusOK && status < fiber.StatusBadRequest &&
-				!server.hasCacheControl(&fctx.Response.Header) {
+				!fieldname.Has(&fctx.Response.Header, fiber.HeaderCacheControl) {
 				fctx.Response.Header.Set(fiber.HeaderCacheControl, cacheControlValue)
 			}
 
