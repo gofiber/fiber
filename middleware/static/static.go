@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -49,6 +50,7 @@ var rewritePool = sync.Pool{
 type fileServer struct {
 	fsys          fs.FS
 	handler       fasthttp.RequestHandler
+	key           fileServerKey
 	config        *fiber.Config // the app's, to match the pattern before the wildcard
 	root          string
 	wildcard      string // a trailing wildcard after another parameter, whose value is the rest of the path
@@ -235,6 +237,8 @@ func New(root string, cfg ...Config) fiber.Handler {
 		// servers holds one file server per app and route, since the stripped prefix is the route's.
 		servers   sync.Map
 		serversMu sync.Mutex
+		// first is the server built first, found without the map: most handlers serve one route of one app
+		first atomic.Pointer[fileServer]
 	)
 	cacheControlValue := ""
 	if config.MaxAge > 0 {
@@ -375,6 +379,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 			// every path off a route shares one server: the made-up route's path is the request's
 			key.route = ""
 		}
+		if s := first.Load(); s != nil && s.key == key {
+			return s
+		}
 		if s, ok := servers.Load(key); ok {
 			if server, ok := s.(*fileServer); ok {
 				return server
@@ -393,7 +400,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 		})
 		cfg := c.App().Config()
 		server := newFileServer(route, &cfg)
+		server.key = key
 		servers.Store(key, server)
+		first.CompareAndSwap(nil, server)
 		return server
 	}
 
