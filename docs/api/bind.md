@@ -286,7 +286,7 @@ curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe"
 
 On a form request, `Form` and `Body` also lowercase the case-insensitive parts of the request's own `Content-Type` (the media type and the parameter names, never the `boundary` value), so copy a value you read earlier from `Get(HeaderContentType)` if you need it to outlive the call, see [FormValue](./ctx.md#formvalue). Other body types leave the header untouched.
 
-A multipart form keeps its parts by name, not in the order they were sent, so they are bound in the sorted order of their names: of the names that address one field, such as `role` and `Role`, `user[role]` and `user.role` or two file parts `avatar` and `Avatar`, the one that sorts last wins, on every bind of the form.
+A multipart form keeps its parts by name, not in the order they were sent, so they are bound in the sorted order of their names, and the same part wins on every bind of the form. A name in bracket notation is bound under its dotted key, together with the names that give the same key: of `user.role` and `user[role]`, a field takes the value or file of `user[role]`, the last, and a slice takes those of both. Of the keys that address one field, such as `role` and `Role` or two file parts `avatar` and `Avatar`, the one whose first name sorts last wins, so of `team.name`, `team[Name]` and `team[name]` it is `team[Name]`.
 :::
 
 #### Nested and Array Form Fields

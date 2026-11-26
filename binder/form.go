@@ -98,8 +98,8 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 	files := acquireFileHeaderMap()
 	defer releaseFileHeaderMap(files)
 
-	// The parts come in maps, so they are filed in sorted key order: of the keys
-	// that name one field, the same one wins on every bind.
+	// The parts come in maps, so they are filed in sorted name order: of the names
+	// that address one field, the same one wins on every bind.
 	for _, key := range data.sortNames(maps.Keys(multipartForm.File)) {
 		if err := data.bindFiles(b.Name(), out, files, key, multipartForm.File[key]); err != nil {
 			return err

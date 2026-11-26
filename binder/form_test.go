@@ -198,9 +198,9 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	requireFile(t, user.Avatars[1], "avatar2.txt", "avatar2")
 }
 
-// Test_FormBinder_BindMultipart_KeysOfOneField pins that binds of one multipart form agree when several of its keys
-// name one field: the parts are filed in sorted key order, so the same key wins every time, and a slice of files
-// takes the files of every key.
+// Test_FormBinder_BindMultipart_KeysOfOneField pins that binds of one multipart form agree when several of its names
+// address one field: the parts are filed in sorted name order, so the same one wins every time, and a slice of files
+// takes the files of every name of its key.
 func Test_FormBinder_BindMultipart_KeysOfOneField(t *testing.T) {
 	t.Parallel()
 	type profile struct {
@@ -215,6 +215,9 @@ func Test_FormBinder_BindMultipart_KeysOfOneField(t *testing.T) {
 		Items []struct {
 			Name string `form:"name"`
 		} `form:"items"`
+		Team struct {
+			Name string `form:"name"`
+		} `form:"team"`
 	}
 	req := newMultipartRequestWith(t, func(mw *multipart.Writer) {
 		for _, field := range [][2]string{
@@ -224,6 +227,10 @@ func Test_FormBinder_BindMultipart_KeysOfOneField(t *testing.T) {
 			{"user.role", "admin"},
 			{"items[0][name]", "first"},
 			{"items.00.name", "second"},
+			// team[name] sorts last, but its key team.name is bound where team.name, which sorts first, is.
+			{"team.name", "dot"},
+			{"team[Name]", "upper"},
+			{"team[name]", "bracket"},
 		} {
 			require.NoError(t, mw.WriteField(field[0], field[1]))
 		}
@@ -244,6 +251,7 @@ func Test_FormBinder_BindMultipart_KeysOfOneField(t *testing.T) {
 		require.Equal(t, "member", p.User.Role)
 		require.Len(t, p.Items, 1)
 		require.Equal(t, "first", p.Items[0].Name)
+		require.Equal(t, "upper", p.Team.Name)
 		requireFile(t, p.Avatar, "avatar.txt", "avatar")
 		requireFile(t, p.User.Avatar, "bracket.txt", "bracket")
 		require.Len(t, p.Docs, 2)
