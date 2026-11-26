@@ -50,7 +50,14 @@ func Test_CookieBinder_Bind_ExactName(t *testing.T) {
 	type CookieInner struct {
 		Deep string `cookie:"deep"`
 	}
-	type CookieMid struct{ CookieInner }
+	// Auth is shadowed by the field tagged auth and must not block that field's nested names.
+	type Auth struct {
+		Other string `cookie:"other"`
+	}
+	type CookieMid struct {
+		CookieInner
+		Auth
+	}
 	type session struct {
 		Meta map[string]string `cookie:"meta"`
 		CookieAuth
@@ -61,7 +68,7 @@ func Test_CookieBinder_Bind_ExactName(t *testing.T) {
 		IDs   []string      `cookie:"ids"`
 		Items []CookieInner `cookie:"items"`
 	}
-	host, deep := session{CookieAuth: CookieAuth{Host: "a"}}, session{CookieMid: CookieMid{CookieInner{"a"}}}
+	host, deep := session{CookieAuth: CookieAuth{Host: "a"}}, session{CookieMid: CookieMid{CookieInner: CookieInner{"a"}}}
 	nested, item := session{Auth: CookieInner{"a"}}, session{Items: []CookieInner{{"a"}}}
 	for _, tc := range []struct {
 		name, cookie string

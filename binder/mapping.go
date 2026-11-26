@@ -1027,13 +1027,12 @@ func (c *fieldCache) takesCookie(info *fieldInfo, name string) bool {
 		if _, folded := info.spelling(segment); folded {
 			return false
 		}
-		for _, embed := range info.embeds {
-			if utils.EqualFold(embed, segment) {
-				return false
-			}
-		}
 		i := slices.IndexFunc(info.containers, func(f namedField) bool { return utils.EqualFold(f.name, segment) })
-		if i < 0 || info.containers[i].typ == nil || rest == "" {
+		if i < 0 {
+			// A path through an embedded struct's name is skipped, unless a field of that name shadows the struct.
+			return !slices.ContainsFunc(info.embeds, func(embed string) bool { return utils.EqualFold(embed, segment) })
+		}
+		if info.containers[i].typ == nil || rest == "" {
 			// Past a map field the rest is its key, read as written.
 			return true
 		}
