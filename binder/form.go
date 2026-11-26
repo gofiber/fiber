@@ -191,8 +191,7 @@ func (d *bindData) reset() {
 	if len(d.seen) > 0 {
 		clear(d.seen)
 	}
-	clear(d.few[:d.nFew])
-	d.nFew, d.bound = 0, 0
+	d.bound = 0
 	clear(d.keys)
 	clear(d.pairValues)
 	clear(d.names)

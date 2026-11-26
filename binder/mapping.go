@@ -1437,18 +1437,15 @@ type bindData struct {
 	// last is the last value filed under each key, for a map[string]string
 	// destination
 	last map[string]string
-	// seen is the names a source whose first value wins has filed past the
-	// first len(few), see firstOf
+	// seen is the names a source whose first value wins has filed, once
+	// they are more than firstOf scans
 	seen map[string]struct{}
-	// few is the first names firstOf saw, nFew of them
-	few [8]string
 	// keys and pairValues are the pairs, for a struct destination
 	keys, pairValues []string
 	// names is the sorted keys of a multipart form's files or values
 	names []string
 	// bound is the first 64 exact cookie names bound so far, a bit per index, see cookieNames
 	bound uint64
-	nFew  int
 	mode  bindMode
 }
 
@@ -1574,28 +1571,43 @@ func (d *bindData) split(aliasTag string, out any, key, value string, enableSpli
 	d.add(key, value)
 }
 
-// firstOf reports whether name is new to this bind, and records it. The first names are scanned in few, which costs
-// less than hashing them; past len(few) the map holds them all, so a long list stays linear.
+// maxScannedPairs is how many pairs firstOf scans for a name: past it, seen holds them all, so a long list stays linear.
+const maxScannedPairs = 8
+
+// firstOf reports whether name is new to this bind. Each name taken is filed under itself, so a map destination looks
+// it up and the pairs of a struct are scanned for it.
 func (d *bindData) firstOf(name string) bool {
+	switch d.mode {
+	case bindMap:
+		_, filed := d.values[name]
+		return !filed
+	case bindLast:
+		_, filed := d.last[name]
+		return !filed
+	default:
+	}
 	if len(d.seen) == 0 {
-		if slices.Contains(d.few[:d.nFew], name) {
-			return false
-		}
-		if d.nFew < len(d.few) {
-			d.few[d.nFew] = name
-			d.nFew++
-			return true
+		if len(d.keys) <= maxScannedPairs {
+			return !slices.Contains(d.keys, name)
 		}
 		if d.seen == nil {
-			d.seen = make(map[string]struct{}, 2*len(d.few))
+			d.seen = make(map[string]struct{}, 2*maxScannedPairs)
 		}
-		for _, f := range d.few {
-			d.seen[f] = struct{}{}
+		for _, key := range d.keys {
+			d.seen[key] = struct{}{}
 		}
 	}
 	n := len(d.seen)
 	d.seen[name] = struct{}{}
 	return len(d.seen) > n
+}
+
+// filedNames returns how many names a map destination holds.
+func (d *bindData) filedNames() int {
+	if d.mode == bindLast {
+		return len(d.last)
+	}
+	return len(d.values)
 }
 
 // add appends value to the values of key.

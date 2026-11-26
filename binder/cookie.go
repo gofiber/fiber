@@ -20,6 +20,25 @@ func (b *CookieBinding) Bind(req *fasthttp.Request, out any) error {
 	mode, target := bindTarget(out)
 	data := acquireBindDataMode(mode)
 	defer releaseBindData(data)
+	if mode != bindPairs {
+		// A map files each name once, so it holds fewer names than the cookies only when one repeats: until then no
+		// name is checked.
+		taken := 0
+		for key, val := range req.Header.Cookies() {
+			taken++
+			k, v := utils.UnsafeString(key), utils.UnsafeString(val)
+			if err := data.bind(b.Name(), out, k, v, b.EnableSplitting, false); err != nil {
+				return err
+			}
+		}
+		if taken > data.filedNames() {
+			data.reset()
+			if err := b.bindFirst(req, out, data); err != nil {
+				return err
+			}
+		}
+		return data.parse(b.Name(), out)
+	}
 	names := cookieFieldCache.cookieNames(target)
 
 	for key, val := range req.Header.Cookies() {
@@ -47,6 +66,18 @@ func (b *CookieBinding) Bind(req *fasthttp.Request, out any) error {
 	}
 
 	return data.parse(b.Name(), out)
+}
+
+// bindFirst files the first cookie of each name in data.
+func (b *CookieBinding) bindFirst(req *fasthttp.Request, out any, data *bindData) error {
+	for key, val := range req.Header.Cookies() {
+		if k := utils.UnsafeString(key); data.firstOf(k) {
+			if err := data.bind(b.Name(), out, k, utils.UnsafeString(val), b.EnableSplitting, false); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Reset resets the CookieBinding binder.

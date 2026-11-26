@@ -34,7 +34,15 @@ func Test_CookieBinder_Bind_FirstWins(t *testing.T) {
 	require.NoError(t, b.Bind(req, &all))
 	require.Equal(t, map[string][]string{"tok": {"a"}, "ids": {"1", "2"}}, all)
 
-	// Past the names firstOf scans, the map takes over and keeps the first value as well.
+	var untagged struct {
+		Tok string
+		IDs []string
+	}
+	require.NoError(t, b.Bind(req, &untagged))
+	require.Equal(t, "a", untagged.Tok)
+	require.Equal(t, []string{"1", "2"}, untagged.IDs)
+
+	// Past the pairs firstOf scans, the map takes over and keeps the first value as well.
 	req = acquireRequest(t)
 	req.Header.Set(fasthttp.HeaderCookie, "c1=1; c2=2; c3=3; c4=4; c5=5; c6=6; c7=7; c8=8; c9=9; c2=x; c10=10; c9=y")
 	many := map[string]string{}
@@ -42,6 +50,11 @@ func Test_CookieBinder_Bind_FirstWins(t *testing.T) {
 	require.Equal(t, map[string]string{
 		"c1": "1", "c2": "2", "c3": "3", "c4": "4", "c5": "5", "c6": "6", "c7": "7", "c8": "8", "c9": "9", "c10": "10",
 	}, many)
+
+	var manyFields struct{ C2, C9 []string }
+	require.NoError(t, b.Bind(req, &manyFields))
+	require.Equal(t, []string{"2"}, manyFields.C2)
+	require.Equal(t, []string{"9"}, manyFields.C9)
 }
 
 // Test_CookieBinder_Bind_ExactName pins that a tagged field takes the cookie c.Cookies returns for its tag: a name
