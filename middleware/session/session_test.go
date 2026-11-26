@@ -1984,6 +1984,25 @@ func Test_Session_RegenerateAfterConcurrentEnd(t *testing.T) {
 	}
 }
 
+// A failed store of the rotated session does not undo the rotation: the session has its new ID and its save stores it.
+func Test_Session_RegenerateWhenTheRotatedStoreFails(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	mem := storagetest.New()
+	store := NewStore(Config{Storage: mem})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
+
+	sess := loadSession(t, app, store, id)
+	mem.SetErr(storagetest.OpSet, "*", errors.New("storage unavailable"))
+	require.NoError(t, sess.Regenerate())
+	require.NotEqual(t, id, sess.ID())
+	sessionTestRequireGone(t, store, id)
+
+	mem.SetErr(storagetest.OpSet, "*", nil)
+	require.NoError(t, sess.Save())
+	require.Equal(t, "alice", sessionTestStored(t, store, sess.ID()).Get("user"))
+}
+
 // Another instance sharing the Storage can write the ended ID back before the
 // save, so a login must not land on the old, possibly planted ID.
 func Test_Session_RegenerateAfterConcurrentEnd_OldIDWrittenBack(t *testing.T) {

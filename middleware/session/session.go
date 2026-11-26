@@ -326,7 +326,7 @@ func (s *Session) RegenerateWithContext(ctx context.Context) error {
 	s.refresh()
 
 	if loaded && !s.dropped {
-		err = errors.Join(err, s.storeRotated(ctx))
+		_ = s.storeRotated(ctx) //nolint:errcheck // the rotation stands; the save stores the session again
 	}
 	return err
 }
