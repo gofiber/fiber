@@ -1893,7 +1893,8 @@ func Test_Static_FileSystemAliases(t *testing.T) {
 	}
 }
 
-// Off a route, as in an ErrorHandler, every path shares one file server, which serves the root.
+// Off a route, as in an ErrorHandler for a request no route matched, every path shares one
+// file server, which serves the root.
 func Test_Static_Unrouted_OneFileServer(t *testing.T) {
 	t.Parallel()
 	fsys := &staticTestFS{files: fstest.MapFS{"index.html": {Data: []byte("INDEX")}, "secret.txt": {Data: []byte("SECRET")}}}

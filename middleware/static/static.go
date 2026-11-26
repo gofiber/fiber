@@ -523,8 +523,8 @@ func next(c fiber.Ctx) error {
 }
 
 // isUnrouted reports whether route is the one c.Route() makes up where no route
-// runs, as under adaptor.FiberHandler or in an ErrorHandler; a registered one
-// has at least the handler that asks.
+// runs, as under adaptor.FiberHandler or in an ErrorHandler for a request no route
+// matched; a registered one has at least the handler that asks.
 func isUnrouted(route *fiber.Route) bool {
 	return len(route.Handlers) == 0
 }
