@@ -174,20 +174,21 @@ func unhex(c byte) int {
 // name is refused for every root.
 func hasUnsafeSegment(p []byte) bool {
 	start := 0
-	for i := 0; i <= len(p); i++ {
-		if i < len(p) && p[i] != '/' {
+	for i, c := range p {
+		if c != '/' {
 			continue
 		}
 		if i == start {
-			if start > 0 && i < len(p) {
+			if start > 0 {
 				return true
 			}
-		} else if c := p[i-1]; c == '.' || c == ' ' {
+		} else if last := p[i-1]; last == '.' || last == ' ' {
 			return true
 		}
 		start = i + 1
 	}
-	return false
+	// the last segment, empty after a directory's trailing slash
+	return start < len(p) && (p[len(p)-1] == '.' || p[len(p)-1] == ' ')
 }
 
 // hasDriveLetter reports whether name starts with a Windows drive letter and a colon.
