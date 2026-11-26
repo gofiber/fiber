@@ -31,9 +31,6 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 		return nil // Skip logging if Skip returns true
 	}
 
-	// Alias colors
-	colors := c.App().Config().ColorScheme
-
 	// Get new buffer
 	buf := bytebufferpool.Get()
 
@@ -48,6 +45,8 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 		// holds one — which keeps this path consistent with ${method}.
 		formatErr := ""
 		if cfg.areColorsEnabled {
+			// Read here only: Config() copies the whole app config.
+			colors := c.App().Config().ColorScheme
 			if data.ChainErr != nil {
 				formatErr = colors.Red + " | " + sanitizeLogValue(data.ChainErr.Error()) + colors.Reset
 			}
