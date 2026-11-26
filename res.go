@@ -61,8 +61,8 @@ type SendFile struct {
 	// Optional. Default: 10 * time.Second
 	CacheDuration time.Duration `json:"cache_duration"`
 
-	// The value for the Cache-Control HTTP-header
-	// that is set on the file response. MaxAge is defined in seconds.
+	// The max-age, in seconds, of the Cache-Control HTTP-header that is set
+	// on the file response unless the response already has one.
 	//
 	// Optional. Default: 0
 	MaxAge int `json:"max_age"`
@@ -107,6 +107,20 @@ func (sf *sendFileStore) configEqual(cfg SendFile) bool {
 	return true
 }
 
+// cachedSendFile returns the cached handler store for cfg, if any, and whether
+// cfg may be cached: a config new on every call, such as an fs.Sub result,
+// must not grow the cache past maxSendFileHandlers.
+func (app *App) cachedSendFile(cfg SendFile) (*sendFileStore, bool) {
+	app.sendfilesMutex.RLock()
+	defer app.sendfilesMutex.RUnlock()
+	for _, sf := range app.sendfiles {
+		if sf.configEqual(cfg) {
+			return sf, true
+		}
+	}
+	return nil, len(app.sendfiles) < maxSendFileHandlers
+}
+
 // sameFS reports whether two file systems are the same one. Values of an
 // uncomparable dynamic type (fstest.MapFS) are compared by what they reference.
 func sameFS(a, b fs.FS) bool {
@@ -118,7 +132,8 @@ func sameFS(a, b fs.FS) bool {
 	if va.Type() != vb.Type() {
 		return false
 	}
-	if va.Type().Comparable() {
+	// Ask the values, not the type: == panics on a struct whose interface field holds a map.
+	if va.Comparable() && vb.Comparable() {
 		return a == b
 	}
 
@@ -132,7 +147,8 @@ func sameFS(a, b fs.FS) bool {
 	default:
 		// A func's pointer is its code entry, shared by every closure over the
 		// same body, so two file systems capturing different roots would look
-		// like one. Treat them as distinct rather than serve the wrong root.
+		// like one. Treat them as distinct rather than serve the wrong root. A
+		// struct holding an uncomparable value lands here as well.
 		return false
 	}
 }
@@ -318,9 +334,28 @@ func (r *DefaultRes) ClearCookie(key ...string) {
 		}
 		return
 	}
-	for k := range request.Header.Cookies() {
-		response.Header.DelClientCookieBytes(k)
+	// DelClientCookie scans every response cookie, the expired ones it added
+	// included, so one call per request cookie was quadratic.
+	n := 0
+	for range request.Header.Cookies() {
+		n++
 	}
+	names := make(map[string]struct{}, n)
+	for k := range request.Header.Cookies() {
+		names[utils.UnsafeString(k)] = struct{}{}
+		response.Header.DelCookieBytes(k)
+	}
+	cookie := fasthttp.AcquireCookie()
+	cookie.SetExpire(fasthttp.CookieExpireDelete)
+	for k := range request.Header.Cookies() {
+		if _, ok := names[utils.UnsafeString(k)]; !ok {
+			continue // a repeated name, already expired
+		}
+		delete(names, utils.UnsafeString(k))
+		cookie.SetKeyBytes(k)
+		response.Header.AddBytesV(HeaderSetCookie, cookie.Cookie())
+	}
+	fasthttp.ReleaseCookie(cookie)
 }
 
 // RequestCtx returns *fasthttp.RequestCtx that carries a deadline
@@ -1273,14 +1308,11 @@ func sendFileDrivePath(ctx *fasthttp.RequestCtx) []byte {
 // The Content-Type response HTTP header field is set based on the file's extension.
 // If the file extension is missing or invalid, the Content-Type is detected from the file's format.
 func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
-	// Save the filename, we will need it in the error message if the file isn't found
-	filename := file
-
 	// A control byte is no part of a name a client can ask for. One that
 	// reached fasthttp's URI parser failed it silently, which left the root
 	// path and served the root's index.html instead.
 	if utils.IndexControl(utils.UnsafeBytes(file)) >= 0 {
-		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
+		return ErrNotFound
 	}
 
 	var cfg SendFile
@@ -1296,25 +1328,18 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	var cacheControlValue string
 	// Function values have no safe identity in Go: reflect.Value.Pointer only
 	// identifies their shared code, not captured closure data. Do not retain
-	// handlers for function-backed file systems, since they can never be safely
-	// matched and would otherwise grow the application cache on every request.
-	cacheHandler := cfg.FS == nil || reflect.ValueOf(cfg.FS).Kind() != reflect.Func
+	// handlers for a file system sameFS cannot match to itself, such as a func
+	// or a struct around one, since it would grow the cache on every request.
+	cacheHandler := cfg.FS == nil || sameFS(cfg.FS, cfg.FS)
 
 	app := r.c.app
 	if cacheHandler {
-		app.sendfilesMutex.RLock()
-		for _, sf := range app.sendfiles {
-			if sf.configEqual(cfg) {
-				fsHandler = sf.handler
-				cacheControlValue = sf.cacheControlValue
-				break
-			}
+		var sf *sendFileStore
+		sf, cacheHandler = app.cachedSendFile(cfg)
+		if sf != nil {
+			fsHandler = sf.handler
+			cacheControlValue = sf.cacheControlValue
 		}
-		// A config new on every call, such as an fs.Sub result, must not grow the cache.
-		if fsHandler == nil && len(app.sendfiles) >= maxSendFileHandlers {
-			cacheHandler = false
-		}
-		app.sendfilesMutex.RUnlock()
 	}
 
 	if fsHandler == nil {
@@ -1350,7 +1375,8 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 		maxAge := cfg.MaxAge
 		if maxAge > 0 {
-			sf.cacheControlValue = "public, max-age=" + utils.FormatInt(int64(maxAge))
+			// No "public": it would let a shared cache keep a file sent with a cookie.
+			sf.cacheControlValue = "max-age=" + utils.FormatInt(int64(maxAge))
 		}
 
 		// set vars
@@ -1397,17 +1423,18 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	originalURL := utils.CopyString(r.c.OriginalURL())
 	defer wiretarget.RestoreTarget(r.c.fasthttp, originalURL)
 
-	// The file server reads the request URI, which fasthttp percent-decodes and
-	// splits at "?" and "#" as it parses it, so the name goes in escaped and
-	// comes out of that decode exactly as given: "100%25.txt" is the file of
-	// that name and not "100%.txt", "a?b" is not "a" with a query, and a
-	// "..%2Fsecret.txt" that a route parameter carried into filepath.Join stays
-	// one segment instead of decoding, after the join was cleaned, into a step
-	// out of the caller's directory. SetRequestURIBytes copies the escaped
-	// name, so a pooled buffer holds it only for the call.
+	// The file server reads the request URI's path, which fasthttp percent-decodes
+	// as it is set, so the name goes in escaped and comes out of that decode
+	// exactly as given: "100%25.txt" is the file of that name and not "100%.txt",
+	// "a?b" is not "a" with a query, and a "..%2Fsecret.txt" that a route
+	// parameter carried into filepath.Join stays one segment instead of decoding,
+	// after the join was cleaned, into a step out of the caller's directory. Set
+	// as the request line instead, "public//x://secret.txt" lost "public//x:" to
+	// a scheme and an authority. SetPathBytes copies the escaped name, so a pooled
+	// buffer holds it only for the call.
 	uriBuf := bytebufferpool.Get()
 	uriBuf.B = utils.AppendPathSegmentsEscape(uriBuf.B[:0], file)
-	request.SetRequestURIBytes(uriBuf.B)
+	request.URI().SetPathBytes(uriBuf.B)
 	bytebufferpool.Put(uriBuf)
 
 	// Save status code
@@ -1455,9 +1482,9 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 		fsStatus = StatusNotFound
 	}
 
-	// Check for error
+	// The error carries no name: it is a filesystem path the error handler would send.
 	if status != StatusNotFound && fsStatus == StatusNotFound {
-		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
+		return ErrNotFound
 	}
 
 	// A status set before SendFile replaces the file server's 200; a 206, 304 or 416 describes the body sent.
@@ -1473,8 +1500,10 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
-		// An error response such as 416 must not be cached under the file's MaxAge.
-		if cacheControlValue != "" && finalStatus < StatusBadRequest {
+		// An error response such as 416 must not be cached under the file's MaxAge,
+		// and a Cache-Control set before the call, a guard's "private" say, is kept.
+		if cacheControlValue != "" && finalStatus < StatusBadRequest &&
+			!fieldname.Has(&response.Header, HeaderCacheControl) {
 			response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 

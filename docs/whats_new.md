@@ -914,6 +914,12 @@ resolve to the **request**; use `c.Res().Get()`, `c.Res().GetHeaders()`, `c.Res(
   The unit is case-insensitive (`Bytes=0-4` used to get `416`). `If-Range` was ignored, so a resumed download was
   spliced onto a file that had changed; the range is now served only when the date in `If-Range` is exactly the file's
   `Last-Modified` (and at least two seconds old), and the whole file is sent otherwise.
+- **SendFile() and the static middleware, with `MaxAge`**: The header is now `Cache-Control: max-age=<MaxAge>`, without
+  `public`, and it is set only when the response has no `Cache-Control` yet, so a guard's `private, no-store` is kept.
+  `public` let a shared cache, the [cache](./middleware/cache.md) middleware included, store a file sent with a cookie.
+  For files every client may share, write `public` yourself in `ModifyResponse` or after `SendFile` returns.
+- **SendFile() and Download()**: A file that is not found returns `fiber.ErrNotFound`. The error used to carry the file
+  name, which the default error handler sent to the client along with its directory.
 - **Body()**: A `Content-Encoding` list of more than five codings, `identity` members included, is now answered
   `415 Unsupported Media Type` before anything is decoded, since `BodyLimit` bounds each decoding step but not their
   number. A chain of codings is now undone without replacing the request body, so slices returned by an earlier
@@ -1183,6 +1189,8 @@ Flash messages travel in the `fiber_flash` cookie, so only a client that keeps c
 The default redirect status code has been updated from `302 Found` to `303 See Other` to ensure more consistent behavior across different browsers.
 
 :::
+
+`Redirect().Back()` with a `300`, `301` or `308` status adds `Referer` to `Vary`, since the referer picks the target: a cache that stores the redirect must not send one client's target to another.
 
 ## 🌎 Client package
 
@@ -1725,6 +1733,7 @@ An IPv6 host in `AllowOrigins` is written in the form browsers send in `Origin`,
 - Compression is bypassed for responses that already specify `Content-Encoding`, for range requests or `206` statuses, and when either side sends `Cache-Control: no-transform`.
 - `HEAD` requests still negotiate compression so `Content-Encoding`, `Content-Length`, `ETag`, and `Vary` match a corresponding `GET`, but the body is omitted.
 - `Vary: Accept-Encoding` is merged into responses even when compression is skipped, preventing caches from mixing encoded and unencoded variants.
+- A `text/event-stream` response is not compressed: fasthttp holds a stream's encoder until the stream ends, megabytes for `zstd`, and an event stream ends only once the client is noticed gone.
 - Decoding compressed request bodies now enforces the app `BodyLimit` through fasthttp `WithLimit` helpers, including when the compression middleware is active.
 - Multipart form parsing now enforces the app `BodyLimit` by using fasthttp `MultipartFormWithLimit`.
 
@@ -2280,7 +2289,7 @@ app.Get("*", static.New("./public/index.html"))
 You have to put `*` to the end of the route if you don't define static route with `app.Use`. Under a `/prefix*` or `/prefix+` route such as `/static*`, only `/static` and paths below `/static/` are served; `/static-v2/app.js` or `/staticapp.js` are no longer served. A route whose first parameter is a wildcard strips the text before it (`/assets/*.js` serves `app.js` for `/assets/app.js`). After a named parameter, a directory root takes the file name from the trailing wildcard (`/:lang/*` serves `app.js` for `/en/app.js`, and `//app.js` under `/:lang?/*` is `404`), and on a route with a named parameter but no trailing wildcard it serves nothing.
 :::
 
-The static middleware opens the name the router matched and does not percent-decode it a second time. Escapes the router keeps encoded, such as `%20`, stay encoded in the file name unless `UnescapePath` is enabled, and an escape of an unreserved character left in the routed path, which only a stray `%` can forge, is answered with `404` rather than decoded into a different file, so `/static/%%370rivate/secret.txt` never opens `private/secret.txt`. A path with an empty first segment, such as `//private/secret.txt` on a root mount, is `404` too, since the router keeps it apart from `/private/secret.txt`; [Static](./middleware/static.md) shows how to collapse a doubled slash for clients that send one. On Windows a path segment ending in a dot or a space is `404` as well, since the OS strips both when it opens a file. With `StrictRouting`, which keeps `/x` and `/x/` apart, a directory requested without its trailing slash is redirected to it with `302 Found` and a file requested with one is `404`. With `Browse`, a directory listing links below the routed path rather than the request target; on a route whose prefix holds a parameter, such as `/:lang/*`, the file cache is then off for files and listings alike, and a prefix that holds `%`, `\`, `?`, `#` or a control character is `404`. See [Static](./middleware/static.md).
+The static middleware opens the name the router matched and does not percent-decode it a second time. Escapes the router keeps encoded, such as `%20`, stay encoded in the file name unless `UnescapePath` is enabled, and an escape of an unreserved character left in the routed path, which only a stray `%` can forge, is answered with `404` rather than decoded into a different file, so `/static/%%370rivate/secret.txt` never opens `private/secret.txt`. A path with an empty first segment, such as `//private/secret.txt` on a root mount, is `404` too, since the router keeps it apart from `/private/secret.txt`; [Static](./middleware/static.md) shows how to collapse a doubled slash for clients that send one. A path segment ending in a dot or a space is `404` as well, on every OS, since Windows and FAT volumes strip both when they open a file, and a path holding a character a case-folding filesystem can open as ASCII or leave out (`ſ`, `ı`, `İ`, the Kelvin sign, `ß`, `ẞ`, the ligatures such as `ﬁ`, U+037E, U+1FEF and default ignorables such as the soft hyphen, the zero-width non-joiner and joiner, and the variation selectors of emoji) or a `~` followed by a digit is `404` too, since a case-folding filesystem or an 8.3 short name opens another entry for it. A handler that changes the path before `static` on the same route no longer moves it off the route's prefix: such a path is `404`. With `StrictRouting`, which keeps `/x` and `/x/` apart, a directory requested without its trailing slash is redirected to it with `302 Found` and a file requested with one is `404`. With `Browse`, a directory listing links below the routed path rather than the request target; on a route whose prefix holds a parameter, such as `/:lang/*`, the file cache is then off for files and listings alike, and a prefix that holds `%`, `\`, `?`, `#` or a control character is `404`. See [Static](./middleware/static.md).
 
 An empty root on disk is refused: `New` panics instead of serving the filesystem root, so an unset variable cannot expose every file the process can read; use `"."` for the working directory, and `FS` for an empty root that means the root of that file system. A directory root on disk is confined: a symbolic link that leaves it, and an absolute link even when it points inside, is handled like a missing file. Set `AllowSymlinksOutsideRoot` to follow such links. A file root, and a root given through `FS`, are not confined.
 

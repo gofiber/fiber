@@ -6107,6 +6107,22 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 	require.Contains(t, string(c.Response().Header.Peek(HeaderSetCookie)), "test2=; expires=")
 }
 
+// Each name the request holds is expired once, and a pending cookie of that name is withdrawn.
+func Test_Ctx_ClearCookie_AllNames(t *testing.T) {
+	t.Parallel()
+	c := apptest.Ctx(t, New())
+	c.Request().Header.Set(HeaderCookie, "a=1; b=2; a=3")
+	c.Cookie(&Cookie{Name: "a", Value: "pending"})
+	c.Cookie(&Cookie{Name: "kept", Value: "v"})
+
+	c.ClearCookie()
+	var got []string
+	for _, line := range c.Response().Header.PeekAll(HeaderSetCookie) {
+		got = append(got, strings.SplitN(string(line), ";", 2)[0])
+	}
+	require.ElementsMatch(t, []string{"kept=v", "a=", "b="}, got)
+}
+
 // ctxTestBCtxGoSource returns the content of ctx.go, the file the SendFile and
 // Download tests serve and compare against.
 func ctxTestBCtxGoSource(t *testing.T) []byte {
@@ -6188,7 +6204,7 @@ func Test_Ctx_SendFile(t *testing.T) {
 	}{
 		{name: "simple test case"},
 		{name: "download", config: SendFile{Download: true}, header: HeaderContentDisposition, want: "attachment"},
-		{name: "max age", config: SendFile{MaxAge: 100}, header: HeaderCacheControl, want: "public, max-age=100"},
+		{name: "max age", config: SendFile{MaxAge: 100}, header: HeaderCacheControl, want: "max-age=100"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -6202,6 +6218,38 @@ func Test_Ctx_SendFile(t *testing.T) {
 			require.Equal(t, StatusOK, c.Response().StatusCode())
 		})
 	}
+
+	t.Run("max age keeps an earlier Cache-Control", func(t *testing.T) {
+		t.Parallel()
+		// the padding puts an empty line in a spare slot append left zeroed, where it peeks as nil
+		padded := func(h *fasthttp.ResponseHeader, name string, values ...string) {
+			for _, pad := range []string{"X-Pad-1", "X-Pad-2", "X-Pad-3"} {
+				h.Set(pad, "1")
+			}
+			for _, v := range values {
+				h.Add(name, v)
+			}
+		}
+		for _, tc := range []struct {
+			set  func(h *fasthttp.ResponseHeader, name string)
+			name string
+		}{
+			{name: "set", set: func(h *fasthttp.ResponseHeader, name string) { h.Set(name, "private, no-store") }},
+			{name: "split", set: func(h *fasthttp.ResponseHeader, name string) { padded(h, name, "", "private") }},
+			{name: "empty", set: func(h *fasthttp.ResponseHeader, name string) { padded(h, name, "") }},
+			{name: "lower case", set: func(h *fasthttp.ResponseHeader, _ string) {
+				h.SetCanonical([]byte("cache-control"), []byte("private"))
+			}},
+		} {
+			for _, name := range []string{HeaderCacheControl, "cache-control"} {
+				c := apptest.Ctx(t, New(Config{DisableHeaderNormalizing: name != HeaderCacheControl}))
+				tc.set(&c.Response().Header, name)
+
+				require.NoError(t, c.SendFile("ctx.go", SendFile{MaxAge: 100}))
+				require.NotContains(t, c.Response().Header.String(), "max-age", "%s %s", tc.name, name)
+			}
+		}
+	})
 
 	t.Run("custom error code", func(t *testing.T) {
 		t.Parallel()
@@ -6323,12 +6371,24 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	app := New()
 	app.Get("/", func(c Ctx) error { return c.SendFile("ctx12.go") })
 
-	apptest.ExpectBody(t, app, "/", StatusNotFound, "sendfile: file ctx12.go not found")
+	apptest.ExpectBody(t, app, "/", StatusNotFound, "Not Found")
+}
+
+// An fs.FS name has no leading slash; read as a request line, "public//x://config.yaml"
+// lost "public//x:" to a scheme and an authority and opened config.yaml.
+func Test_Ctx_SendFile_FSNameIsAPath(t *testing.T) {
+	t.Parallel()
+	files := fstest.MapFS{"config.yaml": {Data: []byte("SECRET")}, "public/ok.txt": {Data: []byte("OK")}}
+	app := New()
+	app.Get("/assets/*", func(c Ctx) error { return c.SendFile("public/"+c.Params("*"), SendFile{FS: files}) })
+
+	apptest.ExpectBody(t, app, "/assets/ok.txt", StatusOK, "OK")
+	apptest.ExpectBody(t, app, "/assets//x://config.yaml", StatusNotFound, "Not Found")
 }
 
 // Test_Ctx_SendFile_NameIsLiteral pins that SendFile opens exactly the name it
-// is given, the way os.Open would. The file server reads the request URI,
-// which fasthttp decodes and splits at "?" and "#", so the name is escaped on
+// is given, the way os.Open would. The file server reads the request URI's
+// path, which fasthttp decodes, so the name is escaped on
 // its way in: a "%", "?" or "#" is part of the name, and "100%25.txt" is not
 // "100%.txt".
 func Test_Ctx_SendFile_NameIsLiteral(t *testing.T) {
@@ -6477,7 +6537,7 @@ func Test_Ctx_SendFile_ControlByteIsNotFound(t *testing.T) {
 		})
 		resp := apptest.Do(t, app, "/")
 		require.Equal(t, StatusNotFound, resp.StatusCode, "fs=%v", cfg.FS != nil)
-		require.NotContains(t, apptest.Body(t, resp), "INDEX", "fs=%v", cfg.FS != nil)
+		require.Equal(t, "Not Found", apptest.Body(t, resp), "fs=%v", cfg.FS != nil)
 	}
 }
 
@@ -6880,7 +6940,7 @@ func Test_SendFile_KeepsFileServerAnswer(t *testing.T) {
 				require.Equal(t, strconv.Itoa(tc.wantLength), resp.Header.Get(HeaderContentLength))
 			}
 			require.Equal(t, tc.wantAttachment, resp.Header.Get(HeaderContentDisposition) == "attachment")
-			require.Equal(t, tc.wantCacheHeader, resp.Header.Get(HeaderCacheControl) == "public, max-age=60")
+			require.Equal(t, tc.wantCacheHeader, resp.Header.Get(HeaderCacheControl) == "max-age=60")
 			require.Equal(t, tc.fields[HeaderRange], resp.Header.Get("X-Range"))
 		})
 	}
@@ -9636,6 +9696,18 @@ func Test_Ctx_SendFile_FunctionFSDoesNotGrowHandlerCache(t *testing.T) {
 	require.Empty(t, sendFileCache(app))
 }
 
+func Test_Ctx_SendFile_StructAroundUncomparableFS(t *testing.T) {
+	t.Parallel()
+	app := New()
+	files := struct{ fs.FS }{fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("hello")}}}
+	app.Get("/", func(c Ctx) error { return c.SendFile("hello.txt", SendFile{FS: files}) })
+
+	for range 3 {
+		apptest.ExpectBody(t, app, "/", StatusOK, "hello")
+	}
+	require.Empty(t, sendFileCache(app))
+}
+
 func Test_Ctx_SendFile_FreshConfigPerCallDoesNotGrowHandlerCache(t *testing.T) {
 	t.Parallel()
 	files := fstest.MapFS{"public/hello.txt": &fstest.MapFile{Data: []byte("hello")}}
@@ -9929,6 +10001,8 @@ func Test_SameFS(t *testing.T) {
 	require.False(t, sameFS(mapA, fstest.MapFS{"a": &fstest.MapFile{}}))
 	require.False(t, sameFS(openA, openB))
 	require.False(t, sameFS(openA, openA))
+	wrapped := struct{ fs.FS }{mapA} // a comparable type that == panics on
+	require.False(t, sameFS(wrapped, wrapped))
 }
 
 // perIPConnStub mirrors fasthttp's perIPTLSConn, which wraps an accepted TLS
