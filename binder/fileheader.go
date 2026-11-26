@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"sync/atomic"
 )
 
 var (
@@ -16,18 +17,33 @@ var (
 )
 
 // fileHeaderTypes caches, per destination type, whether it holds a *multipart.FileHeader anywhere.
-var fileHeaderTypes sync.Map // map[reflect.Type]bool
+var fileHeaderTypes sync.Map // map[reflect.Type]*heldType
+
+// fileHeaderSlots answer holdsFileHeader for a type seen before without hashing it, as fieldCache.slots do.
+var fileHeaderSlots [fieldCacheSlots]atomic.Pointer[heldType]
+
+type heldType struct {
+	id   uintptr // typeID of the type
+	held bool
+}
 
 // holdsFileHeader reports whether a value of type t can hold a *multipart.FileHeader.
 func holdsFileHeader(t reflect.Type) bool {
-	if cached, ok := fileHeaderTypes.Load(t); ok {
-		if held, isBool := cached.(bool); isBool {
-			return held
-		}
+	id := typeID(t)
+	slot := &fileHeaderSlots[(id>>4)&(fieldCacheSlots-1)]
+	if h := slot.Load(); h != nil && h.id == id {
+		return h.held
 	}
-	held := containsFileHeader(t, map[reflect.Type]struct{}{})
-	fileHeaderTypes.Store(t, held)
-	return held
+	cached, ok := fileHeaderTypes.Load(t)
+	if !ok {
+		cached, _ = fileHeaderTypes.LoadOrStore(t, &heldType{id: id, held: containsFileHeader(t, map[reflect.Type]struct{}{})})
+	}
+	h, ok := cached.(*heldType)
+	if !ok {
+		return false
+	}
+	slot.Store(h)
+	return h.held
 }
 
 func containsFileHeader(t reflect.Type, seen map[reflect.Type]struct{}) bool {
