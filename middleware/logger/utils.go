@@ -124,6 +124,12 @@ func writeSanitizedString(output Buffer, s string) (int, error) {
 	if idx == -1 {
 		return output.WriteString(s)
 	}
+	return writeEscaped(output, s, idx)
+}
+
+// writeEscaped is the slow path of writeSanitizedString from idx, the first byte to replace; split out so the
+// clean path carries no defer.
+func writeEscaped(output Buffer, s string, idx int) (int, error) {
 	b := bytebufferpool.Get()
 	defer bytebufferpool.Put(b)
 	b.B = append(b.B, s[:idx]...)
