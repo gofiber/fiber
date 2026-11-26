@@ -460,6 +460,7 @@ func New(config ...Config) fiber.Handler {
 		keyBuf = append(keyBuf, '|')
 		generatedAt := len(keyBuf) - start
 		keyBuf = appendGeneratedKey(keyBuf, c, &cfg)
+		authAt := len(keyBuf)
 		if hasAuthorization {
 			// Read at the point of use: the result aliases the header's storage, and
 			// cfg.KeyGenerator is user code that may recycle the slot. Every field
@@ -470,10 +471,12 @@ func New(config ...Config) fiber.Handler {
 			// principals, so a comma would put them in one partition.
 			authLines := fieldname.Lines(&c.Request().Header, fiber.HeaderAuthorization, canonical)
 			keyBuf = append(keyBuf, "|auth="...)
+			authAt = len(keyBuf)
 			keyBuf = appendAuthHash(keyBuf, authLines)
 		}
 
 		both := string(keyBuf)
+		authDigest := both[authAt:] // "" without Authorization
 		baseKey := both[start:]
 		var manifestKey string
 		if !cfg.DisableVaryHeaders {
@@ -579,6 +582,7 @@ func New(config ...Config) fiber.Handler {
 		requestCreds := func() requestCredentials {
 			if !credsKnown {
 				creds, credsKnown = cfg.credentialsOf(c, varyNames, hasAuthorization), true
+				creds.authDigest = authDigest
 			}
 			return creds
 		}

@@ -84,11 +84,12 @@ type credentialScope struct {
 
 // requestCredentials is what the request sends that ties an entry to its credential, found once.
 type requestCredentials struct {
-	authorization bool // an Authorization header, which is in every key
-	keyed         bool // Authorization, or a credential the default key holds
-	selected      bool // a credential header the entry's Vary names or, with a custom key, a declared one
-	apart         bool // keyed, and selected by a header the key does not hold whole: the key's credential may be shared
-	declared      bool // not keyed, and a header declared for a custom key, which may hold any part of it
+	authDigest    string // the digest of the Authorization lines the lookup key holds, so they are hashed once
+	authorization bool   // an Authorization header, which is in every key
+	keyed         bool   // Authorization, or a credential the default key holds
+	selected      bool   // a credential header the entry's Vary names or, with a custom key, a declared one
+	apart         bool   // keyed, and selected by a header the key does not hold whole: the key's credential may be shared
+	declared      bool   // not keyed, and a header declared for a custom key, which may hold any part of it
 }
 
 // credentialsOf finds what the request sends, before the handler can clear it.
@@ -124,7 +125,7 @@ func (creds requestCredentials) second(varyNames []string) (requestCredentials, 
 	switch {
 	case creds.apart:
 		// Not keyed, so appendKey adds the credentials the Vary selects by to the one the key holds.
-		return requestCredentials{authorization: creds.authorization, selected: true}, varyNames, true
+		return requestCredentials{authDigest: creds.authDigest, authorization: creds.authorization, selected: true}, varyNames, true
 	case creds.declared:
 		// Keyed: the custom key alone.
 		return requestCredentials{keyed: true}, nil, true
@@ -331,7 +332,11 @@ func (r *refusalRecords) appendKey(buf []byte, c fiber.Ctx, generated string, va
 		buf = appendDefaultKey(buf, c, &r.family)
 		if creds.authorization {
 			buf = append(buf, "|auth="...)
-			buf = appendAuthHash(buf, fieldname.Lines(&c.Request().Header, fiber.HeaderAuthorization, canonical))
+			if creds.authDigest != "" {
+				buf = append(buf, creds.authDigest...)
+			} else {
+				buf = appendAuthHash(buf, fieldname.Lines(&c.Request().Header, fiber.HeaderAuthorization, canonical))
+			}
 		}
 	} else {
 		buf = append(buf, generated...)
