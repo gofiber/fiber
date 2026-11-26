@@ -384,14 +384,15 @@ func (r *refusalRecords) announced(ctx context.Context, gate *recordGate, marker
 		// is in a lifetime marker read since then, as long as they are read again within half of that.
 		now := uint64(utils.Timestamp())
 		if scanned := gate.scanned.Load(); now < scanned || now-scanned >= recentMarkerLifetime/2 {
-			gate.scanned.Store(now)
 			lasting := false
 			for i := range markerLifetimes {
 				if lasting = r.marked(ctx, gate, lifetimeMarker(marker, i)); lasting {
 					break
 				}
 			}
+			// Only once read: a poll meanwhile reads them as well rather than take an older answer.
 			gate.lasting.Store(lasting)
+			gate.scanned.Store(now)
 		}
 		open = gate.lasting.Load()
 	}

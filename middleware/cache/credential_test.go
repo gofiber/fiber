@@ -486,6 +486,27 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 		require.False(t, other.mayHold(ctx, elsewhere, "base"), "the group of another URL")
 	})
 
+	t.Run("in a Storage, a poll while the lifetime markers are read does not take an older answer", func(t *testing.T) {
+		t.Parallel()
+		var polled atomic.Bool
+		var during bool
+		storage := &hookedStorage{Memory: storagetest.New()}
+		records := cacheTestCRecords(&Config{Storage: storage, Expiration: 5 * time.Hour})
+		records.record(ctx, records.group(c, "base"), "k", 0)
+		delete(storage.Data, refusalMarker)
+		delete(storage.Data, groupMarkers[groupOf("/page")])
+
+		other := cacheTestCRecords(&Config{Storage: storage})
+		storage.onGet = func(key string) {
+			if key == lifetimeMarker(refusalMarker, 0) && polled.CompareAndSwap(false, true) {
+				other.all.seen.Store(0) // the read takes longer than a poll
+				during = other.mayHold(ctx, c, "base")
+			}
+		}
+		require.True(t, other.mayHold(ctx, c, "base"))
+		require.True(t, during)
+	})
+
 	t.Run("in a Storage, the lifetime markers are read again within half the marker's lifetime", func(t *testing.T) {
 		t.Parallel()
 		storage := storagetest.New()
