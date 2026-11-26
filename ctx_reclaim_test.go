@@ -9,7 +9,6 @@ import (
 	"io"
 	"mime/multipart"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -284,11 +283,16 @@ func (r reclaimCloser) Close() error {
 }
 
 // fasthttp never resets a RequestCtx it answered with a timeout response, so the reclaim closes what the request
-// left open, and only once the handler is done. Any other RequestCtx is fasthttp's to reset.
+// left open, and only once the handler is done. Any other RequestCtx is fasthttp's to reset, and one a fasthttp
+// handler gave up on as well is that handler's, which still runs on it.
 func TestDefaultCtx_ScheduleReclaim_ClosesTimedOutRequest(t *testing.T) {
 	t.Parallel()
-	for _, timedOut := range []bool{true, false} {
-		t.Run("timedOut="+strconv.FormatBool(timedOut), func(t *testing.T) {
+	for name, tc := range map[string]struct{ timedOut, handlerGaveUp bool }{
+		"timed out":           {timedOut: true},
+		"not timed out":       {},
+		"handler gave up too": {timedOut: true, handlerGaveUp: true},
+	} {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			app, c := acquireReclaimTestCtx(t)
 
@@ -314,19 +318,26 @@ func TestDefaultCtx_ScheduleReclaim_ClosesTimedOutRequest(t *testing.T) {
 			var closed atomic.Int32
 			c.Locals("closer", reclaimCloser{closed: &closed})
 			require.NoError(t, c.SendStream(reclaimCloser{Reader: strings.NewReader("body"), closed: &closed}))
-			if timedOut {
+			if tc.timedOut {
 				c.RequestCtx().TimeoutErrorWithResponse(&fasthttp.Response{})
 			}
 			untouched := func() bool { return closed.Load() == 0 && onDisk() }
 
 			handlerDone := make(chan struct{})
 			c.ScheduleReclaim(handlerDone, nil)
+			if tc.handlerGaveUp {
+				c.RequestCtx().TimeoutError("busy")
+			}
 			app.ReleaseCtx(c)
 			require.Never(t, func() bool { return !untouched() }, 50*time.Millisecond, 5*time.Millisecond)
 
 			close(handlerDone)
+			if tc.handlerGaveUp {
+				require.Never(t, func() bool { return !untouched() || !c.IsAbandoned() }, 50*time.Millisecond, 5*time.Millisecond)
+				return
+			}
 			ctxExpectReclaimed(t, c, "ctx must be reclaimed")
-			if !timedOut {
+			if !tc.timedOut {
 				require.Never(t, func() bool { return !untouched() }, 50*time.Millisecond, 5*time.Millisecond)
 				return
 			}

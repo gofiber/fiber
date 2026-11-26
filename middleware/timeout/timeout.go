@@ -218,6 +218,11 @@ func handleTimeout(
 		// Another timeout.New of this request answered and fasthttp holds its response,
 		// so only wait for our goroutine too.
 		timeoutErr = fiber.ErrServiceUnavailable
+	case ctx.IsAbandoned() && ctx.RequestCtx().LastTimeoutErrorResponse() != nil:
+		// A fasthttp route handler answered with a timeout response of its own and still runs on the request,
+		// which it leaves to the garbage collector: neither answer over it nor reclaim the context.
+		cancel()
+		return fiber.ErrServiceUnavailable
 	case cfg.OnTimeout == nil:
 		// Build the default timeout response separately from the RequestCtx response.
 		// The timed-out handler can keep running and may have already buffered

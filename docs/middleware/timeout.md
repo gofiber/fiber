@@ -63,6 +63,13 @@ timeout.Config{
   context you abandoned yourself, once you can guarantee that no goroutine
   (including Fiber internals) will touch it anymore.
 
+- A fasthttp route handler behind the middleware that answered with a timeout
+  response of its own (`fasthttp.TimeoutHandler`, `ctx.TimeoutError`) may still
+  run on the request. Whether it gave up before or after the middleware timed
+  out, the middleware neither answers over its response nor closes or resets
+  the request under it: the request and the context are left to the garbage
+  collector, as fasthttp leaves the request.
+
 :::caution
 `timeout.New` wraps your final handler, so register it per route rather than
 with `app.Use`. The handler runs in its own goroutine: if it calls `c.Next()`,

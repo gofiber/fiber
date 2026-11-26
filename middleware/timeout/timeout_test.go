@@ -643,6 +643,35 @@ func Test_Timeout_ClosesWhatTheTimedOutRequestLeftOpen(t *testing.T) {
 	}
 }
 
+// A fasthttp route handler that gave up on the request with a timeout response of its own still runs on it, so a
+// timeout.New that times out after it neither answers over that response nor closes or resets the request under it.
+func Test_Timeout_LeavesRequestToFastHTTPHandlerThatGaveUp(t *testing.T) {
+	t.Parallel()
+	var closed atomic.Bool
+	release, kept := make(chan struct{}), make(chan bool, 1)
+	app := fiber.New()
+	app.Use(New(func(c fiber.Ctx) error {
+		c.Locals("resource", closerFunc(func() { closed.Store(true) }))
+		err := c.Next()
+		<-c.Context().Done()
+		return err
+	}, Config{Timeout: 20 * time.Millisecond}))
+	app.Get("/", fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
+		ctx.TimeoutError("busy")
+		go func() {
+			<-release
+			kept <- ctx.UserValue("resource") != nil
+		}()
+	}))
+
+	resp := apptest.Do(t, app, "/")
+	require.Never(t, closed.Load, 100*time.Millisecond, 5*time.Millisecond, "closed while the handler still runs")
+	close(release)
+	require.True(t, apptest.Recv(t, kept, 5*time.Second), "the values of the request were reset under the handler")
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+	require.Equal(t, "busy", apptest.Body(t, resp))
+}
+
 type neverReturningReader struct{}
 
 func (neverReturningReader) Read(_ []byte) (int, error) { select {} }

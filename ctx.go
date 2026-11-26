@@ -981,9 +981,10 @@ func (c *DefaultCtx) release() {
 // the timeout middleware) and stays nil on the common request path, so requests
 // that are not abandoned pay no additional cost.
 type reclaimLatch struct {
-	releasedCh chan struct{} // closed once the request handler has released the ctx (event b)
-	once       sync.Once     // guards the close-exactly-once of releasedCh
-	owners     atomic.Int32  // reclaimers still waiting; the last one releases the ctx
+	releasedCh chan struct{}      // closed once the request handler has released the ctx (event b)
+	answer     *fasthttp.Response // the timeout response fasthttp held when the reclaim was armed
+	once       sync.Once          // guards the close-exactly-once of releasedCh
+	owners     atomic.Int32       // reclaimers still waiting; the last one releases the ctx
 }
 
 // Abandon marks this context as abandoned. An abandoned context will not be
@@ -1054,7 +1055,7 @@ func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context
 	// reclaimer and only the last one to finish pools the ctx.
 	latch := c.reclaim.Load()
 	if latch == nil {
-		latch = &reclaimLatch{releasedCh: make(chan struct{})}
+		latch = &reclaimLatch{releasedCh: make(chan struct{}), answer: c.fasthttp.LastTimeoutErrorResponse()}
 		if !c.reclaim.CompareAndSwap(nil, latch) {
 			latch = c.reclaim.Load()
 		}
@@ -1071,6 +1072,10 @@ func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context
 		<-latch.releasedCh
 		if latch.owners.Add(-1) == 0 {
 			fctx := c.fasthttp
+			if fctx != nil && fctx.LastTimeoutErrorResponse() != latch.answer {
+				// A fasthttp handler gave up on the request since and still runs on it: leave both to the GC.
+				return
+			}
 			c.isAbandoned.Store(false)
 			c.releaseAbandoned()
 			// After pooling: a value's Close may wait for a goroutine the handler left behind.
