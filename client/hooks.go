@@ -409,12 +409,6 @@ func parserRequestHeader(c *Client, req *Request) error {
 	// follow it to another host. A Cookie header from SetHeader is merged below.
 	req.RawRequest.Header.DelAllCookies()
 
-	// Neither must the headers the previous send took from its client, which may be another one or reset
-	// since; a header the request sets itself under such a key is merged again below.
-	for _, key := range req.clientHeaderKeys {
-		req.RawRequest.Header.DelBytes(key)
-	}
-
 	// Merge headers from the client, clearing each key first so a resend does not accumulate values.
 	keys := req.clientHeaderKeys[:0]
 	for key := range c.header.All() {

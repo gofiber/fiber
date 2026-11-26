@@ -2300,6 +2300,19 @@ func Test_Request_Resend_DropsPreviousClientHeaders(t *testing.T) {
 		require.Equal(t, "Bearer own|", send(t, req, billing, "http://billing.example/"))
 		require.Equal(t, "Bearer own|", send(t, req, partner, "http://partner.example/"))
 	})
+
+	t.Run("a header a request hook sets is kept", func(t *testing.T) {
+		t.Parallel()
+		billing := New().SetDial(server.dial()).SetHeader(fiber.HeaderAuthorization, "Bearer billing")
+		signing := New().SetDial(server.dial()).AddRequestHook(func(_ *Client, r *Request) error {
+			r.RawRequest.Header.Set(fiber.HeaderAuthorization, "Bearer signed")
+			return nil
+		})
+		req := clientTestBRequest(t)
+
+		require.Equal(t, "Bearer billing|", send(t, req, billing, "http://billing.example/"))
+		require.Equal(t, "Bearer signed|", send(t, req, signing, "http://signing.example/"))
+	})
 }
 
 func Test_Client_UppercaseScheme(t *testing.T) {

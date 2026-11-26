@@ -495,6 +495,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 		require.Equal(t, "Bearer first", string(req.RawRequest.Header.Peek("Authorization")))
 		require.Len(t, req.RawRequest.Header.PeekAll("X-Api-Key"), 2)
 
+		req.dropClientHeaders()
 		require.NoError(t, parserRequestHeader(second, req))
 		require.Empty(t, req.RawRequest.Header.Peek("Authorization"))
 		require.Empty(t, req.RawRequest.Header.PeekAll("X-Api-Key"))
@@ -502,6 +503,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 		require.Equal(t, "kept", string(req.RawRequest.Header.Peek("X-Own")))
 		require.Equal(t, "kept", string(req.RawRequest.Header.Peek("X-Raw")))
 
+		req.dropClientHeaders()
 		require.NoError(t, parserRequestHeader(first, req))
 		require.Equal(t, "Bearer first", string(req.RawRequest.Header.Peek("Authorization")))
 		require.Empty(t, req.RawRequest.Header.Peek("X-Second"))
@@ -530,6 +532,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 		require.Equal(t, "internal.example", string(req.RawRequest.Header.Host()))
 
 		client.Reset()
+		req.dropClientHeaders()
 		require.NoError(t, parserRequestHeader(client, req))
 		require.Empty(t, req.RawRequest.Header.Peek("Authorization"))
 		require.Empty(t, req.RawRequest.Header.Host())

@@ -418,6 +418,14 @@ func (r *Request) ResetPathParams() *Request {
 	return r
 }
 
+// dropClientHeaders removes the headers the previous send took from its client, which may be another one or
+// reset since. It runs before the request hooks, so a header a hook sets under such a key is kept.
+func (r *Request) dropClientHeaders() {
+	for _, key := range r.clientHeaderKeys {
+		r.RawRequest.Header.DelBytes(key)
+	}
+}
+
 // SetJSON sets the request body to a JSON-encoded value.
 func (r *Request) SetJSON(v any) *Request {
 	r.body = v

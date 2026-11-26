@@ -305,6 +305,7 @@ func (c *core) preHooks() error {
 	finalHooks := slices.Clone(c.client.finalRequestHooks)
 	c.client.mu.RUnlock()
 
+	c.req.dropClientHeaders()
 	for _, f := range userHooks {
 		if err := f(c.client, c.req); err != nil {
 			return err
