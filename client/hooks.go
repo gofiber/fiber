@@ -157,7 +157,7 @@ var pathParamEndChars = func() [256]bool {
 //
 //nolint:revive // flag-parameter: disablePathNormalizing is the request setting, as in composeRedirectURL
 func substitutePathParams(uri string, disablePathNormalizing bool, sources ...PathParam) (string, error) {
-	if !strings.ContainsRune(uri, ':') {
+	if !strings.ContainsRune(uri, ':') || !slices.ContainsFunc(sources, func(p PathParam) bool { return len(p) > 0 }) {
 		return uri, nil
 	}
 
