@@ -406,16 +406,6 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Ctx.Body answers a coding it cannot undo with a status and text of its own, and the key of a GET
-		// or HEAD does not hold the coding: what such a request leaves is not the URL's response. Every line:
-		// fieldname.First reads an empty first line in a slot fasthttp grew into as no line at all.
-		if (requestMethod == fiber.MethodGet || requestMethod == fiber.MethodHead) &&
-			slices.ContainsFunc(fieldname.Lines(&c.Request().Header, fiber.HeaderContentEncoding, canonical),
-				func(v []byte) bool { return len(v) > 0 }) {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
-			return c.Next()
-		}
-
 		// A key generator may read the body (QUERY), and only a declared length bounds a streamed one;
 		// otherwise the stream is left to the handler. MaxRequestBodySize is BodyLimit, read without copying Config.
 		if req := c.Request(); req.IsBodyStream() {
@@ -430,17 +420,6 @@ func New(config ...Config) fiber.Handler {
 		if errorreplay.Active(c.RequestCtx()) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
-		}
-
-		// A header listed in Connection is for this hop alone, so a forwarding handler such as proxy drops
-		// it (RFC 9110 section 7.6.1) while the key and Vary hold it as sent.
-		if connectionWithholdsHeader(&c.Request().Header, canonical) {
-			if err := c.Next(); err != nil {
-				return err
-			}
-			// Set after the handler: proxy replaces the response headers with the upstream's.
-			c.Set(cfg.CacheHeader, cacheUnreachable)
-			return nil
 		}
 
 		// Get key from request. Assembled in one pooled buffer so the whole key
@@ -925,6 +904,38 @@ func New(config ...Config) fiber.Handler {
 			return lookupErr
 		}
 
+		// manager.release is a no-op for in-memory storage, so no guard.
+		releaseEntry := func() {
+			if e != nil {
+				manager.release(e)
+				e = nil
+			}
+		}
+
+		// The next two gates only guard what the handler leaves: a hit above served what the key selects.
+		// Ctx.Body answers a coding it cannot undo with a status and text of its own, and the key of a GET
+		// or HEAD does not hold the coding: what such a request leaves is not the URL's response. Every line:
+		// fieldname.First reads an empty first line in a slot fasthttp grew into as no line at all.
+		if (requestMethod == fiber.MethodGet || requestMethod == fiber.MethodHead) &&
+			slices.ContainsFunc(fieldname.Lines(&c.Request().Header, fiber.HeaderContentEncoding, canonical),
+				func(v []byte) bool { return len(v) > 0 }) {
+			releaseEntry()
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return c.Next()
+		}
+
+		// A header listed in Connection is for this hop alone, so a forwarding handler such as proxy drops
+		// it (RFC 9110 section 7.6.1) while the key and Vary hold it as sent.
+		if connectionWithholdsHeader(&c.Request().Header, canonical) {
+			releaseEntry()
+			if err := c.Next(); err != nil {
+				return err
+			}
+			// Set after the handler: proxy replaces the response headers with the upstream's.
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return nil
+		}
+
 		entryFound := e != nil || revalidate
 
 		// Read before the handler can clear the credential or rewrite the path.
@@ -990,14 +1001,6 @@ func New(config ...Config) fiber.Handler {
 		dropManifest := func() {
 			if err := manager.del(reqCtx, manifestKey); err != nil {
 				log.Warnf("cache: failed to delete stale vary manifest %q: %v", maskKey(manifestKey), err)
-			}
-		}
-
-		// manager.release is a no-op for in-memory storage, so no guard.
-		releaseEntry := func() {
-			if e != nil {
-				manager.release(e)
-				e = nil
 			}
 		}
 

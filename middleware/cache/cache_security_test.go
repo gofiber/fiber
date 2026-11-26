@@ -2367,7 +2367,17 @@ func Test_Cache_RequestTheHandlerDoesNotSeeAsSentIsNotStored(t *testing.T) {
 	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme", fiber.HeaderConnection, "keep-alive"), cacheMiss, "tenant=acme")
 	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme"), cacheHit, "tenant=acme")
 
-	got := cacheTestCGet(t, app, "/", "X-Tenant", "beta", fiber.HeaderContentEncoding, "compress")
+	// A hit serves what the key selects; a revalidation of such a request leaves the entry as it was.
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme", fiber.HeaderConnection, "X-Tenant"), cacheHit, "tenant=acme")
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme", fiber.HeaderContentEncoding, "compress"), cacheHit, "tenant=acme")
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme", fiber.HeaderConnection, "X-Tenant", fiber.HeaderCacheControl, "no-cache"),
+		cacheUnreachable, "tenant=")
+	got := cacheTestCGet(t, app, "/", "X-Tenant", "acme", fiber.HeaderContentEncoding, "compress", fiber.HeaderCacheControl, "no-cache")
+	require.Equal(t, fiber.StatusNotImplemented, got.status)
+	require.Equal(t, cacheUnreachable, got.cache)
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme"), cacheHit, "tenant=acme")
+
+	got = cacheTestCGet(t, app, "/", "X-Tenant", "beta", fiber.HeaderContentEncoding, "compress")
 	require.Equal(t, fiber.StatusNotImplemented, got.status)
 	require.Equal(t, cacheUnreachable, got.cache)
 	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "beta"), cacheMiss, "tenant=beta")
