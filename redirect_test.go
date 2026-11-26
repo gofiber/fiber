@@ -408,6 +408,7 @@ func Test_Redirect_Back_VaryRefererOnPermanentRedirect(t *testing.T) {
 		cacheControl string
 		status       int
 	}{
+		{status: StatusMultipleChoices, vary: HeaderReferer},
 		{status: StatusMovedPermanently, vary: HeaderReferer},
 		{status: StatusPermanentRedirect, vary: HeaderReferer},
 		{status: StatusFound},
@@ -427,6 +428,13 @@ func Test_Redirect_Back_VaryRefererOnPermanentRedirect(t *testing.T) {
 			require.Equal(t, tc.vary, string(c.Response().Header.Peek(HeaderVary)))
 		})
 	}
+
+	t.Run("no fallback", func(t *testing.T) {
+		t.Parallel()
+		c := apptest.Ctx(t, New())
+		require.ErrorIs(t, c.Redirect().Status(StatusMovedPermanently).Back(), ErrRedirectBackNoFallback)
+		require.Empty(t, c.Response().Header.Peek(HeaderVary))
+	})
 }
 
 // rootMiscBExpectBackTo asks a context for a request to example.com that came from referer to redirect back,

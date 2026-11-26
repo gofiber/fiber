@@ -132,8 +132,8 @@ value like `/\evil.com`, which a browser resolves to `//evil.com`, is not
 mistaken for a local path. A referer that is missing, cross-origin, or
 unparsable falls back to the provided URL. If there is no fallback either,
 `Back` returns `fiber.ErrRedirectBackNoFallback`, an error with status 500.
-With a `301` or `308` status, which a cache may store by default, `Back` adds
-`Referer` to `Vary`, so the cache keys the redirect by the referer it was built from.
+With a `300`, `301` or `308` status, which a cache may store by default, `Back` adds
+`Referer` to `Vary` on the redirect, so the cache keys it by the referer it was built from.
 A `302`, `303` or `307` that you make storable with `Cache-Control` or `Expires`
 gets no `Vary` from `Back`; call `c.Vary(fiber.HeaderReferer)` along with them.
 

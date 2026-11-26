@@ -1185,7 +1185,7 @@ The default redirect status code has been updated from `302 Found` to `303 See O
 
 :::
 
-`Redirect().Back()` with a `301` or `308` status adds `Referer` to `Vary`, since the referer picks the target: a cache that stores the redirect must not send one client's target to another.
+`Redirect().Back()` with a `300`, `301` or `308` status adds `Referer` to `Vary`, since the referer picks the target: a cache that stores the redirect must not send one client's target to another.
 
 ## 🌎 Client package
 
