@@ -640,7 +640,7 @@ func Test_Compress_AcceptEncoding_Negotiation(t *testing.T) {
 		{accept: "gzip;q=0", encoding: ""},
 		{accept: "gzip;foo=bar;q=0.4, br;q=0.2", encoding: "gzip"},
 		{accept: "gzip;foo=bar", encoding: "gzip"},
-		{accept: "gzip;q=bogus", encoding: "gzip"},
+		{accept: "gzip;q=bogus", encoding: ""},
 		{accept: "*;foo=bar", encoding: "br"},
 		{accept: "identity", encoding: ""},
 		{accept: "", encoding: ""},
@@ -774,5 +774,19 @@ func Test_Compress_Cache_Control_No_Transform(t *testing.T) {
 				compressTestExpectEncoding(t, apptest.Do(t, compressTestApp(handler), req, testConfig), tc.wantEncoding)
 			})
 		}
+	}
+}
+
+func Test_Compress_AcceptEncoding_MalformedQValue(t *testing.T) {
+	t.Parallel()
+	compressible := strings.Repeat("compressible ", 500)
+	for _, accept := range []string{"gzip;q=-0", "gzip;q=nan", "gzip;q=inf", "gzip;q=1.5", "gzip;q=+0.5"} {
+		t.Run(accept, func(t *testing.T) {
+			t.Parallel()
+			app := compressTestApp(func(c fiber.Ctx) error { return c.SendString(compressible) })
+			req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeaderIf(fiber.HeaderAcceptEncoding, accept))
+			resp := apptest.Expect(t, app, req, fiber.StatusOK)
+			require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
+		})
 	}
 }
