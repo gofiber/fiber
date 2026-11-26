@@ -440,6 +440,8 @@ func Test_FormCodingAgrees(t *testing.T) {
 		{name: "multipart, gzip", contentType: multipart, lines: "Content-Encoding: GZip\r\n", want: true},
 		{name: "multipart, gzip ahead of an identity line", contentType: multipart, lines: "Content-Encoding: gzip\r\nContent-Encoding: identity\r\n", want: true},
 		{name: "multipart, gzip behind an empty line", contentType: multipart, lines: "Content-Encoding:\r\nContent-Encoding: gzip\r\n"},
+		// An empty line behind other fields, where fasthttp can peek it as nil.
+		{name: "urlencoded, gzip behind an empty line in a later slot", contentType: urlencoded, lines: "A: 1\r\nB: 2\r\nC: 3\r\nContent-Encoding:\r\nContent-Encoding: gzip\r\n"},
 		{name: "multipart, gzip twice", contentType: multipart, lines: "Content-Encoding: gzip\r\nContent-Encoding: gzip\r\n"},
 		{name: "multipart, gzip under a lower-case name", contentType: multipart, lines: "content-encoding: gzip\r\n", asSent: true},
 		{name: "multipart, x-gzip", contentType: multipart, lines: "Content-Encoding: x-gzip\r\n"},

@@ -110,7 +110,8 @@ const MaxContentCodings = 5
 // every coding on every Content-Encoding line, at most MaxContentCodings members counting identity; PostArgs undoes
 // none, MultipartForm only a gzip on the first line.
 func FormCodingAgrees(h *fasthttp.RequestHeader) bool {
-	if !h.NormalizingDisabled() && h.ContentEncoding() == nil {
+	// Counted as in Ctx.Body: an empty line can peek as nil. Bridge until fasthttp keeps empty values non-nil.
+	if !h.NormalizingDisabled() && len(h.PeekAll(fasthttp.HeaderContentEncoding)) == 0 {
 		return true
 	}
 	multipart := len(h.MultipartFormBoundary()) > 0
