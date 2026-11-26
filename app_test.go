@@ -743,6 +743,26 @@ func Test_App_GETOnly_RefusedMethodIsNotReplayed(t *testing.T) {
 	require.Equal(t, []string{MethodGet}, ran)
 }
 
+// The method GETOnly refused must not reach a route when the ErrorHandler restarts routing.
+func Test_App_GETOnly_RestartRoutingSkipsRoutes(t *testing.T) {
+	t.Parallel()
+	ran := make(chan string, 1)
+	app := New(Config{GETOnly: true, ErrorHandler: func(c Ctx, err error) error {
+		c.Path("/error")
+		if restartErr := c.RestartRouting(); restartErr != nil {
+			return restartErr
+		}
+		return DefaultErrorHandler(c, err)
+	}})
+	app.Post("/error", func(c Ctx) error {
+		ran <- c.Method()
+		return nil
+	})
+
+	apptest.ExpectBody(t, app, apptest.Req(MethodPost, "/jobs"), StatusMethodNotAllowed, "Method Not Allowed")
+	require.Empty(t, ran)
+}
+
 // The replay skips a guard registered as a route, and SendStatus keeps a body already written.
 func Test_App_RefusedRequest_ChainBodyIsNotSent(t *testing.T) {
 	t.Parallel()
@@ -896,7 +916,7 @@ func Test_App_RefusedRequest_StreamedAnswer(t *testing.T) {
 	apptest.Recv(t, closed, time.Second, "the local is closed")
 }
 
-// A header the chain sets under a name of the request's trailer section replaces the client's line in the replay too.
+// A refused request with no Use chain and the default ErrorHandler is answered in place, with few allocations.
 // AllocsPerRun panics under t.Parallel, so this test stays sequential.
 func Test_App_RefusedRequest_WithoutChainAnswersInPlace(t *testing.T) {
 	app := New()
@@ -909,6 +929,7 @@ func Test_App_RefusedRequest_WithoutChainAnswersInPlace(t *testing.T) {
 	require.LessOrEqual(t, allocs, 8.0)
 }
 
+// A header the chain sets under a name of the request's trailer section replaces the client's line in the replay too.
 func Test_App_RefusedRequest_DropsTrailers(t *testing.T) {
 	t.Parallel()
 	for name, newApp := range map[string]func(...Config) *App{"default": New, "custom ctx": ctxTestACustomApp} {

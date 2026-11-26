@@ -1938,12 +1938,10 @@ func (app *App) answerRefusedRequest(fctx *fasthttp.RequestCtx, err error) {
 		c.Status(fiberErr.Code)
 	}
 
+	// Route handlers never run for a refused request, also not when the ErrorHandler restarts routing.
+	c.setSkipNonUseRoutes(true)
 	// A method GETOnly refuses is not replayed: a Use handler that ends the chain would carry it out.
 	methodRefused := app.getOnlyRefuses(fctx)
-	if !methodRefused {
-		// Route handlers never run for a refused request, also not when the ErrorHandler restarts routing.
-		c.setSkipNonUseRoutes(true)
-	}
 	// The trailers are dropped as the request handlers drop them, or a header the chain sets is filed with them.
 	if !methodRefused && c.getMethodInt() != -1 && dropTrailers(&fctx.Request) {
 		// What the chain leaves is no response for the URL. The mark stays until the reset, which waits
