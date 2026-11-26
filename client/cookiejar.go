@@ -93,14 +93,53 @@ type CookieJar struct {
 	// If release logic is re-enabled for these entries, iterate as storedCookie
 	// values and call fasthttp.ReleaseCookie(stored.cookie) on the wrapped cookie.
 	hostCookies map[string][]storedCookie
-	seq         uint64
-	mu          sync.Mutex
+	// hostSeq is the seq of the last write per key of hostCookies; keys leave both maps through deleteHostLocked.
+	hostSeq   map[string]uint64
+	lastSweep time.Time // clock reading of the last expiry sweep in ensureHostCapacityLocked
+	seq       uint64
+	mu        sync.Mutex
 }
 
 // nextSeqLocked returns the next write sequence number.
 func (cj *CookieJar) nextSeqLocked() uint64 {
 	cj.seq++
 	return cj.seq
+}
+
+// dropCookieLocked removes the entry under key that a cookie with name and path would replace.
+func (cj *CookieJar) dropCookieLocked(key string, name, path []byte) {
+	cookies := cj.hostCookies[key]
+	c := searchCookieByKeyAndPath(name, path, cookies)
+	if c == nil {
+		return
+	}
+	kept := cookies[:0]
+	for _, v := range cookies {
+		if v.cookie != c {
+			kept = append(kept, v)
+		}
+	}
+	if len(kept) == 0 {
+		cj.deleteHostLocked(key)
+	} else {
+		clearVacated(cookies, kept)
+		cj.hostCookies[key] = kept
+	}
+	fasthttp.ReleaseCookie(c)
+}
+
+// touchHostLocked records seq as the last write under key.
+func (cj *CookieJar) touchHostLocked(key string, seq uint64) {
+	if cj.hostSeq == nil {
+		cj.hostSeq = make(map[string]uint64)
+	}
+	cj.hostSeq[key] = seq
+}
+
+// deleteHostLocked removes a storage key along with its last-write record.
+func (cj *CookieJar) deleteHostLocked(key string) {
+	delete(cj.hostCookies, key)
+	delete(cj.hostSeq, key)
 }
 
 type storedCookie struct {
@@ -125,6 +164,9 @@ type cookieDomainAcceptance struct {
 
 // Get returns all cookies stored for a given URI. If there are no cookies for the
 // provided host, the returned slice will be nil.
+//
+// A host-only cookie is returned without a Domain attribute, so it stays
+// host-only when it is passed back to Set or SetByHost.
 //
 // The CookieJar keeps its own copies of cookies, so it is safe to release the returned
 // cookies after use.
@@ -173,7 +215,7 @@ func (cj *CookieJar) getCookiesByHost(host string) []*fasthttp.Cookie {
 		kept = append(kept, sc)
 	}
 	if len(kept) == 0 {
-		delete(cj.hostCookies, host)
+		cj.deleteHostLocked(host)
 	} else {
 		clearVacated(stored, kept)
 		cj.hostCookies[host] = kept
@@ -197,6 +239,7 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 
 	now := time.Now()
 	var matched []matchedCookie
+	site, siteKnown := "", false // host's registrable domain, looked up for the first parent-domain key
 
 	for domain, cookies := range cj.hostCookies {
 		if len(cookies) == 0 {
@@ -204,6 +247,15 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 		}
 		if !domainMatch(host, domain) {
 			continue
+		}
+		if host != domain {
+			if !siteKnown {
+				site, siteKnown = registrableDomain(host), true
+			}
+			// A public suffix between host and domain makes host a site of its own.
+			if site == "" || !domainMatch(domain, site) {
+				continue
+			}
 		}
 
 		kept := cookies[:0]
@@ -226,10 +278,14 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 			}
 			nc := fasthttp.AcquireCookie()
 			nc.CopyTo(c)
+			if sc.isHostOnly {
+				// fasthttp.Cookie has no host-only flag: a copy keeping Domain would come back through Set for every subdomain.
+				nc.SetDomain("")
+			}
 			matched = append(matched, matchedCookie{cookie: nc, seq: sc.seq})
 		}
 		if len(kept) == 0 {
-			delete(cj.hostCookies, domain)
+			cj.deleteHostLocked(domain)
 		} else {
 			clearVacated(cookies, kept)
 			cj.hostCookies[domain] = kept
@@ -324,9 +380,8 @@ func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fast
 
 	defaultPath := defaultCookiePathFor(requestPath)
 
-	// One clock reading for the whole call, as parseCookiesFromResp already does.
-	// The capacity sweep below runs per cookie, and a fresh time.Now() inside it
-	// bought nothing but a syscall per cookie while cj.mu is held.
+	// One clock reading for the whole call, as parseCookiesFromResp already does:
+	// ensureHostCapacityLocked sweeps a full jar for expired entries once per reading.
 	now := time.Now()
 
 	for _, cookie := range cookies {
@@ -357,9 +412,6 @@ func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fast
 			}
 		}
 
-		cj.ensureHostCapacityLocked(key, now)
-		hostCookies := cj.hostCookies[key]
-
 		// Normalize the path up front so an entry stored through this API is
 		// identified — and ordered — exactly like one parsed from a response.
 		// Storing "" verbatim would make searchCookieByKeyAndPath miss the
@@ -386,7 +438,15 @@ func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fast
 		setDefaultCookiePath(scratch, rawPath)
 		lookupPath := scratch.Path()
 
+		if !cookie.Expire().Equal(fasthttp.CookieExpireUnlimited) && !cookie.Expire().After(now) {
+			cj.dropCookieLocked(key, name, lookupPath)
+			continue
+		}
+		cj.ensureHostCapacityLocked(key, now)
+		hostCookies := cj.hostCookies[key]
+
 		seq := cj.nextSeqLocked()
+		cj.touchHostLocked(key, seq)
 		existing := searchCookieByKeyAndPath(name, lookupPath, hostCookies)
 		if existing == nil {
 			existing = fasthttp.AcquireCookie()
@@ -442,6 +502,9 @@ func (cj *CookieJar) SetKeyValueBytes(host string, key, value []byte) {
 // name twice, so where several stored cookies share a name only the first —
 // the most specific — is written; writing them all would let the least
 // specific overwrite the most specific.
+//
+// A cookie the request already carries, from a Cookie header the caller set, is kept:
+// what the caller wrote wins over what a server, a sibling subdomain included, stored.
 func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 	uri := req.URI()
 	secure := bytes.Equal(uri.Scheme(), httpsScheme)
@@ -460,7 +523,7 @@ func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 		// Linear scan rather than a set: the list is bounded by
 		// maxCookiesPerRequest and is typically a handful, so this stays
 		// allocation-free where a map would cost one alloc per request.
-		if !containsCookieName(writable[:i], cookie.Key()) {
+		if !containsCookieName(writable[:i], cookie.Key()) && !requestHasCookie(req, cookie.Key()) {
 			req.Header.SetCookieBytesKV(cookie.Key(), cookie.Value())
 		}
 	}
@@ -477,6 +540,16 @@ func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 func containsCookieName(cookies []*fasthttp.Cookie, name []byte) bool {
 	for _, c := range cookies {
 		if bytes.Equal(c.Key(), name) {
+			return true
+		}
+	}
+	return false
+}
+
+// requestHasCookie reports whether req carries a cookie named name.
+func requestHasCookie(req *fasthttp.Request, name []byte) bool {
+	for key := range req.Header.Cookies() {
+		if bytes.Equal(key, name) {
 			return true
 		}
 	}
@@ -590,9 +663,16 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 			}
 		}
 
+		// An expired cookie deletes the one it would replace and needs no room in the jar.
+		if !tmp.Expire().Equal(fasthttp.CookieExpireUnlimited) && !tmp.Expire().After(now) {
+			cj.dropCookieLocked(key, tmp.Key(), tmp.Path())
+			fasthttp.ReleaseCookie(tmp)
+			continue
+		}
 		cj.ensureHostCapacityLocked(key, now)
 		cookies := cj.hostCookies[key]
 		seq := cj.nextSeqLocked()
+		cj.touchHostLocked(key, seq)
 		c := searchCookieByKeyAndPath(tmp.Key(), tmp.Path(), cookies)
 		if c == nil {
 			c = fasthttp.AcquireCookie()
@@ -608,24 +688,8 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 		}
 
 		c.CopyTo(tmp)
-		if c.Expire().Equal(fasthttp.CookieExpireUnlimited) || c.Expire().After(now) {
-			cj.hostCookies[key] = cookies
-			cj.enforceHostCookieLimitLocked(key)
-		} else {
-			kept := cookies[:0]
-			for _, v := range cookies {
-				if v.cookie != c {
-					kept = append(kept, v)
-				}
-			}
-			if len(kept) == 0 {
-				delete(cj.hostCookies, key)
-			} else {
-				clearVacated(cookies, kept)
-				cj.hostCookies[key] = kept
-			}
-			fasthttp.ReleaseCookie(c)
-		}
+		cj.hostCookies[key] = cookies
+		cj.enforceHostCookieLimitLocked(key)
 		fasthttp.ReleaseCookie(tmp)
 	}
 }
@@ -667,7 +731,7 @@ func (cj *CookieJar) enforceHostCookieLimitLocked(key string) {
 	}
 
 	if len(kept) == 0 {
-		delete(cj.hostCookies, key)
+		cj.deleteHostLocked(key)
 		return
 	}
 	clearVacated(cookies, kept)
@@ -682,42 +746,51 @@ func clearVacated(original, kept []storedCookie) {
 	clear(original[len(kept):])
 }
 
-// ensureHostCapacityLocked bounds the number of stored hosts by evicting
-// expired entries first and then one remaining host if the jar is still full.
+// ensureHostCapacityLocked evicts expired entries once per clock reading, which no cookie stored since can add
+// to as none is stored expired, and then the host written least recently, so no Set-Cookie line costs a pass over the jar.
 func (cj *CookieJar) ensureHostCapacityLocked(key string, now time.Time) {
 	if _, ok := cj.hostCookies[key]; ok || len(cj.hostCookies) < maxCookieJarHosts {
 		return
 	}
 
-	for host, cookies := range cj.hostCookies {
-		kept := cookies[:0]
-		for _, sc := range cookies {
-			if !sc.cookie.Expire().Equal(fasthttp.CookieExpireUnlimited) && sc.cookie.Expire().Before(now) {
-				fasthttp.ReleaseCookie(sc.cookie)
+	if !now.Equal(cj.lastSweep) {
+		cj.lastSweep = now
+		for host, cookies := range cj.hostCookies {
+			kept := cookies[:0]
+			for _, sc := range cookies {
+				if !sc.cookie.Expire().Equal(fasthttp.CookieExpireUnlimited) && sc.cookie.Expire().Before(now) {
+					fasthttp.ReleaseCookie(sc.cookie)
+					continue
+				}
+				kept = append(kept, sc)
+			}
+			if len(kept) == 0 {
+				cj.deleteHostLocked(host)
 				continue
 			}
-			kept = append(kept, sc)
+			clearVacated(cookies, kept)
+			cj.hostCookies[host] = kept
 		}
-		if len(kept) == 0 {
-			delete(cj.hostCookies, host)
-			if len(cj.hostCookies) < maxCookieJarHosts {
-				return
-			}
-			continue
+		if len(cj.hostCookies) < maxCookieJarHosts {
+			return
 		}
-		clearVacated(cookies, kept)
-		cj.hostCookies[host] = kept
 	}
 
-	var evictHost string
+	// The name only breaks ties between keys without a recorded write, independent of map order.
+	var (
+		evictHost string
+		evictSeq  uint64
+		found     bool
+	)
 	for host := range cj.hostCookies {
-		if evictHost == "" || host < evictHost {
-			evictHost = host
+		seq := cj.hostSeq[host]
+		if !found || seq < evictSeq || (seq == evictSeq && host < evictHost) {
+			evictHost, evictSeq, found = host, seq, true
 		}
 	}
-	if evictHost != "" {
+	if found {
 		releaseStoredCookies(cj.hostCookies[evictHost])
-		delete(cj.hostCookies, evictHost)
+		cj.deleteHostLocked(evictHost)
 	}
 }
 
@@ -740,6 +813,8 @@ func (cj *CookieJar) Release() {
 	//	  }
 	// }
 	cj.hostCookies = nil
+	cj.hostSeq = nil
+	cj.lastSweep = time.Time{}
 }
 
 // searchCookieByKeyAndPath looks up the stored cookie that a newly received
@@ -835,7 +910,21 @@ func acceptCookieDomain(host, domain string) cookieDomainAcceptance {
 		return cookieDomainAcceptance{}
 	}
 
+	// "amazonaws.com" is no public suffix, yet "execute-api.us-east-1.amazonaws.com" below it is one.
+	if site := registrableDomain(host); site == "" || !domainMatch(domain, site) {
+		return cookieDomainAcceptance{}
+	}
+
 	return cookieDomainAcceptance{domain: domain, isOk: true}
+}
+
+// registrableDomain returns host's public suffix plus one label, or "" when host is a public suffix itself.
+func registrableDomain(host string) string {
+	site, err := publicsuffix.EffectiveTLDPlusOne(host)
+	if err != nil {
+		return ""
+	}
+	return site
 }
 
 func isIPLiteral(host string) bool {

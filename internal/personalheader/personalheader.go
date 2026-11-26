@@ -81,6 +81,26 @@ func Mark(rctx *fasthttp.RequestCtx, names *Names) {
 	}
 }
 
+// responseKey is the request value MarkResponse sets.
+type responseKey struct{}
+
+// MarkResponse records that the response to the request of rctx is for the client that sent
+// it as a whole, as one that sets a cookie is, although it may set none.
+func MarkResponse(rctx *fasthttp.RequestCtx) {
+	if rctx != nil {
+		rctx.SetUserValue(responseKey{}, true)
+	}
+}
+
+// ResponseMarked reports whether MarkResponse was called for the request of rctx.
+func ResponseMarked(rctx *fasthttp.RequestCtx) bool {
+	if rctx == nil {
+		return false
+	}
+	marked, ok := rctx.UserValue(responseKey{}).(bool)
+	return ok && marked
+}
+
 // Marked returns the names that were marked for the request of rctx, or nil.
 func Marked(rctx *fasthttp.RequestCtx) *Names {
 	if rctx == nil {

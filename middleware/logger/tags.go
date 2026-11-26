@@ -10,7 +10,9 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/hostname"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
+	"github.com/gofiber/utils/v2"
 )
 
 // Logger variables
@@ -100,7 +102,10 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			}
 			return writeSanitizedString(output, c.Get(fiber.HeaderReferer))
 		},
-		TagProtocol: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagProtocol: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			if data.timeoutResp != nil {
+				return output.Write(data.req.protocol)
+			}
 			return output.WriteString(c.Protocol())
 		},
 		TagScheme: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
@@ -146,12 +151,19 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			if proxyHeadersInUse(c, data) {
 				return 0, nil
 			}
+			if data.timeoutResp != nil {
+				host, _ := hostname.SplitPort(utils.TrimSpace(utils.UnsafeString(data.req.host)))
+				return writeSanitizedString(output, host)
+			}
 			return writeSanitizedString(output, c.Hostname())
 		},
-		TagPath: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return writeSanitizedString(output, c.Path())
+		TagPath: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			return writeSanitizedString(output, requestPath(c, data))
 		},
-		TagURL: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagURL: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			if data.timeoutResp != nil {
+				return writeSanitizedString(output, utils.UnsafeString(data.req.url))
+			}
 			return writeSanitizedString(output, c.OriginalURL())
 		},
 		TagUA: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
@@ -180,13 +192,20 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			}
 			return writeSanitized(output, body)
 		},
-		TagBytesReceived: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagBytesReceived: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			return appendInt(output, c.Req().ContentLength())
 		},
 		TagBytesSent: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
 			return appendInt(output, response(c, data).Header.ContentLength())
 		},
-		TagRoute: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+		TagRoute: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			// A timed-out handler's c.Next may still be setting it.
+			if data.timeoutResp != nil {
+				return 0, nil
+			}
 			// Normally the registered pattern, but Ctx.Route falls back to a
 			// synthetic route carrying the raw request path when no route
 			// matched, so this can be request-derived too.
@@ -300,7 +319,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			}
 			switch v := c.Locals(extraParam).(type) {
 			case []byte:
-				return writeSanitized(output, v)
+				return writeSanitizedString(output, utils.UnsafeString(v))
 			case string:
 				return writeSanitizedString(output, v)
 			case nil:
@@ -322,8 +341,8 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			}
 			return appendInt(output, status)
 		},
-		TagMethod: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			method := c.Method()
+		TagMethod: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+			method := requestMethod(c, data)
 			if cfg.areColorsEnabled {
 				colors := c.App().Config().ColorScheme
 				return writeColored(output, methodColor(method, &colors), method, colors.Reset)
@@ -368,6 +387,22 @@ func response(c fiber.Ctx, data *Data) *fasthttp.Response {
 		return data.timeoutResp
 	}
 	return c.Response()
+}
+
+// requestMethod is c.Method, or what it was before the handler of a timed-out request could override it.
+func requestMethod(c fiber.Ctx, data *Data) string {
+	if data.timeoutResp != nil {
+		return data.req.method
+	}
+	return c.Method()
+}
+
+// requestPath is c.Path, or what it was before the handler of a timed-out request could override it.
+func requestPath(c fiber.Ctx, data *Data) string {
+	if data.timeoutResp != nil {
+		return utils.UnsafeString(data.req.path)
+	}
+	return c.Path()
 }
 
 // proxyHeadersInUse reports whether IP, Host and Scheme would read the headers of a request

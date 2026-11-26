@@ -237,14 +237,22 @@ The jar follows RFC 6265 for storage and retrieval:
 - Cookies are identified by the triple (name, domain, path), so the same name
   can be stored at several paths at once. When more than one applies to a
   request, the one with the longest path wins.
+- A `Domain=` attribute is honored only inside the registrable domain of the
+  host that answered (its public suffix plus one label), and a `Domain=` cookie
+  is sent only to hosts of that registrable domain. `execute-api.us-east-1.amazonaws.com`
+  is a public suffix and `amazonaws.com` above it is not, so a host below the
+  suffix cannot set a cookie for `amazonaws.com`, and a cookie that
+  `amazonaws.com` sets for itself is not sent to such a host.
 - Storage is bounded: at most 1024 storage keys, and at most 64 cookies per
   key. A host-only cookie and a `Domain=` cookie are stored under different
   keys, so a single host can occupy more than one. When a key is full the jar
   drops expired entries first, then the least recently written — a session
   cookie the server re-sends on each response is not evicted by a flood of
-  one-off cookies. A single request carries at most 64 cookies, the most
-  specific first, so a host cannot inflate the `Cookie` header by spreading
-  cookies across the `Domain=` keys of its parent labels.
+  one-off cookies. When the jar is out of keys it drops expired entries first,
+  then the key least recently written, with all of its cookies. A single
+  request carries at most 64 cookies, the most specific first, so a host cannot
+  inflate the `Cookie` header by spreading cookies across the `Domain=` keys of
+  its parent labels.
 - Cookies are attached once per request, before any redirect is followed, so a
   redirect chain carries the cookies selected for the original URL. A hop to an
   unrelated host drops them, but a hop to a subdomain keeps them — matching
@@ -322,7 +330,7 @@ func main() {
 <summary>Click here to see the result</summary>
 
 ```plaintext
-[john=doe; domain=httpbin.org; path=/]
+[john=doe; path=/]
 ```
 
 </details>

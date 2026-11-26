@@ -2,6 +2,7 @@ package bodystream
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"math"
 	"mime/multipart"
@@ -31,7 +32,7 @@ func Test_Buffer_WithinLimit(t *testing.T) {
 			req.SetBodyStream(strings.NewReader(strings.Repeat("a", size)), declared)
 
 			require.NoError(t, Buffer(&req, limit))
-			require.Equal(t, declared >= 0, req.IsBodyStream(), "a declared length is left to fasthttp")
+			require.False(t, req.IsBodyStream())
 			require.Equal(t, strings.Repeat("a", size), string(req.Body()))
 			require.Equal(t, declared, req.Header.ContentLength())
 		}
@@ -79,17 +80,23 @@ func Test_Buffer_NoLimit(t *testing.T) {
 	req.SetBodyStream(strings.NewReader("body"), -1)
 
 	require.NoError(t, Buffer(&req, 0))
-	require.True(t, req.IsBodyStream())
+	require.False(t, req.IsBodyStream())
+	require.Equal(t, "body", string(req.Body()))
 }
 
 func Test_Buffer_ReadError(t *testing.T) {
 	t.Parallel()
-	var req fasthttp.Request
-	req.SetBodyStream(io.MultiReader(strings.NewReader("partial"), failedReader{err: io.ErrUnexpectedEOF}), -1)
+	for _, max := range []int{limit, 0} {
+		for _, declared := range []int{-1, limit} {
+			var req fasthttp.Request
+			req.SetBodyStream(io.MultiReader(strings.NewReader("partial"), failedReader{err: io.ErrUnexpectedEOF}), declared)
 
-	require.ErrorIs(t, Buffer(&req, limit), io.ErrUnexpectedEOF)
-	require.ErrorIs(t, Buffer(&req, limit), io.ErrUnexpectedEOF)
-	require.Equal(t, -1, req.Header.ContentLength())
+			require.ErrorIs(t, Buffer(&req, max), io.ErrUnexpectedEOF)
+			require.ErrorIs(t, Buffer(&req, max), io.ErrUnexpectedEOF)
+			require.ErrorIs(t, Buffer(&req, limit-max), io.ErrUnexpectedEOF, "whatever the limit")
+			require.Equal(t, declared, req.Header.ContentLength())
+		}
+	}
 }
 
 func Test_Buffer_KeepsParsedMultipartForm(t *testing.T) {
@@ -122,4 +129,75 @@ func Test_Buffer_MaxIntLimit(t *testing.T) {
 	require.NoError(t, Buffer(&req, math.MaxInt))
 	require.False(t, req.IsBodyStream())
 	require.Equal(t, "hello", string(req.Body()))
+}
+
+func Test_MultipartForm_FailureIsFinal(t *testing.T) {
+	t.Parallel()
+	// The multipart and gzip readers take 4096 bytes at a time: a failed parse of a longer body stops inside it.
+	const formLimit = 8 * limit
+	form := "--X\r\nContent-Disposition: form-data; name=\"role\"\r\n\r\nadmin\r\n--X--\r\n"
+	for _, tc := range []struct {
+		name, body, encoding string
+		tooLarge             bool
+	}{
+		{name: "over the limit", body: "--X\r\nContent-Disposition: form-data; name=\"pad\"\r\n\r\n" + strings.Repeat("x", formLimit) + "\r\n" + form, tooLarge: true},
+		{name: "malformed, within the limit", body: "--X\r\nno colon\r\n\r\n" + strings.Repeat("\r\n", 3000) + form},
+		{name: "bad gzip", body: strings.Repeat("\r\n", 3000) + form, encoding: "gzip"},
+	} {
+		for _, declared := range []int{-1, len(tc.body)} {
+			var req fasthttp.Request
+			req.Header.SetContentType("multipart/form-data; boundary=X")
+			req.Header.SetContentEncoding(tc.encoding)
+			req.SetBodyStream(strings.NewReader(tc.body), declared)
+
+			_, first := MultipartForm(&req, formLimit)
+			require.Error(t, first, tc.name)
+			require.Equal(t, tc.tooLarge, errors.Is(first, fasthttp.ErrBodyTooLarge), tc.name)
+			_, second := MultipartForm(&req, formLimit)
+			require.Equal(t, first, second, "what follows is not taken for the form")
+			require.Equal(t, first, Buffer(&req, formLimit), "nor for the body")
+			require.Equal(t, first, Buffer(&req, 0))
+			require.Equal(t, declared, req.Header.ContentLength())
+		}
+	}
+}
+
+func Test_MultipartForm_UnreadStreamStaysReadable(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ contentType, encoding string }{
+		{contentType: "text/plain"},
+		{contentType: "multipart/form-data"},
+		{contentType: "multipart/form-data; boundary=X", encoding: "br"},
+	} {
+		var req fasthttp.Request
+		req.Header.SetContentType(tc.contentType)
+		req.Header.SetContentEncoding(tc.encoding)
+		req.SetBodyStream(strings.NewReader("body"), -1)
+
+		_, err := MultipartForm(&req, limit)
+		require.Error(t, err)
+		require.NoError(t, Buffer(&req, limit))
+		require.Equal(t, "body", string(req.Body()))
+	}
+}
+
+func Test_MultipartForm_Parsed(t *testing.T) {
+	t.Parallel()
+	const body = "--X\r\nContent-Disposition: form-data; name=\"role\"\r\n\r\nadmin\r\n--X--\r\n"
+	for _, streamed := range []bool{true, false} {
+		var req fasthttp.Request
+		req.Header.SetContentType("multipart/form-data; boundary=X")
+		if streamed {
+			req.SetBodyStream(strings.NewReader(body), -1)
+		} else {
+			req.SetBodyString(body)
+		}
+
+		form, err := MultipartForm(&req, limit)
+		require.NoError(t, err)
+		require.Equal(t, []string{"admin"}, form.Value["role"])
+		again, err := MultipartForm(&req, limit)
+		require.NoError(t, err)
+		require.Same(t, form, again)
+	}
 }

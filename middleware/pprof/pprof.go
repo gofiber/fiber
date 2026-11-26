@@ -1,6 +1,7 @@
 package pprof
 
 import (
+	"errors"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
@@ -8,10 +9,12 @@ import (
 	"strings"
 
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/appconfig"
+	"github.com/gofiber/fiber/v3/internal/bodystream"
 )
 
 // profileNameKey carries the name of a registered profile to pprofCustom.
@@ -64,6 +67,9 @@ func New(config ...Config) fiber.Handler {
 		if path != "" && path[0] != '/' {
 			return c.Next()
 		}
+		if err := bufferBodyStream(c); err != nil {
+			return err
+		}
 		// Switch on trimmed path against constant strings
 		switch path {
 		case "/":
@@ -113,4 +119,19 @@ func New(config ...Config) fiber.Handler {
 		}
 		return nil
 	}
+}
+
+// bufferBodyStream holds a streamed body to BodyLimit, since fasthttpadaptor reads it whole into the http.Request.
+func bufferBodyStream(c fiber.Ctx) error {
+	err := bodystream.Buffer(c.Request(), c.App().Server().MaxRequestBodySize)
+	var fe *fiber.Error
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, fasthttp.ErrBodyTooLarge):
+		return fiber.ErrRequestEntityTooLarge
+	case errors.As(err, &fe):
+		return fe
+	}
+	return fiber.ErrBadRequest
 }

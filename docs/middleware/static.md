@@ -118,6 +118,37 @@ curl http://localhost:3000/files/index.html
 
 </details>
 
+### Serving pre-compressed files
+
+```go
+app := fiber.New(fiber.Config{
+    CompressedFileSuffixes: map[string]string{
+        "gzip": ".gz",
+        "br":   ".br",
+        "zstd": ".zst",
+    },
+})
+
+app.Get("/assets*", static.New("./dist", static.Config{
+    Compress: true,
+}))
+```
+
+With `Compress`, a file that has a compressed copy next to it under the suffix of the requested encoding, such as `app.js.gz` for `app.js`, is served from that copy instead of being compressed again. Only a missing copy is compressed and written next to the file.
+
+- The suffixes are set on the app with `CompressedFileSuffixes`, not on the middleware. Set `gzip`, `br` and `zstd`, each to a different suffix: with one missing, the whole map is ignored, and copies are read and written under `.fasthttp.gz`, `.fasthttp.br` and `.fasthttp.zst`.
+- A copy whose original was modified a second or more after it counts as stale and is overwritten with a new one, so compress the files after the build writes them.
+- Without `Compress`, the original is served and the copies are not used.
+
+<details>
+<summary>Test</summary>
+
+```sh
+curl -H "Accept-Encoding: gzip" --compressed http://localhost:3000/assets/app.js
+```
+
+</details>
+
 ### SPA (Single Page Application)
 
 ```go
