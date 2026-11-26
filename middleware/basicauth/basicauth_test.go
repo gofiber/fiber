@@ -272,6 +272,21 @@ func Test_BasicAuth_CustomHandlersStartFromRefusal(t *testing.T) {
 	require.Empty(t, resp.Header.Get(fiber.HeaderWWWAuthenticate))
 }
 
+// A handler for script clients drops the challenge, which makes a browser show its login prompt.
+func Test_BasicAuth_CustomUnauthorizedDropsChallenge(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{Users: map[string]string{"john": sha256Hash("doe")}, Unauthorized: func(c fiber.Ctx) error {
+		c.Response().Header.Del(fiber.HeaderWWWAuthenticate)
+		return c.SendString("sign in")
+	}}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	resp := apptest.ExpectBody(t, app, "/", fiber.StatusUnauthorized, "sign in")
+	require.Empty(t, resp.Header.Get(fiber.HeaderWWWAuthenticate))
+	require.Equal(t, "no-store", resp.Header.Get(fiber.HeaderCacheControl))
+}
+
 func Test_BasicAuth_WWWAuthenticateHeader(t *testing.T) {
 	t.Parallel()
 	users := map[string]string{"john": sha256Hash("doe")}

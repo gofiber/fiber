@@ -128,7 +128,7 @@ Users: map[string]string{
 | Charset         | `string`                    | Charset sent in the `WWW-Authenticate` header. Only `"UTF-8"` is supported (case-insensitive). | `"UTF-8"` |
 | HeaderLimit     | `int`                       | Maximum allowed length of the `Authorization` header. Requests exceeding this limit are rejected. | `8192` |
 | Authorizer      | `func(string, string, fiber.Ctx) bool` | Authorizer defines a function to check the credentials. It will be called with a username, password, and the current context and is expected to return true or false to indicate approval. When set, it replaces the check against `Users`, which is then neither consulted nor validated.  | `nil`                 |
-| Unauthorized    | `fiber.Handler`             | Unauthorized defines the response body for unauthorized responses. It runs with the `401` status, `WWW-Authenticate`, `Cache-Control: no-store` and `Vary: Authorization` already set, which it may replace. | `nil`                 |
+| Unauthorized    | `fiber.Handler`             | Unauthorized defines the response body for unauthorized responses. It runs with the `401` status, `WWW-Authenticate`, `Cache-Control: no-store` and `Vary: Authorization` already set, which it may replace. A browser shows its login prompt for the challenge: delete it with `c.Response().Header.Del(fiber.HeaderWWWAuthenticate)` to leave it out. | `nil`                 |
 | BadRequest      | `fiber.Handler`             | BadRequest defines the response for malformed `Authorization` headers, a request carrying the field on more than one line included. It runs with the `400` status already set. | `nil`                 |
 
 ## Default Config
