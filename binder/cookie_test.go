@@ -62,10 +62,14 @@ func Test_CookieBinder_Bind_ExactName(t *testing.T) {
 		CookieInner
 		Auth
 	}
+	type cookieHidden struct {
+		Hidden string `cookie:"hidden"`
+	}
 	type session struct {
 		Meta map[string]string `cookie:"meta"`
 		CookieAuth
 		CookieMid
+		cookieHidden
 		Auth  CookieInner `cookie:"auth"`
 		Token string      `cookie:"access_token"`
 		Name  string
@@ -74,6 +78,7 @@ func Test_CookieBinder_Bind_ExactName(t *testing.T) {
 	}
 	host, deep := session{CookieAuth: CookieAuth{Host: "a"}}, session{CookieMid: CookieMid{CookieInner: CookieInner{"a"}}}
 	nested, item := session{Auth: CookieInner{"a"}}, session{Items: []CookieInner{{"a"}}}
+	hidden := session{cookieHidden: cookieHidden{"a"}}
 	for _, tc := range []struct {
 		name, cookie string
 		want         session
@@ -85,6 +90,7 @@ func Test_CookieBinder_Bind_ExactName(t *testing.T) {
 		{name: "promoted, exact first", cookie: "__Host-token=a; __host-token=b", want: host},
 		{name: "promoted, folded first", cookie: "__host-token=b; __Host-token=a", want: host},
 		{name: "promoted through its struct", cookie: "CookieAuth.__Host-token=a; cookieauth[__Host-token]=a"},
+		{name: "through an unexported embedded struct", cookie: "Hidden=b; hidden=a; HIDDEN=b", want: hidden},
 		{name: "two levels down", cookie: "deep=a; CookieInner.deep=b", want: deep},
 		{name: "nested, exact first", cookie: "auth.deep=a; Auth.deep=b; auth.DEEP=b", want: nested},
 		{name: "nested, folded first", cookie: "Auth.deep=b; auth.DEEP=b; auth.deep=a", want: nested},

@@ -769,6 +769,12 @@ func isExported(f *reflect.StructField) bool {
 	return f.PkgPath == ""
 }
 
+// visible reports whether the keys of aliasTag reach through f: an exported field, and for the cookie name checks an
+// embedded struct of an unexported type too, whose exported fields schema promotes.
+func visible(f *reflect.StructField, aliasTag string) bool {
+	return isExported(f) || aliasTag == bindingCookie && f.Anonymous && unwrapType(f.Type).Kind() == reflect.Struct
+}
+
 // fieldName returns the lowercased name a field is matched by: the alias from
 // its tag, or the Go field name when the tag carries none.
 func fieldName(f *reflect.StructField, aliasTag string) string {
@@ -881,7 +887,7 @@ func buildFieldInfo(t reflect.Type, aliasTag string) *fieldInfo {
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if !isExported(&f) {
+		if !visible(&f, aliasTag) {
 			continue
 		}
 		fieldType := unwrapType(f.Type)
@@ -961,7 +967,7 @@ func (info *fieldInfo) collectPromoted(t reflect.Type, aliasTag string, depth in
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if !isExported(&f) {
+		if !visible(&f, aliasTag) {
 			continue
 		}
 		fieldType := unwrapType(f.Type)
