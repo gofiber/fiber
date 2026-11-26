@@ -204,20 +204,20 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 func Test_FormBinder_BindMultipart_KeysOfOneField(t *testing.T) {
 	t.Parallel()
 	type profile struct {
-		Avatar *multipart.FileHeader   `form:"avatar"`
-		Role   string                  `form:"role"`
-		Docs   []*multipart.FileHeader `form:"docs"`
-		User   struct {
+		Avatar *multipart.FileHeader `form:"avatar"`
+		Role   string                `form:"role"`
+		Team   struct {
+			Name string `form:"name"`
+		} `form:"team"`
+		User struct {
 			Avatar *multipart.FileHeader   `form:"avatar"`
 			Role   string                  `form:"role"`
 			Docs   []*multipart.FileHeader `form:"docs"`
 		} `form:"user"`
+		Docs  []*multipart.FileHeader `form:"docs"`
 		Items []struct {
 			Name string `form:"name"`
 		} `form:"items"`
-		Team struct {
-			Name string `form:"name"`
-		} `form:"team"`
 	}
 	req := newMultipartRequestWith(t, func(mw *multipart.Writer) {
 		for _, field := range [][2]string{
