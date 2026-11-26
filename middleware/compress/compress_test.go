@@ -768,6 +768,7 @@ func Test_Compress_Cache_Control_No_Transform(t *testing.T) {
 		// one member, so the response must still be compressed.
 		{name: "quoted_argument_is_not_no_transform", lines: []string{"public", `ext="x,no-transform,y"`}, wantEncoding: "gzip"},
 		{name: "quoted_argument_in_one_line", lines: []string{`public, ext="x,no-transform,y"`}, wantEncoding: "gzip"},
+		{name: "empty_line_ahead_of_no_transform", lines: []string{"", "no-transform"}},
 	} {
 		for _, side := range []string{"request", "response"} {
 			t.Run(tc.name+"/"+side, func(t *testing.T) {
@@ -780,6 +781,10 @@ func Test_Compress_Cache_Control_No_Transform(t *testing.T) {
 					}
 				} else {
 					handler = func(c fiber.Ctx) error {
+						// the padding puts an empty first line in a spare slot append left zeroed, where it peeks as nil
+						for _, pad := range []string{"X-Pad-1", "X-Pad-2", "X-Pad-3"} {
+							c.Response().Header.Set(pad, "1")
+						}
 						for _, line := range tc.lines {
 							c.Response().Header.Add(fiber.HeaderCacheControl, line)
 						}

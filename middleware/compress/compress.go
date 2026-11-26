@@ -47,11 +47,8 @@ func shouldSkip(c fiber.Ctx) bool {
 
 func hasResponseNoTransform(c fiber.Ctx) bool {
 	respHeader := &c.Response().Header
-	canonical := headerlookup.Canonical(c)
-	if len(fieldname.First(respHeader, fiber.HeaderCacheControl, canonical)) == 0 {
-		return false
-	}
-	for _, line := range fieldname.Lines(respHeader, fiber.HeaderCacheControl, canonical) {
+	// Lines, not a First gate: an empty first line in a fresh slot peeks as nil and hid the rest.
+	for _, line := range fieldname.Lines(respHeader, fiber.HeaderCacheControl, headerlookup.Canonical(c)) {
 		for member := range headerlist.AllQuotedPairs(utils.UnsafeString(line)) {
 			if utils.EqualFold(member, "no-transform") {
 				return true
