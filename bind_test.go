@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -2281,6 +2283,30 @@ func Test_Bind_StreamedBodyLimit(t *testing.T) {
 			require.Error(t, tc.bind(tooLarge.Bind(), out))
 			require.Empty(t, out.Name)
 			require.Equal(t, size-limit-1, stream.Len(), "the rest of the stream is not read")
+		})
+	}
+}
+
+// A streamed body that fails to read is an error, never the form, whether or not its length was declared.
+func Test_Bind_StreamedBodyReadError(t *testing.T) {
+	t.Parallel()
+	const limit = 1024
+	app := New(Config{StreamRequestBody: true, BodyLimit: limit})
+	reset := errors.New("connection reset by peer")
+	type Req struct {
+		Name string `form:"name"`
+	}
+
+	for name, bind := range map[string]func(b *Bind, out any) error{"Body": (*Bind).Body, "Form": (*Bind).Form, "All": (*Bind).All} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			for _, declared := range []int{-1, limit} {
+				stream := io.MultiReader(strings.NewReader("name=john&"), iotest.ErrReader(reset))
+				c := ctxWithStreamedBody(t, app, MIMEApplicationForm, stream, declared)
+				out := new(Req)
+				require.ErrorIs(t, bind(c.Bind(), out), reset, "declared=%d", declared)
+				require.Empty(t, out.Name, "declared=%d", declared)
+			}
 		})
 	}
 }

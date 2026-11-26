@@ -3,6 +3,7 @@ package binder
 import (
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"io"
 	"mime/multipart"
 	"strings"
@@ -374,4 +375,38 @@ func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 	}
 
 	requireJohn42(b, err, user.Name, user.Age, user.Posts)
+}
+
+// A streamed multipart body that failed to parse is left partly read, and what follows must not bind as a form.
+func Test_FormBinder_BindMultipart_StreamedFailureIsFinal(t *testing.T) {
+	t.Parallel()
+	// The multipart reader takes 4096 bytes at a time: a failed parse of a longer body stops inside it.
+	const limit = 8 * 1024
+	form := "--X\r\nContent-Disposition: form-data; name=\"role\"\r\n\r\nadmin\r\n--X--\r\n"
+
+	for _, tc := range []struct {
+		name, body string
+		tooLarge   bool
+	}{
+		{name: "over the limit", body: "--X\r\nContent-Disposition: form-data; name=\"pad\"\r\n\r\n" + strings.Repeat("x", limit) + "\r\n" + form, tooLarge: true},
+		{name: "malformed, within the limit", body: "--X\r\nno colon\r\n\r\n" + strings.Repeat("\r\n", 3000) + form},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req := &fasthttp.Request{}
+			req.Header.SetContentType("multipart/form-data; boundary=X")
+			req.SetBodyStream(strings.NewReader(tc.body), len(tc.body))
+
+			b := &FormBinding{MaxBodySize: limit}
+			for range 2 {
+				var out struct {
+					Role string `form:"role"`
+				}
+				err := b.Bind(req, &out)
+				require.Error(t, err)
+				require.Equal(t, tc.tooLarge, errors.Is(err, fasthttp.ErrBodyTooLarge))
+				require.Empty(t, out.Role)
+			}
+		})
+	}
 }
