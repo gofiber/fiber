@@ -449,6 +449,7 @@ func Test_appendCanonicalCookieSubset_DoesNotAllocate(t *testing.T) {
 	require.Zero(t, testing.AllocsPerRun(100, func() { dst = appendCanonicalCookieSubset(dst[:0], c, cfg) }))
 }
 
+// Sequential: testing.AllocsPerRun panics during a parallel test.
 func Test_connectionWithholdsHeader_DoesNotAllocate(t *testing.T) {
 	for _, connection := range []string{"", "keep-alive"} {
 		var h fasthttp.RequestHeader
@@ -460,6 +461,7 @@ func Test_connectionWithholdsHeader_DoesNotAllocate(t *testing.T) {
 	}
 }
 
+// Sequential: testing.AllocsPerRun panics during a parallel test.
 func Test_credentialsOf_DoesNotAllocate(t *testing.T) {
 	c, cfg := buildKeygenCtx(&keygenCase{uri: "/", headers: map[string]string{fiber.HeaderAuthorization: "Basic c2l0ZTpwYXNz"}, cookie: "session=a"})
 	creds := cfg.credentialsOf(c, []string{"cookie"}, true)
