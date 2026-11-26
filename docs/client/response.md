@@ -97,7 +97,7 @@ HTTP/1.1
 
 ## Header
 
-**Header** retrieves the value of a specific response header by key. If multiple values exist for the same header, this returns the first one. The returned string is a copy, so it stays valid after the response is released.
+**Header** retrieves the value of a specific response header by key. If multiple values exist for the same header, this returns the first one. The returned string is a copy, so it stays valid after the response is released. Only the header section is read: a field the server sent in the trailer section of a chunked response is not a header and is returned by neither `Header` nor `Headers`. Read one with `RawResponse.Header.PeekTrailer`.
 
 ```go title="Signature"
 func (r *Response) Header(key string) string

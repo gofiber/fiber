@@ -8,15 +8,20 @@ import (
 	"iter"
 	"maps"
 	"mime/multipart"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -155,6 +160,40 @@ func (e clientTestBMultiValue[T]) runOverride(t *testing.T, setName, setManyName
 			require.Equal(t, []string{"foo"}, e.get(r, "bar"))
 		})
 	}
+}
+
+// runSetMany registers the scenarios of setMany with as many keys as a request body can name, and with
+// values read from T itself, which point into the buffers setMany rewrites.
+func (e clientTestBMultiValue[T]) runSetMany(t *testing.T) {
+	t.Helper()
+
+	t.Run("set many "+e.noun+"s", func(t *testing.T) {
+		t.Parallel()
+		m := make(map[string]string, 40_000)
+		for i := range 40_000 {
+			m["k"+strconv.Itoa(i)] = "new"
+		}
+		r := e.addMany(e.fresh(t), map[string][]string{"k1": {"old", "older"}, "other": {"kept"}})
+		done := make(chan T, 1)
+		go func() { done <- e.setMany(r, m) }()
+		apptest.Recv(t, done, 2*time.Second, "setMany is not linear in the size of the map")
+
+		require.Equal(t, []string{"new"}, e.get(r, "k1"))
+		require.Equal(t, []string{"kept"}, e.get(r, "other"))
+	})
+
+	t.Run("set "+e.noun+"s to values read from them", func(t *testing.T) {
+		t.Parallel()
+		r := e.fresh(t)
+		for _, kv := range [][2]string{{"a", "1"}, {"b", "22"}, {"c", "333"}, {"d", "4444"}, {"e", "55555"}, {"f", "666666"}} {
+			e.add(r, kv[0], kv[1])
+		}
+		e.setMany(r, map[string]string{"b": e.get(r, "c")[0], "e": e.get(r, "e")[0], "f": e.get(r, "f")[0]})
+
+		for key, want := range map[string]string{"a": "1", "b": "333", "c": "333", "d": "4444", "e": "55555", "f": "666666"} {
+			require.Equal(t, []string{want}, e.get(r, key), key)
+		}
+	})
 }
 
 // runIter registers the scenarios of the iterator over all entries, which all
@@ -439,6 +478,7 @@ func Test_Request_QueryParam(t *testing.T) {
 	clientTestBParams.runStruct(t)
 	clientTestBParams.runDel(t)
 	clientTestBParams.runOverride(t, "set param overrides every value", "set params overrides every value")
+	clientTestBParams.runSetMany(t)
 }
 
 var keysTestCases = []struct {
@@ -573,6 +613,7 @@ func Test_Request_FormData(t *testing.T) {
 	clientTestBFormData.runDel(t)
 	clientTestBFormData.runOverride(
 		t, "set form data overrides every value", "set form data with map overrides every value")
+	clientTestBFormData.runSetMany(t)
 }
 
 func Test_Request_File(t *testing.T) {
@@ -1286,5 +1327,159 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		require.Equal(b, 0, p.Len())
+	})
+}
+
+func Test_SetWithMap_KeepsValuelessPairs(t *testing.T) {
+	t.Parallel()
+	m := map[string]string{"x": "new"}
+	for _, set := range []func(args *fasthttp.Args){
+		func(args *fasthttp.Args) { (&FormData{Args: args}).SetWithMap(m) },
+		func(args *fasthttp.Args) { (&QueryParam{Args: args}).SetParams(m) },
+	} {
+		for _, tc := range []struct{ args, want string }{{"flag&x=old", "flag&x=new"}, {"flag=&x=old", "flag=&x=new"}} {
+			args := fasthttp.AcquireArgs()
+			args.Parse(tc.args)
+			set(args)
+			require.Equal(t, tc.want, args.String(), tc.args)
+			fasthttp.ReleaseArgs(args)
+		}
+	}
+}
+
+func Test_SetWithMap_ValuesReadFromArgs(t *testing.T) {
+	t.Parallel()
+	for _, set := range []func(args *fasthttp.Args, m map[string]string){
+		func(args *fasthttp.Args, m map[string]string) { (&FormData{Args: args}).SetWithMap(m) },
+		func(args *fasthttp.Args, m map[string]string) { (&QueryParam{Args: args}).SetParams(m) },
+	} {
+		args := fasthttp.AcquireArgs()
+		args.Parse("flag&b=22&c=33")
+		// Unsafe strings into args, as Request.Param and Request.FormData return them.
+		set(args, map[string]string{"b": utils.UnsafeString(args.Peek("c")), "c": utils.UnsafeString(args.Peek("b"))})
+		require.Equal(t, "33", string(args.Peek("b")))
+		require.Equal(t, "22", string(args.Peek("c")))
+		require.True(t, strings.HasPrefix(args.String(), "flag&"), args.String())
+		fasthttp.ReleaseArgs(args)
+	}
+}
+
+// countedReader is a file reader that counts how often it is closed.
+type countedReader struct {
+	io.Reader
+
+	closes atomic.Int32
+}
+
+func (r *countedReader) Close() error {
+	r.closes.Add(1)
+	return nil
+}
+
+// uncomparableReader panics when two of its values are compared with ==.
+type uncomparableReader []byte
+
+func (uncomparableReader) Read([]byte) (int, error) { return 0, io.EOF }
+
+func (uncomparableReader) Close() error { return nil }
+
+// A reader handed to a file belongs to it: it is closed exactly once, also when
+// the request fails before its body is built or before the body gets to that file.
+func Test_Request_FileReaderClosedOnFailure(t *testing.T) {
+	t.Parallel()
+	refuseDial := func(string) (net.Conn, error) { return nil, io.ErrClosedPipe }
+
+	for name, tc := range map[string]struct {
+		first     io.Reader
+		album     string
+		firstName string
+	}{
+		"the URL is refused":          {album: "a/b", firstName: "first", first: strings.NewReader("first")},
+		"an earlier file fails":       {album: "a", firstName: "first", first: iotest.ErrReader(io.ErrUnexpectedEOF)},
+		"an earlier file has no name": {album: "a", first: strings.NewReader("first")},
+		"the dial is refused":         {album: "a", firstName: "first", first: strings.NewReader("first")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			first := &countedReader{Reader: tc.first}
+			second := &countedReader{Reader: strings.NewReader("second")}
+			_, err := New().SetDial(refuseDial).Post("http://example.com/albums/:album", Config{
+				PathParam: map[string]string{"album": tc.album},
+				File: []*File{
+					AcquireFile(SetFileName(tc.firstName), SetFileReader(first)),
+					AcquireFile(SetFileName("second"), SetFileReader(second)),
+				},
+			})
+			require.Error(t, err)
+			require.Equal(t, int32(1), first.closes.Load(), "the first reader")
+			require.Equal(t, int32(1), second.closes.Load(), "the second reader")
+		})
+	}
+
+	t.Run("the request is released unsent", func(t *testing.T) {
+		t.Parallel()
+		reader := &countedReader{Reader: strings.NewReader("unsent")}
+		ReleaseRequest(AcquireRequest().AddFileWithReader("unsent", reader))
+		require.Equal(t, int32(1), reader.closes.Load())
+	})
+
+	t.Run("a request of the caller keeps the reader until it is released", func(t *testing.T) {
+		t.Parallel()
+		reader := &countedReader{Reader: strings.NewReader("kept")}
+		req := AcquireRequest().
+			SetClient(New().SetDial(refuseDial)).
+			SetPathParam("album", "a/b").
+			AddFileWithReader("kept", reader)
+		_, err := req.Post("http://example.com/albums/:album")
+		require.ErrorIs(t, err, ErrPathParamInPath)
+		require.Equal(t, int32(0), reader.closes.Load())
+
+		ReleaseRequest(req)
+		require.Equal(t, int32(1), reader.closes.Load())
+	})
+
+	t.Run("a replaced reader is closed once", func(t *testing.T) {
+		t.Parallel()
+		first := &countedReader{Reader: strings.NewReader("first")}
+		second := &countedReader{Reader: strings.NewReader("second")}
+		file := AcquireFile(SetFileReader(first))
+		file.SetReader(second)
+		require.Equal(t, int32(1), first.closes.Load())
+
+		file.closeReader() // as building the body does
+		file.SetReader(&countedReader{Reader: strings.NewReader("third")})
+		ReleaseFile(file)
+		require.Equal(t, int32(1), first.closes.Load())
+		require.Equal(t, int32(1), second.closes.Load())
+	})
+
+	t.Run("setting the same reader again keeps it open", func(t *testing.T) {
+		t.Parallel()
+		reader := &countedReader{Reader: strings.NewReader("same")}
+		file := AcquireFile(SetFileReader(reader))
+		file.SetReader(reader)
+		require.Equal(t, int32(0), reader.closes.Load())
+		ReleaseFile(file)
+		require.Equal(t, int32(1), reader.closes.Load())
+	})
+
+	t.Run("a reader that cannot be compared is replaced", func(t *testing.T) {
+		t.Parallel()
+		file := AcquireFile(SetFileReader(uncomparableReader(nil)))
+		require.NotPanics(t, func() { file.SetReader(uncomparableReader(nil)) })
+		ReleaseFile(file)
+	})
+
+	t.Run("a pooled file does not remember an earlier close", func(t *testing.T) {
+		t.Parallel()
+		file := AcquireFile()
+		for range 2 {
+			reader := &countedReader{Reader: strings.NewReader("again")}
+			file.SetReader(reader)
+			file.Reset()
+			file.Reset()
+			require.Equal(t, int32(1), reader.closes.Load())
+		}
+		ReleaseFile(file)
 	})
 }

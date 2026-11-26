@@ -63,6 +63,8 @@ type Request struct {
 	boundary   string
 	referer    string
 	files      []*File
+	// clientHeaderKeys are the headers the last send copied from its client, removed by the next one.
+	clientHeaderKeys [][]byte
 
 	redirectSensitiveHeaders crosshost.HeaderNames
 
@@ -416,6 +418,14 @@ func (r *Request) ResetPathParams() *Request {
 	return r
 }
 
+// dropClientHeaders removes the headers the previous send took from its client, which may be another one or
+// reset since. It runs before the request hooks, so a header a hook sets under such a key is kept.
+func (r *Request) dropClientHeaders() {
+	for _, key := range r.clientHeaderKeys {
+		r.RawRequest.Header.DelBytes(key)
+	}
+}
+
 // SetJSON sets the request body to a JSON-encoded value.
 func (r *Request) SetJSON(v any) *Request {
 	r.body = v
@@ -585,7 +595,8 @@ func (r *Request) AddFile(path string) *Request {
 	return r
 }
 
-// AddFileWithReader adds a file using an io.ReadCloser.
+// AddFileWithReader adds a file using an io.ReadCloser. The request takes over
+// the reader and closes it, see File.SetReader.
 func (r *Request) AddFileWithReader(name string, reader io.ReadCloser) *Request {
 	r.files = append(r.files, AcquireFile(SetFileName(name), SetFileReader(reader)))
 	r.resetBody(filesBody)
@@ -720,6 +731,7 @@ func (r *Request) Reset() {
 	r.bodyType = noBody
 	r.boundary = boundary
 	r.isPathNormalizingDisabled = false
+	r.clientHeaderKeys = r.clientHeaderKeys[:0]
 
 	for len(r.files) != 0 {
 		t := r.files[0]
@@ -811,8 +823,42 @@ func (p *QueryParam) AddParams(r map[string][]string) {
 
 // SetParams sets multiple parameters from a map, overriding previously set values.
 func (p *QueryParam) SetParams(r map[string]string) {
-	for k, v := range r {
-		p.Set(k, v)
+	setArgsMap(p.Args, r)
+}
+
+// setArgsMap sets every key of m in args. A Set per key scans every pair, so the pairs m replaces are
+// dropped in one pass instead; m is read before args is rewritten, as its values may point into args.
+func setArgsMap(args *fasthttp.Args, m map[string]string) {
+	kept := fasthttp.AcquireArgs()
+	defer fasthttp.ReleaseArgs(kept)
+	emptyKept := false
+	for k, v := range args.All() {
+		if _, ok := m[string(k)]; !ok {
+			kept.AddBytesKV(k, v)
+			emptyKept = emptyKept || len(v) == 0
+		}
+	}
+	switch {
+	case kept.Len() == args.Len():
+		for k, v := range m {
+			args.Add(k, v)
+		}
+	case emptyKept:
+		// All does not tell "flag" from "flag=", so a rebuild would turn the first into the second.
+		// Set reuses the buffer of the pair Del dropped, which a later value of m may point into.
+		kept.Reset()
+		for k, v := range m {
+			kept.Add(k, v)
+		}
+		for k, v := range kept.All() {
+			args.DelBytes(k)
+			args.SetBytesKV(k, v)
+		}
+	default:
+		for k, v := range m {
+			kept.Add(k, v)
+		}
+		kept.CopyTo(args)
 	}
 }
 
@@ -950,9 +996,7 @@ func (f *FormData) AddWithMap(m map[string][]string) {
 
 // SetWithMap sets multiple form fields from a map, overriding previously set values.
 func (f *FormData) SetWithMap(m map[string]string) {
-	for k, v := range m {
-		f.Set(k, v)
-	}
+	setArgsMap(f.Args, m)
 }
 
 // SetWithStruct sets multiple form fields from a struct.
@@ -979,6 +1023,8 @@ type File struct {
 	name      string
 	fieldName string
 	path      string
+
+	isReaderClosed bool
 }
 
 // SetName sets the file's name.
@@ -996,13 +1042,31 @@ func (f *File) SetPath(p string) {
 	f.path = p
 }
 
-// SetReader sets the file's reader, which will be closed in the parserBody hook.
+// SetReader sets the file's reader, which the file owns from here on: it is closed once,
+// when the request body is built, when the file is reset or released, or when it is replaced.
 func (f *File) SetReader(r io.ReadCloser) {
+	// == panics on two readers of one dynamic type that cannot be compared.
+	if f.reader != nil && reflect.ValueOf(r).Comparable() && f.reader == r {
+		return
+	}
+	f.closeReader()
 	f.reader = r
+	f.isReaderClosed = false
 }
 
-// Reset clears the File object.
+// closeReader closes the file's reader, once.
+func (f *File) closeReader() {
+	if f.reader == nil || f.isReaderClosed {
+		return
+	}
+	f.isReaderClosed = true
+	f.reader.Close() //nolint:errcheck // not needed
+}
+
+// Reset clears the File object and closes a reader no request body was built from.
 func (f *File) Reset() {
+	f.closeReader()
+	f.isReaderClosed = false
 	f.name = ""
 	f.fieldName = ""
 	f.path = ""
