@@ -536,20 +536,13 @@ func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, file
 }
 
 // unexportedPointers caches behindUnexportedPointer per struct type.
-var unexportedPointers sync.Map // map[reflect.Type]bool
+var unexportedPointers typeCache[bool]
 
 // behindUnexportedPointer reports whether the struct type t holds a file field under an unexported embedded pointer,
 // through struct values, pointers and slices: schema follows one that is set but cannot allocate it, so a scratch
 // value needs one set for it.
 func behindUnexportedPointer(t reflect.Type) bool {
-	if cached, ok := unexportedPointers.Load(t); ok {
-		if found, isBool := cached.(bool); isBool {
-			return found
-		}
-	}
-	found := reachesUnexportedPointer(t, nil)
-	unexportedPointers.Store(t, found)
-	return found
+	return unexportedPointers.get(t, func(t reflect.Type) bool { return reachesUnexportedPointer(t, nil) })
 }
 
 // reachesUnexportedPointer is behindUnexportedPointer for t, skipping the types in seen, which a recursive type
