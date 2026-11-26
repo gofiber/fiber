@@ -238,6 +238,11 @@ func setFieldLine(h *fasthttp.ResponseHeader, name string, value []byte, normali
 		fieldname.DelOthers(h, name)
 	}
 
+	// A canonical name skips the normalizing copy, as Res.Set does.
+	if fieldname.IsCanonical(name) {
+		h.SetCanonical(utils.UnsafeBytes(name), value)
+		return
+	}
 	h.SetBytesV(name, value)
 }
 
