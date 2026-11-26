@@ -1806,8 +1806,8 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		return
 	}
 
-	// fasthttp releases fctx without the timeout handling a served request gets, and panics on one a
-	// handler timed out, so the chain runs on a RequestCtx of its own that such a handler can keep.
+	// Bridge until fasthttp's ErrorHandler handles TimeoutError as its Handler does: it releases fctx without that
+	// handling and panics on one a handler timed out, so the chain runs on a RequestCtx of its own such a handler can keep.
 	rctx := new(fasthttp.RequestCtx)
 	rctx.Init2(fctx.Conn(), app.server.Logger, true)
 	rctx.SetRemoteAddr(fctx.RemoteAddr())
