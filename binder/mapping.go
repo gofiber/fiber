@@ -801,15 +801,16 @@ type fieldInfo struct {
 	promoted    map[string]promotedField
 	kinds       map[string]reflect.Kind
 	nestedKinds map[reflect.Kind]struct{}
-	exact       []string     // the aliases as written of the tagged fields a one-segment key resolves to
-	embeds      []string     // the lowercased names of the embedded structs at any depth
-	containers  []namedField // the struct, slice of struct and map fields a one-segment key resolves to
-	id          uintptr      // typeID of the type it describes, which the slot of the cache is checked against
+	cookie      atomic.Pointer[cookieNames] // built on the first cookie bind into the type
+	exact       []string                    // the aliases as written of the tagged fields a one-segment key resolves to
+	embeds      []string                    // the lowercased names of the embedded structs at any depth
+	containers  []namedField                // the struct, slice of struct and map fields a one-segment key resolves to
+	id          uintptr                     // typeID of the type it describes, which the slot of the cache is checked against
 }
 
 type namedField struct {
 	typ     reflect.Type // the struct, or the element struct of a slice or array; nil for a map
-	name    string
+	name    string       // the alias as written, or the lowercased name of an untagged field
 	indexed bool
 }
 
@@ -870,8 +871,8 @@ func getFieldCache(aliasTag string) *fieldCache {
 	panic("unknown alias tag: " + aliasTag)
 }
 
-func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
-	info := fieldInfo{
+func buildFieldInfo(t reflect.Type, aliasTag string) *fieldInfo {
+	info := &fieldInfo{
 		fields:      make(map[string]reflect.Type),
 		embedded:    make(map[string]reflect.Type),
 		promoted:    make(map[string]promotedField),
@@ -986,6 +987,7 @@ func (info *fieldInfo) collectPromoted(t reflect.Type, aliasTag string, depth in
 func (info *fieldInfo) addNamed(name, alias string, t reflect.Type) {
 	if alias != "" {
 		info.exact = append(info.exact, alias)
+		name = alias
 	}
 	indexed := t.Kind() == reflect.Slice || t.Kind() == reflect.Array
 	if indexed {
@@ -1053,9 +1055,29 @@ func (c *fieldCache) takesCookie(info *fieldInfo, name string) bool {
 	}
 }
 
-// cookieChecks returns the field information cookie names bound into t are checked against, or nil when t is no
-// struct or has no tagged, nested or embedded field.
-func (c *fieldCache) cookieChecks(t reflect.Type) *fieldInfo {
+// cookieNames are the cookie names a bind into one struct type takes without a walk through takesCookie: the
+// aliases as written and the paths to them through nested structs.
+type cookieNames struct {
+	info  *fieldInfo
+	exact []string
+	bits  uint64 // the nameBit of each exact name: a name whose bit is clear is none of them in any case
+	flat  bool   // no nested or embedded struct, so a dotted name reaches no field through one
+	// closed is flat with every field tagged: a name that is none of the exact names binds no field.
+	closed bool
+}
+
+// nameBit is a bit of the length and the first byte of s that every spelling of s in another case shares, as folding
+// changes only the 0x20 bit of a letter.
+func nameBit(s string) uint64 {
+	if s == "" {
+		return 1
+	}
+	return 1 << ((uint(len(s)) + uint(s[0]|0x20)) & 63)
+}
+
+// cookieNames returns the cookie names of the struct type t, or nil when t is no struct or has no tagged, nested or
+// embedded field, so that every name binds.
+func (c *fieldCache) cookieNames(t reflect.Type) *cookieNames {
 	if t == nil || t.Kind() != reflect.Struct {
 		return nil
 	}
@@ -1063,7 +1085,83 @@ func (c *fieldCache) cookieChecks(t reflect.Type) *fieldInfo {
 	if !ok || len(info.exact) == 0 && len(info.containers) == 0 && len(info.embeds) == 0 {
 		return nil
 	}
-	return info
+	if n := info.cookie.Load(); n != nil {
+		return n
+	}
+	n := &cookieNames{info: info, flat: len(info.containers) == 0 && len(info.embeds) == 0}
+	n.closed = n.flat
+	for i := range t.NumField() {
+		if f := t.Field(i); f.Anonymous || f.IsExported() && tagName(&f, bindingCookie) == "" {
+			n.closed = false
+		}
+	}
+	n.collect(c, info, "", &[]*fieldInfo{})
+	info.cookie.Store(n)
+	return n
+}
+
+// collect adds the aliases of at, reached through prefix, that takesCookie takes, and those of the structs nested in
+// at. A struct reached through a second path is not expanded again; its names are walked.
+func (n *cookieNames) collect(c *fieldCache, at *fieldInfo, prefix string, expanded *[]*fieldInfo) {
+	if slices.Contains(*expanded, at) {
+		return
+	}
+	*expanded = append(*expanded, at)
+	for _, alias := range at.exact {
+		if name := prefix + alias; c.takesCookie(n.info, name) {
+			n.exact = append(n.exact, name)
+			n.bits |= nameBit(name)
+		}
+	}
+	for _, f := range at.containers {
+		if f.typ != nil && !f.indexed {
+			if next, ok := c.get(f.typ, bindingCookie); ok {
+				n.collect(c, next, prefix+f.name+".", expanded)
+			}
+		}
+	}
+}
+
+// index returns the position of name among the exact names, or -1. n may be nil.
+func (n *cookieNames) index(name string) int {
+	if n == nil || n.bits&nameBit(name) == 0 {
+		return -1
+	}
+	return slices.Index(n.exact, name)
+}
+
+// unknown reports whether name, which is none of the exact names, binds no field of a closed type in any spelling.
+func (n *cookieNames) unknown(name string) bool {
+	return n.closed && n.bits&nameBit(name) == 0
+}
+
+// takes reports whether a bind takes the cookie name as Ctx.Cookies reads it, and records it in d to take only the
+// first of a repeated name. i is its index among the exact names, or -1; CookieBinding.Bind marks the first 64 itself.
+func (n *cookieNames) takes(name string, i int, d *bindData) bool {
+	switch {
+	case i >= 0:
+		return d.firstOf(name)
+	case !n.check(name):
+		return false
+	case n.closed:
+		// Binding no field, it need not be the first.
+		return true
+	default:
+		return d.firstOf(name)
+	}
+}
+
+// check reports whether takesCookie takes a name that is none of the exact names.
+func (n *cookieNames) check(name string) bool {
+	if n.bits&nameBit(name) != 0 {
+		for _, exact := range n.exact {
+			if len(exact) == len(name) && utils.EqualFold(exact, name) {
+				return cookieFieldCache.takesCookie(n.info, name)
+			}
+		}
+	}
+	// No alias is name in another case, which leaves only a dotted name to the walk.
+	return n.flat || strings.IndexByte(name, '.') < 0 || cookieFieldCache.takesCookie(n.info, name)
 }
 
 // typeID identifies a type by the address of its descriptor, which is stable
@@ -1092,7 +1190,7 @@ func (c *fieldCache) get(t reflect.Type, aliasTag string) (*fieldInfo, bool) {
 	if !ok {
 		info := buildFieldInfo(t, aliasTag)
 		info.id = id
-		val, _ = c.types.LoadOrStore(t, &info)
+		val, _ = c.types.LoadOrStore(t, info)
 	}
 
 	info, ok := val.(*fieldInfo)
@@ -1309,6 +1407,8 @@ type bindData struct {
 	keys, pairValues []string
 	// names is the sorted keys of a multipart form's files or values
 	names []string
+	// bound is the first 64 exact cookie names bound so far, a bit per index, see cookieNames
+	bound uint64
 	nFew  int
 	mode  bindMode
 }

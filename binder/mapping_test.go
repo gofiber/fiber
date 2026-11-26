@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -783,6 +784,20 @@ func Test_BindData_AlternatingKeys(t *testing.T) {
 
 // Test_BindData_SplitKeyLimit pins that a value is split only under a key of at most maxSplitKeyBytes:
 // every piece is filed under the whole key, so splitting costs the key's length times its commas.
+// Test_NameBit_FoldedSpellings pins that two names EqualFold matches share a nameBit: the cookie checks take a name
+// whose bit no exact name has as spelling none of them in any case.
+func Test_NameBit_FoldedSpellings(t *testing.T) {
+	t.Parallel()
+	for a := range 256 {
+		for b := range 256 {
+			x, y := string([]byte{byte(a), 'k'}), string([]byte{byte(b), 'k'})
+			if utils.EqualFold(x, y) {
+				require.Equal(t, nameBit(x), nameBit(y), "%q %q", x, y)
+			}
+		}
+	}
+}
+
 func Test_BindData_SplitKeyLimit(t *testing.T) {
 	t.Parallel()
 	longest := strings.Repeat("k", maxSplitKeyBytes-len("tags."))

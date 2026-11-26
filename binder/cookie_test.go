@@ -1,6 +1,10 @@
 package binder
 
 import (
+	"fmt"
+	"reflect"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -100,6 +104,81 @@ func Test_CookieBinder_Bind_ExactName(t *testing.T) {
 			require.Equal(t, tc.want, out)
 		})
 	}
+}
+
+// Test_CookieBinder_Bind_SameAsWalk pins that the names a bind looks up instead of walking them bind as a walk of
+// every name, keeping the first of each, binds them.
+func Test_CookieBinder_Bind_SameAsWalk(t *testing.T) {
+	t.Parallel()
+	type inner struct {
+		Deep string `cookie:"deep"`
+	}
+	type closed struct {
+		Token string   `cookie:"access_token"`
+		IDs   []string `cookie:"ids"`
+		N     int      `cookie:"n"`
+	}
+	type open struct {
+		Token string `cookie:"access_token"`
+		Name  string
+	}
+	type nested struct {
+		Meta map[string]string `cookie:"meta"`
+		inner
+		Auth  inner   `cookie:"auth"`
+		Items []inner `cookie:"items"`
+	}
+	wide := make([]reflect.StructField, 70)
+	for i := range wide {
+		wide[i] = reflect.StructField{
+			Name: fmt.Sprintf("F%d", i), Type: reflect.TypeFor[string](), Tag: reflect.StructTag(fmt.Sprintf(`cookie:"f%d"`, i)),
+		}
+	}
+	for _, typ := range []reflect.Type{
+		reflect.TypeFor[closed](), reflect.TypeFor[open](), reflect.TypeFor[nested](), reflect.StructOf(wide),
+	} {
+		t.Run(typ.String(), func(t *testing.T) {
+			t.Parallel()
+			names := cookieFieldCache.cookieNames(typ)
+			var all []string
+			for _, name := range append(slices.Clone(names.exact), "inner", "x", "a.b") {
+				for _, suffix := range []string{"", ".0", ".00", ".x", ".0.deep", ".0.DEEP", ".k"} {
+					v := name + suffix
+					// Another name of the same nameBit, and the name in other cases.
+					twin := v[:len(v)-1] + "_"
+					variants := []string{v, strings.ToUpper(v), strings.ToUpper(v[:1]) + v[1:], twin}
+					all = append(all, variants...)
+					for _, a := range variants {
+						for _, b := range variants {
+							requireSameAsWalk(t, typ, a+"=1; "+b+"=2")
+						}
+					}
+				}
+			}
+			requireSameAsWalk(t, typ, strings.Join(all, "=1; ")+"=1")
+		})
+	}
+}
+
+// requireSameAsWalk binds the cookie header into a new value of typ and requires the result of a walk of every name.
+func requireSameAsWalk(t *testing.T, typ reflect.Type, header string) {
+	t.Helper()
+	req := acquireRequest(t)
+	req.Header.Set(fasthttp.HeaderCookie, header)
+	got, want := reflect.New(typ), reflect.New(typ)
+	err := (&CookieBinding{}).Bind(req, got.Interface())
+
+	data := acquireBindDataMode(bindPairs)
+	defer releaseBindData(data)
+	info, ok := cookieFieldCache.get(typ, bindingCookie)
+	require.True(t, ok)
+	for key, val := range req.Header.Cookies() {
+		if cookieFieldCache.takesCookie(info, string(key)) && data.firstOf(string(key)) {
+			require.NoError(t, data.bind(bindingCookie, want.Interface(), string(key), string(val), false, false))
+		}
+	}
+	require.Equal(t, data.parse(bindingCookie, want.Interface()) == nil, err == nil, header)
+	require.Equal(t, want.Interface(), got.Interface(), header)
 }
 
 func Benchmark_CookieBinder_Bind(b *testing.B) {
