@@ -84,12 +84,9 @@ type credentialScope struct {
 
 // requestCredentials is what the request sends that ties an entry to its credential, found once.
 type requestCredentials struct {
-	authDigest    string // the digest of the Authorization lines the lookup key holds, so they are hashed once
-	authorization bool   // an Authorization header, which is in every key
-	keyed         bool   // Authorization, or a credential the default key holds
-	selected      bool   // a credential header the entry's Vary names or, with a custom key, a declared one
-	apart         bool   // keyed, and selected by a header the key does not hold whole: the key's credential may be shared
-	declared      bool   // not keyed, and a header declared for a custom key, which may hold any part of it
+	authorization bool // an Authorization header, which is in every key
+	keyed         bool // Authorization, or a credential the default key holds
+	selected      bool // a credential header the entry's Vary names or, with a custom key, a declared one
 }
 
 // credentialsOf finds what the request sends, before the handler can clear it.
@@ -100,37 +97,11 @@ func (cfg *Config) credentialsOf(c fiber.Ctx, varyNames []string, hasAuthorizati
 		// A custom key is opaque: the declared headers are taken to be in it.
 		credentials = append(credentials, cfg.KeyCredentialHeaders...)
 	}
-	creds := requestCredentials{
+	return requestCredentials{
 		authorization: hasAuthorization,
 		keyed:         hasAuthorization || cfg.keyHoldsRequestCredential(c),
 		selected:      len(credentials) > 0 && hasHeaderValue(c, credentials),
 	}
-	switch {
-	case creds.keyed && creds.selected:
-		creds.apart = hasHeaderValue(c, slices.DeleteFunc(credentials, cfg.keyHoldsHeader))
-	case !creds.keyed && !cfg.usesDefaultKeyGenerator:
-		creds.declared = hasHeaderValue(c, cfg.KeyCredentialHeaders)
-	}
-	return creds
-}
-
-// keyHoldsHeader reports whether every key holds the header's value: Authorization, or a credential header of the default key.
-func (cfg *Config) keyHoldsHeader(name string) bool {
-	return utils.EqualFold(name, fiber.HeaderAuthorization) ||
-		(cfg.usesDefaultKeyGenerator && fieldname.ContainsFold(cfg.credentialKeyHeaders, name))
-}
-
-// second is the other record a refusal is kept under, if any; see recordKeys.
-func (creds requestCredentials) second(varyNames []string) (requestCredentials, []string, bool) {
-	switch {
-	case creds.apart:
-		// Not keyed, so appendKey adds the credentials the Vary selects by to the one the key holds.
-		return requestCredentials{authDigest: creds.authDigest, authorization: creds.authorization, selected: true}, varyNames, true
-	case creds.declared:
-		// Keyed: the custom key alone.
-		return requestCredentials{keyed: true}, nil, true
-	}
-	return creds, nil, false
 }
 
 // scope says how far a refusal reaches: the entry ends only if the key holds the credential or the Vary selects it.
@@ -151,7 +122,6 @@ const (
 	refusalRecordSize       = 256   // bytes of MaxBytes one record stands for
 	droppedPerRecord        = 4     // dropped records remembered for each one kept
 	refusalGroups           = 64    // groups of URLs, each with a marker of its own
-	recordPasses            = 3     // writes of a record before stores noting a later lifetime are turned away
 )
 
 // markerPoll is how long a record another instance wrote can go unseen.
@@ -160,26 +130,6 @@ const markerPoll = 250 * time.Millisecond
 // refusalMarker tells the instances sharing a Storage that a record may exist, so hits look only then:
 // one marker covers every URL and one each group. The records are keyed under it too, where no entry key lands.
 const refusalMarker = cacheKeyVersion + "|refused"
-
-// recentMarkerLifetime is how many seconds every announcement keeps the marker a poll reads.
-const recentMarkerLifetime = 1 << 9
-
-// markerLifetimes are the seconds a record that outlives that marker is announced for too: the shortest that
-// covers it, under twice as long up to 2^27. A Storage keeps a key's last write, so each has a key written for it
-// alone: two instances announcing at once cannot cut each other's marker short.
-var markerLifetimes = func() [19]uint64 {
-	var lifetimes [19]uint64
-	for i := range len(lifetimes) - 1 {
-		lifetimes[i] = recentMarkerLifetime << (i + 1)
-	}
-	lifetimes[len(lifetimes)-1] = math.MaxUint64
-	return lifetimes
-}()
-
-// lifetimeMarker is the key of the marker written for markerLifetimes[i].
-func lifetimeMarker(marker string, i int) string {
-	return marker + "~" + strconv.Itoa(i)
-}
 
 var groupMarkers = func() [refusalGroups]string {
 	var markers [refusalGroups]string
@@ -211,26 +161,22 @@ func (cfg *Config) refusalLimit() int {
 
 // recordGate says whether refusal records may exist, for every URL or for one group of them.
 type recordGate struct {
-	until   atomic.Uint64 // the second no record written here outlives
-	seen    atomic.Int64  // the millisecond its marker was last read
-	scanned atomic.Uint64 // the second its lifetime markers were last read
-	open    atomic.Bool   // whether a marker was there
-	lasting atomic.Bool   // whether a lifetime marker was there
+	until atomic.Uint64 // the second no record written here outlives
+	seen  atomic.Int64  // the millisecond its marker was last read
+	open  atomic.Bool   // whether the marker was there
 }
 
 // refusalRecords keeps the records of refused credentials: bounded in memory, left to expire in a Storage.
 type refusalRecords struct {
-	cfg       *Config
-	m         *manager
-	keys      keyLog
-	dropped   droppedRecords
-	family    Config // cfg keyed by the credential headers alone, so a record reaches every variant
-	gates     [refusalGroups]recordGate
-	expiry    [refusalGroups]atomic.Uint64 // the second the longest-lived credential entry stored in the group stops being kept
-	refusals  [refusalGroups]atomic.Uint64 // refusals recorded in the group so far
-	recording [refusalGroups]atomic.Int32  // records of the group in their last write
-	all       recordGate
-	poll      int64 // milliseconds between reads of a marker
+	cfg     *Config
+	m       *manager
+	keys    keyLog
+	dropped droppedRecords
+	family  Config // cfg keyed by the credential headers alone, so a record reaches every variant
+	gates   [refusalGroups]recordGate
+	expiry  [refusalGroups]atomic.Uint64 // the second the longest-lived credential entry stored in the group stops being kept
+	all     recordGate
+	poll    int64 // milliseconds between reads of a marker
 }
 
 func newRefusalRecords(cfg *Config, m *manager) *refusalRecords {
@@ -246,7 +192,7 @@ func newRefusalRecords(cfg *Config, m *manager) *refusalRecords {
 
 // key is where the refusal is recorded, under refusalMarker: the key without its other dimensions, so
 // one record reaches every variant, or, for a credential the key does not hold, a digest of the
-// credential headers the Vary selects by that the request sends; "" for none. A HEAD is recorded as the GET it mirrors.
+// credential headers the Vary selects by; "" for none. A HEAD is recorded as the GET it mirrors.
 func (r *refusalRecords) key(c fiber.Ctx, generated string, varyNames []string, creds requestCredentials) string {
 	bufPtr := acquireKeyBuffer()
 	buf := r.appendKey((*bufPtr)[:0], c, generated, varyNames, creds)
@@ -255,46 +201,9 @@ func (r *refusalRecords) key(c fiber.Ctx, generated string, varyNames []string, 
 	return key
 }
 
-// recordKeys is where a refusal is recorded: under key and, for some credentials, a second key too.
-// A shared credential in the key, as a site-wide password before a session cookie, gets one with the
-// credentials the Vary selects by as well, which only the refused client's acceptance ends. A header
-// declared for a custom key, which may hold just part of it, gets the custom key alone, which a request
-// adding to the header still finds. "" for none.
-func (r *refusalRecords) recordKeys(c fiber.Ctx, generated string, varyNames []string, creds requestCredentials) [2]string {
-	bufPtr := acquireKeyBuffer()
-	buf, split := r.appendRecordKeys((*bufPtr)[:0], c, generated, varyNames, creds)
-	keys := splitRecordKeys(buf, split)
-	releaseKeyBuffer(bufPtr, buf)
-	return keys
-}
-
-// appendRecordKeys appends both recordKeys to buf, the second from split on.
-func (r *refusalRecords) appendRecordKeys(buf []byte, c fiber.Ctx, generated string, varyNames []string, creds requestCredentials) (keys []byte, split int) { //nolint:nonamedreturns // gocritic unnamedResult asks for names
-	buf = r.appendKey(buf, c, generated, varyNames, creds)
-	split = len(buf)
-	if other, names, ok := creds.second(varyNames); ok {
-		buf = r.appendKey(buf, c, generated, names, other)
-	}
-	return buf, split
-}
-
-// splitRecordKeys copies out the recordKeys appendRecordKeys appended.
-func splitRecordKeys(buf []byte, split int) [2]string {
-	return [2]string{string(buf[:split]), string(buf[split:])}
-}
-
-// refusedFor reports whether the request's credential is recorded as refused, under either of its recordKeys.
+// refusedFor reports whether the request's credential is recorded as refused. The key is built in a
+// pooled buffer, which the in-memory store can look up as it is: only a Storage gets a string.
 func (r *refusalRecords) refusedFor(ctx context.Context, c fiber.Ctx, generated string, varyNames []string, creds requestCredentials) bool {
-	if r.recorded(ctx, c, generated, varyNames, creds) {
-		return true
-	}
-	other, names, ok := creds.second(varyNames)
-	return ok && r.recorded(ctx, c, generated, names, other)
-}
-
-// recorded reports whether there is a record under the key of creds. The key is built in a pooled
-// buffer, which the in-memory store can look up as it is: only a Storage gets a string.
-func (r *refusalRecords) recorded(ctx context.Context, c fiber.Ctx, generated string, varyNames []string, creds requestCredentials) bool {
 	bufPtr := acquireKeyBuffer()
 	buf := r.appendKey((*bufPtr)[:0], c, generated, varyNames, creds)
 	refused := false
@@ -327,11 +236,6 @@ func (r *refusalRecords) appendKey(buf []byte, c fiber.Ctx, generated string, va
 			slices.Sort(varied)
 			varied = slices.Compact(varied)
 		}
-		// What the key holds is in the record already, and a header not sent selects nothing: variants that
-		// also vary on either share the record.
-		varied = slices.DeleteFunc(varied, func(name string) bool {
-			return cfg.keyHoldsHeader(name) || !hasHeaderValue(c, []string{name})
-		})
 	}
 
 	canonical := headerlookup.Canonical(c)
@@ -347,11 +251,7 @@ func (r *refusalRecords) appendKey(buf []byte, c fiber.Ctx, generated string, va
 		buf = appendDefaultKey(buf, c, &r.family)
 		if creds.authorization {
 			buf = append(buf, "|auth="...)
-			if creds.authDigest != "" {
-				buf = append(buf, creds.authDigest...)
-			} else {
-				buf = appendAuthHash(buf, fieldname.Lines(&c.Request().Header, fiber.HeaderAuthorization, canonical))
-			}
+			buf = appendAuthHash(buf, fieldname.Lines(&c.Request().Header, fiber.HeaderAuthorization, canonical))
 		}
 	} else {
 		buf = append(buf, generated...)
@@ -373,21 +273,17 @@ func (r *refusalRecords) group(c fiber.Ctx, generated string) int {
 // mayHold reports whether a record can exist for a hit on this URL to find: one written here or, in
 // an external Storage, one another instance announced.
 func (r *refusalRecords) mayHold(ctx context.Context, c fiber.Ctx, generated string) bool {
-	return r.mayHoldIn(ctx, r.group(c, generated))
-}
-
-// mayHoldIn is mayHold for a group of URLs.
-func (r *refusalRecords) mayHoldIn(ctx context.Context, group int) bool {
 	now := uint64(utils.Timestamp())
 	if now >= r.all.until.Load() && !r.announced(ctx, &r.all, refusalMarker) {
 		return false
 	}
+	group := r.group(c, generated)
 	gate := &r.gates[group]
 	return now < gate.until.Load() || r.announced(ctx, gate, groupMarkers[group])
 }
 
-// announced reports whether a record was announced under the marker, which it reads at most once per
-// markerPoll. A Storage that cannot answer counts as an announcement.
+// announced reports whether a record was announced under the marker, which it reads at most once
+// per markerPoll. A Storage that cannot answer counts as an announcement.
 func (r *refusalRecords) announced(ctx context.Context, gate *recordGate, marker string) bool {
 	if r.cfg.Storage == nil {
 		return false
@@ -398,135 +294,40 @@ func (r *refusalRecords) announced(ctx context.Context, gate *recordGate, marker
 	if since := nowMilli - seen; (since >= 0 && since < r.poll) || !gate.seen.CompareAndSwap(seen, nowMilli) {
 		return gate.open.Load()
 	}
-	open := r.marked(ctx, gate, marker)
-	if !open {
-		// The marker outlives every announcement by recentMarkerLifetime, so a longer one made before it went
-		// is in a lifetime marker read since then, as long as they are read again within half of that.
-		now := uint64(utils.Timestamp())
-		if scanned := gate.scanned.Load(); now < scanned || now-scanned >= recentMarkerLifetime/2 {
-			// At once: one after the other, the request that polls waits a round trip per marker. A Storage
-			// that panics does so on the request's goroutine again, as it did before.
-			var reads [len(markerLifetimes)]struct {
-				failure any
-				marked  bool
-			}
-			var wg sync.WaitGroup
-			for i := range markerLifetimes {
-				wg.Go(func() {
-					defer func() { reads[i].failure = recover() }()
-					reads[i].marked = r.marked(ctx, gate, lifetimeMarker(marker, i))
-				})
-			}
-			wg.Wait()
-			lasting := false
-			for _, read := range reads {
-				if read.failure != nil {
-					panic(read.failure)
-				}
-				lasting = lasting || read.marked
-			}
-			// Only once read: a poll meanwhile reads them as well rather than take an older answer.
-			gate.lasting.Store(lasting)
-			gate.scanned.Store(now)
-		}
-		open = gate.lasting.Load()
-	}
-	gate.open.Store(open)
-	return open
-}
-
-// marked reports whether the marker under key is there, and has hits look until the second it says.
-func (r *refusalRecords) marked(ctx context.Context, gate *recordGate, key string) bool {
-	raw, err := r.m.getRaw(ctx, key)
-	if errors.Is(err, errCacheMiss) {
-		return false
-	}
-	if err != nil {
+	raw, err := r.m.getRaw(ctx, marker)
+	if err != nil && !errors.Is(err, errCacheMiss) {
 		log.Warnf("cache: failed to read the marker of refusal records: %v", err)
 	}
+	open := !errors.Is(err, errCacheMiss)
 	raise(&gate.until, lapseOf(raw)) // hits look until then without polling again
-	return true
+	gate.open.Store(open)
+	return open
 }
 
 // refused reports whether a refusal was recorded under key. A storage that cannot answer counts as
 // one, and so does a key whose record was dropped live or could not be written.
 func (r *refusalRecords) refused(ctx context.Context, key string) bool {
-	recorded, err := r.hasRecord(ctx, key)
-	if err != nil {
-		log.Warnf("cache: failed to read the record of a refused credential: %v", err)
+	if r.dropped.has(key, uint64(utils.Timestamp())) {
 		return true
 	}
-	return recorded
-}
-
-// hasRecord reports whether a record is under key, one dropped live or not written included.
-func (r *refusalRecords) hasRecord(ctx context.Context, key string) (bool, error) {
-	if r.dropped.has(key, uint64(utils.Timestamp())) {
-		return true, nil
-	}
 	_, err := r.m.getRaw(ctx, key)
-	if errors.Is(err, errCacheMiss) {
-		return false, nil
+	if err == nil {
+		return true
 	}
-	return err == nil, err
+	if errors.Is(err, errCacheMiss) {
+		return false
+	}
+	log.Warnf("cache: failed to read the record of a refused credential: %v", err)
+	return true
 }
 
 // record keeps the refusal under key, in the group of URLs the lookup saw, for Expiration, until entryExp
 // (unix seconds) or until the group's longest-lived credential entry stops being kept, whichever is
-// latest, and never shorter than the record there already. A record the Storage cannot take is remembered
-// here, and false returned.
-func (r *refusalRecords) record(ctx context.Context, group int, key string, entryExp uint64) bool {
-	noted := r.expiry[group].Load()
-	for pass := 1; pass < recordPasses; pass++ {
-		stored := r.write(ctx, group, key, max(entryExp, noted))
-		// A request that noted its entry during the write found no record to extend.
-		latest := r.expiry[group].Load()
-		if latest <= noted {
-			return stored
-		}
-		noted = latest
-	}
-	// The last pass: raised before the lifetime is read, so a store noting a later one meanwhile sees it and
-	// stores nothing.
-	r.recording[group].Add(1)
-	defer r.recording[group].Add(-1)
-	return r.write(ctx, group, key, max(entryExp, r.expiry[group].Load()))
-}
-
-// recordingLast reports whether a record of the group is in its last write; see record.
-func (r *refusalRecords) recordingLast(group int) bool {
-	return r.recording[group].Load() > 0
-}
-
-// refuse records the refusal under key; see record. A store in the group whose handler ran meanwhile
-// sees it in lapsedSince.
-func (r *refusalRecords) refuse(ctx context.Context, group int, key string, entryExp uint64) {
-	r.refusals[group].Add(1)
-	r.record(ctx, group, key, entryExp)
-}
-
-// refusalMark is the state of a group a store compares against: its refusals and the second the handler started.
-type refusalMark struct {
-	refusals uint64
-	second   uint64
-}
-
-func (r *refusalRecords) mark(group int) refusalMark {
-	return refusalMark{refusals: r.refusals[group].Load(), second: uint64(utils.Timestamp())}
-}
-
-// lapsedSince reports whether a refusal recorded in the group since mark may have no record left: one is
-// kept for Expiration at least, which the 2 seconds of the stores' rounding and the clock's tick bring closer.
-func (r *refusalRecords) lapsedSince(group int, m refusalMark) bool {
-	return r.refusals[group].Load() != m.refusals &&
-		uint64(utils.Timestamp())-m.second+2 >= uint64(r.cfg.Expiration.Seconds())
-}
-
-// write is one pass of record, for a record kept at least until last (unix seconds).
-func (r *refusalRecords) write(ctx context.Context, group int, key string, last uint64) bool {
+// latest, and never shorter than the record there already. A record the Storage cannot take is remembered here.
+func (r *refusalRecords) record(ctx context.Context, group int, key string, entryExp uint64) {
 	retention := r.cfg.Expiration
 	clock := safeUnixSeconds(r.cfg.now())
-	if last > clock {
+	if last := max(entryExp, r.expiry[group].Load()); last > clock {
 		retention = max(retention, secondsToDuration(last-clock))
 	}
 	now := uint64(utils.Timestamp())
@@ -536,7 +337,7 @@ func (r *refusalRecords) write(ctx context.Context, group int, key string, last 
 	if err := r.m.setRaw(ctx, key, lapseValue(until), secondsToDuration(until-now)); err != nil {
 		log.Warnf("cache: failed to record the refusal of a credential: %v", err)
 		r.dropped.add(key, until+2)
-		return false
+		return
 	}
 	// The store counts from the write, which may have taken a while.
 	end := uint64(utils.Timestamp()) + (until - now) + 2
@@ -554,22 +355,6 @@ func (r *refusalRecords) write(ctx context.Context, group int, key string, last 
 			log.Warnf("cache: failed to drop the oldest record of a refused credential: %v", err)
 		}
 	}
-	return true
-}
-
-// cover extends the record under key, if there is one, over the credential entries of the group noted
-// since it was written: a refusal recorded while a request for the credential ran knew nothing of its entry.
-// False when there may be a record it could not extend, so the entry must not be stored.
-func (r *refusalRecords) cover(ctx context.Context, group int, key string) bool {
-	if key == "" {
-		return true
-	}
-	recorded, err := r.hasRecord(ctx, key)
-	if err != nil {
-		log.Warnf("cache: failed to read the record of a refused credential: %v", err)
-		return false
-	}
-	return !recorded || r.record(ctx, group, key, 0)
 }
 
 // open has hits look for a record of the group until the second given.
@@ -585,33 +370,20 @@ func (r *refusalRecords) noteLifetime(group int, lifetime time.Duration) {
 	}
 }
 
-// announce marks the gate in the Storage until its second: in the marker and, for longer than that keeps,
-// in a lifetime marker. It reads nothing first: what a write asks for must not hang on what another
-// instance wrote meanwhile.
+// announce marks the gate in the Storage until its second, or the later one the marker already says.
 func (r *refusalRecords) announce(ctx context.Context, gate *recordGate, marker string) {
+	raise(&gate.until, r.lapse(ctx, marker))
 	until := gate.until.Load()
 	now := uint64(utils.Timestamp())
 	if until <= now {
-		return
+		return // a TTL of zero would mean no expiry
 	}
-	r.setMarker(ctx, marker, until, recentMarkerLifetime)
-	if until-now <= recentMarkerLifetime {
-		return
-	}
-	i := 0
-	for until-now > markerLifetimes[i] {
-		i++
-	}
-	r.setMarker(ctx, lifetimeMarker(marker, i), until, markerLifetimes[i])
-}
-
-func (r *refusalRecords) setMarker(ctx context.Context, key string, until, lifetime uint64) {
-	if err := r.m.setRaw(ctx, key, lapseValue(until), secondsToDuration(lifetime)); err != nil {
+	if err := r.m.setRaw(ctx, marker, lapseValue(until), secondsToDuration(until-now)); err != nil {
 		log.Warnf("cache: failed to announce the record of a refused credential: %v", err)
 	}
 }
 
-// lapse is the second the record under key lapses, as its value says; 0 for none.
+// lapse is the second the record or marker under key lapses, as its value says; 0 for none.
 func (r *refusalRecords) lapse(ctx context.Context, key string) uint64 {
 	raw, err := r.m.getRaw(ctx, key)
 	if err != nil {

@@ -3588,8 +3588,7 @@ func Benchmark_Cache_Miss(b *testing.B) {
 	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
-// Benchmark_Cache_MissAuthorization measures a stored miss that carries a credential, whose refusal
-// record keys are built before the handler runs.
+// Benchmark_Cache_MissAuthorization measures a stored miss that carries a credential.
 func Benchmark_Cache_MissAuthorization(b *testing.B) {
 	app := fiber.New()
 	app.Use(New())

@@ -91,8 +91,8 @@ const (
 // page was built from another. One the earlier rule stored would still be served,
 // on a store that survived the upgrade, to every client sending that value. v8: the
 // query and the cookies are keyed as received, an external Storage's body is
-// stamped with its entry's generation, refusal markers have a key per lifetime, and
-// StoreResponseHeaders leaves out the lines of middleware before the cache. Bump this whenever what a key stands for, or
+// stamped with its entry's generation, and StoreResponseHeaders leaves out the
+// lines of middleware before the cache. Bump this whenever what a key stands for, or
 // what its entry carries, changes; the cost is one cold cache after a deploy. Additive bookkeeping fields such as
 // heapgen need no bump: old entries decode with generation zero, and older
 // readers skip the new field without changing the response or key semantics.
@@ -460,7 +460,6 @@ func New(config ...Config) fiber.Handler {
 		keyBuf = append(keyBuf, '|')
 		generatedAt := len(keyBuf) - start
 		keyBuf = appendGeneratedKey(keyBuf, c, &cfg)
-		authAt := len(keyBuf)
 		if hasAuthorization {
 			// Read at the point of use: the result aliases the header's storage, and
 			// cfg.KeyGenerator is user code that may recycle the slot. Every field
@@ -471,12 +470,10 @@ func New(config ...Config) fiber.Handler {
 			// principals, so a comma would put them in one partition.
 			authLines := fieldname.Lines(&c.Request().Header, fiber.HeaderAuthorization, canonical)
 			keyBuf = append(keyBuf, "|auth="...)
-			authAt = len(keyBuf)
 			keyBuf = appendAuthHash(keyBuf, authLines)
 		}
 
 		both := string(keyBuf)
-		authDigest := both[authAt:] // "" without Authorization
 		baseKey := both[start:]
 		var manifestKey string
 		if !cfg.DisableVaryHeaders {
@@ -582,7 +579,6 @@ func New(config ...Config) fiber.Handler {
 		requestCreds := func() requestCredentials {
 			if !credsKnown {
 				creds, credsKnown = cfg.credentialsOf(c, varyNames, hasAuthorization), true
-				creds.authDigest = authDigest
 			}
 			return creds
 		}
@@ -933,7 +929,6 @@ func New(config ...Config) fiber.Handler {
 
 		// Read before the handler can clear the credential or rewrite the path.
 		urlGroup := refusals.group(c, generatedKey)
-		lookupMark := refusals.mark(urlGroup)
 		// Also the headers, for a response that varies on other names than the lookup used: an inner
 		// middleware may rewrite them in place, as encryptcookie does with the cookie it decrypts.
 		var lookupHeader *fasthttp.RequestHeader
@@ -942,19 +937,12 @@ func New(config ...Config) fiber.Handler {
 			defer lookupHeaders.Put(lookupHeader)
 		}
 		var (
-			scope      credentialScope
-			recordKeys [2]string
-			missKeys   []byte // a miss's recordKeys, copied out only if its store may extend a record
-			missSplit  int
+			scope     credentialScope
+			recordKey string
 		)
 		if foundAtLookup {
-			recordKeys = refusals.recordKeys(c, generatedKey, varyNames, requestCreds())
+			recordKey = refusals.key(c, generatedKey, varyNames, requestCreds())
 			scope = requestCreds().scope()
-		} else if cfg.mayKeyCredential(hasAuthorization, varyNames) {
-			// Built before a handler can rewrite the request: its store extends a record under them.
-			bufPtr := acquireKeyBuffer()
-			missKeys, missSplit = refusals.appendRecordKeys((*bufPtr)[:0], c, generatedKey, varyNames, requestCreds())
-			defer releaseKeyBuffer(bufPtr, missKeys)
 		}
 
 		// dropUnlessReplaced removes the entry found and its heap node unless a request replaced it first.
@@ -1044,10 +1032,8 @@ func New(config ...Config) fiber.Handler {
 			if hasVaryManifest && scope.keyed {
 				dropManifest()
 			}
-			for _, recordKey := range recordKeys {
-				if recordKey != "" {
-					refusals.refuse(reqCtx, urlGroup, recordKey, foundExp)
-				}
+			if recordKey != "" {
+				refusals.record(reqCtx, urlGroup, recordKey, foundExp)
 			}
 		}
 
@@ -1099,11 +1085,7 @@ func New(config ...Config) fiber.Handler {
 
 		// The origin accepting a credential recorded as refused ends the record, stored or not.
 		if refusalRecorded && acceptsCredential(status) {
-			for _, recordKey := range recordKeys {
-				if recordKey != "" {
-					refusals.forget(reqCtx, recordKey)
-				}
-			}
+			refusals.forget(reqCtx, recordKey)
 		}
 
 		if _, cacheable := cacheableStatusCodes[status]; !cacheable && !refused {
@@ -1375,38 +1357,8 @@ func New(config ...Config) fiber.Handler {
 		if expiresParseError || storageExpiration < cfg.Expiration {
 			storageExpiration = cfg.Expiration
 		}
-		// Authorization is in every key, so its entry is a credential's whatever the response varies on.
-		if hasAuthorization || cfg.holdsCredentialResponse(c, e.vary) {
+		if cfg.holdsCredentialResponse(c, e.vary) {
 			refusals.noteLifetime(urlGroup, storageExpiration)
-			// A record in its last write may have read the lifetimes before this one.
-			if refusals.recordingLast(urlGroup) {
-				markUnreachable()
-				return nil
-			}
-			// A refusal of the credential recorded while the handler ran must outlast this entry too; one
-			// recorded from now on reads the lifetime noted above.
-			covered := true
-			if refusals.mayHoldIn(reqCtx, urlGroup) {
-				if len(missKeys) > 0 {
-					recordKeys = splitRecordKeys(missKeys, missSplit)
-				}
-				for _, key := range recordKeys {
-					covered = refusals.cover(reqCtx, urlGroup, key) && covered
-				}
-				// The response's Vary keys them too: a miss's lookup may have had no manifest, and an entry found
-				// another one.
-				for _, key := range refusals.recordKeys(c, generatedKey, respVaryNames, cfg.credentialsOf(c, respVaryNames, hasAuthorization)) {
-					if key != recordKeys[0] && key != recordKeys[1] {
-						covered = refusals.cover(reqCtx, urlGroup, key) && covered
-					}
-				}
-			}
-			// Not stored past a record other instances cannot see extended, nor after a refusal in the group
-			// while the handler ran, whose record may be gone already.
-			if !covered || refusals.lapsedSince(urlGroup, lookupMark) {
-				markUnreachable()
-				return nil
-			}
 		}
 
 		if expiration <= 0 && !expiresParseError {

@@ -465,6 +465,6 @@ func Test_connectionWithholdsHeader_DoesNotAllocate(t *testing.T) {
 func Test_credentialsOf_DoesNotAllocate(t *testing.T) {
 	c, cfg := buildKeygenCtx(&keygenCase{uri: "/", headers: map[string]string{fiber.HeaderAuthorization: "Basic c2l0ZTpwYXNz"}, cookie: "session=a"})
 	creds := cfg.credentialsOf(c, []string{"cookie"}, true)
-	require.True(t, creds.apart)
+	require.True(t, creds.selected)
 	require.Zero(t, testing.AllocsPerRun(100, func() { cfg.credentialsOf(c, []string{"cookie"}, true) }))
 }
