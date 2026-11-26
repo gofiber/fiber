@@ -2,6 +2,7 @@ package fiber
 
 import (
 	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -378,6 +379,55 @@ func TestState_MustGetService(t *testing.T) {
 		t.Parallel()
 		st := newState()
 		require.Panics(t, func() { _ = MustGetService[*mockService](st, srv1.String()) })
+	})
+}
+
+func TestState_Services(t *testing.T) {
+	t.Parallel()
+	t.Run("returns registered services and skips non-service entries", func(t *testing.T) {
+		t.Parallel()
+		st := newState()
+		srv1 := &mockService{name: "srv1"}
+		srv2 := &mockService{name: "srv2"}
+		st.setService(srv1)
+		st.setService(srv2)
+		st.Set("regular", "value")
+		st.dependencies.Store(42, "non-string-key")
+		st.dependencies.Store(st.servicePrefix+"non-service", "not-a-service")
+
+		got := st.Services()
+		require.Len(t, got, 2)
+		require.Equal(t, srv1, got[st.serviceKey(srv1.String())])
+		require.Equal(t, srv2, got[st.serviceKey(srv2.String())])
+	})
+
+	t.Run("concurrent delete does not panic", func(t *testing.T) {
+		t.Parallel()
+		st := newState()
+		services := make([]*mockService, 16)
+		for i := range services {
+			services[i] = &mockService{name: "srv-" + strconv.Itoa(i)}
+		}
+
+		var wg sync.WaitGroup
+		for range 2 {
+			wg.Go(func() {
+				for range 2000 {
+					for _, srv := range services {
+						st.setService(srv)
+					}
+					for _, srv := range services {
+						st.deleteService(srv)
+					}
+				}
+			})
+			wg.Go(func() {
+				for range 2000 {
+					_ = st.Services()
+				}
+			})
+		}
+		wg.Wait()
 	})
 }
 
