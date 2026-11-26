@@ -2773,6 +2773,40 @@ func Test_Proxy_UnsendableRequest(t *testing.T) {
 	})
 }
 
+// A multipart body the server did not parse into a form goes out as received, whatever its boundary: only a parsed
+// form is written again, which mime/multipart refuses for a boundary RFC 2046 does not allow.
+func Test_Proxy_UnparsedFormGoesAsReceived(t *testing.T) {
+	t.Parallel()
+	boundary := strings.Repeat("b", 71)
+	form := "--" + boundary + "\r\nContent-Disposition: form-data; name=\"x\"\r\n\r\nv\r\n--" + boundary + "--\r\n"
+	upstream := fiber.New()
+	upstream.Use(func(c fiber.Ctx) error { return c.SendString(c.FormValue("x")) })
+	ln := proxyTestListen(t)
+	startServer(upstream, ln)
+	for name, tc := range map[string]struct {
+		cfg     fiber.Config
+		chunked bool
+	}{
+		"DisablePreParseMultipartForm": {cfg: fiber.Config{DisablePreParseMultipartForm: true}},
+		"StreamRequestBody":            {cfg: fiber.Config{StreamRequestBody: true}},
+		"a body of no declared length": {chunked: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			for handler, h := range proxyTestHandlersUnder(ln.Addr().String(), proxyTestAllowPrivatePolicy(), nil) {
+				app := fiber.New(tc.cfg)
+				app.Use(h)
+				req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader(form))
+				req.Header.Set(fiber.HeaderContentType, "multipart/form-data; boundary="+boundary)
+				if tc.chunked {
+					req.ContentLength, req.TransferEncoding = -1, []string{"chunked"}
+				}
+				require.Equal(t, "v", apptest.Body(t, apptest.Expect(t, app, req, fiber.StatusOK)), handler)
+			}
+		})
+	}
+}
+
 func Test_Proxy_RetryConnectionErrors(t *testing.T) {
 	t.Parallel()
 	unwritable := errors.New("error when marshaling multipart form")

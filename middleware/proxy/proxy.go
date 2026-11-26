@@ -262,7 +262,7 @@ func doActionBy(
 	if !keepForwardingOrder(req) {
 		return fiber.ErrRequestHeaderFieldsTooLarge
 	}
-	if !sendable(req) {
+	if !sendable(c) {
 		return fiber.ErrBadRequest
 	}
 	// The upstream connection speaks HTTP/1.1: reset a protocol token

@@ -197,7 +197,7 @@ func Balancer(config ...Config) fiber.Handler {
 		if streams && len(req.Header.UserAgent()) == 0 {
 			defer req.Header.Del(fiber.HeaderUserAgent)
 		}
-		if !sendable(req) { // after ModifyRequest, which may set a Host
+		if !sendable(c) { // after ModifyRequest, which may set a Host
 			return fiber.ErrBadRequest
 		}
 
