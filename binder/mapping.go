@@ -578,7 +578,7 @@ func reachesUnexportedPointer(t reflect.Type, seen []reflect.Type) bool {
 // allocEmbedded gives scratch a zero pointee of its own for each pointer to a struct dst has set, and an element for
 // each element of a slice dst holds there, so that an unexported embedded pointer is set in scratch too. The files
 // decoded into them reach dst through setFiles, and the defaults the decode sets there go nowhere. seen holds the
-// pointers followed so far, which a cycle in dst leads back to.
+// pointers and slices followed so far, which a cycle in dst leads back to.
 func allocEmbedded(scratch, dst reflect.Value, seen []uintptr) {
 	switch dst.Kind() { //nolint:exhaustive // the kinds a key walks through to a struct
 	case reflect.Struct:
@@ -595,11 +595,12 @@ func allocEmbedded(scratch, dst reflect.Value, seen []uintptr) {
 		allocEmbedded(p.Elem(), dst.Elem(), append(seen, dst.Pointer()))
 	case reflect.Slice:
 		if elem := unwrapType(dst.Type().Elem()); dst.Len() == 0 || elem.Kind() != reflect.Struct ||
-			!behindUnexportedPointer(elem) {
+			!behindUnexportedPointer(elem) || slices.Contains(seen, dst.Pointer()) {
 			return
 		}
 		elems := reflect.MakeSlice(dst.Type(), dst.Len(), dst.Len())
 		setScratch(scratch, elems)
+		seen = append(seen, dst.Pointer())
 		for i := range dst.Len() {
 			allocEmbedded(elems.Index(i), dst.Index(i), seen)
 		}

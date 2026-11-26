@@ -328,6 +328,23 @@ func Test_FormBinder_BindMultipart_UnexportedEmbeddedPointer(t *testing.T) {
 	require.Equal(t, pairsOnly.Count, out.Count)
 }
 
+func Test_FormBinder_BindMultipart_SliceCycle(t *testing.T) {
+	t.Parallel()
+	type node struct {
+		*embeddedUpload
+		Children []node `form:"children"`
+	}
+	children := []node{{embeddedUpload: &embeddedUpload{}}}
+	children[0].Children = children
+	out := node{embeddedUpload: &embeddedUpload{}, Children: children}
+	require.NoError(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
+		writeFormFile(t, mw, "avatar", "avatar.txt", "avatar")
+		writeFormFile(t, mw, "children.0.avatar", "child.txt", "child")
+	}), &out))
+	requireFile(t, out.Avatar, "avatar.txt", "avatar")
+	requireFile(t, out.Children[0].Avatar, "child.txt", "child")
+}
+
 // requireFile pins the name, content type and content of an uploaded file.
 func requireFile(t *testing.T, fh *multipart.FileHeader, filename, content string) {
 	t.Helper()
