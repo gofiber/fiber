@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"runtime"
@@ -151,4 +152,77 @@ func Test_Read_CostsNoMoreThanBodyOnceThePoolSettled(t *testing.T) {
 	large := bytes.Repeat([]byte("x"), 1500000)
 	viaBody := fewestBytes(large, func() { resp.Body() })
 	require.LessOrEqual(t, fewestBytes(large, func() { Read(&resp, len(large)) }), viaBody)
+}
+
+func Test_ReadRequest_FailureLeavesNoBufferInThePool(t *testing.T) {
+	t.Parallel()
+	const limit = 3 << 20
+	var req fasthttp.Request
+	req.SetBodyStream(bytes.NewReader(make([]byte, limit+1)), -1)
+	require.ErrorIs(t, ReadRequest(&req, limit), fasthttp.ErrBodyTooLarge)
+
+	w := acquire(1)
+	defer buffers.Put(w)
+	require.Less(t, cap(w.b), limit)
+}
+
+func Test_ReadFrom_DeclaredLengthDoesNotGrowAFullBuffer(t *testing.T) {
+	t.Parallel()
+	errBroken := errors.New("broken")
+	for _, tc := range []struct {
+		stream  io.Reader
+		err     error
+		name    string
+		want    string
+		size    int
+		wantCap int
+	}{
+		{name: "ends at the declared length", stream: strings.NewReader("hello"), size: 5, want: "hello", wantCap: 5},
+		{name: "empty", stream: strings.NewReader(""), size: 0, wantCap: 0},
+		{name: "runs longer", stream: strings.NewReader("hello world"), size: 5, want: "hello world", wantCap: 100},
+		{name: "breaks off after it", stream: io.MultiReader(strings.NewReader("hello"), iotest.ErrReader(errBroken)), size: 5, want: "hello", err: errBroken, wantCap: 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := &buffer{b: make([]byte, 0, tc.size), limit: 100, size: tc.size}
+			_, err := w.ReadFrom(struct{ io.Reader }{tc.stream})
+			require.ErrorIs(t, err, tc.err)
+			require.Equal(t, tc.want, string(w.b))
+			require.Equal(t, tc.wantCap, cap(w.b))
+		})
+	}
+}
+
+// dataErrReader returns its data and its error from one Read.
+type dataErrReader struct {
+	err  error
+	data string
+}
+
+func (r dataErrReader) Read(p []byte) (int, error) { return copy(p, r.data), r.err }
+
+func Test_readAll(t *testing.T) {
+	t.Parallel()
+	errBroken := errors.New("broken")
+	for _, tc := range []struct {
+		stream io.Reader
+		err    error
+		name   string
+		want   string
+		limit  int
+	}{
+		{name: "within the limit", stream: strings.NewReader("hello"), limit: 5, want: "hello"},
+		{name: "past the limit", stream: strings.NewReader("hello!"), limit: 5, want: "hello!", err: errTooLong},
+		{name: "no limit", stream: strings.NewReader("hello"), limit: math.MaxInt, want: "hello"},
+		{name: "wrapped EOF", stream: io.MultiReader(strings.NewReader("hello"), iotest.ErrReader(fmt.Errorf("done: %w", io.EOF))), limit: 5, want: "hello"},
+		{name: "broken", stream: io.MultiReader(strings.NewReader("hel"), iotest.ErrReader(errBroken)), limit: 5, want: "hel", err: errBroken},
+		{name: "past the limit with an error", stream: dataErrReader{data: "hello!", err: errBroken}, limit: 5, want: "hello!", err: errTooLong},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := readAll(tc.stream, tc.limit)
+			require.ErrorIs(t, err, tc.err)
+			require.Equal(t, tc.want, string(got))
+		})
+	}
 }

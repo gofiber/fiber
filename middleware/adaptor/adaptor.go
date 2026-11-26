@@ -1,6 +1,7 @@
 package adaptor
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -40,9 +42,23 @@ func (*disableLogger) Printf(string, ...any) {
 // RequestCtx.Init), whose Write panics, it silently discards writes so that
 // interim responses written directly to the connection (e.g. a 103 from
 // SendEarlyHints) degrade gracefully: the final response is still delivered
-// through the http.ResponseWriter copy-back.
+// through the http.ResponseWriter copy-back. It records a Close, as c.Drop and
+// c.End make, and whether a final response was written before it, as c.End does.
 type noopConn struct {
 	remoteAddr net.Addr
+	closed     atomic.Bool
+	answered   atomic.Bool
+}
+
+func (c *noopConn) reset(remoteAddr net.Addr) {
+	c.remoteAddr = remoteAddr
+	c.closed.Store(false)
+	c.answered.Store(false)
+}
+
+// dropped reports whether the handler closed the connection without writing a response to it.
+func (c *noopConn) dropped() bool {
+	return c.closed.Load() && !c.answered.Load()
 }
 
 // tlsNoopConn is the connection handed to fasthttp for a request net/http
@@ -61,10 +77,21 @@ func (*tlsNoopConn) Handshake() error {
 	return nil
 }
 
-func (*noopConn) Read([]byte) (int, error)    { return 0, io.EOF }
-func (*noopConn) Write(p []byte) (int, error) { return len(p), nil }
-func (*noopConn) Close() error                { return nil }
-func (*noopConn) LocalAddr() net.Addr         { return &net.TCPAddr{} }
+func (*noopConn) Read([]byte) (int, error) { return 0, io.EOF }
+
+func (c *noopConn) Write(p []byte) (int, error) {
+	if !c.closed.Load() && isFinalResponse(p) {
+		c.answered.Store(true)
+	}
+	return len(p), nil
+}
+
+func (c *noopConn) Close() error {
+	c.closed.Store(true)
+	return nil
+}
+
+func (*noopConn) LocalAddr() net.Addr { return &net.TCPAddr{} }
 
 func (c *noopConn) RemoteAddr() net.Addr {
 	if c.remoteAddr == nil {
@@ -76,6 +103,20 @@ func (c *noopConn) RemoteAddr() net.Addr {
 func (*noopConn) SetDeadline(time.Time) error      { return nil }
 func (*noopConn) SetReadDeadline(time.Time) error  { return nil }
 func (*noopConn) SetWriteDeadline(time.Time) error { return nil }
+
+// isFinalResponse reports whether p begins with the status line of a response other than an interim one (1xx but 101).
+func isFinalResponse(p []byte) bool {
+	const prefix = "HTTP/"
+	if len(p) < len(prefix) || string(p[:len(prefix)]) != prefix {
+		return false
+	}
+	sp := bytes.IndexByte(p, ' ')
+	if sp < 0 || len(p) < sp+4 {
+		return false
+	}
+	status := p[sp+1 : sp+4]
+	return status[0] != '1' || string(status) == "101"
+}
 
 // tcpAddrBuf co-locates a net.TCPAddr with the storage for its IP so the
 // common "ip:port" remote address form costs one allocation instead of two
@@ -102,15 +143,17 @@ func newTCPAddr(ip []byte, port int, zone string) *net.TCPAddr {
 }
 
 // pooledCtx bundles the RequestCtx with the per-request scratch space it
-// needs — the noopConn handed to fasthttp and the io.LimitedReader used to
-// bound the request body — so a single pool entry serves them all and the
-// request path stays allocation-free. The conn comes first to keep the
-// struct's trailing pointer span minimal (govet fieldalignment).
+// needs (the noopConn handed to fasthttp, the io.LimitedReader used to
+// bound the request body, the URI the host is checked with), so a single
+// pool entry serves them all and the request path stays allocation-free. The
+// conn comes first to keep the struct's trailing pointer span minimal (govet
+// fieldalignment).
 type pooledCtx struct {
 	conn     noopConn
 	tlsConn  tlsNoopConn
 	lr       io.LimitedReader
 	received []byte
+	uri      fasthttp.URI
 	fctx     fasthttp.RequestCtx
 }
 
@@ -134,6 +177,10 @@ const (
 	// maxHeaderScratch bounds the header staging buffers that are returned to
 	// the pool.
 	maxHeaderScratch = 16 * 1024
+
+	// maxClearedNames is the most names clearCopiedHeaders deletes one by one:
+	// each Del scans every line the request still holds.
+	maxClearedNames = 64
 )
 
 var bufferPool = sync.Pool{
@@ -333,7 +380,8 @@ func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
 // wiretarget.HasStrayPercent), as net/http's server answers it: URL.Path
 // would be the same for "/100%" and "/100%25", which the router keeps apart.
 // A streamed body over the app's BodyLimit returns
-// fiber.ErrRequestEntityTooLarge.
+// fiber.ErrRequestEntityTooLarge. The lines of a repeated header are in the
+// order they were received.
 func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 	if wiretarget.StrayPercent(c) {
 		return nil, fiber.ErrBadRequest
@@ -350,6 +398,7 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 	if err := fasthttpadaptor.ConvertRequest(c.RequestCtx(), &req, forServer); err != nil {
 		return nil, err //nolint:wrapcheck // This must not be wrapped
 	}
+	fieldname.OrderValues(&c.Request().Header, fieldname.Received(c.Request()), req.Header)
 	return &req, nil
 }
 
@@ -518,11 +567,15 @@ func snapshotHeaders(h http.Header) []headerPair {
 // clearCopiedHeaders deletes every non-framing header from the fiber request so
 // the copy that follows rebuilds the set as the wrapped middleware left it.
 // Set-then-Add cannot: Set replaces only the first entry, and removals never did.
-func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
+func clearCopiedHeaders(req *fasthttp.Request) {
+	fhdr := &req.Header
 	// Not sized from fhdr.Len(): that counts by walking every header, so
 	// pre-sizing would traverse them twice — and the walk also collects the
 	// cookie store and re-serializes it, on a per-request path.
-	var removed []string
+	var (
+		removed []string
+		over    bool
+	)
 	// Trailer fields first: All never names them, and deleting Trailer would move
 	// them into the header section, where r.Header.Del never reached them.
 	for _, key := range fhdr.PeekTrailerKeys() {
@@ -533,14 +586,65 @@ func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 		if isFramingHeader(name) {
 			continue
 		}
+		// A client chooses how many names there are, and n Dels cost n*n/2 comparisons.
+		if over = len(removed) >= maxClearedNames; over {
+			break
+		}
 		// Repeated names are Del'd repeatedly; Del removes every line at once, so
 		// the second finds nothing. Skipping it costs more — a slices.Contains scan
 		// measured 17% slower at twenty headers and 61% at a hundred.
 		removed = append(removed, string(key))
 	}
 
+	if over {
+		resetCopiedHeaders(req)
+		return
+	}
 	for _, name := range removed {
 		fhdr.Del(name)
+	}
+}
+
+// resetCopiedHeaders is clearCopiedHeaders in one pass, as fieldname.ClearTrailers is for a trailer section: the
+// header is reset, and the request line and the framing headers are put back.
+func resetCopiedHeaders(req *fasthttp.Request) {
+	h := &req.Header
+	tmp := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(tmp)
+	saved := &tmp.Header
+	h.CopyTo(saved)
+	// Reset empties the received block, which the forwarding order is read from.
+	if raw := h.RawHeaders(); len(raw) > 0 {
+		block := slices.Clone(raw)
+		fieldname.SetReceived(req, &block)
+	}
+
+	// Reset clears the setting.
+	disabled := h.NormalizingDisabled()
+	h.Reset()
+	if disabled {
+		h.DisableNormalizing()
+	}
+	h.SetMethodBytes(saved.Method())
+	h.SetRequestURIBytes(saved.RequestURI())
+	h.SetProtocolBytes(saved.Protocol())
+	if length := saved.ContentLength(); length < 0 {
+		// The Transfer-Encoding line this adds is not the stored one, which follows.
+		h.SetContentLength(length)
+		h.Del(fiber.HeaderTransferEncoding)
+	}
+	for k, v := range saved.All() {
+		switch name := utils.UnsafeString(k); {
+		case !isFramingHeader(name):
+			// Cleared: the copy that follows rebuilds it.
+		case utils.EqualFold(name, fiber.HeaderTransferEncoding):
+			// As stored: Add drops the framing field.
+			h.DisableSpecialHeader()
+			h.AddBytesKV(k, v)
+			h.EnableSpecialHeader()
+		default:
+			h.AddBytesKV(k, v)
+		}
 	}
 }
 
@@ -565,7 +669,8 @@ func isFramingHeader(name string) bool {
 	return false
 }
 
-// HTTPMiddleware wraps net/http middleware to fiber middleware
+// HTTPMiddleware wraps net/http middleware to fiber middleware. The Fiber handlers behind it run after the middleware
+// has returned, so what it does around its call to next (a deferred recover, a replaced r.Body, a deadline) misses them.
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var (
@@ -623,7 +728,7 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
 			fhdr.DelAllCookies()
-			clearCopiedHeaders(fhdr)
+			clearCopiedHeaders(freq)
 			// Connection lives in a slot of its own, so a second Add replaces the
 			// first rather than appending: net/http represents a combined value as
 			// several entries, and ["keep-alive", "X-Internal"] arrived as
@@ -807,7 +912,12 @@ func requestTarget(r *http.Request) string {
 		return ""
 	}
 	if r.Method != http.MethodConnect || r.URL.Path != "" {
-		return r.URL.RequestURI()
+		target := r.URL.RequestURI()
+		// fasthttp reads a path without its leading slash, as http.StripPrefix("/api/", h) leaves one, as an absolute URL.
+		if r.URL.Opaque == "" && r.URL.Path != "*" && target[0] != '/' {
+			target = "/" + target
+		}
+		return target
 	}
 	if r.URL.Opaque != "" {
 		return r.URL.Opaque
@@ -841,6 +951,12 @@ func routedRequestURI(r *http.Request) string {
 		return fromURL
 	}
 	return r.RequestURI
+}
+
+// hasOpaqueTarget reports whether net/http read r's request line as an opaque URL, such as "http:admin/users",
+// which leaves URL.Path empty and is no request target (RFC 9112 Section 3.2). CONNECT may carry its authority there.
+func hasOpaqueTarget(r *http.Request) bool {
+	return r.URL != nil && r.Method != http.MethodConnect && r.URL.Opaque != "" && r.URL.Opaque[0] != '/'
 }
 
 // decodesTo reports whether raw, a path whose escapes are well formed as
@@ -894,6 +1010,22 @@ func appendReceived(dst []byte, key string, vals []string) []byte {
 	return dst
 }
 
+// flush flushes w as http.ResponseController does; the controller, which can cost an allocation, is made only for a
+// middleware's wrapper, whose Flush it finds through Unwrap.
+func flush(w http.ResponseWriter) error {
+	switch f := w.(type) {
+	case interface{ FlushError() error }:
+		return f.FlushError()
+	case http.Flusher:
+		f.Flush()
+		return nil
+	}
+	return http.NewResponseController(w).Flush() //nolint:wrapcheck // the writer's own error, as the cases above
+}
+
+// rootTarget is the target a host is parsed with; shared and never written.
+var rootTarget = []byte{'/'}
+
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 	// App.Config returns the config by value, so read the body limit once at
 	// construction instead of copying the whole 624-byte struct on every
@@ -914,23 +1046,32 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		defer func() {
 			// As fasthttp's server does, leave a timed-out ctx to the handler that may still run on it. So for
 			// a net/http handler that flushed and outlived its response: the next Reset would wait for it.
-			if fctx.LastTimeoutErrorResponse() == nil && !requesthold.Pending(fctx) {
+			// A hijack stays on the ctx, which no Reset clears, so a hijacked ctx is not reused either.
+			if fctx.LastTimeoutErrorResponse() == nil && !requesthold.Pending(fctx) && !fctx.Hijacked() {
 				ctxPool.Put(pctx)
 			}
 		}()
+
+		// Refused as fasthttp's server refuses them: a target without a path, and a host its URI parser rejects,
+		// which the next SetRequestURI (the proxy middleware, c.SendFile) would read as the path "/".
+		if hasOpaqueTarget(r) || (r.Host != "" && pctx.uri.Parse(utils.UnsafeBytes(r.Host), rootTarget) != nil) {
+			http.Error(w, utils.StatusMessage(fiber.StatusBadRequest), fiber.StatusBadRequest)
+			return
+		}
 
 		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey))
 		if err != nil {
 			remoteAddr = nil // Fallback to nil
 		}
-		pctx.conn.remoteAddr = remoteAddr
-		var conn net.Conn = &pctx.conn
+		noop := &pctx.conn
+		var conn net.Conn = noop
 		if r.TLS != nil {
 			// Carry the TLS state over, so c.Scheme() and c.Secure() describe the connection.
-			pctx.tlsConn.noopConn = pctx.conn
+			noop = &pctx.tlsConn.noopConn
 			pctx.tlsConn.state = *r.TLS
 			conn = &pctx.tlsConn
 		}
+		noop.reset(remoteAddr)
 
 		// Init2 mirrors fasthttp's RequestCtx.Init, but with a no-op
 		// connection instead of fasthttp's fakeAddrer, whose Write panics.
@@ -942,9 +1083,12 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		// order fasthttp's Init uses, minus its full request copy.
 		fctx.Init2(conn, disabledLogger, true)
 		req := &fctx.Request
+		req.Header.SetMethod(r.Method)
+		// net/http's server knows no GETOnly; as Fiber's own server does, refuse the method and leave the body unread.
+		methodRefused := app.Server().GetOnly && !req.Header.IsGet() && !req.Header.IsHead()
 
 		// Convert net/http -> fasthttp request with size limit
-		if r.Body != nil {
+		if r.Body != nil && !methodRefused {
 			if r.ContentLength > maxBodySize {
 				http.Error(w, utils.StatusMessage(fiber.StatusRequestEntityTooLarge), fiber.StatusRequestEntityTooLarge)
 				return
@@ -980,8 +1124,8 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 
 			req.Header.SetContentLength(int(n))
 		}
-		req.Header.SetMethod(r.Method)
-		req.SetRequestURI(routedRequestURI(r))
+		// net/http reads no fragment in a request line, where fasthttp would end the path or the query.
+		req.SetRequestURI(strings.ReplaceAll(routedRequestURI(r), "#", "%23"))
 		req.SetHost(r.Host)
 		req.Header.SetHost(r.Host)
 		// Propagate the real protocol version so protocol-dependent behavior
@@ -1011,11 +1155,18 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			if len(vals) == 0 {
 				continue
 			}
-			// net/http keeps the Trailer field of a request that is not chunked, and fasthttp scans every name
-			// announced for each header it stores, so as the router does, refuse more than MaxTrailers.
-			if len(key) == len(fiber.HeaderTrailer) && utils.EqualFold(key, fiber.HeaderTrailer) && announcesTooMany(vals) {
-				http.Error(w, utils.StatusMessage(fiber.StatusRequestHeaderFieldsTooLarge), fiber.StatusRequestHeaderFieldsTooLarge)
-				return
+			// The host is r.Host, as for net/http: its HTTP/2 server leaves a "host" field here.
+			if len(key) == len(fiber.HeaderHost) && utils.EqualFold(key, fiber.HeaderHost) {
+				continue
+			}
+			// net/http keeps the Trailer field of a request that is not chunked. As the router does, refuse more than
+			// MaxTrailers names and drop the field: no trailer section follows, and fasthttp would file the names as one.
+			if len(key) == len(fiber.HeaderTrailer) && utils.EqualFold(key, fiber.HeaderTrailer) {
+				if announcesTooMany(vals) {
+					http.Error(w, utils.StatusMessage(fiber.StatusRequestHeaderFieldsTooLarge), fiber.StatusRequestHeaderFieldsTooLarge)
+					return
+				}
+				continue
 			}
 			// fasthttp files a key that is not in canonical spelling under another spelling than the
 			// map does, where a canonical key of the same name may sit: a hand-built map may hold both
@@ -1026,16 +1177,15 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 				continue
 			}
 			// A canonical name is new to the request, so Add appends it without Set's scan of the
-			// stored lines. The names fasthttp derives or stores specially (Host, Content-Type,
+			// stored lines. The names fasthttp derives or stores specially (Content-Type, User-Agent,
 			// Cookie, ...) reach the same special handling through Add as through Set, and fasthttp's
 			// Add keeps its own singleton semantics for them, which can only hold one value by design.
 			// Repeated values of the other names survive instead of collapsing to the last value.
 			for _, v := range vals {
 				req.Header.Add(key, v)
 			}
-			if len(vals) > 1 {
-				received = appendReceived(received, key, vals)
-			}
+			// A single line as well: only this block tells it from one a handler adds.
+			received = appendReceived(received, key, vals)
 		}
 		// Two non-canonical spellings of one name resolve alike whatever the order of the map.
 		slices.Sort(aliased)
@@ -1045,9 +1195,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			for _, v := range vals[1:] {
 				req.Header.Add(key, v)
 			}
-			if len(vals) > 1 {
-				received = appendReceived(received, key, vals)
-			}
+			received = appendReceived(received, key, vals)
 		}
 		pctx.received = received
 		if len(received) > 0 {
@@ -1055,7 +1203,12 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			fieldname.SetReceived(req, &pctx.received)
 		}
 
-		if len(h) > 0 {
+		switch {
+		case methodRefused:
+			// Handler prepares the app first: the error handler of a mounted app is looked up among those it collects.
+			app.Handler()
+			app.Server().ErrorHandler(fctx, fasthttp.ErrGetOnly)
+		case len(h) > 0:
 			// New fiber Ctx
 			ctx := app.AcquireCtx(fctx)
 			defer app.ReleaseCtx(ctx)
@@ -1065,29 +1218,37 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			if err != nil {
 				_ = app.ErrorHandler(ctx, err) //nolint:errcheck // not needed
 			}
-		} else {
+		default:
 			// Execute fasthttp Ctx though app.Handler
 			app.Handler()(fctx)
 		}
 
 		// Convert fasthttp Ctx -> net/http
 		resp := &fctx.Response
+		// c.Drop closed the connection, on which fasthttp's server then fails to write the response.
+		abort := noop.dropped()
 		if timeoutResp := fctx.LastTimeoutErrorResponse(); timeoutResp != nil {
 			// The timed-out handler still owns fctx.Response; send what fasthttp would.
 			resp = timeoutResp
+		} else if fctx.Hijacked() {
+			// The connection is net/http's and cannot be handed to the hijack handler, nor announced to the client.
+			abort = true
+		}
+		if abort {
+			// net/http ends the exchange without a response: it closes the connection or resets the HTTP/2 stream.
+			_ = resp.CloseBodyStream() //nolint:errcheck // not needed
+			panic(http.ErrAbortHandler)
 		}
 		copyResponseHeaders(w.Header(), &resp.Header)
 		w.WriteHeader(resp.StatusCode())
 
-		// Check if streaming is not possible or unnecessary.
 		bodyStream := resp.BodyStream()
 		if bodyStream != nil && r.Method == http.MethodHead {
 			// net/http discards a HEAD body, so as fasthttp's server does, close the stream unread.
 			_ = resp.CloseBodyStream() //nolint:errcheck // not needed
 			return
 		}
-		flusher, ok := w.(http.Flusher)
-		if !ok || bodyStream == nil {
+		if bodyStream == nil {
 			_, _ = w.Write(resp.Body()) //nolint:errcheck // not needed
 			return
 		}
@@ -1096,14 +1257,15 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			_ = resp.CloseBodyStream() //nolint:errcheck // not needed
 		}()
 
-		// Stream resp.BodyStream() -> w
-		// in chunks.
+		// Stream resp.BodyStream() -> w in chunks, whether or not w can flush: resp.Body() would read
+		// the stream to its end first, and a stream writer that stops on a failed write never would.
 		bufPtr, ok := bufferPool.Get().(*[bufferSize]byte)
 		if !ok {
 			panic(fmt.Errorf("failed to type-assert to *[%d]byte", bufferSize))
 		}
 		defer bufferPool.Put(bufPtr)
 
+		canFlush := true
 		buf := bufPtr[:]
 		for {
 			n, err := bodyStream.Read(buf)
@@ -1111,7 +1273,13 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 				if _, writeErr := w.Write(buf[:n]); writeErr != nil {
 					break
 				}
-				flusher.Flush()
+				if canFlush {
+					if flushErr := flush(w); errors.Is(flushErr, http.ErrNotSupported) {
+						canFlush = false
+					} else if flushErr != nil {
+						break // the client is gone; closing the stream tells its writer
+					}
+				}
 			}
 
 			if err != nil {

@@ -185,7 +185,9 @@ that identifies a single client is not stored at all:
   personalized for the client that caused the miss, and the body — not just the
   header — is what would be replayed to everyone else. The response still
   reaches that client normally; only the entry is skipped, and `X-Cache` reads
-  `unreachable`.
+  `unreachable`. The same holds for a response whose [session](./session.md)
+  save stored nothing and so sent no cookie, for example because another request
+  ended the session while this one ran: the page may still show that session.
 - **A response to a request carrying `Authorization`,** unless the response
   permits shared caching, per
   [RFC 9111 §3.5](https://www.rfc-editor.org/rfc/rfc9111.html#section-3.5).

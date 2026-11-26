@@ -1321,7 +1321,7 @@ func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 		mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
 	}
 
-	return r.c.fasthttp.MultipartFormWithLimit(r.c.app.config.BodyLimit)
+	return bodystream.MultipartForm(&r.c.fasthttp.Request, r.c.app.config.BodyLimit)
 }
 
 // OriginalURL contains the original request URL.

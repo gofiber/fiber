@@ -204,7 +204,9 @@ func (r *Request) Context() context.Context
 
 **SetContext** sets the `context.Context` for the request, allowing you to cancel or time out the request. See the [Go blog](https://blog.golang.org/context) and [context](https://pkg.go.dev/context) docs for more details.
 
-A deadline bounds the exchange at the transport. A cancellation ends it on a client from `client.New` as well: the connection the request was using is closed, so neither the goroutine nor the connection outlives the call once the connection is open. A cancellation while the client is still dialing, or waiting for a free connection, takes effect when the dial or the wait ends, and the connection it produced is then closed unused: the built-in dialer gives up after 3 seconds, a dialer set with `SetDial` or `SetProxyURL` bounds itself. With `SetStreamResponseBody(true)` a cancellation does not reach the transport: the caller returns at once, the exchange waits for the server or the client's timeouts, and a body already being streamed ends when it is closed. A timeout or deadline does reach it, since the connection takes it as its read and write deadline, so give a streamed request one (`SetTimeout`, or a context with a deadline): a server that never answers then leaves no goroutine or connection behind once it passes. A wrapped `fasthttp` client (`NewWithClient`, `NewWithHostClient`, `NewWithLBClient`) returns the caller at once while its exchange ends on its own, when the server answers or the client's own timeouts pass, so give such a client `ReadTimeout` and `WriteTimeout`.
+A deadline bounds the exchange at the transport. A cancellation ends it on a client from `client.New` as well: the connection the request was using is closed, so neither the goroutine nor the connection outlives the call once the connection is open. A cancellation while the client is still dialing, or waiting for a free connection, takes effect when the dial or the wait ends, and the connection it produced is then closed unused: the built-in dialer gives up after 3 seconds, a dialer set with `SetDial` bounds itself, and the one `SetProxyURL` installs gives up when the request's timeout passes, see the client's [SetTimeout](./rest.md#settimeout); without a timeout it gives up after 3 seconds as well. With `SetStreamResponseBody(true)` a cancellation does not reach the transport: the caller returns at once, the exchange waits for the server or the client's timeouts, and a body already being streamed ends when it is closed. A timeout or deadline does reach it, since the connection takes it as its read and write deadline, so give a streamed request one (`SetTimeout`, or a context with a deadline): a server that never answers then leaves no goroutine or connection behind once it passes. A wrapped `fasthttp` client (`NewWithClient`, `NewWithHostClient`, `NewWithLBClient`) returns the caller at once while its exchange ends on its own, when the server answers or the client's own timeouts pass, so give such a client `ReadTimeout` and `WriteTimeout`.
+
+A body set as a stream (`RawRequest.SetBodyStream`) is not read once the call has returned, whichever client sent it, not even by an exchange that goes on after its call. A call whose context ends therefore returns only after a read of the stream that is in progress has, and closes the stream if it is an `io.Closer`: an `*io.PipeReader`, `*os.File` or `net.Conn` at once, which ends a read blocked on it, and any other reader once that read has returned, as its `Close` may not be safe during a `Read`. A reader that can block should bound itself. A relayed `c.BodyStream()` is bounded by the server's `ReadTimeout`: when its upload stalls, the call returns once more of it arrives or that timeout passes.
 
 ```go title="Signature"
 func (r *Request) SetContext(ctx context.Context) *Request
@@ -219,7 +221,7 @@ func (r *Request) Header(key string) []string
 ```
 
 :::info
-When the request is sent, the client's headers are applied first and the request's own headers with the same key replace them rather than being appended. Each send clears those keys before applying them again, so sending the same request twice does not accumulate values.
+When the request is sent, the client's headers are applied first and the request's own headers with the same key replace them rather than being appended. Each send clears those keys before applying them again, so sending the same request twice does not accumulate values. It also removes the headers the previous send took from its client, so a request that is sent again through another client, or after the client was reset, does not carry them.
 :::
 
 ### Headers
@@ -954,7 +956,7 @@ fmt.Println(string(resp.Body()))
 
 ### AddFileWithReader
 
-**AddFileWithReader** adds a single file to the request from an `io.ReadCloser`. The first send reads and closes the reader, so set a new one with `SetReader` before sending the request again.
+**AddFileWithReader** adds a single file to the request from an `io.ReadCloser`. The request takes over the reader: the first send reads and closes it, so set a new one with `SetReader` before sending the request again, and a request released unsent closes it too.
 
 ```go title="Signature"
 func (r *Request) AddFileWithReader(name string, reader io.ReadCloser) *Request
@@ -1099,6 +1101,7 @@ While redirects are followed:
 - When the target is on another host, the `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and `Cookie2` headers are dropped. They are removed whatever case they are stored under. The names set with [SetRedirectSensitiveHeaders](#setredirectsensitiveheaders) on the request or the client are dropped with them. The same host on any port, and its subdomains, keep them.
 - A redirect from `https` to `http` fails with `ErrRedirectDowngrade`. Leave the limit at `0` to take such a hop yourself.
 - A redirect without a `Location` fails with `fasthttp.ErrMissingLocation`. A `Location` that cannot be parsed or names a `scheme://` other than `http` or `https` fails with `fasthttp.ErrorInvalidURI` without being requested, as does a request URL that cannot be parsed. A `Location` with another scheme and no authority, such as `mailto:user@example.com` or an app callback like `com.example.app:/callback`, has nothing to fetch: it is not followed, and the redirect response is returned as-is, as in fasthttp's `DoRedirects`. A chain longer than the limit fails with `fasthttp.ErrTooManyRedirects`.
+- A client that sends the path as built, see [SetDisablePathNormalizing](./rest.md#setdisablepathnormalizing), resolves a `Location` against the URL as sent and decodes nothing ([RFC 3986, Section 5.2](https://www.rfc-editor.org/rfc/rfc3986#section-5.2)): a `Location` that repeats `/files/..%2F..%2Fadmin` is requested as that one segment, not as `/admin`. Spaces and non-ASCII bytes in it are escaped. A client that normalizes paths, the default, normalizes the target.
 - With a [retry configuration](./rest.md#setretryconfig), a chain that fails, on one of the errors above or on a hop that cannot be sent, is retried from the request as it was sent: the original URL, method, body and headers. A request with a streamed body cannot be copied, so its retry starts from the hop the failed attempt reached. A chain that succeeds is not repeated.
 
 ### Control characters in redirect targets
@@ -1505,7 +1508,7 @@ func ReleaseFile(f *File)
 - **SetFileName** sets the file name that is sent in the multipart form.
 - **SetFileFieldName** sets the name of the form field that carries the file.
 - **SetFilePath** sets the path the file is read from.
-- **SetFileReader** sets the `io.ReadCloser` the file is read from. It is closed automatically when the request body is built.
+- **SetFileReader** sets the `io.ReadCloser` the file is read from. It is closed automatically when the request body is built, or when the file is released without that having happened (for example because the request failed earlier).
 
 ```go title="Signature"
 type SetFileFunc func(f *File)
@@ -1564,7 +1567,7 @@ func (f *File) SetPath(p string)
 
 ### SetReader
 
-**SetReader** sets the file's `io.ReadCloser`. The reader is closed automatically when the request body is parsed, so it serves one send.
+**SetReader** sets the file's `io.ReadCloser`. The reader is closed automatically when the request body is built, so it serves one send, or when the file is reset, released or given another reader without that having happened.
 
 ```go title="Signature"
 func (f *File) SetReader(r io.ReadCloser)
@@ -1572,7 +1575,7 @@ func (f *File) SetReader(r io.ReadCloser)
 
 ### Reset
 
-**Reset** clears the file's fields.
+**Reset** clears the file's fields. A reader that has not been closed yet is closed first.
 
 ```go title="Signature"
 func (f *File) Reset()
