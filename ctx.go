@@ -72,6 +72,7 @@ type DefaultCtx struct {
 	flashMessages          redirectionMsgs              // Flash messages
 	path                   []byte                       // HTTP path with the modifications by the configuration
 	detectionPath          []byte                       // Route detection path
+	pathSpare              []byte                       // Buffer the first Path override of a request writes to
 	treePathHash           int                          // Hash of the path for the search in the tree
 	pathSlashes            int                          // Number of '/' in the detection path, used to quick-reject routes
 	pathPrint              uint64                       // Fingerprint of the detection path; 0 until the route scan hashes it
@@ -84,6 +85,8 @@ type DefaultCtx struct {
 	shouldSkipNonUseRoutes bool                         // Skip non-use routes while iterating middleware
 	isUserContextSet       bool                         // User context was stored in fasthttp user values
 	pathNeedsNorm          bool                         // pathOriginal holds an escape or a dot segment; set wherever pathOriginal is
+	sentHead               bool                         // The client sent HEAD and a Method override took it off the request
+	pathSwapped            bool                         // A Path override took pathSpare in this request
 }
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
@@ -918,6 +921,8 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	// Reset matched flag
 	c.isMatched = false
 	c.shouldSkipNonUseRoutes = false
+	c.sentHead = false
+	c.pathSwapped = false
 	c.firstMatchIndex = -1
 	c.route = nil
 	// Set paths

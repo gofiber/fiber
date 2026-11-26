@@ -326,7 +326,8 @@ type Ctx interface {
 	// Config.StreamRequestBody is enabled and the body is not already buffered.
 	// Reading it consumes the body, so a later Body call will not see it.
 	BodyStream() io.Reader
-	// FullURL returns the full request URL (protocol + host + original URL).
+	// FullURL returns the full request URL (protocol + host + original URL). Of an absolute-form
+	// request target ("GET http://example.com/search") only the path and query follow the host.
 	FullURL() string
 	// UserAgent returns the User-Agent request header.
 	UserAgent() string

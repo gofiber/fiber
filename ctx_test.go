@@ -2522,6 +2522,22 @@ func Test_Ctx_Body_With_Compression_MultiFieldLines(t *testing.T) {
 	}
 }
 
+func Test_Ctx_Body_With_Compression_EmptyLineInUnusedSlot(t *testing.T) {
+	t.Parallel()
+	for _, before := range []int{0, 1, 2, 3, 4, 5, 9, 20, 40} {
+		t.Run(fmt.Sprintf("%d lines before", before), func(t *testing.T) {
+			t.Parallel()
+			c := apptest.Ctx(t, New())
+			body := ctxTestACompress(t, StrGzip, []byte("john=doe"))
+			raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + apptest.FieldLines("X-Pad-", "x", before) +
+				"Content-Encoding:\r\nContent-Encoding: gzip\r\nContent-Length: " + strconv.Itoa(len(body)) + "\r\n\r\n" + string(body)
+			require.NoError(t, c.Request().Read(bufio.NewReader(strings.NewReader(raw))))
+
+			require.Equal(t, []byte("john=doe"), c.Body())
+		})
+	}
+}
+
 func Benchmark_Ctx_Fresh_WithNoCache(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -2661,6 +2677,23 @@ func Test_Ctx_Get_EmptyFirstLine(t *testing.T) {
 	require.Len(t, c.Request().Header.PeekAll("X-Token"), 2)
 }
 
+func Test_Ctx_Get_EmptyLineInUnusedSlot(t *testing.T) {
+	t.Parallel()
+	for _, before := range []int{0, 1, 2, 3, 4, 5, 9, 20, 40} {
+		t.Run(fmt.Sprintf("%d lines before", before), func(t *testing.T) {
+			t.Parallel()
+			c := apptest.Ctx(t, New())
+			raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" + apptest.FieldLines("X-Pad-", "x", before) + "X-Role:\r\nX-Role: admin\r\n\r\n"
+			require.NoError(t, c.Request().Read(bufio.NewReader(strings.NewReader(raw))))
+
+			require.Equal(t, "admin", c.Get("X-Role"))
+			require.True(t, c.HasHeader("X-Role"))
+			require.True(t, c.HasHeaderValue("X-Role", "admin"))
+			require.Equal(t, []string{"admin"}, c.GetAll("X-Role"))
+		})
+	}
+}
+
 func Test_Ctx_HeaderAccessors_SkipTrailerSection(t *testing.T) {
 	t.Parallel()
 	for _, normalize := range []bool{true, false} {
@@ -2690,6 +2723,23 @@ func Test_Ctx_HeaderAccessors_SkipTrailerSection(t *testing.T) {
 			resp := rawExpectStatus(t, ln, raw, StatusOK)
 			require.JSONEq(t, `{"get":"anonymous","generic":"","all":null,"has":false,"hasValue":false,`+
 				`"userAgent":"","referer":"","origin":"","xhr":false,"kept":"early"}`, resp.body)
+		})
+	}
+}
+
+func Test_Ctx_Referer_AnySpelling(t *testing.T) {
+	t.Parallel()
+	const referer = "https://example.com/page"
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{DisableHeaderNormalizing: !normalize})
+			app.Get("/", func(c Ctx) error { return c.SendString(c.Referer() + "|" + c.Get(HeaderReferer)) })
+			ln := startRawServer(t, app)
+			for _, name := range []string{"Referer", "referer", "REFERER"} {
+				raw := "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n" + name + ": " + referer + "\r\n\r\n"
+				require.Equal(t, referer+"|"+referer, rawExpectStatus(t, ln, raw, StatusOK).body, name)
+			}
 		})
 	}
 }
@@ -2781,10 +2831,10 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 				return respond(c, body)
 			})
 			app.Post("/fields", func(c Ctx) error {
-				role := c.Get("X-Role")
+				role, login := c.Get("X-Role"), c.Cookies("login")
 				read := string(c.Body()) == "hello"
-				return c.SendString(fmt.Sprintf("read=%v role=%s blocked=%q client=%q ip=%s scheme=%s host=%q", read, role,
-					c.Get("X-Blocked"), c.GetAll("X-Client"), c.IP(), c.Scheme(), c.Host()))
+				return c.SendString(fmt.Sprintf("read=%v role=%s login=%s blocked=%q client=%q ip=%s scheme=%s host=%q", read, role,
+					login, c.Get("X-Blocked"), c.GetAll("X-Client"), c.IP(), c.Scheme(), c.Host()))
 			})
 			ln := startRawServer(t, app)
 
@@ -2816,13 +2866,15 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 				require.Equal(t, `body=Request Header Fields Too Large user=["alice"] role=["user"] trailers=0`, responses[0].body, raw)
 			}
 
-			// The header section stays as received either way, the proxy's lines included, and so does a value read before.
+			// The header section stays as received either way, the proxy's lines included, and so does a value read before,
+			// a cookie's too, though the cookies ahead of it do not parse back from the line fasthttp joins them into.
 			for _, trailers := range []string{"", tooMany} {
 				raw := "POST /fields HTTP/1.1\r\nHost: example.com\r\nX-Client: c\r\nX-Role: user\r\nX-Evil: root\r\n" +
 					"X-Blocked: 1\r\nX-Forwarded-For: 203.0.113.7\r\nX-Forwarded-Proto: https\r\n" +
+					"Cookie: \" \"; login=1077; x=1042\r\n" +
 					chunked + trailers + "X-Role: x\r\nX-Evil: x\r\nX-Blocked: x\r\n\r\n"
 				responses, _ := rawExchange(t, loopbackDialer{ln}, raw, 1)
-				require.Equal(t, fmt.Sprintf(`read=%v role=user blocked="1" client=["c"] ip=203.0.113.7 scheme=https host="example.com"`,
+				require.Equal(t, fmt.Sprintf(`read=%v role=user login=1077 blocked="1" client=["c"] ip=203.0.113.7 scheme=https host="example.com"`,
 					trailers == ""), responses[0].body)
 			}
 		})
@@ -4334,6 +4386,45 @@ func Test_Ctx_Method(t *testing.T) {
 
 	c.Method("MethodInvalid")
 	require.Equal(t, MethodGet, c.Method())
+}
+
+func Test_Ctx_Method_OverrideReachesRequest(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		wire, override, want string
+	}{
+		{wire: MethodPost, override: MethodGet, want: MethodGet},
+		{wire: MethodGet, override: MethodPost, want: MethodPost},
+		{wire: MethodPost, override: "delete", want: MethodDelete},
+		// The client waits for a body, so the request does not turn into a HEAD.
+		{wire: MethodPost, override: MethodHead, want: MethodGet},
+		{wire: MethodGet, override: MethodHead, want: MethodGet},
+		{wire: MethodHead, override: MethodPut, want: MethodPut},
+		{wire: MethodHead, override: MethodHead, want: MethodHead},
+		{wire: MethodPost, override: "NOPE", want: MethodPost},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.wire+" to "+tc.override, func(t *testing.T) {
+			t.Parallel()
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(tc.wire)
+			c := apptest.CtxFor(t, New(), fctx)
+
+			c.Method(tc.override)
+			require.Equal(t, tc.want, string(c.Request().Header.Method()))
+		})
+	}
+
+	t.Run("HEAD and back", func(t *testing.T) {
+		t.Parallel()
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(MethodHead)
+		c := apptest.CtxFor(t, New(), fctx)
+
+		c.Method(MethodPost)
+		c.Method(MethodHead)
+		require.Equal(t, MethodHead, string(c.Request().Header.Method()))
+	})
 }
 
 // Test_Ctx_Method_Unregistered verifies that a ctx carrying a method that is
@@ -6631,6 +6722,21 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 	_, err2 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", http.NoBody))
 	require.NoError(t, err1)
 	require.NoError(t, err2)
+}
+
+func Test_Ctx_SendFile_KeepsQueryArgsChange(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var after string
+	app.Get("/", func(c Ctx) error {
+		c.Request().URI().QueryArgs().Del("as_user")
+		err := c.SendFile("ctx.go")
+		after = c.Query("as_user") + "|" + c.Query("year") + "|" + c.OriginalURL()
+		return err
+	})
+
+	apptest.Expect(t, app, "/?as_user=alice&year=2026", StatusOK)
+	require.Equal(t, "|2026|/?as_user=alice&year=2026", after)
 }
 
 func Test_SendFile_withRoutes(t *testing.T) {
@@ -9133,6 +9239,41 @@ func Test_Ctx_GetReqHeaders_TrailerSection(t *testing.T) {
 	}
 }
 
+func Test_Ctx_CookieHeader_SurvivesHeaderWrite(t *testing.T) {
+	t.Parallel()
+	const cookie = "uid=1001.signature"
+	writes := map[string]func(c Ctx){
+		"set":  func(c Ctx) { c.Request().Header.Set("X-Set", "uid=1000") },
+		"body": func(c Ctx) { c.Body() },
+	}
+	for _, normalize := range []bool{true, false} {
+		for name, write := range writes {
+			t.Run(fmt.Sprintf("normalize=%v %s", normalize, name), func(t *testing.T) {
+				t.Parallel()
+				app := New(Config{StreamRequestBody: true, DisableHeaderNormalizing: !normalize})
+				app.Post("/", func(c Ctx) error {
+					var bound struct {
+						Cookie string `header:"Cookie"`
+					}
+					if err := c.Bind().Header(&bound); err != nil {
+						return err
+					}
+					headers, first, lines := c.GetReqHeaders(), c.Get(HeaderCookie), c.GetAll(HeaderCookie)
+					write(c)
+					return c.SendString(fmt.Sprintf("%q %q %q %q", headers[HeaderCookie], bound.Cookie, first, lines))
+				})
+				ln := startRawServer(t, app)
+
+				raw := "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nCookie: " + cookie +
+					"\r\nX-Note: uid=1000\r\n\r\n5\r\nhello\r\n0\r\nX-Trailer: t\r\n\r\n"
+				responses, _ := rawExchange(t, ln, raw, 1)
+				want := fmt.Sprintf("%q %q %q %q", []string{cookie}, cookie, cookie, []string{cookie})
+				require.Equal(t, want, responses[0].body)
+			})
+		}
+	}
+}
+
 func Benchmark_Ctx_GetReqHeaders_TrailerSection(b *testing.B) {
 	for _, n := range []int{256, 4096} {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
@@ -9248,6 +9389,11 @@ func Test_Ctx_End_Head(t *testing.T) {
 		require.NoError(t, c.SendString(c.Query("msg")))
 		return c.End()
 	})
+	app.Get("/override", func(c Ctx) error {
+		c.Method(MethodPost)
+		require.NoError(t, c.SendString("Hello, World!"))
+		return c.End()
+	})
 	ln := apptest.Serve(t, app, ListenConfig{DisableStartupMessage: true})
 
 	for _, tc := range []struct {
@@ -9256,6 +9402,7 @@ func Test_Ctx_End_Head(t *testing.T) {
 	}{
 		{"head", "HEAD / HTTP/1.1\r\nHost: example.com\r\n\r\n", ""},
 		{"head_query", "HEAD /echo?msg=leftover HTTP/1.1\r\nHost: example.com\r\n\r\n", ""},
+		{"head_overridden", "HEAD /override HTTP/1.1\r\nHost: example.com\r\n\r\n", ""},
 		{"get", "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n", "Hello, World!"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

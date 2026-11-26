@@ -2,12 +2,14 @@ package proxy
 
 import (
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/internal/escapedpath"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/redirectbody"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
 	"github.com/gofiber/utils/v2"
@@ -29,7 +31,8 @@ import (
 // A hop that needs another method or no credentials goes out as a copy, so req keeps its method,
 // body and credentials. A redirect that keeps a streamed body (StreamRequestBody) is followed only
 // if the first hop left all of it in memory; otherwise it fails with fasthttp.ErrRedirectBodyStream.
-func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy) error {
+// carried collects the caching of every redirect followed, for the caller to apply.
+func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy, carried *hopCaching) error { //nolint:revive // argument-limit: carried is filled for DoRedirects
 	if maxRedirects < 0 {
 		maxRedirects = 0
 	}
@@ -98,6 +101,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 				return fiber.ErrRequestHeaderFieldsTooLarge
 			}
 		}
+		carried.collect(&resp.Header)
 		currentURL = nextURL
 		// Rendered once per hop: SetRequestURI copies it and the next resolveRedirect uses it as base.
 		currentURLStr = nextURL.String()
@@ -109,6 +113,70 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		// See https://github.com/gofiber/fiber/issues/1762.
 		hop.URI().SetScheme(currentURL.Scheme)
 	}
+}
+
+// hopCaching keeps the restrictive caching of the followed redirects, their bare no-store, private and
+// no-cache and their Vary names, for the response a chain ends with, which depends on them.
+type hopCaching struct {
+	directives []string
+	vary       []string
+}
+
+// restrictiveDirectives are carried only bare: a field-qualified one names a field of the hop itself.
+var restrictiveDirectives = [...]string{"no-store", "private", "no-cache"}
+
+func (k *hopCaching) collect(h *fasthttp.ResponseHeader) {
+	canonical := fieldname.Canonical(h)
+	for _, line := range fieldname.Lines(h, fiber.HeaderCacheControl, canonical) {
+		for _, name := range restrictiveDirectives {
+			if holdsDirective(utils.UnsafeString(line), name) && !slices.Contains(k.directives, name) {
+				k.directives = append(k.directives, name)
+			}
+		}
+	}
+	for name := range headerlist.AllLines(fieldname.Lines(h, fiber.HeaderVary, canonical)) {
+		k.vary = append(k.vary, strings.Clone(name))
+	}
+}
+
+func (k *hopCaching) apply(h *fasthttp.ResponseHeader) {
+	if len(k.directives) == 0 && len(k.vary) == 0 {
+		return
+	}
+	canonical := fieldname.Canonical(h)
+	cacheControl := string(headerlist.Join(fieldname.Lines(h, fiber.HeaderCacheControl, canonical)))
+	updated := cacheControl
+	for _, name := range k.directives {
+		switch {
+		case holdsDirective(cacheControl, name):
+		case updated == "":
+			updated = name
+		default:
+			updated += ", " + name
+		}
+	}
+	if updated != cacheControl {
+		fieldname.Del(h, fiber.HeaderCacheControl, canonical)
+		h.Set(fiber.HeaderCacheControl, updated)
+	}
+	if vary := headerlist.AppendUniqueFold(string(headerlist.Join(fieldname.Lines(h, fiber.HeaderVary, canonical))), k.vary); vary != "" {
+		if headerlist.Contains(vary, "*") { // "*" stays alone (RFC 9110 §12.5.5)
+			vary = "*"
+		}
+		fieldname.Del(h, fiber.HeaderVary, canonical)
+		h.Set(fiber.HeaderVary, vary)
+	}
+}
+
+// holdsDirective reports whether cacheControl holds name as a bare directive. A comma or a directive inside a
+// quoted argument, as in ext="a, no-store", separates or names nothing.
+func holdsDirective(cacheControl, name string) bool {
+	for directive := range headerlist.AllQuotedPairs(cacheControl) {
+		if utils.EqualFold(directive, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // redirectChangesMethod reports whether a redirect with this status makes req a GET (RFC 9110

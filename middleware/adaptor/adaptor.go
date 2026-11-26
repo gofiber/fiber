@@ -398,7 +398,7 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 	if err := fasthttpadaptor.ConvertRequest(c.RequestCtx(), &req, forServer); err != nil {
 		return nil, err //nolint:wrapcheck // This must not be wrapped
 	}
-	fieldname.OrderValues(&c.Request().Header, fieldname.Received(c.Request()), req.Header)
+	fieldname.OrderValues(fieldname.Received(c.Request()), req.Header)
 	return &req, nil
 }
 
@@ -696,6 +696,8 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			// into fhdr's storage, so every Set, Del or SetHost below rewrites bytes the
 			// remaining entries point at. The method/URI/host writes follow for that.
 			pairs := snapshotHeaders(r.Header)
+			// Rewritten in buffers of its own: a value read before the middleware, keyauth's token say, keeps its bytes.
+			fieldname.Detach(fhdr)
 
 			fhdr.SetMethod(r.Method)
 			// r.Host is a view of the URI's host, which SetRequestURI makes

@@ -1013,6 +1013,30 @@ func Test_HTTPHandler_ConnectAuthorityForm(t *testing.T) {
 	}
 }
 
+func Test_HTTPHandler_SeesOverriddenMethod(t *testing.T) {
+	t.Parallel()
+	method := func(w http.ResponseWriter, r *http.Request) {
+		_, err := w.Write([]byte(r.Method))
+		assert.NoError(t, err)
+	}
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		if m := c.Get("X-HTTP-Method-Override"); m != "" {
+			c.Method(m)
+		}
+		return c.Next()
+	})
+	app.Get("/notes", HTTPHandlerFunc(method))
+	app.Post("/notes", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusUnauthorized) }, HTTPHandlerFunc(method))
+	app.Get("/direct", method)
+
+	for _, target := range []string{"/notes", "/direct"} {
+		fctx := rawLine(t, app, "POST "+target+" HTTP/1.1\r\nHost: x\r\nX-HTTP-Method-Override: GET\r\nContent-Length: 0\r\n\r\n")
+		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode(), target)
+		require.Equal(t, fiber.MethodGet, string(fctx.Response.Body()), target)
+	}
+}
+
 // Test_HTTPHandler_ConnectNoAuthorityIsGuarded pins that a CONNECT target that is no host and port is not taken for the
 // authority form: "CONNECT über.txt" is routed as a raw "/über.txt", which a middleware mounted on "/%C3%BCber.txt" does not
 // run for, while a file server reads both as the one name that middleware guards.

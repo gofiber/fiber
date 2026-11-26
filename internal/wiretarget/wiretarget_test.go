@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"crypto/tls"
 	"encoding/hex"
+	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -469,6 +472,48 @@ func Test_SingleSpelling(t *testing.T) {
 	}
 }
 
+func Test_RoutedAsMatched(t *testing.T) {
+	t.Parallel()
+	const refused = "refused"
+	unescape := fiber.Config{UnescapePath: true}
+	for _, tc := range []struct {
+		config                       fiber.Config
+		name, target, override, want string
+	}{
+		{name: "plain", target: "/a:b/c;d=e,f+g!h*i'(j)@k/?q=1", want: "/a:b/c;d=e,f+g!h*i'(j)@k/?q=1"},
+		{name: "escape", target: "/caf%C3%A9/my%20dir/R%26D/100%25", want: "/caf%C3%A9/my%20dir/R%26D/100%25"},
+		{name: "lower-case escape", target: "/caf%c3%a9", want: "/caf%C3%A9"}, // the router writes upper case
+		{name: "raw UTF-8", target: "/caf\xc3\xa9", want: refused},
+		{name: "escape and raw byte", target: "/caf%C3\xa9", want: refused},
+		{name: "raw delimiter", target: "/a|b", want: refused},
+		{name: "raw bracket", target: "/a[1]", want: refused},
+		{name: "backslash", target: "/a\\b", want: refused},
+		{name: "stray percent", target: "/100%/x", want: refused},
+		{name: "cut escape", target: "/a%2", want: refused},
+		{name: "raw byte in the query", target: "/x?a=caf\xc3\xa9|%", want: "/x?a=caf\xc3\xa9|%"},
+		{name: "raw UTF-8 with unescape path", target: "/caf\xc3\xa9", config: unescape, want: "/caf%C3%A9"},
+		{name: "escape with unescape path", target: "/caf%C3%A9", config: unescape, want: "/caf%C3%A9"},
+		{name: "stray percent with unescape path", target: "/100%/x", config: unescape, want: "/100%25/x"},
+		{name: "path overridden by a handler", target: "/x", override: "/My Docs/x", want: refused},
+		{name: "escaped path overridden by a handler", target: "/x", override: "/My%20Docs/x", want: "/My%20Docs/x"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New(tc.config)
+			app.Get("/*", func(c fiber.Ctx) error {
+				if tc.override != "" {
+					c.Path(tc.override)
+				}
+				if target, ok := wiretarget.RoutedAsMatched(c); ok {
+					return c.SendString(target)
+				}
+				return c.SendString(refused)
+			})
+			require.Equal(t, tc.want, answerFor(t, app, tc.target))
+		})
+	}
+}
+
 // tlsConn is a connection that fasthttp takes for a TLS one: it has the methods of a *tls.Conn it looks for.
 type tlsConn struct{ net.Conn }
 
@@ -502,6 +547,32 @@ func Test_ReadAsOriginForm_KeepsTheScheme(t *testing.T) {
 			require.Equal(t, tc.wantHost, string(uri.Host()))
 			require.Equal(t, "//a/b", string(uri.PathOriginal()))
 			require.Equal(t, "x=http://y", string(uri.QueryString()))
+		})
+	}
+}
+
+func Test_Serve_KeepsQueryArgsChange(t *testing.T) {
+	t.Parallel()
+	for name, handler := range map[string]any{
+		"net/http": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := io.WriteString(w, r.RequestURI)
+			assert.NoError(t, err)
+		}),
+		"fasthttp": fasthttp.RequestHandler(func(fctx *fasthttp.RequestCtx) { fctx.SetBody(fctx.RequestURI()) }),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			var after string
+			app.Use(func(c fiber.Ctx) error {
+				c.Request().URI().QueryArgs().Del("as_user")
+				err := c.Next()
+				after = c.Query("as_user") + "|" + c.OriginalURL() + "|" + wiretarget.Routed(c)
+				return err
+			})
+			app.Get("/*", handler)
+			require.Equal(t, "/a?year=2026", answerFor(t, app, "/a?as_user=alice&year=2026"))
+			require.Equal(t, "|/a?as_user=alice&year=2026|/a?year=2026", after)
 		})
 	}
 }

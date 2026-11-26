@@ -237,7 +237,7 @@ func BenchmarkFollowRedirects_NoRedirect(b *testing.B) {
 		req.Reset()
 		req.SetRequestURI(initialURL.String())
 		req.Header.SetMethod(fasthttp.MethodGet)
-		if err := followRedirects(cli, req, resp, 3, initialURL, policy); err != nil {
+		if err := followRedirects(cli, req, resp, 3, initialURL, policy, new(hopCaching)); err != nil {
 			b.Fatal(err)
 		}
 	}

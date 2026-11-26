@@ -1420,9 +1420,9 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	// the handler will convert back to OS path separator before opening the file
 	file = filepath.ToSlash(file)
 
-	// Restore the original requested URL
+	// Restore the original requested URL and URI
 	originalURL := utils.CopyString(r.c.OriginalURL())
-	defer wiretarget.RestoreTarget(r.c.fasthttp, originalURL)
+	defer wiretarget.RestoreURI(r.c.fasthttp, originalURL, wiretarget.SaveURI(r.c.fasthttp))
 
 	// The file server reads the request URI's path, which fasthttp percent-decodes
 	// as it is set, so the name goes in escaped and comes out of that decode
@@ -1740,7 +1740,7 @@ func (r *DefaultRes) End() error {
 
 	// fasthttp marks the answer to HEAD body-less only after the handler returns, and the
 	// connection is closed below, so both are announced here.
-	if ctx.Request.Header.IsHead() {
+	if r.c.sentHead || ctx.Request.Header.IsHead() {
 		ctx.Response.SkipBody = true
 	}
 	ctx.Response.SetConnectionClose()

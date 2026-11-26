@@ -92,7 +92,7 @@ func NewFastHTTPHandler(h http.Handler) fasthttp.RequestHandler {
 		}
 		// r.Header was filled from the store, where a removed line leaves the last one in its slot.
 		if ctx, ok := r.Context().(*fasthttp.RequestCtx); ok {
-			fieldname.OrderValues(&ctx.Request.Header, fieldname.Received(&ctx.Request), r.Header)
+			fieldname.OrderValues(fieldname.Received(&ctx.Request), r.Header)
 		}
 		h.ServeHTTP(w, r)
 	}))

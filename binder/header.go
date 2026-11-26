@@ -1,6 +1,7 @@
 package binder
 
 import (
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -22,7 +23,7 @@ func (b *HeaderBinding) Bind(req *fasthttp.Request, out any) error {
 
 	for key, val := range req.Header.All() {
 		k := utils.UnsafeString(key)
-		v := utils.UnsafeString(val)
+		v := utils.UnsafeString(fieldname.Retain(key, val))
 		if err := data.bind(b.Name(), out, k, v, b.EnableSplitting, false); err != nil {
 			return err
 		}

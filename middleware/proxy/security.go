@@ -32,7 +32,8 @@ var (
 	ErrUpstreamSchemeNotAllowed = errors.New("proxy: upstream scheme is not allowed")
 
 	// ErrUpstreamHostInvalid is returned when the proxied URL is empty,
-	// missing a host or cannot be parsed (the *url.Error is wrapped too).
+	// missing a host or cannot be parsed (the *url.Error is wrapped too, with
+	// the address it quotes redacted).
 	ErrUpstreamHostInvalid = errors.New("proxy: upstream host is empty or invalid")
 
 	// ErrUpstreamHostBlocked is returned when the proxied URL resolves to an address inside a
