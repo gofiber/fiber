@@ -885,17 +885,43 @@ func Test_Execute_CancelTakesBackBodyStream(t *testing.T) {
 
 	t.Run("closing ends a blocked read", func(t *testing.T) {
 		t.Parallel()
-		conn, peer := net.Pipe()
-		t.Cleanup(func() { require.NoError(t, peer.Close()) })
-		body := &readingConn{Conn: conn, reading: make(chan struct{})}
-		finished := make(chan struct{})
-		result := canceled(t, body, body.reading, func(stream io.Reader) {
-			defer close(finished)
-			_, _ = io.Copy(io.Discard, stream) //nolint:errcheck // ends with the closed conn
-		})
+		for _, tc := range []struct {
+			body func(t *testing.T) (io.Reader, <-chan struct{})
+			name string
+		}{
+			{name: "conn", body: func(t *testing.T) (io.Reader, <-chan struct{}) {
+				t.Helper()
+				conn, peer := net.Pipe()
+				t.Cleanup(func() { require.NoError(t, peer.Close()) })
+				body := &readingConn{Conn: conn, reading: make(chan struct{})}
+				return body, body.reading
+			}},
+			{name: "pipe", body: func(t *testing.T) (io.Reader, <-chan struct{}) {
+				t.Helper()
+				pr, pw := io.Pipe()
+				t.Cleanup(func() { require.NoError(t, pw.Close()) })
+				reading := make(chan struct{})
+				go func() {
+					// Write returns once the byte was read, so the next Read blocks.
+					_, _ = pw.Write([]byte("x")) //nolint:errcheck // the read side ends the test
+					close(reading)
+				}()
+				return pr, reading
+			}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				body, reading := tc.body(t)
+				finished := make(chan struct{})
+				result := canceled(t, body, reading, func(stream io.Reader) {
+					defer close(finished)
+					_, _ = io.Copy(io.Discard, stream) //nolint:errcheck // ends with the closed reader
+				})
 
-		require.ErrorIs(t, apptest.Recv(t, result, time.Second, "the call did not return"), ErrTimeoutOrCancel)
-		apptest.Recv(t, finished, time.Second, "the transport did not finish")
+				require.ErrorIs(t, apptest.Recv(t, result, time.Second, "the call did not return"), ErrTimeoutOrCancel)
+				apptest.Recv(t, finished, time.Second, "the transport did not finish")
+			})
+		}
 	})
 
 	t.Run("a LimitedReader still gives the length", func(t *testing.T) {
