@@ -126,14 +126,33 @@ func newOwnedStandardClientTransport() *standardClientTransport {
 			MaxResponseBodySize: defaultMaxResponseBodySize,
 			// On the client, which fasthttp gives every host client before the hook
 			// runs, so a hook of the caller's own in place of this one does not lose it.
-			Transport: cancelTransport{},
-			ConfigureClient: func(hc *fasthttp.HostClient) error {
-				tlshandshake.Bound(hc)
-				return nil
-			},
+			Transport:       cancelTransport{},
+			ConfigureClient: boundTLSHandshake,
 		},
 		settingKnown: true,
 	}
+}
+
+// boundTLSHandshake bounds what a new connection may take of the request timeout: the dial and the TLS handshake.
+func boundTLSHandshake(hc *fasthttp.HostClient) error {
+	if hc.DialTimeout == nil {
+		hc.DialTimeout = func(addr string, timeout time.Duration) (net.Conn, error) {
+			// Read when dialing: fasthttp prefers DialTimeout, so a Dial a later hook sets would be passed over.
+			if dial := hc.Dial; dial != nil {
+				return dial(addr)
+			}
+			// fasthttp's own dialer allows 1000 connects in progress per process: hold a slot no longer than its default.
+			if timeout <= 0 || timeout > fasthttp.DefaultDialTimeout {
+				timeout = fasthttp.DefaultDialTimeout
+			}
+			if hc.DialDualStack {
+				return fasthttp.DialDualStackTimeout(addr, timeout)
+			}
+			return fasthttp.DialTimeout(addr, timeout)
+		}
+	}
+	tlshandshake.Bound(hc)
+	return nil
 }
 
 // proxyDialTimeout is the SetProxyURL dialer in the form fasthttp hands the request timeout, so a

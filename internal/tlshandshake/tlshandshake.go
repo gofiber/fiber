@@ -9,30 +9,30 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Bound bounds what a new connection of hc may take of the time its request has left: the dial and, as fasthttp
-// handshakes inside the first write where only a write deadline applies, the TLS handshake. It wraps the dialers hc
-// has, so it goes last.
+// Bound gives a new TLS connection of hc a read deadline of the time its request has left: fasthttp handshakes inside
+// the first write, where only a write deadline applies. It wraps the dialers hc has, so it goes last.
 func Bound(hc *fasthttp.HostClient) {
+	if !hc.IsTLS || hc.WriteTimeout > 0 { // with WriteTimeout fasthttp handshakes at dial time, under a deadline
+		return
+	}
 	dialTimeout := hc.DialTimeout
 	if dialTimeout == nil {
 		dialTimeout = func(addr string, timeout time.Duration) (net.Conn, error) {
-			// Read when dialing: fasthttp prefers DialTimeout, so a Dial a later hook sets would be passed over.
-			if dial := hc.Dial; dial != nil {
-				return dial(addr)
-			}
-			// fasthttp's own dialer allows 1000 connects in progress per process: hold a slot no longer than its default.
-			if timeout <= 0 || timeout > fasthttp.DefaultDialTimeout {
-				timeout = fasthttp.DefaultDialTimeout
-			}
-			if hc.DialDualStack {
+			// The dialer fasthttp's callDialFunc would pick; addr already carries the port. Dial is read when
+			// dialing, so one a later hook sets is not passed over.
+			switch {
+			case hc.Dial != nil:
+				return hc.Dial(addr)
+			case timeout <= 0 && hc.DialDualStack:
+				return fasthttp.DialDualStack(addr)
+			case timeout <= 0:
+				return fasthttp.Dial(addr)
+			case hc.DialDualStack:
 				return fasthttp.DialDualStackTimeout(addr, timeout)
+			default:
+				return fasthttp.DialTimeout(addr, timeout)
 			}
-			return fasthttp.DialTimeout(addr, timeout)
 		}
-		hc.DialTimeout = dialTimeout
-	}
-	if !hc.IsTLS || hc.WriteTimeout > 0 { // with WriteTimeout fasthttp handshakes at dial time, under a deadline
-		return
 	}
 	hc.DialTimeout = func(addr string, timeout time.Duration) (net.Conn, error) {
 		deadline := time.Now().Add(timeout)

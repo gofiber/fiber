@@ -15,7 +15,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
-	"github.com/gofiber/fiber/v3/internal/tlshandshake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -1031,7 +1030,7 @@ func Test_BoundTLSHandshake_DialsHostsWithoutDialer(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			hc := &fasthttp.HostClient{Addr: ln.Addr().String(), IsTLS: tc.tls, DialDualStack: tc.dualStack}
-			tlshandshake.Bound(hc)
+			require.NoError(t, boundTLSHandshake(hc))
 			require.NotNil(t, hc.DialTimeout, "the host client dials through fasthttp's default, unbounded by the hook")
 			conn, err := hc.DialTimeout(hc.Addr, time.Minute)
 			require.NoError(t, err)
@@ -1054,7 +1053,7 @@ func Test_BoundTLSHandshake_DialsHostsWithoutDialer(t *testing.T) {
 			if !tc.after {
 				hc.Dial = dial
 			}
-			tlshandshake.Bound(hc)
+			require.NoError(t, boundTLSHandshake(hc))
 			if tc.after {
 				hc.Dial = dial
 			}

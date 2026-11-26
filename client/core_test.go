@@ -24,7 +24,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
-	"github.com/gofiber/fiber/v3/internal/tlshandshake"
 )
 
 // clientTestCCore returns a core that sends a fresh request through client. It
@@ -1210,7 +1209,7 @@ func Test_Execute_ConnectionDialedWithoutTimeoutStaysUsable(t *testing.T) {
 		dials.Add(1)
 		return net.Dial(fiber.NetworkTCP4, addr)
 	}}
-	tlshandshake.Bound(host)
+	require.NoError(t, boundTLSHandshake(host))
 	cc, err := host.AcquireConn(0, false)
 	require.NoError(t, err)
 	host.ReleaseConn(cc)
