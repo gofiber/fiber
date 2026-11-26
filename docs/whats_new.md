@@ -1663,6 +1663,7 @@ A request the timeout middleware gave up on behind `FiberHandler`, `FiberHandler
 The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. Passwords must be provided in **hashed** form (e.g. SHA-256 or bcrypt) rather than plaintext. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Responses also set a `Vary: Authorization` header to prevent caching based on credentials. Passwords are no longer stored in the request context. A `Charset` option controls the value used in the challenge header. A request that carries the `Authorization` field on more than one line is refused with `400 Bad Request`: the field is defined as a single value, and reading either line would let the other decide what the request means.
 A new `HeaderLimit` option restricts the maximum length of the `Authorization` header (default: `8192` bytes).
 The `Authorizer` function now receives the current `fiber.Ctx` as a third argument, allowing credential checks to incorporate request context.
+Custom `Unauthorized` and `BadRequest` handlers run with the `401` or `400` status already set, and `Unauthorized` also with the challenge, `Cache-Control: no-store` and `Vary: Authorization`, so one that only writes a body, such as `c.SendFile`, no longer answers a refused request with `200`. A browser shows its login prompt for that challenge; a handler that answers script requests without it deletes it with `c.Response().Header.Del(fiber.HeaderWWWAuthenticate)`.
 
 ### Cache
 
@@ -1682,14 +1683,16 @@ A response whose session save stored nothing and so sent no cookie, for example 
 
 A request the server refused while reading it, such as one over `BodyLimit`, is neither served from the cache nor stored: its route never ran. With `QUERY` in `Methods`, the default key includes `Content-Type` and `Content-Encoding` besides the body. With an external `Storage`, a response past the size limits an entry is decoded under is not stored (`X-Cache: unreachable`) instead of making every later lookup of its key fail with `500`.
 
-Credential headers named in `KeyHeaders` (`Cookie`, `Authorization`, `Proxy-Authorization`, `X-API-Key`, `X-Auth-Token`, `X-Access-Token` or a header named in `KeyCredentialHeaders`) and the values of the cookies named in `KeyCookies` are hashed in the cache key, so a key listing of an external `Storage` no longer shows them, and the key version moves with that change: every cache starts cold after the upgrade, whatever its config, since the entries of the earlier version are not read. With an external `Storage` they expire on their own, or a shared store can drop them by the earlier version's key prefix (`v4|`). The body an external `Storage` keeps beside an entry, and the entry's `Vary` manifest, now have keys of their own (`v7|body|...` and `v7|manifest|...`) instead of the entry key plus a suffix, which a request could spell to overwrite the body of another entry. A custom `KeyGenerator`'s key is stored with `\`, `|` and `:` escaped as `\\`, `\p` and `\c`, so client text it copies cannot spell the key of another entry's `Vary` variant.
+Credential headers named in `KeyHeaders` (`Cookie`, `Authorization`, `Proxy-Authorization`, `X-API-Key`, `X-Auth-Token`, `X-Access-Token` or a header named in `KeyCredentialHeaders`) and the values of the cookies named in `KeyCookies` are hashed in the cache key, so a key listing of an external `Storage` no longer shows them, and the key version moves with that change: every cache starts cold after the upgrade, whatever its config, since the entries of the earlier version are not read. With an external `Storage` they expire on their own, or a shared store can drop them by the earlier version's key prefix (`v4|`). The body an external `Storage` keeps beside an entry, and the entry's `Vary` manifest, now have keys of their own (`v8|body|...` and `v8|manifest|...`) instead of the entry key plus a suffix, which a request could spell to overwrite the body of another entry. A custom `KeyGenerator`'s key is stored with `\`, `|` and `:` escaped as `\\`, `\p` and `\c`, so client text it copies cannot spell the key of another entry's `Vary` variant.
+
+The default key holds the query string as sent, no longer parsed and sorted, since `Bind` and a proxied upstream read `?doc[]=a&doc=b`, `?doc=b&doc[]=a` and `?id=7&` as other requests than `?id=7`; `?a=1&b=2` and `?b=2&a=1` are now two entries. `KeyCookies` keys every occurrence of a cookie name in any letter case, as `Bind` reads them, not only the first exact one. A response keyed by the cookies (`KeyCookies`, `KeyHeaders` naming `Cookie`, or `Vary: Cookie`) is not stored for a request carrying a cookie value with a quote or a backslash, which fasthttp drops from the cookies it parses while the `Cookie` field still shows it. The key version moves to `v8`, so every cache starts cold once after the upgrade; an external `Storage` can drop the old entries by their prefix (`v7|`). With an external `Storage`, the body of an entry starts with the entry's generation, so concurrent stores of one key can no longer leave the body of one response beside the headers of another, and a bodiless response that replaces a stored page is no longer served around the old body. With `StoreResponseHeaders`, a header that middleware registered before the cache wrote, such as the `requestid` ID, is no longer stored unless something behind the cache changed it, so a hit keeps the value written for its own request instead of the one of the request that filled the entry. A request that lists a header other than a hop-by-hop one in `Connection`, and a `GET` or `HEAD` that sends `Content-Encoding`, can still be served the entry their key selects, but what the handler answers them is neither stored nor allowed to replace or end an entry (`unreachable`). Nor is the response of a request whose handler closes the connection with `c.Drop()` or hijacks it: the empty `200` left on the context no longer replaces a stored page.
 
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
 Cached responses now include an RFC-compliant Age header, providing a standardized indication of how long a response has been stored in cache since it was originally generated. This enhancement improves HTTP compliance and facilitates better client-side caching strategies.
 
 Cache keys are now redacted in logs and error messages by default, and a `DisableValueRedaction` boolean (default `false`) lets you opt out when you need the raw value for troubleshooting.
 
-The default cache key strategy was also hardened. Instead of path-only behavior, keys now use structured request dimensions: method partitioning, scheme and host, path, canonical query string, and selected representation headers (`Accept`, `Accept-Encoding`, `Accept-Language`). This avoids collisions such as `/items?id=1` vs `/items?id=2`, or the same path on two hosts served by one app, while keeping key generation deterministic. New config fields were added for explicit control: `DisableQueryKeys`, `KeyHeaders`, `KeyCookies`, and `DisableVaryHeaders`.
+The default cache key strategy was also hardened. Instead of path-only behavior, keys now use structured request dimensions: method partitioning, scheme and host, path, query string, and selected representation headers (`Accept`, `Accept-Encoding`, `Accept-Language`). This avoids collisions such as `/items?id=1` vs `/items?id=2`, or the same path on two hosts served by one app, while keeping key generation deterministic. New config fields were added for explicit control: `DisableQueryKeys`, `KeyHeaders`, `KeyCookies`, and `DisableVaryHeaders`.
 
 As a security/performance default, request body/form values are not part of the default cache key. Cache handling is limited to `GET` and `HEAD` requests by default, configurable via the `Methods` field.
 
@@ -1753,6 +1756,8 @@ An IPv6 host matches in any spelling, in `TrustedOrigins`, in the `Origin` and `
 
 ### Idempotency
 
+A request whose handler closes the connection with `c.Drop()`, or hijacks it, is no longer stored as the empty `200` left on the context, so the retry with its key runs the handler. That includes a hijack fasthttp sent the response before, since it does not report which one it was.
+
 Unchanged response header lines from middleware registered before idempotency are no longer stored. CORS and request ID middleware registered there produce fresh values on each request without cached copies being appended. Headers added or changed downstream still replay, including those from route-level CORS. Existing cache entries keep their previously stored headers until expiration; this change does not invalidate idempotency keys. See [Behavior](./middleware/idempotency.md#behavior) for middleware ordering.
 
 Idempotency middleware now redacts keys by default and offers a `DisableValueRedaction` configuration flag (default `false`) to expose them when debugging.
@@ -1792,6 +1797,7 @@ A streamed response that declares no length is sent without an `ETag` and no lon
 ### Favicon
 
 The favicon middleware now caps cached favicon assets with a configurable `MaxBytes` limit (default `1 MiB`) and uses a limited reader to guard against oversized files when loading from disk.
+A request the server refused while reading it, such as one over `BodyLimit`, gets its error response without the icon's `Cache-Control`, so a shared cache does not store the refusal as the icon.
 
 ### EnvVar
 
@@ -2034,13 +2040,15 @@ Custom limiter algorithms should now implement the updated `limiter.Handler` int
 
 `limiter.FixedWindow` and `limiter.SlidingWindow` give a field their config leaves unset the default `limiter.New` would, when you call their `New` method yourself: `MaxFunc` and `ExpirationFunc` return `Max` and `Expiration`, and a `nil` config selects the default config. Their `New` works on a copy of the config, which is left as it is; a change to it after the call does not reach the handler.
 
-`SkipFailedRequests` and `SkipSuccessfulRequests` judge the status a request ends with, errors included: a handler that returns a `*fiber.Error` counts with that error's status code, and one that returns any other error counts as a `500` unless it already set an error status. In v2 both options read the response status alone, which is still `200` when a handler returns an error; such a request now counts as failed.
+`SkipFailedRequests` and `SkipSuccessfulRequests` judge the status a request ends with, errors included: a handler that returns a `*fiber.Error` counts with that error's status code, and one that returns any other error counts as a `500` unless it already set an error status. In v2 both options read the response status alone, which is still `200` when a handler returns an error; such a request now counts as failed. A request that may have been sent no response, because the handler ends it with `c.Drop()` or hijacks the connection, a WebSocket upgrade included, counts under both options.
 
 Limiter now redacts request keys in error paths by default. A new `DisableValueRedaction` boolean (default `false`) lets you reveal the limiter key, as the storage sees it, if diagnostics require it.
 
 A custom `Storage` keeps an entry under `limiter:` followed by the key the `KeyGenerator` returned, so a key a client controls cannot reach an entry another middleware keeps in the same storage. Building that key copies it, one allocation per request: the key can point into request memory that fasthttp reuses, and the storage may keep it. The built-in store copies the keys it keeps, so nothing changes there. Counters stored by an earlier version are not read after the upgrade, so every window starts over once.
 
 For a request the timeout middleware gave up on, the limiter leaves the response alone, since the timed-out handler may still be writing it: the timeout response carries no `X-RateLimit-*` headers, and `SkipFailedRequests` and `SkipSuccessfulRequests` judge the timeout response's status.
+
+A custom `LimitReached` runs with the response status already set to `429`, so one that only writes a body, such as `c.SendFile("./toofast.html")`, no longer answers a refused request with `200`. One that lets the request through with `c.Next()` has to set the status itself.
 
 :::note
 Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `Expiration`, `Storage`, and `KeyGenerator` instead.
@@ -3387,7 +3395,7 @@ To restore v2 behavior:
 Additional v3 cache key options:
 
 - `Methods`: HTTP methods eligible for caching (default `GET`, `HEAD`)
-- `DisableQueryKeys`: disable canonicalized query args in keys (default `false`)
+- `DisableQueryKeys`: leave the query string out of keys (default `false`)
 - `KeyHeaders`: request header allow-list for key partitioning
 - `KeyCookies`: explicit cookie allow-list for key partitioning; the values are hashed in the key
 - `KeyCredentialHeaders`: request headers that carry a client's credential; they partition entries like `KeyHeaders`, and hits on them are sent with `Cache-Control: private`

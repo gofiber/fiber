@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/sizedstream"
+	"github.com/gofiber/fiber/v3/internal/unsent"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -213,6 +214,11 @@ func New(config ...Config) fiber.Handler {
 		if err := c.Next(); err != nil {
 			// If the request handler returned an error, return it and skip idempotency
 			return err
+		}
+
+		// A dropped or hijacked connection is sent nothing, so there is no answer to replay.
+		if unsent.Is(c.RequestCtx()) {
+			return nil
 		}
 
 		// Body reads a stream to its end, maybe never, and keeps a read error as the body. One that

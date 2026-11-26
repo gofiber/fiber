@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/errorreplay"
 )
 
 const (
@@ -72,8 +73,8 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Only respond to favicon requests
-		if c.Path() != cfg.URL {
+		// Only respond to favicon requests. A refused request's error handler keeps the headers set here.
+		if c.Path() != cfg.URL || errorreplay.Active(c.RequestCtx()) {
 			return c.Next()
 		}
 

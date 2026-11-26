@@ -1900,3 +1900,27 @@ func (s *hookedStorage) DeleteWithContext(ctx context.Context, key string) error
 	}
 	return s.Memory.DeleteWithContext(ctx, key)
 }
+
+// KeyCookies keys every occurrence of a name in any letter case, so each spelling is a credential a refusal ends.
+func Test_Cache_RefusalEndsAnEntryKeyedByAnySpellingOfTheCookie(t *testing.T) {
+	t.Parallel()
+	for _, cookie := range []string{"Session=tok", "session=; session=tok"} {
+		t.Run(cookie, func(t *testing.T) {
+			t.Parallel()
+			var ended atomic.Bool
+			app := fiber.New()
+			app.Use(New(Config{KeyCookies: []string{"session"}}))
+			app.Get("/", func(c fiber.Ctx) error {
+				if ended.Load() {
+					return c.SendStatus(fiber.StatusUnauthorized)
+				}
+				return c.SendString("account")
+			})
+
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", fiber.HeaderCookie, cookie), cacheMiss, "account")
+			ended.Store(true)
+			require.Equal(t, fiber.StatusUnauthorized, cacheTestCGet(t, app, "/", fiber.HeaderCookie, cookie, fiber.HeaderCacheControl, "no-cache").status)
+			require.Equal(t, fiber.StatusUnauthorized, cacheTestCGet(t, app, "/", fiber.HeaderCookie, cookie).status)
+		})
+	}
+}
