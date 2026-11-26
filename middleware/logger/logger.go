@@ -137,14 +137,18 @@ func New(config ...Config) fiber.Handler {
 		if logsPath {
 			data.req.path = append(data.req.path[:0], c.Path()...)
 		}
-		if logsURL {
-			data.req.url = append(data.req.url[:0], c.OriginalURL()...)
-		}
-		if logsProtocol {
-			data.req.protocol = append(data.req.protocol[:0], c.Protocol()...)
-		}
-		if logsHost {
-			data.req.host = append(data.req.host[:0], c.Hostname()...)
+		if logsURL || logsProtocol || logsHost {
+			req := &c.RequestCtx().Request
+			if logsURL {
+				data.req.url = append(data.req.url[:0], req.Header.RequestURI()...)
+			}
+			if logsProtocol {
+				data.req.protocol = append(data.req.protocol[:0], req.Header.Protocol()...)
+			}
+			if logsHost {
+				// The host c.Hostname parses once proxy headers are out: a timed-out line logs no other.
+				data.req.host = append(data.req.host[:0], req.URI().Host()...)
+			}
 		}
 
 		// Set latency start time

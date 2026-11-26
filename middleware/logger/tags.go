@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/hostname"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/utils/v2"
 )
@@ -151,7 +152,8 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 				return 0, nil
 			}
 			if data.timeoutResp != nil {
-				return writeSanitizedString(output, utils.UnsafeString(data.req.host))
+				host, _ := hostname.SplitPort(utils.TrimSpace(utils.UnsafeString(data.req.host)))
+				return writeSanitizedString(output, host)
 			}
 			return writeSanitizedString(output, c.Hostname())
 		},

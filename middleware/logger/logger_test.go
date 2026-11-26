@@ -918,6 +918,7 @@ func runLoggerBenchmarks(b *testing.B, run func(b *testing.B, app *fiber.App, pa
 		{name: "DefaultFormatDisableColors", cfg: &Config{DisableColors: true}, handler: hello},
 		{name: "DefaultFormatForceColors", cfg: &Config{ForceColors: true}, handler: hello},
 		{name: "DefaultFormatWithFiberLog", cfg: &Config{Stream: LoggerToWriter(fiberLogger, fiberlog.LevelDebug)}, handler: hello},
+		{name: "CommonFormat", cfg: &Config{Format: CommonFormat}, handler: hello},
 		{
 			name:    "WithTagParameter",
 			cfg:     &Config{Format: "${bytesReceived} ${bytesSent} ${status} ${reqHeader:test}"},
@@ -1570,6 +1571,7 @@ func Test_Logger_TimedOutRequestLeavesRequestToHandler(t *testing.T) {
 			app.Post("/", func(fiber.Ctx) error { return nil })
 
 			req := httptest.NewRequest(fiber.MethodPost, "/?a=1", strings.NewReader("f=2"))
+			req.Host = "example.com:8080"
 			req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
 			req.Header.Set(fiber.HeaderCookie, "theme=dark")
 			req.Header.Set(fiber.HeaderReferer, "http://example.com/")
