@@ -1491,15 +1491,19 @@ func (d *bindData) bind(aliasTag string, out any, key, value string, enableSplit
 
 // bindFiles files a multipart form's headers under key, rewritten from bracket notation as value keys are. A struct
 // also gets the key as a pair with an empty value, as Decode reads the key of a file.
-func (d *bindData) bindFiles(files map[string][]*multipart.FileHeader, key string, headers []*multipart.FileHeader) error {
+func (d *bindData) bindFiles(aliasTag string, out any, files map[string][]*multipart.FileHeader, key string, headers []*multipart.FileHeader) error {
 	key, err := bindKey(key, true)
 	if err != nil {
 		return err
 	}
-	if _, filed := files[key]; !filed && d.mode == bindPairs {
+	prev, filed := files[key]
+	if !filed && d.mode == bindPairs {
 		d.add(key, "")
 	}
-	// Of the names that spell one key, the one that sorts last wins, as among the values.
+	// Of several names of one key, a slice takes the files of all, a single field those of the last bound.
+	if filed && equalFieldType(out, reflect.Slice, key, aliasTag) {
+		headers = append(slices.Clip(prev), headers...)
+	}
 	files[key] = headers
 	return nil
 }

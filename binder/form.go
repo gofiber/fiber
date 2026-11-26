@@ -102,7 +102,7 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 	data.names = slices.AppendSeq(data.names[:0], maps.Keys(multipartForm.File))
 	slices.Sort(data.names)
 	for _, key := range data.names {
-		if err := data.bindFiles(files, key, multipartForm.File[key]); err != nil {
+		if err := data.bindFiles(b.Name(), out, files, key, multipartForm.File[key]); err != nil {
 			return err
 		}
 	}

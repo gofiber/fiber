@@ -245,12 +245,12 @@ func Test_BindData_BracketNotation(t *testing.T) {
 
 	files := make(map[string][]*multipart.FileHeader)
 	headers := []*multipart.FileHeader{{Filename: "file1.txt"}, {Filename: "file2.txt"}}
-	require.NoError(t, data.bindFiles(files, "files", headers))
-	require.NoError(t, data.bindFiles(files, "user[avatars]", headers[:1]))
+	require.NoError(t, data.bindFiles("form", out, files, "files", headers))
+	require.NoError(t, data.bindFiles("form", out, files, "user[avatars]", headers[:1]))
 	require.Equal(t, map[string][]*multipart.FileHeader{"files": headers, "user.avatars": headers[:1]}, files)
 
 	require.EqualError(t, data.bind("query", out, "invalid[", "value", false, true), "unmatched brackets")
-	require.EqualError(t, data.bindFiles(files, "invalid[", headers), "unmatched brackets")
+	require.EqualError(t, data.bindFiles("form", out, files, "invalid[", headers), "unmatched brackets")
 }
 
 func Test_parseToStruct_MismatchedData(t *testing.T) {

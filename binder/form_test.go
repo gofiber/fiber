@@ -187,15 +187,18 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 }
 
 // Test_FormBinder_BindMultipart_KeysOfOneField pins that binds of one multipart form agree when several of its keys
-// name one field: the parts are filed in sorted key order, so the same key wins every time.
+// name one field: the parts are filed in sorted key order, so the same key wins every time, and a slice of files
+// takes the files of every key.
 func Test_FormBinder_BindMultipart_KeysOfOneField(t *testing.T) {
 	t.Parallel()
 	type profile struct {
-		Avatar *multipart.FileHeader `form:"avatar"`
-		Role   string                `form:"role"`
+		Avatar *multipart.FileHeader   `form:"avatar"`
+		Role   string                  `form:"role"`
+		Docs   []*multipart.FileHeader `form:"docs"`
 		User   struct {
-			Avatar *multipart.FileHeader `form:"avatar"`
-			Role   string                `form:"role"`
+			Avatar *multipart.FileHeader   `form:"avatar"`
+			Role   string                  `form:"role"`
+			Docs   []*multipart.FileHeader `form:"docs"`
 		} `form:"user"`
 		Items []struct {
 			Name string `form:"name"`
@@ -216,6 +219,10 @@ func Test_FormBinder_BindMultipart_KeysOfOneField(t *testing.T) {
 		writeFormFile(t, mw, "Avatar", "other.txt", "other")
 		writeFormFile(t, mw, "user[avatar]", "bracket.txt", "bracket")
 		writeFormFile(t, mw, "user.avatar", "dot.txt", "dot")
+		writeFormFile(t, mw, "docs", "a.txt", "a")
+		writeFormFile(t, mw, "docs[]", "b.txt", "b")
+		writeFormFile(t, mw, "user[docs]", "c.txt", "c")
+		writeFormFile(t, mw, "user.docs", "d.txt", "d")
 	})
 
 	for range 50 {
@@ -227,6 +234,12 @@ func Test_FormBinder_BindMultipart_KeysOfOneField(t *testing.T) {
 		require.Equal(t, "first", p.Items[0].Name)
 		requireFile(t, p.Avatar, "avatar.txt", "avatar")
 		requireFile(t, p.User.Avatar, "bracket.txt", "bracket")
+		require.Len(t, p.Docs, 2)
+		requireFile(t, p.Docs[0], "a.txt", "a")
+		requireFile(t, p.Docs[1], "b.txt", "b")
+		require.Len(t, p.User.Docs, 2)
+		requireFile(t, p.User.Docs[0], "d.txt", "d")
+		requireFile(t, p.User.Docs[1], "c.txt", "c")
 	}
 }
 
