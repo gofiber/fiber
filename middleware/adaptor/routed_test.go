@@ -215,11 +215,11 @@ func Test_HTTPHandler_RefusesDotParams_UnescapePath(t *testing.T) {
 		require.Equal(t, fiber.StatusNotFound, fctx.Response.StatusCode(), target)
 		require.NotContains(t, string(fctx.Response.Body()), "admin", target)
 	}
-	for target, path := range map[string]string{
+	for target, routed := range map[string]string{
 		"/a;b/c": "/a;b/c", "/a%3Bb/c": "/a;b/c", "/m;x=1;y=2": "/m;x=1;y=2", "/..x;y/a": "/..x;y/a",
 		"/app/;jsessionid=1": "/app/;jsessionid=1", "/app/%3B": "/app/;", "/public/../a": "/a",
 	} {
-		adaptorTestRequireRawOK(t, app, target, path)
+		adaptorTestRequireRawOK(t, app, target, routed)
 	}
 }
 
