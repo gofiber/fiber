@@ -1,7 +1,6 @@
 package binder
 
 import (
-	"errors"
 	"fmt"
 	"iter"
 	"maps"
@@ -455,10 +454,9 @@ func formKeys(data map[string][]string, files []map[string][]*multipart.FileHead
 }
 
 // parseValuesToStruct is parseToStruct for key/value pairs: values[i] is a
-// value of keys[i]. The keys of files are among them, with an empty value.
-func parseValuesToStruct(aliasTag string, out any, keys, values []string, files ...map[string][]*multipart.FileHeader) error {
-	g := guardFileHeaders(out, files)
-	if g != nil {
+// value of keys[i].
+func parseValuesToStruct(aliasTag string, out any, keys, values []string) error {
+	if g := guardFileHeaders(out, nil); g != nil {
 		defer g.restore(out)
 	}
 
@@ -475,205 +473,11 @@ func parseValuesToStruct(aliasTag string, out any, keys, values []string, files 
 		return err
 	}
 
-	err := schemaDecoder.DecodeValues(out, keys, values)
-	// Only a destination the guard walks has a field that takes a file.
-	if g != nil && len(files) > 0 && len(files[0]) > 0 {
-		err = unfilled(err, schemaDecoder.decodeFiles(g, out, keys, files[0]))
+	if err := schemaDecoder.DecodeValues(out, keys, values); err != nil {
+		return err //nolint:wrapcheck // a wrap adds no context and costs a formatted message per failed bind
 	}
-	return err
-}
 
-// unfilled returns err, what DecodeValues reported for the pairs, without the empty required fields a file fills:
-// those the decode of the files alone, filesErr, does not report. DecodeValues takes no files, so it reports them all.
-func unfilled(err, filesErr error) error {
-	var missing schema.MultiError
-	if !errors.As(err, &missing) {
-		return err
-	}
-	var stillMissing schema.MultiError
-	if filesErr != nil && !errors.As(filesErr, &stillMissing) {
-		return err
-	}
-	for key, e := range missing {
-		var empty schema.EmptyFieldError
-		if errors.As(e, &empty) && stillMissing[key] == nil {
-			delete(missing, key)
-		}
-	}
-	if len(missing) == 0 {
-		return nil
-	}
-	return missing
-}
-
-// decodeFiles decodes files into a scratch value, the keys of one field in the order of keys, and sets the file fields
-// of out from it: decoded into out, the files would rerun the defaults and required checks the pairs have done. It
-// returns what the decode of all files reports.
-func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, files map[string][]*multipart.FileHeader) error {
-	dst := reflect.ValueOf(out).Elem()
-	if dst.Kind() != reflect.Struct {
-		return nil
-	}
-	pool := scratchValues.get(dst.Type(), newScratchPool)
-	scratch := reflect.ValueOf(pool.Get())
-	defer func() {
-		scratch.Elem().SetZero()
-		pool.Put(scratch.Interface())
-	}()
-	if behindUnexportedPointer(dst.Type()) {
-		allocEmbedded(scratch.Elem(), dst, nil)
-	}
-	// All at once first, which grows each slice the keys index to its length in one step.
-	err := d.Decode(scratch.Interface(), nil, files)
-	if len(files) > 1 {
-		one := acquireFileHeaderMap()
-		defer releaseFileHeaderMap(one)
-		for _, key := range keys {
-			if headers, ok := files[key]; ok {
-				one[key] = headers
-				d.Decode(scratch.Interface(), nil, one) //nolint:errcheck // reported by the decode of the pairs
-				delete(one, key)
-			}
-		}
-	}
-	g.setFiles(dst, scratch.Elem())
-	return err //nolint:wrapcheck // judged by unfilled, not returned as is
-}
-
-// scratchValues pools, per destination struct type, the zeroed values decodeFiles decodes into.
-var scratchValues typeCache[*sync.Pool]
-
-func newScratchPool(t reflect.Type) *sync.Pool {
-	return &sync.Pool{New: func() any { return reflect.New(t).Interface() }}
-}
-
-// unexportedPointers caches behindUnexportedPointer per struct type.
-var unexportedPointers typeCache[bool]
-
-// behindUnexportedPointer reports whether the struct type t holds a file field under an unexported embedded pointer,
-// through struct values, pointers and slices: schema follows one that is set but cannot allocate it, so a scratch
-// value needs one set for it.
-func behindUnexportedPointer(t reflect.Type) bool {
-	return unexportedPointers.get(t, func(t reflect.Type) bool { return reachesUnexportedPointer(t, nil) })
-}
-
-// reachesUnexportedPointer is behindUnexportedPointer for t, skipping the types in seen, which a recursive type
-// leads back to.
-func reachesUnexportedPointer(t reflect.Type, seen []reflect.Type) bool {
-	if slices.Contains(seen, t) {
-		return false
-	}
-	seen = append(seen, t)
-	return slices.ContainsFunc(headerFields(t), func(i int) bool {
-		f := t.Field(i)
-		ft := f.Type
-		switch ft.Kind() { //nolint:exhaustive // the kinds a key walks through to a struct
-		case reflect.Pointer:
-			if !f.IsExported() {
-				return true
-			}
-			ft = ft.Elem()
-		case reflect.Slice:
-			ft = unwrapType(ft.Elem())
-		}
-		return ft.Kind() == reflect.Struct && reachesUnexportedPointer(ft, seen)
-	})
-}
-
-// allocEmbedded gives scratch a zero pointee of its own for each pointer to a struct dst has set, and an element for
-// each element of a slice dst holds there, so that an unexported embedded pointer is set in scratch too. The files
-// decoded into them reach dst through setFiles, and the defaults the decode sets there go nowhere. seen holds the
-// pointers and slices followed so far, which a cycle in dst leads back to.
-func allocEmbedded(scratch, dst reflect.Value, seen []seenPointer) {
-	switch dst.Kind() { //nolint:exhaustive // the kinds a key walks through to a struct
-	case reflect.Struct:
-		for _, i := range headerFields(dst.Type()) {
-			allocEmbedded(scratch.Field(i), dst.Field(i), seen)
-		}
-	case reflect.Pointer:
-		if dst.Type() == fileHeaderPtrType || dst.IsNil() || dst.Elem().Kind() != reflect.Struct {
-			return
-		}
-		key := seenPointer{typ: dst.Type(), ptr: dst.Pointer()}
-		if slices.Contains(seen, key) {
-			return
-		}
-		p := reflect.New(dst.Type().Elem())
-		setScratch(scratch, p)
-		allocEmbedded(p.Elem(), dst.Elem(), append(seen, key))
-	case reflect.Slice:
-		if elem := unwrapType(dst.Type().Elem()); dst.Len() == 0 || elem.Kind() != reflect.Struct ||
-			!behindUnexportedPointer(elem) {
-			return
-		}
-		key := seenPointer{typ: dst.Type(), ptr: dst.Pointer(), n: dst.Len()}
-		if slices.Contains(seen, key) {
-			return
-		}
-		elems := reflect.MakeSlice(dst.Type(), dst.Len(), dst.Len())
-		setScratch(scratch, elems)
-		seen = append(seen, key)
-		for i := range dst.Len() {
-			allocEmbedded(elems.Index(i), dst.Index(i), seen)
-		}
-	}
-}
-
-// setScratch sets v, a part of a scratch value, to x, also where v is an unexported field.
-func setScratch(v, x reflect.Value) {
-	if v.CanSet() {
-		v.Set(x)
-		return
-	}
-	reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem().Set(x) //nolint:gosec // reflect cannot set the unexported field; scratch is our own value
-}
-
-var fileHeaderSliceType = reflect.SliceOf(fileHeaderPtrType)
-
-// setFiles sets each field of to that takes files to what it holds in from, a value of the same type, where that is
-// the header of a file part. What to does not hold, a nil pointer or an element past the end of a slice, is skipped.
-func (g *fileHeaders) setFiles(to, from reflect.Value) {
-	switch t := from.Type(); {
-	case t == fileHeaderPtrType || t == fileHeaderSliceType || t.Kind() == reflect.Pointer && t.Elem() == fileHeaderSliceType:
-		if g.holdsFile(from) && to.CanSet() {
-			to.Set(from)
-		}
-	case t.Kind() == reflect.Pointer:
-		if !from.IsNil() && !to.IsNil() {
-			g.setFiles(to.Elem(), from.Elem())
-		}
-	case t.Kind() == reflect.Struct:
-		for _, i := range headerFields(t) {
-			g.setFiles(to.Field(i), from.Field(i))
-		}
-	case t.Kind() == reflect.Slice || t.Kind() == reflect.Array:
-		for i := range min(to.Len(), from.Len()) {
-			g.setFiles(to.Index(i), from.Index(i))
-		}
-	default:
-	}
-}
-
-// holdsFile reports whether v, a *multipart.FileHeader or a slice of them or a pointer to one, holds the header of
-// a file part. Schema sets all the files of a key or none, so the first header of a slice answers for it.
-func (g *fileHeaders) holdsFile(v reflect.Value) bool {
-	if v.Type() != fileHeaderPtrType {
-		if v.Kind() == reflect.Pointer {
-			if v.IsNil() {
-				return false
-			}
-			v = v.Elem()
-		}
-		if v.Len() == 0 {
-			return false
-		}
-		v = v.Index(0)
-	}
-	if !v.CanInterface() {
-		return false
-	}
-	fh, ok := reflect.TypeAssert[*multipart.FileHeader](v)
-	return ok && g.known(fh)
+	return nil
 }
 
 // parseLast is parse for a map[string]string destination, from the last value
@@ -802,12 +606,6 @@ func isExported(f *reflect.StructField) bool {
 	return f.PkgPath == ""
 }
 
-// visible reports whether the keys of aliasTag reach through f: an exported field, and for the cookie name checks an
-// embedded struct of an unexported type too, whose exported fields schema promotes.
-func visible(f *reflect.StructField, aliasTag string) bool {
-	return isExported(f) || aliasTag == bindingCookie && f.Anonymous && unwrapType(f.Type).Kind() == reflect.Struct
-}
-
 // fieldName returns the lowercased name a field is matched by: the alias from
 // its tag, or the Go field name when the tag carries none.
 func fieldName(f *reflect.StructField, aliasTag string) string {
@@ -815,21 +613,15 @@ func fieldName(f *reflect.StructField, aliasTag string) string {
 		return ""
 	}
 
-	name := tagName(f, aliasTag)
+	name := f.Tag.Get(aliasTag)
+	if first, _, found := utils.CutByte(name, ','); found {
+		name = first
+	}
 	if name == "" {
 		name = f.Name
 	}
 
 	return utilsstrings.ToLower(name)
-}
-
-// tagName returns the alias in f's tag as written, or "" when the tag carries none.
-func tagName(f *reflect.StructField, aliasTag string) string {
-	name := f.Tag.Get(aliasTag)
-	if first, _, found := utils.CutByte(name, ','); found {
-		name = first
-	}
-	return name
 }
 
 // fieldInfo describes how the keys of one struct type resolve to fields, so a
@@ -840,22 +632,11 @@ type fieldInfo struct {
 	promoted    map[string]promotedField
 	kinds       map[string]reflect.Kind
 	nestedKinds map[reflect.Kind]struct{}
-	cookie      atomic.Pointer[cookieNames] // built on the first cookie bind into the type
-	exact       []string                    // the aliases as written of the tagged fields a one-segment key resolves to
-	embeds      []string                    // the lowercased names of the embedded structs at any depth
-	containers  []namedField                // the struct, slice of struct and map fields a one-segment key resolves to
-	id          uintptr                     // typeID of the type it describes, which the slot of the cache is checked against
-}
-
-type namedField struct {
-	typ     reflect.Type // the struct, or the element struct of a slice or array; nil for a map
-	name    string       // the alias as written, or the lowercased name of an untagged field
-	indexed bool
+	id          uintptr // typeID of the type it describes, which the slot of the cache is checked against
 }
 
 type promotedField struct {
 	typ   reflect.Type
-	alias string // as written, "" for an untagged field
 	depth int
 }
 
@@ -910,8 +691,8 @@ func getFieldCache(aliasTag string) *fieldCache {
 	panic("unknown alias tag: " + aliasTag)
 }
 
-func buildFieldInfo(t reflect.Type, aliasTag string) *fieldInfo {
-	info := &fieldInfo{
+func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
+	info := fieldInfo{
 		fields:      make(map[string]reflect.Type),
 		embedded:    make(map[string]reflect.Type),
 		promoted:    make(map[string]promotedField),
@@ -920,7 +701,7 @@ func buildFieldInfo(t reflect.Type, aliasTag string) *fieldInfo {
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if !visible(&f, aliasTag) {
+		if !isExported(&f) {
 			continue
 		}
 		fieldType := unwrapType(f.Type)
@@ -928,13 +709,11 @@ func buildFieldInfo(t reflect.Type, aliasTag string) *fieldInfo {
 
 		if f.Anonymous && fieldType.Kind() == reflect.Struct {
 			info.embedded[name] = fieldType
-			info.embeds = append(info.embeds, name)
 			info.collectPromoted(fieldType, aliasTag, 1, map[reflect.Type]struct{}{t: {}})
 			continue
 		}
 
 		info.fields[name] = fieldType
-		info.addNamed(name, tagName(&f, aliasTag), fieldType)
 		if fieldType.Kind() == reflect.Struct {
 			for j := 0; j < fieldType.NumField(); j++ {
 				sf := fieldType.Field(j)
@@ -946,13 +725,9 @@ func buildFieldInfo(t reflect.Type, aliasTag string) *fieldInfo {
 		}
 	}
 
-	for name, p := range info.promoted {
-		if p.typ == nil {
-			continue
-		}
-		info.nestedKinds[p.typ.Kind()] = struct{}{}
-		if _, shadowed := info.fields[name]; !shadowed {
-			info.addNamed(name, p.alias, p.typ)
+	for _, p := range info.promoted {
+		if p.typ != nil {
+			info.nestedKinds[p.typ.Kind()] = struct{}{}
 		}
 	}
 	info.resolveKinds()
@@ -1000,207 +775,25 @@ func (info *fieldInfo) collectPromoted(t reflect.Type, aliasTag string, depth in
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if !visible(&f, aliasTag) {
+		if !isExported(&f) {
 			continue
 		}
 		fieldType := unwrapType(f.Type)
 		name := fieldName(&f, aliasTag)
 
 		if f.Anonymous && fieldType.Kind() == reflect.Struct {
-			info.embeds = append(info.embeds, name)
 			info.collectPromoted(fieldType, aliasTag, depth+1, visited)
 			continue
 		}
 
 		switch existing, ok := info.promoted[name]; {
 		case !ok || existing.depth > depth:
-			info.promoted[name] = promotedField{typ: fieldType, alias: tagName(&f, aliasTag), depth: depth}
+			info.promoted[name] = promotedField{typ: fieldType, depth: depth}
 		case existing.depth == depth:
 			// Declared at the same depth by two embedded structs: ambiguous.
 			info.promoted[name] = promotedField{depth: depth}
 		}
 	}
-}
-
-// addNamed records a field a one-segment key resolves to for the cookie name checks.
-func (info *fieldInfo) addNamed(name, alias string, t reflect.Type) {
-	if alias != "" {
-		info.exact = append(info.exact, alias)
-		name = alias
-	}
-	indexed := t.Kind() == reflect.Slice || t.Kind() == reflect.Array
-	if indexed {
-		t = unwrapType(t.Elem())
-	}
-	switch t.Kind() { //nolint:exhaustive // the kinds a dotted key walks into
-	case reflect.Struct:
-		info.containers = append(info.containers, namedField{typ: t, name: name, indexed: indexed})
-	case reflect.Map:
-		info.containers = append(info.containers, namedField{name: name})
-	}
-}
-
-// spelling reports whether a key segment is the alias of a tagged field as written, or one only ignoring case.
-func (info *fieldInfo) spelling(segment string) (exact, folded bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two results
-	for _, alias := range info.exact {
-		if len(alias) != len(segment) {
-			continue
-		}
-		if alias == segment {
-			return true, false
-		}
-		folded = folded || utils.EqualFold(alias, segment)
-	}
-	return false, folded
-}
-
-// takesCookie reports whether a cookie name reaches tagged fields only by their aliases as written, as Ctx.Cookies
-// reads it: schema folds every segment of a dotted name and reaches a promoted field through its embedded struct.
-func (c *fieldCache) takesCookie(info *fieldInfo, name string) bool {
-	if exact, folded := info.spelling(name); exact || folded {
-		return exact
-	}
-	if len(info.containers) == 0 && len(info.embeds) == 0 || strings.IndexByte(name, '.') < 0 {
-		return true
-	}
-	for {
-		segment, rest, _ := strings.Cut(name, ".")
-		if _, folded := info.spelling(segment); folded {
-			return false
-		}
-		i := slices.IndexFunc(info.containers, func(f namedField) bool { return utils.EqualFold(f.name, segment) })
-		if i < 0 {
-			// A path through an embedded struct's name is skipped, unless a field of that name shadows the struct.
-			return !slices.ContainsFunc(info.embeds, func(embed string) bool { return utils.EqualFold(embed, segment) })
-		}
-		if info.containers[i].typ == nil || rest == "" {
-			// Past a map field the rest is its key, read as written.
-			return true
-		}
-		next := info.containers[i]
-		if next.indexed {
-			// The decoder reads 00 or +0 as index 0 too.
-			index, after, _ := strings.Cut(rest, ".")
-			if !isDigits(index) || len(index) > 1 && index[0] == '0' {
-				return false
-			}
-			rest = after
-		}
-		var ok bool
-		if info, ok = c.get(next.typ, bindingCookie); !ok || rest == "" {
-			return true
-		}
-		name = rest
-	}
-}
-
-// cookieNames are the cookie names a bind into one struct type takes without a walk through takesCookie: the
-// aliases as written and the paths to them through nested structs.
-type cookieNames struct {
-	info  *fieldInfo
-	exact []string
-	bits  uint64 // the nameBit of each exact name: a name whose bit is clear is none of them in any case
-	flat  bool   // no nested or embedded struct, so a dotted name reaches no field through one
-	// closed is flat with every field tagged: a name that is none of the exact names binds no field.
-	closed bool
-}
-
-// nameBit is a bit of the length and the first byte of s that every spelling of s in another case shares, as folding
-// changes only the 0x20 bit of a letter.
-func nameBit(s string) uint64 {
-	if s == "" {
-		return 1
-	}
-	return 1 << ((uint(len(s)) + uint(s[0]|0x20)) & 63)
-}
-
-// cookieNames returns the cookie names of the struct type t, or nil when t is no struct or has no tagged, nested or
-// embedded field, so that every name binds.
-func (c *fieldCache) cookieNames(t reflect.Type) *cookieNames {
-	if t == nil || t.Kind() != reflect.Struct {
-		return nil
-	}
-	info, ok := c.get(t, bindingCookie)
-	if !ok || len(info.exact) == 0 && len(info.containers) == 0 && len(info.embeds) == 0 {
-		return nil
-	}
-	if n := info.cookie.Load(); n != nil {
-		return n
-	}
-	n := &cookieNames{info: info, flat: len(info.containers) == 0 && len(info.embeds) == 0}
-	n.closed = n.flat
-	for i := range t.NumField() {
-		if f := t.Field(i); f.Anonymous || f.IsExported() && tagName(&f, bindingCookie) == "" {
-			n.closed = false
-		}
-	}
-	n.collect(c, info, "", &[]*fieldInfo{})
-	info.cookie.Store(n)
-	return n
-}
-
-// collect adds the aliases of at, reached through prefix, that takesCookie takes, and those of the structs nested in
-// at. A struct reached through a second path is not expanded again; its names are walked.
-func (n *cookieNames) collect(c *fieldCache, at *fieldInfo, prefix string, expanded *[]*fieldInfo) {
-	if slices.Contains(*expanded, at) {
-		return
-	}
-	*expanded = append(*expanded, at)
-	for _, alias := range at.exact {
-		if name := prefix + alias; c.takesCookie(n.info, name) {
-			n.exact = append(n.exact, name)
-			n.bits |= nameBit(name)
-		}
-	}
-	for _, f := range at.containers {
-		if f.typ != nil && !f.indexed {
-			if next, ok := c.get(f.typ, bindingCookie); ok {
-				n.collect(c, next, prefix+f.name+".", expanded)
-			}
-		}
-	}
-}
-
-// index returns the position of name among the exact names, or -1. n may be nil.
-func (n *cookieNames) index(name string) int {
-	if n == nil || n.bits&nameBit(name) == 0 {
-		return -1
-	}
-	return slices.Index(n.exact, name)
-}
-
-// unknown reports whether name, which is none of the exact names, binds no field of a closed type in any spelling.
-func (n *cookieNames) unknown(name string) bool {
-	return n.closed && n.bits&nameBit(name) == 0
-}
-
-// takes reports whether a bind takes the cookie name as Ctx.Cookies reads it, and records it in d to take only the
-// first of a repeated name. i is its index among the exact names, or -1; CookieBinding.Bind marks the first 64 itself.
-func (n *cookieNames) takes(name string, i int, d *bindData) bool {
-	switch {
-	case i >= 0:
-		return d.firstOf(name)
-	case !n.check(name):
-		return false
-	case n.closed:
-		// Binding no field, it need not be the first.
-		return true
-	default:
-		return d.firstOf(name)
-	}
-}
-
-// check reports whether takesCookie takes a name that is none of the exact names.
-func (n *cookieNames) check(name string) bool {
-	if n.bits&nameBit(name) != 0 {
-		for _, exact := range n.exact {
-			if len(exact) == len(name) && utils.EqualFold(exact, name) {
-				return cookieFieldCache.takesCookie(n.info, name)
-			}
-		}
-	}
-	// No alias is name in another case, which leaves only a dotted name to the walk.
-	return n.flat || strings.IndexByte(name, '.') < 0 || cookieFieldCache.takesCookie(n.info, name)
 }
 
 // typeID identifies a type by the address of its descriptor, which is stable
@@ -1229,7 +822,7 @@ func (c *fieldCache) get(t reflect.Type, aliasTag string) (*fieldInfo, bool) {
 	if !ok {
 		info := buildFieldInfo(t, aliasTag)
 		info.id = id
-		val, _ = c.types.LoadOrStore(t, info)
+		val, _ = c.types.LoadOrStore(t, &info)
 	}
 
 	info, ok := val.(*fieldInfo)
@@ -1425,6 +1018,17 @@ func bindKey(key string, supportBracketNotation bool) (string, error) { //nolint
 	return key, nil
 }
 
+// bindFiles files a multipart form's headers under key, which is rewritten
+// from bracket notation as a form's value keys are.
+func bindFiles(files map[string][]*multipart.FileHeader, key string, headers []*multipart.FileHeader) error {
+	key, err := bindKey(key, true)
+	if err != nil {
+		return err
+	}
+	files[key] = append(files[key], headers...)
+	return nil
+}
+
 // bindData is what a string binder files the values it reads under, pooled
 // so that filing a value costs no allocation of its own. What it keeps
 // depends on the destination, see bindMode: a struct is decoded straight from
@@ -1437,16 +1041,15 @@ type bindData struct {
 	// last is the last value filed under each key, for a map[string]string
 	// destination
 	last map[string]string
-	// seen is the names a source whose first value wins has filed, once
-	// they are more than firstOf scans
+	// seen is the names a source whose first value wins has filed past the
+	// first len(few), see firstOf
 	seen map[string]struct{}
+	// few is the first names firstOf saw, nFew of them
+	few [8]string
 	// keys and pairValues are the pairs, for a struct destination
 	keys, pairValues []string
-	// names is the sorted keys of a multipart form's files or values
-	names []string
-	// bound is the first 64 exact cookie names bound so far, a bit per index, see cookieNames
-	bound uint64
-	mode  bindMode
+	nFew             int
+	mode             bindMode
 }
 
 // bindMode is how a bindData keeps what is filed in it.
@@ -1469,30 +1072,23 @@ const (
 // parse does: a map with string keys, or a pointer to one, gets a map, and
 // everything else is decoded as a struct.
 func bindModeFor(out any) bindMode {
-	mode, _ := bindTarget(out)
-	return mode
-}
-
-// bindTarget returns bindModeFor's mode and, for one it dispatched through
-// reflection, the type out points to.
-func bindTarget(out any) (bindMode, reflect.Type) {
 	switch out.(type) {
 	case *map[string][]string, map[string][]string:
-		return bindMap, nil
+		return bindMap
 	case *map[string]string, map[string]string:
-		return bindLast, nil
+		return bindLast
 	}
 	t := reflect.TypeOf(out)
 	if t == nil {
-		return bindPairs, nil
+		return bindPairs
 	}
 	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Map || t.Key().Kind() != reflect.String {
-		return bindPairs, t
+		return bindPairs
 	}
-	return bindMap, t
+	return bindMap
 }
 
 // parse decodes what was filed into out.
@@ -1519,23 +1115,40 @@ func (d *bindData) bind(aliasTag string, out any, key, value string, enableSplit
 	return nil
 }
 
-// bindFiles files a multipart form's headers under key, rewritten from bracket notation as value keys are. A struct
-// also gets the key as a pair with an empty value, as Decode reads the key of a file.
-func (d *bindData) bindFiles(aliasTag string, out any, files map[string][]*multipart.FileHeader, key string, headers []*multipart.FileHeader) error {
+// bindAll is bind for several values of one key, rewriting the key once.
+func (d *bindData) bindAll(aliasTag string, out any, key string, values []string, enableSplitting, supportBracketNotation bool) error { //nolint:revive // the flags are the binder's settings
+	key, err := bindKey(key, supportBracketNotation)
+	if err != nil {
+		return err
+	}
+	for _, value := range values {
+		d.split(aliasTag, out, key, value, enableSplitting)
+	}
+	return nil
+}
+
+// bindValues files values under key as bindAll does. The struct decoder only
+// reads them, so the slice is filed without a copy when key is new and no
+// value splits.
+func (d *bindData) bindValues(aliasTag string, out any, key string, values []string, enableSplitting bool) error { //nolint:revive // the flag is the binder's setting
 	key, err := bindKey(key, true)
 	if err != nil {
 		return err
 	}
-	prev, filed := files[key]
-	if !filed && d.mode == bindPairs {
-		d.add(key, "")
+	if _, filed := d.values[key]; !filed && len(values) > 0 &&
+		(!enableSplitting || !slices.ContainsFunc(values, hasComma)) {
+		// Clipped, so that a later append for the same key copies the slice.
+		d.values[key] = slices.Clip(values)
+		return nil
 	}
-	// Of several names of one key, a slice takes the files of all, a single field those of the last bound.
-	if filed && equalFieldType(out, reflect.Slice, key, aliasTag) {
-		headers = append(slices.Clip(prev), headers...)
+	for _, value := range values {
+		d.split(aliasTag, out, key, value, enableSplitting)
 	}
-	files[key] = headers
 	return nil
+}
+
+func hasComma(s string) bool {
+	return strings.IndexByte(s, ',') >= 0
 }
 
 // maxSplitKeyBytes is the longest key whose value is split: every piece is filed
@@ -1571,11 +1184,9 @@ func (d *bindData) split(aliasTag string, out any, key, value string, enableSpli
 	d.add(key, value)
 }
 
-// maxScannedPairs is how many pairs firstOf scans for a name: past it, seen holds them all, so a long list stays linear.
-const maxScannedPairs = 8
-
-// firstOf reports whether name is new to this bind. Each name taken is filed under itself, so a map destination looks
-// it up and the pairs of a struct are scanned for it.
+// firstOf reports whether name is new to this bind. A map destination files each name under itself and is looked up;
+// for a struct the first names are scanned in few, which costs less than hashing them, and past len(few) the map holds
+// them all, so a long list stays linear.
 func (d *bindData) firstOf(name string) bool {
 	switch d.mode {
 	case bindMap:
@@ -1587,14 +1198,19 @@ func (d *bindData) firstOf(name string) bool {
 	default:
 	}
 	if len(d.seen) == 0 {
-		if len(d.keys) <= maxScannedPairs {
-			return !slices.Contains(d.keys, name)
+		if slices.Contains(d.few[:d.nFew], name) {
+			return false
+		}
+		if d.nFew < len(d.few) {
+			d.few[d.nFew] = name
+			d.nFew++
+			return true
 		}
 		if d.seen == nil {
-			d.seen = make(map[string]struct{}, 2*maxScannedPairs)
+			d.seen = make(map[string]struct{}, 2*len(d.few))
 		}
-		for _, key := range d.keys {
-			d.seen[key] = struct{}{}
+		for _, f := range d.few {
+			d.seen[f] = struct{}{}
 		}
 	}
 	n := len(d.seen)

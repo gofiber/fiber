@@ -12,7 +12,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -237,20 +236,20 @@ func Test_BindData_BracketNotation(t *testing.T) {
 	out := &map[string][]string{}
 	data := &bindData{values: make(map[string][]string), mode: bindMap}
 	require.NoError(t, data.bind("query", out, "user[name]", "john", false, true))
-	require.NoError(t, data.bind("query", out, "user[tags]", "a", false, true))
-	require.NoError(t, data.bind("query", out, "user[tags]", "b", false, true))
+	require.NoError(t, data.bindAll("query", out, "user[tags]", []string{"a", "b"}, false, true))
 	// A source without the notation files the key as it came.
 	require.NoError(t, data.bind("query", out, "user[age]", "7", false, false))
 	require.Equal(t, map[string][]string{"user.name": {"john"}, "user.tags": {"a", "b"}, "user[age]": {"7"}}, data.values)
 
 	files := make(map[string][]*multipart.FileHeader)
 	headers := []*multipart.FileHeader{{Filename: "file1.txt"}, {Filename: "file2.txt"}}
-	require.NoError(t, data.bindFiles("form", out, files, "files", headers))
-	require.NoError(t, data.bindFiles("form", out, files, "user[avatars]", headers[:1]))
+	require.NoError(t, bindFiles(files, "files", headers))
+	require.NoError(t, bindFiles(files, "user[avatars]", headers[:1]))
 	require.Equal(t, map[string][]*multipart.FileHeader{"files": headers, "user.avatars": headers[:1]}, files)
 
 	require.EqualError(t, data.bind("query", out, "invalid[", "value", false, true), "unmatched brackets")
-	require.EqualError(t, data.bindFiles("form", out, files, "invalid[", headers), "unmatched brackets")
+	require.EqualError(t, data.bindAll("query", out, "invalid[", []string{"value"}, false, true), "unmatched brackets")
+	require.EqualError(t, bindFiles(files, "invalid[", headers), "unmatched brackets")
 }
 
 func Test_parseToStruct_MismatchedData(t *testing.T) {
@@ -784,20 +783,6 @@ func Test_BindData_AlternatingKeys(t *testing.T) {
 
 // Test_BindData_SplitKeyLimit pins that a value is split only under a key of at most maxSplitKeyBytes:
 // every piece is filed under the whole key, so splitting costs the key's length times its commas.
-// Test_NameBit_FoldedSpellings pins that two names EqualFold matches share a nameBit: the cookie checks take a name
-// whose bit no exact name has as spelling none of them in any case.
-func Test_NameBit_FoldedSpellings(t *testing.T) {
-	t.Parallel()
-	for a := range 256 {
-		for b := range 256 {
-			x, y := string([]byte{byte(a), 'k'}), string([]byte{byte(b), 'k'})
-			if utils.EqualFold(x, y) {
-				require.Equal(t, nameBit(x), nameBit(y), "%q %q", x, y)
-			}
-		}
-	}
-}
-
 func Test_BindData_SplitKeyLimit(t *testing.T) {
 	t.Parallel()
 	longest := strings.Repeat("k", maxSplitKeyBytes-len("tags."))

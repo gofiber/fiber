@@ -1,9 +1,7 @@
 package binder
 
 import (
-	"maps"
 	"mime/multipart"
-	"slices"
 	"sync"
 
 	"github.com/gofiber/fiber/v3/internal/bodystream"
@@ -92,47 +90,42 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 		return err
 	}
 
-	data := acquireBindDataMode(bindModeFor(out))
-	defer releaseBindData(data)
-	files := acquireFileHeaderMap()
-	defer releaseFileHeaderMap(files)
-
-	// The parts come in maps, so they are filed in sorted name order: of the names
-	// that address one field, the same one wins on every bind.
-	data.names = slices.AppendSeq(data.names[:0], maps.Keys(multipartForm.File))
-	slices.Sort(data.names)
-	for _, key := range data.names {
-		if err := data.bindFiles(b.Name(), out, files, key, multipartForm.File[key]); err != nil {
-			return err
-		}
+	// The files are merged into the decoder's view of the source map, so a
+	// multipart form is always filed into one.
+	mode := bindModeFor(out)
+	// The struct decoder only reads the map, so its values need no copy.
+	readOnly := mode == bindPairs
+	if readOnly {
+		mode = bindMap
 	}
-	// The value names go over the file names, so a shorter list would leave some past its end, out of reach of reset.
-	clear(data.names)
-	data.names = slices.AppendSeq(data.names[:0], maps.Keys(multipartForm.Value))
-	slices.Sort(data.names)
-	for _, name := range data.names {
-		key, err := bindKey(name, true)
+	data := acquireBindDataMode(mode)
+	defer releaseBindData(data)
+
+	for key, values := range multipartForm.Value {
+		if readOnly {
+			err = data.bindValues(b.Name(), out, key, values, b.EnableSplitting)
+		} else {
+			err = data.bindAll(b.Name(), out, key, values, b.EnableSplitting, true)
+		}
 		if err != nil {
 			return err
 		}
-		// Decode lets the key of a file replace the values under it.
-		if _, isFile := files[key]; isFile && data.mode == bindPairs {
-			continue
-		}
-		for _, value := range multipartForm.Value[name] {
-			data.split(b.Name(), out, key, value, b.EnableSplitting)
+	}
+
+	files := acquireFileHeaderMap()
+	defer releaseFileHeaderMap(files)
+
+	for key, headers := range multipartForm.File {
+		if err := bindFiles(files, key, headers); err != nil {
+			return err
 		}
 	}
 
-	switch data.mode {
-	case bindPairs:
-		return parseValuesToStruct(b.Name(), out, data.keys, data.pairValues, files)
-	case bindLast:
+	if data.mode == bindLast {
 		// A map[string]string keeps no files: parseToMap ignores them too.
 		return data.parse(b.Name(), out)
-	default:
-		return parse(b.Name(), out, data.values, files)
 	}
+	return parse(b.Name(), out, data.values, files)
 }
 
 // Reset resets the FormBinding binder.
@@ -171,7 +164,7 @@ func acquireBindDataMode(mode bindMode) *bindData {
 
 func releaseBindData(d *bindData) {
 	if len(d.values) > maxPoolableDataMapSize || len(d.last) > maxPoolableDataMapSize ||
-		len(d.seen) > maxPoolableDataMapSize || cap(d.keys) > maxPoolablePairs || cap(d.names) > maxPoolablePairs {
+		len(d.seen) > maxPoolableDataMapSize || cap(d.keys) > maxPoolablePairs {
 		return
 	}
 
@@ -191,11 +184,11 @@ func (d *bindData) reset() {
 	if len(d.seen) > 0 {
 		clear(d.seen)
 	}
-	d.bound = 0
+	clear(d.few[:d.nFew])
+	d.nFew = 0
 	clear(d.keys)
 	clear(d.pairValues)
-	clear(d.names)
-	d.keys, d.pairValues, d.names = d.keys[:0], d.pairValues[:0], d.names[:0]
+	d.keys, d.pairValues = d.keys[:0], d.pairValues[:0]
 }
 
 func acquireFileHeaderMap() map[string][]*multipart.FileHeader {

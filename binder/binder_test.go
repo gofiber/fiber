@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 func Test_GetAndPutToThePool(t *testing.T) {
@@ -161,16 +160,6 @@ func Test_SetParserDecoder_UnknownKeys(t *testing.T) {
 	req := newQueryRequest(t, "name=john&foo=bar")
 	require.ErrorContains(t, (&QueryBinding{}).Bind(req, &user{}), "foo")
 	require.ErrorContains(t, parseValuesToStruct("query", &user{}, []string{"name", "foo"}, []string{"john", "bar"}), "foo")
-
-	// A cookie the cookie binder skips for its spelling is not reported as unknown.
-	type CookieAuth struct {
-		Token string `cookie:"token"`
-	}
-	var c struct{ CookieAuth }
-	creq := acquireRequest(t)
-	creq.Header.Set(fasthttp.HeaderCookie, "token=a; Token=b; CookieAuth.token=c")
-	require.NoError(t, (&CookieBinding{}).Bind(creq, &c))
-	require.Equal(t, "a", c.Token)
 
 	SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true})
 	var u user

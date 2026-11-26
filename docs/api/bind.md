@@ -285,8 +285,6 @@ curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe"
 `Form` reads only the request body, never the query string. A `multipart/form-data` body is read with the app's [`BodyLimit`](fiber.md#bodylimit) as its size limit, which also bounds the size of a `Content-Encoding: gzip` body after decompression. A larger body fails with an error that wraps `fasthttp.ErrBodyTooLarge`, and so does a larger urlencoded body under [`StreamRequestBody`](fiber.md#streamrequestbody). A form under a `Content-Encoding` that the form parser would not undo as [`c.Body()`](./ctx.md#body) does (any coding on a urlencoded form, anything but one `gzip` on a multipart form, or a list longer than the five members `c.Body()` undoes) is not bound and fails with `binder.ErrFormContentEncoding`.
 
 On a form request, `Form` and `Body` also lowercase the case-insensitive parts of the request's own `Content-Type` (the media type and the parameter names, never the `boundary` value), so copy a value you read earlier from `Get(HeaderContentType)` if you need it to outlive the call, see [FormValue](./ctx.md#formvalue). Other body types leave the header untouched.
-
-A multipart form keeps its parts by name, not in the order they were sent, so they are bound in the sorted order of their names, and the same part wins on every bind of the form. A name in bracket notation is bound under its dotted key, together with the names that give the same key: of `user.role` and `user[role]`, a field takes the value or file of `user[role]`, the last, and a slice takes those of both. Of the keys that address one field, such as `role` and `Role` or two file parts `avatar` and `Avatar`, the one whose first name sorts last wins, so of `team.name`, `team[Name]` and `team[name]` it is `team[Name]`.
 :::
 
 #### Nested and Array Form Fields
@@ -528,7 +526,7 @@ Run tests with the following `curl` command:
 curl --cookie "name=Joseph; age=23; job=true" http://localhost:8000/
 ```
 
-A tagged field binds the cookie [`c.Cookies`](./ctx.md#cookies) returns for its tag: a name sent more than once binds its first value, so a slice field gets the elements of that one cookie, and only the exact spelling counts. With `token=a; Token=b`, a `cookie:"token"` field gets `a`, and `Token=b` alone binds nothing; neither does `Auth.token` for a field promoted from an embedded `Auth`. A field of a nested struct, of a slice of structs or of a map binds from its dotted path with every tag spelled as written and an index in plain digits, such as `auth.token`, `items.0.token` or `meta.key`, so `auth.Token` or `items.00.token` binds nothing; cookie names are not read in bracket notation. A field without a `cookie` tag matches its Go name ignoring case, so tag a field whose value has to be the one `c.Cookies` returns.
+A cookie name sent more than once binds its first value, the one [`c.Cookies`](./ctx.md#cookies) returns, so a slice field gets the elements of that one cookie. The tag is matched against the cookie name ignoring case, while `c.Cookies` matches it exactly: with `token=a; Token=b`, a `cookie:"token"` field gets `b`.
 
 ### Header
 
