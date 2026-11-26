@@ -193,6 +193,14 @@ func Test_ReadFrom_DeclaredLengthDoesNotGrowAFullBuffer(t *testing.T) {
 	}
 }
 
+// dataErrReader returns its data and its error from one Read.
+type dataErrReader struct {
+	err  error
+	data string
+}
+
+func (r dataErrReader) Read(p []byte) (int, error) { return copy(p, r.data), r.err }
+
 func Test_readAll(t *testing.T) {
 	t.Parallel()
 	errBroken := errors.New("broken")
@@ -208,6 +216,7 @@ func Test_readAll(t *testing.T) {
 		{name: "no limit", stream: strings.NewReader("hello"), limit: math.MaxInt, want: "hello"},
 		{name: "wrapped EOF", stream: io.MultiReader(strings.NewReader("hello"), iotest.ErrReader(fmt.Errorf("done: %w", io.EOF))), limit: 5, want: "hello"},
 		{name: "broken", stream: io.MultiReader(strings.NewReader("hel"), iotest.ErrReader(errBroken)), limit: 5, want: "hel", err: errBroken},
+		{name: "past the limit with an error", stream: dataErrReader{data: "hello!", err: errBroken}, limit: 5, want: "hello!", err: errTooLong},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

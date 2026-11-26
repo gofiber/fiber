@@ -149,11 +149,12 @@ func ReadRequest(req *fasthttp.Request, limit int) error {
 // readAll is io.ReadAll within limit, failing with errTooLong past it, and ends at a wrapped io.EOF as ReadFrom does.
 func readAll(r io.Reader, limit int) ([]byte, error) {
 	b, err := io.ReadAll(io.LimitReader(r, int64(min(limit, math.MaxInt-1))+1))
-	if err != nil && !errors.Is(err, io.EOF) {
-		return b, err //nolint:wrapcheck // the stream's own error, as ReadFrom returns it
-	}
+	// Past limit first, as in ReadFrom: a read may return its bytes and an error together.
 	if len(b) > limit {
 		return b, errTooLong
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
+		return b, err //nolint:wrapcheck // the stream's own error, as ReadFrom returns it
 	}
 	return b, nil
 }
