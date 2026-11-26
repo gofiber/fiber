@@ -1013,7 +1013,8 @@ func (c *DefaultCtx) IsAbandoned() bool {
 // It does nothing for a context that is not abandoned or whose reclaim ScheduleReclaim
 // armed: a second release would hand one context to two requests.
 func (c *DefaultCtx) ForceRelease() {
-	if c.reclaim.Load() != nil || !c.isAbandoned.CompareAndSwap(true, false) {
+	// Read in the reverse of the order ScheduleReclaim writes them: a ctx seen abandoned by it shows its reclaim.
+	if !c.isAbandoned.Load() || c.reclaim.Load() != nil || !c.isAbandoned.CompareAndSwap(true, false) {
 		return
 	}
 	c.releaseAbandoned()
@@ -1049,8 +1050,6 @@ func (c *DefaultCtx) releaseAbandoned() {
 // This method calls Abandon internally, so callers do not need to call Abandon
 // separately. Calling Abandon before ScheduleReclaim is still safe (idempotent).
 func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context.CancelFunc) {
-	c.Abandon()
-
 	// Calls for one request share the latch, so the release signal reaches every
 	// reclaimer and only the last one to finish pools the ctx.
 	latch := c.reclaim.Load()
@@ -1061,6 +1060,8 @@ func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context
 		}
 	}
 	latch.owners.Add(1)
+	// Only once armed: a ForceRelease that sees the ctx abandoned must see the reclaim too.
+	c.Abandon()
 
 	go func() {
 		<-handlerDone

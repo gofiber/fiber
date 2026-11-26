@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"io"
 	"mime/multipart"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -81,6 +82,29 @@ func TestDefaultCtx_ForceRelease_LeavesReclaimedCtx(t *testing.T) {
 		require.NotNil(t, c.route)
 		require.NotNil(t, c.fasthttp)
 	})
+}
+
+// A ForceRelease that runs the moment ScheduleReclaim abandons the ctx must see the reclaim it arms.
+func TestDefaultCtx_ForceRelease_DuringScheduleReclaim(t *testing.T) {
+	t.Parallel()
+	app := New()
+	for range 2000 {
+		c, ok := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+		require.True(t, ok)
+		handlerDone, armed := make(chan struct{}), make(chan struct{})
+		go func() {
+			defer close(armed)
+			c.ScheduleReclaim(handlerDone, nil)
+		}()
+		for !c.IsAbandoned() {
+			runtime.Gosched()
+		}
+		c.ForceRelease()
+		<-armed
+		require.NotNil(t, c.fasthttp, "ForceRelease pooled a ctx the reclaim pools as well")
+		close(handlerDone)
+		app.ReleaseCtx(c)
+	}
 }
 
 // TestDefaultCtx_ScheduleReclaim_ReleaseBeforeHandlerDone covers the reverse
