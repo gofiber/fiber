@@ -1,9 +1,8 @@
 package earlydata
 
 import (
-	"strings"
-
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 )
 
@@ -21,7 +20,7 @@ type Config struct {
 
 	// IsEarlyData returns whether the request is an early-data request.
 	//
-	// Optional. Default: a function which checks if the "Early-Data" request header equals "1".
+	// Optional. Default: a function which returns true if the "Early-Data" request header or trailer is present (per RFC 8470 §5.1).
 	IsEarlyData func(c fiber.Ctx) bool
 
 	// AllowEarlyData returns whether the early-data request should be allowed or rejected.
@@ -38,13 +37,13 @@ type Config struct {
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	IsEarlyData: func(c fiber.Ctx) bool {
-		// RFC 8470 §5.1 requires multiple Early-Data instances (separate lines
-		// or comma-folded per RFC 9110 §5.3) to be treated as "1".
-		val, ok := headerlookup.Value(c, DefaultHeaderName)
-		if !ok {
-			return true
-		}
-		return val == DefaultHeaderTrueValue || strings.IndexByte(val, ',') >= 0
+		// Per RFC 8470 §5.1, multiple or invalid instances of Early-Data MUST
+		// be treated as equivalent to a single "1", and Early-Data MUST NOT be
+		// included in a trailer. Treating any presence of the field as early
+		// data handles valid "1", invalid values, repeated lines, and trailers.
+		h := &c.Request().Header
+		return len(fieldname.Lines(h, DefaultHeaderName, headerlookup.Canonical(c))) > 0 ||
+			fieldname.InTrailer(h, DefaultHeaderName)
 	},
 
 	AllowEarlyData: func(c fiber.Ctx) bool {
