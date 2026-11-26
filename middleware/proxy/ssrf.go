@@ -381,11 +381,14 @@ type guardedConfigureClient struct {
 }
 
 func (g *guardedConfigureClient) run(hc *fasthttp.HostClient) error {
-	if g.orig != nil {
-		if err := g.orig(hc); err != nil {
-			return err
-		}
+	if err := g.orig(hc); err != nil {
+		return err
 	}
+	return guardHostClient(hc)
+}
+
+// guardHostClient is the hook of a client that had none of its own.
+func guardHostClient(hc *fasthttp.HostClient) error {
 	installHostClientGuard(hc)
 	tlshandshake.Bound(hc) // over the guarded dialers
 	// The target the proxy hands the client is the one it matched and
@@ -395,9 +398,12 @@ func (g *guardedConfigureClient) run(hc *fasthttp.HostClient) error {
 	return nil
 }
 
-// guardHookPtr is the code pointer shared by every guardedConfigureClient.run
-// method value, used to detect whether a client is already guarded.
-var guardHookPtr = reflect.ValueOf((&guardedConfigureClient{}).run).Pointer()
+// guardHookPtr and bareGuardPtr are the code pointers of the two guard hooks, the one composed with a hook of the
+// caller's and the one alone, used to detect whether a client is already guarded and whether it has a hook of its own.
+var (
+	guardHookPtr = reflect.ValueOf((&guardedConfigureClient{}).run).Pointer()
+	bareGuardPtr = reflect.ValueOf(guardHostClient).Pointer()
+)
 
 // guardMu serializes the read-modify-write of a client's ConfigureClient in
 // ensureClientGuarded, so a concurrent guarder cannot write the field mid
@@ -427,8 +433,22 @@ func ensureClientGuarded(cli *fasthttp.Client) {
 	defer guardMu.Unlock()
 
 	existing := cli.ConfigureClient
-	if existing != nil && reflect.ValueOf(existing).Pointer() == guardHookPtr {
-		return // already guarded (directly or composed with a user hook)
+	switch {
+	case existing == nil:
+		cli.ConfigureClient = guardHostClient
+	case reflect.ValueOf(existing).Pointer() == guardHookPtr || reflect.ValueOf(existing).Pointer() == bareGuardPtr:
+		// already guarded (directly or composed with a user hook)
+	default:
+		cli.ConfigureClient = (&guardedConfigureClient{orig: existing}).run
 	}
-	cli.ConfigureClient = (&guardedConfigureClient{orig: existing}).run
+}
+
+// streamsResponses reports whether cli may hand a response body over as a stream: its field says so, or a
+// ConfigureClient hook or Transport of the caller's may make it, without saying so. Read once cli is guarded.
+func streamsResponses(cli *fasthttp.Client) bool {
+	if cli.StreamResponseBody || cli.Transport != nil {
+		return true
+	}
+	hook := cli.ConfigureClient
+	return hook != nil && reflect.ValueOf(hook).Pointer() != bareGuardPtr
 }

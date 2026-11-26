@@ -294,9 +294,7 @@ func doActionBy(
 	}
 	// A client that streams response bodies hands the upstream's trailer section to the response after
 	// the action returned: such a response is read into one of the proxy's own, see upstreamResponse.
-	// A client of the caller's may stream through its ConfigureClient hook or Transport while its field says it
-	// does not, so its responses are read into one of the proxy's own either way.
-	upstream := upstreamResponse(cli.StreamResponseBody || cli != defaultClient, res)
+	upstream := upstreamResponse(streamsResponses(cli), res)
 	return adoptUpstreamResponse(res, upstream, action(cli, req, upstream, u), policy, cli.MaxResponseBodySize)
 }
 

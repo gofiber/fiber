@@ -1175,6 +1175,24 @@ func proxyTestUnsaidStreamingClients(bound int) map[string]*fasthttp.Client {
 	}
 }
 
+// Test_Proxy_StreamsResponses pins which clients have their responses read into one of the proxy's own: one that
+// streams, saying so or not, guarded or not, and not a plain one, which fills the response directly.
+func Test_Proxy_StreamsResponses(t *testing.T) {
+	t.Parallel()
+	clients := proxyTestUnsaidStreamingClients(0)
+	clients["its field"] = &fasthttp.Client{StreamResponseBody: true}
+	for name, cli := range clients {
+		require.True(t, streamsResponses(cli), name)
+		ensureClientGuarded(cli)
+		require.True(t, streamsResponses(cli), name+", guarded")
+	}
+	plain := &fasthttp.Client{ReadTimeout: time.Second}
+	require.False(t, streamsResponses(plain))
+	ensureClientGuarded(plain)
+	require.False(t, streamsResponses(plain), "guarded")
+	require.False(t, streamsResponses(defaultClient))
+}
+
 // proxyTestStreamingHandlersUnder is proxyTestHandlersUnder for clients that stream response bodies: Balancer
 // with a HostClient of its own, bare or behind a type of the caller's, Forward and Do with a Client, Do with a
 // Client that streams without saying so (proxyTestUnsaidStreamingClients), and Do with the response set to stream.
