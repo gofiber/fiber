@@ -514,7 +514,12 @@ func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, file
 	if dst.Kind() != reflect.Struct {
 		return nil
 	}
-	scratch := reflect.New(dst.Type())
+	pool := scratchValues.get(dst.Type(), newScratchPool)
+	scratch := reflect.ValueOf(pool.Get())
+	defer func() {
+		scratch.Elem().SetZero()
+		pool.Put(scratch.Interface())
+	}()
 	if behindUnexportedPointer(dst.Type()) {
 		allocEmbedded(scratch.Elem(), dst, nil)
 	}
@@ -533,6 +538,13 @@ func (d *pooledDecoder) decodeFiles(g *fileHeaders, out any, keys []string, file
 	}
 	g.setFiles(dst, scratch.Elem())
 	return err //nolint:wrapcheck // judged by unfilled, not returned as is
+}
+
+// scratchValues pools, per destination struct type, the zeroed values decodeFiles decodes into.
+var scratchValues typeCache[*sync.Pool]
+
+func newScratchPool(t reflect.Type) *sync.Pool {
+	return &sync.Pool{New: func() any { return reflect.New(t).Interface() }}
 }
 
 // unexportedPointers caches behindUnexportedPointer per struct type.

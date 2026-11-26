@@ -41,6 +41,32 @@ func Test_FileHeaders_UnchangedHeaderIsNotWritten(t *testing.T) {
 	require.Empty(t, first.Avatar.Header.Get("X-Extra"))
 }
 
+// Test_FileHeaders_EarlierBind pins that a bind holds none of the files an earlier bind of the same type decoded.
+func Test_FileHeaders_EarlierBind(t *testing.T) {
+	t.Parallel()
+	type upload struct {
+		Avatar *multipart.FileHeader   `form:"avatar"`
+		Docs   []*multipart.FileHeader `form:"docs"`
+	}
+	req := newMultipartRequestWith(t, func(mw *multipart.Writer) {
+		writeFormFile(t, mw, "avatar", "avatar.txt", "avatar")
+		writeFormFile(t, mw, "docs", "a.txt", "a")
+		writeFormFile(t, mw, "docs", "b.txt", "b")
+	})
+	var first upload
+	require.NoError(t, (&FormBinding{}).Bind(req, &first))
+	require.Len(t, first.Docs, 2)
+	// A few rounds, since a pooled value may be dropped instead of handed out again.
+	for range 3 {
+		req := newMultipartRequestWith(t, func(mw *multipart.Writer) { writeFormFile(t, mw, "docs", "c.txt", "c") })
+		var out upload
+		require.NoError(t, (&FormBinding{}).Bind(req, &out))
+		require.Nil(t, out.Avatar)
+		require.Len(t, out.Docs, 1)
+		requireFile(t, out.Docs[0], "c.txt", "c")
+	}
+}
+
 // Test_HeaderFields pins the fields a walk visits: the ones schema can fill, an embedded struct of an unexported
 // type included, through which a *multipart.FileHeader can be reached.
 func Test_HeaderFields(t *testing.T) {
