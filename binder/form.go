@@ -106,6 +106,8 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 			return err
 		}
 	}
+	// The value names go over the file names, so a shorter list would leave some past its end, out of reach of reset.
+	clear(data.names)
 	data.names = slices.AppendSeq(data.names[:0], maps.Keys(multipartForm.Value))
 	slices.Sort(data.names)
 	for _, name := range data.names {
@@ -193,8 +195,7 @@ func (d *bindData) reset() {
 	d.nFew, d.bound = 0, 0
 	clear(d.keys)
 	clear(d.pairValues)
-	// A multipart bind files its value names over its file names, so a shorter list leaves names past its end.
-	clear(d.names[:cap(d.names)])
+	clear(d.names)
 	d.keys, d.pairValues, d.names = d.keys[:0], d.pairValues[:0], d.names[:0]
 }
 

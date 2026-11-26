@@ -97,16 +97,6 @@ func Test_ReleaseBindData(t *testing.T) {
 	releaseBindData(after)
 }
 
-// Test_BindData_ResetClearsNames pins that reset drops the names a multipart bind left past the end of its shorter
-// second list, so the pool does not keep them.
-func Test_BindData_ResetClearsNames(t *testing.T) {
-	t.Parallel()
-	d := &bindData{names: []string{"f1", "f2", "f3"}}
-	d.names = append(d.names[:0], "v")
-	d.reset()
-	require.Equal(t, make([]string, 3), d.names[:3])
-}
-
 // Test_AcquireBindData_ReservesPairs pins that a bind into a struct gets room
 // for its pairs up front, so that a large one does not grow them by appending,
 // and that a bind into a map, which keeps no pairs, gets none.
