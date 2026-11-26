@@ -579,28 +579,35 @@ func reachesUnexportedPointer(t reflect.Type, seen []reflect.Type) bool {
 // each element of a slice dst holds there, so that an unexported embedded pointer is set in scratch too. The files
 // decoded into them reach dst through setFiles, and the defaults the decode sets there go nowhere. seen holds the
 // pointers and slices followed so far, which a cycle in dst leads back to.
-func allocEmbedded(scratch, dst reflect.Value, seen []uintptr) {
+func allocEmbedded(scratch, dst reflect.Value, seen []seenPointer) {
 	switch dst.Kind() { //nolint:exhaustive // the kinds a key walks through to a struct
 	case reflect.Struct:
 		for _, i := range headerFields(dst.Type()) {
 			allocEmbedded(scratch.Field(i), dst.Field(i), seen)
 		}
 	case reflect.Pointer:
-		if dst.Type() == fileHeaderPtrType || dst.IsNil() || dst.Elem().Kind() != reflect.Struct ||
-			slices.Contains(seen, dst.Pointer()) {
+		if dst.Type() == fileHeaderPtrType || dst.IsNil() || dst.Elem().Kind() != reflect.Struct {
+			return
+		}
+		key := seenPointer{typ: dst.Type(), ptr: dst.Pointer()}
+		if slices.Contains(seen, key) {
 			return
 		}
 		p := reflect.New(dst.Type().Elem())
 		setScratch(scratch, p)
-		allocEmbedded(p.Elem(), dst.Elem(), append(seen, dst.Pointer()))
+		allocEmbedded(p.Elem(), dst.Elem(), append(seen, key))
 	case reflect.Slice:
 		if elem := unwrapType(dst.Type().Elem()); dst.Len() == 0 || elem.Kind() != reflect.Struct ||
-			!behindUnexportedPointer(elem) || slices.Contains(seen, dst.Pointer()) {
+			!behindUnexportedPointer(elem) {
+			return
+		}
+		key := seenPointer{typ: dst.Type(), ptr: dst.Pointer(), n: dst.Len()}
+		if slices.Contains(seen, key) {
 			return
 		}
 		elems := reflect.MakeSlice(dst.Type(), dst.Len(), dst.Len())
 		setScratch(scratch, elems)
-		seen = append(seen, dst.Pointer())
+		seen = append(seen, key)
 		for i := range dst.Len() {
 			allocEmbedded(elems.Index(i), dst.Index(i), seen)
 		}

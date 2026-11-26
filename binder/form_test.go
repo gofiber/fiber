@@ -345,6 +345,24 @@ func Test_FormBinder_BindMultipart_SliceCycle(t *testing.T) {
 	requireFile(t, out.Children[0].Avatar, "child.txt", "child")
 }
 
+func Test_FormBinder_BindMultipart_PointerIntoSlice(t *testing.T) {
+	t.Parallel()
+	type inner struct{ *embeddedUpload }
+	type item struct {
+		Primary inner  `form:"primary"`
+		Alias   *inner `form:"alias"`
+	}
+	items := []item{{Primary: inner{&embeddedUpload{}}}}
+	items[0].Alias = &items[0].Primary
+	out := struct {
+		Items []item `form:"items"`
+	}{Items: items}
+	require.NoError(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
+		writeFormFile(t, mw, "items.0.alias.avatar", "alias.txt", "alias")
+	}), &out))
+	requireFile(t, out.Items[0].Alias.Avatar, "alias.txt", "alias")
+}
+
 // requireFile pins the name, content type and content of an uploaded file.
 func requireFile(t *testing.T, fh *multipart.FileHeader, filename, content string) {
 	t.Helper()
