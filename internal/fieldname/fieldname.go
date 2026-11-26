@@ -476,12 +476,13 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 // included: fasthttp keeps an empty value in a fresh slot nil, so Peek cannot
 // tell it from none, and a name stored in another spelling escapes PeekAll.
 func Has(h *fasthttp.ResponseHeader, name string) bool {
-	found := false
-	// Walked rather than ranged, for the reason Lines gives.
-	h.VisitAll(func(k, _ []byte) {
-		found = found || utils.EqualFold(utils.UnsafeString(k), name)
-	})
-	return found
+	// Ranged, unlike Lines: on the concrete type the iterator stays on the stack and stops at the match.
+	for k := range h.All() {
+		if utils.EqualFold(utils.UnsafeString(k), name) {
+			return true
+		}
+	}
+	return false
 }
 
 // First returns the first field line stored under name that holds anything, or
