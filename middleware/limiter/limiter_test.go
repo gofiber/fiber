@@ -25,6 +25,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/gofiber/utils/v2"
 )
@@ -2180,19 +2181,30 @@ func Benchmark_Limiter_Headers(b *testing.B) {
 	}
 }
 
-// A dropped connection is sent nothing, so SkipSuccessfulRequests must still count it.
-func Test_Limiter_DroppedRequestIsNoSuccess(t *testing.T) {
+// A request sent no response is neither a success nor a failure, so both Skip options count it.
+func Test_Limiter_UnsentRequestIsCounted(t *testing.T) {
 	t.Parallel()
+	ends := map[string]fiber.Handler{
+		"drop":  func(c fiber.Ctx) error { return c.Drop() },
+		"abort": adaptor.HTTPHandlerFunc(func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) }),
+	}
 	for _, strategy := range windowStrategies {
-		t.Run(strategy.name, func(t *testing.T) {
-			t.Parallel()
-			app := fiber.New()
-			app.Use(New(Config{Max: 1, Expiration: time.Minute, SkipSuccessfulRequests: true, LimiterMiddleware: strategy.handler}))
-			app.Get("/", func(c fiber.Ctx) error { return c.Drop() })
+		for endName, end := range ends {
+			for _, skipFailed := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/skipFailed=%t", strategy.name, endName, skipFailed), func(t *testing.T) {
+					t.Parallel()
+					app := fiber.New()
+					app.Use(New(Config{
+						Max: 1, Expiration: time.Minute, LimiterMiddleware: strategy.handler,
+						SkipSuccessfulRequests: !skipFailed, SkipFailedRequests: skipFailed,
+					}))
+					app.Get("/", end)
 
-			_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.Error(t, err)
-			apptest.Expect(t, app, "/", fiber.StatusTooManyRequests)
-		})
+					_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+					require.Error(t, err)
+					apptest.Expect(t, app, "/", fiber.StatusTooManyRequests)
+				})
+			}
+		}
 	}
 }

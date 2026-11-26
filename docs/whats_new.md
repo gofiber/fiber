@@ -1733,7 +1733,7 @@ An IPv6 host matches in any spelling, in `TrustedOrigins`, in the `Origin` and `
 
 ### Idempotency
 
-A request whose handler closes the connection with `c.Drop()`, or hijacks it, is no longer stored as the empty `200` left on the context, so the retry with its key runs the handler.
+A request whose handler closes the connection with `c.Drop()`, or hijacks it, is no longer stored as the empty `200` left on the context, so the retry with its key runs the handler. That includes a hijack fasthttp sent the response before, since it does not report which one it was.
 
 Unchanged response header lines from middleware registered before idempotency are no longer stored. CORS and request ID middleware registered there produce fresh values on each request without cached copies being appended. Headers added or changed downstream still replay, including those from route-level CORS. Existing cache entries keep their previously stored headers until expiration; this change does not invalidate idempotency keys. See [Behavior](./middleware/idempotency.md#behavior) for middleware ordering.
 
@@ -2012,7 +2012,7 @@ Custom limiter algorithms should now implement the updated `limiter.Handler` int
 
 `limiter.FixedWindow` and `limiter.SlidingWindow` give a field their config leaves unset the default `limiter.New` would, when you call their `New` method yourself: `MaxFunc` and `ExpirationFunc` return `Max` and `Expiration`, and a `nil` config selects the default config. Their `New` works on a copy of the config, which is left as it is; a change to it after the call does not reach the handler.
 
-`SkipFailedRequests` and `SkipSuccessfulRequests` judge the status a request ends with, errors included: a handler that returns a `*fiber.Error` counts with that error's status code, and one that returns any other error counts as a `500` unless it already set an error status. In v2 both options read the response status alone, which is still `200` when a handler returns an error; such a request now counts as failed. A request the handler ends with `c.Drop()` counts as a 500 unless it set an error status, so `SkipSuccessfulRequests` no longer gives it back.
+`SkipFailedRequests` and `SkipSuccessfulRequests` judge the status a request ends with, errors included: a handler that returns a `*fiber.Error` counts with that error's status code, and one that returns any other error counts as a `500` unless it already set an error status. In v2 both options read the response status alone, which is still `200` when a handler returns an error; such a request now counts as failed. A request that may have been sent no response, because the handler ends it with `c.Drop()` or hijacks the connection, a WebSocket upgrade included, counts under both options.
 
 Limiter now redacts request keys in error paths by default. A new `DisableValueRedaction` boolean (default `false`) lets you reveal the limiter key, as the storage sees it, if diagnostics require it.
 

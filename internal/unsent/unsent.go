@@ -13,13 +13,9 @@ func Mark(ctx *fasthttp.RequestCtx) {
 	ctx.SetUserValue(key{}, true)
 }
 
-// Dropped reports whether Mark flagged ctx.
-func Dropped(ctx *fasthttp.RequestCtx) bool {
-	return ctx.UserValue(key{}) != nil
-}
-
-// Is reports whether the response on ctx is not the answer to its request: the connection was
-// dropped, or hijacked for another protocol, as the adaptor also does for an aborted net/http handler.
+// Is reports whether ctx may be sent no response: Mark flagged it, or the connection was hijacked, as the
+// adaptor also does for an aborted net/http handler. fasthttp sends the response before a hijack handler
+// unless HijackSetNoResponse(true) was set, which it does not report, so every hijack counts.
 func Is(ctx *fasthttp.RequestCtx) bool {
-	return ctx.Hijacked() || Dropped(ctx)
+	return ctx.Hijacked() || ctx.UserValue(key{}) != nil
 }

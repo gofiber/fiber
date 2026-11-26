@@ -22,6 +22,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -2401,7 +2402,8 @@ func Test_Cache_ContentEncodingBehindAnEmptyLineIsNotStored(t *testing.T) {
 func Test_Cache_DroppedRequestIsNotStored(t *testing.T) {
 	t.Parallel()
 	for name, end := range map[string]func(fiber.Ctx) error{
-		"drop": func(c fiber.Ctx) error { return c.Drop() },
+		"drop":  func(c fiber.Ctx) error { return c.Drop() },
+		"abort": adaptor.HTTPHandlerFunc(func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) }),
 		"hijack": func(c fiber.Ctx) error {
 			c.RequestCtx().HijackSetNoResponse(true)
 			c.RequestCtx().Hijack(func(net.Conn) {})
@@ -2429,4 +2431,19 @@ func Test_Cache_DroppedRequestIsNotStored(t *testing.T) {
 			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "page")
 		})
 	}
+}
+
+// fasthttp does not report whether it sends the response before a hijack handler, so a hijack it did answer
+// is not stored either.
+func Test_Cache_HijackAfterResponseIsNotStored(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Hijack(func(net.Conn) {})
+		return c.SendString("page")
+	})
+
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheUnreachable, "page")
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheUnreachable, "page")
 }

@@ -80,7 +80,13 @@ func (cfg *Config) limit(c fiber.Ctx) (int, bool) {
 	return max(maxRequests, -1), maxRequests != 0
 }
 
-func (cfg *Config) skipsHit(statusCode int) bool {
+// skipsHit reports whether a Skip option gives the hit back. A request sent no response is neither
+// a success nor a failure, so it counts under both.
+func (cfg *Config) skipsHit(c fiber.Ctx, err error) bool {
+	if (!cfg.SkipSuccessfulRequests && !cfg.SkipFailedRequests) || unsent.Is(c.RequestCtx()) {
+		return false
+	}
+	statusCode := getEffectiveStatusCode(c, err)
 	return (cfg.SkipSuccessfulRequests && statusCode < fiber.StatusBadRequest) ||
 		(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest)
 }
@@ -145,12 +151,7 @@ func getEffectiveStatusCode(c fiber.Ctx, err error) int {
 		return resp.StatusCode()
 	}
 	if nilerror.IsNil(err) {
-		// A dropped connection is sent nothing, so the untouched 200 is no success.
-		status := c.Res().StatusCode()
-		if status < fiber.StatusBadRequest && unsent.Dropped(c.RequestCtx()) {
-			return fiber.StatusInternalServerError
-		}
-		return status
+		return c.Res().StatusCode()
 	}
 
 	// If there's an error and it's a *fiber.Error, use its status code

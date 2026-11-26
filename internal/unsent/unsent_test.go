@@ -8,20 +8,27 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func Test_Mark(t *testing.T) {
+func Test_Is(t *testing.T) {
 	t.Parallel()
-	ctx := &fasthttp.RequestCtx{}
-	require.False(t, Is(ctx))
-
-	Mark(ctx)
-	require.True(t, Dropped(ctx))
-	require.True(t, Is(ctx))
-}
-
-func Test_IsHijacked(t *testing.T) {
-	t.Parallel()
-	ctx := &fasthttp.RequestCtx{}
-	ctx.Hijack(func(net.Conn) {})
-	require.True(t, Is(ctx))
-	require.False(t, Dropped(ctx))
+	for _, tc := range []struct {
+		run  func(*fasthttp.RequestCtx)
+		name string
+		want bool
+	}{
+		{name: "untouched", run: func(*fasthttp.RequestCtx) {}},
+		{name: "marked", run: Mark, want: true},
+		{name: "hijacked with no response", want: true, run: func(ctx *fasthttp.RequestCtx) {
+			ctx.HijackSetNoResponse(true)
+			ctx.Hijack(func(net.Conn) {})
+		}},
+		// fasthttp does not report HijackSetNoResponse, so a hijack it answers first counts as well.
+		{name: "hijacked after the response", want: true, run: func(ctx *fasthttp.RequestCtx) { ctx.Hijack(func(net.Conn) {}) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := &fasthttp.RequestCtx{}
+			tc.run(ctx)
+			require.Equal(t, tc.want, Is(ctx))
+		})
+	}
 }
