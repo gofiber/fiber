@@ -136,18 +136,21 @@ func newOwnedStandardClientTransport() *standardClientTransport {
 // boundTLSHandshake bounds what a new connection may take of the request timeout: the dial and,
 // as fasthttp handshakes inside the first write where only a write deadline applies, the TLS handshake.
 func boundTLSHandshake(hc *fasthttp.HostClient) error {
-	dial, dialTimeout := hc.Dial, hc.DialTimeout
-	if dial == nil && dialTimeout == nil {
-		// fasthttp's own dialer allows 1000 connects in progress per process: hold a slot no longer than its default.
-		defaultDial := fasthttp.DialTimeout
-		if hc.DialDualStack {
-			defaultDial = fasthttp.DialDualStackTimeout
-		}
+	dialTimeout := hc.DialTimeout
+	if dialTimeout == nil {
 		dialTimeout = func(addr string, timeout time.Duration) (net.Conn, error) {
+			// Read when dialing: fasthttp prefers DialTimeout, so a Dial a later hook sets would be passed over.
+			if dial := hc.Dial; dial != nil {
+				return dial(addr)
+			}
+			// fasthttp's own dialer allows 1000 connects in progress per process: hold a slot no longer than its default.
 			if timeout <= 0 || timeout > fasthttp.DefaultDialTimeout {
 				timeout = fasthttp.DefaultDialTimeout
 			}
-			return defaultDial(addr, timeout)
+			if hc.DialDualStack {
+				return fasthttp.DialDualStackTimeout(addr, timeout)
+			}
+			return fasthttp.DialTimeout(addr, timeout)
 		}
 		hc.DialTimeout = dialTimeout
 	}
@@ -155,13 +158,7 @@ func boundTLSHandshake(hc *fasthttp.HostClient) error {
 		return nil
 	}
 	hc.DialTimeout = func(addr string, timeout time.Duration) (net.Conn, error) {
-		var conn net.Conn
-		var err error
-		if dialTimeout != nil {
-			conn, err = dialTimeout(addr, timeout)
-		} else {
-			conn, err = dial(addr)
-		}
+		conn, err := dialTimeout(addr, timeout)
 		if err != nil || conn == nil {
 			return conn, err
 		}

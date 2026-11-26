@@ -1037,12 +1037,33 @@ func Test_BoundTLSHandshake_DialsHostsWithoutDialer(t *testing.T) {
 			require.NoError(t, conn.Close())
 		})
 	}
-	t.Run("a dialer of the caller's is kept", func(t *testing.T) {
-		t.Parallel()
-		hc := &fasthttp.HostClient{Addr: ln.Addr().String(), Dial: fasthttp.Dial}
-		require.NoError(t, boundTLSHandshake(hc))
-		require.Nil(t, hc.DialTimeout)
-	})
+	errDialed := errors.New("dialed by the caller's dialer")
+	for _, tc := range []struct {
+		name, scheme string
+		after        bool
+	}{
+		{name: "a dialer of the caller's is used", scheme: "http"},
+		{name: "a dialer a hook sets after this one is used", scheme: "http", after: true},
+		{name: "a dialer a hook sets after this one is used for https", scheme: "https", after: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			hc := &fasthttp.HostClient{Addr: ln.Addr().String(), IsTLS: tc.scheme == "https"}
+			dial := func(string) (net.Conn, error) { return nil, errDialed }
+			if !tc.after {
+				hc.Dial = dial
+			}
+			require.NoError(t, boundTLSHandshake(hc))
+			if tc.after {
+				hc.Dial = dial
+			}
+			req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseRequest(req)
+			defer fasthttp.ReleaseResponse(resp)
+			req.SetRequestURI(tc.scheme + "://" + hc.Addr + "/")
+			require.ErrorIs(t, hc.DoTimeout(req, resp, time.Second), errDialed)
+		})
+	}
 }
 
 func Test_Transport_PathNormalizing(t *testing.T) {

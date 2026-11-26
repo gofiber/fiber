@@ -1064,7 +1064,7 @@ fc.ConfigureClient = func(hc *fasthttp.HostClient) error {
 }
 ```
 
-Set a dialer before calling the installed hook: it gives a host client without one a `DialTimeout`, which `fasthttp` prefers to `Dial`.
+The installed hook gives a host client without one a `DialTimeout`, which `fasthttp` prefers to `Dial`. It dials through a `Dial` your hook sets, before or after calling the installed hook, so that dialer is used either way.
 
 ```go title="Signature"
 func (c *Client) FasthttpClient() *fasthttp.Client
