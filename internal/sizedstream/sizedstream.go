@@ -129,10 +129,7 @@ func ReadRequest(req *fasthttp.Request, limit int) error {
 	if w.size < 0 && cap(w.b) == 0 {
 		// No length to grow toward and no buffer in hand: io.ReadAll's exactly sized copy costs about twice the
 		// body, where doubling from nothing costs up to four times.
-		w.b, err = io.ReadAll(io.LimitReader(req.BodyStream(), int64(min(limit, math.MaxInt-1))+1))
-		if err == nil && len(w.b) > limit {
-			err = errTooLong
-		}
+		w.b, err = readAll(req.BodyStream(), limit)
 	} else {
 		_, err = w.ReadFrom(req.BodyStream())
 	}
@@ -147,4 +144,16 @@ func ReadRequest(req *fasthttp.Request, limit int) error {
 	req.CloseBodyStream() //nolint:errcheck // already read to its end
 	w.b = req.SwapBody(w.b)
 	return nil
+}
+
+// readAll is io.ReadAll within limit, failing with errTooLong past it, and ends at a wrapped io.EOF as ReadFrom does.
+func readAll(r io.Reader, limit int) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(r, int64(min(limit, math.MaxInt-1))+1))
+	if err != nil && !errors.Is(err, io.EOF) {
+		return b, err //nolint:wrapcheck // the stream's own error, as ReadFrom returns it
+	}
+	if len(b) > limit {
+		return b, errTooLong
+	}
+	return b, nil
 }

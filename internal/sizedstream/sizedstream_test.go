@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"runtime"
@@ -188,6 +189,31 @@ func Test_ReadFrom_DeclaredLengthDoesNotGrowAFullBuffer(t *testing.T) {
 			require.ErrorIs(t, err, tc.err)
 			require.Equal(t, tc.want, string(w.b))
 			require.Equal(t, tc.wantCap, cap(w.b))
+		})
+	}
+}
+
+func Test_readAll(t *testing.T) {
+	t.Parallel()
+	errBroken := errors.New("broken")
+	for _, tc := range []struct {
+		stream io.Reader
+		err    error
+		name   string
+		want   string
+		limit  int
+	}{
+		{name: "within the limit", stream: strings.NewReader("hello"), limit: 5, want: "hello"},
+		{name: "past the limit", stream: strings.NewReader("hello!"), limit: 5, want: "hello!", err: errTooLong},
+		{name: "no limit", stream: strings.NewReader("hello"), limit: math.MaxInt, want: "hello"},
+		{name: "wrapped EOF", stream: io.MultiReader(strings.NewReader("hello"), iotest.ErrReader(fmt.Errorf("done: %w", io.EOF))), limit: 5, want: "hello"},
+		{name: "broken", stream: io.MultiReader(strings.NewReader("hel"), iotest.ErrReader(errBroken)), limit: 5, want: "hel", err: errBroken},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := readAll(tc.stream, tc.limit)
+			require.ErrorIs(t, err, tc.err)
+			require.Equal(t, tc.want, string(got))
 		})
 	}
 }
