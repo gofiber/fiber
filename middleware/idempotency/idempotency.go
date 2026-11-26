@@ -183,8 +183,8 @@ func New(config ...Config) fiber.Handler {
 			storageKey = entryKey[len(storagePrefix):]
 		}
 
-		// The pass that holds the lock stores the response.
-		held, holding := c.Locals(localsKeyHeld).(*heldKeys)
+		// The pass that holds the lock stores the response. The keys are internal state, kept on the RequestCtx past Locals.
+		held, holding := c.RequestCtx().UserValue(localsKeyHeld).(*heldKeys)
 		if holding && slices.Contains(held.keys, storageKey) {
 			return c.Next()
 		}
@@ -201,7 +201,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		if !holding {
 			held = acquireHeldKeys()
-			_ = ctxlocal.Set(c, localsKeyHeld, held)
+			c.RequestCtx().SetUserValue(localsKeyHeld, held)
 		}
 		held.keys = append(held.keys, storageKey)
 		defer func() {
@@ -209,7 +209,7 @@ func New(config ...Config) fiber.Handler {
 			held.keys[n] = ""
 			held.keys = held.keys[:n]
 			if !holding {
-				_ = ctxlocal.Set(c, localsKeyHeld, nil)
+				c.RequestCtx().SetUserValue(localsKeyHeld, nil)
 				heldKeysPool.Put(held)
 			}
 			if err := cfg.Lock.Unlock(storageKey); err != nil {
