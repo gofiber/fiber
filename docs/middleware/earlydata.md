@@ -54,7 +54,7 @@ app.Use(earlydata.New(earlydata.Config{
 | Property       | Type                    | Description | Default                                                |
 |:---------------|:------------------------|:-----------|:-------------------------------------------------------|
 | Next           | `func(fiber.Ctx) bool` | Skip this middleware when the function returns true. | `nil` |
-| IsEarlyData    | `func(fiber.Ctx) bool` | Reports whether the request used early data. | Function checking if "Early-Data" header equals "1" |
+| IsEarlyData    | `func(fiber.Ctx) bool` | Reports whether the request used early data. | Function returning true when the "Early-Data" request header or trailer is present (per RFC 8470 §5.1) |
 | AllowEarlyData | `func(fiber.Ctx) bool` | Decides if an early-data request should be allowed. | Function rejecting on unsafe and allowing safe methods |
 | Error          | `error`                 | Returned when an early-data request is rejected. | `fiber.ErrTooEarly` |
 
@@ -63,7 +63,9 @@ app.Use(earlydata.New(earlydata.Config{
 ```go
 var ConfigDefault = Config{
     IsEarlyData: func(c fiber.Ctx) bool {
-        return c.Get(DefaultHeaderName) == DefaultHeaderTrueValue
+        h := &c.Request().Header
+        return len(fieldname.Lines(h, DefaultHeaderName, headerlookup.Canonical(c))) > 0 ||
+            fieldname.InTrailer(h, DefaultHeaderName)
     },
     AllowEarlyData: func(c fiber.Ctx) bool {
         return c.IsSafe()

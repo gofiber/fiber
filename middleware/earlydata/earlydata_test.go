@@ -1,16 +1,20 @@
 package earlydata
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 const (
@@ -42,12 +46,12 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 		isEarly := IsEarly(c)
 
 		switch h := c.Get(headerName); h {
-		case "", headerValOff:
+		case "":
 			if isEarly {
 				return errors.New("is early-data even though it's not")
 			}
 
-		case headerValOn:
+		case headerValOn, headerValOff:
 			switch {
 			case fiber.IsMethodSafe(c.Method()):
 				if !isEarly {
@@ -113,10 +117,10 @@ func Test_EarlyData(t *testing.T) {
 
 		return []requestExpectation{
 			{method: fiber.MethodGet, status: fiber.StatusOK},
-			{method: fiber.MethodGet, header: headerValOff, status: fiber.StatusOK},
+			{method: fiber.MethodGet, header: headerValOff, status: safeEarly},
 			{method: fiber.MethodGet, header: headerValOn, status: safeEarly},
 			{method: fiber.MethodPost, status: fiber.StatusOK},
-			{method: fiber.MethodPost, header: headerValOff, status: fiber.StatusOK},
+			{method: fiber.MethodPost, header: headerValOff, status: fiber.StatusTooEarly},
 			{method: fiber.MethodPost, header: headerValOn, status: fiber.StatusTooEarly},
 			{method: fiber.MethodQuery, header: headerValOn, status: safeEarly},
 		}
@@ -202,4 +206,161 @@ func Test_configDefault_WithConfig(t *testing.T) {
 	c.Request().Header.SetMethod(fiber.MethodGet)
 	require.True(t, cfg.IsEarlyData(c))
 	require.True(t, cfg.AllowEarlyData(c))
+}
+
+func runEarlyDataRaw(app *fiber.App, method string, remoteIP net.IP, headers [][2]string) (int, bool) {
+	var sawEarly bool
+	app.Add([]string{fiber.MethodGet, fiber.MethodPost}, "/", func(c fiber.Ctx) error {
+		sawEarly = IsEarly(c)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	ctx := &fasthttp.RequestCtx{}
+	if app.Config().DisableHeaderNormalizing {
+		ctx.Request.Header.DisableNormalizing()
+	}
+	ctx.SetRemoteAddr(&net.TCPAddr{IP: remoteIP, Port: 1234})
+	ctx.Request.Header.SetMethod(method)
+	ctx.Request.SetRequestURI("/")
+	for _, h := range headers {
+		ctx.Request.Header.Add(h[0], h[1])
+	}
+	app.Handler()(ctx)
+	return ctx.Response.StatusCode(), sawEarly
+}
+
+func Test_EarlyData_MultipleHeaders(t *testing.T) {
+	t.Parallel()
+	trustedIP := net.IPv4(0, 0, 0, 0)
+	untrustedIP := net.IPv4(203, 0, 113, 1)
+
+	tests := []struct {
+		name                     string
+		method                   string
+		remoteIP                 net.IP
+		headers                  [][2]string
+		wantCode                 int
+		disableHeaderNormalizing bool
+		wantEarly                bool
+	}{
+		{
+			name: "duplicate lines 0 then 1 reject POST", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", "0"}, {"Early-Data", "1"}}, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "duplicate lines 0 then 1 reject untrusted GET", method: fiber.MethodGet, remoteIP: untrustedIP,
+			headers: [][2]string{{"Early-Data", "0"}, {"Early-Data", "1"}}, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "duplicate lines 1 then 1 mark trusted GET as early", method: fiber.MethodGet, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", "1"}, {"Early-Data", "1"}}, wantCode: fiber.StatusOK, wantEarly: true,
+		},
+		{
+			name: "duplicate lines empty then 0 reject POST", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", ""}, {"Early-Data", "0"}}, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "mixed-case duplicate lines reject POST with DisableHeaderNormalizing", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"early-data", "0"}, {"Early-Data", "1"}}, disableHeaderNormalizing: true, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "comma-folded 0 and 1 rejects POST", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", "0, 1"}}, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "comma-folded 1 and 1 rejects POST", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", "1, 1"}}, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "single lowercase header rejects POST with DisableHeaderNormalizing", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"early-data", "1"}}, disableHeaderNormalizing: true, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "single invalid zero rejects POST per RFC 8470 section 5.1", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", "0"}}, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "single invalid zero marks trusted GET as early", method: fiber.MethodGet, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", "0"}}, wantCode: fiber.StatusOK, wantEarly: true,
+		},
+		{
+			name: "single invalid empty value rejects POST", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", ""}}, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "single invalid non-one value rejects POST", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"Early-Data", "2"}}, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "single lowercase zero rejects POST with DisableHeaderNormalizing", method: fiber.MethodPost, remoteIP: trustedIP,
+			headers: [][2]string{{"early-data", "0"}}, disableHeaderNormalizing: true, wantCode: fiber.StatusTooEarly,
+		},
+		{
+			name: "absent header allows POST", method: fiber.MethodPost, remoteIP: trustedIP,
+			wantCode: fiber.StatusOK,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New(fiber.Config{
+				DisableHeaderNormalizing: tc.disableHeaderNormalizing,
+				TrustProxy:               true,
+				TrustProxyConfig:         fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
+			})
+			app.Use(New())
+
+			status, early := runEarlyDataRaw(app, tc.method, tc.remoteIP, tc.headers)
+			require.Equal(t, tc.wantCode, status)
+			require.Equal(t, tc.wantEarly, early)
+		})
+	}
+}
+
+func Test_EarlyData_Trailer(t *testing.T) {
+	t.Parallel()
+	const body = "\r\n5\r\nhello\r\n0\r\n"
+
+	tests := []struct {
+		name      string
+		raw       string
+		wantEarly bool
+	}{
+		{
+			name:      "announced Early-Data trailer treated as early",
+			raw:       "POST / HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\nTrailer: Early-Data\r\n" + body + "Early-Data: 1\r\n\r\n",
+			wantEarly: true,
+		},
+		{
+			name:      "unannounced lowercase early-data trailer treated as early",
+			raw:       "POST / HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\n" + body + "early-data: 0\r\n\r\n",
+			wantEarly: true,
+		},
+		{
+			name:      "Early-Data header beside Early-Data trailer treated as early",
+			raw:       "POST / HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\nEarly-Data: 1\r\n" + body + "Early-Data: 0\r\n\r\n",
+			wantEarly: true,
+		},
+		{
+			name:      "unrelated trailer not treated as early",
+			raw:       "POST / HTTP/1.1\r\nHost: app.example\r\nTransfer-Encoding: chunked\r\nTrailer: X-Other\r\n" + body + "X-Other: 1\r\n\r\n",
+			wantEarly: false,
+		},
+	}
+
+	for _, tc := range tests {
+		for _, disableNorm := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s disableNorm=%v", tc.name, disableNorm), func(t *testing.T) {
+				t.Parallel()
+				app := fiber.New(fiber.Config{DisableHeaderNormalizing: disableNorm})
+				c := apptest.Ctx(t, app)
+				if disableNorm {
+					c.Request().Header.DisableNormalizing()
+				}
+				require.NoError(t, c.Request().Read(bufio.NewReader(strings.NewReader(tc.raw))))
+				require.Equal(t, tc.wantEarly, ConfigDefault.IsEarlyData(c))
+			})
+		}
+	}
 }
