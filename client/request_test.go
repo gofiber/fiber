@@ -1377,7 +1377,7 @@ func (r *countedReader) Close() error {
 }
 
 // uncomparableReader panics when two of its values are compared with ==.
-type uncomparableReader struct{ chunks [][]byte }
+type uncomparableReader []byte
 
 func (uncomparableReader) Read([]byte) (int, error) { return 0, io.EOF }
 
@@ -1465,8 +1465,8 @@ func Test_Request_FileReaderClosedOnFailure(t *testing.T) {
 
 	t.Run("a reader that cannot be compared is replaced", func(t *testing.T) {
 		t.Parallel()
-		file := AcquireFile(SetFileReader(uncomparableReader{}))
-		require.NotPanics(t, func() { file.SetReader(uncomparableReader{}) })
+		file := AcquireFile(SetFileReader(uncomparableReader(nil)))
+		require.NotPanics(t, func() { file.SetReader(uncomparableReader(nil)) })
 		ReleaseFile(file)
 	})
 
