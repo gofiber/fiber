@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"io"
 	"mime/multipart"
+	"slices"
 	"strings"
 	"testing"
 
@@ -95,6 +96,17 @@ func Test_ReleaseBindData(t *testing.T) {
 	require.Empty(t, after.values)
 	require.Empty(t, after.keys)
 	releaseBindData(after)
+}
+
+// Test_BindData_SortNames pins that the names of a multipart form's values, filed over those of its files, leave none
+// of the longer list behind for the pool to keep.
+func Test_BindData_SortNames(t *testing.T) {
+	t.Parallel()
+	d := &bindData{}
+	require.Equal(t, []string{"a", "b", "c"}, d.sortNames(slices.Values([]string{"c", "a", "b"})))
+	require.Equal(t, []string{"v"}, d.sortNames(slices.Values([]string{"v"})))
+	d.reset()
+	require.Equal(t, make([]string, 3), d.names[:3])
 }
 
 // Test_AcquireBindData_ReservesPairs pins that a bind into a struct gets room

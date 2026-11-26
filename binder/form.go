@@ -1,6 +1,7 @@
 package binder
 
 import (
+	"iter"
 	"maps"
 	"mime/multipart"
 	"slices"
@@ -99,16 +100,12 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 
 	// The parts come in maps, so they are filed in sorted key order: of the keys
 	// that name one field, the same one wins on every bind.
-	data.names = slices.AppendSeq(data.names[:0], maps.Keys(multipartForm.File))
-	slices.Sort(data.names)
-	for _, key := range data.names {
+	for _, key := range data.sortNames(maps.Keys(multipartForm.File)) {
 		if err := data.bindFiles(b.Name(), out, files, key, multipartForm.File[key]); err != nil {
 			return err
 		}
 	}
-	data.names = slices.AppendSeq(data.names[:0], maps.Keys(multipartForm.Value))
-	slices.Sort(data.names)
-	for _, name := range data.names {
+	for _, name := range data.sortNames(maps.Keys(multipartForm.Value)) {
 		key, err := bindKey(name, true)
 		if err != nil {
 			return err
@@ -137,6 +134,15 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 func (b *FormBinding) Reset() {
 	b.EnableSplitting = false
 	b.MaxBodySize = 0
+}
+
+// sortNames fills d.names with names in sorted order. It clears what they held first, which a shorter list would
+// leave past its end, out of reach of reset.
+func (d *bindData) sortNames(names iter.Seq[string]) []string {
+	clear(d.names)
+	d.names = slices.AppendSeq(d.names[:0], names)
+	slices.Sort(d.names)
+	return d.names
 }
 
 // acquireBindData returns a pooled bindData for a bind into out of n pairs,
