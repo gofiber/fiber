@@ -1,6 +1,7 @@
 package log
 
 import (
+	"bytes"
 	"log"
 	"os"
 	"testing"
@@ -12,6 +13,36 @@ func Test_DefaultSystemLogger(t *testing.T) {
 	t.Parallel()
 	defaultL := DefaultLogger[*log.Logger]()
 	require.Equal(t, logger, defaultL)
+}
+
+// Test_DefaultLoggerOtherType covers DefaultLogger asked for a logger type the
+// default logger does not wrap: it returns nil.
+func Test_DefaultLoggerOtherType(t *testing.T) {
+	t.Parallel()
+	require.Nil(t, DefaultLogger[*bytes.Buffer]())
+}
+
+// Test_FiberlogFatal covers the package-level Fatal functions: each writes
+// through the logger SetLogger installed and then exits with code 1.
+// conventions:ignore parallel: SetLogger swaps the package-global logger
+func Test_FiberlogFatal(t *testing.T) {
+	prev := logger
+	t.Cleanup(func() { logger = prev })
+
+	var exited []int
+	var buf bytes.Buffer
+	SetLogger(&defaultLogger{
+		stdlog: log.New(&buf, "", 0),
+		exit:   func(code int) { exited = append(exited, code) },
+		depth:  4,
+	})
+
+	Fatal("fatal")
+	Fatalf("fatal %d", 1)
+	Fatalw("fatal", "k", "v")
+
+	require.Equal(t, []int{1, 1, 1}, exited)
+	require.Equal(t, "[Fatal] fatal\n[Fatal] fatal 1\n[Fatal] fatal k=v\n", buf.String())
 }
 
 // conventions:ignore parallel: legacy, sequential before the rule; make it parallel and delete this line

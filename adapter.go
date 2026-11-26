@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"sync"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -242,7 +243,7 @@ func adaptFastHTTPHandler(handler any) (Handler, bool) {
 			if !serveNative(c, h) {
 				return ErrNotFound
 			}
-			return nil
+			return abandonTimedOut(c)
 		}, true
 	case func(*fasthttp.RequestCtx) error: // (17) fasthttp handler with error return
 		if h == nil {
@@ -253,11 +254,36 @@ func adaptFastHTTPHandler(handler any) (Handler, bool) {
 			if !serveNative(c, func(ctx *fasthttp.RequestCtx) { err = h(ctx) }) {
 				return ErrNotFound
 			}
+			if timeoutErr := abandonTimedOut(c); timeoutErr != nil {
+				return timeoutErr
+			}
 			return err
 		}, true
 	default:
 		return nil, false
 	}
+}
+
+// abandonTimedOut abandons c when the fasthttp handler answered with a timeout response of its own
+// (fasthttp.TimeoutHandler) and so still runs on the request, as timeout.New does, and returns its status.
+func abandonTimedOut(c Ctx) error {
+	// In this order, as in wiretarget.restoreNative: a timeout.New in front answers for the request itself.
+	if c.IsAbandoned() {
+		return nil
+	}
+	if mu, ok := c.Locals(wiretarget.TimeoutAnswerKey).(*sync.Mutex); ok {
+		if !mu.TryLock() {
+			return nil
+		}
+		defer mu.Unlock()
+	}
+	resp := c.RequestCtx().LastTimeoutErrorResponse()
+	if resp == nil {
+		return nil
+	}
+	// Nothing tells when the handler is done, so c is left to the garbage collector, as fasthttp leaves the RequestCtx.
+	c.Abandon()
+	return NewError(resp.StatusCode())
 }
 
 // serveNative runs a fasthttp route handler on the routed path, but leaves a request target that is not a path alone:

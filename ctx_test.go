@@ -9382,6 +9382,32 @@ func Test_Ctx_ForceReleaseClearsAbandon(t *testing.T) {
 	require.Nil(t, ctx.route, "ForceRelease should reset route before pooling")
 }
 
+// ForceRelease is promoted from the embedded DefaultCtx, which must not end up in the pool in place of the custom ctx.
+func Test_Ctx_ForceRelease_CustomCtx(t *testing.T) {
+	t.Parallel()
+	app := ctxTestACustomApp()
+	app.Get("/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
+	app.startupProcess()
+	handler := app.Handler()
+
+	// a sync.Pool may drop what it is given, so one round could pass without the released ctx coming back
+	for range 100 {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		custom, ok := c.(*customCtx)
+		require.True(t, ok)
+		c.Abandon()
+		app.ReleaseCtx(c)
+		c.ForceRelease()
+		require.False(t, c.IsAbandoned())
+		require.Nil(t, custom.handlerCtx)
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.SetRequestURI("/1")
+		handler(fctx)
+		require.Equal(t, "prefix_1", string(fctx.Response.Body()), "a request ran on the bare DefaultCtx")
+	}
+}
+
 // The b.RunParallel cases must keep the "_Parallel" in their names: CI drops
 // results matching Benchmark.*_Parallel before comparing, and at a few ns/op
 // these measure available cores rather than the code.

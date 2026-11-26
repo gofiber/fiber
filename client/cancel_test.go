@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"net"
 	"sync"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/fiber/v3/internal/tlstest"
 )
 
 // connFaults are the errors a faultConn answers with: its deadline setters and its writes fail as set.
@@ -200,4 +202,54 @@ func Test_RoundTripCancelable_MaxConnDuration(t *testing.T) {
 	}
 	require.True(t, closeAsked.Load(), "no request asked the server to close the aged connection")
 	apptest.Recv(t, closed, 2*time.Second, "the aged connection was not closed")
+}
+
+func Test_RoundTripCancelable_ClosesTunnel(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, method string
+		status       int
+	}{
+		{name: "switching protocols", method: fiber.MethodGet, status: fiber.StatusSwitchingProtocols},
+		{name: "connect 2xx", method: fiber.MethodConnect, status: fiber.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ts := startTestServer(t, func(app *fiber.App) {
+				app.Add([]string{tc.method}, "/", func(c fiber.Ctx) error { return c.SendStatus(tc.status) })
+			})
+			t.Cleanup(ts.stop)
+			closed := make(chan struct{}, 1)
+			client := New().SetDial(faultDial(ts, connFaults{}, closed))
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			resp, err := client.R().SetContext(ctx).SetMethod(tc.method).SetURL("http://example.com/").Send()
+			require.NoError(t, err)
+			require.Equal(t, tc.status, resp.StatusCode())
+			resp.Close()
+			apptest.Recv(t, closed, 2*time.Second, "the tunneled connection was not closed")
+		})
+	}
+}
+
+func Test_CancelContext_EndSkipsTLSCloseNotify(t *testing.T) {
+	t.Parallel()
+	serverTLS, clientTLS, err := tlstest.GetTLSConfigs()
+	require.NoError(t, err)
+	clientTLS.ServerName = "127.0.0.1"
+	// net.Pipe has no buffer: a close_notify blocks until the server reads, which it never does again.
+	clientSide, serverSide := net.Pipe()
+	t.Cleanup(func() { require.NoError(t, serverSide.Close()) })
+	handshake := make(chan error, 1)
+	go func() { handshake <- tls.Server(serverSide, serverTLS).Handshake() }()
+	conn := tls.Client(clientSide, clientTLS)
+	require.NoError(t, conn.Handshake())
+	require.NoError(t, apptest.Recv(t, handshake, time.Second, "the server handshake did not finish"))
+
+	var watch cancelContext
+	require.True(t, watch.attach(conn))
+	ended := make(chan struct{})
+	go func() { watch.end(); close(ended) }()
+	apptest.Recv(t, ended, time.Second, "end waited for the server to read close_notify")
 }

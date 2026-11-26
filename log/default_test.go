@@ -441,6 +441,19 @@ func Benchmark_LogfKeyAndValues_Parallel(b *testing.B) {
 	}
 }
 
+// Test_DefaultLoggerFormatWithoutArgs covers a formatted call without
+// arguments: the format is written as is, so a verb in it is not expanded.
+func Test_DefaultLoggerFormatWithoutArgs(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	logger := &defaultLogger{stdlog: log.New(&buf, "", 0), depth: 4}
+
+	logger.Infof("100%")
+	logger.Infof("%s")
+
+	require.Equal(t, "[Info] 100%\n[Info] %s\n", buf.String())
+}
+
 func Test_DefaultLogger_FatalExits(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
