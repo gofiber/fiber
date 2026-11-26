@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"slices"
 	"sync"
@@ -241,18 +242,34 @@ func (b *lentBody) Read(p []byte) (int, error) {
 	return b.r.Read(p) //nolint:wrapcheck // the caller's reader, passed through
 }
 
-// Close ends the loan, closes the reader once and waits out a Read in progress.
+// Close ends the loan, waits out a Read in progress and closes the reader once.
 func (b *lentBody) Close() error {
 	b.ended.Store(true)
-	// Close before taking mu: closing is what ends a Read blocked on a pipe or conn.
+	if b.closesDuringRead() {
+		// Before taking mu: closing is what ends a Read blocked on a pipe, file or conn.
+		b.closeOnce()
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.closeOnce()
+	return b.err
+}
+
+// closesDuringRead reports whether the reader is documented as safe to close while a Read is in progress.
+func (b *lentBody) closesDuringRead() bool {
+	switch b.r.(type) {
+	case *io.PipeReader, *os.File, net.Conn:
+		return true
+	}
+	return false
+}
+
+func (b *lentBody) closeOnce() {
 	b.once.Do(func() {
 		if closer, ok := b.r.(io.Closer); ok {
 			b.err = closer.Close()
 		}
 	})
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.err
 }
 
 type sizedBody struct {

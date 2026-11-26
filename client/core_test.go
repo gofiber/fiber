@@ -879,17 +879,19 @@ func Test_Execute_CancelTakesBackBodyStream(t *testing.T) {
 		require.ErrorIs(t, apptest.Recv(t, result, time.Second, "the call did not return"), ErrTimeoutOrCancel)
 		apptest.Recv(t, finished, time.Second, "the transport did not finish")
 		require.Equal(t, int32(1), body.reads.Load(), "the body was read again")
+		require.Equal(t, int32(1), body.closes.Load())
+		require.False(t, body.closedMidRead.Load(), "the body was closed during its read")
 	})
 
 	t.Run("closing ends a blocked read", func(t *testing.T) {
 		t.Parallel()
-		pr, pw := io.Pipe()
-		t.Cleanup(func() { require.NoError(t, pw.Close()) })
-		body := &readingPipe{PipeReader: pr, reading: make(chan struct{})}
+		conn, peer := net.Pipe()
+		t.Cleanup(func() { require.NoError(t, peer.Close()) })
+		body := &readingConn{Conn: conn, reading: make(chan struct{})}
 		finished := make(chan struct{})
 		result := canceled(t, body, body.reading, func(stream io.Reader) {
 			defer close(finished)
-			_, _ = io.Copy(io.Discard, stream) //nolint:errcheck // ends with the closed pipe
+			_, _ = io.Copy(io.Discard, stream) //nolint:errcheck // ends with the closed conn
 		})
 
 		require.ErrorIs(t, apptest.Recv(t, result, time.Second, "the call did not return"), ErrTimeoutOrCancel)
@@ -936,23 +938,26 @@ func Test_Execute_CancelTakesBackBodyStream(t *testing.T) {
 	})
 }
 
-// readingPipe signals the first Read, which then blocks until the pipe is closed.
-type readingPipe struct {
-	*io.PipeReader
+// readingConn signals the first Read, which then blocks until the connection is closed.
+type readingConn struct {
+	net.Conn
 	reading chan struct{}
 	once    sync.Once
 }
 
-func (p *readingPipe) Read(b []byte) (int, error) {
-	p.once.Do(func() { close(p.reading) })
-	return p.PipeReader.Read(b) //nolint:wrapcheck // the pipe error is what the test waits for
+func (c *readingConn) Read(b []byte) (int, error) {
+	c.once.Do(func() { close(c.reading) })
+	return c.Conn.Read(b) //nolint:wrapcheck // the conn error is what the test waits for
 }
 
-// stalledBody blocks its first Read until release and ends the body on the second.
+// stalledBody blocks its first Read until release and ends the body on the second; it records a Close that
+// lands during that Read.
 type stalledBody struct {
-	reading chan struct{}
-	release chan struct{}
-	reads   atomic.Int32
+	reading       chan struct{}
+	release       chan struct{}
+	reads         atomic.Int32
+	closes        atomic.Int32
+	closedMidRead atomic.Bool
 }
 
 func (b *stalledBody) Read(p []byte) (int, error) {
@@ -962,6 +967,16 @@ func (b *stalledBody) Read(p []byte) (int, error) {
 	close(b.reading)
 	<-b.release
 	return copy(p, "x"), nil
+}
+
+func (b *stalledBody) Close() error {
+	b.closes.Add(1)
+	select {
+	case <-b.release:
+	default:
+		b.closedMidRead.Store(true)
+	}
+	return nil
 }
 
 // silentServer reads what it is sent and never answers; hungUp receives once per connection the client closes.
