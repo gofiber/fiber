@@ -507,6 +507,32 @@ func Test_refusalRecords_mayHold(t *testing.T) {
 		require.True(t, during)
 	})
 
+	t.Run("in a Storage, the lifetime markers are read at once", func(t *testing.T) {
+		t.Parallel()
+		var reads atomic.Int32
+		var sequential atomic.Bool
+		var once sync.Once
+		all := make(chan struct{})
+		storage := &hookedStorage{Memory: storagetest.New()}
+		storage.onGet = func(key string) {
+			if !strings.HasPrefix(key, refusalMarker+"~") {
+				return
+			}
+			if reads.Add(1) == int32(len(markerLifetimes)) {
+				once.Do(func() { close(all) })
+			}
+			select {
+			case <-all:
+			case <-time.After(5 * time.Second):
+				sequential.Store(true)
+				once.Do(func() { close(all) })
+			}
+		}
+		require.False(t, cacheTestCRecords(&Config{Storage: storage}).mayHold(ctx, c, "base"))
+		require.Equal(t, int32(len(markerLifetimes)), reads.Load())
+		require.False(t, sequential.Load(), "a read waited for the one before it")
+	})
+
 	t.Run("in a Storage, the lifetime markers are read again within half the marker's lifetime", func(t *testing.T) {
 		t.Parallel()
 		storage := storagetest.New()

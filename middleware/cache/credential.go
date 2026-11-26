@@ -389,14 +389,19 @@ func (r *refusalRecords) announced(ctx context.Context, gate *recordGate, marker
 		// is in a lifetime marker read since then, as long as they are read again within half of that.
 		now := uint64(utils.Timestamp())
 		if scanned := gate.scanned.Load(); now < scanned || now-scanned >= recentMarkerLifetime/2 {
-			lasting := false
+			// At once: one after the other, the request that polls waits a round trip per marker.
+			var lasting atomic.Bool
+			var wg sync.WaitGroup
 			for i := range markerLifetimes {
-				if lasting = r.marked(ctx, gate, lifetimeMarker(marker, i)); lasting {
-					break
-				}
+				wg.Go(func() {
+					if r.marked(ctx, gate, lifetimeMarker(marker, i)) {
+						lasting.Store(true)
+					}
+				})
 			}
+			wg.Wait()
 			// Only once read: a poll meanwhile reads them as well rather than take an older answer.
-			gate.lasting.Store(lasting)
+			gate.lasting.Store(lasting.Load())
 			gate.scanned.Store(now)
 		}
 		open = gate.lasting.Load()
