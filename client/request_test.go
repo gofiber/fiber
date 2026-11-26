@@ -21,6 +21,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -1343,6 +1344,23 @@ func Test_SetWithMap_KeepsValuelessPairs(t *testing.T) {
 			require.Equal(t, tc.want, args.String(), tc.args)
 			fasthttp.ReleaseArgs(args)
 		}
+	}
+}
+
+func Test_SetWithMap_ValuesReadFromArgs(t *testing.T) {
+	t.Parallel()
+	for _, set := range []func(args *fasthttp.Args, m map[string]string){
+		func(args *fasthttp.Args, m map[string]string) { (&FormData{Args: args}).SetWithMap(m) },
+		func(args *fasthttp.Args, m map[string]string) { (&QueryParam{Args: args}).SetParams(m) },
+	} {
+		args := fasthttp.AcquireArgs()
+		args.Parse("flag&b=22&c=33")
+		// Unsafe strings into args, as Request.Param and Request.FormData return them.
+		set(args, map[string]string{"b": utils.UnsafeString(args.Peek("c")), "c": utils.UnsafeString(args.Peek("b"))})
+		require.Equal(t, "33", string(args.Peek("b")))
+		require.Equal(t, "22", string(args.Peek("c")))
+		require.True(t, strings.HasPrefix(args.String(), "flag&"), args.String())
+		fasthttp.ReleaseArgs(args)
 	}
 }
 

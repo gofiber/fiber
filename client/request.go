@@ -837,9 +837,14 @@ func setArgsMap(args *fasthttp.Args, m map[string]string) {
 		}
 	case emptyKept:
 		// All does not tell "flag" from "flag=", so a rebuild would turn the first into the second.
+		// Set reuses the buffer of the pair Del dropped, which a later value of m may point into.
+		kept.Reset()
 		for k, v := range m {
-			args.Del(k)
-			args.Set(k, v)
+			kept.Add(k, v)
+		}
+		for k, v := range kept.All() {
+			args.DelBytes(k)
+			args.SetBytesKV(k, v)
 		}
 	default:
 		for k, v := range m {
