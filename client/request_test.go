@@ -1358,6 +1358,13 @@ func (r *countedReader) Close() error {
 	return nil
 }
 
+// uncomparableReader panics when two of its values are compared with ==.
+type uncomparableReader struct{ chunks [][]byte }
+
+func (uncomparableReader) Read([]byte) (int, error) { return 0, io.EOF }
+
+func (uncomparableReader) Close() error { return nil }
+
 // A reader handed to a file belongs to it: it is closed exactly once, also when
 // the request fails before its body is built or before the body gets to that file.
 func Test_Request_FileReaderClosedOnFailure(t *testing.T) {
@@ -1426,6 +1433,23 @@ func Test_Request_FileReaderClosedOnFailure(t *testing.T) {
 		ReleaseFile(file)
 		require.Equal(t, int32(1), first.closes.Load())
 		require.Equal(t, int32(1), second.closes.Load())
+	})
+
+	t.Run("setting the same reader again keeps it open", func(t *testing.T) {
+		t.Parallel()
+		reader := &countedReader{Reader: strings.NewReader("same")}
+		file := AcquireFile(SetFileReader(reader))
+		file.SetReader(reader)
+		require.Equal(t, int32(0), reader.closes.Load())
+		ReleaseFile(file)
+		require.Equal(t, int32(1), reader.closes.Load())
+	})
+
+	t.Run("a reader that cannot be compared is replaced", func(t *testing.T) {
+		t.Parallel()
+		file := AcquireFile(SetFileReader(uncomparableReader{}))
+		require.NotPanics(t, func() { file.SetReader(uncomparableReader{}) })
+		ReleaseFile(file)
 	})
 
 	t.Run("a pooled file does not remember an earlier close", func(t *testing.T) {
