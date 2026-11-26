@@ -2,7 +2,6 @@ package log
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"maps"
@@ -229,20 +228,29 @@ var fieldBreaks = [256]bool{' ': true, '\t': true, '=': true, '"': true}
 
 // endsField reports whether value holds a byte of fieldBreaks, eight bytes at a time.
 func endsField(value []byte) bool {
-	i := 0
-	for ; i+8 <= len(value); i += 8 {
-		w := binary.LittleEndian.Uint64(value[i:])
-		if swar.ZeroLanes(w^(' '*swar.Ones))|swar.ZeroLanes(w^('\t'*swar.Ones))|
-			swar.ZeroLanes(w^('='*swar.Ones))|swar.ZeroLanes(w^('"'*swar.Ones)) != 0 {
+	n := len(value)
+	if n < 8 {
+		for _, b := range value {
+			if fieldBreaks[b] {
+				return true
+			}
+		}
+		return false
+	}
+	// The last word overlaps the one before it instead of leaving a tail.
+	for i := 0; i < n-8; i += 8 {
+		if breakLanes(swar.Load8(value, i)) != 0 {
 			return true
 		}
 	}
-	for _, b := range value[i:] {
-		if fieldBreaks[b] {
-			return true
-		}
-	}
-	return false
+	return breakLanes(swar.Load8(value, n-8)) != 0
+}
+
+// breakLanes flags the lanes of w that hold a byte of fieldBreaks. ' ' and '"' differ only in bit 1, so one test
+// finds both.
+func breakLanes(w uint64) uint64 {
+	return swar.ZeroLanes((w|0x02*swar.Ones)^'"'*swar.Ones) | swar.ZeroLanes(w^'\t'*swar.Ones) |
+		swar.ZeroLanes(w^'='*swar.Ones)
 }
 
 // defaultContextTagMap pre-seeds renderers for the tag names used by Fiber's
