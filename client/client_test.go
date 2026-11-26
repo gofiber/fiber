@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -486,6 +487,7 @@ func (tr clientTestATransport) run(t *testing.T) {
 		require.NoError(t, client.SetProxyURL("http://127.0.0.1:8080"))
 		hc := tr.hostClient(t, client)
 		require.NotNil(t, hc.Dial)
+		require.NotNil(t, hc.DialTimeout, "the proxy dialer is not handed the time a request leaves for the connect")
 
 		var called atomic.Int32
 		customDial := func(string) (net.Conn, error) {
@@ -497,6 +499,7 @@ func (tr clientTestATransport) run(t *testing.T) {
 		_, err := hc.Dial("example.com:80")
 		require.Error(t, err)
 		require.EqualValues(t, 1, called.Load())
+		require.Nil(t, hc.DialTimeout, "fasthttp prefers it to Dial and would still dial through the proxy")
 
 		client.Reset()
 		require.NotNil(t, client.FasthttpClient())
@@ -1346,6 +1349,48 @@ func Test_Set_Config_To_Request(t *testing.T) {
 	})
 }
 
+// clientTestASOCKS5 starts a SOCKS5 proxy that grants every CONNECT to a domain name and answers
+// the tunneled request itself with the target it was asked for.
+func clientTestASOCKS5(t *testing.T) string {
+	t.Helper()
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, ln.Close()) })
+
+	serve := func(conn net.Conn) {
+		read := func(n int) []byte {
+			b := make([]byte, n)
+			_, err := io.ReadFull(conn, b)
+			assert.NoError(t, err)
+			return b
+		}
+		assert.Equal(t, []byte{5, 1, 0}, read(3)) // version 5, one method on offer: no authentication
+		if _, err := conn.Write([]byte{5, 0}); !assert.NoError(t, err) {
+			return
+		}
+		request := read(5) // version 5, CONNECT, reserved, a domain name, its length
+		assert.Equal(t, []byte{5, 1, 0, 3}, request[:4])
+		name, port := read(int(request[4])), read(2)
+		_, err := conn.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}) // granted, bound to 0.0.0.0:0
+		assert.NoError(t, err)
+		assert.NoError(t, fasthttp.ServeConn(conn, func(ctx *fasthttp.RequestCtx) {
+			ctx.SetConnectionClose()
+			ctx.SetBodyString(fmt.Sprintf("socks5 to %s:%d", name, binary.BigEndian.Uint16(port)))
+		}))
+	}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go serve(conn)
+		}
+	}()
+	return "socks5://" + ln.Addr().String()
+}
+
 func Test_Client_SetProxyURL(t *testing.T) {
 	t.Parallel()
 	app, dial, start := createHelperServer(t)
@@ -1382,18 +1427,29 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		})
 	})
 
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
-		client := New()
+	socksAddr := clientTestASOCKS5(t)
+	for _, tc := range []struct {
+		name, proxy, body string
+		timeout           time.Duration
+	}{
+		{name: "success", proxy: proxyAddr, body: "true"},
+		{name: "success with a timeout", proxy: proxyAddr, body: "true", timeout: time.Minute},
+		{name: "success through socks5", proxy: socksAddr, body: "socks5 to localhost:3000"},
+		{name: "success through socks5 with a timeout", proxy: socksAddr, body: "socks5 to localhost:3000", timeout: time.Minute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := New().SetTimeout(tc.timeout)
 
-		require.NoError(t, client.SetProxyURL(proxyAddr))
+			require.NoError(t, client.SetProxyURL(tc.proxy))
 
-		resp, err := client.Get("http://localhost:3000")
-		require.NoError(t, err)
+			resp, err := client.Get("http://localhost:3000")
+			require.NoError(t, err)
 
-		require.Equal(t, 200, resp.StatusCode())
-		require.Equal(t, "true", string(resp.Body()))
-	})
+			require.Equal(t, 200, resp.StatusCode())
+			require.Equal(t, tc.body, string(resp.Body()))
+		})
+	}
 
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
@@ -2163,6 +2219,30 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 		require.Empty(t, send(t, req, "http://a.example/cookies"))
 	})
 
+	t.Run("a Cookie header wins over a jar cookie of the same name", func(t *testing.T) {
+		t.Parallel()
+		jar := clientTestCJar(t)
+		clientTestCReceive(jar, "files.shop.example", "/", "sid=stored; Domain=shop.example; Path=/")
+		clientTestCReceive(jar, "api.shop.example", "/", "other=kept; Path=/")
+		newClient := func() *Client { return New().SetDial(server.dial()).SetCookieJar(jar) }
+		newRequest := func(client *Client) *Request { return clientTestBRequest(t).SetClient(client) }
+		const url = "http://api.shop.example/cookies"
+		require.Equal(t, "sid=stored; other=kept", send(t, newRequest(newClient()), url))
+
+		for name, req := range map[string]*Request{
+			"Request.SetHeader": newRequest(newClient()).SetHeader(fiber.HeaderCookie, "sid=mine"),
+			"Request.AddHeader": newRequest(newClient()).AddHeader("cookie", "sid=mine"),
+			"Client.SetHeader":  newRequest(newClient().SetHeader(fiber.HeaderCookie, "sid=mine")),
+			"Client.AddHeader":  newRequest(newClient().AddHeader("cookie", "sid=mine")),
+		} {
+			for range 2 {
+				require.Equal(t, "sid=mine; other=kept", send(t, req, url), name)
+			}
+		}
+		empty := newRequest(newClient()).SetHeader(fiber.HeaderCookie, "sid=")
+		require.Equal(t, "sid=; other=kept", send(t, empty, url))
+	})
+
 	t.Run("a Cookie header set on the request is kept", func(t *testing.T) {
 		t.Parallel()
 		req := clientTestBRequest(t).SetClient(New().SetDial(server.dial())).SetHeader(fiber.HeaderCookie, "a=1")
@@ -2170,6 +2250,68 @@ func Test_Request_Resend_SelectsCookiesAnew(t *testing.T) {
 		for range 2 {
 			require.Equal(t, "a=1", send(t, req, "http://a.example/cookies"))
 		}
+	})
+}
+
+func Test_Request_Resend_DropsPreviousClientHeaders(t *testing.T) {
+	t.Parallel()
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString(c.Get(fiber.HeaderAuthorization) + "|" + c.Get("X-Partner-Id"))
+		})
+	})
+	t.Cleanup(server.stop)
+
+	send := func(t *testing.T, req *Request, client *Client, url string) string {
+		t.Helper()
+		resp, err := req.SetClient(client).Get(url)
+		require.NoError(t, err)
+		defer resp.Close()
+		return resp.String()
+	}
+
+	t.Run("a client header does not follow the request to another client", func(t *testing.T) {
+		t.Parallel()
+		billing := New().SetDial(server.dial()).SetHeader(fiber.HeaderAuthorization, "Bearer billing")
+		partner := New().SetDial(server.dial()).SetHeader("X-Partner-Id", "42")
+		req := clientTestBRequest(t)
+
+		require.Equal(t, "Bearer billing|", send(t, req, billing, "http://billing.example/"))
+		require.Equal(t, "|42", send(t, req, partner, "http://partner.example/"))
+		require.Equal(t, "Bearer billing|", send(t, req, billing, "http://billing.example/"))
+	})
+
+	t.Run("a header of a client reset since is not sent again", func(t *testing.T) {
+		t.Parallel()
+		client := New().SetDial(server.dial()).SetHeader(fiber.HeaderAuthorization, "Bearer billing")
+		req := clientTestBRequest(t)
+
+		require.Equal(t, "Bearer billing|", send(t, req, client, "http://billing.example/"))
+		client.Reset()
+		require.Equal(t, "|", send(t, req, client.SetDial(server.dial()), "http://billing.example/"))
+	})
+
+	t.Run("a header set on the request is kept", func(t *testing.T) {
+		t.Parallel()
+		billing := New().SetDial(server.dial()).SetHeader(fiber.HeaderAuthorization, "Bearer billing")
+		partner := New().SetDial(server.dial())
+		req := clientTestBRequest(t).SetHeader(fiber.HeaderAuthorization, "Bearer own")
+
+		require.Equal(t, "Bearer own|", send(t, req, billing, "http://billing.example/"))
+		require.Equal(t, "Bearer own|", send(t, req, partner, "http://partner.example/"))
+	})
+
+	t.Run("a header a request hook sets is kept", func(t *testing.T) {
+		t.Parallel()
+		billing := New().SetDial(server.dial()).SetHeader(fiber.HeaderAuthorization, "Bearer billing")
+		signing := New().SetDial(server.dial()).AddRequestHook(func(_ *Client, r *Request) error {
+			r.RawRequest.Header.Set(fiber.HeaderAuthorization, "Bearer signed")
+			return nil
+		})
+		req := clientTestBRequest(t)
+
+		require.Equal(t, "Bearer billing|", send(t, req, billing, "http://billing.example/"))
+		require.Equal(t, "Bearer signed|", send(t, req, signing, "http://signing.example/"))
 	})
 }
 

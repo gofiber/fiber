@@ -7,8 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"os"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -64,8 +68,15 @@ func (c *core) execFunc() (*Response, error) {
 	// already done gets ErrTimeoutOrCancel at once and may release its request.
 	reqv := fasthttp.AcquireRequest()
 	c.req.RawRequest.CopyTo(reqv)
+	// A body stream is the caller's own reader: a call that can return before the goroutine only lends it.
+	var lent *lentBody
 	if bodyStream := c.req.RawRequest.BodyStream(); bodyStream != nil {
-		reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
+		size := c.req.RawRequest.Header.ContentLength()
+		if c.ctx.Done() != nil {
+			lent = &lentBody{r: bodyStream}
+			bodyStream = lent.reader(size)
+		}
+		reqv.SetBodyStream(bodyStream, size)
 	}
 	// Read what the goroutine needs now; only its own copy is safe to touch later.
 	// Ownership is included: once the caller times out, execute releases a
@@ -184,6 +195,9 @@ func (c *core) execFunc() (*Response, error) {
 	case <-c.ctx.Done():
 		// The exchange in flight ends with the call: its connection is closed.
 		c.cancel.end()
+		if lent != nil {
+			_ = lent.Close() //nolint:errcheck // the call has failed already, with the error to report
+		}
 		go func() { // drain the channels and release the response
 			select {
 			case resp := <-respChan:
@@ -193,6 +207,74 @@ func (c *core) execFunc() (*Response, error) {
 		}()
 		return nil, ErrTimeoutOrCancel
 	}
+}
+
+// lentBody stops the transport goroutine, which can outlive its call, from reading the
+// caller's body after the call returned (a relayed c.BodyStream() is back in the server's pool by then).
+type lentBody struct {
+	r     io.Reader
+	err   error
+	mu    sync.Mutex // held while the reader is in use
+	once  sync.Once
+	ended atomic.Bool // set before Close waits for mu, so no further Read gets ahead of it
+}
+
+// reader keeps what fasthttp reads off two concrete types: the length of an unsized
+// *io.LimitedReader and the size bound of a sized *os.File.
+func (b *lentBody) reader(size int) io.Reader {
+	switch r := b.r.(type) {
+	case *io.LimitedReader:
+		return &io.LimitedReader{R: b, N: r.N}
+	case *os.File:
+		if size >= 0 {
+			return sizedBody{Reader: io.LimitReader(b, int64(size)), Closer: b}
+		}
+	}
+	return b
+}
+
+func (b *lentBody) Read(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.ended.Load() {
+		return 0, ErrTimeoutOrCancel
+	}
+	return b.r.Read(p) //nolint:wrapcheck // the caller's reader, passed through
+}
+
+// Close ends the loan, waits out a Read in progress and closes the reader once.
+func (b *lentBody) Close() error {
+	b.ended.Store(true)
+	if b.closesDuringRead() {
+		// Before taking mu: closing is what ends a Read blocked on a pipe, file or conn.
+		b.closeOnce()
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.closeOnce()
+	return b.err
+}
+
+// closesDuringRead reports whether the reader is documented as safe to close while a Read is in progress.
+func (b *lentBody) closesDuringRead() bool {
+	switch b.r.(type) {
+	case *io.PipeReader, *os.File, net.Conn:
+		return true
+	}
+	return false
+}
+
+func (b *lentBody) closeOnce() {
+	b.once.Do(func() {
+		if closer, ok := b.r.(io.Closer); ok {
+			b.err = closer.Close()
+		}
+	})
+}
+
+type sizedBody struct {
+	io.Reader
+	io.Closer
 }
 
 // applyDeadline gives an attempt what is left of the caller's deadline, which fasthttp
@@ -240,6 +322,7 @@ func (c *core) preHooks() error {
 	finalHooks := slices.Clone(c.client.finalRequestHooks)
 	c.client.mu.RUnlock()
 
+	c.req.dropClientHeaders()
 	for _, f := range userHooks {
 		if err := f(c.client, c.req); err != nil {
 			return err
@@ -259,9 +342,18 @@ func (c *core) preHooks() error {
 	return nil
 }
 
-// runBuiltinRequestHooks serializes the request under the client lock, as the
-// built-in hooks read client-level state while they fill in RawRequest.
+// runBuiltinRequestHooks serializes the URL and headers under the client lock and the body after it:
+// a marshaler or a multipart file reader may wait on its source while other requests need the lock.
 func (c *core) runBuiltinRequestHooks() error {
+	if err := c.runLockedRequestHooks(); err != nil {
+		return err
+	}
+
+	return parserRequestBody(c.client, c.req)
+}
+
+// runLockedRequestHooks runs the built-in hooks that read client-level state, under the client lock.
+func (c *core) runLockedRequestHooks() error {
 	c.client.mu.Lock()
 	defer c.client.mu.Unlock()
 
@@ -344,8 +436,7 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 	if err != nil {
 		// Nothing carries the request back to the pool: no response reaches the
 		// caller. A streamed body is the exception — the transport goroutine was
-		// handed that reader itself, so a canceled send may still be reading it
-		// and releasing here would close it mid-read.
+		// handed that reader and closes it when it releases its copy, possibly after this returns.
 		if req.clientOwned && !req.RawRequest.IsBodyStream() {
 			ReleaseRequest(req)
 		}

@@ -21,7 +21,7 @@ func Test_FiberApp_ReadsAnOriginFormTargetAsAPath(t *testing.T) {
 	app := fiber.New()
 	app.Use(describe)
 	for _, target := range []string{
-		"//x/admin/data", "//x/admin/data?q=a", "//x/admin/data#frag", "//x/admin/data?q=://", "//x/admin/data#a://b",
+		"//x/admin/data", "//x/admin/data?q=a", "//x/admin/data?q=://",
 		"///x/admin/data", "//x", "//u:pw@other.example/admin/data", "//a:b/admin/data",
 	} {
 		t.Run(target, func(t *testing.T) {

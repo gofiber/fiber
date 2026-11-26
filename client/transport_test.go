@@ -1,6 +1,7 @@
 package client
 
 import (
+	"cmp"
 	"crypto/tls"
 	"errors"
 	"net"
@@ -1015,6 +1016,56 @@ func Test_httpClientTransport_Interface(t *testing.T) {
 // Test_Transport_PathNormalizing covers the setting that decides what reaches the
 // wire: the wrapped client's own field, read and written through every kind of
 // transport.
+func Test_BoundTLSHandshake_DialsHostsWithoutDialer(t *testing.T) {
+	t.Parallel()
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, ln.Close()) })
+	for _, tc := range []struct {
+		name           string
+		tls, dualStack bool
+	}{
+		{name: "http"}, {name: "http dual stack", dualStack: true}, {name: "https", tls: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			hc := &fasthttp.HostClient{Addr: ln.Addr().String(), IsTLS: tc.tls, DialDualStack: tc.dualStack}
+			require.NoError(t, boundTLSHandshake(hc))
+			require.NotNil(t, hc.DialTimeout, "the host client dials through fasthttp's default, unbounded by the hook")
+			conn, err := hc.DialTimeout(hc.Addr, time.Minute)
+			require.NoError(t, err)
+			require.NoError(t, conn.Close())
+		})
+	}
+	errDialed := errors.New("dialed by the caller's dialer")
+	for _, tc := range []struct {
+		name, scheme string
+		after        bool
+	}{
+		{name: "a dialer of the caller's is used", scheme: "http"},
+		{name: "a dialer a hook sets after this one is used", scheme: "http", after: true},
+		{name: "a dialer a hook sets after this one is used for https", scheme: "https", after: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			hc := &fasthttp.HostClient{Addr: ln.Addr().String(), IsTLS: tc.scheme == "https"}
+			dial := func(string) (net.Conn, error) { return nil, errDialed }
+			if !tc.after {
+				hc.Dial = dial
+			}
+			require.NoError(t, boundTLSHandshake(hc))
+			if tc.after {
+				hc.Dial = dial
+			}
+			req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseRequest(req)
+			defer fasthttp.ReleaseResponse(resp)
+			req.SetRequestURI(tc.scheme + "://" + hc.Addr + "/")
+			require.ErrorIs(t, hc.DoTimeout(req, resp, time.Second), errDialed)
+		})
+	}
+}
+
 func Test_Transport_PathNormalizing(t *testing.T) {
 	t.Parallel()
 	t.Run("fasthttp.Client the Fiber client made", func(t *testing.T) {
@@ -1270,6 +1321,61 @@ func Test_Transport_DoRedirects_KeepsPathNormalizingDisabled(t *testing.T) {
 			require.Equal(t, fasthttp.StatusOK, resp.StatusCode())
 			require.Equal(t, tc.wantPath, <-seen)
 		})
+	}
+}
+
+func Test_Transport_DoRedirects_ResolvesTargetAsBuilt(t *testing.T) {
+	t.Parallel()
+	const start = "/files/..%2F..%2Fadmin%2Fkey"
+	transports := []struct {
+		build func(dial fasthttp.DialFunc, asBuilt bool) httpClientTransport
+		name  string
+	}{
+		{name: "client", build: func(dial fasthttp.DialFunc, asBuilt bool) httpClientTransport {
+			return newStandardClientTransport(&fasthttp.Client{DisablePathNormalizing: asBuilt, Dial: dial})
+		}},
+		{name: "host client", build: func(dial fasthttp.DialFunc, asBuilt bool) httpClientTransport {
+			return newHostClientTransport(&fasthttp.HostClient{Addr: "example.com:80", DisablePathNormalizing: asBuilt, Dial: dial})
+		}},
+		{name: "balancer", build: func(dial fasthttp.DialFunc, asBuilt bool) httpClientTransport {
+			return newLBClientTransport(&fasthttp.LBClient{Timeout: 5 * time.Second, Clients: []fasthttp.BalancingClient{
+				&fasthttp.HostClient{Addr: "example.com:80", DisablePathNormalizing: asBuilt, Dial: dial},
+			}})
+		}},
+	}
+	for _, tr := range transports {
+		for _, tc := range []struct {
+			name, start, location, want string
+			normalizing                 bool
+		}{
+			{name: "absolute path", location: "/v2" + start, want: "/v2" + start},
+			{name: "absolute URL", location: "http://example.com/v2" + start, want: "/v2" + start},
+			{name: "relative path", location: "next", want: "/files/next"},
+			{name: "space and non-ASCII", location: "/v2/my file/café", want: "/v2/my%20file/caf%C3%A9"},
+			{name: "normalizing client", location: "/v2/a%2Fb//c", want: "/v2/a/b/c", normalizing: true},
+			{name: "stray percent in the request path", start: "/discount/100%", location: "/next", want: "/next"},
+		} {
+			t.Run(tr.name+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+				seen := make(chan string, 3)
+				var hops atomic.Int32
+				dial := clientTestCServe(t, func(ctx *fasthttp.RequestCtx) {
+					seen <- string(ctx.Request.Header.RequestURI())
+					if hops.Add(1) < 3 {
+						ctx.Response.Header.Set(fiber.HeaderLocation, tc.location)
+						ctx.SetStatusCode(fasthttp.StatusMovedPermanently)
+					}
+				})
+				req, resp := clientTestCReqResp(t)
+				req.SetRequestURI("http://example.com" + cmp.Or(tc.start, start))
+
+				require.NoError(t, tr.build(dial, !tc.normalizing).DoRedirects(req, resp, &redirectOptions{maxRedirects: 3}))
+				require.Equal(t, fasthttp.StatusOK, resp.StatusCode())
+				<-seen
+				require.Equal(t, tc.want, <-seen, "first redirect")
+				require.Equal(t, tc.want, <-seen, "second redirect")
+			})
+		}
 	}
 }
 

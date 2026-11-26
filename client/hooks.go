@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -156,29 +157,63 @@ var pathParamEndChars = func() [256]bool {
 //
 //nolint:revive // flag-parameter: disablePathNormalizing is the request setting, as in composeRedirectURL
 func substitutePathParams(uri string, disablePathNormalizing bool, sources ...PathParam) (string, error) {
-	if !strings.ContainsRune(uri, ':') {
+	if !strings.ContainsRune(uri, ':') || !slices.ContainsFunc(sources, func(p PathParam) bool { return len(p) > 0 }) {
 		return uri, nil
 	}
 
-	authEnd := authorityEnd(uri)
+	authStart, authEnd := authorityBounds(uri)
 
 	var (
-		buf  []byte
-		last int
+		buf    []byte
+		last   int
+		segEnd int // where the segment of the current ":" ends, kept for the colons after it
+
+		// Only the lengths of the names set are tried where a name may end inside its segment, so a run of
+		// colons costs one lookup per length. Collected on first use.
+		lengths    []int
+		lengthsBuf [8]int
+
+		inLiteral bool // uri[:scanned] ends inside an IPv6 literal; carried from one ":" to the next
+		scanned   int
 	)
 
-	for i := 0; i < len(uri); i++ {
+	// From the authority on: the scheme's ":" is followed by "//" and spells no name.
+	for i := authStart; i < len(uri); i++ {
 		if uri[i] != ':' {
 			continue
 		}
 
 		// The colons inside an IPv6 literal belong to the address, so
 		// "http://[2001:db8::1]/x" must not be rewritten by a "db8" parameter.
-		if i < authEnd && inIPv6Literal(uri[:i]) {
-			continue
+		if i < authEnd {
+			inLiteral = inIPv6Literal(uri[scanned:i], inLiteral)
+			scanned = i
+			if inLiteral {
+				continue
+			}
 		}
 
-		ph, ok := lookupPlaceholder(uri, i, i < authEnd, sources)
+		nameEnd := i + 1
+		for nameEnd < len(uri) && !pathParamEndChars[uri[nameEnd]] {
+			nameEnd++
+		}
+		var ph placeholder
+		var ok bool
+		if nameEnd == len(uri) || pathParamSegmentEndChars[uri[nameEnd]] {
+			// The name runs to the end of its segment, the one place it can end.
+			ph, ok = resolvePlaceholder(uri, i, nameEnd, i < authEnd, sources)
+		} else {
+			if segEnd <= i {
+				segEnd = nameEnd
+				for segEnd < len(uri) && !pathParamSegmentEndChars[uri[segEnd]] {
+					segEnd++
+				}
+			}
+			if lengths == nil {
+				lengths = pathParamNameLengths(lengthsBuf[:0], sources)
+			}
+			ph, ok = lookupPlaceholder(uri, i, segEnd, lengths, i < authEnd, sources)
+		}
 		if !ok {
 			continue
 		}
@@ -263,29 +298,33 @@ func isHostSafe(val string) bool {
 	return val != "" && utf8.ValidString(val)
 }
 
-// inIPv6Literal reports whether the authority prefix ends inside a "[...]"
-// IPv6 literal.
-func inIPv6Literal(prefix string) bool {
-	return strings.LastIndexByte(prefix, '[') > strings.LastIndexByte(prefix, ']')
+// inIPv6Literal reports whether the authority is inside a "[...]" IPv6 literal
+// at the end of part, given whether it was at the start of it.
+func inIPv6Literal(part string, inLiteral bool) bool {
+	opened, closed := strings.LastIndexByte(part, '['), strings.LastIndexByte(part, ']')
+	if opened == closed {
+		return inLiteral
+	}
+	return opened > closed
 }
 
-// authorityEnd returns the index at which uri's authority ends, or 0 when uri
+// authorityBounds returns where uri's authority starts and ends, or 0, 0 when uri
 // has none. Everything from "://" up to the first "/", "?" or "#" is authority.
-func authorityEnd(uri string) int {
-	start := strings.Index(uri, "://")
+func authorityBounds(uri string) (start, end int) { //nolint:nonamedreturns // gocritic unnamedResult requires result names
+	start = strings.Index(uri, "://")
 	if start < 0 {
-		return 0
+		return 0, 0
 	}
 	start += len("://")
 
 	for i := start; i < len(uri); i++ {
 		switch uri[i] {
 		case '/', '?', '#':
-			return i
+			return start, i
 		}
 	}
 
-	return len(uri)
+	return start, len(uri)
 }
 
 // isAllDigits reports whether s is a non-empty run of ASCII digits.
@@ -309,10 +348,10 @@ var pathParamSegmentEndChars = [256]bool{
 }
 
 // lookupPlaceholder resolves the ":name" starting at i, returning the value and
-// the index just past the name. Candidates run from the end of the segment down
-// to each terminator inside it, longest first, so a name holding a "-", "." or
-// ":" still resolves. ":idx" never offers "id", because "x" does not terminate a
-// name and the shorter run is therefore not a candidate at all.
+// the index just past the name. Candidates take the lengths of the names set,
+// longest first, and end at segEnd or at a terminator, so a name holding a "-",
+// "." or ":" still resolves. ":idx" never offers "id", because "x" does not
+// terminate a name and the shorter run is therefore not a candidate at all.
 // placeholder is a resolved ":name" in a request URL: the parameter name, the
 // value found for it, and the index just past the name in the URL.
 type placeholder struct {
@@ -322,32 +361,53 @@ type placeholder struct {
 }
 
 //nolint:revive // flag-parameter: inAuthority selects the port rule, as in substitutePathParams
-func lookupPlaceholder(uri string, i int, inAuthority bool, sources []PathParam) (placeholder, bool) {
-	segEnd := i + 1
-	for segEnd < len(uri) && !pathParamSegmentEndChars[uri[segEnd]] {
-		segEnd++
-	}
-
-	for end := segEnd; end > i+1; end-- {
-		if end != segEnd && !pathParamEndChars[uri[end]] {
+func lookupPlaceholder(uri string, i, segEnd int, lengths []int, inAuthority bool, sources []PathParam) (placeholder, bool) {
+	for _, n := range lengths {
+		end := i + 1 + n
+		if end > segEnd || (end < segEnd && !pathParamEndChars[uri[end]]) {
 			continue
 		}
-
-		name := uri[i+1 : end]
-
-		// A host may be templated ("http://:tenant.example.com"), so the
-		// authority is scanned too, but a digits-only name there is the port,
-		// and substituting it would eat the ":" that separates it from the host.
-		if inAuthority && isAllDigits(name) {
-			continue
-		}
-
-		if val, ok := lookupPathParam(name, sources); ok {
-			return placeholder{name: name, value: val, end: end}, true
+		if ph, ok := resolvePlaceholder(uri, i, end, inAuthority, sources); ok {
+			return ph, true
 		}
 	}
 
 	return placeholder{}, false
+}
+
+// resolvePlaceholder looks up the name uri[i+1:end] that the ":" at i spells.
+//
+//nolint:revive // flag-parameter: inAuthority selects the port rule, as in substitutePathParams
+func resolvePlaceholder(uri string, i, end int, inAuthority bool, sources []PathParam) (placeholder, bool) {
+	name := uri[i+1 : end]
+
+	// A host may be templated ("http://:tenant.example.com"), so the
+	// authority is scanned too, but a digits-only name there is the port,
+	// and substituting it would eat the ":" that separates it from the host.
+	if name == "" || inAuthority && isAllDigits(name) {
+		return placeholder{}, false
+	}
+
+	if val, ok := lookupPathParam(name, sources); ok {
+		return placeholder{name: name, value: val, end: end}, true
+	}
+
+	return placeholder{}, false
+}
+
+// pathParamNameLengths appends the distinct lengths of the names in sources a
+// placeholder could spell to dst, longest first.
+func pathParamNameLengths(dst []int, sources []PathParam) []int {
+	for _, source := range sources {
+		for name := range source {
+			if name != "" {
+				dst = append(dst, len(name))
+			}
+		}
+	}
+	slices.Sort(dst)
+	slices.Reverse(dst)
+	return slices.Compact(dst)
 }
 
 // lookupPathParam returns the first value stored under name, searching sources
@@ -373,9 +433,14 @@ func parserRequestHeader(c *Client, req *Request) error {
 	req.RawRequest.Header.DelAllCookies()
 
 	// Merge headers from the client, clearing each key first so a resend does not accumulate values.
+	keys := req.clientHeaderKeys[:0]
 	for key := range c.header.All() {
 		req.RawRequest.Header.DelBytes(key)
+		n := len(keys)
+		keys = slices.Grow(keys, 1)[:n+1]
+		keys[n] = append(keys[n][:0], key...) // reuses the buffer of an earlier send's key
 	}
+	req.clientHeaderKeys = keys
 	for key, value := range c.header.All() {
 		req.RawRequest.Header.AddBytesKV(key, value)
 	}
@@ -436,7 +501,7 @@ func parserRequestHeader(c *Client, req *Request) error {
 		req.RawRequest.Header.Del(fasthttp.HeaderReferer)
 	}
 
-	// Set cookies from the cookie jar if available.
+	// Set cookies from the cookie jar if available; a cookie of the Cookie header merged above is kept.
 	if c.cookieJar != nil {
 		c.cookieJar.dumpCookiesToReq(req.RawRequest)
 	}
@@ -455,22 +520,23 @@ func parserRequestHeader(c *Client, req *Request) error {
 }
 
 // parserRequestBody serializes the request body based on its type and sets it into the RawRequest.
+// It runs outside the client lock (see runBuiltinRequestHooks), so it takes the marshalers through their getters.
 func parserRequestBody(c *Client, req *Request) error {
 	switch req.bodyType {
 	case jsonBody:
-		body, err := c.jsonMarshal(req.body)
+		body, err := c.JSONMarshal()(req.body)
 		if err != nil {
 			return err
 		}
 		req.RawRequest.SetBody(body)
 	case xmlBody:
-		body, err := c.xmlMarshal(req.body)
+		body, err := c.XMLMarshal()(req.body)
 		if err != nil {
 			return err
 		}
 		req.RawRequest.SetBody(body)
 	case cborBody:
-		body, err := c.cborMarshal(req.body)
+		body, err := c.CBORMarshal()(req.body)
 		if err != nil {
 			return err
 		}
@@ -572,11 +638,11 @@ func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) error {
 		if err != nil {
 			return fmt.Errorf("open file error: %w", err)
 		}
+		defer file.Close() //nolint:errcheck // not needed
 		reader = file
+	} else {
+		defer f.closeReader()
 	}
-
-	// Ensure the file reader is always closed after copying.
-	defer reader.Close() //nolint:errcheck // not needed
 
 	// Create form file and copy the content.
 	w, err := mw.CreateFormFile(f.fieldName, f.name)

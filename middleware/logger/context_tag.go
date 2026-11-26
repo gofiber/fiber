@@ -61,7 +61,11 @@ func RegisterContextTag(name string, extract func(ctx any) string) {
 		return logtemplate.WriteSanitizedString(output, v)
 	})
 
-	MustRegisterTag(name, func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+	MustRegisterTag(name, func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
+		// extract reads Locals the timed-out handler may still change: like ${locals:}, log nothing.
+		if data.timeoutResp != nil {
+			return 0, nil
+		}
 		v := extract(c)
 		if v == "" {
 			return 0, nil

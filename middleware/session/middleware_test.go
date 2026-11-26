@@ -1267,6 +1267,33 @@ func Test_Session_Middleware_HeaderIDIsNotReplayedByTheCache(t *testing.T) {
 	}
 }
 
+// A save that stores nothing sends no cookie either, but the page may still show the session: the cache in
+// front must not hand it to other clients.
+func Test_Session_Middleware_UnsavedSessionIsNotCached(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	sessHandler, store := NewWithStore()
+	app.Use(cache.New())
+	app.Use(sessHandler)
+	app.Get("/", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		user := sess.Get("user")
+		if user != nil {
+			require.NoError(t, store.Delete(context.Background(), sess.ID())) // a logout elsewhere
+		}
+		return c.SendString(fmt.Sprint("hello ", user))
+	})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
+
+	first := apptest.Do(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderCookie, "session_id="+id)))
+	require.Equal(t, "hello alice", apptest.Body(t, first))
+	require.Empty(t, first.Cookies())
+
+	second := apptest.Do(t, app, "/")
+	require.NotEqual(t, "hit", second.Header.Get("X-Cache"))
+	require.Equal(t, "hello <nil>", apptest.Body(t, second))
+}
+
 // The header sinks of a store are the names it marks as one client's.
 func Test_Session_Store_MarksOnlyItsHeaderSinks(t *testing.T) {
 	t.Parallel()
@@ -2646,6 +2673,16 @@ func Test_Session_WritesToTheValuesOfARequestWaitForEachOther(t *testing.T) {
 			sess := mustGet(t, NewStore(), c)
 			old := requestIDs(c).id
 			return func() { assert.NoError(t, sess.Regenerate()) }, func() bool { return requestIDs(c).id != old }
+		},
+		"the mark of a response that holds the session": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			sess := mustGet(t, NewStore(), c)
+			mark := func() {
+				sess.mu.Lock()
+				defer sess.mu.Unlock()
+				sess.markPersonal()
+			}
+			return mark, func() bool { return personalheader.ResponseMarked(c.RequestCtx()) }
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
