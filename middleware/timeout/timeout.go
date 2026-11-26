@@ -27,8 +27,9 @@ const (
 
 // request is shared by the nested timeout.New of one request, whose timers fire on different goroutines.
 type request struct {
-	mu       sync.Mutex  // held while one of them answers, so only one writes the timeout response
-	answered atomic.Bool // set once one has started to answer
+	held     *fasthttp.Response // the timeout response a fasthttp route handler answered with first, under mu
+	mu       sync.Mutex         // held while one of them answers, so only one writes the timeout response
+	answered atomic.Bool        // set once one has started to answer
 }
 
 // snapshot is what OnTimeout sees after the deadline, taken before the handler starts:
@@ -189,14 +190,20 @@ func handleResult(err error, ctx fiber.Ctx, cfg Config) error {
 // TimeoutErrorWithResponse copies resp, so the active RequestCtx response is never
 // read, and sends the copy from a fresh RequestCtx whose request is empty, so the
 // body of a response to a HEAD request is skipped here rather than there.
-func sendTimeoutResponse(ctx fiber.Ctx, resp *fasthttp.Response, isHead bool) {
-	// Or kept as OnTimeout set it: a response it meant to send without a body goes without one.
-	resp.SkipBody = resp.SkipBody || isHead
-	// The handler given up on keeps the connection and may still write to it (c.End, a hijack).
-	resp.SetConnectionClose()
-	ctx.RequestCtx().TimeoutErrorWithResponse(resp)
+// It leaves a timeout response a fasthttp route handler answered with in place, and returns it.
+func sendTimeoutResponse(ctx fiber.Ctx, resp *fasthttp.Response, isHead bool) *fasthttp.Response {
+	// Read right before the write: the handler may answer while OnTimeout runs.
+	held := ctx.RequestCtx().LastTimeoutErrorResponse()
+	if held == nil {
+		// Or kept as OnTimeout set it: a response it meant to send without a body goes without one.
+		resp.SkipBody = resp.SkipBody || isHead
+		// The handler given up on keeps the connection and may still write to it (c.End, a hijack).
+		resp.SetConnectionClose()
+		ctx.RequestCtx().TimeoutErrorWithResponse(resp)
+	}
 	// The copy carries no body stream, and nothing else closes one OnTimeout left on resp.
 	_ = resp.CloseBodyStream() //nolint:errcheck // the stream is never sent, so its error has no reader
+	return held
 }
 
 // handleTimeout handles the timeout case using the Abandon mechanism
@@ -213,16 +220,12 @@ func handleTimeout(
 	defer req.mu.Unlock()
 
 	var timeoutErr error
+	var held *fasthttp.Response
 	switch {
 	case req.answered.Swap(true):
 		// Another timeout.New of this request answered and fasthttp holds its response,
 		// so only wait for our goroutine too.
-		timeoutErr = fiber.ErrServiceUnavailable
-	case ctx.IsAbandoned() && ctx.RequestCtx().LastTimeoutErrorResponse() != nil:
-		// A fasthttp route handler answered with a timeout response of its own and still runs on the request,
-		// which it leaves to the garbage collector: neither answer over it nor reclaim the context.
-		cancel()
-		return fiber.ErrServiceUnavailable
+		held, timeoutErr = req.held, fiber.ErrServiceUnavailable
 	case cfg.OnTimeout == nil:
 		// Build the default timeout response separately from the RequestCtx response.
 		// The timed-out handler can keep running and may have already buffered
@@ -230,7 +233,7 @@ func handleTimeout(
 		var resp fasthttp.Response
 		resp.SetStatusCode(fiber.StatusServiceUnavailable)
 		resp.SetBodyString(fiber.ErrServiceUnavailable.Message)
-		sendTimeoutResponse(ctx, &resp, isHead)
+		held = sendTimeoutResponse(ctx, &resp, isHead)
 		timeoutErr = fiber.ErrServiceUnavailable
 	default:
 		var resp *fasthttp.Response
@@ -255,11 +258,18 @@ func handleTimeout(
 		// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one
 		// for the response and send the captured payload from OnTimeout. All ctx
 		// mutations after this call are ignored by fasthttp.
-		sendTimeoutResponse(ctx, resp, isHead)
+		held = sendTimeoutResponse(ctx, resp, isHead)
 		if timeoutErr == nil {
 			// An error keeps the middleware before us off the response the handler still writes.
 			timeoutErr = fiber.ErrServiceUnavailable
 		}
+	}
+	if held != nil {
+		// That handler still runs on the request: leave the context to the garbage collector, as abandonTimedOut does.
+		req.held = held
+		ctx.Abandon()
+		cancel()
+		return fiber.NewError(held.StatusCode())
 	}
 
 	// Schedule race-free reclamation of the abandoned context. The context is

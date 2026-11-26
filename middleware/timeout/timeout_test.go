@@ -644,32 +644,64 @@ func Test_Timeout_ClosesWhatTheTimedOutRequestLeftOpen(t *testing.T) {
 }
 
 // A fasthttp route handler that gave up on the request with a timeout response of its own still runs on it, so a
-// timeout.New that times out after it neither answers over that response nor closes or resets the request under it.
+// timeout.New that times out before it answered neither answers over that response nor closes or resets the request
+// under it: whether the handler gave up first or while OnTimeout ran, and for an enclosing timeout.New too.
 func Test_Timeout_LeavesRequestToFastHTTPHandlerThatGaveUp(t *testing.T) {
 	t.Parallel()
-	var closed atomic.Bool
-	release, kept := make(chan struct{}), make(chan bool, 1)
-	app := fiber.New()
-	app.Use(New(func(c fiber.Ctx) error {
-		c.Locals("resource", closerFunc(func() { closed.Store(true) }))
-		err := c.Next()
-		<-c.Context().Done()
-		return err
-	}, Config{Timeout: 20 * time.Millisecond}))
-	app.Get("/", fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
-		ctx.TimeoutError("busy")
-		go func() {
-			<-release
-			kept <- ctx.UserValue("resource") != nil
-		}()
-	}))
+	for name, tc := range map[string]struct{ whileOnTimeout, nested bool }{
+		"handler first":        {},
+		"while OnTimeout runs": {whileOnTimeout: true},
+		"nested":               {nested: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var closed atomic.Bool
+			onTimeout, gaveUp := make(chan struct{}), make(chan struct{})
+			release, kept := make(chan struct{}), make(chan bool, 1)
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				c.Locals("resource", closerFunc(func() { closed.Store(true) }))
+				return c.Next()
+			})
+			// Returns after its own deadline, so timeout.New answers rather than the handler.
+			untilDeadline := func(c fiber.Ctx) error {
+				deadline := c.Context()
+				err := c.Next()
+				<-deadline.Done()
+				return err
+			}
+			if tc.nested {
+				app.Use(New(untilDeadline, Config{Timeout: 60 * time.Millisecond}))
+			}
+			cfg := Config{Timeout: 20 * time.Millisecond}
+			if tc.whileOnTimeout {
+				cfg.OnTimeout = func(c fiber.Ctx) error {
+					close(onTimeout)
+					<-gaveUp
+					return c.SendStatus(fiber.StatusGatewayTimeout)
+				}
+			}
+			app.Use(New(untilDeadline, cfg))
+			app.Get("/", fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
+				if tc.whileOnTimeout {
+					<-onTimeout
+				}
+				ctx.TimeoutError("busy")
+				go func() {
+					<-release
+					kept <- ctx.UserValue("resource") != nil
+				}()
+				close(gaveUp)
+			}))
 
-	resp := apptest.Do(t, app, "/")
-	require.Never(t, closed.Load, 100*time.Millisecond, 5*time.Millisecond, "closed while the handler still runs")
-	close(release)
-	require.True(t, apptest.Recv(t, kept, 5*time.Second), "the values of the request were reset under the handler")
-	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
-	require.Equal(t, "busy", apptest.Body(t, resp))
+			resp := apptest.Do(t, app, "/")
+			require.Never(t, closed.Load, 150*time.Millisecond, 5*time.Millisecond, "closed while the handler still runs")
+			close(release)
+			require.True(t, apptest.Recv(t, kept, 5*time.Second), "the values of the request were reset under the handler")
+			require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+			require.Equal(t, "busy", apptest.Body(t, resp))
+		})
+	}
 }
 
 type neverReturningReader struct{}

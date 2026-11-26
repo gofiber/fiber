@@ -65,10 +65,12 @@ timeout.Config{
 
 - A fasthttp route handler behind the middleware that answered with a timeout
   response of its own (`fasthttp.TimeoutHandler`, `ctx.TimeoutError`) may still
-  run on the request. Whether it gave up before or after the middleware timed
-  out, the middleware neither answers over its response nor closes or resets
-  the request under it: the request and the context are left to the garbage
-  collector, as fasthttp leaves the request.
+  run on the request, so the middleware leaves the request and the context to
+  the garbage collector, as fasthttp leaves the request. If the handler answered
+  first, `OnTimeout` included, the client receives its response and the
+  middleware returns a `*fiber.Error` with its status. Give such a handler a
+  shorter timeout than the middleware: one that answers after the middleware
+  writes to a request fasthttp has already given up on.
 
 :::caution
 `timeout.New` wraps your final handler, so register it per route rather than
