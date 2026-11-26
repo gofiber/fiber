@@ -333,7 +333,7 @@ func Test_SubstitutePathParams_ColonRun(t *testing.T) {
 		err error
 		got string
 	}
-	segment, authority := strings.Repeat(":", 1<<16), strings.Repeat(":", 1<<18)
+	segment, authority, tail := strings.Repeat(":", 1<<16), strings.Repeat(":", 1<<18), strings.Repeat("n", 1<<16)
 	version := PathParam{"version": "2"}
 	tests := []struct {
 		params PathParam
@@ -352,6 +352,10 @@ func Test_SubstitutePathParams_ColonRun(t *testing.T) {
 		{
 			name: "in a segment with a long name set", uri: "http://example.com/v:version/" + segment,
 			params: PathParam{"version": "2", strings.Repeat("n", 1<<16): "x"}, want: "http://example.com/v2/" + segment,
+		},
+		{
+			name: "in a segment ending in a long name", uri: "http://example.com/v:version/" + segment + tail + "-:" + tail,
+			params: version, want: "http://example.com/v2/" + segment + tail + "-:" + tail,
 		},
 		{
 			name: "in the authority", uri: "http://" + authority + "/v:version",

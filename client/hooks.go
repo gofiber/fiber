@@ -161,10 +161,7 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 		return uri, nil
 	}
 
-	// Only the lengths of the names set are tried at a ":", so a run of colons costs one lookup per length.
-	var lengthsBuf [8]int
-	lengths := pathParamNameLengths(lengthsBuf[:0], sources)
-	if len(lengths) == 0 {
+	if !slices.ContainsFunc(sources, func(p PathParam) bool { return len(p) > 0 }) {
 		return uri, nil
 	}
 
@@ -173,7 +170,12 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 	var (
 		buf    []byte
 		last   int
-		segEnd int // where the segment of the current ":" ends, kept for the colons before it
+		segEnd int // where the segment of the current ":" ends, kept for the colons after it
+
+		// Only the lengths of the names set are tried where a name may end inside its segment, so a run of
+		// colons costs one lookup per length. Collected on first use.
+		lengths    []int
+		lengthsBuf [8]int
 
 		inLiteral bool // uri[:scanned] ends inside an IPv6 literal; carried from one ":" to the next
 		scanned   int
@@ -194,13 +196,27 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 			}
 		}
 
-		if segEnd <= i {
-			segEnd = i + 1
-			for segEnd < len(uri) && !pathParamSegmentEndChars[uri[segEnd]] {
-				segEnd++
-			}
+		nameEnd := i + 1
+		for nameEnd < len(uri) && !pathParamEndChars[uri[nameEnd]] {
+			nameEnd++
 		}
-		ph, ok := lookupPlaceholder(uri, i, segEnd, lengths, i < authEnd, sources)
+		var ph placeholder
+		var ok bool
+		if nameEnd == len(uri) || pathParamSegmentEndChars[uri[nameEnd]] {
+			// The name runs to the end of its segment, the one place it can end.
+			ph, ok = resolvePlaceholder(uri, i, nameEnd, i < authEnd, sources)
+		} else {
+			if segEnd <= i {
+				segEnd = nameEnd
+				for segEnd < len(uri) && !pathParamSegmentEndChars[uri[segEnd]] {
+					segEnd++
+				}
+			}
+			if lengths == nil {
+				lengths = pathParamNameLengths(lengthsBuf[:0], sources)
+			}
+			ph, ok = lookupPlaceholder(uri, i, segEnd, lengths, i < authEnd, sources)
+		}
 		if !ok {
 			continue
 		}
@@ -354,19 +370,29 @@ func lookupPlaceholder(uri string, i, segEnd int, lengths []int, inAuthority boo
 		if end > segEnd || (end < segEnd && !pathParamEndChars[uri[end]]) {
 			continue
 		}
-
-		name := uri[i+1 : end]
-
-		// A host may be templated ("http://:tenant.example.com"), so the
-		// authority is scanned too, but a digits-only name there is the port,
-		// and substituting it would eat the ":" that separates it from the host.
-		if inAuthority && isAllDigits(name) {
-			continue
+		if ph, ok := resolvePlaceholder(uri, i, end, inAuthority, sources); ok {
+			return ph, true
 		}
+	}
 
-		if val, ok := lookupPathParam(name, sources); ok {
-			return placeholder{name: name, value: val, end: end}, true
-		}
+	return placeholder{}, false
+}
+
+// resolvePlaceholder looks up the name uri[i+1:end] that the ":" at i spells.
+//
+//nolint:revive // flag-parameter: inAuthority selects the port rule, as in substitutePathParams
+func resolvePlaceholder(uri string, i, end int, inAuthority bool, sources []PathParam) (placeholder, bool) {
+	name := uri[i+1 : end]
+
+	// A host may be templated ("http://:tenant.example.com"), so the
+	// authority is scanned too, but a digits-only name there is the port,
+	// and substituting it would eat the ":" that separates it from the host.
+	if name == "" || inAuthority && isAllDigits(name) {
+		return placeholder{}, false
+	}
+
+	if val, ok := lookupPathParam(name, sources); ok {
+		return placeholder{name: name, value: val, end: end}, true
 	}
 
 	return placeholder{}, false
