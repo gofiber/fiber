@@ -944,13 +944,17 @@ func New(config ...Config) fiber.Handler {
 		var (
 			scope      credentialScope
 			recordKeys [2]string
+			missKeys   []byte // a miss's recordKeys, copied out only if its store may extend a record
+			missSplit  int
 		)
-		// A miss's too, built before a handler can rewrite the request: its store extends a record under them.
-		if foundAtLookup || cfg.mayKeyCredential(hasAuthorization, varyNames) {
-			recordKeys = refusals.recordKeys(c, generatedKey, varyNames, requestCreds())
-		}
 		if foundAtLookup {
+			recordKeys = refusals.recordKeys(c, generatedKey, varyNames, requestCreds())
 			scope = requestCreds().scope()
+		} else if cfg.mayKeyCredential(hasAuthorization, varyNames) {
+			// Built before a handler can rewrite the request: its store extends a record under them.
+			bufPtr := acquireKeyBuffer()
+			missKeys, missSplit = refusals.appendRecordKeys((*bufPtr)[:0], c, generatedKey, varyNames, requestCreds())
+			defer releaseKeyBuffer(bufPtr, missKeys)
 		}
 
 		// dropUnlessReplaced removes the entry found and its heap node unless a request replaced it first.
@@ -1383,6 +1387,9 @@ func New(config ...Config) fiber.Handler {
 			// recorded from now on reads the lifetime noted above.
 			covered := true
 			if refusals.mayHoldIn(reqCtx, urlGroup) {
+				if len(missKeys) > 0 {
+					recordKeys = splitRecordKeys(missKeys, missSplit)
+				}
 				for _, key := range recordKeys {
 					covered = refusals.cover(reqCtx, urlGroup, key) && covered
 				}

@@ -3588,6 +3588,35 @@ func Benchmark_Cache_Miss(b *testing.B) {
 	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
+// Benchmark_Cache_MissAuthorization measures a stored miss that carries a credential, whose refusal
+// record keys are built before the handler runs.
+func Benchmark_Cache_MissAuthorization(b *testing.B) {
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/*", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+		return c.SendString("body")
+	})
+	h := app.Handler()
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.Header.Set(fiber.HeaderAuthorization, "Bearer tok_0123456789abcdefghijklmnopqrstuvwxyz")
+
+	b.ReportAllocs()
+
+	n := 0
+	uri := make([]byte, 0, 24)
+	for b.Loop() {
+		n++
+		uri = strconv.AppendInt(append(uri[:0], '/'), int64(n), 10)
+		fctx.Request.SetRequestURIBytes(uri)
+		h(fctx)
+	}
+
+	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	require.Equal(b, cacheMiss, string(fctx.Response.Header.Peek("X-Cache")))
+}
+
 func Benchmark_Cache_Storage(b *testing.B) {
 	app := fiber.New()
 	app.Use(New(Config{Storage: memory.New()}))

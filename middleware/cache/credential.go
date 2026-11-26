@@ -261,11 +261,26 @@ func (r *refusalRecords) key(c fiber.Ctx, generated string, varyNames []string, 
 // declared for a custom key, which may hold just part of it, gets the custom key alone, which a request
 // adding to the header still finds. "" for none.
 func (r *refusalRecords) recordKeys(c fiber.Ctx, generated string, varyNames []string, creds requestCredentials) [2]string {
-	keys := [2]string{r.key(c, generated, varyNames, creds)}
-	if other, names, ok := creds.second(varyNames); ok {
-		keys[1] = r.key(c, generated, names, other)
-	}
+	bufPtr := acquireKeyBuffer()
+	buf, split := r.appendRecordKeys((*bufPtr)[:0], c, generated, varyNames, creds)
+	keys := splitRecordKeys(buf, split)
+	releaseKeyBuffer(bufPtr, buf)
 	return keys
+}
+
+// appendRecordKeys appends both recordKeys to buf, the second from split on.
+func (r *refusalRecords) appendRecordKeys(buf []byte, c fiber.Ctx, generated string, varyNames []string, creds requestCredentials) (keys []byte, split int) { //nolint:nonamedreturns // gocritic unnamedResult asks for names
+	buf = r.appendKey(buf, c, generated, varyNames, creds)
+	split = len(buf)
+	if other, names, ok := creds.second(varyNames); ok {
+		buf = r.appendKey(buf, c, generated, names, other)
+	}
+	return buf, split
+}
+
+// splitRecordKeys copies out the recordKeys appendRecordKeys appended.
+func splitRecordKeys(buf []byte, split int) [2]string {
+	return [2]string{string(buf[:split]), string(buf[split:])}
 }
 
 // refusedFor reports whether the request's credential is recorded as refused, under either of its recordKeys.
