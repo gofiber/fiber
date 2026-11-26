@@ -16,7 +16,7 @@ handler to finish. This is achieved through Fiber's **Abandon mechanism**:
 1. The handler runs in a goroutine with a timeout context
 2. On timeout, the middleware marks the context as "abandoned" and returns `503` immediately
 3. The handler goroutine can continue safely (e.g., for cleanup) without blocking the response
-4. A background cleanup goroutine waits for the handler to finish, returns the context to the pool and closes what the request left open (a response body stream, `Locals` that implement `io.Closer`, multipart temp files)
+4. A background cleanup goroutine waits for the handler to finish, returns the context to the pool and closes what the request left open (a response body stream, multipart temp files), and removes its `Locals`, closing those that implement `io.Closer`
 
 Handlers can detect the timeout by listening on `c.Context().Done()` and return early.
 This is the recommended pattern for cooperative cancellation.

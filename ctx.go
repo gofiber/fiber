@@ -1091,12 +1091,8 @@ func closeTimedOutRequest(fctx *fasthttp.RequestCtx) {
 		return
 	}
 	_ = fctx.Response.CloseBodyStream() //nolint:errcheck // the response is never sent
-	// Closed, not cleared as ResetUserValues does: a goroutine the handler left may still call Value.
-	fctx.VisitUserValuesAll(func(_, value any) {
-		if closer, ok := value.(io.Closer); ok {
-			_ = closer.Close() //nolint:errcheck // as fasthttp's reset does
-		}
-	})
+	// Cleared too: a Close may pool its value for another request.
+	fctx.ResetUserValues()
 	fctx.Request.RemoveMultipartFormFiles()
 }
 

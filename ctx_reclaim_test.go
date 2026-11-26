@@ -274,10 +274,14 @@ func TestApp_releaseDefaultCtx_NotAbandonedPools(t *testing.T) {
 
 type reclaimCloser struct {
 	io.Reader
-	closed *atomic.Int32
+	closed  *atomic.Int32
+	onClose func()
 }
 
 func (r reclaimCloser) Close() error {
+	if r.onClose != nil {
+		r.onClose()
+	}
 	r.closed.Add(1)
 	return nil
 }
@@ -316,7 +320,11 @@ func TestDefaultCtx_ScheduleReclaim_ClosesTimedOutRequest(t *testing.T) {
 			require.True(t, onDisk())
 
 			var closed atomic.Int32
+			var cleared atomic.Bool
+			fctx := c.RequestCtx()
 			c.Locals("closer", reclaimCloser{closed: &closed})
+			// Closed after "closer", which by then must be gone from the request: its Close may have pooled it.
+			c.Locals("check", reclaimCloser{closed: &closed, onClose: func() { cleared.Store(fctx.UserValue("closer") == nil) }})
 			require.NoError(t, c.SendStream(reclaimCloser{Reader: strings.NewReader("body"), closed: &closed}))
 			if tc.timedOut {
 				c.RequestCtx().TimeoutErrorWithResponse(&fasthttp.Response{})
@@ -341,7 +349,8 @@ func TestDefaultCtx_ScheduleReclaim_ClosesTimedOutRequest(t *testing.T) {
 				require.Never(t, func() bool { return !untouched() }, 50*time.Millisecond, 5*time.Millisecond)
 				return
 			}
-			require.Eventually(t, func() bool { return closed.Load() == 2 && !onDisk() }, time.Second, 5*time.Millisecond)
+			require.Eventually(t, func() bool { return closed.Load() == 3 && !onDisk() }, time.Second, 5*time.Millisecond)
+			require.True(t, cleared.Load(), "a closed value was left in the request")
 		})
 	}
 }
