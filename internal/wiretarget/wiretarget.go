@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3/internal/appconfig"
+	"github.com/gofiber/fiber/v3/internal/ipv6host"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -149,7 +150,8 @@ func routedFor[App any](c Ctx[App], path, line string) string {
 // upstream that reads it as another path: a backslash, or a segment a servlet
 // container strips to a dot or an empty segment ("..;", "/;x/admin"). A path
 // parameter on a named segment is handed on, since net/http reads it as part
-// of the name. Unless UnescapePath makes the router decode every escape itself,
+// of the name; under UnescapePath, in the decoded path the handler reads (see
+// parametersAsRouted). Unless UnescapePath makes the router decode every escape itself,
 // a routed path that is not in the one spelling SingleSpelling accepts is not
 // handed on either: the router keeps "/R&D" and "/R%26D", "/user@corp" and
 // "/user%40corp", "/caf%C3%A9" and a raw "/café" apart, but the handler decodes
@@ -161,9 +163,9 @@ func routedFor[App any](c Ctx[App], path, line string) string {
 // would read both as one name where the router keeps two. Serve returns NotFound
 // or BadRequest, without running handler, for a routed path it does not hand on.
 func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) Outcome {
-	return serveWith(c, handler, func(original string) {
+	return serveWith(c, handler, func(original string, saved *fasthttp.URI) {
 		if !c.Response().IsBodyStream() && !c.RequestCtx().Hijacked() {
-			RestoreTarget(c.RequestCtx(), original)
+			RestoreURI(c.RequestCtx(), original, saved)
 		}
 	}, HasStrayPercent)
 }
@@ -175,14 +177,15 @@ func Serve[App any](c Ctx[App], handler fasthttp.RequestHandler) Outcome {
 // begins no escape is handed on, as "%25": fasthttp decodes "/100%" and "/100%25" into one path for the handler, as
 // it does without Fiber, so a second spelling is not what it gets (see HasStrayPercent).
 func ServeNative[App any](c Ctx[App], handler fasthttp.RequestHandler) bool {
-	return serveWith(c, handler, func(original string) { restoreNative(c, original) }, nil) == Served
+	return serveWith(c, handler, func(original string, saved *fasthttp.URI) { restoreNative(c, original, saved) }, nil) == Served
 }
 
-// serveWith runs handler on the routed request line and has putBack set the original back afterwards, which
-// does not when the handler goes on reading the request: a net/http handler that streamed or hijacked the
-// response, or, native, one that was given up on. malformed, when there is one, reports a routed path that handler's
-// own server would have answered 400 for, which handler is not run for (unless UnescapePath, which decodes it).
-func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack func(original string), malformed func(path string) bool) Outcome {
+// serveWith runs handler on the routed request line and has putBack set the original and the saved URI back
+// afterwards, which does not when the handler goes on reading the request: a net/http handler that streamed or
+// hijacked the response, or, native, one that was given up on. malformed, when there is one, reports a routed path
+// that handler's own server would have answered 400 for, which handler is not run for (unless UnescapePath, which
+// decodes it).
+func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack func(original string, saved *fasthttp.URI), malformed func(path string) bool) Outcome {
 	// Read once: with Immutable every read of the path copies the string. The line is only a view of the request
 	// line, since it is compared below and copied where it has to outlive the request line.
 	req := c.Request()
@@ -202,12 +205,16 @@ func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack fun
 	if !SegmentsAsRouted(target, AllowParameters) || (!unescape && !SingleSpelling(path) && !NoPath(line, req.Header.IsConnect())) {
 		return NotFound
 	}
+	// Under UnescapePath the target spells a ";" as "%3B", a name to SegmentsAsRouted, which the handler decodes again.
+	if unescape && !parametersAsRouted(path) {
+		return NotFound
+	}
 	if target == line {
 		// the request line already spells the routed path
 		handler(c.RequestCtx())
 		return Served
 	}
-	original := utils.CopyString(line)
+	original, saved := utils.CopyString(line), SaveURI(c.RequestCtx())
 	SetTarget(c, target)
 	// Buffered, the handler has returned, or panicked, in which case
 	// fasthttpadaptor re-panics here and the recover middleware or error
@@ -215,7 +222,7 @@ func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack fun
 	// or hijacked, the handler is still running with an http.Request whose
 	// URL aliases the request line's storage, so the line is left as the
 	// handler read it.
-	defer putBack(original)
+	defer putBack(original, saved)
 	handler(c.RequestCtx())
 	return Served
 }
@@ -223,15 +230,36 @@ func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack fun
 // NoPath reports whether line, the request target as it arrived, holds no path: the asterisk form of OPTIONS ("*")
 // and, when connect is set, the authority form of CONNECT ("example.com:443", "[::1]:443"). fasthttp and the router
 // read the same path for such a target, so there is nothing to guard and no spelling to refuse: a fasthttp route
-// handler is given the target as sent, a net/http handler the path the router rooted it as. A CONNECT target that
-// holds a "/", "%", "?", "#", "\", ";" or "@" is a path like any other.
+// handler is given the target as sent, a net/http handler the path the router rooted it as. Any other CONNECT target,
+// such as "über" or "a[1]", is a path like any other.
 func NoPath(line string, connect bool) bool {
-	return line == "*" || (connect && line != "" && !strings.ContainsAny(line, "/%?#\\;@"))
+	return line == "*" || (connect && isAuthority(line))
 }
 
-// restoreNative puts original back as the request line of a request whose fasthttp handler returned, unless a
-// timeout answered for the request and left the handler running on it.
-func restoreNative[App any](c Ctx[App], original string) {
+// isAuthority reports whether target is host[:port] (RFC 9112 Section 3.2.3): a name of bytes a path spells one way,
+// or an IPv6 literal, the only authority whose brackets a path may not carry raw.
+func isAuthority(target string) bool {
+	if target == "" {
+		return false
+	}
+	if target[0] == '[' {
+		literal, rest, ok := strings.Cut(target[1:], "]")
+		if _, isAddr := ipv6host.Parse(literal); !ok || !isAddr {
+			return false
+		}
+		return rest == "" || (rest[0] == ':' && strings.Trim(rest[1:], "0123456789") == "")
+	}
+	for i := 0; i < len(target); i++ {
+		if c := target[i]; !pathPlain[c] || c == '@' {
+			return false
+		}
+	}
+	return true
+}
+
+// restoreNative puts original and saved back as the request line and the URI of a request whose fasthttp handler
+// returned, unless a timeout answered for the request and left the handler running on it.
+func restoreNative[App any](c Ctx[App], original string, saved *fasthttp.URI) {
 	// IsAbandoned goes first, as in the limiter: its atomic load orders the read of the timeout response
 	// after the write of a timeout.New that gave up on the request on another goroutine.
 	if c.IsAbandoned() {
@@ -257,7 +285,7 @@ func restoreNative[App any](c Ctx[App], original string) {
 	if c.Response().IsBodyStream() || rctx.Hijacked() {
 		return
 	}
-	RestoreTarget(rctx, original)
+	RestoreURI(rctx, original, saved)
 }
 
 // SetTarget sets target, the routed request target, as c's request line.
@@ -284,7 +312,7 @@ func SetTarget[App any](c Ctx[App], target string) {
 // the authority out of such a target when it holds "://" anywhere, query and fragment included, or
 // when the request has no Host header, and then c.Host() is the first path segment and c.Path()
 // lacks it. The cause is in that parser, which this module cannot change. DefaultCtx.Reset calls this for
-// the request line as it arrived, RestoreTarget for the one a handler put back.
+// the request line as it arrived, RestoreTarget for one a net/http middleware handed on.
 //
 // What fasthttp parsed is looked at, not predicted from the Host header (see ParsesAsPath): a request built
 // before its Host header was set, as adaptor.FiberApp builds one, was parsed without it, and the authority
@@ -329,7 +357,22 @@ func ReadAsOriginForm(fctx *fasthttp.RequestCtx, target []byte) {
 	uri.SetPathBytes(path)
 }
 
-// RestoreTarget sets original, the request line as it arrived, back as fctx's request target. fasthttp parses it
+// SaveURI returns a pooled copy of the URI of fctx's request, with what handlers changed in it, for RestoreURI.
+func SaveURI(fctx *fasthttp.RequestCtx) *fasthttp.URI {
+	saved := fasthttp.AcquireURI()
+	fctx.Request.URI().CopyTo(saved)
+	return saved
+}
+
+// RestoreURI sets original and saved back as fctx's request line and URI, and releases saved. Parsed from the line
+// again, the URI would lose what a handler set through QueryArgs() and the origin-form reading of a "//" target.
+func RestoreURI(fctx *fasthttp.RequestCtx, original string, saved *fasthttp.URI) {
+	fctx.Request.SetRequestURI(original)
+	fctx.Request.SetURI(saved)
+	fasthttp.ReleaseURI(saved)
+}
+
+// RestoreTarget sets original, a request line, as fctx's request target. fasthttp parses it
 // again, and takes the authority out of a "//" target again, so the origin-form reading Reset gave it is applied
 // again. The Host header has to be back in place by then.
 func RestoreTarget(fctx *fasthttp.RequestCtx, original string) {
@@ -413,6 +456,24 @@ func SegmentsAsRouted(target string, allow Allowance) bool {
 	return true
 }
 
+// parametersAsRouted is SegmentsAsRouted's AllowParameters check on the decoded path an UnescapePath router matched:
+// no "." or ".." segment with parameters ("..;x") and no segment of parameters alone before another ("/;x/admin").
+func parametersAsRouted(path string) bool {
+	for {
+		i := strings.IndexByte(path, ';')
+		if i < 0 {
+			return true
+		}
+		// what the segment holds before its parameters, and whether another segment follows it
+		name := path[strings.LastIndexByte(path[:i], '/')+1 : i]
+		_, rest, more := strings.Cut(path[i:], "/")
+		if name == "." || name == ".." || (name == "" && more) {
+			return false
+		}
+		path = rest
+	}
+}
+
 // SingleSpelling reports whether path, the path the router matched, is the one spelling of the
 // path net/http decodes it to that a middleware registration can name. The router keeps "/R&D"
 // and "/R%26D", "/user@corp" and "/user%40corp", "/caf%C3%A9" and a raw "/café" apart, so a
@@ -447,6 +508,16 @@ func SingleSpelling(path string) bool {
 }
 
 func isHexLower(b byte) bool { return b >= 'a' && b <= 'f' }
+
+// RoutedAsMatched is Routed for a reader that takes the target as written, as a proxy upstream does. ok is false when
+// Routed would escape a raw byte or a stray "%", whose escaped spelling the router keeps apart as another path.
+func RoutedAsMatched[App any](c Ctx[App]) (string, bool) {
+	path := c.Path()
+	if !appconfig.Of(c.App()).UnescapePath && needsEscape(path) {
+		return "", false
+	}
+	return routedFor(c, path, ""), true
+}
 
 // HasForgedEscape reports whether target's path holds an escape of an
 // unreserved character (RFC 3986 Section 2.3: a letter, a digit, "-", ".",

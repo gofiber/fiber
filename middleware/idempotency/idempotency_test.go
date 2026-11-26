@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/valyala/fasthttp"
@@ -1194,4 +1196,64 @@ func Test_Idempotency_RefusedRequestIsNotStored(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "ok", apptest.Body(t, resp))
 	require.Equal(t, 1, calls)
+}
+
+// A dropped or hijacked connection is sent nothing, so the retry reaches the handler instead of an empty 200.
+func Test_Idempotency_DroppedRequestIsNotStored(t *testing.T) {
+	t.Parallel()
+	for name, end := range map[string]func(fiber.Ctx) error{
+		"drop":  func(c fiber.Ctx) error { return c.Drop() },
+		"abort": adaptor.HTTPHandlerFunc(func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) }),
+		"hijack": func(c fiber.Ctx) error {
+			c.RequestCtx().HijackSetNoResponse(true)
+			c.RequestCtx().Hijack(func(net.Conn) {})
+			return nil
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			s := storagetest.New()
+			app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
+			var calls atomic.Int32
+			app.Post("/", func(c fiber.Ctx) error {
+				if calls.Add(1) == 1 {
+					return end(c)
+				}
+				return c.SendString("done")
+			})
+			post := func() *http.Request {
+				req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
+				req.Header.Set(ConfigDefault.KeyHeader, validKey)
+				return req
+			}
+
+			_, err := app.Test(post())
+			require.Error(t, err)
+			require.Empty(t, s.Calls(storagetest.OpSet))
+			apptest.ExpectBody(t, app, post(), fiber.StatusOK, "done")
+		})
+	}
+}
+
+// fasthttp does not report whether it sends the response before a hijack handler, so a hijack it did answer
+// is not stored either: the retry runs the handler again.
+func Test_Idempotency_HijackAfterResponseIsNotStored(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	s := storagetest.New()
+	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
+	var calls atomic.Int32
+	app.Post("/", func(c fiber.Ctx) error {
+		calls.Add(1)
+		c.Hijack(func(net.Conn) {})
+		return c.SendString("sent")
+	})
+
+	for range 2 {
+		apptest.ExpectBody(t, app, apptest.Req(fiber.MethodPost, "/", apptest.WithHeader(ConfigDefault.KeyHeader, validKey)),
+			fiber.StatusOK, "sent")
+	}
+	require.Empty(t, s.Calls(storagetest.OpSet))
+	require.Equal(t, int32(2), calls.Load())
 }

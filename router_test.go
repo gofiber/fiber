@@ -867,6 +867,89 @@ func Test_Route_Match_Middleware_ParamBeforeConst(t *testing.T) {
 	})
 }
 
+// Test_Route_Match_Guard_ParamBeforeConstAndParam pins that a guard whose parameter and literal
+// text are followed by a '/' and a further parameter covers what a literal route below answers.
+func Test_Route_Match_Guard_ParamBeforeConstAndParam(t *testing.T) {
+	t.Parallel()
+	deny := func(c Ctx) error { return c.SendStatus(StatusUnauthorized) }
+	ok := func(c Ctx) error { return c.SendStatus(StatusOK) }
+	denyingSub := func(app *App, pattern string) *App {
+		sub := New(Config{StrictRouting: app.config.StrictRouting})
+		sub.Use(pattern, deny)
+		return sub
+	}
+	guards := map[string]func(app *App, prefix string){
+		"route wildcard":   func(app *App, prefix string) { app.Get(prefix+"/*", deny) },
+		"route plus":       func(app *App, prefix string) { app.All(prefix+"/+", deny) },
+		"route parameters": func(app *App, prefix string) { app.Get(prefix+"/:dir/:file", deny) },
+		"use wildcard":     func(app *App, prefix string) { app.Use(prefix+"/*", deny) },
+		"use parameter":    func(app *App, prefix string) { app.Use(prefix+"/:service", deny) },
+		"group use":        func(app *App, prefix string) { app.Group(prefix).Use("/*", deny) },
+		"group all":        func(app *App, prefix string) { app.Group(prefix).All("/*", deny) },
+		"mount wildcard":   func(app *App, prefix string) { app.Use(prefix, denyingSub(app, "/*")) },
+		"mount star":       func(app *App, prefix string) { app.Use(prefix, denyingSub(app, "*")) },
+		"mount parameter":  func(app *App, prefix string) { app.Use(prefix, denyingSub(app, "/:service")) },
+		"domain mount":     func(app *App, prefix string) { app.Domain("example.com").Use(prefix, denyingSub(app, "/*")) },
+	}
+	shapes := []struct {
+		prefix, below string
+		guarded, open []string
+	}{
+		{
+			prefix:  "/:owner/:repo.git",
+			below:   "/:owner/:repo.git/info/refs",
+			guarded: []string{"/o/a.git/info/refs", "/o/o.github.io.git/info/refs", "/o/.github.git/info/refs", "/o/a.GIT.git/info/refs"},
+			open:    []string{"/o/a.github/info/refs", "/o/a/b.git/info/refs"},
+		},
+		{
+			prefix:  "/admin/:v.",
+			below:   "/admin/:v./x/y",
+			guarded: []string{"/admin/a./x/y", "/admin/a.b./x/y"},
+			open:    []string{"/admin/a.b/x/y", "/admin/./x/y"},
+		},
+	}
+	for name, guard := range guards {
+		for _, strict := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/strict=%v", name, strict), func(t *testing.T) {
+				t.Parallel()
+				for _, shape := range shapes {
+					app := New(Config{StrictRouting: strict})
+					guard(app, shape.prefix)
+					app.Get(shape.below, ok)
+					app.Get("/*", ok)
+
+					for _, method := range []string{MethodGet, MethodHead} {
+						routerTestExpectStatus(t, app, method, StatusUnauthorized, shape.guarded...)
+						routerTestExpectStatus(t, app, method, StatusOK, shape.open...)
+					}
+				}
+			})
+		}
+	}
+
+	t.Run("case sensitive", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{CaseSensitive: true})
+		app.Get("/files/:name.JSON/*", deny)
+		app.Get("/*", ok)
+
+		apptest.Expect(t, app, "/files/a.JSON.JSON/raw", StatusUnauthorized)
+		apptest.Expect(t, app, "/files/a.JSON.json/raw", StatusOK)
+	})
+
+	// A constrained parameter keeps the first match, as in a prefix. A custom constraint with an
+	// upper-case name is only found in the pattern as written, which adoptConstraints reads.
+	t.Run("custom constraint", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.RegisterCustomConstraint(&testCustomConstraintForCoverage{allowed: "a.json"})
+		app.Get("/files/:name<customTest>.json/*", deny)
+		app.Get("/*", ok)
+
+		apptest.Expect(t, app, "/files/a.json.json/raw", StatusOK)
+	})
+}
+
 // Test_Route_Match_Middleware_Prefix pins which paths a Use prefix covers:
 // everything below it, but not a sibling that only starts with the same characters.
 func Test_Route_Match_Middleware_Prefix(t *testing.T) {
@@ -1745,6 +1828,61 @@ type routeJSON struct {
 // newCustomApp returns an app that serves every request with a customCtx.
 func newCustomApp(cfg ...Config) *App {
 	return NewWithCustomCtx(func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }, cfg...)
+}
+
+// pathUnescapeCtx overrides Path to return the percent-decoded path, which is shorter than the path the router
+// matched whenever that one keeps an escape.
+type pathUnescapeCtx struct {
+	DefaultCtx
+}
+
+func (c *pathUnescapeCtx) Path(override ...string) string {
+	path := c.DefaultCtx.Path(override...)
+	if decoded, err := neturl.PathUnescape(path); err == nil {
+		return decoded
+	}
+	return path
+}
+
+// A custom Ctx overriding Path changes what handlers read and nothing about routing: parameter values are cut from
+// the path the router matched, and a mount's error handler is picked by that path.
+func Test_Router_CustomCtx_PathOverrideIsNotRouted(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		cfg    Config
+		name   string
+		target string
+		body   string
+		status int
+	}{
+		{name: "Param", target: "/users/a%20b", status: StatusOK, body: "a%20b|/users/a b"},
+		{name: "Wildcard", target: "/files/a%20b/c", status: StatusOK, body: "a%20b/c|/files/a b/c"},
+		{name: "Lookahead", target: "/users/a%20b", status: StatusOK, body: "a%20b|/users/a b", cfg: Config{SkipUnmatchedRoutes: true}},
+		{name: "DomainMountNotFound", target: "/t/%20%20%20%20%20%20/nope", status: StatusNotFound, body: "Not Found"},
+		{name: "MountNotFound", target: "/api%2Fnope", status: StatusNotFound, body: "Not Found"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := NewWithCustomCtx(func(app *App) CustomCtx { return &pathUnescapeCtx{DefaultCtx: *NewDefaultCtx(app)} }, tc.cfg)
+			app.Use(func(c Ctx) error { return c.Next() })
+			app.Get("/users/:name", func(c Ctx) error { return c.SendString(c.Params("name") + "|" + c.Path()) })
+			app.Get("/files/*", func(c Ctx) error { return c.SendString(c.Params("*") + "|" + c.Path()) })
+			api := New(Config{ErrorHandler: func(c Ctx, _ error) error { return c.Status(StatusTeapot).SendString("api") }})
+			api.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
+			app.Use("/api", api)
+			tenant := New()
+			tenant.Get("/hello", func(c Ctx) error { return c.SendString("hello") })
+			app.Domain("example.com").Use("/t/:tenant", tenant)
+
+			fctx := routerTestRequestCtx(MethodGet, tc.target)
+			fctx.Request.Header.SetHost("example.com")
+			handler := app.Handler()
+			require.NotPanics(t, func() { handler(fctx) })
+			require.Equal(t, tc.status, fctx.Response.StatusCode())
+			require.Equal(t, tc.body, string(fctx.Response.Body()))
+		})
+	}
 }
 
 func Test_Next_SkipNonUseRoutesSkipsFallback(t *testing.T) {
@@ -4410,6 +4548,68 @@ func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 			app.Get("/admin/secret", endpoint)
 			app.Head("/admin/secret", endpoint)
 		}},
+		{name: "explicit Head with a constraint in another case", register: func(app *App) {
+			app.Get(`/admin/:name<regex(^[^A-Z]+$)>`, guard)
+			app.Head(`/admin/:name<regex(^[^a-z]+$)>`, next)
+			app.Get("/admin/:name", endpoint)
+		}},
+		{name: "explicit Head beside a mounted app", register: func(app *App) {
+			sub := New()
+			sub.Get("/secret", guard)
+			app.Use("/admin", sub)
+			app.Head("/admin/secret", endpoint)
+		}},
+		{name: "late explicit Head beside a mounted app", register: func(app *App) {
+			sub := New()
+			sub.Get("/secret", guard)
+			app.Use("/admin", sub)
+			app.Handler()
+
+			app.Head("/admin/secret", endpoint)
+			app.RebuildTree()
+		}},
+		{name: "late explicit Head with a constraint in another case", register: func(app *App) {
+			app.Get(`/admin/:name<regex(^\D+$)>`, guard)
+			app.Get("/admin/:name", endpoint)
+			app.Handler()
+
+			app.Head(`/admin/:name<regex(^\d+$)>`, next)
+			app.RebuildTree()
+		}},
+		{name: "explicit Head on an escaped wildcard", register: func(app *App) {
+			app.Get("/admin/*", guard)
+			app.Head(`/admin/\*`, next)
+			app.Get("/admin/:name", endpoint)
+		}},
+		{name: "explicit Head with another parameter escaped", register: func(app *App) {
+			app.Get(`/:a/\:b`, guard)
+			app.Head(`/\:a/:b`, next)
+			app.Get("/*", endpoint)
+		}, want: []routerReq{{method: MethodHead, path: "/admin/:b", status: StatusUnauthorized, header: "X-Secret"}}},
+		{name: "explicit Head with the parameter required", register: func(app *App) {
+			// An unclosed constraint is part of the name, up to the end of the
+			// pattern, and only a "?" there makes the parameter optional.
+			app.Get(`/admin/:name<?`, guard)
+			app.Head(`/admin/:name<?\`, next)
+			app.Get("/admin", endpoint)
+		}, want: []routerReq{{method: MethodHead, path: "/admin", status: StatusUnauthorized, header: "X-Secret"}}},
+		{name: "explicit Head with a custom constraint named in another case", register: func(app *App) {
+			app.RegisterCustomConstraint(&evenConstraint{})
+			app.Get("/admin/:id<isEven>", guard)
+			app.Head("/admin/:id<iseven>", next) // names no constraint
+			app.Get("/admin/:id", endpoint)
+		}, want: []routerReq{{method: MethodHead, path: "/admin/42", status: StatusUnauthorized, header: "X-Secret"}}},
+		{name: "explicit Head with another spelling of the same pattern", register: func(app *App) {
+			app.Get("/n/:id<int;minLen(1)>", endpoint)
+			app.Head("/N/:id<INT;minlen(1)>/", func(c Ctx) error { return c.SendStatus(StatusTeapot) })
+		}, want: []routerReq{{method: MethodHead, path: "/n/1", status: StatusTeapot}}},
+		{name: "late explicit Head with another spelling of the same pattern", register: func(app *App) {
+			app.Get("/n/:id<int;minLen(1)>", endpoint)
+			app.Handler()
+
+			app.Head("/N/:id<INT;minlen(1)>/", func(c Ctx) error { return c.SendStatus(StatusTeapot) })
+			app.RebuildTree()
+		}, want: []routerReq{{method: MethodHead, path: "/n/1", status: StatusTeapot}}},
 		{name: "Use before and after", register: func(app *App) {
 			app.Use(next)
 			app.Get("/admin/*", guard)
@@ -4479,6 +4679,51 @@ func Test_App_AutoHead_KeepsRegistrationOrder(t *testing.T) {
 			app.Handler()
 
 			app.Get("/admin/*", guard)
+			app.Get("/admin/secret", endpoint)
+			app.RebuildTree()
+		}, want: []routerReq{guardedHead}},
+		{name: "repeated Head path around the guard", register: func(app *App) {
+			app.Head("/admin/secret", next)
+			app.Get("/admin/*", guard)
+			app.Head("/admin/secret", endpoint)
+		}},
+		{name: "repeated Head path of a group around the guard", register: func(app *App) {
+			app.Group("/admin").Head("/secret", next)
+			app.Get("/admin/*", guard)
+			app.Group("/admin").Head("/secret", endpoint)
+		}},
+		{name: "repeated Head path of a mounted app around the guard", register: func(app *App) {
+			sub := New()
+			sub.Head("/secret", next)
+			sub.Get("/*", guard)
+			sub.Head("/secret", endpoint)
+			app.Use("/admin", sub)
+		}},
+		{name: "repeated Head and Post path around the guard", register: func(app *App) {
+			app.Add([]string{MethodHead, MethodPost}, "/admin/secret", next)
+			app.Get("/admin/*", guard)
+			app.Add([]string{MethodHead, MethodPost}, "/admin/secret", endpoint)
+		}},
+		{name: "repeated Get path around a Head guard", register: func(app *App) {
+			app.Get("/admin/secret", next)
+			app.Head("/admin/*", guard)
+			app.Get("/admin/secret", endpoint)
+		}, want: []routerReq{guardedHead}},
+		{name: "repeated Get path around a Head guard after startup", register: func(app *App) {
+			app.Get("/admin/secret", next)
+			app.Head("/admin/*", guard)
+			app.Handler()
+
+			app.Get("/admin/secret", endpoint)
+			app.RebuildTree()
+		}, want: []routerReq{guardedHead}},
+		{name: "repeated Get path around a mounted Head guard after startup", register: func(app *App) {
+			sub := New()
+			sub.Head("/*", guard)
+			app.Get("/admin/secret", next)
+			app.Use("/admin", sub)
+			app.Handler()
+
 			app.Get("/admin/secret", endpoint)
 			app.RebuildTree()
 		}, want: []routerReq{guardedHead}},

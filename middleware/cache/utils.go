@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -17,6 +18,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 )
 
@@ -146,6 +148,82 @@ func collectKeyField(h *fasthttp.RequestHeader, name string) bool {
 	return false
 }
 
+// droppedReceivedCookie reports whether the request was received with a cookie fasthttp's collection
+// leaves out, one whose value holds a quote or a backslash: code reading the Cookie field still sees it,
+// a key read off the collected cookies does not.
+func droppedReceivedCookie(req *fasthttp.Request) bool {
+	cookie := false
+	for line := range bytes.Lines(fieldname.Received(req)) {
+		line = bytes.TrimRight(line, "\r\n")
+		// A line opening with whitespace continues the field before it (obs-fold).
+		if len(line) == 0 || (line[0] != ' ' && line[0] != '\t') {
+			name, value, ok := bytes.Cut(line, []byte(":"))
+			cookie = ok && utils.EqualFold(utils.UnsafeString(name), fiber.HeaderCookie)
+			line = value
+		}
+		if !cookie {
+			continue
+		}
+		for pair := range bytes.SplitSeq(line, []byte(";")) {
+			if _, value, ok := bytes.Cut(pair, []byte("=")); ok {
+				pair = value
+			}
+			// Trimmed and unquoted as fasthttp parses a cookie value.
+			pair = bytes.Trim(pair, " \t")
+			if len(pair) > 1 && pair[0] == '"' && pair[len(pair)-1] == '"' {
+				pair = pair[1 : len(pair)-1]
+			}
+			if bytes.ContainsAny(pair, `"\`) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hopByHopNames are what a request may list in Connection without withholding a header the key can
+// tell requests apart by: the options, the hop-by-hop fields a forwarding handler drops from every
+// request alike, and HTTP2-Settings, which an h2c upgrade must list (RFC 7540 section 3.2.1).
+var hopByHopNames = []string{
+	fiber.HeaderKeepAlive,
+	"close",
+	fiber.HeaderUpgrade,
+	fiber.HeaderTE,
+	"HTTP2-Settings",
+	fiber.HeaderConnection,
+	fiber.HeaderProxyAuthenticate,
+	fiber.HeaderProxyAuthorization,
+	fiber.HeaderTrailer,
+	fiber.HeaderTransferEncoding,
+}
+
+// connectionWithholdsHeader reports whether the request lists a name in Connection other than the hopByHopNames.
+func connectionWithholdsHeader(h *fasthttp.RequestHeader, canonical bool) bool { //nolint:revive // flag-parameter: a property of the header store
+	for name := range headerlist.AllLines(fieldname.Lines(h, fiber.HeaderConnection, canonical)) {
+		if !fieldname.ContainsFold(hopByHopNames, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// storableFieldLines copies the lines of each field of h a stored entry can hold, by lower-cased name:
+// under DisableHeaderNormalizing one field can be written under several spellings.
+func storableFieldLines(h *fasthttp.ResponseHeader) map[string][]string {
+	var fields map[string][]string
+	for key, value := range h.All() {
+		if isIgnoredHeader(key) {
+			continue
+		}
+		if fields == nil {
+			fields = make(map[string][]string)
+		}
+		name := utilsstrings.ToLower(string(key))
+		fields[name] = append(fields[name], string(value))
+	}
+	return fields
+}
+
 // keyFieldLines returns the field lines of name to key a cache entry on.
 func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]byte { //nolint:revive // flag-parameter: normalized is a property of the header store
 	collectKeyField(h, name)
@@ -160,6 +238,11 @@ func setFieldLine(h *fasthttp.ResponseHeader, name string, value []byte, normali
 		fieldname.DelOthers(h, name)
 	}
 
+	// A canonical name skips the normalizing copy, as Res.Set does.
+	if fieldname.IsCanonical(name) {
+		h.SetCanonical(utils.UnsafeBytes(name), value)
+		return
+	}
 	h.SetBytesV(name, value)
 }
 

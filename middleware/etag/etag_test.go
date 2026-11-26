@@ -79,7 +79,7 @@ func Test_ETag_StreamOfUnknownLength(t *testing.T) {
 	for name, contentType := range map[string]string{
 		"unknown length": "",
 		// A real SSE stream must pass through untouched too: hashing the body would materialize the stream and break
-		// real-time delivery. The charset exercises the media-type strip in isEventStream.
+		// real-time delivery. The charset exercises the media-type strip in IsEventStream.
 		"event stream": fiber.MIMETextEventStream + "; charset=utf-8",
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -107,6 +107,20 @@ func Test_ETag_StreamOfUnknownLength(t *testing.T) {
 		}))
 
 		require.Equal(t, string(Generate([]byte("hello"))), string(fctx.Response.Header.Peek(fiber.HeaderETag)))
+	})
+
+	t.Run("declared length with an ETag", func(t *testing.T) {
+		t.Parallel()
+		stream := &failOnReadStream{}
+		fctx := etagTestServe(etagTestApp(func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderETag, `"v1"`)
+			c.Response().SetBodyStream(stream, 5)
+			return nil
+		}))
+
+		require.True(t, fctx.Response.IsBodyStream())
+		require.Zero(t, stream.readCalls)
+		require.Equal(t, `"v1"`, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
 	})
 }
 

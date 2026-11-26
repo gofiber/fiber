@@ -5,11 +5,16 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"testing/fstest"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 )
+
+const windowsOS = "windows"
 
 func Benchmark_Valid(b *testing.B) {
 	bench := func(name string, filesystem fs.FS, path string) {
@@ -165,10 +170,15 @@ func Test_Valid_NoDecode(t *testing.T) {
 
 func Test_HasUnsafeSegment(t *testing.T) {
 	t.Parallel()
-	for _, p := range []string{"/../x", "/a/../x", "/a/..", "/./x", "/a/.", "/a//b", "//", "/a//", "//a", "..", "."} {
+	for _, p := range []string{
+		"/../x", "/a/../x", "/a/..", "/./x", "/a/.", "/a//b", "//", "/a//", "//a", "..", ".", "/.../a", "/c./d",
+		"/foo./bar", "/foo /bar", "/foo.", "/foo ", "/foo./", "/foo/bar. ",
+	} {
 		require.True(t, hasUnsafeSegment([]byte(p)), "path=%q", p)
 	}
-	for _, p := range []string{"", "/", "/a", "/a/", "/a/b", "/.a/..b/c./d..", "/.../a", "/%2e%2e/a", "a/b"} {
+	for _, p := range []string{
+		"", "/", "/a", "/a/", "/a/b", "/.a/..b/c", "/%2e%2e/a", "a/b", "/foo/bar.txt", "/.well-known/x", "/a.b/c",
+	} {
 		require.False(t, hasUnsafeSegment([]byte(p)), "path=%q", p)
 	}
 }
@@ -183,24 +193,14 @@ func Test_HasDriveLetter(t *testing.T) {
 	}
 }
 
-func Test_HasTrailingDotOrSpaceSegment(t *testing.T) {
-	t.Parallel()
-	for input, want := range map[string]bool{
-		"/": false, "/foo/bar.txt": false, "/.well-known/x": false, "/..x/y": false, "/a.b/c": false, "/foo/": false,
-		"/foo./bar": true, "/foo /bar": true, "/foo.": true, "/foo ": true, "/foo./": true, "/foo/bar. ": true,
-	} {
-		require.Equal(t, want, hasTrailingDotOrSpaceSegment([]byte(input)), "input=%q", input)
-	}
-}
-
-// Test_Valid_TrailingDotOrSpace pins that a segment ending in a dot or a
-// space names an ordinary file everywhere except Windows, which strips both
-// when it opens a file and would turn "private." into the guarded "private".
+// Test_Valid_TrailingDotOrSpace pins that a segment ending in a dot or a space
+// is refused on every OS: Windows and FAT volumes strip both when they open a
+// file and would turn "private." into the guarded "private".
 func Test_Valid_TrailingDotOrSpace(t *testing.T) {
 	t.Parallel()
 	for _, filesystem := range []fs.FS{nil, fstest.MapFS{}} {
 		for _, input := range []string{"/private./secret.txt", "/private /secret.txt", "/y.../z.", "/foo. /"} {
-			require.Equal(t, runtime.GOOS != windowsOS, Valid([]byte(input), filesystem, true), "input=%q", input)
+			require.False(t, Valid([]byte(input), filesystem, true), "input=%q", input)
 		}
 	}
 }
@@ -270,5 +270,33 @@ func Test_OSName_Windows(t *testing.T) {
 		"//server/share/../a.txt": `\\server\share\a.txt`,
 	} {
 		require.Equal(t, want, OSName(input), "input=%q", input)
+	}
+}
+
+func Test_Aliased(t *testing.T) {
+	t.Parallel()
+	for input, want := range map[string]bool{
+		"/plain/missing.txt": false, "/café/menu.txt": false, "/a~b.txt": false, "/nope~": false,
+		"/ſecret/x": true, "/ınfo": true, "/İnfo": true, "/\u212aeys": true, "/PRIVAT~1/r.txt": true, "/x/LONGNA~12.TXT": true,
+		"/a\u00dfets": true, "/a\u1e9eets": true, "/\ufb01sh": true, "/o\ufb03ce": true, "/sta\ufb06": true, "/v1\u037e2": true,
+		"/\u1fefx": true, "/as\u00adsets": true, "/as\u200bsets": true, "/as\u200dsets": true, "/a\ufe0f": true,
+		"/naïve/x": false, "/日本/x": false, "/caf\u0065\u0301/x": false,
+		// a Persian word with a zero-width non-joiner, which Linux case folding drops
+		"/\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645": true,
+	} {
+		require.Equal(t, want, Aliased([]byte(input)), "input=%q", input)
+	}
+}
+
+// Aliased refuses every rune whose case Go maps to ASCII, and of the other letters only those that fold to ASCII
+// or that file systems ignore.
+func Test_Aliased_CoversEveryASCIICaseMapping(t *testing.T) {
+	t.Parallel()
+	const extra = "\u00df\u1e9e\ufb00\ufb01\ufb02\ufb03\ufb04\ufb05\ufb06\u115f\u1160\u3164\uffa0"
+	for r := rune(utf8.RuneSelf); r <= unicode.MaxRune; r++ {
+		caseASCII := unicode.ToUpper(r) < utf8.RuneSelf || unicode.ToLower(r) < utf8.RuneSelf
+		if caseASCII || unicode.IsLetter(r) {
+			require.Equal(t, caseASCII || strings.ContainsRune(extra, r), Aliased([]byte(string(r))), "%U", r)
+		}
 	}
 }

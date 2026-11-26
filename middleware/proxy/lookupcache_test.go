@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -103,6 +104,32 @@ func Test_Security_LookupHost_RemembersASmallAnswerOnly(t *testing.T) {
 	}
 }
 
+func Test_Security_LookupHost_RemembersAShortHostOnly(t *testing.T) {
+	t.Parallel()
+	const literal = "2001:db8::1%"
+	for name, tc := range map[string]struct {
+		length     int
+		remembered bool
+	}{
+		"at the cap":   {length: lookupCacheMaxHost, remembered: true},
+		"over the cap": {length: lookupCacheMaxHost + 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			resolver := &net.Resolver{}
+			cache := newLookupCache(16, time.Minute, time.Now)
+			host := literal + strings.Repeat("a", tc.length-len(literal))
+
+			addrs, err := lookupHost(resolver, host, cache, time.Time{})
+			require.NoError(t, err)
+			require.Len(t, addrs, 1, "the caller gets the answer either way")
+
+			_, remembered := cache.get(host, resolver)
+			require.Equal(t, tc.remembered, remembered)
+		})
+	}
+}
+
 // Test_Security_LookupHost_EndsAtTheDeadline pins that the lookup of a dial gives up with the time the
 // request left it, not at the lookup limit.
 func Test_Security_LookupHost_EndsAtTheDeadline(t *testing.T) {
@@ -112,6 +139,20 @@ func Test_Security_LookupHost_EndsAtTheDeadline(t *testing.T) {
 	var dnsErr *net.DNSError
 	require.ErrorAs(t, err, &dnsErr)
 	require.True(t, dnsErr.IsTimeout, "%v", err)
+}
+
+// Test_Security_ValidateUpstream_LookupPastDeadline pins that DoTimeout and DoDeadline report a lookup their own
+// bound cut short as fasthttp.ErrTimeout, as the exchange does, while an address the policy blocks stays blocked.
+func Test_Security_ValidateUpstream_LookupPastDeadline(t *testing.T) {
+	t.Parallel()
+	// A deadline of now is DoTimeout's with no time.
+	for _, deadline := range []time.Time{time.Now().Add(-time.Second), time.Now()} {
+		_, err := validateUpstreamBy("http://deadline.test", DefaultSecurityPolicy(), nil, deadline)
+		require.ErrorIs(t, err, fasthttp.ErrTimeout)
+		require.NotErrorIs(t, err, ErrUpstreamHostBlocked)
+	}
+	_, err := validateUpstreamBy("http://127.0.0.1", DefaultSecurityPolicy(), nil, time.Now().Add(-time.Second))
+	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
 // Test_Security_LookupsFor pins which clients the up-front check may serve from the cache: only the

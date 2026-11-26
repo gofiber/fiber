@@ -196,13 +196,14 @@ func (r *DefaultReq) Body() []byte {
 
 	request := &r.c.fasthttp.Request
 
-	// Fast path: no Content-Encoding header at all. ContentEncoding peeks the
-	// stored key byte-exactly, which is decisive only while fasthttp normalized
-	// the names on the way in — under DisableHeaderNormalizing a lower-case
+	// Fast path: no Content-Encoding header at all. PeekAll matches the stored
+	// key byte-exactly, which is decisive only while fasthttp normalized the
+	// names on the way in — under DisableHeaderNormalizing a lower-case
 	// spelling would read as absent here and skip decompression entirely.
 	// An empty value is still a present field line and must be joined with
-	// duplicates below before RFC 9110 empty-list elements are ignored.
-	if !r.c.app.config.DisableHeaderNormalizing && request.Header.ContentEncoding() == nil {
+	// duplicates below before RFC 9110 empty-list elements are ignored. Counted,
+	// since fasthttp stores an empty first line as nil in a slot that never held one.
+	if !r.c.app.config.DisableHeaderNormalizing && len(request.Header.PeekAll(HeaderContentEncoding)) == 0 {
 		return r.getBody()
 	}
 
@@ -261,7 +262,8 @@ func (r *DefaultReq) RequestCtx() *fasthttp.RequestCtx {
 	return r.c.fasthttp
 }
 
-// FullURL returns the full request URL (protocol + host + original URL).
+// FullURL returns the full request URL (protocol + host + original URL). Of an absolute-form
+// request target ("GET http://example.com/search") only the path and query follow the host.
 func (r *DefaultReq) FullURL() string {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
@@ -269,9 +271,25 @@ func (r *DefaultReq) FullURL() string {
 	buf.WriteString(r.Scheme())
 	buf.WriteString("://")
 	buf.WriteString(r.Host())
-	buf.WriteString(r.OriginalURL())
+	buf.WriteString(afterAuthority(r.OriginalURL()))
 
 	return buf.String()
+}
+
+// afterAuthority returns what follows the authority in target as it arrived: all of an origin-form target, the path
+// and query of an absolute-form one, nothing of an asterisk- or authority-form one (RFC 9112 Section 3.3).
+func afterAuthority(target string) string {
+	if target == "" || target[0] == '/' {
+		return target
+	}
+	scheme, rest, found := strings.Cut(target, "://")
+	if !found || strings.ContainsAny(scheme, "/?#") {
+		return ""
+	}
+	if i := utils.IndexAny3(rest, '/', '?', '#'); i >= 0 {
+		return rest[i:]
+	}
+	return ""
 }
 
 // UserAgent returns the User-Agent request header.
@@ -287,7 +305,8 @@ func (r *DefaultReq) UserAgent() string {
 // Referer returns the Referer request header.
 func (r *DefaultReq) Referer() string {
 	h := &r.c.fasthttp.Request.Header
-	if fieldname.HasTrailers(h) {
+	// fasthttp's accessor falls through to the trailer section and matches the stored name byte-exactly.
+	if fieldname.HasTrailers(h) || r.c.app.config.DisableHeaderNormalizing {
 		return r.c.app.toString(r.headerField(HeaderReferer))
 	}
 	return r.c.app.toString(h.Referer())
@@ -784,7 +803,7 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 			}
 		}
 		key := app.toString(k)
-		headers[key] = append(headers[key], app.toString(v))
+		headers[key] = append(headers[key], app.toString(fieldname.Retain(k, v)))
 	}
 	return headers
 }
@@ -1276,6 +1295,18 @@ func (r *DefaultReq) Method(override ...string) string {
 	r.c.methodInt = methodInt
 	// Method changed; invalidate the lookahead index
 	r.c.firstMatchIndex = -1
+
+	// On the request too: a net/http handler or an upstream runs the method the routes and csrf decided on.
+	header := &r.c.fasthttp.Request.Header
+	// Remembered for End, since the request no longer says so. Not Response.SkipBody: the proxy reads the
+	// upstream's answer with it.
+	r.c.sentHead = r.c.sentHead || header.IsHead()
+	if method == MethodHead && !r.c.sentHead {
+		// The client waits for the body an upstream leaves out for HEAD.
+		header.SetMethod(MethodGet)
+	} else {
+		header.SetMethod(method)
+	}
 	return method
 }
 
@@ -1359,6 +1390,14 @@ func (r *DefaultReq) Path(override ...string) string {
 		// An override is off the request hot path, so scan the new path rather
 		// than repeat the length comparison Reset makes.
 		r.c.pathNeedsNorm = needsPathNormalization(r.c.pathOriginal)
+		// A buffer of its own: earlier Path and Params results view the old one, as keyauth's key may.
+		// The first override per request reuses the spare, which no live view holds; later ones allocate.
+		if r.c.pathSwapped {
+			r.c.path = nil
+		} else {
+			r.c.path, r.c.pathSpare = r.c.pathSpare[:0], r.c.path
+			r.c.pathSwapped = true
+		}
 		// Prettify path
 		r.c.configDependentPaths()
 		// The detection path/tree hash changed; invalidate the lookahead index.

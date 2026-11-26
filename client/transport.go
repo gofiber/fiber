@@ -6,7 +6,6 @@ package client
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -17,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/fiber/v3/internal/escapedpath"
 	"github.com/gofiber/fiber/v3/internal/redirectbody"
+	"github.com/gofiber/fiber/v3/internal/tlshandshake"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpproxy"
@@ -133,12 +133,10 @@ func newOwnedStandardClientTransport() *standardClientTransport {
 	}
 }
 
-// boundTLSHandshake bounds what a new connection may take of the request timeout: the dial and,
-// as fasthttp handshakes inside the first write where only a write deadline applies, the TLS handshake.
+// boundTLSHandshake bounds what a new connection may take of the request timeout: the dial and the TLS handshake.
 func boundTLSHandshake(hc *fasthttp.HostClient) error {
-	dialTimeout := hc.DialTimeout
-	if dialTimeout == nil {
-		dialTimeout = func(addr string, timeout time.Duration) (net.Conn, error) {
+	if hc.DialTimeout == nil {
+		hc.DialTimeout = func(addr string, timeout time.Duration) (net.Conn, error) {
 			// Read when dialing: fasthttp prefers DialTimeout, so a Dial a later hook sets would be passed over.
 			if dial := hc.Dial; dial != nil {
 				return dial(addr)
@@ -152,41 +150,9 @@ func boundTLSHandshake(hc *fasthttp.HostClient) error {
 			}
 			return fasthttp.DialTimeout(addr, timeout)
 		}
-		hc.DialTimeout = dialTimeout
 	}
-	if !hc.IsTLS || hc.WriteTimeout > 0 { // with WriteTimeout fasthttp handshakes at dial time, under a deadline
-		return nil
-	}
-	hc.DialTimeout = func(addr string, timeout time.Duration) (net.Conn, error) {
-		conn, err := dialTimeout(addr, timeout)
-		if err != nil || conn == nil {
-			return conn, err
-		}
-		if timeout <= 0 {
-			// fasthttp also dials without a timeout for a request that waited for a free connection,
-			// and pools that connection unused if the request gave up: the first write bounds it.
-			if _, isTLS := conn.(interface{ Handshake() error }); isTLS {
-				return conn, nil
-			}
-			return handshakeConn{conn}, nil
-		}
-		// The request sets its own read deadline after the handshake, replacing this one.
-		if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-			return nil, errors.Join(err, conn.Close())
-		}
-		return conn, nil
-	}
+	tlshandshake.Bound(hc)
 	return nil
-}
-
-// handshakeConn lets a request's write deadline bound reads too, so the TLS handshake inside the
-// first write ends with the request that makes it; fasthttp sets the read deadline after the write.
-type handshakeConn struct {
-	net.Conn
-}
-
-func (c handshakeConn) SetWriteDeadline(t time.Time) error {
-	return c.SetDeadline(t) //nolint:wrapcheck // the connection's own error, passed through
 }
 
 // proxyDialTimeout is the SetProxyURL dialer in the form fasthttp hands the request timeout, so a

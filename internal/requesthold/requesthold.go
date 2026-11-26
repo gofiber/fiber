@@ -92,7 +92,7 @@ func NewFastHTTPHandler(h http.Handler) fasthttp.RequestHandler {
 		}
 		// r.Header was filled from the store, where a removed line leaves the last one in its slot.
 		if ctx, ok := r.Context().(*fasthttp.RequestCtx); ok {
-			fieldname.OrderValues(&ctx.Request.Header, fieldname.Received(&ctx.Request), r.Header)
+			fieldname.OrderValues(fieldname.Received(&ctx.Request), r.Header)
 		}
 		h.ServeHTTP(w, r)
 	}))
@@ -115,6 +115,14 @@ func NewFastHTTPHandler(h http.Handler) fasthttp.RequestHandler {
 			holds.Put(hd)
 		}()
 		adapted(ctx)
+	}
+}
+
+// Rebind points the hold on ctx, if any, at resp, the response that took over its body stream, so that the stream
+// is closed by resp alone.
+func Rebind(ctx *fasthttp.RequestCtx, resp *fasthttp.Response) {
+	if hd, ok := ctx.UserValue(holdKey{}).(*hold); ok {
+		hd.resp = resp
 	}
 }
 

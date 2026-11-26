@@ -442,6 +442,10 @@ func (r *Redirect) Back(fallback ...string) error {
 		location = fallback[0]
 	}
 
+	// A 300, 301 or 308 is cacheable by default, and the Referer picks its target.
+	if r.status == StatusMultipleChoices || r.status == StatusMovedPermanently || r.status == StatusPermanentRedirect {
+		r.c.Vary(HeaderReferer)
+	}
 	return r.To(location)
 }
 

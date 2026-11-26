@@ -1,6 +1,9 @@
 package proxy
 
 import (
+	"slices"
+	"strconv"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
@@ -74,7 +77,8 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 		if budget < 0 {
 			return false
 		}
-		if isForwardingHeader(name) {
+		// Nor is Host, which the request cannot be sent without.
+		if isForwardingHeader(name) || utils.EqualFold(name, fiber.HeaderHost) {
 			continue
 		}
 		if budget = fieldname.DelWithin(&req.Header, name, normalized, budget); budget < 0 {
@@ -92,6 +96,8 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 	return true
 }
 
+const maxStatusCode = 599
+
 // sanitizeUpstreamResponse readies an upstream response for the client, before a
 // ModifyResponse hook or a Do caller sees it: its trailer section is discarded
 // whatever the hop-by-hop policy, since the proxy answers with a sized body, which
@@ -101,10 +107,17 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 // them, except naming the ones to keep. On either failure, more trailer names than
 // fieldname.MaxTrailers (each costs a scan of the header) or the strip's budget running
 // out, res is reset so none of the upstream's fields go out with the 502 Bad Gateway
-// returned.
+// returned. A response that is not final, or whose status is past 599 (RFC 9110 §15), is
+// refused the same way, whatever the policy.
 func sanitizeUpstreamResponse(res *fasthttp.Response, policy SecurityPolicy, except ...string) error {
+	// fasthttp hands over a 101 and a status below 100 as the result. The proxy does not tunnel, and a front end
+	// that starts relaying bytes on a 101 would hand its client a raw connection to this server.
+	if status := res.StatusCode(); status < fasthttp.StatusOK || status > maxStatusCode {
+		resetUpstreamResponse(res)
+		return fiber.ErrBadGateway
+	}
 	if !fieldname.DropResponseTrailers(&res.Header) || !policy.KeepHopByHopHeaders && !stripHopByHopResponseHeaders(res, except...) {
-		res.Reset()
+		resetUpstreamResponse(res)
 		return fiber.ErrBadGateway
 	}
 	return nil
@@ -182,6 +195,70 @@ func setRealIP(c fiber.Ctx, ip []byte) bool {
 	}
 	c.Request().Header.AddBytesV(realIPHeader, ip)
 	return true
+}
+
+// screenFieldNames refuses a field name that is not a token, which fasthttp forwards as sent and an upstream may end
+// the header section at, hiding the lines written behind it. With realIP it removes the names a CGI upstream reads as
+// X-Real-IP, "_" standing for "-" there (RFC 3875 Section 4.1.18), within maxConnectionOptions.
+func screenFieldNames(h *fasthttp.RequestHeader, realIP bool) error { //nolint:revive // flag-parameter: realIP says whether the caller writes X-Real-IP
+	var err error
+	var aliases []string
+	h.All()(func(k, _ []byte) bool { // called, not ranged, which heap-allocates the loop state
+		if !fieldname.IsToken(k) {
+			err = fiber.ErrBadRequest
+			return false
+		}
+		if realIP && isRealIPAlias(k) && !slices.Contains(aliases, utils.UnsafeString(k)) {
+			if len(aliases) == maxConnectionOptions {
+				err = fiber.ErrRequestHeaderFieldsTooLarge
+				return false
+			}
+			aliases = append(aliases, string(k))
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+	for _, alias := range aliases {
+		h.Del(alias)
+	}
+	return nil
+}
+
+// isRealIPAlias reports whether name is X-Real-IP, in any case, with "_" in place of at least one "-".
+func isRealIPAlias(name []byte) bool {
+	if len(name) != len(realIPHeader) || !slices.Contains(name, '_') {
+		return false
+	}
+	for i, c := range name {
+		if c == '_' {
+			c = '-'
+		}
+		if c|0x20 != realIPHeader[i]|0x20 {
+			return false
+		}
+	}
+	return true
+}
+
+// lastTraceHop applies Max-Forwards to a TRACE (RFC 9110 Section 7.6.2): it refuses the request at the last hop,
+// and counts the value down otherwise.
+func lastTraceHop(req *fasthttp.Request, normalized bool) error {
+	if !req.Header.IsTrace() {
+		return nil
+	}
+	// A value that is not a count is forwarded as received.
+	if n, err := fasthttp.ParseUint(fieldname.First(&req.Header, fiber.HeaderMaxForwards, normalized)); err == nil {
+		switch {
+		case n == 0:
+			return fiber.ErrNotImplemented
+		case fieldname.DelWithin(&req.Header, fiber.HeaderMaxForwards, normalized, maxConnectionOptions) < 0:
+			return fiber.ErrRequestHeaderFieldsTooLarge
+		}
+		req.Header.Set(fiber.HeaderMaxForwards, strconv.Itoa(n-1))
+	}
+	return nil
 }
 
 // keepForwardingOrder puts the forwarding fields sent on several lines back in the order they were received,

@@ -1587,7 +1587,7 @@ func (r fiber.Req) Fresh() bool
 
 ### FullURL
 
-Returns the full request URL (protocol + host + original URL).
+Returns the full request URL (protocol + host + original URL). Of an absolute-form request target (`GET http://example.com/search HTTP/1.1`) only the path and query follow the host, which is always the one [`Host`](#host) reports.
 
 ```go title="Signature"
 func (c fiber.Ctx) FullURL() string
@@ -2164,7 +2164,7 @@ app.Post("/", func(c fiber.Ctx) error {
 ### Method
 
 Returns a string corresponding to the HTTP method of the request: `GET`, `POST`, `PUT`, and so on.
-Optionally, you can override the method by passing a string; [Next](#next) then continues with the routes registered after the current one for the new method.
+Optionally, you can override the method by passing a string; [Next](#next) then continues with the routes registered after the current one for the new method. The request carries the new method as well, so a `net/http` or fasthttp handler and a proxy upstream see the method that was routed. An override to `HEAD` of a request sent with another method is carried as `GET`, and a request sent as `HEAD` is answered without a body whatever it is overridden to.
 
 Method tokens are case-sensitive (RFC 9110): the override is first matched exactly against the methods registered in [`Config.RequestMethods`](./fiber.md#requestmethods), and only falls back to the uppercase form as a convenience for the standard methods (e.g. `"get"` → `GET`). An unregistered override is ignored.
 
@@ -3915,8 +3915,8 @@ type SendFile struct {
   // Optional. Default: 10 * time.Second
   CacheDuration time.Duration `json:"cache_duration"`
 
-  // The value for the Cache-Control HTTP-header
-  // that is set on the file response. MaxAge is defined in seconds.
+  // The max-age, in seconds, of the Cache-Control HTTP-header that is set
+  // on the file response unless the response already has one.
   //
   // Optional. Default: 0
   MaxAge int `json:"max_age"`
@@ -3942,7 +3942,7 @@ app.Get("/not-found", func(c fiber.Ctx) error {
 ```
 
 :::info
-The name is taken as it is, the way `os.Open` takes it: a `%`, `?` or `#` in it is part of the name, so `c.SendFile("hash_sign_#.txt")` serves that file and nothing needs escaping. The exceptions are a name holding an ASCII control byte, which is not found, and a directory named without a trailing slash, which is not found either; with the slash, its `index.html` is served. A name built from request input is served from wherever it points, so confine it yourself. Lexical cleaning such as `filepath.Join(root, filepath.Clean("/"+name))` keeps the name under `root` but does not stop a symbolic link inside `root` from pointing outside it, and neither does `os.DirFS`. To confine the file itself, open the directory with `os.OpenRoot` and serve through the `FS` option with `root.FS()`, which refuses any link that escapes the root. An encoded separator that a route parameter still holds, as in `..%2Fsecret.txt`, stays one name and is not found rather than decoded into a step out of the directory.
+The name is taken as it is, the way `os.Open` takes it: a `%`, `?` or `#` in it is part of the name, so `c.SendFile("hash_sign_#.txt")` serves that file and nothing needs escaping. The exceptions are a name holding an ASCII control byte, which is not found, and a directory named without a trailing slash, which is not found either; with the slash, its `index.html` is served. A name built from request input is served from wherever it points, so confine it yourself. Lexical cleaning such as `filepath.Join(root, filepath.Clean("/"+name))` keeps the name under `root` but does not stop a symbolic link inside `root` from pointing outside it, and neither does `os.DirFS`. To confine the file itself, open the directory with `os.OpenRoot` and serve through the `FS` option with `root.FS()`, which refuses any link that escapes the root. An encoded separator that a route parameter still holds, as in `..%2Fsecret.txt`, stays one name and is not found rather than decoded into a step out of the directory. A name that is not found returns `fiber.ErrNotFound`, without the name: the default error handler sends the message to the client.
 :::
 
 :::caution Route parameters keep their escapes
@@ -3976,7 +3976,7 @@ With `ByteRange` on, the file server answers one range of a `GET` request: `Rang
 :::
 
 :::info Status
-A status set with `Status` before `SendFile` is the status of the whole file. From `300` up, the file is sent whole without looking at `Range`, `If-Range` or `If-Modified-Since`, which apply only to a `2xx` ([RFC 9110 §13.2.1](https://www.rfc-editor.org/rfc/rfc9110#section-13.2.1)). Below `300` it replaces only a `200`: a `206`, `304` or `416` keeps its own. `Download` applies only to a `2xx` and `MaxAge` only below `400`.
+A status set with `Status` before `SendFile` is the status of the whole file. From `300` up, the file is sent whole without looking at `Range`, `If-Range` or `If-Modified-Since`, which apply only to a `2xx` ([RFC 9110 §13.2.1](https://www.rfc-editor.org/rfc/rfc9110#section-13.2.1)). Below `300` it replaces only a `200`: a `206`, `304` or `416` keeps its own. `Download` applies only to a `2xx` and `MaxAge` only below `400`. `MaxAge` sends `max-age=<MaxAge>` without `public`, which would let a shared cache, the [cache](../middleware/cache.md) middleware included, store a file sent with a cookie, and it keeps a `Cache-Control` set before the call, such as a guard's `private, no-store`. For a file every client may share, set `Cache-Control: public, max-age=<seconds>` after `SendFile` returns.
 :::
 
 :::info
@@ -3994,7 +3994,7 @@ app.Get("/file", func(c fiber.Ctx) error {
 :::info
 You can use multiple `SendFile` calls with different configurations in a single route. Fiber creates different filesystem handlers per config.
 
-A file system whose type is a function (a `func` type with an `Open` method) cannot be told apart from another one, so Fiber keeps no handler for it: a new handler is built, without the file cache, on every call. That keeps the handler cache from growing, but each call costs more than with a struct or pointer type.
+A file system whose type is a function (a `func` type with an `Open` method), or a struct holding a map-, slice- or function-backed one, cannot be told apart from another one, so Fiber keeps no handler for it: a new handler is built, without the file cache, on every call. That keeps the handler cache from growing, but each call costs more than with a struct or pointer type.
 
 Fiber keeps at most 64 handlers per app. A config that is new on every call, such as one whose `FS` is the pointer `fs.Sub` returns or whose `MaxAge` comes from the request, uses them up, and every config that has no handler by then is served the same way, without the file cache. Create such a file system once, outside the handler.
 :::

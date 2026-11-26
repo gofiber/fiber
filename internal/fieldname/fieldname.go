@@ -44,6 +44,7 @@ type Peeker interface {
 type Deleter interface {
 	Del(key string)
 	PeekAll(key string) [][]byte
+	PeekTrailerKeys() [][]byte
 	All() iter.Seq2[[]byte, []byte]
 }
 
@@ -137,29 +138,41 @@ func hasKey(keys [][]byte, key []byte) bool {
 	return false
 }
 
-// ClearTrailers is DropTrailers in one pass for any number of names, putting each line back in the buffer a value
-// read earlier aliases. It reports false, having dropped the section all the same, for more than MaxTrailers names.
+// Detach moves h into buffers of its own and leaves the old ones to the values read so far: fasthttp writes a line
+// added after a Del or a cookie parse into the taken line's buffers. Bridge until valyala/fasthttp#2615 swaps headers.
+func Detach(h *fasthttp.RequestHeader) {
+	tmp := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(tmp)
+	h.CopyTo(&tmp.Header)
+	disabled := h.EnableSpecialHeader() // CopyTo leaves the setting out
+	*h = fasthttp.RequestHeader{}
+	tmp.Header.CopyTo(h)
+	if disabled {
+		h.DisableSpecialHeader()
+	}
+}
+
+// ClearTrailers is DropTrailers in one pass for any number of names, rebuilding the header in buffers of its own, so
+// a value read earlier keeps the bytes it was read with. It reports false, having dropped the section all the same,
+// for more than MaxTrailers names.
 func ClearTrailers(req *fasthttp.Request) bool {
 	h := &req.Header
 	keys := len(h.PeekTrailerKeys())
 	if keys == 0 {
 		return true
 	}
-	// Collected first, as the walk below collects them, so each line keeps its slot.
-	h.Cookie("")
 	tmp := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(tmp)
 	saved := &tmp.Header
 	h.CopyTo(saved)
-	// Reset empties the received block, which the forwarding order is read from.
+	// The fresh header has no received block, which the forwarding order is read from; nothing writes the old one.
 	if raw := h.RawHeaders(); len(raw) > 0 {
-		block := slices.Clone(raw)
-		SetReceived(req, &block)
+		SetReceived(req, &raw)
 	}
 
-	// Reset clears the setting.
 	disabled := h.NormalizingDisabled()
-	h.Reset()
+	// Not Reset: values read earlier view its buffers, and the joined cookies would parse back into other slots.
+	*h = fasthttp.RequestHeader{}
 	if disabled {
 		h.DisableNormalizing()
 	}
@@ -233,14 +246,14 @@ func ReceivedOrder(h *fasthttp.RequestHeader, raw []byte, name string, f func(va
 		}
 	})
 	if over {
-		visitReceived(h, raw, func(k, v []byte) {
+		visitReceived(raw, func(k, v []byte) {
 			if named(k) {
 				f(v)
 			}
 		})
 		return
 	}
-	rankReceived(h, raw, lines, named)
+	rankReceived(raw, lines, named)
 	slices.SortStableFunc(lines, func(a, b orderedLine) int { return a.rank - b.rank })
 	for _, l := range lines {
 		f(l.value)
@@ -344,7 +357,7 @@ func KeepReceivedOrder(h *fasthttp.RequestHeader, raw []byte, match func(name []
 		return true
 	}
 
-	rankReceived(h, raw, lines, match)
+	rankReceived(raw, lines, match)
 	for g := range lines {
 		if lines[g].group == g && !rankedInOrder(lines, g) {
 			rewriteInRankOrder(h, lines)
@@ -354,11 +367,11 @@ func KeepReceivedOrder(h *fasthttp.RequestHeader, raw []byte, match func(name []
 	return true
 }
 
-// OrderValues is KeepReceivedOrder for a net/http header filled from h, and a bridge like it until fasthttp's Del
-// keeps the order: each repeated name's values go back in the order raw, the block from Received, holds their lines,
-// and a value raw lacks follows them.
-func OrderValues(h *fasthttp.RequestHeader, raw []byte, values map[string][]string) {
-	if len(raw) == 0 || inReceivedOrder(h, raw, values) {
+// OrderValues is KeepReceivedOrder for a net/http header, and a bridge like it until fasthttp's Del keeps the order:
+// each repeated name's values go back in the order raw, the block from Received, holds their lines, and a value raw
+// lacks follows them.
+func OrderValues(raw []byte, values map[string][]string) {
+	if len(raw) == 0 || inReceivedOrder(raw, values) {
 		return
 	}
 	type line struct{ name, value string }
@@ -391,7 +404,7 @@ func OrderValues(h *fasthttp.RequestHeader, raw []byte, values map[string][]stri
 	}
 
 	ordered := make(map[string][]string)
-	visitReceived(h, raw, func(k, v []byte) {
+	visitReceived(raw, func(k, v []byte) {
 		l := line{name: textproto.CanonicalMIMEHeaderKey(utils.UnsafeString(k)), value: utils.UnsafeString(v)}
 		if s := lines[l]; s != nil && s.received < len(s.vals) {
 			ordered[s.name] = append(ordered[s.name], s.vals[s.received])
@@ -417,7 +430,7 @@ func OrderValues(h *fasthttp.RequestHeader, raw []byte, values map[string][]stri
 
 // inReceivedOrder reports whether the values of each repeated name already follow raw, as they do unless the store
 // was changed, so OrderValues can skip its lookup tables. More than four repeated names are left to them.
-func inReceivedOrder(h *fasthttp.RequestHeader, raw []byte, values map[string][]string) bool {
+func inReceivedOrder(raw []byte, values map[string][]string) bool {
 	var repeated [4]struct {
 		name string
 		vals []string
@@ -438,7 +451,7 @@ func inReceivedOrder(h *fasthttp.RequestHeader, raw []byte, values map[string][]
 		return true
 	}
 	ordered := true
-	visitReceived(h, raw, func(k, v []byte) {
+	visitReceived(raw, func(k, v []byte) {
 		for i := range repeated[:n] {
 			r := &repeated[i]
 			if !utils.EqualFold(utils.UnsafeString(k), r.name) {
@@ -457,9 +470,9 @@ func inReceivedOrder(h *fasthttp.RequestHeader, raw []byte, values map[string][]
 }
 
 // rankReceived ranks the stored lines by the received lines they equal, walking the received block once.
-func rankReceived(h *fasthttp.RequestHeader, raw []byte, lines []orderedLine, match func(name []byte) bool) {
+func rankReceived(raw []byte, lines []orderedLine, match func(name []byte) bool) {
 	rank := 0
-	visitReceived(h, raw, func(k, v []byte) {
+	visitReceived(raw, func(k, v []byte) {
 		if !match(k) {
 			return
 		}
@@ -477,27 +490,41 @@ func rankReceived(h *fasthttp.RequestHeader, raw []byte, lines []orderedLine, ma
 }
 
 // visitReceived calls visit with each field line of the received block raw, in order.
-func visitReceived(h *fasthttp.RequestHeader, raw []byte, visit func(k, v []byte)) {
-	// A folded line (obs-fold) only AllInOrder joins, and it does so in place, so on a copy.
-	if bytes.Contains(raw, []byte("\n ")) || bytes.Contains(raw, []byte("\n\t")) {
-		scratch := fasthttp.AcquireRequest()
-		defer fasthttp.ReleaseRequest(scratch)
-		h.CopyTo(&scratch.Header)
-		for k, v := range scratch.Header.AllInOrder() {
-			visit(k, v)
-		}
-		return
-	}
+func visitReceived(raw []byte, visit func(k, v []byte)) {
+	var joined []byte
 	for {
-		line, n, _ := rawLine(raw)
+		line, n, folded := rawLine(raw)
 		if line == nil {
 			return
 		}
 		raw = raw[n:]
+		if folded {
+			joined, n = joinFolded(joined[:0], line, raw)
+			line, raw = joined, raw[n:]
+		}
 		if colon := bytes.IndexByte(line, ':'); colon > 0 {
 			visit(line[:colon], headerlist.TrimOWS(line[colon+1:]))
 		}
 	}
+}
+
+// joinFolded appends line to dst joined with the continuation lines rest begins with (obs-fold), as fasthttp stores
+// them, and returns the length those take up. Not AllInOrder, which reparses the header's own block.
+func joinFolded(dst, line, rest []byte) (joined []byte, n int) { //nolint:nonamedreturns // gocritic unnamedResult asks for names
+	dst = append(dst, headerlist.TrimOWS(line)...)
+	for n < len(rest) && (rest[n] == ' ' || rest[n] == '\t') {
+		line = rest[n:]
+		if i := bytes.IndexByte(line, '\n'); i >= 0 {
+			line = line[:i]
+			n += i + 1
+		} else {
+			n = len(rest)
+		}
+		line = bytes.TrimSuffix(line, []byte{'\r'})
+		dst = append(dst, ' ')
+		dst = append(dst, headerlist.TrimOWS(line)...)
+	}
+	return dst, n
 }
 
 func rankedInOrder(lines []orderedLine, group int) bool {
@@ -548,6 +575,15 @@ func rewriteInRankOrder(h *fasthttp.RequestHeader, lines []orderedLine) {
 	}
 }
 
+// Retain returns v, which a walk over a header yielded under name k, for a caller that keeps it past the walk. Only
+// Cookie is copied: fasthttp joins the parsed cookies in a scratch buffer that the next Set or Add reuses.
+func Retain(k, v []byte) []byte {
+	if len(k) == len(fasthttp.HeaderCookie) && utils.EqualFold(utils.UnsafeString(k), fasthttp.HeaderCookie) {
+		return bytes.Clone(v)
+	}
+	return v
+}
+
 // Lines returns every field line stored under name. The walk replaces the
 // byte-exact lookup rather than backing it up: a message can carry both
 // spellings, and an empty canonical line would hide the value beside it.
@@ -569,10 +605,23 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 	var values [][]byte
 	h.VisitAll(func(k, v []byte) {
 		if utils.EqualFold(utils.UnsafeString(k), name) {
-			values = append(values, v)
+			values = append(values, Retain(k, v))
 		}
 	})
 	return values
+}
+
+// Has reports whether h holds a line named name in any spelling, an empty one
+// included: fasthttp keeps an empty value in a fresh slot nil, so Peek cannot
+// tell it from none, and a name stored in another spelling escapes PeekAll.
+func Has(h *fasthttp.ResponseHeader, name string) bool {
+	// Ranged, unlike Lines: on the concrete type the iterator stays on the stack and stops at the match.
+	for k := range h.All() {
+		if utils.EqualFold(utils.UnsafeString(k), name) {
+			return true
+		}
+	}
+	return false
 }
 
 // First returns the first field line stored under name that holds anything, or
@@ -598,23 +647,8 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
 	if canonical && !HasTrailers(h) {
-		v := Peek(h, name)
-		if len(v) > 0 {
-			return v
-		}
-		if v == nil {
-			// Nothing is stored under the name, so there is nothing beside it
-			// to find and the walk below is skipped: a nil answer means absent,
-			// a non-nil empty one means a line that is present and empty. That
-			// distinction is fasthttp's to keep, so Test_First_EmptyLineIsNotNil
-			// pins it — if it ever stops holding, that test says so rather than
-			// this quietly reverting to reading only the first line.
-			return nil
-		}
-
-		// Reached only for a field that is present and empty, which is the shape
-		// being guarded against rather than one anything sends by accident.
-		// PeekAll costs no allocation and resolves the slotted names.
+		// PeekAll alone: fasthttp stores an empty value as nil in a slot that never held one, so a nil Peek
+		// cannot rule the name out and a miss would scan twice. It costs no allocation and resolves the slotted names.
 		for _, v := range h.PeekAll(name) {
 			if len(v) > 0 {
 				return v
@@ -641,7 +675,7 @@ func firstFold(h Peeker, name string) []byte {
 	var found []byte
 	h.VisitAll(func(k, v []byte) {
 		if found == nil && len(v) > 0 && utils.EqualFold(utils.UnsafeString(k), name) {
-			found = v
+			found = Retain(k, v)
 		}
 	})
 	return found
@@ -751,7 +785,8 @@ func DelOthers(h Deleter, name string) {
 }
 
 // DelSet removes every field line matching any of names in a single pass, which
-// beats Del's per-name scan when the whole set is known up front.
+// beats Del's per-name scan when the whole set is known up front. The fields of
+// the trailer section go with the header lines.
 func DelSet(h Deleter, names []string) {
 	DelSetWithin(h, names, math.MaxInt)
 }
@@ -768,6 +803,15 @@ func DelSetWithin(h Deleter, names []string, spare int) bool {
 		}
 		return len(removed)-len(names) <= spare
 	})
+	// All skips the trailer section, which Del clears only for a name it is given; every name there is a trailer key.
+	for _, k := range h.PeekTrailerKeys() {
+		if len(removed)-len(names) > spare {
+			break
+		}
+		if ks := utils.UnsafeString(k); ContainsFold(names, ks) && !slices.Contains(removed, ks) {
+			removed = append(removed, string(k))
+		}
+	}
 	if len(removed)-len(names) > spare {
 		return false
 	}
@@ -812,6 +856,16 @@ var keyClass = func() [256]byte {
 	}
 	return t
 }()
+
+// IsToken reports whether name is a field name, one or more token bytes (RFC 9110 Section 5.1).
+func IsToken(name []byte) bool {
+	for _, c := range name {
+		if keyClass[c] == keyInvalid {
+			return false
+		}
+	}
+	return len(name) > 0
+}
 
 // IsCanonical reports whether name is already in fasthttp's canonical form: a
 // token with an upper-case letter first and after each '-' and lower case

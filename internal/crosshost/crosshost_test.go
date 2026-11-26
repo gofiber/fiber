@@ -2,6 +2,7 @@ package crosshost
 
 import (
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/gofiber/fiber/v3/internal/fieldname"
@@ -150,4 +151,28 @@ func Test_Strip(t *testing.T) {
 		require.Empty(t, fieldname.Lines(h, "X-Api-Key", false))
 		require.Len(t, fieldname.Lines(h, "X-Auth-Token", false), 1)
 	})
+
+	// A 307 or 308 keeps the body and the trailer section with it, which the walk over the header lines misses.
+	for _, normalized := range []bool{true, false} {
+		t.Run("from the trailer section, normalized="+strconv.FormatBool(normalized), func(t *testing.T) {
+			t.Parallel()
+			h := &fasthttp.RequestHeader{}
+			token := "X-Upload-Token"
+			if !normalized {
+				h.DisableNormalizing()
+				token = "x-upload-token"
+			}
+			require.NoError(t, h.SetTrailer(token+", Cookie2, X-Checksum"))
+			h.Set(token, "secret")
+			h.Set("Cookie2", "session")
+			h.Set("X-Checksum", "sum")
+			require.Equal(t, "secret", string(h.PeekTrailer(token)))
+
+			Strip(h, NewHeaderNames([]string{"X-Upload-Token"}))
+
+			require.NotContains(t, string(h.TrailerHeader()), "secret")
+			require.NotContains(t, string(h.TrailerHeader()), "session")
+			require.Equal(t, "sum", string(h.PeekTrailer("X-Checksum")))
+		})
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1984,7 +1986,8 @@ func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
 
 // rootrestServeTLSHandler serves app on a TLS listener over base, whose certificate lookup records the
 // ClientHelloInfo of each connection in handler. The app is shut down, which has to end cleanly, when the test ends.
-func rootrestServeTLSHandler(t *testing.T, app *App, handler *TLSHandler, base net.Listener) {
+// A config replaces the default one, which only disables the startup message.
+func rootrestServeTLSHandler(t *testing.T, app *App, handler *TLSHandler, base net.Listener, config ...ListenConfig) {
 	t.Helper()
 
 	app.SetTLSHandler(handler)
@@ -1993,9 +1996,12 @@ func rootrestServeTLSHandler(t *testing.T, app *App, handler *TLSHandler, base n
 		Certificates:   []tls.Certificate{rootMiscBTestCert(t)},
 		GetCertificate: handler.GetClientInfo,
 	})
+	if len(config) == 0 {
+		config = []ListenConfig{{DisableStartupMessage: true}}
+	}
 
 	errs := make(chan error, 1)
-	go func() { errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true}) }()
+	go func() { errs <- app.Listener(tlsLn, config...) }()
 	t.Cleanup(func() {
 		require.NoError(t, app.Shutdown())
 		require.NoError(t, <-errs)
@@ -2119,4 +2125,164 @@ func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP_NoLeak(t *testing.T) {
 		return count(&tlsHandler.clientHelloInfos) == 0 && count(&tlsHandler.serverConns) == 0
 	}, 5*time.Second, 20*time.Millisecond, "closed connections left %d ClientHelloInfo and %d wrapper entries behind",
 		count(&tlsHandler.clientHelloInfos), count(&tlsHandler.serverConns))
+}
+
+// fasthttp reports a failed TLS handshake as the read error of a first request. No request arrived on such a
+// connection, so neither the Use chain nor the ErrorHandler runs for it; a request refused after the handshake
+// reaches both as on any connection.
+func Test_Listener_TLS_FailedHandshakeRunsNoHandler(t *testing.T) {
+	t.Parallel()
+	caPEM, err := os.ReadFile("./.github/testdata/ca-chain.cert.pem")
+	require.NoError(t, err)
+	clientCAs := x509.NewCertPool()
+	require.True(t, clientCAs.AppendCertsFromPEM(caPEM))
+
+	for _, tc := range []struct {
+		client     func(t *testing.T, addr string)
+		name       string
+		clientAuth tls.ClientAuthType
+		runs       int32
+	}{
+		{
+			name: "client without the required certificate", clientAuth: tls.RequireAndVerifyClientCert,
+			client: func(t *testing.T, addr string) {
+				t.Helper()
+				// Under TLS 1.3 the client learns of the refusal with its first read.
+				conn, dialErr := tls.Dial("tcp", addr, rootMiscBTLSClientConfig("example.com"))
+				require.NoError(t, dialErr)
+				t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // closed by the server already
+				_, readErr := conn.Read(make([]byte, 1))
+				require.ErrorContains(t, readErr, "certificate required")
+			},
+		},
+		{
+			name: "plain HTTP on the TLS port", clientAuth: tls.NoClientCert,
+			client: func(t *testing.T, addr string) {
+				t.Helper()
+				conn, dialErr := net.Dial("tcp", addr)
+				require.NoError(t, dialErr)
+				t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // closed by the server already
+				_, writeErr := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+				require.NoError(t, writeErr)
+			},
+		},
+		{
+			name: "request refused after the handshake", clientAuth: tls.NoClientCert, runs: 1,
+			client: func(t *testing.T, addr string) {
+				t.Helper()
+				conn, dialErr := tls.Dial("tcp", addr, rootMiscBTLSClientConfig("example.com"))
+				require.NoError(t, dialErr)
+				t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // closed by the server already
+				_, writeErr := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nX-Large: " + strings.Repeat("a", 1024) + "\r\n\r\n"))
+				require.NoError(t, writeErr)
+				resp := fasthttp.AcquireResponse()
+				defer fasthttp.ReleaseResponse(resp)
+				require.NoError(t, resp.Read(bufio.NewReader(conn)))
+				require.Equal(t, StatusRequestHeaderFieldsTooLarge, resp.StatusCode())
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var replays, refusals atomic.Int32
+			app := New(Config{
+				ReadBufferSize: 512,
+				ErrorHandler: func(c Ctx, handlerErr error) error {
+					refusals.Add(1)
+					return DefaultErrorHandler(c, handlerErr)
+				},
+			})
+			app.Use(func(c Ctx) error {
+				replays.Add(1)
+				return c.Next()
+			})
+			// The server reports a connection closed once it is done with it, the handlers it ran included.
+			closed := make(chan struct{}, 1)
+			app.Server().ConnState = func(_ net.Conn, state fasthttp.ConnState) {
+				if state == fasthttp.StateClosed {
+					select {
+					case closed <- struct{}{}:
+					default:
+					}
+				}
+			}
+
+			ln := tls.NewListener(newLocalListener(t), &tls.Config{
+				MinVersion:   tls.VersionTLS12,
+				Certificates: []tls.Certificate{rootMiscBTestCert(t)},
+				ClientAuth:   tc.clientAuth,
+				ClientCAs:    clientCAs,
+			})
+			errs := make(chan error, 1)
+			go func() { errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true}) }()
+			t.Cleanup(func() {
+				require.NoError(t, app.Shutdown())
+				require.NoError(t, <-errs)
+			})
+
+			tc.client(t, ln.Addr().String())
+
+			apptest.Recv(t, closed, 5*time.Second, "the server did not close the connection")
+			require.Equal(t, tc.runs, replays.Load(), "runs of the Use chain")
+			require.Equal(t, tc.runs, refusals.Load(), "runs of the ErrorHandler")
+		})
+	}
+}
+
+// startupProcess installs the hook that drops the ClientHelloInfo of a closed connection, and it runs ahead of the
+// OnListen hooks and BeforeServeFunc, and in Test. A ConnState callback assigned after it must not replace the hook.
+func Test_Listener_TLS_ClientHelloInfo_LateConnState_NoLeak(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		// late makes the application assign its callback once the app has started up
+		late func(t *testing.T, app *App, cfg *ListenConfig, assign func(*App))
+		name string
+	}{
+		{name: "in BeforeServeFunc", late: func(_ *testing.T, _ *App, cfg *ListenConfig, assign func(*App)) {
+			cfg.BeforeServeFunc = func(app *App) error { assign(app); return nil }
+		}},
+		{name: "in an OnListen hook", late: func(_ *testing.T, app *App, _ *ListenConfig, assign func(*App)) {
+			app.Hooks().OnListen(func(ListenData) error { assign(app); return nil })
+		}},
+		{name: "after Test", late: func(t *testing.T, app *App, _ *ListenConfig, assign func(*App)) {
+			t.Helper()
+			apptest.ExpectBody(t, app, "/", StatusOK, "ok")
+			assign(app)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tlsHandler := &TLSHandler{}
+			app := New()
+			app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+
+			var userCalls atomic.Int32
+			cfg := ListenConfig{DisableStartupMessage: true}
+			tc.late(t, app, &cfg, func(app *App) {
+				app.Server().ConnState = func(net.Conn, fasthttp.ConnState) { userCalls.Add(1) }
+			})
+
+			raw := newLocalListener(t)
+			rootrestServeTLSHandler(t, app, tlsHandler, raw, cfg)
+
+			count := func(m *sync.Map) int {
+				n := 0
+				m.Range(func(_, _ any) bool { n++; return true })
+				return n
+			}
+			for range 5 {
+				conn, dialErr := tls.Dial("tcp", raw.Addr().String(), rootMiscBTLSClientConfig("example.com"))
+				require.NoError(t, dialErr)
+				require.Positive(t, count(&tlsHandler.clientHelloInfos), "the handshake recorded no ClientHelloInfo")
+				rootMiscBTLSGet(t, conn)
+				require.NoError(t, conn.Close())
+			}
+
+			require.Eventually(t, func() bool {
+				return count(&tlsHandler.clientHelloInfos) == 0 && count(&tlsHandler.serverConns) == 0
+			}, 5*time.Second, 20*time.Millisecond, "closed connections left %d ClientHelloInfo and %d wrapper entries behind",
+				count(&tlsHandler.clientHelloInfos), count(&tlsHandler.serverConns))
+			require.Positive(t, userCalls.Load(), "the user ConnState callback was not called")
+		})
+	}
 }

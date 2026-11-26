@@ -154,7 +154,7 @@ func foldCombined(h *fasthttp.RequestHeader, name string, immutable bool) string
 			continue
 		}
 		if lines == 0 {
-			first = v
+			first = fieldname.Retain(k, v)
 		}
 		lines++
 		size += len(v)

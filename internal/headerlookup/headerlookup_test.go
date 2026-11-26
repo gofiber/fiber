@@ -178,6 +178,17 @@ func Test_Combined(t *testing.T) {
 		require.Equal(t, "a=1; b=2", Combined(c, fiber.HeaderCookie))
 	})
 
+	t.Run("Cookie survives a later header write", func(t *testing.T) {
+		t.Parallel()
+		for _, normalize := range []bool{true, false} {
+			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+			readRequest(t, c, "GET / HTTP/1.1\r\nHost: e.com\r\nCookie: a=1\r\n\r\n")
+			combined := Combined(c, fiber.HeaderCookie)
+			c.Request().Header.Set("X-Note", "b=2")
+			require.Equal(t, "a=1", combined, "normalize=%v", normalize)
+		}
+	})
+
 	t.Run("Immutable hands back a copy", func(t *testing.T) {
 		t.Parallel()
 		c := newCtx(t, fiber.Config{Immutable: true})

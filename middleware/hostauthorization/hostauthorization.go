@@ -321,13 +321,17 @@ func matchHost(host string, parsed parsedHosts, allowedHostsFunc func(string) bo
 // isAllowed reports whether authority is a well-formed host that matches a rule.
 func isAllowed(authority string, parsed parsedHosts, allowedHostsFunc func(string) bool) bool {
 	authority = utils.TrimSpace(authority)
+	// A request host is not folded as entries are: app.Domain matches it as sent, so a folded name would slip past it.
+	if !utils.IsASCII(authority) {
+		return false
+	}
 	if authority == "" || authority[0] != '[' {
 		host, ok := parseNormalizedAuthority(authority)
 		return ok && matchHost(host, parsed, allowedHostsFunc)
 	}
 
 	addr, interior, ok := parseBracketed(authority)
-	if !ok {
+	if !ok || addr.Is4() {
 		return false
 	}
 	if _, ok := parsed.ips[addr]; ok {

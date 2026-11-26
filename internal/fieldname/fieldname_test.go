@@ -69,21 +69,22 @@ func lineValues(lines [][]byte) []string {
 	return out
 }
 
-// Test_First_EmptyLineIsNotNil pins the fasthttp behavior First's fast path
-// rests on: Peek answers nil for a field that is absent and a non-nil empty
-// slice for one that is present and empty. First skips its second walk on the
-// nil answer, so were the two to become indistinguishable it would read only
-// the first line again — silently, and only for the messages this guards
-// against. This test is what makes that loud instead.
-func Test_First_EmptyLineIsNotNil(t *testing.T) {
+// Test_First_EmptyLineInUnusedSlot covers fasthttp storing an empty value as nil in a slot that never held one.
+func Test_First_EmptyLineInUnusedSlot(t *testing.T) {
 	t.Parallel()
-	h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\nOrigin:\r\n\r\n", true)
+	const origin, private = "http://other.example", "private"
 
-	require.Nil(t, h.Peek("Absent"), "Peek must answer nil for a field that is not there")
+	for before := range 41 {
+		pad := apptest.FieldLines("X-Pad-", "x", before)
 
-	present := h.Peek("Origin")
-	require.Empty(t, present)
-	require.NotNil(t, present, "Peek must answer a non-nil empty slice for a field line that is present and empty")
+		h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\n"+pad+"Origin:\r\nOrigin: "+origin+"\r\n\r\n", true)
+		require.Equal(t, origin, string(First(h, fasthttp.HeaderOrigin, true)), "request, %d lines before", before)
+		require.Nil(t, First(h, "Absent", true))
+
+		resp := readResponse(t, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n"+pad+"Cache-Control:\r\nCache-Control: "+private+"\r\n\r\n", true)
+		require.Equal(t, private, string(First(&resp.Header, fasthttp.HeaderCacheControl, true)), "response, %d lines before", before)
+		require.Nil(t, First(&resp.Header, "Absent", true))
+	}
 }
 
 // Test_First_EmptyLineDoesNotHideTheValue covers the read First exists for: a
@@ -97,7 +98,7 @@ func Test_First_EmptyLineIsNotNil(t *testing.T) {
 // refuse a repeated field rather than resolve it go through headerlookup.Value.
 func Test_First_EmptyLineDoesNotHideTheValue(t *testing.T) {
 	t.Parallel()
-	const origin = "http://evil.example"
+	const origin = "http://other.example"
 
 	tests := []struct {
 		name      string
@@ -120,6 +121,33 @@ func Test_First_EmptyLineDoesNotHideTheValue(t *testing.T) {
 			t.Parallel()
 			h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\n"+tc.lines+"\r\n", tc.canonical)
 			require.Equal(t, tc.want, string(First(h, fasthttp.HeaderOrigin, tc.canonical)))
+		})
+	}
+}
+
+func Test_Has(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		set  func(h *fasthttp.ResponseHeader)
+		name string
+		want bool
+	}{
+		{name: "absent", set: func(h *fasthttp.ResponseHeader) { h.Set("X-Other", "1") }},
+		{name: "set", set: func(h *fasthttp.ResponseHeader) { h.Set("Cache-Control", "private") }, want: true},
+		{name: "lower case", set: func(h *fasthttp.ResponseHeader) { h.SetCanonical([]byte("cache-control"), nil) }, want: true},
+		// the padding puts the empty line in a spare slot append left zeroed, where it peeks as nil
+		{name: "empty in a fresh slot", set: func(h *fasthttp.ResponseHeader) {
+			for _, pad := range []string{"X-Pad-1", "X-Pad-2", "X-Pad-3"} {
+				h.Set(pad, "1")
+			}
+			h.Add("Cache-Control", "")
+		}, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var h fasthttp.ResponseHeader
+			tc.set(&h)
+			require.Equal(t, tc.want, Has(&h, "Cache-Control"))
 		})
 	}
 }
@@ -184,6 +212,17 @@ func Test_First_Lines_ResponseLineUnderTrailerName(t *testing.T) {
 			require.Equal(t, [][]byte{[]byte("private, no-store")}, Lines(&resp.Header, fasthttp.HeaderCacheControl, canonical))
 		})
 	}
+}
+
+func Test_First_Lines_CookieSurvivesHeaderWrite(t *testing.T) {
+	t.Parallel()
+	h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\nCookie: a=1\r\n\r\n", false)
+
+	first, lines := First(h, "cookie", false), Lines(h, "cookie", false)
+	h.Set("X-Note", "b=2")
+
+	require.Equal(t, "a=1", string(first))
+	require.Equal(t, []string{"a=1"}, lineValues(lines))
 }
 
 // Test_DropTrailers pins that the header lines stay and that a later Set lands
@@ -356,6 +395,79 @@ func Test_ClearTrailers(t *testing.T) {
 	}
 }
 
+func Test_ClearTrailers_KeepsEarlierViews(t *testing.T) {
+	t.Parallel()
+	req := readRequest(t, "POST / HTTP/1.1\r\nHost: app.example\r\nCookie: \" \"; login=1077; x=1042\r\nX-Role: user\r\n"+
+		"Transfer-Encoding: chunked\r\n\r\n0\r\nX-T: x\r\n\r\n", true)
+	login, role := req.Header.Cookie("login"), req.Header.Peek("X-Role")
+	held := lineValues([][]byte{login, role})
+
+	require.True(t, ClearTrailers(req))
+	require.Equal(t, held, lineValues([][]byte{login, role}))
+	require.Equal(t, "1077", string(req.Header.Cookie("login")))
+	require.Equal(t, "user", string(req.Header.Peek("X-Role")))
+}
+
+func Test_Detach(t *testing.T) {
+	t.Parallel()
+	const raw = "POST / HTTP/1.1\r\nHost: app.example\r\nUser-Agent: ua\r\nCookie: a=1\r\nX-Role: user\r\nConnection: x-a\r\n" +
+		"Cookie: b=2\r\nConnection: close\r\nContent-Type: text/plain\r\nX-Forwarded-For: client\r\nTrailer: X-T\r\n" +
+		"Transfer-Encoding: chunked\r\nX-Forwarded-For: proxy\r\nX-After: zz\r\n\r\n5\r\nhello\r\n0\r\nX-T: v\r\n\r\n"
+
+	for _, canonical := range []bool{true, false} {
+		t.Run(fmt.Sprintf("canonical=%v", canonical), func(t *testing.T) {
+			t.Parallel()
+			req, want := readRequest(t, raw, canonical), readRequest(t, raw, canonical)
+			names := []string{"X-Role", "X-Forwarded-For", "X-After", "Connection", "Host", "User-Agent", "Content-Type"}
+			var aliased [][]byte
+			for _, name := range names {
+				aliased = append(aliased, req.Header.PeekAll(name)...)
+			}
+			// The first Cookie line, as stored.
+			aliased = append(aliased, req.Header.Peek("Cookie"))
+			held := lineValues(aliased)
+
+			Detach(&req.Header)
+
+			for _, name := range names {
+				require.Equal(t, lineValues(want.Header.PeekAll(name)), lineValues(req.Header.PeekAll(name)), name)
+			}
+			require.Equal(t, "a=1", string(req.Header.Peek("Cookie")))
+			require.Equal(t, want.Header.PeekTrailerKeys(), req.Header.PeekTrailerKeys())
+			require.Equal(t, string(want.Header.RawHeaders()), string(Received(req)))
+			require.Equal(t, want.Header.String(), req.Header.String())
+			require.Equal(t, want.Header.ConnectionClose(), req.Header.ConnectionClose())
+			require.Equal(t, want.Header.ContentLength(), req.Header.ContentLength())
+			req.Header.Set("x-probe", "1")
+			require.Equal(t, !canonical, strings.Contains(req.Header.String(), "x-probe:"))
+
+			// The cookie parser takes its lines out of the store, as Del does.
+			require.Equal(t, "2", string(req.Header.Cookie("b")))
+			for _, name := range names {
+				Del(&req.Header, name, canonical)
+			}
+			// One byte fits the buffers of any line removed above, which fasthttp hands to the next line added.
+			for i := range aliased {
+				req.Header.Add("X-Added-"+strconv.Itoa(i), "#")
+			}
+			req.Header.SetHost("up.example")
+			req.Header.SetUserAgent("px")
+			req.Header.SetContentType("text/html")
+			require.Equal(t, held, lineValues(aliased))
+		})
+	}
+
+	t.Run("special headers stay disabled", func(t *testing.T) {
+		t.Parallel()
+		req := readRequest(t, raw, true)
+		req.Header.DisableSpecialHeader()
+		Detach(&req.Header)
+		require.True(t, req.Header.EnableSpecialHeader())
+		Detach(&req.Header)
+		require.False(t, req.Header.EnableSpecialHeader())
+	})
+}
+
 // Test_KeepReceivedOrder pins that repeated lines go back to received order after
 // fasthttp's Del moved the last line into the removed one's slot.
 func Test_KeepReceivedOrder(t *testing.T) {
@@ -407,6 +519,46 @@ func Test_KeepReceivedOrder(t *testing.T) {
 		Del(h, "X-Junk", true)
 		require.True(t, KeepReceivedOrder(h, h.RawHeaders(), forwarding))
 		require.Equal(t, []string{"client, 6.6.6.6", "proxy"}, lines(h, "X-Forwarded-For", true))
+	})
+
+	// fasthttp ends the header at a bare LF when the body, read along with it, holds a CRLFCRLF.
+	t.Run("folded in a block ending in a bare LF", func(t *testing.T) {
+		t.Parallel()
+		h := readRequestHeader(t, "POST / HTTP/1.1\nHost: app.example\nX-Junk: 1\nX-Note: a\n b\nX-Forwarded-For: client\n"+
+			"Content-Length: 4\n\n\r\n\r\n", true)
+		require.True(t, bytes.HasSuffix(h.RawHeaders(), []byte("4\n\n")))
+		h.Add("X-Forwarded-For", "app")
+		Del(h, "X-Junk", true)
+		require.Equal(t, []string{"app", "client"}, lines(h, "X-Forwarded-For", true))
+		require.True(t, KeepReceivedOrder(h, h.RawHeaders(), forwarding))
+		require.Equal(t, []string{"client", "app"}, lines(h, "X-Forwarded-For", true))
+	})
+
+	// fasthttp stores the space that joins an empty continuation line, which the received line is read without.
+	t.Run("folded onto an empty line", func(t *testing.T) {
+		t.Parallel()
+		h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\nX-Forwarded-For: client\r\n \r\n\r\n", true)
+		require.Equal(t, []string{"client "}, lines(h, "X-Forwarded-For", true))
+		h.Add("X-Forwarded-For", "app")
+		Del(h, "X-Junk", true)
+		require.Equal(t, []string{"app", "client "}, lines(h, "X-Forwarded-For", true))
+		require.True(t, KeepReceivedOrder(h, h.RawHeaders(), forwarding))
+		require.Equal(t, []string{"client ", "app"}, lines(h, "X-Forwarded-For", true))
+	})
+
+	// ClearTrailers leaves the header without a block of its own, so the recorded one is all there is to read.
+	t.Run("folded in a recorded block", func(t *testing.T) {
+		t.Parallel()
+		req := readRequest(t, "POST / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\nX-Note: a\r\n\tb\r\n"+
+			"X-Forwarded-For: client,\r\n 6.6.6.6\r\nTrailer: X-T\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX-T: v\r\n\r\n", true)
+		require.True(t, ClearTrailers(req))
+		h := &req.Header
+		require.Empty(t, h.RawHeaders())
+		h.Add("X-Forwarded-For", "app")
+		Del(h, "X-Junk", true)
+		require.Equal(t, []string{"app", "client, 6.6.6.6"}, lines(h, "X-Forwarded-For", true))
+		require.True(t, KeepReceivedOrder(h, Received(req), forwarding))
+		require.Equal(t, []string{"client, 6.6.6.6", "app"}, lines(h, "X-Forwarded-For", true))
 	})
 
 	t.Run("too many lines", func(t *testing.T) {
@@ -474,6 +626,15 @@ func Test_ReceivedOrder(t *testing.T) {
 		require.Equal(t, []string{"client, 6.6.6.6", "proxy"}, read(h, h.RawHeaders()))
 	})
 
+	t.Run("folded in a block ending in a bare LF", func(t *testing.T) {
+		t.Parallel()
+		h := readRequestHeader(t, "POST / HTTP/1.1\nHost: app.example\nX-Junk: 1\nX-Note: a\n b\nX-Forwarded-For: client,\n\t6.6.6.6 \n"+
+			"X-Forwarded-For: proxy\nContent-Length: 4\n\n\r\n\r\n", true)
+		h.Add("X-Forwarded-For", "app")
+		Del(h, "X-Junk", true)
+		require.Equal(t, []string{"client, 6.6.6.6", "proxy", "app"}, read(h, h.RawHeaders()))
+	})
+
 	t.Run("recorded block", func(t *testing.T) {
 		t.Parallel()
 		req := &fasthttp.Request{}
@@ -527,7 +688,7 @@ func Test_OrderValues(t *testing.T) {
 			Del(h, "X-Junk", canonical)
 			values := valuesOf(h)
 			require.Equal(t, []string{"proxy", "client"}, values["X-Forwarded-For"])
-			OrderValues(h, h.RawHeaders(), values)
+			OrderValues(h.RawHeaders(), values)
 			require.Equal(t, []string{"client", "proxy"}, values["X-Forwarded-For"])
 			require.Equal(t, []string{"1.1 a", "1.1 b"}, values["Via"])
 			require.Equal(t, []string{"o"}, values["X-Other"])
@@ -538,7 +699,7 @@ func Test_OrderValues(t *testing.T) {
 			h.Add("Via", "1.1 a")
 			Del(h, "X-Junk", canonical)
 			values = valuesOf(h)
-			OrderValues(h, h.RawHeaders(), values)
+			OrderValues(h.RawHeaders(), values)
 			require.Equal(t, []string{"client", "proxy", "app"}, values["X-Forwarded-For"])
 			require.Equal(t, []string{"1.1 a", "1.1 b", "1.1 a"}, values["Via"])
 		})
@@ -550,14 +711,14 @@ func Test_OrderValues(t *testing.T) {
 			"X-Forwarded-For: proxy\r\n\r\n", true)
 		Del(h, "X-Junk", true)
 		values := valuesOf(h)
-		OrderValues(h, h.RawHeaders(), values)
+		OrderValues(h.RawHeaders(), values)
 		require.Equal(t, []string{"client, 6.6.6.6", "proxy"}, values["X-Forwarded-For"])
 	})
 
 	t.Run("no received block", func(t *testing.T) {
 		t.Parallel()
 		values := map[string][]string{"X-Forwarded-For": {"proxy", "client"}}
-		OrderValues(&fasthttp.RequestHeader{}, nil, values)
+		OrderValues(nil, values)
 		require.Equal(t, []string{"proxy", "client"}, values["X-Forwarded-For"])
 	})
 
@@ -565,7 +726,7 @@ func Test_OrderValues(t *testing.T) {
 		t.Parallel()
 		block := []byte("X-Forwarded-For: client\r\nX-Forwarded-For: proxy\r\nX-Forwarded-For: client\r\n")
 		values := map[string][]string{"X-Forwarded-For": {"app", "client ", "proxy", "\tclient"}}
-		OrderValues(&fasthttp.RequestHeader{}, block, values)
+		OrderValues(block, values)
 		require.Equal(t, []string{"client ", "proxy", "\tclient", "app"}, values["X-Forwarded-For"])
 	})
 
@@ -584,14 +745,13 @@ func Test_OrderValues(t *testing.T) {
 		Del(h, "X-Junk", true)
 		values := valuesOf(h)
 		require.NotEqual(t, want, values["Via"])
-		OrderValues(h, h.RawHeaders(), values)
+		OrderValues(h.RawHeaders(), values)
 		require.Equal(t, want, values["Via"])
 	})
 }
 
 // Not parallel: AllocsPerRun panics in a parallel test.
 func Test_OrderValues_InOrderDoesNotAllocate(t *testing.T) {
-	h := &fasthttp.RequestHeader{}
 	for _, tc := range []struct {
 		values map[string][]string
 		block  string
@@ -606,7 +766,7 @@ func Test_OrderValues_InOrderDoesNotAllocate(t *testing.T) {
 		},
 	} {
 		block := []byte(tc.block)
-		require.Zero(t, testing.AllocsPerRun(100, func() { OrderValues(h, block, tc.values) }), tc.block)
+		require.Zero(t, testing.AllocsPerRun(100, func() { OrderValues(block, tc.values) }), tc.block)
 	}
 }
 
@@ -740,6 +900,32 @@ func Test_DelSetWithin_Limit(t *testing.T) {
 	require.Empty(t, Lines(h, "Upgrade", false))
 	require.Empty(t, Lines(h, "TE", false))
 	require.Equal(t, "v", string(First(h, "X-Keep", false)))
+}
+
+// A spelling stored in the trailer section alone counts against spare like one in the header section.
+func Test_DelSetWithin_TrailerSection(t *testing.T) {
+	t.Parallel()
+	newHeader := func(t *testing.T) *fasthttp.RequestHeader {
+		t.Helper()
+		h := &fasthttp.RequestHeader{}
+		h.DisableNormalizing()
+		require.NoError(t, h.SetTrailer("x-token, X-Keep"))
+		h.Add("x-token", "in the trailer section")
+		h.Add("X-Keep", "v")
+		h.Add("X-TOKEN", "in the header section")
+		return h
+	}
+
+	h := newHeader(t)
+	require.False(t, DelSetWithin(h, []string{"X-Token"}, 0))
+	require.Equal(t, "in the trailer section", string(h.PeekTrailer("x-token")))
+	require.Equal(t, "in the header section", string(h.Peek("X-TOKEN")))
+
+	h = newHeader(t)
+	require.True(t, DelSetWithin(h, []string{"X-Token"}, 1))
+	require.Empty(t, h.PeekTrailer("x-token"))
+	require.Empty(t, h.Peek("X-TOKEN"))
+	require.Equal(t, "v", string(h.PeekTrailer("X-Keep")))
 }
 
 // Test_IsCanonical_MatchesFasthttp checks the form against fasthttp itself: a

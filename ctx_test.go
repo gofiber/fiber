@@ -2522,6 +2522,22 @@ func Test_Ctx_Body_With_Compression_MultiFieldLines(t *testing.T) {
 	}
 }
 
+func Test_Ctx_Body_With_Compression_EmptyLineInUnusedSlot(t *testing.T) {
+	t.Parallel()
+	for _, before := range []int{0, 1, 2, 3, 4, 5, 9, 20, 40} {
+		t.Run(fmt.Sprintf("%d lines before", before), func(t *testing.T) {
+			t.Parallel()
+			c := apptest.Ctx(t, New())
+			body := ctxTestACompress(t, StrGzip, []byte("john=doe"))
+			raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + apptest.FieldLines("X-Pad-", "x", before) +
+				"Content-Encoding:\r\nContent-Encoding: gzip\r\nContent-Length: " + strconv.Itoa(len(body)) + "\r\n\r\n" + string(body)
+			require.NoError(t, c.Request().Read(bufio.NewReader(strings.NewReader(raw))))
+
+			require.Equal(t, []byte("john=doe"), c.Body())
+		})
+	}
+}
+
 func Benchmark_Ctx_Fresh_WithNoCache(b *testing.B) {
 	c := apptest.Ctx(b, New())
 
@@ -2661,6 +2677,23 @@ func Test_Ctx_Get_EmptyFirstLine(t *testing.T) {
 	require.Len(t, c.Request().Header.PeekAll("X-Token"), 2)
 }
 
+func Test_Ctx_Get_EmptyLineInUnusedSlot(t *testing.T) {
+	t.Parallel()
+	for _, before := range []int{0, 1, 2, 3, 4, 5, 9, 20, 40} {
+		t.Run(fmt.Sprintf("%d lines before", before), func(t *testing.T) {
+			t.Parallel()
+			c := apptest.Ctx(t, New())
+			raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" + apptest.FieldLines("X-Pad-", "x", before) + "X-Role:\r\nX-Role: admin\r\n\r\n"
+			require.NoError(t, c.Request().Read(bufio.NewReader(strings.NewReader(raw))))
+
+			require.Equal(t, "admin", c.Get("X-Role"))
+			require.True(t, c.HasHeader("X-Role"))
+			require.True(t, c.HasHeaderValue("X-Role", "admin"))
+			require.Equal(t, []string{"admin"}, c.GetAll("X-Role"))
+		})
+	}
+}
+
 func Test_Ctx_HeaderAccessors_SkipTrailerSection(t *testing.T) {
 	t.Parallel()
 	for _, normalize := range []bool{true, false} {
@@ -2690,6 +2723,23 @@ func Test_Ctx_HeaderAccessors_SkipTrailerSection(t *testing.T) {
 			resp := rawExpectStatus(t, ln, raw, StatusOK)
 			require.JSONEq(t, `{"get":"anonymous","generic":"","all":null,"has":false,"hasValue":false,`+
 				`"userAgent":"","referer":"","origin":"","xhr":false,"kept":"early"}`, resp.body)
+		})
+	}
+}
+
+func Test_Ctx_Referer_AnySpelling(t *testing.T) {
+	t.Parallel()
+	const referer = "https://example.com/page"
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{DisableHeaderNormalizing: !normalize})
+			app.Get("/", func(c Ctx) error { return c.SendString(c.Referer() + "|" + c.Get(HeaderReferer)) })
+			ln := startRawServer(t, app)
+			for _, name := range []string{"Referer", "referer", "REFERER"} {
+				raw := "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n" + name + ": " + referer + "\r\n\r\n"
+				require.Equal(t, referer+"|"+referer, rawExpectStatus(t, ln, raw, StatusOK).body, name)
+			}
 		})
 	}
 }
@@ -2781,10 +2831,10 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 				return respond(c, body)
 			})
 			app.Post("/fields", func(c Ctx) error {
-				role := c.Get("X-Role")
+				role, login := c.Get("X-Role"), c.Cookies("login")
 				read := string(c.Body()) == "hello"
-				return c.SendString(fmt.Sprintf("read=%v role=%s blocked=%q client=%q ip=%s scheme=%s host=%q", read, role,
-					c.Get("X-Blocked"), c.GetAll("X-Client"), c.IP(), c.Scheme(), c.Host()))
+				return c.SendString(fmt.Sprintf("read=%v role=%s login=%s blocked=%q client=%q ip=%s scheme=%s host=%q", read, role,
+					login, c.Get("X-Blocked"), c.GetAll("X-Client"), c.IP(), c.Scheme(), c.Host()))
 			})
 			ln := startRawServer(t, app)
 
@@ -2816,13 +2866,15 @@ func Test_Ctx_HeaderWrittenUnderTrailerName_StreamedBody(t *testing.T) {
 				require.Equal(t, `body=Request Header Fields Too Large user=["alice"] role=["user"] trailers=0`, responses[0].body, raw)
 			}
 
-			// The header section stays as received either way, the proxy's lines included, and so does a value read before.
+			// The header section stays as received either way, the proxy's lines included, and so does a value read before,
+			// a cookie's too, though the cookies ahead of it do not parse back from the line fasthttp joins them into.
 			for _, trailers := range []string{"", tooMany} {
 				raw := "POST /fields HTTP/1.1\r\nHost: example.com\r\nX-Client: c\r\nX-Role: user\r\nX-Evil: root\r\n" +
 					"X-Blocked: 1\r\nX-Forwarded-For: 203.0.113.7\r\nX-Forwarded-Proto: https\r\n" +
+					"Cookie: \" \"; login=1077; x=1042\r\n" +
 					chunked + trailers + "X-Role: x\r\nX-Evil: x\r\nX-Blocked: x\r\n\r\n"
 				responses, _ := rawExchange(t, loopbackDialer{ln}, raw, 1)
-				require.Equal(t, fmt.Sprintf(`read=%v role=user blocked="1" client=["c"] ip=203.0.113.7 scheme=https host="example.com"`,
+				require.Equal(t, fmt.Sprintf(`read=%v role=user login=1077 blocked="1" client=["c"] ip=203.0.113.7 scheme=https host="example.com"`,
 					trailers == ""), responses[0].body)
 			}
 		})
@@ -4334,6 +4386,45 @@ func Test_Ctx_Method(t *testing.T) {
 
 	c.Method("MethodInvalid")
 	require.Equal(t, MethodGet, c.Method())
+}
+
+func Test_Ctx_Method_OverrideReachesRequest(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		wire, override, want string
+	}{
+		{wire: MethodPost, override: MethodGet, want: MethodGet},
+		{wire: MethodGet, override: MethodPost, want: MethodPost},
+		{wire: MethodPost, override: "delete", want: MethodDelete},
+		// The client waits for a body, so the request does not turn into a HEAD.
+		{wire: MethodPost, override: MethodHead, want: MethodGet},
+		{wire: MethodGet, override: MethodHead, want: MethodGet},
+		{wire: MethodHead, override: MethodPut, want: MethodPut},
+		{wire: MethodHead, override: MethodHead, want: MethodHead},
+		{wire: MethodPost, override: "NOPE", want: MethodPost},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.wire+" to "+tc.override, func(t *testing.T) {
+			t.Parallel()
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(tc.wire)
+			c := apptest.CtxFor(t, New(), fctx)
+
+			c.Method(tc.override)
+			require.Equal(t, tc.want, string(c.Request().Header.Method()))
+		})
+	}
+
+	t.Run("HEAD and back", func(t *testing.T) {
+		t.Parallel()
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(MethodHead)
+		c := apptest.CtxFor(t, New(), fctx)
+
+		c.Method(MethodPost)
+		c.Method(MethodHead)
+		require.Equal(t, MethodHead, string(c.Request().Header.Method()))
+	})
 }
 
 // Test_Ctx_Method_Unregistered verifies that a ctx carrying a method that is
@@ -6107,6 +6198,22 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 	require.Contains(t, string(c.Response().Header.Peek(HeaderSetCookie)), "test2=; expires=")
 }
 
+// Each name the request holds is expired once, and a pending cookie of that name is withdrawn.
+func Test_Ctx_ClearCookie_AllNames(t *testing.T) {
+	t.Parallel()
+	c := apptest.Ctx(t, New())
+	c.Request().Header.Set(HeaderCookie, "a=1; b=2; a=3")
+	c.Cookie(&Cookie{Name: "a", Value: "pending"})
+	c.Cookie(&Cookie{Name: "kept", Value: "v"})
+
+	c.ClearCookie()
+	var got []string
+	for _, line := range c.Response().Header.PeekAll(HeaderSetCookie) {
+		got = append(got, strings.SplitN(string(line), ";", 2)[0])
+	}
+	require.ElementsMatch(t, []string{"kept=v", "a=", "b="}, got)
+}
+
 // ctxTestBCtxGoSource returns the content of ctx.go, the file the SendFile and
 // Download tests serve and compare against.
 func ctxTestBCtxGoSource(t *testing.T) []byte {
@@ -6188,7 +6295,7 @@ func Test_Ctx_SendFile(t *testing.T) {
 	}{
 		{name: "simple test case"},
 		{name: "download", config: SendFile{Download: true}, header: HeaderContentDisposition, want: "attachment"},
-		{name: "max age", config: SendFile{MaxAge: 100}, header: HeaderCacheControl, want: "public, max-age=100"},
+		{name: "max age", config: SendFile{MaxAge: 100}, header: HeaderCacheControl, want: "max-age=100"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -6202,6 +6309,38 @@ func Test_Ctx_SendFile(t *testing.T) {
 			require.Equal(t, StatusOK, c.Response().StatusCode())
 		})
 	}
+
+	t.Run("max age keeps an earlier Cache-Control", func(t *testing.T) {
+		t.Parallel()
+		// the padding puts an empty line in a spare slot append left zeroed, where it peeks as nil
+		padded := func(h *fasthttp.ResponseHeader, name string, values ...string) {
+			for _, pad := range []string{"X-Pad-1", "X-Pad-2", "X-Pad-3"} {
+				h.Set(pad, "1")
+			}
+			for _, v := range values {
+				h.Add(name, v)
+			}
+		}
+		for _, tc := range []struct {
+			set  func(h *fasthttp.ResponseHeader, name string)
+			name string
+		}{
+			{name: "set", set: func(h *fasthttp.ResponseHeader, name string) { h.Set(name, "private, no-store") }},
+			{name: "split", set: func(h *fasthttp.ResponseHeader, name string) { padded(h, name, "", "private") }},
+			{name: "empty", set: func(h *fasthttp.ResponseHeader, name string) { padded(h, name, "") }},
+			{name: "lower case", set: func(h *fasthttp.ResponseHeader, _ string) {
+				h.SetCanonical([]byte("cache-control"), []byte("private"))
+			}},
+		} {
+			for _, name := range []string{HeaderCacheControl, "cache-control"} {
+				c := apptest.Ctx(t, New(Config{DisableHeaderNormalizing: name != HeaderCacheControl}))
+				tc.set(&c.Response().Header, name)
+
+				require.NoError(t, c.SendFile("ctx.go", SendFile{MaxAge: 100}))
+				require.NotContains(t, c.Response().Header.String(), "max-age", "%s %s", tc.name, name)
+			}
+		}
+	})
 
 	t.Run("custom error code", func(t *testing.T) {
 		t.Parallel()
@@ -6323,12 +6462,24 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	app := New()
 	app.Get("/", func(c Ctx) error { return c.SendFile("ctx12.go") })
 
-	apptest.ExpectBody(t, app, "/", StatusNotFound, "sendfile: file ctx12.go not found")
+	apptest.ExpectBody(t, app, "/", StatusNotFound, "Not Found")
+}
+
+// An fs.FS name has no leading slash; read as a request line, "public//x://config.yaml"
+// lost "public//x:" to a scheme and an authority and opened config.yaml.
+func Test_Ctx_SendFile_FSNameIsAPath(t *testing.T) {
+	t.Parallel()
+	files := fstest.MapFS{"config.yaml": {Data: []byte("SECRET")}, "public/ok.txt": {Data: []byte("OK")}}
+	app := New()
+	app.Get("/assets/*", func(c Ctx) error { return c.SendFile("public/"+c.Params("*"), SendFile{FS: files}) })
+
+	apptest.ExpectBody(t, app, "/assets/ok.txt", StatusOK, "OK")
+	apptest.ExpectBody(t, app, "/assets//x://config.yaml", StatusNotFound, "Not Found")
 }
 
 // Test_Ctx_SendFile_NameIsLiteral pins that SendFile opens exactly the name it
-// is given, the way os.Open would. The file server reads the request URI,
-// which fasthttp decodes and splits at "?" and "#", so the name is escaped on
+// is given, the way os.Open would. The file server reads the request URI's
+// path, which fasthttp decodes, so the name is escaped on
 // its way in: a "%", "?" or "#" is part of the name, and "100%25.txt" is not
 // "100%.txt".
 func Test_Ctx_SendFile_NameIsLiteral(t *testing.T) {
@@ -6477,7 +6628,7 @@ func Test_Ctx_SendFile_ControlByteIsNotFound(t *testing.T) {
 		})
 		resp := apptest.Do(t, app, "/")
 		require.Equal(t, StatusNotFound, resp.StatusCode, "fs=%v", cfg.FS != nil)
-		require.NotContains(t, apptest.Body(t, resp), "INDEX", "fs=%v", cfg.FS != nil)
+		require.Equal(t, "Not Found", apptest.Body(t, resp), "fs=%v", cfg.FS != nil)
 	}
 }
 
@@ -6571,6 +6722,21 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 	_, err2 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", http.NoBody))
 	require.NoError(t, err1)
 	require.NoError(t, err2)
+}
+
+func Test_Ctx_SendFile_KeepsQueryArgsChange(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var after string
+	app.Get("/", func(c Ctx) error {
+		c.Request().URI().QueryArgs().Del("as_user")
+		err := c.SendFile("ctx.go")
+		after = c.Query("as_user") + "|" + c.Query("year") + "|" + c.OriginalURL()
+		return err
+	})
+
+	apptest.Expect(t, app, "/?as_user=alice&year=2026", StatusOK)
+	require.Equal(t, "|2026|/?as_user=alice&year=2026", after)
 }
 
 func Test_SendFile_withRoutes(t *testing.T) {
@@ -6880,7 +7046,7 @@ func Test_SendFile_KeepsFileServerAnswer(t *testing.T) {
 				require.Equal(t, strconv.Itoa(tc.wantLength), resp.Header.Get(HeaderContentLength))
 			}
 			require.Equal(t, tc.wantAttachment, resp.Header.Get(HeaderContentDisposition) == "attachment")
-			require.Equal(t, tc.wantCacheHeader, resp.Header.Get(HeaderCacheControl) == "public, max-age=60")
+			require.Equal(t, tc.wantCacheHeader, resp.Header.Get(HeaderCacheControl) == "max-age=60")
 			require.Equal(t, tc.fields[HeaderRange], resp.Header.Get("X-Range"))
 		})
 	}
@@ -9073,6 +9239,41 @@ func Test_Ctx_GetReqHeaders_TrailerSection(t *testing.T) {
 	}
 }
 
+func Test_Ctx_CookieHeader_SurvivesHeaderWrite(t *testing.T) {
+	t.Parallel()
+	const cookie = "uid=1001.signature"
+	writes := map[string]func(c Ctx){
+		"set":  func(c Ctx) { c.Request().Header.Set("X-Set", "uid=1000") },
+		"body": func(c Ctx) { c.Body() },
+	}
+	for _, normalize := range []bool{true, false} {
+		for name, write := range writes {
+			t.Run(fmt.Sprintf("normalize=%v %s", normalize, name), func(t *testing.T) {
+				t.Parallel()
+				app := New(Config{StreamRequestBody: true, DisableHeaderNormalizing: !normalize})
+				app.Post("/", func(c Ctx) error {
+					var bound struct {
+						Cookie string `header:"Cookie"`
+					}
+					if err := c.Bind().Header(&bound); err != nil {
+						return err
+					}
+					headers, first, lines := c.GetReqHeaders(), c.Get(HeaderCookie), c.GetAll(HeaderCookie)
+					write(c)
+					return c.SendString(fmt.Sprintf("%q %q %q %q", headers[HeaderCookie], bound.Cookie, first, lines))
+				})
+				ln := startRawServer(t, app)
+
+				raw := "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nCookie: " + cookie +
+					"\r\nX-Note: uid=1000\r\n\r\n5\r\nhello\r\n0\r\nX-Trailer: t\r\n\r\n"
+				responses, _ := rawExchange(t, ln, raw, 1)
+				want := fmt.Sprintf("%q %q %q %q", []string{cookie}, cookie, cookie, []string{cookie})
+				require.Equal(t, want, responses[0].body)
+			})
+		}
+	}
+}
+
 func Benchmark_Ctx_GetReqHeaders_TrailerSection(b *testing.B) {
 	for _, n := range []int{256, 4096} {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
@@ -9188,6 +9389,11 @@ func Test_Ctx_End_Head(t *testing.T) {
 		require.NoError(t, c.SendString(c.Query("msg")))
 		return c.End()
 	})
+	app.Get("/override", func(c Ctx) error {
+		c.Method(MethodPost)
+		require.NoError(t, c.SendString("Hello, World!"))
+		return c.End()
+	})
 	ln := apptest.Serve(t, app, ListenConfig{DisableStartupMessage: true})
 
 	for _, tc := range []struct {
@@ -9196,6 +9402,7 @@ func Test_Ctx_End_Head(t *testing.T) {
 	}{
 		{"head", "HEAD / HTTP/1.1\r\nHost: example.com\r\n\r\n", ""},
 		{"head_query", "HEAD /echo?msg=leftover HTTP/1.1\r\nHost: example.com\r\n\r\n", ""},
+		{"head_overridden", "HEAD /override HTTP/1.1\r\nHost: example.com\r\n\r\n", ""},
 		{"get", "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n", "Hello, World!"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -9636,6 +9843,18 @@ func Test_Ctx_SendFile_FunctionFSDoesNotGrowHandlerCache(t *testing.T) {
 	require.Empty(t, sendFileCache(app))
 }
 
+func Test_Ctx_SendFile_StructAroundUncomparableFS(t *testing.T) {
+	t.Parallel()
+	app := New()
+	files := struct{ fs.FS }{fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("hello")}}}
+	app.Get("/", func(c Ctx) error { return c.SendFile("hello.txt", SendFile{FS: files}) })
+
+	for range 3 {
+		apptest.ExpectBody(t, app, "/", StatusOK, "hello")
+	}
+	require.Empty(t, sendFileCache(app))
+}
+
 func Test_Ctx_SendFile_FreshConfigPerCallDoesNotGrowHandlerCache(t *testing.T) {
 	t.Parallel()
 	files := fstest.MapFS{"public/hello.txt": &fstest.MapFile{Data: []byte("hello")}}
@@ -9929,6 +10148,8 @@ func Test_SameFS(t *testing.T) {
 	require.False(t, sameFS(mapA, fstest.MapFS{"a": &fstest.MapFile{}}))
 	require.False(t, sameFS(openA, openB))
 	require.False(t, sameFS(openA, openA))
+	wrapped := struct{ fs.FS }{mapA} // a comparable type that == panics on
+	require.False(t, sameFS(wrapped, wrapped))
 }
 
 // perIPConnStub mirrors fasthttp's perIPTLSConn, which wraps an accepted TLS

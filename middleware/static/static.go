@@ -1,6 +1,7 @@
 package static
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -16,6 +18,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/byterange"
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/fspath"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 )
@@ -30,8 +33,9 @@ const invalidPathSentinel = "/__fiber_invalid__"
 // rewrite carries the path the file server opens for one request. The handler
 // builds it before it calls fasthttp, so PathRewrite only has to read it.
 type rewrite struct {
-	path []byte
-	sent []byte // the request URI's path as sent, while a listing is built from the routed one
+	path   []byte
+	sent   []byte                  // the request URI's path as sent, while a listing is built from the routed one
+	header fasthttp.ResponseHeader // the response header before the file server, which wipes it on a 403
 }
 
 // rewriteKey is the fasthttp user-value key under which PathRewrite finds the rewrite.
@@ -46,15 +50,21 @@ var rewritePool = sync.Pool{
 type fileServer struct {
 	fsys          fs.FS
 	handler       fasthttp.RequestHandler
+	key           fileServerKey
+	config        *fiber.Config // the app's, to match the pattern before the wildcard
 	root          string
 	wildcard      string // a trailing wildcard after another parameter, whose value is the rest of the path
+	prefix        string // the route prefix stripped from the path, prefixLen bytes long
+	prefixPattern string // the route pattern before the wildcard
 	fsRootPrefix  []byte // the fs.FS subdirectory served, put before every path
 	prefixLen     int    // length of the route prefix stripped from the path, without its trailing slash; -1 when a parameter hides it
 	decodeEscapes bool   // off under UnescapePath, which already decoded everything
 	rootIsFile    bool
 	strictRouting bool // the router keeps name and name/ apart, so a directory has the slash and a file has none
+	caseSensitive bool
 	browse        bool
 	invalid       bool // the fs.FS root cannot be opened, so no path names a file
+	unrouted      bool // no route runs, so the whole path stands for the route prefix
 }
 
 // fileServerKey identifies a file server: the decoding mode and the compressed
@@ -64,10 +74,27 @@ type fileServerKey struct {
 	route string
 }
 
-// prefixEnd returns where the rest of the routed path p begins, or -1 when no
-// part of it is known to be a name below the root.
+// movedPrefix is the prefixEnd of a path a handler before static moved off its route.
+const movedPrefix = -2
+
+// prefixEnd returns where the rest of the routed path p begins, -1 when no part
+// of it is known to be a name below the root, or movedPrefix.
 func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
+	if s.unrouted {
+		end := len(p)
+		if !s.strictRouting && end > 1 {
+			end = len(utils.TrimRight(p, '/'))
+		}
+		if end > 0 && p[end-1] == '/' {
+			end--
+		}
+		return end
+	}
 	if s.wildcard == "" {
+		// a handler before this one on the route, a rewrite say, may have moved p off the prefix
+		if s.prefixLen > 0 && s.prefixLen <= len(p) && !s.isPrefix(p[:s.prefixLen]) {
+			return movedPrefix
+		}
 		return s.prefixLen
 	}
 	// the router matched the wildcard at the end of p without the trailing slashes it ignores
@@ -79,7 +106,20 @@ func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
 	if end > 0 && p[end-1] == '/' {
 		end--
 	}
+	// the value is the routed path's, stale once a handler before this one set
+	// another path, which the URI then holds instead of the one sent
+	req := c.Request()
+	sent, current := req.Header.RequestURI(), req.URI().PathOriginal()
+	moved := !bytes.HasPrefix(sent, current) || (len(sent) > len(current) && sent[len(current)] != '?')
+	if moved && (end < 0 || !fiber.RoutePatternMatch(p[:end], s.prefixPattern, *s.config)) {
+		return movedPrefix
+	}
 	return end
+}
+
+// isPrefix reports whether head is the route prefix, as the router compares it.
+func (s *fileServer) isPrefix(head string) bool {
+	return head == s.prefix || (!s.caseSensitive && utils.EqualFold(head, s.prefix))
 }
 
 // requestPath appends to dst the path the file server opens for the routed
@@ -87,7 +127,7 @@ func (s *fileServer) prefixEnd(c fiber.Ctx, p string) int {
 // names nothing inside the root, and then there is nothing to open: a file of
 // any name could stand in for that answer.
 func (s *fileServer) requestPath(dst []byte, p string, end int) ([]byte, bool) {
-	if s.invalid || end > len(p) {
+	if s.invalid || end > len(p) || end == movedPrefix {
 		return dst, false
 	}
 	// a wildcard right after the prefix, as in /static* or /static+, also
@@ -137,7 +177,8 @@ func (s *fileServer) requestPath(dst []byte, p string, end int) ([]byte, bool) {
 
 	// PathRewrite skips fasthttp's Path() normalization; fspath lists what
 	// each check covers instead.
-	if !fspath.Valid(dst[start:], s.fsys, s.decodeEscapes) {
+	if !fspath.Valid(dst[start:], s.fsys, s.decodeEscapes) ||
+		(!s.rootIsFile && fspath.Aliased(dst[start:])) {
 		return dst[:0], false
 	}
 	// fasthttp drops a trailing slash before it opens the name, so file/ would
@@ -196,10 +237,13 @@ func New(root string, cfg ...Config) fiber.Handler {
 		// servers holds one file server per app and route, since the stripped prefix is the route's.
 		servers   sync.Map
 		serversMu sync.Mutex
+		// first is the server built first, found without the map: most handlers serve one route of one app
+		first atomic.Pointer[fileServer]
 	)
 	cacheControlValue := ""
 	if config.MaxAge > 0 {
-		cacheControlValue = "public, max-age=" + strconv.Itoa(config.MaxAge)
+		// No "public": it would let a shared cache keep a file sent with a cookie.
+		cacheControlValue = "max-age=" + strconv.Itoa(config.MaxAge)
 	}
 
 	// adjustments for io/fs compatibility: io/fs paths are always relative and
@@ -221,9 +265,13 @@ func New(root string, cfg ...Config) fiber.Handler {
 		if !cfg.StrictRouting && len(pattern) > 1 {
 			pattern = utils.TrimRight(pattern, '/')
 		}
+		// A made-up route's path is the request's own: it is no pattern to parse.
+		unrouted := isUnrouted(route)
 		prefixLen, wildcard := -1, ""
 		prefix, constant := pattern, true
 		switch params := route.Params; {
+		case unrouted:
+			prefix = ""
 		case len(params) == 0:
 		case isWildcard(params[0]):
 			// /john*, /john+ and /john/*.js -> /john; the text after the wildcard is part of the name
@@ -261,7 +309,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 
 		// a listing links below the prefix, which the cache key leaves out; fasthttp
 		// can only skip its whole cache, so files on such a route are not cached either
-		skipCache := config.CacheDuration < 0 || (config.Browse && wildcard != "")
+		skipCache := config.CacheDuration < 0 || (config.Browse && (wildcard != "" || unrouted))
 
 		files := &fasthttp.FS{
 			Root: fsRoot,
@@ -298,9 +346,10 @@ func New(root string, cfg ...Config) fiber.Handler {
 			handler = byterange.Wrap(handler)
 		}
 
-		return &fileServer{
+		server := &fileServer{
 			handler:       handler,
 			fsys:          config.FS,
+			config:        cfg,
 			root:          root,
 			wildcard:      wildcard,
 			fsRootPrefix:  fsRootPrefix,
@@ -308,15 +357,31 @@ func New(root string, cfg ...Config) fiber.Handler {
 			decodeEscapes: !cfg.UnescapePath,
 			rootIsFile:    rootIsFile,
 			strictRouting: cfg.StrictRouting,
+			caseSensitive: cfg.CaseSensitive,
 			browse:        config.Browse,
 			invalid:       rootCheckErr != nil && config.FS != nil,
+			unrouted:      unrouted,
 		}
+		if prefixLen > 0 {
+			server.prefix = prefix[:prefixLen]
+		}
+		if wildcard != "" {
+			server.prefixPattern = strings.TrimSuffix(pattern[:len(pattern)-1], "/")
+		}
+		return server
 	}
 
 	// serverFor returns the file server for the app and route serving c, built on first use.
 	serverFor := func(c fiber.Ctx) *fileServer {
 		route := c.Route()
 		key := fileServerKey{app: c.App(), route: route.Path}
+		if isUnrouted(route) {
+			// every path off a route shares one server: the made-up route's path is the request's
+			key.route = ""
+		}
+		if s := first.Load(); s != nil && s.key == key {
+			return s
+		}
 		if s, ok := servers.Load(key); ok {
 			if server, ok := s.(*fileServer); ok {
 				return server
@@ -335,25 +400,27 @@ func New(root string, cfg ...Config) fiber.Handler {
 		})
 		cfg := c.App().Config()
 		server := newFileServer(route, &cfg)
+		server.key = key
 		servers.Store(key, server)
+		first.CompareAndSwap(nil, server)
 		return server
 	}
 
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if config.Next != nil && config.Next(c) {
-			return c.Next()
+			return next(c)
 		}
 
 		// We only serve static assets on GET or HEAD methods
 		method := c.Method()
 		if method != fiber.MethodGet && method != fiber.MethodHead {
-			return c.Next()
+			return next(c)
 		}
 
 		// A refused request skipped any route guarding the file, and its headers would go out with the refusal.
 		if errorreplay.Active(c.RequestCtx()) {
-			return c.Next()
+			return next(c)
 		}
 
 		server := serverFor(c)
@@ -381,8 +448,14 @@ func New(root string, cfg ...Config) fiber.Handler {
 				uri.SetPath(target[:pathEnd(target)])
 			}
 
-			// Serve file
+			// Serve file. Bridge until fasthttp's FS keeps the headers on an error (valyala/fasthttp#2616): it wipes
+			// the response to refuse a directory without an index, which static passes on as a miss.
+			fctx.Response.Header.CopyTo(&rw.header)
 			server.handler(fctx)
+			if fctx.Response.StatusCode() == fiber.StatusForbidden {
+				rw.header.CopyTo(&fctx.Response.Header)
+				fctx.Response.SetStatusCode(fiber.StatusForbidden)
+			}
 
 			if rerouted {
 				fctx.URI().SetPathBytes(rw.sent)
@@ -421,8 +494,10 @@ func New(root string, cfg ...Config) fiber.Handler {
 				}
 			}
 
-			// An error response such as 416 must not be cached under the file's MaxAge.
-			if cacheControlValue != "" && status >= fiber.StatusOK && status < fiber.StatusBadRequest {
+			// An error response such as 416 must not be cached under the file's MaxAge,
+			// and a Cache-Control set ahead, a guard's "private" say, is kept.
+			if cacheControlValue != "" && status >= fiber.StatusOK && status < fiber.StatusBadRequest &&
+				!fieldname.Has(&fctx.Response.Header, fiber.HeaderCacheControl) {
 				fctx.Response.Header.Set(fiber.HeaderCacheControl, cacheControlValue)
 			}
 
@@ -443,9 +518,23 @@ func New(root string, cfg ...Config) fiber.Handler {
 		fctx.Response.SetStatusCode(fiber.StatusOK)
 		fctx.Response.SetBodyString("")
 
-		// Next middleware
-		return c.Next()
+		return next(c)
 	}
+}
+
+// next passes c on to the next handler; off a route there is none, so it is a miss.
+func next(c fiber.Ctx) error {
+	if isUnrouted(c.Route()) {
+		return fiber.ErrNotFound
+	}
+	return c.Next()
+}
+
+// isUnrouted reports whether route is the one c.Route() makes up where no route
+// runs, as under adaptor.FiberHandler or in an ErrorHandler for a request no route
+// matched; a registered one has at least the handler that asks.
+func isUnrouted(route *fiber.Route) bool {
+	return len(route.Handlers) == 0
 }
 
 // endsInWildcard reports whether pattern ends in param, a wildcard.

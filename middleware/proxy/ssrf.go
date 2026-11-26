@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/tlshandshake"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -56,6 +57,11 @@ func init() {
 // the blocked ranges. The IP literal shortcut avoids DNS lookups when
 // the host is already a numeric address. A non-nil cache may answer from a recent lookup.
 func validateHostForSSRF(host string, cache *lookupCache) error {
+	return validateHostBy(host, cache, time.Time{})
+}
+
+// validateHostBy is validateHostForSSRF whose lookup ends at deadline, unless zero.
+func validateHostBy(host string, cache *lookupCache, deadline time.Time) error {
 	if host == "" {
 		return ErrUpstreamHostInvalid
 	}
@@ -71,8 +77,12 @@ func validateHostForSSRF(host string, cache *lookupCache) error {
 		}
 		return nil
 	}
-	addrs, err := lookupHost(dnsResolver.Load(), host, cache, time.Time{})
+	addrs, err := lookupHost(dnsResolver.Load(), host, cache, deadline)
 	if err != nil {
+		// The request's own bound ran out, which says nothing about the host: reported as the exchange would.
+		if !deadline.IsZero() && !time.Now().Before(deadline) {
+			return fasthttp.ErrTimeout
+		}
 		return err
 	}
 	return checkResolved(host, addrs)
@@ -290,11 +300,17 @@ func (g dialGuard) dialBy(addr string, deadline time.Time) (net.Conn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("proxy: invalid dial address %q: %w", addr, err)
 	}
+	// The owner of the name chooses how many addresses there are, and a dial given no time takes
+	// a whole connect timeout for each.
+	until := deadline
+	if until.IsZero() {
+		until = time.Now().Add(dnsLookupTimeout)
+	}
 	ips, err := resolveAndValidateHost(host, deadline)
 	if err != nil {
 		return nil, err
 	}
-	return g.dialValidatedIPs(ips, host, port)
+	return g.dialValidatedIPs(ips, host, port, until)
 }
 
 // errIPv6Only is why a host that passed the blocklist still has nothing to dial.
@@ -302,14 +318,20 @@ var errIPv6Only = errors.New("only IPv6 addresses, and DialDualStack is off")
 
 // dialValidatedIPs dials the first non-skipped address, skipping IPv6 unless the guard is
 // dual-stack, as fasthttp does. If every candidate is skipped the error says so (nothing was
-// blocked); otherwise it is the last dial error.
-func (g dialGuard) dialValidatedIPs(ips []net.IP, host, port string) (net.Conn, error) {
+// blocked); otherwise it is the last dial error. A third address and later are tried only before until.
+func (g dialGuard) dialValidatedIPs(ips []net.IP, host, port string, until time.Time) (net.Conn, error) {
 	var lastErr error
+	tried := 0
 	for _, ip := range ips {
 		// Mirror fasthttp's default of IPv4-only unless DialDualStack.
 		if !g.dualStack && ip.To4() == nil {
 			continue
 		}
+		// The second goes on regardless, so a first address that hangs still fails over.
+		if tried >= 2 && !time.Now().Before(until) {
+			break
+		}
+		tried++
 		conn, derr := g.dial("tcp", net.JoinHostPort(ip.String(), port))
 		if derr == nil {
 			return conn, nil
@@ -359,12 +381,16 @@ type guardedConfigureClient struct {
 }
 
 func (g *guardedConfigureClient) run(hc *fasthttp.HostClient) error {
-	if g.orig != nil {
-		if err := g.orig(hc); err != nil {
-			return err
-		}
+	if err := g.orig(hc); err != nil {
+		return err
 	}
+	return guardHostClient(hc)
+}
+
+// guardHostClient is the hook of a client that had none of its own.
+func guardHostClient(hc *fasthttp.HostClient) error {
 	installHostClientGuard(hc)
+	tlshandshake.Bound(hc) // over the guarded dialers
 	// The target the proxy hands the client is the one it matched and
 	// validated; a client left normalizing would decode "%2F" into a
 	// separator and merge "//" on the way out, undoing that.
@@ -372,9 +398,12 @@ func (g *guardedConfigureClient) run(hc *fasthttp.HostClient) error {
 	return nil
 }
 
-// guardHookPtr is the code pointer shared by every guardedConfigureClient.run
-// method value, used to detect whether a client is already guarded.
-var guardHookPtr = reflect.ValueOf((&guardedConfigureClient{}).run).Pointer()
+// guardHookPtr and bareGuardPtr are the code pointers of the two guard hooks, the one composed with a hook of the
+// caller's and the one alone, used to detect whether a client is already guarded and whether it has a hook of its own.
+var (
+	guardHookPtr = reflect.ValueOf((&guardedConfigureClient{}).run).Pointer()
+	bareGuardPtr = reflect.ValueOf(guardHostClient).Pointer()
+)
 
 // guardMu serializes the read-modify-write of a client's ConfigureClient in
 // ensureClientGuarded, so a concurrent guarder cannot write the field mid
@@ -404,8 +433,22 @@ func ensureClientGuarded(cli *fasthttp.Client) {
 	defer guardMu.Unlock()
 
 	existing := cli.ConfigureClient
-	if existing != nil && reflect.ValueOf(existing).Pointer() == guardHookPtr {
-		return // already guarded (directly or composed with a user hook)
+	switch {
+	case existing == nil:
+		cli.ConfigureClient = guardHostClient
+	case reflect.ValueOf(existing).Pointer() == guardHookPtr || reflect.ValueOf(existing).Pointer() == bareGuardPtr:
+		// already guarded (directly or composed with a user hook)
+	default:
+		cli.ConfigureClient = (&guardedConfigureClient{orig: existing}).run
 	}
-	cli.ConfigureClient = (&guardedConfigureClient{orig: existing}).run
+}
+
+// streamsResponses reports whether cli may hand a response body over as a stream: its field says so, or a
+// ConfigureClient hook or Transport of the caller's may make it, without saying so. Read once cli is guarded.
+func streamsResponses(cli *fasthttp.Client) bool {
+	if cli.StreamResponseBody || cli.Transport != nil {
+		return true
+	}
+	hook := cli.ConfigureClient
+	return hook != nil && reflect.ValueOf(hook).Pointer() != bareGuardPtr
 }

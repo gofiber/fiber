@@ -40,6 +40,7 @@ type CustomCtx interface {
 	getTreePathHash() int
 	pathSlashCount(app *App) int
 	getDetectionPath() string
+	getPath() string
 	getPathOriginal() string
 	getValues() *[maxParams]string
 	getMatched() bool

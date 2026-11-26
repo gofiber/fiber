@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/nilerror"
+	"github.com/gofiber/fiber/v3/internal/unsent"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -79,13 +80,21 @@ func (cfg *Config) limit(c fiber.Ctx) (int, bool) {
 	return max(maxRequests, -1), maxRequests != 0
 }
 
-func (cfg *Config) skipsHit(statusCode int) bool {
+// skipsHit reports whether a Skip option gives the hit back. A request sent no response is neither
+// a success nor a failure, so it counts under both.
+func (cfg *Config) skipsHit(c fiber.Ctx, err error) bool {
+	if (!cfg.SkipSuccessfulRequests && !cfg.SkipFailedRequests) || unsent.Is(c.RequestCtx()) {
+		return false
+	}
+	statusCode := getEffectiveStatusCode(c, err)
 	return (cfg.SkipSuccessfulRequests && statusCode < fiber.StatusBadRequest) ||
 		(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest)
 }
 
-// reject sets Retry-After (RFC 9110 section 10.2.3, RFC 6585 section 4), then calls LimitReached.
+// reject sets Retry-After (RFC 9110 section 10.2.3, RFC 6585 section 4) and 429, then calls LimitReached.
 func (cfg *Config) reject(c fiber.Ctx, resetInSec uint64) error {
+	// A LimitReached that only writes a body, as c.SendFile does, would otherwise answer 200.
+	c.Status(fiber.StatusTooManyRequests)
 	if !cfg.DisableHeaders {
 		if _, ok := c.(*fiber.DefaultCtx); ok {
 			// Retry-After is already canonical, so SetCanonical stores the line

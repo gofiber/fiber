@@ -1264,6 +1264,57 @@ func Test_CacheInvalidator_PanicReleasesLock(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
+// An invalidated entry ends with the request that invalidated it, whatever the origin answers.
+func Test_CacheInvalidation_EndsTheEntry(t *testing.T) {
+	t.Parallel()
+	for _, storage := range storageKinds {
+		for _, cacheControl := range []string{"public, max-age=60", "public, max-age=60, must-revalidate"} {
+			for _, directive := range []string{"", "only-if-cached", "max-age=5"} {
+				for _, answer := range []string{"error", "panic"} {
+					t.Run(storage+"/"+cacheControl+"/"+directive+"/"+answer, func(t *testing.T) {
+						t.Parallel()
+						clock := cacheTestCClock()
+						var withdrawn atomic.Bool
+						app := fiber.New()
+						app.Use(recover.New())
+						app.Use(New(Config{
+							MaxBytes: 1 << 20,
+							Storage:  storageOf(storage),
+							clock:    clock.Now,
+							CacheInvalidator: func(c fiber.Ctx) bool {
+								if c.Get("X-Purge") != "1" {
+									return false
+								}
+								clock.Add(10 * time.Second) // past the request's max-age=5
+								return true
+							},
+						}))
+						app.Get("/", func(c fiber.Ctx) error {
+							switch {
+							case !withdrawn.Load():
+								c.Set(fiber.HeaderCacheControl, cacheControl)
+								return c.SendString("page")
+							case answer == "panic":
+								panic("page withdrawn")
+							default:
+								return fiber.ErrNotFound
+							}
+						})
+
+						cacheTestCRequireReply(t, getRoot(t, app, nil), cacheMiss, "page")
+						cacheTestCRequireReply(t, getRoot(t, app, nil), cacheHit, "page")
+						withdrawn.Store(true)
+						require.NotEqual(t, "page", getRoot(t, app, map[string]string{"X-Purge": "1", fiber.HeaderCacheControl: directive}).body)
+						got := getRoot(t, app, nil)
+						require.NotEqual(t, cacheHit, got.cache, "the invalidated entry was served")
+						require.NotEqual(t, "page", got.body, "the invalidated entry was served")
+					})
+				}
+			}
+		}
+	}
+}
+
 func Test_CacheInvalidation_IgnoresMaxStale(t *testing.T) {
 	t.Parallel()
 	for _, storage := range storageKinds {
@@ -2804,7 +2855,6 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 			var returnNoCache atomic.Bool
 
 			app := cacheTestBPathKeyedApp(&Config{
-				CacheInvalidator: cacheTestBInvalidateByQuery,
 				// Room for one entry, so storing /next evicts whatever is still tracked.
 				MaxBytes: charged(key, len("stale"), textPlain, "public, max-age=60, must-revalidate"),
 				Storage:  storage,
@@ -2817,7 +2867,8 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 			storage.SetErr(storagetest.OpDelete, tt.failedKey, errors.New("delete failed"))
 			returnNoCache.Store(true)
 
-			cacheTestBExpectNewer(t, app, "/cached?invalidate=true")
+			// The request forces the revalidation: an invalidated entry is deleted before the origin is asked.
+			cacheTestBExpectNewer(t, app, cacheTestAGetCC("/cached", "max-age=0"))
 			require.Equal(t, tt.metadataRemaining, storage.Holds(key))
 			require.True(t, storage.Holds(bodySlot))
 
@@ -3238,7 +3289,7 @@ func Test_Cache_ExternalUncacheableRevalidationPreservesCompletedReplacement(t *
 			key := cacheKeyVersion + "|GET|/cached"
 			storage.Mu.RLock()
 			require.Contains(t, storage.Data, key)
-			require.Equal(t, []byte("newer!"), storage.Data[bodyKey(key)])
+			require.Equal(t, []byte("newer!"), storage.Data[bodyKey(key)][bodyStampLen:])
 			storage.Mu.RUnlock()
 
 			cacheTestAExpectBody(t, app, "/cached", cacheHit, "newer!")
@@ -3535,6 +3586,34 @@ func Benchmark_Cache_Miss(b *testing.B) {
 
 	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
 	require.Greater(b, len(fctx.Response.Body()), 30000)
+}
+
+// Benchmark_Cache_MissAuthorization measures a stored miss that carries a credential.
+func Benchmark_Cache_MissAuthorization(b *testing.B) {
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/*", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+		return c.SendString("body")
+	})
+	h := app.Handler()
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.Header.Set(fiber.HeaderAuthorization, "Bearer tok_0123456789abcdefghijklmnopqrstuvwxyz")
+
+	b.ReportAllocs()
+
+	n := 0
+	uri := make([]byte, 0, 24)
+	for b.Loop() {
+		n++
+		uri = strconv.AppendInt(append(uri[:0], '/'), int64(n), 10)
+		fctx.Request.SetRequestURIBytes(uri)
+		h(fctx)
+	}
+
+	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	require.Equal(b, cacheMiss, string(fctx.Response.Header.Peek("X-Cache")))
 }
 
 func Benchmark_Cache_Storage(b *testing.B) {
@@ -5250,5 +5329,33 @@ func Test_Cache_EntryKeyNeverNamesDerivedSlot(t *testing.T) {
 				cacheTestCRequireReply(t, got, s.cache, s.body, "%+v", s)
 			}
 		})
+	}
+}
+
+// Middleware before the cache runs again on a hit and writes its own lines for that request.
+func Test_Cache_StoreResponseHeadersLeavesOutOuterMiddleware(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderXRequestID, c.Get(fiber.HeaderXRequestID))
+		c.Set("X-Theme", "outer")
+		c.Set("X-Trace", "outer")
+		return c.Next()
+	})
+	app.Use(New(Config{StoreResponseHeaders: true}))
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set("X-Price-List", "2026-11")
+		c.Set("X-Theme", "inner")
+		c.Response().Header.Add("X-Trace", "inner")
+		return c.SendString("prices")
+	})
+
+	for i, id := range []string{"alice-1", "mallory-2"} {
+		got := cacheTestCGet(t, app, "/", fiber.HeaderXRequestID, id)
+		require.Equal(t, []string{cacheMiss, cacheHit}[i], got.cache)
+		require.Equal(t, id, got.header.Get(fiber.HeaderXRequestID))
+		require.Equal(t, "2026-11", got.header.Get("X-Price-List"))
+		require.Equal(t, "inner", got.header.Get("X-Theme"))
+		require.Equal(t, []string{"outer", "inner"}, got.header.Values("X-Trace"))
 	}
 }

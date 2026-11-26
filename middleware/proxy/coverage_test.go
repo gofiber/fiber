@@ -101,7 +101,7 @@ func Test_Coverage_DialValidatedIPs(t *testing.T) {
 				ips[i] = net.ParseIP(raw)
 			}
 
-			conn, err := guard.dialValidatedIPs(ips, "example.test", tc.port)
+			conn, err := guard.dialValidatedIPs(ips, "example.test", tc.port, time.Now().Add(time.Minute))
 			require.Equal(t, tc.wantDialed, dialed, "the addresses dialed, an IPv6 one being skipped")
 			if tc.wantErr == nil {
 				require.NoError(t, err)
