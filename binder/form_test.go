@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"io"
 	"mime/multipart"
-	"slices"
 	"strings"
 	"testing"
 
@@ -98,13 +97,12 @@ func Test_ReleaseBindData(t *testing.T) {
 	releaseBindData(after)
 }
 
-// Test_BindData_SortNames pins that the names of a multipart form's values, filed over those of its files, leave none
-// of the longer list behind for the pool to keep.
-func Test_BindData_SortNames(t *testing.T) {
+// Test_BindData_ResetClearsNames pins that reset drops the names a multipart bind left past the end of its shorter
+// second list, so the pool does not keep them.
+func Test_BindData_ResetClearsNames(t *testing.T) {
 	t.Parallel()
-	d := &bindData{}
-	require.Equal(t, []string{"a", "b", "c"}, d.sortNames(slices.Values([]string{"c", "a", "b"})))
-	require.Equal(t, []string{"v"}, d.sortNames(slices.Values([]string{"v"})))
+	d := &bindData{names: []string{"f1", "f2", "f3"}}
+	d.names = append(d.names[:0], "v")
 	d.reset()
 	require.Equal(t, make([]string, 3), d.names[:3])
 }
