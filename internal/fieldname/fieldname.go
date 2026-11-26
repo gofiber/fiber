@@ -137,8 +137,8 @@ func hasKey(keys [][]byte, key []byte) bool {
 	return false
 }
 
-// Detach moves h into buffers of its own, leaving the old ones to the values read from them so far: fasthttp writes a
-// line added after a Del, or after the cookies were parsed, into the buffers of the line taken out.
+// Detach moves h into buffers of its own and leaves the old ones to the values read so far: fasthttp writes a line
+// added after a Del or a cookie parse into the taken line's buffers. Bridge until fasthttp can swap two headers.
 func Detach(h *fasthttp.RequestHeader) {
 	tmp := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(tmp)
