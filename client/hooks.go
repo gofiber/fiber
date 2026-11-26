@@ -161,11 +161,7 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 		return uri, nil
 	}
 
-	if !slices.ContainsFunc(sources, func(p PathParam) bool { return len(p) > 0 }) {
-		return uri, nil
-	}
-
-	authEnd := authorityEnd(uri)
+	authStart, authEnd := authorityBounds(uri)
 
 	var (
 		buf    []byte
@@ -181,7 +177,8 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 		scanned   int
 	)
 
-	for i := 0; i < len(uri); i++ {
+	// From the authority on: the scheme's ":" is followed by "//" and spells no name.
+	for i := authStart; i < len(uri); i++ {
 		if uri[i] != ':' {
 			continue
 		}
@@ -311,23 +308,23 @@ func inIPv6Literal(part string, inLiteral bool) bool {
 	return opened > closed
 }
 
-// authorityEnd returns the index at which uri's authority ends, or 0 when uri
+// authorityBounds returns where uri's authority starts and ends, or 0, 0 when uri
 // has none. Everything from "://" up to the first "/", "?" or "#" is authority.
-func authorityEnd(uri string) int {
-	start := strings.Index(uri, "://")
+func authorityBounds(uri string) (start, end int) { //nolint:nonamedreturns // gocritic unnamedResult requires result names
+	start = strings.Index(uri, "://")
 	if start < 0 {
-		return 0
+		return 0, 0
 	}
 	start += len("://")
 
 	for i := start; i < len(uri); i++ {
 		switch uri[i] {
 		case '/', '?', '#':
-			return i
+			return start, i
 		}
 	}
 
-	return len(uri)
+	return start, len(uri)
 }
 
 // isAllDigits reports whether s is a non-empty run of ASCII digits.
