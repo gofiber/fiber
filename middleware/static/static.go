@@ -448,8 +448,8 @@ func New(root string, cfg ...Config) fiber.Handler {
 				uri.SetPath(target[:pathEnd(target)])
 			}
 
-			// Serve file. Bridge until fasthttp's FS keeps the response headers on an error: it wipes the response
-			// to refuse a directory without an index, a miss passed on like a missing file with what earlier middleware set.
+			// Serve file. Bridge until fasthttp's FS keeps the headers on an error (valyala/fasthttp#2616): it wipes
+			// the response to refuse a directory without an index, which static passes on as a miss.
 			fctx.Response.Header.CopyTo(&rw.header)
 			server.handler(fctx)
 			if fctx.Response.StatusCode() == fiber.StatusForbidden {
