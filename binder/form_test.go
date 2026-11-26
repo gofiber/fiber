@@ -270,13 +270,11 @@ func Test_FormBinder_BindMultipart_RequiredFile(t *testing.T) {
 	}), &u))
 	requireFile(t, u.Avatar, "avatar.txt", "avatar")
 
-	require.Error(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
-		require.NoError(t, mw.WriteField("name", "john"))
-	}), &upload{}))
+	nameOnly := func(mw *multipart.Writer) { require.NoError(t, mw.WriteField("name", "john")) }
+	require.Error(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, nameOnly), &upload{}))
 
-	err := (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
-		writeFormFile(t, mw, "avatar", "avatar.txt", "avatar")
-	}), &upload{})
+	fileOnly := func(mw *multipart.Writer) { writeFormFile(t, mw, "avatar", "avatar.txt", "avatar") }
+	err := (&FormBinding{}).Bind(newMultipartRequestWith(t, fileOnly), &upload{})
 	require.ErrorContains(t, err, "name is empty")
 	require.NotContains(t, err.Error(), "avatar")
 
@@ -328,10 +326,9 @@ func Test_FormBinder_BindMultipart_UnexportedEmbeddedPointer(t *testing.T) {
 	requireFile(t, out.Items[1].Avatar, "item.txt", "item")
 	requireFile(t, out.Ptrs[0].Avatar, "ptr.txt", "ptr")
 
+	countOnly := func(mw *multipart.Writer) { require.NoError(t, mw.WriteField("count", "0")) }
 	pairsOnly := struct{ *embeddedUpload }{&embeddedUpload{}}
-	require.NoError(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
-		require.NoError(t, mw.WriteField("count", "0"))
-	}), &pairsOnly))
+	require.NoError(t, (&FormBinding{}).Bind(newMultipartRequestWith(t, countOnly), &pairsOnly))
 	require.Equal(t, pairsOnly.Count, out.Count)
 }
 

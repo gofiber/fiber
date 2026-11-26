@@ -819,9 +819,8 @@ func Test_BindData_SplitKeyLimit(t *testing.T) {
 			require.Equal(t, tc.want, filter.Tags[tc.key])
 
 			values := map[string][]string{}
-			require.NoError(t, b.Bind(newMultipartRequestWith(t, func(mw *multipart.Writer) {
-				require.NoError(t, mw.WriteField("tags."+tc.key, "a,b"))
-			}), &values))
+			field := func(mw *multipart.Writer) { require.NoError(t, mw.WriteField("tags."+tc.key, "a,b")) }
+			require.NoError(t, b.Bind(newMultipartRequestWith(t, field), &values))
 			require.Equal(t, tc.want, values["tags."+tc.key])
 		})
 	}
