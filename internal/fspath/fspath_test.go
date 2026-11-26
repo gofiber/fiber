@@ -281,6 +281,8 @@ func Test_Aliased(t *testing.T) {
 		"/a\u00dfets": true, "/a\u1e9eets": true, "/\ufb01sh": true, "/o\ufb03ce": true, "/sta\ufb06": true, "/v1\u037e2": true,
 		"/\u1fefx": true, "/as\u00adsets": true, "/as\u200bsets": true, "/as\u200dsets": true, "/a\ufe0f": true,
 		"/naïve/x": false, "/日本/x": false, "/caf\u0065\u0301/x": false,
+		// a Persian word with a zero-width non-joiner, which Linux case folding drops
+		"/\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645": true,
 	} {
 		require.Equal(t, want, Aliased([]byte(input)), "input=%q", input)
 	}
