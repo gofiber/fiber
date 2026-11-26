@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3/internal/appconfig"
+	"github.com/gofiber/fiber/v3/internal/ipv6host"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -149,7 +150,8 @@ func routedFor[App any](c Ctx[App], path, line string) string {
 // upstream that reads it as another path: a backslash, or a segment a servlet
 // container strips to a dot or an empty segment ("..;", "/;x/admin"). A path
 // parameter on a named segment is handed on, since net/http reads it as part
-// of the name. Unless UnescapePath makes the router decode every escape itself,
+// of the name; under UnescapePath, in the decoded path the handler reads (see
+// parametersAsRouted). Unless UnescapePath makes the router decode every escape itself,
 // a routed path that is not in the one spelling SingleSpelling accepts is not
 // handed on either: the router keeps "/R&D" and "/R%26D", "/user@corp" and
 // "/user%40corp", "/caf%C3%A9" and a raw "/café" apart, but the handler decodes
@@ -202,6 +204,10 @@ func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack fun
 	if !SegmentsAsRouted(target, AllowParameters) || (!unescape && !SingleSpelling(path) && !NoPath(line, req.Header.IsConnect())) {
 		return NotFound
 	}
+	// Under UnescapePath the target spells a ";" as "%3B", a name to SegmentsAsRouted, which the handler decodes again.
+	if unescape && !parametersAsRouted(path) {
+		return NotFound
+	}
 	if target == line {
 		// the request line already spells the routed path
 		handler(c.RequestCtx())
@@ -223,10 +229,31 @@ func serveWith[App any](c Ctx[App], handler fasthttp.RequestHandler, putBack fun
 // NoPath reports whether line, the request target as it arrived, holds no path: the asterisk form of OPTIONS ("*")
 // and, when connect is set, the authority form of CONNECT ("example.com:443", "[::1]:443"). fasthttp and the router
 // read the same path for such a target, so there is nothing to guard and no spelling to refuse: a fasthttp route
-// handler is given the target as sent, a net/http handler the path the router rooted it as. A CONNECT target that
-// holds a "/", "%", "?", "#", "\", ";" or "@" is a path like any other.
+// handler is given the target as sent, a net/http handler the path the router rooted it as. Any other CONNECT target,
+// such as "über" or "a[1]", is a path like any other.
 func NoPath(line string, connect bool) bool {
-	return line == "*" || (connect && line != "" && !strings.ContainsAny(line, "/%?#\\;@"))
+	return line == "*" || (connect && isAuthority(line))
+}
+
+// isAuthority reports whether target is host[:port] (RFC 9112 Section 3.2.3): a name of bytes a path spells one way,
+// or an IPv6 literal, the only authority whose brackets a path may not carry raw.
+func isAuthority(target string) bool {
+	if target == "" {
+		return false
+	}
+	if target[0] == '[' {
+		literal, rest, ok := strings.Cut(target[1:], "]")
+		if _, isAddr := ipv6host.Parse(literal); !ok || !isAddr {
+			return false
+		}
+		return rest == "" || (rest[0] == ':' && strings.Trim(rest[1:], "0123456789") == "")
+	}
+	for i := 0; i < len(target); i++ {
+		if c := target[i]; !pathPlain[c] || c == '@' {
+			return false
+		}
+	}
+	return true
 }
 
 // restoreNative puts original back as the request line of a request whose fasthttp handler returned, unless a
@@ -411,6 +438,24 @@ func SegmentsAsRouted(target string, allow Allowance) bool {
 		}
 	}
 	return true
+}
+
+// parametersAsRouted is SegmentsAsRouted's AllowParameters check on the decoded path an UnescapePath router matched:
+// no "." or ".." segment with parameters ("..;x") and no segment of parameters alone before another ("/;x/admin").
+func parametersAsRouted(path string) bool {
+	for {
+		i := strings.IndexByte(path, ';')
+		if i < 0 {
+			return true
+		}
+		// what the segment holds before its parameters, and whether another segment follows it
+		name := path[strings.LastIndexByte(path[:i], '/')+1 : i]
+		_, rest, more := strings.Cut(path[i:], "/")
+		if name == "." || name == ".." || (name == "" && more) {
+			return false
+		}
+		path = rest
+	}
 }
 
 // SingleSpelling reports whether path, the path the router matched, is the one spelling of the

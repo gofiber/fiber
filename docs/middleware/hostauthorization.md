@@ -69,7 +69,7 @@ AllowedHosts: []string{"münchen.example.com"}                 // Unicode
 AllowedHosts: []string{"xn--mnchen-3ya.example.com"}          // Punycode (what the browser sends)
 ```
 
-Both match an incoming request whose Host header is `xn--mnchen-3ya.example.com`.
+Both match an incoming request whose Host header is `xn--mnchen-3ya.example.com`. A request `Host` that holds a byte outside ASCII, such as `münchen.example.com` sent raw, or a full-width letter, is rejected instead of being converted: [`app.Domain`](../api/app.md#domain) matches the host as sent, so a guard registered there would not run for the name it converts to.
 
 ### Skipping Health Checks
 
@@ -160,7 +160,7 @@ app.Get("/healthz", healthCheck)
 |:-----------------|:------------------------------|:--------------------------------------------------------------------------------------------------|:--------|
 | Next             | `func(fiber.Ctx) bool`        | Defines a function to skip this middleware when returned true.                                     | `nil`   |
 | AllowedHosts     | `[]string`                    | List of permitted hosts. Supports exact match and subdomain wildcard (`*.example.com`).            | `nil`   |
-| AllowedHostsFunc | `func(string) bool`           | Dynamic validator called only when no static AllowedHosts rule matches. Receives the normalized hostname: port stripped, trailing dot removed, IPv6 brackets removed, lowercased, IDN converted to Punycode, IPv6 written in its canonical form, an IPv4-mapped address as IPv4. The string is only valid during the call; copy it to keep it.  | `nil`   |
+| AllowedHostsFunc | `func(string) bool`           | Dynamic validator called only when no static AllowedHosts rule matches. Receives the normalized hostname: port stripped, trailing dot removed, IPv6 brackets removed, lowercased, IPv6 written in its canonical form. The string is only valid during the call; copy it to keep it.  | `nil`   |
 | ErrorHandler     | `fiber.ErrorHandler`          | Called when a request is rejected. Receives `ErrForbiddenHost` as the error.                      | 403     |
 
 Either `AllowedHosts` or `AllowedHostsFunc` (or both) must be provided. The middleware panics at startup if neither is set.
@@ -191,15 +191,15 @@ Before matching, the host of each request is normalized, and the `AllowedHosts` 
 - Trailing dot removed (`example.com.` → `example.com`)
 - IPv6 brackets removed (`[::1]` → `::1`)
 - IPv6 addresses written in their RFC 5952 Section 4 form (`[0:0:0:0:0:0:0:1]` → `::1`, `[2001:0db8::0001]` → `2001:db8::1`), so every spelling of one IPv6 address matches. `AllowedHostsFunc` receives this canonical form. An embedded IPv4 part is written in hex (`[64:ff9b::192.0.2.33]` → `64:ff9b::c000:221`), not in the mixed notation RFC 5952 Section 5 recommends
-- An IPv4-mapped address is the IPv4 address it maps (`[::ffff:7f00:1]` → `127.0.0.1`), so it matches an IPv4 entry such as `127.0.0.1` and follows the same rules as that IPv4 host. This applies to entries too: `[::ffff:10.0.0.5]` in `AllowedHosts` admits `10.0.0.5`
-- An IPv6 literal that is not IPv4-mapped never matches a `*.` subdomain rule (an IPv4-mapped one is the IPv4 host and is matched like it)
+- An IPv4-mapped entry is the IPv4 address it maps: `[::ffff:10.0.0.5]` in `AllowedHosts` admits `10.0.0.5`. A request host in that form (`[::ffff:7f00:1]`) is rejected, since `app.Domain` would not see it as the IPv4 host
+- An IPv6 literal never matches a `*.` subdomain rule
 - Lowercased
-- IDN labels converted to ASCII/Punycode (`münchen.example.com` → `xn--mnchen-3ya.example.com`)
+- IDN labels of an entry converted to ASCII/Punycode (`münchen.example.com` → `xn--mnchen-3ya.example.com`); a request host outside ASCII is rejected
 - RFC 1035 length limits enforced at startup: ≤253 chars total, ≤63 chars per label (panic on violation)
 
 An entry in the leading-dot form some other tools use (`.myapp.com`) also panics at startup; write `*.myapp.com` instead. So does any other entry no request could match: a URL (`https://myapp.com`, `http://localhost:3000`), a `%` such as a zoned `[fe80::1%25eth0]`, a port that is not numeric (`allowed.com:http`, `example.com:`), brackets around anything but an IPv6 address (`[allowed.com]`, `[127.0.0.1]:80`, `[allowed.com:443]`), another colon that is not part of an IPv6 address (`[2001:db8::g]`, `a:b:c`), and a `*.` entry holding an IP address (`*.127.0.0.1`, `*.[::1]`, `*.[::ffff:1.2.3.4]`).
 
-A request host that is not a well-formed authority is rejected with `ErrorHandler` before matching, so `AllowedHostsFunc` never sees it. That covers an empty or missing `Host`, userinfo in `X-Forwarded-Host` (`allowed.com:443@attacker.example`), a port that is empty, not numeric or above 65535, malformed IPv6 brackets, brackets around anything but an IPv6 address (`[allowed.com:443]`) or an IPv6 literal without brackets, a zoned IPv6 address (`fe80::1%eth0`), and a hostname with an empty label (`a..b`), a label that starts or ends with a hyphen or is longer than 63 characters, a name longer than 253 bytes (measured before an IDN is converted to Punycode), or any character besides letters, digits, hyphens and dots (underscores included).
+A request host that is not a well-formed authority is rejected with `ErrorHandler` before matching, so `AllowedHostsFunc` never sees it. That covers an empty or missing `Host`, userinfo in `X-Forwarded-Host` (`allowed.com:443@attacker.example`), a port that is empty, not numeric or above 65535, malformed IPv6 brackets, brackets around anything but an IPv6 address (`[allowed.com:443]`) or an IPv6 literal without brackets, a zoned IPv6 address (`fe80::1%eth0`), an IPv4-mapped address in brackets (`[::ffff:127.0.0.1]`), any byte outside ASCII (`münchen.example.com` sent raw), and a hostname with an empty label (`a..b`), a label that starts or ends with a hyphen or is longer than 63 characters, a name longer than 253 bytes, or any character besides letters, digits, hyphens and dots (underscores included).
 
 fasthttp answers some of these requests itself, before routing: an HTTP/1.1 request with a missing or empty `Host`, and any request whose `Host` it cannot parse (for example a space or `/` in the name, a port that is not numeric, unbalanced IPv6 brackets, an IPv6 literal without brackets, an invalid IPv6 address in brackets that hold no `%25`, or a zone not written as `%25`), gets `400 Bad Request`. Fiber still runs the `Use` middleware for such a request, so `ErrorHandler` is called, but the app's `ErrorHandler` then writes the final response over it: with the default one the client receives the `400`. The `ErrorHandler` response reaches the client for an HTTP/1.0 request without `Host`, for a `Host` that fasthttp accepts and the middleware rejects (`a..b`, an empty port, a port above 65535, an underscore, or any bracketed host holding `%25`, such as `[fe80::1%25eth0]` or `[allowed.com:443%25z]`, since fasthttp does not check those) and for a malformed `X-Forwarded-Host`. A `Host` it cannot parse is not answered with `400` for a request whose target begins with `//` and holds `://`, or that is in the absolute form: fasthttp takes the host from the target and never parses the `Host` header then. A missing or empty `Host` is, whatever the target. For a `//` target the request is then read as one without a host, `c.Host()` is empty, and the middleware answers `403` (or what `ErrorHandler` decides).
 

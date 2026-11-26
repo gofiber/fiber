@@ -118,6 +118,14 @@ func NewFastHTTPHandler(h http.Handler) fasthttp.RequestHandler {
 	}
 }
 
+// Rebind points the hold on ctx, if any, at resp, the response that took over its body stream, so that the stream
+// is closed by resp alone.
+func Rebind(ctx *fasthttp.RequestCtx, resp *fasthttp.Response) {
+	if hd, ok := ctx.UserValue(holdKey{}).(*hold); ok {
+		hd.resp = resp
+	}
+}
+
 // Pending reports whether the net/http handler of the request on ctx still runs. A caller that owns ctx
 // and would reuse it must leave it to the handler then: the next Reset waits for the handler.
 func Pending(ctx *fasthttp.RequestCtx) bool {

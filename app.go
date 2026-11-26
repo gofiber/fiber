@@ -32,6 +32,7 @@ import (
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/nilerror"
+	"github.com/gofiber/fiber/v3/internal/requesthold"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -102,6 +103,8 @@ type App struct {
 	// headerHook is the HeaderReceived callback hookHeaderReceived installed, kept
 	// to tell it from one set since
 	headerHook func(*fasthttp.RequestHeader) fasthttp.RequestConfig
+	// connStateHook is the ConnState callback hookConnState installed, as headerHook
+	connStateHook func(net.Conn, fasthttp.ConnState)
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// customConstraints is a list of external constraints
@@ -131,7 +134,6 @@ type App struct {
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
 	hasRoutesRefreshed bool
-	connStateHooked    bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
 	// hasParamRoutes tracks whether any route consults the per-request slash
@@ -1551,7 +1553,9 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	var served net.Conn = conn
 	if req.TLS != nil {
 		// httptest.NewRequest sets TLS for an https target; serve such a request over TLS.
-		served = &testTLSConn{testConn: conn, state: *req.TLS}
+		state := *req.TLS
+		state.HandshakeComplete = true // a request arrives only after the handshake, whatever a hand-built state says
+		served = &testTLSConn{testConn: conn, state: state}
 	}
 
 	// Write raw http request
@@ -1560,7 +1564,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	}
 	// prepare the server for the start
 	app.startupProcess()
-	app.hookHeaderReceived()
+	app.hookServer()
 
 	// Serve conn to server
 	channel := make(chan error, 1)
@@ -1734,7 +1738,7 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	for _, prefix := range app.mountFields.appListKeys {
 		subApp := app.mountFields.appList[prefix]
 
-		if app.mountCoversPath(prefix, ctx.Path()) {
+		if app.mountCoversPath(prefix, ctx.getDetectionPath()) {
 			// Count slashes instead of splitting - more efficient
 			parts := mountDepth(prefix)
 			if mountedPrefixParts <= parts {
@@ -1793,6 +1797,93 @@ const (
 // user for the fasthttp server configuration. It maps a set of fasthttp errors to fiber
 // errors before calling the application's error handler method.
 func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
+	// fasthttp reports a failed TLS handshake as the read error of a request that never arrived.
+	if state := fctx.TLSConnectionState(); state != nil && !state.HandshakeComplete {
+		return
+	}
+	// Only user code can keep or time out the context, so where none can run fctx is answered in place.
+	if app.answersInPlace(fctx) {
+		app.answerRefusedRequest(fctx, err)
+		return
+	}
+
+	// Bridge until fasthttp's ErrorHandler handles TimeoutError as its Handler does: it releases fctx without that
+	// handling and panics on one a handler timed out, so the chain runs on a RequestCtx of its own such a handler can keep.
+	rctx := new(fasthttp.RequestCtx)
+	rctx.Init2(fctx.Conn(), app.server.Logger, true)
+	rctx.SetRemoteAddr(fctx.RemoteAddr())
+	fctx.Request.CopyTo(&rctx.Request)
+	fctx.Response.CopyTo(&rctx.Response) // with the options the server set
+	app.answerRefusedRequest(rctx, err)
+
+	if timeoutResp := rctx.LastTimeoutErrorResponse(); timeoutResp != nil {
+		timeoutResp.CopyTo(&fctx.Response)
+		return
+	}
+	rctx.Response.CopyTo(&fctx.Response)
+	fctx.Response.ImmediateHeaderFlush = rctx.Response.ImmediateHeaderFlush
+	if rctx.Response.IsBodyStream() {
+		stream := &refusedStream{Reader: rctx.Response.BodyStream(), from: &rctx.Response.Header, to: &fctx.Response.Header}
+		fctx.Response.SetBodyStream(stream, rctx.Response.Header.ContentLength())
+		requesthold.Rebind(rctx, &fctx.Response)
+	}
+	// Only fctx is reset, which closes the request's io.Closer values and waits for a flushed handler.
+	rctx.VisitUserValuesAll(fctx.SetUserValue)
+}
+
+// refusedStream is the body stream of a refused request's answer, moved off the RequestCtx the chain ran on. An adapted
+// net/http handler sets its trailers on that one when the stream ends, so they are handed on to the response written.
+type refusedStream struct {
+	io.Reader
+	from, to *fasthttp.ResponseHeader
+}
+
+func (s *refusedStream) Read(p []byte) (int, error) {
+	n, err := s.Reader.Read(p)
+	if errors.Is(err, io.EOF) {
+		for _, key := range s.from.PeekTrailerKeys() {
+			s.to.DelBytes(key)
+			if s.to.AddTrailerBytes(key) != nil {
+				continue
+			}
+			for _, value := range s.from.PeekAll(string(key)) {
+				s.to.AddBytesV(string(key), value)
+			}
+		}
+	}
+	return n, err //nolint:wrapcheck // io.Reader passes io.EOF through as is
+}
+
+// Close and CloseWithError are each passed on to the stream that has it, as fasthttp calls both on a stream that does.
+func (s *refusedStream) Close() error {
+	if closer, ok := s.Reader.(io.Closer); ok {
+		return closer.Close() //nolint:wrapcheck // the stream's own error
+	}
+	return nil
+}
+
+func (s *refusedStream) CloseWithError(err error) error {
+	if closer, ok := s.Reader.(fasthttp.ReadCloserWithError); ok {
+		return closer.CloseWithError(err)
+	}
+	return nil
+}
+
+// answersInPlace reports whether no user code can run for a request the server refused: no app configures an
+// ErrorHandler, and its method has no routes or route handlers are skipped for it and the app has no Use handler.
+func (app *App) answersInPlace(fctx *fasthttp.RequestCtx) bool {
+	return (app.methodInt(utils.UnsafeString(fctx.Method())) == -1 || (!app.getOnlyRefuses(fctx) && !app.skip.hasUse)) &&
+		!app.hasCustomErrorHandler()
+}
+
+// getOnlyRefuses reports whether GETOnly refuses the method of the request.
+// Asked of the method, not ErrGetOnly, since a header error is reported first.
+func (app *App) getOnlyRefuses(fctx *fasthttp.RequestCtx) bool {
+	return app.server.GetOnly && !fctx.IsGet() && !fctx.IsHead()
+}
+
+// answerRefusedRequest runs the Use chain and the ErrorHandler for a request the server refused with err.
+func (app *App) answerRefusedRequest(fctx *fasthttp.RequestCtx, err error) {
 	// Acquire Ctx with fasthttp request from pool
 	c := app.AcquireCtx(fctx)
 	defer app.ReleaseCtx(c)
@@ -1848,15 +1939,15 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		c.Status(fiberErr.Code)
 	}
 
+	// Route handlers never run for a refused request, also not when the ErrorHandler restarts routing.
+	c.setSkipNonUseRoutes(true)
 	// A method GETOnly refuses is not replayed: a Use handler that ends the chain would carry it out.
-	// Asked of the method, not ErrGetOnly, since a header error is reported first.
-	methodRefused := app.server.GetOnly && !fctx.IsGet() && !fctx.IsHead()
-	if !methodRefused && c.getMethodInt() != -1 {
-		c.setSkipNonUseRoutes(true)
-		defer c.setSkipNonUseRoutes(false)
-		// The route never runs, so what the chain leaves is no response for the URL.
+	methodRefused := app.getOnlyRefuses(fctx)
+	// The trailers are dropped as the request handlers drop them, or a header the chain sets is filed with them.
+	if !methodRefused && c.getMethodInt() != -1 && dropTrailers(&fctx.Request) {
+		// What the chain leaves is no response for the URL. The mark stays until the reset, which waits
+		// for a flushed net/http handler that still reads the user values.
 		errorreplay.Mark(fctx)
-		defer errorreplay.Unmark(fctx)
 
 		var nextErr error
 		if d, isDefault := c.(*DefaultCtx); isDefault {
@@ -1867,6 +1958,9 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 		if nextErr != nil && !errors.Is(nextErr, ErrNotFound) && !errors.Is(nextErr, ErrMethodNotAllowed) {
 			log.Errorf("serverErrorHandler: middleware traversal failed: %v", nextErr)
+		}
+		if fctx.LastTimeoutErrorResponse() != nil {
+			return // the handler that timed out may still write the response
 		}
 		// Route guards were skipped too: drop the chain's body, which an ErrorHandler calling SendStatus would send.
 		fctx.Response.ResetBody()
@@ -1914,14 +2008,14 @@ func (app *App) startupProcess() {
 // hookConnState makes the server report new and closed connections to the TLS
 // handler, keeping a user ConnState callback. A connection is reported new
 // while it can still say what it wraps, which is what lets its record be found
-// again at close. Idempotent; the caller holds app.mutex.
+// again at close. A callback set since is wrapped in turn, or it would replace
+// the hook for good; the hook itself is left alone. The caller holds app.mutex.
 func (app *App) hookConnState() {
-	if app.connStateHooked || app.server == nil {
+	if app.server == nil || sameConnStateFunc(app.server.ConnState, app.connStateHook) {
 		return
 	}
-	app.connStateHooked = true
 	user := app.server.ConnState
-	app.server.ConnState = func(conn net.Conn, state fasthttp.ConnState) {
+	app.connStateHook = func(conn net.Conn, state fasthttp.ConnState) {
 		// StateHijacked is terminal too: fasthttp never reports StateClosed after
 		// it, so a hijacked connection (every WebSocket upgrade) would strand its
 		// record.
@@ -1941,6 +2035,17 @@ func (app *App) hookConnState() {
 			user(conn, state)
 		}
 	}
+	app.server.ConnState = app.connStateHook
+}
+
+// hookServer runs right before serving, after the OnListen hooks and BeforeServeFunc
+// that startupProcess precedes, so a callback they assign is wrapped too.
+func (app *App) hookServer() {
+	app.mutex.Lock()
+	app.hookConnState()
+	app.mutex.Unlock()
+
+	app.hookHeaderReceived()
 }
 
 // hookHeaderReceived makes the server close the connection after a request that

@@ -987,6 +987,11 @@ func sameFunc(a, b func(*fasthttp.RequestHeader) fasthttp.RequestConfig) bool {
 	return a != nil && *(*unsafe.Pointer)(unsafe.Pointer(&a)) == *(*unsafe.Pointer)(unsafe.Pointer(&b)) //nolint:gosec // funcs are only comparable to nil
 }
 
+// sameConnStateFunc is sameFunc for a ConnState callback.
+func sameConnStateFunc(a, b func(net.Conn, fasthttp.ConnState)) bool {
+	return a != nil && *(*unsafe.Pointer)(unsafe.Pointer(&a)) == *(*unsafe.Pointer)(unsafe.Pointer(&b)) //nolint:gosec // funcs are only comparable to nil
+}
+
 // bothFramingFields reports whether a request carries Content-Length and
 // Transfer-Encoding (RFC 9112 §6.1). fasthttp keeps no trace of the second one in
 // the length it reports: chunked wins and the Content-Length value is dropped, and

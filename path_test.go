@@ -172,6 +172,19 @@ func Test_Route_OptionalParamDoesNotSwallowSlash(t *testing.T) {
 	apptest.Expect(t, app, "/api/1-/-", StatusNotFound)
 }
 
+// A constraint kept from an earlier parse rules out ParamTail as one the pattern names does; no mount reaches this
+// today, since every name a writer resolved resolves again, so the parser is checked directly.
+func Test_RouteParser_KeepConstraintsMarksParamTails(t *testing.T) {
+	t.Parallel()
+	parser := parseRoute("/files/:name.json/*", nil)
+	require.True(t, parser.segs[1].ParamTail)
+	constrained := parseRoute("/files/:name<int>.json/*", nil)
+	require.False(t, constrained.segs[1].ParamTail)
+	parser.keepConstraints(constrained.paramConstraints(), nil)
+	require.Equal(t, constrained.paramConstraints(), parser.paramConstraints())
+	require.False(t, parser.segs[1].ParamTail)
+}
+
 // Test_Path_ParameterEndChars_MatchesRouteGrammar pins the shared set against
 // the delimiter constants it is built from but no longer names, so widening the
 // route grammar has to reach the client's copy too (#4635).
@@ -1184,6 +1197,8 @@ func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 		"/ABC", "/Abc", "/user/John", "/a%2Fb", "/a%20b", "/a%41b",
 		// Spellings the router normalizes before matching.
 		"/a/./b", "/a/../b", "/./a", "/a/b/..", "/%61", "/a/%2e%2e/b", "/a%2e/b", "/%2561",
+		// Escapes that are still there once the router has decoded the path.
+		"/a/%252e%252e/b", "/a/b/%252e%252e", "/a%252Fb", "/%252561",
 	}
 	configs := []Config{
 		{},
@@ -1204,6 +1219,11 @@ func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 				for _, path := range paths {
 					app := New(cfg)
 					matched := false
+					routed := ""
+					app.Use(func(c Ctx) error {
+						routed = strings.Clone(c.Path())
+						return c.Next()
+					})
 					app.Get(pattern, func(_ Ctx) error {
 						matched = true
 						return nil
@@ -1211,12 +1231,45 @@ func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 
 					apptest.Do(t, app, path, sweepTestConfig)
 
-					require.Equal(t, matched, RoutePatternMatch(path, pattern, cfg),
-						"pattern=%q path=%q", pattern, path)
+					require.Equal(t, matched, RoutePatternMatch(routed, pattern, cfg),
+						"pattern=%q path=%q routed=%q", pattern, path, routed)
+					// only without UnescapePath does the path as sent read like the routed one
+					if !cfg.UnescapePath {
+						require.Equal(t, matched, RoutePatternMatch(path, pattern, cfg),
+							"pattern=%q path=%q", pattern, path)
+					}
 				}
 			}
 		})
 	}
+}
+
+// Under UnescapePath the router decodes "%252e%252e" to the literal name "%2e%2e"; decoded again it would be "..".
+func Test_RoutePatternMatch_UnescapePathDecodesOnce(t *testing.T) {
+	t.Parallel()
+	cfg := Config{UnescapePath: true}
+	app := New(cfg)
+	app.Get("/public/*", func(c Ctx) error { return c.SendString("public") })
+	app.Get("/accounts/:id/*", func(c Ctx) error {
+		return c.SendString(fmt.Sprintf("account public=%v accounts=%v path=%s",
+			RoutePatternMatch(c.Path(), "/public/*", c.App().Config()),
+			RoutePatternMatch(c.Path(), "/accounts/*", c.App().Config()),
+			c.Path()))
+	})
+
+	for target, routed := range map[string]string{
+		"/accounts/42/%252e%252e/%252e%252e/public/x":      "/accounts/42/%2e%2e/%2e%2e/public/x",
+		"/accounts/42/x%252f..%252f..%252f..%252fpublic/x": "/accounts/42/x%2f..%2f..%2f..%2fpublic/x",
+		"/accounts/42/%2570ublic":                          "/accounts/42/%70ublic", // cspell:disable-line
+	} {
+		apptest.ExpectBody(t, app, target, StatusOK, "account public=false accounts=true path="+routed)
+	}
+
+	require.False(t, RoutePatternMatch("/%70rivate", "/private", cfg))
+	require.True(t, RoutePatternMatch("/%70rivate", "/private"))
+	require.True(t, RoutePatternMatch("/a b", "/a b", cfg))
+	// Dot segments are no escapes and are still resolved.
+	require.True(t, RoutePatternMatch("/a/../public/x", "/public/*", cfg))
 }
 
 // Registration, mounting, removal and the standalone matcher must agree on
