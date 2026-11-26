@@ -4,17 +4,24 @@
 package client
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v3/internal/crosshost"
+	"github.com/gofiber/fiber/v3/internal/escapedpath"
 	"github.com/gofiber/fiber/v3/internal/redirectbody"
 	"github.com/gofiber/fiber/v3/internal/tlshandshake"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpproxy"
+	"golang.org/x/net/http/httpproxy"
+	"golang.org/x/net/proxy"
 )
 
 // defaultRedirectLimit is fasthttp's default, for callers that supply a negative redirect cap.
@@ -49,6 +56,8 @@ type httpClientTransport interface {
 	TLSConfig() *tls.Config
 	SetTLSConfig(config *tls.Config)
 	SetDial(dial fasthttp.DialFunc)
+	// SetDialTimeout sets the dial function fasthttp prefers to Dial; nil removes it.
+	SetDialTimeout(dial fasthttp.DialFuncWithTimeout)
 	Client() any
 	StreamResponseBody() bool
 	SetStreamResponseBody(enable bool)
@@ -127,6 +136,59 @@ func newOwnedStandardClientTransport() *standardClientTransport {
 	}
 }
 
+// proxyDialTimeout is the SetProxyURL dialer in the form fasthttp hands the request timeout, so a
+// proxy that leaves a CONNECT or SOCKS request unanswered does not outlive the call.
+func proxyDialTimeout(config httpproxy.Config) fasthttp.DialFuncWithTimeout {
+	socks := socksProxyDialer(&config)
+	return func(addr string, timeout time.Duration) (net.Conn, error) {
+		if timeout <= 0 {
+			// fasthttp passes none for a request without a timeout or one waiting on a busy host.
+			timeout = fasthttp.DefaultDialTimeout
+		}
+		if socks != nil {
+			// fasthttpproxy has no timeout for the SOCKS negotiation; DialContext keeps one for both phases.
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+			conn, err := socks.DialContext(ctx, "tcp4", addr)
+			if err != nil {
+				return nil, fmt.Errorf("client: dial through proxy: %w", err)
+			}
+			return conn, nil
+		}
+		// A dialer per dial, as fasthttpproxy reads its timeouts off the dialer; DNS is left to net,
+		// so no cache goroutine is started per dial.
+		dialer := fasthttpproxy.Dialer{
+			TCPDialer:      fasthttp.TCPDialer{DisableDNSResolution: true},
+			Config:         config,
+			Timeout:        timeout,
+			ConnectTimeout: timeout,
+		}
+		dial, err := dialer.GetDialFunc(false)
+		if err != nil {
+			return nil, fmt.Errorf("client: invalid proxy URL: %w", err)
+		}
+		return dial(addr)
+	}
+}
+
+// socksProxyDialer returns a dialer that takes a deadline for a SOCKS proxy in config, or nil for any
+// other proxy. The proxy is looked up as fasthttpproxy looks up one that is the same for every request.
+func socksProxyDialer(config *httpproxy.Config) proxy.ContextDialer {
+	proxyURL, err := config.ProxyFunc()(&url.URL{Scheme: "https", Host: "example.com"})
+	if err != nil || proxyURL == nil || (proxyURL.Scheme != "socks5" && proxyURL.Scheme != "socks5h") {
+		return nil
+	}
+	dialer, err := proxy.FromURL(proxyURL, &net.Dialer{})
+	if err != nil {
+		return nil
+	}
+	bounded, ok := dialer.(proxy.ContextDialer)
+	if !ok {
+		return nil
+	}
+	return bounded
+}
+
 // noteSend records a request about to be sent through a client that normalizes.
 // It stores once, so the common case of a client left as it is costs one load.
 func (s *standardClientTransport) noteSend() {
@@ -178,6 +240,10 @@ func (s *standardClientTransport) SetTLSConfig(config *tls.Config) {
 
 func (s *standardClientTransport) SetDial(dial fasthttp.DialFunc) {
 	s.client.Dial = dial
+}
+
+func (s *standardClientTransport) SetDialTimeout(dial fasthttp.DialFuncWithTimeout) {
+	s.client.DialTimeout = dial
 }
 
 func (s *standardClientTransport) Client() any {
@@ -261,6 +327,10 @@ func (h *hostClientTransport) SetDial(dial fasthttp.DialFunc) {
 	h.client.Dial = dial
 }
 
+func (h *hostClientTransport) SetDialTimeout(dial fasthttp.DialFuncWithTimeout) {
+	h.client.DialTimeout = dial
+}
+
 func (h *hostClientTransport) Client() any {
 	return h.client
 }
@@ -315,6 +385,10 @@ func (l *lbClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Res
 // load-balanced transport mirrors fasthttp.Client semantics despite
 // fasthttp.LBClient not exposing DoRedirects directly.
 func (l *lbClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, opts *redirectOptions) error {
+	// See standardClientTransport.DoRedirects.
+	if l.DisablePathNormalizing() {
+		req.URI().DisablePathNormalizing = true
+	}
 	return doRedirectsWithClient(req, resp, opts, l.client)
 }
 
@@ -340,6 +414,12 @@ func (l *lbClientTransport) SetTLSConfig(config *tls.Config) {
 func (l *lbClientTransport) SetDial(dial fasthttp.DialFunc) {
 	forEachHostClient(l.client, func(hc *fasthttp.HostClient) {
 		hc.Dial = dial
+	})
+}
+
+func (l *lbClientTransport) SetDialTimeout(dial fasthttp.DialFuncWithTimeout) {
+	forEachHostClient(l.client, func(hc *fasthttp.HostClient) {
+		hc.DialTimeout = dial
 	})
 }
 
@@ -517,6 +597,8 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, opts 
 	}
 
 	currentURL := req.URI().String()
+	// Read before the loop: every SetRequestURI parses the URI anew, which resets the flag.
+	asBuilt := req.URI().DisablePathNormalizing
 	initialHostname := hostnameWithoutPort(string(req.URI().Host()))
 	redirects := 0
 
@@ -575,7 +657,7 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, opts 
 			return nil
 		}
 
-		nextURL, nextHost, err := composeRedirectURL(currentURL, location, req.DisableRedirectPathNormalizing)
+		nextURL, nextHost, err := composeRedirectURL(currentURL, location, asBuilt)
 		if err != nil {
 			return err
 		}
@@ -669,7 +751,7 @@ func parsesAsURI(full []byte) error {
 	return nil
 }
 
-func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (redirectURL, host string, err error) { //nolint:nonamedreturns // names document the two string results
+func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (redirectURL, host string, err error) { //nolint:nonamedreturns,revive // names document the two string results; the flag is the client's path setting
 	// Control bytes (C0 including HTAB, plus DEL) in a Location value are a
 	// header-injection vector; utils.IndexControl scans for exactly that set
 	// two words per branch instead of one byte at a time.
@@ -682,7 +764,16 @@ func composeRedirectURL(base string, location []byte, disablePathNormalizing boo
 
 	uri.Update(base)
 	wasHTTPS := utils.EqualFold(uri.Scheme(), httpsScheme)
-	uri.UpdateBytes(location)
+	if disablePathNormalizing {
+		// fasthttp.URI resolves on the decoded path, where a "%2F" the path was built with is a separator.
+		next, err := escapedpath.Resolve(base, location)
+		if err != nil {
+			return "", "", err
+		}
+		uri.Update(next.String())
+	} else {
+		uri.UpdateBytes(location)
+	}
 	uri.DisablePathNormalizing = disablePathNormalizing
 
 	// UpdateBytes resolves the reference but discards the parse error, leaving

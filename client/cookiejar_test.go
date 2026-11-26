@@ -152,7 +152,7 @@ func Test_CookieJarSetRepeatedCookieKeys(t *testing.T) {
 	require.Len(t, cookies, 2)
 	require.Equal(t, "k", string(cookies[0].Key()))
 	require.Equal(t, "v2", string(cookies[0].Value()))
-	require.Equal(t, host, string(cookies[0].Domain()))
+	require.Empty(t, cookies[0].Domain())
 	require.True(t, bytes.Equal(cookies[0].Value(), cookie2.Value()))
 }
 
@@ -233,6 +233,134 @@ func Test_CookieJarHostCapacityPrefersExpiredEntries(t *testing.T) {
 	require.True(t, ok)
 }
 
+// Test_CookieJarHostCapacityEvictsLeastRecentlyWritten checks that two keys of one response do not
+// evict each other on every Set-Cookie line, however their names sort.
+func Test_CookieJarHostCapacityEvictsLeastRecentlyWritten(t *testing.T) {
+	t.Parallel()
+	jar := clientTestCJar(t)
+	for i := range maxCookieJarHosts {
+		jar.SetKeyValue(fmt.Sprintf("host-%04d.example.com", i), "k", "v")
+	}
+
+	for range 8 {
+		clientTestCReceive(jar, "0.0.example.org", "/", "a=1")
+		clientTestCReceive(jar, "0.0.example.org", "/", "a=1; Domain=0.example.org")
+	}
+
+	require.Len(t, jar.hostCookies, maxCookieJarHosts)
+	for host, stored := range map[string]bool{
+		"0.0.example.org":       true,
+		"0.example.org":         true,
+		"host-0000.example.com": false,
+		"host-0001.example.com": false,
+		"host-0002.example.com": true,
+	} {
+		_, ok := jar.hostCookies[host]
+		require.Equal(t, stored, ok, host)
+	}
+}
+
+func Test_CookieJarHostCapacitySweepsOncePerClockReading(t *testing.T) {
+	t.Parallel()
+	cj := &CookieJar{hostCookies: make(map[string][]storedCookie, maxCookieJarHosts)}
+	now := time.Now()
+
+	for i := range maxCookieJarHosts {
+		cj.hostCookies[fmt.Sprintf("host-%04d.example.com", i+1)] = []storedCookie{clientTestCStored("k", time.Time{}, 0)}
+	}
+	cj.ensureHostCapacityLocked("new-1.example.com", now)
+
+	// The same reading does not sweep again, so the expired entry stays.
+	cj.hostCookies["zzz-expired.example.com"] = []storedCookie{clientTestCStored("expired", now.Add(-time.Minute), 0)}
+	cj.ensureHostCapacityLocked("new-2.example.com", now)
+	_, ok := cj.hostCookies["zzz-expired.example.com"]
+	require.True(t, ok)
+
+	// A later reading sweeps again.
+	cj.hostCookies["new-2.example.com"] = []storedCookie{clientTestCStored("k", time.Time{}, 0)}
+	cj.ensureHostCapacityLocked("new-3.example.com", now.Add(time.Second))
+	_, ok = cj.hostCookies["zzz-expired.example.com"]
+	require.False(t, ok)
+	require.Len(t, cj.hostCookies, maxCookieJarHosts-1)
+}
+
+// Test_CookieJarExpiredCookieTakesNoRoom checks that an expired cookie is not stored in a full jar, so it
+// evicts no host and leaves the jar no entry that a later key of the same clock reading would evict past.
+func Test_CookieJarExpiredCookieTakesNoRoom(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		store  func(t *testing.T, jar *CookieJar)
+		stored map[string]bool
+		name   string
+	}{
+		{
+			name: "set with a live Domain cookie",
+			store: func(t *testing.T, jar *CookieJar) {
+				t.Helper()
+				expired := clientTestCCookie(t, "a", "1")
+				expired.SetExpire(time.Now().Add(-time.Minute))
+				live := clientTestCCookie(t, "b", "1")
+				live.SetDomain("tenant.example.com")
+				jar.Set(clientTestCURI(t, "http://x.tenant.example.com/"), expired, live)
+			},
+			stored: map[string]bool{"tenant.example.com": true, "x.tenant.example.com": false, "host-0001.example.com": true},
+		},
+		{
+			name: "response",
+			store: func(t *testing.T, jar *CookieJar) {
+				t.Helper()
+				clientTestCReceive(jar, "x.tenant.example.com", "/", "a=1; Max-Age=0")
+			},
+			stored: map[string]bool{"x.tenant.example.com": false, "host-0000.example.com": true},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			jar := clientTestCJar(t)
+			for i := range maxCookieJarHosts {
+				jar.SetKeyValue(fmt.Sprintf("host-%04d.example.com", i), "k", "v")
+			}
+			tc.store(t, jar)
+
+			require.Len(t, jar.hostCookies, maxCookieJarHosts)
+			for host, stored := range tc.stored {
+				_, ok := jar.hostCookies[host]
+				require.Equal(t, stored, ok, host)
+			}
+		})
+	}
+}
+
+// Test_CookieJarHostSeqFollowsStorageKeys checks that the last-write record of a key is dropped with
+// the key, whichever way the key goes.
+func Test_CookieJarHostSeqFollowsStorageKeys(t *testing.T) {
+	t.Parallel()
+	jar := clientTestCJar(t)
+	uri := clientTestCURI(t, "http://www.example.com/")
+
+	// A host-only key and a Domain= key, both removed by the server.
+	clientTestCReceive(jar, "www.example.com", "/", "a=1")
+	clientTestCReceive(jar, "www.example.com", "/", "b=1; Domain=example.com")
+	require.Len(t, jar.hostSeq, 2)
+	clientTestCReceive(jar, "www.example.com", "/", "a=; Max-Age=0")
+	clientTestCReceive(jar, "www.example.com", "/", "b=; Max-Age=0; Domain=example.com")
+	require.Empty(t, jar.hostCookies)
+	require.Empty(t, jar.hostSeq)
+
+	// A key whose only cookie has expired since it was stored, removed when the jar is read.
+	jar.hostCookies["www.example.com"] = []storedCookie{clientTestCStored("c", time.Now().Add(-time.Minute), 1)}
+	jar.hostSeq["www.example.com"] = 1
+	require.Empty(t, jar.Get(uri))
+	require.Empty(t, jar.hostSeq)
+
+	// Keys evicted from a full jar.
+	for i := range maxCookieJarHosts + 32 {
+		jar.SetKeyValue(fmt.Sprintf("host-%04d.example.com", i), "k", "v")
+	}
+	require.Len(t, jar.hostCookies, maxCookieJarHosts)
+	require.Len(t, jar.hostSeq, maxCookieJarHosts)
+}
+
 func Test_CookieJarGetFromResponse(t *testing.T) {
 	t.Parallel()
 	res := fasthttp.AcquireResponse()
@@ -298,7 +426,7 @@ func Test_CookieJar_HostPort(t *testing.T) {
 	require.Len(t, cookies, 1)
 	require.Equal(t, "k", string(cookies[0].Key()))
 	require.Equal(t, "v", string(cookies[0].Value()))
-	require.Equal(t, "fasthttp.com", string(cookies[0].Domain()))
+	require.Empty(t, cookies[0].Domain())
 }
 
 func Test_CookieJar_isIPLiteral(t *testing.T) {
@@ -438,6 +566,34 @@ func Test_CookieJar_ResponseDomainScoping(t *testing.T) {
 			sent: map[string]bool{"http://other.example.com/": true},
 		},
 		{
+			// execute-api.us-east-1.amazonaws.com is a public suffix, amazonaws.com is not.
+			name:   "a Domain above the registrable domain of the responding host is rejected",
+			origin: "http://tenant-a.execute-api.us-east-1.amazonaws.com/", key: "sess", value: "tenant",
+			domain: "amazonaws.com", rejected: true,
+			sent: map[string]bool{
+				"http://tenant-b.execute-api.us-east-1.amazonaws.com/": false,
+				"http://amazonaws.com/":                                false,
+			},
+		},
+		{
+			name:   "a Domain cookie is not sent into another registrable domain below it",
+			origin: "http://amazonaws.com/", key: "sess", value: "apex", domain: "amazonaws.com",
+			sent: map[string]bool{
+				"http://amazonaws.com/":                                true,
+				"http://docs.amazonaws.com/":                           true,
+				"http://tenant-a.execute-api.us-east-1.amazonaws.com/": false,
+			},
+		},
+		{
+			name:   "a Domain cookie is shared inside a registrable domain below a multi-label public suffix",
+			origin: "http://a.app.execute-api.us-east-1.amazonaws.com/", key: "sess", value: "shared",
+			domain: "app.execute-api.us-east-1.amazonaws.com",
+			sent: map[string]bool{
+				"http://b.app.execute-api.us-east-1.amazonaws.com/": true,
+				"http://other.execute-api.us-east-1.amazonaws.com/": false,
+			},
+		},
+		{
 			name:   "a trailing-dot Domain is downgraded to host-only",
 			origin: "http://sub.example.com./", key: "sess", value: "123", domain: "example.com.",
 			hostOnly: "sub.example.com.",
@@ -516,6 +672,12 @@ func Test_CookieJar_SetScoping(t *testing.T) {
 			origin: "http://sub.example.com/", key: "k", value: "v", domain: "example.com",
 			sent: map[string]bool{"http://other.example.com/": true},
 		},
+		{
+			name:   "a Domain above the registrable domain of the origin is rejected",
+			origin: "http://tenant-a.execute-api.us-east-1.amazonaws.com/", key: "sess", value: "tenant",
+			domain: "amazonaws.com", rejected: true,
+			sent: map[string]bool{"http://tenant-b.execute-api.us-east-1.amazonaws.com/": false},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -539,6 +701,64 @@ func Test_CookieJar_SetByHostDoesNotMutateHostOnlyCookieToDomainCookie(t *testin
 	require.Empty(t, c.Domain())
 
 	require.Empty(t, jar.Get(clientTestCURI(t, "http://other.example.com/")))
+}
+
+// Test_CookieJar_GetSetKeepsHostOnly checks that cookies read with Get keep their scope when they
+// are stored again, in another jar or the same one.
+func Test_CookieJar_GetSetKeepsHostOnly(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		store func(t *testing.T, jar *CookieJar, cookies []*fasthttp.Cookie)
+		name  string
+	}{
+		{name: "Set", store: func(t *testing.T, jar *CookieJar, cookies []*fasthttp.Cookie) {
+			t.Helper()
+			jar.Set(clientTestCURI(t, "http://example.com/"), cookies...)
+		}},
+		{name: "SetByHost", store: func(t *testing.T, jar *CookieJar, cookies []*fasthttp.Cookie) {
+			t.Helper()
+			jar.SetByHost([]byte("example.com"), cookies...)
+		}},
+		{name: "Set-Cookie text", store: func(t *testing.T, jar *CookieJar, cookies []*fasthttp.Cookie) {
+			t.Helper()
+			for _, c := range cookies {
+				clientTestCSetByHost(t, jar, string(c.Cookie()))
+			}
+		}},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			origin := clientTestCURI(t, "http://example.com/")
+			sub := clientTestCURI(t, "http://sub.example.com/")
+
+			// A host-only cookie, one the jar turned into a host-only cookie,
+			// and a domain cookie.
+			from := clientTestCJar(t)
+			clientTestCReceive(from, "example.com", "/", "sid=1; Path=/")
+			clientTestCReceive(from, "example.com", "/", "pinned=2; Path=/; Domain=example.com.")
+			clientTestCReceive(from, "example.com", "/", "shared=3; Path=/; Domain=example.com")
+			require.Equal(t, []string{"shared=3"}, clientTestCPairs(from.Get(sub)))
+
+			got := from.Get(origin)
+
+			to := clientTestCJar(t)
+			testCase.store(t, to, got)
+			require.Equal(t, []string{"sid=1", "pinned=2", "shared=3"}, clientTestCPairs(to.Get(origin)))
+			require.Equal(t, []string{"shared=3"}, clientTestCPairs(to.Get(sub)))
+
+			testCase.store(t, from, got)
+			require.Equal(t, []string{"sid=1", "pinned=2", "shared=3"}, clientTestCPairs(from.Get(origin)))
+			require.Equal(t, []string{"shared=3"}, clientTestCPairs(from.Get(sub)))
+
+			require.Len(t, got, 3)
+			require.Empty(t, got[0].Domain())
+			require.Empty(t, got[1].Domain())
+			require.Equal(t, "example.com", string(got[2].Domain()))
+			require.Equal(t, []string{"sid=1", "pinned=2", "shared=3"}, clientTestCPairs(got))
+		})
+	}
 }
 
 func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
@@ -885,6 +1105,20 @@ func Test_CookieJar_MatchesStdlibJar(t *testing.T) {
 			name: "public suffix rejected",
 			sets: []setStep{{"http://example.com/", "a=1; Domain=com"}},
 			gets: []string{"http://example.com/", "http://other.com/"},
+		},
+		{
+			// The host that set it is left out: net/http/cookiejar hands the cookie back to
+			// that host alone, and this jar refuses a Domain of another site altogether.
+			name: "parent of a multi-label public suffix",
+			sets: []setStep{{"http://tenant-a.execute-api.us-east-1.amazonaws.com/", "a=1; Domain=amazonaws.com"}},
+			gets: []string{"http://tenant-b.execute-api.us-east-1.amazonaws.com/", "http://amazonaws.com/"},
+		},
+		{
+			name: "domain cookie above a multi-label public suffix",
+			sets: []setStep{{"http://amazonaws.com/", "a=1; Domain=amazonaws.com"}},
+			gets: []string{
+				"http://amazonaws.com/", "http://docs.amazonaws.com/", "http://x.execute-api.us-east-1.amazonaws.com/",
+			},
 		},
 		{
 			name: "unrelated domain rejected",

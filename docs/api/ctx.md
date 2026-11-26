@@ -34,9 +34,7 @@ func (c fiber.Ctx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context.C
 
 `ScheduleReclaim` is the race-free alternative to calling `ForceRelease` yourself, and the way the timeout middleware hands the context to a handler that outlives the request. It calls `Abandon` itself, so calling `Abandon` first is harmless. Close `handlerDone` once the goroutine that still uses the context has completely finished. If it never closes, because the handler never returns, the context is deliberately never reclaimed. It may be called more than once for a request, as happens when one timeout middleware runs inside another: the context is then reclaimed once every `handlerDone` is closed.
 
-:::note
-Only `*fiber.DefaultCtx` signals `ReleaseCtx` that reclamation is armed. With a custom `Ctx` type that embeds it the signal never arrives, so the context is never reclaimed. The timeout middleware uses `Abandon` alone for such types.
-:::
+fasthttp never resets a request it answered with a timeout response (`RequestCtx.TimeoutErrorWithResponse`, as the timeout middleware does), so reclaiming the context of such a request also does what that reset would: it closes the response body stream, removes the [`Locals`](#locals), closing those that implement `io.Closer`, and deletes the multipart temp files. A request a fasthttp handler gave up on as well (`fasthttp.TimeoutHandler`, `ctx.TimeoutError`) is left alone, since that handler still runs on it, and so is its context. A custom `Ctx` type is reclaimed the same way, and `ForceRelease` returns the custom context to the pool, not the `DefaultCtx` it embeds. `ForceRelease` does nothing for a context that is not abandoned or that `ScheduleReclaim` abandoned, even while it is still arming the reclaim, so the two never both release it. For a context you abandoned yourself, use one of the two.
 
 :::caution
 These methods are primarily for internal use and advanced middleware development. Most applications should not need to call them directly.
@@ -1328,7 +1326,7 @@ Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. 
 
 ### BodyRaw
 
-Returns the raw request **body**. Under [`StreamRequestBody`](./fiber.md#streamrequestbody), a body larger than the app [BodyLimit](./fiber.md#bodylimit) sets `413 Request Entity Too Large` while no response body was written, and the returned slice holds the error message instead of request data.
+Returns the raw request **body**. Under [`StreamRequestBody`](./fiber.md#streamrequestbody), a body larger than the app [BodyLimit](./fiber.md#bodylimit) sets `413 Request Entity Too Large` while no response body was written, and the returned slice holds the error message instead of request data. A streamed body whose read fails, also one with a declared length, returns the read error's message the same way, without the `413`, and the [body binders](./bind.md) fail with that error. A connection the client closes early ends the stream without an error, so the body is then shorter than declared.
 
 ```go title="Signature"
 func (c fiber.Ctx) BodyRaw() []byte
@@ -2190,7 +2188,7 @@ app.Post("/override", func(c fiber.Ctx) error {
 
 ### MultipartForm
 
-To access multipart form entries, you can parse the binary with `MultipartForm()`. This returns a `*multipart.Form`, allowing you to access form values and files. Parsing is bounded by the app [BodyLimit](./fiber.md#bodylimit).
+To access multipart form entries, you can parse the binary with `MultipartForm()`. This returns a `*multipart.Form`, allowing you to access form values and files. Parsing is bounded by the app [BodyLimit](./fiber.md#bodylimit). Under [`StreamRequestBody`](./fiber.md#streamrequestbody), a body that failed to parse, because it is malformed or larger than the limit, is not read again: `MultipartForm`, [`FormFile`](#formfile) and [`Bind().Form`](./bind.md#form) return the same error on every later call, [`FormValue`](#formvalue) finds no value in it, and [`Body`](#body) holds the error message.
 
 :::caution
 

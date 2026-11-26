@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"net/textproto"
 	"strconv"
 	"strings"
 	"testing"
@@ -635,6 +636,111 @@ func Test_ReceivedOrder(t *testing.T) {
 		require.Equal(t, "0", values[0])
 		require.Equal(t, strconv.Itoa(MaxOrderedLines), values[MaxOrderedLines])
 	})
+}
+
+// Test_OrderValues pins that a net/http header filled from the store gets each repeated name's values back in
+// received order after fasthttp's Del moved the last line into the removed one's slot.
+func Test_OrderValues(t *testing.T) {
+	t.Parallel()
+	const raw = "GET / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\nX-Forwarded-For: client\r\nVia: 1.1 a\r\n" +
+		"x-other: o\r\nVia: 1.1 b\r\nx-forwarded-for: proxy\r\n\r\n"
+	// As fasthttpadaptor.ConvertRequest fills http.Header.
+	valuesOf := func(h *fasthttp.RequestHeader) map[string][]string {
+		values := make(map[string][]string)
+		for k, v := range h.All() {
+			name := textproto.CanonicalMIMEHeaderKey(string(k))
+			values[name] = append(values[name], string(v))
+		}
+		return values
+	}
+
+	for _, canonical := range []bool{true, false} {
+		t.Run(fmt.Sprintf("canonical=%v", canonical), func(t *testing.T) {
+			t.Parallel()
+			h := readRequestHeader(t, raw, canonical)
+			Del(h, "X-Junk", canonical)
+			values := valuesOf(h)
+			require.Equal(t, []string{"proxy", "client"}, values["X-Forwarded-For"])
+			OrderValues(h.RawHeaders(), values)
+			require.Equal(t, []string{"client", "proxy"}, values["X-Forwarded-For"])
+			require.Equal(t, []string{"1.1 a", "1.1 b"}, values["Via"])
+			require.Equal(t, []string{"o"}, values["X-Other"])
+
+			// An added line, which a later Del moves in front of the received ones, follows them.
+			h = readRequestHeader(t, raw, canonical)
+			h.Add("X-Forwarded-For", "app")
+			h.Add("Via", "1.1 a")
+			Del(h, "X-Junk", canonical)
+			values = valuesOf(h)
+			OrderValues(h.RawHeaders(), values)
+			require.Equal(t, []string{"client", "proxy", "app"}, values["X-Forwarded-For"])
+			require.Equal(t, []string{"1.1 a", "1.1 b", "1.1 a"}, values["Via"])
+		})
+	}
+
+	t.Run("folded", func(t *testing.T) {
+		t.Parallel()
+		h := readRequestHeader(t, "GET / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\nX-Forwarded-For: client,\r\n 6.6.6.6\r\n"+
+			"X-Forwarded-For: proxy\r\n\r\n", true)
+		Del(h, "X-Junk", true)
+		values := valuesOf(h)
+		OrderValues(h.RawHeaders(), values)
+		require.Equal(t, []string{"client, 6.6.6.6", "proxy"}, values["X-Forwarded-For"])
+	})
+
+	t.Run("no received block", func(t *testing.T) {
+		t.Parallel()
+		values := map[string][]string{"X-Forwarded-For": {"proxy", "client"}}
+		OrderValues(nil, values)
+		require.Equal(t, []string{"proxy", "client"}, values["X-Forwarded-For"])
+	})
+
+	t.Run("edge whitespace", func(t *testing.T) {
+		t.Parallel()
+		block := []byte("X-Forwarded-For: client\r\nX-Forwarded-For: proxy\r\nX-Forwarded-For: client\r\n")
+		values := map[string][]string{"X-Forwarded-For": {"app", "client ", "proxy", "\tclient"}}
+		OrderValues(block, values)
+		require.Equal(t, []string{"client ", "proxy", "\tclient", "app"}, values["X-Forwarded-For"])
+	})
+
+	t.Run("any number of values", func(t *testing.T) {
+		t.Parallel()
+		var (
+			raw  strings.Builder
+			want []string
+		)
+		fmt.Fprint(&raw, "GET / HTTP/1.1\r\nHost: app.example\r\nX-Junk: 1\r\n")
+		for i := range 4 * MaxOrderedLines {
+			fmt.Fprintf(&raw, "Via: %d\r\n", i%7)
+			want = append(want, strconv.Itoa(i%7))
+		}
+		h := readRequestHeader(t, raw.String()+"\r\n", true)
+		Del(h, "X-Junk", true)
+		values := valuesOf(h)
+		require.NotEqual(t, want, values["Via"])
+		OrderValues(h.RawHeaders(), values)
+		require.Equal(t, want, values["Via"])
+	})
+}
+
+// Not parallel: AllocsPerRun panics in a parallel test.
+func Test_OrderValues_InOrderDoesNotAllocate(t *testing.T) {
+	for _, tc := range []struct {
+		values map[string][]string
+		block  string
+	}{
+		{
+			block:  "Host: app.example\r\nX-Forwarded-For: client, proxy\r\nAccept: */*\r\n\r\n",
+			values: map[string][]string{"Host": {"app.example"}, "Accept": {"*/*"}, "X-Forwarded-For": {"client, proxy"}},
+		},
+		{
+			block:  "X-Forwarded-For: client\r\nVia: 1.1 a\r\nX-Forwarded-For: proxy\r\nVia: 1.1 b\r\n\r\n",
+			values: map[string][]string{"X-Forwarded-For": {"client", "proxy"}, "Via": {"1.1 a", "1.1 b"}},
+		},
+	} {
+		block := []byte(tc.block)
+		require.Zero(t, testing.AllocsPerRun(100, func() { OrderValues(block, tc.values) }), tc.block)
+	}
 }
 
 // Test_ReceivedOrder_DoesNotAllocate pins the reordered shape c.IP() reads on.

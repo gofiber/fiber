@@ -459,7 +459,7 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client
 
 ## SetProxyURL
 
-Sets a proxy URL for the client. All subsequent requests will use this proxy. It returns an error when the URL has a host and its scheme is not `http`, `socks5` or `socks5h`, for example `ftp://proxy:1080`. Other malformed URLs are not rejected here. If `net/url` cannot parse the URL, even with `http://` put in front of it, for example because of a trailing newline, a leading space, `%zz` in the port, or a non-numeric port on an address without a scheme such as `127.0.0.1:abc`, the URL is dropped without an error and requests go to their origin directly, without a proxy. An empty string is dropped the same way, and a dropped URL also replaces a proxy set earlier. A URL that parses, or that parses once `http://` is put in front of it, but names no usable address makes each request fail when it dials. That covers `http://127.0.0.1:abc` with its scheme, `http://` or `ftp://` with nothing after it, and a trailing `/` or a path. The proxy is installed as the client's dial function, so a later [SetDial](#setdial) replaces it and the other way around. Call it before the first request: on a client built with `New` or `NewWithClient`, a host the client already uses keeps its previous dial function until fasthttp drops its entry for that host, see the note under [TLS](#tls) for when. A client built with `NewWithHostClient` or `NewWithLBClient` uses the new function for every new connection.
+Sets a proxy URL for the client. All subsequent requests will use this proxy. It returns an error when the URL has a host and its scheme is not `http`, `socks5` or `socks5h`, for example `ftp://proxy:1080`. Other malformed URLs are not rejected here. If `net/url` cannot parse the URL, even with `http://` put in front of it, for example because of a trailing newline, a leading space, `%zz` in the port, or a non-numeric port on an address without a scheme such as `127.0.0.1:abc`, the URL is dropped without an error and requests go to their origin directly, without a proxy. An empty string is dropped the same way, and a dropped URL also replaces a proxy set earlier. A URL that parses, or that parses once `http://` is put in front of it, but names no usable address makes each request fail when it dials. That covers `http://127.0.0.1:abc` with its scheme, `http://` or `ftp://` with nothing after it, and a trailing `/` or a path. The proxy is installed as the client's dial function, in both forms `fasthttp` has, `Dial` and `DialTimeout`, so that a request's [timeout](#settimeout) reaches the dial through the proxy. A later [SetDial](#setdial) replaces it and the other way around; either call also replaces a `DialTimeout` function the wrapped `fasthttp` client was given. Call it before the first request: on a client built with `New` or `NewWithClient`, a host the client already uses keeps its previous dial function until fasthttp drops its entry for that host, see the note under [TLS](#tls) for when. A client built with `NewWithHostClient` or `NewWithLBClient` uses the new function for every new connection.
 
 ```go title="Signature"
 func (c *Client) SetProxyURL(proxyURL string) error
@@ -628,7 +628,7 @@ fmt.Println(string(resp.Body()))
 
 ## Headers
 
-Client-level headers are applied to every request when it is sent. A header set on the request itself with the same key replaces the client's values rather than being added to them, and each send starts from those keys cleared, so re-sending a request does not accumulate values.
+Client-level headers are applied to every request when it is sent. A header set on the request itself with the same key replaces the client's values rather than being added to them, and each send starts from those keys cleared, so re-sending a request does not accumulate values. The headers an earlier send took from its client are removed too, so a `Request` that is sent again through another client (see [SetClient](./request.md#setclient)), or after the client was reset, carries only the headers of the client that sends it and its own.
 
 ### Header
 
@@ -842,7 +842,7 @@ resp, err := cli.Get("https://api.example.com/items", client.Config{MaxRedirects
 
 ## Cookies
 
-A cookie set on a request replaces a client cookie with the same name, and a client cookie replaces one from the [cookie jar](#cookie-jar). Cookies are selected anew each time a request is sent, so a `Request` that is sent again carries only what applies to its current URL: a jar cookie does not follow it to another host, and a cookie that expired or was deleted since the last send is not sent. Cookies written straight to `RawRequest` before the send are discarded; use `SetCookie`, a `Cookie` header or a [final request hook](./hooks.md#final-request-hooks).
+A cookie set on a request replaces a client cookie with the same name, and a client cookie replaces one from the [cookie jar](#cookie-jar). A cookie in a `Cookie` header set on the client or the request replaces a jar cookie with the same name as well. Cookies are selected anew each time a request is sent, so a `Request` that is sent again carries only what applies to its current URL: a jar cookie does not follow it to another host, and a cookie that expired or was deleted since the last send is not sent. Cookies written straight to `RawRequest` before the send are discarded; use `SetCookie`, a `Cookie` header or a [final request hook](./hooks.md#final-request-hooks).
 
 ### Cookie
 
@@ -917,7 +917,9 @@ func (c *Client) DelCookies(key ...string) *Client
 
 Sets a default timeout for all requests, which can be overridden per request. A new client has no timeout. When the timeout elapses, or the request's context is canceled, the request fails with `ErrTimeoutOrCancel`.
 
-The timeout, like a deadline on the request's context, bounds the whole call: every retry and redirect hop gets what is left of it, and the transport closes the connection when it passes, so a server that never answers leaves the client no open connection or goroutine once the call has failed. On a client from `New` it also bounds the TLS handshake, through the `ConfigureClient` hook of its `fasthttp` client (see [FasthttpClient](#fasthttpclient)); a `fasthttp` client passed to `NewWithClient`, `NewWithHostClient` or `NewWithLBClient` bounds the handshake only with its own `WriteTimeout`. A client from `NewWithLBClient` gives the transport `LBClient.Timeout` in place of this timeout, see [NewWithLBClient](#newwithlbclient). With [response streaming](#response-streaming) the deadline stays on the connection after the call returns and ends reads from `Response.BodyStream()`, as `Client.Timeout` does in `net/http`, so leave the timeout unset for a long-lived stream such as server-sent events. A context canceled without a deadline stops further retries and, on a client from `New`, closes the connection of a request already on the wire unless the response is streamed; see [SetContext](./request.md#setcontext).
+The timeout, like a deadline on the request's context, bounds the whole call: every retry and redirect hop gets what is left of it, and the transport closes the connection when it passes, so a server that never answers leaves the client no open connection or goroutine once the call has failed. A read of a request body set as a stream that is in progress is waited for first, see [SetContext](./request.md#setcontext). On a client from `New` it also bounds the TLS handshake, through the `ConfigureClient` hook of its `fasthttp` client (see [FasthttpClient](#fasthttpclient)); a `fasthttp` client passed to `NewWithClient`, `NewWithHostClient` or `NewWithLBClient` bounds the handshake only with its own `WriteTimeout`. The same hook gives up a connect of the built-in dialer after at most 3 seconds, `fasthttp`'s default, whatever is left of the timeout: that dialer allows 1000 connects in progress per process, and a host that never answers would otherwise hold one for the whole timeout. With [SetProxyURL](#setproxyurl) the timeout bounds the dial through the proxy as well: connecting to an `http` proxy and its answer to `CONNECT` each get what is left of it when the dial starts, connecting to a `socks5` proxy and its negotiation share it. A dial without a timeout, as for a request waiting for a free connection, gets 3 seconds the same way. A client from `NewWithLBClient` gives the transport `LBClient.Timeout` in place of this timeout, see [NewWithLBClient](#newwithlbclient). With [response streaming](#response-streaming) the deadline stays on the connection after the call returns and ends reads from `Response.BodyStream()`, as `Client.Timeout` does in `net/http`, so leave the timeout unset for a long-lived stream such as server-sent events. A context canceled without a deadline stops further retries and, on a client from `New`, closes the connection of a request already on the wire unless the response is streamed; see [SetContext](./request.md#setcontext).
+
+Neither the timeout nor the context ends what runs before the request is sent: the request hooks and the serialization of the body. A multipart file given as a reader ([AddFileWithReader](./request.md#addfilewithreader), `SetFileReader`) is read to its end there, so a reader that waits for its source, such as a stream from the network, holds its own call until the source ends or fails; give such a source a deadline of its own. The other requests of the client do not wait for it.
 
 ```go title="Signature"
 func (c *Client) SetTimeout(t time.Duration) *Client
@@ -971,7 +973,7 @@ func ReleaseCookieJar(c *CookieJar)
 
 ### CookieJar.Get
 
-**Get** returns the cookies that apply to a URI: the host and path match, `Secure` cookies are returned only for an `https` URI, and expired cookies are dropped. It returns `nil` when no cookie applies or the URI is `nil`. The jar keeps its own copies, so the returned cookies may be released with `fasthttp.ReleaseCookie`.
+**Get** returns the cookies that apply to a URI: the host and path match, `Secure` cookies are returned only for an `https` URI, and expired cookies are dropped. It returns `nil` when no cookie applies or the URI is `nil`. A host-only cookie is returned without a `Domain`, so it stays host-only when it is passed to [CookieJar.Set](#cookiejarset) or [CookieJar.SetByHost](#cookiejarsetbyhost). The jar keeps its own copies, so the returned cookies may be released with `fasthttp.ReleaseCookie`.
 
 ```go title="Signature"
 func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie
@@ -979,7 +981,7 @@ func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie
 
 ### CookieJar.Set
 
-**Set** stores copies of the cookies for the host of a URI, ignoring the port. A cookie without a usable `Path` is scoped to the default path of the URI (RFC 6265), so cookies set against `/a/b` apply to `/a` and below; set `Path` on the cookie to widen it. A cookie whose `Domain` the host may not set, such as an unrelated domain or a public suffix, is skipped. This and the other setters below also skip a cookie without a name, and whitespace around a name is not part of it.
+**Set** stores copies of the cookies for the host of a URI, ignoring the port. A cookie without a usable `Path` is scoped to the default path of the URI (RFC 6265), so cookies set against `/a/b` apply to `/a` and below; set `Path` on the cookie to widen it. A cookie whose `Domain` the host may not set, such as an unrelated domain, a public suffix or a domain above the host's registrable domain, is skipped. This and the other setters below also skip a cookie without a name, and whitespace around a name is not part of it.
 
 ```go title="Signature"
 func (cj *CookieJar) Set(uri *fasthttp.URI, cookies ...*fasthttp.Cookie)
@@ -1021,7 +1023,7 @@ func (cj *CookieJar) Release()
 
 ### SetDial
 
-Sets a custom dial function. Call it before the first request: [SetProxyURL](#setproxyurl) says when a new one reaches a host the client already uses.
+Sets a custom dial function. Call it before the first request: [SetProxyURL](#setproxyurl) says when a new one reaches a host the client already uses. `fasthttp` prefers a `DialTimeout` function to this one, so the one of the wrapped client, whether `SetProxyURL` or the application set it, is removed.
 
 ```go title="Signature"
 func (c *Client) SetDial(dial fasthttp.DialFunc) *Client
@@ -1051,7 +1053,7 @@ A client wraps one fasthttp client: the `fasthttp.Client` that `New` creates, or
 
 Returns the underlying `*fasthttp.Client`, or `nil` if the client was created from a `HostClient` or an `LBClient`.
 
-A client created by `New` bounds TLS handshakes through this client's `ConfigureClient` hook, which has one slot. A hook of your own, set before the first request, applies its settings first and then calls the hook that was there:
+A client created by `New` bounds dials and TLS handshakes through this client's `ConfigureClient` hook, which has one slot. A hook of your own, set before the first request, applies its settings first and then calls the hook that was there:
 
 ```go
 fc := client.FasthttpClient()
@@ -1061,6 +1063,8 @@ fc.ConfigureClient = func(hc *fasthttp.HostClient) error {
     return installed(hc)
 }
 ```
+
+The installed hook gives a host client without one a `DialTimeout`, which `fasthttp` prefers to `Dial`. It dials through a `Dial` your hook sets, before or after calling the installed hook, so that dialer is used either way.
 
 ```go title="Signature"
 func (c *Client) FasthttpClient() *fasthttp.Client

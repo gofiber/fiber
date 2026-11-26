@@ -986,9 +986,10 @@ func (c *DefaultCtx) release() {
 // the timeout middleware) and stays nil on the common request path, so requests
 // that are not abandoned pay no additional cost.
 type reclaimLatch struct {
-	releasedCh chan struct{} // closed once the request handler has released the ctx (event b)
-	once       sync.Once     // guards the close-exactly-once of releasedCh
-	owners     atomic.Int32  // reclaimers still waiting; the last one releases the ctx
+	releasedCh chan struct{}      // closed once the request handler has released the ctx (event b)
+	answer     *fasthttp.Response // the timeout response fasthttp held when the reclaim was armed
+	once       sync.Once          // guards the close-exactly-once of releasedCh
+	owners     atomic.Int32       // reclaimers still waiting; the last one releases the ctx
 }
 
 // Abandon marks this context as abandoned. An abandoned context will not be
@@ -1015,8 +1016,22 @@ func (c *DefaultCtx) IsAbandoned() bool {
 // This MUST only be called after all goroutines (including requestHandler and
 // ErrorHandler) have completely finished using this context. Calling it while
 // any goroutine is still running causes races.
+// It does nothing for a context that is not abandoned or whose reclaim ScheduleReclaim
+// armed: a second release would hand one context to two requests.
 func (c *DefaultCtx) ForceRelease() {
-	c.isAbandoned.Store(false)
+	// Read in the reverse of the order ScheduleReclaim writes them: a ctx seen abandoned by it shows its reclaim.
+	if !c.isAbandoned.Load() || c.reclaim.Load() != nil || !c.isAbandoned.CompareAndSwap(true, false) {
+		return
+	}
+	c.releaseAbandoned()
+}
+
+func (c *DefaultCtx) releaseAbandoned() {
+	// Promoted to a custom ctx, c is only its embedded DefaultCtx: pool the ctx the app built.
+	if c.handlerCtx != nil {
+		c.app.ReleaseCtx(c.handlerCtx)
+		return
+	}
 	c.app.ReleaseCtx(c)
 }
 
@@ -1041,18 +1056,18 @@ func (c *DefaultCtx) ForceRelease() {
 // This method calls Abandon internally, so callers do not need to call Abandon
 // separately. Calling Abandon before ScheduleReclaim is still safe (idempotent).
 func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context.CancelFunc) {
-	c.Abandon()
-
 	// Calls for one request share the latch, so the release signal reaches every
 	// reclaimer and only the last one to finish pools the ctx.
 	latch := c.reclaim.Load()
 	if latch == nil {
-		latch = &reclaimLatch{releasedCh: make(chan struct{})}
+		latch = &reclaimLatch{releasedCh: make(chan struct{}), answer: c.fasthttp.LastTimeoutErrorResponse()}
 		if !c.reclaim.CompareAndSwap(nil, latch) {
 			latch = c.reclaim.Load()
 		}
 	}
 	latch.owners.Add(1)
+	// Only once armed: a ForceRelease that sees the ctx abandoned must see the reclaim too.
+	c.Abandon()
 
 	go func() {
 		<-handlerDone
@@ -1061,9 +1076,29 @@ func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context
 		}
 		<-latch.releasedCh
 		if latch.owners.Add(-1) == 0 {
-			c.ForceRelease()
+			fctx := c.fasthttp
+			if fctx != nil && fctx.LastTimeoutErrorResponse() != latch.answer {
+				// A fasthttp handler gave up on the request since and still runs on it: leave both to the GC.
+				return
+			}
+			c.isAbandoned.Store(false)
+			c.releaseAbandoned()
+			// After pooling: a value's Close may wait for a goroutine the handler left behind.
+			closeTimedOutRequest(fctx)
 		}
 	}()
+}
+
+// closeTimedOutRequest closes what a request fasthttp answered with a timeout response left open, as the reset
+// fasthttp never runs on it would: the response body stream, io.Closer user values and multipart temp files.
+func closeTimedOutRequest(fctx *fasthttp.RequestCtx) {
+	if fctx == nil || fctx.LastTimeoutErrorResponse() == nil {
+		return
+	}
+	_ = fctx.Response.CloseBodyStream() //nolint:errcheck // the response is never sent
+	// Cleared too: a Close may pool its value for another request.
+	fctx.ResetUserValues()
+	fctx.Request.RemoveMultipartFormFiles()
 }
 
 // signalReleased records that the request handler is done touching an abandoned,

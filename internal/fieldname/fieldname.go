@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"iter"
 	"math"
+	"net/textproto"
 	"slices"
 
 	"github.com/gofiber/fiber/v3/internal/headerlist"
@@ -364,6 +365,108 @@ func KeepReceivedOrder(h *fasthttp.RequestHeader, raw []byte, match func(name []
 		}
 	}
 	return true
+}
+
+// OrderValues is KeepReceivedOrder for a net/http header, and a bridge like it until fasthttp's Del keeps the order:
+// each repeated name's values go back in the order raw, the block from Received, holds their lines, and a value raw
+// lacks follows them.
+func OrderValues(raw []byte, values map[string][]string) {
+	if len(raw) == 0 || inReceivedOrder(raw, values) {
+		return
+	}
+	type line struct{ name, value string }
+	type stored struct {
+		name     string
+		vals     []string
+		received int
+	}
+	var lines map[line]*stored
+	for name, vals := range values {
+		if len(vals) < 2 {
+			continue
+		}
+		if lines == nil {
+			lines = make(map[line]*stored)
+		}
+		for _, v := range vals {
+			// Trimmed: a value net/http read off HTTP/2 keeps the edge whitespace its received line drops.
+			l := line{name: name, value: headerlist.TrimOWS(v)}
+			s := lines[l]
+			if s == nil {
+				s = &stored{name: name}
+				lines[l] = s
+			}
+			s.vals = append(s.vals, v)
+		}
+	}
+	if lines == nil {
+		return
+	}
+
+	ordered := make(map[string][]string)
+	visitReceived(raw, func(k, v []byte) {
+		l := line{name: textproto.CanonicalMIMEHeaderKey(utils.UnsafeString(k)), value: utils.UnsafeString(v)}
+		if s := lines[l]; s != nil && s.received < len(s.vals) {
+			ordered[s.name] = append(ordered[s.name], s.vals[s.received])
+			s.received++
+		}
+	})
+	for name, vals := range values {
+		if len(vals) < 2 {
+			continue
+		}
+		order := ordered[name]
+		for _, v := range vals {
+			// The first values of a line are the ones its received lines took.
+			if s := lines[line{name: name, value: headerlist.TrimOWS(v)}]; s.received > 0 {
+				s.received--
+				continue
+			}
+			order = append(order, v)
+		}
+		copy(vals, order)
+	}
+}
+
+// inReceivedOrder reports whether the values of each repeated name already follow raw, as they do unless the store
+// was changed, so OrderValues can skip its lookup tables. More than four repeated names are left to them.
+func inReceivedOrder(raw []byte, values map[string][]string) bool {
+	var repeated [4]struct {
+		name string
+		vals []string
+		next int
+	}
+	n := 0
+	for name, vals := range values {
+		if len(vals) < 2 {
+			continue
+		}
+		if n == len(repeated) {
+			return false
+		}
+		repeated[n].name, repeated[n].vals = name, vals
+		n++
+	}
+	if n == 0 {
+		return true
+	}
+	ordered := true
+	visitReceived(raw, func(k, v []byte) {
+		for i := range repeated[:n] {
+			r := &repeated[i]
+			if !utils.EqualFold(utils.UnsafeString(k), r.name) {
+				continue
+			}
+			// A spelling net/http canonicalized, or a line out of turn, is left to the lookup.
+			if string(k) != r.name || r.next == len(r.vals) || headerlist.TrimOWS(r.vals[r.next]) != utils.UnsafeString(v) {
+				ordered = false
+			} else {
+				r.next++
+			}
+			return
+		}
+	})
+	return ordered
 }
 
 // rankReceived ranks the stored lines by the received lines they equal, walking the received block once.

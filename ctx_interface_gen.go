@@ -238,7 +238,10 @@ type Ctx interface {
 	// This MUST only be called after all goroutines (including requestHandler and
 	// ErrorHandler) have completely finished using this context. Calling it while
 	// any goroutine is still running causes races.
+	// It does nothing for a context that is not abandoned or whose reclaim ScheduleReclaim
+	// armed: a second release would hand one context to two requests.
 	ForceRelease()
+	releaseAbandoned()
 	// ScheduleReclaim arms automatic reclamation of an abandoned context, returning
 	// it to the pool once it is safe to do so.
 	//

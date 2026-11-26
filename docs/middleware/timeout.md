@@ -16,12 +16,14 @@ handler to finish. This is achieved through Fiber's **Abandon mechanism**:
 1. The handler runs in a goroutine with a timeout context
 2. On timeout, the middleware marks the context as "abandoned" and returns `503` immediately
 3. The handler goroutine can continue safely (e.g., for cleanup) without blocking the response
-4. A background cleanup goroutine waits for the handler to finish and performs context cleanup
+4. A background cleanup goroutine waits for the handler to finish, returns the context to the pool and closes what the request left open (a response body stream, multipart temp files), and removes its `Locals`, closing those that implement `io.Closer`
 
 Handlers can detect the timeout by listening on `c.Context().Done()` and return early.
 This is the recommended pattern for cooperative cancellation.
 
 The timeout response to a `HEAD` request carries no body, on the default path and the `OnTimeout` path alike.
+
+The timeout response is sent with `Connection: close`, and the connection is closed after it: the timed-out handler still holds the connection and may write to it, as `c.End()` or a hijacking `net/http` handler does, which must not answer the next request on it. Behind `adaptor.FiberHandler`, `FiberHandlerFunc` or `FiberApp`, `net/http` closes an HTTP/1.x connection and shuts an HTTP/2 connection down gracefully.
 
 If a handler panics, the middleware catches it and returns `500 Internal Server Error`. So does a panic in `OnTimeout` once the deadline has passed.
 
@@ -44,19 +46,31 @@ timeout.Config{
 
 - The timed-out handler keeps running in its own goroutine while the middleware returns `fiber.ErrServiceUnavailable` (or runs `OnTimeout`). A handler must stop using the context once `c.Context()` is done: the client never receives what it writes after that, and middleware registered before the timeout that uses the request or the response after `c.Next()` races with it, since even fasthttp's reads change state the two share. `c.IsAbandoned()` reports such a request.
 
-- When the deadline passes while the handler still runs, `OnTimeout` runs on a context of its own, so the timed-out handler cannot change the response it writes. That context carries the request, its locals, `c.Context()` and the response headers as they were when the handler started, but neither the request body nor the matched route: `c.Body()` is empty, `c.Params` returns the default value, and `c.Next()` is not available there (calling it answers `500`).
+- When the deadline passes while the handler still runs, `OnTimeout` runs on a context of its own, so the timed-out handler cannot change the response it writes. That context carries the request, its locals, `c.Context()` and the response headers as they were when the handler started, but neither the request body nor the matched route: `c.Body()` is empty, `c.Params` returns the default value, and `c.Next()` is not available there (calling it answers `500`). The response does not go back through the middleware in front either; the [encryptcookie](./encryptcookie.md) middleware still encrypts its cookies, and should its `Encryptor` panic there, the response is a `500` without cookies.
+
+- After the deadline, `OnTimeout` has to buffer the response it writes. A body stream it sets, as `c.SendStream`, `c.SendStreamWriter` or `c.SendFile` do, is closed without being sent: under status `200` the default `503` response takes its place, under any other status the response goes out with that status and no body.
 
 - When `OnTimeout` writes the response and returns `nil` while the handler still runs, the middleware returns `fiber.ErrServiceUnavailable` instead, so middleware registered before it that skips its work on an error, such as `compress`, `etag` or `cache`, leaves the response to the timed-out handler. The client receives the response `OnTimeout` wrote.
 
 - The error is returned to the outer middleware, but the app's `ErrorHandler` is not run for a timed-out request: fasthttp already holds the response it will send, so the handler could not change it, and the timed-out handler may still be writing to the context.
 
 - Timed-out requests abandon their `fiber.Ctx` to avoid data races with the core
-  request handler. A `*fiber.DefaultCtx` is reclaimed once both the timed-out
-  handler has finished and Fiber has released the context, so it does return to
-  the pool. A **custom `Ctx` implementation** has no such wiring: its context
-  stays out of the pool, and each timed-out request leaks one. Calling
-  `ForceRelease` yourself is only safe if you can guarantee that no goroutine
-  (including Fiber internals) will touch the context anymore.
+  request handler. The context, a custom `Ctx` implementation included, is
+  reclaimed once both the timed-out handler has finished and Fiber has released
+  the context, so it does return to the pool. Calling `ForceRelease` yourself on
+  such a context does nothing, so an application that released timed-out
+  contexts itself does not release them a second time. `ForceRelease` is for a
+  context you abandoned yourself, once you can guarantee that no goroutine
+  (including Fiber internals) will touch it anymore.
+
+- A fasthttp route handler behind the middleware that answered with a timeout
+  response of its own (`fasthttp.TimeoutHandler`, `ctx.TimeoutError`) may still
+  run on the request, so the middleware leaves the request and the context to
+  the garbage collector, as fasthttp leaves the request. If the handler answered
+  first, `OnTimeout` included, the client receives its response and the
+  middleware returns a `*fiber.Error` with its status. Give such a handler a
+  shorter timeout than the middleware: one that answers after the middleware
+  writes to a request fasthttp has already given up on.
 
 :::caution
 `timeout.New` wraps your final handler, so register it per route rather than

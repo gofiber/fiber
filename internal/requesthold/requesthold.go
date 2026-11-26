@@ -24,6 +24,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
@@ -77,7 +78,7 @@ func first(ctx *fasthttp.RequestCtx, hd *hold) {
 }
 
 // NewFastHTTPHandler is fasthttpadaptor.NewFastHTTPHandler(h) that does not let the RequestCtx be reused
-// while h still runs.
+// while h still runs, and hands h the lines of a repeated header in the order they were received.
 func NewFastHTTPHandler(h http.Handler) fasthttp.RequestHandler {
 	adapted := fasthttpadaptor.NewFastHTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// r.Context() is the RequestCtx, and Value its user values.
@@ -88,6 +89,10 @@ func NewFastHTTPHandler(h http.Handler) fasthttp.RequestHandler {
 				hd.running.Add(-1)
 				hd.wg.Done()
 			}()
+		}
+		// r.Header was filled from the store, where a removed line leaves the last one in its slot.
+		if ctx, ok := r.Context().(*fasthttp.RequestCtx); ok {
+			fieldname.OrderValues(fieldname.Received(&ctx.Request), r.Header)
 		}
 		h.ServeHTTP(w, r)
 	}))

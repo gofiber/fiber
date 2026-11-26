@@ -59,17 +59,19 @@ type customLoggerWriter[T any] struct {
 
 // Write implements io.Writer and forwards the payload to the configured logger.
 func (cl *customLoggerWriter[T]) Write(p []byte) (int, error) {
+	// A copy: p is a pooled buffer the next request writes over, and a logger may keep the message.
+	msg := string(p)
 	switch cl.level {
 	case fiberlog.LevelTrace:
-		cl.loggerInstance.Trace(utils.UnsafeString(p))
+		cl.loggerInstance.Trace(msg)
 	case fiberlog.LevelDebug:
-		cl.loggerInstance.Debug(utils.UnsafeString(p))
+		cl.loggerInstance.Debug(msg)
 	case fiberlog.LevelInfo:
-		cl.loggerInstance.Info(utils.UnsafeString(p))
+		cl.loggerInstance.Info(msg)
 	case fiberlog.LevelWarn:
-		cl.loggerInstance.Warn(utils.UnsafeString(p))
+		cl.loggerInstance.Warn(msg)
 	case fiberlog.LevelError:
-		cl.loggerInstance.Error(utils.UnsafeString(p))
+		cl.loggerInstance.Error(msg)
 	default:
 		return 0, nil
 	}
@@ -115,9 +117,33 @@ func bufferBodyStream(c fiber.Ctx) error {
 	return bodystream.Buffer(req, c.App().Server().MaxRequestBodySize)
 }
 
-// writeSanitizedString is writeSanitized for strings.
+// writeSanitizedString is writeSanitized for strings. It also escapes `"` and `\`, so a value cannot end a
+// quoted field of the format, as in CombinedFormat or JSONFormat.
 func writeSanitizedString(output Buffer, s string) (int, error) {
-	return logtemplate.WriteSanitizedString(output, s)
+	idx := utils.IndexNonQuotable(s)
+	if idx == -1 {
+		return output.WriteString(s)
+	}
+	return writeEscaped(output, s, idx)
+}
+
+// writeEscaped is the slow path of writeSanitizedString from idx, the first byte to replace; split out so the
+// clean path carries no defer.
+func writeEscaped(output Buffer, s string, idx int) (int, error) {
+	b := bytebufferpool.Get()
+	defer bytebufferpool.Put(b)
+	b.B = append(b.B, s[:idx]...)
+	for i := idx; i < len(s); i++ {
+		switch ch := s[i]; {
+		case ch == '"' || ch == '\\':
+			b.B = append(b.B, '\\', ch)
+		case logtemplate.IsControlByte(ch):
+			b.B = append(b.B, ' ')
+		default:
+			b.B = append(b.B, ch)
+		}
+	}
+	return output.Write(b.B)
 }
 
 // writeColored writes value between the two color escapes. Both the sequences
@@ -171,8 +197,8 @@ func writeSanitizedColored(output Buffer, color, value, reset string) (int, erro
 }
 
 // SanitizeValue returns s with ASCII control bytes replaced by spaces,
-// preserving horizontal tab. It is the same scrubbing the built-in tags apply
-// to request-derived values, exported so that code taking one of the paths
+// preserving horizontal tab. It is the control-byte scrubbing the built-in tags
+// apply to request-derived values, exported so that code taking one of the paths
 // that bypasses those tags can apply it too:
 //
 //   - a tag registered with RegisterTag, MustRegisterTag or RegisterContextTag
@@ -222,5 +248,5 @@ func writeSanitizedValue(output Buffer, v any) (int, error) {
 	// a nil error. The error that matters — a failed write to output — is the
 	// one returned below.
 	fmt.Fprintf(b, "%v", v)
-	return writeSanitized(output, b.B)
+	return writeSanitizedString(output, utils.UnsafeString(b.B))
 }

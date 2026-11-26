@@ -32,6 +32,13 @@ type timeoutAnswerKey struct{}
 // answers a request that timed out.
 var TimeoutAnswerKey any = timeoutAnswerKey{}
 
+type timeoutHeaderKey struct{}
+
+// TimeoutHeaderKey is the request local under which a middleware in front of timeout.New leaves a
+// func(*fasthttp.ResponseHeader) error that timeout.New runs on the response OnTimeout writes, which does not
+// come back through that middleware.
+var TimeoutHeaderKey any = timeoutHeaderKey{}
+
 // Outcome is what Serve did with a request, and so the answer its caller gives when the handler did not run.
 type Outcome uint8
 
