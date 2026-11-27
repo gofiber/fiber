@@ -1,19 +1,18 @@
 package proxy
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
 func Test_JoinUpstreamPath_QueryMerge(t *testing.T) {
 	t.Parallel()
-
 	baseWithQuery, err := url.Parse("http://upstream.example/api?apiKey=secret")
 	require.NoError(t, err)
 
@@ -39,6 +38,7 @@ func Test_JoinUpstreamPath_QueryMerge(t *testing.T) {
 	})
 }
 
+// conventions:ignore parallel: mutates package-global security policy via WithSecurityPolicy
 func Test_DomainForward_UpstreamQueryMerge(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(r.URL.RequestURI()))
@@ -59,18 +59,14 @@ func Test_DomainForward_UpstreamQueryMerge(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "http://api.example.com/items", http.NoBody)
 		resp, err := app.Test(req)
 		require.NoError(t, err)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, "/api/items?apiKey=secret", string(body))
+		body := apptest.Body(t, resp)
+		require.Equal(t, "/api/items?apiKey=secret", body)
 
 		reqWithQuery := httptest.NewRequest(http.MethodGet, "http://api.example.com/items?filter=active", http.NoBody)
 		resp2, err := app.Test(reqWithQuery)
 		require.NoError(t, err)
-		body2, err := io.ReadAll(resp2.Body)
-		require.NoError(t, err)
-		require.NoError(t, resp2.Body.Close())
-		require.Equal(t, "/api/items?apiKey=secret&filter=active", string(body2))
+		body2 := apptest.Body(t, resp2)
+		require.Equal(t, "/api/items?apiKey=secret&filter=active", body2)
 	})
 
 	t.Run("DisableQueryMerge replaces upstream query with client query", func(t *testing.T) {
@@ -86,21 +82,18 @@ func Test_DomainForward_UpstreamQueryMerge(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "http://api.example.com/items", http.NoBody)
 		resp, err := app.Test(req)
 		require.NoError(t, err)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, "/api/items", string(body))
+		body := apptest.Body(t, resp)
+		require.Equal(t, "/api/items", body)
 
 		reqWithQuery := httptest.NewRequest(http.MethodGet, "http://api.example.com/items?filter=active", http.NoBody)
 		resp2, err := app.Test(reqWithQuery)
 		require.NoError(t, err)
-		body2, err := io.ReadAll(resp2.Body)
-		require.NoError(t, err)
-		require.NoError(t, resp2.Body.Close())
-		require.Equal(t, "/api/items?filter=active", string(body2))
+		body2 := apptest.Body(t, resp2)
+		require.Equal(t, "/api/items?filter=active", body2)
 	})
 }
 
+// conventions:ignore parallel: mutates package-global security policy via WithSecurityPolicy
 func Test_BalancerForward_UpstreamQueryMerge(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(r.URL.RequestURI()))
@@ -121,10 +114,8 @@ func Test_BalancerForward_UpstreamQueryMerge(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/orders?status=open", http.NoBody)
 		resp, err := app.Test(req)
 		require.NoError(t, err)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, "/v1/orders?tenant=acme&status=open", string(body))
+		body := apptest.Body(t, resp)
+		require.Equal(t, "/v1/orders?tenant=acme&status=open", body)
 	})
 
 	t.Run("DisableQueryMerge replaces upstream query with client query", func(t *testing.T) {
@@ -140,9 +131,7 @@ func Test_BalancerForward_UpstreamQueryMerge(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/orders?status=open", http.NoBody)
 		resp, err := app.Test(req)
 		require.NoError(t, err)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.NoError(t, resp.Body.Close())
-		require.Equal(t, "/v1/orders?status=open", string(body))
+		body := apptest.Body(t, resp)
+		require.Equal(t, "/v1/orders?status=open", body)
 	})
 }
