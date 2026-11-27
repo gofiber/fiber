@@ -471,16 +471,21 @@ func (s *Session) refresh() {
 	s.recache(old)
 }
 
-// valuesMu serializes what this package writes to the values of a request from a
-// goroutine that need not be the one serving it: the new ID that Regenerate and Reset
-// cache there, the entry that ends the request for the session of an unwound
-// middleware, and the marks a cache reads (the header a session ID travels in, and a
-// response that holds the session). fasthttp appends to those values without a lock,
-// so of two such writes at once one is lost: a session whose entry is lost is never
-// told that its request ended, and a lost mark lets the cache store the response. Two
-// sessions of a request have a lock each for their own writes (reqMu), which is why
-// this one is shared; nothing but those writes is done under it. What the application
-// writes to the same values from a goroutine of its own is not covered.
+// valuesMu serializes what this package writes to the values of a request. Some of those
+// writes come from a goroutine that need not be the one serving it: the new ID that
+// Regenerate and Reset cache there, the entry that ends the request for the session of
+// an unwound middleware, and the marks a cache reads (the header a session ID travels
+// in, and a response that holds the session). The writes of the goroutine serving the
+// request take it too, or they would race those: the session ID and the middleware that
+// the session middleware stores, clears and restores, the context it shadows, and the ID
+// that Store.Get caches. fasthttp appends to those values without a lock, so of two
+// writes at once one is lost: a session whose entry is lost is never told that its
+// request ended, a lost mark lets the cache store the response, and a lost session ID or
+// middleware breaks the lookup of the session. Two sessions of a request have a lock each
+// for their own writes (reqMu), which is why this one is shared; nothing but those
+// writes, and the reads that go with them, is done under it, so it is taken under the
+// lock of a session, a middleware or a storage shard, never around one. What Fiber and
+// the application read or write in the same values is not covered.
 var valuesMu sync.Mutex
 
 // recache tells the request of the session that its ID is no longer old: a store that is

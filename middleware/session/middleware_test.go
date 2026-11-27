@@ -2741,6 +2741,39 @@ func Test_Session_WritesToTheValuesOfARequestWaitForEachOther(t *testing.T) {
 			sess := mustGet(t, NewStore(Config{Extractor: extractors.FromHeader("X-Session-ID")}), c)
 			return func() { assert.NoError(t, sess.Save()) }, func() bool { return personalheader.Marked(c.RequestCtx()) != nil }
 		},
+		"the middleware a session middleware stores": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			m := startMiddleware(t, c, NewStore())
+			clearMiddlewareLocals(c)
+			return func() { storeMiddlewareContext(c, m.Session, m) }, func() bool { return FromContext(c) == m }
+		},
+		"the outer middleware a nested one restores": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			outer := startMiddleware(t, c, NewStore())
+			clearMiddlewareLocals(c)
+			return func() { restoreMiddlewareContext(c, outer) }, func() bool { return FromContext(c) == outer }
+		},
+		"the middleware a session middleware clears": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			startMiddleware(t, c, NewStore())
+			return func() { clearMiddlewareLocals(c) }, func() bool { return FromContext(c) == nil }
+		},
+		"the context a session middleware shadows": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			shadowed := func() bool {
+				_, ok := c.Context().(shadowedContext)
+				return ok
+			}
+			return func() { shadowMiddlewareContext(c) }, shadowed
+		},
+		// The write itself: the rest of Store.Get reads the request as Fiber does, and its extractors write
+		// there without the lock of this package.
+		"the ID a Store.Get caches": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			store := NewStore()
+			record := func() { cacheNewID(c, store, &sessionIdentity{id: "session-id"}) }
+			return record, func() bool { return requestIDs(c).of(store) != nil }
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
