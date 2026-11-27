@@ -1275,7 +1275,6 @@ func Test_SetValWithStruct(t *testing.T) {
 
 func Test_SetValWithStruct_Float32(t *testing.T) {
 	t.Parallel()
-
 	req := AcquireRequest()
 	defer ReleaseRequest(req)
 
