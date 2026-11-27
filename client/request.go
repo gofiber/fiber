@@ -1193,9 +1193,9 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 			p.Add(name, utils.FormatUint(val.Uint()))
 		case reflect.Float32, reflect.Float64:
-			p.Add(name, strconv.FormatFloat(val.Float(), 'f', -1, 64))
+			p.Add(name, strconv.FormatFloat(val.Float(), 'f', -1, val.Type().Bits()))
 		case reflect.Complex64, reflect.Complex128:
-			p.Add(name, strconv.FormatComplex(val.Complex(), 'f', -1, 128))
+			p.Add(name, strconv.FormatComplex(val.Complex(), 'f', -1, val.Type().Bits()))
 		case reflect.Bool:
 			if val.Bool() {
 				p.Add(name, "true")

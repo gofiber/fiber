@@ -1273,6 +1273,24 @@ func Test_SetValWithStruct(t *testing.T) {
 	})
 }
 
+func Test_SetValWithStruct_Float32(t *testing.T) {
+	t.Parallel()
+	req := AcquireRequest()
+	defer ReleaseRequest(req)
+
+	req.SetParamsWithStruct(struct {
+		FS []float32 `param:"fs"`
+		F  float32   `param:"f"`
+		C  complex64 `param:"c"`
+		D  float64   `param:"d"`
+	}{FS: []float32{1.1, 2.2}, F: 0.1, C: complex(0.1, 0.2), D: 0.1})
+
+	require.Equal(t, []string{"0.1"}, req.Param("f"))
+	require.Equal(t, []string{"(0.1+0.2i)"}, req.Param("c"))
+	require.Equal(t, []string{"1.1", "2.2"}, req.Param("fs"))
+	require.Equal(t, []string{"0.1"}, req.Param("d"))
+}
+
 func Benchmark_SetValWithStruct(b *testing.B) {
 	type args = clientTestBStructArgs
 
