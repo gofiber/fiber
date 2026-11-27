@@ -552,6 +552,7 @@ import (
     "log"
 
     "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/static"
 )
 
 func main() {
