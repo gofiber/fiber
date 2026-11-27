@@ -254,7 +254,7 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 		// the next store that is asked, which could not find it there, and which record
 		// the session took the place of, for the next session of this store.
 		ident := sess.identityLocked()
-		cacheID(c, s, &ident)
+		cacheNewID(c, s, &ident)
 	}
 	return sess, err
 }
@@ -902,7 +902,7 @@ func requestIDs(c fiber.Ctx) *cachedID {
 // buffer of the request, which the application can rewrite, so the entry keeps a copy.
 // The entry s had is reused as the new head, so that the list, which fasthttp reclaims
 // from its head, stays in one piece: overwriting the local with an entry that does not
-// lead to the old ones would strand them outside the pool.
+// lead to the old ones would strand them outside the pool. The caller holds valuesMu.
 func cacheID(c fiber.Ctx, s *Store, ident *sessionIdentity) {
 	head := requestIDs(c)
 	var entry *cachedID
@@ -924,9 +924,17 @@ func cacheID(c fiber.Ctx, s *Store, ident *sessionIdentity) {
 	ctxlocal.Set(c, sessionIDContextKey, ident.id)
 }
 
+// cacheNewID is cacheID for a caller that does not hold valuesMu, as Store.Get does not.
+func cacheNewID(c fiber.Ctx, s *Store, ident *sessionIdentity) {
+	valuesMu.Lock()
+	defer valuesMu.Unlock()
+	cacheID(c, s, ident)
+}
+
 // recacheID records that the session of s that had the ID old has the identity ident
 // now, which Regenerate and Reset give it, unless s has cached the ID of another session
-// since: a session of the store that was never saved must not hide one that was.
+// since: a session of the store that was never saved must not hide one that was. The
+// caller holds valuesMu.
 func recacheID(c fiber.Ctx, s *Store, old string, ident *sessionIdentity) {
 	if entry := requestIDs(c).of(s); entry != nil && entry.id != old {
 		return

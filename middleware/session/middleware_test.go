@@ -1294,6 +1294,58 @@ func Test_Session_Middleware_UnsavedSessionIsNotCached(t *testing.T) {
 	require.Equal(t, "hello <nil>", apptest.Body(t, second))
 }
 
+// When the storage cannot load the session the request names, the response goes out without the cookie,
+// and an ErrorHandler that only logs leaves it an empty 200: the mark keeps it out of the cache, which
+// would otherwise serve it to every client in place of the page.
+func Test_Session_Middleware_FailedLoadIsNotCached(t *testing.T) {
+	t.Parallel()
+	mem := storagetest.New()
+	mem.SetErr(storagetest.OpGet, "*", errors.New("boom"))
+	app := fiber.New()
+	app.Use(cache.New())
+	app.Use(New(Config{Storage: mem, ErrorHandler: func(fiber.Ctx, error) {}}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("page") })
+
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderCookie, "session_id=abc"))
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
+	require.Empty(t, resp.Header.Get(fiber.HeaderSetCookie))
+	require.Equal(t, "unreachable", resp.Header.Get("X-Cache"), "the cache stored the page of a failed load")
+	require.Equal(t, "page", apptest.Body(t, apptest.Do(t, app, "/")), "a client without the cookie got the error page")
+}
+
+// A destroy that fails sends no cookie, and the middleware does not save a destroyed session: the
+// response is marked instead, so the cache in front does not hand the page to other clients.
+func Test_Session_Middleware_FailedDestroyIsNotCached(t *testing.T) {
+	t.Parallel()
+	errBoom := errors.New("boom")
+	mem := storagetest.New()
+	sessHandler, store := NewWithStore(Config{Storage: mem})
+	destroyed := make(chan error, 1)
+	app := fiber.New()
+	app.Use(cache.New())
+	app.Use(sessHandler)
+	app.Get("/", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		user := sess.Get("user")
+		if user != nil {
+			mem.SetErr(storagetest.OpDelete, "*", errBoom)
+			destroyed <- sess.Destroy()
+		}
+		return c.SendString(fmt.Sprint("hello ", user))
+	})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
+
+	first := apptest.Do(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderCookie, "session_id="+id)))
+	require.ErrorIs(t, apptest.Recv(t, destroyed, 5*time.Second), errBoom)
+	require.Equal(t, "hello alice", apptest.Body(t, first))
+	require.Empty(t, first.Cookies())
+
+	mem.ClearErrs()
+	second := apptest.Do(t, app, "/")
+	require.NotEqual(t, "hit", second.Header.Get("X-Cache"))
+	require.Equal(t, "hello <nil>", apptest.Body(t, second))
+}
+
 // The header sinks of a store are the names it marks as one client's.
 func Test_Session_Store_MarksOnlyItsHeaderSinks(t *testing.T) {
 	t.Parallel()
@@ -2683,6 +2735,44 @@ func Test_Session_WritesToTheValuesOfARequestWaitForEachOther(t *testing.T) {
 				sess.markPersonal()
 			}
 			return mark, func() bool { return personalheader.ResponseMarked(c.RequestCtx()) }
+		},
+		"the header names a save marks": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			sess := mustGet(t, NewStore(Config{Extractor: extractors.FromHeader("X-Session-ID")}), c)
+			return func() { assert.NoError(t, sess.Save()) }, func() bool { return personalheader.Marked(c.RequestCtx()) != nil }
+		},
+		"the middleware a session middleware stores": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			m := startMiddleware(t, c, NewStore())
+			clearMiddlewareLocals(c)
+			return func() { storeMiddlewareContext(c, m.Session, m) }, func() bool { return FromContext(c) == m }
+		},
+		"the outer middleware a nested one restores": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			outer := startMiddleware(t, c, NewStore())
+			clearMiddlewareLocals(c)
+			return func() { restoreMiddlewareContext(c, outer) }, func() bool { return FromContext(c) == outer }
+		},
+		"the middleware a session middleware clears": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			startMiddleware(t, c, NewStore())
+			return func() { clearMiddlewareLocals(c) }, func() bool { return FromContext(c) == nil }
+		},
+		"the context a session middleware shadows": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			shadowed := func() bool {
+				_, ok := c.Context().(shadowedContext)
+				return ok
+			}
+			return func() { shadowMiddlewareContext(c) }, shadowed
+		},
+		// The write itself: the rest of Store.Get reads the request as Fiber does, and its extractors write
+		// there without the lock of this package.
+		"the ID a Store.Get caches": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			store := NewStore()
+			record := func() { cacheNewID(c, store, &sessionIdentity{id: "session-id"}) }
+			return record, func() bool { return requestIDs(c).of(store) != nil }
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

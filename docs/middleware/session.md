@@ -276,7 +276,7 @@ app.Post("/login", func(c fiber.Ctx) error {
 | `Reset()` | ✅ Changes | ❌ Cleared | Logout, security breach |
 | `Destroy()` | ⚪ Unchanged, cookie expired; a later `Save()` issues a new one | ❌ Cleared | End the session without issuing a new ID |
 
-These methods, `store.Delete` and `store.Reset` also hold against other requests of the same session that are still running: a request that loaded the session before its ID was deleted neither stores it again nor sends its cookie when it finishes, takes the ID an earlier save of its own put in the response back off, and its changes to the session are dropped. This holds when that request calls `Regenerate()` as well: the ID still changes, so the old one is never written again, but the new one is neither stored nor sent. `Regenerate()` of a stored session stores it under the new ID at once, one more storage write, so a `store.Delete` of the new ID or a `store.Reset` while the request still runs holds too. A `Save()` after `Destroy()` stores the session under a new ID with a new absolute deadline, so the destroyed ID is never written again. A later `Save()` of a session the request stored itself does not store it again once `store.Delete` or `store.Reset` removed it. Of two requests that rotate one session at the same time, only the first stores and sends a new ID, and a login that rotates a session a parallel logout just ended is dropped too. A request that left the session unchanged does not write it back over a change another request stored meanwhile, so a role taken away while it ran stays taken away; reading a value, also one it could change in place such as a slice or a map, does not count as a change, and neither does the CSRF middleware behind the session middleware finding its token still fresh, or handing that token out again to a safe request that comes without the CSRF cookie. That holds when such a request calls `Regenerate()` too: the rotated session carries the change the other request stored, not the snapshot this one loaded. Of two requests that both change the session with `Set`, `Delete` or `Reset`, the one that saves last stores its whole session. This is guaranteed within one process. Processes that share an external `Storage` are not coordinated, because `fiber.Storage` has no conditional write, so a request still running on another instance can store a session it loaded before the delete. Where a logout must hold across instances, also keep a server-side revocation marker (for example, a per-user "sessions valid after" timestamp) that every request checks.
+These methods, `store.Delete` and `store.Reset` also hold against other requests of the same session that are still running: a request that loaded the session before its ID was deleted neither stores it again nor sends its cookie when it finishes, takes the ID an earlier save of its own put in the response back off, and its changes to the session are dropped. This holds when that request calls `Regenerate()` as well: the ID still changes, so the old one is never written again, but the new one is neither stored nor sent. Either way its response is marked, so the [Cache](./cache.md) middleware registered before this one does not store a page built from that session, unless the response says `Cache-Control: public` or `s-maxage`. `Regenerate()` of a stored session stores it under the new ID at once, one more storage write, so a `store.Delete` of the new ID or a `store.Reset` while the request still runs holds too. A `Save()` after `Destroy()` stores the session under a new ID with a new absolute deadline, so the destroyed ID is never written again. A later `Save()` of a session the request stored itself does not store it again once `store.Delete` or `store.Reset` removed it. Of two requests that rotate one session at the same time, only the first stores and sends a new ID, and a login that rotates a session a parallel logout just ended is dropped too. A request that left the session unchanged does not write it back over a change another request stored meanwhile, so a role taken away while it ran stays taken away; reading a value, also one it could change in place such as a slice or a map, does not count as a change, and neither does the CSRF middleware behind the session middleware finding its token still fresh, or handing that token out again to a safe request that comes without the CSRF cookie. That holds when such a request calls `Regenerate()` too: the rotated session carries the change the other request stored, not the snapshot this one loaded. Of two requests that both change the session with `Set`, `Delete` or `Reset`, the one that saves last stores its whole session. This is guaranteed within one process. Processes that share an external `Storage` are not coordinated, because `fiber.Storage` has no conditional write, so a request still running on another instance can store a session it loaded before the delete. Where a logout must hold across instances, also keep a server-side revocation marker (for example, a per-user "sessions valid after" timestamp) that every request checks.
 
 `Regenerate()` and `Reset()` also tell the request about the new ID, so a store that is asked again with `store.Get(c)` finds the session under it once it is saved. Like `Save()`, they use the request of the session: call them from the goroutine that serves the request, not from one of your own. `Regenerate()` stores a loaded session under its new ID at once, so a request that never saves it, such as one the `timeout` middleware gave up on, leaves that record behind until its idle timeout, under an ID no client was sent. If that store fails, `Regenerate()` still moves the session to the new ID, and the save stores it there.
 
@@ -308,6 +308,33 @@ app.Post("/login", func(c fiber.Ctx) error {
     return c.Redirect().To("/dashboard")
 })
 ```
+
+❌ **Caching pages built from the session:**
+
+```go
+// DANGEROUS: the cache runs inside the session middleware, so it stores the page
+// before the session cookie is written and serves it to every client
+app.Use(session.New())
+app.Use(cache.New())
+
+app.Get("/account", func(c fiber.Ctx) error {
+    sess := session.FromContext(c)
+    return c.SendString(fmt.Sprintf("Signed in as %v", sess.Get("user_id")))
+})
+```
+
+✅ **Secure Implementation:**
+
+```go
+// SECURE: register the cache first, so it sees the cookie the session middleware
+// writes and does not store a response that sets one (unless the response says
+// Cache-Control: public or s-maxage), and key it by the session cookie, so a page
+// stored for one session is never served to another.
+app.Use(cache.New(cache.Config{KeyCookies: []string{"session_id"}}))
+app.Use(session.New())
+```
+
+Registering the cache first relies on the cookie the session middleware writes. When the middleware sends a response without it, because another request ended or rotated the session meanwhile or because loading, saving or destroying the session failed, it marks the response, and the cache keeps it out all the same. Some responses get neither. With the [Store Pattern](#store-pattern-advanced), a session that `store.Get` loads and that is never saved sets no cookie, and a page built from it is stored and served to every client. Nor does the middleware write a cookie for a new session that holds nothing when `SkipEmptySessions` is set, so that client's page is stored and served to the clients that are signed in. Naming the session cookie in the cache's `KeyCookies`, as above, keeps each client's pages apart, but a page stored under a session's cookie is still served to whoever sends that cookie until the entry expires, after the session ended too (see [Per-user entries](./cache.md#per-user-entries-and-a-cache-in-front-of-the-app)). Sending `Cache-Control: private` or `no-store` keeps the page out of the cache altogether, a cache in front of the app included. `KeyCookies` configures only Fiber's cache middleware, so with a cache in front of the app, send `private` or `no-store` on every route whose page depends on the session; without one, do one or the other there, and send `private` or `no-store` where a page must not outlive its session. See [Default cache key behavior](./cache.md#default-cache-key-behavior).
 
 ### Authentication Middleware
 
@@ -433,7 +460,7 @@ extractors.Chain(
 )
 ```
 
-The [Cache](./cache.md) middleware leaves the header the ID is written to out of the responses it stores, even with `StoreResponseHeaders`, since a cached copy would hand the session to every client that hits it. It does not store a response whose session save stored nothing, for example because another request ended the session meanwhile, either, unless the response itself allows shared storage with `Cache-Control: public` or `s-maxage`: no cookie tells it that the page is one client's.
+The [Cache](./cache.md) middleware leaves the header the ID is written to out of the responses it stores, even with `StoreResponseHeaders`, since a cached copy would hand the session to every client that hits it. It still stores the response itself, so a page built from the session is served to every client whose request matches the cache key, unless the header is named in the cache's `KeyCredentialHeaders` (`cache.Config{KeyCredentialHeaders: []string{"X-Session-ID"}}`), which adds it to the default key; a custom `KeyGenerator` has to put it in its own key. That setting configures only Fiber's cache middleware, so with a cache in front of the app, send `Cache-Control: private` or `no-store` on the routes whose page depends on the session. The cache does not store a response whose session save stored nothing, for example because another request ended the session meanwhile, unless the response itself allows shared storage with `Cache-Control: public` or `s-maxage`: no cookie tells it that the page is one client's. See [Default cache key behavior](./cache.md#default-cache-key-behavior).
 
 ### Custom Extractors (Session-specific)
 

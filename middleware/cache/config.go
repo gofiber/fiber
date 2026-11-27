@@ -73,7 +73,10 @@ type Config struct {
 	KeyHeaders []string
 
 	// KeyCookies is an explicit allow-list of request cookies that should partition cache entries.
-	// Cookies are excluded by default to avoid accidental per-user cache fragmentation.
+	// Cookies are excluded by default to avoid accidental per-user cache fragmentation, so a
+	// response built from a cookie that is not named here is served to every client whose
+	// request matches the key, unless it is sent with Cache-Control: private or no-store, or with
+	// Vary: Cookie while DisableVaryHeaders is false.
 	//
 	// Values are hashed in the key, every occurrence of a name in any letter case.
 	// A missing and an empty cookie share a key.

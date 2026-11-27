@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
+	"github.com/gofiber/fiber/v3/internal/personalheader"
 	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/valyala/fasthttp"
@@ -172,6 +173,12 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		if err := m.initialize(c, &cfg); err != nil {
 			releaseMiddleware(m)
 			handleSessionError(c, cfg.ErrorHandler, err)
+			// The session the request named could not be loaded, and the response, the
+			// ErrorHandler's, goes out without the cookie: one that leaves it a 200 must not
+			// have the cache registered before this middleware serve it to every client.
+			valuesMu.Lock()
+			personalheader.MarkResponse(c.RequestCtx())
+			valuesMu.Unlock()
 			return nil
 		}
 
@@ -244,7 +251,10 @@ func registerLogContextTags() {
 // cleared when the request ends, that context can be kept by a goroutine, so a
 // middleware it holds must never go back to the pool.
 func storeMiddlewareContext(c fiber.Ctx, session *Session, m *Middleware) bool {
-	fiber.StoreInContext(c, sessionIDContextKey, session.ID())
+	id := session.ID() // before valuesMu, which is never held around the lock of a session
+	valuesMu.Lock()
+	defer valuesMu.Unlock() // the check below reads the values too
+	fiber.StoreInContext(c, sessionIDContextKey, id)
 	fiber.StoreInContext(c, middlewareContextKey, m)
 
 	// Without PassLocalsToContext the request context never holds the middleware,
@@ -261,6 +271,8 @@ func storeMiddlewareContext(c fiber.Ctx, session *Session, m *Middleware) bool {
 // that Store.Get cached, and then reads the session ID from the request, as for a
 // request the middleware did not serve.
 func clearMiddlewareLocals(c fiber.Ctx) {
+	valuesMu.Lock()
+	defer valuesMu.Unlock()
 	ctxlocal.Set(c, sessionIDContextKey, nil)
 	ctxlocal.Set(c, middlewareContextKey, nil)
 }
@@ -719,6 +731,8 @@ func (s shadowedContext) Value(key any) any {
 // PassLocalsToContext nothing was stored there, and wrapping the context would
 // only allocate.
 func shadowMiddlewareContext(c fiber.Ctx) {
+	valuesMu.Lock() // c.Context() can store a context of its own too
+	defer valuesMu.Unlock()
 	c.SetContext(shadowedContext{Context: c.Context()})
 }
 
@@ -823,7 +837,10 @@ func restoreMiddlewareContext(c fiber.Ctx, outer *Middleware) {
 	if outer.Session == nil {
 		return
 	}
-	fiber.StoreInContext(c, sessionIDContextKey, outer.Session.ID())
+	id := outer.Session.ID() // before valuesMu, which is never held around the lock of a session
+	valuesMu.Lock()
+	defer valuesMu.Unlock()
+	fiber.StoreInContext(c, sessionIDContextKey, id)
 	fiber.StoreInContext(c, middlewareContextKey, outer)
 }
 

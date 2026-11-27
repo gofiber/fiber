@@ -119,7 +119,7 @@ app.Use(cache.New(cache.Config{
 
 Cache keys are masked in logs and error messages by default. Set `DisableValueRedaction` to `true` if you explicitly need the raw key for debugging.
 
-### Default cache key behavior (safe by default)
+### Default cache key behavior
 
 By default, cache keys include:
 
@@ -131,6 +131,21 @@ By default, cache keys include:
 - a digest of the `Authorization` header, when the request carries one. The middleware adds it to every key, a custom `KeyGenerator`'s included, so a response stored for one credential is never served to another.
 
 This prevents common collisions from path-only keys (for example, `/?id=1` vs `/?id=2`, or `/dash` on two hosts routed with `app.Domain()`) while keeping fragmentation bounded. Two requests that differ only in their authority never share an entry, so a page routed by host or a redirect built from `c.BaseURL()` is served only to the host it was generated for. If you supply a custom `KeyGenerator` and your responses depend on the host, include `c.Host()` (and `c.Scheme()`) in the key yourself.
+
+:::caution A response built from a request cookie is served to every client
+
+The default key holds no cookie. A response built from a cookie the request sends, such as a page that reads the client's session to greet them or to show their account, is stored once and served to every client whose request matches the key, a client that sends no cookie included. Nothing about such a response tells the middleware that it belongs to one client, the way a `Set-Cookie` header, `Cache-Control: private` or the request's `Authorization` header does (see [Responses that are never stored](#responses-that-are-never-stored)).
+
+On a route whose responses depend on a request cookie, do one of these:
+
+- Send `Cache-Control: private` or `no-store` with every response of the route, so none is stored. Marking only the responses for clients that send the cookie is not enough: the response for a client without it is still stored, and is then served to the clients that send one.
+- Send `Vary: Cookie` with every response of the route, so each `Cookie` header gets its own entry. This needs `DisableVaryHeaders` left `false`: with it set, the response is stored under a key that holds no cookie and is served to every client.
+- Name the cookie in `KeyCookies`, so each of its values gets its own entry. This adds to the default key only: a custom `KeyGenerator` has to put the cookie in its own key. It also configures only this middleware, which adds no `Cache-Control` to the response that fills an entry and sends hits on such entries that carry no `Cache-Control` of their own as `private` only while `DisableCacheControl` is `false` (see [Per-user entries](#per-user-entries-and-a-cache-in-front-of-the-app)). With a cache in front of the app, send `private` or `no-store` instead.
+- Keep the cache off the route: register it only on routes that serve every client the same response, or skip it there with the [Skip](./skip.md) middleware.
+
+This holds whatever reads the cookie: [KeyAuth](./keyauth.md) with `extractors.FromCookie`, a session that `store.Get` loads from a [session](./session.md) store and that is never saved, or a check of your own. Registering the cache before the session middleware, as shown under [Responses that are never stored](#responses-that-are-never-stored), keeps out the responses on which the session middleware writes its cookie, which with its default cookie extractor it does on every response for which it saves the session. A response it sends without the cookie, because another request ended or rotated the session meanwhile or because loading, saving or destroying the session failed, it marks for the cache, which keeps that out too. That is still not every response. For one, the middleware writes neither for a new session that holds nothing when `SkipEmptySessions` is set, so that client's page is stored and served to the clients that are signed in. A response with `Cache-Control: public` or `s-maxage` is also stored, even though it sets the cookie, and the mark reaches only this middleware, not a cache in front of the app. So on a route whose page depends on the session, use one of the ways above as well. A session whose ID travels in a request header, as with the session middleware's `extractors.FromHeader`, sets no cookie either: the cache leaves the header out of the entry but stores the page, so name that header in `KeyCredentialHeaders`. That too adds to the default key only: a custom `KeyGenerator` has to put the header in its own key. Like `KeyCookies`, it configures only this middleware: with a cache in front of the app, send `private` or `no-store` instead.
+
+:::
 
 The middleware **does not include request body/form values in the default cache key**, except for `QUERY` requests: per [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html), when `QUERY` is enabled via `Methods` the default key generator incorporates the request body and its `Content-Type` and `Content-Encoding`, so different bodies on the same URL, and the same bytes declared as another format or coding, get distinct keys.
 
@@ -158,7 +173,14 @@ for the client of the request is still left out of the entry, as `Set-Cookie`
 is: it would be sent to every client that hits the entry. The session
 middleware does this for the header its ID travels in, when the session ID is
 read from a header (`extractors.FromHeader`). The response still reaches the
-client that caused the miss with it.
+client that caused the miss with it. Only the header is left out: the response
+itself is stored, with `StoreResponseHeaders` or without it, so a page built
+from such a session is served to every client whose request matches its key,
+unless the header is named in `KeyCredentialHeaders`, which adds it to the
+default key; a custom `KeyGenerator` has to put it in its own key. That setting
+configures only this middleware, so with a cache in front of the app, send
+`private` or `no-store` instead (see
+[Default cache key behavior](#default-cache-key-behavior)).
 
 A header that middleware registered before the cache wrote, such as the ID
 `requestid` sets, is not stored either unless something behind the cache changed
@@ -187,11 +209,16 @@ that identifies a single client is not stored at all:
   reaches that client normally; only the entry is skipped, and `X-Cache` reads
   `unreachable`. The same holds for a response whose [session](./session.md)
   save stored nothing and so sent no cookie, for example because another request
-  ended the session while this one ran: the page may still show that session.
+  ended the session while this one ran, and for one whose session the handler
+  could not destroy: the page may still show that session. Nor is the response
+  stored when the session the request names could not be loaded, which the
+  session middleware answers with its `ErrorHandler` in place of the page.
 - **A response to a request carrying `Authorization`,** unless the response
   permits shared caching, per
   [RFC 9111 §3.5](https://www.rfc-editor.org/rfc/rfc9111.html#section-3.5).
 - **`Cache-Control: no-store`, `private`, `no-cache`, or `Vary: *`.**
+
+A response built from a cookie the **request** sends, without setting one, is not on this list: nothing in it tells the middleware that it belongs to one client, so it is stored and served to every client whose request matches its key. The same goes for a credential sent in a header other than `Authorization` that the key does not hold. See [Default cache key behavior](#default-cache-key-behavior) for the ways to keep such a response to its client.
 
 A request the server refused while reading it, such as one declaring a body over `BodyLimit`, is neither served from the cache nor stored, and `X-Cache` reads `unreachable`. Fiber runs the `Use` chain for such a request without its route (see [Errors Before a Handler Runs](../guide/error-handling.md#errors-before-a-handler-runs)), so what the chain produces is not the URL's response.
 
@@ -265,16 +292,10 @@ The same applies to any handler wrapper of the form
 only rewrites the cookies a response already sets, so the cache sees them in the
 clear either way round; it also decrypts the request's cookies, and a response
 that varies on `Cookie` is stored only when the cache is registered **behind**
-it (see `Vary` above).
-
-:::
-
-:::caution A response built from a request cookie is shared unless keyed by it
-
-A response personalized from a **request** cookie without setting one is cached
-and shared by design: use `KeyCookies` or `Vary: Cookie` to key those apart. A
-hit on an entry keyed that way is sent with `Cache-Control: private`, as
-described below.
+it (see `Vary` above). The check described here only sees the cookies a response
+sets: a response built from a cookie the **request** sends, without setting one,
+is stored and shared, as described under
+[Default cache key behavior](#default-cache-key-behavior).
 
 :::
 
@@ -360,7 +381,7 @@ and a non-form `Content-Type` is left alone.
 | KeyGenerator         | `func(fiber.Ctx) string`                       | KeyGenerator allows you to generate custom keys. The HTTP method, a key-format version and, when the request carries `Authorization`, a digest of that header are partitioned internally by the middleware. | structured key from scheme + host + path + query string as sent + selected headers/cookies |
 | DisableQueryKeys     | `bool`                                         | Disables the query string in keys. | `false` |
 | KeyHeaders           | `[]string`                                     | Header allow-list used for key partitioning. Names are normalized case-insensitively and sorted. Use `[]string{}` to disable header-based partitioning. | `[]string{"accept","accept-encoding","accept-language"}` |
-| KeyCookies           | `[]string`                                     | Optional cookie allow-list for key partitioning. Explicit opt-in only; every occurrence of a name, in any letter case, is keyed. Hits on entries keyed this way are sent with `Cache-Control: private`. The values in the key are hashed, so an external `Storage` does not show them; a cookie that is missing and one that is empty share a key. A response is not stored for a request whose cookie value holds a quote or a backslash, which fasthttp leaves out of the cookies it parses; the same holds for `KeyHeaders` naming `Cookie` and a response sent with `Vary: Cookie`. | `nil` |
+| KeyCookies           | `[]string`                                     | Optional cookie allow-list for key partitioning. Explicit opt-in only; every occurrence of a name, in any letter case, is keyed. A response built from a cookie that is not named here is served to every client whose request matches the key (see [Default cache key behavior](#default-cache-key-behavior)). Hits on entries keyed this way are sent with `Cache-Control: private`. The values in the key are hashed, so an external `Storage` does not show them; a cookie that is missing and one that is empty share a key. A response is not stored for a request whose cookie value holds a quote or a backslash, which fasthttp leaves out of the cookies it parses; the same holds for `KeyHeaders` naming `Cookie` and a response sent with `Vary: Cookie`. | `nil` |
 | KeyCredentialHeaders | `[]string`                                     | Request headers that carry a client's credential, such as a token in a header of your own. They partition entries like `KeyHeaders`; hits on entries keyed this way are sent with `Cache-Control: private` and are not served stale unless `AllowStaleCredentialResponses` is set, and a revalidation the origin refuses with `401`, `403` or `407` ends the entry and the credential's other variants of the URL. The values of the credential headers in the key are hashed, so an external `Storage` does not show them. Names are normalized case-insensitively and sorted. With a custom `KeyGenerator` they take no part in the key, but a hit for a request that sends one is still sent as `private` and not served stale, since the middleware cannot tell which entries hold it; name every credential header its key holds, as a refusal ends its entries only for a request that sends `Authorization` or one of them. | `nil` |
 | Methods              | `[]string`                                     | HTTP methods eligible for caching. Requests whose method is not in this list bypass the cache and are answered with `unreachable` in the cache header. Names are normalized to uppercase. `nil` selects the default, and an empty slice disables caching for every method. | `[]string{fiber.MethodGet, fiber.MethodHead}` |
 | DisableVaryHeaders   | `bool`                                         | Disables response `Vary` dimensions in cache lookup/storage partitioning. | `false` |
