@@ -308,7 +308,7 @@ func forwardRouted(c fiber.Ctx, base *url.URL, clients ...*fasthttp.Client) erro
 	if !ok || !segmentsAsRouted(target, active) {
 		return fiber.ErrBadRequest
 	}
-	return forwardWithRealIP(c, joinUpstreamPath(base, target), active, clients...)
+	return forwardWithRealIP(c, joinUpstreamPathWithPolicy(base, target, active.DisableQueryMerge), active, clients...)
 }
 
 // urlRoundrobin is the *url.URL-typed equivalent of the legacy
